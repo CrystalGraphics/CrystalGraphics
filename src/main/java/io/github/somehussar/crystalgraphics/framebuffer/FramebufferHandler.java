@@ -4,11 +4,22 @@ import io.github.somehussar.crystalgraphics.RenderSystem;
 import io.github.somehussar.crystalgraphics.framebuffer.capabilities.FramebufferCapabilities;
 import io.github.somehussar.crystalgraphics.framebuffer.capabilities.FramebufferFeature;
 
-import java.util.EnumSet;
+import java.util.*;
 
 public abstract class FramebufferHandler {
     private boolean isInitialized = false;
     protected final EnumSet<FramebufferFeature> featuresSupported = EnumSet.noneOf(FramebufferFeature.class);
+
+    static final Set<AbstractFramebuffer> createdFramebuffers = new HashSet<>();
+
+
+
+    public static void free() {
+        List<AbstractFramebuffer> toRemove = new ArrayList<>(createdFramebuffers);
+        for (AbstractFramebuffer framebuffer : toRemove) {
+            framebuffer.delete();
+        }
+    }
 
     public static void EnsureRenderSystemExists() {
         if (!RenderSystem.hasInitialized()) {

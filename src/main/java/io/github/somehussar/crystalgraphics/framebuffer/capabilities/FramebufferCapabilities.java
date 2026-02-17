@@ -34,4 +34,8 @@ public final class FramebufferCapabilities {
         return capabilities.contains(cap);
     }
 
+    public FramebufferCapabilities copy() {
+        return new FramebufferCapabilities(getAll());
+    }
+
 }

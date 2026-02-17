@@ -10,7 +10,6 @@ public final class FramebufferFactory {
     private FramebufferFactory() {}
 
     public static AbstractFramebuffer createFramebuffer(FramebufferCapabilities caps, int width, int height) {
-
         if (CoreFramebufferHandler.get().isSupported(caps)) {
             return CoreFramebufferHandler.get().create(caps, width, height);
         }
