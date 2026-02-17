@@ -29,4 +29,5 @@ public class CoreFramebufferHandler extends FramebufferHandler {
     public boolean availableInCurrentContext() {
         return false;
     }
+
 }

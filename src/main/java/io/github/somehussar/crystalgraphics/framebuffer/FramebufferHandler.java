@@ -20,6 +20,7 @@ public abstract class FramebufferHandler {
 
     public final boolean isSupported(FramebufferCapabilities caps) {
         ensureInitialized();
+
         if (availableInCurrentContext())
             return featuresSupported.containsAll(caps.getAll());
 
