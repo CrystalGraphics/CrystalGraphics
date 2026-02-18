@@ -5,6 +5,7 @@ import io.github.somehussar.crystalgraphics.framebuffer.capabilities.Framebuffer
 import io.github.somehussar.crystalgraphics.framebuffer.capabilities.FramebufferFeature;
 
 import java.util.*;
+import java.util.function.Supplier;
 
 public abstract class FramebufferHandler {
     private boolean isInitialized = false;
@@ -12,6 +13,28 @@ public abstract class FramebufferHandler {
 
     static final Set<AbstractFramebuffer> createdFramebuffers = new HashSet<>();
 
+    protected static AbstractFramebuffer currentBuffer = null;
+    protected static Supplier<AbstractFramebuffer> wrappingMethod = () -> null;
+
+    public static void registerWrappingMethod(Supplier<AbstractFramebuffer> wrapper) {
+        wrappingMethod = wrapper;
+    }
+
+    public static AbstractFramebuffer getCurrentBuffer() {
+        EnsureRenderSystemExists();
+
+        if (currentBuffer != null)
+            return currentBuffer;
+
+        AbstractFramebuffer framebuffer = null;
+        if (wrappingMethod != null)
+            framebuffer = wrappingMethod.get();
+
+        if (framebuffer == null)
+            framebuffer = AbstractFramebuffer.DUMMY_BUFFER;
+
+        return framebuffer;
+    }
 
 
     public static void free() {
@@ -26,8 +49,6 @@ public abstract class FramebufferHandler {
             throw new IllegalStateException("Render system hasn't initialized yet. Cannot create frame buffers.");
         }
     }
-
-//    protected boolean packedDepthStencil = false;
 
     public final boolean isSupported(FramebufferCapabilities caps) {
         ensureInitialized();

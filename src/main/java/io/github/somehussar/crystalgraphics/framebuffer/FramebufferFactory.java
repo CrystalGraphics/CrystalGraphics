@@ -10,6 +10,10 @@ public final class FramebufferFactory {
     private FramebufferFactory() {}
 
     public static AbstractFramebuffer createFramebuffer(FramebufferCapabilities caps, int width, int height) {
+
+        AbstractFramebuffer currentBuffer = FramebufferHandler.getCurrentBuffer();
+        currentBuffer.unbind();
+
         if (CoreFramebufferHandler.get().isSupported(caps)) {
             return CoreFramebufferHandler.get().create(caps, width, height);
         }
@@ -21,6 +25,8 @@ public final class FramebufferFactory {
         if (EXTFramebufferHandler.get().isSupported(caps)) {
             return EXTFramebufferHandler.get().create(caps, width, height);
         }
+
+        currentBuffer.bind();
 
         throw new UnsupportedOperationException(
             "No frame buffer implementation supports requested capabilities: " + caps
