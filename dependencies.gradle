@@ -35,15 +35,6 @@
  */
 
 dependencies {
-    def lwjglVersion = "2.9.3"
-
-    implementation("org.lwjgl.lwjgl:lwjgl:${lwjglVersion}")
-    implementation("org.lwjgl.lwjgl:lwjgl_util:${lwjglVersion}")
-
-    runtimeOnly("org.lwjgl.lwjgl:lwjgl-platform:${lwjglVersion}:natives-windows")
-    runtimeOnly("org.lwjgl.lwjgl:lwjgl-platform:${lwjglVersion}:natives-linux")
-    runtimeOnly("org.lwjgl.lwjgl:lwjgl-platform:${lwjglVersion}:natives-osx")
-
     compileOnly("org.projectlombok:lombok:1.18.32")
     annotationProcessor("org.projectlombok:lombok:1.18.32")
 
