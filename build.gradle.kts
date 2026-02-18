@@ -1,9 +1,13 @@
 plugins {
+    id("com.gtnewhorizons.gtnhconvention")
     `java-library` // Use java-library for reusable code
 }
 
-group = "io.github.somehussar"
-version = "1.0.0"
+group = providers.gradleProperty("modGroup").orElse("io.github.somehussar").get()
+version = providers.gradleProperty("modVersion").orElse("1.0.0").get()
+
+apply(from = "repositories.gradle")
+apply(from = "dependencies.gradle")
 
 java {
     sourceCompatibility = JavaVersion.VERSION_1_8
@@ -20,21 +24,13 @@ repositories {
     }
 }
 
-dependencies {
-    val lwjglVersion = "2.9.3" // Stable, widely mirrored
-    implementation("org.lwjgl.lwjgl:lwjgl:$lwjglVersion")
-    implementation("org.lwjgl.lwjgl:lwjgl_util:$lwjglVersion")
-
-    runtimeOnly("org.lwjgl.lwjgl:lwjgl-platform:$lwjglVersion:natives-windows")
-    runtimeOnly("org.lwjgl.lwjgl:lwjgl-platform:$lwjglVersion:natives-linux")
-    runtimeOnly("org.lwjgl.lwjgl:lwjgl-platform:$lwjglVersion:natives-osx")
-
-    compileOnly("org.projectlombok:lombok:1.18.32")
-    annotationProcessor("org.projectlombok:lombok:1.18.32")
-}
-
-tasks.withType<JavaCompile> {
-    options.release.set(8)
+tasks.withType<JavaCompile>().configureEach {
+    if (JavaVersion.current().isJava9Compatible) {
+        options.release.set(8)
+    } else {
+        sourceCompatibility = JavaVersion.VERSION_1_8.toString()
+        targetCompatibility = JavaVersion.VERSION_1_8.toString()
+    }
 }
 
 val extractNatives = tasks.register<Copy>("extractNatives") {
