@@ -41,6 +41,9 @@ dependencies {
     // Example for deobfuscated dependency usage:
     // devOnlyNonPublishable(rfg.deobf("com.example:some-mod:1.0.0:dev"))
     
+    // Testing
+    testImplementation("junit:junit:4.13.2")
+
     // MC stuff
     runtimeOnlyNonPublishable("com.github.GTNewHorizons:NotEnoughItems:2.5.4-GTNH:dev")
     runtimeOnlyNonPublishable("curse.maven:Nashorn-374413:2924946")
