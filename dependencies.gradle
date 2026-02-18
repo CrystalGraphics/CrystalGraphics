@@ -54,11 +54,4 @@ dependencies {
     runtimeOnlyNonPublishable("com.github.GTNewHorizons:NotEnoughItems:2.5.4-GTNH:dev")
     runtimeOnlyNonPublishable("curse.maven:Nashorn-374413:2924946")
 
-    def mcVersion = project.findProperty("minecraftVersion")
-    def forgeVersion = project.findProperty("forgeVersion")
-    def forgeBin = files(new File(
-            gradle.gradleUserHomeDir,
-            "caches/minecraft/net/minecraftforge/forge/${mcVersion}-${forgeVersion}-${mcVersion}/forgeBin-${mcVersion}-${forgeVersion}-${mcVersion}.jar"
-    ))
-    runtimeOnlyNonPublishable(forgeBin)
 }
