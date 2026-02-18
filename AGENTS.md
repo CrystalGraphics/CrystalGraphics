@@ -7,6 +7,10 @@
 
 ---
 
+## TO BUILD
+Run ./gradlew.bat compileJava and WAIT until it finishes. DO NOT be impatient and kill the process, it will take about 60 seconds, 
+and DO NOT run it multiple times in parallel, it will cause out-of-memory errors. 
+
 ## Minecraft Source Code Location
 
 **CRITICAL**: The Minecraft 1.7.10 and Forge source code is decompiled and deobfuscated at:
