@@ -185,4 +185,39 @@ public interface CgFramebuffer {
      * @throws IllegalStateException if this framebuffer has been deleted
      */
     void resize(int width, int height);
+
+    /**
+     * Returns the runtime attachment manager for this framebuffer.
+     *
+     * <p>Use the returned interface to dynamically attach and detach color textures
+     * at runtime, without recreating the framebuffer. Supports both externally-managed
+     * and provider-based managed textures.</p>
+     *
+     * @return the runtime attachment manager (never null)
+     */
+    CgRuntimeAttachments getRuntimeAttachments();
+
+    /**
+     * Returns the texture ID of a managed (spec-defined) color attachment.
+     *
+     * <p>This method retrieves the texture ID for color attachments created as part
+     * of the initial {@link CgFramebufferSpec} (not runtime attachments). The attachment
+     * index must be in the range {@code [0, colorAttachmentCount)}.</p>
+     *
+     * @param attachmentIndex the color attachment index (zero-based)
+     * @return the OpenGL texture ID (a positive integer)
+     * @throws IllegalArgumentException if attachmentIndex is out of range
+     * @throws IllegalStateException if this framebuffer has been deleted
+     */
+    int getColorTextureId(int attachmentIndex);
+
+    /**
+     * Returns the texture ID of the depth attachment, if it was created
+     * as a texture (via {@link CgDepthStencilSpec#depthOnlyTexture(int)}).
+     *
+     * @return the OpenGL texture ID for the depth attachment
+     * @throws UnsupportedOperationException if this framebuffer does not have
+     *         a depth texture attachment (i.e., depth is a renderbuffer or absent)
+     */
+    int getDepthTextureId();
 }

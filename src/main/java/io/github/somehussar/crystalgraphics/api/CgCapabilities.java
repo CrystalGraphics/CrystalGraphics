@@ -105,23 +105,46 @@ public final class CgCapabilities {
     /** Whether depth buffer attachments are supported. */
     private final boolean depth;
 
+    /** Whether packed depth-stencil formats are supported. */
+    private final boolean packedDepthStencil;
+
+    /** Whether depth textures are supported via {@code GL_ARB_depth_texture}. */
+    private final boolean depthTexture;
+
+    /** Maximum texture dimension (width/height) for 2D textures. */
+    private final int maxTextureSize;
+
+    /** Maximum renderbuffer dimension (width/height). */
+    private final int maxRenderbufferSize;
+
+    /** Maximum number of color attachments available on FBOs. */
+    private final int maxColorAttachments;
+
     /**
      * Private constructor; use {@link #detect()} to create instances.
      *
-     * @param coreFbo        Core GL30 FBO support
-     * @param arbFbo         ARB FBO extension support
-     * @param extFbo         EXT FBO extension support
-     * @param coreShaders    Core GL20 shader support
-     * @param arbShaders     ARB shader objects support
-     * @param maxDrawBuffers maximum MRT outputs (1 if unsupported)
-     * @param maxTextureUnits maximum texture units
-     * @param stencil        stencil attachment support
-     * @param depth          depth attachment support
+     * @param coreFbo               Core GL30 FBO support
+     * @param arbFbo                ARB FBO extension support
+     * @param extFbo                EXT FBO extension support
+     * @param coreShaders           Core GL20 shader support
+     * @param arbShaders            ARB shader objects support
+     * @param maxDrawBuffers        maximum MRT outputs (1 if unsupported)
+     * @param maxTextureUnits       maximum texture units
+     * @param stencil               stencil attachment support
+     * @param depth                 depth attachment support
+     * @param packedDepthStencil    packed depth-stencil format support
+     * @param depthTexture          depth texture support
+     * @param maxTextureSize        maximum texture dimension
+     * @param maxRenderbufferSize   maximum renderbuffer dimension
+     * @param maxColorAttachments   maximum color attachments
      */
     private CgCapabilities(boolean coreFbo, boolean arbFbo, boolean extFbo,
                            boolean coreShaders, boolean arbShaders,
                            int maxDrawBuffers, int maxTextureUnits,
-                           boolean stencil, boolean depth) {
+                           boolean stencil, boolean depth,
+                           boolean packedDepthStencil, boolean depthTexture,
+                           int maxTextureSize, int maxRenderbufferSize,
+                           int maxColorAttachments) {
         this.coreFbo = coreFbo;
         this.arbFbo = arbFbo;
         this.extFbo = extFbo;
@@ -131,6 +154,11 @@ public final class CgCapabilities {
         this.maxTextureUnits = maxTextureUnits;
         this.stencil = stencil;
         this.depth = depth;
+        this.packedDepthStencil = packedDepthStencil;
+        this.depthTexture = depthTexture;
+        this.maxTextureSize = maxTextureSize;
+        this.maxRenderbufferSize = maxRenderbufferSize;
+        this.maxColorAttachments = maxColorAttachments;
     }
 
     /**
@@ -174,11 +202,42 @@ public final class CgCapabilities {
         boolean depth = true;
         boolean stencil = true;
 
+        // Packed depth-stencil support: EXT or NV variant
+        boolean packedDepthStencil = caps.GL_EXT_packed_depth_stencil || caps.GL_NV_packed_depth_stencil;
+
+        // Depth texture support via ARB extension
+        boolean depthTexture = caps.GL_ARB_depth_texture;
+
+        // Maximum texture size (universal, always available)
+        int maxTextureSize = GL11.glGetInteger(GL11.GL_MAX_TEXTURE_SIZE);
+
+        // Maximum renderbuffer size; use maxTextureSize as fallback if unavailable
+        int maxRenderbufferSize;
+        if (coreFbo || arbFbo) {
+            maxRenderbufferSize = GL11.glGetInteger(0x84E8); // GL_MAX_RENDERBUFFER_SIZE
+        } else {
+            maxRenderbufferSize = maxTextureSize;
+        }
+
+        // Maximum color attachments; varies by backend
+        int maxColorAttachments;
+        if (coreFbo || arbFbo) {
+            maxColorAttachments = GL11.glGetInteger(0x8CDF); // GL_MAX_COLOR_ATTACHMENTS
+        } else if (extFbo) {
+            // EXT framebuffer object typically limited to 1 color attachment
+            maxColorAttachments = 1;
+        } else {
+            maxColorAttachments = 1;
+        }
+
         return new CgCapabilities(
             coreFbo, arbFbo, extFbo,
             coreShaders, arbShaders,
             maxDrawBuffers, maxTextureUnits,
-            stencil, depth
+            stencil, depth,
+            packedDepthStencil, depthTexture,
+            maxTextureSize, maxRenderbufferSize,
+            maxColorAttachments
         );
     }
 
@@ -298,5 +357,77 @@ public final class CgCapabilities {
      */
     public boolean hasDepth() {
         return depth;
+    }
+
+    /**
+     * Returns whether packed depth-stencil formats are supported.
+     *
+     * <p>Packed depth-stencil allows a single renderbuffer or texture to
+     * store both depth and stencil data, reducing memory usage and improving
+     * performance.  This is indicated by either {@code GL_EXT_packed_depth_stencil}
+     * or {@code GL_NV_packed_depth_stencil} extension support.</p>
+     *
+     * @return {@code true} if packed depth-stencil formats are available
+     */
+    public boolean hasPackedDepthStencil() {
+        return packedDepthStencil;
+    }
+
+    /**
+     * Returns whether depth textures are supported via the
+     * {@code GL_ARB_depth_texture} extension.
+     *
+     * <p>Depth textures allow the depth buffer to be sampled as a texture,
+     * enabling shadow mapping and other advanced rendering techniques.</p>
+     *
+     * @return {@code true} if depth textures can be created and sampled
+     */
+    public boolean hasDepthTexture() {
+        return depthTexture;
+    }
+
+    /**
+     * Returns the maximum texture dimension (width/height) for 2D textures.
+     *
+     * <p>This is the maximum size of a single 2D texture in either dimension.
+     * Typical values are 2048, 4096, 8192, or 16384 depending on GPU
+     * generation and driver.</p>
+     *
+     * @return the maximum texture size in pixels (at least 64)
+     */
+    public int getMaxTextureSize() {
+        return maxTextureSize;
+    }
+
+    /**
+     * Returns the maximum renderbuffer dimension (width/height).
+     *
+     * <p>This is the maximum size of a renderbuffer attachment on an FBO.
+     * On hardware supporting {@code GL_ARB_framebuffer_object} or Core GL3.0+,
+     * this typically matches {@code GL_MAX_TEXTURE_SIZE}.  On older hardware
+     * with only {@code GL_EXT_framebuffer_object}, it may be smaller or
+     * equal to the maximum texture size.</p>
+     *
+     * @return the maximum renderbuffer size in pixels
+     */
+    public int getMaxRenderbufferSize() {
+        return maxRenderbufferSize;
+    }
+
+    /**
+     * Returns the maximum number of color attachments available on FBOs.
+     *
+     * <p>This determines how many simultaneous color render targets (MRT)
+     * can be bound to an FBO via {@code glDrawBuffers}.  Typical values:
+     * <ul>
+     *   <li>1 - Only single-target rendering (EXT framebuffer)</li>
+     *   <li>8 - Modern Core/ARB framebuffer (typical default)</li>
+     *   <li>16 - High-end GPUs</li>
+     * </ul></p>
+     *
+     * @return the maximum number of color attachments (at least 1)
+     */
+    public int getMaxColorAttachments() {
+        return maxColorAttachments;
     }
 }

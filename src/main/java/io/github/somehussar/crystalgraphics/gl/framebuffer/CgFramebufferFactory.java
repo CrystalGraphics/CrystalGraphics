@@ -1,7 +1,10 @@
 package io.github.somehussar.crystalgraphics.gl.framebuffer;
 
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
+import io.github.somehussar.crystalgraphics.api.CgColorAttachmentSpec;
+import io.github.somehussar.crystalgraphics.api.CgDepthStencilSpec;
 import io.github.somehussar.crystalgraphics.api.CgFramebuffer;
+import io.github.somehussar.crystalgraphics.api.CgFramebufferSpec;
 import io.github.somehussar.crystalgraphics.gl.CrossApiTransition;
 import io.github.somehussar.crystalgraphics.gl.state.CallFamily;
 
@@ -89,27 +92,154 @@ public final class CgFramebufferFactory {
                 + "CrystalGraphics requires at least EXT_framebuffer_object support.");
     }
 
-    /**
-     * Wraps an externally-created framebuffer ID as a non-owned
-     * {@link CgFramebuffer}.
-     *
-     * <p>The returned object can be used for binding operations but will
-     * <strong>never</strong> delete the underlying GL object.  Calling
-     * {@link CgFramebuffer#delete()} on a wrapped framebuffer throws
-     * {@link IllegalStateException}.</p>
-     *
-     * <p>This is intended for interacting with FBOs created by other mods,
-     * by Minecraft itself, or by any code outside CrystalGraphics' control.</p>
-     *
-     * @param fboId  the external framebuffer object ID
-     * @param width  known width in pixels (informational only — not validated)
-     * @param height known height in pixels (informational only — not validated)
-     * @param family the {@link CallFamily} used to create/bind this external FBO
-     * @return a wrapped framebuffer that must not be deleted
-     * @throws IllegalArgumentException if {@code family} is {@code null} or not
-     *                                  a framebuffer family
-     */
-    public static CgFramebuffer wrap(int fboId, int width, int height, CallFamily family) {
+     /**
+      * Creates a framebuffer from a detailed specification using the best
+      * available backend for the current GL capabilities.
+      *
+      * <p>This overload allows fine-grained control over attachment sizing,
+      * formats, and depth/stencil configuration through a {@link CgFramebufferSpec}.
+      * Comprehensive validation is performed on the specification against
+      * the detected capabilities:</p>
+      *
+      * <ul>
+      *   <li>If the specification requests multiple color attachments and
+      *       the preferred backend is EXT, throws
+      *       {@code UnsupportedOperationException}.</li>
+      *   <li>If the number of requested color attachments exceeds
+      *       {@link CgCapabilities#getMaxColorAttachments()}, throws
+      *       {@code IllegalArgumentException}.</li>
+      *   <li>For each color attachment, computed size is validated against
+      *       {@link CgCapabilities#getMaxTextureSize()}. Size computation:
+      *       {@code max(1, (int)Math.ceil(baseWidth * scaleX))} and similarly for
+      *       height. If either dimension exceeds the maximum, throws
+      *       {@code IllegalArgumentException}.</li>
+      * </ul>
+      *
+      * <p><strong>Note:</strong> Spec-based creation is a placeholder pending
+      * implementation of spec-aware constructors in backend classes
+      * (Tasks 7, 8, 9). This method currently throws
+      * {@code UnsupportedOperationException} after validation.  Legacy
+      * {@link #create(CgCapabilities, int, int, boolean, boolean)} continues
+      * to work unchanged.</p>
+      *
+      * @param caps the detected GL capabilities (used for validation and backend selection)
+      * @param spec the detailed framebuffer specification with attachment config
+      * @return a new owned framebuffer using the best available backend
+      * @throws IllegalArgumentException if the specification violates capability
+      *                                  constraints (e.g., attachment count exceeds
+      *                                  max, computed sizes exceed max texture size)
+      * @throws UnsupportedOperationException if spec-based creation is not yet
+      *                                       implemented for the selected backend,
+      *                                       or if MRT is requested but only EXT
+      *                                       is available
+      * @throws IllegalStateException if the framebuffer is not complete
+      *
+      * @see #create(CgCapabilities, int, int, boolean, boolean)
+      */
+     public static CgFramebuffer create(CgCapabilities caps, CgFramebufferSpec spec) {
+         if (caps == null) {
+             throw new IllegalArgumentException("Capabilities must not be null");
+         }
+         if (spec == null) {
+             throw new IllegalArgumentException("Specification must not be null");
+         }
+
+         // Determine the preferred backend
+         CgCapabilities.Backend backend = caps.preferredFboBackend();
+
+         // ── Validation: Check MRT compatibility with EXT backend ────────
+         int colorAttachmentCount = spec.getColorAttachmentCount();
+         if (colorAttachmentCount > 1 && backend == CgCapabilities.Backend.EXT_FBO) {
+             throw new UnsupportedOperationException(
+                     "EXT_framebuffer_object backend does not support MRT. "
+                     + "Requested " + colorAttachmentCount + " color attachments "
+                     + "but EXT backend supports at most 1.");
+         }
+
+         // ── Validation: Check color attachment count against capability ──
+         int maxColorAttachments = caps.getMaxColorAttachments();
+         if (colorAttachmentCount > maxColorAttachments) {
+             throw new IllegalArgumentException(
+                     "Requested " + colorAttachmentCount + " color attachments "
+                     + "but hardware supports at most " + maxColorAttachments);
+         }
+
+         // ── Validation: Check computed attachment sizes ──────────────────
+         int maxTextureSize = caps.getMaxTextureSize();
+         int baseWidth = spec.getBaseWidth();
+         int baseHeight = spec.getBaseHeight();
+
+         for (int i = 0; i < colorAttachmentCount; i++) {
+             CgColorAttachmentSpec attachment = spec.getColorAttachment(i);
+             float scaleX = attachment.getScaleX();
+             float scaleY = attachment.getScaleY();
+
+             // Compute actual dimensions using Math.ceil and max(1, ...)
+             int computedWidth = Math.max(1, (int) Math.ceil(baseWidth * scaleX));
+             int computedHeight = Math.max(1, (int) Math.ceil(baseHeight * scaleY));
+
+             // Validate width
+             if (computedWidth > maxTextureSize) {
+                 throw new IllegalArgumentException(
+                         "Color attachment " + i + " width exceeds max texture size: "
+                         + "computed width " + computedWidth + " exceeds "
+                         + maxTextureSize + " (base width " + baseWidth
+                         + " * scale " + scaleX + ")");
+             }
+
+             // Validate height
+             if (computedHeight > maxTextureSize) {
+                 throw new IllegalArgumentException(
+                         "Color attachment " + i + " height exceeds max texture size: "
+                         + "computed height " + computedHeight + " exceeds "
+                         + maxTextureSize + " (base height " + baseHeight
+                         + " * scale " + scaleY + ")");
+             }
+         }
+
+          // ── Validation: Check depth texture capability ─────────────────
+          CgDepthStencilSpec dsSpec = spec.getDepthStencil();
+          if (dsSpec.isDepthTexture() && !caps.hasDepthTexture()) {
+              throw new UnsupportedOperationException(
+                      "Depth texture attachments require GL_ARB_depth_texture "
+                      + "which is not available on this hardware.");
+          }
+
+          // ── Backend routing ──────────────────────────────────────────────
+          switch (backend) {
+              case CORE_GL30:
+                  return CoreFramebuffer.createFromSpec(spec);
+              case ARB_FBO:
+                  return ArbFramebuffer.createFromSpec(spec);
+              case EXT_FBO:
+                  return ExtFramebuffer.createFromSpec(spec);
+              default:
+                  throw new UnsupportedOperationException(
+                          "Unknown backend for spec-based creation: " + backend);
+          }
+     }
+
+     /**
+      * Wraps an externally-created framebuffer ID as a non-owned
+      * {@link CgFramebuffer}.
+      *
+      * <p>The returned object can be used for binding operations but will
+      * <strong>never</strong> delete the underlying GL object.  Calling
+      * {@link CgFramebuffer#delete()} on a wrapped framebuffer throws
+      * {@link IllegalStateException}.</p>
+      *
+      * <p>This is intended for interacting with FBOs created by other mods,
+      * by Minecraft itself, or by any code outside CrystalGraphics' control.</p>
+      *
+      * @param fboId  the external framebuffer object ID
+      * @param width  known width in pixels (informational only — not validated)
+      * @param height known height in pixels (informational only — not validated)
+      * @param family the {@link CallFamily} used to create/bind this external FBO
+      * @return a wrapped framebuffer that must not be deleted
+      * @throws IllegalArgumentException if {@code family} is {@code null} or not
+      *                                  a framebuffer family
+      */
+     public static CgFramebuffer wrap(int fboId, int width, int height, CallFamily family) {
         if (family == null) {
             throw new IllegalArgumentException("CallFamily must not be null");
         }

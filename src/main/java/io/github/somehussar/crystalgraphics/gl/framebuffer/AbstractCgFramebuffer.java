@@ -1,6 +1,7 @@
 package io.github.somehussar.crystalgraphics.gl.framebuffer;
 
 import io.github.somehussar.crystalgraphics.api.CgFramebuffer;
+import io.github.somehussar.crystalgraphics.api.CgRuntimeAttachments;
 import io.github.somehussar.crystalgraphics.gl.CrossApiTransition;
 import io.github.somehussar.crystalgraphics.gl.state.CallFamily;
 
@@ -277,6 +278,52 @@ public abstract class AbstractCgFramebuffer implements CgFramebuffer {
         freeGlResources();
         deleted = true;
         ALL_OWNED.remove(this);
+    }
+
+    // ── Runtime attachments ────────────────────────────────────────────
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Default implementation throws {@link UnsupportedOperationException}.
+     * Subclasses that support runtime attachments must override this method.</p>
+     *
+     * @return the runtime attachment manager
+     * @throws UnsupportedOperationException if not implemented by the subclass
+     */
+    @Override
+    public CgRuntimeAttachments getRuntimeAttachments() {
+        throw new UnsupportedOperationException(
+                "This framebuffer implementation does not support runtime attachments");
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Default implementation throws {@link UnsupportedOperationException}.
+     * Subclasses that support color attachment queries must override this method.</p>
+     *
+     * @param attachmentIndex the color attachment index
+     * @return the texture ID of the color attachment
+     * @throws UnsupportedOperationException if not implemented by the subclass
+     */
+    @Override
+    public int getColorTextureId(int attachmentIndex) {
+        throw new UnsupportedOperationException(
+                "This framebuffer implementation does not support color texture ID queries");
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Default implementation throws {@link UnsupportedOperationException}.
+     * Subclasses that allocate depth as a texture must override this method.</p>
+     */
+    @Override
+    public int getDepthTextureId() {
+        throw new UnsupportedOperationException(
+                "This framebuffer does not have a depth texture attachment. "
+                + "Depth texture is only available when created with CgDepthStencilSpec.depthOnlyTexture().");
     }
 
     // ── Abstract hooks for subclasses ──────────────────────────────────
