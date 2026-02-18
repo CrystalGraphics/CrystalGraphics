@@ -44,6 +44,26 @@ val extractNatives = tasks.register<Copy>("extractNatives") {
     exclude("META-INF/**")
 }
 
+
+fun findJarBySubstring(part: String): File {
+    val matches = configurations.runtimeClasspath.get().files.filter {
+        it.name.contains(part)
+    }
+
+    if (matches.isEmpty()) {
+        throw GradleException("Cannot find JAR containing '$part' in runtimeClasspath")
+    }
+
+    return matches.first()
+}
+
+tasks.named<JavaExec>("runClient") {
+    val agent = findJarBySubstring("unimixins")
+    jvmArgs("-javaagent:${agent.absolutePath}")
+}
+
+tasks.runServer { setWorkingDir(file("run/server")) }
+
 //tasks.register<JavaExec>("runExample") {
 //    group = "verification"
 //    mainClass.set("io.github.somehussar.crystalgraphics.util.GraphicsExample")

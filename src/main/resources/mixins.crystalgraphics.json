@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "minVersion": "0.7.11",
+  "package": "io.github.somehussar.crystalgraphics.mixins.early.impl",
+  "plugin": "io.github.somehussar.crystalgraphics.mixins.early.CrystalGraphicsEarlyMixins",
+  "refmap": "mixins.crystalgraphics.refmap.json",
+  "target": "@env(DEFAULT)",
+  "compatibilityLevel": "JAVA_8",
+  "mixins": [],
+  "client": [],
+  "server": []
+}
