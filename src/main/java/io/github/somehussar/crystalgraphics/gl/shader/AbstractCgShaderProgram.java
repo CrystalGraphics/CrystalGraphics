@@ -1,6 +1,6 @@
 package io.github.somehussar.crystalgraphics.gl.shader;
 
-import io.github.somehussar.crystalgraphics.api.CgShaderProgram;
+import io.github.somehussar.crystalgraphics.api.shader.CgShaderProgram;
 import io.github.somehussar.crystalgraphics.gl.CrossApiTransition;
 import io.github.somehussar.crystalgraphics.gl.state.CallFamily;
 

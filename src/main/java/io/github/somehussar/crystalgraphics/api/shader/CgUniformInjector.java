@@ -32,7 +32,7 @@ public interface CgUniformInjector {
      * is called. Implementations can use
      * {@link CgShader#getUniformLocation(String)} to look up uniform
      * locations and {@link CgShader#getProgram()} to access the
-     * underlying {@link io.github.somehussar.crystalgraphics.api.CgShaderProgram}
+     * underlying {@link CgShaderProgram}
      * for setting uniform values.</p>
      *
      * @param shader      the currently bound managed shader (never null)

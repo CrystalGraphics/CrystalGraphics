@@ -1,7 +1,5 @@
 package io.github.somehussar.crystalgraphics.api.shader;
 
-import io.github.somehussar.crystalgraphics.api.CgShaderProgram;
-
 import java.util.function.Consumer;
 
 /**

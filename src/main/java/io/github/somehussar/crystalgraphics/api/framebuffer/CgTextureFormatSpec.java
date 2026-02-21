@@ -1,4 +1,4 @@
-package io.github.somehussar.crystalgraphics.api;
+package io.github.somehussar.crystalgraphics.api.framebuffer;
 
 /**
  * Immutable specification of a texture format for framebuffer attachments.

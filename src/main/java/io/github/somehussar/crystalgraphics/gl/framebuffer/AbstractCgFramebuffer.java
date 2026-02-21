@@ -1,7 +1,7 @@
 package io.github.somehussar.crystalgraphics.gl.framebuffer;
 
-import io.github.somehussar.crystalgraphics.api.CgFramebuffer;
-import io.github.somehussar.crystalgraphics.api.CgRuntimeAttachments;
+import io.github.somehussar.crystalgraphics.api.framebuffer.CgFramebuffer;
+import io.github.somehussar.crystalgraphics.api.framebuffer.CgRuntimeAttachments;
 import io.github.somehussar.crystalgraphics.gl.CrossApiTransition;
 import io.github.somehussar.crystalgraphics.gl.state.CallFamily;
 

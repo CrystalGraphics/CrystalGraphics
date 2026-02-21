@@ -1,11 +1,10 @@
 package io.github.somehussar.crystalgraphics.gl.framebuffer;
 
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
-import io.github.somehussar.crystalgraphics.api.CgColorAttachmentSpec;
-import io.github.somehussar.crystalgraphics.api.CgDepthStencilSpec;
-import io.github.somehussar.crystalgraphics.api.CgFramebuffer;
-import io.github.somehussar.crystalgraphics.api.CgFramebufferSpec;
-import io.github.somehussar.crystalgraphics.gl.CrossApiTransition;
+import io.github.somehussar.crystalgraphics.api.framebuffer.CgColorAttachmentSpec;
+import io.github.somehussar.crystalgraphics.api.framebuffer.CgDepthStencilSpec;
+import io.github.somehussar.crystalgraphics.api.framebuffer.CgFramebuffer;
+import io.github.somehussar.crystalgraphics.api.framebuffer.CgFramebufferSpec;
 import io.github.somehussar.crystalgraphics.gl.state.CallFamily;
 
 /**

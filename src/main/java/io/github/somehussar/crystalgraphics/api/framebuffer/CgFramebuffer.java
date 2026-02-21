@@ -1,4 +1,4 @@
-package io.github.somehussar.crystalgraphics.api;
+package io.github.somehussar.crystalgraphics.api.framebuffer;
 
 /**
  * Primary public API for framebuffer object (FBO) management in CrystalGraphics.
@@ -43,7 +43,7 @@ package io.github.somehussar.crystalgraphics.api;
  * called on the thread that owns the OpenGL context (typically the render
  * thread).</p>
  *
- * @see CgCapabilities
+ * @see io.github.somehussar.crystalgraphics.api.CgCapabilities
  * @see io.github.somehussar.crystalgraphics.gl.CrossApiTransition
  */
 public interface CgFramebuffer {

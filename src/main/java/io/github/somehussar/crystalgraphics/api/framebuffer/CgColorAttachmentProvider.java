@@ -1,4 +1,4 @@
-package io.github.somehussar.crystalgraphics.api;
+package io.github.somehussar.crystalgraphics.api.framebuffer;
 
 /**
  * Functional interface for allocating and managing provider-based color attachment textures.

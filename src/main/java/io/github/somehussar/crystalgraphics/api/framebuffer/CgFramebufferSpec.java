@@ -1,4 +1,4 @@
-package io.github.somehussar.crystalgraphics.api;
+package io.github.somehussar.crystalgraphics.api.framebuffer;
 
 import java.util.ArrayList;
 import java.util.Collections;

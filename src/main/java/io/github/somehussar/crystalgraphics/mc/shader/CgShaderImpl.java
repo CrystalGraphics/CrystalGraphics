@@ -1,7 +1,7 @@
 package io.github.somehussar.crystalgraphics.mc.shader;
 
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
-import io.github.somehussar.crystalgraphics.api.CgShaderProgram;
+import io.github.somehussar.crystalgraphics.api.shader.CgShaderProgram;
 import io.github.somehussar.crystalgraphics.api.shader.CgScopeRestoreOption;
 import io.github.somehussar.crystalgraphics.api.shader.CgShader;
 import io.github.somehussar.crystalgraphics.api.shader.CgShaderBindings;

@@ -1,4 +1,4 @@
-package io.github.somehussar.crystalgraphics.api;
+package io.github.somehussar.crystalgraphics.api.shader;
 
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
@@ -44,7 +44,7 @@ import java.nio.IntBuffer;
  * called on the thread that owns the OpenGL context (typically the render
  * thread).</p>
  *
- * @see CgCapabilities
+ * @see io.github.somehussar.crystalgraphics.api.CgCapabilities
  * @see io.github.somehussar.crystalgraphics.gl.CrossApiTransition
  */
 public interface CgShaderProgram {

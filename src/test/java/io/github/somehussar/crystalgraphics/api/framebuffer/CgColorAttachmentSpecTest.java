@@ -1,4 +1,6 @@
-package io.github.somehussar.crystalgraphics.api;
+package io.github.somehussar.crystalgraphics.api.framebuffer;
+
+import io.github.somehussar.crystalgraphics.api.CgMipmapConfig;
 
 import org.junit.Test;
 

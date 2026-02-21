@@ -1,17 +1,16 @@
 package io.github.somehussar.crystalgraphics.mc.integration;
 
-import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.Mod;
 import cpw.mods.fml.common.event.FMLPostInitializationEvent;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
-import io.github.somehussar.crystalgraphics.api.CgColorAttachmentSpec;
-import io.github.somehussar.crystalgraphics.api.CgDepthStencilSpec;
-import io.github.somehussar.crystalgraphics.api.CgFramebuffer;
-import io.github.somehussar.crystalgraphics.api.CgFramebufferSpec;
-import io.github.somehussar.crystalgraphics.api.CgRuntimeAttachments;
-import io.github.somehussar.crystalgraphics.api.CgTextureFormatSpec;
+import io.github.somehussar.crystalgraphics.api.framebuffer.CgColorAttachmentSpec;
+import io.github.somehussar.crystalgraphics.api.framebuffer.CgDepthStencilSpec;
+import io.github.somehussar.crystalgraphics.api.framebuffer.CgFramebuffer;
+import io.github.somehussar.crystalgraphics.api.framebuffer.CgFramebufferSpec;
+import io.github.somehussar.crystalgraphics.api.framebuffer.CgRuntimeAttachments;
+import io.github.somehussar.crystalgraphics.api.framebuffer.CgTextureFormatSpec;
 import io.github.somehussar.crystalgraphics.gl.framebuffer.CgFormatProbe;
 import io.github.somehussar.crystalgraphics.gl.framebuffer.CgFramebufferFactory;
 import io.github.somehussar.crystalgraphics.gl.state.GLStateMirror;

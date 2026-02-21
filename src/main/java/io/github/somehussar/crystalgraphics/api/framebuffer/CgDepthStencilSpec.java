@@ -1,4 +1,4 @@
-package io.github.somehussar.crystalgraphics.api;
+package io.github.somehussar.crystalgraphics.api.framebuffer;
 
 /**
  * Immutable specification of depth and stencil attachment configuration.

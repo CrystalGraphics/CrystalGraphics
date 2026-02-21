@@ -1,6 +1,5 @@
 package io.github.somehussar.crystalgraphics.api.shader;
 
-import io.github.somehussar.crystalgraphics.api.CgShaderProgram;
 import net.minecraft.util.ResourceLocation;
 
 import java.nio.FloatBuffer;

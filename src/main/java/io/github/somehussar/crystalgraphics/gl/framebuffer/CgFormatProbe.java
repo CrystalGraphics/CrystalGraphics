@@ -1,7 +1,7 @@
 package io.github.somehussar.crystalgraphics.gl.framebuffer;
 
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
-import io.github.somehussar.crystalgraphics.api.CgTextureFormatSpec;
+import io.github.somehussar.crystalgraphics.api.framebuffer.CgTextureFormatSpec;
 
 import org.lwjgl.opengl.ARBFramebufferObject;
 import org.lwjgl.opengl.EXTFramebufferObject;

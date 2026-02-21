@@ -1,4 +1,4 @@
-package io.github.somehussar.crystalgraphics.api;
+package io.github.somehussar.crystalgraphics.api.framebuffer;
 
 /**
  * Runtime color attachment management interface for {@code CgFramebuffer}.
