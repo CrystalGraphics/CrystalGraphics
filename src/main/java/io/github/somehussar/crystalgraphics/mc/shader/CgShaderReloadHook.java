@@ -51,24 +51,27 @@ public final class CgShaderReloadHook {
             Collections.newSetFromMap(new IdentityHashMap<CgShaderManager, Boolean>());
 
     /** The singleton reload listener instance. */
-    private static final IResourceManagerReloadListener LISTENER = resourceManager -> {
-        Set<CgShaderManager> snapshot;
-        synchronized (managers) {
-            if (managers.isEmpty()) {
-                return;
+    private static final IResourceManagerReloadListener LISTENER = new IResourceManagerReloadListener() {
+        @Override
+        public void onResourceManagerReload(IResourceManager resourceManager) {
+            Set<CgShaderManager> snapshot;
+            synchronized (managers) {
+                if (managers.isEmpty()) {
+                    return;
+                }
+                // Snapshot to avoid holding lock during reload
+                snapshot = Collections.newSetFromMap(new IdentityHashMap<CgShaderManager, Boolean>());
+                snapshot.addAll(managers);
             }
-            // Snapshot to avoid holding lock during reload
-            snapshot = Collections.newSetFromMap(new IdentityHashMap<>());
-            snapshot.addAll(managers);
-        }
 
-        LOGGER.info("Resource manager reload detected — reloading {} shader manager(s)", snapshot.size());
+            LOGGER.info("Resource manager reload detected — reloading {} shader manager(s)", snapshot.size());
 
-        for (CgShaderManager manager : snapshot) {
-            try {
-                manager.reloadAll();
-            } catch (Exception e) {
-                LOGGER.error("Failed to reload shader manager: {}", manager, e);
+            for (CgShaderManager manager : snapshot) {
+                try {
+                    manager.reloadAll();
+                } catch (Exception e) {
+                    LOGGER.error("Failed to reload shader manager: {}", manager, e);
+                }
             }
         }
     };
