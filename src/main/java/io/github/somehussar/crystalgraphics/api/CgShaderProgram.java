@@ -1,5 +1,8 @@
 package io.github.somehussar.crystalgraphics.api;
 
+import java.nio.FloatBuffer;
+import java.nio.IntBuffer;
+
 /**
  * Primary public API for GLSL shader program management in CrystalGraphics.
  *
@@ -170,25 +173,72 @@ public interface CgShaderProgram {
      * @param w        the fourth component
      */
     void setUniform4f(int location, float x, float y, float z, float w);
+    
+    /**
+     * Uploads a scalar int array uniform from an {@link IntBuffer}
+     * ({@code glUniform1iv} / {@code glUniform1ivARB} equivalent).
+     *
+     * <p>Each element in the buffer maps to one {@code int} uniform in a GLSL
+     * array (e.g. {@code uniform int flags[4];}). This does <strong>not</strong>
+     * support {@code ivec} array uploads — those require separate
+     * {@code glUniform2iv} / {@code glUniform3iv} calls not provided here.</p>
+     *
+     * <p>If {@code location} is {@code -1} (uniform not found / optimized out),
+     * implementations return immediately without issuing a GL call.</p>
+     *
+     * @param location the uniform location, or -1 to no-op
+     * @param buffer   the int data; read from position to limit
+     */
+    void setUniformIntBuffer(int location, IntBuffer buffer);
+    
+    /**
+     * Uploads a scalar float array uniform from a {@link FloatBuffer}
+     * ({@code glUniform1fv} / {@code glUniform1fvARB} equivalent).
+     *
+     * <p>Each element in the buffer maps to one {@code float} uniform in a GLSL
+     * array (e.g. {@code uniform float weights[8];}). This does <strong>not</strong>
+     * support {@code vec} or {@code mat} array uploads — use
+     * {@link #setUniformMatrix3f(int, FloatBuffer)} or
+     * {@link #setUniformMatrix4f(int, FloatBuffer)} for matrices.</p>
+     *
+     * <p>If {@code location} is {@code -1} (uniform not found / optimized out),
+     * implementations return immediately without issuing a GL call.</p>
+     *
+     * @param location the uniform location, or -1 to no-op
+     * @param buffer   the float data; read from position to limit
+     */
+    void setUniformFloatBuffer(int location, FloatBuffer buffer);
 
     /**
-     * Sets a 4x4 float matrix uniform variable.
+     * Uploads a 3x3 float matrix uniform from a {@link FloatBuffer}.
      *
-     * <p>The matrix is provided as a 16-element float array in row-major
-     * order.  The implementation converts to column-major order as required
-     * by OpenGL (i.e., passes {@code transpose = true} to the GL call, or
-     * transposes the data before upload).</p>
+     * <p>The buffer must contain exactly <strong>9 elements</strong> (from
+     * position to limit) in <strong>column-major</strong> order. The buffer
+     * must be a direct buffer (heap buffers will cause LWJGL to throw).</p>
      *
-     * <p>The program must be bound before calling this method.</p>
+     * <p>If {@code location} is {@code -1} (uniform not found / optimized out),
+     * implementations return immediately without issuing a GL call.</p>
      *
-     * @param location the uniform location
-     * @param matrix   a 16-element float array representing a 4x4 matrix
-     *                 in row-major order
-     * @throws IllegalArgumentException if {@code matrix} is null or does
-     *         not have exactly 16 elements
+     * @param location the uniform location, or -1 to no-op
+     * @param buffer   a direct FloatBuffer with 9 elements in column-major order
      */
-    void setUniformMatrix4f(int location, float[] matrix);
+    void setUniformMatrix3f(int location, FloatBuffer buffer);
 
+    /**
+     * Uploads a 4x4 float matrix uniform from a {@link FloatBuffer}.
+     *
+     * <p>The buffer must contain exactly <strong>16 elements</strong> (from
+     * position to limit) in <strong>column-major</strong> order. The buffer
+     * must be a direct buffer (heap buffers will cause LWJGL to throw).</p>
+     *
+     * <p>If {@code location} is {@code -1} (uniform not found / optimized out),
+     * implementations return immediately without issuing a GL call.</p>
+     *
+     * @param location the uniform location, or -1 to no-op
+     * @param buffer   a direct FloatBuffer with 16 elements in column-major order
+     */
+    void setUniformMatrix4f(int location, FloatBuffer buffer);
+    
     /**
      * Binds a texture unit to a sampler uniform.
      *

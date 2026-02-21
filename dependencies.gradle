@@ -43,6 +43,7 @@ dependencies {
     
     // Testing
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.lwjgl.lwjgl:lwjgl:2.9.4-nightly-20150209")
 
     // MC stuff
     runtimeOnlyNonPublishable("com.github.GTNewHorizons:NotEnoughItems:2.5.4-GTNH:dev")

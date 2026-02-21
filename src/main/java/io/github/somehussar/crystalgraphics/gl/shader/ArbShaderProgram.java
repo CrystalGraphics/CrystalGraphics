@@ -2,6 +2,8 @@ package io.github.somehussar.crystalgraphics.gl.shader;
 
 import io.github.somehussar.crystalgraphics.gl.state.CallFamily;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.ARBFragmentShader;
 import org.lwjgl.opengl.ARBShaderObjects;
@@ -9,6 +11,7 @@ import org.lwjgl.opengl.ARBVertexShader;
 import org.lwjgl.opengl.GL11;
 
 import java.nio.FloatBuffer;
+import java.nio.IntBuffer;
 
 /**
  * Shader program implementation using ARB shader object extension entry points.
@@ -53,6 +56,8 @@ import java.nio.FloatBuffer;
  * @see CoreShaderProgram
  */
 public class ArbShaderProgram extends AbstractCgShaderProgram {
+
+    private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
 
     /**
      * Constructs an ARB shader program wrapper.
@@ -121,6 +126,13 @@ public class ArbShaderProgram extends AbstractCgShaderProgram {
             ARBShaderObjects.glDeleteObjectARB(fragId);
             ARBShaderObjects.glDeleteObjectARB(progId);
             throw new IllegalStateException("Shader program link failed: " + log);
+        }
+
+        ARBShaderObjects.glValidateProgramARB(progId);
+        if (ARBShaderObjects.glGetObjectParameteriARB(progId,
+                ARBShaderObjects.GL_OBJECT_VALIDATE_STATUS_ARB) != GL11.GL_TRUE) {
+            String validateLog = ARBShaderObjects.glGetInfoLogARB(progId, 4096);
+            LOGGER.warn("Shader validation warning for program {}: {}", progId, validateLog);
         }
 
         ARBShaderObjects.glDeleteObjectARB(vertId);
@@ -252,25 +264,15 @@ public class ArbShaderProgram extends AbstractCgShaderProgram {
      * {@inheritDoc}
      *
      * <p>Uploads the 4x4 matrix via
-     * {@link ARBShaderObjects#glUniformMatrix4ARB(int, boolean, FloatBuffer)}.
-     * A temporary {@link FloatBuffer} is allocated per call (this method is
-     * not on a hot path).</p>
+     * {@link ARBShaderObjects#glUniformMatrix4ARB(int, boolean, FloatBuffer)}.</p>
      *
      * @param location the uniform location
-     * @param matrix   a 16-element float array (row-major order)
-     * @throws IllegalArgumentException if {@code matrix} is null or does not
-     *         have exactly 16 elements
+     * @param buffer   a 16-element FloatBuffer in column-major order
      */
     @Override
-    public void setUniformMatrix4f(int location, float[] matrix) {
-        if (matrix == null || matrix.length != 16) {
-            throw new IllegalArgumentException(
-                    "Matrix must be a non-null float array of exactly 16 elements");
-        }
-        FloatBuffer buf = BufferUtils.createFloatBuffer(16);
-        buf.put(matrix);
-        buf.flip();
-        ARBShaderObjects.glUniformMatrix4ARB(location, false, buf);
+    public void setUniformMatrix4f(int location, FloatBuffer buffer) {
+        if (location < 0) return;
+        ARBShaderObjects.glUniformMatrix4ARB(location, false, buffer);
     }
 
     /**
@@ -287,5 +289,23 @@ public class ArbShaderProgram extends AbstractCgShaderProgram {
     @Override
     public void setSampler(int location, int textureUnit) {
         ARBShaderObjects.glUniform1iARB(location, textureUnit);
+    }
+
+    @Override
+    public void setUniformFloatBuffer(int location, FloatBuffer buffer) {
+        if (location < 0) return;
+        ARBShaderObjects.glUniform1ARB(location, buffer);
+    }
+
+    @Override
+    public void setUniformIntBuffer(int location, IntBuffer buffer) {
+        if (location < 0) return;
+        ARBShaderObjects.glUniform1ARB(location, buffer);
+    }
+
+    @Override
+    public void setUniformMatrix3f(int location, FloatBuffer buffer) {
+        if (location < 0) return;
+        ARBShaderObjects.glUniformMatrix3ARB(location, false, buffer);
     }
 }

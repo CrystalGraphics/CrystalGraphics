@@ -162,7 +162,47 @@ public final class CgCapabilities {
     }
 
     /**
-     * Detects capabilities from the current OpenGL context.
+     * Cached singleton instance, lazily initialized on first {@link #detect()} call.
+     */
+    private static volatile CgCapabilities cachedCaps = null;
+
+    /**
+     * Returns a lazily-cached capabilities snapshot.
+     *
+     * <p>The first call probes the current OpenGL context and caches the
+     * result; subsequent calls return the cached instance.  Must be called
+     * on the render thread with an active GL context (at least on the first
+     * invocation).</p>
+     *
+     * <p>If the GL context is destroyed and recreated, call
+     * {@link #clearCache()} to force re-detection on the next call.</p>
+     *
+     * @return the cached {@code CgCapabilities} for the current context
+     * @see #detectUncached()
+     * @see #clearCache()
+     */
+    public static CgCapabilities detect() {
+        CgCapabilities local = cachedCaps;
+        if (local == null) {
+            local = detectUncached();
+            cachedCaps = local;
+        }
+        return local;
+    }
+
+    /**
+     * Clears the cached capabilities singleton.
+     *
+     * <p>After this call, the next invocation of {@link #detect()} will
+     * re-probe the OpenGL context.  Use this when the GL context is
+     * destroyed and recreated (e.g., window resize on some drivers).</p>
+     */
+    public static void clearCache() {
+        cachedCaps = null;
+    }
+
+    /**
+     * Detects capabilities from the current OpenGL context (uncached).
      *
      * <p>Must be called on the render thread with an active GL context.
      * This method queries LWJGL's {@link GLContext#getCapabilities()} and
@@ -172,9 +212,13 @@ public final class CgCapabilities {
      * <p>Depth and stencil support are assumed to be universally available
      * on the target hardware range (OpenGL 2.0+ / Intel HD 3000 and above).</p>
      *
+     * <p>Prefer {@link #detect()} for most use cases, which returns a
+     * cached instance.</p>
+     *
      * @return a new {@code CgCapabilities} reflecting the current context
+     * @see #detect()
      */
-    public static CgCapabilities detect() {
+    public static CgCapabilities detectUncached() {
         ContextCapabilities caps = GLContext.getCapabilities();
 
         boolean coreFbo = caps.OpenGL30;

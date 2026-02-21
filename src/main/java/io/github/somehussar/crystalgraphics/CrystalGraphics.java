@@ -4,6 +4,9 @@ import cpw.mods.fml.common.Mod;
 import cpw.mods.fml.common.event.FMLInitializationEvent;
 import cpw.mods.fml.common.event.FMLPostInitializationEvent;
 import cpw.mods.fml.common.event.FMLPreInitializationEvent;
+import io.github.somehussar.crystalgraphics.api.shader.CgShaderManager;
+import io.github.somehussar.crystalgraphics.mc.shader.CgShaderManagerImpl;
+import io.github.somehussar.crystalgraphics.mc.shader.CgShaderReloadHook;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -26,7 +29,7 @@ import org.apache.logging.log4j.Logger;
     version = CrystalGraphics.VERSION,
     acceptableRemoteVersions = "*"
 )
-public final class CrystalGraphics {
+public final class CrystalGraphics{
 
     /** The mod ID used for Forge dependency resolution. */
     public static final String MODID = "crystalgraphics";
@@ -38,7 +41,33 @@ public final class CrystalGraphics {
     public static final String VERSION = "1.0.0";
 
     /** Logger for mod lifecycle messages. */
-    private static final Logger LOGGER = LogManager.getLogger(NAME);
+    public static final Logger LOGGER = LogManager.getLogger(NAME);
+
+    /**
+     * The lazily-initialized global shader manager singleton.
+     * Initialized on the first render tick after the GL context is available.
+     */
+    private static volatile CgShaderManager SHADER_MANAGER;
+
+    /**
+     * Returns the global {@link CgShaderManager} instance.
+     *
+     * <p>The shader manager is initialized on the first render tick after the
+     * GL context is available.  Calling this method before that point will
+     * throw an {@link IllegalStateException}.</p>
+     *
+     * @return the initialized shader manager
+     * @throws IllegalStateException if called before the GL context is available
+     *                               and the first render tick has fired
+     */
+    
+    public static CgShaderManager getShaderManager() {
+        CgShaderManager local = SHADER_MANAGER;
+        if (local == null) {
+            throw new IllegalStateException("CgShaderManager not yet initialized — call after GL context is available");
+        }
+        return local;
+    }
 
     /**
      * Forge pre-initialization hook.
@@ -58,6 +87,8 @@ public final class CrystalGraphics {
     @Mod.EventHandler
     public void onInit(FMLInitializationEvent event) {
         LOGGER.info("{}: init", NAME);
+        SHADER_MANAGER = new CgShaderManagerImpl();
+        CgShaderReloadHook.register();
     }
 
     /**

@@ -84,7 +84,8 @@ public class CrystalGraphicsIntegrationTest {
     public void postInit(FMLPostInitializationEvent event) {
         LOGGER.info("CrystalGraphicsIntegrationTest: Registered. "
                 + "Will run self-checks on first render tick.");
-        FMLCommonHandler.instance().bus().register(this);
+        // Disable tests until manually enabled, to avoid accidentally running in production
+        // FMLCommonHandler.instance().bus().register(this);
     }
 
     @SubscribeEvent

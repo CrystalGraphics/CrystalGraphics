@@ -2,11 +2,14 @@ package io.github.somehussar.crystalgraphics.gl.shader;
 
 import io.github.somehussar.crystalgraphics.gl.state.CallFamily;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL20;
 
 import java.nio.FloatBuffer;
+import java.nio.IntBuffer;
 
 /**
  * Shader program implementation using Core OpenGL 2.0 entry points.
@@ -35,6 +38,8 @@ import java.nio.FloatBuffer;
  * @see ArbShaderProgram
  */
 public class CoreShaderProgram extends AbstractCgShaderProgram {
+
+    private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
 
     /**
      * Constructs a Core GL20 shader program wrapper.
@@ -96,6 +101,12 @@ public class CoreShaderProgram extends AbstractCgShaderProgram {
             GL20.glDeleteShader(fragId);
             GL20.glDeleteProgram(progId);
             throw new IllegalStateException("Shader program link failed: " + log);
+        }
+
+        GL20.glValidateProgram(progId);
+        if (GL20.glGetProgrami(progId, GL20.GL_VALIDATE_STATUS) != GL11.GL_TRUE) {
+            String validateLog = GL20.glGetProgramInfoLog(progId, 4096);
+            LOGGER.warn("Shader validation warning for program {}: {}", progId, validateLog);
         }
 
         GL20.glDeleteShader(vertId);
@@ -224,25 +235,15 @@ public class CoreShaderProgram extends AbstractCgShaderProgram {
      * {@inheritDoc}
      *
      * <p>Uploads the 4x4 matrix via
-     * {@link GL20#glUniformMatrix4(int, boolean, FloatBuffer)}.  A temporary
-     * {@link FloatBuffer} is allocated per call (this method is not on a hot
-     * path).</p>
+     * {@link GL20#glUniformMatrix4(int, boolean, FloatBuffer)}.</p>
      *
      * @param location the uniform location
-     * @param matrix   a 16-element float array (row-major order)
-     * @throws IllegalArgumentException if {@code matrix} is null or does not
-     *         have exactly 16 elements
+     * @param buffer   a 16-element FloatBuffer in column-major order
      */
     @Override
-    public void setUniformMatrix4f(int location, float[] matrix) {
-        if (matrix == null || matrix.length != 16) {
-            throw new IllegalArgumentException(
-                    "Matrix must be a non-null float array of exactly 16 elements");
-        }
-        FloatBuffer buf = BufferUtils.createFloatBuffer(16);
-        buf.put(matrix);
-        buf.flip();
-        GL20.glUniformMatrix4(location, false, buf);
+    public void setUniformMatrix4f(int location, FloatBuffer buffer) {
+        if (location < 0) return;
+        GL20.glUniformMatrix4(location, false, buffer);
     }
 
     /**
@@ -258,5 +259,23 @@ public class CoreShaderProgram extends AbstractCgShaderProgram {
     @Override
     public void setSampler(int location, int textureUnit) {
         GL20.glUniform1i(location, textureUnit);
+    }
+
+    @Override
+    public void setUniformFloatBuffer(int location, FloatBuffer buffer) {
+        if (location < 0) return;
+        GL20.glUniform1(location, buffer);
+    }
+
+    @Override
+    public void setUniformIntBuffer(int location, IntBuffer buffer) {
+        if (location < 0) return;
+        GL20.glUniform1(location, buffer);
+    }
+
+    @Override
+    public void setUniformMatrix3f(int location, FloatBuffer buffer) {
+        if (location < 0) return;
+        GL20.glUniformMatrix3(location, false, buffer);
     }
 }
