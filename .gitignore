@@ -9,6 +9,7 @@
 .project
 /bin/
 /config/
+/.sisyphus/
 /crash-reports/
 /logs/
 options.txt
