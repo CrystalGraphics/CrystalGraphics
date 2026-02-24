@@ -1,6 +1,8 @@
+
 pluginManagement {
     repositories {
         maven {
+            // RetroFuturaGradle
             name = "GTNH Maven"
             url = uri("https://nexus.gtnewhorizons.com/repository/public/")
             mavenContent {
@@ -8,7 +10,6 @@ pluginManagement {
                 includeGroupByRegex("com\\.gtnewhorizons\\..+")
             }
         }
-        maven(url = "https://jitpack.io")
         gradlePluginPortal()
         mavenCentral()
         mavenLocal()
@@ -16,7 +17,7 @@ pluginManagement {
 }
 
 plugins {
-    id("com.gtnewhorizons.gtnhsettingsconvention") version "1.0.14"
+    id("com.gtnewhorizons.gtnhsettingsconvention") version("2.0.7")
 }
 
 rootProject.name = "CrystalGraphics"
