@@ -87,6 +87,13 @@ public final class CrystalGraphics{
     @Mod.EventHandler
     public void onInit(FMLInitializationEvent event) {
         LOGGER.info("{}: init", NAME);
+
+        // Aggregate validation of all mod OpenGL requirements registered during pre-init.
+        // On dedicated server this is a no-op (returns immediately).
+        // On client, throws a CustomModLoadingErrorDisplayException if any mod's
+        // minimum OpenGL requirement exceeds the detected driver version.
+        CrystalGraphicsVersion.processAllRequirements();
+
         SHADER_MANAGER = new CgShaderManagerImpl();
         CgShaderReloadHook.register();
     }

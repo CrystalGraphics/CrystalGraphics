@@ -35,6 +35,9 @@ import org.lwjgl.opengl.GLContext;
  */
 public final class CgCapabilities {
 
+    private static String cachedParsedVersionKey = null;
+    private static int[] cachedParsedVersionValue = null;
+
     /**
      * Enumerates the available framebuffer object backends in order of
      * preference.
@@ -473,5 +476,82 @@ public final class CgCapabilities {
      */
     public int getMaxColorAttachments() {
         return maxColorAttachments;
+    }
+
+    /**
+     * Parses a GL version string into {@code {major, minor}}.
+     *
+     * <p>Accepts the raw string returned by {@code GL11.glGetString(GL11.GL_VERSION)}
+     * as well as simple {@code "major.minor"} expressions.  The parser
+     * locates the first occurrence of a {@code digit(s).digit(s)} pattern
+     * in the input, ignoring any prefix text (e.g. {@code "OpenGL ES"}) and
+     * any trailing driver/vendor information.</p>
+     *
+     * <p>If parsing fails (null, empty, garbage), returns {@code {0, 0}}.</p>
+     *
+     * @param glVersionString the raw GL version string, or a simple {@code "major.minor"} expression
+     * @return a two-element array {@code {major, minor}}, or {@code {0, 0}} if unparseable
+     */
+    public static int[] parseGLVersion(String glVersionString) {
+        if (glVersionString == null || glVersionString.isEmpty()) {
+            return new int[]{0, 0};
+        }
+
+        int[] cached = cachedParsedVersionValue;
+        if (cached != null && glVersionString.equals(cachedParsedVersionKey)) {
+            return new int[]{cached[0], cached[1]};
+        }
+
+        // Scan for the first occurrence of digits.digits
+        int len = glVersionString.length();
+        int i = 0;
+
+        // Skip non-digit prefix (e.g. "OpenGL ES ")
+        while (i < len && !isAsciiDigit(glVersionString.charAt(i))) {
+            i++;
+        }
+
+        if (i >= len) {
+            return new int[]{0, 0};
+        }
+
+        // Parse major version
+        int majorStart = i;
+        while (i < len && isAsciiDigit(glVersionString.charAt(i))) {
+            i++;
+        }
+        if (i >= len || glVersionString.charAt(i) != '.') {
+            return new int[]{0, 0};
+        }
+        int major = parseIntSubstring(glVersionString, majorStart, i);
+
+        // Skip the dot
+        i++;
+
+        // Parse minor version
+        int minorStart = i;
+        while (i < len && isAsciiDigit(glVersionString.charAt(i))) {
+            i++;
+        }
+        if (minorStart == i) {
+            return new int[]{0, 0};
+        }
+        int minor = parseIntSubstring(glVersionString, minorStart, i);
+        int[] parsed = new int[]{major, minor};
+        cachedParsedVersionKey = glVersionString;
+        cachedParsedVersionValue = new int[]{parsed[0], parsed[1]};
+        return parsed;
+    }
+
+    private static boolean isAsciiDigit(char c) {
+        return c >= '0' && c <= '9';
+    }
+
+    private static int parseIntSubstring(String s, int from, int to) {
+        int result = 0;
+        for (int i = from; i < to; i++) {
+            result = result * 10 + (s.charAt(i) - '0');
+        }
+        return result;
     }
 }

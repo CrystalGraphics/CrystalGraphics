@@ -111,4 +111,31 @@ public class CgCapabilitiesVersionTest {
         assertEquals(46, v[0]);
         assertEquals(12, v[1]);
     }
+
+    @Test
+    public void testParseResultIsTwoElements() {
+        int[] v = CgCapabilities.parseGLVersion("3.0");
+        assertEquals("parseGLVersion must return a 2-element array", 2, v.length);
+    }
+
+    @Test
+    public void testParseOnlyDot() {
+        int[] v = CgCapabilities.parseGLVersion(".");
+        assertEquals(0, v[0]);
+        assertEquals(0, v[1]);
+    }
+
+    @Test
+    public void testParseTrailingDotNoMinor() {
+        int[] v = CgCapabilities.parseGLVersion("3.");
+        assertEquals(0, v[0]);
+        assertEquals(0, v[1]);
+    }
+
+    @Test
+    public void testParseAMDVersion() {
+        int[] v = CgCapabilities.parseGLVersion("4.6.14761 Compatibility Profile Context 22.5.1 30.0.15021.1004");
+        assertEquals(4, v[0]);
+        assertEquals(6, v[1]);
+    }
 }
