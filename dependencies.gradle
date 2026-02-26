@@ -50,4 +50,8 @@ dependencies {
 //    runtimeOnlyNonPublishable("com.github.GTNewHorizons:NotEnoughItems:2.5.4-GTNH:dev")
     runtimeOnlyNonPublishable("curse.maven:Nashorn-374413:2924946")
 
+    // HotSwap Agent - for runtime class reloading during development
+    compileOnly("org.hotswapagent:hotswap-agent-core:1.4.1")
+    runtimeOnlyNonPublishable("org.hotswapagent:hotswap-agent-core:1.4.1")
+
 }

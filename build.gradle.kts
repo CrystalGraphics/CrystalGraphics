@@ -55,4 +55,7 @@ fun findJarBySubstring(part: String): File {
 tasks.named<JavaExec>("runClient") {
     val agent = findJarBySubstring("unimixins")
     jvmArgs("-javaagent:${agent.absolutePath}")
+
+    val hotswapAgent = findJarBySubstring("hotswap-agent")
+    jvmArgs("-javaagent:${hotswapAgent.absolutePath}")
 }
