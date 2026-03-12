@@ -1,6 +1,6 @@
 plugins {
     id("com.gtnewhorizons.gtnhconvention")
-    `java-library` // Use java-library for reusable code
+    `java-library`
 }
 
 group = providers.gradleProperty("modGroup").orElse("io.github.somehussar").get()
@@ -23,22 +23,25 @@ tasks.shadowJar {
     exclude("module-info.class")
     exclude("kotlin/**")
     exclude("org/jetbrains/kotlin/**")
+
+    // Include JNI binding subproject JARs (unpacked) in the shadow JAR.
+    // These are compileOnly deps — cannot use shadowImplementation because the GTNH
+    // convention plugin requires RFG obfuscation variant attributes that plain Java
+    // subprojects don't publish (causes variant ambiguity errors).
+    dependsOn(":msdfgen-java-bindings:jar", ":freetype-harfbuzz-java-bindings:jar")
 }
 
-//java {
-//    sourceCompatibility = JavaVersion.VERSION_1_8
-//    targetCompatibility = JavaVersion.VERSION_1_8
-//}
-//
-//tasks.withType<JavaCompile>().configureEach {
-//    if (JavaVersion.current().isJava9Compatible) {
-//        options.release.set(8)
-//    } else {
-//        sourceCompatibility = JavaVersion.VERSION_1_8.toString()
-//        targetCompatibility = JavaVersion.VERSION_1_8.toString()
-//    }
-//}
+// Resolve subproject jar outputs after evaluation (subproject tasks don't exist during
+// root project configuration). Unpacks both JARs into the shadow JAR.
+afterEvaluate {
+    tasks.shadowJar.configure {
+        val msdfgenJar = project(":msdfgen-java-bindings").tasks.named<Jar>("jar").get()
+        val freetypeJar = project(":freetype-harfbuzz-java-bindings").tasks.named<Jar>("jar").get()
 
+        from(zipTree(msdfgenJar.archiveFile.get()))
+        from(zipTree(freetypeJar.archiveFile.get()))
+    }
+}
 
 fun findJarBySubstring(part: String): File {
     val matches = configurations.runtimeClasspath.get().files.filter {
@@ -53,9 +56,11 @@ fun findJarBySubstring(part: String): File {
 }
 
 tasks.named<JavaExec>("runClient") {
-    val agent = findJarBySubstring("unimixins")
-    jvmArgs("-javaagent:${agent.absolutePath}")
+    doFirst {
+        val agent = findJarBySubstring("unimixins")
+        jvmArgs("-javaagent:${agent.absolutePath}")
 
-    val hotswapAgent = findJarBySubstring("hotswap-agent")
-    jvmArgs("-javaagent:${hotswapAgent.absolutePath}")
+        val hotswapAgent = findJarBySubstring("hotswap-agent")
+        jvmArgs("-javaagent:${hotswapAgent.absolutePath}")
+    }
 }

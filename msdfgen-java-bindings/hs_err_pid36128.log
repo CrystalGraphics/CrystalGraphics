@@ -1,0 +1,1191 @@
+#
+# There is insufficient memory for the Java Runtime Environment to continue.
+# Native memory allocation (mmap) failed to map 142606336 bytes. Error detail: G1 virtual space
+# Possible reasons:
+#   The system is out of physical RAM or swap space
+#   This process is running with CompressedOops enabled, and the Java Heap may be blocking the growth of the native heap
+# Possible solutions:
+#   Reduce memory load on the system
+#   Increase physical memory or swap space
+#   Check if swap backing store is full
+#   Decrease Java heap size (-Xmx/-Xms)
+#   Decrease number of Java threads
+#   Decrease Java thread stack sizes (-Xss)
+#   Set larger code cache with -XX:ReservedCodeCacheSize=
+#   JVM is running with Zero Based Compressed Oops mode in which the Java heap is
+#     placed in the first 32GB address space. The Java Heap base address is the
+#     maximum limit for the native heap growth. Please use -XX:HeapBaseMinAddress
+#     to set the Java Heap base and to place the Java Heap above 32GB virtual address.
+# This output file may be truncated or incomplete.
+#
+#  Out of Memory Error (os_windows.cpp:3925), pid=36128, tid=10556
+#
+# JRE version: OpenJDK Runtime Environment JBR-21.0.8+9-1148.57-nomod (21.0.8+9) (build 21.0.8+9-b1148.57)
+# Java VM: OpenJDK 64-Bit Server VM JBR-21.0.8+9-1148.57-nomod (21.0.8+9-b1148.57, mixed mode, sharing, tiered, compressed oops, compressed class ptrs, g1 gc, windows-amd64)
+# No core dump will be written. Minidumps are not enabled by default on client versions of Windows
+#
+
+---------------  S U M M A R Y ------------
+
+Command Line: --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.lang.ref=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.base/java.net=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/java.nio.charset=ALL-UNNAMED --add-opens=java.base/java.text=ALL-UNNAMED --add-opens=java.base/java.time=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.util.concurrent=ALL-UNNAMED --add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED --add-opens=java.base/java.util.concurrent.locks=ALL-UNNAMED --add-opens=java.base/jdk.internal.vm=ALL-UNNAMED --add-opens=java.base/sun.net.dns=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED --add-opens=java.base/sun.nio.fs=ALL-UNNAMED --add-opens=java.base/sun.security.ssl=ALL-UNNAMED --add-opens=java.base/sun.security.util=ALL-UNNAMED --add-opens=java.desktop/com.apple.eawt=ALL-UNNAMED --add-opens=java.desktop/com.apple.eawt.event=ALL-UNNAMED --add-opens=java.desktop/com.apple.laf=ALL-UNNAMED --add-opens=java.desktop/com.sun.java.swing=ALL-UNNAMED --add-opens=java.desktop/com.sun.java.swing.plaf.gtk=ALL-UNNAMED --add-opens=java.desktop/java.awt=ALL-UNNAMED --add-opens=java.desktop/java.awt.dnd.peer=ALL-UNNAMED --add-opens=java.desktop/java.awt.event=ALL-UNNAMED --add-opens=java.desktop/java.awt.font=ALL-UNNAMED --add-opens=java.desktop/java.awt.image=ALL-UNNAMED --add-opens=java.desktop/java.awt.peer=ALL-UNNAMED --add-opens=java.desktop/javax.swing=ALL-UNNAMED --add-opens=java.desktop/javax.swing.plaf.basic=ALL-UNNAMED --add-opens=java.desktop/javax.swing.text=ALL-UNNAMED --add-opens=java.desktop/javax.swing.text.html=ALL-UNNAMED --add-opens=java.desktop/sun.awt=ALL-UNNAMED --add-opens=java.desktop/sun.awt.X11=ALL-UNNAMED --add-opens=java.desktop/sun.awt.datatransfer=ALL-UNNAMED --add-opens=java.desktop/sun.awt.image=ALL-UNNAMED --add-opens=java.desktop/sun.awt.windows=ALL-UNNAMED --add-opens=java.desktop/sun.font=ALL-UNNAMED --add-opens=java.desktop/sun.java2d=ALL-UNNAMED --add-opens=java.desktop/sun.lwawt=ALL-UNNAMED --add-opens=java.desktop/sun.lwawt.macosx=ALL-UNNAMED --add-opens=java.desktop/sun.swing=ALL-UNNAMED --add-opens=java.management/sun.management=ALL-UNNAMED --add-opens=jdk.attach/sun.tools.attach=ALL-UNNAMED --add-opens=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED --add-opens=jdk.internal.jvmstat/sun.jvmstat.monitor=ALL-UNNAMED --add-opens=jdk.jdi/com.sun.tools.jdi=ALL-UNNAMED --enable-native-access=ALL-UNNAMED -Djdk.lang.Process.launchMechanism=FORK -Djava.awt.headless=true com.jetbrains.ls.kotlinLsp.KotlinLspServerKt --stdio
+
+Host: Intel(R) Core(TM) i7-9700K CPU @ 3.60GHz, 8 cores, 47G,  Windows 10 , 64 bit Build 19041 (10.0.19041.5915)
+Time: Thu Mar 12 13:46:33 2026 Egypt Standard Time elapsed time: 37.074983 seconds (0d 0h 0m 37s)
+
+---------------  T H R E A D  ---------------
+
+Current thread (0x0000013639dd9950):  VMThread "VM Thread"          [id=10556, stack(0x0000003406800000,0x0000003406900000) (1024K)]
+
+Stack: [0x0000003406800000,0x0000003406900000]
+Native frames: (J=compiled Java code, j=interpreted, Vv=VM code, C=native code)
+V  [jvm.dll+0x6ebf99]
+V  [jvm.dll+0x8cbfa3]
+V  [jvm.dll+0x8ce55e]
+V  [jvm.dll+0x8cec43]
+V  [jvm.dll+0x28adf6]
+V  [jvm.dll+0x6e8775]
+V  [jvm.dll+0x6dbfca]
+V  [jvm.dll+0x36689b]
+V  [jvm.dll+0x36e466]
+V  [jvm.dll+0x3c08c6]
+V  [jvm.dll+0x3c0b98]
+V  [jvm.dll+0x3390cc]
+V  [jvm.dll+0x339157]
+V  [jvm.dll+0x37ef5c]
+V  [jvm.dll+0x37d70e]
+V  [jvm.dll+0x338821]
+V  [jvm.dll+0x37ce10]
+V  [jvm.dll+0x8d49c8]
+V  [jvm.dll+0x8d5d44]
+V  [jvm.dll+0x8d6280]
+V  [jvm.dll+0x8d6513]
+V  [jvm.dll+0x873b58]
+V  [jvm.dll+0x6ea71d]
+C  [ucrtbase.dll+0x21bb2]
+C  [KERNEL32.DLL+0x17374]
+C  [ntdll.dll+0x4cc91]
+
+VM_Operation (0x0000003407efd9e0): G1CollectForAllocation, mode: safepoint, requested by thread 0x0000013639decd50
+
+
+---------------  P R O C E S S  ---------------
+
+Threads class SMR info:
+_java_thread_list=0x000001369a3d8940, length=35, elements={
+0x0000013624cb8250, 0x000001364b6ea120, 0x000001364b6eb0a0, 0x000001364b6efd10,
+0x000001364b6f2780, 0x000001364b6f5470, 0x000001364b707f10, 0x0000013639dea5f0,
+0x000001364b7096a0, 0x0000013639df3c30, 0x0000013639de9f60, 0x0000013639ded3e0,
+0x0000013639deac80, 0x0000013639decd50, 0x0000013639dec030, 0x00000136941a7db0,
+0x00000136941a8440, 0x00000136941a9160, 0x00000136941a97f0, 0x00000136941ad990,
+0x00000136941ae6b0, 0x00000136941ad300, 0x00000136941a9e80, 0x00000136941aa510,
+0x00000136941ab230, 0x00000136941ab8c0, 0x00000136941abf50, 0x00000136941ac5e0,
+0x00000136950ed380, 0x00000136950eccf0, 0x00000136950eedc0, 0x00000136950eb940,
+0x00000136950ebfd0, 0x0000013695b53270, 0x0000013698edb670
+}
+
+Java Threads: ( => current thread )
+  0x0000013624cb8250 JavaThread "main"                              [_thread_blocked, id=52996, stack(0x0000003406100000,0x0000003406200000) (1024K)]
+  0x000001364b6ea120 JavaThread "Common-Cleaner"             daemon [_thread_blocked, id=48192, stack(0x0000003406900000,0x0000003406a00000) (1024K)]
+  0x000001364b6eb0a0 JavaThread "Reference Handler"          daemon [_thread_blocked, id=53352, stack(0x0000003406a00000,0x0000003406b00000) (1024K)]
+  0x000001364b6efd10 JavaThread "Finalizer"                  daemon [_thread_blocked, id=33600, stack(0x0000003406b00000,0x0000003406c00000) (1024K)]
+  0x000001364b6f2780 JavaThread "Signal Dispatcher"          daemon [_thread_blocked, id=52172, stack(0x0000003406c00000,0x0000003406d00000) (1024K)]
+  0x000001364b6f5470 JavaThread "Attach Listener"            daemon [_thread_blocked, id=18192, stack(0x0000003406d00000,0x0000003406e00000) (1024K)]
+  0x000001364b707f10 JavaThread "Service Thread"             daemon [_thread_blocked, id=50696, stack(0x0000003406e00000,0x0000003406f00000) (1024K)]
+  0x0000013639dea5f0 JavaThread "Monitor Deflation Thread"   daemon [_thread_blocked, id=52956, stack(0x0000003406f00000,0x0000003407000000) (1024K)]
+  0x000001364b7096a0 JavaThread "C2 CompilerThread0"         daemon [_thread_blocked, id=14736, stack(0x0000003407000000,0x0000003407100000) (1024K)]
+  0x0000013639df3c30 JavaThread "C1 CompilerThread0"         daemon [_thread_blocked, id=19988, stack(0x0000003407100000,0x0000003407200000) (1024K)]
+  0x0000013639de9f60 JavaThread "Notification Thread"        daemon [_thread_blocked, id=38108, stack(0x0000003407200000,0x0000003407300000) (1024K)]
+  0x0000013639ded3e0 JavaThread "DefaultDispatcher-worker-1" daemon [_thread_blocked, id=3968, stack(0x0000003407c00000,0x0000003407d00000) (1024K)]
+  0x0000013639deac80 JavaThread "DefaultDispatcher-worker-2" daemon [_thread_in_native, id=54504, stack(0x0000003407d00000,0x0000003407e00000) (1024K)]
+  0x0000013639decd50 JavaThread "DefaultDispatcher-worker-3" daemon [_thread_blocked, id=44428, stack(0x0000003407e00000,0x0000003407f00000) (1024K)]
+  0x0000013639dec030 JavaThread "DefaultDispatcher-worker-4" daemon [_thread_in_native, id=44736, stack(0x0000003407f00000,0x0000003408000000) (1024K)]
+  0x00000136941a7db0 JavaThread "DefaultDispatcher-worker-5" daemon [_thread_blocked, id=46872, stack(0x0000003408000000,0x0000003408100000) (1024K)]
+  0x00000136941a8440 JavaThread "Kernel event loop thread hih3f7od4njjc1plt70n" daemon [_thread_blocked, id=47496, stack(0x0000003408100000,0x0000003408200000) (1024K)]
+  0x00000136941a9160 JavaThread "Periodic tasks thread"      daemon [_thread_blocked, id=29548, stack(0x0000003407300000,0x0000003407400000) (1024K)]
+  0x00000136941a97f0 JavaThread "ApplicationImpl pooled thread 1"        [_thread_blocked, id=31424, stack(0x0000003407400000,0x0000003407500000) (1024K)]
+  0x00000136941ad990 JavaThread "JNA Cleaner"                daemon [_thread_blocked, id=52144, stack(0x0000003408400000,0x0000003408500000) (1024K)]
+  0x00000136941ae6b0 JavaThread "DefaultDispatcher-worker-6" daemon [_thread_blocked, id=34064, stack(0x0000003408500000,0x0000003408600000) (1024K)]
+  0x00000136941ad300 JavaThread "DefaultDispatcher-worker-7" daemon [_thread_blocked, id=39508, stack(0x0000003408600000,0x0000003408700000) (1024K)]
+  0x00000136941a9e80 JavaThread "DefaultDispatcher-worker-8" daemon [_thread_blocked, id=16228, stack(0x0000003408900000,0x0000003408a00000) (1024K)]
+  0x00000136941aa510 JavaThread "DefaultDispatcher-worker-9" daemon [_thread_blocked, id=44104, stack(0x0000003408a00000,0x0000003408b00000) (1024K)]
+  0x00000136941ab230 JavaThread "DefaultDispatcher-worker-10" daemon [_thread_blocked, id=30272, stack(0x0000003409100000,0x0000003409200000) (1024K)]
+  0x00000136941ab8c0 JavaThread "DefaultDispatcher-worker-11" daemon [_thread_blocked, id=46844, stack(0x0000003409200000,0x0000003409300000) (1024K)]
+  0x00000136941abf50 JavaThread "DefaultDispatcher-worker-12" daemon [_thread_blocked, id=47624, stack(0x0000003409300000,0x0000003409400000) (1024K)]
+  0x00000136941ac5e0 JavaThread "DefaultDispatcher-worker-13" daemon [_thread_blocked, id=32920, stack(0x0000003409400000,0x0000003409500000) (1024K)]
+  0x00000136950ed380 JavaThread "Exec process"               daemon [_thread_blocked, id=24400, stack(0x0000003409500000,0x0000003409600000) (1024K)]
+  0x00000136950eccf0 JavaThread "Exec process Thread 2"      daemon [_thread_blocked, id=56304, stack(0x0000003409600000,0x0000003409700000) (1024K)]
+  0x00000136950eedc0 JavaThread "Exec process Thread 3"      daemon [_thread_blocked, id=23784, stack(0x0000003409700000,0x0000003409800000) (1024K)]
+  0x00000136950eb940 JavaThread "ApplicationImpl pooled thread 2"        [_thread_blocked, id=24504, stack(0x0000003409800000,0x0000003409900000) (1024K)]
+  0x00000136950ebfd0 JavaThread "DefaultDispatcher-worker-14" daemon [_thread_blocked, id=1892, stack(0x0000003409000000,0x0000003409100000) (1024K)]
+  0x0000013695b53270 JavaThread "C2 CompilerThread1"         daemon [_thread_in_native, id=53164, stack(0x0000003409900000,0x0000003409a00000) (1024K)]
+  0x0000013698edb670 JavaThread "C2 CompilerThread2"         daemon [_thread_blocked, id=40308, stack(0x0000003409a00000,0x0000003409b00000) (1024K)]
+Total: 35
+
+Other Threads:
+=>0x0000013639dd9950 VMThread "VM Thread"                           [id=10556, stack(0x0000003406800000,0x0000003406900000) (1024K)]
+  0x000001364b6e0b10 WatcherThread "VM Periodic Task Thread"        [id=31560, stack(0x0000003406700000,0x0000003406800000) (1024K)]
+  0x00000136271a4920 WorkerThread "GC Thread#0"                     [id=48304, stack(0x0000003406200000,0x0000003406300000) (1024K)]
+  0x0000013639dd8ad0 WorkerThread "GC Thread#1"                     [id=46484, stack(0x0000003407500000,0x0000003407600000) (1024K)]
+  0x0000013639dd9210 WorkerThread "GC Thread#2"                     [id=55052, stack(0x0000003407600000,0x0000003407700000) (1024K)]
+  0x0000013639dd7ff0 WorkerThread "GC Thread#3"                     [id=50748, stack(0x0000003407700000,0x0000003407800000) (1024K)]
+  0x0000013639dd8390 WorkerThread "GC Thread#4"                     [id=34232, stack(0x0000003407800000,0x0000003407900000) (1024K)]
+  0x0000013639dd8e70 WorkerThread "GC Thread#5"                     [id=27440, stack(0x0000003407900000,0x0000003407a00000) (1024K)]
+  0x0000013639dd95b0 WorkerThread "GC Thread#6"                     [id=42048, stack(0x0000003407a00000,0x0000003407b00000) (1024K)]
+  0x0000013639dd8730 WorkerThread "GC Thread#7"                     [id=40000, stack(0x0000003407b00000,0x0000003407c00000) (1024K)]
+  0x00000136271b1670 ConcurrentGCThread "G1 Main Marker"            [id=14780, stack(0x0000003406300000,0x0000003406400000) (1024K)]
+  0x00000136271b25c0 WorkerThread "G1 Conc#0"                       [id=51464, stack(0x0000003406400000,0x0000003406500000) (1024K)]
+  0x0000013692ea5a80 WorkerThread "G1 Conc#1"                       [id=46860, stack(0x0000003408200000,0x0000003408300000) (1024K)]
+  0x0000013639d02140 ConcurrentGCThread "G1 Refine#0"               [id=30376, stack(0x0000003406500000,0x0000003406600000) (1024K)]
+  0x0000013639d02a60 ConcurrentGCThread "G1 Service"                [id=33676, stack(0x0000003406600000,0x0000003406700000) (1024K)]
+Total: 15
+
+Threads with active compile tasks:
+C2 CompilerThread0  37091 9595   !   4       org.jetbrains.kotlin.idea.base.indices.names.NameByPackageShortNameIndex::getIndexer$lambda$0 (193 bytes)
+C2 CompilerThread1  37092 10265       4       org.jetbrains.org.objectweb.asm.ClassReader::accept (1410 bytes)
+C2 CompilerThread2  37092 9776       4       org.jetbrains.kotlin.idea.vfilefinder.KotlinPartialPackageNamesIndex::toPackageFqName (234 bytes)
+Total: 3
+
+VM state: at safepoint (normal execution)
+
+VM Mutex/Monitor currently owned by a thread:  ([mutex/lock_event])
+[0x00007ffeb6db8c58] Threads_lock - owner thread: 0x0000013639dd9950
+[0x00007ffeb6db8d58] Heap_lock - owner thread: 0x0000013639decd50
+
+Heap address: 0x0000000501000000, size: 12272 MB, Compressed Oops mode: Zero based, Oop shift amount: 3
+
+CDS archive(s) mapped at: [0x000001364c000000-0x000001364dc10000-0x000001364dc10000), size 29425664, SharedBaseAddress: 0x000001364c000000, ArchiveRelocationMode: 1.
+Compressed class space mapped at: 0x000001364e000000-0x000001368e000000, reserved size: 1073741824
+Narrow klass base: 0x000001364c000000, Narrow klass shift: 0, Narrow klass range: 0x100000000
+
+GC Precious Log:
+ CardTable entry size: 512
+ Card Set container configuration: InlinePtr #cards 4 size 8 Array Of Cards #cards 64 size 144 Howl #buckets 8 coarsen threshold 14745 Howl Bitmap #cards 2048 size 272 coarsen threshold 1843 Card regions per heap region 1 cards per card region 16384
+ CPUs: 8 total, 8 available
+ Memory: 49085M
+ Large Page Support: Disabled
+ NUMA Support: Disabled
+ Compressed Oops: Enabled (Zero based)
+ Heap Region Size: 8M
+ Heap Min Capacity: 8M
+ Heap Initial Capacity: 768M
+ Heap Max Capacity: 12272M
+ Pre-touch: Disabled
+ Parallel Workers: 8
+ Concurrent Workers: 2
+ Concurrent Refinement Workers: 8
+ Periodic GC: Disabled
+
+Heap:
+ garbage-first heap   total 507904K, used 163081K [0x0000000501000000, 0x0000000800000000)
+  region size 8192K, 3 young (24576K), 3 survivors (24576K)
+ Metaspace       used 74541K, committed 75264K, reserved 1179648K
+  class space    used 9602K, committed 9920K, reserved 1048576K
+
+Heap Regions: E=young(eden), S=young(survivor), O=old, HS=humongous(starts), HC=humongous(continues), CS=collection set, F=free, TAMS=top-at-mark-start, PB=parsable bottom
+|   0|0x0000000501000000, 0x0000000501800000, 0x0000000501800000|100%|HS|  |TAMS 0x0000000501000000| PB 0x0000000501000000| Complete 
+|   1|0x0000000501800000, 0x0000000502000000, 0x0000000502000000|100%| O|  |TAMS 0x0000000501800000| PB 0x0000000501800000| Untracked 
+|   2|0x0000000502000000, 0x0000000502800000, 0x0000000502800000|100%| O|  |TAMS 0x0000000502000000| PB 0x0000000502000000| Untracked 
+|   3|0x0000000502800000, 0x0000000503000000, 0x0000000503000000|100%| O|  |TAMS 0x0000000502800000| PB 0x0000000502800000| Untracked 
+|   4|0x0000000503000000, 0x0000000503800000, 0x0000000503800000|100%| O|  |TAMS 0x0000000503000000| PB 0x0000000503000000| Untracked 
+|   5|0x0000000503800000, 0x0000000504000000, 0x0000000504000000|100%| O|  |TAMS 0x0000000503800000| PB 0x0000000503800000| Untracked 
+|   6|0x0000000504000000, 0x0000000504800000, 0x0000000504800000|100%| O|  |TAMS 0x0000000504000000| PB 0x0000000504000000| Untracked 
+|   7|0x0000000504800000, 0x0000000505000000, 0x0000000505000000|100%| O|  |TAMS 0x0000000504800000| PB 0x0000000504800000| Untracked 
+|   8|0x0000000505000000, 0x0000000505800000, 0x0000000505800000|100%| O|  |TAMS 0x0000000505000000| PB 0x0000000505000000| Untracked 
+|   9|0x0000000505800000, 0x0000000506000000, 0x0000000506000000|100%| O|  |TAMS 0x0000000505800000| PB 0x0000000505800000| Untracked 
+|  10|0x0000000506000000, 0x0000000506800000, 0x0000000506800000|100%| O|  |TAMS 0x0000000506000000| PB 0x0000000506000000| Untracked 
+|  11|0x0000000506800000, 0x0000000507000000, 0x0000000507000000|100%| O|  |TAMS 0x0000000506800000| PB 0x0000000506800000| Untracked 
+|  12|0x0000000507000000, 0x0000000507800000, 0x0000000507800000|100%| O|  |TAMS 0x0000000507000000| PB 0x0000000507000000| Untracked 
+|  13|0x0000000507800000, 0x0000000508000000, 0x0000000508000000|100%| O|  |TAMS 0x0000000507800000| PB 0x0000000507800000| Untracked 
+|  14|0x0000000508000000, 0x0000000508800000, 0x0000000508800000|100%| O|  |TAMS 0x0000000508000000| PB 0x0000000508000000| Untracked 
+|  15|0x0000000508800000, 0x0000000509000000, 0x0000000509000000|100%| O|  |TAMS 0x0000000508800000| PB 0x0000000508800000| Untracked 
+|  16|0x0000000509000000, 0x00000005097427e8, 0x0000000509800000| 90%| O|  |TAMS 0x0000000509000000| PB 0x0000000509000000| Untracked 
+|  17|0x0000000509800000, 0x0000000509800000, 0x000000050a000000|  0%| F|  |TAMS 0x0000000509800000| PB 0x0000000509800000| Untracked 
+|  18|0x000000050a000000, 0x000000050a000000, 0x000000050a800000|  0%| F|  |TAMS 0x000000050a000000| PB 0x000000050a000000| Untracked 
+|  19|0x000000050a800000, 0x000000050a800000, 0x000000050b000000|  0%| F|  |TAMS 0x000000050a800000| PB 0x000000050a800000| Untracked 
+|  20|0x000000050b000000, 0x000000050b000000, 0x000000050b800000|  0%| F|  |TAMS 0x000000050b000000| PB 0x000000050b000000| Untracked 
+|  21|0x000000050b800000, 0x000000050b800000, 0x000000050c000000|  0%| F|  |TAMS 0x000000050b800000| PB 0x000000050b800000| Untracked 
+|  22|0x000000050c000000, 0x000000050c800000, 0x000000050c800000|100%| S|CS|TAMS 0x000000050c000000| PB 0x000000050c000000| Complete 
+|  23|0x000000050c800000, 0x000000050d000000, 0x000000050d000000|100%| S|CS|TAMS 0x000000050c800000| PB 0x000000050c800000| Complete 
+|  24|0x000000050d000000, 0x000000050d800000, 0x000000050d800000|100%| S|CS|TAMS 0x000000050d000000| PB 0x000000050d000000| Complete 
+|  25|0x000000050d800000, 0x000000050d800000, 0x000000050e000000|  0%| F|  |TAMS 0x000000050d800000| PB 0x000000050d800000| Untracked 
+|  26|0x000000050e000000, 0x000000050e000000, 0x000000050e800000|  0%| F|  |TAMS 0x000000050e000000| PB 0x000000050e000000| Untracked 
+|  27|0x000000050e800000, 0x000000050e800000, 0x000000050f000000|  0%| F|  |TAMS 0x000000050e800000| PB 0x000000050e800000| Untracked 
+|  28|0x000000050f000000, 0x000000050f000000, 0x000000050f800000|  0%| F|  |TAMS 0x000000050f000000| PB 0x000000050f000000| Untracked 
+|  29|0x000000050f800000, 0x000000050f800000, 0x0000000510000000|  0%| F|  |TAMS 0x000000050f800000| PB 0x000000050f800000| Untracked 
+|  30|0x0000000510000000, 0x0000000510000000, 0x0000000510800000|  0%| F|  |TAMS 0x0000000510000000| PB 0x0000000510000000| Untracked 
+|  31|0x0000000510800000, 0x0000000510800000, 0x0000000511000000|  0%| F|  |TAMS 0x0000000510800000| PB 0x0000000510800000| Untracked 
+|  32|0x0000000511000000, 0x0000000511000000, 0x0000000511800000|  0%| F|  |TAMS 0x0000000511000000| PB 0x0000000511000000| Untracked 
+|  33|0x0000000511800000, 0x0000000511800000, 0x0000000512000000|  0%| F|  |TAMS 0x0000000511800000| PB 0x0000000511800000| Untracked 
+|  34|0x0000000512000000, 0x0000000512000000, 0x0000000512800000|  0%| F|  |TAMS 0x0000000512000000| PB 0x0000000512000000| Untracked 
+|  35|0x0000000512800000, 0x0000000512800000, 0x0000000513000000|  0%| F|  |TAMS 0x0000000512800000| PB 0x0000000512800000| Untracked 
+|  36|0x0000000513000000, 0x0000000513000000, 0x0000000513800000|  0%| F|  |TAMS 0x0000000513000000| PB 0x0000000513000000| Untracked 
+|  37|0x0000000513800000, 0x0000000513800000, 0x0000000514000000|  0%| F|  |TAMS 0x0000000513800000| PB 0x0000000513800000| Untracked 
+|  38|0x0000000514000000, 0x0000000514000000, 0x0000000514800000|  0%| F|  |TAMS 0x0000000514000000| PB 0x0000000514000000| Untracked 
+|  39|0x0000000514800000, 0x0000000514800000, 0x0000000515000000|  0%| F|  |TAMS 0x0000000514800000| PB 0x0000000514800000| Untracked 
+|  40|0x0000000515000000, 0x0000000515000000, 0x0000000515800000|  0%| F|  |TAMS 0x0000000515000000| PB 0x0000000515000000| Untracked 
+|  41|0x0000000515800000, 0x0000000515800000, 0x0000000516000000|  0%| F|  |TAMS 0x0000000515800000| PB 0x0000000515800000| Untracked 
+|  42|0x0000000516000000, 0x0000000516000000, 0x0000000516800000|  0%| F|  |TAMS 0x0000000516000000| PB 0x0000000516000000| Untracked 
+|  43|0x0000000516800000, 0x0000000516800000, 0x0000000517000000|  0%| F|  |TAMS 0x0000000516800000| PB 0x0000000516800000| Untracked 
+|  44|0x0000000517000000, 0x0000000517000000, 0x0000000517800000|  0%| F|  |TAMS 0x0000000517000000| PB 0x0000000517000000| Untracked 
+|  45|0x0000000517800000, 0x0000000517800000, 0x0000000518000000|  0%| F|  |TAMS 0x0000000517800000| PB 0x0000000517800000| Untracked 
+|  46|0x0000000518000000, 0x0000000518000000, 0x0000000518800000|  0%| F|  |TAMS 0x0000000518000000| PB 0x0000000518000000| Untracked 
+|  47|0x0000000518800000, 0x0000000518800000, 0x0000000519000000|  0%| F|  |TAMS 0x0000000518800000| PB 0x0000000518800000| Untracked 
+|  48|0x0000000519000000, 0x0000000519000000, 0x0000000519800000|  0%| F|  |TAMS 0x0000000519000000| PB 0x0000000519000000| Untracked 
+|  49|0x0000000519800000, 0x0000000519800000, 0x000000051a000000|  0%| F|  |TAMS 0x0000000519800000| PB 0x0000000519800000| Untracked 
+|  50|0x000000051a000000, 0x000000051a000000, 0x000000051a800000|  0%| F|  |TAMS 0x000000051a000000| PB 0x000000051a000000| Untracked 
+|  51|0x000000051a800000, 0x000000051a800000, 0x000000051b000000|  0%| F|  |TAMS 0x000000051a800000| PB 0x000000051a800000| Untracked 
+|  52|0x000000051b000000, 0x000000051b000000, 0x000000051b800000|  0%| F|  |TAMS 0x000000051b000000| PB 0x000000051b000000| Untracked 
+|  53|0x000000051b800000, 0x000000051b800000, 0x000000051c000000|  0%| F|  |TAMS 0x000000051b800000| PB 0x000000051b800000| Untracked 
+|  54|0x000000051c000000, 0x000000051c000000, 0x000000051c800000|  0%| F|  |TAMS 0x000000051c000000| PB 0x000000051c000000| Untracked 
+|  55|0x000000051c800000, 0x000000051c800000, 0x000000051d000000|  0%| F|  |TAMS 0x000000051c800000| PB 0x000000051c800000| Untracked 
+|  56|0x000000051d000000, 0x000000051d000000, 0x000000051d800000|  0%| F|  |TAMS 0x000000051d000000| PB 0x000000051d000000| Untracked 
+|  57|0x000000051d800000, 0x000000051d800000, 0x000000051e000000|  0%| F|  |TAMS 0x000000051d800000| PB 0x000000051d800000| Untracked 
+|  58|0x000000051e000000, 0x000000051e000000, 0x000000051e800000|  0%| F|  |TAMS 0x000000051e000000| PB 0x000000051e000000| Untracked 
+|  59|0x000000051e800000, 0x000000051e800000, 0x000000051f000000|  0%| F|  |TAMS 0x000000051e800000| PB 0x000000051e800000| Untracked 
+|  60|0x000000051f000000, 0x000000051f000000, 0x000000051f800000|  0%| F|  |TAMS 0x000000051f000000| PB 0x000000051f000000| Untracked 
+|  95|0x0000000530800000, 0x0000000530800000, 0x0000000531000000|  0%| F|  |TAMS 0x0000000530800000| PB 0x0000000530800000| Untracked 
+
+Card table byte_map: [0x000001363b600000,0x000001363ce00000] _byte_map_base: 0x0000013638df8000
+
+Marking Bits: (CMBitMap*) 0x00000136271a4dd0
+ Bits: [0x000001363ce00000, 0x0000013648dc0000)
+
+Polling page: 0x0000013624c70000
+
+Metaspace:
+
+Usage:
+  Non-class:     63.42 MB used.
+      Class:      9.38 MB used.
+       Both:     72.79 MB used.
+
+Virtual space:
+  Non-class space:      128.00 MB reserved,      63.81 MB ( 50%) committed,  2 nodes.
+      Class space:        1.00 GB reserved,       9.69 MB ( <1%) committed,  1 nodes.
+             Both:        1.12 GB reserved,      73.50 MB (  6%) committed. 
+
+Chunk freelists:
+   Non-Class:  15.78 MB
+       Class:  6.35 MB
+        Both:  22.13 MB
+
+MaxMetaspaceSize: unlimited
+CompressedClassSpaceSize: 1.00 GB
+Initial GC threshold: 21.00 MB
+Current GC threshold: 100.25 MB
+CDS: on
+ - commit_granule_bytes: 65536.
+ - commit_granule_words: 8192.
+ - virtual_space_node_default_size: 8388608.
+ - enlarge_chunks_in_place: 1.
+ - use_allocation_guard: 0.
+
+
+Internal statistics:
+
+num_allocs_failed_limit: 17.
+num_arena_births: 1012.
+num_arena_deaths: 0.
+num_vsnodes_births: 3.
+num_vsnodes_deaths: 0.
+num_space_committed: 1174.
+num_space_uncommitted: 0.
+num_chunks_returned_to_freelist: 17.
+num_chunks_taken_from_freelist: 3828.
+num_chunk_merges: 17.
+num_chunk_splits: 2902.
+num_chunks_enlarged: 2360.
+num_inconsistent_stats: 0.
+
+CodeHeap 'non-profiled nmethods': size=120000Kb used=7947Kb max_used=7947Kb free=112052Kb
+ bounds [0x00000136323a0000, 0x0000013632b70000, 0x00000136398d0000]
+CodeHeap 'profiled nmethods': size=120000Kb used=21139Kb max_used=21139Kb free=98860Kb
+ bounds [0x000001362a8d0000, 0x000001362bd80000, 0x0000013631e00000]
+CodeHeap 'non-nmethods': size=5760Kb used=1823Kb max_used=1958Kb free=3936Kb
+ bounds [0x0000013631e00000, 0x0000013632070000, 0x00000136323a0000]
+CodeCache: size=245760Kb, used=30909Kb, max_used=31044Kb, free=214848Kb
+ total_blobs=10764, nmethods=9937, adapters=728, full_count=0
+Compilation: enabled, stopped_count=0, restarted_count=0
+
+Compilation events (20 events):
+Event: 37.056 Thread 0x0000013698edb670 nmethod 10517 0x0000013632b60110 code [0x0000013632b602a0, 0x0000013632b60348]
+Event: 37.056 Thread 0x0000013698edb670 7841       4       org.h2.mvstore.MVMap$DecisionMaker$3::decide (4 bytes)
+Event: 37.056 Thread 0x0000013698edb670 nmethod 7841 0x0000013632b60410 code [0x0000013632b605a0, 0x0000013632b60630]
+Event: 37.056 Thread 0x0000013698edb670 9003       4       com.intellij.psi.impl.java.stubs.impl.PsiClassReferenceListStubImpl::getTypes (48 bytes)
+Event: 37.057 Thread 0x000001364b7096a0 nmethod 10518 0x0000013632b60710 code [0x0000013632b608e0, 0x0000013632b60bd8]
+Event: 37.057 Thread 0x000001364b7096a0 9595   !   4       org.jetbrains.kotlin.idea.base.indices.names.NameByPackageShortNameIndex::getIndexer$lambda$0 (193 bytes)
+Event: 37.058 Thread 0x0000013639df3c30 10520       3       com.intellij.openapi.diagnostic.Logger::assertTrue (50 bytes)
+Event: 37.058 Thread 0x0000013639df3c30 nmethod 10520 0x000001362bd72c90 code [0x000001362bd72f20, 0x000001362bd73900]
+Event: 37.059 Thread 0x0000013698edb670 nmethod 9003 0x0000013632b60f90 code [0x0000013632b61160, 0x0000013632b61628]
+Event: 37.059 Thread 0x0000013698edb670 8060       4       com.intellij.lang.cacheBuilder.WordOccurrence::init (22 bytes)
+Event: 37.059 Thread 0x0000013639df3c30 10521       3       com.jetbrains.ls.snapshot.api.impl.core.FileTreeForLSImpl::exists-333s_Po (24 bytes)
+Event: 37.060 Thread 0x0000013639df3c30 nmethod 10521 0x000001362bd73d10 code [0x000001362bd73f80, 0x000001362bd74ac8]
+Event: 37.060 Thread 0x0000013698edb670 nmethod 8060 0x0000013632b61910 code [0x0000013632b61aa0, 0x0000013632b61d20]
+Event: 37.060 Thread 0x0000013698edb670 10522       4       com.intellij.util.keyFMap.EmptyFMap::plus (26 bytes)
+Event: 37.061 Thread 0x0000013698edb670 nmethod 10522 0x0000013632b61d90 code [0x0000013632b61f20, 0x0000013632b62068]
+Event: 37.061 Thread 0x0000013698edb670 8075       4       it.unimi.dsi.fastutil.objects.Object2ObjectOpenCustomHashMap::insert (63 bytes)
+Event: 37.063 Thread 0x0000013698edb670 nmethod 8075 0x0000013632b62190 code [0x0000013632b62360, 0x0000013632b627b8]
+Event: 37.063 Thread 0x0000013698edb670 8334       4       kotlinx.coroutines.NonDisposableHandle::dispose (1 bytes)
+Event: 37.063 Thread 0x0000013698edb670 nmethod 8334 0x0000013632b62990 code [0x0000013632b62b20, 0x0000013632b62ba8]
+Event: 37.063 Thread 0x0000013698edb670 9776       4       org.jetbrains.kotlin.idea.vfilefinder.KotlinPartialPackageNamesIndex::toPackageFqName (234 bytes)
+
+GC Heap History (20 events):
+Event: 35.074 GC heap after
+{Heap after GC invocations=38 (full 0):
+ garbage-first heap   total 286720K, used 100315K [0x0000000501000000, 0x0000000800000000)
+  region size 8192K, 2 young (16384K), 2 survivors (16384K)
+ Metaspace       used 71871K, committed 72576K, reserved 1114112K
+  class space    used 9302K, committed 9600K, reserved 1048576K
+}
+Event: 35.179 GC heap before
+{Heap before GC invocations=38 (full 0):
+ garbage-first heap   total 286720K, used 239579K [0x0000000501000000, 0x0000000800000000)
+  region size 8192K, 19 young (155648K), 2 survivors (16384K)
+ Metaspace       used 71884K, committed 72576K, reserved 1114112K
+  class space    used 9303K, committed 9600K, reserved 1048576K
+}
+Event: 35.183 GC heap after
+{Heap after GC invocations=39 (full 0):
+ garbage-first heap   total 286720K, used 104147K [0x0000000501000000, 0x0000000800000000)
+  region size 8192K, 2 young (16384K), 2 survivors (16384K)
+ Metaspace       used 71884K, committed 72576K, reserved 1114112K
+  class space    used 9303K, committed 9600K, reserved 1048576K
+}
+Event: 35.376 GC heap before
+{Heap before GC invocations=39 (full 0):
+ garbage-first heap   total 286720K, used 235219K [0x0000000501000000, 0x0000000800000000)
+  region size 8192K, 19 young (155648K), 2 survivors (16384K)
+ Metaspace       used 71894K, committed 72576K, reserved 1114112K
+  class space    used 9303K, committed 9600K, reserved 1048576K
+}
+Event: 35.383 GC heap after
+{Heap after GC invocations=40 (full 0):
+ garbage-first heap   total 401408K, used 107173K [0x0000000501000000, 0x0000000800000000)
+  region size 8192K, 2 young (16384K), 2 survivors (16384K)
+ Metaspace       used 71894K, committed 72576K, reserved 1114112K
+  class space    used 9303K, committed 9600K, reserved 1048576K
+}
+Event: 35.644 GC heap before
+{Heap before GC invocations=40 (full 0):
+ garbage-first heap   total 401408K, used 328357K [0x0000000501000000, 0x0000000800000000)
+  region size 8192K, 29 young (237568K), 2 survivors (16384K)
+ Metaspace       used 72088K, committed 72768K, reserved 1114112K
+  class space    used 9314K, committed 9600K, reserved 1048576K
+}
+Event: 35.649 GC heap after
+{Heap after GC invocations=41 (full 0):
+ garbage-first heap   total 401408K, used 112756K [0x0000000501000000, 0x0000000800000000)
+  region size 8192K, 3 young (24576K), 3 survivors (24576K)
+ Metaspace       used 72088K, committed 72768K, reserved 1114112K
+  class space    used 9314K, committed 9600K, reserved 1048576K
+}
+Event: 35.805 GC heap before
+{Heap before GC invocations=41 (full 0):
+ garbage-first heap   total 401408K, used 317556K [0x0000000501000000, 0x0000000800000000)
+  region size 8192K, 29 young (237568K), 3 survivors (24576K)
+ Metaspace       used 72090K, committed 72768K, reserved 1114112K
+  class space    used 9314K, committed 9600K, reserved 1048576K
+}
+Event: 35.810 GC heap after
+{Heap after GC invocations=42 (full 0):
+ garbage-first heap   total 401408K, used 118691K [0x0000000501000000, 0x0000000800000000)
+  region size 8192K, 3 young (24576K), 3 survivors (24576K)
+ Metaspace       used 72090K, committed 72768K, reserved 1114112K
+  class space    used 9314K, committed 9600K, reserved 1048576K
+}
+Event: 35.959 GC heap before
+{Heap before GC invocations=42 (full 0):
+ garbage-first heap   total 401408K, used 331683K [0x0000000501000000, 0x0000000800000000)
+  region size 8192K, 29 young (237568K), 3 survivors (24576K)
+ Metaspace       used 72568K, committed 73216K, reserved 1114112K
+  class space    used 9366K, committed 9664K, reserved 1048576K
+}
+Event: 35.965 GC heap after
+{Heap after GC invocations=43 (full 0):
+ garbage-first heap   total 401408K, used 124532K [0x0000000501000000, 0x0000000800000000)
+  region size 8192K, 3 young (24576K), 3 survivors (24576K)
+ Metaspace       used 72568K, committed 73216K, reserved 1114112K
+  class space    used 9366K, committed 9664K, reserved 1048576K
+}
+Event: 36.140 GC heap before
+{Heap before GC invocations=43 (full 0):
+ garbage-first heap   total 401408K, used 329332K [0x0000000501000000, 0x0000000800000000)
+  region size 8192K, 29 young (237568K), 3 survivors (24576K)
+ Metaspace       used 73523K, committed 74176K, reserved 1114112K
+  class space    used 9519K, committed 9792K, reserved 1048576K
+}
+Event: 36.146 GC heap after
+{Heap after GC invocations=44 (full 0):
+ garbage-first heap   total 507904K, used 134643K [0x0000000501000000, 0x0000000800000000)
+  region size 8192K, 3 young (24576K), 3 survivors (24576K)
+ Metaspace       used 73523K, committed 74176K, reserved 1114112K
+  class space    used 9519K, committed 9792K, reserved 1048576K
+}
+Event: 36.458 GC heap before
+{Heap before GC invocations=44 (full 0):
+ garbage-first heap   total 507904K, used 413171K [0x0000000501000000, 0x0000000800000000)
+  region size 8192K, 37 young (303104K), 3 survivors (24576K)
+ Metaspace       used 74307K, committed 75008K, reserved 1114112K
+  class space    used 9602K, committed 9920K, reserved 1048576K
+}
+Event: 36.464 GC heap after
+{Heap after GC invocations=45 (full 0):
+ garbage-first heap   total 507904K, used 140055K [0x0000000501000000, 0x0000000800000000)
+  region size 8192K, 4 young (32768K), 4 survivors (32768K)
+ Metaspace       used 74307K, committed 75008K, reserved 1114112K
+  class space    used 9602K, committed 9920K, reserved 1048576K
+}
+Event: 36.674 GC heap before
+{Heap before GC invocations=45 (full 0):
+ garbage-first heap   total 507904K, used 410391K [0x0000000501000000, 0x0000000800000000)
+  region size 8192K, 37 young (303104K), 4 survivors (32768K)
+ Metaspace       used 74447K, committed 75200K, reserved 1179648K
+  class space    used 9602K, committed 9920K, reserved 1048576K
+}
+Event: 36.682 GC heap after
+{Heap after GC invocations=46 (full 0):
+ garbage-first heap   total 507904K, used 145990K [0x0000000501000000, 0x0000000800000000)
+  region size 8192K, 4 young (32768K), 4 survivors (32768K)
+ Metaspace       used 74447K, committed 75200K, reserved 1179648K
+  class space    used 9602K, committed 9920K, reserved 1048576K
+}
+Event: 36.894 GC heap before
+{Heap before GC invocations=46 (full 0):
+ garbage-first heap   total 507904K, used 416326K [0x0000000501000000, 0x0000000800000000)
+  region size 8192K, 37 young (303104K), 4 survivors (32768K)
+ Metaspace       used 74529K, committed 75264K, reserved 1179648K
+  class space    used 9602K, committed 9920K, reserved 1048576K
+}
+Event: 36.902 GC heap after
+{Heap after GC invocations=47 (full 0):
+ garbage-first heap   total 507904K, used 155540K [0x0000000501000000, 0x0000000800000000)
+  region size 8192K, 3 young (24576K), 3 survivors (24576K)
+ Metaspace       used 74529K, committed 75264K, reserved 1179648K
+  class space    used 9602K, committed 9920K, reserved 1048576K
+}
+Event: 37.066 GC heap before
+{Heap before GC invocations=47 (full 0):
+ garbage-first heap   total 507904K, used 425876K [0x0000000501000000, 0x0000000800000000)
+  region size 8192K, 37 young (303104K), 3 survivors (24576K)
+ Metaspace       used 74541K, committed 75264K, reserved 1179648K
+  class space    used 9602K, committed 9920K, reserved 1048576K
+}
+
+Dll operation events (3 events):
+Event: 0.004 Loaded shared library C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\jre\bin\java.dll
+Event: 0.729 Loaded shared library C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\jre\bin\zip.dll
+Event: 3.883 Loaded shared library C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\jre\bin\verify.dll
+
+Deoptimization events (20 events):
+Event: 36.861 Thread 0x00000136941a9e80 DEOPT PACKING pc=0x000001362b79f71e sp=0x00000034089fdaf0
+Event: 36.861 Thread 0x00000136941a9e80 DEOPT UNPACKING pc=0x0000013631e54e42 sp=0x00000034089fcfd8 mode 0
+Event: 36.972 Thread 0x00000136941ab230 Uncommon trap: trap_request=0xffffff45 fr.pc=0x00000136327f184c relative=0x000000000000046c
+Event: 36.972 Thread 0x00000136941ab230 Uncommon trap: reason=unstable_if action=reinterpret pc=0x00000136327f184c method=org.jetbrains.org.objectweb.asm.ClassReader.readUtf(II[C)Ljava/lang/String; @ 26 c2
+Event: 36.972 Thread 0x00000136941ab230 DEOPT PACKING pc=0x00000136327f184c sp=0x00000034091f9dd0
+Event: 36.972 Thread 0x00000136941ab230 DEOPT UNPACKING pc=0x0000013631e546a2 sp=0x00000034091f9c80 mode 2
+Event: 36.999 Thread 0x00000136941ab230 DEOPT PACKING pc=0x000001362b8237c4 sp=0x00000034091f9d30
+Event: 36.999 Thread 0x00000136941ab230 DEOPT UNPACKING pc=0x0000013631e54e42 sp=0x00000034091f9198 mode 0
+Event: 37.002 Thread 0x0000013639decd50 DEOPT PACKING pc=0x000001362b630838 sp=0x0000003407efd8d0
+Event: 37.002 Thread 0x0000013639decd50 DEOPT UNPACKING pc=0x0000013631e54e42 sp=0x0000003407efcda8 mode 0
+Event: 37.006 Thread 0x00000136941ab230 DEOPT PACKING pc=0x000001362b8237c4 sp=0x00000034091f9d30
+Event: 37.006 Thread 0x00000136941ab230 DEOPT UNPACKING pc=0x0000013631e54e42 sp=0x00000034091f9198 mode 0
+Event: 37.012 Thread 0x0000013639decd50 Uncommon trap: trap_request=0xffffffc6 fr.pc=0x00000136327cd70c relative=0x000000000000018c
+Event: 37.012 Thread 0x0000013639decd50 Uncommon trap: reason=bimorphic_or_optimized_type_check action=maybe_recompile pc=0x00000136327cd70c method=java.nio.file.Files.provider(Ljava/nio/file/Path;)Ljava/nio/file/spi/FileSystemProvider; @ 1 c2
+Event: 37.012 Thread 0x0000013639decd50 DEOPT PACKING pc=0x00000136327cd70c sp=0x0000003407efe510
+Event: 37.012 Thread 0x0000013639decd50 DEOPT UNPACKING pc=0x0000013631e546a2 sp=0x0000003407efe460 mode 2
+Event: 37.012 Thread 0x0000013639decd50 Uncommon trap: trap_request=0xffffffde fr.pc=0x00000136325c1948 relative=0x0000000000000d08
+Event: 37.012 Thread 0x0000013639decd50 Uncommon trap: reason=class_check action=maybe_recompile pc=0x00000136325c1948 method=sun.nio.fs.WindowsPath.toWindowsPath(Ljava/nio/file/Path;)Lsun/nio/fs/WindowsPath; @ 13 c2
+Event: 37.012 Thread 0x0000013639decd50 DEOPT PACKING pc=0x00000136325c1948 sp=0x0000003407efe440
+Event: 37.012 Thread 0x0000013639decd50 DEOPT UNPACKING pc=0x0000013631e546a2 sp=0x0000003407efe350 mode 2
+
+Classes loaded (20 events):
+Event: 29.991 Loading class java/io/ObjectInputStream$GetField done
+Event: 29.991 Loading class java/io/ObjectInputStream$FieldValues done
+Event: 29.991 Loading class java/io/SerialCallbackContext
+Event: 29.991 Loading class java/io/SerialCallbackContext done
+Event: 29.991 Loading class java/util/HashMap$UnsafeHolder
+Event: 29.991 Loading class java/util/HashMap$UnsafeHolder done
+Event: 29.999 Loading class java/net/UrlDeserializedState
+Event: 29.999 Loading class java/net/UrlDeserializedState done
+Event: 30.009 Loading class java/io/ObjectStreamClass$ExceptionInfo
+Event: 30.009 Loading class java/io/ObjectStreamClass$ExceptionInfo done
+Event: 31.331 Loading class java/util/concurrent/Executors$DelegatedScheduledExecutorService
+Event: 31.331 Loading class java/util/concurrent/Executors$DelegatedScheduledExecutorService done
+Event: 32.701 Loading class java/nio/file/attribute/UserPrincipalLookupService
+Event: 32.701 Loading class java/nio/file/attribute/UserPrincipalLookupService done
+Event: 32.701 Loading class java/nio/file/WatchService
+Event: 32.701 Loading class java/nio/file/WatchService done
+Event: 32.792 Loading class java/lang/invoke/BoundMethodHandle$Species_LI
+Event: 32.792 Loading class java/lang/invoke/BoundMethodHandle$Species_LI done
+Event: 35.603 Loading class jdk/internal/event/ThreadSleepEvent
+Event: 35.611 Loading class jdk/internal/event/ThreadSleepEvent done
+
+Classes unloaded (0 events):
+No events
+
+Classes redefined (0 events):
+No events
+
+Internal exceptions (20 events):
+Event: 36.057 Thread 0x00000136941ab230 Exception <a 'java/lang/NoSuchMethodError'{0x000000051284ab50}: org.jetbrains.kotlin.idea.core.script.k2.configurations.ScriptConfigurationsProviderImpl: method 'void <init>(com.intellij.openapi.project.Project)' not found> (0x000000051284ab50) 
+thrown [s\src\hotspot\share\interpreter\linkResolver.cpp, line 1174]
+Event: 36.067 Thread 0x00000136941ab230 Exception <a 'java/lang/NoSuchMethodError'{0x0000000511834128}: 'void org.jetbrains.kotlin.idea.core.script.v1.ScriptDependenciesModificationTracker.<init>(com.intellij.openapi.project.Project)'> (0x0000000511834128) 
+thrown [s\src\hotspot\share\interpreter\linkResolver.cpp, line 784]
+Event: 36.067 Thread 0x00000136941ab230 Exception <a 'java/lang/NoSuchMethodError'{0x0000000511836ce0}: 'void org.jetbrains.kotlin.idea.core.script.v1.ScriptDependenciesModificationTracker.<init>(com.intellij.openapi.project.Project, kotlinx.coroutines.CoroutineScope)'> (0x0000000511836ce0) 
+thrown [s\src\hotspot\share\interpreter\linkResolver.cpp, line 784]
+Event: 36.067 Thread 0x00000136941ab230 Exception <a 'java/lang/NoSuchMethodError'{0x00000005118398b0}: 'void org.jetbrains.kotlin.idea.core.script.v1.ScriptDependenciesModificationTracker.<init>(kotlinx.coroutines.CoroutineScope)'> (0x00000005118398b0) 
+thrown [s\src\hotspot\share\interpreter\linkResolver.cpp, line 784]
+Event: 36.125 Thread 0x00000136941ab230 Exception <a 'java/lang/NoSuchMethodError'{0x000000050e24f060}: 'void com.jetbrains.analyzer.kotlin.NeverChangedKotlinModificationTrackerFactory.<init>(com.intellij.openapi.project.Project)'> (0x000000050e24f060) 
+thrown [s\src\hotspot\share\interpreter\linkResolver.cpp, line 784]
+Event: 36.125 Thread 0x00000136941ab230 Exception <a 'java/lang/NoSuchMethodError'{0x000000050e2516a8}: 'void com.jetbrains.analyzer.kotlin.NeverChangedKotlinModificationTrackerFactory.<init>(com.intellij.openapi.project.Project, kotlinx.coroutines.CoroutineScope)'> (0x000000050e2516a8) 
+thrown [s\src\hotspot\share\interpreter\linkResolver.cpp, line 784]
+Event: 36.125 Thread 0x00000136941ab230 Exception <a 'java/lang/NoSuchMethodError'{0x000000050e253d08}: 'void com.jetbrains.analyzer.kotlin.NeverChangedKotlinModificationTrackerFactory.<init>(kotlinx.coroutines.CoroutineScope)'> (0x000000050e253d08) 
+thrown [s\src\hotspot\share\interpreter\linkResolver.cpp, line 784]
+Event: 36.136 Thread 0x00000136941ab230 Exception <a 'java/lang/NoSuchMethodError'{0x000000050d40be40}: 'void org.jetbrains.kotlin.analysis.api.impl.base.projectStructure.KaBaseContentScopeProvider.<init>(com.intellij.openapi.project.Project)'> (0x000000050d40be40) 
+thrown [s\src\hotspot\share\interpreter\linkResolver.cpp, line 784]
+Event: 36.136 Thread 0x00000136941ab230 Exception <a 'java/lang/NoSuchMethodError'{0x000000050d40e4e0}: 'void org.jetbrains.kotlin.analysis.api.impl.base.projectStructure.KaBaseContentScopeProvider.<init>(com.intellij.openapi.project.Project, kotlinx.coroutines.CoroutineScope)'> (0x000000050d40e4e0) 
+thrown [s\src\hotspot\share\interpreter\linkResolver.cpp, line 784]
+Event: 36.136 Thread 0x00000136941ab230 Exception <a 'java/lang/NoSuchMethodError'{0x000000050d410b88}: 'void org.jetbrains.kotlin.analysis.api.impl.base.projectStructure.KaBaseContentScopeProvider.<init>(kotlinx.coroutines.CoroutineScope)'> (0x000000050d410b88) 
+thrown [s\src\hotspot\share\interpreter\linkResolver.cpp, line 784]
+Event: 36.146 Thread 0x00000136941ab230 Exception <a 'java/lang/NoSuchMethodError'{0x000000050c187168}: 'void org.jetbrains.kotlin.analysis.api.impl.base.projectStructure.KaResolveExtensionToContentScopeRefinerBridge.<init>(com.intellij.openapi.project.Project)'> (0x000000050c187168) 
+thrown [s\src\hotspot\share\interpreter\linkResolver.cpp, line 784]
+Event: 36.146 Thread 0x00000136941ab230 Exception <a 'java/lang/NoSuchMethodError'{0x0000000530ab14d8}: 'void org.jetbrains.kotlin.analysis.api.impl.base.projectStructure.KaResolveExtensionToContentScopeRefinerBridge.<init>(com.intellij.openapi.project.Project, kotlinx.coroutines.CoroutineScope)'> (0x0000000530ab14d8) 
+thrown [s\src\hotspot\share\interpreter\linkResolver.cpp, line 784]
+Event: 36.146 Thread 0x00000136941ab230 Exception <a 'java/lang/NoSuchMethodError'{0x0000000530ab36b8}: 'void org.jetbrains.kotlin.analysis.api.impl.base.projectStructure.KaResolveExtensionToContentScopeRefinerBridge.<init>(kotlinx.coroutines.CoroutineScope)'> (0x0000000530ab36b8) 
+thrown [s\src\hotspot\share\interpreter\linkResolver.cpp, line 784]
+Event: 36.147 Thread 0x00000136941ab230 Exception <a 'java/lang/NoSuchMethodError'{0x0000000530aba710}: 'void org.jetbrains.kotlin.analysis.api.fir.projectStructure.KaFirLibraryTargetPlatformContentScopeRefiner.<init>(com.intellij.openapi.project.Project)'> (0x0000000530aba710) 
+thrown [s\src\hotspot\share\interpreter\linkResolver.cpp, line 784]
+Event: 36.147 Thread 0x00000136941ab230 Exception <a 'java/lang/NoSuchMethodError'{0x0000000530abc8b0}: 'void org.jetbrains.kotlin.analysis.api.fir.projectStructure.KaFirLibraryTargetPlatformContentScopeRefiner.<init>(com.intellij.openapi.project.Project, kotlinx.coroutines.CoroutineScope)'> (0x0000000530abc8b0) 
+thrown [s\src\hotspot\share\interpreter\linkResolver.cpp, line 784]
+Event: 36.147 Thread 0x00000136941ab230 Exception <a 'java/lang/NoSuchMethodError'{0x0000000530abea60}: 'void org.jetbrains.kotlin.analysis.api.fir.projectStructure.KaFirLibraryTargetPlatformContentScopeRefiner.<init>(kotlinx.coroutines.CoroutineScope)'> (0x0000000530abea60) 
+thrown [s\src\hotspot\share\interpreter\linkResolver.cpp, line 784]
+Event: 36.175 Thread 0x00000136941ab230 Exception <a 'java/lang/NoSuchMethodError'{0x000000051e227e50}: 'void org.jetbrains.kotlin.analysis.api.impl.base.projectStructure.KotlinResolveExtensionGeneratedFileScopeMergeStrategy.<init>(com.intellij.openapi.project.Project)'> (0x000000051e227e50) 
+thrown [s\src\hotspot\share\interpreter\linkResolver.cpp, line 784]
+Event: 36.175 Thread 0x00000136941ab230 Exception <a 'java/lang/NoSuchMethodError'{0x000000051e22a050}: 'void org.jetbrains.kotlin.analysis.api.impl.base.projectStructure.KotlinResolveExtensionGeneratedFileScopeMergeStrategy.<init>(com.intellij.openapi.project.Project, kotlinx.coroutines.CoroutineScope)'> (0x000000051e22a050) 
+thrown [s\src\hotspot\share\interpreter\linkResolver.cpp, line 784]
+Event: 36.175 Thread 0x00000136941ab230 Exception <a 'java/lang/NoSuchMethodError'{0x000000051e22c268}: 'void org.jetbrains.kotlin.analysis.api.impl.base.projectStructure.KotlinResolveExtensionGeneratedFileScopeMergeStrategy.<init>(kotlinx.coroutines.CoroutineScope)'> (0x000000051e22c268) 
+thrown [s\src\hotspot\share\interpreter\linkResolver.cpp, line 784]
+Event: 36.222 Thread 0x0000013639decd50 Exception <a 'java/lang/NoSuchMethodError'{0x000000051c853570}: 'void java.lang.invoke.DirectMethodHandle$Holder.invokeSpecial(java.lang.Object, java.lang.Object, int, java.lang.Object)'> (0x000000051c853570) 
+thrown [s\src\hotspot\share\interpreter\linkResolver.cpp, line 784]
+
+ZGC Phase Switch (0 events):
+No events
+
+VM Operations (20 events):
+Event: 35.649 Executing VM operation: G1CollectForAllocation (G1 Evacuation Pause) done
+Event: 35.805 Executing VM operation: G1CollectForAllocation (G1 Evacuation Pause)
+Event: 35.810 Executing VM operation: G1CollectForAllocation (G1 Evacuation Pause) done
+Event: 35.919 Executing VM operation: HandshakeAllThreads (Deoptimize)
+Event: 35.939 Executing VM operation: HandshakeAllThreads (Deoptimize) done
+Event: 35.959 Executing VM operation: G1CollectForAllocation (G1 Evacuation Pause)
+Event: 35.965 Executing VM operation: G1CollectForAllocation (G1 Evacuation Pause) done
+Event: 36.069 Executing VM operation: HandshakeAllThreads (Deoptimize)
+Event: 36.069 Executing VM operation: HandshakeAllThreads (Deoptimize) done
+Event: 36.120 Executing VM operation: HandshakeAllThreads (Deoptimize)
+Event: 36.120 Executing VM operation: HandshakeAllThreads (Deoptimize) done
+Event: 36.139 Executing VM operation: G1CollectForAllocation (G1 Evacuation Pause)
+Event: 36.146 Executing VM operation: G1CollectForAllocation (G1 Evacuation Pause) done
+Event: 36.458 Executing VM operation: G1CollectForAllocation (G1 Evacuation Pause)
+Event: 36.464 Executing VM operation: G1CollectForAllocation (G1 Evacuation Pause) done
+Event: 36.673 Executing VM operation: G1CollectForAllocation (G1 Evacuation Pause)
+Event: 36.682 Executing VM operation: G1CollectForAllocation (G1 Evacuation Pause) done
+Event: 36.894 Executing VM operation: G1CollectForAllocation (G1 Evacuation Pause)
+Event: 36.902 Executing VM operation: G1CollectForAllocation (G1 Evacuation Pause) done
+Event: 37.065 Executing VM operation: G1CollectForAllocation (G1 Evacuation Pause)
+
+Memory protections (0 events):
+No events
+
+Nmethod flushes (20 events):
+Event: 32.654 Thread 0x0000013639dd9950 flushing  nmethod 0x000001362ad06290
+Event: 32.654 Thread 0x0000013639dd9950 flushing  nmethod 0x000001362ad06990
+Event: 32.654 Thread 0x0000013639dd9950 flushing  nmethod 0x000001362ad0b190
+Event: 32.654 Thread 0x0000013639dd9950 flushing  nmethod 0x000001362ad66a90
+Event: 32.654 Thread 0x0000013639dd9950 flushing  nmethod 0x00000136324c9310
+Event: 32.654 Thread 0x0000013639dd9950 flushing  nmethod 0x00000136324edd10
+Event: 32.654 Thread 0x0000013639dd9950 flushing  nmethod 0x00000136324efe10
+Event: 32.654 Thread 0x0000013639dd9950 flushing  nmethod 0x00000136324f0410
+Event: 32.654 Thread 0x0000013639dd9950 flushing  nmethod 0x000001362a93ad90
+Event: 32.654 Thread 0x0000013639dd9950 flushing  nmethod 0x000001362a9fb190
+Event: 32.654 Thread 0x0000013639dd9950 flushing  nmethod 0x000001362aa57310
+Event: 32.654 Thread 0x0000013639dd9950 flushing  nmethod 0x000001362aa8d490
+Event: 32.654 Thread 0x0000013639dd9950 flushing  nmethod 0x000001362aaba290
+Event: 32.654 Thread 0x0000013639dd9950 flushing  nmethod 0x000001362ab8b410
+Event: 32.654 Thread 0x0000013639dd9950 flushing  nmethod 0x000001362ab92a90
+Event: 32.654 Thread 0x0000013639dd9950 flushing  nmethod 0x000001362ad11590
+Event: 32.654 Thread 0x0000013639dd9950 flushing  nmethod 0x000001362ad15e90
+Event: 32.654 Thread 0x0000013639dd9950 flushing  nmethod 0x000001362ad85e10
+Event: 32.654 Thread 0x0000013639dd9950 flushing  nmethod 0x000001362ad88590
+Event: 32.654 Thread 0x0000013639dd9950 flushing  nmethod 0x000001362ad9c790
+
+Events (20 events):
+Event: 10.289 Thread 0x00000136950eda10 Thread added: 0x00000136950eb940
+Event: 10.290 Thread 0x00000136950ee730 Thread exited: 0x00000136950ee730
+Event: 12.408 Thread 0x00000136950eda10 Thread exited: 0x00000136950eda10
+Event: 12.409 Thread 0x00000136950eb940 Thread exited: 0x00000136950eb940
+Event: 12.468 Loaded shared library C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\jre\bin\sunmscapi.dll
+Event: 17.596 Thread 0x00000136941a97f0 Thread added: 0x00000136950eb940
+Event: 30.014 Thread 0x0000013639df3c30 Thread added: 0x00000136926e64a0
+Event: 30.661 Thread 0x00000136926e64a0 Thread exited: 0x00000136926e64a0
+Event: 31.332 Thread 0x00000136941aaba0 Thread added: 0x00000136950ee730
+Event: 31.914 Thread 0x00000136950ee730 Thread exited: 0x00000136950ee730
+Event: 31.918 Thread 0x00000136941aaba0 Thread exited: 0x00000136941aaba0
+Event: 32.144 Thread 0x00000136941ab8c0 Thread added: 0x00000136950ebfd0
+Event: 32.204 Thread 0x0000013639df3c30 Thread added: 0x00000136957a1d90
+Event: 32.207 Thread 0x0000013639df3c30 Thread added: 0x000001369652f5e0
+Event: 32.894 Thread 0x0000013639decd50 Thread added: 0x00000136950ee730
+Event: 33.903 Thread 0x00000136957a1d90 Thread exited: 0x00000136957a1d90
+Event: 33.903 Thread 0x000001369652f5e0 Thread exited: 0x000001369652f5e0
+Event: 34.057 Thread 0x0000013639df3c30 Thread added: 0x0000013695b53270
+Event: 34.059 Thread 0x0000013639df3c30 Thread added: 0x0000013698edb670
+Event: 34.905 Thread 0x00000136950ee730 Thread exited: 0x00000136950ee730
+
+
+Dynamic libraries:
+0x00007ff7aa610000 - 0x00007ff7aa61a000 	C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\jre\bin\java.exe
+0x00007fffbc390000 - 0x00007fffbc588000 	C:\WINDOWS\SYSTEM32\ntdll.dll
+0x00007fffbab80000 - 0x00007fffbac42000 	C:\WINDOWS\System32\KERNEL32.DLL
+0x00007fffb9f80000 - 0x00007fffba276000 	C:\WINDOWS\System32\KERNELBASE.dll
+0x00007fffb9cc0000 - 0x00007fffb9dc0000 	C:\WINDOWS\System32\ucrtbase.dll
+0x00007fff89b90000 - 0x00007fff89ba8000 	C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\jre\bin\jli.dll
+0x00007fffbb510000 - 0x00007fffbb6b1000 	C:\WINDOWS\System32\USER32.dll
+0x00007fffba2b0000 - 0x00007fffba2d2000 	C:\WINDOWS\System32\win32u.dll
+0x00007fffbc0b0000 - 0x00007fffbc0db000 	C:\WINDOWS\System32\GDI32.dll
+0x00007fffb9e60000 - 0x00007fffb9f79000 	C:\WINDOWS\System32\gdi32full.dll
+0x00007fffb9dc0000 - 0x00007fffb9e5d000 	C:\WINDOWS\System32\msvcp_win.dll
+0x00007fff96c00000 - 0x00007fff96c1b000 	C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\jre\bin\VCRUNTIME140.dll
+0x00007fffa9b00000 - 0x00007fffa9d9b000 	C:\WINDOWS\WinSxS\amd64_microsoft.windows.common-controls_6595b64144ccf1df_6.0.19041.6456_none_60b8a6cb71f64256\COMCTL32.dll
+0x00007fffbac50000 - 0x00007fffbacee000 	C:\WINDOWS\System32\msvcrt.dll
+0x00007fffbafe0000 - 0x00007fffbb00f000 	C:\WINDOWS\System32\IMM32.DLL
+0x00007fff93ea0000 - 0x00007fff93f92000 	C:\Program Files\Windhawk\Engine\1.7.3\64\windhawk.dll
+0x00007fffbc290000 - 0x00007fffbc341000 	C:\WINDOWS\System32\ADVAPI32.dll
+0x00007fffbacf0000 - 0x00007fffbad8f000 	C:\WINDOWS\System32\sechost.dll
+0x00007fffbbf90000 - 0x00007fffbc0b0000 	C:\WINDOWS\System32\RPCRT4.dll
+0x00007fffba280000 - 0x00007fffba2a7000 	C:\WINDOWS\System32\bcrypt.dll
+0x00007fffa10a0000 - 0x00007fffa10ac000 	C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\jre\bin\vcruntime140_1.dll
+0x00007fff6dc60000 - 0x00007fff6dced000 	C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\jre\bin\msvcp140.dll
+0x00007ffeb60e0000 - 0x00007ffeb6eac000 	C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\jre\bin\server\jvm.dll
+0x00007fffbb4a0000 - 0x00007fffbb50b000 	C:\WINDOWS\System32\WS2_32.dll
+0x00007fffa5e10000 - 0x00007fffa5e37000 	C:\WINDOWS\SYSTEM32\WINMM.dll
+0x00007fffb8fb0000 - 0x00007fffb8ffb000 	C:\WINDOWS\SYSTEM32\POWRPROF.dll
+0x00007fffb5fe0000 - 0x00007fffb5fea000 	C:\WINDOWS\SYSTEM32\VERSION.dll
+0x00007fffb8e20000 - 0x00007fffb8e32000 	C:\WINDOWS\SYSTEM32\UMPDC.dll
+0x00007fffb78b0000 - 0x00007fffb78c2000 	C:\WINDOWS\SYSTEM32\kernel.appcore.dll
+0x00007fffa1020000 - 0x00007fffa102a000 	C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\jre\bin\jimage.dll
+0x00007fffa54b0000 - 0x00007fffa56b1000 	C:\WINDOWS\SYSTEM32\DBGHELP.DLL
+0x00007fff8f770000 - 0x00007fff8f7a4000 	C:\WINDOWS\SYSTEM32\dbgcore.DLL
+0x00007fffb9ad0000 - 0x00007fffb9b52000 	C:\WINDOWS\System32\bcryptPrimitives.dll
+0x00007fff82e40000 - 0x00007fff82e60000 	C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\jre\bin\java.dll
+0x00007fffbb6c0000 - 0x00007fffbbe30000 	C:\WINDOWS\System32\SHELL32.dll
+0x00007fffb7ab0000 - 0x00007fffb8255000 	C:\WINDOWS\SYSTEM32\windows.storage.dll
+0x00007fffba3b0000 - 0x00007fffba704000 	C:\WINDOWS\System32\combase.dll
+0x00007fffb9450000 - 0x00007fffb947b000 	C:\WINDOWS\SYSTEM32\Wldp.dll
+0x00007fffbbec0000 - 0x00007fffbbf8d000 	C:\WINDOWS\System32\OLEAUT32.dll
+0x00007fffbad90000 - 0x00007fffbae3d000 	C:\WINDOWS\System32\SHCORE.dll
+0x00007fffbb020000 - 0x00007fffbb07b000 	C:\WINDOWS\System32\shlwapi.dll
+0x00007fffb9950000 - 0x00007fffb9974000 	C:\WINDOWS\SYSTEM32\profapi.dll
+0x00007fffa0ed0000 - 0x00007fffa0ee0000 	C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\jre\bin\net.dll
+0x00007fffaf0b0000 - 0x00007fffaf1ba000 	C:\WINDOWS\SYSTEM32\WINHTTP.dll
+0x00007fffb91b0000 - 0x00007fffb921a000 	C:\WINDOWS\system32\mswsock.dll
+0x00007fff82a50000 - 0x00007fff82a66000 	C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\jre\bin\nio.dll
+0x00007fff6c640000 - 0x00007fff6c658000 	C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\jre\bin\zip.dll
+0x00007fffb93b0000 - 0x00007fffb93c8000 	C:\WINDOWS\SYSTEM32\CRYPTSP.dll
+0x00007fffb8a60000 - 0x00007fffb8a98000 	C:\WINDOWS\system32\rsaenh.dll
+0x00007fffb98d0000 - 0x00007fffb98fe000 	C:\WINDOWS\SYSTEM32\USERENV.dll
+0x00007fffb93a0000 - 0x00007fffb93ac000 	C:\WINDOWS\SYSTEM32\CRYPTBASE.dll
+0x00007fffb8e40000 - 0x00007fffb8e7b000 	C:\WINDOWS\SYSTEM32\IPHLPAPI.DLL
+0x00007fffbb010000 - 0x00007fffbb018000 	C:\WINDOWS\System32\NSI.dll
+0x00007fff3d240000 - 0x00007fff3d338000 	C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\native\filewatcher_jni.dll
+0x00007fffbb240000 - 0x00007fffbb36b000 	C:\WINDOWS\System32\ole32.dll
+0x00007fff3d000000 - 0x00007fff3d198000 	C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\jre\bin\awt.dll
+0x00007fff40420000 - 0x00007fff40464000 	C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\jre\bin\nvdaControllerClient64.dll
+0x00007fffa99e0000 - 0x00007fffa9a46000 	C:\WINDOWS\SYSTEM32\OLEACC.dll
+0x00007fffb76d0000 - 0x00007fffb76fe000 	C:\WINDOWS\SYSTEM32\dwmapi.dll
+0x00007fffb6140000 - 0x00007fffb61d4000 	C:\WINDOWS\SYSTEM32\apphelp.dll
+0x00007fffa0f20000 - 0x00007fffa0f29000 	C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\jre\bin\management.dll
+0x00007fffa0f10000 - 0x00007fffa0f1b000 	C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\jre\bin\management_ext.dll
+0x00007fffbc140000 - 0x00007fffbc148000 	C:\WINDOWS\System32\PSAPI.DLL
+0x00007fff3cde0000 - 0x00007fff3ce29000 	C:\Users\mazen\AppData\Local\Temp\jna-103673999\jna6513770121928952239.dll
+0x00007fffbb390000 - 0x00007fffbb439000 	C:\WINDOWS\System32\clbcatq.dll
+0x00007fffb5d20000 - 0x00007fffb5da7000 	C:\Windows\System32\Windows.Devices.Enumeration.dll
+0x00007fffba2e0000 - 0x00007fffba32e000 	C:\WINDOWS\System32\cfgmgr32.dll
+0x00007fffb6cb0000 - 0x00007fffb6da4000 	C:\Windows\System32\PROPSYS.dll
+0x00007fff96550000 - 0x00007fff965f6000 	C:\WINDOWS\System32\StructuredQuery.dll
+0x00007fff97cc0000 - 0x00007fff97d06000 	C:\WINDOWS\System32\MSWB7.dll
+0x00007fff98980000 - 0x00007fff989a0000 	C:\Windows\System32\DevDispItemProvider.dll
+0x00007fff6dc30000 - 0x00007fff6dc57000 	C:\Users\mazen\.gradle\native\660c5614fbf4a5f2a75b1949f50a0caf5cd603558e7d8a26e50b933a0cfb79d1\windows-amd64\native-platform.dll
+0x00007fff820b0000 - 0x00007fff820c0000 	C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\jre\bin\verify.dll
+0x00007fff7fb80000 - 0x00007fff7fb89000 	C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\jre\bin\extnet.dll
+0x00007fff4bd80000 - 0x00007fff4bd8e000 	C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\jre\bin\sunmscapi.dll
+0x00007fffb9b60000 - 0x00007fffb9cbd000 	C:\WINDOWS\System32\CRYPT32.dll
+0x00007fffb94c0000 - 0x00007fffb94e7000 	C:\WINDOWS\SYSTEM32\ncrypt.dll
+0x00007fffb9480000 - 0x00007fffb94bb000 	C:\WINDOWS\SYSTEM32\NTASN1.dll
+0x00007fff8f7b0000 - 0x00007fff8f7b7000 	C:\WINDOWS\system32\wshunix.dll
+
+JVMTI agents: none
+
+dbghelp: loaded successfully - version: 4.0.5 - missing functions: none
+symbol engine: initialized successfully - sym options: 0x614 - pdb path: .;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\jre\bin;C:\WINDOWS\SYSTEM32;C:\WINDOWS\WinSxS\amd64_microsoft.windows.common-controls_6595b64144ccf1df_6.0.19041.6456_none_60b8a6cb71f64256;C:\Program Files\Windhawk\Engine\1.7.3\64;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\jre\bin\server;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\native;C:\Users\mazen\AppData\Local\Temp\jna-103673999;C:\Users\mazen\.gradle\native\660c5614fbf4a5f2a75b1949f50a0caf5cd603558e7d8a26e50b933a0cfb79d1\windows-amd64
+
+VM Arguments:
+jvm_args: --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.lang.ref=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.base/java.net=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/java.nio.charset=ALL-UNNAMED --add-opens=java.base/java.text=ALL-UNNAMED --add-opens=java.base/java.time=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.util.concurrent=ALL-UNNAMED --add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED --add-opens=java.base/java.util.concurrent.locks=ALL-UNNAMED --add-opens=java.base/jdk.internal.vm=ALL-UNNAMED --add-opens=java.base/sun.net.dns=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED --add-opens=java.base/sun.nio.fs=ALL-UNNAMED --add-opens=java.base/sun.security.ssl=ALL-UNNAMED --add-opens=java.base/sun.security.util=ALL-UNNAMED --add-opens=java.desktop/com.apple.eawt=ALL-UNNAMED --add-opens=java.desktop/com.apple.eawt.event=ALL-UNNAMED --add-opens=java.desktop/com.apple.laf=ALL-UNNAMED --add-opens=java.desktop/com.sun.java.swing=ALL-UNNAMED --add-opens=java.desktop/com.sun.java.swing.plaf.gtk=ALL-UNNAMED --add-opens=java.desktop/java.awt=ALL-UNNAMED --add-opens=java.desktop/java.awt.dnd.peer=ALL-UNNAMED --add-opens=java.desktop/java.awt.event=ALL-UNNAMED --add-opens=java.desktop/java.awt.font=ALL-UNNAMED --add-opens=java.desktop/java.awt.image=ALL-UNNAMED --add-opens=java.desktop/java.awt.peer=ALL-UNNAMED --add-opens=java.desktop/javax.swing=ALL-UNNAMED --add-opens=java.desktop/javax.swing.plaf.basic=ALL-UNNAMED --add-opens=java.desktop/javax.swing.text=ALL-UNNAMED --add-opens=java.desktop/javax.swing.text.html=ALL-UNNAMED --add-opens=java.desktop/sun.awt=ALL-UNNAMED --add-opens=java.desktop/sun.awt.X11=ALL-UNNAMED --add-opens=java.desktop/sun.awt.datatransfer=ALL-UNNAMED --add-opens=java.desktop/sun.awt.image=ALL-UNNAMED --add-opens=java.desktop/sun.awt.windows=ALL-UNNAMED --add-opens=java.desktop/sun.font=ALL-UNNAMED --add-opens=java.desktop/sun.java2d=ALL-UNNAMED --add-opens=java.desktop/sun.lwawt=ALL-UNNAMED --add-opens=java.desktop/sun.lwawt.macosx=ALL-UNNAMED --add-opens=java.desktop/sun.swing=ALL-UNNAMED --add-opens=java.management/sun.management=ALL-UNNAMED --add-opens=jdk.attach/sun.tools.attach=ALL-UNNAMED --add-opens=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED --add-opens=jdk.internal.jvmstat/sun.jvmstat.monitor=ALL-UNNAMED --add-opens=jdk.jdi/com.sun.tools.jdi=ALL-UNNAMED --enable-native-access=ALL-UNNAMED -Djdk.lang.Process.launchMechanism=FORK -Djava.awt.headless=true 
+java_command: com.jetbrains.ls.kotlinLsp.KotlinLspServerKt --stdio
+java_class_path (initial): C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\aalto-xml-1.3.3.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\aho-corasick-double-array-trie-1.2.3.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\allopen-compiler-plugin-for-ide-2.3.20-dev-6080.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\analysis-api-fe10-for-ide-2.3.20-dev-6080.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\analysis-api-for-ide-2.3.20-dev-6080.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\analysis-api-impl-base-for-ide-2.3.20-dev-6080.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\analysis-api-k2-for-ide-2.3.20-dev-6080.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\analysis-api-platform-interface-for-ide-2.3.20-dev-6080.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\animal-sniffer-annotations-1.24.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\annotations-26.0.2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\annotations-4.1.1.4.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ant-1.10.15.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ant-antlr.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ant-apache-bcel.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ant-apache-bsf.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ant-apache-log4j.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ant-apache-oro.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ant-apache-regexp.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ant-apache-resolver.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ant-apache-xalan2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ant-commons-logging.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ant-commons-net.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ant-imageio.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ant-jai.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ant-jakartamail.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ant-javamail.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ant-jdepend.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ant-jmf.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ant-jsch.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ant-junit.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ant-junit4.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ant-junitlauncher.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ant-launcher.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ant-netrexx.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ant-swing.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ant-testutil.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ant-xz.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ant.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ap-validation-all-1.0.205.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\api-1.0.205.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\api-gateway-api-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\api-gateway-client-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\asm-9.9.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\asm-all-9.6.1.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\asm-commons-9.9.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\asm-tree-9.9.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\assertj-core-4.0.0-M1.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\assertj-swing-3.17.1.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\assignment-compiler-plugin-for-ide-2.3.20-dev-6080.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\auth-model-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\auth-product-model-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\automaton-1.12-4.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\bcpkix-jdk18on-1.81.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\bcprov-jdk18on-1.81.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\bcutil-jdk18on-1.81.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\blockmap-1.0.7.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\caffeine-3.2.2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\cglib-nodep-3.3.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\classgraph-4.8.181.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\cli-parser-1.1.6.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\client-attribute-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\client-common-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\client-ktor-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\clikt-jvm-3.5.4.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\commons-cli-1.10.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\commons-codec-1.18.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\commons-compress-1.27.1.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\commons-imaging-1.0-RC-1.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\commons-io-2.18.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\commons-lang3-3.18.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\commons-logging-1.2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\commons-text-1.14.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\completion-ranking-java-0.9.3.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\completion-ranking-kotlin-0.4.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\compose-compiler-plugin-for-ide-2.3.20-dev-6080.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\coverage-report-1.0.25.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\dbus-java-core-4.2.1.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\dbus-java-transport-native-unixsocket-4.2.1.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\dd-plist-1.28.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\debugger-memory-agent-1.0.51.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\delight-rhino-sandbox-0.0.17.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\emoji-java-5.1.1.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\english-pos-dict-0.6.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\error_prone_annotations-2.40.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\failureaccess-1.0.3.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\fleet.andel.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\fleet.bifurcan.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\fleet.fastutil.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\fleet.kernel.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\fleet.lsp.protocol.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\fleet.multiplatform.shims.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\fleet.reporting.api.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\fleet.reporting.shared.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\fleet.rhizomedb.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\fleet.rpc.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\fleet.rpc.server.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\fleet.util.codepoints.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\fleet.util.core.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\fleet.util.logging.api.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\fleet.util.serialization.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\forms-1.1-preview.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\freemarker-2.3.32.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\gec-agg-model-public-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\gec-spell-engine-local-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\gradle-api-9.2.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\grazie-rule-engine-0.3.11.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\groovy-3.0.25.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\groovy-json-3.0.25.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\groovy-jsr223-3.0.25.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\groovy-templates-3.0.25.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\groovy-xml-3.0.25.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\grpc-api-1.73.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\grpc-context-1.73.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\grpc-core-1.73.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\grpc-kotlin-stub-1.4.3.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\grpc-protobuf-1.73.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\grpc-protobuf-lite-1.73.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\grpc-stub-1.73.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\gson-2.13.1.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\guava-33.4.8-jre.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\h2-mvstore-2.3.232.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\hash4j-0.26.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\HdrHistogram-2.2.2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\hppc-0.9.1.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\httpclient-4.5.14.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\httpcore-4.4.16.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\httpmime-4.5.14.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\hunspell-en-0.2.318.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\icu4j-77.1.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\imgscalr-lib-4.2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\indexing-server-api-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\indriya-1.3.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij-coverage-agent-1.0.771.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij-deps-fastutil-8.5.16-jb1.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij-test-discovery-agent-1.0.771.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.codeServer.core.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.codeServer.protocol.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.completionMlRanking.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.copyright.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.driver.client.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.driver.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.driver.model.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.featuresTrainer.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.gradle.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.gradle.java.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.gradle.jps.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.gradle.toolingExtension.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.gradle.toolingExtension.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.gradle.toolingProxy.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.grazie.core.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.groovy.constants.rt.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.groovy.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.groovy.jps.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.groovy.psi.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.groovy.rt.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.groovy.spock.rt.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.idea.community.build.dependencies.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.aetherDependencyResolver.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.analysis.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.analysis.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.codeserver.core.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.codeserver.highlighting.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.compiler.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.compiler.instrumentationUtil.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.compiler.instrumentationUtil.java8.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.compiler.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.coverage.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.coverage.rt.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.debugger.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.debugger.impl.shared.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.debugger.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.debugger.memory.agent.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.execution.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.execution.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.featuresTrainer.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.frontback.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.frontback.psi.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.frontback.psi.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.guiForms.compiler.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.guiForms.rt.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.i18n.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.impl.refactorings.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.indexing.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.indexing.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.langInjection.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.langInjection.jps.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.manifest.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.psi.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.psi.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.resources.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.rt.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.structureView.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.syntax.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.typeMigration.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.uast.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.ui.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.java.unscramble.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.jsp.base.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.jsp.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.jsp.spi.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.junit.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.junit.rt.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.jvm.analysis.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.jvm.analysis.quickFix.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.jvm.analysis.refactoring.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.analysis.platform.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.base.analysis.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.base.analysis.platform.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.base.analysis.utils.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.base.codeInsight.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.base.codeInsight.minimal.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.base.compilerConfiguration.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.base.compilerConfiguration.ui.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.base.externalSystem.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.base.facet.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.base.indices.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.base.jps.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.base.kdoc.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.base.platforms.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.base.plugin.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.base.projectModel.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.base.projectStructure.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.base.psi.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.base.resources.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.base.scripting.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.base.scripting.shared.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.base.serialization.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.base.statistics.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.base.util.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.codeInsight.api.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.codeInsight.base.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.codeInsight.descriptions.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.codeInsight.fixes.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.codeInsight.inspections.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.codeInsight.intentions.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.codeInsight.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.codeInsight.lineMarkers.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.codeInsight.liveTemplates.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.codeInsight.overrideImplement.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.codeInsight.postfixTemplates.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.codeInsight.shared.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.codeInsight.structuralSearch.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.codeInsight.utils.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.compilerPlugins.assignment.fixes.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.compilerPlugins.assignment.maven.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.compilerPlugins.dataframe.maven.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.compilerPlugins.parcelize.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.compilerPlugins.serialization.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.compilerPlugins.support.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.compilerPlugins.support.maven.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.compilerReferenceIndex.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.completion.api.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.completion.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.completion.ml.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.copyright.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.coverage.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.featuresTrainer.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.formatter.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.formatter.minimal.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.gradle.codeInsight.common.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.gradle.codeInsight.groovy.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.gradle.codeInsight.toml.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.gradle.codeInsight.toml.k2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.gradle.gradle.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.gradle.java.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.gradle.scripting.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.gradle.tooling.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.gradle.tooling.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.grazie.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.highlighting.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.highlighting.minimal.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.i18n.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.ide.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.injection.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.internal.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.j2k.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.jvm.debugger.base.util.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.jvm.debugger.core.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.jvm.debugger.coroutines.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.jvm.debugger.eval4j.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.jvm.debugger.evaluation.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.jvm.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.maven.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.migration.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.native.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.navigation.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.onboarding.gradle.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.onboarding.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.performanceExtendedPlugin.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.plugin.updater.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.preferences.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.projectConfiguration.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.projectStructure.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.projectWizard.cli.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.projectWizard.compose.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.projectWizard.core.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.projectWizard.gradle.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.projectWizard.idea.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.projectWizard.maven.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.refactorings.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.refactorings.move.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.refactorings.rename.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.runConfigurations.jvm.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.scripting.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.searching.base.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.searching.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.spellchecker.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.uast.idea.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.kotlin.uast.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.aalto.xml.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.ai.grazie.spell.gec.engine.local.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.asm.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.automaton.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.blockmap.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.bouncy.castle.provider.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.caffeine.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.cglib.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.classgraph.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.cli.parser.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.commons.cli.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.commons.codec.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.commons.compress.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.commons.imaging.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.commons.io.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.commons.lang3.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.commons.logging.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.commons.text.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.fastutil.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.grpc.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.gson.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.guava.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.hash4j.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.hdr.histogram.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.http.client.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.icu4j.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.imgscalr.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.ion.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.jackson.databind.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.jackson.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.jackson.jr.objects.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.jackson.module.kotlin.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.javax.activation.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.javax.annotation.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.jaxen.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.jbr.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.jcef.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.jcip.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.jediterm.core.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.jediterm.ui.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.jettison.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.jgoodies.common.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.jgoodies.forms.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.jsoup.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.jsvg.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.jvm.native.trusted.roots.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.kotlin.reflect.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.kotlinx.collections.immutable.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.kotlinx.coroutines.core.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.kotlinx.coroutines.debug.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.kotlinx.coroutines.guava.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.kotlinx.coroutines.slf4j.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.kotlinx.datetime.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.kotlinx.document.store.mvstore.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.kotlinx.html.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.kotlinx.io.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.kotlinx.serialization.core.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.kotlinx.serialization.json.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.kotlinx.serialization.protobuf.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.kryo5.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.ktor.client.cio.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.ktor.client.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.ktor.io.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.ktor.network.tls.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.ktor.utils.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.lucene.common.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.lz4.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.markdown.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.microba.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.miglayout.swing.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.mvstore.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.oro.matcher.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.plexus.utils.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.proxy.vole.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.pty4j.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.rd.core.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.rd.framework.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.rd.swing.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.rd.text.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.rhino.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.snakeyaml.engine.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.snakeyaml.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.stream.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.swingx.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.velocity.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.winp.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.xerces.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.xstream.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.libraries.xz.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.maven.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.maven.jps.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.maven.model.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.maven.server.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.maven.server.telemetry.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.performanceTesting.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.performanceTesting.vcs.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.analysis.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.analysis.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.backend.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.backend.observation.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.backend.workspace.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.bookmarks.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.boot.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.bootstrap.coroutine.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.buildData.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.buildScripts.downloader.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.builtInServer.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.builtInServer.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.codeStyle.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.codeStyle.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.collaborationTools.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.concurrency.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.configurationStore.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.core.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.core.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.core.nio.fs.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.core.ui.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.coverage.agent.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.coverage.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.credentialStore.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.credentialStore.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.credentialStore.ui.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.debugger.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.debugger.impl.rpc.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.debugger.impl.shared.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.debugger.impl.ui.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.debugger.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.diagnostic.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.diagnostic.startUpPerformanceReporter.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.diagnostic.telemetry.exporters.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.diagnostic.telemetry.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.diagnostic.telemetry.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.diagnostic.telemetry.rt.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.diff.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.diff.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.duplicates.analysis.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.editor.ex.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.editor.ui.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.eel.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.eel.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.eel.provider.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.execution.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.execution.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.experiment.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.extensions.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.externalSystem.dependencyUpdater.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.externalSystem.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.externalSystem.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.externalSystem.rt.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.feedback.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.foldings.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.icons.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.ide.bootstrap.eel.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.ide.bootstrap.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.ide.bootstrap.kernel.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.ide.codeinsight.inline.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.ide.concurrency.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.ide.core.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.ide.core.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.ide.core.plugins.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.ide.favoritesTreeView.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.ide.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.ide.initialConfigImport.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.ide.internal.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.ide.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.ide.observable.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.ide.progress.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.ide.recentProjects.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.ide.rpc.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.ide.ui.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.ide.updateChecker.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.ide.util.io.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.ide.util.io.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.ide.util.netty.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.ijent.community.buildConstants.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.ijent.community.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.ijent.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.indexing.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.indexing.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.instanceContainer.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.jbr.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.jps.build.dependencyGraph.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.jps.build.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.jps.build.javac.rt.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.jps.build.launcher.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.jps.model.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.jps.model.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.jps.model.serialization.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.kernel.backend.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.kernel.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.lang.core.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.lang.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.lang.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.langInjection.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.locking.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.lvcs.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.lvcs.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.macro.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.markdown.utils.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.ml.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.ml.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.objectSerializer.annotations.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.objectSerializer.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.pasta.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.plugins.parser.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.polySymbols.backend.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.polySymbols.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.pratt.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.project.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.projectModel.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.projectModel.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.rd.community.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.refactoring.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.remote.core.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.resources.en.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.resources.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.rpc.backend.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.rpc.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.rpc.topics.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.runtime.product.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.runtime.repository.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.scriptDebugger.backend.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.scriptDebugger.protocolReaderRuntime.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.scriptDebugger.ui.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.serviceContainer.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.settings.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.smRunner.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.sqlite.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.statistics.config.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.statistics.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.statistics.uploader.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.structuralSearch.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.structureView.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.syntax.extensions.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.syntax.i18n.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.syntax.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.syntax.psi.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.syntax.tree.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.syntax.util.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.testRunner.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.threadDumpParser.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.tips.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.todo.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.tracing.rt.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.uast.ide.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.uast.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.ui.jcef.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.usageView.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.usageView.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.util.base.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.util.base.multiplatform.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.util.classLoader.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.util.coroutines.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.util.diff.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.util.ex.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.util.http.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.util.io.storages.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.util.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.util.jdom.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.util.multiplatform.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.util.nanoxml.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.util.progress.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.util.rt.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.util.rt.java8.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.util.text.matching.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.util.ui.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.util.xmlDom.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.util.zip.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.vcs.core.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.vcs.dvcs.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.vcs.dvcs.impl.shared.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.vcs.dvcs.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.vcs.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.vcs.impl.lang.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.vcs.impl.shared.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.vcs.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.vcs.log.graph.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.vcs.log.graph.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.vcs.log.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.vcs.log.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.vcs.shared.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.workspace.jps.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.workspace.storage.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.platform.wsl.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.properties.backend.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.properties.backend.psi.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.properties.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.properties.psi.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.regexp.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.repository.search.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.spellchecker.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.testng.rt.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.toml.core.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.toml.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.tools.ide.starter.bus.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.xml.analysis.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.xml.analysis.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.xml.dom.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.xml.dom.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.xml.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.xml.parser.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.xml.psi.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.xml.psi.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.xml.structureView.impl.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.xml.structureView.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.xml.syntax.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\intellij.xml.ui.common.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ion-java-1.11.10.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\istack-commons-runtime-3.0.12.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\jackson-annotations-2.19.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\jackson-core-2.19.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\jackson-databind-2.19.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\jackson-dataformat-toml-2.19.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\jackson-jr-objects-2.19.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\jackson-module-kotlin-2.19.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\jakarta.activation-1.2.2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\java-compatibility-1.0.1.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\java-diff-utils-4.16.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\java-string-similarity-2.0.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\javax.activation-1.2.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\javax.annotation-api-1.3.2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\javax.inject-1.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\jaxb-api-2.3.1.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\jaxb-runtime-2.3.9.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\jaxen-1.2.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\jb-jdi-2.45.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\jbr-api-1.9.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\jcef-137.0.17-gf354b0e-chromium-137.0.7151.104-api-1.20-261-b15.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\jcip-annotations-1.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\jcommander-1.82.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\jediterm-core-3.57.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\jediterm-ui-3.57.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\jemoji-1.3.1.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\jettison-1.5.4.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\jgoodies-common-1.4.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\jna-5.17.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\jna-platform-5.17.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\jps-javac-extension-10.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\jquery-3.6.1.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\js-plain-objects-compiler-plugin-for-ide-2.3.20-dev-6080.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\json-20240205.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\jsoup-1.21.2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\jspecify-1.0.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\jsvg-1.3.0-jb.8.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\jvm-native-trusted-roots-1.1.7.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin-compiler-common-for-ide-2.3.20-dev-6080.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin-compiler-fe10-for-ide-2.3.20-dev-6080.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin-compiler-fir-for-ide-2.3.20-dev-6080.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin-compiler-ir-for-ide-2.3.20-dev-6080.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin-dataframe-compiler-plugin-for-ide-2.3.20-dev-6080.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin-gradle-plugin-idea-1.9.20-dev-8162.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin-gradle-plugin-idea-proto-1.9.20-dev-8162.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin-gradle-statistics-for-ide-2.3.20-dev-6080.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin-jps-common-for-ide-2.3.20-dev-6080.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin-metadata-jvm-2.2.21.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin-reflect-2.2.21.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin-script-runtime-2.3.20-dev-6080.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin-scripting-common-2.3.20-dev-6080.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin-scripting-compiler-impl-2.3.20-dev-6080.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin-scripting-dependencies-2.3.20-dev-6080.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin-scripting-jvm-2.3.20-dev-6080.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin-stdlib-2.2.21.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin-tooling-core-1.9.20-dev-8162.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.base.fe10.analysis.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.base.fe10.code-insight.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.base.fe10.kdoc.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.base.injection.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.base.obsolete-compat.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.base.scripting.k1.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.bundled-compiler-plugins-support.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.code-insight.inspections.shared.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.code-insight.intentions.k1.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.code-insight.intentions.shared.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.code-insight.line-markers.shared.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.code-insight.live-templates.shared.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.code-insight.override-implement.k1.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.code-insight.override-implement.shared.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.compiler-plugins.assignment.gradle.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.compiler-plugins.compiler-plugin-support.gradle.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.compiler-plugins.kotlinx-serialization.common.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.compiler-plugins.parcelize.common.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.compiler-plugins.sam-with-receiver.common.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.completion.impl.k1.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.completion.impl.shared.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.core.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.fir.frontend-independent.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.fir.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.gradle.gradle-java.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.gradle.scripting.shared.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.highlighting.k1.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.highlighting.shared.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.idea.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.inspections-fe10.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.inspections.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.j2k.shared.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.jsr223.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.jvm-debugger.evaluation.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.jvm.shared.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.plugin.common.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.plugin.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.plugin.k2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.refactorings.common.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.scripting.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.uast.uast-kotlin-base.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.uast.uast-kotlin-idea-base.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlin.uast.uast-kotlin.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlinx-collections-immutable-jvm-0.4.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlinx-coroutines-core-jvm-1.10.2-intellij-1.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlinx-coroutines-debug-1.10.2-intellij-1.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlinx-coroutines-guava-1.10.2-intellij-1.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlinx-coroutines-slf4j-1.10.2-intellij-1.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlinx-datetime-jvm-0.6.2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlinx-document-store-core-jvm-0.0.4.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlinx-document-store-mvstore-0.0.4.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlinx-html-jvm-0.12.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlinx-io-bytestring-jvm-0.7.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlinx-io-core-jvm-0.7.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlinx-serialization-compiler-plugin-for-ide-2.3.20-dev-6080.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlinx-serialization-core-jvm-1.9.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlinx-serialization-json-io-jvm-1.9.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlinx-serialization-json-jvm-1.9.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kotlinx-serialization-protobuf-jvm-1.9.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\kryo5-5.6.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\krypto-jvm-4.0.10.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ktor-client-auth-jvm-3.3.2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ktor-client-cio-jvm-3.3.2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ktor-client-content-negotiation-jvm-3.3.2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ktor-client-core-jvm-3.3.2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ktor-client-encoding-jvm-3.3.2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ktor-client-java-jvm-3.3.2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ktor-client-logging-jvm-3.3.2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ktor-events-jvm-3.3.2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ktor-http-cio-jvm-3.3.2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ktor-http-jvm-3.3.2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ktor-io-jvm-3.3.2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ktor-network-jvm-3.3.2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ktor-network-tls-jvm-3.3.2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ktor-serialization-jvm-3.3.2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ktor-serialization-kotlinx-json-jvm-3.3.2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ktor-serialization-kotlinx-jvm-3.3.2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ktor-sse-jvm-3.3.2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ktor-utils-jvm-3.3.2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ktor-websocket-serialization-jvm-3.3.2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ktor-websockets-jvm-3.3.2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\language-en-6.7.19.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\language-server.analyzer.filewatcher.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\language-server.analyzer.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\language-server.api.core.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\language-server.api.features.impl.common.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\language-server.api.features.impl.java-base.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\language-server.api.features.impl.kotlin.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\language-server.api.features.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\language-server.api.impl.analyzer.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\language-server.kotlin-lsp.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\language-server.project-import.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\languagetool-core-6.7.19.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\llm-agg-api-model-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\log4j-over-slf4j-1.7.36.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\lombok-compiler-plugin-for-ide-2.3.20-dev-6080.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\low-level-api-fir-for-ide-2.3.20-dev-6080.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\lucene-analysis-common-10.3.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\lucene-core-10.3.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\lz4-java-1.8.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\markdown-jvm-0.7.2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\marketplace-zip-signer-0.1.43.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\maven-artifact-3.9.9.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\maven-builder-support-3.9.9.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\maven-indexer-api-rt-2023.2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\maven-model-3.9.9.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\maven-model-builder-3.9.9.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\maven-repository-metadata-3.9.9.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\maven-resolver-api-1.9.22.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\maven-resolver-connector-basic-1.9.22.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\maven-resolver-impl-1.9.22.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\maven-resolver-named-locks-1.9.22.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\maven-resolver-provider-3.9.9.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\maven-resolver-spi-1.9.22.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\maven-resolver-transport-file-1.9.22.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\maven-resolver-transport-http-1.9.22.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\maven-resolver-util-1.9.22.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\miglayout-core-11.4.2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\miglayout-swing-11.4.2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\model-auth-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\model-bdg-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\model-chat-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\model-cloud-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\model-common-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\model-def-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\model-emb-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\model-feedback-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\model-gateway-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\model-gec-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\model-indexing-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\model-jet-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\model-license-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\model-llm-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\model-ner-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\model-nlc-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\model-nlp-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\model-nmt-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\model-qa-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\model-quota-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\model-sum-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\model-syn-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\model-task-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\model-text-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\model-tone-formality-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\model-tree-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\morfologik-fsa-2.1.9.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\morfologik-fsa-builders-2.1.9.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\morfologik-speller-2.1.9.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\morfologik-stemming-2.1.9.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\mxparser-1.2.2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\native-3.42.0-jb.1.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\netty-buffer-4.2.0.RC2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\netty-codec-4.2.0.RC2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\netty-codec-base-4.2.0.RC2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\netty-codec-compression-4.2.0.RC2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\netty-codec-http-4.2.0.RC2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\netty-codec-http2-4.2.0.RC2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\netty-codec-protobuf-4.2.0.RC2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\netty-common-4.2.0.RC2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\netty-handler-4.2.0.RC2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\netty-resolver-4.2.0.RC2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\netty-transport-4.2.0.RC2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\netty-transport-native-unix-common-4.2.0.RC2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\ngram-slp-0.0.3.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\nlp-common-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\nlp-detect-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\nlp-langs-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\nlp-patterns-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\nlp-phonetics-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\nlp-similarity-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\nlp-tokenizer-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\noarg-compiler-plugin-for-ide-2.3.20-dev-6080.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\openregex-1.1.1.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\opentelemetry-api-1.48.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\opentelemetry-context-1.48.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\opentelemetry-exporter-common-1.48.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\opentelemetry-exporter-otlp-common-1.48.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\opentelemetry-extension-kotlin-1.48.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\opentelemetry-sdk-1.48.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\opentelemetry-sdk-common-1.48.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\opentelemetry-sdk-logs-1.48.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\opentelemetry-sdk-metrics-1.48.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\opentelemetry-sdk-trace-1.48.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\opentelemetry-semconv-1.30.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\org.eclipse.sisu.inject-0.9.0.M3.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\org.jacoco.agent-0.8.14.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\org.jacoco.ant-0.8.14.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\org.jacoco.core-0.8.14.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\org.jacoco.report-0.8.14.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\oro-2.0.8.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\oshi-core-6.8.2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\packagesearch-api-client-jvm-3.4.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\packagesearch-api-models-jvm-3.4.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\packagesearch-http-models-jvm-3.4.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\packagesearch-version-utils-jvm-3.4.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\parcelize-compiler-plugin-for-ide-2.3.20-dev-6080.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\perfmark-api-0.27.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\plexus-archiver-4.8.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\plexus-interpolation-1.27.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\plexus-utils-3.5.1.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\proto-google-common-protos-2.51.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\protobuf-java-3.24.4-jb.2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\proxy-vole-1.1.6.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\pty4j-0.13.11.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\qdox-2.2.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\rd-core-2025.3.1.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\rd-framework-2025.3.1.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\rd-swing-2025.3.1.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\rd-text-2025.3.1.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\rhino-runtime-1.7.15.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\rwmutex-idea-0.0.10.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\sa-jdwp-1.24.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\sam-with-receiver-compiler-plugin-for-ide-2.3.20-dev-6080.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\scripting-compiler-plugin-for-ide-2.3.20-dev-6080.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\segment-2.0.3.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\serviceMessages-2024.07.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\sizeof-0.4.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\slf4j-api-2.0.13.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\slf4j-jdk14-2.0.13.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\snakeyaml-2.4.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\snakeyaml-engine-2.9.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\stax2-api-4.2.2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\streamex-0.8.4.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\swagger-annotations-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\swingx-core-1.6.2-2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\symbol-light-classes-for-ide-2.3.20-dev-6080.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\tasks-library-api-jvm-0.4.14.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\tasks-library-model-jvm-0.4.14.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\tasks-provider-jet-completion-model-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\tasks-provider-llm-completion-model-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\tasks-provider-proxy-model-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\tasks-provider-task-schema-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\testng-7.8.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\trove4j-1.0.20221201.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\txw2-2.3.9.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\unit-api-1.0.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\uom-lib-common-1.1.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\user-cfg-model-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\user-strg-model-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\utils-common-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\utils-jwt-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\utils-ktor-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\utils-multiplatform-jvm-0.8.74.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\vavr-0.10.4.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\vavr-match-0.10.4.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\velocity-engine-core-2.3.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\winp-1.30.1.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\xercesImpl-2.12.2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\xml-resolver-1.2.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\xmlpull-1.1.3.1.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\xstream-1.4.21.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\xz-1.10.jar;C:\Users\mazen\.local\share\opencode\bin\kotlin-ls\\lib\zstd-jni-1.5.7-4.jar
+Launcher Type: SUN_STANDARD
+
+[Global flags]
+     intx CICompilerCount                          = 4                                         {product} {ergonomic}
+     uint ConcGCThreads                            = 2                                         {product} {ergonomic}
+     uint G1ConcRefinementThreads                  = 8                                         {product} {ergonomic}
+   size_t G1HeapRegionSize                         = 8388608                                   {product} {ergonomic}
+    uintx GCDrainStackTargetSize                   = 64                                        {product} {ergonomic}
+   size_t InitialHeapSize                          = 805306368                                 {product} {ergonomic}
+   size_t MarkStackSize                            = 4194304                                   {product} {ergonomic}
+   size_t MaxHeapSize                              = 12868124672                               {product} {ergonomic}
+   size_t MaxNewSize                               = 7717519360                                {product} {ergonomic}
+   size_t MinHeapDeltaBytes                        = 8388608                                   {product} {ergonomic}
+   size_t MinHeapSize                              = 8388608                                   {product} {ergonomic}
+    uintx NonNMethodCodeHeapSize                   = 5839372                                {pd product} {ergonomic}
+    uintx NonProfiledCodeHeapSize                  = 122909434                              {pd product} {ergonomic}
+    uintx ProfiledCodeHeapSize                     = 122909434                              {pd product} {ergonomic}
+    uintx ReservedCodeCacheSize                    = 251658240                              {pd product} {ergonomic}
+     bool SegmentedCodeCache                       = true                                      {product} {ergonomic}
+   size_t SoftMaxHeapSize                          = 12868124672                            {manageable} {ergonomic}
+     bool UseCompressedOops                        = true                           {product lp64_product} {ergonomic}
+     bool UseG1GC                                  = true                                      {product} {ergonomic}
+     bool UseLargePagesIndividualAllocation        = false                                  {pd product} {ergonomic}
+
+Logging:
+Log output configuration:
+ #0: stdout all=warning uptime,level,tags foldmultilines=false
+ #1: stderr all=off uptime,level,tags foldmultilines=false
+
+Environment Variables:
+JAVA_HOME=C:\Program Files\Java\jdk1.8.0_202
+PATH=C:\Python314\Scripts\;C:\Python314\;C:\Program Files\Common Files\Oracle\Java\javapath;C:\Program Files\Java\jdk1.8.0_202\bin;C:\Program Files (x86)\Razer Chroma SDK\bin;C:\Program Files\Razer Chroma SDK\bin;C:\Program Files (x86)\Razer\ChromaBroadcast\bin;C:\Program Files\Razer\ChromaBroadcast\bin;C:\WINDOWS\system32;C:\WINDOWS;C:\WINDOWS\System32\Wbem;C:\WINDOWS\System32\WindowsPowerShell\v1.0\;C:\WINDOWS\System32\OpenSSH\;C:\WINDOWS\system32\config\systemprofile\AppData\Local\Microsoft\WindowsApps;C:\Program Files\PuTTY\;C:\Program Files\dotnet\;C:\Program Files\NVIDIA Corporation\NVIDIA NvDLISR;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;C:\Program Files\Git\bin;C:\Program Files (x86)\GnuWin32\bin;C:\Program Files\NVIDIA Corporation\NVIDIA app\NvDLISR;C:\Program Files\nodejs\;C:\ProgramData\chocolatey\bin;C:\Program Files\GitHub CLI\;C:\Program Files (x86)\Windows Kits\10\Windows Performance Toolkit\;C:\Program Files\WireGuard\;C:\Users\mazen\.local\bin;C:\Users\mazen\AppData\Local\Programs\Python\Python312\Scripts\;C:\Users\mazen\AppData\Local\Programs\Python\Python312\;C:\Users\mazen\AppData\Local\Microsoft\WindowsApps;C:\Users\mazen\AppData\Local\Microsoft\WinGet\Packages\Genymobile.scrcpy_Microsoft.Winget.Source_8wekyb3d8bbwe\scrcpy-win64-v2.1.1;C:\Users\mazen\AppData\Local\JetBrains\Toolbox\scripts;C:\Users\mazen\.dotnet\tools;C:\Program Files\ripgrep;C:\Program Files\Emacs;C:\Program Files\Emacs\emacs-29.1\bin;C:\Users\mazen\AppData\Local\Programs\Microsoft VS Code\bin;C:\Program Files (x86)\msys2\ucrt64\bin;C:\Program Files\JetBrains\PyCharm Community Edition 2023.3.4\bin;;C:\Users\mazen\AppData\Local\GitHubDesktop\bin;C:\Users\mazen\AppData\Local\Programs\IntelliJ IDEA 2025.3\bin;C:\Users\mazen\AppData\Roaming\npm;C:\Users\mazen\.bun\bin;C:\Users\mazen\AppData\Local\Programs\Antigravity\bin;C:\Users\mazen\AppData\Local\Programs\Microsoft VS Code Insiders\bin;C:\Users\mazen\AppData\Local\PowerToys\DSCModules\;C:\Users\mazen\AppData\Local\Microsoft\WinGet\Packages\Schniz.fnm_Microsoft.Winget.Source_8wekyb3d8bbwe
+USERNAME=mazen
+OS=Windows_NT
+PROCESSOR_IDENTIFIER=Intel64 Family 6 Model 158 Stepping 13, GenuineIntel
+TMP=C:\Users\mazen\AppData\Local\Temp
+TEMP=C:\Users\mazen\AppData\Local\Temp
+
+
+
+
+Periodic native trim disabled
+
+JNI global refs:
+JNI global refs: 26, weak refs: 88
+
+JNI global refs memory usage: 835, weak refs: 2097
+
+Process memory usage:
+Resident Set Size: 954592K (1% of 50263072K total physical memory with 16490152K free physical memory)
+
+OOME stack traces (most recent first):
+Classloader memory used:
+Loader jdk.internal.loader.ClassLoaders$AppClassLoader                                 : 59538K
+Loader org.gradle.internal.classloader.VisitableURLClassLoader                         : 8580K
+Loader bootstrap                                                                       : 5266K
+Loader jdk.internal.jrtfs.JrtFileSystemProvider$JrtFsLoader                            : 337K
+Loader org.gradle.initialization.MixInLegacyTypesClassLoader                           : 280K
+Loader jdk.internal.loader.ClassLoaders$PlatformClassLoader                            : 218K
+Loader org.gradle.internal.daemon.client.serialization.ClientSidePayloadClassLoaderFactory$MixInClassLoader: 195K
+Loader jdk.internal.reflect.DelegatingClassLoader                                      : 125K
+
+Classes loaded by more than one classloader:
+Class com.google.common.collect.ImmutableList                                         : loaded 3 times (x 206B)
+Class org.gradle.tooling.internal.gradle.GradleBuildIdentity                          : loaded 3 times (x 70B)
+Class com.google.common.collect.ImmutableAsList                                       : loaded 3 times (x 209B)
+Class org.gradle.tooling.model.BuildIdentifier                                        : loaded 3 times (x 70B)
+Class com.google.common.collect.ImmutableCollection                                   : loaded 3 times (x 125B)
+Class org.gradle.tooling.model.Model                                                  : loaded 3 times (x 70B)
+Class org.gradle.tooling.internal.gradle.DefaultBuildIdentifier                       : loaded 3 times (x 79B)
+Class com.google.common.collect.RegularImmutableAsList                                : loaded 3 times (x 217B)
+Class com.google.common.collect.UnmodifiableIterator                                  : loaded 3 times (x 80B)
+Class org.gradle.tooling.GradleConnector                                              : loaded 2 times (x 79B)
+Class com.google.common.collect.ImmutableList$1                                       : loaded 2 times (x 97B)
+Class org.gradle.tooling.model.build.GradleEnvironment                                : loaded 2 times (x 70B)
+Class org.gradle.internal.classloader.FilteringClassLoader$Trie                       : loaded 2 times (x 78B)
+Class org.gradle.tooling.internal.adapter.ProtocolToModelAdapter$InvocationHandlerImpl: loaded 2 times (x 77B)
+Class org.gradle.internal.service.PrivateService                                      : loaded 2 times (x 70B)
+Class org.gradle.tooling.internal.adapter.TargetTypeProvider                          : loaded 2 times (x 70B)
+Class org.gradle.internal.logging.events.ProgressStartEvent                           : loaded 2 times (x 97B)
+Class com.google.common.collect.UnmodifiableListIterator                              : loaded 2 times (x 95B)
+Class org.gradle.initialization.DefaultBuildCancellationToken                         : loaded 2 times (x 82B)
+Class org.gradle.internal.event.DefaultListenerManager                                : loaded 2 times (x 99B)
+Class org.gradle.tooling.internal.adapter.MethodInvocation                            : loaded 2 times (x 85B)
+Class org.slf4j.helpers.Util                                                          : loaded 2 times (x 71B)
+Class org.slf4j.helpers.BasicMDCAdapter$1                                             : loaded 2 times (x 86B)
+Class org.gradle.tooling.events.OperationType                                         : loaded 2 times (x 79B)
+Class org.gradle.util.internal.CollectionUtils                                        : loaded 2 times (x 71B)
+Class org.gradle.internal.service.CloseableServiceRegistry                            : loaded 2 times (x 70B)
+Class org.gradle.internal.operations.DefaultBuildOperationIdFactory                   : loaded 2 times (x 76B)
+Class org.gradle.internal.concurrent.ManagedExecutor                                  : loaded 2 times (x 70B)
+Class org.gradle.tooling.internal.gradle.DefaultProjectIdentifier                     : loaded 2 times (x 86B)
+Class com.google.common.collect.ImmutableEnumMap                                      : loaded 2 times (x 126B)
+Class org.gradle.internal.concurrent.ManagedScheduledExecutor                         : loaded 2 times (x 70B)
+Class org.gradle.tooling.internal.adapter.ProtocolToModelAdapter$ClassMixInMethodInvoker: loaded 2 times (x 76B)
+Class org.gradle.internal.operations.logging.ProgressStartBuildOperationProgressDetails: loaded 2 times (x 70B)
+Class org.gradle.internal.service.ScopedServiceRegistry                               : loaded 2 times (x 107B)
+Class org.gradle.internal.service.ServiceRegistry                                     : loaded 2 times (x 70B)
+Class org.gradle.internal.logging.progress.DefaultProgressLoggerFactory               : loaded 2 times (x 82B)
+Class it.unimi.dsi.fastutil.ints.IntIterable                                          : loaded 2 times (x 70B)
+Class org.gradle.internal.classloader.FilteringClassLoader$RetrieveSystemPackagesClassLoader: loaded 2 times (x 101B)
+Class org.gradle.internal.service.ReflectionBasedServiceMethod                        : loaded 2 times (x 86B)
+Class org.gradle.internal.service.UnknownServiceException                             : loaded 2 times (x 83B)
+Class it.unimi.dsi.fastutil.longs.LongIterable                                        : loaded 2 times (x 70B)
+Class org.gradle.api.JavaVersion                                                      : loaded 2 times (x 79B)
+Class org.gradle.internal.service.DefaultServiceRegistry$ClassInspector$ClassDetails  : loaded 2 times (x 73B)
+Class org.gradle.internal.service.ServiceRegistration                                 : loaded 2 times (x 70B)
+Class com.google.common.collect.MapDifference                                         : loaded 2 times (x 70B)
+Class org.gradle.internal.dispatch.Dispatch                                           : loaded 2 times (x 70B)
+Class org.gradle.internal.classpath.TransformedClassPath                              : loaded 2 times (x 96B)
+Class org.gradle.internal.classloader.InstrumentingClassLoader                        : loaded 2 times (x 70B)
+Class it.unimi.dsi.fastutil.longs.LongSet                                             : loaded 2 times (x 70B)
+Class org.gradle.internal.reflect.DirectInstantiator$CachedConstructor                : loaded 2 times (x 73B)
+Class org.gradle.api.logging.LogLevel                                                 : loaded 2 times (x 79B)
+Class org.gradle.internal.service.ServiceAccessToken                                  : loaded 2 times (x 70B)
+Class org.gradle.internal.service.DefaultServiceRegistry$FactoryService               : loaded 2 times (x 95B)
+Class org.gradle.internal.concurrent.AbstractManagedExecutor$1                        : loaded 2 times (x 76B)
+Class org.gradle.internal.concurrent.ExecutorPolicy$CatchAndRecordFailures            : loaded 2 times (x 81B)
+Class it.unimi.dsi.fastutil.ints.IntCollection                                        : loaded 2 times (x 70B)
+Class [Lorg.gradle.scripts.ScriptingLanguage;                                         : loaded 2 times (x 69B)
+Class org.gradle.internal.classloader.ClassLoaderUtils$ClassDefiner                   : loaded 2 times (x 70B)
+Class org.gradle.internal.service.ServiceLocator                                      : loaded 2 times (x 70B)
+Class org.gradle.internal.service.ServiceLookup                                       : loaded 2 times (x 70B)
+Class jdk.internal.jrtfs.JrtFileSystemProvider                                        : loaded 2 times (x 101B)
+Class com.google.common.collect.AbstractMapEntry                                      : loaded 2 times (x 81B)
+Class kotlin.reflect.KClass                                                           : loaded 2 times (x 70B)
+Class org.gradle.tooling.internal.adapter.ProtocolToModelAdapter$SupportedPropertyInvoker: loaded 2 times (x 76B)
+Class org.gradle.tooling.model.UnsupportedMethodException                             : loaded 2 times (x 82B)
+Class com.google.common.collect.AbstractMultimap                                      : loaded 2 times (x 123B)
+Class org.gradle.internal.reflect.JavaReflectionUtil                                  : loaded 2 times (x 71B)
+Class org.gradle.internal.service.RelevantMethods                                     : loaded 2 times (x 72B)
+Class org.gradle.internal.classloader.ClassLoaderHierarchy                            : loaded 2 times (x 70B)
+Class it.unimi.dsi.fastutil.longs.Long2ObjectMap                                      : loaded 2 times (x 70B)
+Class org.gradle.internal.service.ServiceMethodFactory                                : loaded 2 times (x 70B)
+Class [Lorg.gradle.internal.service.ServiceLookup;                                    : loaded 2 times (x 69B)
+Class org.gradle.tooling.internal.adapter.CollectionMapper                            : loaded 2 times (x 73B)
+Class org.slf4j.spi.MDCAdapter                                                        : loaded 2 times (x 70B)
+Class jdk.internal.jimage.ImageLocation                                               : loaded 2 times (x 90B)
+Class org.gradle.internal.concurrent.ManagedExecutorImpl                              : loaded 2 times (x 141B)
+Class it.unimi.dsi.fastutil.Function                                                  : loaded 2 times (x 70B)
+Class org.gradle.internal.reflect.Instantiator                                        : loaded 2 times (x 70B)
+Class org.gradle.internal.event.BroadcastDispatch                                     : loaded 2 times (x 90B)
+Class org.gradle.scripts.ScriptingLanguage                                            : loaded 2 times (x 70B)
+Class org.gradle.internal.operations.BuildOperationIdFactory                          : loaded 2 times (x 70B)
+Class org.gradle.tooling.internal.adapter.ProtocolToModelAdapter                      : loaded 2 times (x 80B)
+Class jdk.internal.jimage.ImageBufferCache$1                                          : loaded 2 times (x 83B)
+Class org.gradle.internal.operations.BuildOperationCategory                           : loaded 2 times (x 79B)
+Class org.gradle.internal.concurrent.AbstractManagedExecutor                          : loaded 2 times (x 141B)
+Class org.gradle.internal.time.DefaultTimer                                           : loaded 2 times (x 80B)
+Class jdk.internal.jimage.ImageBufferCache$2                                          : loaded 2 times (x 91B)
+Class com.google.common.collect.BiMap                                                 : loaded 2 times (x 70B)
+Class com.google.common.base.Objects                                                  : loaded 2 times (x 71B)
+Class org.gradle.internal.service.ServiceRegistrationProvider                         : loaded 2 times (x 70B)
+Class org.gradle.tooling.internal.adapter.ProtocolToModelAdapter$ViewKey              : loaded 2 times (x 72B)
+Class [Lorg.gradle.internal.service.DefaultServiceRegistry$State;                     : loaded 2 times (x 69B)
+Class org.gradle.tooling.internal.adapter.ProtocolToModelAdapter$PropertyCachingMethodInvoker: loaded 2 times (x 76B)
+Class com.google.common.collect.ObjectArrays                                          : loaded 2 times (x 71B)
+Class com.google.common.collect.AbstractIndexedListIterator                           : loaded 2 times (x 96B)
+Class com.google.common.math.MathPreconditions                                        : loaded 2 times (x 71B)
+Class org.gradle.internal.service.DefaultServiceMethodFactory                         : loaded 2 times (x 76B)
+Class org.gradle.internal.time.DefaultCountdownTimer                                  : loaded 2 times (x 88B)
+Class [Lorg.gradle.api.logging.LogLevel;                                              : loaded 2 times (x 69B)
+Class jdk.internal.jimage.BasicImageReader                                            : loaded 2 times (x 95B)
+Class kotlin.Function                                                                 : loaded 2 times (x 70B)
+Class org.gradle.internal.classloader.ClassLoaderUtils                                : loaded 2 times (x 71B)
+Class kotlin.collections.SetsKt__SetsJVMKt                                            : loaded 2 times (x 71B)
+Class org.gradle.tooling.internal.adapter.ProtocolToModelAdapter$AdaptingMethodInvoker: loaded 2 times (x 76B)
+Class [Lorg.gradle.internal.operations.BuildOperationMetadata;                        : loaded 2 times (x 69B)
+Class org.gradle.internal.FileUtils$1                                                 : loaded 2 times (x 91B)
+Class org.slf4j.ILoggerFactory                                                        : loaded 2 times (x 70B)
+Class jdk.internal.jimage.ImageHeader                                                 : loaded 2 times (x 71B)
+Class org.gradle.internal.reflect.ReflectionCache$WeaklyClassReferencingCache         : loaded 2 times (x 127B)
+Class org.gradle.internal.service.DefaultServiceRegistry$ThisAsService                : loaded 2 times (x 90B)
+Class org.slf4j.helpers.ThreadLocalMapOfStacks                                        : loaded 2 times (x 76B)
+Class org.gradle.internal.reflect.CachedInvokable                                     : loaded 2 times (x 73B)
+Class org.gradle.internal.concurrent.CompositeStoppable                               : loaded 2 times (x 80B)
+Class org.gradle.tooling.internal.gradle.GradleProjectIdentity                        : loaded 2 times (x 70B)
+Class org.gradle.internal.service.ServiceMethod                                       : loaded 2 times (x 70B)
+Class com.google.common.collect.Multimap                                              : loaded 2 times (x 70B)
+Class kotlin.jvm.JvmClassMappingKt                                                    : loaded 2 times (x 71B)
+Class org.gradle.internal.classpath.DefaultClassPath$ImmutableUniqueList              : loaded 2 times (x 199B)
+Class org.gradle.internal.service.DefaultServiceRegistry$ManagedObjectServiceProvider : loaded 2 times (x 91B)
+Class org.slf4j.spi.SLF4JServiceProvider                                              : loaded 2 times (x 70B)
+Class com.google.common.base.ExtraObjectsMethodsForWeb                                : loaded 2 times (x 71B)
+Class org.gradle.internal.dispatch.ProxyDispatchAdapter                               : loaded 2 times (x 74B)
+Class com.google.common.collect.SingletonImmutableList                                : loaded 2 times (x 207B)
+Class it.unimi.dsi.fastutil.longs.LongCollection                                      : loaded 2 times (x 70B)
+Class kotlin.collections.SetsKt                                                       : loaded 2 times (x 71B)
+Class org.gradle.internal.reflect.DirectInstantiator$ConstructorCache                 : loaded 2 times (x 76B)
+Class org.gradle.internal.service.scopes.EventScope                                   : loaded 2 times (x 70B)
+Class org.gradle.internal.classpath.ClassPath                                         : loaded 2 times (x 70B)
+Class com.google.common.collect.ImmutableList$ReverseImmutableList                    : loaded 2 times (x 209B)
+Class org.gradle.internal.dispatch.MethodInvocation                                   : loaded 2 times (x 76B)
+Class org.gradle.internal.concurrent.CompositeStoppable$1                             : loaded 2 times (x 75B)
+Class org.gradle.internal.dispatch.ReflectionDispatch                                 : loaded 2 times (x 77B)
+Class org.slf4j.Logger                                                                : loaded 2 times (x 70B)
+Class org.gradle.initialization.BuildCancellationToken                                : loaded 2 times (x 70B)
+Class it.unimi.dsi.fastutil.objects.ObjectIterable                                    : loaded 2 times (x 70B)
+Class org.gradle.internal.event.DefaultListenerManager$ListenerDetails                : loaded 2 times (x 81B)
+Class org.gradle.internal.Factory                                                     : loaded 2 times (x 70B)
+Class jdk.internal.jimage.ImageStringsReader                                          : loaded 2 times (x 80B)
+Class org.gradle.internal.event.ListenerNotificationException                         : loaded 2 times (x 96B)
+Class org.gradle.internal.logging.progress.ProgressLogger                             : loaded 2 times (x 70B)
+Class org.slf4j.Marker                                                                : loaded 2 times (x 70B)
+Class com.google.common.collect.ImmutableMap$IteratorBasedImmutableMap                : loaded 2 times (x 126B)
+Class kotlin.Metadata                                                                 : loaded 2 times (x 70B)
+Class kotlin.UninitializedPropertyAccessException                                     : loaded 2 times (x 82B)
+Class com.google.common.collect.SingletonImmutableSet                                 : loaded 2 times (x 146B)
+Class org.gradle.internal.reflect.DirectInstantiator                                  : loaded 2 times (x 76B)
+Class org.gradle.internal.event.BroadcastDispatch$CompositeDispatch                   : loaded 2 times (x 92B)
+Class jdk.internal.jimage.ImageReader                                                 : loaded 2 times (x 75B)
+Class it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap                              : loaded 2 times (x 283B)
+Class org.gradle.internal.concurrent.ManagedThreadPoolExecutor                        : loaded 2 times (x 70B)
+Class org.gradle.tooling.internal.adapter.ProtocolToModelAdapter$MethodInvocationCache: loaded 2 times (x 73B)
+Class jdk.internal.jimage.ImageReader$SharedImageReader                               : loaded 2 times (x 95B)
+Class org.gradle.internal.service.ServiceRegistryBuilder                              : loaded 2 times (x 79B)
+Class org.gradle.internal.scripts.ScriptFileUtil                                      : loaded 2 times (x 71B)
+Class org.gradle.internal.event.DefaultListenerManager$EventBroadcast                 : loaded 2 times (x 82B)
+Class com.google.common.collect.ImmutableSet$JdkBackedSetBuilderImpl                  : loaded 2 times (x 76B)
+Class org.gradle.internal.logging.progress.ProgressListener                           : loaded 2 times (x 70B)
+Class org.gradle.internal.service.AbstractServiceMethod                               : loaded 2 times (x 86B)
+Class org.gradle.tooling.internal.adapter.ObjectGraphAdapter                          : loaded 2 times (x 70B)
+Class org.gradle.internal.event.BroadcastDispatch$SingletonDispatch                   : loaded 2 times (x 92B)
+Class org.slf4j.event.LoggingEvent                                                    : loaded 2 times (x 70B)
+Class jdk.internal.jimage.ImageReader$Node                                            : loaded 2 times (x 84B)
+Class org.gradle.internal.service.DefaultServiceRegistry$FactoryMethodService         : loaded 2 times (x 95B)
+Class org.gradle.initialization.layout.BuildLayoutFactory                             : loaded 2 times (x 75B)
+Class jdk.internal.jimage.BasicImageReader$1                                          : loaded 2 times (x 77B)
+Class com.google.common.base.Converter                                                : loaded 2 times (x 90B)
+Class org.gradle.internal.reflect.JavaMethod                                          : loaded 2 times (x 77B)
+Class com.google.common.collect.ImmutableSet$CachingAsList                            : loaded 2 times (x 148B)
+Class org.gradle.internal.service.AnnotatedServiceLifecycleHandler                    : loaded 2 times (x 70B)
+Class org.gradle.internal.classloader.FilteringClassLoader                            : loaded 2 times (x 105B)
+Class org.gradle.internal.logging.progress.DefaultProgressLoggerFactory$State         : loaded 2 times (x 79B)
+Class org.gradle.internal.event.DefaultListenerManager$EventBroadcast$ListenerDispatch: loaded 2 times (x 80B)
+Class org.gradle.internal.dispatch.ProxyDispatchAdapter$DispatchingInvocationHandler  : loaded 2 times (x 76B)
+Class [Lorg.gradle.internal.service.DefaultServiceRegistry$SingletonService$BindState;: loaded 2 times (x 69B)
+Class org.slf4j.helpers.NOPMDCAdapter                                                 : loaded 2 times (x 93B)
+Class jdk.internal.jimage.decompressor.Decompressor                                   : loaded 2 times (x 72B)
+Class org.gradle.internal.concurrent.DefaultExecutorFactory                           : loaded 2 times (x 88B)
+Class org.gradle.tooling.internal.adapter.ProtocolToModelAdapter$MixInTypeMappingAction: loaded 2 times (x 81B)
+Class org.gradle.internal.classloader.FilteringClassLoader$Trie$Builder               : loaded 2 times (x 74B)
+Class org.gradle.internal.reflect.NoSuchMethodException                               : loaded 2 times (x 82B)
+Class org.gradle.internal.service.ServiceLookupException                              : loaded 2 times (x 82B)
+Class org.gradle.tooling.internal.consumer.ProjectConnectionCloseListener             : loaded 2 times (x 70B)
+Class org.slf4j.spi.LoggingEventBuilder                                               : loaded 2 times (x 70B)
+Class org.gradle.internal.time.MonotonicClock                                         : loaded 2 times (x 77B)
+Class org.slf4j.helpers.NOPLoggerFactory                                              : loaded 2 times (x 75B)
+Class org.gradle.internal.service.DefaultServiceRegistry                              : loaded 2 times (x 107B)
+Class it.unimi.dsi.fastutil.longs.Long2ObjectMap$FastEntrySet                         : loaded 2 times (x 70B)
+Class org.gradle.internal.service.ServiceProvider$Visitor                             : loaded 2 times (x 70B)
+Class com.google.common.math.IntMath                                                  : loaded 2 times (x 71B)
+Class [Lorg.gradle.api.JavaVersion;                                                   : loaded 2 times (x 69B)
+Class org.gradle.tooling.model.idea.IdeaDependencyScope                               : loaded 2 times (x 70B)
+Class org.gradle.internal.service.scopes.Scope$Global                                 : loaded 2 times (x 70B)
+Class org.gradle.internal.time.TimeSource                                             : loaded 2 times (x 70B)
+Class org.gradle.internal.classloader.ClassLoaderUtils$LookupClassDefiner             : loaded 2 times (x 79B)
+Class com.google.common.base.Function                                                 : loaded 2 times (x 70B)
+Class org.slf4j.helpers.SubstituteLoggerFactory                                       : loaded 2 times (x 81B)
+Class com.google.common.collect.RegularImmutableList                                  : loaded 2 times (x 213B)
+Class org.gradle.tooling.internal.adapter.ProtocolToModelAdapter$MixInMappingAction   : loaded 2 times (x 80B)
+Class [Lorg.gradle.internal.service.ServiceRegistry;                                  : loaded 2 times (x 69B)
+Class org.gradle.internal.exceptions.ResolutionProvider                               : loaded 2 times (x 70B)
+Class org.gradle.internal.logging.events.OutputEvent                                  : loaded 2 times (x 72B)
+Class jdk.internal.jimage.ImageBufferCache                                            : loaded 2 times (x 71B)
+Class jdk.internal.jrtfs.JrtPath                                                      : loaded 2 times (x 118B)
+Class org.gradle.tooling.model.ProjectIdentifier                                      : loaded 2 times (x 70B)
+Class org.gradle.tooling.model.idea.IdeaCompilerOutput                                : loaded 2 times (x 70B)
+Class it.unimi.dsi.fastutil.Hash                                                      : loaded 2 times (x 70B)
+Class org.gradle.initialization.layout.BuildLayout                                    : loaded 2 times (x 76B)
+Class org.gradle.internal.event.ListenerManager                                       : loaded 2 times (x 70B)
+Class com.google.common.collect.Maps                                                  : loaded 2 times (x 71B)
+Class [Lorg.gradle.tooling.internal.adapter.MethodInvoker;                            : loaded 2 times (x 69B)
+Class org.gradle.internal.logging.events.ProgressCompleteEvent                        : loaded 2 times (x 77B)
+Class org.gradle.internal.service.DefaultServiceLocator$ServiceImplementationComparator: loaded 2 times (x 89B)
+Class org.gradle.internal.reflect.ReflectionCache                                     : loaded 2 times (x 75B)
+Class org.gradle.api.specs.Spec                                                       : loaded 2 times (x 70B)
+Class org.gradle.internal.service.ServiceValidationException                          : loaded 2 times (x 82B)
+Class org.gradle.internal.time.TimeSource$1                                           : loaded 2 times (x 77B)
+Class org.gradle.internal.concurrent.AbstractDelegatingExecutorService                : loaded 2 times (x 110B)
+Class [Lcom.google.common.collect.ImmutableEntry;                                     : loaded 2 times (x 69B)
+Class org.gradle.internal.logging.progress.ProgressLoggerFactory                      : loaded 2 times (x 70B)
+Class org.gradle.internal.service.AnnotatedServiceLifecycleHandler$Registration       : loaded 2 times (x 70B)
+Class org.gradle.internal.logging.events.CategorisedOutputEvent                       : loaded 2 times (x 76B)
+Class it.unimi.dsi.fastutil.HashCommon                                                : loaded 2 times (x 71B)
+Class org.gradle.internal.service.DefaultServiceLocator$ServiceFactory                : loaded 2 times (x 78B)
+Class org.gradle.internal.concurrent.ExecutorFactory                                  : loaded 2 times (x 70B)
+Class org.gradle.tooling.model.BuildModel                                             : loaded 2 times (x 70B)
+Class org.gradle.initialization.SettingsLocation                                      : loaded 2 times (x 74B)
+Class org.gradle.internal.service.MethodHandleBasedServiceMethodFactory               : loaded 2 times (x 75B)
+Class org.gradle.internal.time.Clock                                                  : loaded 2 times (x 70B)
+Class org.slf4j.LoggerFactory                                                         : loaded 2 times (x 71B)
+Class jdk.internal.jimage.ImageReader$Directory                                       : loaded 2 times (x 84B)
+Class com.google.common.collect.Maps$8                                                : loaded 2 times (x 82B)
+Class org.gradle.internal.scripts.ScriptingLanguages                                  : loaded 2 times (x 71B)
+Class org.gradle.tooling.internal.adapter.TypeInspector                               : loaded 2 times (x 73B)
+Class org.gradle.tooling.internal.adapter.ProtocolToModelAdapter$NoOpDecoration       : loaded 2 times (x 79B)
+Class org.gradle.internal.concurrent.DefaultExecutorFactory$TrackedManagedExecutor    : loaded 2 times (x 141B)
+Class org.gradle.tooling.internal.consumer.parameters.FailsafeBuildProgressListenerAdapter: loaded 2 times (x 79B)
+Class org.gradle.internal.classloader.FilteringClassLoader$Spec                       : loaded 2 times (x 86B)
+Class org.gradle.tooling.model.idea.IdeaSingleEntryLibraryDependency                  : loaded 2 times (x 70B)
+Class org.gradle.internal.classloader.VisitableURLClassLoader$InstrumentingVisitableURLClassLoader: loaded 2 times (x 123B)
+Class org.gradle.internal.service.DefaultServiceRegistry$SingletonService$BindState   : loaded 2 times (x 79B)
+Class org.gradle.internal.service.scopes.ParallelListener                             : loaded 2 times (x 70B)
+Class kotlin.collections.SetsKt___SetsKt                                              : loaded 2 times (x 71B)
+Class com.google.common.math.IntMath$1                                                : loaded 2 times (x 71B)
+Class org.gradle.internal.classloader.VisitableURLClassLoader$Spec                    : loaded 2 times (x 74B)
+Class org.gradle.internal.classpath.DefaultClassPath                                  : loaded 2 times (x 90B)
+Class org.gradle.internal.service.RelevantMethods$RelevantMethodsBuilder              : loaded 2 times (x 74B)
+Class org.gradle.util.internal.DefaultGradleVersion                                   : loaded 2 times (x 82B)
+Class org.gradle.internal.event.BroadcastDispatch$EmptyDispatch                       : loaded 2 times (x 92B)
+Class org.gradle.tooling.model.GradleModuleVersion                                    : loaded 2 times (x 70B)
+Class com.google.common.collect.ImmutableSet                                          : loaded 2 times (x 145B)
+Class org.gradle.api.reflect.ObjectInstantiationException                             : loaded 2 times (x 82B)
+Class org.gradle.internal.classloader.ClassLoaderSpec                                 : loaded 2 times (x 71B)
+Class org.gradle.internal.operations.CurrentBuildOperationRef                         : loaded 2 times (x 79B)
+Class org.gradle.internal.scripts.DefaultScriptFileResolver                           : loaded 2 times (x 78B)
+Class org.gradle.internal.service.DefaultServiceAccessToken                           : loaded 2 times (x 76B)
+Class org.slf4j.IMarkerFactory                                                        : loaded 2 times (x 70B)
+Class org.gradle.tooling.internal.adapter.ProtocolToModelAdapter$DefaultViewBuilder   : loaded 2 times (x 80B)
+Class org.gradle.internal.UncheckedException                                          : loaded 2 times (x 82B)
+Class org.gradle.internal.event.DefaultListenerManager$ParallelEventBroadcast         : loaded 2 times (x 82B)
+Class org.gradle.internal.classloader.VisitableURLClassLoader                         : loaded 2 times (x 117B)
+Class org.gradle.internal.service.DefaultServiceRegistry$FixedInstanceService         : loaded 2 times (x 92B)
+Class org.gradle.tooling.internal.adapter.ProtocolToModelAdapter$ViewGraphDetails$1   : loaded 2 times (x 77B)
+Class kotlin.jvm.functions.Function0                                                  : loaded 2 times (x 70B)
+Class org.gradle.internal.scripts.ScriptFileResolver                                  : loaded 2 times (x 70B)
+Class org.gradle.internal.Cast                                                        : loaded 2 times (x 71B)
+Class org.gradle.api.Action                                                           : loaded 2 times (x 70B)
+Class org.gradle.internal.logging.events.operations.ProgressStartBuildOperationProgressDetails: loaded 2 times (x 70B)
+Class org.gradle.internal.service.ServiceCreationException                            : loaded 2 times (x 82B)
+Class org.slf4j.helpers.BasicMarkerFactory                                            : loaded 2 times (x 82B)
+Class com.google.common.collect.ImmutableMap                                          : loaded 2 times (x 120B)
+Class org.gradle.internal.classpath.DefaultClassPath$ImmutableUniqueList$Builder      : loaded 2 times (x 75B)
+Class org.gradle.internal.service.scopes.StatefulListener                             : loaded 2 times (x 70B)
+Class org.gradle.internal.service.scopes.Scope                                        : loaded 2 times (x 70B)
+Class org.gradle.tooling.internal.adapter.WeakIdentityHashMap$AbsentValueProvider     : loaded 2 times (x 70B)
+Class [Lcom.google.common.collect.AbstractMapEntry;                                   : loaded 2 times (x 69B)
+Class com.google.common.collect.ImmutableEntry                                        : loaded 2 times (x 82B)
+Class org.gradle.internal.scripts.ScriptingLanguages$1                                : loaded 2 times (x 78B)
+Class kotlin.annotation.Target                                                        : loaded 2 times (x 70B)
+Class org.gradle.tooling.internal.adapter.ViewBuilder                                 : loaded 2 times (x 70B)
+Class org.gradle.api.GradleException                                                  : loaded 2 times (x 82B)
+Class org.gradle.internal.exceptions.NonGradleCauseExceptionsHolder                   : loaded 2 times (x 70B)
+Class jdk.internal.jimage.ImageStrings                                                : loaded 2 times (x 70B)
+Class org.gradle.tooling.internal.adapter.ProtocolToModelAdapter$TypeSpecificMappingAction: loaded 2 times (x 81B)
+Class com.google.common.collect.CollectPreconditions                                  : loaded 2 times (x 71B)
+Class kotlin.annotation.Retention                                                     : loaded 2 times (x 70B)
+Class kotlin.reflect.KDeclarationContainer                                            : loaded 2 times (x 70B)
+Class org.gradle.internal.service.Service                                             : loaded 2 times (x 70B)
+Class org.gradle.internal.operations.BuildOperationInvocationException                : loaded 2 times (x 82B)
+Class com.google.common.collect.SortedMapDifference                                   : loaded 2 times (x 70B)
+Class it.unimi.dsi.fastutil.objects.ObjectSet                                         : loaded 2 times (x 70B)
+Class org.gradle.tooling.internal.adapter.ProtocolToModelAdapter$ReflectionMethodInvoker: loaded 2 times (x 76B)
+Class it.unimi.dsi.fastutil.longs.AbstractLong2ObjectMap                              : loaded 2 times (x 277B)
+Class [Lorg.gradle.tooling.events.OperationType;                                      : loaded 2 times (x 69B)
+Class org.gradle.internal.logging.events.ProgressEvent                                : loaded 2 times (x 76B)
+Class org.gradle.internal.IoActions                                                   : loaded 2 times (x 71B)
+Class com.google.common.collect.ImmutableSet$RegularSetBuilderImpl                    : loaded 2 times (x 77B)
+Class org.gradle.internal.service.ServiceAccessScope                                  : loaded 2 times (x 70B)
+Class it.unimi.dsi.fastutil.longs.AbstractLong2ObjectFunction                         : loaded 2 times (x 162B)
+Class org.gradle.internal.classloader.ClassLoaderUtils$AbstractClassLoaderLookuper    : loaded 2 times (x 73B)
+Class kotlin.jvm.internal.Intrinsics                                                  : loaded 2 times (x 71B)
+Class kotlin.reflect.KAnnotatedElement                                                : loaded 2 times (x 70B)
+Class org.gradle.internal.event.ScopedListenerManager                                 : loaded 2 times (x 70B)
+Class org.gradle.internal.service.DefaultServiceRegistry$ClassInspector               : loaded 2 times (x 74B)
+Class org.gradle.internal.exceptions.MultiCauseException                              : loaded 2 times (x 70B)
+Class org.gradle.internal.time.CountdownTimer                                         : loaded 2 times (x 70B)
+Class jdk.internal.jrtfs.JrtFileSystem                                                : loaded 2 times (x 102B)
+Class org.gradle.internal.operations.OperationIdentifier                              : loaded 2 times (x 72B)
+Class it.unimi.dsi.fastutil.objects.ObjectCollection                                  : loaded 2 times (x 70B)
+Class [Lorg.gradle.internal.classloader.FilteringClassLoader$Trie;                    : loaded 2 times (x 69B)
+Class org.gradle.internal.classloader.ClassLoaderUtils$ClassLoaderPackagesFetcher     : loaded 2 times (x 70B)
+Class org.gradle.internal.reflect.ReflectionCache$CacheEntry                          : loaded 2 times (x 72B)
+Class kotlin.KotlinNullPointerException                                               : loaded 2 times (x 83B)
+Class org.gradle.tooling.model.idea.IdeaLanguageLevel                                 : loaded 2 times (x 70B)
+Class [Lorg.gradle.internal.service.Service;                                          : loaded 2 times (x 69B)
+Class org.gradle.tooling.internal.adapter.ProtocolToModelAdapter$SafeMethodInvoker    : loaded 2 times (x 76B)
+Class org.gradle.tooling.internal.adapter.WeakIdentityHashMap$WeakKey                 : loaded 2 times (x 79B)
+Class org.gradle.internal.exceptions.DefaultMultiCauseException                       : loaded 2 times (x 95B)
+Class [Lorg.gradle.internal.logging.progress.DefaultProgressLoggerFactory$State;      : loaded 2 times (x 69B)
+Class org.gradle.internal.concurrent.ThreadFactoryImpl                                : loaded 2 times (x 76B)
+Class com.google.common.collect.Hashing                                               : loaded 2 times (x 71B)
+Class org.gradle.internal.service.ServiceAccess$1                                     : loaded 2 times (x 75B)
+Class org.gradle.internal.service.ServiceProvider                                     : loaded 2 times (x 70B)
+Class com.google.common.base.Preconditions                                            : loaded 2 times (x 71B)
+Class kotlin.collections.SetsKt__SetsKt                                               : loaded 2 times (x 71B)
+Class org.gradle.internal.service.TypeStringFormatter                                 : loaded 2 times (x 71B)
+Class org.gradle.internal.time.Time                                                   : loaded 2 times (x 71B)
+Class org.slf4j.helpers.NOP_FallbackServiceProvider                                   : loaded 2 times (x 84B)
+Class org.gradle.internal.service.DefaultServiceRegistry$State                        : loaded 2 times (x 79B)
+Class org.gradle.internal.concurrent.ExecutorPolicy                                   : loaded 2 times (x 70B)
+Class org.gradle.internal.service.ServiceAccess                                       : loaded 2 times (x 71B)
+Class org.gradle.internal.service.DefaultServiceRegistry$SingletonService             : loaded 2 times (x 92B)
+Class org.gradle.internal.operations.BuildOperationMetadata                           : loaded 2 times (x 70B)
+Class com.google.common.collect.Maps$BiMapConverter                                   : loaded 2 times (x 90B)
+Class org.gradle.internal.event.DefaultListenerManager$ExclusiveEventBroadcast        : loaded 2 times (x 82B)
+Class org.gradle.internal.concurrent.Stoppable                                        : loaded 2 times (x 70B)
+Class org.gradle.internal.event.AbstractBroadcastDispatch                             : loaded 2 times (x 78B)
+Class org.gradle.internal.classloader.ClassLoaderUtils$Java9PackagesFetcher           : loaded 2 times (x 77B)
+Class org.gradle.internal.service.ContainsServices                                    : loaded 2 times (x 70B)
+Class org.slf4j.helpers.SubstituteServiceProvider                                     : loaded 2 times (x 85B)
+Class [Lorg.gradle.internal.operations.BuildOperationCategory;                        : loaded 2 times (x 69B)
+Class org.gradle.internal.concurrent.AsyncStoppable                                   : loaded 2 times (x 70B)
+Class org.gradle.tooling.model.build.JavaEnvironment                                  : loaded 2 times (x 70B)
+Class org.gradle.tooling.model.build.BuildEnvironment                                 : loaded 2 times (x 70B)
+Class org.gradle.internal.service.scopes.ListenerService                              : loaded 2 times (x 70B)
+Class org.gradle.internal.time.Timer                                                  : loaded 2 times (x 70B)
+Class org.gradle.internal.classloader.FilteringClassLoader$TrieSet                    : loaded 2 times (x 82B)
+Class org.gradle.tooling.model.DomainObjectSet                                        : loaded 2 times (x 70B)
+Class org.gradle.tooling.internal.adapter.ProtocolToModelAdapter$ChainedMethodInvoker : loaded 2 times (x 76B)
+Class org.gradle.internal.service.DefaultServiceLocator                               : loaded 2 times (x 83B)
+Class org.gradle.tooling.internal.adapter.ProtocolToModelAdapter$ViewGraphDetails     : loaded 2 times (x 72B)
+Class org.gradle.internal.event.DefaultListenerManager$ExclusiveEventBroadcast$1      : loaded 2 times (x 76B)
+Class com.google.common.collect.ImmutableSet$SetBuilderImpl                           : loaded 2 times (x 76B)
+Class kotlin.reflect.KClassifier                                                      : loaded 2 times (x 70B)
+Class org.gradle.internal.service.DefaultServiceRegistry$OwnServices                  : loaded 2 times (x 86B)
+Class org.gradle.util.GradleVersion                                                   : loaded 2 times (x 81B)
+Class com.google.common.collect.ImmutableList$SubList                                 : loaded 2 times (x 209B)
+Class it.unimi.dsi.fastutil.longs.Long2ObjectFunction                                 : loaded 2 times (x 70B)
+Class org.gradle.util.internal.GUtil                                                  : loaded 2 times (x 71B)
+Class org.gradle.internal.service.Provides                                            : loaded 2 times (x 70B)
+Class org.gradle.tooling.internal.adapter.ProtocolToModelAdapter$MethodInvocationCache$MethodInvocationKey: loaded 2 times (x 73B)
+Class org.gradle.api.internal.jvm.JavaVersionParser                                   : loaded 2 times (x 71B)
+Class org.gradle.tooling.internal.consumer.ConnectionParameters                       : loaded 2 times (x 70B)
+Class com.google.common.collect.RegularImmutableSet                                   : loaded 2 times (x 149B)
+Class org.gradle.internal.FileUtils                                                   : loaded 2 times (x 71B)
+Class org.gradle.tooling.internal.adapter.WeakIdentityHashMap                         : loaded 2 times (x 76B)
+Class org.gradle.tooling.internal.adapter.ProtocolToModelAdapter$1                    : loaded 2 times (x 75B)
+Class org.gradle.tooling.internal.adapter.ProtocolToModelAdapter$ViewDecoration       : loaded 2 times (x 70B)
+Class org.gradle.tooling.internal.consumer.DefaultGradleConnector                     : loaded 2 times (x 91B)
+Class org.gradle.internal.event.ListenerBroadcast                                     : loaded 2 times (x 92B)
+Class org.gradle.tooling.GradleConnectionException                                    : loaded 2 times (x 83B)
+Class org.gradle.util.internal.ArrayUtils                                             : loaded 2 times (x 71B)
+Class org.gradle.tooling.internal.adapter.MethodInvoker                               : loaded 2 times (x 70B)
+Class org.gradle.tooling.model.gradle.GradleScript                                    : loaded 2 times (x 70B)
+Class org.gradle.internal.logging.progress.DefaultProgressLoggerFactory$ProgressLoggerImpl: loaded 2 times (x 92B)
+Class org.slf4j.helpers.BasicMDCAdapter                                               : loaded 2 times (x 95B)
+Class org.gradle.tooling.UnsupportedVersionException                                  : loaded 2 times (x 83B)
+
+---------------  S Y S T E M  ---------------
+
+OS:
+ Windows 10 , 64 bit Build 19041 (10.0.19041.5915)
+OS uptime: 1 days 6:14 hours
+
+CPU: total 8 (initial active 8) (8 cores per cpu, 1 threads per core) family 6 model 158 stepping 13 microcode 0xb8, cx8, cmov, fxsr, mmx, 3dnowpref, sse, sse2, sse3, ssse3, sse4.1, sse4.2, popcnt, lzcnt, tsc, tscinvbit, avx, avx2, aes, erms, clmul, bmi1, bmi2, rtm, adx, fma, vzeroupper, clflush, clflushopt, rdtscp, f16c
+Processor Information for the first 8 processors :
+  Max Mhz: 3600, Current Mhz: 3600, Mhz Limit: 3600
+
+Memory: 4k page, system-wide physical 49085M (16104M free)
+TotalPageFile size 61935M (AvailPageFile size 25M)
+current process WorkingSet (physical memory assigned to process): 932M, peak: 932M
+current process commit charge ("private bytes"): 882M, peak: 1019M
+
+vm_info: OpenJDK 64-Bit Server VM (21.0.8+9-b1148.57) for windows-amd64 JRE (21.0.8+9-b1148.57), built on 2025-10-04 by "builduser" with MS VC++ 16.10 / 16.11 (VS2019)
+
+END.

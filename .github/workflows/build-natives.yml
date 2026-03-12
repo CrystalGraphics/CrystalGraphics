@@ -1,0 +1,138 @@
+name: Build Native Libraries (Manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_natives:
+        description: 'Commit built natives back to branch'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['true', 'false']
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '8'
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake build-essential libfreetype6-dev libharfbuzz-dev
+      - name: Build MSDFgen for Linux x64
+        working-directory: msdfgen-java-bindings/native/msdfgen-jni
+        run: |
+          chmod +x build-natives.sh
+          ./build-natives.sh
+      - name: Build FreeType+HarfBuzz for Linux x64
+        working-directory: freetype-harfbuzz-java-bindings/native/freetype-harfbuzz-jni
+        run: |
+          chmod +x build-natives.sh
+          ./build-natives.sh
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: natives-linux-x64
+          path: '**/src/main/resources/natives/linux-x64/'
+
+  build-macos-intel:
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '8'
+      - name: Install dependencies
+        run: brew install cmake freetype harfbuzz
+      - name: Build MSDFgen for macOS x64
+        working-directory: msdfgen-java-bindings/native/msdfgen-jni
+        run: |
+          chmod +x build-natives.sh
+          ./build-natives.sh
+      - name: Build FreeType+HarfBuzz for macOS x64
+        working-directory: freetype-harfbuzz-java-bindings/native/freetype-harfbuzz-jni
+        run: |
+          chmod +x build-natives.sh
+          ./build-natives.sh
+      - name: Upload macOS Intel artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: natives-macos-x64
+          path: '**/src/main/resources/natives/macos-x64/'
+
+  build-macos-arm:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '8'
+      - name: Install dependencies
+        run: brew install cmake freetype harfbuzz
+      - name: Build MSDFgen for macOS ARM64
+        working-directory: msdfgen-java-bindings/native/msdfgen-jni
+        run: |
+          chmod +x build-natives.sh
+          ./build-natives.sh
+      - name: Build FreeType+HarfBuzz for macOS ARM64
+        working-directory: freetype-harfbuzz-java-bindings/native/freetype-harfbuzz-jni
+        run: |
+          chmod +x build-natives.sh
+          ./build-natives.sh
+      - name: Upload macOS ARM64 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: natives-macos-aarch64
+          path: '**/src/main/resources/natives/macos-aarch64/'
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '8'
+      - name: Install CMake
+        run: choco install cmake -y
+      - name: Setup Visual Studio environment
+        uses: ilammy/msvc-dev-cmd@v1
+      - name: Build MSDFgen for Windows x64
+        working-directory: msdfgen-java-bindings/native/msdfgen-jni
+        shell: cmd
+        run: call build-natives.bat
+      - name: Build FreeType+HarfBuzz for Windows x64
+        working-directory: freetype-harfbuzz-java-bindings/native/freetype-harfbuzz-jni
+        shell: cmd
+        run: call build-natives.bat
+      - name: Verify DLL has no MinGW dependencies
+        shell: cmd
+        run: |
+          echo === Checking DLL dependencies ===
+          dumpbin /dependents freetype-harfbuzz-java-bindings\src\main\resources\natives\windows-x64\freetype_harfbuzz_jni.dll
+          echo.
+          echo === Verifying no MinGW runtime DLLs ===
+          dumpbin /dependents freetype-harfbuzz-java-bindings\src\main\resources\natives\windows-x64\freetype_harfbuzz_jni.dll | findstr /i "libwinpthread libgcc libstdc++" && (echo FAIL: Found MinGW runtime dependencies && exit /b 1) || echo PASS: No MinGW runtime dependencies
+      - name: Upload Windows x64 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: natives-windows-x64
+          path: '**/src/main/resources/natives/windows-x64/'
+          if-no-files-found: 'warn'
