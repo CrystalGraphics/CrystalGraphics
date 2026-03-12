@@ -290,6 +290,9 @@ jobs:
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
             -DBUILD_SHARED_LIBS=OFF \
             -DHB_HAVE_FREETYPE=ON \
+            -DHB_HAVE_CORETEXT=OFF \
+            -DHB_HAVE_GLIB=OFF \
+            -DHB_HAVE_ICU=OFF \
             -DFREETYPE_INCLUDE_DIRS="$DEPS_DIR/freetype-${FREETYPE_VERSION}/include" \
             -DFREETYPE_LIBRARY="$FT_LIB"
           cmake --build "$HB_BUILD" --config Release
@@ -379,6 +382,9 @@ jobs:
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
             -DBUILD_SHARED_LIBS=OFF \
             -DHB_HAVE_FREETYPE=ON \
+            -DHB_HAVE_CORETEXT=OFF \
+            -DHB_HAVE_GLIB=OFF \
+            -DHB_HAVE_ICU=OFF \
             -DFREETYPE_INCLUDE_DIRS="$DEPS_DIR/freetype-${FREETYPE_VERSION}/include" \
             -DFREETYPE_LIBRARY="$FT_LIB" \
             -A Win32
