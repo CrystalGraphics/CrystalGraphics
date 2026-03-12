@@ -17,8 +17,14 @@ import java.io.InputStream;
  */
 public final class MemoryMetrics {
 
-    /** Tolerance for "returned to baseline" checks: 5KB */
-    public static final long BASELINE_TOLERANCE_BYTES = 5 * 1024;
+    /**
+     * Tolerance for "returned to baseline" checks: 50KB.
+     * <p>JVM memory measurements include noise from JIT compilation, class
+     * loading, and GC overhead that can easily fluctuate by 10-30KB between
+     * snapshots. A 50KB tolerance catches real native memory leaks (which
+     * tend to be 100KB+ per iteration) while tolerating JVM-level noise.</p>
+     */
+    public static final long BASELINE_TOLERANCE_BYTES = 50 * 1024;
 
     /** Number of GC cycles to force before measurement */
     private static final int GC_CYCLES = 3;

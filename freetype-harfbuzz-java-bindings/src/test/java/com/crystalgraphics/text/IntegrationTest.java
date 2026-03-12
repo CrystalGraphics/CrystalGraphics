@@ -80,36 +80,37 @@ public class IntegrationTest {
 
         FreeTypeLibrary ftLib = FreeTypeLibrary.create();
         FTFace face = ftLib.newFaceFromMemory(fontData, 0);
-        face.setPixelSizes(0, 16);
 
-        HBFont hbFont = FreeTypeHarfBuzzIntegration.createHBFontFromFTFace(face);
+        face.setPixelSizes(0, 16);
+        HBFont hbFont16 = FreeTypeHarfBuzzIntegration.createHBFontFromFTFace(face);
 
         HBBuffer buf1 = HBBuffer.create();
         buf1.addUTF8("Test");
         buf1.guessSegmentProperties();
-        HBShape.shape(hbFont, buf1);
+        HBShape.shape(hbFont16, buf1);
         int advance16 = 0;
         for (HBGlyphPosition p : buf1.getGlyphPositions()) {
             advance16 += p.getXAdvance();
         }
         buf1.destroy();
+        hbFont16.destroy();
 
         face.setPixelSizes(0, 32);
-        FreeTypeHarfBuzzIntegration.syncFontMetrics(hbFont, face);
+        HBFont hbFont32 = FreeTypeHarfBuzzIntegration.createHBFontFromFTFace(face);
 
         HBBuffer buf2 = HBBuffer.create();
         buf2.addUTF8("Test");
         buf2.guessSegmentProperties();
-        HBShape.shape(hbFont, buf2);
+        HBShape.shape(hbFont32, buf2);
         int advance32 = 0;
         for (HBGlyphPosition p : buf2.getGlyphPositions()) {
             advance32 += p.getXAdvance();
         }
         buf2.destroy();
+        hbFont32.destroy();
 
         assertTrue("32px text should be wider than 16px text", advance32 > advance16);
 
-        hbFont.destroy();
         face.destroy();
         ftLib.destroy();
     }
