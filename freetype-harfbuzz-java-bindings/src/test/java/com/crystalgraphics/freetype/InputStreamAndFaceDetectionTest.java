@@ -3,7 +3,6 @@ package com.crystalgraphics.freetype;
 import com.crystalgraphics.harfbuzz.*;
 import com.crystalgraphics.text.FreeTypeHarfBuzzIntegration;
 import org.junit.Test;
-import org.junit.Assume;
 import static org.junit.Assert.*;
 
 import java.io.ByteArrayInputStream;
@@ -12,18 +11,17 @@ import java.io.InputStream;
 
 public class InputStreamAndFaceDetectionTest {
 
-    private boolean nativesAvailable() {
+    private void requireNativesAvailable() {
         try {
             NativeLoader.ensureLoaded();
-            return true;
         } catch (UnsatisfiedLinkError e) {
-            return false;
+            fail("Native library not available: " + e.getMessage());
         }
     }
 
     private byte[] loadTestFontData() {
         InputStream is = getClass().getResourceAsStream("/test-font.ttf");
-        Assume.assumeNotNull("Test font not found", is);
+        assertNotNull("Test font not found", is);
         return readAllBytes(is);
     }
 
@@ -31,7 +29,7 @@ public class InputStreamAndFaceDetectionTest {
 
     @Test
     public void testLoadFaceFromByteArrayInputStream() {
-        Assume.assumeTrue("Natives not available", nativesAvailable());
+        requireNativesAvailable();
         byte[] fontData = loadTestFontData();
 
         FreeTypeLibrary lib = FreeTypeLibrary.create();
@@ -55,7 +53,7 @@ public class InputStreamAndFaceDetectionTest {
 
     @Test
     public void testLoadFaceFromStreamDefaultIndex() {
-        Assume.assumeTrue("Natives not available", nativesAvailable());
+        requireNativesAvailable();
         byte[] fontData = loadTestFontData();
 
         FreeTypeLibrary lib = FreeTypeLibrary.create();
@@ -75,7 +73,7 @@ public class InputStreamAndFaceDetectionTest {
 
     @Test
     public void testStreamLoadedFaceWorksIdenticallyToMemoryLoaded() {
-        Assume.assumeTrue("Natives not available", nativesAvailable());
+        requireNativesAvailable();
         byte[] fontData = loadTestFontData();
 
         FreeTypeLibrary lib = FreeTypeLibrary.create();
@@ -117,7 +115,7 @@ public class InputStreamAndFaceDetectionTest {
 
     @Test
     public void testMultipleFacesFromSameData() {
-        Assume.assumeTrue("Natives not available", nativesAvailable());
+        requireNativesAvailable();
         byte[] fontData = loadTestFontData();
 
         FreeTypeLibrary lib = FreeTypeLibrary.create();
@@ -150,7 +148,7 @@ public class InputStreamAndFaceDetectionTest {
 
     @Test(expected = IllegalArgumentException.class)
     public void testLoadFaceFromNullStream() throws IOException {
-        Assume.assumeTrue("Natives not available", nativesAvailable());
+        requireNativesAvailable();
         FreeTypeLibrary lib = FreeTypeLibrary.create();
         try {
             lib.newFaceFromStream(null, 0);
@@ -161,7 +159,7 @@ public class InputStreamAndFaceDetectionTest {
 
     @Test(expected = IllegalArgumentException.class)
     public void testLoadFaceFromNullData() {
-        Assume.assumeTrue("Natives not available", nativesAvailable());
+        requireNativesAvailable();
         FreeTypeLibrary lib = FreeTypeLibrary.create();
         try {
             lib.newFaceFromMemory(null, 0);
@@ -172,7 +170,7 @@ public class InputStreamAndFaceDetectionTest {
 
     @Test(expected = IllegalArgumentException.class)
     public void testLoadFaceFromEmptyData() {
-        Assume.assumeTrue("Natives not available", nativesAvailable());
+        requireNativesAvailable();
         FreeTypeLibrary lib = FreeTypeLibrary.create();
         try {
             lib.newFaceFromMemory(new byte[0], 0);
@@ -183,7 +181,7 @@ public class InputStreamAndFaceDetectionTest {
 
     @Test
     public void testStreamLoadedFaceWithHarfBuzzShaping() {
-        Assume.assumeTrue("Natives not available", nativesAvailable());
+        requireNativesAvailable();
         byte[] fontData = loadTestFontData();
 
         FreeTypeLibrary lib = FreeTypeLibrary.create();
@@ -219,7 +217,7 @@ public class InputStreamAndFaceDetectionTest {
 
     @Test
     public void testHBFontCreateFromMemory() {
-        Assume.assumeTrue("Natives not available", nativesAvailable());
+        requireNativesAvailable();
         byte[] fontData = loadTestFontData();
 
         HBFont font = HBFont.createFromMemory(fontData, 0);
@@ -241,7 +239,7 @@ public class InputStreamAndFaceDetectionTest {
 
     @Test
     public void testHBFontCreateFromMemoryDefaultIndex() {
-        Assume.assumeTrue("Natives not available", nativesAvailable());
+        requireNativesAvailable();
         byte[] fontData = loadTestFontData();
 
         HBFont font = HBFont.createFromMemory(fontData);
@@ -259,7 +257,7 @@ public class InputStreamAndFaceDetectionTest {
 
     @Test
     public void testHBFontCreateFromStream() throws IOException {
-        Assume.assumeTrue("Natives not available", nativesAvailable());
+        requireNativesAvailable();
         byte[] fontData = loadTestFontData();
 
         ByteArrayInputStream bais = new ByteArrayInputStream(fontData);
@@ -278,7 +276,7 @@ public class InputStreamAndFaceDetectionTest {
 
     @Test
     public void testHBFontCreateFromStreamDefaultIndex() throws IOException {
-        Assume.assumeTrue("Natives not available", nativesAvailable());
+        requireNativesAvailable();
         byte[] fontData = loadTestFontData();
 
         ByteArrayInputStream bais = new ByteArrayInputStream(fontData);
@@ -290,19 +288,19 @@ public class InputStreamAndFaceDetectionTest {
 
     @Test(expected = IllegalArgumentException.class)
     public void testHBFontCreateFromNullMemory() {
-        Assume.assumeTrue("Natives not available", nativesAvailable());
+        requireNativesAvailable();
         HBFont.createFromMemory(null, 0);
     }
 
     @Test(expected = IllegalArgumentException.class)
     public void testHBFontCreateFromEmptyMemory() {
-        Assume.assumeTrue("Natives not available", nativesAvailable());
+        requireNativesAvailable();
         HBFont.createFromMemory(new byte[0], 0);
     }
 
     @Test(expected = IllegalArgumentException.class)
     public void testHBFontCreateFromNullStream() throws IOException {
-        Assume.assumeTrue("Natives not available", nativesAvailable());
+        requireNativesAvailable();
         HBFont.createFromStream(null, 0);
     }
 
@@ -310,7 +308,7 @@ public class InputStreamAndFaceDetectionTest {
 
     @Test
     public void testGetFaceCountSingleFaceFont() {
-        Assume.assumeTrue("Natives not available", nativesAvailable());
+        requireNativesAvailable();
         byte[] fontData = loadTestFontData();
 
         FreeTypeLibrary lib = FreeTypeLibrary.create();
@@ -324,7 +322,7 @@ public class InputStreamAndFaceDetectionTest {
 
     @Test
     public void testGetFaceCountFromStream() throws IOException {
-        Assume.assumeTrue("Natives not available", nativesAvailable());
+        requireNativesAvailable();
         byte[] fontData = loadTestFontData();
 
         FreeTypeLibrary lib = FreeTypeLibrary.create();
@@ -339,7 +337,7 @@ public class InputStreamAndFaceDetectionTest {
 
     @Test
     public void testGetNumFacesFromLoadedFace() {
-        Assume.assumeTrue("Natives not available", nativesAvailable());
+        requireNativesAvailable();
         byte[] fontData = loadTestFontData();
 
         FreeTypeLibrary lib = FreeTypeLibrary.create();
@@ -355,7 +353,7 @@ public class InputStreamAndFaceDetectionTest {
 
     @Test
     public void testDetectFaceIndicesSingleFont() {
-        Assume.assumeTrue("Natives not available", nativesAvailable());
+        requireNativesAvailable();
         byte[] fontData = loadTestFontData();
 
         FreeTypeLibrary lib = FreeTypeLibrary.create();
@@ -371,7 +369,7 @@ public class InputStreamAndFaceDetectionTest {
 
     @Test
     public void testDetectFaceIndicesFromStream() throws IOException {
-        Assume.assumeTrue("Natives not available", nativesAvailable());
+        requireNativesAvailable();
         byte[] fontData = loadTestFontData();
 
         FreeTypeLibrary lib = FreeTypeLibrary.create();
@@ -388,7 +386,7 @@ public class InputStreamAndFaceDetectionTest {
 
     @Test
     public void testFaceDetectorGetFaceCount() {
-        Assume.assumeTrue("Natives not available", nativesAvailable());
+        requireNativesAvailable();
         byte[] fontData = loadTestFontData();
 
         FreeTypeLibrary lib = FreeTypeLibrary.create();
@@ -402,7 +400,7 @@ public class InputStreamAndFaceDetectionTest {
 
     @Test(expected = IllegalArgumentException.class)
     public void testGetFaceCountNullData() {
-        Assume.assumeTrue("Natives not available", nativesAvailable());
+        requireNativesAvailable();
         FreeTypeLibrary lib = FreeTypeLibrary.create();
         try {
             lib.getFaceCount((byte[]) null);
@@ -413,7 +411,7 @@ public class InputStreamAndFaceDetectionTest {
 
     @Test(expected = IllegalArgumentException.class)
     public void testGetFaceCountEmptyData() {
-        Assume.assumeTrue("Natives not available", nativesAvailable());
+        requireNativesAvailable();
         FreeTypeLibrary lib = FreeTypeLibrary.create();
         try {
             lib.getFaceCount(new byte[0]);
@@ -426,7 +424,7 @@ public class InputStreamAndFaceDetectionTest {
 
     @Test
     public void testDetectAndLoadFromStream() throws IOException {
-        Assume.assumeTrue("Natives not available", nativesAvailable());
+        requireNativesAvailable();
         byte[] fontData = loadTestFontData();
 
         FreeTypeLibrary lib = FreeTypeLibrary.create();
@@ -447,7 +445,7 @@ public class InputStreamAndFaceDetectionTest {
 
     @Test
     public void testMemoryCleanupAfterStreamLoad() {
-        Assume.assumeTrue("Natives not available", nativesAvailable());
+        requireNativesAvailable();
         byte[] fontData = loadTestFontData();
 
         FreeTypeLibrary lib = FreeTypeLibrary.create();
@@ -475,7 +473,7 @@ public class InputStreamAndFaceDetectionTest {
 
     @Test
     public void testInvalidFontDataThrows() {
-        Assume.assumeTrue("Natives not available", nativesAvailable());
+        requireNativesAvailable();
         FreeTypeLibrary lib = FreeTypeLibrary.create();
         try {
             byte[] garbage = new byte[]{0x00, 0x01, 0x02, 0x03, 0x04};
@@ -492,7 +490,7 @@ public class InputStreamAndFaceDetectionTest {
 
     @Test
     public void testInvalidFontDataFaceCountThrows() {
-        Assume.assumeTrue("Natives not available", nativesAvailable());
+        requireNativesAvailable();
         FreeTypeLibrary lib = FreeTypeLibrary.create();
         try {
             byte[] garbage = new byte[]{0x00, 0x01, 0x02, 0x03, 0x04};

@@ -41,7 +41,7 @@ public abstract class MemoryLeakDetectionBase {
     }
 
     protected static void assumeNativeAvailable() {
-        org.junit.Assume.assumeTrue("Native library not available", NATIVE_AVAILABLE);
+        org.junit.Assert.assertTrue("Native library not available", NATIVE_AVAILABLE);
     }
 
     protected Shape createSimpleSquare() {

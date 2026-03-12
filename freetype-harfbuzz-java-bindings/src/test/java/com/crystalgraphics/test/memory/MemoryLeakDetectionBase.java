@@ -1,6 +1,6 @@
 package com.crystalgraphics.test.memory;
 
-import org.junit.Assume;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.rules.TestName;
@@ -25,20 +25,20 @@ public abstract class MemoryLeakDetectionBase {
                 nativesAvailable = Boolean.FALSE;
             }
         }
-        Assume.assumeTrue("Native library not available — skipping", nativesAvailable);
+        Assert.assertTrue("Native library not available", nativesAvailable);
     }
 
     protected byte[] loadTestFontData() {
         byte[] data = MemoryMetrics.readAllBytes(
                 getClass().getResourceAsStream(TEST_FONT_RESOURCE));
-        Assume.assumeNotNull("Test font not found on classpath", data);
+        Assert.assertNotNull("Test font not found on classpath", data);
         return data;
     }
 
     protected String extractTestFontToFile() {
         String path = MemoryMetrics.extractResourceToTempFile(
                 getClass(), TEST_FONT_RESOURCE, ".ttf");
-        Assume.assumeNotNull("Test font not found on classpath", path);
+        Assert.assertNotNull("Test font not found on classpath", path);
         return path;
     }
 
