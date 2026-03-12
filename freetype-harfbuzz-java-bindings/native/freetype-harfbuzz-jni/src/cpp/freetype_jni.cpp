@@ -270,4 +270,38 @@ JNIEXPORT void JNICALL Java_com_crystalgraphics_freetype_FTFace_nDoneFace
     }
 }
 
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_freetype_FreeTypeLibrary_nGetFaceCount
+  (JNIEnv *env, jclass, jlong libraryPtr, jstring jFilePath) {
+    FT_Library library = (FT_Library)(intptr_t)libraryPtr;
+    const char *filePath = env->GetStringUTFChars(jFilePath, NULL);
+    FT_Face face;
+    FT_Error err = FT_New_Face(library, filePath, 0, &face);
     env->ReleaseStringUTFChars(jFilePath, filePath);
+    if (err) {
+        throwFreeTypeException(env, err, "FT_New_Face failed (face count query)");
+        return 0;
+    }
+    jint numFaces = (jint)face->num_faces;
+    FT_Done_Face(face);
+    return numFaces;
+}
+
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_freetype_FreeTypeLibrary_nGetFaceCountFromMemory
+  (JNIEnv *env, jclass, jlong libraryPtr, jbyteArray jData, jint dataLen) {
+    FT_Library library = (FT_Library)(intptr_t)libraryPtr;
+    jbyte *data = env->GetByteArrayElements(jData, NULL);
+
+    FT_Face face;
+    FT_Error err = FT_New_Memory_Face(library, (const FT_Byte *)data, dataLen, 0, &face);
+    if (err) {
+        env->ReleaseByteArrayElements(jData, data, JNI_ABORT);
+        throwFreeTypeException(env, err, "FT_New_Memory_Face failed (face count query)");
+        return 0;
+    }
+    jint numFaces = (jint)face->num_faces;
+    FT_Done_Face(face);
+    env->ReleaseByteArrayElements(jData, data, JNI_ABORT);
+    return numFaces;
+}
+
+} // extern "C"

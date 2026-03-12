@@ -116,8 +116,8 @@ public class PlatformSpecificMemoryLeakTests extends MemoryLeakDetectionBase {
                 fail("Unexpected platform: " + platform);
         }
 
-        assertTrue("Arch should be x86_64 or aarch64",
-                arch.equals("x86_64") || arch.equals("aarch64"));
+        assertTrue("Arch should be x64 or aarch64",
+                arch.equals("x64") || arch.equals("aarch64"));
 
         assertTrue("Native library should be loaded",
                 com.crystalgraphics.freetype.NativeLoader.isLoaded());
@@ -131,7 +131,7 @@ public class PlatformSpecificMemoryLeakTests extends MemoryLeakDetectionBase {
         if (platform == PlatformTools.Platform.MACOS && arch.equals("aarch64")) {
             System.out.println("  APPLE SILICON DETECTED: Running native ARM64");
             System.out.println("  Verify with: file <path-to-dylib> should show arm64");
-        } else if (platform == PlatformTools.Platform.MACOS && arch.equals("x86_64")) {
+        } else if (platform == PlatformTools.Platform.MACOS && arch.equals("x64")) {
             System.out.println("  macOS Intel or Rosetta 2 detected");
         }
 

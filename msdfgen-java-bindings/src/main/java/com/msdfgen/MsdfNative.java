@@ -217,11 +217,111 @@ final class MsdfNative {
      */
     static native long nBitmapGetPixelPointer(long bitmapHandle, int type);
 
-    // --- FreeType extension (optional, only if built with MSDFGEN_EXTENSIONS) ---
+    // --- FreeType extension (optional, only if built with MSDFGEN_USE_FREETYPE) ---
+
+    /**
+     * Returns whether the native library was compiled with FreeType support.
+     */
     static native boolean nHasFreetypeSupport();
-    static native long nFreetypeInit();
+
+    /**
+     * Initializes a FreeType library instance.
+     *
+     * @param handleOut single-element array to receive the FreeType handle
+     * @return MSDF_SUCCESS on success, error code otherwise
+     */
+    static native int nFreetypeInit(long[] handleOut);
+
+    /**
+     * Deinitializes and frees a FreeType library instance.
+     *
+     * @param ftHandle the FreeType handle from {@link #nFreetypeInit}
+     */
     static native void nFreetypeDeinit(long ftHandle);
-    static native long nLoadFont(long ftHandle, String filename);
+
+    /**
+     * Loads a font from a file path.
+     *
+     * @param ftHandle the FreeType handle
+     * @param filename path to the font file (TTF, OTF, etc.)
+     * @param fontHandleOut single-element array to receive the font handle
+     * @return MSDF_SUCCESS on success, error code otherwise
+     */
+    static native int nLoadFont(long ftHandle, String filename, long[] fontHandleOut);
+
+    /**
+     * Loads a font from raw byte data in memory.
+     *
+     * @param ftHandle the FreeType handle
+     * @param data raw font file data
+     * @param dataLen length of the data array
+     * @param fontHandleOut single-element array to receive the font handle
+     * @return MSDF_SUCCESS on success, error code otherwise
+     */
+    static native int nLoadFontData(long ftHandle, byte[] data, int dataLen, long[] fontHandleOut);
+
+    /**
+     * Destroys a loaded font and frees its resources.
+     *
+     * @param fontHandle the font handle from {@link #nLoadFont} or {@link #nLoadFontData}
+     */
     static native void nDestroyFont(long fontHandle);
-    static native long nLoadGlyph(long fontHandle, int unicode, long shapeOut);
+
+    /**
+     * Loads a glyph shape from a font by Unicode codepoint.
+     *
+     * @param fontHandle the font handle
+     * @param unicode the Unicode codepoint (e.g., 'A' = 65)
+     * @param coordinateScaling coordinate scaling mode (0=FONT_SCALING_NONE, 1=FONT_SCALING_EM_NORMALIZED, 2=FONT_SCALING_LEGACY)
+     * @param advanceOut single-element array to receive the glyph advance width (may be null)
+     * @param shapeHandleOut single-element array to receive the new Shape handle (caller must free)
+     * @return MSDF_SUCCESS on success, error code otherwise
+     */
+    static native int nLoadGlyph(long fontHandle, int unicode, int coordinateScaling,
+                                 double[] advanceOut, long[] shapeHandleOut);
+
+    /**
+     * Loads a glyph shape from a font by glyph index.
+     *
+     * @param fontHandle the font handle
+     * @param glyphIndex the glyph index (not Unicode codepoint)
+     * @param coordinateScaling coordinate scaling mode
+     * @param advanceOut single-element array to receive the glyph advance width (may be null)
+     * @param shapeHandleOut single-element array to receive the new Shape handle (caller must free)
+     * @return MSDF_SUCCESS on success, error code otherwise
+     */
+    static native int nLoadGlyphByIndex(long fontHandle, int glyphIndex, int coordinateScaling,
+                                        double[] advanceOut, long[] shapeHandleOut);
+
+    /**
+     * Gets the glyph index for a Unicode codepoint.
+     *
+     * @param fontHandle the font handle
+     * @param unicode the Unicode codepoint
+     * @param indexOut single-element array to receive the glyph index
+     * @return MSDF_SUCCESS on success, error code otherwise
+     */
+    static native int nGetGlyphIndex(long fontHandle, int unicode, int[] indexOut);
+
+    /**
+     * Gets kerning between two Unicode codepoints.
+     *
+     * @param fontHandle the font handle
+     * @param cp1 left codepoint
+     * @param cp2 right codepoint
+     * @param kerningOut single-element array to receive the kerning value
+     * @return MSDF_SUCCESS on success, error code otherwise
+     */
+    static native int nGetKerning(long fontHandle, int cp1, int cp2, double[] kerningOut);
+
+    /**
+     * Gets kerning between two glyph indices.
+     *
+     * @param fontHandle the font handle
+     * @param index1 left glyph index
+     * @param index2 right glyph index
+     * @param kerningOut single-element array to receive the kerning value
+     * @return MSDF_SUCCESS on success, error code otherwise
+     */
+    static native int nGetKerningByIndex(long fontHandle, int index1, int index2, double[] kerningOut);
 }

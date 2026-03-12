@@ -24,8 +24,8 @@ public class FreeTypeTest {
         assertEquals(2, parts.length);
         assertTrue("OS should be windows, linux, or macos",
                 parts[0].equals("windows") || parts[0].equals("linux") || parts[0].equals("macos"));
-        assertTrue("Arch should be x86_64 or aarch64",
-                parts[1].equals("x86_64") || parts[1].equals("aarch64"));
+        assertTrue("Arch should be x64 or aarch64",
+                parts[1].equals("x64") || parts[1].equals("aarch64"));
     }
 
     @Test

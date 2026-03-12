@@ -2,6 +2,10 @@ package com.crystalgraphics.harfbuzz;
 
 import com.crystalgraphics.freetype.NativeLoader;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+
 /**
  * HarfBuzz font object. Wraps a native hb_font_t pointer.
  * Created from an FT_Face via {@link com.crystalgraphics.text.FreeTypeHarfBuzzIntegration}
@@ -23,6 +27,39 @@ public final class HBFont {
             throw new RuntimeException("Failed to create HarfBuzz font from: " + filePath);
         }
         return new HBFont(ptr);
+    }
+
+    public static HBFont createFromFile(String filePath) {
+        return createFromFile(filePath, 0);
+    }
+
+    public static HBFont createFromMemory(byte[] data, int faceIndex) {
+        NativeLoader.ensureLoaded();
+        if (data == null || data.length == 0) {
+            throw new IllegalArgumentException("data must not be null or empty");
+        }
+        long ptr = nCreateFromMemory(data, data.length, faceIndex);
+        if (ptr == 0) {
+            throw new RuntimeException("Failed to create HarfBuzz font from memory ("
+                    + data.length + " bytes)");
+        }
+        return new HBFont(ptr);
+    }
+
+    public static HBFont createFromMemory(byte[] data) {
+        return createFromMemory(data, 0);
+    }
+
+    public static HBFont createFromStream(InputStream stream, int faceIndex) throws IOException {
+        if (stream == null) {
+            throw new IllegalArgumentException("stream must not be null");
+        }
+        byte[] data = readAllBytes(stream);
+        return createFromMemory(data, faceIndex);
+    }
+
+    public static HBFont createFromStream(InputStream stream) throws IOException {
+        return createFromStream(stream, 0);
     }
 
     public void setScale(int xScale, int yScale) {
@@ -82,9 +119,20 @@ public final class HBFont {
     }
 
     private static native long nCreateFromFile(String filePath, int faceIndex);
+    private static native long nCreateFromMemory(byte[] data, int dataLen, int faceIndex);
     private static native void nDestroy(long fontPtr);
     private static native void nSetScale(long fontPtr, int xScale, int yScale);
     private static native int[] nGetScale(long fontPtr);
     private static native void nSetPpem(long fontPtr, int xPpem, int yPpem);
     private static native int[] nGetPpem(long fontPtr);
+
+    private static byte[] readAllBytes(InputStream stream) throws IOException {
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        byte[] buf = new byte[8192];
+        int n;
+        while ((n = stream.read(buf)) != -1) {
+            bos.write(buf, 0, n);
+        }
+        return bos.toByteArray();
+    }
 }

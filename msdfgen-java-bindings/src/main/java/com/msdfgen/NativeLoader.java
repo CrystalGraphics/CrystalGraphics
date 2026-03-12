@@ -37,6 +37,9 @@ public final class NativeLoader {
             throw new UnsatisfiedLinkError("Native library previously failed to load: " + loadError.getMessage());
         }
 
+        Throwable explicitPathError = null;
+        Throwable classpathError = null;
+
         // Strategy 1: Explicit path via system property
         String explicitPath = System.getProperty("msdfgen.library.path");
         if (explicitPath != null && !explicitPath.isEmpty()) {
@@ -45,7 +48,7 @@ public final class NativeLoader {
                 loaded = true;
                 return;
             } catch (UnsatisfiedLinkError e) {
-                // Fall through to next strategy
+                explicitPathError = e;
             }
         }
 
@@ -55,7 +58,7 @@ public final class NativeLoader {
             loaded = true;
             return;
         } catch (Throwable e) {
-            // Fall through to next strategy
+            classpathError = e;
         }
 
         // Strategy 3: System library path
@@ -65,13 +68,22 @@ public final class NativeLoader {
             return;
         } catch (UnsatisfiedLinkError e) {
             loadError = e;
-            throw new UnsatisfiedLinkError(
-                "Failed to load native library '" + LIBRARY_NAME + "'. " +
-                "Tried: classpath extraction, system library path. " +
-                "Platform: " + getOsName() + "-" + getArchName() + ". " +
-                "Set -Dmsdfgen.library.path=/path/to/" + mapLibraryName(LIBRARY_NAME) + " to specify explicitly. " +
-                "Error: " + e.getMessage()
-            );
+            String platform = getOsName() + "-" + getArchName();
+            StringBuilder msg = new StringBuilder();
+            msg.append("Failed to load native library '").append(LIBRARY_NAME)
+               .append("' for platform '").append(platform).append("'.\n");
+            msg.append("Tried:\n");
+            if (explicitPath != null) {
+                msg.append("  1. Explicit path: ").append(explicitPath);
+                if (explicitPathError != null) msg.append(" -> ").append(explicitPathError.getMessage());
+                msg.append("\n");
+            }
+            msg.append("  2. Classpath: /natives/").append(platform).append("/").append(mapLibraryName(LIBRARY_NAME));
+            if (classpathError != null) msg.append(" -> ").append(classpathError.getMessage());
+            msg.append("\n");
+            msg.append("  3. System library path -> ").append(e.getMessage()).append("\n");
+            msg.append("Set -Dmsdfgen.library.path=/path/to/").append(mapLibraryName(LIBRARY_NAME)).append(" to specify explicitly.");
+            throw new UnsatisfiedLinkError(msg.toString());
         }
     }
 
@@ -125,7 +137,6 @@ public final class NativeLoader {
             }
         }
     }
-
     private static java.io.File createTempDirectory(String prefix) throws java.io.IOException {
         java.io.File tempFile = java.io.File.createTempFile(prefix, "");
         if (!tempFile.delete()) {

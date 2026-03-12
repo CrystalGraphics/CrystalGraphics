@@ -70,7 +70,7 @@ public final class NativeLoader {
 
     /**
      * Returns the platform identifier string used for native library resolution.
-     * Format: {@code {os}-{arch}} (e.g., "windows-x86_64", "linux-aarch64", "macos-aarch64")
+     * Format: {@code {os}-{arch}} (e.g., "windows-x64", "linux-aarch64", "macos-aarch64")
      *
      * @return the platform identifier
      */
@@ -101,21 +101,34 @@ public final class NativeLoader {
         }
     }
 
+    private static final String LOG_PREFIX = "[CrystalGraphics NativeLoader] ";
+
     private static void loadNativeLibrary() {
+        String platform = getPlatformIdentifier();
+        System.err.println(LOG_PREFIX + "Platform: " + platform);
+        System.err.println(LOG_PREFIX + "Library: " + getLibraryFileName());
+        System.err.println(LOG_PREFIX + "os.name=" + System.getProperty("os.name")
+                + " os.arch=" + System.getProperty("os.arch"));
+
         // Strategy 1: System property override
         String customPath = System.getProperty("freetype.harfbuzz.native.path");
         if (customPath != null && !customPath.isEmpty()) {
             File libFile = new File(customPath, getLibraryFileName());
+            System.err.println(LOG_PREFIX + "Strategy 1: custom path " + libFile.getAbsolutePath()
+                    + " exists=" + libFile.exists());
             if (libFile.exists()) {
                 try {
                     System.load(libFile.getAbsolutePath());
                     loaded.set(true);
+                    System.err.println(LOG_PREFIX + "Loaded via custom path");
                     return;
                 } catch (UnsatisfiedLinkError e) {
                     loadError = e;
-                    // Fall through to next strategy
+                    System.err.println(LOG_PREFIX + "Strategy 1 FAILED: " + e.getMessage());
                 }
             }
+        } else {
+            System.err.println(LOG_PREFIX + "Strategy 1: skipped (property not set)");
         }
 
         // Strategy 2: Extract from classpath (JAR resources)
@@ -125,23 +138,25 @@ public final class NativeLoader {
             return;
         } catch (UnsatisfiedLinkError e) {
             loadError = e;
-            // Fall through to next strategy
+            System.err.println(LOG_PREFIX + "Strategy 2 FAILED: " + e.getMessage());
         } catch (IOException e) {
             loadError = e;
-            // Fall through to next strategy
+            System.err.println(LOG_PREFIX + "Strategy 2 FAILED (IO): " + e.getMessage());
         }
 
         // Strategy 3: System library path
         try {
+            System.err.println(LOG_PREFIX + "Strategy 3: System.loadLibrary('" + LIBRARY_NAME + "')");
             System.loadLibrary(LIBRARY_NAME);
             loaded.set(true);
+            System.err.println(LOG_PREFIX + "Loaded via system library path");
             return;
         } catch (UnsatisfiedLinkError e) {
             loadError = e;
+            System.err.println(LOG_PREFIX + "Strategy 3 FAILED: " + e.getMessage());
         }
 
         // All strategies failed
-        String platform = getPlatformIdentifier();
         StringBuilder msg = new StringBuilder();
         msg.append("Failed to load native library '").append(LIBRARY_NAME)
            .append("' for platform '").append(platform).append("'.\n\n");
@@ -167,12 +182,15 @@ public final class NativeLoader {
     private static void loadFromClasspath() throws IOException {
         String platform = getPlatformIdentifier();
         String resourcePath = "/natives/" + platform + "/" + getLibraryFileName();
+        System.err.println(LOG_PREFIX + "Strategy 2: classpath resource " + resourcePath);
 
         InputStream in = NativeLoader.class.getResourceAsStream(resourcePath);
         if (in == null) {
+            System.err.println(LOG_PREFIX + "Resource NOT FOUND: " + resourcePath);
             throw new UnsatisfiedLinkError(
                     "Native library not found in classpath: " + resourcePath);
         }
+        System.err.println(LOG_PREFIX + "Resource FOUND, extracting...");
 
         File tempDir = createTempDirectory();
         File tempFile = new File(tempDir, getLibraryFileName());
@@ -180,12 +198,14 @@ public final class NativeLoader {
         tempDir.deleteOnExit();
 
         FileOutputStream out = null;
+        int totalBytes = 0;
         try {
             out = new FileOutputStream(tempFile);
             byte[] buffer = new byte[8192];
             int bytesRead;
             while ((bytesRead = in.read(buffer)) != -1) {
                 out.write(buffer, 0, bytesRead);
+                totalBytes += bytesRead;
             }
         } finally {
             if (out != null) {
@@ -193,10 +213,17 @@ public final class NativeLoader {
             }
             in.close();
         }
+        System.err.println(LOG_PREFIX + "Extracted " + totalBytes + " bytes to " + tempFile.getAbsolutePath());
+        System.err.println(LOG_PREFIX + "File size on disk: " + tempFile.length());
 
-        System.load(tempFile.getAbsolutePath());
+        try {
+            System.load(tempFile.getAbsolutePath());
+            System.err.println(LOG_PREFIX + "System.load() SUCCEEDED");
+        } catch (UnsatisfiedLinkError e) {
+            System.err.println(LOG_PREFIX + "System.load() FAILED: " + e.getMessage());
+            throw e;
+        }
     }
-
     private static File createTempDirectory() throws IOException {
         File tempFile = File.createTempFile("freetype_harfbuzz_jni_", "");
         if (!tempFile.delete()) {
@@ -231,18 +258,18 @@ public final class NativeLoader {
     /**
      * Detects the CPU architecture.
      *
-     * @return "x86_64" or "aarch64"
+     * @return "x64" or "aarch64"
      */
     static String detectArch() {
         String arch = System.getProperty("os.arch", "").toLowerCase();
         if (arch.equals("amd64") || arch.equals("x86_64")) {
-            return "x86_64";
+            return "x64";
         }
         if (arch.equals("aarch64") || arch.equals("arm64")) {
             return "aarch64";
         }
         throw new UnsupportedOperationException(
                 "Unsupported architecture: " + System.getProperty("os.arch")
-                + ". Supported: x86_64 (amd64), aarch64 (arm64)");
+                + ". Supported: x64 (amd64/x86_64), aarch64 (arm64)");
     }
 }
