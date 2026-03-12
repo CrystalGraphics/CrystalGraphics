@@ -18,6 +18,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
@@ -46,6 +48,8 @@ jobs:
     runs-on: macos-13
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
@@ -72,6 +76,8 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
@@ -98,6 +104,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
@@ -114,6 +122,14 @@ jobs:
         working-directory: freetype-harfbuzz-java-bindings/native/freetype-harfbuzz-jni
         shell: cmd
         run: call build-natives.bat
+      - name: Verify DLL has no MinGW dependencies
+        shell: cmd
+        run: |
+          echo === Checking DLL dependencies ===
+          dumpbin /dependents freetype-harfbuzz-java-bindings\src\main\resources\natives\windows-x64\freetype_harfbuzz_jni.dll
+          echo.
+          echo === Verifying no MinGW runtime DLLs ===
+          dumpbin /dependents freetype-harfbuzz-java-bindings\src\main\resources\natives\windows-x64\freetype_harfbuzz_jni.dll | findstr /i "libwinpthread libgcc libstdc++" && (echo FAIL: Found MinGW runtime dependencies && exit /b 1) || echo PASS: No MinGW runtime dependencies
       - name: Upload Windows x64 artifacts
         uses: actions/upload-artifact@v4
         with:

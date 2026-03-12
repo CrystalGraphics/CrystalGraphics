@@ -83,6 +83,22 @@ elseif(WIN32)
     set_target_properties(freetype_harfbuzz_jni PROPERTIES
         SUFFIX ".dll"
     )
+    # When building with MinGW, statically link the C/C++ runtime and pthreads
+    # to avoid requiring libgcc_s_seh-1.dll, libstdc++-6.dll, libwinpthread-1.dll
+    # on the target system. MSVC builds are unaffected by these flags.
+    if(MINGW)
+        target_link_options(freetype_harfbuzz_jni PRIVATE
+            -static-libgcc
+            -static-libstdc++
+            -Wl,-Bstatic,--whole-archive -lwinpthread -Wl,--no-whole-archive,-Bdynamic
+        )
+    elseif(MSVC)
+        # Use static MSVC runtime (/MT) instead of dynamic (/MD) to avoid
+        # requiring VCRUNTIME140.dll / MSVCP140.dll on the target system
+        set_property(TARGET freetype_harfbuzz_jni PROPERTY
+            MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
+        )
+    endif()
 else()
     set_target_properties(freetype_harfbuzz_jni PROPERTIES
         SUFFIX ".so"
@@ -95,8 +111,13 @@ set_target_properties(freetype_harfbuzz_jni PROPERTIES
 )
 
 if(STATIC_LINK_DEPS)
-    find_library(FREETYPE_STATIC_LIB libfreetype.a freetype PATHS ${FREETYPE_LIBRARY_DIRS})
-    find_library(HARFBUZZ_STATIC_LIB libharfbuzz.a harfbuzz PATHS ${HARFBUZZ_LIBRARY_DIRS})
+    if(MINGW)
+        find_library(FREETYPE_STATIC_LIB NAMES libfreetype.a PATHS ${FREETYPE_LIBRARY_DIRS})
+        find_library(HARFBUZZ_STATIC_LIB NAMES libharfbuzz.a PATHS ${HARFBUZZ_LIBRARY_DIRS})
+    else()
+        find_library(FREETYPE_STATIC_LIB NAMES freetype libfreetype.a PATHS ${FREETYPE_LIBRARY_DIRS})
+        find_library(HARFBUZZ_STATIC_LIB NAMES harfbuzz libharfbuzz.a PATHS ${HARFBUZZ_LIBRARY_DIRS})
+    endif()
     if(FREETYPE_STATIC_LIB AND HARFBUZZ_STATIC_LIB)
         target_link_libraries(freetype_harfbuzz_jni
             ${FREETYPE_STATIC_LIB}

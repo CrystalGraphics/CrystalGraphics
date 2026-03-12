@@ -43,6 +43,14 @@ build_deps() {
         cd "$deps_dir" && tar xf harfbuzz.tar.xz && cd -
     fi
 
+    # Detect compiler: if cc is gcc/mingw, we need different flags than MSVC
+    local extra_cmake_flags=()
+    if command -v gcc &>/dev/null && [[ "$(cc --version 2>&1)" == *"gcc"* || "$(cc --version 2>&1)" == *"GCC"* ]]; then
+        echo "=== Detected GCC/MinGW compiler — will use static linking ==="
+        # MinGW: force static C runtime for all dependency builds
+        extra_cmake_flags+=(-DCMAKE_C_FLAGS="-static-libgcc" -DCMAKE_CXX_FLAGS="-static-libgcc -static-libstdc++")
+    fi
+
     echo "=== Building FreeType ==="
     local ft_build="$deps_dir/freetype-build"
     mkdir -p "$ft_build"
@@ -54,7 +62,8 @@ build_deps() {
         -DFT_DISABLE_BZIP2=ON \
         -DFT_DISABLE_PNG=ON \
         -DFT_DISABLE_HARFBUZZ=ON \
-        -DFT_DISABLE_BROTLI=ON
+        -DFT_DISABLE_BROTLI=ON \
+        ${extra_cmake_flags[@]+"${extra_cmake_flags[@]}"}
     cmake --build "$ft_build" --config Release -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 
     echo "=== Building HarfBuzz ==="
@@ -79,7 +88,8 @@ build_deps() {
         -DHB_HAVE_GLIB=OFF \
         -DHB_HAVE_ICU=OFF \
         -DFREETYPE_INCLUDE_DIRS="$deps_dir/freetype-${FREETYPE_VERSION}/include" \
-        -DFREETYPE_LIBRARY="$ft_lib_for_hb"
+        -DFREETYPE_LIBRARY="$ft_lib_for_hb" \
+        ${extra_cmake_flags[@]+"${extra_cmake_flags[@]}"}
     cmake --build "$hb_build" --config Release -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 
     # Find the built static libs (location varies by platform/generator)
@@ -127,7 +137,13 @@ build_jni() {
     mkdir -p "$dest_dir"
 
     case "$platform" in
-        windows-*) cp "$jni_build/freetype_harfbuzz_jni.dll" "$dest_dir/" ;;
+        windows-*)
+            if [ -f "$jni_build/Release/freetype_harfbuzz_jni.dll" ]; then
+                cp "$jni_build/Release/freetype_harfbuzz_jni.dll" "$dest_dir/"
+            else
+                cp "$jni_build/freetype_harfbuzz_jni.dll" "$dest_dir/"
+            fi
+            ;;
         linux-*)   cp "$jni_build/libfreetype_harfbuzz_jni.so" "$dest_dir/" ;;
         macos-*)   cp "$jni_build/libfreetype_harfbuzz_jni.dylib" "$dest_dir/" ;;
     esac
