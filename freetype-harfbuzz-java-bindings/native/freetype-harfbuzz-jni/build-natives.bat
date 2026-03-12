@@ -116,7 +116,6 @@ cmake -S "%SCRIPT_DIR%\src\cpp" -B "%JNI_BUILD%" ^
     -DFREETYPE_LIBRARIES="%FT_LIB%" ^
     -DHARFBUZZ_INCLUDE_DIRS="%DEPS_DIR%\harfbuzz-%HARFBUZZ_VERSION%\src" ^
     -DHARFBUZZ_LIBRARIES="%HB_LIB%" ^
-    -DSTATIC_LINK_DEPS=ON ^
     -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
 if errorlevel 1 (
     echo JNI cmake configure failed

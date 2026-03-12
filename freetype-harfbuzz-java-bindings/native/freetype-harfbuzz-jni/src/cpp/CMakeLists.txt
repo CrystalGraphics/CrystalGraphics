@@ -118,18 +118,9 @@ set_target_properties(freetype_harfbuzz_jni PROPERTIES
     PREFIX "${CMAKE_SHARED_LIBRARY_PREFIX}"
 )
 
-if(STATIC_LINK_DEPS)
-    if(MINGW)
-        find_library(FREETYPE_STATIC_LIB NAMES libfreetype.a PATHS ${FREETYPE_LIBRARY_DIRS})
-        find_library(HARFBUZZ_STATIC_LIB NAMES libharfbuzz.a PATHS ${HARFBUZZ_LIBRARY_DIRS})
-    else()
-        find_library(FREETYPE_STATIC_LIB NAMES freetype libfreetype.a PATHS ${FREETYPE_LIBRARY_DIRS})
-        find_library(HARFBUZZ_STATIC_LIB NAMES harfbuzz libharfbuzz.a PATHS ${HARFBUZZ_LIBRARY_DIRS})
-    endif()
-    if(FREETYPE_STATIC_LIB AND HARFBUZZ_STATIC_LIB)
-        target_link_libraries(freetype_harfbuzz_jni
-            ${FREETYPE_STATIC_LIB}
-            ${HARFBUZZ_STATIC_LIB}
-        )
-    endif()
-endif()
+# Note: STATIC_LINK_DEPS is no longer needed here. When the build script
+# (build-natives.sh) provides explicit static library paths via
+# -DFREETYPE_LIBRARIES=... and -DHARFBUZZ_LIBRARIES=..., they are linked
+# at the target_link_libraries() call above (line 63-65). The previous
+# find_library() calls here would rediscover homebrew/system shared libs
+# and double-link them, causing dynamic dependencies on macOS ARM.
