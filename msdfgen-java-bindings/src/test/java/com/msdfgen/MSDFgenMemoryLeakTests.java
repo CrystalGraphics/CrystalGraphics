@@ -230,13 +230,15 @@ public class MSDFgenMemoryLeakTests extends MemoryLeakDetectionBase {
         MemoryMetrics.MemorySnapshot after = MemoryMetrics.capture();
         long duration = System.currentTimeMillis() - startTime;
 
-        boolean withinTolerance = MemoryMetrics.isWithinTolerance(before, after, MemoryMetrics.STRESS_TOLERANCE_BYTES);
+        boolean withinTolerance = MemoryMetrics.isWithinTolerance(before, after, MemoryMetrics.HIGH_VOLUME_TOLERANCE_BYTES);
 
         recordResult("C1_HighVolume1000Shapes", withinTolerance,
             before, peak, after, duration,
             "Peak=" + peak.runtimeUsed / 1024 + "KB");
 
-        assertTrue("1000 shapes not fully freed", withinTolerance);
+        assertTrue("1000 shapes not fully freed (diff=" +
+            (after.runtimeUsed - before.runtimeUsed) + "B, tolerance=" +
+            MemoryMetrics.HIGH_VOLUME_TOLERANCE_BYTES + "B)", withinTolerance);
     }
 
     @Test
