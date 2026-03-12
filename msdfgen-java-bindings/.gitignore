@@ -10,6 +10,10 @@
 /bin/
 /config/
 
+native/msdfgen-jni/build/
+native/msdfgen-jni/msdfgen/
+native/msdfgen-jni/cmake-build-*/
+
 /out/
 *.iml
 *.ipr
