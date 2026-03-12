@@ -75,6 +75,9 @@ build_deps() {
         -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
         -DBUILD_SHARED_LIBS=OFF \
         -DHB_HAVE_FREETYPE=ON \
+        -DHB_HAVE_CORETEXT=OFF \
+        -DHB_HAVE_GLIB=OFF \
+        -DHB_HAVE_ICU=OFF \
         -DFREETYPE_INCLUDE_DIRS="$deps_dir/freetype-${FREETYPE_VERSION}/include" \
         -DFREETYPE_LIBRARY="$ft_lib_for_hb"
     cmake --build "$hb_build" --config Release -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
