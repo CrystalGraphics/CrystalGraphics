@@ -54,4 +54,12 @@ dependencies {
     compileOnly("org.hotswapagent:hotswap-agent-core:1.4.1")
     runtimeOnlyNonPublishable("org.hotswapagent:hotswap-agent-core:1.4.1")
 
+    // JNI bindings subprojects - compileOnly to avoid RFG variant attribute mismatch.
+    // Cannot use shadowImplementation because the GTNH convention plugin requires
+    // com.gtnewhorizons.retrofuturagradle.obfuscation=mcp and rfgDeobfuscatorTransformed=true
+    // attributes that plain Java subprojects don't publish. These are included in the shadow
+    // JAR via explicit from(zipTree(...)) in build.gradle.kts instead.
+    implementation(project(':msdfgen-java-bindings'))
+    implementation(project(':freetype-harfbuzz-java-bindings'))
+
 }
