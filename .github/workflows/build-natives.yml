@@ -54,20 +54,30 @@ jobs:
           path: msdfgen-java-bindings/src/main/resources/natives/linux-x64/
 
   msdfgen-macos-x64:
-    runs-on: macos-13
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: 'zulu'
           java-version: '8'
       - name: Install build tools
         run: brew install cmake
-      - name: Build MSDFgen JNI
+      - name: Clone and build MSDFgen JNI (x86_64)
         working-directory: msdfgen-java-bindings/native/msdfgen-jni
         run: |
-          chmod +x build-natives.sh
-          ./build-natives.sh
+          if [ ! -d msdfgen ]; then
+            git clone --depth 1 --branch ${{ env.MSDFGEN_TAG }} https://github.com/Chlumsky/msdfgen.git msdfgen
+          fi
+          rm -rf build && mkdir -p build
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DMSDFGEN_SOURCE_DIR="$(pwd)/msdfgen" \
+            -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+          cmake --build build --config Release -- -j$(sysctl -n hw.ncpu)
+          mkdir -p ../../src/main/resources/natives/macos-x64
+          cp build/libmsdfgen-jni.dylib ../../src/main/resources/natives/macos-x64/
       - name: Verify output
         run: |
           ls -la msdfgen-java-bindings/src/main/resources/natives/macos-x64/
@@ -196,20 +206,74 @@ jobs:
           path: freetype-harfbuzz-java-bindings/src/main/resources/natives/linux-x64/
 
   freetype-harfbuzz-macos-x64:
-    runs-on: macos-13
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: 'zulu'
           java-version: '8'
       - name: Install build tools
         run: brew install cmake pkg-config xz
-      - name: Build FreeType+HarfBuzz JNI
+      - name: Build FreeType+HarfBuzz JNI (x86_64)
         working-directory: freetype-harfbuzz-java-bindings/native/freetype-harfbuzz-jni
+        env:
+          CMAKE_OSX_ARCHITECTURES: x86_64
         run: |
-          chmod +x build-natives.sh
-          ./build-natives.sh
+          DEPS_DIR="$(pwd)/build/deps"
+          mkdir -p "$DEPS_DIR"
+
+          curl -L "https://download.savannah.gnu.org/releases/freetype/freetype-${FREETYPE_VERSION}.tar.xz" \
+            -o "$DEPS_DIR/freetype.tar.xz"
+          cd "$DEPS_DIR" && tar xf freetype.tar.xz && cd -
+
+          curl -L "https://github.com/harfbuzz/harfbuzz/releases/download/${HARFBUZZ_VERSION}/harfbuzz-${HARFBUZZ_VERSION}.tar.xz" \
+            -o "$DEPS_DIR/harfbuzz.tar.xz"
+          cd "$DEPS_DIR" && tar xf harfbuzz.tar.xz && cd -
+
+          FT_BUILD="$DEPS_DIR/freetype-build"
+          mkdir -p "$FT_BUILD"
+          cmake -S "$DEPS_DIR/freetype-${FREETYPE_VERSION}" -B "$FT_BUILD" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+            -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DFT_DISABLE_BZIP2=ON -DFT_DISABLE_PNG=ON -DFT_DISABLE_HARFBUZZ=ON -DFT_DISABLE_BROTLI=ON
+          cmake --build "$FT_BUILD" --config Release
+
+          FT_LIB=$(find "$FT_BUILD" -name "libfreetype.a" | head -1)
+
+          HB_BUILD="$DEPS_DIR/harfbuzz-build"
+          mkdir -p "$HB_BUILD"
+          cmake -S "$DEPS_DIR/harfbuzz-${HARFBUZZ_VERSION}" -B "$HB_BUILD" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+            -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DHB_HAVE_FREETYPE=ON -DHB_HAVE_CORETEXT=OFF -DHB_HAVE_GLIB=OFF -DHB_HAVE_ICU=OFF \
+            -DFREETYPE_INCLUDE_DIRS="$DEPS_DIR/freetype-${FREETYPE_VERSION}/include" \
+            -DFREETYPE_LIBRARY="$FT_LIB"
+          cmake --build "$HB_BUILD" --config Release
+
+          HB_LIB=$(find "$HB_BUILD" -name "libharfbuzz.a" | head -1)
+
+          JNI_BUILD="$(pwd)/build/jni-build"
+          mkdir -p "$JNI_BUILD"
+          cmake -S src/cpp -B "$JNI_BUILD" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+            -DFREETYPE_INCLUDE_DIRS="$DEPS_DIR/freetype-${FREETYPE_VERSION}/include" \
+            -DFREETYPE_LIBRARIES="$FT_LIB" \
+            -DHARFBUZZ_INCLUDE_DIRS="$DEPS_DIR/harfbuzz-${HARFBUZZ_VERSION}/src" \
+            -DHARFBUZZ_LIBRARIES="$HB_LIB" \
+            -DSTATIC_LINK_DEPS=ON
+          cmake --build "$JNI_BUILD" --config Release
+
+          DEST="$(pwd)/../../src/main/resources/natives/macos-x64"
+          mkdir -p "$DEST"
+          cp "$JNI_BUILD/libfreetype_harfbuzz_jni.dylib" "$DEST/"
       - name: Verify output
         run: |
           ls -la freetype-harfbuzz-java-bindings/src/main/resources/natives/macos-x64/
