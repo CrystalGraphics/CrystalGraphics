@@ -10,6 +10,11 @@
 static std::map<FT_Face, FT_Byte*> memoryFaceBuffers;
 static std::mutex memoryFaceBuffersMutex;
 
+// All JNI functions must use C linkage to prevent C++ name mangling.
+// Without this, the JVM cannot find the exported symbols at runtime
+// (UnsatisfiedLinkError on native method calls).
+extern "C" {
+
 void throwException(JNIEnv *env, const char *className, const char *message) {
     jclass cls = env->FindClass(className);
     if (cls != NULL) {
@@ -194,6 +199,12 @@ JNIEXPORT jint JNICALL Java_com_crystalgraphics_freetype_FTFace_nGetNumGlyphs
   (JNIEnv *env, jclass, jlong facePtr) {
     FT_Face face = (FT_Face)(intptr_t)facePtr;
     return (jint)face->num_glyphs;
+}
+
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_freetype_FTFace_nGetNumFaces
+  (JNIEnv *env, jclass, jlong facePtr) {
+    FT_Face face = (FT_Face)(intptr_t)facePtr;
+    return (jint)face->num_faces;
 }
 
 JNIEXPORT jint JNICALL Java_com_crystalgraphics_freetype_FTFace_nGetUnitsPerEM
