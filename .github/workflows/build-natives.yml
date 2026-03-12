@@ -43,6 +43,31 @@ jobs:
         run: |
           chmod +x build-natives.sh
           ./build-natives.sh
+      - name: Verify shared libraries have no non-system dependencies
+        run: |
+          echo "=== Checking freetype_harfbuzz_jni.so ==="
+          ldd freetype-harfbuzz-java-bindings/src/main/resources/natives/linux-x64/libfreetype_harfbuzz_jni.so
+          echo ""
+          echo "=== Checking msdfgen-jni.so ==="
+          ldd msdfgen-java-bindings/src/main/resources/natives/linux-x64/libmsdfgen-jni.so
+          echo ""
+          echo "=== Verifying no non-system shared dependencies ==="
+          # Allowed: linux-vdso, libm, libpthread, libdl, librt, libc, libgcc_s, libstdc++, ld-linux
+          FAIL=0
+          for lib in \
+            freetype-harfbuzz-java-bindings/src/main/resources/natives/linux-x64/libfreetype_harfbuzz_jni.so \
+            msdfgen-java-bindings/src/main/resources/natives/linux-x64/libmsdfgen-jni.so; do
+            BAD_DEPS=$(ldd "$lib" 2>/dev/null | grep -vE '(linux-vdso|libm\.|libpthread\.|libdl\.|librt\.|libc\.|libgcc_s\.|libstdc\+\+\.|ld-linux|not a dynamic)' || true)
+            if [ -n "$BAD_DEPS" ]; then
+              echo "FAIL: $lib has non-system dependencies:"
+              echo "$BAD_DEPS"
+              FAIL=1
+            fi
+          done
+          if [ "$FAIL" -eq 1 ]; then
+            exit 1
+          fi
+          echo "PASS: All shared libraries only depend on system libraries"
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -77,6 +102,31 @@ jobs:
         run: |
           chmod +x build-natives.sh
           ./build-natives.sh
+      - name: Verify dylibs have no non-system dependencies
+        run: |
+          echo "=== Checking freetype_harfbuzz_jni.dylib ==="
+          otool -L freetype-harfbuzz-java-bindings/src/main/resources/natives/macos-x64/libfreetype_harfbuzz_jni.dylib
+          echo ""
+          echo "=== Checking msdfgen-jni.dylib ==="
+          otool -L msdfgen-java-bindings/src/main/resources/natives/macos-x64/libmsdfgen-jni.dylib
+          echo ""
+          echo "=== Verifying only system frameworks ==="
+          # Allowed: /usr/lib/*, /System/Library/*, @rpath/*, @loader_path/*
+          FAIL=0
+          for lib in \
+            freetype-harfbuzz-java-bindings/src/main/resources/natives/macos-x64/libfreetype_harfbuzz_jni.dylib \
+            msdfgen-java-bindings/src/main/resources/natives/macos-x64/libmsdfgen-jni.dylib; do
+            BAD_DEPS=$(otool -L "$lib" | tail -n +2 | grep -vE '(/usr/lib/|/System/Library/|@rpath/|@loader_path/|@executable_path/)' || true)
+            if [ -n "$BAD_DEPS" ]; then
+              echo "FAIL: $lib has non-system dependencies:"
+              echo "$BAD_DEPS"
+              FAIL=1
+            fi
+          done
+          if [ "$FAIL" -eq 1 ]; then
+            exit 1
+          fi
+          echo "PASS: All dylibs only depend on system frameworks"
       - name: Upload macOS Intel artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -105,6 +155,30 @@ jobs:
         run: |
           chmod +x build-natives.sh
           ./build-natives.sh
+      - name: Verify dylibs have no non-system dependencies
+        run: |
+          echo "=== Checking freetype_harfbuzz_jni.dylib ==="
+          otool -L freetype-harfbuzz-java-bindings/src/main/resources/natives/macos-aarch64/libfreetype_harfbuzz_jni.dylib
+          echo ""
+          echo "=== Checking msdfgen-jni.dylib ==="
+          otool -L msdfgen-java-bindings/src/main/resources/natives/macos-aarch64/libmsdfgen-jni.dylib
+          echo ""
+          echo "=== Verifying only system frameworks ==="
+          FAIL=0
+          for lib in \
+            freetype-harfbuzz-java-bindings/src/main/resources/natives/macos-aarch64/libfreetype_harfbuzz_jni.dylib \
+            msdfgen-java-bindings/src/main/resources/natives/macos-aarch64/libmsdfgen-jni.dylib; do
+            BAD_DEPS=$(otool -L "$lib" | tail -n +2 | grep -vE '(/usr/lib/|/System/Library/|@rpath/|@loader_path/|@executable_path/)' || true)
+            if [ -n "$BAD_DEPS" ]; then
+              echo "FAIL: $lib has non-system dependencies:"
+              echo "$BAD_DEPS"
+              FAIL=1
+            fi
+          done
+          if [ "$FAIL" -eq 1 ]; then
+            exit 1
+          fi
+          echo "PASS: All dylibs only depend on system frameworks"
       - name: Upload macOS ARM64 artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -147,20 +221,31 @@ jobs:
         working-directory: freetype-harfbuzz-java-bindings/native/freetype-harfbuzz-jni
         shell: cmd
         run: call build-natives.bat
-      - name: Verify DLL has no MinGW dependencies
+      - name: Verify DLLs have no non-system dependencies
         shell: cmd
         run: |
-          echo === Checking DLL dependencies ===
+          echo === Checking freetype_harfbuzz_jni.dll dependencies ===
           dumpbin /dependents freetype-harfbuzz-java-bindings\src\main\resources\natives\windows-x64\freetype_harfbuzz_jni.dll || echo (dumpbin returned non-zero, continuing)
           echo.
+          echo === Checking msdfgen-jni.dll dependencies ===
+          dumpbin /dependents msdfgen-java-bindings\src\main\resources\natives\windows-x64\msdfgen-jni.dll || echo (dumpbin returned non-zero, continuing)
+          echo.
           echo === Verifying no MinGW runtime DLLs ===
-          dumpbin /dependents freetype-harfbuzz-java-bindings\src\main\resources\natives\windows-x64\freetype_harfbuzz_jni.dll | findstr /i "libwinpthread libgcc libstdc++" >nul 2>&1
-          if %errorlevel%==0 (
-              echo FAIL: Found MinGW runtime dependencies
-              exit /b 1
+          set FAIL=0
+          for %%f in (
+            freetype-harfbuzz-java-bindings\src\main\resources\natives\windows-x64\freetype_harfbuzz_jni.dll
+            msdfgen-java-bindings\src\main\resources\natives\windows-x64\msdfgen-jni.dll
+          ) do (
+            dumpbin /dependents "%%f" | findstr /i "libwinpthread libgcc libstdc++ VCRUNTIME MSVCP" >nul 2>&1
+            if !errorlevel!==0 (
+              echo FAIL: %%f has non-system runtime dependencies
+              set FAIL=1
+            ) else (
+              echo PASS: %%f has no non-system runtime dependencies
+            )
           )
-          echo PASS: No MinGW runtime dependencies
-          exit /b 0
+          if %FAIL%==1 exit /b 1
+          echo PASS: All DLLs only depend on system DLLs
       - name: Upload Windows x64 artifacts
         uses: actions/upload-artifact@v4
         with:

@@ -77,6 +77,20 @@ if(WIN32)
         PREFIX ""
         SUFFIX ".dll"
     )
+    # Static linking: avoid runtime DLL dependencies on target systems
+    if(MINGW)
+        target_link_options(msdfgen-jni PRIVATE
+            -static-libgcc
+            -static-libstdc++
+            -Wl,-Bstatic,--whole-archive -lwinpthread -Wl,--no-whole-archive,-Bdynamic
+        )
+    elseif(MSVC)
+        # Use static MSVC runtime (/MT) instead of dynamic (/MD) to avoid
+        # requiring VCRUNTIME140.dll / MSVCP140.dll on the target system
+        set_property(TARGET msdfgen-jni PROPERTY
+            MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
+        )
+    endif()
 elseif(APPLE)
     set_target_properties(msdfgen-jni PROPERTIES
         PREFIX "lib"
@@ -93,6 +107,14 @@ else()
         PREFIX "lib"
         SUFFIX ".so"
     )
+    # On Linux with GCC, statically link C/C++ runtime to avoid
+    # libgcc_s.so and libstdc++.so dependencies
+    if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        target_link_options(msdfgen-jni PRIVATE
+            -static-libgcc
+            -static-libstdc++
+        )
+    endif()
 endif()
 
 # Compiler flags
