@@ -121,10 +121,18 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-      - name: Install CMake
-        run: choco install cmake -y
+      - name: Verify CMake available
+        run: cmake --version
       - name: Setup Visual Studio environment
         uses: ilammy/msvc-dev-cmd@v1
+      - name: Cache FreeType+HarfBuzz dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            freetype-harfbuzz-java-bindings/native/freetype-harfbuzz-jni/build/deps
+          key: windows-ft-hb-deps-${{ hashFiles('freetype-harfbuzz-java-bindings/native/freetype-harfbuzz-jni/build-natives.bat') }}
+          restore-keys: |
+            windows-ft-hb-deps-
       - name: Build MSDFgen for Windows x64
         working-directory: msdfgen-java-bindings/native/msdfgen-jni
         shell: cmd

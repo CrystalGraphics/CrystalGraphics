@@ -2,10 +2,13 @@
 setlocal enabledelayedexpansion
 
 set SCRIPT_DIR=%~dp0
-set PROJECT_ROOT=%SCRIPT_DIR%..\..
-set NATIVE_DIR=%SCRIPT_DIR%
-set BUILD_DIR=%NATIVE_DIR%build
-set MSDFGEN_DIR=%NATIVE_DIR%msdfgen
+rem Strip trailing backslash from SCRIPT_DIR to prevent CMake quote-escape issues
+rem (%~dp0 always ends with \, which when quoted as "path\" causes CMake to
+rem interpret \" as an escaped quote instead of end-of-string)
+set NATIVE_DIR=%SCRIPT_DIR:~0,-1%
+set PROJECT_ROOT=%NATIVE_DIR%\..\..
+set BUILD_DIR=%NATIVE_DIR%\build
+set MSDFGEN_DIR=%NATIVE_DIR%\msdfgen
 
 if not exist "%MSDFGEN_DIR%" (
     echo Cloning msdfgen...

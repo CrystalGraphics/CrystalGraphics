@@ -2,8 +2,10 @@
 setlocal enabledelayedexpansion
 
 set SCRIPT_DIR=%~dp0
-set PROJECT_ROOT=%SCRIPT_DIR%..\..
-set BUILD_DIR=%SCRIPT_DIR%build
+rem Strip trailing backslash to prevent CMake quote-escape issues
+set SCRIPT_DIR=%SCRIPT_DIR:~0,-1%
+set PROJECT_ROOT=%SCRIPT_DIR%\..\..
+set BUILD_DIR=%SCRIPT_DIR%\build
 set OUTPUT_DIR=%PROJECT_ROOT%\src\main\resources\natives\windows-x64
 
 set FREETYPE_VERSION=2.13.2
