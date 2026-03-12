@@ -1,0 +1,638 @@
+name: Build Native Libraries
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_natives:
+        description: 'Commit built natives back to the branch'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+  push:
+    paths:
+      - 'msdfgen-java-bindings/native/**'
+      - 'freetype-harfbuzz-java-bindings/native/**'
+      - '.github/workflows/build-natives.yml'
+
+permissions:
+  contents: write
+
+env:
+  FREETYPE_VERSION: '2.13.2'
+  HARFBUZZ_VERSION: '8.3.0'
+  MSDFGEN_TAG: 'v1.13'
+
+jobs:
+  # ============================================================
+  #  MSDFgen JNI
+  # ============================================================
+  msdfgen-linux-x64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '8'
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y cmake build-essential
+      - name: Build MSDFgen JNI
+        working-directory: msdfgen-java-bindings/native/msdfgen-jni
+        run: |
+          chmod +x build-natives.sh
+          ./build-natives.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: msdfgen-linux-x64
+          path: msdfgen-java-bindings/src/main/resources/natives/linux-x64/
+
+  msdfgen-linux-aarch64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '8'
+      - name: Install cross-compilation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake build-essential gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          # JNI headers for cross-compilation: we need the host JDK headers (platform-independent)
+      - name: Clone MSDFgen
+        working-directory: msdfgen-java-bindings/native/msdfgen-jni
+        run: |
+          if [ ! -d msdfgen ]; then
+            git clone --depth 1 --branch ${{ env.MSDFGEN_TAG }} https://github.com/Chlumsky/msdfgen.git msdfgen
+          fi
+      - name: Build MSDFgen JNI (aarch64 cross-compile)
+        working-directory: msdfgen-java-bindings/native/msdfgen-jni
+        run: |
+          rm -rf build && mkdir -p build
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DMSDFGEN_SOURCE_DIR="$(pwd)/msdfgen" \
+            -DCMAKE_SYSTEM_NAME=Linux \
+            -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
+            -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc \
+            -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ \
+            -DCMAKE_FIND_ROOT_PATH=/usr/aarch64-linux-gnu \
+            -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
+            -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
+            -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH
+          cmake --build build --config Release -j$(nproc)
+          mkdir -p ../../src/main/resources/natives/linux-aarch64
+          cp build/libmsdfgen-jni.so ../../src/main/resources/natives/linux-aarch64/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: msdfgen-linux-aarch64
+          path: msdfgen-java-bindings/src/main/resources/natives/linux-aarch64/
+
+  msdfgen-macos-x64:
+    runs-on: macos-13  # Intel runner
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '8'
+      - name: Build MSDFgen JNI
+        working-directory: msdfgen-java-bindings/native/msdfgen-jni
+        run: |
+          chmod +x build-natives.sh
+          ./build-natives.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: msdfgen-macos-x64
+          path: msdfgen-java-bindings/src/main/resources/natives/macos-x64/
+
+  msdfgen-macos-aarch64:
+    runs-on: macos-latest  # Apple Silicon runner (M1+)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '8'
+      - name: Build MSDFgen JNI
+        working-directory: msdfgen-java-bindings/native/msdfgen-jni
+        run: |
+          chmod +x build-natives.sh
+          ./build-natives.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: msdfgen-macos-aarch64
+          path: msdfgen-java-bindings/src/main/resources/natives/macos-aarch64/
+
+  msdfgen-windows-x64:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '8'
+      - name: Build MSDFgen JNI
+        working-directory: msdfgen-java-bindings/native/msdfgen-jni
+        shell: cmd
+        run: build-natives.bat
+      - uses: actions/upload-artifact@v4
+        with:
+          name: msdfgen-windows-x64
+          path: msdfgen-java-bindings/src/main/resources/natives/windows-x64/
+
+  msdfgen-windows-x86:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '8'
+          architecture: 'x86'
+      - name: Clone MSDFgen
+        shell: bash
+        working-directory: msdfgen-java-bindings/native/msdfgen-jni
+        run: |
+          if [ ! -d msdfgen ]; then
+            git clone --depth 1 --branch ${{ env.MSDFGEN_TAG }} https://github.com/Chlumsky/msdfgen.git msdfgen
+          fi
+      - name: Build MSDFgen JNI (x86)
+        working-directory: msdfgen-java-bindings/native/msdfgen-jni
+        shell: cmd
+        run: |
+          if exist build rmdir /s /q build
+          mkdir build
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DMSDFGEN_SOURCE_DIR="%CD%\msdfgen" -A Win32
+          cmake --build build --config Release
+          mkdir "..\..\src\main\resources\natives\windows-x86"
+          if exist "build\Release\msdfgen-jni.dll" (
+            copy "build\Release\msdfgen-jni.dll" "..\..\src\main\resources\natives\windows-x86\"
+          ) else (
+            copy "build\msdfgen-jni.dll" "..\..\src\main\resources\natives\windows-x86\"
+          )
+      - uses: actions/upload-artifact@v4
+        with:
+          name: msdfgen-windows-x86
+          path: msdfgen-java-bindings/src/main/resources/natives/windows-x86/
+
+  # ============================================================
+  #  FreeType + HarfBuzz JNI
+  # ============================================================
+  freetype-harfbuzz-linux-x64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '8'
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y cmake build-essential pkg-config curl xz-utils
+      - name: Build FreeType+HarfBuzz JNI
+        working-directory: freetype-harfbuzz-java-bindings/native/freetype-harfbuzz-jni
+        run: |
+          chmod +x build-natives.sh
+          ./build-natives.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: freetype-harfbuzz-linux-x64
+          path: freetype-harfbuzz-java-bindings/src/main/resources/natives/linux-x64/
+
+  freetype-harfbuzz-linux-aarch64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '8'
+      - name: Install cross-compilation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake build-essential pkg-config curl xz-utils \
+            gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+      - name: Download and build FreeType (aarch64)
+        working-directory: freetype-harfbuzz-java-bindings/native/freetype-harfbuzz-jni
+        run: |
+          DEPS_DIR="$(pwd)/build/deps"
+          mkdir -p "$DEPS_DIR"
+
+          # Download FreeType
+          curl -L "https://download.savannah.gnu.org/releases/freetype/freetype-${{ env.FREETYPE_VERSION }}.tar.xz" \
+            -o "$DEPS_DIR/freetype.tar.xz"
+          cd "$DEPS_DIR" && tar xf freetype.tar.xz && cd -
+
+          # Download HarfBuzz
+          curl -L "https://github.com/harfbuzz/harfbuzz/releases/download/${{ env.HARFBUZZ_VERSION }}/harfbuzz-${{ env.HARFBUZZ_VERSION }}.tar.xz" \
+            -o "$DEPS_DIR/harfbuzz.tar.xz"
+          cd "$DEPS_DIR" && tar xf harfbuzz.tar.xz && cd -
+
+          # Build FreeType for aarch64
+          FT_BUILD="$DEPS_DIR/freetype-build"
+          mkdir -p "$FT_BUILD"
+          cmake -S "$DEPS_DIR/freetype-${{ env.FREETYPE_VERSION }}" -B "$FT_BUILD" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DFT_DISABLE_BZIP2=ON \
+            -DFT_DISABLE_PNG=ON \
+            -DFT_DISABLE_HARFBUZZ=ON \
+            -DFT_DISABLE_BROTLI=ON \
+            -DCMAKE_SYSTEM_NAME=Linux \
+            -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
+            -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc \
+            -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++
+          cmake --build "$FT_BUILD" --config Release -j$(nproc)
+
+          # Build HarfBuzz for aarch64
+          HB_BUILD="$DEPS_DIR/harfbuzz-build"
+          mkdir -p "$HB_BUILD"
+          cmake -S "$DEPS_DIR/harfbuzz-${{ env.HARFBUZZ_VERSION }}" -B "$HB_BUILD" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DHB_HAVE_FREETYPE=ON \
+            -DFREETYPE_INCLUDE_DIRS="$DEPS_DIR/freetype-${{ env.FREETYPE_VERSION }}/include" \
+            -DFREETYPE_LIBRARY="$FT_BUILD/libfreetype.a" \
+            -DCMAKE_SYSTEM_NAME=Linux \
+            -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
+            -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc \
+            -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++
+          cmake --build "$HB_BUILD" --config Release -j$(nproc)
+
+          # Export for JNI build step
+          echo "FREETYPE_DIR=$DEPS_DIR/freetype-${{ env.FREETYPE_VERSION }}" >> $GITHUB_ENV
+          echo "FREETYPE_LIB_DIR=$FT_BUILD" >> $GITHUB_ENV
+          echo "HARFBUZZ_DIR=$DEPS_DIR/harfbuzz-${{ env.HARFBUZZ_VERSION }}" >> $GITHUB_ENV
+          echo "HARFBUZZ_LIB_DIR=$HB_BUILD" >> $GITHUB_ENV
+
+      - name: Build FreeType+HarfBuzz JNI (aarch64)
+        working-directory: freetype-harfbuzz-java-bindings/native/freetype-harfbuzz-jni
+        run: |
+          JNI_BUILD="$(pwd)/build/jni-build"
+          mkdir -p "$JNI_BUILD"
+          cmake -S src/cpp -B "$JNI_BUILD" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DFREETYPE_INCLUDE_DIRS="${FREETYPE_DIR}/include" \
+            -DFREETYPE_LIBRARIES="${FREETYPE_LIB_DIR}/libfreetype.a" \
+            -DHARFBUZZ_INCLUDE_DIRS="${HARFBUZZ_DIR}/src" \
+            -DHARFBUZZ_LIBRARIES="${HARFBUZZ_LIB_DIR}/src/libharfbuzz.a" \
+            -DSTATIC_LINK_DEPS=ON \
+            -DCMAKE_SYSTEM_NAME=Linux \
+            -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
+            -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc \
+            -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ \
+            -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH
+          cmake --build "$JNI_BUILD" --config Release -j$(nproc)
+
+          DEST="$(pwd)/../../src/main/resources/natives/linux-aarch64"
+          mkdir -p "$DEST"
+          cp "$JNI_BUILD/libfreetype_harfbuzz_jni.so" "$DEST/"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: freetype-harfbuzz-linux-aarch64
+          path: freetype-harfbuzz-java-bindings/src/main/resources/natives/linux-aarch64/
+
+  freetype-harfbuzz-macos-x64:
+    runs-on: macos-13  # Intel runner
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '8'
+      - name: Install build tools
+        run: brew install cmake pkg-config xz
+      - name: Build FreeType+HarfBuzz JNI
+        working-directory: freetype-harfbuzz-java-bindings/native/freetype-harfbuzz-jni
+        run: |
+          chmod +x build-natives.sh
+          ./build-natives.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: freetype-harfbuzz-macos-x64
+          path: freetype-harfbuzz-java-bindings/src/main/resources/natives/macos-x64/
+
+  freetype-harfbuzz-macos-aarch64:
+    runs-on: macos-latest  # Apple Silicon (M1+)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '8'
+      - name: Install build tools
+        run: brew install cmake pkg-config xz
+      - name: Build FreeType+HarfBuzz JNI
+        working-directory: freetype-harfbuzz-java-bindings/native/freetype-harfbuzz-jni
+        run: |
+          chmod +x build-natives.sh
+          ./build-natives.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: freetype-harfbuzz-macos-aarch64
+          path: freetype-harfbuzz-java-bindings/src/main/resources/natives/macos-aarch64/
+
+  freetype-harfbuzz-windows-x64:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '8'
+      - name: Download and build dependencies
+        shell: bash
+        working-directory: freetype-harfbuzz-java-bindings/native/freetype-harfbuzz-jni
+        run: |
+          DEPS_DIR="$(pwd)/build/deps"
+          mkdir -p "$DEPS_DIR"
+
+          # Download FreeType
+          curl -L "https://download.savannah.gnu.org/releases/freetype/freetype-${FREETYPE_VERSION}.tar.xz" \
+            -o "$DEPS_DIR/freetype.tar.xz"
+          cd "$DEPS_DIR" && tar xf freetype.tar.xz && cd -
+
+          # Download HarfBuzz
+          curl -L "https://github.com/harfbuzz/harfbuzz/releases/download/${HARFBUZZ_VERSION}/harfbuzz-${HARFBUZZ_VERSION}.tar.xz" \
+            -o "$DEPS_DIR/harfbuzz.tar.xz"
+          cd "$DEPS_DIR" && tar xf harfbuzz.tar.xz && cd -
+
+          # Build FreeType
+          FT_BUILD="$DEPS_DIR/freetype-build"
+          mkdir -p "$FT_BUILD"
+          cmake -S "$DEPS_DIR/freetype-${FREETYPE_VERSION}" -B "$FT_BUILD" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DFT_DISABLE_BZIP2=ON \
+            -DFT_DISABLE_PNG=ON \
+            -DFT_DISABLE_HARFBUZZ=ON \
+            -DFT_DISABLE_BROTLI=ON
+          cmake --build "$FT_BUILD" --config Release -j$(nproc 2>/dev/null || echo 4)
+
+          # Build HarfBuzz
+          HB_BUILD="$DEPS_DIR/harfbuzz-build"
+          mkdir -p "$HB_BUILD"
+          cmake -S "$DEPS_DIR/harfbuzz-${HARFBUZZ_VERSION}" -B "$HB_BUILD" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DHB_HAVE_FREETYPE=ON \
+            -DFREETYPE_INCLUDE_DIRS="$DEPS_DIR/freetype-${FREETYPE_VERSION}/include" \
+            -DFREETYPE_LIBRARY="$FT_BUILD/Release/freetype.lib"
+          cmake --build "$HB_BUILD" --config Release -j$(nproc 2>/dev/null || echo 4)
+
+          echo "FREETYPE_DIR=$DEPS_DIR/freetype-${FREETYPE_VERSION}" >> $GITHUB_ENV
+          echo "FREETYPE_LIB_DIR=$FT_BUILD" >> $GITHUB_ENV
+          echo "HARFBUZZ_DIR=$DEPS_DIR/harfbuzz-${HARFBUZZ_VERSION}" >> $GITHUB_ENV
+          echo "HARFBUZZ_LIB_DIR=$HB_BUILD" >> $GITHUB_ENV
+
+      - name: Build FreeType+HarfBuzz JNI (Windows x64)
+        shell: bash
+        working-directory: freetype-harfbuzz-java-bindings/native/freetype-harfbuzz-jni
+        run: |
+          JNI_BUILD="$(pwd)/build/jni-build"
+          mkdir -p "$JNI_BUILD"
+
+          # Find the freetype lib (could be in Release/ subdir on Windows)
+          FT_LIB="${FREETYPE_LIB_DIR}/Release/freetype.lib"
+          if [ ! -f "$FT_LIB" ]; then
+            FT_LIB="${FREETYPE_LIB_DIR}/freetype.lib"
+          fi
+
+          HB_LIB="${HARFBUZZ_LIB_DIR}/src/Release/harfbuzz.lib"
+          if [ ! -f "$HB_LIB" ]; then
+            HB_LIB="${HARFBUZZ_LIB_DIR}/Release/harfbuzz.lib"
+            if [ ! -f "$HB_LIB" ]; then
+              HB_LIB="${HARFBUZZ_LIB_DIR}/src/harfbuzz.lib"
+            fi
+          fi
+
+          cmake -S src/cpp -B "$JNI_BUILD" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DFREETYPE_INCLUDE_DIRS="${FREETYPE_DIR}/include" \
+            -DFREETYPE_LIBRARIES="$FT_LIB" \
+            -DHARFBUZZ_INCLUDE_DIRS="${HARFBUZZ_DIR}/src" \
+            -DHARFBUZZ_LIBRARIES="$HB_LIB" \
+            -DSTATIC_LINK_DEPS=ON
+          cmake --build "$JNI_BUILD" --config Release -j$(nproc 2>/dev/null || echo 4)
+
+          DEST="$(pwd)/../../src/main/resources/natives/windows-x64"
+          mkdir -p "$DEST"
+          cp "$JNI_BUILD/Release/freetype_harfbuzz_jni.dll" "$DEST/" 2>/dev/null || \
+          cp "$JNI_BUILD/freetype_harfbuzz_jni.dll" "$DEST/"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: freetype-harfbuzz-windows-x64
+          path: freetype-harfbuzz-java-bindings/src/main/resources/natives/windows-x64/
+
+  freetype-harfbuzz-windows-x86:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '8'
+          architecture: 'x86'
+      - name: Download and build dependencies (x86)
+        shell: bash
+        working-directory: freetype-harfbuzz-java-bindings/native/freetype-harfbuzz-jni
+        run: |
+          DEPS_DIR="$(pwd)/build/deps"
+          mkdir -p "$DEPS_DIR"
+
+          # Download FreeType
+          curl -L "https://download.savannah.gnu.org/releases/freetype/freetype-${FREETYPE_VERSION}.tar.xz" \
+            -o "$DEPS_DIR/freetype.tar.xz"
+          cd "$DEPS_DIR" && tar xf freetype.tar.xz && cd -
+
+          # Download HarfBuzz
+          curl -L "https://github.com/harfbuzz/harfbuzz/releases/download/${HARFBUZZ_VERSION}/harfbuzz-${HARFBUZZ_VERSION}.tar.xz" \
+            -o "$DEPS_DIR/harfbuzz.tar.xz"
+          cd "$DEPS_DIR" && tar xf harfbuzz.tar.xz && cd -
+
+          # Build FreeType (32-bit)
+          FT_BUILD="$DEPS_DIR/freetype-build"
+          mkdir -p "$FT_BUILD"
+          cmake -S "$DEPS_DIR/freetype-${FREETYPE_VERSION}" -B "$FT_BUILD" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DFT_DISABLE_BZIP2=ON \
+            -DFT_DISABLE_PNG=ON \
+            -DFT_DISABLE_HARFBUZZ=ON \
+            -DFT_DISABLE_BROTLI=ON \
+            -A Win32
+          cmake --build "$FT_BUILD" --config Release -j$(nproc 2>/dev/null || echo 4)
+
+          # Build HarfBuzz (32-bit)
+          HB_BUILD="$DEPS_DIR/harfbuzz-build"
+          mkdir -p "$HB_BUILD"
+          cmake -S "$DEPS_DIR/harfbuzz-${HARFBUZZ_VERSION}" -B "$HB_BUILD" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DHB_HAVE_FREETYPE=ON \
+            -DFREETYPE_INCLUDE_DIRS="$DEPS_DIR/freetype-${FREETYPE_VERSION}/include" \
+            -DFREETYPE_LIBRARY="$FT_BUILD/Release/freetype.lib" \
+            -A Win32
+          cmake --build "$HB_BUILD" --config Release -j$(nproc 2>/dev/null || echo 4)
+
+          echo "FREETYPE_DIR=$DEPS_DIR/freetype-${FREETYPE_VERSION}" >> $GITHUB_ENV
+          echo "FREETYPE_LIB_DIR=$FT_BUILD" >> $GITHUB_ENV
+          echo "HARFBUZZ_DIR=$DEPS_DIR/harfbuzz-${HARFBUZZ_VERSION}" >> $GITHUB_ENV
+          echo "HARFBUZZ_LIB_DIR=$HB_BUILD" >> $GITHUB_ENV
+
+      - name: Build FreeType+HarfBuzz JNI (Windows x86)
+        shell: bash
+        working-directory: freetype-harfbuzz-java-bindings/native/freetype-harfbuzz-jni
+        run: |
+          JNI_BUILD="$(pwd)/build/jni-build"
+          mkdir -p "$JNI_BUILD"
+
+          FT_LIB="${FREETYPE_LIB_DIR}/Release/freetype.lib"
+          if [ ! -f "$FT_LIB" ]; then
+            FT_LIB="${FREETYPE_LIB_DIR}/freetype.lib"
+          fi
+
+          HB_LIB="${HARFBUZZ_LIB_DIR}/src/Release/harfbuzz.lib"
+          if [ ! -f "$HB_LIB" ]; then
+            HB_LIB="${HARFBUZZ_LIB_DIR}/Release/harfbuzz.lib"
+            if [ ! -f "$HB_LIB" ]; then
+              HB_LIB="${HARFBUZZ_LIB_DIR}/src/harfbuzz.lib"
+            fi
+          fi
+
+          cmake -S src/cpp -B "$JNI_BUILD" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DFREETYPE_INCLUDE_DIRS="${FREETYPE_DIR}/include" \
+            -DFREETYPE_LIBRARIES="$FT_LIB" \
+            -DHARFBUZZ_INCLUDE_DIRS="${HARFBUZZ_DIR}/src" \
+            -DHARFBUZZ_LIBRARIES="$HB_LIB" \
+            -DSTATIC_LINK_DEPS=ON \
+            -A Win32
+          cmake --build "$JNI_BUILD" --config Release -j$(nproc 2>/dev/null || echo 4)
+
+          DEST="$(pwd)/../../src/main/resources/natives/windows-x86"
+          mkdir -p "$DEST"
+          cp "$JNI_BUILD/Release/freetype_harfbuzz_jni.dll" "$DEST/" 2>/dev/null || \
+          cp "$JNI_BUILD/freetype_harfbuzz_jni.dll" "$DEST/"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: freetype-harfbuzz-windows-x86
+          path: freetype-harfbuzz-java-bindings/src/main/resources/natives/windows-x86/
+
+  # ============================================================
+  #  Collect All Natives + Optional Commit
+  # ============================================================
+  collect-natives:
+    needs:
+      - msdfgen-linux-x64
+      - msdfgen-linux-aarch64
+      - msdfgen-macos-x64
+      - msdfgen-macos-aarch64
+      - msdfgen-windows-x64
+      - msdfgen-windows-x86
+      - freetype-harfbuzz-linux-x64
+      - freetype-harfbuzz-linux-aarch64
+      - freetype-harfbuzz-macos-x64
+      - freetype-harfbuzz-macos-aarch64
+      - freetype-harfbuzz-windows-x64
+      - freetype-harfbuzz-windows-x86
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Download all MSDFgen artifacts
+      - uses: actions/download-artifact@v4
+        with:
+          name: msdfgen-linux-x64
+          path: msdfgen-java-bindings/src/main/resources/natives/linux-x64/
+      - uses: actions/download-artifact@v4
+        with:
+          name: msdfgen-linux-aarch64
+          path: msdfgen-java-bindings/src/main/resources/natives/linux-aarch64/
+      - uses: actions/download-artifact@v4
+        with:
+          name: msdfgen-macos-x64
+          path: msdfgen-java-bindings/src/main/resources/natives/macos-x64/
+      - uses: actions/download-artifact@v4
+        with:
+          name: msdfgen-macos-aarch64
+          path: msdfgen-java-bindings/src/main/resources/natives/macos-aarch64/
+      - uses: actions/download-artifact@v4
+        with:
+          name: msdfgen-windows-x64
+          path: msdfgen-java-bindings/src/main/resources/natives/windows-x64/
+      - uses: actions/download-artifact@v4
+        with:
+          name: msdfgen-windows-x86
+          path: msdfgen-java-bindings/src/main/resources/natives/windows-x86/
+
+      # Download all FreeType+HarfBuzz artifacts
+      - uses: actions/download-artifact@v4
+        with:
+          name: freetype-harfbuzz-linux-x64
+          path: freetype-harfbuzz-java-bindings/src/main/resources/natives/linux-x64/
+      - uses: actions/download-artifact@v4
+        with:
+          name: freetype-harfbuzz-linux-aarch64
+          path: freetype-harfbuzz-java-bindings/src/main/resources/natives/linux-aarch64/
+      - uses: actions/download-artifact@v4
+        with:
+          name: freetype-harfbuzz-macos-x64
+          path: freetype-harfbuzz-java-bindings/src/main/resources/natives/macos-x64/
+      - uses: actions/download-artifact@v4
+        with:
+          name: freetype-harfbuzz-macos-aarch64
+          path: freetype-harfbuzz-java-bindings/src/main/resources/natives/macos-aarch64/
+      - uses: actions/download-artifact@v4
+        with:
+          name: freetype-harfbuzz-windows-x64
+          path: freetype-harfbuzz-java-bindings/src/main/resources/natives/windows-x64/
+      - uses: actions/download-artifact@v4
+        with:
+          name: freetype-harfbuzz-windows-x86
+          path: freetype-harfbuzz-java-bindings/src/main/resources/natives/windows-x86/
+
+      - name: List all collected natives
+        run: |
+          echo "=== MSDFgen natives ==="
+          find msdfgen-java-bindings/src/main/resources/natives -type f | sort
+          echo ""
+          echo "=== FreeType+HarfBuzz natives ==="
+          find freetype-harfbuzz-java-bindings/src/main/resources/natives -type f | sort
+
+      - name: Upload combined artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: all-natives
+          path: |
+            msdfgen-java-bindings/src/main/resources/natives/
+            freetype-harfbuzz-java-bindings/src/main/resources/natives/
+
+      - name: Commit natives to repository
+        if: github.event.inputs.commit_natives == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add msdfgen-java-bindings/src/main/resources/natives/
+          git add freetype-harfbuzz-java-bindings/src/main/resources/natives/
+
+          if git diff --cached --quiet; then
+            echo "No changes to native libraries."
+          else
+            git commit -m "ci: update native libraries for all platforms
+
+            Built by GitHub Actions workflow.
+            Platforms: linux-x64, linux-aarch64, macos-x64, macos-aarch64, windows-x64, windows-x86
+            Libraries: msdfgen-jni, freetype_harfbuzz_jni"
+            git push
+          fi
