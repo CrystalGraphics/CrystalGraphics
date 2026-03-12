@@ -1,6 +1,11 @@
 plugins {
     `java-library`
-    `maven-publish`
+}
+
+// Only apply maven-publish when building standalone (not as a subproject of CrystalGraphics)
+val isStandalone = rootProject.name == project.name
+if (isStandalone) {
+    apply(plugin = "maven-publish")
 }
 
 group = "com.crystalgraphics"
@@ -9,8 +14,10 @@ version = "1.0.0-SNAPSHOT"
 java {
     sourceCompatibility = JavaVersion.VERSION_1_8
     targetCompatibility = JavaVersion.VERSION_1_8
-    withSourcesJar()
-    withJavadocJar()
+    if (isStandalone) {
+        withSourcesJar()
+        withJavadocJar()
+    }
 }
 
 repositories {
@@ -18,30 +25,25 @@ repositories {
 }
 
 dependencies {
-    // Testing
     testImplementation("junit:junit:4.13.2")
 }
 
-tasks.withType<JavaCompile>().configureEach {
+tasks.withType<JavaCompile> {
     options.encoding = "UTF-8"
-    if (JavaVersion.current().isJava9Compatible) {
-        options.release.set(8)
-    }
 }
 
 tasks.jar {
+    // Set manifest version info
     manifest {
         attributes(
-            "Implementation-Title" to "FreeType-HarfBuzz Java Bindings",
-            "Implementation-Version" to project.version,
-            "Implementation-Vendor" to "CrystalGraphics"
+            "Manifest-Version" to "1.0",
+            "Implementation-Title" to project.name,
+            "Implementation-Version" to project.version
         )
     }
 
-    // Include native libraries in the JAR
-    from("src/main/resources") {
-        include("natives/**")
-    }
+    // Native libraries in src/main/resources/natives/ are automatically included
+    // by the standard processResources task — no explicit from() needed.
 }
 
 tasks.test {
@@ -52,19 +54,22 @@ tasks.test {
         System.getProperty("freetype.harfbuzz.native.path", ""))
 }
 
-publishing {
-    publications {
-        create<MavenPublication>("maven") {
-            from(components["java"])
+// Only configure publishing when building standalone
+if (isStandalone) {
+    configure<PublishingExtension> {
+        publications {
+            create<MavenPublication>("maven") {
+                from(components["java"])
 
-            pom {
-                name.set("FreeType-HarfBuzz Java Bindings")
-                description.set("JNI bindings for FreeType and HarfBuzz, compatible with LWJGL 2.9.3 and Java 8")
-                url.set("https://github.com/somehussar/freetype-harfbuzz-java-bindings")
-                licenses {
-                    license {
-                        name.set("MIT License")
-                        url.set("https://opensource.org/licenses/MIT")
+                pom {
+                    name.set("FreeType-HarfBuzz Java Bindings")
+                    description.set("JNI bindings for FreeType and HarfBuzz, compatible with LWJGL 2.9.3 and Java 8")
+                    url.set("https://github.com/somehussar/freetype-harfbuzz-java-bindings")
+                    licenses {
+                        license {
+                            name.set("MIT License")
+                            url.set("https://opensource.org/licenses/MIT")
+                        }
                     }
                 }
             }

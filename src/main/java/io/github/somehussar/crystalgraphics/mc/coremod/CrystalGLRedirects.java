@@ -139,10 +139,40 @@ public final class CrystalGLRedirects {
      */
     public static void bindFramebufferMc(int target, int framebuffer) {
         if (!GLStateMirror.isInRedirect()) {
-            GLStateMirror.onBindFramebuffer(target, framebuffer, CallFamily.OPENGLHELPER_WRAPPER);
+            CallFamily family;
+            if (org.lwjgl.opengl.GLContext.getCapabilities().OpenGL30) {
+                family = CallFamily.CORE_GL30;
+            } else if (org.lwjgl.opengl.GLContext.getCapabilities().GL_ARB_framebuffer_object) {
+                family = CallFamily.ARB_FBO;
+            } else if (org.lwjgl.opengl.GLContext.getCapabilities().GL_EXT_framebuffer_object) {
+                family = CallFamily.EXT_FBO;
+            } else {
+                family = CallFamily.OPENGLHELPER_WRAPPER;
+            }
+            GLStateMirror.onBindFramebuffer(target, framebuffer, family);
         }
+
         GLStateMirror.enterRedirect();
         try {
+            if (org.lwjgl.opengl.GLContext.getCapabilities().OpenGL30) {
+                GL30.glBindFramebuffer(target, framebuffer);
+                return;
+            }
+
+            if (org.lwjgl.opengl.GLContext.getCapabilities().GL_ARB_framebuffer_object) {
+                ARBFramebufferObject.glBindFramebuffer(target, framebuffer);
+                return;
+            }
+
+            if (org.lwjgl.opengl.GLContext.getCapabilities().GL_EXT_framebuffer_object) {
+                int extTarget = target;
+                if (target == GL30.GL_READ_FRAMEBUFFER || target == GL30.GL_DRAW_FRAMEBUFFER) {
+                    extTarget = EXTFramebufferObject.GL_FRAMEBUFFER_EXT;
+                }
+                EXTFramebufferObject.glBindFramebufferEXT(extTarget, framebuffer);
+                return;
+            }
+
             OpenGlHelper.func_153171_g(target, framebuffer);
         } finally {
             GLStateMirror.exitRedirect();
