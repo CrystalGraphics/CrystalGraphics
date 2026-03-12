@@ -49,6 +49,7 @@ build_deps() {
     cmake -S "$deps_dir/freetype-${FREETYPE_VERSION}" -B "$ft_build" \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+        -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
         -DBUILD_SHARED_LIBS=OFF \
         -DFT_DISABLE_BZIP2=ON \
         -DFT_DISABLE_PNG=ON \
@@ -71,6 +72,7 @@ build_deps() {
     cmake -S "$deps_dir/harfbuzz-${HARFBUZZ_VERSION}" -B "$hb_build" \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+        -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
         -DBUILD_SHARED_LIBS=OFF \
         -DHB_HAVE_FREETYPE=ON \
         -DFREETYPE_INCLUDE_DIRS="$deps_dir/freetype-${FREETYPE_VERSION}/include" \
