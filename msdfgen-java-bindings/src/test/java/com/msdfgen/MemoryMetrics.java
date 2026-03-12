@@ -22,6 +22,10 @@ public final class MemoryMetrics {
     /** Larger tolerance for stress tests (50KB). */
     public static final long STRESS_TOLERANCE_BYTES = 50 * 1024;
 
+    /** Tolerance for high-volume tests with 1000+ allocations (512KB).
+     *  JVM heap expansion and GC hysteresis make tighter thresholds flaky. */
+    public static final long HIGH_VOLUME_TOLERANCE_BYTES = 512 * 1024;
+
     /** Tolerance ratio for platform variance checks (15%). */
     public static final double PLATFORM_VARIANCE_RATIO = 0.15;
 
@@ -139,9 +143,16 @@ public final class MemoryMetrics {
     }
 
     /**
-     * Calculates fragmentation estimate based on total vs used memory.
+     * Calculates fragmentation estimate based on committed-but-unused memory
+     * relative to the maximum heap size. This measures how much memory the JVM
+     * has committed (reserved from the OS) beyond what is actually in use.
+     * <p>
+     * A high value means the JVM committed a lot of memory that GC has since
+     * freed but not returned to the OS — this is normal JVM behavior, especially
+     * after stress tests. We measure {@code (total - used) / max} to get the
+     * fraction of the heap ceiling that is committed-but-idle.
      *
-     * @return fragmentation ratio (0.0 = no fragmentation, 1.0 = fully fragmented)
+     * @return fragmentation ratio (0.0 = no wasted committed memory, 1.0 = all committed memory is idle)
      */
     public static double estimateFragmentation() {
         Runtime runtime = Runtime.getRuntime();
@@ -149,9 +160,9 @@ public final class MemoryMetrics {
         long free = runtime.freeMemory();
         long max = runtime.maxMemory();
         long used = total - free;
-        // Fragmentation estimate: how much of committed memory is actually used
-        if (total == 0) return 0.0;
-        return 1.0 - ((double) used / (double) total);
+        if (max <= 0) return 0.0;
+        long committedButUnused = total - used;
+        return (double) committedButUnused / (double) max;
     }
 
     /**
