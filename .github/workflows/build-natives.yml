@@ -160,6 +160,7 @@ jobs:
               exit /b 1
           )
           echo PASS: No MinGW runtime dependencies
+          exit /b 0
       - name: Upload Windows x64 artifacts
         uses: actions/upload-artifact@v4
         with:
