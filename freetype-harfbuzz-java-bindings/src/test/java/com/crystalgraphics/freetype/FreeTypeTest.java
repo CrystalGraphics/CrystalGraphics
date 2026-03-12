@@ -1,17 +1,15 @@
 package com.crystalgraphics.freetype;
 
 import org.junit.Test;
-import org.junit.Assume;
 import static org.junit.Assert.*;
 
 public class FreeTypeTest {
 
-    private boolean nativesAvailable() {
+    private void requireNativesAvailable() {
         try {
             NativeLoader.ensureLoaded();
-            return true;
         } catch (UnsatisfiedLinkError e) {
-            return false;
+            fail("Native library not available: " + e.getMessage());
         }
     }
 
@@ -37,7 +35,7 @@ public class FreeTypeTest {
 
     @Test
     public void testFreeTypeLibraryCreateDestroy() {
-        Assume.assumeTrue("Natives not available", nativesAvailable());
+        requireNativesAvailable();
 
         FreeTypeLibrary lib = FreeTypeLibrary.create();
         assertNotNull(lib);
@@ -57,7 +55,7 @@ public class FreeTypeTest {
 
     @Test(expected = IllegalStateException.class)
     public void testUseAfterDestroy() {
-        Assume.assumeTrue("Natives not available", nativesAvailable());
+        requireNativesAvailable();
 
         FreeTypeLibrary lib = FreeTypeLibrary.create();
         lib.destroy();
@@ -66,10 +64,10 @@ public class FreeTypeTest {
 
     @Test
     public void testLoadFontFromResource() {
-        Assume.assumeTrue("Natives not available", nativesAvailable());
+        requireNativesAvailable();
 
         java.io.InputStream is = getClass().getResourceAsStream("/test-font.ttf");
-        Assume.assumeNotNull("Test font not found", is);
+        assertNotNull("Test font not found", is);
 
         FreeTypeLibrary lib = FreeTypeLibrary.create();
         try {

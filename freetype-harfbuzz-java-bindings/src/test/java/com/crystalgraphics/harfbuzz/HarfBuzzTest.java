@@ -1,23 +1,21 @@
 package com.crystalgraphics.harfbuzz;
 
 import org.junit.Test;
-import org.junit.Assume;
 import static org.junit.Assert.*;
 
 public class HarfBuzzTest {
 
-    private boolean nativesAvailable() {
+    private void requireNativesAvailable() {
         try {
             NativeLoader.ensureLoaded();
-            return true;
         } catch (UnsatisfiedLinkError e) {
-            return false;
+            fail("Native library not available: " + e.getMessage());
         }
     }
 
     @Test
     public void testBufferCreateDestroy() {
-        Assume.assumeTrue("Natives not available", nativesAvailable());
+        requireNativesAvailable();
 
         HBBuffer buffer = HBBuffer.create();
         assertNotNull(buffer);
@@ -29,7 +27,7 @@ public class HarfBuzzTest {
 
     @Test
     public void testBufferAddText() {
-        Assume.assumeTrue("Natives not available", nativesAvailable());
+        requireNativesAvailable();
 
         HBBuffer buffer = HBBuffer.create();
         buffer.addUTF8("Hello, World!");
@@ -57,7 +55,7 @@ public class HarfBuzzTest {
 
     @Test
     public void testBufferDirectionAndScript() {
-        Assume.assumeTrue("Natives not available", nativesAvailable());
+        requireNativesAvailable();
 
         HBBuffer buffer = HBBuffer.create();
         buffer.addUTF8("Test");
@@ -72,10 +70,10 @@ public class HarfBuzzTest {
 
     @Test
     public void testShapeWithFont() {
-        Assume.assumeTrue("Natives not available", nativesAvailable());
+        requireNativesAvailable();
 
         java.io.InputStream is = getClass().getResourceAsStream("/test-font.ttf");
-        Assume.assumeNotNull("Test font not found", is);
+        assertNotNull("Test font not found", is);
 
         String fontPath = extractToTempFile(is);
         HBFont font = HBFont.createFromFile(fontPath, 0);
@@ -103,7 +101,7 @@ public class HarfBuzzTest {
 
     @Test(expected = IllegalStateException.class)
     public void testBufferUseAfterDestroy() {
-        Assume.assumeTrue("Natives not available", nativesAvailable());
+        requireNativesAvailable();
 
         HBBuffer buffer = HBBuffer.create();
         buffer.destroy();

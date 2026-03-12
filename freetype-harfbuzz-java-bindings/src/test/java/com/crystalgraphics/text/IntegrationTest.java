@@ -3,26 +3,24 @@ package com.crystalgraphics.text;
 import com.crystalgraphics.freetype.*;
 import com.crystalgraphics.harfbuzz.*;
 import org.junit.Test;
-import org.junit.Assume;
 import static org.junit.Assert.*;
 
 public class IntegrationTest {
 
-    private boolean nativesAvailable() {
+    private void requireNativesAvailable() {
         try {
             com.crystalgraphics.freetype.NativeLoader.ensureLoaded();
-            return true;
         } catch (UnsatisfiedLinkError e) {
-            return false;
+            fail("Native library not available: " + e.getMessage());
         }
     }
 
     @Test
     public void testFreeTypeHarfBuzzPipeline() {
-        Assume.assumeTrue("Natives not available", nativesAvailable());
+        requireNativesAvailable();
 
         java.io.InputStream is = getClass().getResourceAsStream("/test-font.ttf");
-        Assume.assumeNotNull("Test font not found", is);
+        assertNotNull("Test font not found", is);
         byte[] fontData = readAllBytes(is);
 
         FreeTypeLibrary ftLib = FreeTypeLibrary.create();
@@ -72,10 +70,10 @@ public class IntegrationTest {
 
     @Test
     public void testSyncMetricsAfterSizeChange() {
-        Assume.assumeTrue("Natives not available", nativesAvailable());
+        requireNativesAvailable();
 
         java.io.InputStream is = getClass().getResourceAsStream("/test-font.ttf");
-        Assume.assumeNotNull("Test font not found", is);
+        assertNotNull("Test font not found", is);
         byte[] fontData = readAllBytes(is);
 
         FreeTypeLibrary ftLib = FreeTypeLibrary.create();
@@ -117,10 +115,10 @@ public class IntegrationTest {
 
     @Test(expected = IllegalArgumentException.class)
     public void testIntegrationWithDestroyedFace() {
-        Assume.assumeTrue("Natives not available", nativesAvailable());
+        requireNativesAvailable();
 
         java.io.InputStream is = getClass().getResourceAsStream("/test-font.ttf");
-        Assume.assumeNotNull("Test font not found", is);
+        assertNotNull("Test font not found", is);
         byte[] fontData = readAllBytes(is);
 
         FreeTypeLibrary ftLib = FreeTypeLibrary.create();
