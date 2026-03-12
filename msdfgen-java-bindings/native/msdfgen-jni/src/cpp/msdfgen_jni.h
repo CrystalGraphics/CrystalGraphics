@@ -86,11 +86,16 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nRenderSdf(JNIEnv*, jclass, j
 
 // FreeType extension
 JNIEXPORT jboolean JNICALL Java_com_msdfgen_MsdfNative_nHasFreetypeSupport(JNIEnv*, jclass);
-JNIEXPORT jlong JNICALL Java_com_msdfgen_MsdfNative_nFreetypeInit(JNIEnv*, jclass);
+JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nFreetypeInit(JNIEnv*, jclass, jlongArray);
 JNIEXPORT void JNICALL Java_com_msdfgen_MsdfNative_nFreetypeDeinit(JNIEnv*, jclass, jlong);
-JNIEXPORT jlong JNICALL Java_com_msdfgen_MsdfNative_nLoadFont(JNIEnv*, jclass, jlong, jstring);
+JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nLoadFont(JNIEnv*, jclass, jlong, jstring, jlongArray);
+JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nLoadFontData(JNIEnv*, jclass, jlong, jbyteArray, jint, jlongArray);
 JNIEXPORT void JNICALL Java_com_msdfgen_MsdfNative_nDestroyFont(JNIEnv*, jclass, jlong);
-JNIEXPORT jlong JNICALL Java_com_msdfgen_MsdfNative_nLoadGlyph(JNIEnv*, jclass, jlong, jint, jlong);
+JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nLoadGlyph(JNIEnv*, jclass, jlong, jint, jint, jdoubleArray, jlongArray);
+JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nLoadGlyphByIndex(JNIEnv*, jclass, jlong, jint, jint, jdoubleArray, jlongArray);
+JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nGetGlyphIndex(JNIEnv*, jclass, jlong, jint, jintArray);
+JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nGetKerning(JNIEnv*, jclass, jlong, jint, jint, jdoubleArray);
+JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nGetKerningByIndex(JNIEnv*, jclass, jlong, jint, jint, jdoubleArray);
 
 #ifdef __cplusplus
 }

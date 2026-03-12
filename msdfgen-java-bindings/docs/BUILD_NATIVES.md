@@ -27,6 +27,19 @@ cd native/msdfgen-jni
 build-natives.bat     # Windows
 ```
 
+### With FreeType Support
+
+```bash
+cd native/msdfgen-jni
+MSDFGEN_USE_FREETYPE=ON ./build-natives.sh    # Linux/macOS
+
+# Windows
+set MSDFGEN_USE_FREETYPE=ON
+build-natives.bat
+```
+
+FreeType must be installed on the build system. See [FREETYPE_INTEGRATION.md](FREETYPE_INTEGRATION.md) for details.
+
 This will:
 1. Clone msdfgen v1.13 if not already present
 2. Build the JNI shared library with msdfgen statically linked
@@ -129,4 +142,6 @@ Clang:   -Wall -Wextra -O2
 ```
 MSDFGEN_PUBLIC=        (no DLL export/import)
 MSDFGEN_USE_CPP11      (enable move semantics in msdfgen)
+MSDFGEN_USE_FREETYPE   (only when FreeType support is enabled)
+MSDFGEN_EXTENSIONS     (only when FreeType support is enabled)
 ```

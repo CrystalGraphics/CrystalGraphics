@@ -1,5 +1,7 @@
 #include "headers.h"
 
+extern "C" {
+
 JNIEXPORT jlong JNICALL Java_com_crystalgraphics_text_FreeTypeHarfBuzzIntegration_nCreateHBFontFromFTFace
   (JNIEnv *env, jclass, jlong ftFacePtr) {
     FT_Face face = (FT_Face)(intptr_t)ftFacePtr;
@@ -20,3 +22,5 @@ JNIEXPORT void JNICALL Java_com_crystalgraphics_text_FreeTypeHarfBuzzIntegration
     hb_font_set_scale(hbFont, x_scale, y_scale);
     hb_font_set_ppem(hbFont, face->size->metrics.x_ppem, face->size->metrics.y_ppem);
 }
+
+} // extern "C"

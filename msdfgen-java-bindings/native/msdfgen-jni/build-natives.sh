@@ -45,6 +45,14 @@ CMAKE_ARGS=(
     -DMSDFGEN_SOURCE_DIR="$MSDFGEN_DIR"
 )
 
+# Enable FreeType support if requested via MSDFGEN_USE_FREETYPE=ON
+if [ "${MSDFGEN_USE_FREETYPE:-OFF}" = "ON" ]; then
+    CMAKE_ARGS+=(-DMSDFGEN_USE_FREETYPE=ON)
+    echo "FreeType support: ENABLED"
+else
+    echo "FreeType support: DISABLED (set MSDFGEN_USE_FREETYPE=ON to enable)"
+fi
+
 if [ "$OS_ID" = "macos" ]; then
     if [ "$ARCH_ID" = "aarch64" ]; then
         CMAKE_ARGS+=(-DCMAKE_OSX_ARCHITECTURES=arm64)
