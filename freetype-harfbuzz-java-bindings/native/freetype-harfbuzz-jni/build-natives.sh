@@ -17,12 +17,34 @@ detect_platform() {
         MINGW*|MSYS*|CYGWIN*) os="windows" ;;
         *) echo "Unsupported OS: $(uname -s)"; exit 1 ;;
     esac
-    case "$(uname -m)" in
-        x86_64|amd64) arch="x64" ;;
-        aarch64|arm64) arch="aarch64" ;;
-        *) echo "Unsupported arch: $(uname -m)"; exit 1 ;;
-    esac
+    if [ -n "${MACOS_TARGET_ARCH:-}" ] && [ "$os" = "macos" ]; then
+        case "$MACOS_TARGET_ARCH" in
+            x86_64|amd64) arch="x64" ;;
+            aarch64|arm64) arch="aarch64" ;;
+            *) echo "Unsupported MACOS_TARGET_ARCH: $MACOS_TARGET_ARCH"; exit 1 ;;
+        esac
+        echo "=== Cross-compiling: host=$(uname -m), target=$MACOS_TARGET_ARCH ===" >&2
+    else
+        case "$(uname -m)" in
+            x86_64|amd64) arch="x64" ;;
+            aarch64|arm64) arch="aarch64" ;;
+            *) echo "Unsupported arch: $(uname -m)"; exit 1 ;;
+        esac
+    fi
     echo "${os}-${arch}"
+}
+
+get_macos_cmake_flags() {
+    local flags=()
+    if [ "$(uname -s)" = "Darwin" ]; then
+        local target_arch="${MACOS_TARGET_ARCH:-$(uname -m)}"
+        case "$target_arch" in
+            x86_64|amd64) flags+=(-DCMAKE_OSX_ARCHITECTURES=x86_64) ;;
+            aarch64|arm64) flags+=(-DCMAKE_OSX_ARCHITECTURES=arm64) ;;
+        esac
+        flags+=(-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0)
+    fi
+    echo "${flags[@]+"${flags[@]}"}"
 }
 
 build_deps() {
@@ -43,13 +65,14 @@ build_deps() {
         cd "$deps_dir" && tar xf harfbuzz.tar.xz && cd -
     fi
 
-    # Detect compiler: if cc is gcc/mingw, we need different flags than MSVC
     local extra_cmake_flags=()
     if command -v gcc &>/dev/null && [[ "$(cc --version 2>&1)" == *"gcc"* || "$(cc --version 2>&1)" == *"GCC"* ]]; then
         echo "=== Detected GCC/MinGW compiler — will use static linking ==="
-        # MinGW: force static C runtime for all dependency builds
         extra_cmake_flags+=(-DCMAKE_C_FLAGS="-static-libgcc" -DCMAKE_CXX_FLAGS="-static-libgcc -static-libstdc++")
     fi
+
+    local macos_flags
+    macos_flags=$(get_macos_cmake_flags)
 
     echo "=== Building FreeType ==="
     local ft_build="$deps_dir/freetype-build"
@@ -63,7 +86,8 @@ build_deps() {
         -DFT_DISABLE_PNG=ON \
         -DFT_DISABLE_HARFBUZZ=ON \
         -DFT_DISABLE_BROTLI=ON \
-        ${extra_cmake_flags[@]+"${extra_cmake_flags[@]}"}
+        ${extra_cmake_flags[@]+"${extra_cmake_flags[@]}"} \
+        $macos_flags
     cmake --build "$ft_build" --config Release -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 
     echo "=== Building HarfBuzz ==="
@@ -89,7 +113,8 @@ build_deps() {
         -DHB_HAVE_ICU=OFF \
         -DFREETYPE_INCLUDE_DIRS="$deps_dir/freetype-${FREETYPE_VERSION}/include" \
         -DFREETYPE_LIBRARY="$ft_lib_for_hb" \
-        ${extra_cmake_flags[@]+"${extra_cmake_flags[@]}"}
+        ${extra_cmake_flags[@]+"${extra_cmake_flags[@]}"} \
+        $macos_flags
     cmake --build "$hb_build" --config Release -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 
     # Find the built static libs (location varies by platform/generator)
@@ -123,13 +148,17 @@ build_jni() {
 
     echo "=== Building JNI library for ${platform} ==="
 
+    local macos_flags
+    macos_flags=$(get_macos_cmake_flags)
+
     cmake -S "$SCRIPT_DIR/src/cpp" -B "$jni_build" \
         -DCMAKE_BUILD_TYPE=Release \
         -DFREETYPE_INCLUDE_DIRS="${FREETYPE_DIR}/include" \
         -DFREETYPE_LIBRARIES="${FREETYPE_LIB}" \
         -DHARFBUZZ_INCLUDE_DIRS="${HARFBUZZ_DIR}/src" \
         -DHARFBUZZ_LIBRARIES="${HARFBUZZ_LIB}" \
-        -DSTATIC_LINK_DEPS=ON
+        -DSTATIC_LINK_DEPS=ON \
+        $macos_flags
 
     cmake --build "$jni_build" --config Release -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 

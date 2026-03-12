@@ -13,6 +13,11 @@ on:
 permissions:
   contents: write
 
+# Java 17 is used for ALL jobs because:
+# 1. Temurin does NOT publish Java 8 for macOS ARM64 (Apple Silicon predates Java 8 EOL)
+# 2. JNI headers (jni.h) are stable across Java versions — the native build only needs headers
+# 3. The compiled .so/.dylib/.dll is Java-version-agnostic (loaded at runtime by any JVM)
+
 jobs:
   build-linux:
     runs-on: ubuntu-latest
@@ -23,7 +28,7 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '8'
+          java-version: '17'
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -45,7 +50,13 @@ jobs:
           path: '**/src/main/resources/natives/linux-x64/'
 
   build-macos-intel:
-    runs-on: macos-13
+    # macos-13 was retired Dec 2025. macos-15 is Intel-compatible via Rosetta,
+    # but for true x64 native builds we use macos-15 with explicit x86_64 arch.
+    # The build scripts already set CMAKE_OSX_ARCHITECTURES=x86_64 for Intel.
+    runs-on: macos-15
+    env:
+      # Force x86_64 cross-compilation on ARM64 runner
+      MACOS_TARGET_ARCH: x86_64
     steps:
       - uses: actions/checkout@v4
         with:
@@ -53,7 +64,7 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '8'
+          java-version: '17'
       - name: Install dependencies
         run: brew install cmake freetype harfbuzz
       - name: Build MSDFgen for macOS x64
@@ -81,7 +92,7 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '8'
+          java-version: '17'
       - name: Install dependencies
         run: brew install cmake freetype harfbuzz
       - name: Build MSDFgen for macOS ARM64
@@ -109,7 +120,7 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '8'
+          java-version: '17'
       - name: Install CMake
         run: choco install cmake -y
       - name: Setup Visual Studio environment
@@ -136,3 +147,51 @@ jobs:
           name: natives-windows-x64
           path: '**/src/main/resources/natives/windows-x64/'
           if-no-files-found: 'warn'
+
+  commit-natives:
+    needs: [build-linux, build-macos-intel, build-macos-arm, build-windows]
+    if: github.event.inputs.commit_natives == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Download all platform artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: natives-*
+          merge-multiple: true
+
+      - name: Verify downloaded natives
+        run: |
+          echo "=== Downloaded native files ==="
+          find . -type f \( -name "*.dll" -o -name "*.so" -o -name "*.dylib" \) | sort
+          echo ""
+          echo "=== Directory structure ==="
+          find . -path "*/natives/*" -type f | sort
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Commit and push natives
+        run: |
+          git add \
+            msdfgen-java-bindings/src/main/resources/natives/ \
+            freetype-harfbuzz-java-bindings/src/main/resources/natives/
+
+          if git diff --cached --quiet; then
+            echo "No native files changed — skipping commit."
+          else
+            echo "=== Changed native files ==="
+            git diff --cached --name-only
+
+            git commit -m "build(natives): Update platform binaries [skip ci]" \
+              -m "Updated natives for: windows-x64, linux-x64, macos-x64, macos-aarch64" \
+              -m "Triggered by: ${{ github.actor }} via workflow_dispatch"
+
+            git push
+            echo "Natives committed and pushed successfully."
+          fi

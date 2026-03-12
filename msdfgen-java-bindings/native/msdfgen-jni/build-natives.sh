@@ -13,7 +13,6 @@ if [ ! -d "$MSDFGEN_DIR" ]; then
 fi
 
 OS_NAME="$(uname -s)"
-ARCH_NAME="$(uname -m)"
 
 case "$OS_NAME" in
     Darwin)  OS_ID="macos" ;;
@@ -22,11 +21,21 @@ case "$OS_NAME" in
     *)       echo "Unsupported OS: $OS_NAME"; exit 1 ;;
 esac
 
-case "$ARCH_NAME" in
-    x86_64|amd64) ARCH_ID="x64" ;;
-    aarch64|arm64) ARCH_ID="aarch64" ;;
-    *) echo "Unsupported arch: $ARCH_NAME"; exit 1 ;;
-esac
+if [ -n "${MACOS_TARGET_ARCH:-}" ] && [ "$OS_ID" = "macos" ]; then
+    case "$MACOS_TARGET_ARCH" in
+        x86_64|amd64) ARCH_ID="x64" ;;
+        aarch64|arm64) ARCH_ID="aarch64" ;;
+        *) echo "Unsupported MACOS_TARGET_ARCH: $MACOS_TARGET_ARCH"; exit 1 ;;
+    esac
+    echo "=== Cross-compiling: host=$(uname -m), target=$MACOS_TARGET_ARCH ===" >&2
+else
+    ARCH_NAME="$(uname -m)"
+    case "$ARCH_NAME" in
+        x86_64|amd64) ARCH_ID="x64" ;;
+        aarch64|arm64) ARCH_ID="aarch64" ;;
+        *) echo "Unsupported arch: $ARCH_NAME"; exit 1 ;;
+    esac
+fi
 
 PLATFORM="${OS_ID}-${ARCH_ID}"
 OUTPUT_DIR="$PROJECT_ROOT/src/main/resources/natives/$PLATFORM"
