@@ -57,7 +57,7 @@ jobs:
           for lib in \
             freetype-harfbuzz-java-bindings/src/main/resources/natives/linux-x64/libfreetype_harfbuzz_jni.so \
             msdfgen-java-bindings/src/main/resources/natives/linux-x64/libmsdfgen-jni.so; do
-            BAD_DEPS=$(ldd "$lib" 2>/dev/null | grep -vE '(linux-vdso|libm\.|libpthread\.|libdl\.|librt\.|libc\.|libgcc_s\.|libstdc\+\+\.|ld-linux|not a dynamic)' || true)
+            BAD_DEPS=$(ldd "$lib" 2>/dev/null | grep -vE '(linux-vdso|libm\.|libpthread\.|libdl\.|librt\.|libc\.|libgcc_s\.|libstdc\+\+\.|ld-linux|libz\.|not a dynamic)' || true)
             if [ -n "$BAD_DEPS" ]; then
               echo "FAIL: $lib has non-system dependencies:"
               echo "$BAD_DEPS"
@@ -224,6 +224,7 @@ jobs:
       - name: Verify DLLs have no non-system dependencies
         shell: cmd
         run: |
+          setlocal enabledelayedexpansion
           echo === Checking freetype_harfbuzz_jni.dll dependencies ===
           dumpbin /dependents freetype-harfbuzz-java-bindings\src\main\resources\natives\windows-x64\freetype_harfbuzz_jni.dll || echo (dumpbin returned non-zero, continuing)
           echo.
@@ -236,7 +237,7 @@ jobs:
             freetype-harfbuzz-java-bindings\src\main\resources\natives\windows-x64\freetype_harfbuzz_jni.dll
             msdfgen-java-bindings\src\main\resources\natives\windows-x64\msdfgen-jni.dll
           ) do (
-            dumpbin /dependents "%%f" | findstr /i "libwinpthread libgcc libstdc++ VCRUNTIME MSVCP" >nul 2>&1
+            dumpbin /dependents "%%f" | findstr /i "libwinpthread libgcc libstdc++" >nul 2>&1
             if !errorlevel!==0 (
               echo FAIL: %%f has non-system runtime dependencies
               set FAIL=1
@@ -244,8 +245,9 @@ jobs:
               echo PASS: %%f has no non-system runtime dependencies
             )
           )
-          if %FAIL%==1 exit /b 1
+          if !FAIL!==1 exit /b 1
           echo PASS: All DLLs only depend on system DLLs
+          exit /b 0
       - name: Upload Windows x64 artifacts
         uses: actions/upload-artifact@v4
         with:

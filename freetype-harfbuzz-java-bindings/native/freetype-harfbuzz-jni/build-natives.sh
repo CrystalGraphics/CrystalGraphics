@@ -157,7 +157,6 @@ build_jni() {
         -DFREETYPE_LIBRARIES="${FREETYPE_LIB}" \
         -DHARFBUZZ_INCLUDE_DIRS="${HARFBUZZ_DIR}/src" \
         -DHARFBUZZ_LIBRARIES="${HARFBUZZ_LIB}" \
-        -DSTATIC_LINK_DEPS=ON \
         $macos_flags
 
     cmake --build "$jni_build" --config Release -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
