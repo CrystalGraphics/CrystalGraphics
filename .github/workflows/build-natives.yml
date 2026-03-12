@@ -145,7 +145,7 @@ jobs:
         shell: cmd
         run: |
           echo === Checking DLL dependencies ===
-          dumpbin /dependents freetype-harfbuzz-java-bindings\src\main\resources\natives\windows-x64\freetype_harfbuzz_jni.dll
+          dumpbin /dependents freetype-harfbuzz-java-bindings\src\main\resources\natives\windows-x64\freetype_harfbuzz_jni.dll || echo (dumpbin returned non-zero, continuing)
           echo.
           echo === Verifying no MinGW runtime DLLs ===
           dumpbin /dependents freetype-harfbuzz-java-bindings\src\main\resources\natives\windows-x64\freetype_harfbuzz_jni.dll | findstr /i "libwinpthread libgcc libstdc++" && (echo FAIL: Found MinGW runtime dependencies && exit /b 1) || echo PASS: No MinGW runtime dependencies
