@@ -2,7 +2,7 @@
 .gradle/
 build/
 !gradle/wrapper/gradle-wrapper.jar
-
+bin/
 # IDE
 .idea/
 *.iml
@@ -17,6 +17,7 @@ native/freetype-harfbuzz-jni/cmake-build-*/
 # OS
 .DS_Store
 Thumbs.db
+
 
 # Compiled native libraries (keep in resources for distribution)
 # native/freetype-harfbuzz-jni/*.dll
