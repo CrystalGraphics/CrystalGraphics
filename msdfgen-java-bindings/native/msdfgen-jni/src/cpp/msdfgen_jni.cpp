@@ -807,26 +807,197 @@ JNIEXPORT jlong JNICALL Java_com_msdfgen_MsdfNative_nBitmapGetPixelPointer(
 
 // ==================== FreeType Extension ====================
 
+#ifdef MSDFGEN_USE_FREETYPE
+#include "ext/import-font.h"
+#endif
+
 JNIEXPORT jboolean JNICALL Java_com_msdfgen_MsdfNative_nHasFreetypeSupport(JNIEnv*, jclass) {
-#ifdef MSDFGEN_EXTENSIONS
+#ifdef MSDFGEN_USE_FREETYPE
     return JNI_TRUE;
 #else
     return JNI_FALSE;
 #endif
 }
 
-JNIEXPORT jlong JNICALL Java_com_msdfgen_MsdfNative_nFreetypeInit(JNIEnv*, jclass) {
-    return 0;
+JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nFreetypeInit(JNIEnv* env, jclass, jlongArray handleOut) {
+#ifdef MSDFGEN_USE_FREETYPE
+    msdfgen::FreetypeHandle* ft = msdfgen::initializeFreetype();
+    if (!ft) {
+        return MSDF_ERR_FAILED;
+    }
+    jlong handle = reinterpret_cast<jlong>(ft);
+    env->SetLongArrayRegion(handleOut, 0, 1, &handle);
+    return MSDF_SUCCESS;
+#else
+    (void)env; (void)handleOut;
+    return MSDF_ERR_FAILED;
+#endif
 }
 
-JNIEXPORT void JNICALL Java_com_msdfgen_MsdfNative_nFreetypeDeinit(JNIEnv*, jclass, jlong) {}
-
-JNIEXPORT jlong JNICALL Java_com_msdfgen_MsdfNative_nLoadFont(JNIEnv*, jclass, jlong, jstring) {
-    return 0;
+JNIEXPORT void JNICALL Java_com_msdfgen_MsdfNative_nFreetypeDeinit(JNIEnv*, jclass, jlong ftHandle) {
+#ifdef MSDFGEN_USE_FREETYPE
+    if (ftHandle != 0) {
+        msdfgen::deinitializeFreetype(reinterpret_cast<msdfgen::FreetypeHandle*>(ftHandle));
+    }
+#else
+    (void)ftHandle;
+#endif
 }
 
-JNIEXPORT void JNICALL Java_com_msdfgen_MsdfNative_nDestroyFont(JNIEnv*, jclass, jlong) {}
+JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nLoadFont(
+    JNIEnv* env, jclass, jlong ftHandle, jstring filename, jlongArray fontHandleOut) {
+#ifdef MSDFGEN_USE_FREETYPE
+    if (ftHandle == 0 || filename == nullptr) return MSDF_ERR_INVALID_ARG;
+    const char* path = env->GetStringUTFChars(filename, nullptr);
+    if (!path) return MSDF_ERR_FAILED;
+    msdfgen::FontHandle* font = msdfgen::loadFont(
+        reinterpret_cast<msdfgen::FreetypeHandle*>(ftHandle), path);
+    env->ReleaseStringUTFChars(filename, path);
+    if (!font) return MSDF_ERR_FAILED;
+    jlong handle = reinterpret_cast<jlong>(font);
+    env->SetLongArrayRegion(fontHandleOut, 0, 1, &handle);
+    return MSDF_SUCCESS;
+#else
+    (void)env; (void)ftHandle; (void)filename; (void)fontHandleOut;
+    return MSDF_ERR_FAILED;
+#endif
+}
 
-JNIEXPORT jlong JNICALL Java_com_msdfgen_MsdfNative_nLoadGlyph(JNIEnv*, jclass, jlong, jint, jlong) {
-    return 0;
+JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nLoadFontData(
+    JNIEnv* env, jclass, jlong ftHandle, jbyteArray data, jint dataLen, jlongArray fontHandleOut) {
+#ifdef MSDFGEN_USE_FREETYPE
+    if (ftHandle == 0 || data == nullptr) return MSDF_ERR_INVALID_ARG;
+    jbyte* bytes = env->GetByteArrayElements(data, nullptr);
+    if (!bytes) return MSDF_ERR_FAILED;
+    msdfgen::FontHandle* font = msdfgen::loadFontData(
+        reinterpret_cast<msdfgen::FreetypeHandle*>(ftHandle),
+        reinterpret_cast<const msdfgen::byte*>(bytes), dataLen);
+    env->ReleaseByteArrayElements(data, bytes, JNI_ABORT);
+    if (!font) return MSDF_ERR_FAILED;
+    jlong handle = reinterpret_cast<jlong>(font);
+    env->SetLongArrayRegion(fontHandleOut, 0, 1, &handle);
+    return MSDF_SUCCESS;
+#else
+    (void)env; (void)ftHandle; (void)data; (void)dataLen; (void)fontHandleOut;
+    return MSDF_ERR_FAILED;
+#endif
+}
+
+JNIEXPORT void JNICALL Java_com_msdfgen_MsdfNative_nDestroyFont(JNIEnv*, jclass, jlong fontHandle) {
+#ifdef MSDFGEN_USE_FREETYPE
+    if (fontHandle != 0) {
+        msdfgen::destroyFont(reinterpret_cast<msdfgen::FontHandle*>(fontHandle));
+    }
+#else
+    (void)fontHandle;
+#endif
+}
+
+JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nLoadGlyph(
+    JNIEnv* env, jclass, jlong fontHandle, jint unicode, jint coordinateScaling,
+    jdoubleArray advanceOut, jlongArray shapeHandleOut) {
+#ifdef MSDFGEN_USE_FREETYPE
+    if (fontHandle == 0) return MSDF_ERR_INVALID_ARG;
+    Shape* shape = new Shape();
+    double advance = 0.0;
+    bool ok = msdfgen::loadGlyph(*shape, reinterpret_cast<msdfgen::FontHandle*>(fontHandle),
+        static_cast<unsigned>(unicode),
+        static_cast<msdfgen::FontCoordinateScaling>(coordinateScaling),
+        &advance);
+    if (!ok) {
+        delete shape;
+        return MSDF_ERR_FAILED;
+    }
+    jlong handle = reinterpret_cast<jlong>(shape);
+    env->SetLongArrayRegion(shapeHandleOut, 0, 1, &handle);
+    if (advanceOut != nullptr) {
+        env->SetDoubleArrayRegion(advanceOut, 0, 1, &advance);
+    }
+    return MSDF_SUCCESS;
+#else
+    (void)env; (void)fontHandle; (void)unicode; (void)coordinateScaling;
+    (void)advanceOut; (void)shapeHandleOut;
+    return MSDF_ERR_FAILED;
+#endif
+}
+
+JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nLoadGlyphByIndex(
+    JNIEnv* env, jclass, jlong fontHandle, jint glyphIndex, jint coordinateScaling,
+    jdoubleArray advanceOut, jlongArray shapeHandleOut) {
+#ifdef MSDFGEN_USE_FREETYPE
+    if (fontHandle == 0) return MSDF_ERR_INVALID_ARG;
+    Shape* shape = new Shape();
+    double advance = 0.0;
+    bool ok = msdfgen::loadGlyph(*shape, reinterpret_cast<msdfgen::FontHandle*>(fontHandle),
+        msdfgen::GlyphIndex(static_cast<unsigned>(glyphIndex)),
+        static_cast<msdfgen::FontCoordinateScaling>(coordinateScaling),
+        &advance);
+    if (!ok) {
+        delete shape;
+        return MSDF_ERR_FAILED;
+    }
+    jlong handle = reinterpret_cast<jlong>(shape);
+    env->SetLongArrayRegion(shapeHandleOut, 0, 1, &handle);
+    if (advanceOut != nullptr) {
+        env->SetDoubleArrayRegion(advanceOut, 0, 1, &advance);
+    }
+    return MSDF_SUCCESS;
+#else
+    (void)env; (void)fontHandle; (void)glyphIndex; (void)coordinateScaling;
+    (void)advanceOut; (void)shapeHandleOut;
+    return MSDF_ERR_FAILED;
+#endif
+}
+
+JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nGetGlyphIndex(
+    JNIEnv* env, jclass, jlong fontHandle, jint unicode, jintArray indexOut) {
+#ifdef MSDFGEN_USE_FREETYPE
+    if (fontHandle == 0) return MSDF_ERR_INVALID_ARG;
+    msdfgen::GlyphIndex glyphIndex{};
+    bool ok = msdfgen::getGlyphIndex(glyphIndex,
+        reinterpret_cast<msdfgen::FontHandle*>(fontHandle),
+        static_cast<unsigned>(unicode));
+    if (!ok) return MSDF_ERR_FAILED;
+    jint idx = static_cast<jint>(glyphIndex.getIndex());
+    env->SetIntArrayRegion(indexOut, 0, 1, &idx);
+    return MSDF_SUCCESS;
+#else
+    (void)env; (void)fontHandle; (void)unicode; (void)indexOut;
+    return MSDF_ERR_FAILED;
+#endif
+}
+
+JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nGetKerning(
+    JNIEnv* env, jclass, jlong fontHandle, jint cp1, jint cp2, jdoubleArray kerningOut) {
+#ifdef MSDFGEN_USE_FREETYPE
+    if (fontHandle == 0) return MSDF_ERR_INVALID_ARG;
+    double kerning = 0.0;
+    bool ok = msdfgen::getKerning(kerning,
+        reinterpret_cast<msdfgen::FontHandle*>(fontHandle),
+        static_cast<unsigned>(cp1), static_cast<unsigned>(cp2));
+    if (!ok) return MSDF_ERR_FAILED;
+    env->SetDoubleArrayRegion(kerningOut, 0, 1, &kerning);
+    return MSDF_SUCCESS;
+#else
+    (void)env; (void)fontHandle; (void)cp1; (void)cp2; (void)kerningOut;
+    return MSDF_ERR_FAILED;
+#endif
+}
+
+JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nGetKerningByIndex(
+    JNIEnv* env, jclass, jlong fontHandle, jint index1, jint index2, jdoubleArray kerningOut) {
+#ifdef MSDFGEN_USE_FREETYPE
+    if (fontHandle == 0) return MSDF_ERR_INVALID_ARG;
+    double kerning = 0.0;
+    bool ok = msdfgen::getKerning(kerning,
+        reinterpret_cast<msdfgen::FontHandle*>(fontHandle),
+        msdfgen::GlyphIndex(static_cast<unsigned>(index1)),
+        msdfgen::GlyphIndex(static_cast<unsigned>(index2)));
+    if (!ok) return MSDF_ERR_FAILED;
+    env->SetDoubleArrayRegion(kerningOut, 0, 1, &kerning);
+    return MSDF_SUCCESS;
+#else
+    (void)env; (void)fontHandle; (void)index1; (void)index2; (void)kerningOut;
+    return MSDF_ERR_FAILED;
+#endif
 }

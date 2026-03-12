@@ -1,6 +1,8 @@
 #include "headers.h"
 #include <cstring>
 
+extern "C" {
+
 JNIEXPORT jlong JNICALL Java_com_crystalgraphics_harfbuzz_HBBuffer_nCreate
   (JNIEnv *env, jclass) {
     hb_buffer_t *buf = hb_buffer_create();
@@ -142,6 +144,32 @@ JNIEXPORT jlong JNICALL Java_com_crystalgraphics_harfbuzz_HBFont_nCreateFromFile
     return (jlong)(intptr_t)font;
 }
 
+JNIEXPORT jlong JNICALL Java_com_crystalgraphics_harfbuzz_HBFont_nCreateFromMemory
+  (JNIEnv *env, jclass, jbyteArray jData, jint dataLen, jint faceIndex) {
+    jbyte *data = env->GetByteArrayElements(jData, NULL);
+
+    // HarfBuzz takes ownership of the data copy via hb_blob_create, so we
+    // need to copy the Java byte array into a persistent buffer.
+    char *persistentData = (char *)malloc(dataLen);
+    memcpy(persistentData, data, dataLen);
+    env->ReleaseByteArrayElements(jData, data, JNI_ABORT);
+
+    hb_blob_t *blob = hb_blob_create(persistentData, dataLen,
+                                     HB_MEMORY_MODE_WRITABLE, persistentData, free);
+
+    if (hb_blob_get_length(blob) == 0) {
+        hb_blob_destroy(blob);
+        return 0;
+    }
+
+    hb_face_t *hbFace = hb_face_create(blob, faceIndex);
+    hb_blob_destroy(blob);
+    hb_font_t *font = hb_font_create(hbFace);
+    hb_face_destroy(hbFace);
+    hb_font_set_scale(font, 64 * 16, 64 * 16);
+    return (jlong)(intptr_t)font;
+}
+
 JNIEXPORT void JNICALL Java_com_crystalgraphics_harfbuzz_HBFont_nDestroy
   (JNIEnv *env, jclass, jlong fontPtr) {
     hb_font_destroy((hb_font_t *)(intptr_t)fontPtr);
@@ -209,3 +237,5 @@ JNIEXPORT void JNICALL Java_com_crystalgraphics_harfbuzz_HBShape_nShape
         free(features);
     }
 }
+
+} // extern "C"

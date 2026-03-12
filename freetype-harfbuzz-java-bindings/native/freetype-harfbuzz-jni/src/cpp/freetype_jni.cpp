@@ -269,3 +269,5 @@ JNIEXPORT void JNICALL Java_com_crystalgraphics_freetype_FTFace_nDoneFace
         free(bufferToFree);
     }
 }
+
+    env->ReleaseStringUTFChars(jFilePath, filePath);
