@@ -9,7 +9,7 @@ public final class Shape {
     private long nativeHandle;
     private boolean freed;
 
-    private Shape(long nativeHandle) {
+    Shape(long nativeHandle) {
         this.nativeHandle = nativeHandle;
         this.freed = false;
     }

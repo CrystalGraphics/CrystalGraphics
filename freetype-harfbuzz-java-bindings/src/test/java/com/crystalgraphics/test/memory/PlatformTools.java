@@ -23,7 +23,7 @@ public final class PlatformTools {
 
     public static String detectArch() {
         String arch = System.getProperty("os.arch", "").toLowerCase();
-        if (arch.equals("amd64") || arch.equals("x86_64")) return "x86_64";
+        if (arch.equals("amd64") || arch.equals("x86_64")) return "x64";
         if (arch.equals("aarch64") || arch.equals("arm64")) return "aarch64";
         return arch;
     }

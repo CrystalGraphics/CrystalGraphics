@@ -1,5 +1,8 @@
 package com.crystalgraphics.freetype;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -17,6 +20,16 @@ import java.util.List;
  * FreeTypeLibrary ft = FreeTypeLibrary.create();
  * FTFace face = ft.newFace("/path/to/font.ttf", 0);
  * face.setPixelSizes(0, 24);
+ * // ... use face ...
+ * face.destroy();
+ * ft.destroy();
+ * }</pre>
+ *
+ * <p>Loading from InputStream:</p>
+ * <pre>{@code
+ * FreeTypeLibrary ft = FreeTypeLibrary.create();
+ * InputStream is = getClass().getResourceAsStream("/fonts/myfont.ttf");
+ * FTFace face = ft.newFaceFromStream(is, 0);
  * // ... use face ...
  * face.destroy();
  * ft.destroy();
@@ -76,6 +89,40 @@ public final class FreeTypeLibrary {
             faces.add(new WeakReference<FTFace>(face));
         }
         return face;
+    }
+
+    /**
+     * Opens a font face from an InputStream. The stream is fully read into memory
+     * and then loaded via {@link #newFaceFromMemory(byte[], int)}.
+     * The stream is NOT closed by this method.
+     *
+     * @param stream the input stream containing font data (.ttf, .otf, etc.)
+     * @param faceIndex face index within the font file (0 for most single-face fonts)
+     * @return a new FTFace
+     * @throws IOException if reading the stream fails
+     * @throws FreeTypeException if the font cannot be loaded
+     * @throws IllegalStateException if this library has been destroyed
+     */
+    public FTFace newFaceFromStream(InputStream stream, int faceIndex) throws IOException {
+        checkNotDestroyed();
+        if (stream == null) {
+            throw new IllegalArgumentException("stream must not be null");
+        }
+        byte[] data = readAllBytes(stream);
+        return newFaceFromMemory(data, faceIndex);
+    }
+
+    /**
+     * Opens the first font face from an InputStream. Equivalent to
+     * {@code newFaceFromStream(stream, 0)}.
+     *
+     * @param stream the input stream containing font data
+     * @return a new FTFace (face index 0)
+     * @throws IOException if reading the stream fails
+     * @throws FreeTypeException if the font cannot be loaded
+     */
+    public FTFace newFaceFromStream(InputStream stream) throws IOException {
+        return newFaceFromStream(stream, 0);
     }
 
     /**
@@ -193,10 +240,73 @@ public final class FreeTypeLibrary {
         }
     }
 
+    /**
+     * Returns the number of faces in the given font data.
+     * Loads face index 0 temporarily, reads {@code num_faces}, then closes it.
+     *
+     * @param data font file bytes
+     * @return number of faces (>= 1 for valid fonts)
+     * @throws FreeTypeException if the font data is invalid
+     */
+    public int getFaceCount(byte[] data) {
+        checkNotDestroyed();
+        if (data == null || data.length == 0) {
+            throw new IllegalArgumentException("data must not be null or empty");
+        }
+        synchronized (lock) {
+            return nGetFaceCountFromMemory(nativePtr, data, data.length);
+        }
+    }
+
+    /**
+     * Returns the number of faces in the given font file.
+     *
+     * @param filePath path to the font file
+     * @return number of faces (>= 1 for valid fonts)
+     * @throws FreeTypeException if the font file is invalid
+     */
+    public int getFaceCount(String filePath) {
+        checkNotDestroyed();
+        if (filePath == null) {
+            throw new IllegalArgumentException("filePath must not be null");
+        }
+        synchronized (lock) {
+            return nGetFaceCount(nativePtr, filePath);
+        }
+    }
+
+    /**
+     * Returns the number of faces in font data read from a stream.
+     * The stream is NOT closed by this method.
+     *
+     * @param stream input stream containing font data
+     * @return number of faces (>= 1 for valid fonts)
+     * @throws IOException if reading the stream fails
+     * @throws FreeTypeException if the font data is invalid
+     */
+    public int getFaceCount(InputStream stream) throws IOException {
+        if (stream == null) {
+            throw new IllegalArgumentException("stream must not be null");
+        }
+        return getFaceCount(readAllBytes(stream));
+    }
+
+    static byte[] readAllBytes(InputStream stream) throws IOException {
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        byte[] buf = new byte[8192];
+        int n;
+        while ((n = stream.read(buf)) != -1) {
+            bos.write(buf, 0, n);
+        }
+        return bos.toByteArray();
+    }
+
     // --- JNI native methods ---
     private static native long nInitFreeType();
     private static native void nDoneFreeType(long libraryPtr);
     private static native long nNewFace(long libraryPtr, String filePath, int faceIndex);
     private static native long nNewFaceFromMemory(long libraryPtr, byte[] data, int dataLen, int faceIndex);
     private static native int[] nGetVersion(long libraryPtr);
+    private static native int nGetFaceCount(long libraryPtr, String filePath);
+    private static native int nGetFaceCountFromMemory(long libraryPtr, byte[] data, int dataLen);
 }

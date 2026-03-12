@@ -96,6 +96,18 @@ public final class FTFace {
         return nGetNumGlyphs(nativePtr);
     }
 
+    /**
+     * Returns the number of faces in the font file this face was loaded from.
+     * For single-face fonts (.ttf, .otf), this returns 1.
+     * For TrueType Collections (.ttc), this returns the number of fonts in the collection.
+     *
+     * @return number of faces (>= 1)
+     */
+    public int getNumFaces() {
+        checkNotDestroyed();
+        return nGetNumFaces(nativePtr);
+    }
+
     public int getUnitsPerEM() {
         checkNotDestroyed();
         return nGetUnitsPerEM(nativePtr);
@@ -235,6 +247,7 @@ public final class FTFace {
     private static native String nGetFamilyName(long facePtr);
     private static native String nGetStyleName(long facePtr);
     private static native int nGetNumGlyphs(long facePtr);
+    private static native int nGetNumFaces(long facePtr);
     private static native int nGetUnitsPerEM(long facePtr);
     private static native int nGetAscender(long facePtr);
     private static native int nGetDescender(long facePtr);
