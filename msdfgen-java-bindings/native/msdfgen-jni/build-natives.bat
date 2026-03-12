@@ -33,7 +33,7 @@ if /i "%MSDFGEN_USE_FREETYPE%"=="ON" (
     echo FreeType support: DISABLED (set MSDFGEN_USE_FREETYPE=ON to enable)
 )
 
-cmake -S "%NATIVE_DIR%" -B "%BUILD_DIR%" -DCMAKE_BUILD_TYPE=Release -DMSDFGEN_SOURCE_DIR="%MSDFGEN_DIR%" %CMAKE_FREETYPE_FLAG%
+cmake -S "%NATIVE_DIR%" -B "%BUILD_DIR%" -DCMAKE_BUILD_TYPE=Release -DMSDFGEN_SOURCE_DIR="%MSDFGEN_DIR:\=/%" %CMAKE_FREETYPE_FLAG%
 if errorlevel 1 (
     echo CMake configuration failed
     exit /b 1
