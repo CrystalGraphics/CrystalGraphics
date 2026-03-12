@@ -39,13 +39,14 @@ set MSDFGEN_DIR_CMAKE=%MSDFGEN_DIR:\=/%
 cmake -S "%NATIVE_DIR%" -B "%BUILD_DIR%" ^
     -DCMAKE_BUILD_TYPE=Release ^
     -DMSDFGEN_SOURCE_DIR="%MSDFGEN_DIR_CMAKE%" ^
+    -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded ^
     %CMAKE_FREETYPE_FLAG%
 if errorlevel 1 (
     echo CMake configuration failed
     exit /b 1
 )
 
-cmake --build "%BUILD_DIR%" --config Release
+cmake --build "%BUILD_DIR%" --config Release --parallel
 if errorlevel 1 (
     echo Build failed
     exit /b 1

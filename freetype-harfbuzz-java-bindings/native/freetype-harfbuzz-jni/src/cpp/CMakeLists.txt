@@ -103,6 +103,14 @@ else()
     set_target_properties(freetype_harfbuzz_jni PROPERTIES
         SUFFIX ".so"
     )
+    # On Linux with GCC, statically link C/C++ runtime to avoid
+    # libgcc_s.so and libstdc++.so dependencies
+    if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        target_link_options(freetype_harfbuzz_jni PRIVATE
+            -static-libgcc
+            -static-libstdc++
+        )
+    endif()
 endif()
 
 set_target_properties(freetype_harfbuzz_jni PROPERTIES
