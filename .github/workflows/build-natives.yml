@@ -125,6 +125,12 @@ jobs:
         run: cmake --version
       - name: Setup Visual Studio environment
         uses: ilammy/msvc-dev-cmd@v1
+      - name: Cache MSDFgen clone
+        uses: actions/cache@v4
+        with:
+          path: |
+            msdfgen-java-bindings/native/msdfgen-jni/msdfgen
+          key: windows-msdfgen-v1.13
       - name: Cache FreeType+HarfBuzz dependencies
         uses: actions/cache@v4
         with:
