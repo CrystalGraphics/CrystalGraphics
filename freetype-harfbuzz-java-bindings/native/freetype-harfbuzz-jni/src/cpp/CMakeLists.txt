@@ -65,6 +65,15 @@ target_link_libraries(freetype_harfbuzz_jni
     ${HARFBUZZ_LIBRARIES}
 )
 
+if(NOT WIN32)
+    find_package(ZLIB)
+    if(ZLIB_FOUND)
+        target_link_libraries(freetype_harfbuzz_jni ${ZLIB_LIBRARIES})
+    else()
+        target_link_libraries(freetype_harfbuzz_jni z)
+    endif()
+endif()
+
 if(APPLE)
     set_target_properties(freetype_harfbuzz_jni PROPERTIES
         SUFFIX ".dylib"
