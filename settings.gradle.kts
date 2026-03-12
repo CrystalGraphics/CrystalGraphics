@@ -21,3 +21,7 @@ plugins {
 }
 
 rootProject.name = "CrystalGraphics"
+
+// JNI bindings subprojects (standalone Java libraries, not Minecraft mods)
+include("msdfgen-java-bindings")
+include("freetype-harfbuzz-java-bindings")

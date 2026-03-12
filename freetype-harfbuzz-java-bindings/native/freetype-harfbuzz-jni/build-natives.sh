@@ -18,7 +18,7 @@ detect_platform() {
         *) echo "Unsupported OS: $(uname -s)"; exit 1 ;;
     esac
     case "$(uname -m)" in
-        x86_64|amd64) arch="x86_64" ;;
+        x86_64|amd64) arch="x64" ;;
         aarch64|arm64) arch="aarch64" ;;
         *) echo "Unsupported arch: $(uname -m)"; exit 1 ;;
     esac
@@ -49,6 +49,7 @@ build_deps() {
     cmake -S "$deps_dir/freetype-${FREETYPE_VERSION}" -B "$ft_build" \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+        -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
         -DBUILD_SHARED_LIBS=OFF \
         -DFT_DISABLE_BZIP2=ON \
         -DFT_DISABLE_PNG=ON \
@@ -59,19 +60,47 @@ build_deps() {
     echo "=== Building HarfBuzz ==="
     local hb_build="$deps_dir/harfbuzz-build"
     mkdir -p "$hb_build"
+
+    local ft_lib_for_hb
+    ft_lib_for_hb=$(find "$ft_build" -name "libfreetype.a" -o -name "freetype.lib" 2>/dev/null | head -1)
+    if [ -z "$ft_lib_for_hb" ]; then
+        echo "ERROR: FreeType static lib not found after build"
+        find "$ft_build" -type f -name "*.a" -o -name "*.lib" 2>/dev/null
+        exit 1
+    fi
+
     cmake -S "$deps_dir/harfbuzz-${HARFBUZZ_VERSION}" -B "$hb_build" \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+        -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
         -DBUILD_SHARED_LIBS=OFF \
         -DHB_HAVE_FREETYPE=ON \
         -DFREETYPE_INCLUDE_DIRS="$deps_dir/freetype-${FREETYPE_VERSION}/include" \
-        -DFREETYPE_LIBRARY="$ft_build/libfreetype.a"
+        -DFREETYPE_LIBRARY="$ft_lib_for_hb"
     cmake --build "$hb_build" --config Release -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 
+    # Find the built static libs (location varies by platform/generator)
+    FREETYPE_STATIC_LIB=$(find "$ft_build" -name "libfreetype.a" -o -name "freetype.lib" 2>/dev/null | head -1)
+    HARFBUZZ_STATIC_LIB=$(find "$hb_build" -name "libharfbuzz.a" -o -name "harfbuzz.lib" 2>/dev/null | head -1)
+
+    if [ -z "$FREETYPE_STATIC_LIB" ]; then
+        echo "ERROR: Could not find built FreeType static library in $ft_build"
+        find "$ft_build" -name "*.a" -o -name "*.lib" 2>/dev/null
+        exit 1
+    fi
+    if [ -z "$HARFBUZZ_STATIC_LIB" ]; then
+        echo "ERROR: Could not find built HarfBuzz static library in $hb_build"
+        find "$hb_build" -name "*.a" -o -name "*.lib" 2>/dev/null
+        exit 1
+    fi
+
+    echo "FreeType static lib: $FREETYPE_STATIC_LIB"
+    echo "HarfBuzz static lib: $HARFBUZZ_STATIC_LIB"
+
     export FREETYPE_DIR="$deps_dir/freetype-${FREETYPE_VERSION}"
-    export FREETYPE_LIB_DIR="$ft_build"
+    export FREETYPE_LIB="$FREETYPE_STATIC_LIB"
     export HARFBUZZ_DIR="$deps_dir/harfbuzz-${HARFBUZZ_VERSION}"
-    export HARFBUZZ_LIB_DIR="$hb_build"
+    export HARFBUZZ_LIB="$HARFBUZZ_STATIC_LIB"
 }
 
 build_jni() {
@@ -84,9 +113,9 @@ build_jni() {
     cmake -S "$SCRIPT_DIR/src/cpp" -B "$jni_build" \
         -DCMAKE_BUILD_TYPE=Release \
         -DFREETYPE_INCLUDE_DIRS="${FREETYPE_DIR}/include" \
-        -DFREETYPE_LIBRARIES="${FREETYPE_LIB_DIR}/libfreetype.a" \
+        -DFREETYPE_LIBRARIES="${FREETYPE_LIB}" \
         -DHARFBUZZ_INCLUDE_DIRS="${HARFBUZZ_DIR}/src" \
-        -DHARFBUZZ_LIBRARIES="${HARFBUZZ_LIB_DIR}/src/libharfbuzz.a" \
+        -DHARFBUZZ_LIBRARIES="${HARFBUZZ_LIB}" \
         -DSTATIC_LINK_DEPS=ON
 
     cmake --build "$jni_build" --config Release -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)

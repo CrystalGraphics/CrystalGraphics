@@ -5,22 +5,59 @@ set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-find_package(JNI REQUIRED)
-find_package(Freetype REQUIRED)
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(HARFBUZZ REQUIRED harfbuzz)
+# JNI: only require JNI_INCLUDE_DIRS (headers), not AWT/JVM shared libs
+# This allows cross-compilation where JVM libs aren't available for target arch
+find_package(JNI)
+if(NOT JNI_FOUND)
+    # Fallback: try to find just the headers from JAVA_HOME
+    if(DEFINED ENV{JAVA_HOME})
+        set(JNI_INCLUDE_DIRS
+            "$ENV{JAVA_HOME}/include"
+        )
+        # Add platform-specific subdirectory
+        if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+            list(APPEND JNI_INCLUDE_DIRS "$ENV{JAVA_HOME}/include/linux")
+        elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+            list(APPEND JNI_INCLUDE_DIRS "$ENV{JAVA_HOME}/include/darwin")
+        elseif(WIN32)
+            list(APPEND JNI_INCLUDE_DIRS "$ENV{JAVA_HOME}/include/win32")
+        endif()
+        message(STATUS "JNI headers from JAVA_HOME: ${JNI_INCLUDE_DIRS}")
+    else()
+        message(FATAL_ERROR "Could not find JNI and JAVA_HOME is not set")
+    endif()
+endif()
+
+if(NOT DEFINED FREETYPE_INCLUDE_DIRS OR NOT DEFINED FREETYPE_LIBRARIES)
+    # Try find_package first; if it fails and we have include dirs, that's OK
+    find_package(Freetype)
+    if(NOT FREETYPE_FOUND)
+        message(FATAL_ERROR "FreeType not found. Pass -DFREETYPE_INCLUDE_DIRS=... and -DFREETYPE_LIBRARIES=...")
+    endif()
+    # find_package sets FREETYPE_INCLUDE_DIRS and FREETYPE_LIBRARIES
+endif()
+
+if(NOT DEFINED HARFBUZZ_INCLUDE_DIRS OR NOT DEFINED HARFBUZZ_LIBRARIES)
+    find_package(PkgConfig)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(HARFBUZZ harfbuzz)
+    endif()
+    if(NOT HARFBUZZ_INCLUDE_DIRS OR NOT HARFBUZZ_LIBRARIES)
+        message(FATAL_ERROR "HarfBuzz not found. Pass -DHARFBUZZ_INCLUDE_DIRS=... and -DHARFBUZZ_LIBRARIES=...")
+    endif()
+endif()
 
 add_library(freetype_harfbuzz_jni SHARED
-    src/cpp/freetype_jni.cpp
-    src/cpp/harfbuzz_jni.cpp
-    src/cpp/integration.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/freetype_jni.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/harfbuzz_jni.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/integration.cpp
 )
 
 target_include_directories(freetype_harfbuzz_jni PRIVATE
     ${JNI_INCLUDE_DIRS}
     ${FREETYPE_INCLUDE_DIRS}
     ${HARFBUZZ_INCLUDE_DIRS}
-    src/cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 target_link_libraries(freetype_harfbuzz_jni
