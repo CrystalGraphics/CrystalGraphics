@@ -13,9 +13,6 @@ on:
 permissions:
   contents: write
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 # Java 17 is used for ALL jobs because:
 # 1. Temurin does NOT publish Java 8 for macOS ARM64 (Apple Silicon predates Java 8 EOL)
 # 2. JNI headers (jni.h) are stable across Java versions — the native build only needs headers
@@ -207,7 +204,7 @@ jobs:
       - name: Verify CMake available
         run: cmake --version
       - name: Setup Visual Studio environment
-        uses: ilammy/msvc-dev-cmd@v1
+        uses: TheMrMilchmann/setup-msvc-dev@v4
       - name: Cache MSDFgen clone
         uses: actions/cache@v5
         with:
