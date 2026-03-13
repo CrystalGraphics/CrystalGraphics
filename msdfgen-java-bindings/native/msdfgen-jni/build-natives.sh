@@ -7,6 +7,8 @@ NATIVE_DIR="$SCRIPT_DIR"
 BUILD_DIR="$NATIVE_DIR/build"
 MSDFGEN_DIR="${MSDFGEN_SOURCE_DIR:-$NATIVE_DIR/msdfgen}"
 
+FREETYPE_VERSION="2.13.2"
+
 if [ ! -d "$MSDFGEN_DIR" ]; then
     echo "Cloning msdfgen..."
     git clone --depth 1 --branch v1.13 https://github.com/Chlumsky/msdfgen.git "$MSDFGEN_DIR"
@@ -40,6 +42,68 @@ fi
 PLATFORM="${OS_ID}-${ARCH_ID}"
 OUTPUT_DIR="$PROJECT_ROOT/src/main/resources/natives/$PLATFORM"
 
+get_macos_cmake_flags() {
+    local flags=()
+    if [ "$(uname -s)" = "Darwin" ]; then
+        local target_arch="${MACOS_TARGET_ARCH:-$(uname -m)}"
+        case "$target_arch" in
+            x86_64|amd64) flags+=(-DCMAKE_OSX_ARCHITECTURES=x86_64) ;;
+            aarch64|arm64) flags+=(-DCMAKE_OSX_ARCHITECTURES=arm64) ;;
+        esac
+        flags+=(-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0)
+    fi
+    echo "${flags[@]+"${flags[@]}"}"
+}
+
+build_freetype() {
+    local deps_dir="$BUILD_DIR/deps"
+    mkdir -p "$deps_dir"
+
+    if [ ! -d "$deps_dir/freetype-${FREETYPE_VERSION}" ]; then
+        echo "=== Downloading FreeType ${FREETYPE_VERSION} ==="
+        curl -L "https://download.savannah.gnu.org/releases/freetype/freetype-${FREETYPE_VERSION}.tar.xz" \
+            -o "$deps_dir/freetype.tar.xz"
+        cd "$deps_dir" && tar xf freetype.tar.xz && cd -
+    fi
+
+    local extra_cmake_flags=()
+    if command -v gcc &>/dev/null && [[ "$(cc --version 2>&1)" == *"gcc"* || "$(cc --version 2>&1)" == *"GCC"* ]]; then
+        echo "=== Detected GCC/MinGW compiler — will use static linking ==="
+        extra_cmake_flags+=(-DCMAKE_C_FLAGS="-static-libgcc" -DCMAKE_CXX_FLAGS="-static-libgcc -static-libstdc++")
+    fi
+
+    local macos_flags
+    macos_flags=$(get_macos_cmake_flags)
+
+    echo "=== Building FreeType ==="
+    local ft_build="$deps_dir/freetype-build"
+    mkdir -p "$ft_build"
+    cmake -S "$deps_dir/freetype-${FREETYPE_VERSION}" -B "$ft_build" \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+        -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+        -DBUILD_SHARED_LIBS=OFF \
+        -DFT_DISABLE_BZIP2=ON \
+        -DFT_DISABLE_PNG=ON \
+        -DFT_DISABLE_HARFBUZZ=ON \
+        -DFT_DISABLE_BROTLI=ON \
+        ${extra_cmake_flags[@]+"${extra_cmake_flags[@]}"} \
+        $macos_flags
+    cmake --build "$ft_build" --config Release -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
+
+    FREETYPE_STATIC_LIB=$(find "$ft_build" -name "libfreetype.a" -o -name "freetype.lib" 2>/dev/null | head -1)
+    if [ -z "$FREETYPE_STATIC_LIB" ]; then
+        echo "ERROR: Could not find built FreeType static library in $ft_build"
+        find "$ft_build" -name "*.a" -o -name "*.lib" 2>/dev/null
+        exit 1
+    fi
+
+    echo "FreeType static lib: $FREETYPE_STATIC_LIB"
+
+    export FREETYPE_DIR="$deps_dir/freetype-${FREETYPE_VERSION}"
+    export FREETYPE_LIB="$FREETYPE_STATIC_LIB"
+}
+
 echo "Building for: $PLATFORM"
 echo "MSDFgen source: $MSDFGEN_DIR"
 echo "Output: $OUTPUT_DIR"
@@ -56,8 +120,13 @@ CMAKE_ARGS=(
 
 # Enable FreeType support if requested via MSDFGEN_USE_FREETYPE=ON
 if [ "${MSDFGEN_USE_FREETYPE:-OFF}" = "ON" ]; then
-    CMAKE_ARGS+=(-DMSDFGEN_USE_FREETYPE=ON)
     echo "FreeType support: ENABLED"
+    build_freetype
+    CMAKE_ARGS+=(
+        -DMSDFGEN_USE_FREETYPE=ON
+        -DFREETYPE_INCLUDE_DIRS="${FREETYPE_DIR}/include"
+        -DFREETYPE_LIBRARIES="${FREETYPE_LIB}"
+    )
 else
     echo "FreeType support: DISABLED (set MSDFGEN_USE_FREETYPE=ON to enable)"
 fi
