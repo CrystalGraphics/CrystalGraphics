@@ -30,73 +30,73 @@ mkdir "%BUILD_DIR%"
 rem Convert backslashes to forward slashes for CMake path compatibility
 set MSDFGEN_DIR_CMAKE=%MSDFGEN_DIR:\=/%
 
-set CMAKE_FREETYPE_FLAGS=
-if /i "%MSDFGEN_USE_FREETYPE%"=="ON" (
-    echo FreeType support: ENABLED
-    echo.
+rem === Build msdfgen's own private static FreeType copy ===
+rem msdfgen needs its own FreeType (not shared with freetype-harfbuzz-jni)
+rem because they operate in separate heap spaces and need isolated copies.
+echo FreeType support: ENABLED (always-on for msdfgen)
+echo.
 
-    set DEPS_DIR=%BUILD_DIR%\deps
-    if not exist "!DEPS_DIR!" mkdir "!DEPS_DIR!"
+set DEPS_DIR=%BUILD_DIR%\deps
+if not exist "!DEPS_DIR!" mkdir "!DEPS_DIR!"
 
-    if not exist "!DEPS_DIR!\freetype-%FREETYPE_VERSION%" (
-        echo === Downloading FreeType %FREETYPE_VERSION% ===
-        curl -L "https://download.savannah.gnu.org/releases/freetype/freetype-%FREETYPE_VERSION%.tar.xz" -o "!DEPS_DIR!\freetype.tar.xz"
-        cd /d "!DEPS_DIR!" && tar xf freetype.tar.xz
-        cd /d "%NATIVE_DIR%"
-    )
+if not exist "!DEPS_DIR!\freetype-%FREETYPE_VERSION%" (
+    echo === Downloading FreeType %FREETYPE_VERSION% ===
+    curl -L "https://download.savannah.gnu.org/releases/freetype/freetype-%FREETYPE_VERSION%.tar.xz" -o "!DEPS_DIR!\freetype.tar.xz"
+    cd /d "!DEPS_DIR!" && tar xf freetype.tar.xz
+    cd /d "%NATIVE_DIR%"
+)
 
-    echo === Building FreeType ===
-    set FT_BUILD=!DEPS_DIR!\freetype-build
-    if not exist "!FT_BUILD!" mkdir "!FT_BUILD!"
-    if exist "!FT_BUILD!\CMakeCache.txt" del /f "!FT_BUILD!\CMakeCache.txt"
+echo === Building FreeType (static, /MT) ===
+set FT_BUILD=!DEPS_DIR!\freetype-build
+if not exist "!FT_BUILD!" mkdir "!FT_BUILD!"
+if exist "!FT_BUILD!\CMakeCache.txt" del /f "!FT_BUILD!\CMakeCache.txt"
 
-    cmake -S "!DEPS_DIR!\freetype-%FREETYPE_VERSION%" -B "!FT_BUILD!" ^
-        -DCMAKE_BUILD_TYPE=Release ^
-        -DCMAKE_POSITION_INDEPENDENT_CODE=ON ^
-        -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ^
-        -DBUILD_SHARED_LIBS=OFF ^
-        -DFT_DISABLE_BZIP2=ON ^
-        -DFT_DISABLE_PNG=ON ^
-        -DFT_DISABLE_HARFBUZZ=ON ^
-        -DFT_DISABLE_BROTLI=ON ^
-        -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded ^
-        "-DCMAKE_C_FLAGS_RELEASE=/MT /O2 /DNDEBUG" ^
-        "-DCMAKE_CXX_FLAGS_RELEASE=/MT /O2 /DNDEBUG" ^
-        "-DCMAKE_C_FLAGS=/MT" ^
-        "-DCMAKE_CXX_FLAGS=/MT"
-    if errorlevel 1 (
-        echo FreeType cmake configure failed
-        exit /b 1
-    )
+cmake -S "!DEPS_DIR!\freetype-%FREETYPE_VERSION%" -B "!FT_BUILD!" ^
+    -DCMAKE_BUILD_TYPE=Release ^
+    -DCMAKE_POSITION_INDEPENDENT_CODE=ON ^
+    -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ^
+    -DBUILD_SHARED_LIBS=OFF ^
+    -DFT_DISABLE_BZIP2=ON ^
+    -DFT_DISABLE_PNG=ON ^
+    -DFT_DISABLE_HARFBUZZ=ON ^
+    -DFT_DISABLE_BROTLI=ON ^
+    -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded ^
+    "-DCMAKE_C_FLAGS_RELEASE=/MT /O2 /DNDEBUG" ^
+    "-DCMAKE_CXX_FLAGS_RELEASE=/MT /O2 /DNDEBUG" ^
+    "-DCMAKE_C_FLAGS=/MT" ^
+    "-DCMAKE_CXX_FLAGS=/MT"
+if errorlevel 1 (
+    echo FreeType cmake configure failed
+    exit /b 1
+)
 
-    cmake --build "!FT_BUILD!" --config Release --parallel
-    if errorlevel 1 (
-        echo FreeType build failed
-        exit /b 1
-    )
+cmake --build "!FT_BUILD!" --config Release --parallel
+if errorlevel 1 (
+    echo FreeType build failed
+    exit /b 1
+)
 
-    set FT_LIB=
-    for /r "!FT_BUILD!" %%f in (freetype.lib) do (
+set FT_LIB=
+for /r "!FT_BUILD!" %%f in (freetype.lib) do (
+    if exist "%%f" set FT_LIB=%%f
+)
+if not defined FT_LIB (
+    for /r "!FT_BUILD!" %%f in (freetyped.lib) do (
         if exist "%%f" set FT_LIB=%%f
     )
-    if not defined FT_LIB (
-        for /r "!FT_BUILD!" %%f in (freetyped.lib) do (
-            if exist "%%f" set FT_LIB=%%f
-        )
-    )
-    if not defined FT_LIB (
-        echo ERROR: FreeType static lib not found
-        exit /b 1
-    )
-    echo FreeType lib: !FT_LIB!
-
-    set CMAKE_FREETYPE_FLAGS=-DMSDFGEN_USE_FREETYPE=ON -DFREETYPE_INCLUDE_DIRS="!DEPS_DIR!\freetype-%FREETYPE_VERSION%\include" -DFREETYPE_LIBRARIES="!FT_LIB!"
-) else (
-    echo FreeType support: DISABLED (set MSDFGEN_USE_FREETYPE=ON to enable)
 )
+if not defined FT_LIB (
+    echo ERROR: FreeType static lib not found
+    exit /b 1
+)
+echo FreeType lib: !FT_LIB!
 
 echo.
 echo === Building MSDFgen JNI library ===
+
+set FT_INCLUDE_CMAKE=!DEPS_DIR!\freetype-%FREETYPE_VERSION%\include
+set FT_INCLUDE_CMAKE=!FT_INCLUDE_CMAKE:\=/!
+set FT_LIB_CMAKE=!FT_LIB:\=/!
 
 cmake -S "%NATIVE_DIR%" -B "%BUILD_DIR%" ^
     -DCMAKE_BUILD_TYPE=Release ^
@@ -104,7 +104,9 @@ cmake -S "%NATIVE_DIR%" -B "%BUILD_DIR%" ^
     -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded ^
     "-DCMAKE_CXX_FLAGS_RELEASE=/MT /O2 /DNDEBUG" ^
     "-DCMAKE_CXX_FLAGS=/MT" ^
-    %CMAKE_FREETYPE_FLAGS%
+    -DMSDFGEN_USE_FREETYPE=ON ^
+    -DFREETYPE_INCLUDE_DIRS="!FT_INCLUDE_CMAKE!" ^
+    -DFREETYPE_LIBRARIES="!FT_LIB_CMAKE!"
 if errorlevel 1 (
     echo CMake configuration failed
     exit /b 1

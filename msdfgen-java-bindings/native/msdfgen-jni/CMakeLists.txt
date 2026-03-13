@@ -52,8 +52,8 @@ if(NOT DEFINED MSDFGEN_SOURCE_DIR)
     message(FATAL_ERROR "MSDFGEN_SOURCE_DIR must be set to the msdfgen source root")
 endif()
 
-# FreeType support - enable with -DMSDFGEN_USE_FREETYPE=ON
-option(MSDFGEN_USE_FREETYPE "Enable FreeType font loading support" OFF)
+# FreeType support - ON by default; msdfgen builds its own private static copy
+option(MSDFGEN_USE_FREETYPE "Enable FreeType font loading support" ON)
 
 # Collect msdfgen core sources
 file(GLOB MSDFGEN_CORE_SOURCES "${MSDFGEN_SOURCE_DIR}/core/*.cpp")
