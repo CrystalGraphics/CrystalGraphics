@@ -25,7 +25,7 @@ tasks.shadowJar {
     exclude("org/jetbrains/kotlin/**")
 
     // Include JNI binding subproject JARs (unpacked) in the shadow JAR.
-    // These are compileOnly deps — cannot use shadowImplementation because the GTNH
+    // These are implementation deps but cannot use shadowImplementation because the GTNH
     // convention plugin requires RFG obfuscation variant attributes that plain Java
     // subprojects don't publish (causes variant ambiguity errors).
     dependsOn(":msdfgen-java-bindings:jar", ":freetype-harfbuzz-java-bindings:jar")
@@ -62,5 +62,38 @@ tasks.named<JavaExec>("runClient") {
 
         val hotswapAgent = findJarBySubstring("hotswap-agent")
         jvmArgs("-javaagent:${hotswapAgent.absolutePath}")
+    }
+}
+
+// Ensure JNI native libraries from subprojects are loadable during tests.
+// Strategy 2 (classpath extraction) works because subproject resources are on the
+// testRuntimeClasspath via implementation(project(...)). Strategy 3 (java.library.path)
+// is configured here as a fallback pointing to the platform-specific native directories.
+tasks.withType<Test> {
+    val nativePaths = listOf(
+        project(":freetype-harfbuzz-java-bindings").file("src/main/resources/natives"),
+        project(":msdfgen-java-bindings").file("src/main/resources/natives")
+    )
+    val os = System.getProperty("os.name", "").lowercase()
+    val arch = System.getProperty("os.arch", "").lowercase()
+    val osName = when {
+        os.contains("win") -> "windows"
+        os.contains("mac") || os.contains("darwin") -> "macos"
+        os.contains("linux") || os.contains("nux") -> "linux"
+        else -> null
+    }
+    val archName = when (arch) {
+        "amd64", "x86_64" -> "x64"
+        "aarch64", "arm64" -> "aarch64"
+        "x86", "i386", "i686" -> "x86"
+        else -> null
+    }
+    if (osName != null && archName != null) {
+        val platformDirs = nativePaths.map { File(it, "$osName-$archName") }
+            .filter { it.isDirectory }
+        if (platformDirs.isNotEmpty()) {
+            val libPath = platformDirs.joinToString(File.pathSeparator) { it.absolutePath }
+            systemProperty("java.library.path", libPath)
+        }
     }
 }
