@@ -53,7 +53,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-cmake --build "%FT_BUILD%" --config Release
+cmake --build "%FT_BUILD%" --config Release --parallel
 if errorlevel 1 (
     echo FreeType build failed
     exit /b 1
@@ -100,7 +100,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-cmake --build "%HB_BUILD%" --config Release
+cmake --build "%HB_BUILD%" --config Release --parallel
 if errorlevel 1 (
     echo HarfBuzz build failed
     exit /b 1
@@ -138,7 +138,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-cmake --build "%JNI_BUILD%" --config Release
+cmake --build "%JNI_BUILD%" --config Release --parallel
 if errorlevel 1 (
     echo JNI build failed
     exit /b 1
