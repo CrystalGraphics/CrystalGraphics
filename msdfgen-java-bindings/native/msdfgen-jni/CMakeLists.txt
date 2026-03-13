@@ -97,6 +97,18 @@ if(MSDFGEN_USE_FREETYPE)
         ${MSDFGEN_SOURCE_DIR}/ext
     )
     target_link_libraries(msdfgen-jni PRIVATE ${FREETYPE_LIBRARIES})
+
+    # FreeType may depend on zlib (for gzip font support). When statically linking
+    # libfreetype.a, zlib symbols must be resolved by our shared library.
+    # On macOS/Linux, link system zlib; on Windows, MSVC links it automatically.
+    if(NOT WIN32)
+        find_package(ZLIB)
+        if(ZLIB_FOUND)
+            target_link_libraries(msdfgen-jni PRIVATE ${ZLIB_LIBRARIES})
+        else()
+            target_link_libraries(msdfgen-jni PRIVATE z)
+        endif()
+    endif()
 endif()
 
 # Platform-specific settings
