@@ -118,18 +118,16 @@ CMAKE_ARGS=(
     -DMSDFGEN_SOURCE_DIR="$MSDFGEN_DIR"
 )
 
-# Enable FreeType support if requested via MSDFGEN_USE_FREETYPE=ON
-if [ "${MSDFGEN_USE_FREETYPE:-OFF}" = "ON" ]; then
-    echo "FreeType support: ENABLED"
-    build_freetype
-    CMAKE_ARGS+=(
-        -DMSDFGEN_USE_FREETYPE=ON
-        -DFREETYPE_INCLUDE_DIRS="${FREETYPE_DIR}/include"
-        -DFREETYPE_LIBRARIES="${FREETYPE_LIB}"
-    )
-else
-    echo "FreeType support: DISABLED (set MSDFGEN_USE_FREETYPE=ON to enable)"
-fi
+# === Build msdfgen's own private static FreeType copy ===
+# msdfgen needs its own FreeType (not shared with freetype-harfbuzz-jni)
+# because they operate in separate heap spaces and need isolated copies.
+echo "FreeType support: ENABLED (always-on for msdfgen)"
+build_freetype
+CMAKE_ARGS+=(
+    -DMSDFGEN_USE_FREETYPE=ON
+    -DFREETYPE_INCLUDE_DIRS="${FREETYPE_DIR}/include"
+    -DFREETYPE_LIBRARIES="${FREETYPE_LIB}"
+)
 
 if [ "$OS_ID" = "macos" ]; then
     if [ "$ARCH_ID" = "aarch64" ]; then
