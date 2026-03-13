@@ -5,16 +5,36 @@ set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+# Force static CRT (/MT) on MSVC for all targets in this project.
+# This must be set BEFORE any add_library/add_executable calls.
+# Without this, MSVC defaults to /MD (dynamic CRT), which causes a dual-heap
+# crash when the JVM loads msvcp140.dll from its own directory and our DLL
+# also tries to use a different instance of the same CRT.
+if(MSVC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>" CACHE STRING "" FORCE)
+    # Also inject /MT directly into compiler flags as a belt-and-suspenders measure,
+    # since some CMake versions or toolchain files may override MSVC_RUNTIME_LIBRARY.
+    foreach(flag_var
+        CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG CMAKE_C_FLAGS_RELEASE
+        CMAKE_C_FLAGS_MINSIZEREL CMAKE_C_FLAGS_RELWITHDEBINFO
+        CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE
+        CMAKE_CXX_FLAGS_MINSIZEREL CMAKE_CXX_FLAGS_RELWITHDEBINFO)
+        if(${flag_var} MATCHES "/MD")
+            string(REPLACE "/MD" "/MT" ${flag_var} "${${flag_var}}")
+        else()
+            set(${flag_var} "${${flag_var}} /MT")
+        endif()
+    endforeach()
+endif()
+
 # JNI: only require JNI_INCLUDE_DIRS (headers), not AWT/JVM shared libs
 # This allows cross-compilation where JVM libs aren't available for target arch
 find_package(JNI)
 if(NOT JNI_FOUND)
-    # Fallback: try to find just the headers from JAVA_HOME
     if(DEFINED ENV{JAVA_HOME})
         set(JNI_INCLUDE_DIRS
             "$ENV{JAVA_HOME}/include"
         )
-        # Add platform-specific subdirectory
         if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
             list(APPEND JNI_INCLUDE_DIRS "$ENV{JAVA_HOME}/include/linux")
         elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
@@ -29,12 +49,10 @@ if(NOT JNI_FOUND)
 endif()
 
 if(NOT DEFINED FREETYPE_INCLUDE_DIRS OR NOT DEFINED FREETYPE_LIBRARIES)
-    # Try find_package first; if it fails and we have include dirs, that's OK
     find_package(Freetype)
     if(NOT FREETYPE_FOUND)
         message(FATAL_ERROR "FreeType not found. Pass -DFREETYPE_INCLUDE_DIRS=... and -DFREETYPE_LIBRARIES=...")
     endif()
-    # find_package sets FREETYPE_INCLUDE_DIRS and FREETYPE_LIBRARIES
 endif()
 
 if(NOT DEFINED HARFBUZZ_INCLUDE_DIRS OR NOT DEFINED HARFBUZZ_LIBRARIES)
@@ -83,28 +101,17 @@ elseif(WIN32)
     set_target_properties(freetype_harfbuzz_jni PROPERTIES
         SUFFIX ".dll"
     )
-    # When building with MinGW, statically link the C/C++ runtime and pthreads
-    # to avoid requiring libgcc_s_seh-1.dll, libstdc++-6.dll, libwinpthread-1.dll
-    # on the target system. MSVC builds are unaffected by these flags.
     if(MINGW)
         target_link_options(freetype_harfbuzz_jni PRIVATE
             -static-libgcc
             -static-libstdc++
             -Wl,-Bstatic,--whole-archive -lwinpthread -Wl,--no-whole-archive,-Bdynamic
         )
-    elseif(MSVC)
-        # Use static MSVC runtime (/MT) instead of dynamic (/MD) to avoid
-        # requiring VCRUNTIME140.dll / MSVCP140.dll on the target system
-        set_property(TARGET freetype_harfbuzz_jni PROPERTY
-            MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
-        )
     endif()
 else()
     set_target_properties(freetype_harfbuzz_jni PROPERTIES
         SUFFIX ".so"
     )
-    # On Linux with GCC, statically link C/C++ runtime to avoid
-    # libgcc_s.so and libstdc++.so dependencies
     if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
         target_link_options(freetype_harfbuzz_jni PRIVATE
             -static-libgcc
@@ -118,9 +125,18 @@ set_target_properties(freetype_harfbuzz_jni PROPERTIES
     PREFIX "${CMAKE_SHARED_LIBRARY_PREFIX}"
 )
 
-# Note: STATIC_LINK_DEPS is no longer needed here. When the build script
-# (build-natives.sh) provides explicit static library paths via
-# -DFREETYPE_LIBRARIES=... and -DHARFBUZZ_LIBRARIES=..., they are linked
-# at the target_link_libraries() call above (line 63-65). The previous
-# find_library() calls here would rediscover homebrew/system shared libs
-# and double-link them, causing dynamic dependencies on macOS ARM.
+if(STATIC_LINK_DEPS)
+    if(MINGW)
+        find_library(FREETYPE_STATIC_LIB NAMES libfreetype.a PATHS ${FREETYPE_LIBRARY_DIRS})
+        find_library(HARFBUZZ_STATIC_LIB NAMES libharfbuzz.a PATHS ${HARFBUZZ_LIBRARY_DIRS})
+    else()
+        find_library(FREETYPE_STATIC_LIB NAMES freetype libfreetype.a PATHS ${FREETYPE_LIBRARY_DIRS})
+        find_library(HARFBUZZ_STATIC_LIB NAMES harfbuzz libharfbuzz.a PATHS ${HARFBUZZ_LIBRARY_DIRS})
+    endif()
+    if(FREETYPE_STATIC_LIB AND HARFBUZZ_STATIC_LIB)
+        target_link_libraries(freetype_harfbuzz_jni
+            ${FREETYPE_STATIC_LIB}
+            ${HARFBUZZ_STATIC_LIB}
+        )
+    endif()
+endif()
