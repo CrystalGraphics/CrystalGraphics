@@ -5,6 +5,27 @@ set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+# Force static CRT (/MT) on MSVC for all targets in this project.
+# This must be set BEFORE any add_library/add_executable calls.
+# Without this, MSVC defaults to /MD (dynamic CRT), which causes a dual-heap
+# crash when the JVM loads msvcp140.dll from its own directory and our DLL
+# also tries to use a different instance of the same CRT.
+if(MSVC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>" CACHE STRING "" FORCE)
+    # Also inject /MT directly into compiler flags as a belt-and-suspenders measure,
+    # since some CMake versions or toolchain files may override MSVC_RUNTIME_LIBRARY.
+    foreach(flag_var
+        CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE
+        CMAKE_CXX_FLAGS_MINSIZEREL CMAKE_CXX_FLAGS_RELWITHDEBINFO)
+        if(${flag_var} MATCHES "/MD")
+            string(REPLACE "/MD" "/MT" ${flag_var} "${${flag_var}}")
+        else()
+            # /MD might not be present yet — ensure /MT is explicitly there
+            set(${flag_var} "${${flag_var}} /MT")
+        endif()
+    endforeach()
+endif()
+
 # Find JNI - try standard first, fallback to JAVA_HOME headers only
 # This allows cross-compilation where JVM libs aren't available for target arch
 find_package(JNI)
@@ -41,7 +62,14 @@ file(GLOB MSDFGEN_CORE_HEADERS "${MSDFGEN_SOURCE_DIR}/core/*.h" "${MSDFGEN_SOURC
 # Collect msdfgen ext sources (needed for FreeType)
 set(MSDFGEN_EXT_SOURCES "")
 if(MSDFGEN_USE_FREETYPE)
-    find_package(Freetype REQUIRED)
+    # Accept explicit paths from build script (self-contained build);
+    # fall back to find_package for system-installed FreeType.
+    if(NOT DEFINED FREETYPE_INCLUDE_DIRS OR NOT DEFINED FREETYPE_LIBRARIES)
+        find_package(Freetype)
+        if(NOT FREETYPE_FOUND)
+            message(FATAL_ERROR "FreeType not found. Pass -DFREETYPE_INCLUDE_DIRS=... and -DFREETYPE_LIBRARIES=...")
+        endif()
+    endif()
     file(GLOB MSDFGEN_EXT_SOURCES "${MSDFGEN_SOURCE_DIR}/ext/*.cpp" "${MSDFGEN_SOURCE_DIR}/ext/*.h")
     message(STATUS "FreeType support: ENABLED")
     message(STATUS "FreeType include: ${FREETYPE_INCLUDE_DIRS}")
@@ -83,12 +111,6 @@ if(WIN32)
             -static-libgcc
             -static-libstdc++
             -Wl,-Bstatic,--whole-archive -lwinpthread -Wl,--no-whole-archive,-Bdynamic
-        )
-    elseif(MSVC)
-        # Use static MSVC runtime (/MT) instead of dynamic (/MD) to avoid
-        # requiring VCRUNTIME140.dll / MSVCP140.dll on the target system
-        set_property(TARGET msdfgen-jni PROPERTY
-            MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
         )
     endif()
 elseif(APPLE)
