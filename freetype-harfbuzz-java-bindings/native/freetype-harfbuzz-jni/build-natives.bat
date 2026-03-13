@@ -32,6 +32,7 @@ if not exist "%DEPS_DIR%\harfbuzz-%HARFBUZZ_VERSION%" (
 echo === Building FreeType ===
 set FT_BUILD=%DEPS_DIR%\freetype-build
 if not exist "%FT_BUILD%" mkdir "%FT_BUILD%"
+if exist "%FT_BUILD%\CMakeCache.txt" del /f "%FT_BUILD%\CMakeCache.txt"
 
 cmake -S "%DEPS_DIR%\freetype-%FREETYPE_VERSION%" -B "%FT_BUILD%" ^
     -DCMAKE_BUILD_TYPE=Release ^
@@ -42,13 +43,17 @@ cmake -S "%DEPS_DIR%\freetype-%FREETYPE_VERSION%" -B "%FT_BUILD%" ^
     -DFT_DISABLE_PNG=ON ^
     -DFT_DISABLE_HARFBUZZ=ON ^
     -DFT_DISABLE_BROTLI=ON ^
-    -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+    -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded ^
+    "-DCMAKE_C_FLAGS_RELEASE=/MT /O2 /DNDEBUG" ^
+    "-DCMAKE_CXX_FLAGS_RELEASE=/MT /O2 /DNDEBUG" ^
+    "-DCMAKE_C_FLAGS=/MT" ^
+    "-DCMAKE_CXX_FLAGS=/MT"
 if errorlevel 1 (
     echo FreeType cmake configure failed
     exit /b 1
 )
 
-cmake --build "%FT_BUILD%" --config Release --parallel
+cmake --build "%FT_BUILD%" --config Release
 if errorlevel 1 (
     echo FreeType build failed
     exit /b 1
@@ -72,6 +77,7 @@ echo FreeType lib: %FT_LIB%
 echo === Building HarfBuzz ===
 set HB_BUILD=%DEPS_DIR%\harfbuzz-build
 if not exist "%HB_BUILD%" mkdir "%HB_BUILD%"
+if exist "%HB_BUILD%\CMakeCache.txt" del /f "%HB_BUILD%\CMakeCache.txt"
 
 cmake -S "%DEPS_DIR%\harfbuzz-%HARFBUZZ_VERSION%" -B "%HB_BUILD%" ^
     -DCMAKE_BUILD_TYPE=Release ^
@@ -84,13 +90,17 @@ cmake -S "%DEPS_DIR%\harfbuzz-%HARFBUZZ_VERSION%" -B "%HB_BUILD%" ^
     -DHB_HAVE_ICU=OFF ^
     -DFREETYPE_INCLUDE_DIRS="%DEPS_DIR%\freetype-%FREETYPE_VERSION%\include" ^
     -DFREETYPE_LIBRARY="%FT_LIB%" ^
-    -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+    -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded ^
+    "-DCMAKE_C_FLAGS_RELEASE=/MT /O2 /DNDEBUG" ^
+    "-DCMAKE_CXX_FLAGS_RELEASE=/MT /O2 /DNDEBUG" ^
+    "-DCMAKE_C_FLAGS=/MT" ^
+    "-DCMAKE_CXX_FLAGS=/MT"
 if errorlevel 1 (
     echo HarfBuzz cmake configure failed
     exit /b 1
 )
 
-cmake --build "%HB_BUILD%" --config Release --parallel
+cmake --build "%HB_BUILD%" --config Release
 if errorlevel 1 (
     echo HarfBuzz build failed
     exit /b 1
@@ -109,6 +119,7 @@ echo HarfBuzz lib: %HB_LIB%
 echo === Building JNI library ===
 set JNI_BUILD=%BUILD_DIR%\jni-build
 if not exist "%JNI_BUILD%" mkdir "%JNI_BUILD%"
+if exist "%JNI_BUILD%\CMakeCache.txt" del /f "%JNI_BUILD%\CMakeCache.txt"
 
 cmake -S "%SCRIPT_DIR%\src\cpp" -B "%JNI_BUILD%" ^
     -DCMAKE_BUILD_TYPE=Release ^
@@ -116,13 +127,18 @@ cmake -S "%SCRIPT_DIR%\src\cpp" -B "%JNI_BUILD%" ^
     -DFREETYPE_LIBRARIES="%FT_LIB%" ^
     -DHARFBUZZ_INCLUDE_DIRS="%DEPS_DIR%\harfbuzz-%HARFBUZZ_VERSION%\src" ^
     -DHARFBUZZ_LIBRARIES="%HB_LIB%" ^
-    -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+    -DSTATIC_LINK_DEPS=ON ^
+    -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded ^
+    "-DCMAKE_C_FLAGS_RELEASE=/MT /O2 /DNDEBUG" ^
+    "-DCMAKE_CXX_FLAGS_RELEASE=/MT /O2 /DNDEBUG" ^
+    "-DCMAKE_C_FLAGS=/MT" ^
+    "-DCMAKE_CXX_FLAGS=/MT"
 if errorlevel 1 (
     echo JNI cmake configure failed
     exit /b 1
 )
 
-cmake --build "%JNI_BUILD%" --config Release --parallel
+cmake --build "%JNI_BUILD%" --config Release
 if errorlevel 1 (
     echo JNI build failed
     exit /b 1
