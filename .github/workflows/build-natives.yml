@@ -13,6 +13,9 @@ on:
 permissions:
   contents: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 # Java 17 is used for ALL jobs because:
 # 1. Temurin does NOT publish Java 8 for macOS ARM64 (Apple Silicon predates Java 8 EOL)
 # 2. JNI headers (jni.h) are stable across Java versions — the native build only needs headers
@@ -22,10 +25,10 @@ jobs:
   build-linux:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: true
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '17'
@@ -69,7 +72,7 @@ jobs:
           fi
           echo "PASS: All shared libraries only depend on system libraries"
       - name: Upload Linux artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: natives-linux-x64
           path: '**/src/main/resources/natives/linux-x64/'
@@ -83,15 +86,18 @@ jobs:
       # Force x86_64 cross-compilation on ARM64 runner
       MACOS_TARGET_ARCH: x86_64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: true
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '17'
       - name: Install dependencies
-        run: brew install cmake freetype harfbuzz
+        run: |
+          for pkg in cmake freetype harfbuzz; do
+            brew list "$pkg" &>/dev/null || brew install "$pkg"
+          done
       - name: Build MSDFgen for macOS x64
         working-directory: msdfgen-java-bindings/native/msdfgen-jni
         run: |
@@ -128,7 +134,7 @@ jobs:
           fi
           echo "PASS: All dylibs only depend on system frameworks"
       - name: Upload macOS Intel artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: natives-macos-x64
           path: '**/src/main/resources/natives/macos-x64/'
@@ -136,15 +142,18 @@ jobs:
   build-macos-arm:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: true
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '17'
       - name: Install dependencies
-        run: brew install cmake freetype harfbuzz
+        run: |
+          for pkg in cmake freetype harfbuzz; do
+            brew list "$pkg" &>/dev/null || brew install "$pkg"
+          done
       - name: Build MSDFgen for macOS ARM64
         working-directory: msdfgen-java-bindings/native/msdfgen-jni
         run: |
@@ -180,7 +189,7 @@ jobs:
           fi
           echo "PASS: All dylibs only depend on system frameworks"
       - name: Upload macOS ARM64 artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: natives-macos-aarch64
           path: '**/src/main/resources/natives/macos-aarch64/'
@@ -188,10 +197,10 @@ jobs:
   build-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: true
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '17'
@@ -200,13 +209,13 @@ jobs:
       - name: Setup Visual Studio environment
         uses: ilammy/msvc-dev-cmd@v1
       - name: Cache MSDFgen clone
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             msdfgen-java-bindings/native/msdfgen-jni/msdfgen
           key: windows-msdfgen-v1.13
       - name: Cache FreeType+HarfBuzz dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             freetype-harfbuzz-java-bindings/native/freetype-harfbuzz-jni/build/deps
@@ -249,7 +258,7 @@ jobs:
           echo PASS: All DLLs only depend on system DLLs
           exit /b 0
       - name: Upload Windows x64 artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: natives-windows-x64
           path: '**/src/main/resources/natives/windows-x64/'
@@ -260,12 +269,12 @@ jobs:
     if: github.event.inputs.commit_natives == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ github.ref }}
 
       - name: Download all platform artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: natives-*
           merge-multiple: true
