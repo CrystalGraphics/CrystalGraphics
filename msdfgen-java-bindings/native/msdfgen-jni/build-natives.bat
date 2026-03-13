@@ -69,7 +69,7 @@ if /i "%MSDFGEN_USE_FREETYPE%"=="ON" (
         exit /b 1
     )
 
-    cmake --build "!FT_BUILD!" --config Release
+    cmake --build "!FT_BUILD!" --config Release --parallel
     if errorlevel 1 (
         echo FreeType build failed
         exit /b 1
@@ -110,7 +110,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-cmake --build "%BUILD_DIR%" --config Release
+cmake --build "%BUILD_DIR%" --config Release --parallel
 if errorlevel 1 (
     echo Build failed
     exit /b 1
