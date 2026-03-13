@@ -37,21 +37,22 @@ echo FreeType support: ENABLED (always-on for msdfgen)
 echo.
 
 set DEPS_DIR=%BUILD_DIR%\deps
-if not exist "!DEPS_DIR!" mkdir "!DEPS_DIR!"
+if not exist "%DEPS_DIR%" mkdir "%DEPS_DIR%"
 
-if not exist "!DEPS_DIR!\freetype-%FREETYPE_VERSION%" (
+if not exist "%DEPS_DIR%\freetype-%FREETYPE_VERSION%" (
     echo === Downloading FreeType %FREETYPE_VERSION% ===
-    curl -L "https://download.savannah.gnu.org/releases/freetype/freetype-%FREETYPE_VERSION%.tar.xz" -o "!DEPS_DIR!\freetype.tar.xz"
-    cd /d "!DEPS_DIR!" && tar xf freetype.tar.xz
+    curl -L "https://download.savannah.gnu.org/releases/freetype/freetype-%FREETYPE_VERSION%.tar.xz" -o "%DEPS_DIR%\freetype.tar.xz"
+    cd /d "%DEPS_DIR%" && tar xf freetype.tar.xz
     cd /d "%NATIVE_DIR%"
 )
 
 echo === Building FreeType (static, /MT) ===
-set FT_BUILD=!DEPS_DIR!\freetype-build
-if not exist "!FT_BUILD!" mkdir "!FT_BUILD!"
-if exist "!FT_BUILD!\CMakeCache.txt" del /f "!FT_BUILD!\CMakeCache.txt"
+rem Use %DEPS_DIR% (not delayed expansion) so the path is concrete for for /r loops later
+set FT_BUILD=%DEPS_DIR%\freetype-build
+if not exist "%FT_BUILD%" mkdir "%FT_BUILD%"
+if exist "%FT_BUILD%\CMakeCache.txt" del /f "%FT_BUILD%\CMakeCache.txt"
 
-cmake -S "!DEPS_DIR!\freetype-%FREETYPE_VERSION%" -B "!FT_BUILD!" ^
+cmake -S "%DEPS_DIR%\freetype-%FREETYPE_VERSION%" -B "%FT_BUILD%" ^
     -DCMAKE_BUILD_TYPE=Release ^
     -DCMAKE_POSITION_INDEPENDENT_CODE=ON ^
     -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ^
@@ -60,6 +61,7 @@ cmake -S "!DEPS_DIR!\freetype-%FREETYPE_VERSION%" -B "!FT_BUILD!" ^
     -DFT_DISABLE_PNG=ON ^
     -DFT_DISABLE_HARFBUZZ=ON ^
     -DFT_DISABLE_BROTLI=ON ^
+    -DFT_DISABLE_GZIP=ON ^
     -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded ^
     "-DCMAKE_C_FLAGS_RELEASE=/MT /O2 /DNDEBUG" ^
     "-DCMAKE_CXX_FLAGS_RELEASE=/MT /O2 /DNDEBUG" ^
@@ -70,33 +72,38 @@ if errorlevel 1 (
     exit /b 1
 )
 
-cmake --build "!FT_BUILD!" --config Release --parallel
+cmake --build "%FT_BUILD%" --config Release --parallel
 if errorlevel 1 (
     echo FreeType build failed
     exit /b 1
 )
 
+echo === Searching for FreeType lib in %FT_BUILD% ===
+rem Note: for /r does NOT support delayed expansion (!VAR!) for the root path.
+rem The root path is parsed at command-parse time, so we must use %FT_BUILD%.
 set FT_LIB=
-for /r "!FT_BUILD!" %%f in (freetype.lib) do (
+for /r "%FT_BUILD%" %%f in (freetype.lib) do (
     if exist "%%f" set FT_LIB=%%f
 )
 if not defined FT_LIB (
-    for /r "!FT_BUILD!" %%f in (freetyped.lib) do (
+    for /r "%FT_BUILD%" %%f in (freetyped.lib) do (
         if exist "%%f" set FT_LIB=%%f
     )
 )
 if not defined FT_LIB (
-    echo ERROR: FreeType static lib not found
+    echo ERROR: FreeType static lib not found in %FT_BUILD%
+    echo === Contents of %FT_BUILD% ===
+    dir /s /b "%FT_BUILD%\*.lib" 2>nul
     exit /b 1
 )
-echo FreeType lib: !FT_LIB!
+echo FreeType lib: %FT_LIB%
 
 echo.
 echo === Building MSDFgen JNI library ===
 
-set FT_INCLUDE_CMAKE=!DEPS_DIR!\freetype-%FREETYPE_VERSION%\include
-set FT_INCLUDE_CMAKE=!FT_INCLUDE_CMAKE:\=/!
-set FT_LIB_CMAKE=!FT_LIB:\=/!
+set FT_INCLUDE_CMAKE=%DEPS_DIR%\freetype-%FREETYPE_VERSION%\include
+set FT_INCLUDE_CMAKE=%FT_INCLUDE_CMAKE:\=/%
+set FT_LIB_CMAKE=%FT_LIB:\=/%
 
 cmake -S "%NATIVE_DIR%" -B "%BUILD_DIR%" ^
     -DCMAKE_BUILD_TYPE=Release ^
@@ -105,8 +112,8 @@ cmake -S "%NATIVE_DIR%" -B "%BUILD_DIR%" ^
     "-DCMAKE_CXX_FLAGS_RELEASE=/MT /O2 /DNDEBUG" ^
     "-DCMAKE_CXX_FLAGS=/MT" ^
     -DMSDFGEN_USE_FREETYPE=ON ^
-    -DFREETYPE_INCLUDE_DIRS="!FT_INCLUDE_CMAKE!" ^
-    -DFREETYPE_LIBRARIES="!FT_LIB_CMAKE!"
+    -DFREETYPE_INCLUDE_DIRS="%FT_INCLUDE_CMAKE%" ^
+    -DFREETYPE_LIBRARIES="%FT_LIB_CMAKE%"
 if errorlevel 1 (
     echo CMake configuration failed
     exit /b 1

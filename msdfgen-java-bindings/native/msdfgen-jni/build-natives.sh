@@ -87,6 +87,7 @@ build_freetype() {
         -DFT_DISABLE_PNG=ON \
         -DFT_DISABLE_HARFBUZZ=ON \
         -DFT_DISABLE_BROTLI=ON \
+        -DFT_DISABLE_GZIP=ON \
         ${extra_cmake_flags[@]+"${extra_cmake_flags[@]}"} \
         $macos_flags
     cmake --build "$ft_build" --config Release -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
