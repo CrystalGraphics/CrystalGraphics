@@ -9,6 +9,7 @@
 .project
 /bin/
 /config/
+/out/
 
 native/msdfgen-jni/build/
 native/msdfgen-jni/msdfgen/
