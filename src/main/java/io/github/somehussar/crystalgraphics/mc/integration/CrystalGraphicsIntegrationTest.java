@@ -1,5 +1,6 @@
 package io.github.somehussar.crystalgraphics.mc.integration;
 
+import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.Mod;
 import cpw.mods.fml.common.event.FMLPostInitializationEvent;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
@@ -16,6 +17,8 @@ import io.github.somehussar.crystalgraphics.gl.framebuffer.CgFramebufferFactory;
 import io.github.somehussar.crystalgraphics.gl.state.GLStateMirror;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.OpenGlHelper;
+import net.minecraft.util.ResourceLocation;
+import net.minecraftforge.common.MinecraftForge;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.opengl.ARBFramebufferObject;
@@ -78,18 +81,23 @@ public class CrystalGraphicsIntegrationTest {
     /** Running counters for the final summary. */
     private int passCount = 0;
     private int failCount = 0;
+    private static final boolean RUN_SELF_CHECKS =
+            Boolean.getBoolean("crystalgraphics.integration.runSelfChecks");
+
+    private final CrystalGraphicsFontDemo fontDemo = new CrystalGraphicsFontDemo();
 
     @Mod.EventHandler
     public void postInit(FMLPostInitializationEvent event) {
         LOGGER.info("CrystalGraphicsIntegrationTest: Registered. "
-                + "Will run self-checks on first render tick.");
-        // Disable tests until manually enabled, to avoid accidentally running in production
-        // FMLCommonHandler.instance().bus().register(this);
+                + "Font demo enabled. Self-checks opt-in=" + RUN_SELF_CHECKS);
+        fontDemo.register();
+       // FMLCommonHandler.instance().bus().register(this);
+       // MinecraftForge.EVENT_BUS.register(this);
     }
 
     @SubscribeEvent
     public void onRenderTick(TickEvent.RenderTickEvent event) {
-        if (testRan || event.phase != TickEvent.Phase.END) {
+        if (!RUN_SELF_CHECKS || testRan || event.phase != TickEvent.Phase.END) {
             return;
         }
         testRan = true;
@@ -176,7 +184,7 @@ public class CrystalGraphicsIntegrationTest {
                 result, passCount, failCount);
 
         // Shut down the client so runClient doesn't hang
-        Minecraft.getMinecraft().shutdown();
+        // Minecraft.getMinecraft().shutdown();
     }
 
     // ── Test implementations ──────────────────────────────────────────
