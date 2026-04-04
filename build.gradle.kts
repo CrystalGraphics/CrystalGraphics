@@ -9,6 +9,33 @@ version = providers.gradleProperty("modVersion").orElse("1.0.0").get()
 apply(from = "repositories.gradle")
 apply(from = "dependencies.gradle")
 
+// ── RFG variant attribute compatibility for plain-Java subprojects ──────────
+// The GTNH/RFG plugin adds custom variant attributes (obfuscation mapping type,
+// deobfuscator transform status) to dependency resolution. When the root project's
+// java17Dependencies configuration (used by runClient17/21/25) resolves project
+// dependencies, it demands these attributes. Plain Java subprojects don't know
+// about RFG and don't declare them, causing ambiguous variant errors.
+//
+// Fix: stamp the RFG attributes onto each JNI subproject's outgoing configurations
+// so Gradle's variant matching succeeds. These JARs contain no Minecraft code, so
+// "mcp" mapping and "already transformed" are both trivially true.
+subprojects {
+    // Only apply to our JNI binding subprojects (which use plain java/java-library plugins)
+    plugins.withType<JavaPlugin> {
+        // Grab the attribute keys that RFG registers on the root project.
+        // They exist because the root project applies com.gtnewhorizons.gtnhconvention.
+        val obfAttr = Attribute.of("com.gtnewhorizons.retrofuturagradle.obfuscation", String::class.java)
+        val deobfAttr = Attribute.of("rfgDeobfuscatorTransformed", Boolean::class.javaObjectType)
+
+        configurations.matching { it.isCanBeConsumed }.configureEach {
+            attributes {
+                attribute(obfAttr, "mcp")
+                attribute(deobfAttr, true)
+            }
+        }
+    }
+}
+
 // Remove Kotlin and a Java 9 file from JOML when shadowing.
 // Gradle pulls in a transitive dependency (Kotlin) and packages it for some reason.
 // This is for distributing the jar.
@@ -57,11 +84,11 @@ fun findJarBySubstring(part: String): File {
 
 tasks.named<JavaExec>("runClient") {
     doFirst {
-        val agent = findJarBySubstring("unimixins")
-        jvmArgs("-javaagent:${agent.absolutePath}")
+     //   val agent = findJarBySubstring("unimixins")
+       // jvmArgs("-javaagent:${agent.absolutePath}")
 
-        val hotswapAgent = findJarBySubstring("hotswap-agent")
-        jvmArgs("-javaagent:${hotswapAgent.absolutePath}")
+       // val hotswapAgent = findJarBySubstring("hotswap-agent")
+      //  jvmArgs("-javaagent:${hotswapAgent.absolutePath}")
     }
 }
 
