@@ -268,7 +268,7 @@ public class CgTextRenderer {
     }
 
     private int selectSubPixelBucket(CgFontKey fontKey, float xOffset) {
-        if (fontKey.getTargetPx() > 12) {
+        if (fontKey.getTargetPx() >= CgGlyphKey.SUB_PIXEL_BUCKET_MAX_PX) {
             return 0;
         }
         float fractional = xOffset - (float) Math.floor(xOffset);

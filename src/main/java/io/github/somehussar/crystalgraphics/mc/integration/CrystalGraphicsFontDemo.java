@@ -88,10 +88,19 @@ public class CrystalGraphicsFontDemo {
             populateOrthoMatrix(demoProjectionMatrix, mc.displayWidth, mc.displayHeight);
 
             demoTextRenderer.draw(
-                    demoLayoutBuilder.layout(DEMO_TEXT + " [" + demoFontSize + "px]", demoFont, resolution.getScaledWidth(), 0),
+                    demoLayoutBuilder.layout(DEMO_TEXT + "[" + demoFontSize + "px]", demoFont, mc.displayWidth, 0),
                     demoFont,
                     20.0f,
                     40.0f + demoFontSize,
+                    0xFFFFFFFF,
+                    demoFrame,
+                    demoProjectionMatrix);
+            
+             demoTextRenderer.draw(
+                    demoLayoutBuilder.layout("This is a \nline break [" + demoFontSize + "px]", demoFont, mc.displayWidth, 0),
+                    demoFont,
+                    20.0f,
+                    80.0f + demoFontSize,
                     0xFFFFFFFF,
                     demoFrame,
                     demoProjectionMatrix);

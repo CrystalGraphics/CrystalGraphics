@@ -68,7 +68,8 @@ public class CgTextShaper {
             return new CgShapedRun(fontKey, rtl,
                     new int[0], new int[0],
                     new float[0], new float[0], new float[0],
-                    0.0f);
+                    0.0f,
+                    text, start, end);
         }
 
         HBBuffer buf = HBBuffer.create();
@@ -102,7 +103,8 @@ public class CgTextShaper {
             return new CgShapedRun(fontKey, rtl,
                     glyphIds, clusterIds,
                     advancesX, offsetsX, offsetsY,
-                    totalAdvance);
+                    totalAdvance,
+                    text, start, end);
         } finally {
             buf.destroy();
         }
