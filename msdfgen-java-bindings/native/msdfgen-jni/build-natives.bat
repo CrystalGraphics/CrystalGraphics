@@ -9,12 +9,22 @@ set NATIVE_DIR=%SCRIPT_DIR:~0,-1%
 set PROJECT_ROOT=%NATIVE_DIR%\..\..
 set BUILD_DIR=%NATIVE_DIR%\build
 set MSDFGEN_DIR=%NATIVE_DIR%\msdfgen
+set IMPORT_FONT_OVERRIDE=%NATIVE_DIR%\overrides\msdfgen\ext\import-font.cpp
 
 set FREETYPE_VERSION=2.13.2
 
 if not exist "%MSDFGEN_DIR%" (
     echo Cloning msdfgen...
     git clone --depth 1 --branch v1.13 https://github.com/Chlumsky/msdfgen.git "%MSDFGEN_DIR%"
+)
+
+if exist "%IMPORT_FONT_OVERRIDE%" (
+    echo Applying local msdfgen import-font override...
+    copy /Y "%IMPORT_FONT_OVERRIDE%" "%MSDFGEN_DIR%\ext\import-font.cpp" >nul
+    if errorlevel 1 (
+        echo Failed to apply import-font override
+        exit /b 1
+    )
 )
 
 set PLATFORM=windows-x64
