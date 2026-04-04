@@ -356,6 +356,11 @@ public class CgGlyphVbo {
         }
 
         GL30.glBindVertexArray(vao);
+        // Explicit IBO re-bind: the VAO *should* store the IBO binding from
+        // setupAttributes(), but some drivers or external state corruption
+        // (e.g. Minecraft's fixed-function pipeline) can lose it.  Belt-and-
+        // suspenders: always re-bind so glDrawElements has a valid IBO.
+        GL15.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, ibo);
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
 
         int uploadBytes = glyphCount * VERTICES_PER_QUAD * STRIDE_BYTES;
