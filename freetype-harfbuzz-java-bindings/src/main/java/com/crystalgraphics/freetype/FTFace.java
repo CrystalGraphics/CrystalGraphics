@@ -158,6 +158,38 @@ public final class FTFace {
         return nGetAdvance(nativePtr, glyphIndex, loadFlags);
     }
 
+    /**
+     * Translates the outline of the currently loaded glyph by the given offsets.
+     * This operates on the glyph slot's outline in-place. A glyph must be loaded
+     * (via {@link #loadGlyph} or {@link #loadChar}) with an outline format
+     * (i.e., not a bitmap-only glyph) before calling this method.
+     *
+     * <p>This is used for sub-pixel positioning: by translating the outline before
+     * rasterization, different sub-pixel offset buckets (e.g., 0, 0.25, 0.50, 0.75px)
+     * can be rendered for improved text quality at small sizes.</p>
+     *
+     * <p><strong>26.6 fixed-point semantics:</strong> Both parameters are in FreeType's
+     * 26.6 fixed-point format, where 1 pixel = 64 units. For example, a 0.25px offset
+     * is {@code 16} (0.25 * 64), and a 0.5px offset is {@code 32} (0.5 * 64).</p>
+     *
+     * <p><strong>Typical usage for sub-pixel buckets:</strong></p>
+     * <pre>
+     *   face.loadGlyph(glyphIndex, FTLoadFlags.FT_LOAD_NO_BITMAP);
+     *   face.outlineTranslate(16, 0);  // 0.25px horizontal sub-pixel offset
+     *   face.renderGlyph(FTRenderMode.FT_RENDER_MODE_NORMAL);
+     *   FTBitmap bitmap = face.getGlyphBitmap();
+     * </pre>
+     *
+     * @param xOffset horizontal translation in 26.6 fixed-point units (1px = 64)
+     * @param yOffset vertical translation in 26.6 fixed-point units (1px = 64)
+     * @throws IllegalStateException if no glyph is loaded or the loaded glyph has no outline
+     *         (e.g., it is a bitmap-only glyph)
+     */
+    public void outlineTranslate(long xOffset, long yOffset) {
+        checkNotDestroyed();
+        nOutlineTranslate(nativePtr, xOffset, yOffset);
+    }
+
     public long getNativePtr() {
         return nativePtr;
     }
@@ -255,5 +287,6 @@ public final class FTFace {
     private static native int[] nGetKerning(long facePtr, int leftGlyph, int rightGlyph, int kernMode);
     private static native boolean nHasKerning(long facePtr);
     private static native int nGetAdvance(long facePtr, int glyphIndex, int loadFlags);
+    private static native void nOutlineTranslate(long facePtr, long xOffset, long yOffset);
     private static native void nDoneFace(long facePtr);
 }
