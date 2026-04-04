@@ -5,6 +5,7 @@ import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
 import io.github.somehussar.crystalgraphics.CrystalGraphics;
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
+import io.github.somehussar.crystalgraphics.api.PoseStack;
 import io.github.somehussar.crystalgraphics.api.font.CgFont;
 import io.github.somehussar.crystalgraphics.api.font.CgFontStyle;
 import io.github.somehussar.crystalgraphics.api.font.CgTextLayoutBuilder;
@@ -12,6 +13,7 @@ import io.github.somehussar.crystalgraphics.api.shader.CgShader;
 import io.github.somehussar.crystalgraphics.api.shader.CgShaderScope;
 import io.github.somehussar.crystalgraphics.gl.text.CgFontRegistry;
 import io.github.somehussar.crystalgraphics.gl.text.CgGlyphAtlas;
+import io.github.somehussar.crystalgraphics.gl.text.CgTextRenderContext;
 import io.github.somehussar.crystalgraphics.gl.text.CgTextRenderer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.ScaledResolution;
@@ -34,12 +36,15 @@ public class CrystalGraphicsFontDemo {
 
     private boolean demoEnabled = true;
     private int demoFontSize = 24;
+    private float demoPoseScale = 1.0f;
     private long demoFrame = 0L;
     private CgFont demoFont;
     private CgFontRegistry demoFontRegistry;
     private CgTextRenderer demoTextRenderer;
     private final CgTextLayoutBuilder demoLayoutBuilder = new CgTextLayoutBuilder();
-    private final FloatBuffer demoProjectionMatrix = BufferUtils.createFloatBuffer(16);
+    private CgTextRenderContext demoRenderContext;
+    private int lastDisplayWidth;
+    private int lastDisplayHeight;
 
     // ── Diagnostic: atlas viewer ──────────────────────────────────────
     private CgShader diagAtlasShader;
@@ -64,8 +69,11 @@ public class CrystalGraphicsFontDemo {
 
 
         int wheel = Mouse.getDWheel();
-        if (wheel > 0) setDemoFontSize(demoFontSize + 2);
-        else if (wheel < 0) setDemoFontSize(demoFontSize - 2);
+        if (wheel > 0) {
+            demoPoseScale = Math.min(4.0f, demoPoseScale + 0.1f);
+        } else if (wheel < 0) {
+            demoPoseScale = Math.max(0.5f, demoPoseScale - 0.1f);
+        }
 
         demoFrame++;
         if (demoFontRegistry != null) demoFontRegistry.tickFrame(demoFrame);
@@ -85,25 +93,41 @@ public class CrystalGraphicsFontDemo {
         try {
             ensureDemoFontSystem();
             ScaledResolution resolution = event.resolution;
-            populateOrthoMatrix(demoProjectionMatrix, mc.displayWidth, mc.displayHeight);
+
+            // Update projection on viewport change (avoids per-draw matrix passing)
+            if (demoRenderContext == null
+                    || mc.displayWidth != lastDisplayWidth
+                    || mc.displayHeight != lastDisplayHeight) {
+                if (demoRenderContext == null) {
+                    demoRenderContext = CgTextRenderContext.orthographic(mc.displayWidth, mc.displayHeight);
+                } else {
+                    demoRenderContext.updateOrtho(mc.displayWidth, mc.displayHeight);
+                }
+                lastDisplayWidth = mc.displayWidth;
+                lastDisplayHeight = mc.displayHeight;
+            }
+
+            PoseStack poseStack = new PoseStack();
+            poseStack.scale(demoPoseScale, demoPoseScale, 1.0f);
 
             demoTextRenderer.draw(
-                    demoLayoutBuilder.layout(DEMO_TEXT + "[" + demoFontSize + "px]", demoFont, mc.displayWidth, 0),
+                    demoLayoutBuilder.layout(DEMO_TEXT + " [base " + demoFontSize + "px, pose " + String.format("%.1f", demoPoseScale) + "x]", demoFont, mc.displayWidth, 0),
                     demoFont,
                     20.0f,
                     40.0f + demoFontSize,
                     0xFFFFFFFF,
                     demoFrame,
-                    demoProjectionMatrix);
+                    demoRenderContext,
+                    poseStack);
             
-             demoTextRenderer.draw(
-                    demoLayoutBuilder.layout("This is a \nline break [" + demoFontSize + "px]", demoFont, mc.displayWidth, 0),
-                    demoFont,
-                    20.0f,
-                    80.0f + demoFontSize,
-                    0xFFFFFFFF,
-                    demoFrame,
-                    demoProjectionMatrix);
+//             demoTextRenderer.draw(
+//                    demoLayoutBuilder.layout("His is a \nline break [" + demoFontSize + "px]", demoFont, mc.displayWidth, 0),
+//                    demoFont,
+//                    20.0f,
+//                    80.0f + demoFontSize,
+//                    0xFFFFFFFF,
+//                    demoFrame,
+//                    demoProjectionMatrix);
 
             if (true) 
                 drawDiagAtlas(resolution.getScaledWidth(), resolution.getScaledHeight());
@@ -126,18 +150,6 @@ public class CrystalGraphicsFontDemo {
         }
         if (demoTextRenderer == null || demoTextRenderer.isDeleted()) {
             demoTextRenderer = CgTextRenderer.create(CgCapabilities.detect(), demoFontRegistry);
-        }
-    }
-
-    private void setDemoFontSize(int newSize) {
-        int clamped = Math.max(8, Math.min(96, newSize));
-        if (clamped == demoFontSize) {
-            return;
-        }
-        demoFontSize = clamped;
-        if (demoFont != null && !demoFont.isDisposed()) {
-            demoFont.dispose();
-            demoFont = null;
         }
     }
 

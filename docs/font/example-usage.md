@@ -1,6 +1,6 @@
 # Example Usage
 
-## Minimal on-screen usage
+## Minimal on-screen usage (PoseStack-aware, recommended)
 
 ```java
 CgCapabilities caps = CgCapabilities.detect();
@@ -18,10 +18,39 @@ CgTextLayout layout = layoutBuilder.layout(
         600.0f,
         0.0f);
 
+// Create a render context once (or on viewport resize)
+CgTextRenderContext context = CgTextRenderContext.orthographic(screenWidth, screenHeight);
+
+// PoseStack for model-view transforms
+PoseStack poseStack = new PoseStack();
+
+renderer.draw(layout, font, 20.0f, 40.0f, 0xFFFFFFFF, frame, context, poseStack);
+```
+
+## Scaled text via PoseStack
+
+```java
+// Pose scaling increases the effective raster size for sharper rendering
+// without changing the logical layout dimensions.
+PoseStack poseStack = new PoseStack();
+poseStack.last().pose().scale(2.0f);  // 2x zoom → effective 48px from base 24px
+
+renderer.draw(layout, font, 20.0f, 40.0f, 0xFFFFFFFF, frame, context, poseStack);
+// Layout metrics (width, height) remain in base 24px logical coordinates
+```
+
+## Legacy compatibility (deprecated)
+
+The old projection-matrix-per-draw API still works:
+
+```java
 FloatBuffer projection = BufferUtils.createFloatBuffer(16);
 populateOrthoMatrix(projection, screenWidth, screenHeight);
 renderer.draw(layout, font, 20.0f, 40.0f, 0xFFFFFFFF, frame, projection);
 ```
+
+This is a backward-compatible wrapper that uses identity pose (no scale).
+Prefer the PoseStack-aware API for new code.
 
 ## Development integration example
 
@@ -33,29 +62,7 @@ That class contains:
 - mouse-wheel zoom handling in `ClientTickEvent`
 - visible on-screen rendering in `RenderGameOverlayEvent.Text`
 - demo font creation and renderer setup
-
-## Example orthographic matrix helper
-
-```java
-private void populateOrthoMatrix(FloatBuffer buffer, int width, int height) {
-    buffer.clear();
-    float left = 0.0f;
-    float right = width;
-    float bottom = height;
-    float top = 0.0f;
-    float near = -1.0f;
-    float far = 1.0f;
-
-    buffer.put(2.0f / (right - left)).put(0.0f).put(0.0f).put(0.0f);
-    buffer.put(0.0f).put(2.0f / (top - bottom)).put(0.0f).put(0.0f);
-    buffer.put(0.0f).put(0.0f).put(-2.0f / (far - near)).put(0.0f);
-    buffer.put(-(right + left) / (right - left))
-            .put(-(top + bottom) / (top - bottom))
-            .put(-(far + near) / (far - near))
-            .put(1.0f);
-    buffer.flip();
-}
-```
+- PoseStack-aware draw path with `CgTextRenderContext`
 
 ## Wrapped text example
 
@@ -65,7 +72,7 @@ CgTextLayout paragraph = layoutBuilder.layout(
         font,
         320.0f,
         200.0f);
-renderer.draw(paragraph, font, 12.0f, 20.0f, 0xFFE8E8FF, frame, projection);
+renderer.draw(paragraph, font, 12.0f, 20.0f, 0xFFE8E8FF, frame, context, poseStack);
 ```
 
 ## Important runtime note

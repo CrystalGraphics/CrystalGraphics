@@ -20,6 +20,8 @@ stepping through the framebuffer validation harness.
 - renders one demo line on screen from `RenderGameOverlayEvent.Text`
 - reloads the `CgFont` when size changes
 - keeps frame accounting in `CgFontRegistry.tickFrame(...)`
+- uses `CgTextRenderContext` for projection (created once, updated on resize)
+- uses `PoseStack` for model-view transforms via the PoseStack-aware draw API
 
 ## Why render is not done directly in ClientTickEvent
 
@@ -47,8 +49,10 @@ The integration code resolves that path relative to the project root at runtime.
    - `CgFontRegistry`
    - `CgTextRenderer`
    - `CgFont`
+   - `CgTextRenderContext` (orthographic, updated on viewport resize)
 5. layout is built for the current demo string
-6. renderer draws the line with an orthographic projection matrix
+6. a `PoseStack` is created for the draw call
+7. renderer draws through the PoseStack-aware API with the render context
 
 Code references in the dedicated demo class:
 - `CrystalGraphicsFontDemo.java:46-61` - zoom and frame updates
@@ -91,10 +95,11 @@ the unrelated framebuffer validation code.
 
 ## Known critical debug point
 
-If draw calls are reached but no text is visible, check the orthographic matrix
-first. The demo path depends on the matrix written in
-`CrystalGraphicsFontDemo.populateOrthoMatrix(...)`, and a wrong layout can make
-every quad render off-screen while still hitting `glDrawElements`.
+If draw calls are reached but no text is visible, check the orthographic
+projection matrix in the `CgTextRenderContext`. The projection is built by
+`CgTextRenderContext.orthographic(width, height)` and updated via
+`context.updateOrtho(width, height)`. A wrong viewport size can make every
+quad render off-screen while still hitting `glDrawElements`.
 
 ## Running it
 
