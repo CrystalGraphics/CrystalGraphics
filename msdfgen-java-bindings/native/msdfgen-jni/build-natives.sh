@@ -6,12 +6,18 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 NATIVE_DIR="$SCRIPT_DIR"
 BUILD_DIR="$NATIVE_DIR/build"
 MSDFGEN_DIR="${MSDFGEN_SOURCE_DIR:-$NATIVE_DIR/msdfgen}"
+IMPORT_FONT_OVERRIDE="$NATIVE_DIR/overrides/msdfgen/ext/import-font.cpp"
 
 FREETYPE_VERSION="2.13.2"
 
 if [ ! -d "$MSDFGEN_DIR" ]; then
     echo "Cloning msdfgen..."
     git clone --depth 1 --branch v1.13 https://github.com/Chlumsky/msdfgen.git "$MSDFGEN_DIR"
+fi
+
+if [ -f "$IMPORT_FONT_OVERRIDE" ]; then
+    echo "Applying local msdfgen import-font override..."
+    cp "$IMPORT_FONT_OVERRIDE" "$MSDFGEN_DIR/ext/import-font.cpp"
 fi
 
 OS_NAME="$(uname -s)"
