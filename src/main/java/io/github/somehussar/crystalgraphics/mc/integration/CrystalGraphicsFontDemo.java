@@ -3,22 +3,27 @@ package io.github.somehussar.crystalgraphics.mc.integration;
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
+import io.github.somehussar.crystalgraphics.CrystalGraphics;
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
 import io.github.somehussar.crystalgraphics.api.font.CgFont;
 import io.github.somehussar.crystalgraphics.api.font.CgFontStyle;
 import io.github.somehussar.crystalgraphics.api.font.CgTextLayoutBuilder;
+import io.github.somehussar.crystalgraphics.api.shader.CgShader;
+import io.github.somehussar.crystalgraphics.api.shader.CgShaderScope;
 import io.github.somehussar.crystalgraphics.gl.text.CgFontRegistry;
+import io.github.somehussar.crystalgraphics.gl.text.CgGlyphAtlas;
 import io.github.somehussar.crystalgraphics.gl.text.CgTextRenderer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.ScaledResolution;
+import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
 import net.minecraftforge.common.MinecraftForge;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.input.Mouse;
+import org.lwjgl.opengl.*;
 
-import java.io.File;
 import java.nio.FloatBuffer;
 
 public class CrystalGraphicsFontDemo {
@@ -35,6 +40,13 @@ public class CrystalGraphicsFontDemo {
     private CgTextRenderer demoTextRenderer;
     private final CgTextLayoutBuilder demoLayoutBuilder = new CgTextLayoutBuilder();
     private final FloatBuffer demoProjectionMatrix = BufferUtils.createFloatBuffer(16);
+
+    // ── Diagnostic: atlas viewer ──────────────────────────────────────
+    private CgShader diagAtlasShader;
+    private int diagAtlasVao;
+    private int diagAtlasVbo;
+    private boolean diagAtlasInitialized;
+    private final FloatBuffer diagAtlasProjection = BufferUtils.createFloatBuffer(16);
 
     public void register() {
         FMLCommonHandler.instance().bus().register(this);
@@ -83,7 +95,9 @@ public class CrystalGraphicsFontDemo {
                     0xFFFFFFFF,
                     demoFrame,
                     demoProjectionMatrix);
-            int x = 10;
+
+            if (true) 
+                drawDiagAtlas(resolution.getScaledWidth(), resolution.getScaledHeight());
         } catch (Exception e) {
             LOGGER.error("CrystalGraphics font demo failed", e);
             demoEnabled = false;
@@ -116,6 +130,143 @@ public class CrystalGraphicsFontDemo {
             demoFont.dispose();
             demoFont = null;
         }
+    }
+
+    // ── Diagnostic: atlas viewer ──────────────────────────────────────
+
+    private void drawDiagAtlas(int screenW, int screenH) {
+        if (demoFontRegistry == null || demoFont == null || demoFont.isDisposed()) {
+            return;
+        }
+
+        ensureDiagAtlasResources();
+
+        CgGlyphAtlas bitmapAtlas = demoFontRegistry.getBitmapAtlas(demoFont.getKey());
+        if (bitmapAtlas == null || bitmapAtlas.isDeleted() || bitmapAtlas.getTextureId() == 0) {
+            return;
+        }
+
+        int atlasDisplaySize = Math.min(256, Math.min(screenW / 2, screenH / 2));
+        float x0 = 10.0f;
+        float y0 = screenH - atlasDisplaySize - 10.0f;
+        float x1 = x0 + atlasDisplaySize;
+        float y1 = y0 + atlasDisplaySize;
+
+        updateDiagAtlasQuad(x0, y0, x1, y1);
+
+        populateOrthoMatrix(diagAtlasProjection, screenW, screenH);
+
+        boolean blendWas = GL11.glIsEnabled(GL11.GL_BLEND);
+        boolean depthWas = GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
+
+        GL11.glDisable(GL11.GL_BLEND);
+        GL11.glDisable(GL11.GL_DEPTH_TEST);
+
+        // First draw: bitmap atlas
+        diagAtlasShader.applyBindings(b -> b.mat4("u_projection", diagAtlasProjection)
+                                    .set1i("u_atlas", 0)
+                                    .set1i("u_atlasType", 0));
+        GL13.glActiveTexture(GL13.GL_TEXTURE0);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, bitmapAtlas.getTextureId());
+
+        try (CgShaderScope scope = diagAtlasShader.bindScoped()) {
+            GL30.glBindVertexArray(diagAtlasVao);
+            GL11.glDrawArrays(GL11.GL_TRIANGLE_STRIP, 0, 4);
+            GL30.glBindVertexArray(0);
+            GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+        }
+
+        // Second draw: msdf atlas
+        CgGlyphAtlas msdfAtlas = demoFontRegistry.getMsdfAtlas(demoFont.getKey());
+        if (msdfAtlas != null && !msdfAtlas.isDeleted() && msdfAtlas.getTextureId() != 0) {
+            float mx0 = x1 + 10.0f;
+            float my0 = y0;
+            float mx1 = mx0 + atlasDisplaySize;
+            float my1 = y1;
+            updateDiagAtlasQuad(mx0, my0, mx1, my1);
+
+            diagAtlasShader.applyBindings(b -> b.set1i("u_atlasType", 1));
+            GL11.glBindTexture(GL11.GL_TEXTURE_2D, msdfAtlas.getTextureId());
+
+            try (CgShaderScope scope = diagAtlasShader.bindScoped()) {
+                GL30.glBindVertexArray(diagAtlasVao);
+                GL11.glDrawArrays(GL11.GL_TRIANGLE_STRIP, 0, 4);
+                GL30.glBindVertexArray(0);
+                GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+            }
+        }
+
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+
+        if (blendWas) GL11.glEnable(GL11.GL_BLEND);
+        if (depthWas) GL11.glEnable(GL11.GL_DEPTH_TEST);
+    }
+
+    private void ensureDiagAtlasResources() {
+        if (diagAtlasInitialized) {
+            return;
+        }
+
+        diagAtlasShader = CrystalGraphics.getShaderManager().load(
+                new ResourceLocation("crystalgraphics", "shader/diag_atlas.vert"),
+                new ResourceLocation("crystalgraphics", "shader/diag_atlas.frag"));
+
+        // pos(x,y) + uv(u,v) = 4 floats per vertex, 4 vertices (triangle strip)
+        float[] quadData = {
+            0.0f, 0.0f, 0.0f, 0.0f,
+            1.0f, 0.0f, 1.0f, 0.0f,
+            0.0f, 1.0f, 0.0f, 1.0f,
+            1.0f, 1.0f, 1.0f, 1.0f
+        };
+        FloatBuffer buf = BufferUtils.createFloatBuffer(quadData.length);
+        buf.put(quadData).flip();
+
+        diagAtlasVao = GL30.glGenVertexArrays();
+        diagAtlasVbo = GL15.glGenBuffers();
+
+        GL30.glBindVertexArray(diagAtlasVao);
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, diagAtlasVbo);
+        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, buf, GL15.GL_DYNAMIC_DRAW);
+
+        // Force compile so getProgram() is available for attrib locations
+        diagAtlasShader.bind();
+
+        int stride = 4 * 4;
+        int programId = diagAtlasShader.getProgram().getId();
+        int posLoc = GL20.glGetAttribLocation(programId, "a_pos");
+        int uvLoc = GL20.glGetAttribLocation(programId, "a_uv");
+        if (posLoc >= 0) {
+            GL20.glVertexAttribPointer(posLoc, 2, GL11.GL_FLOAT, false, stride, 0);
+            GL20.glEnableVertexAttribArray(posLoc);
+        }
+        if (uvLoc >= 0) {
+            GL20.glVertexAttribPointer(uvLoc, 2, GL11.GL_FLOAT, false, stride, 8);
+            GL20.glEnableVertexAttribArray(uvLoc);
+        }
+
+        diagAtlasShader.unbind();
+
+        GL30.glBindVertexArray(0);
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+
+        diagAtlasInitialized = true;
+        LOGGER.info("DIAG: atlas viewer initialized (VAO=" + diagAtlasVao
+                + ", VBO=" + diagAtlasVbo + ", shader=" + diagAtlasShader.getProgram().getId() + ")");
+    }
+
+    private void updateDiagAtlasQuad(float x0, float y0, float x1, float y1) {
+        float[] quadData = {
+            x0, y0, 0.0f, 0.0f,
+            x1, y0, 1.0f, 0.0f,
+            x0, y1, 0.0f, 1.0f,
+            x1, y1, 1.0f, 1.0f
+        };
+        FloatBuffer buf = BufferUtils.createFloatBuffer(quadData.length);
+        buf.put(quadData).flip();
+
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, diagAtlasVbo);
+        GL15.glBufferSubData(GL15.GL_ARRAY_BUFFER, 0, buf);
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
     }
 
     private void populateOrthoMatrix(FloatBuffer buffer, int width, int height) {
