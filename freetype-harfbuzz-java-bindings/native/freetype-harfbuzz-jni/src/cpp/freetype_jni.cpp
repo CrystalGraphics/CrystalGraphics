@@ -260,6 +260,23 @@ JNIEXPORT jint JNICALL Java_com_crystalgraphics_freetype_FTFace_nGetAdvance
     return (jint)advance;
 }
 
+JNIEXPORT void JNICALL Java_com_crystalgraphics_freetype_FTFace_nOutlineTranslate
+  (JNIEnv *env, jclass, jlong facePtr, jlong xOffset, jlong yOffset) {
+    FT_Face face = (FT_Face)(intptr_t)facePtr;
+    if (!face->glyph) {
+        throwException(env, "java/lang/IllegalStateException",
+            "No glyph loaded. Call loadGlyph() or loadChar() before outlineTranslate().");
+        return;
+    }
+    if (face->glyph->format != FT_GLYPH_FORMAT_OUTLINE) {
+        throwException(env, "java/lang/IllegalStateException",
+            "Loaded glyph has no outline (format is not FT_GLYPH_FORMAT_OUTLINE). "
+            "Load with FT_LOAD_NO_BITMAP to ensure outline availability.");
+        return;
+    }
+    FT_Outline_Translate(&face->glyph->outline, (FT_Pos)xOffset, (FT_Pos)yOffset);
+}
+
 JNIEXPORT void JNICALL Java_com_crystalgraphics_freetype_FTFace_nDoneFace
   (JNIEnv *env, jclass, jlong facePtr) {
     FT_Face face = (FT_Face)(intptr_t)facePtr;

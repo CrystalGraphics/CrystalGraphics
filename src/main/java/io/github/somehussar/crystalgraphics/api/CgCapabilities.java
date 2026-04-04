@@ -124,30 +124,25 @@ public final class CgCapabilities {
     private final int maxColorAttachments;
 
     /**
-     * Private constructor; use {@link #detect()} to create instances.
-     *
-     * @param coreFbo               Core GL30 FBO support
-     * @param arbFbo                ARB FBO extension support
-     * @param extFbo                EXT FBO extension support
-     * @param coreShaders           Core GL20 shader support
-     * @param arbShaders            ARB shader objects support
-     * @param maxDrawBuffers        maximum MRT outputs (1 if unsupported)
-     * @param maxTextureUnits       maximum texture units
-     * @param stencil               stencil attachment support
-     * @param depth                 depth attachment support
-     * @param packedDepthStencil    packed depth-stencil format support
-     * @param depthTexture          depth texture support
-     * @param maxTextureSize        maximum texture dimension
-     * @param maxRenderbufferSize   maximum renderbuffer dimension
-     * @param maxColorAttachments   maximum color attachments
+     * Whether vertex array objects (VAOs) are supported.
+     * True if Core OpenGL 3.0 or {@code GL_ARB_vertex_array_object} is available.
      */
+    private final boolean hasVao;
+
+    /**
+     * Whether {@code glMapBufferRange} is supported.
+     * True if Core OpenGL 3.0 or {@code GL_ARB_map_buffer_range} is available.
+     */
+    private final boolean hasMapBufferRange;
+
     private CgCapabilities(boolean coreFbo, boolean arbFbo, boolean extFbo,
                            boolean coreShaders, boolean arbShaders,
                            int maxDrawBuffers, int maxTextureUnits,
                            boolean stencil, boolean depth,
                            boolean packedDepthStencil, boolean depthTexture,
                            int maxTextureSize, int maxRenderbufferSize,
-                           int maxColorAttachments) {
+                           int maxColorAttachments,
+                           boolean hasVao, boolean hasMapBufferRange) {
         this.coreFbo = coreFbo;
         this.arbFbo = arbFbo;
         this.extFbo = extFbo;
@@ -162,6 +157,8 @@ public final class CgCapabilities {
         this.maxTextureSize = maxTextureSize;
         this.maxRenderbufferSize = maxRenderbufferSize;
         this.maxColorAttachments = maxColorAttachments;
+        this.hasVao = hasVao;
+        this.hasMapBufferRange = hasMapBufferRange;
     }
 
     /**
@@ -277,6 +274,9 @@ public final class CgCapabilities {
             maxColorAttachments = 1;
         }
 
+        boolean hasVao = caps.OpenGL30 || caps.GL_ARB_vertex_array_object;
+        boolean hasMapBufferRange = caps.OpenGL30 || caps.GL_ARB_map_buffer_range;
+
         return new CgCapabilities(
             coreFbo, arbFbo, extFbo,
             coreShaders, arbShaders,
@@ -284,7 +284,8 @@ public final class CgCapabilities {
             stencil, depth,
             packedDepthStencil, depthTexture,
             maxTextureSize, maxRenderbufferSize,
-            maxColorAttachments
+            maxColorAttachments,
+            hasVao, hasMapBufferRange
         );
     }
 
@@ -476,6 +477,51 @@ public final class CgCapabilities {
      */
     public int getMaxColorAttachments() {
         return maxColorAttachments;
+    }
+
+    /**
+     * Returns whether vertex array objects (VAOs) are supported.
+     *
+     * <p>True if Core OpenGL 3.0 or the {@code GL_ARB_vertex_array_object}
+     * extension is available.</p>
+     *
+     * @return {@code true} if VAOs can be used
+     */
+    public boolean isVaoSupported() {
+        return hasVao;
+    }
+
+    /**
+     * Returns whether {@code glMapBufferRange} is supported.
+     *
+     * <p>True if Core OpenGL 3.0 or the {@code GL_ARB_map_buffer_range}
+     * extension is available.</p>
+     *
+     * @return {@code true} if {@code glMapBufferRange} can be used
+     */
+    public boolean isMapBufferRangeSupported() {
+        return hasMapBufferRange;
+    }
+
+    /**
+     * Package-private factory for unit tests that cannot create a GL context.
+     */
+    static CgCapabilities createForTest(boolean coreFbo, boolean arbFbo, boolean extFbo,
+                                        boolean coreShaders, boolean arbShaders,
+                                        int maxDrawBuffers, int maxTextureUnits,
+                                        boolean stencil, boolean depth,
+                                        boolean packedDepthStencil, boolean depthTexture,
+                                        int maxTextureSize, int maxRenderbufferSize,
+                                        int maxColorAttachments,
+                                        boolean hasVao, boolean hasMapBufferRange) {
+        return new CgCapabilities(coreFbo, arbFbo, extFbo,
+            coreShaders, arbShaders,
+            maxDrawBuffers, maxTextureUnits,
+            stencil, depth,
+            packedDepthStencil, depthTexture,
+            maxTextureSize, maxRenderbufferSize,
+            maxColorAttachments,
+            hasVao, hasMapBufferRange);
     }
 
     /**
