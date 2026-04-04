@@ -177,7 +177,8 @@ public class CgFontRegistry {
 
         FreeTypeIntegration.Font msdfFont = font.getMsdfFont();
         if (msdfFont != null) {
-            CgAtlasRegion region = msdfGenerator.queueOrGenerate(key, msdfFont, msdfAtlas, currentFrame);
+            CgAtlasRegion region = msdfGenerator.queueOrGenerate(
+                    key, msdfFont, msdfAtlas, 0f, 0f, currentFrame);
             if (region != null) {
                 return region;
             }

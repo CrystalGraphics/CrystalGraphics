@@ -50,7 +50,7 @@ public class CgMsdfGeneratorTest {
         CgGlyphKey key = new CgGlyphKey(FONT_32, 100, true);
 
         // generateGlyph checks budget before any native call
-        CgAtlasRegion result = gen.queueOrGenerate(key, null, atlas, 0);
+        CgAtlasRegion result = gen.queueOrGenerate(key, null, atlas, 0, 0, 0);
         assertNull("5th glyph should be rejected by budget", result);
     }
 
@@ -159,7 +159,7 @@ public class CgMsdfGeneratorTest {
         CgGlyphAtlas atlas = CgGlyphAtlas.createForTest(128, 128, CgGlyphAtlas.Type.MSDF);
         CgGlyphKey key = new CgGlyphKey(FONT_48, 65, true);
 
-        CgAtlasRegion result = gen.queueOrGenerate(key, null, atlas, 0);
+        CgAtlasRegion result = gen.queueOrGenerate(key, null, atlas, 0, 0, 0);
         assertNull(result);
     }
 
