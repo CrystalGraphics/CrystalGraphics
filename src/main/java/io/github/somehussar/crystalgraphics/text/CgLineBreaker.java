@@ -36,19 +36,24 @@ import java.util.List;
 public class CgLineBreaker {
 
     /**
-     * Break shaped runs into visual lines.
+     * Break shaped runs into visual lines with optional intra-run word wrapping.
      *
-     * <p>BiDi reordering is applied per line from the logical runs.</p>
+     * <p>When a run overflows and carries source-text context, the breaker scans
+     * the source text for break opportunities (space, ZWSP, soft hyphen), re-shapes
+     * the fragments via the {@code reshaper}, and splits across lines. If no reshaper
+     * is provided or the run lacks source context, whole-run wrapping is used.</p>
      *
      * @param runs       shaped runs in logical (paragraph) order
      * @param maxWidth   maximum line width in pixels; {@code <= 0} means unbounded
      * @param maxHeight  maximum total layout height in pixels; {@code <= 0} means unbounded
      * @param metrics    font metrics for line height calculation
+     * @param reshaper   callback for re-shaping run fragments; may be {@code null}
      * @return list of lines; each line is a list of {@link CgShapedRun} in visual order
      */
     public List<List<CgShapedRun>> breakLines(List<CgShapedRun> runs,
                                                float maxWidth, float maxHeight,
-                                               CgFontMetrics metrics) {
+                                               CgFontMetrics metrics,
+                                               RunReshaper reshaper) {
         if (runs == null || runs.isEmpty()) {
             return Collections.emptyList();
         }
@@ -63,9 +68,10 @@ public class CgLineBreaker {
         float lineHeight = metrics.getLineHeight();
 
         for (CgShapedRun run : runs) {
-            if (maxWidth > 0 && currentWidth + run.getTotalAdvance() > maxWidth
-                    && !currentLine.isEmpty()) {
-                // Current line is full — finalize it
+            float remainingWidth = maxWidth > 0 ? maxWidth - currentWidth : Float.MAX_VALUE;
+
+            if (maxWidth > 0 && run.getTotalAdvance() > remainingWidth && !currentLine.isEmpty()) {
+                // Current line is full — finalize it and start a new line
                 lines.add(reorderVisually(currentLine));
                 totalHeight += lineHeight;
                 if (maxHeight > 0 && totalHeight + lineHeight > maxHeight) {
@@ -73,7 +79,38 @@ public class CgLineBreaker {
                 }
                 currentLine = new ArrayList<CgShapedRun>();
                 currentWidth = 0.0f;
+                remainingWidth = maxWidth;
             }
+
+            // Try intra-run splitting if the run still overflows the (possibly fresh) line
+            if (maxWidth > 0 && run.getTotalAdvance() > remainingWidth
+                    && run.hasSourceContext() && reshaper != null) {
+                List<CgShapedRun> fragments = splitRunAtBreakOpportunities(
+                        run, remainingWidth, maxWidth, reshaper);
+
+                if (fragments != null && fragments.size() > 1) {
+                    for (CgShapedRun fragment : fragments) {
+                        float fragRemaining = maxWidth > 0 ? maxWidth - currentWidth : Float.MAX_VALUE;
+                        if (maxWidth > 0 && fragment.getTotalAdvance() > fragRemaining
+                                && !currentLine.isEmpty()) {
+                            lines.add(reorderVisually(currentLine));
+                            totalHeight += lineHeight;
+                            if (maxHeight > 0 && totalHeight + lineHeight > maxHeight) {
+                                return lines;
+                            }
+                            currentLine = new ArrayList<CgShapedRun>();
+                            currentWidth = 0.0f;
+                        }
+                        if (fragment.getGlyphIds().length > 0) {
+                            currentLine.add(fragment);
+                            currentWidth += fragment.getTotalAdvance();
+                        }
+                    }
+                    continue;
+                }
+            }
+
+            // Whole-run placement (fallback)
             currentLine.add(run);
             currentWidth += run.getTotalAdvance();
         }
@@ -84,6 +121,112 @@ public class CgLineBreaker {
         }
 
         return lines;
+    }
+
+    /**
+     * Break shaped runs into visual lines.
+     *
+     * <p>Backward-compatible overload without intra-run reshaping support.
+     * BiDi reordering is applied per line from the logical runs.</p>
+     *
+     * @param runs       shaped runs in logical (paragraph) order
+     * @param maxWidth   maximum line width in pixels; {@code <= 0} means unbounded
+     * @param maxHeight  maximum total layout height in pixels; {@code <= 0} means unbounded
+     * @param metrics    font metrics for line height calculation
+     * @return list of lines; each line is a list of {@link CgShapedRun} in visual order
+     */
+    public List<List<CgShapedRun>> breakLines(List<CgShapedRun> runs,
+                                               float maxWidth, float maxHeight,
+                                               CgFontMetrics metrics) {
+        return breakLines(runs, maxWidth, maxHeight, metrics, null);
+    }
+
+    /**
+     * Attempts to split a run at word-break opportunities within its source text.
+     *
+     * <p>Scans the source text segment for break characters (space, ZWSP, soft hyphen)
+     * and finds the last break position where the re-shaped prefix fits within
+     * {@code availableWidth}. If a valid split is found, returns two or more
+     * re-shaped fragments. Returns {@code null} if no valid break was found.</p>
+     *
+     * <p>Break positions are always <em>after</em> the break character (i.e., the
+     * space stays at the end of the first fragment). This respects cluster boundaries
+     * because the split happens in the source text, not in the glyph array.</p>
+     *
+     * @param run            the run to split (must have source context)
+     * @param availableWidth remaining width on the current line
+     * @param maxLineWidth   full line width for subsequent fragments
+     * @param reshaper       callback to re-shape text sub-ranges
+     * @return list of re-shaped fragments, or {@code null} if no break found
+     */
+    private List<CgShapedRun> splitRunAtBreakOpportunities(CgShapedRun run,
+                                                            float availableWidth,
+                                                            float maxLineWidth,
+                                                            RunReshaper reshaper) {
+        String sourceText = run.getSourceText();
+        int runStart = run.getSourceStart();
+        int runEnd = run.getSourceEnd();
+        String segment = sourceText.substring(runStart, runEnd);
+
+        // Scan for break opportunities: find the rightmost break position
+        // where the re-shaped prefix fits within availableWidth.
+        // Break opportunities are *after* break characters.
+        int bestBreak = -1;
+        for (int i = 0; i < segment.length(); i++) {
+            char c = segment.charAt(i);
+            if (isBreakOpportunity(c)) {
+                int breakPos = i + 1; // break *after* the break character
+                if (breakPos >= segment.length()) {
+                    continue; // no point splitting at the very end
+                }
+                CgShapedRun prefix = reshaper.reshape(run, runStart, runStart + breakPos);
+                if (prefix != null && prefix.getTotalAdvance() <= availableWidth) {
+                    bestBreak = breakPos;
+                } else if (prefix != null && prefix.getTotalAdvance() > availableWidth) {
+                    // Past the available width — stop scanning
+                    break;
+                }
+            }
+        }
+
+        if (bestBreak <= 0) {
+            return null;
+        }
+
+        // Re-shape the two fragments
+        List<CgShapedRun> fragments = new ArrayList<CgShapedRun>();
+        CgShapedRun head = reshaper.reshape(run, runStart, runStart + bestBreak);
+        if (head != null) {
+            fragments.add(head);
+        }
+
+        // Recursively split the tail if it also overflows
+        int tailStart = runStart + bestBreak;
+        if (tailStart < runEnd) {
+            CgShapedRun tail = reshaper.reshape(run, tailStart, runEnd);
+            if (tail != null) {
+                if (tail.getTotalAdvance() > maxLineWidth && tail.hasSourceContext()) {
+                    List<CgShapedRun> tailFragments = splitRunAtBreakOpportunities(
+                            tail, maxLineWidth, maxLineWidth, reshaper);
+                    if (tailFragments != null) {
+                        fragments.addAll(tailFragments);
+                    } else {
+                        fragments.add(tail);
+                    }
+                } else {
+                    fragments.add(tail);
+                }
+            }
+        }
+
+        return fragments.size() > 1 ? fragments : null;
+    }
+
+    /**
+     * Returns {@code true} if the character is a valid word-break opportunity.
+     */
+    private static boolean isBreakOpportunity(char c) {
+        return c == ' ' || c == '\u200B' || c == '\u00AD';
     }
 
     /**

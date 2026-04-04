@@ -158,18 +158,53 @@ public class CgFontKeyTest {
         assertSame("fontKey", fontKey, key.getFontKey());
         assertEquals("glyphId", 100, key.getGlyphId());
         assertTrue("msdf", key.isMsdf());
-        assertEquals("subPixelBucket should normalize to 0 for large fonts", 0, key.getSubPixelBucket());
+        assertEquals("subPixelBucket should be retained for sizes below threshold",
+                3, key.getSubPixelBucket());
+    }
+
+    // ---------------------------------------------------------------
+    //  Sub-pixel bucket threshold tests (bitmap/MSDF boundary at 32px)
+    // ---------------------------------------------------------------
+
+    @Test
+    public void testGlyphKey_midSize13px_retainsSubPixelBucket() {
+        CgFontKey fontKey = new CgFontKey("font.ttf", CgFontStyle.REGULAR, 13);
+        CgGlyphKey key = new CgGlyphKey(fontKey, 65, false, 2);
+        assertEquals("13px should retain sub-pixel bucket", 2, key.getSubPixelBucket());
     }
 
     @Test
-    public void testGlyphKey_smallFont_subPixelBucket_affectsEquality() {
-        CgFontKey fontKey = new CgFontKey("font.ttf", CgFontStyle.REGULAR, 12);
-        CgGlyphKey bucket0 = new CgGlyphKey(fontKey, 65, false, 0);
-        CgGlyphKey bucket1 = new CgGlyphKey(fontKey, 65, false, 1);
+    public void testGlyphKey_midSize24px_retainsSubPixelBucket() {
+        CgFontKey fontKey = new CgFontKey("font.ttf", CgFontStyle.REGULAR, 24);
+        CgGlyphKey key = new CgGlyphKey(fontKey, 65, false, 3);
+        assertEquals("24px should retain sub-pixel bucket", 3, key.getSubPixelBucket());
+    }
 
-        assertNotEquals("Different sub-pixel buckets must not be equal for small fonts", bucket0, bucket1);
-        assertEquals(0, bucket0.getSubPixelBucket());
-        assertEquals(1, bucket1.getSubPixelBucket());
+    @Test
+    public void testGlyphKey_midSize31px_retainsSubPixelBucket() {
+        CgFontKey fontKey = new CgFontKey("font.ttf", CgFontStyle.REGULAR, 31);
+        CgGlyphKey key = new CgGlyphKey(fontKey, 65, false, 1);
+        assertEquals("31px should retain sub-pixel bucket", 1, key.getSubPixelBucket());
+    }
+
+    @Test
+    public void testGlyphKey_atThreshold32px_normalizesToZero() {
+        CgFontKey fontKey = new CgFontKey("font.ttf", CgFontStyle.REGULAR, 32);
+        CgGlyphKey key = new CgGlyphKey(fontKey, 65, false, 3);
+        assertEquals("32px should normalize sub-pixel bucket to 0", 0, key.getSubPixelBucket());
+    }
+
+    @Test
+    public void testGlyphKey_aboveThreshold48px_normalizesToZero() {
+        CgFontKey fontKey = new CgFontKey("font.ttf", CgFontStyle.REGULAR, 48);
+        CgGlyphKey key = new CgGlyphKey(fontKey, 65, false, 2);
+        assertEquals("48px should normalize sub-pixel bucket to 0", 0, key.getSubPixelBucket());
+    }
+
+    @Test
+    public void testGlyphKey_thresholdConstantMatchesMsdfBoundary() {
+        assertEquals("SUB_PIXEL_BUCKET_MAX_PX should match MSDF handoff boundary",
+                32, CgGlyphKey.SUB_PIXEL_BUCKET_MAX_PX);
     }
 
     @Test
