@@ -85,6 +85,40 @@ public class CgTextLayoutTest {
 
         assertEquals(0, run.getGlyphIds().length);
         assertEquals(0.0f, run.getTotalAdvance(), 0.001f);
+        assertFalse("Backward-compat constructor should not have source context",
+                run.hasSourceContext());
+    }
+
+    @Test
+    public void testShapedRun_sourceContext_retained() {
+        String source = "Hello World";
+        CgShapedRun run = new CgShapedRun(TEST_FONT_KEY, false,
+                new int[]{1, 2}, new int[]{0, 1},
+                new float[]{5.0f, 5.0f}, new float[]{0, 0}, new float[]{0, 0},
+                10.0f,
+                source, 0, 5);
+
+        assertTrue("Should have source context", run.hasSourceContext());
+        assertSame(source, run.getSourceText());
+        assertEquals(0, run.getSourceStart());
+        assertEquals(5, run.getSourceEnd());
+    }
+
+    @Test
+    public void testShapedRun_sourceContext_excludedFromEquality() {
+        CgShapedRun withContext = new CgShapedRun(TEST_FONT_KEY, false,
+                new int[]{1}, new int[]{0},
+                new float[]{5.0f}, new float[]{0}, new float[]{0},
+                5.0f,
+                "Hello", 0, 5);
+
+        CgShapedRun withoutContext = new CgShapedRun(TEST_FONT_KEY, false,
+                new int[]{1}, new int[]{0},
+                new float[]{5.0f}, new float[]{0}, new float[]{0},
+                5.0f);
+
+        assertEquals("Source context should not affect equality",
+                withContext, withoutContext);
     }
 
     // ---------------------------------------------------------------
@@ -393,6 +427,127 @@ public class CgTextLayoutTest {
     }
 
     // ---------------------------------------------------------------
+    //  Intra-run word wrapping tests
+    // ---------------------------------------------------------------
+
+    @Test
+    public void testLineBreaker_intraRun_splitsAtSpace() {
+        // "hello world" as a single run, 110px wide, maxWidth=60 → should split at space
+        CgLineBreaker breaker = new CgLineBreaker();
+        String source = "hello world";
+        CgShapedRun run = makeRunWithSource(false, 110.0f, source, 0, source.length());
+
+        List<CgShapedRun> runs = new ArrayList<CgShapedRun>();
+        runs.add(run);
+
+        // Mock reshaper: 10px per character
+        RunReshaper reshaper = new RunReshaper() {
+            @Override
+            public CgShapedRun reshape(CgShapedRun r, int subStart, int subEnd) {
+                String sub = r.getSourceText().substring(subStart, subEnd);
+                float width = sub.length() * 10.0f;
+                return new CgShapedRun(TEST_FONT_KEY, r.isRtl(),
+                        new int[]{1}, new int[]{0},
+                        new float[]{width}, new float[]{0}, new float[]{0},
+                        width,
+                        r.getSourceText(), subStart, subEnd);
+            }
+        };
+
+        List<List<CgShapedRun>> lines = breaker.breakLines(runs, 60.0f, 0, TEST_METRICS, reshaper);
+
+        assertTrue("Should split into at least 2 lines", lines.size() >= 2);
+    }
+
+    @Test
+    public void testLineBreaker_intraRun_noBreakOpportunity_forcedBreak() {
+        // "abcdefghij" (no spaces) as a single run, 100px wide, maxWidth=50
+        CgLineBreaker breaker = new CgLineBreaker();
+        String source = "abcdefghij";
+        CgShapedRun run = makeRunWithSource(false, 100.0f, source, 0, source.length());
+
+        List<CgShapedRun> runs = new ArrayList<CgShapedRun>();
+        runs.add(run);
+
+        RunReshaper reshaper = new RunReshaper() {
+            @Override
+            public CgShapedRun reshape(CgShapedRun r, int subStart, int subEnd) {
+                String sub = r.getSourceText().substring(subStart, subEnd);
+                float width = sub.length() * 10.0f;
+                return new CgShapedRun(TEST_FONT_KEY, r.isRtl(),
+                        new int[]{1}, new int[]{0},
+                        new float[]{width}, new float[]{0}, new float[]{0},
+                        width,
+                        r.getSourceText(), subStart, subEnd);
+            }
+        };
+
+        // No break opportunity → falls back to whole-run placement
+        List<List<CgShapedRun>> lines = breaker.breakLines(runs, 50.0f, 0, TEST_METRICS, reshaper);
+        assertEquals("Should have 1 line (forced break)", 1, lines.size());
+    }
+
+    @Test
+    public void testLineBreaker_intraRun_withoutSourceContext_fallback() {
+        // Run without source context — should fall back to whole-run wrapping
+        CgLineBreaker breaker = new CgLineBreaker();
+        CgShapedRun run = makeRun(false, 200.0f); // no source context
+
+        List<CgShapedRun> runs = new ArrayList<CgShapedRun>();
+        runs.add(run);
+
+        RunReshaper reshaper = new RunReshaper() {
+            @Override
+            public CgShapedRun reshape(CgShapedRun r, int subStart, int subEnd) {
+                return null; // should never be called
+            }
+        };
+
+        List<List<CgShapedRun>> lines = breaker.breakLines(runs, 100.0f, 0, TEST_METRICS, reshaper);
+        assertEquals("No source context → 1 line (forced)", 1, lines.size());
+    }
+
+    @Test
+    public void testLineBreaker_intraRun_multipleWords_wrapsCorrectly() {
+        // "aa bb cc dd ee" with 10px per char, maxWidth=50
+        CgLineBreaker breaker = new CgLineBreaker();
+        String source = "aa bb cc dd ee";
+        CgShapedRun run = makeRunWithSource(false, 140.0f, source, 0, source.length());
+
+        List<CgShapedRun> runs = new ArrayList<CgShapedRun>();
+        runs.add(run);
+
+        RunReshaper reshaper = new RunReshaper() {
+            @Override
+            public CgShapedRun reshape(CgShapedRun r, int subStart, int subEnd) {
+                String sub = r.getSourceText().substring(subStart, subEnd);
+                float width = sub.length() * 10.0f;
+                return new CgShapedRun(TEST_FONT_KEY, r.isRtl(),
+                        new int[]{1}, new int[]{0},
+                        new float[]{width}, new float[]{0}, new float[]{0},
+                        width,
+                        r.getSourceText(), subStart, subEnd);
+            }
+        };
+
+        List<List<CgShapedRun>> lines = breaker.breakLines(runs, 50.0f, 0, TEST_METRICS, reshaper);
+        assertTrue("Multiple words should wrap into multiple lines", lines.size() >= 3);
+    }
+
+    @Test
+    public void testLineBreaker_backwardCompat_withoutReshaper() {
+        // Existing breakLines(runs, maxWidth, maxHeight, metrics) still works
+        CgLineBreaker breaker = new CgLineBreaker();
+        List<CgShapedRun> runs = new ArrayList<CgShapedRun>();
+        runs.add(makeRun(false, 50.0f));
+        runs.add(makeRun(false, 50.0f));
+        runs.add(makeRun(false, 50.0f));
+
+        List<List<CgShapedRun>> lines = breaker.breakLines(runs, 100.0f, 0, TEST_METRICS);
+        assertEquals("Backward-compat 4-arg overload still works", 2, lines.size());
+    }
+
+    // ---------------------------------------------------------------
     //  Helper methods
     // ---------------------------------------------------------------
 
@@ -421,5 +576,20 @@ public class CgTextLayoutTest {
                 new float[]{0.0f},
                 new float[]{0.0f},
                 totalAdvance);
+    }
+
+    /**
+     * Create a CgShapedRun with source-text context for intra-run wrapping tests.
+     */
+    private static CgShapedRun makeRunWithSource(boolean rtl, float totalAdvance,
+                                                  String sourceText, int sourceStart, int sourceEnd) {
+        return new CgShapedRun(TEST_FONT_KEY, rtl,
+                new int[]{1},
+                new int[]{0},
+                new float[]{totalAdvance},
+                new float[]{0.0f},
+                new float[]{0.0f},
+                totalAdvance,
+                sourceText, sourceStart, sourceEnd);
     }
 }

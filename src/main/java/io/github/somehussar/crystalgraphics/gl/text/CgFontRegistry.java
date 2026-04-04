@@ -138,13 +138,15 @@ public class CgFontRegistry {
             face.setPixelSizes(0, key.getFontKey().getTargetPx());
 
             int loadFlags = FTLoadFlags.FT_LOAD_DEFAULT;
-            if (key.getSubPixelBucket() > 0 && key.getFontKey().getTargetPx() <= 12) {
+            boolean subBucket = key.getSubPixelBucket() > 0 && key.getFontKey()
+                                                          .getTargetPx() < CgGlyphKey.SUB_PIXEL_BUCKET_MAX_PX;
+            if (subBucket) {
                 loadFlags = FTLoadFlags.FT_LOAD_NO_BITMAP;
             }
 
             loadGlyphOrFallback(face, key.getGlyphId(), loadFlags);
 
-            if (key.getSubPixelBucket() > 0 && key.getFontKey().getTargetPx() <= 12) {
+            if (subBucket) {
                 face.outlineTranslate(key.getSubPixelBucket() * 16L, 0L);
             }
 
