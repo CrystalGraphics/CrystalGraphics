@@ -13,8 +13,7 @@ import io.github.somehussar.crystalgraphics.gl.state.CgStateSnapshot;
 import io.github.somehussar.crystalgraphics.text.CgShapedRun;
 import io.github.somehussar.crystalgraphics.text.CgTextLayout;
 import org.lwjgl.BufferUtils;
-import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL13;
+import org.lwjgl.opengl.*;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -114,7 +113,11 @@ public class CgTextRenderer {
 
         CgStateSnapshot snapshot = CgStateBoundary.save();
         try {
-            drawInternal(layout, font, x, y, 0xffffffff, frame, projectionMatrix);
+            GL11.glDisable(GL11.GL_DEPTH_TEST);
+            GL11.glDepthMask(false);
+            GL11.glDisable(GL11.GL_CULL_FACE);
+            GL11.glDisable(GL11.GL_ALPHA_TEST);
+            drawInternal(layout, font, x, y, rgba, frame, projectionMatrix);
         } finally {
             CgStateBoundary.restore(snapshot);
         }

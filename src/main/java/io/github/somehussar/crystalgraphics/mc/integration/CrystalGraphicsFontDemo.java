@@ -73,13 +73,13 @@ public class CrystalGraphicsFontDemo {
         try {
             ensureDemoFontSystem();
             ScaledResolution resolution = event.resolution;
-            populateOrthoMatrix(demoProjectionMatrix, resolution.getScaledWidth(), resolution.getScaledHeight());
+            populateOrthoMatrix(demoProjectionMatrix, mc.displayWidth, mc.displayHeight);
 
             demoTextRenderer.draw(
                     demoLayoutBuilder.layout(DEMO_TEXT + " [" + demoFontSize + "px]", demoFont, resolution.getScaledWidth(), 0),
                     demoFont,
                     20.0f,
-                    40.0f,
+                    40.0f + demoFontSize,
                     0xFFFFFFFF,
                     demoFrame,
                     demoProjectionMatrix);
@@ -98,7 +98,7 @@ public class CrystalGraphicsFontDemo {
             if (demoFont != null && !demoFont.isDisposed()) {
                 demoFont.dispose();
             }
-            
+
             demoFont = CgFont.load(DEMO_FONT_PATH, CgFontStyle.REGULAR, demoFontSize);
         }
         if (demoTextRenderer == null || demoTextRenderer.isDeleted()) {
@@ -134,10 +134,10 @@ public class CrystalGraphicsFontDemo {
         float ty = -(top + bottom) / (top - bottom);
         float tz = -(far + near) / (far - near);
 
-        buffer.put(sx).put(0.0f).put(0.0f).put(tx);
-        buffer.put(0.0f).put(sy).put(0.0f).put(ty);
-        buffer.put(0.0f).put(0.0f).put(sz).put(tz);
-        buffer.put(0.0f).put(0.0f).put(0.0f).put(1.0f);
+        buffer.put(sx).put(0.0f).put(0.0f).put(0.0f);  // col 0
+        buffer.put(0.0f).put(sy).put(0.0f).put(0.0f);  // col 1
+        buffer.put(0.0f).put(0.0f).put(sz).put(0.0f);  // col 2
+        buffer.put(tx).put(ty).put(tz).put(1.0f);       // col 3
         buffer.flip();
     }
 }
