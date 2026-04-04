@@ -138,4 +138,79 @@ public class CgCapabilitiesVersionTest {
         assertEquals(4, v[0]);
         assertEquals(6, v[1]);
     }
+
+    // ---------------------------------------------------------------
+    //  VAO / mapBufferRange capability detection tests
+    // ---------------------------------------------------------------
+
+    @Test
+    public void testVaoSupportedWhenOpenGL30() {
+        CgCapabilities caps = CgCapabilities.createForTest(
+            true, false, false,   // coreFbo, arbFbo, extFbo
+            true, false,          // coreShaders, arbShaders
+            1, 8,                 // maxDrawBuffers, maxTextureUnits
+            true, true,           // stencil, depth
+            false, false,         // packedDepthStencil, depthTexture
+            4096, 4096, 8,        // maxTextureSize, maxRenderbufferSize, maxColorAttachments
+            true, true            // hasVao, hasMapBufferRange
+        );
+        assertTrue("VAO should be supported when OpenGL 3.0 is available", caps.isVaoSupported());
+    }
+
+    @Test
+    public void testMapBufferRangeSupportedWhenOpenGL30() {
+        CgCapabilities caps = CgCapabilities.createForTest(
+            true, false, false,
+            true, false,
+            1, 8,
+            true, true,
+            false, false,
+            4096, 4096, 8,
+            true, true
+        );
+        assertTrue("mapBufferRange should be supported when OpenGL 3.0 is available", caps.isMapBufferRangeSupported());
+    }
+
+    @Test
+    public void testVaoNotSupportedWithoutExtension() {
+        CgCapabilities caps = CgCapabilities.createForTest(
+            false, false, true,
+            true, false,
+            1, 8,
+            true, true,
+            false, false,
+            4096, 4096, 1,
+            false, false
+        );
+        assertFalse("VAO should not be supported without GL30 or ARB extension", caps.isVaoSupported());
+    }
+
+    @Test
+    public void testMapBufferRangeNotSupportedWithoutExtension() {
+        CgCapabilities caps = CgCapabilities.createForTest(
+            false, false, true,
+            true, false,
+            1, 8,
+            true, true,
+            false, false,
+            4096, 4096, 1,
+            false, false
+        );
+        assertFalse("mapBufferRange should not be supported without GL30 or ARB extension", caps.isMapBufferRangeSupported());
+    }
+
+    @Test
+    public void testVaoSupportedWithArbExtensionOnly() {
+        CgCapabilities caps = CgCapabilities.createForTest(
+            false, false, true,
+            true, false,
+            1, 8,
+            true, true,
+            false, false,
+            4096, 4096, 1,
+            true, false
+        );
+        assertTrue("VAO should be supported with ARB_vertex_array_object", caps.isVaoSupported());
+        assertFalse("mapBufferRange should not be supported without its extension", caps.isMapBufferRangeSupported());
+    }
 }
