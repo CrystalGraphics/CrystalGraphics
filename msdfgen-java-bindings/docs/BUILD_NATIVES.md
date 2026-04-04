@@ -42,8 +42,22 @@ FreeType must be installed on the build system. See [FREETYPE_INTEGRATION.md](FR
 
 This will:
 1. Clone msdfgen v1.13 if not already present
-2. Build the JNI shared library with msdfgen statically linked
-3. Copy the result to `src/main/resources/natives/<platform>/`
+2. Apply CrystalGraphics local source overrides to the cloned msdfgen tree
+3. Build the JNI shared library with msdfgen statically linked
+4. Copy the result to `src/main/resources/natives/<platform>/`
+
+### Local Source Overrides
+
+CrystalGraphics carries tracked native overrides under:
+
+```text
+native/msdfgen-jni/overrides/msdfgen/
+```
+
+These files are copied into the freshly cloned upstream `msdfgen` checkout before
+the JNI library is built. This is required because the build scripts clone upstream
+`msdfgen` on demand, so ad-hoc edits inside `native/msdfgen-jni/msdfgen/` would
+otherwise be lost during CI/native rebuilds.
 
 ## Build Output Locations
 
