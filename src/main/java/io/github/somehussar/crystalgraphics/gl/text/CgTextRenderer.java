@@ -1,6 +1,7 @@
 package io.github.somehussar.crystalgraphics.gl.text;
 
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
+import io.github.somehussar.crystalgraphics.api.PoseStack;
 import io.github.somehussar.crystalgraphics.api.font.CgAtlasRegion;
 import io.github.somehussar.crystalgraphics.api.font.CgFont;
 import io.github.somehussar.crystalgraphics.api.font.CgFontKey;
@@ -12,6 +13,7 @@ import io.github.somehussar.crystalgraphics.gl.state.CgStateBoundary;
 import io.github.somehussar.crystalgraphics.gl.state.CgStateSnapshot;
 import io.github.somehussar.crystalgraphics.text.CgShapedRun;
 import io.github.somehussar.crystalgraphics.text.CgTextLayout;
+import org.joml.Matrix4f;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.*;
 
@@ -31,6 +33,33 @@ import java.util.logging.Logger;
  * draws bitmap quads first and MSDF quads second. It uses the modern GL path
  * required by the current font implementation and restores GL state through
  * {@link CgStateBoundary} after each draw.</p>
+ *
+ * <h3>Three-Unit Size Model</h3>
+ * <p>The text rendering pipeline distinguishes three pixel-size concepts:</p>
+ * <ol>
+ *   <li><strong>Logical layout pixels</strong> — coordinates used by {@link CgTextLayout}
+ *       for width, height, line breaking, and glyph advances. These never change based
+ *       on draw-time transforms.</li>
+ *   <li><strong>Base target pixels</strong> ({@code CgFontKey.targetPx}) — the font size
+ *       requested at load time. Part of the font/layout cache identity.</li>
+ *   <li><strong>Effective target pixels</strong> — the actual raster size used for glyph
+ *       rendering at draw time, derived from {@code baseTargetPx × poseScale} via
+ *       {@link CgTextScaleResolver}. Determines which atlas/cache bucket serves glyphs.</li>
+ * </ol>
+ *
+ * <h3>Projection and Context Model</h3>
+ * <p>Rather than requiring callers to pass a raw {@code FloatBuffer projectionMatrix}
+ * on every draw call, the renderer consumes a {@link CgTextRenderContext} that holds
+ * the projection matrix and scale resolver. The context is set once (or updated on
+ * resize) and reused across frames. The {@link PoseStack} — which changes per draw —
+ * is passed directly to the draw method.</p>
+ *
+ * <h3>World-Space Extension</h3>
+ * <p>Future perspective/world-space text requires a different {@link CgTextScaleResolver}
+ * that estimates on-screen pixel coverage from view distance, FOV, and viewport dimensions.
+ * The current shipped resolver ({@link CgTextScaleResolver#ORTHOGRAPHIC}) handles only
+ * 2D screen-space text. A future {@code PerspectiveScaleResolver} would be injected
+ * via the {@link CgTextRenderContext}.</p>
  */
 public class CgTextRenderer {
 
@@ -47,8 +76,10 @@ public class CgTextRenderer {
     private final CgGlyphVbo vbo;
     private final CgFontRegistry registry;
     private final int bitmapLocProjection;
+    private final int bitmapLocModelview;
     private final int bitmapLocAtlas;
     private final int msdfLocProjection;
+    private final int msdfLocModelview;
     private final int msdfLocAtlas;
     private final int msdfLocPxRange;
     private final FloatBuffer matrixBuf;
@@ -64,8 +95,10 @@ public class CgTextRenderer {
         this.vbo = vbo;
         this.registry = registry;
         this.bitmapLocProjection = bitmapShader.getUniformLocation("u_projection");
+        this.bitmapLocModelview = bitmapShader.getUniformLocation("u_modelview");
         this.bitmapLocAtlas = bitmapShader.getUniformLocation("u_atlas");
         this.msdfLocProjection = msdfShader.getUniformLocation("u_projection");
+        this.msdfLocModelview = msdfShader.getUniformLocation("u_modelview");
         this.msdfLocAtlas = msdfShader.getUniformLocation("u_atlas");
         this.msdfLocPxRange = msdfShader.getUniformLocation("u_pxRange");
         this.matrixBuf = BufferUtils.createFloatBuffer(16);
@@ -95,7 +128,26 @@ public class CgTextRenderer {
     }
 
     /**
-     * Draws a layout at the given screen position using the supplied color.
+     * Primary PoseStack-aware draw entry point.
+     *
+     * <p>Draws a layout at the given local logical origin ({@code x}, {@code y})
+     * inside the current top pose. The pose's cumulative transform is used to:
+     * <ul>
+     *   <li>Derive the effective physical glyph raster size via the context's
+     *       {@link CgTextScaleResolver}</li>
+     *   <li>Upload the model-view matrix to the text shader as {@code u_modelview}</li>
+     * </ul>
+     * The {@code x} and {@code y} offsets are applied in local pose space before
+     * the shader model-view transformation.</p>
+     *
+     * @param layout  the pre-built text layout (logical coordinates)
+     * @param font    the font to render with
+     * @param x       local logical X origin inside the current pose
+     * @param y       local logical Y origin inside the current pose
+     * @param rgba    packed RGBA color (0xRRGGBBAA)
+     * @param frame   current frame number for atlas LRU
+     * @param context the render context providing projection and scale resolver
+     * @param pose    the current PoseStack providing model-view transform
      */
     public void draw(CgTextLayout layout,
                      CgFont font,
@@ -103,7 +155,8 @@ public class CgTextRenderer {
                      float y,
                      int rgba,
                      long frame,
-                     FloatBuffer projectionMatrix) {
+                     CgTextRenderContext context,
+                     PoseStack pose) {
         if (deleted) {
             throw new IllegalStateException("CgTextRenderer has been deleted");
         }
@@ -117,11 +170,16 @@ public class CgTextRenderer {
             GL11.glDepthMask(false);
             GL11.glDisable(GL11.GL_CULL_FACE);
             GL11.glDisable(GL11.GL_ALPHA_TEST);
-            drawInternal(layout, font, x, y, rgba, frame, projectionMatrix);
+            drawInternal(layout, font, x, y, rgba, frame,
+                    context,
+                    pose.last(),
+                    context.getScaleResolver());
         } finally {
             CgStateBoundary.restore(snapshot);
         }
     }
+
+
 
     public void delete() {
         if (deleted) {
@@ -143,10 +201,21 @@ public class CgTextRenderer {
                               float y,
                               int rgba,
                               long frame,
-                              FloatBuffer projectionMatrix) {
+                              CgTextRenderContext context,
+                              PoseStack.Pose pose,
+                              CgTextScaleResolver scaleResolver) {
         CgFontKey fontKey = font.getKey();
         CgFontMetrics metrics = layout.getMetrics();
-        boolean wantMsdf = fontKey.getTargetPx() >= 32;
+
+        // Resolve effective physical raster size from pose scale
+        int previousEffectiveTargetPx = context.getPreviousEffectiveTargetPx(fontKey);
+        int effectiveTargetPx = scaleResolver.resolveEffectiveTargetPx(
+                fontKey.getTargetPx(), pose, previousEffectiveTargetPx);
+        context.setPreviousEffectiveTargetPx(fontKey, effectiveTargetPx);
+        boolean previousMsdf = previousEffectiveTargetPx > 0 ? context.wasMsdf(fontKey) : effectiveTargetPx >= 32;
+        boolean wantMsdf = scaleResolver.shouldUseMsdf(effectiveTargetPx, previousMsdf);
+        context.setWasMsdf(fontKey, wantMsdf);
+
         List<List<CgShapedRun>> lines = layout.getLines();
         int totalGlyphs = countGlyphs(lines);
         float[] glyphX = new float[totalGlyphs];
@@ -163,9 +232,10 @@ public class CgTextRenderer {
                 float[] offsetsX = run.getOffsetsX();
                 float[] offsetsY = run.getOffsetsY();
                 for (int i = 0; i < glyphIds.length; i++) {
-                    int subPixelBucket = selectSubPixelBucket(fontKey, offsetsX[i]);
-                    CgGlyphKey glyphKey = new CgGlyphKey(fontKey, glyphIds[i], wantMsdf, subPixelBucket);
-                    regions[index] = registry.ensureGlyph(font, glyphKey, frame);
+                    int subPixelBucket = selectSubPixelBucket(effectiveTargetPx, offsetsX[i]);
+                    CgGlyphKey glyphKey = new CgGlyphKey(fontKey, glyphIds[i], wantMsdf);
+                    regions[index] = registry.ensureGlyphAtEffectiveSize(
+                            font, glyphKey, effectiveTargetPx, subPixelBucket, frame);
                     glyphX[index] = penX + offsetsX[i];
                     glyphY[index] = penY + offsetsY[i];
                     penX += advancesX[i];
@@ -190,11 +260,18 @@ public class CgTextRenderer {
         GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
         GL11.glDisable(GL11.GL_DEPTH_TEST);
 
+        // Prepare model-view matrix from pose
+        Matrix4f mv = pose.pose();
+        FloatBuffer mvBuf = prepareMatrixBuffer(mv);
+
+        CgRasterFontKey rasterFontKey = new CgRasterFontKey(fontKey, effectiveTargetPx);
+
         if (bitmapQuadCount > 0) {
             bitmapShader.bind();
-            uploadProjectionMatrix(bitmapShader, bitmapLocProjection, projectionMatrix);
+            uploadProjectionMatrix(bitmapShader, bitmapLocProjection, context.getProjectionBuffer());
+            uploadMatrix(bitmapShader, bitmapLocModelview, mvBuf);
             GL13.glActiveTexture(GL13.GL_TEXTURE0);
-            GL11.glBindTexture(GL11.GL_TEXTURE_2D, registry.getBitmapAtlas(fontKey).getTextureId());
+            GL11.glBindTexture(GL11.GL_TEXTURE_2D, registry.getBitmapAtlas(rasterFontKey).getTextureId());
             bitmapShader.setUniform1i(bitmapLocAtlas, 0);
             GL11.glDrawElements(GL11.GL_TRIANGLES, bitmapQuadCount * 6, GL11.GL_UNSIGNED_SHORT, 0);
             bitmapShader.unbind();
@@ -202,9 +279,10 @@ public class CgTextRenderer {
 
         if (msdfQuadCount > 0) {
             msdfShader.bind();
-            uploadProjectionMatrix(msdfShader, msdfLocProjection, projectionMatrix);
+            uploadProjectionMatrix(msdfShader, msdfLocProjection, context.getProjectionBuffer());
+            uploadMatrix(msdfShader, msdfLocModelview, mvBuf);
             GL13.glActiveTexture(GL13.GL_TEXTURE0);
-            GL11.glBindTexture(GL11.GL_TEXTURE_2D, registry.getMsdfAtlas(fontKey).getTextureId());
+            GL11.glBindTexture(GL11.GL_TEXTURE_2D, registry.getMsdfAtlas(rasterFontKey).getTextureId());
             msdfShader.setUniform1i(msdfLocAtlas, 0);
             msdfShader.setUniform1f(msdfLocPxRange, CgMsdfGenerator.PX_RANGE);
             long offsetBytes = (long) bitmapQuadCount * 6L * 2L;
@@ -246,9 +324,9 @@ public class CgTextRenderer {
             if (region.getKey().isMsdf() != msdf) {
                 continue;
             }
-            float x = glyphX[i] + region.getBearingX();
-            float y = glyphY[i] - region.getBearingY();
-            vbo.addGlyph(x, y, region.getWidth(), region.getHeight(), region.getU0(), region.getV0(), region.getU1(), region.getV1(), rgba);
+            float qx = glyphX[i] + region.getBearingX();
+            float qy = glyphY[i] - region.getBearingY();
+            vbo.addGlyph(qx, qy, region.getWidth(), region.getHeight(), region.getU0(), region.getV0(), region.getU1(), region.getV1(), rgba);
             quadCount++;
         }
         return quadCount;
@@ -267,8 +345,28 @@ public class CgTextRenderer {
         shader.setUniformMatrix4f(uniformLocation, matrixBuf);
     }
 
-    private int selectSubPixelBucket(CgFontKey fontKey, float xOffset) {
-        if (fontKey.getTargetPx() >= CgGlyphKey.SUB_PIXEL_BUCKET_MAX_PX) {
+    private FloatBuffer prepareMatrixBuffer(Matrix4f matrix) {
+        FloatBuffer buf = BufferUtils.createFloatBuffer(16);
+        matrix.get(buf);
+        buf.rewind();
+        return buf;
+    }
+
+    private void uploadMatrix(CgShaderProgram shader, int uniformLocation, FloatBuffer matrixData) {
+        if (uniformLocation < 0) {
+            return;
+        }
+        matrixData.rewind();
+        shader.setUniformMatrix4f(uniformLocation, matrixData);
+    }
+
+    /**
+     * Selects the sub-pixel bucket based on the effective target pixel size.
+     * Uses the effective size (not base targetPx) because the effective size
+     * determines whether sub-pixel positioning is perceptible.
+     */
+    static int selectSubPixelBucket(int effectiveTargetPx, float xOffset) {
+        if (effectiveTargetPx >= CgGlyphKey.SUB_PIXEL_BUCKET_MAX_PX) {
             return 0;
         }
         float fractional = xOffset - (float) Math.floor(xOffset);
@@ -287,7 +385,7 @@ public class CgTextRenderer {
         return 0;
     }
 
-    private static String readShaderSource(String resourcePath) {
+    static String readShaderSource(String resourcePath) {
         InputStream in = CgTextRenderer.class.getResourceAsStream(resourcePath);
         if (in == null) {
             throw new RuntimeException("Shader resource not found on classpath: " + resourcePath);

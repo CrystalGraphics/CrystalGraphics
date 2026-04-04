@@ -8,6 +8,7 @@ This system provides:
 - BiDi-aware shaping and line breaking
 - dynamic glyph atlases with LRU reuse
 - a two-pass renderer for bitmap and MSDF quads
+- PoseStack-driven model-view transforms with effective-size-aware rasterization
 - a dev integration example with on-screen rendering and mouse-wheel zoom
 
 The integration demo is interactive by default. The older framebuffer self-check
@@ -30,6 +31,8 @@ mode is opt-in via `-Dcrystalgraphics.integration.runSelfChecks=true`.
 - `io.github.somehussar.crystalgraphics.gl.text.CgMsdfGenerator`
 - `io.github.somehussar.crystalgraphics.gl.text.CgGlyphVbo`
 - `io.github.somehussar.crystalgraphics.gl.text.CgTextRenderer`
+- `io.github.somehussar.crystalgraphics.gl.text.CgTextRenderContext`
+- `io.github.somehussar.crystalgraphics.gl.text.CgTextScaleResolver`
 
 ### CPU-side text pipeline
 - `io.github.somehussar.crystalgraphics.text.CgTextShaper`
