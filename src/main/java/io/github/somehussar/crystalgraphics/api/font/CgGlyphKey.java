@@ -33,6 +33,21 @@ import lombok.Value;
 @Value
 public class CgGlyphKey {
 
+    /**
+     * Maximum target pixel size (exclusive) that uses bitmap sub-pixel offset buckets.
+     *
+     * <p>At sizes below this threshold, sub-pixel offset buckets (0–3) are preserved
+     * in the glyph key so that fractional glyph positions produce distinct rasterizations.
+     * At this size and above, the bucket is normalized to 0 because MSDF or large-bitmap
+     * rendering makes sub-pixel offsets imperceptible.</p>
+     *
+     * <p>This constant is aligned with the bitmap/MSDF handoff boundary
+     * ({@link io.github.somehussar.crystalgraphics.gl.text.CgMsdfGenerator#SIMPLE_MSDF_MIN_PX}).
+     * All three consumers — {@code CgGlyphKey}, {@code CgTextRenderer.selectSubPixelBucket()},
+     * and {@code CgFontRegistry.ensureBitmapGlyph()} — must use this single constant.</p>
+     */
+    public static final int SUB_PIXEL_BUCKET_MAX_PX = 32;
+
     /** Font this glyph belongs to. */
     CgFontKey fontKey;
 
@@ -61,10 +76,10 @@ public class CgGlyphKey {
         if (glyphId < 0) {
             throw new IllegalArgumentException("glyphId must be >= 0");
         }
-        if (fontKey.getTargetPx() <= 12) {
+        if (fontKey.getTargetPx() < SUB_PIXEL_BUCKET_MAX_PX) {
             if (subPixelBucket < 0 || subPixelBucket > 3) {
                 throw new IllegalArgumentException(
-                        "subPixelBucket must be in range [0, 3] for targetPx <= 12");
+                        "subPixelBucket must be in range [0, 3] for targetPx < " + SUB_PIXEL_BUCKET_MAX_PX);
             }
             this.subPixelBucket = subPixelBucket;
         } else {
