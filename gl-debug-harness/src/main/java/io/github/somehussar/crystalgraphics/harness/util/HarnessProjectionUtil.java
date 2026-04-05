@@ -1,12 +1,55 @@
 package io.github.somehussar.crystalgraphics.harness.util;
 
+import org.joml.Matrix4f;
 import org.lwjgl.BufferUtils;
 import java.nio.FloatBuffer;
 
 /**
- * Shared orthographic projection matrix construction for harness scenes.
+ * Shared projection matrix construction and perspective constants for harness scenes.
+ *
+ * <p>Provides orthographic projection helpers and the canonical perspective projection
+ * constants used by all 3D interactive scenes and the {@code InteractiveSceneRunner}.
+ * All scenes that need a perspective projection should reference these constants
+ * rather than declaring their own copies.</p>
  */
-public  class HarnessProjectionUtil {
+public class HarnessProjectionUtil {
+
+    // ── Shared perspective projection constants ──
+    // Used by InteractiveSceneRunner, InteractiveWorldTextScene, Camera3DValidationScene,
+    // RenderValidationScene, and any future 3D scene that needs a standard
+    // perspective projection matching the floor/HUD/pause pipeline.
+
+    /** Default field of view in degrees for 3D harness scenes. */
+    public static final float FOV_DEGREES = 60.0f;
+
+    /** Near clipping plane distance for 3D harness scenes. */
+    public static final float NEAR_PLANE = 0.1f;
+
+    /** Far clipping plane distance for 3D harness scenes. */
+    public static final float FAR_PLANE = 1000.0f;
+
+    /**
+     * Builds a perspective projection matrix using the shared harness constants.
+     *
+     * @param aspectRatio viewport width / height
+     * @return a new perspective projection matrix
+     */
+    public static Matrix4f perspective(float aspectRatio) {
+        return new Matrix4f().perspective(
+                (float) Math.toRadians(FOV_DEGREES), aspectRatio, NEAR_PLANE, FAR_PLANE);
+    }
+
+    /**
+     * Builds a perspective projection matrix using the shared harness constants
+     * for the given viewport dimensions.
+     *
+     * @param width  viewport width in pixels
+     * @param height viewport height in pixels
+     * @return a new perspective projection matrix
+     */
+    public static Matrix4f perspective(int width, int height) {
+        return perspective((float) width / (float) height);
+    }
 
     /**
      * Creates a column-major orthographic projection matrix.

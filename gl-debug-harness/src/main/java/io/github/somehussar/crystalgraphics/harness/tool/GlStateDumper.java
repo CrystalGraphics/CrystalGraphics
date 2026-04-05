@@ -2,7 +2,8 @@ package io.github.somehussar.crystalgraphics.harness.tool;
 
 import io.github.somehussar.crystalgraphics.harness.config.HarnessConfig;
 import io.github.somehussar.crystalgraphics.harness.config.HarnessContext;
-import io.github.somehussar.crystalgraphics.harness.HarnessScene;
+import io.github.somehussar.crystalgraphics.harness.FrameInfo;
+import io.github.somehussar.crystalgraphics.harness.HarnessSceneLifecycle;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL20;
@@ -20,13 +21,21 @@ import java.util.logging.Logger;
  *
  * <p>Also registered as a diagnostic mode ("gl-state-dump") in the scene registry.</p>
  */
-public  class GlStateDumper implements HarnessScene {
+public class GlStateDumper implements HarnessSceneLifecycle {
 
     private static final Logger LOGGER = Logger.getLogger(GlStateDumper.class.getName());
 
     @Override
-    public void run(HarnessContext ctx) {
+    public void init(HarnessContext ctx) {
+    }
+
+    @Override
+    public void render(HarnessContext ctx, FrameInfo frame) {
         run(ctx, ctx.getOutputDir(), null);
+    }
+
+    @Override
+    public void dispose() {
     }
 
     void run(HarnessContext ctx, String outputDir, HarnessConfig config) {

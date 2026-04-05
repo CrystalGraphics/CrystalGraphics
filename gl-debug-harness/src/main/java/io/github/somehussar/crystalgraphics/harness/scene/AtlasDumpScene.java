@@ -11,9 +11,9 @@ import io.github.somehussar.crystalgraphics.gl.text.atlas.CgGlyphAtlasPage;
 import io.github.somehussar.crystalgraphics.gl.text.CgMsdfGenerator;
 import io.github.somehussar.crystalgraphics.gl.text.CgTextRenderContext;
 import io.github.somehussar.crystalgraphics.gl.text.CgTextRenderer;
-import io.github.somehussar.crystalgraphics.harness.*;
+import io.github.somehussar.crystalgraphics.harness.FrameInfo;
+import io.github.somehussar.crystalgraphics.harness.HarnessSceneLifecycle;
 import io.github.somehussar.crystalgraphics.harness.config.AtlasDumpConfig;
-import io.github.somehussar.crystalgraphics.harness.config.HarnessConfig;
 import io.github.somehussar.crystalgraphics.harness.config.HarnessContext;
 import io.github.somehussar.crystalgraphics.harness.tool.AtlasDumper;
 import io.github.somehussar.crystalgraphics.harness.util.HarnessFontUtil;
@@ -28,14 +28,24 @@ import java.io.File;
 import java.util.List;
 import java.util.logging.Logger;
 
-public class AtlasDumpScene implements HarnessScene {
+public class AtlasDumpScene implements HarnessSceneLifecycle {
 
     private static final Logger LOGGER = Logger.getLogger(AtlasDumpScene.class.getName());
 
     @Override
-    public void run(HarnessContext ctx) {
-        AtlasDumpConfig config = AtlasDumpConfig.create(HarnessConfig.getGlobalCliArgs());
+    public void init(HarnessContext ctx) {
+    }
+
+    @Override
+    public void render(HarnessContext ctx, FrameInfo frame) {
+        // Typed config is resolved before execution in FontDebugHarnessMain
+        // and set on the context — no scene-side CLI parsing needed.
+        AtlasDumpConfig config = (AtlasDumpConfig) ctx.getSceneConfig();
         run(ctx, ctx.getOutputDir(), config);
+    }
+
+    @Override
+    public void dispose() {
     }
 
     void run(HarnessContext ctx, String outputDir, AtlasDumpConfig config) {

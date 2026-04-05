@@ -59,8 +59,11 @@ public final class FontDebugHarnessMain {
 
         LOGGER.info("[Harness] Selected mode: " + mode);
 
+        // Build the typed config (may be TextSceneConfig, AtlasDumpConfig, or base HarnessConfig)
+        // from defaults → system properties → CLI args. This is the single resolution point;
+        // scenes read the resolved config from HarnessContext.getSceneConfig() rather than
+        // re-parsing raw CLI args from a global static.
         HarnessConfig config = createConfig(mode, args);
-        HarnessConfig.setGlobalCliArgs(args);
         HarnessOutputDir.ensureExists(config.getOutputDir());
 
         // Create scene-specific subdirectory: harness-output/{sceneName}/
@@ -80,22 +83,36 @@ public final class FontDebugHarnessMain {
             HarnessDiagnostics.logStartup(ctx);
 
             // Populate context with all configuration — single source of truth
-            ctx.setOutputDir(sceneOutputDir);
-            ctx.setOutputName(outputName);
+            ctx.setOutputSettings(new OutputSettings(sceneOutputDir, outputName));
+            ctx.setSceneConfig(config);
 
-            HarnessScene scene = entry.getFactory().create();
+            // Resolve world settings once from WorldConfig defaults and freeze
+            // them for the entire run. No rendering code should call
+            // WorldConfig.get() after this point.
+            ctx.setWorldSettings(WorldSettings.resolveFromDefaults());
 
-            boolean useInteractiveRunner =
-                    entry.getDescriptor().getLifecycleMode() == SceneDescriptor.LifecycleMode.INTERACTIVE
-                    && scene instanceof InteractiveHarnessScene;
+            HarnessSceneLifecycle scene = entry.getFactory().create();
 
-            if (useInteractiveRunner) {
-                InteractiveHarnessScene interactive = (InteractiveHarnessScene) scene;
+            boolean isInteractiveMode =
+                    entry.getDescriptor().getLifecycleMode() == SceneDescriptor.LifecycleMode.INTERACTIVE;
+
+            if (isInteractiveMode) {
+                if (!(scene instanceof InteractiveSceneLifecycle)) {
+                    throw new IllegalStateException(
+                            "Mode '" + mode + "' is INTERACTIVE but scene does not implement InteractiveSceneLifecycle: "
+                                    + scene.getClass().getName());
+                }
+                InteractiveSceneLifecycle interactive = (InteractiveSceneLifecycle) scene;
                 InteractiveSceneRunner runner = new InteractiveSceneRunner(interactive, ctx);
                 runner.run();
                 shouldShutdown = runner.shouldShutdown();
             } else {
-                scene.run(ctx);
+                scene.init(ctx);
+                try {
+                    scene.render(ctx, FrameInfo.SINGLE_FRAME);
+                } finally {
+                    scene.dispose();
+                }
             }
 
             LOGGER.info("[Harness] Mode '" + mode + "' completed successfully.");
@@ -123,7 +140,11 @@ public final class FontDebugHarnessMain {
         HarnessConfig config;
         if ("atlas-dump".equals(mode)) {
             config = AtlasDumpConfig.create(args);
-        } else if ("text-scene".equals(mode)) {
+        } else if ("text-scene".equals(mode)
+                || "world-text-scene".equals(mode)
+                || "world-text-3d".equals(mode)) {
+            // All text-related scenes share TextSceneConfig for font-size-px,
+            // text content, and other text-rendering parameters.
             config = TextSceneConfig.create(args);
         } else {
             config = new HarnessConfig();
