@@ -1,8 +1,9 @@
 package io.github.somehussar.crystalgraphics.harness.scene;
 
 import io.github.somehussar.crystalgraphics.harness.config.HarnessContext;
+import io.github.somehussar.crystalgraphics.harness.FrameInfo;
+import io.github.somehussar.crystalgraphics.harness.HarnessSceneLifecycle;
 import io.github.somehussar.crystalgraphics.harness.util.HarnessFboHelper;
-import io.github.somehussar.crystalgraphics.harness.HarnessScene;
 import io.github.somehussar.crystalgraphics.harness.util.HarnessShaderUtil;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
@@ -13,7 +14,7 @@ import org.lwjgl.opengl.GL30;
 import java.nio.FloatBuffer;
 import java.util.logging.Logger;
 
-public class TriangleScene implements HarnessScene {
+public class TriangleScene implements HarnessSceneLifecycle {
 
     private static final Logger LOGGER = Logger.getLogger(TriangleScene.class.getName());
 
@@ -42,8 +43,13 @@ public class TriangleScene implements HarnessScene {
     };
     
     @Override
-    public void run(HarnessContext ctx) {
+    public void init(HarnessContext ctx) {
+    }
+
+    @Override
+    public void render(HarnessContext ctx, FrameInfo frame) {
         String outputDir = ctx.getOutputDir();
+        String outputFile = ctx.getOutputSettings().buildBaseFilename("png");
         int fboWidth = ctx.getScreenWidth();
         int fboHeight = ctx.getScreenHeight();
 
@@ -55,7 +61,7 @@ public class TriangleScene implements HarnessScene {
 
         GL11.glFinish();
 
-        fbo.captureToFile(outputDir, "triangle.png");
+        fbo.captureToFile(outputDir, outputFile);
 
         LOGGER.info("[Harness] FBO dimensions: " + fboWidth + "x" + fboHeight);
 
@@ -63,6 +69,10 @@ public class TriangleScene implements HarnessScene {
         fbo.delete();
 
         LOGGER.info("[Harness] Triangle scene complete.");
+    }
+
+    @Override
+    public void dispose() {
     }
 
     private void renderTriangle() {

@@ -121,8 +121,10 @@ public final class PauseScreenRenderer {
     /**
      * Renders the pause overlay at the bottom of the screen with explicit dimensions.
      *
-     * <p>Temporarily disables depth testing and enables alpha blending
-     * to draw the semi-transparent overlay quad.</p>
+     * <p>GL state requirements (depth OFF, blend ON with alpha) are set by
+     * {@link io.github.somehussar.crystalgraphics.harness.util.RenderPassState#beginOverlayPass()}
+     * before this method is called by the runner. This renderer does not manage
+     * its own GL state save/restore.</p>
      *
      * @param screenWidth  current viewport width in pixels
      * @param screenHeight current viewport height in pixels
@@ -156,14 +158,6 @@ public final class PauseScreenRenderer {
         GL15.glBufferSubData(GL15.GL_ARRAY_BUFFER, 0, vertBuf);
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
 
-        // Save and configure GL state for overlay rendering
-        boolean depthWasEnabled = GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
-        boolean blendWasEnabled = GL11.glIsEnabled(GL11.GL_BLEND);
-
-        GL11.glDisable(GL11.GL_DEPTH_TEST);
-        GL11.glEnable(GL11.GL_BLEND);
-        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-
         GL20.glUseProgram(program);
         GL20.glUniform2f(screenSizeLoc, (float) screenWidth, (float) screenHeight);
         GL20.glUniform4f(colorLoc, OVERLAY_R, OVERLAY_G, OVERLAY_B, OVERLAY_A);
@@ -173,14 +167,6 @@ public final class PauseScreenRenderer {
         GL30.glBindVertexArray(0);
 
         GL20.glUseProgram(0);
-
-        // Restore prior GL state
-        if (!blendWasEnabled) {
-            GL11.glDisable(GL11.GL_BLEND);
-        }
-        if (depthWasEnabled) {
-            GL11.glEnable(GL11.GL_DEPTH_TEST);
-        }
     }
 
     /**
