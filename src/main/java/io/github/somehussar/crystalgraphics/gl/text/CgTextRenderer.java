@@ -219,7 +219,7 @@ public class CgTextRenderer {
      * 2D {@link #draw} method, this entry point:</p>
      * <ul>
      *   <li>Enables depth testing so text occludes and is occluded by world geometry</li>
-     *   <li>Enables back-face culling (text is a single-sided surface in 3D)</li>
+     *   <li>Configures world-text GL state for 3D rendering</li>
      *   <li>Forces MSDF-only rendering — no bitmap fallback path</li>
      *   <li>Optionally updates the projected-size hint on the context for
      *       quality/LOD tier selection</li>
@@ -255,10 +255,9 @@ public class CgTextRenderer {
 
         CgStateSnapshot snapshot = CgStateBoundary.save();
         try {
-            // World-text GL state: depth test ON, cull face ON (single-sided text)
             GL11.glEnable(GL11.GL_DEPTH_TEST);
             GL11.glDepthMask(true);
-            GL11.glEnable(GL11.GL_CULL_FACE);
+            GL11.glDisable(GL11.GL_CULL_FACE);
             GL11.glDisable(GL11.GL_ALPHA_TEST);
             drawInternal(layout, font, x, y, rgba, frame,
                     context,
