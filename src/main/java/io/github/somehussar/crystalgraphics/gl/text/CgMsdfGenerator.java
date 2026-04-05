@@ -185,7 +185,9 @@ public class CgMsdfGenerator {
 
     public static int cellSizeForFontPx(int fontPx) {
         if (fontPx >= 64) {
-            return 64;
+            // Scale cell to fit the widest glyphs: fontPx + PX_RANGE, rounded up to multiple of 8
+            int needed = fontPx + (int) PX_RANGE;
+            return ((needed + 7) / 8) * 8;
         }
         if (fontPx >= 36) {
             return 48;

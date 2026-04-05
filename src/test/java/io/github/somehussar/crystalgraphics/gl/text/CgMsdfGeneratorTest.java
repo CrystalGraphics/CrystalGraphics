@@ -116,9 +116,10 @@ public class CgMsdfGeneratorTest {
 
     @Test
     public void testCellSize_64pxAndAbove() {
-        assertEquals(64, CgMsdfGenerator.cellSizeForFontPx(64));
-        assertEquals(64, CgMsdfGenerator.cellSizeForFontPx(65));
-        assertEquals(64, CgMsdfGenerator.cellSizeForFontPx(128));
+        assertEquals(72, CgMsdfGenerator.cellSizeForFontPx(64));
+        assertEquals(72, CgMsdfGenerator.cellSizeForFontPx(65));
+        assertEquals(96, CgMsdfGenerator.cellSizeForFontPx(86));
+        assertEquals(136, CgMsdfGenerator.cellSizeForFontPx(128));
     }
 
     // ── Complexity heuristic ───────────────────────────────────────────
