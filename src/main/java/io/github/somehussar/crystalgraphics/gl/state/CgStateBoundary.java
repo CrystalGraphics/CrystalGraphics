@@ -2,8 +2,6 @@ package io.github.somehussar.crystalgraphics.gl.state;
 
 import net.minecraft.client.renderer.OpenGlHelper;
 
-import io.github.somehussar.crystalgraphics.mc.coremod.CrystalGraphicsCoremod;
-
 import org.lwjgl.opengl.ARBMultitexture;
 import org.lwjgl.opengl.ARBFramebufferObject;
 import org.lwjgl.opengl.ARBShaderObjects;
@@ -84,7 +82,7 @@ public final class CgStateBoundary {
      */
     public static CgStateSnapshot save() {
         boolean forceGlGet = Boolean.getBoolean("crystalgraphics.boundary.forceGlGet");
-        boolean gapOnlyMode = CrystalGraphicsCoremod.isGapOnlyMode();
+        boolean gapOnlyMode = isGapOnlyModeSafe();
 
         boolean mirrorOkForFbo = GLStateMirror.getCurrentFboFamily() != CallFamily.UNKNOWN;
         boolean mirrorOkForProgram = GLStateMirror.getCurrentProgramFamily() != CallFamily.UNKNOWN
@@ -95,6 +93,24 @@ public final class CgStateBoundary {
         }
 
         return CgStateSnapshot.captureFromMirror();
+    }
+
+    /**
+     * Returns {@code true} when the Forge coremod reports gap-only mode.
+     *
+     * <p>The standalone harness does not include the Forge coremod classes on
+     * its classpath, so this method must degrade safely to {@code false} when
+     * that class is unavailable.</p>
+     */
+    private static boolean isGapOnlyModeSafe() {
+        try {
+            Class<?> coremod = Class.forName(
+                    "io.github.somehussar.crystalgraphics.mc.coremod.CrystalGraphicsCoremod");
+            Object value = coremod.getMethod("isGapOnlyMode").invoke(null);
+            return value instanceof Boolean && ((Boolean) value).booleanValue();
+        } catch (Throwable ignored) {
+            return false;
+        }
     }
 
     /**
