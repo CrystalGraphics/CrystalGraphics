@@ -26,11 +26,22 @@ public class HarnessConfig {
     private int height;
     private String fontPath;
 
+    /**
+     * Custom output name prefix for screenshot filenames.
+     * When set via {@code --output-name=PREFIX}, scenes use this prefix instead of
+     * their default filenames. For example, {@code --output-name=test1} causes
+     * {@code world-text-normal.png} to become {@code test1-normal.png}.
+     *
+     * <p>Null means "use scene default names".</p>
+     */
+    private String outputName;
+
     public HarnessConfig() {
         this.outputDir = "gl-debug-harness/harness-output";
         this.width = 800;
         this.height = 600;
         this.fontPath = null;
+        this.outputName = null;
     }
 
     public String getOutputDir() { return outputDir; }
@@ -45,6 +56,13 @@ public class HarnessConfig {
     /** May be null — callers must fall back to system font discovery. */
     public String getFontPath() { return fontPath; }
     public void setFontPath(String val) { this.fontPath = val; }
+
+    /**
+     * Returns the custom output name prefix, or null if not set.
+     * When non-null, scenes should use this as the prefix for all output filenames.
+     */
+    public String getOutputName() { return outputName; }
+    public void setOutputName(String val) { this.outputName = val; }
 
     /**
      * Apply system property overrides (called before CLI args).
@@ -83,6 +101,9 @@ public class HarnessConfig {
         }
         if (args.containsKey("height")) {
             this.height = parseIntStrict(args.get("height"), "--height");
+        }
+        if (args.containsKey("output-name")) {
+            this.outputName = args.get("output-name");
         }
     }
 

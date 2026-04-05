@@ -16,8 +16,6 @@ import java.util.logging.Logger;
 public class TriangleScene implements HarnessScene {
 
     private static final Logger LOGGER = Logger.getLogger(TriangleScene.class.getName());
-    private static final int FBO_WIDTH = 800;
-    private static final int FBO_HEIGHT = 600;
 
     static final String VERT_SOURCE =
             "#version 130\n" +
@@ -44,8 +42,12 @@ public class TriangleScene implements HarnessScene {
     };
     
     @Override
-    public void run(HarnessContext ctx, String outputDir) {
-        HarnessFboHelper fbo = HarnessFboHelper.create(FBO_WIDTH, FBO_HEIGHT, true);
+    public void run(HarnessContext ctx) {
+        String outputDir = ctx.getOutputDir();
+        int fboWidth = ctx.getScreenWidth();
+        int fboHeight = ctx.getScreenHeight();
+
+        HarnessFboHelper fbo = HarnessFboHelper.create(fboWidth, fboHeight, true);
         fbo.bind();
         fbo.clear(0.1f, 0.1f, 0.1f, 1.0f);
 
@@ -55,7 +57,7 @@ public class TriangleScene implements HarnessScene {
 
         fbo.captureToFile(outputDir, "triangle.png");
 
-        LOGGER.info("[Harness] FBO dimensions: " + FBO_WIDTH + "x" + FBO_HEIGHT);
+        LOGGER.info("[Harness] FBO dimensions: " + fboWidth + "x" + fboHeight);
 
         fbo.unbind();
         fbo.delete();

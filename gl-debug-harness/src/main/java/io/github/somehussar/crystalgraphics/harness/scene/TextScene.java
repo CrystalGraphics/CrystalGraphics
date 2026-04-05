@@ -36,9 +36,9 @@ public class TextScene implements HarnessScene {
     private static final int TOP_LABEL_COLOR = 0xAAFFAAFF;
 
     @Override
-    public void run(HarnessContext ctx, String outputDir) {
+    public void run(HarnessContext ctx) {
         TextSceneConfig config = TextSceneConfig.create(HarnessConfig.getGlobalCliArgs());
-        run(ctx, outputDir, config);
+        run(ctx, ctx.getOutputDir(), config);
     }
 
     void run(HarnessContext ctx, String outputDir, TextSceneConfig config) {
