@@ -80,9 +80,7 @@ public final class SceneRegistry {
                 .needsDepthBuffer(true)
                 .clearColor(0.1f, 0.1f, 0.1f, 1.0f)
                 .build(),
-            new HarnessSceneFactory() {
-                public HarnessScene create() { return new TriangleScene(); }
-            }
+            () -> new TriangleScene()
         );
 
         reg.register(
@@ -115,9 +113,7 @@ public final class SceneRegistry {
                 .needsDepthBuffer(true)
                 .clearColor(0.1f, 0.1f, 0.15f, 1.0f)
                 .build(),
-                new HarnessSceneFactory() {
-                    public HarnessScene create() { return new WorldTextScene(); }
-                }
+                () -> new ManagedWorldTextScene()
         );
 
         reg.register(
@@ -129,9 +125,7 @@ public final class SceneRegistry {
                 .needsDepthBuffer(true)
                 .clearColor(0.1f, 0.1f, 0.15f, 1.0f)
                 .build(),
-                new HarnessSceneFactory() {
-                    public HarnessScene create() { return new WorldTextScene(); }
-                }
+                () -> new InteractiveWorldTextScene()
         );
         
         // ── Diagnostic modes ──
@@ -144,9 +138,7 @@ public final class SceneRegistry {
                 .needsDepthBuffer(true)
                 .clearColor(0.1f, 0.1f, 0.15f, 1.0f)
                 .build(),
-                new HarnessSceneFactory() {
-                    public HarnessScene create() { return new Camera3DValidationScene(); }
-                }
+                () -> new Camera3DValidationScene()
         );
 
         reg.register(
@@ -157,9 +149,7 @@ public final class SceneRegistry {
                 .needsFbo(false)
                 .needsDepthBuffer(true)
                 .build(),
-                new HarnessSceneFactory() {
-                    public HarnessScene create() { return new RenderValidationScene(); }
-                }
+                () -> new RenderValidationScene()
         );
 
         reg.register(

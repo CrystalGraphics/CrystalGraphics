@@ -3,7 +3,8 @@ package io.github.somehussar.crystalgraphics.harness.tool;
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
 import io.github.somehussar.crystalgraphics.harness.config.HarnessConfig;
 import io.github.somehussar.crystalgraphics.harness.config.HarnessContext;
-import io.github.somehussar.crystalgraphics.harness.HarnessScene;
+import io.github.somehussar.crystalgraphics.harness.FrameInfo;
+import io.github.somehussar.crystalgraphics.harness.HarnessSceneLifecycle;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -16,13 +17,21 @@ import java.util.logging.Logger;
  *
  * <p>Registered as diagnostic mode "capability-report".</p>
  */
-public final class CapabilityReport implements HarnessScene {
+public final class CapabilityReport implements HarnessSceneLifecycle {
 
     private static final Logger LOGGER = Logger.getLogger(CapabilityReport.class.getName());
 
     @Override
-    public void run(HarnessContext ctx) {
+    public void init(HarnessContext ctx) {
+    }
+
+    @Override
+    public void render(HarnessContext ctx, FrameInfo frame) {
         run(ctx, ctx.getOutputDir(), null);
+    }
+
+    @Override
+    public void dispose() {
     }
 
     void run(HarnessContext ctx, String outputDir, HarnessConfig config) {

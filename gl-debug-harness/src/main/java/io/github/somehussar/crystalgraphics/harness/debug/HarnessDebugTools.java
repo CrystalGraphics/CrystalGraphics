@@ -1,6 +1,7 @@
 package io.github.somehussar.crystalgraphics.harness.debug;
 
 import io.github.somehussar.crystalgraphics.harness.camera.Camera3D;
+import io.github.somehussar.crystalgraphics.harness.capture.ArtifactService;
 import io.github.somehussar.crystalgraphics.harness.util.ScreenshotUtil;
 
 import java.util.logging.Logger;
@@ -11,31 +12,29 @@ import java.util.logging.Logger;
  * <p>These methods are designed for automated testing and validation by
  * LLM agents. They provide direct control over the camera and frame
  * capture without requiring user input.</p>
+ *
+ * <p>Screenshot capture is delegated to the framework-owned
+ * {@link ArtifactService}, which handles output directory resolution,
+ * filename composition, and viewport dimension lookup. This ensures
+ * captures always use live viewport dimensions (no stale caching)
+ * and follow the centralized artifact naming conventions.</p>
  */
 public final class HarnessDebugTools {
 
     private static final Logger LOGGER = Logger.getLogger(HarnessDebugTools.class.getName());
 
     private final Camera3D camera;
-    private final String outputDir;
-    private final String outputNamePrefix;
-    private final int viewportWidth;
-    private final int viewportHeight;
+    private final ArtifactService artifacts;
 
     /**
-     * @param camera           the active 3D camera to control
-     * @param outputDir        directory for screenshot output
-     * @param outputNamePrefix prefix for output filenames (e.g. "my-test" yields "my-test-front.png")
-     * @param viewportWidth    current viewport width in pixels
-     * @param viewportHeight   current viewport height in pixels
+     * Creates debug tools backed by the given camera and artifact service.
+     *
+     * @param camera    the active 3D camera to control
+     * @param artifacts the framework-owned artifact service for captures
      */
-    public HarnessDebugTools(Camera3D camera, String outputDir, String outputNamePrefix,
-                             int viewportWidth, int viewportHeight) {
+    public HarnessDebugTools(Camera3D camera, ArtifactService artifacts) {
         this.camera = camera;
-        this.outputDir = outputDir;
-        this.outputNamePrefix = outputNamePrefix;
-        this.viewportWidth = viewportWidth;
-        this.viewportHeight = viewportHeight;
+        this.artifacts = artifacts;
     }
 
     /**
@@ -65,18 +64,60 @@ public final class HarnessDebugTools {
     }
 
     /**
+     * Requests a full-frame screenshot capture with the given semantic suffix.
+     *
+     * <p>The capture is scheduled as a post-render callback via the
+     * {@link ArtifactService}, meaning it fires after the full frame
+     * (scene + floor + HUD + pause overlay) is rendered. Viewport
+     * dimensions are read live at capture time — never stale.</p>
+     *
+     * @param suffix the descriptive suffix (e.g. "front-view", "normal")
+     */
+    public void screenshotSemantic(String suffix) {
+        LOGGER.info("[DebugTools] screenshotSemantic: suffix=" + suffix
+                + " camera=" + camera);
+        artifacts.requestCapture(suffix);
+    }
+
+    /**
      * Captures a screenshot of the current backbuffer to a PNG file.
      *
-     * <p>The screenshot is written to the configured output directory.
-     * Call this after rendering a frame to capture the current view.</p>
+     * <p>The screenshot is scheduled as a post-render callback via the
+     * {@link ArtifactService}. The filename is used as-is (without prefix
+     * composition) for backward compatibility with scenes that pass
+     * pre-composed filenames.</p>
      *
-     * @param filename the output filename (e.g. "top-down.png")
+     * @param filename the output filename (e.g. "my-test-front-view.png")
+     * @deprecated Use {@link #screenshotSemantic(String)} instead, which
+     *             lets the artifact service compose the filename from the
+     *             output-name prefix.
      */
     public void screenshot(String filename) {
-        LOGGER.info("[DebugTools] screenshot: " + filename
-                + " (" + viewportWidth + "x" + viewportHeight + ")"
-                + " camera=" + camera);
-        ScreenshotUtil.captureBackbuffer(viewportWidth, viewportHeight, outputDir, filename);
+        LOGGER.info("[DebugTools] screenshot: " + filename + " camera=" + camera);
+        // Extract the semantic suffix from the pre-composed filename and route
+        // through the artifact service's post-render capture path. This fixes the
+        // historical bug where screenshot() captured the PREVIOUS frame's content
+        // because it was called during a scheduler tick, not after rendering.
+        artifacts.requestCapture(extractSuffix(filename));
+    }
+
+    /**
+     * Extracts the semantic suffix from a pre-composed filename.
+     *
+     * <p>Given a filename like "capture-check-front-view.png" and an output-name
+     * prefix of "capture-check", extracts "front-view". Falls back to the raw
+     * filename (minus .png) if the prefix doesn't match.</p>
+     */
+    private String extractSuffix(String filename) {
+        String prefix = artifacts.getOutputName();
+        String base = filename;
+        if (base.endsWith(".png")) {
+            base = base.substring(0, base.length() - 4);
+        }
+        if (base.startsWith(prefix + "-")) {
+            return base.substring(prefix.length() + 1);
+        }
+        return base;
     }
 
     /**
@@ -87,7 +128,7 @@ public final class HarnessDebugTools {
      * @return the full filename including .png extension
      */
     public String prefixedFilename(String suffix) {
-        return outputNamePrefix + "-" + suffix + ".png";
+        return artifacts.getOutputSettings().buildFilename(suffix);
     }
 
     /**
@@ -102,10 +143,16 @@ public final class HarnessDebugTools {
     public void screenshotFbo(int fboId, int texId, int width, int height, String filename) {
         LOGGER.info("[DebugTools] screenshotFbo: fbo=" + fboId + " tex=" + texId
                 + " " + width + "x" + height + " -> " + filename);
-        ScreenshotUtil.captureFboColorTexture(fboId, texId, width, height, outputDir, filename);
+        ScreenshotUtil.captureFboColorTexture(
+                fboId, texId, width, height, artifacts.getOutputDir(), filename);
     }
 
     public Camera3D getCamera() { return camera; }
-    public String getOutputDir() { return outputDir; }
-    public String getOutputNamePrefix() { return outputNamePrefix; }
+    public String getOutputDir() { return artifacts.getOutputDir(); }
+    public String getOutputNamePrefix() { return artifacts.getOutputName(); }
+
+    /**
+     * Returns the underlying artifact service.
+     */
+    public ArtifactService getArtifactService() { return artifacts; }
 }
