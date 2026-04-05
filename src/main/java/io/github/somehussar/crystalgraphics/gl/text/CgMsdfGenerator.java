@@ -11,6 +11,7 @@ import io.github.somehussar.crystalgraphics.api.font.CgAtlasRegion;
 import io.github.somehussar.crystalgraphics.api.font.CgGlyphKey;
 import io.github.somehussar.crystalgraphics.api.font.CgGlyphPlacement;
 import io.github.somehussar.crystalgraphics.gl.text.atlas.CgPagedGlyphAtlas;
+import io.github.somehussar.crystalgraphics.gl.text.msdf.CgMsdfAtlasConfig;
 import io.github.somehussar.crystalgraphics.gl.text.msdf.CgMsdfGlyphLayout;
 
 import java.util.logging.Level;
@@ -194,8 +195,7 @@ public class CgMsdfGenerator {
      * returns a {@link CgGlyphPlacement} directly.</p>
      *
      * <p>Returns {@code null} when the frame budget is exhausted, the shape is
-     * empty, or the complexity heuristic says bitmap is still better at this
-     * font size.</p>
+     * empty.</p>
      *
      * @param key          glyph key
      * @param font         msdfgen FreeType font handle
@@ -206,9 +206,13 @@ public class CgMsdfGenerator {
     public CgGlyphPlacement queueOrGeneratePaged(CgGlyphKey key,
                                                   FreeTypeIntegration.Font font,
                                                   CgPagedGlyphAtlas pagedAtlas,
+                                                  CgMsdfAtlasConfig config,
                                                   long currentFrame) {
         if (generatedThisFrame >= MAX_PER_FRAME) {
             return null;
+        }
+        if (config == null) {
+            throw new IllegalArgumentException("config must not be null");
         }
 
         FreeTypeIntegration.GlyphData glyphData;
@@ -232,14 +236,10 @@ public class CgMsdfGenerator {
         if (shape.getEdgeCount() == 0) {
             return null;
         }
-        if (!shouldUseMsdf(shape, key.getFontKey().getTargetPx())) {
-            return null;
-        }
-
         shape.normalize();
         shape.edgeColoringSimple(3.0);
 
-        int targetPx = key.getFontKey().getTargetPx();
+        int targetPx = config.getAtlasScalePx();
         double[] bounds = shape.getBounds();
         double shapeL = bounds[0];
         double shapeB = bounds[1];
@@ -249,7 +249,11 @@ public class CgMsdfGenerator {
         // Compute per-glyph box dimensions using upstream-parity layout math
         CgMsdfGlyphLayout layout = CgMsdfGlyphLayout.compute(
                 shapeL, shapeB, shapeR, shapeT,
-                targetPx, PX_RANGE);
+                targetPx,
+                config.getPxRange(),
+                config.getMiterLimit(),
+                config.isAlignOriginX(),
+                config.isAlignOriginY());
 
         if (layout.isEmpty()) {
             return null;
@@ -296,7 +300,7 @@ public class CgMsdfGenerator {
             CgGlyphPlacement placement = pagedAtlas.allocateMsdf(
                     key, pixelData, boxWidth, boxHeight,
                     bearingX, bearingY, metricsWidth, metricsHeight,
-                    PX_RANGE, currentFrame);
+                    config.getPxRange(), currentFrame);
             generatedThisFrame++;
             return placement;
         } finally {

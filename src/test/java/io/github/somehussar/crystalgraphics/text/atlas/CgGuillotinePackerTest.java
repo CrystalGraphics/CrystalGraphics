@@ -214,6 +214,21 @@ public class CgGuillotinePackerTest {
         assertTrue(packer instanceof CgPackingStrategy);
     }
 
+    @Test
+    public void testSpacingReservesAllocatorGap() {
+        CgGuillotinePacker noSpacing = new CgGuillotinePacker(64, 64);
+        CgGuillotinePacker withSpacing = new CgGuillotinePacker(64, 64);
+
+        noSpacing.insert(10, 10, "a");
+        noSpacing.insert(10, 10, "b");
+
+        withSpacing.insert(10, 10, 2, "a");
+        withSpacing.insert(10, 10, 2, "b");
+
+        assertTrue("Spacing should consume additional allocator area",
+                withSpacing.utilization() > noSpacing.utilization());
+    }
+
     private static boolean rectsOverlap(PackedRect a, PackedRect b) {
         int ax2 = a.getX() + a.getWidth();
         int ay2 = a.getY() + a.getHeight();

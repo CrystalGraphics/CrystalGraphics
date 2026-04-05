@@ -186,6 +186,7 @@ public final class FontDebugHarnessMain {
         System.out.println("  --atlas-size=<n>                 Atlas texture size (default: 512)");
         System.out.println("  --bitmap-px-size=<n>             Bitmap atlas font size in px (default: 24)");
         System.out.println("  --msdf-px-size=<n>               MSDF atlas font size in px (default: 32, min: 32)");
+        System.out.println("  --msdf-atlas-scale=<n>           MSDF atlas generation scale in px/EM (default: 48)");
         System.out.println("  --font-size-px=<n>               Shared font size (overrides both bitmap/msdf)");
         System.out.println("  --text=<string>                  Test string");
         System.out.println();
