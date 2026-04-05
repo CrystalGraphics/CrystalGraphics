@@ -9,6 +9,7 @@ This system provides:
 - dynamic glyph atlases with LRU reuse
 - a two-pass renderer for bitmap and MSDF quads
 - PoseStack-driven model-view transforms with effective-size-aware rasterization
+- 3D world-space text with always-MSDF rendering and projection-aware quality/LOD
 - a dev integration example with on-screen rendering and mouse-wheel zoom
 
 The integration demo is interactive by default. The older framebuffer self-check
@@ -32,7 +33,9 @@ mode is opt-in via `-Dcrystalgraphics.integration.runSelfChecks=true`.
 - `io.github.somehussar.crystalgraphics.gl.text.CgGlyphVbo`
 - `io.github.somehussar.crystalgraphics.gl.text.CgTextRenderer`
 - `io.github.somehussar.crystalgraphics.gl.text.CgTextRenderContext`
+- `io.github.somehussar.crystalgraphics.gl.text.CgWorldTextRenderContext`
 - `io.github.somehussar.crystalgraphics.gl.text.CgTextScaleResolver`
+- `io.github.somehussar.crystalgraphics.gl.text.ProjectedSizeEstimator`
 
 ### CPU-side text pipeline
 - `io.github.somehussar.crystalgraphics.text.CgTextShaper`

@@ -44,10 +44,12 @@ CgTextRenderer renderer = CgTextRenderer.create(caps, registry);
 ## Drawing text
 
 ```java
-FloatBuffer projection = ...; // 4x4 orthographic matrix
 long frame = 1L;
 registry.tickFrame(frame);
-renderer.draw(layout, font, 20.0f, 40.0f, 0xFFFFFFFF, frame, projection);
+CgTextRenderContext context = CgTextRenderContext.orthographic(screenWidth, screenHeight);
+PoseStack poseStack = new PoseStack();
+
+renderer.draw(layout, font, 20.0f, 40.0f, 0xFFFFFFFF, frame, context, poseStack);
 ```
 
 ## Cleanup
@@ -78,7 +80,8 @@ registry.releaseAll();
 
 ### `CgTextRenderer`
 - `create(...)`
-- `draw(...)`
+- `draw(...)` — 2D UI text (orthographic, bitmap/MSDF hybrid)
+- `drawWorld(...)` — 3D world text (always MSDF, depth-tested)
 - `delete()`
 
 ### `CgFontRegistry`
@@ -86,3 +89,14 @@ registry.releaseAll();
 - `tickFrame(...)`
 - `releaseFontAtlases(...)`
 - `releaseAll()`
+
+### `CgTextRenderContext`
+- `orthographic(width, height)` — 2D UI context factory
+- `isWorldText()` — returns `false`
+
+### `CgWorldTextRenderContext`
+- `create(projection, viewportWidth, viewportHeight)` — 3D world context factory
+- `updateProjectedSize(modelView, projection, baseTargetPx)` — quality/LOD hint
+- `updateProjection(projection, viewportWidth, viewportHeight)`
+- `clearProjectedSizeHint()`
+- `isWorldText()` — returns `true`

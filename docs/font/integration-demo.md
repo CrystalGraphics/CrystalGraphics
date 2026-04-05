@@ -15,11 +15,10 @@ stepping through the framebuffer validation harness.
 ## What it does
 
 - polls mouse wheel input in `ClientTickEvent`
-- changes demo font size in steps of 2 px
-- clamps zoom to `8px .. 96px`
-- renders one demo line on screen from `RenderGameOverlayEvent.Text`
-- reloads the `CgFont` when size changes
-- keeps frame accounting in `CgFontRegistry.tickFrame(...)`
+- changes demo pose scale in steps of 0.1
+- clamps zoom to `0.5x .. 4.0x`
+- renders a 2D UI demo line demonstrating stable logical spacing under pose scale
+- renders a 2D label explaining that logical size is stable while raster scales
 - uses `CgTextRenderContext` for projection (created once, updated on resize)
 - uses `PoseStack` for model-view transforms via the PoseStack-aware draw API
 

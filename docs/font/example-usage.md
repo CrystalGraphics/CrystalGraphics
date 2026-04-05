@@ -39,19 +39,6 @@ renderer.draw(layout, font, 20.0f, 40.0f, 0xFFFFFFFF, frame, context, poseStack)
 // Layout metrics (width, height) remain in base 24px logical coordinates
 ```
 
-## Legacy compatibility (deprecated)
-
-The old projection-matrix-per-draw API still works:
-
-```java
-FloatBuffer projection = BufferUtils.createFloatBuffer(16);
-populateOrthoMatrix(projection, screenWidth, screenHeight);
-renderer.draw(layout, font, 20.0f, 40.0f, 0xFFFFFFFF, frame, projection);
-```
-
-This is a backward-compatible wrapper that uses identity pose (no scale).
-Prefer the PoseStack-aware API for new code.
-
 ## Development integration example
 
 If you want a live Minecraft-side example instead of a standalone snippet, see:
@@ -78,3 +65,28 @@ renderer.draw(paragraph, font, 12.0f, 20.0f, 0xFFE8E8FF, frame, context, poseSta
 ## Important runtime note
 
 Call `registry.tickFrame(frame)` once per frame before drawing text so LRU usage and MSDF generation budget stay correct.
+
+## 3D World-Space Text (always MSDF)
+
+```java
+// Perspective projection for 3D rendering
+Matrix4f persp = new Matrix4f().perspective(
+        (float) Math.toRadians(60.0), aspectRatio, 0.1f, 1000.0f);
+
+CgWorldTextRenderContext worldContext = CgWorldTextRenderContext.create(
+        persp, viewportWidth, viewportHeight);
+
+// Position text in world space via PoseStack
+PoseStack poseStack = new PoseStack();
+poseStack.translate(entityX, entityY, entityZ);
+
+// Optional: update projected-size hint for quality/LOD tier
+worldContext.updateProjectedSize(
+        poseStack.last().pose(), persp, font.getKey().getTargetPx());
+
+renderer.drawWorld(layout, font, 0.0f, 0.0f, 0xFFFFFFFF, frame,
+        worldContext, poseStack);
+// Layout metrics remain in logical space.
+// PoseStack positions the text in world space, not UI zoom.
+// Backend is always MSDF — no bitmap fallback.
+```

@@ -146,6 +146,31 @@ public class CgTextRenderContext {
     }
 
     /**
+     * Clears per-font draw-history state used only for raster hysteresis.
+     *
+     * <p>This should be used when the caller wants draw-local behavior instead of
+     * allowing effective-size or backend decisions from one text run to influence
+     * the next run rendered through the same context.</p>
+     */
+    public void clearHistory() {
+        previousEffectiveTargetPx.clear();
+        previousMsdf.clear();
+    }
+
+    boolean isScaledUiRaster(CgFontKey fontKey, int effectiveTargetPx) {
+        return !isWorldText() && effectiveTargetPx != fontKey.getTargetPx();
+    }
+
+    /**
+     * Returns whether this context is configured for world-space text.
+     * The base implementation returns {@code false}; {@link CgWorldTextRenderContext}
+     * overrides to return {@code true}.
+     */
+    public boolean isWorldText() {
+        return false;
+    }
+
+    /**
      * Populates a FloatBuffer with a standard orthographic projection matrix.
      *
      * <p>Convention: top-left origin (top=0, bottom=height), near=-1, far=1.

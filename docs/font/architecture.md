@@ -9,23 +9,83 @@ The font system is split into four layers:
 3. atlas and glyph generation layer
 4. rendering layer
 
-## Three-Unit Size Model
+## Three-Space Model
 
-The text rendering pipeline uses three distinct pixel-size concepts:
+The text rendering pipeline enforces a strict separation of three coordinate
+spaces, following the same principle as CSS Transforms (W3C CSS Transforms
+Module Level 1, §3): transforms are applied _after_ layout and do not mutate
+layout flow or spacing.
 
-1. **Logical layout pixels** — the coordinate space used by `CgTextLayout` for
-   width, height, line breaking, and glyph advances. These never change based
-   on draw-time transforms.
-2. **Base target pixels** (`CgFontKey.targetPx`) — the font size requested at
-   load time. Determines the base rasterization size and is part of the
-   font/layout cache identity.
-3. **Effective target pixels** — the actual raster size used for glyph rendering
-   at draw time, derived from `baseTargetPx × poseScale` via `CgTextScaleResolver`.
-   Determines which atlas/cache bucket serves the glyphs.
+### 1. Logical Layout Space
 
-Layout and shaping operate in logical/base pixels. The renderer resolves the
-effective size at draw time from the PoseStack transform without modifying
-layout metrics.
+The canonical space for all text shaping, layout, and metric queries.
+
+- **Units**: logical pixels, defined by `CgFontKey.targetPx` (the base font
+  size requested at load time).
+- **What lives here**: HarfBuzz advances, kerning, offsets, line metrics,
+  `CgTextLayout` width/height, caret positions, line break decisions.
+- **Invariant**: UI scale, PoseStack transforms, and camera distance/FOV must
+  _never_ change any value in this space. Logical metrics are set once during
+  shaping and are immutable at draw time.
+- **Owning types**: `CgShapedRun` (advancesX, offsetsX, offsetsY,
+  totalAdvance), `CgTextLayout` (lines, totalWidth, totalHeight),
+  `CgFontMetrics` (ascender, descender, lineHeight), `CgFontKey` (targetPx).
+
+### 2. Physical Raster Space
+
+The space of actual glyph bitmaps/MSDF textures as rasterized by FreeType
+or MSDFgen.
+
+- **Units**: physical raster pixels at the _effective_ target size.
+- **What lives here**: `CgAtlasRegion` bearingX, bearingY, width, height;
+  atlas UV coordinates; bitmap/MSDF pixel data.
+- **Determining factor**: `effectiveTargetPx = baseTargetPx × poseScale`,
+  resolved by `CgTextScaleResolver` at draw time.
+- **Invariant**: Physical raster data must _never_ be used as canonical
+  placement metrics. Before combining with logical pen positions, the renderer
+  must normalize physical bearings/extents back into logical space using
+  `scaleFactor = baseTargetPx / effectiveTargetPx`.
+- **Owning types**: `CgAtlasRegion` (all metric fields), `CgRasterFontKey`
+  (effectiveTargetPx), `CgRasterGlyphKey`, `CgGlyphAtlas`.
+
+### 3. Composite Space
+
+The final GPU coordinate space after PoseStack and projection transforms.
+
+- **Units**: clip-space coordinates (after projection) or screen pixels (after
+  viewport transform).
+- **What lives here**: the model-view matrix from `PoseStack.last().pose()`,
+  the projection matrix from `CgTextRenderContext`, and the resulting
+  transformed vertex positions.
+- **Determining factor**: PoseStack (model-view) × projection matrix,
+  uploaded as `u_modelview` and `u_projection` shader uniforms.
+- **Contract**: The PoseStack in 2D UI mode represents logical→physical UI
+  scale. In 3D world mode, it represents model-view positioning (entity
+  rotation, billboard transforms), not UI zoom.
+
+### Metric Normalization at the Renderer Boundary
+
+The renderer (`CgTextRenderer.appendQuads(...)`) is the single site where
+logical pen positions meet physical atlas metrics. Normalization uses:
+
+```
+scaleFactor = baseTargetPx / (float) effectiveTargetPx
+logicalBearingX = physicalBearingX × scaleFactor
+logicalBearingY = physicalBearingY × scaleFactor
+logicalWidth    = physicalWidth    × scaleFactor
+logicalHeight   = physicalHeight   × scaleFactor
+```
+
+This keeps spacing and kerning invariant under UI scale while still allowing
+larger physical glyph rasters to be selected for sharper output.
+
+### What the Old Model Got Wrong
+
+The previous mixed-metric design (superseded by this contract) allowed the
+effective target pixel size to directly drive placement metrics, causing
+physical-size bearings and extents to be combined with logical pen positions
+without normalization. This produced visible spacing/kerning corruption
+whenever UI scale differed from 1.0x.
 
 ## 1. Font resource layer
 
@@ -111,8 +171,9 @@ The renderer uses stabilized effective size with hysteresis for backend choice:
 `CgTextScaleResolver` is a strategy interface with:
 - `ORTHOGRAPHIC` — the shipped default for 2D/UI text, uses `max(|sx|, |sy|)`
   from the pose matrix basis vectors
-- future `PerspectiveScaleResolver` — extension seam for world-space text that
-  would estimate on-screen pixel coverage from view distance and FOV
+- `WORLD` — always-MSDF resolver for 3D world-space text, ignores PoseStack
+  scale (treats it as model-view positioning, not UI zoom), uses an optional
+  projected-size hint from `ProjectedSizeEstimator` for quality/LOD tier selection
 
 ### GL State
 
@@ -122,6 +183,23 @@ The renderer:
 - binds the corresponding atlas and shader for each pass
 - uploads both `u_projection` and `u_modelview` to each shader
 - restores GL state through `CgStateBoundary`
+
+### Placement Metric Ownership (Three-Space Contract)
+
+`CgTextRenderer` treats shaped pen positions as canonical **logical** metrics.
+`CgAtlasRegion` exposes **physical** raster metrics captured at the atlas entry's
+effective target pixel size. Before the renderer combines atlas-region bearings
+or extents with logical pen positions, it normalizes them into logical space with:
+
+`scaleFactor = baseTargetPx / effectiveTargetPx`
+
+See the Three-Space Model section above for the full contract. The normalization
+site is `CgTextRenderer.logicalMetricScale()`, called from `appendQuads()`.
+
+This keeps spacing and kerning invariant under UI scale while still allowing
+larger physical glyph rasters to be selected for sharper output. `CgFontRegistry`
+retains physical-only metrics — normalization happens exclusively at the
+renderer/composite boundary.
 
 ## Sub-pixel bucket behavior
 
@@ -147,3 +225,55 @@ MSDF atlas:
 ## Important constraint
 
 The current implementation does not provide a legacy GL text fallback renderer. The renderer intentionally gates itself to the modern GL feature set it actually uses.
+
+## 5. World-Space Text (3D)
+
+### Contract
+
+World-space text uses a separate entry point (`CgTextRenderer.drawWorld()`) with a
+`CgWorldTextRenderContext` that enforces:
+
+- **Always MSDF**: `WorldTextScaleResolver.shouldUseMsdf()` always returns `true`.
+  No bitmap fallback, no subpixel bucket logic.
+- **Depth testing enabled**: World text renders with `GL_DEPTH_TEST` on and
+  `glDepthMask(true)`, so it occludes and is occluded by world geometry.
+- **Back-face culling enabled**: Text is treated as a single-sided surface.
+- **PoseStack = model-view positioning**: In world mode, PoseStack scale represents
+  entity rotation, billboard transforms, etc. — not UI zoom. It does not drive
+  raster tier selection.
+- **Projection-aware quality/LOD**: `ProjectedSizeEstimator` estimates on-screen
+  pixel coverage from MVP + viewport to select higher-quality MSDF atlas tiers
+  for close-up text.
+
+### Layout Invariance
+
+Layout metrics (advances, kerning, line breaks, caret positions) remain in logical
+space. Camera distance, FOV, and viewport changes may alter the MSDF atlas tier
+(quality) but never alter spacing or line breaks.
+
+### API Usage
+
+```java
+// Create a world-text context with perspective projection
+Matrix4f persp = new Matrix4f().perspective(fov, aspect, near, far);
+CgWorldTextRenderContext worldCtx = CgWorldTextRenderContext.create(persp, vpWidth, vpHeight);
+
+// Optionally update quality hint before each draw
+worldCtx.updateProjectedSize(modelView, persp, font.getKey().getTargetPx());
+
+// Draw using the world-text entry point
+renderer.drawWorld(layout, font, x, y, rgba, frame, worldCtx, poseStack);
+```
+
+### Key Differences from 2D UI Text
+
+| Concern | 2D UI Text | 3D World Text |
+|---------|-----------|---------------|
+| Entry point | `draw()` | `drawWorld()` |
+| Context | `CgTextRenderContext` | `CgWorldTextRenderContext` |
+| Resolver | `ORTHOGRAPHIC` | `WORLD` (always MSDF) |
+| Depth test | OFF | ON |
+| Cull face | OFF | ON |
+| PoseStack scale | drives raster tier | model-view only |
+| Backend | bitmap or MSDF | MSDF only |
+| Quality policy | hysteresis-based | projection-aware |
