@@ -169,10 +169,10 @@ private static final int GL_CLAMP_TO_EDGE      = 0x812F;
     }
 
     /**
-     * Creates a test-mode atlas that skips all GL calls. Package-private so
-     * only tests in the same package can use it.
+     * Creates a test-mode atlas that skips all GL calls. Public so
+     * harness tests in other packages/modules can use it.
      */
-    static CgGlyphAtlas createForTest(int pageWidth, int pageHeight, Type type) {
+    public static CgGlyphAtlas createForTest(int pageWidth, int pageHeight, Type type) {
         if (pageWidth <= 0 || pageHeight <= 0) {
             throw new IllegalArgumentException(
                     "Atlas dimensions must be positive, got: " + pageWidth + "x" + pageHeight);
@@ -375,14 +375,46 @@ private static final int GL_CLAMP_TO_EDGE      = 0x812F;
         ALL_OWNED.clear();
     }
 
-    // ── Package-private accessors for testing ──────────────────────────
+    // ── Public accessors (testing + harness manifest) ────────────────
 
     /**
      * Returns the number of glyphs currently packed in this atlas.
-     * Exposed for test verification only.
+     * Also used by the harness manifest dump path.
      */
-    int getSlotCount() {
+    public int getSlotCount() {
         return slotMap.size();
+    }
+
+    /**
+     * Returns the total pixel area occupied by packed glyph slots.
+     * Used by the harness to compute atlas utilization percentage.
+     */
+    public long getPackedArea() {
+        long area = 0;
+        for (SlotEntry entry : slotMap.values()) {
+            area += (long) entry.packed.getWidth() * entry.packed.getHeight();
+        }
+        return area;
+    }
+
+    /**
+     * Returns the utilization ratio of this atlas page as a value in [0.0, 1.0].
+     * Computed as packed pixel area divided by total page area.
+     */
+    public float getUtilization() {
+        long totalArea = (long) pageWidth * pageHeight;
+        if (totalArea == 0) {
+            return 0.0f;
+        }
+        return (float) getPackedArea() / totalArea;
+    }
+
+    /**
+     * Returns the set of glyph keys currently allocated in this atlas.
+     * Used by the harness manifest dump for optional glyph ID listing.
+     */
+    public java.util.Set<CgGlyphKey> getGlyphKeys() {
+        return java.util.Collections.unmodifiableSet(slotMap.keySet());
     }
 
     /**

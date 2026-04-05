@@ -7,6 +7,7 @@ import io.github.somehussar.crystalgraphics.api.font.CgFont;
 import io.github.somehussar.crystalgraphics.api.font.CgFontKey;
 import io.github.somehussar.crystalgraphics.api.font.CgFontMetrics;
 import io.github.somehussar.crystalgraphics.api.font.CgGlyphKey;
+import io.github.somehussar.crystalgraphics.api.font.CgGlyphPlacement;
 import io.github.somehussar.crystalgraphics.api.shader.CgShaderProgram;
 import io.github.somehussar.crystalgraphics.gl.shader.CgShaderFactory;
 import io.github.somehussar.crystalgraphics.gl.state.CgStateBoundary;
@@ -22,6 +23,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.FloatBuffer;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.logging.Logger;
 
@@ -34,6 +37,17 @@ import java.util.logging.Logger;
  * required by the current font implementation and restores GL state through
  * {@link CgStateBoundary} after each draw.</p>
  *
+ * <h3>Multi-Page Atlas Batching</h3>
+ * <p>The renderer supports multi-page atlases by converting glyph atlas regions
+ * into {@link CgGlyphPlacement} records that carry page identity (index and GL
+ * texture ID), plane bounds, and per-page MSDF configuration ({@code pxRange}).
+ * Quads are grouped into {@link CgDrawBatch} objects keyed by
+ * {@link CgDrawBatchKey} (atlas mode, page texture, pxRange), sorted so bitmap
+ * batches draw first and MSDF batches draw second. Each batch issues one
+ * {@code glDrawElements} call with the appropriate shader, texture, and uniforms
+ * bound. This replaces the former two-pass model that assumed one texture per
+ * atlas mode.</p>
+ *
  * <h3>Three-Space Model</h3>
  * <p>The text rendering pipeline enforces a strict three-space separation
  * (analogous to CSS Transforms — layout is unaffected by draw-time transforms):</p>
@@ -45,8 +59,9 @@ import java.util.logging.Logger;
  *   <li><strong>Physical raster space</strong> — the actual raster size used for glyph
  *       rendering at draw time, derived from {@code baseTargetPx × poseScale} via
  *       {@link CgTextScaleResolver}. Physical bearings and extents live in
- *       {@link CgAtlasRegion} and are normalized back into logical space at the
- *       {@link #appendQuads} boundary before combining with pen positions.</li>
+ *       {@link CgAtlasRegion} (legacy) or {@link CgGlyphPlacement} (multi-page)
+ *       and are normalized back into logical space at the quad-placement boundary
+ *       before combining with pen positions.</li>
  *   <li><strong>Composite space</strong> — PoseStack/model-view/projection transforms
  *       applied by the GPU shaders at render time. The PoseStack in 2D mode represents
  *       UI scale; in 3D mode it represents model-view positioning.</li>
@@ -56,9 +71,10 @@ import java.util.logging.Logger;
  * <p>Physical atlas metrics are normalized to logical space at the quad-placement
  * boundary using {@link #logicalMetricScale(int, int)}:
  * {@code scaleFactor = baseTargetPx / (float) effectiveTargetPx}. This is applied
- * to bearingX, bearingY, width, and height from {@link CgAtlasRegion}. The
- * normalization ensures that UI scale changes affect raster quality without
- * corrupting spacing or kerning.</p>
+ * to plane bounds from {@link CgGlyphPlacement} (or bearingX, bearingY, width,
+ * height from {@link CgAtlasRegion} in legacy mode). The normalization ensures
+ * that UI scale changes affect raster quality without corrupting spacing or
+ * kerning.</p>
  *
  * <h3>Projection and Context Model</h3>
  * <p>Rather than requiring callers to pass a raw {@code FloatBuffer projectionMatrix}
@@ -268,14 +284,14 @@ public class CgTextRenderer {
     }
 
     private void drawInternal(CgTextLayout layout,
-                              CgFont font,
-                              float x,
-                              float y,
-                              int rgba,
-                              long frame,
-                              CgTextRenderContext context,
-                              PoseStack.Pose pose,
-                              CgTextScaleResolver scaleResolver) {
+                               CgFont font,
+                               float x,
+                               float y,
+                               int rgba,
+                               long frame,
+                               CgTextRenderContext context,
+                               PoseStack.Pose pose,
+                               CgTextScaleResolver scaleResolver) {
         CgFontKey fontKey = font.getKey();
         CgFontMetrics metrics = layout.getMetrics();
 
@@ -288,18 +304,20 @@ public class CgTextRenderer {
         boolean wantMsdf = scaleResolver.shouldUseMsdf(effectiveTargetPx, previousMsdf);
         context.setWasMsdf(fontKey, wantMsdf);
 
-        GlyphBatch batch = buildGlyphBatch(layout, font, x, y, frame, context, fontKey,
+        // Use the paged atlas path — produces CgGlyphPlacement directly
+        PagedGlyphBatch batch = buildPagedGlyphBatch(layout, font, x, y, frame, context, fontKey,
                 effectiveTargetPx, wantMsdf, metrics);
-        CgAtlasRegion[] regions = batch.regions;
+        CgGlyphPlacement[] placements = batch.placements;
         float[] glyphX = batch.glyphX;
         float[] glyphY = batch.glyphY;
 
-        vbo.begin();
-        int bitmapQuadCount = appendQuads(regions, glyphX, glyphY, rgba, false,
+        // Build draw batches sorted by batch key (bitmap first, then MSDF,
+        // sub-sorted by texture ID and pxRange). Each batch is a contiguous
+        // range of quads in the VBO that share the same GL state.
+        List<CgDrawBatch> drawBatches = buildDrawBatches(placements, glyphX, glyphY, rgba,
                 fontKey.getTargetPx(), effectiveTargetPx);
-        int msdfQuadCount = appendQuads(regions, glyphX, glyphY, rgba, true,
-                fontKey.getTargetPx(), effectiveTargetPx);
-        if (bitmapQuadCount == 0 && msdfQuadCount == 0) {
+
+        if (drawBatches.isEmpty()) {
             return;
         }
 
@@ -317,31 +335,11 @@ public class CgTextRenderer {
         Matrix4f mv = pose.pose();
         FloatBuffer mvBuf = prepareMatrixBuffer(mv);
 
-        CgRasterFontKey rasterFontKey = new CgRasterFontKey(fontKey, effectiveTargetPx);
-
-        if (bitmapQuadCount > 0) {
-            bitmapShader.bind();
-            uploadProjectionMatrix(bitmapShader, bitmapLocProjection, context.getProjectionBuffer());
-            uploadMatrix(bitmapShader, bitmapLocModelview, mvBuf);
-            GL13.glActiveTexture(GL13.GL_TEXTURE0);
-            GL11.glBindTexture(GL11.GL_TEXTURE_2D, registry.getBitmapAtlas(rasterFontKey).getTextureId());
-            bitmapShader.setUniform1i(bitmapLocAtlas, 0);
-            GL11.glDrawElements(GL11.GL_TRIANGLES, bitmapQuadCount * 6, GL11.GL_UNSIGNED_SHORT, 0);
-            bitmapShader.unbind();
-        }
-
-        if (msdfQuadCount > 0) {
-            msdfShader.bind();
-            uploadProjectionMatrix(msdfShader, msdfLocProjection, context.getProjectionBuffer());
-            uploadMatrix(msdfShader, msdfLocModelview, mvBuf);
-            GL13.glActiveTexture(GL13.GL_TEXTURE0);
-            GL11.glBindTexture(GL11.GL_TEXTURE_2D, registry.getMsdfAtlas(rasterFontKey).getTextureId());
-            msdfShader.setUniform1i(msdfLocAtlas, 0);
-            msdfShader.setUniform1f(msdfLocPxRange, CgMsdfGenerator.PX_RANGE);
-            long offsetBytes = (long) bitmapQuadCount * 6L * 2L;
-            GL11.glDrawElements(GL11.GL_TRIANGLES, msdfQuadCount * 6, GL11.GL_UNSIGNED_SHORT, offsetBytes);
-            msdfShader.unbind();
-        }
+        // Draw each batch with appropriate shader, texture, and uniforms.
+        // Batches are already sorted: bitmap batches first, then MSDF.
+        // Within each mode, batches are sorted by texture ID and pxRange
+        // to minimize state changes.
+        drawBatches(drawBatches, context, mvBuf);
 
         vbo.unbind();
 
@@ -350,6 +348,255 @@ public class CgTextRenderer {
         }
         if (depthWasEnabled) {
             GL11.glEnable(GL11.GL_DEPTH_TEST);
+        }
+    }
+
+    /**
+     * Converts legacy {@link CgAtlasRegion} records into {@link CgGlyphPlacement}
+     * records, resolving page texture IDs and pxRange from the atlas registry.
+     *
+     * <p>During the transition period where single-page atlases still produce
+     * {@code CgAtlasRegion}, this method bridges them into the new placement
+     * model. Once the atlas core is fully paged, glyph placement will be
+     * produced directly by the paged atlas allocator.</p>
+     */
+    CgGlyphPlacement[] buildPlacements(CgAtlasRegion[] regions,
+                                        CgRasterFontKey rasterFontKey) {
+        CgGlyphPlacement[] placements = new CgGlyphPlacement[regions.length];
+        for (int i = 0; i < regions.length; i++) {
+            CgAtlasRegion region = regions[i];
+            if (region == null || region.getWidth() <= 0 || region.getHeight() <= 0) {
+                placements[i] = null;
+                continue;
+            }
+            // Resolve the texture ID from the atlas this glyph lives on.
+            // For the legacy single-page model, each atlas has one texture.
+            int textureId;
+            float pxRange;
+            if (region.getKey().isMsdf()) {
+                textureId = registry.getMsdfAtlas(rasterFontKey).getTextureId();
+                pxRange = CgMsdfGenerator.PX_RANGE;
+            } else {
+                textureId = registry.getBitmapAtlas(rasterFontKey).getTextureId();
+                pxRange = 0.0f;
+            }
+            placements[i] = CgGlyphPlacement.fromAtlasRegion(region, textureId, pxRange);
+        }
+        return placements;
+    }
+
+    /**
+     * Builds sorted draw batches from glyph placements.
+     *
+     * <p>This method performs two passes over the placement array:</p>
+     * <ol>
+     *   <li><strong>Sort pass</strong>: Collects placement indices and sorts them
+     *       by batch key (bitmap before MSDF, then by texture ID, then by pxRange).
+     *       This ensures quads in the VBO are grouped by GL state.</li>
+     *   <li><strong>Emit pass</strong>: Writes quads into the VBO in sorted order
+     *       and records batch boundaries wherever the batch key changes.</li>
+     * </ol>
+     *
+     * @return sorted list of draw batches, empty if no visible quads
+     */
+    List<CgDrawBatch> buildDrawBatches(CgGlyphPlacement[] placements,
+                                        float[] glyphX,
+                                        float[] glyphY,
+                                        int rgba,
+                                        int baseTargetPx,
+                                        int effectiveTargetPx) {
+        // Collect indices of visible placements paired with their batch keys
+        int visibleCount = 0;
+        for (int i = 0; i < placements.length; i++) {
+            if (placements[i] != null && placements[i].hasGeometry()) {
+                visibleCount++;
+            }
+        }
+        if (visibleCount == 0) {
+            return Collections.emptyList();
+        }
+
+        // Build sortable entries: (batchKey, originalIndex)
+        int[] sortedIndices = new int[visibleCount];
+        CgDrawBatchKey[] batchKeys = new CgDrawBatchKey[visibleCount];
+        int si = 0;
+        for (int i = 0; i < placements.length; i++) {
+            CgGlyphPlacement p = placements[i];
+            if (p != null && p.hasGeometry()) {
+                sortedIndices[si] = i;
+                batchKeys[si] = new CgDrawBatchKey(
+                        p.isMsdf(), p.getPageTextureId(), p.getPxRange());
+                si++;
+            }
+        }
+
+        // Sort by batch key using insertion sort (stable, good for small N
+        // and nearly-sorted data which is common since glyphs from the same
+        // atlas page are often consecutive in the layout)
+        for (int i = 1; i < visibleCount; i++) {
+            CgDrawBatchKey keyI = batchKeys[i];
+            int idxI = sortedIndices[i];
+            int j = i - 1;
+            while (j >= 0 && batchKeys[j].compareTo(keyI) > 0) {
+                batchKeys[j + 1] = batchKeys[j];
+                sortedIndices[j + 1] = sortedIndices[j];
+                j--;
+            }
+            batchKeys[j + 1] = keyI;
+            sortedIndices[j + 1] = idxI;
+        }
+
+        // Emit quads in sorted order and record batch boundaries
+        vbo.begin();
+        float scaleFactor = logicalMetricScale(baseTargetPx, effectiveTargetPx);
+        List<CgDrawBatch> batches = new ArrayList<CgDrawBatch>();
+        CgDrawBatchKey currentKey = batchKeys[0];
+        int batchStartQuad = 0;
+        int totalQuads = 0;
+
+        for (int s = 0; s < visibleCount; s++) {
+            CgDrawBatchKey thisKey = batchKeys[s];
+            // Check if we need to start a new batch
+            if (!thisKey.equals(currentKey)) {
+                int batchQuadCount = totalQuads - batchStartQuad;
+                if (batchQuadCount > 0) {
+                    batches.add(new CgDrawBatch(currentKey, batchStartQuad, batchQuadCount));
+                }
+                currentKey = thisKey;
+                batchStartQuad = totalQuads;
+            }
+
+            int origIdx = sortedIndices[s];
+            CgGlyphPlacement p = placements[origIdx];
+            appendQuadFromPlacement(p, glyphX[origIdx], glyphY[origIdx], rgba, scaleFactor);
+            totalQuads++;
+        }
+
+        // Final batch
+        int batchQuadCount = totalQuads - batchStartQuad;
+        if (batchQuadCount > 0) {
+            batches.add(new CgDrawBatch(currentKey, batchStartQuad, batchQuadCount));
+        }
+
+        return batches;
+    }
+
+    /**
+     * Appends a single glyph quad from a {@link CgGlyphPlacement} into the VBO.
+     *
+     * <p>Uses <strong>plane bounds</strong> for geometry placement instead of
+     * the legacy bearing + metrics model. Plane bounds include SDF range padding
+     * for MSDF glyphs, ensuring the distance field extends beyond the visible
+     * glyph edge. Physical raster metrics are normalized to logical space using
+     * the provided scale factor.</p>
+     *
+     * @param p           the glyph placement
+     * @param penX        logical pen X position
+     * @param penY        logical pen Y position
+     * @param rgba        packed RGBA color
+     * @param scaleFactor logical metric normalization (baseTargetPx / effectiveTargetPx)
+     */
+    private void appendQuadFromPlacement(CgGlyphPlacement p,
+                                          float penX,
+                                          float penY,
+                                          int rgba,
+                                          float scaleFactor) {
+        // Plane bounds are in physical raster space; normalize to logical.
+        // planeLeft = bearing offset from pen; planeTop = bearing above baseline.
+        // The quad origin is (penX + bearingX, penY - bearingY) in the existing
+        // convention (Y-down screen space, bearingY positive = above baseline).
+        float logicalBearingX = p.getPlaneLeft() * scaleFactor;
+        float logicalBearingY = p.getPlaneTop() * scaleFactor;
+        float logicalWidth = p.getPlaneWidth() * scaleFactor;
+        float logicalHeight = p.getPlaneHeight() * scaleFactor;
+
+        float qx = penX + logicalBearingX;
+        float qy = penY - logicalBearingY;
+
+        if (diagnosticLogging) {
+            LOGGER.info(String.format(
+                    "[QuadDiag] glyphId=%d penX=%.2f planeL=%.2f planeW=%.2f qx=%.2f page=%d tex=%d msdf=%b pxRange=%.1f",
+                    p.getKey().getGlyphId(), penX,
+                    logicalBearingX, logicalWidth, qx,
+                    p.getPageIndex(), p.getPageTextureId(),
+                    p.isMsdf(), p.getPxRange()));
+        }
+        vbo.addGlyph(qx, qy, logicalWidth, logicalHeight,
+                p.getU0(), p.getV0(), p.getU1(), p.getV1(), rgba);
+    }
+
+    /**
+     * Issues GL draw calls for each batch, binding the appropriate shader,
+     * texture, and uniforms per batch.
+     *
+     * <p>Batches are already sorted by {@link CgDrawBatchKey}: bitmap batches
+     * first, then MSDF. The method tracks the currently bound shader to avoid
+     * redundant binds when consecutive batches share the same mode. Texture and
+     * pxRange are always set per batch since they can differ between pages.</p>
+     */
+    private void drawBatches(List<CgDrawBatch> batches,
+                              CgTextRenderContext context,
+                              FloatBuffer mvBuf) {
+        // Track which shader is currently bound to minimize bind/unbind calls
+        boolean bitmapShaderBound = false;
+        boolean msdfShaderBound = false;
+
+        for (int b = 0; b < batches.size(); b++) {
+            CgDrawBatch batch = batches.get(b);
+            if (batch.isEmpty()) {
+                continue;
+            }
+
+            CgDrawBatchKey key = batch.getKey();
+
+            if (key.isMsdf()) {
+                // Unbind bitmap shader if it was active
+                if (bitmapShaderBound) {
+                    bitmapShader.unbind();
+                    bitmapShaderBound = false;
+                }
+                // Bind MSDF shader if not already bound
+                if (!msdfShaderBound) {
+                    msdfShader.bind();
+                    uploadProjectionMatrix(msdfShader, msdfLocProjection, context.getProjectionBuffer());
+                    uploadMatrix(msdfShader, msdfLocModelview, mvBuf);
+                    msdfShader.setUniform1i(msdfLocAtlas, 0);
+                    msdfShaderBound = true;
+                }
+                // Per-batch: bind texture and set pxRange (may differ by page)
+                GL13.glActiveTexture(GL13.GL_TEXTURE0);
+                GL11.glBindTexture(GL11.GL_TEXTURE_2D, key.getTextureId());
+                msdfShader.setUniform1f(msdfLocPxRange, key.getPxRange());
+            } else {
+                // Unbind MSDF shader if it was active
+                if (msdfShaderBound) {
+                    msdfShader.unbind();
+                    msdfShaderBound = false;
+                }
+                // Bind bitmap shader if not already bound
+                if (!bitmapShaderBound) {
+                    bitmapShader.bind();
+                    uploadProjectionMatrix(bitmapShader, bitmapLocProjection, context.getProjectionBuffer());
+                    uploadMatrix(bitmapShader, bitmapLocModelview, mvBuf);
+                    bitmapShader.setUniform1i(bitmapLocAtlas, 0);
+                    bitmapShaderBound = true;
+                }
+                // Per-batch: bind texture (may differ by page)
+                GL13.glActiveTexture(GL13.GL_TEXTURE0);
+                GL11.glBindTexture(GL11.GL_TEXTURE_2D, key.getTextureId());
+            }
+
+            GL11.glDrawElements(GL11.GL_TRIANGLES,
+                    batch.getIndexCount(), GL11.GL_UNSIGNED_SHORT,
+                    batch.getIboByteOffset());
+        }
+
+        // Unbind whichever shader is still active
+        if (bitmapShaderBound) {
+            bitmapShader.unbind();
+        }
+        if (msdfShaderBound) {
+            msdfShader.unbind();
         }
     }
 
@@ -374,6 +621,30 @@ public class CgTextRenderer {
         // per-frame MSDF generation budget), rerender the whole batch in bitmap
         // for this frame so all glyphs share the same quality tier.
         return populateGlyphBatch(layout, font, x, y, frame, context,
+                fontKey, effectiveTargetPx, false, metrics);
+    }
+
+    private PagedGlyphBatch buildPagedGlyphBatch(CgTextLayout layout,
+                                                  CgFont font,
+                                                  float x,
+                                                  float y,
+                                                  long frame,
+                                                  CgTextRenderContext context,
+                                                  CgFontKey fontKey,
+                                                  int effectiveTargetPx,
+                                                  boolean wantMsdf,
+                                                  CgFontMetrics metrics) {
+        PagedGlyphBatch batch = populatePagedGlyphBatch(layout, font, x, y, frame, context,
+                fontKey, effectiveTargetPx, wantMsdf, metrics);
+        if (!wantMsdf || !batch.usedBitmapFallback) {
+            return batch;
+        }
+
+        // Do not mix MSDF and bitmap glyphs inside the same draw. If any glyph
+        // in an MSDF-targeted draw falls back to bitmap (for example due to the
+        // per-frame MSDF generation budget), rerender the whole batch in bitmap
+        // for this frame so all glyphs share the same quality tier.
+        return populatePagedGlyphBatch(layout, font, x, y, frame, context,
                 fontKey, effectiveTargetPx, false, metrics);
     }
 
@@ -436,6 +707,65 @@ public class CgTextRenderer {
         }
     }
 
+    private PagedGlyphBatch populatePagedGlyphBatch(CgTextLayout layout,
+                                                     CgFont font,
+                                                     float x,
+                                                     float y,
+                                                     long frame,
+                                                     CgTextRenderContext context,
+                                                     CgFontKey fontKey,
+                                                     int effectiveTargetPx,
+                                                     boolean wantMsdf,
+                                                     CgFontMetrics metrics) {
+        List<List<CgShapedRun>> lines = layout.getLines();
+        int totalGlyphs = countGlyphs(lines);
+        float[] glyphX = new float[totalGlyphs];
+        float[] glyphY = new float[totalGlyphs];
+        CgGlyphPlacement[] placements = new CgGlyphPlacement[totalGlyphs];
+
+        boolean usedBitmapFallback = false;
+        int index = 0;
+        float penY = y;
+        for (List<CgShapedRun> line : lines) {
+            float penX = x;
+            for (CgShapedRun run : line) {
+                int[] glyphIds = run.getGlyphIds();
+                float[] advancesX = run.getAdvancesX();
+                float[] offsetsX = run.getOffsetsX();
+                float[] offsetsY = run.getOffsetsY();
+                for (int i = 0; i < glyphIds.length; i++) {
+                    int subPixelBucket = resolveSubPixelBucket(context, fontKey, effectiveTargetPx, offsetsX[i]);
+                    CgGlyphKey glyphKey = new CgGlyphKey(fontKey, glyphIds[i], wantMsdf);
+                    placements[index] = registry.ensureGlyphPaged(
+                            font, glyphKey, effectiveTargetPx, subPixelBucket, frame);
+                    if (wantMsdf && placements[index] != null && !placements[index].isMsdf()) {
+                        usedBitmapFallback = true;
+                    }
+                    glyphX[index] = penX + offsetsX[i];
+                    glyphY[index] = penY + offsetsY[i];
+                    penX += advancesX[i];
+                    index++;
+                }
+            }
+            penY += metrics.getLineHeight();
+        }
+        return new PagedGlyphBatch(glyphX, glyphY, placements, usedBitmapFallback);
+    }
+
+    private static final class PagedGlyphBatch {
+        private final float[] glyphX;
+        private final float[] glyphY;
+        private final CgGlyphPlacement[] placements;
+        private final boolean usedBitmapFallback;
+
+        private PagedGlyphBatch(float[] glyphX, float[] glyphY, CgGlyphPlacement[] placements, boolean usedBitmapFallback) {
+            this.glyphX = glyphX;
+            this.glyphY = glyphY;
+            this.placements = placements;
+            this.usedBitmapFallback = usedBitmapFallback;
+        }
+    }
+
     private int countGlyphs(List<List<CgShapedRun>> lines) {
         int total = 0;
         for (List<CgShapedRun> line : lines) {
@@ -446,6 +776,15 @@ public class CgTextRenderer {
         return total;
     }
 
+    /**
+     * Legacy single-page quad appender.
+     *
+     * <p>Retained for backward compatibility during the transition to multi-page
+     * batching. New code should use {@link #buildDrawBatches} and
+     * {@link #appendQuadFromPlacement} instead. This method filters regions by
+     * MSDF/bitmap flag and appends matching quads into the VBO sequentially,
+     * assuming all quads share the same atlas texture.</p>
+     */
     private int appendQuads(CgAtlasRegion[] regions,
                             float[] glyphX,
                             float[] glyphY,
