@@ -35,6 +35,9 @@ dependencies {
     // Root project for CgCapabilities, CgGlyphAtlas, font API
     implementation(project(":"))
 
+    // JOML for Matrix4f (used by PoseStack and world-text projection math)
+    implementation("org.joml:joml-jdk8:1.10.1")
+
     implementation("org.apache.logging.log4j:log4j-api:2.20.0")
     implementation("org.apache.logging.log4j:log4j-core:2.20.0")
 

@@ -115,6 +115,14 @@ public final class FontDebugHarnessMain {
         System.out.println("  --width=<n>            Width in pixels (default: 800)");
         System.out.println("  --height=<n>           Height in pixels (default: 600)");
         System.out.println();
+        System.out.println("Text-scene options:");
+        System.out.println("  --pose-scale=<f>                 PoseStack scale factor (default: 1.0)");
+        System.out.println("  --scales=<f,f,...>               Comma-separated scales for multi-scale comparison");
+        System.out.println("  --output-filename=<name.png>     Custom output filename (default: text-scene.png)");
+        System.out.println("  --text=<string>                  Test string");
+        System.out.println("  --font-size-px=<n>               Font size in px (default: 32)");
+        System.out.println("  --gui-scale=<n>                  Simulated MC GUI scale factor (default: 1)");
+        System.out.println();
         System.out.println("Atlas options (atlas-dump mode):");
         System.out.println("  --atlas-type=<bitmap|msdf|both>  Atlas type (default: both)");
         System.out.println("  --atlas-size=<n>                 Atlas texture size (default: 512)");
