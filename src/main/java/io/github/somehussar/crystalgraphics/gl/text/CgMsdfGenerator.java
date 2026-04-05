@@ -9,6 +9,9 @@ import com.msdfgen.Shape;
 import com.msdfgen.Transform;
 import io.github.somehussar.crystalgraphics.api.font.CgAtlasRegion;
 import io.github.somehussar.crystalgraphics.api.font.CgGlyphKey;
+import io.github.somehussar.crystalgraphics.api.font.CgGlyphPlacement;
+import io.github.somehussar.crystalgraphics.gl.text.atlas.CgPagedGlyphAtlas;
+import io.github.somehussar.crystalgraphics.gl.text.msdf.CgMsdfGlyphLayout;
 
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -177,6 +180,125 @@ public class CgMsdfGenerator {
                     metricsWidth, metricsHeight, currentFrame);
             generatedThisFrame++;
             return region;
+        } finally {
+            bitmap.free();
+        }
+    }
+
+    /**
+     * Paged-atlas MSDF generation using upstream-parity glyph layout.
+     *
+     * <p>Uses {@link CgMsdfGlyphLayout} for per-glyph box sizing instead of the
+     * fixed-cell model in {@link #queueOrGenerate}. The generated MSDF bitmap is
+     * uploaded to a {@link CgPagedGlyphAtlas} which handles page allocation and
+     * returns a {@link CgGlyphPlacement} directly.</p>
+     *
+     * <p>Returns {@code null} when the frame budget is exhausted, the shape is
+     * empty, or the complexity heuristic says bitmap is still better at this
+     * font size.</p>
+     *
+     * @param key          glyph key
+     * @param font         msdfgen FreeType font handle
+     * @param pagedAtlas   target paged MSDF atlas
+     * @param currentFrame current frame number for LRU tracking
+     * @return the glyph placement, or {@code null} if generation was skipped
+     */
+    public CgGlyphPlacement queueOrGeneratePaged(CgGlyphKey key,
+                                                  FreeTypeIntegration.Font font,
+                                                  CgPagedGlyphAtlas pagedAtlas,
+                                                  long currentFrame) {
+        if (generatedThisFrame >= MAX_PER_FRAME) {
+            return null;
+        }
+
+        FreeTypeIntegration.GlyphData glyphData;
+        try {
+            glyphData = font.loadGlyphByIndex(key.getGlyphId(), FreeTypeIntegration.FONT_SCALING_EM_NORMALIZED);
+        } catch (MsdfException e) {
+            LOGGER.log(Level.FINE, "Failed to load glyph index " + key.getGlyphId(), e);
+            return null;
+        }
+
+        // DO NOT call shape.free() manually. Shape has a finalize() method
+        // that calls free(), but its 'freed' flag is not volatile. If we call
+        // shape.free() on the render thread, the finalizer thread can still
+        // see the stale freed==false and call nShapeFree a second time —
+        // corrupting the native heap. The corruption is silent until a later
+        // native allocation (e.g. nLoadGlyphByIndex) traverses the damaged
+        // free-list and crashes. Letting the finalizer be the sole owner of
+        // the free() call eliminates the race entirely.
+        Shape shape = glyphData.getShape();
+
+        if (shape.getEdgeCount() == 0) {
+            return null;
+        }
+        if (!shouldUseMsdf(shape, key.getFontKey().getTargetPx())) {
+            return null;
+        }
+
+        shape.normalize();
+        shape.edgeColoringSimple(3.0);
+
+        int targetPx = key.getFontKey().getTargetPx();
+        double[] bounds = shape.getBounds();
+        double shapeL = bounds[0];
+        double shapeB = bounds[1];
+        double shapeR = bounds[2];
+        double shapeT = bounds[3];
+
+        // Compute per-glyph box dimensions using upstream-parity layout math
+        CgMsdfGlyphLayout layout = CgMsdfGlyphLayout.compute(
+                shapeL, shapeB, shapeR, shapeT,
+                targetPx, PX_RANGE);
+
+        if (layout.isEmpty()) {
+            return null;
+        }
+
+        int boxWidth = layout.getBoxWidth();
+        int boxHeight = layout.getBoxHeight();
+        double scale = layout.getScale();
+        double tx = layout.getTranslateX();
+        double ty = layout.getTranslateY();
+        double rangeInShapeUnits = layout.getRangeInShapeUnits();
+
+        Transform transform = new Transform()
+                .scale(scale)
+                .translate(tx, ty)
+                .range(-rangeInShapeUnits, rangeInShapeUnits);
+
+        Bitmap bitmap = Bitmap.allocMsdf(boxWidth, boxHeight);
+        try {
+            // Disable error correction — the default EDGE_PRIORITY pass
+            // inside generateMSDF has been observed to crash on certain
+            // glyph shapes. At 32-64px cell sizes the artefacts are
+            // imperceptible.
+            Generator.generateMsdf(bitmap, shape, transform,
+                    true,
+                    MsdfConstants.ERROR_CORRECTION_DISABLED,
+                    MsdfConstants.DISTANCE_CHECK_NONE,
+                    MsdfConstants.DEFAULT_MIN_DEVIATION_RATIO,
+                    MsdfConstants.DEFAULT_MIN_IMPROVE_RATIO);
+
+            float[] pixelData = bitmap.getPixelData();
+            flipRows(pixelData, boxWidth, boxHeight, 3);
+
+            // Derive bearing and metrics from the layout's plane bounds.
+            // bearingX = planeLeft * scale (plane bounds are in EM, convert to px)
+            // bearingY = planeTop * scale (above baseline, positive)
+            // The paged atlas page will use these to build CgGlyphPlacement
+            // with correct plane bounds for the renderer.
+            float bearingX = (float) (layout.getPlaneLeft() * scale);
+            float bearingY = (float) (layout.getPlaneTop() * scale);
+            float metricsWidth = (float) ((shapeR - shapeL) * scale);
+            float metricsHeight = (float) ((shapeT - shapeB) * scale);
+
+            CgGlyphPlacement placement = pagedAtlas.allocateMsdf(
+                    key, pixelData, boxWidth, boxHeight,
+                    bearingX, bearingY, metricsWidth, metricsHeight,
+                    PX_RANGE, currentFrame);
+            generatedThisFrame++;
+            return placement;
         } finally {
             bitmap.free();
         }
