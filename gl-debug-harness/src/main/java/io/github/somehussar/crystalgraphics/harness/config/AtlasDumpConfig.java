@@ -67,6 +67,7 @@ public final class AtlasDumpConfig extends HarnessConfig {
     private int atlasSize = 512;
     private int bitmapPxSize = DEFAULT_BITMAP_PX_SIZE;
     private int msdfPxSize = DEFAULT_MSDF_PX_SIZE;
+    private int msdfAtlasScale = 48;
     private String text = ASCII_PRINTABLE_CHARS;
 
     // ── Parity / overflow knobs (Phase D of atlas overhaul plan) ───────
@@ -94,6 +95,7 @@ public final class AtlasDumpConfig extends HarnessConfig {
     public int getAtlasSize() { return atlasSize; }
     public int getBitmapPxSize() { return bitmapPxSize; }
     public int getMsdfPxSize() { return msdfPxSize; }
+    public int getMsdfAtlasScale() { return msdfAtlasScale; }
     public String getText() { return text; }
 
     /** Whether deterministic MSDF parity prewarm is enabled. */
@@ -129,6 +131,10 @@ public final class AtlasDumpConfig extends HarnessConfig {
         String mps = System.getProperty("harness.msdf.px.size");
         if (mps != null && !mps.isEmpty()) {
             this.msdfPxSize = parseIntStrict(mps, "harness.msdf.px.size");
+        }
+        String mas = System.getProperty("harness.msdf.atlas.scale");
+        if (mas != null && !mas.isEmpty()) {
+            this.msdfAtlasScale = parseIntStrict(mas, "harness.msdf.atlas.scale");
         }
         String fs = System.getProperty("harness.font.size.px");
         if (fs != null && !fs.isEmpty()) {
@@ -175,6 +181,9 @@ public final class AtlasDumpConfig extends HarnessConfig {
         }
         if (args.containsKey("msdf-px-size")) {
             this.msdfPxSize = parseIntStrict(args.get("msdf-px-size"), "--msdf-px-size");
+        }
+        if (args.containsKey("msdf-atlas-scale")) {
+            this.msdfAtlasScale = parseIntStrict(args.get("msdf-atlas-scale"), "--msdf-atlas-scale");
         }
         if (args.containsKey("text")) {
             this.text = args.get("text");

@@ -448,7 +448,6 @@ public class CgTextRenderer {
 
         // Emit quads in sorted order and record batch boundaries
         vbo.begin();
-        float scaleFactor = logicalMetricScale(baseTargetPx, effectiveTargetPx);
         List<CgDrawBatch> batches = new ArrayList<CgDrawBatch>();
         CgDrawBatchKey currentKey = batchKeys[0];
         int batchStartQuad = 0;
@@ -468,6 +467,9 @@ public class CgTextRenderer {
 
             int origIdx = sortedIndices[s];
             CgGlyphPlacement p = placements[origIdx];
+            int placementTargetPx = p.getKey().getFontKey().getTargetPx();
+            float scaleFactor = logicalMetricScale(baseTargetPx,
+                    p.isMsdf() ? placementTargetPx : effectiveTargetPx);
             appendQuadFromPlacement(p, glyphX[origIdx], glyphY[origIdx], rgba, scaleFactor);
             totalQuads++;
         }

@@ -17,6 +17,8 @@ package io.github.somehussar.crystalgraphics.text.atlas;
  */
 public interface CgPackingStrategy {
 
+    int DEFAULT_SPACING_PX = 0;
+
     /**
      * Attempts to pack a rectangle of the given dimensions into the bin.
      *
@@ -26,6 +28,13 @@ public interface CgPackingStrategy {
      * @return the packed rectangle with position, or {@code null} if it does not fit
      */
     PackedRect insert(int width, int height, Object id);
+
+    /**
+     * Attempts to pack a rectangle while reserving trailing spacing in allocator space.
+     * The returned rectangle still reports the original glyph width/height so UVs
+     * and plane bounds remain tied to the visible glyph box.
+     */
+    PackedRect insert(int width, int height, int spacing, Object id);
 
     /**
      * Returns the utilization ratio of the bin (packed area / total area).

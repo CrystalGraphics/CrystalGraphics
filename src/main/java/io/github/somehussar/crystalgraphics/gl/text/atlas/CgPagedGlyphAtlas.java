@@ -52,13 +52,13 @@ public class CgPagedGlyphAtlas {
          * @param pageHeight page height in pixels
          * @return a new packing strategy instance
          */
-        CgPackingStrategy create(int pageWidth, int pageHeight);
+        CgPackingStrategy create(int pageWidth, int pageHeight, int spacingPx);
     }
 
     /** Default packer factory using upstream-parity guillotine packing. */
     public static final PackerFactory GUILLOTINE_FACTORY = new PackerFactory() {
         @Override
-        public CgPackingStrategy create(int pageWidth, int pageHeight) {
+        public CgPackingStrategy create(int pageWidth, int pageHeight, int spacingPx) {
             return new CgGuillotinePacker(pageWidth, pageHeight);
         }
     };
@@ -70,6 +70,7 @@ public class CgPagedGlyphAtlas {
     private final CgGlyphAtlas.Type type;
     private final PackerFactory packerFactory;
     private final boolean skipGlUpload;
+    private final int spacingPx;
 
     private final List<CgGlyphAtlasPage> pages;
     private boolean deleted;
@@ -84,7 +85,11 @@ public class CgPagedGlyphAtlas {
      * @param type       bitmap or MSDF
      */
     public CgPagedGlyphAtlas(int pageWidth, int pageHeight, CgGlyphAtlas.Type type) {
-        this(pageWidth, pageHeight, type, GUILLOTINE_FACTORY, false);
+        this(pageWidth, pageHeight, type, GUILLOTINE_FACTORY, false, CgPackingStrategy.DEFAULT_SPACING_PX);
+    }
+
+    public CgPagedGlyphAtlas(int pageWidth, int pageHeight, CgGlyphAtlas.Type type, int spacingPx) {
+        this(pageWidth, pageHeight, type, GUILLOTINE_FACTORY, false, spacingPx);
     }
 
     /**
@@ -97,14 +102,19 @@ public class CgPagedGlyphAtlas {
      */
     public CgPagedGlyphAtlas(int pageWidth, int pageHeight, CgGlyphAtlas.Type type,
                              PackerFactory packerFactory) {
-        this(pageWidth, pageHeight, type, packerFactory, false);
+        this(pageWidth, pageHeight, type, packerFactory, false, CgPackingStrategy.DEFAULT_SPACING_PX);
+    }
+
+    public CgPagedGlyphAtlas(int pageWidth, int pageHeight, CgGlyphAtlas.Type type,
+                             PackerFactory packerFactory, int spacingPx) {
+        this(pageWidth, pageHeight, type, packerFactory, false, spacingPx);
     }
 
     /**
      * Internal constructor with skip-GL-upload flag for testing.
      */
     CgPagedGlyphAtlas(int pageWidth, int pageHeight, CgGlyphAtlas.Type type,
-                      PackerFactory packerFactory, boolean skipGlUpload) {
+                      PackerFactory packerFactory, boolean skipGlUpload, int spacingPx) {
         if (pageWidth <= 0 || pageHeight <= 0) {
             throw new IllegalArgumentException(
                     "Page dimensions must be positive, got: " + pageWidth + "x" + pageHeight);
@@ -114,6 +124,7 @@ public class CgPagedGlyphAtlas {
         this.type = type;
         this.packerFactory = packerFactory;
         this.skipGlUpload = skipGlUpload;
+        this.spacingPx = spacingPx;
         this.pages = new ArrayList<CgGlyphAtlasPage>();
         this.deleted = false;
     }
@@ -123,16 +134,18 @@ public class CgPagedGlyphAtlas {
      */
     public static CgPagedGlyphAtlas createForTest(int pageWidth, int pageHeight,
                                                    CgGlyphAtlas.Type type) {
-        return new CgPagedGlyphAtlas(pageWidth, pageHeight, type, GUILLOTINE_FACTORY, true);
+        return new CgPagedGlyphAtlas(pageWidth, pageHeight, type, GUILLOTINE_FACTORY, true,
+                CgPackingStrategy.DEFAULT_SPACING_PX);
     }
 
     /**
      * Creates a test-mode paged atlas with a custom packer factory.
      */
     public static CgPagedGlyphAtlas createForTest(int pageWidth, int pageHeight,
-                                                    CgGlyphAtlas.Type type,
-                                                    PackerFactory packerFactory) {
-        return new CgPagedGlyphAtlas(pageWidth, pageHeight, type, packerFactory, true);
+                                                     CgGlyphAtlas.Type type,
+                                                     PackerFactory packerFactory) {
+        return new CgPagedGlyphAtlas(pageWidth, pageHeight, type, packerFactory, true,
+                CgPackingStrategy.DEFAULT_SPACING_PX);
     }
 
     /**
@@ -140,7 +153,15 @@ public class CgPagedGlyphAtlas {
      */
     public static CgPagedGlyphAtlas createForPagedRegistry(int pageWidth, int pageHeight,
                                                             CgGlyphAtlas.Type type) {
-        return new CgPagedGlyphAtlas(pageWidth, pageHeight, type, GUILLOTINE_FACTORY, false);
+        return new CgPagedGlyphAtlas(pageWidth, pageHeight, type, GUILLOTINE_FACTORY, false,
+                CgPackingStrategy.DEFAULT_SPACING_PX);
+    }
+
+    public static CgPagedGlyphAtlas createForPagedRegistry(int pageWidth, int pageHeight,
+                                                            CgGlyphAtlas.Type type,
+                                                            int spacingPx) {
+        return new CgPagedGlyphAtlas(pageWidth, pageHeight, type, GUILLOTINE_FACTORY, false,
+                spacingPx);
     }
 
     // ── Core API ───────────────────────────────────────────────────────
@@ -314,7 +335,7 @@ public class CgPagedGlyphAtlas {
 
     private CgGlyphAtlasPage createPage() {
         int newPageIndex = pages.size();
-        CgPackingStrategy packer = packerFactory.create(pageWidth, pageHeight);
+        CgPackingStrategy packer = packerFactory.create(pageWidth, pageHeight, spacingPx);
 
         CgGlyphAtlasPage page;
         if (skipGlUpload) {

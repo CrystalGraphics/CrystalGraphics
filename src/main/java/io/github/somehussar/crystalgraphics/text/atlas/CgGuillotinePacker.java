@@ -94,10 +94,21 @@ public class CgGuillotinePacker implements CgPackingStrategy {
      */
     @Override
     public PackedRect insert(int width, int height, Object id) {
+        return insert(width, height, DEFAULT_SPACING_PX, id);
+    }
+
+    @Override
+    public PackedRect insert(int width, int height, int spacing, Object id) {
         if (width <= 0 || height <= 0) {
             throw new IllegalArgumentException(
                     "Rectangle dimensions must be positive, got: " + width + "x" + height);
         }
+        if (spacing < 0) {
+            throw new IllegalArgumentException("spacing must be >= 0, got: " + spacing);
+        }
+
+        int packedWidth = width + spacing;
+        int packedHeight = height + spacing;
 
         int bestFit = WORST_FIT;
         int bestSpace = -1;
@@ -105,13 +116,13 @@ public class CgGuillotinePacker implements CgPackingStrategy {
         for (int i = 0; i < spaces.size(); i++) {
             Rect space = spaces.get(i);
             // Perfect fit — choose immediately
-            if (width == space.w && height == space.h) {
+            if (packedWidth == space.w && packedHeight == space.h) {
                 bestSpace = i;
                 break;
             }
             // Check if rect fits in space
-            if (width <= space.w && height <= space.h) {
-                int fit = rateFit(width, height, space.w, space.h);
+            if (packedWidth <= space.w && packedHeight <= space.h) {
+                int fit = rateFit(packedWidth, packedHeight, space.w, space.h);
                 if (fit < bestFit) {
                     bestSpace = i;
                     bestFit = fit;
@@ -127,10 +138,10 @@ public class CgGuillotinePacker implements CgPackingStrategy {
         PackedRect packed = new PackedRect(space.x, space.y, width, height, id);
 
         // Split the chosen space using guillotine strategy
-        splitSpace(bestSpace, width, height);
+        splitSpace(bestSpace, packedWidth, packedHeight);
 
         packedCount++;
-        packedArea += (long) width * height;
+        packedArea += (long) packedWidth * packedHeight;
         return packed;
     }
 
