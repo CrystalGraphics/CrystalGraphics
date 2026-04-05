@@ -123,12 +123,12 @@ public class CgGlyphAtlasPage {
             GL11.glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
             GL11.glTexImage2D(GL_TEXTURE_2D, 0, GL_R8,
                     pageWidth, pageHeight, 0,
-                    GL_RED, GL_UNSIGNED_BYTE, (ByteBuffer) null);
+                    GL_RED, GL_UNSIGNED_BYTE, BufferUtils.createByteBuffer(pageWidth * pageHeight));
             GL11.glPixelStorei(GL_UNPACK_ALIGNMENT, prevAlignment);
         } else {
             GL11.glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F,
                     pageWidth, pageHeight, 0,
-                    GL_RGB, GL_FLOAT, (FloatBuffer) null);
+                    GL_RGB, GL_FLOAT, BufferUtils.createFloatBuffer(pageWidth * pageHeight * 3));
         }
 
         if (type == CgGlyphAtlas.Type.BITMAP) {
@@ -292,11 +292,12 @@ public class CgGlyphAtlasPage {
         int pw = packed.getWidth();
         int ph = packed.getHeight();
 
-        // Normalised UVs
-        float u0 = (float) px / pageWidth;
-        float v0 = (float) py / pageHeight;
-        float u1 = (float) (px + pw) / pageWidth;
-        float v1 = (float) (py + ph) / pageHeight;
+        float insetX = key.isMsdf() && pw > 1 ? 0.5f : 0.0f;
+        float insetY = key.isMsdf() && ph > 1 ? 0.5f : 0.0f;
+        float u0 = (px + insetX) / pageWidth;
+        float v0 = (py + insetY) / pageHeight;
+        float u1 = (px + pw - insetX) / pageWidth;
+        float v1 = (py + ph - insetY) / pageHeight;
 
         // Plane bounds derived from bearing/metrics in raster space.
         // For MSDF: use full box size (includes SDF range border).

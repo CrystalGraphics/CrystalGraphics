@@ -23,6 +23,11 @@ void main() {
     float sd = median(msdf.r, msdf.g, msdf.b);
     float screenPxDist = screenPxRange * (sd - 0.5);
     float opacity = clamp(screenPxDist + 0.5, 0.0, 1.0);
+    float alpha = v_color.a * opacity;
 
-    fragColor = vec4(v_color.rgb, v_color.a * opacity);
+    if (alpha <= (1.0 / 255.0)) {
+        discard;
+    }
+
+    fragColor = vec4(v_color.rgb, alpha);
 }

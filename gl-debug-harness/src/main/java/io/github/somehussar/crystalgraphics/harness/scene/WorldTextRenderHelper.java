@@ -128,10 +128,6 @@ public final class WorldTextRenderHelper {
      * to world units with a Y-flip for correct orientation, then draws
      * via {@link CgTextRenderer#drawWorld}.</p>
      *
-     * <p>The Y-flip (negative Y scale) reverses triangle winding order,
-     * so we temporarily switch GL front face to CW to prevent back-face
-     * culling from discarding visible faces.</p>
-     *
      * @param viewMatrix   the camera's view matrix (world → view space)
      * @param screenWidth  current viewport width in pixels
      * @param screenHeight current viewport height in pixels
@@ -163,12 +159,8 @@ public final class WorldTextRenderHelper {
 
         registry.tickFrame(frameNumber);
 
-        // Negative Y scale flips triangle winding order; switch front face to
-        // clockwise so drawWorld()'s back-face culling doesn't discard visible faces.
-        GL11.glFrontFace(GL11.GL_CW);
         renderer.drawWorld(worldLayout, font, 0.0f, 0.0f, 0xFFFFFFFF, frameNumber,
                 worldContext, poseStack);
-        GL11.glFrontFace(GL11.GL_CCW);
     }
 
     /**
