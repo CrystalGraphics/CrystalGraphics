@@ -179,8 +179,8 @@ public class Camera3D {
 
         // SHIFT: move down, clamped to floor level
         if (Keyboard.isKeyDown(Keyboard.KEY_LSHIFT) || Keyboard.isKeyDown(Keyboard.KEY_RSHIFT)) {
+            speed *= 0.1f;
             dy -= speed;
-            speed *=0.1f;
         }
         
         // W/S: forward/backward along look direction (XZ plane only)

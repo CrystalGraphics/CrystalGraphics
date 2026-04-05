@@ -201,4 +201,20 @@ public class CgTextRendererMetricsTest {
         assertEquals(0, CgTextRenderer.resolveSubPixelBucket(ctx, key, 48, 0.75f));
         assertEquals(3, CgTextRenderer.resolveSubPixelBucket(ctx, key, 24, 0.75f));
     }
+
+    @Test
+    public void msdfLogicalNormalizationUsesAtlasScaleNotRequestedRenderSize() {
+        int baseTargetPx = 24;
+        int atlasScalePx = 48;
+        int effectiveTargetPx = 24;
+
+        float msdfScale = CgTextRenderer.logicalMetricScale(baseTargetPx, atlasScalePx);
+        float bitmapScale = CgTextRenderer.logicalMetricScale(baseTargetPx, effectiveTargetPx);
+
+        assertEquals(0.5f, msdfScale, 0.0001f);
+        assertEquals(1.0f, bitmapScale, 0.0001f);
+
+        // A 48px-atlas MSDF plane width should normalize back to a 24px logical glyph.
+        assertEquals(24.0f, 48.0f * msdfScale, 0.0001f);
+    }
 }
