@@ -11,16 +11,6 @@ import java.util.Map;
  */
 public class HarnessConfig {
 
-    private static volatile String[] globalCliArgs = new String[0];
-
-    public static void setGlobalCliArgs(String[] args) {
-        globalCliArgs = args != null ? args : new String[0];
-    }
-
-    public static String[] getGlobalCliArgs() {
-        return globalCliArgs;
-    }
-
     private String outputDir;
     private int width;
     private int height;

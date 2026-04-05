@@ -1,6 +1,6 @@
 package io.github.somehussar.crystalgraphics.harness.camera;
 
-import io.github.somehussar.crystalgraphics.harness.config.WorldConfig;
+import io.github.somehussar.crystalgraphics.harness.config.WorldSettings;
 import io.github.somehussar.crystalgraphics.harness.util.HarnessShaderUtil;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
@@ -16,8 +16,8 @@ import java.util.logging.Logger;
  * vertex data uploaded to a VAO/VBO.
  *
  * <p>The floor is a large quad centered at the origin, rendered as two triangles.
- * Floor color is sourced from {@link WorldConfig} singleton, defaulting to gray
- * (0.5, 0.5, 0.5).</p>
+ * Floor color is sourced from the resolved {@link WorldSettings} passed to
+ * {@link #init(WorldSettings)}, defaulting to gray (0.5, 0.5, 0.5).</p>
  *
  * <p>The floor plane is drawn with depth testing enabled. Scenes using this
  * renderer should ensure GL_DEPTH_TEST is active.</p>
@@ -48,7 +48,7 @@ public class FloorRenderer {
 
     // Two triangles forming a quad on the XZ plane at Y=0
     // Format: x, y, z, r, g, b per vertex
-    // Vertex data is built at init() time from WorldConfig
+    // Vertex data is built at init() time from resolved WorldSettings
 
     private int program;
     private int vao;
@@ -60,18 +60,20 @@ public class FloorRenderer {
      * Initializes GL resources (shader program, VAO, VBO).
      * Must be called once with a valid GL context before {@link #render}.
      *
-     * <p>Floor color and extent are read from {@link WorldConfig} at init time.</p>
+     * <p>Floor color and extent are read from the resolved {@link WorldSettings}
+     * passed as a parameter, not from a mutable global singleton.</p>
+     *
+     * @param settings the resolved world settings for this run (must not be null)
      */
-    public void init() {
+    public void init(WorldSettings settings) {
         if (initialized) {
             return;
         }
 
-        WorldConfig worldConfig = WorldConfig.get();
-        float halfSize = worldConfig.getFloorHalfSize();
-        float r = worldConfig.getFloorR();
-        float g = worldConfig.getFloorG();
-        float b = worldConfig.getFloorB();
+        float halfSize = settings.getFloorHalfSize();
+        float r = settings.getFloorR();
+        float g = settings.getFloorG();
+        float b = settings.getFloorB();
 
         float[] floorVertices = {
             -halfSize, 0.0f, -halfSize, r, g, b,
@@ -143,21 +145,17 @@ public class FloorRenderer {
      * <p>The MVP matrix should be projection * view (no model transform needed,
      * as the floor is at the world origin).</p>
      *
+     * <p>GL state requirements (depth ON, blend OFF, depth writes ON) are set by
+     * {@link io.github.somehussar.crystalgraphics.harness.util.RenderPassState#beginWorldPass()}
+     * before this method is called by the runner. This renderer does not manage
+     * its own GL state save/restore — the pipeline boundary helpers handle it.</p>
+     *
      * @param mvpMatrix the combined model-view-projection matrix stored in a float[16] column-major
      */
     public void render(float[] mvpMatrix) {
         if (!initialized) {
             throw new IllegalStateException("FloorRenderer.init() must be called before render()");
         }
-
-        // Save GL state that we modify so we don't corrupt other renderers
-        boolean depthWasEnabled = GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
-        boolean blendWasEnabled = GL11.glIsEnabled(GL11.GL_BLEND);
-
-        // Floor must render with depth testing enabled and blending disabled
-        GL11.glEnable(GL11.GL_DEPTH_TEST);
-        GL11.glDepthMask(true);
-        GL11.glDisable(GL11.GL_BLEND);
 
         FloatBuffer mvpBuf = BufferUtils.createFloatBuffer(16);
         mvpBuf.put(mvpMatrix).flip();
@@ -170,14 +168,6 @@ public class FloorRenderer {
         GL30.glBindVertexArray(0);
 
         GL20.glUseProgram(0);
-
-        // Restore prior GL state
-        if (!depthWasEnabled) {
-            GL11.glDisable(GL11.GL_DEPTH_TEST);
-        }
-        if (blendWasEnabled) {
-            GL11.glEnable(GL11.GL_BLEND);
-        }
     }
 
     /**

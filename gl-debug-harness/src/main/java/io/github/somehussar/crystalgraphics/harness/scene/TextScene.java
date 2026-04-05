@@ -9,8 +9,8 @@ import io.github.somehussar.crystalgraphics.gl.text.CgFontRegistry;
 import io.github.somehussar.crystalgraphics.gl.text.CgGlyphAtlas;
 import io.github.somehussar.crystalgraphics.gl.text.CgTextRenderContext;
 import io.github.somehussar.crystalgraphics.gl.text.CgTextRenderer;
-import io.github.somehussar.crystalgraphics.harness.*;
-import io.github.somehussar.crystalgraphics.harness.config.HarnessConfig;
+import io.github.somehussar.crystalgraphics.harness.FrameInfo;
+import io.github.somehussar.crystalgraphics.harness.HarnessSceneLifecycle;
 import io.github.somehussar.crystalgraphics.harness.config.HarnessContext;
 import io.github.somehussar.crystalgraphics.harness.config.TextSceneConfig;
 import io.github.somehussar.crystalgraphics.harness.util.HarnessFontUtil;
@@ -26,7 +26,7 @@ import java.io.File;
 import java.util.List;
 import java.util.logging.Logger;
 
-public class TextScene implements HarnessScene {
+public class TextScene implements HarnessSceneLifecycle {
 
     private static final Logger LOGGER = Logger.getLogger(TextScene.class.getName());
 
@@ -36,9 +36,19 @@ public class TextScene implements HarnessScene {
     private static final int TOP_LABEL_COLOR = 0xAAFFAAFF;
 
     @Override
-    public void run(HarnessContext ctx) {
-        TextSceneConfig config = TextSceneConfig.create(HarnessConfig.getGlobalCliArgs());
+    public void init(HarnessContext ctx) {
+    }
+
+    @Override
+    public void render(HarnessContext ctx, FrameInfo frame) {
+        // Typed config is resolved before execution in FontDebugHarnessMain
+        // and set on the context — no scene-side CLI parsing needed.
+        TextSceneConfig config = (TextSceneConfig) ctx.getSceneConfig();
         run(ctx, ctx.getOutputDir(), config);
+    }
+
+    @Override
+    public void dispose() {
     }
 
     void run(HarnessContext ctx, String outputDir, TextSceneConfig config) {

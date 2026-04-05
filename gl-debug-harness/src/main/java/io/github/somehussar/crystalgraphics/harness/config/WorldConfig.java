@@ -1,14 +1,22 @@
 package io.github.somehussar.crystalgraphics.harness.config;
 
 /**
- * Singleton holding global world rendering settings for all 3D scenes.
+ * Singleton holding global world rendering settings defaults for all 3D scenes.
  *
  * <p>Provides sky color, floor color, and other world-level parameters
  * accessible from anywhere without passing as method parameters.
  * Scenes read directly from this singleton via {@link #get()}.</p>
  *
  * <p>All colors are stored as RGB float triplets in [0.0, 1.0] range.</p>
+ *
+ * @deprecated Runtime consumers should use the immutable {@link WorldSettings}
+ *             resolved per-run and available via
+ *             {@link HarnessContext#getWorldSettings()}.
+ *             This class is retained only as the source of default values
+ *             for {@link WorldSettings#resolveFromDefaults()}.
+ *             Do NOT call {@link #get()} from rendering code.
  */
+@Deprecated
 public final class WorldConfig {
 
     private static final WorldConfig INSTANCE = new WorldConfig();
@@ -31,7 +39,12 @@ public final class WorldConfig {
 
     /**
      * Returns the global WorldConfig singleton instance.
+     *
+     * @deprecated Use {@link HarnessContext#getWorldSettings()} for runtime
+     *             access. This method is retained only for
+     *             {@link WorldSettings#resolveFromDefaults()}.
      */
+    @Deprecated
     public static WorldConfig get() {
         return INSTANCE;
     }
@@ -42,6 +55,12 @@ public final class WorldConfig {
     public float getSkyG() { return skyG; }
     public float getSkyB() { return skyB; }
 
+    /**
+     * @deprecated Mutating global world config is no longer supported.
+     *             Use {@link WorldSettings.Builder#skyColor(float, float, float)}
+     *             at run startup instead.
+     */
+    @Deprecated
     public void setSkyColor(float r, float g, float b) {
         this.skyR = r;
         this.skyG = g;
@@ -54,6 +73,12 @@ public final class WorldConfig {
     public float getFloorG() { return floorG; }
     public float getFloorB() { return floorB; }
 
+    /**
+     * @deprecated Mutating global world config is no longer supported.
+     *             Use {@link WorldSettings.Builder#floorColor(float, float, float)}
+     *             at run startup instead.
+     */
+    @Deprecated
     public void setFloorColor(float r, float g, float b) {
         this.floorR = r;
         this.floorG = g;
@@ -64,6 +89,12 @@ public final class WorldConfig {
 
     public float getFloorHalfSize() { return floorHalfSize; }
 
+    /**
+     * @deprecated Mutating global world config is no longer supported.
+     *             Use {@link WorldSettings.Builder#floorHalfSize(float)}
+     *             at run startup instead.
+     */
+    @Deprecated
     public void setFloorHalfSize(float halfSize) {
         this.floorHalfSize = halfSize;
     }

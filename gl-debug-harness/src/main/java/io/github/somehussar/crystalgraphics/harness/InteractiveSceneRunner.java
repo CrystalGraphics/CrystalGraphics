@@ -4,66 +4,105 @@ import io.github.somehussar.crystalgraphics.harness.camera.Camera3D;
 import io.github.somehussar.crystalgraphics.harness.camera.FloorRenderer;
 import io.github.somehussar.crystalgraphics.harness.camera.HUDRenderer;
 import io.github.somehussar.crystalgraphics.harness.camera.PauseScreenRenderer;
+import io.github.somehussar.crystalgraphics.harness.capture.ArtifactService;
+import io.github.somehussar.crystalgraphics.harness.capture.CaptureCallback;
 import io.github.somehussar.crystalgraphics.harness.config.HarnessContext;
-import io.github.somehussar.crystalgraphics.harness.config.WorldConfig;
+import io.github.somehussar.crystalgraphics.harness.config.OutputSettings;
+import io.github.somehussar.crystalgraphics.harness.config.RuntimeServices;
+import io.github.somehussar.crystalgraphics.harness.config.ViewportState;
+import io.github.somehussar.crystalgraphics.harness.config.WorldSettings;
 import io.github.somehussar.crystalgraphics.harness.debug.HarnessDebugTools;
+import io.github.somehussar.crystalgraphics.harness.runtime.FrameClock;
+import io.github.somehussar.crystalgraphics.harness.runtime.InputPauseHandler;
+import io.github.somehussar.crystalgraphics.harness.runtime.OverlayCaptureOrchestrator;
+import io.github.somehussar.crystalgraphics.harness.runtime.OverlayPipeline;
+import io.github.somehussar.crystalgraphics.harness.runtime.ResizeHandler;
+import io.github.somehussar.crystalgraphics.harness.runtime.WorldPassCoordinator;
 import io.github.somehussar.crystalgraphics.harness.scheduler.TaskScheduler;
-
-import org.joml.Matrix4f;
-import org.lwjgl.input.Keyboard;
-import org.lwjgl.input.Mouse;
+import io.github.somehussar.crystalgraphics.harness.util.RenderPassState;
 import org.lwjgl.opengl.Display;
 import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL13;
-import org.lwjgl.opengl.GL15;
 
 import java.util.logging.Logger;
 
 /**
- * Drives the render loop for {@link InteractiveHarnessScene} implementations.
+ * Drives the render loop for interactive scene implementations.
  *
- * <p>This runner manages the Camera3D, FloorRenderer, TaskScheduler, and
- * frame timing. It wraps the scene's lifecycle methods (init → renderFrame → cleanup)
- * and provides the debug tools for LLM-driven validation.</p>
+ * <p>Drives scenes through the unified {@link InteractiveSceneLifecycle}
+ * contract.</p>
+ *
+ * <p>This runner composes focused runtime service collaborators, each owning
+ * a single concern:</p>
+ * <ul>
+ *   <li>{@link FrameClock} — frame timing (delta, elapsed, frame number)</li>
+ *   <li>{@link InputPauseHandler} — keyboard pause toggle and mouse grab</li>
+ *   <li>{@link ResizeHandler} — display resize detection and propagation</li>
+ *   <li>{@link OverlayCaptureOrchestrator} — overlay rendering and capture callbacks</li>
+ * </ul>
+ *
+ * <p>The runner itself remains a slim sequencer that calls these services
+ * in the correct order each frame. It wraps the scene's lifecycle methods
+ * (init → render → dispose) and provides the debug tools for LLM-driven
+ * validation.</p>
+ *
+ * <p><b>Frame ordering contract</b> (preserved exactly):</p>
+ * <ol>
+ *   <li>Frame clock tick (timing)</li>
+ *   <li>Resize check and propagation</li>
+ *   <li>Input: poll keyboard for pause toggle</li>
+ *   <li>Camera update (skipped when paused)</li>
+ *   <li>Task scheduler tick</li>
+ *   <li>World pass GL state setup (depth ON, blend OFF)</li>
+ *   <li>Clear framebuffer (sky color from resolved {@link WorldSettings})</li>
+ *   <li>Floor rendering (if uses3DCamera)</li>
+ *   <li>Scene pass GL state setup</li>
+ *   <li>Scene content: {@code scene.render()}</li>
+ *   <li>Post-scene GL state reset → pause overlay → HUD → capture callback</li>
+ *   <li>Buffer swap + frame sync</li>
+ * </ol>
  *
  * <p>Supports a pause mode toggled by ESCAPE or T keys. When paused:
  * the mouse cursor is unlocked, camera updates are disabled, and a
  * semi-transparent overlay is rendered at the bottom of the screen.
  * Pressing ESCAPE or T again resumes normal operation.</p>
  *
- * <p>For non-interactive scenes ({@link HarnessScene}), this class is not used;
+ * <p>For non-interactive scenes, this class is not used;
  * the existing single-shot execution path in FontDebugHarnessMain handles them.</p>
  */
-public final class InteractiveSceneRunner {
+public final class InteractiveSceneRunner implements CaptureCallback {
 
     private static final Logger LOGGER = Logger.getLogger(InteractiveSceneRunner.class.getName());
 
     private static final int TARGET_FPS = 60;
-    private static final float FOV_DEGREES = 60.0f;
-    private static final float NEAR_PLANE = 0.1f;
-    private static final float FAR_PLANE = 1000.0f;
-
-    private final InteractiveHarnessScene scene;
-    private final HarnessContext ctx;
-
-    private Camera3D camera;
-    private FloorRenderer floorRenderer;
-    private HUDRenderer hudRenderer;
-    private PauseScreenRenderer pauseRenderer;
-    private TaskScheduler scheduler;
-    private HarnessDebugTools debugTools;
-
-    private boolean paused = false;
 
     /**
-     * Post-render callback that fires after each frame is fully rendered
-     * (including floor, HUD, pause overlay) but BEFORE Display.update().
-     * Used by test scenes that need to capture screenshots of the current
-     * frame's rendered content rather than the previous frame.
+     * The scene driven by this runner, accessed through the unified lifecycle contract.
      */
-    private Runnable postRenderCallback = null;
+    private final InteractiveSceneLifecycle scene;
+    private final HarnessContext ctx;
 
-    public InteractiveSceneRunner(InteractiveHarnessScene scene, HarnessContext ctx) {
+    // ── Core subsystems (domain objects, not runtime lifecycle concerns) ──
+    private Camera3D camera;
+    private TaskScheduler scheduler;
+    private HarnessDebugTools debugTools;
+    private ArtifactService artifactService;
+
+    // Immutable world settings resolved once from context at run start.
+    // Used for sky clear color each frame — avoids calling mutable singleton mid-render.
+    private WorldSettings worldSettings;
+
+    // ── Runtime service collaborators ──
+    // Each owns a single runtime concern, composed here for sequencing.
+    // Extracted from the monolithic runner to isolate input handling,
+    // frame timing, resize propagation, and overlay/capture orchestration.
+    private FrameClock frameClock;
+    private InputPauseHandler inputPauseHandler;
+    private ResizeHandler resizeHandler;
+    private OverlayCaptureOrchestrator overlayCaptureOrchestrator;
+    private OverlayPipeline overlayPipeline;
+    private WorldPassCoordinator worldPassCoordinator;
+
+    public InteractiveSceneRunner(InteractiveSceneLifecycle scene, HarnessContext ctx) {
         this.scene = scene;
         this.ctx = ctx;
     }
@@ -71,192 +110,128 @@ public final class InteractiveSceneRunner {
     /**
      * Runs the full interactive scene lifecycle: init → render loop → cleanup.
      *
-     * <p>Creates Camera3D, TaskScheduler, and renderers, populates the context
+     * <p>Creates all runtime service collaborators, populates the context
      * with references, then enters the render loop. The loop runs until the
-     * scene signals completion via {@link InteractiveHarnessScene#isRunning()}
+     * scene signals completion via {@link InteractiveSceneLifecycle#isRunning()}
      * returning false, or the Display close is requested.</p>
      */
     public void run() {
+        // ── Create core subsystems ──
         camera = new Camera3D();
-        floorRenderer = new FloorRenderer();
-        hudRenderer = new HUDRenderer();
-        pauseRenderer = new PauseScreenRenderer();
+        HUDRenderer hudRenderer = new HUDRenderer();
+        PauseScreenRenderer pauseRenderer = new PauseScreenRenderer();
+        overlayPipeline = new OverlayPipeline(hudRenderer, pauseRenderer);
         scheduler = new TaskScheduler();
 
+        // Resolve immutable world settings from context (frozen at startup).
+        // All rendering reads go through this field, not WorldConfig.get().
+        worldSettings = ctx.getWorldSettings();
+        if (worldSettings == null) {
+            throw new IllegalStateException(
+                    "WorldSettings must be set on HarnessContext before running an interactive scene");
+        }
+        worldPassCoordinator = new WorldPassCoordinator(new FloorRenderer(), worldSettings);
+
+        // ── Create runtime service collaborators ──
+        frameClock = new FrameClock();
+        inputPauseHandler = new InputPauseHandler();
+        resizeHandler = new ResizeHandler(ctx, worldPassCoordinator, overlayPipeline);
+        overlayCaptureOrchestrator = new OverlayCaptureOrchestrator(ctx, overlayPipeline);
+
         // Populate context with shared subsystem references so scenes
-        // can access them via ctx.getCamera3D(), ctx.getRunner(), etc.
+        // can access them via ctx.getCamera3D(), ctx.getRuntimeServices(), etc.
         ctx.setCamera3D(camera);
         ctx.setTaskScheduler(scheduler);
-        ctx.setRunner(this);
+        ctx.setRuntimeServices(new RuntimeServices(this));
+
+        // Create the framework-owned artifact service for centralized capture.
+        // Uses the runner as the CaptureCallback so captures are scheduled
+        // as post-render callbacks in the frame pipeline.
+        OutputSettings outputSettings = ctx.getOutputSettings();
+        ViewportState viewport = ctx.getViewport();
+        artifactService = new ArtifactService(outputSettings, viewport, this);
+        ctx.setArtifactService(artifactService);
 
         int currentWidth = ctx.getScreenWidth();
         int currentHeight = ctx.getScreenHeight();
 
-        debugTools = new HarnessDebugTools(camera, ctx.getOutputDir(), ctx.getOutputName(),
-                currentWidth, currentHeight);
+        debugTools = new HarnessDebugTools(camera, artifactService);
 
         GL11.glViewport(0, 0, currentWidth, currentHeight);
         GL11.glEnable(GL11.GL_DEPTH_TEST);
         GL11.glDepthFunc(GL11.GL_LEQUAL);
 
-        floorRenderer.init();
-        hudRenderer.init();
-        pauseRenderer.init();
+        worldPassCoordinator.init();
+        overlayPipeline.init();
         scene.init(ctx);
 
         LOGGER.info("[InteractiveSceneRunner] Entering render loop for: "
                 + scene.getClass().getSimpleName());
 
-        long lastTimeNanos = System.nanoTime();
-        double elapsedTime = 0.0;
-        long frameNumber = 0;
-
+        // ── Render loop ──
+        // Frame ordering is explicitly documented and must be preserved exactly.
+        // Each step delegates to the responsible service collaborator.
         while (!Display.isCloseRequested() && scene.isRunning()) {
-            long nowNanos = System.nanoTime();
-            float deltaTime = (nowNanos - lastTimeNanos) / 1_000_000_000.0f;
-            lastTimeNanos = nowNanos;
-            elapsedTime += deltaTime;
-            frameNumber++;
 
-            // Handle window resize events — update context and notify renderers
-            if (Display.wasResized()) {
-                currentWidth = Display.getWidth();
-                currentHeight = Display.getHeight();
-                ctx.setScreenDimensions(currentWidth, currentHeight);
-                GL11.glViewport(0, 0, currentWidth, currentHeight);
-                hudRenderer.onDisplayResize(currentWidth, currentHeight);
-                pauseRenderer.onDisplayResize(currentWidth, currentHeight);
-                floorRenderer.onDisplayResize(currentWidth, currentHeight);
+            // 1. Frame clock tick — compute delta, elapsed, frame number
+            frameClock.tick();
+
+            // 2. Handle window resize events — update context and notify renderers.
+            //    Also notifies the scene via the unified lifecycle onResize hook.
+            if (resizeHandler.checkAndPropagate()) {
+                ViewportState vp = ctx.getViewport();
+                scene.onResize(vp.getWidth(), vp.getHeight());
             }
 
-            // Check for pause toggle BEFORE camera input processing.
-            // Uses Keyboard event queue to detect key-down events (not held state),
-            // preventing rapid toggling from a single key press.
-            pollPauseToggle();
+            // 3. Check for pause toggle BEFORE camera input processing.
+            //    Uses Keyboard event queue to detect key-down events (not held state),
+            //    preventing rapid toggling from a single key press.
+            inputPauseHandler.pollPauseToggle();
 
-            if (scene.uses3DCamera() && !paused) {
-                camera.update(deltaTime);
+            // 4. Camera update (skipped when paused)
+            if (scene.uses3DCamera() && !inputPauseHandler.isPaused()) {
+                camera.update(frameClock.getDeltaTime());
             }
 
-            // Fire any scheduled tasks that are due (even when paused)
-            scheduler.tick(elapsedTime);
+            // 5. Fire any scheduled tasks that are due (even when paused)
+            scheduler.tick(frameClock.getElapsedTime());
 
-            // Ensure GL state is clean before rendering.
-            // The text renderer (CgTextRenderer) may leave GL state dirty
-            // between frames — explicitly reset critical state here.
-            GL11.glEnable(GL11.GL_DEPTH_TEST);
-            GL11.glDepthMask(true);
-            GL11.glDisable(GL11.GL_BLEND);
+            // ── Frame render pipeline ──
+            // Pass ordering: world → scene → post-scene reset → overlays → capture
+            // Each pass uses RenderPassState to declare its GL state requirements.
 
-            // Clear framebuffer with sky color from WorldConfig
-            WorldConfig worldCfg = WorldConfig.get();
-            GL11.glClearColor(worldCfg.getSkyR(), worldCfg.getSkyG(), worldCfg.getSkyB(), 1.0f);
-            GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
+            // 6. Pre-render: set world pass state (depth ON, blend OFF, depth writes ON)
+            RenderPassState.beginWorldPass();
 
-            // Render floor plane BEFORE scene content so text composites over the
-            // floor rather than over the sky clear color. This prevents the sky-blue
-            // background from showing through transparent areas of text quads.
-            if (scene.uses3DCamera()) {
-                renderFloor();
-            }
+            worldPassCoordinator.executeWorldPass(ctx, camera, scene.uses3DCamera());
 
-            // Render scene content
-            scene.renderFrame(deltaTime, elapsedTime, frameNumber);
+            // 9. Scene pass: set baseline state, then let the scene render freely
+            RenderPassState.beginScenePass();
+            scene.render(ctx, new FrameInfo(frameClock.getDeltaTime(),
+                    frameClock.getElapsedTime(), frameClock.getFrameNumber()));
 
-            // Reset GL state after scene rendering to ensure overlays render correctly.
-            // Scene's text renderer may leave a shader program bound, depth test
-            // disabled, or blend mode changed — all of which corrupt HUD/pause overlay.
-            GL20ResetHelper.resetAfterScene();
+            // 10-13. Post-scene sequence: GL reset → pause overlay → HUD → capture callback
+            //        Delegated to OverlayCaptureOrchestrator which owns this entire sequence.
+            overlayCaptureOrchestrator.executePostSceneSequence(
+                    inputPauseHandler.isPaused(), scene.uses3DCamera());
 
-            // Render pause overlay if paused (after scene, before HUD)
-            if (paused) {
-                pauseRenderer.render(ctx);
-            }
-
-            // Render HUD overlay (after scene and pause, before swap)
-            if (scene.uses3DCamera()) {
-                hudRenderer.render(ctx);
-            }
-
-            // Fire post-render callback (screenshot capture point)
-            if (postRenderCallback != null) {
-                Runnable cb = postRenderCallback;
-                postRenderCallback = null;
-                cb.run();
-            }
-
+            // 14. Buffer swap + frame sync
             Display.update();
             Display.sync(TARGET_FPS);
         }
 
-        LOGGER.info("[InteractiveSceneRunner] Render loop exited after " + frameNumber + " frames");
+        LOGGER.info("[InteractiveSceneRunner] Render loop exited after "
+                + frameClock.getFrameNumber() + " frames");
 
         // Ensure cursor is released on exit
-        Mouse.setGrabbed(false);
+        inputPauseHandler.releaseCursor();
 
-        scene.cleanup();
-        floorRenderer.delete();
-        hudRenderer.delete();
-        pauseRenderer.delete();
+        scene.dispose();
+        worldPassCoordinator.delete();
+        overlayCaptureOrchestrator.deletePipeline();
 
         LOGGER.info("[InteractiveSceneRunner] Cleanup complete. shouldShutdown="
                 + scene.shouldShutdownOnComplete());
-    }
-
-    /**
-     * Polls the LWJGL keyboard event queue for ESCAPE and T key-down events
-     * to toggle pause state. Uses the event queue rather than
-     * {@code Keyboard.isKeyDown()} to ensure a single press produces exactly
-     * one toggle, regardless of how many frames the key is held.
-     *
-     * <p>When toggling to paused: releases the mouse cursor.
-     * When toggling to unpaused: grabs the mouse cursor and drains any
-     * accumulated mouse delta to prevent a camera jump.</p>
-     */
-    private void pollPauseToggle() {
-        while (Keyboard.next()) {
-            if (!Keyboard.getEventKeyState()) {
-                // Only act on key-down events, ignore key-up
-                continue;
-            }
-            int key = Keyboard.getEventKey();
-            if (key == Keyboard.KEY_ESCAPE || key == Keyboard.KEY_T) {
-                paused = !paused;
-                if (paused) {
-                    Mouse.setGrabbed(false);
-                    LOGGER.info("[InteractiveSceneRunner] PAUSED — cursor released");
-                } else {
-                    Mouse.setGrabbed(true);
-                    // Drain accumulated mouse delta to prevent a camera jump on resume
-                    Mouse.getDX();
-                    Mouse.getDY();
-                    LOGGER.info("[InteractiveSceneRunner] RESUMED — cursor locked");
-                }
-            }
-        }
-    }
-
-    /**
-     * Renders the floor plane using the current camera view and perspective projection.
-     *
-     * <p>Computes the MVP matrix from the perspective projection and camera view matrix,
-     * then passes the column-major float[16] to the FloorRenderer.</p>
-     */
-    private void renderFloor() {
-        float aspect = (float) ctx.getScreenWidth() / (float) ctx.getScreenHeight();
-        Matrix4f projection = new Matrix4f().perspective(
-                (float) Math.toRadians(FOV_DEGREES), aspect, NEAR_PLANE, FAR_PLANE);
-
-        Matrix4f viewMatrix = camera.getViewMatrix();
-
-        // MVP = projection * view (no model transform for floor)
-        Matrix4f mvp = new Matrix4f();
-        projection.mul(viewMatrix, mvp);
-
-        float[] mvpArray = new float[16];
-        mvp.get(mvpArray);
-
-        floorRenderer.render(mvpArray);
     }
 
     /**
@@ -310,28 +285,20 @@ public final class InteractiveSceneRunner {
 
     /**
      * Returns whether the runner is currently in paused state.
+     * Delegates to the {@link InputPauseHandler} service.
      */
     public boolean isPaused() {
-        return paused;
+        return inputPauseHandler.isPaused();
     }
 
     /**
      * Programmatically sets the paused state. Used by test scenes to
      * trigger pause without keyboard input. Handles mouse grab/ungrab
      * and drains accumulated mouse delta to prevent camera jumps.
+     * Delegates to the {@link InputPauseHandler} service.
      */
     public void setPaused(boolean paused) {
-        if (this.paused == paused) {
-            return;
-        }
-        this.paused = paused;
-        if (paused) {
-            Mouse.setGrabbed(false);
-        } else {
-            Mouse.setGrabbed(true);
-            Mouse.getDX();
-            Mouse.getDY();
-        }
+        inputPauseHandler.setPaused(paused);
     }
 
     /**
@@ -339,28 +306,81 @@ public final class InteractiveSceneRunner {
      * rendering (floor, HUD, pause overlay all drawn) but BEFORE the buffer
      * swap. This is the correct point to capture screenshots that show the
      * current frame's content.
+     * Delegates to the {@link OverlayCaptureOrchestrator} service.
      */
     public void setPostRenderCallback(Runnable callback) {
-        this.postRenderCallback = callback;
+        overlayCaptureOrchestrator.setPostRenderCallback(callback);
+    }
+
+    // ── CaptureCallback implementation ──
+
+    @Override
+    public void schedulePostRenderCapture(Runnable capture) {
+        setPostRenderCallback(capture);
     }
 
     /**
-     * Helper to reset GL state after scene rendering.
-     * Ensures overlays (pause screen, HUD) render correctly regardless
-     * of what GL state the scene's text renderer left behind.
+     * Returns the framework-owned artifact service for this run.
      */
-    private static final class GL20ResetHelper {
-        static void resetAfterScene() {
-            org.lwjgl.opengl.GL20.glUseProgram(0);
-            org.lwjgl.opengl.GL30.glBindVertexArray(0);
-            GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
-            GL15.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, 0);
-            GL13.glActiveTexture(GL13.GL_TEXTURE0);
-            GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
-            GL11.glEnable(GL11.GL_DEPTH_TEST);
-            GL11.glDepthMask(true);
-            GL11.glDisable(GL11.GL_BLEND);
-            GL11.glDisable(GL11.GL_CULL_FACE);
-        }
+    public ArtifactService getArtifactService() {
+        return artifactService;
     }
+
+    /**
+     * Returns the active harness context.
+     *
+     * @return the context used by this runner
+     */
+    public HarnessContext getContext() {
+        return ctx;
+    }
+
+    // ── Service accessors for RuntimeServices and other consumers ──
+
+    /**
+     * Returns the frame clock service.
+     *
+     * <p>Provides access to delta time, elapsed time, and frame number
+     * without requiring the caller to know about the runner's internals.</p>
+     *
+     * @return the frame clock, never null after {@link #run()} begins
+     */
+    public FrameClock getFrameClock() {
+        return frameClock;
+    }
+
+    /**
+     * Returns the input/pause handler service.
+     *
+     * <p>Provides access to pause state and programmatic pause control.</p>
+     *
+     * @return the input handler, never null after {@link #run()} begins
+     */
+    public InputPauseHandler getInputPauseHandler() {
+        return inputPauseHandler;
+    }
+
+    /**
+     * Returns the resize handler service.
+     *
+     * <p>Provides access to the resize propagation mechanism.</p>
+     *
+     * @return the resize handler, never null after {@link #run()} begins
+     */
+    public ResizeHandler getResizeHandler() {
+        return resizeHandler;
+    }
+
+    /**
+     * Returns the overlay and capture orchestrator service.
+     *
+     * <p>Provides access to post-render callback scheduling and overlay
+     * rendering sequence.</p>
+     *
+     * @return the orchestrator, never null after {@link #run()} begins
+     */
+    public OverlayCaptureOrchestrator getOverlayCaptureOrchestrator() {
+        return overlayCaptureOrchestrator;
+    }
+
 }
