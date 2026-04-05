@@ -1,4 +1,4 @@
-package io.github.somehussar.crystalgraphics.harness;
+package io.github.somehussar.crystalgraphics.harness.config;
 
 import org.lwjgl.LWJGLException;
 import org.lwjgl.opengl.ContextAttribs;
@@ -9,12 +9,12 @@ import org.lwjgl.opengl.PixelFormat;
 
 import java.util.logging.Logger;
 
-final class HarnessContext {
+public final class HarnessContext {
 
     private static final Logger LOGGER = Logger.getLogger(HarnessContext.class.getName());
 
-    static final int WIDTH = 800;
-    static final int HEIGHT = 600;
+    public static final int WIDTH = 800;
+    public static final int HEIGHT = 600;
 
     private final String glVersion;
     private final String glVendor;
@@ -26,7 +26,7 @@ final class HarnessContext {
         this.glRenderer = glRenderer;
     }
 
-    static HarnessContext create() {
+    public static HarnessContext create() {
         try {
             Display.setDisplayMode(new DisplayMode(WIDTH, HEIGHT));
             Display.setTitle("CrystalGraphics Debug Harness");
@@ -51,12 +51,12 @@ final class HarnessContext {
         return new HarnessContext(glVersion, glVendor, glRenderer);
     }
 
-    void destroy() {
+    public void destroy() {
         Display.destroy();
         LOGGER.info("[Harness] Display destroyed.");
     }
 
-    String getGlVersion() { return glVersion; }
-    String getGlVendor() { return glVendor; }
-    String getGlRenderer() { return glRenderer; }
+    public String getGlVersion() { return glVersion; }
+    public String getGlVendor() { return glVendor; }
+    public String getGlRenderer() { return glRenderer; }
 }

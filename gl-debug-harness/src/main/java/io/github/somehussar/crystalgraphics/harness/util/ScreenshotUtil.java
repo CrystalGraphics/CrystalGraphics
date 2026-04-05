@@ -1,4 +1,4 @@
-package io.github.somehussar.crystalgraphics.harness;
+package io.github.somehussar.crystalgraphics.harness.util;
 
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
@@ -11,11 +11,11 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.logging.Logger;
 
-final class ScreenshotUtil {
+public final class ScreenshotUtil {
 
     private static final Logger LOGGER = Logger.getLogger(ScreenshotUtil.class.getName());
 
-    static void captureBackbuffer(int width, int height, String outputDir, String filename) {
+    public static void captureBackbuffer(int width, int height, String outputDir, String filename) {
         ByteBuffer pixels = BufferUtils.createByteBuffer(width * height * 4);
         GL11.glPixelStorei(GL11.GL_PACK_ALIGNMENT, 1);
         GL11.glReadPixels(0, 0, width, height, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, pixels);
@@ -36,7 +36,7 @@ final class ScreenshotUtil {
         writePng(image, outputDir, filename);
     }
 
-    static void captureTexture(int textureId, int width, int height,
+    public static void captureTexture(int textureId, int width, int height,
                                int internalFormat, String outputDir, String filename) {
         GL11.glBindTexture(GL11.GL_TEXTURE_2D, textureId);
         GL11.glPixelStorei(GL11.GL_PACK_ALIGNMENT, 1);
@@ -72,7 +72,7 @@ final class ScreenshotUtil {
         writePng(image, outputDir, filename);
     }
 
-    static void captureFboColorTexture(int fboId, int textureId,
+    public static void captureFboColorTexture(int fboId, int textureId,
                                        int width, int height,
                                        String outputDir, String filename) {
         // Read from the FBO directly via glReadPixels bound to the FBO

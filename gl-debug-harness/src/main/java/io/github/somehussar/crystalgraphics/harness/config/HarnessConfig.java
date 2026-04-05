@@ -1,0 +1,133 @@
+package io.github.somehussar.crystalgraphics.harness.config;
+
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * Base configuration for all harness scenes.
+ *
+ * <p>Precedence: hardcoded defaults → system properties → CLI args.
+ * Scene-specific configs extend this and add typed fields.</p>
+ */
+public class HarnessConfig {
+
+    private static volatile String[] globalCliArgs = new String[0];
+
+    public static void setGlobalCliArgs(String[] args) {
+        globalCliArgs = args != null ? args : new String[0];
+    }
+
+    public static String[] getGlobalCliArgs() {
+        return globalCliArgs;
+    }
+
+    private String outputDir;
+    private int width;
+    private int height;
+    private String fontPath;
+
+    public HarnessConfig() {
+        this.outputDir = "gl-debug-harness/harness-output";
+        this.width = 800;
+        this.height = 600;
+        this.fontPath = null;
+    }
+
+    public String getOutputDir() { return outputDir; }
+    public void setOutputDir(String val) { this.outputDir = val; }
+
+    public int getWidth() { return width; }
+    public void setWidth(int val) { this.width = val; }
+
+    public int getHeight() { return height; }
+    public void setHeight(int val) { this.height = val; }
+
+    /** May be null — callers must fall back to system font discovery. */
+    public String getFontPath() { return fontPath; }
+    public void setFontPath(String val) { this.fontPath = val; }
+
+    /**
+     * Apply system property overrides (called before CLI args).
+     */
+    public void applySystemProperties() {
+        String dir = System.getProperty("harness.output.dir");
+        if (dir != null && !dir.isEmpty()) {
+            this.outputDir = dir;
+        }
+        String fp = System.getProperty("harness.font.path");
+        if (fp != null && !fp.isEmpty()) {
+            this.fontPath = fp;
+        }
+        String w = System.getProperty("harness.width");
+        if (w != null && !w.isEmpty()) {
+            this.width = parseIntStrict(w, "harness.width");
+        }
+        String h = System.getProperty("harness.height");
+        if (h != null && !h.isEmpty()) {
+            this.height = parseIntStrict(h, "harness.height");
+        }
+    }
+
+    /**
+     * Apply CLI key=value overrides.
+     */
+    public void applyCliArgs(Map<String, String> args) {
+        if (args.containsKey("output-dir")) {
+            this.outputDir = args.get("output-dir");
+        }
+        if (args.containsKey("font-path")) {
+            this.fontPath = args.get("font-path");
+        }
+        if (args.containsKey("width")) {
+            this.width = parseIntStrict(args.get("width"), "--width");
+        }
+        if (args.containsKey("height")) {
+            this.height = parseIntStrict(args.get("height"), "--height");
+        }
+    }
+
+    public static int parseIntStrict(String value, String paramName) {
+        try {
+            int n = Integer.parseInt(value);
+            if (n <= 0) {
+                throw new IllegalArgumentException(
+                    "Invalid value for " + paramName + ": '" + value + "' (must be positive integer)");
+            }
+            return n;
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException(
+                "Invalid value for " + paramName + ": '" + value + "' (must be a valid integer)");
+        }
+    }
+
+    /**
+     * Parse CLI args into a key→value map.
+     * Supports: --key=value, --key value, --flag (flag→"true").
+     * The --mode arg is excluded from the result.
+     */
+    public static Map<String, String> parseCliArgs(String[] args) {
+        Map<String, String> map = new HashMap<String, String>();
+        for (int i = 0; i < args.length; i++) {
+            String arg = args[i];
+            if (!arg.startsWith("--")) continue;
+            String key;
+            String value;
+            int eq = arg.indexOf('=');
+            if (eq >= 0) {
+                key = arg.substring(2, eq);
+                value = arg.substring(eq + 1);
+            } else {
+                key = arg.substring(2);
+                if (i + 1 < args.length && !args[i + 1].startsWith("--")) {
+                    value = args[++i];
+                } else {
+                    value = "true";
+                }
+            }
+            if (!"mode".equals(key) && !"list".equals(key) && !"help".equals(key)) {
+                map.put(key, value);
+            }
+        }
+        return map;
+    }
+}

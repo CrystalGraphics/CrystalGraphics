@@ -1,13 +1,13 @@
-package io.github.somehussar.crystalgraphics.harness;
+package io.github.somehussar.crystalgraphics.harness.util;
 
 import java.io.File;
 import java.util.logging.Logger;
 
-final class HarnessOutputDir {
+public  class HarnessOutputDir {
 
     private static final Logger LOGGER = Logger.getLogger(HarnessOutputDir.class.getName());
 
-    static void ensureExists(String path) {
+    public static void ensureExists(String path) {
         File dir = new File(path);
         if (!dir.exists()) {
             boolean created = dir.mkdirs();

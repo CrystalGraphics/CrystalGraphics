@@ -35,10 +35,10 @@ dependencies {
     // Root project for CgCapabilities, CgGlyphAtlas, font API
     implementation(project(":"))
 
-    // Log4j2 — needed at runtime because CgShaderFactory/CoreShaderProgram use log4j
-    // (comes from Forge in the MC environment but must be explicit here)
     implementation("org.apache.logging.log4j:log4j-api:2.20.0")
     implementation("org.apache.logging.log4j:log4j-core:2.20.0")
+
+    testImplementation("junit:junit:4.13.2")
 }
 
 tasks.withType<JavaCompile> {
@@ -117,7 +117,7 @@ tasks.register<JavaExec>("runHarness") {
     systemProperty("org.lwjgl.librarypath", lwjglNativesDir)
 
     // Output directory for harness artifacts
-    systemProperty("harness.output.dir", file("build/harness-output").absolutePath)
+    systemProperty("harness.output.dir", file("harness-output").absolutePath)
 
     // Forward system properties for native paths
     systemProperty("freetype.harfbuzz.native.path",
