@@ -38,10 +38,10 @@ public class CgTextLayout {
     /** Lines of shaped runs in visual order. Outer = lines, inner = runs. */
     List<List<CgShapedRun>> lines;
 
-    /** Width of the widest line in pixels. */
+    /** Width of the widest line in logical layout pixels. */
     float totalWidth;
 
-    /** Total height of all lines in pixels. */
+    /** Total height of all lines in logical layout pixels. */
     float totalHeight;
 
     /** Font metrics used during layout. */

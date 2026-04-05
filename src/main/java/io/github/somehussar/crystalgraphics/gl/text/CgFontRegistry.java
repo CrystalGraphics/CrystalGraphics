@@ -27,6 +27,14 @@ import java.util.logging.Logger;
  * atlas. MSDF glyphs are generated through {@link CgMsdfGenerator} and stored
  * in the MSDF atlas, with bitmap fallback when MSDF is unavailable or skipped.</p>
  *
+ * <h3>Physical Raster Space Only</h3>
+ * <p>All glyph metrics stored in atlas regions ({@link CgAtlasRegion}) are in
+ * <strong>physical raster space</strong> — bearings, widths, and heights are
+ * captured at the effective raster size, not in logical layout units. The
+ * registry must never normalize these values into logical space; that
+ * responsibility belongs exclusively to the renderer boundary
+ * ({@code CgTextRenderer.appendQuads}).</p>
+ *
  * <h3>Effective-Size-Aware Lookup</h3>
  * <p>When text is rendered under a PoseStack transform, the effective physical
  * raster size may differ from the base {@code CgFontKey.targetPx}. The registry
@@ -308,14 +316,17 @@ public class CgFontRegistry {
             int width = bitmap.getWidth();
             int height = bitmap.getHeight();
             if (width == 0 || height == 0) {
-                return new CgAtlasRegion(0, 0, 0, 0, 0, 0, 0, 0, key, 0, 0);
+                return new CgAtlasRegion(0, 0, 0, 0, 0, 0, 0, 0, key, 0, 0, 0, 0);
             }
 
             byte[] pixels = normalizeBitmapBuffer(bitmap);
             FTGlyphMetrics metrics = face.getGlyphMetrics();
             float bearingX = metrics.getHoriBearingX() / 64.0f;
             float bearingY = metrics.getHoriBearingY() / 64.0f;
-            return atlas.getOrAllocate(key, pixels, width, height, bearingX, bearingY, currentFrame);
+            float metricsWidth = metrics.getWidth() / 64.0f;
+            float metricsHeight = metrics.getHeight() / 64.0f;
+            return atlas.getOrAllocate(key, pixels, width, height, bearingX, bearingY,
+                    metricsWidth, metricsHeight, currentFrame);
         } catch (FreeTypeException e) {
             LOGGER.log(Level.WARNING, "Failed to rasterize glyph " + key, e);
             return null;
@@ -387,14 +398,35 @@ public class CgFontRegistry {
             int height = bitmap.getHeight();
             if (width == 0 || height == 0) {
                 return new CgAtlasRegion(0, 0, 0, 0, 0, 0, 0, 0,
-                        toAtlasGlyphKey(rasterGlyphKey), 0, 0);
+                        toAtlasGlyphKey(rasterGlyphKey), 0, 0, 0, 0);
             }
 
             byte[] pixels = normalizeBitmapBuffer(bitmap);
             FTGlyphMetrics metrics = face.getGlyphMetrics();
             float bearingX = metrics.getHoriBearingX() / 64.0f;
             float bearingY = metrics.getHoriBearingY() / 64.0f;
-            return atlas.getOrAllocate(toAtlasGlyphKey(rasterGlyphKey), pixels, width, height, bearingX, bearingY, currentFrame);
+
+            // Compute placement metrics at base size to avoid hinting-rounding
+            // drift when scaling back from effective size to logical space.
+            // The glyph bitmap uses effectiveTargetPx for raster quality, but
+            // placement extents must represent the true logical glyph dimensions.
+            int basePx = key.getFontKey().getTargetPx();
+            float metricsWidth;
+            float metricsHeight;
+            if (effectiveTargetPx != basePx) {
+                face.setPixelSizes(0, basePx);
+                loadGlyphOrFallback(face, key.getGlyphId(), FTLoadFlags.FT_LOAD_DEFAULT);
+                FTGlyphMetrics baseMetrics = face.getGlyphMetrics();
+                metricsWidth = baseMetrics.getWidth() / 64.0f;
+                metricsHeight = baseMetrics.getHeight() / 64.0f;
+                bearingX = baseMetrics.getHoriBearingX() / 64.0f;
+                bearingY = baseMetrics.getHoriBearingY() / 64.0f;
+            } else {
+                metricsWidth = metrics.getWidth() / 64.0f;
+                metricsHeight = metrics.getHeight() / 64.0f;
+            }
+            return atlas.getOrAllocate(toAtlasGlyphKey(rasterGlyphKey), pixels, width, height,
+                    bearingX, bearingY, metricsWidth, metricsHeight, currentFrame);
         } catch (FreeTypeException e) {
             LOGGER.log(Level.WARNING, "Failed to rasterize glyph at effective size " + effectiveTargetPx + ": " + key, e);
             return null;

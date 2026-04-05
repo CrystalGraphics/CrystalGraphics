@@ -5,8 +5,12 @@ import io.github.somehussar.crystalgraphics.api.PoseStack;
  * Strategy interface for resolving the effective physical glyph raster size
  * from a {@link PoseStack} transform and a base target pixel size.
  *
- * <h3>Three-Unit Model</h3>
- * <p>The text rendering pipeline uses three distinct pixel-size concepts:</p>
+ * <h3>Three-Space Model: Logical → Physical Raster Mapping</h3>
+ * <p>This resolver bridges the logical layout space and the physical raster
+ * space. It converts a base target pixel size (logical identity) and a
+ * draw-time PoseStack transform into an effective physical raster size that
+ * determines which atlas bucket serves glyphs. The resolver never modifies
+ * logical layout metrics — it only selects the physical rasterization tier.</p>
  * <ol>
  *   <li><strong>Logical layout pixels</strong> — the coordinate space used by
  *       {@code CgTextLayout} for width, height, line breaking, and glyph advances.
