@@ -52,6 +52,10 @@ import java.util.logging.Logger;
 public class InteractiveWorldTextScene implements InteractiveSceneLifecycle {
 
     private static final Logger LOGGER = Logger.getLogger(InteractiveWorldTextScene.class.getName());
+    private static final float MOTION_CAM_X = 1.36f;
+    private static final float MOTION_CAM_Y = 0.70f;
+    private static final float MOTION_CAM_Z = -4.71f;
+    private static final float MOTION_PITCH = -12.0f;
 
     // ── Interactive mode state ──
     private boolean running = true;
@@ -81,9 +85,9 @@ public class InteractiveWorldTextScene implements InteractiveSceneLifecycle {
         helper = new WorldTextRenderHelper(fontPath, fontSizePx, text, layoutWidth, layoutHeight);
         helper.init();
 
-        // Position camera at feet level looking slightly down at the floor
-        camera.moveCamera(0.0f, 1.5f, 10.0f);
-        camera.setPitch(-15.0f);
+        camera.moveCamera(MOTION_CAM_X, MOTION_CAM_Y, MOTION_CAM_Z);
+        camera.setYaw(337.0f);
+        camera.setPitch(MOTION_PITCH);
 
         // Schedule automated screenshots for validation if runtime services are available
         if (ctx.getRuntimeServices() != null) {
@@ -94,16 +98,7 @@ public class InteractiveWorldTextScene implements InteractiveSceneLifecycle {
     }
 
     /**
-     * Schedules three automated screenshots for visual validation:
-     * <ol>
-     *   <li><b>{name}-normal.png</b> — Front view: floor, text, HUD visible</li>
-     *   <li><b>{name}-paused.png</b> — Same view with pause overlay at bottom</li>
-     *   <li><b>{name}-topdown.png</b> — Camera looking straight down at floor + text</li>
-     * </ol>
-     *
-     * <p>Uses shared choreography primitives and post-render callbacks via
-     * RuntimeServices to capture screenshots AFTER the full frame (scene + floor +
-     * HUD + pause) is rendered.</p>
+     * Schedules automated screenshots through the shared validation choreography.
      */
     private void scheduleValidationScreenshots() {
         final TaskScheduler scheduler = ctx.getTaskScheduler();
@@ -114,27 +109,31 @@ public class InteractiveWorldTextScene implements InteractiveSceneLifecycle {
         ValidationChoreographer choreographer = new ValidationChoreographer(
                 camera, scheduler, artifacts, runtime);
 
-        choreographer.addStep(ValidationCaptureStep.builder("normal", 1.0)
-                .cameraPosition(0.0f, 1.5f, 10.0f)
-                .cameraOrientation(0.0f, -15.0f)
+        choreographer.addStep(ValidationCaptureStep.builder("depth-motion-335", 0.5)
+                .cameraPosition(MOTION_CAM_X, MOTION_CAM_Y, MOTION_CAM_Z)
+                .cameraOrientation(335.0f, MOTION_PITCH)
                 .build());
 
-        choreographer.addStep(ValidationCaptureStep.builder("paused", 1.5)
-                .cameraPosition(0.0f, 1.5f, 10.0f)
-                .cameraOrientation(0.0f, -15.0f)
-                .paused()
+        choreographer.addStep(ValidationCaptureStep.builder("depth-motion-336", 1.0)
+                .cameraPosition(MOTION_CAM_X, MOTION_CAM_Y, MOTION_CAM_Z)
+                .cameraOrientation(336.0f, MOTION_PITCH)
                 .build());
 
-        choreographer.addStep(ValidationCaptureStep.builder("topdown", 2.0)
-                .cameraPosition(0.0f, 15.0f, 0.1f)
-                .cameraOrientation(0.0f, -89.0f)
+        choreographer.addStep(ValidationCaptureStep.builder("depth-motion-337", 1.5)
+                .cameraPosition(MOTION_CAM_X, MOTION_CAM_Y, MOTION_CAM_Z)
+                .cameraOrientation(337.0f, MOTION_PITCH)
+                .build());
+
+        choreographer.addStep(ValidationCaptureStep.builder("depth-motion-338", 2.0)
+                .cameraPosition(MOTION_CAM_X, MOTION_CAM_Y, MOTION_CAM_Z)
+                .cameraOrientation(338.0f, MOTION_PITCH)
                 .build());
 
         choreographer.onShutdown(new Runnable() {
             @Override
             public void run() {
                 LOGGER.info("[InteractiveWorldTextScene] All screenshots captured.");
-                running = false;
+//                running = false;
             }
         });
         choreographer.scheduleAll();
