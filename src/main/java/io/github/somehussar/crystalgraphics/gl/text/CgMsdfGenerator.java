@@ -65,8 +65,8 @@ public class CgMsdfGenerator {
      * @param key          glyph key
      * @param font         msdfgen FreeType font handle
      * @param atlas        target MSDF atlas
-     * @param ftBearingX   FreeType horizontal bearing (screen pixels)
-     * @param ftBearingY   FreeType vertical bearing (screen pixels, positive = above baseline)
+     * @param ftBearingX   unused (reserved for future FreeType metric override)
+     * @param ftBearingY   unused (reserved for future FreeType metric override)
      * @param currentFrame current frame number for LRU tracking
      * @return the atlas region, or {@code null} if generation was skipped
      */
@@ -169,9 +169,12 @@ public class CgMsdfGenerator {
             //            i.e. cellSize - scale*ty from cell top (after flipRows)
             float bearingX = (float) -(scale * tx);
             float bearingY = (float) (cellSize - scale * ty);
+            float metricsWidth = (float) ((shapeR - shapeL) * scale);
+            float metricsHeight = (float) ((shapeT - shapeB) * scale);
 
             CgAtlasRegion region = atlas.getOrAllocateMsdf(key, pixelData,
-                    cellSize, cellSize, bearingX, bearingY, currentFrame);
+                    cellSize, cellSize, bearingX, bearingY,
+                    metricsWidth, metricsHeight, currentFrame);
             generatedThisFrame++;
             return region;
         } finally {

@@ -204,14 +204,17 @@ private static final int GL_CLAMP_TO_EDGE      = 0x812F;
      * @param bitmapData   grayscale pixel data (1 byte per pixel, row-major)
      * @param width        glyph width in pixels
      * @param height       glyph height in pixels
-     * @param bearingX     horizontal bearing from pen origin (pixels)
-     * @param bearingY     vertical bearing from baseline (pixels)
-     * @param currentFrame current frame number for LRU tracking
+     * @param bearingX       horizontal bearing from pen origin (pixels)
+     * @param bearingY       vertical bearing from baseline (pixels)
+     * @param metricsWidth   glyph outline width from FreeType 26.6 metrics (float precision)
+     * @param metricsHeight  glyph outline height from FreeType 26.6 metrics (float precision)
+     * @param currentFrame   current frame number for LRU tracking
      * @return the atlas region, or {@code null} if allocation fails even after eviction
      */
     public CgAtlasRegion getOrAllocate(CgGlyphKey key, byte[] bitmapData,
                                        int width, int height,
                                        float bearingX, float bearingY,
+                                       float metricsWidth, float metricsHeight,
                                        long currentFrame) {
         checkNotDeleted();
 
@@ -238,7 +241,7 @@ private static final int GL_CLAMP_TO_EDGE      = 0x812F;
         uploadBitmap(packed.getX(), packed.getY(), width, height, bitmapData);
 
         // Build region
-        CgAtlasRegion region = buildRegion(packed, key, bearingX, bearingY);
+        CgAtlasRegion region = buildRegion(packed, key, bearingX, bearingY, metricsWidth, metricsHeight);
         slotMap.put(key, new SlotEntry(packed, region, currentFrame));
         return region;
     }
@@ -262,12 +265,15 @@ private static final int GL_CLAMP_TO_EDGE      = 0x812F;
      * @param height       glyph height in pixels
      * @param bearingX     horizontal bearing from pen origin (pixels)
      * @param bearingY     vertical bearing from baseline (pixels)
+     * @param metricsWidth   glyph outline width from FreeType 26.6 metrics (float precision)
+     * @param metricsHeight  glyph outline height from FreeType 26.6 metrics (float precision)
      * @param currentFrame current frame number for LRU tracking
      * @return the atlas region, or {@code null} if allocation fails even after eviction
      */
     public CgAtlasRegion getOrAllocateMsdf(CgGlyphKey key, float[] msdfData,
                                             int width, int height,
                                             float bearingX, float bearingY,
+                                            float metricsWidth, float metricsHeight,
                                             long currentFrame) {
         checkNotDeleted();
 
@@ -287,7 +293,7 @@ private static final int GL_CLAMP_TO_EDGE      = 0x812F;
 
         uploadMsdf(packed.getX(), packed.getY(), width, height, msdfData);
 
-        CgAtlasRegion region = buildRegion(packed, key, bearingX, bearingY);
+        CgAtlasRegion region = buildRegion(packed, key, bearingX, bearingY, metricsWidth, metricsHeight);
         slotMap.put(key, new SlotEntry(packed, region, currentFrame));
         return region;
     }
@@ -475,7 +481,8 @@ private static final int GL_CLAMP_TO_EDGE      = 0x812F;
     // ── Internal: region builder ───────────────────────────────────────
 
     private CgAtlasRegion buildRegion(PackedRect packed, CgGlyphKey key,
-                                      float bearingX, float bearingY) {
+                                      float bearingX, float bearingY,
+                                      float metricsWidth, float metricsHeight) {
         float u0 = (float) packed.getX() / pageWidth;
         float v0 = (float) packed.getY() / pageHeight;
         float u1 = (float) (packed.getX() + packed.getWidth()) / pageWidth;
@@ -486,7 +493,8 @@ private static final int GL_CLAMP_TO_EDGE      = 0x812F;
                 packed.getWidth(), packed.getHeight(),
                 u0, v0, u1, v1,
                 key,
-                bearingX, bearingY
+                bearingX, bearingY,
+                metricsWidth, metricsHeight
         );
     }
 

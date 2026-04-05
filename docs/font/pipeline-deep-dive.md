@@ -265,12 +265,25 @@ The renderer writes two logical groups:
 - bitmap quads first
 - MSDF quads second
 
-`appendQuads(...)` computes per-glyph quad placement as:
-- `x = glyphX + region.bearingX`
-- `y = glyphY - region.bearingY`
+`appendQuads(...)` normalizes physical atlas metrics back into logical space
+before computing quad placement. The normalization uses:
 
-See:
-- `CgTextRenderer.java:237-239`
+```
+scaleFactor = baseTargetPx / (float) effectiveTargetPx
+logicalBearingX = region.bearingX * scaleFactor
+logicalBearingY = region.bearingY * scaleFactor
+logicalWidth    = region.width    * scaleFactor
+logicalHeight   = region.height   * scaleFactor
+```
+
+Then quad positions are computed as:
+- `x = glyphX + logicalBearingX`
+- `y = glyphY - logicalBearingY`
+
+This normalization is the key to the three-space model: logical pen positions
+(from HarfBuzz shaping) are combined only with logical-space bearings/extents,
+never with raw physical raster metrics. This keeps spacing invariant under
+UI scale changes.
 
 The VBO vertex format is:
 - x
@@ -385,3 +398,26 @@ The critical implementation split is:
 - glyph realization happens lazily at draw time
 - atlas caching avoids repeated rasterization/generation
 - final rendering is a two-pass GPU draw over one shared quad buffer
+
+## 16. World-Space (3D) Text Path
+
+For 3D world-space text, the pipeline diverges at the render entry point:
+
+- Entry: `CgTextRenderer.drawWorld(...)` instead of `draw(...)`
+- Context: `CgWorldTextRenderContext` with `WorldTextScaleResolver`
+- GL state: depth test ON, cull face ON (unlike 2D which disables both)
+- Backend: always MSDF — `WorldTextScaleResolver.shouldUseMsdf()` returns `true`
+- Raster tier: driven by `ProjectedSizeEstimator` or default 2x multiplier,
+  not by PoseStack scale extraction
+- Layout: identical to 2D — logical metrics are never modified by camera
+  distance, FOV, or projected size
+
+The shaping, layout, atlas, and VBO stages are shared between 2D and 3D.
+The only difference is how the effective raster size is determined and which
+GL state is configured before the draw calls.
+
+### Projected-Size Estimation
+
+`ProjectedSizeEstimator.estimateScreenPx(modelView, projection, vpWidth, vpHeight, baseTargetPx)`
+projects a unit-length vector through MVP to estimate on-screen pixel coverage.
+This drives MSDF atlas tier selection (quality/LOD) but never layout metrics.

@@ -24,9 +24,11 @@ import lombok.ToString;
  * selection mapping (back-mapping shaped glyphs to source characters) and are
  * NOT used for atlas lookup.</p>
  *
- * <h3>Coordinate units</h3>
- * <p>All advance and offset values are in <strong>pixels</strong>, converted from
- * HarfBuzz's 26.6 fixed-point format by dividing by 64.</p>
+ * <h3>Coordinate units (Logical Layout Space)</h3>
+ * <p>All advance and offset values are in <strong>logical layout pixels</strong>,
+ * converted from HarfBuzz's 26.6 fixed-point format by dividing by 64. These
+ * values are part of the logical layout space in the three-space model and must
+ * never be mutated by draw-time transforms such as UI scale or PoseStack.</p>
  *
  * @see CgTextShaper
  * @see CgLineBreaker
@@ -54,16 +56,16 @@ public final class CgShapedRun {
      */
     private final int[] clusterIds;
 
-    /** Per-glyph horizontal advance in pixels. */
+    /** Per-glyph horizontal advance in logical layout pixels. */
     private final float[] advancesX;
 
-    /** Per-glyph horizontal offset in pixels. */
+    /** Per-glyph horizontal offset in logical layout pixels. */
     private final float[] offsetsX;
 
-    /** Per-glyph vertical offset in pixels. */
+    /** Per-glyph vertical offset in logical layout pixels. */
     private final float[] offsetsY;
 
-    /** Sum of all {@code advancesX} values (total run width in pixels). */
+    /** Sum of all {@code advancesX} values (total run width in logical layout pixels). */
     private final float totalAdvance;
 
     /**
