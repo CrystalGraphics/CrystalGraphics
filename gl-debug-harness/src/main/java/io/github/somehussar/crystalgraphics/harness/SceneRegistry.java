@@ -105,8 +105,63 @@ public final class SceneRegistry {
                 .build(),
                 () -> new TextScene()
         );
+
+        reg.register(
+            SceneDescriptor.builder("world-text-scene")
+                .description("3D world-space text via drawWorld() — single-shot capture (always MSDF, depth-tested)")
+                .lifecycleMode(SceneDescriptor.LifecycleMode.MANAGED)
+                .category(SceneDescriptor.Category.SCENE)
+                .needsFbo(true)
+                .needsDepthBuffer(true)
+                .clearColor(0.1f, 0.1f, 0.15f, 1.0f)
+                .build(),
+                new HarnessSceneFactory() {
+                    public HarnessScene create() { return new WorldTextScene(); }
+                }
+        );
+
+        reg.register(
+            SceneDescriptor.builder("world-text-3d")
+                .description("Interactive 3D world-space text with camera controls, floor plane, and task scheduler")
+                .lifecycleMode(SceneDescriptor.LifecycleMode.INTERACTIVE)
+                .category(SceneDescriptor.Category.SCENE)
+                .needsFbo(true)
+                .needsDepthBuffer(true)
+                .clearColor(0.1f, 0.1f, 0.15f, 1.0f)
+                .build(),
+                new HarnessSceneFactory() {
+                    public HarnessScene create() { return new WorldTextScene(); }
+                }
+        );
         
         // ── Diagnostic modes ──
+        reg.register(
+            SceneDescriptor.builder("camera-3d-validation")
+                .description("3D camera validation: renders cube + floor, captures 4 angle screenshots")
+                .lifecycleMode(SceneDescriptor.LifecycleMode.INTERACTIVE)
+                .category(SceneDescriptor.Category.SCENE)
+                .needsFbo(false)
+                .needsDepthBuffer(true)
+                .clearColor(0.1f, 0.1f, 0.15f, 1.0f)
+                .build(),
+                new HarnessSceneFactory() {
+                    public HarnessScene create() { return new Camera3DValidationScene(); }
+                }
+        );
+
+        reg.register(
+            SceneDescriptor.builder("render-validation")
+                .description("Render validation: captures normal, paused, and top-down screenshots with floor + HUD + pause overlay")
+                .lifecycleMode(SceneDescriptor.LifecycleMode.INTERACTIVE)
+                .category(SceneDescriptor.Category.SCENE)
+                .needsFbo(false)
+                .needsDepthBuffer(true)
+                .build(),
+                new HarnessSceneFactory() {
+                    public HarnessScene create() { return new RenderValidationScene(); }
+                }
+        );
+
         reg.register(
             SceneDescriptor.builder("gl-state-dump")
                 .description("Dump current GL state to a structured report file")
