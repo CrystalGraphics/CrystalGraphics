@@ -12,11 +12,7 @@ import io.github.somehussar.crystalgraphics.harness.config.HarnessContext;
 import io.github.somehussar.crystalgraphics.harness.util.HarnessFontUtil;
 import io.github.somehussar.crystalgraphics.text.CgTextLayout;
 
-import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL13;
-import org.lwjgl.opengl.GL15;
-import org.lwjgl.opengl.GL20;
-import org.lwjgl.opengl.GL30;
+import org.lwjgl.input.Mouse;
 
 import java.util.logging.Logger;
 
@@ -162,6 +158,7 @@ public final class HUDRenderer {
                 + ", size=" + currentFontSizePx + "px");
     }
 
+    private float poseScale = 1.0f;
     /**
      * Renders the HUD overlay with current camera position and rotation.
      *
@@ -205,8 +202,52 @@ public final class HUDRenderer {
         // CgTextRenderer.draw() handles its own GL state save/restore internally
         // via CgStateBoundary, but in the standalone harness the GLStateMirror
         // may be in UNKNOWN state, so we also do explicit cleanup after draw.
-        renderer.draw(layout, font, currentQuadOffset, currentQuadOffset,
-                TEXT_COLOR, frameCounter, orthoContext, poseStack);
+//        renderer.draw(layout, font, currentQuadOffset, currentQuadOffset,
+//                TEXT_COLOR, frameCounter, orthoContext, poseStack);
+
+        int wheel = Mouse.getDWheel();
+        if (wheel > 0) {
+            poseScale = Math.min(4.0f, poseScale + 0.1f);
+        } else if (wheel < 0) {
+            poseScale = Math.max(0.5f, poseScale - 0.1f);
+        }
+
+        String DEMO_TEXT_2D_LABEL = "2D UI text: logical size stable, raster scales with pose";
+        String DEMO_TEXT = "CrystalGraphics font demo - mouse wheel zoom";
+        
+        
+        PoseStack ps = new PoseStack();
+        ps.scale(poseScale, poseScale, 1.0f);
+        ps.translate(0, 60, 0);
+        float logicalWidth = ctx.getScreenWidth() / poseScale;
+        orthoContext.clearHistory();
+
+        // 2D UI text: logical spacing is stable; PoseStack scale only
+        // increases the effective raster size (sharper glyphs) without
+        // changing layout metrics.
+        renderer.draw(
+                layoutBuilder.layout(DEMO_TEXT + " [base " + 24 + "px, pose " + String.format("%.1f", poseScale) + "x]",
+                        font, logicalWidth, 0),
+                font,
+                20.0f,
+                40.0f + 24,
+                0xFFFFFFFF,
+                frameCounter,
+                orthoContext,
+                ps);
+
+        orthoContext.clearHistory();
+
+        PoseStack identityPose = new PoseStack();
+        renderer.draw(
+                layoutBuilder.layout(DEMO_TEXT_2D_LABEL, font, ctx.getScreenWidth(), 0),
+                font,
+                20.0f,
+                20.0f,
+                0x000000ff,
+                frameCounter,
+                orthoContext,
+                identityPose);
         }
 
     /**
