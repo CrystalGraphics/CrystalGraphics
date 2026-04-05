@@ -21,8 +21,8 @@ public final class CapabilityReport implements HarnessScene {
     private static final Logger LOGGER = Logger.getLogger(CapabilityReport.class.getName());
 
     @Override
-    public void run(HarnessContext ctx, String outputDir) {
-        run(ctx, outputDir, null);
+    public void run(HarnessContext ctx) {
+        run(ctx, ctx.getOutputDir(), null);
     }
 
     void run(HarnessContext ctx, String outputDir, HarnessConfig config) {

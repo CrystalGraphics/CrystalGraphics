@@ -16,7 +16,9 @@ public  class SceneDescriptor {
         /** Scene owns its entire GL lifecycle. Harness provides config + output dir only. */
         FULL_OVERRIDE,
         /** Diagnostic tool — may or may not use GL. Harness provides config + output dir. */
-        DIAGNOSTIC
+        DIAGNOSTIC,
+        /** Interactive scene with 3D camera, render loop, and task scheduler. */
+        INTERACTIVE
     }
 
     public enum Category {
