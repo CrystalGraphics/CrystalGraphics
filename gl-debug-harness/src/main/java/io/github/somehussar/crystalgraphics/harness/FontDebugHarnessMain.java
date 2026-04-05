@@ -1,67 +1,75 @@
 package io.github.somehussar.crystalgraphics.harness;
 
+import io.github.somehussar.crystalgraphics.harness.config.*;
+import io.github.somehussar.crystalgraphics.harness.util.HarnessDiagnostics;
+import io.github.somehussar.crystalgraphics.harness.util.HarnessOutputDir;
+
+import java.util.List;
 import java.util.logging.Logger;
 
-/**
- * Standalone LWJGL 2 / OpenGL 3.0 debug harness for CrystalGraphics.
- *
- * <p>Runs outside Minecraft to debug font rendering, FBO pipelines, and
- * atlas generation in isolation. Produces deterministic PNG artifacts under
- * {@code build/harness-output/}.</p>
- *
- * <h3>Modes</h3>
- * <ul>
- *   <li>{@code --mode=triangle}: Hello triangle → {@code triangle.png}</li>
- *   <li>{@code --mode=fbo-triangle}: FBO-rendered triangle → {@code fbo-triangle.png}</li>
- *   <li>{@code --mode=atlas-dump}: Bitmap atlas dump → {@code atlas-dump.png}</li>
- *   <li>{@code --mode=text-scene}: Full text scene → {@code text-scene.png} + {@code bitmap-atlas.png}</li>
- *   <li>{@code --mode=renderer-parity}: CgTextRenderer parity scene → {@code renderer-parity.png} + atlas dumps</li>
- * </ul>
- */
 public final class FontDebugHarnessMain {
 
     private static final Logger LOGGER = Logger.getLogger(FontDebugHarnessMain.class.getName());
 
     public static void main(String[] args) {
         String mode = null;
+        boolean listMode = false;
+        boolean helpMode = false;
+
         for (String arg : args) {
             if (arg.startsWith("--mode=")) {
                 mode = arg.substring("--mode=".length());
+            } else if ("--list".equals(arg)) {
+                listMode = true;
+            } else if ("--help".equals(arg)) {
+                helpMode = true;
             }
         }
 
+        SceneRegistry registry = SceneRegistry.createDefault();
+
+        if (helpMode) {
+            printHelp(registry);
+            return;
+        }
+
+        if (listMode) {
+            printList(registry);
+            return;
+        }
+
         if (mode == null || mode.isEmpty()) {
-            System.err.println("Usage: --mode=<triangle|fbo-triangle|atlas-dump|text-scene|renderer-parity>");
-            System.err.println("  triangle     — Render hello triangle to triangle.png");
-            System.err.println("  fbo-triangle — Render hello triangle via FBO to fbo-triangle.png");
-            System.err.println("  atlas-dump   — Generate bitmap glyph atlas to atlas-dump.png");
-            System.err.println("  text-scene   — Full text scene to text-scene.png + bitmap-atlas.png");
-            System.err.println("  renderer-parity — CgTextRenderer pipeline parity to renderer-parity.png");
+            System.err.println("ERROR: No mode specified.");
+            System.err.println();
+            printHelp(registry);
             System.exit(1);
             return;
         }
 
-        if (!isValidMode(mode)) {
+        SceneRegistry.Entry entry = registry.lookup(mode);
+        if (entry == null) {
             System.err.println("ERROR: Unknown mode '" + mode + "'");
-            System.err.println("Valid modes: triangle, fbo-triangle, atlas-dump, text-scene, renderer-parity");
+            System.err.println();
+            System.err.println("Valid modes:");
+            printList(registry);
             System.exit(1);
             return;
         }
 
         LOGGER.info("[Harness] Selected mode: " + mode);
 
-        String outputDir = System.getProperty("harness.output.dir",
-                "gl-debug-harness/build/harness-output");
-        HarnessOutputDir.ensureExists(outputDir);
-        LOGGER.info("[Harness] Output directory: " + outputDir);
+        HarnessConfig config = createConfig(mode, args);
+        HarnessConfig.setGlobalCliArgs(args);
+        HarnessOutputDir.ensureExists(config.getOutputDir());
+        LOGGER.info("[Harness] Output directory: " + config.getOutputDir());
 
         HarnessContext ctx = null;
         try {
             ctx = HarnessContext.create();
             HarnessDiagnostics.logStartup(ctx);
 
-            HarnessScene scene = resolveScene(mode);
-            scene.run(ctx, outputDir);
+            HarnessScene scene = entry.getFactory().create();
+            scene.run(ctx, config.getOutputDir());
 
             LOGGER.info("[Harness] Mode '" + mode + "' completed successfully.");
         } catch (Exception e) {
@@ -76,30 +84,75 @@ public final class FontDebugHarnessMain {
         }
     }
 
-    private static boolean isValidMode(String mode) {
-        return "triangle".equals(mode)
-                || "fbo-triangle".equals(mode)
-                || "atlas-dump".equals(mode)
-                || "text-scene".equals(mode)
-                || "renderer-parity".equals(mode);
+    static HarnessConfig createConfigForMode(String mode, String[] args) {
+        return createConfig(mode, args);
     }
 
-    private static HarnessScene resolveScene(String mode) {
-        if ("triangle".equals(mode)) {
-            return new TriangleScene();
-        }
-        if ("fbo-triangle".equals(mode)) {
-            return new FboTriangleScene();
-        }
+    private static HarnessConfig createConfig(String mode, String[] args) {
+        HarnessConfig config;
         if ("atlas-dump".equals(mode)) {
-            return new AtlasDumpScene();
+            config = AtlasDumpConfig.create(args);
+        } else if ("text-scene".equals(mode)) {
+            config = TextSceneConfig.create(args);
+        } else {
+            config = new HarnessConfig();
+            config.applySystemProperties();
+            config.applyCliArgs(HarnessConfig.parseCliArgs(args));
         }
-        if ("text-scene".equals(mode)) {
-            return new TextSceneScene();
+        return config;
+    }
+
+    private static void printHelp(SceneRegistry registry) {
+        System.out.println("CrystalGraphics Debug Harness");
+        System.out.println();
+        System.out.println("Usage: --mode=<mode> [options]");
+        System.out.println("       --list          List all available modes");
+        System.out.println("       --help          Show this help");
+        System.out.println();
+        System.out.println("Common options:");
+        System.out.println("  --output-dir=<dir>     Output directory (default: gl-debug-harness/harness-output)");
+        System.out.println("  --font-path=<path>     Font file path (default: system font)");
+        System.out.println("  --width=<n>            Width in pixels (default: 800)");
+        System.out.println("  --height=<n>           Height in pixels (default: 600)");
+        System.out.println();
+        System.out.println("Atlas options (atlas-dump mode):");
+        System.out.println("  --atlas-type=<bitmap|msdf|both>  Atlas type (default: both)");
+        System.out.println("  --atlas-size=<n>                 Atlas texture size (default: 512)");
+        System.out.println("  --bitmap-px-size=<n>             Bitmap atlas font size in px (default: 24)");
+        System.out.println("  --msdf-px-size=<n>               MSDF atlas font size in px (default: 32, min: 32)");
+        System.out.println("  --font-size-px=<n>               Shared font size (overrides both bitmap/msdf)");
+        System.out.println("  --text=<string>                  Test string");
+        System.out.println();
+        System.out.println("Available modes:");
+        printList(registry);
+    }
+
+    private static void printList(SceneRegistry registry) {
+        List<SceneRegistry.Entry> entries = registry.allEntries();
+        int maxIdLen = 0;
+        for (SceneRegistry.Entry e : entries) {
+            maxIdLen = Math.max(maxIdLen, e.getDescriptor().getId().length());
         }
-        if ("renderer-parity".equals(mode)) {
-            return new CgRendererParityScene();
+
+        System.out.println();
+        System.out.println("Rendering Scenes:");
+        for (SceneRegistry.Entry e : entries) {
+            SceneDescriptor d = e.getDescriptor();
+            if (d.getCategory() == SceneDescriptor.Category.SCENE) {
+                System.out.printf("  %-" + (maxIdLen + 2) + "s %s [%s]%n",
+                        d.getId(), d.getDescription(), d.getLifecycleMode());
+            }
         }
-        throw new IllegalArgumentException("Unknown mode: " + mode);
+
+        System.out.println();
+        System.out.println("Diagnostic Tools:");
+        for (SceneRegistry.Entry e : entries) {
+            SceneDescriptor d = e.getDescriptor();
+            if (d.getCategory() == SceneDescriptor.Category.DIAGNOSTIC_TOOL) {
+                System.out.printf("  %-" + (maxIdLen + 2) + "s %s%n",
+                        d.getId(), d.getDescription());
+            }
+        }
+        System.out.println();
     }
 }

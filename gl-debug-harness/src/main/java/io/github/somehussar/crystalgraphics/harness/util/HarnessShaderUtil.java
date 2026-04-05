@@ -1,4 +1,4 @@
-package io.github.somehussar.crystalgraphics.harness;
+package io.github.somehussar.crystalgraphics.harness.util;
 
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL20;
@@ -9,11 +9,11 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.logging.Logger;
 
-final class HarnessShaderUtil {
+public final class HarnessShaderUtil {
 
     private static final Logger LOGGER = Logger.getLogger(HarnessShaderUtil.class.getName());
 
-    static int compileProgram(String vertSource, String fragSource) {
+    public static int compileProgram(String vertSource, String fragSource) {
         int vert = compileShader(GL20.GL_VERTEX_SHADER, vertSource);
         int frag = compileShader(GL20.GL_FRAGMENT_SHADER, fragSource);
 
@@ -35,7 +35,7 @@ final class HarnessShaderUtil {
         return program;
     }
 
-    static String loadResource(String path) {
+    public static String loadResource(String path) {
         InputStream in = HarnessShaderUtil.class.getResourceAsStream(path);
         if (in == null) {
             throw new RuntimeException("Shader resource not found: " + path);
