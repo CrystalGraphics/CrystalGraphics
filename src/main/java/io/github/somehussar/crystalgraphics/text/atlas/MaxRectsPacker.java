@@ -29,7 +29,7 @@ import java.util.List;
  *
  * @see PackedRect
  */
-public class MaxRectsPacker {
+public class MaxRectsPacker implements CgPackingStrategy {
 
     /** Width of the bin in pixels. */
     private final int binWidth;
