@@ -4,6 +4,7 @@ import io.github.somehussar.crystalgraphics.harness.config.*;
 import io.github.somehussar.crystalgraphics.harness.util.HarnessDiagnostics;
 import io.github.somehussar.crystalgraphics.harness.util.HarnessOutputDir;
 
+import java.io.File;
 import java.util.List;
 import java.util.logging.Logger;
 
@@ -61,15 +62,41 @@ public final class FontDebugHarnessMain {
         HarnessConfig config = createConfig(mode, args);
         HarnessConfig.setGlobalCliArgs(args);
         HarnessOutputDir.ensureExists(config.getOutputDir());
-        LOGGER.info("[Harness] Output directory: " + config.getOutputDir());
+
+        // Create scene-specific subdirectory: harness-output/{sceneName}/
+        // All scene outputs go into their own subdirectory for organization.
+        String sceneOutputDir = config.getOutputDir() + File.separator + mode;
+        HarnessOutputDir.ensureExists(sceneOutputDir);
+        LOGGER.info("[Harness] Output directory: " + sceneOutputDir);
+
+        // Resolve the output name prefix: --output-name overrides the default (scene name)
+        String outputName = config.getOutputName() != null ? config.getOutputName() : mode;
+        LOGGER.info("[Harness] Output name prefix: " + outputName);
 
         HarnessContext ctx = null;
+        boolean shouldShutdown = true;
         try {
-            ctx = HarnessContext.create();
+            ctx = HarnessContext.create(config.getWidth(), config.getHeight());
             HarnessDiagnostics.logStartup(ctx);
 
+            // Populate context with all configuration — single source of truth
+            ctx.setOutputDir(sceneOutputDir);
+            ctx.setOutputName(outputName);
+
             HarnessScene scene = entry.getFactory().create();
-            scene.run(ctx, config.getOutputDir());
+
+            boolean useInteractiveRunner =
+                    entry.getDescriptor().getLifecycleMode() == SceneDescriptor.LifecycleMode.INTERACTIVE
+                    && scene instanceof InteractiveHarnessScene;
+
+            if (useInteractiveRunner) {
+                InteractiveHarnessScene interactive = (InteractiveHarnessScene) scene;
+                InteractiveSceneRunner runner = new InteractiveSceneRunner(interactive, ctx);
+                runner.run();
+                shouldShutdown = runner.shouldShutdown();
+            } else {
+                scene.run(ctx);
+            }
 
             LOGGER.info("[Harness] Mode '" + mode + "' completed successfully.");
         } catch (Exception e) {
@@ -81,6 +108,10 @@ public final class FontDebugHarnessMain {
                 ctx.destroy();
             }
             LOGGER.info("[Harness] Shutdown complete.");
+        }
+
+        if (!shouldShutdown) {
+            LOGGER.info("[Harness] Scene requested no shutdown — returning.");
         }
     }
 
@@ -99,6 +130,11 @@ public final class FontDebugHarnessMain {
             config.applySystemProperties();
             config.applyCliArgs(HarnessConfig.parseCliArgs(args));
         }
+        // Ensure --output-name is always propagated regardless of config type
+        java.util.Map<String, String> parsedArgs = HarnessConfig.parseCliArgs(args);
+        if (parsedArgs.containsKey("output-name") && config.getOutputName() == null) {
+            config.setOutputName(parsedArgs.get("output-name"));
+        }
         return config;
     }
 
@@ -111,6 +147,7 @@ public final class FontDebugHarnessMain {
         System.out.println();
         System.out.println("Common options:");
         System.out.println("  --output-dir=<dir>     Output directory (default: gl-debug-harness/harness-output)");
+        System.out.println("  --output-name=<prefix> Custom filename prefix for outputs (default: scene name)");
         System.out.println("  --font-path=<path>     Font file path (default: system font)");
         System.out.println("  --width=<n>            Width in pixels (default: 800)");
         System.out.println("  --height=<n>           Height in pixels (default: 600)");
@@ -130,6 +167,12 @@ public final class FontDebugHarnessMain {
         System.out.println("  --msdf-px-size=<n>               MSDF atlas font size in px (default: 32, min: 32)");
         System.out.println("  --font-size-px=<n>               Shared font size (overrides both bitmap/msdf)");
         System.out.println("  --text=<string>                  Test string");
+        System.out.println();
+        System.out.println("Parity / overflow options (atlas-dump mode):");
+        System.out.println("  --parity-prewarm=<true|false>    Deterministic MSDF prewarm for parity (default: false)");
+        System.out.println("  --prewarm-bitmap=<true|false>    Deterministic bitmap prewarm (default: false)");
+        System.out.println("  --dump-all-pages=<true|false>    Dump all atlas pages, not just the first (default: false)");
+        System.out.println("  --atlas-page-size=<n>            Override per-page atlas size (default: auto)");
         System.out.println();
         System.out.println("Available modes:");
         printList(registry);
