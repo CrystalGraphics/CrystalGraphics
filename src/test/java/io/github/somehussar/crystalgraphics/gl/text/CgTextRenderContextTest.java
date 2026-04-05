@@ -1,5 +1,7 @@
 package io.github.somehussar.crystalgraphics.gl.text;
 
+import io.github.somehussar.crystalgraphics.api.font.CgFontKey;
+import io.github.somehussar.crystalgraphics.api.font.CgFontStyle;
 import org.lwjgl.BufferUtils;
 import org.junit.Test;
 
@@ -108,5 +110,23 @@ public class CgTextRenderContextTest {
         assertTrue(ctx.wasMsdf(a));
         assertEquals(-1, ctx.getPreviousEffectiveTargetPx(b));
         assertFalse(ctx.wasMsdf(b));
+    }
+
+    @Test
+    public void clearHistoryRemovesPerFontHysteresisState() {
+        FloatBuffer proj = BufferUtils.createFloatBuffer(16);
+        CgTextRenderContext.populateOrthoMatrix(proj, 800, 600);
+        CgTextRenderContext ctx = new CgTextRenderContext(proj);
+
+        CgFontKey key = new CgFontKey("font.ttf",
+                CgFontStyle.REGULAR, 24);
+
+        ctx.setPreviousEffectiveTargetPx(key, 48);
+        ctx.setWasMsdf(key, true);
+
+        ctx.clearHistory();
+
+        assertEquals(-1, ctx.getPreviousEffectiveTargetPx(key));
+        assertFalse(ctx.wasMsdf(key));
     }
 }

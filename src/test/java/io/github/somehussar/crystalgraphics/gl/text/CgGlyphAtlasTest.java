@@ -45,17 +45,17 @@ public class CgGlyphAtlasTest {
 
         // Insert 4 glyphs at frame 0 — fills the 32×32 atlas
         for (int i = 0; i < 4; i++) {
-            CgAtlasRegion r = atlas.getOrAllocate(keys[i], pixels, 16, 16, 0, 0, 0);
+            CgAtlasRegion r = atlas.getOrAllocate(keys[i], pixels, 16, 16, 0, 0, 16, 16, 0);
             assertNotNull("Glyph " + i + " should fit", r);
         }
         assertEquals(4, atlas.getSlotCount());
 
         // Advance to frame 5 and access glyphs 0 and 1 (updating their LRU)
-        atlas.getOrAllocate(keys[0], pixels, 16, 16, 0, 0, 5);
-        atlas.getOrAllocate(keys[1], pixels, 16, 16, 0, 0, 5);
+        atlas.getOrAllocate(keys[0], pixels, 16, 16, 0, 0, 16, 16, 5);
+        atlas.getOrAllocate(keys[1], pixels, 16, 16, 0, 0, 16, 16, 5);
 
         // Insert glyph 4 — must evict the coldest (frame 0 = glyph 2 or 3)
-        CgAtlasRegion evictionResult = atlas.getOrAllocate(keys[4], pixels, 16, 16, 0, 0, 6);
+        CgAtlasRegion evictionResult = atlas.getOrAllocate(keys[4], pixels, 16, 16, 0, 0, 16, 16, 6);
         assertNotNull("Glyph 4 should fit after eviction", evictionResult);
 
         // Glyphs 0 and 1 must still be present (they were touched at frame 5)
@@ -90,16 +90,16 @@ public class CgGlyphAtlasTest {
 
         // Fill all 16 slots at frame 0
         for (int i = 0; i < totalSlots; i++) {
-            assertNotNull(atlas.getOrAllocate(keys[i], pixels, 16, 16, 0, 0, 0));
+            assertNotNull(atlas.getOrAllocate(keys[i], pixels, 16, 16, 0, 0, 16, 16, 0));
         }
 
         // Access first 8 glyphs at frame 10
         for (int i = 0; i < 8; i++) {
-            atlas.getOrAllocate(keys[i], pixels, 16, 16, 0, 0, 10);
+            atlas.getOrAllocate(keys[i], pixels, 16, 16, 0, 0, 16, 16, 10);
         }
 
         // Insert glyph 16 — must evict from glyphs 8-15
-        CgAtlasRegion result = atlas.getOrAllocate(keys[totalSlots], pixels, 16, 16, 0, 0, 11);
+        CgAtlasRegion result = atlas.getOrAllocate(keys[totalSlots], pixels, 16, 16, 0, 0, 16, 16, 11);
         assertNotNull("Should succeed after eviction", result);
 
         // All accessed glyphs (0-7) must survive
@@ -125,7 +125,7 @@ public class CgGlyphAtlasTest {
         CgGlyphKey key = new CgGlyphKey(FONT, 65, false);
         byte[] pixels = new byte[16 * 16];
 
-        CgAtlasRegion region = atlas.getOrAllocate(key, pixels, 16, 16, 1.5f, 10.0f, 0);
+        CgAtlasRegion region = atlas.getOrAllocate(key, pixels, 16, 16, 1.5f, 10.0f, 16, 16, 0);
         assertNotNull(region);
 
         assertEquals(16, region.getWidth());
@@ -150,7 +150,7 @@ public class CgGlyphAtlasTest {
         CgGlyphKey key = new CgGlyphKey(FONT, 1, false);
         byte[] pixels = new byte[32 * 32];
 
-        CgAtlasRegion region = atlas.getOrAllocate(key, pixels, 32, 32, 0, 0, 0);
+        CgAtlasRegion region = atlas.getOrAllocate(key, pixels, 32, 32, 0, 0, 32, 32, 0);
         assertNotNull(region);
 
         // First rect should be at (0,0)
@@ -170,8 +170,8 @@ public class CgGlyphAtlasTest {
         CgGlyphKey key = new CgGlyphKey(FONT, 42, false);
         byte[] pixels = new byte[8 * 8];
 
-        CgAtlasRegion first = atlas.getOrAllocate(key, pixels, 8, 8, 0, 0, 0);
-        CgAtlasRegion second = atlas.getOrAllocate(key, pixels, 8, 8, 0, 0, 5);
+        CgAtlasRegion first = atlas.getOrAllocate(key, pixels, 8, 8, 0, 0, 8, 8, 0);
+        CgAtlasRegion second = atlas.getOrAllocate(key, pixels, 8, 8, 0, 0, 8, 8, 5);
 
         assertSame("Cache hit should return same region object", first, second);
         assertEquals(5, atlas.getLastUsedFrame(key));
@@ -193,7 +193,7 @@ public class CgGlyphAtlasTest {
     public void testGetOrAllocate_afterDelete_throws() {
         CgGlyphAtlas atlas = CgGlyphAtlas.createForTest(64, 64, CgGlyphAtlas.Type.BITMAP);
         atlas.delete();
-        atlas.getOrAllocate(new CgGlyphKey(FONT, 0, false), new byte[1], 1, 1, 0, 0, 0);
+        atlas.getOrAllocate(new CgGlyphKey(FONT, 0, false), new byte[1], 1, 1, 0, 0, 1, 1, 0);
     }
 
     // ── Ownership tracking ─────────────────────────────────────────────
@@ -221,7 +221,7 @@ public class CgGlyphAtlasTest {
         CgGlyphKey key = new CgGlyphKey(FONT, 65, true);
         float[] msdfData = new float[32 * 32 * 3];
 
-        CgAtlasRegion region = atlas.getOrAllocateMsdf(key, msdfData, 32, 32, 2.0f, 12.0f, 0);
+        CgAtlasRegion region = atlas.getOrAllocateMsdf(key, msdfData, 32, 32, 2.0f, 12.0f, 32, 32, 0);
         assertNotNull(region);
         assertEquals(32, region.getWidth());
         assertEquals(32, region.getHeight());
@@ -242,8 +242,8 @@ public class CgGlyphAtlasTest {
         CgGlyphKey bucket1 = new CgGlyphKey(smallFont, 65, false, 1);
 
         byte[] pixels = new byte[8 * 8];
-        CgAtlasRegion r0 = atlas.getOrAllocate(bucket0, pixels, 8, 8, 0, 0, 0);
-        CgAtlasRegion r1 = atlas.getOrAllocate(bucket1, pixels, 8, 8, 0, 0, 0);
+        CgAtlasRegion r0 = atlas.getOrAllocate(bucket0, pixels, 8, 8, 0, 0, 8, 8, 0);
+        CgAtlasRegion r1 = atlas.getOrAllocate(bucket1, pixels, 8, 8, 0, 0, 8, 8, 0);
 
         assertNotNull(r0);
         assertNotNull(r1);

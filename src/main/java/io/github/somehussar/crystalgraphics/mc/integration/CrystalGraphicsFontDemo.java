@@ -32,6 +32,8 @@ public class CrystalGraphicsFontDemo {
 
     private static final Logger LOGGER = LogManager.getLogger("CrystalGraphicsFontDemo");
     private static final String DEMO_TEXT = "CrystalGraphics font demo - mouse wheel zoom";
+    private static final String DEMO_TEXT_2D_LABEL = "2D UI text: logical size stable, raster scales with pose";
+    private static final String DEMO_TEXT_3D_LABEL = "3D world text: always MSDF, projection-aware quality";
     private static final String DEMO_FONT_PATH = "X:\\projects\\CrystalGraphics\\src\\main\\resources\\assets\\crystalgraphics\\test-font.ttf";
 
     private boolean demoEnabled = true;
@@ -93,8 +95,12 @@ public class CrystalGraphicsFontDemo {
         try {
             ensureDemoFontSystem();
             ScaledResolution resolution = event.resolution;
+            int scaledW = resolution.getScaledWidth();
+            int scaledH = resolution.getScaledHeight();
 
-            // Update projection on viewport change (avoids per-draw matrix passing)
+            // Projection must match Minecraft's overlay coordinate space:
+            // setupOverlayRendering() uses glOrtho(0, scaledWidth, scaledHeight, 0, ...)
+            // so our shader projection must also span [0, scaledWidth] × [0, scaledHeight].
             if (demoRenderContext == null
                     || mc.displayWidth != lastDisplayWidth
                     || mc.displayHeight != lastDisplayHeight) {
@@ -109,9 +115,14 @@ public class CrystalGraphicsFontDemo {
 
             PoseStack poseStack = new PoseStack();
             poseStack.scale(demoPoseScale, demoPoseScale, 1.0f);
+            float logicalViewportWidth = (float) mc.displayWidth/demoPoseScale;
+            demoRenderContext.clearHistory();
 
+            // 2D UI text: logical spacing is stable; PoseStack scale only
+            // increases the effective raster size (sharper glyphs) without
+            // changing layout metrics.
             demoTextRenderer.draw(
-                    demoLayoutBuilder.layout(DEMO_TEXT + " [base " + demoFontSize + "px, pose " + String.format("%.1f", demoPoseScale) + "x]", demoFont, mc.displayWidth, 0),
+                    demoLayoutBuilder.layout(DEMO_TEXT + " [base " + demoFontSize + "px, pose " + String.format("%.1f", demoPoseScale) + "x]", demoFont, logicalViewportWidth, 0),
                     demoFont,
                     20.0f,
                     40.0f + demoFontSize,
@@ -119,6 +130,20 @@ public class CrystalGraphicsFontDemo {
                     demoFrame,
                     demoRenderContext,
                     poseStack);
+
+            demoRenderContext.clearHistory();
+
+            float topLabelWrapWidth = (float) mc.displayWidth;
+            PoseStack identityPose = new PoseStack();
+            demoTextRenderer.draw(
+                    demoLayoutBuilder.layout(DEMO_TEXT_2D_LABEL, demoFont, topLabelWrapWidth, 0),
+                    demoFont,
+                    20.0f,
+                    20.0f,
+                    0xAAFFAAFF,
+                    demoFrame,
+                    demoRenderContext,
+                    identityPose);
             
 //             demoTextRenderer.draw(
 //                    demoLayoutBuilder.layout("His is a \nline break [" + demoFontSize + "px]", demoFont, mc.displayWidth, 0),
@@ -162,7 +187,7 @@ public class CrystalGraphicsFontDemo {
 
         ensureDiagAtlasResources();
 
-        CgGlyphAtlas bitmapAtlas = demoFontRegistry.getBitmapAtlas(demoFont.getKey());
+        CgGlyphAtlas bitmapAtlas = demoFontRegistry.findPopulatedBitmapAtlas(demoFont.getKey());
         if (bitmapAtlas == null || bitmapAtlas.isDeleted() || bitmapAtlas.getTextureId() == 0) {
             return;
         }
@@ -198,7 +223,7 @@ public class CrystalGraphicsFontDemo {
         }
 
         // Second draw: msdf atlas
-        CgGlyphAtlas msdfAtlas = demoFontRegistry.getMsdfAtlas(demoFont.getKey());
+        CgGlyphAtlas msdfAtlas = demoFontRegistry.findPopulatedMsdfAtlas(demoFont.getKey());
         if (msdfAtlas != null && !msdfAtlas.isDeleted() && msdfAtlas.getTextureId() != 0) {
             float mx0 = x1 + 10.0f;
             float my0 = y0;
