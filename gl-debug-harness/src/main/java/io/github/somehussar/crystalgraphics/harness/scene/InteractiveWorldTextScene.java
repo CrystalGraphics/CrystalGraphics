@@ -134,6 +134,7 @@ public class InteractiveWorldTextScene implements InteractiveSceneLifecycle {
             @Override
             public void run() {
                 LOGGER.info("[InteractiveWorldTextScene] All screenshots captured.");
+                running = false;
             }
         });
         choreographer.scheduleAll();

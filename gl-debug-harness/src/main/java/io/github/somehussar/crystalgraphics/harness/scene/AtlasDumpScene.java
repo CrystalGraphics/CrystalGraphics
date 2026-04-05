@@ -1,5 +1,6 @@
 package io.github.somehussar.crystalgraphics.harness.scene;
 
+import com.msdfgen.FreeTypeIntegration;
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
 import io.github.somehussar.crystalgraphics.api.PoseStack;
 import io.github.somehussar.crystalgraphics.api.font.CgFont;
@@ -11,11 +12,13 @@ import io.github.somehussar.crystalgraphics.gl.text.atlas.CgGlyphAtlasPage;
 import io.github.somehussar.crystalgraphics.gl.text.CgMsdfGenerator;
 import io.github.somehussar.crystalgraphics.gl.text.CgTextRenderContext;
 import io.github.somehussar.crystalgraphics.gl.text.CgTextRenderer;
+import io.github.somehussar.crystalgraphics.gl.text.msdf.CgMsdfAtlasConfig;
 import io.github.somehussar.crystalgraphics.harness.FrameInfo;
 import io.github.somehussar.crystalgraphics.harness.HarnessSceneLifecycle;
 import io.github.somehussar.crystalgraphics.harness.config.AtlasDumpConfig;
 import io.github.somehussar.crystalgraphics.harness.config.HarnessContext;
 import io.github.somehussar.crystalgraphics.harness.tool.AtlasDumper;
+import io.github.somehussar.crystalgraphics.harness.tool.MsdfAtlasSizeEstimator;
 import io.github.somehussar.crystalgraphics.harness.util.HarnessFontUtil;
 import io.github.somehussar.crystalgraphics.harness.util.HarnessOutputDir;
 import io.github.somehussar.crystalgraphics.harness.util.ScreenshotUtil;
@@ -54,6 +57,7 @@ public class AtlasDumpScene implements HarnessSceneLifecycle {
         String fontPath = HarnessFontUtil.resolveFontPath(config.getFontPath());
         int bitmapPxSize = config.getBitmapPxSize();
         int msdfPxSize = config.getMsdfPxSize();
+        int msdfAtlasScale = config.getMsdfAtlasScale();
         String text = config.getText();
         AtlasDumpConfig.AtlasType atlasType = config.getAtlasType();
         boolean dumpAllPages = config.isDumpAllPages();
@@ -71,7 +75,8 @@ public class AtlasDumpScene implements HarnessSceneLifecycle {
 
         LOGGER.info("[Harness] Atlas dump: font=" + fontPath);
         LOGGER.info("[Harness] Atlas dump: atlasType=" + atlasType
-                + ", bitmapPxSize=" + bitmapPxSize + ", msdfPxSize=" + msdfPxSize);
+                + ", bitmapPxSize=" + bitmapPxSize + ", msdfPxSize=" + msdfPxSize
+                + ", msdfAtlasScale=" + msdfAtlasScale);
         LOGGER.info("[Harness] Atlas dump: text=\"" + text + "\"");
         LOGGER.info("[Harness] Atlas dump: dumpAllPages=" + dumpAllPages
                 + ", parityPrewarm=" + parityPrewarm + ", prewarmBitmap=" + prewarmBitmap
@@ -93,17 +98,36 @@ public class AtlasDumpScene implements HarnessSceneLifecycle {
                     "Atlas dump scene requires modern GL: core FBO, core shaders, VAO, glMapBufferRange");
         }
 
-        // Resolve effective atlas size: CLI override takes precedence, then auto-compute
+        // Resolve effective atlas size: CLI override takes precedence, then parity estimator,
+        // then legacy auto-compute for non-parity smoke runs.
         int registryAtlasSize;
         if (atlasPageSize != AtlasDumpConfig.ATLAS_PAGE_SIZE_AUTO) {
             registryAtlasSize = atlasPageSize;
             LOGGER.info("[Harness] Using explicit atlas page size: " + registryAtlasSize);
+        } else if (wantMsdf && parityPrewarm) {
+            CgFont estimatorCgFont = CgFont.load(fontPath, CgFontStyle.REGULAR, msdfPxSize);
+            try {
+                FreeTypeIntegration.Font estimatorFont = estimatorCgFont.getMsdfFont();
+                if (estimatorFont != null) {
+                    CgMsdfAtlasConfig estimatorConfig = CgMsdfAtlasConfig.forHarnessParity(msdfAtlasScale, null);
+                    registryAtlasSize = MsdfAtlasSizeEstimator.estimate(estimatorFont, text, estimatorConfig);
+                    LOGGER.info("[Harness] Estimated parity MSDF atlas size: " + registryAtlasSize);
+                } else {
+                    registryAtlasSize = computeAtlasSize(msdfPxSize, text.length());
+                    LOGGER.info("[Harness] MSDF estimator unavailable, falling back to coarse auto-size: " + registryAtlasSize);
+                }
+            } finally {
+                estimatorCgFont.dispose();
+            }
         } else {
             registryAtlasSize = computeAtlasSize(msdfPxSize, text.length());
             LOGGER.info("[Harness] Auto-computed atlas size: " + registryAtlasSize);
         }
 
-        CgFontRegistry registry = new CgFontRegistry(registryAtlasSize);
+        CgMsdfAtlasConfig registryMsdfConfig = CgMsdfAtlasConfig.defaultConfig()
+                .withAtlasScalePx(msdfAtlasScale)
+                .withPageSize(registryAtlasSize);
+        CgFontRegistry registry = new CgFontRegistry(registryAtlasSize, registryMsdfConfig);
         CgTextRenderer renderer = CgTextRenderer.create(caps, registry);
         CgTextLayoutBuilder layoutBuilder = new CgTextLayoutBuilder();
 

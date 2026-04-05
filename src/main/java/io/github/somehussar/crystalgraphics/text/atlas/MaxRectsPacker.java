@@ -76,10 +76,21 @@ public class MaxRectsPacker implements CgPackingStrategy {
      * @throws IllegalArgumentException if width or height is not positive
      */
     public PackedRect insert(int width, int height, Object id) {
+        return insert(width, height, DEFAULT_SPACING_PX, id);
+    }
+
+    @Override
+    public PackedRect insert(int width, int height, int spacing, Object id) {
         if (width <= 0 || height <= 0) {
             throw new IllegalArgumentException(
                     "Rectangle dimensions must be positive, got: " + width + "x" + height);
         }
+        if (spacing < 0) {
+            throw new IllegalArgumentException("spacing must be >= 0, got: " + spacing);
+        }
+
+        int packedWidth = width + spacing;
+        int packedHeight = height + spacing;
 
         // Find best free rect using BSSF heuristic
         int bestIndex = -1;
@@ -88,9 +99,9 @@ public class MaxRectsPacker implements CgPackingStrategy {
 
         for (int i = 0; i < freeRects.size(); i++) {
             Rect r = freeRects.get(i);
-            if (width <= r.width && height <= r.height) {
-                int leftoverX = r.width - width;
-                int leftoverY = r.height - height;
+            if (packedWidth <= r.width && packedHeight <= r.height) {
+                int leftoverX = r.width - packedWidth;
+                int leftoverY = r.height - packedHeight;
                 int shortSide = Math.min(leftoverX, leftoverY);
                 int longSide = Math.max(leftoverX, leftoverY);
 
@@ -109,9 +120,10 @@ public class MaxRectsPacker implements CgPackingStrategy {
 
         Rect chosen = freeRects.get(bestIndex);
         PackedRect packed = new PackedRect(chosen.x, chosen.y, width, height, id);
+        PackedRect allocatorRect = new PackedRect(chosen.x, chosen.y, packedWidth, packedHeight, id);
 
         // Split free rects that overlap with the newly placed rectangle
-        splitFreeRects(packed);
+        splitFreeRects(allocatorRect);
 
         // Prune contained free rects
         pruneContained();
