@@ -1,14 +1,15 @@
-package io.github.somehussar.crystalgraphics.harness;
+package io.github.somehussar.crystalgraphics.harness.util;
 
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
+import io.github.somehussar.crystalgraphics.harness.config.HarnessContext;
 
 import java.util.logging.Logger;
 
-final class HarnessDiagnostics {
+public  class HarnessDiagnostics {
 
     private static final Logger LOGGER = Logger.getLogger(HarnessDiagnostics.class.getName());
 
-    static void logStartup(HarnessContext ctx) {
+    public static void logStartup(HarnessContext ctx) {
         LOGGER.info("=== CrystalGraphics Debug Harness ===");
         LOGGER.info("[Harness] GL Version:  " + ctx.getGlVersion());
         LOGGER.info("[Harness] GL Vendor:   " + ctx.getGlVendor());
