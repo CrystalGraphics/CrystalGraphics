@@ -1,6 +1,8 @@
 package io.github.somehussar.crystalgraphics.harness.config;
 
 import java.util.Map;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public final class AtlasDumpConfig extends HarnessConfig {
 
@@ -30,12 +32,15 @@ public final class AtlasDumpConfig extends HarnessConfig {
     private int bitmapPxSize = DEFAULT_BITMAP_PX_SIZE;
     private int msdfPxSize = DEFAULT_MSDF_PX_SIZE;
     private String text = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-
+    
+    String ASCII_Printable_Chars = IntStream.range(32, 127).mapToObj(i -> String.valueOf((char) i))
+                                            .collect(Collectors.joining());
+    
     public AtlasType getAtlasType() { return atlasType; }
     public int getAtlasSize() { return atlasSize; }
     public int getBitmapPxSize() { return bitmapPxSize; }
     public int getMsdfPxSize() { return msdfPxSize; }
-    public String getText() { return text; }
+    public String getText() { return ASCII_Printable_Chars; }
 
     @Override
     public void applySystemProperties() {
