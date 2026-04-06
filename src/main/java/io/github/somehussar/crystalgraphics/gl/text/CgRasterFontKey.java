@@ -25,22 +25,27 @@ import io.github.somehussar.crystalgraphics.api.font.CgFontKey;
  */
 final class CgRasterFontKey {
 
-    private final String fontPath;
-    private final io.github.somehussar.crystalgraphics.api.font.CgFontStyle style;
+    private final CgFontKey baseFontKey;
     private final int effectiveTargetPx;
 
     CgRasterFontKey(CgFontKey baseFontKey, int effectiveTargetPx) {
-        this.fontPath = baseFontKey.getFontPath();
-        this.style = baseFontKey.getStyle();
+        if (baseFontKey == null) {
+            throw new IllegalArgumentException("baseFontKey must not be null");
+        }
+        this.baseFontKey = baseFontKey;
         this.effectiveTargetPx = effectiveTargetPx;
     }
 
+    CgFontKey getBaseFontKey() {
+        return baseFontKey;
+    }
+
     String getFontPath() {
-        return fontPath;
+        return baseFontKey.getFontPath();
     }
 
     io.github.somehussar.crystalgraphics.api.font.CgFontStyle getStyle() {
-        return style;
+        return baseFontKey.getStyle();
     }
 
     int getEffectiveTargetPx() {
@@ -53,20 +58,18 @@ final class CgRasterFontKey {
         if (!(o instanceof CgRasterFontKey)) return false;
         CgRasterFontKey that = (CgRasterFontKey) o;
         return effectiveTargetPx == that.effectiveTargetPx
-                && fontPath.equals(that.fontPath)
-                && style == that.style;
+                && baseFontKey.equals(that.baseFontKey);
     }
 
     @Override
     public int hashCode() {
-        int result = fontPath.hashCode();
-        result = 31 * result + style.hashCode();
+        int result = baseFontKey.hashCode();
         result = 31 * result + effectiveTargetPx;
         return result;
     }
 
     @Override
     public String toString() {
-        return "CgRasterFontKey{" + fontPath + ", " + style + ", effective=" + effectiveTargetPx + "px}";
+        return "CgRasterFontKey{" + baseFontKey + ", effective=" + effectiveTargetPx + "px}";
     }
 }

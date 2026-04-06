@@ -2,6 +2,7 @@ package io.github.somehussar.crystalgraphics.api.font;
 
 import com.crystalgraphics.freetype.FTFace;
 import com.crystalgraphics.freetype.FTLoadFlags;
+import com.crystalgraphics.freetype.FTVariationAxisInfo;
 import com.crystalgraphics.freetype.FreeTypeException;
 import com.crystalgraphics.freetype.FreeTypeLibrary;
 import com.crystalgraphics.harfbuzz.HBFont;
@@ -12,6 +13,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -49,6 +53,7 @@ public class CgFont {
     private final CgFontKey key;
     private final CgFontMetrics metrics;
     private final byte[] fontBytes;
+    private final List<CgFontAxisInfo> variationAxes;
 
     // Bitmap path (always loaded)
     private FreeTypeLibrary ftLibrary;
@@ -66,10 +71,12 @@ public class CgFont {
     // ── Private constructor ────────────────────────────────────────────
 
     private CgFont(CgFontKey key, CgFontMetrics metrics, byte[] fontBytes,
+                   List<CgFontAxisInfo> variationAxes,
                    FreeTypeLibrary ftLibrary, FTFace ftFace, HBFont hbFont) {
         this.key = key;
         this.metrics = metrics;
         this.fontBytes = fontBytes;
+        this.variationAxes = variationAxes;
         this.ftLibrary = ftLibrary;
         this.ftFace = ftFace;
         this.hbFont = hbFont;
@@ -89,6 +96,13 @@ public class CgFont {
      * @throws IllegalArgumentException if fontPath is null or targetPx &lt;= 0
      */
     public static CgFont load(String fontPath, CgFontStyle style, int targetPx) {
+        return load(fontPath, style, targetPx, Collections.<CgFontVariation>emptyList());
+    }
+
+    public static CgFont load(String fontPath,
+                              CgFontStyle style,
+                              int targetPx,
+                              List<CgFontVariation> variations) {
         if (fontPath == null) {
             throw new IllegalArgumentException("fontPath must not be null");
         }
@@ -101,7 +115,7 @@ public class CgFont {
         } catch (IOException e) {
             throw new FreeTypeException(0, "Failed to read font file: " + fontPath + " — " + e.getMessage());
         }
-        return loadFromBytes(data, fontPath, style, targetPx);
+        return loadFromBytes(data, fontPath, style, targetPx, variations);
     }
 
     /**
@@ -117,6 +131,12 @@ public class CgFont {
      */
     public static CgFont load(byte[] fontData, String logicalName,
                               CgFontStyle style, int targetPx) {
+        return load(fontData, logicalName, style, targetPx, Collections.<CgFontVariation>emptyList());
+    }
+
+    public static CgFont load(byte[] fontData, String logicalName,
+                              CgFontStyle style, int targetPx,
+                              List<CgFontVariation> variations) {
         if (fontData == null || fontData.length == 0) {
             throw new IllegalArgumentException("fontData must not be null or empty");
         }
@@ -126,14 +146,15 @@ public class CgFont {
         if (targetPx <= 0) {
             throw new IllegalArgumentException("targetPx must be > 0, got: " + targetPx);
         }
-        return loadFromBytes(fontData, logicalName, style, targetPx);
+        return loadFromBytes(fontData, logicalName, style, targetPx, variations);
     }
 
     // ── Core loading logic ────────────────────────────────────────────
 
     private static CgFont loadFromBytes(byte[] data, String fontId,
-                                        CgFontStyle style, int targetPx) {
-        CgFontKey key = new CgFontKey(fontId, style, targetPx);
+                                        CgFontStyle style, int targetPx,
+                                        List<CgFontVariation> variations) {
+        CgFontKey key = new CgFontKey(fontId, style, targetPx, variations);
 
         // 1. Create FreeType library + face for bitmap rasterization
         FreeTypeLibrary ftLib = FreeTypeLibrary.create();
@@ -147,17 +168,25 @@ public class CgFont {
 
         // 2. Set pixel size
         try {
+            applyVariationsToFace(face, key.getVariations());
             face.setPixelSizes(0, targetPx);
         } catch (FreeTypeException e) {
             face.destroy();
             ftLib.destroy();
             throw e;
+        } catch (RuntimeException e) {
+            face.destroy();
+            ftLib.destroy();
+            throw e;
         }
+
+        List<CgFontAxisInfo> availableAxes = extractVariationAxes(face);
 
         // 3. Create HarfBuzz font from the FT face
         HBFont hbFont;
         try {
             hbFont = FreeTypeHarfBuzzIntegration.createHBFontFromFTFace(face);
+            applyVariationsToHbFont(hbFont, key.getVariations());
         } catch (RuntimeException e) {
             face.destroy();
             ftLib.destroy();
@@ -168,7 +197,7 @@ public class CgFont {
         // 4. Extract font metrics from FTFace
         CgFontMetrics metrics = extractMetrics(face, targetPx);
 
-        return new CgFont(key, metrics, data, ftLib, face, hbFont);
+        return new CgFont(key, metrics, data, availableAxes, ftLib, face, hbFont);
     }
 
     /**
@@ -232,6 +261,40 @@ public class CgFont {
     /** Returns font-level metrics (ascender, descender, line height, etc.). */
     public CgFontMetrics getMetrics() {
         return metrics;
+    }
+
+    public List<CgFontVariation> getVariations() {
+        return key.getVariations();
+    }
+
+    public List<CgFontAxisInfo> getVariationAxes() {
+        return variationAxes;
+    }
+
+    public boolean isVariableFont() {
+        return !variationAxes.isEmpty();
+    }
+
+    /**
+     * Returns whether this font provides a non-zero glyph for the given code point.
+     *
+     * <p>This is the primitive used by the fallback resolver. It does not perform
+     * shaping; it only asks FreeType whether a glyph exists for the code point.</p>
+     */
+    public boolean canDisplayCodePoint(int codePoint) {
+        return getGlyphIndex(codePoint) != 0;
+    }
+
+    /**
+     * Resolves a Unicode code point to the underlying FreeType glyph index.
+     * Returns 0 when the font has no glyph for the requested code point.
+     */
+    public int getGlyphIndex(int codePoint) {
+        checkNotDisposed();
+        if (codePoint < 0 || codePoint > Character.MAX_CODE_POINT) {
+            return 0;
+        }
+        return ftFace != null ? ftFace.getCharIndex(codePoint) : 0;
     }
 
     /** Returns the raw font bytes (shared between bitmap and MSDF paths). */
@@ -388,6 +451,7 @@ public class CgFont {
         try {
             msdfFtInstance = FreeTypeIntegration.create();
             msdfFtFont = msdfFtInstance.loadFontData(fontBytes);
+            applyVariationsToMsdfFont(msdfFtFont, key.getVariations());
             return msdfFtFont;
         } catch (Exception e) {
             LOGGER.log(Level.WARNING, "Failed to initialize MSDF font for: "
@@ -420,6 +484,61 @@ public class CgFont {
         } finally {
             in.close();
         }
+    }
+
+    private static void applyVariationsToFace(FTFace face, List<CgFontVariation> variations) {
+        if (variations == null || variations.isEmpty()) {
+            return;
+        }
+        face.setVariationCoordinates(toVariationTags(variations), toVariationValues(variations));
+    }
+
+    private static void applyVariationsToHbFont(HBFont hbFont, List<CgFontVariation> variations) {
+        if (variations == null || variations.isEmpty()) {
+            return;
+        }
+        hbFont.setVariations(toVariationTags(variations), toVariationValues(variations));
+    }
+
+    private static void applyVariationsToMsdfFont(FreeTypeIntegration.Font font,
+                                                  List<CgFontVariation> variations) {
+        if (variations == null || variations.isEmpty()) {
+            return;
+        }
+        font.setVariations(toVariationTags(variations), toVariationValues(variations));
+    }
+
+    private static String[] toVariationTags(List<CgFontVariation> variations) {
+        String[] tags = new String[variations.size()];
+        for (int i = 0; i < variations.size(); i++) {
+            tags[i] = variations.get(i).getTag();
+        }
+        return tags;
+    }
+
+    private static float[] toVariationValues(List<CgFontVariation> variations) {
+        float[] values = new float[variations.size()];
+        for (int i = 0; i < variations.size(); i++) {
+            values[i] = variations.get(i).getValue();
+        }
+        return values;
+    }
+
+    private static List<CgFontAxisInfo> extractVariationAxes(FTFace face) {
+        FTVariationAxisInfo[] axes = face.getVariationAxes();
+        if (axes == null || axes.length == 0) {
+            return Collections.emptyList();
+        }
+        List<CgFontAxisInfo> mapped = new ArrayList<CgFontAxisInfo>(axes.length);
+        for (FTVariationAxisInfo axis : axes) {
+            mapped.add(new CgFontAxisInfo(
+                    axis.getTag(),
+                    axis.getName(),
+                    axis.getMinValue(),
+                    axis.getDefaultValue(),
+                    axis.getMaxValue()));
+        }
+        return Collections.unmodifiableList(mapped);
     }
 
     private void checkNotDisposed() {

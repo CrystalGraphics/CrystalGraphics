@@ -92,7 +92,7 @@ public final class FreeTypeIntegration {
         if (result != MsdfResult.SUCCESS || fontHandleOut[0] == 0) {
             throw new MsdfException("Failed to load font: " + path);
         }
-        return new Font(fontHandleOut[0]);
+        return new Font(ftHandle, fontHandleOut[0]);
     }
 
     /**
@@ -130,7 +130,7 @@ public final class FreeTypeIntegration {
         if (result != MsdfResult.SUCCESS || fontHandleOut[0] == 0) {
             throw new MsdfException("Failed to load font from byte data");
         }
-        return new Font(fontHandleOut[0]);
+        return new Font(ftHandle, fontHandleOut[0]);
     }
 
     /**
@@ -189,12 +189,32 @@ public final class FreeTypeIntegration {
      */
     public static final class Font {
 
+        private final long ftHandle;
         private long fontHandle;
         private boolean destroyed;
 
-        Font(long fontHandle) {
+        Font(long ftHandle, long fontHandle) {
+            this.ftHandle = ftHandle;
             this.fontHandle = fontHandle;
             this.destroyed = false;
+        }
+
+        public void setVariations(String[] axisTags, float[] values) {
+            checkNotDestroyed();
+            if (axisTags == null || values == null) {
+                throw new IllegalArgumentException("axisTags and values must not be null");
+            }
+            if (axisTags.length != values.length) {
+                throw new IllegalArgumentException("axisTags and values length must match");
+            }
+            if (axisTags.length == 0) {
+                return;
+            }
+            try {
+                MsdfResult.check(MsdfNative.nSetFontVariations(ftHandle, fontHandle, axisTags, values, values.length));
+            } catch (UnsatisfiedLinkError e) {
+                throw new UnsupportedOperationException("Variable-font MSDF extraction requires updated native bindings", e);
+            }
         }
 
         /**

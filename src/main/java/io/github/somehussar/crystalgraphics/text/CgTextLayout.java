@@ -1,9 +1,13 @@
 package io.github.somehussar.crystalgraphics.text;
 
+import io.github.somehussar.crystalgraphics.api.font.CgFont;
 import io.github.somehussar.crystalgraphics.api.font.CgFontMetrics;
+import io.github.somehussar.crystalgraphics.api.font.CgFontKey;
 import lombok.Value;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Immutable result of the text layout pipeline.
@@ -46,4 +50,27 @@ public class CgTextLayout {
 
     /** Font metrics used during layout. */
     CgFontMetrics metrics;
+
+    /** Resolved font handles required to render the runs in this layout. */
+    Map<CgFontKey, CgFont> resolvedFontsByKey;
+
+    public CgTextLayout(List<List<CgShapedRun>> lines,
+                        float totalWidth,
+                        float totalHeight,
+                        CgFontMetrics metrics,
+                        Map<CgFontKey,CgFont> resolvedFontsByKey) {
+        this.lines = lines;
+        this.totalWidth = totalWidth;
+        this.totalHeight = totalHeight;
+        this.metrics = metrics;
+        this.resolvedFontsByKey = resolvedFontsByKey;
+    }
+
+    public CgTextLayout(List<List<CgShapedRun>> lines,
+                        float totalWidth,
+                        float totalHeight,
+                        CgFontMetrics metrics) {
+        this(lines, totalWidth, totalHeight, metrics,
+                Collections.emptyMap());
+    }
 }

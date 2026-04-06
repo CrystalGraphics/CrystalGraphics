@@ -82,6 +82,24 @@ public final class HBFont {
         return nGetPpem(nativePtr);
     }
 
+    public void setVariations(String[] axisTags, float[] values) {
+        checkNotDestroyed();
+        if (axisTags == null || values == null) {
+            throw new IllegalArgumentException("axisTags and values must not be null");
+        }
+        if (axisTags.length != values.length) {
+            throw new IllegalArgumentException("axisTags and values length must match");
+        }
+        if (axisTags.length == 0) {
+            return;
+        }
+        try {
+            nSetVariations(nativePtr, axisTags, values);
+        } catch (UnsatisfiedLinkError e) {
+            throw new UnsupportedOperationException("Variable-font shaping requires updated native bindings", e);
+        }
+    }
+
     public long getNativePtr() {
         return nativePtr;
     }
@@ -125,6 +143,7 @@ public final class HBFont {
     private static native int[] nGetScale(long fontPtr);
     private static native void nSetPpem(long fontPtr, int xPpem, int yPpem);
     private static native int[] nGetPpem(long fontPtr);
+    private static native void nSetVariations(long fontPtr, String[] axisTags, float[] values);
 
     private static byte[] readAllBytes(InputStream stream) throws IOException {
         ByteArrayOutputStream bos = new ByteArrayOutputStream();

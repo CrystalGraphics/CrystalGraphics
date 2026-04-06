@@ -9,6 +9,7 @@
 #include "core/msdf-error-correction.h"
 #include "core/render-sdf.h"
 #include <cstring>
+#include <vector>
 
 #define MSDF_SUCCESS 0
 #define MSDF_ERR_FAILED 1
@@ -998,6 +999,53 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nGetKerningByIndex(
     return MSDF_SUCCESS;
 #else
     (void)env; (void)fontHandle; (void)index1; (void)index2; (void)kerningOut;
+    return MSDF_ERR_FAILED;
+#endif
+}
+
+JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nSetFontVariations(
+    JNIEnv* env, jclass, jlong ftHandle, jlong fontHandle, jobjectArray axisTags, jfloatArray values, jint valueCount) {
+#ifdef MSDFGEN_USE_FREETYPE
+    if (ftHandle == 0 || fontHandle == 0 || axisTags == nullptr || values == nullptr || valueCount < 0) {
+        return MSDF_ERR_INVALID_ARG;
+    }
+
+    jsize tagCount = env->GetArrayLength(axisTags);
+    jsize actualValueCount = env->GetArrayLength(values);
+    if (tagCount != valueCount || actualValueCount != valueCount) {
+        return MSDF_ERR_INVALID_ARG;
+    }
+    if (valueCount == 0) {
+        return MSDF_SUCCESS;
+    }
+
+    std::vector<jfloat> variationValues((size_t) valueCount);
+    env->GetFloatArrayRegion(values, 0, valueCount, &variationValues[0]);
+
+    for (jsize i = 0; i < tagCount; i++) {
+        jstring jTag = (jstring) env->GetObjectArrayElement(axisTags, i);
+        if (jTag == nullptr) {
+            return MSDF_ERR_INVALID_ARG;
+        }
+        const char* tagChars = env->GetStringUTFChars(jTag, nullptr);
+        if (tagChars == nullptr) {
+            env->DeleteLocalRef(jTag);
+            return MSDF_ERR_FAILED;
+        }
+        bool ok = msdfgen::setFontVariationAxis(
+            reinterpret_cast<msdfgen::FreetypeHandle*>(ftHandle),
+            reinterpret_cast<msdfgen::FontHandle*>(fontHandle),
+            tagChars,
+            variationValues[(size_t) i]);
+        env->ReleaseStringUTFChars(jTag, tagChars);
+        env->DeleteLocalRef(jTag);
+        if (!ok) {
+            return MSDF_ERR_FAILED;
+        }
+    }
+    return MSDF_SUCCESS;
+#else
+    (void)env; (void)ftHandle; (void)fontHandle; (void)axisTags; (void)values; (void)valueCount;
     return MSDF_ERR_FAILED;
 #endif
 }

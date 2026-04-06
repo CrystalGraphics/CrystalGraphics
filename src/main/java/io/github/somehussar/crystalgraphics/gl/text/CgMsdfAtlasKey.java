@@ -13,35 +13,30 @@ import io.github.somehussar.crystalgraphics.gl.text.msdf.CgMsdfAtlasConfig;
  */
 final class CgMsdfAtlasKey {
 
-    private final String fontPath;
-    private final CgFontStyle style;
+    private final CgFontKey baseFontKey;
     private final CgMsdfAtlasConfig config;
 
     CgMsdfAtlasKey(CgFontKey baseFontKey, CgMsdfAtlasConfig config) {
-        this(baseFontKey.getFontPath(), baseFontKey.getStyle(), config);
-    }
-
-    CgMsdfAtlasKey(String fontPath, CgFontStyle style, CgMsdfAtlasConfig config) {
-        if (fontPath == null) {
-            throw new IllegalArgumentException("fontPath must not be null");
-        }
-        if (style == null) {
-            throw new IllegalArgumentException("style must not be null");
+        if (baseFontKey == null) {
+            throw new IllegalArgumentException("baseFontKey must not be null");
         }
         if (config == null) {
             throw new IllegalArgumentException("config must not be null");
         }
-        this.fontPath = fontPath;
-        this.style = style;
+        this.baseFontKey = baseFontKey;
         this.config = config;
     }
 
+    CgFontKey getBaseFontKey() {
+        return baseFontKey;
+    }
+
     String getFontPath() {
-        return fontPath;
+        return baseFontKey.getFontPath();
     }
 
     CgFontStyle getStyle() {
-        return style;
+        return baseFontKey.getStyle();
     }
 
     CgMsdfAtlasConfig getConfig() {
@@ -55,21 +50,19 @@ final class CgMsdfAtlasKey {
 
         CgMsdfAtlasKey that = (CgMsdfAtlasKey) o;
 
-        return fontPath.equals(that.fontPath)
-                && style == that.style
+        return baseFontKey.equals(that.baseFontKey)
                 && config.equals(that.config);
     }
 
     @Override
     public int hashCode() {
-        int result = fontPath.hashCode();
-        result = 31 * result + style.hashCode();
+        int result = baseFontKey.hashCode();
         result = 31 * result + config.hashCode();
         return result;
     }
 
     @Override
     public String toString() {
-        return "CgMsdfAtlasKey{" + fontPath + ", " + style + ", " + config + '}';
+        return "CgMsdfAtlasKey{" + baseFontKey + ", " + config + '}';
     }
 }

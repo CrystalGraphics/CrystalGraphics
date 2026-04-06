@@ -8,10 +8,12 @@ import com.msdfgen.MsdfException;
 import com.msdfgen.Shape;
 import com.msdfgen.Transform;
 import io.github.somehussar.crystalgraphics.api.font.CgAtlasRegion;
+import io.github.somehussar.crystalgraphics.api.font.CgFontKey;
 import io.github.somehussar.crystalgraphics.api.font.CgGlyphKey;
 import io.github.somehussar.crystalgraphics.api.font.CgGlyphPlacement;
 import io.github.somehussar.crystalgraphics.gl.text.atlas.CgPagedGlyphAtlas;
 import io.github.somehussar.crystalgraphics.gl.text.msdf.CgMsdfAtlasConfig;
+import io.github.somehussar.crystalgraphics.gl.text.msdf.CgMsdfEdgeColoringMode;
 import io.github.somehussar.crystalgraphics.gl.text.msdf.CgMsdfGlyphLayout;
 
 import java.util.logging.Level;
@@ -80,8 +82,19 @@ public class CgMsdfGenerator {
                                          float ftBearingX,
                                          float ftBearingY,
                                          long currentFrame) {
+        return queueOrGenerate(key, font, atlas, CgMsdfAtlasConfig.defaultConfig(), currentFrame);
+    }
+
+    public CgAtlasRegion queueOrGenerate(CgGlyphKey key,
+                                         FreeTypeIntegration.Font font,
+                                         CgGlyphAtlas atlas,
+                                         CgMsdfAtlasConfig config,
+                                         long currentFrame) {
         if (generatedThisFrame >= MAX_PER_FRAME) {
             return null;
+        }
+        if (config == null) {
+            throw new IllegalArgumentException("config must not be null");
         }
 
         FreeTypeIntegration.GlyphData glyphData;
@@ -110,7 +123,7 @@ public class CgMsdfGenerator {
         }
 
         shape.normalize();
-        shape.edgeColoringSimple(3.0);
+        applyEdgeColoring(shape, config);
 
         int targetPx = key.getFontKey().getTargetPx();
         int cellSize = cellSizeForFontPx(targetPx);
@@ -154,16 +167,12 @@ public class CgMsdfGenerator {
 
         Bitmap bitmap = Bitmap.allocMsdf(cellSize, cellSize);
         try {
-            // Disable error correction — the default EDGE_PRIORITY pass
-            // inside generateMSDF has been observed to crash on certain
-            // glyph shapes. At 32-64px cell sizes the artefacts are
-            // imperceptible.
             Generator.generateMsdf(bitmap, shape, transform,
-                    true,
-                    MsdfConstants.ERROR_CORRECTION_DISABLED,
-                    MsdfConstants.DISTANCE_CHECK_NONE,
-                    MsdfConstants.DEFAULT_MIN_DEVIATION_RATIO,
-                    MsdfConstants.DEFAULT_MIN_IMPROVE_RATIO);
+                    config.isOverlapSupport(),
+                    config.getErrorCorrectionMode(),
+                    config.getDistanceCheckMode(),
+                    config.getMinDeviationRatio(),
+                    config.getMinImproveRatio());
 
             float[] pixelData = bitmap.getPixelData();
             flipRows(pixelData, cellSize, cellSize, 3);
@@ -204,10 +213,10 @@ public class CgMsdfGenerator {
      * @return the glyph placement, or {@code null} if generation was skipped
      */
     public CgGlyphPlacement queueOrGeneratePaged(CgGlyphKey key,
-                                                  FreeTypeIntegration.Font font,
-                                                  CgPagedGlyphAtlas pagedAtlas,
-                                                  CgMsdfAtlasConfig config,
-                                                  long currentFrame) {
+                                                   FreeTypeIntegration.Font font,
+                                                   CgPagedGlyphAtlas pagedAtlas,
+                                                   CgMsdfAtlasConfig config,
+                                                   long currentFrame) {
         if (generatedThisFrame >= MAX_PER_FRAME) {
             return null;
         }
@@ -237,7 +246,7 @@ public class CgMsdfGenerator {
             return null;
         }
         shape.normalize();
-        shape.edgeColoringSimple(3.0);
+        applyEdgeColoring(shape, config);
 
         int targetPx = config.getAtlasScalePx();
         double[] bounds = shape.getBounds();
@@ -273,16 +282,12 @@ public class CgMsdfGenerator {
 
         Bitmap bitmap = Bitmap.allocMsdf(boxWidth, boxHeight);
         try {
-            // Disable error correction — the default EDGE_PRIORITY pass
-            // inside generateMSDF has been observed to crash on certain
-            // glyph shapes. At 32-64px cell sizes the artefacts are
-            // imperceptible.
             Generator.generateMsdf(bitmap, shape, transform,
-                    true,
-                    MsdfConstants.ERROR_CORRECTION_DISABLED,
-                    MsdfConstants.DISTANCE_CHECK_NONE,
-                    MsdfConstants.DEFAULT_MIN_DEVIATION_RATIO,
-                    MsdfConstants.DEFAULT_MIN_IMPROVE_RATIO);
+                    config.isOverlapSupport(),
+                    config.getErrorCorrectionMode(),
+                    config.getDistanceCheckMode(),
+                    config.getMinDeviationRatio(),
+                    config.getMinImproveRatio());
 
             float[] pixelData = bitmap.getPixelData();
             flipRows(pixelData, boxWidth, boxHeight, 3);
@@ -303,6 +308,95 @@ public class CgMsdfGenerator {
                     config.getPxRange(), currentFrame);
             generatedThisFrame++;
             return placement;
+        } finally {
+            bitmap.free();
+        }
+    }
+
+    static CgGlyphGenerationResult preparePagedGlyph(CgGlyphKey key,
+                                                     CgFontKey sourceFontKey,
+                                                     FreeTypeIntegration.Font font,
+                                                     CgMsdfAtlasKey atlasKey,
+                                                     CgMsdfAtlasConfig config) {
+        if (config == null) {
+            throw new IllegalArgumentException("config must not be null");
+        }
+
+        FreeTypeIntegration.GlyphData glyphData;
+        try {
+            glyphData = font.loadGlyphByIndex(key.getGlyphId(), FreeTypeIntegration.FONT_SCALING_EM_NORMALIZED);
+        } catch (MsdfException e) {
+            LOGGER.log(Level.FINE, "Failed to load glyph index " + key.getGlyphId(), e);
+            return null;
+        }
+
+        Shape shape = glyphData.getShape();
+        if (shape.getEdgeCount() == 0) {
+            return CgGlyphGenerationResult.emptyMsdf(sourceFontKey, key, atlasKey, config.getPxRange());
+        }
+        shape.normalize();
+        applyEdgeColoring(shape, config);
+
+        int targetPx = config.getAtlasScalePx();
+        double[] bounds = shape.getBounds();
+        double shapeL = bounds[0];
+        double shapeB = bounds[1];
+        double shapeR = bounds[2];
+        double shapeT = bounds[3];
+
+        CgMsdfGlyphLayout layout = CgMsdfGlyphLayout.compute(
+                shapeL, shapeB, shapeR, shapeT,
+                targetPx,
+                config.getPxRange(),
+                config.getMiterLimit(),
+                config.isAlignOriginX(),
+                config.isAlignOriginY());
+
+        if (layout.isEmpty()) {
+            return CgGlyphGenerationResult.emptyMsdf(sourceFontKey, key, atlasKey, config.getPxRange());
+        }
+
+        int boxWidth = layout.getBoxWidth();
+        int boxHeight = layout.getBoxHeight();
+        double scale = layout.getScale();
+        double tx = layout.getTranslateX();
+        double ty = layout.getTranslateY();
+        double rangeInShapeUnits = layout.getRangeInShapeUnits();
+
+        Transform transform = new Transform()
+                .scale(scale)
+                .translate(tx, ty)
+                .range(-rangeInShapeUnits, rangeInShapeUnits);
+
+        Bitmap bitmap = Bitmap.allocMsdf(boxWidth, boxHeight);
+        try {
+            Generator.generateMsdf(bitmap, shape, transform,
+                    config.isOverlapSupport(),
+                    config.getErrorCorrectionMode(),
+                    config.getDistanceCheckMode(),
+                    config.getMinDeviationRatio(),
+                    config.getMinImproveRatio());
+
+            float[] pixelData = bitmap.getPixelData();
+            flipRows(pixelData, boxWidth, boxHeight, 3);
+
+            float bearingX = (float) (layout.getPlaneLeft() * scale);
+            float bearingY = (float) (layout.getPlaneTop() * scale);
+            float metricsWidth = (float) ((shapeR - shapeL) * scale);
+            float metricsHeight = (float) ((shapeT - shapeB) * scale);
+
+            return CgGlyphGenerationResult.msdf(
+                    sourceFontKey,
+                    key,
+                    atlasKey,
+                    pixelData,
+                    boxWidth,
+                    boxHeight,
+                    bearingX,
+                    bearingY,
+                    metricsWidth,
+                    metricsHeight,
+                    config.getPxRange());
         } finally {
             bitmap.free();
         }
@@ -330,6 +424,20 @@ public class CgMsdfGenerator {
             return fontPx >= COMPLEX_MSDF_MIN_PX;
         }
         return fontPx >= SIMPLE_MSDF_MIN_PX;
+    }
+
+    public static void applyEdgeColoring(Shape shape, CgMsdfAtlasConfig config) {
+        CgMsdfEdgeColoringMode mode = config.getEdgeColoringMode();
+        double threshold = config.getEdgeColoringAngleThreshold();
+        if (mode == CgMsdfEdgeColoringMode.INK_TRAP) {
+            shape.edgeColoringInkTrap(threshold);
+            return;
+        }
+        if (mode == CgMsdfEdgeColoringMode.DISTANCE) {
+            shape.edgeColoringByDistance(threshold);
+            return;
+        }
+        shape.edgeColoringSimple(threshold);
     }
 
     /**
