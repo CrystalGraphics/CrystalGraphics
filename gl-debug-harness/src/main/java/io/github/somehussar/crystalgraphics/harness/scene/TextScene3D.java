@@ -18,7 +18,7 @@ import org.joml.Matrix4f;
 import java.util.logging.Logger;
 
 /**
- * Interactive 3D world text scene for the {@code world-text-3d} mode.
+ * Interactive 3D world text scene for the {@code text-3d} mode.
  *
  * <p>Provides a continuous render loop with first-person camera controls
  * for inspecting world-space text from any angle. The scene includes:
@@ -27,9 +27,9 @@ import java.util.logging.Logger;
  *
  * <h3>Output</h3>
  * <ul>
- *   <li>{@code harness-output/world-text-3d/{name}-normal.png}</li>
- *   <li>{@code harness-output/world-text-3d/{name}-paused.png}</li>
- *   <li>{@code harness-output/world-text-3d/{name}-topdown.png}</li>
+ *   <li>{@code harness-output/text-3d/{name}-normal.png}</li>
+ *   <li>{@code harness-output/text-3d/{name}-paused.png}</li>
+ *   <li>{@code harness-output/text-3d/{name}-topdown.png}</li>
  * </ul>
  *
  * <h3>Validation sequence</h3>
@@ -139,7 +139,7 @@ public class TextScene3D implements InteractiveSceneLifecycle {
    
         choreographer.onShutdown(() -> {
             LOGGER.info("[InteractiveWorldTextScene] All screenshots captured.");
-                running = false;
+               // running = false;
         });
         choreographer.scheduleAll();
     }
