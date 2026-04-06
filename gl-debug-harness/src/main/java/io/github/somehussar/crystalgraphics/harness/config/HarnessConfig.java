@@ -1,5 +1,7 @@
 package io.github.somehussar.crystalgraphics.harness.config;
 
+import io.github.somehussar.crystalgraphics.harness.util.HarnessFontUtil;
+
 import java.util.HashMap;
 import java.util.Map;
 
@@ -15,6 +17,9 @@ public class HarnessConfig {
     private int width;
     private int height;
     private String fontPath;
+
+    public static final String ARABIC_FONT = HarnessFontUtil.resolveFontPath("../src/main/resources/assets/crystalgraphics/IBMPlexSansArabic-Regular.ttf");
+    public static final String JAPANESE_FONT = HarnessFontUtil.resolveFontPath("../src/main/resources/assets/crystalgraphics/MPLUSRounded1c-Regular.ttf");
 
     /**
      * Custom output name prefix for screenshot filenames.
