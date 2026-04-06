@@ -8,7 +8,6 @@ import io.github.somehussar.crystalgraphics.api.font.CgTextLayoutBuilder;
 import io.github.somehussar.crystalgraphics.gl.text.CgFontRegistry;
 import io.github.somehussar.crystalgraphics.gl.text.CgTextRenderContext;
 import io.github.somehussar.crystalgraphics.gl.text.CgTextRenderer;
-import io.github.somehussar.crystalgraphics.harness.config.HarnessConfig;
 import io.github.somehussar.crystalgraphics.harness.config.HarnessContext;
 import io.github.somehussar.crystalgraphics.harness.util.HarnessFontUtil;
 import io.github.somehussar.crystalgraphics.text.CgTextLayout;
@@ -128,8 +127,8 @@ public final class HUDRenderer {
         if (arabicFont != null) arabicFont.dispose();
         
         font = CgFont.load(fontPath, CgFontStyle.REGULAR, currentFontSizePx);
-        jpFnt = CgFont.load(HarnessConfig.JAPANESE_FONT, CgFontStyle.REGULAR, currentFontSizePx);
-        arabicFont = CgFont.load(HarnessConfig.ARABIC_FONT, CgFontStyle.REGULAR, currentFontSizePx);
+        jpFnt = CgFont.load(HarnessFontUtil.JAPANESE_FONT, CgFontStyle.REGULAR, currentFontSizePx);
+        arabicFont = CgFont.load(HarnessFontUtil.ARABIC_FONT, CgFontStyle.REGULAR, currentFontSizePx);
         LOGGER.fine("[HUDRenderer] Font reloaded at " + currentFontSizePx + "px");
     }
 

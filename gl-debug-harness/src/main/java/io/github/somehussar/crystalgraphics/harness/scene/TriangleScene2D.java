@@ -14,9 +14,9 @@ import org.lwjgl.opengl.GL30;
 import java.nio.FloatBuffer;
 import java.util.logging.Logger;
 
-public class TriangleScene implements HarnessSceneLifecycle {
+public class TriangleScene2D implements HarnessSceneLifecycle {
 
-    private static final Logger LOGGER = Logger.getLogger(TriangleScene.class.getName());
+    private static final Logger LOGGER = Logger.getLogger(TriangleScene2D.class.getName());
 
     static final String VERT_SOURCE =
             "#version 130\n" +
