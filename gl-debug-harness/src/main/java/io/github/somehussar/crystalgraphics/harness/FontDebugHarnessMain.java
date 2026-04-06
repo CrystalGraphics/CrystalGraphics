@@ -182,7 +182,7 @@ public final class FontDebugHarnessMain {
         System.out.println("  --gui-scale=<n>                  Simulated MC GUI scale factor (default: 1)");
         System.out.println();
         System.out.println("Atlas options (atlas-dump mode):");
-        System.out.println("  --atlas-type=<bitmap|msdf|both>  Atlas type (default: both)");
+        System.out.println("  --atlas-type=<bitmap|msdf|mtsdf|both>  Atlas type (default: both)");
         System.out.println("  --atlas-size=<n>                 Atlas texture size (default: 512)");
         System.out.println("  --bitmap-px-size=<n>             Bitmap atlas font size in px (default: 24)");
         System.out.println("  --msdf-px-size=<n>               MSDF atlas font size in px (default: 32, min: 32)");
