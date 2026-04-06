@@ -259,13 +259,44 @@ public class CgGlyphAtlasTest {
     public void testFreeAll_deletesAllTracked() {
         CgGlyphAtlas a1 = CgGlyphAtlas.createForTest(32, 32, CgGlyphAtlas.Type.BITMAP);
         CgGlyphAtlas a2 = CgGlyphAtlas.createForTest(32, 32, CgGlyphAtlas.Type.MSDF);
+        CgGlyphAtlas a3 = CgGlyphAtlas.createForTest(32, 32, CgGlyphAtlas.Type.MTSDF);
         assertFalse(a1.isDeleted());
         assertFalse(a2.isDeleted());
+        assertFalse(a3.isDeleted());
 
         CgGlyphAtlas.freeAll();
 
         assertTrue(a1.isDeleted());
         assertTrue(a2.isDeleted());
+        assertTrue(a3.isDeleted());
         assertEquals(0, CgGlyphAtlas.ALL_OWNED.size());
+    }
+
+    // ── MTSDF path ─────────────────────────────────────────────────────
+
+    @Test
+    public void testMtsdfAtlas_getOrAllocateMsdf_fourChannelData() {
+        CgGlyphAtlas atlas = CgGlyphAtlas.createForTest(256, 256, CgGlyphAtlas.Type.MTSDF);
+        assertEquals(CgGlyphAtlas.Type.MTSDF, atlas.getType());
+
+        CgGlyphKey key = new CgGlyphKey(FONT, 65, true);
+        float[] mtsdfData = new float[32 * 32 * 4];
+
+        CgAtlasRegion region = atlas.getOrAllocateMsdf(key, mtsdfData, 32, 32, 2.0f, 12.0f, 32, 32, 0);
+        assertNotNull(region);
+        assertEquals(32, region.getWidth());
+        assertEquals(32, region.getHeight());
+        assertTrue("u1 > u0", region.getU1() > region.getU0());
+        assertTrue("v1 > v0", region.getV1() > region.getV0());
+        assertEquals(2.0f, region.getBearingX(), 0.001f);
+        assertEquals(12.0f, region.getBearingY(), 0.001f);
+    }
+
+    @Test
+    public void testMtsdfAtlas_typeReportedCorrectly() {
+        CgGlyphAtlas atlas = CgGlyphAtlas.createForTest(128, 128, CgGlyphAtlas.Type.MTSDF);
+        assertEquals(CgGlyphAtlas.Type.MTSDF, atlas.getType());
+        assertNotEquals(CgGlyphAtlas.Type.MSDF, atlas.getType());
+        assertNotEquals(CgGlyphAtlas.Type.BITMAP, atlas.getType());
     }
 }

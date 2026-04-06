@@ -1,6 +1,7 @@
 package io.github.somehussar.crystalgraphics.gl.text.msdf;
 
 import com.msdfgen.MsdfConstants;
+import io.github.somehussar.crystalgraphics.gl.text.CgGlyphAtlas;
 
 /**
  * Immutable configuration for a shared MSDF atlas family.
@@ -25,6 +26,7 @@ public final class CgMsdfAtlasConfig {
     public static final double DEFAULT_MIN_IMPROVE_RATIO = MsdfConstants.DEFAULT_MIN_IMPROVE_RATIO;
     public static final CgMsdfEdgeColoringMode DEFAULT_EDGE_COLORING_MODE = CgMsdfEdgeColoringMode.SIMPLE;
     public static final double DEFAULT_EDGE_COLORING_ANGLE_THRESHOLD = 3.0d;
+    public static final boolean DEFAULT_MTSDF = false;
 
     private final int atlasScalePx;
     private final float pxRange;
@@ -40,6 +42,7 @@ public final class CgMsdfAtlasConfig {
     private final double minImproveRatio;
     private final CgMsdfEdgeColoringMode edgeColoringMode;
     private final double edgeColoringAngleThreshold;
+    private final boolean mtsdf;
 
     public CgMsdfAtlasConfig(int atlasScalePx,
                              float pxRange,
@@ -55,6 +58,29 @@ public final class CgMsdfAtlasConfig {
                              double minImproveRatio,
                              CgMsdfEdgeColoringMode edgeColoringMode,
                              double edgeColoringAngleThreshold) {
+        this(atlasScalePx, pxRange, pageSize, spacingPx, miterLimit,
+                alignOriginX, alignOriginY, overlapSupport,
+                errorCorrectionMode, distanceCheckMode,
+                minDeviationRatio, minImproveRatio,
+                edgeColoringMode, edgeColoringAngleThreshold,
+                DEFAULT_MTSDF);
+    }
+
+    public CgMsdfAtlasConfig(int atlasScalePx,
+                             float pxRange,
+                             int pageSize,
+                             int spacingPx,
+                             float miterLimit,
+                             boolean alignOriginX,
+                             boolean alignOriginY,
+                             boolean overlapSupport,
+                             int errorCorrectionMode,
+                             int distanceCheckMode,
+                             double minDeviationRatio,
+                             double minImproveRatio,
+                             CgMsdfEdgeColoringMode edgeColoringMode,
+                             double edgeColoringAngleThreshold,
+                             boolean mtsdf) {
         if (atlasScalePx <= 0) {
             throw new IllegalArgumentException("atlasScalePx must be > 0, got " + atlasScalePx);
         }
@@ -96,6 +122,7 @@ public final class CgMsdfAtlasConfig {
         this.minImproveRatio = minImproveRatio;
         this.edgeColoringMode = edgeColoringMode;
         this.edgeColoringAngleThreshold = edgeColoringAngleThreshold;
+        this.mtsdf = mtsdf;
     }
 
     public static CgMsdfAtlasConfig defaultConfig() {
@@ -377,6 +404,33 @@ public final class CgMsdfAtlasConfig {
         return edgeColoringAngleThreshold;
     }
 
+    public boolean isMtsdf() {
+        return mtsdf;
+    }
+
+    public CgGlyphAtlas.Type resolveAtlasType() {
+        return mtsdf ? CgGlyphAtlas.Type.MTSDF : CgGlyphAtlas.Type.MSDF;
+    }
+
+    public CgMsdfAtlasConfig withMtsdf(boolean newMtsdf) {
+        return new CgMsdfAtlasConfig(
+                atlasScalePx,
+                pxRange,
+                pageSize,
+                spacingPx,
+                miterLimit,
+                alignOriginX,
+                alignOriginY,
+                overlapSupport,
+                errorCorrectionMode,
+                distanceCheckMode,
+                minDeviationRatio,
+                minImproveRatio,
+                edgeColoringMode,
+                edgeColoringAngleThreshold,
+                newMtsdf);
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
@@ -397,7 +451,8 @@ public final class CgMsdfAtlasConfig {
                 && Double.compare(that.minDeviationRatio, minDeviationRatio) == 0
                 && Double.compare(that.minImproveRatio, minImproveRatio) == 0
                 && Double.compare(that.edgeColoringAngleThreshold, edgeColoringAngleThreshold) == 0
-                && edgeColoringMode == that.edgeColoringMode;
+                && edgeColoringMode == that.edgeColoringMode
+                && mtsdf == that.mtsdf;
     }
 
     @Override
@@ -419,6 +474,7 @@ public final class CgMsdfAtlasConfig {
         result = 31 * result + edgeColoringMode.hashCode();
         temp = Double.doubleToLongBits(edgeColoringAngleThreshold);
         result = 31 * result + (int) (temp ^ (temp >>> 32));
+        result = 31 * result + (mtsdf ? 1 : 0);
         return result;
     }
 
@@ -439,6 +495,7 @@ public final class CgMsdfAtlasConfig {
                 ", minImproveRatio=" + minImproveRatio +
                 ", edgeColoringMode=" + edgeColoringMode +
                 ", edgeColoringAngleThreshold=" + edgeColoringAngleThreshold +
+                ", mtsdf=" + mtsdf +
                 '}';
     }
 }
