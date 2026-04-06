@@ -117,7 +117,7 @@ public class CgFontRegistry {
     public CgGlyphAtlas getMsdfAtlas(CgFontKey key) {
         CgGlyphAtlas atlas = msdfAtlases.get(key);
         if (atlas == null) {
-            atlas = CgGlyphAtlas.create(atlasSize, atlasSize, CgGlyphAtlas.Type.MSDF);
+            atlas = CgGlyphAtlas.create(atlasSize, atlasSize, resolveMsdfAtlasConfig(key).resolveAtlasType());
             msdfAtlases.put(key, atlas);
         }
         return atlas;
@@ -143,7 +143,10 @@ public class CgFontRegistry {
     CgGlyphAtlas getMsdfAtlas(CgRasterFontKey rasterKey) {
         CgGlyphAtlas atlas = rasterMsdfAtlases.get(rasterKey);
         if (atlas == null) {
-            atlas = CgGlyphAtlas.create(atlasSize, atlasSize, CgGlyphAtlas.Type.MSDF);
+            atlas = CgGlyphAtlas.create(
+                    atlasSize,
+                    atlasSize,
+                    resolveMsdfAtlasConfig(rasterKey.getBaseFontKey()).resolveAtlasType());
             rasterMsdfAtlases.put(rasterKey, atlas);
         }
         return atlas;
@@ -881,7 +884,7 @@ public class CgFontRegistry {
     }
 
     private void commitGeneratedGlyph(CgGlyphGenerationResult result, long frame) {
-        if (result.isMsdf()) {
+        if (result.isDistanceField()) {
             CgPagedGlyphAtlas atlas = getPagedMsdfAtlas(result.getMsdfAtlasKey());
             if (atlas.get(result.getAtlasKey(), frame) != null) {
                 return;
