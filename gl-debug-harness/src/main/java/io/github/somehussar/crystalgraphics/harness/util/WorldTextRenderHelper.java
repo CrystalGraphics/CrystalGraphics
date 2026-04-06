@@ -1,4 +1,4 @@
-package io.github.somehussar.crystalgraphics.harness.scene;
+package io.github.somehussar.crystalgraphics.harness.util;
 
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
 import io.github.somehussar.crystalgraphics.api.PoseStack;
@@ -10,12 +10,10 @@ import io.github.somehussar.crystalgraphics.gl.text.CgTextRenderContext;
 import io.github.somehussar.crystalgraphics.gl.text.CgTextRenderer;
 import io.github.somehussar.crystalgraphics.gl.text.CgWorldTextRenderContext;
 import io.github.somehussar.crystalgraphics.gl.text.msdf.CgMsdfAtlasConfig;
-import io.github.somehussar.crystalgraphics.harness.util.HarnessFontUtil;
-import io.github.somehussar.crystalgraphics.harness.util.HarnessProjectionUtil;
+import io.github.somehussar.crystalgraphics.harness.scene.TextScene3D;
 import io.github.somehussar.crystalgraphics.text.CgTextLayout;
 
 import org.joml.Matrix4f;
-import org.lwjgl.opengl.GL11;
 
 import java.util.logging.Logger;
 
@@ -23,8 +21,7 @@ import java.util.logging.Logger;
  * Shared rendering logic for world-space text scenes.
  *
  * <p>Encapsulates the GL resources (font, registry, renderer, layouts) and
- * rendering operations that are common to both the managed single-shot
- * ({@link ManagedWorldTextScene}) and interactive ({@link InteractiveWorldTextScene})
+ * rendering operations that are common to ({@link TextScene3D})
  * world text scenes. This eliminates duplication without forcing both scene
  * types into a single dual-interface class.</p>
  *
@@ -49,8 +46,7 @@ import java.util.logging.Logger;
  * <p>This class is <em>not</em> a scene itself — it has no lifecycle awareness.
  * The owning scene controls when init/render/dispose are called.</p>
  *
- * @see ManagedWorldTextScene
- * @see InteractiveWorldTextScene
+ * @see TextScene3D
  */
 public final class WorldTextRenderHelper {
 

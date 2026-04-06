@@ -161,9 +161,7 @@ public final class InteractiveSceneRunner implements CaptureCallback {
         GL11.glEnable(GL11.GL_DEPTH_TEST);
         GL11.glDepthFunc(GL11.GL_LEQUAL);
 
-        worldPassCoordinator.init();
-        overlayPipeline.init();
-        scene.init(ctx);
+        init();
 
         LOGGER.info("[InteractiveSceneRunner] Entering render loop for: "
                 + scene.getClass().getSimpleName());
@@ -234,6 +232,11 @@ public final class InteractiveSceneRunner implements CaptureCallback {
                 + scene.shouldShutdownOnComplete());
     }
 
+    public void init() {
+        worldPassCoordinator.init();
+        overlayPipeline.init();
+        scene.init(ctx);
+    }
     /**
      * Returns the debug tools for LLM-driven camera control and screenshot capture.
      */

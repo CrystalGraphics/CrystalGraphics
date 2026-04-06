@@ -9,6 +9,7 @@ import io.github.somehussar.crystalgraphics.harness.config.*;
 import io.github.somehussar.crystalgraphics.harness.scheduler.TaskScheduler;
 import io.github.somehussar.crystalgraphics.harness.util.GlStateResetHelper;
 import io.github.somehussar.crystalgraphics.harness.util.HarnessFontUtil;
+import io.github.somehussar.crystalgraphics.harness.util.WorldTextRenderHelper;
 import io.github.somehussar.crystalgraphics.harness.validation.ValidationCaptureStep;
 import io.github.somehussar.crystalgraphics.harness.validation.ValidationChoreographer;
 
@@ -45,29 +46,12 @@ import java.util.logging.Logger;
  * lifecycle, camera setup, and screenshot scheduling.</p>
  *
  * @see WorldTextRenderHelper
- * @see ManagedWorldTextScene
  */
-public class InteractiveWorldTextScene implements InteractiveSceneLifecycle {
+public class TextScene3D implements InteractiveSceneLifecycle {
 
-    private static final Logger LOGGER = Logger.getLogger(InteractiveWorldTextScene.class.getName());
-    private static final float MOTION_CAM_X = 1.36f;
-    private static final float MOTION_CAM_Y = 0.70f;
-    private static final float MOTION_CAM_Z = -4.71f;
-    private static final float MOTION_PITCH = -12.0f;
-    private static final float[][] INVESTIGATION_CAPTURES = new float[][] {
-            {-1.58f, 0.93f, -4.31f, 356.0f, -4.0f},
-            {-1.90f, 0.22f, -4.37f, 337.0f, -4.0f},
-            {3.83f, 0.84f, -4.40f, 358.0f, -7.0f},
-            {1.02f, 0.22f, -4.31f, 1.0f, -1.0f}
-    };
-    private static final double INVESTIGATION_PREWARM_SECONDS = 3.0;
-    private static final double INVESTIGATION_CAPTURE_SPACING_SECONDS = 0.5;
-    private static final String[] INVESTIGATION_CAPTURE_NAMES = new String[] {
-            "jp-intersection-gap-a",
-            "ar-baseline-gap-a",
-            "jp-punct-gap-bad",
-            "ar-punct-gap-good-control"
-    };
+    private static final Logger LOGGER = Logger.getLogger(TextScene3D.class.getName());
+    
+    private static final double MTSDF_PREWARM_SECONDS = 3.0;
 
     // ── Interactive mode state ──
     private boolean running = true;
@@ -102,19 +86,19 @@ public class InteractiveWorldTextScene implements InteractiveSceneLifecycle {
                 config.getAtlasSize(), config.isMtsdf());
         helper.init();
 
-        jpHelper = new WorldTextRenderHelper(HarnessConfig.JAPANESE_FONT, fontSizePx,
-                "さあ 剽悍な双眸を エーカム そうさ 先頭に", layoutWidth, layoutHeight,
+        jpHelper = new WorldTextRenderHelper(HarnessFontUtil.JAPANESE_FONT, fontSizePx,
+                "さあ 剽悍な双眸を エーカム そうさ 先頭に e", layoutWidth, layoutHeight,
                 config.getAtlasSize(), config.isMtsdf());
         jpHelper.init();
 
-        arHelper = new WorldTextRenderHelper(HarnessConfig.ARABIC_FONT, fontSizePx, "بيانات الاستفسار", layoutWidth,
+        arHelper = new WorldTextRenderHelper(HarnessFontUtil.ARABIC_FONT, fontSizePx, "بيانات الاستفسار e", layoutWidth,
                 layoutHeight,
                 config.getAtlasSize(), config.isMtsdf());
         arHelper.init();
 
-        camera.moveCamera(MOTION_CAM_X, MOTION_CAM_Y, MOTION_CAM_Z);
+        camera.moveCamera(0, 0, 0);
         camera.setYaw(337.0f);
-        camera.setPitch(MOTION_PITCH);
+        camera.setPitch(0);
 
         // Schedule automated screenshots for validation if runtime services are available
         if (ctx.getRuntimeServices() != null) {
@@ -136,23 +120,26 @@ public class InteractiveWorldTextScene implements InteractiveSceneLifecycle {
         ValidationChoreographer choreographer = new ValidationChoreographer(
                 camera, scheduler, artifacts, runtime);
 
-        double captureTime = INVESTIGATION_PREWARM_SECONDS;
-        for (int i = 0; i < INVESTIGATION_CAPTURES.length; i++) {
-            float[] capture = INVESTIGATION_CAPTURES[i];
-            String name = INVESTIGATION_CAPTURE_NAMES[i];
-            choreographer.addStep(ValidationCaptureStep.builder(name, captureTime)
-                    .cameraPosition(capture[0], capture[1], capture[2])
-                    .cameraOrientation(capture[3], capture[4])
-                    .build());
-            captureTime += INVESTIGATION_CAPTURE_SPACING_SECONDS;
-        }
+        double captureTime = MTSDF_PREWARM_SECONDS;
+        choreographer.addStep(ValidationCaptureStep.builder("step-1", captureTime + 0.5)
+                .cameraPosition(0, 0, 0)
+                .cameraOrientation(335.0f, 0)
+                .build());
 
-        choreographer.onShutdown(new Runnable() {
-            @Override
-            public void run() {
-                LOGGER.info("[InteractiveWorldTextScene] All screenshots captured.");
-//                running = false;
-            }
+        choreographer.addStep(ValidationCaptureStep.builder("step-2", captureTime + 1.0)
+                .cameraPosition(0, 0, 0)
+                .cameraOrientation(336.0f, 0)
+                .build());
+
+        choreographer.addStep(ValidationCaptureStep.builder("step-3", captureTime + 1.5)
+                .cameraPosition(0, 0, 0)
+                .cameraOrientation(337.0f, 0)
+                .build());
+
+   
+        choreographer.onShutdown(() -> {
+            LOGGER.info("[InteractiveWorldTextScene] All screenshots captured.");
+                running = false;
         });
         choreographer.scheduleAll();
     }
