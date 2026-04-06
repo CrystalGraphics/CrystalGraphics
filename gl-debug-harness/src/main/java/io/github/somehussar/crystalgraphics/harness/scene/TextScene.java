@@ -9,6 +9,7 @@ import io.github.somehussar.crystalgraphics.gl.text.CgFontRegistry;
 import io.github.somehussar.crystalgraphics.gl.text.CgGlyphAtlas;
 import io.github.somehussar.crystalgraphics.gl.text.CgTextRenderContext;
 import io.github.somehussar.crystalgraphics.gl.text.CgTextRenderer;
+import io.github.somehussar.crystalgraphics.gl.text.msdf.CgMsdfAtlasConfig;
 import io.github.somehussar.crystalgraphics.harness.FrameInfo;
 import io.github.somehussar.crystalgraphics.harness.HarnessSceneLifecycle;
 import io.github.somehussar.crystalgraphics.harness.config.HarnessContext;
@@ -86,7 +87,8 @@ public class TextScene implements HarnessSceneLifecycle {
                 + ", descender=" + font.getMetrics().getDescender()
                 + ", lineHeight=" + font.getMetrics().getLineHeight());
 
-        CgFontRegistry registry = new CgFontRegistry();
+        CgMsdfAtlasConfig msdfConfig = config.buildMsdfAtlasConfig();
+        CgFontRegistry registry = new CgFontRegistry(config.getAtlasSize(), msdfConfig);
         CgTextRenderer renderer = CgTextRenderer.create(caps, registry);
         CgTextRenderer.diagnosticLogging = true;
 
@@ -155,6 +157,14 @@ public class TextScene implements HarnessSceneLifecycle {
         CgTextRenderContext renderContext = CgTextRenderContext.orthographic(fboWidth, fboHeight);
         long frame = 1;
 
+        if (config.isMtsdf()) {
+            frame = prewarmDistanceFieldGlyphs(renderer, registry,
+                    font,
+                    topLabelLayout, 20.0f, 20.0f, TOP_LABEL_COLOR,
+                    labels, layouts, bandYOffsets, scales,
+                    renderContext, frame);
+        }
+
         // Draw top label: exact replication of CrystalGraphicsFontDemo's
         // identity-pose green label (position 20,20 — color 0xAAFFAAFF)
         renderContext.clearHistory();
@@ -220,6 +230,55 @@ public class TextScene implements HarnessSceneLifecycle {
         GL11.glDeleteTextures(colorTex);
 
         LOGGER.info("[Harness] Text scene complete.");
+    }
+
+    private long prewarmDistanceFieldGlyphs(CgTextRenderer renderer,
+                                            CgFontRegistry registry,
+                                            CgFont font,
+                                            CgTextLayout topLabelLayout,
+                                            float topLabelX,
+                                            float topLabelY,
+                                            int topLabelColor,
+                                            String[] labels,
+                                            CgTextLayout[] layouts,
+                                            int[] bandYOffsets,
+                                            List<Float> scales,
+                                            CgTextRenderContext renderContext,
+                                            long frame) {
+        int totalChars = TOP_LABEL_TEXT.length();
+        for (String label : labels) {
+            totalChars += label.length();
+        }
+        int warmupFrames = Math.max(8, (totalChars / 4) + 6);
+
+        for (int i = 0; i < warmupFrames; i++) {
+            long drawFrame = frame + i;
+            registry.tickFrame(drawFrame);
+
+            renderContext.clearHistory();
+            PoseStack topLabelPose = new PoseStack();
+            renderer.draw(topLabelLayout, font,
+                    topLabelX, topLabelY, topLabelColor, drawFrame, renderContext, topLabelPose);
+
+            for (int bandIdx = 0; bandIdx < scales.size(); bandIdx++) {
+                float scale = scales.get(bandIdx);
+                PoseStack poseStack = new PoseStack();
+                float xDraw = 20.0f;
+                float yDraw = bandYOffsets[bandIdx] + 10.0f;
+                if (scale != 1.0f) {
+                    poseStack.last().pose().scale(scale, scale, 1.0f);
+                    xDraw /= scale;
+                    yDraw /= scale;
+                }
+                renderContext.clearHistory();
+                renderer.draw(layouts[bandIdx], font, xDraw, yDraw,
+                        0xFFFFFF, drawFrame, renderContext, poseStack);
+            }
+        }
+
+        GL11.glClearColor(0.15f, 0.15f, 0.2f, 1.0f);
+        GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
+        return frame + warmupFrames;
     }
 
     private void logGlyphDiagnostics(CgTextLayout layout, String text) {

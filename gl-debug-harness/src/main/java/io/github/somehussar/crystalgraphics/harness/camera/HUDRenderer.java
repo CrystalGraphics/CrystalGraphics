@@ -232,7 +232,7 @@ public final class HUDRenderer {
         ensureDemoFont();
         
         
-        float[] demoScales = {0.5f, 1.0f, 1.5f, 2.0f};
+        float[] demoScales = {0.5f, 1.0f, 1.5f, 2.0f,4.0f};
         float lineY = DEMO_TEXT_START_Y;
         for (float demoScale : demoScales) {
             PoseStack ps = anchoredScalePose(DEMO_TEXT_X, lineY, demoScale);
