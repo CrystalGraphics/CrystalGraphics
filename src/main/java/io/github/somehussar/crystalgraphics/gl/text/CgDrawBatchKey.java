@@ -7,7 +7,7 @@ package io.github.somehussar.crystalgraphics.gl.text;
  * whenever the GL state changes between glyphs. This key captures the three
  * dimensions that force a batch break:</p>
  * <ol>
- *   <li><strong>Atlas mode</strong> ({@code msdf}) — bitmap and MSDF glyphs use
+ *   <li><strong>Atlas mode</strong> ({@code atlasType}) — bitmap, MSDF, and MTSDF glyphs use
  *       different shader programs, so they cannot share a draw call.</li>
  *   <li><strong>Page texture ID</strong> ({@code textureId}) — each atlas page
  *       is a separate GL texture. Glyphs on different pages require a texture
@@ -20,7 +20,7 @@ package io.github.somehussar.crystalgraphics.gl.text;
  *
  * <h3>Ordering</h3>
  * <p>The key implements {@link Comparable} so batches can be sorted by mode
- * (bitmap first, then MSDF) for consistent draw order. Within the same mode,
+ * (bitmap first, then distance-field batches) for consistent draw order. Within the same mode,
  * batches are ordered by texture ID to minimize texture rebinds.</p>
  *
  * <h3>Usage</h3>
@@ -34,8 +34,7 @@ package io.github.somehussar.crystalgraphics.gl.text;
  */
 public final class CgDrawBatchKey implements Comparable<CgDrawBatchKey> {
 
-    /** Whether this batch uses MSDF rendering (true) or bitmap (false). */
-    private final boolean msdf;
+    private final CgGlyphAtlas.Type atlasType;
 
     /** GL texture ID of the atlas page bound for this batch. */
     private final int textureId;
@@ -49,17 +48,24 @@ public final class CgDrawBatchKey implements Comparable<CgDrawBatchKey> {
     /**
      * Creates a batch key.
      *
-     * @param msdf      true for MSDF batches, false for bitmap
+     * @param atlasType concrete atlas type for the batch
      * @param textureId GL texture ID of the atlas page
      * @param pxRange   SDF pixel range (0 for bitmap)
      */
-    public CgDrawBatchKey(boolean msdf, int textureId, float pxRange) {
-        this.msdf = msdf;
+    public CgDrawBatchKey(CgGlyphAtlas.Type atlasType, int textureId, float pxRange) {
+        if (atlasType == null) {
+            throw new IllegalArgumentException("atlasType must not be null");
+        }
+        this.atlasType = atlasType;
         this.textureId = textureId;
         this.pxRange = pxRange;
     }
 
-    public boolean isMsdf() { return msdf; }
+    public CgGlyphAtlas.Type getAtlasType() { return atlasType; }
+    public boolean isBitmap() { return atlasType == CgGlyphAtlas.Type.BITMAP; }
+    public boolean isMsdf() { return atlasType == CgGlyphAtlas.Type.MSDF; }
+    public boolean isMtsdf() { return atlasType == CgGlyphAtlas.Type.MTSDF; }
+    public boolean isDistanceField() { return atlasType != CgGlyphAtlas.Type.BITMAP; }
     public int getTextureId() { return textureId; }
     public float getPxRange() { return pxRange; }
 
@@ -72,8 +78,7 @@ public final class CgDrawBatchKey implements Comparable<CgDrawBatchKey> {
      */
     @Override
     public int compareTo(CgDrawBatchKey other) {
-        // Bitmap (false=0) before MSDF (true=1)
-        int cmp = Boolean.compare(this.msdf, other.msdf);
+        int cmp = Integer.compare(orderOf(this.atlasType), orderOf(other.atlasType));
         if (cmp != 0) return cmp;
         cmp = Integer.compare(this.textureId, other.textureId);
         if (cmp != 0) return cmp;
@@ -85,14 +90,14 @@ public final class CgDrawBatchKey implements Comparable<CgDrawBatchKey> {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         CgDrawBatchKey that = (CgDrawBatchKey) o;
-        return msdf == that.msdf &&
+        return atlasType == that.atlasType &&
                 textureId == that.textureId &&
                 Float.compare(that.pxRange, pxRange) == 0;
     }
 
     @Override
     public int hashCode() {
-        int result = (msdf ? 1 : 0);
+        int result = atlasType.hashCode();
         result = 31 * result + textureId;
         result = 31 * result + Float.floatToIntBits(pxRange);
         return result;
@@ -101,9 +106,13 @@ public final class CgDrawBatchKey implements Comparable<CgDrawBatchKey> {
     @Override
     public String toString() {
         return "CgDrawBatchKey{" +
-                "msdf=" + msdf +
+                "atlasType=" + atlasType +
                 ", textureId=" + textureId +
                 ", pxRange=" + pxRange +
                 '}';
+    }
+
+    private static int orderOf(CgGlyphAtlas.Type type) {
+        return type == CgGlyphAtlas.Type.BITMAP ? 0 : 1;
     }
 }

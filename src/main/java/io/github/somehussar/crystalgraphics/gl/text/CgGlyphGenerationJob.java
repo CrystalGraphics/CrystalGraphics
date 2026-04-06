@@ -110,7 +110,18 @@ final class CgGlyphGenerationJob {
     }
 
     boolean isMsdf() {
-        return atlasKey.isMsdf();
+        return getAtlasType() == CgGlyphAtlas.Type.MSDF;
+    }
+
+    boolean isDistanceField() {
+        return getAtlasType() != CgGlyphAtlas.Type.BITMAP;
+    }
+
+    CgGlyphAtlas.Type getAtlasType() {
+        if (msdfConfig != null) {
+            return msdfConfig.resolveAtlasType();
+        }
+        return CgGlyphAtlas.Type.BITMAP;
     }
 
     @Override

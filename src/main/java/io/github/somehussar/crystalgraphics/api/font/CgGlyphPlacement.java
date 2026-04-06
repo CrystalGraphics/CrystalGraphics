@@ -1,5 +1,7 @@
 package io.github.somehussar.crystalgraphics.api.font;
 
+import io.github.somehussar.crystalgraphics.gl.text.CgGlyphAtlas;
+
 /**
  * Immutable placement record describing a glyph's location within a paged atlas.
  *
@@ -67,6 +69,8 @@ public final class CgGlyphPlacement {
      * test-mode placement with no backing GL texture.</p>
      */
     private final int pageTextureId;
+
+    private final CgGlyphAtlas.Type atlasType;
 
     // ── Plane bounds (physical raster space) ───────────────────────────
 
@@ -150,6 +154,7 @@ public final class CgGlyphPlacement {
     public CgGlyphPlacement(CgGlyphKey key,
                             int pageIndex,
                             int pageTextureId,
+                            CgGlyphAtlas.Type atlasType,
                             float planeLeft,
                             float planeBottom,
                             float planeRight,
@@ -169,9 +174,13 @@ public final class CgGlyphPlacement {
         if (pageIndex < 0) {
             throw new IllegalArgumentException("pageIndex must be >= 0, got " + pageIndex);
         }
+        if (atlasType == null) {
+            throw new IllegalArgumentException("atlasType must not be null");
+        }
         this.key = key;
         this.pageIndex = pageIndex;
         this.pageTextureId = pageTextureId;
+        this.atlasType = atlasType;
         this.planeLeft = planeLeft;
         this.planeBottom = planeBottom;
         this.planeRight = planeRight;
@@ -208,8 +217,9 @@ public final class CgGlyphPlacement {
      * @return a placement record bridging the legacy region
      */
     public static CgGlyphPlacement fromAtlasRegion(CgAtlasRegion region,
-                                                    int textureId,
-                                                    float pxRange) {
+                                                     int textureId,
+                                                     CgGlyphAtlas.Type atlasType,
+                                                     float pxRange) {
         if (region == null) {
             throw new IllegalArgumentException("region must not be null");
         }
@@ -221,7 +231,7 @@ public final class CgGlyphPlacement {
         float planeTop = region.getBearingY();
         float quadWidth;
         float quadHeight;
-        if (region.getKey().isMsdf()) {
+        if (atlasType != CgGlyphAtlas.Type.BITMAP) {
             quadWidth = region.getWidth();
             quadHeight = region.getHeight();
         } else {
@@ -237,6 +247,7 @@ public final class CgGlyphPlacement {
                 region.getKey(),
                 0,  // single-page legacy: page index 0
                 textureId,
+                atlasType,
                 planeLeft,
                 planeBottom,
                 planeRight,
@@ -258,6 +269,7 @@ public final class CgGlyphPlacement {
     public CgGlyphKey getKey() { return key; }
     public int getPageIndex() { return pageIndex; }
     public int getPageTextureId() { return pageTextureId; }
+    public CgGlyphAtlas.Type getAtlasType() { return atlasType; }
     public float getPlaneLeft() { return planeLeft; }
     public float getPlaneBottom() { return planeBottom; }
     public float getPlaneRight() { return planeRight; }
@@ -302,7 +314,15 @@ public final class CgGlyphPlacement {
      * Returns whether this is an MSDF placement (delegates to the glyph key).
      */
     public boolean isMsdf() {
-        return key.isMsdf();
+        return atlasType == CgGlyphAtlas.Type.MSDF;
+    }
+
+    public boolean isMtsdf() {
+        return atlasType == CgGlyphAtlas.Type.MTSDF;
+    }
+
+    public boolean isDistanceField() {
+        return atlasType != CgGlyphAtlas.Type.BITMAP;
     }
 
     @Override
@@ -311,6 +331,7 @@ public final class CgGlyphPlacement {
                 "key=" + key +
                 ", page=" + pageIndex +
                 ", texId=" + pageTextureId +
+                ", atlasType=" + atlasType +
                 ", plane=[" + planeLeft + "," + planeBottom + "," + planeRight + "," + planeTop + "]" +
                 ", uv=[" + u0 + "," + v0 + "," + u1 + "," + v1 + "]" +
                 ", pxRange=" + pxRange +
@@ -324,6 +345,7 @@ public final class CgGlyphPlacement {
         CgGlyphPlacement that = (CgGlyphPlacement) o;
         return pageIndex == that.pageIndex &&
                 pageTextureId == that.pageTextureId &&
+                atlasType == that.atlasType &&
                 Float.compare(that.planeLeft, planeLeft) == 0 &&
                 Float.compare(that.planeBottom, planeBottom) == 0 &&
                 Float.compare(that.planeRight, planeRight) == 0 &&
@@ -345,6 +367,7 @@ public final class CgGlyphPlacement {
         int result = key.hashCode();
         result = 31 * result + pageIndex;
         result = 31 * result + pageTextureId;
+        result = 31 * result + atlasType.hashCode();
         result = 31 * result + Float.floatToIntBits(planeLeft);
         result = 31 * result + Float.floatToIntBits(planeTop);
         result = 31 * result + Float.floatToIntBits(pxRange);

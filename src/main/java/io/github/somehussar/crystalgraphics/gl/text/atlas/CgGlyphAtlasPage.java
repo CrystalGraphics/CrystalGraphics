@@ -300,8 +300,9 @@ public class CgGlyphAtlasPage {
         int pw = packed.getWidth();
         int ph = packed.getHeight();
 
-        float insetX = key.isMsdf() && pw > 1 ? 0.5f : 0.0f;
-        float insetY = key.isMsdf() && ph > 1 ? 0.5f : 0.0f;
+        boolean distanceField = type != CgGlyphAtlas.Type.BITMAP;
+        float insetX = distanceField && pw > 1 ? 0.5f : 0.0f;
+        float insetY = distanceField && ph > 1 ? 0.5f : 0.0f;
         float u0 = (px + insetX) / pageWidth;
         float v0 = (py + insetY) / pageHeight;
         float u1 = (px + pw - insetX) / pageWidth;
@@ -314,7 +315,7 @@ public class CgGlyphAtlasPage {
         float planeTop = bearingY;
         float quadWidth;
         float quadHeight;
-        if (key.isMsdf()) {
+        if (distanceField) {
             quadWidth = pw;
             quadHeight = ph;
         } else {
@@ -332,7 +333,7 @@ public class CgGlyphAtlasPage {
         int atlasTop = py;
 
         return new CgGlyphPlacement(
-                key, pageIndex, textureId,
+                key, pageIndex, textureId, type,
                 planeLeft, planeBottom, planeRight, planeTop,
                 atlasLeft, atlasBottom, atlasRight, atlasTop,
                 u0, v0, u1, v1,

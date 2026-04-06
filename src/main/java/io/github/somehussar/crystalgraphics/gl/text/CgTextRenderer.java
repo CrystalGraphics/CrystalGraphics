@@ -104,10 +104,13 @@ public class CgTextRenderer {
     private static final String BITMAP_FRAG = "/assets/crystalgraphics/shader/bitmap_text.frag";
     private static final String MSDF_VERT = "/assets/crystalgraphics/shader/msdf_text.vert";
     private static final String MSDF_FRAG = "/assets/crystalgraphics/shader/msdf_text.frag";
+    private static final String MTSDF_VERT = "/assets/crystalgraphics/shader/mtsdf_text.vert";
+    private static final String MTSDF_FRAG = "/assets/crystalgraphics/shader/mtsdf_text.frag";
     private static final CgTextLayoutBuilder LAYOUT_BUILDER = new CgTextLayoutBuilder();
 
     private final CgShaderProgram bitmapShader;
     private final CgShaderProgram msdfShader;
+    private final CgShaderProgram mtsdfShader;
     private final CgGlyphVbo vbo;
     private final CgFontRegistry registry;
     private final int bitmapLocProjection;
@@ -117,16 +120,22 @@ public class CgTextRenderer {
     private final int msdfLocModelview;
     private final int msdfLocAtlas;
     private final int msdfLocPxRange;
+    private final int mtsdfLocProjection;
+    private final int mtsdfLocModelview;
+    private final int mtsdfLocAtlas;
+    private final int mtsdfLocPxRange;
     private final FloatBuffer matrixBuf;
 
     private boolean deleted;
 
     private CgTextRenderer(CgShaderProgram bitmapShader,
                            CgShaderProgram msdfShader,
+                           CgShaderProgram mtsdfShader,
                            CgGlyphVbo vbo,
                            CgFontRegistry registry) {
         this.bitmapShader = bitmapShader;
         this.msdfShader = msdfShader;
+        this.mtsdfShader = mtsdfShader;
         this.vbo = vbo;
         this.registry = registry;
         this.bitmapLocProjection = bitmapShader.getUniformLocation("u_projection");
@@ -136,6 +145,10 @@ public class CgTextRenderer {
         this.msdfLocModelview = msdfShader.getUniformLocation("u_modelview");
         this.msdfLocAtlas = msdfShader.getUniformLocation("u_atlas");
         this.msdfLocPxRange = msdfShader.getUniformLocation("u_pxRange");
+        this.mtsdfLocProjection = mtsdfShader.getUniformLocation("u_projection");
+        this.mtsdfLocModelview = mtsdfShader.getUniformLocation("u_modelview");
+        this.mtsdfLocAtlas = mtsdfShader.getUniformLocation("u_atlas");
+        this.mtsdfLocPxRange = mtsdfShader.getUniformLocation("u_pxRange");
         this.matrixBuf = BufferUtils.createFloatBuffer(16);
     }
 
@@ -153,13 +166,17 @@ public class CgTextRenderer {
 
         CgShaderProgram bitmapShader = CgShaderFactory.compile(caps, readShaderSource(BITMAP_VERT), readShaderSource(BITMAP_FRAG));
         CgShaderProgram msdfShader = CgShaderFactory.compile(caps, readShaderSource(MSDF_VERT), readShaderSource(MSDF_FRAG));
+        CgShaderProgram mtsdfShader = CgShaderFactory.compile(caps, readShaderSource(MTSDF_VERT), readShaderSource(MTSDF_FRAG));
 
         CgGlyphVbo vbo = CgGlyphVbo.create(INITIAL_VBO_CAPACITY);
         vbo.setupAttributes(bitmapShader);
         vbo.setupAttributes(msdfShader);
+        vbo.setupAttributes(mtsdfShader);
 
-        LOGGER.info("[CrystalGraphics] CgTextRenderer created: bitmap=" + bitmapShader.getId() + ", msdf=" + msdfShader.getId());
-        return new CgTextRenderer(bitmapShader, msdfShader, vbo, registry);
+        LOGGER.info("[CrystalGraphics] CgTextRenderer created: bitmap=" + bitmapShader.getId()
+                + ", msdf=" + msdfShader.getId()
+                + ", mtsdf=" + mtsdfShader.getId());
+        return new CgTextRenderer(bitmapShader, msdfShader, mtsdfShader, vbo, registry);
     }
 
     /**
@@ -568,6 +585,7 @@ public class CgTextRenderer {
         vbo.delete();
         bitmapShader.delete();
         msdfShader.delete();
+        mtsdfShader.delete();
     }
 
     public boolean isDeleted() {
@@ -662,15 +680,19 @@ public class CgTextRenderer {
             // Resolve the texture ID from the atlas this glyph lives on.
             // For the legacy single-page model, each atlas has one texture.
             int textureId;
+            CgGlyphAtlas.Type atlasType;
             float pxRange;
             if (region.getKey().isMsdf()) {
-                textureId = registry.getMsdfAtlas(rasterFontKey).getTextureId();
-                pxRange = CgMsdfGenerator.PX_RANGE;
+                CgGlyphAtlas msdfAtlas = registry.getMsdfAtlas(rasterFontKey);
+                textureId = msdfAtlas.getTextureId();
+                atlasType = msdfAtlas.getType();
+                pxRange = registry.resolveMsdfAtlasConfig(rasterFontKey.getBaseFontKey()).getPxRange();
             } else {
                 textureId = registry.getBitmapAtlas(rasterFontKey).getTextureId();
+                atlasType = CgGlyphAtlas.Type.BITMAP;
                 pxRange = 0.0f;
             }
-            placements[i] = CgGlyphPlacement.fromAtlasRegion(region, textureId, pxRange);
+            placements[i] = CgGlyphPlacement.fromAtlasRegion(region, textureId, atlasType, pxRange);
         }
         return placements;
     }
@@ -715,7 +737,7 @@ public class CgTextRenderer {
             if (p != null && p.hasGeometry()) {
                 sortedIndices[si] = i;
                 batchKeys[si] = new CgDrawBatchKey(
-                        p.isMsdf(), p.getPageTextureId(), p.getPxRange());
+                        p.getAtlasType(), p.getPageTextureId(), p.getPxRange());
                 si++;
             }
         }
@@ -759,7 +781,7 @@ public class CgTextRenderer {
             CgGlyphPlacement p = placements[origIdx];
             int placementTargetPx = p.getKey().getFontKey().getTargetPx();
             float scaleFactor = logicalMetricScale(baseTargetPx,
-                    p.isMsdf() ? placementTargetPx : effectiveTargetPx);
+                    p.isDistanceField() ? placementTargetPx : effectiveTargetPx);
             appendQuadFromPlacement(p, glyphX[origIdx], glyphY[origIdx], rgba, scaleFactor);
             totalQuads++;
         }
@@ -807,11 +829,11 @@ public class CgTextRenderer {
 
         if (diagnosticLogging) {
             LOGGER.info(String.format(
-                    "[QuadDiag] glyphId=%d penX=%.2f planeL=%.2f planeW=%.2f qx=%.2f page=%d tex=%d msdf=%b pxRange=%.1f",
+                    "[QuadDiag] glyphId=%d penX=%.2f planeL=%.2f planeW=%.2f qx=%.2f page=%d tex=%d atlasType=%s distanceField=%b pxRange=%.1f",
                     p.getKey().getGlyphId(), penX,
                     logicalBearingX, logicalWidth, qx,
                     p.getPageIndex(), p.getPageTextureId(),
-                    p.isMsdf(), p.getPxRange()));
+                    p.getAtlasType(), p.isDistanceField(), p.getPxRange()));
         }
         vbo.addGlyph(qx, qy, logicalWidth, logicalHeight,
                 p.getU0(), p.getV0(), p.getU1(), p.getV1(), rgba);
@@ -832,6 +854,7 @@ public class CgTextRenderer {
         // Track which shader is currently bound to minimize bind/unbind calls
         boolean bitmapShaderBound = false;
         boolean msdfShaderBound = false;
+        boolean mtsdfShaderBound = false;
 
         for (int b = 0; b < batches.size(); b++) {
             CgDrawBatch batch = batches.get(b);
@@ -840,12 +863,41 @@ public class CgTextRenderer {
             }
 
             CgDrawBatchKey key = batch.getKey();
+            if (diagnosticLogging) {
+                LOGGER.info("[BatchDiag] atlasType=" + key.getAtlasType()
+                        + ", textureId=" + key.getTextureId()
+                        + ", pxRange=" + key.getPxRange()
+                        + ", quadCount=" + batch.getQuadCount());
+            }
 
-            if (key.isMsdf()) {
+            if (key.isMtsdf()) {
+                if (bitmapShaderBound) {
+                    bitmapShader.unbind();
+                    bitmapShaderBound = false;
+                }
+                if (msdfShaderBound) {
+                    msdfShader.unbind();
+                    msdfShaderBound = false;
+                }
+                if (!mtsdfShaderBound) {
+                    mtsdfShader.bind();
+                    uploadProjectionMatrix(mtsdfShader, mtsdfLocProjection, context.getProjectionBuffer());
+                    uploadMatrix(mtsdfShader, mtsdfLocModelview, mvBuf);
+                    mtsdfShader.setUniform1i(mtsdfLocAtlas, 0);
+                    mtsdfShaderBound = true;
+                }
+                GL13.glActiveTexture(GL13.GL_TEXTURE0);
+                GL11.glBindTexture(GL11.GL_TEXTURE_2D, key.getTextureId());
+                mtsdfShader.setUniform1f(mtsdfLocPxRange, key.getPxRange());
+            } else if (key.isDistanceField()) {
                 // Unbind bitmap shader if it was active
                 if (bitmapShaderBound) {
                     bitmapShader.unbind();
                     bitmapShaderBound = false;
+                }
+                if (mtsdfShaderBound) {
+                    mtsdfShader.unbind();
+                    mtsdfShaderBound = false;
                 }
                 // Bind MSDF shader if not already bound
                 if (!msdfShaderBound) {
@@ -864,6 +916,10 @@ public class CgTextRenderer {
                 if (msdfShaderBound) {
                     msdfShader.unbind();
                     msdfShaderBound = false;
+                }
+                if (mtsdfShaderBound) {
+                    mtsdfShader.unbind();
+                    mtsdfShaderBound = false;
                 }
                 // Bind bitmap shader if not already bound
                 if (!bitmapShaderBound) {
@@ -889,6 +945,9 @@ public class CgTextRenderer {
         }
         if (msdfShaderBound) {
             msdfShader.unbind();
+        }
+        if (mtsdfShaderBound) {
+            mtsdfShader.unbind();
         }
     }
 
@@ -1043,7 +1102,7 @@ public class CgTextRenderer {
                     CgGlyphKey glyphKey = new CgGlyphKey(runFontKey, glyphIds[i], wantMsdf, subPixelBucket);
                     placements[index] = registry.ensureGlyphPaged(
                             runFont, glyphKey, effectiveTargetPx, subPixelBucket, frame);
-                    if (wantMsdf && placements[index] != null && !placements[index].isMsdf()) {
+                    if (wantMsdf && placements[index] != null && !placements[index].isDistanceField()) {
                         usedBitmapFallback = true;
                     }
                     glyphX[index] = penX + offsetsX[i];
