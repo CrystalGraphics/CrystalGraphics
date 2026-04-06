@@ -345,6 +345,25 @@ public class CgFont {
     }
 
     /**
+     * Restores the shared FreeType/HarfBuzz shaping state to this font's base target size.
+     *
+     * <p>The pose-aware raster path temporarily retunes the shared {@link FTFace}
+     * to alternate effective sizes while building bitmap glyphs. Shaping still uses
+     * the long-lived {@link HBFont}, so callers that mutate the face size must call
+     * this method before any later layout pass relies on the shared shaping font.</p>
+     */
+    public void restoreBaseFontSizeForShaping() {
+        checkNotDisposed();
+        if (ftFace == null) {
+            return;
+        }
+        ftFace.setPixelSizes(0, key.getTargetPx());
+        if (hbFont != null && !hbFont.isDestroyed()) {
+            FreeTypeHarfBuzzIntegration.syncFontMetrics(hbFont, ftFace);
+        }
+    }
+
+    /**
      * Returns or lazily creates the MSDF FreeTypeIntegration.Font handle.
      *
      * <p>The MSDF font is only created when first needed. It uses a separate
