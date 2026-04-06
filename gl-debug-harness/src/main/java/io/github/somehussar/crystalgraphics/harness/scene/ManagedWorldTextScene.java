@@ -67,7 +67,7 @@ public class ManagedWorldTextScene implements HarnessSceneLifecycle {
 
         // Initialize the shared render helper (validates GL caps, loads font, builds layouts)
         WorldTextRenderHelper helper = new WorldTextRenderHelper(
-                fontPath, fontSizePx, text, fboWidth, fboHeight);
+                fontPath, fontSizePx, text, fboWidth, fboHeight,config.getAtlasSize(), config.isMtsdf());
         helper.init();
 
         // ── FBO setup: offscreen color texture + depth renderbuffer ──
