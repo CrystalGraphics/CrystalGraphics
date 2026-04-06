@@ -10,7 +10,7 @@
 ./gradlew :gl-debug-harness:runHarness --args="--list"
 
 # Run a specific scene
-./gradlew :gl-debug-harness:runHarness --args="--mode=triangle"
+./gradlew :gl-debug-harness:runHarness --args="--mode=triangle-2D"
 
 # Run atlas dump
 ./gradlew :gl-debug-harness:runHarness --args="--mode=atlas-dump"
@@ -19,10 +19,10 @@
 ./gradlew :gl-debug-harness:runHarness --args="--mode=atlas-dump --atlas-type=mtsdf --font-size-px=128"
 
 # Run a 3D scene
-./gradlew :gl-debug-harness:runHarness --args="--mode=world-text-3d"
+./gradlew :gl-debug-harness:runHarness --args="--mode=text-3d"
 
 # Run a 3D scene with custom output name
-./gradlew :gl-debug-harness:runHarness --args="--mode=world-text-3d --output-name=my-test"
+./gradlew :gl-debug-harness:runHarness --args="--mode=text-3d --output-name=my-test"
 
 # Run tests
 ./gradlew :gl-debug-harness:test
@@ -190,15 +190,14 @@ Pipeline order:
 
 ## Maintained Scenes
 
-| Mode ID | Output Directory | Lifecycle | Description |
-|---|---|---|---|
-| `triangle` | `triangle/triangle.png` | MANAGED | Basic colored triangle on backbuffer |
-| `atlas-dump` | `atlas-dump/atlas/atlas-dump-24px.png` + `atlas/atlas-dump-32px.png` | MANAGED | Glyph atlas dump via CgTextRenderer production pipeline |
-| `text-scene` | `text-scene/text-scene.png` + `atlas/atlas-dump-<size>px.png` | MANAGED | Full text rendered via CgTextRenderer + FBO |
-| `world-text-scene` | `world-text-scene/world-text-scene.png` | MANAGED | 3D world-space text, single-shot capture (always MSDF, depth-tested). Implemented by `ManagedWorldTextScene`. |
-| `world-text-3d` | `world-text-3d/{name}-normal.png`, `{name}-paused.png`, `{name}-topdown.png` | INTERACTIVE | Interactive 3D world-space text with camera controls. Implemented by `InteractiveWorldTextScene`. |
-| `camera-3d-validation` | `camera-3d-validation/{name}-front-view.png`, etc. (4 angles) | INTERACTIVE | 3D camera validation with cube + floor |
-| `render-validation` | `render-validation/{name}-normal.png`, `{name}-paused.png`, `{name}-top-down.png` | INTERACTIVE | Render validation: floor + HUD + pause overlay |
+| Mode ID                | Output Directory                                                                 | Lifecycle | Description |
+|------------------------|----------------------------------------------------------------------------------|---|---|
+| `triangle-2d`          | `triangle-2d/triangle.png`                                                       | MANAGED | Basic colored triangle on backbuffer |
+| `text-2d`              | `text-2d/text-scene.png` + `atlas/atlas-dump-<size>px.png`                       | MANAGED | Full text rendered via CgTextRenderer + FBO |
+| `text-3d`              | `text-3d/{name}-normal.png`, `{name}-paused.png`, `{name}-topdown.png`           | INTERACTIVE | Interactive 3D world-space text with camera controls. Implemented by `TextScene3D`. |
+| `camera-3d` | `camera-3d/{name}-front-view.png`, etc. (4 angles)                     | INTERACTIVE | 3D camera validation with cube + floor |
+| `atlas-dump`           | `atlas-dump/atlas/atlas-dump-24px.png` + `atlas/atlas-dump-32px.png`             | MANAGED | Glyph atlas dump via CgTextRenderer production pipeline |
+
 
 All outputs go into scene-specific subdirectories under `harness-output/`. The `{name}` placeholder defaults to the scene mode ID, overridable with `--output-name=PREFIX`.
 
@@ -504,15 +503,15 @@ harness-output/
 │   └── atlas/
 │       ├── bitmap-atlas-dump-24px.png
 │       └── msdf-atlas-dump-32px.png
-├── world-text-3d/
-│   ├── world-text-3d-normal.png
-│   ├── world-text-3d-paused.png
-│   └── world-text-3d-topdown.png
-├── camera-3d-validation/
-│   ├── camera-3d-validation-front-view.png
-│   ├── camera-3d-validation-side-view.png
-│   ├── camera-3d-validation-top-down-view.png
-│   └── camera-3d-validation-diagonal-view.png
+├── text-3d/
+│   ├── text-3d-normal.png
+│   ├── text-3d-paused.png
+│   └── text-3d-topdown.png
+├── camera-3d/
+│   ├── camera-3d-front-view.png
+│   ├── camera-3d-side-view.png
+│   ├── camera-3d-top-down-view.png
+│   └── camera-3d-diagonal-view.png
 └── render-validation/
     ├── render-validation-normal.png
     ├── render-validation-paused.png
@@ -525,37 +524,35 @@ Use `--output-name=PREFIX` to customize output filenames:
 
 ```bash
 # Default: scene name used as prefix
-./gradlew :gl-debug-harness:runHarness --args="--mode=world-text-3d"
-# -> harness-output/world-text-3d/world-text-3d-normal.png
-# -> harness-output/world-text-3d/world-text-3d-paused.png
-# -> harness-output/world-text-3d/world-text-3d-topdown.png
+./gradlew :gl-debug-harness:runHarness --args="--mode=text-3d"
+# -> harness-output/text-3d/text-3d-normal.png
+# -> harness-output/text-3d/text-3d-paused.png
+# -> harness-output/text-3d/text-3d-topdown.png
 
 # Custom prefix:
-./gradlew :gl-debug-harness:runHarness --args="--mode=world-text-3d --output-name=test1"
-# -> harness-output/world-text-3d/test1-normal.png
-# -> harness-output/world-text-3d/test1-paused.png
-# -> harness-output/world-text-3d/test1-topdown.png
+./gradlew :gl-debug-harness:runHarness --args="--mode=text-3d --output-name=test1"
+# -> harness-output/text-3d/test1-normal.png
+# -> harness-output/text-3d/test1-paused.png
+# -> harness-output/text-3d/test1-topdown.png
 
 # Camera validation with custom prefix:
-./gradlew :gl-debug-harness:runHarness --args="--mode=camera-3d-validation --output-name=gpu-test"
-# -> harness-output/camera-3d-validation/gpu-test-front-view.png
-# -> harness-output/camera-3d-validation/gpu-test-side-view.png
-# -> harness-output/camera-3d-validation/gpu-test-top-down-view.png
-# -> harness-output/camera-3d-validation/gpu-test-diagonal-view.png
+./gradlew :gl-debug-harness:runHarness --args="--mode=camera-3d --output-name=gpu-test"
+# -> harness-output/camera-3d/gpu-test-front-view.png
+# -> harness-output/camera-3d/gpu-test-side-view.png
+# -> harness-output/camera-3d/gpu-test-top-down-view.png
+# -> harness-output/camera-3d/gpu-test-diagonal-view.png
 ```
 
 ### All Available Scenes
 
-| Mode ID | Type | Description |
-|---|---|---|
-| `triangle` | MANAGED | Basic colored triangle |
-| `atlas-dump` | MANAGED | Glyph atlas texture dump |
-| `text-scene` | MANAGED | Full text rendering via CgTextRenderer |
-| `world-text-scene` | MANAGED | 3D world-space text (single-shot) |
-| `world-text-3d` | INTERACTIVE | Interactive 3D world-space text with camera |
-| `camera-3d-validation` | INTERACTIVE | Camera validation: cube from 4 angles |
-| `render-validation` | INTERACTIVE | Render pipeline validation: floor + HUD + pause |
-| `gl-state-dump` | DIAGNOSTIC | GL state dump to text file |
+| Mode ID             | Type | Description |
+|---------------------|---|---|
+| `triangle-2d`       | MANAGED | Basic colored triangle |
+| `atlas-dump`        | MANAGED | Glyph atlas texture dump |
+| `text-2d`           | MANAGED | Full text rendering via CgTextRenderer |
+| `text-3d`           | INTERACTIVE | Interactive 3D world-space text with camera |
+| `camera-3d`         | INTERACTIVE | Camera validation: cube from 4 angles |
+| `gl-state-dump`     | DIAGNOSTIC | GL state dump to text file |
 | `capability-report` | DIAGNOSTIC | CgCapabilities + environment report |
 
 ### Common CLI Arguments
@@ -643,14 +640,11 @@ io.github.somehussar.crystalgraphics.harness/
 │   ├── WorldPassCoordinator.java    # Coordinates world contributors (floor, etc.)
 │   └── OverlayCaptureOrchestrator.java  # Post-scene overlay order + capture callback
 ├── scene/
-│   ├── TriangleScene.java           # Basic triangle (managed)
+│   ├── TriangleScene2D.java           # Basic triangle (managed)
 │   ├── AtlasDumpScene.java          # Atlas dump (managed)
-│   ├── TextScene.java               # Full text rendering (managed)
-│   ├── ManagedWorldTextScene.java   # Single-shot world-text capture (managed)
-│   ├── InteractiveWorldTextScene.java # Interactive world-text with camera (interactive)
+│   ├── TextScene2D.java               # Full text rendering (managed)
+│   ├── TextScene3D.java # Interactive world-text with camera (interactive)
 │   ├── Camera3DValidationScene.java # Camera validation: 4-angle cube captures
-│   ├── RenderValidationScene.java   # Render validation: normal/paused/top-down
-│   └── WorldTextRenderHelper.java   # Shared world-text rendering logic
 ├── scheduler/
 │   └── TaskScheduler.java           # Time-based callback scheduling
 ├── tool/
