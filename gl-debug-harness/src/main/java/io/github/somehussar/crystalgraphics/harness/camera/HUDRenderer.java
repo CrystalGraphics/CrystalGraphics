@@ -8,6 +8,7 @@ import io.github.somehussar.crystalgraphics.api.font.CgTextLayoutBuilder;
 import io.github.somehussar.crystalgraphics.gl.text.CgFontRegistry;
 import io.github.somehussar.crystalgraphics.gl.text.CgTextRenderContext;
 import io.github.somehussar.crystalgraphics.gl.text.CgTextRenderer;
+import io.github.somehussar.crystalgraphics.harness.config.HarnessConfig;
 import io.github.somehussar.crystalgraphics.harness.config.HarnessContext;
 import io.github.somehussar.crystalgraphics.harness.util.HarnessFontUtil;
 import io.github.somehussar.crystalgraphics.text.CgTextLayout;
@@ -46,7 +47,7 @@ public final class HUDRenderer {
     private static final float BASE_RESOLUTION_HEIGHT = 600.0f;
 
     // White text with full opacity (packed RGBA: 0xRRGGBBAA)
-    private static final int TEXT_COLOR = 0xFFFFFFFF;
+    private static final int TEXT_COLOR = 0XFF0000FF;
 
     // Current scaled state (recomputed when screen resolution changes)
     private int lastScreenWidth = -1;
@@ -57,6 +58,8 @@ public final class HUDRenderer {
     // CgTextRenderer resources (created in init, destroyed in delete)
     private CgCapabilities caps;
     private CgFont font;
+    private CgFont jpFnt;
+    private CgFont arabicFont;
     private CgFont demoFont;
     private CgFontRegistry registry;
     private CgTextRenderer renderer;
@@ -119,10 +122,14 @@ public final class HUDRenderer {
      */
     private void reloadFont() {
         String fontPath = HarnessFontUtil.resolveFontPath(null);
-        if (font != null) {
-            font.dispose();
-        }
+
+        if (font != null) font.dispose();
+        if (jpFnt != null) jpFnt.dispose();
+        if (arabicFont != null) arabicFont.dispose();
+        
         font = CgFont.load(fontPath, CgFontStyle.REGULAR, currentFontSizePx);
+        jpFnt = CgFont.load(HarnessConfig.JAPANESE_FONT, CgFontStyle.REGULAR, currentFontSizePx);
+        arabicFont = CgFont.load(HarnessConfig.ARABIC_FONT, CgFontStyle.REGULAR, currentFontSizePx);
         LOGGER.fine("[HUDRenderer] Font reloaded at " + currentFontSizePx + "px");
     }
 
@@ -202,7 +209,7 @@ public final class HUDRenderer {
         String posLine = String.format("Pos: %.2f %.2f %.2f",
                 camera.getPosX(), camera.getPosY(), camera.getPosZ());
         // Convert yaw/pitch to integer degrees for clean display
-        String rotLine = String.format("Rot: %.0f%s %.0f%s",
+        String rotLine = String.format("Rot: %.2f%s %.2f%s",
                 camera.getYaw(), "\u00B0", camera.getPitch(), "\u00B0");
         String hudText = posLine + "\n" + rotLine;
 
@@ -217,8 +224,8 @@ public final class HUDRenderer {
         // CgTextRenderer.draw() handles its own GL state save/restore internally
         // via CgStateBoundary, but in the standalone harness the GLStateMirror
         // may be in UNKNOWN state, so we also do explicit cleanup after draw.
-//        renderer.draw(layout, font, currentQuadOffset, currentQuadOffset,
-//                TEXT_COLOR, frameCounter, orthoContext, poseStack);
+        renderer.draw(layout, font, currentQuadOffset, currentQuadOffset,
+                TEXT_COLOR, frameCounter, orthoContext, poseStack);
 
         int wheel = Mouse.getDWheel();
         if (wheel > 0) {
@@ -235,6 +242,8 @@ public final class HUDRenderer {
         float[] demoScales = {0.5f, 1.0f, 1.5f, 2.0f,4.0f};
         float lineY = DEMO_TEXT_START_Y;
         for (float demoScale : demoScales) {
+            if(true)
+                continue;
             PoseStack ps = anchoredScalePose(DEMO_TEXT_X, lineY, demoScale);
             float logicalWidth = ctx.getScreenWidth() / demoScale;
             CgTextLayout demoLayout = layoutBuilder.layout(
@@ -256,18 +265,18 @@ public final class HUDRenderer {
         }
 
         orthoContext.clearHistory();
-
-                PoseStack identityPose = new PoseStack();
-                renderer.draw(
-                        DEMO_TEXT_2D_LABEL,
-                        font,
-                        64,
-                        20.0f,
-                        20.0f,
-                        0xAAFFAAFF,
-                        frameCounter,
-                        orthoContext,
-                        identityPose);
+//
+//                PoseStack identityPose = new PoseStack();
+//                renderer.draw(
+//                        DEMO_TEXT_2D_LABEL,
+//                        font,
+//                        64,
+//                        20.0f,
+//                        20.0f,
+//                        0xAAFFAAFF,
+//                        frameCounter,
+//                        orthoContext,
+//                        identityPose);
         }
 
     private PoseStack anchoredScalePose(float anchorX, float anchorY, float scale) {

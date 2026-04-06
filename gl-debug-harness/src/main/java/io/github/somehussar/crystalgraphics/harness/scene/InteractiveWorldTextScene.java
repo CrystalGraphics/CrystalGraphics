@@ -1,13 +1,11 @@
 package io.github.somehussar.crystalgraphics.harness.scene;
 
+import io.github.somehussar.crystalgraphics.api.PoseStack;
 import io.github.somehussar.crystalgraphics.harness.FrameInfo;
 import io.github.somehussar.crystalgraphics.harness.InteractiveSceneLifecycle;
 import io.github.somehussar.crystalgraphics.harness.camera.Camera3D;
 import io.github.somehussar.crystalgraphics.harness.capture.ArtifactService;
-import io.github.somehussar.crystalgraphics.harness.config.HarnessContext;
-import io.github.somehussar.crystalgraphics.harness.config.RuntimeServices;
-import io.github.somehussar.crystalgraphics.harness.config.TextSceneConfig;
-import io.github.somehussar.crystalgraphics.harness.config.ViewportState;
+import io.github.somehussar.crystalgraphics.harness.config.*;
 import io.github.somehussar.crystalgraphics.harness.scheduler.TaskScheduler;
 import io.github.somehussar.crystalgraphics.harness.util.GlStateResetHelper;
 import io.github.somehussar.crystalgraphics.harness.util.HarnessFontUtil;
@@ -56,6 +54,20 @@ public class InteractiveWorldTextScene implements InteractiveSceneLifecycle {
     private static final float MOTION_CAM_Y = 0.70f;
     private static final float MOTION_CAM_Z = -4.71f;
     private static final float MOTION_PITCH = -12.0f;
+    private static final float[][] INVESTIGATION_CAPTURES = new float[][] {
+            {-1.58f, 0.93f, -4.31f, 356.0f, -4.0f},
+            {-1.90f, 0.22f, -4.37f, 337.0f, -4.0f},
+            {3.83f, 0.84f, -4.40f, 358.0f, -7.0f},
+            {1.02f, 0.22f, -4.31f, 1.0f, -1.0f}
+    };
+    private static final double INVESTIGATION_PREWARM_SECONDS = 3.0;
+    private static final double INVESTIGATION_CAPTURE_SPACING_SECONDS = 0.5;
+    private static final String[] INVESTIGATION_CAPTURE_NAMES = new String[] {
+            "jp-intersection-gap-a",
+            "ar-baseline-gap-a",
+            "jp-punct-gap-bad",
+            "ar-punct-gap-good-control"
+    };
 
     // ── Interactive mode state ──
     private boolean running = true;
@@ -63,6 +75,9 @@ public class InteractiveWorldTextScene implements InteractiveSceneLifecycle {
 
     private HarnessContext ctx;
     private WorldTextRenderHelper helper;
+    private WorldTextRenderHelper arHelper;
+    private WorldTextRenderHelper jpHelper;
+    
 
     @Override
     public void init(HarnessContext ctx) {
@@ -86,6 +101,16 @@ public class InteractiveWorldTextScene implements InteractiveSceneLifecycle {
         helper = new WorldTextRenderHelper(fontPath, fontSizePx, text, layoutWidth, layoutHeight,
                 config.getAtlasSize(), config.isMtsdf());
         helper.init();
+
+        jpHelper = new WorldTextRenderHelper(HarnessConfig.JAPANESE_FONT, fontSizePx,
+                "さあ 剽悍な双眸を エーカム そうさ 先頭に", layoutWidth, layoutHeight,
+                config.getAtlasSize(), config.isMtsdf());
+        jpHelper.init();
+
+        arHelper = new WorldTextRenderHelper(HarnessConfig.ARABIC_FONT, fontSizePx, "بيانات الاستفسار", layoutWidth,
+                layoutHeight,
+                config.getAtlasSize(), config.isMtsdf());
+        arHelper.init();
 
         camera.moveCamera(MOTION_CAM_X, MOTION_CAM_Y, MOTION_CAM_Z);
         camera.setYaw(337.0f);
@@ -111,25 +136,16 @@ public class InteractiveWorldTextScene implements InteractiveSceneLifecycle {
         ValidationChoreographer choreographer = new ValidationChoreographer(
                 camera, scheduler, artifacts, runtime);
 
-        choreographer.addStep(ValidationCaptureStep.builder("depth-motion-335", 0.5)
-                .cameraPosition(MOTION_CAM_X, MOTION_CAM_Y, MOTION_CAM_Z)
-                .cameraOrientation(335.0f, MOTION_PITCH)
-                .build());
-
-        choreographer.addStep(ValidationCaptureStep.builder("depth-motion-336", 1.0)
-                .cameraPosition(MOTION_CAM_X, MOTION_CAM_Y, MOTION_CAM_Z)
-                .cameraOrientation(336.0f, MOTION_PITCH)
-                .build());
-
-        choreographer.addStep(ValidationCaptureStep.builder("depth-motion-337", 1.5)
-                .cameraPosition(MOTION_CAM_X, MOTION_CAM_Y, MOTION_CAM_Z)
-                .cameraOrientation(337.0f, MOTION_PITCH)
-                .build());
-
-        choreographer.addStep(ValidationCaptureStep.builder("depth-motion-338", 2.0)
-                .cameraPosition(MOTION_CAM_X, MOTION_CAM_Y, MOTION_CAM_Z)
-                .cameraOrientation(338.0f, MOTION_PITCH)
-                .build());
+        double captureTime = INVESTIGATION_PREWARM_SECONDS;
+        for (int i = 0; i < INVESTIGATION_CAPTURES.length; i++) {
+            float[] capture = INVESTIGATION_CAPTURES[i];
+            String name = INVESTIGATION_CAPTURE_NAMES[i];
+            choreographer.addStep(ValidationCaptureStep.builder(name, captureTime)
+                    .cameraPosition(capture[0], capture[1], capture[2])
+                    .cameraOrientation(capture[3], capture[4])
+                    .build());
+            captureTime += INVESTIGATION_CAPTURE_SPACING_SECONDS;
+        }
 
         choreographer.onShutdown(new Runnable() {
             @Override
@@ -153,7 +169,25 @@ public class InteractiveWorldTextScene implements InteractiveSceneLifecycle {
         // Delegate all world-text rendering to the shared helper.
         // The helper handles perspective projection, model-view setup,
         // text positioning, and drawWorld() with correct winding order.
-        helper.renderWorld(viewMatrix, screenWidth, screenHeight, frame.getFrameNumber());
+
+        PoseStack poseStack = new PoseStack();
+        Matrix4f modelView = poseStack.last().pose();
+        modelView.set(viewMatrix);
+        float worldScale = 0.01f;
+        float textWorldWidth = arHelper.getWorldLayout().getTotalWidth() * worldScale;
+        modelView.translate(-textWorldWidth * 0.5f, 0.75f, -5f);
+        modelView.scale(worldScale, -worldScale, worldScale);
+        jpHelper.renderWorld(screenWidth, screenHeight, frame.getFrameNumber(), poseStack);
+
+
+        poseStack = new PoseStack();
+        modelView = poseStack.last().pose();
+        modelView.set(viewMatrix);
+        worldScale = 0.01f;
+        textWorldWidth = arHelper.getWorldLayout().getTotalWidth() * worldScale;
+        modelView.translate(-textWorldWidth * 0.5f, 0.15f, -5f);
+        modelView.scale(worldScale, -worldScale, worldScale);
+        arHelper.renderWorld(screenWidth, screenHeight, frame.getFrameNumber(), poseStack);
 
         // ── GL state cleanup after world text rendering ──
         // drawWorld() internally saves/restores state via CgStateBoundary, but in the
