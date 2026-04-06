@@ -4,6 +4,7 @@ import io.github.somehussar.crystalgraphics.api.CgCapabilities;
 import io.github.somehussar.crystalgraphics.api.PoseStack;
 import io.github.somehussar.crystalgraphics.api.font.CgAtlasRegion;
 import io.github.somehussar.crystalgraphics.api.font.CgFont;
+import io.github.somehussar.crystalgraphics.api.font.CgFontFamily;
 import io.github.somehussar.crystalgraphics.api.font.CgFontKey;
 import io.github.somehussar.crystalgraphics.api.font.CgFontMetrics;
 import io.github.somehussar.crystalgraphics.api.font.CgGlyphKey;
@@ -194,6 +195,26 @@ public class CgTextRenderer {
         if (layout == null || layout.getLines().isEmpty()) {
             return;
         }
+        draw(layout, CgFontFamily.of(font), x, y, rgba, frame, context, pose);
+    }
+
+    public void draw(CgTextLayout layout,
+                     CgFontFamily family,
+                     float x,
+                     float y,
+                     int rgba,
+                     long frame,
+                     CgTextRenderContext context,
+                     PoseStack pose) {
+        if (family == null) {
+            throw new IllegalArgumentException("family must not be null");
+        }
+        if (deleted) {
+            throw new IllegalStateException("CgTextRenderer has been deleted");
+        }
+        if (layout == null || layout.getLines().isEmpty()) {
+            return;
+        }
 
         CgStateSnapshot snapshot = CgStateBoundary.save();
         try {
@@ -201,7 +222,7 @@ public class CgTextRenderer {
             GL11.glDepthMask(false);
             GL11.glDisable(GL11.GL_CULL_FACE);
             GL11.glDisable(GL11.GL_ALPHA_TEST);
-            drawInternal(layout, font, x, y, rgba, frame,
+            drawInternal(layout, family, x, y, rgba, frame,
                     context,
                     pose.last(),
                     context.getScaleResolver());
@@ -252,6 +273,26 @@ public class CgTextRenderer {
         if (layout == null || layout.getLines().isEmpty()) {
             return;
         }
+        drawWorld(layout, CgFontFamily.of(font), x, y, rgba, frame, context, pose);
+    }
+
+    public void drawWorld(CgTextLayout layout,
+                          CgFontFamily family,
+                          float x,
+                          float y,
+                          int rgba,
+                          long frame,
+                          CgWorldTextRenderContext context,
+                          PoseStack pose) {
+        if (family == null) {
+            throw new IllegalArgumentException("family must not be null");
+        }
+        if (deleted) {
+            throw new IllegalStateException("CgTextRenderer has been deleted");
+        }
+        if (layout == null || layout.getLines().isEmpty()) {
+            return;
+        }
 
         CgStateSnapshot snapshot = CgStateBoundary.save();
         try {
@@ -259,7 +300,7 @@ public class CgTextRenderer {
             GL11.glDepthMask(true);
             GL11.glDisable(GL11.GL_CULL_FACE);
             GL11.glDisable(GL11.GL_ALPHA_TEST);
-            drawInternal(layout, font, x, y, rgba, frame,
+            drawInternal(layout, family, x, y, rgba, frame,
                     context,
                     pose.last(),
                     context.getScaleResolver());
@@ -283,15 +324,15 @@ public class CgTextRenderer {
     }
 
     private void drawInternal(CgTextLayout layout,
-                               CgFont font,
-                               float x,
-                               float y,
-                               int rgba,
+                                CgFontFamily family,
+                                float x,
+                                float y,
+                                int rgba,
                                long frame,
-                               CgTextRenderContext context,
-                               PoseStack.Pose pose,
-                               CgTextScaleResolver scaleResolver) {
-        CgFontKey fontKey = font.getKey();
+                                CgTextRenderContext context,
+                                PoseStack.Pose pose,
+                                CgTextScaleResolver scaleResolver) {
+        CgFontKey fontKey = family.getPrimarySource().getKey();
         CgFontMetrics metrics = layout.getMetrics();
 
         // Resolve effective physical raster size from pose scale
@@ -303,8 +344,7 @@ public class CgTextRenderer {
         boolean wantMsdf = scaleResolver.shouldUseMsdf(effectiveTargetPx, previousMsdf);
         context.setWasMsdf(fontKey, wantMsdf);
 
-        // Use the paged atlas path — produces CgGlyphPlacement directly
-        PagedGlyphBatch batch = buildPagedGlyphBatch(layout, font, x, y, frame, context, fontKey,
+        PagedGlyphBatch batch = buildPagedGlyphBatch(layout, family, x, y, frame, context, fontKey,
                 effectiveTargetPx, wantMsdf, metrics);
         CgGlyphPlacement[] placements = batch.placements;
         float[] glyphX = batch.glyphX;
@@ -602,7 +642,7 @@ public class CgTextRenderer {
     }
 
     private GlyphBatch buildGlyphBatch(CgTextLayout layout,
-                                       CgFont font,
+                                       CgFontFamily family,
                                        float x,
                                        float y,
                                        long frame,
@@ -611,7 +651,7 @@ public class CgTextRenderer {
                                        int effectiveTargetPx,
                                        boolean wantMsdf,
                                        CgFontMetrics metrics) {
-        GlyphBatch batch = populateGlyphBatch(layout, font, x, y, frame, context,
+        GlyphBatch batch = populateGlyphBatch(layout, family, x, y, frame, context,
                 fontKey, effectiveTargetPx, wantMsdf, metrics);
         if (!wantMsdf || !batch.usedBitmapFallback) {
             return batch;
@@ -621,21 +661,21 @@ public class CgTextRenderer {
         // in an MSDF-targeted draw falls back to bitmap (for example due to the
         // per-frame MSDF generation budget), rerender the whole batch in bitmap
         // for this frame so all glyphs share the same quality tier.
-        return populateGlyphBatch(layout, font, x, y, frame, context,
+        return populateGlyphBatch(layout, family, x, y, frame, context,
                 fontKey, effectiveTargetPx, false, metrics);
     }
 
     private PagedGlyphBatch buildPagedGlyphBatch(CgTextLayout layout,
-                                                  CgFont font,
-                                                  float x,
-                                                  float y,
-                                                  long frame,
+                                                   CgFontFamily family,
+                                                   float x,
+                                                   float y,
+                                                   long frame,
                                                   CgTextRenderContext context,
                                                   CgFontKey fontKey,
-                                                  int effectiveTargetPx,
-                                                  boolean wantMsdf,
-                                                  CgFontMetrics metrics) {
-        PagedGlyphBatch batch = populatePagedGlyphBatch(layout, font, x, y, frame, context,
+                                                   int effectiveTargetPx,
+                                                   boolean wantMsdf,
+                                                   CgFontMetrics metrics) {
+        PagedGlyphBatch batch = populatePagedGlyphBatch(layout, family, x, y, frame, context,
                 fontKey, effectiveTargetPx, wantMsdf, metrics);
         if (!wantMsdf || !batch.usedBitmapFallback) {
             return batch;
@@ -645,12 +685,12 @@ public class CgTextRenderer {
         // in an MSDF-targeted draw falls back to bitmap (for example due to the
         // per-frame MSDF generation budget), rerender the whole batch in bitmap
         // for this frame so all glyphs share the same quality tier.
-        return populatePagedGlyphBatch(layout, font, x, y, frame, context,
+        return populatePagedGlyphBatch(layout, family, x, y, frame, context,
                 fontKey, effectiveTargetPx, false, metrics);
     }
 
     private GlyphBatch populateGlyphBatch(CgTextLayout layout,
-                                          CgFont font,
+                                          CgFontFamily family,
                                           float x,
                                           float y,
                                           long frame,
@@ -671,15 +711,17 @@ public class CgTextRenderer {
         for (List<CgShapedRun> line : lines) {
             float penX = x;
             for (CgShapedRun run : line) {
+                CgFontKey runFontKey = run.getFontKey();
+                CgFont runFont = resolveRunFont(layout, family, runFontKey);
                 int[] glyphIds = run.getGlyphIds();
                 float[] advancesX = run.getAdvancesX();
                 float[] offsetsX = run.getOffsetsX();
                 float[] offsetsY = run.getOffsetsY();
                 for (int i = 0; i < glyphIds.length; i++) {
-                    int subPixelBucket = resolveSubPixelBucket(context, fontKey, effectiveTargetPx, offsetsX[i]);
-                    CgGlyphKey glyphKey = new CgGlyphKey(fontKey, glyphIds[i], wantMsdf);
+                    int subPixelBucket = resolveSubPixelBucket(context, runFontKey, effectiveTargetPx, offsetsX[i]);
+                    CgGlyphKey glyphKey = new CgGlyphKey(runFontKey, glyphIds[i], wantMsdf, subPixelBucket);
                     regions[index] = registry.ensureGlyphAtEffectiveSize(
-                            font, glyphKey, effectiveTargetPx, subPixelBucket, frame);
+                            runFont, glyphKey, effectiveTargetPx, subPixelBucket, frame);
                     if (wantMsdf && regions[index] != null && !regions[index].getKey().isMsdf()) {
                         usedBitmapFallback = true;
                     }
@@ -692,6 +734,14 @@ public class CgTextRenderer {
             penY += metrics.getLineHeight();
         }
         return new GlyphBatch(glyphX, glyphY, regions, usedBitmapFallback);
+    }
+
+    private static CgFont resolveRunFont(CgTextLayout layout, CgFontFamily family, CgFontKey runFontKey) {
+        CgFont resolvedFromLayout = layout.getResolvedFontsByKey().get(runFontKey);
+        if (resolvedFromLayout != null) {
+            return resolvedFromLayout;
+        }
+        return family.resolveLoadedFont(runFontKey);
     }
 
     private static final class GlyphBatch {
@@ -709,15 +759,15 @@ public class CgTextRenderer {
     }
 
     private PagedGlyphBatch populatePagedGlyphBatch(CgTextLayout layout,
-                                                     CgFont font,
-                                                     float x,
-                                                     float y,
+                                                      CgFontFamily family,
+                                                      float x,
+                                                      float y,
                                                      long frame,
                                                      CgTextRenderContext context,
                                                      CgFontKey fontKey,
-                                                     int effectiveTargetPx,
-                                                     boolean wantMsdf,
-                                                     CgFontMetrics metrics) {
+                                                      int effectiveTargetPx,
+                                                      boolean wantMsdf,
+                                                      CgFontMetrics metrics) {
         List<List<CgShapedRun>> lines = layout.getLines();
         int totalGlyphs = countGlyphs(lines);
         float[] glyphX = new float[totalGlyphs];
@@ -727,18 +777,21 @@ public class CgTextRenderer {
         boolean usedBitmapFallback = false;
         int index = 0;
         float penY = y;
+        prequeueVisibleGlyphs(layout, family, effectiveTargetPx, wantMsdf, context, frame);
         for (List<CgShapedRun> line : lines) {
             float penX = x;
             for (CgShapedRun run : line) {
+                CgFontKey runFontKey = run.getFontKey();
+                CgFont runFont = resolveRunFont(layout, family, runFontKey);
                 int[] glyphIds = run.getGlyphIds();
                 float[] advancesX = run.getAdvancesX();
                 float[] offsetsX = run.getOffsetsX();
                 float[] offsetsY = run.getOffsetsY();
                 for (int i = 0; i < glyphIds.length; i++) {
-                    int subPixelBucket = resolveSubPixelBucket(context, fontKey, effectiveTargetPx, offsetsX[i]);
-                    CgGlyphKey glyphKey = new CgGlyphKey(fontKey, glyphIds[i], wantMsdf);
+                    int subPixelBucket = resolveSubPixelBucket(context, runFontKey, effectiveTargetPx, offsetsX[i]);
+                    CgGlyphKey glyphKey = new CgGlyphKey(runFontKey, glyphIds[i], wantMsdf, subPixelBucket);
                     placements[index] = registry.ensureGlyphPaged(
-                            font, glyphKey, effectiveTargetPx, subPixelBucket, frame);
+                            runFont, glyphKey, effectiveTargetPx, subPixelBucket, frame);
                     if (wantMsdf && placements[index] != null && !placements[index].isMsdf()) {
                         usedBitmapFallback = true;
                     }
@@ -751,6 +804,28 @@ public class CgTextRenderer {
             penY += metrics.getLineHeight();
         }
         return new PagedGlyphBatch(glyphX, glyphY, placements, usedBitmapFallback);
+    }
+
+    private void prequeueVisibleGlyphs(CgTextLayout layout,
+                                       CgFontFamily family,
+                                       int effectiveTargetPx,
+                                       boolean wantMsdf,
+                                       CgTextRenderContext context,
+                                       long frame) {
+        List<List<CgShapedRun>> lines = layout.getLines();
+        for (List<CgShapedRun> line : lines) {
+            for (CgShapedRun run : line) {
+                CgFontKey runFontKey = run.getFontKey();
+                CgFont runFont = resolveRunFont(layout, family, runFontKey);
+                int[] glyphIds = run.getGlyphIds();
+                float[] offsetsX = run.getOffsetsX();
+                for (int i = 0; i < glyphIds.length; i++) {
+                    int subPixelBucket = resolveSubPixelBucket(context, runFontKey, effectiveTargetPx, offsetsX[i]);
+                    CgGlyphKey glyphKey = new CgGlyphKey(runFontKey, glyphIds[i], wantMsdf, subPixelBucket);
+                    registry.queueGlyphPaged(runFont, glyphKey, effectiveTargetPx, subPixelBucket, frame);
+                }
+            }
+        }
     }
 
     private static final class PagedGlyphBatch {

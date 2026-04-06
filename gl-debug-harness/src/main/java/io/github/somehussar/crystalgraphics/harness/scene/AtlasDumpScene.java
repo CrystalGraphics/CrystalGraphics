@@ -18,6 +18,7 @@ import io.github.somehussar.crystalgraphics.harness.HarnessSceneLifecycle;
 import io.github.somehussar.crystalgraphics.harness.config.AtlasDumpConfig;
 import io.github.somehussar.crystalgraphics.harness.config.HarnessContext;
 import io.github.somehussar.crystalgraphics.harness.tool.AtlasDumper;
+import io.github.somehussar.crystalgraphics.harness.tool.MsdfVerificationTool;
 import io.github.somehussar.crystalgraphics.harness.tool.MsdfAtlasSizeEstimator;
 import io.github.somehussar.crystalgraphics.harness.util.HarnessFontUtil;
 import io.github.somehussar.crystalgraphics.harness.util.HarnessOutputDir;
@@ -124,9 +125,7 @@ public class AtlasDumpScene implements HarnessSceneLifecycle {
             LOGGER.info("[Harness] Auto-computed atlas size: " + registryAtlasSize);
         }
 
-        CgMsdfAtlasConfig registryMsdfConfig = CgMsdfAtlasConfig.defaultConfig()
-                .withAtlasScalePx(msdfAtlasScale)
-                .withPageSize(registryAtlasSize);
+        CgMsdfAtlasConfig registryMsdfConfig = config.buildMsdfAtlasConfig(registryAtlasSize);
         CgFontRegistry registry = new CgFontRegistry(registryAtlasSize, registryMsdfConfig);
         CgTextRenderer renderer = CgTextRenderer.create(caps, registry);
         CgTextLayoutBuilder layoutBuilder = new CgTextLayoutBuilder();
@@ -221,7 +220,22 @@ public class AtlasDumpScene implements HarnessSceneLifecycle {
         }
 
         if (wantMsdf && msdfFont != null) {
+            registry.awaitAsyncGlyphs(5000L);
+            registry.tickFrame(frame + 1);
             dumpMsdfAtlases(registry, msdfFont, msdfPxSize, dumpAllPages, atlasDir);
+            if (config.isVerifyMsdf()) {
+                MsdfVerificationTool verifier = new MsdfVerificationTool();
+                MsdfVerificationTool.VerificationSummary summary = verifier.verifyText(
+                        msdfFont,
+                        text,
+                        registryMsdfConfig,
+                        config.buildMsdfVerificationConfig(),
+                        atlasDir,
+                        "msdf-verify-" + msdfPxSize + "px");
+                LOGGER.info("[Harness] MSDF verification complete: glyphs=" + summary.getGlyphCount()
+                        + ", failing=" + summary.getFailingGlyphCount()
+                        + ", worstMismatch=" + summary.getWorstMismatchRatio());
+            }
         }
 
         GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, 0);

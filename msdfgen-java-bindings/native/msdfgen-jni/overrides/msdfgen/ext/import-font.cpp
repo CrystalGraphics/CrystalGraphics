@@ -2,6 +2,7 @@
 #include "import-font.h"
 
 #include <cstring>
+#include <string>
 #include <vector>
 #include <ft2build.h>
 #include FT_FREETYPE_H
@@ -113,6 +114,18 @@ static double getFontCoordinateScale(const FT_Face &face, FontCoordinateScaling 
     }
     return 1;
 }
+
+#ifndef MSDFGEN_DISABLE_VARIABLE_FONTS
+static std::string ftVariationTagString(FT_ULong tag) {
+    char chars[5];
+    chars[0] = (char) ((tag >> 24) & 0xFF);
+    chars[1] = (char) ((tag >> 16) & 0xFF);
+    chars[2] = (char) ((tag >> 8) & 0xFF);
+    chars[3] = (char) (tag & 0xFF);
+    chars[4] = '\0';
+    return std::string(chars, 4);
+}
+#endif
 
 GlyphIndex::GlyphIndex(unsigned index) : index(index) { }
 
@@ -283,7 +296,8 @@ bool setFontVariationAxis(FreetypeHandle *library, FontHandle *font, const char 
             std::vector<FT_Fixed> coords(master->num_axis);
             if (!FT_Get_Var_Design_Coordinates(font->face, FT_UInt(coords.size()), &coords[0])) {
                 for (FT_UInt i = 0; i < master->num_axis; ++i) {
-                    if (!strcmp(name, master->axis[i].name)) {
+                    std::string axisTag = ftVariationTagString(master->axis[i].tag);
+                    if (!strcmp(name, axisTag.c_str()) || (master->axis[i].name && !strcmp(name, master->axis[i].name))) {
                         coords[i] = DOUBLE_TO_F16DOT16(coordinate);
                         success = true;
                         break;

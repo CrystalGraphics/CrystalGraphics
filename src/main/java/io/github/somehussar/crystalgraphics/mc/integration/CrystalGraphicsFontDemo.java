@@ -34,7 +34,7 @@ public class CrystalGraphicsFontDemo {
     private static final String DEMO_TEXT = "CrystalGraphics font demo - mouse wheel zoom";
     private static final String DEMO_TEXT_2D_LABEL = "2D UI text: logical size stable, raster scales with pose";
     private static final String DEMO_TEXT_3D_LABEL = "3D world text: always MSDF, projection-aware quality";
-    private static final String DEMO_FONT_PATH = "X:\\projects\\CrystalGraphics\\src\\main\\resources\\assets\\crystalgraphics\\test-font.ttf";
+    private static final String DEMO_FONT_PATH = "C:\\WINDOWS\\Fonts\\arial.ttf";
 
     private boolean demoEnabled = true;
     private int demoFontSize = 24;
@@ -145,15 +145,6 @@ public class CrystalGraphicsFontDemo {
                     demoRenderContext,
                     identityPose);
             
-//             demoTextRenderer.draw(
-//                    demoLayoutBuilder.layout("His is a \nline break [" + demoFontSize + "px]", demoFont, mc.displayWidth, 0),
-//                    demoFont,
-//                    20.0f,
-//                    80.0f + demoFontSize,
-//                    0xFFFFFFFF,
-//                    demoFrame,
-//                    demoProjectionMatrix);
-
             if (true) 
                 drawDiagAtlas(resolution.getScaledWidth(), resolution.getScaledHeight());
         } catch (Exception e) {
