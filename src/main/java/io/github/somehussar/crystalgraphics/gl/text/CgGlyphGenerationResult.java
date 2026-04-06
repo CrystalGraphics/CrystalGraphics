@@ -209,6 +209,17 @@ final class CgGlyphGenerationResult {
     }
 
     boolean isMsdf() {
-        return atlasKey.isMsdf();
+        return getAtlasType() == CgGlyphAtlas.Type.MSDF;
+    }
+
+    boolean isDistanceField() {
+        return getAtlasType() != CgGlyphAtlas.Type.BITMAP;
+    }
+
+    CgGlyphAtlas.Type getAtlasType() {
+        if (msdfAtlasKey != null) {
+            return msdfAtlasKey.getConfig().resolveAtlasType();
+        }
+        return CgGlyphAtlas.Type.BITMAP;
     }
 }
