@@ -531,6 +531,8 @@ public class CgFontRegistry {
         } catch (FreeTypeException e) {
             LOGGER.log(Level.WARNING, "Failed to rasterize glyph " + key, e);
             return null;
+        } finally {
+            restoreFontShapingState(font);
         }
     }
 
@@ -564,10 +566,10 @@ public class CgFontRegistry {
     }
 
     private CgAtlasRegion ensureBitmapGlyphAtEffectiveSize(CgFont font, CgGlyphKey key,
-                                                            CgRasterFontKey rasterFontKey,
-                                                            CgRasterGlyphKey rasterGlyphKey,
-                                                            int effectiveTargetPx,
-                                                            int subPixelBucket,
+                                                             CgRasterFontKey rasterFontKey,
+                                                             CgRasterGlyphKey rasterGlyphKey,
+                                                             int effectiveTargetPx,
+                                                             int subPixelBucket,
                                                             long currentFrame) {
         CgGlyphAtlas atlas = getBitmapAtlas(rasterFontKey);
         CgAtlasRegion cached = atlas.get(toAtlasGlyphKey(rasterGlyphKey), currentFrame);
@@ -631,6 +633,8 @@ public class CgFontRegistry {
         } catch (FreeTypeException e) {
             LOGGER.log(Level.WARNING, "Failed to rasterize glyph at effective size " + effectiveTargetPx + ": " + key, e);
             return null;
+        } finally {
+            restoreFontShapingState(font);
         }
     }
 
@@ -721,10 +725,10 @@ public class CgFontRegistry {
     }
 
     private CgGlyphPlacement ensureBitmapGlyphPaged(CgFont font, CgGlyphKey atlasKey,
-                                                     CgRasterFontKey rasterFontKey,
-                                                     int effectiveTargetPx,
-                                                     int subPixelBucket,
-                                                     long currentFrame) {
+                                                      CgRasterFontKey rasterFontKey,
+                                                      int effectiveTargetPx,
+                                                      int subPixelBucket,
+                                                      long currentFrame) {
         CgPagedGlyphAtlas pagedAtlas = getPagedBitmapAtlas(rasterFontKey);
         CgGlyphPlacement cached = pagedAtlas.get(atlasKey, currentFrame);
         if (cached != null) {
@@ -782,6 +786,17 @@ public class CgFontRegistry {
         } catch (FreeTypeException e) {
             LOGGER.log(Level.WARNING, "Failed to rasterize glyph at effective size " + effectiveTargetPx + ": " + atlasKey, e);
             return null;
+        } finally {
+            restoreFontShapingState(font);
+        }
+    }
+
+    private void restoreFontShapingState(CgFont font) {
+        try {
+            font.restoreBaseFontSizeForShaping();
+        } catch (FreeTypeException e) {
+            throw new IllegalStateException("Failed to restore base font size for shaping: "
+                    + font.getKey(), e);
         }
     }
 
