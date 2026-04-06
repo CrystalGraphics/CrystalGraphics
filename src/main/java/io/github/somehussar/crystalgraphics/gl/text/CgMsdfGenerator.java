@@ -48,7 +48,7 @@ public class CgMsdfGenerator {
 
     private static final Logger LOGGER = Logger.getLogger(CgMsdfGenerator.class.getName());
 
-    public static final float PX_RANGE = 4.0f;
+    public static final float PX_RANGE = CgMsdfAtlasConfig.DEFAULT_PX_RANGE;
     public static final int MAX_PER_FRAME = 4;
     static final int COMPLEXITY_EDGE_THRESHOLD = 24;
     static final int SIMPLE_MSDF_MIN_PX = 32;
