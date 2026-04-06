@@ -165,17 +165,29 @@ public class CgMsdfGenerator {
                 .translate(tx, ty)
                 .range(-rangeInShapeUnits, rangeInShapeUnits);
 
-        Bitmap bitmap = Bitmap.allocMsdf(cellSize, cellSize);
+        Bitmap bitmap = config.isMtsdf()
+                ? Bitmap.allocMtsdf(cellSize, cellSize)
+                : Bitmap.allocMsdf(cellSize, cellSize);
         try {
-            Generator.generateMsdf(bitmap, shape, transform,
-                    config.isOverlapSupport(),
-                    config.getErrorCorrectionMode(),
-                    config.getDistanceCheckMode(),
-                    config.getMinDeviationRatio(),
-                    config.getMinImproveRatio());
+            if (config.isMtsdf()) {
+                Generator.generateMtsdf(bitmap, shape, transform,
+                        config.isOverlapSupport(),
+                        config.getErrorCorrectionMode(),
+                        config.getDistanceCheckMode(),
+                        config.getMinDeviationRatio(),
+                        config.getMinImproveRatio());
+            } else {
+                Generator.generateMsdf(bitmap, shape, transform,
+                        config.isOverlapSupport(),
+                        config.getErrorCorrectionMode(),
+                        config.getDistanceCheckMode(),
+                        config.getMinDeviationRatio(),
+                        config.getMinImproveRatio());
+            }
 
             float[] pixelData = bitmap.getPixelData();
-            flipRows(pixelData, cellSize, cellSize, 3);
+            int channels = config.isMtsdf() ? 4 : 3;
+            flipRows(pixelData, cellSize, cellSize, channels);
 
             // bearingX = -(scale * tx)  : pen is scale*tx pixels from cell left
             // bearingY = cellSize - scale*ty : baseline is scale*ty from cell bottom,
@@ -280,17 +292,29 @@ public class CgMsdfGenerator {
                 .translate(tx, ty)
                 .range(-rangeInShapeUnits, rangeInShapeUnits);
 
-        Bitmap bitmap = Bitmap.allocMsdf(boxWidth, boxHeight);
+        int channels = config.isMtsdf() ? 4 : 3;
+        Bitmap bitmap = config.isMtsdf()
+                ? Bitmap.allocMtsdf(boxWidth, boxHeight)
+                : Bitmap.allocMsdf(boxWidth, boxHeight);
         try {
-            Generator.generateMsdf(bitmap, shape, transform,
-                    config.isOverlapSupport(),
-                    config.getErrorCorrectionMode(),
-                    config.getDistanceCheckMode(),
-                    config.getMinDeviationRatio(),
-                    config.getMinImproveRatio());
+            if (config.isMtsdf()) {
+                Generator.generateMtsdf(bitmap, shape, transform,
+                        config.isOverlapSupport(),
+                        config.getErrorCorrectionMode(),
+                        config.getDistanceCheckMode(),
+                        config.getMinDeviationRatio(),
+                        config.getMinImproveRatio());
+            } else {
+                Generator.generateMsdf(bitmap, shape, transform,
+                        config.isOverlapSupport(),
+                        config.getErrorCorrectionMode(),
+                        config.getDistanceCheckMode(),
+                        config.getMinDeviationRatio(),
+                        config.getMinImproveRatio());
+            }
 
             float[] pixelData = bitmap.getPixelData();
-            flipRows(pixelData, boxWidth, boxHeight, 3);
+            flipRows(pixelData, boxWidth, boxHeight, channels);
 
             // Derive bearing and metrics from the layout's plane bounds.
             // bearingX = planeLeft * scale (plane bounds are in EM, convert to px)
@@ -368,17 +392,29 @@ public class CgMsdfGenerator {
                 .translate(tx, ty)
                 .range(-rangeInShapeUnits, rangeInShapeUnits);
 
-        Bitmap bitmap = Bitmap.allocMsdf(boxWidth, boxHeight);
+        int channels = config.isMtsdf() ? 4 : 3;
+        Bitmap bitmap = config.isMtsdf()
+                ? Bitmap.allocMtsdf(boxWidth, boxHeight)
+                : Bitmap.allocMsdf(boxWidth, boxHeight);
         try {
-            Generator.generateMsdf(bitmap, shape, transform,
-                    config.isOverlapSupport(),
-                    config.getErrorCorrectionMode(),
-                    config.getDistanceCheckMode(),
-                    config.getMinDeviationRatio(),
-                    config.getMinImproveRatio());
+            if (config.isMtsdf()) {
+                Generator.generateMtsdf(bitmap, shape, transform,
+                        config.isOverlapSupport(),
+                        config.getErrorCorrectionMode(),
+                        config.getDistanceCheckMode(),
+                        config.getMinDeviationRatio(),
+                        config.getMinImproveRatio());
+            } else {
+                Generator.generateMsdf(bitmap, shape, transform,
+                        config.isOverlapSupport(),
+                        config.getErrorCorrectionMode(),
+                        config.getDistanceCheckMode(),
+                        config.getMinDeviationRatio(),
+                        config.getMinImproveRatio());
+            }
 
             float[] pixelData = bitmap.getPixelData();
-            flipRows(pixelData, boxWidth, boxHeight, 3);
+            flipRows(pixelData, boxWidth, boxHeight, channels);
 
             float bearingX = (float) (layout.getPlaneLeft() * scale);
             float bearingY = (float) (layout.getPlaneTop() * scale);

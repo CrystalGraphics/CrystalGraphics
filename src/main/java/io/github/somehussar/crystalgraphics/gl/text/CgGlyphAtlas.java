@@ -50,7 +50,9 @@ public class CgGlyphAtlas {
     private static final int GL_R8                 = 0x8229;
     private static final int GL_RED                = 0x1903;
     private static final int GL_RGB                = 0x1907;
+    private static final int GL_RGBA               = 0x1908;
     private static final int GL_RGB16F             = 0x881B;
+    private static final int GL_RGBA16F            = 0x881A;
     private static final int GL_UNSIGNED_BYTE      = 0x1401;
     private static final int GL_FLOAT              = 0x1406;
     private static final int GL_TEXTURE_MIN_FILTER = 0x2801;
@@ -72,12 +74,14 @@ private static final int GL_CLAMP_TO_EDGE      = 0x812F;
 
     // ── Atlas type ─────────────────────────────────────────────────────
 
-    /** Discriminates bitmap (GL_R8) from MSDF (GL_RGB16F) atlas textures. */
+    /** Discriminates bitmap (GL_R8), MSDF (GL_RGB16F), and MTSDF (GL_RGBA16F) atlas textures. */
     public enum Type {
         /** Single-channel bitmap atlas ({@code GL_R8}, {@code GL_UNSIGNED_BYTE}). */
         BITMAP,
         /** Three-channel MSDF atlas ({@code GL_RGB16F}, uploaded as {@code GL_FLOAT}). */
-        MSDF
+        MSDF,
+        /** Four-channel MTSDF atlas ({@code GL_RGBA16F}, uploaded as {@code GL_FLOAT}). */
+        MTSDF
     }
 
     // ── Instance fields ────────────────────────────────────────────────
@@ -111,6 +115,8 @@ private static final int GL_CLAMP_TO_EDGE      = 0x812F;
         if (!skipGlUpload) {
             if (type == Type.BITMAP) {
                 this.uploadBuffer = BufferUtils.createByteBuffer(INITIAL_UPLOAD_BUFFER_SIZE);
+            } else if (type == Type.MTSDF) {
+                this.msdfUploadBuffer = BufferUtils.createFloatBuffer(64 * 64 * 4);
             } else {
                 this.msdfUploadBuffer = BufferUtils.createFloatBuffer(64 * 64 * 3);
             }
@@ -147,6 +153,10 @@ private static final int GL_CLAMP_TO_EDGE      = 0x812F;
                     pageWidth, pageHeight, 0,
                     GL_RED, GL_UNSIGNED_BYTE, (ByteBuffer) null);
             GL11.glPixelStorei(GL_UNPACK_ALIGNMENT, prevAlignment);
+        } else if (type == Type.MTSDF) {
+            GL11.glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F,
+                    pageWidth, pageHeight, 0,
+                    GL_RGBA, GL_FLOAT, (FloatBuffer) null);
         } else {
             GL11.glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F,
                     pageWidth, pageHeight, 0,
@@ -496,7 +506,9 @@ private static final int GL_CLAMP_TO_EDGE      = 0x812F;
         if (skipGlUpload) {
             return;
         }
-        int required = w * h * 3;
+        int channels = (type == Type.MTSDF) ? 4 : 3;
+        int glFormat = (type == Type.MTSDF) ? GL_RGBA : GL_RGB;
+        int required = w * h * channels;
         if (msdfUploadBuffer == null || msdfUploadBuffer.capacity() < required) {
             msdfUploadBuffer = BufferUtils.createFloatBuffer(required);
         }
@@ -506,7 +518,7 @@ private static final int GL_CLAMP_TO_EDGE      = 0x812F;
 
         GL11.glBindTexture(GL_TEXTURE_2D, textureId);
         GL11.glTexSubImage2D(GL_TEXTURE_2D, 0, x, y, w, h,
-                GL_RGB, GL_FLOAT, msdfUploadBuffer);
+                glFormat, GL_FLOAT, msdfUploadBuffer);
         GL11.glBindTexture(GL_TEXTURE_2D, 0);
     }
 

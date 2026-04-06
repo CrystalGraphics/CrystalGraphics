@@ -45,7 +45,9 @@ public class CgGlyphAtlasPage {
     private static final int GL_R8                 = 0x8229;
     private static final int GL_RED                = 0x1903;
     private static final int GL_RGB                = 0x1907;
+    private static final int GL_RGBA               = 0x1908;
     private static final int GL_RGB16F             = 0x881B;
+    private static final int GL_RGBA16F            = 0x881A;
     private static final int GL_UNSIGNED_BYTE      = 0x1401;
     private static final int GL_FLOAT              = 0x1406;
     private static final int GL_TEXTURE_MIN_FILTER = 0x2801;
@@ -94,6 +96,8 @@ public class CgGlyphAtlasPage {
         if (!skipGlUpload) {
             if (type == CgGlyphAtlas.Type.BITMAP) {
                 this.uploadBuffer = BufferUtils.createByteBuffer(INITIAL_UPLOAD_BUFFER_SIZE);
+            } else if (type == CgGlyphAtlas.Type.MTSDF) {
+                this.msdfUploadBuffer = BufferUtils.createFloatBuffer(64 * 64 * 4);
             } else {
                 this.msdfUploadBuffer = BufferUtils.createFloatBuffer(64 * 64 * 3);
             }
@@ -125,6 +129,10 @@ public class CgGlyphAtlasPage {
                     pageWidth, pageHeight, 0,
                     GL_RED, GL_UNSIGNED_BYTE, BufferUtils.createByteBuffer(pageWidth * pageHeight));
             GL11.glPixelStorei(GL_UNPACK_ALIGNMENT, prevAlignment);
+        } else if (type == CgGlyphAtlas.Type.MTSDF) {
+            GL11.glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F,
+                    pageWidth, pageHeight, 0,
+                    GL_RGBA, GL_FLOAT, BufferUtils.createFloatBuffer(pageWidth * pageHeight * 4));
         } else {
             GL11.glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F,
                     pageWidth, pageHeight, 0,
@@ -359,7 +367,9 @@ public class CgGlyphAtlasPage {
         if (skipGlUpload) {
             return;
         }
-        int required = w * h * 3;
+        int channels = (type == CgGlyphAtlas.Type.MTSDF) ? 4 : 3;
+        int glFormat = (type == CgGlyphAtlas.Type.MTSDF) ? GL_RGBA : GL_RGB;
+        int required = w * h * channels;
         if (msdfUploadBuffer == null || msdfUploadBuffer.capacity() < required) {
             msdfUploadBuffer = BufferUtils.createFloatBuffer(required);
         }
@@ -369,7 +379,7 @@ public class CgGlyphAtlasPage {
 
         GL11.glBindTexture(GL_TEXTURE_2D, textureId);
         GL11.glTexSubImage2D(GL_TEXTURE_2D, 0, x, y, w, h,
-                GL_RGB, GL_FLOAT, msdfUploadBuffer);
+                glFormat, GL_FLOAT, msdfUploadBuffer);
         GL11.glBindTexture(GL_TEXTURE_2D, 0);
     }
 

@@ -227,7 +227,7 @@ public class CgFontRegistry {
             atlas = CgPagedGlyphAtlas.createForPagedRegistry(
                     atlasKey.getConfig().getPageSize(),
                     atlasKey.getConfig().getPageSize(),
-                    CgGlyphAtlas.Type.MSDF,
+                    atlasKey.getConfig().resolveAtlasType(),
                     atlasKey.getConfig().getSpacingPx());
             pagedMsdfAtlases.put(atlasKey, atlas);
         }
