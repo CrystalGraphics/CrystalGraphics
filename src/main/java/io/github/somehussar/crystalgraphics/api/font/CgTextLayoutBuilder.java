@@ -9,7 +9,10 @@ import io.github.somehussar.crystalgraphics.text.RunReshaper;
 
 import java.text.Bidi;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Orchestrates the full text layout pipeline: BiDi analysis → shaping → line breaking → layout result.
@@ -42,7 +45,8 @@ public class CgTextLayoutBuilder {
      * @return immutable layout result
      */
     public CgTextLayout layout(String text, CgFont font, float maxWidth, float maxHeight) {
-        return layout(text, font, maxWidth, maxHeight, font != null ? font.getKey().getTargetPx() : 0);
+        return layout(text, CgFontFamily.of(font), maxWidth, maxHeight,
+                font != null ? font.getKey().getTargetPx() : 0);
     }
 
     /**
@@ -66,17 +70,26 @@ public class CgTextLayoutBuilder {
      */
     public CgTextLayout layout(String text, CgFont font,
                                float maxWidth, float maxHeight, float logicalPx) {
+        return layout(text, CgFontFamily.of(font), maxWidth, maxHeight, logicalPx);
+    }
+
+    public CgTextLayout layout(String text, CgFontFamily family, float maxWidth, float maxHeight) {
+        return layout(text, family, maxWidth, maxHeight,
+                family != null ? family.getTargetPx() : 0);
+    }
+
+    public CgTextLayout layout(String text, CgFontFamily family,
+                               float maxWidth, float maxHeight, float logicalPx) {
         if (text == null) {
             throw new IllegalArgumentException("text must not be null");
         }
-        if (font == null || font.isDisposed()) {
-            throw new IllegalArgumentException("font must not be null or disposed");
+        if (family == null) {
+            throw new IllegalArgumentException("family must not be null");
         }
 
-        CgFontKey fontKey = font.getKey();
-        CgFontMetrics metrics = font.getMetrics();
-        HBFont hbFont = font.getHbFontInternal();
-        float targetPx = fontKey.getTargetPx();
+        CgFontKey primaryFontKey = family.getPrimarySource().getKey();
+        CgFontMetrics metrics = family.getLayoutMetrics();
+        float targetPx = family.getTargetPx();
 
         // Scale factor: convert logical → target pixels for line-breaking,
         // then target → logical for reported dimensions.
@@ -85,7 +98,8 @@ public class CgTextLayoutBuilder {
 
         if (text.isEmpty()) {
             List<List<CgShapedRun>> emptyLines = new ArrayList<List<CgShapedRun>>();
-            return new CgTextLayout(emptyLines, 0, 0, metrics);
+            return new CgTextLayout(emptyLines, 0, 0, metrics,
+                    resolvedFontsByKey(family));
         }
 
         // Scale constraints from logical to target pixels for line breaking
@@ -114,16 +128,15 @@ public class CgTextLayoutBuilder {
                 continue;
             }
 
-            List<CgShapedRun> shapedRuns = splitAndShapeRuns(paragraph, fontKey, hbFont);
+            List<CgShapedRun> shapedRuns = splitAndShapeRuns(paragraph, family);
 
-            // Create a reshaper that delegates to the shaper for intra-run word wrapping
-            final CgFontKey fk = fontKey;
-            final HBFont hf = hbFont;
+            final CgFontFamily resolvedFamily = family;
             RunReshaper reshaper = new RunReshaper() {
                 @Override
                 public CgShapedRun reshape(CgShapedRun run, int subStart, int subEnd) {
+                    CgFont runFont = resolvedFamily.resolveLoadedFont(run.getFontKey());
                     return shaper.shape(run.getSourceText(), subStart, subEnd,
-                            fk, run.isRtl(), hf);
+                            run.getFontKey(), run.isRtl(), runFont.getHbFontInternal());
                 }
             };
 
@@ -151,7 +164,8 @@ public class CgTextLayoutBuilder {
         return new CgTextLayout(allLines,
                 totalWidth * inverseScale,
                 totalHeight * inverseScale,
-                metrics);
+                metrics,
+                resolvedFontsByKey(family));
     }
 
     /**
@@ -195,7 +209,7 @@ public class CgTextLayoutBuilder {
      * <p>Pipeline: {@link Bidi} → extract run boundaries and levels →
      * {@link CgTextShaper#shape} per run → collect into logical-order list.</p>
      */
-    private List<CgShapedRun> splitAndShapeRuns(String text, CgFontKey fontKey, HBFont hbFont) {
+    private List<CgShapedRun> splitAndShapeRuns(String text, CgFontFamily family) {
         Bidi bidi = new Bidi(text, Bidi.DIRECTION_DEFAULT_LEFT_TO_RIGHT);
         int runCount = bidi.getRunCount();
         List<CgShapedRun> runs = new ArrayList<CgShapedRun>(runCount);
@@ -206,10 +220,30 @@ public class CgTextLayoutBuilder {
             int level = bidi.getRunLevel(i);
             boolean rtl = (level % 2) != 0;
 
-            CgShapedRun run = shaper.shape(text, start, end, fontKey, rtl, hbFont);
-            runs.add(run);
+            List<CgResolvedFontRun> resolvedRuns = family.resolveRuns(text, start, end);
+            for (CgResolvedFontRun resolvedRun : resolvedRuns) {
+                CgFont resolvedFont = resolvedRun.getSource().requireFont();
+                HBFont hbFont = resolvedFont.getHbFontInternal();
+                CgShapedRun run = shaper.shape(text,
+                        resolvedRun.getStart(),
+                        resolvedRun.getEnd(),
+                        resolvedRun.getFontKey(),
+                        rtl,
+                        hbFont);
+                runs.add(run);
+            }
         }
 
         return runs;
+    }
+
+    private static Map<CgFontKey, CgFont> resolvedFontsByKey(CgFontFamily family) {
+        Map<CgFontKey, CgFont> resolved = new LinkedHashMap<CgFontKey, CgFont>();
+        for (CgFontSource source : family.getAllSources()) {
+            if (source.hasLoadedFont()) {
+                resolved.put(source.getKey(), source.requireFont());
+            }
+        }
+        return Collections.unmodifiableMap(resolved);
     }
 }

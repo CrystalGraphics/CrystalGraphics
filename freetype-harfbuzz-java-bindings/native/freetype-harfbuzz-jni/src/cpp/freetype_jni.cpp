@@ -3,6 +3,9 @@
 #include <cstdlib>
 #include <map>
 #include <mutex>
+#include <string>
+#include <vector>
+#include FT_MULTIPLE_MASTERS_H
 
 // Tracks memory buffers allocated for FT_New_Memory_Face.
 // FreeType requires the buffer to remain valid for the face's lifetime,
@@ -14,6 +17,16 @@ static std::mutex memoryFaceBuffersMutex;
 // Without this, the JVM cannot find the exported symbols at runtime
 // (UnsatisfiedLinkError on native method calls).
 extern "C" {
+
+static std::string ftTagToString(FT_ULong tag) {
+    char chars[5];
+    chars[0] = (char)((tag >> 24) & 0xFF);
+    chars[1] = (char)((tag >> 16) & 0xFF);
+    chars[2] = (char)((tag >> 8) & 0xFF);
+    chars[3] = (char)(tag & 0xFF);
+    chars[4] = '\0';
+    return std::string(chars, 4);
+}
 
 void throwException(JNIEnv *env, const char *className, const char *message) {
     jclass cls = env->FindClass(className);
@@ -241,6 +254,127 @@ JNIEXPORT jintArray JNICALL Java_com_crystalgraphics_freetype_FTFace_nGetKerning
     jint values[2] = { err ? 0 : (jint)kerning.x, err ? 0 : (jint)kerning.y };
     env->SetIntArrayRegion(result, 0, 2, values);
     return result;
+}
+
+JNIEXPORT jobjectArray JNICALL Java_com_crystalgraphics_freetype_FTFace_nGetVariationAxes
+  (JNIEnv *env, jclass, jlong facePtr) {
+    FT_Face face = (FT_Face)(intptr_t)facePtr;
+    jclass axisClass = env->FindClass("com/crystalgraphics/freetype/FTVariationAxisInfo");
+    if (axisClass == NULL) {
+        return NULL;
+    }
+    jmethodID ctor = env->GetMethodID(axisClass, "<init>", "(Ljava/lang/String;Ljava/lang/String;FFF)V");
+    if (ctor == NULL) {
+        env->DeleteLocalRef(axisClass);
+        return NULL;
+    }
+
+    if (!(face->face_flags & FT_FACE_FLAG_MULTIPLE_MASTERS)) {
+        jobjectArray empty = env->NewObjectArray(0, axisClass, NULL);
+        env->DeleteLocalRef(axisClass);
+        return empty;
+    }
+
+    FT_MM_Var *master = NULL;
+    FT_Error err = FT_Get_MM_Var(face, &master);
+    if (err || master == NULL) {
+        jobjectArray empty = env->NewObjectArray(0, axisClass, NULL);
+        env->DeleteLocalRef(axisClass);
+        return empty;
+    }
+
+    jobjectArray result = env->NewObjectArray((jsize)master->num_axis, axisClass, NULL);
+    for (FT_UInt i = 0; i < master->num_axis; i++) {
+        std::string tagString = ftTagToString(master->axis[i].tag);
+        jstring jTag = env->NewStringUTF(tagString.c_str());
+        jstring jName = env->NewStringUTF(tagString.c_str());
+        jobject axis = env->NewObject(axisClass, ctor,
+                jTag,
+                jName,
+                (jfloat)(master->axis[i].minimum / 65536.0f),
+                (jfloat)(master->axis[i].def / 65536.0f),
+                (jfloat)(master->axis[i].maximum / 65536.0f));
+        env->SetObjectArrayElement(result, (jsize)i, axis);
+        env->DeleteLocalRef(axis);
+        env->DeleteLocalRef(jTag);
+        env->DeleteLocalRef(jName);
+    }
+
+    FT_Done_MM_Var(face->glyph->library, master);
+    env->DeleteLocalRef(axisClass);
+    return result;
+}
+
+JNIEXPORT void JNICALL Java_com_crystalgraphics_freetype_FTFace_nSetVariationCoordinates
+  (JNIEnv *env, jclass, jlong facePtr, jobjectArray jAxisTags, jfloatArray jValues) {
+    FT_Face face = (FT_Face)(intptr_t)facePtr;
+    if (!(face->face_flags & FT_FACE_FLAG_MULTIPLE_MASTERS)) {
+        throwException(env, "java/lang/IllegalStateException", "Face has no variable-font axes");
+        return;
+    }
+
+    jsize tagCount = env->GetArrayLength(jAxisTags);
+    jsize valueCount = env->GetArrayLength(jValues);
+    if (tagCount != valueCount) {
+        throwException(env, "java/lang/IllegalArgumentException", "axis tag count must match value count");
+        return;
+    }
+    if (tagCount == 0) {
+        return;
+    }
+
+    FT_MM_Var *master = NULL;
+    FT_Error err = FT_Get_MM_Var(face, &master);
+    if (err || master == NULL) {
+        throwFreeTypeException(env, err, "FT_Get_MM_Var failed");
+        return;
+    }
+
+    std::vector<FT_Fixed> coords(master->num_axis);
+    for (FT_UInt i = 0; i < master->num_axis; i++) {
+        coords[i] = master->axis[i].def;
+    }
+    FT_Get_Var_Design_Coordinates(face, (FT_UInt)coords.size(), &coords[0]);
+
+    std::vector<jfloat> values((size_t)valueCount);
+    env->GetFloatArrayRegion(jValues, 0, valueCount, &values[0]);
+
+    for (jsize i = 0; i < tagCount; i++) {
+        jstring jTag = (jstring) env->GetObjectArrayElement(jAxisTags, i);
+        if (jTag == NULL) {
+            FT_Done_MM_Var(face->glyph->library, master);
+            throwException(env, "java/lang/IllegalArgumentException", "axis tag must not be null");
+            return;
+        }
+        const char *tagChars = env->GetStringUTFChars(jTag, NULL);
+        if (tagChars == NULL) {
+            env->DeleteLocalRef(jTag);
+            FT_Done_MM_Var(face->glyph->library, master);
+            return;
+        }
+        bool matched = false;
+        for (FT_UInt axisIndex = 0; axisIndex < master->num_axis; axisIndex++) {
+            std::string axisTag = ftTagToString(master->axis[axisIndex].tag);
+            if (axisTag == tagChars) {
+                coords[axisIndex] = (FT_Fixed)(values[(size_t)i] * 65536.0f);
+                matched = true;
+                break;
+            }
+        }
+        env->ReleaseStringUTFChars(jTag, tagChars);
+        env->DeleteLocalRef(jTag);
+        if (!matched) {
+            FT_Done_MM_Var(face->glyph->library, master);
+            throwException(env, "java/lang/IllegalArgumentException", "Unknown variation axis tag");
+            return;
+        }
+    }
+
+    err = FT_Set_Var_Design_Coordinates(face, (FT_UInt)coords.size(), &coords[0]);
+    FT_Done_MM_Var(face->glyph->library, master);
+    if (err) {
+        throwFreeTypeException(env, err, "FT_Set_Var_Design_Coordinates failed");
+    }
 }
 
 JNIEXPORT jboolean JNICALL Java_com_crystalgraphics_freetype_FTFace_nHasKerning

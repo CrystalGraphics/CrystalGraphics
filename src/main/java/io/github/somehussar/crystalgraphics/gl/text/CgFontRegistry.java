@@ -70,6 +70,8 @@ public class CgFontRegistry {
     private final Map<CgMsdfAtlasKey, CgPagedGlyphAtlas> pagedMsdfAtlases = new HashMap<CgMsdfAtlasKey, CgPagedGlyphAtlas>();
     private final Set<CgFontKey> registeredFonts = new HashSet<CgFontKey>();
     private final CgMsdfGenerator msdfGenerator = new CgMsdfGenerator();
+    private final CgGlyphGenerationExecutor glyphGenerationExecutor = new CgGlyphGenerationExecutor();
+    private static final int MAX_COMMITS_PER_FRAME = 32;
 
     public CgFontRegistry() {
         this(DEFAULT_BITMAP_ATLAS_SIZE, CgMsdfAtlasConfig.defaultConfig());
@@ -233,6 +235,7 @@ public class CgFontRegistry {
     }
 
     public void tickFrame(long frame) {
+        drainCompletedGlyphs(frame, MAX_COMMITS_PER_FRAME);
         for (CgGlyphAtlas atlas : bitmapAtlases.values()) {
             atlas.tickFrame(frame);
         }
@@ -254,6 +257,44 @@ public class CgFontRegistry {
         msdfGenerator.tickFrame();
     }
 
+    public boolean awaitAsyncGlyphs(long timeoutMs) {
+        return glyphGenerationExecutor.awaitIdle(timeoutMs);
+    }
+
+    public int getPendingAsyncGlyphCount() {
+        return glyphGenerationExecutor.getPendingJobCount();
+    }
+
+    void queueGlyphPaged(CgFont font,
+                        CgGlyphKey key,
+                        int effectiveTargetPx,
+                        int subPixelBucket,
+                        long currentFrame) {
+        if (font.isDisposed()) {
+            throw new IllegalStateException("Cannot queue glyph on disposed font: " + font.getKey());
+        }
+
+        registerFont(font);
+        CgRasterFontKey rasterFontKey = new CgRasterFontKey(key.getFontKey(), effectiveTargetPx);
+        if (key.isMsdf()) {
+            CgMsdfAtlasConfig config = resolveMsdfAtlasConfig(key.getFontKey());
+            CgMsdfAtlasKey msdfAtlasKey = toMsdfAtlasKey(key.getFontKey(), config);
+            CgGlyphKey atlasKey = toMsdfAtlasGlyphKey(key, config);
+            CgPagedGlyphAtlas pagedAtlas = getPagedMsdfAtlas(msdfAtlasKey);
+            if (pagedAtlas.get(atlasKey, currentFrame) == null) {
+                submitMsdfGlyphJob(font, atlasKey, msdfAtlasKey);
+            }
+            return;
+        }
+
+        CgGlyphKey atlasKey = toBitmapAtlasGlyphKey(
+                new CgRasterGlyphKey(rasterFontKey, key.getGlyphId(), false, subPixelBucket));
+        CgPagedGlyphAtlas pagedAtlas = getPagedBitmapAtlas(rasterFontKey);
+        if (pagedAtlas.get(atlasKey, currentFrame) == null) {
+            submitBitmapGlyphJob(font, atlasKey, rasterFontKey, effectiveTargetPx, subPixelBucket);
+        }
+    }
+
     /**
      * Returns the first non-empty bitmap atlas that was populated during rendering
      * for the given base font key. Searches raster-keyed atlases (used by the
@@ -265,7 +306,7 @@ public class CgFontRegistry {
         // Check raster-keyed atlases first (populated by ensureGlyphAtEffectiveSize)
         for (Map.Entry<CgRasterFontKey, CgGlyphAtlas> entry : rasterBitmapAtlases.entrySet()) {
             CgRasterFontKey rk = entry.getKey();
-            if (rk.getFontPath().equals(key.getFontPath()) && rk.getStyle() == key.getStyle()) {
+            if (rk.getBaseFontKey().equals(key)) {
                 CgGlyphAtlas atlas = entry.getValue();
                 if (!atlas.isDeleted() && atlas.getTextureId() != 0 && atlas.getSlotCount() > 0) {
                     return atlas;
@@ -291,7 +332,7 @@ public class CgFontRegistry {
         // Check raster-keyed atlases first (populated by ensureGlyphAtEffectiveSize)
         for (Map.Entry<CgRasterFontKey, CgGlyphAtlas> entry : rasterMsdfAtlases.entrySet()) {
             CgRasterFontKey rk = entry.getKey();
-            if (rk.getFontPath().equals(key.getFontPath()) && rk.getStyle() == key.getStyle()) {
+            if (rk.getBaseFontKey().equals(key)) {
                 CgGlyphAtlas atlas = entry.getValue();
                 if (!atlas.isDeleted() && atlas.getTextureId() != 0 && atlas.getSlotCount() > 0) {
                     return atlas;
@@ -320,7 +361,7 @@ public class CgFontRegistry {
         List<CgGlyphAtlas> result = new ArrayList<CgGlyphAtlas>();
         for (Map.Entry<CgRasterFontKey, CgGlyphAtlas> entry : rasterBitmapAtlases.entrySet()) {
             CgRasterFontKey rk = entry.getKey();
-            if (rk.getFontPath().equals(key.getFontPath()) && rk.getStyle() == key.getStyle()) {
+            if (rk.getBaseFontKey().equals(key)) {
                 CgGlyphAtlas atlas = entry.getValue();
                 if (!atlas.isDeleted() && atlas.getTextureId() != 0 && atlas.getSlotCount() > 0) {
                     result.add(atlas);
@@ -349,7 +390,7 @@ public class CgFontRegistry {
         List<CgGlyphAtlas> result = new ArrayList<CgGlyphAtlas>();
         for (Map.Entry<CgRasterFontKey, CgGlyphAtlas> entry : rasterMsdfAtlases.entrySet()) {
             CgRasterFontKey rk = entry.getKey();
-            if (rk.getFontPath().equals(key.getFontPath()) && rk.getStyle() == key.getStyle()) {
+            if (rk.getBaseFontKey().equals(key)) {
                 CgGlyphAtlas atlas = entry.getValue();
                 if (!atlas.isDeleted() && atlas.getTextureId() != 0 && atlas.getSlotCount() > 0) {
                     result.add(atlas);
@@ -374,7 +415,7 @@ public class CgFontRegistry {
         List<CgGlyphAtlasPage> result = new ArrayList<CgGlyphAtlasPage>();
         for (Map.Entry<CgRasterFontKey, CgPagedGlyphAtlas> entry : pagedBitmapAtlases.entrySet()) {
             CgRasterFontKey rk = entry.getKey();
-            if (rk.getFontPath().equals(key.getFontPath()) && rk.getStyle() == key.getStyle()) {
+            if (rk.getBaseFontKey().equals(key)) {
                 CgPagedGlyphAtlas pagedAtlas = entry.getValue();
                 if (!pagedAtlas.isDeleted()) {
                     for (CgGlyphAtlasPage page : pagedAtlas.getPages()) {
@@ -398,7 +439,7 @@ public class CgFontRegistry {
         List<CgGlyphAtlasPage> result = new ArrayList<CgGlyphAtlasPage>();
         for (Map.Entry<CgMsdfAtlasKey, CgPagedGlyphAtlas> entry : pagedMsdfAtlases.entrySet()) {
             CgMsdfAtlasKey rk = entry.getKey();
-            if (rk.getFontPath().equals(key.getFontPath()) && rk.getStyle() == key.getStyle()) {
+            if (rk.getBaseFontKey().equals(key)) {
                 CgPagedGlyphAtlas pagedAtlas = entry.getValue();
                 if (!pagedAtlas.isDeleted()) {
                     for (CgGlyphAtlasPage page : pagedAtlas.getPages()) {
@@ -413,6 +454,7 @@ public class CgFontRegistry {
     }
 
     public void releaseFontAtlases(CgFontKey key) {
+        glyphGenerationExecutor.clearFont(key);
         CgGlyphAtlas bitmap = bitmapAtlases.remove(key);
         if (bitmap != null && !bitmap.isDeleted()) {
             bitmap.delete();
@@ -472,6 +514,7 @@ public class CgFontRegistry {
         pagedMsdfAtlases.clear();
 
         registeredFonts.clear();
+        glyphGenerationExecutor.shutdown();
     }
 
     private void registerFont(final CgFont font) {
@@ -545,8 +588,9 @@ public class CgFontRegistry {
 
         FreeTypeIntegration.Font msdfFont = font.getMsdfFont();
         if (msdfFont != null) {
+            CgMsdfAtlasConfig config = resolveMsdfAtlasConfig(key.getFontKey());
             CgAtlasRegion region = msdfGenerator.queueOrGenerate(
-                    key, msdfFont, msdfAtlas, 0f, 0f, currentFrame);
+                    key, msdfFont, msdfAtlas, config, currentFrame);
             if (region != null) {
                 return region;
             }
@@ -652,8 +696,9 @@ public class CgFontRegistry {
 
         FreeTypeIntegration.Font msdfFont = font.getMsdfFont();
         if (msdfFont != null) {
+            CgMsdfAtlasConfig config = resolveMsdfAtlasConfig(key.getFontKey());
             CgAtlasRegion region = msdfGenerator.queueOrGenerate(
-                    toAtlasGlyphKey(rasterGlyphKey), msdfFont, msdfAtlas, 0f, 0f, currentFrame);
+                    toAtlasGlyphKey(rasterGlyphKey), msdfFont, msdfAtlas, config, currentFrame);
             if (region != null) {
                 return region;
             }
@@ -674,18 +719,14 @@ public class CgFontRegistry {
     }
 
     CgGlyphKey toMsdfAtlasGlyphKey(CgGlyphKey requestedKey, CgMsdfAtlasConfig config) {
-        CgFontKey atlasFontKey = new CgFontKey(
-                requestedKey.getFontKey().getFontPath(),
-                requestedKey.getFontKey().getStyle(),
-                config.getAtlasScalePx());
+        CgFontKey atlasFontKey = requestedKey.getFontKey().withTargetPx(config.getAtlasScalePx());
         return new CgGlyphKey(atlasFontKey, requestedKey.getGlyphId(), true, 0);
     }
 
     CgGlyphKey toBitmapAtlasGlyphKey(CgRasterGlyphKey rasterGlyphKey) {
-        CgFontKey atlasFontKey = new CgFontKey(
-                rasterGlyphKey.getRasterFontKey().getFontPath(),
-                rasterGlyphKey.getRasterFontKey().getStyle(),
-                rasterGlyphKey.getRasterFontKey().getEffectiveTargetPx());
+        CgFontKey atlasFontKey = rasterGlyphKey.getRasterFontKey()
+                .getBaseFontKey()
+                .withTargetPx(rasterGlyphKey.getRasterFontKey().getEffectiveTargetPx());
         return new CgGlyphKey(
                 atlasFontKey,
                 rasterGlyphKey.getGlyphId(),
@@ -800,13 +841,93 @@ public class CgFontRegistry {
         }
     }
 
+    private void submitBitmapGlyphJob(CgFont font,
+                                      CgGlyphKey atlasKey,
+                                      CgRasterFontKey rasterFontKey,
+                                      int effectiveTargetPx,
+                                      int subPixelBucket) {
+        CgGlyphGenerationJob job = CgGlyphGenerationJob.bitmap(
+                font.getKey(),
+                font.getFontBytes(),
+                atlasKey,
+                rasterFontKey,
+                effectiveTargetPx,
+                subPixelBucket);
+        glyphGenerationExecutor.submit(job);
+    }
+
+    private void submitMsdfGlyphJob(CgFont font,
+                                    CgGlyphKey atlasKey,
+                                    CgMsdfAtlasKey msdfAtlasKey) {
+        CgGlyphGenerationJob job = CgGlyphGenerationJob.msdf(
+                font.getKey(),
+                font.getFontBytes(),
+                atlasKey,
+                msdfAtlasKey,
+                msdfAtlasKey.getConfig());
+        glyphGenerationExecutor.submit(job);
+    }
+
+    private void drainCompletedGlyphs(long frame, int maxCommits) {
+        int committed = 0;
+        while (committed < maxCommits) {
+            CgGlyphGenerationResult result = glyphGenerationExecutor.pollCompleted();
+            if (result == null) {
+                break;
+            }
+            commitGeneratedGlyph(result, frame);
+            committed++;
+        }
+    }
+
+    private void commitGeneratedGlyph(CgGlyphGenerationResult result, long frame) {
+        if (result.isMsdf()) {
+            CgPagedGlyphAtlas atlas = getPagedMsdfAtlas(result.getMsdfAtlasKey());
+            if (atlas.get(result.getAtlasKey(), frame) != null) {
+                return;
+            }
+            if (result.isEmptyGeometry()) {
+                return;
+            }
+            atlas.allocateMsdf(
+                    result.getAtlasKey(),
+                    result.getMsdfData(),
+                    result.getWidth(),
+                    result.getHeight(),
+                    result.getBearingX(),
+                    result.getBearingY(),
+                    result.getMetricsWidth(),
+                    result.getMetricsHeight(),
+                    result.getPxRange(),
+                    frame);
+            return;
+        }
+
+        CgPagedGlyphAtlas atlas = getPagedBitmapAtlas(result.getBitmapRasterKey());
+        if (atlas.get(result.getAtlasKey(), frame) != null) {
+            return;
+        }
+        if (result.isEmptyGeometry()) {
+            return;
+        }
+        atlas.allocateBitmap(
+                result.getAtlasKey(),
+                result.getBitmapData(),
+                result.getWidth(),
+                result.getHeight(),
+                result.getBearingX(),
+                result.getBearingY(),
+                result.getMetricsWidth(),
+                result.getMetricsHeight(),
+                frame);
+    }
+
     private void releaseRasterAtlasesForFont(CgFontKey baseKey) {
         java.util.Iterator<Map.Entry<CgRasterFontKey, CgGlyphAtlas>> bitmapIt =
                 rasterBitmapAtlases.entrySet().iterator();
         while (bitmapIt.hasNext()) {
             Map.Entry<CgRasterFontKey, CgGlyphAtlas> entry = bitmapIt.next();
-            if (entry.getKey().getFontPath().equals(baseKey.getFontPath())
-                    && entry.getKey().getStyle() == baseKey.getStyle()) {
+            if (entry.getKey().getBaseFontKey().equals(baseKey)) {
                 if (!entry.getValue().isDeleted()) {
                     entry.getValue().delete();
                 }
@@ -818,8 +939,7 @@ public class CgFontRegistry {
                 rasterMsdfAtlases.entrySet().iterator();
         while (msdfIt.hasNext()) {
             Map.Entry<CgRasterFontKey, CgGlyphAtlas> entry = msdfIt.next();
-            if (entry.getKey().getFontPath().equals(baseKey.getFontPath())
-                    && entry.getKey().getStyle() == baseKey.getStyle()) {
+            if (entry.getKey().getBaseFontKey().equals(baseKey)) {
                 if (!entry.getValue().isDeleted()) {
                     entry.getValue().delete();
                 }
@@ -833,8 +953,7 @@ public class CgFontRegistry {
                 pagedBitmapAtlases.entrySet().iterator();
         while (pagedBitmapIt.hasNext()) {
             Map.Entry<CgRasterFontKey, CgPagedGlyphAtlas> entry = pagedBitmapIt.next();
-            if (entry.getKey().getFontPath().equals(baseKey.getFontPath())
-                    && entry.getKey().getStyle() == baseKey.getStyle()) {
+            if (entry.getKey().getBaseFontKey().equals(baseKey)) {
                 if (!entry.getValue().isDeleted()) {
                     entry.getValue().delete();
                 }
@@ -846,8 +965,7 @@ public class CgFontRegistry {
                 pagedMsdfAtlases.entrySet().iterator();
         while (pagedMsdfIt.hasNext()) {
             Map.Entry<CgMsdfAtlasKey, CgPagedGlyphAtlas> entry = pagedMsdfIt.next();
-            if (entry.getKey().getFontPath().equals(baseKey.getFontPath())
-                    && entry.getKey().getStyle() == baseKey.getStyle()) {
+            if (entry.getKey().getBaseFontKey().equals(baseKey)) {
                 if (!entry.getValue().isDeleted()) {
                     entry.getValue().delete();
                 }

@@ -1,5 +1,6 @@
 #include "headers.h"
 #include <cstring>
+#include <vector>
 
 extern "C" {
 
@@ -203,6 +204,43 @@ JNIEXPORT jintArray JNICALL Java_com_crystalgraphics_harfbuzz_HBFont_nGetPpem
     jint values[2] = { (jint)xPpem, (jint)yPpem };
     env->SetIntArrayRegion(result, 0, 2, values);
     return result;
+}
+
+JNIEXPORT void JNICALL Java_com_crystalgraphics_harfbuzz_HBFont_nSetVariations
+  (JNIEnv *env, jclass, jlong fontPtr, jobjectArray jAxisTags, jfloatArray jValues) {
+    hb_font_t *font = (hb_font_t *)(intptr_t)fontPtr;
+    jsize tagCount = env->GetArrayLength(jAxisTags);
+    jsize valueCount = env->GetArrayLength(jValues);
+    if (tagCount != valueCount) {
+        throwException(env, "java/lang/IllegalArgumentException", "axis tag count must match value count");
+        return;
+    }
+    if (tagCount == 0) {
+        return;
+    }
+
+    std::vector<hb_variation_t> variations((size_t)tagCount);
+    std::vector<jfloat> values((size_t)valueCount);
+    env->GetFloatArrayRegion(jValues, 0, valueCount, &values[0]);
+
+    for (jsize i = 0; i < tagCount; i++) {
+        jstring jTag = (jstring) env->GetObjectArrayElement(jAxisTags, i);
+        if (jTag == NULL) {
+            throwException(env, "java/lang/IllegalArgumentException", "axis tag must not be null");
+            return;
+        }
+        const char *tagChars = env->GetStringUTFChars(jTag, NULL);
+        if (tagChars == NULL) {
+            env->DeleteLocalRef(jTag);
+            return;
+        }
+        variations[(size_t)i].tag = hb_tag_from_string(tagChars, 4);
+        variations[(size_t)i].value = values[(size_t)i];
+        env->ReleaseStringUTFChars(jTag, tagChars);
+        env->DeleteLocalRef(jTag);
+    }
+
+    hb_font_set_variations(font, &variations[0], (unsigned int) variations.size());
 }
 
 JNIEXPORT void JNICALL Java_com_crystalgraphics_harfbuzz_HBShape_nShape

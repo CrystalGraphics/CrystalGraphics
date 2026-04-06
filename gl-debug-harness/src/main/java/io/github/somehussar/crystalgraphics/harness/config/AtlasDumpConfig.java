@@ -1,5 +1,9 @@
 package io.github.somehussar.crystalgraphics.harness.config;
 
+import io.github.somehussar.crystalgraphics.gl.text.msdf.CgMsdfAtlasConfig;
+import io.github.somehussar.crystalgraphics.gl.text.msdf.CgMsdfEdgeColoringMode;
+import io.github.somehussar.crystalgraphics.gl.text.msdf.CgMsdfVerificationConfig;
+
 import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -68,6 +72,7 @@ public final class AtlasDumpConfig extends HarnessConfig {
     private int bitmapPxSize = DEFAULT_BITMAP_PX_SIZE;
     private int msdfPxSize = DEFAULT_MSDF_PX_SIZE;
     private int msdfAtlasScale = 48;
+    private float msdfPxRange = CgMsdfAtlasConfig.DEFAULT_PX_RANGE;
     private String text = ASCII_PRINTABLE_CHARS;
 
     // ── Parity / overflow knobs (Phase D of atlas overhaul plan) ───────
@@ -87,6 +92,25 @@ public final class AtlasDumpConfig extends HarnessConfig {
      */
     private int atlasPageSize = ATLAS_PAGE_SIZE_AUTO;
 
+    private boolean verifyMsdf = false;
+    private int msdfVerifyReferencePx = CgMsdfAtlasConfig.DEFAULT_ATLAS_SCALE_PX;
+    private float msdfVerifyReconstructionThreshold = CgMsdfVerificationConfig.DEFAULT_RECONSTRUCTION_THRESHOLD;
+    private float msdfVerifyReferenceThreshold = CgMsdfVerificationConfig.DEFAULT_REFERENCE_THRESHOLD;
+    private float msdfVerifyMaxMismatchRatio = CgMsdfVerificationConfig.DEFAULT_MAX_MISMATCH_RATIO;
+    private boolean msdfVerifyDumpPassingGlyphs = false;
+
+    private boolean msdfOverlapSupport = CgMsdfAtlasConfig.DEFAULT_OVERLAP_SUPPORT;
+    private int msdfErrorCorrectionMode = CgMsdfAtlasConfig.DEFAULT_ERROR_CORRECTION_MODE;
+    private int msdfDistanceCheckMode = CgMsdfAtlasConfig.DEFAULT_DISTANCE_CHECK_MODE;
+    private double msdfMinDeviationRatio = CgMsdfAtlasConfig.DEFAULT_MIN_DEVIATION_RATIO;
+    private double msdfMinImproveRatio = CgMsdfAtlasConfig.DEFAULT_MIN_IMPROVE_RATIO;
+    private int msdfSpacingPx = CgMsdfAtlasConfig.DEFAULT_SPACING_PX;
+    private float msdfMiterLimit = CgMsdfAtlasConfig.DEFAULT_MITER_LIMIT;
+    private boolean msdfAlignOriginX = CgMsdfAtlasConfig.DEFAULT_ALIGN_ORIGIN_X;
+    private boolean msdfAlignOriginY = CgMsdfAtlasConfig.DEFAULT_ALIGN_ORIGIN_Y;
+    private CgMsdfEdgeColoringMode msdfEdgeColoringMode = CgMsdfAtlasConfig.DEFAULT_EDGE_COLORING_MODE;
+    private double msdfEdgeColoringAngleThreshold = CgMsdfAtlasConfig.DEFAULT_EDGE_COLORING_ANGLE_THRESHOLD;
+
     private static final String ASCII_PRINTABLE_CHARS = IntStream.range(32, 127)
             .mapToObj(i -> String.valueOf((char) i))
             .collect(Collectors.joining());
@@ -96,6 +120,7 @@ public final class AtlasDumpConfig extends HarnessConfig {
     public int getBitmapPxSize() { return bitmapPxSize; }
     public int getMsdfPxSize() { return msdfPxSize; }
     public int getMsdfAtlasScale() { return msdfAtlasScale; }
+    public float getMsdfPxRange() { return msdfPxRange; }
     public String getText() { return text; }
 
     /** Whether deterministic MSDF parity prewarm is enabled. */
@@ -112,6 +137,52 @@ public final class AtlasDumpConfig extends HarnessConfig {
      * {@link #ATLAS_PAGE_SIZE_AUTO} if auto-sizing should be used.
      */
     public int getAtlasPageSize() { return atlasPageSize; }
+
+    public boolean isVerifyMsdf() { return verifyMsdf; }
+    public int getMsdfVerifyReferencePx() { return msdfVerifyReferencePx; }
+    public float getMsdfVerifyReconstructionThreshold() { return msdfVerifyReconstructionThreshold; }
+    public float getMsdfVerifyReferenceThreshold() { return msdfVerifyReferenceThreshold; }
+    public float getMsdfVerifyMaxMismatchRatio() { return msdfVerifyMaxMismatchRatio; }
+    public boolean isMsdfVerifyDumpPassingGlyphs() { return msdfVerifyDumpPassingGlyphs; }
+
+    public boolean isMsdfOverlapSupport() { return msdfOverlapSupport; }
+    public int getMsdfErrorCorrectionMode() { return msdfErrorCorrectionMode; }
+    public int getMsdfDistanceCheckMode() { return msdfDistanceCheckMode; }
+    public double getMsdfMinDeviationRatio() { return msdfMinDeviationRatio; }
+    public double getMsdfMinImproveRatio() { return msdfMinImproveRatio; }
+    public int getMsdfSpacingPx() { return msdfSpacingPx; }
+    public float getMsdfMiterLimit() { return msdfMiterLimit; }
+    public boolean isMsdfAlignOriginX() { return msdfAlignOriginX; }
+    public boolean isMsdfAlignOriginY() { return msdfAlignOriginY; }
+    public CgMsdfEdgeColoringMode getMsdfEdgeColoringMode() { return msdfEdgeColoringMode; }
+    public double getMsdfEdgeColoringAngleThreshold() { return msdfEdgeColoringAngleThreshold; }
+
+    public CgMsdfAtlasConfig buildMsdfAtlasConfig(int resolvedAtlasPageSize) {
+        return new CgMsdfAtlasConfig(
+                msdfAtlasScale,
+                msdfPxRange,
+                resolvedAtlasPageSize,
+                msdfSpacingPx,
+                msdfMiterLimit,
+                msdfAlignOriginX,
+                msdfAlignOriginY,
+                msdfOverlapSupport,
+                msdfErrorCorrectionMode,
+                msdfDistanceCheckMode,
+                msdfMinDeviationRatio,
+                msdfMinImproveRatio,
+                msdfEdgeColoringMode,
+                msdfEdgeColoringAngleThreshold);
+    }
+
+    public CgMsdfVerificationConfig buildMsdfVerificationConfig() {
+        return new CgMsdfVerificationConfig(
+                msdfVerifyReferencePx,
+                msdfVerifyReconstructionThreshold,
+                msdfVerifyReferenceThreshold,
+                msdfVerifyMaxMismatchRatio,
+                msdfVerifyDumpPassingGlyphs);
+    }
 
     @Override
     public void applySystemProperties() {
@@ -135,6 +206,10 @@ public final class AtlasDumpConfig extends HarnessConfig {
         String mas = System.getProperty("harness.msdf.atlas.scale");
         if (mas != null && !mas.isEmpty()) {
             this.msdfAtlasScale = parseIntStrict(mas, "harness.msdf.atlas.scale");
+        }
+        String pxRange = System.getProperty("harness.msdf.px.range");
+        if (pxRange != null && !pxRange.isEmpty()) {
+            this.msdfPxRange = parsePositiveFloatStrict(pxRange, "harness.msdf.px.range");
         }
         String fs = System.getProperty("harness.font.size.px");
         if (fs != null && !fs.isEmpty()) {
@@ -160,6 +235,7 @@ public final class AtlasDumpConfig extends HarnessConfig {
         if (aps != null && !aps.isEmpty()) {
             this.atlasPageSize = parseIntStrict(aps, "harness.atlas.page.size");
         }
+        applyMsdfSystemProperties();
     }
 
     @Override
@@ -185,6 +261,9 @@ public final class AtlasDumpConfig extends HarnessConfig {
         if (args.containsKey("msdf-atlas-scale")) {
             this.msdfAtlasScale = parseIntStrict(args.get("msdf-atlas-scale"), "--msdf-atlas-scale");
         }
+        if (args.containsKey("msdf-px-range")) {
+            this.msdfPxRange = parsePositiveFloatStrict(args.get("msdf-px-range"), "--msdf-px-range");
+        }
         if (args.containsKey("text")) {
             this.text = args.get("text");
         }
@@ -201,6 +280,132 @@ public final class AtlasDumpConfig extends HarnessConfig {
         }
         if (args.containsKey("atlas-page-size")) {
             this.atlasPageSize = parseIntStrict(args.get("atlas-page-size"), "--atlas-page-size");
+        }
+        applyMsdfCliArgs(args);
+    }
+
+    private void applyMsdfSystemProperties() {
+        String verify = System.getProperty("harness.msdf.verify");
+        if (verify != null && !verify.isEmpty()) {
+            this.verifyMsdf = parseBoolStrict(verify, "harness.msdf.verify");
+        }
+        String referencePx = System.getProperty("harness.msdf.verify.reference.px");
+        if (referencePx != null && !referencePx.isEmpty()) {
+            this.msdfVerifyReferencePx = parseIntStrict(referencePx, "harness.msdf.verify.reference.px");
+        }
+        String reconThreshold = System.getProperty("harness.msdf.verify.reconstruction.threshold");
+        if (reconThreshold != null && !reconThreshold.isEmpty()) {
+            this.msdfVerifyReconstructionThreshold = parseUnitFloatStrict(reconThreshold, "harness.msdf.verify.reconstruction.threshold");
+        }
+        String refThreshold = System.getProperty("harness.msdf.verify.reference.threshold");
+        if (refThreshold != null && !refThreshold.isEmpty()) {
+            this.msdfVerifyReferenceThreshold = parseUnitFloatStrict(refThreshold, "harness.msdf.verify.reference.threshold");
+        }
+        String mismatch = System.getProperty("harness.msdf.verify.max.mismatch.ratio");
+        if (mismatch != null && !mismatch.isEmpty()) {
+            this.msdfVerifyMaxMismatchRatio = parseUnitFloatStrict(mismatch, "harness.msdf.verify.max.mismatch.ratio");
+        }
+        String dumpPasses = System.getProperty("harness.msdf.verify.dump.passing");
+        if (dumpPasses != null && !dumpPasses.isEmpty()) {
+            this.msdfVerifyDumpPassingGlyphs = parseBoolStrict(dumpPasses, "harness.msdf.verify.dump.passing");
+        }
+        String overlap = System.getProperty("harness.msdf.overlap.support");
+        if (overlap != null && !overlap.isEmpty()) {
+            this.msdfOverlapSupport = parseBoolStrict(overlap, "harness.msdf.overlap.support");
+        }
+        String errorCorrection = System.getProperty("harness.msdf.error.correction.mode");
+        if (errorCorrection != null && !errorCorrection.isEmpty()) {
+            this.msdfErrorCorrectionMode = parseIntStrict(errorCorrection, "harness.msdf.error.correction.mode");
+        }
+        String distanceCheck = System.getProperty("harness.msdf.distance.check.mode");
+        if (distanceCheck != null && !distanceCheck.isEmpty()) {
+            this.msdfDistanceCheckMode = parseIntStrict(distanceCheck, "harness.msdf.distance.check.mode");
+        }
+        String minDeviation = System.getProperty("harness.msdf.min.deviation.ratio");
+        if (minDeviation != null && !minDeviation.isEmpty()) {
+            this.msdfMinDeviationRatio = parsePositiveDoubleStrict(minDeviation, "harness.msdf.min.deviation.ratio");
+        }
+        String minImprove = System.getProperty("harness.msdf.min.improve.ratio");
+        if (minImprove != null && !minImprove.isEmpty()) {
+            this.msdfMinImproveRatio = parsePositiveDoubleStrict(minImprove, "harness.msdf.min.improve.ratio");
+        }
+        String spacing = System.getProperty("harness.msdf.spacing.px");
+        if (spacing != null && !spacing.isEmpty()) {
+            this.msdfSpacingPx = parseIntStrict(spacing, "harness.msdf.spacing.px");
+        }
+        String miter = System.getProperty("harness.msdf.miter.limit");
+        if (miter != null && !miter.isEmpty()) {
+            this.msdfMiterLimit = parseNonNegativeFloatStrict(miter, "harness.msdf.miter.limit");
+        }
+        String alignX = System.getProperty("harness.msdf.align.origin.x");
+        if (alignX != null && !alignX.isEmpty()) {
+            this.msdfAlignOriginX = parseBoolStrict(alignX, "harness.msdf.align.origin.x");
+        }
+        String alignY = System.getProperty("harness.msdf.align.origin.y");
+        if (alignY != null && !alignY.isEmpty()) {
+            this.msdfAlignOriginY = parseBoolStrict(alignY, "harness.msdf.align.origin.y");
+        }
+        String edgeMode = System.getProperty("harness.msdf.edge.coloring.mode");
+        if (edgeMode != null && !edgeMode.isEmpty()) {
+            this.msdfEdgeColoringMode = parseEdgeColoringMode(edgeMode, "harness.msdf.edge.coloring.mode");
+        }
+        String edgeThreshold = System.getProperty("harness.msdf.edge.coloring.angle");
+        if (edgeThreshold != null && !edgeThreshold.isEmpty()) {
+            this.msdfEdgeColoringAngleThreshold = parsePositiveDoubleStrict(edgeThreshold, "harness.msdf.edge.coloring.angle");
+        }
+    }
+
+    private void applyMsdfCliArgs(Map<String, String> args) {
+        if (args.containsKey("verify-msdf")) {
+            this.verifyMsdf = parseBoolStrict(args.get("verify-msdf"), "--verify-msdf");
+        }
+        if (args.containsKey("msdf-verify-reference-px")) {
+            this.msdfVerifyReferencePx = parseIntStrict(args.get("msdf-verify-reference-px"), "--msdf-verify-reference-px");
+        }
+        if (args.containsKey("msdf-verify-reconstruction-threshold")) {
+            this.msdfVerifyReconstructionThreshold = parseUnitFloatStrict(args.get("msdf-verify-reconstruction-threshold"), "--msdf-verify-reconstruction-threshold");
+        }
+        if (args.containsKey("msdf-verify-reference-threshold")) {
+            this.msdfVerifyReferenceThreshold = parseUnitFloatStrict(args.get("msdf-verify-reference-threshold"), "--msdf-verify-reference-threshold");
+        }
+        if (args.containsKey("msdf-verify-max-mismatch-ratio")) {
+            this.msdfVerifyMaxMismatchRatio = parseUnitFloatStrict(args.get("msdf-verify-max-mismatch-ratio"), "--msdf-verify-max-mismatch-ratio");
+        }
+        if (args.containsKey("msdf-verify-dump-passing")) {
+            this.msdfVerifyDumpPassingGlyphs = parseBoolStrict(args.get("msdf-verify-dump-passing"), "--msdf-verify-dump-passing");
+        }
+        if (args.containsKey("msdf-overlap-support")) {
+            this.msdfOverlapSupport = parseBoolStrict(args.get("msdf-overlap-support"), "--msdf-overlap-support");
+        }
+        if (args.containsKey("msdf-error-correction-mode")) {
+            this.msdfErrorCorrectionMode = parseIntStrict(args.get("msdf-error-correction-mode"), "--msdf-error-correction-mode");
+        }
+        if (args.containsKey("msdf-distance-check-mode")) {
+            this.msdfDistanceCheckMode = parseIntStrict(args.get("msdf-distance-check-mode"), "--msdf-distance-check-mode");
+        }
+        if (args.containsKey("msdf-min-deviation-ratio")) {
+            this.msdfMinDeviationRatio = parsePositiveDoubleStrict(args.get("msdf-min-deviation-ratio"), "--msdf-min-deviation-ratio");
+        }
+        if (args.containsKey("msdf-min-improve-ratio")) {
+            this.msdfMinImproveRatio = parsePositiveDoubleStrict(args.get("msdf-min-improve-ratio"), "--msdf-min-improve-ratio");
+        }
+        if (args.containsKey("msdf-spacing-px")) {
+            this.msdfSpacingPx = parseIntStrict(args.get("msdf-spacing-px"), "--msdf-spacing-px");
+        }
+        if (args.containsKey("msdf-miter-limit")) {
+            this.msdfMiterLimit = parseNonNegativeFloatStrict(args.get("msdf-miter-limit"), "--msdf-miter-limit");
+        }
+        if (args.containsKey("msdf-align-origin-x")) {
+            this.msdfAlignOriginX = parseBoolStrict(args.get("msdf-align-origin-x"), "--msdf-align-origin-x");
+        }
+        if (args.containsKey("msdf-align-origin-y")) {
+            this.msdfAlignOriginY = parseBoolStrict(args.get("msdf-align-origin-y"), "--msdf-align-origin-y");
+        }
+        if (args.containsKey("msdf-edge-coloring-mode")) {
+            this.msdfEdgeColoringMode = parseEdgeColoringMode(args.get("msdf-edge-coloring-mode"), "--msdf-edge-coloring-mode");
+        }
+        if (args.containsKey("msdf-edge-coloring-angle")) {
+            this.msdfEdgeColoringAngleThreshold = parsePositiveDoubleStrict(args.get("msdf-edge-coloring-angle"), "--msdf-edge-coloring-angle");
         }
     }
 
@@ -221,6 +426,60 @@ public final class AtlasDumpConfig extends HarnessConfig {
         }
         throw new IllegalArgumentException(
                 "Invalid value for " + paramName + ": '" + value + "' (must be 'true' or 'false')");
+    }
+
+    static float parseUnitFloatStrict(String value, String paramName) {
+        float parsed = TextSceneConfig.parseFloatStrict(value, paramName);
+        if (parsed < 0.0f || parsed > 1.0f) {
+            throw new IllegalArgumentException(
+                    "Invalid value for " + paramName + ": '" + value + "' (must be in range [0,1])");
+        }
+        return parsed;
+    }
+
+    static float parseNonNegativeFloatStrict(String value, String paramName) {
+        float parsed = TextSceneConfig.parseFloatStrict(value, paramName);
+        if (parsed < 0.0f) {
+            throw new IllegalArgumentException(
+                    "Invalid value for " + paramName + ": '" + value + "' (must be >= 0)");
+        }
+        return parsed;
+    }
+
+    static float parsePositiveFloatStrict(String value, String paramName) {
+        float parsed = TextSceneConfig.parseFloatStrict(value, paramName);
+        if (parsed <= 0.0f) {
+            throw new IllegalArgumentException(
+                    "Invalid value for " + paramName + ": '" + value + "' (must be > 0)");
+        }
+        return parsed;
+    }
+
+    static double parsePositiveDoubleStrict(String value, String paramName) {
+        try {
+            double parsed = Double.parseDouble(value);
+            if (Double.isNaN(parsed) || Double.isInfinite(parsed) || parsed <= 0.0d) {
+                throw new IllegalArgumentException(
+                        "Invalid value for " + paramName + ": '" + value + "' (must be > 0)");
+            }
+            return parsed;
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException(
+                    "Invalid value for " + paramName + ": '" + value + "' (must be a valid number)");
+        }
+    }
+
+    static CgMsdfEdgeColoringMode parseEdgeColoringMode(String value, String paramName) {
+        if (value == null || value.isEmpty()) {
+            return CgMsdfEdgeColoringMode.SIMPLE;
+        }
+        String normalized = value.trim().replace('-', '_').toUpperCase();
+        try {
+            return CgMsdfEdgeColoringMode.valueOf(normalized);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException(
+                    "Invalid value for " + paramName + ": '" + value + "' (valid: simple, ink_trap, distance)");
+        }
     }
 
     public static AtlasDumpConfig create(String[] args) {
