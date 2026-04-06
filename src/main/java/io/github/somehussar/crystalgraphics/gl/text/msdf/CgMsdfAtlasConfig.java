@@ -12,19 +12,19 @@ import io.github.somehussar.crystalgraphics.gl.text.CgGlyphAtlas;
  */
 public final class CgMsdfAtlasConfig {
 
-    public static final int DEFAULT_ATLAS_SCALE_PX = 48;
-    public static final float DEFAULT_PX_RANGE = 4.0f;
+    public static final int DEFAULT_ATLAS_SCALE_PX = 64;
+    public static final float DEFAULT_PX_RANGE = 6.0f;
     public static final int DEFAULT_PAGE_SIZE = 512;
     public static final int DEFAULT_SPACING_PX = 1;
-    public static final float DEFAULT_MITER_LIMIT = 1.0f;
+    public static final float DEFAULT_MITER_LIMIT = 2.0f;
     public static final boolean DEFAULT_ALIGN_ORIGIN_X = false;
     public static final boolean DEFAULT_ALIGN_ORIGIN_Y = true;
     public static final boolean DEFAULT_OVERLAP_SUPPORT = true;
-    public static final int DEFAULT_ERROR_CORRECTION_MODE = MsdfConstants.ERROR_CORRECTION_DISABLED;
-    public static final int DEFAULT_DISTANCE_CHECK_MODE = MsdfConstants.DISTANCE_CHECK_NONE;
+    public static final int DEFAULT_ERROR_CORRECTION_MODE = MsdfConstants.ERROR_CORRECTION_EDGE_PRIORITY;
+    public static final int DEFAULT_DISTANCE_CHECK_MODE = MsdfConstants.DISTANCE_CHECK_AT_EDGE;
     public static final double DEFAULT_MIN_DEVIATION_RATIO = MsdfConstants.DEFAULT_MIN_DEVIATION_RATIO;
     public static final double DEFAULT_MIN_IMPROVE_RATIO = MsdfConstants.DEFAULT_MIN_IMPROVE_RATIO;
-    public static final CgMsdfEdgeColoringMode DEFAULT_EDGE_COLORING_MODE = CgMsdfEdgeColoringMode.SIMPLE;
+    public static final CgMsdfEdgeColoringMode DEFAULT_EDGE_COLORING_MODE = CgMsdfEdgeColoringMode.INK_TRAP;
     public static final double DEFAULT_EDGE_COLORING_ANGLE_THRESHOLD = 3.0d;
     public static final boolean DEFAULT_MTSDF = true;
 
