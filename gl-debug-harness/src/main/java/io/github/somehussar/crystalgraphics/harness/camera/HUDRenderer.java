@@ -57,6 +57,7 @@ public final class HUDRenderer {
     // CgTextRenderer resources (created in init, destroyed in delete)
     private CgCapabilities caps;
     private CgFont font;
+    private CgFont demoFont;
     private CgFontRegistry registry;
     private CgTextRenderer renderer;
     private CgTextRenderContext orthoContext;
@@ -66,6 +67,11 @@ public final class HUDRenderer {
     private long frameCounter = 0;
     private boolean initialized = false;
 
+    private static final float DEMO_TEXT_X = 20.0f;
+    private static final float DEMO_TEXT_START_Y = 40.0f + 24.0f;
+    private static final float DEMO_TEXT_ROW_GAP = 12.0f;
+    private static final int DEMO_FONT_SIZE_PX = 24;
+
     public HUDRenderer() {
         currentFontSizePx = BASE_FONT_SIZE_PX;
         currentQuadOffset = BASE_QUAD_OFFSET;
@@ -73,7 +79,7 @@ public final class HUDRenderer {
 
     /**
      * Recomputes HUD font size and offset when the screen resolution changes.
-     * Scale factor is derived from the max screen dimension relative to the
+     * Scale factor is derived from the screen height relative to the
      * 600px base height, ensuring proportional growth on high-res displays.
      *
      * <p>When the scale changes, the font is reloaded at the new pixel size
@@ -86,7 +92,7 @@ public final class HUDRenderer {
         lastScreenWidth = screenWidth;
         lastScreenHeight = screenHeight;
 
-        float scale = Math.max(screenWidth, screenHeight) / BASE_RESOLUTION_HEIGHT;
+        float scale = screenHeight / BASE_RESOLUTION_HEIGHT;
         if (scale < 1.0f) {
             scale = 1.0f;
         }
@@ -120,6 +126,14 @@ public final class HUDRenderer {
         LOGGER.fine("[HUDRenderer] Font reloaded at " + currentFontSizePx + "px");
     }
 
+    private void ensureDemoFont() {
+        if (demoFont != null && !demoFont.isDisposed()) {
+            return;
+        }
+        String fontPath = HarnessFontUtil.resolveFontPath(null);
+        demoFont = CgFont.load(fontPath, CgFontStyle.REGULAR, DEMO_FONT_SIZE_PX);
+    }
+
     /**
      * Initializes CgTextRenderer and all GL resources. Must be called once
      * with a valid GL context.
@@ -143,6 +157,7 @@ public final class HUDRenderer {
         // Load font from system/test font path at base size
         String fontPath = HarnessFontUtil.resolveFontPath(null);
         font = CgFont.load(fontPath, CgFontStyle.REGULAR, currentFontSizePx);
+        demoFont = CgFont.load(fontPath, CgFontStyle.REGULAR, DEMO_FONT_SIZE_PX);
 
         registry = new CgFontRegistry();
         renderer = CgTextRenderer.create(caps, registry);
@@ -214,41 +229,53 @@ public final class HUDRenderer {
 
         String DEMO_TEXT_2D_LABEL = "2D UI text: logical size stable, raster scales with pose";
         String DEMO_TEXT = "CrystalGraphics font demo - mouse wheel zoom";
+        ensureDemoFont();
         
         
-        PoseStack ps = new PoseStack();
-        ps.scale(poseScale, poseScale, 1.0f);
-        ps.translate(0, 60, 0);
-        float logicalWidth = ctx.getScreenWidth() / poseScale;
-        orthoContext.clearHistory();
+        float[] demoScales = {0.5f, 1.0f, 1.5f, 2.0f};
+        float lineY = DEMO_TEXT_START_Y;
+        for (float demoScale : demoScales) {
+            PoseStack ps = anchoredScalePose(DEMO_TEXT_X, lineY, demoScale);
+            float logicalWidth = ctx.getScreenWidth() / demoScale;
+            CgTextLayout demoLayout = layoutBuilder.layout(
+                    DEMO_TEXT + " [base " + 24 + "px, pose " + String.format("%.1f", demoScale) + "x]",
+                    demoFont, logicalWidth, 0);
 
-        // 2D UI text: logical spacing is stable; PoseStack scale only
-        // increases the effective raster size (sharper glyphs) without
-        // changing layout metrics.
-        renderer.draw(
-                layoutBuilder.layout(DEMO_TEXT + " [base " + 24 + "px, pose " + String.format("%.1f", poseScale) + "x]",
-                        font, logicalWidth, 0),
-                font,
-                20.0f,
-                40.0f + 24,
-                0xFFFFFFFF,
-                frameCounter,
-                orthoContext,
-                ps);
+            orthoContext.clearHistory();
+            renderer.draw(
+                    demoLayout,
+                    demoFont,
+                    DEMO_TEXT_X,
+                    lineY,
+                    0xFFFFFFFF,
+                    frameCounter,
+                    orthoContext,
+                    ps);
 
-        orthoContext.clearHistory();
-
-        PoseStack identityPose = new PoseStack();
-        renderer.draw(
-                layoutBuilder.layout(DEMO_TEXT_2D_LABEL, font, ctx.getScreenWidth(), 0),
-                font,
-                20.0f,
-                20.0f,
-                0x000000ff,
-                frameCounter,
-                orthoContext,
-                identityPose);
+            lineY += demoLayout.getTotalHeight() * demoScale + DEMO_TEXT_ROW_GAP;
         }
+
+        orthoContext.clearHistory();
+        //
+        //        PoseStack identityPose = new PoseStack();
+        //        renderer.draw(
+        //                layoutBuilder.layout(DEMO_TEXT_2D_LABEL, font, ctx.getScreenWidth(), 0),
+        //                font,
+        //                20.0f,
+        //                20.0f,
+        //                0xAAFFAAFF,
+        //                frameCounter,
+        //                orthoContext,
+        //                identityPose);
+        }
+
+    private PoseStack anchoredScalePose(float anchorX, float anchorY, float scale) {
+        PoseStack ps = new PoseStack();
+        ps.translate(anchorX, anchorY, 0.0f);
+        ps.scale(scale, scale, 1.0f);
+        ps.translate(-anchorX, -anchorY, 0.0f);
+        return ps;
+    }
 
     /**
      * Handles display resize events. Forces recalculation of scaled font
@@ -282,6 +309,10 @@ public final class HUDRenderer {
         if (font != null) {
             font.dispose();
             font = null;
+        }
+        if (demoFont != null) {
+            demoFont.dispose();
+            demoFont = null;
         }
         initialized = false;
         LOGGER.info("[HUDRenderer] Deleted.");
