@@ -67,6 +67,7 @@ public class AtlasDumpScene implements HarnessSceneLifecycle {
         int atlasPageSize = config.getAtlasPageSize();
 
         boolean wantMsdf = atlasType == AtlasDumpConfig.AtlasType.MSDF
+                || atlasType == AtlasDumpConfig.AtlasType.MTSDF
                 || atlasType == AtlasDumpConfig.AtlasType.BOTH;
         if (wantMsdf && msdfPxSize < AtlasDumpConfig.MIN_MSDF_PX_SIZE) {
             throw new IllegalArgumentException(
@@ -222,7 +223,11 @@ public class AtlasDumpScene implements HarnessSceneLifecycle {
         if (wantMsdf && msdfFont != null) {
             registry.awaitAsyncGlyphs(5000L);
             registry.tickFrame(frame + 1);
-            dumpMsdfAtlases(registry, msdfFont, msdfPxSize, dumpAllPages, atlasDir);
+            String dfPrefix = (atlasType == AtlasDumpConfig.AtlasType.MTSDF) ? "mtsdf" : "msdf";
+            int dfGlFormat = (atlasType == AtlasDumpConfig.AtlasType.MTSDF)
+                    ? 0x881A /* GL_RGBA16F */
+                    : GL30.GL_RGB16F;
+            dumpMsdfAtlases(registry, msdfFont, msdfPxSize, dumpAllPages, atlasDir, dfPrefix, dfGlFormat);
             if (config.isVerifyMsdf()) {
                 MsdfVerificationTool verifier = new MsdfVerificationTool();
                 MsdfVerificationTool.VerificationSummary summary = verifier.verifyText(
@@ -231,8 +236,9 @@ public class AtlasDumpScene implements HarnessSceneLifecycle {
                         registryMsdfConfig,
                         config.buildMsdfVerificationConfig(),
                         atlasDir,
-                        "msdf-verify-" + msdfPxSize + "px");
-                LOGGER.info("[Harness] MSDF verification complete: glyphs=" + summary.getGlyphCount()
+                        dfPrefix + "-verify-" + msdfPxSize + "px");
+                LOGGER.info("[Harness] " + verifier.getClass().getSimpleName()
+                        + " verification complete: glyphs=" + summary.getGlyphCount()
                         + ", failing=" + summary.getFailingGlyphCount()
                         + ", worstMismatch=" + summary.getWorstMismatchRatio());
             }
@@ -403,48 +409,50 @@ public class AtlasDumpScene implements HarnessSceneLifecycle {
     }
 
     private void dumpMsdfAtlases(CgFontRegistry registry, CgFont font,
-                                    int pxSize, boolean dumpAllPages, String atlasDir) {
-        int glRgb16f = GL30.GL_RGB16F;
+                                    int pxSize, boolean dumpAllPages, String atlasDir,
+                                    String typePrefix, int glFormat) {
 
         if (dumpAllPages) {
             List<CgGlyphAtlasPage> pagedPages = registry.findAllPopulatedPagedMsdfPages(font.getKey());
             if (!pagedPages.isEmpty()) {
                 AtlasDumper.dumpAllPagedPages(pagedPages,
-                        "msdf-atlas-dump", pxSize + "px", glRgb16f, atlasDir);
-                LOGGER.info("[Harness] Dumped " + pagedPages.size() + " MSDF atlas page(s) from paged path");
+                        typePrefix + "-atlas-dump", pxSize + "px", glFormat, atlasDir);
+                LOGGER.info("[Harness] Dumped " + pagedPages.size() + " " + typePrefix.toUpperCase()
+                        + " atlas page(s) from paged path");
                 return;
             }
             List<CgGlyphAtlas> pages = registry.findAllPopulatedMsdfAtlases(font.getKey());
             if (!pages.isEmpty()) {
                 AtlasDumper.dumpAllPages(pages,
-                        "msdf-atlas-dump", pxSize + "px", glRgb16f, atlasDir);
-                LOGGER.info("[Harness] Dumped " + pages.size() + " MSDF atlas page(s)");
+                        typePrefix + "-atlas-dump", pxSize + "px", glFormat, atlasDir);
+                LOGGER.info("[Harness] Dumped " + pages.size() + " " + typePrefix.toUpperCase() + " atlas page(s)");
             } else {
-                LOGGER.warning("[Harness] No MSDF atlas pages found after rendering");
+                LOGGER.warning("[Harness] No " + typePrefix.toUpperCase() + " atlas pages found after rendering");
             }
         } else {
             List<CgGlyphAtlasPage> pagedPages = registry.findAllPopulatedPagedMsdfPages(font.getKey());
             if (!pagedPages.isEmpty()) {
                 CgGlyphAtlasPage page = pagedPages.get(0);
-                String filename = "msdf-atlas-dump-" + pxSize + "px.png";
-                LOGGER.info("[Harness] MSDF atlas captured from paged path: texture=" + page.getTextureId()
-                        + ", size=" + page.getPageWidth() + "x" + page.getPageHeight());
+                String filename = typePrefix + "-atlas-dump-" + pxSize + "px.png";
+                LOGGER.info("[Harness] " + typePrefix.toUpperCase() + " atlas captured from paged path: texture="
+                        + page.getTextureId() + ", size=" + page.getPageWidth() + "x" + page.getPageHeight());
                 ScreenshotUtil.captureTexture(page.getTextureId(),
                         page.getPageWidth(), page.getPageHeight(),
-                        glRgb16f, atlasDir, filename);
+                        glFormat, atlasDir, filename);
                 return;
             }
             // Legacy single-page path
             CgGlyphAtlas msdfAtlas = registry.findPopulatedMsdfAtlas(font.getKey());
             if (msdfAtlas != null) {
-                String filename = "msdf-atlas-dump-" + pxSize + "px.png";
-                LOGGER.info("[Harness] MSDF atlas captured: texture=" + msdfAtlas.getTextureId()
-                        + ", size=" + msdfAtlas.getPageWidth() + "x" + msdfAtlas.getPageHeight());
+                String filename = typePrefix + "-atlas-dump-" + pxSize + "px.png";
+                LOGGER.info("[Harness] " + typePrefix.toUpperCase() + " atlas captured: texture="
+                        + msdfAtlas.getTextureId() + ", size=" + msdfAtlas.getPageWidth() + "x"
+                        + msdfAtlas.getPageHeight());
                 ScreenshotUtil.captureTexture(msdfAtlas.getTextureId(),
                         msdfAtlas.getPageWidth(), msdfAtlas.getPageHeight(),
-                        glRgb16f, atlasDir, filename);
+                        glFormat, atlasDir, filename);
             } else {
-                LOGGER.warning("[Harness] MSDF atlas not available after rendering");
+                LOGGER.warning("[Harness] " + typePrefix.toUpperCase() + " atlas not available after rendering");
             }
         }
     }
