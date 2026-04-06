@@ -1,5 +1,7 @@
 package io.github.somehussar.crystalgraphics.gl.text.msdf;
 
+import com.msdfgen.MsdfConstants;
+
 /**
  * Immutable configuration for a shared MSDF atlas family.
  *
@@ -16,6 +18,13 @@ public final class CgMsdfAtlasConfig {
     public static final float DEFAULT_MITER_LIMIT = 1.0f;
     public static final boolean DEFAULT_ALIGN_ORIGIN_X = false;
     public static final boolean DEFAULT_ALIGN_ORIGIN_Y = true;
+    public static final boolean DEFAULT_OVERLAP_SUPPORT = true;
+    public static final int DEFAULT_ERROR_CORRECTION_MODE = MsdfConstants.ERROR_CORRECTION_DISABLED;
+    public static final int DEFAULT_DISTANCE_CHECK_MODE = MsdfConstants.DISTANCE_CHECK_NONE;
+    public static final double DEFAULT_MIN_DEVIATION_RATIO = MsdfConstants.DEFAULT_MIN_DEVIATION_RATIO;
+    public static final double DEFAULT_MIN_IMPROVE_RATIO = MsdfConstants.DEFAULT_MIN_IMPROVE_RATIO;
+    public static final CgMsdfEdgeColoringMode DEFAULT_EDGE_COLORING_MODE = CgMsdfEdgeColoringMode.SIMPLE;
+    public static final double DEFAULT_EDGE_COLORING_ANGLE_THRESHOLD = 3.0d;
 
     private final int atlasScalePx;
     private final float pxRange;
@@ -24,6 +33,13 @@ public final class CgMsdfAtlasConfig {
     private final float miterLimit;
     private final boolean alignOriginX;
     private final boolean alignOriginY;
+    private final boolean overlapSupport;
+    private final int errorCorrectionMode;
+    private final int distanceCheckMode;
+    private final double minDeviationRatio;
+    private final double minImproveRatio;
+    private final CgMsdfEdgeColoringMode edgeColoringMode;
+    private final double edgeColoringAngleThreshold;
 
     public CgMsdfAtlasConfig(int atlasScalePx,
                              float pxRange,
@@ -31,7 +47,14 @@ public final class CgMsdfAtlasConfig {
                              int spacingPx,
                              float miterLimit,
                              boolean alignOriginX,
-                             boolean alignOriginY) {
+                             boolean alignOriginY,
+                             boolean overlapSupport,
+                             int errorCorrectionMode,
+                             int distanceCheckMode,
+                             double minDeviationRatio,
+                             double minImproveRatio,
+                             CgMsdfEdgeColoringMode edgeColoringMode,
+                             double edgeColoringAngleThreshold) {
         if (atlasScalePx <= 0) {
             throw new IllegalArgumentException("atlasScalePx must be > 0, got " + atlasScalePx);
         }
@@ -47,6 +70,18 @@ public final class CgMsdfAtlasConfig {
         if (miterLimit < 0.0f) {
             throw new IllegalArgumentException("miterLimit must be >= 0, got " + miterLimit);
         }
+        if (minDeviationRatio <= 0.0d) {
+            throw new IllegalArgumentException("minDeviationRatio must be > 0, got " + minDeviationRatio);
+        }
+        if (minImproveRatio <= 0.0d) {
+            throw new IllegalArgumentException("minImproveRatio must be > 0, got " + minImproveRatio);
+        }
+        if (edgeColoringMode == null) {
+            throw new IllegalArgumentException("edgeColoringMode must not be null");
+        }
+        if (edgeColoringAngleThreshold <= 0.0d) {
+            throw new IllegalArgumentException("edgeColoringAngleThreshold must be > 0, got " + edgeColoringAngleThreshold);
+        }
         this.atlasScalePx = atlasScalePx;
         this.pxRange = pxRange;
         this.pageSize = pageSize;
@@ -54,6 +89,13 @@ public final class CgMsdfAtlasConfig {
         this.miterLimit = miterLimit;
         this.alignOriginX = alignOriginX;
         this.alignOriginY = alignOriginY;
+        this.overlapSupport = overlapSupport;
+        this.errorCorrectionMode = errorCorrectionMode;
+        this.distanceCheckMode = distanceCheckMode;
+        this.minDeviationRatio = minDeviationRatio;
+        this.minImproveRatio = minImproveRatio;
+        this.edgeColoringMode = edgeColoringMode;
+        this.edgeColoringAngleThreshold = edgeColoringAngleThreshold;
     }
 
     public static CgMsdfAtlasConfig defaultConfig() {
@@ -64,7 +106,14 @@ public final class CgMsdfAtlasConfig {
                 DEFAULT_SPACING_PX,
                 DEFAULT_MITER_LIMIT,
                 DEFAULT_ALIGN_ORIGIN_X,
-                DEFAULT_ALIGN_ORIGIN_Y);
+                DEFAULT_ALIGN_ORIGIN_Y,
+                DEFAULT_OVERLAP_SUPPORT,
+                DEFAULT_ERROR_CORRECTION_MODE,
+                DEFAULT_DISTANCE_CHECK_MODE,
+                DEFAULT_MIN_DEVIATION_RATIO,
+                DEFAULT_MIN_IMPROVE_RATIO,
+                DEFAULT_EDGE_COLORING_MODE,
+                DEFAULT_EDGE_COLORING_ANGLE_THRESHOLD);
     }
 
     public static CgMsdfAtlasConfig forHarnessParity(int atlasScalePx, Integer forcedPageSize) {
@@ -78,7 +127,14 @@ public final class CgMsdfAtlasConfig {
                 DEFAULT_SPACING_PX,
                 DEFAULT_MITER_LIMIT,
                 DEFAULT_ALIGN_ORIGIN_X,
-                DEFAULT_ALIGN_ORIGIN_Y);
+                DEFAULT_ALIGN_ORIGIN_Y,
+                DEFAULT_OVERLAP_SUPPORT,
+                DEFAULT_ERROR_CORRECTION_MODE,
+                DEFAULT_DISTANCE_CHECK_MODE,
+                DEFAULT_MIN_DEVIATION_RATIO,
+                DEFAULT_MIN_IMPROVE_RATIO,
+                DEFAULT_EDGE_COLORING_MODE,
+                DEFAULT_EDGE_COLORING_ANGLE_THRESHOLD);
     }
 
     public CgMsdfAtlasConfig withPageSize(int newPageSize) {
@@ -89,7 +145,14 @@ public final class CgMsdfAtlasConfig {
                 spacingPx,
                 miterLimit,
                 alignOriginX,
-                alignOriginY);
+                alignOriginY,
+                overlapSupport,
+                errorCorrectionMode,
+                distanceCheckMode,
+                minDeviationRatio,
+                minImproveRatio,
+                edgeColoringMode,
+                edgeColoringAngleThreshold);
     }
 
     public CgMsdfAtlasConfig withAtlasScalePx(int newAtlasScalePx) {
@@ -100,7 +163,14 @@ public final class CgMsdfAtlasConfig {
                 spacingPx,
                 miterLimit,
                 alignOriginX,
-                alignOriginY);
+                alignOriginY,
+                overlapSupport,
+                errorCorrectionMode,
+                distanceCheckMode,
+                minDeviationRatio,
+                minImproveRatio,
+                edgeColoringMode,
+                edgeColoringAngleThreshold);
     }
 
     public CgMsdfAtlasConfig withPxRange(float newPxRange) {
@@ -111,7 +181,144 @@ public final class CgMsdfAtlasConfig {
                 spacingPx,
                 miterLimit,
                 alignOriginX,
-                alignOriginY);
+                alignOriginY,
+                overlapSupport,
+                errorCorrectionMode,
+                distanceCheckMode,
+                minDeviationRatio,
+                minImproveRatio,
+                edgeColoringMode,
+                edgeColoringAngleThreshold);
+    }
+
+    public CgMsdfAtlasConfig withSpacingPx(int newSpacingPx) {
+        return new CgMsdfAtlasConfig(
+                atlasScalePx,
+                pxRange,
+                pageSize,
+                newSpacingPx,
+                miterLimit,
+                alignOriginX,
+                alignOriginY,
+                overlapSupport,
+                errorCorrectionMode,
+                distanceCheckMode,
+                minDeviationRatio,
+                minImproveRatio,
+                edgeColoringMode,
+                edgeColoringAngleThreshold);
+    }
+
+    public CgMsdfAtlasConfig withMiterLimit(float newMiterLimit) {
+        return new CgMsdfAtlasConfig(
+                atlasScalePx,
+                pxRange,
+                pageSize,
+                spacingPx,
+                newMiterLimit,
+                alignOriginX,
+                alignOriginY,
+                overlapSupport,
+                errorCorrectionMode,
+                distanceCheckMode,
+                minDeviationRatio,
+                minImproveRatio,
+                edgeColoringMode,
+                edgeColoringAngleThreshold);
+    }
+
+    public CgMsdfAtlasConfig withAlignOriginX(boolean newAlignOriginX) {
+        return new CgMsdfAtlasConfig(
+                atlasScalePx,
+                pxRange,
+                pageSize,
+                spacingPx,
+                miterLimit,
+                newAlignOriginX,
+                alignOriginY,
+                overlapSupport,
+                errorCorrectionMode,
+                distanceCheckMode,
+                minDeviationRatio,
+                minImproveRatio,
+                edgeColoringMode,
+                edgeColoringAngleThreshold);
+    }
+
+    public CgMsdfAtlasConfig withAlignOriginY(boolean newAlignOriginY) {
+        return new CgMsdfAtlasConfig(
+                atlasScalePx,
+                pxRange,
+                pageSize,
+                spacingPx,
+                miterLimit,
+                alignOriginX,
+                newAlignOriginY,
+                overlapSupport,
+                errorCorrectionMode,
+                distanceCheckMode,
+                minDeviationRatio,
+                minImproveRatio,
+                edgeColoringMode,
+                edgeColoringAngleThreshold);
+    }
+
+    public CgMsdfAtlasConfig withOverlapSupport(boolean newOverlapSupport) {
+        return new CgMsdfAtlasConfig(
+                atlasScalePx,
+                pxRange,
+                pageSize,
+                spacingPx,
+                miterLimit,
+                alignOriginX,
+                alignOriginY,
+                newOverlapSupport,
+                errorCorrectionMode,
+                distanceCheckMode,
+                minDeviationRatio,
+                minImproveRatio,
+                edgeColoringMode,
+                edgeColoringAngleThreshold);
+    }
+
+    public CgMsdfAtlasConfig withErrorCorrection(int newErrorCorrectionMode,
+                                                 int newDistanceCheckMode,
+                                                 double newMinDeviationRatio,
+                                                 double newMinImproveRatio) {
+        return new CgMsdfAtlasConfig(
+                atlasScalePx,
+                pxRange,
+                pageSize,
+                spacingPx,
+                miterLimit,
+                alignOriginX,
+                alignOriginY,
+                overlapSupport,
+                newErrorCorrectionMode,
+                newDistanceCheckMode,
+                newMinDeviationRatio,
+                newMinImproveRatio,
+                edgeColoringMode,
+                edgeColoringAngleThreshold);
+    }
+
+    public CgMsdfAtlasConfig withEdgeColoring(CgMsdfEdgeColoringMode newEdgeColoringMode,
+                                              double newAngleThreshold) {
+        return new CgMsdfAtlasConfig(
+                atlasScalePx,
+                pxRange,
+                pageSize,
+                spacingPx,
+                miterLimit,
+                alignOriginX,
+                alignOriginY,
+                overlapSupport,
+                errorCorrectionMode,
+                distanceCheckMode,
+                minDeviationRatio,
+                minImproveRatio,
+                newEdgeColoringMode,
+                newAngleThreshold);
     }
 
     public int getAtlasScalePx() {
@@ -142,6 +349,34 @@ public final class CgMsdfAtlasConfig {
         return alignOriginY;
     }
 
+    public boolean isOverlapSupport() {
+        return overlapSupport;
+    }
+
+    public int getErrorCorrectionMode() {
+        return errorCorrectionMode;
+    }
+
+    public int getDistanceCheckMode() {
+        return distanceCheckMode;
+    }
+
+    public double getMinDeviationRatio() {
+        return minDeviationRatio;
+    }
+
+    public double getMinImproveRatio() {
+        return minImproveRatio;
+    }
+
+    public CgMsdfEdgeColoringMode getEdgeColoringMode() {
+        return edgeColoringMode;
+    }
+
+    public double getEdgeColoringAngleThreshold() {
+        return edgeColoringAngleThreshold;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
@@ -155,7 +390,14 @@ public final class CgMsdfAtlasConfig {
                 && spacingPx == that.spacingPx
                 && Float.compare(that.miterLimit, miterLimit) == 0
                 && alignOriginX == that.alignOriginX
-                && alignOriginY == that.alignOriginY;
+                && alignOriginY == that.alignOriginY
+                && overlapSupport == that.overlapSupport
+                && errorCorrectionMode == that.errorCorrectionMode
+                && distanceCheckMode == that.distanceCheckMode
+                && Double.compare(that.minDeviationRatio, minDeviationRatio) == 0
+                && Double.compare(that.minImproveRatio, minImproveRatio) == 0
+                && Double.compare(that.edgeColoringAngleThreshold, edgeColoringAngleThreshold) == 0
+                && edgeColoringMode == that.edgeColoringMode;
     }
 
     @Override
@@ -167,6 +409,16 @@ public final class CgMsdfAtlasConfig {
         result = 31 * result + Float.floatToIntBits(miterLimit);
         result = 31 * result + (alignOriginX ? 1 : 0);
         result = 31 * result + (alignOriginY ? 1 : 0);
+        result = 31 * result + (overlapSupport ? 1 : 0);
+        result = 31 * result + errorCorrectionMode;
+        result = 31 * result + distanceCheckMode;
+        long temp = Double.doubleToLongBits(minDeviationRatio);
+        result = 31 * result + (int) (temp ^ (temp >>> 32));
+        temp = Double.doubleToLongBits(minImproveRatio);
+        result = 31 * result + (int) (temp ^ (temp >>> 32));
+        result = 31 * result + edgeColoringMode.hashCode();
+        temp = Double.doubleToLongBits(edgeColoringAngleThreshold);
+        result = 31 * result + (int) (temp ^ (temp >>> 32));
         return result;
     }
 
@@ -180,6 +432,13 @@ public final class CgMsdfAtlasConfig {
                 ", miterLimit=" + miterLimit +
                 ", alignOriginX=" + alignOriginX +
                 ", alignOriginY=" + alignOriginY +
+                ", overlapSupport=" + overlapSupport +
+                ", errorCorrectionMode=" + errorCorrectionMode +
+                ", distanceCheckMode=" + distanceCheckMode +
+                ", minDeviationRatio=" + minDeviationRatio +
+                ", minImproveRatio=" + minImproveRatio +
+                ", edgeColoringMode=" + edgeColoringMode +
+                ", edgeColoringAngleThreshold=" + edgeColoringAngleThreshold +
                 '}';
     }
 }

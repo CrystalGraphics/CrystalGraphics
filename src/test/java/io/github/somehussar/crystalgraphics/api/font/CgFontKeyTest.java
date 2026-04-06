@@ -67,6 +67,43 @@ public class CgFontKeyTest {
         assertNotEquals("Different sizes should not be equal", key1, key2);
     }
 
+    @Test
+    public void testFontKey_different_variations_not_equal() {
+        java.util.List<CgFontVariation> regular = java.util.Collections.singletonList(
+                new CgFontVariation("wght", 400.0f));
+        java.util.List<CgFontVariation> bold = java.util.Collections.singletonList(
+                new CgFontVariation("wght", 700.0f));
+
+        CgFontKey key1 = new CgFontKey("font.ttf", CgFontStyle.REGULAR, 32, regular);
+        CgFontKey key2 = new CgFontKey("font.ttf", CgFontStyle.REGULAR, 32, bold);
+
+        assertNotEquals("Different variation tuples should not be equal", key1, key2);
+    }
+
+    @Test
+    public void testFontKey_variationsAreCanonicalizedByTag() {
+        java.util.List<CgFontVariation> first = java.util.Arrays.asList(
+                new CgFontVariation("wght", 700.0f),
+                new CgFontVariation("wdth", 90.0f));
+        java.util.List<CgFontVariation> second = java.util.Arrays.asList(
+                new CgFontVariation("wdth", 90.0f),
+                new CgFontVariation("wght", 700.0f));
+
+        CgFontKey key1 = new CgFontKey("font.ttf", CgFontStyle.REGULAR, 32, first);
+        CgFontKey key2 = new CgFontKey("font.ttf", CgFontStyle.REGULAR, 32, second);
+
+        assertEquals("Variation ordering should be canonicalized", key1, key2);
+        assertEquals("wdth", key1.getVariations().get(0).getTag());
+        assertEquals("wght", key1.getVariations().get(1).getTag());
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testFontKey_rejectsDuplicateVariationTags() {
+        new CgFontKey("font.ttf", CgFontStyle.REGULAR, 32, java.util.Arrays.asList(
+                new CgFontVariation("wght", 400.0f),
+                new CgFontVariation("wght", 700.0f)));
+    }
+
     /**
      * CgFontKey getter methods return stored values.
      */
@@ -77,6 +114,20 @@ public class CgFontKeyTest {
         assertEquals("fontPath", "/fonts/NotoSans.ttf", key.getFontPath());
         assertEquals("style", CgFontStyle.BOLD_ITALIC, key.getStyle());
         assertEquals("targetPx", 32, key.getTargetPx());
+        assertTrue("variations should default to empty", key.getVariations().isEmpty());
+    }
+
+    @Test
+    public void testFontKey_withTargetPx_preservesVariations() {
+        CgFontKey key = new CgFontKey("font.ttf", CgFontStyle.REGULAR, 24,
+                java.util.Collections.singletonList(new CgFontVariation("wght", 500.0f)));
+
+        CgFontKey resized = key.withTargetPx(48);
+
+        assertEquals(48, resized.getTargetPx());
+        assertEquals(key.getVariations(), resized.getVariations());
+        assertEquals(key.getFontPath(), resized.getFontPath());
+        assertEquals(key.getStyle(), resized.getStyle());
     }
 
     /**

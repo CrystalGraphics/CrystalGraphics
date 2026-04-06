@@ -350,6 +350,17 @@ public class CgTextLayoutTest {
     }
 
     @Test
+    public void testTextLayout_stores_resolvedFontsMap() {
+        List<List<CgShapedRun>> lines = new ArrayList<List<CgShapedRun>>();
+        java.util.Map<CgFontKey, io.github.somehussar.crystalgraphics.api.font.CgFont> resolved =
+                new java.util.HashMap<CgFontKey, io.github.somehussar.crystalgraphics.api.font.CgFont>();
+
+        CgTextLayout layout = new CgTextLayout(lines, 80.0f, 30.0f, TEST_METRICS, resolved);
+
+        assertSame(resolved, layout.getResolvedFontsByKey());
+    }
+
+    @Test
     public void testTextLayout_value_equality() {
         List<List<CgShapedRun>> lines = new ArrayList<List<CgShapedRun>>();
         CgTextLayout a = new CgTextLayout(lines, 100.0f, 15.0f, TEST_METRICS);

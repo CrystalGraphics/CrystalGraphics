@@ -140,6 +140,34 @@ public final class FTFace {
         return nGetKerning(nativePtr, leftGlyph, rightGlyph, kernMode);
     }
 
+    public FTVariationAxisInfo[] getVariationAxes() {
+        checkNotDestroyed();
+        try {
+            FTVariationAxisInfo[] axes = nGetVariationAxes(nativePtr);
+            return axes != null ? axes : new FTVariationAxisInfo[0];
+        } catch (UnsatisfiedLinkError e) {
+            return new FTVariationAxisInfo[0];
+        }
+    }
+
+    public void setVariationCoordinates(String[] axisTags, float[] values) {
+        checkNotDestroyed();
+        if (axisTags == null || values == null) {
+            throw new IllegalArgumentException("axisTags and values must not be null");
+        }
+        if (axisTags.length != values.length) {
+            throw new IllegalArgumentException("axisTags and values length must match");
+        }
+        if (axisTags.length == 0) {
+            return;
+        }
+        try {
+            nSetVariationCoordinates(nativePtr, axisTags, values);
+        } catch (UnsatisfiedLinkError e) {
+            throw new UnsupportedOperationException("Variable-font coordinates require updated native bindings", e);
+        }
+    }
+
     public boolean hasKerning() {
         checkNotDestroyed();
         return nHasKerning(nativePtr);
@@ -285,6 +313,8 @@ public final class FTFace {
     private static native int nGetDescender(long facePtr);
     private static native int nGetHeight(long facePtr);
     private static native int[] nGetKerning(long facePtr, int leftGlyph, int rightGlyph, int kernMode);
+    private static native FTVariationAxisInfo[] nGetVariationAxes(long facePtr);
+    private static native void nSetVariationCoordinates(long facePtr, String[] axisTags, float[] values);
     private static native boolean nHasKerning(long facePtr);
     private static native int nGetAdvance(long facePtr, int glyphIndex, int loadFlags);
     private static native void nOutlineTranslate(long facePtr, long xOffset, long yOffset);

@@ -324,4 +324,6 @@ final class MsdfNative {
      * @return MSDF_SUCCESS on success, error code otherwise
      */
     static native int nGetKerningByIndex(long fontHandle, int index1, int index2, double[] kerningOut);
+
+    static native int nSetFontVariations(long ftHandle, long fontHandle, String[] axisTags, float[] values, int valueCount);
 }

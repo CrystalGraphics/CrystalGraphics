@@ -137,4 +137,16 @@ public class CgTextLayoutBuilderTest {
         CgTextLayoutBuilder.class.getMethod("layout",
                 String.class, CgFont.class, float.class, float.class, float.class);
     }
+
+    @Test
+    public void testLayoutMethodExists_4arg_family() throws NoSuchMethodException {
+        CgTextLayoutBuilder.class.getMethod("layout",
+                String.class, CgFontFamily.class, float.class, float.class);
+    }
+
+    @Test
+    public void testLayoutMethodExists_5arg_family_withLogicalPx() throws NoSuchMethodException {
+        CgTextLayoutBuilder.class.getMethod("layout",
+                String.class, CgFontFamily.class, float.class, float.class, float.class);
+    }
 }
