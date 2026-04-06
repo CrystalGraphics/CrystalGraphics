@@ -152,7 +152,7 @@ final class CgGlyphGenerationExecutor {
 
     private CgGlyphGenerationResult generate(CgGlyphGenerationJob job) {
         CgWorkerFontContext context = threadLocalContext.get();
-        return job.isMsdf() ? context.generateMsdf(job) : context.generateBitmap(job);
+        return job.isDistanceField() ? context.generateMsdf(job) : context.generateBitmap(job);
     }
 
     private void clearMatchingJobs(Map<CgGlyphGenerationJob, Boolean> jobs, CgFontKey fontKey) {

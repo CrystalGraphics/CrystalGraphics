@@ -1,5 +1,7 @@
 package io.github.somehussar.crystalgraphics.api.font;
 
+import io.github.somehussar.crystalgraphics.gl.text.CgGlyphAtlas;
+
 import org.junit.Test;
 
 import static org.junit.Assert.*;
@@ -17,6 +19,7 @@ public class CgGlyphPlacementTest {
     @Test(expected = IllegalArgumentException.class)
     public void rejectsNullKey() {
         new CgGlyphPlacement(null, 0, 1,
+                CgGlyphAtlas.Type.BITMAP,
                 0, 0, 10, 10,
                 0, 0, 10, 10,
                 0, 0, 1, 1,
@@ -27,6 +30,7 @@ public class CgGlyphPlacementTest {
     public void rejectsNegativePageIndex() {
         CgGlyphKey key = new CgGlyphKey(FONT_KEY, 65, false);
         new CgGlyphPlacement(key, -1, 1,
+                CgGlyphAtlas.Type.BITMAP,
                 0, 0, 10, 10,
                 0, 0, 10, 10,
                 0, 0, 1, 1,
@@ -38,6 +42,7 @@ public class CgGlyphPlacementTest {
         CgGlyphKey key = new CgGlyphKey(FONT_KEY, 65, true);
         CgGlyphPlacement p = new CgGlyphPlacement(key,
                 2, 42,
+                CgGlyphAtlas.Type.MSDF,
                 1.5f, -0.5f, 11.5f, 9.5f,
                 10, 20, 30, 40,
                 0.1f, 0.2f, 0.3f, 0.4f,
@@ -46,6 +51,7 @@ public class CgGlyphPlacementTest {
         assertSame(key, p.getKey());
         assertEquals(2, p.getPageIndex());
         assertEquals(42, p.getPageTextureId());
+        assertEquals(CgGlyphAtlas.Type.MSDF, p.getAtlasType());
         assertEquals(1.5f, p.getPlaneLeft(), 0.0f);
         assertEquals(-0.5f, p.getPlaneBottom(), 0.0f);
         assertEquals(11.5f, p.getPlaneRight(), 0.0f);
@@ -68,6 +74,7 @@ public class CgGlyphPlacementTest {
         CgGlyphKey key = new CgGlyphKey(FONT_KEY, 65, false);
         CgGlyphPlacement p = new CgGlyphPlacement(key,
                 0, 1,
+                CgGlyphAtlas.Type.BITMAP,
                 2.0f, 5.0f, 12.0f, 15.0f,
                 0, 0, 10, 10,
                 0, 0, 1, 1,
@@ -82,6 +89,7 @@ public class CgGlyphPlacementTest {
         CgGlyphKey key = new CgGlyphKey(FONT_KEY, 65, false);
         CgGlyphPlacement p = new CgGlyphPlacement(key,
                 0, 1,
+                CgGlyphAtlas.Type.BITMAP,
                 0, 0, 10, 10,
                 0, 0, 10, 10,
                 0, 0, 1, 1,
@@ -94,6 +102,7 @@ public class CgGlyphPlacementTest {
         CgGlyphKey key = new CgGlyphKey(FONT_KEY, 65, false);
         CgGlyphPlacement p = new CgGlyphPlacement(key,
                 0, 1,
+                CgGlyphAtlas.Type.BITMAP,
                 5.0f, 0, 5.0f, 10,
                 0, 0, 0, 10,
                 0, 0, 0, 1,
@@ -102,17 +111,28 @@ public class CgGlyphPlacementTest {
     }
 
     @Test
-    public void isMsdfDelegatesToKey() {
+    public void distanceFieldFlagsFollowAtlasType() {
         CgGlyphKey msdfKey = new CgGlyphKey(FONT_KEY, 65, true);
         CgGlyphKey bmpKey = new CgGlyphKey(FONT_KEY, 65, false);
+        CgGlyphKey mtsdfKey = new CgGlyphKey(FONT_KEY, 66, true);
 
         CgGlyphPlacement msdfP = new CgGlyphPlacement(msdfKey, 0, 1,
+                CgGlyphAtlas.Type.MSDF,
                 0, 0, 10, 10, 0, 0, 10, 10, 0, 0, 1, 1, 4.0f);
         CgGlyphPlacement bmpP = new CgGlyphPlacement(bmpKey, 0, 1,
+                CgGlyphAtlas.Type.BITMAP,
                 0, 0, 10, 10, 0, 0, 10, 10, 0, 0, 1, 1, 0.0f);
+        CgGlyphPlacement mtsdfP = new CgGlyphPlacement(mtsdfKey, 0, 1,
+                CgGlyphAtlas.Type.MTSDF,
+                0, 0, 10, 10, 0, 0, 10, 10, 0, 0, 1, 1, 4.0f);
 
         assertTrue(msdfP.isMsdf());
         assertFalse(bmpP.isMsdf());
+        assertTrue(msdfP.isDistanceField());
+        assertFalse(bmpP.isDistanceField());
+        assertTrue(mtsdfP.isMtsdf());
+        assertTrue(mtsdfP.isDistanceField());
+        assertFalse(mtsdfP.isMsdf());
     }
 
     // ── fromAtlasRegion bridge ─────────────────────────────────────────
@@ -129,7 +149,7 @@ public class CgGlyphPlacementTest {
                 12.0f, 15.0f // metricsWidth, metricsHeight
         );
 
-        CgGlyphPlacement p = CgGlyphPlacement.fromAtlasRegion(region, 42, 0.0f);
+        CgGlyphPlacement p = CgGlyphPlacement.fromAtlasRegion(region, 42, CgGlyphAtlas.Type.BITMAP, 0.0f);
 
         assertEquals(key, p.getKey());
         assertEquals(0, p.getPageIndex());
@@ -159,7 +179,7 @@ public class CgGlyphPlacementTest {
                 20.0f, 24.0f // metricsWidth, metricsHeight
         );
 
-        CgGlyphPlacement p = CgGlyphPlacement.fromAtlasRegion(region, 99, 4.0f);
+        CgGlyphPlacement p = CgGlyphPlacement.fromAtlasRegion(region, 99, CgGlyphAtlas.Type.MSDF, 4.0f);
 
         // For MSDF: plane bounds use full cell width/height (includes SDF border)
         assertEquals(-6.0f, p.getPlaneLeft(), 0.0001f);
@@ -184,7 +204,7 @@ public class CgGlyphPlacementTest {
                 0, 0, 10, 10
         );
 
-        CgGlyphPlacement p = CgGlyphPlacement.fromAtlasRegion(region, 1, 0.0f);
+        CgGlyphPlacement p = CgGlyphPlacement.fromAtlasRegion(region, 1, CgGlyphAtlas.Type.BITMAP, 0.0f);
 
         assertEquals(0.25f, p.getU0(), 0.0f);
         assertEquals(0.5f, p.getV0(), 0.0f);
@@ -194,7 +214,7 @@ public class CgGlyphPlacementTest {
 
     @Test(expected = IllegalArgumentException.class)
     public void fromAtlasRegionRejectsNull() {
-        CgGlyphPlacement.fromAtlasRegion(null, 1, 0.0f);
+        CgGlyphPlacement.fromAtlasRegion(null, 1, CgGlyphAtlas.Type.BITMAP, 0.0f);
     }
 
     // ── Equality and hashCode ──────────────────────────────────────────
@@ -203,8 +223,10 @@ public class CgGlyphPlacementTest {
     public void equalityForIdenticalPlacements() {
         CgGlyphKey key = new CgGlyphKey(FONT_KEY, 65, false);
         CgGlyphPlacement a = new CgGlyphPlacement(key, 0, 1,
+                CgGlyphAtlas.Type.BITMAP,
                 0, 0, 10, 10, 0, 0, 10, 10, 0, 0, 1, 1, 0.0f);
         CgGlyphPlacement b = new CgGlyphPlacement(key, 0, 1,
+                CgGlyphAtlas.Type.BITMAP,
                 0, 0, 10, 10, 0, 0, 10, 10, 0, 0, 1, 1, 0.0f);
         assertEquals(a, b);
         assertEquals(a.hashCode(), b.hashCode());
@@ -214,8 +236,10 @@ public class CgGlyphPlacementTest {
     public void inequalityForDifferentPages() {
         CgGlyphKey key = new CgGlyphKey(FONT_KEY, 65, false);
         CgGlyphPlacement a = new CgGlyphPlacement(key, 0, 1,
+                CgGlyphAtlas.Type.BITMAP,
                 0, 0, 10, 10, 0, 0, 10, 10, 0, 0, 1, 1, 0.0f);
         CgGlyphPlacement b = new CgGlyphPlacement(key, 1, 2,
+                CgGlyphAtlas.Type.BITMAP,
                 0, 0, 10, 10, 0, 0, 10, 10, 0, 0, 1, 1, 0.0f);
         assertNotEquals(a, b);
     }
@@ -224,8 +248,10 @@ public class CgGlyphPlacementTest {
     public void inequalityForDifferentPxRange() {
         CgGlyphKey key = new CgGlyphKey(FONT_KEY, 65, true);
         CgGlyphPlacement a = new CgGlyphPlacement(key, 0, 1,
+                CgGlyphAtlas.Type.MSDF,
                 0, 0, 10, 10, 0, 0, 10, 10, 0, 0, 1, 1, 4.0f);
         CgGlyphPlacement b = new CgGlyphPlacement(key, 0, 1,
+                CgGlyphAtlas.Type.MSDF,
                 0, 0, 10, 10, 0, 0, 10, 10, 0, 0, 1, 1, 8.0f);
         assertNotEquals(a, b);
     }

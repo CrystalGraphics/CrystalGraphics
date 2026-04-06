@@ -26,7 +26,7 @@ public final class CgMsdfAtlasConfig {
     public static final double DEFAULT_MIN_IMPROVE_RATIO = MsdfConstants.DEFAULT_MIN_IMPROVE_RATIO;
     public static final CgMsdfEdgeColoringMode DEFAULT_EDGE_COLORING_MODE = CgMsdfEdgeColoringMode.SIMPLE;
     public static final double DEFAULT_EDGE_COLORING_ANGLE_THRESHOLD = 3.0d;
-    public static final boolean DEFAULT_MTSDF = false;
+    public static final boolean DEFAULT_MTSDF = true;
 
     private final int atlasScalePx;
     private final float pxRange;

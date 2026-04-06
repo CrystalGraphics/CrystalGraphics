@@ -97,8 +97,8 @@ public class CgTextRendererMultiPageBatchingTest {
 
     @Test
     public void batchKeySortOrderBitmapBeforeMsdf() {
-        CgDrawBatchKey bitmap = new CgDrawBatchKey(false, 1, 0.0f);
-        CgDrawBatchKey msdf = new CgDrawBatchKey(true, 10, 4.0f);
+        CgDrawBatchKey bitmap = new CgDrawBatchKey(CgGlyphAtlas.Type.BITMAP, 1, 0.0f);
+        CgDrawBatchKey msdf = new CgDrawBatchKey(CgGlyphAtlas.Type.MSDF, 10, 4.0f);
         assertTrue(bitmap.compareTo(msdf) < 0);
     }
 
@@ -118,6 +118,7 @@ public class CgTextRendererMultiPageBatchingTest {
     public void zeroGeometryPlacementsAreSkipped() {
         CgGlyphKey key = new CgGlyphKey(FONT_KEY, 32, false);
         CgGlyphPlacement emptyPlacement = new CgGlyphPlacement(key, 0, 1,
+                CgGlyphAtlas.Type.BITMAP,
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.0f);
 
         CgGlyphPlacement[] placements = new CgGlyphPlacement[] {
@@ -141,8 +142,8 @@ public class CgTextRendererMultiPageBatchingTest {
                 key,
                 2.0f, 14.0f, 12.0f, 14.0f);
 
-        CgGlyphPlacement p = CgGlyphPlacement.fromAtlasRegion(region, 42, 0.0f);
-        CgDrawBatchKey bk = new CgDrawBatchKey(p.isMsdf(), p.getPageTextureId(), p.getPxRange());
+        CgGlyphPlacement p = CgGlyphPlacement.fromAtlasRegion(region, 42, CgGlyphAtlas.Type.BITMAP, 0.0f);
+        CgDrawBatchKey bk = new CgDrawBatchKey(p.getAtlasType(), p.getPageTextureId(), p.getPxRange());
 
         assertFalse(bk.isMsdf());
         assertEquals(42, bk.getTextureId());
@@ -158,8 +159,8 @@ public class CgTextRendererMultiPageBatchingTest {
                 key,
                 -4.0f, 28.0f, 20.0f, 24.0f);
 
-        CgGlyphPlacement p = CgGlyphPlacement.fromAtlasRegion(region, 99, 4.0f);
-        CgDrawBatchKey bk = new CgDrawBatchKey(p.isMsdf(), p.getPageTextureId(), p.getPxRange());
+        CgGlyphPlacement p = CgGlyphPlacement.fromAtlasRegion(region, 99, CgGlyphAtlas.Type.MSDF, 4.0f);
+        CgDrawBatchKey bk = new CgDrawBatchKey(p.getAtlasType(), p.getPageTextureId(), p.getPxRange());
 
         assertTrue(bk.isMsdf());
         assertEquals(99, bk.getTextureId());
@@ -191,6 +192,7 @@ public class CgTextRendererMultiPageBatchingTest {
     private CgGlyphPlacement makeBitmapPlacement(int glyphId, int pageIndex, int textureId) {
         CgGlyphKey key = new CgGlyphKey(FONT_KEY, glyphId, false);
         return new CgGlyphPlacement(key, pageIndex, textureId,
+                CgGlyphAtlas.Type.BITMAP,
                 2.0f, -1.0f, 14.0f, 13.0f,
                 0, 0, 12, 14,
                 0.0f, 0.0f, 0.5f, 0.5f,
@@ -200,6 +202,7 @@ public class CgTextRendererMultiPageBatchingTest {
     private CgGlyphPlacement makeMsdfPlacement(int glyphId, int pageIndex, int textureId, float pxRange) {
         CgGlyphKey key = new CgGlyphKey(FONT_KEY, glyphId, true);
         return new CgGlyphPlacement(key, pageIndex, textureId,
+                CgGlyphAtlas.Type.MSDF,
                 -2.0f, -2.0f, 30.0f, 30.0f,
                 0, 0, 32, 32,
                 0.0f, 0.0f, 0.25f, 0.25f,
@@ -212,7 +215,7 @@ public class CgTextRendererMultiPageBatchingTest {
         int idx = 0;
         for (CgGlyphPlacement p : placements) {
             if (p != null && p.hasGeometry()) {
-                keys[idx++] = new CgDrawBatchKey(p.isMsdf(), p.getPageTextureId(), p.getPxRange());
+                keys[idx++] = new CgDrawBatchKey(p.getAtlasType(), p.getPageTextureId(), p.getPxRange());
             }
         }
         return keys;
