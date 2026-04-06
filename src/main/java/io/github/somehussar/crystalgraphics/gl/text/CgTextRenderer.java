@@ -7,8 +7,10 @@ import io.github.somehussar.crystalgraphics.api.font.CgFont;
 import io.github.somehussar.crystalgraphics.api.font.CgFontFamily;
 import io.github.somehussar.crystalgraphics.api.font.CgFontKey;
 import io.github.somehussar.crystalgraphics.api.font.CgFontMetrics;
+import io.github.somehussar.crystalgraphics.api.font.CgFontSource;
 import io.github.somehussar.crystalgraphics.api.font.CgGlyphKey;
 import io.github.somehussar.crystalgraphics.api.font.CgGlyphPlacement;
+import io.github.somehussar.crystalgraphics.api.font.CgTextLayoutBuilder;
 import io.github.somehussar.crystalgraphics.api.shader.CgShaderProgram;
 import io.github.somehussar.crystalgraphics.gl.shader.CgShaderFactory;
 import io.github.somehussar.crystalgraphics.gl.state.CgStateBoundary;
@@ -102,6 +104,7 @@ public class CgTextRenderer {
     private static final String BITMAP_FRAG = "/assets/crystalgraphics/shader/bitmap_text.frag";
     private static final String MSDF_VERT = "/assets/crystalgraphics/shader/msdf_text.vert";
     private static final String MSDF_FRAG = "/assets/crystalgraphics/shader/msdf_text.frag";
+    private static final CgTextLayoutBuilder LAYOUT_BUILDER = new CgTextLayoutBuilder();
 
     private final CgShaderProgram bitmapShader;
     private final CgShaderProgram msdfShader;
@@ -199,6 +202,69 @@ public class CgTextRenderer {
     }
 
     public void draw(CgTextLayout layout,
+                     CgFont font,
+                     int targetPx,
+                     float x,
+                     float y,
+                     int rgba,
+                     long frame,
+                     CgTextRenderContext context,
+                     PoseStack pose) {
+        CgFont sizedFont = requireSizedFont(font, targetPx);
+        draw(layout, sizedFont, x, y, rgba, frame, context, pose);
+    }
+
+    public void draw(String text,
+                     CgFont font,
+                     float x,
+                     float y,
+                     int rgba,
+                     long frame,
+                     CgTextRenderContext context,
+                     PoseStack pose) {
+        draw(text, font, CgTextConstraints.UNBOUNDED, x, y, rgba, frame, context, pose);
+    }
+
+    public void draw(String text,
+                     CgFont font,
+                     CgTextConstraints constraints,
+                     float x,
+                     float y,
+                     int rgba,
+                     long frame,
+                     CgTextRenderContext context,
+                     PoseStack pose) {
+        requireSizedFont(font);
+        draw(layout(text, font, constraints), font, x, y, rgba, frame, context, pose);
+    }
+
+    public void draw(String text,
+                     CgFont font,
+                     int targetPx,
+                     float x,
+                     float y,
+                     int rgba,
+                     long frame,
+                     CgTextRenderContext context,
+                     PoseStack pose) {
+        draw(text, font, targetPx, CgTextConstraints.UNBOUNDED, x, y, rgba, frame, context, pose);
+    }
+
+    public void draw(String text,
+                     CgFont font,
+                     int targetPx,
+                     CgTextConstraints constraints,
+                     float x,
+                     float y,
+                     int rgba,
+                     long frame,
+                     CgTextRenderContext context,
+                     PoseStack pose) {
+        CgFont sizedFont = requireSizedFont(font, targetPx);
+        draw(layout(text, sizedFont, constraints), sizedFont, x, y, rgba, frame, context, pose);
+    }
+
+    public void draw(CgTextLayout layout,
                      CgFontFamily family,
                      float x,
                      float y,
@@ -229,6 +295,67 @@ public class CgTextRenderer {
         } finally {
             CgStateBoundary.restore(snapshot);
         }
+    }
+
+    public void draw(CgTextLayout layout,
+                     CgFontFamily family,
+                     int targetPx,
+                     float x,
+                     float y,
+                     int rgba,
+                     long frame,
+                     CgTextRenderContext context,
+                     PoseStack pose) {
+        draw(layout, sizeFamily(family, targetPx), x, y, rgba, frame, context, pose);
+    }
+
+    public void draw(String text,
+                     CgFontFamily family,
+                     float x,
+                     float y,
+                     int rgba,
+                     long frame,
+                     CgTextRenderContext context,
+                     PoseStack pose) {
+        draw(text, family, CgTextConstraints.UNBOUNDED, x, y, rgba, frame, context, pose);
+    }
+
+    public void draw(String text,
+                     CgFontFamily family,
+                     CgTextConstraints constraints,
+                     float x,
+                     float y,
+                     int rgba,
+                     long frame,
+                     CgTextRenderContext context,
+                     PoseStack pose) {
+        draw(layout(text, family, constraints), family, x, y, rgba, frame, context, pose);
+    }
+
+    public void draw(String text,
+                     CgFontFamily family,
+                     int targetPx,
+                     float x,
+                     float y,
+                     int rgba,
+                     long frame,
+                     CgTextRenderContext context,
+                     PoseStack pose) {
+        draw(text, family, targetPx, CgTextConstraints.UNBOUNDED, x, y, rgba, frame, context, pose);
+    }
+
+    public void draw(String text,
+                     CgFontFamily family,
+                     int targetPx,
+                     CgTextConstraints constraints,
+                     float x,
+                     float y,
+                     int rgba,
+                     long frame,
+                     CgTextRenderContext context,
+                     PoseStack pose) {
+        CgFontFamily sizedFamily = sizeFamily(family, targetPx);
+        draw(layout(text, sizedFamily, constraints), sizedFamily, x, y, rgba, frame, context, pose);
     }
 
 
@@ -277,6 +404,69 @@ public class CgTextRenderer {
     }
 
     public void drawWorld(CgTextLayout layout,
+                          CgFont font,
+                          int targetPx,
+                          float x,
+                          float y,
+                          int rgba,
+                          long frame,
+                          CgWorldTextRenderContext context,
+                          PoseStack pose) {
+        CgFont sizedFont = requireSizedFont(font, targetPx);
+        drawWorld(layout, sizedFont, x, y, rgba, frame, context, pose);
+    }
+
+    public void drawWorld(String text,
+                          CgFont font,
+                          float x,
+                          float y,
+                          int rgba,
+                          long frame,
+                          CgWorldTextRenderContext context,
+                          PoseStack pose) {
+        drawWorld(text, font, CgTextConstraints.UNBOUNDED, x, y, rgba, frame, context, pose);
+    }
+
+    public void drawWorld(String text,
+                          CgFont font,
+                          CgTextConstraints constraints,
+                          float x,
+                          float y,
+                          int rgba,
+                          long frame,
+                          CgWorldTextRenderContext context,
+                          PoseStack pose) {
+        requireSizedFont(font);
+        drawWorld(layout(text, font, constraints), font, x, y, rgba, frame, context, pose);
+    }
+
+    public void drawWorld(String text,
+                          CgFont font,
+                          int targetPx,
+                          float x,
+                          float y,
+                          int rgba,
+                          long frame,
+                          CgWorldTextRenderContext context,
+                          PoseStack pose) {
+        drawWorld(text, font, targetPx, CgTextConstraints.UNBOUNDED, x, y, rgba, frame, context, pose);
+    }
+
+    public void drawWorld(String text,
+                          CgFont font,
+                          int targetPx,
+                          CgTextConstraints constraints,
+                          float x,
+                          float y,
+                          int rgba,
+                          long frame,
+                          CgWorldTextRenderContext context,
+                          PoseStack pose) {
+        CgFont sizedFont = requireSizedFont(font, targetPx);
+        drawWorld(layout(text, sizedFont, constraints), sizedFont, x, y, rgba, frame, context, pose);
+    }
+
+    public void drawWorld(CgTextLayout layout,
                           CgFontFamily family,
                           float x,
                           float y,
@@ -307,6 +497,67 @@ public class CgTextRenderer {
         } finally {
             CgStateBoundary.restore(snapshot);
         }
+    }
+
+    public void drawWorld(CgTextLayout layout,
+                          CgFontFamily family,
+                          int targetPx,
+                          float x,
+                          float y,
+                          int rgba,
+                          long frame,
+                          CgWorldTextRenderContext context,
+                          PoseStack pose) {
+        drawWorld(layout, sizeFamily(family, targetPx), x, y, rgba, frame, context, pose);
+    }
+
+    public void drawWorld(String text,
+                          CgFontFamily family,
+                          float x,
+                          float y,
+                          int rgba,
+                          long frame,
+                          CgWorldTextRenderContext context,
+                          PoseStack pose) {
+        drawWorld(text, family, CgTextConstraints.UNBOUNDED, x, y, rgba, frame, context, pose);
+    }
+
+    public void drawWorld(String text,
+                          CgFontFamily family,
+                          CgTextConstraints constraints,
+                          float x,
+                          float y,
+                          int rgba,
+                          long frame,
+                          CgWorldTextRenderContext context,
+                          PoseStack pose) {
+        drawWorld(layout(text, family, constraints), family, x, y, rgba, frame, context, pose);
+    }
+
+    public void drawWorld(String text,
+                          CgFontFamily family,
+                          int targetPx,
+                          float x,
+                          float y,
+                          int rgba,
+                          long frame,
+                          CgWorldTextRenderContext context,
+                          PoseStack pose) {
+        drawWorld(text, family, targetPx, CgTextConstraints.UNBOUNDED, x, y, rgba, frame, context, pose);
+    }
+
+    public void drawWorld(String text,
+                          CgFontFamily family,
+                          int targetPx,
+                          CgTextConstraints constraints,
+                          float x,
+                          float y,
+                          int rgba,
+                          long frame,
+                          CgWorldTextRenderContext context,
+                          PoseStack pose) {
+        CgFontFamily sizedFamily = sizeFamily(family, targetPx);
+        drawWorld(layout(text, sizedFamily, constraints), sizedFamily, x, y, rgba, frame, context, pose);
     }
 
     public void delete() {
@@ -1017,5 +1268,60 @@ public class CgTextRenderer {
             } catch (IOException ignored) {
             }
         }
+    }
+
+    static CgTextLayout layout(String text, CgFont font, CgTextConstraints constraints) {
+        if (text == null) {
+            throw new IllegalArgumentException("text must not be null");
+        }
+        if (constraints == null) {
+            throw new IllegalArgumentException("constraints must not be null");
+        }
+        return LAYOUT_BUILDER.layout(text, font, constraints.getMaxWidth(), constraints.getMaxHeight());
+    }
+
+    static CgTextLayout layout(String text, CgFontFamily family, CgTextConstraints constraints) {
+        if (text == null) {
+            throw new IllegalArgumentException("text must not be null");
+        }
+        if (constraints == null) {
+            throw new IllegalArgumentException("constraints must not be null");
+        }
+        return LAYOUT_BUILDER.layout(text, family, constraints.getMaxWidth(), constraints.getMaxHeight());
+    }
+
+    static CgFont requireSizedFont(CgFont font) {
+        if (font == null) {
+            throw new IllegalArgumentException("font must not be null");
+        }
+        if (!font.isSizeBound()) {
+            throw new IllegalArgumentException("font must be size-bound or supplied with targetPx");
+        }
+        return font;
+    }
+
+    static CgFont requireSizedFont(CgFont font, int targetPx) {
+        if (font == null) {
+            throw new IllegalArgumentException("font must not be null");
+        }
+        if (targetPx <= 0) {
+            throw new IllegalArgumentException("targetPx must be > 0, got: " + targetPx);
+        }
+        return font.isSizeBound() && font.getTargetPx() == targetPx ? font : font.atSize(targetPx);
+    }
+
+    static CgFontFamily sizeFamily(CgFontFamily family, int targetPx) {
+        if (family == null) {
+            throw new IllegalArgumentException("family must not be null");
+        }
+        if (targetPx <= 0) {
+            throw new IllegalArgumentException("targetPx must be > 0, got: " + targetPx);
+        }
+        CgFont primary = family.getPrimarySource().requireFont().atSize(targetPx);
+        List<CgFontSource> fallbackSources = new ArrayList<CgFontSource>();
+        for (CgFontSource fallback : family.getFallbackSources()) {
+            fallbackSources.add(new CgFontSource(fallback.requireFont().atSize(targetPx), fallback.getSourceLabel()));
+        }
+        return new CgFontFamily(family.getFamilyId(), new CgFontSource(primary, family.getPrimarySource().getSourceLabel()), fallbackSources);
     }
 }

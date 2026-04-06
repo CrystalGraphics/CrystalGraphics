@@ -23,17 +23,20 @@ public final class CgFontSource {
     private final IntPredicate coverageProbe;
 
     public CgFontSource(CgFont font) {
-        this(font, font != null ? font.getKey().getFontPath() : null);
+        this(font, font != null ? font.getLogicalName() : null);
     }
 
     public CgFontSource(CgFont font, String sourceLabel) {
         if (font == null || font.isDisposed()) {
             throw new IllegalArgumentException("font must not be null or disposed");
         }
+        if (!font.isSizeBound()) {
+            throw new IllegalArgumentException("font source requires a size-bound font; call atSize(int) first");
+        }
         this.font = font;
         this.key = font.getKey();
         this.metrics = font.getMetrics();
-        this.sourceLabel = sourceLabel != null ? sourceLabel : font.getKey().getFontPath();
+        this.sourceLabel = sourceLabel != null ? sourceLabel : font.getLogicalName();
         this.coverageProbe = new IntPredicate() {
             @Override
             public boolean test(int value) {
