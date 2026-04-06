@@ -23,7 +23,7 @@ public class HarnessProjectionUtil {
     public static final float FOV_DEGREES = 60.0f;
 
     /** Near clipping plane distance for 3D harness scenes. */
-    public static final float NEAR_PLANE = 0.1f;
+    public static final float NEAR_PLANE = 0.001f;
 
     /** Far clipping plane distance for 3D harness scenes. */
     public static final float FAR_PLANE = 1000.0f;
