@@ -228,10 +228,10 @@ public final class HUDRenderer {
         }
 
         String DEMO_TEXT_2D_LABEL = "2D UI text: logical size stable, raster scales with pose";
-        String DEMO_TEXT = "CrystalGraphics font demo - mouse wheel zoom";
+        String DEMO_TEXT = "CrystalGraphics font demo - mouse wheel zoom بيانات الاستفسار";
         ensureDemoFont();
-        
-        
+
+
         float[] demoScales = {0.5f, 1.0f, 1.5f, 2.0f,4.0f};
         float lineY = DEMO_TEXT_START_Y;
         for (float demoScale : demoScales) {
