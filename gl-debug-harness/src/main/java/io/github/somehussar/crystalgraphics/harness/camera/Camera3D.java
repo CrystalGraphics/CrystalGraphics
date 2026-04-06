@@ -36,10 +36,10 @@ public class Camera3D {
     private static final float MIN_CAMERA_Y = FLOOR_Y + 0.1f;
 
     /** Default mouse sensitivity (degrees per pixel of mouse movement). */
-    private static final float DEFAULT_SENSITIVITY = 0.15f;
+    private static final float DEFAULT_SENSITIVITY = 0.05f;
 
     /** Default movement speed (units per second). */
-    private static final float DEFAULT_MOVE_SPEED = 2.5f;
+    private static final float DEFAULT_MOVE_SPEED = 0.25f;
 
     /** Pitch limits to prevent gimbal lock (in degrees). */
     private static final float MAX_PITCH = 89.0f;
@@ -125,7 +125,6 @@ public class Camera3D {
 
         int dx = Mouse.getDX();
         int dy = Mouse.getDY();
-
         if (dx != 0 || dy != 0) {
             // Negate dx so moving mouse RIGHT rotates camera RIGHT (positive yaw).
             // LWJGL2 getDX() returns positive for rightward mouse movement, but
@@ -176,11 +175,16 @@ public class Camera3D {
         if (Keyboard.isKeyDown(Keyboard.KEY_LCONTROL) || Keyboard.isKeyDown(Keyboard.KEY_RCONTROL)) {
             speed *= 5;
         }
-
+        
+          // SPACE: move up
+        if (Keyboard.isKeyDown(Keyboard.KEY_SPACE)) {
+            dy += speed;
+        }
+        
         // SHIFT: move down, clamped to floor level
         if (Keyboard.isKeyDown(Keyboard.KEY_LSHIFT) || Keyboard.isKeyDown(Keyboard.KEY_RSHIFT)) {
-            speed *= 0.1f;
             dy -= speed;
+            speed *= 0.1f;
         }
         
         // W/S: forward/backward along look direction (XZ plane only)
@@ -202,12 +206,7 @@ public class Camera3D {
             dx += rightX * speed;
             dz += rightZ * speed;
         }
-
-        // SPACE: move up
-        if (Keyboard.isKeyDown(Keyboard.KEY_SPACE)) {
-            dy += speed;
-        }
-
+        
         if (dx != 0.0f || dy != 0.0f || dz != 0.0f) {
             posX += dx;
             posY += dy;

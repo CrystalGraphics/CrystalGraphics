@@ -64,6 +64,8 @@ public final class WorldTextRenderHelper {
     private final int layoutHeight;
     private final int atlasSize;
     private final boolean mtsdf;
+    private boolean worldDepthTestEnabled = true;
+    private boolean worldDepthWriteEnabled = false;
 
     // ── GL resources (created in init(), destroyed in dispose()) ──
     private CgCapabilities caps;
@@ -131,6 +133,31 @@ public final class WorldTextRenderHelper {
                 + ", mtsdf=" + mtsdf);
     }
 
+    public void renderWorld(int screenWidth, int screenHeight, long frameNumber,
+                            PoseStack poseStack) {
+        float aspect = (float) screenWidth / (float) screenHeight;
+        Matrix4f perspProjection = HarnessProjectionUtil.perspective(aspect);
+
+        // Create model-view for world text positioned above the floor.
+        // The text layout uses screen-space Y-down coordinates, but world space
+        // uses Y-up. We apply three transforms:
+        //   1. Camera view matrix (world → view space)
+        //   2. Translate to text origin above the floor (Y=0.5 to stay above Y=0)
+        //   3. Scale with Y-flip: positive scale on X/Z, negative on Y to flip
+        //      text right-side-up, and scale down from pixel units to world units
+        Matrix4f modelView = poseStack.last().pose();
+        CgWorldTextRenderContext worldContext = CgWorldTextRenderContext.create(perspProjection, screenWidth,
+                screenHeight);
+        worldContext.setDepthTestEnabled(worldDepthTestEnabled);
+        worldContext.setDepthWriteEnabled(worldDepthWriteEnabled);
+        worldContext.updateProjectedSize(modelView, perspProjection, fontSizePx);
+
+        registry.tickFrame(frameNumber);
+
+        renderer.drawWorld(worldLayout, font, 0.0f, 0.0f, 0xFFFFFFFF, frameNumber, worldContext, poseStack);
+    }
+    
+
     /**
      * Renders world-space text for the interactive 3D scene path.
      *
@@ -166,6 +193,8 @@ public final class WorldTextRenderHelper {
 
         CgWorldTextRenderContext worldContext = CgWorldTextRenderContext.create(
                 perspProjection, screenWidth, screenHeight);
+        worldContext.setDepthTestEnabled(worldDepthTestEnabled);
+        worldContext.setDepthWriteEnabled(worldDepthWriteEnabled);
         worldContext.updateProjectedSize(modelView, perspProjection, fontSizePx);
 
         registry.tickFrame(frameNumber);
@@ -248,6 +277,14 @@ public final class WorldTextRenderHelper {
      */
     public int getFontSizePx() {
         return fontSizePx;
+    }
+
+    public void setWorldDepthTestEnabled(boolean worldDepthTestEnabled) {
+        this.worldDepthTestEnabled = worldDepthTestEnabled;
+    }
+
+    public void setWorldDepthWriteEnabled(boolean worldDepthWriteEnabled) {
+        this.worldDepthWriteEnabled = worldDepthWriteEnabled;
     }
 
     /**

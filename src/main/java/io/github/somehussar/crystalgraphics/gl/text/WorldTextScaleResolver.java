@@ -11,13 +11,12 @@ import io.github.somehussar.crystalgraphics.api.PoseStack;
  * not use PoseStack scale as a UI zoom signal — the PoseStack in 3D represents
  * model-view positioning (entity rotation, billboard transforms), not UI scale.</p>
  *
- * <h3>Quality/LOD via Projected Size</h3>
- * <p>On-screen quality in world text depends on projected pixel coverage, which
- * requires information beyond the PoseStack (projection matrix, viewport, camera
- * distance). This resolver therefore holds an optional projected-size hint set
- * by the caller via {@link #setProjectedSizeHint(float)}. When available, the
- * hint selects a higher-quality MSDF atlas tier; when absent, the base size
- * provides a reasonable default MSDF tier.</p>
+ * <h3>Stable World Raster Tier</h3>
+ * <p>World-space text now uses a stable distance-field raster tier derived from
+ * the base font size, not from per-frame projected-size estimates. In practice,
+ * pose-dependent tier churn caused the same glyph to be reconstructed from
+ * different MTSDF atlases at different camera positions, which made dense
+ * intersections appear inconsistent between otherwise similar captures.</p>
  *
  * <h3>Always-MSDF Guarantee</h3>
  * <p>{@link #shouldUseMsdf(int, boolean)} always returns {@code true}. World
@@ -40,44 +39,12 @@ final class WorldTextScaleResolver implements CgTextScaleResolver {
      */
     static final int DEFAULT_RASTER_MULTIPLIER = 2;
 
-    /**
-     * Projected-size hint in screen pixels, set by the caller before each draw.
-     * When <= 0, the resolver falls back to the default raster tier.
-     */
-    private float projectedSizeHint = -1.0f;
-
     @Override
     public int resolveEffectiveTargetPx(int baseTargetPx,
                                         PoseStack.Pose pose,
                                         int previousEffectiveTargetPx) {
-        // In world-text mode, PoseStack scale is model-view positioning,
-        // not UI zoom. Effective raster tier is driven by projected-size
-        // hint or a default multiplier — never by pose matrix extraction.
-        int effectivePx;
-        if (projectedSizeHint > 0.0f) {
-            // Use projected size for MSDF quality tier selection.
-            // Clamp to reasonable range and quantize.
-            effectivePx = Math.round(projectedSizeHint);
-        } else {
-            effectivePx = baseTargetPx * DEFAULT_RASTER_MULTIPLIER;
-        }
-
+        int effectivePx = baseTargetPx * DEFAULT_RASTER_MULTIPLIER;
         effectivePx = Math.max(MIN_EFFECTIVE_PX, Math.min(MAX_EFFECTIVE_PX, effectivePx));
-
-        // Apply hysteresis if a previous value exists
-        if (previousEffectiveTargetPx > 0) {
-            float raw = projectedSizeHint > 0.0f ? projectedSizeHint
-                    : (float) (baseTargetPx * DEFAULT_RASTER_MULTIPLIER);
-            if (effectivePx > previousEffectiveTargetPx
-                    && raw < previousEffectiveTargetPx + HYSTERESIS_BAND) {
-                return previousEffectiveTargetPx;
-            }
-            if (effectivePx < previousEffectiveTargetPx
-                    && raw > previousEffectiveTargetPx - HYSTERESIS_BAND) {
-                return previousEffectiveTargetPx;
-            }
-        }
-
         return effectivePx;
     }
 
@@ -89,18 +56,7 @@ final class WorldTextScaleResolver implements CgTextScaleResolver {
         return true;
     }
 
-    /**
-     * Sets the projected on-screen size hint in screen pixels.
-     *
-     * <p>This is typically computed by {@link ProjectedSizeEstimator} from the
-     * MVP matrix, viewport dimensions, and the logical text size. It affects
-     * only the MSDF quality/LOD tier — never layout metrics.</p>
-     *
-     * @param projectedPx estimated on-screen pixel coverage, or {@code <= 0}
-     *                    to use the default raster tier
-     */
     void setProjectedSizeHint(float projectedPx) {
-        this.projectedSizeHint = projectedPx;
     }
 
     /**
@@ -109,13 +65,12 @@ final class WorldTextScaleResolver implements CgTextScaleResolver {
      * @return the projected size in screen pixels, or {@code <= 0} if unset
      */
     float getProjectedSizeHint() {
-        return projectedSizeHint;
+        return -1.0f;
     }
 
     /**
      * Clears the projected-size hint, reverting to default raster tier.
      */
     void clearProjectedSizeHint() {
-        this.projectedSizeHint = -1.0f;
     }
 }
