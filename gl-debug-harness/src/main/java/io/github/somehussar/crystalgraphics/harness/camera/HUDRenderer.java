@@ -256,17 +256,18 @@ public final class HUDRenderer {
         }
 
         orthoContext.clearHistory();
-        //
-        //        PoseStack identityPose = new PoseStack();
-        //        renderer.draw(
-        //                layoutBuilder.layout(DEMO_TEXT_2D_LABEL, font, ctx.getScreenWidth(), 0),
-        //                font,
-        //                20.0f,
-        //                20.0f,
-        //                0xAAFFAAFF,
-        //                frameCounter,
-        //                orthoContext,
-        //                identityPose);
+
+                PoseStack identityPose = new PoseStack();
+                renderer.draw(
+                        DEMO_TEXT_2D_LABEL,
+                        font,
+                        64,
+                        20.0f,
+                        20.0f,
+                        0xAAFFAAFF,
+                        frameCounter,
+                        orthoContext,
+                        identityPose);
         }
 
     private PoseStack anchoredScalePose(float anchorX, float anchorY, float scale) {
