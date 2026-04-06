@@ -64,9 +64,6 @@ public final class WorldTextRenderHelper {
     private final int layoutHeight;
     private final int atlasSize;
     private final boolean mtsdf;
-    private boolean worldDepthTestEnabled = true;
-    private boolean worldDepthWriteEnabled = false;
-
     // ── GL resources (created in init(), destroyed in dispose()) ──
     private CgCapabilities caps;
     private CgFont font;
@@ -148,8 +145,6 @@ public final class WorldTextRenderHelper {
         Matrix4f modelView = poseStack.last().pose();
         CgWorldTextRenderContext worldContext = CgWorldTextRenderContext.create(perspProjection, screenWidth,
                 screenHeight);
-        worldContext.setDepthTestEnabled(worldDepthTestEnabled);
-        worldContext.setDepthWriteEnabled(worldDepthWriteEnabled);
         worldContext.updateProjectedSize(modelView, perspProjection, fontSizePx);
 
         registry.tickFrame(frameNumber);
@@ -193,8 +188,6 @@ public final class WorldTextRenderHelper {
 
         CgWorldTextRenderContext worldContext = CgWorldTextRenderContext.create(
                 perspProjection, screenWidth, screenHeight);
-        worldContext.setDepthTestEnabled(worldDepthTestEnabled);
-        worldContext.setDepthWriteEnabled(worldDepthWriteEnabled);
         worldContext.updateProjectedSize(modelView, perspProjection, fontSizePx);
 
         registry.tickFrame(frameNumber);
@@ -278,15 +271,7 @@ public final class WorldTextRenderHelper {
     public int getFontSizePx() {
         return fontSizePx;
     }
-
-    public void setWorldDepthTestEnabled(boolean worldDepthTestEnabled) {
-        this.worldDepthTestEnabled = worldDepthTestEnabled;
-    }
-
-    public void setWorldDepthWriteEnabled(boolean worldDepthWriteEnabled) {
-        this.worldDepthWriteEnabled = worldDepthWriteEnabled;
-    }
-
+    
     /**
      * Releases all GL resources held by this helper.
      *
