@@ -207,7 +207,7 @@ public class CgFontRegistry {
             CgMsdfAtlasConfig config = resolveMsdfAtlasConfig(key.getFontKey());
             CgMsdfAtlasKey msdfAtlasKey = toMsdfAtlasKey(key.getFontKey(), config);
             CgGlyphKey atlasKey = toMsdfAtlasGlyphKey(key, config);
-            return ensureMsdfGlyphPaged(font, atlasKey, msdfAtlasKey, effectiveTargetPx, currentFrame);
+            return ensureMsdfGlyphPaged(font, atlasKey, msdfAtlasKey, effectiveTargetPx, subPixelBucket, currentFrame);
         } else {
             CgGlyphKey atlasKey = toBitmapAtlasGlyphKey(
                     new CgRasterGlyphKey(rasterFontKey, key.getGlyphId(), false, subPixelBucket));
@@ -744,6 +744,7 @@ public class CgFontRegistry {
     private CgGlyphPlacement ensureMsdfGlyphPaged(CgFont font, CgGlyphKey atlasKey,
                                                    CgMsdfAtlasKey msdfAtlasKey,
                                                    int effectiveTargetPx,
+                                                   int subPixelBucket,
                                                    long currentFrame) {
         CgPagedGlyphAtlas pagedAtlas = getPagedMsdfAtlas(msdfAtlasKey);
         CgGlyphPlacement cached = pagedAtlas.get(atlasKey, currentFrame);
@@ -753,19 +754,30 @@ public class CgFontRegistry {
 
         FreeTypeIntegration.Font msdfFont = font.getMsdfFont();
         if (msdfFont != null) {
-            CgGlyphPlacement placement = msdfGenerator.queueOrGeneratePaged(
-                    atlasKey, msdfFont, pagedAtlas, msdfAtlasKey.getConfig(), currentFrame);
-            if (placement != null) {
-                return placement;
+            try {
+                CgGlyphGenerationResult generated = msdfGenerator.preparePagedGlyphWithinBudget(
+                        atlasKey,
+                        font.getKey(),
+                        msdfFont,
+                        msdfAtlasKey);
+                if (generated != null) {
+                    commitGeneratedGlyph(generated, currentFrame);
+                    CgGlyphPlacement placement = pagedAtlas.get(atlasKey, currentFrame);
+                    if (placement != null) {
+                        return placement;
+                    }
+                }
+            } finally {
+                restoreFontShapingState(font);
             }
         }
 
         // Fall back to bitmap via paged atlas
         CgRasterFontKey bitmapRasterKey = new CgRasterFontKey(font.getKey(), effectiveTargetPx);
         CgGlyphKey bitmapAtlasKey = toBitmapAtlasGlyphKey(
-                new CgRasterGlyphKey(bitmapRasterKey, atlasKey.getGlyphId(), false, 0));
+                new CgRasterGlyphKey(bitmapRasterKey, atlasKey.getGlyphId(), false, subPixelBucket));
         return ensureBitmapGlyphPaged(font, bitmapAtlasKey, bitmapRasterKey,
-                effectiveTargetPx, 0, currentFrame);
+                effectiveTargetPx, subPixelBucket, currentFrame);
     }
 
     private CgGlyphPlacement ensureBitmapGlyphPaged(CgFont font, CgGlyphKey atlasKey,
