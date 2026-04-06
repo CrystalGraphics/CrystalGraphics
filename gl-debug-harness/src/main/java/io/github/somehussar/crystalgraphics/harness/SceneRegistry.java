@@ -72,7 +72,7 @@ public final class SceneRegistry {
 
         // ── Rendering scenes ──
         reg.register(
-            SceneDescriptor.builder("triangle")
+            SceneDescriptor.builder("triangle-2d")
                 .description("Render hello triangle via FBO to triangle.png")
                 .lifecycleMode(SceneDescriptor.LifecycleMode.MANAGED)
                 .category(SceneDescriptor.Category.SCENE)
@@ -80,9 +80,33 @@ public final class SceneRegistry {
                 .needsDepthBuffer(true)
                 .clearColor(0.1f, 0.1f, 0.1f, 1.0f)
                 .build(),
-            () -> new TriangleScene()
+            () -> new TriangleScene2D()
+        );
+        
+        reg.register(
+            SceneDescriptor.builder("text-2d")
+                .description("Full text scene to text-scene.png + atlas/atlas-dump-<size>px.png")
+                .lifecycleMode(SceneDescriptor.LifecycleMode.MANAGED)
+                .category(SceneDescriptor.Category.SCENE)
+                .needsFbo(true)
+                .clearColor(0.15f, 0.15f, 0.2f, 1.0f)
+                .build(),
+                () -> new TextScene2D()
         );
 
+        reg.register(
+            SceneDescriptor.builder("text-3d")
+                .description("Interactive 3D world-space text with camera controls, floor plane, and task scheduler")
+                .lifecycleMode(SceneDescriptor.LifecycleMode.INTERACTIVE)
+                .category(SceneDescriptor.Category.SCENE)
+                .needsFbo(true)
+                .needsDepthBuffer(true)
+                .clearColor(0.1f, 0.1f, 0.15f, 1.0f)
+                .build(),
+                () -> new TextScene3D()
+        );
+        
+        // ── Diagnostic modes ──
         reg.register(
             SceneDescriptor.builder("atlas-dump")
                 .description("Generate glyph atlas dump to atlas/ subdir (atlas-dump-<size>px.png)")
@@ -92,45 +116,9 @@ public final class SceneRegistry {
                 .build(),
                 () -> new AtlasDumpScene()
         );
-
-        reg.register(
-            SceneDescriptor.builder("text-scene")
-                .description("Full text scene to text-scene.png + atlas/atlas-dump-<size>px.png")
-                .lifecycleMode(SceneDescriptor.LifecycleMode.MANAGED)
-                .category(SceneDescriptor.Category.SCENE)
-                .needsFbo(true)
-                .clearColor(0.15f, 0.15f, 0.2f, 1.0f)
-                .build(),
-                () -> new TextScene()
-        );
-
-        reg.register(
-            SceneDescriptor.builder("world-text-scene")
-                .description("3D world-space text via drawWorld() — single-shot capture (always MSDF, depth-tested)")
-                .lifecycleMode(SceneDescriptor.LifecycleMode.MANAGED)
-                .category(SceneDescriptor.Category.SCENE)
-                .needsFbo(true)
-                .needsDepthBuffer(true)
-                .clearColor(0.1f, 0.1f, 0.15f, 1.0f)
-                .build(),
-                () -> new ManagedWorldTextScene()
-        );
-
-        reg.register(
-            SceneDescriptor.builder("world-text-3d")
-                .description("Interactive 3D world-space text with camera controls, floor plane, and task scheduler")
-                .lifecycleMode(SceneDescriptor.LifecycleMode.INTERACTIVE)
-                .category(SceneDescriptor.Category.SCENE)
-                .needsFbo(true)
-                .needsDepthBuffer(true)
-                .clearColor(0.1f, 0.1f, 0.15f, 1.0f)
-                .build(),
-                () -> new InteractiveWorldTextScene()
-        );
         
-        // ── Diagnostic modes ──
         reg.register(
-            SceneDescriptor.builder("camera-3d-validation")
+            SceneDescriptor.builder("camera-3d")
                 .description("3D camera validation: renders cube + floor, captures 4 angle screenshots")
                 .lifecycleMode(SceneDescriptor.LifecycleMode.INTERACTIVE)
                 .category(SceneDescriptor.Category.SCENE)
@@ -138,18 +126,7 @@ public final class SceneRegistry {
                 .needsDepthBuffer(true)
                 .clearColor(0.1f, 0.1f, 0.15f, 1.0f)
                 .build(),
-                () -> new Camera3DValidationScene()
-        );
-
-        reg.register(
-            SceneDescriptor.builder("render-validation")
-                .description("Render validation: captures normal, paused, and top-down screenshots with floor + HUD + pause overlay")
-                .lifecycleMode(SceneDescriptor.LifecycleMode.INTERACTIVE)
-                .category(SceneDescriptor.Category.SCENE)
-                .needsFbo(false)
-                .needsDepthBuffer(true)
-                .build(),
-                () -> new RenderValidationScene()
+                () -> new CameraScene3D()
         );
 
         reg.register(

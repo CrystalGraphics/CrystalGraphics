@@ -27,9 +27,9 @@ import java.io.File;
 import java.util.List;
 import java.util.logging.Logger;
 
-public class TextScene implements HarnessSceneLifecycle {
+public class TextScene2D implements HarnessSceneLifecycle {
 
-    private static final Logger LOGGER = Logger.getLogger(TextScene.class.getName());
+    private static final Logger LOGGER = Logger.getLogger(TextScene2D.class.getName());
 
     // Matches CrystalGraphicsFontDemo.DEMO_TEXT_2D_LABEL exactly
     private static final String TOP_LABEL_TEXT = "2D UI text: logical size stable, raster scales with pose";

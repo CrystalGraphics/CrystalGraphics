@@ -7,6 +7,9 @@ import java.io.File;
  */
 public final class HarnessFontUtil {
 
+    public static final String ARABIC_FONT = resolveFontPath("../src/main/resources/assets/crystalgraphics/IBMPlexSansArabic-Regular.ttf");
+    public static final String JAPANESE_FONT = resolveFontPath("../src/main/resources/assets/crystalgraphics/MPLUS1p-Regular.ttf");
+
     /**
      * Resolves a font path from the given config, falling back to system font discovery.
      *
