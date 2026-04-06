@@ -11,7 +11,7 @@ import java.io.File;
  * fields that were previously scattered across {@link HarnessContext}.</p>
  *
  * <p>The output directory is the scene-specific subdirectory
- * (e.g. {@code harness-output/world-text-3d/}). The output name prefix
+ * (e.g. {@code harness-output/text-3d/}). The output name prefix
  * defaults to the scene's mode ID but can be overridden via
  * {@code --output-name=PREFIX}.</p>
  *
@@ -48,7 +48,7 @@ public final class OutputSettings {
      * Returns the scene-specific output directory path.
      *
      * <p>This is the fully resolved path where all scene artifacts are written,
-     * e.g. {@code gl-debug-harness/harness-output/world-text-3d/}.</p>
+     * e.g. {@code gl-debug-harness/harness-output/text-3d/}.</p>
      *
      * @return the output directory, never null
      */
