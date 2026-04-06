@@ -16,7 +16,7 @@
 ./gradlew :gl-debug-harness:runHarness --args="--mode=atlas-dump"
 
 # Run with options
-./gradlew :gl-debug-harness:runHarness --args="--mode=atlas-dump --atlas-type=both --font-size-px=64"
+./gradlew :gl-debug-harness:runHarness --args="--mode=atlas-dump --atlas-type=mtsdf --font-size-px=128"
 
 # Run a 3D scene
 ./gradlew :gl-debug-harness:runHarness --args="--mode=world-text-3d"

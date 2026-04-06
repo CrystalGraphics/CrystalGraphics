@@ -51,7 +51,7 @@ public final class AtlasDumpConfig extends HarnessConfig {
     public static final int ATLAS_PAGE_SIZE_AUTO = -1;
 
     public enum AtlasType {
-        BITMAP, MSDF, BOTH;
+        BITMAP, MSDF, MTSDF, BOTH;
 
         static AtlasType parse(String value) {
             if (value == null || value.isEmpty()) {
@@ -62,7 +62,7 @@ public final class AtlasDumpConfig extends HarnessConfig {
                 return AtlasType.valueOf(upper);
             } catch (IllegalArgumentException e) {
                 throw new IllegalArgumentException(
-                    "Invalid atlas-type '" + value + "'. Valid values: bitmap, msdf, both");
+                    "Invalid atlas-type '" + value + "'. Valid values: bitmap, msdf, mtsdf, both");
             }
         }
     }
@@ -172,7 +172,8 @@ public final class AtlasDumpConfig extends HarnessConfig {
                 msdfMinDeviationRatio,
                 msdfMinImproveRatio,
                 msdfEdgeColoringMode,
-                msdfEdgeColoringAngleThreshold);
+                msdfEdgeColoringAngleThreshold,
+                atlasType == AtlasType.MTSDF);
     }
 
     public CgMsdfVerificationConfig buildMsdfVerificationConfig() {
