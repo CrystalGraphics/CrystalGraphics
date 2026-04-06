@@ -74,7 +74,7 @@ public class CgFontKey {
         return new CgFontKey(fontPath, style, newTargetPx, variations);
     }
 
-    private static List<CgFontVariation> canonicalizeVariations(List<CgFontVariation> variations) {
+    static List<CgFontVariation> canonicalizeVariations(List<CgFontVariation> variations) {
         if (variations == null || variations.isEmpty()) {
             return Collections.emptyList();
         }
