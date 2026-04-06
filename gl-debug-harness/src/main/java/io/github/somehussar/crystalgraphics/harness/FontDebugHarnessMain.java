@@ -140,9 +140,8 @@ public final class FontDebugHarnessMain {
         HarnessConfig config;
         if ("atlas-dump".equals(mode)) {
             config = AtlasDumpConfig.create(args);
-        } else if ("text-scene".equals(mode)
-                || "world-text-scene".equals(mode)
-                || "world-text-3d".equals(mode)) {
+        } else if ("text-2d".equals(mode)
+                || "text-3d".equals(mode)) {
             // All text-related scenes share TextSceneConfig for font-size-px,
             // text content, and other text-rendering parameters.
             config = TextSceneConfig.create(args);

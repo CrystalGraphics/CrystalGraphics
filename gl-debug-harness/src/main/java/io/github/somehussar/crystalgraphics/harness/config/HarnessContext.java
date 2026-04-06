@@ -257,7 +257,7 @@ public final class HarnessContext {
 
     /**
      * Returns the output directory for screenshots and artifacts.
-     * This is the scene-specific subdirectory (e.g. {@code harness-output/world-text-3d/}).
+     * This is the scene-specific subdirectory (e.g. {@code harness-output/text-3d/}).
      *
      * <p><b>Prefer</b> {@code getOutputSettings().getOutputDir()} for new code.</p>
      */
