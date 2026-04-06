@@ -26,11 +26,16 @@ public final class HarnessFontUtil {
             }
         }
 
-        // Check test font first
-        String testFont = "src/main/resources/assets/crystalgraphics/test-font.ttf";
-        File tf = new File(testFont);
-        if (tf.exists()) {
-            return tf.getAbsolutePath();
+        // Prefer the same test font used by the Minecraft demo in the root project.
+        String[] preferredProjectFonts = {
+            "src/main/resources/assets/crystalgraphics/test-font.ttf",
+            "../src/main/resources/assets/crystalgraphics/test-font.ttf"
+        };
+        for (String testFont : preferredProjectFonts) {
+            File tf = new File(testFont);
+            if (tf.exists()) {
+                return tf.getAbsolutePath();
+            }
         }
 
         return findSystemFont();
