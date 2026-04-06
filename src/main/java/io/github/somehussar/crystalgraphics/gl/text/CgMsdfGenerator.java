@@ -122,8 +122,7 @@ public class CgMsdfGenerator {
             return null;
         }
 
-        shape.normalize();
-        applyEdgeColoring(shape, config);
+        prepareShapeForMsdf(shape, key.getGlyphId(), config);
 
         int targetPx = key.getFontKey().getTargetPx();
         int cellSize = cellSizeForFontPx(targetPx);
@@ -225,116 +224,53 @@ public class CgMsdfGenerator {
      * @return the glyph placement, or {@code null} if generation was skipped
      */
     public CgGlyphPlacement queueOrGeneratePaged(CgGlyphKey key,
-                                                   FreeTypeIntegration.Font font,
-                                                   CgPagedGlyphAtlas pagedAtlas,
-                                                   CgMsdfAtlasConfig config,
-                                                   long currentFrame) {
-        if (generatedThisFrame >= MAX_PER_FRAME) {
-            return null;
-        }
+                                                 FreeTypeIntegration.Font font,
+                                                 CgPagedGlyphAtlas pagedAtlas,
+                                                 CgMsdfAtlasConfig config,
+                                                 long currentFrame) {
         if (config == null) {
             throw new IllegalArgumentException("config must not be null");
         }
 
-        FreeTypeIntegration.GlyphData glyphData;
-        try {
-            glyphData = font.loadGlyphByIndex(key.getGlyphId(), FreeTypeIntegration.FONT_SCALING_EM_NORMALIZED);
-        } catch (MsdfException e) {
-            LOGGER.log(Level.FINE, "Failed to load glyph index " + key.getGlyphId(), e);
+        CgGlyphGenerationResult prepared = preparePagedGlyphWithinBudget(
+                key,
+                key.getFontKey(),
+                font,
+                new CgMsdfAtlasKey(key.getFontKey(), config));
+        if (prepared == null || prepared.isEmptyGeometry()) {
             return null;
         }
 
-        // DO NOT call shape.free() manually. Shape has a finalize() method
-        // that calls free(), but its 'freed' flag is not volatile. If we call
-        // shape.free() on the render thread, the finalizer thread can still
-        // see the stale freed==false and call nShapeFree a second time —
-        // corrupting the native heap. The corruption is silent until a later
-        // native allocation (e.g. nLoadGlyphByIndex) traverses the damaged
-        // free-list and crashes. Letting the finalizer be the sole owner of
-        // the free() call eliminates the race entirely.
-        Shape shape = glyphData.getShape();
+        return pagedAtlas.allocateMsdf(
+                key,
+                prepared.getMsdfData(),
+                prepared.getWidth(),
+                prepared.getHeight(),
+                prepared.getBearingX(),
+                prepared.getBearingY(),
+                prepared.getMetricsWidth(),
+                prepared.getMetricsHeight(),
+                prepared.getPxRange(),
+                currentFrame);
+    }
 
-        if (shape.getEdgeCount() == 0) {
+    CgGlyphGenerationResult preparePagedGlyphWithinBudget(CgGlyphKey key,
+                                                          CgFontKey sourceFontKey,
+                                                          FreeTypeIntegration.Font font,
+                                                          CgMsdfAtlasKey atlasKey) {
+        if (generatedThisFrame >= MAX_PER_FRAME) {
             return null;
         }
-        shape.normalize();
-        applyEdgeColoring(shape, config);
-
-        int targetPx = config.getAtlasScalePx();
-        double[] bounds = shape.getBounds();
-        double shapeL = bounds[0];
-        double shapeB = bounds[1];
-        double shapeR = bounds[2];
-        double shapeT = bounds[3];
-
-        // Compute per-glyph box dimensions using upstream-parity layout math
-        CgMsdfGlyphLayout layout = CgMsdfGlyphLayout.compute(
-                shapeL, shapeB, shapeR, shapeT,
-                targetPx,
-                config.getPxRange(),
-                config.getMiterLimit(),
-                config.isAlignOriginX(),
-                config.isAlignOriginY());
-
-        if (layout.isEmpty()) {
-            return null;
-        }
-
-        int boxWidth = layout.getBoxWidth();
-        int boxHeight = layout.getBoxHeight();
-        double scale = layout.getScale();
-        double tx = layout.getTranslateX();
-        double ty = layout.getTranslateY();
-        double rangeInShapeUnits = layout.getRangeInShapeUnits();
-
-        Transform transform = new Transform()
-                .scale(scale)
-                .translate(tx, ty)
-                .range(-rangeInShapeUnits, rangeInShapeUnits);
-
-        int channels = config.isMtsdf() ? 4 : 3;
-        Bitmap bitmap = config.isMtsdf()
-                ? Bitmap.allocMtsdf(boxWidth, boxHeight)
-                : Bitmap.allocMsdf(boxWidth, boxHeight);
-        try {
-            if (config.isMtsdf()) {
-                Generator.generateMtsdf(bitmap, shape, transform,
-                        config.isOverlapSupport(),
-                        config.getErrorCorrectionMode(),
-                        config.getDistanceCheckMode(),
-                        config.getMinDeviationRatio(),
-                        config.getMinImproveRatio());
-            } else {
-                Generator.generateMsdf(bitmap, shape, transform,
-                        config.isOverlapSupport(),
-                        config.getErrorCorrectionMode(),
-                        config.getDistanceCheckMode(),
-                        config.getMinDeviationRatio(),
-                        config.getMinImproveRatio());
-            }
-
-            float[] pixelData = bitmap.getPixelData();
-            flipRows(pixelData, boxWidth, boxHeight, channels);
-
-            // Derive bearing and metrics from the layout's plane bounds.
-            // bearingX = planeLeft * scale (plane bounds are in EM, convert to px)
-            // bearingY = planeTop * scale (above baseline, positive)
-            // The paged atlas page will use these to build CgGlyphPlacement
-            // with correct plane bounds for the renderer.
-            float bearingX = (float) (layout.getPlaneLeft() * scale);
-            float bearingY = (float) (layout.getPlaneTop() * scale);
-            float metricsWidth = (float) ((shapeR - shapeL) * scale);
-            float metricsHeight = (float) ((shapeT - shapeB) * scale);
-
-            CgGlyphPlacement placement = pagedAtlas.allocateMsdf(
-                    key, pixelData, boxWidth, boxHeight,
-                    bearingX, bearingY, metricsWidth, metricsHeight,
-                    config.getPxRange(), currentFrame);
+        CgGlyphGenerationResult result = preparePagedGlyph(
+                key,
+                sourceFontKey,
+                font,
+                atlasKey,
+                atlasKey.getConfig());
+        if (result != null && !result.isEmptyGeometry()) {
             generatedThisFrame++;
-            return placement;
-        } finally {
-            bitmap.free();
         }
+        return result;
     }
 
     static CgGlyphGenerationResult preparePagedGlyph(CgGlyphKey key,
@@ -358,8 +294,7 @@ public class CgMsdfGenerator {
         if (shape.getEdgeCount() == 0) {
             return CgGlyphGenerationResult.emptyMsdf(sourceFontKey, key, atlasKey, config.getPxRange());
         }
-        shape.normalize();
-        applyEdgeColoring(shape, config);
+        prepareShapeForMsdf(shape, key.getGlyphId(), config);
 
         int targetPx = config.getAtlasScalePx();
         double[] bounds = shape.getBounds();
@@ -421,18 +356,8 @@ public class CgMsdfGenerator {
             float metricsWidth = (float) ((shapeR - shapeL) * scale);
             float metricsHeight = (float) ((shapeT - shapeB) * scale);
 
-            return CgGlyphGenerationResult.msdf(
-                    sourceFontKey,
-                    key,
-                    atlasKey,
-                    pixelData,
-                    boxWidth,
-                    boxHeight,
-                    bearingX,
-                    bearingY,
-                    metricsWidth,
-                    metricsHeight,
-                    config.getPxRange());
+            return CgGlyphGenerationResult.msdf(sourceFontKey, key, atlasKey, pixelData, boxWidth, boxHeight,
+                    bearingX, bearingY, metricsWidth, metricsHeight, config.getPxRange());
         } finally {
             bitmap.free();
         }
@@ -474,6 +399,17 @@ public class CgMsdfGenerator {
             return;
         }
         shape.edgeColoringSimple(threshold);
+    }
+
+    private static void prepareShapeForMsdf(Shape shape, int glyphId, CgMsdfAtlasConfig config) {
+        shape.normalize();
+        shape.orientContours();
+        if (!shape.validate()) {
+            LOGGER.log(Level.FINE,
+                    "MSDF shape validation failed for glyph {0}; continuing with normalized/oriented shape",
+                    Integer.valueOf(glyphId));
+        }
+        applyEdgeColoring(shape, config);
     }
 
     /**
