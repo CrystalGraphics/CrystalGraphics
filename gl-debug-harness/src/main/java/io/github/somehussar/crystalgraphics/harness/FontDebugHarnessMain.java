@@ -180,6 +180,7 @@ public final class FontDebugHarnessMain {
         System.out.println("  --text=<string>                  Test string");
         System.out.println("  --font-size-px=<n>               Font size in px (default: 32)");
         System.out.println("  --gui-scale=<n>                  Simulated MC GUI scale factor (default: 1)");
+        System.out.println("  --mtsdf=<true|false>             Force MTSDF runtime rendering for distance-field text (default: false)");
         System.out.println();
         System.out.println("Atlas options (atlas-dump mode):");
         System.out.println("  --atlas-type=<bitmap|msdf|mtsdf|both>  Atlas type (default: both)");

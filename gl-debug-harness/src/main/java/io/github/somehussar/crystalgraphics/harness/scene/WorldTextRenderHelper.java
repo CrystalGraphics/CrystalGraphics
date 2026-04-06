@@ -9,6 +9,7 @@ import io.github.somehussar.crystalgraphics.gl.text.CgFontRegistry;
 import io.github.somehussar.crystalgraphics.gl.text.CgTextRenderContext;
 import io.github.somehussar.crystalgraphics.gl.text.CgTextRenderer;
 import io.github.somehussar.crystalgraphics.gl.text.CgWorldTextRenderContext;
+import io.github.somehussar.crystalgraphics.gl.text.msdf.CgMsdfAtlasConfig;
 import io.github.somehussar.crystalgraphics.harness.util.HarnessFontUtil;
 import io.github.somehussar.crystalgraphics.harness.util.HarnessProjectionUtil;
 import io.github.somehussar.crystalgraphics.text.CgTextLayout;
@@ -61,6 +62,8 @@ public final class WorldTextRenderHelper {
     private final String text;
     private final int layoutWidth;
     private final int layoutHeight;
+    private final int atlasSize;
+    private final boolean mtsdf;
 
     // ── GL resources (created in init(), destroyed in dispose()) ──
     private CgCapabilities caps;
@@ -80,12 +83,15 @@ public final class WorldTextRenderHelper {
      * @param layoutHeight layout height in pixels (used for ortho context)
      */
     public WorldTextRenderHelper(String fontPath, int fontSizePx, String text,
-                                  int layoutWidth, int layoutHeight) {
+                                  int layoutWidth, int layoutHeight,
+                                  int atlasSize, boolean mtsdf) {
         this.fontPath = fontPath;
         this.fontSizePx = fontSizePx;
         this.text = text;
         this.layoutWidth = layoutWidth;
         this.layoutHeight = layoutHeight;
+        this.atlasSize = atlasSize;
+        this.mtsdf = mtsdf;
     }
 
     /**
@@ -105,19 +111,24 @@ public final class WorldTextRenderHelper {
         }
 
         font = CgFont.load(fontPath, CgFontStyle.REGULAR, fontSizePx);
-        registry = new CgFontRegistry();
+        CgMsdfAtlasConfig atlasConfig = CgMsdfAtlasConfig.defaultConfig()
+                .withPageSize(atlasSize)
+                .withMtsdf(mtsdf);
+        registry = new CgFontRegistry(atlasSize, atlasConfig);
         renderer = CgTextRenderer.create(caps, registry);
 
         CgTextLayoutBuilder layoutBuilder = new CgTextLayoutBuilder();
         worldLayout = layoutBuilder.layout(
-                text + " [world-3D, " + fontSizePx + "px, always MSDF]",
+                text + " [world-3D, " + fontSizePx + "px, " + (mtsdf ? "MTSDF" : "MSDF") + "]",
                 font, (float) layoutWidth, 0);
         refLayout = layoutBuilder.layout(
                 "2D reference [" + fontSizePx + "px, ortho]",
                 font, (float) layoutWidth, 0);
 
         LOGGER.info("[WorldTextRenderHelper] Initialized: font=" + fontPath
-                + ", size=" + fontSizePx + "px");
+                + ", size=" + fontSizePx + "px"
+                + ", atlasSize=" + atlasSize
+                + ", mtsdf=" + mtsdf);
     }
 
     /**

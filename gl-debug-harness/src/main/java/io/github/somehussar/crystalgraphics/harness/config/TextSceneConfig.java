@@ -1,5 +1,7 @@
 package io.github.somehussar.crystalgraphics.harness.config;
 
+import io.github.somehussar.crystalgraphics.gl.text.msdf.CgMsdfAtlasConfig;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -17,6 +19,7 @@ public class TextSceneConfig extends HarnessConfig {
     private int guiScale = 1;
     private List<Float> scales = new ArrayList<Float>();
     private String outputFilename = null;
+    private boolean mtsdf = CgMsdfAtlasConfig.DEFAULT_MTSDF;
 
     public String getText() { return text; }
     public int getAtlasSize() { return atlasSize; }
@@ -25,6 +28,11 @@ public class TextSceneConfig extends HarnessConfig {
     public float getPoseScale() { return poseScale; }
     public int getGuiScale() { return guiScale; }
     public String getOutputFilename() { return outputFilename; }
+    public boolean isMtsdf() { return mtsdf; }
+
+    public CgMsdfAtlasConfig buildMsdfAtlasConfig() {
+        return CgMsdfAtlasConfig.defaultConfig().withPageSize(atlasSize).withMtsdf(mtsdf);
+    }
 
     /**
      * Returns the list of scales for multi-scale comparison rendering.
@@ -55,6 +63,10 @@ public class TextSceneConfig extends HarnessConfig {
         String as = System.getProperty("harness.atlas.size");
         if (as != null && !as.isEmpty()) {
             this.atlasSize = parseIntStrict(as, "harness.atlas.size");
+        }
+        String mtsdfProp = System.getProperty("harness.mtsdf");
+        if (mtsdfProp != null && !mtsdfProp.isEmpty()) {
+            this.mtsdf = "true".equalsIgnoreCase(mtsdfProp);
         }
     }
 
@@ -87,6 +99,9 @@ public class TextSceneConfig extends HarnessConfig {
             if (this.guiScale < 1) {
                 throw new IllegalArgumentException("--gui-scale must be >= 1, got: " + this.guiScale);
             }
+        }
+        if (args.containsKey("mtsdf")) {
+            this.mtsdf = "true".equalsIgnoreCase(args.get("mtsdf"));
         }
     }
 

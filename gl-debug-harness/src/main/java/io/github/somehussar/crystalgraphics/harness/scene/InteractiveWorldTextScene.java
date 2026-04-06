@@ -79,10 +79,12 @@ public class InteractiveWorldTextScene implements InteractiveSceneLifecycle {
         int layoutHeight = config.getHeight();
 
         LOGGER.info("[Harness] World text scene (interactive): font=" + fontPath);
-        LOGGER.info("[Harness] World text scene (interactive): size=" + fontSizePx + "px");
+        LOGGER.info("[Harness] World text scene (interactive): size=" + fontSizePx + "px"
+                + ", mtsdf=" + config.isMtsdf());
 
         // Initialize the shared render helper (validates GL caps, loads font, builds layouts)
-        helper = new WorldTextRenderHelper(fontPath, fontSizePx, text, layoutWidth, layoutHeight);
+        helper = new WorldTextRenderHelper(fontPath, fontSizePx, text, layoutWidth, layoutHeight,
+                config.getAtlasSize(), config.isMtsdf());
         helper.init();
 
         camera.moveCamera(MOTION_CAM_X, MOTION_CAM_Y, MOTION_CAM_Z);
