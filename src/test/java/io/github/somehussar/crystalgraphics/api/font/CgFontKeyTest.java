@@ -130,6 +130,68 @@ public class CgFontKeyTest {
         assertEquals(key.getStyle(), resized.getStyle());
     }
 
+    @Test
+    public void testUnsizedFontCanCreateCachedSizedVariants() {
+        byte[] bytes = loadTestFontBytes();
+        CgFont base = CgFont.load(bytes, "test-font", CgFontStyle.REGULAR);
+        try {
+            assertFalse(base.isSizeBound());
+
+            CgFont sized24 = base.atSize(24);
+            CgFont sized24Again = base.atSize(24);
+            CgFont sized32 = base.atSize(32);
+
+            assertTrue(sized24.isSizeBound());
+            assertSame("atSize should cache per target px", sized24, sized24Again);
+            assertNotSame("different sizes should yield different variants", sized24, sized32);
+            assertEquals(24, sized24.getTargetPx());
+            assertEquals(32, sized32.getTargetPx());
+            assertEquals("test-font", sized24.getKey().getFontPath());
+        } finally {
+            base.dispose();
+        }
+    }
+
+    @Test
+    public void testSizedFontAlsoCachesDerivedSizes() {
+        byte[] bytes = loadTestFontBytes();
+        CgFont sizedRoot = CgFont.load(bytes, "test-font", CgFontStyle.REGULAR, 16);
+        try {
+            CgFont derived36 = sizedRoot.atSize(36);
+            CgFont derived36Again = sizedRoot.atSize(36);
+            CgFont derived24 = sizedRoot.atSize(24);
+
+            assertSame("sized root should cache derived sizes too", derived36, derived36Again);
+            assertNotSame("different requested sizes should still be distinct", derived36, derived24);
+            assertEquals(36, derived36.getTargetPx());
+            assertEquals(24, derived24.getTargetPx());
+        } finally {
+            sizedRoot.dispose();
+        }
+    }
+
+    @Test
+    public void testDisposingRootAlsoDisposesCachedDerivedSizes() {
+        byte[] bytes = loadTestFontBytes();
+        CgFont sizedRoot = CgFont.load(bytes, "test-font", CgFontStyle.REGULAR, 16);
+        CgFont derived36 = sizedRoot.atSize(36);
+
+        sizedRoot.dispose();
+
+        assertTrue("disposing root must dispose cached derived variants", derived36.isDisposed());
+    }
+
+    @Test(expected = IllegalStateException.class)
+    public void testUnsizedFontRejectsDirectKeyAccess() {
+        byte[] bytes = loadTestFontBytes();
+        CgFont base = CgFont.load(bytes, "test-font", CgFontStyle.REGULAR);
+        try {
+            base.getKey();
+        } finally {
+            base.dispose();
+        }
+    }
+
     /**
      * CgFontKey toString contains field values.
      */
@@ -436,5 +498,26 @@ public class CgFontKeyTest {
 
         CgGlyphKey msdfKey = new CgGlyphKey(fontKey, 65, true);
         assertNull("MSDF key should not find bitmap entry", map.get(msdfKey));
+    }
+
+    private static byte[] loadTestFontBytes() {
+        java.io.InputStream in = CgFontKeyTest.class.getResourceAsStream("/assets/crystalgraphics/test-font.ttf");
+        assertNotNull("test font resource must exist", in);
+        try {
+            java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+            byte[] buffer = new byte[4096];
+            int read;
+            while ((read = in.read(buffer)) != -1) {
+                bos.write(buffer, 0, read);
+            }
+            return bos.toByteArray();
+        } catch (java.io.IOException e) {
+            throw new AssertionError("Failed to read test font resource", e);
+        } finally {
+            try {
+                in.close();
+            } catch (java.io.IOException ignored) {
+            }
+        }
     }
 }
