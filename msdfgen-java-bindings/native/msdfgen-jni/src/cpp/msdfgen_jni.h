@@ -80,6 +80,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nGenerateMtsdfWithConfig(JNIE
 JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nErrorCorrection(JNIEnv*, jclass, jlong, jint, jint, jint, jlong, jdouble, jdouble, jdouble, jdouble, jdouble, jdouble, jint, jint, jdouble, jdouble);
 JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nErrorCorrectionFastDistance(JNIEnv*, jclass, jlong, jint, jint, jint, jdouble, jdouble, jdouble, jdouble, jdouble, jdouble, jdouble);
 JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nErrorCorrectionFastEdge(JNIEnv*, jclass, jlong, jint, jint, jint, jdouble, jdouble, jdouble);
+JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nDistanceSignCorrection(JNIEnv*, jclass, jlong, jint, jint, jint, jlong, jdouble, jdouble, jdouble, jdouble, jdouble, jdouble, jint);
 
 // Render SDF
 JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nRenderSdf(JNIEnv*, jclass, jlong, jint, jint, jint, jlong, jint, jint, jint, jdouble, jdouble, jfloat);

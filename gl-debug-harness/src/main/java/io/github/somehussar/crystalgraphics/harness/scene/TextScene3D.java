@@ -1,6 +1,7 @@
 package io.github.somehussar.crystalgraphics.harness.scene;
 
 import io.github.somehussar.crystalgraphics.api.PoseStack;
+import io.github.somehussar.crystalgraphics.gl.text.CgTextRenderer;
 import io.github.somehussar.crystalgraphics.harness.FrameInfo;
 import io.github.somehussar.crystalgraphics.harness.InteractiveSceneLifecycle;
 import io.github.somehussar.crystalgraphics.harness.camera.Camera3D;
@@ -52,6 +53,18 @@ public class TextScene3D implements InteractiveSceneLifecycle {
     private static final Logger LOGGER = Logger.getLogger(TextScene3D.class.getName());
     
     private static final double MTSDF_PREWARM_SECONDS = 3.0;
+    private static final float[][] INVESTIGATION_CAPTURES = new float[][] {
+            {-0.78f, 0.16f, -4.85f, 359.85f, 0.15f},
+            {-0.75f, 0.16f, -4.97f, 3.60f, -2.20f},
+            {-0.83f, 0.16f, -4.97f, 4.95f, -4.65f},
+            {-0.47f, 0.13f, -4.95f, 357.85f, -1.65f}
+    };
+    private static final String[] INVESTIGATION_CAPTURE_NAMES = new String[] {
+            "ar-join-notch-overview",
+            "ar-join-notch-zoom-a",
+            "ar-join-notch-zoom-b",
+            "bracket-corner-rounding"
+    };
 
     // ── Interactive mode state ──
     private boolean running = true;
@@ -80,6 +93,7 @@ public class TextScene3D implements InteractiveSceneLifecycle {
         LOGGER.info("[Harness] World text scene (interactive): font=" + fontPath);
         LOGGER.info("[Harness] World text scene (interactive): size=" + fontSizePx + "px"
                 + ", mtsdf=" + config.isMtsdf());
+        CgTextRenderer.diagnosticLogging = true;
 
         // Initialize the shared render helper (validates GL caps, loads font, builds layouts)
         helper = new WorldTextRenderHelper(fontPath, fontSizePx, text, layoutWidth, layoutHeight,
@@ -120,26 +134,20 @@ public class TextScene3D implements InteractiveSceneLifecycle {
         ValidationChoreographer choreographer = new ValidationChoreographer(
                 camera, scheduler, artifacts, runtime);
 
-        double captureTime = MTSDF_PREWARM_SECONDS;
-        choreographer.addStep(ValidationCaptureStep.builder("step-1", captureTime + 0.5)
-                .cameraPosition(0, 0, 0)
-                .cameraOrientation(335.0f, 0)
-                .build());
-
-        choreographer.addStep(ValidationCaptureStep.builder("step-2", captureTime + 1.0)
-                .cameraPosition(0, 0, 0)
-                .cameraOrientation(336.0f, 0)
-                .build());
-
-        choreographer.addStep(ValidationCaptureStep.builder("step-3", captureTime + 1.5)
-                .cameraPosition(0, 0, 0)
-                .cameraOrientation(337.0f, 0)
-                .build());
+        double captureTime = MTSDF_PREWARM_SECONDS + 0.5;
+        for (int i = 0; i < INVESTIGATION_CAPTURES.length; i++) {
+            float[] capture = INVESTIGATION_CAPTURES[i];
+            choreographer.addStep(ValidationCaptureStep.builder(INVESTIGATION_CAPTURE_NAMES[i], captureTime)
+                    .cameraPosition(capture[0], capture[1], capture[2])
+                    .cameraOrientation(capture[3], capture[4])
+                    .build());
+            captureTime += 0.5;
+        }
 
    
         choreographer.onShutdown(() -> {
             LOGGER.info("[InteractiveWorldTextScene] All screenshots captured.");
-               // running = false;
+//                running = false;
         });
         choreographer.scheduleAll();
     }
@@ -186,6 +194,7 @@ public class TextScene3D implements InteractiveSceneLifecycle {
 
     @Override
     public void dispose() {
+        CgTextRenderer.diagnosticLogging = false;
         if (helper != null) {
             helper.dispose();
         }

@@ -154,6 +154,17 @@ public final class Generator {
         errorCorrectionFastEdge(bitmap, transform, MsdfConstants.DEFAULT_MIN_DEVIATION_RATIO);
     }
 
+    public static void distanceSignCorrection(Bitmap bitmap, Shape shape, Transform transform, int fillRule) {
+        MsdfResult.check(MsdfNative.nDistanceSignCorrection(
+            bitmap.getNativeHandle(), bitmap.getType(), bitmap.getWidth(), bitmap.getHeight(),
+            shape.getNativeHandle(),
+            transform.getScaleX(), transform.getScaleY(),
+            transform.getTranslateX(), transform.getTranslateY(),
+            transform.getRangeLower(), transform.getRangeUpper(),
+            fillRule
+        ));
+    }
+
     public static void renderSdf(Bitmap output, Bitmap sdf, Transform transform, float sdThreshold) {
         MsdfResult.check(MsdfNative.nRenderSdf(
             output.getNativeHandle(), output.getType(), output.getWidth(), output.getHeight(),
