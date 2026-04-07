@@ -443,15 +443,26 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
             }
         }
 
-    private static final class Sampler2DOp implements BindingOp {
-        final String name;
-        final int unit;
-        final ResourceLocation texture;
+    private record JomlMat3Op(String name, Matrix3f matrix) implements BindingOp {
 
-        Sampler2DOp(String name, int unit, ResourceLocation texture) {
-            this.name = name;
-            this.unit = unit;
-            this.texture = texture;
+        @Override
+            public void execute(CgShader shader, CgShaderProgram program, CgShaderBindingsImpl patch) {
+                int loc = patch.resolveLocation(shader, this.name);
+                if (loc >= 0) {
+                    program.setUniformMatrix3f(loc, this.matrix);
+                }
+            }
+        }
+
+    private record JomlMat4Op(String name, Matrix4f matrix) implements BindingOp {
+
+        @Override
+            public void execute(CgShader shader, CgShaderProgram program, CgShaderBindingsImpl patch) {
+                int loc = patch.resolveLocation(shader, this.name);
+                if (loc >= 0) {
+                    program.setUniformMatrix4f(loc, this.matrix);
+                }
+            }
         }
 
     private record Sampler2DOp(String name, int unit, ResourceLocation texture) implements BindingOp {
