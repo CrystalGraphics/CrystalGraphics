@@ -1,9 +1,6 @@
 package io.github.somehussar.crystalgraphics.text.render;
 
 import org.joml.Matrix4f;
-import org.lwjgl.BufferUtils;
-
-import java.nio.FloatBuffer;
 
 /**
  * Render context for 3D world-space text.
@@ -45,13 +42,11 @@ public class CgWorldTextRenderContext extends CgTextRenderContext {
      * Creates a world-text render context with the given projection matrix
      * and viewport dimensions.
      *
-     * @param projection     4x4 projection matrix in column-major order
+     * @param projection     projection matrix
      * @param viewportWidth  viewport width in pixels
      * @param viewportHeight viewport height in pixels
      */
-    public CgWorldTextRenderContext(FloatBuffer projection,
-                                    int viewportWidth,
-                                    int viewportHeight) {
+    public CgWorldTextRenderContext(Matrix4f projection, int viewportWidth, int viewportHeight) {
         super(projection, new PerspectiveScaleResolver());
         this.worldResolver = (PerspectiveScaleResolver) getScaleResolver();
         this.viewportWidth = viewportWidth;
@@ -67,13 +62,8 @@ public class CgWorldTextRenderContext extends CgTextRenderContext {
      * @param viewportHeight viewport height in pixels
      * @return a new world-text render context
      */
-    public static CgWorldTextRenderContext create(Matrix4f projection,
-                                                   int viewportWidth,
-                                                   int viewportHeight) {
-        FloatBuffer buf = BufferUtils.createFloatBuffer(16);
-        projection.get(buf);
-        buf.rewind();
-        return new CgWorldTextRenderContext(buf, viewportWidth, viewportHeight);
+    public static CgWorldTextRenderContext create(Matrix4f projection, int viewportWidth, int viewportHeight) {
+        return new CgWorldTextRenderContext(projection, viewportWidth, viewportHeight);
     }
 
     /**
@@ -104,10 +94,7 @@ public class CgWorldTextRenderContext extends CgTextRenderContext {
      * @param viewportHeight new viewport height
      */
     public void updateProjection(Matrix4f projection, int viewportWidth, int viewportHeight) {
-        FloatBuffer buf = getProjectionBuffer();
-        buf.clear();
-        projection.get(buf);
-        buf.rewind();
+        projection.set(projection);
         this.viewportWidth = viewportWidth;
         this.viewportHeight = viewportHeight;
     }
