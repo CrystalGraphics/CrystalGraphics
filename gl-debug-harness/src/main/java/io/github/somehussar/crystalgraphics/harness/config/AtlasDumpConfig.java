@@ -1,8 +1,8 @@
 package io.github.somehussar.crystalgraphics.harness.config;
 
-import io.github.somehussar.crystalgraphics.gl.text.msdf.CgMsdfAtlasConfig;
-import io.github.somehussar.crystalgraphics.gl.text.msdf.CgMsdfEdgeColoringMode;
-import io.github.somehussar.crystalgraphics.gl.text.msdf.CgMsdfVerificationConfig;
+import io.github.somehussar.crystalgraphics.text.msdf.CgMsdfAtlasConfig;
+import io.github.somehussar.crystalgraphics.text.msdf.CgMsdfEdgeColoringMode;
+import io.github.somehussar.crystalgraphics.text.msdf.CgMsdfVerificationConfig;
 
 import java.util.Map;
 import java.util.stream.Collectors;

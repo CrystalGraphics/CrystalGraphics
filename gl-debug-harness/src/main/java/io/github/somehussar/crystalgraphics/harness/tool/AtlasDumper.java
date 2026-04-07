@@ -2,8 +2,8 @@ package io.github.somehussar.crystalgraphics.harness.tool;
 
 import io.github.somehussar.crystalgraphics.api.font.CgGlyphKey;
 import io.github.somehussar.crystalgraphics.api.font.CgGlyphPlacement;
-import io.github.somehussar.crystalgraphics.gl.text.CgGlyphAtlas;
-import io.github.somehussar.crystalgraphics.gl.text.atlas.CgGlyphAtlasPage;
+import io.github.somehussar.crystalgraphics.text.atlas.CgGlyphAtlas;
+import io.github.somehussar.crystalgraphics.text.atlas.CgGlyphAtlasPage;
 import io.github.somehussar.crystalgraphics.harness.util.ScreenshotUtil;
 
 import java.io.File;

@@ -1,5 +1,8 @@
 package io.github.somehussar.crystalgraphics.text.atlas;
 
+import io.github.somehussar.crystalgraphics.text.atlas.packing.CgGuillotinePacker;
+import io.github.somehussar.crystalgraphics.text.atlas.packing.CgPackingStrategy;
+import io.github.somehussar.crystalgraphics.text.atlas.packing.PackedRect;
 import org.junit.Test;
 
 import java.util.ArrayList;

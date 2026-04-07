@@ -4,8 +4,9 @@ import io.github.somehussar.crystalgraphics.api.font.CgFontKey;
 import io.github.somehussar.crystalgraphics.api.font.CgFontStyle;
 import io.github.somehussar.crystalgraphics.api.font.CgGlyphKey;
 import io.github.somehussar.crystalgraphics.api.font.CgGlyphPlacement;
-import io.github.somehussar.crystalgraphics.gl.text.CgGlyphAtlas;
+import io.github.somehussar.crystalgraphics.text.atlas.CgGlyphAtlas;
 
+import io.github.somehussar.crystalgraphics.text.atlas.CgPagedGlyphAtlas;
 import org.junit.Test;
 
 import static org.junit.Assert.*;
@@ -116,7 +117,9 @@ public class CgPagedGlyphAtlasTest {
 
         CgGlyphPlacement p = atlas.allocateMsdf(
                 msdfKey(1), dummyMsdf(32, 32), 32, 32,
-                -5.0f, 28.0f, 20.0f, 25.0f, 4.0f, 1);
+                -5.0f, 28.0f,
+                -5.0f, 28.0f - 32.0f, -5.0f + 32.0f, 28.0f,
+                20.0f, 25.0f, 4.0f, 1);
 
         assertNotNull(p);
         assertEquals(4.0f, p.getPxRange(), 0.001f);
@@ -208,7 +211,9 @@ public class CgPagedGlyphAtlasTest {
 
         CgGlyphPlacement p = atlas.allocateMsdf(
                 msdfKey(1), dummyMsdf(36, 42), 36, 42,
-                -5.0f, 35.0f, 28.0f, 32.0f, 4.0f, 1);
+                -5.0f, 35.0f,
+                -5.0f, 35.0f - 42.0f, -5.0f + 36.0f, 35.0f,
+                28.0f, 32.0f, 4.0f, 1);
 
         assertNotNull(p);
         // For MSDF: plane bounds use full box size (includes SDF range border)
