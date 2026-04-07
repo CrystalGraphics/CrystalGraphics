@@ -1,5 +1,8 @@
 package io.github.somehussar.crystalgraphics.api.shader;
 
+import org.joml.Matrix3f;
+import org.joml.Matrix4f;
+
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 
@@ -238,7 +241,39 @@ public interface CgShaderProgram {
      * @param buffer   a direct FloatBuffer with 16 elements in column-major order
      */
     void setUniformMatrix4f(int location, FloatBuffer buffer);
-    
+
+    /**
+     * Uploads a 3×3 float matrix uniform from a JOML {@link Matrix3f}.
+     *
+     * <p>The matrix is serialized to a direct {@link FloatBuffer} in
+     * <strong>column-major</strong> order internally, so callers do not need
+     * to perform manual buffer conversion.  Implementations use a
+     * thread-local buffer to avoid per-call allocation.</p>
+     *
+     * <p>If {@code location} is {@code -1} (uniform not found / optimized out),
+     * implementations return immediately without issuing a GL call.</p>
+     *
+     * @param location the uniform location, or -1 to no-op
+     * @param matrix   the JOML 3×3 matrix to upload (column-major)
+     */
+    void setUniformMatrix3f(int location, Matrix3f matrix);
+
+    /**
+     * Uploads a 4×4 float matrix uniform from a JOML {@link Matrix4f}.
+     *
+     * <p>The matrix is serialized to a direct {@link FloatBuffer} in
+     * <strong>column-major</strong> order internally, so callers do not need
+     * to perform manual buffer conversion.  Implementations use a
+     * thread-local buffer to avoid per-call allocation.</p>
+     *
+     * <p>If {@code location} is {@code -1} (uniform not found / optimized out),
+     * implementations return immediately without issuing a GL call.</p>
+     *
+     * @param location the uniform location, or -1 to no-op
+     * @param matrix   the JOML 4×4 matrix to upload (column-major)
+     */
+    void setUniformMatrix4f(int location, Matrix4f matrix);
+
     /**
      * Binds a texture unit to a sampler uniform.
      *
