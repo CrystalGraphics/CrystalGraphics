@@ -8,6 +8,7 @@
 #include "core/generator-config.h"
 #include "core/msdf-error-correction.h"
 #include "core/render-sdf.h"
+#include "core/ShapeDistanceFinder.h"
 #include <cstring>
 #include <vector>
 
@@ -265,18 +266,7 @@ JNIEXPORT jdouble JNICALL Java_com_msdfgen_MsdfNative_nShapeOneShotDistance(
     Shape* shape = reinterpret_cast<Shape*>(shapePtr);
     if (!shape) return 0.0;
     Point2 origin(originX, originY);
-    double minDist = 1e240;
-    for (size_t i = 0; i < shape->contours.size(); i++) {
-        const Contour& contour = shape->contours[i];
-        for (size_t j = 0; j < contour.edges.size(); j++) {
-            double param;
-            SignedDistance dist = contour.edges[j]->signedDistance(origin, param);
-            if (fabs(dist.distance) < fabs(minDist)) {
-                minDist = dist.distance;
-            }
-        }
-    }
-    return minDist;
+    return SimpleTrueShapeDistanceFinder::oneShotDistance(*shape, origin);
 }
 
 JNIEXPORT void JNICALL Java_com_msdfgen_MsdfNative_nShapeFree(JNIEnv*, jclass, jlong shapePtr) {
@@ -706,6 +696,36 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nErrorCorrectionFastEdge(
         case 3: {
             Bitmap<float, 4>* bitmap = static_cast<Bitmap<float, 4>*>(bmp->data);
             msdfFastEdgeErrorCorrection(*bitmap, range, minDeviationRatio);
+            break;
+        }
+        default:
+            return MSDF_ERR_INVALID_ARG;
+    }
+    return MSDF_SUCCESS;
+}
+
+JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nDistanceSignCorrection(
+    JNIEnv*, jclass, jlong bitmapHandle, jint bitmapType, jint, jint,
+    jlong shapePtr, jdouble scaleX, jdouble scaleY,
+    jdouble translateX, jdouble translateY, jdouble rangeLower, jdouble rangeUpper,
+    jint fillRule) {
+    JniBitmapWrapper* bmp = reinterpret_cast<JniBitmapWrapper*>(bitmapHandle);
+    Shape* shape = reinterpret_cast<Shape*>(shapePtr);
+    if (!bmp || !shape) return MSDF_ERR_INVALID_ARG;
+
+    Projection projection(Vector2(scaleX, scaleY), Vector2(translateX, translateY));
+    Range range(rangeLower, rangeUpper);
+    FillRule rule = fillRule != 0 ? FILL_NONZERO : FILL_ODD;
+
+    switch (bitmapType) {
+        case 2: {
+            Bitmap<float, 3>* bitmap = static_cast<Bitmap<float, 3>*>(bmp->data);
+            distanceSignCorrection(*bitmap, *shape, projection, .5f, rule);
+            break;
+        }
+        case 3: {
+            Bitmap<float, 4>* bitmap = static_cast<Bitmap<float, 4>*>(bmp->data);
+            distanceSignCorrection(*bitmap, *shape, projection, .5f, rule);
             break;
         }
         default:
