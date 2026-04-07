@@ -72,7 +72,8 @@ public final class CgShaderManagerImpl implements CgShaderManager {
         
         CgShaderImpl shader = new CgShaderImpl(vertexLocation, fragmentLocation, safeDefines, caps);
         cache.put(key, shader);
-
+        shader.recompile(); 
+        
         LOGGER.debug("Registered managed shader: {}", key);
         return shader;
     }

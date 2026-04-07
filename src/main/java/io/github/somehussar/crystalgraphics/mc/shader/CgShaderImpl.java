@@ -312,7 +312,7 @@ final class CgShaderImpl implements CgShader {
         ephemeralBindings.clear();
     }
 
-    private void recompile() {
+    protected void recompile() {
         this.dirty = false;
 
         String vertex;
