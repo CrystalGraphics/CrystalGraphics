@@ -29,12 +29,8 @@ import java.util.logging.Logger;
  * bitmap fallback path.</p>
  *
  * <h3>Coordinate Convention</h3>
- * <p>Glyphs are loaded with {@code FONT_SCALING_EM_NORMALIZED}: shape
- * coordinates are in EM units (1.0 = 1 em). A <strong>uniform</strong>
- * scale equal to {@code targetPx} is applied so that one cell pixel maps
- * to one screen pixel, and all glyphs at the same font size share the same
- * scale. This avoids the per-glyph autoFrame scaling that would make every
- * glyph fill the cell and appear the same size.</p>
+ * <p>Glyphs are loaded with EM-normalized coordinates and then mapped into atlas
+ * pixels using explicit layout math.</p>
  *
  * <h3>Error Correction</h3>
  * <p>MSDF generation uses {@code ERROR_CORRECTION_DISABLED} because the
@@ -248,6 +244,10 @@ public class CgMsdfGenerator {
                 prepared.getHeight(),
                 prepared.getBearingX(),
                 prepared.getBearingY(),
+                prepared.getPlaneLeft(),
+                prepared.getPlaneBottom(),
+                prepared.getPlaneRight(),
+                prepared.getPlaneTop(),
                 prepared.getMetricsWidth(),
                 prepared.getMetricsHeight(),
                 prepared.getPxRange(),
@@ -298,6 +298,10 @@ public class CgMsdfGenerator {
 
         int targetPx = config.getAtlasScalePx();
         double[] bounds = shape.getBounds();
+        if (config.getMiterLimit() > 0.0f) {
+            double border = (config.getPxRange() * 0.5) / targetPx;
+            bounds = shape.getBoundsMiters(bounds, border, config.getMiterLimit(), 1);
+        }
         double shapeL = bounds[0];
         double shapeB = bounds[1];
         double shapeR = bounds[2];
@@ -322,15 +326,13 @@ public class CgMsdfGenerator {
         double ty = layout.getTranslateY();
         double rangeInShapeUnits = layout.getRangeInShapeUnits();
 
+        Bitmap bitmap = config.isMtsdf()
+                ? Bitmap.allocMtsdf(boxWidth, boxHeight)
+                : Bitmap.allocMsdf(boxWidth, boxHeight);
         Transform transform = new Transform()
                 .scale(scale)
                 .translate(tx, ty)
                 .range(-rangeInShapeUnits, rangeInShapeUnits);
-
-        int channels = config.isMtsdf() ? 4 : 3;
-        Bitmap bitmap = config.isMtsdf()
-                ? Bitmap.allocMtsdf(boxWidth, boxHeight)
-                : Bitmap.allocMsdf(boxWidth, boxHeight);
         try {
             if (config.isMtsdf()) {
                 Generator.generateMtsdf(bitmap, shape, transform,
@@ -349,15 +351,22 @@ public class CgMsdfGenerator {
             }
 
             float[] pixelData = bitmap.getPixelData();
+            int channels = config.isMtsdf() ? 4 : 3;
             flipRows(pixelData, boxWidth, boxHeight, channels);
 
             float bearingX = (float) (layout.getPlaneLeft() * scale);
             float bearingY = (float) (layout.getPlaneTop() * scale);
+            float planeLeft = (float) (layout.getPlaneLeft() * scale);
+            float planeBottom = (float) (layout.getPlaneBottom() * scale);
+            float planeRight = (float) (layout.getPlaneRight() * scale);
+            float planeTop = (float) (layout.getPlaneTop() * scale);
             float metricsWidth = (float) ((shapeR - shapeL) * scale);
             float metricsHeight = (float) ((shapeT - shapeB) * scale);
 
             return CgGlyphGenerationResult.msdf(sourceFontKey, key, atlasKey, pixelData, boxWidth, boxHeight,
-                    bearingX, bearingY, metricsWidth, metricsHeight, config.getPxRange());
+                    bearingX, bearingY,
+                    planeLeft, planeBottom, planeRight, planeTop,
+                    metricsWidth, metricsHeight, config.getPxRange());
         } finally {
             bitmap.free();
         }
@@ -403,10 +412,17 @@ public class CgMsdfGenerator {
 
     private static void prepareShapeForMsdf(Shape shape, int glyphId, CgMsdfAtlasConfig config) {
         shape.normalize();
-        shape.orientContours();
+        double[] bounds = shape.getBounds();
+        double outerX = bounds[0] - (bounds[2] - bounds[0]) - 1.0;
+        double outerY = bounds[1] - (bounds[3] - bounds[1]) - 1.0;
+        if (shape.getOneShotDistance(outerX, outerY) > 0.0) {
+            for (int i = 0; i < shape.getContourCount(); i++) {
+                shape.getContour(i).reverse();
+            }
+        }
         if (!shape.validate()) {
             LOGGER.log(Level.FINE,
-                    "MSDF shape validation failed for glyph {0}; continuing with normalized/oriented shape",
+                    "MSDF shape validation failed for glyph {0}; continuing with normalized shape",
                     Integer.valueOf(glyphId));
         }
         applyEdgeColoring(shape, config);

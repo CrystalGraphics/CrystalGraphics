@@ -1,10 +1,13 @@
 package io.github.somehussar.crystalgraphics.harness.scene;
 
 import com.msdfgen.FreeTypeIntegration;
+import com.msdfgen.MsdfException;
+import com.msdfgen.Shape;
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
 import io.github.somehussar.crystalgraphics.api.PoseStack;
 import io.github.somehussar.crystalgraphics.api.font.CgFont;
 import io.github.somehussar.crystalgraphics.api.font.CgFontStyle;
+import io.github.somehussar.crystalgraphics.api.font.CgGlyphKey;
 import io.github.somehussar.crystalgraphics.api.font.CgTextLayoutBuilder;
 import io.github.somehussar.crystalgraphics.gl.text.CgFontRegistry;
 import io.github.somehussar.crystalgraphics.gl.text.CgGlyphAtlas;
@@ -13,6 +16,7 @@ import io.github.somehussar.crystalgraphics.gl.text.CgMsdfGenerator;
 import io.github.somehussar.crystalgraphics.gl.text.CgTextRenderContext;
 import io.github.somehussar.crystalgraphics.gl.text.CgTextRenderer;
 import io.github.somehussar.crystalgraphics.gl.text.msdf.CgMsdfAtlasConfig;
+import io.github.somehussar.crystalgraphics.gl.text.msdf.CgMsdfGlyphLayout;
 import io.github.somehussar.crystalgraphics.harness.FrameInfo;
 import io.github.somehussar.crystalgraphics.harness.HarnessSceneLifecycle;
 import io.github.somehussar.crystalgraphics.harness.config.AtlasDumpConfig;
@@ -29,7 +33,7 @@ import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
 
 import java.io.File;
-import java.util.List;
+import java.util.*;
 import java.util.logging.Logger;
 
 public class AtlasDumpScene implements HarnessSceneLifecycle {
@@ -58,7 +62,9 @@ public class AtlasDumpScene implements HarnessSceneLifecycle {
         String fontPath = HarnessFontUtil.resolveFontPath(config.getFontPath());
         int bitmapPxSize = config.getBitmapPxSize();
         int msdfPxSize = config.getMsdfPxSize();
-        int msdfAtlasScale = config.getMsdfAtlasScale();
+        int msdfAtlasScale = config.getMsdfAtlasScale() > 0
+                ? config.getMsdfAtlasScale()
+                : CgMsdfAtlasConfig.DEFAULT_ATLAS_SCALE_PX;
         String text = config.getText();
         AtlasDumpConfig.AtlasType atlasType = config.getAtlasType();
         boolean dumpAllPages = config.isDumpAllPages();
@@ -165,8 +171,7 @@ public class AtlasDumpScene implements HarnessSceneLifecycle {
         CgFont bitmapFont = null;
         if (wantBitmap) {
             bitmapFont = CgFont.load(fontPath, CgFontStyle.REGULAR, bitmapPxSize);
-            CgTextLayout bitmapLayout = layoutBuilder.layout(
-                    text + " [" + bitmapPxSize + "px]", bitmapFont, fboWidth, 0);
+            CgTextLayout bitmapLayout = layoutBuilder.layout(text, bitmapFont, fboWidth, 0);
 
             if (prewarmBitmap) {
                 // Deterministic prewarm: render enough frames so every unique glyph
@@ -185,8 +190,7 @@ public class AtlasDumpScene implements HarnessSceneLifecycle {
         CgFont msdfFont = null;
         if (wantMsdf) {
             msdfFont = CgFont.load(fontPath, CgFontStyle.REGULAR, msdfPxSize);
-            CgTextLayout msdfLayout = layoutBuilder.layout(
-                    text + " [" + msdfPxSize + "px]", msdfFont, fboWidth, 0);
+            CgTextLayout msdfLayout = layoutBuilder.layout(text, msdfFont, fboWidth, 0);
 
             if (parityPrewarm) {
                 // Deterministic parity prewarm: render many frames with the full text
@@ -195,8 +199,7 @@ public class AtlasDumpScene implements HarnessSceneLifecycle {
                 // it loads the full glyph set up front and generates all MSDF glyph
                 // placements before capturing, producing dense atlas packing comparable
                 // to msdf-atlas-gen's static output.
-                frame = prewarmAllGlyphs(registry, renderer, msdfLayout, msdfFont,
-                        text, 20.0f, 80.0f, frame, renderContext, poseStack);
+                frame = prewarmMsdfGlyphsLargestFirst(registry, msdfFont, text, frame);
                 LOGGER.info("[Harness] MSDF parity prewarm complete at frame " + frame);
             } else {
                 // CgMsdfGenerator.MAX_PER_FRAME=4, so we need enough frames
@@ -344,6 +347,101 @@ public class AtlasDumpScene implements HarnessSceneLifecycle {
         }
 
         return total;
+    }
+
+    private long prewarmMsdfGlyphsLargestFirst(CgFontRegistry registry,
+                                               CgFont font,
+                                               String text,
+                                               long startFrame) {
+        FreeTypeIntegration.Font msdfFont = font.getMsdfFont();
+        CgMsdfAtlasConfig config = registry.getResolvedMsdfConfig(font.getKey());
+        List<GlyphPrewarmEntry> glyphs = collectSortedMsdfGlyphs(msdfFont, text, config);
+        long frame = startFrame;
+        int queued = 0;
+        for (int i = 0; i < glyphs.size(); i++) {
+            if (queued == CgMsdfGenerator.MAX_PER_FRAME) {
+                frame++;
+                registry.tickFrame(frame);
+                queued = 0;
+            }
+            GlyphPrewarmEntry entry = glyphs.get(i);
+            CgGlyphKey glyphKey = new CgGlyphKey(font.getKey(), entry.glyphId, true, 0);
+            registry.queueGlyphPagedPublic(font, glyphKey, font.getKey().getTargetPx(), 0, frame);
+            queued++;
+        }
+        registry.awaitAsyncGlyphs(5000L);
+        registry.tickFrame(frame + 1);
+        return frame + 1;
+    }
+
+    private List<GlyphPrewarmEntry> collectSortedMsdfGlyphs(FreeTypeIntegration.Font msdfFont,
+                                                                      String text,
+                                                                      CgMsdfAtlasConfig config) {
+        Map<Integer, GlyphPrewarmEntry> unique = new HashMap<>();
+        for (int i = 0; i < text.length(); i++) {
+            int glyphId = msdfFont.getGlyphIndex(text.charAt(i));
+            if (glyphId <= 0 || unique.containsKey(Integer.valueOf(glyphId))) {
+                continue;
+            }
+            GlyphPrewarmEntry entry = computeGlyphPrewarmEntry(msdfFont, glyphId, config);
+            if (entry != null) {
+                unique.put(Integer.valueOf(glyphId), entry);
+            }
+        }
+        List<GlyphPrewarmEntry> sorted = new ArrayList<>(unique.values());
+        Collections.sort(sorted, (a, b) -> {
+            if (a.area != b.area) {
+                return Integer.compare(b.area, a.area);
+            }
+            if (a.height != b.height) {
+                return Integer.compare(b.height, a.height);
+            }
+            return Integer.compare(b.width, a.width);
+        });
+        return sorted;
+    }
+
+    private GlyphPrewarmEntry computeGlyphPrewarmEntry(FreeTypeIntegration.Font msdfFont,
+                                                       int glyphId,
+                                                       CgMsdfAtlasConfig config) {
+        try {
+            FreeTypeIntegration.GlyphData glyphData = msdfFont.loadGlyphByIndex(
+                    glyphId, FreeTypeIntegration.FONT_SCALING_EM_NORMALIZED);
+            Shape shape = glyphData.getShape();
+            if (shape.getEdgeCount() == 0) {
+                return null;
+            }
+            shape.normalize();
+            double[] bounds = shape.getBounds();
+            CgMsdfGlyphLayout layout = CgMsdfGlyphLayout.compute(
+                    bounds[0], bounds[1], bounds[2], bounds[3],
+                    config.getAtlasScalePx(),
+                    config.getPxRange(),
+                    config.getMiterLimit(),
+                    config.isAlignOriginX(),
+                    config.isAlignOriginY());
+            if (layout.isEmpty()) {
+                return null;
+            }
+            return new GlyphPrewarmEntry(glyphId, layout.getBoxWidth(), layout.getBoxHeight());
+        } catch (MsdfException e) {
+            LOGGER.warning("[Harness] Failed to inspect glyph " + glyphId + " for parity prewarm: " + e.getMessage());
+            return null;
+        }
+    }
+
+    private static final class GlyphPrewarmEntry {
+        private final int glyphId;
+        private final int width;
+        private final int height;
+        private final int area;
+
+        private GlyphPrewarmEntry(int glyphId, int width, int height) {
+            this.glyphId = glyphId;
+            this.width = width;
+            this.height = height;
+            this.area = width * height;
+        }
     }
 
     private static int countUniqueChars(String text) {

@@ -4,6 +4,7 @@ import io.github.somehussar.crystalgraphics.api.font.CgGlyphKey;
 import io.github.somehussar.crystalgraphics.api.font.CgGlyphPlacement;
 import io.github.somehussar.crystalgraphics.gl.text.CgGlyphAtlas;
 import io.github.somehussar.crystalgraphics.text.atlas.CgGuillotinePacker;
+import io.github.somehussar.crystalgraphics.text.atlas.MaxRectsPacker;
 import io.github.somehussar.crystalgraphics.text.atlas.CgPackingStrategy;
 
 import java.util.ArrayList;
@@ -62,6 +63,9 @@ public class CgPagedGlyphAtlas {
             return new CgGuillotinePacker(pageWidth, pageHeight);
         }
     };
+
+    public static final PackerFactory MAX_RECTS_FACTORY = (pageWidth, pageHeight, spacingPx) ->
+            new MaxRectsPacker(pageWidth, pageHeight);
 
     // ── Instance fields ────────────────────────────────────────────────
 
@@ -152,15 +156,17 @@ public class CgPagedGlyphAtlas {
      * Creates a paged atlas for live registry use (with GL texture allocation).
      */
     public static CgPagedGlyphAtlas createForPagedRegistry(int pageWidth, int pageHeight,
-                                                            CgGlyphAtlas.Type type) {
-        return new CgPagedGlyphAtlas(pageWidth, pageHeight, type, GUILLOTINE_FACTORY, false,
+                                                             CgGlyphAtlas.Type type) {
+        PackerFactory factory = type == CgGlyphAtlas.Type.BITMAP ? GUILLOTINE_FACTORY : MAX_RECTS_FACTORY;
+        return new CgPagedGlyphAtlas(pageWidth, pageHeight, type, factory, false,
                 CgPackingStrategy.DEFAULT_SPACING_PX);
     }
 
     public static CgPagedGlyphAtlas createForPagedRegistry(int pageWidth, int pageHeight,
-                                                            CgGlyphAtlas.Type type,
-                                                            int spacingPx) {
-        return new CgPagedGlyphAtlas(pageWidth, pageHeight, type, GUILLOTINE_FACTORY, false,
+                                                             CgGlyphAtlas.Type type,
+                                                             int spacingPx) {
+        PackerFactory factory = type == CgGlyphAtlas.Type.BITMAP ? GUILLOTINE_FACTORY : MAX_RECTS_FACTORY;
+        return new CgPagedGlyphAtlas(pageWidth, pageHeight, type, factory, false,
                 spacingPx);
     }
 
@@ -230,6 +236,8 @@ public class CgPagedGlyphAtlas {
     public CgGlyphPlacement allocateMsdf(CgGlyphKey key, float[] msdfData,
                                           int width, int height,
                                           float bearingX, float bearingY,
+                                          float planeLeft, float planeBottom,
+                                          float planeRight, float planeTop,
                                           float metricsWidth, float metricsHeight,
                                           float pxRange,
                                           long currentFrame) {
@@ -243,7 +251,9 @@ public class CgPagedGlyphAtlas {
         for (int i = pages.size() - 1; i >= 0; i--) {
             CgGlyphPlacement placement = pages.get(i).allocateMsdf(
                     key, msdfData, width, height,
-                    bearingX, bearingY, metricsWidth, metricsHeight, pxRange, currentFrame);
+                    bearingX, bearingY,
+                    planeLeft, planeBottom, planeRight, planeTop,
+                    metricsWidth, metricsHeight, pxRange, currentFrame);
             if (placement != null) {
                 return placement;
             }
@@ -252,7 +262,9 @@ public class CgPagedGlyphAtlas {
         CgGlyphAtlasPage newPage = createPage();
         return newPage.allocateMsdf(
                 key, msdfData, width, height,
-                bearingX, bearingY, metricsWidth, metricsHeight, pxRange, currentFrame);
+                bearingX, bearingY,
+                planeLeft, planeBottom, planeRight, planeTop,
+                metricsWidth, metricsHeight, pxRange, currentFrame);
     }
 
     // ── Page queries ──────────────────────────────────────────────────
