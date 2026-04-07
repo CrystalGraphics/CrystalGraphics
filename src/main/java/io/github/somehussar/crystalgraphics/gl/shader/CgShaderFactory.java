@@ -57,9 +57,7 @@ public final class CgShaderFactory {
      *         are available
      * @throws IllegalStateException if shader compilation or linking fails
      */
-    public static CgShaderProgram compile(CgCapabilities caps,
-                                          String vertexSource,
-                                          String fragmentSource) {
+    public static CgShaderProgram compile(CgCapabilities caps, String vertexSource, String fragmentSource) {
         if (caps.isCoreShaders()) return CoreShaderProgram.compile(vertexSource, fragmentSource);
         if (caps.isArbShaders()) return ArbShaderProgram.compile(vertexSource, fragmentSource);
         
