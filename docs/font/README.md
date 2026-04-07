@@ -28,7 +28,7 @@ mode is opt-in via `-Dcrystalgraphics.integration.runSelfChecks=true`.
 
 ### Internal runtime
 - `io.github.somehussar.crystalgraphics.gl.text.CgFontRegistry`
-- `io.github.somehussar.crystalgraphics.gl.text.CgGlyphAtlas`
+- `io.github.somehussar.crystalgraphics.text.atlas.CgGlyphAtlas`
 - `io.github.somehussar.crystalgraphics.gl.text.CgMsdfGenerator`
 - `io.github.somehussar.crystalgraphics.gl.text.CgGlyphVbo`
 - `io.github.somehussar.crystalgraphics.gl.text.CgTextRenderer`
@@ -38,8 +38,8 @@ mode is opt-in via `-Dcrystalgraphics.integration.runSelfChecks=true`.
 - `io.github.somehussar.crystalgraphics.gl.text.ProjectedSizeEstimator`
 
 ### CPU-side text pipeline
-- `io.github.somehussar.crystalgraphics.text.CgTextShaper`
-- `io.github.somehussar.crystalgraphics.text.CgLineBreaker`
+- `io.github.somehussar.crystalgraphics.text.layout.CgTextShaper`
+- `io.github.somehussar.crystalgraphics.text.layout.CgLineBreaker`
 - `io.github.somehussar.crystalgraphics.text.CgShapedRun`
 - `io.github.somehussar.crystalgraphics.text.CgTextLayout`
 

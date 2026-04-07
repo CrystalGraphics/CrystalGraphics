@@ -3,11 +3,10 @@ package io.github.somehussar.crystalgraphics.harness.tool;
 import com.msdfgen.FreeTypeIntegration;
 import com.msdfgen.MsdfException;
 import com.msdfgen.Shape;
-import io.github.somehussar.crystalgraphics.api.font.CgGlyphKey;
-import io.github.somehussar.crystalgraphics.gl.text.msdf.CgMsdfAtlasConfig;
-import io.github.somehussar.crystalgraphics.gl.text.msdf.CgMsdfGlyphLayout;
-import io.github.somehussar.crystalgraphics.text.atlas.CgGuillotinePacker;
-import io.github.somehussar.crystalgraphics.text.atlas.PackedRect;
+import io.github.somehussar.crystalgraphics.text.msdf.CgMsdfAtlasConfig;
+import io.github.somehussar.crystalgraphics.text.msdf.CgMsdfGlyphLayout;
+import io.github.somehussar.crystalgraphics.text.atlas.packing.CgGuillotinePacker;
+import io.github.somehussar.crystalgraphics.text.atlas.packing.PackedRect;
 
 import java.util.Collections;
 import java.util.LinkedHashSet;

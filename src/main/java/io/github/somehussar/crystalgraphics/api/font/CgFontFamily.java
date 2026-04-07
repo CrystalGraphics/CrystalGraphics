@@ -1,5 +1,6 @@
 package io.github.somehussar.crystalgraphics.api.font;
 
+import com.crystalgraphics.harfbuzz.HBFont;
 import lombok.Getter;
 import lombok.ToString;
 
@@ -95,6 +96,10 @@ public final class CgFontFamily {
         return source.requireFont();
     }
 
+    HBFont requireShapingFont(CgFontKey key) {
+        return resolveLoadedFont(key).getHbFontInternal();
+    }
+
     public CgFontSource resolveSourceForCodePoint(int codePoint) {
         return resolveSourceForCodePoint(codePoint, null);
     }
@@ -114,7 +119,7 @@ public final class CgFontFamily {
         return previousSource != null ? previousSource : primarySource;
     }
 
-    List<CgResolvedFontRun> resolveRuns(String text, int start, int end) {
+    List<ResolvedFontRun> resolveRuns(String text, int start, int end) {
         if (text == null) {
             throw new IllegalArgumentException("text must not be null");
         }
@@ -126,7 +131,7 @@ public final class CgFontFamily {
             return Collections.emptyList();
         }
 
-        List<CgResolvedFontRun> resolved = new ArrayList<CgResolvedFontRun>();
+        List<ResolvedFontRun> resolved = new ArrayList<ResolvedFontRun>();
         CgFontSource activeSource = null;
         int segmentStart = start;
         int index = start;
@@ -137,7 +142,7 @@ public final class CgFontFamily {
                 activeSource = source;
                 segmentStart = index;
             } else if (!activeSource.getKey().equals(source.getKey())) {
-                resolved.add(new CgResolvedFontRun(activeSource, segmentStart, index));
+                resolved.add(new ResolvedFontRun(activeSource, segmentStart, index));
                 activeSource = source;
                 segmentStart = index;
             }
@@ -145,7 +150,7 @@ public final class CgFontFamily {
         }
 
         if (activeSource != null) {
-            resolved.add(new CgResolvedFontRun(activeSource, segmentStart, end));
+            resolved.add(new ResolvedFontRun(activeSource, segmentStart, end));
         }
         return resolved;
     }
@@ -246,5 +251,44 @@ public final class CgFontFamily {
                 || codePoint == 0x200D
                 || (codePoint >= 0xFE00 && codePoint <= 0xFE0F)
                 || (codePoint >= 0xE0100 && codePoint <= 0xE01EF);
+    }
+
+    static final class ResolvedFontRun {
+
+        private final CgFontSource source;
+        private final int start;
+        private final int end;
+
+        ResolvedFontRun(CgFontSource source, int start, int end) {
+            if (source == null) {
+                throw new IllegalArgumentException("source must not be null");
+            }
+            if (start < 0 || end < start) {
+                throw new IllegalArgumentException("Invalid range: start=" + start + ", end=" + end);
+            }
+            this.source = source;
+            this.start = start;
+            this.end = end;
+        }
+
+        CgFontSource getSource() {
+            return source;
+        }
+
+        int getStart() {
+            return start;
+        }
+
+        int getEnd() {
+            return end;
+        }
+
+        CgFontKey getFontKey() {
+            return source.getKey();
+        }
+
+        HBFont requireHbFont() {
+            return source.requireFont().getHbFontInternal();
+        }
     }
 }

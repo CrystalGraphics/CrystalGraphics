@@ -1,6 +1,6 @@
 package io.github.somehussar.crystalgraphics.api.font;
 
-import io.github.somehussar.crystalgraphics.gl.text.CgGlyphAtlas;
+import io.github.somehussar.crystalgraphics.text.atlas.CgGlyphAtlas;
 
 /**
  * Immutable placement record describing a glyph's location within a paged atlas.

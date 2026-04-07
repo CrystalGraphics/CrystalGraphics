@@ -5,13 +5,13 @@ import io.github.somehussar.crystalgraphics.api.PoseStack;
 import io.github.somehussar.crystalgraphics.api.font.CgFont;
 import io.github.somehussar.crystalgraphics.api.font.CgFontStyle;
 import io.github.somehussar.crystalgraphics.api.font.CgTextLayoutBuilder;
-import io.github.somehussar.crystalgraphics.gl.text.CgFontRegistry;
-import io.github.somehussar.crystalgraphics.gl.text.CgTextRenderContext;
-import io.github.somehussar.crystalgraphics.gl.text.CgTextRenderer;
-import io.github.somehussar.crystalgraphics.gl.text.CgWorldTextRenderContext;
-import io.github.somehussar.crystalgraphics.gl.text.msdf.CgMsdfAtlasConfig;
+import io.github.somehussar.crystalgraphics.text.cache.CgFontRegistry;
+import io.github.somehussar.crystalgraphics.text.render.CgTextRenderContext;
+import io.github.somehussar.crystalgraphics.text.render.CgTextRenderer;
+import io.github.somehussar.crystalgraphics.text.render.CgWorldTextRenderContext;
+import io.github.somehussar.crystalgraphics.text.msdf.CgMsdfAtlasConfig;
 import io.github.somehussar.crystalgraphics.harness.scene.TextScene3D;
-import io.github.somehussar.crystalgraphics.text.CgTextLayout;
+import io.github.somehussar.crystalgraphics.api.text.CgTextLayout;
 
 import org.joml.Matrix4f;
 
