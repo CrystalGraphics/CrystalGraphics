@@ -1,7 +1,14 @@
 package io.github.somehussar.crystalgraphics.gl.shader;
 
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
+import io.github.somehussar.crystalgraphics.api.shader.CgShader;
+import io.github.somehussar.crystalgraphics.api.shader.CgShaderManager;
 import io.github.somehussar.crystalgraphics.api.shader.CgShaderProgram;
+import io.github.somehussar.crystalgraphics.mc.shader.CgShaderManagerImpl;
+import net.minecraft.util.ResourceLocation;
+import org.lwjgl.BufferUtils;
+
+import java.nio.FloatBuffer;
 
 /**
  * Factory for creating shader programs using the best available backend.
@@ -21,6 +28,12 @@ import io.github.somehussar.crystalgraphics.api.shader.CgShaderProgram;
  * @see ArbShaderProgram
  */
 public final class CgShaderFactory {
+
+    /**
+     * The lazily-initialized global shader manager singleton.
+     * Initialized on the first render tick after the GL context is available.
+     */
+    public static final CgShaderManager SHADER_MANAGER = new CgShaderManagerImpl();;
 
     /**
      * Compiles and links a GLSL program using the best available backend.
@@ -47,14 +60,18 @@ public final class CgShaderFactory {
     public static CgShaderProgram compile(CgCapabilities caps,
                                           String vertexSource,
                                           String fragmentSource) {
-        if (caps.isCoreShaders()) {
-            return CoreShaderProgram.compile(vertexSource, fragmentSource);
-        }
-        if (caps.isArbShaders()) {
-            return ArbShaderProgram.compile(vertexSource, fragmentSource);
-        }
-        throw new UnsupportedOperationException(
-                "No shader support available (GL20 and ARB_shader_objects both absent)");
+        if (caps.isCoreShaders()) return CoreShaderProgram.compile(vertexSource, fragmentSource);
+        if (caps.isArbShaders()) return ArbShaderProgram.compile(vertexSource, fragmentSource);
+        
+        throw new UnsupportedOperationException("No shader support available (GL20 and ARB_shader_objects both absent)");
+    }
+
+    public static CgShader load(String vertexLocation, String fragmentLocation) {
+        return SHADER_MANAGER.load(vertexLocation, fragmentLocation);
+    } 
+    
+    public static CgShader load(ResourceLocation vertexLocation, ResourceLocation fragmentLocation) {
+        return SHADER_MANAGER.load(vertexLocation, fragmentLocation);
     }
 
     /**

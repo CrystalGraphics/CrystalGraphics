@@ -5,6 +5,7 @@ import cpw.mods.fml.common.event.FMLInitializationEvent;
 import cpw.mods.fml.common.event.FMLPostInitializationEvent;
 import cpw.mods.fml.common.event.FMLPreInitializationEvent;
 import io.github.somehussar.crystalgraphics.api.shader.CgShaderManager;
+import io.github.somehussar.crystalgraphics.gl.shader.CgShaderFactory;
 import io.github.somehussar.crystalgraphics.mc.shader.CgShaderManagerImpl;
 import io.github.somehussar.crystalgraphics.mc.shader.CgShaderReloadHook;
 import org.apache.logging.log4j.LogManager;
@@ -44,32 +45,6 @@ public final class CrystalGraphics{
     public static final Logger LOGGER = LogManager.getLogger(NAME);
 
     /**
-     * The lazily-initialized global shader manager singleton.
-     * Initialized on the first render tick after the GL context is available.
-     */
-    private static volatile CgShaderManager SHADER_MANAGER;
-
-    /**
-     * Returns the global {@link CgShaderManager} instance.
-     *
-     * <p>The shader manager is initialized on the first render tick after the
-     * GL context is available.  Calling this method before that point will
-     * throw an {@link IllegalStateException}.</p>
-     *
-     * @return the initialized shader manager
-     * @throws IllegalStateException if called before the GL context is available
-     *                               and the first render tick has fired
-     */
-    
-    public static CgShaderManager getShaderManager() {
-        CgShaderManager local = SHADER_MANAGER;
-        if (local == null) {
-            throw new IllegalStateException("CgShaderManager not yet initialized — call after GL context is available");
-        }
-        return local;
-    }
-
-    /**
      * Forge pre-initialization hook.
      *
      * @param event the pre-initialization event
@@ -93,8 +68,7 @@ public final class CrystalGraphics{
         // On client, throws a CustomModLoadingErrorDisplayException if any mod's
         // minimum OpenGL requirement exceeds the detected driver version.
         CrystalGraphicsVersion.processAllRequirements();
-
-        SHADER_MANAGER = new CgShaderManagerImpl();
+        
         CgShaderReloadHook.register();
     }
 
@@ -107,4 +81,21 @@ public final class CrystalGraphics{
     public void onPostInit(FMLPostInitializationEvent event) {
         LOGGER.info("{}: postInit", NAME);
     }
+    
+    
+    /**
+     * Returns the global {@link CgShaderManager} instance.
+     *
+     * <p>The shader manager is initialized on the first render tick after the
+     * GL context is available.  Calling this method before that point will
+     * throw an {@link IllegalStateException}.</p>
+     *
+     * @return the initialized shader manager
+     * @throws IllegalStateException if called before the GL context is available
+     *                               and the first render tick has fired
+     */
+    public static CgShaderManager getShaderManager() {
+        return CgShaderFactory.SHADER_MANAGER;
+    }
+
 }
