@@ -12,7 +12,7 @@ import io.github.somehussar.crystalgraphics.gl.text.CgGlyphAtlas;
  */
 public final class CgMsdfAtlasConfig {
 
-    public static final int DEFAULT_ATLAS_SCALE_PX = 64;
+    public static final int DEFAULT_ATLAS_SCALE_PX = 80;
     public static final float DEFAULT_PX_RANGE = 6.0f;
     public static final int DEFAULT_PAGE_SIZE = 512;
     public static final int DEFAULT_SPACING_PX = 1;

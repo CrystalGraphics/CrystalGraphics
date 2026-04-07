@@ -9,6 +9,7 @@ import io.github.somehussar.crystalgraphics.gl.text.msdf.CgMsdfGlyphLayout;
 import io.github.somehussar.crystalgraphics.text.atlas.CgGuillotinePacker;
 import io.github.somehussar.crystalgraphics.text.atlas.PackedRect;
 
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.logging.Level;
@@ -34,7 +35,7 @@ public final class MsdfAtlasSizeEstimator {
             throw new IllegalArgumentException("config must not be null");
         }
 
-        Set<Integer> glyphIds = collectGlyphIds(text);
+        Set<Integer> glyphIds = collectGlyphIds(msdfFont, text);
         if (glyphIds.isEmpty()) {
             return config.getPageSize();
         }
@@ -54,14 +55,35 @@ public final class MsdfAtlasSizeEstimator {
             return config.getPageSize();
         }
 
-        int candidate = nextPowerOfTwo((int) Math.ceil(Math.sqrt(totalArea * 1.15d)));
-        candidate = Math.max(64, candidate);
+        Collections.sort(layouts, (a, b) -> {
+            int areaA = a.getBoxWidth() * a.getBoxHeight();
+            int areaB = b.getBoxWidth() * b.getBoxHeight();
+            if (areaA != areaB) {
+                return Integer.compare(areaB, areaA);
+            }
+            if (a.getBoxHeight() != b.getBoxHeight()) {
+                return Integer.compare(b.getBoxHeight(), a.getBoxHeight());
+            }
+            return Integer.compare(b.getBoxWidth(), a.getBoxWidth());
+        });
+
+        int maxGlyphWidth = 0;
+        int maxGlyphHeight = 0;
+        for (int i = 0; i < layouts.size(); i++) {
+            CgMsdfGlyphLayout layout = layouts.get(i);
+            maxGlyphWidth = Math.max(maxGlyphWidth, layout.getBoxWidth());
+            maxGlyphHeight = Math.max(maxGlyphHeight, layout.getBoxHeight());
+        }
+
+        int candidate;
+        candidate = Math.max(Math.max(64, maxGlyphWidth), maxGlyphHeight);
+        candidate = roundUpToMultiple(candidate, 4);
 
         while (candidate <= 4096) {
             if (fits(candidate, layouts, config.getSpacingPx())) {
                 return candidate;
             }
-            candidate *= 2;
+            candidate += 4;
         }
 
         return 4096;
@@ -79,13 +101,16 @@ public final class MsdfAtlasSizeEstimator {
         return true;
     }
 
-    private static Set<Integer> collectGlyphIds(String text) {
-        Set<Integer> glyphIds = new LinkedHashSet<Integer>();
-        if (text == null) {
+    private static Set<Integer> collectGlyphIds(FreeTypeIntegration.Font msdfFont, String text) {
+        Set<Integer> glyphIds = new LinkedHashSet<>();
+        if (msdfFont == null || text == null) {
             return glyphIds;
         }
         for (int i = 0; i < text.length(); i++) {
-            glyphIds.add(Integer.valueOf(text.charAt(i)));
+            int glyphIndex = msdfFont.getGlyphIndex(text.charAt(i));
+            if (glyphIndex > 0) {
+                glyphIds.add(Integer.valueOf(glyphIndex));
+            }
         }
         return glyphIds;
     }
@@ -115,11 +140,11 @@ public final class MsdfAtlasSizeEstimator {
         }
     }
 
-    static int nextPowerOfTwo(int value) {
-        int power = 1;
-        while (power < value) {
-            power <<= 1;
+    static int roundUpToMultiple(int value, int multiple) {
+        if (multiple <= 0) {
+            throw new IllegalArgumentException("multiple must be > 0");
         }
-        return power;
+        int remainder = value % multiple;
+        return remainder == 0 ? value : value + (multiple - remainder);
     }
 }

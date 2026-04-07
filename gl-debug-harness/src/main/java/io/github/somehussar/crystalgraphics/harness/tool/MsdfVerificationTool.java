@@ -92,7 +92,7 @@ public final class MsdfVerificationTool {
                                                 String outputPrefix) {
         FreeTypeIntegration.GlyphData glyphData;
         try {
-            glyphData = msdfFont.loadGlyphByIndex(glyphId, FreeTypeIntegration.FONT_SCALING_EM_NORMALIZED);
+                glyphData = msdfFont.loadGlyphByIndex(glyphId, FreeTypeIntegration.FONT_SCALING_EM_NORMALIZED);
         } catch (RuntimeException e) {
             LOGGER.warning("[MsdfVerify] Failed to load glyph " + glyphId + " for codepoint U+"
                     + Integer.toHexString(codePoint).toUpperCase(Locale.ROOT) + ": " + e.getMessage());

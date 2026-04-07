@@ -1,6 +1,7 @@
 package io.github.somehussar.crystalgraphics.harness.tool;
 
 import io.github.somehussar.crystalgraphics.api.font.CgGlyphKey;
+import io.github.somehussar.crystalgraphics.api.font.CgGlyphPlacement;
 import io.github.somehussar.crystalgraphics.gl.text.CgGlyphAtlas;
 import io.github.somehussar.crystalgraphics.gl.text.atlas.CgGlyphAtlasPage;
 import io.github.somehussar.crystalgraphics.harness.util.ScreenshotUtil;
@@ -9,6 +10,9 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.logging.Logger;
 
@@ -338,6 +342,31 @@ public final class AtlasDumper {
             return;
         }
         pw.println("  Glyph IDs: " + formatGlyphIds(keys));
+        List<CgGlyphKey> sorted = new ArrayList<>(keys);
+        Collections.sort(sorted, Comparator.comparingInt(CgGlyphKey::getGlyphId));
+        pw.println("  Glyph Metadata:");
+        for (CgGlyphKey key : sorted) {
+            CgGlyphPlacement placement = page.get(key, 0L);
+            if (placement == null) {
+                continue;
+            }
+            pw.println(String.format(
+                    "    glyphId=%d codePoint=U+%04X plane=[%.4f, %.4f, %.4f, %.4f] atlas=[%d, %d, %d, %d] size=%dx%d pxRange=%.2f type=%s",
+                    key.getGlyphId(),
+                    key.getGlyphId(),
+                    placement.getPlaneLeft(),
+                    placement.getPlaneBottom(),
+                    placement.getPlaneRight(),
+                    placement.getPlaneTop(),
+                    placement.getAtlasLeft(),
+                    placement.getAtlasBottom(),
+                    placement.getAtlasRight(),
+                    placement.getAtlasTop(),
+                    placement.getAtlasRight() - placement.getAtlasLeft(),
+                    placement.getAtlasTop() - placement.getAtlasBottom(),
+                    placement.getPxRange(),
+                    placement.getAtlasType()));
+        }
     }
 
     private static String formatGlyphIds(java.util.Set<CgGlyphKey> keys) {
