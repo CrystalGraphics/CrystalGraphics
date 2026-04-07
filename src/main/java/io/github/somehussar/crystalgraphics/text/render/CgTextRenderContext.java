@@ -2,15 +2,15 @@ package io.github.somehussar.crystalgraphics.text.render;
 
 import io.github.somehussar.crystalgraphics.api.PoseStack;
 import io.github.somehussar.crystalgraphics.api.font.CgFontKey;
-import org.lwjgl.BufferUtils;
+import lombok.Getter;
+import org.joml.Matrix4f;
 
-import java.nio.FloatBuffer;
 import java.util.HashMap;
 import java.util.Map;
 
 /**
  * Encapsulates the projection and model-view state needed by the text renderer,
- * replacing the per-draw {@code FloatBuffer projectionMatrix} parameter.
+ * replacing the per-draw raw projection buffer parameter.
  *
  * <p>A render context holds two concerns:</p>
  * <ol>
@@ -18,7 +18,7 @@ import java.util.Map;
  *       projection that maps world/screen coordinates to clip space. For 2D UI text,
  *       this is the standard orthographic matrix. The context owns this matrix and
  *       callers set it once (or update it on resize), rather than passing a raw
- *       {@code FloatBuffer} to every {@code draw()} call.</li>
+ *       matrix payload to every {@code draw()} call.</li>
  *   <li><strong>Scale resolver</strong> — the strategy for deriving effective physical
  *       glyph size from a {@link PoseStack} transform. For orthographic/UI rendering,
  *       this uses the cumulative scale from the top pose matrix. For world-space
@@ -28,7 +28,7 @@ import java.util.Map;
  *
  * <h3>Design Rationale</h3>
  * <p>Previous API required every {@code CgTextRenderer.draw()} call to pass a
- * {@code FloatBuffer projectionMatrix}. This is ergonomically poor: the projection
+ * projection matrix payload. This is ergonomically poor: the projection
  * rarely changes (only on window resize or projection switch), yet callers had to
  * manage and pass it every frame. This context object captures that state once.
  * The {@link PoseStack} — which <em>does</em> change per draw — is still passed
@@ -42,26 +42,34 @@ import java.util.Map;
  */
 public class CgTextRenderContext {
 
-    private final FloatBuffer projectionBuffer;
+    /**
+     * -- GETTER --
+     *  Returns the current projection matrix.
+     *  <p>The returned matrix is owned by this context. Callers should treat it as
+     *  read-only and use 
+     *  or subclass-specific update
+     *  methods to change it.</p>
+     *
+     * @return the projection matrix
+     */
+    @Getter
+    protected final Matrix4f projection;
     private final CgTextScaleResolver scaleResolver;
-    private final Map<CgFontKey, Integer> previousEffectiveTargetPx = new HashMap<CgFontKey, Integer>();
-    private final Map<CgFontKey, Boolean> previousMsdf = new HashMap<CgFontKey, Boolean>();
+    private final Map<CgFontKey, Integer> previousEffectiveTargetPx = new HashMap<>();
+    private final Map<CgFontKey, Boolean> previousMsdf = new HashMap<>();
 
     /**
      * Creates a render context with the given projection matrix and scale resolver.
      *
-     * @param projection    the 4×4 projection matrix in column-major order
+     * @param projection    the projection matrix
      * @param scaleResolver the strategy for resolving effective physical glyph size
      *                      from pose transforms
      */
-    public CgTextRenderContext(FloatBuffer projection, CgTextScaleResolver scaleResolver) {
-        if (projection == null) {
-            throw new IllegalArgumentException("projection must not be null");
-        }
-        if (scaleResolver == null) {
-            throw new IllegalArgumentException("scaleResolver must not be null");
-        }
-        this.projectionBuffer = projection;
+    public CgTextRenderContext(Matrix4f projection, CgTextScaleResolver scaleResolver) {
+        if (projection == null) throw new IllegalArgumentException("projection must not be null");
+        if (scaleResolver == null) throw new IllegalArgumentException("scaleResolver must not be null");
+        
+        this.projection = new Matrix4f(projection);
         this.scaleResolver = scaleResolver;
     }
 
@@ -71,9 +79,9 @@ public class CgTextRenderContext {
      *
      * <p>This is the common case for 2D UI text rendering.</p>
      *
-     * @param projection the 4×4 projection matrix in column-major order
+     * @param projection the projection matrix
      */
-    public CgTextRenderContext(FloatBuffer projection) {
+    public CgTextRenderContext(Matrix4f projection) {
         this(projection, CgTextScaleResolver.ORTHOGRAPHIC);
     }
 
@@ -88,34 +96,20 @@ public class CgTextRenderContext {
      * @return a new render context ready for 2D text rendering
      */
     public static CgTextRenderContext orthographic(int width, int height) {
-        FloatBuffer buf = BufferUtils.createFloatBuffer(16);
-        populateOrthoMatrix(buf, width, height);
-        return new CgTextRenderContext(buf, CgTextScaleResolver.ORTHOGRAPHIC);
+        return new CgTextRenderContext(populateOrthographic(new Matrix4f(), width, height), CgTextScaleResolver.ORTHOGRAPHIC);
     }
 
     /**
      * Updates the projection matrix for a viewport resize.
      *
-     * <p>Re-populates the existing buffer with a new orthographic projection.
-     * This avoids allocating a new {@code FloatBuffer} on every resize.</p>
+     * <p>Re-populates the existing matrix with a new orthographic projection.
+     * This avoids allocating a new matrix on every resize.</p>
      *
      * @param width  new viewport width in pixels
      * @param height new viewport height in pixels
      */
     public void updateOrtho(int width, int height) {
-        populateOrthoMatrix(projectionBuffer, width, height);
-    }
-
-    /**
-     * Returns the current projection matrix buffer.
-     *
-     * <p>The buffer is positioned at 0 with 16 floats remaining. Callers
-     * must not modify the buffer's position or content.</p>
-     *
-     * @return the projection matrix buffer (column-major, 16 floats)
-     */
-    public FloatBuffer getProjectionBuffer() {
-        return projectionBuffer;
+        populateOrthographic(projection, width, height);
     }
 
     /**
@@ -171,31 +165,13 @@ public class CgTextRenderContext {
     }
 
     /**
-     * Populates a FloatBuffer with a standard orthographic projection matrix.
+     * Populates a matrix with a standard orthographic projection.
      *
      * <p>Convention: top-left origin (top=0, bottom=height), near=-1, far=1.
-     * Column-major order for direct upload via {@code glUniformMatrix4fv}.</p>
+     * Delegates to JOML's orthographic matrix construction so the renderer no longer
+     * maintains a hand-written matrix layout here.</p>
      */
-    static void populateOrthoMatrix(FloatBuffer buffer, int width, int height) {
-        buffer.clear();
-        float left = 0.0f;
-        float right = width;
-        float bottom = height;
-        float top = 0.0f;
-        float near = -1.0f;
-        float far = 1.0f;
-
-        float sx = 2.0f / (right - left);
-        float sy = 2.0f / (top - bottom);
-        float sz = -2.0f / (far - near);
-        float tx = -(right + left) / (right - left);
-        float ty = -(top + bottom) / (top - bottom);
-        float tz = -(far + near) / (far - near);
-
-        buffer.put(sx).put(0.0f).put(0.0f).put(0.0f);  // col 0
-        buffer.put(0.0f).put(sy).put(0.0f).put(0.0f);  // col 1
-        buffer.put(0.0f).put(0.0f).put(sz).put(0.0f);  // col 2
-        buffer.put(tx).put(ty).put(tz).put(1.0f);       // col 3
-        buffer.flip();
+    static Matrix4f populateOrthographic(Matrix4f matrix, int width, int height) {
+        return matrix.setOrtho(0.0f, width, height, 0.0f, -1.0f, 1.0f);
     }
 }
