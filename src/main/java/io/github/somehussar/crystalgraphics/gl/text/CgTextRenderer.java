@@ -829,9 +829,11 @@ public class CgTextRenderer {
 
         if (diagnosticLogging) {
             LOGGER.info(String.format(
-                    "[QuadDiag] glyphId=%d penX=%.2f planeL=%.2f planeW=%.2f qx=%.2f page=%d tex=%d atlasType=%s distanceField=%b pxRange=%.1f",
-                    p.getKey().getGlyphId(), penX,
-                    logicalBearingX, logicalWidth, qx,
+                    "[QuadDiag] glyphId=%d penX=%.2f penY=%.2f planeL=%.2f planeB=%.2f planeT=%.2f planeW=%.2f planeH=%.2f qx=%.2f qy=%.2f page=%d tex=%d atlasType=%s distanceField=%b pxRange=%.1f",
+                    p.getKey().getGlyphId(), penX, penY,
+                    logicalBearingX, p.getPlaneBottom() * scaleFactor,
+                    logicalBearingY, logicalWidth, logicalHeight,
+                    qx, qy,
                     p.getPageIndex(), p.getPageTextureId(),
                     p.getAtlasType(), p.isDistanceField(), p.getPxRange()));
         }

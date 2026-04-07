@@ -71,20 +71,20 @@ public final class AtlasDumpConfig extends HarnessConfig {
     private int atlasSize = 512;
     private int bitmapPxSize = DEFAULT_BITMAP_PX_SIZE;
     private int msdfPxSize = DEFAULT_MSDF_PX_SIZE;
-    private int msdfAtlasScale = 48;
+    private int msdfAtlasScale = CgMsdfAtlasConfig.DEFAULT_ATLAS_SCALE_PX;
     private float msdfPxRange = CgMsdfAtlasConfig.DEFAULT_PX_RANGE;
     private String text = ASCII_PRINTABLE_CHARS;
 
     // ── Parity / overflow knobs (Phase D of atlas overhaul plan) ───────
 
     /** When true, prewarm all MSDF glyphs deterministically before dump. */
-    private boolean parityPrewarm = false;
+    private boolean parityPrewarm = true;
 
     /** When true, prewarm all bitmap glyphs deterministically before dump. */
     private boolean prewarmBitmap = false;
 
     /** When true, dump every atlas page instead of only the first populated one. */
-    private boolean dumpAllPages = false;
+    private boolean dumpAllPages = true;
 
     /**
      * Override per-page atlas texture dimension. {@link #ATLAS_PAGE_SIZE_AUTO}

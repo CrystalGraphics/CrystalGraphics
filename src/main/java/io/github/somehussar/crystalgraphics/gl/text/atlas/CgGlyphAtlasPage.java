@@ -201,7 +201,9 @@ public class CgGlyphAtlasPage {
         uploadBitmap(packed.getX(), packed.getY(), width, height, bitmapData);
 
         CgGlyphPlacement placement = buildPlacement(
-                packed, key, bearingX, bearingY, metricsWidth, metricsHeight, 0f);
+                packed, key, bearingX, bearingY,
+                bearingX, bearingY - metricsHeight, bearingX + metricsWidth, bearingY,
+                metricsWidth, metricsHeight, 0f);
         slotMap.put(key, new SlotEntry(packed, placement, currentFrame));
         return placement;
     }
@@ -214,6 +216,8 @@ public class CgGlyphAtlasPage {
     public CgGlyphPlacement allocateMsdf(CgGlyphKey key, float[] msdfData,
                                           int width, int height,
                                           float bearingX, float bearingY,
+                                          float planeLeft, float planeBottom,
+                                          float planeRight, float planeTop,
                                           float metricsWidth, float metricsHeight,
                                           float pxRange,
                                           long currentFrame) {
@@ -226,7 +230,9 @@ public class CgGlyphAtlasPage {
         uploadMsdf(packed.getX(), packed.getY(), width, height, msdfData);
 
         CgGlyphPlacement placement = buildPlacement(
-                packed, key, bearingX, bearingY, metricsWidth, metricsHeight, pxRange);
+                packed, key, bearingX, bearingY,
+                planeLeft, planeBottom, planeRight, planeTop,
+                metricsWidth, metricsHeight, pxRange);
         slotMap.put(key, new SlotEntry(packed, placement, currentFrame));
         return placement;
     }
@@ -293,6 +299,8 @@ public class CgGlyphAtlasPage {
 
     private CgGlyphPlacement buildPlacement(PackedRect packed, CgGlyphKey key,
                                              float bearingX, float bearingY,
+                                             float planeLeft, float planeBottom,
+                                             float planeRight, float planeTop,
                                              float metricsWidth, float metricsHeight,
                                              float pxRange) {
         int px = packed.getX();
@@ -311,20 +319,21 @@ public class CgGlyphAtlasPage {
         // Plane bounds derived from bearing/metrics in raster space.
         // For MSDF: use full box size (includes SDF range border).
         // For bitmap: use metrics extents (visible glyph outline).
-        float planeLeft = bearingX;
-        float planeTop = bearingY;
-        float quadWidth;
-        float quadHeight;
+        float resolvedPlaneLeft;
+        float resolvedPlaneBottom;
+        float resolvedPlaneRight;
+        float resolvedPlaneTop;
         if (distanceField) {
-            quadWidth = pw;
-            quadHeight = ph;
+            resolvedPlaneLeft = planeLeft;
+            resolvedPlaneBottom = planeBottom;
+            resolvedPlaneRight = planeRight;
+            resolvedPlaneTop = planeTop;
         } else {
-            quadWidth = metricsWidth;
-            quadHeight = metricsHeight;
+            resolvedPlaneLeft = bearingX;
+            resolvedPlaneTop = bearingY;
+            resolvedPlaneRight = resolvedPlaneLeft + metricsWidth;
+            resolvedPlaneBottom = resolvedPlaneTop - metricsHeight;
         }
-        float planeRight = planeLeft + quadWidth;
-        // bearing is above baseline, quad extends down
-        float planeBottom = planeTop - quadHeight;
 
         // Atlas bounds as integer pixel coordinates (matching existing CgGlyphPlacement contract)
         int atlasLeft = px;
@@ -334,7 +343,7 @@ public class CgGlyphAtlasPage {
 
         return new CgGlyphPlacement(
                 key, pageIndex, textureId, type,
-                planeLeft, planeBottom, planeRight, planeTop,
+                resolvedPlaneLeft, resolvedPlaneBottom, resolvedPlaneRight, resolvedPlaneTop,
                 atlasLeft, atlasBottom, atlasRight, atlasTop,
                 u0, v0, u1, v1,
                 pxRange

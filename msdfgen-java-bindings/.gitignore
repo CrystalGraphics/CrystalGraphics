@@ -12,6 +12,7 @@
 /out/
 
 native/msdfgen-jni/build/
+native/msdfgen-jni/build-native-fix/
 native/msdfgen-jni/msdfgen/
 native/msdfgen-jni/cmake-build-*/
 
