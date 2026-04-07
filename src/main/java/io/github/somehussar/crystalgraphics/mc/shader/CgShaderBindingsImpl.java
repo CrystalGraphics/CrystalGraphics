@@ -1,5 +1,6 @@
 package io.github.somehussar.crystalgraphics.mc.shader;
 
+import com.github.bsideup.jabel.Desugar;
 import io.github.somehussar.crystalgraphics.api.shader.CgShaderProgram;
 import io.github.somehussar.crystalgraphics.api.shader.CgShader;
 import io.github.somehussar.crystalgraphics.api.shader.CgShaderBindings;
@@ -320,6 +321,7 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
         return buf.duplicate();
     }
 
+    @Desugar
     private record Set1iOp(String name, int value) implements BindingOp {
 
         /**
@@ -335,6 +337,7 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
             }
         }
 
+    @Desugar
     private record Set1fOp(String name, float value) implements BindingOp {
 
         /**
@@ -350,6 +353,7 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
             }
         }
 
+    @Desugar
     private record Vec2Op(String name, float x, float y) implements BindingOp {
 
         /**
@@ -364,7 +368,7 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
                 }
             }
         }
-
+    @Desugar
     private record Vec3Op(String name, float x, float y, float z) implements BindingOp {
 
         /**
@@ -379,7 +383,7 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
                 }
             }
         }
-
+    @Desugar
     private record Vec4Op(String name, float x, float y, float z, float w) implements BindingOp {
 
         /**
@@ -394,7 +398,7 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
                 }
             }
         }
-
+    @Desugar
     private record IntBufferOp(String name, IntBuffer buffer) implements BindingOp {
 
         @Override
@@ -405,7 +409,7 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
                 }
             }
         }
-
+    @Desugar
     private record FloatBufferOp(String name, FloatBuffer buffer) implements BindingOp {
 
         @Override
@@ -416,7 +420,7 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
                 }
             }
         }
-
+    @Desugar
     private record Mat3Op(String name, FloatBuffer buffer) implements BindingOp {
 
         @Override
@@ -427,7 +431,7 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
                 }
             }
         }
-
+    @Desugar
     private record Mat4Op(String name, FloatBuffer buffer) implements BindingOp {
 
         /**
@@ -442,7 +446,7 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
                 }
             }
         }
-
+    @Desugar
     private record JomlMat3Op(String name, Matrix3f matrix) implements BindingOp {
 
         @Override
@@ -453,7 +457,7 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
                 }
             }
         }
-
+    @Desugar
     private record JomlMat4Op(String name, Matrix4f matrix) implements BindingOp {
 
         @Override
@@ -464,7 +468,7 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
                 }
             }
         }
-
+    @Desugar
     private record Sampler2DOp(String name, int unit, ResourceLocation texture) implements BindingOp {
 
         /**
