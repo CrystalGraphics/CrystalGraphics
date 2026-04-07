@@ -1,7 +1,7 @@
 package io.github.somehussar.crystalgraphics.harness.scene;
 
 import io.github.somehussar.crystalgraphics.api.PoseStack;
-import io.github.somehussar.crystalgraphics.gl.text.CgTextRenderer;
+import io.github.somehussar.crystalgraphics.text.render.CgTextRenderer;
 import io.github.somehussar.crystalgraphics.harness.FrameInfo;
 import io.github.somehussar.crystalgraphics.harness.InteractiveSceneLifecycle;
 import io.github.somehussar.crystalgraphics.harness.camera.Camera3D;

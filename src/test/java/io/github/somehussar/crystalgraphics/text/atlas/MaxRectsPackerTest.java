@@ -1,12 +1,12 @@
 package io.github.somehussar.crystalgraphics.text.atlas;
 
+import io.github.somehussar.crystalgraphics.text.atlas.packing.MaxRectsPacker;
+import io.github.somehussar.crystalgraphics.text.atlas.packing.PackedRect;
 import org.junit.Test;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
-import java.util.Set;
 
 import static org.junit.Assert.*;
 

@@ -3,10 +3,14 @@ package io.github.somehussar.crystalgraphics.text;
 import io.github.somehussar.crystalgraphics.api.font.CgFontKey;
 import io.github.somehussar.crystalgraphics.api.font.CgFontMetrics;
 import io.github.somehussar.crystalgraphics.api.font.CgFontStyle;
+import io.github.somehussar.crystalgraphics.api.text.CgShapedRun;
+import io.github.somehussar.crystalgraphics.api.text.CgTextLayout;
+import io.github.somehussar.crystalgraphics.text.layout.CgLineBreaker;
+import io.github.somehussar.crystalgraphics.text.layout.CgTextShaper;
+import io.github.somehussar.crystalgraphics.text.layout.RunReshaper;
 import org.junit.Test;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.Assert.*;
