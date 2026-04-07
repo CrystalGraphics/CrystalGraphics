@@ -1,34 +1,20 @@
 package io.github.somehussar.crystalgraphics.text.render;
 
-import io.github.somehussar.crystalgraphics.text.cache.CgFontRegistry;
-
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
 import io.github.somehussar.crystalgraphics.api.PoseStack;
-import io.github.somehussar.crystalgraphics.api.font.CgAtlasRegion;
-import io.github.somehussar.crystalgraphics.api.font.CgFont;
-import io.github.somehussar.crystalgraphics.api.font.CgFontFamily;
-import io.github.somehussar.crystalgraphics.api.font.CgFontKey;
-import io.github.somehussar.crystalgraphics.api.font.CgFontMetrics;
-import io.github.somehussar.crystalgraphics.api.font.CgFontSource;
-import io.github.somehussar.crystalgraphics.api.font.CgGlyphKey;
-import io.github.somehussar.crystalgraphics.api.font.CgGlyphPlacement;
-import io.github.somehussar.crystalgraphics.api.font.CgTextLayoutBuilder;
-import io.github.somehussar.crystalgraphics.api.shader.CgShaderProgram;
-import io.github.somehussar.crystalgraphics.gl.shader.CgShaderFactory;
-import io.github.somehussar.crystalgraphics.gl.state.CgStateBoundary;
-import io.github.somehussar.crystalgraphics.gl.state.CgStateSnapshot;
+import io.github.somehussar.crystalgraphics.api.font.*;
+import io.github.somehussar.crystalgraphics.api.shader.CgShader;
 import io.github.somehussar.crystalgraphics.api.text.CgShapedRun;
 import io.github.somehussar.crystalgraphics.api.text.CgTextConstraints;
 import io.github.somehussar.crystalgraphics.api.text.CgTextLayout;
+import io.github.somehussar.crystalgraphics.gl.shader.CgShaderFactory;
+import io.github.somehussar.crystalgraphics.gl.state.CgStateBoundary;
+import io.github.somehussar.crystalgraphics.gl.state.CgStateSnapshot;
+import io.github.somehussar.crystalgraphics.text.cache.CgFontRegistry;
 import org.joml.Matrix4f;
-import org.lwjgl.BufferUtils;
-import org.lwjgl.opengl.*;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL13;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -105,68 +91,44 @@ import java.util.logging.Logger;
  *   <li>{@link #drawInternal(CgTextLayout, CgFontFamily, float, float, int, long, CgTextRenderContext, PoseStack.Pose, CgTextScaleResolver)} resolves raster tier</li>
  *   <li>{@link #buildPagedGlyphBatch(CgTextLayout, CgFontFamily, float, float, long, CgTextRenderContext, CgFontKey, int, boolean, CgFontMetrics)} converts layout output into {@link CgGlyphPlacement} records</li>
  *   <li>{@link #buildDrawBatches(CgGlyphPlacement[], float[], float[], int, int, int)} groups quads by GL state</li>
- *   <li>{@link #drawBatches(List, CgTextRenderContext, FloatBuffer)} binds shaders/textures and issues draw calls</li>
+ *   <li>{@link #drawBatches(List, CgTextRenderContext, Matrix4f)} binds shaders/textures and issues draw calls</li>
  * </ol>
  *
  * <p>Legacy single-page atlas helpers are still retained for compatibility, but
  * they are no longer the authoritative path for new rendering work.</p>
  */
 public class CgTextRenderer {
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+    //  SHADERS SETUP
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+    private static final String BITMAP_VERT = "/assets/crystalgraphics/shader/bitmap_text.vert";
+    private static final String BITMAP_FRAG = "/assets/crystalgraphics/shader/bitmap_text.frag";
+    private static final CgShader BITMAP_SHADER = CgShaderFactory.load(BITMAP_VERT, BITMAP_FRAG);
 
+    private static final String MSDF_VERT = "/assets/crystalgraphics/shader/msdf_text.vert";
+    private static final String MSDF_FRAG = "/assets/crystalgraphics/shader/msdf_text.frag";
+    private static final CgShader MSDF_SHADER = CgShaderFactory.load(MSDF_VERT, MSDF_FRAG);
+    
+    private static final String MTSDF_VERT = "/assets/crystalgraphics/shader/mtsdf_text.vert";
+    private static final String MTSDF_FRAG = "/assets/crystalgraphics/shader/mtsdf_text.frag";
+    private static final CgShader MTSDF_SHADER = CgShaderFactory.load(MTSDF_VERT, MTSDF_FRAG);
+    
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+    
     private static final Logger LOGGER = Logger.getLogger(CgTextRenderer.class.getName());
     private static final int INITIAL_VBO_CAPACITY = 256;
     public static boolean diagnosticLogging = false;
 
-    private static final String BITMAP_VERT = "/assets/crystalgraphics/shader/bitmap_text.vert";
-    private static final String BITMAP_FRAG = "/assets/crystalgraphics/shader/bitmap_text.frag";
-    private static final String MSDF_VERT = "/assets/crystalgraphics/shader/msdf_text.vert";
-    private static final String MSDF_FRAG = "/assets/crystalgraphics/shader/msdf_text.frag";
-    private static final String MTSDF_VERT = "/assets/crystalgraphics/shader/mtsdf_text.vert";
-    private static final String MTSDF_FRAG = "/assets/crystalgraphics/shader/mtsdf_text.frag";
     private static final CgTextLayoutBuilder LAYOUT_BUILDER = new CgTextLayoutBuilder();
 
-    private final CgShaderProgram bitmapShader;
-    private final CgShaderProgram msdfShader;
-    private final CgShaderProgram mtsdfShader;
     private final CgGlyphVbo vbo;
     private final CgFontRegistry registry;
-    private final int bitmapLocProjection;
-    private final int bitmapLocModelview;
-    private final int bitmapLocAtlas;
-    private final int msdfLocProjection;
-    private final int msdfLocModelview;
-    private final int msdfLocAtlas;
-    private final int msdfLocPxRange;
-    private final int mtsdfLocProjection;
-    private final int mtsdfLocModelview;
-    private final int mtsdfLocAtlas;
-    private final int mtsdfLocPxRange;
-    private final FloatBuffer matrixBuf;
 
     private boolean deleted;
 
-    private CgTextRenderer(CgShaderProgram bitmapShader,
-                           CgShaderProgram msdfShader,
-                           CgShaderProgram mtsdfShader,
-                           CgGlyphVbo vbo,
-                           CgFontRegistry registry) {
-        this.bitmapShader = bitmapShader;
-        this.msdfShader = msdfShader;
-        this.mtsdfShader = mtsdfShader;
+    private CgTextRenderer(CgGlyphVbo vbo, CgFontRegistry registry) {
         this.vbo = vbo;
         this.registry = registry;
-        this.bitmapLocProjection = bitmapShader.getUniformLocation("u_projection");
-        this.bitmapLocModelview = bitmapShader.getUniformLocation("u_modelview");
-        this.bitmapLocAtlas = bitmapShader.getUniformLocation("u_atlas");
-        this.msdfLocProjection = msdfShader.getUniformLocation("u_projection");
-        this.msdfLocModelview = msdfShader.getUniformLocation("u_modelview");
-        this.msdfLocAtlas = msdfShader.getUniformLocation("u_atlas");
-        this.msdfLocPxRange = msdfShader.getUniformLocation("u_pxRange");
-        this.mtsdfLocProjection = mtsdfShader.getUniformLocation("u_projection");
-        this.mtsdfLocModelview = mtsdfShader.getUniformLocation("u_modelview");
-        this.mtsdfLocAtlas = mtsdfShader.getUniformLocation("u_atlas");
-        this.mtsdfLocPxRange = mtsdfShader.getUniformLocation("u_pxRange");
-        this.matrixBuf = BufferUtils.createFloatBuffer(16);
     }
 
     /**
@@ -177,23 +139,17 @@ public class CgTextRenderer {
      * glMapBufferRange.</p>
      */
     public static CgTextRenderer create(CgCapabilities caps, CgFontRegistry registry) {
-        if (!caps.isCoreFbo() || !caps.isCoreShaders() || !caps.isVaoSupported() || !caps.isMapBufferRangeSupported()) {
+        if (!caps.isCoreFbo() || !caps.isCoreShaders() || !caps.isVaoSupported() || !caps.isMapBufferRangeSupported()) 
             throw new IllegalStateException("CgTextRenderer requires modern GL support: core FBO, core shaders, VAO, and glMapBufferRange");
-        }
-
-        CgShaderProgram bitmapShader = CgShaderFactory.compile(caps, readShaderSource(BITMAP_VERT), readShaderSource(BITMAP_FRAG));
-        CgShaderProgram msdfShader = CgShaderFactory.compile(caps, readShaderSource(MSDF_VERT), readShaderSource(MSDF_FRAG));
-        CgShaderProgram mtsdfShader = CgShaderFactory.compile(caps, readShaderSource(MTSDF_VERT), readShaderSource(MTSDF_FRAG));
-
+        
         CgGlyphVbo vbo = CgGlyphVbo.create(INITIAL_VBO_CAPACITY);
-        vbo.setupAttributes(bitmapShader);
-        vbo.setupAttributes(msdfShader);
-        vbo.setupAttributes(mtsdfShader);
+        vbo.setupAttributes(BITMAP_SHADER.getProgram());
+        
+        // These are wrong, these set the attribute pointers 3 consequent times for the same VAO
+        // vbo.setupAttributes(MSDF_SHADER.getProgram());
+        // vbo.setupAttributes(MTSDF_SHADER.getProgram());
 
-        LOGGER.info("[CrystalGraphics] CgTextRenderer created: bitmap=" + bitmapShader.getId()
-                + ", msdf=" + msdfShader.getId()
-                + ", mtsdf=" + mtsdfShader.getId());
-        return new CgTextRenderer(bitmapShader, msdfShader, mtsdfShader, vbo, registry);
+        return new CgTextRenderer(vbo, registry);
     }
 
     /**
@@ -410,9 +366,9 @@ public class CgTextRenderer {
         
         deleted = true;
         vbo.delete();
-        bitmapShader.delete();
-        msdfShader.delete();
-        mtsdfShader.delete();
+        BITMAP_SHADER.delete();
+        MSDF_SHADER.delete();
+        MTSDF_SHADER.delete();
     }
 
     public boolean isDeleted() {
@@ -467,17 +423,15 @@ public class CgTextRenderer {
         boolean blendWasEnabled = GL11.glIsEnabled(GL11.GL_BLEND);
         boolean depthWasEnabled = GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
 
-        vbo.uploadAndBind();
         GL11.glEnable(GL11.GL_BLEND);
         GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
         if (!context.isWorldText()) GL11.glDisable(GL11.GL_DEPTH_TEST);
         
+        vbo.uploadAndBind();
+
         // Stage 5: with all logical/layout work finished, upload the current
         // model-view matrix and submit the sorted batches to the GPU.
-        Matrix4f mv = pose.pose();
-        FloatBuffer mvBuf = prepareMatrixBuffer(mv);
-
-        drawBatches(drawBatches, context, mvBuf);
+        drawBatches(drawBatches, context, pose.pose());
 
         vbo.unbind();
 
@@ -579,6 +533,52 @@ public class CgTextRenderer {
 
         return batches;
     }
+    
+    /**
+     * Issues GL draw calls for each batch, resolving the shader directly from the
+     * batch key and only rebinding when the resolved shader changes.
+     *
+     * <p>The batch sort order already guarantees a stable draw grouping by atlas
+     * type, texture, and pxRange. This method therefore treats the batch key as
+     * the authoritative source of shader state: resolve shader, bind if changed,
+     * bind texture, update distance-field range only when needed, then draw.</p>
+     */
+    private void drawBatches(List<CgDrawBatch> batches, CgTextRenderContext context, Matrix4f modelView) {
+        CgShader boundShader = null;
+
+        for (int b = 0; b < batches.size(); b++) {
+            CgDrawBatch batch = batches.get(b);
+            if (batch.isEmpty()) continue;
+
+            CgDrawBatchKey key = batch.getKey();
+            CgShader shader = key.isMtsdf() ? MTSDF_SHADER : key.isDistanceField() ? MSDF_SHADER : BITMAP_SHADER;
+
+            if (shader != boundShader) {
+                shader.applyBindings(bi -> {
+                    bi.mat4("u_modelview", modelView);
+                    bi.mat4("u_projection", context.getProjection());
+                    bi.set1i("u_atlas", 0);
+
+                    if (key.isDistanceField()) bi.set1f("u_pxRange", key.getPxRange());
+                }).bind();
+                boundShader = shader;
+            }
+
+            GL13.glActiveTexture(GL13.GL_TEXTURE0);
+            GL11.glBindTexture(GL11.GL_TEXTURE_2D, key.getTextureId());
+
+            GL11.glDrawElements(GL11.GL_TRIANGLES, batch.getIndexCount(), GL11.GL_UNSIGNED_SHORT, batch.getIboByteOffset());
+
+            if (diagnosticLogging) {
+                LOGGER.info("[BatchDiag] atlasType=" + key.getAtlasType()
+                        + ", textureId=" + key.getTextureId()
+                        + ", pxRange=" + key.getPxRange()
+                        + ", quadCount=" + batch.getQuadCount());
+            }
+        }
+
+        if (boundShader != null) boundShader.unbind();
+    }
 
     /**
      * Appends a single glyph quad from a {@link CgGlyphPlacement} into the VBO.
@@ -620,113 +620,6 @@ public class CgTextRenderer {
         }
         
         vbo.addGlyph(qx, qy, logicalWidth, logicalHeight, p.getU0(), p.getV0(), p.getU1(), p.getV1(), rgba);
-    }
-
-    /**
-     * Issues GL draw calls for each batch, binding the appropriate shader,
-     * texture, and uniforms per batch.
-     *
-     * <p>Batches are already sorted by {@link CgDrawBatchKey}: bitmap batches
-     * first, then distance-field batches. The method tracks the currently bound shader to avoid
-     * redundant binds when consecutive batches share the same mode. Texture and
-     * pxRange are always set per batch since they can differ between pages.</p>
-     *
-     * <p>MTSDF batches use a dedicated shader because the atlas stores an MSDF in
-     * RGB plus a true SDF in alpha. That representation still belongs to the
-     * distance-field family, but it needs its own reconstruction path.</p>
-     */
-    private void drawBatches(List<CgDrawBatch> batches, CgTextRenderContext context, FloatBuffer mvBuf) {
-        // Track which shader is currently bound to minimize bind/unbind calls
-        boolean bitmapShaderBound = false;
-        boolean msdfShaderBound = false;
-        boolean mtsdfShaderBound = false;
-
-        for (int b = 0; b < batches.size(); b++) {
-            CgDrawBatch batch = batches.get(b);
-            if (batch.isEmpty()) continue;
-
-            CgDrawBatchKey key = batch.getKey();
-            if (diagnosticLogging) {
-                LOGGER.info("[BatchDiag] atlasType=" + key.getAtlasType()
-                        + ", textureId=" + key.getTextureId()
-                        + ", pxRange=" + key.getPxRange()
-                        + ", quadCount=" + batch.getQuadCount());
-            }
-
-            if (key.isMtsdf()) {
-                if (bitmapShaderBound) {
-                    bitmapShader.unbind();
-                    bitmapShaderBound = false;
-                }
-                if (msdfShaderBound) {
-                    msdfShader.unbind();
-                    msdfShaderBound = false;
-                }
-                if (!mtsdfShaderBound) {
-                    mtsdfShader.bind();
-                    uploadProjectionMatrix(mtsdfShader, mtsdfLocProjection, context.getProjectionBuffer());
-                    uploadMatrix(mtsdfShader, mtsdfLocModelview, mvBuf);
-                    mtsdfShader.setUniform1i(mtsdfLocAtlas, 0);
-                    mtsdfShaderBound = true;
-                }
-                GL13.glActiveTexture(GL13.GL_TEXTURE0);
-                GL11.glBindTexture(GL11.GL_TEXTURE_2D, key.getTextureId());
-                mtsdfShader.setUniform1f(mtsdfLocPxRange, key.getPxRange());
-            } else if (key.isDistanceField()) {
-                // Unbind bitmap shader if it was active
-                if (bitmapShaderBound) {
-                    bitmapShader.unbind();
-                    bitmapShaderBound = false;
-                }
-                if (mtsdfShaderBound) {
-                    mtsdfShader.unbind();
-                    mtsdfShaderBound = false;
-                }
-                // Bind MSDF shader if not already bound
-                if (!msdfShaderBound) {
-                    msdfShader.bind();
-                    uploadProjectionMatrix(msdfShader, msdfLocProjection, context.getProjectionBuffer());
-                    uploadMatrix(msdfShader, msdfLocModelview, mvBuf);
-                    msdfShader.setUniform1i(msdfLocAtlas, 0);
-                    msdfShaderBound = true;
-                }
-                // Per-batch: bind texture and set pxRange (may differ by page)
-                GL13.glActiveTexture(GL13.GL_TEXTURE0);
-                GL11.glBindTexture(GL11.GL_TEXTURE_2D, key.getTextureId());
-                msdfShader.setUniform1f(msdfLocPxRange, key.getPxRange());
-            } else {
-                // Unbind MSDF shader if it was active
-                if (msdfShaderBound) {
-                    msdfShader.unbind();
-                    msdfShaderBound = false;
-                }
-                if (mtsdfShaderBound) {
-                    mtsdfShader.unbind();
-                    mtsdfShaderBound = false;
-                }
-                // Bind bitmap shader if not already bound
-                if (!bitmapShaderBound) {
-                    bitmapShader.bind();
-                    uploadProjectionMatrix(bitmapShader, bitmapLocProjection, context.getProjectionBuffer());
-                    uploadMatrix(bitmapShader, bitmapLocModelview, mvBuf);
-                    bitmapShader.setUniform1i(bitmapLocAtlas, 0);
-                    bitmapShaderBound = true;
-                }
-                // Per-batch: bind texture (may differ by page)
-                GL13.glActiveTexture(GL13.GL_TEXTURE0);
-                GL11.glBindTexture(GL11.GL_TEXTURE_2D, key.getTextureId());
-            }
-
-            GL11.glDrawElements(GL11.GL_TRIANGLES,
-                    batch.getIndexCount(), GL11.GL_UNSIGNED_SHORT,
-                    batch.getIboByteOffset());
-        }
-
-        // Unbind whichever shader is still active
-        if (bitmapShaderBound) bitmapShader.unbind();
-        if (msdfShaderBound) msdfShader.unbind();
-        if (mtsdfShaderBound) mtsdfShader.unbind();
-        
     }
 
     /**
@@ -871,32 +764,7 @@ public class CgTextRenderer {
         
         return (float) baseTargetPx / (float) effectiveTargetPx;
     }
-
-    private void uploadProjectionMatrix(CgShaderProgram shader, int uniformLocation, FloatBuffer projectionMatrix) {
-        if (uniformLocation < 0) return;
-        
-        int sourcePosition = projectionMatrix.position();
-        matrixBuf.clear();
-        for (int i = 0; i < 16; i++) matrixBuf.put(projectionMatrix.get(sourcePosition + i));
-        
-        matrixBuf.flip();
-        shader.setUniformMatrix4f(uniformLocation, matrixBuf);
-    }
-
-    private FloatBuffer prepareMatrixBuffer(Matrix4f matrix) {
-        FloatBuffer buf = BufferUtils.createFloatBuffer(16);
-        matrix.get(buf);
-        buf.rewind();
-        return buf;
-    }
-
-    private void uploadMatrix(CgShaderProgram shader, int uniformLocation, FloatBuffer matrixData) {
-        if (uniformLocation < 0) return;
-        
-        matrixData.rewind();
-        shader.setUniformMatrix4f(uniformLocation, matrixData);
-    }
-
+    
     /**
      * Selects the sub-pixel bucket based on the effective target pixel size.
      * Uses the effective size (not base targetPx) because the effective size
@@ -919,28 +787,6 @@ public class CgTextRenderer {
         if (context.isScaledUiRaster(fontKey, effectiveTargetPx)) return 0;
         
         return selectSubPixelBucket(effectiveTargetPx, xOffset);
-    }
-
-    static String readShaderSource(String resourcePath) {
-        InputStream in = CgTextRenderer.class.getResourceAsStream(resourcePath);
-        if (in == null) throw new RuntimeException("Shader resource not found on classpath: " + resourcePath);
-        
-        try {
-            BufferedReader reader = new BufferedReader(new InputStreamReader(in, "UTF-8"));
-            StringBuilder sb = new StringBuilder();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                sb.append(line).append('\n');
-            }
-            return sb.toString();
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to read shader resource: " + resourcePath, e);
-        } finally {
-            try {
-                in.close();
-            } catch (IOException ignored) {
-            }
-        }
     }
 
     /**
