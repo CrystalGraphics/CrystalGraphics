@@ -20,6 +20,8 @@ import io.github.somehussar.crystalgraphics.harness.runtime.ResizeHandler;
 import io.github.somehussar.crystalgraphics.harness.runtime.WorldPassCoordinator;
 import io.github.somehussar.crystalgraphics.harness.scheduler.TaskScheduler;
 import io.github.somehussar.crystalgraphics.harness.util.RenderPassState;
+import io.github.somehussar.crystalgraphics.mc.shader.CgShaderReloadHook;
+import org.lwjgl.input.Keyboard;
 import org.lwjgl.opengl.Display;
 import org.lwjgl.opengl.GL11;
 
@@ -181,6 +183,9 @@ public final class InteractiveSceneRunner implements CaptureCallback {
                 scene.onResize(vp.getWidth(), vp.getHeight());
             }
 
+            if (Keyboard.isKeyDown(Keyboard.KEY_R)) CgShaderReloadHook.reload();
+            if (Keyboard.isKeyDown(Keyboard.KEY_I)) init();
+            
             // 3. Check for pause toggle BEFORE camera input processing.
             //    Uses Keyboard event queue to detect key-down events (not held state),
             //    preventing rapid toggling from a single key press.
