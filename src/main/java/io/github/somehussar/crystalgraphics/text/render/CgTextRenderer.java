@@ -511,9 +511,8 @@ public class CgTextRenderer {
         // Collect indices of visible placements paired with their batch keys
         int visibleCount = 0;
         for (int i = 0; i < placements.length; i++) {
-            if (placements[i] != null && placements[i].hasGeometry()) {
+            if (placements[i] != null && placements[i].hasGeometry()) 
                 visibleCount++;
-            }
         }
         if (visibleCount == 0) return Collections.emptyList();
         
@@ -582,9 +581,7 @@ public class CgTextRenderer {
 
         // Final batch
         int batchQuadCount = totalQuads - batchStartQuad;
-        if (batchQuadCount > 0) {
-            batches.add(new CgDrawBatch(currentKey, batchStartQuad, batchQuadCount));
-        }
+        if (batchQuadCount > 0) batches.add(new CgDrawBatch(currentKey, batchStartQuad, batchQuadCount));
 
         return batches;
     }
@@ -732,15 +729,10 @@ public class CgTextRenderer {
         }
 
         // Unbind whichever shader is still active
-        if (bitmapShaderBound) {
-            bitmapShader.unbind();
-        }
-        if (msdfShaderBound) {
-            msdfShader.unbind();
-        }
-        if (mtsdfShaderBound) {
-            mtsdfShader.unbind();
-        }
+        if (bitmapShaderBound) bitmapShader.unbind();
+        if (msdfShaderBound) msdfShader.unbind();
+        if (mtsdfShaderBound) mtsdfShader.unbind();
+        
     }
 
     /**
@@ -755,9 +747,8 @@ public class CgTextRenderer {
                                                  boolean wantMsdf, CgFontMetrics metrics) {
         PagedGlyphBatch batch = populatePagedGlyphBatch(layout, family, x, y, frame, context,
                 fontKey, effectiveTargetPx, wantMsdf, metrics);
-        if (!wantMsdf || !batch.usedBitmapFallback) {
-            return batch;
-        }
+        if (!wantMsdf || !batch.usedBitmapFallback) return batch;
+        
 
         // Do not mix MSDF and bitmap glyphs inside the same draw. If any glyph
         // in an MSDF-targeted draw falls back to bitmap (for example due to the
@@ -769,9 +760,8 @@ public class CgTextRenderer {
 
     private static CgFont resolveRunFont(CgTextLayout layout, CgFontFamily family, CgFontKey runFontKey) {
         CgFont resolvedFromLayout = layout.getResolvedFontsByKey().get(runFontKey);
-        if (resolvedFromLayout != null) {
-            return resolvedFromLayout;
-        }
+        if (resolvedFromLayout != null) return resolvedFromLayout;
+        
         return family.resolveLoadedFont(runFontKey);
     }
 
@@ -873,11 +863,8 @@ public class CgTextRenderer {
 
     private int countGlyphs(List<List<CgShapedRun>> lines) {
         int total = 0;
-        for (List<CgShapedRun> line : lines) {
-            for (CgShapedRun run : line) {
-                total += run.getGlyphIds().length;
-            }
-        }
+        for (List<CgShapedRun> line : lines) for (CgShapedRun run : line) total += run.getGlyphIds().length;
+        
         return total;
     }
 
@@ -897,14 +884,12 @@ public class CgTextRenderer {
     }
 
     private void uploadProjectionMatrix(CgShaderProgram shader, int uniformLocation, FloatBuffer projectionMatrix) {
-        if (uniformLocation < 0) {
-            return;
-        }
+        if (uniformLocation < 0) return;
+        
         int sourcePosition = projectionMatrix.position();
         matrixBuf.clear();
-        for (int i = 0; i < 16; i++) {
-            matrixBuf.put(projectionMatrix.get(sourcePosition + i));
-        }
+        for (int i = 0; i < 16; i++) matrixBuf.put(projectionMatrix.get(sourcePosition + i));
+        
         matrixBuf.flip();
         shader.setUniformMatrix4f(uniformLocation, matrixBuf);
     }
@@ -929,40 +914,28 @@ public class CgTextRenderer {
      * determines whether sub-pixel positioning is perceptible.
      */
     static int selectSubPixelBucket(int effectiveTargetPx, float xOffset) {
-        if (effectiveTargetPx >= CgGlyphKey.SUB_PIXEL_BUCKET_MAX_PX) {
-            return 0;
-        }
+        if (effectiveTargetPx >= CgGlyphKey.SUB_PIXEL_BUCKET_MAX_PX) return 0;
+        
         float fractional = xOffset - (float) Math.floor(xOffset);
-        if (fractional < 0.125f) {
-            return 0;
-        }
-        if (fractional < 0.375f) {
-            return 1;
-        }
-        if (fractional < 0.625f) {
-            return 2;
-        }
-        if (fractional < 0.875f) {
-            return 3;
-        }
+        if (fractional < 0.125f) return 0;
+        if (fractional < 0.375f) return 1;
+        if (fractional < 0.625f) return 2;
+        if (fractional < 0.875f) return 3;
+        
         return 0;
     }
 
     static int resolveSubPixelBucket(CgTextRenderContext context, CgFontKey fontKey, int effectiveTargetPx, float xOffset) {
-        if (context.isWorldText()) {
-            return 0;
-        }
-        if (context.isScaledUiRaster(fontKey, effectiveTargetPx)) {
-            return 0;
-        }
+        if (context.isWorldText()) return 0;
+        if (context.isScaledUiRaster(fontKey, effectiveTargetPx)) return 0;
+        
         return selectSubPixelBucket(effectiveTargetPx, xOffset);
     }
 
     static String readShaderSource(String resourcePath) {
         InputStream in = CgTextRenderer.class.getResourceAsStream(resourcePath);
-        if (in == null) {
-            throw new RuntimeException("Shader resource not found on classpath: " + resourcePath);
-        }
+        if (in == null) throw new RuntimeException("Shader resource not found on classpath: " + resourcePath);
+        
         try {
             BufferedReader reader = new BufferedReader(new InputStreamReader(in, "UTF-8"));
             StringBuilder sb = new StringBuilder();
@@ -990,52 +963,37 @@ public class CgTextRenderer {
      * {@link CgTextLayout} as the stable hand-off format for glyph resolution.</p>
      */
     static CgTextLayout layout(String text, CgFont font, CgTextConstraints constraints) {
-        if (text == null) {
-            throw new IllegalArgumentException("text must not be null");
-        }
-        if (constraints == null) {
-            throw new IllegalArgumentException("constraints must not be null");
-        }
+        if (text == null) throw new IllegalArgumentException("text must not be null");
+        if (constraints == null) throw new IllegalArgumentException("constraints must not be null");
+        
         return LAYOUT_BUILDER.layout(text, font, constraints.getMaxWidth(), constraints.getMaxHeight());
     }
 
     static CgTextLayout layout(String text, CgFontFamily family, CgTextConstraints constraints) {
-        if (text == null) {
-            throw new IllegalArgumentException("text must not be null");
-        }
-        if (constraints == null) {
-            throw new IllegalArgumentException("constraints must not be null");
-        }
+        if (text == null) throw new IllegalArgumentException("text must not be null");
+        if (constraints == null) throw new IllegalArgumentException("constraints must not be null");
+        
         return LAYOUT_BUILDER.layout(text, family, constraints.getMaxWidth(), constraints.getMaxHeight());
     }
 
     static CgFont requireSizedFont(CgFont font) {
-        if (font == null) {
-            throw new IllegalArgumentException("font must not be null");
-        }
-        if (!font.isSizeBound()) {
-            throw new IllegalArgumentException("font must be size-bound or supplied with targetPx");
-        }
+        if (font == null) throw new IllegalArgumentException("font must not be null");
+        if (!font.isSizeBound()) throw new IllegalArgumentException("font must be size-bound or supplied with targetPx");
+        
         return font;
     }
 
     static CgFont requireSizedFont(CgFont font, int targetPx) {
-        if (font == null) {
-            throw new IllegalArgumentException("font must not be null");
-        }
-        if (targetPx <= 0) {
-            throw new IllegalArgumentException("targetPx must be > 0, got: " + targetPx);
-        }
+        if (font == null) throw new IllegalArgumentException("font must not be null");
+        if (targetPx <= 0) throw new IllegalArgumentException("targetPx must be > 0, got: " + targetPx);
+        
         return font.isSizeBound() && font.getTargetPx() == targetPx ? font : font.atSize(targetPx);
     }
 
     static CgFontFamily sizeFamily(CgFontFamily family, int targetPx) {
-        if (family == null) {
-            throw new IllegalArgumentException("family must not be null");
-        }
-        if (targetPx <= 0) {
-            throw new IllegalArgumentException("targetPx must be > 0, got: " + targetPx);
-        }
+        if (family == null) throw new IllegalArgumentException("family must not be null");
+        if (targetPx <= 0) throw new IllegalArgumentException("targetPx must be > 0, got: " + targetPx);
+        
         CgFont primary = family.getPrimarySource().requireFont().atSize(targetPx);
         List<CgFontSource> fallbackSources = new ArrayList<CgFontSource>();
         for (CgFontSource fallback : family.getFallbackSources()) {
