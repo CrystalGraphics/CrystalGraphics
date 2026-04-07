@@ -2,6 +2,9 @@ package io.github.somehussar.crystalgraphics.api.shader;
 
 import net.minecraft.util.ResourceLocation;
 
+import org.joml.Matrix3f;
+import org.joml.Matrix4f;
+
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 
@@ -141,7 +144,6 @@ public interface CgShaderBindings {
      */
     CgShaderBindings buffer(String name, FloatBuffer buffer);
 
-
     /**
      * Records a 3x3 float matrix uniform binding from a FloatBuffer (9 elements, column-major).
      *
@@ -150,6 +152,19 @@ public interface CgShaderBindings {
      * @return this instance for chaining
      */
     CgShaderBindings mat3(String name, FloatBuffer buffer);
+
+    /**
+     * Records a 3×3 float matrix uniform binding from a JOML {@link Matrix3f}.
+     *
+     * <p>The matrix is serialized to column-major order internally at
+     * apply-time, so callers do not need to perform manual
+     * {@link FloatBuffer} conversion.</p>
+     *
+     * @param name   the uniform name as declared in the GLSL source
+     * @param matrix the JOML 3×3 matrix to upload
+     * @return this instance for chaining
+     */
+    CgShaderBindings mat3(String name, Matrix3f matrix);
     
     /**
      * Records a 4x4 float matrix uniform binding from a FloatBuffer (16 elements, column-major).
@@ -159,6 +174,19 @@ public interface CgShaderBindings {
      * @return this instance for chaining
      */
     CgShaderBindings mat4(String name, FloatBuffer buffer);
+
+    /**
+     * Records a 4×4 float matrix uniform binding from a JOML {@link Matrix4f}.
+     *
+     * <p>The matrix is serialized to column-major order internally at
+     * apply-time, so callers do not need to perform manual
+     * {@link FloatBuffer} conversion.</p>
+     *
+     * @param name   the uniform name as declared in the GLSL source
+     * @param matrix the JOML 4×4 matrix to upload
+     * @return this instance for chaining
+     */
+    CgShaderBindings mat4(String name, Matrix4f matrix);
 
     /**
      * Records a color uniform binding from a packed ARGB integer.

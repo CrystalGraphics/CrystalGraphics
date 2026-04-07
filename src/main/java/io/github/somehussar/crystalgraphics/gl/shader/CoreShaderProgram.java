@@ -1,15 +1,17 @@
 package io.github.somehussar.crystalgraphics.gl.shader;
 
 import io.github.somehussar.crystalgraphics.gl.state.CallFamily;
-
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.lwjgl.BufferUtils;
+import org.joml.Matrix3f;
+import org.joml.Matrix4f;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL20;
 
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
+
+import static io.github.somehussar.crystalgraphics.gl.shader.CgShaderFactory.JOML_BUFFER;
 
 /**
  * Shader program implementation using Core OpenGL 2.0 entry points.
@@ -234,21 +236,6 @@ public class CoreShaderProgram extends AbstractCgShaderProgram {
     /**
      * {@inheritDoc}
      *
-     * <p>Uploads the 4x4 matrix via
-     * {@link GL20#glUniformMatrix4(int, boolean, FloatBuffer)}.</p>
-     *
-     * @param location the uniform location
-     * @param buffer   a 16-element FloatBuffer in column-major order
-     */
-    @Override
-    public void setUniformMatrix4f(int location, FloatBuffer buffer) {
-        if (location < 0) return;
-        GL20.glUniformMatrix4(location, false, buffer);
-    }
-
-    /**
-     * {@inheritDoc}
-     *
      * <p>Binds a texture unit to a sampler uniform via
      * {@link GL20#glUniform1i(int, int)}.  The {@code textureUnit} parameter
      * is the zero-based unit index (0 = {@code GL_TEXTURE0}).</p>
@@ -278,4 +265,38 @@ public class CoreShaderProgram extends AbstractCgShaderProgram {
         if (location < 0) return;
         GL20.glUniformMatrix3(location, false, buffer);
     }
+    
+    @Override
+    public void setUniformMatrix3f(int location, Matrix3f matrix) {
+        if (location < 0) return;
+        FloatBuffer buf = JOML_BUFFER.get();
+        buf.clear();
+        matrix.get(buf).rewind();
+        GL20.glUniformMatrix3(location, false, buf);
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Uploads the 4x4 matrix via
+     * {@link GL20#glUniformMatrix4(int, boolean, FloatBuffer)}.</p>
+     *
+     * @param location the uniform location
+     * @param buffer   a 16-element FloatBuffer in column-major order
+     */
+    @Override
+    public void setUniformMatrix4f(int location, FloatBuffer buffer) {
+        if (location < 0) return;
+        GL20.glUniformMatrix4(location, false, buffer);
+    }
+    
+    @Override
+    public void setUniformMatrix4f(int location, Matrix4f matrix) {
+        if (location < 0) return;
+        FloatBuffer buf = JOML_BUFFER.get();
+        buf.clear();
+        matrix.get(buf).rewind();
+        GL20.glUniformMatrix4(location, false, buf);
+    }
+    
 }

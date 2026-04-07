@@ -4,6 +4,8 @@ import io.github.somehussar.crystalgraphics.gl.state.CallFamily;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.joml.Matrix3f;
+import org.joml.Matrix4f;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.ARBFragmentShader;
 import org.lwjgl.opengl.ARBShaderObjects;
@@ -12,6 +14,8 @@ import org.lwjgl.opengl.GL11;
 
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
+
+import static io.github.somehussar.crystalgraphics.gl.shader.CgShaderFactory.JOML_BUFFER;
 
 /**
  * Shader program implementation using ARB shader object extension entry points.
@@ -259,22 +263,7 @@ public class ArbShaderProgram extends AbstractCgShaderProgram {
     public void setUniform4f(int location, float x, float y, float z, float w) {
         ARBShaderObjects.glUniform4fARB(location, x, y, z, w);
     }
-
-    /**
-     * {@inheritDoc}
-     *
-     * <p>Uploads the 4x4 matrix via
-     * {@link ARBShaderObjects#glUniformMatrix4ARB(int, boolean, FloatBuffer)}.</p>
-     *
-     * @param location the uniform location
-     * @param buffer   a 16-element FloatBuffer in column-major order
-     */
-    @Override
-    public void setUniformMatrix4f(int location, FloatBuffer buffer) {
-        if (location < 0) return;
-        ARBShaderObjects.glUniformMatrix4ARB(location, false, buffer);
-    }
-
+    
     /**
      * {@inheritDoc}
      *
@@ -307,5 +296,36 @@ public class ArbShaderProgram extends AbstractCgShaderProgram {
     public void setUniformMatrix3f(int location, FloatBuffer buffer) {
         if (location < 0) return;
         ARBShaderObjects.glUniformMatrix3ARB(location, false, buffer);
+    }
+    
+    @Override
+    public void setUniformMatrix3f(int location, Matrix3f matrix) {
+        if (location < 0) return;
+        FloatBuffer buf = JOML_BUFFER.get();
+        matrix.get(buf).rewind();
+        ARBShaderObjects.glUniformMatrix3ARB(location, false, buf);
+    }
+
+     /**
+     * {@inheritDoc}
+     *
+     * <p>Uploads the 4x4 matrix via
+     * {@link ARBShaderObjects#glUniformMatrix4ARB(int, boolean, FloatBuffer)}.</p>
+     *
+     * @param location the uniform location
+     * @param buffer   a 16-element FloatBuffer in column-major order
+     */
+    @Override
+    public void setUniformMatrix4f(int location, FloatBuffer buffer) {
+        if (location < 0) return;
+        ARBShaderObjects.glUniformMatrix4ARB(location, false, buffer);
+    }
+
+    @Override
+    public void setUniformMatrix4f(int location, Matrix4f matrix) {
+        if (location < 0) return;
+        FloatBuffer buf = JOML_BUFFER.get();
+        matrix.get(buf).rewind();
+        ARBShaderObjects.glUniformMatrix4ARB(location, false, buf);
     }
 }

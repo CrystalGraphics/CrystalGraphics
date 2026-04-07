@@ -29,6 +29,14 @@ import java.nio.FloatBuffer;
  */
 public final class CgShaderFactory {
 
+       /**
+     * Thread-local direct FloatBuffer (16 elements) for serializing JOML matrices
+     * without per-call allocation.  Sized for 4×4 (16 floats); 3×3 (9 floats)
+     * reuses the same buffer with a smaller limit.
+     */
+    public static final ThreadLocal<FloatBuffer> JOML_BUFFER = 
+               ThreadLocal.withInitial(() -> BufferUtils.createFloatBuffer(16));
+    
     /**
      * The lazily-initialized global shader manager singleton.
      * Initialized on the first render tick after the GL context is available.
