@@ -1,6 +1,6 @@
 package io.github.somehussar.crystalgraphics.harness.config;
 
-import io.github.somehussar.crystalgraphics.gl.text.msdf.CgMsdfAtlasConfig;
+import io.github.somehussar.crystalgraphics.text.msdf.CgMsdfAtlasConfig;
 
 import java.util.ArrayList;
 import java.util.List;
