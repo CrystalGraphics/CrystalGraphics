@@ -15,6 +15,10 @@ final class CgGlyphGenerationResult {
     private final int height;
     private final float bearingX;
     private final float bearingY;
+    private final float planeLeft;
+    private final float planeBottom;
+    private final float planeRight;
+    private final float planeTop;
     private final float metricsWidth;
     private final float metricsHeight;
     private final float pxRange;
@@ -30,6 +34,10 @@ final class CgGlyphGenerationResult {
                                     int height,
                                     float bearingX,
                                     float bearingY,
+                                    float planeLeft,
+                                    float planeBottom,
+                                    float planeRight,
+                                    float planeTop,
                                     float metricsWidth,
                                     float metricsHeight,
                                     float pxRange,
@@ -50,6 +58,10 @@ final class CgGlyphGenerationResult {
         this.height = height;
         this.bearingX = bearingX;
         this.bearingY = bearingY;
+        this.planeLeft = planeLeft;
+        this.planeBottom = planeBottom;
+        this.planeRight = planeRight;
+        this.planeTop = planeTop;
         this.metricsWidth = metricsWidth;
         this.metricsHeight = metricsHeight;
         this.pxRange = pxRange;
@@ -77,6 +89,10 @@ final class CgGlyphGenerationResult {
                 height,
                 bearingX,
                 bearingY,
+                bearingX,
+                bearingY - metricsHeight,
+                bearingX + metricsWidth,
+                bearingY,
                 metricsWidth,
                 metricsHeight,
                 0.0f,
@@ -91,6 +107,10 @@ final class CgGlyphGenerationResult {
                                         int height,
                                         float bearingX,
                                         float bearingY,
+                                        float planeLeft,
+                                        float planeBottom,
+                                        float planeRight,
+                                        float planeTop,
                                         float metricsWidth,
                                         float metricsHeight,
                                         float pxRange) {
@@ -105,6 +125,10 @@ final class CgGlyphGenerationResult {
                 height,
                 bearingX,
                 bearingY,
+                planeLeft,
+                planeBottom,
+                planeRight,
+                planeTop,
                 metricsWidth,
                 metricsHeight,
                 pxRange,
@@ -128,6 +152,10 @@ final class CgGlyphGenerationResult {
                 0.0f,
                 0.0f,
                 0.0f,
+                0.0f,
+                0.0f,
+                0.0f,
+                0.0f,
                 true);
     }
 
@@ -144,6 +172,10 @@ final class CgGlyphGenerationResult {
                 null,
                 0,
                 0,
+                0.0f,
+                0.0f,
+                0.0f,
+                0.0f,
                 0.0f,
                 0.0f,
                 0.0f,
@@ -190,6 +222,22 @@ final class CgGlyphGenerationResult {
 
     float getBearingY() {
         return bearingY;
+    }
+
+    float getPlaneLeft() {
+        return planeLeft;
+    }
+
+    float getPlaneBottom() {
+        return planeBottom;
+    }
+
+    float getPlaneRight() {
+        return planeRight;
+    }
+
+    float getPlaneTop() {
+        return planeTop;
     }
 
     float getMetricsWidth() {

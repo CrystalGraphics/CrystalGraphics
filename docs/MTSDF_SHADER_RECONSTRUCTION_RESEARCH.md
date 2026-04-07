@@ -271,11 +271,11 @@ These are msdf-atlas-gen / msdfgen options relevant to the intersection problem:
 
 ### 5.3. Shader-Side Mitigations
 
-The shader is the last line of defense. Even with perfect generator settings, some glyphs in some fonts will produce MSDF channel disagreements at dense junctions. The shader must handle these gracefully:
+The shader is the last line of defense. Even with perfect generator settings, some glyphs in some fonts will produce MSDF channel disagreements at dense junctions. For CrystalGraphics body rendering, the validated rule is now simpler:
 
-1. **Geometric intersection formula** (§4.2, Approach B): The `max(min(m,s), max(m+s-1, 0))` formula correctly clips MSDF artifacts without destroying sharp corners.
+1. **Use pure RGB median for body coverage**: the scripted bracket A/B captures showed that alpha-assisted body formulas reintroduced rounded convex corners.
 
-2. **No additional fallback logic**: Do NOT add disagreement-detection heuristics on top of the geometric formula. They create more problems than they solve, especially for scripts with legitimately different MSDF/SDF shapes (like Arabic kashida connections).
+2. **Do not add disagreement heuristics or alpha/SDF body fallbacks**: they create more problems than they solve for the main fill edge, especially on hard outer corners.
 
 3. **Optional debug visualization**: For diagnosing persistent artifacts, temporarily output the disagreement:
    ```glsl
@@ -445,7 +445,7 @@ Note: This is MSDF-only (no alpha channel), so it has no intersection artifact m
 4. Alpha (true SDF) correctly shows inside → disagreement
 5. If shader has aggressive fallback, it rounds everything; if no fallback, wedge is visible
 
-**Fix**: Ensure `orientContours()` is called at generation time AND use geometric intersection formula in shader (not smoothstep fallback).
+**Fix**: Ensure `orientContours()` is called at generation time and keep body reconstruction on pure RGB median; avoid reintroducing alpha-assisted fill logic.
 
 ### 7.2. Fuzz / Halo at Small Sizes
 
@@ -529,7 +529,7 @@ The MTSDF shader adds negligible cost vs the MSDF-only shader:
 - One extra `texture2D` channel read (`.a` — already fetched with `.rgba`)
 - Two extra `min`/`max` operations
 
-On Intel HD 3000 (minimum target), the bottleneck is texture bandwidth, not ALU. The geometric intersection formula adds ~2 ALU ops, which is unmeasurable.
+On Intel HD 3000 (minimum target), the bottleneck is texture bandwidth, not ALU. The final median-body shader is therefore comfortably cheap for target hardware.
 
 ### 8.4. Depth Buffer Interaction
 

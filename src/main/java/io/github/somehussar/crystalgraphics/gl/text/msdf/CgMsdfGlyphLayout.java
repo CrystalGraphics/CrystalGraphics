@@ -160,13 +160,7 @@ public final class CgMsdfGlyphLayout {
                     0, 0, 0, 0, true);
         }
 
-        // Upstream wrapBox: expand bounds by range (half-range inward from each side)
-        // range.lower is negative (inner edge), range.upper is positive (outer edge)
-        // In upstream: range = pxRange / geometryScale, but we use EM-normalised
-        // shapes (geometryScale = 1), so range = pxRange / scale in shape units.
-        // However, upstream uses the full Range object; for symmetric pxRange,
-        // range.lower = -pxRange/(2*scale), range.upper = +pxRange/(2*scale).
-        double halfRange = pxRange / 2.0;
+        double halfRange = Math.max(0.0, (pxRange - 1.0) / 2.0);
         double rangeLower = -halfRange / scale; // negative value
 
         double l = shapeLeft + rangeLower;   // expand left (rangeLower is negative, so l decreases)

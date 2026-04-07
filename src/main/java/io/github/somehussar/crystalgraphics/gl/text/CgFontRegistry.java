@@ -298,6 +298,14 @@ public class CgFontRegistry {
         }
     }
 
+    public void queueGlyphPagedPublic(CgFont font,
+                                      CgGlyphKey key,
+                                      int effectiveTargetPx,
+                                      int subPixelBucket,
+                                      long currentFrame) {
+        queueGlyphPaged(font, key, effectiveTargetPx, subPixelBucket, currentFrame);
+    }
+
     /**
      * Returns the first non-empty bitmap atlas that was populated during rendering
      * for the given base font key. Searches raster-keyed atlases (used by the
@@ -717,6 +725,10 @@ public class CgFontRegistry {
         return msdfAtlasConfig;
     }
 
+    public CgMsdfAtlasConfig getResolvedMsdfConfig(CgFontKey baseFontKey) {
+        return resolveMsdfAtlasConfig(baseFontKey);
+    }
+
     CgMsdfAtlasKey toMsdfAtlasKey(CgFontKey baseFontKey, CgMsdfAtlasConfig config) {
         return new CgMsdfAtlasKey(baseFontKey, config);
     }
@@ -911,6 +923,10 @@ public class CgFontRegistry {
                     result.getHeight(),
                     result.getBearingX(),
                     result.getBearingY(),
+                    result.getPlaneLeft(),
+                    result.getPlaneBottom(),
+                    result.getPlaneRight(),
+                    result.getPlaneTop(),
                     result.getMetricsWidth(),
                     result.getMetricsHeight(),
                     result.getPxRange(),
