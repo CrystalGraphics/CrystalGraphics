@@ -72,10 +72,17 @@ val extractLwjglNatives by tasks.registering(Copy::class) {
 tasks.register<JavaExec>("runHarness") {
     group = "harness"
     description = "Run the standalone GL debug harness"
-    dependsOn(extractLwjglNatives)
+    dependsOn(extractLwjglNatives, ":patchedMcClasses", ":processPatchedMcResources")
 
     mainClass.set("io.github.somehussar.crystalgraphics.harness.FontDebugHarnessMain")
-    classpath = sourceSets["main"].runtimeClasspath
+
+    // The harness runs outside Minecraft, but it still exercises Minecraft-mod
+    // code paths. Add the root project's patched/deobfuscated Minecraft classes
+    // so mod-side runtime references like ResourceLocation and reload-listener
+    // interfaces are available during harness startup.
+    val rootPatchedMcClasses = project(":").layout.buildDirectory.dir("classes/java/patchedMc")
+    val rootPatchedMcResources = project(":").layout.buildDirectory.dir("resources/patchedMc")
+    classpath = sourceSets["main"].runtimeClasspath + files(rootPatchedMcClasses, rootPatchedMcResources)
 
     // Collect all native library directories
     val nativePaths = mutableListOf<String>()
