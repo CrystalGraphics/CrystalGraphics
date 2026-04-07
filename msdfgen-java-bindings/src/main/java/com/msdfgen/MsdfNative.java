@@ -169,8 +169,15 @@ final class MsdfNative {
      * Does not require a shape - uses edge discontinuities only.
      */
     static native int nErrorCorrectionFastEdge(long bitmapHandle, int bitmapType, int width, int height,
-                                                double rangeLower, double rangeUpper,
-                                                double minDeviationRatio);
+                                                 double rangeLower, double rangeUpper,
+                                                 double minDeviationRatio);
+
+    static native int nDistanceSignCorrection(long bitmapHandle, int bitmapType, int width, int height,
+                                               long shape,
+                                               double scaleX, double scaleY,
+                                               double translateX, double translateY,
+                                               double rangeLower, double rangeUpper,
+                                               int fillRule);
 
     // --- Generation with Config (PSDF) ---
     static native int nGeneratePsdfWithConfig(long bitmapHandle, int bitmapType, int width, int height,
