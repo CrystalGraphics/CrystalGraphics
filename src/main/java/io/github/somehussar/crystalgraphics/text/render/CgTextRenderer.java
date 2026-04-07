@@ -743,23 +743,6 @@ public class CgTextRenderer {
         }
     }
 
-    private GlyphBatch buildGlyphBatch(CgTextLayout layout, CgFontFamily family, float x, float y, long frame,
-                                       CgTextRenderContext context, CgFontKey fontKey, int effectiveTargetPx, 
-                                       boolean wantMsdf, CgFontMetrics metrics) {
-        GlyphBatch batch = populateGlyphBatch(layout, family, x, y, frame, context,
-                fontKey, effectiveTargetPx, wantMsdf, metrics);
-        if (!wantMsdf || !batch.usedBitmapFallback) {
-            return batch;
-        }
-
-        // Do not mix MSDF and bitmap glyphs inside the same draw. If any glyph
-        // in an MSDF-targeted draw falls back to bitmap (for example due to the
-        // per-frame MSDF generation budget), rerender the whole batch in bitmap
-        // for this frame so all glyphs share the same quality tier.
-        return populateGlyphBatch(layout, family, x, y, frame, context,
-                fontKey, effectiveTargetPx, false, metrics);
-    }
-
     /**
      * Builds the authoritative paged-atlas glyph batch for the current draw.
      *
@@ -784,66 +767,12 @@ public class CgTextRenderer {
                 fontKey, effectiveTargetPx, false, metrics);
     }
 
-    private GlyphBatch populateGlyphBatch(CgTextLayout layout, CgFontFamily family, float x, float y, long frame, 
-                                          CgTextRenderContext context, CgFontKey fontKey, int effectiveTargetPx, boolean wantMsdf,
-                                          CgFontMetrics metrics) {
-        List<List<CgShapedRun>> lines = layout.getLines();
-        int totalGlyphs = countGlyphs(lines);
-        float[] glyphX = new float[totalGlyphs];
-        float[] glyphY = new float[totalGlyphs];
-        CgAtlasRegion[] regions = new CgAtlasRegion[totalGlyphs];
-
-        boolean usedBitmapFallback = false;
-        int index = 0;
-        float penY = y;
-        for (List<CgShapedRun> line : lines) {
-            float penX = x;
-            for (CgShapedRun run : line) {
-                CgFontKey runFontKey = run.getFontKey();
-                CgFont runFont = resolveRunFont(layout, family, runFontKey);
-                int[] glyphIds = run.getGlyphIds();
-                float[] advancesX = run.getAdvancesX();
-                float[] offsetsX = run.getOffsetsX();
-                float[] offsetsY = run.getOffsetsY();
-                for (int i = 0; i < glyphIds.length; i++) {
-                    int subPixelBucket = resolveSubPixelBucket(context, runFontKey, effectiveTargetPx, offsetsX[i]);
-                    CgGlyphKey glyphKey = new CgGlyphKey(runFontKey, glyphIds[i], wantMsdf, subPixelBucket);
-                    regions[index] = registry.ensureGlyphAtEffectiveSize(
-                            runFont, glyphKey, effectiveTargetPx, subPixelBucket, frame);
-                    if (wantMsdf && regions[index] != null && !regions[index].getKey().isMsdf()) {
-                        usedBitmapFallback = true;
-                    }
-                    glyphX[index] = penX + offsetsX[i];
-                    glyphY[index] = penY + offsetsY[i];
-                    penX += advancesX[i];
-                    index++;
-                }
-            }
-            penY += metrics.getLineHeight();
-        }
-        return new GlyphBatch(glyphX, glyphY, regions, usedBitmapFallback);
-    }
-
     private static CgFont resolveRunFont(CgTextLayout layout, CgFontFamily family, CgFontKey runFontKey) {
         CgFont resolvedFromLayout = layout.getResolvedFontsByKey().get(runFontKey);
         if (resolvedFromLayout != null) {
             return resolvedFromLayout;
         }
         return family.resolveLoadedFont(runFontKey);
-    }
-
-    private static final class GlyphBatch {
-        private final float[] glyphX;
-        private final float[] glyphY;
-        private final CgAtlasRegion[] regions;
-        private final boolean usedBitmapFallback;
-
-        private GlyphBatch(float[] glyphX, float[] glyphY, CgAtlasRegion[] regions, boolean usedBitmapFallback) {
-            this.glyphX = glyphX;
-            this.glyphY = glyphY;
-            this.regions = regions;
-            this.usedBitmapFallback = usedBitmapFallback;
-        }
     }
 
     /**
