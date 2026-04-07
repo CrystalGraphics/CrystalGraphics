@@ -220,12 +220,9 @@ public class CgTextRenderer {
      */
     public void draw(CgTextLayout layout, CgFont font, float x, float y, int rgba, long frame,
                      CgTextRenderContext context, PoseStack pose) {
-        if (deleted) {
-            throw new IllegalStateException("CgTextRenderer has been deleted");
-        }
-        if (layout == null || layout.getLines().isEmpty()) {
-            return;
-        }
+        if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
+        if (layout == null || layout.getLines().isEmpty()) return;
+        
         draw(layout, CgFontFamily.of(font), x, y, rgba, frame, context, pose);
     }
 
@@ -397,7 +394,6 @@ public class CgTextRenderer {
         if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
         if (layout == null || layout.getLines().isEmpty()) return;
         
-
         CgStateSnapshot snapshot = CgStateBoundary.save();
         try {
             GL11.glEnable(GL11.GL_DEPTH_TEST);
@@ -468,7 +464,6 @@ public class CgTextRenderer {
         
         if (drawBatches.isEmpty()) return;
         
-
         boolean blendWasEnabled = GL11.glIsEnabled(GL11.GL_BLEND);
         boolean depthWasEnabled = GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
 
@@ -477,7 +472,6 @@ public class CgTextRenderer {
         GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
         if (!context.isWorldText()) GL11.glDisable(GL11.GL_DEPTH_TEST);
         
-
         // Stage 5: with all logical/layout work finished, upload the current
         // model-view matrix and submit the sorted batches to the GPU.
         Matrix4f mv = pose.pose();
@@ -549,7 +543,7 @@ public class CgTextRenderer {
 
         // Emit quads in sorted order and record batch boundaries
         vbo.begin();
-        List<CgDrawBatch> batches = new ArrayList<CgDrawBatch>();
+        List<CgDrawBatch> batches = new ArrayList<>();
         CgDrawBatchKey currentKey = batchKeys[0];
         int batchStartQuad = 0;
         int totalQuads = 0;
@@ -776,8 +770,7 @@ public class CgTextRenderer {
      */
     private PagedGlyphBatch populatePagedGlyphBatch(CgTextLayout layout, CgFontFamily family, float x, float y, long frame, 
                                                     CgTextRenderContext context, CgFontKey fontKey, int effectiveTargetPx, 
-                                                    boolean wantMsdf,
-                                                      CgFontMetrics metrics) {
+                                                    boolean wantMsdf, CgFontMetrics metrics) {
         List<List<CgShapedRun>> lines = layout.getLines();
         int totalGlyphs = countGlyphs(lines);
         float[] glyphX = new float[totalGlyphs];
@@ -825,12 +818,8 @@ public class CgTextRenderer {
      * authoritative result, but prequeueing gives worker threads a chance to
      * prepare expensive glyphs before the immediate render request reaches them.</p>
      */
-    private void prequeueVisibleGlyphs(CgTextLayout layout,
-                                       CgFontFamily family,
-                                       int effectiveTargetPx,
-                                       boolean wantMsdf,
-                                       CgTextRenderContext context,
-                                       long frame) {
+    private void prequeueVisibleGlyphs(CgTextLayout layout, CgFontFamily family, int effectiveTargetPx, boolean wantMsdf,
+                                       CgTextRenderContext context, long frame) {
         List<List<CgShapedRun>> lines = layout.getLines();
         for (List<CgShapedRun> line : lines) {
             for (CgShapedRun run : line) {

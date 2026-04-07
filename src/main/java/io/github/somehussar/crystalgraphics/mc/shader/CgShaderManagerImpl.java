@@ -44,8 +44,7 @@ public final class CgShaderManagerImpl implements CgShaderManager {
     private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
 
     /** Cache of managed shaders keyed by their deterministic cache key. */
-    private final Map<CgShaderCacheKey, CgShader> cache =
-            new HashMap<CgShaderCacheKey, CgShader>();
+    private final Map<CgShaderCacheKey, CgShader> cache = new HashMap<>();
 
     /** Detected GL capabilities, passed through to each managed shader. */
     private final CgCapabilities caps;
@@ -61,22 +60,17 @@ public final class CgShaderManagerImpl implements CgShaderManager {
     }
 
     @Override
-    public CgShader load(ResourceLocation vertexLocation,
-                         ResourceLocation fragmentLocation,
-                         Map<String, String> defines) {
+    public CgShader load(ResourceLocation vertexLocation, ResourceLocation fragmentLocation, Map<String, String> defines) {
         Objects.requireNonNull(vertexLocation, "vertexLocation must not be null");
         Objects.requireNonNull(fragmentLocation, "fragmentLocation must not be null");
 
-        Map<String, String> safeDefines = defines != null ? defines : Collections.<String, String>emptyMap();
+        Map<String, String> safeDefines = defines != null ? defines : Collections.emptyMap();
         CgShaderCacheKey key = new CgShaderCacheKey(vertexLocation, fragmentLocation, safeDefines);
 
         CgShader existing = cache.get(key);
-        if (existing != null) {
-            return existing;
-        }
-
-        CgShaderImpl shader = new CgShaderImpl(
-                vertexLocation, fragmentLocation, safeDefines, caps);
+        if (existing != null) return existing;
+        
+        CgShaderImpl shader = new CgShaderImpl(vertexLocation, fragmentLocation, safeDefines, caps);
         cache.put(key, shader);
 
         LOGGER.debug("Registered managed shader: {}", key);
@@ -92,17 +86,13 @@ public final class CgShaderManagerImpl implements CgShaderManager {
     @Override
     public void reloadAll() {
         LOGGER.info("Reloading all managed shaders ({} entries)", cache.size());
-        for (CgShader shader : cache.values()) {
-            shader.markDirty();
-        }
+        for (CgShader shader : cache.values()) shader.markDirty();
     }
 
     @Override
     public void deleteAll() {
         LOGGER.info("Deleting all managed shaders ({} entries)", cache.size());
-        for (CgShader shader : cache.values()) {
-            shader.delete();
-        }
+        for (CgShader shader : cache.values()) shader.delete();
         cache.clear();
     }
 }

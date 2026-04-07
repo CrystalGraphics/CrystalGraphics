@@ -62,9 +62,7 @@ public interface CgShaderManager {
      * @return a managed shader handle, valid even if compilation failed
      * @throws NullPointerException if either location is null
      */
-    CgShader load(ResourceLocation vertexLocation,
-                  ResourceLocation fragmentLocation,
-                  Map<String, String> defines);
+    CgShader load(ResourceLocation vertexLocation, ResourceLocation fragmentLocation, Map<String, String> defines);
 
     /**
      * Loads or retrieves a cached managed shader.
@@ -86,9 +84,7 @@ public interface CgShaderManager {
      * @return a managed shader handle, valid even if compilation failed
      * @throws NullPointerException if either location is null
      */
-    default CgShader load(String vertexLocation,
-                          String fragmentLocation,
-                          Map<String, String> defines) {
+    default CgShader load(String vertexLocation, String fragmentLocation, Map<String, String> defines) {
         return load(new ResourceLocation(vertexLocation), new ResourceLocation(fragmentLocation), defines);
     }
     
@@ -103,8 +99,7 @@ public interface CgShaderManager {
      * @return a managed shader handle, valid even if compilation failed
      * @throws NullPointerException if either location is null
      */
-    default CgShader load(ResourceLocation vertexLocation,
-                          ResourceLocation fragmentLocation) {
+    default CgShader load(ResourceLocation vertexLocation, ResourceLocation fragmentLocation) {
         return load(vertexLocation, fragmentLocation, null);
     }
 
@@ -119,8 +114,7 @@ public interface CgShaderManager {
      * @return a managed shader handle, valid even if compilation failed
      * @throws NullPointerException if either location is null
      */
-    default CgShader load(String vertexLocation,
-                          String fragmentLocation) {
+    default CgShader load(String vertexLocation, String fragmentLocation) {
         return load(new ResourceLocation(vertexLocation), new ResourceLocation(fragmentLocation));
     }
 

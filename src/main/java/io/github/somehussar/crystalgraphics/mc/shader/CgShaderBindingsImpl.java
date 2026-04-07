@@ -9,6 +9,8 @@ import net.minecraft.util.ResourceLocation;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.joml.Matrix3f;
+import org.joml.Matrix4f;
 import org.lwjgl.opengl.ARBMultitexture;
 import org.lwjgl.opengl.ContextCapabilities;
 import org.lwjgl.opengl.GL11;
@@ -49,7 +51,7 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
      * Each operation (set1f, set2f, etc.) is appended here and executed
      * in order when {@link #apply(CgShader)} is called.
      */
-    private final List<BindingOp> ops = new ArrayList<BindingOp>();
+    private final List<BindingOp> ops = new ArrayList<>();
 
     /**
      * Tracks the program ID from the last {@link #apply(CgShader)} call.
@@ -63,7 +65,7 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
      * Prevents log spam when the same missing uniform is queried multiple times
      * per program. Cleared whenever the program ID changes.
      */
-    private final Set<String> warnedNames = new HashSet<String>();
+    private final Set<String> warnedNames = new HashSet<>();
 
     @Override
     public CgShaderBindings set1i(String name, int value) {
@@ -132,6 +134,20 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
     @Override
     public CgShaderBindings mat4(String name, FloatBuffer buffer) {
         this.ops.add(new Mat4Op(name, ensureDirectFloat(buffer)));
+        return this;
+    }
+
+    @Override
+    public CgShaderBindings mat3(String name, Matrix3f matrix) {
+        // Defensive copy to freeze state at record-time, preventing cross-frame mutation
+        this.ops.add(new JomlMat3Op(name, new Matrix3f(matrix)));
+        return this;
+    }
+
+    @Override
+    public CgShaderBindings mat4(String name, Matrix4f matrix) {
+        // Defensive copy to freeze state at record-time, preventing cross-frame mutation
+        this.ops.add(new JomlMat4Op(name, new Matrix4f(matrix)));
         return this;
     }
 
@@ -304,203 +320,128 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
         return buf.duplicate();
     }
 
-    private static final class Set1iOp implements BindingOp {
-        final String name;
-        final int value;
-
-        Set1iOp(String name, int value) {
-            this.name = name;
-            this.value = value;
-        }
+    private record Set1iOp(String name, int value) implements BindingOp {
 
         /**
-         * Executes this binding operation: resolves the uniform location and
-         * calls {@link CgShaderProgram#setUniform1i(int, int)} if found.
-         */
-        @Override
-        public void execute(CgShader shader, CgShaderProgram program, CgShaderBindingsImpl patch) {
-            int loc = patch.resolveLocation(shader, this.name);
-            if (loc >= 0) {
-                program.setUniform1i(loc, this.value);
+             * Executes this binding operation: resolves the uniform location and
+             * calls {@link CgShaderProgram#setUniform1i(int, int)} if found.
+             */
+            @Override
+            public void execute(CgShader shader, CgShaderProgram program, CgShaderBindingsImpl patch) {
+                int loc = patch.resolveLocation(shader, this.name);
+                if (loc >= 0) {
+                    program.setUniform1i(loc, this.value);
+                }
             }
         }
-    }
 
-    private static final class Set1fOp implements BindingOp {
-        final String name;
-        final float value;
-
-        Set1fOp(String name, float value) {
-            this.name = name;
-            this.value = value;
-        }
+    private record Set1fOp(String name, float value) implements BindingOp {
 
         /**
-         * Executes this binding operation: resolves the uniform location and
-         * calls {@link CgShaderProgram#setUniform1f(int, float)} if found.
-         */
-        @Override
-        public void execute(CgShader shader, CgShaderProgram program, CgShaderBindingsImpl patch) {
-            int loc = patch.resolveLocation(shader, this.name);
-            if (loc >= 0) {
-                program.setUniform1f(loc, this.value);
+             * Executes this binding operation: resolves the uniform location and
+             * calls {@link CgShaderProgram#setUniform1f(int, float)} if found.
+             */
+            @Override
+            public void execute(CgShader shader, CgShaderProgram program, CgShaderBindingsImpl patch) {
+                int loc = patch.resolveLocation(shader, this.name);
+                if (loc >= 0) {
+                    program.setUniform1f(loc, this.value);
+                }
             }
         }
-    }
 
-    private static final class Vec2Op implements BindingOp {
-        final String name;
-        final float x;
-        final float y;
-
-        Vec2Op(String name, float x, float y) {
-            this.name = name;
-            this.x = x;
-            this.y = y;
-        }
+    private record Vec2Op(String name, float x, float y) implements BindingOp {
 
         /**
-         * Executes this binding operation: resolves the uniform location and
-         * calls {@link CgShaderProgram#setUniform2f(int, float, float)} if found.
-         */
-        @Override
-        public void execute(CgShader shader, CgShaderProgram program, CgShaderBindingsImpl patch) {
-            int loc = patch.resolveLocation(shader, this.name);
-            if (loc >= 0) {
-                program.setUniform2f(loc, this.x, this.y);
+             * Executes this binding operation: resolves the uniform location and
+             * calls {@link CgShaderProgram#setUniform2f(int, float, float)} if found.
+             */
+            @Override
+            public void execute(CgShader shader, CgShaderProgram program, CgShaderBindingsImpl patch) {
+                int loc = patch.resolveLocation(shader, this.name);
+                if (loc >= 0) {
+                    program.setUniform2f(loc, this.x, this.y);
+                }
             }
         }
-    }
 
-    private static final class Vec3Op implements BindingOp {
-        final String name;
-        final float x;
-        final float y;
-        final float z;
-
-        Vec3Op(String name, float x, float y, float z) {
-            this.name = name;
-            this.x = x;
-            this.y = y;
-            this.z = z;
-        }
+    private record Vec3Op(String name, float x, float y, float z) implements BindingOp {
 
         /**
-         * Executes this binding operation: resolves the uniform location and
-         * calls {@link CgShaderProgram#setUniform3f(int, float, float, float)} if found.
-         */
-        @Override
-        public void execute(CgShader shader, CgShaderProgram program, CgShaderBindingsImpl patch) {
-            int loc = patch.resolveLocation(shader, this.name);
-            if (loc >= 0) {
-                program.setUniform3f(loc, this.x, this.y, this.z);
+             * Executes this binding operation: resolves the uniform location and
+             * calls {@link CgShaderProgram#setUniform3f(int, float, float, float)} if found.
+             */
+            @Override
+            public void execute(CgShader shader, CgShaderProgram program, CgShaderBindingsImpl patch) {
+                int loc = patch.resolveLocation(shader, this.name);
+                if (loc >= 0) {
+                    program.setUniform3f(loc, this.x, this.y, this.z);
+                }
             }
         }
-    }
 
-    private static final class Vec4Op implements BindingOp {
-        final String name;
-        final float x;
-        final float y;
-        final float z;
-        final float w;
-
-        Vec4Op(String name, float x, float y, float z, float w) {
-            this.name = name;
-            this.x = x;
-            this.y = y;
-            this.z = z;
-            this.w = w;
-        }
+    private record Vec4Op(String name, float x, float y, float z, float w) implements BindingOp {
 
         /**
-         * Executes this binding operation: resolves the uniform location and
-         * calls {@link CgShaderProgram#setUniform4f(int, float, float, float, float)} if found.
-         */
-        @Override
-        public void execute(CgShader shader, CgShaderProgram program, CgShaderBindingsImpl patch) {
-            int loc = patch.resolveLocation(shader, this.name);
-            if (loc >= 0) {
-                program.setUniform4f(loc, this.x, this.y, this.z, this.w);
+             * Executes this binding operation: resolves the uniform location and
+             * calls {@link CgShaderProgram#setUniform4f(int, float, float, float, float)} if found.
+             */
+            @Override
+            public void execute(CgShader shader, CgShaderProgram program, CgShaderBindingsImpl patch) {
+                int loc = patch.resolveLocation(shader, this.name);
+                if (loc >= 0) {
+                    program.setUniform4f(loc, this.x, this.y, this.z, this.w);
+                }
             }
         }
-    }
 
-    private static final class IntBufferOp implements BindingOp {
-        final String name;
-        final IntBuffer buffer;
-
-        IntBufferOp(String name, IntBuffer buffer) {
-            this.name = name;
-            this.buffer = buffer;
-        }
+    private record IntBufferOp(String name, IntBuffer buffer) implements BindingOp {
 
         @Override
-        public void execute(CgShader shader, CgShaderProgram program, CgShaderBindingsImpl patch) {
-            int loc = patch.resolveLocation(shader, this.name);
-            if (loc >= 0) {
-                program.setUniformIntBuffer(loc, this.buffer);
+            public void execute(CgShader shader, CgShaderProgram program, CgShaderBindingsImpl patch) {
+                int loc = patch.resolveLocation(shader, this.name);
+                if (loc >= 0) {
+                    program.setUniformIntBuffer(loc, this.buffer);
+                }
             }
         }
-    }
 
-    private static final class FloatBufferOp implements BindingOp {
-        final String name;
-        final FloatBuffer buffer;
-
-        FloatBufferOp(String name, FloatBuffer buffer) {
-            this.name = name;
-            this.buffer = buffer;
-        }
+    private record FloatBufferOp(String name, FloatBuffer buffer) implements BindingOp {
 
         @Override
-        public void execute(CgShader shader, CgShaderProgram program, CgShaderBindingsImpl patch) {
-            int loc = patch.resolveLocation(shader, this.name);
-            if (loc >= 0) {
-                program.setUniformFloatBuffer(loc, this.buffer);
+            public void execute(CgShader shader, CgShaderProgram program, CgShaderBindingsImpl patch) {
+                int loc = patch.resolveLocation(shader, this.name);
+                if (loc >= 0) {
+                    program.setUniformFloatBuffer(loc, this.buffer);
+                }
             }
         }
-    }
 
-    private static final class Mat3Op implements BindingOp {
-        final String name;
-        final FloatBuffer buffer;
-
-        Mat3Op(String name, FloatBuffer buffer) {
-            this.name = name;
-            this.buffer = buffer;
-        }
+    private record Mat3Op(String name, FloatBuffer buffer) implements BindingOp {
 
         @Override
-        public void execute(CgShader shader, CgShaderProgram program, CgShaderBindingsImpl patch) {
-            int loc = patch.resolveLocation(shader, this.name);
-            if (loc >= 0) {
-                program.setUniformMatrix3f(loc, this.buffer);
+            public void execute(CgShader shader, CgShaderProgram program, CgShaderBindingsImpl patch) {
+                int loc = patch.resolveLocation(shader, this.name);
+                if (loc >= 0) {
+                    program.setUniformMatrix3f(loc, this.buffer);
+                }
             }
         }
-    }
 
-    private static final class Mat4Op implements BindingOp {
-        final String name;
-        final FloatBuffer buffer;
-
-        Mat4Op(String name, FloatBuffer buffer) {
-            this.name = name;
-            this.buffer = buffer;
-        }
+    private record Mat4Op(String name, FloatBuffer buffer) implements BindingOp {
 
         /**
-         * Executes this binding operation: resolves the uniform location and
-         * calls {@link CgShaderProgram#setUniformMatrix4f(int, FloatBuffer)} if found.
-         */
-        @Override
-        public void execute(CgShader shader, CgShaderProgram program, CgShaderBindingsImpl patch) {
-            int loc = patch.resolveLocation(shader, this.name);
-            if (loc >= 0) {
-                program.setUniformMatrix4f(loc, this.buffer);
+             * Executes this binding operation: resolves the uniform location and
+             * calls {@link CgShaderProgram#setUniformMatrix4f(int, FloatBuffer)} if found.
+             */
+            @Override
+            public void execute(CgShader shader, CgShaderProgram program, CgShaderBindingsImpl patch) {
+                int loc = patch.resolveLocation(shader, this.name);
+                if (loc >= 0) {
+                    program.setUniformMatrix4f(loc, this.buffer);
+                }
             }
         }
-    }
 
     private static final class Sampler2DOp implements BindingOp {
         final String name;
@@ -513,38 +454,40 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
             this.texture = texture;
         }
 
+    private record Sampler2DOp(String name, int unit, ResourceLocation texture) implements BindingOp {
+
         /**
-         * Executes this binding operation:
-         * <ol>
-         *   <li>Resolves the sampler uniform location.</li>
-         *   <li>Saves the current active texture unit.</li>
-         *   <li>Activates the specified texture unit.</li>
-         *   <li>Binds the texture via Minecraft's texture manager.</li>
-         *   <li>Sets the sampler uniform to the texture unit index.</li>
-         *   <li>Restores the previously active texture unit (with exception safety).</li>
-         * </ol>
-         */
-        @Override
-        public void execute(CgShader shader, CgShaderProgram program, CgShaderBindingsImpl patch) {
-            int loc = patch.resolveLocation(shader, this.name);
-            if (loc < 0) {
-                return;
-            }
-
-            int previousUnit = CgShaderBindingsImpl.getActiveTextureUnit();
-            int targetUnit = GL_TEXTURE0 + this.unit;
-
-            try {
-                CgShaderBindingsImpl.setActiveTextureUnit(targetUnit);
-                Minecraft.getMinecraft().getTextureManager().bindTexture(this.texture);
-                program.setUniform1i(loc, this.unit);
-            } finally {
-                if (previousUnit != targetUnit) {
-                    CgShaderBindingsImpl.setActiveTextureUnit(previousUnit);
+             * Executes this binding operation:
+             * <ol>
+             *   <li>Resolves the sampler uniform location.</li>
+             *   <li>Saves the current active texture unit.</li>
+             *   <li>Activates the specified texture unit.</li>
+             *   <li>Binds the texture via Minecraft's texture manager.</li>
+             *   <li>Sets the sampler uniform to the texture unit index.</li>
+             *   <li>Restores the previously active texture unit (with exception safety).</li>
+             * </ol>
+             */
+            @Override
+            public void execute(CgShader shader, CgShaderProgram program, CgShaderBindingsImpl patch) {
+                int loc = patch.resolveLocation(shader, this.name);
+                if (loc < 0) {
+                    return;
+                }
+    
+                int previousUnit = CgShaderBindingsImpl.getActiveTextureUnit();
+                int targetUnit = GL_TEXTURE0 + this.unit;
+    
+                try {
+                    CgShaderBindingsImpl.setActiveTextureUnit(targetUnit);
+                    Minecraft.getMinecraft().getTextureManager().bindTexture(this.texture);
+                    program.setUniform1i(loc, this.unit);
+                } finally {
+                    if (previousUnit != targetUnit) {
+                        CgShaderBindingsImpl.setActiveTextureUnit(previousUnit);
+                    }
                 }
             }
         }
-    }
 
     /**
      * Internal marker interface for deferred binding operations.

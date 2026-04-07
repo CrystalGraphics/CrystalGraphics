@@ -154,10 +154,7 @@ final class CgShaderImpl implements CgShader {
      */
     private final CgShaderBindings ephemeralBindings = new CgShaderBindingsImpl();
 
-    CgShaderImpl(ResourceLocation vertexLocation,
-                 ResourceLocation fragmentLocation,
-                 Map<String, String> defines,
-                 CgCapabilities caps) {
+    CgShaderImpl(ResourceLocation vertexLocation, ResourceLocation fragmentLocation, Map<String, String> defines, CgCapabilities caps) {
         this.vertexLocation = vertexLocation;
         this.fragmentLocation = fragmentLocation;
         this.preprocessor = new CgShaderPreprocessor(defines);
@@ -185,16 +182,12 @@ final class CgShaderImpl implements CgShader {
 
     @Override
     public int getUniformLocation(String name) {
-        if (name == null) {
-            throw new IllegalArgumentException("Uniform name must not be null");
-        }
-        if (!compiled) {
-            return -1;
-        }
+        if (name == null) throw new IllegalArgumentException("Uniform name must not be null");
+        if (!compiled) return -1;
+        
         Integer cached = uniformLocationCache.get(name);
-        if (cached != null) {
-            return cached.intValue();
-        }
+        if (cached != null) return cached.intValue();
+        
         int loc = program.getUniformLocation(name);
         uniformLocationCache.put(name, Integer.valueOf(loc));
         return loc;
@@ -213,9 +206,8 @@ final class CgShaderImpl implements CgShader {
 
     @Override
     public void bind() {
-        if (dirty) {
-            recompile();
-        }
+        if (dirty) recompile();
+        
         if (compiled) {
             program.bind();
             applyAllBindings();
@@ -231,12 +223,9 @@ final class CgShaderImpl implements CgShader {
 
     @Override
     public CgShaderScope bindScoped() {
-        if (dirty) {
-            recompile();
-        }
-        if (!compiled) {
-            return NOOP_SCOPE;
-        }
+        if (dirty) recompile();
+        
+        if (!compiled) return NOOP_SCOPE;
 
         final int previousProgram = queryCurrentProgram();
         final CallFamily previousFamily = GLStateMirror.getCurrentProgramFamily();
@@ -258,16 +247,12 @@ final class CgShaderImpl implements CgShader {
 
     @Override
     public CgShaderScope bindScoped(CgScopeRestoreOption... options) {
-        if (options == null || options.length == 0 || !containsFullBindings(options)) {
-            return bindScoped();
-        }
-
-        if (dirty) {
-            recompile();
-        }
-        if (!compiled) {
-            return NOOP_SCOPE;
-        }
+        if (options == null || options.length == 0 || !containsFullBindings(options)) return bindScoped();
+        
+        if (dirty) recompile();
+        
+        if (!compiled) return NOOP_SCOPE;
+        
 
         final CgStateSnapshot snapshot = CgStateBoundary.save();
         program.bind();
@@ -293,9 +278,9 @@ final class CgShaderImpl implements CgShader {
 
     @Override
     public void delete() {
-        if (program != null && !program.isDeleted()) {
+        if (program != null && !program.isDeleted()) 
             program.delete();
-        }
+        
         program = null;
         compiled = false;
         dirty = false;
@@ -304,27 +289,22 @@ final class CgShaderImpl implements CgShader {
 
     private static int queryCurrentProgram() {
         ContextCapabilities glCaps = GLContext.getCapabilities();
-        if (glCaps.OpenGL20) {
-            return GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM);
-        }
-        if (glCaps.GL_ARB_shader_objects) {
-            return ARBShaderObjects.glGetHandleARB(ARBShaderObjects.GL_PROGRAM_OBJECT_ARB);
-        }
+        if (glCaps.OpenGL20) return GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM);
+        if (glCaps.GL_ARB_shader_objects) return ARBShaderObjects.glGetHandleARB(ARBShaderObjects.GL_PROGRAM_OBJECT_ARB);
+        
         return 0;
     }
 
     private static boolean containsFullBindings(CgScopeRestoreOption[] options) {
         for (CgScopeRestoreOption option : options) {
-            if (option == CgScopeRestoreOption.FULL_BINDINGS) {
-                return true;
-            }
+            if (option == CgScopeRestoreOption.FULL_BINDINGS) return true;
+            
         }
         return false;
     }
 
     private void applyAllBindings() {
-        if (!compiled) 
-            return;
+        if (!compiled) return;
         
         CgSystemUniformRegistry.getInstance().applyAll(this);
         bindings.apply(this);
@@ -367,9 +347,9 @@ final class CgShaderImpl implements CgShader {
     }
 
     private void clearProgram() {
-        if (program != null && !program.isDeleted()) {
+        if (program != null && !program.isDeleted()) 
             program.delete();
-        }
+        
         program = null;
         compiled = false;
         uniformLocationCache.clear();
