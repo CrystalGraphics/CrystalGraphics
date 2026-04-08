@@ -318,8 +318,8 @@ final class CgShaderImpl implements CgShader {
         String vertex;
         String fragment;
         try {
-            vertex = loadShaderSource(vertexLocation);
-            fragment = loadShaderSource(fragmentLocation);
+            vertex = CgIO.loadSource(vertexPath);
+            fragment = CgIO.loadSource(fragmentPath);
         } catch (Exception e) {
             LOGGER.error("Failed to load shader sources for {}", cacheKey, e);
             clearProgram();
@@ -353,66 +353,5 @@ final class CgShaderImpl implements CgShader {
         program = null;
         compiled = false;
         uniformLocationCache.clear();
-    }
-
-    /**
-     * Loads GLSL shader source text from a {@link ResourceLocation}.
-     *
-     * <p>Attempts Minecraft's resource manager first (the normal in-game path).
-     * If the resource manager is unavailable (e.g. running in the standalone
-     * debug harness where no Minecraft instance exists), falls back to direct
-     * classpath loading using the resource path stored in the location.  This
-     * allows the same managed-shader pipeline to work both inside Minecraft
-     * and in harness/test environments without special-casing the caller.</p>
-     *
-     * @param location the resource location to load
-     * @return the shader source text (never null)
-     * @throws Exception if the source cannot be loaded from either path
-     */
-    private static String loadShaderSource(ResourceLocation location) throws Exception {
-        // Try Minecraft resource manager first (normal in-game path)
-        try {
-            IResourceManager resourceManager = Minecraft.getMinecraft().getResourceManager();
-            if (resourceManager != null) {
-                IResource resource = resourceManager.getResource(location);
-                InputStream in = resource.getInputStream();
-                try {
-                    return IOUtils.toString(in, Charset.forName("UTF-8"));
-                } finally {
-                    IOUtils.closeQuietly(in);
-                }
-            }
-        } catch (Throwable ignored) {
-            // Minecraft not available (harness, tests, etc.) — fall through to classpath
-        }
-
-        // Classpath fallback: use the resource path directly. Shader paths stored
-        // in CgTextRenderer (e.g. "/assets/crystalgraphics/shader/bitmap_text.vert")
-        // are valid classpath resource paths when the mod resources are on the
-        // runtime classpath.
-        // Uses plain Java I/O here (not commons-io) since commons-io may not be
-        // on the harness classpath.
-        String path = location.getResourcePath();
-        InputStream in = CgShaderImpl.class.getResourceAsStream(path);
-        if (in == null && !path.startsWith("/")) in = CgShaderImpl.class.getResourceAsStream("/" + path);
-        if (in == null) {
-            // Try the Minecraft resource convention (assets/<domain>/<path>)
-            String mcPath = "/assets/" + location.getResourceDomain() + "/" + path;
-            in = CgShaderImpl.class.getResourceAsStream(mcPath);
-        }
-        if (in == null) throw new Exception("Shader source not found on classpath: " + location + " (tried path: " + path + ")");
-        
-        try {
-            InputStreamReader reader = new InputStreamReader(in, Charset.forName("UTF-8"));
-            StringBuilder sb = new StringBuilder();
-            char[] buf = new char[4096];
-            int read;
-            while ((read = reader.read(buf)) != -1) 
-                sb.append(buf, 0, read);
-            
-            return sb.toString();
-        } finally {
-            in.close();
-        }
     }
 }
