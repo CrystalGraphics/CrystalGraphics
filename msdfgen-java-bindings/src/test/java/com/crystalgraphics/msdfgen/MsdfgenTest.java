@@ -1,5 +1,6 @@
-package com.msdfgen;
+package com.crystalgraphics.msdfgen;
 
+import com.crystalgraphics.msdfgen.*;
 import org.junit.Test;
 import static org.junit.Assert.*;
 

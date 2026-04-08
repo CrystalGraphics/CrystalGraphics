@@ -1,8 +1,8 @@
 package io.github.somehussar.crystalgraphics.harness.scene;
 
-import com.msdfgen.FreeTypeIntegration;
-import com.msdfgen.MsdfException;
-import com.msdfgen.Shape;
+import com.crystalgraphics.msdfgen.FreeTypeIntegration;
+import com.crystalgraphics.msdfgen.MsdfException;
+import com.crystalgraphics.msdfgen.Shape;
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
 import io.github.somehussar.crystalgraphics.api.PoseStack;
 import io.github.somehussar.crystalgraphics.api.font.CgFont;

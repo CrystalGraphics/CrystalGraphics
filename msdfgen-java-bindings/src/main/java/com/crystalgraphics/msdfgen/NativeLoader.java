@@ -1,4 +1,4 @@
-package com.msdfgen;
+package com.crystalgraphics.msdfgen;
 
 /**
  * Native library loader for msdfgen-jni with fallback mechanism.

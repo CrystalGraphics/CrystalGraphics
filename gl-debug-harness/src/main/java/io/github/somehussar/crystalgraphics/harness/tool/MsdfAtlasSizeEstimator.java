@@ -1,8 +1,8 @@
 package io.github.somehussar.crystalgraphics.harness.tool;
 
-import com.msdfgen.FreeTypeIntegration;
-import com.msdfgen.MsdfException;
-import com.msdfgen.Shape;
+import com.crystalgraphics.msdfgen.FreeTypeIntegration;
+import com.crystalgraphics.msdfgen.MsdfException;
+import com.crystalgraphics.msdfgen.Shape;
 import io.github.somehussar.crystalgraphics.text.msdf.CgMsdfAtlasConfig;
 import io.github.somehussar.crystalgraphics.text.msdf.CgMsdfGlyphLayout;
 import io.github.somehussar.crystalgraphics.text.atlas.packing.CgGuillotinePacker;

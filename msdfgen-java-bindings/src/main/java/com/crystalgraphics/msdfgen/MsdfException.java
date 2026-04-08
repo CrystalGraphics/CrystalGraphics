@@ -1,4 +1,4 @@
-package com.msdfgen;
+package com.crystalgraphics.msdfgen;
 
 /**
  * Exception thrown when an MSDFgen native operation fails.

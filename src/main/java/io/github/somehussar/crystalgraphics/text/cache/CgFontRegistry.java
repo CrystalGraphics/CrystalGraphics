@@ -6,7 +6,7 @@ import com.crystalgraphics.freetype.FTGlyphMetrics;
 import com.crystalgraphics.freetype.FTLoadFlags;
 import com.crystalgraphics.freetype.FTRenderMode;
 import com.crystalgraphics.freetype.FreeTypeException;
-import com.msdfgen.FreeTypeIntegration;
+import com.crystalgraphics.msdfgen.FreeTypeIntegration;
 import io.github.somehussar.crystalgraphics.api.font.CgAtlasRegion;
 import io.github.somehussar.crystalgraphics.api.font.CgFont;
 import io.github.somehussar.crystalgraphics.api.font.CgFontKey;

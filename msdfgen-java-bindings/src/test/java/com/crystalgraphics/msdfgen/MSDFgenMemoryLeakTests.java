@@ -1,4 +1,4 @@
-package com.msdfgen;
+package com.crystalgraphics.msdfgen;
 
 import org.junit.Test;
 import org.junit.FixMethodOrder;
