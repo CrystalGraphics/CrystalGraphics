@@ -11,6 +11,42 @@
 Run ./gradlew.bat compileJava and WAIT until it finishes. DO NOT be impatient and kill the process, it will take about 60 seconds, 
 and DO NOT run it multiple times in parallel, it will cause out-of-memory errors. 
 
+## Font/Text System — Start Here
+
+For any work on the font/text framework, use the new documentation and package-local guides first.
+
+### Canonical docs
+
+- `docs/font/README.md` — top-level entry point
+- `docs/font/architecture.md` — package ownership and boundaries
+- `docs/font/pipeline-map-and-glossary.md` — end-to-end flow + terminology
+- `docs/font/api-guide.md` — public API usage
+
+### Current package map for font/text
+
+- `api/font` — public font-domain API + layout bridge
+- `api/text` — public text-domain values
+- `text/layout` — internal layout algorithm
+- `text/cache` — glyph supply / cache / async generation
+- `text/atlas` — atlas storage
+- `text/atlas/packing` — packing algorithms
+- `text/msdf` — distance-field generation logic
+- `text/render` — draw-time orchestration
+- 
+### Source package guides
+
+- `src/main/java/io/github/somehussar/crystalgraphics/api/font/AGENTS.md`
+- `src/main/java/io/github/somehussar/crystalgraphics/api/text/AGENTS.md`
+- `src/main/java/io/github/somehussar/crystalgraphics/text/AGENTS.md`
+- `src/main/java/io/github/somehussar/crystalgraphics/text/layout/AGENTS.md`
+- `src/main/java/io/github/somehussar/crystalgraphics/text/render/AGENTS.md`
+- `src/main/java/io/github/somehussar/crystalgraphics/text/cache/AGENTS.md`
+- `src/main/java/io/github/somehussar/crystalgraphics/text/atlas/AGENTS.md`
+- `src/main/java/io/github/somehussar/crystalgraphics/text/atlas/packing/AGENTS.md`
+- `src/main/java/io/github/somehussar/crystalgraphics/text/msdf/AGENTS.md`
+
+Do not rely on older font/text notes outside this set; the current docs above are the intended source of truth.
+
 ## Minecraft Source Code Location
 
 **CRITICAL**: The Minecraft 1.7.10 and Forge source code is decompiled and deobfuscated at:
