@@ -1,4 +1,4 @@
-package com.msdfgen;
+package com.crystalgraphics.msdfgen;
 
 /**
  * Edge color constants for MSDFgen edge coloring.

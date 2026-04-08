@@ -1,9 +1,9 @@
-package com.msdfgen;
+package com.crystalgraphics.msdfgen;
+
+import com.crystalgraphics.msdfgen.NativeLoader;
 
 import java.io.BufferedReader;
-import java.io.File;
 import java.io.InputStreamReader;
-import java.util.ArrayList;
 import java.util.List;
 
 /**

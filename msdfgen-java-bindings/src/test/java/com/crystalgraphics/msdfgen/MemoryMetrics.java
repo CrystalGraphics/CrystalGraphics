@@ -1,4 +1,4 @@
-package com.msdfgen;
+package com.crystalgraphics.msdfgen;
 
 import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryMXBean;

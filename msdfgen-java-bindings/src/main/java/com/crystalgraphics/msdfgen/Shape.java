@@ -1,4 +1,4 @@
-package com.msdfgen;
+package com.crystalgraphics.msdfgen;
 
 /**
  * Represents an MSDFgen Shape - a 2D vector shape composed of contours.
