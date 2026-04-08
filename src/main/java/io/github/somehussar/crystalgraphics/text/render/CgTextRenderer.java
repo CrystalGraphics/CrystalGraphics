@@ -101,16 +101,13 @@ public class CgTextRenderer {
     // ══════════════════════════════════════════════════════════════════════════════════════════
     //  SHADERS SETUP
     // ══════════════════════════════════════════════════════════════════════════════════════════
-    private static final String BITMAP_VERT = "/assets/crystalgraphics/shader/bitmap_text.vert";
-    private static final String BITMAP_FRAG = "/assets/crystalgraphics/shader/bitmap_text.frag";
+    private static final String BITMAP_VERT = "/shader/bitmap_text.vert", BITMAP_FRAG = "/shader/bitmap_text.frag";
     private static final CgShader BITMAP_SHADER = CgShaderFactory.load(BITMAP_VERT, BITMAP_FRAG);
 
-    private static final String MSDF_VERT = "/assets/crystalgraphics/shader/msdf_text.vert";
-    private static final String MSDF_FRAG = "/assets/crystalgraphics/shader/msdf_text.frag";
+    private static final String MSDF_VERT = "/shader/msdf_text.vert", MSDF_FRAG = "/shader/msdf_text.frag";
     private static final CgShader MSDF_SHADER = CgShaderFactory.load(MSDF_VERT, MSDF_FRAG);
-    
-    private static final String MTSDF_VERT = "/assets/crystalgraphics/shader/mtsdf_text.vert";
-    private static final String MTSDF_FRAG = "/assets/crystalgraphics/shader/mtsdf_text.frag";
+
+    private static final String MTSDF_VERT = "/shader/mtsdf_text.vert", MTSDF_FRAG = "/shader/mtsdf_text.frag";
     private static final CgShader MTSDF_SHADER = CgShaderFactory.load(MTSDF_VERT, MTSDF_FRAG);
     
     // ══════════════════════════════════════════════════════════════════════════════════════════
