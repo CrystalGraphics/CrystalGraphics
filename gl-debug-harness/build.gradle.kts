@@ -29,8 +29,7 @@ dependencies {
     runtimeOnly("org.lwjgl.lwjgl:lwjgl-platform:2.9.4-nightly-20150209:natives-linux")
     runtimeOnly("org.lwjgl.lwjgl:lwjgl-platform:2.9.4-nightly-20150209:natives-osx")
 
-    implementation(project(":freetype-harfbuzz-java-bindings"))
-    implementation(project(":msdfgen-java-bindings"))
+    implementation(project(":freetype-msdfgen-harfbuzz-bindings"))
 
     // Root project for CgCapabilities, CgGlyphAtlas, font API
     implementation(project(":"))
@@ -93,7 +92,7 @@ tasks.register<JavaExec>("runHarness") {
     val lwjglNativesDir = file("build/lwjgl-natives").absolutePath
     nativePaths.add(lwjglNativesDir)
 
-    // 2. JNI binding natives (freetype-harfbuzz, msdfgen)
+    // 2. JNI binding natives (freetype, msdfgen, harfbuzz — all in one subproject)
     val os = System.getProperty("os.name", "").lowercase()
     val arch = System.getProperty("os.arch", "").lowercase()
     val osName = when {
@@ -109,10 +108,8 @@ tasks.register<JavaExec>("runHarness") {
         else -> null
     }
     if (osName != null && archName != null) {
-        listOf(
-            project(":freetype-harfbuzz-java-bindings").file("src/main/resources/natives/$osName-$archName"),
-            project(":msdfgen-java-bindings").file("src/main/resources/natives/$osName-$archName")
-        ).filter { it.isDirectory }.forEach { nativePaths.add(it.absolutePath) }
+        val nativeDir = project(":freetype-msdfgen-harfbuzz-bindings").file("src/main/resources/natives/$osName-$archName")
+        if (nativeDir.isDirectory) { nativePaths.add(nativeDir.absolutePath) }
     }
 
     val existingLibPath = System.getProperty("java.library.path", "")
