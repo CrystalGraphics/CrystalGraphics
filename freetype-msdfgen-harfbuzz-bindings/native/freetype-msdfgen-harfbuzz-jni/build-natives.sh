@@ -5,9 +5,23 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BUILD_DIR="$SCRIPT_DIR/build"
 OUTPUT_DIR="$PROJECT_ROOT/src/main/resources/natives"
+MSDFGEN_DIR="${MSDFGEN_SOURCE_DIR:-$SCRIPT_DIR/msdfgen}"
+IMPORT_FONT_OVERRIDE="$SCRIPT_DIR/overrides/msdfgen/ext/import-font.cpp"
 
 FREETYPE_VERSION="2.13.2"
 HARFBUZZ_VERSION="8.3.0"
+
+# === Clone msdfgen if needed ===
+if [ ! -d "$MSDFGEN_DIR" ]; then
+    echo "Cloning msdfgen..."
+    git clone --depth 1 --branch v1.13 https://github.com/Chlumsky/msdfgen.git "$MSDFGEN_DIR"
+fi
+
+# === Apply import-font override if present ===
+if [ -f "$IMPORT_FONT_OVERRIDE" ]; then
+    echo "Applying local msdfgen import-font override..."
+    cp "$IMPORT_FONT_OVERRIDE" "$MSDFGEN_DIR/ext/import-font.cpp"
+fi
 
 detect_platform() {
     local os arch
@@ -86,6 +100,7 @@ build_deps() {
         -DFT_DISABLE_PNG=ON \
         -DFT_DISABLE_HARFBUZZ=ON \
         -DFT_DISABLE_BROTLI=ON \
+        -DFT_DISABLE_GZIP=ON \
         ${extra_cmake_flags[@]+"${extra_cmake_flags[@]}"} \
         $macos_flags
     cmake --build "$ft_build" --config Release -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
@@ -146,17 +161,18 @@ build_jni() {
     local jni_build="$BUILD_DIR/jni-build"
     mkdir -p "$jni_build"
 
-    echo "=== Building JNI library for ${platform} ==="
+    echo "=== Building unified JNI library for ${platform} ==="
 
     local macos_flags
     macos_flags=$(get_macos_cmake_flags)
 
-    cmake -S "$SCRIPT_DIR/src/cpp" -B "$jni_build" \
+    cmake -S "$SCRIPT_DIR" -B "$jni_build" \
         -DCMAKE_BUILD_TYPE=Release \
         -DFREETYPE_INCLUDE_DIRS="${FREETYPE_DIR}/include" \
         -DFREETYPE_LIBRARIES="${FREETYPE_LIB}" \
         -DHARFBUZZ_INCLUDE_DIRS="${HARFBUZZ_DIR}/src" \
         -DHARFBUZZ_LIBRARIES="${HARFBUZZ_LIB}" \
+        -DMSDFGEN_SOURCE_DIR="$MSDFGEN_DIR" \
         $macos_flags
 
     cmake --build "$jni_build" --config Release -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
@@ -166,14 +182,14 @@ build_jni() {
 
     case "$platform" in
         windows-*)
-            if [ -f "$jni_build/Release/freetype_harfbuzz_jni.dll" ]; then
-                cp "$jni_build/Release/freetype_harfbuzz_jni.dll" "$dest_dir/"
+            if [ -f "$jni_build/Release/freetype_msdfgen_harfbuzz_jni.dll" ]; then
+                cp "$jni_build/Release/freetype_msdfgen_harfbuzz_jni.dll" "$dest_dir/"
             else
-                cp "$jni_build/freetype_harfbuzz_jni.dll" "$dest_dir/"
+                cp "$jni_build/freetype_msdfgen_harfbuzz_jni.dll" "$dest_dir/"
             fi
             ;;
-        linux-*)   cp "$jni_build/libfreetype_harfbuzz_jni.so" "$dest_dir/" ;;
-        macos-*)   cp "$jni_build/libfreetype_harfbuzz_jni.dylib" "$dest_dir/" ;;
+        linux-*)   cp "$jni_build/libfreetype_msdfgen_harfbuzz_jni.so" "$dest_dir/" ;;
+        macos-*)   cp "$jni_build/libfreetype_msdfgen_harfbuzz_jni.dylib" "$dest_dir/" ;;
     esac
 
     echo "=== Native library installed to: $dest_dir ==="
@@ -183,6 +199,6 @@ build_jni() {
 echo "Platform: $(detect_platform)"
 echo "Building dependencies..."
 build_deps
-echo "Building JNI library..."
+echo "Building unified JNI library..."
 build_jni
 echo "=== Build complete ==="

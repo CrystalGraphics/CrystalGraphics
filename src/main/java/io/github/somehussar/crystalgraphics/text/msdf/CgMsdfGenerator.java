@@ -60,7 +60,7 @@ import java.util.logging.Logger;
  * <p>MSDF generation uses {@code ERROR_CORRECTION_DISABLED} because the
  * default internal error-correction pass in msdfgen's {@code generateMSDF}
  * has been observed to crash on certain glyph shapes over time
- * ({@code EXCEPTION_ACCESS_VIOLATION} in {@code msdfgen-jni.dll}).
+ * ({@code EXCEPTION_ACCESS_VIOLATION} in {@code freetype_msdfgen_harfbuzz_jni.dll}).
  * At the cell sizes used here (32-64px) the artifacts that error correction
  * fixes are imperceptible.</p>
  */
