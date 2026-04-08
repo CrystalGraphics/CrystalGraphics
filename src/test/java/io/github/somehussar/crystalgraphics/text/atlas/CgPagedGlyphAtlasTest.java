@@ -1,4 +1,4 @@
-package io.github.somehussar.crystalgraphics.gl.text.atlas;
+package io.github.somehussar.crystalgraphics.text.atlas;
 
 import io.github.somehussar.crystalgraphics.api.font.CgFontKey;
 import io.github.somehussar.crystalgraphics.api.font.CgFontStyle;

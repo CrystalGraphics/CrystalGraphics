@@ -1,11 +1,9 @@
-package io.github.somehussar.crystalgraphics.gl.text;
+package io.github.somehussar.crystalgraphics.text.atlas;
 
 import io.github.somehussar.crystalgraphics.api.font.CgAtlasRegion;
 import io.github.somehussar.crystalgraphics.api.font.CgFontKey;
 import io.github.somehussar.crystalgraphics.api.font.CgFontStyle;
 import io.github.somehussar.crystalgraphics.api.font.CgGlyphKey;
-
-import io.github.somehussar.crystalgraphics.text.atlas.CgGlyphAtlas;
 import org.junit.After;
 import org.junit.Test;
 
