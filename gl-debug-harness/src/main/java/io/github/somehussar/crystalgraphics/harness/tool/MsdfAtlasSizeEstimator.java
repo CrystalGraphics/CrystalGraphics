@@ -1,8 +1,8 @@
 package io.github.somehussar.crystalgraphics.harness.tool;
 
-import com.crystalgraphics.msdfgen.FreeTypeIntegration;
-import com.crystalgraphics.msdfgen.MsdfException;
-import com.crystalgraphics.msdfgen.Shape;
+import com.crystalgraphics.msdfgen.FreeTypeMSDFIntegration;
+import com.crystalgraphics.msdfgen.MSDFException;
+import com.crystalgraphics.msdfgen.MSDFShape;
 import io.github.somehussar.crystalgraphics.text.msdf.CgMsdfAtlasConfig;
 import io.github.somehussar.crystalgraphics.text.msdf.CgMsdfGlyphLayout;
 import io.github.somehussar.crystalgraphics.text.atlas.packing.CgGuillotinePacker;
@@ -24,7 +24,7 @@ public final class MsdfAtlasSizeEstimator {
     private MsdfAtlasSizeEstimator() {
     }
 
-    public static int estimate(FreeTypeIntegration.Font msdfFont,
+    public static int estimate(FreeTypeMSDFIntegration.Font msdfFont,
                                String text,
                                CgMsdfAtlasConfig config) {
         if (msdfFont == null) {
@@ -100,7 +100,7 @@ public final class MsdfAtlasSizeEstimator {
         return true;
     }
 
-    private static Set<Integer> collectGlyphIds(FreeTypeIntegration.Font msdfFont, String text) {
+    private static Set<Integer> collectGlyphIds(FreeTypeMSDFIntegration.Font msdfFont, String text) {
         Set<Integer> glyphIds = new LinkedHashSet<>();
         if (msdfFont == null || text == null) {
             return glyphIds;
@@ -114,13 +114,13 @@ public final class MsdfAtlasSizeEstimator {
         return glyphIds;
     }
 
-    private static CgMsdfGlyphLayout computeLayout(FreeTypeIntegration.Font msdfFont,
+    private static CgMsdfGlyphLayout computeLayout(FreeTypeMSDFIntegration.Font msdfFont,
                                                    int glyphId,
                                                    CgMsdfAtlasConfig config) {
         try {
-            FreeTypeIntegration.GlyphData glyphData = msdfFont.loadGlyphByIndex(
-                    glyphId, FreeTypeIntegration.FONT_SCALING_EM_NORMALIZED);
-            Shape shape = glyphData.getShape();
+            FreeTypeMSDFIntegration.GlyphData glyphData = msdfFont.loadGlyphByIndex(
+                    glyphId, FreeTypeMSDFIntegration.FONT_SCALING_EM_NORMALIZED);
+            MSDFShape shape = glyphData.getShape();
             if (shape.getEdgeCount() == 0) {
                 return null;
             }
@@ -133,7 +133,7 @@ public final class MsdfAtlasSizeEstimator {
                     config.getMiterLimit(),
                     config.isAlignOriginX(),
                     config.isAlignOriginY());
-        } catch (MsdfException e) {
+        } catch (MSDFException e) {
             LOGGER.log(Level.FINE, "Failed to estimate glyph layout for glyph " + glyphId, e);
             return null;
         }

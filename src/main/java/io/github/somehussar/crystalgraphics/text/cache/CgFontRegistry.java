@@ -6,7 +6,7 @@ import com.crystalgraphics.freetype.FTGlyphMetrics;
 import com.crystalgraphics.freetype.FTLoadFlags;
 import com.crystalgraphics.freetype.FTRenderMode;
 import com.crystalgraphics.freetype.FreeTypeException;
-import com.crystalgraphics.msdfgen.FreeTypeIntegration;
+import com.crystalgraphics.msdfgen.FreeTypeMSDFIntegration;
 import io.github.somehussar.crystalgraphics.api.font.CgAtlasRegion;
 import io.github.somehussar.crystalgraphics.api.font.CgFont;
 import io.github.somehussar.crystalgraphics.api.font.CgFontKey;
@@ -502,7 +502,7 @@ public class CgFontRegistry {
             return cached;
         }
 
-        FreeTypeIntegration.Font msdfFont = font.getMsdfFont();
+        FreeTypeMSDFIntegration.Font msdfFont = font.getMsdfFont();
         if (msdfFont != null) {
             try {
                 CgGlyphGenerationResult generated = msdfGenerator.preparePagedGlyphWithinBudget(
@@ -841,7 +841,7 @@ public class CgFontRegistry {
             return cached;
         }
 
-        FreeTypeIntegration.Font msdfFont = font.getMsdfFont();
+        FreeTypeMSDFIntegration.Font msdfFont = font.getMsdfFont();
         if (msdfFont != null) {
             CgMsdfAtlasConfig config = resolveMsdfAtlasConfig(key.getFontKey());
             CgAtlasRegion region = msdfGenerator.queueOrGenerate(
@@ -942,7 +942,7 @@ public class CgFontRegistry {
             return cached;
         }
 
-        FreeTypeIntegration.Font msdfFont = font.getMsdfFont();
+        FreeTypeMSDFIntegration.Font msdfFont = font.getMsdfFont();
         if (msdfFont != null) {
             CgMsdfAtlasConfig config = resolveMsdfAtlasConfig(key.getFontKey());
             CgAtlasRegion region = msdfGenerator.queueOrGenerate(

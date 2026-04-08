@@ -1,5 +1,6 @@
 package com.crystalgraphics.freetype;
 
+import com.crystalgraphics.NativeLoader;
 import com.crystalgraphics.harfbuzz.*;
 import com.crystalgraphics.text.FreeTypeHarfBuzzIntegration;
 import org.junit.Test;

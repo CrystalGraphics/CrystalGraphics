@@ -1,6 +1,6 @@
 package io.github.somehussar.crystalgraphics.text.msdf;
 
-import com.crystalgraphics.msdfgen.MsdfConstants;
+import com.crystalgraphics.msdfgen.MSDFConstants;
 import io.github.somehussar.crystalgraphics.text.atlas.CgGlyphAtlas;
 
 /**
@@ -20,10 +20,10 @@ public final class CgMsdfAtlasConfig {
     public static final boolean DEFAULT_ALIGN_ORIGIN_X = false;
     public static final boolean DEFAULT_ALIGN_ORIGIN_Y = true;
     public static final boolean DEFAULT_OVERLAP_SUPPORT = true;
-    public static final int DEFAULT_ERROR_CORRECTION_MODE = MsdfConstants.ERROR_CORRECTION_EDGE_PRIORITY;
-    public static final int DEFAULT_DISTANCE_CHECK_MODE = MsdfConstants.DISTANCE_CHECK_AT_EDGE;
-    public static final double DEFAULT_MIN_DEVIATION_RATIO = MsdfConstants.DEFAULT_MIN_DEVIATION_RATIO;
-    public static final double DEFAULT_MIN_IMPROVE_RATIO = MsdfConstants.DEFAULT_MIN_IMPROVE_RATIO;
+    public static final int DEFAULT_ERROR_CORRECTION_MODE = MSDFConstants.ERROR_CORRECTION_EDGE_PRIORITY;
+    public static final int DEFAULT_DISTANCE_CHECK_MODE = MSDFConstants.DISTANCE_CHECK_AT_EDGE;
+    public static final double DEFAULT_MIN_DEVIATION_RATIO = MSDFConstants.DEFAULT_MIN_DEVIATION_RATIO;
+    public static final double DEFAULT_MIN_IMPROVE_RATIO = MSDFConstants.DEFAULT_MIN_IMPROVE_RATIO;
     public static final CgMsdfEdgeColoringMode DEFAULT_EDGE_COLORING_MODE = CgMsdfEdgeColoringMode.INK_TRAP;
     public static final double DEFAULT_EDGE_COLORING_ANGLE_THRESHOLD = 3.0d;
     public static final boolean DEFAULT_MTSDF = true;

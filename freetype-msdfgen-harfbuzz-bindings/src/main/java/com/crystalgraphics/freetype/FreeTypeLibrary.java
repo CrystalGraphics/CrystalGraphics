@@ -1,5 +1,7 @@
 package com.crystalgraphics.freetype;
 
+import com.crystalgraphics.NativeLoader;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;

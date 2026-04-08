@@ -4,9 +4,9 @@
 
 ### BasicSDF.java
 Minimal example that creates a shape manually (no FreeType needed) and generates an MSDF bitmap. Shows the core workflow:
-1. Create `Shape` → add `Contour` → add `Segment` edges
+1. Create `MSDFShape` → add `MSDFContour` → add `MSDFSegment` edges
 2. Normalize and color edges
-3. Generate MSDF with `Generator.generateMsdf()`
+3. Generate MSDF with `MSDFGenerator.generateMsdf()`
 4. Read pixel data
 
 ```bash
@@ -51,10 +51,10 @@ See [docs/FREETYPE_INTEGRATION.md](../docs/FREETYPE_INTEGRATION.md) for details.
 
 ### Shape Construction (No FreeType)
 ```java
-Shape shape = Shape.create();
+MSDFShape shape = MSDFShape.create();
 try {
-    Contour contour = shape.addContour();
-    Segment edge = Segment.createLinear();
+    MSDFContour contour = shape.addContour();
+    MSDFSegment edge = MSDFSegment.createLinear();
     edge.setPoint(0, x1, y1);
     edge.setPoint(1, x2, y2);
     contour.addEdge(edge);
@@ -68,10 +68,10 @@ try {
 
 ### MSDF Generation
 ```java
-Bitmap bitmap = Bitmap.allocMsdf(width, height);
+MSDFBitmap bitmap = MSDFBitmap.allocMsdf(width, height);
 try {
-    Transform transform = Transform.autoFrame(shape, width, height, pxRange);
-    Generator.generateMsdf(bitmap, shape, transform);
+    MSDFTransform transform = MSDFTransform.autoFrame(shape, width, height, pxRange);
+    MSDFGenerator.generateMsdf(bitmap, shape, transform);
     float[] pixels = bitmap.getPixelData();
 } finally {
     bitmap.free();
@@ -80,13 +80,13 @@ try {
 
 ### FreeType Font Loading
 ```java
-if (FreeTypeIntegration.isAvailable()) {
-    FreeTypeIntegration ft = FreeTypeIntegration.create();
+if (FreeTypeMSDFIntegration.isAvailable()) {
+    FreeTypeMSDFIntegration ft = FreeTypeMSDFIntegration.create();
     try {
-        FreeTypeIntegration.Font font = ft.loadFont("font.ttf");
+        FreeTypeMSDFIntegration.Font font = ft.loadFont("font.ttf");
         try {
-            FreeTypeIntegration.GlyphData glyph = font.loadGlyph('A');
-            Shape shape = glyph.getShape();
+            FreeTypeMSDFIntegration.GlyphData glyph = font.loadGlyph('A');
+            MSDFShape shape = glyph.getShape();
             try {
                 // shape is ready for MSDF generation
             } finally {
@@ -110,8 +110,8 @@ MSDF bitmap pixels are `float` values, typically in the 0..1 range after distanc
 
 ### Common Pitfalls
 
-1. **Always free native objects** - `Shape`, `Bitmap`, `Font`, and `FreeTypeIntegration` all hold native memory. Use try/finally.
+1. **Always free native objects** - `MSDFShape`, `MSDFBitmap`, `Font`, and `FreeTypeMSDFIntegration` all hold native memory. Use try/finally.
 2. **Free in reverse order** - Free shapes and bitmaps before fonts, fonts before FreeType instance.
 3. **Don't use freed objects** - Calling methods on freed objects throws `IllegalStateException`.
 4. **Shape must be normalized** - Call `shape.normalize()` before generation.
-5. **Edge coloring is required for MSDF** - Call `shape.edgeColoringSimple(3.0)` before `generateMsdf()`.
+5. **Edge coloring is required for MSDF** - Call `shape.edgeColoringSimple(3.0)` before `MSDFGenerator.generateMsdf()`.

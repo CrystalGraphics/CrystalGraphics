@@ -1,5 +1,6 @@
 package com.crystalgraphics.text;
 
+import com.crystalgraphics.NativeLoader;
 import com.crystalgraphics.freetype.*;
 import com.crystalgraphics.harfbuzz.*;
 import org.junit.Test;
@@ -9,7 +10,7 @@ public class IntegrationTest {
 
     private void requireNativesAvailable() {
         try {
-            com.crystalgraphics.freetype.NativeLoader.ensureLoaded();
+            NativeLoader.ensureLoaded();
         } catch (UnsatisfiedLinkError e) {
             fail("Native library not available: " + e.getMessage());
         }

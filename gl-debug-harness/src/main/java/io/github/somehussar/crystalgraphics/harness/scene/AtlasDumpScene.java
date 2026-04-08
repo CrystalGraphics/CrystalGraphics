@@ -1,8 +1,8 @@
 package io.github.somehussar.crystalgraphics.harness.scene;
 
-import com.crystalgraphics.msdfgen.FreeTypeIntegration;
-import com.crystalgraphics.msdfgen.MsdfException;
-import com.crystalgraphics.msdfgen.Shape;
+import com.crystalgraphics.msdfgen.FreeTypeMSDFIntegration;
+import com.crystalgraphics.msdfgen.MSDFException;
+import com.crystalgraphics.msdfgen.MSDFShape;
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
 import io.github.somehussar.crystalgraphics.api.PoseStack;
 import io.github.somehussar.crystalgraphics.api.font.CgFont;
@@ -115,7 +115,7 @@ public class AtlasDumpScene implements HarnessSceneLifecycle {
         } else if (wantMsdf && parityPrewarm) {
             CgFont estimatorCgFont = CgFont.load(fontPath, CgFontStyle.REGULAR, msdfPxSize);
             try {
-                FreeTypeIntegration.Font estimatorFont = estimatorCgFont.getMsdfFont();
+                FreeTypeMSDFIntegration.Font estimatorFont = estimatorCgFont.getMsdfFont();
                 if (estimatorFont != null) {
                     CgMsdfAtlasConfig estimatorConfig = CgMsdfAtlasConfig.forHarnessParity(msdfAtlasScale, null);
                     registryAtlasSize = MsdfAtlasSizeEstimator.estimate(estimatorFont, text, estimatorConfig);
@@ -353,7 +353,7 @@ public class AtlasDumpScene implements HarnessSceneLifecycle {
                                                CgFont font,
                                                String text,
                                                long startFrame) {
-        FreeTypeIntegration.Font msdfFont = font.getMsdfFont();
+        FreeTypeMSDFIntegration.Font msdfFont = font.getMsdfFont();
         CgMsdfAtlasConfig config = registry.getResolvedMsdfConfig(font.getKey());
         List<GlyphPrewarmEntry> glyphs = collectSortedMsdfGlyphs(msdfFont, text, config);
         long frame = startFrame;
@@ -374,9 +374,9 @@ public class AtlasDumpScene implements HarnessSceneLifecycle {
         return frame + 1;
     }
 
-    private List<GlyphPrewarmEntry> collectSortedMsdfGlyphs(FreeTypeIntegration.Font msdfFont,
-                                                                      String text,
-                                                                      CgMsdfAtlasConfig config) {
+    private List<GlyphPrewarmEntry> collectSortedMsdfGlyphs(FreeTypeMSDFIntegration.Font msdfFont,
+                                                            String text,
+                                                            CgMsdfAtlasConfig config) {
         Map<Integer, GlyphPrewarmEntry> unique = new HashMap<>();
         for (int i = 0; i < text.length(); i++) {
             int glyphId = msdfFont.getGlyphIndex(text.charAt(i));
@@ -401,13 +401,13 @@ public class AtlasDumpScene implements HarnessSceneLifecycle {
         return sorted;
     }
 
-    private GlyphPrewarmEntry computeGlyphPrewarmEntry(FreeTypeIntegration.Font msdfFont,
+    private GlyphPrewarmEntry computeGlyphPrewarmEntry(FreeTypeMSDFIntegration.Font msdfFont,
                                                        int glyphId,
                                                        CgMsdfAtlasConfig config) {
         try {
-            FreeTypeIntegration.GlyphData glyphData = msdfFont.loadGlyphByIndex(
-                    glyphId, FreeTypeIntegration.FONT_SCALING_EM_NORMALIZED);
-            Shape shape = glyphData.getShape();
+            FreeTypeMSDFIntegration.GlyphData glyphData = msdfFont.loadGlyphByIndex(
+                    glyphId, FreeTypeMSDFIntegration.FONT_SCALING_EM_NORMALIZED);
+            MSDFShape shape = glyphData.getShape();
             if (shape.getEdgeCount() == 0) {
                 return null;
             }
@@ -424,7 +424,7 @@ public class AtlasDumpScene implements HarnessSceneLifecycle {
                 return null;
             }
             return new GlyphPrewarmEntry(glyphId, layout.getBoxWidth(), layout.getBoxHeight());
-        } catch (MsdfException e) {
+        } catch (MSDFException e) {
             LOGGER.warning("[Harness] Failed to inspect glyph " + glyphId + " for parity prewarm: " + e.getMessage());
             return null;
         }

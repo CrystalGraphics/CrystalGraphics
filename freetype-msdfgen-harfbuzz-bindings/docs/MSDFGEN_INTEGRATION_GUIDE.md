@@ -26,7 +26,7 @@ dependencies {
 The primary use case is generating MSDF font atlases for high-quality text rendering.
 
 ```java
-import com.msdfgen.*;
+import com.crystalgraphics.msdfgen.*;
 
 public class MsdfFontAtlas {
 
@@ -35,14 +35,14 @@ public class MsdfFontAtlas {
      * In a real implementation, the shape would come from FreeType
      * glyph outlines converted to msdfgen Shapes.
      */
-    public static float[] generateGlyphMsdf(Shape glyphShape, int size, double pxRange) {
+    public static float[] generateGlyphMsdf(MSDFShape glyphShape, int size, double pxRange) {
         glyphShape.normalize();
         glyphShape.edgeColoringSimple(3.0);
 
-        Bitmap bitmap = Bitmap.allocMsdf(size, size);
+        MSDFBitmap bitmap = MSDFBitmap.allocMsdf(size, size);
         try {
-            Transform transform = Transform.autoFrame(glyphShape, size, size, pxRange);
-            Generator.generateMsdf(bitmap, glyphShape, transform);
+            MSDFTransform transform = MSDFTransform.autoFrame(glyphShape, size, size, pxRange);
+            MSDFGenerator.generateMsdf(bitmap, glyphShape, transform);
             return bitmap.getPixelData();
         } finally {
             bitmap.free();
@@ -105,9 +105,9 @@ Note: Uses `#version 120` and `texture2D` for OpenGL 2.1 compatibility (Minecraf
 Without the FreeType extension, you need to construct shapes manually from font data:
 
 ```java
-public static Shape buildSquare(double x, double y, double size) {
-    Shape shape = Shape.create();
-    Contour contour = shape.addContour();
+public static MSDFShape buildSquare(double x, double y, double size) {
+    MSDFShape shape = MSDFShape.create();
+    MSDFContour contour = shape.addContour();
 
     double x2 = x + size;
     double y2 = y + size;
@@ -120,8 +120,8 @@ public static Shape buildSquare(double x, double y, double size) {
     return shape;
 }
 
-private static void addLine(Contour contour, double x1, double y1, double x2, double y2) {
-    Segment seg = Segment.createLinear();
+private static void addLine(MSDFContour contour, double x1, double y1, double x2, double y2) {
+    MSDFSegment seg = MSDFSegment.createLinear();
     seg.setPoint(0, x1, y1);
     seg.setPoint(1, x2, y2);
     contour.addEdge(seg);
@@ -131,17 +131,17 @@ private static void addLine(Contour contour, double x1, double y1, double x2, do
 
 ### 5. Memory Management
 
-All native objects (Shape, Bitmap, Contour, Segment) allocate native memory.
+All native objects (MSDFShape, MSDFBitmap, MSDFContour, MSDFSegment) allocate native memory.
 Always use try-finally to ensure cleanup:
 
 ```java
-Shape shape = Shape.create();
+MSDFShape shape = MSDFShape.create();
 try {
     // ... build shape ...
 
-    Bitmap bitmap = Bitmap.allocMsdf(32, 32);
+    MSDFBitmap bitmap = MSDFBitmap.allocMsdf(32, 32);
     try {
-        Generator.generateMsdf(bitmap, shape, transform);
+        MSDFGenerator.generateMsdf(bitmap, shape, transform);
         float[] pixels = bitmap.getPixelData();
         // use pixels...
     } finally {
@@ -154,7 +154,7 @@ try {
 
 ### 6. Thread Safety
 
-- Shape/Contour/Segment construction is NOT thread-safe (single-threaded build)
+- MSDFShape/MSDFContour/MSDFSegment construction is NOT thread-safe (single-threaded build)
 - SDF generation is CPU-bound but can be parallelized per-glyph
 - NativeLoader.load() is synchronized and safe to call from any thread
-- Bitmap pixel data extraction creates a Java-side copy (safe after extraction)
+- MSDFBitmap pixel data extraction creates a Java-side copy (safe after extraction)

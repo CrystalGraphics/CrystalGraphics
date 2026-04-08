@@ -1,5 +1,6 @@
 package com.crystalgraphics.test.memory;
 
+import com.crystalgraphics.NativeLoader;
 import com.crystalgraphics.freetype.*;
 import com.crystalgraphics.harfbuzz.*;
 import com.crystalgraphics.text.FreeTypeHarfBuzzIntegration;
@@ -88,8 +89,8 @@ public class PlatformSpecificMemoryLeakTests extends MemoryLeakDetectionBase {
 
         PlatformTools.Platform platform = PlatformTools.detectPlatform();
         String arch = PlatformTools.detectArch();
-        String nativePlatformId = com.crystalgraphics.freetype.NativeLoader.getPlatformIdentifier();
-        String libraryFileName = com.crystalgraphics.freetype.NativeLoader.getLibraryFileName();
+        String nativePlatformId = NativeLoader.getPlatformIdentifier();
+        String libraryFileName = NativeLoader.getLibraryFileName();
 
         System.out.println("  Detected platform: " + platform);
         System.out.println("  Detected arch: " + arch);
@@ -120,7 +121,7 @@ public class PlatformSpecificMemoryLeakTests extends MemoryLeakDetectionBase {
                 arch.equals("x64") || arch.equals("aarch64"));
 
         assertTrue("Native library should be loaded",
-                com.crystalgraphics.freetype.NativeLoader.isLoaded());
+                NativeLoader.isLoaded());
 
         // Validate the loaded library actually works
         FreeTypeLibrary ft = FreeTypeLibrary.create();

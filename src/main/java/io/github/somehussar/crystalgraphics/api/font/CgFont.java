@@ -7,7 +7,7 @@ import com.crystalgraphics.freetype.FreeTypeException;
 import com.crystalgraphics.freetype.FreeTypeLibrary;
 import com.crystalgraphics.harfbuzz.HBFont;
 import com.crystalgraphics.text.FreeTypeHarfBuzzIntegration;
-import com.crystalgraphics.msdfgen.FreeTypeIntegration;
+import com.crystalgraphics.msdfgen.FreeTypeMSDFIntegration;
 
 import java.io.ByteArrayOutputStream;
 import java.io.FileInputStream;
@@ -57,8 +57,8 @@ public class CgFont {
     private FTFace ftFace;
     private HBFont hbFont;
 
-    private FreeTypeIntegration msdfFtInstance;
-    private FreeTypeIntegration.Font msdfFtFont;
+    private FreeTypeMSDFIntegration msdfFtInstance;
+    private FreeTypeMSDFIntegration.Font msdfFtFont;
 
     private boolean disposed;
     private Runnable disposeListener;
@@ -397,21 +397,21 @@ public class CgFont {
         }
     }
 
-    public FreeTypeIntegration.Font getMsdfFont() {
+    public FreeTypeMSDFIntegration.Font getMsdfFont() {
         checkNotDisposed();
         requireSizeBound("MSDF generation requires a size-bound font. Call atSize(int) first.");
         if (msdfFtFont != null) {
             return msdfFtFont;
         }
 
-        if (!FreeTypeIntegration.isAvailable()) {
+        if (!FreeTypeMSDFIntegration.isAvailable()) {
             LOGGER.warning("MSDF FreeTypeIntegration is not available; "
                     + "MSDF generation will be skipped for font: " + logicalName);
             return null;
         }
 
         try {
-            msdfFtInstance = FreeTypeIntegration.create();
+            msdfFtInstance = FreeTypeMSDFIntegration.create();
             msdfFtFont = msdfFtInstance.loadFontData(fontBytes);
             applyVariationsToMsdfFont(msdfFtFont, variations);
             return msdfFtFont;
@@ -507,7 +507,7 @@ public class CgFont {
         hbFont.setVariations(toVariationTags(variations), toVariationValues(variations));
     }
 
-    private static void applyVariationsToMsdfFont(FreeTypeIntegration.Font font,
+    private static void applyVariationsToMsdfFont(FreeTypeMSDFIntegration.Font font,
                                                   List<CgFontVariation> variations) {
         if (variations == null || variations.isEmpty()) {
             return;

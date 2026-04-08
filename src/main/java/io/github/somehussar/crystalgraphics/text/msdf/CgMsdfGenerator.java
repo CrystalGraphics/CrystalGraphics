@@ -1,11 +1,11 @@
 package io.github.somehussar.crystalgraphics.text.msdf;
 
-import com.crystalgraphics.msdfgen.Bitmap;
-import com.crystalgraphics.msdfgen.FreeTypeIntegration;
-import com.crystalgraphics.msdfgen.Generator;
-import com.crystalgraphics.msdfgen.MsdfException;
-import com.crystalgraphics.msdfgen.Shape;
-import com.crystalgraphics.msdfgen.Transform;
+import com.crystalgraphics.msdfgen.MSDFBitmap;
+import com.crystalgraphics.msdfgen.FreeTypeMSDFIntegration;
+import com.crystalgraphics.msdfgen.MSDFGenerator;
+import com.crystalgraphics.msdfgen.MSDFException;
+import com.crystalgraphics.msdfgen.MSDFShape;
+import com.crystalgraphics.msdfgen.MSDFTransform;
 import io.github.somehussar.crystalgraphics.api.font.CgAtlasRegion;
 import io.github.somehussar.crystalgraphics.api.font.CgFontKey;
 import io.github.somehussar.crystalgraphics.api.font.CgGlyphKey;
@@ -107,7 +107,7 @@ public class CgMsdfGenerator {
      * @return the atlas region, or {@code null} if generation was skipped
      */
     public CgAtlasRegion queueOrGenerate(CgGlyphKey key,
-                                         FreeTypeIntegration.Font font,
+                                         FreeTypeMSDFIntegration.Font font,
                                          CgGlyphAtlas atlas,
                                          float ftBearingX,
                                          float ftBearingY,
@@ -116,7 +116,7 @@ public class CgMsdfGenerator {
     }
 
     public CgAtlasRegion queueOrGenerate(CgGlyphKey key,
-                                         FreeTypeIntegration.Font font,
+                                         FreeTypeMSDFIntegration.Font font,
                                          CgGlyphAtlas atlas,
                                          CgMsdfAtlasConfig config,
                                          long currentFrame) {
@@ -127,10 +127,10 @@ public class CgMsdfGenerator {
             throw new IllegalArgumentException("config must not be null");
         }
 
-        FreeTypeIntegration.GlyphData glyphData;
+        FreeTypeMSDFIntegration.GlyphData glyphData;
         try {
-            glyphData = font.loadGlyphByIndex(key.getGlyphId(), FreeTypeIntegration.FONT_SCALING_EM_NORMALIZED);
-        } catch (MsdfException e) {
+            glyphData = font.loadGlyphByIndex(key.getGlyphId(), FreeTypeMSDFIntegration.FONT_SCALING_EM_NORMALIZED);
+        } catch (MSDFException e) {
             LOGGER.log(Level.FINE, "Failed to load glyph index " + key.getGlyphId(), e);
             return null;
         }
@@ -143,7 +143,7 @@ public class CgMsdfGenerator {
         // native allocation (e.g. nLoadGlyphByIndex) traverses the damaged
         // free-list and crashes. Letting the finalizer be the sole owner of
         // the free() call eliminates the race entirely.
-        Shape shape = glyphData.getShape();
+        MSDFShape shape = glyphData.getShape();
 
         if (shape.getEdgeCount() == 0) {
             return null;
@@ -189,24 +189,24 @@ public class CgMsdfGenerator {
 
         double rangeInShapeUnits = halfRange / scale;
 
-        Transform transform = new Transform()
+        MSDFTransform transform = new MSDFTransform()
                 .scale(scale)
                 .translate(tx, ty)
                 .range(-rangeInShapeUnits, rangeInShapeUnits);
 
-        Bitmap bitmap = config.isMtsdf()
-                ? Bitmap.allocMtsdf(cellSize, cellSize)
-                : Bitmap.allocMsdf(cellSize, cellSize);
+        MSDFBitmap bitmap = config.isMtsdf()
+                ? MSDFBitmap.allocMtsdf(cellSize, cellSize)
+                : MSDFBitmap.allocMsdf(cellSize, cellSize);
         try {
             if (config.isMtsdf()) {
-                Generator.generateMtsdf(bitmap, shape, transform,
+                MSDFGenerator.generateMtsdf(bitmap, shape, transform,
                         config.isOverlapSupport(),
                         config.getErrorCorrectionMode(),
                         config.getDistanceCheckMode(),
                         config.getMinDeviationRatio(),
                         config.getMinImproveRatio());
             } else {
-                Generator.generateMsdf(bitmap, shape, transform,
+                MSDFGenerator.generateMsdf(bitmap, shape, transform,
                         config.isOverlapSupport(),
                         config.getErrorCorrectionMode(),
                         config.getDistanceCheckMode(),
@@ -254,7 +254,7 @@ public class CgMsdfGenerator {
      * @return the glyph placement, or {@code null} if generation was skipped
      */
     public CgGlyphPlacement queueOrGeneratePaged(CgGlyphKey key,
-                                                 FreeTypeIntegration.Font font,
+                                                 FreeTypeMSDFIntegration.Font font,
                                                  CgPagedGlyphAtlas pagedAtlas,
                                                  CgMsdfAtlasConfig config,
                                                  long currentFrame) {
@@ -290,7 +290,7 @@ public class CgMsdfGenerator {
 
     public CgGlyphGenerationResult preparePagedGlyphWithinBudget(CgGlyphKey key,
                                                           CgFontKey sourceFontKey,
-                                                          FreeTypeIntegration.Font font,
+                                                          FreeTypeMSDFIntegration.Font font,
                                                           CgMsdfAtlasKey atlasKey) {
         if (generatedThisFrame >= MAX_PER_FRAME) {
             return null;
@@ -309,22 +309,22 @@ public class CgMsdfGenerator {
 
     public static CgGlyphGenerationResult preparePagedGlyph(CgGlyphKey key,
                                                      CgFontKey sourceFontKey,
-                                                     FreeTypeIntegration.Font font,
+                                                     FreeTypeMSDFIntegration.Font font,
                                                      CgMsdfAtlasKey atlasKey,
                                                      CgMsdfAtlasConfig config) {
         if (config == null) {
             throw new IllegalArgumentException("config must not be null");
         }
 
-        FreeTypeIntegration.GlyphData glyphData;
+        FreeTypeMSDFIntegration.GlyphData glyphData;
         try {
-            glyphData = font.loadGlyphByIndex(key.getGlyphId(), FreeTypeIntegration.FONT_SCALING_EM_NORMALIZED);
-        } catch (MsdfException e) {
+            glyphData = font.loadGlyphByIndex(key.getGlyphId(), FreeTypeMSDFIntegration.FONT_SCALING_EM_NORMALIZED);
+        } catch (MSDFException e) {
             LOGGER.log(Level.FINE, "Failed to load glyph index " + key.getGlyphId(), e);
             return null;
         }
 
-        Shape shape = glyphData.getShape();
+        MSDFShape shape = glyphData.getShape();
         if (shape.getEdgeCount() == 0) {
             return CgGlyphGenerationResult.emptyMsdf(sourceFontKey, key, atlasKey, config.getPxRange());
         }
@@ -360,23 +360,23 @@ public class CgMsdfGenerator {
         double ty = layout.getTranslateY();
         double rangeInShapeUnits = layout.getRangeInShapeUnits();
 
-        Bitmap bitmap = config.isMtsdf()
-                ? Bitmap.allocMtsdf(boxWidth, boxHeight)
-                : Bitmap.allocMsdf(boxWidth, boxHeight);
-        Transform transform = new Transform()
+        MSDFBitmap bitmap = config.isMtsdf()
+                ? MSDFBitmap.allocMtsdf(boxWidth, boxHeight)
+                : MSDFBitmap.allocMsdf(boxWidth, boxHeight);
+        MSDFTransform transform = new MSDFTransform()
                 .scale(scale)
                 .translate(tx, ty)
                 .range(-rangeInShapeUnits, rangeInShapeUnits);
         try {
             if (config.isMtsdf()) {
-                Generator.generateMtsdf(bitmap, shape, transform,
+                MSDFGenerator.generateMtsdf(bitmap, shape, transform,
                         config.isOverlapSupport(),
                         config.getErrorCorrectionMode(),
                         config.getDistanceCheckMode(),
                         config.getMinDeviationRatio(),
                         config.getMinImproveRatio());
             } else {
-                Generator.generateMsdf(bitmap, shape, transform,
+                MSDFGenerator.generateMsdf(bitmap, shape, transform,
                         config.isOverlapSupport(),
                         config.getErrorCorrectionMode(),
                         config.getDistanceCheckMode(),
@@ -422,7 +422,7 @@ public class CgMsdfGenerator {
         return 32;
     }
 
-    public static boolean shouldUseMsdf(Shape shape, int fontPx) {
+    public static boolean shouldUseMsdf(MSDFShape shape, int fontPx) {
         int totalEdges = shape.getEdgeCount();
         if (totalEdges > COMPLEXITY_EDGE_THRESHOLD) {
             return fontPx >= COMPLEX_MSDF_MIN_PX;
@@ -430,7 +430,7 @@ public class CgMsdfGenerator {
         return fontPx >= SIMPLE_MSDF_MIN_PX;
     }
 
-    public static void applyEdgeColoring(Shape shape, CgMsdfAtlasConfig config) {
+    public static void applyEdgeColoring(MSDFShape shape, CgMsdfAtlasConfig config) {
         CgMsdfEdgeColoringMode mode = config.getEdgeColoringMode();
         double threshold = config.getEdgeColoringAngleThreshold();
         if (mode == CgMsdfEdgeColoringMode.INK_TRAP) {
@@ -444,7 +444,7 @@ public class CgMsdfGenerator {
         shape.edgeColoringSimple(threshold);
     }
 
-    private static void prepareShapeForMsdf(Shape shape, int glyphId, CgMsdfAtlasConfig config) {
+    private static void prepareShapeForMsdf(MSDFShape shape, int glyphId, CgMsdfAtlasConfig config) {
         shape.normalize();
         double[] bounds = shape.getBounds();
         double outerX = bounds[0] - (bounds[2] - bounds[0]) - 1.0;
