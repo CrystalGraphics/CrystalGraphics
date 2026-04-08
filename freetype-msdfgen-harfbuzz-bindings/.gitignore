@@ -12,12 +12,9 @@ out/
 .settings/
 
 # Native build artifacts
-native/freetype-harfbuzz-jni/build/
-native/freetype-harfbuzz-jni/cmake-build-*/
-native/msdfgen-jni/build/
-native/msdfgen-jni/build-native-fix/
-native/msdfgen-jni/msdfgen/
-native/msdfgen-jni/cmake-build-*/
+native/freetype-msdfgen-harfbuzz-jni/build/
+native/freetype-msdfgen-harfbuzz-jni/msdfgen/
+native/freetype-msdfgen-harfbuzz-jni/cmake-build-*/
 
 # OS
 .DS_Store
@@ -25,6 +22,6 @@ Thumbs.db
 
 
 # Compiled native libraries (keep in resources for distribution)
-# native/freetype-harfbuzz-jni/*.dll
-# native/freetype-harfbuzz-jni/*.so
-# native/freetype-harfbuzz-jni/*.dylib
+# native/freetype-msdfgen-harfbuzz-jni/*.dll
+# native/freetype-msdfgen-harfbuzz-jni/*.so
+# native/freetype-msdfgen-harfbuzz-jni/*.dylib

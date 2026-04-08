@@ -47,7 +47,7 @@ public final class PlatformTools {
     }
 
     public static String getNativeLibraryInfo() {
-        String libName = NativeLoader.mapLibraryName("msdfgen-jni");
+        String libName = NativeLoader.mapLibraryName("freetype_msdfgen_harfbuzz_jni");
         String resourcePath = "/natives/" + OS + "-" + ARCH + "/" + libName;
         boolean available = NativeLoader.class.getResourceAsStream(resourcePath) != null;
         return "Library: " + libName + " at " + resourcePath + " (available=" + available + ")";
