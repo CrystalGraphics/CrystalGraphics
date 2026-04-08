@@ -129,6 +129,10 @@ tasks.register<JavaExec>("runHarness") {
     // Output directory for harness artifacts
     systemProperty("harness.output.dir", file("harness-output").absolutePath)
 
+    // Shader hotswap: point to source resources so edits are picked up on R-key reload
+    systemProperty("crystalgraphics.shader.resourceOverrideDir", 
+        project(":").file("src/main/resources").absolutePath)
+
     // Forward system properties for native paths
     systemProperty("freetype.harfbuzz.native.path",
         System.getProperty("freetype.harfbuzz.native.path", ""))
