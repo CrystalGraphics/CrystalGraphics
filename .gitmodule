@@ -1,0 +1,4 @@
+[submodule "Font-Bindings"]
+	path = freetype-msdfgen-harfbuzz-bindings
+	url = https://github.com/CrystalGraphics/Font-Bindings.git
+	branch = master
