@@ -1,76 +1,55 @@
-# CrystalGraphics Font Rendering
+# CrystalGraphics Font/Text Documentation
 
-CrystalGraphics now includes a modern text rendering foundation built on top of FreeType, HarfBuzz, and MSDFgen.
+This directory is the **current canonical documentation set** for the CrystalGraphics font and text system.
 
-This system provides:
-- bitmap glyph rasterization for small and medium text
-- MSDF glyph generation for larger text
-- BiDi-aware shaping and line breaking
-- dynamic glyph atlases with LRU reuse
-- a two-pass renderer for bitmap and MSDF quads
-- PoseStack-driven model-view transforms with effective-size-aware rasterization
-- 3D world-space text with always-MSDF rendering and projection-aware quality/LOD
-- a dev integration example with on-screen rendering and mouse-wheel zoom
+Older investigation notes, one-off experiments, and pre-refactor writeups have been intentionally removed. The files that remain here describe the architecture that exists in the codebase **today**.
 
-The integration demo is interactive by default. The older framebuffer self-check
-mode is opt-in via `-Dcrystalgraphics.integration.runSelfChecks=true`.
+## TL;DR
 
-## Main pieces
+- `api/font` owns **font-domain public API**: loaded fonts, families, glyph keys, atlas regions/placements, and the public layout bridge.
+- `api/text` owns **public text-domain values**: `CgTextConstraints`, `CgTextLayout`, `CgShapedRun`.
+- `text/layout` owns the **internal layout algorithm**.
+- `text/cache` owns **glyph supply**: registry, generation jobs/results, cache keys.
+- `text/atlas` owns **atlas storage**: single-page atlases, paged atlases, pages, packing.
+- `text/msdf` owns **distance-field generation logic**.
+- `text/render` owns the **draw side**: batching, VBOs, contexts, raster-tier policy, final GL submission.
 
-### Public API
-- `io.github.somehussar.crystalgraphics.api.font.CgFont`
-- `io.github.somehussar.crystalgraphics.api.font.CgTextLayoutBuilder`
-- `io.github.somehussar.crystalgraphics.api.font.CgFontKey`
-- `io.github.somehussar.crystalgraphics.api.font.CgGlyphKey`
-- `io.github.somehussar.crystalgraphics.api.font.CgFontMetrics`
-- `io.github.somehussar.crystalgraphics.api.font.CgGlyphMetrics`
-- `io.github.somehussar.crystalgraphics.api.font.CgAtlasRegion`
+If you only want one sentence:
 
-### Internal runtime
-- `io.github.somehussar.crystalgraphics.gl.text.CgFontRegistry`
-- `io.github.somehussar.crystalgraphics.text.atlas.CgGlyphAtlas`
-- `io.github.somehussar.crystalgraphics.gl.text.CgMsdfGenerator`
-- `io.github.somehussar.crystalgraphics.gl.text.CgGlyphVbo`
-- `io.github.somehussar.crystalgraphics.gl.text.CgTextRenderer`
-- `io.github.somehussar.crystalgraphics.gl.text.CgTextRenderContext`
-- `io.github.somehussar.crystalgraphics.gl.text.CgWorldTextRenderContext`
-- `io.github.somehussar.crystalgraphics.gl.text.CgTextScaleResolver`
-- `io.github.somehussar.crystalgraphics.gl.text.ProjectedSizeEstimator`
+> string → layout (`api/text`) → glyph supply (`text/cache`) → atlas placement (`text/atlas`) → batching/VBO (`text/render`) → draw
 
-### CPU-side text pipeline
-- `io.github.somehussar.crystalgraphics.text.layout.CgTextShaper`
-- `io.github.somehussar.crystalgraphics.text.layout.CgLineBreaker`
-- `io.github.somehussar.crystalgraphics.text.CgShapedRun`
-- `io.github.somehussar.crystalgraphics.text.CgTextLayout`
+## Read In This Order
 
-## Runtime requirements
+1. **`architecture.md`** — package ownership and structural boundaries
+2. **`pipeline-map-and-glossary.md`** — end-to-end runtime flow + shared terminology
+3. **`api-guide.md`** — practical usage patterns and API walkthrough
 
-The current text renderer is a modern GL path and requires:
-- core FBO support
-- core shader support
-- VAO support
-- `glMapBufferRange`
+## Important Current Exceptions
 
-That requirement is enforced by `CgTextRenderer.create(...)`.
+- **`CgTextLayoutBuilder` still lives in `api/font`.**
+  This is intentional. It is the public bridge into the internal layout engine and still needs access to package-private font-family/HarfBuzz seams.
 
-## Documents
-- `docs/font/architecture.md`
-- `docs/font/api-guide.md`
-- `docs/font/example-usage.md`
-- `docs/font/integration-demo.md`
-- `docs/font/atlas-internals.md`
-- `docs/font/pipeline-deep-dive.md`
+- **`CgTextLayout.resolvedFontsByKey` is still a public/internal leak.**
+  The renderer still needs resolved `CgFont` handles at draw time.
 
-## Deep-dive internals
+- **`CgShapedRun` still carries source text/range fields.**
+  Those fields are still needed for run re-shaping during line breaking.
 
-For implementation-level documentation with file and line references, start with:
+## Where To Look In Source
 
-- `docs/font/atlas-internals.md`
-- `docs/font/pipeline-deep-dive.md`
+If you want the implementation story in code form, start here:
 
-Those two documents cover:
-- how fonts are loaded and stored
-- how atlas buckets are grouped
-- how bitmap and MSDF glyphs are generated and uploaded
-- how eviction works
-- the full `String -> shaping -> layout -> atlas -> VBO -> shader -> screen` path
+1. `api/font/CgTextLayoutBuilder.java`
+2. `text/layout/CgTextLayoutEngine.java`
+3. `api/font/CgFontFamily.java`
+4. `api/text/CgTextLayout.java`
+5. `text/render/CgTextRenderer.java`
+6. `text/cache/CgFontRegistry.java`
+7. `text/atlas/CgPagedGlyphAtlas.java`
+8. `text/msdf/CgMsdfGenerator.java`
+
+## Package-local agent docs
+
+Each relevant source package also gets its own `AGENTS.md` file.
+
+Those files are intentionally more implementation-focused than the docs in this directory and are meant for future LLM/agent onboarding directly inside the source tree.
