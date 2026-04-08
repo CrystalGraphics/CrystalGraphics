@@ -6,47 +6,73 @@ JNI bindings for **FreeType** (font loading), **HarfBuzz** (text shaping), and *
 
 ## Build System Architecture
 
+The build system is **library-agnostic**: all library definitions are in `gradle.properties`. The Gradle script reads the library list, compiles each one, and links all objects into a single shared library.
+
 ```
 build.gradle.kts           — Java project config + apply(from = "native-build.gradle.kts")
-native-build.gradle.kts    — Zig-based cross-platform native compilation tasks
-gradle.properties          — All configurable values (versions, targets, flags)
+native-build.gradle.kts    — Generic Zig-based cross-platform build (no hardcoded library names)
+gradle.properties          — All library definitions, versions, targets, compiler flags
 include/jni/               — Platform-independent JNI headers for cross-compilation
-  ├── jni.h
-  ├── win32/jni_md.h
-  ├── linux/jni_md.h
-  └── darwin/jni_md.h
-native/
-  ├── freetype-msdfgen-harfbuzz-jni/
-  │   ├── src/cpp/           — JNI C++ source files (4 files)
-  │   ├── overrides/         — msdfgen source overrides
-  │   └── CMakeLists.txt     — Legacy CMake build (still works, but Zig preferred)
-  └── msdfgen-jni/msdfgen/   — MSDFgen source (git clone of v1.13)
+native/                    — Native source trees (local sources, overrides, git clones)
 ```
 
-### Configuration Properties (gradle.properties)
-
-All native build settings are externalized to `gradle.properties` with `nativeBuild.*` prefix:
+### Global Properties (gradle.properties)
 
 | Property | Default | Description |
 |----------|---------|-------------|
 | `nativeBuild.zig.version` | `0.11.0` | Zig compiler version |
-| `nativeBuild.freetype.version` | `2.13.2` | FreeType source version |
-| `nativeBuild.harfbuzz.version` | `8.3.0` | HarfBuzz source version |
 | `nativeBuild.targets` | all 5 platforms | Comma-separated Zig target triples |
 | `nativeBuild.libraryName` | `freetype_msdfgen_harfbuzz_jni` | Output library base name |
 | `nativeBuild.cOptLevel` | `-O2` | C/C++ optimization level |
 | `nativeBuild.cDebugLevel` | `-g0` | Debug info level |
 | `nativeBuild.cppStandard` | `-std=c++11` | C++ standard |
+| `nativeBuild.libraries` | `freetype,harfbuzz,msdfgen,jni` | Ordered library list (build order = dependency order) |
 
-Override via command line: `-PnativeBuild.targets=x86_64-windows`
+### Per-Library Properties
 
-### Tree-sitter-ng Pattern
+Each library is configured via `nativeBuild.lib.<name>.<property>`:
 
-This build mirrors [tree-sitter-ng-v0.26.6](https://github.com/bonede/tree-sitter-ng):
-- **Zig 0.11.0** used as a drop-in C/C++ cross-compiler (`zig cc`, `zig c++`)
-- No CMake needed — Zig compiles all sources directly to `.o` files, then links
-- `-target <triple>` flag enables cross-compilation to any supported platform
-- JNI headers shipped locally (no JDK required on target platform)
+| Property | Required | Description |
+|----------|----------|-------------|
+| `type` | yes | `c` or `cpp` — selects `zig cc` or `zig c++` |
+| `source` | yes | Source location (see source types below) |
+| `sourceRoot` | download only | Directory name after extraction (e.g., `freetype-2.13.2`) |
+| `srcDirs` | no | Comma-separated dirs to scan for source files (default: `.`) |
+| `includes` | no | Comma-separated `-I` include dirs (relative to source root) |
+| `defines` | no | Comma-separated `-D` defines (without `-D` prefix) |
+| `files` | no | Explicit file list (if omitted, globs `*.c`/`*.cpp`/`*.cc` in srcDirs) |
+| `includesFrom` | no | Comma-separated library names whose includes to inherit |
+| `overrides` | no | Local dir whose files replace files in source root before compile |
+| `objPrefix` | no | Prefix for `.o` filenames (default: `<name>_`) |
+| `jniHeaders` | no | `true` to add platform JNI headers to include path |
+
+### Source Types
+
+| Syntax | Description | Example |
+|--------|-------------|---------|
+| `download:<url>` | Download + extract tar/tar.xz/tar.gz | `download:https://download.savannah.gnu.org/releases/freetype/freetype-2.13.2.tar.xz` |
+| `local:<path>` | Local directory (project-relative) | `local:native/msdfgen-jni/msdfgen` |
+| `git:<url>@<tag>` | Git clone at tag (must already exist) | `git:https://github.com/Chlumsky/msdfgen.git@v1.13` |
+
+### How to Add a New Library
+
+1. Add the library name to `nativeBuild.libraries` list
+2. Add `nativeBuild.lib.<name>.*` properties
+3. If it depends on other libraries' headers, set `includesFrom=<dep1>,<dep2>`
+4. Run `./gradlew buildNatives` — the new library is automatically compiled and linked
+
+Example — adding a hypothetical `tinyxml2` library:
+```properties
+nativeBuild.libraries=freetype,harfbuzz,msdfgen,tinyxml2,jni
+nativeBuild.lib.tinyxml2.type=cpp
+nativeBuild.lib.tinyxml2.source=download:https://github.com/leethomason/tinyxml2/archive/refs/tags/10.0.0.tar.gz
+nativeBuild.lib.tinyxml2.sourceRoot=tinyxml2-10.0.0
+nativeBuild.lib.tinyxml2.files=tinyxml2.cpp
+nativeBuild.lib.tinyxml2.includes=.
+nativeBuild.lib.tinyxml2.objPrefix=tinyxml2_
+# Then add tinyxml2 to jni's includesFrom if JNI code needs it:
+nativeBuild.lib.jni.includesFrom=freetype,harfbuzz,msdfgen,tinyxml2
+```
 
 ## Gradle Tasks
 
@@ -54,8 +80,8 @@ All tasks are in the `native build` group:
 
 | Task | Description |
 |------|-------------|
-| `downloadZig` | Download Zig 0.11.0 compiler (auto-skips if on PATH) |
-| `downloadNativeDeps` | Download FreeType 2.13.2 + HarfBuzz 8.3.0 source tarballs |
+| `downloadZig` | Download Zig compiler (auto-skips if on PATH) |
+| `downloadNativeDeps` | Download all libraries with `source=download:` |
 | `buildNatives` | Cross-compile for all targets (depends on `downloadNativeDeps`) |
 | `buildNativesLocal` | Prints command to build for current platform only |
 | `cleanNatives` | Remove all native build artifacts and output binaries |
@@ -71,26 +97,14 @@ All tasks are in the `native build` group:
 
 ### Build all platforms
 ```bash
-# Set JAVA_HOME to JDK 17+ if needed
 export JAVA_HOME="/path/to/jdk-21"
-
-# Build for all 5 targets
 ./gradlew buildNatives
-
-# Or from parent CrystalGraphics project:
-./gradlew :freetype-msdfgen-harfbuzz-bindings:buildNatives
 ```
 
 ### Build single platform (faster)
 ```bash
-# Windows x64 only (new property name)
 ./gradlew buildNatives -PnativeBuild.targets=x86_64-windows
-
-# Linux x64 only (legacy property name also works)
-./gradlew buildNatives -PnativeTargets=x86_64-linux-gnu
-
-# macOS (both architectures)
-./gradlew buildNatives -PnativeBuild.targets=x86_64-macos,aarch64-macos
+./gradlew buildNatives -PnativeTargets=x86_64-linux-gnu   # legacy syntax also works
 ```
 
 ### Custom Zig path
@@ -110,13 +124,15 @@ export JAVA_HOME="/path/to/jdk-21"
 
 ## Build Phases (per target)
 
-1. **FreeType** — Compile ~42 C files with `zig cc -DFT2_BUILD_LIBRARY`
-2. **HarfBuzz** — Compile `harfbuzz.cc` (unity build) with `zig c++ -DHAVE_FREETYPE`
-3. **MSDFgen** — Compile ~28 C++ files (core + ext) with msdfgen defines
-4. **JNI** — Compile 4 JNI C++ source files with all include paths
-5. **Link** — `zig c++ -shared` all object files into the output shared library
+Libraries are compiled in the order listed in `nativeBuild.libraries`:
 
-Typical build time: **~10-15 seconds** per target (with cached Gradle daemon), **~45 seconds** cold start.
+1. **freetype** — 42 C files with `-DFT2_BUILD_LIBRARY`
+2. **harfbuzz** — 1 C++ unity build file with `-DHAVE_FREETYPE`
+3. **msdfgen** — 28 C++ files from `core/` and `ext/` dirs
+4. **jni** — 4 JNI C++ source files with all upstream includes
+5. **link** — `zig c++ -shared` all 75 objects into one shared library
+
+Typical build time: **~10-15 seconds** per target (warm), **~45 seconds** cold start.
 
 ## Output Structure (verified sizes)
 
@@ -148,16 +164,15 @@ export JAVA_HOME=/path/to/jdk-21
 ```
 
 ### `tar` fails on Windows with "Cannot connect to X:"
-Windows bsdtar interprets drive letters as remote hosts. The build script works around this by running `tar` from the archive's directory using relative filenames. If manual extraction is needed, use Git Bash: `cd deps && tar xf freetype.tar.xz`
+Windows bsdtar interprets drive letters as remote hosts. The build script works around this by running `tar` from the archive's directory using relative filenames.
 
 ### Zig not found
-Three options:
 1. `./gradlew downloadZig` — auto-downloads to `build/native-build/zig/`
 2. Install Zig 0.11.0 and add to PATH
 3. `-PzigExe=/path/to/zig`
 
 ### Linker errors for `FT_Trace_Disable` / `FT_Trace_Enable`
-Ensure `src/base/ftdebug.c` is in the FreeType source file list. This is required for FreeType 2.13.2.
+Ensure `src/base/ftdebug.c` is in the FreeType `files` list in `gradle.properties`.
 
 ### msdfgen source not found
 Clone msdfgen v1.13:
@@ -179,8 +194,8 @@ No runtime dependencies other than the OS C runtime.
 
 | File | Purpose |
 |------|---------|
-| `gradle.properties` | All configurable native build values (versions, targets, flags) |
-| `native-build.gradle.kts` | All Zig build tasks and helpers |
+| `gradle.properties` | All library definitions, versions, targets, compiler flags |
+| `native-build.gradle.kts` | Generic Zig build tasks (library-agnostic) |
 | `build.gradle.kts` | Java project config, applies native-build.gradle.kts |
 | `include/jni/` | JNI headers for cross-compilation |
 | `native/freetype-msdfgen-harfbuzz-jni/src/cpp/` | JNI C++ sources |
@@ -192,5 +207,3 @@ No runtime dependencies other than the OS C runtime.
 Native build tasks use `notCompatibleWithConfigurationCache()` + `doNotTrackState()` because they invoke
 external commands (Zig compiler, tar). The build works correctly with `--configuration-cache` — cache
 entries are properly discarded for native tasks while other tasks benefit from caching.
-
-To suppress the informational warnings, omit the `--configuration-cache` flag when running native tasks.
