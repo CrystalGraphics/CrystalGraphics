@@ -17,7 +17,7 @@ public class MSDFgenMemoryLeakTests extends MemoryLeakDetectionBase {
         long startTime = System.currentTimeMillis();
         MemoryMetrics.MemorySnapshot before = MemoryMetrics.capture();
 
-        Shape shape = Shape.create();
+        MSDFShape shape = MSDFShape.create();
         assertFalse(shape.isFreed());
 
         MemoryMetrics.MemorySnapshot duringAllocation = MemoryMetrics.capture(false);
@@ -47,7 +47,7 @@ public class MSDFgenMemoryLeakTests extends MemoryLeakDetectionBase {
         tracker.record(before.runtimeUsed);
 
         for (int cycle = 0; cycle < 100; cycle++) {
-            Shape shape = createSimpleSquare();
+            MSDFShape shape = createSimpleSquare();
             shape.normalize();
             shape.edgeColoringSimple(3.0);
             shape.free();
@@ -79,7 +79,7 @@ public class MSDFgenMemoryLeakTests extends MemoryLeakDetectionBase {
         long startTime = System.currentTimeMillis();
         MemoryMetrics.MemorySnapshot before = MemoryMetrics.capture();
 
-        Bitmap bitmap = Bitmap.allocMsdf(512, 512);
+        MSDFBitmap bitmap = MSDFBitmap.allocMsdf(512, 512);
 
         long byteSize = bitmap.getByteSize();
         // MSDF = 3 channels * 512 * 512 * 4 bytes/float = 3,145,728 bytes (~3MB)
@@ -118,7 +118,7 @@ public class MSDFgenMemoryLeakTests extends MemoryLeakDetectionBase {
 
         boolean exceptionCaught = false;
         try {
-            Bitmap.alloc(MsdfConstants.BITMAP_TYPE_SDF, -1, -1);
+            MSDFBitmap.alloc(MSDFConstants.BITMAP_TYPE_SDF, -1, -1);
         } catch (IllegalArgumentException e) {
             exceptionCaught = true;
         }
@@ -141,16 +141,16 @@ public class MSDFgenMemoryLeakTests extends MemoryLeakDetectionBase {
         long startTime = System.currentTimeMillis();
         MemoryMetrics.MemorySnapshot before = MemoryMetrics.capture();
 
-        Shape shape = createSimpleSquare();
-        Bitmap bitmap = Bitmap.allocSdf(32, 32);
+        MSDFShape shape = createSimpleSquare();
+        MSDFBitmap bitmap = MSDFBitmap.allocSdf(32, 32);
 
         // Free shape before generation - should cause exception
         shape.free();
 
         boolean exceptionCaught = false;
         try {
-            Transform transform = new Transform().scale(1.0).translate(0, 0).range(4.0);
-            Generator.generateSdf(bitmap, shape, transform);
+            MSDFTransform transform = new MSDFTransform().scale(1.0).translate(0, 0).range(4.0);
+            MSDFGenerator.generateSdf(bitmap, shape, transform);
         } catch (IllegalStateException e) {
             exceptionCaught = true;
         }
@@ -179,8 +179,8 @@ public class MSDFgenMemoryLeakTests extends MemoryLeakDetectionBase {
         for (int i = 0; i < 10; i++) {
             try {
                 // Invalid bitmap type
-                Bitmap.alloc(99, 32, 32);
-            } catch (MsdfException e) {
+                MSDFBitmap.alloc(99, 32, 32);
+            } catch (MSDFException e) {
                 errorCount++;
             } catch (IllegalArgumentException e) {
                 errorCount++;
@@ -188,7 +188,7 @@ public class MSDFgenMemoryLeakTests extends MemoryLeakDetectionBase {
 
             try {
                 // Zero-dimension bitmap
-                Bitmap.alloc(MsdfConstants.BITMAP_TYPE_SDF, 0, 32);
+                MSDFBitmap.alloc(MSDFConstants.BITMAP_TYPE_SDF, 0, 32);
             } catch (IllegalArgumentException e) {
                 errorCount++;
             }
@@ -216,9 +216,9 @@ public class MSDFgenMemoryLeakTests extends MemoryLeakDetectionBase {
         long startTime = System.currentTimeMillis();
         MemoryMetrics.MemorySnapshot before = MemoryMetrics.capture();
 
-        Shape[] shapes = new Shape[1000];
+        MSDFShape[] shapes = new MSDFShape[1000];
         for (int i = 0; i < 1000; i++) {
-            shapes[i] = Shape.create();
+            shapes[i] = MSDFShape.create();
         }
 
         MemoryMetrics.MemorySnapshot peak = MemoryMetrics.capture(false);
@@ -249,15 +249,15 @@ public class MSDFgenMemoryLeakTests extends MemoryLeakDetectionBase {
 
         // Allocate mixed sizes: small shapes, large bitmaps, interleaved
         for (int round = 0; round < 5; round++) {
-            Shape[] shapes = new Shape[50];
-            Bitmap[] bitmaps = new Bitmap[10];
+            MSDFShape[] shapes = new MSDFShape[50];
+            MSDFBitmap[] bitmaps = new MSDFBitmap[10];
 
             for (int i = 0; i < 50; i++) {
                 shapes[i] = createSimpleSquare();
             }
             for (int i = 0; i < 10; i++) {
                 int size = 16 + (i * 16); // 16x16 to 176x176
-                bitmaps[i] = Bitmap.allocMsdf(size, size);
+                bitmaps[i] = MSDFBitmap.allocMsdf(size, size);
             }
 
             // Free in reverse order to stress allocator
@@ -291,10 +291,10 @@ public class MSDFgenMemoryLeakTests extends MemoryLeakDetectionBase {
         MemoryMetrics.MemorySnapshot before = MemoryMetrics.capture();
 
         // Create all 4 bitmap types simultaneously
-        Bitmap sdf = Bitmap.allocSdf(64, 64);
-        Bitmap psdf = Bitmap.allocPsdf(64, 64);
-        Bitmap msdf = Bitmap.allocMsdf(64, 64);
-        Bitmap mtsdf = Bitmap.allocMtsdf(64, 64);
+        MSDFBitmap sdf = MSDFBitmap.allocSdf(64, 64);
+        MSDFBitmap psdf = MSDFBitmap.allocPsdf(64, 64);
+        MSDFBitmap msdf = MSDFBitmap.allocMsdf(64, 64);
+        MSDFBitmap mtsdf = MSDFBitmap.allocMtsdf(64, 64);
 
         assertEquals(1, sdf.getChannelCount());
         assertEquals(1, psdf.getChannelCount());
@@ -324,13 +324,13 @@ public class MSDFgenMemoryLeakTests extends MemoryLeakDetectionBase {
         MemoryMetrics.MemorySnapshot before = MemoryMetrics.capture();
 
         for (int i = 0; i < 100; i++) {
-            Shape shape = createComplexShape();
+            MSDFShape shape = createComplexShape();
             shape.normalize();
             shape.edgeColoringSimple(3.0);
 
-            Bitmap bitmap = Bitmap.allocMsdf(32, 32);
-            Transform transform = Transform.autoFrame(shape, 32, 32, 4.0);
-            Generator.generateMsdf(bitmap, shape, transform);
+            MSDFBitmap bitmap = MSDFBitmap.allocMsdf(32, 32);
+            MSDFTransform transform = MSDFTransform.autoFrame(shape, 32, 32, 4.0);
+            MSDFGenerator.generateMsdf(bitmap, shape, transform);
 
             // Verify pixel data is accessible
             float[] pixels = bitmap.getPixelData();
@@ -363,7 +363,7 @@ public class MSDFgenMemoryLeakTests extends MemoryLeakDetectionBase {
 
         // Create shapes and let them fall out of scope WITHOUT calling free()
         for (int i = 0; i < 50; i++) {
-            Shape leaked = createSimpleSquare();
+            MSDFShape leaked = createSimpleSquare();
             // Intentionally NOT calling leaked.free() - relying on finalizer
         }
 
@@ -401,7 +401,7 @@ public class MSDFgenMemoryLeakTests extends MemoryLeakDetectionBase {
 
         // Create bitmaps and let them fall out of scope
         for (int i = 0; i < 20; i++) {
-            Bitmap leaked = Bitmap.allocMsdf(64, 64);
+            MSDFBitmap leaked = MSDFBitmap.allocMsdf(64, 64);
             // Intentionally NOT calling leaked.free()
         }
 
@@ -438,13 +438,13 @@ public class MSDFgenMemoryLeakTests extends MemoryLeakDetectionBase {
         // Run a standardized workload and measure
         long[] iterationMemory = new long[10];
         for (int i = 0; i < 10; i++) {
-            Shape shape = createSimpleSquare();
+            MSDFShape shape = createSimpleSquare();
             shape.normalize();
             shape.edgeColoringSimple(3.0);
 
-            Bitmap bitmap = Bitmap.allocSdf(64, 64);
-            Transform transform = Transform.autoFrame(shape, 64, 64, 4.0);
-            Generator.generateSdf(bitmap, shape, transform);
+            MSDFBitmap bitmap = MSDFBitmap.allocSdf(64, 64);
+            MSDFTransform transform = MSDFTransform.autoFrame(shape, 64, 64, 4.0);
+            MSDFGenerator.generateSdf(bitmap, shape, transform);
 
             bitmap.free();
             shape.free();
@@ -492,12 +492,12 @@ public class MSDFgenMemoryLeakTests extends MemoryLeakDetectionBase {
         assertFalse("OS detected as 'unknown'", "unknown".equals(os));
 
         // Verify library loaded correctly by testing basic operations
-        Shape shape = Shape.create();
+        MSDFShape shape = MSDFShape.create();
         assertFalse(shape.isFreed());
         shape.free();
         assertTrue(shape.isFreed());
 
-        Bitmap bitmap = Bitmap.allocSdf(8, 8);
+        MSDFBitmap bitmap = MSDFBitmap.allocSdf(8, 8);
         assertEquals(1, bitmap.getChannelCount());
         bitmap.free();
 
@@ -526,7 +526,7 @@ public class MSDFgenMemoryLeakTests extends MemoryLeakDetectionBase {
         // 4096x4096 MTSDF = 4 channels * 4096 * 4096 * 4 bytes = 268MB
         // Use 1024x1024 to avoid OOM in test environments
         int size = 1024;
-        Bitmap largeBitmap = Bitmap.allocMtsdf(size, size);
+        MSDFBitmap largeBitmap = MSDFBitmap.allocMtsdf(size, size);
 
         long byteSize = largeBitmap.getByteSize();
         long expectedSize = (long) size * size * 4 * 4; // 4 channels, 4 bytes/float
@@ -556,7 +556,7 @@ public class MSDFgenMemoryLeakTests extends MemoryLeakDetectionBase {
         long startTime = System.currentTimeMillis();
         MemoryMetrics.MemorySnapshot before = MemoryMetrics.capture();
 
-        Shape shape = createSimpleSquare();
+        MSDFShape shape = createSimpleSquare();
         shape.free();
         assertTrue(shape.isFreed());
 
@@ -564,7 +564,7 @@ public class MSDFgenMemoryLeakTests extends MemoryLeakDetectionBase {
         shape.free();
         assertTrue(shape.isFreed());
 
-        Bitmap bitmap = Bitmap.allocSdf(32, 32);
+        MSDFBitmap bitmap = MSDFBitmap.allocSdf(32, 32);
         bitmap.free();
         bitmap.free(); // Should be safe
 
@@ -585,7 +585,7 @@ public class MSDFgenMemoryLeakTests extends MemoryLeakDetectionBase {
         long startTime = System.currentTimeMillis();
         MemoryMetrics.MemorySnapshot before = MemoryMetrics.capture();
 
-        Shape shape = Shape.create();
+        MSDFShape shape = MSDFShape.create();
         shape.free();
 
         // All operations on freed shape should throw
@@ -620,10 +620,10 @@ public class MSDFgenMemoryLeakTests extends MemoryLeakDetectionBase {
         MemoryMetrics.MemorySnapshot before = MemoryMetrics.capture();
 
         // Verify that segments added to contours are cloned (not moved)
-        Shape shape = Shape.create();
-        Contour contour = shape.addContour();
+        MSDFShape shape = MSDFShape.create();
+        MSDFContour contour = shape.addContour();
 
-        Segment original = Segment.createLinear();
+        MSDFSegment original = MSDFSegment.createLinear();
         original.setPoint(0, 0.0, 0.0);
         original.setPoint(1, 1.0, 1.0);
         contour.addEdge(original);
@@ -661,16 +661,16 @@ public class MSDFgenMemoryLeakTests extends MemoryLeakDetectionBase {
         MemoryMetrics.MemorySnapshot before = MemoryMetrics.capture();
 
         int[] types = {
-            MsdfConstants.BITMAP_TYPE_SDF,
-            MsdfConstants.BITMAP_TYPE_PSDF,
-            MsdfConstants.BITMAP_TYPE_MSDF,
-            MsdfConstants.BITMAP_TYPE_MTSDF
+            MSDFConstants.BITMAP_TYPE_SDF,
+            MSDFConstants.BITMAP_TYPE_PSDF,
+            MSDFConstants.BITMAP_TYPE_MSDF,
+            MSDFConstants.BITMAP_TYPE_MTSDF
         };
         int[] expectedChannels = { 1, 1, 3, 4 };
 
         for (int round = 0; round < 10; round++) {
             for (int t = 0; t < types.length; t++) {
-                Bitmap bmp = Bitmap.alloc(types[t], 128, 128);
+                MSDFBitmap bmp = MSDFBitmap.alloc(types[t], 128, 128);
                 assertEquals(expectedChannels[t], bmp.getChannelCount());
 
                 long expectedBytes = 128L * 128L * expectedChannels[t] * 4L;
@@ -702,15 +702,15 @@ public class MSDFgenMemoryLeakTests extends MemoryLeakDetectionBase {
 
         for (int i = 0; i < 50; i++) {
             // Full pipeline: shape -> contours -> segments -> normalize -> color -> generate -> pixels -> free
-            Shape shape = createComplexShape();
+            MSDFShape shape = createComplexShape();
             shape.normalize();
             shape.orientContours();
             shape.edgeColoringSimple(3.0);
             assertTrue("Shape should validate", shape.validate());
 
-            Bitmap bitmap = Bitmap.allocMsdf(64, 64);
-            Transform transform = Transform.autoFrame(shape, 64, 64, 4.0);
-            Generator.generateMsdf(bitmap, shape, transform);
+            MSDFBitmap bitmap = MSDFBitmap.allocMsdf(64, 64);
+            MSDFTransform transform = MSDFTransform.autoFrame(shape, 64, 64, 4.0);
+            MSDFGenerator.generateMsdf(bitmap, shape, transform);
 
             float[] pixels = bitmap.getPixelData();
             assertEquals(64 * 64 * 3, pixels.length);

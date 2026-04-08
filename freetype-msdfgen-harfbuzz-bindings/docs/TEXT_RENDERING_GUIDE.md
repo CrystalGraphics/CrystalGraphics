@@ -101,12 +101,7 @@ face.setPixelSizes(0, scale);
 HBFont hbFont = FreeTypeHarfBuzzIntegration.createHBFontFromFTFace(face);
 
 // In render tick (on GL thread):
-CgStateSnapshot snapshot = CgStateBoundary.save();
-try {
-    // Create texture from shaped text
-    // Use CgFramebuffer for off-screen rendering if needed
-    // Bind shader program via CgShaderProgram
-} finally {
-    CgStateBoundary.restore(snapshot);
-}
+// Create texture from shaped text
+// Use CgFramebuffer for off-screen rendering if needed
+// Bind shader program via CgShaderProgram
 ```

@@ -6,11 +6,11 @@ import com.crystalgraphics.freetype.FTGlyphMetrics;
 import com.crystalgraphics.freetype.FTLoadFlags;
 import com.crystalgraphics.freetype.FTRenderMode;
 import com.crystalgraphics.freetype.FreeTypeException;
-import com.crystalgraphics.msdfgen.Bitmap;
-import com.crystalgraphics.msdfgen.FreeTypeIntegration;
-import com.crystalgraphics.msdfgen.Generator;
-import com.crystalgraphics.msdfgen.Shape;
-import com.crystalgraphics.msdfgen.Transform;
+import com.crystalgraphics.msdfgen.MSDFBitmap;
+import com.crystalgraphics.msdfgen.FreeTypeMSDFIntegration;
+import com.crystalgraphics.msdfgen.MSDFGenerator;
+import com.crystalgraphics.msdfgen.MSDFShape;
+import com.crystalgraphics.msdfgen.MSDFTransform;
 import io.github.somehussar.crystalgraphics.api.font.CgFont;
 import io.github.somehussar.crystalgraphics.text.msdf.CgMsdfGenerator;
 import io.github.somehussar.crystalgraphics.text.msdf.CgMsdfAtlasConfig;
@@ -54,7 +54,7 @@ public final class MsdfVerificationTool {
         }
 
         List<GlyphVerificationResult> results = new ArrayList<GlyphVerificationResult>();
-        FreeTypeIntegration.Font msdfFont = font.getMsdfFont();
+        FreeTypeMSDFIntegration.Font msdfFont = font.getMsdfFont();
         if (msdfFont == null) {
             throw new IllegalStateException("MSDF font integration unavailable for verification: " + font.getKey());
         }
@@ -83,23 +83,23 @@ public final class MsdfVerificationTool {
 
     private GlyphVerificationResult verifyGlyph(CgFont font,
                                                 FTFace face,
-                                                FreeTypeIntegration.Font msdfFont,
+                                                FreeTypeMSDFIntegration.Font msdfFont,
                                                 int glyphId,
                                                 int codePoint,
                                                 CgMsdfAtlasConfig atlasConfig,
                                                 CgMsdfVerificationConfig verificationConfig,
                                                 String outputDir,
                                                 String outputPrefix) {
-        FreeTypeIntegration.GlyphData glyphData;
+        FreeTypeMSDFIntegration.GlyphData glyphData;
         try {
-                glyphData = msdfFont.loadGlyphByIndex(glyphId, FreeTypeIntegration.FONT_SCALING_EM_NORMALIZED);
+                glyphData = msdfFont.loadGlyphByIndex(glyphId, FreeTypeMSDFIntegration.FONT_SCALING_EM_NORMALIZED);
         } catch (RuntimeException e) {
             LOGGER.warning("[MsdfVerify] Failed to load glyph " + glyphId + " for codepoint U+"
                     + Integer.toHexString(codePoint).toUpperCase(Locale.ROOT) + ": " + e.getMessage());
             return null;
         }
 
-        Shape shape = glyphData.getShape();
+        MSDFShape shape = glyphData.getShape();
         shape.normalize();
         CgMsdfGenerator.applyEdgeColoring(shape, atlasConfig);
         if (!shape.validate()) {
@@ -115,21 +115,21 @@ public final class MsdfVerificationTool {
             return null;
         }
 
-        Transform transform = new Transform()
+        MSDFTransform transform = new MSDFTransform()
                 .scale(layout.getScale())
                 .translate(layout.getTranslateX(), layout.getTranslateY())
                 .range(-layout.getRangeInShapeUnits(), layout.getRangeInShapeUnits());
 
-        Bitmap msdfBitmap = Bitmap.allocMsdf(layout.getBoxWidth(), layout.getBoxHeight());
-        Bitmap reconstructedBitmap = Bitmap.allocSdf(layout.getBoxWidth(), layout.getBoxHeight());
+        MSDFBitmap msdfBitmap = MSDFBitmap.allocMsdf(layout.getBoxWidth(), layout.getBoxHeight());
+        MSDFBitmap reconstructedBitmap = MSDFBitmap.allocSdf(layout.getBoxWidth(), layout.getBoxHeight());
         try {
-            Generator.generateMsdf(msdfBitmap, shape, transform,
+            MSDFGenerator.generateMsdf(msdfBitmap, shape, transform,
                     atlasConfig.isOverlapSupport(),
                     atlasConfig.getErrorCorrectionMode(),
                     atlasConfig.getDistanceCheckMode(),
                     atlasConfig.getMinDeviationRatio(),
                     atlasConfig.getMinImproveRatio());
-            Generator.renderSdf(reconstructedBitmap, msdfBitmap, transform,
+            MSDFGenerator.renderSdf(reconstructedBitmap, msdfBitmap, transform,
                     verificationConfig.getReconstructionThreshold());
 
             float[] reconstructed = reconstructedBitmap.getPixelData();

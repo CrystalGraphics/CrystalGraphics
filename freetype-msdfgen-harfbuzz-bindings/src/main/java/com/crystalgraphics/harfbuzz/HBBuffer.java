@@ -1,5 +1,6 @@
 package com.crystalgraphics.harfbuzz;
 
+import com.crystalgraphics.NativeLoader;
 /**
  * HarfBuzz text buffer. Holds a sequence of Unicode codepoints to be shaped,
  * and after shaping, the resulting glyph info and positions.

@@ -80,7 +80,7 @@ When `MSDFGEN_USE_FREETYPE=OFF` (default):
 ### Checking Availability
 
 ```java
-if (FreeTypeIntegration.isAvailable()) {
+if (FreeTypeMSDFIntegration.isAvailable()) {
     // FreeType is available
 } else {
     // Fall back to manual shape construction
@@ -90,23 +90,23 @@ if (FreeTypeIntegration.isAvailable()) {
 ### Loading Fonts and Glyphs
 
 ```java
-FreeTypeIntegration ft = FreeTypeIntegration.create();
+FreeTypeMSDFIntegration ft = FreeTypeMSDFIntegration.create();
 try {
     // Load from file path
-    FreeTypeIntegration.Font font = ft.loadFont("/path/to/font.ttf");
+    FreeTypeMSDFIntegration.Font font = ft.loadFont("/path/to/font.ttf");
     
     // Or load from byte array (embedded resource)
     // byte[] fontData = readResource("fonts/myfont.ttf");
-    // FreeTypeIntegration.Font font = ft.loadFontData(fontData);
+    // FreeTypeMSDFIntegration.Font font = ft.loadFontData(fontData);
     
     // Or load from InputStream
     // InputStream is = getClass().getResourceAsStream("/fonts/myfont.ttf");
-    // FreeTypeIntegration.Font font = ft.loadFont(is);
+    // FreeTypeMSDFIntegration.Font font = ft.loadFont(is);
     
     try {
         // Load glyph by Unicode codepoint
-        FreeTypeIntegration.GlyphData glyph = font.loadGlyph('A');
-        Shape shape = glyph.getShape();
+        FreeTypeMSDFIntegration.GlyphData glyph = font.loadGlyph('A');
+        MSDFShape shape = glyph.getShape();
         double advance = glyph.getAdvance();
         
         try {
@@ -115,9 +115,9 @@ try {
             shape.edgeColoringSimple(3.0);
             
             // Generate MSDF
-            Bitmap bitmap = Bitmap.allocMsdf(32, 32);
-            Transform transform = Transform.autoFrame(shape, 32, 32, 4.0);
-            Generator.generateMsdf(bitmap, shape, transform);
+            MSDFBitmap bitmap = MSDFBitmap.allocMsdf(32, 32);
+            MSDFTransform transform = MSDFTransform.autoFrame(shape, 32, 32, 4.0);
+            MSDFGenerator.generateMsdf(bitmap, shape, transform);
             
             float[] pixels = bitmap.getPixelData();
             // ... use pixel data ...
@@ -149,7 +149,7 @@ When loading glyphs, you can choose the coordinate scaling mode:
 GlyphData glyph = font.loadGlyph('A');
 
 // Explicit scaling
-GlyphData glyph = font.loadGlyph('A', FreeTypeIntegration.FONT_SCALING_NONE);
+GlyphData glyph = font.loadGlyph('A', FreeTypeMSDFIntegration.FONT_SCALING_NONE);
 ```
 
 ### Kerning
@@ -178,27 +178,27 @@ GlyphData glyph = font.loadGlyphByIndex(glyphIndex);
 
 **Critical**: All native handles must be explicitly freed in reverse order:
 
-1. Free `Shape` objects from `GlyphData.getShape()`
-2. Free `Bitmap` objects
+1. Free `MSDFShape` objects from `GlyphData.getShape()`
+2. Free `MSDFBitmap` objects
 3. Destroy `Font` objects
-4. Destroy `FreeTypeIntegration` instance
+4. Destroy `FreeTypeMSDFIntegration` instance
 
 Use try/finally blocks to ensure cleanup on exceptions.
 
 ## Error Handling
 
-All methods throw `MsdfException` on failure:
+All methods throw `MSDFException` on failure:
 
 ```java
 try {
     GlyphData glyph = font.loadGlyph(0xFFFF);  // Uncommon codepoint
-} catch (MsdfException e) {
+} catch (MSDFException e) {
     // Glyph not found in font
     System.err.println("Glyph not available: " + e.getMessage());
 }
 ```
 
-`FreeTypeIntegration.isAvailable()` never throws — it returns `false` if the native library wasn't compiled with FreeType support.
+`FreeTypeMSDFIntegration.isAvailable()` never throws — it returns `false` if the native library wasn't compiled with FreeType support.
 
 ## Troubleshooting
 
@@ -232,7 +232,7 @@ cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=[vcpkg root]/scripts/buildsystems/vcp
 
 ## Performance Tips
 
-- Reuse `FreeTypeIntegration` and `Font` instances — don't create/destroy per glyph
+- Reuse `FreeTypeMSDFIntegration` and `Font` instances — don't create/destroy per glyph
 - Call `shape.free()` immediately after generating the bitmap
 - For batch processing, allocate one bitmap and reuse it (same size)
-- EM-normalized coordinates (`FONT_SCALING_EM_NORMALIZED`) produce shapes in 0..1 range, which works well with `Transform.autoFrame()`
+- EM-normalized coordinates (`FONT_SCALING_EM_NORMALIZED`) produce shapes in 0..1 range, which works well with `MSDFTransform.autoFrame()`

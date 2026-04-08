@@ -11,21 +11,21 @@ import com.crystalgraphics.msdfgen.*;
 public class BasicSDF {
 
     public static void main(String[] args) {
-        Shape shape = Shape.create();
+        MSDFShape shape = MSDFShape.create();
         try {
-            Contour contour = shape.addContour();
+            MSDFContour contour = shape.addContour();
 
-            Segment edge1 = Segment.createLinear();
+            MSDFSegment edge1 = MSDFSegment.createLinear();
             edge1.setPoint(0, 0.0, 0.0);
             edge1.setPoint(1, 0.5, 1.0);
             contour.addEdge(edge1);
 
-            Segment edge2 = Segment.createLinear();
+            MSDFSegment edge2 = MSDFSegment.createLinear();
             edge2.setPoint(0, 0.5, 1.0);
             edge2.setPoint(1, 1.0, 0.0);
             contour.addEdge(edge2);
 
-            Segment edge3 = Segment.createLinear();
+            MSDFSegment edge3 = MSDFSegment.createLinear();
             edge3.setPoint(0, 1.0, 0.0);
             edge3.setPoint(1, 0.0, 0.0);
             contour.addEdge(edge3);
@@ -40,10 +40,10 @@ public class BasicSDF {
 
             int size = 32;
             double pxRange = 4.0;
-            Bitmap bitmap = Bitmap.allocMsdf(size, size);
+            MSDFBitmap bitmap = MSDFBitmap.allocMsdf(size, size);
             try {
-                Transform transform = Transform.autoFrame(shape, size, size, pxRange);
-                Generator.generateMsdf(bitmap, shape, transform);
+                MSDFTransform transform = MSDFTransform.autoFrame(shape, size, size, pxRange);
+                MSDFGenerator.generateMsdf(bitmap, shape, transform);
 
                 float[] pixels = bitmap.getPixelData();
                 System.out.println("Generated " + size + "x" + size + " MSDF bitmap");

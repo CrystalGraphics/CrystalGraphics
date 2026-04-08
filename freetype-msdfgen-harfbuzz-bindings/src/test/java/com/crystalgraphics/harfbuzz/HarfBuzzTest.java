@@ -1,7 +1,9 @@
 package com.crystalgraphics.harfbuzz;
 
+import com.crystalgraphics.NativeLoader;
 import org.junit.Test;
 import static org.junit.Assert.*;
+
 
 public class HarfBuzzTest {
 

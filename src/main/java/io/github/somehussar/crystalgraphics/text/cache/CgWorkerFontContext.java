@@ -7,7 +7,7 @@ import com.crystalgraphics.freetype.FTLoadFlags;
 import com.crystalgraphics.freetype.FTRenderMode;
 import com.crystalgraphics.freetype.FreeTypeException;
 import com.crystalgraphics.freetype.FreeTypeLibrary;
-import com.crystalgraphics.msdfgen.FreeTypeIntegration;
+import com.crystalgraphics.msdfgen.FreeTypeMSDFIntegration;
 import io.github.somehussar.crystalgraphics.api.font.CgFontKey;
 import io.github.somehussar.crystalgraphics.api.font.CgFontVariation;
 import io.github.somehussar.crystalgraphics.api.font.CgGlyphKey;
@@ -29,8 +29,8 @@ final class CgWorkerFontContext {
 
     private final FreeTypeLibrary ftLibrary;
     private final Map<CgFontKey, FTFace> bitmapFaces = new HashMap<CgFontKey, FTFace>();
-    private FreeTypeIntegration msdfIntegration;
-    private final Map<CgFontKey, FreeTypeIntegration.Font> msdfFonts = new HashMap<CgFontKey, FreeTypeIntegration.Font>();
+    private FreeTypeMSDFIntegration msdfIntegration;
+    private final Map<CgFontKey, FreeTypeMSDFIntegration.Font> msdfFonts = new HashMap<CgFontKey, FreeTypeMSDFIntegration.Font>();
 
     CgWorkerFontContext() {
         this.ftLibrary = FreeTypeLibrary.create();
@@ -96,7 +96,7 @@ final class CgWorkerFontContext {
     }
 
     CgGlyphGenerationResult generateMsdf(CgGlyphGenerationJob job) {
-        FreeTypeIntegration.Font msdfFont = getMsdfFont(job.getSourceFontKey(), job.getFontBytes());
+        FreeTypeMSDFIntegration.Font msdfFont = getMsdfFont(job.getSourceFontKey(), job.getFontBytes());
         return CgMsdfGenerator.preparePagedGlyph(
                 job.getAtlasKey(),
                 job.getSourceFontKey(),
@@ -106,7 +106,7 @@ final class CgWorkerFontContext {
     }
 
     void close() {
-        for (FreeTypeIntegration.Font font : msdfFonts.values()) {
+        for (FreeTypeMSDFIntegration.Font font : msdfFonts.values()) {
             try {
                 font.destroy();
             } catch (Exception ignored) {
@@ -147,15 +147,15 @@ final class CgWorkerFontContext {
         return created;
     }
 
-    private FreeTypeIntegration.Font getMsdfFont(CgFontKey key, byte[] fontBytes) {
-        FreeTypeIntegration.Font cached = msdfFonts.get(key);
+    private FreeTypeMSDFIntegration.Font getMsdfFont(CgFontKey key, byte[] fontBytes) {
+        FreeTypeMSDFIntegration.Font cached = msdfFonts.get(key);
         if (cached != null && !cached.isDestroyed()) {
             return cached;
         }
         if (msdfIntegration == null) {
-            msdfIntegration = FreeTypeIntegration.create();
+            msdfIntegration = FreeTypeMSDFIntegration.create();
         }
-        FreeTypeIntegration.Font created = msdfIntegration.loadFontData(fontBytes);
+        FreeTypeMSDFIntegration.Font created = msdfIntegration.loadFontData(fontBytes);
         applyVariations(created, key.getVariations());
         msdfFonts.put(key, created);
         return created;
@@ -168,7 +168,7 @@ final class CgWorkerFontContext {
         face.setVariationCoordinates(toVariationTags(variations), toVariationValues(variations));
     }
 
-    private static void applyVariations(FreeTypeIntegration.Font font, List<CgFontVariation> variations) {
+    private static void applyVariations(FreeTypeMSDFIntegration.Font font, List<CgFontVariation> variations) {
         if (variations == null || variations.isEmpty()) {
             return;
         }

@@ -16,7 +16,7 @@ public class AdvancedSDF {
     private static final String DEFAULT_TEXT = "Hello!";
 
     public static void main(String[] args) {
-        if (!FreeTypeIntegration.isAvailable()) {
+        if (!FreeTypeMSDFIntegration.isAvailable()) {
             System.err.println("FreeType support is not available in the native library.");
             System.err.println("Rebuild with: MSDFGEN_USE_FREETYPE=ON ./build-natives.sh");
             System.err.println();
@@ -39,9 +39,9 @@ public class AdvancedSDF {
         System.out.println("Pixel range: " + PX_RANGE);
         System.out.println();
 
-        FreeTypeIntegration ft = FreeTypeIntegration.create();
+        FreeTypeMSDFIntegration ft = FreeTypeMSDFIntegration.create();
         try {
-            FreeTypeIntegration.Font font = ft.loadFont(fontPath);
+            FreeTypeMSDFIntegration.Font font = ft.loadFont(fontPath);
             try {
                 for (int i = 0; i < text.length(); i++) {
                     char ch = text.charAt(i);
@@ -55,20 +55,20 @@ public class AdvancedSDF {
         }
     }
 
-    private static void renderGlyph(FreeTypeIntegration.Font font, int codepoint) {
+    private static void renderGlyph(FreeTypeMSDFIntegration.Font font, int codepoint) {
         System.out.println("--- Glyph: '" + (char) codepoint + "' (U+"
             + String.format("%04X", codepoint) + ") ---");
 
-        FreeTypeIntegration.GlyphData glyphData;
+        FreeTypeMSDFIntegration.GlyphData glyphData;
         try {
             glyphData = font.loadGlyph(codepoint);
-        } catch (MsdfException e) {
+        } catch (MSDFException e) {
             System.out.println("  Skipped (not found in font): " + e.getMessage());
             System.out.println();
             return;
         }
 
-        Shape shape = glyphData.getShape();
+        MSDFShape shape = glyphData.getShape();
         try {
             System.out.println("  Advance: " + glyphData.getAdvance());
             System.out.println("  Contours: " + shape.getContourCount());
@@ -87,16 +87,16 @@ public class AdvancedSDF {
             shape.normalize();
             shape.edgeColoringSimple(3.0);
 
-            Bitmap bitmap = Bitmap.allocMsdf(BITMAP_SIZE, BITMAP_SIZE);
+            MSDFBitmap bitmap = MSDFBitmap.allocMsdf(BITMAP_SIZE, BITMAP_SIZE);
             try {
-                Transform transform = Transform.autoFrame(shape, BITMAP_SIZE, BITMAP_SIZE, PX_RANGE);
+                MSDFTransform transform = MSDFTransform.autoFrame(shape, BITMAP_SIZE, BITMAP_SIZE, PX_RANGE);
 
-                Generator.generateMsdf(bitmap, shape, transform,
+                MSDFGenerator.generateMsdf(bitmap, shape, transform,
                     true,
-                    MsdfConstants.ERROR_CORRECTION_EDGE_PRIORITY,
-                    MsdfConstants.DISTANCE_CHECK_AT_EDGE,
-                    MsdfConstants.DEFAULT_MIN_DEVIATION_RATIO,
-                    MsdfConstants.DEFAULT_MIN_IMPROVE_RATIO);
+                    MSDFConstants.ERROR_CORRECTION_EDGE_PRIORITY,
+                    MSDFConstants.DISTANCE_CHECK_AT_EDGE,
+                    MSDFConstants.DEFAULT_MIN_DEVIATION_RATIO,
+                    MSDFConstants.DEFAULT_MIN_IMPROVE_RATIO);
 
                 float[] pixels = bitmap.getPixelData();
                 printCompactPreview(pixels, BITMAP_SIZE, BITMAP_SIZE, 3);
@@ -112,14 +112,14 @@ public class AdvancedSDF {
     private static void runManualShapeDemo() {
         System.out.println("Generating MSDF for a manually-constructed square shape...");
 
-        Shape shape = Shape.create();
+        MSDFShape shape = MSDFShape.create();
         try {
-            Contour contour = shape.addContour();
+            MSDFContour contour = shape.addContour();
 
             double[][] points = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
             for (int i = 0; i < points.length; i++) {
                 int next = (i + 1) % points.length;
-                Segment edge = Segment.createLinear();
+                MSDFSegment edge = MSDFSegment.createLinear();
                 edge.setPoint(0, points[i][0], points[i][1]);
                 edge.setPoint(1, points[next][0], points[next][1]);
                 contour.addEdge(edge);
@@ -129,12 +129,12 @@ public class AdvancedSDF {
             shape.edgeColoringSimple(3.0);
 
             int size = 32;
-            Bitmap bitmap = Bitmap.allocMsdf(size, size);
+            MSDFBitmap bitmap = MSDFBitmap.allocMsdf(size, size);
             try {
-                Transform transform = Transform.autoFrame(shape, size, size, 4.0);
-                Generator.generateMsdf(bitmap, shape, transform);
+                MSDFTransform transform = MSDFTransform.autoFrame(shape, size, size, 4.0);
+                MSDFGenerator.generateMsdf(bitmap, shape, transform);
 
-                Generator.errorCorrection(bitmap, shape, transform);
+                MSDFGenerator.errorCorrection(bitmap, shape, transform);
 
                 float[] pixels = bitmap.getPixelData();
                 System.out.println("Generated " + size + "x" + size + " MSDF with error correction");
