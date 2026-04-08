@@ -55,6 +55,21 @@ public interface CgShaderManager {
      * always valid and safe to use; bind operations on non-compiled shaders
      * are pure no-ops.</p>
      *
+     * @param vertexPath   the asset path of the vertex shader source
+     * @param fragmentPath the asset path of the fragment shader source
+     * @param defines      a map of preprocessor defines (name -> value);
+     *                     may be empty or null (treated as empty)
+     * @return a managed shader handle, valid even if compilation failed
+     * @throws NullPointerException if either path is null
+     */
+    CgShader load(String vertexPath, String fragmentPath, Map<String, String> defines);
+
+    /**
+     * Loads or retrieves a cached managed shader using {@link ResourceLocation}s.
+     *
+     * <p>Convenience overload that converts each {@link ResourceLocation} to an
+     * asset path string and delegates to {@link #load(String, String, Map)}.</p>
+     *
      * @param vertexLocation   the {@code ResourceLocation} of the vertex shader source
      * @param fragmentLocation the {@code ResourceLocation} of the fragment shader source
      * @param defines          a map of preprocessor defines (name -> value);
@@ -62,30 +77,8 @@ public interface CgShaderManager {
      * @return a managed shader handle, valid even if compilation failed
      * @throws NullPointerException if either location is null
      */
-    CgShader load(ResourceLocation vertexLocation, ResourceLocation fragmentLocation, Map<String, String> defines);
-
-    /**
-     * Loads or retrieves a cached managed shader.
-     *
-     * <p>If a shader with the same cache key (vertex, fragment, defines) has been
-     * previously loaded, returns the cached managed shader instance.
-     * Otherwise, creates a new managed shader by loading sources from the
-     * resource manager, preprocessing with the given defines, and compiling.</p>
-     *
-     * <p>If compilation fails, returns a managed shader with
-     * {@link CgShader#isCompiled()} == false. The returned handle is
-     * always valid and safe to use; bind operations on non-compiled shaders
-     * are pure no-ops.</p>
-     *
-     * @param vertexLocation   the mod asset string location of the vertex shader source
-     * @param fragmentLocation the mod asset string location of the fragment shader source
-     * @param defines          a map of preprocessor defines (name -> value);
-     *                         may be empty or null (treated as empty)
-     * @return a managed shader handle, valid even if compilation failed
-     * @throws NullPointerException if either location is null
-     */
-    default CgShader load(String vertexLocation, String fragmentLocation, Map<String, String> defines) {
-        return load(new ResourceLocation(vertexLocation), new ResourceLocation(fragmentLocation), defines);
+    default CgShader load(ResourceLocation vertexLocation, ResourceLocation fragmentLocation, Map<String, String> defines){
+        return load(vertexLocation.toString(), fragmentLocation.toString(), defines);
     }
     
     /**
@@ -115,7 +108,7 @@ public interface CgShaderManager {
      * @throws NullPointerException if either location is null
      */
     default CgShader load(String vertexLocation, String fragmentLocation) {
-        return load(new ResourceLocation(vertexLocation), new ResourceLocation(fragmentLocation));
+        return load(vertexLocation, fragmentLocation, null);
     }
 
 

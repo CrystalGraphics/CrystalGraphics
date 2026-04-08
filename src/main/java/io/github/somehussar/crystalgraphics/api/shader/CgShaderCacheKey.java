@@ -1,8 +1,10 @@
 package io.github.somehussar.crystalgraphics.api.shader;
 
-import net.minecraft.util.ResourceLocation;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.util.Arrays;
+import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
 
@@ -31,18 +33,27 @@ public final class CgShaderCacheKey {
 
     /**
      * Vertex shader resource location.
+     * -- GETTER --
+     *  Returns the vertex shader resource location.
+
      */
-    private final ResourceLocation vertexLocation;
+    @Getter
+    private final String vertexLocation;
 
     /**
      * Fragment shader resource location.
+     * -- GETTER --
+     *  Returns the fragment shader resource location.
+
      */
-    private final ResourceLocation fragmentLocation;
+    @Getter
+    private final String fragmentLocation;
 
     /**
      * Preprocessor defines, stored as (name, value) pairs in a sorted tree
      * to ensure deterministic ordering.
      */
+    @Getter
     private final TreeMap<String, String> definesMap;
 
     /**
@@ -63,45 +74,16 @@ public final class CgShaderCacheKey {
      *                         may be empty or null (treated as empty)
      * @throws NullPointerException if either location is null
      */
-    public CgShaderCacheKey(ResourceLocation vertexLocation,
-                            ResourceLocation fragmentLocation,
-                            java.util.Map<String, String> defines) {
-        this.vertexLocation = Objects.requireNonNull(vertexLocation,
-                "vertexLocation cannot be null");
-        this.fragmentLocation = Objects.requireNonNull(fragmentLocation,
-                "fragmentLocation cannot be null");
-
+    public CgShaderCacheKey(String vertexLocation, String fragmentLocation, Map<String, String> defines) {
+        this.vertexLocation = Objects.requireNonNull(vertexLocation, "vertexLocation cannot be null");
+        this.fragmentLocation = Objects.requireNonNull(fragmentLocation, "fragmentLocation cannot be null");
+        
         // Copy defines into a TreeMap for deterministic ordering
         this.definesMap = new TreeMap<>();
-        if (defines != null) {
-            this.definesMap.putAll(defines);
-        }
+        if (defines != null) this.definesMap.putAll(defines);
 
         // Precompute hash code
         this.cachedHashCode = computeHashCode();
-    }
-
-    /**
-     * Returns the vertex shader resource location.
-     */
-    public ResourceLocation getVertexLocation() {
-        return vertexLocation;
-    }
-
-    /**
-     * Returns the fragment shader resource location.
-     */
-    public ResourceLocation getFragmentLocation() {
-        return fragmentLocation;
-    }
-
-    /**
-     * Returns an unmodifiable view of the preprocessor defines.
-     *
-     * <p>The defines are stored in deterministic (sorted) order.</p>
-     */
-    public java.util.Map<String, String> getDefines() {
-        return java.util.Collections.unmodifiableMap(definesMap);
     }
 
     /**
@@ -121,15 +103,11 @@ public final class CgShaderCacheKey {
 
     @Override
     public boolean equals(Object obj) {
-        if (this == obj) {
-            return true;
-        }
-        if (!(obj instanceof CgShaderCacheKey)) {
-            return false;
-        }
+        if (this == obj) return true;
+        if (!(obj instanceof CgShaderCacheKey)) return false;
+        
         CgShaderCacheKey other = (CgShaderCacheKey) obj;
-        return vertexLocation.equals(other.vertexLocation)
-                && fragmentLocation.equals(other.fragmentLocation)
+        return vertexLocation.equals(other.vertexLocation) && fragmentLocation.equals(other.fragmentLocation)
                 && definesMap.equals(other.definesMap);
     }
 
@@ -139,9 +117,8 @@ public final class CgShaderCacheKey {
         sb.append("CgShaderCacheKey{");
         sb.append("vert=").append(vertexLocation);
         sb.append(", frag=").append(fragmentLocation);
-        if (!definesMap.isEmpty()) {
+        if (!definesMap.isEmpty()) 
             sb.append(", defines=").append(definesMap);
-        }
         sb.append("}");
         return sb.toString();
     }
