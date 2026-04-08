@@ -1,4 +1,4 @@
-package com.msdfgen;
+package com.crystalgraphics.msdfgen;
 
 public final class Generator {
 

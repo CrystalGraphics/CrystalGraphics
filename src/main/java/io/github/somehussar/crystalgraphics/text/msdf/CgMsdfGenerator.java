@@ -1,11 +1,11 @@
 package io.github.somehussar.crystalgraphics.text.msdf;
 
-import com.msdfgen.Bitmap;
-import com.msdfgen.FreeTypeIntegration;
-import com.msdfgen.Generator;
-import com.msdfgen.MsdfException;
-import com.msdfgen.Shape;
-import com.msdfgen.Transform;
+import com.crystalgraphics.msdfgen.Bitmap;
+import com.crystalgraphics.msdfgen.FreeTypeIntegration;
+import com.crystalgraphics.msdfgen.Generator;
+import com.crystalgraphics.msdfgen.MsdfException;
+import com.crystalgraphics.msdfgen.Shape;
+import com.crystalgraphics.msdfgen.Transform;
 import io.github.somehussar.crystalgraphics.api.font.CgAtlasRegion;
 import io.github.somehussar.crystalgraphics.api.font.CgFontKey;
 import io.github.somehussar.crystalgraphics.api.font.CgGlyphKey;
