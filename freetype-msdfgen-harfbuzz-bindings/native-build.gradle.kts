@@ -1,31 +1,26 @@
 // =============================================================================
-// native-build.gradle.kts — Zig-based cross-platform native build system
-// Mirrors tree-sitter-ng-v0.26.6: uses `zig c++` as a cross-compiler
-// Applied via: apply(from = "native-build.gradle.kts") in build.gradle.kts
+// native-build.gradle.kts — Generic Zig-based cross-platform native build system
+// =============================================================================
+// Library-agnostic: all library definitions live in gradle.properties.
+// The build iterates nativeBuild.libraries, compiles each, and links into one shared lib.
 //
-// All configurable values are in gradle.properties with `nativeBuild.*` prefix.
+// Applied via: apply(from = "native-build.gradle.kts") in build.gradle.kts
 // =============================================================================
 @file:Suppress("DEPRECATION")
 import java.net.URL
 import java.util.zip.ZipInputStream
 
 // =============================================================================
-// Read properties from gradle.properties (with command-line override support)
+// Global properties from gradle.properties
 // =============================================================================
 
 val zigVersion: String = findProperty("nativeBuild.zig.version") as? String ?: "0.11.0"
 val zigDownloadUrl: String = findProperty("nativeBuild.zig.downloadUrl") as? String ?: "https://ziglang.org/download"
-val freetypeVersion: String = findProperty("nativeBuild.freetype.version") as? String ?: "2.13.2"
-val freetypeDownloadUrl: String = findProperty("nativeBuild.freetype.downloadUrl") as? String ?: "https://download.savannah.gnu.org/releases/freetype"
-val harfbuzzVersion: String = findProperty("nativeBuild.harfbuzz.version") as? String ?: "8.3.0"
-val harfbuzzDownloadUrl: String = findProperty("nativeBuild.harfbuzz.downloadUrl") as? String ?: "https://github.com/harfbuzz/harfbuzz/releases/download"
-val libraryName: String = findProperty("nativeBuild.libraryName") as? String ?: "freetype_msdfgen_harfbuzz_jni"
+val libraryName: String = findProperty("nativeBuild.libraryName") as? String ?: "native_jni"
 val cOptLevel: String = findProperty("nativeBuild.cOptLevel") as? String ?: "-O2"
 val cDebugLevel: String = findProperty("nativeBuild.cDebugLevel") as? String ?: "-g0"
 val cppStandard: String = findProperty("nativeBuild.cppStandard") as? String ?: "-std=c++11"
 
-// Cross-compilation targets — override with -PnativeBuild.targets=x86_64-windows,...
-// Also supports legacy -PnativeTargets=... (command-line only, takes priority)
 val nativeTargets: List<String> = run {
     val fromLegacy = findProperty("nativeTargets") as? String
     val fromNew = findProperty("nativeBuild.targets") as? String
@@ -33,8 +28,12 @@ val nativeTargets: List<String> = run {
         ?: listOf("x86_64-windows", "x86_64-linux-gnu", "x86_64-macos", "aarch64-macos", "aarch64-linux-gnu")
 }
 
+val libraryNames: List<String> = (findProperty("nativeBuild.libraries") as? String)
+    ?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }
+    ?: emptyList()
+
 // =============================================================================
-// Directory layout (derived from project, not hardcoded paths)
+// Directory layout
 // =============================================================================
 
 val nativeBuildDir = layout.buildDirectory.dir("native-build").get().asFile
@@ -42,13 +41,86 @@ val zigDir = File(nativeBuildDir, "zig")
 val depsDir = File(nativeBuildDir, "deps")
 val objDir = File(nativeBuildDir, "obj")
 val jniIncludeDir = file("include/jni")
-val nativeSourceDir = file("native/freetype-msdfgen-harfbuzz-jni/src/cpp")
-val msdfgenSourceDir = file("native/msdfgen-jni/msdfgen")
-val msdfgenOverrideDir = file("native/freetype-msdfgen-harfbuzz-jni/overrides/msdfgen")
-val nativesOutputDir = file("src/main/resources/natives")
+val nativesOutputDir = file(findProperty("nativeBuild.outputDir") as? String?: "src/main/resources/natives")
 
 // =============================================================================
-// Helper functions — pure utilities, no Gradle API dependencies
+// Data class: parsed library config
+// =============================================================================
+
+data class NativeLibConfig(
+    val name: String,
+    val type: String,           // "c" or "cpp"
+    val sourceType: String,     // "download", "git", "local"
+    val sourceUrl: String,      // URL or path
+    val sourceTag: String,      // git tag (for git: sources)
+    val sourceRoot: String,     // extracted directory name (for download:)
+    val srcDirs: List<String>,
+    val includes: List<String>,
+    val defines: List<String>,
+    val files: List<String>,    // explicit file list (empty = glob)
+    val includesFrom: List<String>,
+    val overrides: String,      // local override path
+    val objPrefix: String,
+    val jniHeaders: Boolean
+)
+
+fun parseLibConfig(name: String): NativeLibConfig {
+    fun prop(key: String): String? = findProperty("nativeBuild.lib.$name.$key") as? String
+
+    val type = prop("type") ?: "cpp"
+    val sourceRaw = prop("source") ?: throw GradleException("nativeBuild.lib.$name.source is required")
+
+    val sourceType: String
+    val sourceUrl: String
+    val sourceTag: String
+    when {
+        sourceRaw.startsWith("download:") -> {
+            sourceType = "download"
+            sourceUrl = sourceRaw.removePrefix("download:")
+            sourceTag = ""
+        }
+        sourceRaw.startsWith("git:") -> {
+            sourceType = "git"
+            val gitPart = sourceRaw.removePrefix("git:")
+            if ("@" in gitPart) {
+                sourceUrl = gitPart.substringBefore("@")
+                sourceTag = gitPart.substringAfter("@")
+            } else {
+                sourceUrl = gitPart
+                sourceTag = ""
+            }
+        }
+        sourceRaw.startsWith("local:") -> {
+            sourceType = "local"
+            sourceUrl = sourceRaw.removePrefix("local:")
+            sourceTag = ""
+        }
+        else -> throw GradleException("nativeBuild.lib.$name.source must start with download:, git:, or local:")
+    }
+
+    return NativeLibConfig(
+        name = name,
+        type = type,
+        sourceType = sourceType,
+        sourceUrl = sourceUrl,
+        sourceTag = sourceTag,
+        sourceRoot = prop("sourceRoot") ?: "",
+        srcDirs = prop("srcDirs")?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: listOf("."),
+        includes = prop("includes")?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList(),
+        defines = prop("defines")?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList(),
+        files = prop("files")?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList(),
+        includesFrom = prop("includesFrom")?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList(),
+        overrides = prop("overrides") ?: "",
+        objPrefix = prop("objPrefix") ?: "${name}_",
+        jniHeaders = prop("jniHeaders")?.toBoolean() ?: false
+    )
+}
+
+// Parse all libraries at configuration time
+val libConfigs: List<NativeLibConfig> = libraryNames.map { parseLibConfig(it) }
+
+// =============================================================================
+// Helper functions
 // =============================================================================
 
 fun libExt(target: String): String = when {
@@ -132,22 +204,71 @@ fun resolveZigExe(): File {
     )
 }
 
-/** Execute a command via ProcessBuilder. Throws on non-zero exit. */
-fun runCommand(cmd: List<String>, workDir: File? = null, logger: org.gradle.api.logging.Logger? = null) {
+/**
+ * Resolve git executable. On Windows, Gradle's ProcessBuilder may not inherit
+ * the full PATH, so we look for Git for Windows at its standard location.
+ */
+fun resolveGitExe(): String {
+    if (!System.getProperty("os.name", "").lowercase().contains("win")) return "git"
+    // Try PATH first
+    try {
+        val p = ProcessBuilder("git", "--version").redirectErrorStream(true).start()
+        if (p.waitFor(5, java.util.concurrent.TimeUnit.SECONDS) && p.exitValue() == 0) return "git"
+    } catch (_: Exception) { /* not on PATH */ }
+    // Common Git for Windows locations
+    for (path in listOf("C:/Program Files/Git/cmd/git.exe", "C:/Program Files (x86)/Git/cmd/git.exe")) {
+        if (File(path).exists()) return path
+    }
+    throw GradleException("git not found. Install Git for Windows or add git to PATH.")
+}
+
+fun runCommand(
+    cmd: List<String>,
+    workDir: File? = null,
+    logger: org.gradle.api.logging.Logger? = null,
+    timeoutSeconds: Long = 120
+) {
     val displayCmd = cmd.joinToString(" ") { if (it.contains(" ")) "\"$it\"" else it }
     logger?.debug("Running: $displayCmd")
     val pb = ProcessBuilder(cmd)
     if (workDir != null) pb.directory(workDir)
     pb.redirectErrorStream(true)
     val process = pb.start()
-    val output = process.inputStream.bufferedReader().readText()
-    val exitCode = process.waitFor()
+
+    // Consume stdout+stderr in a daemon thread to prevent pipe-buffer deadlock.
+    // readText() on the main thread blocks forever if the process fills the OS
+    // pipe buffer (~64 KB) and stalls waiting for the reader.
+    val outputBuilder = StringBuilder()
+    val gobbler = Thread {
+        try {
+            process.inputStream.bufferedReader().use { reader ->
+                val buf = CharArray(8192)
+                var n: Int
+                while (reader.read(buf).also { n = it } != -1) {
+                    outputBuilder.append(buf, 0, n)
+                }
+            }
+        } catch (_: Exception) { /* stream closed — expected on timeout kill */ }
+    }
+    gobbler.isDaemon = true
+    gobbler.start()
+
+    val finished = process.waitFor(timeoutSeconds, java.util.concurrent.TimeUnit.SECONDS)
+    if (!finished) {
+        process.destroyForcibly()
+        gobbler.join(2000)
+        throw GradleException(
+            "Command timed out after ${timeoutSeconds}s: $displayCmd\n" +
+            "Partial output:\n${outputBuilder.toString().takeLast(4000)}"
+        )
+    }
+    gobbler.join(5000) // let gobbler finish draining
+    val exitCode = process.exitValue()
     if (exitCode != 0) {
-        throw GradleException("Command failed (exit $exitCode): $displayCmd\n$output")
+        throw GradleException("Command failed (exit $exitCode): $displayCmd\n${outputBuilder}")
     }
 }
 
-/** Download a file, following HTTP redirects. */
 fun downloadFile(url: String, dest: File) {
     dest.parentFile?.mkdirs()
     var currentUrl = url
@@ -176,21 +297,119 @@ fun downloadFile(url: String, dest: File) {
     throw GradleException("Too many redirects downloading $url")
 }
 
-/**
- * Extract a .tar.xz archive.
- * Runs `tar` from the archive's own directory using a relative filename
- * to avoid Windows bsdtar misinterpreting drive-letter prefixes as
- * remote host identifiers (e.g. `X:` → `X` host).
- */
-fun extractTarXz(archive: File, destDir: File, logger: org.gradle.api.logging.Logger? = null) {
+fun extractTar(archive: File, destDir: File, logger: org.gradle.api.logging.Logger? = null) {
     destDir.mkdirs()
     val localArchive = File(destDir, archive.name)
     if (localArchive.absolutePath != archive.absolutePath) {
-        archive.copyTo(localArchive, overwrite = true)
+        // Chunked copy with progress — avoids blocking on large files and gives
+        // visibility so debugger step-overs don't appear frozen.
+        val totalBytes = archive.length()
+        val totalMB = totalBytes / (1024 * 1024)
+        logger?.lifecycle("  Copying archive to extraction dir: ${archive.name} (${totalMB} MB)")
+        val chunkSize = 1024 * 1024 // 1 MB chunks
+        var copied = 0L
+        archive.inputStream().buffered().use { input ->
+            localArchive.outputStream().buffered().use { output ->
+                val buf = ByteArray(chunkSize)
+                var n: Int
+                while (input.read(buf).also { n = it } != -1) {
+                    output.write(buf, 0, n)
+                    copied += n
+                    // Log every 5 MB
+                    if (copied % (5 * 1024 * 1024) < chunkSize) {
+                        val copiedMB = copied / (1024 * 1024)
+                        logger?.lifecycle("  Copied $copiedMB / $totalMB MB")
+                    }
+                }
+            }
+        }
+        logger?.lifecycle("  Copy complete: ${copied / (1024 * 1024)} MB")
     }
-    runCommand(listOf("tar", "xf", localArchive.name), workDir = destDir, logger = logger)
+
+    // Resolve tar executable: prefer GNU tar from Git for Windows over
+    // Windows bsdtar (System32\tar.exe) which hangs on .tar.xz files
+    // due to child-process pipe inheritance issues.
+    val tarExe: String = if (System.getProperty("os.name", "").lowercase().contains("win")) {
+        val gitTar = File("C:/Program Files/Git/usr/bin/tar.exe")
+        if (gitTar.exists()) gitTar.absolutePath else "tar"
+    } else {
+        "tar"
+    }
+
+    // Redirect output to file to avoid pipe-buffer deadlocks entirely.
+    // Even GNU tar on Windows can inherit pipe handles to child processes.
+    val logFile = File(destDir, ".tar-output.log")
+    val cmd = listOf(tarExe, "xf", localArchive.name)
+    val displayCmd = cmd.joinToString(" ")
+    logger?.lifecycle("  Extracting: $displayCmd")
+    val extractStart = System.currentTimeMillis()
+    val pb = ProcessBuilder(cmd)
+    pb.directory(destDir)
+    pb.redirectErrorStream(true)
+    pb.redirectOutput(logFile)
+    val process = pb.start()
+    // Close stdin immediately — tar doesn't read from it
+    process.outputStream.close()
+    val timeoutSeconds = 300L
+    val finished = process.waitFor(timeoutSeconds, java.util.concurrent.TimeUnit.SECONDS)
+    if (!finished) {
+        process.destroyForcibly()
+        val partial = if (logFile.exists()) logFile.readText().takeLast(2000) else "(no output)"
+        logFile.delete()
+        throw GradleException("tar timed out after ${timeoutSeconds}s: $displayCmd\n$partial")
+    }
+    val exitCode = process.exitValue()
+    val output = if (logFile.exists()) logFile.readText() else ""
+    logFile.delete()
+    if (exitCode != 0) {
+        throw GradleException("tar failed (exit $exitCode): $displayCmd\n$output")
+    }
+    val elapsedMs = System.currentTimeMillis() - extractStart
+    logger?.lifecycle("  Extraction complete in ${elapsedMs / 1000}.${(elapsedMs % 1000) / 100}s")
     if (localArchive.absolutePath != archive.absolutePath) {
         localArchive.delete()
+    }
+}
+
+/**
+ * Resolve the source root directory for a library.
+ * - download: depsDir/<sourceRoot>  (sourceRoot is required for download sources)
+ * - local: project-relative path
+ * - git: depsDir/<repo-name>  (derived from URL, or sourceRoot if specified)
+ */
+fun resolveSourceRoot(lib: NativeLibConfig): File = when (lib.sourceType) {
+    "download" -> {
+        if (lib.sourceRoot.isBlank()) throw GradleException(
+            "nativeBuild.lib.${lib.name}.sourceRoot is required for download: sources"
+        )
+        File(depsDir, lib.sourceRoot)
+    }
+    "local" -> file(lib.sourceUrl)
+    "git" -> {
+        // Use sourceRoot if specified, otherwise derive from URL (e.g. "msdfgen.git" -> "msdfgen")
+        val dirName = if (lib.sourceRoot.isNotBlank()) lib.sourceRoot
+            else lib.sourceUrl.substringAfterLast("/").removeSuffix(".git")
+        File(depsDir, dirName)
+    }
+    else -> throw GradleException("Unknown source type: ${lib.sourceType}")
+}
+
+/**
+ * Collect source files for a library.
+ * If `files` is specified, use the explicit list. Otherwise glob by extension in srcDirs.
+ */
+fun collectSourceFiles(lib: NativeLibConfig, srcRoot: File): List<File> {
+    if (lib.files.isNotEmpty()) {
+        return lib.files.map { File(srcRoot, it) }.filter { it.exists() }
+    }
+    val extensions = when (lib.type) {
+        "c" -> setOf("c")
+        "cpp" -> setOf("cpp", "cc")
+        else -> setOf("c", "cpp", "cc")
+    }
+    return lib.srcDirs.flatMap { dirPath ->
+        val dir = if (dirPath == ".") srcRoot else File(srcRoot, dirPath)
+        dir.listFiles()?.filter { it.extension in extensions }?.toList() ?: emptyList()
     }
 }
 
@@ -201,7 +420,7 @@ tasks.register("downloadZig") {
     group = "native build"
     description = "Download Zig $zigVersion compiler for cross-platform native builds"
     notCompatibleWithConfigurationCache("Executes external commands and downloads files")
-    doNotTrackState("External tool download — not cacheable")
+    doNotTrackState("External tool download")
 
     onlyIf {
         val zigExeFile = File(zigDir, "${getZigPlatformDir()}/${getZigExeName()}")
@@ -229,18 +448,14 @@ tasks.register("downloadZig") {
                 var entry = zis.nextEntry
                 while (entry != null) {
                     val outFile = File(zigDir, entry.name)
-                    if (entry.isDirectory) {
-                        outFile.mkdirs()
-                    } else {
-                        outFile.parentFile?.mkdirs()
-                        outFile.outputStream().use { zis.copyTo(it) }
-                    }
+                    if (entry.isDirectory) { outFile.mkdirs() }
+                    else { outFile.parentFile?.mkdirs(); outFile.outputStream().use { zis.copyTo(it) } }
                     zis.closeEntry()
                     entry = zis.nextEntry
                 }
             }
         } else {
-            extractTarXz(archiveFile, zigDir, logger)
+            extractTar(archiveFile, zigDir, logger)
         }
 
         if (!System.getProperty("os.name", "").lowercase().contains("win")) {
@@ -251,131 +466,147 @@ tasks.register("downloadZig") {
 }
 
 // =============================================================================
-// Task: downloadNativeDeps
+// Task: downloadNativeDeps — download/clone all remote library sources
 // =============================================================================
 tasks.register("downloadNativeDeps") {
     group = "native build"
-    description = "Download FreeType $freetypeVersion and HarfBuzz $harfbuzzVersion source archives"
+    description = "Download native library source archives and clone git repos"
     notCompatibleWithConfigurationCache("Downloads and extracts archive files")
-    doNotTrackState("External dependency download — not cacheable")
-
-    val ftDir = File(depsDir, "freetype-$freetypeVersion")
-    val hbDir = File(depsDir, "harfbuzz-$harfbuzzVersion")
+    doNotTrackState("External dependency download")
 
     onlyIf {
-        val ftOk = ftDir.exists() && (ftDir.listFiles()?.isNotEmpty() == true)
-        val hbOk = hbDir.exists() && (hbDir.listFiles()?.isNotEmpty() == true)
-        !ftOk || !hbOk
+        libConfigs.any { lib ->
+            (lib.sourceType == "download" || lib.sourceType == "git") && run {
+                val srcRoot = resolveSourceRoot(lib)
+                !srcRoot.exists() || (srcRoot.listFiles()?.isEmpty() != false)
+            }
+        }
     }
 
     doLast {
         depsDir.mkdirs()
+        for (lib in libConfigs) {
+            val srcRoot = resolveSourceRoot(lib)
 
-        val ftOk = ftDir.exists() && (ftDir.listFiles()?.isNotEmpty() == true)
-        if (!ftOk) {
-            if (ftDir.exists()) ftDir.deleteRecursively()
-            val ftArchive = File(depsDir, "freetype.tar.xz")
-            val ftUrl = "$freetypeDownloadUrl/freetype-$freetypeVersion.tar.xz"
-            logger.lifecycle("Downloading FreeType $freetypeVersion from $ftUrl ...")
-            downloadFile(ftUrl, ftArchive)
-            logger.lifecycle("  Downloaded ${ftArchive.length() / 1024} KB")
-            extractTarXz(ftArchive, depsDir, logger)
-            if (!ftDir.exists() || ftDir.listFiles()?.isEmpty() != false)
-                throw GradleException("FreeType extraction failed — $ftDir is empty")
-            logger.lifecycle("FreeType source ready: $ftDir")
-        }
+            when (lib.sourceType) {
+                "download" -> {
+                    if (srcRoot.exists() && (srcRoot.listFiles()?.isNotEmpty() == true)) {
+                        logger.lifecycle("${lib.name}: source already present at $srcRoot")
+                        continue
+                    }
+                    if (srcRoot.exists()) srcRoot.deleteRecursively()
 
-        val hbOk = hbDir.exists() && (hbDir.listFiles()?.isNotEmpty() == true)
-        if (!hbOk) {
-            if (hbDir.exists()) hbDir.deleteRecursively()
-            val hbArchive = File(depsDir, "harfbuzz.tar.xz")
-            val hbUrl = "$harfbuzzDownloadUrl/$harfbuzzVersion/harfbuzz-$harfbuzzVersion.tar.xz"
-            logger.lifecycle("Downloading HarfBuzz $harfbuzzVersion from $hbUrl ...")
-            downloadFile(hbUrl, hbArchive)
-            logger.lifecycle("  Downloaded ${hbArchive.length() / 1024} KB")
-            extractTarXz(hbArchive, depsDir, logger)
-            if (!hbDir.exists() || hbDir.listFiles()?.isEmpty() != false)
-                throw GradleException("HarfBuzz extraction failed — $hbDir is empty")
-            logger.lifecycle("HarfBuzz source ready: $hbDir")
+                    val url = lib.sourceUrl
+                    val archiveName = url.substringAfterLast("/")
+                    val archiveFile = File(depsDir, archiveName)
+
+                    logger.lifecycle("Downloading ${lib.name} from $url ...")
+                    downloadFile(url, archiveFile)
+                    logger.lifecycle("  Downloaded ${archiveFile.length() / 1024} KB")
+                    extractTar(archiveFile, depsDir, logger)
+
+                    if (!srcRoot.exists() || srcRoot.listFiles()?.isEmpty() != false) {
+                        throw GradleException("${lib.name} extraction failed — $srcRoot is empty")
+                    }
+                    logger.lifecycle("  Source ready: $srcRoot")
+                }
+                "git" -> {
+                    if (srcRoot.exists() && (srcRoot.listFiles()?.isNotEmpty() == true)) {
+                        logger.lifecycle("${lib.name}: source already present at $srcRoot")
+                        continue
+                    }
+                    if (srcRoot.exists()) srcRoot.deleteRecursively()
+
+                    val gitExe = resolveGitExe()
+                    val url = lib.sourceUrl
+                    val tag = lib.sourceTag
+                    val cloneCmd = mutableListOf(gitExe, "clone", "--depth", "1")
+                    if (tag.isNotBlank()) { cloneCmd.add("--branch"); cloneCmd.add(tag) }
+                    cloneCmd.add(url)
+                    cloneCmd.add(srcRoot.absolutePath)
+
+                    logger.lifecycle("Cloning ${lib.name} from $url" + if (tag.isNotBlank()) " @ $tag" else "" + " ...")
+                    runCommand(cloneCmd, logger = logger, timeoutSeconds = 120)
+
+                    if (!srcRoot.exists() || srcRoot.listFiles()?.isEmpty() != false) {
+                        throw GradleException("${lib.name} git clone failed — $srcRoot is empty")
+                    }
+                    logger.lifecycle("  Source ready: $srcRoot")
+                }
+                // "local" — nothing to download
+            }
         }
     }
 }
 
 // =============================================================================
-// Task: buildNatives — Cross-compile all native libraries using Zig
+// Task: buildNatives — Generic cross-compile all libraries using Zig
 // =============================================================================
 tasks.register("buildNatives") {
     group = "native build"
     description = "Cross-compile $libraryName for all targets using Zig"
-    dependsOn("downloadNativeDeps")
+    dependsOn("downloadZig", "downloadNativeDeps")
     notCompatibleWithConfigurationCache("Executes Zig compiler via ProcessBuilder")
-    doNotTrackState("Native cross-compilation via external toolchain — not cacheable")
+    doNotTrackState("Native cross-compilation via external toolchain")
 
     doLast {
         val zigExe = resolveZigExe()
         logger.lifecycle("Using Zig: ${zigExe.absolutePath}")
 
-        val ftSrcDir = File(depsDir, "freetype-$freetypeVersion")
-        val hbSrcDir = File(depsDir, "harfbuzz-$harfbuzzVersion")
-
-        if (!ftSrcDir.exists()) throw GradleException("FreeType not found at $ftSrcDir — run downloadNativeDeps")
-        if (!hbSrcDir.exists()) throw GradleException("HarfBuzz not found at $hbSrcDir — run downloadNativeDeps")
-        if (!msdfgenSourceDir.exists()) throw GradleException("msdfgen not found at $msdfgenSourceDir")
-
-        // Apply msdfgen override
-        val importFontOverride = File(msdfgenOverrideDir, "ext/import-font.cpp")
-        if (importFontOverride.exists()) {
-            logger.lifecycle("Applying msdfgen import-font.cpp override")
-            importFontOverride.copyTo(File(msdfgenSourceDir, "ext/import-font.cpp"), overwrite = true)
+        // Resolve source roots and validate
+        val sourceRoots = mutableMapOf<String, File>()
+        for (lib in libConfigs) {
+            val srcRoot = resolveSourceRoot(lib)
+            if (!srcRoot.exists()) {
+                throw GradleException("${lib.name}: source root not found at $srcRoot" +
+                    if (lib.sourceType in listOf("download", "git")) " — run downloadNativeDeps" else "")
+            }
+            sourceRoots[lib.name] = srcRoot
         }
 
-        // --- Source collection ---
-        val ftIncludeDirs = listOf(
-            File(ftSrcDir, "include"),
-            File(ftSrcDir, "include/freetype"),
-            File(ftSrcDir, "include/freetype/config"),
-            File(ftSrcDir, "include/freetype/internal")
-        )
+        // Apply overrides before compiling
+        for (lib in libConfigs) {
+            if (lib.overrides.isBlank()) continue
+            val overrideDir = file(lib.overrides)
+            if (!overrideDir.exists()) continue
+            val srcRoot = sourceRoots[lib.name]!!
+            logger.lifecycle("Applying overrides for ${lib.name} from $overrideDir")
+            overrideDir.walkTopDown().filter { it.isFile }.forEach { overrideFile ->
+                val relativePath = overrideFile.relativeTo(overrideDir).path
+                val target = File(srcRoot, relativePath)
+                target.parentFile?.mkdirs()
+                overrideFile.copyTo(target, overwrite = true)
+                logger.lifecycle("  override: $relativePath")
+            }
+        }
 
-        // FreeType source files — stable list for 2.13.x; update if upgrading major version
-        val ftSourceFiles = listOf(
-            "src/autofit/autofit.c",
-            "src/base/ftbase.c", "src/base/ftbbox.c", "src/base/ftbdf.c",
-            "src/base/ftbitmap.c", "src/base/ftcid.c", "src/base/ftdebug.c",
-            "src/base/ftfstype.c",
-            "src/base/ftgasp.c", "src/base/ftglyph.c", "src/base/ftgxval.c",
-            "src/base/ftinit.c", "src/base/ftmm.c", "src/base/ftotval.c",
-            "src/base/ftpatent.c", "src/base/ftpfr.c", "src/base/ftstroke.c",
-            "src/base/ftsynth.c", "src/base/ftsystem.c", "src/base/fttype1.c",
-            "src/base/ftwinfnt.c",
-            "src/bdf/bdf.c", "src/bzip2/ftbzip2.c", "src/cache/ftcache.c",
-            "src/cff/cff.c", "src/cid/type1cid.c",
-            "src/gzip/ftgzip.c", "src/lzw/ftlzw.c",
-            "src/pcf/pcf.c", "src/pfr/pfr.c",
-            "src/psaux/psaux.c", "src/pshinter/pshinter.c", "src/psnames/psnames.c",
-            "src/raster/raster.c", "src/sdf/sdf.c", "src/sfnt/sfnt.c",
-            "src/smooth/smooth.c", "src/svg/svg.c",
-            "src/truetype/truetype.c", "src/type1/type1.c", "src/type42/type42.c",
-            "src/winfonts/winfnt.c"
-        ).map { File(ftSrcDir, it) }.filter { it.exists() }
+        // Resolve include directories per library (absolute paths)
+        // Map: libName -> list of absolute include dirs
+        val resolvedIncludes = mutableMapOf<String, List<File>>()
+        for (lib in libConfigs) {
+            val srcRoot = sourceRoots[lib.name]!!
+            val ownIncludes = lib.includes.map { relPath ->
+                if (relPath == ".") srcRoot else File(srcRoot, relPath)
+            }
+            resolvedIncludes[lib.name] = ownIncludes
+        }
 
-        val hbIncludeDirs = listOf(File(hbSrcDir, "src"))
-        val hbSourceFiles = listOf(File(hbSrcDir, "src/harfbuzz.cc"))
+        // Collect source files per library
+        val sourceFiles = mutableMapOf<String, List<File>>()
+        for (lib in libConfigs) {
+            sourceFiles[lib.name] = collectSourceFiles(lib, sourceRoots[lib.name]!!)
+        }
 
-        val msdfgenCoreDir = File(msdfgenSourceDir, "core")
-        val msdfgenExtDir = File(msdfgenSourceDir, "ext")
-        val msdfgenCoreSources = msdfgenCoreDir.listFiles()?.filter { it.extension == "cpp" } ?: emptyList()
-        val msdfgenExtSources = msdfgenExtDir.listFiles()?.filter { it.extension == "cpp" } ?: emptyList()
-
-        val jniSources = nativeSourceDir.listFiles()?.filter { it.extension == "cpp" } ?: emptyList()
-
+        // Print configuration
         logger.lifecycle("=== Native build configuration ===")
-        logger.lifecycle("FreeType: ${ftSourceFiles.size} C files (v$freetypeVersion)")
-        logger.lifecycle("HarfBuzz: ${hbSourceFiles.size} C++ files (v$harfbuzzVersion)")
-        logger.lifecycle("MSDFgen:  ${msdfgenCoreSources.size + msdfgenExtSources.size} C++ files")
-        logger.lifecycle("JNI:      ${jniSources.size} C++ files")
+        for (lib in libConfigs) {
+            val count = sourceFiles[lib.name]!!.size
+            val ext = if (lib.type == "c") "C" else "C++"
+            logger.lifecycle("${lib.name}: $count $ext files")
+        }
         logger.lifecycle("Targets:  $nativeTargets")
         logger.lifecycle("Flags:    $cOptLevel $cDebugLevel $cppStandard")
+        logger.lifecycle("Output:   $libraryName")
 
         for (zigTarget in nativeTargets) {
             logger.lifecycle("")
@@ -392,74 +623,58 @@ tasks.register("buildNatives") {
             val tgtObjDir = File(objDir, zigTarget)
             tgtObjDir.mkdirs()
 
-            fun compileC(srcFile: File, objFile: File, defines: List<String>, includes: List<File>) {
-                val cmd = mutableListOf(
-                    zigExe.absolutePath, "cc", "-c",
-                    "-target", zigTarget, cOptLevel, cDebugLevel,
-                    "-fno-sanitize=undefined", "-fPIC"
-                )
-                for (d in defines) cmd.add(d)
-                cmd.addAll(listOf("-o", objFile.absolutePath, srcFile.absolutePath))
-                for (inc in includes) { cmd.add("-I"); cmd.add(inc.absolutePath) }
-                runCommand(cmd, logger = logger)
+            val allObjects = mutableListOf<File>()
+
+            for ((libIdx, lib) in libConfigs.withIndex()) {
+                val files = sourceFiles[lib.name]!!
+                if (files.isEmpty()) {
+                    logger.lifecycle("  [${libIdx + 1}/${libConfigs.size}] ${lib.name} — no source files, skipping")
+                    continue
+                }
+                logger.lifecycle("  [${libIdx + 1}/${libConfigs.size}] ${lib.name} ...")
+
+                // Build include path: own includes + includesFrom dependencies
+                val includeDirs = mutableListOf<File>()
+                includeDirs.addAll(resolvedIncludes[lib.name] ?: emptyList())
+                for (depName in lib.includesFrom) {
+                    includeDirs.addAll(resolvedIncludes[depName]
+                        ?: throw GradleException("${lib.name}.includesFrom references unknown library: $depName"))
+                }
+                // Add JNI headers if flagged
+                if (lib.jniHeaders) {
+                    includeDirs.add(jniIncludeDir)
+                    includeDirs.add(jniMdIncludeDir(zigTarget))
+                }
+
+                // Build defines
+                val defineFlags = lib.defines.map { d -> "-D$d" }
+
+                // Compile each source file
+                val objects = files.map { srcFile ->
+                    // Generate unique obj name: prefix + parent-dir + filename
+                    val parentHint = srcFile.parentFile?.name?.let { if (it == "." || it == "cpp" || it == "src") "" else "${it}_" } ?: ""
+                    val obj = File(tgtObjDir, "${lib.objPrefix}${parentHint}${srcFile.nameWithoutExtension}.o")
+
+                    val compiler = if (lib.type == "c") "cc" else "c++"
+                    val cmd = mutableListOf(
+                        zigExe.absolutePath, compiler, "-c",
+                        "-target", zigTarget, cOptLevel, cDebugLevel,
+                        "-fno-sanitize=undefined", "-fPIC"
+                    )
+                    if (lib.type == "cpp") cmd.add(cppStandard)
+                    cmd.addAll(defineFlags)
+                    cmd.addAll(listOf("-o", obj.absolutePath, srcFile.absolutePath))
+                    for (inc in includeDirs) { cmd.add("-I"); cmd.add(inc.absolutePath) }
+
+                    runCommand(cmd, logger = logger)
+                    obj
+                }
+                allObjects.addAll(objects)
+                logger.lifecycle("    ${objects.size} ${if (lib.type == "c") "C" else "C++"} files")
             }
 
-            fun compileCpp(srcFile: File, objFile: File, defines: List<String>, includes: List<File>) {
-                val cmd = mutableListOf(
-                    zigExe.absolutePath, "c++", "-c",
-                    "-target", zigTarget, cOptLevel, cDebugLevel,
-                    cppStandard, "-fno-sanitize=undefined", "-fPIC"
-                )
-                for (d in defines) cmd.add(d)
-                cmd.addAll(listOf("-o", objFile.absolutePath, srcFile.absolutePath))
-                for (inc in includes) { cmd.add("-I"); cmd.add(inc.absolutePath) }
-                runCommand(cmd, logger = logger)
-            }
-
-            // Phase 1: FreeType
-            logger.lifecycle("  [1/5] FreeType ...")
-            val ftObjects = ftSourceFiles.map { src ->
-                val obj = File(tgtObjDir, "ft_${src.nameWithoutExtension}.o")
-                compileC(src, obj, listOf("-DFT2_BUILD_LIBRARY"), ftIncludeDirs)
-                obj
-            }
-            logger.lifecycle("    ${ftObjects.size} objects")
-
-            // Phase 2: HarfBuzz
-            logger.lifecycle("  [2/5] HarfBuzz ...")
-            val hbObjects = hbSourceFiles.map { src ->
-                val obj = File(tgtObjDir, "hb_${src.nameWithoutExtension}.o")
-                compileCpp(src, obj, listOf("-DHAVE_FREETYPE", "-DHB_NO_MT"), hbIncludeDirs + ftIncludeDirs)
-                obj
-            }
-            logger.lifecycle("    ${hbObjects.size} objects")
-
-            // Phase 3: MSDFgen
-            logger.lifecycle("  [3/5] MSDFgen ...")
-            val msdfgenDefines = listOf("-DMSDFGEN_PUBLIC=", "-DMSDFGEN_USE_CPP11", "-DMSDFGEN_USE_FREETYPE", "-DMSDFGEN_EXTENSIONS")
-            val msdfgenIncludes = listOf(msdfgenSourceDir, msdfgenCoreDir, msdfgenExtDir) + ftIncludeDirs
-            val msdfgenObjects = (msdfgenCoreSources + msdfgenExtSources).map { src ->
-                val p = if (src.parentFile.name == "core") "msdfgen_core_" else "msdfgen_ext_"
-                val obj = File(tgtObjDir, "$p${src.nameWithoutExtension}.o")
-                compileCpp(src, obj, msdfgenDefines, msdfgenIncludes)
-                obj
-            }
-            logger.lifecycle("    ${msdfgenObjects.size} objects")
-
-            // Phase 4: JNI
-            logger.lifecycle("  [4/5] JNI ...")
-            val jniIncludes = listOf(jniIncludeDir, jniMdIncludeDir(zigTarget), nativeSourceDir,
-                msdfgenSourceDir, msdfgenCoreDir, msdfgenExtDir) + ftIncludeDirs + hbIncludeDirs
-            val jniObjects = jniSources.map { src ->
-                val obj = File(tgtObjDir, "jni_${src.nameWithoutExtension}.o")
-                compileCpp(src, obj, msdfgenDefines, jniIncludes)
-                obj
-            }
-            logger.lifecycle("    ${jniObjects.size} objects")
-
-            // Phase 5: Link
-            logger.lifecycle("  [5/5] Linking ...")
-            val allObjects = ftObjects + hbObjects + msdfgenObjects + jniObjects
+            // Link all objects into shared library
+            logger.lifecycle("  [link] Linking ${allObjects.size} objects ...")
             val linkCmd = mutableListOf(
                 zigExe.absolutePath, "c++", "-shared",
                 "-target", zigTarget, cDebugLevel, "-fno-sanitize=undefined",
@@ -468,7 +683,7 @@ tasks.register("buildNatives") {
             for (obj in allObjects) linkCmd.add(obj.absolutePath)
             runCommand(linkCmd, logger = logger)
 
-            logger.lifecycle("  => ${outputFile.name} (${outputFile.length() / 1024} KB)")
+            logger.lifecycle("${project.relativePath(nativesOutputDir)}\\${zigTarget}\\ => ${outputFile.name} (${outputFile.length() / 1024} KB)")
         }
 
         // Clean Windows debug artifacts
@@ -484,11 +699,11 @@ tasks.register("buildNatives") {
 }
 
 // =============================================================================
-// Task: buildNativesLocal — prints the command for local-only build
+// Task: buildNativesLocal
 // =============================================================================
 tasks.register("buildNativesLocal") {
     group = "native build"
-    description = "Build native library for current platform only (uses -PnativeBuild.targets)"
+    description = "Build native library for current platform only"
 
     doLast {
         val osName = System.getProperty("os.name", "").lowercase()
