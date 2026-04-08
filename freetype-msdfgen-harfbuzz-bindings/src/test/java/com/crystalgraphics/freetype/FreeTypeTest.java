@@ -1,5 +1,6 @@
 package com.crystalgraphics.freetype;
 
+import com.crystalgraphics.NativeLoader;
 import org.junit.Test;
 import static org.junit.Assert.*;
 

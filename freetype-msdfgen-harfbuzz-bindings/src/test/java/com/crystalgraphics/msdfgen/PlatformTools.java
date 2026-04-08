@@ -1,11 +1,9 @@
 package com.crystalgraphics.msdfgen;
 
-import com.crystalgraphics.msdfgen.NativeLoader;
-
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.util.List;
-
+import com.crystalgraphics.NativeLoader;
 /**
  * Platform-specific leak detection tool integration.
  * Provides hooks for Valgrind (Linux), leaks (macOS), and Dr.Memory (Windows).
@@ -15,8 +13,8 @@ import java.util.List;
  */
 public final class PlatformTools {
 
-    public static final String OS = NativeLoader.getOsName();
-    public static final String ARCH = NativeLoader.getArchName();
+    public static final String OS = NativeLoader.detectOS();
+    public static final String ARCH = NativeLoader.detectArch();
     public static final boolean IS_WINDOWS = "windows".equals(OS);
     public static final boolean IS_MACOS = "macos".equals(OS);
     public static final boolean IS_LINUX = "linux".equals(OS);
@@ -47,7 +45,7 @@ public final class PlatformTools {
     }
 
     public static String getNativeLibraryInfo() {
-        String libName = NativeLoader.mapLibraryName("freetype_msdfgen_harfbuzz_jni");
+        String libName = NativeLoader.getLibraryFileName();
         String resourcePath = "/natives/" + OS + "-" + ARCH + "/" + libName;
         boolean available = NativeLoader.class.getResourceAsStream(resourcePath) != null;
         return "Library: " + libName + " at " + resourcePath + " (available=" + available + ")";

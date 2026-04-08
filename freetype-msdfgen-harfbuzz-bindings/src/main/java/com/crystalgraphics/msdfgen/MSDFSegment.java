@@ -1,49 +1,49 @@
 package com.crystalgraphics.msdfgen;
 
-public final class Segment {
+public final class MSDFSegment {
 
     private long nativeHandle;
     private final boolean owned;
     private boolean freed;
 
-    Segment(long nativeHandle, boolean owned) {
+    MSDFSegment(long nativeHandle, boolean owned) {
         this.nativeHandle = nativeHandle;
         this.owned = owned;
         this.freed = false;
     }
 
-    public static Segment createLinear() {
-        return create(MsdfConstants.SEGMENT_TYPE_LINEAR);
+    public static MSDFSegment createLinear() {
+        return create(MSDFConstants.SEGMENT_TYPE_LINEAR);
     }
 
-    public static Segment createQuadratic() {
-        return create(MsdfConstants.SEGMENT_TYPE_QUADRATIC);
+    public static MSDFSegment createQuadratic() {
+        return create(MSDFConstants.SEGMENT_TYPE_QUADRATIC);
     }
 
-    public static Segment createCubic() {
-        return create(MsdfConstants.SEGMENT_TYPE_CUBIC);
+    public static MSDFSegment createCubic() {
+        return create(MSDFConstants.SEGMENT_TYPE_CUBIC);
     }
 
-    public static Segment create(int type) {
-        if (!SegmentType.isValid(type)) {
+    public static MSDFSegment create(int type) {
+        if (!MSDFSegmentType.isValid(type)) {
             throw new IllegalArgumentException("Invalid segment type: " + type
                 + ". Must be LINEAR(0), QUADRATIC(1), or CUBIC(2)");
         }
-        long handle = MsdfNative.nSegmentAlloc(type);
+        long handle = MSDFNative.nSegmentAlloc(type);
         if (handle == 0) {
-            throw new MsdfException("Failed to allocate segment of type " + SegmentType.name(type));
+            throw new MSDFException("Failed to allocate segment of type " + MSDFSegmentType.name(type));
         }
-        return new Segment(handle, true);
+        return new MSDFSegment(handle, true);
     }
 
     public int getType() {
         checkNotFreed();
-        return MsdfNative.nSegmentGetType(nativeHandle);
+        return MSDFNative.nSegmentGetType(nativeHandle);
     }
 
     public int getPointCount() {
         checkNotFreed();
-        return MsdfNative.nSegmentGetPointCount(nativeHandle);
+        return MSDFNative.nSegmentGetPointCount(nativeHandle);
     }
 
     /**
@@ -52,23 +52,23 @@ public final class Segment {
     public double[] getPoint(int index) {
         checkNotFreed();
         double[] point = new double[2];
-        MsdfResult.check(MsdfNative.nSegmentGetPoint(nativeHandle, index, point));
+        MSDFResult.check(MSDFNative.nSegmentGetPoint(nativeHandle, index, point));
         return point;
     }
 
     public void setPoint(int index, double x, double y) {
         checkNotFreed();
-        MsdfResult.check(MsdfNative.nSegmentSetPoint(nativeHandle, index, x, y));
+        MSDFResult.check(MSDFNative.nSegmentSetPoint(nativeHandle, index, x, y));
     }
 
     public int getColor() {
         checkNotFreed();
-        return MsdfNative.nSegmentGetColor(nativeHandle);
+        return MSDFNative.nSegmentGetColor(nativeHandle);
     }
 
     public void setColor(int color) {
         checkNotFreed();
-        MsdfResult.check(MsdfNative.nSegmentSetColor(nativeHandle, color));
+        MSDFResult.check(MSDFNative.nSegmentSetColor(nativeHandle, color));
     }
 
     /**
@@ -77,14 +77,14 @@ public final class Segment {
     public double[] getDirection(double param) {
         checkNotFreed();
         double[] dir = new double[2];
-        MsdfResult.check(MsdfNative.nSegmentGetDirection(nativeHandle, param, dir));
+        MSDFResult.check(MSDFNative.nSegmentGetDirection(nativeHandle, param, dir));
         return dir;
     }
 
     public double[] getDirectionChange(double param) {
         checkNotFreed();
         double[] dc = new double[2];
-        MsdfResult.check(MsdfNative.nSegmentGetDirectionChange(nativeHandle, param, dc));
+        MSDFResult.check(MSDFNative.nSegmentGetDirectionChange(nativeHandle, param, dc));
         return dc;
     }
 
@@ -94,30 +94,30 @@ public final class Segment {
     public double[] point(double param) {
         checkNotFreed();
         double[] pt = new double[2];
-        MsdfResult.check(MsdfNative.nSegmentPoint(nativeHandle, param, pt));
+        MSDFResult.check(MSDFNative.nSegmentPoint(nativeHandle, param, pt));
         return pt;
     }
 
     public double[] getBounds() {
         checkNotFreed();
         double[] bounds = new double[4];
-        MsdfResult.check(MsdfNative.nSegmentBound(nativeHandle, bounds));
+        MSDFResult.check(MSDFNative.nSegmentBound(nativeHandle, bounds));
         return bounds;
     }
 
     public void moveStartPoint(double x, double y) {
         checkNotFreed();
-        MsdfResult.check(MsdfNative.nSegmentMoveStartPoint(nativeHandle, x, y));
+        MSDFResult.check(MSDFNative.nSegmentMoveStartPoint(nativeHandle, x, y));
     }
 
     public void moveEndPoint(double x, double y) {
         checkNotFreed();
-        MsdfResult.check(MsdfNative.nSegmentMoveEndPoint(nativeHandle, x, y));
+        MSDFResult.check(MSDFNative.nSegmentMoveEndPoint(nativeHandle, x, y));
     }
 
     public void free() {
         if (!freed && owned) {
-            MsdfNative.nSegmentFree(nativeHandle);
+            MSDFNative.nSegmentFree(nativeHandle);
             freed = true;
             nativeHandle = 0;
         }

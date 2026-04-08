@@ -1,6 +1,6 @@
 package com.crystalgraphics.msdfgen;
 
-public final class Transform {
+public final class MSDFTransform {
 
     private double scaleX = 1.0;
     private double scaleY = 1.0;
@@ -9,31 +9,31 @@ public final class Transform {
     private double rangeLower = 0.0;
     private double rangeUpper = 1.0;
 
-    public Transform() {}
+    public MSDFTransform() {}
 
-    public Transform scale(double sx, double sy) {
+    public MSDFTransform scale(double sx, double sy) {
         this.scaleX = sx;
         this.scaleY = sy;
         return this;
     }
 
-    public Transform scale(double uniformScale) {
+    public MSDFTransform scale(double uniformScale) {
         return scale(uniformScale, uniformScale);
     }
 
-    public Transform translate(double tx, double ty) {
+    public MSDFTransform translate(double tx, double ty) {
         this.translateX = tx;
         this.translateY = ty;
         return this;
     }
 
-    public Transform range(double lower, double upper) {
+    public MSDFTransform range(double lower, double upper) {
         this.rangeLower = lower;
         this.rangeUpper = upper;
         return this;
     }
 
-    public Transform range(double pxRange) {
+    public MSDFTransform range(double pxRange) {
         return range(-pxRange, pxRange);
     }
 
@@ -61,7 +61,7 @@ public final class Transform {
      *   <li>Distance range is [-pxRange/2/scale, +pxRange/2/scale] in shape units</li>
      * </ul>
      */
-    public static Transform autoFrame(Shape shape, int bitmapWidth, int bitmapHeight, double pxRange) {
+    public static MSDFTransform autoFrame(MSDFShape shape, int bitmapWidth, int bitmapHeight, double pxRange) {
         double[] bounds = shape.getBounds();
         double l = bounds[0], b = bounds[1], r = bounds[2], t = bounds[3];
 
@@ -109,7 +109,7 @@ public final class Transform {
         // So range.lower = -pxRange/2/scale, range.upper = +pxRange/2/scale
         double halfRangeInShapeUnits = (pxRange / 2.0) / scale;
 
-        return new Transform()
+        return new MSDFTransform()
             .scale(scale)
             .translate(tx, ty)
             .range(-halfRangeInShapeUnits, halfRangeInShapeUnits);

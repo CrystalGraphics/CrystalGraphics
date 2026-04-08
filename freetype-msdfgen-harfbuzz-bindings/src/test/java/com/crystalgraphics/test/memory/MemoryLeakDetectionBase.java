@@ -1,5 +1,6 @@
 package com.crystalgraphics.test.memory;
 
+import com.crystalgraphics.NativeLoader;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
@@ -19,7 +20,7 @@ public abstract class MemoryLeakDetectionBase {
     public void ensureNativesAvailable() {
         if (nativesAvailable == null) {
             try {
-                com.crystalgraphics.freetype.NativeLoader.ensureLoaded();
+                NativeLoader.ensureLoaded();
                 nativesAvailable = Boolean.TRUE;
             } catch (UnsatisfiedLinkError e) {
                 nativesAvailable = Boolean.FALSE;

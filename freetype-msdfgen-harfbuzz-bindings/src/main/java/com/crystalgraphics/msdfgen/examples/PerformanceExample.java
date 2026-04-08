@@ -23,7 +23,7 @@ public class PerformanceExample {
         benchmarkBitmapAllocation();
         System.out.println();
 
-        if (FreeTypeIntegration.isAvailable()) {
+        if (FreeTypeMSDFIntegration.isAvailable()) {
             String fontPath = findSystemFont();
             if (fontPath != null) {
                 benchmarkFreeTypeGlyphs(fontPath);
@@ -46,25 +46,25 @@ public class PerformanceExample {
             for (int i = 0; i < ITERATIONS_PER_SIZE; i++) {
                 long start = System.nanoTime();
 
-                Shape shape = Shape.create();
-                Contour contour = shape.addContour();
+                MSDFShape shape = MSDFShape.create();
+                MSDFContour contour = shape.addContour();
 
-                Segment e1 = Segment.createLinear();
+                MSDFSegment e1 = MSDFSegment.createLinear();
                 e1.setPoint(0, 0, 0);
                 e1.setPoint(1, 1, 0);
                 contour.addEdge(e1);
 
-                Segment e2 = Segment.createLinear();
+                MSDFSegment e2 = MSDFSegment.createLinear();
                 e2.setPoint(0, 1, 0);
                 e2.setPoint(1, 1, 1);
                 contour.addEdge(e2);
 
-                Segment e3 = Segment.createLinear();
+                MSDFSegment e3 = MSDFSegment.createLinear();
                 e3.setPoint(0, 1, 1);
                 e3.setPoint(1, 0, 1);
                 contour.addEdge(e3);
 
-                Segment e4 = Segment.createLinear();
+                MSDFSegment e4 = MSDFSegment.createLinear();
                 e4.setPoint(0, 0, 1);
                 e4.setPoint(1, 0, 0);
                 contour.addEdge(e4);
@@ -72,9 +72,9 @@ public class PerformanceExample {
                 shape.normalize();
                 shape.edgeColoringSimple(3.0);
 
-                Bitmap bitmap = Bitmap.allocMsdf(size, size);
-                Transform transform = Transform.autoFrame(shape, size, size, 4.0);
-                Generator.generateMsdf(bitmap, shape, transform);
+                MSDFBitmap bitmap = MSDFBitmap.allocMsdf(size, size);
+                MSDFTransform transform = MSDFTransform.autoFrame(shape, size, size, 4.0);
+                MSDFGenerator.generateMsdf(bitmap, shape, transform);
 
                 bitmap.free();
                 shape.free();
@@ -96,7 +96,7 @@ public class PerformanceExample {
         for (int size : BITMAP_SIZES) {
             long start = System.nanoTime();
             for (int i = 0; i < allocCount; i++) {
-                Bitmap bitmap = Bitmap.allocMsdf(size, size);
+                MSDFBitmap bitmap = MSDFBitmap.allocMsdf(size, size);
                 bitmap.free();
             }
             double totalMs = (System.nanoTime() - start) / 1_000_000.0;
@@ -108,11 +108,11 @@ public class PerformanceExample {
         System.out.println();
         System.out.println("  Memory test: allocate many bitmaps, then free all...");
         int batchSize = 200;
-        Bitmap[] bitmaps = new Bitmap[batchSize];
+        MSDFBitmap[] bitmaps = new MSDFBitmap[batchSize];
         long beforeMem = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory();
 
         for (int i = 0; i < batchSize; i++) {
-            bitmaps[i] = Bitmap.allocMsdf(64, 64);
+            bitmaps[i] = MSDFBitmap.allocMsdf(64, 64);
         }
 
         long afterMem = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory();
@@ -129,9 +129,9 @@ public class PerformanceExample {
         System.out.println("--- FreeType Glyph Loading ---");
         System.out.println("  Font: " + fontPath);
 
-        FreeTypeIntegration ft = FreeTypeIntegration.create();
+        FreeTypeMSDFIntegration ft = FreeTypeMSDFIntegration.create();
         try {
-            FreeTypeIntegration.Font font = ft.loadFont(fontPath);
+            FreeTypeMSDFIntegration.Font font = ft.loadFont(fontPath);
             try {
                 int glyphCount = 0;
                 int failCount = 0;
@@ -141,20 +141,20 @@ public class PerformanceExample {
                 long start = System.nanoTime();
                 for (int cp = startCp; cp <= endCp; cp++) {
                     try {
-                        FreeTypeIntegration.GlyphData glyph = font.loadGlyph(cp);
-                        Shape shape = glyph.getShape();
+                        FreeTypeMSDFIntegration.GlyphData glyph = font.loadGlyph(cp);
+                        MSDFShape shape = glyph.getShape();
                         if (shape.getEdgeCount() > 0) {
                             shape.normalize();
                             shape.edgeColoringSimple(3.0);
 
-                            Bitmap bitmap = Bitmap.allocMsdf(32, 32);
-                            Transform transform = Transform.autoFrame(shape, 32, 32, 4.0);
-                            Generator.generateMsdf(bitmap, shape, transform);
+                            MSDFBitmap bitmap = MSDFBitmap.allocMsdf(32, 32);
+                            MSDFTransform transform = MSDFTransform.autoFrame(shape, 32, 32, 4.0);
+                            MSDFGenerator.generateMsdf(bitmap, shape, transform);
                             bitmap.free();
                         }
                         shape.free();
                         glyphCount++;
-                    } catch (MsdfException e) {
+                    } catch (MSDFException e) {
                         failCount++;
                     }
                 }
@@ -177,7 +177,7 @@ public class PerformanceExample {
                         try {
                             font.getKerning(c1, c2);
                             kerningQueries++;
-                        } catch (MsdfException e) {
+                        } catch (MSDFException e) {
                             break;
                         }
                     }

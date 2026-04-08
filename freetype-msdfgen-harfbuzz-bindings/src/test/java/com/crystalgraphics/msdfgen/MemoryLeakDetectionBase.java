@@ -6,6 +6,7 @@ import org.junit.After;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.crystalgraphics.NativeLoader;
 /**
  * Base class for memory leak detection tests. Provides common setup/teardown,
  * baseline measurement, and result recording. Subclasses implement specific
@@ -18,7 +19,7 @@ public abstract class MemoryLeakDetectionBase {
     static {
         boolean loaded = false;
         try {
-            NativeLoader.load();
+            NativeLoader.ensureLoaded();
             loaded = true;
         } catch (UnsatisfiedLinkError e) {
             System.err.println("Native library not available - memory tests will be skipped: " + e.getMessage());
@@ -44,29 +45,29 @@ public abstract class MemoryLeakDetectionBase {
         org.junit.Assert.assertTrue("Native library not available", NATIVE_AVAILABLE);
     }
 
-    protected Shape createSimpleSquare() {
-        Shape shape = Shape.create();
-        Contour contour = shape.addContour();
+    protected MSDFShape createSimpleSquare() {
+        MSDFShape shape = MSDFShape.create();
+        MSDFContour contour = shape.addContour();
 
-        Segment top = Segment.createLinear();
+        MSDFSegment top = MSDFSegment.createLinear();
         top.setPoint(0, 0.0, 1.0);
         top.setPoint(1, 1.0, 1.0);
         contour.addEdge(top);
         top.free();
 
-        Segment right = Segment.createLinear();
+        MSDFSegment right = MSDFSegment.createLinear();
         right.setPoint(0, 1.0, 1.0);
         right.setPoint(1, 1.0, 0.0);
         contour.addEdge(right);
         right.free();
 
-        Segment bottom = Segment.createLinear();
+        MSDFSegment bottom = MSDFSegment.createLinear();
         bottom.setPoint(0, 1.0, 0.0);
         bottom.setPoint(1, 0.0, 0.0);
         contour.addEdge(bottom);
         bottom.free();
 
-        Segment left = Segment.createLinear();
+        MSDFSegment left = MSDFSegment.createLinear();
         left.setPoint(0, 0.0, 0.0);
         left.setPoint(1, 0.0, 1.0);
         contour.addEdge(left);
@@ -79,26 +80,26 @@ public abstract class MemoryLeakDetectionBase {
      * Creates a complex shape with multiple contours and segment types.
      * Includes linear, quadratic, and cubic segments for thorough testing.
      */
-    protected Shape createComplexShape() {
-        Shape shape = Shape.create();
+    protected MSDFShape createComplexShape() {
+        MSDFShape shape = MSDFShape.create();
 
         // Outer contour with mixed segment types
-        Contour outer = shape.addContour();
+        MSDFContour outer = shape.addContour();
 
-        Segment s1 = Segment.createLinear();
+        MSDFSegment s1 = MSDFSegment.createLinear();
         s1.setPoint(0, 0.0, 0.0);
         s1.setPoint(1, 10.0, 0.0);
         outer.addEdge(s1);
         s1.free();
 
-        Segment s2 = Segment.createQuadratic();
+        MSDFSegment s2 = MSDFSegment.createQuadratic();
         s2.setPoint(0, 10.0, 0.0);
         s2.setPoint(1, 12.0, 5.0);
         s2.setPoint(2, 10.0, 10.0);
         outer.addEdge(s2);
         s2.free();
 
-        Segment s3 = Segment.createCubic();
+        MSDFSegment s3 = MSDFSegment.createCubic();
         s3.setPoint(0, 10.0, 10.0);
         s3.setPoint(1, 7.0, 12.0);
         s3.setPoint(2, 3.0, 12.0);
@@ -106,34 +107,34 @@ public abstract class MemoryLeakDetectionBase {
         outer.addEdge(s3);
         s3.free();
 
-        Segment s4 = Segment.createLinear();
+        MSDFSegment s4 = MSDFSegment.createLinear();
         s4.setPoint(0, 0.0, 10.0);
         s4.setPoint(1, 0.0, 0.0);
         outer.addEdge(s4);
         s4.free();
 
         // Inner contour (hole)
-        Contour inner = shape.addContour();
+        MSDFContour inner = shape.addContour();
 
-        Segment h1 = Segment.createLinear();
+        MSDFSegment h1 = MSDFSegment.createLinear();
         h1.setPoint(0, 3.0, 3.0);
         h1.setPoint(1, 7.0, 3.0);
         inner.addEdge(h1);
         h1.free();
 
-        Segment h2 = Segment.createLinear();
+        MSDFSegment h2 = MSDFSegment.createLinear();
         h2.setPoint(0, 7.0, 3.0);
         h2.setPoint(1, 7.0, 7.0);
         inner.addEdge(h2);
         h2.free();
 
-        Segment h3 = Segment.createLinear();
+        MSDFSegment h3 = MSDFSegment.createLinear();
         h3.setPoint(0, 7.0, 7.0);
         h3.setPoint(1, 3.0, 7.0);
         inner.addEdge(h3);
         h3.free();
 
-        Segment h4 = Segment.createLinear();
+        MSDFSegment h4 = MSDFSegment.createLinear();
         h4.setPoint(0, 3.0, 7.0);
         h4.setPoint(1, 3.0, 3.0);
         inner.addEdge(h4);

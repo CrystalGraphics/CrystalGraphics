@@ -1,6 +1,6 @@
 package com.crystalgraphics.harfbuzz;
 
-import com.crystalgraphics.freetype.NativeLoader;
+import com.crystalgraphics.NativeLoader;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;

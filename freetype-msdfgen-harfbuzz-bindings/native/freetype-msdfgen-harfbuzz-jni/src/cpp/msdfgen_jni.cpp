@@ -53,7 +53,7 @@ static void freeBitmapWrapper(JniBitmapWrapper* wrapper) {
     delete wrapper;
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nBitmapAlloc(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nBitmapAlloc(
     JNIEnv* env, jclass, jint type, jint width, jint height, jlongArray handleOut) {
     JniBitmapWrapper* wrapper = allocBitmapWrapper(type, width, height);
     if (!wrapper) return MSDF_ERR_INVALID_ARG;
@@ -62,7 +62,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nBitmapAlloc(
     return MSDF_SUCCESS;
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nBitmapGetChannelCount(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nBitmapGetChannelCount(
     JNIEnv*, jclass, jlong, jint type) {
     switch (type) {
         case 0: case 1: return 1;
@@ -72,7 +72,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nBitmapGetChannelCount(
     }
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nBitmapGetPixels(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nBitmapGetPixels(
     JNIEnv* env, jclass, jlong bitmapHandle, jint type, jint width, jint height, jfloatArray pixelsOut) {
     JniBitmapWrapper* wrapper = reinterpret_cast<JniBitmapWrapper*>(bitmapHandle);
     if (!wrapper) return MSDF_ERR_INVALID_ARG;
@@ -106,7 +106,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nBitmapGetPixels(
     return MSDF_SUCCESS;
 }
 
-JNIEXPORT jlong JNICALL Java_com_msdfgen_MsdfNative_nBitmapGetByteSize(
+JNIEXPORT jlong JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nBitmapGetByteSize(
     JNIEnv*, jclass, jlong, jint type, jint width, jint height) {
     int channels;
     switch (type) {
@@ -118,19 +118,19 @@ JNIEXPORT jlong JNICALL Java_com_msdfgen_MsdfNative_nBitmapGetByteSize(
     return (jlong)(width * height * channels * sizeof(float));
 }
 
-JNIEXPORT void JNICALL Java_com_msdfgen_MsdfNative_nBitmapFree(
+JNIEXPORT void JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nBitmapFree(
     JNIEnv*, jclass, jlong bitmapHandle, jint) {
     freeBitmapWrapper(reinterpret_cast<JniBitmapWrapper*>(bitmapHandle));
 }
 
 // ==================== Shape ====================
 
-JNIEXPORT jlong JNICALL Java_com_msdfgen_MsdfNative_nShapeAlloc(JNIEnv*, jclass) {
+JNIEXPORT jlong JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nShapeAlloc(JNIEnv*, jclass) {
     Shape* shape = new Shape();
     return reinterpret_cast<jlong>(shape);
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nShapeGetBounds(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nShapeGetBounds(
     JNIEnv* env, jclass, jlong shapePtr, jdoubleArray boundsOut) {
     Shape* shape = reinterpret_cast<Shape*>(shapePtr);
     if (!shape) return MSDF_ERR_INVALID_ARG;
@@ -140,14 +140,14 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nShapeGetBounds(
     return MSDF_SUCCESS;
 }
 
-JNIEXPORT jlong JNICALL Java_com_msdfgen_MsdfNative_nShapeAddContour(JNIEnv*, jclass, jlong shapePtr) {
+JNIEXPORT jlong JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nShapeAddContour(JNIEnv*, jclass, jlong shapePtr) {
     Shape* shape = reinterpret_cast<Shape*>(shapePtr);
     if (!shape) return 0;
     Contour& contour = shape->addContour();
     return reinterpret_cast<jlong>(&contour);
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nShapeRemoveContour(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nShapeRemoveContour(
     JNIEnv*, jclass, jlong shapePtr, jlong contourPtr) {
     Shape* shape = reinterpret_cast<Shape*>(shapePtr);
     Contour* contour = reinterpret_cast<Contour*>(contourPtr);
@@ -161,32 +161,32 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nShapeRemoveContour(
     return MSDF_ERR_FAILED;
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nShapeGetContourCount(JNIEnv*, jclass, jlong shapePtr) {
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nShapeGetContourCount(JNIEnv*, jclass, jlong shapePtr) {
     Shape* shape = reinterpret_cast<Shape*>(shapePtr);
     if (!shape) return 0;
     return static_cast<jint>(shape->contours.size());
 }
 
-JNIEXPORT jlong JNICALL Java_com_msdfgen_MsdfNative_nShapeGetContour(
+JNIEXPORT jlong JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nShapeGetContour(
     JNIEnv*, jclass, jlong shapePtr, jint index) {
     Shape* shape = reinterpret_cast<Shape*>(shapePtr);
     if (!shape || index < 0 || (size_t)index >= shape->contours.size()) return 0;
     return reinterpret_cast<jlong>(&shape->contours[index]);
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nShapeGetEdgeCount(JNIEnv*, jclass, jlong shapePtr) {
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nShapeGetEdgeCount(JNIEnv*, jclass, jlong shapePtr) {
     Shape* shape = reinterpret_cast<Shape*>(shapePtr);
     if (!shape) return 0;
     return shape->edgeCount();
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nShapeGetYAxisOrientation(JNIEnv*, jclass, jlong shapePtr) {
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nShapeGetYAxisOrientation(JNIEnv*, jclass, jlong shapePtr) {
     Shape* shape = reinterpret_cast<Shape*>(shapePtr);
     if (!shape) return 0;
     return shape->inverseYAxis ? 1 : 0;
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nShapeSetYAxisOrientation(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nShapeSetYAxisOrientation(
     JNIEnv*, jclass, jlong shapePtr, jint orientation) {
     Shape* shape = reinterpret_cast<Shape*>(shapePtr);
     if (!shape) return MSDF_ERR_INVALID_ARG;
@@ -194,20 +194,20 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nShapeSetYAxisOrientation(
     return MSDF_SUCCESS;
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nShapeNormalize(JNIEnv*, jclass, jlong shapePtr) {
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nShapeNormalize(JNIEnv*, jclass, jlong shapePtr) {
     Shape* shape = reinterpret_cast<Shape*>(shapePtr);
     if (!shape) return MSDF_ERR_INVALID_ARG;
     shape->normalize();
     return MSDF_SUCCESS;
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nShapeValidate(JNIEnv*, jclass, jlong shapePtr) {
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nShapeValidate(JNIEnv*, jclass, jlong shapePtr) {
     Shape* shape = reinterpret_cast<Shape*>(shapePtr);
     if (!shape) return 0;
     return shape->validate() ? 1 : 0;
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nShapeBound(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nShapeBound(
     JNIEnv* env, jclass, jlong shapePtr, jdoubleArray boundsOut) {
     Shape* shape = reinterpret_cast<Shape*>(shapePtr);
     if (!shape) return MSDF_ERR_INVALID_ARG;
@@ -218,7 +218,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nShapeBound(
     return MSDF_SUCCESS;
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nShapeBoundMiters(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nShapeBoundMiters(
     JNIEnv* env, jclass, jlong shapePtr, jdoubleArray boundsInOut,
     jdouble border, jdouble miterLimit, jint polarity) {
     Shape* shape = reinterpret_cast<Shape*>(shapePtr);
@@ -230,14 +230,14 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nShapeBoundMiters(
     return MSDF_SUCCESS;
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nShapeOrientContours(JNIEnv*, jclass, jlong shapePtr) {
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nShapeOrientContours(JNIEnv*, jclass, jlong shapePtr) {
     Shape* shape = reinterpret_cast<Shape*>(shapePtr);
     if (!shape) return MSDF_ERR_INVALID_ARG;
     shape->orientContours();
     return MSDF_SUCCESS;
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nShapeEdgeColorsSimple(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nShapeEdgeColorsSimple(
     JNIEnv*, jclass, jlong shapePtr, jdouble angleThreshold) {
     Shape* shape = reinterpret_cast<Shape*>(shapePtr);
     if (!shape) return MSDF_ERR_INVALID_ARG;
@@ -245,7 +245,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nShapeEdgeColorsSimple(
     return MSDF_SUCCESS;
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nShapeEdgeColorsInkTrap(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nShapeEdgeColorsInkTrap(
     JNIEnv*, jclass, jlong shapePtr, jdouble angleThreshold) {
     Shape* shape = reinterpret_cast<Shape*>(shapePtr);
     if (!shape) return MSDF_ERR_INVALID_ARG;
@@ -253,7 +253,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nShapeEdgeColorsInkTrap(
     return MSDF_SUCCESS;
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nShapeEdgeColorsByDistance(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nShapeEdgeColorsByDistance(
     JNIEnv*, jclass, jlong shapePtr, jdouble angleThreshold) {
     Shape* shape = reinterpret_cast<Shape*>(shapePtr);
     if (!shape) return MSDF_ERR_INVALID_ARG;
@@ -261,7 +261,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nShapeEdgeColorsByDistance(
     return MSDF_SUCCESS;
 }
 
-JNIEXPORT jdouble JNICALL Java_com_msdfgen_MsdfNative_nShapeOneShotDistance(
+JNIEXPORT jdouble JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nShapeOneShotDistance(
     JNIEnv*, jclass, jlong shapePtr, jdouble originX, jdouble originY) {
     Shape* shape = reinterpret_cast<Shape*>(shapePtr);
     if (!shape) return 0.0;
@@ -269,17 +269,17 @@ JNIEXPORT jdouble JNICALL Java_com_msdfgen_MsdfNative_nShapeOneShotDistance(
     return SimpleTrueShapeDistanceFinder::oneShotDistance(*shape, origin);
 }
 
-JNIEXPORT void JNICALL Java_com_msdfgen_MsdfNative_nShapeFree(JNIEnv*, jclass, jlong shapePtr) {
+JNIEXPORT void JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nShapeFree(JNIEnv*, jclass, jlong shapePtr) {
     delete reinterpret_cast<Shape*>(shapePtr);
 }
 
 // ==================== Contour ====================
 
-JNIEXPORT jlong JNICALL Java_com_msdfgen_MsdfNative_nContourAlloc(JNIEnv*, jclass) {
+JNIEXPORT jlong JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nContourAlloc(JNIEnv*, jclass) {
     return reinterpret_cast<jlong>(new Contour());
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nContourAddEdge(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nContourAddEdge(
     JNIEnv*, jclass, jlong contourPtr, jlong segmentPtr) {
     Contour* contour = reinterpret_cast<Contour*>(contourPtr);
     EdgeSegment* segment = reinterpret_cast<EdgeSegment*>(segmentPtr);
@@ -288,7 +288,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nContourAddEdge(
     return MSDF_SUCCESS;
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nContourRemoveEdge(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nContourRemoveEdge(
     JNIEnv*, jclass, jlong contourPtr, jlong segmentPtr) {
     Contour* contour = reinterpret_cast<Contour*>(contourPtr);
     EdgeSegment* segment = reinterpret_cast<EdgeSegment*>(segmentPtr);
@@ -302,14 +302,14 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nContourRemoveEdge(
     return MSDF_ERR_FAILED;
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nContourGetEdgeCount(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nContourGetEdgeCount(
     JNIEnv*, jclass, jlong contourPtr) {
     Contour* contour = reinterpret_cast<Contour*>(contourPtr);
     if (!contour) return 0;
     return static_cast<jint>(contour->edges.size());
 }
 
-JNIEXPORT jlong JNICALL Java_com_msdfgen_MsdfNative_nContourGetEdge(
+JNIEXPORT jlong JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nContourGetEdge(
     JNIEnv*, jclass, jlong contourPtr, jint index) {
     Contour* contour = reinterpret_cast<Contour*>(contourPtr);
     if (!contour || index < 0 || (size_t)index >= contour->edges.size()) return 0;
@@ -317,14 +317,14 @@ JNIEXPORT jlong JNICALL Java_com_msdfgen_MsdfNative_nContourGetEdge(
     return reinterpret_cast<jlong>(seg);
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nContourGetWinding(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nContourGetWinding(
     JNIEnv*, jclass, jlong contourPtr) {
     Contour* contour = reinterpret_cast<Contour*>(contourPtr);
     if (!contour) return 0;
     return contour->winding();
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nContourReverse(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nContourReverse(
     JNIEnv*, jclass, jlong contourPtr) {
     Contour* contour = reinterpret_cast<Contour*>(contourPtr);
     if (!contour) return MSDF_ERR_INVALID_ARG;
@@ -332,7 +332,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nContourReverse(
     return MSDF_SUCCESS;
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nContourBound(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nContourBound(
     JNIEnv* env, jclass, jlong contourPtr, jdoubleArray boundsOut) {
     Contour* contour = reinterpret_cast<Contour*>(contourPtr);
     if (!contour) return MSDF_ERR_INVALID_ARG;
@@ -343,7 +343,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nContourBound(
     return MSDF_SUCCESS;
 }
 
-JNIEXPORT void JNICALL Java_com_msdfgen_MsdfNative_nContourFree(JNIEnv*, jclass, jlong contourPtr) {
+JNIEXPORT void JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nContourFree(JNIEnv*, jclass, jlong contourPtr) {
     delete reinterpret_cast<Contour*>(contourPtr);
 }
 
@@ -358,24 +358,24 @@ static EdgeSegment* createSegment(int type) {
     }
 }
 
-JNIEXPORT jlong JNICALL Java_com_msdfgen_MsdfNative_nSegmentAlloc(JNIEnv*, jclass, jint type) {
+JNIEXPORT jlong JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nSegmentAlloc(JNIEnv*, jclass, jint type) {
     EdgeSegment* seg = createSegment(type);
     return reinterpret_cast<jlong>(seg);
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nSegmentGetType(JNIEnv*, jclass, jlong segPtr) {
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nSegmentGetType(JNIEnv*, jclass, jlong segPtr) {
     EdgeSegment* seg = reinterpret_cast<EdgeSegment*>(segPtr);
     if (!seg) return -1;
     return seg->type() - 1;
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nSegmentGetPointCount(JNIEnv*, jclass, jlong segPtr) {
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nSegmentGetPointCount(JNIEnv*, jclass, jlong segPtr) {
     EdgeSegment* seg = reinterpret_cast<EdgeSegment*>(segPtr);
     if (!seg) return 0;
     return seg->type() + 1;
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nSegmentGetPoint(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nSegmentGetPoint(
     JNIEnv* env, jclass, jlong segPtr, jint index, jdoubleArray pointOut) {
     EdgeSegment* seg = reinterpret_cast<EdgeSegment*>(segPtr);
     if (!seg) return MSDF_ERR_INVALID_ARG;
@@ -387,7 +387,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nSegmentGetPoint(
     return MSDF_SUCCESS;
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nSegmentSetPoint(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nSegmentSetPoint(
     JNIEnv*, jclass, jlong segPtr, jint index, jdouble x, jdouble y) {
     EdgeSegment* seg = reinterpret_cast<EdgeSegment*>(segPtr);
     if (!seg) return MSDF_ERR_INVALID_ARG;
@@ -403,13 +403,13 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nSegmentSetPoint(
     return MSDF_SUCCESS;
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nSegmentGetColor(JNIEnv*, jclass, jlong segPtr) {
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nSegmentGetColor(JNIEnv*, jclass, jlong segPtr) {
     EdgeSegment* seg = reinterpret_cast<EdgeSegment*>(segPtr);
     if (!seg) return 0;
     return static_cast<int>(seg->color);
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nSegmentSetColor(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nSegmentSetColor(
     JNIEnv*, jclass, jlong segPtr, jint color) {
     EdgeSegment* seg = reinterpret_cast<EdgeSegment*>(segPtr);
     if (!seg) return MSDF_ERR_INVALID_ARG;
@@ -417,7 +417,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nSegmentSetColor(
     return MSDF_SUCCESS;
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nSegmentGetDirection(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nSegmentGetDirection(
     JNIEnv* env, jclass, jlong segPtr, jdouble param, jdoubleArray dirOut) {
     EdgeSegment* seg = reinterpret_cast<EdgeSegment*>(segPtr);
     if (!seg) return MSDF_ERR_INVALID_ARG;
@@ -427,7 +427,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nSegmentGetDirection(
     return MSDF_SUCCESS;
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nSegmentPoint(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nSegmentPoint(
     JNIEnv* env, jclass, jlong segPtr, jdouble param, jdoubleArray pointOut) {
     EdgeSegment* seg = reinterpret_cast<EdgeSegment*>(segPtr);
     if (!seg) return MSDF_ERR_INVALID_ARG;
@@ -437,7 +437,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nSegmentPoint(
     return MSDF_SUCCESS;
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nSegmentBound(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nSegmentBound(
     JNIEnv* env, jclass, jlong segPtr, jdoubleArray boundsOut) {
     EdgeSegment* seg = reinterpret_cast<EdgeSegment*>(segPtr);
     if (!seg) return MSDF_ERR_INVALID_ARG;
@@ -448,7 +448,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nSegmentBound(
     return MSDF_SUCCESS;
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nSegmentMoveStartPoint(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nSegmentMoveStartPoint(
     JNIEnv*, jclass, jlong segPtr, jdouble x, jdouble y) {
     EdgeSegment* seg = reinterpret_cast<EdgeSegment*>(segPtr);
     if (!seg) return MSDF_ERR_INVALID_ARG;
@@ -456,7 +456,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nSegmentMoveStartPoint(
     return MSDF_SUCCESS;
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nSegmentMoveEndPoint(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nSegmentMoveEndPoint(
     JNIEnv*, jclass, jlong segPtr, jdouble x, jdouble y) {
     EdgeSegment* seg = reinterpret_cast<EdgeSegment*>(segPtr);
     if (!seg) return MSDF_ERR_INVALID_ARG;
@@ -464,13 +464,13 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nSegmentMoveEndPoint(
     return MSDF_SUCCESS;
 }
 
-JNIEXPORT void JNICALL Java_com_msdfgen_MsdfNative_nSegmentFree(JNIEnv*, jclass, jlong segPtr) {
+JNIEXPORT void JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nSegmentFree(JNIEnv*, jclass, jlong segPtr) {
     delete reinterpret_cast<EdgeSegment*>(segPtr);
 }
 
 // ==================== Generation ====================
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nGenerateSdf(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nGenerateSdf(
     JNIEnv*, jclass, jlong bitmapHandle, jint, jint, jint,
     jlong shapePtr, jdouble scaleX, jdouble scaleY,
     jdouble translateX, jdouble translateY, jdouble rangeLower, jdouble rangeUpper) {
@@ -485,7 +485,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nGenerateSdf(
     return MSDF_SUCCESS;
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nGeneratePsdf(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nGeneratePsdf(
     JNIEnv*, jclass, jlong bitmapHandle, jint, jint, jint,
     jlong shapePtr, jdouble scaleX, jdouble scaleY,
     jdouble translateX, jdouble translateY, jdouble rangeLower, jdouble rangeUpper) {
@@ -500,7 +500,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nGeneratePsdf(
     return MSDF_SUCCESS;
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nGenerateMsdf(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nGenerateMsdf(
     JNIEnv*, jclass, jlong bitmapHandle, jint, jint, jint,
     jlong shapePtr, jdouble scaleX, jdouble scaleY,
     jdouble translateX, jdouble translateY, jdouble rangeLower, jdouble rangeUpper) {
@@ -515,7 +515,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nGenerateMsdf(
     return MSDF_SUCCESS;
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nGenerateMtsdf(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nGenerateMtsdf(
     JNIEnv*, jclass, jlong bitmapHandle, jint, jint, jint,
     jlong shapePtr, jdouble scaleX, jdouble scaleY,
     jdouble translateX, jdouble translateY, jdouble rangeLower, jdouble rangeUpper) {
@@ -530,7 +530,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nGenerateMtsdf(
     return MSDF_SUCCESS;
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nGenerateSdfWithConfig(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nGenerateSdfWithConfig(
     JNIEnv*, jclass, jlong bitmapHandle, jint, jint, jint,
     jlong shapePtr, jdouble scaleX, jdouble scaleY,
     jdouble translateX, jdouble translateY, jdouble rangeLower, jdouble rangeUpper,
@@ -547,7 +547,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nGenerateSdfWithConfig(
     return MSDF_SUCCESS;
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nGenerateMsdfWithConfig(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nGenerateMsdfWithConfig(
     JNIEnv*, jclass, jlong bitmapHandle, jint, jint, jint,
     jlong shapePtr, jdouble scaleX, jdouble scaleY,
     jdouble translateX, jdouble translateY, jdouble rangeLower, jdouble rangeUpper,
@@ -570,7 +570,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nGenerateMsdfWithConfig(
     return MSDF_SUCCESS;
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nGenerateMtsdfWithConfig(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nGenerateMtsdfWithConfig(
     JNIEnv*, jclass, jlong bitmapHandle, jint, jint, jint,
     jlong shapePtr, jdouble scaleX, jdouble scaleY,
     jdouble translateX, jdouble translateY, jdouble rangeLower, jdouble rangeUpper,
@@ -595,7 +595,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nGenerateMtsdfWithConfig(
 
 // ==================== PSDF with Config ====================
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nGeneratePsdfWithConfig(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nGeneratePsdfWithConfig(
     JNIEnv*, jclass, jlong bitmapHandle, jint, jint, jint,
     jlong shapePtr, jdouble scaleX, jdouble scaleY,
     jdouble translateX, jdouble translateY, jdouble rangeLower, jdouble rangeUpper,
@@ -614,7 +614,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nGeneratePsdfWithConfig(
 
 // ==================== Error Correction ====================
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nErrorCorrection(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nErrorCorrection(
     JNIEnv*, jclass, jlong bitmapHandle, jint bitmapType, jint, jint,
     jlong shapePtr, jdouble scaleX, jdouble scaleY,
     jdouble translateX, jdouble translateY, jdouble rangeLower, jdouble rangeUpper,
@@ -650,7 +650,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nErrorCorrection(
     return MSDF_SUCCESS;
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nErrorCorrectionFastDistance(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nErrorCorrectionFastDistance(
     JNIEnv*, jclass, jlong bitmapHandle, jint bitmapType, jint, jint,
     jdouble scaleX, jdouble scaleY,
     jdouble translateX, jdouble translateY, jdouble rangeLower, jdouble rangeUpper,
@@ -678,7 +678,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nErrorCorrectionFastDistance(
     return MSDF_SUCCESS;
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nErrorCorrectionFastEdge(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nErrorCorrectionFastEdge(
     JNIEnv*, jclass, jlong bitmapHandle, jint bitmapType, jint, jint,
     jdouble rangeLower, jdouble rangeUpper,
     jdouble minDeviationRatio) {
@@ -704,7 +704,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nErrorCorrectionFastEdge(
     return MSDF_SUCCESS;
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nDistanceSignCorrection(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nDistanceSignCorrection(
     JNIEnv*, jclass, jlong bitmapHandle, jint bitmapType, jint, jint,
     jlong shapePtr, jdouble scaleX, jdouble scaleY,
     jdouble translateX, jdouble translateY, jdouble rangeLower, jdouble rangeUpper,
@@ -736,7 +736,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nDistanceSignCorrection(
 
 // ==================== Contour Bound Miters ====================
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nContourBoundMiters(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nContourBoundMiters(
     JNIEnv* env, jclass, jlong contourPtr, jdoubleArray boundsInOut,
     jdouble border, jdouble miterLimit, jint polarity) {
     Contour* contour = reinterpret_cast<Contour*>(contourPtr);
@@ -750,7 +750,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nContourBoundMiters(
 
 // ==================== Segment Direction Change ====================
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nSegmentGetDirectionChange(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nSegmentGetDirectionChange(
     JNIEnv* env, jclass, jlong segPtr, jdouble param, jdoubleArray dirChangeOut) {
     EdgeSegment* seg = reinterpret_cast<EdgeSegment*>(segPtr);
     if (!seg) return MSDF_ERR_INVALID_ARG;
@@ -762,7 +762,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nSegmentGetDirectionChange(
 
 // ==================== Render SDF ====================
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nRenderSdf(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nRenderSdf(
     JNIEnv*, jclass,
     jlong outputHandle, jint outputType, jint, jint,
     jlong sdfHandle, jint sdfType, jint, jint,
@@ -814,7 +814,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nRenderSdf(
 
 // ==================== Bitmap Pixel Pointer ====================
 
-JNIEXPORT jlong JNICALL Java_com_msdfgen_MsdfNative_nBitmapGetPixelPointer(
+JNIEXPORT jlong JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nBitmapGetPixelPointer(
     JNIEnv*, jclass, jlong bitmapHandle, jint type) {
     JniBitmapWrapper* wrapper = reinterpret_cast<JniBitmapWrapper*>(bitmapHandle);
     if (!wrapper) return 0;
@@ -832,7 +832,7 @@ JNIEXPORT jlong JNICALL Java_com_msdfgen_MsdfNative_nBitmapGetPixelPointer(
 #include "ext/import-font.h"
 #endif
 
-JNIEXPORT jboolean JNICALL Java_com_msdfgen_MsdfNative_nHasFreetypeSupport(JNIEnv*, jclass) {
+JNIEXPORT jboolean JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nHasFreetypeSupport(JNIEnv*, jclass) {
 #ifdef MSDFGEN_USE_FREETYPE
     return JNI_TRUE;
 #else
@@ -840,7 +840,7 @@ JNIEXPORT jboolean JNICALL Java_com_msdfgen_MsdfNative_nHasFreetypeSupport(JNIEn
 #endif
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nFreetypeInit(JNIEnv* env, jclass, jlongArray handleOut) {
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nFreetypeInit(JNIEnv* env, jclass, jlongArray handleOut) {
 #ifdef MSDFGEN_USE_FREETYPE
     msdfgen::FreetypeHandle* ft = msdfgen::initializeFreetype();
     if (!ft) {
@@ -855,7 +855,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nFreetypeInit(JNIEnv* env, jc
 #endif
 }
 
-JNIEXPORT void JNICALL Java_com_msdfgen_MsdfNative_nFreetypeDeinit(JNIEnv*, jclass, jlong ftHandle) {
+JNIEXPORT void JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nFreetypeDeinit(JNIEnv*, jclass, jlong ftHandle) {
 #ifdef MSDFGEN_USE_FREETYPE
     if (ftHandle != 0) {
         msdfgen::deinitializeFreetype(reinterpret_cast<msdfgen::FreetypeHandle*>(ftHandle));
@@ -865,7 +865,7 @@ JNIEXPORT void JNICALL Java_com_msdfgen_MsdfNative_nFreetypeDeinit(JNIEnv*, jcla
 #endif
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nLoadFont(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nLoadFont(
     JNIEnv* env, jclass, jlong ftHandle, jstring filename, jlongArray fontHandleOut) {
 #ifdef MSDFGEN_USE_FREETYPE
     if (ftHandle == 0 || filename == nullptr) return MSDF_ERR_INVALID_ARG;
@@ -884,7 +884,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nLoadFont(
 #endif
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nLoadFontData(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nLoadFontData(
     JNIEnv* env, jclass, jlong ftHandle, jbyteArray data, jint dataLen, jlongArray fontHandleOut) {
 #ifdef MSDFGEN_USE_FREETYPE
     if (ftHandle == 0 || data == nullptr) return MSDF_ERR_INVALID_ARG;
@@ -904,7 +904,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nLoadFontData(
 #endif
 }
 
-JNIEXPORT void JNICALL Java_com_msdfgen_MsdfNative_nDestroyFont(JNIEnv*, jclass, jlong fontHandle) {
+JNIEXPORT void JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nDestroyFont(JNIEnv*, jclass, jlong fontHandle) {
 #ifdef MSDFGEN_USE_FREETYPE
     if (fontHandle != 0) {
         msdfgen::destroyFont(reinterpret_cast<msdfgen::FontHandle*>(fontHandle));
@@ -914,7 +914,7 @@ JNIEXPORT void JNICALL Java_com_msdfgen_MsdfNative_nDestroyFont(JNIEnv*, jclass,
 #endif
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nLoadGlyph(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nLoadGlyph(
     JNIEnv* env, jclass, jlong fontHandle, jint unicode, jint coordinateScaling,
     jdoubleArray advanceOut, jlongArray shapeHandleOut) {
 #ifdef MSDFGEN_USE_FREETYPE
@@ -942,7 +942,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nLoadGlyph(
 #endif
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nLoadGlyphByIndex(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nLoadGlyphByIndex(
     JNIEnv* env, jclass, jlong fontHandle, jint glyphIndex, jint coordinateScaling,
     jdoubleArray advanceOut, jlongArray shapeHandleOut) {
 #ifdef MSDFGEN_USE_FREETYPE
@@ -970,7 +970,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nLoadGlyphByIndex(
 #endif
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nGetGlyphIndex(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nGetGlyphIndex(
     JNIEnv* env, jclass, jlong fontHandle, jint unicode, jintArray indexOut) {
 #ifdef MSDFGEN_USE_FREETYPE
     if (fontHandle == 0) return MSDF_ERR_INVALID_ARG;
@@ -988,7 +988,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nGetGlyphIndex(
 #endif
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nGetKerning(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nGetKerning(
     JNIEnv* env, jclass, jlong fontHandle, jint cp1, jint cp2, jdoubleArray kerningOut) {
 #ifdef MSDFGEN_USE_FREETYPE
     if (fontHandle == 0) return MSDF_ERR_INVALID_ARG;
@@ -1005,7 +1005,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nGetKerning(
 #endif
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nGetKerningByIndex(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nGetKerningByIndex(
     JNIEnv* env, jclass, jlong fontHandle, jint index1, jint index2, jdoubleArray kerningOut) {
 #ifdef MSDFGEN_USE_FREETYPE
     if (fontHandle == 0) return MSDF_ERR_INVALID_ARG;
@@ -1023,7 +1023,7 @@ JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nGetKerningByIndex(
 #endif
 }
 
-JNIEXPORT jint JNICALL Java_com_msdfgen_MsdfNative_nSetFontVariations(
+JNIEXPORT jint JNICALL Java_com_crystalgraphics_msdfgen_MSDFNative_nSetFontVariations(
     JNIEnv* env, jclass, jlong ftHandle, jlong fontHandle, jobjectArray axisTags, jfloatArray values, jint valueCount) {
 #ifdef MSDFGEN_USE_FREETYPE
     if (ftHandle == 0 || fontHandle == 0 || axisTags == nullptr || values == nullptr || valueCount < 0) {
