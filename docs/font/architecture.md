@@ -1,279 +1,185 @@
-# Font Rendering Architecture
-
-## Overview
+# Font/Text Architecture
 
-The font system is split into four layers:
-
-1. font resource layer
-2. CPU layout layer
-3. atlas and glyph generation layer
-4. rendering layer
+## TL;DR
 
-## Three-Space Model
+CrystalGraphics now separates the text system into three broad categories:
 
-The text rendering pipeline enforces a strict separation of three coordinate
-spaces, following the same principle as CSS Transforms (W3C CSS Transforms
-Module Level 1, §3): transforms are applied _after_ layout and do not mutate
-layout flow or spacing.
+1. **public font API** (`api/font`)
+2. **public text API** (`api/text`)
+3. **internal implementation packages** (`text/layout`, `text/cache`, `text/atlas`, `text/msdf`, `text/render`)
 
-### 1. Logical Layout Space
+That split is the main architectural story.
 
-The canonical space for all text shaping, layout, and metric queries.
+The rule is:
 
-- **Units**: logical pixels, defined by `CgFontKey.targetPx` (the base font
-  size requested at load time).
-- **What lives here**: HarfBuzz advances, kerning, offsets, line metrics,
-  `CgTextLayout` width/height, caret positions, line break decisions.
-- **Invariant**: UI scale, PoseStack transforms, and camera distance/FOV must
-  _never_ change any value in this space. Logical metrics are set once during
-  shaping and are immutable at draw time.
-- **Owning types**: `CgShapedRun` (advancesX, offsetsX, offsetsY,
-  totalAdvance), `CgTextLayout` (lines, totalWidth, totalHeight),
-  `CgFontMetrics` (ascender, descender, lineHeight), `CgFontKey` (targetPx).
+> public packages define the values callers see; internal packages own the pipeline that creates, caches, and renders those values.
 
-### 2. Physical Raster Space
+---
 
-The space of actual glyph bitmaps/MSDF textures as rasterized by FreeType
-or MSDFgen.
-
-- **Units**: physical raster pixels at the _effective_ target size.
-- **What lives here**: `CgAtlasRegion` bearingX, bearingY, width, height;
-  atlas UV coordinates; bitmap/MSDF pixel data.
-- **Determining factor**: `effectiveTargetPx = baseTargetPx × poseScale`,
-  resolved by `CgTextScaleResolver` at draw time.
-- **Invariant**: Physical raster data must _never_ be used as canonical
-  placement metrics. Before combining with logical pen positions, the renderer
-  must normalize physical bearings/extents back into logical space using
-  `scaleFactor = baseTargetPx / effectiveTargetPx`.
-- **Owning types**: `CgAtlasRegion` (all metric fields), `CgRasterFontKey`
-  (effectiveTargetPx), `CgRasterGlyphKey`, `CgGlyphAtlas`.
+## Public boundary
 
-### 3. Composite Space
+### `api/font`
 
-The final GPU coordinate space after PoseStack and projection transforms.
+This package owns font-domain concepts and the public layout bridge.
 
-- **Units**: clip-space coordinates (after projection) or screen pixels (after
-  viewport transform).
-- **What lives here**: the model-view matrix from `PoseStack.last().pose()`,
-  the projection matrix from `CgTextRenderContext`, and the resulting
-  transformed vertex positions.
-- **Determining factor**: PoseStack (model-view) × projection matrix,
-  uploaded as `u_modelview` and `u_projection` shader uniforms.
-- **Contract**: The PoseStack in 2D UI mode represents logical→physical UI
-  scale. In 3D world mode, it represents model-view positioning (entity
-  rotation, billboard transforms), not UI zoom.
+Main responsibilities:
 
-### Metric Normalization at the Renderer Boundary
+- loading and sizing fonts (`CgFont`)
+- grouping fonts into fallback families (`CgFontFamily`, `CgFontSource`)
+- describing font identity and variation (`CgFontKey`, `CgFontStyle`, `CgFontVariation`, `CgFontAxisInfo`)
+- describing glyph identity and placement payloads (`CgGlyphKey`, `CgGlyphMetrics`, `CgAtlasRegion`, `CgGlyphPlacement`)
+- exposing the public layout entrypoint (`CgTextLayoutBuilder`)
 
-The renderer (`CgTextRenderer.appendQuads(...)`) is the single site where
-logical pen positions meet physical atlas metrics. Normalization uses:
+### `api/text`
 
-```
-scaleFactor = baseTargetPx / (float) effectiveTargetPx
-logicalBearingX = physicalBearingX × scaleFactor
-logicalBearingY = physicalBearingY × scaleFactor
-logicalWidth    = physicalWidth    × scaleFactor
-logicalHeight   = physicalHeight   × scaleFactor
-```
+This package owns public text-domain values.
 
-This keeps spacing and kerning invariant under UI scale while still allowing
-larger physical glyph rasters to be selected for sharper output.
+Main responsibilities:
 
-### What the Old Model Got Wrong
+- describing layout constraints (`CgTextConstraints`)
+- describing the final layout output (`CgTextLayout`)
+- describing a shaped directional run (`CgShapedRun`)
 
-The previous mixed-metric design (superseded by this contract) allowed the
-effective target pixel size to directly drive placement metrics, causing
-physical-size bearings and extents to be combined with logical pen positions
-without normalization. This produced visible spacing/kerning corruption
-whenever UI scale differed from 1.0x.
+This package exists so callers can work with text values without needing to learn the atlas, cache, or renderer internals.
 
-## 1. Font resource layer
+---
 
-`CgFont` owns the native font handles for one font at one target pixel size.
+## Internal implementation packages
 
-It maintains:
-- FreeType library + `FTFace` for bitmap rasterization
-- HarfBuzz `HBFont` for shaping
-- lazy `FreeTypeIntegration.Font` for MSDF generation
+### `text/layout`
 
-Disposal is explicit through `CgFont.dispose()`.
+Owns the internal layout algorithm.
 
-## 2. CPU layout layer
+Main classes:
 
-`CgTextLayoutBuilder` runs the full text pipeline:
-- Java `Bidi` paragraph split
-- HarfBuzz shaping through `CgTextShaper`
-- line breaking through `CgLineBreaker`
-- final immutable layout output as `CgTextLayout`
+- `CgTextLayoutEngine` — reusable algorithm skeleton
+- `CgTextShaper` — HarfBuzz shaping
+- `CgLineBreaker` — line breaking across shaped runs
+- `RunReshaper` — callback for re-shaping subranges during line breaks
 
-`CgShapedRun` stores glyph ids, cluster ids, advances, and offsets in pixels.
+This package should stay free of atlas/cache/render ownership.
 
-Layout classes (`CgTextLayoutBuilder`, `CgTextLayout`, `CgShapedRun`, `CgFontKey`)
-do not contain any PoseStack-derived state or draw-time transform information.
+### `text/cache`
 
-## 3. Atlas and glyph generation
+Owns glyph supply.
 
-`CgFontRegistry` is the render-thread cache and runtime coordinator.
+Main classes:
 
-For each `CgFontKey` (base identity) it manages:
-- one bitmap atlas
-- one MSDF atlas
+- `CgFontRegistry` — render-thread cache hub
+- `CgGlyphGenerationExecutor` / `CgGlyphGenerationJob` / `CgGlyphGenerationResult` — async glyph generation pipeline
+- `CgWorkerFontContext` — per-worker font state
+- `CgRasterFontKey`, `CgRasterGlyphKey`, `CgMsdfAtlasKey` — internal cache keys
 
-For each `CgRasterFontKey` (effective-size identity) it manages:
-- additional bitmap/MSDF atlas buckets when text is rendered under pose transforms
+This package answers:
 
-### Bitmap path
-- FreeType loads glyph by glyph index
-- optional `outlineTranslate` is applied for small-font sub-pixel buckets
-- glyph is rendered to grayscale bitmap
-- FreeType pitch is normalized into tightly packed rows
-- pixels are uploaded into `CgGlyphAtlas`
+> where does a glyph live, and how do we generate it if it is missing?
 
-### MSDF path
-- glyph outline is loaded through msdfgen bindings
-- complexity gate decides whether MSDF is worthwhile
-- MSDF bitmap is generated into RGB float data
-- data is uploaded into MSDF atlas
-- if generation is skipped or budget is exhausted, bitmap fallback is used
+### `text/atlas`
 
-## 4. Rendering layer
+Owns atlas storage.
 
-`CgTextRenderer` performs two-pass rendering:
-- pass 1: bitmap glyphs
-- pass 2: MSDF glyphs
+Main classes:
 
-Quads are written into `CgGlyphVbo`.
+- `CgGlyphAtlas` — legacy single-page atlas
+- `CgGlyphAtlasPage` — one page in the multi-page model
+- `CgPagedGlyphAtlas` — paged atlas manager
+- `text/atlas/packing/*` — packing strategies and packed-rect values
 
-### Projection and Context Model
+This package owns page allocation and packing, not fallback resolution.
 
-The renderer consumes a `CgTextRenderContext` that holds:
-- the projection matrix (set once, updated on viewport resize)
-- the `CgTextScaleResolver` strategy for deriving effective size
+### `text/msdf`
 
-This replaces the old per-draw `FloatBuffer projectionMatrix` parameter.
+Owns distance-field generation logic.
 
-### PoseStack Integration
+Main classes:
 
-The renderer accepts a `PoseStack` at draw time and:
-- derives the effective physical glyph raster size via the scale resolver
-- uploads the model-view matrix from `PoseStack.last().pose()` as `u_modelview`
-- uses the stabilized effective size for backend (bitmap/MSDF) selection
+- `CgMsdfGenerator`
+- `CgMsdfGlyphLayout`
+- `CgMsdfAtlasConfig`
+- `CgMsdfEdgeColoringMode`
+- `CgMsdfVerificationConfig`
 
-### Backend Selection
+This package is called by the cache layer, not by the renderer directly.
 
-The renderer uses stabilized effective size with hysteresis for backend choice:
-- enter MSDF at effective size >= 33
-- return to bitmap at effective size <= 31
-- between 31 and 33, retain the previous backend
+### `text/render`
 
-### Scale Resolver
+Owns draw-time orchestration.
 
-`CgTextScaleResolver` is a strategy interface with:
-- `ORTHOGRAPHIC` — the shipped default for 2D/UI text, uses `max(|sx|, |sy|)`
-  from the pose matrix basis vectors
-- `WORLD` — always-MSDF resolver for 3D world-space text, ignores PoseStack
-  scale (treats it as model-view positioning, not UI zoom), uses an optional
-  projected-size hint from `ProjectedSizeEstimator` for quality/LOD tier selection
+Main classes:
 
-### GL State
+- `CgTextRenderer`
+- `CgTextRenderContext`
+- `CgWorldTextRenderContext`
+- `CgTextScaleResolver`, `OrthographicScaleResolver`, `PerspectiveScaleResolver`, `ProjectedSizeEstimator`
+- `CgDrawBatch`, `CgDrawBatchKey`
+- `CgGlyphVbo`
 
-The renderer:
-- resolves glyph regions through `CgFontRegistry`
-- writes bitmap quads first, MSDF quads second
-- binds the corresponding atlas and shader for each pass
-- uploads both `u_projection` and `u_modelview` to each shader
-- restores GL state through `CgStateBoundary`
+This package answers:
 
-### Placement Metric Ownership (Three-Space Contract)
+> once layout and atlas placements already exist, how do we turn them into draw calls?
 
-`CgTextRenderer` treats shaped pen positions as canonical **logical** metrics.
-`CgAtlasRegion` exposes **physical** raster metrics captured at the atlas entry's
-effective target pixel size. Before the renderer combines atlas-region bearings
-or extents with logical pen positions, it normalizes them into logical space with:
+---
 
-`scaleFactor = baseTargetPx / effectiveTargetPx`
+## Ownership chain
 
-See the Three-Space Model section above for the full contract. The normalization
-site is `CgTextRenderer.logicalMetricScale()`, called from `appendQuads()`.
+### 1. Font ownership
 
-This keeps spacing and kerning invariant under UI scale while still allowing
-larger physical glyph rasters to be selected for sharper output. `CgFontRegistry`
-retains physical-only metrics — normalization happens exclusively at the
-renderer/composite boundary.
+- `CgFont` owns native font state
+- `CgFontFamily` resolves fallback/font-source ownership
 
-## Sub-pixel bucket behavior
+### 2. Layout ownership
 
-Sub-pixel buckets use the **effective** target pixel size (not the base).
-For effective sizes below 32, `CgGlyphKey` supports four x-offset buckets:
-- 0 -> 0.00 px
-- 1 -> 0.25 px
-- 2 -> 0.50 px
-- 3 -> 0.75 px
+- `CgTextLayoutBuilder` is the public bridge
+- `CgTextLayoutEngine` owns the reusable algorithm
+- `CgTextShaper` and `CgLineBreaker` produce `CgTextLayout`
 
-For effective sizes at or above 32, the bucket is normalized to 0.
+### 3. Cache ownership
 
-## Atlas texture formats
+- `CgTextRenderer` asks `CgFontRegistry` for glyph placements
+- `CgFontRegistry` transforms public glyph requests into internal cache keys
+- `CgMsdfGenerator` or FreeType rasterization fills misses
 
-Bitmap atlas:
-- internal format: `GL_R8`
-- filtering: nearest
+### 4. Atlas ownership
 
-MSDF atlas:
-- internal format: `GL_RGB16F`
-- filtering: linear
+- `CgPagedGlyphAtlas` and `CgGlyphAtlasPage` allocate stable glyph locations
+- `CgGlyphPlacement` becomes the renderer-facing placement record
 
-## Important constraint
+### 5. Render ownership
 
-The current implementation does not provide a legacy GL text fallback renderer. The renderer intentionally gates itself to the modern GL feature set it actually uses.
+- `CgTextRenderer` groups placements into batches
+- `CgGlyphVbo` uploads quads
+- shaders sample atlas textures and draw
 
-## 5. World-Space Text (3D)
+---
 
-### Contract
+## Intentional exceptions / remaining leaks
 
-World-space text uses a separate entry point (`CgTextRenderer.drawWorld()`) with a
-`CgWorldTextRenderContext` that enforces:
+### `CgTextLayoutBuilder` in `api/font`
 
-- **Always MSDF**: `WorldTextScaleResolver.shouldUseMsdf()` always returns `true`.
-  No bitmap fallback, no subpixel bucket logic.
-- **Depth testing enabled**: World text renders with `GL_DEPTH_TEST` on and
-  `glDepthMask(true)`, so it occludes and is occluded by world geometry.
-- **Back-face culling enabled**: Text is treated as a single-sided surface.
-- **PoseStack = model-view positioning**: In world mode, PoseStack scale represents
-  entity rotation, billboard transforms, etc. — not UI zoom. It does not drive
-  raster tier selection.
-- **Projection-aware quality/LOD**: `ProjectedSizeEstimator` estimates on-screen
-  pixel coverage from MVP + viewport to select higher-quality MSDF atlas tiers
-  for close-up text.
+Semantically, layout logic belongs with `text/layout`.
 
-### Layout Invariance
+It stays in `api/font` because it is the narrow legal bridge into package-private font-family shaping details. The real algorithm already lives in `text/layout/CgTextLayoutEngine`; the builder remains only as the public bridge.
 
-Layout metrics (advances, kerning, line breaks, caret positions) remain in logical
-space. Camera distance, FOV, and viewport changes may alter the MSDF atlas tier
-(quality) but never alter spacing or line breaks.
+### `CgTextLayout.resolvedFontsByKey`
 
-### API Usage
+Still a public/internal leak because the renderer needs resolved `CgFont` handles at draw time.
 
-```java
-// Create a world-text context with perspective projection
-Matrix4f persp = new Matrix4f().perspective(fov, aspect, near, far);
-CgWorldTextRenderContext worldCtx = CgWorldTextRenderContext.create(persp, vpWidth, vpHeight);
+### `CgShapedRun.sourceText/sourceStart/sourceEnd`
 
-// Optionally update quality hint before each draw
-worldCtx.updateProjectedSize(modelView, persp, font.getKey().getTargetPx());
+Still public because line-breaking still needs to re-shape subranges accurately.
 
-// Draw using the world-text entry point
-renderer.drawWorld(layout, font, x, y, rgba, frame, worldCtx, poseStack);
-```
+---
 
-### Key Differences from 2D UI Text
+## Recommended reading order for contributors
 
-| Concern | 2D UI Text | 3D World Text |
-|---------|-----------|---------------|
-| Entry point | `draw()` | `drawWorld()` |
-| Context | `CgTextRenderContext` | `CgWorldTextRenderContext` |
-| Resolver | `ORTHOGRAPHIC` | `WORLD` (always MSDF) |
-| Depth test | OFF | ON |
-| Cull face | OFF | ON |
-| PoseStack scale | drives raster tier | model-view only |
-| Backend | bitmap or MSDF | MSDF only |
-| Quality policy | hysteresis-based | projection-aware |
+1. `api/font/CgFont.java`
+2. `api/font/CgFontFamily.java`
+3. `api/font/CgTextLayoutBuilder.java`
+4. `text/layout/CgTextLayoutEngine.java`
+5. `api/text/CgTextLayout.java`
+6. `text/render/CgTextRenderer.java`
+7. `text/cache/CgFontRegistry.java`
+8. `text/atlas/CgPagedGlyphAtlas.java`
+9. `text/msdf/CgMsdfGenerator.java`
+
+This order tells the cleanest top-down story.
