@@ -51,22 +51,20 @@ tasks.shadowJar {
     exclude("kotlin/**")
     exclude("org/jetbrains/kotlin/**")
 
-    // Include JNI binding subproject JARs (unpacked) in the shadow JAR.
-    // These are implementation deps but cannot use shadowImplementation because the GTNH
+    // Include JNI binding subproject JAR (unpacked) in the shadow JAR.
+    // This is an implementation dep but cannot use shadowImplementation because the GTNH
     // convention plugin requires RFG obfuscation variant attributes that plain Java
     // subprojects don't publish (causes variant ambiguity errors).
-    dependsOn(":msdfgen-java-bindings:jar", ":freetype-harfbuzz-java-bindings:jar")
+    dependsOn(":freetype-msdfgen-harfbuzz-bindings:jar")
 }
 
-// Resolve subproject jar outputs after evaluation (subproject tasks don't exist during
-// root project configuration). Unpacks both JARs into the shadow JAR.
+// Resolve subproject jar output after evaluation (subproject tasks don't exist during
+// root project configuration). Unpacks the JAR into the shadow JAR.
 afterEvaluate {
     tasks.shadowJar.configure {
-        val msdfgenJar = project(":msdfgen-java-bindings").tasks.named<Jar>("jar").get()
-        val freetypeJar = project(":freetype-harfbuzz-java-bindings").tasks.named<Jar>("jar").get()
+        val bindingsJar = project(":freetype-msdfgen-harfbuzz-bindings").tasks.named<Jar>("jar").get()
 
-        from(zipTree(msdfgenJar.archiveFile.get()))
-        from(zipTree(freetypeJar.archiveFile.get()))
+        from(zipTree(bindingsJar.archiveFile.get()))
     }
 }
 
@@ -92,15 +90,12 @@ tasks.named<JavaExec>("runClient") {
     }
 }
 
-// Ensure JNI native libraries from subprojects are loadable during tests.
+// Ensure JNI native libraries from subproject are loadable during tests.
 // Strategy 2 (classpath extraction) works because subproject resources are on the
 // testRuntimeClasspath via implementation(project(...)). Strategy 3 (java.library.path)
 // is configured here as a fallback pointing to the platform-specific native directories.
 tasks.withType<Test> {
-    val nativePaths = listOf(
-        project(":freetype-harfbuzz-java-bindings").file("src/main/resources/natives"),
-        project(":msdfgen-java-bindings").file("src/main/resources/natives")
-    )
+    val nativesDir = project(":freetype-msdfgen-harfbuzz-bindings").file("src/main/resources/natives")
     val os = System.getProperty("os.name", "").lowercase()
     val arch = System.getProperty("os.arch", "").lowercase()
     val osName = when {
@@ -116,11 +111,9 @@ tasks.withType<Test> {
         else -> null
     }
     if (osName != null && archName != null) {
-        val platformDirs = nativePaths.map { File(it, "$osName-$archName") }
-            .filter { it.isDirectory }
-        if (platformDirs.isNotEmpty()) {
-            val libPath = platformDirs.joinToString(File.pathSeparator) { it.absolutePath }
-            systemProperty("java.library.path", libPath)
+        val platformDir = File(nativesDir, "$osName-$archName")
+        if (platformDir.isDirectory) {
+            systemProperty("java.library.path", platformDir.absolutePath)
         }
     }
 }
