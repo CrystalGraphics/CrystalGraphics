@@ -1,5 +1,6 @@
-package com.msdfgen.examples;
+package com.crystalgraphics.msdfgen.examples;
 
+import com.crystalgraphics.msdfgen.*;
 import com.msdfgen.*;
 
 /**

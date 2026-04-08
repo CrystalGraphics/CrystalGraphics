@@ -1,6 +1,6 @@
 package io.github.somehussar.crystalgraphics.text.msdf;
 
-import com.msdfgen.MsdfConstants;
+import com.crystalgraphics.msdfgen.MsdfConstants;
 import io.github.somehussar.crystalgraphics.text.atlas.CgGlyphAtlas;
 
 /**

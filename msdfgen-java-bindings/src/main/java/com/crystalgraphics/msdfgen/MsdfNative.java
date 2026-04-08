@@ -1,4 +1,4 @@
-package com.msdfgen;
+package com.crystalgraphics.msdfgen;
 
 /**
  * JNI bridge to the MSDFgen C API. All methods are package-private

@@ -7,7 +7,7 @@ import com.crystalgraphics.freetype.FreeTypeException;
 import com.crystalgraphics.freetype.FreeTypeLibrary;
 import com.crystalgraphics.harfbuzz.HBFont;
 import com.crystalgraphics.text.FreeTypeHarfBuzzIntegration;
-import com.msdfgen.FreeTypeIntegration;
+import com.crystalgraphics.msdfgen.FreeTypeIntegration;
 
 import java.io.ByteArrayOutputStream;
 import java.io.FileInputStream;

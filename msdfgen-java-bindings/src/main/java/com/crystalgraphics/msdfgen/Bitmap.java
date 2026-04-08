@@ -1,8 +1,4 @@
-package com.msdfgen;
-
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.nio.FloatBuffer;
+package com.crystalgraphics.msdfgen;
 
 /**
  * Represents an MSDFgen bitmap that holds SDF/MSDF pixel data.

@@ -1,4 +1,4 @@
-package com.msdfgen;
+package com.crystalgraphics.msdfgen;
 
 /**
  * Constants for MSDFgen bitmap types, segment types, orientations,
