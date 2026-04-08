@@ -33,7 +33,6 @@ tasks.withType<JavaCompile> {
 }
 
 tasks.jar {
-    // Set manifest version info
     manifest {
         attributes(
             "Manifest-Version" to "1.0",
@@ -104,3 +103,6 @@ if (isStandalone) {
         }
     }
 }
+
+// Zig-based cross-platform native build system (see native-build.gradle.kts)
+apply(from = "native-build.gradle.kts")
