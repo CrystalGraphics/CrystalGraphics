@@ -93,7 +93,7 @@ public class TextScene3D implements InteractiveSceneLifecycle {
         LOGGER.info("[Harness] World text scene (interactive): font=" + fontPath);
         LOGGER.info("[Harness] World text scene (interactive): size=" + fontSizePx + "px"
                 + ", mtsdf=" + config.isMtsdf());
-        CgTextRenderer.diagnosticLogging = true;
+        //CgTextRenderer.diagnosticLogging = true;
 
         // Initialize the shared render helper (validates GL caps, loads font, builds layouts)
         helper = new WorldTextRenderHelper(fontPath, fontSizePx, text, layoutWidth, layoutHeight,
