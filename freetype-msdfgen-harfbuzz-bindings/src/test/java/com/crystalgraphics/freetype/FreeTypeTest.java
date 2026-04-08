@@ -30,7 +30,7 @@ public class FreeTypeTest {
     public void testLibraryFileName() {
         String filename = NativeLoader.getLibraryFileName();
         assertNotNull(filename);
-        assertTrue(filename.contains("freetype_harfbuzz_jni"));
+        assertTrue(filename.contains("freetype_msdfgen_harfbuzz_jni"));
     }
 
     @Test

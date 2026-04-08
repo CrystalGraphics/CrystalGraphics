@@ -7,7 +7,7 @@ import java.io.InputStream;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Smart native library loader for FreeType and HarfBuzz JNI bindings.
+ * Unified native library loader for the FreeType + MSDFgen + HarfBuzz JNI binary.
  *
  * <h3>Loading Strategy (waterfall):</h3>
  * <ol>
@@ -26,8 +26,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public final class NativeLoader {
 
-    /** Library name without platform prefix/suffix */
-    private static final String LIBRARY_NAME = "freetype_harfbuzz_jni";
+    private static final String LIBRARY_NAME = "freetype_msdfgen_harfbuzz_jni";
 
     /** Whether the native library has been successfully loaded */
     private static final AtomicBoolean loaded = new AtomicBoolean(false);
@@ -82,8 +81,6 @@ public final class NativeLoader {
 
     /**
      * Returns the platform-specific library filename.
-     * Examples: "freetype_harfbuzz_jni.dll", "libfreetype_harfbuzz_jni.so",
-     * "libfreetype_harfbuzz_jni.dylib"
      *
      * @return the library filename for the current platform
      */
@@ -170,7 +167,7 @@ public final class NativeLoader {
         msg.append("To resolve this, either:\n");
         msg.append("  - Ensure the native binaries are included in your JAR\n");
         msg.append("  - Set -Dfreetype.harfbuzz.native.path=/path/to/natives/").append(platform).append("\n");
-        msg.append("  - Install FreeType and HarfBuzz development libraries and rebuild\n");
+        msg.append("  - Install FreeType, MSDFgen, and HarfBuzz development libraries and rebuild\n");
 
         if (loadError != null) {
             msg.append("\nLast error: ").append(loadError.getMessage());
@@ -225,7 +222,7 @@ public final class NativeLoader {
         }
     }
     private static File createTempDirectory() throws IOException {
-        File tempFile = File.createTempFile("freetype_harfbuzz_jni_", "");
+        File tempFile = File.createTempFile("freetype_msdfgen_harfbuzz_jni_", "");
         if (!tempFile.delete()) {
             throw new IOException("Could not delete temp file: " + tempFile);
         }
@@ -240,7 +237,7 @@ public final class NativeLoader {
      *
      * @return "windows", "linux", or "macos"
      */
-    static String detectOS() {
+    public static String detectOS() {
         String os = System.getProperty("os.name", "").toLowerCase();
         if (os.contains("win")) {
             return "windows";
@@ -260,7 +257,7 @@ public final class NativeLoader {
      *
      * @return "x64" or "aarch64"
      */
-    static String detectArch() {
+    public static String detectArch() {
         String arch = System.getProperty("os.arch", "").toLowerCase();
         if (arch.equals("amd64") || arch.equals("x86_64")) {
             return "x64";
