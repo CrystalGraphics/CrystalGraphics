@@ -17,11 +17,15 @@ import java.util.Objects;
  * Concrete implementation of {@link CgShaderManager} backed by a
  * {@link CgShaderCacheKey}-keyed map.
  *
- * <p>Each call to {@link #load(ResourceLocation, ResourceLocation, Map)}
- * constructs a cache key from the vertex location, fragment location, and
- * preprocessor defines. If the cache already contains an entry for that key,
- * the existing {@link CgShader} is returned. Otherwise, a new
- * {@link CgShaderImpl} is created, stored in the cache, and returned.</p>
+ * <p>Each call to {@link #load(String, String, Map)} constructs a cache key
+ * from the vertex path, fragment path, and preprocessor defines. If the cache
+ * already contains an entry for that key, the existing {@link CgShader} is
+ * returned. Otherwise, a new {@link CgShaderImpl} is created, stored in the
+ * cache, and returned.</p>
+ *
+ * <p>The {@link ResourceLocation} overload converts to string asset paths and
+ * delegates to the primary String-based method, ensuring a single cache
+ * regardless of how paths are specified.</p>
  *
  * <p>The newly created managed shader is <em>not</em> compiled eagerly;
  * compilation is deferred until the first {@code bind()} call (lazy
@@ -60,17 +64,17 @@ public final class CgShaderManagerImpl implements CgShaderManager {
     }
 
     @Override
-    public CgShader load(ResourceLocation vertexLocation, ResourceLocation fragmentLocation, Map<String, String> defines) {
-        Objects.requireNonNull(vertexLocation, "vertexLocation must not be null");
-        Objects.requireNonNull(fragmentLocation, "fragmentLocation must not be null");
+    public CgShader load(String vertexPath, String fragmentPath, Map<String, String> defines) {
+        Objects.requireNonNull(vertexPath, "vertexPath must not be null");
+        Objects.requireNonNull(fragmentPath, "fragmentPath must not be null");
 
         Map<String, String> safeDefines = defines != null ? defines : Collections.emptyMap();
-        CgShaderCacheKey key = new CgShaderCacheKey(vertexLocation, fragmentLocation, safeDefines);
+        CgShaderCacheKey key = new CgShaderCacheKey(vertexPath, fragmentPath, safeDefines);
 
         CgShader existing = cache.get(key);
         if (existing != null) return existing;
         
-        CgShaderImpl shader = new CgShaderImpl(vertexLocation, fragmentLocation, safeDefines, caps);
+        CgShaderImpl shader = new CgShaderImpl(vertexPath, fragmentPath, safeDefines, caps);
         cache.put(key, shader);
         shader.recompile(); 
         
@@ -78,7 +82,6 @@ public final class CgShaderManagerImpl implements CgShaderManager {
         return shader;
     }
     
-
     @Override
     public CgShader getIfLoaded(CgShaderCacheKey cacheKey) {
         return cache.get(cacheKey);

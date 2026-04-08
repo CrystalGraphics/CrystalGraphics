@@ -1,39 +1,21 @@
 package io.github.somehussar.crystalgraphics.mc.shader;
 
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
-import io.github.somehussar.crystalgraphics.api.shader.CgShaderProgram;
-import io.github.somehussar.crystalgraphics.api.shader.CgScopeRestoreOption;
-import io.github.somehussar.crystalgraphics.api.shader.CgShader;
-import io.github.somehussar.crystalgraphics.api.shader.CgShaderBindings;
-import io.github.somehussar.crystalgraphics.api.shader.CgShaderCacheKey;
-import io.github.somehussar.crystalgraphics.api.shader.CgShaderPreprocessor;
-import io.github.somehussar.crystalgraphics.api.shader.CgShaderScope;
+import io.github.somehussar.crystalgraphics.api.shader.*;
 import io.github.somehussar.crystalgraphics.gl.CrossApiTransition;
 import io.github.somehussar.crystalgraphics.gl.shader.CgShaderFactory;
 import io.github.somehussar.crystalgraphics.gl.state.CallFamily;
 import io.github.somehussar.crystalgraphics.gl.state.CgStateBoundary;
 import io.github.somehussar.crystalgraphics.gl.state.CgStateSnapshot;
 import io.github.somehussar.crystalgraphics.gl.state.GLStateMirror;
-
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.resources.IResource;
-import net.minecraft.client.resources.IResourceManager;
-import net.minecraft.util.ResourceLocation;
-
-import org.apache.commons.io.IOUtils;
+import io.github.somehussar.crystalgraphics.util.io.CgIO;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.lwjgl.opengl.ARBShaderObjects;
-import org.lwjgl.opengl.ContextCapabilities;
-import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL20;
-import org.lwjgl.opengl.GLContext;
+import org.lwjgl.opengl.*;
 
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.charset.Charset;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Consumer;
 
 /**
@@ -88,16 +70,19 @@ final class CgShaderImpl implements CgShader {
     private final CgShaderCacheKey cacheKey;
     
     /**
-     * Resource location of the vertex shader source file.
-     * Loaded lazily from Minecraft resources on first {@link #bind()} call.
+     * Asset path of the vertex shader source file.
+     * <p>Either an absolute classpath path (e.g. {@code "/assets/crystalgraphics/shader/bitmap_text.vert"})
+     * or a domain-relative path (e.g.  {@code "crystalgraphics/shader/bitmap_text.vert", "shader/bitmap_text.vert"}) with an optional
+     * resource domain stored separately.
+     * Loaded lazily from Minecraft resources on first {@link #bind()} call.</p>
      */
-    private final ResourceLocation vertexLocation;
+    private final String vertexPath;
     
     /**
-     * Resource location of the fragment shader source file.
-     * Loaded lazily from Minecraft resources on first {@link #bind()} call.
+     * Asset path of the fragment shader source file.
+     * <p>Same path conventions as {@link #vertexPath}.</p>
      */
-    private final ResourceLocation fragmentLocation;
+    private final String fragmentPath;
     
     /**
      * Preprocessor for GLSL sources (header text + #define injection).
@@ -154,12 +139,12 @@ final class CgShaderImpl implements CgShader {
      */
     private final CgShaderBindings ephemeralBindings = new CgShaderBindingsImpl();
 
-    CgShaderImpl(ResourceLocation vertexLocation, ResourceLocation fragmentLocation, Map<String, String> defines, CgCapabilities caps) {
-        this.vertexLocation = vertexLocation;
-        this.fragmentLocation = fragmentLocation;
+    CgShaderImpl(String vertexPath, String fragmentPath, Map<String, String> defines, CgCapabilities caps) {
+        this.vertexPath = Objects.requireNonNull(vertexPath, "vertexPath must not be null");
+        this.fragmentPath = Objects.requireNonNull(fragmentPath, "fragmentPath must not be null");
         this.preprocessor = new CgShaderPreprocessor(defines);
         this.caps = caps;
-        this.cacheKey = new CgShaderCacheKey(vertexLocation, fragmentLocation, defines);
+        this.cacheKey = new CgShaderCacheKey(vertexPath, fragmentPath, defines);
         this.program = null;
         this.compiled = false;
         this.dirty = true;
