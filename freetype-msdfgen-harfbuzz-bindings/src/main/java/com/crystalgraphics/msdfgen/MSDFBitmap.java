@@ -4,7 +4,7 @@ package com.crystalgraphics.msdfgen;
  * Represents an MSDFgen bitmap that holds SDF/MSDF pixel data.
  * Manages native memory - must be {@link #free()}'d when no longer needed.
  */
-public final class Bitmap {
+public final class MSDFBitmap {
 
     private long nativeHandle;
     private final int type;
@@ -12,7 +12,7 @@ public final class Bitmap {
     private final int height;
     private boolean freed;
 
-    private Bitmap(long nativeHandle, int type, int width, int height) {
+    private MSDFBitmap(long nativeHandle, int type, int width, int height) {
         this.nativeHandle = nativeHandle;
         this.type = type;
         this.width = width;
@@ -20,30 +20,30 @@ public final class Bitmap {
         this.freed = false;
     }
 
-    public static Bitmap allocSdf(int width, int height) {
-        return alloc(MsdfConstants.BITMAP_TYPE_SDF, width, height);
+    public static MSDFBitmap allocSdf(int width, int height) {
+        return alloc(MSDFConstants.BITMAP_TYPE_SDF, width, height);
     }
 
-    public static Bitmap allocPsdf(int width, int height) {
-        return alloc(MsdfConstants.BITMAP_TYPE_PSDF, width, height);
+    public static MSDFBitmap allocPsdf(int width, int height) {
+        return alloc(MSDFConstants.BITMAP_TYPE_PSDF, width, height);
     }
 
-    public static Bitmap allocMsdf(int width, int height) {
-        return alloc(MsdfConstants.BITMAP_TYPE_MSDF, width, height);
+    public static MSDFBitmap allocMsdf(int width, int height) {
+        return alloc(MSDFConstants.BITMAP_TYPE_MSDF, width, height);
     }
 
-    public static Bitmap allocMtsdf(int width, int height) {
-        return alloc(MsdfConstants.BITMAP_TYPE_MTSDF, width, height);
+    public static MSDFBitmap allocMtsdf(int width, int height) {
+        return alloc(MSDFConstants.BITMAP_TYPE_MTSDF, width, height);
     }
 
-    public static Bitmap alloc(int type, int width, int height) {
+    public static MSDFBitmap alloc(int type, int width, int height) {
         if (width <= 0 || height <= 0) {
             throw new IllegalArgumentException("Bitmap dimensions must be positive: " + width + "x" + height);
         }
         long[] handleOut = new long[1];
-        int result = MsdfNative.nBitmapAlloc(type, width, height, handleOut);
-        MsdfResult.check(result);
-        return new Bitmap(handleOut[0], type, width, height);
+        int result = MSDFNative.nBitmapAlloc(type, width, height, handleOut);
+        MSDFResult.check(result);
+        return new MSDFBitmap(handleOut[0], type, width, height);
     }
 
     public int getType() {
@@ -59,7 +59,7 @@ public final class Bitmap {
     }
 
     public int getChannelCount() {
-        return MsdfConstants.channelCountForType(type);
+        return MSDFConstants.channelCountForType(type);
     }
 
     /**
@@ -72,28 +72,28 @@ public final class Bitmap {
         checkNotFreed();
         int channels = getChannelCount();
         float[] pixels = new float[width * height * channels];
-        int result = MsdfNative.nBitmapGetPixels(nativeHandle, type, width, height, pixels);
-        MsdfResult.check(result);
+        int result = MSDFNative.nBitmapGetPixels(nativeHandle, type, width, height, pixels);
+        MSDFResult.check(result);
         return pixels;
     }
 
     public long getByteSize() {
         checkNotFreed();
-        return MsdfNative.nBitmapGetByteSize(nativeHandle, type, width, height);
+        return MSDFNative.nBitmapGetByteSize(nativeHandle, type, width, height);
     }
 
     public long getPixelPointer() {
         checkNotFreed();
-        long ptr = MsdfNative.nBitmapGetPixelPointer(nativeHandle, type);
+        long ptr = MSDFNative.nBitmapGetPixelPointer(nativeHandle, type);
         if (ptr == 0) {
-            throw new MsdfException("Failed to get pixel pointer");
+            throw new MSDFException("Failed to get pixel pointer");
         }
         return ptr;
     }
 
     public void free() {
         if (!freed) {
-            MsdfNative.nBitmapFree(nativeHandle, type);
+            MSDFNative.nBitmapFree(nativeHandle, type);
             freed = true;
             nativeHandle = 0;
         }

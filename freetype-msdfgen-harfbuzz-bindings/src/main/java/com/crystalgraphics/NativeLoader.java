@@ -1,4 +1,4 @@
-package com.crystalgraphics.freetype;
+package com.crystalgraphics;
 
 import java.io.File;
 import java.io.FileOutputStream;

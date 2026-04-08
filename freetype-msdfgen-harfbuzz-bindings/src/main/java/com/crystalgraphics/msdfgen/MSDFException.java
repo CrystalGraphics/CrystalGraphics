@@ -5,7 +5,7 @@ package com.crystalgraphics.msdfgen;
  *
  * @since 1.0.0
  */
-public class MsdfException extends RuntimeException {
+public class MSDFException extends RuntimeException {
 
     private static final long serialVersionUID = 1L;
 
@@ -16,8 +16,8 @@ public class MsdfException extends RuntimeException {
      *
      * @param errorCode the native error code
      */
-    public MsdfException(int errorCode) {
-        super("MSDFgen error: " + MsdfResult.describe(errorCode) + " (code=" + errorCode + ")");
+    public MSDFException(int errorCode) {
+        super("MSDFgen error: " + MSDFResult.describe(errorCode) + " (code=" + errorCode + ")");
         this.errorCode = errorCode;
     }
 
@@ -26,9 +26,9 @@ public class MsdfException extends RuntimeException {
      *
      * @param message the error message
      */
-    public MsdfException(String message) {
+    public MSDFException(String message) {
         super(message);
-        this.errorCode = MsdfResult.ERR_FAILED;
+        this.errorCode = MSDFResult.ERR_FAILED;
     }
 
     /**
@@ -37,15 +37,15 @@ public class MsdfException extends RuntimeException {
      * @param message the error message
      * @param cause   the underlying cause
      */
-    public MsdfException(String message, Throwable cause) {
+    public MSDFException(String message, Throwable cause) {
         super(message, cause);
-        this.errorCode = MsdfResult.ERR_FAILED;
+        this.errorCode = MSDFResult.ERR_FAILED;
     }
 
     /**
      * Returns the native error code.
      *
-     * @return the error code constant from {@link MsdfResult}
+     * @return the error code constant from {@link MSDFResult}
      */
     public int getErrorCode() {
         return errorCode;

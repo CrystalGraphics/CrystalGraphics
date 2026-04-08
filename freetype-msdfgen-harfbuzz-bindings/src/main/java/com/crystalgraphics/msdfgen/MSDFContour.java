@@ -1,63 +1,63 @@
 package com.crystalgraphics.msdfgen;
 
-public final class Contour {
+public final class MSDFContour {
 
     private long nativeHandle;
     private final boolean owned;
     private boolean freed;
 
-    Contour(long nativeHandle, boolean owned) {
+    MSDFContour(long nativeHandle, boolean owned) {
         this.nativeHandle = nativeHandle;
         this.owned = owned;
         this.freed = false;
     }
 
-    public static Contour create() {
-        long handle = MsdfNative.nContourAlloc();
+    public static MSDFContour create() {
+        long handle = MSDFNative.nContourAlloc();
         if (handle == 0) {
-            throw new MsdfException("Failed to allocate contour");
+            throw new MSDFException("Failed to allocate contour");
         }
-        return new Contour(handle, true);
+        return new MSDFContour(handle, true);
     }
 
-    public void addEdge(Segment segment) {
+    public void addEdge(MSDFSegment segment) {
         checkNotFreed();
-        MsdfResult.check(MsdfNative.nContourAddEdge(nativeHandle, segment.getNativeHandle()));
+        MSDFResult.check(MSDFNative.nContourAddEdge(nativeHandle, segment.getNativeHandle()));
     }
 
-    public void removeEdge(Segment segment) {
+    public void removeEdge(MSDFSegment segment) {
         checkNotFreed();
-        MsdfResult.check(MsdfNative.nContourRemoveEdge(nativeHandle, segment.getNativeHandle()));
+        MSDFResult.check(MSDFNative.nContourRemoveEdge(nativeHandle, segment.getNativeHandle()));
     }
 
     public int getEdgeCount() {
         checkNotFreed();
-        return MsdfNative.nContourGetEdgeCount(nativeHandle);
+        return MSDFNative.nContourGetEdgeCount(nativeHandle);
     }
 
-    public Segment getEdge(int index) {
+    public MSDFSegment getEdge(int index) {
         checkNotFreed();
-        long segHandle = MsdfNative.nContourGetEdge(nativeHandle, index);
+        long segHandle = MSDFNative.nContourGetEdge(nativeHandle, index);
         if (segHandle == 0) {
-            throw new MsdfException("Failed to get edge at index " + index);
+            throw new MSDFException("Failed to get edge at index " + index);
         }
-        return new Segment(segHandle, false);
+        return new MSDFSegment(segHandle, false);
     }
 
     public int getWinding() {
         checkNotFreed();
-        return MsdfNative.nContourGetWinding(nativeHandle);
+        return MSDFNative.nContourGetWinding(nativeHandle);
     }
 
     public void reverse() {
         checkNotFreed();
-        MsdfResult.check(MsdfNative.nContourReverse(nativeHandle));
+        MSDFResult.check(MSDFNative.nContourReverse(nativeHandle));
     }
 
     public double[] getBounds() {
         checkNotFreed();
         double[] bounds = new double[4];
-        MsdfResult.check(MsdfNative.nContourBound(nativeHandle, bounds));
+        MSDFResult.check(MSDFNative.nContourBound(nativeHandle, bounds));
         return bounds;
     }
 
@@ -65,13 +65,13 @@ public final class Contour {
         checkNotFreed();
         double[] bounds = new double[4];
         System.arraycopy(boundsInOut, 0, bounds, 0, 4);
-        MsdfResult.check(MsdfNative.nContourBoundMiters(nativeHandle, bounds, border, miterLimit, polarity));
+        MSDFResult.check(MSDFNative.nContourBoundMiters(nativeHandle, bounds, border, miterLimit, polarity));
         return bounds;
     }
 
     public void free() {
         if (!freed && owned) {
-            MsdfNative.nContourFree(nativeHandle);
+            MSDFNative.nContourFree(nativeHandle);
             freed = true;
             nativeHandle = 0;
         }

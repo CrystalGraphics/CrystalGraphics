@@ -1,11 +1,11 @@
 package com.crystalgraphics.msdfgen;
 
-public final class Generator {
+public final class MSDFGenerator {
 
-    private Generator() {}
+    private MSDFGenerator() {}
 
-    public static void generateSdf(Bitmap output, Shape shape, Transform transform) {
-        MsdfResult.check(MsdfNative.nGenerateSdf(
+    public static void generateSdf(MSDFBitmap output, MSDFShape shape, MSDFTransform transform) {
+        MSDFResult.check(MSDFNative.nGenerateSdf(
             output.getNativeHandle(), output.getType(), output.getWidth(), output.getHeight(),
             shape.getNativeHandle(),
             transform.getScaleX(), transform.getScaleY(),
@@ -14,8 +14,8 @@ public final class Generator {
         ));
     }
 
-    public static void generatePsdf(Bitmap output, Shape shape, Transform transform) {
-        MsdfResult.check(MsdfNative.nGeneratePsdf(
+    public static void generatePsdf(MSDFBitmap output, MSDFShape shape, MSDFTransform transform) {
+        MSDFResult.check(MSDFNative.nGeneratePsdf(
             output.getNativeHandle(), output.getType(), output.getWidth(), output.getHeight(),
             shape.getNativeHandle(),
             transform.getScaleX(), transform.getScaleY(),
@@ -24,8 +24,8 @@ public final class Generator {
         ));
     }
 
-    public static void generateMsdf(Bitmap output, Shape shape, Transform transform) {
-        MsdfResult.check(MsdfNative.nGenerateMsdf(
+    public static void generateMsdf(MSDFBitmap output, MSDFShape shape, MSDFTransform transform) {
+        MSDFResult.check(MSDFNative.nGenerateMsdf(
             output.getNativeHandle(), output.getType(), output.getWidth(), output.getHeight(),
             shape.getNativeHandle(),
             transform.getScaleX(), transform.getScaleY(),
@@ -34,8 +34,8 @@ public final class Generator {
         ));
     }
 
-    public static void generateMtsdf(Bitmap output, Shape shape, Transform transform) {
-        MsdfResult.check(MsdfNative.nGenerateMtsdf(
+    public static void generateMtsdf(MSDFBitmap output, MSDFShape shape, MSDFTransform transform) {
+        MSDFResult.check(MSDFNative.nGenerateMtsdf(
             output.getNativeHandle(), output.getType(), output.getWidth(), output.getHeight(),
             shape.getNativeHandle(),
             transform.getScaleX(), transform.getScaleY(),
@@ -44,9 +44,9 @@ public final class Generator {
         ));
     }
 
-    public static void generateSdf(Bitmap output, Shape shape, Transform transform,
-                                    boolean overlapSupport) {
-        MsdfResult.check(MsdfNative.nGenerateSdfWithConfig(
+    public static void generateSdf(MSDFBitmap output, MSDFShape shape, MSDFTransform transform,
+                                   boolean overlapSupport) {
+        MSDFResult.check(MSDFNative.nGenerateSdfWithConfig(
             output.getNativeHandle(), output.getType(), output.getWidth(), output.getHeight(),
             shape.getNativeHandle(),
             transform.getScaleX(), transform.getScaleY(),
@@ -56,13 +56,31 @@ public final class Generator {
         ));
     }
 
-    public static void generateMsdf(Bitmap output, Shape shape, Transform transform,
+    public static void generateMsdf(MSDFBitmap output, MSDFShape shape, MSDFTransform transform,
+                                    boolean overlapSupport,
+                                    int errorCorrectionMode,
+                                    int distanceCheckMode,
+                                    double minDeviationRatio,
+                                    double minImproveRatio) {
+        MSDFResult.check(MSDFNative.nGenerateMsdfWithConfig(
+            output.getNativeHandle(), output.getType(), output.getWidth(), output.getHeight(),
+            shape.getNativeHandle(),
+            transform.getScaleX(), transform.getScaleY(),
+            transform.getTranslateX(), transform.getTranslateY(),
+            transform.getRangeLower(), transform.getRangeUpper(),
+            overlapSupport,
+            errorCorrectionMode, distanceCheckMode,
+            minDeviationRatio, minImproveRatio
+        ));
+    }
+
+    public static void generateMtsdf(MSDFBitmap output, MSDFShape shape, MSDFTransform transform,
                                      boolean overlapSupport,
                                      int errorCorrectionMode,
                                      int distanceCheckMode,
                                      double minDeviationRatio,
                                      double minImproveRatio) {
-        MsdfResult.check(MsdfNative.nGenerateMsdfWithConfig(
+        MSDFResult.check(MSDFNative.nGenerateMtsdfWithConfig(
             output.getNativeHandle(), output.getType(), output.getWidth(), output.getHeight(),
             shape.getNativeHandle(),
             transform.getScaleX(), transform.getScaleY(),
@@ -74,27 +92,9 @@ public final class Generator {
         ));
     }
 
-    public static void generateMtsdf(Bitmap output, Shape shape, Transform transform,
-                                       boolean overlapSupport,
-                                       int errorCorrectionMode,
-                                       int distanceCheckMode,
-                                       double minDeviationRatio,
-                                       double minImproveRatio) {
-        MsdfResult.check(MsdfNative.nGenerateMtsdfWithConfig(
-            output.getNativeHandle(), output.getType(), output.getWidth(), output.getHeight(),
-            shape.getNativeHandle(),
-            transform.getScaleX(), transform.getScaleY(),
-            transform.getTranslateX(), transform.getTranslateY(),
-            transform.getRangeLower(), transform.getRangeUpper(),
-            overlapSupport,
-            errorCorrectionMode, distanceCheckMode,
-            minDeviationRatio, minImproveRatio
-        ));
-    }
-
-    public static void generatePsdf(Bitmap output, Shape shape, Transform transform,
-                                      boolean overlapSupport) {
-        MsdfResult.check(MsdfNative.nGeneratePsdfWithConfig(
+    public static void generatePsdf(MSDFBitmap output, MSDFShape shape, MSDFTransform transform,
+                                    boolean overlapSupport) {
+        MSDFResult.check(MSDFNative.nGeneratePsdfWithConfig(
             output.getNativeHandle(), output.getType(), output.getWidth(), output.getHeight(),
             shape.getNativeHandle(),
             transform.getScaleX(), transform.getScaleY(),
@@ -104,10 +104,10 @@ public final class Generator {
         ));
     }
 
-    public static void errorCorrection(Bitmap bitmap, Shape shape, Transform transform,
-                                        int errorCorrectionMode, int distanceCheckMode,
-                                        double minDeviationRatio, double minImproveRatio) {
-        MsdfResult.check(MsdfNative.nErrorCorrection(
+    public static void errorCorrection(MSDFBitmap bitmap, MSDFShape shape, MSDFTransform transform,
+                                       int errorCorrectionMode, int distanceCheckMode,
+                                       double minDeviationRatio, double minImproveRatio) {
+        MSDFResult.check(MSDFNative.nErrorCorrection(
             bitmap.getNativeHandle(), bitmap.getType(), bitmap.getWidth(), bitmap.getHeight(),
             shape.getNativeHandle(),
             transform.getScaleX(), transform.getScaleY(),
@@ -118,17 +118,17 @@ public final class Generator {
         ));
     }
 
-    public static void errorCorrection(Bitmap bitmap, Shape shape, Transform transform) {
+    public static void errorCorrection(MSDFBitmap bitmap, MSDFShape shape, MSDFTransform transform) {
         errorCorrection(bitmap, shape, transform,
-            MsdfConstants.ERROR_CORRECTION_EDGE_PRIORITY,
-            MsdfConstants.DISTANCE_CHECK_AT_EDGE,
-            MsdfConstants.DEFAULT_MIN_DEVIATION_RATIO,
-            MsdfConstants.DEFAULT_MIN_IMPROVE_RATIO);
+            MSDFConstants.ERROR_CORRECTION_EDGE_PRIORITY,
+            MSDFConstants.DISTANCE_CHECK_AT_EDGE,
+            MSDFConstants.DEFAULT_MIN_DEVIATION_RATIO,
+            MSDFConstants.DEFAULT_MIN_IMPROVE_RATIO);
     }
 
-    public static void errorCorrectionFastDistance(Bitmap bitmap, Transform transform,
-                                                    double minDeviationRatio) {
-        MsdfResult.check(MsdfNative.nErrorCorrectionFastDistance(
+    public static void errorCorrectionFastDistance(MSDFBitmap bitmap, MSDFTransform transform,
+                                                   double minDeviationRatio) {
+        MSDFResult.check(MSDFNative.nErrorCorrectionFastDistance(
             bitmap.getNativeHandle(), bitmap.getType(), bitmap.getWidth(), bitmap.getHeight(),
             transform.getScaleX(), transform.getScaleY(),
             transform.getTranslateX(), transform.getTranslateY(),
@@ -137,25 +137,25 @@ public final class Generator {
         ));
     }
 
-    public static void errorCorrectionFastDistance(Bitmap bitmap, Transform transform) {
-        errorCorrectionFastDistance(bitmap, transform, MsdfConstants.DEFAULT_MIN_DEVIATION_RATIO);
+    public static void errorCorrectionFastDistance(MSDFBitmap bitmap, MSDFTransform transform) {
+        errorCorrectionFastDistance(bitmap, transform, MSDFConstants.DEFAULT_MIN_DEVIATION_RATIO);
     }
 
-    public static void errorCorrectionFastEdge(Bitmap bitmap, Transform transform,
-                                                double minDeviationRatio) {
-        MsdfResult.check(MsdfNative.nErrorCorrectionFastEdge(
+    public static void errorCorrectionFastEdge(MSDFBitmap bitmap, MSDFTransform transform,
+                                               double minDeviationRatio) {
+        MSDFResult.check(MSDFNative.nErrorCorrectionFastEdge(
             bitmap.getNativeHandle(), bitmap.getType(), bitmap.getWidth(), bitmap.getHeight(),
             transform.getRangeLower(), transform.getRangeUpper(),
             minDeviationRatio
         ));
     }
 
-    public static void errorCorrectionFastEdge(Bitmap bitmap, Transform transform) {
-        errorCorrectionFastEdge(bitmap, transform, MsdfConstants.DEFAULT_MIN_DEVIATION_RATIO);
+    public static void errorCorrectionFastEdge(MSDFBitmap bitmap, MSDFTransform transform) {
+        errorCorrectionFastEdge(bitmap, transform, MSDFConstants.DEFAULT_MIN_DEVIATION_RATIO);
     }
 
-    public static void distanceSignCorrection(Bitmap bitmap, Shape shape, Transform transform, int fillRule) {
-        MsdfResult.check(MsdfNative.nDistanceSignCorrection(
+    public static void distanceSignCorrection(MSDFBitmap bitmap, MSDFShape shape, MSDFTransform transform, int fillRule) {
+        MSDFResult.check(MSDFNative.nDistanceSignCorrection(
             bitmap.getNativeHandle(), bitmap.getType(), bitmap.getWidth(), bitmap.getHeight(),
             shape.getNativeHandle(),
             transform.getScaleX(), transform.getScaleY(),
@@ -165,8 +165,8 @@ public final class Generator {
         ));
     }
 
-    public static void renderSdf(Bitmap output, Bitmap sdf, Transform transform, float sdThreshold) {
-        MsdfResult.check(MsdfNative.nRenderSdf(
+    public static void renderSdf(MSDFBitmap output, MSDFBitmap sdf, MSDFTransform transform, float sdThreshold) {
+        MSDFResult.check(MSDFNative.nRenderSdf(
             output.getNativeHandle(), output.getType(), output.getWidth(), output.getHeight(),
             sdf.getNativeHandle(), sdf.getType(), sdf.getWidth(), sdf.getHeight(),
             transform.getRangeLower(), transform.getRangeUpper(),
@@ -174,7 +174,7 @@ public final class Generator {
         ));
     }
 
-    public static void renderSdf(Bitmap output, Bitmap sdf, Transform transform) {
+    public static void renderSdf(MSDFBitmap output, MSDFBitmap sdf, MSDFTransform transform) {
         renderSdf(output, sdf, transform, 0.5f);
     }
 }

@@ -1,15 +1,15 @@
 package com.crystalgraphics.msdfgen;
 
-import com.crystalgraphics.msdfgen.*;
 import org.junit.Test;
 import static org.junit.Assert.*;
+import com.crystalgraphics.NativeLoader;
 
 public class MsdfgenTest {
 
     @Test
     public void testNativeLoaderPlatformDetection() {
-        String os = NativeLoader.getOsName();
-        String arch = NativeLoader.getArchName();
+        String os = NativeLoader.detectOS();
+        String arch = NativeLoader.detectArch();
         assertNotNull(os);
         assertNotNull(arch);
         assertFalse(os.equals("unknown"));
@@ -18,9 +18,9 @@ public class MsdfgenTest {
 
     @Test
     public void testNativeLoaderLibraryMapping() {
-        String libName = NativeLoader.mapLibraryName("msdfgen-jni");
+        String libName = NativeLoader.getLibraryFileName();
         assertNotNull(libName);
-        String os = NativeLoader.getOsName();
+        String os = NativeLoader.detectOS();
         if ("windows".equals(os)) {
             assertEquals("msdfgen-jni.dll", libName);
         } else if ("macos".equals(os)) {
@@ -32,57 +32,57 @@ public class MsdfgenTest {
 
     @Test
     public void testMsdfResultDescriptions() {
-        assertEquals("Success", MsdfResult.describe(MsdfResult.SUCCESS));
-        assertEquals("Operation failed", MsdfResult.describe(MsdfResult.ERR_FAILED));
-        assertEquals("Invalid argument", MsdfResult.describe(MsdfResult.ERR_INVALID_ARG));
-        assertEquals("Invalid type", MsdfResult.describe(MsdfResult.ERR_INVALID_TYPE));
-        assertEquals("Invalid size", MsdfResult.describe(MsdfResult.ERR_INVALID_SIZE));
-        assertEquals("Invalid index", MsdfResult.describe(MsdfResult.ERR_INVALID_INDEX));
+        assertEquals("Success", MSDFResult.describe(MSDFResult.SUCCESS));
+        assertEquals("Operation failed", MSDFResult.describe(MSDFResult.ERR_FAILED));
+        assertEquals("Invalid argument", MSDFResult.describe(MSDFResult.ERR_INVALID_ARG));
+        assertEquals("Invalid type", MSDFResult.describe(MSDFResult.ERR_INVALID_TYPE));
+        assertEquals("Invalid size", MSDFResult.describe(MSDFResult.ERR_INVALID_SIZE));
+        assertEquals("Invalid index", MSDFResult.describe(MSDFResult.ERR_INVALID_INDEX));
     }
 
     @Test
     public void testMsdfResultIsSuccess() {
-        assertTrue(MsdfResult.isSuccess(MsdfResult.SUCCESS));
-        assertFalse(MsdfResult.isSuccess(MsdfResult.ERR_FAILED));
+        assertTrue(MSDFResult.isSuccess(MSDFResult.SUCCESS));
+        assertFalse(MSDFResult.isSuccess(MSDFResult.ERR_FAILED));
     }
 
-    @Test(expected = MsdfException.class)
+    @Test(expected = MSDFException.class)
     public void testMsdfResultCheckThrowsOnError() {
-        MsdfResult.check(MsdfResult.ERR_INVALID_ARG);
+        MSDFResult.check(MSDFResult.ERR_INVALID_ARG);
     }
 
     @Test
     public void testMsdfExceptionContainsErrorCode() {
-        MsdfException ex = new MsdfException(MsdfResult.ERR_INVALID_TYPE);
-        assertEquals(MsdfResult.ERR_INVALID_TYPE, ex.getErrorCode());
+        MSDFException ex = new MSDFException(MSDFResult.ERR_INVALID_TYPE);
+        assertEquals(MSDFResult.ERR_INVALID_TYPE, ex.getErrorCode());
         assertTrue(ex.getMessage().contains("Invalid type"));
     }
 
     @Test
     public void testMsdfConstantsChannelCount() {
-        assertEquals(1, MsdfConstants.channelCountForType(MsdfConstants.BITMAP_TYPE_SDF));
-        assertEquals(1, MsdfConstants.channelCountForType(MsdfConstants.BITMAP_TYPE_PSDF));
-        assertEquals(3, MsdfConstants.channelCountForType(MsdfConstants.BITMAP_TYPE_MSDF));
-        assertEquals(4, MsdfConstants.channelCountForType(MsdfConstants.BITMAP_TYPE_MTSDF));
+        assertEquals(1, MSDFConstants.channelCountForType(MSDFConstants.BITMAP_TYPE_SDF));
+        assertEquals(1, MSDFConstants.channelCountForType(MSDFConstants.BITMAP_TYPE_PSDF));
+        assertEquals(3, MSDFConstants.channelCountForType(MSDFConstants.BITMAP_TYPE_MSDF));
+        assertEquals(4, MSDFConstants.channelCountForType(MSDFConstants.BITMAP_TYPE_MTSDF));
     }
 
     @Test(expected = IllegalArgumentException.class)
     public void testMsdfConstantsInvalidType() {
-        MsdfConstants.channelCountForType(99);
+        MSDFConstants.channelCountForType(99);
     }
 
     @Test
     public void testEdgeColorConstants() {
-        assertEquals(0, EdgeColor.BLACK);
-        assertEquals(7, EdgeColor.WHITE);
-        assertEquals(1, EdgeColor.RED);
-        assertEquals(2, EdgeColor.GREEN);
-        assertEquals(4, EdgeColor.BLUE);
+        assertEquals(0, MSDFEdgeColor.BLACK);
+        assertEquals(7, MSDFEdgeColor.WHITE);
+        assertEquals(1, MSDFEdgeColor.RED);
+        assertEquals(2, MSDFEdgeColor.GREEN);
+        assertEquals(4, MSDFEdgeColor.BLUE);
     }
 
     @Test
     public void testTransformBuilder() {
-        Transform t = new Transform()
+        MSDFTransform t = new MSDFTransform()
             .scale(32.0)
             .translate(0.5, 0.5)
             .range(-0.125, 0.125);
@@ -97,66 +97,66 @@ public class MsdfgenTest {
 
     @Test
     public void testTransformSymmetricRange() {
-        Transform t = new Transform().range(4.0);
+        MSDFTransform t = new MSDFTransform().range(4.0);
         assertEquals(-4.0, t.getRangeLower(), 1e-10);
         assertEquals(4.0, t.getRangeUpper(), 1e-10);
     }
 
     @Test
     public void testSegmentTypeValidation() {
-        assertTrue(SegmentType.isValid(SegmentType.LINEAR));
-        assertTrue(SegmentType.isValid(SegmentType.QUADRATIC));
-        assertTrue(SegmentType.isValid(SegmentType.CUBIC));
-        assertFalse(SegmentType.isValid(-1));
-        assertFalse(SegmentType.isValid(3));
-        assertFalse(SegmentType.isValid(99));
+        assertTrue(MSDFSegmentType.isValid(MSDFSegmentType.LINEAR));
+        assertTrue(MSDFSegmentType.isValid(MSDFSegmentType.QUADRATIC));
+        assertTrue(MSDFSegmentType.isValid(MSDFSegmentType.CUBIC));
+        assertFalse(MSDFSegmentType.isValid(-1));
+        assertFalse(MSDFSegmentType.isValid(3));
+        assertFalse(MSDFSegmentType.isValid(99));
     }
 
     @Test
     public void testSegmentTypePointCount() {
-        assertEquals(2, SegmentType.pointCount(SegmentType.LINEAR));
-        assertEquals(3, SegmentType.pointCount(SegmentType.QUADRATIC));
-        assertEquals(4, SegmentType.pointCount(SegmentType.CUBIC));
+        assertEquals(2, MSDFSegmentType.pointCount(MSDFSegmentType.LINEAR));
+        assertEquals(3, MSDFSegmentType.pointCount(MSDFSegmentType.QUADRATIC));
+        assertEquals(4, MSDFSegmentType.pointCount(MSDFSegmentType.CUBIC));
     }
 
     @Test(expected = IllegalArgumentException.class)
     public void testSegmentTypeInvalidPointCount() {
-        SegmentType.pointCount(99);
+        MSDFSegmentType.pointCount(99);
     }
 
     @Test
     public void testSegmentTypeName() {
-        assertEquals("LINEAR", SegmentType.name(SegmentType.LINEAR));
-        assertEquals("QUADRATIC", SegmentType.name(SegmentType.QUADRATIC));
-        assertEquals("CUBIC", SegmentType.name(SegmentType.CUBIC));
-        assertTrue(SegmentType.name(99).contains("UNKNOWN"));
+        assertEquals("LINEAR", MSDFSegmentType.name(MSDFSegmentType.LINEAR));
+        assertEquals("QUADRATIC", MSDFSegmentType.name(MSDFSegmentType.QUADRATIC));
+        assertEquals("CUBIC", MSDFSegmentType.name(MSDFSegmentType.CUBIC));
+        assertTrue(MSDFSegmentType.name(99).contains("UNKNOWN"));
     }
 
     @Test(expected = IllegalArgumentException.class)
     public void testSegmentCreateInvalidType() {
-        Segment.create(-1);
+        MSDFSegment.create(-1);
     }
 
     @Test(expected = IllegalArgumentException.class)
     public void testSegmentCreateTooHighType() {
-        Segment.create(3);
+        MSDFSegment.create(3);
     }
 
     @Test
     public void testMsdfConstantsDefaults() {
-        assertEquals(1.11111111111111111, MsdfConstants.DEFAULT_MIN_DEVIATION_RATIO, 1e-15);
-        assertEquals(1.11111111111111111, MsdfConstants.DEFAULT_MIN_IMPROVE_RATIO, 1e-15);
+        assertEquals(1.11111111111111111, MSDFConstants.DEFAULT_MIN_DEVIATION_RATIO, 1e-15);
+        assertEquals(1.11111111111111111, MSDFConstants.DEFAULT_MIN_IMPROVE_RATIO, 1e-15);
     }
 
     @Test
     public void testMsdfConstantsBooleans() {
-        assertEquals(0, MsdfConstants.MSDF_FALSE);
-        assertEquals(1, MsdfConstants.MSDF_TRUE);
+        assertEquals(0, MSDFConstants.MSDF_FALSE);
+        assertEquals(1, MSDFConstants.MSDF_TRUE);
     }
 
     @Test
     public void testMsdfConstantsMaxTypes() {
-        assertEquals(3, MsdfConstants.BITMAP_TYPE_MAX);
-        assertEquals(2, MsdfConstants.SEGMENT_TYPE_MAX);
+        assertEquals(3, MSDFConstants.BITMAP_TYPE_MAX);
+        assertEquals(2, MSDFConstants.SEGMENT_TYPE_MAX);
     }
 }

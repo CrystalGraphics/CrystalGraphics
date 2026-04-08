@@ -4,7 +4,7 @@ package com.crystalgraphics.msdfgen;
  * Edge color constants for MSDFgen edge coloring.
  * Maps directly to msdfgen::EdgeColor enum values.
  */
-public final class EdgeColor {
+public final class MSDFEdgeColor {
     public static final int BLACK = 0;
     public static final int RED = 1;
     public static final int GREEN = 2;
@@ -14,5 +14,5 @@ public final class EdgeColor {
     public static final int CYAN = 6;
     public static final int WHITE = 7;
 
-    private EdgeColor() {}
+    private MSDFEdgeColor() {}
 }

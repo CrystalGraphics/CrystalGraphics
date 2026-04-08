@@ -8,7 +8,7 @@ package com.crystalgraphics.msdfgen;
  *
  * @since 1.0.0
  */
-public final class MsdfResult {
+public final class MSDFResult {
 
     /** Operation completed successfully. */
     public static final int SUCCESS = 0;
@@ -23,7 +23,7 @@ public final class MsdfResult {
     /** An invalid index was specified. */
     public static final int ERR_INVALID_INDEX = 5;
 
-    private MsdfResult() {
+    private MSDFResult() {
         throw new UnsupportedOperationException("Utility class");
     }
 
@@ -41,11 +41,11 @@ public final class MsdfResult {
      * Checks the result code and throws if it indicates an error.
      *
      * @param result the result code from a native call
-     * @throws MsdfException if the result indicates an error
+     * @throws MSDFException if the result indicates an error
      */
     public static void check(int result) {
         if (result != SUCCESS) {
-            throw new MsdfException(result);
+            throw new MSDFException(result);
         }
     }
 

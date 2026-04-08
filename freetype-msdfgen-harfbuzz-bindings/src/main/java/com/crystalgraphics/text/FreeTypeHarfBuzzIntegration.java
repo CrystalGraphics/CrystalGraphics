@@ -1,7 +1,7 @@
 package com.crystalgraphics.text;
 
 import com.crystalgraphics.freetype.FTFace;
-import com.crystalgraphics.freetype.NativeLoader;
+import com.crystalgraphics.NativeLoader;
 import com.crystalgraphics.harfbuzz.HBFont;
 
 /**

@@ -634,10 +634,10 @@ This returns the **signed distance to the nearest edge**, which is signed but no
 | `CgMsdfAtlasConfig.java` | Configuration parameters |
 | `CgMsdfEdgeColoringMode.java` | Edge coloring enum |
 | `msdfgen_jni.cpp` | Native JNI bridge |
-| `Generator.java` | Java-side JNI entry points |
-| `Shape.java` | Shape wrapper |
-| `Transform.java` | Projection + range wrapper |
-| `FreeTypeIntegration.java` | Font loading |
+| `MSDFGenerator.java` | Java-side JNI entry points |
+| `MSDFShape.java` | Shape wrapper |
+| `MSDFTransform.java` | Projection + range wrapper |
+| `FreeTypeMSDFIntegration.java` | Font loading |
 
 ## Appendix C: Upstream Source Locations
 

@@ -7,26 +7,16 @@ This is a unified native bindings library that provides:
 - **MSDFgen**: Multi-Channel Signed Distance Field generation for GPU text rendering
 - **HarfBuzz**: OpenType text shaping with full Unicode support
 
-## Why JNI (Not JNA)?
-
-**JNI was chosen over JNA** for the following reasons:
-
-1. **Performance**: JNI has ~10x lower call overhead than JNA. Text shaping involves thousands of native calls per frame — JNA's reflection-based FFI would be a bottleneck. SDF generation is also CPU-intensive.
-2. **Memory control**: JNI gives direct control over native memory lifecycle (critical for FreeType's `FT_New_Memory_Face` which requires caller-managed buffers).
-3. **FreeType-HarfBuzz integration**: The `hb_ft_font_create()` bridge passes raw C pointers between libraries — JNA cannot express this safely.
-4. **LWJGL 2.9.3 compatibility**: LWJGL 2.x itself uses JNI, so this approach is architecturally consistent.
-5. **Type safety**: JNI compile-time checks catch signature mismatches that JNA would fail at runtime.
-6. **Static linking**: MSDFgen C++ code is compiled directly into the JNI shared library. No separate msdfgen.dll to distribute.
 
 ## Supported Platforms
 
-| Platform | Architecture | FreeType+HarfBuzz | MSDFgen |
-|----------|-------------|-------------------|---------|
-| Windows  | x86_64      | ✅                | ✅      |
-| Windows  | x86         | ✅                | ✅      |
-| Linux    | x86_64      | ✅                | ✅      |
-| macOS    | x86_64      | ✅                | ✅      |
-| macOS    | aarch64 (Apple Silicon) | ✅     | ✅      |
+| Platform | Architecture            | FreeType+HarfBuzz | MSDFgen |
+|----------|-------------------------|-------------------|---------|
+| Windows  | x86_64                  | ✅                 | ✅       |
+| Windows  | x86                     | ✅                 | ✅       |
+| Linux    | x86_64                  | ✅                 | ✅       |
+| macOS    | x86_64                  | ✅                 | ✅       |
+| macOS    | aarch64 (Apple Silicon) | ✅                 | ✅       |
 
 ## Quick Start — FreeType + HarfBuzz
 
@@ -68,10 +58,10 @@ ft.destroy();
 import com.crystalgraphics.msdfgen.*;
 
 // Create a simple square shape
-Shape shape = Shape.create();
-Contour contour = shape.addContour();
+MSDFShape shape = MSDFShape.create();
+MSDFContour contour = shape.addContour();
 
-Segment top = Segment.createLinear();
+MSDFSegment top = MSDFSegment.createLinear();
 top.setPoint(0, 0, 1);
 top.setPoint(1, 1, 1);
 contour.addEdge(top);
@@ -83,9 +73,9 @@ shape.normalize();
 shape.edgeColoringSimple(3.0);
 
 // Generate MSDF
-Bitmap bitmap = Bitmap.allocMsdf(32, 32);
-Transform transform = Transform.autoFrame(shape, 32, 32, 4.0);
-Generator.generateMsdf(bitmap, shape, transform);
+MSDFBitmap bitmap = MSDFBitmap.allocMsdf(32, 32);
+MSDFTransform transform = MSDFTransform.autoFrame(shape, 32, 32, 4.0);
+MSDFGenerator.generateMsdf(bitmap, shape, transform);
 
 // Get pixel data
 float[] pixels = bitmap.getPixelData(); // 32 * 32 * 3 floats
@@ -126,10 +116,10 @@ See [docs/BUILD_NATIVES.md](docs/BUILD_NATIVES.md) for FreeType+HarfBuzz and [do
 - [MSDFgen macOS Compatibility](docs/MSDFGEN_MACOS_COMPATIBILITY.md)
 
 ### MSDFgen API Design
-- `Shape` / `Contour` / `Segment` - vector shape construction (mirrors msdfgen C++ API)
-- `Bitmap` - pixel data container (SDF/PSDF/MSDF/MTSDF types)
-- `Generator` - SDF generation entry points
-- `Transform` - projection + distance range configuration
+- `MSDFShape` / `MSDFContour` / `MSDFSegment` - vector shape construction (mirrors msdfgen C++ API)
+- `MSDFBitmap` - pixel data container (SDF/PSDF/MSDF/MTSDF types)
+- `MSDFGenerator` - SDF generation entry points
+- `MSDFTransform` - projection + distance range configuration
 - All native objects must be explicitly `free()`'d
 
 ## Dependencies
@@ -143,8 +133,8 @@ See [docs/BUILD_NATIVES.md](docs/BUILD_NATIVES.md) for FreeType+HarfBuzz and [do
 ## Version Compatibility
 
 | This Library | FreeType | HarfBuzz | MSDFgen | Java | LWJGL 2.x |
-|-------------|----------|----------|---------|------|-----------|
-| 1.0.0       | 2.13.2   | 8.3.0    | v1.13   | 8+   | 2.9.3+    |
+|--------------|----------|----------|---------|------|-----------|
+| 1.0.0        | 2.13.2   | 8.3.0    | v1.13   | 8+   | 2.9.3+    |
 
 ## License
 

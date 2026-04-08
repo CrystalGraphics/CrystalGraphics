@@ -4,7 +4,7 @@ package com.crystalgraphics.msdfgen;
  * Constants for MSDFgen bitmap types, segment types, orientations,
  * and error correction modes.
  */
-public final class MsdfConstants {
+public final class MSDFConstants {
 
     // Bitmap types
     public static final int BITMAP_TYPE_SDF = 0;
@@ -44,7 +44,7 @@ public final class MsdfConstants {
     public static final int BITMAP_TYPE_MAX = 3;
     public static final int SEGMENT_TYPE_MAX = 2;
 
-    private MsdfConstants() {}
+    private MSDFConstants() {}
 
     /**
      * Returns the channel count for a given bitmap type.

@@ -1,5 +1,5 @@
 package com.crystalgraphics.msdfgen;
-
+import com.crystalgraphics.NativeLoader;
 /**
  * JNI bridge to the MSDFgen C API. All methods are package-private
  * and called by the public wrapper classes.
@@ -8,13 +8,13 @@ package com.crystalgraphics.msdfgen;
  * Opaque handles (shape, contour, segment) are passed as {@code long} (native pointer).
  * Structs (bitmap, vector2, transform, bounds, config) use primitive arrays or dedicated classes.
  */
-final class MsdfNative {
+final class MSDFNative {
 
     static {
-        NativeLoader.load();
+        NativeLoader.ensureLoaded();
     }
 
-    private MsdfNative() {}
+    private MSDFNative() {}
 
     // --- Bitmap ---
     // bitmap is represented as int[4]: {type, width, height, handleLow} + long handle separately
