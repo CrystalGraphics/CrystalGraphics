@@ -1,0 +1,3 @@
+[submodule "freetype-msdfgen-harfbuzz-bindings"]
+	path = freetype-msdfgen-harfbuzz-bindings
+	url = https://github.com/CrystalGraphics/Font-Bindings
