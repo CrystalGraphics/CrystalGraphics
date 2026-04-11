@@ -162,7 +162,7 @@ The renderer consumes:
 
 The renderer then resolves glyph placements through the cache and atlas system automatically.
 
-You do **not** need to interact with `CgFontRegistry`, `CgPagedGlyphAtlas`, `CgGlyphVbo`, or `CgMsdfGenerator` for normal API use.
+You do **not** need to interact with `CgFontRegistry`, `CgPagedGlyphAtlas`, `CgQuadBatcher`, or `CgMsdfGenerator` for normal API use.
 
 ---
 

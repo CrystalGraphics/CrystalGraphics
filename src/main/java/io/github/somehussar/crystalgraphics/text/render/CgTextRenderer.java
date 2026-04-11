@@ -7,17 +7,17 @@ import io.github.somehussar.crystalgraphics.api.shader.CgShader;
 import io.github.somehussar.crystalgraphics.api.text.CgShapedRun;
 import io.github.somehussar.crystalgraphics.api.text.CgTextConstraints;
 import io.github.somehussar.crystalgraphics.api.text.CgTextLayout;
+import io.github.somehussar.crystalgraphics.api.vertex.CgTextureBinding;
 import io.github.somehussar.crystalgraphics.api.vertex.CgVertexFormat;
+import io.github.somehussar.crystalgraphics.gl.batch.CgQuadBatcher;
 import io.github.somehussar.crystalgraphics.gl.shader.CgShaderFactory;
 import io.github.somehussar.crystalgraphics.gl.state.CgStateBoundary;
 import io.github.somehussar.crystalgraphics.gl.state.CgStateSnapshot;
 import io.github.somehussar.crystalgraphics.text.cache.CgFontRegistry;
 import org.joml.Matrix4f;
 import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL13;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.logging.Logger;
 
@@ -25,21 +25,19 @@ import java.util.logging.Logger;
  * Batched text renderer for bitmap, MSDF, and MTSDF glyph atlases.
  *
  * <p>The renderer consumes a pre-built {@link CgTextLayout}, resolves glyphs
- * through {@link CgFontRegistry}, writes quads into {@link CgGlyphVbo}, then
- * draws sorted bitmap and distance-field batches. It uses the modern GL path
- * required by the current font implementation and restores GL state through
- * {@link CgStateBoundary} after each draw.</p>
+ * through {@link CgFontRegistry}, sorts them by GL state, then submits quads
+ * through the shared {@link CgQuadBatcher} infrastructure. The batch handles
+ * automatic flushing on shader/texture state changes. GL state is restored
+ * through {@link CgStateBoundary} after each draw.</p>
  *
  * <h3>Multi-Page Atlas Batching</h3>
  * <p>The renderer supports multi-page atlases by converting glyph atlas regions
  * into {@link CgGlyphPlacement} records that carry page identity (index and GL
  * texture ID), plane bounds, and per-page distance-field configuration ({@code pxRange}).
- * Quads are grouped into {@link CgDrawBatch} objects keyed by
- * {@link CgDrawBatchKey} (atlas mode, page texture, pxRange), sorted so bitmap
- * batches draw before distance-field batches. Each batch issues one
- * {@code glDrawElements} call with the appropriate shader, texture, and uniforms
- * bound. This replaces the former two-pass model that assumed one texture per
- * atlas mode.</p>
+ * Quads are sorted by {@link CgDrawBatchKey} (atlas mode, page texture, pxRange)
+ * so bitmap batches draw before distance-field batches, and submitted to
+ * {@link CgQuadBatcher} in that order. The batch auto-flushes when shader or
+ * texture state changes between consecutive quads.</p>
  *
  * <h3>Three-Space Model</h3>
  * <p>The text rendering pipeline enforces a strict three-space separation
@@ -76,23 +74,26 @@ import java.util.logging.Logger;
  * resize) and reused across frames. The {@link PoseStack} — which changes per draw —
  * is passed directly to the draw method.</p>
  *
- * <h3>World-Space Extension</h3>
- * <p>World-space/3D text uses a separate entry point ({@link #drawWorld}) with a
- * {@link CgWorldTextRenderContext} that enforces always-MSDF rendering, enables
- * depth testing, and supports projection-aware quality/LOD policy via
- * {@link ProjectedSizeEstimator}. The PoseStack in world mode represents model-view
- * positioning (entity rotation, billboard transforms), not UI zoom. Layout metrics
- * remain in logical space regardless of camera distance or FOV.</p>
+     * <h3>World-Space Extension</h3>
+     * <p>World-space/3D text uses a separate entry point ({@link #drawWorld}) with a
+     * {@link CgWorldTextRenderContext} that enforces always-MSDF rendering, enables
+     * depth testing, and supports projection-aware quality/LOD policy via
+     * {@link ProjectedSizeEstimator}. The PoseStack in world mode represents model-view
+     * positioning (entity rotation, billboard transforms), not UI zoom. Layout metrics
+     * remain in logical space regardless of camera distance or FOV.</p>
+     *
+     * <p>The canonical world path should be caller-owned batch submission. The current
+     * no-argument {@link #drawWorld} overload is a temporary convenience wrapper that
+     * constructs a local batcher over the shared global input registry.</p>
  *
  * <h3>Authoritative Hot Path</h3>
  * <p>The current pipeline is intentionally centered on the paged-atlas path:</p>
  * <ol>
  *   <li>String-based draw overloads call {@link #layout(String, CgFontFamily, CgTextConstraints)} or its font variant</li>
  *   <li>{@link CgTextLayoutBuilder} produces a {@link CgTextLayout}</li>
- *   <li>{@link #drawInternal(CgTextLayout, CgFontFamily, float, float, int, long, CgTextRenderContext, PoseStack.Pose, CgTextScaleResolver)} resolves raster tier</li>
+ *   <li>{@link #drawInternal(CgQuadBatcher, CgTextLayout, CgFontFamily, float, float, int, long, CgTextRenderContext, PoseStack.Pose, CgTextScaleResolver)} resolves raster tier</li>
  *   <li>{@link #buildPagedGlyphBatch(CgTextLayout, CgFontFamily, float, float, long, CgTextRenderContext, CgFontKey, int, boolean, CgFontMetrics)} converts layout output into {@link CgGlyphPlacement} records</li>
- *   <li>{@link #buildDrawBatches(CgGlyphPlacement[], float[], float[], int, int, int)} groups quads by GL state</li>
- *   <li>{@link #drawBatches(List, CgTextRenderContext, Matrix4f)} binds shaders/textures and issues draw calls</li>
+ *   <li>{@link #submitSortedQuadsToBatch(CgQuadBatcher, CgGlyphPlacement[], float[], float[], int, int, int, CgTextRenderContext, Matrix4f)} sorts quads by GL state and submits them through {@link CgQuadBatcher}</li>
  * </ol>
  *
  * <p>Legacy single-page atlas helpers are still retained for compatibility, but
@@ -114,40 +115,31 @@ public class CgTextRenderer {
     // ══════════════════════════════════════════════════════════════════════════════════════════
     
     private static final Logger LOGGER = Logger.getLogger(CgTextRenderer.class.getName());
-    private static final int INITIAL_VBO_CAPACITY = 256;
+    private static final int DEFAULT_BATCH_MAX_QUADS = 4096;
     public static boolean diagnosticLogging = false;
 
     private static final CgTextLayoutBuilder LAYOUT_BUILDER = new CgTextLayoutBuilder();
-
-    private final CgGlyphVbo vbo;
     private final CgFontRegistry registry;
 
     private boolean deleted;
 
-    private CgTextRenderer(CgGlyphVbo vbo, CgFontRegistry registry) {
-        this.vbo = vbo;
+    private CgTextRenderer(CgFontRegistry registry) {
         this.registry = registry;
     }
 
     /**
-     * Creates the renderer and compiles the text shaders.
+     * Creates the renderer using the shared 2D batch infrastructure.
      *
-     * <p>This renderer requires the modern GL feature set used by the current
-     * implementation: core FBO support, core shaders, VAOs, and
-     * glMapBufferRange.</p>
+     * <p>The canonical renderer path does not create its own batch infrastructure.
+     * Batch ownership belongs to the caller / pass / submission scope. This
+     * factory only validates backend availability and creates the façade.</p>
      */
     public static CgTextRenderer create(CgCapabilities caps, CgFontRegistry registry) {
-        if (!caps.isCoreFbo() || !caps.isCoreShaders() || !caps.isVaoSupported() || !caps.isMapBufferRangeSupported()) 
-            throw new IllegalStateException("CgTextRenderer requires modern GL support: core FBO, core shaders, VAO, and glMapBufferRange");
-        
-        CgGlyphVbo vbo = CgGlyphVbo.create(INITIAL_VBO_CAPACITY);
-        vbo.setupAttributes(BITMAP_SHADER.getProgram());
-        
-        // These are wrong, these set the attribute pointers 3 consequent times for the same VAO
-        // vbo.setupAttributes(MSDF_SHADER.getProgram());
-        // vbo.setupAttributes(MTSDF_SHADER.getProgram());
+        if (caps.preferredFboBackend() == CgCapabilities.Backend.NONE || (!caps.isCoreShaders() && !caps.isArbShaders()) || !caps.isVaoSupported() || !caps.isMapBufferRangeSupported()) {
+            throw new IllegalStateException("CgTextRenderer requires a framebuffer backend, a shader backend, VAO support, and glMapBufferRange");
+        }
 
-        return new CgTextRenderer(vbo, registry);
+        return new CgTextRenderer(registry);
     }
 
     /**
@@ -240,14 +232,28 @@ public class CgTextRenderer {
         if (family == null) throw new IllegalArgumentException("family must not be null");
         if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
         if (layout == null || layout.getLines().isEmpty()) return;
-        
+
+        CgQuadBatcher batch = new CgQuadBatcher(CgVertexFormat.POS2_UV2_COL4UB, DEFAULT_BATCH_MAX_QUADS);
+        draw(batch, layout, family, x, y, rgba, frame, context, pose);
+    }
+
+    /**
+     * Canonical 2D/UI draw path using a caller-owned batcher.
+     */
+    public void draw(CgQuadBatcher batch, CgTextLayout layout, CgFontFamily family, float x, float y, int rgba, long frame,
+                     CgTextRenderContext context, PoseStack pose) {
+        if (batch == null) throw new IllegalArgumentException("batch must not be null");
+        if (family == null) throw new IllegalArgumentException("family must not be null");
+        if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
+        if (layout == null || layout.getLines().isEmpty()) return;
+
         CgStateSnapshot snapshot = CgStateBoundary.save();
         try {
             GL11.glDisable(GL11.GL_DEPTH_TEST);
             GL11.glDepthMask(false);
             GL11.glDisable(GL11.GL_CULL_FACE);
             GL11.glDisable(GL11.GL_ALPHA_TEST);
-            drawInternal(layout, family, x, y, rgba, frame, context, pose.last(), context.getScaleResolver());
+            drawInternal(batch, layout, family, x, y, rgba, frame, context, pose.last(), context.getScaleResolver());
         } finally {
             CgStateBoundary.restore(snapshot);
         }
@@ -347,6 +353,20 @@ public class CgTextRenderer {
         if (family == null) throw new IllegalArgumentException("family must not be null");
         if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
         if (layout == null || layout.getLines().isEmpty()) return;
+
+        CgQuadBatcher batch = new CgQuadBatcher(CgVertexFormat.POS2_UV2_COL4UB, DEFAULT_BATCH_MAX_QUADS);
+        drawWorld(batch, layout, family, x, y, rgba, frame, context, pose);
+    }
+
+    /**
+     * Canonical world-space draw path using a caller-owned batcher.
+     */
+    public void drawWorld(CgQuadBatcher batch, CgTextLayout layout, CgFontFamily family, float x, float y, int rgba, long frame,
+                          CgWorldTextRenderContext context, PoseStack pose) {
+        if (batch == null) throw new IllegalArgumentException("batch must not be null");
+        if (family == null) throw new IllegalArgumentException("family must not be null");
+        if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
+        if (layout == null || layout.getLines().isEmpty()) return;
         
         CgStateSnapshot snapshot = CgStateBoundary.save();
         try {
@@ -354,19 +374,16 @@ public class CgTextRenderer {
             GL11.glDepthMask(true);
             GL11.glDisable(GL11.GL_CULL_FACE);
             GL11.glDisable(GL11.GL_ALPHA_TEST);
-            drawInternal(layout, family, x, y, rgba, frame, context, pose.last(), context.getScaleResolver());
+            drawInternal(batch, layout, family, x, y, rgba, frame, context, pose.last(), context.getScaleResolver());
         } finally {
             CgStateBoundary.restore(snapshot);
         }
     }
+
     public void delete() {
         if (deleted) return;
         
         deleted = true;
-        vbo.delete();
-        BITMAP_SHADER.delete();
-        MSDF_SHADER.delete();
-        MTSDF_SHADER.delete();
     }
 
     public boolean isDeleted() {
@@ -380,88 +397,56 @@ public class CgTextRenderer {
      *
      * <p>This method is the main place where the runtime pipeline becomes
      * concrete: resolve the effective raster tier, collect paged glyph
-     * placements, group them into draw batches, emit VBO quads, and submit the
-     * batches to OpenGL.</p>
-     *
-     * <p>The bitmap-vs-distance-field choice is made here at the draw level.
-     * The later distinction between MSDF and MTSDF comes from the atlas page
-     * type carried by the returned placements.</p>
+     * placements, sort them by GL state, and submit them through the caller-owned
+     * {@link CgQuadBatcher}.</p>
      */
-    private void drawInternal(CgTextLayout layout, CgFontFamily family, float x, float y, int rgba, long frame, 
+    private void drawInternal(CgQuadBatcher batch, CgTextLayout layout, CgFontFamily family, float x, float y, int rgba, long frame, 
                               CgTextRenderContext context, PoseStack.Pose pose, CgTextScaleResolver scaleResolver) {
         CgFontKey fontKey = family.getPrimarySource().getKey();
         CgFontMetrics metrics = layout.getMetrics();
 
-        // Stage 1: resolve the physical raster size that should back this draw.
-        // Layout remains in logical space, but cache keys and atlas lookups depend
-        // on this effective physical size.
         int previousEffectiveTargetPx = context.getPreviousEffectiveTargetPx(fontKey);
         int effectiveTargetPx = scaleResolver.resolveEffectiveTargetPx(fontKey.getTargetPx(), pose, previousEffectiveTargetPx);
         context.setPreviousEffectiveTargetPx(fontKey, effectiveTargetPx);
 
-        // Stage 2: choose bitmap vs. distance-field rendering. The previous mode
-        // is fed back into the resolver as hysteresis so zooming near the threshold
-        // does not flicker between quality tiers frame-to-frame.
         boolean previousMsdf = previousEffectiveTargetPx > 0 ? context.wasMsdf(fontKey) : effectiveTargetPx >= 32;
         boolean wantMsdf = scaleResolver.shouldUseMsdf(effectiveTargetPx, previousMsdf);
         context.setWasMsdf(fontKey, wantMsdf);
 
-        // Stage 3: convert layout output into concrete paged-atlas placements
-        // backed by page textures, UVs, and plane bounds.
-        PagedGlyphBatch batch = buildPagedGlyphBatch(layout, family, x, y, frame, context, fontKey, effectiveTargetPx, wantMsdf, metrics);
+        PagedGlyphBatch glyphBatch = buildPagedGlyphBatch(layout, family, x, y, frame, context, fontKey, effectiveTargetPx, wantMsdf, metrics);
 
-        // Stage 4: sort placements by GL state and emit quads into the VBO in
-        // that order. Each batch becomes one contiguous VBO range that can be
-        // drawn with one shader/texture/pxRange configuration.
-        List<CgDrawBatch> drawBatches = buildDrawBatches(batch.placements, batch.glyphX, batch.glyphY, rgba, 
-                fontKey.getTargetPx(), effectiveTargetPx);
-        
-        if (drawBatches.isEmpty()) return;
-        
-        boolean blendWasEnabled = GL11.glIsEnabled(GL11.GL_BLEND);
-        boolean depthWasEnabled = GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
+    
+            // World-text or standalone path: use per-renderer batch with
+            // per-draw GL state management.
+            boolean blendWasEnabled = GL11.glIsEnabled(GL11.GL_BLEND);
+            boolean depthWasEnabled = GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
 
-        GL11.glEnable(GL11.GL_BLEND);
-        GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-        if (!context.isWorldText()) GL11.glDisable(GL11.GL_DEPTH_TEST);
-        
-        vbo.uploadAndBind();
+            GL11.glEnable(GL11.GL_BLEND);
+            GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
+            if (!context.isWorldText()) GL11.glDisable(GL11.GL_DEPTH_TEST);
 
-        // Stage 5: with all logical/layout work finished, upload the current
-        // model-view matrix and submit the sorted batches to the GPU.
-        drawBatches(drawBatches, context, pose.pose());
+            submitSortedQuadsToBatch(batch, glyphBatch.placements, glyphBatch.glyphX, glyphBatch.glyphY, rgba,
+                    fontKey.getTargetPx(), effectiveTargetPx, context, pose.pose());
 
-        vbo.unbind();
-
-        if (!blendWasEnabled) GL11.glDisable(GL11.GL_BLEND);
-        if (depthWasEnabled) GL11.glEnable(GL11.GL_DEPTH_TEST);
+            if (!blendWasEnabled) GL11.glDisable(GL11.GL_BLEND);
+            if (depthWasEnabled) GL11.glEnable(GL11.GL_DEPTH_TEST);
         
     }
 
     /**
-     * Builds sorted draw batches from glyph placements.
-     *
-     * <p>This method performs two passes over the placement array:</p>
-     * <ol>
-     *   <li><strong>Sort pass</strong>: Collects placement indices and sorts them
-     *       by batch key (bitmap before MSDF, then by texture ID, then by pxRange).
-     *       This ensures quads in the VBO are grouped by GL state.</li>
-     *   <li><strong>Emit pass</strong>: Writes quads into the VBO in sorted order
-     *       and records batch boundaries wherever the batch key changes.</li>
-     * </ol>
-     *
-     * @return sorted list of draw batches, empty if no visible quads
+     * Sorts glyph placements by GL state and submits them through the caller-owned
+     * {@link CgQuadBatcher}.
      */
-    List<CgDrawBatch> buildDrawBatches(CgGlyphPlacement[] placements, float[] glyphX, float[] glyphY, int rgba,
-                                       int baseTargetPx, int effectiveTargetPx) {
+    void submitSortedQuadsToBatch(CgQuadBatcher batch, CgGlyphPlacement[] placements, float[] glyphX, float[] glyphY, int rgba,
+                                  int baseTargetPx, int effectiveTargetPx,
+                                  CgTextRenderContext context, Matrix4f modelView) {
         // Collect indices of visible placements paired with their batch keys
         int visibleCount = 0;
         for (int i = 0; i < placements.length; i++) {
             if (placements[i] != null && placements[i].hasGeometry()) 
                 visibleCount++;
         }
-        if (visibleCount == 0) return Collections.emptyList();
-        
+        if (visibleCount == 0) return;
 
         // Build sortable entries: (batchKey, originalIndex)
         int[] sortedIndices = new int[visibleCount];
@@ -493,23 +478,29 @@ public class CgTextRenderer {
             sortedIndices[j + 1] = idxI;
         }
 
-        // Emit quads in sorted order and record batch boundaries
-        vbo.begin();
-        List<CgDrawBatch> batches = new ArrayList<>();
-        CgDrawBatchKey currentKey = batchKeys[0];
-        int batchStartQuad = 0;
-        int totalQuads = 0;
+        // Submit sorted quads through the batch. Shader and texture are set
+        // before each batch-key group; the batch auto-flushes on changes.
+        batch.begin();
+        CgDrawBatchKey currentKey = null;
 
         for (int s = 0; s < visibleCount; s++) {
             CgDrawBatchKey thisKey = batchKeys[s];
-            // Check if we need to start a new batch
-            if (!thisKey.equals(currentKey)) {
-                int batchQuadCount = totalQuads - batchStartQuad;
-                if (batchQuadCount > 0) {
-                    batches.add(new CgDrawBatch(currentKey, batchStartQuad, batchQuadCount));
-                }
+
+            // On batch key change, update shader and texture state
+            if (currentKey == null || !thisKey.equals(currentKey)) {
+                CgShader shader = thisKey.isMtsdf() ? MTSDF_SHADER
+                        : thisKey.isDistanceField() ? MSDF_SHADER : BITMAP_SHADER;
+
+                shader.applyBindings(bi -> {
+                    bi.mat4("u_modelview", modelView);
+                    bi.mat4("u_projection", context.getProjection());
+                    bi.set1i("u_atlas", 0);
+                    if (thisKey.isDistanceField()) bi.set1f("u_pxRange", thisKey.getPxRange());
+                });
+                batch.setShader(shader);
+                batch.setTexture(CgTextureBinding.texture2D(thisKey.getTextureId()));
+
                 currentKey = thisKey;
-                batchStartQuad = totalQuads;
             }
 
             int origIdx = sortedIndices[s];
@@ -521,65 +512,21 @@ public class CgTextRenderer {
             // their plane bounds must be normalized using the placement's atlas scale.
             float scaleFactor = logicalMetricScale(baseTargetPx,
                     p.isDistanceField() ? placementTargetPx : effectiveTargetPx);
-            appendQuadFromPlacement(p, glyphX[origIdx], glyphY[origIdx], rgba, scaleFactor);
-            totalQuads++;
-        }
-
-        // Final batch
-        int batchQuadCount = totalQuads - batchStartQuad;
-        if (batchQuadCount > 0) batches.add(new CgDrawBatch(currentKey, batchStartQuad, batchQuadCount));
-
-        return batches;
-    }
-    
-    /**
-     * Issues GL draw calls for each batch, resolving the shader directly from the
-     * batch key and only rebinding when the resolved shader changes.
-     *
-     * <p>The batch sort order already guarantees a stable draw grouping by atlas
-     * type, texture, and pxRange. This method therefore treats the batch key as
-     * the authoritative source of shader state: resolve shader, bind if changed,
-     * bind texture, update distance-field range only when needed, then draw.</p>
-     */
-    private void drawBatches(List<CgDrawBatch> batches, CgTextRenderContext context, Matrix4f modelView) {
-        CgShader boundShader = null;
-
-        for (int b = 0; b < batches.size(); b++) {
-            CgDrawBatch batch = batches.get(b);
-            if (batch.isEmpty()) continue;
-
-            CgDrawBatchKey key = batch.getKey();
-            CgShader shader = key.isMtsdf() ? MTSDF_SHADER : key.isDistanceField() ? MSDF_SHADER : BITMAP_SHADER;
-
-            if (shader != boundShader) {
-                shader.applyBindings(bi -> {
-                    bi.mat4("u_modelview", modelView);
-                    bi.mat4("u_projection", context.getProjection());
-                    bi.set1i("u_atlas", 0);
-
-                    if (key.isDistanceField()) bi.set1f("u_pxRange", key.getPxRange());
-                }).bind();
-                boundShader = shader;
-            }
-
-            GL13.glActiveTexture(GL13.GL_TEXTURE0);
-            GL11.glBindTexture(GL11.GL_TEXTURE_2D, key.getTextureId());
-
-            GL11.glDrawElements(GL11.GL_TRIANGLES, batch.getIndexCount(), GL11.GL_UNSIGNED_SHORT, batch.getIboByteOffset());
+            addQuadFromPlacement(batch, p, glyphX[origIdx], glyphY[origIdx], rgba, scaleFactor);
 
             if (diagnosticLogging) {
-                LOGGER.info("[BatchDiag] atlasType=" + key.getAtlasType()
-                        + ", textureId=" + key.getTextureId()
-                        + ", pxRange=" + key.getPxRange()
-                        + ", quadCount=" + batch.getQuadCount());
+                LOGGER.info("[BatchDiag] atlasType=" + thisKey.getAtlasType()
+                        + ", textureId=" + thisKey.getTextureId()
+                        + ", pxRange=" + thisKey.getPxRange());
             }
         }
 
-        if (boundShader != null) boundShader.unbind();
+        batch.end();
     }
 
     /**
-     * Appends a single glyph quad from a {@link CgGlyphPlacement} into the VBO.
+     * Computes quad geometry from a {@link CgGlyphPlacement} and adds it to
+     * the shared batch.
      *
      * <p>Uses <strong>plane bounds</strong> for geometry placement instead of
      * the legacy bearing + metrics model. Plane bounds include SDF range padding
@@ -593,7 +540,7 @@ public class CgTextRenderer {
      * @param rgba        packed RGBA color
      * @param scaleFactor logical metric normalization (baseTargetPx / effectiveTargetPx)
      */
-    private void appendQuadFromPlacement(CgGlyphPlacement p, float penX, float penY, int rgba, float scaleFactor) {
+    private void addQuadFromPlacement(CgQuadBatcher batch, CgGlyphPlacement p, float penX, float penY, int rgba, float scaleFactor) {
         // Plane bounds are in physical raster space; normalize to logical.
         // planeLeft = bearing offset from pen; planeTop = bearing above baseline.
         // The quad origin is (penX + bearingX, penY - bearingY) in the existing
@@ -617,7 +564,17 @@ public class CgTextRenderer {
                     p.getAtlasType(), p.isDistanceField(), p.getPxRange()));
         }
         
-        vbo.addGlyph(qx, qy, logicalWidth, logicalHeight, p.getU0(), p.getV0(), p.getU1(), p.getV1(), rgba);
+        // Pack color bytes: RGBA → ABGR byte order for the vertex attribute
+        int packedColor = packColorBytes(rgba);
+        batch.addQuad(qx, qy, logicalWidth, logicalHeight, p.getU0(), p.getV0(), p.getU1(), p.getV1(), packedColor);
+    }
+
+    /**
+     * Repacks RGBA (0xRRGGBBAA) into the byte order expected by the vertex
+     * attribute (ABGR).
+     */
+    static int packColorBytes(int rgba) {
+        return ((rgba & 0x000000FF) << 24) | ((rgba & 0x0000FF00) << 8) | ((rgba & 0x00FF0000) >>> 8) | ((rgba & 0xFF000000) >>> 24);
     }
 
     /**

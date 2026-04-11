@@ -13,7 +13,7 @@ The current text pipeline is:
 7. **render-time raster tier selection** happens in `CgTextRenderer`
 8. **glyph lookup / generation** happens in `CgFontRegistry`
 9. **atlas placement** comes from `CgPagedGlyphAtlas` / `CgGlyphAtlasPage`
-10. **batching + VBO population** happen in `CgTextRenderer` + `CgGlyphVbo`
+10. **batching + quad submission** happen in `CgTextRenderer` + `CgQuadBatcher`
 11. shaders sample atlas textures and perform the final **draw**
 
 If you only remember one distinction, remember this:
@@ -175,7 +175,6 @@ That placement carries:
 Main representations:
 
 - `CgDrawBatchKey`
-- `CgDrawBatch`
 
 Grouping is driven by:
 
@@ -185,9 +184,10 @@ Grouping is driven by:
 
 ### 11. VBO population and draw
 
-`CgGlyphVbo` owns the vertex/index buffers.
+`CgQuadBatcher` owns the CPU staging buffer and drives GPU upload through the shared
+`CgVertexArrayRegistry` / `CgStreamBuffer` / `CgSharedQuadIbo` infrastructure.
 
-`CgTextRenderer` emits quads into the VBO and then `drawBatches(...)`:
+`CgTextRenderer` sorts placements by `CgDrawBatchKey` and submits quads through the batch:
 
 - resolves the correct shader from `CgDrawBatchKey`
 - binds the shader when it changes
