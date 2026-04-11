@@ -135,6 +135,13 @@ public final class CgCapabilities {
      */
     private final boolean hasMapBufferRange;
 
+    /**
+     * Whether {@code GL_ARB_sync} (fence sync) is available.
+     * True if Core OpenGL 3.2 or the {@code GL_ARB_sync} extension is present.
+     * Required for the Tier-A sync-ring stream buffer strategy.
+     */
+    private final boolean arbSync;
+
     private CgCapabilities(boolean coreFbo, boolean arbFbo, boolean extFbo,
                            boolean coreShaders, boolean arbShaders,
                            int maxDrawBuffers, int maxTextureUnits,
@@ -142,7 +149,8 @@ public final class CgCapabilities {
                            boolean packedDepthStencil, boolean depthTexture,
                            int maxTextureSize, int maxRenderbufferSize,
                            int maxColorAttachments,
-                           boolean hasVao, boolean hasMapBufferRange) {
+                           boolean hasVao, boolean hasMapBufferRange,
+                           boolean arbSync) {
         this.coreFbo = coreFbo;
         this.arbFbo = arbFbo;
         this.extFbo = extFbo;
@@ -159,6 +167,7 @@ public final class CgCapabilities {
         this.maxColorAttachments = maxColorAttachments;
         this.hasVao = hasVao;
         this.hasMapBufferRange = hasMapBufferRange;
+        this.arbSync = arbSync;
     }
 
     /**
@@ -276,6 +285,7 @@ public final class CgCapabilities {
 
         boolean hasVao = caps.OpenGL30 || caps.GL_ARB_vertex_array_object;
         boolean hasMapBufferRange = caps.OpenGL30 || caps.GL_ARB_map_buffer_range;
+        boolean arbSync = caps.OpenGL32 || caps.GL_ARB_sync;
 
         return new CgCapabilities(
             coreFbo, arbFbo, extFbo,
@@ -285,7 +295,8 @@ public final class CgCapabilities {
             packedDepthStencil, depthTexture,
             maxTextureSize, maxRenderbufferSize,
             maxColorAttachments,
-            hasVao, hasMapBufferRange
+            hasVao, hasMapBufferRange,
+            arbSync
         );
     }
 
@@ -504,6 +515,19 @@ public final class CgCapabilities {
     }
 
     /**
+     * Returns whether {@code GL_ARB_sync} (fence sync) is available.
+     *
+     * <p>True if Core OpenGL 3.2 or the {@code GL_ARB_sync} extension is
+     * present. This capability is required for the Tier-A sync-ring stream
+     * buffer strategy ({@code MapAndSyncStreamBuffer}).</p>
+     *
+     * @return {@code true} if fence sync can be used
+     */
+    public boolean isArbSync() {
+        return arbSync;
+    }
+
+    /**
      * Package-private factory for unit tests that cannot create a GL context.
      */
     static CgCapabilities createForTest(boolean coreFbo, boolean arbFbo, boolean extFbo,
@@ -513,7 +537,8 @@ public final class CgCapabilities {
                                         boolean packedDepthStencil, boolean depthTexture,
                                         int maxTextureSize, int maxRenderbufferSize,
                                         int maxColorAttachments,
-                                        boolean hasVao, boolean hasMapBufferRange) {
+                                        boolean hasVao, boolean hasMapBufferRange,
+                                        boolean arbSync) {
         return new CgCapabilities(coreFbo, arbFbo, extFbo,
             coreShaders, arbShaders,
             maxDrawBuffers, maxTextureUnits,
@@ -521,7 +546,8 @@ public final class CgCapabilities {
             packedDepthStencil, depthTexture,
             maxTextureSize, maxRenderbufferSize,
             maxColorAttachments,
-            hasVao, hasMapBufferRange);
+            hasVao, hasMapBufferRange,
+            arbSync);
     }
 
     /**

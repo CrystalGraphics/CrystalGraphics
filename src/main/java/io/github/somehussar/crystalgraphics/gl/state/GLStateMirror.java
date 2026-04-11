@@ -1,5 +1,7 @@
 package io.github.somehussar.crystalgraphics.gl.state;
 
+import lombok.Getter;
+
 /**
  * Pure-Java, thread-local mirror of selected OpenGL state.
  *
@@ -73,6 +75,18 @@ public final class GLStateMirror {
      * units have value 0.
      */
     private static final int[] boundTexture2D = new int[MAX_TEXTURE_UNITS];
+
+    /** The currently bound vertex array object (VAO) ID. 0 means default/none. */
+    @Getter
+    private static int currentVaoId;
+
+    /** The currently bound GL_ARRAY_BUFFER ID. 0 means unbound. */
+    @Getter
+    private static int currentArrayBufferId;
+
+    /** The currently bound GL_ELEMENT_ARRAY_BUFFER ID. 0 means unbound. */
+    @Getter
+    private static int currentElementArrayBufferId;
 
     /**
      * Thread-local recursion depth counter.
@@ -166,6 +180,31 @@ public final class GLStateMirror {
     }
 
     /**
+     * Called when a vertex array object is bound via {@code glBindVertexArray}.
+     *
+     * @param id the VAO ID (0 = default/unbind)
+     */
+    public static void onBindVertexArray(int id) {
+        currentVaoId = id;
+    }
+
+    /**
+     * Called when a buffer object is bound via {@code glBindBuffer}.
+     * Only tracks {@code GL_ARRAY_BUFFER} (0x8892) and
+     * {@code GL_ELEMENT_ARRAY_BUFFER} (0x8893).
+     *
+     * @param target the GL buffer target constant
+     * @param id     the buffer object ID (0 = unbind)
+     */
+    public static void onBindBuffer(int target, int id) {
+        if (target == 0x8892) { // GL_ARRAY_BUFFER
+            currentArrayBufferId = id;
+        } else if (target == 0x8893) { // GL_ELEMENT_ARRAY_BUFFER
+            currentElementArrayBufferId = id;
+        }
+    }
+
+    /**
      * Returns the currently tracked draw framebuffer ID.
      *
      * @return the draw framebuffer object ID, or 0 for the default framebuffer
@@ -253,6 +292,9 @@ public final class GLStateMirror {
         for (int i = 0; i < MAX_TEXTURE_UNITS; i++) {
             boundTexture2D[i] = 0;
         }
+        currentVaoId = 0;
+        currentArrayBufferId = 0;
+        currentElementArrayBufferId = 0;
     }
 
     /**

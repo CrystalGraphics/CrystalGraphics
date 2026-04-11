@@ -1,17 +1,8 @@
 package io.github.somehussar.crystalgraphics.gl.state;
 
+import io.github.somehussar.crystalgraphics.gl.vertex.CgVertexArray;
 import net.minecraft.client.renderer.OpenGlHelper;
-
-import org.lwjgl.opengl.ARBMultitexture;
-import org.lwjgl.opengl.ARBFramebufferObject;
-import org.lwjgl.opengl.ARBShaderObjects;
-import org.lwjgl.opengl.EXTFramebufferObject;
-import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL13;
-import org.lwjgl.opengl.GL20;
-import org.lwjgl.opengl.GL30;
-import org.lwjgl.opengl.ContextCapabilities;
-import org.lwjgl.opengl.GLContext;
+import org.lwjgl.opengl.*;
 
 /**
  * Save/restore boundary for protecting GL state around CrystalGraphics operations.
@@ -206,7 +197,10 @@ public final class CgStateBoundary {
             programId,
             programFamily,
             activeUnitIndex,
-            textures2d
+            textures2d,
+            captureVaoId(caps),
+            captureArrayBufferId(),
+            captureElementArrayBufferId()
         );
     }
 
@@ -234,6 +228,7 @@ public final class CgStateBoundary {
      * @param snapshot the snapshot returned by a prior {@link #save()} call
      */
     public static void restore(CgStateSnapshot snapshot) {
+        restoreVertexInput(snapshot);
         restoreFramebuffer(snapshot);
         restoreProgram(snapshot);
         restoreTextures(snapshot);
@@ -316,6 +311,48 @@ public final class CgStateBoundary {
         }
         // Restore the active texture unit
         setActiveTextureUnit(snapshot.getActiveTextureUnit());
+    }
+
+    /**
+     * Restores vertex-input state (VAO, VBO, EBO) from the snapshot.
+     * Restore order: VAO first (which implicitly affects EBO binding on some drivers),
+     * then array buffer, then element array buffer.
+     */
+    private static void restoreVertexInput(CgStateSnapshot snapshot) {
+        ContextCapabilities caps = GLContext.getCapabilities();
+
+        // Restore VAO
+        int snapshotVao = snapshot.getVaoId();
+        if (caps.OpenGL30 || caps.GL_ARB_vertex_array_object) {
+            CgVertexArray.bind(snapshotVao);
+            
+            GLStateMirror.onBindVertexArray(snapshotVao);
+        }
+
+        // Restore GL_ARRAY_BUFFER
+        int snapshotVbo = snapshot.getArrayBufferId();
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, snapshotVbo);
+        GLStateMirror.onBindBuffer(GL15.GL_ARRAY_BUFFER, snapshotVbo);
+
+        // Restore GL_ELEMENT_ARRAY_BUFFER
+        int snapshotEbo = snapshot.getElementArrayBufferId();
+        GL15.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, snapshotEbo);
+        GLStateMirror.onBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, snapshotEbo);
+    }
+
+    private static int captureVaoId(ContextCapabilities caps) {
+        if (caps.OpenGL30 || caps.GL_ARB_vertex_array_object) 
+            return GL11.glGetInteger(GL30.GL_VERTEX_ARRAY_BINDING); // GL_VERTEX_ARRAY_BINDING
+        
+        return 0;
+    }
+
+    private static int captureArrayBufferId() {
+        return GL11.glGetInteger(GL15.GL_ARRAY_BUFFER_BINDING); 
+    }
+
+    private static int captureElementArrayBufferId() {
+        return GL11.glGetInteger(GL15.GL_ELEMENT_ARRAY_BUFFER_BINDING); 
     }
 
     /**

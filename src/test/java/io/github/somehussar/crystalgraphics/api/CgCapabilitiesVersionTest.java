@@ -152,7 +152,8 @@ public class CgCapabilitiesVersionTest {
             true, true,           // stencil, depth
             false, false,         // packedDepthStencil, depthTexture
             4096, 4096, 8,        // maxTextureSize, maxRenderbufferSize, maxColorAttachments
-            true, true            // hasVao, hasMapBufferRange
+            true, true,           // hasVao, hasMapBufferRange
+            false                 // arbSync
         );
         assertTrue("VAO should be supported when OpenGL 3.0 is available", caps.isVaoSupported());
     }
@@ -166,7 +167,8 @@ public class CgCapabilitiesVersionTest {
             true, true,
             false, false,
             4096, 4096, 8,
-            true, true
+            true, true,
+            false
         );
         assertTrue("mapBufferRange should be supported when OpenGL 3.0 is available", caps.isMapBufferRangeSupported());
     }
@@ -180,7 +182,8 @@ public class CgCapabilitiesVersionTest {
             true, true,
             false, false,
             4096, 4096, 1,
-            false, false
+            false, false,
+            false
         );
         assertFalse("VAO should not be supported without GL30 or ARB extension", caps.isVaoSupported());
     }
@@ -194,7 +197,8 @@ public class CgCapabilitiesVersionTest {
             true, true,
             false, false,
             4096, 4096, 1,
-            false, false
+            false, false,
+            false
         );
         assertFalse("mapBufferRange should not be supported without GL30 or ARB extension", caps.isMapBufferRangeSupported());
     }
@@ -208,7 +212,8 @@ public class CgCapabilitiesVersionTest {
             true, true,
             false, false,
             4096, 4096, 1,
-            true, false
+            true, false,
+            false
         );
         assertTrue("VAO should be supported with ARB_vertex_array_object", caps.isVaoSupported());
         assertFalse("mapBufferRange should not be supported without its extension", caps.isMapBufferRangeSupported());
