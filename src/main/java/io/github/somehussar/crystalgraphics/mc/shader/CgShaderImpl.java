@@ -1,7 +1,7 @@
 package io.github.somehussar.crystalgraphics.mc.shader;
 
-import io.github.somehussar.crystalgraphics.api.CgCapabilities;
 import io.github.somehussar.crystalgraphics.api.shader.*;
+import io.github.somehussar.crystalgraphics.api.vertex.CgVertexFormat;
 import io.github.somehussar.crystalgraphics.gl.CrossApiTransition;
 import io.github.somehussar.crystalgraphics.gl.shader.CgShaderFactory;
 import io.github.somehussar.crystalgraphics.gl.state.CallFamily;
@@ -83,18 +83,16 @@ final class CgShaderImpl implements CgShader {
      * <p>Same path conventions as {@link #vertexPath}.</p>
      */
     private final String fragmentPath;
-    
+
+    /**
+     * Attribute format for the VAO that feeds this shader
+     */
+    private final CgVertexFormat format;
     /**
      * Preprocessor for GLSL sources (header text + #define injection).
      * Applied to loaded sources before compilation.
      */
     private final CgShaderPreprocessor preprocessor;
-    
-    /**
-     * Detected OpenGL capabilities (e.g., OpenGL version, available extensions).
-     * Used to select the appropriate shader backend during compilation.
-     */
-    private final CgCapabilities caps;
 
     /**
      * The underlying compiled OpenGL shader program, or null if not yet compiled
@@ -139,11 +137,11 @@ final class CgShaderImpl implements CgShader {
      */
     private final CgShaderBindings ephemeralBindings = new CgShaderBindingsImpl();
 
-    CgShaderImpl(String vertexPath, String fragmentPath, Map<String, String> defines, CgCapabilities caps) {
+    CgShaderImpl(String vertexPath, String fragmentPath, CgVertexFormat format, Map<String, String> defines) {
         this.vertexPath = Objects.requireNonNull(vertexPath, "vertexPath must not be null");
         this.fragmentPath = Objects.requireNonNull(fragmentPath, "fragmentPath must not be null");
+        this.format = format;
         this.preprocessor = new CgShaderPreprocessor(defines);
-        this.caps = caps;
         this.cacheKey = new CgShaderCacheKey(vertexPath, fragmentPath, defines);
         this.program = null;
         this.compiled = false;
@@ -316,7 +314,7 @@ final class CgShaderImpl implements CgShader {
 
         CgShaderProgram newProgram;
         try {
-            newProgram = CgShaderFactory.compile(caps, vertex, fragment);
+            newProgram = CgShaderFactory.compile(vertex, fragment, format);
         } catch (Exception e) {
             LOGGER.error("Failed to compile shader {}", cacheKey, e);
             clearProgram();
