@@ -539,6 +539,34 @@ testImplementation("junit:junit:4.13.2")
 
 ---
 
+## Code Style: Lombok
+
+**Rule: Prioritize Lombok annotations to eliminate handwritten getter/setter boilerplate in all new code.**
+Lombok generates Java 8-compatible bytecode. All annotations listed above work correctly with Java 8 and LWJGL 2.9.3. No runtime dependency is added — Lombok is `compileOnly`.
+
+### When to Use Each Annotation
+
+| Annotation | Use When |
+|---|---|
+| `@Data` | Simple POJOs / value objects with all fields participating in equals/hashCode/toString |
+| `@Getter` / `@Setter` | Selective access — when you need getters on all fields but setters on only some, or vice versa |
+| `@RequiredArgsConstructor` | Immutable classes — generates constructor for all `final` fields (pairs well with `@Getter` only) |
+| `@Builder` | Complex object construction with many optional parameters |
+| `@Value` | Fully immutable data carriers (makes class final, all fields private final, no setters) |
+| `@ToString` / `@EqualsAndHashCode` | When you need only one of these without full `@Data` |
+| `@Slf4j` / `@Log` | Logger field generation (prefer `@Slf4j` if SLF4J is available) |
+
+### Guidelines
+
+1. **Prefer `@Data` for simple POJOs** that are pure data holders with no complex logic.
+2. **Use `@Getter` + `@RequiredArgsConstructor` for immutable classes** — avoid `@Data` when you don't want setters.
+3. **Use `@Builder` for classes with 4+ constructor parameters** or when many parameters are optional.
+4. **Apply `@Getter`/`@Setter` at field level** when only specific fields need accessors.
+5. **Do NOT use `@Data` on entities or classes with inheritance** — use explicit `@Getter`/`@Setter`/`@ToString`/`@EqualsAndHashCode` instead to control behavior.
+6. **Always use `@EqualsAndHashCode(callSuper = true)`** on subclasses to avoid subtle bugs.
+
+---
+
 ## What AI Agents Need to Know
 
 ### When Working on This Project
