@@ -111,8 +111,7 @@ Main classes:
 - `CgTextRenderContext`
 - `CgWorldTextRenderContext`
 - `CgTextScaleResolver`, `OrthographicScaleResolver`, `PerspectiveScaleResolver`, `ProjectedSizeEstimator`
-- `CgDrawBatch`, `CgDrawBatchKey`
-- `CgGlyphVbo`
+- `CgDrawBatchKey`
 
 This package answers:
 
@@ -146,8 +145,8 @@ This package answers:
 
 ### 5. Render ownership
 
-- `CgTextRenderer` groups placements into batches
-- `CgGlyphVbo` uploads quads
+- `CgTextRenderer` groups placements into batches and submits quads through `CgQuadBatcher`
+- the batch handles GPU buffer upload via `CgVertexArrayRegistry` / `CgStreamBuffer`
 - shaders sample atlas textures and draw
 
 ---

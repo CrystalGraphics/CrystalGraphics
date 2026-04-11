@@ -36,7 +36,6 @@ import io.github.somehussar.crystalgraphics.text.atlas.CgGlyphAtlas;
  * collected, the renderer iterates batches in order, binding the appropriate
  * shader, texture, and uniforms for each.</p>
  *
- * @see CgDrawBatch
  */
 public final class CgDrawBatchKey implements Comparable<CgDrawBatchKey> {
 

@@ -20,8 +20,6 @@ The core question here is:
 6. `PerspectiveScaleResolver`
 7. `ProjectedSizeEstimator`
 8. `CgDrawBatchKey`
-9. `CgDrawBatch`
-10. `CgGlyphVbo`
 
 ## Class-by-class details
 
@@ -35,12 +33,18 @@ Main responsibilities:
 - resolving effective raster tier for the current draw
 - asking `CgFontRegistry` for glyph placements
 - building paged glyph batches
-- grouping placements into `CgDrawBatch` ranges
-- emitting quads into `CgGlyphVbo`
+- sorting placements by `CgDrawBatchKey`
+- submitting quads through the shared `CgQuadBatcher`
 - resolving shaders from `CgDrawBatchKey`
-- binding textures/uniforms and issuing draw calls
+- setting shader/texture state on the batch (auto-flushes on change)
 
-If you want the string → draw path, this is the file to trace.
+The renderer does **not** own any GL objects (VAOs, VBOs, IBOs). All GPU
+resources are managed through `CgVertexArrayRegistry` and `CgSharedQuadIbo`,
+accessed via the shared `CgQuadBatcher`.
+
+The canonical `CgTextRenderer.create(caps, registry)` no longer creates any backend
+infrastructure (no batch, no VAO, no VBO). It only validates backend availability and
+creates the façade. Batch ownership belongs to the caller / pass / submission scope.
 
 ### `CgTextRenderContext`
 
@@ -104,18 +108,6 @@ Defines when two glyph ranges can share a draw call based on:
 
 It is also the authoritative source of shader selection in the current renderer.
 
-### `CgDrawBatch`
-
-Contiguous VBO range sharing one `CgDrawBatchKey`.
-
-Think of it as one future `glDrawElements` call.
-
-### `CgGlyphVbo`
-
-Owner of the glyph VAO/VBO/IBO setup.
-
-This is the final CPU-side staging point before GL submission.
-
 ### `package-info.java`
 
 Package-level description of render-side responsibilities.
@@ -126,9 +118,15 @@ Package-level description of render-side responsibilities.
 - layout remains in logical space; raster tier is a draw-time physical decision
 - `CgDrawBatchKey` drives shader selection
 - world-text and 2D text share most of the pipeline until raster-tier / projection policy differs
+- the renderer owns NO GL objects — all GPU resources come from the shared batch infrastructure
+- **UI text path**: when a `CgUiTextStageContext` is active (set by `CgUiPass`), `draw()` routes into the pass-owned `CgTextStageCollector` via `submitToTextStageCollector()`. No per-renderer `batch.begin()/end()` on this path.
+- **World-text / standalone path**: the canonical path is the caller-owned batch overload `drawWorld(CgQuadBatcher batch, ...)` which uses `submitSortedQuadsToBatch()`. The no-batch `drawWorld(...)` overload is a convenience/transitional wrapper that constructs a local batcher over the shared global `CgVertexArrayRegistry`.
 
 ## Common agent mistakes to avoid
 
 - Do not reintroduce cache or atlas policy into `CgTextRenderer`.
 - Do not let world-text docs drift away from actual `PerspectiveScaleResolver` behavior.
 - Do not reintroduce raw shader-program plumbing when `CgShader`/bindings already own uniform handling.
+- Do not reintroduce per-renderer VAO/VBO ownership under another name. The shared `CgQuadBatcher` / `CgVertexArrayRegistry` model is authoritative.
+- Do not reintroduce per-renderer `begin()/end()` batch lifecycle on the UI path. Text renderers submit into the pass-owned collector; the pass owns flush timing.
+- Do not require `CgRenderPass` / `CgQuadBatcher` as parameters in public draw overloads. The `CgUiTextStageContext` ThreadLocal handles discovery.
