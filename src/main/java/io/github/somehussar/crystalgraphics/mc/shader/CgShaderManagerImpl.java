@@ -1,9 +1,9 @@
 package io.github.somehussar.crystalgraphics.mc.shader;
 
-import io.github.somehussar.crystalgraphics.api.CgCapabilities;
 import io.github.somehussar.crystalgraphics.api.shader.CgShader;
 import io.github.somehussar.crystalgraphics.api.shader.CgShaderCacheKey;
 import io.github.somehussar.crystalgraphics.api.shader.CgShaderManager;
+import io.github.somehussar.crystalgraphics.api.vertex.CgVertexFormat;
 import net.minecraft.util.ResourceLocation;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -17,7 +17,7 @@ import java.util.Objects;
  * Concrete implementation of {@link CgShaderManager} backed by a
  * {@link CgShaderCacheKey}-keyed map.
  *
- * <p>Each call to {@link #load(String, String, Map)} constructs a cache key
+ * <p>Each call to {@link #load(String, String, CgVertexFormat, Map)} constructs a cache key
  * from the vertex path, fragment path, and preprocessor defines. If the cache
  * already contains an entry for that key, the existing {@link CgShader} is
  * returned. Otherwise, a new {@link CgShaderImpl} is created, stored in the
@@ -50,21 +50,17 @@ public final class CgShaderManagerImpl implements CgShaderManager {
     /** Cache of managed shaders keyed by their deterministic cache key. */
     private final Map<CgShaderCacheKey, CgShader> cache = new HashMap<>();
 
-    /** Detected GL capabilities, passed through to each managed shader. */
-    private final CgCapabilities caps;
-
     /**
      * Creates a new shader manager.
      *
      * @throws NullPointerException if caps is null
      */
     public CgShaderManagerImpl() {
-        this.caps = Objects.requireNonNull(CgCapabilities.detect(), "caps must not be null");
         CgShaderReloadHook.trackManager(this);
     }
 
     @Override
-    public CgShader load(String vertexPath, String fragmentPath, Map<String, String> defines) {
+    public CgShader load(String vertexPath, String fragmentPath, CgVertexFormat format, Map<String, String> defines) {
         Objects.requireNonNull(vertexPath, "vertexPath must not be null");
         Objects.requireNonNull(fragmentPath, "fragmentPath must not be null");
 
@@ -74,7 +70,7 @@ public final class CgShaderManagerImpl implements CgShaderManager {
         CgShader existing = cache.get(key);
         if (existing != null) return existing;
         
-        CgShaderImpl shader = new CgShaderImpl(vertexPath, fragmentPath, safeDefines, caps);
+        CgShaderImpl shader = new CgShaderImpl(vertexPath, fragmentPath, format, safeDefines);
         cache.put(key, shader);
         shader.recompile(); 
         

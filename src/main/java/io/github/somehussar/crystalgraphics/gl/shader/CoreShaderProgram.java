@@ -1,5 +1,6 @@
 package io.github.somehussar.crystalgraphics.gl.shader;
 
+import io.github.somehussar.crystalgraphics.api.vertex.CgVertexFormat;
 import io.github.somehussar.crystalgraphics.gl.state.CallFamily;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -22,13 +23,13 @@ import static io.github.somehussar.crystalgraphics.gl.shader.CgShaderFactory.JOM
  * or higher.</p>
  *
  * <h3>Compilation and Linking</h3>
- * <p>New programs are created via the static {@link #compile(String, String)}
+ * <p>New programs are created via the static {@link #compile(String, String, CgVertexFormat)}
  * factory method, which compiles vertex and fragment shader sources, links
  * them into a program, and detaches the individual shader objects (they are
  * no longer needed after linking).</p>
  *
  * <h3>Ownership</h3>
- * <p>Programs created via {@link #compile(String, String)} are always owned.
+ * <p>Programs created via {@link #compile(String, String, CgVertexFormat)} are always owned.
  * The package-private constructor is available for wrapping externally-created
  * programs.</p>
  *
@@ -54,13 +55,14 @@ public class CoreShaderProgram extends AbstractCgShaderProgram {
     }
 
     /**
-     * Compiles vertex and fragment shaders, links them into a program.
+     * Compiles vertex and fragment shaders, links them into a program from the given vertex format.
      *
      * <p>The compilation/link pipeline is:</p>
      * <ol>
      *   <li>Create and compile the vertex shader</li>
      *   <li>Create and compile the fragment shader</li>
-     *   <li>Create a program, attach both shaders, and link</li>
+     *   <li>Create a program, attach both shaders, bind attribute names 
+     *       from format to sequential indices then link</li>
      *   <li>Delete the individual shader objects (no longer needed)</li>
      * </ol>
      *
@@ -69,11 +71,12 @@ public class CoreShaderProgram extends AbstractCgShaderProgram {
      *
      * @param vertexSource   GLSL vertex shader source code
      * @param fragmentSource GLSL fragment shader source code
+     * @param format attribute format of the VAO that feeds this shader
      * @return a new owned {@code CoreShaderProgram}
      * @throws IllegalStateException if compilation or linking fails, with
      *         the info log in the message
      */
-    public static CoreShaderProgram compile(String vertexSource, String fragmentSource) {
+    public static CoreShaderProgram compile(String vertexSource, String fragmentSource, CgVertexFormat format) {
         int vertId = GL20.glCreateShader(GL20.GL_VERTEX_SHADER);
         GL20.glShaderSource(vertId, vertexSource);
         GL20.glCompileShader(vertId);
@@ -96,6 +99,13 @@ public class CoreShaderProgram extends AbstractCgShaderProgram {
         int progId = GL20.glCreateProgram();
         GL20.glAttachShader(progId, vertId);
         GL20.glAttachShader(progId, fragId);
+
+        // Bind fixed semantic attribute locations before link
+        if (format != null) {
+            for (int i = 0; i < format.getAttributeCount(); i++)
+                GL20.glBindAttribLocation(progId, i, format.getAttribute(i).getName());
+        }
+
         GL20.glLinkProgram(progId);
         if (GL20.glGetProgrami(progId, GL20.GL_LINK_STATUS) != GL11.GL_TRUE) {
             String log = GL20.glGetProgramInfoLog(progId, 4096);

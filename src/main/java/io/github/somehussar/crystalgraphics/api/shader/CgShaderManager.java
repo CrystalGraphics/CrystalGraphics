@@ -1,5 +1,6 @@
 package io.github.somehussar.crystalgraphics.api.shader;
 
+import io.github.somehussar.crystalgraphics.api.vertex.CgVertexFormat;
 import net.minecraft.util.ResourceLocation;
 
 import java.util.Map;
@@ -62,13 +63,13 @@ public interface CgShaderManager {
      * @return a managed shader handle, valid even if compilation failed
      * @throws NullPointerException if either path is null
      */
-    CgShader load(String vertexPath, String fragmentPath, Map<String, String> defines);
+    CgShader load(String vertexPath, String fragmentPath, CgVertexFormat format, Map<String, String> defines);
 
     /**
      * Loads or retrieves a cached managed shader using {@link ResourceLocation}s.
      *
      * <p>Convenience overload that converts each {@link ResourceLocation} to an
-     * asset path string and delegates to {@link #load(String, String, Map)}.</p>
+     * asset path string and delegates to {@link #load(String, String, CgVertexFormat, Map)}.</p>
      *
      * @param vertexLocation   the {@code ResourceLocation} of the vertex shader source
      * @param fragmentLocation the {@code ResourceLocation} of the fragment shader source
@@ -77,14 +78,14 @@ public interface CgShaderManager {
      * @return a managed shader handle, valid even if compilation failed
      * @throws NullPointerException if either location is null
      */
-    default CgShader load(ResourceLocation vertexLocation, ResourceLocation fragmentLocation, Map<String, String> defines){
-        return load(vertexLocation.toString(), fragmentLocation.toString(), defines);
+    default CgShader load(ResourceLocation vertexLocation, ResourceLocation fragmentLocation, CgVertexFormat format, Map<String, String> defines){
+        return load(vertexLocation.toString(), fragmentLocation.toString(), format, defines);
     }
     
     /**
      * Loads or retrieves a cached managed shader without preprocessor defines.
      *
-     * <p>Equivalent to calling {@link #load(ResourceLocation, ResourceLocation, Map)}
+     * <p>Equivalent to calling {@link #load(ResourceLocation, ResourceLocation, CgVertexFormat, Map)}
      * with an empty defines map.</p>
      *
      * @param vertexLocation   the {@code ResourceLocation} of the vertex shader source
@@ -92,14 +93,14 @@ public interface CgShaderManager {
      * @return a managed shader handle, valid even if compilation failed
      * @throws NullPointerException if either location is null
      */
-    default CgShader load(ResourceLocation vertexLocation, ResourceLocation fragmentLocation) {
-        return load(vertexLocation, fragmentLocation, null);
+    default CgShader load(ResourceLocation vertexLocation, ResourceLocation fragmentLocation, CgVertexFormat format) {
+        return load(vertexLocation, fragmentLocation, format, null);
     }
 
     /**
      * Loads or retrieves a cached managed shader without preprocessor defines.
      *
-     * <p>Equivalent to calling {@link #load(ResourceLocation, ResourceLocation, Map)}
+     * <p>Equivalent to calling {@link #load(ResourceLocation, ResourceLocation, CgVertexFormat, Map)}
      * with an empty defines map.</p>
      *
      * @param vertexLocation   the mod asset string location of the vertex shader source
@@ -107,11 +108,33 @@ public interface CgShaderManager {
      * @return a managed shader handle, valid even if compilation failed
      * @throws NullPointerException if either location is null
      */
-    default CgShader load(String vertexLocation, String fragmentLocation) {
-        return load(vertexLocation, fragmentLocation, null);
+    default CgShader load(String vertexLocation, String fragmentLocation, CgVertexFormat format) {
+        return load(vertexLocation, fragmentLocation, format, null);
     }
 
+   /**
+     * Loads or retrieves a cached managed shader without preprocessor defines.
+     *
+     * @param vertexLocation   the {@code ResourceLocation} of the vertex shader source
+     * @param fragmentLocation the {@code ResourceLocation} of the fragment shader source
+     * @return a managed shader handle, valid even if compilation failed
+     * @throws NullPointerException if either location is null
+     */
+    default CgShader load(ResourceLocation vertexLocation, ResourceLocation fragmentLocation) {
+        return load(vertexLocation, fragmentLocation, null, null);
+    }
 
+    /**
+     * Loads or retrieves a cached managed shader without preprocessor defines.
+     *
+     * @param vertexLocation   the mod asset string location of the vertex shader source
+     * @param fragmentLocation the mod asset string location of the fragment shader source
+     * @return a managed shader handle, valid even if compilation failed
+     * @throws NullPointerException if either location is null
+     */
+    default CgShader load(String vertexLocation, String fragmentLocation) {
+        return load(vertexLocation, fragmentLocation, null, null);
+    }
     /**
      * Retrieves a previously loaded managed shader by its cache key.
      *

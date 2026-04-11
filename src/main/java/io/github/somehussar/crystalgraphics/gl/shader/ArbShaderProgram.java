@@ -1,5 +1,6 @@
 package io.github.somehussar.crystalgraphics.gl.shader;
 
+import io.github.somehussar.crystalgraphics.api.vertex.CgVertexFormat;
 import io.github.somehussar.crystalgraphics.gl.state.CallFamily;
 
 import org.apache.logging.log4j.LogManager;
@@ -42,13 +43,13 @@ import static io.github.somehussar.crystalgraphics.gl.shader.CgShaderFactory.JOM
  * </ul>
  *
  * <h3>Compilation and Linking</h3>
- * <p>New programs are created via the static {@link #compile(String, String)}
+ * <p>New programs are created via the static {@link #compile(String, String, CgVertexFormat)}
  * factory method, which compiles vertex and fragment shader sources, links
  * them into a program, and deletes the individual shader objects (they are
  * no longer needed after linking).</p>
  *
  * <h3>Ownership</h3>
- * <p>Programs created via {@link #compile(String, String)} are always owned.
+ * <p>Programs created via {@link #compile(String, String, CgVertexFormat)} are always owned.
  * The package-private constructor is available for wrapping externally-created
  * programs.</p>
  *
@@ -84,7 +85,8 @@ public class ArbShaderProgram extends AbstractCgShaderProgram {
      *   <li>Create and compile the fragment shader via
      *       {@code glCreateShaderObjectARB(GL_FRAGMENT_SHADER_ARB)}</li>
      *   <li>Create a program via {@code glCreateProgramObjectARB()},
-     *       attach both shaders, and link</li>
+     *       attach both shaders, bind attribute names from format
+     *       to sequential indices then link</li>
      *   <li>Delete the individual shader objects (no longer needed)</li>
      * </ol>
      *
@@ -93,11 +95,12 @@ public class ArbShaderProgram extends AbstractCgShaderProgram {
      *
      * @param vertexSource   GLSL vertex shader source code
      * @param fragmentSource GLSL fragment shader source code
+     * @param format attribute format of the VAO that feeds this shader
      * @return a new owned {@code ArbShaderProgram}
      * @throws IllegalStateException if compilation or linking fails, with
      *         the info log in the message
      */
-    public static ArbShaderProgram compile(String vertexSource, String fragmentSource) {
+    public static ArbShaderProgram compile(String vertexSource, String fragmentSource, CgVertexFormat format) {
         int vertId = ARBShaderObjects.glCreateShaderObjectARB(ARBVertexShader.GL_VERTEX_SHADER_ARB);
         ARBShaderObjects.glShaderSourceARB(vertId, vertexSource);
         ARBShaderObjects.glCompileShaderARB(vertId);
@@ -122,6 +125,13 @@ public class ArbShaderProgram extends AbstractCgShaderProgram {
         int progId = ARBShaderObjects.glCreateProgramObjectARB();
         ARBShaderObjects.glAttachObjectARB(progId, vertId);
         ARBShaderObjects.glAttachObjectARB(progId, fragId);
+
+        // Bind fixed semantic attribute locations before link
+        if(format != null) {
+            for (int i = 0; i < format.getAttributeCount(); i++) 
+                ARBVertexShader.glBindAttribLocationARB(progId, i, format.getAttribute(i).getName());
+        }
+
         ARBShaderObjects.glLinkProgramARB(progId);
         if (ARBShaderObjects.glGetObjectParameteriARB(progId,
                 ARBShaderObjects.GL_OBJECT_LINK_STATUS_ARB) != GL11.GL_TRUE) {

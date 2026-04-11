@@ -4,6 +4,7 @@ import io.github.somehussar.crystalgraphics.api.CgCapabilities;
 import io.github.somehussar.crystalgraphics.api.shader.CgShader;
 import io.github.somehussar.crystalgraphics.api.shader.CgShaderManager;
 import io.github.somehussar.crystalgraphics.api.shader.CgShaderProgram;
+import io.github.somehussar.crystalgraphics.api.vertex.CgVertexFormat;
 import io.github.somehussar.crystalgraphics.mc.shader.CgShaderManagerImpl;
 import net.minecraft.util.ResourceLocation;
 import org.lwjgl.BufferUtils;
@@ -49,35 +50,65 @@ public final class CgShaderFactory {
      * <p>The selection waterfall is:</p>
      * <ol>
      *   <li>If {@link CgCapabilities#isCoreShaders()} is {@code true},
-     *       uses {@link CoreShaderProgram#compile(String, String)}.</li>
+     *       uses {@link CoreShaderProgram#compile(String, String, CgVertexFormat)}.</li>
      *   <li>Otherwise, if {@link CgCapabilities#isArbShaders()} is
      *       {@code true}, uses
-     *       {@link ArbShaderProgram#compile(String, String)}.</li>
+     *       {@link ArbShaderProgram#compile(String, String, CgVertexFormat)}.</li>
      *   <li>Otherwise, throws {@link UnsupportedOperationException}.</li>
      * </ol>
      *
-     * @param caps           detected GL capabilities (from
-     *                       {@link CgCapabilities#detect()})
      * @param vertexSource   GLSL vertex shader source code
      * @param fragmentSource GLSL fragment shader source code
+     * @param format attribute format of the VAO that feeds this shader
      * @return a new owned shader program
-     * @throws UnsupportedOperationException if neither GL20 nor ARB shaders
-     *         are available
+     * @throws UnsupportedOperationException if neither GL20 nor ARB shaders are available
      * @throws IllegalStateException if shader compilation or linking fails
      */
-    public static CgShaderProgram compile(CgCapabilities caps, String vertexSource, String fragmentSource) {
-        if (caps.isCoreShaders()) return CoreShaderProgram.compile(vertexSource, fragmentSource);
-        if (caps.isArbShaders()) return ArbShaderProgram.compile(vertexSource, fragmentSource);
+    public static CgShaderProgram compile(String vertexSource, String fragmentSource, CgVertexFormat format) {
+        CgCapabilities caps = CgCapabilities.detect();
+        if (caps.isCoreShaders()) return CoreShaderProgram.compile(vertexSource, fragmentSource, format);
+        if (caps.isArbShaders()) return ArbShaderProgram.compile(vertexSource, fragmentSource, format);
         
         throw new UnsupportedOperationException("No shader support available (GL20 and ARB_shader_objects both absent)");
     }
 
+    /**
+     * Compiles and links a GLSL program using the best available backend.
+     *
+     * <p>The selection waterfall is:</p>
+     * <ol>
+     *   <li>If {@link CgCapabilities#isCoreShaders()} is {@code true},
+     *       uses {@link CoreShaderProgram#compile(String, String, CgVertexFormat)}.</li>
+     *   <li>Otherwise, if {@link CgCapabilities#isArbShaders()} is
+     *       {@code true}, uses
+     *       {@link ArbShaderProgram#compile(String, String, CgVertexFormat)}.</li>
+     *   <li>Otherwise, throws {@link UnsupportedOperationException}.</li>
+     * </ol>
+     *
+     * @param vertexSource   GLSL vertex shader source code
+     * @param fragmentSource GLSL fragment shader source code
+     * @return a new owned shader program
+     * @throws UnsupportedOperationException if neither GL20 nor ARB shaders are available
+     * @throws IllegalStateException if shader compilation or linking fails
+     */
+    public static CgShaderProgram compile(String vertexSource, String fragmentSource) {
+        return compile(vertexSource, fragmentSource, null);
+    }
+
+    public static CgShader load(String vertexLocation, String fragmentLocation, CgVertexFormat format) {
+        return SHADER_MANAGER.load(vertexLocation, fragmentLocation, format);
+    } 
+    
+    public static CgShader load(ResourceLocation vertexLocation, ResourceLocation fragmentLocation, CgVertexFormat format) {
+        return SHADER_MANAGER.load(vertexLocation, fragmentLocation, format);
+    }
+    
     public static CgShader load(String vertexLocation, String fragmentLocation) {
-        return SHADER_MANAGER.load(vertexLocation, fragmentLocation);
+        return load(vertexLocation, fragmentLocation, null);
     } 
     
     public static CgShader load(ResourceLocation vertexLocation, ResourceLocation fragmentLocation) {
-        return SHADER_MANAGER.load(vertexLocation, fragmentLocation);
+        return load(vertexLocation, fragmentLocation, null);
     }
 
     /**
