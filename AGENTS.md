@@ -47,6 +47,27 @@ For any work on the font/text framework, use the new documentation and package-l
 
 Do not rely on older font/text notes outside this set; the current docs above are the intended source of truth.
 
+## VAO/VBO Backend — Start Here
+
+For any work on vertex array objects, vertex buffer streaming, or the shared
+vertex input registry, use the package-local guides first.
+
+### Current package map for VAO/VBO
+
+- `gl/vertex` — VAO wrapper, per-format vertex input bindings, shared registry
+- `gl/buffer` — streaming VBO strategies (sync ring, orphan, subdata), shared quad IBO
+
+### Source package guides
+
+- `src/main/java/io/github/somehussar/crystalgraphics/gl/vertex/AGENTS.md`
+- `src/main/java/io/github/somehussar/crystalgraphics/gl/buffer/AGENTS.md`
+
+### Related API types (in `api/vertex/`)
+
+- `CgVertexFormat` — immutable, hashable vertex format descriptor (the registry key)
+- `CgVertexAttribute` — single attribute within a format (name, type, components, offset)
+- `CgAttribType` — enum of GL primitive types with byte sizes
+
 ## Minecraft Source Code Location
 
 **CRITICAL**: The Minecraft 1.7.10 and Forge source code is decompiled and deobfuscated at:
@@ -201,13 +222,29 @@ These have different method signatures (`glGenFramebuffers()` vs. `glGenFramebuf
 - `ArbShaderProgram`: ARB_shader_objects backend
 - `CgShaderFactory`: Waterfall factory (Core → ARB)
 
-#### 4. Capability Detection (✅ COMPLETE)
+#### 4. VAO/VBO Backend (✅ COMPLETE)
+
+**Vertex Input** (`gl/vertex/`):
+- `CgVertexArray`: VAO wrapper with core GL30 / ARB waterfall
+- `CgVertexArrayBinding`: Pairs one VAO + one stream buffer for a vertex format
+- `CgVertexArrayRegistry`: Singleton cache — one binding per `CgVertexFormat`, lazy-created
+
+**Buffer Streaming** (`gl/buffer/`):
+- `CgStreamBuffer`: Abstract streaming VBO with waterfall factory (`create()`)
+- `MapAndSyncStreamBuffer`: Tier A — 3-slot ring buffer with `ARB_sync` fences
+- `MapAndOrphanStreamBuffer`: Tier B — orphan via `glMapBufferRange`
+- `SubDataStreamBuffer`: Tier C — CPU staging + `glBufferSubData` (GL 1.5 baseline)
+- `CgQuadIndexBuffer`: Shared quad IBO, `GL_UNSIGNED_SHORT`, max 16384 quads
+
+**Streaming Strategy Waterfall**: `CgCapabilities.isArbSync()` → sync ring; `isMapBufferRangeSupported()` → orphan; else → subdata.
+
+#### 5. Capability Detection (✅ COMPLETE)
 
 - `CgCapabilities.detect()`: Queries LWJGL ContextCapabilities
 - Waterfall selection: Core GL30 > ARB > EXT
 - Reports: maxDrawBuffers, maxTextureUnits, stencil/depth support
 
-#### 5. Integration & Testing (✅ COMPLETE)
+#### 6. Integration & Testing (✅ COMPLETE)
 
 **Integration Test Mod** (`mc/integration/`):
 - `CrystalGraphicsIntegrationTest`: Dev-only Forge mod that verifies redirect layer
@@ -328,6 +365,16 @@ io.github.somehussar.crystalgraphics/
 │   └── CgCapabilities.java        # Capability detection
 ├── gl/                            # OpenGL backends + state logic
 │   ├── CrossApiTransition.java    # Safe family-switching
+│   ├── buffer/                    # VBO streaming strategies + shared quad IBO
+│   │   ├── CgStreamBuffer.java            # Abstract base + waterfall factory
+│   │   ├── MapAndSyncStreamBuffer.java    # Tier A: 3-slot ring + GL fence sync
+│   │   ├── MapAndOrphanStreamBuffer.java  # Tier B: orphan via glMapBufferRange
+│   │   ├── SubDataStreamBuffer.java       # Tier C: CPU staging + glBufferSubData
+│   │   └── CgQuadIndexBuffer.java         # Shared quad IBO (GL_UNSIGNED_SHORT)
+│   ├── vertex/                    # VAO wrapper + shared vertex input bindings
+│   │   ├── CgVertexArray.java             # VAO create/bind/configure (core/ARB)
+│   │   ├── CgVertexArrayBinding.java      # Pairs VAO + stream buffer per format
+│   │   └── CgVertexArrayRegistry.java     # Singleton: format → binding cache
 │   ├── framebuffer/               # FBO implementations
 │   │   ├── AbstractCgFramebuffer.java
 │   │   ├── CoreFramebuffer.java

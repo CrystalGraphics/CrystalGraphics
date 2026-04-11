@@ -1,5 +1,7 @@
 package io.github.somehussar.crystalgraphics.gl.state;
 
+import lombok.Getter;
+
 import java.util.Arrays;
 
 /**
@@ -59,24 +61,22 @@ public final class CgStateSnapshot {
      */
     private final int[] boundTextures2D;
 
-    /**
-     * Package-private constructor.
-     *
-     * <p>Used by {@link CgStateBoundary} to construct snapshots either from the
-     * {@link GLStateMirror} or from boundary-time GL queries ({@code glGet*})
-     * when the mirror cannot be trusted.</p>
-     *
-     * @param drawFboId        the draw FBO ID
-     * @param readFboId        the read FBO ID
-     * @param fboFamily        the call family for the FBO binding
-     * @param programId        the shader program ID
-     * @param programFamily    the call family for the program binding
-     * @param activeTextureUnit the active texture unit index
-     * @param boundTextures2D  the per-unit 2D texture bindings (defensively copied)
-     */
+    /** The bound VAO ID at capture time. */
+    @Getter
+    private final int vaoId;
+
+    /** The bound GL_ARRAY_BUFFER ID at capture time. */
+    @Getter
+    private final int arrayBufferId;
+
+    /** The bound GL_ELEMENT_ARRAY_BUFFER ID at capture time. */
+    @Getter
+    private final int elementArrayBufferId;
+
     CgStateSnapshot(int drawFboId, int readFboId, CallFamily fboFamily,
                     int programId, CallFamily programFamily,
-                    int activeTextureUnit, int[] boundTextures2D) {
+                    int activeTextureUnit, int[] boundTextures2D,
+                    int vaoId, int arrayBufferId, int elementArrayBufferId) {
         this.drawFboId = drawFboId;
         this.readFboId = readFboId;
         this.fboFamily = fboFamily;
@@ -84,6 +84,9 @@ public final class CgStateSnapshot {
         this.programFamily = programFamily;
         this.activeTextureUnit = activeTextureUnit;
         this.boundTextures2D = Arrays.copyOf(boundTextures2D, boundTextures2D.length);
+        this.vaoId = vaoId;
+        this.arrayBufferId = arrayBufferId;
+        this.elementArrayBufferId = elementArrayBufferId;
     }
 
     /**
@@ -107,7 +110,10 @@ public final class CgStateSnapshot {
             GLStateMirror.getProgramId(),
             GLStateMirror.getCurrentProgramFamily(),
             GLStateMirror.getActiveTextureUnit(),
-            textures
+            textures,
+            GLStateMirror.getCurrentVaoId(),
+            GLStateMirror.getCurrentArrayBufferId(),
+            GLStateMirror.getCurrentElementArrayBufferId()
         );
     }
 
