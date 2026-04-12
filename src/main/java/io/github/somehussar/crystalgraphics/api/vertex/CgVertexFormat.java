@@ -42,9 +42,20 @@ public final class CgVertexFormat {
      * Matches the legacy CgGlyphVbo layout (same stride=20, same offsets).
      */
     public static final CgVertexFormat POS2_UV2_COL4UB = builder("pos2_uv2_col4ub")
-            .add("a_pos", 2, CgAttribType.FLOAT)
-            .add("a_uv", 2, CgAttribType.FLOAT)
-            .add("a_color", 4, CgAttribType.UNSIGNED_BYTE, true)
+            .add(CgVertexSemantic.POSITION, "a_pos"  , 2, CgAttribType.FLOAT)
+            .add(CgVertexSemantic.UV      , "a_uv"   , 2, CgAttribType.FLOAT)
+            .add(CgVertexSemantic.COLOR   , "a_color", 4, CgAttribType.UNSIGNED_BYTE, true)
+            .build();
+
+    /**
+     * 3D textured quad with color: pos3f + uv2f + color4ub = 24 bytes.
+     * Used for world-space overlays, 3D UI panels, and any geometry that
+     * requires a Z coordinate.
+     */
+    public static final CgVertexFormat POS3_UV2_COL4UB = builder("pos3_uv2_col4ub")
+            .add(CgVertexSemantic.POSITION, "a_pos"  , 3, CgAttribType.FLOAT)
+            .add(CgVertexSemantic.UV      , "a_uv"   , 2, CgAttribType.FLOAT)
+            .add(CgVertexSemantic.COLOR   , "a_color", 4, CgAttribType.UNSIGNED_BYTE, true)
             .build();
 
     private CgVertexFormat(CgVertexAttribute[] attributes, int stride, String debugName) {
@@ -131,6 +142,42 @@ public final class CgVertexFormat {
          */
         public Builder add(String name, int components, CgAttribType type) {
             attrs.add(new CgVertexAttribute(name, components, type, false, currentOffset));
+            currentOffset += components * type.getByteSize();
+            return this;
+        }
+
+        /**
+         * Adds a semantic-aware vertex attribute with semantic index 0.
+         */
+        public Builder add(CgVertexSemantic semantic, String name, int components, CgAttribType type, boolean normalized) {
+            return add(semantic, 0, name, components, type, normalized);
+        }
+
+        /**
+         * Adds a semantic-aware vertex attribute with default normalization (false)
+         * and semantic index 0.
+         */
+        public Builder add(CgVertexSemantic semantic, String name, int components, CgAttribType type) {
+            return add(semantic, 0, name, components, type, false);
+        }
+
+        /**
+         * Adds a semantic-aware vertex attribute with explicit semantic index.
+         *
+         * <p>Use this overload for multi-texture formats (e.g. UV0 diffuse + UV1 lightmap)
+         * or secondary color channels (COLOR1 tint).</p>
+         *
+         * @param semantic       the attribute's semantic role
+         * @param semanticIndex  0-based index distinguishing same-semantic attributes
+         * @param name           shader attribute name (e.g. "a_uv1")
+         * @param components     number of components (1-4)
+         * @param type           primitive data type
+         * @param normalized     whether values are normalized
+         */
+        public Builder add(CgVertexSemantic semantic, int semanticIndex, String name, int components,
+                           CgAttribType type, boolean normalized) {
+            attrs.add(new CgVertexAttribute(name, components, type, normalized, currentOffset,
+                    semantic, semanticIndex));
             currentOffset += components * type.getByteSize();
             return this;
         }
