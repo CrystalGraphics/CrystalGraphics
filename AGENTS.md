@@ -65,8 +65,40 @@ vertex input registry, use the package-local guides first.
 ### Related API types (in `api/vertex/`)
 
 - `CgVertexFormat` — immutable, hashable vertex format descriptor (the registry key)
-- `CgVertexAttribute` — single attribute within a format (name, type, components, offset)
+- `CgVertexAttribute` — single attribute within a format (name, type, components, offset, semantic metadata)
+- `CgVertexSemantic` — enum of attribute roles (POSITION, UV, COLOR, NORMAL, GENERIC)
 - `CgAttribType` — enum of GL primitive types with byte sizes
+- `CgTextureBinding` — lightweight (target, textureId) value type for texture identity
+
+## Batch Render Layer System — Start Here
+
+For any work on the batched layer rendering, render state system, CPU staging,
+or buffer source assembly, use the package-local guides first.
+
+### Current package map for batch rendering
+
+- `api/state` — immutable render state descriptors (depth, cull, texture policy, composite render state)
+- `gl/render` — render layer interface, fixed/dynamic layers, batch renderer, buffer source
+- `gl/buffer/staging` — CPU-side staging buffer and format-aware vertex writer
+- `gl/text` — text layer factory (`CgTextLayers`) for MSDF/bitmap text layers
+
+### Source package guides
+
+- `src/main/java/io/github/somehussar/crystalgraphics/api/state/AGENTS.md`
+- `src/main/java/io/github/somehussar/crystalgraphics/gl/render/AGENTS.md`
+- `src/main/java/io/github/somehussar/crystalgraphics/gl/buffer/staging/AGENTS.md`
+
+### Key architectural invariants
+
+- **Layers own state, renderer owns upload** — `CgBatchRenderer.flush()` never
+  touches GL state beyond VBO/VAO/IBO. Shader, texture, blend, depth, and cull
+  are the layer's responsibility via `CgRenderState.apply()/clear()`.
+- **Shared VBO/VAO ownership** stays with `CgVertexArrayRegistry`/`CgVertexArrayBinding`.
+  The batch renderer borrows, never creates or deletes, shared GPU resources.
+- **CgBufferSource is per-context owned** — not a singleton. Each render context
+  (UI, world overlay) creates and owns its own buffer source.
+- **CgTextureBinding vs CgTextureState** — `CgTextureBinding` is a raw value (target + id);
+  `CgTextureState` is the policy layer (unit, sampler, fixed/dynamic/none). They compose.
 
 ## Minecraft Source Code Location
 
