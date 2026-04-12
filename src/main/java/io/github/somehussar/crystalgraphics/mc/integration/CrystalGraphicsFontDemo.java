@@ -11,6 +11,9 @@ import io.github.somehussar.crystalgraphics.api.font.CgFontStyle;
 import io.github.somehussar.crystalgraphics.api.font.CgTextLayoutBuilder;
 import io.github.somehussar.crystalgraphics.api.shader.CgShader;
 import io.github.somehussar.crystalgraphics.api.shader.CgShaderScope;
+import io.github.somehussar.crystalgraphics.gl.render.CgBufferSource;
+import io.github.somehussar.crystalgraphics.gl.render.CgDynamicTextureRenderLayer;
+import io.github.somehussar.crystalgraphics.text.render.CgTextLayers;
 import io.github.somehussar.crystalgraphics.text.cache.CgFontRegistry;
 import io.github.somehussar.crystalgraphics.text.atlas.CgGlyphAtlas;
 import io.github.somehussar.crystalgraphics.text.render.CgTextRenderContext;
@@ -22,6 +25,7 @@ import net.minecraftforge.client.event.RenderGameOverlayEvent;
 import net.minecraftforge.common.MinecraftForge;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.joml.Matrix4f;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.input.Mouse;
 import org.lwjgl.opengl.*;
@@ -47,6 +51,10 @@ public class CrystalGraphicsFontDemo {
     private CgTextRenderContext demoRenderContext;
     private int lastDisplayWidth;
     private int lastDisplayHeight;
+
+    // Layer-based text rendering infrastructure
+    private CgBufferSource demoBufferSource;
+    private final Matrix4f demoProjection = new Matrix4f();
 
     // ── Diagnostic: atlas viewer ──────────────────────────────────────
     private CgShader diagAtlasShader;
@@ -95,8 +103,6 @@ public class CrystalGraphicsFontDemo {
         try {
             ensureDemoFontSystem();
             ScaledResolution resolution = event.resolution;
-            int scaledW = resolution.getScaledWidth();
-            int scaledH = resolution.getScaledHeight();
 
             // Projection must match Minecraft's overlay coordinate space:
             // setupOverlayRendering() uses glOrtho(0, scaledWidth, scaledHeight, 0, ...)
@@ -113,15 +119,25 @@ public class CrystalGraphicsFontDemo {
                 lastDisplayHeight = mc.displayHeight;
             }
 
+            // Build the ortho projection matching Minecraft's overlay coordinate space:
+            // glOrtho(0, scaledWidth, scaledHeight, 0, ...) → [0, scaledW] × [0, scaledH]
+            // The text renderer's shaders use this projection via the render context,
+            // but CgBufferSource.begin() also takes a projection for layer state apply.
+            demoProjection.identity().ortho(0, mc.displayWidth, mc.displayHeight, 0, -1, 1);
+
+            CgDynamicTextureRenderLayer textLayer = demoBufferSource.get(CgTextLayers.MSDF);
+            demoBufferSource.begin(demoProjection);
+
             PoseStack poseStack = new PoseStack();
             poseStack.scale(demoPoseScale, demoPoseScale, 1.0f);
-            float logicalViewportWidth = (float) mc.displayWidth/demoPoseScale;
+            float logicalViewportWidth = (float) mc.displayWidth / demoPoseScale;
             demoRenderContext.clearHistory();
 
             // 2D UI text: logical spacing is stable; PoseStack scale only
             // increases the effective raster size (sharper glyphs) without
             // changing layout metrics.
             demoTextRenderer.draw(
+                    textLayer,
                     demoLayoutBuilder.layout(DEMO_TEXT + " [base " + demoFontSize + "px, pose " + String.format("%.1f", demoPoseScale) + "x]", demoFont, logicalViewportWidth, 0),
                     demoFont,
                     20.0f,
@@ -136,6 +152,7 @@ public class CrystalGraphicsFontDemo {
             float topLabelWrapWidth = (float) mc.displayWidth;
             PoseStack identityPose = new PoseStack();
             demoTextRenderer.draw(
+                    textLayer,
                     demoLayoutBuilder.layout(DEMO_TEXT_2D_LABEL, demoFont, topLabelWrapWidth, 0),
                     demoFont,
                     20.0f,
@@ -145,6 +162,8 @@ public class CrystalGraphicsFontDemo {
                     demoRenderContext,
                     identityPose);
             
+            demoBufferSource.end();
+
             if (true) 
                 drawDiagAtlas(resolution.getScaledWidth(), resolution.getScaledHeight());
         } catch (Exception e) {
@@ -166,6 +185,11 @@ public class CrystalGraphicsFontDemo {
         }
         if (demoTextRenderer == null || demoTextRenderer.isDeleted()) {
             demoTextRenderer = CgTextRenderer.create(CgCapabilities.detect(), demoFontRegistry);
+        }
+        if (demoBufferSource == null) {
+            demoBufferSource = CgBufferSource.builder()
+                    .layer(CgTextLayers.MSDF, CgTextLayers.msdf(CgTextRenderer.MSDF_SHADER))
+                    .build();
         }
     }
 
@@ -322,10 +346,10 @@ public class CrystalGraphicsFontDemo {
         float ty = -(top + bottom) / (top - bottom);
         float tz = -(far + near) / (far - near);
 
-        buffer.put(sx).put(0.0f).put(0.0f).put(0.0f);  // col 0
-        buffer.put(0.0f).put(sy).put(0.0f).put(0.0f);  // col 1
-        buffer.put(0.0f).put(0.0f).put(sz).put(0.0f);  // col 2
-        buffer.put(tx).put(ty).put(tz).put(1.0f);       // col 3
+        buffer.put(sx).put(0.0f).put(0.0f).put(0.0f);
+        buffer.put(0.0f).put(sy).put(0.0f).put(0.0f);
+        buffer.put(0.0f).put(0.0f).put(sz).put(0.0f);
+        buffer.put(tx).put(ty).put(tz).put(1.0f);
         buffer.flip();
     }
 }

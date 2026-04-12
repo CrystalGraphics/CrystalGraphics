@@ -8,9 +8,8 @@ The layer-based batch rendering system for CrystalGraphics. This package owns
 the render layer abstraction, the CPU→GPU batch pump, and the buffer source
 that orchestrates ordered layer flushing.
 
-This is the new batching architecture (Phases 3–5 of the Mk.III plan). It
-replaces the old pass-owned batch model for UI and text rendering while
-coexisting with the legacy `CgQuadBatcher` during the transition period.
+This is the batching architecture (Phases 3–5 of the Mk.III plan). It is the
+sole batch submission path for UI and text rendering.
 
 ## Ownership Model
 
@@ -48,13 +47,6 @@ CgBatchRenderer (CPU→GPU pump)
 └── delete(): no-op (CPU staging only; shared GPU resources owned by registry)
 ```
 
-## Legacy Types (Transitional)
-
-| Type | Status | Notes |
-|------|--------|-------|
-| `CgQuadBatcher` | Transitional | Old batch model; used by `CgTextRenderer` pre-migration. Owns shader/texture binding (unlike new layers). |
-| `CgBufferVertexConsumer` | Transitional | Old vertex consumer for `CgQuadBatcher`. Will be retired after text migration. |
-
 ## Ownership Boundaries (Critical)
 
 - **Shared VBO/VAO**: Owned by `CgVertexArrayRegistry` / `CgVertexArrayBinding` in `gl/vertex/`.
@@ -87,8 +79,6 @@ Multiple buffer sources can coexist. Each owns its layers independently.
 | `CgDynamicTextureRenderLayer.java` | Dynamic-texture layer: auto-flush on texture change |
 | `CgBatchRenderer.java` | CPU→GPU pump: staging → VBO upload → draw. State-blind. |
 | `CgBufferSource.java` | Ordered layer collection with dirty-aware flush |
-| `CgBufferVertexConsumer.java` | (Legacy) float[] vertex consumer for CgQuadBatcher |
-| `CgQuadBatcher.java` | (Legacy) transitional batch model |
 
 ## Key Design Decisions
 

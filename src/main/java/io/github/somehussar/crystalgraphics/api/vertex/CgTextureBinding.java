@@ -18,9 +18,9 @@ import org.lwjgl.opengl.GL11;
  * the texture. The two types compose — they do not duplicate each other.</p>
  *
  * <h3>Package placement note</h3>
- * <p>This class lives in {@code api/vertex/} for historical reasons (the legacy
- * {@code CgQuadBatcher} references it). It is not semantically a vertex concept.
- * A future cleanup may relocate it to {@code api/} or a dedicated package.</p>
+ * <p>This class lives in {@code api/vertex/} for historical reasons. It is not
+ * semantically a vertex concept. A future cleanup may relocate it to {@code api/}
+ * or a dedicated package.</p>
  */
 public final class CgTextureBinding {
 
