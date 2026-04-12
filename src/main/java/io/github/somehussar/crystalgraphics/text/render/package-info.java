@@ -6,7 +6,7 @@
  * through to the final {@code glDrawElements} calls. Residents:</p>
  * <ul>
  *   <li>{@link io.github.somehussar.crystalgraphics.text.render.CgTextRenderer} —
- *       top-level render façade (layout → placements → sort → batch → draw)</li>
+ *       top-level render façade (layout → placements → sort → layer submit → draw)</li>
  *   <li>{@link io.github.somehussar.crystalgraphics.text.render.CgTextRenderContext} /
  *       {@link io.github.somehussar.crystalgraphics.text.render.CgWorldTextRenderContext} —
  *       projection and scale-resolver state</li>
@@ -19,13 +19,15 @@
  * </ul>
  *
  * <h3>Batch Infrastructure</h3>
- * <p>The renderer submits quads through the shared
- * {@link io.github.somehussar.crystalgraphics.gl.batch.CgQuadBatcher} infrastructure.
- * The batch handles GPU buffer management, VAO/VBO ownership, and automatic
- * flushing on shader/texture state changes. No per-renderer GL object ownership
- * exists in this package — all GPU resources are managed by
- * {@link io.github.somehussar.crystalgraphics.gl.vertex.CgVertexArrayRegistry} and
- * {@link io.github.somehussar.crystalgraphics.gl.buffer.CgQuadIndexBuffer}.</p>
+ * <p>All text submission goes through
+ * {@link io.github.somehussar.crystalgraphics.gl.render.CgDynamicTextureRenderLayer}
+ * from the batching/layer architecture. GL state management is delegated to
+ * the layer's {@code CgRenderState}. Text layer factories are provided by
+ * {@link io.github.somehussar.crystalgraphics.text.render.CgTextLayers}.</p>
+ *
+ * <p>No per-renderer GL object ownership exists in this package — all GPU resources
+ * are managed by {@link io.github.somehussar.crystalgraphics.gl.vertex.CgVertexArrayRegistry}
+ * and {@link io.github.somehussar.crystalgraphics.gl.buffer.CgQuadIndexBuffer}.</p>
  *
  * <h3>Boundary with cache/generation</h3>
  * <p>The renderer calls into

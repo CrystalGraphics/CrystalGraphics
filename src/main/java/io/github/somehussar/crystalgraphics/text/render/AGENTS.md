@@ -34,17 +34,22 @@ Main responsibilities:
 - asking `CgFontRegistry` for glyph placements
 - building paged glyph batches
 - sorting placements by `CgDrawBatchKey`
-- submitting quads through the shared `CgQuadBatcher`
+- submitting quads through `CgDynamicTextureRenderLayer`
 - resolving shaders from `CgDrawBatchKey`
-- setting shader/texture state on the batch (auto-flushes on change)
+- swapping layer render state and texture on batch-key transitions
 
 The renderer does **not** own any GL objects (VAOs, VBOs, IBOs). All GPU
-resources are managed through `CgVertexArrayRegistry` and `CgSharedQuadIbo`,
-accessed via the shared `CgQuadBatcher`.
+resources are managed through `CgVertexArrayRegistry` and `CgQuadIndexBuffer`,
+accessed via the layer's `CgBatchRenderer`.
 
-The canonical `CgTextRenderer.create(caps, registry)` no longer creates any backend
+The canonical `CgTextRenderer.create(caps, registry)` does not create any backend
 infrastructure (no batch, no VAO, no VBO). It only validates backend availability and
-creates the façade. Batch ownership belongs to the caller / pass / submission scope.
+creates the façade. Layer/buffer-source ownership belongs to the caller.
+
+All `draw()` and `drawWorld()` methods require a caller-provided
+`CgDynamicTextureRenderLayer`. The layer is expected to already be in the
+"begun" state (managed by the owning `CgBufferSource`). Text layer factories
+live in `gl/text/CgTextLayers`.
 
 ### `CgTextRenderContext`
 
@@ -118,15 +123,17 @@ Package-level description of render-side responsibilities.
 - layout remains in logical space; raster tier is a draw-time physical decision
 - `CgDrawBatchKey` drives shader selection
 - world-text and 2D text share most of the pipeline until raster-tier / projection policy differs
-- the renderer owns NO GL objects — all GPU resources come from the shared batch infrastructure
-- **UI text path**: when a `CgUiTextStageContext` is active (set by `CgUiPass`), `draw()` routes into the pass-owned `CgTextStageCollector` via `submitToTextStageCollector()`. No per-renderer `batch.begin()/end()` on this path.
-- **World-text / standalone path**: the canonical path is the caller-owned batch overload `drawWorld(CgQuadBatcher batch, ...)` which uses `submitSortedQuadsToBatch()`. The no-batch `drawWorld(...)` overload is a convenience/transitional wrapper that constructs a local batcher over the shared global `CgVertexArrayRegistry`.
+- the renderer owns NO GL objects — all GPU resources come from the shared layer/batch infrastructure
+- all `draw()` and `drawWorld()` overloads require a `CgDynamicTextureRenderLayer` — there is no self-contained draw path
+- GL state is managed by the layer's `CgRenderState`, not by the renderer
+- the layer is expected to already be "begun" (managed by the owning `CgBufferSource`)
+- text layer factories live in `gl/text/CgTextLayers`
 
 ## Common agent mistakes to avoid
 
 - Do not reintroduce cache or atlas policy into `CgTextRenderer`.
 - Do not let world-text docs drift away from actual `PerspectiveScaleResolver` behavior.
 - Do not reintroduce raw shader-program plumbing when `CgShader`/bindings already own uniform handling.
-- Do not reintroduce per-renderer VAO/VBO ownership under another name. The shared `CgQuadBatcher` / `CgVertexArrayRegistry` model is authoritative.
-- Do not reintroduce per-renderer `begin()/end()` batch lifecycle on the UI path. Text renderers submit into the pass-owned collector; the pass owns flush timing.
-- Do not require `CgRenderPass` / `CgQuadBatcher` as parameters in public draw overloads. The `CgUiTextStageContext` ThreadLocal handles discovery.
+- Do not reintroduce per-renderer VAO/VBO ownership under another name. The shared `CgVertexArrayRegistry` model is authoritative.
+- Do not reintroduce per-renderer `begin()/end()` batch lifecycle on the layer path. The owning `CgBufferSource` manages layer lifecycle.
+- Do not reintroduce a self-contained draw path that secretly constructs a batcher or layer. All draw paths require a caller-provided layer.
