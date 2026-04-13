@@ -26,4 +26,5 @@ rootProject.name = "CrystalGraphics"
 include("freetype-msdfgen-harfbuzz-bindings")
 
 // Standalone GL debug harness (no Minecraft/Forge)
-include("gl-debug-harness")
+if (file("gl-debug-harness").exists())
+    include(":gl-debug-harness")

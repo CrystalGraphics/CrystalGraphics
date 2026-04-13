@@ -2,8 +2,3 @@
 	path = freetype-msdfgen-harfbuzz-bindings
 	url = https://github.com/CrystalGraphics/Font-Bindings.git
 	branch = master
-
-[submodule "gl-debug-harness"]
-	path = gl-debug-harness
-	url = https://github.com/CrystalGraphics/gl-debug-harness.git
-    branch = master
