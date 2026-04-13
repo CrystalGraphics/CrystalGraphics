@@ -453,8 +453,8 @@ public class CgTextRenderer {
      * GL state is managed by the layer's render state, not by this method.</p>
      */
     private void drawInternalLayer(CgDynamicTextureRenderLayer textLayer, CgTextLayout layout, CgFontFamily family,
-                                   float x, float y, int rgba, long frame, CgTextRenderContext context,
-                                   PoseStack.Pose pose, CgTextScaleResolver scaleResolver) {
+                                    float x, float y, int rgba, long frame, CgTextRenderContext context,
+                                    PoseStack.Pose pose, CgTextScaleResolver scaleResolver) {
         CgFontKey fontKey = family.getPrimarySource().getKey();
         CgFontMetrics metrics = layout.getMetrics();
 
@@ -470,6 +470,68 @@ public class CgTextRenderer {
 
         submitSortedQuadsToLayer(textLayer, glyphBatch.placements, glyphBatch.glyphX, glyphBatch.glyphY, rgba,
                 fontKey.getTargetPx(), effectiveTargetPx, context, pose.pose());
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+    //  INTERNAL TARGET-BASED PIPELINE (V3.1 draw-list support)
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Target-based renderer core for the V3.1 draw-list path.
+     *
+     * <p>Same glyph resolution and batch building as the layer path, but emits
+     * quads through a generic {@link CgTextEmissionTarget} instead of a layer.
+     * This enables the text renderer to record into the UI draw list without
+     * knowing about draw-list internals.</p>
+     *
+     * <p>The existing layer-based public {@code draw()} and {@code drawWorld()}
+     * overloads remain unchanged for non-UI text users.</p>
+     */
+    public void drawInternalTarget(CgTextEmissionTarget target, CgTextLayout layout, CgFontFamily family,
+                                   float x, float y, int rgba, long frame, CgTextRenderContext context,
+                                   PoseStack pose) {
+        if (target == null) throw new IllegalArgumentException("target must not be null");
+        if (family == null) throw new IllegalArgumentException("family must not be null");
+        if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
+        if (layout == null || layout.getLines().isEmpty()) return;
+
+        CgFontKey fontKey = family.getPrimarySource().getKey();
+        CgFontMetrics metrics = layout.getMetrics();
+        PoseStack.Pose poseTop = pose.last();
+
+        int previousEffectiveTargetPx = context.getPreviousEffectiveTargetPx(fontKey);
+        CgTextScaleResolver scaleResolver = context.getScaleResolver();
+        int effectiveTargetPx = scaleResolver.resolveEffectiveTargetPx(fontKey.getTargetPx(), poseTop, previousEffectiveTargetPx);
+        context.setPreviousEffectiveTargetPx(fontKey, effectiveTargetPx);
+
+        boolean previousMsdf = previousEffectiveTargetPx > 0 ? context.wasMsdf(fontKey) : effectiveTargetPx >= 32;
+        boolean wantMsdf = scaleResolver.shouldUseMsdf(effectiveTargetPx, previousMsdf);
+        context.setWasMsdf(fontKey, wantMsdf);
+
+        PagedGlyphBatch glyphBatch = buildPagedGlyphBatch(layout, family, x, y, frame, context, fontKey, effectiveTargetPx, wantMsdf, metrics);
+
+        submitSortedQuadsToTarget(target, glyphBatch.placements, glyphBatch.glyphX, glyphBatch.glyphY, rgba,
+                fontKey.getTargetPx(), effectiveTargetPx, context, poseTop.pose());
+    }
+
+    /**
+     * Convenience overload using a single font.
+     */
+    public void drawInternalTarget(CgTextEmissionTarget target, CgTextLayout layout, CgFont font,
+                                   float x, float y, int rgba, long frame, CgTextRenderContext context,
+                                   PoseStack pose) {
+        if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
+        if (layout == null || layout.getLines().isEmpty()) return;
+        drawInternalTarget(target, layout, CgFontFamily.of(font), x, y, rgba, frame, context, pose);
+    }
+
+    /**
+     * Convenience overload from string.
+     */
+    public void drawInternalTarget(CgTextEmissionTarget target, String text, CgFontFamily family,
+                                   float x, float y, int rgba, long frame, CgTextRenderContext context,
+                                   PoseStack pose) {
+        drawInternalTarget(target, layout(text, family, CgTextConstraints.UNBOUNDED), family, x, y, rgba, frame, context, pose);
     }
 
     /**
@@ -623,6 +685,107 @@ public class CgTextRenderer {
         vc.vertex(qx + logicalWidth, qy).uv(u1, v0).color(r, g, b, a).endVertex();
         vc.vertex(qx + logicalWidth, qy + logicalHeight).uv(u1, v1).color(r, g, b, a).endVertex();
         vc.vertex(qx, qy + logicalHeight).uv(u0, v1).color(r, g, b, a).endVertex();
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+    //  TARGET-BASED QUAD EMISSION (V3.1)
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Sorts glyph placements by GL state and submits them through a generic
+     * {@link CgTextEmissionTarget}. Same batch-key sorting as the layer path.
+     */
+    void submitSortedQuadsToTarget(CgTextEmissionTarget target, CgGlyphPlacement[] placements,
+                                   float[] glyphX, float[] glyphY, int rgba,
+                                   int baseTargetPx, int effectiveTargetPx,
+                                   CgTextRenderContext context, Matrix4f modelView) {
+        int visibleCount = 0;
+        for (int i = 0; i < placements.length; i++) {
+            if (placements[i] != null && placements[i].hasGeometry())
+                visibleCount++;
+        }
+        if (visibleCount == 0) return;
+
+        int[] sortedIndices = new int[visibleCount];
+        CgDrawBatchKey[] batchKeys = new CgDrawBatchKey[visibleCount];
+        int si = 0;
+        for (int i = 0; i < placements.length; i++) {
+            CgGlyphPlacement p = placements[i];
+            if (p != null && p.hasGeometry()) {
+                sortedIndices[si] = i;
+                batchKeys[si] = new CgDrawBatchKey(
+                        p.getAtlasType(), p.getPageTextureId(), p.getPxRange());
+                si++;
+            }
+        }
+
+        // Insertion sort by batch key (same as layer path)
+        for (int i = 1; i < visibleCount; i++) {
+            CgDrawBatchKey keyI = batchKeys[i];
+            int idxI = sortedIndices[i];
+            int j = i - 1;
+            while (j >= 0 && batchKeys[j].compareTo(keyI) > 0) {
+                batchKeys[j + 1] = batchKeys[j];
+                sortedIndices[j + 1] = sortedIndices[j];
+                j--;
+            }
+            batchKeys[j + 1] = keyI;
+            sortedIndices[j + 1] = idxI;
+        }
+
+        CgDrawBatchKey currentKey = null;
+
+        for (int s = 0; s < visibleCount; s++) {
+            CgDrawBatchKey thisKey = batchKeys[s];
+
+            if (currentKey == null || !thisKey.equals(currentKey)) {
+                CgRenderState renderState = thisKey.isMtsdf() ? MTSDF_LAYER_STATE
+                        : thisKey.isDistanceField() ? MSDF_LAYER_STATE : BITMAP_LAYER_STATE;
+
+                float pxRange = thisKey.isDistanceField() ? thisKey.getPxRange() : Float.NaN;
+                target.switchBatch(renderState, thisKey.getTextureId(), pxRange);
+                currentKey = thisKey;
+            }
+
+            int origIdx = sortedIndices[s];
+            CgGlyphPlacement p = placements[origIdx];
+            int placementTargetPx = p.getKey().getFontKey().getTargetPx();
+            float scaleFactor = logicalMetricScale(baseTargetPx, p.isDistanceField() ? placementTargetPx : effectiveTargetPx);
+            addQuadFromPlacementToTarget(target, p, glyphX[origIdx], glyphY[origIdx], rgba, scaleFactor);
+        }
+    }
+
+    private void addQuadFromPlacementToTarget(CgTextEmissionTarget target, CgGlyphPlacement p,
+                                              float penX, float penY, int rgba, float scaleFactor) {
+        // Plane bounds are in physical raster space; normalize to logical.
+        float logicalBearingX = p.getPlaneLeft() * scaleFactor;
+        float logicalBearingY = p.getPlaneTop() * scaleFactor;
+        float logicalWidth = p.getPlaneWidth() * scaleFactor;
+        float logicalHeight = p.getPlaneHeight() * scaleFactor;
+
+        float qx = penX + logicalBearingX;
+        float qy = penY - logicalBearingY;
+
+        float u0 = p.getU0(), v0 = p.getV0(), u1 = p.getU1(), v1 = p.getV1();
+
+        int r = (rgba >>> 24) & 0xFF;
+        int g = (rgba >>> 16) & 0xFF;
+        int b = (rgba >>> 8)  & 0xFF;
+        int a =  rgba         & 0xFF;
+
+        target.reserveQuads(1);
+        int vtxBefore = target.currentVertexCount();
+
+        CgVertexConsumer vc = target.vertexConsumer();
+        vc.vertex(qx, qy).uv(u0, v0).color(r, g, b, a).endVertex();
+        vc = target.vertexConsumer();
+        vc.vertex(qx + logicalWidth, qy).uv(u1, v0).color(r, g, b, a).endVertex();
+        vc = target.vertexConsumer();
+        vc.vertex(qx + logicalWidth, qy + logicalHeight).uv(u1, v1).color(r, g, b, a).endVertex();
+        vc = target.vertexConsumer();
+        vc.vertex(qx, qy + logicalHeight).uv(u0, v1).color(r, g, b, a).endVertex();
+
+        target.recordQuad(vtxBefore, 4);
     }
 
     // ══════════════════════════════════════════════════════════════════════════════════════════
