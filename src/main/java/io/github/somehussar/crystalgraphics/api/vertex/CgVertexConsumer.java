@@ -2,8 +2,6 @@ package io.github.somehussar.crystalgraphics.api.vertex;
 
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
-import org.joml.Vector3f;
-import org.joml.Vector4f;
 
 /**
  * Format-agnostic vertex attribute writer inspired by 1.20.1's
@@ -30,6 +28,7 @@ import org.joml.Vector4f;
  * implementations live in {@code gl/batch/} or similar internal packages.</p>
  *
  * @see CgVertexFormat
+ * @see CgVertexTransformUtil
  */
 public interface CgVertexConsumer {
 
@@ -149,18 +148,16 @@ public interface CgVertexConsumer {
     default CgVertexConsumer normal(float nx, float ny, float nz) {
         return this;
     }
-    
-    // ── Matrix operations for CPU processing ───────────────────────────────────────────────
-    
-   default CgVertexConsumer vertex(Matrix4f pMatrix, float x, float y, float z) {
-      Vector4f vector4f = pMatrix.transform(new Vector4f(x, y, z, 1.0F));
-      return vertex(vector4f.x(), vector4f.y(), vector4f.z());
-   }
 
-   default CgVertexConsumer normal(Matrix3f pMatrix, float x, float y, float z) {
-      Vector3f vector3f = pMatrix.transform(new Vector3f(x, y, z));
-      return normal(vector3f.x(), vector3f.y(), vector3f.z());
-   }
+    // ── Matrix helpers (delegate to CgVertexTransformUtil for GC-safe scratch vectors) ──
+
+    default CgVertexConsumer vertex(Matrix4f matrix, float x, float y, float z) {
+        return CgVertexTransformUtil.vertex(this, matrix, x, y, z);
+    }
+
+    default CgVertexConsumer normal(Matrix3f matrix, float x, float y, float z) {
+        return CgVertexTransformUtil.normal(this, matrix, x, y, z);
+    }
 
     // ── Vertex completion ───────────────────────────────────────────────
 
