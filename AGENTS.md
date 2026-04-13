@@ -93,12 +93,19 @@ or buffer source assembly, use the package-local guides first.
 - **Layers own state, renderer owns upload** — `CgBatchRenderer.flush()` never
   touches GL state beyond VBO/VAO/IBO. Shader, texture, blend, depth, and cull
   are the layer's responsibility via `CgRenderState.apply()/clear()`.
+- **Two batch renderer lifecycles** — The immediate `flush()` path is for
+  layer-based non-UI uses. The upload-once/draw-many path (`uploadPendingVertices()`
+  / `drawUploadedRange()` / `finishUploadedDraws()`) is for CrystalGUI's
+  draw-list replay. See `gl/render/AGENTS.md` for details.
 - **Shared VBO/VAO ownership** stays with `CgVertexArrayRegistry`/`CgVertexArrayBinding`.
   The batch renderer borrows, never creates or deletes, shared GPU resources.
 - **CgBufferSource is per-context owned** — not a singleton. Each render context
   (UI, world overlay) creates and owns its own buffer source.
 - **CgTextureBinding vs CgTextureState** — `CgTextureBinding` is a raw value (target + id);
   `CgTextureState` is the policy layer (unit, sampler, fixed/dynamic/none). They compose.
+- **Generic text emission target** — `CgTextEmissionTarget` decouples text quad
+  emission from submission model. The text renderer has both layer-based and
+  target-based internal paths. See `text/render/AGENTS.md` for details.
 
 ## Minecraft Source Code Location
 
@@ -253,6 +260,8 @@ These have different method signatures (`glGenFramebuffers()` vs. `glGenFramebuf
 - `CoreShaderProgram`: GL20 backend
 - `ArbShaderProgram`: ARB_shader_objects backend
 - `CgShaderFactory`: Waterfall factory (Core → ARB)
+- `StandaloneCgShader`: Non-Minecraft `CgShader` impl — compiles from inline GLSL source, no MC deps. Used by the GL debug harness and any non-MC consumer.
+- `StandaloneCgShaderBindings`: Non-Minecraft `CgShaderBindings` impl — deferred patch-list without MC texture manager. `sampler2D(ResourceLocation)` throws unsupported.
 
 #### 4. VAO/VBO Backend (✅ COMPLETE)
 
