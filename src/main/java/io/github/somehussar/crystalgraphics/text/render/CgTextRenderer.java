@@ -477,20 +477,20 @@ public class CgTextRenderer {
     // ══════════════════════════════════════════════════════════════════════════════════════════
 
     /**
-     * Target-based renderer core for the V3.1 draw-list path.
+     * Target-based renderer core for the V3.2 draw-list path.
      *
      * <p>Same glyph resolution and batch building as the layer path, but emits
-     * quads through a generic {@link CgTextEmissionTarget} instead of a layer.
+     * quads through a generic {@link CgTextQuadSink} instead of a layer.
      * This enables the text renderer to record into the UI draw list without
      * knowing about draw-list internals.</p>
      *
      * <p>The existing layer-based public {@code draw()} and {@code drawWorld()}
      * overloads remain unchanged for non-UI text users.</p>
      */
-    public void drawInternalTarget(CgTextEmissionTarget target, CgTextLayout layout, CgFontFamily family,
+    public void drawInternalTarget(CgTextQuadSink sink, CgTextLayout layout, CgFontFamily family,
                                    float x, float y, int rgba, long frame, CgTextRenderContext context,
                                    PoseStack pose) {
-        if (target == null) throw new IllegalArgumentException("target must not be null");
+        if (sink == null) throw new IllegalArgumentException("sink must not be null");
         if (family == null) throw new IllegalArgumentException("family must not be null");
         if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
         if (layout == null || layout.getLines().isEmpty()) return;
@@ -510,28 +510,28 @@ public class CgTextRenderer {
 
         PagedGlyphBatch glyphBatch = buildPagedGlyphBatch(layout, family, x, y, frame, context, fontKey, effectiveTargetPx, wantMsdf, metrics);
 
-        submitSortedQuadsToTarget(target, glyphBatch.placements, glyphBatch.glyphX, glyphBatch.glyphY, rgba,
+        submitSortedQuadsToTarget(sink, glyphBatch.placements, glyphBatch.glyphX, glyphBatch.glyphY, rgba,
                 fontKey.getTargetPx(), effectiveTargetPx, context, poseTop.pose());
     }
 
     /**
      * Convenience overload using a single font.
      */
-    public void drawInternalTarget(CgTextEmissionTarget target, CgTextLayout layout, CgFont font,
+    public void drawInternalTarget(CgTextQuadSink sink, CgTextLayout layout, CgFont font,
                                    float x, float y, int rgba, long frame, CgTextRenderContext context,
                                    PoseStack pose) {
         if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
         if (layout == null || layout.getLines().isEmpty()) return;
-        drawInternalTarget(target, layout, CgFontFamily.of(font), x, y, rgba, frame, context, pose);
+        drawInternalTarget(sink, layout, CgFontFamily.of(font), x, y, rgba, frame, context, pose);
     }
 
     /**
      * Convenience overload from string.
      */
-    public void drawInternalTarget(CgTextEmissionTarget target, String text, CgFontFamily family,
+    public void drawInternalTarget(CgTextQuadSink sink, String text, CgFontFamily family,
                                    float x, float y, int rgba, long frame, CgTextRenderContext context,
                                    PoseStack pose) {
-        drawInternalTarget(target, layout(text, family, CgTextConstraints.UNBOUNDED), family, x, y, rgba, frame, context, pose);
+        drawInternalTarget(sink, layout(text, family, CgTextConstraints.UNBOUNDED), family, x, y, rgba, frame, context, pose);
     }
 
     /**
@@ -688,14 +688,18 @@ public class CgTextRenderer {
     }
 
     // ══════════════════════════════════════════════════════════════════════════════════════════
-    //  TARGET-BASED QUAD EMISSION (V3.1)
+    //  TARGET-BASED QUAD EMISSION (V3.2 — CgTextQuadSink)
     // ══════════════════════════════════════════════════════════════════════════════════════════
 
     /**
      * Sorts glyph placements by GL state and submits them through a generic
-     * {@link CgTextEmissionTarget}. Same batch-key sorting as the layer path.
+     * {@link CgTextQuadSink}. Same batch-key sorting as the layer path.
+     *
+     * <p>On batch-key transitions, calls {@link CgTextQuadSink#beginBatch} which
+     * flushes any pending vertices from the previous batch. After all quads are
+     * emitted, calls {@link CgTextQuadSink#endText()} to flush remaining vertices.</p>
      */
-    void submitSortedQuadsToTarget(CgTextEmissionTarget target, CgGlyphPlacement[] placements,
+    void submitSortedQuadsToTarget(CgTextQuadSink sink, CgGlyphPlacement[] placements,
                                    float[] glyphX, float[] glyphY, int rgba,
                                    int baseTargetPx, int effectiveTargetPx,
                                    CgTextRenderContext context, Matrix4f modelView) {
@@ -743,7 +747,7 @@ public class CgTextRenderer {
                         : thisKey.isDistanceField() ? MSDF_LAYER_STATE : BITMAP_LAYER_STATE;
 
                 float pxRange = thisKey.isDistanceField() ? thisKey.getPxRange() : Float.NaN;
-                target.switchBatch(renderState, thisKey.getTextureId(), pxRange);
+                sink.beginBatch(renderState, thisKey.getTextureId(), pxRange);
                 currentKey = thisKey;
             }
 
@@ -751,12 +755,15 @@ public class CgTextRenderer {
             CgGlyphPlacement p = placements[origIdx];
             int placementTargetPx = p.getKey().getFontKey().getTargetPx();
             float scaleFactor = logicalMetricScale(baseTargetPx, p.isDistanceField() ? placementTargetPx : effectiveTargetPx);
-            addQuadFromPlacementToTarget(target, p, glyphX[origIdx], glyphY[origIdx], rgba, scaleFactor);
+            addQuadFromPlacementToSink(sink, p, glyphX[origIdx], glyphY[origIdx], rgba, scaleFactor);
         }
+
+        // Flush any remaining vertices from the last batch
+        sink.endText();
     }
 
-    private void addQuadFromPlacementToTarget(CgTextEmissionTarget target, CgGlyphPlacement p,
-                                              float penX, float penY, int rgba, float scaleFactor) {
+    private void addQuadFromPlacementToSink(CgTextQuadSink sink, CgGlyphPlacement p,
+                                            float penX, float penY, int rgba, float scaleFactor) {
         // Plane bounds are in physical raster space; normalize to logical.
         float logicalBearingX = p.getPlaneLeft() * scaleFactor;
         float logicalBearingY = p.getPlaneTop() * scaleFactor;
@@ -773,19 +780,7 @@ public class CgTextRenderer {
         int b = (rgba >>> 8)  & 0xFF;
         int a =  rgba         & 0xFF;
 
-        target.reserveQuads(1);
-        int vtxBefore = target.currentVertexCount();
-
-        CgVertexConsumer vc = target.vertexConsumer();
-        vc.vertex(qx, qy).uv(u0, v0).color(r, g, b, a).endVertex();
-        vc = target.vertexConsumer();
-        vc.vertex(qx + logicalWidth, qy).uv(u1, v0).color(r, g, b, a).endVertex();
-        vc = target.vertexConsumer();
-        vc.vertex(qx + logicalWidth, qy + logicalHeight).uv(u1, v1).color(r, g, b, a).endVertex();
-        vc = target.vertexConsumer();
-        vc.vertex(qx, qy + logicalHeight).uv(u0, v1).color(r, g, b, a).endVertex();
-
-        target.recordQuad(vtxBefore, 4);
+        sink.emitQuad(qx, qy, qx + logicalWidth, qy + logicalHeight, u0, v0, u1, v1, r, g, b, a);
     }
 
     // ══════════════════════════════════════════════════════════════════════════════════════════

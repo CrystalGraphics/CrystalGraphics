@@ -1,6 +1,5 @@
 #version 130
 in vec2 a_pos;
-in vec2 a_uv;
 in vec4 a_color;
 uniform mat4 u_projection;
 out vec4 v_color;
