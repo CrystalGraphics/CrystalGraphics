@@ -103,9 +103,9 @@ or buffer source assembly, use the package-local guides first.
   (UI, world overlay) creates and owns its own buffer source.
 - **CgTextureBinding vs CgTextureState** — `CgTextureBinding` is a raw value (target + id);
   `CgTextureState` is the policy layer (unit, sampler, fixed/dynamic/none). They compose.
-- **Generic text emission target** — `CgTextEmissionTarget` decouples text quad
+- **Generic text quad sink** — `CgTextQuadSink` decouples text quad
   emission from submission model. The text renderer has both layer-based and
-  target-based internal paths. See `text/render/AGENTS.md` for details.
+  target-based (sink-based) internal paths. See `text/render/AGENTS.md` for details.
 
 ## Minecraft Source Code Location
 

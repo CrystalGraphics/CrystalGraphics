@@ -108,11 +108,14 @@ public final class CgBatchRenderer {
     }
 
     public void end() {
-        // If we were in replay mode, finish it first
         if (uploadedForReplay) {
+            // If we were in replay mode, finish it first
             finishUploadedDraws();
+        } else {
+            // Only flush on the immediate path — after finishUploadedDraws()
+            // the staging is empty so flushing would be a no-op anyway.
+            flush();
         }
-        flush();
         begun = false;
         CgVertexArray.bind(0);
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
