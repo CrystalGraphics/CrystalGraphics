@@ -22,5 +22,5 @@ void main() {
 
     vec4 pixel = vec4(v_color.rgb, v_color.a * alpha);
 
-    fragColor = pixel * vec4(rainbow(u_time), 1);
+    fragColor = pixel;//* vec4(rainbow(u_time), 1);
 }
