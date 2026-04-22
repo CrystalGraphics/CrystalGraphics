@@ -52,7 +52,7 @@ void main() {
     // Phase driven by world X + time scroll
     float phase = (v_worldPos.x / u_rainbowScale + u_time * u_scrollSpeed) * 6.2832;
 
-    fragColor = vec4(v_color.rgb, alpha) * vec4(rainbow(phase), 1.0);
+    fragColor = vec4(v_color.rgb, alpha);// * vec4(rainbow(phase), 1.0);
 //    fragColor = vec4(mod(v_worldPos.x / u_rainbowScale, 1.0), 0.0, 0.0, alpha);
 }
 

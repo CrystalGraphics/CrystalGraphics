@@ -20,7 +20,7 @@ void main() {
     float wave = u_waveAmplitude * sin(a_pos.x * u_waveFrequency + u_time * u_waveSpeed);
     vec2 warpedPos = vec2(a_pos.x, a_pos.y + wave);
 
-    gl_Position = u_projection * u_modelview * vec4(warpedPos, 0.0, 1.0);
+    gl_Position = u_projection * u_modelview * vec4(a_pos, 0.0, 1.0);
     v_uv = a_uv;
     v_color = a_color;
     v_worldPos = a_pos;
