@@ -5,6 +5,8 @@ import io.github.somehussar.crystalgraphics.api.vertex.CgVertexConsumer;
 import io.github.somehussar.crystalgraphics.api.vertex.CgVertexFormat;
 import io.github.somehussar.crystalgraphics.gl.render.CgBatchRenderer;
 
+import java.nio.ByteOrder;
+
 /**
  * Format-aware fluent vertex writer implementing {@link CgVertexConsumer}.
  *
@@ -151,7 +153,9 @@ public final class CgVertexWriter implements CgVertexConsumer {
     @Override
     public CgVertexConsumer color(int r, int g, int b, int a) {
         if (DEBUG && step != 2) throw new IllegalStateException("color() out of order");
-        colorAbgr = ((a & 0xFF) << 24) | ((b & 0xFF) << 16) | ((g & 0xFF) << 8) | (r & 0xFF);
+        if (ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN)
+            colorAbgr = ((a & 0xFF) << 24) | ((b & 0xFF) << 16) | ((g & 0xFF) << 8) | (r & 0xFF);
+        else colorAbgr = ((r & 0xFF) << 24) | ((g & 0xff) << 16) | ((b & 0xff) << 8) | (a & 0xff);
         step = hasNormal ? 3 : 4;
         return this;
     }
