@@ -20,6 +20,9 @@ public class CgIO {
     /** For resolving paths outside of MC environment (essential for hot swapping resources)*/
     private static final String RESOURCE_OVERRIDE_DIR = System.getProperty("crystalgraphics.shader.resourceOverrideDir");
 
+    /** For instant hotswap from filesystem in harness*/
+    private static final String ASSETS_HARNESS = "assets/harness/";
+    
     /**
      * Normalizes any supported path format to the canonical
      * {@code /assets/{domain}/{rest}} form.
@@ -62,6 +65,10 @@ public class CgIO {
         if (absolute.isFile() && absolute.isAbsolute() && !path.startsWith(ASSETS_PREFIX))
             in = new FileInputStream(absolute);
 
+        // 0.1 Harness: instant filesystem path for quick hotswap
+        if (path.contains(ASSETS_HARNESS))
+            in = new FileInputStream("src/main/resources/" + path);
+        
         if (in == null) {
             String normalized = normalizePath(path);
             // 1. Filesystem override (dev hotswap via system property)
