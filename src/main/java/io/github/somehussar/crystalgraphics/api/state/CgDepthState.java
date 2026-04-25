@@ -29,7 +29,8 @@ public record CgDepthState(boolean test, boolean write) {
     }
 
     public void clear() {
-        GL11.glDisable(GL11.GL_DEPTH_TEST);
+        // We maybe don't want to disable depth testing on every state clear
+        // GL11.glDisable(GL11.GL_DEPTH_TEST);
         GL11.glDepthMask(true);
     }
 }

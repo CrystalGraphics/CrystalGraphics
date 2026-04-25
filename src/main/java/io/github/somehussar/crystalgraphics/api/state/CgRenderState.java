@@ -38,7 +38,7 @@ public final class CgRenderState {
     private CgRenderState(Builder b) {
         this.shader = b.shader;
         this.blend = b.blend != null ? b.blend : CgBlendState.ALPHA;
-        this.depth = b.depth != null ? b.depth : CgDepthState.NONE;
+        this.depth = b.depth != null ? b.depth : CgDepthState.TEST_WRITE;
         this.cull = b.cull != null ? b.cull : CgCullState.NONE;
         this.texture = b.texture != null ? b.texture : CgTextureState.none();
         this.projectionUniform = b.projectionUniform != null ? b.projectionUniform : "u_projection";
