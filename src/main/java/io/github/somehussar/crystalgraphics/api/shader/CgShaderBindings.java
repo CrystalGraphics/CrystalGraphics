@@ -2,8 +2,7 @@ package io.github.somehussar.crystalgraphics.api.shader;
 
 import net.minecraft.util.ResourceLocation;
 
-import org.joml.Matrix3f;
-import org.joml.Matrix4f;
+import org.joml.*;
 
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
@@ -61,6 +60,15 @@ public interface CgShaderBindings {
     CgShaderBindings vec2(String name, float x, float y);
 
     /**
+     * Records a two-component float vector (vec2) uniform binding.
+     *
+     * @param name the uniform name
+     * @param vec2 JOML Vector2f object
+     * @return this instance for chaining
+     */
+    CgShaderBindings vec2(String name, Vector2f vec2);
+    
+    /**
      * Records a three-component float vector (vec3) uniform binding.
      *
      * @param name the uniform name
@@ -70,6 +78,15 @@ public interface CgShaderBindings {
      * @return this instance for chaining
      */
     CgShaderBindings vec3(String name, float x, float y, float z);
+
+    /**
+     * Records a three-component float vector (vec3) uniform binding.
+     *
+     * @param name the uniform name
+     * @param vec3 JOML Vector3f object
+     * @return this instance for chaining
+     */
+    CgShaderBindings vec3(String name, Vector3f vec3);
 
     /**
      * Records a four-component float vector (vec4) uniform binding.
@@ -83,6 +100,15 @@ public interface CgShaderBindings {
      */
     CgShaderBindings vec4(String name, float x, float y, float z, float w);
 
+    /**
+     * Records a four-component float vector (vec4) uniform binding.
+     *
+     * @param name the uniform name
+     * @param vec4 JOML Vector4f object
+     * @return this instance for chaining
+     */
+    CgShaderBindings vec4(String name, Vector4f vec4);
+    
     /**
      * Records a scalar int array uniform binding ({@code glUniform1iv} equivalent).
      * The array is converted to an IntBuffer internally.
