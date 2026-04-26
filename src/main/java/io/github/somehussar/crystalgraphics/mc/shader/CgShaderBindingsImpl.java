@@ -10,8 +10,7 @@ import net.minecraft.util.ResourceLocation;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.joml.Matrix3f;
-import org.joml.Matrix4f;
+import org.joml.*;
 import org.lwjgl.opengl.ARBMultitexture;
 import org.lwjgl.opengl.ContextCapabilities;
 import org.lwjgl.opengl.GL11;
@@ -87,17 +86,34 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
     }
 
     @Override
+    public CgShaderBindings vec2(String name, Vector2f vec) {
+        this.ops.add(new JomlVec2Op(name, vec));
+        return this;
+    }
+
+    @Override
     public CgShaderBindings vec3(String name, float x, float y, float z) {
         this.ops.add(new Vec3Op(name, x, y, z));
         return this;
     }
 
     @Override
+    public CgShaderBindings vec3(String name, Vector3f vec) {
+        this.ops.add(new JomlVec3Op(name, vec));
+        return this;
+    }
+    @Override
     public CgShaderBindings vec4(String name, float x, float y, float z, float w) {
         this.ops.add(new Vec4Op(name, x, y, z, w));
         return this;
     }
 
+    @Override
+    public CgShaderBindings vec4(String name, Vector4f vec) {
+        this.ops.add(new JomlVec4Op(name, vec));
+        return this;
+    }
+    
     @Override
     public CgShaderBindings array(String name, int[] array) {
         IntBuffer buf = BufferUtils.createIntBuffer(array.length);
@@ -335,7 +351,7 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
                     program.setUniform1i(loc, this.value);
                 }
             }
-        }
+    }
 
     @Desugar
     private record Set1fOp(String name, float value) implements BindingOp {
@@ -351,7 +367,7 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
                     program.setUniform1f(loc, this.value);
                 }
             }
-        }
+    }
 
     @Desugar
     private record Vec2Op(String name, float x, float y) implements BindingOp {
@@ -367,7 +383,8 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
                     program.setUniform2f(loc, this.x, this.y);
                 }
             }
-        }
+    }
+    
     @Desugar
     private record Vec3Op(String name, float x, float y, float z) implements BindingOp {
 
@@ -382,7 +399,8 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
                     program.setUniform3f(loc, this.x, this.y, this.z);
                 }
             }
-        }
+    }
+    
     @Desugar
     private record Vec4Op(String name, float x, float y, float z, float w) implements BindingOp {
 
@@ -397,7 +415,56 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
                     program.setUniform4f(loc, this.x, this.y, this.z, this.w);
                 }
             }
+    }
+
+    @Desugar
+    private record JomlVec2Op(String name, Vector2f vec) implements BindingOp {
+
+        /**
+         * Executes this binding operation: resolves the uniform location and
+         * calls {@link CgShaderProgram#setUniform2f(int, float, float)} if found.
+         */
+        @Override
+        public void execute(CgShader shader, CgShaderProgram program, CgShaderBindingsImpl patch) {
+            int loc = patch.resolveLocation(shader, this.name);
+            if (loc >= 0) {
+                program.setUniform2f(loc, vec);
+            }
         }
+    }
+
+    @Desugar
+    private record JomlVec3Op(String name, Vector3f vec) implements BindingOp {
+
+        /**
+         * Executes this binding operation: resolves the uniform location and
+         * calls {@link CgShaderProgram#setUniform3f(int, float, float, float)} if found.
+         */
+        @Override
+        public void execute(CgShader shader, CgShaderProgram program, CgShaderBindingsImpl patch) {
+            int loc = patch.resolveLocation(shader, this.name);
+            if (loc >= 0) {
+                program.setUniform3f(loc, vec);
+            }
+        }
+    }
+
+    @Desugar
+    private record JomlVec4Op(String name, Vector4f vec) implements BindingOp {
+
+        /**
+         * Executes this binding operation: resolves the uniform location and
+         * calls {@link CgShaderProgram#setUniform4f(int, float, float, float, float)} if found.
+         */
+        @Override
+        public void execute(CgShader shader, CgShaderProgram program, CgShaderBindingsImpl patch) {
+            int loc = patch.resolveLocation(shader, this.name);
+            if (loc >= 0) {
+                program.setUniform4f(loc, vec);
+            }
+        }
+    }
+    
     @Desugar
     private record IntBufferOp(String name, IntBuffer buffer) implements BindingOp {
 
@@ -408,7 +475,8 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
                     program.setUniformIntBuffer(loc, this.buffer);
                 }
             }
-        }
+    }
+    
     @Desugar
     private record FloatBufferOp(String name, FloatBuffer buffer) implements BindingOp {
 
@@ -419,7 +487,8 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
                     program.setUniformFloatBuffer(loc, this.buffer);
                 }
             }
-        }
+    }
+    
     @Desugar
     private record Mat3Op(String name, FloatBuffer buffer) implements BindingOp {
 
@@ -430,7 +499,8 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
                     program.setUniformMatrix3f(loc, this.buffer);
                 }
             }
-        }
+    }
+    
     @Desugar
     private record Mat4Op(String name, FloatBuffer buffer) implements BindingOp {
 
@@ -445,7 +515,8 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
                     program.setUniformMatrix4f(loc, this.buffer);
                 }
             }
-        }
+    }
+    
     @Desugar
     private record JomlMat3Op(String name, Matrix3f matrix) implements BindingOp {
 
@@ -456,7 +527,8 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
                     program.setUniformMatrix3f(loc, this.matrix);
                 }
             }
-        }
+    }
+    
     @Desugar
     private record JomlMat4Op(String name, Matrix4f matrix) implements BindingOp {
 
@@ -467,7 +539,8 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
                     program.setUniformMatrix4f(loc, this.matrix);
                 }
             }
-        }
+    }
+    
     @Desugar
     private record Sampler2DOp(String name, int unit, ResourceLocation texture) implements BindingOp {
 
@@ -502,7 +575,7 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
                     }
                 }
             }
-        }
+    }
 
     /**
      * Internal marker interface for deferred binding operations.

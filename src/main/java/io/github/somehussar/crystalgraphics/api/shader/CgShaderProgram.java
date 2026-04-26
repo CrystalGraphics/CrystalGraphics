@@ -1,7 +1,6 @@
 package io.github.somehussar.crystalgraphics.api.shader;
 
-import org.joml.Matrix3f;
-import org.joml.Matrix4f;
+import org.joml.*;
 
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
@@ -153,6 +152,18 @@ public interface CgShaderProgram {
     void setUniform2f(int location, float x, float y);
 
     /**
+     * Sets a 2-component float vector uniform variable.
+     *
+     * <p>The program must be bound before calling this method.</p>
+     *
+     * @param location the uniform location
+     * @param vec      JOML Vector2f
+     */
+    default void setUniform2f(int location, Vector2f vec) {
+        setUniform2f(location, vec.x, vec.y);
+    }
+
+    /**
      * Sets a 3-component float vector uniform variable.
      *
      * <p>The program must be bound before calling this method.</p>
@@ -163,6 +174,18 @@ public interface CgShaderProgram {
      * @param z        the third component
      */
     void setUniform3f(int location, float x, float y, float z);
+
+    /**
+     * Sets a 3-component float vector uniform variable.
+     *
+     * <p>The program must be bound before calling this method.</p>
+     *
+     * @param location the uniform location
+     * @param vec      JOML Vector3f
+     */
+    default void setUniform3f(int location, Vector3f vec) {
+        setUniform3f(location, vec.x, vec.y, vec.z);
+    }
 
     /**
      * Sets a 4-component float vector uniform variable.
@@ -176,6 +199,18 @@ public interface CgShaderProgram {
      * @param w        the fourth component
      */
     void setUniform4f(int location, float x, float y, float z, float w);
+
+    /**
+     * Sets a 4-component float vector uniform variable.
+     *
+     * <p>The program must be bound before calling this method.</p>
+     *
+     * @param location the uniform location
+     * @param vec      JOML Vector4f
+     */
+    default void setUniform4f(int location, Vector4f vec) {
+        setUniform4f(location, vec.x, vec.y, vec.z, vec.w);
+    }
     
     /**
      * Uploads a scalar int array uniform from an {@link IntBuffer}
