@@ -292,39 +292,39 @@ public final class CgFramebufferFactory {
          * @param family the call family for binding
          */
         WrappedFramebuffer(int fboId, int width, int height, CallFamily family) {
-            super(fboId, width, height, false, false);
+            super(fboId, width, height, false); // non-owned wrap — no MRT
             this.family = family;
         }
 
-        /**
-         * {@inheritDoc}
-         *
-         * @return the call family specified at wrapping time
-         */
         @Override
         protected CallFamily callFamily() {
             return family;
         }
 
-        /**
-         * No-op — wrapped framebuffers do not own any GL resources.
-         */
         @Override
-        protected void freeGlResources() {
-            // Wrapped FBOs own nothing — this should never be called because
-            // delete() throws IllegalStateException for non-owned FBOs, but
-            // the method is required by the abstract contract.
+        protected CgAbstractFramebuffer newFromSpec(CgFramebufferSpec spec) {
+            throw new UnsupportedOperationException(
+                    "Cannot create spec-based framebuffer from a wrapped FBO");
         }
+
+        // ── GL dispatch stubs (wrapped FBOs own nothing) ──────────────
+
+        @Override protected int  glDoGenFramebuffer()                          { return 0; }
+        @Override protected void glDoDeleteFramebuffer(int id)                 { /* no-op */ }
+        @Override protected void glDoBindFbo(int fboId)                        { /* no-op */ }
+        @Override protected void glDoFramebufferTexture2D(int att, int texId)  { /* no-op */ }
+        @Override protected int  glDoCheckFramebufferStatus()                  { return GL_FRAMEBUFFER_COMPLETE; }
+        @Override protected int  glDoGenRenderbuffer()                         { return 0; }
+        @Override protected void glDoBindRenderbuffer(int id)                  { /* no-op */ }
+        @Override protected void glDoRenderbufferStorage(int fmt, int w, int h){ /* no-op */ }
+        @Override protected void glDoDeleteRenderbuffer(int id)                { /* no-op */ }
+        @Override protected void glDoFramebufferRenderbuffer(int att, int rbo) { /* no-op */ }
 
         /**
          * Always throws {@link UnsupportedOperationException}.
          *
          * <p>Wrapped framebuffers cannot be resized because CrystalGraphics
          * does not own the underlying GL resources.</p>
-         *
-         * @param newWidth  ignored
-         * @param newHeight ignored
-         * @throws UnsupportedOperationException always
          */
         @Override
         public void resize(int newWidth, int newHeight) {
