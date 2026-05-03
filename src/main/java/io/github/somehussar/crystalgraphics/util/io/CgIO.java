@@ -56,44 +56,56 @@ public class CgIO {
         return ASSETS_PREFIX + DEFAULT_DOMAIN + "/" + bare;
     }
     
-    public static String loadSource(String path) throws Exception {
-        InputStream in = null;
+    /**
+     * Opens an InputStream for the given path using the same waterfall as
+     * {@link #loadSource}: absolute path → harness shortcut → filesystem
+     * override → MC resource manager → classpath. Returns {@code null} if
+     * all resolution strategies fail.
+     *
+     * @param path any supported path format (see {@link #normalizePath})
+     * @return an open InputStream, or {@code null} on failure
+     */
+    public static InputStream openStream(String path) {
+        // 0. Absolute filesystem path
+        try {
+            File absolute = new File(path);
+            if (absolute.isFile() && absolute.isAbsolute() && !path.startsWith(ASSETS_PREFIX))
+                return new FileInputStream(absolute);
+        } catch (Throwable ignored) {}
 
-        // 0. Absolute filesystem path — read directly, skip normalization
-        //    (exclude /assets/... which is absolute on Unix but is an asset path)
-        File absolute = new File(path);
-        if (absolute.isFile() && absolute.isAbsolute() && !path.startsWith(ASSETS_PREFIX))
-            in = new FileInputStream(absolute);
+        // 0.1 Harness shortcut
+        try {
+            if (path.contains(ASSETS_HARNESS))
+                return new FileInputStream("src/main/resources/" + path);
+        } catch (Throwable ignored) {}
 
-        // 0.1 Harness: instant filesystem path for quick hotswap
-        if (path.contains(ASSETS_HARNESS))
-            in = new FileInputStream("src/main/resources/" + path);
-        
-        if (in == null) {
-            String normalized = normalizePath(path);
-            // 1. Filesystem override (dev hotswap via system property)
-            if (RESOURCE_OVERRIDE_DIR != null) {
+        String normalized = normalizePath(path);
+
+        // 1. Filesystem override
+        if (RESOURCE_OVERRIDE_DIR != null) {
+            try {
                 String fsPath = normalized.startsWith("/") ? normalized.substring(1) : normalized;
                 File file = new File(RESOURCE_OVERRIDE_DIR, fsPath);
-                if (file.isFile()) in = new FileInputStream(file);
-            }
-
-            // 2. Minecraft resource manager (normal in-game path)
-            try {
-                IResourceManager resourceManager = Minecraft.getMinecraft().getResourceManager();
-                if (resourceManager != null) {
-                    IResource resource = resourceManager.getResource(toResourceLocation(normalized));
-                    in = resource.getInputStream();
-                }
-            } catch (Throwable ignored) {
-                // Minecraft not available (harness, tests, etc.) — fall through
-            }
-            
-            // 3. Classpath fallback
-            if (in == null) in = CgIO.class.getResourceAsStream(normalized);
-            if (in == null) return null;
+                if (file.isFile()) return new FileInputStream(file);
+            } catch (Throwable ignored) {}
         }
 
+        // 2. Minecraft resource manager
+        try {
+            IResourceManager rm = Minecraft.getMinecraft().getResourceManager();
+            if (rm != null) {
+                IResource res = rm.getResource(toResourceLocation(normalized));
+                if (res != null) return res.getInputStream();
+            }
+        } catch (Throwable ignored) {}
+
+        // 3. Classpath fallback
+        return CgIO.class.getResourceAsStream(normalized);
+    }
+
+    public static String loadSource(String path) throws Exception {
+        InputStream in = openStream(path);
+        if (in == null) return null;
         try {
             return IOUtils.toString(in, Charset.forName("UTF-8"));
         } catch (Throwable t) {

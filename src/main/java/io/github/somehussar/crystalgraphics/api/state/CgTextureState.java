@@ -3,7 +3,7 @@ package io.github.somehussar.crystalgraphics.api.state;
 import com.github.bsideup.jabel.Desugar;
 import io.github.somehussar.crystalgraphics.api.shader.CgShader;
 import io.github.somehussar.crystalgraphics.api.shader.CgShaderProgram;
-import io.github.somehussar.crystalgraphics.api.vertex.CgTextureBinding;
+import io.github.somehussar.crystalgraphics.api.texture.CgTexture;
 
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
@@ -15,42 +15,60 @@ import org.lwjgl.opengl.GL13;
  * <ul>
  *   <li><strong>{@link #none()}</strong> — no texture binding; {@link #apply} and {@link #clear}
  *       are effectively no-ops (no sampler uniform to set).</li>
- *   <li><strong>{@link #fixed(CgTextureBinding, int, String)}</strong> — binds a known texture
- *       at apply time. The texture ID comes from the {@link CgTextureBinding}. Used for
+ *   <li><strong>{@link #fixed(int, int, int, String)}</strong> — binds a known texture
+ *       at apply time using a raw (target, textureId) pair. Use for
  *       layers with a single atlas or sprite sheet.</li>
+ *   <li><strong>{@link #fixed(CgTexture, int, String)}</strong> — convenience for
+ *       binding a {@link CgTexture} directly.</li>
  *   <li><strong>{@link #dynamic(int, int, String)}</strong> — texture ID is supplied per-flush
  *       via the {@code overrideTextureId} parameter of {@link #apply}. Used for
  *       text rendering and any layer whose active texture changes mid-frame.</li>
  * </ul>
  *
- * <h3>Relationship to {@code CgTextureBinding}</h3>
- * <p>{@link CgTextureBinding} (in {@code api/vertex/}) is a lightweight value holding
- * (target, textureId). This class is the render-state <em>policy</em> that wraps a
- * binding with texture unit selection and sampler uniform propagation. The two compose:
- * {@code CgTextureState.fixed(binding, unit, sampler)} delegates the texture identity
- * to the binding while owning the unit/sampler policy.</p>
+ * <p>This type is the render-state <em>policy</em>: it owns texture unit selection
+ * and sampler uniform propagation. The raw GL identity is just a (target, id) pair.</p>
  *
  * @see CgRenderState
- * @see CgTextureBinding
  */
 @Desugar
 public record CgTextureState(int target, int unit, String samplerUniform,
-                             CgTextureBinding fixedBinding, boolean dynamic) {
+                             int fixedTextureId, boolean hasFixed, boolean dynamic) {
 
+    /** No texture bound; apply/clear no-op. */
     public static CgTextureState none() {
-        return new CgTextureState(GL11.GL_TEXTURE_2D, 0, null, null, false);
+        return new CgTextureState(GL11.GL_TEXTURE_2D, 0, null, 0, false, false);
     }
 
-    public static CgTextureState fixed(CgTextureBinding binding, int unit, String samplerUniform) {
-        return new CgTextureState(binding.getTarget(), unit, samplerUniform, binding, false);
+    /**
+     * Fixed-texture state from a raw GL identity.
+     *
+     * @param target         GL texture target (e.g. {@code GL_TEXTURE_2D})
+     * @param textureId      GL texture object id
+     * @param unit           zero-based texture unit
+     * @param samplerUniform sampler uniform name in the shader
+     */
+    public static CgTextureState fixed(int target, int textureId, int unit, String samplerUniform) {
+        return new CgTextureState(target, unit, samplerUniform, textureId, true, false);
     }
 
+    /**
+     * Fixed-texture state from a {@link CgTexture}. The texture is referenced
+     * by id and target — its lifecycle is the caller's responsibility.
+     */
+    public static CgTextureState fixed(CgTexture texture, int unit, String samplerUniform) {
+        return new CgTextureState(texture.getTarget(), unit, samplerUniform, texture.getId(), true, false);
+    }
+
+    /**
+     * Dynamic state: texture id is supplied per-flush via
+     * {@link #apply(CgShader, int)}'s {@code overrideTextureId}.
+     */
     public static CgTextureState dynamic(int target, int unit, String samplerUniform) {
-        return new CgTextureState(target, unit, samplerUniform, null, true);
+        return new CgTextureState(target, unit, samplerUniform, 0, false, true);
     }
 
     public void apply(CgShader shader, int overrideTextureId) {
-        int textureId = fixedBinding != null ? fixedBinding.getTextureId() : overrideTextureId;
+        int textureId = hasFixed ? fixedTextureId : overrideTextureId;
         if (samplerUniform == null || textureId < 0) return;
 
         GL13.glActiveTexture(GL13.GL_TEXTURE0 + unit);

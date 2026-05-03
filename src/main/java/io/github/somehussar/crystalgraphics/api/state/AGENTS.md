@@ -17,7 +17,7 @@ state to set, but they don't own shaders, textures, or GPU resources.
 | `CgDepthState`   | Depth test + depth write policy. Pre-defined: `NONE`, `TEST_ONLY`, `TEST_WRITE`.                                                                                           |
 | `CgBlendState`   | Blend policy + blend func policy. Pre-defined: `DISABLED`, `ALPHA`, `PREMULTIPLIED_ALPHA`, `ADDITIVE`.                                                                     |
 | `CgCullState`    | Face culling policy. Pre-defined: `NONE`, `BACK`, `FRONT`.                                                                                                                 |
-| `CgTextureState` | Texture-bind policy with three modes: `none()` (no texture), `fixed(binding, unit, sampler)` (static atlas), `dynamic(target, unit, sampler)` (texture ID per-flush).      |
+| `CgTextureState` | Texture-bind policy with three modes: `none()` (no texture), `fixed(target, id, unit, sampler)` / `fixed(CgTexture, unit, sampler)` (static atlas), `dynamic(target, unit, sampler)` (texture ID per-flush). |
 
 ## Relationship to `CgBlendState`
 
@@ -25,12 +25,13 @@ state to set, but they don't own shaders, textures, or GPU resources.
 shared by the render pass system). `CgRenderState` references it as a slot but
 does not duplicate or re-export it.
 
-## Relationship to `CgTextureBinding`
+## Relationship to `CgTexture`
 
-`CgTextureBinding` (in `api/vertex/`) is a lightweight value type holding
-(target, textureId). `CgTextureState.fixed()` accepts a `CgTextureBinding`
-for the fixed-texture case. `CgTextureState` is the policy layer;
-`CgTextureBinding` is the identity layer. They compose, not duplicate.
+`CgTextureState.fixed` accepts either a raw `(target, textureId)` pair or a
+`CgTexture` instance from `api/texture/`. The state object only references the
+texture by id; lifecycle remains the caller's responsibility. The previous
+`CgTextureBinding` value type has been removed — its (target, id) role is now
+inlined into the `CgTextureState` record itself.
 
 ## Ownership Model
 
