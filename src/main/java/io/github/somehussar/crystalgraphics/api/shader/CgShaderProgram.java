@@ -1,8 +1,8 @@
 package io.github.somehussar.crystalgraphics.api.shader;
 
 import io.github.somehussar.crystalgraphics.api.vertex.CgVertexFormat;
-import io.github.somehussar.crystalgraphics.gl.shader.ArbShaderProgram;
-import io.github.somehussar.crystalgraphics.gl.shader.CoreShaderProgram;
+import io.github.somehussar.crystalgraphics.gl.shader.CgArbShaderProgram;
+import io.github.somehussar.crystalgraphics.gl.shader.CgCoreShaderProgram;
 import org.joml.*;
 
 import java.nio.FloatBuffer;
@@ -348,8 +348,8 @@ public interface CgShaderProgram {
      * a subsequent successful {@code relink()} call can recover it.</p>
      *
      * <p>The default implementation throws {@link UnsupportedOperationException};
-     * only owned programs backed by {@code CoreShaderProgram} or
-     * {@code ArbShaderProgram} support relinking.</p>
+     * only owned programs backed by {@code CgCoreShaderProgram} or
+     * {@code CgArbShaderProgram} support relinking.</p>
      *
      * @param vertexSource   new GLSL vertex shader source
      * @param fragmentSource new GLSL fragment shader source
@@ -370,8 +370,8 @@ public interface CgShaderProgram {
      * {@code gl_*} uniforms are excluded.  Returns an empty list if
      * the program has no active uniforms or this default is not overridden.</p>
      *
-     * <p>Implementations in {@link CoreShaderProgram}
-     * and {@link ArbShaderProgram} override
+     * <p>Implementations in {@link CgCoreShaderProgram}
+     * and {@link CgArbShaderProgram} override
      * this with a real GL query.  The default returns an empty list for
      * wrapped / external programs.</p>
      *

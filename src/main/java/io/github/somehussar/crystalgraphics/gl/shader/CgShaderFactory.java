@@ -26,8 +26,8 @@ import java.nio.FloatBuffer;
  * <p>This class is not instantiable.</p>
  *
  * @see CgCapabilities
- * @see CoreShaderProgram
- * @see ArbShaderProgram
+ * @see CgCoreShaderProgram
+ * @see CgArbShaderProgram
  */
 public final class CgShaderFactory {
 
@@ -51,10 +51,10 @@ public final class CgShaderFactory {
      * <p>The selection waterfall is:</p>
      * <ol>
      *   <li>If {@link CgCapabilities#isCoreShaders()} is {@code true},
-     *       uses {@link CoreShaderProgram#compile(String, String, CgVertexFormat)}.</li>
+     *       uses {@link CgCoreShaderProgram#compile(String, String, CgVertexFormat)}.</li>
      *   <li>Otherwise, if {@link CgCapabilities#isArbShaders()} is
      *       {@code true}, uses
-     *       {@link ArbShaderProgram#compile(String, String, CgVertexFormat)}.</li>
+     *       {@link CgArbShaderProgram#compile(String, String, CgVertexFormat)}.</li>
      *   <li>Otherwise, throws {@link UnsupportedOperationException}.</li>
      * </ol>
      *
@@ -67,8 +67,8 @@ public final class CgShaderFactory {
      */
     public static CgShaderProgram compile(String vertexSource, String fragmentSource, CgVertexFormat format) {
         CgCapabilities caps = CgCapabilities.detect();
-        if (caps.isCoreShaders()) return CoreShaderProgram.compile(vertexSource, fragmentSource, format);
-        if (caps.isArbShaders()) return ArbShaderProgram.compile(vertexSource, fragmentSource, format);
+        if (caps.isCoreShaders()) return CgCoreShaderProgram.compile(vertexSource, fragmentSource, format);
+        if (caps.isArbShaders()) return CgArbShaderProgram.compile(vertexSource, fragmentSource, format);
         
         throw new UnsupportedOperationException("No shader support available (GL20 and ARB_shader_objects both absent)");
     }
@@ -79,10 +79,10 @@ public final class CgShaderFactory {
      * <p>The selection waterfall is:</p>
      * <ol>
      *   <li>If {@link CgCapabilities#isCoreShaders()} is {@code true},
-     *       uses {@link CoreShaderProgram#compile(String, String, CgVertexFormat)}.</li>
+     *       uses {@link CgCoreShaderProgram#compile(String, String, CgVertexFormat)}.</li>
      *   <li>Otherwise, if {@link CgCapabilities#isArbShaders()} is
      *       {@code true}, uses
-     *       {@link ArbShaderProgram#compile(String, String, CgVertexFormat)}.</li>
+     *       {@link CgArbShaderProgram#compile(String, String, CgVertexFormat)}.</li>
      *   <li>Otherwise, throws {@link UnsupportedOperationException}.</li>
      * </ol>
      *

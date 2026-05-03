@@ -54,13 +54,13 @@ For any work on shader loading, preprocessing, uniform binding, or the GLSL stan
 ### Current package map for shaders
 
 - `api/shader` — public contracts: `CgShader`, `CgShaderManager`, `CgShaderPreprocessor`, `CgShaderBindings`, `CgPreprocessorException`, `CgUniformInjector`
-- `gl/shader` — GL backends: `CgShaderFactory` (static facade + `SHADER_MANAGER`), `CoreShaderProgram` (GL20), `ArbShaderProgram` (ARB fallback)
+- `gl/shader` — GL backends: `CgShaderFactory` (static facade + `SHADER_MANAGER`), `CgCoreShaderProgram` (GL20), `CgArbShaderProgram` (ARB fallback)
 - `mc/shader` — Minecraft implementations: `CgShaderImpl`, `CgShaderManagerImpl`, `CgShaderBindingsImpl`, `CgShaderReloadHook`, `CgSystemUniformRegistry`
 
 ### Source package guides
 
 - `src/main/java/io/github/somehussar/crystalgraphics/api/shader/AGENTS.md` — public shader API: CgShader lifecycle, CgShaderPreprocessor (#include/pragma-once/cycle detection), CgShaderBindings fluent API, GLSL lib files
-- `src/main/java/io/github/somehussar/crystalgraphics/gl/shader/AGENTS.md` — GL backends: CgShaderFactory compile waterfall, CoreShaderProgram, ArbShaderProgram
+- `src/main/java/io/github/somehussar/crystalgraphics/gl/shader/AGENTS.md` — GL backends: CgShaderFactory compile waterfall, CgCoreShaderProgram, CgArbShaderProgram
 - `src/main/java/io/github/somehussar/crystalgraphics/mc/shader/AGENTS.md` — MC impls: CgShaderImpl recompile flow, CgShaderManagerImpl cache, CgShaderReloadHook (F3+T), CgSystemUniformRegistry
 
 ### GLSL Standard Library
@@ -321,9 +321,9 @@ These have different method signatures (`glGenFramebuffers()` vs. `glGenFramebuf
 - `CgShaderProgram`: Unified shader interface (bind/unbind/uniforms/samplers)
 
 **Implementations** (`gl/shader/`):
-- `AbstractCgShaderProgram`: Base class with ownership model
-- `CoreShaderProgram`: GL20 backend
-- `ArbShaderProgram`: ARB_shader_objects backend
+- `CgAbstractShaderProgram`: Base class with ownership model
+- `CgCoreShaderProgram`: GL20 backend
+- `CgArbShaderProgram`: ARB_shader_objects backend
 - `CgShaderFactory`: Waterfall factory (Core → ARB)
 - `StandaloneCgShader`: Non-Minecraft `CgShader` impl — compiles from inline GLSL source, no MC deps. Used by the GL debug harness and any non-MC consumer.
 - `StandaloneCgShaderBindings`: Non-Minecraft `CgShaderBindings` impl — deferred patch-list without MC texture manager. `sampler2D(ResourceLocation)` throws unsupported.
@@ -488,9 +488,9 @@ io.github.somehussar.crystalgraphics/
 │   │   ├── CgExtFramebuffer.java
 │   │   └── CgFramebufferFactory.java
 │   ├── shader/                    # Shader implementations
-│   │   ├── AbstractCgShaderProgram.java
-│   │   ├── CoreShaderProgram.java
-│   │   ├── ArbShaderProgram.java
+│   │   ├── CgAbstractShaderProgram.java
+│   │   ├── CgCoreShaderProgram.java
+│   │   ├── CgArbShaderProgram.java
 │   │   └── CgShaderFactory.java
 │   └── state/                     # State tracking
 │       ├── GLStateMirror.java
