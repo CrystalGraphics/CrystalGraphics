@@ -1,5 +1,6 @@
 package io.github.somehussar.crystalgraphics.gl.shader;
 
+import io.github.somehussar.crystalgraphics.api.shader.CgActiveUniform;
 import io.github.somehussar.crystalgraphics.api.vertex.CgVertexFormat;
 import io.github.somehussar.crystalgraphics.gl.state.CallFamily;
 
@@ -15,6 +16,9 @@ import org.lwjgl.opengl.GL11;
 
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 import static io.github.somehussar.crystalgraphics.gl.shader.CgShaderFactory.JOML_BUFFER;
 
@@ -101,11 +105,34 @@ public class ArbShaderProgram extends AbstractCgShaderProgram {
      *         the info log in the message
      */
     public static ArbShaderProgram compile(String vertexSource, String fragmentSource, CgVertexFormat format) {
+        int progId = ARBShaderObjects.glCreateProgramObjectARB();
+        ArbShaderProgram prog = new ArbShaderProgram(progId, true);
+        try {
+            prog.relink(vertexSource, fragmentSource, format);
+        } catch (IllegalStateException e) {
+            prog.delete();
+            throw e;
+        }
+        return prog;
+    }
+
+    @Override
+    public void relink(String vertexSource, String fragmentSource, CgVertexFormat format) {
+        // glGetAttachedObjectsARB fills countBuf[0] with actual count
+        IntBuffer countBuf   = BufferUtils.createIntBuffer(1);
+        IntBuffer shadersBuf = BufferUtils.createIntBuffer(16);
+        ARBShaderObjects.glGetAttachedObjectsARB(programId, countBuf, shadersBuf);
+        int attached = countBuf.get(0);
+        for (int i = 0; i < attached; i++) {
+            int id = shadersBuf.get(i);
+            ARBShaderObjects.glDetachObjectARB(programId, id);
+            ARBShaderObjects.glDeleteObjectARB(id);
+        }
+
         int vertId = ARBShaderObjects.glCreateShaderObjectARB(ARBVertexShader.GL_VERTEX_SHADER_ARB);
         ARBShaderObjects.glShaderSourceARB(vertId, vertexSource);
         ARBShaderObjects.glCompileShaderARB(vertId);
-        if (ARBShaderObjects.glGetObjectParameteriARB(vertId,
-                ARBShaderObjects.GL_OBJECT_COMPILE_STATUS_ARB) != GL11.GL_TRUE) {
+        if (ARBShaderObjects.glGetObjectParameteriARB(vertId, ARBShaderObjects.GL_OBJECT_COMPILE_STATUS_ARB) != GL11.GL_TRUE) {
             String log = ARBShaderObjects.glGetInfoLogARB(vertId, 4096);
             ARBShaderObjects.glDeleteObjectARB(vertId);
             throw new IllegalStateException("Vertex shader compile failed: " + log);
@@ -114,45 +141,31 @@ public class ArbShaderProgram extends AbstractCgShaderProgram {
         int fragId = ARBShaderObjects.glCreateShaderObjectARB(ARBFragmentShader.GL_FRAGMENT_SHADER_ARB);
         ARBShaderObjects.glShaderSourceARB(fragId, fragmentSource);
         ARBShaderObjects.glCompileShaderARB(fragId);
-        if (ARBShaderObjects.glGetObjectParameteriARB(fragId,
-                ARBShaderObjects.GL_OBJECT_COMPILE_STATUS_ARB) != GL11.GL_TRUE) {
+        if (ARBShaderObjects.glGetObjectParameteriARB(fragId, ARBShaderObjects.GL_OBJECT_COMPILE_STATUS_ARB) != GL11.GL_TRUE) {
             String log = ARBShaderObjects.glGetInfoLogARB(fragId, 4096);
             ARBShaderObjects.glDeleteObjectARB(vertId);
             ARBShaderObjects.glDeleteObjectARB(fragId);
             throw new IllegalStateException("Fragment shader compile failed: " + log);
         }
 
-        int progId = ARBShaderObjects.glCreateProgramObjectARB();
-        ARBShaderObjects.glAttachObjectARB(progId, vertId);
-        ARBShaderObjects.glAttachObjectARB(progId, fragId);
+        ARBShaderObjects.glAttachObjectARB(programId, vertId);
+        ARBShaderObjects.glAttachObjectARB(programId, fragId);
 
-        // Bind fixed semantic attribute locations before link
-        if(format != null) {
-            for (int i = 0; i < format.getAttributeCount(); i++) 
-                ARBVertexShader.glBindAttribLocationARB(progId, i, format.getAttribute(i).getName());
+        if (format != null) {
+            for (int i = 0; i < format.getAttributeCount(); i++)
+                ARBVertexShader.glBindAttribLocationARB(programId, i, format.getAttribute(i).getName());
         }
 
-        ARBShaderObjects.glLinkProgramARB(progId);
-        if (ARBShaderObjects.glGetObjectParameteriARB(progId,
-                ARBShaderObjects.GL_OBJECT_LINK_STATUS_ARB) != GL11.GL_TRUE) {
-            String log = ARBShaderObjects.glGetInfoLogARB(progId, 4096);
-            ARBShaderObjects.glDeleteObjectARB(vertId);
-            ARBShaderObjects.glDeleteObjectARB(fragId);
-            ARBShaderObjects.glDeleteObjectARB(progId);
-            throw new IllegalStateException("Shader program link failed: " + log);
-        }
+        ARBShaderObjects.glLinkProgramARB(programId);
 
-        ARBShaderObjects.glValidateProgramARB(progId);
-        if (ARBShaderObjects.glGetObjectParameteriARB(progId,
-                ARBShaderObjects.GL_OBJECT_VALIDATE_STATUS_ARB) != GL11.GL_TRUE) {
-            String validateLog = ARBShaderObjects.glGetInfoLogARB(progId, 4096);
-            LOGGER.warn("Shader validation warning for program {}: {}", progId, validateLog);
-        }
-
+        ARBShaderObjects.glDetachObjectARB(programId, vertId);
+        ARBShaderObjects.glDetachObjectARB(programId, fragId);
         ARBShaderObjects.glDeleteObjectARB(vertId);
         ARBShaderObjects.glDeleteObjectARB(fragId);
 
-        return new ArbShaderProgram(progId, true);
+        if (ARBShaderObjects.glGetObjectParameteriARB(programId, ARBShaderObjects.GL_OBJECT_LINK_STATUS_ARB) != GL11.GL_TRUE) {
+            throw new IllegalStateException("Shader program link failed: " + ARBShaderObjects.glGetInfoLogARB(programId, 4096));
+        }
     }
 
     // ── Abstract hook implementations ──────────────────────────────────
@@ -196,6 +209,37 @@ public class ArbShaderProgram extends AbstractCgShaderProgram {
             throw new IllegalArgumentException("Uniform name must not be null");
         }
         return ARBShaderObjects.glGetUniformLocationARB(programId, name);
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Queries active uniforms via {@link ARBShaderObjects#glGetActiveUniformARB} and
+     * filters out built-in {@code gl_*} names.</p>
+     */
+    @Override
+    public List<CgActiveUniform> getActiveUniforms() {
+        int count = ARBShaderObjects.glGetObjectParameteriARB(programId,
+                ARBShaderObjects.GL_OBJECT_ACTIVE_UNIFORMS_ARB);
+        if (count <= 0) return Collections.emptyList();
+        int maxLen = ARBShaderObjects.glGetObjectParameteriARB(programId,
+                ARBShaderObjects.GL_OBJECT_ACTIVE_UNIFORM_MAX_LENGTH_ARB);
+        if (maxLen <= 0) maxLen = 256;
+
+        List<CgActiveUniform> result = new ArrayList<>(count);
+        // LWJGL2 convenience form: glGetActiveUniformARB(program, index, maxLength, sizeTypeBuf)
+        // fills sizeTypeBuf[0]=size, sizeTypeBuf[1]=type and returns the uniform name.
+        IntBuffer sizeTypeBuf = BufferUtils.createIntBuffer(2);
+        for (int i = 0; i < count; i++) {
+            sizeTypeBuf.clear();
+            String name = ARBShaderObjects.glGetActiveUniformARB(programId, i, maxLen, sizeTypeBuf);
+            if (name == null || name.startsWith("gl_")) continue;
+            int size = sizeTypeBuf.get(0);
+            int glType = sizeTypeBuf.get(1);
+            int loc = ARBShaderObjects.glGetUniformLocationARB(programId, name);
+            result.add(new CgActiveUniform(name, glType, size, loc));
+        }
+        return Collections.unmodifiableList(result);
     }
 
     /**

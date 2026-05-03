@@ -1,16 +1,21 @@
 package io.github.somehussar.crystalgraphics.gl.shader;
 
+import io.github.somehussar.crystalgraphics.api.shader.CgActiveUniform;
 import io.github.somehussar.crystalgraphics.api.vertex.CgVertexFormat;
 import io.github.somehussar.crystalgraphics.gl.state.CallFamily;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
+import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL20;
 
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 import static io.github.somehussar.crystalgraphics.gl.shader.CgShaderFactory.JOML_BUFFER;
 
@@ -77,6 +82,29 @@ public class CoreShaderProgram extends AbstractCgShaderProgram {
      *         the info log in the message
      */
     public static CoreShaderProgram compile(String vertexSource, String fragmentSource, CgVertexFormat format) {
+        int progId = GL20.glCreateProgram();
+        CoreShaderProgram prog = new CoreShaderProgram(progId, true);
+        try {
+            prog.relink(vertexSource, fragmentSource, format);
+        } catch (IllegalStateException e) {
+            prog.delete();
+            throw e;
+        }
+        return prog;
+    }
+
+    @Override
+    public void relink(String vertexSource, String fragmentSource, CgVertexFormat format) {
+        IntBuffer countBuf   = BufferUtils.createIntBuffer(1);
+        IntBuffer shadersBuf = BufferUtils.createIntBuffer(16);
+        GL20.glGetAttachedShaders(programId, countBuf, shadersBuf);
+        int attached = countBuf.get(0);
+        for (int i = 0; i < attached; i++) {
+            int id = shadersBuf.get(i);
+            GL20.glDetachShader(programId, id);
+            GL20.glDeleteShader(id);
+        }
+
         int vertId = GL20.glCreateShader(GL20.GL_VERTEX_SHADER);
         GL20.glShaderSource(vertId, vertexSource);
         GL20.glCompileShader(vertId);
@@ -96,35 +124,24 @@ public class CoreShaderProgram extends AbstractCgShaderProgram {
             throw new IllegalStateException("Fragment shader compile failed: " + log);
         }
 
-        int progId = GL20.glCreateProgram();
-        GL20.glAttachShader(progId, vertId);
-        GL20.glAttachShader(progId, fragId);
+        GL20.glAttachShader(programId, vertId);
+        GL20.glAttachShader(programId, fragId);
 
-        // Bind fixed semantic attribute locations before link
         if (format != null) {
             for (int i = 0; i < format.getAttributeCount(); i++)
-                GL20.glBindAttribLocation(progId, i, format.getAttribute(i).getName());
+                GL20.glBindAttribLocation(programId, i, format.getAttribute(i).getName());
         }
 
-        GL20.glLinkProgram(progId);
-        if (GL20.glGetProgrami(progId, GL20.GL_LINK_STATUS) != GL11.GL_TRUE) {
-            String log = GL20.glGetProgramInfoLog(progId, 4096);
-            GL20.glDeleteShader(vertId);
-            GL20.glDeleteShader(fragId);
-            GL20.glDeleteProgram(progId);
-            throw new IllegalStateException("Shader program link failed: " + log);
-        }
+        GL20.glLinkProgram(programId);
 
-        GL20.glValidateProgram(progId);
-        if (GL20.glGetProgrami(progId, GL20.GL_VALIDATE_STATUS) != GL11.GL_TRUE) {
-            String validateLog = GL20.glGetProgramInfoLog(progId, 4096);
-            LOGGER.warn("Shader validation warning for program {}: {}", progId, validateLog);
-        }
-
+        GL20.glDetachShader(programId, vertId);
+        GL20.glDetachShader(programId, fragId);
         GL20.glDeleteShader(vertId);
         GL20.glDeleteShader(fragId);
 
-        return new CoreShaderProgram(progId, true);
+        if (GL20.glGetProgrami(programId, GL20.GL_LINK_STATUS) != GL11.GL_TRUE) {
+            throw new IllegalStateException("Shader program link failed: " + GL20.glGetProgramInfoLog(programId, 4096));
+        }
     }
 
     // ── Abstract hook implementations ──────────────────────────────────
@@ -167,6 +184,35 @@ public class CoreShaderProgram extends AbstractCgShaderProgram {
             throw new IllegalArgumentException("Uniform name must not be null");
         }
         return GL20.glGetUniformLocation(programId, name);
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Queries active uniforms via {@link GL20#glGetActiveUniform} and
+     * filters out built-in {@code gl_*} names.</p>
+     */
+    @Override
+    public List<CgActiveUniform> getActiveUniforms() {
+        int count = GL20.glGetProgrami(programId, GL20.GL_ACTIVE_UNIFORMS);
+        if (count <= 0) return Collections.emptyList();
+        int maxLen = GL20.glGetProgrami(programId, GL20.GL_ACTIVE_UNIFORM_MAX_LENGTH);
+        if (maxLen <= 0) maxLen = 256;
+
+        List<CgActiveUniform> result = new ArrayList<>(count);
+        // LWJGL2 convenience form: glGetActiveUniform(program, index, maxLength, sizeTypeBuf)
+        // fills sizeTypeBuf[0]=size, sizeTypeBuf[1]=type and returns the uniform name.
+        IntBuffer sizeTypeBuf = BufferUtils.createIntBuffer(2);
+        for (int i = 0; i < count; i++) {
+            sizeTypeBuf.clear();
+            String name = GL20.glGetActiveUniform(programId, i, maxLen, sizeTypeBuf);
+            if (name == null || name.startsWith("gl_")) continue;
+            int size = sizeTypeBuf.get(0);
+            int glType = sizeTypeBuf.get(1);
+            int loc = GL20.glGetUniformLocation(programId, name);
+            result.add(new CgActiveUniform(name, glType, size, loc));
+        }
+        return Collections.unmodifiableList(result);
     }
 
     /**

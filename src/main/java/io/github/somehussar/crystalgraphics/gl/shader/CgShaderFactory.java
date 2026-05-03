@@ -5,6 +5,7 @@ import io.github.somehussar.crystalgraphics.api.shader.CgShader;
 import io.github.somehussar.crystalgraphics.api.shader.CgShaderManager;
 import io.github.somehussar.crystalgraphics.api.shader.CgShaderProgram;
 import io.github.somehussar.crystalgraphics.api.vertex.CgVertexFormat;
+import io.github.somehussar.crystalgraphics.mc.shader.CgShaderImpl;
 import io.github.somehussar.crystalgraphics.mc.shader.CgShaderManagerImpl;
 import net.minecraft.util.ResourceLocation;
 import org.lwjgl.BufferUtils;
@@ -110,7 +111,43 @@ public final class CgShaderFactory {
     public static CgShader load(ResourceLocation vertexLocation, ResourceLocation fragmentLocation) {
         return load(vertexLocation, fragmentLocation, null);
     }
+    
+    /**
+     * Creates a {@link CgShader} compiled directly from inline GLSL source strings,
+     * without a vertex format.
+     *
+     * <p>Equivalent to {@link #fromSource(String, String, CgVertexFormat)} with
+     * {@code format = null}.</p>
+     *
+     * @param vertSrc GLSL vertex shader source
+     * @param fragSrc GLSL fragment shader source
+     * @return a compiled (or failed-to-compile) {@link CgShader} handle
+     */
+    public static CgShader fromSource(String vertSrc, String fragSrc) {
+        return fromSource(vertSrc, fragSrc, null);
+    }
 
+    /**
+     * Creates a {@link CgShader} compiled directly from inline GLSL source strings.
+     *
+     * <p>The returned shader is <em>not</em> registered in the shader manager cache.
+     * It compiles eagerly on construction. The GLSL source can be replaced at any
+     * time via {@link CgShader#setSource(String, String)}, which marks the shader
+     * dirty and triggers a recompile on the next {@link CgShader#bind()} call —
+     * making this the preferred entry point for node-graph codegen workflows.</p>
+     *
+     * @param vertSrc GLSL vertex shader source
+     * @param fragSrc GLSL fragment shader source
+     * @param format  vertex attribute format for {@code glBindAttribLocation}, or {@code null}
+     * @return a compiled (or failed-to-compile) {@link CgShader} handle
+     */
+    public static CgShader fromSource(String vertSrc, String fragSrc, CgVertexFormat format) {
+        CgShaderImpl shader = CgShaderImpl.fromSource(vertSrc, fragSrc, format);
+
+        shader.recompile();
+        return shader;
+    }
+    
     /**
      * Private constructor to prevent instantiation.
      *

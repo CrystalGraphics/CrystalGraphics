@@ -1,9 +1,14 @@
 package io.github.somehussar.crystalgraphics.api.shader;
 
+import io.github.somehussar.crystalgraphics.api.vertex.CgVertexFormat;
+import io.github.somehussar.crystalgraphics.gl.shader.ArbShaderProgram;
+import io.github.somehussar.crystalgraphics.gl.shader.CoreShaderProgram;
 import org.joml.*;
 
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
+import java.util.Collections;
+import java.util.List;
 
 /**
  * Primary public API for GLSL shader program management in CrystalGraphics.
@@ -326,4 +331,54 @@ public interface CgShaderProgram {
      *                    {@code GL_TEXTURE0}, 1 to {@code GL_TEXTURE1}, etc.)
      */
     void setSampler(int location, int textureUnit);
+
+    /**
+     * Relinks this program from new vertex and fragment GLSL source, reusing
+     * the same GL program object ID.
+     *
+     * <p>The pipeline is: detach and delete currently attached shader objects,
+     * compile new vertex and fragment shaders, attach them to this program,
+     * rebind attribute locations from {@code format} if non-null, then link.
+     * The new shader objects are detached and deleted after linking regardless
+     * of success or failure — they are not needed once the program is linked.</p>
+     *
+     * <p>On link failure an {@link IllegalStateException} is thrown containing
+     * the GL info log.  Per the OpenGL specification the previous executable
+     * remains active on the program object, so the program ID stays valid and
+     * a subsequent successful {@code relink()} call can recover it.</p>
+     *
+     * <p>The default implementation throws {@link UnsupportedOperationException};
+     * only owned programs backed by {@code CoreShaderProgram} or
+     * {@code ArbShaderProgram} support relinking.</p>
+     *
+     * @param vertexSource   new GLSL vertex shader source
+     * @param fragmentSource new GLSL fragment shader source
+     * @param format         vertex attribute format for {@code glBindAttribLocation},
+     *                       or {@code null} to skip location binding
+     * @throws IllegalStateException        if shader compilation or program linking fails
+     * @throws UnsupportedOperationException if this program backend does not support relink
+     */
+    default void relink(String vertexSource, String fragmentSource, CgVertexFormat format) {
+        throw new UnsupportedOperationException("relink() not supported by this program backend");
+    }
+
+    /**
+     * Returns an unmodifiable list of all active uniforms in this program.
+     *
+     * <p>Active uniforms are those reported by the GL driver via
+     * {@code glGetActiveUniform} after a successful link.  Built-in
+     * {@code gl_*} uniforms are excluded.  Returns an empty list if
+     * the program has no active uniforms or this default is not overridden.</p>
+     *
+     * <p>Implementations in {@link CoreShaderProgram}
+     * and {@link ArbShaderProgram} override
+     * this with a real GL query.  The default returns an empty list for
+     * wrapped / external programs.</p>
+     *
+     * @return an unmodifiable list of active uniforms; never {@code null}
+     * @see CgActiveUniform
+     */
+    default List<CgActiveUniform> getActiveUniforms() {
+        return Collections.emptyList();
+    }
 }

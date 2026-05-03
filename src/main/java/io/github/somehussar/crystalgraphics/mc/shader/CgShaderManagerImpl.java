@@ -8,7 +8,6 @@ import net.minecraft.util.ResourceLocation;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -17,7 +16,7 @@ import java.util.Objects;
  * Concrete implementation of {@link CgShaderManager} backed by a
  * {@link CgShaderCacheKey}-keyed map.
  *
- * <p>Each call to {@link #load(String, String, CgVertexFormat, Map)} constructs a cache key
+ * <p>Each call to {@link #load(String, String, CgVertexFormat)} constructs a cache key
  * from the vertex path, fragment path, and preprocessor defines. If the cache
  * already contains an entry for that key, the existing {@link CgShader} is
  * returned. Otherwise, a new {@link CgShaderImpl} is created, stored in the
@@ -60,20 +59,19 @@ public final class CgShaderManagerImpl implements CgShaderManager {
     }
 
     @Override
-    public CgShader load(String vertexPath, String fragmentPath, CgVertexFormat format, Map<String, String> defines) {
-        Objects.requireNonNull(vertexPath, "vertexPath must not be null");
+    public CgShader load(String vertexPath, String fragmentPath, CgVertexFormat format) {
+        Objects.requireNonNull(vertexPath,   "vertexPath must not be null");
         Objects.requireNonNull(fragmentPath, "fragmentPath must not be null");
 
-        Map<String, String> safeDefines = defines != null ? defines : Collections.emptyMap();
-        CgShaderCacheKey key = new CgShaderCacheKey(vertexPath, fragmentPath, safeDefines);
+        CgShaderCacheKey key = new CgShaderCacheKey(vertexPath, fragmentPath);
 
         CgShader existing = cache.get(key);
         if (existing != null) return existing;
-        
-        CgShaderImpl shader = new CgShaderImpl(vertexPath, fragmentPath, format, safeDefines);
+
+        CgShaderImpl shader = new CgShaderImpl(vertexPath, fragmentPath, format);
         cache.put(key, shader);
-        shader.recompile(); 
-        
+        shader.recompile();
+
         LOGGER.debug("Registered managed shader: {}", key);
         return shader;
     }
