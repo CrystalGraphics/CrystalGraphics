@@ -40,10 +40,22 @@ public abstract class CgStreamBuffer {
     /**
      * Commits written data.
      *
+     * <p>This finalizes the CPU upload only. Backends that need GPU-consumption
+     * tracking (for example sync-ring buffers) must not assume the data has been
+     * consumed by the GPU yet — the draw call happens later. Such backends should
+     * do their post-draw tracking in {@link #afterSubmit()}.</p>
+     *
      * @param usedBytes actual bytes written
      * @return byte offset in the GL buffer where this data starts
      */
     public abstract int commit(int usedBytes);
+
+    /**
+     * Called after a draw command that consumes the most recently committed upload
+     * has been submitted to GL. Default no-op.
+     */
+    public void afterSubmit() {
+    }
 
     public void bind() {
         GL15.glBindBuffer(target, glBuffer);

@@ -15,10 +15,11 @@ awareness of shaders, textures, or render state.
 
 ## Type Map
 
-| Type | Role |
-|------|------|
-| `CgStagingBuffer` | Growable `float[]` with write cursor. Pure data — no GL, no semantics. Owns the raw float array. Growth factor: 1.5×. |
-| `CgVertexWriter` | V1 format-aware `CgVertexConsumer` implementation. Routes fluent calls (vertex/uv/color/normal) to staging buffer positions based on format attribute semantics. |
+| Type | Role                                                                                                                                                                                  |
+|------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `CgStagingBuffer` | Growable `float[]` with write cursor. Pure data — no GL, no semantics. Owns the raw float array. Growth factor: 1.5×.                                                                 |
+| `CgVertexWriter` | V1 format-aware `CgVertexConsumer` implementation. Routes fluent calls (vertex/uv/color/normal) to staging buffer positions based on format attribute semantics.                      |
+| `CgInstanceWriter` | Per-instance data writer backed by `CgStagingBuffer`. Fluent API: `mat4(...).color(...).putVec4(...).endInstance()`. `beginInstance()`/`endInstance()` validate stride in DEBUG mode. |
 
 ## Data Flow
 

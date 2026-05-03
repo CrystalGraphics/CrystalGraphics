@@ -81,5 +81,41 @@ CgVertexArray
 | File | Role |
 |------|------|
 | `CgVertexArray.java` | VAO wrapper: create, bind, configure, delete. Core GL30 / ARB fallback. Static `useCore` cache. |
-| `CgVertexArrayBinding.java` | Pairs a VAO + stream buffer for one vertex format. Tracks `currentDataOffset` for lazy rebinding. |
+| `CgVertexArrayBinding.java` | Pairs a VAO + stream buffer for one vertex format. Tracks `currentDataOffset` for lazy rebinding. `getGeneration()` counter increments on `delete()` for instanced binding invalidation. |
 | `CgVertexArrayRegistry.java` | Singleton registry: `CgVertexFormat` → `CgVertexArrayBinding` cache. Default initial capacity: 4096 quads per format. |
+| `CgInstancingSupport.java` | Utility: instancing capability detection, slot validation, `glVertexAttribDivisor` dispatch (GL33/ARB). |
+| `CgInstancedVertexArrayBinding.java` | Instanced VAO binding. Owns one new VAO + one instance stream buffer. Borrows base VBO ID only for pointer setup. Never touches base VAO. |
+| `CgInstancedVertexArrayRegistry.java` | Singleton registry: `(CgVertexFormat, CgInstanceLayout)` → `CgInstancedVertexArrayBinding` cache. |
+
+## Instancing Architecture
+
+### Key invariants
+
+- **Instanced binding never binds or mutates the base VAO** — it creates a completely new VAO
+  and configures it with base vertex attribute pointers (borrow base VBO ID only) and instance
+  attribute pointers (own instance stream buffer).
+- **Attribute slot layout**: base slots `0..baseCount-1` (divisor=0), instance slots
+  `baseCount..baseCount+instanceCount-1` (divisor=1).
+- **Only divisor=1 in v1** — `CgInstancingSupport.vertexAttribDivisor(slot, 1)` dispatches
+  to GL33 or ARB_instanced_arrays path.
+- **Slot validation before VAO creation** — `CgInstancingSupport.validateAttributeSlots(base, layout)`
+  checks `base.getAttributeCount() + layout.getAttributeCount() <= GL_MAX_VERTEX_ATTRIBS`.
+
+### Cleanup order (CRITICAL)
+
+At context teardown, calling the base registry is sufficient:
+```java
+CgVertexArrayRegistry.get().deleteAll();
+```
+
+`CgVertexArrayRegistry.deleteAll()` defensively calls
+`CgInstancedVertexArrayRegistry.get().deleteAll()` first, because instanced bindings
+borrow base VBO ids. Directly deleting the instanced registry is still valid when a
+caller wants to release only instanced VAOs/buffers.
+
+### Generation tracking
+
+`CgVertexArrayBinding.getGeneration()` returns a counter that increments on `delete()`.
+`CgInstancedVertexArrayBinding` snapshots the parent generation at creation time and
+validates it via `validateParentGeneration()` before each draw to catch use-after-delete bugs.
+

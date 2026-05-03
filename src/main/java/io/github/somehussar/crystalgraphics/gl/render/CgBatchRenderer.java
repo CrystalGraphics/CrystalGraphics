@@ -102,6 +102,7 @@ public final class CgBatchRenderer {
         CgQuadIndexBuffer.get().bindAndEnsureCapacity(quadCount);
 
         GL11.glDrawElements(GL11.GL_TRIANGLES, quadCount * 6, GL11.GL_UNSIGNED_SHORT, 0L);
+        binding.getStreamBuffer().afterSubmit();
 
         staging.reset();
         staging.ensureRoomForNextVertex();
@@ -207,6 +208,7 @@ public final class CgBatchRenderer {
      */
     public void finishUploadedDraws() {
         if (!uploadedForReplay) throw new IllegalStateException("Not in replay mode");
+        binding.getStreamBuffer().afterSubmit();
         uploadedForReplay = false;
         uploadedFloatCount = 0;
         uploadedDataOffset = 0;

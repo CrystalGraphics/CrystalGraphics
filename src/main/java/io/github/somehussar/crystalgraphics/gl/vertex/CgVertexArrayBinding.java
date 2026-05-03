@@ -7,6 +7,10 @@ import lombok.Getter;
 /**
  * Shared vertex input binding for a specific vertex format.
  * Owns the stream buffer and VAO used by all consumers of that format.
+ *
+ * <p>The {@link #generation} counter is incremented by {@link #delete()} so that
+ * derived {@link CgInstancedVertexArrayBinding} instances can detect when their
+ * parent binding has been destroyed and rebuilt.</p>
  */
 public final class CgVertexArrayBinding {
 
@@ -18,10 +22,26 @@ public final class CgVertexArrayBinding {
     private final CgVertexArray vertexArray;
     private int currentDataOffset;
 
+    /**
+     * Incremented on {@link #delete()} so derived instanced bindings can detect
+     * parent invalidation and avoid drawing stale GPU resources.
+     */
+    private int generation = 0;
+
     protected CgVertexArrayBinding(CgVertexFormat format, CgStreamBuffer streamBuffer, CgVertexArray vertexArray) {
         this.format = format;
         this.streamBuffer = streamBuffer;
         this.vertexArray = vertexArray;
+    }
+
+    /**
+     * Returns a monotonically increasing generation counter.
+     * Instanced bindings snapshot this value at creation time and call
+     * {@link CgInstancedVertexArrayBinding#validateParentGeneration()} before each draw
+     * to detect parent binding invalidation.
+     */
+    public int getGeneration() {
+        return generation;
     }
 
     /**
@@ -39,6 +59,7 @@ public final class CgVertexArrayBinding {
     }
 
     public void delete() {
+        generation++;
         vertexArray.delete();
         streamBuffer.delete();
     }

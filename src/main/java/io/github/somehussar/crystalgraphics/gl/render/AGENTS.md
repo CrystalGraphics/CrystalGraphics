@@ -88,6 +88,9 @@ Multiple buffer sources can coexist. Each owns its layers independently.
 | `CgDynamicTextureRenderLayer.java` | Dynamic-texture layer: auto-flush on texture change |
 | `CgBatchRenderer.java` | CPU→GPU pump: staging → VBO upload → draw. State-blind. Supports both immediate `flush()` and upload-once/draw-many lifecycle. |
 | `CgBufferSource.java` | Ordered layer collection with dirty-aware flush |
+| `CgInstancedDrawMode.java` | Enum for instanced topology: `INDEXED_QUADS` (base vertex count multiple of 4) or `ARRAY_TRIANGLES` (multiple of 3). |
+| `CgInstancedBatchRenderer.java` | CPU→GPU pump for instanced draws. State-blind. Zero-instance/zero-vertex flush is a no-op. Owns CPU staging only; GPU resources borrowed from registry. |
+| `CgInstancedRenderLayer.java` | Instanced render layer implementing `CgLayer`. State bracket: `state.apply(projection)` → `renderer.flush(drawMode)` → `state.clear()`. |
 
 ## Key Design Decisions
 

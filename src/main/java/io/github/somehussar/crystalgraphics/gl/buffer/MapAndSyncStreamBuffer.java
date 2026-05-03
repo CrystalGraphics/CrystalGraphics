@@ -22,6 +22,7 @@ public class MapAndSyncStreamBuffer extends CgStreamBuffer {
     private static final long FENCE_TIMEOUT_NS = 5_000_000_000L; // 5 seconds
 
     private final GLSync[] fences = new GLSync[RING_FRAMES];
+    private GLSync orphanFence;
     private int currentSlot;
     private int slotSize;
     /** Tracks whether the last map() fell through to orphan (oversize path). */
@@ -44,6 +45,14 @@ public class MapAndSyncStreamBuffer extends CgStreamBuffer {
         }
 
         lastMapUsedOrphan = false;
+
+        // If the previous upload used the orphan path, a later non-orphan slot write
+        // must not reuse the new backing store until the draw that consumed it completes.
+        if (orphanFence != null) {
+            waitOnFence(orphanFence);
+            ARBSync.glDeleteSync(orphanFence);
+            orphanFence = null;
+        }
 
         // Block until the GPU finishes reading this slot from a previous frame.
         if (fences[currentSlot] != null) {
@@ -70,15 +79,23 @@ public class MapAndSyncStreamBuffer extends CgStreamBuffer {
         // so it is always 0 here (we map exactly at slot or orphan start). dataOffset
         // is the absolute buffer offset returned to the caller for VAO pointer setup.
         int dataOffset = lastMapUsedOrphan ? 0 : currentSlot * slotSize;
-        GL30.glFlushMappedBufferRange(target, 0, usedBytes);
-        GL15.glUnmapBuffer(target);
         if (!lastMapUsedOrphan) {
-            // Fence marks the point where the GPU will finish consuming this slot.
+            GL30.glFlushMappedBufferRange(target, 0, usedBytes);
+        }
+        GL15.glUnmapBuffer(target);
+        return dataOffset;
+    }
+
+    @Override
+    public void afterSubmit() {
+        if (lastMapUsedOrphan) {
+            orphanFence = ARBSync.glFenceSync(ARBSync.GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+        } else {
+            // Fence marks the point after the draw using this slot has been queued.
             fences[currentSlot] = ARBSync.glFenceSync(ARBSync.GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
             currentSlot = (currentSlot + 1) % RING_FRAMES;
         }
         lastMapUsedOrphan = false;
-        return dataOffset;
     }
 
     @Override
@@ -93,6 +110,10 @@ public class MapAndSyncStreamBuffer extends CgStreamBuffer {
                 ARBSync.glDeleteSync(fences[i]);
                 fences[i] = null;
             }
+        }
+        if (orphanFence != null) {
+            ARBSync.glDeleteSync(orphanFence);
+            orphanFence = null;
         }
     }
 
