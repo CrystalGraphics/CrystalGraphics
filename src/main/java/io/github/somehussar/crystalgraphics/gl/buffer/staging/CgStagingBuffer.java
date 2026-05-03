@@ -1,5 +1,7 @@
 package io.github.somehussar.crystalgraphics.gl.buffer.staging;
 
+import io.github.somehussar.crystalgraphics.gl.render.CgBatchRenderer;
+
 import java.util.Arrays;
 
 /**
@@ -25,7 +27,7 @@ import java.util.Arrays;
  * the attribute is declared as {@code GL_UNSIGNED_BYTE} with 4 components and
  * normalization enabled.</p>
  */
-public final class CgStagingBuffer {
+public final class CgStagingBuffer implements CgVertexOutput {
 
     private float[] data;
     private int cursor;

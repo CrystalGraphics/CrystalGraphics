@@ -31,7 +31,7 @@ import java.util.List;
  * mat4 transform (64 bytes), RGBA color (4 bytes), and custom vec4 (16 bytes) =
  * 84 bytes per instance.</p>
  */
-public final class CgInstanceLayout {
+public final class CgInstanceLayout implements CgAttributeLayout {
 
     private final CgVertexAttribute[] attributes;
     /**
@@ -80,6 +80,11 @@ public final class CgInstanceLayout {
     }
 
     public int getFloatsPerInstance() {
+        return stride / Float.BYTES;
+    }
+
+    @Override
+    public int getFloatsPerElement() {
         return stride / Float.BYTES;
     }
 

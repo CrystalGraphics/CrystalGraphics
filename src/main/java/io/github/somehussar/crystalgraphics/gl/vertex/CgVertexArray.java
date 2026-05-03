@@ -84,6 +84,33 @@ public final class CgVertexArray {
         return ARBVertexArrayObject.glGenVertexArrays();
     }
 
+    /**
+     * Generates and returns a raw VAO id without wrapping it in a {@link CgVertexArray} object.
+     *
+     * <p>Used by classes that manage their own VAO lifecycle (e.g. {@code CgMesh},
+     * {@code CgVertexInputBinding}) and need a raw id instead of an owned wrapper.</p>
+     *
+     * <p><strong>Must be called on the GL thread.</strong></p>
+     *
+     * @return the generated VAO id
+     * @throws IllegalStateException if VAO support is not available
+     */
+    public static int createRawVaoId() {
+        if (!isCore()) throw new IllegalStateException("VAO support is required for CgVertexArray.createRawVaoId()");
+        return gen();
+    }
+
+    /**
+     * Deletes a raw VAO id. Counterpart to {@link #createRawVaoId()}.
+     *
+     * <p><strong>Must be called on the GL thread.</strong></p>
+     *
+     * @param vaoId the VAO id to delete (from a prior {@link #createRawVaoId()} call)
+     */
+    public static void deleteRaw(int vaoId) {
+        delete(vaoId);
+    }
+
     public static void bind(int vao) {
         if (isCore()) GL30.glBindVertexArray(vao);
         else ARBVertexArrayObject.glBindVertexArray(vao);

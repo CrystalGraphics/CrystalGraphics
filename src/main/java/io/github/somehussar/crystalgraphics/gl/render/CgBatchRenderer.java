@@ -38,7 +38,7 @@ import java.nio.ByteBuffer;
  * <p>After {@link #uploadPendingVertices()}, no more vertex recording or staging
  * growth is allowed. Attempts to record after upload throw {@link IllegalStateException}.</p>
  */
-public final class CgBatchRenderer {
+public final class CgBatchRenderer implements IBatchRenderer {
 
     private final CgVertexArrayBinding binding;
     private final CgStagingBuffer staging;

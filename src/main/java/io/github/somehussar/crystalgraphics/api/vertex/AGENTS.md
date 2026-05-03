@@ -12,13 +12,14 @@ consumed by the VAO/VBO and instancing backends.
 
 | Type | Role |
 |------|------|
-| `CgVertexFormat` | Immutable, hashable vertex format descriptor. Registry key for `CgVertexArrayRegistry`. Value-equal by attribute list + stride. Builder creates sequential attribute slots. Pre-defined: `POS2_UV2_COL4UB`, `POS3_UV2_COL4UB`. |
+| `CgAttributeLayout` | Common interface for attribute layout descriptors. Implemented by both `CgVertexFormat` and `CgInstanceLayout`. Provides `getStride()`, `getAttributeCount()`, `getAttribute(int)`, `getFloatsPerElement()`. Enables uniform VAO setup code across base and instance layouts. |
+| `CgVertexFormat` | Immutable, hashable vertex format descriptor. Registry key for `CgVertexArrayRegistry`. Value-equal by attribute list + stride. Builder creates sequential attribute slots. Pre-defined: `POS2_UV2_COL4UB`, `POS3_UV2_COL4UB`. Implements `CgAttributeLayout`. |
 | `CgVertexAttribute` | Single attribute within a format: name, type, components, offset, normalized flag, semantic metadata. Package-private constructor. Value-equal. |
 | `CgVertexSemantic` | Enum of attribute roles: `POSITION`, `UV`, `COLOR`, `NORMAL`, `GENERIC`. Used by `CgVertexWriter` for fluent routing. |
 | `CgAttribType` | Enum of GL primitive types (`FLOAT`, `UNSIGNED_BYTE`, etc.) with byte sizes. |
 | `CgVertexConsumer` | Fluent vertex-write interface implemented by `CgVertexWriter`. |
 | `CgVertexTransformUtil` | Utility for transforming vertex positions via `PoseStack`. |
-| `CgInstanceLayout` | Immutable, value-equal per-instance attribute layout. See below. |
+| `CgInstanceLayout` | Immutable, value-equal per-instance attribute layout. Implements `CgAttributeLayout`. See below. |
 
 ## CgInstanceLayout
 

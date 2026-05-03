@@ -80,7 +80,7 @@ CgVertexArray
 
 | File | Role |
 |------|------|
-| `CgVertexArray.java` | VAO wrapper: create, bind, configure, delete. Core GL30 / ARB fallback. Static `useCore` cache. |
+| `CgVertexArray.java` | VAO wrapper: create, bind, configure, delete. Core GL30 / ARB fallback. Static `useCore` cache. `createRawVaoId()` generates a raw VAO id for callers that manage their own lifecycle. `deleteRaw(int)` is its counterpart. |
 | `CgVertexArrayBinding.java` | Pairs a VAO + stream buffer for one vertex format. Tracks `currentDataOffset` for lazy rebinding. `getGeneration()` counter increments on `delete()` for instanced binding invalidation. |
 | `CgVertexArrayRegistry.java` | Singleton registry: `CgVertexFormat` → `CgVertexArrayBinding` cache. Default initial capacity: 4096 quads per format. |
 | `CgInstancingSupport.java` | Utility: instancing capability detection, slot validation, `glVertexAttribDivisor` dispatch (GL33/ARB). |

@@ -5,7 +5,7 @@ import io.github.somehussar.crystalgraphics.api.vertex.CgVertexConsumer;
 import io.github.somehussar.crystalgraphics.api.vertex.CgVertexFormat;
 import io.github.somehussar.crystalgraphics.gl.render.CgBatchRenderer;
 
-import java.nio.ByteOrder;
+import java.nio.ByteBuffer;
 
 /**
  * Format-aware fluent vertex writer implementing {@link CgVertexConsumer}.
@@ -23,12 +23,13 @@ import java.nio.ByteOrder;
  *
  * <h3>Attribute Write Order</h3>
  * <p>The fluent API collects values into local fields. {@link #endVertex()} writes
- * them into the {@link CgStagingBuffer} in <em>format declaration order</em>
+ * them into the output in <em>format declaration order</em>
  * (iterating the format's attribute array), not in API call order. This ensures
  * the staging buffer layout matches the interleaved vertex format regardless of
  * which fluent methods the caller invokes first.</p>
  *
- * <p>Package-private constructor — only {@link CgBatchRenderer} creates instances.</p>
+ * <p>Public constructor for staging-buffer path; static factory {@link #forBuffer(ByteBuffer, CgVertexFormat)}
+ * for direct ByteBuffer output.</p>
  *
  * @see CgStagingBuffer
  * @see CgBatchRenderer
@@ -37,7 +38,9 @@ public final class CgVertexWriter implements CgVertexConsumer {
 
     private static final boolean DEBUG = true;
 
-    private final CgStagingBuffer staging;
+    private final CgVertexOutput output;
+    // Non-null only when the staging-buffer constructor is used; null for ByteBuffer path.
+    private final CgStagingBuffer stagingBufferOrNull;
     private final CgVertexFormat format;
     private final CgVertexAttribute[] attributes;
 
@@ -54,13 +57,40 @@ public final class CgVertexWriter implements CgVertexConsumer {
     private float posZ;
     private float uvU;
     private float uvV;
-    private int colorAbgr = 0xFFFFFFFF;
+    private int colorRGBA = 0xFFFFFFFF;
     private float normalX;
     private float normalY;
     private float normalZ;
 
+    // ── Public constructor (staging-buffer path) ─────────────────────────
+
     public CgVertexWriter(CgStagingBuffer staging, CgVertexFormat format) {
-        this.staging = staging;
+        this((CgVertexOutput) staging, staging, format);
+    }
+
+    // ── Static factory (ByteBuffer path) ─────────────────────────────────
+
+    /**
+     * Creates a {@link CgVertexWriter} that packs vertex data directly into a
+     * pre-allocated direct {@link ByteBuffer}.
+     *
+     * <p>The buffer must have capacity {@code vertexCount * format.getStride()} bytes
+     * and must be ready for writing (position=0). Call {@code buf.flip()} after all
+     * vertices are written before passing to GPU upload.</p>
+     *
+     * @param dest   writable direct ByteBuffer with sufficient capacity
+     * @param format vertex format describing the attribute layout
+     * @return a new writer backed by the ByteBuffer
+     */
+    public static CgVertexWriter forBuffer(ByteBuffer dest, CgVertexFormat format) {
+        return new CgVertexWriter(new CgStagingByteBuffer(dest), null, format);
+    }
+
+    // ── Private canonical constructor ─────────────────────────────────────
+
+    private CgVertexWriter(CgVertexOutput output, CgStagingBuffer stagingBufferOrNull, CgVertexFormat format) {
+        this.output = output;
+        this.stagingBufferOrNull = stagingBufferOrNull;
         this.format = format;
         this.attributes = new CgVertexAttribute[format.getAttributeCount()];
 
@@ -153,9 +183,7 @@ public final class CgVertexWriter implements CgVertexConsumer {
     @Override
     public CgVertexConsumer color(int r, int g, int b, int a) {
         if (DEBUG && step != 2) throw new IllegalStateException("color() out of order");
-        if (ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN)
-            colorAbgr = ((a & 0xFF) << 24) | ((b & 0xFF) << 16) | ((g & 0xFF) << 8) | (r & 0xFF);
-        else colorAbgr = ((r & 0xFF) << 24) | ((g & 0xff) << 16) | ((b & 0xff) << 8) | (a & 0xff);
+        colorRGBA = CgColorPacking.packNativeOrder(r, g, b, a);
         step = hasNormal ? 3 : 4;
         return this;
     }
@@ -177,23 +205,23 @@ public final class CgVertexWriter implements CgVertexConsumer {
         for (CgVertexAttribute attr : attributes) {
             switch (attr.getSemantic()) {
                 case POSITION:
-                    staging.putFloat(posX);
-                    staging.putFloat(posY);
+                    output.putFloat(posX);
+                    output.putFloat(posY);
                     if (attr.getComponents() == 3) {
-                        staging.putFloat(posZ);
+                        output.putFloat(posZ);
                     }
                     break;
                 case UV:
-                    staging.putFloat(uvU);
-                    staging.putFloat(uvV);
+                    output.putFloat(uvU);
+                    output.putFloat(uvV);
                     break;
                 case COLOR:
-                    staging.putColorPacked(colorAbgr);
+                    output.putColorPacked(colorRGBA);
                     break;
                 case NORMAL:
-                    staging.putFloat(normalX);
-                    staging.putFloat(normalY);
-                    staging.putFloat(normalZ);
+                    output.putFloat(normalX);
+                    output.putFloat(normalY);
+                    output.putFloat(normalZ);
                     break;
                 case GENERIC:
                 default:
@@ -201,7 +229,9 @@ public final class CgVertexWriter implements CgVertexConsumer {
             }
         }
         step = 0;
-        staging.ensureRoomForNextVertex();
+        if (stagingBufferOrNull != null) {
+            stagingBufferOrNull.ensureRoomForNextVertex();
+        }
     }
 
    public void reset() { step = 0; }
