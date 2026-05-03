@@ -7,11 +7,13 @@ import io.github.somehussar.crystalgraphics.api.framebuffer.CgFramebufferSpec;
 import io.github.somehussar.crystalgraphics.api.CgMipmapConfig;
 import io.github.somehussar.crystalgraphics.api.framebuffer.CgRuntimeAttachments;
 import io.github.somehussar.crystalgraphics.api.framebuffer.CgTextureFormatSpec;
+import io.github.somehussar.crystalgraphics.api.texture.CgTextureSpec;
 import io.github.somehussar.crystalgraphics.gl.state.CallFamily;
+import io.github.somehussar.crystalgraphics.gl.texture.CgTexture2D;
 
+import org.lwjgl.opengl.ARBFramebufferObject;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL20;
-import org.lwjgl.opengl.GL30;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -22,32 +24,34 @@ import java.util.Map;
 import java.util.logging.Logger;
 
 /**
- * Framebuffer implementation using Core OpenGL 3.0 entry points.
+ * Framebuffer implementation using the {@code ARB_framebuffer_object} extension.
  *
- * <p>This is the preferred backend on hardware that supports GL 3.0 or later.
- * It uses {@link GL30#glGenFramebuffers()}, {@link GL30#glBindFramebuffer(int, int)},
- * and related Core methods.  MRT is supported via {@link GL20#glDrawBuffers(IntBuffer)}
- * when the hardware allows it.</p>
+ * <p>The ARB FBO extension is semantically identical to Core GL30 and uses the
+ * same constant values (e.g. {@code GL_FRAMEBUFFER = 0x8D40}), but routes
+ * through different LWJGL entry points
+ * ({@link ARBFramebufferObject#glGenFramebuffers()} vs.
+ * {@link org.lwjgl.opengl.GL30#glGenFramebuffers()}).  This matters because
+ * some drivers expose ARB FBO support without fully supporting GL 3.0, and
+ * cross-API state tracking must know which entry point was used.</p>
  *
- * <h3>Resource Lifecycle</h3>
- * <p>A {@code CoreFramebuffer} created via the legacy {@link #create(int, int, boolean, boolean)}
- * factory owns one FBO, one color texture (GL_COLOR_ATTACHMENT0), and optionally one
- * depth renderbuffer.  A spec-created framebuffer via {@link #createFromSpec(CgFramebufferSpec)}
- * owns one FBO, N color textures, and optionally depth/stencil renderbuffers.
- * All resources are released together when {@link #delete()} is called.</p>
+ * <p>MRT is supported via {@link GL20#glDrawBuffers(IntBuffer)}, which is
+ * independent of the FBO extension and only requires GL 2.0.</p>
+ *
+ * <p>Both legacy (single color attachment) and spec-based (multi-attachment)
+ * framebuffers are supported.</p>
  *
  * <h3>Thread Safety</h3>
  * <p>Not thread-safe.  Must only be used from the GL context thread.</p>
  *
- * @see AbstractCgFramebuffer
- * @see ArbFramebuffer
- * @see ExtFramebuffer
+ * @see CgAbstractFramebuffer
+ * @see CgCoreFramebuffer
+ * @see CgExtFramebuffer
  */
-public final class CoreFramebuffer extends AbstractCgFramebuffer {
+public final class CgArbFramebuffer extends CgAbstractFramebuffer {
 
-    private static final Logger LOGGER = Logger.getLogger(CoreFramebuffer.class.getName());
+    private static final Logger LOGGER = Logger.getLogger(CgArbFramebuffer.class.getName());
 
-    // ── GL constants ───────────────────────────────────────────────────
+    // ── GL constants (same values as Core GL30) ────────────────────────
 
     /** {@code GL_FRAMEBUFFER} target. */
     private static final int GL_FRAMEBUFFER = 0x8D40;
@@ -67,24 +71,6 @@ public final class CoreFramebuffer extends AbstractCgFramebuffer {
     /** {@code GL_TEXTURE_2D} target. */
     private static final int GL_TEXTURE_2D = 0x0DE1;
 
-    /** {@code GL_RGBA8} internal format. */
-    private static final int GL_RGBA8 = 0x8058;
-
-    /** {@code GL_RGBA} pixel format. */
-    private static final int GL_RGBA = 0x1908;
-
-    /** {@code GL_UNSIGNED_BYTE} pixel type. */
-    private static final int GL_UNSIGNED_BYTE = 0x1401;
-
-    /** {@code GL_TEXTURE_MIN_FILTER} parameter. */
-    private static final int GL_TEXTURE_MIN_FILTER = 0x2801;
-
-    /** {@code GL_TEXTURE_MAG_FILTER} parameter. */
-    private static final int GL_TEXTURE_MAG_FILTER = 0x2800;
-
-    /** {@code GL_LINEAR} filter value. */
-    private static final int GL_LINEAR = 0x2601;
-
     /** {@code GL_FRAMEBUFFER_COMPLETE} status. */
     private static final int GL_FRAMEBUFFER_COMPLETE = 0x8CD5;
 
@@ -99,6 +85,9 @@ public final class CoreFramebuffer extends AbstractCgFramebuffer {
 
     /** {@code GL_DEPTH_COMPONENT} pixel format for depth texture allocation. */
     private static final int GL_DEPTH_COMPONENT = 0x1902;
+
+    /** {@code GL_UNSIGNED_BYTE} pixel type (used in depth texture spec). */
+    private static final int GL_UNSIGNED_BYTE = 0x1401;
 
     /** {@code GL_NEAREST} filter value (appropriate for depth textures). */
     private static final int GL_NEAREST = 0x2600;
@@ -115,23 +104,26 @@ public final class CoreFramebuffer extends AbstractCgFramebuffer {
     private CgFramebufferSpec spec;
 
     /**
-     * Array of all color texture IDs (spec-based path).
-     * {@code null} for legacy path (uses inherited {@code colorTextureId}).
+     * Owned color textures (spec-based path). {@code null} for legacy path.
+     * The inherited {@code colorTextureId} int is kept in sync via {@code .getId()}.
      */
-    private int[] colorTextureIds;
+    private CgTexture2D[] colorTextures;
+
+    /**
+     * Single owned color texture (legacy path). {@code null} for spec-based path.
+     * The inherited {@code colorTextureId} int is kept in sync via {@code .getId()}.
+     */
+    private CgTexture2D singleColorTexture;
+
+    /**
+     * Owned depth texture, or {@code null} if depth uses a renderbuffer or is absent.
+     */
+    private CgTexture2D depthTexture;
 
     /**
      * Renderbuffer ID for the stencil attachment (separate mode), or 0 if none.
-     * For packed depth-stencil, the single renderbuffer is stored in {@code depthRenderbufferId}.
      */
     private int stencilRenderbufferId;
-
-    /**
-     * Texture ID for the depth attachment when allocated as a texture
-     * (via {@link CgDepthStencilSpec#depthOnlyTexture(int)}), or 0 if depth
-     * uses a renderbuffer or is absent.
-     */
-    private int depthTextureId;
 
     /** Runtime color attachments keyed by slot index. */
     private final Map<Integer, RuntimeSlot> runtimeSlots = new HashMap<Integer, RuntimeSlot>();
@@ -141,16 +133,12 @@ public final class CoreFramebuffer extends AbstractCgFramebuffer {
 
     // ── RuntimeSlot inner class ────────────────────────────────────────
 
-    /**
-     * Tracks a single runtime color attachment slot.
-     */
     private static final class RuntimeSlot {
         int textureId;
         final boolean managed;
         final CgColorAttachmentProvider provider;
         final CgTextureFormatSpec format;
 
-        /** External attachment (not owned). */
         RuntimeSlot(int textureId) {
             this.textureId = textureId;
             this.managed = false;
@@ -158,7 +146,6 @@ public final class CoreFramebuffer extends AbstractCgFramebuffer {
             this.format = null;
         }
 
-        /** Managed attachment (owned, auto-resized). */
         RuntimeSlot(int textureId, CgColorAttachmentProvider provider, CgTextureFormatSpec format) {
             this.textureId = textureId;
             this.managed = true;
@@ -167,53 +154,37 @@ public final class CoreFramebuffer extends AbstractCgFramebuffer {
         }
     }
 
-    // ── Constructor (private — use factory method) ─────────────────────
+    // ── Constructors ───────────────────────────────────────────────────
 
     /**
-     * Creates a CoreFramebuffer with pre-existing GL resource IDs (legacy path).
-     *
-     * @param fboId               the framebuffer object ID
-     * @param colorTextureId      the color texture ID
-     * @param depthRenderbufferId the depth renderbuffer ID (0 if none)
-     * @param width               width in pixels
-     * @param height              height in pixels
-     * @param hasDepth            whether a depth buffer is attached
-     * @param supportsMrt         whether MRT is available
+     * Creates an CgArbFramebuffer with pre-existing GL resource IDs (legacy path).
      */
-    private CoreFramebuffer(int fboId, int colorTextureId, int depthRenderbufferId,
-                            int width, int height, boolean hasDepth, boolean supportsMrt) {
+    private CgArbFramebuffer(int fboId, CgTexture2D colorTexture, int depthRenderbufferId,
+                           int width, int height, boolean hasDepth, boolean supportsMrt) {
         super(fboId, width, height, true, supportsMrt);
-        this.colorTextureId = colorTextureId;
+        this.singleColorTexture = colorTexture;
+        this.colorTextureId = colorTexture.getId();
         this.depthRenderbufferId = depthRenderbufferId;
         this.hasDepth = hasDepth;
         this.spec = null;
-        this.colorTextureIds = null;
+        this.colorTextures = null;
         this.stencilRenderbufferId = 0;
     }
 
     /**
-     * Creates a CoreFramebuffer with spec-based multi-attachment state.
-     *
-     * @param fboId                 the framebuffer object ID
-     * @param colorTextureIds       array of all color texture IDs
-     * @param depthRenderbufferId   the depth renderbuffer ID (0 if none)
-     * @param stencilRenderbufferId the stencil renderbuffer ID (0 if none)
-     * @param width                 base width in pixels
-     * @param height                base height in pixels
-     * @param supportsMrt           whether MRT is available
-     * @param spec                  the framebuffer spec (retained for resize)
+     * Creates an CgArbFramebuffer with spec-based multi-attachment state.
      */
-    private CoreFramebuffer(int fboId, int[] colorTextureIds,
-                            int depthRenderbufferId, int stencilRenderbufferId,
-                            int depthTextureId,
-                            int width, int height, boolean supportsMrt,
-                            CgFramebufferSpec spec) {
+    private CgArbFramebuffer(int fboId, CgTexture2D[] colorTextures,
+                           int depthRenderbufferId, int stencilRenderbufferId,
+                           CgTexture2D depthTexture,
+                           int width, int height, boolean supportsMrt,
+                           CgFramebufferSpec spec) {
         super(fboId, width, height, true, supportsMrt);
-        this.colorTextureIds = colorTextureIds;
-        this.colorTextureId = colorTextureIds.length > 0 ? colorTextureIds[0] : 0;
+        this.colorTextures = colorTextures;
+        this.colorTextureId = colorTextures.length > 0 ? colorTextures[0].getId() : 0;
         this.depthRenderbufferId = depthRenderbufferId;
         this.stencilRenderbufferId = stencilRenderbufferId;
-        this.depthTextureId = depthTextureId;
+        this.depthTexture = depthTexture;
         this.hasDepth = false;
         this.spec = spec;
     }
@@ -222,108 +193,106 @@ public final class CoreFramebuffer extends AbstractCgFramebuffer {
      * Package-private constructor for wrapping an externally-created FBO.
      *
      * <p>The wrapped framebuffer is non-owned and cannot be deleted.</p>
-     *
-     * @param fboId       the external framebuffer object ID
-     * @param width       known width (informational)
-     * @param height      known height (informational)
-     * @param supportsMrt whether MRT is available
      */
-    CoreFramebuffer(int fboId, int width, int height, boolean supportsMrt) {
+    CgArbFramebuffer(int fboId, int width, int height, boolean supportsMrt) {
         super(fboId, width, height, false, supportsMrt);
         this.hasDepth = false;
-        this.spec = null;
-        this.colorTextureIds = null;
-        this.stencilRenderbufferId = 0;
     }
 
-    // ── Factory method (legacy) ───────────────────────────────────────
+    // ── Private spec helpers ──────────────────────────────────────────
 
     /**
-     * Creates a new Core GL30 framebuffer with a color texture attachment
-     * and optional depth renderbuffer.
+     * Builds a {@link CgTextureSpec} from an attachment's format + mipmap config.
+     */
+    private static CgTextureSpec specFrom(CgTextureFormatSpec fmt, CgMipmapConfig mips) {
+        CgTextureSpec.CgTextureSpecBuilder b = CgTextureSpec.builder().format(fmt);
+        if (mips != null && mips.isEnabled()) {
+            b.minFilter(mips.getMinFilter()).magFilter(mips.getMagFilter());
+        }
+        return b.build();
+    }
+
+    /**
+     * Builds a {@link CgTextureSpec} for a depth-only texture.
      *
-     * <p>Generates the FBO, creates and attaches a GL_RGBA8 color texture
-     * (GL_COLOR_ATTACHMENT0), optionally creates and attaches a
-     * GL_DEPTH_COMPONENT24 renderbuffer, and verifies framebuffer
-     * completeness.</p>
+     * @param depthInternalFormat e.g. {@code GL_DEPTH_COMPONENT24}
+     */
+    private static CgTextureSpec depthSpecFrom(int depthInternalFormat) {
+        return CgTextureSpec.builder()
+                .format(new CgTextureFormatSpec(depthInternalFormat, GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE))
+                .minFilter(GL_NEAREST)
+                .magFilter(GL_NEAREST)
+                .build();
+    }
+
+    // ── Factory method ─────────────────────────────────────────────────
+
+    /**
+     * Creates a new ARB framebuffer with a color texture attachment and
+     * optional depth renderbuffer.
      *
      * @param width  width in pixels (must be &gt; 0)
      * @param height height in pixels (must be &gt; 0)
      * @param depth  whether to attach a depth renderbuffer
      * @param mrt    whether to allow multiple render targets
-     * @return a new owned {@code CoreFramebuffer}
+     * @return a new owned {@code CgArbFramebuffer}
      * @throws IllegalStateException    if the framebuffer is not complete after setup
      * @throws IllegalArgumentException if width or height is not positive
      */
-    public static CoreFramebuffer create(int width, int height, boolean depth, boolean mrt) {
+    public static CgArbFramebuffer create(int width, int height, boolean depth, boolean mrt) {
         if (width <= 0 || height <= 0) {
             throw new IllegalArgumentException(
                     "Framebuffer dimensions must be positive: " + width + "x" + height);
         }
 
-        int fbo = GL30.glGenFramebuffers();
-        GL30.glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+        int fbo = ARBFramebufferObject.glGenFramebuffers();
+        ARBFramebufferObject.glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 
-        // Color texture (GL_COLOR_ATTACHMENT0)
-        int colorTex = GL11.glGenTextures();
-        GL11.glBindTexture(GL_TEXTURE_2D, colorTex);
-        GL11.glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0,
-                GL_RGBA, GL_UNSIGNED_BYTE, (ByteBuffer) null);
-        GL11.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        GL11.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        GL30.glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-                GL_TEXTURE_2D, colorTex, 0);
+        // Color texture (GL_COLOR_ATTACHMENT0) — allocate via texture infrastructure
+        CgTexture2D colorTex = CgTexture2D.createEmpty(width, height, CgTextureSpec.RGBA8_LINEAR);
+        ARBFramebufferObject.glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                GL_TEXTURE_2D, colorTex.getId(), 0);
 
         // Optional depth renderbuffer
         int depthRbo = 0;
         if (depth) {
-            depthRbo = GL30.glGenRenderbuffers();
-            GL30.glBindRenderbuffer(GL_RENDERBUFFER, depthRbo);
-            GL30.glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
-            GL30.glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
-                    GL_RENDERBUFFER, depthRbo);
+            depthRbo = ARBFramebufferObject.glGenRenderbuffers();
+            ARBFramebufferObject.glBindRenderbuffer(GL_RENDERBUFFER, depthRbo);
+            ARBFramebufferObject.glRenderbufferStorage(GL_RENDERBUFFER,
+                    GL_DEPTH_COMPONENT24, width, height);
+            ARBFramebufferObject.glFramebufferRenderbuffer(GL_FRAMEBUFFER,
+                    GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depthRbo);
         }
 
         // Completeness check
-        int status = GL30.glCheckFramebufferStatus(GL_FRAMEBUFFER);
+        int status = ARBFramebufferObject.glCheckFramebufferStatus(GL_FRAMEBUFFER);
         if (status != GL_FRAMEBUFFER_COMPLETE) {
-            // Clean up on failure
-            GL30.glDeleteFramebuffers(fbo);
-            GL11.glDeleteTextures(colorTex);
+            ARBFramebufferObject.glDeleteFramebuffers(fbo);
+            colorTex.delete();
             if (depthRbo != 0) {
-                GL30.glDeleteRenderbuffers(depthRbo);
+                ARBFramebufferObject.glDeleteRenderbuffers(depthRbo);
             }
             throw new IllegalStateException(
-                    "Core GL30 framebuffer is not complete. Status: 0x"
+                    "ARB framebuffer is not complete. Status: 0x"
                     + Integer.toHexString(status));
         }
 
-        // Unbind FBO to restore default state
-        GL30.glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        ARBFramebufferObject.glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-        return new CoreFramebuffer(fbo, colorTex, depthRbo, width, height, depth, mrt);
+        return new CgArbFramebuffer(fbo, colorTex, depthRbo, width, height, depth, mrt);
     }
 
     // ── Factory method (spec-based) ───────────────────────────────────
 
     /**
-     * Creates a new Core GL30 framebuffer from a detailed specification.
-     *
-     * <p>Allocates N color textures based on the spec's color attachments,
-     * each with independent sizing and format. Allocates depth/stencil
-     * renderbuffers based on the depth-stencil spec. All resources are
-     * failure-atomic: if any allocation or completeness check fails, all
-     * previously allocated GL objects are cleaned up before throwing.</p>
-     *
-     * <p>For packed depth-stencil, if the initial packed attachment fails the
-     * completeness check, a fallback to separate depth + stencil is attempted.</p>
+     * Creates a new ARB framebuffer from a detailed specification.
      *
      * @param spec the framebuffer specification
-     * @return a new owned {@code CoreFramebuffer}
+     * @return a new owned {@code CgArbFramebuffer}
      * @throws IllegalArgumentException if spec is null
      * @throws IllegalStateException    if the framebuffer is not complete after setup
      */
-    public static CoreFramebuffer createFromSpec(CgFramebufferSpec spec) {
+    public static CgArbFramebuffer createFromSpec(CgFramebufferSpec spec) {
         if (spec == null) {
             throw new IllegalArgumentException("Spec must not be null");
         }
@@ -335,14 +304,13 @@ public final class CoreFramebuffer extends AbstractCgFramebuffer {
         int colorCount = attachments.size();
         boolean mrt = colorCount > 1;
 
-        int fbo = GL30.glGenFramebuffers();
-        GL30.glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+        int fbo = ARBFramebufferObject.glGenFramebuffers();
+        ARBFramebufferObject.glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 
-        // Track allocated resources for failure-atomic cleanup
-        int[] colorTexIds = new int[colorCount];
+        CgTexture2D[] colorTextures = new CgTexture2D[colorCount];
         int depthRbo = 0;
         int stencilRbo = 0;
-        int depthTex = 0;
+        CgTexture2D depthTex = null;
 
         try {
             // ── Allocate color textures ─────────────────────────────
@@ -354,144 +322,112 @@ public final class CoreFramebuffer extends AbstractCgFramebuffer {
                 int attWidth = Math.max(1, (int) Math.ceil(baseWidth * att.getScaleX()));
                 int attHeight = Math.max(1, (int) Math.ceil(baseHeight * att.getScaleY()));
 
-                int tex = GL11.glGenTextures();
-                colorTexIds[i] = tex;
-                GL11.glBindTexture(GL_TEXTURE_2D, tex);
-                GL11.glTexImage2D(GL_TEXTURE_2D, 0,
-                        fmt.getInternalFormat(), attWidth, attHeight, 0,
-                        fmt.getPixelFormat(), fmt.getPixelType(), (ByteBuffer) null);
-
-                if (mips.isEnabled()) {
-                    GL11.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, mips.getMinFilter());
-                    GL11.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, mips.getMagFilter());
-                } else {
-                    GL11.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-                    GL11.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-                }
-
-                GL30.glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i,
-                        GL_TEXTURE_2D, tex, 0);
+                CgTexture2D tex = CgTexture2D.createEmpty(attWidth, attHeight, specFrom(fmt, mips));
+                colorTextures[i] = tex;
+                ARBFramebufferObject.glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i,
+                        GL_TEXTURE_2D, tex.getId(), 0);
             }
 
             // ── Allocate depth/stencil ─────────────────────────────
             if (dsSpec.isPacked()) {
-                // Packed depth-stencil: try GL_DEPTH_STENCIL_ATTACHMENT first
-                depthRbo = GL30.glGenRenderbuffers();
-                GL30.glBindRenderbuffer(GL_RENDERBUFFER, depthRbo);
-                GL30.glRenderbufferStorage(GL_RENDERBUFFER, dsSpec.getPackedFormat(),
+                depthRbo = ARBFramebufferObject.glGenRenderbuffers();
+                ARBFramebufferObject.glBindRenderbuffer(GL_RENDERBUFFER, depthRbo);
+                ARBFramebufferObject.glRenderbufferStorage(GL_RENDERBUFFER, dsSpec.getPackedFormat(),
                         baseWidth, baseHeight);
-                GL30.glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
+                ARBFramebufferObject.glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
                         GL_RENDERBUFFER, depthRbo);
 
-                // Check completeness with packed attachment
-                int packedStatus = GL30.glCheckFramebufferStatus(GL_FRAMEBUFFER);
+                int packedStatus = ARBFramebufferObject.glCheckFramebufferStatus(GL_FRAMEBUFFER);
                 if (packedStatus != GL_FRAMEBUFFER_COMPLETE) {
-                    // Packed failed — clean up packed RBO and try separate fallback
                     LOGGER.warning("Packed depth-stencil (format 0x"
                             + Integer.toHexString(dsSpec.getPackedFormat())
                             + ") failed completeness (status 0x"
                             + Integer.toHexString(packedStatus)
                             + "), falling back to separate depth + stencil");
 
-                    // Detach and delete the packed renderbuffer
-                    GL30.glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
+                    ARBFramebufferObject.glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
                             GL_RENDERBUFFER, 0);
-                    GL30.glDeleteRenderbuffers(depthRbo);
+                    ARBFramebufferObject.glDeleteRenderbuffers(depthRbo);
                     depthRbo = 0;
 
-                    // Fallback: separate DEPTH_COMPONENT24 + STENCIL_INDEX8
-                    depthRbo = GL30.glGenRenderbuffers();
-                    GL30.glBindRenderbuffer(GL_RENDERBUFFER, depthRbo);
-                    GL30.glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24,
+                    depthRbo = ARBFramebufferObject.glGenRenderbuffers();
+                    ARBFramebufferObject.glBindRenderbuffer(GL_RENDERBUFFER, depthRbo);
+                    ARBFramebufferObject.glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24,
                             baseWidth, baseHeight);
-                    GL30.glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+                    ARBFramebufferObject.glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
                             GL_RENDERBUFFER, depthRbo);
 
-                    stencilRbo = GL30.glGenRenderbuffers();
-                    GL30.glBindRenderbuffer(GL_RENDERBUFFER, stencilRbo);
-                    GL30.glRenderbufferStorage(GL_RENDERBUFFER, GL_STENCIL_INDEX8,
+                    stencilRbo = ARBFramebufferObject.glGenRenderbuffers();
+                    ARBFramebufferObject.glBindRenderbuffer(GL_RENDERBUFFER, stencilRbo);
+                    ARBFramebufferObject.glRenderbufferStorage(GL_RENDERBUFFER, GL_STENCIL_INDEX8,
                             baseWidth, baseHeight);
-                    GL30.glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT,
+                    ARBFramebufferObject.glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT,
                             GL_RENDERBUFFER, stencilRbo);
                 }
             } else if (dsSpec.isDepthTexture() && dsSpec.hasDepth()) {
-                // Depth as texture: allocate GL_TEXTURE_2D for depth
-                depthTex = GL11.glGenTextures();
-                GL11.glBindTexture(GL_TEXTURE_2D, depthTex);
-                GL11.glTexImage2D(GL_TEXTURE_2D, 0,
-                        dsSpec.getDepthFormat(), baseWidth, baseHeight, 0,
-                        GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE, (ByteBuffer) null);
-                GL11.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-                GL11.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-                GL30.glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
-                        GL_TEXTURE_2D, depthTex, 0);
+                depthTex = CgTexture2D.createEmpty(baseWidth, baseHeight,
+                        depthSpecFrom(dsSpec.getDepthFormat()));
+                ARBFramebufferObject.glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+                        GL_TEXTURE_2D, depthTex.getId(), 0);
             } else {
-                // Non-packed modes: depthOnly (renderbuffer), stencilOnly, separate, or none
                 if (dsSpec.hasDepth()) {
-                    depthRbo = GL30.glGenRenderbuffers();
-                    GL30.glBindRenderbuffer(GL_RENDERBUFFER, depthRbo);
-                    GL30.glRenderbufferStorage(GL_RENDERBUFFER, dsSpec.getDepthFormat(),
+                    depthRbo = ARBFramebufferObject.glGenRenderbuffers();
+                    ARBFramebufferObject.glBindRenderbuffer(GL_RENDERBUFFER, depthRbo);
+                    ARBFramebufferObject.glRenderbufferStorage(GL_RENDERBUFFER, dsSpec.getDepthFormat(),
                             baseWidth, baseHeight);
-                    GL30.glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+                    ARBFramebufferObject.glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
                             GL_RENDERBUFFER, depthRbo);
                 }
                 if (dsSpec.hasStencil()) {
-                    stencilRbo = GL30.glGenRenderbuffers();
-                    GL30.glBindRenderbuffer(GL_RENDERBUFFER, stencilRbo);
-                    GL30.glRenderbufferStorage(GL_RENDERBUFFER, dsSpec.getStencilFormat(),
+                    stencilRbo = ARBFramebufferObject.glGenRenderbuffers();
+                    ARBFramebufferObject.glBindRenderbuffer(GL_RENDERBUFFER, stencilRbo);
+                    ARBFramebufferObject.glRenderbufferStorage(GL_RENDERBUFFER, dsSpec.getStencilFormat(),
                             baseWidth, baseHeight);
-                    GL30.glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT,
+                    ARBFramebufferObject.glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT,
                             GL_RENDERBUFFER, stencilRbo);
                 }
             }
 
             // ── Completeness check ──────────────────────────────────
-            int status = GL30.glCheckFramebufferStatus(GL_FRAMEBUFFER);
+            int status = ARBFramebufferObject.glCheckFramebufferStatus(GL_FRAMEBUFFER);
             if (status != GL_FRAMEBUFFER_COMPLETE) {
                 throw new IllegalStateException(
-                        "Core GL30 framebuffer (spec-based) is not complete. Status: 0x"
+                        "ARB framebuffer (spec-based) is not complete. Status: 0x"
                         + Integer.toHexString(status));
             }
 
-            // Unbind FBO to restore default state
-            GL30.glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            ARBFramebufferObject.glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-            return new CoreFramebuffer(fbo, colorTexIds, depthRbo, stencilRbo,
+            return new CgArbFramebuffer(fbo, colorTextures, depthRbo, stencilRbo,
                     depthTex, baseWidth, baseHeight, mrt, spec);
 
         } catch (RuntimeException e) {
-            // Failure-atomic cleanup: delete ALL allocated GL objects
-            cleanupOnFailure(fbo, colorTexIds, depthRbo, stencilRbo, depthTex);
-            GL30.glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            cleanupOnFailure(fbo, colorTextures, depthRbo, stencilRbo, depthTex);
+            ARBFramebufferObject.glBindFramebuffer(GL_FRAMEBUFFER, 0);
             throw e;
         }
     }
 
     /**
      * Cleans up all GL resources allocated during a failed framebuffer creation.
-     *
-     * @param fbo         the FBO ID to delete
-     * @param colorTexIds array of color texture IDs to delete (0 entries are skipped)
-     * @param depthRbo    depth renderbuffer ID (0 if none)
-     * @param stencilRbo  stencil renderbuffer ID (0 if none)
      */
-    private static void cleanupOnFailure(int fbo, int[] colorTexIds,
+    private static void cleanupOnFailure(int fbo, CgTexture2D[] colorTextures,
                                          int depthRbo, int stencilRbo,
-                                         int depthTex) {
-        GL30.glDeleteFramebuffers(fbo);
-        for (int texId : colorTexIds) {
-            if (texId != 0) {
-                GL11.glDeleteTextures(texId);
+                                         CgTexture2D depthTex) {
+        ARBFramebufferObject.glDeleteFramebuffers(fbo);
+        for (CgTexture2D tex : colorTextures) {
+            if (tex != null) {
+                tex.delete();
             }
         }
         if (depthRbo != 0) {
-            GL30.glDeleteRenderbuffers(depthRbo);
+            ARBFramebufferObject.glDeleteRenderbuffers(depthRbo);
         }
         if (stencilRbo != 0) {
-            GL30.glDeleteRenderbuffers(stencilRbo);
+            ARBFramebufferObject.glDeleteRenderbuffers(stencilRbo);
         }
-        if (depthTex != 0) {
-            GL11.glDeleteTextures(depthTex);
+        if (depthTex != null) {
+            depthTex.delete();
         }
     }
 
@@ -500,11 +436,11 @@ public final class CoreFramebuffer extends AbstractCgFramebuffer {
     /**
      * {@inheritDoc}
      *
-     * @return {@link CallFamily#CORE_GL30}
+     * @return {@link CallFamily#ARB_FBO}
      */
     @Override
     protected CallFamily callFamily() {
-        return CallFamily.CORE_GL30;
+        return CallFamily.ARB_FBO;
     }
 
     // ── getColorTextureId ─────────────────────────────────────────────
@@ -513,8 +449,7 @@ public final class CoreFramebuffer extends AbstractCgFramebuffer {
      * {@inheritDoc}
      *
      * <p>For spec-based framebuffers, returns the texture ID at the given
-     * attachment index. For legacy framebuffers, only index 0 is valid and
-     * returns the single color texture ID.</p>
+     * attachment index. For legacy framebuffers, only index 0 is valid.</p>
      *
      * @param attachmentIndex the color attachment index (zero-based)
      * @return the OpenGL texture ID
@@ -522,16 +457,14 @@ public final class CoreFramebuffer extends AbstractCgFramebuffer {
      */
     @Override
     public int getColorTextureId(int attachmentIndex) {
-        if (colorTextureIds != null) {
-            // Spec-based path: use the array
-            if (attachmentIndex < 0 || attachmentIndex >= colorTextureIds.length) {
+        if (colorTextures != null) {
+            if (attachmentIndex < 0 || attachmentIndex >= colorTextures.length) {
                 throw new IndexOutOfBoundsException(
                         "Attachment index " + attachmentIndex + " out of range [0, "
-                        + colorTextureIds.length + ")");
+                        + colorTextures.length + ")");
             }
-            return colorTextureIds[attachmentIndex];
+            return colorTextures[attachmentIndex].getId();
         } else {
-            // Legacy path: only index 0 is valid
             if (attachmentIndex != 0) {
                 throw new IndexOutOfBoundsException(
                         "Legacy framebuffer only has 1 color attachment, index: "
@@ -543,12 +476,12 @@ public final class CoreFramebuffer extends AbstractCgFramebuffer {
 
     @Override
     public int getDepthTextureId() {
-        if (depthTextureId == 0) {
+        if (depthTexture == null) {
             throw new UnsupportedOperationException(
                     "This framebuffer does not have a depth texture attachment. "
                     + "Depth texture is only available when created with CgDepthStencilSpec.depthOnlyTexture().");
         }
-        return depthTextureId;
+        return depthTexture.getId();
     }
 
     // ── Runtime attachments ───────────────────────────────────────────
@@ -562,10 +495,10 @@ public final class CoreFramebuffer extends AbstractCgFramebuffer {
     }
 
     private int getSpecColorCount() {
-        if (colorTextureIds != null) {
-            return colorTextureIds.length;
+        if (colorTextures != null) {
+            return colorTextures.length;
         }
-        return 1; // legacy path always has 1 color attachment
+        return 1;
     }
 
     private void validateSlot(int slot) {
@@ -598,10 +531,10 @@ public final class CoreFramebuffer extends AbstractCgFramebuffer {
 
             runtimeSlots.put(slot, new RuntimeSlot(textureId));
 
-            GL30.glBindFramebuffer(GL_FRAMEBUFFER, fboId);
-            GL30.glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + slot,
+            ARBFramebufferObject.glBindFramebuffer(GL_FRAMEBUFFER, fboId);
+            ARBFramebufferObject.glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + slot,
                     GL_TEXTURE_2D, textureId, 0);
-            GL30.glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            ARBFramebufferObject.glBindFramebuffer(GL_FRAMEBUFFER, 0);
         }
 
         @Override
@@ -625,10 +558,10 @@ public final class CoreFramebuffer extends AbstractCgFramebuffer {
             int texId = provider.allocate(width, height, format);
             runtimeSlots.put(slot, new RuntimeSlot(texId, provider, format));
 
-            GL30.glBindFramebuffer(GL_FRAMEBUFFER, fboId);
-            GL30.glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + slot,
+            ARBFramebufferObject.glBindFramebuffer(GL_FRAMEBUFFER, fboId);
+            ARBFramebufferObject.glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + slot,
                     GL_TEXTURE_2D, texId, 0);
-            GL30.glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            ARBFramebufferObject.glBindFramebuffer(GL_FRAMEBUFFER, 0);
         }
 
         @Override
@@ -645,10 +578,10 @@ public final class CoreFramebuffer extends AbstractCgFramebuffer {
                 GL11.glDeleteTextures(existing.textureId);
             }
 
-            GL30.glBindFramebuffer(GL_FRAMEBUFFER, fboId);
-            GL30.glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + slot,
+            ARBFramebufferObject.glBindFramebuffer(GL_FRAMEBUFFER, fboId);
+            ARBFramebufferObject.glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + slot,
                     GL_TEXTURE_2D, 0, 0);
-            GL30.glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            ARBFramebufferObject.glBindFramebuffer(GL_FRAMEBUFFER, 0);
         }
 
         @Override
@@ -674,11 +607,11 @@ public final class CoreFramebuffer extends AbstractCgFramebuffer {
     /**
      * {@inheritDoc}
      *
-     * <p>Sets the draw buffers for this framebuffer using
-     * {@link GL20#glDrawBuffers(IntBuffer)}.  Requires MRT support.</p>
+     * <p>Sets the draw buffers using {@link GL20#glDrawBuffers(IntBuffer)}.
+     * The {@code drawBuffers} function is part of GL 2.0 and is independent
+     * of the FBO extension, so both Core and ARB paths use the same call.</p>
      *
      * @param attachments the color attachment constants
-     *                    (e.g. {@code GL_COLOR_ATTACHMENT0}, {@code GL_COLOR_ATTACHMENT1}, ...)
      * @throws UnsupportedOperationException if MRT is not supported
      * @throws IllegalArgumentException      if attachments is empty
      */
@@ -686,7 +619,7 @@ public final class CoreFramebuffer extends AbstractCgFramebuffer {
     public void drawBuffers(int... attachments) {
         if (!supportsMrt) {
             throw new UnsupportedOperationException(
-                    "This CoreFramebuffer does not support MRT. "
+                    "This CgArbFramebuffer does not support MRT. "
                     + "Ensure mrt=true was passed at creation and the hardware supports it.");
         }
         if (attachments.length == 0) {
@@ -708,7 +641,7 @@ public final class CoreFramebuffer extends AbstractCgFramebuffer {
      * {@inheritDoc}
      *
      * <p>Deletes the FBO, all color textures, and all depth/stencil
-     * renderbuffers using Core GL30 / GL11 calls.</p>
+     * renderbuffers using ARB entry points.</p>
      */
     @Override
     protected void freeGlResources() {
@@ -719,30 +652,26 @@ public final class CoreFramebuffer extends AbstractCgFramebuffer {
         }
         runtimeSlots.clear();
 
-        GL30.glDeleteFramebuffers(fboId);
+        ARBFramebufferObject.glDeleteFramebuffers(fboId);
 
-        if (colorTextureIds != null) {
-            // Spec-based path: delete all color textures
-            for (int texId : colorTextureIds) {
-                if (texId != 0) {
-                    GL11.glDeleteTextures(texId);
+        if (colorTextures != null) {
+            for (CgTexture2D tex : colorTextures) {
+                if (tex != null) {
+                    tex.delete();
                 }
             }
-        } else {
-            // Legacy path: single color texture
-            if (colorTextureId != 0) {
-                GL11.glDeleteTextures(colorTextureId);
-            }
+        } else if (singleColorTexture != null) {
+            singleColorTexture.delete();
         }
 
         if (depthRenderbufferId != 0) {
-            GL30.glDeleteRenderbuffers(depthRenderbufferId);
+            ARBFramebufferObject.glDeleteRenderbuffers(depthRenderbufferId);
         }
         if (stencilRenderbufferId != 0) {
-            GL30.glDeleteRenderbuffers(stencilRenderbufferId);
+            ARBFramebufferObject.glDeleteRenderbuffers(stencilRenderbufferId);
         }
-        if (depthTextureId != 0) {
-            GL11.glDeleteTextures(depthTextureId);
+        if (depthTexture != null) {
+            depthTexture.delete();
         }
     }
 
@@ -752,10 +681,7 @@ public final class CoreFramebuffer extends AbstractCgFramebuffer {
      * {@inheritDoc}
      *
      * <p>Recreates all GL resources at the new dimensions.  The FBO ID will
-     * change after this call.  The old resources are freed first.</p>
-     *
-     * <p>For spec-based framebuffers, the new base dimensions are used with
-     * the original spec's scale factors, formats, and depth/stencil config.</p>
+     * change after this call.</p>
      *
      * @param newWidth  new width in pixels (must be &gt; 0)
      * @param newHeight new height in pixels (must be &gt; 0)
@@ -786,46 +712,40 @@ public final class CoreFramebuffer extends AbstractCgFramebuffer {
         Map<Integer, RuntimeSlot> savedSlots = new HashMap<Integer, RuntimeSlot>(runtimeSlots);
         freeGlResources();
 
-        // Recreate
-        int newFbo = GL30.glGenFramebuffers();
-        GL30.glBindFramebuffer(GL_FRAMEBUFFER, newFbo);
+        int newFbo = ARBFramebufferObject.glGenFramebuffers();
+        ARBFramebufferObject.glBindFramebuffer(GL_FRAMEBUFFER, newFbo);
 
-        int newColorTex = GL11.glGenTextures();
-        GL11.glBindTexture(GL_TEXTURE_2D, newColorTex);
-        GL11.glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, newWidth, newHeight, 0,
-                GL_RGBA, GL_UNSIGNED_BYTE, (ByteBuffer) null);
-        GL11.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        GL11.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        GL30.glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-                GL_TEXTURE_2D, newColorTex, 0);
+        CgTexture2D newColorTex = CgTexture2D.createEmpty(newWidth, newHeight, CgTextureSpec.RGBA8_LINEAR);
+        ARBFramebufferObject.glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                GL_TEXTURE_2D, newColorTex.getId(), 0);
 
         int newDepthRbo = 0;
         if (hasDepth) {
-            newDepthRbo = GL30.glGenRenderbuffers();
-            GL30.glBindRenderbuffer(GL_RENDERBUFFER, newDepthRbo);
-            GL30.glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24,
-                    newWidth, newHeight);
-            GL30.glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
-                    GL_RENDERBUFFER, newDepthRbo);
+            newDepthRbo = ARBFramebufferObject.glGenRenderbuffers();
+            ARBFramebufferObject.glBindRenderbuffer(GL_RENDERBUFFER, newDepthRbo);
+            ARBFramebufferObject.glRenderbufferStorage(GL_RENDERBUFFER,
+                    GL_DEPTH_COMPONENT24, newWidth, newHeight);
+            ARBFramebufferObject.glFramebufferRenderbuffer(GL_FRAMEBUFFER,
+                    GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, newDepthRbo);
         }
 
-        int status = GL30.glCheckFramebufferStatus(GL_FRAMEBUFFER);
+        int status = ARBFramebufferObject.glCheckFramebufferStatus(GL_FRAMEBUFFER);
         if (status != GL_FRAMEBUFFER_COMPLETE) {
-            GL30.glDeleteFramebuffers(newFbo);
-            GL11.glDeleteTextures(newColorTex);
+            ARBFramebufferObject.glDeleteFramebuffers(newFbo);
+            newColorTex.delete();
             if (newDepthRbo != 0) {
-                GL30.glDeleteRenderbuffers(newDepthRbo);
+                ARBFramebufferObject.glDeleteRenderbuffers(newDepthRbo);
             }
             throw new IllegalStateException(
-                    "Core GL30 framebuffer resize failed. Status: 0x"
+                    "ARB framebuffer resize failed. Status: 0x"
                     + Integer.toHexString(status));
         }
 
-        GL30.glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        ARBFramebufferObject.glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-        // Update instance state
         this.fboId = newFbo;
-        this.colorTextureId = newColorTex;
+        this.singleColorTexture = newColorTex;
+        this.colorTextureId = newColorTex.getId();
         this.depthRenderbufferId = newDepthRbo;
         this.width = newWidth;
         this.height = newHeight;
@@ -836,11 +756,6 @@ public final class CoreFramebuffer extends AbstractCgFramebuffer {
 
     /**
      * Resizes the framebuffer using the spec-based multi-attachment path.
-     *
-     * <p>Builds a new spec with the updated base dimensions and delegates
-     * to the same allocation logic as {@link #createFromSpec(CgFramebufferSpec)}.
-     * On success, the old resources are freed and instance state is updated.
-     * On failure, the old resources remain intact.</p>
      */
     private void resizeSpec(int newWidth, int newHeight) {
         CgFramebufferSpec.Builder builder = CgFramebufferSpec.builder()
@@ -851,17 +766,17 @@ public final class CoreFramebuffer extends AbstractCgFramebuffer {
         }
         CgFramebufferSpec newSpec = builder.build();
 
-        CoreFramebuffer replacement = createFromSpec(newSpec);
+        CgArbFramebuffer replacement = createFromSpec(newSpec);
 
         Map<Integer, RuntimeSlot> savedSlots = new HashMap<Integer, RuntimeSlot>(runtimeSlots);
         freeGlResources();
 
         this.fboId = replacement.fboId;
-        this.colorTextureIds = replacement.colorTextureIds;
+        this.colorTextures = replacement.colorTextures;
         this.colorTextureId = replacement.colorTextureId;
         this.depthRenderbufferId = replacement.depthRenderbufferId;
         this.stencilRenderbufferId = replacement.stencilRenderbufferId;
-        this.depthTextureId = replacement.depthTextureId;
+        this.depthTexture = replacement.depthTexture;
         this.width = newWidth;
         this.height = newHeight;
         this.spec = newSpec;
@@ -873,16 +788,12 @@ public final class CoreFramebuffer extends AbstractCgFramebuffer {
         resizeRuntimeSlots();
     }
 
-    /**
-     * Reallocates managed runtime slots and re-attaches all runtime slots to the current FBO.
-     * Called after resize operations that create a new FBO.
-     */
     private void resizeRuntimeSlots() {
         if (runtimeSlots.isEmpty()) {
             return;
         }
 
-        GL30.glBindFramebuffer(GL_FRAMEBUFFER, fboId);
+        ARBFramebufferObject.glBindFramebuffer(GL_FRAMEBUFFER, fboId);
         for (Map.Entry<Integer, RuntimeSlot> entry : runtimeSlots.entrySet()) {
             int slot = entry.getKey();
             RuntimeSlot rs = entry.getValue();
@@ -893,9 +804,9 @@ public final class CoreFramebuffer extends AbstractCgFramebuffer {
                 rs.textureId = newTexId;
             }
 
-            GL30.glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + slot,
+            ARBFramebufferObject.glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + slot,
                     GL_TEXTURE_2D, rs.textureId, 0);
         }
-        GL30.glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        ARBFramebufferObject.glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 }

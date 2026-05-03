@@ -62,7 +62,7 @@ This prevents accidental mutation and makes capability sets safe to pass around.
 ### 1. Complete Implementation Gap
 **All three handlers are non-functional stubs**:
 ```java
-// CoreFramebufferHandler.java
+// CgCoreFramebufferHandler.java
 @Override
 public AbstractFramebuffer create(FramebufferCapabilities caps, int width, int height) {
     return null; // ❌ NOT IMPLEMENTED
@@ -156,7 +156,7 @@ protected void handleInitialization() {
 
 **Critical Missing Logic**: Each handler must query `GLContext.getCapabilities()` and populate `featuresSupported` with what the driver actually supports. This is the foundation of the waterfall system.
 
-**Example (what's needed in CoreFramebufferHandler)**:
+**Example (what's needed in CgCoreFramebufferHandler)**:
 ```java
 @Override
 protected void handleInitialization() {
@@ -179,9 +179,9 @@ public boolean availableInCurrentContext() {
 
 ### 3. No Concrete AbstractFramebuffer Implementations
 The abstract class defines the contract but has no concrete implementations. You'll need classes like:
-- `CoreFramebuffer extends AbstractFramebuffer`
-- `ARBFramebuffer extends AbstractFramebuffer`
-- `EXTFramebuffer extends AbstractFramebuffer`
+- `CgCoreFramebuffer extends AbstractFramebuffer`
+- `CgArbFramebuffer extends AbstractFramebuffer`
+- `CgExtFramebuffer extends AbstractFramebuffer`
 
 Each implementing `bind()`, `unbind()`, `drawBuffers()`, and `freeMemory()` using the appropriate LWJGL classes.
 
@@ -276,7 +276,7 @@ The Core → ARB → EXT priority order is correct:
 ### Phase 1: Foundation (Before Adding Features)
 1. **Implement one handler end-to-end** (suggest Core/GL30 first):
    - Complete `handleInitialization()` with capability detection
-   - Create `CoreFramebuffer` concrete class
+   - Create `CgCoreFramebuffer` concrete class
    - Implement actual `glGenFramebuffers()`, `glBindFramebuffer()`, etc.
    - Test on real GL context
 

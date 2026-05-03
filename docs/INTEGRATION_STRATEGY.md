@@ -814,7 +814,7 @@ public void onResize(DisplayResizeEvent event) {
 
 ### Next Steps
 
-1. Implement `CoreFramebufferHandler` with actual GL calls
+1. Implement `CgCoreFramebufferHandler` with actual GL calls
 2. Add Mixin infrastructure to build.gradle
 3. Create test mod that uses CrystalGraphics API
 4. Test with and without Optifine

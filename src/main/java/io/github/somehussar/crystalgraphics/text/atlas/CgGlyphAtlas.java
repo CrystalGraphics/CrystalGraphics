@@ -29,7 +29,7 @@ import java.util.logging.Logger;
  * the slot with the lowest {@code lastUsedFrame} is evicted to make room.</p>
  *
  * <h3>Ownership Model</h3>
- * <p>Follows the pattern of {@code AbstractCgFramebuffer}: instances created via
+ * <p>Follows the pattern of {@code CgAbstractFramebuffer}: instances created via
  * {@link #create(int, int, Type)} are <em>owned</em> and tracked in a static set
  * for bulk cleanup. {@link #delete()} releases the GL texture; subsequent calls
  * are no-ops. {@link #freeAll()} deletes every tracked atlas.</p>
