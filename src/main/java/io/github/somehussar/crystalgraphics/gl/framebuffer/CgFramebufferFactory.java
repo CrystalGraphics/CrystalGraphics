@@ -35,9 +35,9 @@ import io.github.somehussar.crystalgraphics.gl.state.CallFamily;
  * <p>Factory methods must only be called from the GL context thread.</p>
  *
  * @see CgFramebuffer
- * @see CoreFramebuffer
- * @see ArbFramebuffer
- * @see ExtFramebuffer
+ * @see CgCoreFramebuffer
+ * @see CgArbFramebuffer
+ * @see CgExtFramebuffer
  */
 public final class CgFramebufferFactory {
 
@@ -78,13 +78,13 @@ public final class CgFramebufferFactory {
     public static CgFramebuffer create(CgCapabilities caps, int width, int height,
                                        boolean depth, boolean mrt) {
         if (caps.isCoreFbo()) {
-            return CoreFramebuffer.create(width, height, depth, mrt);
+            return CgCoreFramebuffer.create(width, height, depth, mrt);
         }
         if (caps.isArbFbo()) {
-            return ArbFramebuffer.create(width, height, depth, mrt);
+            return CgArbFramebuffer.create(width, height, depth, mrt);
         }
         if (caps.isExtFbo()) {
-            return ExtFramebuffer.create(width, height, depth, mrt);
+            return CgExtFramebuffer.create(width, height, depth, mrt);
         }
         throw new UnsupportedOperationException(
                 "No framebuffer object extension is available. "
@@ -207,11 +207,11 @@ public final class CgFramebufferFactory {
           // ── Backend routing ──────────────────────────────────────────────
           switch (backend) {
               case CORE_GL30:
-                  return CoreFramebuffer.createFromSpec(spec);
+                  return CgCoreFramebuffer.createFromSpec(spec);
               case ARB_FBO:
-                  return ArbFramebuffer.createFromSpec(spec);
+                  return CgArbFramebuffer.createFromSpec(spec);
               case EXT_FBO:
-                  return ExtFramebuffer.createFromSpec(spec);
+                  return CgExtFramebuffer.createFromSpec(spec);
               default:
                   throw new UnsupportedOperationException(
                           "Unknown backend for spec-based creation: " + backend);
@@ -275,7 +275,7 @@ public final class CgFramebufferFactory {
      * bind/unbind an external FBO through the unified {@link CgFramebuffer}
      * interface.</p>
      */
-    private static final class WrappedFramebuffer extends AbstractCgFramebuffer {
+    private static final class WrappedFramebuffer extends CgAbstractFramebuffer {
 
         /** {@code GL_FRAMEBUFFER} target. */
         private static final int GL_FRAMEBUFFER = 0x8D40;

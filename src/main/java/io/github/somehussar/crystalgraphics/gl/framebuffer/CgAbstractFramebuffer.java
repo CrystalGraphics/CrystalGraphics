@@ -29,11 +29,11 @@ import java.util.concurrent.CopyOnWriteArraySet;
  * only be used from the GL context thread (the Minecraft render thread).</p>
  *
  * @see CgFramebuffer
- * @see CoreFramebuffer
- * @see ArbFramebuffer
- * @see ExtFramebuffer
+ * @see CgCoreFramebuffer
+ * @see CgArbFramebuffer
+ * @see CgExtFramebuffer
  */
-public abstract class AbstractCgFramebuffer implements CgFramebuffer {
+public abstract class CgAbstractFramebuffer implements CgFramebuffer {
 
     // ── GL constants (hex literals to avoid importing GL30) ─────────────
 
@@ -55,8 +55,8 @@ public abstract class AbstractCgFramebuffer implements CgFramebuffer {
      * Uses {@link CopyOnWriteArraySet} so that iteration in {@code freeAll()}
      * is safe even though {@code delete()} removes elements.</p>
      */
-    protected static final Set<AbstractCgFramebuffer> ALL_OWNED =
-            new CopyOnWriteArraySet<AbstractCgFramebuffer>();
+    protected static final Set<CgAbstractFramebuffer> ALL_OWNED =
+            new CopyOnWriteArraySet<CgAbstractFramebuffer>();
 
     // ── Instance fields ────────────────────────────────────────────────
 
@@ -109,7 +109,7 @@ public abstract class AbstractCgFramebuffer implements CgFramebuffer {
      * @param owned       {@code true} if CrystalGraphics created this FBO
      * @param supportsMrt {@code true} if MRT is available for this FBO
      */
-    protected AbstractCgFramebuffer(int fboId, int width, int height,
+    protected CgAbstractFramebuffer(int fboId, int width, int height,
                                     boolean owned, boolean supportsMrt) {
         this.fboId = fboId;
         this.width = width;
@@ -356,7 +356,7 @@ public abstract class AbstractCgFramebuffer implements CgFramebuffer {
      * {@link #freeGlResources()} is called exactly once.</p>
      */
     public static void freeAll() {
-        for (AbstractCgFramebuffer fbo : ALL_OWNED) {
+        for (CgAbstractFramebuffer fbo : ALL_OWNED) {
             if (!fbo.deleted) {
                 fbo.freeGlResources();
                 fbo.deleted = true;

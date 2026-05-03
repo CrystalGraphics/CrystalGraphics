@@ -33,7 +33,7 @@ Filter/wrap setup and the GL30 mipmap probe formerly housed in
 ## Failure-Atomic Allocation
 
 Every `create()` / `createEmpty()` factory follows the
-[`CoreFramebuffer.createFromSpec`](../framebuffer/CoreFramebuffer.java)
+[`CgCoreFramebuffer.createFromSpec`](../framebuffer/CgCoreFramebuffer.java)
 pattern:
 
 1. `glGenTextures` upfront.

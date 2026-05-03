@@ -250,10 +250,10 @@ These have different method signatures (`glGenFramebuffers()` vs. `glGenFramebuf
 - `CgCapabilities`: Capability detection with preferred backend selection
 
 **Implementations** (`gl/framebuffer/`):
-- `AbstractCgFramebuffer`: Base class with ownership model and static cleanup
-- `CoreFramebuffer`: GL30 backend with MRT support
-- `ArbFramebuffer`: ARB_framebuffer_object backend with MRT support
-- `ExtFramebuffer`: EXT_framebuffer_object backend (no MRT, no separate draw/read)
+- `CgAbstractFramebuffer`: Base class with ownership model and static cleanup
+- `CgCoreFramebuffer`: GL30 backend with MRT support
+- `CgArbFramebuffer`: ARB_framebuffer_object backend with MRT support
+- `CgExtFramebuffer`: EXT_framebuffer_object backend (no MRT, no separate draw/read)
 - `CgFramebufferFactory`: Waterfall factory (Core → ARB → EXT)
 
 **Cross-API Safety**:
@@ -316,13 +316,13 @@ These have different method signatures (`glGenFramebuffers()` vs. `glGenFramebuf
 ```java
 // CgFramebufferFactory.create()
 if (caps.isCoreFbo()) {
-    return CoreFramebuffer.create(width, height, depth, mrt);
+    return CgCoreFramebuffer.create(width, height, depth, mrt);
 }
 if (caps.isArbFbo()) {
-    return ArbFramebuffer.create(width, height, depth, mrt);
+    return CgArbFramebuffer.create(width, height, depth, mrt);
 }
 if (caps.isExtFbo()) {
-    return ExtFramebuffer.create(width, height, depth, mrt);
+    return CgExtFramebuffer.create(width, height, depth, mrt);
 }
 throw new UnsupportedOperationException("No FBO support available");
 ```
@@ -426,10 +426,10 @@ io.github.somehussar.crystalgraphics/
 │   │   ├── CgVertexArrayBinding.java      # Pairs VAO + stream buffer per format
 │   │   └── CgVertexArrayRegistry.java     # Singleton: format → binding cache
 │   ├── framebuffer/               # FBO implementations
-│   │   ├── AbstractCgFramebuffer.java
-│   │   ├── CoreFramebuffer.java
-│   │   ├── ArbFramebuffer.java
-│   │   ├── ExtFramebuffer.java
+│   │   ├── CgAbstractFramebuffer.java
+│   │   ├── CgCoreFramebuffer.java
+│   │   ├── CgArbFramebuffer.java
+│   │   ├── CgExtFramebuffer.java
 │   │   └── CgFramebufferFactory.java
 │   ├── shader/                    # Shader implementations
 │   │   ├── AbstractCgShaderProgram.java
