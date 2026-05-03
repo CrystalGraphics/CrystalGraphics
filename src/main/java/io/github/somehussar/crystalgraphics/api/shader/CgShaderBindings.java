@@ -1,8 +1,9 @@
 package io.github.somehussar.crystalgraphics.api.shader;
 
-import net.minecraft.util.ResourceLocation;
+import io.github.somehussar.crystalgraphics.api.texture.CgTexture;
 
 import org.joml.*;
+import org.lwjgl.opengl.GL11;
 
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
@@ -244,44 +245,41 @@ public interface CgShaderBindings {
     CgShaderBindings colorRGB(String name, int rgb, float alpha);
 
     /**
-     * Records a sampler2D binding that will bind a texture and set the sampler uniform.
+     * Records a sampler binding for a {@link CgTexture}. At apply-time,
+     * activates the given texture unit, binds the texture to its native GL
+     * target, and sets the sampler uniform to the unit index.
      *
-     * <p>At apply-time, this binding will:
-     * <ol>
-     *   <li>Save the current active texture unit</li>
-     *   <li>Activate the specified texture unit via GL13.glActiveTexture</li>
-     *   <li>Bind the texture via Minecraft's texture manager</li>
-     *   <li>Set the sampler uniform to the texture unit index</li>
-     *   <li>Restore the previously active texture unit</li>
-     * </ol></p>
-     *
-     * @param name    the sampler uniform name as declared in the GLSL source
-     * @param unit    the 0-based texture unit index (0 corresponds to GL_TEXTURE0, etc.)
-     * @param texture the resource location of the texture to bind
+     * @param name    the sampler uniform name as declared in GLSL
+     * @param unit    zero-based texture unit (0 = GL_TEXTURE0)
+     * @param texture the texture to bind
      * @return this instance for chaining
      */
-    CgShaderBindings sampler2D(String name, int unit, ResourceLocation texture);
+    CgShaderBindings sampler(String name, int unit, CgTexture texture);
 
     /**
-     * Records a sampler2D binding that will bind a texture and set the sampler uniform.
+     * Records a sampler binding for a raw GL texture id with target GL_TEXTURE_2D.
      *
-     * <p>At apply-time, this binding will:
-     * <ol>
-     *   <li>Save the current active texture unit</li>
-     *   <li>Activate the specified texture unit via GL13.glActiveTexture</li>
-     *   <li>Bind the texture via Minecraft's texture manager</li>
-     *   <li>Set the sampler uniform to the texture unit index</li>
-     *   <li>Restore the previously active texture unit</li>
-     * </ol></p>
-     *
-     * @param name    the sampler uniform name as declared in the GLSL source
-     * @param unit    the 0-based texture unit index (0 corresponds to GL_TEXTURE0, etc.)
-     * @param textureLocation the mod asset string location of the texture to bind
+     * @param name        the sampler uniform name as declared in GLSL
+     * @param unit        zero-based texture unit (0 = GL_TEXTURE0)
+     * @param glTextureId raw GL texture object id
      * @return this instance for chaining
      */
-    default CgShaderBindings sampler2D(String name, int unit, String textureLocation) {
-        return sampler2D(name, unit, new ResourceLocation(textureLocation));
+    default CgShaderBindings sampler(String name, int unit, int glTextureId) {
+        return sampler(name, unit, glTextureId, GL11.GL_TEXTURE_2D);
     }
+    /**
+     * Records a sampler binding for a raw GL texture id with an explicit
+     * target. Use for FBO attachments or any texture not wrapped in
+     * {@link CgTexture} (e.g. cubemaps via {@code 0x8513}, 2D arrays via
+     * {@code 0x8C1A}, 3D textures via {@code 0x806F}).
+     *
+     * @param name        the sampler uniform name as declared in GLSL
+     * @param unit        zero-based texture unit (0 = GL_TEXTURE0)
+     * @param glTextureId raw GL texture object id
+     * @param glTarget    GL texture target constant
+     * @return this instance for chaining
+     */
+    CgShaderBindings sampler(String name, int unit, int glTextureId, int glTarget);
 
     /**
      * Removes all accumulated bindings without applying them.

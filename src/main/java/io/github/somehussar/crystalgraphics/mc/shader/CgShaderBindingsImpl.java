@@ -5,8 +5,7 @@ import io.github.somehussar.crystalgraphics.api.shader.CgShaderProgram;
 import io.github.somehussar.crystalgraphics.api.shader.CgShader;
 import io.github.somehussar.crystalgraphics.api.shader.CgShaderBindings;
 
-import net.minecraft.client.Minecraft;
-import net.minecraft.util.ResourceLocation;
+import io.github.somehussar.crystalgraphics.api.texture.CgTexture;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -39,12 +38,6 @@ import org.lwjgl.BufferUtils;
 final class CgShaderBindingsImpl implements CgShaderBindings {
 
     private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
-
-    /** OpenGL constant for querying/setting the active texture unit (GL_ACTIVE_TEXTURE = 34016). */
-    private static final int GL_ACTIVE_TEXTURE = 34016;
-
-    /** OpenGL constant for texture unit 0 (GL_TEXTURE0 = 33984). */
-    private static final int GL_TEXTURE0 = 33984;
 
     /**
      * Ordered list of deferred binding operations.
@@ -188,8 +181,14 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
     }
 
     @Override
-    public CgShaderBindings sampler2D(String name, int unit, ResourceLocation texture) {
-        this.ops.add(new Sampler2DOp(name, unit, texture));
+    public CgShaderBindings sampler(String name, int unit, CgTexture texture) {
+        this.ops.add(new SamplerOp(name, unit, texture.getId(), texture.getTarget()));
+        return this;
+    }
+
+    @Override
+    public CgShaderBindings sampler(String name, int unit, int glTextureId, int glTarget) {
+        this.ops.add(new SamplerOp(name, unit, glTextureId, glTarget));
         return this;
     }
 
@@ -262,37 +261,6 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
                     name, Integer.valueOf(this.warnedProgramId));
         }
         return loc;
-    }
-
-    /**
-     * Queries the currently active texture unit via {@code glGetInteger(GL_ACTIVE_TEXTURE)}.
-     *
-     * <p>This is used by texture binding operations to save and restore the
-     * active texture unit around texture binding, ensuring no side effects
-     * on the GL state.</p>
-     *
-     * @return the current active texture unit (as a GL_TEXTURE0 + N constant)
-     */
-    static int getActiveTextureUnit() {
-        return GL11.glGetInteger(GL_ACTIVE_TEXTURE);
-    }
-
-    /**
-     * Sets the active texture unit via either {@code GL13.glActiveTexture} or
-     * {@code ARBMultitexture.glActiveTextureARB}, depending on hardware support.
-     *
-     * <p>This method bridges the difference between OpenGL 1.3+ core and legacy
-     * ARB_multitexture extension calls, ensuring compatibility across hardware.</p>
-     *
-     * @param glTextureConstant the texture constant (e.g., GL_TEXTURE0 + unit)
-     */
-    static void setActiveTextureUnit(int glTextureConstant) {
-        ContextCapabilities caps = GLContext.getCapabilities();
-        if (caps.OpenGL13) {
-            GL13.glActiveTexture(glTextureConstant);
-        } else if (caps.GL_ARB_multitexture) {
-            ARBMultitexture.glActiveTextureARB(glTextureConstant);
-        }
     }
 
     /**
@@ -542,39 +510,27 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
     }
     
     @Desugar
-    private record Sampler2DOp(String name, int unit, ResourceLocation texture) implements BindingOp {
+    private record SamplerOp(String name, int unit, int textureId, int target) implements BindingOp {
 
-        /**
-             * Executes this binding operation:
-             * <ol>
-             *   <li>Resolves the sampler uniform location.</li>
-             *   <li>Saves the current active texture unit.</li>
-             *   <li>Activates the specified texture unit.</li>
-             *   <li>Binds the texture via Minecraft's texture manager.</li>
-             *   <li>Sets the sampler uniform to the texture unit index.</li>
-             *   <li>Restores the previously active texture unit (with exception safety).</li>
-             * </ol>
-             */
-            @Override
-            public void execute(CgShader shader, CgShaderProgram program, CgShaderBindingsImpl patch) {
-                int loc = patch.resolveLocation(shader, this.name);
-                if (loc < 0) {
-                    return;
-                }
-    
-                int previousUnit = CgShaderBindingsImpl.getActiveTextureUnit();
-                int targetUnit = GL_TEXTURE0 + this.unit;
-    
-                try {
-                    CgShaderBindingsImpl.setActiveTextureUnit(targetUnit);
-                    Minecraft.getMinecraft().getTextureManager().bindTexture(this.texture);
-                    program.setUniform1i(loc, this.unit);
-                } finally {
-                    if (previousUnit != targetUnit) {
-                        CgShaderBindingsImpl.setActiveTextureUnit(previousUnit);
-                    }
-                }
+        // Same shape as Sampler2DOp, but binds a raw GL texture id directly
+        // instead of going through Minecraft's texture manager. Used for FBO
+        // attachments and any non-MC-managed textures (CgTexture, etc.).
+        @Override
+        public void execute(CgShader shader, CgShaderProgram program, CgShaderBindingsImpl patch) {
+            int loc = patch.resolveLocation(shader, this.name);
+            if (loc < 0) return;
+            
+            int previousUnit = CgTexture.getActiveUnit();
+            int targetUnit = GL13.GL_TEXTURE0 + this.unit;
+
+            try {
+                CgTexture.active(unit);
+                CgTexture.bind(target, textureId);
+                program.setUniform1i(loc, this.unit);
+            } finally {
+                if (previousUnit != targetUnit) CgTexture.active(previousUnit);
             }
+        }
     }
 
     /**

@@ -68,7 +68,17 @@ vertex input registry, use the package-local guides first.
 - `CgVertexAttribute` — single attribute within a format (name, type, components, offset, semantic metadata)
 - `CgVertexSemantic` — enum of attribute roles (POSITION, UV, COLOR, NORMAL, GENERIC)
 - `CgAttribType` — enum of GL primitive types with byte sizes
-- `CgTextureBinding` — lightweight (target, textureId) value type for texture identity
+
+## Texture System — Start Here
+
+Owned GL textures (`CgTexture` and friends) are the public API for 2D / 2D-array
+/ 3D texture creation and binding.
+
+### Source package guides
+
+- `src/main/java/io/github/somehussar/crystalgraphics/api/texture/AGENTS.md` — public API: `CgTexture` (single unified interface) and `CgTextureSpec` (Lombok-built spec with pre-built `RGBA8_LINEAR` / `RGBA8_NEAREST` / `RGBA16F_LINEAR`; also exposes `applyTo(target)` + `generateMipmaps(target)` GL helpers)
+- `src/main/java/io/github/somehussar/crystalgraphics/gl/texture/AGENTS.md` — concrete GL impls (`CgTexture2D`, `CgTexture2DArray`, `CgTexture3D` — each `implements CgTexture` directly with own static factories); failure-atomic allocation pattern
+- `util/io/CgTextureIO` — image loader (asset path → direct RGBA `ByteBuffer`) delegating to `CgIO.openStream` for path resolution
 
 ## Batch Render Layer System — Start Here
 
@@ -101,8 +111,7 @@ or buffer source assembly, use the package-local guides first.
   The batch renderer borrows, never creates or deletes, shared GPU resources.
 - **CgBufferSource is per-context owned** — not a singleton. Each render context
   (UI, world overlay) creates and owns its own buffer source.
-- **CgTextureBinding vs CgTextureState** — `CgTextureBinding` is a raw value (target + id);
-  `CgTextureState` is the policy layer (unit, sampler, fixed/dynamic/none). They compose.
+- **CgTextureState owns identity + policy** — `CgTextureState` is the policy layer (unit, sampler, fixed/dynamic/none) and now also carries the raw (target, textureId) directly. The previous `CgTextureBinding` value type has been removed; use `CgTextureState.fixed(target, id, ...)` / `fixed(CgTexture, ...)` or the new `CgShaderBindings.sampler2DRaw(...)` / `sampler2D(name, unit, CgTexture)` helpers.
 - **Generic text quad sink** — `CgTextQuadSink` decouples text quad
   emission from submission model. The text renderer has both layer-based and
   target-based (sink-based) internal paths. See `text/render/AGENTS.md` for details.
