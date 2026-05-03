@@ -49,6 +49,10 @@ public final class CgVertexArrayRegistry {
     }
 
     public void deleteAll() {
+        // Instanced bindings borrow base VBO ids from this registry. Delete them first
+        // so callers cannot accidentally leave derived VAOs pointing at deleted buffers.
+        CgInstancedVertexArrayRegistry.get().deleteAll();
+
         for (CgVertexArrayBinding binding : bindings.values())
             binding.delete();
 

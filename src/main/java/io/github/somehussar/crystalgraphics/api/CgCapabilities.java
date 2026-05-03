@@ -142,6 +142,27 @@ public final class CgCapabilities {
      */
     private final boolean arbSync;
 
+    /**
+     * Whether instanced draw calls ({@code glDrawArraysInstanced} /
+     * {@code glDrawElementsInstanced}) are available.
+     * True if Core OpenGL 3.1 or {@code GL_ARB_draw_instanced} is present.
+     */
+    private final boolean drawInstanced;
+
+    /**
+     * Whether per-attribute divisors ({@code glVertexAttribDivisor}) are available.
+     * True if Core OpenGL 3.3 or {@code GL_ARB_instanced_arrays} is present.
+     * Required for instanced vertex attribute rendering.
+     */
+    private final boolean vertexAttribDivisor;
+
+    /**
+     * Maximum number of vertex attributes (attribute slots) available for shaders.
+     * Queried from {@code GL_MAX_VERTEX_ATTRIBS} when shader support exists; 0 otherwise.
+     * A {@code mat4} instance attribute consumes 4 of these slots.
+     */
+    private final int maxVertexAttribs;
+
     private CgCapabilities(boolean coreFbo, boolean arbFbo, boolean extFbo,
                            boolean coreShaders, boolean arbShaders,
                            int maxDrawBuffers, int maxTextureUnits,
@@ -150,7 +171,9 @@ public final class CgCapabilities {
                            int maxTextureSize, int maxRenderbufferSize,
                            int maxColorAttachments,
                            boolean hasVao, boolean hasMapBufferRange,
-                           boolean arbSync) {
+                           boolean arbSync,
+                           boolean drawInstanced, boolean vertexAttribDivisor,
+                           int maxVertexAttribs) {
         this.coreFbo = coreFbo;
         this.arbFbo = arbFbo;
         this.extFbo = extFbo;
@@ -168,6 +191,9 @@ public final class CgCapabilities {
         this.hasVao = hasVao;
         this.hasMapBufferRange = hasMapBufferRange;
         this.arbSync = arbSync;
+        this.drawInstanced = drawInstanced;
+        this.vertexAttribDivisor = vertexAttribDivisor;
+        this.maxVertexAttribs = maxVertexAttribs;
     }
 
     /**
@@ -287,6 +313,13 @@ public final class CgCapabilities {
         boolean hasMapBufferRange = caps.OpenGL30 || caps.GL_ARB_map_buffer_range;
         boolean arbSync = caps.OpenGL32 || caps.GL_ARB_sync;
 
+        // Instancing capability: draw calls require GL 3.1 or ARB_draw_instanced
+        boolean drawInstanced = caps.OpenGL31 || caps.GL_ARB_draw_instanced;
+        // Divisor capability: per-attribute divisors require GL 3.3 or ARB_instanced_arrays
+        boolean vertexAttribDivisor = caps.OpenGL33 || caps.GL_ARB_instanced_arrays;
+        // Max vertex attribs: queried when shader support exists; each mat4 instance attr consumes 4 slots
+        int maxVertexAttribs = coreShaders ? GL11.glGetInteger(GL20.GL_MAX_VERTEX_ATTRIBS) : 0;
+
         return new CgCapabilities(
             coreFbo, arbFbo, extFbo,
             coreShaders, arbShaders,
@@ -296,7 +329,8 @@ public final class CgCapabilities {
             maxTextureSize, maxRenderbufferSize,
             maxColorAttachments,
             hasVao, hasMapBufferRange,
-            arbSync
+            arbSync,
+            drawInstanced, vertexAttribDivisor, maxVertexAttribs
         );
     }
 
@@ -528,6 +562,42 @@ public final class CgCapabilities {
     }
 
     /**
+     * Returns whether instanced draw calls are available.
+     *
+     * <p>True if Core OpenGL 3.1 or {@code GL_ARB_draw_instanced} is present.</p>
+     *
+     * @return {@code true} if {@code glDrawArraysInstanced} and
+     *         {@code glDrawElementsInstanced} can be used
+     */
+    public boolean isDrawInstancedSupported() {
+        return drawInstanced;
+    }
+
+    /**
+     * Returns whether per-attribute vertex divisors are available.
+     *
+     * <p>True if Core OpenGL 3.3 or {@code GL_ARB_instanced_arrays} is present.
+     * Required for instanced vertex attribute arrays ({@code glVertexAttribDivisor}).</p>
+     *
+     * @return {@code true} if {@code glVertexAttribDivisor} can be used
+     */
+    public boolean isVertexAttribDivisorSupported() {
+        return vertexAttribDivisor;
+    }
+
+    /**
+     * Returns the maximum number of vertex attribute slots.
+     *
+     * <p>Queried from {@code GL_MAX_VERTEX_ATTRIBS} when shader support is available;
+     * returns {@code 0} otherwise. A {@code mat4} instance attribute consumes 4 slots.</p>
+     *
+     * @return the maximum number of vertex attrib slots, or {@code 0} if unknown
+     */
+    public int getMaxVertexAttribs() {
+        return maxVertexAttribs;
+    }
+
+    /**
      * Package-private factory for unit tests that cannot create a GL context.
      */
     static CgCapabilities createForTest(boolean coreFbo, boolean arbFbo, boolean extFbo,
@@ -547,7 +617,34 @@ public final class CgCapabilities {
             maxTextureSize, maxRenderbufferSize,
             maxColorAttachments,
             hasVao, hasMapBufferRange,
-            arbSync);
+            arbSync,
+            false, false, 0);
+    }
+
+    /**
+     * Package-private factory for unit tests that includes instancing capability parameters.
+     */
+    static CgCapabilities createForTest(boolean coreFbo, boolean arbFbo, boolean extFbo,
+                                        boolean coreShaders, boolean arbShaders,
+                                        int maxDrawBuffers, int maxTextureUnits,
+                                        boolean stencil, boolean depth,
+                                        boolean packedDepthStencil, boolean depthTexture,
+                                        int maxTextureSize, int maxRenderbufferSize,
+                                        int maxColorAttachments,
+                                        boolean hasVao, boolean hasMapBufferRange,
+                                        boolean arbSync,
+                                        boolean drawInstanced, boolean vertexAttribDivisor,
+                                        int maxVertexAttribs) {
+        return new CgCapabilities(coreFbo, arbFbo, extFbo,
+            coreShaders, arbShaders,
+            maxDrawBuffers, maxTextureUnits,
+            stencil, depth,
+            packedDepthStencil, depthTexture,
+            maxTextureSize, maxRenderbufferSize,
+            maxColorAttachments,
+            hasVao, hasMapBufferRange,
+            arbSync,
+            drawInstanced, vertexAttribDivisor, maxVertexAttribs);
     }
 
     /**

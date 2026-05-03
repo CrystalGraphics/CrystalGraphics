@@ -121,6 +121,11 @@ vertex input registry, use the package-local guides first.
 - `CgVertexAttribute` — single attribute within a format (name, type, components, offset, semantic metadata)
 - `CgVertexSemantic` — enum of attribute roles (POSITION, UV, COLOR, NORMAL, GENERIC)
 - `CgAttribType` — enum of GL primitive types with byte sizes
+- `CgInstanceLayout` — immutable, value-equal per-instance attribute layout; mat4 expands to 4 physical vec4 slots; divisor=1 only in v1
+
+### `api/vertex/` package guide
+
+- `src/main/java/io/github/somehussar/crystalgraphics/api/vertex/AGENTS.md` — public vertex API: CgVertexFormat, CgVertexAttribute, CgAttribType, CgInstanceLayout (mat4 expansion, TRANSFORM_COLOR_CUSTOM, v1 constraints)
 
 ## Texture System — Start Here
 
@@ -141,8 +146,8 @@ or buffer source assembly, use the package-local guides first.
 ### Current package map for batch rendering
 
 - `api/state` — immutable render state descriptors (depth, cull, texture policy, composite render state)
-- `gl/render` — render layer interface, fixed/dynamic layers, batch renderer, buffer source
-- `gl/buffer/staging` — CPU-side staging buffer and format-aware vertex writer
+- `gl/render` — render layer interface, fixed/dynamic layers, batch renderer, buffer source, **instanced batch renderer + layer**
+- `gl/buffer/staging` — CPU-side staging buffer and format-aware vertex writer; **byte staging + instance writer**
 - `gl/text` — text layer factory (`CgTextLayers`) for MSDF/bitmap text layers
 
 ### Source package guides
