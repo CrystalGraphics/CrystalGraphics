@@ -29,10 +29,10 @@ import java.util.concurrent.CopyOnWriteArraySet;
  * render thread).</p>
  *
  * @see CgShaderProgram
- * @see CoreShaderProgram
- * @see ArbShaderProgram
+ * @see CgCoreShaderProgram
+ * @see CgArbShaderProgram
  */
-public abstract class AbstractCgShaderProgram implements CgShaderProgram {
+public abstract class CgAbstractShaderProgram implements CgShaderProgram {
 
     // ── Static tracking ────────────────────────────────────────────────
 
@@ -44,8 +44,8 @@ public abstract class AbstractCgShaderProgram implements CgShaderProgram {
      * {@code freeAll()} is safe even though {@code delete()} removes
      * elements.</p>
      */
-    protected static final Set<AbstractCgShaderProgram> ALL_OWNED =
-            new CopyOnWriteArraySet<AbstractCgShaderProgram>();
+    protected static final Set<CgAbstractShaderProgram> ALL_OWNED =
+            new CopyOnWriteArraySet<CgAbstractShaderProgram>();
 
     // ── Instance fields ────────────────────────────────────────────────
 
@@ -85,7 +85,7 @@ public abstract class AbstractCgShaderProgram implements CgShaderProgram {
      * @param programId the OpenGL program object ID
      * @param owned     {@code true} if CrystalGraphics created this program
      */
-    protected AbstractCgShaderProgram(int programId, boolean owned) {
+    protected CgAbstractShaderProgram(int programId, boolean owned) {
         this.programId = programId;
         this.owned = owned;
         this.deleted = false;
@@ -210,7 +210,7 @@ public abstract class AbstractCgShaderProgram implements CgShaderProgram {
      * {@link #freeGlResources()} is called exactly once.</p>
      */
     public static void freeAll() {
-        for (AbstractCgShaderProgram program : ALL_OWNED) {
+        for (CgAbstractShaderProgram program : ALL_OWNED) {
             if (!program.deleted) {
                 program.freeGlResources();
                 program.deleted = true;

@@ -75,7 +75,7 @@ Supported setter families:
 Missing uniforms: warn-once per program ID, not per frame.
 
 ### `CgShaderProgram`
-Low-level compiled program handle. Used by `CgShader` internally. Direct callers should prefer `CgShader`. Methods: `bind()`, `unbind()`, `getUniformLocation(String)`, `setUniform1f/1i/2f/3f/4f/mat3/mat4(loc, ...)`, `isDeleted()`, `delete()`, `getActiveUniforms()` (default returns empty list; overridden in `CoreShaderProgram` and `ArbShaderProgram` with real GL query).
+Low-level compiled program handle. Used by `CgShader` internally. Direct callers should prefer `CgShader`. Methods: `bind()`, `unbind()`, `getUniformLocation(String)`, `setUniform1f/1i/2f/3f/4f/mat3/mat4(loc, ...)`, `isDeleted()`, `delete()`, `getActiveUniforms()` (default returns empty list; overridden in `CgCoreShaderProgram` and `CgArbShaderProgram` with real GL query).
 
 ### `CgActiveUniform`
 Immutable `@Value` descriptor of one active uniform as reported by `glGetActiveUniform` / `glGetActiveUniformARB`. Fields:
