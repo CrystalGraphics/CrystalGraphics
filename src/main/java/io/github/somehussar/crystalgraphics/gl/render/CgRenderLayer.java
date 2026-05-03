@@ -24,12 +24,19 @@ public final class CgRenderLayer implements CgLayer {
 
     private final String name;
     private final CgRenderState state;
-    private final CgBatchRenderer renderer;
+    private final IBatchRenderer renderer;
     private final Matrix4f projection = new Matrix4f();
     private boolean begun;
 
     public static CgRenderLayer create(String name, CgRenderState state, CgVertexFormat format, int initialMaxQuads) {
         return new CgRenderLayer(name, state, CgBatchRenderer.create(format, initialMaxQuads));
+    }
+
+    /** Creates a layer wrapping any IBatchRenderer implementation. */
+    public CgRenderLayer(String name, CgRenderState state, IBatchRenderer renderer) {
+        this.name = name;
+        this.state = state;
+        this.renderer = renderer;
     }
 
     private CgRenderLayer(String name, CgRenderState state, CgBatchRenderer renderer) {
@@ -65,6 +72,7 @@ public final class CgRenderLayer implements CgLayer {
     @Override public String getName() { return name; }
     @Override public void delete() { renderer.delete(); }
 
-    public CgVertexWriter vertex() { return renderer.vertex(); }
-    public CgStagingBuffer staging() { return renderer.staging(); }
+    // These convenience methods only work when the renderer is a CgBatchRenderer.
+    public CgVertexWriter vertex() { return ((CgBatchRenderer) renderer).vertex(); }
+    public CgStagingBuffer staging() { return ((CgBatchRenderer) renderer).staging(); }
 }

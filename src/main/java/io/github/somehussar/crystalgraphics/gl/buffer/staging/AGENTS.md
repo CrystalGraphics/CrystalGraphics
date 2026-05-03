@@ -17,9 +17,12 @@ awareness of shaders, textures, or render state.
 
 | Type | Role                                                                                                                                                                                  |
 |------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `CgStagingBuffer` | Growable `float[]` with write cursor. Pure data — no GL, no semantics. Owns the raw float array. Growth factor: 1.5×.                                                                 |
-| `CgVertexWriter` | V1 format-aware `CgVertexConsumer` implementation. Routes fluent calls (vertex/uv/color/normal) to staging buffer positions based on format attribute semantics.                      |
+| `CgStagingBuffer` | Growable `float[]` with write cursor. Pure data — no GL, no semantics. Owns the raw float array. Growth factor: 1.5×. Implements `CgVertexOutput`.                                   |
+| `CgVertexWriter` | V1 format-aware `CgVertexConsumer` implementation. Routes fluent calls (vertex/uv/color/normal) to a `CgVertexOutput` based on format attribute semantics. Static factory `forBuffer(ByteBuffer, CgVertexFormat)` enables direct ByteBuffer writes for mesh builders. |
 | `CgInstanceWriter` | Per-instance data writer backed by `CgStagingBuffer`. Fluent API: `mat4(...).color(...).putVec4(...).endInstance()`. `beginInstance()`/`endInstance()` validate stride in DEBUG mode. |
+| `CgColorPacking` | Utility for packing RGBA components into ABGR int. `packAbgr(r,g,b,a)` is endian-aware. `packAbgrFromArgb(argb)` and `packAbgrFromRgba(rgba)` for common int formats. Eliminates duplicate packing logic from `CgVertexWriter` and `CgInstanceWriter`. |
+| `CgVertexOutput` | Package-private write target interface for `CgVertexWriter`. Two methods: `putFloat(float)` and `putColorPacked(int)`. Implemented by `CgStagingBuffer` and `CgStagingByteBuffer`. |
+| `CgStagingByteBuffer` | Package-private `CgVertexOutput` backed by a direct `ByteBuffer`. Used by `CgVertexWriter.forBuffer()`. Colors stored as `Float.intBitsToFloat(abgr)`. |
 
 ## Data Flow
 

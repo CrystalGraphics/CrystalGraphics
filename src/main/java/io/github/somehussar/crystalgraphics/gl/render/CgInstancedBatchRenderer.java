@@ -33,7 +33,7 @@ import java.nio.ByteBuffer;
  *
  * <p>TODO(v2): add upload-once/draw-many replay for instanced geometry.</p>
  */
-public final class CgInstancedBatchRenderer {
+public final class CgInstancedBatchRenderer implements IBatchRenderer {
 
     private final CgInstancedVertexArrayBinding binding;
     private final CgStagingBuffer vertexStaging;
@@ -92,6 +92,21 @@ public final class CgInstancedBatchRenderer {
         if (!begun) throw new IllegalStateException("CgInstancedBatchRenderer not begun");
         instanceWriter.beginInstance();
         return instanceWriter;
+    }
+
+    /**
+     * Implements {@link IBatchRenderer#flush()}. Delegates to
+     * {@link #flush(CgInstancedDrawMode)} with the default draw mode
+     * ({@link CgInstancedDrawMode#INDEXED_QUADS}).
+     *
+     * <p>This bridge method allows {@link CgRenderLayer} to wrap
+     * {@link CgInstancedBatchRenderer} without caring about draw mode.
+     * Callers that need a specific mode should call
+     * {@link #flush(CgInstancedDrawMode)} directly.</p>
+     */
+    @Override
+    public void flush() {
+        flush(CgInstancedDrawMode.INDEXED_QUADS);
     }
 
     /**

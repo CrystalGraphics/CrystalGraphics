@@ -84,13 +84,14 @@ Multiple buffer sources can coexist. Each owns its layers independently.
 | File | Role |
 |------|------|
 | `CgLayer.java` | Interface + `Key<T>` record for typed layer identification |
-| `CgRenderLayer.java` | Fixed-texture layer: state bracket around flush |
+| `CgRenderLayer.java` | Fixed-texture layer: state bracket around flush. Accepts any `IBatchRenderer`. Public constructor `CgRenderLayer(name, state, IBatchRenderer)` wraps any renderer. `vertex()` and `staging()` downcast to `CgBatchRenderer` — only valid when using that renderer. |
 | `CgDynamicTextureRenderLayer.java` | Dynamic-texture layer: auto-flush on texture change |
-| `CgBatchRenderer.java` | CPU→GPU pump: staging → VBO upload → draw. State-blind. Supports both immediate `flush()` and upload-once/draw-many lifecycle. |
+| `CgBatchRenderer.java` | CPU→GPU pump: staging → VBO upload → draw. State-blind. Supports both immediate `flush()` and upload-once/draw-many lifecycle. Implements `IBatchRenderer`. |
 | `CgBufferSource.java` | Ordered layer collection with dirty-aware flush |
 | `CgInstancedDrawMode.java` | Enum for instanced topology: `INDEXED_QUADS` (base vertex count multiple of 4) or `ARRAY_TRIANGLES` (multiple of 3). |
-| `CgInstancedBatchRenderer.java` | CPU→GPU pump for instanced draws. State-blind. Zero-instance/zero-vertex flush is a no-op. Owns CPU staging only; GPU resources borrowed from registry. |
-| `CgInstancedRenderLayer.java` | Instanced render layer implementing `CgLayer`. State bracket: `state.apply(projection)` → `renderer.flush(drawMode)` → `state.clear()`. |
+| `CgInstancedBatchRenderer.java` | CPU→GPU pump for instanced draws. State-blind. Zero-instance/zero-vertex flush is a no-op. Owns CPU staging only; GPU resources borrowed from registry. Implements `IBatchRenderer`. No-arg `flush()` delegates to `flush(INDEXED_QUADS)`. |
+| `IBatchRenderer.java` | Common interface for all batch renderers: `begin()`, `flush()`, `end()`, `isDirty()`, `delete()`. Implemented by `CgBatchRenderer` and `CgInstancedBatchRenderer`. Enables `CgRenderLayer` to wrap any renderer type. |
+| `AbstractBatchRenderer.java` | Abstract base for new batch renderers. Provides shared `begun` field + final `begin()`/`end()`/`isDirty()` implementations. Subclasses implement `onBegin()` and `hasPendingWork()`. Does NOT extend existing renderers. |
 
 ## Key Design Decisions
 

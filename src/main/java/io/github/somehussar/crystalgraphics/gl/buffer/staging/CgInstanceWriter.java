@@ -4,8 +4,6 @@ import io.github.somehussar.crystalgraphics.api.vertex.CgInstanceLayout;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 
-import java.nio.ByteOrder;
-
 public final class CgInstanceWriter {
 
     private static final boolean DEBUG = true;
@@ -74,13 +72,7 @@ public final class CgInstanceWriter {
     }
 
     public CgInstanceWriter color(int r, int g, int b, int a) {
-        int packed;
-        if (ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN) {
-            packed = ((a & 0xFF) << 24) | ((b & 0xFF) << 16) | ((g & 0xFF) << 8) | (r & 0xFF);
-        } else {
-            packed = ((r & 0xFF) << 24) | ((g & 0xFF) << 16) | ((b & 0xFF) << 8) | (a & 0xFF);
-        }
-        staging.putColorPacked(packed);
+        staging.putColorPacked(CgColorPacking.packNativeOrder(r, g, b, a));
         return this;
     }
 
