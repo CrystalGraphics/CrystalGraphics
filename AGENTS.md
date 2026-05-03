@@ -250,11 +250,14 @@ These have different method signatures (`glGenFramebuffers()` vs. `glGenFramebuf
 - `CgCapabilities`: Capability detection with preferred backend selection
 
 **Implementations** (`gl/framebuffer/`):
-- `CgAbstractFramebuffer`: Base class with ownership model and static cleanup
-- `CgCoreFramebuffer`: GL30 backend with MRT support
-- `CgArbFramebuffer`: ARB_framebuffer_object backend with MRT support
-- `CgExtFramebuffer`: EXT_framebuffer_object backend (no MRT, no separate draw/read)
+- `CgAbstractFramebuffer`: Base class — owns all shared logic, fields, and abstract GL dispatch hooks
+- `CgCoreFramebuffer`: GL30 backend with MRT support (factories + 10 dispatch overrides)
+- `CgArbFramebuffer`: ARB_framebuffer_object backend with MRT support (factories + 10 dispatch overrides)
+- `CgExtFramebuffer`: EXT_framebuffer_object backend (no MRT, no separate draw/read; factories + 10 dispatch overrides)
 - `CgFramebufferFactory`: Waterfall factory (Core → ARB → EXT)
+
+**Source package guide**:
+- `src/main/java/io/github/somehussar/crystalgraphics/gl/framebuffer/AGENTS.md` — parent/dispatch architecture, EXT quirks, resize paths, ownership model, how to add a new backend
 
 **Cross-API Safety**:
 - `CrossApiTransition`: Explicit unbind-on-family-change behavior (Core <-> ARB <-> EXT)
