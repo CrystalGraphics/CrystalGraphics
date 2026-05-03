@@ -47,6 +47,59 @@ For any work on the font/text framework, use the new documentation and package-l
 
 Do not rely on older font/text notes outside this set; the current docs above are the intended source of truth.
 
+## Shader System — Start Here
+
+For any work on shader loading, preprocessing, uniform binding, or the GLSL standard library, use the package-local guides below.
+
+### Current package map for shaders
+
+- `api/shader` — public contracts: `CgShader`, `CgShaderManager`, `CgShaderPreprocessor`, `CgShaderBindings`, `CgPreprocessorException`, `CgUniformInjector`
+- `gl/shader` — GL backends: `CgShaderFactory` (static facade + `SHADER_MANAGER`), `CoreShaderProgram` (GL20), `ArbShaderProgram` (ARB fallback)
+- `mc/shader` — Minecraft implementations: `CgShaderImpl`, `CgShaderManagerImpl`, `CgShaderBindingsImpl`, `CgShaderReloadHook`, `CgSystemUniformRegistry`
+
+### Source package guides
+
+- `src/main/java/io/github/somehussar/crystalgraphics/api/shader/AGENTS.md` — public shader API: CgShader lifecycle, CgShaderPreprocessor (#include/pragma-once/cycle detection), CgShaderBindings fluent API, GLSL lib files
+- `src/main/java/io/github/somehussar/crystalgraphics/gl/shader/AGENTS.md` — GL backends: CgShaderFactory compile waterfall, CoreShaderProgram, ArbShaderProgram
+- `src/main/java/io/github/somehussar/crystalgraphics/mc/shader/AGENTS.md` — MC impls: CgShaderImpl recompile flow, CgShaderManagerImpl cache, CgShaderReloadHook (F3+T), CgSystemUniformRegistry
+
+### GLSL Standard Library
+
+Five `#pragma once` include files at `src/main/resources/assets/crystalgraphics/shaders/lib/`:
+
+| File | Key functions |
+|---|---|
+| `math.glsl` | `saturate`, `remap`, `remap01`, `sq`/`cb`, `positive_pow`, `safe_pow`, `sign_pow`, `smootherstep` |
+| `vector.glsl` | `safe_normalize`, `fresnel`, `rotate_axis`, `orthonormalize`, `project_onto`/`reject_from` |
+| `color.glsl` | `luminance`, `srgb_to_linear`/`linear_to_srgb`, `fast_*` variants, `rgb_to_hsv`/`hsv_to_rgb`, `rotate_hue`, `desaturate` |
+| `uv.glsl` | `rotate_uv`, `scale_uv`, `tile_uv`, `pan_uv`, `cartesian_to_polar_uv` |
+| `noise.glsl` | `hash12`/`hash22`/`hash13`, `value_noise`, `fbm4`/`fbm6`, `fbm(p, octaves)`, `fbm_ridged` |
+
+Use in shaders:
+```glsl
+#version 330 core
+#include "crystalgraphics:shaders/lib/color.glsl"
+#include "crystalgraphics:shaders/lib/noise.glsl"
+```
+
+### Quick usage
+
+```java
+// Load a shader that uses #include inside its GLSL
+CgShader shader = CgShaderFactory.load("mymod:shaders/foo.vert", "mymod:shaders/foo.frag");
+
+// Attach a preprocessor with defines (re-uses #include resolution automatically)
+shader.preprocess(new CgShaderPreprocessor(Map.of("MY_FEATURE", "1")));
+
+// Bind with ephemeral uniforms
+shader.applyBindings(b -> {
+    b.set1f("u_time", elapsed);
+    b.sampler2D("u_tex", 0, myTexture);
+}).bind();
+```
+
+---
+
 ## VAO/VBO Backend — Start Here
 
 For any work on vertex array objects, vertex buffer streaming, or the shared

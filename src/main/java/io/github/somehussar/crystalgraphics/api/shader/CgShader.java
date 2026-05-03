@@ -1,5 +1,6 @@
 package io.github.somehussar.crystalgraphics.api.shader;
 
+import java.util.List;
 import java.util.function.Consumer;
 
 /**
@@ -177,7 +178,83 @@ public interface CgShader {
      */
     CgShader applyBindings(Consumer<CgShaderBindings> consumer);
 
+    // ── Source mutation ────────────────────────────────────────────────
+
+    /**
+     * Replaces the inline GLSL source for both shader stages and marks the
+     * shader dirty, scheduling a recompile on the next {@link #bind()} call.
+     *
+     * <p>Both sources are updated atomically — partial updates are not
+     * supported because vertex and fragment source must always be consistent
+     * (e.g. matching {@code out}/{@code in} interface blocks).</p>
+     *
+     * <p>This method is the primary mutation point for node-graph codegen
+     * workflows: generate a new vert/frag pair, push it here, and the shader
+     * recompiles on the next frame boundary.</p>
+     *
+     * <p>Calling this on a path-based shader (created via
+     * {@link io.github.somehussar.crystalgraphics.gl.shader.CgShaderFactory#load})
+     * overrides the file-based source permanently for the lifetime of this
+     * handle — the paths are no longer consulted on subsequent recompiles.</p>
+     *
+     * @param vertexSource   new GLSL vertex shader source; must not be {@code null}
+     * @param fragmentSource new GLSL fragment shader source; must not be {@code null}
+     * @return {@code this} for chaining
+     * @throws NullPointerException if either argument is {@code null}
+     */
+    CgShader setSource(String vertexSource, String fragmentSource);
+
+    // ── Preprocessing ─────────────────────────────────────────────────
+
+    /**
+     * Attaches a preprocessor to this shader and marks it dirty, scheduling
+     * a recompile on the next {@link #bind()} call.
+     *
+     * <p>The preprocessor is applied to the raw source at recompile time,
+     * resolving {@code #include} directives, injecting {@code #define} lines,
+     * and applying any header text. Pass {@code null} to clear the preprocessor
+     * and recompile from raw source only.</p>
+     *
+     * @param pp the preprocessor to attach, or {@code null} to clear
+     * @return {@code this} for chaining
+     */
+    CgShader preprocess(CgShaderPreprocessor pp);
+
     // ── Lifecycle ─────────────────────────────────────────────────────
+
+    /**
+     * Returns the error message from the last failed compilation attempt,
+     * or {@code null} if the shader has never failed to compile or has not
+     * been compiled yet.
+     *
+     * <p>The returned string contains the GL info log captured at the point
+     * of failure (shader compile log or link log, whichever applies).
+     * On a successful compile, this method always returns {@code null}.</p>
+     *
+     * <p>This method never throws; it always returns {@code null} or a
+     * non-null string.</p>
+     *
+     * @return the compile/link error message from the last failed attempt,
+     *         or {@code null} if the last compile succeeded or has not been
+     *         attempted yet
+     */
+    String getLastCompileError();
+
+    /**
+     * Returns all active uniforms introspected from the compiled program.
+     *
+     * <p>Active uniforms are those reported by the GL driver via
+     * {@code glGetActiveUniform} — uniforms that are referenced in the
+     * linked program and have not been optimised away.  Built-in
+     * {@code gl_*} uniforms are excluded from the result.</p>
+     *
+     * <p>Returns an empty list if the shader is not compiled
+     * ({@link #isCompiled()} returns {@code false}).</p>
+     *
+     * @return an unmodifiable list of active uniforms; never {@code null}
+     * @see CgActiveUniform
+     */
+    List<CgActiveUniform> getActiveUniforms();
 
     /**
      * Deletes the underlying program (if any) and releases resources.

@@ -13,15 +13,27 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.opengl.*;
 
+import java.util.Collections;
 import java.util.HashMap;
-import java.util.Map;
+import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
 
 /**
- * Concrete implementation of {@link CgShader} that loads GLSL sources
- * from Minecraft resources, preprocesses them, and compiles via
- * {@link CgShaderFactory}.
+ * Concrete implementation of {@link CgShader} that supports two creation modes:
+ *
+ * <ol>
+ *   <li><strong>Path-based</strong> — loads GLSL sources from Minecraft resources via
+ *       {@link CgIO#loadSource(String)}, preprocesses them, and compiles. Created by
+ *       {@link CgShaderManagerImpl} via the
+ *       {@link #CgShaderImpl(String, String, CgVertexFormat)} constructor.</li>
+ *   <li><strong>Inline-source</strong> — compiles directly from raw GLSL strings
+ *       supplied at construction time, without any resource loading. Created by
+ *       {@link CgShaderFactory#fromSource} via the
+ *       {@link #CgShaderImpl(String, String, CgVertexFormat)} constructor.
+ *       Inline shaders have no cache key ({@link #getCacheKey()} returns
+ *       {@code null}) and are not tracked by the shader manager cache.</li>
+ * </ol>
  *
  * <p><strong>Lifecycle model:</strong></p>
  * <ul>
@@ -48,7 +60,7 @@ import java.util.function.Consumer;
  * @see CgShaderManager
  * @see CgShaderFactory
  */
-final class CgShaderImpl implements CgShader {
+ public class CgShaderImpl implements CgShader {
 
     private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
 
@@ -66,33 +78,53 @@ final class CgShaderImpl implements CgShader {
     /**
      * Deterministic cache key (vertex location, fragment location, defines).
      * Used to identify this shader uniquely in the shader manager cache.
+     * {@code null} for inline-source shaders, which are not cached.
      */
     private final CgShaderCacheKey cacheKey;
     
     /**
      * Asset path of the vertex shader source file.
-     * <p>Either an absolute classpath path (e.g. {@code "/assets/crystalgraphics/shader/bitmap_text.vert"})
-     * or a domain-relative path (e.g.  {@code "crystalgraphics/shader/bitmap_text.vert", "shader/bitmap_text.vert"}) with an optional
-     * resource domain stored separately.
-     * Loaded lazily from Minecraft resources on first {@link #bind()} call.</p>
+     * {@code null} when created via the inline-source constructor; in that
+     * case {@link #vertexSource} holds the raw GLSL instead.
      */
     private final String vertexPath;
     
     /**
      * Asset path of the fragment shader source file.
-     * <p>Same path conventions as {@link #vertexPath}.</p>
+     * {@code null} when created via the inline-source constructor; in that
+     * case {@link #fragmentSource} holds the raw GLSL instead.
      */
     private final String fragmentPath;
+
+    /**
+     * Inline vertex shader source. Non-null when created via the inline
+     * constructor or after {@link #setSource} is called. Null for path-based
+     * shaders that have not had their source overridden.
+     */
+    private String vertexSource;
+
+    /**
+     * Inline fragment shader source. Non-null when created via the inline
+     * constructor or after {@link #setSource} is called. Null for path-based
+     * shaders that have not had their source overridden.
+     */
+    private String fragmentSource;
 
     /**
      * Attribute format for the VAO that feeds this shader
      */
     private final CgVertexFormat format;
     /**
-     * Preprocessor for GLSL sources (header text + #define injection).
-     * Applied to loaded sources before compilation.
+     * Preprocessor from constructor (legacy defines path). Used as fallback
+     * when no explicit preprocessor has been attached via {@link #preprocess}.
      */
     private final CgShaderPreprocessor preprocessor;
+
+    /**
+     * Preprocessor attached post-construction via {@link #preprocess}.
+     * When non-null, takes precedence over {@link #preprocessor}.
+     */
+    private CgShaderPreprocessor activePreprocessor;
 
     /**
      * The underlying compiled OpenGL shader program, or null if not yet compiled
@@ -113,6 +145,12 @@ final class CgShaderImpl implements CgShader {
      * will trigger recompilation before binding.
      */
     private boolean dirty;
+
+    /**
+     * The error message from the last failed compilation attempt, or {@code null}
+     * if the last compile succeeded or has not been attempted yet.
+     */
+    private String lastCompileError;
 
     /**
      * Cache of uniform name -> location mappings for the current {@link #program}.
@@ -137,15 +175,44 @@ final class CgShaderImpl implements CgShader {
      */
     private final CgShaderBindings ephemeralBindings = new CgShaderBindingsImpl();
 
-    CgShaderImpl(String vertexPath, String fragmentPath, CgVertexFormat format, Map<String, String> defines) {
-        this.vertexPath = Objects.requireNonNull(vertexPath, "vertexPath must not be null");
+    /** Path-based constructor used by {@link CgShaderManagerImpl}. */
+    public CgShaderImpl(String vertexPath, String fragmentPath, CgVertexFormat format) {
+        this.vertexPath   = Objects.requireNonNull(vertexPath,   "vertexPath must not be null");
         this.fragmentPath = Objects.requireNonNull(fragmentPath, "fragmentPath must not be null");
-        this.format = format;
-        this.preprocessor = new CgShaderPreprocessor(defines);
-        this.cacheKey = new CgShaderCacheKey(vertexPath, fragmentPath, defines);
-        this.program = null;
+        this.vertexSource   = null;
+        this.fragmentSource = null;
+        this.format       = format;
+        this.preprocessor = new CgShaderPreprocessor();
+        this.cacheKey     = new CgShaderCacheKey(vertexPath, fragmentPath);
+        this.program      = null;
+        this.compiled     = false;
+        this.dirty        = true;
+    }
+
+    /**
+     * Creates an inline-source shader that compiles from raw GLSL strings directly.
+     * {@link #getCacheKey()} returns {@code null}; not tracked in the manager cache.
+     */
+    public static CgShaderImpl fromSource(String vertexSource, String fragmentSource, CgVertexFormat format) {
+        return new CgShaderImpl(null, null, vertexSource, fragmentSource, format);
+    }
+
+    /** Unified private constructor. Exactly one of (paths, sources) pair is non-null. */
+    private CgShaderImpl(String vertexPath, String fragmentPath, 
+                         String vertexSource, String fragmentSource,
+                         CgVertexFormat format) {
+        this.vertexPath     = vertexPath;
+        this.fragmentPath   = fragmentPath;
+        this.vertexSource   = vertexSource;
+        this.fragmentSource = fragmentSource;
+        this.format         = format;
+        this.preprocessor   = new CgShaderPreprocessor();
+        this.cacheKey       = (vertexPath != null)
+                ? new CgShaderCacheKey(vertexPath, fragmentPath)
+                : null;
+        this.program  = null;
         this.compiled = false;
-        this.dirty = true;
+        this.dirty    = true;
     }
 
     @Override
@@ -156,6 +223,17 @@ final class CgShaderImpl implements CgShader {
     @Override
     public boolean isCompiled() {
         return compiled;
+    }
+
+    @Override
+    public String getLastCompileError() {
+        return lastCompileError;
+    }
+
+    @Override
+    public List<CgActiveUniform> getActiveUniforms() {
+        if (!compiled || program == null) return Collections.emptyList();
+        return program.getActiveUniforms();
     }
 
     @Override
@@ -255,6 +333,21 @@ final class CgShaderImpl implements CgShader {
     }
 
     @Override
+    public CgShader setSource(String vertexSource, String fragmentSource) {
+        this.vertexSource = Objects.requireNonNull(vertexSource, "vertexSource must not be null");
+        this.fragmentSource = Objects.requireNonNull(fragmentSource, "fragmentSource must not be null");
+        markDirty();
+        return this;
+    }
+
+    @Override
+    public CgShader preprocess(CgShaderPreprocessor pp) {
+        this.activePreprocessor = pp;
+        markDirty();
+        return this;
+    }
+
+    @Override
     public void markDirty() {
         this.dirty = true;
     }
@@ -295,46 +388,57 @@ final class CgShaderImpl implements CgShader {
         ephemeralBindings.clear();
     }
 
-    protected void recompile() {
+    public void recompile() {
         this.dirty = false;
 
         String vertex;
         String fragment;
+
+        if (vertexSource != null) {
+            vertex = vertexSource;
+            fragment = fragmentSource;
+        } else {
+            try {
+                vertex = CgIO.loadSource(vertexPath);
+                fragment = CgIO.loadSource(fragmentPath);
+            } catch (Exception e) {
+                LOGGER.error("Failed to load shader sources for {}", cacheKey, e);
+                lastCompileError = e.getMessage();
+                compiled = false;
+                uniformLocationCache.clear();
+                return;
+            }
+        }
+
+        CgShaderPreprocessor pp = (activePreprocessor != null) ? activePreprocessor : preprocessor;
+        String vertPath = (vertexPath != null) ? vertexPath : "";
+        String fragPath = (fragmentPath != null) ? fragmentPath : "";
+        vertex = pp.process(vertex, vertPath);
+        fragment = pp.process(fragment, fragPath);
+
         try {
-            vertex = CgIO.loadSource(vertexPath);
-            fragment = CgIO.loadSource(fragmentPath);
+            if (program != null && !program.isDeleted()) {
+                program.relink(vertex, fragment, format);
+            } else {
+                CgShaderProgram newProgram = CgShaderFactory.compile(vertex, fragment, format);
+                if (program != null && !program.isDeleted()) program.delete();
+                program = newProgram;
+            }
         } catch (Exception e) {
-            LOGGER.error("Failed to load shader sources for {}", cacheKey, e);
-            clearProgram();
+            if (cacheKey != null) {
+                LOGGER.error("Failed to compile shader {}", cacheKey, e);
+            } else {
+                LOGGER.error("Failed to compile inline shader: {}", e.getMessage());
+            }
+            lastCompileError = e.getMessage();
+            compiled = false;
+            uniformLocationCache.clear();
             return;
         }
 
-        vertex = preprocessor.process(vertex);
-        fragment = preprocessor.process(fragment);
-
-        CgShaderProgram newProgram;
-        try {
-            newProgram = CgShaderFactory.compile(vertex, fragment, format);
-        } catch (Exception e) {
-            LOGGER.error("Failed to compile shader {}", cacheKey, e);
-            clearProgram();
-            return;
-        }
-
-        if (program != null && !program.isDeleted()) {
-            program.delete();
-        }
-        program = newProgram;
         compiled = true;
+        lastCompileError = null;
         uniformLocationCache.clear();
     }
 
-    private void clearProgram() {
-        if (program != null && !program.isDeleted()) 
-            program.delete();
-        
-        program = null;
-        compiled = false;
-        uniformLocationCache.clear();
-    }
 }
