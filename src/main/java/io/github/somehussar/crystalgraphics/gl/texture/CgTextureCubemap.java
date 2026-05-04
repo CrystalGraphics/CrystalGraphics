@@ -5,9 +5,12 @@ import io.github.somehussar.crystalgraphics.api.texture.CgTextureSpec;
 import io.github.somehussar.crystalgraphics.util.io.CgTextureIO;
 import io.github.somehussar.crystalgraphics.util.io.CgTextureIO.CgImageData;
 
+import lombok.Getter;
 import org.lwjgl.opengl.GL11;
 
 import java.nio.ByteBuffer;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Cubemap GL texture (target {@code GL_TEXTURE_CUBE_MAP = 0x8513}). Single
@@ -17,11 +20,19 @@ import java.nio.ByteBuffer;
  * ({@code GL_TEXTURE_CUBE_MAP_POSITIVE_X} through
  * {@code GL_TEXTURE_CUBE_MAP_NEGATIVE_Z}, GL constants 0x8515..0x851A). All
  * faces must be the same size and share the same pixel format, mipmap config,
- * and sampler params. Storage and upload happen via {@link GL11#glTexImage2D}
- * once per face target. Sampler parameters are applied to
- * {@code GL_TEXTURE_CUBE_MAP} after all faces are uploaded.</p>
+ * and sampler params.</p>
+ *
+ * <h3>Factories</h3>
+ * <ul>
+ *   <li>{@link #create(CgTextureSpec, String, String, String, String, String, String)} — cached via
+ *       {@link CgTextureManager}; supports in-place {@link #reload()}.</li>
+ *   <li>{@link #createDirect(CgTextureSpec, String, String, String, String, String, String)} — bypass cache; no reload support.</li>
+ *   <li>{@link #createEmpty(int, CgTextureSpec)} — empty faces; caller owns lifecycle.</li>
+ * </ul>
  */
 public final class CgTextureCubemap extends CgTextureAbstract {
+
+    private static final Logger LOGGER = Logger.getLogger(CgTextureCubemap.class.getName());
 
     // ── GL constants ────────────────────────────────────────────────
     private static final int GL_TEXTURE_CUBE_MAP            = 0x8513;
@@ -39,24 +50,133 @@ public final class CgTextureCubemap extends CgTextureAbstract {
             GL_TEXTURE_CUBE_MAP_POSITIVE_Z, GL_TEXTURE_CUBE_MAP_NEGATIVE_Z
     };
 
-    private CgTextureCubemap(int textureId, int size, CgTextureSpec spec) {
+    /** Source face paths for reload; {@code null} for createDirect and createEmpty. */
+    @Getter private final String[] sourcePaths;
+
+    private CgTextureCubemap(int textureId, int size, CgTextureSpec spec, String[] sourcePaths) {
         super(textureId, size, size, spec);
+        this.sourcePaths = sourcePaths;
     }
 
+    // ── Factories ────────────────────────────────────────────────────
+
     /**
-     * Creates a cubemap from six face image paths. All faces must be the same
-     * square size.
+     * Creates a cubemap from six face image paths, cached.
+     * Subsequent calls with the same six paths return the cached instance.
      *
-     * @throws IllegalArgumentException if any path fails to load, or if faces
-     *         have mismatching dimensions, or if any face is non-square
+     * @throws IllegalArgumentException if any path fails to load, or faces
+     *         have mismatching dimensions, or any face is non-square
      */
     public static CgTextureCubemap create(CgTextureSpec spec,
                                           String posX, String negX,
                                           String posY, String negY,
                                           String posZ, String negZ) {
         String[] paths = { posX, negX, posY, negY, posZ, negZ };
+        String key = String.join(CgTextureManager.PATH_SEPARATOR, paths);
+        CgTexture result = CgTextureManager.get().getOrCreate(key, () -> doCreate(spec, paths, paths));
+        return result != null ? (CgTextureCubemap) result : null;
+    }
 
-        // Load all six faces up-front so we fail before allocating any GL state.
+    /**
+     * Creates a fresh cubemap without consulting the cache.
+     * Not registered with {@link CgTextureManager}; caller owns the lifecycle.
+     * No reload support.
+     */
+    public static CgTextureCubemap createDirect(CgTextureSpec spec,
+                                                String posX, String negX,
+                                                String posY, String negY,
+                                                String posZ, String negZ) {
+        String[] paths = { posX, negX, posY, negY, posZ, negZ };
+        return doCreate(spec, paths, null);
+    }
+
+    /** Creates an empty cubemap with no image data. Not cached; caller owns the lifecycle. */
+    public static CgTextureCubemap createEmpty(int size, CgTextureSpec spec) {
+        if (size <= 0) throw new IllegalArgumentException("Cubemap size must be positive, got: " + size);
+        int id = GL11.glGenTextures();
+        CgTextureCubemap tex = new CgTextureCubemap(id, size, spec, null);
+        try {
+            GL11.glBindTexture(GL_TEXTURE_CUBE_MAP, id);
+            try {
+                int internalFormat = spec.getFormat().getInternalFormat();
+                int pf = spec.getFormat().getPixelFormat();
+                int pt = spec.getFormat().getPixelType();
+                for (int face : FACE_TARGETS) {
+                    GL11.glTexImage2D(face, 0, internalFormat, size, size, 0, pf, pt, (ByteBuffer) null);
+                }
+                spec.applyTo(GL_TEXTURE_CUBE_MAP);
+             
+            } finally {
+                GL11.glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+            }
+            return tex;
+        } catch (RuntimeException e) {
+            GL11.glDeleteTextures(id);
+            throw e;
+        }
+    }
+
+    // ── Upload ────────────────────────────────────────────────────────
+
+    /**
+     * Re-uploads all six faces from pre-loaded image data in-place.
+     * Also reapplies the spec's filter/wrap params and regenerates mipmaps if enabled.
+     *
+     * <p>The array must contain exactly 6 images in canonical order
+     * (+X, -X, +Y, -Y, +Z, -Z), all the same square size.
+     * Use {@link #loadFaces(String[])} to load and validate before calling.</p>
+     */
+    public void upload(CgImageData[] faces) {
+        checkNotDeleted();
+        int size = faces[0].width();
+        int uploadPixelFormat = pixelFormatForChannels(faces[0].channels());
+        GL11.glBindTexture(GL_TEXTURE_CUBE_MAP, textureId);
+        try {
+            int internalFormat = spec.getFormat().getInternalFormat();
+            for (int i = 0; i < 6; i++) {
+                GL11.glTexImage2D(FACE_TARGETS[i], 0, internalFormat, size, size, 0,
+                        uploadPixelFormat, GL_UNSIGNED_BYTE, faces[i].pixels());
+            }
+            
+            spec.applyTo(GL_TEXTURE_CUBE_MAP);
+            
+            this.width = size;
+            this.height = size;
+        } finally {
+            GL11.glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+        }
+    }
+
+    // ── Reload ────────────────────────────────────────────────────────
+
+    @Override
+    public void reload() {
+        if (sourcePaths == null) return;
+        try {
+            upload(loadFaces(sourcePaths));
+        } catch (Exception e) {
+            LOGGER.log(Level.WARNING, "[CgTextureCubemap] Failed to reload faces", e);
+        }
+    }
+
+    @Override public int getTarget() { return GL_TEXTURE_CUBE_MAP; }
+
+    // ── Internal factory ──────────────────────────────────────────────
+
+    private static CgTextureCubemap doCreate(CgTextureSpec spec, String[] paths, String[] sourcePaths) {
+        CgImageData[] faces = loadFaces(paths);
+        int id = GL11.glGenTextures();
+        CgTextureCubemap tex = new CgTextureCubemap(id, faces[0].width(), spec, sourcePaths);
+        try {
+            tex.upload(faces);
+            return tex;
+        } catch (RuntimeException e) {
+            tex.delete();
+            throw e;
+        }
+    }
+
+    private static CgImageData[] loadFaces(String[] paths) {
         CgImageData[] images = new CgImageData[6];
         for (int i = 0; i < 6; i++) {
             images[i] = CgTextureIO.load(paths[i]);
@@ -64,9 +184,6 @@ public final class CgTextureCubemap extends CgTextureAbstract {
                 throw new IllegalArgumentException("Failed to load cubemap face " + i + ": " + paths[i]);
             }
         }
-
-        // Validate uniform square dimensions — cubemaps require all six faces
-        // to be the same size and each face must be square.
         int size = images[0].width();
         if (images[0].height() != size) {
             throw new IllegalArgumentException("Cubemap face 0 must be square. Got: "
@@ -79,49 +196,6 @@ public final class CgTextureCubemap extends CgTextureAbstract {
                         + images[i].width() + "x" + images[i].height());
             }
         }
-
-        return uploadFaces(size, images, spec);
+        return images;
     }
-
-    public static CgTextureCubemap createEmpty(int size, CgTextureSpec spec) {
-        if (size <= 0) {
-            throw new IllegalArgumentException("Cubemap size must be positive, got: " + size);
-        }
-        return uploadFaces(size, null, spec);
-    }
-
-    private static CgTextureCubemap uploadFaces(int size, CgImageData[] images, CgTextureSpec spec) {
-        int id = GL11.glGenTextures();
-        try {
-            GL11.glBindTexture(GL_TEXTURE_CUBE_MAP, id);
-            int internalFormat = spec.getFormat().getInternalFormat();
-            int uploadPixelFormat = (images != null)
-                    ? pixelFormatForChannels(images[0].channels())
-                    : spec.getFormat().getPixelFormat();
-            int uploadPixelType = (images != null) ? GL_UNSIGNED_BYTE : spec.getFormat().getPixelType();
-
-            for (int i = 0; i < 6; i++) {
-                ByteBuffer pixels = (images != null) ? images[i].pixels() : null;
-                GL11.glTexImage2D(FACE_TARGETS[i], 0,
-                        internalFormat, size, size, 0,
-                        uploadPixelFormat, uploadPixelType, pixels);
-            }
-
-            spec.applyTo(GL_TEXTURE_CUBE_MAP);
-
-            if (spec.getMipmaps() != null && spec.getMipmaps().isEnabled()) {
-                CgTextureSpec.generateMipmaps(GL_TEXTURE_CUBE_MAP);
-            }
-
-            GL11.glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
-            return new CgTextureCubemap(id, size, spec);
-        } catch (RuntimeException e) {
-            // Failure-atomic cleanup: never leak the GL texture id.
-            GL11.glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
-            GL11.glDeleteTextures(id);
-            throw e;
-        }
-    }
-
-    @Override public int getTarget() { return GL_TEXTURE_CUBE_MAP; }
 }

@@ -67,16 +67,6 @@ public abstract class CgTextureAbstract implements CgTexture {
         CgTexture.bind(getTarget(),textureId);
     }
 
-    // ── CgTexture — mipmap ──────────────────────────────────────────
-
-    @Override
-    public void generateMipmaps() {
-        checkNotDeleted();
-        GL11.glBindTexture(getTarget(), textureId);
-        CgTextureSpec.generateMipmaps(getTarget());
-        GL11.glBindTexture(getTarget(), 0);
-    }
-
     // ── CgTexture — accessors ───────────────────────────────────────
 
     @Override

@@ -204,24 +204,7 @@ public final class CgTextureSpec {
         if (mipmaps != null && mipmaps.isEnabled()) {
             GL11.glTexParameteri(target, GL_TEXTURE_MIN_FILTER, mipmaps.getMinFilter());
             GL11.glTexParameteri(target, GL_TEXTURE_MAG_FILTER, mipmaps.getMagFilter());
-        }
-    }
-
-    /**
-     * Calls {@code GL30.glGenerateMipmap(target)} if the current GL context supports
-     * OpenGL 3.0; otherwise logs a one-time warning and no-ops.
-     * The texture must be bound to {@code target} before calling.
-     */
-    public static void generateMipmaps(int target) {
-        if (GLContext.getCapabilities().OpenGL30) {
             GL30.glGenerateMipmap(target);
-        } else {
-            if (!warnedNoGenerateMipmap) {
-                warnedNoGenerateMipmap = true;
-                LOGGER.warning("CgTextureSpec.generateMipmaps: GL30 unavailable, skipping (warn-once)");
-            }
         }
     }
-    private static volatile boolean warnedNoGenerateMipmap = false;
-    private static final Logger LOGGER = Logger.getLogger(CgTextureSpec.class.getName());
 }
