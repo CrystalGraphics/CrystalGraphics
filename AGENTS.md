@@ -738,7 +738,7 @@ Lombok generates Java 8-compatible bytecode. All annotations listed above work c
    - Check `isInRedirect()` before updating mirror in redirects
 
 7. **Java 8 only**:
-   - No lambdas (unless Lombok generates them)
+   - Lambdas and method references are available. Don't shy away from them, use when appropriate
    - No `var` keyword
    - No modules
 

@@ -6,8 +6,7 @@ import cpw.mods.fml.common.event.FMLPostInitializationEvent;
 import cpw.mods.fml.common.event.FMLPreInitializationEvent;
 import io.github.somehussar.crystalgraphics.api.shader.CgShaderManager;
 import io.github.somehussar.crystalgraphics.gl.shader.CgShaderFactory;
-import io.github.somehussar.crystalgraphics.mc.shader.CgShaderManagerImpl;
-import io.github.somehussar.crystalgraphics.mc.shader.CgShaderReloadHook;
+import io.github.somehussar.crystalgraphics.mc.CgAssetReloader;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -69,7 +68,7 @@ public final class CrystalGraphics{
         // minimum OpenGL requirement exceeds the detected driver version.
         CrystalGraphicsVersion.processAllRequirements();
         
-        CgShaderReloadHook.register();
+        CgAssetReloader.register();
     }
 
     /**
