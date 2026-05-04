@@ -38,13 +38,11 @@ import java.nio.ByteBuffer;
  * <p>After {@link #uploadPendingVertices()}, no more vertex recording or staging
  * growth is allowed. Attempts to record after upload throw {@link IllegalStateException}.</p>
  */
-public final class CgBatchRenderer implements IBatchRenderer {
+public final class CgBatchRenderer extends CgAbstractRenderer {
 
     private final CgVertexArrayBinding binding;
     private final CgStagingBuffer staging;
     private final CgVertexWriter writer;
-
-    private boolean begun;
 
     // ── Upload-once / draw-many state (V3.1) ────────────────────────────
 
@@ -69,14 +67,14 @@ public final class CgBatchRenderer implements IBatchRenderer {
         this.writer = new CgVertexWriter(staging, binding.getFormat());
     }
 
-    public void begin() {
-        if (begun) throw new IllegalStateException("CgBatchRenderer already begun");
-        begun = true;
+    @Override
+    protected void onBegin() {
         uploadedForReplay = false;
         staging.reset();
         staging.ensureRoomForNextVertex();
     }
 
+    @Override
     public void flush() {
         if (!begun || staging.isEmpty()) return;
         if (uploadedForReplay) throw new IllegalStateException("Cannot flush() during replay — use drawUploadedRange()");
@@ -108,18 +106,20 @@ public final class CgBatchRenderer implements IBatchRenderer {
         staging.ensureRoomForNextVertex();
     }
 
-    public void end() {
+    @Override
+    protected void onEnd() {
         if (uploadedForReplay) {
-            // If we were in replay mode, finish it first
             finishUploadedDraws();
         } else {
-            // Only flush on the immediate path — after finishUploadedDraws()
-            // the staging is empty so flushing would be a no-op anyway.
             flush();
         }
-        begun = false;
         CgVertexArray.bind(0);
         GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+    }
+
+    @Override
+    protected boolean hasPendingWork() {
+        return !staging.isEmpty();
     }
 
     // ── Upload-once / draw-many lifecycle (V3.1) ────────────────────────
@@ -222,10 +222,6 @@ public final class CgBatchRenderer implements IBatchRenderer {
         if (uploadedForReplay) throw new IllegalStateException("Recording is locked after uploadPendingVertices()");
         writer.reset();
         return writer;
-    }
-
-    public boolean isDirty() {
-        return begun && !staging.isEmpty();
     }
 
     public boolean isUploadedForReplay() {

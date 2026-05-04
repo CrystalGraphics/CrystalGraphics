@@ -121,11 +121,11 @@ vertex input registry, use the package-local guides first.
 - `CgVertexAttribute` — single attribute within a format (name, type, components, offset, semantic metadata)
 - `CgVertexSemantic` — enum of attribute roles (POSITION, UV, COLOR, NORMAL, GENERIC)
 - `CgAttribType` — enum of GL primitive types with byte sizes
-- `CgInstanceLayout` — immutable, value-equal per-instance attribute layout; mat4 expands to 4 physical vec4 slots; divisor=1 only in v1
+- `CgInstanceFormat` — immutable, value-equal per-instance attribute layout; mat4 expands to 4 physical vec4 slots; divisor=1 only in v1
 
 ### `api/vertex/` package guide
 
-- `src/main/java/io/github/somehussar/crystalgraphics/api/vertex/AGENTS.md` — public vertex API: CgVertexFormat, CgVertexAttribute, CgAttribType, CgInstanceLayout (mat4 expansion, TRANSFORM_COLOR_CUSTOM, v1 constraints)
+- `src/main/java/io/github/somehussar/crystalgraphics/api/vertex/AGENTS.md` — public vertex API: CgVertexFormat, CgVertexAttribute, CgAttribType, CgInstanceFormat (mat4 expansion, TRANSFORM_COLOR_CUSTOM, v1 constraints)
 
 ## Texture System — Start Here
 
@@ -137,6 +137,29 @@ Owned GL textures (`CgTexture` and friends) are the public API for 2D / 2D-array
 - `src/main/java/io/github/somehussar/crystalgraphics/api/texture/AGENTS.md` — public API: `CgTexture` (single unified interface) and `CgTextureSpec` (Lombok-built spec with pre-built `RGBA8_LINEAR` / `RGBA8_NEAREST` / `RGBA16F_LINEAR`; also exposes `applyTo(target)` + `generateMipmaps(target)` GL helpers)
 - `src/main/java/io/github/somehussar/crystalgraphics/gl/texture/AGENTS.md` — concrete GL impls (`CgTexture2D`, `CgTexture2DArray`, `CgTexture3D` — each `implements CgTexture` directly with own static factories); failure-atomic allocation pattern
 - `util/io/CgTextureIO` — image loader (asset path → direct RGBA `ByteBuffer`) delegating to `CgIO.openStream` for path resolution
+
+## Mesh System — Start Here
+
+For any work on static mesh geometry (loading, building, or GPU upload), use the package-local guides first.
+
+### Current package map for meshes
+
+- `api/mesh/` — CPU-side data holders: `CgMeshTopology` (GL draw mode enum), `CgMeshData` (vertex + index ByteBuffers, no GL)
+- `gl/mesh/` — static GPU mesh + procedural builders + OBJ/glTF loaders + unified facade
+
+### Source package guides
+
+- `src/main/java/io/github/somehussar/crystalgraphics/api/mesh/AGENTS.md` — CgMeshTopology, CgMeshData CPU data holder
+- `src/main/java/io/github/somehussar/crystalgraphics/gl/mesh/AGENTS.md` — CgMeshBuilder (procedural), CgObjLoader, CgGltfLoader, CgMeshLoader (facade), CgMesh (GPU upload + draw)
+
+### Key rules
+
+- Vertex packing always via `CgVertexWriter.forBuffer()` — no raw `ByteBuffer.putFloat()` for vertex data
+- Index buffers use u16 (vertexCount ≤ 65535) or u32 (larger)
+- `CgMesh.upload()` must be called on the GL thread; uses `GL_STATIC_DRAW`
+- IBO must be bound while VAO is bound; VAO must be unbound before IBO is unbound
+
+---
 
 ## Batch Render Layer System — Start Here
 
@@ -336,9 +359,10 @@ These have different method signatures (`glGenFramebuffers()` vs. `glGenFramebuf
 #### 4. VAO/VBO Backend (✅ COMPLETE)
 
 **Vertex Input** (`gl/vertex/`):
-- `CgVertexArray`: VAO wrapper with core GL30 / ARB waterfall
-- `CgVertexArrayBinding`: Pairs one VAO + one stream buffer for a vertex format
-- `CgVertexArrayRegistry`: Singleton cache — one binding per `CgVertexFormat`, lazy-created
+- `CgVertexArray`: VAO wrapper with core GL30 / ARB waterfall; guards on `isVaoSupported()` (not just `isCore()`); call `resetCoreCache()` on context recreation
+- `CgVertexArrayBinding`: Pairs one VAO + one stream buffer for a base vertex format
+- `CgInstanceVertexArrayBinding`: Pairs one VAO for base+instance interleaved rendering (formerly `CgInstancedVaoBinding`)
+- `CgVertexArrayRegistry`: Flat `HashMap<StreamingVaoKey, …>` + `HashMap<MeshVaoKey, …>` caches (StreamingVaoKey/MeshVaoKey use value equality); call `deleteAll()` on context destroy; call `invalidateMeshBindings(mesh)` when a mesh is deleted
 
 **Buffer Streaming** (`gl/buffer/`):
 - `CgStreamBuffer`: Abstract streaming VBO with waterfall factory (`create()`)
@@ -348,6 +372,13 @@ These have different method signatures (`glGenFramebuffers()` vs. `glGenFramebuf
 - `CgQuadIndexBuffer`: Shared quad IBO, `GL_UNSIGNED_SHORT`, max 16384 quads
 
 **Streaming Strategy Waterfall**: `CgCapabilities.isArbSync()` → sync ring; `isMapBufferRangeSupported()` → orphan; else → subdata.
+
+**Context Teardown Order** (canonical, enforced in `CgGraphicsLifecycle.destroyContext()`):
+1. `CgVertexArrayRegistry.deleteAll()` — VAOs deleted while VBOs still valid
+2. `CgMeshRegistry.deleteAll()` — mesh VAOs + IBOs deleted
+3. `CgVertexBufferRegistry.deleteAll()` — VBOs deleted
+4. `CgQuadIndexBuffer.freeAll()` — shared quad IBO deleted
+5. Static backend caches reset: `CgVertexArray.resetCoreCache()`, `CgInstanceVertexArrayBinding.resetCoreCache()`, `CgInstanceRenderer.resetCoreCache()`, `CgCapabilities.clearCache()`
 
 #### 5. Capability Detection (✅ COMPLETE)
 

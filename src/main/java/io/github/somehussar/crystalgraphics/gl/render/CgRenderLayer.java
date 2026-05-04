@@ -24,7 +24,7 @@ public final class CgRenderLayer implements CgLayer {
 
     private final String name;
     private final CgRenderState state;
-    private final IBatchRenderer renderer;
+    private final CgAbstractRenderer renderer;
     private final Matrix4f projection = new Matrix4f();
     private boolean begun;
 
@@ -32,14 +32,8 @@ public final class CgRenderLayer implements CgLayer {
         return new CgRenderLayer(name, state, CgBatchRenderer.create(format, initialMaxQuads));
     }
 
-    /** Creates a layer wrapping any IBatchRenderer implementation. */
-    public CgRenderLayer(String name, CgRenderState state, IBatchRenderer renderer) {
-        this.name = name;
-        this.state = state;
-        this.renderer = renderer;
-    }
-
-    private CgRenderLayer(String name, CgRenderState state, CgBatchRenderer renderer) {
+    /** Creates a layer wrapping any {@link CgAbstractRenderer} implementation. */
+    public CgRenderLayer(String name, CgRenderState state, CgAbstractRenderer renderer) {
         this.name = name;
         this.state = state;
         this.renderer = renderer;
@@ -73,6 +67,17 @@ public final class CgRenderLayer implements CgLayer {
     @Override public void delete() { renderer.delete(); }
 
     // These convenience methods only work when the renderer is a CgBatchRenderer.
-    public CgVertexWriter vertex() { return ((CgBatchRenderer) renderer).vertex(); }
-    public CgStagingBuffer staging() { return ((CgBatchRenderer) renderer).staging(); }
+    public CgVertexWriter vertex() {
+        if (!(renderer instanceof CgBatchRenderer)) {
+            throw new IllegalStateException("vertex() requires a CgBatchRenderer renderer");
+        }
+        return ((CgBatchRenderer) renderer).vertex();
+    }
+
+    public CgStagingBuffer staging() {
+        if (!(renderer instanceof CgBatchRenderer)) {
+            throw new IllegalStateException("staging() requires a CgBatchRenderer renderer");
+        }
+        return ((CgBatchRenderer) renderer).staging();
+    }
 }

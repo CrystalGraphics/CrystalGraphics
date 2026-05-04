@@ -1,6 +1,6 @@
 package io.github.somehussar.crystalgraphics.gl.buffer.staging;
 
-import io.github.somehussar.crystalgraphics.api.vertex.CgInstanceLayout;
+import io.github.somehussar.crystalgraphics.api.vertex.CgInstanceFormat;
 import org.joml.Matrix4f;
 import org.junit.Test;
 
@@ -8,19 +8,19 @@ import static org.junit.Assert.*;
 
 public class CgInstanceWriterTest {
 
-    private CgInstanceWriter writerFor(CgInstanceLayout layout) {
+    private CgInstanceWriter writerFor(CgInstanceFormat layout) {
         CgStagingBuffer staging = new CgStagingBuffer(layout.getFloatsPerInstance(), 4);
         return new CgInstanceWriter(staging, layout);
     }
 
-    private CgInstanceWriter writerFor(CgInstanceLayout layout, CgStagingBuffer staging) {
+    private CgInstanceWriter writerFor(CgInstanceFormat layout, CgStagingBuffer staging) {
         return new CgInstanceWriter(staging, layout);
     }
 
     @Test
     public void testTransformColorCustomOneInstanceIs84Bytes() {
-        CgStagingBuffer staging = new CgStagingBuffer(CgInstanceLayout.TRANSFORM_COLOR_CUSTOM.getFloatsPerInstance(), 4);
-        CgInstanceWriter w = new CgInstanceWriter(staging, CgInstanceLayout.TRANSFORM_COLOR_CUSTOM);
+        CgStagingBuffer staging = new CgStagingBuffer(CgInstanceFormat.TRANSFORM_COLOR_CUSTOM.getFloatsPerInstance(), 4);
+        CgInstanceWriter w = new CgInstanceWriter(staging, CgInstanceFormat.TRANSFORM_COLOR_CUSTOM);
 
         w.beginInstance();
         w.mat4(new Matrix4f());
@@ -34,8 +34,8 @@ public class CgInstanceWriterTest {
 
     @Test
     public void testTransformColorCustomTwoInstancesIs168Bytes() {
-        CgStagingBuffer staging = new CgStagingBuffer(CgInstanceLayout.TRANSFORM_COLOR_CUSTOM.getFloatsPerInstance(), 4);
-        CgInstanceWriter w = new CgInstanceWriter(staging, CgInstanceLayout.TRANSFORM_COLOR_CUSTOM);
+        CgStagingBuffer staging = new CgStagingBuffer(CgInstanceFormat.TRANSFORM_COLOR_CUSTOM.getFloatsPerInstance(), 4);
+        CgInstanceWriter w = new CgInstanceWriter(staging, CgInstanceFormat.TRANSFORM_COLOR_CUSTOM);
 
         for (int i = 0; i < 2; i++) {
             w.beginInstance();
@@ -51,7 +51,7 @@ public class CgInstanceWriterTest {
 
     @Test
     public void testColorPackedAsRGBAInFloatBits() {
-        CgInstanceLayout colorOnly = CgInstanceLayout.builder("color-only").color4UB("a_color").build();
+        CgInstanceFormat colorOnly = CgInstanceFormat.builder("color-only").color4UB("a_color").build();
         CgStagingBuffer staging = new CgStagingBuffer(colorOnly.getFloatsPerInstance(), 4);
         CgInstanceWriter w = new CgInstanceWriter(staging, colorOnly);
 
@@ -68,7 +68,7 @@ public class CgInstanceWriterTest {
 
     @Test
     public void testColorRGBAPacked() {
-        CgInstanceLayout colorOnly = CgInstanceLayout.builder("color-only").color4UB("a_color").build();
+        CgInstanceFormat colorOnly = CgInstanceFormat.builder("color-only").color4UB("a_color").build();
         CgStagingBuffer staging = new CgStagingBuffer(colorOnly.getFloatsPerInstance(), 4);
         CgInstanceWriter w = new CgInstanceWriter(staging, colorOnly);
 
@@ -85,7 +85,7 @@ public class CgInstanceWriterTest {
 
     @Test
     public void testMat4IdentityIs64Bytes() {
-        CgInstanceLayout mat4Layout = CgInstanceLayout.builder("mat4-only").mat4("a_model").build();
+        CgInstanceFormat mat4Layout = CgInstanceFormat.builder("mat4-only").mat4("a_model").build();
         CgStagingBuffer staging = new CgStagingBuffer(mat4Layout.getFloatsPerInstance(), 4);
         CgInstanceWriter w = new CgInstanceWriter(staging, mat4Layout);
 
@@ -98,7 +98,7 @@ public class CgInstanceWriterTest {
 
     @Test(expected = IllegalStateException.class)
     public void testEndInstanceThrowsOnWrongFloatCount() {
-        CgInstanceLayout layout = CgInstanceLayout.builder("vec4-only").vec4("a_x").build();
+        CgInstanceFormat layout = CgInstanceFormat.builder("vec4-only").vec4("a_x").build();
         CgStagingBuffer staging = new CgStagingBuffer(layout.getFloatsPerInstance(), 4);
         CgInstanceWriter w = new CgInstanceWriter(staging, layout);
 

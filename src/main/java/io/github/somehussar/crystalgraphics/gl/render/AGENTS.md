@@ -24,7 +24,7 @@ CgBufferSource (per-context owned, NOT singleton)
 CgLayer (interface)
 ├── begin(projection) / flush() / end() / isDirty() / delete()
 ├── CgRenderLayer (fixed-texture)
-│   ├── owns one CgBatchRenderer
+│   ├── owns one CgAbstractRenderer (single field — no dual-field workaround)
 │   ├── owns one CgRenderState
 │   └── flush: apply state → renderer.flush() → clear state
 └── CgDynamicTextureRenderLayer (texture changes mid-frame)
@@ -37,7 +37,7 @@ CgLayer.Key<T> (typed key, @Desugar record)
 ├── String name — identity via name equality
 └── type parameter T ensures type-safe layer lookup
 
-CgBatchRenderer (CPU→GPU pump)
+CgBatchRenderer (CPU→GPU pump, quads only) extends CgAbstractRenderer
 ├── owns CgStagingBuffer (CPU float[])
 ├── owns CgVertexWriter (fluent consumer)
 ├── borrows CgVertexArrayBinding from CgVertexArrayRegistry (shared VBO/VAO)
@@ -51,18 +51,38 @@ CgBatchRenderer (CPU→GPU pump)
 │   ├── drawUploadedRange(vtxStart, vtxCount): replay one vertex span
 │   ├── finishUploadedDraws(): release replay state
 │   └── end(): close batch, reset for next frame
-│   HARD CONTRACT: after uploadPendingVertices(), no more vertex recording
-│   or staging growth is allowed — attempts throw IllegalStateException
 └── delete(): no-op (CPU staging only; shared GPU resources owned by registry)
+
+CgInstanceRenderer (instanced draw for one static mesh)
+├── owns CgStagingBuffer (CPU float[], instance data only)
+├── owns CgInstanceWriter
+├── borrows CgInstanceVertexArrayBinding from CgVertexArrayRegistry (via getOrCreateMeshInstanced)
+├── borrows CgInstanceVertexBuffer from CgVertexBufferRegistry (via getOrCreateInstanced)
+├── flush(): upload instance data → bind VAO → rebind instance pointers → draw → afterSubmit → unbind
+│   draw path: glDrawElementsInstanced (if mesh has IBO) or glDrawArraysInstanced
+│   MUST NOT bind shader/texture/blend/depth/cull — that's the layer's job
+└── delete(): no-op (CPU staging only; GPU resources owned by registries)
+
+CgQuadInstanceRenderer (convenience wrapper for quad instancing)
+├── delegates ALL logic to CgInstanceRenderer
+├── caches shared unit quad CgMesh in CgMeshRegistry under
+│   "crystalgraphics:builtin/quad/<quadFormat.toString()>" (toString, not hashCode — avoids collisions)
+├── instance() → delegate.instance()
+├── flush() → delegate.flush(); delegate.end(); delegate.begin()
+│   (re-begins delegate mid-cycle so instance() can be called again after flush)
+│   delegateReBegun flag tracks this; onBegin() cleans up the dangling re-begun state
+└── thin wrapper only — no duplicated upload/draw logic
 ```
 
 ## Ownership Boundaries (Critical)
 
 - **Shared VBO/VAO**: Owned by `CgVertexArrayRegistry` / `CgVertexArrayBinding` in `gl/vertex/`.
   The batch renderer borrows these via `getOrCreate(format)` — never creates or deletes them.
+- **Shared instance VBO**: Owned by `CgVertexBufferRegistry` in `gl/vertex/`.
+  `CgInstanceRenderer` borrows via `getOrCreateInstanced(layout)`.
 - **Shared IBO**: `CgQuadIndexBuffer` singleton in `gl/buffer/`. Borrowed, never owned.
 - **Shader/Texture state**: Owned by `CgRenderState` (in `api/state/`), applied by the layer,
-  not by the batch renderer. `CgBatchRenderer.flush()` is state-blind.
+  not by the batch renderer. All renderers' `flush()` methods are state-blind.
 
 ## Buffer Source Ownership
 
@@ -84,36 +104,35 @@ Multiple buffer sources can coexist. Each owns its layers independently.
 | File | Role |
 |------|------|
 | `CgLayer.java` | Interface + `Key<T>` record for typed layer identification |
-| `CgRenderLayer.java` | Fixed-texture layer: state bracket around flush. Accepts any `IBatchRenderer`. Public constructor `CgRenderLayer(name, state, IBatchRenderer)` wraps any renderer. `vertex()` and `staging()` downcast to `CgBatchRenderer` — only valid when using that renderer. |
+| `CgRenderLayer.java` | Fixed-texture layer: state bracket around flush. Accepts any `CgAbstractRenderer`. `vertex()` and `staging()` cast to `CgBatchRenderer` — only valid when using that renderer. |
 | `CgDynamicTextureRenderLayer.java` | Dynamic-texture layer: auto-flush on texture change |
-| `CgBatchRenderer.java` | CPU→GPU pump: staging → VBO upload → draw. State-blind. Supports both immediate `flush()` and upload-once/draw-many lifecycle. Implements `IBatchRenderer`. |
+| `CgBatchRenderer.java` | CPU→GPU pump: staging → VBO upload → draw. State-blind. Extends `CgAbstractRenderer`. Supports both immediate `flush()` and upload-once/draw-many lifecycle. |
 | `CgBufferSource.java` | Ordered layer collection with dirty-aware flush |
-| `CgInstancedDrawMode.java` | Enum for instanced topology: `INDEXED_QUADS` (base vertex count multiple of 4) or `ARRAY_TRIANGLES` (multiple of 3). |
-| `CgInstancedBatchRenderer.java` | CPU→GPU pump for instanced draws. State-blind. Zero-instance/zero-vertex flush is a no-op. Owns CPU staging only; GPU resources borrowed from registry. Implements `IBatchRenderer`. No-arg `flush()` delegates to `flush(INDEXED_QUADS)`. |
-| `IBatchRenderer.java` | Common interface for all batch renderers: `begin()`, `flush()`, `end()`, `isDirty()`, `delete()`. Implemented by `CgBatchRenderer` and `CgInstancedBatchRenderer`. Enables `CgRenderLayer` to wrap any renderer type. |
-| `AbstractBatchRenderer.java` | Abstract base for new batch renderers. Provides shared `begun` field + final `begin()`/`end()`/`isDirty()` implementations. Subclasses implement `onBegin()` and `hasPendingWork()`. Does NOT extend existing renderers. |
+| `CgInstanceRenderer.java` | Instanced draw for one static `CgMesh`. State-blind. Zero-instance flush is a no-op. Owns CPU instance staging only; GPU resources borrowed from registries. Extends `CgAbstractRenderer`. |
+| `CgQuadInstanceRenderer.java` | Convenience instanced renderer for quads. Delegates to `CgInstanceRenderer`. Caches shared unit quad mesh in `CgMeshRegistry`. |
+| `CgAbstractRenderer.java` | Abstract base for all batch renderers. Provides shared `begun` field + final `begin()`/`end()`/`isDirty()` + overridable `onBegin()`/`onEnd()`/`hasPendingWork()` hooks. Extended by `CgBatchRenderer`, `CgInstanceRenderer`, `CgQuadInstanceRenderer`. |
+
+## Deleted Classes (Migration Note)
+
+- `CgMeshBatchRenderer` — deleted; replaced by `CgInstanceRenderer` (static mesh + instances)
+- `IBatchRenderer` — planned interface, never created; superseded by `CgAbstractRenderer` class hierarchy. `CgRenderLayer` accepts `CgAbstractRenderer` directly.
+- Note: `CgInstanceRenderer` is the current active class for instanced mesh rendering; `CgQuadInstanceRenderer` wraps it for the unit-quad case
 
 ## Key Design Decisions
 
-- **Layers own state, renderer owns upload** — `CgBatchRenderer.flush()` never
-  touches GL state beyond VBO/VAO/IBO. Shader, texture, blend, depth, and cull
+- **Layers own state, renderer owns upload** — all renderer `flush()` methods never
+  touch GL state beyond VBO/VAO/IBO. Shader, texture, blend, depth, and cull
   are the layer's responsibility via `CgRenderState.apply()/clear()`.
 - **Two batch renderer lifecycles** — The immediate `flush()` path is for
   layer-based non-UI uses. The `uploadPendingVertices()` / `drawUploadedRange()`
   / `finishUploadedDraws()` path is for CrystalGUI's draw-list replay. Both
   share the same staging buffer, VBO, and VAO — they are mutually exclusive
   per frame (never mix immediate and replay in one begin/end cycle).
-- **Upload-once/draw-many hard contract** — after `uploadPendingVertices()`, no
-  more vertex recording or staging growth is allowed. The staging buffer is
-  locked until `finishUploadedDraws()` releases it.
 - **VAO bound before pointer rebind** — `glVertexAttribPointer` writes into the
   currently bound VAO. The batch renderer binds the VAO first, then rebinds
   pointers. Getting this order wrong silently corrupts the default VAO.
 - **Painter's order is registration order** — `CgBufferSource.Builder.layer()`
   order determines flush order. No auto-sorting.
-- **Layer keys use name equality** — two `CgLayer.Key` instances with the same
-  name address the same slot. This allows cross-module key matching (Cg text
-  key registered from CgUi code).
 
 ## Upload-Once / Draw-Many Lifecycle (V3.1)
 
@@ -129,29 +148,8 @@ finishUploadedDraws()          // release replay state
 end()                          // close, reset for next frame
 ```
 
-### Internal replay state fields
-
-When `uploadPendingVertices()` is called, the renderer stores:
-- `uploadedForReplay` — boolean flag that recording is closed
-- `uploadedFloatCount` — float count at upload time
-- `uploadedDataOffset` — byte offset from stream-buffer commit
-- `uploadedVertexCount` — vertex count at upload time
-
-These are used by `drawUploadedRange()` to compute correct byte offsets and
-by `finishUploadedDraws()` to know that cleanup is needed.
-
-### Guard conditions
-
+Guard conditions:
 - `vertex()` throws `IllegalStateException` if `uploadedForReplay` is true
 - `flush()` throws `IllegalStateException` if `uploadedForReplay` is true
 - `drawUploadedRange()` throws if not in replay mode
 - `finishUploadedDraws()` throws if not in replay mode
-
-### Compatibility with existing layer path
-
-The immediate `flush()` path is unaffected. Layers continue to use:
-`begin()` → `vertex()` → `flush()` → `end()`.
-
-The two lifecycles share the same batch renderer instance but are mutually
-exclusive per frame. CrystalGUI's `CgUiBatchSlots` creates dedicated
-`CgBatchRenderer` instances for the draw-list path.

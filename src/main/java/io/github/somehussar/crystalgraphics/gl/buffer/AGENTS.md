@@ -120,4 +120,4 @@ contract and are interchangeable from the consumer's perspective.
 | `MapAndOrphanStreamBuffer.java` | Tier B: orphan-based streaming, `GL_MAP_INVALIDATE_BUFFER_BIT`, auto-grow. |
 | `SubDataStreamBuffer.java` | Tier C: CPU staging `ByteBuffer` + `glBufferSubData`. GL 1.5 baseline. |
 | `CgQuadIndexBuffer.java` | Global shared quad IBO. Pattern `[0,1,2,2,3,0,...]`. Max 16384 quads. Doubling growth. |
-| `CgStreamUpload.java` | Stateless utility: `uploadFloats(buffer, data, floatCount)` encapsulates `map → asFloatBuffer().put() → commit`. Used by new renderers instead of inlining the upload sequence. Does NOT call `afterSubmit()`. |
+

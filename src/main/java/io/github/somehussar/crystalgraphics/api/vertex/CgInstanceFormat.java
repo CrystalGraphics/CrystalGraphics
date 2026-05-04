@@ -31,7 +31,7 @@ import java.util.List;
  * mat4 transform (64 bytes), RGBA color (4 bytes), and custom vec4 (16 bytes) =
  * 84 bytes per instance.</p>
  */
-public final class CgInstanceLayout implements CgAttributeLayout {
+public final class CgInstanceFormat implements CgAttributeFormat {
 
     private final CgVertexAttribute[] attributes;
     /**
@@ -65,13 +65,13 @@ public final class CgInstanceLayout implements CgAttributeLayout {
      * </ul>
      * Total stride: 84 bytes.
      */
-    public static final CgInstanceLayout TRANSFORM_COLOR_CUSTOM = builder("transform_color_custom")
+    public static final CgInstanceFormat TRANSFORM_COLOR_CUSTOM = builder("transform_color_custom")
             .mat4("a_instanceModel")
             .color4UB("a_instanceColor")
             .vec4("a_instanceCustom")
             .build();
 
-    private CgInstanceLayout(CgVertexAttribute[] attributes, int stride, int divisor, String debugName) {
+    private CgInstanceFormat(CgVertexAttribute[] attributes, int stride, int divisor, String debugName) {
         this.attributes = attributes;
         this.stride = stride;
         this.divisor = divisor;
@@ -107,7 +107,7 @@ public final class CgInstanceLayout implements CgAttributeLayout {
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
-        CgInstanceLayout that = (CgInstanceLayout) o;
+        CgInstanceFormat that = (CgInstanceFormat) o;
         return stride == that.stride && divisor == that.divisor && Arrays.equals(attributes, that.attributes);
     }
 
@@ -118,7 +118,7 @@ public final class CgInstanceLayout implements CgAttributeLayout {
 
     @Override
     public String toString() {
-        return "CgInstanceLayout{" + debugName + ", stride=" + stride + ", divisor=" + divisor
+        return "CgInstanceFormat{" + debugName + ", stride=" + stride + ", divisor=" + divisor
                 + ", attrs=" + Arrays.toString(attributes) + "}";
     }
 
@@ -153,7 +153,7 @@ public final class CgInstanceLayout implements CgAttributeLayout {
             return add(name, components, type, false);
         }
         
-         /** Adds a float vec2 attribute. */
+         /** Adds a float scalar (1 float / 4 bytes) attribute. */
         public Builder add1f(String name) {
             return add(name, 1, CgAttribType.FLOAT, false);
         }
@@ -179,16 +179,20 @@ public final class CgInstanceLayout implements CgAttributeLayout {
         }
 
         /**
-         * Expands a mat3 into four physical float vec3 attributes.
+         * Expands a mat3 into three physical float vec3 attributes.
          *
          * <p>Appends attributes named {@code baseName + "0"}, {@code baseName + "1"},
-         * {@code baseName + "2"} - one per matrix column.
-         * A mat3 consumes 3 attribute slots and 48 bytes.</p>
+         * {@code baseName + "2"} — one per matrix column. Each column is a
+         * {@code vec3} attribute slot (3 floats / 12 bytes).
+         * A mat3 therefore consumes 3 attribute slots and 36 bytes.</p>
+         *
+         * <p>Writers must write exactly 9 floats for a mat3 (see
+         * {@link io.github.somehussar.crystalgraphics.gl.buffer.staging.CgInstanceWriter#mat3}).</p>
          */
         public Builder mat3(String baseName) {
-            vec4(baseName + "0");
-            vec4(baseName + "1");
-            vec4(baseName + "2");
+            vec3(baseName + "0");
+            vec3(baseName + "1");
+            vec3(baseName + "2");
             return this;
         }
 
@@ -225,11 +229,11 @@ public final class CgInstanceLayout implements CgAttributeLayout {
          *
          * @throws IllegalStateException if no attributes were added
          */
-        public CgInstanceLayout build() {
-            if (attrs.isEmpty()) throw new IllegalStateException("CgInstanceLayout must have at least one attribute");
+        public CgInstanceFormat build() {
+            if (attrs.isEmpty()) throw new IllegalStateException("CgInstanceFormat must have at least one attribute");
             
             CgVertexAttribute[] arr = attrs.toArray(new CgVertexAttribute[0]);
-            return new CgInstanceLayout(arr, currentOffset, divisor, debugName);
+            return new CgInstanceFormat(arr, currentOffset, divisor, debugName);
         }
     }
 }
