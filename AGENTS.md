@@ -114,6 +114,7 @@ vertex input registry, use the package-local guides first.
 
 - `src/main/java/io/github/somehussar/crystalgraphics/gl/vertex/AGENTS.md`
 - `src/main/java/io/github/somehussar/crystalgraphics/gl/buffer/AGENTS.md`
+- `src/main/java/io/github/somehussar/crystalgraphics/gl/buffer/shader/AGENTS.md` — CrystalShader Wave 1-4 shader buffers: CgShaderBuffer (SSBO/TBO, float[] staging, declaredWriteCount), CgUniformBuffer (UBO frame data)
 
 ### Related API types (in `api/vertex/`)
 
