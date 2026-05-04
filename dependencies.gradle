@@ -38,6 +38,8 @@ dependencies {
     shadowImplementation('org.joml:joml-jdk8:1.10.1') {
         exclude group: 'org.jetbrains.kotlin'
     }
+    shadowImplementation('de.javagl:obj:0.4.0')
+    shadowImplementation('de.javagl:jgltf-model:2.0.4')
     // QoL additions. Requires Intellij Plugins to show correctly in IDE
     compileOnly("org.projectlombok:lombok:1.18.32")
     annotationProcessor("org.projectlombok:lombok:1.18.32")
