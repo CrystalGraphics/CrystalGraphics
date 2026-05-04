@@ -5,43 +5,39 @@ import io.github.somehussar.crystalgraphics.gl.buffer.CgStreamBuffer;
 import lombok.Getter;
 
 /**
- * Shared vertex input binding for a specific vertex format.
- * Owns the stream buffer and VAO used by all consumers of that format.
+ * Non-instanced VAO binding for a specific vertex format.
  *
- * <p>The {@link #generation} counter is incremented by {@link #delete()} so that
- * derived {@link CgInstancedVertexArrayBinding} instances can detect when their
- * parent binding has been destroyed and rebuilt.</p>
+ * <p>Owns the VAO only. The stream buffer (VBO) is <em>borrowed</em> from
+ * {@link CgVertexBuffer} / {@link CgVertexBufferRegistry} and must not be deleted here.</p>
  */
 public final class CgVertexArrayBinding {
 
-    @Getter
-    private final CgVertexFormat format;
-    @Getter
-    private final CgStreamBuffer streamBuffer;
+    private final CgVertexBuffer baseStream;
+
     @Getter
     private final CgVertexArray vertexArray;
     private int currentDataOffset;
 
-    /**
-     * Incremented on {@link #delete()} so derived instanced bindings can detect
-     * parent invalidation and avoid drawing stale GPU resources.
-     */
-    private int generation = 0;
-
-    protected CgVertexArrayBinding(CgVertexFormat format, CgStreamBuffer streamBuffer, CgVertexArray vertexArray) {
-        this.format = format;
-        this.streamBuffer = streamBuffer;
+    CgVertexArrayBinding(CgVertexBuffer baseStream, CgVertexArray vertexArray) {
+        this.baseStream = baseStream;
         this.vertexArray = vertexArray;
     }
 
     /**
-     * Returns a monotonically increasing generation counter.
-     * Instanced bindings snapshot this value at creation time and call
-     * {@link CgInstancedVertexArrayBinding#validateParentGeneration()} before each draw
-     * to detect parent binding invalidation.
+     * Returns the vertex format of the borrowed base stream.
      */
-    public int getGeneration() {
-        return generation;
+    public CgVertexFormat getFormat() {
+        return baseStream.getFormat();
+    }
+
+    /**
+     * Returns the stream buffer borrowed from {@link CgVertexBuffer}.
+     *
+     * <p>Kept for backward compatibility. Do NOT call {@code delete()} on the returned buffer —
+     * it is owned by {@link CgVertexBufferRegistry}.</p>
+     */
+    public CgStreamBuffer getStreamBuffer() {
+        return baseStream.getStreamBuffer();
     }
 
     /**
@@ -53,14 +49,12 @@ public final class CgVertexArrayBinding {
         if (dataOffset == currentDataOffset) {
             return;
         }
-        streamBuffer.bind();
-        vertexArray.reconfigureWithOffset(format, dataOffset);
+        baseStream.getStreamBuffer().bind();
+        vertexArray.reconfigureWithOffset(baseStream.getFormat(), dataOffset);
         currentDataOffset = dataOffset;
     }
 
     public void delete() {
-        generation++;
         vertexArray.delete();
-        streamBuffer.delete();
     }
 }

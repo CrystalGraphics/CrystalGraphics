@@ -57,6 +57,24 @@ public abstract class CgStreamBuffer {
     public void afterSubmit() {
     }
 
+    /**
+     * Maps this buffer, copies {@code floatCount} floats from {@code data[0..floatCount-1]},
+     * commits, and returns the byte offset where the data starts.
+     *
+     * <p>The caller is responsible for calling {@link #afterSubmit()} after the draw call
+     * that consumes this upload.</p>
+     *
+     * @param data       source float array
+     * @param floatCount number of floats to copy from {@code data[0..floatCount-1]}
+     * @return byte offset in the GL buffer where the uploaded data begins
+     */
+    public int uploadFloats(float[] data, int floatCount) {
+        int byteCount = floatCount * Float.BYTES;
+        java.nio.ByteBuffer mapped = map(byteCount);
+        mapped.asFloatBuffer().put(data, 0, floatCount);
+        return commit(byteCount);
+    }
+
     public void bind() {
         GL15.glBindBuffer(target, glBuffer);
     }

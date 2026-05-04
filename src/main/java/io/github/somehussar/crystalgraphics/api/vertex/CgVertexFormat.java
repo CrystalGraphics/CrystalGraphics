@@ -18,7 +18,7 @@ import java.util.List;
  * explicitly via {@code glBindAttribLocation} before shader link, making
  * VAO setup format-driven instead of shader-name-driven.</p>
  */
-public final class CgVertexFormat implements CgAttributeLayout {
+public final class CgVertexFormat implements CgAttributeFormat {
 
     private final CgVertexAttribute[] attributes;
     /**

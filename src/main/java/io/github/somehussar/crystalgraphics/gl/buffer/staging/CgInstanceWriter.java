@@ -1,6 +1,6 @@
 package io.github.somehussar.crystalgraphics.gl.buffer.staging;
 
-import io.github.somehussar.crystalgraphics.api.vertex.CgInstanceLayout;
+import io.github.somehussar.crystalgraphics.api.vertex.CgInstanceFormat;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 
@@ -9,16 +9,16 @@ public final class CgInstanceWriter {
     private static final boolean DEBUG = true;
 
     private final CgStagingBuffer staging;
-    private final CgInstanceLayout layout;
+    private final CgInstanceFormat layout;
 
     private int instanceStartCursor;
 
-    public CgInstanceWriter(CgStagingBuffer staging, CgInstanceLayout layout) {
+    public CgInstanceWriter(CgStagingBuffer staging, CgInstanceFormat layout) {
         this.staging = staging;
         this.layout = layout;
     }
 
-    public CgInstanceLayout layout() {
+    public CgInstanceFormat layout() {
         return layout;
     }
 
@@ -48,9 +48,24 @@ public final class CgInstanceWriter {
         return this;
     }
 
+    /**
+     * Writes a mat3 as three tightly-packed vec3 columns (9 floats / 36 bytes).
+     *
+     * <p>This matches {@link io.github.somehussar.crystalgraphics.api.vertex.CgInstanceFormat.Builder#mat3}
+     * which allocates three physical {@code vec3} attribute slots (3 × 12 bytes = 36 bytes).
+     * Layout written (column-major, 9 floats):</p>
+     * <pre>
+     *   col0: [m00, m01, m02]
+     *   col1: [m10, m11, m12]
+     *   col2: [m20, m21, m22]
+     * </pre>
+     */
     public CgInstanceWriter mat3(Matrix3f m) {
+        // Column 0
         staging.putFloat(m.m00()); staging.putFloat(m.m01()); staging.putFloat(m.m02());
+        // Column 1
         staging.putFloat(m.m10()); staging.putFloat(m.m11()); staging.putFloat(m.m12());
+        // Column 2
         staging.putFloat(m.m20()); staging.putFloat(m.m21()); staging.putFloat(m.m22());
         return this;
     }

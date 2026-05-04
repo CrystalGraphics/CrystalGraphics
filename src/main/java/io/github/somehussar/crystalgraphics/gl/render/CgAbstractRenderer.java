@@ -5,20 +5,19 @@ package io.github.somehussar.crystalgraphics.gl.render;
  *
  * <p>Eliminates the duplicate {@code begun} field and identical
  * {@link #begin()}/{@link #end()}/{@link #isDirty()}/{@link #delete()} bodies
- * that previously existed in both {@link CgBatchRenderer} and
- * {@link CgInstancedBatchRenderer}.</p>
+ * across all batch renderer subclasses ({@link CgInstanceRenderer},
+ * {@link CgQuadInstanceRenderer}, etc.).</p>
  *
  * <p>Subclasses implement {@link #onBegin()} to reset their staging buffers
  * and {@link #hasPendingWork()} to report dirtiness. The {@link #flush()}
  * method is intentionally left abstract in the subclass (not forced here)
  * because its signature differs between renderers.</p>
  */
-public abstract class AbstractBatchRenderer implements IBatchRenderer {
+public abstract class CgAbstractRenderer {
 
     /** True between a successful {@link #begin()} and {@link #end()} call. */
     protected boolean begun;
 
-    @Override
     public final void begin() {
         if (begun) throw new IllegalStateException(getClass().getSimpleName() + " already begun");
         begun = true;
@@ -31,12 +30,18 @@ public abstract class AbstractBatchRenderer implements IBatchRenderer {
      */
     protected abstract void onBegin();
 
-    @Override
     public final void end() {
+        onEnd();
         begun = false;
     }
 
-    @Override
+    /**
+     * Called at the start of {@link #end()}, before {@code begun} is set to {@code false}.
+     * Subclasses may override to flush remaining data or release per-frame GL bindings.
+     * Default implementation is a no-op.
+     */
+    protected void onEnd() {}
+
     public final boolean isDirty() {
         return begun && hasPendingWork();
     }
@@ -47,9 +52,11 @@ public abstract class AbstractBatchRenderer implements IBatchRenderer {
      */
     protected abstract boolean hasPendingWork();
 
-    @Override
     public void delete() {
         // Default: CPU staging only; GPU resources owned by registries.
         // Subclasses may override to release CPU resources.
     }
+
+    /** Uploads staged data and issues a draw call. State-blind. */
+    public abstract void flush();
 }

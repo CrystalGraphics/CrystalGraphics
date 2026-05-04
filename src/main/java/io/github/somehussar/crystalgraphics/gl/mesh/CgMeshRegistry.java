@@ -52,6 +52,18 @@ public final class CgMeshRegistry {
     }
 
     /**
+     * Returns the cached mesh for {@code key}, or calls {@code supplier.create()} to build
+     * and cache it if not already present.
+     *
+     * @param key      typed mesh key wrapping a string identifier
+     * @param supplier factory invoked once on cache miss; must return a non-null mesh
+     * @return the cached or newly created mesh
+     */
+    public CgMesh getOrCreate(CgMeshKey key, CgMeshSupplier supplier) {
+        return getOrCreate(key.name(), supplier);
+    }
+
+    /**
      * Returns the cached mesh for {@code key}, or {@code null} if not present.
      *
      * @param key string key identifying the mesh
