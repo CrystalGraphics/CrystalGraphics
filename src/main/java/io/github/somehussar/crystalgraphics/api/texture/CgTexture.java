@@ -56,17 +56,25 @@ public interface CgTexture {
     boolean isDeleted();
 
     /**
-     * Generates a full mipmap chain for this texture using
-     * {@code glGenerateMipmap}. If GL30 is unavailable on the current
-     * context, this is a no-op with a one-time warning logged.
-     */
-    void generateMipmaps();
-
-    /**
      * Releases the underlying GL texture object. Idempotent — a second call
      * is a silent no-op (matching {@code glDeleteTextures(0)} semantics).
      */
     void delete();
+
+    /**
+     * Re-uploads this texture's data from its original source path(s) in-place.
+     *
+     * <p>The GL texture id is replaced internally while the Java object reference
+     * stays valid, so any code holding a {@code CgTexture} reference will
+     * automatically see the refreshed data after reload without needing to
+     * re-fetch from the cache.</p>
+     *
+     * <p>No-op for procedural/dynamic textures created without a source path
+     * (e.g. {@code createEmpty()}, {@code createFromPixels()}).
+     * Called by {@link io.github.somehussar.crystalgraphics.gl.texture.CgTextureManager#reloadAll()}
+     * on resource reload.</p>
+     */
+    default void reload() {}
 
     // ── Static helpers ────────────────────────────────────────────────────
 

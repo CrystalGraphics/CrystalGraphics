@@ -4,6 +4,7 @@ import io.github.somehussar.crystalgraphics.api.CgCapabilities;
 import io.github.somehussar.crystalgraphics.gl.buffer.CgQuadIndexBuffer;
 import io.github.somehussar.crystalgraphics.gl.mesh.CgMeshRegistry;
 import io.github.somehussar.crystalgraphics.gl.render.CgInstanceRenderer;
+import io.github.somehussar.crystalgraphics.gl.texture.CgTextureManager;
 import io.github.somehussar.crystalgraphics.gl.vertex.CgInstanceVertexArrayBinding;
 import io.github.somehussar.crystalgraphics.gl.vertex.CgVertexArray;
 import io.github.somehussar.crystalgraphics.gl.vertex.CgVertexArrayRegistry;
@@ -56,6 +57,9 @@ public final class CgGraphicsLifecycle {
         // Step 4: Shared quad IBO.
         CgQuadIndexBuffer.freeAll();
 
+        // Step 5: Free all cached textures.
+        CgTextureManager.get().freeAll();
+        
         // Reset all backend-capability caches so context recreation re-probes correctly.
         CgCapabilities.clearCache();
         CgVertexArray.resetCoreCache();

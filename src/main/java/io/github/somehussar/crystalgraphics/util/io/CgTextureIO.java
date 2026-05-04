@@ -1,6 +1,8 @@
 package io.github.somehussar.crystalgraphics.util.io;
 
 import com.github.bsideup.jabel.Desugar;
+import io.github.somehussar.crystalgraphics.api.texture.CgTextureSpec;
+import io.github.somehussar.crystalgraphics.gl.texture.CgTexture2D;
 import org.apache.commons.io.IOUtils;
 
 import javax.imageio.ImageIO;
@@ -112,6 +114,27 @@ public final class CgTextureIO {
         buf.flip();
 
         return new CgImageData(buf, w, h, channels);
+    }
+
+    /**
+     * Generates the 8×8 purple/black checkerboard fallback texture.
+     * Purple = (255, 0, 255, 255), Black = (0, 0, 0, 255).
+     * Uses {@link CgTextureSpec#RGBA8_NEAREST} so the pattern stays crisp at any scale.
+     */
+    public static CgTexture2D createFallback() {
+        final int size = 8;
+        ByteBuffer pixels = ByteBuffer.allocateDirect(size * size * 4);
+        for (int y = 0; y < size; y++) {
+            for (int x = 0; x < size; x++) {
+                boolean purple = ((x + y) & 1) == 0;
+                pixels.put((byte) (purple ? 0xFF : 0x00)); // R
+                pixels.put((byte) 0x00);                   // G
+                pixels.put((byte) (purple ? 0xFF : 0x00)); // B
+                pixels.put((byte) 0xFF);                   // A
+            }
+        }
+        pixels.flip();
+        return CgTexture2D.createFromPixels(size, size, pixels, CgTextureSpec.RGBA8_NEAREST);
     }
 
     /**
