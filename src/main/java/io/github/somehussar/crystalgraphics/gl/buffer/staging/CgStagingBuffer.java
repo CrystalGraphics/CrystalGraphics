@@ -5,47 +5,103 @@ import io.github.somehussar.crystalgraphics.gl.render.CgBatchRenderer;
 import java.util.Arrays;
 
 /**
- * CPU-side vertex staging buffer: a growable {@code float[]} with a write cursor.
+ * CPU-side float staging buffer: a growable {@code float[]} with a write cursor.
  *
- * <p>This is a <strong>pure data structure</strong> with no GL dependencies, no topology
- * awareness, and no semantic knowledge. It stores raw float values written by
- * {@link CgVertexWriter} and is read by {@link CgBatchRenderer} during GPU upload.</p>
+ * <p>Pure data structure — no GL dependencies, no topology awareness, no semantic knowledge.
+ * Values are written by {@link CgVertexWriter} / {@link CgInstanceWriter} / {@link CgBufferWriter}
+ * and read by {@link CgBatchRenderer} or a shader-buffer upload path.</p>
  *
- * <h3>Growth Strategy</h3>
- * <p>Two capacity-ensure paths are provided:</p>
- * <ul>
- *   <li>{@link #ensureRoomForNextVertex()} — grows by 1 vertex; called automatically
- *       by {@code CgVertexWriter.endVertex()} after each vertex is written.</li>
- *   <li>{@link #ensureRoomForQuads(int)} — bulk pre-allocation for known burst sizes;
- *       optional optimization that callers may use before submitting a batch of quads.</li>
- * </ul>
- * <p>Both use a 1.5× growth factor (with a minimum of the requested size).</p>
+ * <h3>Two construction modes</h3>
+ * <dl>
+ *   <dt>Vertex/record mode — {@link #CgStagingBuffer(int, int)}</dt>
+ *   <dd>Has a fixed stride ({@code floatsPerVertex}). {@link #ensureRoomForNextVertex()} and
+ *       {@link #ensureRoomForStride(int)} grow in stride-sized increments. Used by vertex and
+ *       instance writers, and by SSBO/TBO shader buffers.</dd>
+ *   <dt>Flat mode — {@link #CgStagingBuffer(int)}</dt>
+ *   <dd>No stride concept. {@link #putFloat} auto-grows the array whenever the cursor reaches
+ *       the end. Used by UBO writers that write an arbitrary sequence of floats with no fixed
+ *       record boundary.</dd>
+ * </dl>
  *
- * <h3>Color Packing</h3>
- * <p>{@link #putColorPacked(int)} stores an ABGR-packed integer as a float via
- * {@link Float#intBitsToFloat(int)}. This matches the GPU's expected layout when
- * the attribute is declared as {@code GL_UNSIGNED_BYTE} with 4 components and
- * normalization enabled.</p>
+ * <h3>Growth strategy</h3>
+ * <p>All growth paths use a {@code max(current * 1.5, requested)} strategy — 1.5× amortises
+ * reallocations while capping worst-case overshoot.</p>
+ *
+ * <h3>Color packing</h3>
+ * <p>{@link #putColorPacked(int)} stores an ABGR-packed int as a float slot via
+ * {@link Float#intBitsToFloat(int)}. This matches the GPU layout when the attribute is
+ * {@code GL_UNSIGNED_BYTE × 4} with normalisation enabled.</p>
  */
 public final class CgStagingBuffer implements CgVertexOutput {
 
     private float[] data;
     private int cursor;
+
+    // The stride used by ensureRoomForNextVertex(). In flat mode this is set to 1
+    // but is never meaningfully used — putFloat auto-grows instead.
     private final int floatsPerVertex;
 
+    // ── Constructors ──────────────────────────────────────────────────────────
+
+    /**
+     * Vertex/record-mode constructor.
+     * Initial array size = {@code initialCapacityQuads * 4 * floatsPerVertex}.
+     *
+     * @param floatsPerVertex    floats per vertex (= record stride for shader buffers)
+     * @param initialCapacityQuads number of quads to pre-allocate capacity for
+     */
     public CgStagingBuffer(int floatsPerVertex, int initialCapacityQuads) {
         this.floatsPerVertex = floatsPerVertex;
         this.data = new float[initialCapacityQuads * 4 * floatsPerVertex];
     }
 
+    /**
+     * Flat-mode constructor for buffers with no fixed record stride (e.g. UBO writers).
+     * {@link #putFloat} auto-grows the backing array; {@link #ensureRoomForNextVertex()} is
+     * not meaningful in this mode.
+     *
+     * @param initialCapacityFloats initial size of the backing {@code float[]}
+     */
+    public CgStagingBuffer(int initialCapacityFloats) {
+        this.floatsPerVertex = 1; // unused in flat mode; putFloat handles growth
+        this.data = new float[initialCapacityFloats];
+    }
+
+    // ── Write primitives ──────────────────────────────────────────────────────
+
+    /**
+     * Writes one float at the current cursor, auto-growing the array if full.
+     * Safe to call in both vertex/record mode and flat mode.
+     */
+    @Override
     public void putFloat(float v) {
+        // Grow lazily: only allocate when we actually run out of space.
+        if (cursor >= data.length) {
+            data = Arrays.copyOf(data, Math.max(data.length * 3 / 2, cursor + 1));
+        }
         data[cursor++] = v;
     }
 
+    /**
+     * Writes an ABGR-packed int reinterpreted as a float (via {@link Float#intBitsToFloat}).
+     * Used for colour attributes; the GPU reads the four bytes as normalised RGBA.
+     * Auto-grows the backing array if full.
+     */
+    @Override
     public void putColorPacked(int abgr) {
+        if (cursor >= data.length) {
+            data = Arrays.copyOf(data, Math.max(data.length * 3 / 2, cursor + 1));
+        }
         data[cursor++] = Float.intBitsToFloat(abgr);
     }
 
+    // ── Capacity management ───────────────────────────────────────────────────
+
+    /**
+     * Ensures there is room for one more vertex ({@code floatsPerVertex} more floats).
+     * Called by {@link CgVertexWriter#endVertex()} and {@link CgInstanceWriter#endInstance()}
+     * after each record to pre-allocate the next slot.
+     */
     public void ensureRoomForNextVertex() {
         int needed = cursor + floatsPerVertex;
         if (needed > data.length) {
@@ -53,6 +109,26 @@ public final class CgStagingBuffer implements CgVertexOutput {
         }
     }
 
+    /**
+     * Ensures there is room for {@code stride} more floats beyond the current cursor.
+     * Called by {@link CgBufferWriter#endRecord} so the writer owns its stride rather
+     * than relying on the staging buffer's internal {@code floatsPerVertex}.
+     *
+     * @param stride number of floats to reserve ahead of the current cursor
+     */
+    public void ensureRoomForStride(int stride) {
+        int needed = cursor + stride;
+        if (needed > data.length) {
+            data = Arrays.copyOf(data, Math.max(data.length * 3 / 2, needed));
+        }
+    }
+
+    /**
+     * Ensures there is room for {@code vertices} more vertices
+     * ({@code vertices * floatsPerVertex} floats).
+     *
+     * @param vertices number of vertices to pre-allocate
+     */
     public void ensureRoomForVertices(int vertices) {
         int needed = cursor + vertices * floatsPerVertex;
         if (needed > data.length) {
@@ -60,15 +136,38 @@ public final class CgStagingBuffer implements CgVertexOutput {
         }
     }
 
+    /**
+     * Convenience wrapper — equivalent to {@link #ensureRoomForVertices}{@code (quads * 4)}.
+     *
+     * @param quads number of quads (4 vertices each) to pre-allocate
+     */
     public void ensureRoomForQuads(int quads) {
         ensureRoomForVertices(quads * 4);
     }
 
+    // ── State ─────────────────────────────────────────────────────────────────
+
+    /** Resets the write cursor to 0 without releasing the backing array. */
     public void reset() { cursor = 0; }
+
+    /** Returns {@code true} if no floats have been written since the last {@link #reset()}. */
     public boolean isEmpty() { return cursor == 0; }
+
+    /**
+     * Returns the number of complete vertices written.
+     * Only meaningful in vertex/record mode; in flat mode use {@link #rawCursor()} directly.
+     */
     public int vertexCount() { return cursor / floatsPerVertex; }
+
+    /** Returns the number of complete quads written (vertex count / 4). */
     public int quadCount() { return vertexCount() / 4; }
+
+    /** Returns the raw write cursor (total floats written since last reset). */
     public int rawCursor() { return cursor; }
+
+    /** Returns the backing float array. Valid until the next growth-triggering write. */
     public float[] rawData() { return data; }
+
+    /** Returns the stride this buffer was constructed with ({@code floatsPerVertex}). */
     public int floatsPerVertex() { return floatsPerVertex; }
 }

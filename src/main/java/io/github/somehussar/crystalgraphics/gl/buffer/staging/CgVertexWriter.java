@@ -16,7 +16,7 @@ import java.nio.ByteBuffer;
  * unsupported semantics (GENERIC) are rejected at construction time.</p>
  *
  * <h3>Step Machine</h3>
- * <p>When {@code DEBUG == true}, a step counter enforces call ordering:
+ * <p>A step counter enforces call ordering:
  * {@code vertex → uv → color → normal → endVertex}. Steps for absent
  * attributes are skipped automatically. Out-of-order calls throw
  * {@link IllegalStateException}.</p>
@@ -35,8 +35,6 @@ import java.nio.ByteBuffer;
  * @see CgBatchRenderer
  */
 public final class CgVertexWriter implements CgVertexConsumer {
-
-    private static final boolean DEBUG = true;
 
     private final CgVertexOutput output;
     // Non-null only when the staging-buffer constructor is used; null for ByteBuffer path.
@@ -151,7 +149,7 @@ public final class CgVertexWriter implements CgVertexConsumer {
 
     @Override
     public CgVertexConsumer vertex(float x, float y) {
-        if (DEBUG && step != 0) throw new IllegalStateException("vertex(x,y) out of order");
+        if (step != 0) throw new IllegalStateException("vertex(x,y) out of order");
         if (positionComponents != 2) throw new IllegalStateException("Format is not 2D-position");
         posX = x;
         posY = y;
@@ -162,7 +160,7 @@ public final class CgVertexWriter implements CgVertexConsumer {
 
     @Override
     public CgVertexConsumer vertex(float x, float y, float z) {
-        if (DEBUG && step != 0) throw new IllegalStateException("vertex(x,y,z) out of order");
+        if (step != 0) throw new IllegalStateException("vertex(x,y,z) out of order");
         if (positionComponents != 3) throw new IllegalStateException("Format is not 3D-position");
         posX = x;
         posY = y;
@@ -173,7 +171,7 @@ public final class CgVertexWriter implements CgVertexConsumer {
 
     @Override
     public CgVertexConsumer uv(float u, float v) {
-        if (DEBUG && step != 1) throw new IllegalStateException("uv() out of order");
+        if (step != 1) throw new IllegalStateException("uv() out of order");
         uvU = u;
         uvV = v;
         step = hasColor ? 2 : hasNormal ? 3 : 4;
@@ -182,7 +180,7 @@ public final class CgVertexWriter implements CgVertexConsumer {
 
     @Override
     public CgVertexConsumer color(int r, int g, int b, int a) {
-        if (DEBUG && step != 2) throw new IllegalStateException("color() out of order");
+        if (step != 2) throw new IllegalStateException("color() out of order");
         colorRGBA = CgColorPacking.packNativeOrder(r, g, b, a);
         step = hasNormal ? 3 : 4;
         return this;
@@ -191,7 +189,7 @@ public final class CgVertexWriter implements CgVertexConsumer {
     @Override
     public CgVertexConsumer normal(float nx, float ny, float nz) {
         if (!hasNormal) return this;
-        if (DEBUG && step != 3) throw new IllegalStateException("normal() out of order");
+        if (step != 3) throw new IllegalStateException("normal() out of order");
         normalX = nx;
         normalY = ny;
         normalZ = nz;
@@ -201,7 +199,7 @@ public final class CgVertexWriter implements CgVertexConsumer {
 
     @Override
     public void endVertex() {
-        if (DEBUG && step != 4) throw new IllegalStateException("Incomplete vertex");
+        if (step != 4) throw new IllegalStateException("Incomplete vertex");
         for (CgVertexAttribute attr : attributes) {
             switch (attr.getSemantic()) {
                 case POSITION:

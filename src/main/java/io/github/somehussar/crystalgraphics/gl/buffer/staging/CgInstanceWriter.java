@@ -6,8 +6,6 @@ import org.joml.Matrix4f;
 
 public final class CgInstanceWriter {
 
-    private static final boolean DEBUG = true;
-
     private final CgStagingBuffer staging;
     private final CgInstanceFormat layout;
 
@@ -92,20 +90,18 @@ public final class CgInstanceWriter {
     }
 
     public CgInstanceWriter beginInstance() {
-        if (DEBUG) instanceStartCursor = staging.rawCursor();
+        instanceStartCursor = staging.rawCursor();
         return this;
     }
 
     public void endInstance() {
-        if (DEBUG) {
-            int writtenFloats = staging.rawCursor() - instanceStartCursor;
-            int expectedFloats = layout.getFloatsPerInstance();
-            if (writtenFloats != expectedFloats) {
-                throw new IllegalStateException(
-                    "CgInstanceWriter.endInstance(): wrote " + writtenFloats + " floats but layout expects "
-                    + expectedFloats + " floats (stride=" + layout.getStride() + " bytes) for '"
-                    + layout.getDebugName() + "'");
-            }
+        int writtenFloats = staging.rawCursor() - instanceStartCursor;
+        int expectedFloats = layout.getFloatsPerInstance();
+        if (writtenFloats != expectedFloats) {
+            throw new IllegalStateException(
+                "CgInstanceWriter.endInstance(): wrote " + writtenFloats + " floats but layout expects "
+                + expectedFloats + " floats (stride=" + layout.getStride() + " bytes) for '"
+                + layout.getDebugName() + "'");
         }
         staging.ensureRoomForNextVertex();
     }
