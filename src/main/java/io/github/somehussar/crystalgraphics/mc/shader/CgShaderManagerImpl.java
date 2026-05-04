@@ -4,6 +4,7 @@ import io.github.somehussar.crystalgraphics.api.shader.CgShader;
 import io.github.somehussar.crystalgraphics.api.shader.CgShaderCacheKey;
 import io.github.somehussar.crystalgraphics.api.shader.CgShaderManager;
 import io.github.somehussar.crystalgraphics.api.vertex.CgVertexFormat;
+import io.github.somehussar.crystalgraphics.mc.CgAssetReloader;
 import net.minecraft.util.ResourceLocation;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -55,7 +56,7 @@ public final class CgShaderManagerImpl implements CgShaderManager {
      * @throws NullPointerException if caps is null
      */
     public CgShaderManagerImpl() {
-        CgShaderReloadHook.trackManager(this);
+        CgAssetReloader.trackShaderManager(this);
     }
 
     @Override
