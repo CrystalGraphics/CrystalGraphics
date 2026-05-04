@@ -163,6 +163,68 @@ public final class CgCapabilities {
      */
     private final int maxVertexAttribs;
 
+    // ── Shader-Buffer Capability Fields ─────────────────────────────────────
+
+    /**
+     * Enumerates the available GPU-resident shader buffer paths in preference order.
+     *
+     * <p>The CrystalShader material pipeline requires at least GL 3.3 (GLSL 330 core).
+     * SSBO is the preferred path (GL 4.3 core or ARB fallback). TBO is the fallback
+     * for GL 3.3+ contexts that lack SSBO. NONE means the material pipeline cannot
+     * be used on this context.</p>
+     */
+    public enum ShaderBufferPath {
+        /**
+         * Core OpenGL 4.3 SSBO path. Uses {@code org.lwjgl.opengl.GL43} entry points.
+         * Shader-storage buffers bound at layout binding 0 for object data.
+         */
+        SSBO_GL43,
+
+        /**
+         * ARB shader-storage buffer object extension path.
+         * Uses {@code org.lwjgl.opengl.ARBShaderStorageBufferObject} entry points.
+         * Activated when core 4.3 is absent but the ARB extension is present.
+         */
+        SSBO_ARB,
+
+        /**
+         * Texture buffer object fallback path (GL 3.1+, sampler-based).
+         * Activated when SSBO is unavailable but GL 3.3 baseline is met.
+         * Object data is read via {@code samplerBuffer} / {@code texelFetch}.
+         */
+        TBO,
+
+        /**
+         * No usable shader buffer path detected. Attempting to create a
+         * CrystalShader material on this context will throw.
+         */
+        NONE
+    }
+
+    /**
+     * Whether Core OpenGL 4.3 SSBO is available
+     * ({@code GLContext.getCapabilities().OpenGL43}).
+     */
+    private final boolean shaderStorageBufferCore;
+
+    /**
+     * Whether the {@code GL_ARB_shader_storage_buffer_object} extension is available
+     * and core 4.3 is absent.
+     */
+    private final boolean shaderStorageBufferArb;
+
+    /**
+     * Whether the TBO (texture buffer) material fallback path is available.
+     * True when SSBO is unavailable and {@code OpenGL33} is present.
+     */
+    private final boolean textureBufferMaterialPath;
+
+    /**
+     * The preferred shader buffer path for the current GL context, determined
+     * at construction time from the above three flags.
+     */
+    private final ShaderBufferPath shaderBufferPath;
+
     private CgCapabilities(boolean coreFbo, boolean arbFbo, boolean extFbo,
                            boolean coreShaders, boolean arbShaders,
                            int maxDrawBuffers, int maxTextureUnits,
@@ -194,6 +256,59 @@ public final class CgCapabilities {
         this.drawInstanced = drawInstanced;
         this.vertexAttribDivisor = vertexAttribDivisor;
         this.maxVertexAttribs = maxVertexAttribs;
+        // Shader-buffer path detection delegated to the overload that accepts explicit flags.
+        // For backward-compat callers that don't supply them, detect from current context lazily.
+        this.shaderStorageBufferCore = false;
+        this.shaderStorageBufferArb = false;
+        this.textureBufferMaterialPath = false;
+        this.shaderBufferPath = ShaderBufferPath.NONE;
+    }
+
+    private CgCapabilities(boolean coreFbo, boolean arbFbo, boolean extFbo,
+                           boolean coreShaders, boolean arbShaders,
+                           int maxDrawBuffers, int maxTextureUnits,
+                           boolean stencil, boolean depth,
+                           boolean packedDepthStencil, boolean depthTexture,
+                           int maxTextureSize, int maxRenderbufferSize,
+                           int maxColorAttachments,
+                           boolean hasVao, boolean hasMapBufferRange,
+                           boolean arbSync,
+                           boolean drawInstanced, boolean vertexAttribDivisor,
+                           int maxVertexAttribs,
+                           boolean shaderStorageBufferCore, boolean shaderStorageBufferArb,
+                           boolean textureBufferMaterialPath) {
+        this.coreFbo = coreFbo;
+        this.arbFbo = arbFbo;
+        this.extFbo = extFbo;
+        this.coreShaders = coreShaders;
+        this.arbShaders = arbShaders;
+        this.maxDrawBuffers = maxDrawBuffers;
+        this.maxTextureUnits = maxTextureUnits;
+        this.stencil = stencil;
+        this.depth = depth;
+        this.packedDepthStencil = packedDepthStencil;
+        this.depthTexture = depthTexture;
+        this.maxTextureSize = maxTextureSize;
+        this.maxRenderbufferSize = maxRenderbufferSize;
+        this.maxColorAttachments = maxColorAttachments;
+        this.hasVao = hasVao;
+        this.hasMapBufferRange = hasMapBufferRange;
+        this.arbSync = arbSync;
+        this.drawInstanced = drawInstanced;
+        this.vertexAttribDivisor = vertexAttribDivisor;
+        this.maxVertexAttribs = maxVertexAttribs;
+        this.shaderStorageBufferCore = shaderStorageBufferCore;
+        this.shaderStorageBufferArb = shaderStorageBufferArb;
+        this.textureBufferMaterialPath = textureBufferMaterialPath;
+        if (shaderStorageBufferCore) {
+            this.shaderBufferPath = ShaderBufferPath.SSBO_GL43;
+        } else if (shaderStorageBufferArb) {
+            this.shaderBufferPath = ShaderBufferPath.SSBO_ARB;
+        } else if (textureBufferMaterialPath) {
+            this.shaderBufferPath = ShaderBufferPath.TBO;
+        } else {
+            this.shaderBufferPath = ShaderBufferPath.NONE;
+        }
     }
 
     /**
@@ -320,6 +435,11 @@ public final class CgCapabilities {
         // Max vertex attribs: queried when shader support exists; each mat4 instance attr consumes 4 slots
         int maxVertexAttribs = coreShaders ? GL11.glGetInteger(GL20.GL_MAX_VERTEX_ATTRIBS) : 0;
 
+        // Shader-buffer path detection (waterfall: GL43 SSBO > ARB SSBO > TBO > NONE)
+        boolean ssboCore = caps.OpenGL43;
+        boolean ssboArb = !ssboCore && caps.GL_ARB_shader_storage_buffer_object;
+        boolean tboPath = !ssboCore && !ssboArb && caps.OpenGL33;
+
         return new CgCapabilities(
             coreFbo, arbFbo, extFbo,
             coreShaders, arbShaders,
@@ -330,7 +450,8 @@ public final class CgCapabilities {
             maxColorAttachments,
             hasVao, hasMapBufferRange,
             arbSync,
-            drawInstanced, vertexAttribDivisor, maxVertexAttribs
+            drawInstanced, vertexAttribDivisor, maxVertexAttribs,
+            ssboCore, ssboArb, tboPath
         );
     }
 
@@ -353,6 +474,24 @@ public final class CgCapabilities {
         }
         return Backend.NONE;
     }
+
+    public boolean isShaderStorageBufferCore() {
+        return shaderStorageBufferCore;
+    }
+
+    public boolean isShaderStorageBufferArb() {
+        return shaderStorageBufferArb;
+    }
+
+    public boolean isTextureBufferMaterialPath() {
+        return textureBufferMaterialPath;
+    }
+
+    public ShaderBufferPath preferredShaderBufferPath() {
+        return shaderBufferPath;
+    }
+
+
 
     /**
      * Returns whether Core OpenGL 3.0 framebuffer support is available.
@@ -647,8 +786,35 @@ public final class CgCapabilities {
             drawInstanced, vertexAttribDivisor, maxVertexAttribs);
     }
 
+    static CgCapabilities createForTest(boolean coreFbo, boolean arbFbo, boolean extFbo,
+                                        boolean coreShaders, boolean arbShaders,
+                                        int maxDrawBuffers, int maxTextureUnits,
+                                        boolean stencil, boolean depth,
+                                        boolean packedDepthStencil, boolean depthTexture,
+                                        int maxTextureSize, int maxRenderbufferSize,
+                                        int maxColorAttachments,
+                                        boolean hasVao, boolean hasMapBufferRange,
+                                        boolean arbSync,
+                                        boolean drawInstanced, boolean vertexAttribDivisor,
+                                        int maxVertexAttribs,
+                                        boolean shaderStorageBufferCore,
+                                        boolean shaderStorageBufferArb,
+                                        boolean textureBufferMaterialPath) {
+        return new CgCapabilities(coreFbo, arbFbo, extFbo,
+            coreShaders, arbShaders,
+            maxDrawBuffers, maxTextureUnits,
+            stencil, depth,
+            packedDepthStencil, depthTexture,
+            maxTextureSize, maxRenderbufferSize,
+            maxColorAttachments,
+            hasVao, hasMapBufferRange,
+            arbSync,
+            drawInstanced, vertexAttribDivisor, maxVertexAttribs,
+            shaderStorageBufferCore, shaderStorageBufferArb, textureBufferMaterialPath);
+    }
+
+
     /**
-     * Parses a GL version string into {@code {major, minor}}.
      *
      * <p>Accepts the raw string returned by {@code GL11.glGetString(GL11.GL_VERSION)}
      * as well as simple {@code "major.minor"} expressions.  The parser
