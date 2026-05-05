@@ -3,7 +3,6 @@ package io.github.somehussar.crystalgraphics.gl.buffer.shader;
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
 import io.github.somehussar.crystalgraphics.api.texture.CgTexture;
 import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL13;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.GL31;
@@ -29,12 +28,16 @@ import org.lwjgl.opengl.GL31;
  * <h3>Bind/unbind</h3>
  * <p>Binds {@link #tboTexId} to {@code GL_TEXTURE_BUFFER} on the reserved texture unit
  * ({@link #DEFAULT_TBO_TEXTURE_UNIT}). The caller must set the {@code cg_ObjectTBO} sampler
- * uniform to {@link #getTboTextureUnit()} once after program link.</p>
+ * uniform to {@link #bindingLocation} once after program link.</p>
  */
 public final class CgTextureBuffer extends CgShaderBuffer {
 
-    /** GL texture unit this TBO is bound to. Fixed at {@link #DEFAULT_TBO_TEXTURE_UNIT}. */
-    private final int textureUnit;
+    /**
+     * Default GL texture unit reserved for the TBO object-data sampler ({@code cg_ObjectTBO}).
+     * Set this sampler uniform once after program link on the TBO path:
+     * {@code shader.set1i("cg_ObjectTBO", CgShaderBuffer.DEFAULT_TBO_TEXTURE_UNIT)}.
+     */
+    public static final int DEFAULT_TBO_TEXTURE_UNIT = 7;
 
     /**
      * The {@code GL_TEXTURE_BUFFER} texture object.
@@ -50,52 +53,10 @@ public final class CgTextureBuffer extends CgShaderBuffer {
      */
     CgTextureBuffer(int floatPerRecord, int initialCapacity) {
         super(floatPerRecord, initialCapacity, GL15.GL_ARRAY_BUFFER);
-        this.textureUnit = DEFAULT_TBO_TEXTURE_UNIT;
+        this.path = CgCapabilities.ShaderBufferPath.TBO;
+        this.bindingLocation = DEFAULT_TBO_TEXTURE_UNIT;
         this.tboTexId = GL11.glGenTextures();
         attachTextureToBuffer();
-    }
-
-    /**
-     * Activates {@link #textureUnit} and binds {@link #tboTexId} to {@code GL_TEXTURE_BUFFER}.
-     */
-    @Override
-    protected void bindInternal() {
-        CgTexture.active(textureUnit);
-        CgTexture.bind(GL31.GL_TEXTURE_BUFFER, tboTexId);
-    }
-
-    /**
-     * Unbinds the texture and restores {@code GL_TEXTURE0} as the active unit.
-     */
-    @Override
-    protected void unbindInternal() {
-        CgTexture.active(textureUnit);
-        CgTexture.bind(GL31.GL_TEXTURE_BUFFER, 0);
-        CgTexture.active(0);
-    }
-
-    /**
-     * Returns the GL texture unit this TBO is bound to.
-     * Pass this value as the {@code cg_ObjectTBO} sampler uniform after program link.
-     */
-    @Override
-    public int getTboTextureUnit() {
-        return textureUnit;
-    }
-
-    /** Returns {@link CgCapabilities.ShaderBufferPath#TBO}. */
-    @Override
-    public CgCapabilities.ShaderBufferPath getPath() {
-        return CgCapabilities.ShaderBufferPath.TBO;
-    }
-
-    /**
-     * Deletes {@link #tboTexId}. Called by the parent {@link #delete()} after the
-     * stream buffer has been deleted.
-     */
-    @Override
-    protected void deleteGlResources() {
-        GL11.glDeleteTextures(tboTexId);
     }
 
     /**
@@ -105,10 +66,38 @@ public final class CgTextureBuffer extends CgShaderBuffer {
      * Called once from the constructor; never needs to be called again even after GPU buffer growth.
      */
     private void attachTextureToBuffer() {
-        CgTexture.active(textureUnit);
+        CgTexture.active(bindingLocation);
         CgTexture.bind(GL31.GL_TEXTURE_BUFFER, tboTexId);
         GL31.glTexBuffer(GL31.GL_TEXTURE_BUFFER, GL30.GL_RGBA32F, getGlBufferId());
         CgTexture.bind(GL31.GL_TEXTURE_BUFFER, 0);
         CgTexture.active(0);
+    }
+    
+    /**
+     * Activates texture unit of {@link #bindingLocation} and binds {@link #tboTexId} to {@code GL_TEXTURE_BUFFER}.
+     */
+    @Override
+    protected void bindInternal() {
+        CgTexture.active(bindingLocation);
+        CgTexture.bind(GL31.GL_TEXTURE_BUFFER, tboTexId);
+    }
+
+    /**
+     * Unbinds the texture and restores {@code GL_TEXTURE0} as the active unit.
+     */
+    @Override
+    protected void unbindInternal() {
+        CgTexture.active(bindingLocation);
+        CgTexture.bind(GL31.GL_TEXTURE_BUFFER, 0);
+        CgTexture.active(0);
+    }
+
+    /**
+     * Deletes {@link #tboTexId}. Called by the parent {@link #delete()} after the
+     * stream buffer has been deleted.
+     */
+    @Override
+    protected void deleteGlResources() {
+        GL11.glDeleteTextures(tboTexId);
     }
 }

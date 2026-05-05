@@ -27,7 +27,7 @@ import org.lwjgl.opengl.GL31;
  *
  * <h3>Program setup (once after link)</h3>
  * <pre>{@code
- * frameUbo.bindProgramBlock(CgUniformBuffer.BLOCK_NAME, programId);
+ * frameUbo.bindBlock(CgUniformBuffer.BLOCK_NAME, programId);
  * }</pre>
  *
  * <h3>GLSL block</h3>
@@ -74,6 +74,7 @@ public final class CgUniformBuffer extends CgShaderBuffer {
      */
     public CgUniformBuffer() {
         super(GL31.GL_UNIFORM_BUFFER, INITIAL_STAGING_FLOATS);
+        bindingLocation = BINDING_POINT;
     }
 
     /**
@@ -91,21 +92,35 @@ public final class CgUniformBuffer extends CgShaderBuffer {
     }
 
     /**
-     * Queries the uniform block index for {@code blockName} in the given program and wires it
-     * to {@link #BINDING_POINT} via {@code glUniformBlockBinding}. No-op if the block is absent.
-     * Call once per program after link.
+     * Wires the uniform block {@code blockName} in {@code program} to this UBO's
+     * {@link #bindingLocation} via {@code glUniformBlockBinding}. No-op if the block is absent.
+     *
+     * <p><strong>Warning:</strong> {@code glUniformBlockBinding} only wires the program-side index
+     * to the binding point. The UBO data is not visible to the shader until {@link #bind()} is
+     * called at draw time. Call {@link #upload()} before the first {@link #bind()} to ensure GPU
+     * data is present.</p>
+     *
+     * <p>Call once per program after link. If {@link #setBindingLocation(int)} is called later,
+     * re-call this method so the program and UBO stay in sync.</p>
      *
      * @param blockName the GLSL uniform block name (e.g. {@link #BLOCK_NAME})
-     * @param program the CgShader object of the shader program
+     * @param shader   the Cg shader to wire
      */
-    public void bindBlock(String blockName, CgShader program) {
-        bindBlock(blockName, program.getProgram().getId());
+    public void bindBlock(String blockName, CgShader shader) {
+        bindBlock(blockName, shader.getProgram().getId());
     }
 
     /**
-     * Queries the uniform block index for {@code blockName} in the given program and wires it
-     * to {@link #BINDING_POINT} via {@code glUniformBlockBinding}. No-op if the block is absent.
-     * Call once per program after link.
+     * Wires the uniform block {@code blockName} in {@code programId} to this UBO's
+     * {@link #bindingLocation} via {@code glUniformBlockBinding}. No-op if the block is absent.
+     *
+     * <p><strong>Warning:</strong> {@code glUniformBlockBinding} only wires the program-side index
+     * to the binding point. The UBO data is not visible to the shader until {@link #bind()} is
+     * called at draw time. Call {@link #upload()} before the first {@link #bind()} to ensure GPU
+     * data is present.</p>
+     *
+     * <p>Call once per program after link. If {@link #setBindingLocation(int)} is called later,
+     * re-call this method so the program and UBO stay in sync.</p>
      *
      * @param blockName the GLSL uniform block name (e.g. {@link #BLOCK_NAME})
      * @param programId GL program object ID
@@ -113,19 +128,17 @@ public final class CgUniformBuffer extends CgShaderBuffer {
     public void bindBlock(String blockName, int programId) {
         int idx = GL31.glGetUniformBlockIndex(programId, blockName);
         if (idx != GL31.GL_INVALID_INDEX) {
-            GL31.glUniformBlockBinding(programId, idx, BINDING_POINT);
+            GL31.glUniformBlockBinding(programId, idx, bindingLocation);
         }
     }
 
     @Override
     protected void bindInternal() {
-        GL30.glBindBufferBase(GL31.GL_UNIFORM_BUFFER, BINDING_POINT, getGlBufferId());
+        GL30.glBindBufferBase(GL31.GL_UNIFORM_BUFFER, bindingLocation, getGlBufferId());
     }
 
     @Override
     protected void unbindInternal() {
-        GL30.glBindBufferBase(GL31.GL_UNIFORM_BUFFER, BINDING_POINT, 0);
+        GL30.glBindBufferBase(GL31.GL_UNIFORM_BUFFER, bindingLocation, 0);
     }
 }
-
-

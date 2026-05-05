@@ -24,16 +24,11 @@ import org.lwjgl.opengl.GL43;
  */
 public final class CgShaderStorageBuffer extends CgShaderBuffer {
 
-    /** Hardware path this instance was created for. */
-    private final CgCapabilities.ShaderBufferPath path;
-
     /**
-     * @param path            SSBO capability path ({@code SSBO_GL43} or {@code SSBO_ARB})
-     * @param floatPerRecord floats per per-object record; use {@link #FLOATS_PER_OBJECT}
-     *                        for the default CrystalShader ABI
+     * @param floatPerRecord  floats per per-object record
      * @param initialCapacity number of records to pre-allocate
      */
-    CgShaderStorageBuffer(CgCapabilities.ShaderBufferPath path, int floatPerRecord, int initialCapacity) {
+    CgShaderStorageBuffer(int floatPerRecord, int initialCapacity, CgCapabilities.ShaderBufferPath path) {
         super(floatPerRecord, initialCapacity, GL43.GL_SHADER_STORAGE_BUFFER);
         this.path = path;
     }
@@ -44,31 +39,16 @@ public final class CgShaderStorageBuffer extends CgShaderBuffer {
      */
     @Override
     protected void bindInternal() {
-        bind(BINDING_POINT);
+        GL30.glBindBufferBase(GL43.GL_SHADER_STORAGE_BUFFER, bindingLocation, getGlBufferId());
     }
+
 
     /**
      * Binds the SSBO to the given binding P (binding = n) via {@code glBindBufferBase}.
      * Both GL43 core and ARB paths share the same constant value and entry point.
      */
-    public void bind(int binding) {
-        GL30.glBindBufferBase(GL43.GL_SHADER_STORAGE_BUFFER, binding, getGlBufferId());
-    }
-
-
-    /**
-     * Unbinds by binding buffer 0 to {@link #BINDING_POINT}.
-     */
     @Override
     protected void unbindInternal() {
-        GL30.glBindBufferBase(GL43.GL_SHADER_STORAGE_BUFFER, BINDING_POINT, 0);
-    }
-
-    /**
-     * Returns {@code SSBO_GL43} or {@code SSBO_ARB} — the path this instance was created on.
-     */
-    @Override
-    public CgCapabilities.ShaderBufferPath getPath() {
-        return path;
+        GL30.glBindBufferBase(GL43.GL_SHADER_STORAGE_BUFFER, bindingLocation, 0);
     }
 }
