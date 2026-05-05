@@ -6,6 +6,7 @@ import io.github.somehussar.crystalgraphics.gl.buffer.CgStreamBuffer;
 import io.github.somehussar.crystalgraphics.gl.buffer.staging.CgBufferWriter;
 import io.github.somehussar.crystalgraphics.gl.buffer.staging.CgStagingBuffer;
 import lombok.Getter;
+import lombok.Setter;
 
 /**
  * Abstract base class for all GPU shader buffer types (SSBO, TBO, UBO).
@@ -55,17 +56,12 @@ import lombok.Getter;
 public abstract class CgShaderBuffer implements CgObjectBuffer {
 
     /**
-     * GL binding point for per-object SSBO/TBO data (binding = 0).
+     * Default GL binding point for per-object SSBO/TBO data (binding = 0).
      * Matches the {@code layout(binding = 0)} declaration in {@code cg_env.glsl}.
+     * Subclasses may use a different binding point via their own constructor or by
+     * calling {@link #bind(int)} with an explicit binding point.
      */
     public static final int BINDING_POINT = 0;
-
-    /**
-     * Default GL texture unit reserved for the TBO object-data sampler ({@code cg_ObjectTBO}).
-     * Set this sampler uniform once after program link on the TBO path:
-     * {@code shader.set1i("cg_ObjectTBO", CgShaderBuffer.DEFAULT_TBO_TEXTURE_UNIT)}.
-     */
-    public static final int DEFAULT_TBO_TEXTURE_UNIT = 7;
 
     /**
      * Default CrystalShader per-object record size: 44 floats / 176 bytes.
@@ -74,6 +70,11 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
      * Pass to {@link #create(int, int)} or use the {@link #create(int)} shorthand.
      */
     public static final int FLOATS_PER_OBJECT = 44;
+
+    /** Binding point used for glBindBufferBase or as GL texture unit (TBO).*/
+    @Getter
+    @Setter
+    protected int bindingLocation = BINDING_POINT;
     
     private final int floatPerRecord;
     protected final CgBufferWriter writer;
@@ -98,6 +99,11 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
 
     private boolean inWrite;
 
+    /** Hardware path this instance was created for. */
+    @Getter
+    @Setter
+    protected CgCapabilities.ShaderBufferPath path;
+    
     // ── Constructors ──────────────────────────────────────────────────────────
 
     /**
@@ -158,14 +164,14 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
      */
     public static CgShaderBuffer create(int floatPerRecord, int initialCapacity) {
         CgCapabilities.ShaderBufferPath path = CgCapabilities.detect().preferredShaderBufferPath();
-        if (path == CgCapabilities.ShaderBufferPath.NONE) {
+        if (path == CgCapabilities.ShaderBufferPath.NONE) 
             throw new UnsupportedOperationException("GL 3.3+ required for CrystalShader object buffers");
-        }
+
         initialCapacity = Math.max(1, initialCapacity);
-        if (path == CgCapabilities.ShaderBufferPath.TBO) {
+        if (path == CgCapabilities.ShaderBufferPath.TBO)
             return new CgTextureBuffer(floatPerRecord, initialCapacity);
-        }
-        return new CgShaderStorageBuffer(path, floatPerRecord, initialCapacity);
+
+        return new CgShaderStorageBuffer(floatPerRecord, initialCapacity, path);
     }
 
     // ── Write API ─────────────────────────────────────────────────────────────
@@ -262,6 +268,19 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
      */
     @Override public void bind()   { bind(Math.max(0, lastWrittenCount)); }
 
+    /**
+     * Binds this buffer to an explicit binding point without changing
+     * the instance-level binding point. Use for temporary binding to a different point.
+     *
+     * @param bindingLocation the GL binding point to bind to
+     * @throws IllegalStateException if deleted
+     */
+    public void bindTo(int bindingLocation) {
+        if (deleted) throw new IllegalStateException("CgShaderBuffer has been deleted");
+        this.bindingLocation = bindingLocation;
+        bind();
+    }
+
     /** Unbinds this buffer from its GL binding point. */
     @Override public void unbind() { unbindInternal(); }
 
@@ -318,13 +337,6 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
      * or {@code null} for types where the concept does not apply (e.g. UBO).
      */
     public CgCapabilities.ShaderBufferPath getPath() { return null; }
-
-    /**
-     * Returns the GL texture unit used by the TBO sampler ({@code cg_ObjectTBO}).
-     * Always {@code 0} for non-TBO types; override in {@link CgTextureBuffer}.
-     * Set this value as the {@code cg_ObjectTBO} sampler uniform after program link.
-     */
-    public int getTboTextureUnit() { return 0; }
 
     // ── Abstract backend contract ─────────────────────────────────────────────
 
