@@ -98,25 +98,6 @@ public class MapAndSyncStreamBuffer extends CgStreamBuffer {
         lastMapUsedOrphan = false;
     }
 
-    @Override
-    public void delete() {
-        deleteAllFences();
-        GL15.glDeleteBuffers(glBuffer);
-    }
-
-    private void deleteAllFences() {
-        for (int i = 0; i < fences.length; i++) {
-            if (fences[i] != null) {
-                ARBSync.glDeleteSync(fences[i]);
-                fences[i] = null;
-            }
-        }
-        if (orphanFence != null) {
-            ARBSync.glDeleteSync(orphanFence);
-            orphanFence = null;
-        }
-    }
-
     private void waitOnFence(GLSync fence) {
         long elapsed = 0;
         while (elapsed < FENCE_TIMEOUT_NS) {
@@ -154,5 +135,24 @@ public class MapAndSyncStreamBuffer extends CgStreamBuffer {
     private static int alignUp(int value, int alignment) {
         int mask = alignment - 1;
         return (value + mask) & ~mask;
+    }
+
+    private void deleteAllFences() {
+        for (int i = 0; i < fences.length; i++) {
+            if (fences[i] != null) {
+                ARBSync.glDeleteSync(fences[i]);
+                fences[i] = null;
+            }
+        }
+        if (orphanFence != null) {
+            ARBSync.glDeleteSync(orphanFence);
+            orphanFence = null;
+        }
+    }
+
+    @Override
+    public void deleteGlResources() {
+        deleteAllFences();
+        GL15.glDeleteBuffers(glBuffer);
     }
 }

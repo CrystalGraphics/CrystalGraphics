@@ -1,7 +1,7 @@
 package io.github.somehussar.crystalgraphics.gl.buffer.shader;
 
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
-import io.github.somehussar.crystalgraphics.api.shader.CgObjectBuffer;
+import io.github.somehussar.crystalgraphics.api.buffer.CgObjectBuffer;
 import io.github.somehussar.crystalgraphics.gl.buffer.CgStreamBuffer;
 import io.github.somehussar.crystalgraphics.gl.buffer.staging.CgBufferWriter;
 import io.github.somehussar.crystalgraphics.gl.buffer.staging.CgStagingBuffer;
