@@ -44,8 +44,17 @@ public final class CgShaderStorageBuffer extends CgShaderBuffer {
      */
     @Override
     protected void bindInternal() {
-        GL30.glBindBufferBase(GL43.GL_SHADER_STORAGE_BUFFER, BINDING_POINT, getGlBufferId());
+        bind(BINDING_POINT);
     }
+
+    /**
+     * Binds the SSBO to the given binding P (binding = n) via {@code glBindBufferBase}.
+     * Both GL43 core and ARB paths share the same constant value and entry point.
+     */
+    public void bind(int binding) {
+        GL30.glBindBufferBase(GL43.GL_SHADER_STORAGE_BUFFER, binding, getGlBufferId());
+    }
+
 
     /**
      * Unbinds by binding buffer 0 to {@link #BINDING_POINT}.
