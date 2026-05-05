@@ -45,7 +45,7 @@ public class SubDataStreamBuffer extends CgStreamBuffer {
     }
 
     @Override
-    public void delete() {
+    public void deleteGlResources() {
         GL15.glDeleteBuffers(glBuffer);
     }
 }

@@ -2,6 +2,7 @@ package io.github.somehussar.crystalgraphics.gl.buffer;
 
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
 
+import io.github.somehussar.crystalgraphics.api.buffer.CgObjectBuffer;
 import lombok.Getter;
 import org.lwjgl.opengl.GL15;
 
@@ -48,7 +49,7 @@ import java.nio.ByteBuffer;
  *   <li>Call {@link #afterSubmit()} so ring-buffer implementations can place their fence.</li>
  * </ol>
  */
-public abstract class CgStreamBuffer {
+public abstract class CgStreamBuffer implements CgObjectBuffer {
 
     /** The GL buffer object name allocated at construction. Never changes for the lifetime of this instance. */
     @Getter
@@ -69,6 +70,13 @@ public abstract class CgStreamBuffer {
      */
     @Getter
     protected int writeOffset;
+
+    /**
+     * Set to {@code true} by {@link #delete()}. Checked by {@link #bind()} to guard
+     * against use-after-free. Declared {@code volatile} so deletion on one thread is
+     * immediately visible to bind calls on the render thread.
+     */
+    protected volatile boolean deleted;
 
     /**
      * Allocates a new GL buffer object via {@code glGenBuffers} and records the target and capacity.
@@ -144,8 +152,30 @@ public abstract class CgStreamBuffer {
         GL15.glBindBuffer(target, 0);
     }
 
+    /**
+     * Returns the GL buffer object ID of the underlying stream buffer.
+     * Useful for passing to {@code glBindBufferBase} / {@code glTexBuffer} manually,
+     * or for interop with external GL code.
+     */
+    @Override
+    public int getGlBufferId() {
+        return glBuffer;
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public boolean isDeleted() {return deleted;}
+
+    @Override
+    public void delete() {
+        if (!deleted) {
+            deleteGlResources();
+            deleted = true;
+        }
+    }
+
     /** Deletes the underlying GL buffer object. Must not be called more than once. */
-    public abstract void delete();
+    protected void deleteGlResources() {}
 
     /**
      * Creates the best available stream buffer for vertex data using {@code GL_ARRAY_BUFFER}.

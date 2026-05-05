@@ -44,7 +44,7 @@ public class MapAndOrphanStreamBuffer extends CgStreamBuffer {
     }
 
     @Override
-    public void delete() {
+    public void deleteGlResources() {
         GL15.glDeleteBuffers(glBuffer);
     }
 }
