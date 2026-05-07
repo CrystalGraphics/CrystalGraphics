@@ -5,12 +5,16 @@ import io.github.somehussar.crystalgraphics.api.mesh.CgMeshTopology;
 import io.github.somehussar.crystalgraphics.api.vertex.CgAttributeFormat;
 import io.github.somehussar.crystalgraphics.api.vertex.CgVertexAttribute;
 import io.github.somehussar.crystalgraphics.api.vertex.CgVertexFormat;
+import io.github.somehussar.crystalgraphics.gl.render.CgInstanceRenderer;
 import io.github.somehussar.crystalgraphics.gl.vertex.CgVertexArray;
 import io.github.somehussar.crystalgraphics.gl.vertex.CgVertexArrayRegistry;
 import lombok.Getter;
+import org.lwjgl.opengl.ARBDrawInstanced;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL20;
+import org.lwjgl.opengl.GL31;
+import org.lwjgl.opengl.GLContext;
 
 import org.lwjgl.opengl.Display;
 
@@ -224,15 +228,46 @@ public final class CgMesh {
      * @throws IllegalStateException if {@link #delete()} has already been called
      */
     public void drawDirect() {
-        if (deleted) {
-            throw new IllegalStateException("CgMesh has been deleted");
-        }
+        if (deleted) throw new IllegalStateException("CgMesh has been deleted");
+        
         CgVertexArray.bind(glVao);
-        if (glIndexBuffer != 0) {
+        if (glIndexBuffer != 0) 
             GL11.glDrawElements(topology.getGlMode(), indexCount, indexType, 0L);
-        } else {
-            GL11.glDrawArrays(topology.getGlMode(), 0, vertexCount);
-        }
+        else GL11.glDrawArrays(topology.getGlMode(), 0, vertexCount);
+        
+        CgVertexArray.bind(0);
+    }
+
+    /**
+     * Draws this mesh instanced using the same standalone VAO as {@link #drawDirect()}.
+     *
+     * <p>Prerequisite: {@link io.github.somehussar.crystalgraphics.api.material.CgMaterial#bind}
+     * must have been called before this method, which binds the
+     * {@link io.github.somehussar.crystalgraphics.gl.buffer.shader.CgShaderBuffer} containing
+     * instance transforms.</p>
+     *
+     * <p>The instance count must not exceed the capacity of the bound
+     * {@code CgShaderBuffer}. If it does, {@code CgShaderBuffer.bind()} will have already thrown.</p>
+     *
+     * <p>No {@code glVertexAttribDivisor} is used — the SSBO/TBO mechanism provides
+     * per-instance data via {@code CG_INSTANCE_ID}, so no per-instance vertex attributes
+     * are needed. The VAO is exactly the same as for {@link #drawDirect()}.</p>
+     *
+     * <p><strong>Must be called on the GL thread.</strong></p>
+     *
+     * @param count number of instances to draw; must be {@code >= 1}
+     * @throws IllegalStateException    if {@link #delete()} has been called
+     * @throws IllegalArgumentException if {@code count < 1}
+     */
+    public void drawInstanced(int count) {
+        if (deleted) throw new IllegalStateException("CgMesh has been deleted");
+        if (count < 1) throw new IllegalArgumentException("count must be >= 1, got " + count);
+
+        CgVertexArray.bind(glVao);
+        if (glIndexBuffer != 0)
+            CgInstanceRenderer.drawElementsInstanced(topology.getGlMode(), indexCount, indexType, 0L, count);
+        else CgInstanceRenderer.drawArraysInstanced(topology.getGlMode(), 0, vertexCount, count);
+        
         CgVertexArray.bind(0);
     }
 

@@ -1,12 +1,16 @@
 package io.github.somehussar.crystalgraphics.api.shader;
 
 import io.github.somehussar.crystalgraphics.util.io.CgIO;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
@@ -55,6 +59,8 @@ import java.util.regex.Pattern;
 public final class CgShaderPreprocessor {
 
     // ── Constants ──────────────────────────────────────────────────────────────
+
+    private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
 
     private static final boolean DEV_MODE =
             System.getProperty("crystalgraphics.shader.devmode") != null;
@@ -171,6 +177,11 @@ public final class CgShaderPreprocessor {
             throw new NullPointerException("source must not be null");
         }
 
+        // Strip non-ASCII before any processing — invisible unicode characters silently
+        // kill GLSL compilation (driver returns GL_TRUE from glLinkStatus but the program
+        // is a zombie with 0 active uniforms and nothing renders).
+        source = stripNonAscii(source, sourcePath != null ? sourcePath : "<unknown>");
+
         // Expand #include directives first (before prelude injection so
         // included files are also in scope of the prelude).
         IncludeContext ctx = new IncludeContext();
@@ -191,6 +202,38 @@ public final class CgShaderPreprocessor {
                     + prelude
                     + expanded.substring(insertionIndex);
         }
+    }
+
+    // ── Private: non-ASCII stripping ──────────────────────────────────────────
+
+    private static String stripNonAscii(String source, String path) {
+        boolean hasNonAscii = false;
+        for (int i = 0; i < source.length(); i++) {
+            if (source.charAt(i) > 127) {
+                hasNonAscii = true;
+                break;
+            }
+        }
+        if (!hasNonAscii) {
+            return source;
+        }
+
+        List<Integer> positions = new ArrayList<>();
+        for (int i = 0; i < source.length(); i++) {
+            if (source.charAt(i) > 127) {
+                positions.add(Integer.valueOf(i));
+            }
+        }
+        StringBuilder stripped = new StringBuilder();
+        for (int pos : positions) {
+            char c = source.charAt(pos);
+            stripped.append(String.format("U+%04X", (int) c));
+            if (stripped.length() < 200) stripped.append(' ');
+        }
+        LOGGER.warn("[{}] Stripped {} non-ASCII character(s) — check your editor for invisible unicode. "
+                + "Codepoints: [{}] at positions {}",
+                path, positions.size(), stripped.toString().trim(), positions);
+        return source.replaceAll("[^\\x00-\\x7F]", " ");
     }
 
     // ── Private: include expansion ─────────────────────────────────────────────

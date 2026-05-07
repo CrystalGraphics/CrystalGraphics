@@ -1,5 +1,6 @@
 package io.github.somehussar.crystalgraphics.mc;
 
+import io.github.somehussar.crystalgraphics.api.material.CgMaterialRegistry;
 import io.github.somehussar.crystalgraphics.api.shader.CgShaderManager;
 import io.github.somehussar.crystalgraphics.gl.texture.CgTextureManager;
 import net.minecraft.client.Minecraft;
@@ -41,6 +42,7 @@ public final class CgAssetReloader {
     public static void reload() {
         reloadTextures();
         reloadShaders();
+        reloadMaterials();
     }
 
     private static void reloadTextures() {
@@ -67,6 +69,14 @@ public final class CgAssetReloader {
             } catch (Exception e) {
                 LOGGER.error("Failed to reload shader manager: {}", manager, e);
             }
+        }
+    }
+
+    private static void reloadMaterials() {
+        try {
+            CgMaterialRegistry.get().reloadAll();
+        } catch (Exception e) {
+            LOGGER.error("Failed to reload materials", e);
         }
     }
 

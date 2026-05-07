@@ -1,9 +1,11 @@
 package io.github.somehussar.crystalgraphics.mc.shader;
 
 import com.github.bsideup.jabel.Desugar;
+import io.github.somehussar.crystalgraphics.api.CgCapabilities;
 import io.github.somehussar.crystalgraphics.api.shader.CgShaderProgram;
 import io.github.somehussar.crystalgraphics.api.shader.CgShader;
 import io.github.somehussar.crystalgraphics.api.shader.CgShaderBindings;
+import io.github.somehussar.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 
 import io.github.somehussar.crystalgraphics.api.texture.CgTexture;
 
@@ -14,6 +16,7 @@ import org.lwjgl.opengl.ARBMultitexture;
 import org.lwjgl.opengl.ContextCapabilities;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
+import org.lwjgl.opengl.GL31;
 import org.lwjgl.opengl.GLContext;
 
 import java.util.ArrayList;
@@ -189,6 +192,12 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
     @Override
     public CgShaderBindings sampler(String name, int unit, int glTextureId, int glTarget) {
         this.ops.add(new SamplerOp(name, unit, glTextureId, glTarget));
+        return this;
+    }
+
+    @Override
+    public CgShaderBindings ubo(CgUniformBuffer buffer) {
+        this.ops.add(new UniformBufferBindingOp(buffer));
         return this;
     }
 
@@ -529,6 +538,28 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
                 program.setUniform1i(loc, this.unit);
             } finally {
                 if (previousUnit != targetUnit) CgTexture.active(previousUnit);
+            }
+        }
+    }
+
+    @Desugar
+    private record UniformBufferBindingOp(CgUniformBuffer ubo) implements BindingOp {
+        private static Boolean GL430;
+
+        @Override
+        public void execute(CgShader shader, CgShaderProgram program, CgShaderBindingsImpl patch) {
+            // On the SSBO path (GLSL 430+), layout(binding=N) is emitted in the GLSL source;
+            // glUniformBlockBinding is redundant. Skip.
+            // On the TBO path (GLSL 330), layout(binding) is NOT supported on uniform blocks,
+            // so glUniformBlockBinding must be called. It is idempotent (writes one integer into
+            // GL program state) so we call it unconditionally — no program-change tracking needed.
+            if (GL430 == null)
+                GL430 = CgCapabilities.detect().preferredShaderBufferPath() != CgCapabilities.ShaderBufferPath.TBO;
+            if (GL430) return;
+
+            int idx = GL31.glGetUniformBlockIndex(program.getId(), ubo.getBlockName());
+            if (idx != GL31.GL_INVALID_INDEX) {
+                GL31.glUniformBlockBinding(program.getId(), idx, ubo.getBindingLocation());
             }
         }
     }

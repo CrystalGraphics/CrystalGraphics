@@ -1,5 +1,6 @@
 package io.github.somehussar.crystalgraphics.gl.buffer.shader;
 
+import io.github.somehussar.crystalgraphics.api.CgBindingPoints;
 import io.github.somehussar.crystalgraphics.api.shader.CgShader;
 import io.github.somehussar.crystalgraphics.gl.buffer.staging.CgBufferWriter;
 import org.lwjgl.opengl.GL30;
@@ -55,10 +56,10 @@ public final class CgUniformBuffer extends CgShaderBuffer {
 
     /**
      * UBO binding point reserved for per-frame data (binding = 1).
-     * Matches the {@code layout(binding = 1)} declaration in {@code cg_env.glsl}.
+     * Matches {@link CgBindingPoints#FRAME_DATA}.
      * Must not conflict with {@link CgShaderBuffer#BINDING_POINT} (binding = 0).
      */
-    public static final int BINDING_POINT = 1;
+    public static final int BINDING_POINT = CgBindingPoints.FRAME_DATA;
 
     /**
      * Initial staging and GPU buffer capacity in floats (256 floats = 1 KB).
@@ -67,14 +68,48 @@ public final class CgUniformBuffer extends CgShaderBuffer {
      */
     private static final int INITIAL_STAGING_FLOATS = 256;
 
+    /** GLSL block name this UBO is wired to. Set once at construction. */
+    private final String blockName;
+
     /**
-     * Creates a UBO using the flat-mode parent constructor.
-     * Stream buffer target is {@code GL_UNIFORM_BUFFER}; initial capacity is
-     * {@link #INITIAL_STAGING_FLOATS} floats.
+     * Engine-internal constructor. Creates a UBO targeting any binding slot, including
+     * engine-reserved slots 0–9. User code must use {@link #create} instead, which
+     * enforces slot reservation. Callers outside {@code gl/buffer/shader/} that need
+     * an engine-owned UBO (e.g. {@code CgMaterialPipeline}) use this directly.
+     *
+     * @param blockName       the GLSL uniform block name this UBO is wired to
+     * @param bindingLocation the GL binding slot to use
      */
-    public CgUniformBuffer() {
+    public CgUniformBuffer(String blockName, int bindingLocation) {
         super(GL31.GL_UNIFORM_BUFFER, INITIAL_STAGING_FLOATS);
-        bindingLocation = BINDING_POINT;
+        this.blockName       = blockName;
+        this.bindingLocation = bindingLocation;
+    }
+
+    /**
+     * Creates a user-defined UBO. Enforces that {@code bindingLocation} is at least
+     * {@link CgBindingPoints#USER_START} (10) — slots 0–9 are engine-reserved and
+     * collisions produce silent rendering corruption with no GL error.
+     *
+     * @param blockName       the GLSL uniform block name (must match the {@code uniform} block declaration)
+     * @param bindingLocation binding slot; must be &gt;= {@link CgBindingPoints#USER_START}
+     * @return a new {@code CgUniformBuffer}
+     * @throws IllegalArgumentException if {@code bindingLocation} is in the engine-reserved range
+     */
+    public static CgUniformBuffer create(String blockName, int bindingLocation) {
+        if (bindingLocation < CgBindingPoints.USER_START) {
+            throw new IllegalArgumentException(
+                "Binding slot " + bindingLocation + " is reserved for the engine (0\u2013"
+                + (CgBindingPoints.USER_START - 1) + "). "
+                + "Use CgBindingPoints.USER_START (" + CgBindingPoints.USER_START + "+) for custom UBOs. "
+                + "Conflicts here produce silent rendering corruption with no GL error.");
+        }
+        return new CgUniformBuffer(blockName, bindingLocation);
+    }
+
+    /** Returns the GLSL uniform block name this UBO is wired to. */
+    public String getBlockName() {
+        return blockName;
     }
 
     /**

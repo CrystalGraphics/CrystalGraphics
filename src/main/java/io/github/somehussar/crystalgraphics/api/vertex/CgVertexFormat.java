@@ -58,6 +58,28 @@ public final class CgVertexFormat implements CgAttributeFormat {
             .add(CgVertexSemantic.COLOR   , "a_color", 4, CgAttribType.UNSIGNED_BYTE, true)
             .build();
 
+    /**
+     * Standard spatial vertex format for the CrystalShader material pipeline:
+     * POSITION(vec3) + UV(vec2) + NORMAL(vec3) = 32 bytes stride.
+     *
+     * <p>Attribute locations are assigned sequentially in declaration order,
+     * matching the implicit index contract assumed by {@code cg_env.glsl}:</p>
+     * <ul>
+     *   <li>Location 0 — {@code cg_Position} (vec3)</li>
+     *   <li>Location 1 — {@code cg_TexCoord0} (vec2)</li>
+     *   <li>Location 2 — {@code cg_Normal} (vec3)</li>
+     * </ul>
+     *
+     * <p>Pass to {@code CgShaderFactory.fromSource(vert, frag, CgVertexFormat.SPATIAL)}
+     * so that {@code glBindAttribLocation} wires each attribute to the correct index
+     * before shader link.</p>
+     */
+    public static final CgVertexFormat SPATIAL = builder("cg_spatial_pos3_uv2_normal3")
+            .add(CgVertexSemantic.POSITION, "cg_Position",  3, CgAttribType.FLOAT)
+            .add(CgVertexSemantic.UV,       "cg_TexCoord0", 2, CgAttribType.FLOAT)
+            .add(CgVertexSemantic.NORMAL,   "cg_Normal",    3, CgAttribType.FLOAT)
+            .build();
+
     private CgVertexFormat(CgVertexAttribute[] attributes, int stride, String debugName) {
         this.attributes = attributes;
         this.stride = stride;
