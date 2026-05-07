@@ -1,6 +1,8 @@
 package io.github.somehussar.crystalgraphics.gl.lifecycle;
 
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
+import io.github.somehussar.crystalgraphics.api.material.CgMaterialPipeline;
+import io.github.somehussar.crystalgraphics.api.material.CgMaterialRegistry;
 import io.github.somehussar.crystalgraphics.gl.buffer.CgQuadIndexBuffer;
 import io.github.somehussar.crystalgraphics.gl.mesh.CgMeshRegistry;
 import io.github.somehussar.crystalgraphics.gl.render.CgInstanceRenderer;
@@ -40,6 +42,15 @@ public final class CgGraphicsLifecycle {
      *
      * <p>After this call, all VAOs, VBOs, IBOs, and cached GL capability flags are
      * cleared. A new GL context can be initialised immediately afterwards.</p>
+     *
+     * <h3>Caller-owned resources</h3>
+     * <p>{@link io.github.somehussar.crystalgraphics.api.material.CgMaterial},
+     * {@link io.github.somehussar.crystalgraphics.gl.buffer.shader.CgUniformBuffer}, and
+     * {@link io.github.somehussar.crystalgraphics.gl.buffer.shader.CgShaderBuffer} instances
+     * are <em>caller-owned</em> and are NOT auto-registered in any teardown registry.
+     * The caller must call {@code delete()} on each of these before invoking
+     * {@code destroyContext()} to avoid resource leaks. Example teardown order:
+     * {@code material.delete(); frameUbo.delete(); objectBuffer.delete(); CgGraphicsLifecycle.destroyContext();}</p>
      */
     public static void destroyContext() {
         // Step 1: ALL VAOs — CgVertexArrayRegistry.deleteAll() deletes instanced VAOs first,
@@ -59,6 +70,13 @@ public final class CgGraphicsLifecycle {
 
         // Step 5: Free all cached textures.
         CgTextureManager.get().freeAll();
+
+        // Step 7a: Materials (shader programs + their property state). Must precede VAO/VBO teardown.
+        CgMaterialRegistry.get().deleteAll();
+
+        // Step 7b: Pipeline-owned frame UBO + object SSBO. Independent from vertex buffers.
+        CgMaterialPipeline.destroy();
+        
         
         // Reset all backend-capability caches so context recreation re-probes correctly.
         CgCapabilities.clearCache();

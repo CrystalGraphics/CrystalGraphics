@@ -20,10 +20,10 @@ import org.joml.Vector4f;
  *   <dd>
  *   <pre>{@code
  *   writer.beginRecord();
- *   writer.mat4(model).mat3Padded(normal).vec4Zero().vec4Zero().vec4Zero().vec4Zero();
- *   writer.endRecord(CgShaderBuffer.FLOATS_PER_OBJECT);
+ *   writer.mat4(model).mat4(normal).vec4Zero().vec4Zero().vec4Zero().vec4Zero();
+ *   writer.endRecord();
  *   }</pre>
- *   {@link #endRecord(int)} validates the exact float count per record — catches ABI drift between
+ *   {@link #endRecord()} validates the exact float count per record — catches ABI drift between
  *   the Java write sequence and the GLSL block layout — then calls
  *   {@link CgStagingBuffer#ensureRoomForStride(int)} to pre-allocate the next slot.</dd>
  *
@@ -34,7 +34,7 @@ import org.joml.Vector4f;
  *   writer.mat4(view).mat4(proj);
  *   uniformBuffer.upload();
  *   }</pre>
- *   {@link #beginRecord()}/{@link #endRecord(int)} are never called; {@link CgStagingBuffer#putFloat}
+ *   {@link #beginRecord()}/{@link #endRecord()} are never called; {@link CgStagingBuffer#putFloat}
  *   auto-grows the backing array on overflow.</dd>
  * </dl>
  *
@@ -153,9 +153,9 @@ public final class CgBufferWriter {
      *
      * <p>Layout: {@code col0:[m00,m01,m02,0]  col1:[m10,m11,m12,0]  col2:[m20,m21,m22,0]}</p>
      *
-     * <p>Required by the SSBO/TBO per-object ABI in {@code cg_env.glsl}: normal matrices are
-     * stored as 3 vec4 columns so each column maps to exactly one texel in the TBO path.
-     * The {@code w=0} padding is also required by std140 column alignment rules.</p>
+     * <p>Use for custom packed data structures where vec4-column alignment is required,
+     * or for std140 blocks that declare mat3 fields (std140 pads each column to vec4).
+     * The {@code w=0} padding matches std140 column alignment rules.</p>
      */
     public CgBufferWriter mat3Padded(Matrix3f m) {
         staging.putFloat(m.m00()); staging.putFloat(m.m01()); staging.putFloat(m.m02()); staging.putFloat(0f);
@@ -185,28 +185,26 @@ public final class CgBufferWriter {
     }
 
     /**
-     * Closes the current record.
+     * Closes the current record, validating that the exact expected float count was written.
      *
-     * <p>Verifies that exactly {@code expectedFloats} floats were written since the last
-     * {@link #beginRecord()} call, throwing {@link IllegalStateException} if the count does not
-     * match. This catches ABI drift early — a mismatch means the Java write sequence is out of
-     * sync with the GLSL block layout.</p>
+     * <p>The expected count is the {@code floatPerRecord} value passed at construction.
+     * If it does not match the floats written since {@link #beginRecord()}, an
+     * {@link IllegalStateException} is thrown — this catches ABI drift between the Java
+     * write sequence and the GLSL block layout.</p>
      *
-     * <p>If {@code floatPerRecord > 0} (record mode), calls
-     * {@link CgStagingBuffer#ensureRoomForStride(int)} to pre-allocate the next record's
-     * worth of capacity. This is a no-op in flat mode ({@code floatPerRecord == 0}).</p>
+     * <p>If {@code floatPerRecord > 0} (record mode), also calls
+     * {@link CgStagingBuffer#ensureRoomForStride(int)} to pre-allocate the next slot.</p>
      *
-     * @param expectedFloats exact number of floats expected since the last {@link #beginRecord()}
-     * @throws IllegalStateException if the actual float count differs from {@code expectedFloats}
+     * @throws IllegalStateException if the actual float count differs from the record stride
      */
-    public void endRecord(int expectedFloats) {
-        int written = staging.rawCursor() - recordStartCursor;
-        if (written != expectedFloats) {
-            throw new IllegalStateException(
-                "CgBufferWriter.endRecord(): wrote " + written
-                    + " floats but expected " + expectedFloats);
-        }
+    public void endRecord() {
         if (floatPerRecord > 0) {
+            int written = staging.rawCursor() - recordStartCursor;
+            if (written != floatPerRecord) {
+                throw new IllegalStateException(
+                    "CgBufferWriter.endRecord(): wrote " + written
+                        + " floats but expected " + floatPerRecord + " (record stride)");
+            }
             staging.ensureRoomForStride(floatPerRecord);
         }
     }

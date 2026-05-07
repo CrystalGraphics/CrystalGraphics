@@ -162,7 +162,7 @@ public final class CgInstanceRenderer extends CgAbstractRenderer {
         useGL31 = null;
     }
 
-    private static void drawArraysInstanced(int mode, int first, int count, int instanceCount) {
+    public static void drawArraysInstanced(int mode, int first, int count, int instanceCount) {
         if (useGL31 == null) useGL31 = GLContext.getCapabilities().OpenGL31;
         if (useGL31) {
             GL31.glDrawArraysInstanced(mode, first, count, instanceCount);
@@ -171,7 +171,7 @@ public final class CgInstanceRenderer extends CgAbstractRenderer {
         }
     }
 
-    private static void drawElementsInstanced(int mode, int count, int type, long offset, int instanceCount) {
+    public static void drawElementsInstanced(int mode, int count, int type, long offset, int instanceCount) {
         if (useGL31 == null) useGL31 = GLContext.getCapabilities().OpenGL31;
         if (useGL31) {
             GL31.glDrawElementsInstanced(mode, count, type, offset, instanceCount);

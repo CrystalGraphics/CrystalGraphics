@@ -1,5 +1,6 @@
 package io.github.somehussar.crystalgraphics.gl.buffer.shader;
 
+import io.github.somehussar.crystalgraphics.api.CgBindingPoints;
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
 import io.github.somehussar.crystalgraphics.api.buffer.CgObjectBuffer;
 import io.github.somehussar.crystalgraphics.gl.buffer.CgStreamBuffer;
@@ -44,7 +45,7 @@ import lombok.Setter;
  * for (int i = 0; i < N; i++) {
  *     writer().beginRecord();
  *     writer().mat4(model).mat3Padded(normal).vec4Zero()...;
- *     writer().endRecord(FLOATS_PER_OBJECT);
+ *     writer().endRecord();
  *     buffer.advanceRecord();
  * }
  * buffer.endWrite();
@@ -64,12 +65,12 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
     public static final int BINDING_POINT = 0;
 
     /**
-     * Default CrystalShader per-object record size: 44 floats / 176 bytes.
+     * Default CrystalShader per-object record size: 48 floats / 192 bytes / 12 texels.
      * Matches the std430/TBO ABI declared in {@code cg_env.glsl}:
-     * {@code mat4} modelMatrix (16) + {@code mat3} normalMatrix padded to 3×vec4 (12) + 4×{@code vec4} custom (16).
+     * {@code mat4} modelMatrix (16) + {@code mat4} normalMatrix (16) + 4×{@code vec4} custom (16).
      * Pass to {@link #create(int, int)} or use the {@link #create(int)} shorthand.
      */
-    public static final int FLOATS_PER_OBJECT = 44;
+    public static final int FLOATS_PER_OBJECT = 48;
 
     /** Binding point used for glBindBufferBase or as GL texture unit (TBO).*/
     @Getter
@@ -174,6 +175,32 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
         return new CgShaderStorageBuffer(floatPerRecord, initialCapacity, path);
     }
 
+    /**
+     * Creates the best available SSBO/TBO shader buffer with a custom record stride and
+     * explicit binding location. Enforces that {@code bindingLocation >= CgBindingPoints#USER_START}.
+     * Use this overload when binding to a custom slot; the 2-arg factory always uses
+     * {@link #BINDING_POINT} (slot 0, engine-reserved for per-object data).
+     *
+     * @param floatPerRecord  floats per object record
+     * @param capacity        number of records to pre-allocate
+     * @param bindingLocation binding slot; must be {@code >= CgBindingPoints.USER_START}
+     * @return {@link CgShaderStorageBuffer} or {@link CgTextureBuffer} depending on hardware
+     * @throws IllegalArgumentException  if {@code bindingLocation} is engine-reserved
+     * @throws UnsupportedOperationException if the hardware does not support GL 3.3+
+     */
+    public static CgShaderBuffer create(int floatPerRecord, int capacity, int bindingLocation) {
+        if (bindingLocation < CgBindingPoints.USER_START) {
+            throw new IllegalArgumentException(
+                "Binding slot " + bindingLocation + " is reserved for the engine (0–"
+                + (CgBindingPoints.USER_START - 1) + "). "
+                + "Use CgBindingPoints.USER_START (" + CgBindingPoints.USER_START + "+) for custom SSBOs. "
+                + "Conflicts produce silent rendering corruption.");
+        }
+        CgShaderBuffer buf = create(floatPerRecord, capacity);
+        buf.bindingLocation = bindingLocation;
+        return buf;
+    }
+
     // ── Write API ─────────────────────────────────────────────────────────────
 
     /**
@@ -187,7 +214,7 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
     /**
      * Returns the {@link CgBufferWriter} for filling per-object or per-frame data.
      * In record mode, bracket each object with {@link CgBufferWriter#beginRecord()} /
-     * {@link CgBufferWriter#endRecord(int)} and call {@link #advanceRecord()} after each.
+     * {@link CgBufferWriter#endRecord()} and call {@link #advanceRecord()} after each.
      */
     public CgBufferWriter writer() {
         return writer;
@@ -201,13 +228,14 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
      *                      {@link #advanceRecord()} will throw if this count is exceeded
      * @throws IllegalStateException if a write session is already open
      */
-    public void beginWrite(int instanceCount) {
+    public CgBufferWriter beginWrite(int instanceCount) {
         if (inWrite) throw new IllegalStateException("Already in a write session; call endWrite() first");
         writeHead = 0;
         declaredWriteCount = instanceCount;
         writer.reset();
         inWrite = true;
         lastWrittenCount = -1;
+        return writer;
     }
 
     /**
@@ -272,10 +300,18 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
      * Binds this buffer to an explicit binding point without changing
      * the instance-level binding point. Use for temporary binding to a different point.
      *
-     * @param bindingLocation the GL binding point to bind to
+     * @param bindingLocation the GL binding point to bind to; must be {@code >= CgBindingPoints.USER_START}
+     * @throws IllegalArgumentException if {@code bindingLocation} is an engine-reserved slot
      * @throws IllegalStateException if deleted
      */
     public void bindTo(int bindingLocation) {
+        if (bindingLocation < CgBindingPoints.USER_START) {
+            throw new IllegalArgumentException(
+                "Binding slot " + bindingLocation + " is reserved for the engine (0–"
+                + (CgBindingPoints.USER_START - 1) + "). "
+                + "Use CgBindingPoints.USER_START (" + CgBindingPoints.USER_START + "+) for custom SSBOs. "
+                + "Conflicts produce silent rendering corruption.");
+        }
         if (deleted) throw new IllegalStateException("CgShaderBuffer has been deleted");
         this.bindingLocation = bindingLocation;
         bind();

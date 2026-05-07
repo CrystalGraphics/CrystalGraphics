@@ -63,6 +63,13 @@ For any work on shader loading, preprocessing, uniform binding, or the GLSL stan
 - `src/main/java/io/github/somehussar/crystalgraphics/gl/shader/AGENTS.md` — GL backends: CgShaderFactory compile waterfall, CgCoreShaderProgram, CgArbShaderProgram
 - `src/main/java/io/github/somehussar/crystalgraphics/mc/shader/AGENTS.md` — MC impls: CgShaderImpl recompile flow, CgShaderManagerImpl cache, CgShaderReloadHook (F3+T), CgSystemUniformRegistry
 
+### CrystalShader Material System (Wave 5+)
+
+For `.shader` file loading, GLSL generation, and material bind/draw, use these guides:
+
+- `src/main/java/io/github/somehussar/crystalgraphics/api/material/AGENTS.md` — public material API: `CgMaterial` load/bind/property-set/delete, `CgBuiltinFormats.SPATIAL` vertex format, frame-data upload pattern, caller-owned lifecycle
+- `src/main/java/io/github/somehussar/crystalgraphics/gl/material/AGENTS.md` — parser and compiler internals: `CgShaderParser` grammar and restrictions, `CgMaterialShaderCompiler` GLSL generation sequence (steps 1–11 vert, 1–10 frag), `CompiledMaterialSource`
+
 ### GLSL Standard Library
 
 Five `#pragma once` include files at `src/main/resources/assets/crystalgraphics/shaders/lib/`:
@@ -151,7 +158,7 @@ For any work on static mesh geometry (loading, building, or GPU upload), use the
 ### Source package guides
 
 - `src/main/java/io/github/somehussar/crystalgraphics/api/mesh/AGENTS.md` — CgMeshTopology, CgMeshData CPU data holder
-- `src/main/java/io/github/somehussar/crystalgraphics/gl/mesh/AGENTS.md` — CgMeshBuilder (procedural), CgObjLoader, CgGltfLoader, CgMeshLoader (facade), CgMesh (GPU upload + draw)
+- `src/main/java/io/github/somehussar/crystalgraphics/gl/mesh/AGENTS.md` — CgMeshBuilder (procedural), CgObjLoader, CgGltfLoader, CgMeshLoader (facade), CgMesh (GPU upload + draw, including `drawInstanced(int count)` for CrystalShader material instancing)
 
 ### Key rules
 

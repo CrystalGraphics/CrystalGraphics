@@ -1,6 +1,7 @@
 package io.github.somehussar.crystalgraphics.api.shader;
 
 import io.github.somehussar.crystalgraphics.api.texture.CgTexture;
+import io.github.somehussar.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 
 import org.joml.*;
 import org.lwjgl.opengl.GL11;
@@ -280,6 +281,18 @@ public interface CgShaderBindings {
      * @return this instance for chaining
      */
     CgShaderBindings sampler(String name, int unit, int glTextureId, int glTarget);
+
+    /**
+     * Records a persistent UBO block binding. On the TBO shader path, calls
+     * {@code glUniformBlockBinding} every time {@link #apply} is invoked (idempotent, free).
+     * No-op on the SSBO path — {@code layout(binding=N)} in GLSL 430 already handles it.
+     * This op lives in persistent {@link CgShader#bindings()}, not ephemeral bindings,
+     * so it survives hot-reloads and automatically rewires the block after recompile.
+     *
+     * @param buffer the UBO to wire
+     * @return this instance for chaining
+     */
+    CgShaderBindings ubo(CgUniformBuffer buffer);
 
     /**
      * Removes all accumulated bindings without applying them.

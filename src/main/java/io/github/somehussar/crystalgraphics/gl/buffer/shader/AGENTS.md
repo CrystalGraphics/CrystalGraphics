@@ -61,7 +61,7 @@ All four types are `public`. Callers may hold concrete types for type-specific A
 
 | Type | Role |
 |------|------|
-| `CgShaderBuffer` | Abstract base + factory. Owns `CgStreamBuffer`, `CgBufferWriter`, write-session API (`beginWrite/advanceRecord/endWrite`), `delete()` template with `deleteGlResources()` hook, `getGlBufferId()`. Two constructors: record-mode and flat-mode. |
+| `CgShaderBuffer` | Abstract base + factory. Owns `CgStreamBuffer`, `CgBufferWriter`, write-session API (`beginWrite/advanceRecord/endWrite`), `delete()` template with `deleteGlResources()` hook, `getGlBufferId()`. Two constructors: record-mode and flat-mode. Factories: `create(capacity)`, `create(floatPerRecord, capacity)`, `create(floatPerRecord, capacity, bindingLocation)` (3-arg enforces `bindingLocation >= CgBindingPoints.USER_START`). `bindTo(bindingLocation)` also enforces `USER_START`. |
 | `CgShaderStorageBuffer` | SSBO backend. Handles GL 4.3 core and `ARB_shader_storage_buffer_object`. Only owns `bindInternal/unbindInternal/getPath`. |
 | `CgTextureBuffer` | TBO backend. Manages a `GL_TEXTURE_BUFFER` texture attached once at construction. `deleteGlResources()` deletes the texture. `glTexBuffer` binds to the buffer object (not storage), so auto-grow re-allocations need no re-attachment. |
 | `CgUniformBuffer` | UBO for per-frame data. Flat-mode child of `CgShaderBuffer`. Owns `BLOCK_NAME`, `BINDING_POINT`, `upload()`, `bindProgramBlock()`. Bypasses parent session-tracking `bind()` with its own override. |
@@ -72,7 +72,7 @@ Each per-object slot is 11 vec4 texels / 44 floats / 176 bytes (`FLOATS_PER_OBJE
 
 ```
 floats  0–15 : mat4 modelMatrix   (column-major)
-floats 16–27 : mat3 normalMatrix  (3 columns, each padded to vec4 w=0)
+floats 16–27 : mat4 normalMatrix  (3 columns, each padded to vec4 w=0, casted to mat3 in shader macro)
 floats 28–31 : vec4 custom0
 floats 32–35 : vec4 custom1
 floats 36–39 : vec4 custom2
@@ -142,3 +142,6 @@ shader.set1i("cg_ObjectTBO", objectBuffer.getTboTextureUnit());
   accepts any stride. `FLOATS_PER_OBJECT = 44` is the default ABI, not a hard constraint.
 - **`deleteGlResources()` hook** — override in subclasses that own additional GL objects
   (e.g. `CgTextureBuffer` owns `tboTexId`). Parent `delete()` calls this then sets `deleted = true`.
+- **Engine-reserved binding slots** — slots 0–9 are owned by CrystalGraphics. `bindTo(slot)` and the
+  3-arg `create(floatPerRecord, capacity, bindingLocation)` factory both throw `IllegalArgumentException`
+  if `bindingLocation < CgBindingPoints.USER_START (= 10)`. Use slot ≥ 10 for all user-defined SSBOs.
