@@ -557,10 +557,7 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
                 GL430 = CgCapabilities.detect().preferredShaderBufferPath() != CgCapabilities.ShaderBufferPath.TBO;
             if (GL430) return;
 
-            int idx = GL31.glGetUniformBlockIndex(program.getId(), ubo.getBlockName());
-            if (idx != GL31.GL_INVALID_INDEX) {
-                GL31.glUniformBlockBinding(program.getId(), idx, ubo.getBindingLocation());
-            }
+            ubo.bindBlock(shader);
         }
     }
 

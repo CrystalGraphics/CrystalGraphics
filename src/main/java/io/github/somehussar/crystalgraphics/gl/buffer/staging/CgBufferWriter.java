@@ -1,42 +1,33 @@
 package io.github.somehussar.crystalgraphics.gl.buffer.staging;
 
+import io.github.somehussar.crystalgraphics.api.buffer.CgBufferField;
+import io.github.somehussar.crystalgraphics.api.buffer.CgBufferFormat;
+import io.github.somehussar.crystalgraphics.api.buffer.CgGpuType;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
-import org.joml.Vector3f;
 import org.joml.Vector4f;
 
+import java.util.Objects;
+
 /**
- * General-purpose staged float writer backed by a {@link CgStagingBuffer}.
+ * Format-aware staged float writer backed by a {@link CgStagingBuffer}.
  *
  * <p>Companion to {@link CgInstanceWriter} for non-vertex-format buffer payloads
- * (UBOs, SSBOs, TBOs). The write API mirrors {@link CgInstanceWriter} exactly —
- * scalar, vector, and matrix helpers write floats into a shared staging array.
- * {@link #beginRecord()}/{@link #endRecord(int)} bracket each logical record and
- * enforce an exact float count per record in DEBUG mode.</p>
+ * (UBOs, SSBOs, TBOs). Requires a {@link CgBufferFormat} — all shader buffers
+ * carry a typed format. {@link #beginRecord()}/{@link #endRecord()} bracket each
+ * logical record.</p>
  *
- * <p>Two usage modes depending on {@code floatPerRecord} passed at construction:</p>
- * <dl>
- *   <dt>Record mode ({@code floatPerRecord > 0}) — SSBO/TBO object data</dt>
- *   <dd>
- *   <pre>{@code
- *   writer.beginRecord();
- *   writer.mat4(model).mat4(normal).vec4Zero().vec4Zero().vec4Zero().vec4Zero();
- *   writer.endRecord();
- *   }</pre>
- *   {@link #endRecord()} validates the exact float count per record — catches ABI drift between
- *   the Java write sequence and the GLSL block layout — then calls
- *   {@link CgStagingBuffer#ensureRoomForStride(int)} to pre-allocate the next slot.</dd>
- *
- *   <dt>Flat mode ({@code floatPerRecord == 0}) — UBO frame data</dt>
- *   <dd>
- *   <pre>{@code
- *   writer.reset();
- *   writer.mat4(view).mat4(proj);
- *   uniformBuffer.upload();
- *   }</pre>
- *   {@link #beginRecord()}/{@link #endRecord()} are never called; {@link CgStagingBuffer#putFloat}
- *   auto-grows the backing array on overflow.</dd>
- * </dl>
+ * <h3>Format-aware mode — named writes</h3>
+ * <pre>{@code
+ * writer.beginRecord()
+ *       .mat4("modelMatrix", model)
+ *       .mat4("normalMatrix", normal);
+ * // custom0-3 auto-zeroed from reserveAndZero
+ * buffer.endRecord();
+ * }</pre>
+ * {@link #beginRecord()} calls {@link CgStagingBuffer#reserveAndZero(int)} to pre-zero
+ * the full record. Named writes scatter values at specific offsets via
+ * {@link CgStagingBuffer#setFloatAt(int, float)}.
  *
  * <p><strong>Thread safety:</strong> none. All calls must be on the render thread.</p>
  *
@@ -47,176 +38,188 @@ public final class CgBufferWriter {
 
     private final CgStagingBuffer staging;
 
-    /**
-     * The record stride passed at construction. Used by {@link #endRecord(int)} to call
-     * {@link CgStagingBuffer#ensureRoomForStride(int)}.
-     * Zero in flat/UBO mode — {@link #endRecord(int)} skips the ensure call.
-     */
-    private final int floatPerRecord;
-
-    /** Cursor snapshot taken by {@link #beginRecord()} to verify the exact float count in {@link #endRecord(int)}. */
-    private int recordStartCursor;
+    /** Format descriptor. Always non-null — all shader buffers must carry a typed format. */
+    private final CgBufferFormat format;
 
     /**
-     * @param staging         backing staging buffer
-     * @param floatPerRecord record stride; pass {@code 0} for flat/UBO writers that never
-     *                        call {@link #beginRecord()}/{@link #endRecord(int)}
+     * Start index within the staging array for the current record.
+     * Set by {@link #beginRecord()} via {@link CgStagingBuffer#reserveAndZero(int)}.
      */
-    public CgBufferWriter(CgStagingBuffer staging, int floatPerRecord) {
-        this.staging         = staging;
-        this.floatPerRecord = floatPerRecord;
-    }
-
-    // ── Scalar ────────────────────────────────────────────────────────────────
-
-    /** Writes a single {@code float} into the staging buffer. Returns {@code this} for chaining. */
-    public CgBufferWriter putFloat(float v) {
-        staging.putFloat(v);
-        return this;
-    }
+    private int recordStartIdx;
 
     /**
-     * Writes a raw {@code int} value as its IEEE-754 bit-equivalent float slot via
-     * {@link Float#intBitsToFloat(int)}.
-     * Use for {@code int} or {@code uint} fields in std140/std430 blocks where the bits
-     * must be preserved exactly and the caller is responsible for correct GLSL type alignment.
+     * @param staging backing staging buffer
+     * @param format  the buffer format driving named writes; must not be {@code null}
      */
-    public CgBufferWriter putInt(int v) {
-        staging.putColorPacked(v);
-        return this;
-    }
-
-    // ── Vector ────────────────────────────────────────────────────────────────
-
-    /** Writes 2 floats as a {@code vec2} (x, y). */
-    public CgBufferWriter vec2(float x, float y) {
-        staging.putFloat(x);
-        staging.putFloat(y);
-        return this;
-    }
-
-    /** Writes 3 floats as a {@code vec3} (x, y, z). */
-    public CgBufferWriter vec3(float x, float y, float z) {
-        staging.putFloat(x);
-        staging.putFloat(y);
-        staging.putFloat(z);
-        return this;
-    }
-
-    /** Writes a {@link Vector3f} as a {@code vec3}. */
-    public CgBufferWriter vec3(Vector3f v) {
-        return vec3(v.x, v.y, v.z);
-    }
-
-    /** Writes 4 floats as a {@code vec4} (x, y, z, w). */
-    public CgBufferWriter vec4(float x, float y, float z, float w) {
-        staging.putFloat(x);
-        staging.putFloat(y);
-        staging.putFloat(z);
-        staging.putFloat(w);
-        return this;
-    }
-
-    /** Writes a {@link Vector4f} as a {@code vec4}. */
-    public CgBufferWriter vec4(Vector4f v) {
-        return vec4(v.x, v.y, v.z, v.w);
-    }
-
-    /** Writes {@code vec4(0, 0, 0, 0)} — 4 zero floats. Useful as a padding/placeholder slot. */
-    public CgBufferWriter vec4Zero() {
-        staging.putFloat(0f);
-        staging.putFloat(0f);
-        staging.putFloat(0f);
-        staging.putFloat(0f);
-        return this;
-    }
-
-    // ── Matrix ────────────────────────────────────────────────────────────────
-
-    /**
-     * Writes a {@code mat3} as three tightly-packed column-major vec3s (9 floats / 36 bytes).
-     *
-     * <p>Layout: {@code col0:[m00,m01,m02]  col1:[m10,m11,m12]  col2:[m20,m21,m22]}</p>
-     *
-     * <p>Use this for {@code mat3} fields in std430 blocks. For std140 or TBO
-     * per-object ABI use {@link #mat3Padded(Matrix3f)} instead.</p>
-     */
-    public CgBufferWriter mat3(Matrix3f m) {
-        staging.putFloat(m.m00()); staging.putFloat(m.m01()); staging.putFloat(m.m02());
-        staging.putFloat(m.m10()); staging.putFloat(m.m11()); staging.putFloat(m.m12());
-        staging.putFloat(m.m20()); staging.putFloat(m.m21()); staging.putFloat(m.m22());
-        return this;
-    }
-
-    /**
-     * Writes a {@code mat3} with each column padded to a {@code vec4} (12 floats / 48 bytes).
-     *
-     * <p>Layout: {@code col0:[m00,m01,m02,0]  col1:[m10,m11,m12,0]  col2:[m20,m21,m22,0]}</p>
-     *
-     * <p>Use for custom packed data structures where vec4-column alignment is required,
-     * or for std140 blocks that declare mat3 fields (std140 pads each column to vec4).
-     * The {@code w=0} padding matches std140 column alignment rules.</p>
-     */
-    public CgBufferWriter mat3Padded(Matrix3f m) {
-        staging.putFloat(m.m00()); staging.putFloat(m.m01()); staging.putFloat(m.m02()); staging.putFloat(0f);
-        staging.putFloat(m.m10()); staging.putFloat(m.m11()); staging.putFloat(m.m12()); staging.putFloat(0f);
-        staging.putFloat(m.m20()); staging.putFloat(m.m21()); staging.putFloat(m.m22()); staging.putFloat(0f);
-        return this;
-    }
-
-    /**
-     * Writes a {@code mat4} as 16 column-major floats (64 bytes).
-     *
-     * <p>Layout: 4 columns × 4 rows, column-major order as expected by GLSL {@code mat4}.</p>
-     */
-    public CgBufferWriter mat4(Matrix4f m) {
-        staging.putFloat(m.m00()); staging.putFloat(m.m01()); staging.putFloat(m.m02()); staging.putFloat(m.m03());
-        staging.putFloat(m.m10()); staging.putFloat(m.m11()); staging.putFloat(m.m12()); staging.putFloat(m.m13());
-        staging.putFloat(m.m20()); staging.putFloat(m.m21()); staging.putFloat(m.m22()); staging.putFloat(m.m23());
-        staging.putFloat(m.m30()); staging.putFloat(m.m31()); staging.putFloat(m.m32()); staging.putFloat(m.m33());
-        return this;
+    public CgBufferWriter(CgStagingBuffer staging, CgBufferFormat format) {
+        Objects.requireNonNull(format, "CgBufferFormat is required — CgBufferWriter is format-aware only");
+        this.staging = staging;
+        this.format = format;
     }
 
     // ── Record bracketing ─────────────────────────────────────────────────────
 
+    /**
+     * Opens a new record: calls {@link CgStagingBuffer#reserveAndZero(int)} to pre-zero
+     * the full record and records {@link #recordStartIdx} for named writes.
+     *
+     * @return {@code this} for chaining
+     */
     public CgBufferWriter beginRecord() {
-        recordStartCursor = staging.rawCursor();
+        recordStartIdx = staging.reserveAndZero(format.getFloatCount());
         return this;
     }
 
     /**
-     * Closes the current record, validating that the exact expected float count was written.
+     * Closes the current record. In format-aware mode the record was pre-zeroed by
+     * {@link #beginRecord()} — no float-count validation is needed.
      *
-     * <p>The expected count is the {@code floatPerRecord} value passed at construction.
-     * If it does not match the floats written since {@link #beginRecord()}, an
-     * {@link IllegalStateException} is thrown — this catches ABI drift between the Java
-     * write sequence and the GLSL block layout.</p>
-     *
-     * <p>If {@code floatPerRecord > 0} (record mode), also calls
-     * {@link CgStagingBuffer#ensureRoomForStride(int)} to pre-allocate the next slot.</p>
-     *
-     * @throws IllegalStateException if the actual float count differs from the record stride
+     * @apiNote Internal — prefer {@link io.github.somehussar.crystalgraphics.gl.buffer.shader.CgShaderBuffer#endRecord()}
+     *          which also increments the write head. Call this directly only from {@code CgShaderBuffer}.
      */
     public void endRecord() {
-        if (floatPerRecord > 0) {
-            int written = staging.rawCursor() - recordStartCursor;
-            if (written != floatPerRecord) {
-                throw new IllegalStateException(
-                    "CgBufferWriter.endRecord(): wrote " + written
-                        + " floats but expected " + floatPerRecord + " (record stride)");
-            }
-            staging.ensureRoomForStride(floatPerRecord);
-        }
+        // Record was pre-zeroed by beginRecord(); all slots are accounted for.
     }
+
+    // ── Named writes (format-aware mode) ──────────────────────────────────────
+
+    /**
+     * Named write — writes a {@code mat4} to the field with the given name.
+     * Looks up the field offset in the attached format and writes 16 floats via
+     * absolute-index writes into the pre-reserved record.
+     *
+     * @param fieldName name of the MAT4 field in the attached format
+     * @param m         the matrix to write (column-major)
+     * @return {@code this} for chaining
+     * @throws IllegalStateException if the field does not exist or is not of type MAT4
+     */
+    public CgBufferWriter mat4(String fieldName, Matrix4f m) {
+        int base = resolveField(fieldName, CgGpuType.MAT4);
+        staging.setFloatAt(base + 0, m.m00());
+        staging.setFloatAt(base + 1, m.m01());
+        staging.setFloatAt(base + 2, m.m02());
+        staging.setFloatAt(base + 3, m.m03());
+        staging.setFloatAt(base + 4, m.m10());
+        staging.setFloatAt(base + 5, m.m11());
+        staging.setFloatAt(base + 6, m.m12());
+        staging.setFloatAt(base + 7, m.m13());
+        staging.setFloatAt(base + 8, m.m20());
+        staging.setFloatAt(base + 9, m.m21());
+        staging.setFloatAt(base + 10, m.m22());
+        staging.setFloatAt(base + 11, m.m23());
+        staging.setFloatAt(base + 12, m.m30());
+        staging.setFloatAt(base + 13, m.m31());
+        staging.setFloatAt(base + 14, m.m32());
+        staging.setFloatAt(base + 15, m.m33());
+        return this;
+    }
+
+    /**
+     * Named write — writes a {@code mat3} (48 bytes, 3 × vec4-aligned columns) to the
+     * field with the given name. Each column is padded with a {@code w=0} float.
+     *
+     * @param fieldName name of the MAT3 field in the attached format
+     * @param m         the matrix to write (column-major)
+     * @return {@code this} for chaining
+     * @throws IllegalStateException if the field does not exist or is not of type MAT3
+     */
+    public CgBufferWriter mat3(String fieldName, Matrix3f m) {
+        int base = resolveField(fieldName, CgGpuType.MAT3);
+        staging.setFloatAt(base + 0, m.m00());
+        staging.setFloatAt(base + 1, m.m01());
+        staging.setFloatAt(base + 2, m.m02());
+        staging.setFloatAt(base + 3, 0f);
+        staging.setFloatAt(base + 4, m.m10());
+        staging.setFloatAt(base + 5, m.m11());
+        staging.setFloatAt(base + 6, m.m12());
+        staging.setFloatAt(base + 7, 0f);
+        staging.setFloatAt(base + 8, m.m20());
+        staging.setFloatAt(base + 9, m.m21());
+        staging.setFloatAt(base + 10, m.m22());
+        staging.setFloatAt(base + 11, 0f);
+        return this;
+    }
+
+    /**
+     * Named write — writes a {@code vec4} to the field with the given name.
+     *
+     * @param fieldName name of the VEC4 field
+     * @return {@code this} for chaining
+     */
+    public CgBufferWriter vec4(String fieldName, float x, float y, float z, float w) {
+        int base = resolveField(fieldName, CgGpuType.VEC4);
+        staging.setFloatAt(base + 0, x);
+        staging.setFloatAt(base + 1, y);
+        staging.setFloatAt(base + 2, z);
+        staging.setFloatAt(base + 3, w);
+        return this;
+    }
+
+    /**
+     * Named write — writes a {@code vec4} from a {@link Vector4f} to the field with the given name.
+     *
+     * @param fieldName name of the VEC4 field
+     * @return {@code this} for chaining
+     */
+    public CgBufferWriter vec4(String fieldName, Vector4f v) {
+        return vec4(fieldName, v.x, v.y, v.z, v.w);
+    }
+
+    /**
+     * Named write — writes a {@code vec3} (3 floats + 1 padding zero for 16-byte alignment)
+     * to the field with the given name.
+     *
+     * @param fieldName name of the VEC3 field
+     * @return {@code this} for chaining
+     */
+    public CgBufferWriter vec3(String fieldName, float x, float y, float z) {
+        int base = resolveField(fieldName, CgGpuType.VEC3);
+        staging.setFloatAt(base + 0, x);
+        staging.setFloatAt(base + 1, y);
+        staging.setFloatAt(base + 2, z);
+        // padding float at base+3 is already zero from reserveAndZero
+        return this;
+    }
+
+    /**
+     * Named write — writes a {@code vec2} to the field with the given name.
+     *
+     * @param fieldName name of the VEC2 field
+     * @return {@code this} for chaining
+     */
+    public CgBufferWriter vec2(String fieldName, float x, float y) {
+        int base = resolveField(fieldName, CgGpuType.VEC2);
+        staging.setFloatAt(base + 0, x);
+        staging.setFloatAt(base + 1, y);
+        return this;
+    }
+
+    /**
+     * Named write — writes a single {@code float} to the field with the given name.
+     * Method name uses trailing underscore to avoid conflict with the Java keyword {@code float}.
+     *
+     * @param fieldName name of the FLOAT field
+     * @return {@code this} for chaining
+     */
+    public CgBufferWriter float_(String fieldName, float v) {
+        int base = resolveField(fieldName, CgGpuType.FLOAT);
+        staging.setFloatAt(base, v);
+        return this;
+    }
+
+    // TODO v2: int_/uint/bool_ named writes with CgStagingBuffer.setIntBitsAt(int, int)
 
     // ── Staging access ────────────────────────────────────────────────────────
 
     /**
      * Resets the write cursor to 0.
      * Call before writing a new frame's data to reuse the same staging allocation.
+     *
+     * @return {@code this} for chaining (required by {@code beginFrame()} chain)
      */
-    public void reset() {
+    public CgBufferWriter reset() {
         staging.reset();
+        return this;
     }
 
     /**
@@ -230,5 +233,23 @@ public final class CgBufferWriter {
     /** Returns the current write cursor — number of floats written since the last {@link #reset()}. */
     public int rawCursor() {
         return staging.rawCursor();
+    }
+
+    // ── Private helpers ───────────────────────────────────────────────────────
+
+    /**
+     * Resolves a named field, validates its type, and returns the absolute float index
+     * ({@code recordStartIdx + field.floatOffset}) for scatter writes via
+     * {@link CgStagingBuffer#setFloatAt(int, float)}.
+     */
+    private int resolveField(String fieldName, CgGpuType expectedType) {
+        CgBufferField field = format.getField(fieldName); // throws if not found
+        if (field.getType() != expectedType) {
+            throw new IllegalStateException(
+                    "Type mismatch for field '" + fieldName + "' in format '"
+                            + format.getDebugName() + "': expected " + expectedType
+                            + " but field is " + field.getType() + ".");
+        }
+        return recordStartIdx + field.getFloatOffset();
     }
 }

@@ -15,14 +15,22 @@ awareness of shaders, textures, or render state.
 
 ## Type Map
 
-| Type | Role                                                                                                                                                                                  |
-|------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `CgStagingBuffer` | Growable `float[]` with write cursor. Pure data — no GL, no semantics. Owns the raw float array. Growth factor: 1.5×. Implements `CgVertexOutput`.                                   |
+| Type | Role |
+|------|------|
+| `CgStagingBuffer` | Growable `float[]` with write cursor. Pure data — no GL, no semantics. Growth factor: 1.5×. Implements `CgVertexOutput`. Also supports random-access write: `reserveAndZero(int floatCount)` pre-zeros a slot range and returns the start index; `setFloatAt(int absIndex, float v)` writes at an absolute index without advancing the cursor. Used by `CgBufferWriter` in format-aware mode. |
+| `CgBufferWriter` | General-purpose staged float writer for UBOs/SSBOs/TBOs (non-vertex payloads). **Always format-aware** — requires a `CgBufferFormat` at construction (no positional/null-format mode). Named writes only: `mat4("field", m)`, `vec4("field", ...)`, `mat3("field", m)` (48 bytes, vec4-padded), `vec3("field", ...)`, `vec2("field", ...)`, `float_("field", v)`. `reset()` returns `this`. `beginRecord()` calls `reserveAndZero(format.getFloatCount())` and records `recordStartIdx`. `endRecord()` is a no-op (record pre-zeroed). |
 | `CgVertexWriter` | V1 format-aware `CgVertexConsumer` implementation. Routes fluent calls (vertex/uv/color/normal) to a `CgVertexOutput` based on format attribute semantics. Static factory `forBuffer(ByteBuffer, CgVertexFormat)` enables direct ByteBuffer writes for mesh builders. |
-| `CgInstanceWriter` | Per-instance data writer backed by `CgStagingBuffer`. Fluent API: `mat4(...).color(...).putVec4(...).endInstance()`. `beginInstance()`/`endInstance()` validate stride in DEBUG mode. |
-| `CgColorPacking` | Utility for packing RGBA components into ABGR int. `packAbgr(r,g,b,a)` is endian-aware. `packAbgrFromArgb(argb)` and `packAbgrFromRgba(rgba)` for common int formats. Eliminates duplicate packing logic from `CgVertexWriter` and `CgInstanceWriter`. |
-| `CgVertexOutput` | Package-private write target interface for `CgVertexWriter`. Two methods: `putFloat(float)` and `putColorPacked(int)`. Implemented by `CgStagingBuffer` and `CgStagingByteBuffer`. |
-| `CgStagingByteBuffer` | Package-private `CgVertexOutput` backed by a direct `ByteBuffer`. Used by `CgVertexWriter.forBuffer()`. Colors stored as `Float.intBitsToFloat(abgr)`. |
+| `CgInstanceWriter` | Per-instance data writer backed by `CgStagingBuffer`. Fluent API: `mat4(...).color(...).putVec4(...).endInstance()`. `beginInstance()`/`endInstance()` validate stride in DEBUG mode. `mat3()` here is tight 9-float (vertex attribute packing — not std140). |
+| `CgColorPacking` | Utility for packing RGBA components into ABGR int. `packAbgr(r,g,b,a)` is endian-aware. |
+| `CgVertexOutput` | Package-private write target interface. Two methods: `putFloat(float)` and `putColorPacked(int)`. Implemented by `CgStagingBuffer` and `CgStagingByteBuffer`. |
+| `CgStagingByteBuffer` | Package-private `CgVertexOutput` backed by a direct `ByteBuffer`. Used by `CgVertexWriter.forBuffer()`. |
+
+## mat3 Naming Convention
+
+| Method | Bytes | Use case |
+|--------|-------|----------|
+| `CgBufferWriter.mat3(String, Matrix3f)` | 48 bytes (3 × vec4-aligned cols) | std140/std430 UBO/SSBO named field — correct |
+| `CgInstanceWriter.mat3(Matrix3f)` | 36 bytes (tight col-major) | Vertex attribute instance data — correct for that use |
 
 ## Data Flow
 

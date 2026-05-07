@@ -30,4 +30,21 @@ public final class CgBindingPoints {
     public static final int USER_START  = 10;
 
     private CgBindingPoints() {}
+    
+    /**
+     * Validates that a binding point is in the user-accessible range.
+     * Exposed as package-accessible static for unit testing of the guard in isolation.
+     *
+     * @param bindingPoint the point to validate
+     * @throws IllegalArgumentException if {@code bindingPoint < CgBindingPoints.USER_START}
+     */
+    public static void validateBindingPoint(int bindingPoint) {
+        if (bindingPoint < CgBindingPoints.USER_START) {
+            throw new IllegalArgumentException(
+                "Binding slot " + bindingPoint + " is reserved for the engine (0\u2013"
+                + (CgBindingPoints.USER_START - 1) + "). "
+                + "Use CgBindingPoints.USER_START (" + CgBindingPoints.USER_START + "+) for custom UBOs. "
+                + "Conflicts here produce silent rendering corruption with no GL error.");
+        }
+    }
 }

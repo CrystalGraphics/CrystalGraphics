@@ -1,9 +1,9 @@
 package io.github.somehussar.crystalgraphics.api.material;
 
 import io.github.somehussar.crystalgraphics.api.CgBindingPoints;
+import io.github.somehussar.crystalgraphics.api.buffer.CgBufferFormat;
 import io.github.somehussar.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import io.github.somehussar.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
-import org.joml.Matrix4f;
 
 /**
  * Singleton owner of the frame-level GPU resources shared by all materials:
@@ -24,11 +24,18 @@ import org.joml.Matrix4f;
  *
  * // Per-frame:
  * CgMaterialPipeline pipeline = CgMaterialPipeline.getInstance();
- * pipeline.beginFrame(view, proj, timeSecs, viewportW, viewportH);
+ * pipeline.beginFrame(frameUniforms);  // frameUniforms is a reusable CgFrameUniforms instance
  *
- * CgBufferWriter w = pipeline.getObjectBuffer().beginWrite(N);
- * // ... write N object records ...
- * pipeline.getObjectBuffer().endWrite();
+ * CgShaderBuffer buf = pipeline.objectBuffer();
+ * CgBufferWriter w = buf.beginWrite(N);
+ * for (MyObject obj : objects) {
+ *     w.beginRecord()
+ *      .mat4("modelMatrix", obj.getModel())
+ *      .mat4("normalMatrix", obj.getNormal());
+ *     // custom0-3 auto-zeroed
+ *     buf.endRecord();
+ * }
+ * buf.endWrite();
  *
  * material.bind();
  * mesh.drawInstanced(N);
@@ -40,11 +47,49 @@ import org.joml.Matrix4f;
  */
 public final class CgMaterialPipeline {
 
-    /** std140 float count for CgFrameBlock: 2×mat4 + vec4 + vec2 = 38 floats = 152 bytes. */
-    public static final int FLOATS_PER_FRAME_BLOCK = 38;
+    /**
+     * Per-frame UBO format (std140). Stride = 38 floats = 152 bytes.
+     *
+     * <pre>
+     *   mat4  cg_ViewMatrix   — floats  0–15 (column-major)
+     *   mat4  cg_ProjMatrix   — floats 16–31 (column-major)
+     *   vec4  cg_Time         — floats 32–35: t/20, t, t×2, t×3 (seconds)
+     *   vec2  cg_Resolution   — floats 36–37: viewport width, height (pixels)
+     * </pre>
+     */
+    public static final CgBufferFormat FRAME_BLOCK_FORMAT = CgBufferFormat
+            .builder("CgFrameBlock", CgBufferFormat.MemoryLayout.STD140)
+            .mat4("cg_ViewMatrix")
+            .mat4("cg_ProjMatrix")
+            .vec4("cg_Time")
+            .vec2("cg_Resolution")
+            .build();
 
-    /** Default initial object record capacity for the owned object buffer. Auto-grows as needed. */
-    private static final int DEFAULT_OBJECT_CAPACITY = 64;
+    /**
+     * Per-object SSBO/TBO format (std430). Stride = 48 floats = 192 bytes.
+     *
+     * <pre>
+     *   mat4  modelMatrix   — floats  0–15 (column-major)
+     *   mat4  normalMatrix  — floats 16–31 (full mat4; shader reads upper-left 3×3 as mat3)
+     *   vec4  custom0       — floats 32–35
+     *   vec4  custom1       — floats 36–39
+     *   vec4  custom2       — floats 40–43
+     *   vec4  custom3       — floats 44–47
+     * </pre>
+     *
+     * <p>Use named writes to fill only the fields you need;
+     * unwritten fields are auto-zeroed per record.</p>
+     */
+    public static final CgBufferFormat OBJECT_FORMAT = CgBufferFormat
+            .builder("cg_object", CgBufferFormat.MemoryLayout.STD430)
+            .mat4("modelMatrix")
+            .mat4("normalMatrix")
+            .vec4("custom0")
+            .vec4("custom1")
+            .vec4("custom2")
+            .vec4("custom3")
+            .build();
+    
 
     // ── Singleton ─────────────────────────────────────────────────────────────
 
@@ -53,15 +98,13 @@ public final class CgMaterialPipeline {
     /**
      * Creates and installs the singleton pipeline. Must be called once on the GL thread
      * after context creation, before any {@link #getInstance()} call.
-     **/
+     */
     public static void init() {
         if (INSTANCE != null) return;
         INSTANCE = new CgMaterialPipeline();
     }
 
-    /**
-     * Returns the active pipeline singleton.
-     **/
+    /** Returns the active pipeline singleton. */
     public static CgMaterialPipeline getInstance() {
         if (INSTANCE == null) init();
         return INSTANCE;
@@ -73,43 +116,30 @@ public final class CgMaterialPipeline {
      * A no-op if never initialized.
      */
     public static void destroy() {
-        CgMaterialPipeline inst = INSTANCE;
+        if (INSTANCE != null) INSTANCE.delete();
         INSTANCE = null;
-        if (inst != null) inst.delete();
     }
 
     // ── Instance ──────────────────────────────────────────────────────────────
 
     private final CgUniformBuffer frameUbo;
     private final CgShaderBuffer objectBuffer;
+    private final CgFrameUniforms frameUniforms = new CgFrameUniforms();
     private boolean deleted;
 
     private CgMaterialPipeline() {
-        this.frameUbo = new CgUniformBuffer(CgUniformBuffer.BLOCK_NAME, CgBindingPoints.FRAME_DATA);
-        this.objectBuffer = CgShaderBuffer.create(DEFAULT_OBJECT_CAPACITY);
+        this.frameUbo = new CgUniformBuffer(FRAME_BLOCK_FORMAT, CgUniformBuffer.BLOCK_NAME, CgBindingPoints.FRAME_DATA);
+        this.objectBuffer = CgShaderBuffer.createInternal(OBJECT_FORMAT, CgBindingPoints.OBJECT_DATA);
     }
 
     /**
      * Returns the per-frame UBO ({@code CgFrameBlock}) that backs all material programs.
      *
-     * <h3>Buffer ABI (std140, binding point {@link io.github.somehussar.crystalgraphics.api.CgBindingPoints#FRAME_DATA})</h3>
-     * <p>{@link #beginFrame} writes this layout each frame:</p>
-     * <pre>
-     *   mat4  cg_ViewMatrix   — floats  0–15, column-major
-     *   mat4  cg_ProjMatrix   — floats 16–31, column-major
-     *   vec4  cg_Time         — floats 32–35: t/20, t, t×2, t×3 (seconds)
-     *   vec2  cg_Resolution   — floats 36–37: viewport width, height (pixels)
-     * </pre>
-     *
-     * <p>{@link #beginFrame} uploads and binds the UBO automatically every frame.
-     * Callers rarely need direct access.</p>
-     *
-     * <p>The primary use case for direct access is wiring the block to an additional
-     * custom shader program that was not created through the material pipeline:
+     * <p>The primary use case for direct access is wiring the block to a custom shader program
+     * that was not created through the material pipeline:</p>
      * <pre>{@code
      * frameBuffer().bindBlock(CgUniformBuffer.BLOCK_NAME, myCustomShader.getProgram().getId());
      * }</pre>
-     * </p>
      *
      * @return the engine-owned per-frame UBO; never {@code null}
      * @throws IllegalStateException if the pipeline has been destroyed
@@ -120,25 +150,38 @@ public final class CgMaterialPipeline {
     }
 
     /**
-     * Writes frame data into the UBO and binds it to the GL binding point.
-     * Must be called once per frame before any {@link CgMaterial#bind()} calls.
-     * The UBO binding persists until this pipeline is destroyed or overridden.
+     * Returns the pipeline-owned frame uniforms holder.
+     * Update fields each frame before calling {@link #beginFrame()}.
      *
-     * @param view      view matrix
-     * @param proj      projection matrix
-     * @param timeSecs  elapsed time in seconds
-     * @param viewportW viewport width in pixels
-     * @param viewportH viewport height in pixels
+     * @return the mutable frame uniforms; never {@code null}
+     * @throws IllegalStateException if the pipeline has been destroyed
      */
-    public void beginFrame(Matrix4f view, Matrix4f proj,
-                           float timeSecs, int viewportW, int viewportH) {
+    public CgFrameUniforms getFrameUniforms() {
         checkNotDeleted();
-        frameUbo.writer().reset();
+        return frameUniforms;
+    }
+
+    /**
+     * Writes frame data into the UBO and binds it to the GL binding point.
+     * Reads from the pipeline-owned {@link #getFrameUniforms()} holder.
+     * Must be called once per frame before any {@link CgMaterial#bind()} calls.
+     *
+     * <p>Adding a new frame uniform: add a field to {@link CgFrameUniforms} and
+     * {@link #FRAME_BLOCK_FORMAT}, then add one named-write line here. No callers break.</p>
+     */
+    public void beginFrame() {
+        checkNotDeleted();
         frameUbo.writer()
-                .mat4(view)
-                .mat4(proj)
-                .vec4(timeSecs / 20f, timeSecs, timeSecs * 2f, timeSecs * 3f)
-                .vec2(viewportW, viewportH);
+                .reset()
+                .beginRecord()
+                .mat4("cg_ViewMatrix", frameUniforms.view())
+                .mat4("cg_ProjMatrix", frameUniforms.proj())
+                .vec4("cg_Time",
+                        frameUniforms.timeSecs() / 20f, frameUniforms.timeSecs(),
+                        frameUniforms.timeSecs() * 2f, frameUniforms.timeSecs() * 3f)
+                .vec2("cg_Resolution",
+                        (float) frameUniforms.viewportW(), (float) frameUniforms.viewportH())
+                .endRecord();
         frameUbo.upload();
         frameUbo.bind();
     }
@@ -151,19 +194,19 @@ public final class CgMaterialPipeline {
      * <pre>{@code
      * CgShaderBuffer buf = pipeline.objectBuffer();
      * CgBufferWriter w = buf.beginWrite(N);
-     * for (int i = 0; i < N; i++) {
-     *     w.beginRecord();
-     *     w.mat4(modelMatrix).mat4(normalMatrix).vec4(custom0)...;
-     *     w.endRecord();
-     *     buf.advanceRecord();
+     * for (MyObject obj : objects) {
+     *     w.beginRecord()
+     *      .mat4("modelMatrix", obj.getModel())
+     *      .mat4("normalMatrix", obj.getNormal());
+     *     // custom0-3 auto-zeroed
+     *     buf.endRecord();
      * }
      * buf.endWrite();
-     * // then: material.bind() / mesh.draw / material.unbind()
+     * // then: material.bind() / mesh.drawInstanced(N) / material.unbind()
      * }</pre>
      *
-     * <p>The buffer auto-grows when {@code N} exceeds current capacity.
-     * It may be written to multiple times per frame (e.g. different object batches),
-     * but each {@code beginWrite/endWrite} cycle overwrites the previous content.</p>
+     * <p>The available named fields are defined in {@link #OBJECT_FORMAT}:
+     * {@code modelMatrix}, {@code normalMatrix}, {@code custom0}–{@code custom3}.</p>
      *
      * @return the engine-owned object buffer; never {@code null}
      */

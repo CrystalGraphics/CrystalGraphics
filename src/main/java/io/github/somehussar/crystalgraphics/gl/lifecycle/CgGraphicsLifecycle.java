@@ -4,6 +4,7 @@ import io.github.somehussar.crystalgraphics.api.CgCapabilities;
 import io.github.somehussar.crystalgraphics.api.material.CgMaterialPipeline;
 import io.github.somehussar.crystalgraphics.api.material.CgMaterialRegistry;
 import io.github.somehussar.crystalgraphics.gl.buffer.CgQuadIndexBuffer;
+import io.github.somehussar.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
 import io.github.somehussar.crystalgraphics.gl.mesh.CgMeshRegistry;
 import io.github.somehussar.crystalgraphics.gl.render.CgInstanceRenderer;
 import io.github.somehussar.crystalgraphics.gl.texture.CgTextureManager;
@@ -74,7 +75,13 @@ public final class CgGraphicsLifecycle {
         // Step 7a: Materials (shader programs + their property state). Must precede VAO/VBO teardown.
         CgMaterialRegistry.get().deleteAll();
 
-        // Step 7b: Pipeline-owned frame UBO + object SSBO. Independent from vertex buffers.
+        // Step 7b: User-created SSBO/TBO/UBO resources managed by CgShaderBufferRegistry.
+        //   Must be freed before the GL context is lost. Engine-owned pipeline buffers
+        //   (frameUbo, objectBuffer in CgMaterialPipeline) are NOT in this registry —
+        //   they are freed in step 7c.
+        CgShaderBufferRegistry.get().deleteAll();
+
+        // Step 7c: Pipeline-owned frame UBO + object SSBO. Independent from vertex buffers.
         CgMaterialPipeline.destroy();
         
         

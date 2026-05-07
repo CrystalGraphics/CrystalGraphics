@@ -229,7 +229,7 @@ public final class CgMaterial {
         });
 
         shader.bind();
-        buf.bind(buf.getLastWrittenCount());
+        buf.bind();
     }
 
     /**
@@ -248,34 +248,19 @@ public final class CgMaterial {
      * Returns the pipeline's shared per-object SSBO/TBO.
      * Equivalent to {@code CgMaterialPipeline.getInstance().objectBuffer()}.
      *
-     * <p>Each object record is exactly {@link CgShaderBuffer#FLOATS_PER_OBJECT} = 48 floats,
-     * written in this order:</p>
-     * <pre>
-     *   mat4  modelMatrix    — floats  0–15, column-major
-     *   mat4  normalMatrix   — floats 16–31, column-major (pass transpose-inverse of model's upper-3×3,
-     *                          padded to mat4; use {@link CgBufferWriter#mat4})
-     *   vec4  custom0        — floats 32–35
-     *   vec4  custom1        — floats 36–39
-     *   vec4  custom2        — floats 40–43
-     *   vec4  custom3        — floats 44–47
-     * </pre>
-     *
-     * <p>Full per-frame write pattern:</p>
+     * <p>Each object record is exactly {@link CgMaterialPipeline#OBJECT_FORMAT} = 48 floats.
+     * Use named writes — unwritten fields are auto-zeroed per record:</p>
      * <pre>{@code
      * CgShaderBuffer buf = material.objectBuffer();
      * CgBufferWriter w = buf.beginWrite(N);
      * for (int i = 0; i < N; i++) {
      *     Matrix4f model  = ...;
      *     Matrix4f normal = new Matrix4f(model).invert().transpose();
-     *     w.beginRecord();
-     *     w.mat4(model)
-     *      .mat4(normal)
-     *      .vec4(r, g, b, a)   // custom0 — e.g. tint colour
-     *      .vec4(0, 0, 0, 0)   // custom1
-     *      .vec4(0, 0, 0, 0)   // custom2
-     *      .vec4(0, 0, 0, 0);  // custom3
-     *     w.endRecord();
-     *     buf.advanceRecord();
+     *     w.beginRecord()
+     *      .mat4("modelMatrix", model)
+     *      .mat4("normalMatrix", normal)
+     *      .vec4("custom0", r, g, b, a);   // custom1-3 auto-zeroed
+     *     buf.endRecord();
      * }
      * buf.endWrite();
      * material.bind();

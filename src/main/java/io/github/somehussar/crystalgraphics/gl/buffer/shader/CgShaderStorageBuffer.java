@@ -1,6 +1,7 @@
 package io.github.somehussar.crystalgraphics.gl.buffer.shader;
 
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
+import io.github.somehussar.crystalgraphics.api.buffer.CgBufferFormat;
 import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.GL43;
 
@@ -25,28 +26,21 @@ import org.lwjgl.opengl.GL43;
 public final class CgShaderStorageBuffer extends CgShaderBuffer {
 
     /**
-     * @param floatPerRecord  floats per per-object record
-     * @param initialCapacity number of records to pre-allocate
+     * @param format          typed format descriptor (mandatory)
+     * @param path            SSBO hardware path (GL43 core or ARB)
+     * @param bindingLocation immutable GL binding point
      */
-    CgShaderStorageBuffer(int floatPerRecord, int initialCapacity, CgCapabilities.ShaderBufferPath path) {
-        super(floatPerRecord, initialCapacity, GL43.GL_SHADER_STORAGE_BUFFER);
+    CgShaderStorageBuffer(CgBufferFormat format,
+                          CgCapabilities.ShaderBufferPath path, int bindingLocation) {
+        super(format, GL43.GL_SHADER_STORAGE_BUFFER, bindingLocation);
         this.path = path;
     }
 
-    /**
-     * Binds the SSBO to {@link #BINDING_POINT} (binding = 0) via {@code glBindBufferBase}.
-     * Both GL43 core and ARB paths share the same constant value and entry point.
-     */
     @Override
     protected void bindInternal() {
         GL30.glBindBufferBase(GL43.GL_SHADER_STORAGE_BUFFER, bindingLocation, getGlBufferId());
     }
 
-
-    /**
-     * Binds the SSBO to the given binding P (binding = n) via {@code glBindBufferBase}.
-     * Both GL43 core and ARB paths share the same constant value and entry point.
-     */
     @Override
     protected void unbindInternal() {
         GL30.glBindBufferBase(GL43.GL_SHADER_STORAGE_BUFFER, bindingLocation, 0);

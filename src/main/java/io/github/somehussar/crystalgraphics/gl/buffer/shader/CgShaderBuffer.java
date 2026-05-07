@@ -2,12 +2,14 @@ package io.github.somehussar.crystalgraphics.gl.buffer.shader;
 
 import io.github.somehussar.crystalgraphics.api.CgBindingPoints;
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
+import io.github.somehussar.crystalgraphics.api.buffer.CgBufferFormat;
 import io.github.somehussar.crystalgraphics.api.buffer.CgObjectBuffer;
 import io.github.somehussar.crystalgraphics.gl.buffer.CgStreamBuffer;
 import io.github.somehussar.crystalgraphics.gl.buffer.staging.CgBufferWriter;
 import io.github.somehussar.crystalgraphics.gl.buffer.staging.CgStagingBuffer;
 import lombok.Getter;
-import lombok.Setter;
+
+import java.util.Objects;
 
 /**
  * Abstract base class for all GPU shader buffer types (SSBO, TBO, UBO).
@@ -21,7 +23,7 @@ import lombok.Setter;
  *       {@code glTexBuffer}.</li>
  *   <li>A {@link CgBufferWriter} backed by a {@link CgStagingBuffer} — either record-mode
  *       (SSBO/TBO, fixed stride per record) or flat-mode (UBO, arbitrary float sequence).</li>
- *   <li>A write-session API ({@link #beginWrite}/{@link #advanceRecord}/{@link #endWrite})
+ *   <li>A write-session API ({@link #beginWrite}/{@link #endRecord}/{@link #endWrite})
  *       that validates object count and drives GPU upload via {@link #endWrite()}.</li>
  *   <li>A {@link #delete()} template method that deletes the stream buffer then calls the
  *       {@link #deleteGlResources()} hook for subclass-owned GL objects.</li>
@@ -35,56 +37,42 @@ import lombok.Setter;
  * </ul>
  *
  * <h3>Factory</h3>
- * <p>{@link #create(int)} and {@link #create(int, int)} select the best available SSBO/TBO
- * backend via {@link CgCapabilities#preferredShaderBufferPath()}. Use the concrete constructors
- * directly when you need a specific type.</p>
+ * <p>{@link #create(CgBufferFormat, int)} selects the best available SSBO/TBO
+ * backend via {@link CgCapabilities#preferredShaderBufferPath()}. Use the concrete
+ * constructors directly when you need a specific type.</p>
  *
  * <h3>SSBO/TBO write lifecycle</h3>
  * <pre>{@code
  * buffer.beginWrite(N);
  * for (int i = 0; i < N; i++) {
- *     writer().beginRecord();
- *     writer().mat4(model).mat3Padded(normal).vec4Zero()...;
- *     writer().endRecord();
- *     buffer.advanceRecord();
+ *     writer().beginRecord()
+ *             .mat4("modelMatrix", model)
+ *             .mat4("normalMatrix", normal);
+ *     // custom0-3 auto-zeroed
+ *     buffer.endRecord();
  * }
  * buffer.endWrite();
- * buffer.bind(N);
+ * buffer.bind();
  * // draw N instances
  * buffer.unbind();
  * }</pre>
  */
 public abstract class CgShaderBuffer implements CgObjectBuffer {
 
-    /**
-     * Default GL binding point for per-object SSBO/TBO data (binding = 0).
-     * Matches the {@code layout(binding = 0)} declaration in {@code cg_env.glsl}.
-     * Subclasses may use a different binding point via their own constructor or by
-     * calling {@link #bind(int)} with an explicit binding point.
-     */
-    public static final int BINDING_POINT = 0;
-
-    /**
-     * Default CrystalShader per-object record size: 48 floats / 192 bytes / 12 texels.
-     * Matches the std430/TBO ABI declared in {@code cg_env.glsl}:
-     * {@code mat4} modelMatrix (16) + {@code mat4} normalMatrix (16) + 4×{@code vec4} custom (16).
-     * Pass to {@link #create(int, int)} or use the {@link #create(int)} shorthand.
-     */
-    public static final int FLOATS_PER_OBJECT = 48;
-
-    /** Binding point used for glBindBufferBase or as GL texture unit (TBO).*/
+    /** Binding point used for glBindBufferBase or as GL texture unit (TBO). Immutable after construction. */
     @Getter
-    @Setter
-    protected int bindingLocation = BINDING_POINT;
-    
-    private final int floatPerRecord;
+    protected final int bindingLocation;
+
     protected final CgBufferWriter writer;
     protected final CgStreamBuffer dataBuffer;
 
+    /** Format descriptor. Required — all shader buffers must have a typed format. */
+    @Getter
+    private final CgBufferFormat format;
+
     /**
-     * Set to {@code true} by {@link #delete()}. Checked by {@link #bind(int)} to guard
-     * against use-after-free. Declared {@code volatile} so deletion on one thread is
-     * immediately visible to bind calls on the render thread.
+     * Set to {@code true} by {@link #delete()}. Checked by {@link #bind()} to guard
+     * against use-after-free.
      */
     protected volatile boolean deleted;
 
@@ -94,127 +82,97 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
     /**
      * Number of records successfully written by the most recent {@link #endWrite()} call.
      * {@code -1} until the first successful {@link #endWrite()}.
-     * Used by {@link #bind(int)} to validate the draw count.
      */
     @Getter private int lastWrittenCount = -1;
 
     private boolean inWrite;
 
-    /** Hardware path this instance was created for. */
+    /**
+     * Returns the {@link CgCapabilities.ShaderBufferPath} that backs this buffer,
+     * or {@code null} for types where the concept does not apply (e.g. UBO).
+     */
     @Getter
-    @Setter
     protected CgCapabilities.ShaderBufferPath path;
-    
+
     // ── Constructors ──────────────────────────────────────────────────────────
 
     /**
-     * Record-mode constructor for SSBO/TBO backends.
-     * Allocates staging for {@code initialCapacity} records of {@code floatPerRecord} floats each.
-     * The GL stream buffer is sized accordingly via {@link CgStreamBuffer#createForShaderBuffer}.
+     * Unified constructor for all SSBO/TBO/UBO backends.
+     * Initial capacity is one record (auto-grows on {@link #beginWrite(int)}).
+     * {@link #lastWrittenCount} starts at {@code 0} — valid for both the single-block
+     * UBO write cycle and for SSBO batches (reset to {@code -1} by {@link #beginWrite}).
      *
-     * @param floatPerRecord floats per record (= record stride for {@link CgBufferWriter})
-     * @param initialCapacity number of records to pre-allocate for
-     * @param glTarget        GL buffer target (e.g. {@code GL_SHADER_STORAGE_BUFFER}, {@code GL_ARRAY_BUFFER})
+     * @param format          typed format descriptor (mandatory)
+     * @param glTarget        GL buffer target
+     * @param bindingLocation GL binding point; immutable after construction
      */
-    protected CgShaderBuffer(int floatPerRecord, int initialCapacity, int glTarget) {
-        this.floatPerRecord = floatPerRecord;
-        this.writer          = new CgBufferWriter(new CgStagingBuffer(floatPerRecord, initialCapacity), floatPerRecord);
-        this.dataBuffer      = CgStreamBuffer.createForShaderBuffer(glTarget, initialCapacity * floatPerRecord * Float.BYTES);
-    }
-
-    /**
-     * Flat-mode constructor for UBO backends.
-     * Allocates a flat staging buffer of {@code initialFloats} capacity with no fixed record stride.
-     * The GL stream buffer is sized to {@code initialFloats × Float.BYTES}.
-     * Sets {@link #lastWrittenCount} to {@code 0} so the parent {@link #bind()} path is valid
-     * immediately after construction — UBO has no write session and therefore never calls
-     * {@link #endWrite()} to set this value.
-     *
-     * @param glTarget      GL buffer target (e.g. {@code GL_UNIFORM_BUFFER})
-     * @param initialFloats initial staging and GPU buffer capacity in floats
-     */
-    protected CgShaderBuffer(int glTarget, int initialFloats) {
-        this.floatPerRecord  = 0;
-        this.writer           = new CgBufferWriter(new CgStagingBuffer(initialFloats), 0);
-        this.dataBuffer       = CgStreamBuffer.createForShaderBuffer(glTarget, initialFloats * Float.BYTES);
+    protected CgShaderBuffer(CgBufferFormat format, int glTarget, int bindingLocation) {
+        Objects.requireNonNull(format, "CgBufferFormat is required");
+        this.bindingLocation  = bindingLocation;
+        this.format           = format;
+        int floatPerRecord    = format.getFloatCount();
+        this.writer           = new CgBufferWriter(new CgStagingBuffer(floatPerRecord), format);
+        this.dataBuffer       = CgStreamBuffer.createForShaderBuffer(glTarget, floatPerRecord * Float.BYTES);
         this.lastWrittenCount = 0;
     }
 
     // ── Factory ───────────────────────────────────────────────────────────────
 
     /**
-     * Creates the best available SSBO/TBO shader buffer for {@code initialCapacity} objects
-     * using the default {@link #FLOATS_PER_OBJECT} record stride.
+     * Creates the best available SSBO/TBO shader buffer driven by the given format descriptor.
+     * The buffer starts at capacity 1 and auto-grows on {@link #beginWrite(int)}.
+     * The binding location is mandatory and immutable — there is no default-binding overload
+     * to avoid accidental shadowing of engine-reserved slots.
      *
-     * @param initialCapacity number of per-object records to pre-allocate
-     * @return {@link CgShaderStorageBuffer} or {@link CgTextureBuffer} depending on hardware
-     * @throws UnsupportedOperationException if the hardware does not support GL 3.3+
-     */
-    public static CgShaderBuffer create(int initialCapacity) {
-        return create(FLOATS_PER_OBJECT, initialCapacity);
-    }
-
-    /**
-     * Creates the best available SSBO/TBO shader buffer with a custom record stride.
-     *
-     * @param floatPerRecord floats per object record; use {@link #FLOATS_PER_OBJECT} for the
-     *                        default CrystalShader ABI or any other positive stride for custom layouts
-     * @param initialCapacity number of records to pre-allocate
-     * @return {@link CgShaderStorageBuffer} or {@link CgTextureBuffer} depending on hardware
-     * @throws UnsupportedOperationException if the hardware does not support GL 3.3+
-     */
-    public static CgShaderBuffer create(int floatPerRecord, int initialCapacity) {
-        CgCapabilities.ShaderBufferPath path = CgCapabilities.detect().preferredShaderBufferPath();
-        if (path == CgCapabilities.ShaderBufferPath.NONE) 
-            throw new UnsupportedOperationException("GL 3.3+ required for CrystalShader object buffers");
-
-        initialCapacity = Math.max(1, initialCapacity);
-        if (path == CgCapabilities.ShaderBufferPath.TBO)
-            return new CgTextureBuffer(floatPerRecord, initialCapacity);
-
-        return new CgShaderStorageBuffer(floatPerRecord, initialCapacity, path);
-    }
-
-    /**
-     * Creates the best available SSBO/TBO shader buffer with a custom record stride and
-     * explicit binding location. Enforces that {@code bindingLocation >= CgBindingPoints#USER_START}.
-     * Use this overload when binding to a custom slot; the 2-arg factory always uses
-     * {@link #BINDING_POINT} (slot 0, engine-reserved for per-object data).
-     *
-     * @param floatPerRecord  floats per object record
-     * @param capacity        number of records to pre-allocate
+     * @param format          typed buffer format descriptor (drives named writes and stride)
      * @param bindingLocation binding slot; must be {@code >= CgBindingPoints.USER_START}
+     *                        to avoid stomping engine-reserved data
      * @return {@link CgShaderStorageBuffer} or {@link CgTextureBuffer} depending on hardware
      * @throws IllegalArgumentException  if {@code bindingLocation} is engine-reserved
      * @throws UnsupportedOperationException if the hardware does not support GL 3.3+
      */
-    public static CgShaderBuffer create(int floatPerRecord, int capacity, int bindingLocation) {
-        if (bindingLocation < CgBindingPoints.USER_START) {
-            throw new IllegalArgumentException(
-                "Binding slot " + bindingLocation + " is reserved for the engine (0–"
-                + (CgBindingPoints.USER_START - 1) + "). "
-                + "Use CgBindingPoints.USER_START (" + CgBindingPoints.USER_START + "+) for custom SSBOs. "
-                + "Conflicts produce silent rendering corruption.");
-        }
-        CgShaderBuffer buf = create(floatPerRecord, capacity);
-        buf.bindingLocation = bindingLocation;
-        return buf;
+    public static CgShaderBuffer create(CgBufferFormat format, int bindingLocation) {
+        CgBindingPoints.validateBindingPoint(bindingLocation);
+        CgCapabilities.ShaderBufferPath path = CgCapabilities.detect().preferredShaderBufferPath();
+        if (path == CgCapabilities.ShaderBufferPath.NONE)
+            throw new UnsupportedOperationException("GL 3.3+ required for CrystalShader object buffers");
+
+        if (path == CgCapabilities.ShaderBufferPath.TBO)
+            return new CgTextureBuffer(format, bindingLocation);
+
+        return new CgShaderStorageBuffer(format, path, bindingLocation);
+    }
+
+    /**
+     * Creates the best available SSBO/TBO shader buffer for engine-internal use with a
+     * typed format descriptor. Bypasses the {@link CgBindingPoints#USER_START} guard so
+     * engine-reserved binding points (0–9) are allowed.
+     * The buffer starts at capacity 1 and auto-grows on {@link #beginWrite(int)}.
+     *
+     * <p><strong>Engine-internal. Do not use from user code.</strong></p>
+     *
+     * @param format          typed buffer format (drives named writes and stride)
+     * @param bindingLocation binding slot (may be engine-reserved)
+     * @return {@link CgShaderStorageBuffer} or {@link CgTextureBuffer} depending on hardware
+     * @throws UnsupportedOperationException if the hardware does not support GL 3.3+
+     */
+    public static CgShaderBuffer createInternal(CgBufferFormat format, int bindingLocation) {
+        CgCapabilities.ShaderBufferPath path = CgCapabilities.detect().preferredShaderBufferPath();
+        if (path == CgCapabilities.ShaderBufferPath.NONE)
+            throw new UnsupportedOperationException("GL 3.3+ required for CrystalShader object buffers");
+
+        if (path == CgCapabilities.ShaderBufferPath.TBO)
+            return new CgTextureBuffer(format, bindingLocation);
+
+        return new CgShaderStorageBuffer(format, path, bindingLocation);
     }
 
     // ── Write API ─────────────────────────────────────────────────────────────
 
     /**
-     * Returns the record stride this buffer was constructed with (floats per record).
-     * Zero for flat-mode (UBO) instances.
-     */
-    public int floatPerRecord() {
-        return floatPerRecord;
-    }
-
-    /**
      * Returns the {@link CgBufferWriter} for filling per-object or per-frame data.
-     * In record mode, bracket each object with {@link CgBufferWriter#beginRecord()} /
-     * {@link CgBufferWriter#endRecord()} and call {@link #advanceRecord()} after each.
+     * In record mode, bracket each object with {@link CgBufferWriter#beginRecord()} and
+     * call {@link #endRecord()} after each record.
      */
     public CgBufferWriter writer() {
         return writer;
@@ -224,8 +182,7 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
      * Opens a write session for {@code instanceCount} object records.
      * Resets the writer cursor and validates that the session is not already open.
      *
-     * @param instanceCount number of records that will be written in this session;
-     *                      {@link #advanceRecord()} will throw if this count is exceeded
+     * @param instanceCount number of records that will be written in this session
      * @throws IllegalStateException if a write session is already open
      */
     public CgBufferWriter beginWrite(int instanceCount) {
@@ -239,25 +196,38 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
     }
 
     /**
-     * Advances the internal record counter by one.
-     * Must be called once per object after the writer has finished that object's record.
+     * Finalizes the current record and advances the internal record counter.
      *
-     * @throws IllegalStateException if not in a write session or if the declared count is exceeded
+     * <p>Two modes:</p>
+     * <ul>
+     *   <li><strong>SSBO/TBO (in write session)</strong>: validates the record count against
+     *       {@link #beginWrite(int)}'s declaration, calls {@link CgBufferWriter#endRecord()},
+     *       then increments {@link #writeHead}.</li>
+     *   <li><strong>UBO (single-block, no write session)</strong>: calls
+     *       {@link CgBufferWriter#endRecord()} and sets {@link #lastWrittenCount} to 1.
+     *       No {@link #beginWrite(int)} is required for UBO use.</li>
+     * </ul>
+     *
+     * @throws IllegalStateException if a write session is open and the declared count is exceeded
      */
-    public void advanceRecord() {
-        if (!inWrite) throw new IllegalStateException("Not in a write session; call beginWrite() first");
-        if (writeHead >= declaredWriteCount) {
-            throw new IllegalStateException(
-                "Write overflow: record " + writeHead + " but beginWrite() declared " + declaredWriteCount);
+    public void endRecord() {
+        if (inWrite) {
+            if (writeHead >= declaredWriteCount) {
+                throw new IllegalStateException(
+                    "Write overflow: record " + writeHead + " but beginWrite() declared " + declaredWriteCount);
+            }
+            writer.endRecord();
+            writeHead++;
+        } else {
+            // Single-block (UBO) path — no session required.
+            writer.endRecord();
+            lastWrittenCount = 1;
         }
-        writeHead++;
     }
 
     /**
      * Closes the write session and uploads all staged data to the GPU.
-     * Sets {@link #lastWrittenCount} to the number of records actually advanced via
-     * {@link #advanceRecord()}, which may be less than the count declared in
-     * {@link #beginWrite(int)}.
+     * Sets {@link #lastWrittenCount} to the number of records written via {@link #endRecord()}.
      *
      * @throws IllegalStateException if not in a write session
      */
@@ -271,62 +241,22 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
     // ── Bind / unbind ─────────────────────────────────────────────────────────
 
     /**
-     * Binds this buffer to its GL binding point and validates the draw count.
+     * Binds this buffer to its GL binding point.
      *
-     * @param expectedDrawCount number of objects the draw call will render; must not exceed
-     *                          the {@link #lastWrittenCount} from the most recent {@link #endWrite()}
-     * @throws IllegalStateException if deleted, if no data has been uploaded yet, or if
-     *                               {@code expectedDrawCount > lastWrittenCount}
+     * @throws IllegalStateException if this buffer has been deleted
      */
-    public void bind(int expectedDrawCount) {
+    @Override public void bind() {
         if (deleted) throw new IllegalStateException("CgShaderBuffer has been deleted");
-        if (lastWrittenCount < 0) {
-            throw new IllegalStateException("No object data uploaded; call endWrite() first");
-        }
-        if (expectedDrawCount > lastWrittenCount) {
-            throw new IllegalStateException(
-                "expectedDrawCount " + expectedDrawCount + " > lastWrittenCount " + lastWrittenCount);
-        }
         bindInternal();
-    }
-
-    /**
-     * Binds this buffer using the full {@link #lastWrittenCount} as the expected draw count.
-     * Equivalent to {@code bind(lastWrittenCount)}.
-     */
-    @Override public void bind()   { bind(Math.max(0, lastWrittenCount)); }
-
-    /**
-     * Binds this buffer to an explicit binding point without changing
-     * the instance-level binding point. Use for temporary binding to a different point.
-     *
-     * @param bindingLocation the GL binding point to bind to; must be {@code >= CgBindingPoints.USER_START}
-     * @throws IllegalArgumentException if {@code bindingLocation} is an engine-reserved slot
-     * @throws IllegalStateException if deleted
-     */
-    public void bindTo(int bindingLocation) {
-        if (bindingLocation < CgBindingPoints.USER_START) {
-            throw new IllegalArgumentException(
-                "Binding slot " + bindingLocation + " is reserved for the engine (0–"
-                + (CgBindingPoints.USER_START - 1) + "). "
-                + "Use CgBindingPoints.USER_START (" + CgBindingPoints.USER_START + "+) for custom SSBOs. "
-                + "Conflicts produce silent rendering corruption.");
-        }
-        if (deleted) throw new IllegalStateException("CgShaderBuffer has been deleted");
-        this.bindingLocation = bindingLocation;
-        bind();
     }
 
     /** Unbinds this buffer from its GL binding point. */
     @Override public void unbind() { unbindInternal(); }
 
-    /** {@inheritDoc} */
     @Override public boolean isDeleted() { return deleted; }
 
     /**
      * Returns the GL buffer object ID of the underlying stream buffer.
-     * Useful for passing to {@code glBindBufferBase} / {@code glTexBuffer} manually,
-     * or for interop with external GL code.
      */
     @Override
     public int getGlBufferId() {
@@ -335,8 +265,7 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
 
     /**
      * Deletes the underlying GL stream buffer and calls {@link #deleteGlResources()} for
-     * any additional GL objects owned by the subclass (e.g. the TBO texture).
-     * Idempotent — subsequent calls are no-ops.
+     * any additional GL objects owned by the subclass. Idempotent — subsequent calls are no-ops.
      */
     @Override
     public void delete() {
@@ -356,29 +285,17 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
 
     /**
      * Uploads {@code floatCount} floats from {@code data} to the GPU via the stream buffer.
-     * Called by {@link #endWrite()} (SSBO/TBO session upload) and by
-     * {@link CgUniformBuffer#upload()} (UBO flat upload).
-     *
-     * @param data       source float array
-     * @param floatCount number of floats to upload from {@code data[0..floatCount-1]}
+     * Called by {@link #endWrite()} and by {@link CgUniformBuffer#upload()}.
      */
     protected final void uploadData(float[] data, int floatCount) {
         dataBuffer.uploadFloats(data, floatCount);
     }
 
-    // ── Backend queries ───────────────────────────────────────────────────────
-
-    /**
-     * Returns the {@link CgCapabilities.ShaderBufferPath} that backs this buffer,
-     * or {@code null} for types where the concept does not apply (e.g. UBO).
-     */
-    public CgCapabilities.ShaderBufferPath getPath() { return null; }
 
     // ── Abstract backend contract ─────────────────────────────────────────────
 
     /**
-     * Performs the concrete GL bind operation (e.g. {@code glBindBufferBase},
-     * {@code glBindTexture}). Called by {@link #bind(int)} after all validations pass.
+     * Performs the concrete GL bind operation. Called by {@link #bind(int)} after validations.
      */
     protected abstract void bindInternal();
 

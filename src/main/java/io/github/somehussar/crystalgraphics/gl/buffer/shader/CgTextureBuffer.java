@@ -1,6 +1,7 @@
 package io.github.somehussar.crystalgraphics.gl.buffer.shader;
 
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
+import io.github.somehussar.crystalgraphics.api.buffer.CgBufferFormat;
 import io.github.somehussar.crystalgraphics.api.texture.CgTexture;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL15;
@@ -19,11 +20,9 @@ import org.lwjgl.opengl.GL31;
  * <h3>Why re-attachment is not needed after GPU buffer growth</h3>
  * <p>Per the OpenGL specification, {@code glTexBuffer} binds the texture to the buffer
  * <em>object</em> (identified by its GL name), not to the buffer's current storage allocation.
- * When {@link io.github.somehussar.crystalgraphics.gl.buffer.MapAndOrphanStreamBuffer} or
- * {@link io.github.somehussar.crystalgraphics.gl.buffer.SubDataStreamBuffer} calls
- * {@code glBufferData} to grow the GPU buffer, the buffer object ID stays the same — only
- * the backing store changes. The texture attachment therefore remains valid and the shader
- * reads from the new storage without any re-attachment call.</p>
+ * When the underlying stream buffer calls {@code glBufferData} to grow the GPU buffer, the
+ * buffer object ID stays the same — only the backing store changes. The texture attachment
+ * therefore remains valid without any re-attachment call.</p>
  *
  * <h3>Bind/unbind</h3>
  * <p>Binds {@link #tboTexId} to {@code GL_TEXTURE_BUFFER} on the reserved texture unit
@@ -35,7 +34,7 @@ public final class CgTextureBuffer extends CgShaderBuffer {
     /**
      * Default GL texture unit reserved for the TBO object-data sampler ({@code cg_ObjectTBO}).
      * Set this sampler uniform once after program link on the TBO path:
-     * {@code shader.set1i("cg_ObjectTBO", CgShaderBuffer.DEFAULT_TBO_TEXTURE_UNIT)}.
+     * {@code shader.set1i("cg_ObjectTBO", CgTextureBuffer.DEFAULT_TBO_TEXTURE_UNIT)}.
      */
     public static final int DEFAULT_TBO_TEXTURE_UNIT = 7;
 
@@ -47,22 +46,19 @@ public final class CgTextureBuffer extends CgShaderBuffer {
     private final int tboTexId;
 
     /**
-     * @param floatPerRecord floats per per-object record; use {@link #FLOATS_PER_OBJECT}
-     *                        for the default CrystalShader ABI
-     * @param initialCapacity number of records to pre-allocate
+     * @param format          typed format descriptor (mandatory)
+     * @param bindingLocation ignored — TBOs always bind to {@link #DEFAULT_TBO_TEXTURE_UNIT}
      */
-    CgTextureBuffer(int floatPerRecord, int initialCapacity) {
-        super(floatPerRecord, initialCapacity, GL15.GL_ARRAY_BUFFER);
+    CgTextureBuffer(CgBufferFormat format, int bindingLocation) {
+        super(format, GL15.GL_ARRAY_BUFFER, DEFAULT_TBO_TEXTURE_UNIT);
         this.path = CgCapabilities.ShaderBufferPath.TBO;
-        this.bindingLocation = DEFAULT_TBO_TEXTURE_UNIT;
         this.tboTexId = GL11.glGenTextures();
         attachTextureToBuffer();
     }
 
     /**
      * Attaches the parent's GL buffer object to {@link #tboTexId} via {@code glTexBuffer}.
-     * Uses {@code GL_RGBA32F} so each texel is 4 floats — matching the 11-texel-per-object
-     * layout declared in {@code cg_env.glsl}.
+     * Uses {@code GL_RGBA32F} so each texel is 4 floats.
      * Called once from the constructor; never needs to be called again even after GPU buffer growth.
      */
     private void attachTextureToBuffer() {
