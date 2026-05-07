@@ -1,3 +1,15 @@
+---
+
+# THE GRAND GOAL — READ THIS FIRST
+> **Every line of code in this repository exists to serve one end goal:**
+> A **node-based shader graph for Minecraft (cross-version: 1.7.10 and 1.20.1)** — like Unity's Shader Graph, but staying true to GLSL, running on a modern GL 3.x+ pipeline, with instancing as the default draw path from day one.
+>
+> The full architecture, principles, file format, instancing strategy, compilation pipeline, and ordered roadmap are defined in the manifesto. **Read it before making any rendering or shader-related decision.**
+>
+> 📄 **[CrystalShader Manifesto](docs/CRYSTALSHADER_MANIFESTO.md)**
+
+---
+
 # CrystalGraphics - AI Agent Knowledge Base
 
 **Project Type**: Java Library (Java 8)  
@@ -63,12 +75,82 @@ For any work on shader loading, preprocessing, uniform binding, or the GLSL stan
 - `src/main/java/io/github/somehussar/crystalgraphics/gl/shader/AGENTS.md` — GL backends: CgShaderFactory compile waterfall, CgCoreShaderProgram, CgArbShaderProgram
 - `src/main/java/io/github/somehussar/crystalgraphics/mc/shader/AGENTS.md` — MC impls: CgShaderImpl recompile flow, CgShaderManagerImpl cache, CgShaderReloadHook (F3+T), CgSystemUniformRegistry
 
-### CrystalShader Material System (Wave 5+)
+### CrystalShader Material System
 
 For `.shader` file loading, GLSL generation, and material bind/draw, use these guides:
 
-- `src/main/java/io/github/somehussar/crystalgraphics/api/material/AGENTS.md` — public material API: `CgMaterial` load/bind/property-set/delete, `CgBuiltinFormats.SPATIAL` vertex format, frame-data upload pattern, caller-owned lifecycle
+- `src/main/java/io/github/somehussar/crystalgraphics/api/material/AGENTS.md` — public material API: `CgMaterial` load/bind/property-set/delete, `CgMaterialPipeline` format constants + `beginFrame(CgFrameUniforms)`, object buffer write lifecycle
 - `src/main/java/io/github/somehussar/crystalgraphics/gl/material/AGENTS.md` — parser and compiler internals: `CgShaderParser` grammar and restrictions, `CgMaterialShaderCompiler` GLSL generation sequence (steps 1–11 vert, 1–10 frag), `CompiledMaterialSource`
+- `src/main/java/io/github/somehussar/crystalgraphics/api/buffer/AGENTS.md` — GPU buffer format descriptors: `CgGpuType`, `CgBufferField`, `CgBufferFormat` builder, std140/std430 alignment table, format-aware write mechanics
+- `src/main/java/io/github/somehussar/crystalgraphics/gl/buffer/shader/AGENTS.md` — SSBO/TBO/UBO implementations, `CgShaderBufferRegistry`, binding point rules, lifecycle
+
+#### Using the Material Pipeline — Frontend Guide
+
+**Minimal per-frame pattern:**
+
+```java
+// 1. Init (once, on GL context creation)
+CgMaterialPipeline.init();
+CgMaterial material = CgMaterial.load("mymod:shaders/terrain.shader");
+
+// 2. Per-frame — upload frame data
+CgMaterialPipeline pipeline = CgMaterialPipeline.getInstance();
+CgFrameUniforms fu = pipeline.getFrameUniforms();
+fu.setView(viewMatrix);
+fu.setProj(projMatrix);
+fu.setTimeSecs(elapsedSeconds);
+fu.setViewportW(width);
+fu.setViewportH(height);
+pipeline.beginFrame();
+
+// 3. Per-frame — write per-object records
+CgShaderBuffer buf = pipeline.objectBuffer();
+CgBufferWriter w = buf.beginWrite(N);
+for (MyObject obj : objects) {
+    w.beginRecord()
+     .mat4("modelMatrix", obj.getModel())
+     .mat4("normalMatrix", obj.getNormal());
+     // custom0-3 auto-zeroed
+    buf.endRecord();   // ← single call replaces old two-call pattern
+}
+buf.endWrite();
+
+// 4. Draw
+material.bind();
+mesh.drawInstanced(N);   // or drawDirect() for non-instanced
+material.unbind();
+
+// 5. Teardown
+CgMaterialPipeline.destroy();
+```
+
+**`OBJECT_FORMAT` fields** (`CgMaterialPipeline.OBJECT_FORMAT`, STD430, 48 floats):
+
+| Field | Type | Floats |
+|-------|------|--------|
+| `modelMatrix` | mat4 | 0–15 |
+| `normalMatrix` | mat4 | 16–31 (shader reads upper-left 3×3 as mat3) |
+| `custom0`–`custom3` | vec4 | 32–47 |
+
+**`FRAME_BLOCK_FORMAT` fields** (`CgMaterialPipeline.FRAME_BLOCK_FORMAT`, STD140, 38 floats):
+
+| Field | Type | Content |
+|-------|------|---------|
+| `cg_ViewMatrix` | mat4 | View matrix |
+| `cg_ProjMatrix` | mat4 | Projection matrix |
+| `cg_Time` | vec4 | t/20, t, t×2, t×3 (seconds) |
+| `cg_Resolution` | vec2 | Viewport width, height (pixels) |
+
+**Setting material properties:**
+```java
+material.applyBindings(b -> {
+    b.set1f("_Alpha", 0.5f);
+    b.vec4("_Color", 1f, 0f, 0f, 1f);
+});
+```
+
+**Lifecycle**: `CgGraphicsLifecycle.destroyContext()` auto-calls `CgMaterialRegistry.get().deleteAll()`,
+`CgShaderBufferRegistry.get().deleteAll()`, and `CgMaterialPipeline.destroy()` in the correct order.
 
 ### GLSL Standard Library
 

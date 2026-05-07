@@ -170,4 +170,47 @@ public final class CgStagingBuffer implements CgVertexOutput {
 
     /** Returns the stride this buffer was constructed with ({@code floatsPerVertex}). */
     public int floatsPerVertex() { return floatsPerVertex; }
+
+    /**
+     * Reserves {@code floatCount} float slots at the current cursor, zero-fills them,
+     * advances the cursor by {@code floatCount}, and returns the start index of the
+     * reserved range.
+     *
+     * <p>Used by {@link CgBufferWriter#beginRecord()} in format-aware mode to pre-zero
+     * an entire record so that unwritten fields default to zero. The returned start
+     * index is later passed to {@link #setFloatAt(int, float)} for named field writes.</p>
+     *
+     * @param floatCount number of float slots to reserve and zero
+     * @return the index of the first reserved slot (the pre-advance cursor position)
+     */
+    public int reserveAndZero(int floatCount) {
+        ensureRoomForStride(floatCount);
+        int start = cursor;
+        // Zero-fill the reserved range
+        for (int i = start; i < start + floatCount; i++) {
+            data[i] = 0f;
+        }
+        cursor += floatCount;
+        return start;
+    }
+
+    /**
+     * Writes {@code v} directly at absolute index {@code absIndex} without advancing
+     * the cursor. The index must be within the already-reserved range
+     * ({@code 0 <= absIndex < rawCursor()}).
+     *
+     * <p>Used by named field writes in {@link CgBufferWriter} to scatter float values
+     * into specific offsets within a pre-reserved record.</p>
+     *
+     * @param absIndex zero-based index into the backing array
+     * @param v        the value to write
+     * @throws IndexOutOfBoundsException if {@code absIndex} is outside the reserved range
+     */
+    public void setFloatAt(int absIndex, float v) {
+        if (absIndex < 0 || absIndex >= cursor) {
+            throw new IndexOutOfBoundsException(
+                "setFloatAt: index " + absIndex + " is out of reserved range [0, " + cursor + ")");
+        }
+        data[absIndex] = v;
+    }
 }
