@@ -168,8 +168,10 @@ public final class CgMaterial {
      *   <li>If {@link #dirty}, calls {@link #recompile()} to hot-reload the shader.</li>
      *   <li>Stage property values into ephemeral bindings</li>
      *   <li>{@code shader.bind()} — activates the GL program and flushes all bindings</li>
-     *   <li>Binds the pipeline's object buffer and wires it to the active shader</li>
      * </ol>
+     *
+     * <p>The pipeline's object buffer is bound once per frame in {@link CgMaterialPipeline#beginFrame()},
+     * not per material.</p>
      */
     public void bind() {
         checkNotDeleted();
@@ -184,7 +186,7 @@ public final class CgMaterial {
         });
 
         shader.bind();
-        objectBuffer().bind(shader);
+        // objectBuffer bind is handled once per frame by CgMaterialPipeline.beginFrame()
     }
 
     /**
@@ -297,7 +299,7 @@ public final class CgMaterial {
             return;
         }
 
-        CgCapabilities.ShaderBufferPath path = CgCapabilities.detect().preferredShaderBufferPath();
+        CgCapabilities.ShaderBufferPath path = CgCapabilities.detect().shaderBufferPath();
         if (path == CgCapabilities.ShaderBufferPath.NONE) {
             if (isFirst) throw new UnsupportedOperationException("GL 3.3+ required for CrystalShader materials");
             LOGGER.error("Reload failed for '{}': GL 3.3+ not available", resourcePath);
@@ -333,7 +335,14 @@ public final class CgMaterial {
         }
 
         properties = new ArrayList<>(parsed.properties());
-        CgMaterialPipeline.getInstance().frameBuffer().bind(shader);
+
+        // Wire per-program block indices after each link — does NOT bind to GL context.
+        // glUniform1i (TBO path) requires an active program, so bind shader around both calls.
+        CgMaterialPipeline pipeline = CgMaterialPipeline.getInstance();
+        shader.bind();
+        pipeline.frameBuffer().wireShader(shader);   // glUniformBlockBinding for CgFrameBlock
+        pipeline.objectBuffer().wireShader(shader);  // glShaderStorageBlockBinding (SSBO) or glUniform1i (TBO)
+        shader.unbind();
 
         if (!isFirst) {
             LOGGER.info("Reloaded '{}'", resourcePath);

@@ -283,9 +283,11 @@ public interface CgShaderBindings {
     CgShaderBindings sampler(String name, int unit, int glTextureId, int glTarget);
 
     /**
-     * Records a persistent UBO block binding. On the TBO shader path, calls
-     * {@code glUniformBlockBinding} every time {@link #apply} is invoked (idempotent, free).
-     * No-op on the SSBO path — {@code layout(binding=N)} in GLSL 430 already handles it.
+     * Records a persistent UBO block binding. Calls {@code glUniformBlockBinding} on EVERY
+     * shader path (SSBO and TBO) to wire the block index to its binding slot.
+     * Idempotent — writing the same integer to GL program state is effectively free.
+     * Does NOT call {@code glBindBufferBase} — per-context binding is handled by
+     * {@code CgMaterialPipeline.beginFrame()}.
      * This op lives in persistent {@link CgShader#bindings()}, not ephemeral bindings,
      * so it survives hot-reloads and automatically rewires the block after recompile.
      *

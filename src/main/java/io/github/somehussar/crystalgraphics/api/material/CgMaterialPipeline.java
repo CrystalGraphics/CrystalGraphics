@@ -1,6 +1,7 @@
 package io.github.somehussar.crystalgraphics.api.material;
 
 import io.github.somehussar.crystalgraphics.api.CgBindingPoints;
+import io.github.somehussar.crystalgraphics.api.CgCapabilities;
 import io.github.somehussar.crystalgraphics.api.buffer.CgBufferFormat;
 import io.github.somehussar.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import io.github.somehussar.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
@@ -109,8 +110,8 @@ public final class CgMaterialPipeline {
     private static CgMaterialPipeline INSTANCE;
 
     private CgMaterialPipeline() {
-        this.frameUbo = new CgUniformBuffer(FRAME_BLOCK_NAME, FRAME_BLOCK_FORMAT, CgBindingPoints.FRAME_DATA);
-        this.objectBuffer = CgShaderBuffer.createInternal(OBJECT_NAME, OBJECT_FORMAT, CgBindingPoints.OBJECT_DATA);
+        this.frameUbo = new CgUniformBuffer(FRAME_BLOCK_NAME, FRAME_BLOCK_FORMAT, CgBindingPoints.FRAME_DATA_UBO);
+        this.objectBuffer = CgShaderBuffer.createInternal(OBJECT_NAME, OBJECT_FORMAT, CgBindingPoints.objectData());
     }
 
     /**
@@ -126,7 +127,7 @@ public final class CgMaterialPipeline {
     }
 
     /**
-     * Writes frame data into the UBO and binds it to the GL binding point.
+     * Writes frame data into the UBO and binds both engine buffers to their GL slots.
      * Reads from the pipeline-owned {@link #getFrameUniforms()} holder.
      * Must be called once per frame before any {@link CgMaterial#bind()} calls.
      *
@@ -147,7 +148,13 @@ public final class CgMaterialPipeline {
                         (float) frameUniforms.viewportW(), (float) frameUniforms.viewportH())
                 .endRecord();
         frameUbo.upload();
-        frameUbo.bind();
+
+        /** #TODO: in case other buffers get bound to the same bindings during the frame, best practice would be
+         * to intercept glBindBufferBase calls, and if currently bound is frame/object buffers, mark them dirty
+         * so CgMaterial.bind can freshly bind them
+         */
+        frameUbo.bind();        // glBindBufferBase(GL_UNIFORM_BUFFER, FRAME_DATA_UBO, …) — once per frame
+        objectBuffer.bind();    // glBindBufferBase or glActiveTexture+glBindTexture — once per frame
     }
 
     /**
@@ -217,6 +224,7 @@ public final class CgMaterialPipeline {
      */
     public static void init() {
         if (INSTANCE != null) return;
+        CgBindingPoints.init(CgCapabilities.detect());
         INSTANCE = new CgMaterialPipeline();
     }
 

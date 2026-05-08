@@ -3,7 +3,10 @@ package io.github.somehussar.crystalgraphics.gl.buffer.shader;
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
 import io.github.somehussar.crystalgraphics.api.buffer.CgBufferFormat;
 import io.github.somehussar.crystalgraphics.api.shader.CgShader;
+import org.lwjgl.opengl.ARBProgramInterfaceQuery;
+import org.lwjgl.opengl.ARBShaderStorageBufferObject;
 import org.lwjgl.opengl.GL30;
+import org.lwjgl.opengl.GL31;
 import org.lwjgl.opengl.GL43;
 
 /**
@@ -24,8 +27,9 @@ import org.lwjgl.opengl.GL43;
  * entirely by the parent {@link CgShaderBuffer}. This class only owns its path tag and
  * the bind/unbind GL calls.</p>
  *
- * <p>Shader wiring is a true no-op: the GLSL {@code layout(binding=N)} qualifier
- * automatically associates the SSBO block with its binding point at link time.</p>
+ * <p>Shader wiring calls {@code glShaderStorageBlockBinding} via {@code ARBProgramInterfaceQuery}
+ * (block index lookup) and {@code ARBShaderStorageBufferObject} (binding assignment) to
+ * wire the SSBO block to its binding slot post-link.</p>
  */
 public final class CgShaderStorageBuffer extends CgShaderBuffer {
 
@@ -51,9 +55,17 @@ public final class CgShaderStorageBuffer extends CgShaderBuffer {
         GL30.glBindBufferBase(GL43.GL_SHADER_STORAGE_BUFFER, bindingLocation, 0);
     }
 
-    /** SSBO wiring is a no-op — {@code layout(binding=N)} in GLSL handles it at link time. */
+    /**
+     * Wires the SSBO block {@link #getName()} to {@link #bindingLocation} via
+     * {@code glShaderStorageBlockBinding}. Called once per program link.
+     * If the block is absent (optimised out or not declared), silently skips.
+     */
     @Override
-    protected void wireShader(CgShader shader) {
-        // no-op: GLSL layout(binding=N) qualifier automatically wires the SSBO block
+    public void wireShader(CgShader shader) {
+        int programId = shader.getProgram().getId();
+        int idx = GL43.glGetProgramResourceIndex(programId, GL43.GL_SHADER_STORAGE_BLOCK, getName());
+        if (idx != GL31.GL_INVALID_INDEX) {
+            GL43.glShaderStorageBlockBinding(programId, idx, bindingLocation);
+        }
     }
 }
