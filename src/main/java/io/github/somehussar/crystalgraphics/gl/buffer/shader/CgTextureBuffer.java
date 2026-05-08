@@ -2,7 +2,10 @@ package io.github.somehussar.crystalgraphics.gl.buffer.shader;
 
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
 import io.github.somehussar.crystalgraphics.api.buffer.CgBufferFormat;
+import io.github.somehussar.crystalgraphics.api.shader.CgShader;
 import io.github.somehussar.crystalgraphics.api.texture.CgTexture;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL30;
@@ -25,18 +28,18 @@ import org.lwjgl.opengl.GL31;
  * therefore remains valid without any re-attachment call.</p>
  *
  * <h3>Bind/unbind</h3>
- * <p>Binds {@link #tboTexId} to {@code GL_TEXTURE_BUFFER} on the reserved texture unit
- * ({@link #DEFAULT_TBO_TEXTURE_UNIT}). The caller must set the {@code cg_ObjectTBO} sampler
- * uniform to {@link #bindingLocation} once after program link.</p>
+ * <p>Binds {@link #tboTexId} to {@code GL_TEXTURE_BUFFER} on the texture unit equal to
+ * {@link #bindingLocation}. The {@code samplerBuffer} uniform is wired via
+ * {@link #wireShader(CgShader)} which calls {@code glUniform1i(getName(), bindingLocation)}.</p>
+ *
+ * <h3>Texture unit assignment</h3>
+ * <p>{@code bindingLocation} IS the texture unit. With {@code USER_START = 5}, a user buffer
+ * created with {@code userIndex = 0} uses texture unit 5. The engine object buffer uses
+ * texture unit 0 ({@link io.github.somehussar.crystalgraphics.api.CgBindingPoints#TBO_ENGINE_UNIT}).</p>
  */
 public final class CgTextureBuffer extends CgShaderBuffer {
 
-    /**
-     * Default GL texture unit reserved for the TBO object-data sampler ({@code cg_ObjectTBO}).
-     * Set this sampler uniform once after program link on the TBO path:
-     * {@code shader.set1i("cg_ObjectTBO", CgTextureBuffer.DEFAULT_TBO_TEXTURE_UNIT)}.
-     */
-    public static final int DEFAULT_TBO_TEXTURE_UNIT = 7;
+    private static final Logger LOGGER = LogManager.getLogger("CgTextureBuffer");
 
     /**
      * The {@code GL_TEXTURE_BUFFER} texture object.
@@ -46,11 +49,13 @@ public final class CgTextureBuffer extends CgShaderBuffer {
     private final int tboTexId;
 
     /**
+     * @param name            sampler name used by {@link #wireShader(CgShader)} to locate
+     *                        the {@code samplerBuffer} uniform in the active program
      * @param format          typed format descriptor (mandatory)
-     * @param bindingLocation ignored — TBOs always bind to {@link #DEFAULT_TBO_TEXTURE_UNIT}
+     * @param bindingLocation GL texture unit for this TBO; used as-is (no offset added here)
      */
-    CgTextureBuffer(CgBufferFormat format, int bindingLocation) {
-        super(format, GL15.GL_ARRAY_BUFFER, DEFAULT_TBO_TEXTURE_UNIT);
+    CgTextureBuffer(String name, CgBufferFormat format, int bindingLocation) {
+        super(name, format, GL15.GL_ARRAY_BUFFER, bindingLocation);
         this.path = CgCapabilities.ShaderBufferPath.TBO;
         this.tboTexId = GL11.glGenTextures();
         attachTextureToBuffer();
@@ -70,7 +75,8 @@ public final class CgTextureBuffer extends CgShaderBuffer {
     }
     
     /**
-     * Activates texture unit of {@link #bindingLocation} and binds {@link #tboTexId} to {@code GL_TEXTURE_BUFFER}.
+     * Activates the texture unit equal to {@link #bindingLocation} and binds {@link #tboTexId}
+     * to {@code GL_TEXTURE_BUFFER}.
      */
     @Override
     protected void bindInternal() {
@@ -86,6 +92,23 @@ public final class CgTextureBuffer extends CgShaderBuffer {
         CgTexture.active(bindingLocation);
         CgTexture.bind(GL31.GL_TEXTURE_BUFFER, 0);
         CgTexture.active(0);
+    }
+
+    /**
+     * Wires the {@code samplerBuffer} uniform {@link #getName()} in {@code shader} to
+     * {@link #bindingLocation}. Emits a warning if the uniform is absent (not declared
+     * or optimized out).
+     *
+     * <p>Precondition: {@code shader.bind()} must have been called before this method.</p>
+     */
+    @Override
+    protected void wireShader(CgShader shader) {
+        int loc = shader.getUniformLocation(getName());
+        if (loc < 0) {
+            LOGGER.warn("TBO '{}' not found in shader — samplerBuffer not declared or optimized out", getName());
+            return;
+        }
+        shader.getProgram().setUniform1i(loc, bindingLocation);
     }
 
     /**

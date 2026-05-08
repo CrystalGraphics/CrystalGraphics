@@ -24,33 +24,33 @@ struct CgObjectData {
 };
 
 #ifdef CG_USE_SSBO
-layout(std430, binding = CG_OBJECT_BUFFER_BINDING) readonly buffer CgShaderBuffer {
+layout(std430, binding = CG_OBJECT_BUFFER_BINDING) readonly buffer CgObjectDataBuffer {
     CgObjectData cg_Objects[];
 };
 
 // -- Per-Instance Object Data (TBO fallback path: material baseline GL 3.3) --
 #else
-uniform samplerBuffer cg_ObjectTBO;
+uniform samplerBuffer CgObjectDataBuffer;
 
 CgObjectData cg_FetchObjectData(int instanceId) {
     int base = instanceId * 12;
     CgObjectData data;
     data.modelMatrix = mat4(
-        texelFetch(cg_ObjectTBO, base),
-        texelFetch(cg_ObjectTBO, base + 1),
-        texelFetch(cg_ObjectTBO, base + 2),
-        texelFetch(cg_ObjectTBO, base + 3)
+        texelFetch(CgObjectDataBuffer, base),
+        texelFetch(CgObjectDataBuffer, base + 1),
+        texelFetch(CgObjectDataBuffer, base + 2),
+        texelFetch(CgObjectDataBuffer, base + 3)
     );
     data.normalMatrix = mat4(
-        texelFetch(cg_ObjectTBO, base + 4),
-        texelFetch(cg_ObjectTBO, base + 5),
-        texelFetch(cg_ObjectTBO, base + 6),
-        texelFetch(cg_ObjectTBO, base + 7)
+        texelFetch(CgObjectDataBuffer, base + 4),
+        texelFetch(CgObjectDataBuffer, base + 5),
+        texelFetch(CgObjectDataBuffer, base + 6),
+        texelFetch(CgObjectDataBuffer, base + 7)
     );
-    data.custom0 = texelFetch(cg_ObjectTBO, base + 8);
-    data.custom1 = texelFetch(cg_ObjectTBO, base + 9);
-    data.custom2 = texelFetch(cg_ObjectTBO, base + 10);
-    data.custom3 = texelFetch(cg_ObjectTBO, base + 11);
+    data.custom0 = texelFetch(CgObjectDataBuffer, base + 8);
+    data.custom1 = texelFetch(CgObjectDataBuffer, base + 9);
+    data.custom2 = texelFetch(CgObjectDataBuffer, base + 10);
+    data.custom3 = texelFetch(CgObjectDataBuffer, base + 11);
     return data;
 }
 #endif

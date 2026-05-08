@@ -2,6 +2,9 @@ package io.github.somehussar.crystalgraphics.gl.material;
 
 import com.github.bsideup.jabel.Desugar;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -40,6 +43,8 @@ import java.util.regex.Pattern;
  * </ul>
  */
 public final class CgShaderParser {
+
+    private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
 
     /** A single field parsed from the {@code struct v2f { }} block. 
      * @param type  GLSL type (e.g. {@code "vec3"}). Only float-family types are valid. 
@@ -102,7 +107,7 @@ public final class CgShaderParser {
             throw new CgShaderParseException("[" + resourcePath + "] #type declaration missing: source is empty");
         }
 
-        // Validate no #version directive anywhere in the file
+        warnNonAscii(source, resourcePath);
         validateNoVersionDirective(source, resourcePath);
 
         // Validate section ordering and absence of duplicate sections
@@ -432,5 +437,26 @@ public final class CgShaderParser {
         if (a == -1) return b;
         if (b == -1) return a;
         return Math.min(a, b);
+    }
+
+    private static void warnNonAscii(String source, String path) {
+        StringBuilder details = new StringBuilder();
+        for (int i = 0; i < source.length(); i++) {
+            char c = source.charAt(i);
+            if (c > 127) {
+                if (details.length() > 0) details.append(", ");
+                int line = 1, col = 1;
+                for (int j = 0; j < i; j++) {
+                    if (source.charAt(j) == '\n') { line++; col = 1; } else { col++; }
+                }
+                details.append('\'').append(c).append("' (U+")
+                       .append(String.format("%04X", (int) c))
+                       .append(") at ").append(line).append(':').append(col);
+            }
+        }
+        if (details.length() > 0) {
+            LOGGER.warn("[{}] Non-ASCII character(s) in .shader file — invisible unicode silently breaks GLSL: {}",
+                    path, details);
+        }
     }
 }

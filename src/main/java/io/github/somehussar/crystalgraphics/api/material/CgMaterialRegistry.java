@@ -63,7 +63,7 @@ public final class CgMaterialRegistry {
      */
     public void reloadAll() {
         for (CgMaterial mat : materials.values())
-            mat.reload();
+            mat.markDirty();
     }
 
     /**

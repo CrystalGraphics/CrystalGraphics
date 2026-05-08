@@ -5,7 +5,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
@@ -209,31 +208,32 @@ public final class CgShaderPreprocessor {
     private static String stripNonAscii(String source, String path) {
         boolean hasNonAscii = false;
         for (int i = 0; i < source.length(); i++) {
-            if (source.charAt(i) > 127) {
-                hasNonAscii = true;
-                break;
-            }
+            if (source.charAt(i) > 127) { hasNonAscii = true; break; }
         }
-        if (!hasNonAscii) {
-            return source;
-        }
+        if (!hasNonAscii) return source;
 
-        List<Integer> positions = new ArrayList<>();
+        String displayPath = (path != null && !path.isEmpty()) ? path : "<inline>";
+        StringBuilder details = new StringBuilder();
         for (int i = 0; i < source.length(); i++) {
-            if (source.charAt(i) > 127) {
-                positions.add(Integer.valueOf(i));
+            char c = source.charAt(i);
+            if (c > 127) {
+                if (details.length() > 0) details.append(", ");
+                details.append('\'').append(c).append("' (U+")
+                       .append(String.format("%04X", (int) c))
+                       .append(") at ").append(toLineCol(source, i));
             }
         }
-        StringBuilder stripped = new StringBuilder();
-        for (int pos : positions) {
-            char c = source.charAt(pos);
-            stripped.append(String.format("U+%04X", (int) c));
-            if (stripped.length() < 200) stripped.append(' ');
-        }
-        LOGGER.warn("[{}] Stripped {} non-ASCII character(s) — check your editor for invisible unicode. "
-                + "Codepoints: [{}] at positions {}",
-                path, positions.size(), stripped.toString().trim(), positions);
+        LOGGER.warn("[{}] Stripped non-ASCII character(s) — check your editor for invisible unicode: {}",
+                displayPath, details);
         return source.replaceAll("[^\\x00-\\x7F]", " ");
+    }
+
+    private static String toLineCol(String source, int pos) {
+        int line = 1, col = 1;
+        for (int i = 0; i < pos; i++) {
+            if (source.charAt(i) == '\n') { line++; col = 1; } else { col++; }
+        }
+        return line + ":" + col;
     }
 
     // ── Private: include expansion ─────────────────────────────────────────────

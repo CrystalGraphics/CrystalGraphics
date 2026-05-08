@@ -11,9 +11,9 @@ import java.util.Map;
 /**
  * Global registry of user-created SSBO/TBO and UBO shader buffers.
  *
- * <p>Provides lifecycle management (via {@link #deleteAll()}) and binding-point enforcement
- * for user-owned buffers. All buffers obtained through this registry must use binding points
- * {@code >= CgBindingPoints.USER_START} ({@value CgBindingPoints#USER_START}).</p>
+ * <p>Provides lifecycle management (via {@link #deleteAll()}) for user-owned buffers.
+ * All buffers obtained through this registry use binding points derived from a 0-based
+ * {@code userIndex}: the actual binding point is {@code userIndex + CgBindingPoints.USER_START}.</p>
  *
  * <p><strong>Engine-internal buffers bypass this registry</strong>: the per-object SSBO/TBO and
  * per-frame UBO owned by {@code CgMaterialPipeline} occupy engine-reserved binding points 0 and 1
@@ -22,11 +22,12 @@ import java.util.Map;
  *
  * <h3>Usage</h3>
  * <pre>{@code
+ * // userIndex 0 = first user slot (binding point CgBindingPoints.USER_START)
  * CgShaderBuffer myBuf = CgShaderBufferRegistry.get()
- *     .getOrCreate(MyFormats.PARTICLE_FORMAT, CgBindingPoints.USER_START);
+ *     .getOrCreate("myData", MyFormats.PARTICLE_FORMAT, 0);
  *
  * CgUniformBuffer myUbo = CgShaderBufferRegistry.get()
- *     .getOrCreateUbo(MyFormats.LIGHT_FORMAT, "LightBlock", CgBindingPoints.USER_START + 1);
+ *     .getOrCreateUbo(MyFormats.LIGHT_FORMAT, "LightBlock", 1);
  * }</pre>
  *
  * <p>All registered buffers are deleted by {@link #deleteAll()}, which is called from
@@ -36,11 +37,11 @@ public final class CgShaderBufferRegistry {
 
     private static final CgShaderBufferRegistry INSTANCE = new CgShaderBufferRegistry();
 
-    /** SSBO/TBO cache — keyed by (format, bindingPoint). */
-    private final Map<SsboKey, CgShaderBuffer> ssboCache = new HashMap<>();
+    /** SSBO/TBO cache — keyed by (name, format, bindingPoint). */
+    private final Map<ShaderBufferKey, CgShaderBuffer> shaderBufferCache = new HashMap<>();
 
-    /** UBO cache — keyed by (format, bindingPoint, blockName). */
-    private final Map<UboKey, CgUniformBuffer> uboCache = new HashMap<>();
+    /** UBO cache — keyed by (name, format, bindingPoint). Separate cache, same key type. */
+    private final Map<ShaderBufferKey, CgUniformBuffer> uboCache = new HashMap<>();
 
     private CgShaderBufferRegistry() {}
 
@@ -50,42 +51,42 @@ public final class CgShaderBufferRegistry {
     }
 
     /**
-     * Returns (or lazily creates) a format-aware SSBO/TBO for the given format and binding point.
-     * The buffer starts at capacity 1 and auto-grows on {@link CgShaderBuffer#beginWrite(int)}.
+     * Returns (or lazily creates) a format-aware SSBO/TBO for the given name, format, and
+     * 0-based user index. The actual binding point is {@code userIndex + CgBindingPoints.USER_START}.
      *
-     * @param format          typed format descriptor for the buffer records
-     * @param bindingPoint    binding slot; must be {@code >= CgBindingPoints.USER_START}
+     * @param name      debug/sampler name for the buffer
+     * @param format    typed format descriptor for the buffer records
+     * @param userIndex 0-based user slot index (0 = first user slot)
      * @return the cached or newly-created shader buffer
-     * @throws IllegalArgumentException if {@code bindingPoint < CgBindingPoints.USER_START}
      */
-    public CgShaderBuffer getOrCreate(CgBufferFormat format, int bindingPoint) {
-        CgBindingPoints.validateBindingPoint(bindingPoint);
-        SsboKey key = new SsboKey(format, bindingPoint);
-        CgShaderBuffer existing = ssboCache.get(key);
+    public CgShaderBuffer getOrCreate(String name, CgBufferFormat format, int userIndex) {
+        int binding = CgBindingPoints.USER_START + userIndex;
+        ShaderBufferKey key = new ShaderBufferKey(name, format, binding);
+        CgShaderBuffer existing = shaderBufferCache.get(key);
         if (existing != null) return existing;
-        CgShaderBuffer buf = CgShaderBuffer.create(format, bindingPoint);
-        ssboCache.put(key, buf);
+        CgShaderBuffer buf = CgShaderBuffer.create(name, format, userIndex);
+        shaderBufferCache.put(key, buf);
         return buf;
     }
 
     /**
-     * Returns (or lazily creates) a format-aware UBO for the given format, block name, and binding point.
+     * Returns (or lazily creates) a format-aware UBO for the given format, block name, and
+     * 0-based user index. The actual binding point is {@code userIndex + CgBindingPoints.USER_START}.
      *
-     * <p>The {@code blockName} is part of the cache key — two UBOs with different block names
-     * but the same format and binding point are distinct resources.</p>
+     * <p>The {@code name} is part of the cache key — two UBOs with different names
+     * but the same format and user index are distinct resources.</p>
      *
-     * @param format          typed format descriptor
-     * @param blockName       GLSL uniform block name (e.g. {@code "LightBlock"})
-     * @param bindingPoint    binding slot; must be {@code >= CgBindingPoints.USER_START}
+     * @param format    typed format descriptor
+     * @param name      GLSL uniform block name (e.g. {@code "LightBlock"})
+     * @param userIndex 0-based user slot index (0 = first user slot)
      * @return the cached or newly-created UBO
-     * @throws IllegalArgumentException if {@code bindingPoint < CgBindingPoints.USER_START}
      */
-    public CgUniformBuffer getOrCreateUbo(CgBufferFormat format, String blockName, int bindingPoint) {
-        CgBindingPoints.validateBindingPoint(bindingPoint);
-        UboKey key = new UboKey(format, bindingPoint, blockName);
+    public CgUniformBuffer getOrCreateUbo(CgBufferFormat format, String name, int userIndex) {
+        int binding = CgBindingPoints.USER_START + userIndex;
+        ShaderBufferKey key = new ShaderBufferKey(name, format, binding);
         CgUniformBuffer existing = uboCache.get(key);
         if (existing != null) return existing;
-        CgUniformBuffer ubo = CgUniformBuffer.create(format, blockName, bindingPoint);
+        CgUniformBuffer ubo = CgUniformBuffer.create(format, name, userIndex);
         uboCache.put(key, ubo);
         return ubo;
     }
@@ -96,10 +97,10 @@ public final class CgShaderBufferRegistry {
      * Must be called on the GL thread.
      */
     public void deleteAll() {
-        for (CgShaderBuffer buf : ssboCache.values()) {
+        for (CgShaderBuffer buf : shaderBufferCache.values()) {
             buf.delete();
         }
-        ssboCache.clear();
+        shaderBufferCache.clear();
 
         for (CgUniformBuffer ubo : uboCache.values()) {
             ubo.delete();
@@ -110,55 +111,33 @@ public final class CgShaderBufferRegistry {
     // ── Composite key types ───────────────────────────────────────────────────
 
     /**
-     * Value-equal cache key for the SSBO/TBO cache.
+     * Value-equal cache key for the SSBO/TBO cache. Covers both SSBO and TBO paths
+     * since they share the same identity contract.
      *
+     * @param name         Buffer debug/sampler name. Part of the identity contract.
      * @param format       Buffer format. Value equality.
      * @param bindingPoint GL binding point.
      */
     @Desugar
-    record SsboKey(CgBufferFormat format, int bindingPoint) {
+    record ShaderBufferKey(String name, CgBufferFormat format, int bindingPoint) {
 
         @Override
         public boolean equals(Object o) {
             if (this == o) return true;
-            if (!(o instanceof SsboKey)) return false;
-            SsboKey other = (SsboKey) o;
-            return bindingPoint == other.bindingPoint && format.equals(other.format);
-        }
-
-        @Override
-        public int hashCode() {
-            return 31 * format.hashCode() + bindingPoint;
-        }
-    }
-
-    /**
-     * Value-equal cache key for the UBO cache. Includes the block name because two UBOs
-     * with different block names but the same format and binding point are distinct resources.
-     *
-     * @param format       Buffer format. Value equality.
-     * @param bindingPoint GL binding point.
-     * @param blockName    GLSL uniform block name.
-     */
-    @Desugar
-    record UboKey(CgBufferFormat format, int bindingPoint, String blockName) {
-
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) return true;
-            if (!(o instanceof UboKey)) return false;
-            UboKey other = (UboKey) o;
+            if (!(o instanceof ShaderBufferKey)) return false;
+            ShaderBufferKey other = (ShaderBufferKey) o;
             return bindingPoint == other.bindingPoint
                     && format.equals(other.format)
-                    && blockName.equals(other.blockName);
+                    && name.equals(other.name);
         }
 
         @Override
         public int hashCode() {
-            int h = format.hashCode();
+            int h = name.hashCode();
+            h = 31 * h + format.hashCode();
             h = 31 * h + bindingPoint;
-            h = 31 * h + blockName.hashCode();
             return h;
         }
     }
+
 }

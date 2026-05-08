@@ -19,6 +19,7 @@ Key contract points:
 - `bindScoped()` / `bindScoped(CgScopeRestoreOption...)` — try-with-resources binding; restores prior program on close
 - `getUniformLocation(String)` — cached; invalidated on recompile
 - `getLastCompileError()` — returns the GL info log from the last failed compile/link, or `null` if compile succeeded or has not been attempted
+- `recompile()` — forces immediate recompilation from current sources; on success replaces GL program in-place; on failure `isCompiled()` becomes false and old program is gone
 - `getActiveUniforms()` — returns an unmodifiable `List<CgActiveUniform>` introspected from the linked program; empty list if not compiled
 
 ### `CgShaderManager`

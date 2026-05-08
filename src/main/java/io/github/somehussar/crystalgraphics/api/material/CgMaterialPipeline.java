@@ -48,6 +48,11 @@ import io.github.somehussar.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 public final class CgMaterialPipeline {
 
     /**
+     * Default GLSL uniform block name used by {@code cg_env.glsl}.
+     */
+    public static final String FRAME_BLOCK_NAME = "CgFrameBlock";
+    
+    /**
      * Per-frame UBO format (std140). Stride = 38 floats = 152 bytes.
      *
      * <pre>
@@ -65,6 +70,11 @@ public final class CgMaterialPipeline {
             .vec2("cg_Resolution")
             .build();
 
+    /**
+     * Default GLSL SSBO/TBO buffer name used by {@code cg_env.glsl}.
+     */
+    public static final String OBJECT_NAME = "CgObjectDataBuffer";
+    
     /**
      * Per-object SSBO/TBO format (std430). Stride = 48 floats = 192 bytes.
      *
@@ -89,64 +99,18 @@ public final class CgMaterialPipeline {
             .vec4("custom2")
             .vec4("custom3")
             .build();
-    
-
-    // ── Singleton ─────────────────────────────────────────────────────────────
-
-    private static volatile CgMaterialPipeline INSTANCE;
-
-    /**
-     * Creates and installs the singleton pipeline. Must be called once on the GL thread
-     * after context creation, before any {@link #getInstance()} call.
-     */
-    public static void init() {
-        if (INSTANCE != null) return;
-        INSTANCE = new CgMaterialPipeline();
-    }
-
-    /** Returns the active pipeline singleton. */
-    public static CgMaterialPipeline getInstance() {
-        if (INSTANCE == null) init();
-        return INSTANCE;
-    }
-
-    /**
-     * Destroys the singleton, freeing all owned GPU resources.
-     * Must be called before {@code CgGraphicsLifecycle.destroyContext()}.
-     * A no-op if never initialized.
-     */
-    public static void destroy() {
-        if (INSTANCE != null) INSTANCE.delete();
-        INSTANCE = null;
-    }
-
-    // ── Instance ──────────────────────────────────────────────────────────────
 
     private final CgUniformBuffer frameUbo;
     private final CgShaderBuffer objectBuffer;
     private final CgFrameUniforms frameUniforms = new CgFrameUniforms();
     private boolean deleted;
+    
+    // ── Instance ──────────────────────────────────────────────────────────────
+    private static CgMaterialPipeline INSTANCE;
 
     private CgMaterialPipeline() {
-        this.frameUbo = new CgUniformBuffer(FRAME_BLOCK_FORMAT, CgUniformBuffer.BLOCK_NAME, CgBindingPoints.FRAME_DATA);
-        this.objectBuffer = CgShaderBuffer.createInternal(OBJECT_FORMAT, CgBindingPoints.OBJECT_DATA);
-    }
-
-    /**
-     * Returns the per-frame UBO ({@code CgFrameBlock}) that backs all material programs.
-     *
-     * <p>The primary use case for direct access is wiring the block to a custom shader program
-     * that was not created through the material pipeline:</p>
-     * <pre>{@code
-     * frameBuffer().bindBlock(CgUniformBuffer.BLOCK_NAME, myCustomShader.getProgram().getId());
-     * }</pre>
-     *
-     * @return the engine-owned per-frame UBO; never {@code null}
-     * @throws IllegalStateException if the pipeline has been destroyed
-     */
-    public CgUniformBuffer frameBuffer() {
-        checkNotDeleted();
-        return frameUbo;
+        this.frameUbo = new CgUniformBuffer(FRAME_BLOCK_NAME, FRAME_BLOCK_FORMAT, CgBindingPoints.FRAME_DATA);
+        this.objectBuffer = CgShaderBuffer.createInternal(OBJECT_NAME, OBJECT_FORMAT, CgBindingPoints.OBJECT_DATA);
     }
 
     /**
@@ -184,6 +148,23 @@ public final class CgMaterialPipeline {
                 .endRecord();
         frameUbo.upload();
         frameUbo.bind();
+    }
+
+    /**
+     * Returns the per-frame UBO ({@code CgFrameBlock}) that backs all material programs.
+     *
+     * <p>The primary use case for direct access is wiring the block to a custom shader program
+     * that was not created through the material pipeline:</p>
+     * <pre>{@code
+     * frameBuffer().bind(myCustomShader); // wires CgFrameBlock UBO to the program
+     * }</pre>
+     *
+     * @return the engine-owned per-frame UBO; never {@code null}
+     * @throws IllegalStateException if the pipeline has been destroyed
+     */
+    public CgUniformBuffer frameBuffer() {
+        checkNotDeleted();
+        return frameUbo;
     }
 
     /**
@@ -227,4 +208,32 @@ public final class CgMaterialPipeline {
     private void checkNotDeleted() {
         if (deleted) throw new IllegalStateException("CgMaterialPipeline has been deleted");
     }
+
+    // ── Singleton ─────────────────────────────────────────────────────────────
+
+    /**
+     * Creates and installs the singleton pipeline. Must be called once on the GL thread
+     * after context creation, before any {@link #getInstance()} call.
+     */
+    public static void init() {
+        if (INSTANCE != null) return;
+        INSTANCE = new CgMaterialPipeline();
+    }
+
+    /** Returns the active pipeline singleton. */
+    public static CgMaterialPipeline getInstance() {
+        if (INSTANCE == null) init();
+        return INSTANCE;
+    }
+
+    /**
+     * Destroys the singleton, freeing all owned GPU resources.
+     * Must be called before {@code CgGraphicsLifecycle.destroyContext()}.
+     * A no-op if never initialized.
+     */
+    public static void destroy() {
+        if (INSTANCE != null) INSTANCE.delete();
+        INSTANCE = null;
+    }
+
 }

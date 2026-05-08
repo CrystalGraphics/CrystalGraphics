@@ -8,82 +8,89 @@ import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.GL31;
 
 /**
-     * UBO-backed {@link CgShaderBuffer} for per-frame uniform data.
-     *
-     * <p>Operates in <em>flat mode</em> — there is no per-record multiplexing. The caller
-     * writes uniform fields via named writes, then calls {@link #upload()} to push staged data
-     * to the GPU.</p>
-     *
-     * <h3>Write model (format-aware)</h3>
-     * <pre>{@code
-     * CgBufferWriter w = frameUbo.writer();
-     * w.reset()
-     *  .beginRecord()
-     *  .mat4("cg_ViewMatrix", view)
-     *  .mat4("cg_ProjMatrix", proj)
-     *  .vec4("cg_Time", t/20, t, t*2, t*3)
-     *  .vec2("cg_Resolution", w, h);
-     * frameUbo.endRecord();  // finalize the record (sets lastWrittenCount = 1)
-     * frameUbo.upload();     // upload staged data to GPU
-     * frameUbo.bind();
-     * }</pre>
-     *
-     * <h3>GLSL block</h3>
-     * <p>Fields must be declared in the same order as writes. Example:</p>
-     * <pre>{@code
-     * layout(std140, binding = 1) uniform CgFrameBlock {
-     *     mat4 cg_ViewMatrix;
-     *     mat4 cg_ProjMatrix;
-     * };
-     * }</pre>
-     *
-     * <h3>std140 padding</h3>
-     * <p>For {@code mat3}: use {@link CgBufferWriter#mat3(String, org.joml.Matrix3f)}
-     * (48 bytes, vec4-aligned columns, named write). Always verify the write sequence
-     * matches the GLSL layout exactly.</p>
-     */
+ * UBO-backed {@link CgShaderBuffer} for per-frame uniform data.
+ *
+ * <p>Operates in <em>flat mode</em> — there is no per-record multiplexing. The caller
+ * writes uniform fields via named writes, then calls {@link #upload()} to push staged data
+ * to the GPU.</p>
+ *
+ * <h3>Write model (format-aware)</h3>
+ * <pre>{@code
+ * CgBufferWriter w = frameUbo.writer();
+ * w.reset()
+ *  .beginRecord()
+ *  .mat4("cg_ViewMatrix", view)
+ *  .mat4("cg_ProjMatrix", proj)
+ *  .vec4("cg_Time", t/20, t, t*2, t*3)
+ *  .vec2("cg_Resolution", w, h);
+ * frameUbo.endRecord();  // finalize the record (sets lastWrittenCount = 1)
+ * frameUbo.upload();     // upload staged data to GPU
+ * frameUbo.bind();
+ * }</pre>
+ *
+ * <h3>GLSL block</h3>
+ * <p>Fields must be declared in the same order as writes. Example:</p>
+ * <pre>{@code
+ * layout(std140, binding = 1) uniform CgFrameBlock {
+ *     mat4 cg_ViewMatrix;
+ *     mat4 cg_ProjMatrix;
+ * };
+ * }</pre>
+ *
+ * <h3>std140 padding</h3>
+ * <p>For {@code mat3}: use {@link CgBufferWriter#mat3(String, org.joml.Matrix3f)}
+ * (48 bytes, vec4-aligned columns, named write). Always verify the write sequence
+ * matches the GLSL layout exactly.</p>
+ *
+ * <h3>Shader wiring</h3>
+ * <p>After {@code shader.bind()}, call {@link #bind(CgShader)} to both bind the UBO and
+ * wire the uniform block index via {@code glUniformBlockBinding}. The block name used for
+ * the index lookup is {@link #getName()} (inherited from the parent).</p>
+ */
 public final class CgUniformBuffer extends CgShaderBuffer {
 
     /**
-     * Default GLSL uniform block name used by {@code cg_env.glsl}.
-     * Pass to {@link #bindBlock(int)} after program link.
-     */
-    public static final String BLOCK_NAME = "CgFrameBlock";
-
-    /** GLSL block name this UBO is wired to. Set once at construction. */
-    private final String blockName;
-
-    /**
      * Engine-internal constructor. Creates a format-aware UBO targeting any binding slot,
-     * including engine-reserved slots 0–9. User code must use {@link #create} instead.
+     * including engine-reserved slots 0–4. User code must use {@link #create} instead.
      *
+     * @param name            the GLSL uniform block name this UBO is wired to (also used
+     *                        by {@link #wireShader(CgShader)} for block index lookup)
      * @param format          typed format descriptor (mandatory)
-     * @param blockName       the GLSL uniform block name this UBO is wired to
      * @param bindingLocation the GL binding slot to use
      */
-    public CgUniformBuffer(CgBufferFormat format, String blockName, int bindingLocation) {
-        super(format, GL31.GL_UNIFORM_BUFFER, bindingLocation);
-        this.blockName = blockName;
+    public CgUniformBuffer(String name, CgBufferFormat format, int bindingLocation) {
+        super(name, format, GL31.GL_UNIFORM_BUFFER, bindingLocation);
     }
 
     /**
-     * Creates a user-defined format-aware UBO. Enforces that {@code bindingLocation} is at
-     * least {@link CgBindingPoints#USER_START} (10).
+     * Creates a user-defined format-aware UBO.
      *
-     * @param format          typed format descriptor (mandatory)
-     * @param blockName       the GLSL uniform block name
-     * @param bindingLocation binding slot; must be {@code >= CgBindingPoints.USER_START}
+     * <p>The {@code userIndex} is 0-based. {@link CgBindingPoints#USER_START} is added
+     * internally to derive the actual GL binding point.</p>
+     *
+     * @param format    typed format descriptor (mandatory)
+     * @param name      the GLSL uniform block name
+     * @param userIndex 0-based user slot index (0 = first user slot after engine range)
      * @return a new {@code CgUniformBuffer}
-     * @throws IllegalArgumentException if {@code bindingLocation} is engine-reserved
      */
-    public static CgUniformBuffer create(CgBufferFormat format, String blockName, int bindingLocation) {
-        CgBindingPoints.validateBindingPoint(bindingLocation);
-        return new CgUniformBuffer(format, blockName, bindingLocation);
+    public static CgUniformBuffer create(CgBufferFormat format, String name, int userIndex) {
+        int binding = CgBindingPoints.USER_START + userIndex;
+        return new CgUniformBuffer(name, format, binding);
     }
 
-    /** Returns the GLSL uniform block name this UBO is wired to. */
-    public String getBlockName() {
-        return blockName;
+    /**
+     * Engine-internal factory. Accepts raw binding points (may be engine-reserved 0–4).
+     * No USER_START offset is added.
+     *
+     * <p><strong>Engine-internal. Do not use from user code.</strong></p>
+     *
+     * @param format       typed format descriptor (mandatory)
+     * @param name         the GLSL uniform block name
+     * @param bindingPoint binding slot (may be engine-reserved)
+     * @return a new {@code CgUniformBuffer}
+     */
+    static CgUniformBuffer createInternal(CgBufferFormat format, String name, int bindingPoint) {
+        return new CgUniformBuffer(name, format, bindingPoint);
     }
 
     /**
@@ -103,27 +110,18 @@ public final class CgUniformBuffer extends CgShaderBuffer {
     }
 
     /**
-     * Wires the uniform block {@code blockName} in {@code shader} to this UBO's
+     * Wires the uniform block {@link #getName()} in {@code shader} to this UBO's
      * {@link #bindingLocation} via {@code glUniformBlockBinding}. No-op if the block is absent.
      *
-     * <p>Call once per program after link.</p>
+     * <p>Called by {@link #bind(CgShader)} after {@link #bindInternal()}. Replaces the
+     * deleted {@code bindBlock()} methods.</p>
      *
-     * @param shader the Cg shader to wire
+     * @param shader the currently-bound shader program; must not be null
      */
-    public void bindBlock(CgShader shader) {
-        bindBlock(shader.getProgram().getId());
-    }
-
-    /**
-     * Wires the uniform block {@code blockName} in {@code programId} to this UBO's
-     * {@link #bindingLocation} via {@code glUniformBlockBinding}. No-op if the block is absent.
-     *
-     * <p>Call once per program after link.</p>
-     *
-     * @param programId GL program object ID
-     */
-    public void bindBlock(int programId) {
-        int idx = GL31.glGetUniformBlockIndex(programId, blockName);
+    @Override
+    protected void wireShader(CgShader shader) {
+        int programId = shader.getProgram().getId();
+        int idx = GL31.glGetUniformBlockIndex(programId, getName());
         if (idx != GL31.GL_INVALID_INDEX) {
             GL31.glUniformBlockBinding(programId, idx, bindingLocation);
         }

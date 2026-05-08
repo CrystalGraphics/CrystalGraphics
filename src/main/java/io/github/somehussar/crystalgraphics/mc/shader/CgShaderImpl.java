@@ -388,6 +388,7 @@ import java.util.function.Consumer;
         ephemeralBindings.clear();
     }
 
+    @Override
     public void recompile() {
         this.dirty = false;
 
