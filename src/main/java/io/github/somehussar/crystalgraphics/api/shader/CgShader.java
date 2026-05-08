@@ -257,6 +257,21 @@ public interface CgShader {
     List<CgActiveUniform> getActiveUniforms();
 
     /**
+     * Forces immediate recompilation from current sources.
+     *
+     * <p>Equivalent to calling {@link #markDirty()} and then immediately triggering
+     * the recompile that would normally happen on the next {@link #bind()} call.
+     * Safe to call from any context — if compilation fails, {@link #isCompiled()}
+     * returns {@code false} and the error is available via {@link #getLastCompileError()}.
+     * On success, the old program is replaced in-place; the {@link CgShader} object
+     * reference remains stable.</p>
+     *
+     * <p>Use this instead of recreating the shader object when you need an immediate
+     * relink rather than a deferred one.</p>
+     */
+    void recompile();
+
+    /**
      * Deletes the underlying program (if any) and releases resources.
      *
      * <p>After this call, {@link #isCompiled()} returns {@code false} and

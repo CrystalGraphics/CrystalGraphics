@@ -4,6 +4,7 @@ import io.github.somehussar.crystalgraphics.api.CgBindingPoints;
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
 import io.github.somehussar.crystalgraphics.api.buffer.CgBufferFormat;
 import io.github.somehussar.crystalgraphics.api.buffer.CgObjectBuffer;
+import io.github.somehussar.crystalgraphics.api.shader.CgShader;
 import io.github.somehussar.crystalgraphics.gl.buffer.CgStreamBuffer;
 import io.github.somehussar.crystalgraphics.gl.buffer.staging.CgBufferWriter;
 import io.github.somehussar.crystalgraphics.gl.buffer.staging.CgStagingBuffer;
@@ -37,9 +38,20 @@ import java.util.Objects;
  * </ul>
  *
  * <h3>Factory</h3>
- * <p>{@link #create(CgBufferFormat, int)} selects the best available SSBO/TBO
- * backend via {@link CgCapabilities#preferredShaderBufferPath()}. Use the concrete
- * constructors directly when you need a specific type.</p>
+ * <p>{@link #create(String, CgBufferFormat, int)} selects the best available SSBO/TBO
+ * backend via {@link CgCapabilities#preferredShaderBufferPath()}. The {@code userIndex}
+ * is 0-based; {@link CgBindingPoints#USER_START} is added internally. Use
+ * {@link #createInternal(String, CgBufferFormat, int)} for engine-reserved binding points.</p>
+ *
+ * <h3>Shader wiring</h3>
+ * <p>Call {@link #bind(CgShader)} after {@code shader.bind()} to both bind the buffer
+ * and wire it to the active program in one call. Each subclass implements
+ * {@link #wireShader(CgShader)} for its specific wiring strategy:</p>
+ * <ul>
+ *   <li>SSBO — no-op; {@code layout(binding=N)} in GLSL handles wiring automatically.</li>
+ *   <li>TBO — sets the {@code samplerBuffer} uniform to {@link #bindingLocation}.</li>
+ *   <li>UBO — calls {@code glUniformBlockBinding} to associate block index with slot.</li>
+ * </ul>
  *
  * <h3>SSBO/TBO write lifecycle</h3>
  * <pre>{@code
@@ -52,9 +64,11 @@ import java.util.Objects;
  *     buffer.endRecord();
  * }
  * buffer.endWrite();
- * buffer.bind();
+ * shader.bind();
+ * buffer.bind(shader);   // SSBO: no-op wiring; TBO: sets samplerBuffer uniform
  * // draw N instances
  * buffer.unbind();
+ * shader.unbind();
  * }</pre>
  */
 public abstract class CgShaderBuffer implements CgObjectBuffer {
@@ -62,6 +76,17 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
     /** Binding point used for glBindBufferBase or as GL texture unit (TBO). Immutable after construction. */
     @Getter
     protected final int bindingLocation;
+
+    /**
+     * Debug/sampler/block name for this buffer.
+     * <ul>
+     *   <li>SSBO — debug label, appears in error messages and registry keys.</li>
+     *   <li>TBO — sampler name used in {@code glGetUniformLocation} during {@link #bind(CgShader)}.</li>
+     *   <li>UBO — block name used in {@code glGetUniformBlockIndex} during {@link #bind(CgShader)}.</li>
+     * </ul>
+     */
+    @Getter
+    private final String name;
 
     protected final CgBufferWriter writer;
     protected final CgStreamBuffer dataBuffer;
@@ -102,12 +127,15 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
      * {@link #lastWrittenCount} starts at {@code 0} — valid for both the single-block
      * UBO write cycle and for SSBO batches (reset to {@code -1} by {@link #beginWrite}).
      *
+     * @param name            debug/sampler/block name (must be non-null)
      * @param format          typed format descriptor (mandatory)
      * @param glTarget        GL buffer target
      * @param bindingLocation GL binding point; immutable after construction
      */
-    protected CgShaderBuffer(CgBufferFormat format, int glTarget, int bindingLocation) {
+    protected CgShaderBuffer(String name, CgBufferFormat format, int glTarget, int bindingLocation) {
+        Objects.requireNonNull(name,   "name is required");
         Objects.requireNonNull(format, "CgBufferFormat is required");
+        this.name             = name;
         this.bindingLocation  = bindingLocation;
         this.format           = format;
         int floatPerRecord    = format.getFloatCount();
@@ -121,50 +149,52 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
     /**
      * Creates the best available SSBO/TBO shader buffer driven by the given format descriptor.
      * The buffer starts at capacity 1 and auto-grows on {@link #beginWrite(int)}.
-     * The binding location is mandatory and immutable — there is no default-binding overload
-     * to avoid accidental shadowing of engine-reserved slots.
      *
-     * @param format          typed buffer format descriptor (drives named writes and stride)
-     * @param bindingLocation binding slot; must be {@code >= CgBindingPoints.USER_START}
-     *                        to avoid stomping engine-reserved data
+     * <p>The {@code userIndex} is 0-based. {@link CgBindingPoints#USER_START} is added
+     * internally to derive the actual GL binding point / texture unit, so user code
+     * is free of magic offset arithmetic.</p>
+     *
+     * <p>Examples: {@code userIndex 0} → binding {@code 5}; {@code userIndex 1} → binding {@code 6}.</p>
+     *
+     * @param name      debug/sampler name (must be non-null)
+     * @param format    typed buffer format descriptor
+     * @param userIndex 0-based user slot index (0 = first user slot after engine range)
      * @return {@link CgShaderStorageBuffer} or {@link CgTextureBuffer} depending on hardware
-     * @throws IllegalArgumentException  if {@code bindingLocation} is engine-reserved
      * @throws UnsupportedOperationException if the hardware does not support GL 3.3+
      */
-    public static CgShaderBuffer create(CgBufferFormat format, int bindingLocation) {
-        CgBindingPoints.validateBindingPoint(bindingLocation);
+    public static CgShaderBuffer create(String name, CgBufferFormat format, int userIndex) {
+        int binding = CgBindingPoints.USER_START + userIndex;
         CgCapabilities.ShaderBufferPath path = CgCapabilities.detect().preferredShaderBufferPath();
         if (path == CgCapabilities.ShaderBufferPath.NONE)
             throw new UnsupportedOperationException("GL 3.3+ required for CrystalShader object buffers");
 
         if (path == CgCapabilities.ShaderBufferPath.TBO)
-            return new CgTextureBuffer(format, bindingLocation);
+            return new CgTextureBuffer(name, format, binding);
 
-        return new CgShaderStorageBuffer(format, path, bindingLocation);
+        return new CgShaderStorageBuffer(name, format, path, binding);
     }
 
     /**
-     * Creates the best available SSBO/TBO shader buffer for engine-internal use with a
-     * typed format descriptor. Bypasses the {@link CgBindingPoints#USER_START} guard so
-     * engine-reserved binding points (0–9) are allowed.
-     * The buffer starts at capacity 1 and auto-grows on {@link #beginWrite(int)}.
+     * Creates the best available SSBO/TBO shader buffer for engine-internal use.
+     * Accepts raw binding points (may be engine-reserved 0–4). No USER_START offset is added.
      *
      * <p><strong>Engine-internal. Do not use from user code.</strong></p>
      *
-     * @param format          typed buffer format (drives named writes and stride)
-     * @param bindingLocation binding slot (may be engine-reserved)
+     * @param name            debug/sampler name (must be non-null)
+     * @param format          typed buffer format
+     * @param bindingPoint    binding slot (may be engine-reserved)
      * @return {@link CgShaderStorageBuffer} or {@link CgTextureBuffer} depending on hardware
      * @throws UnsupportedOperationException if the hardware does not support GL 3.3+
      */
-    public static CgShaderBuffer createInternal(CgBufferFormat format, int bindingLocation) {
+    public static CgShaderBuffer createInternal(String name, CgBufferFormat format, int bindingPoint) {
         CgCapabilities.ShaderBufferPath path = CgCapabilities.detect().preferredShaderBufferPath();
         if (path == CgCapabilities.ShaderBufferPath.NONE)
             throw new UnsupportedOperationException("GL 3.3+ required for CrystalShader object buffers");
 
         if (path == CgCapabilities.ShaderBufferPath.TBO)
-            return new CgTextureBuffer(format, bindingLocation);
+            return new CgTextureBuffer(name, format, bindingPoint);
 
-        return new CgShaderStorageBuffer(format, path, bindingLocation);
+        return new CgShaderStorageBuffer(name, format, path, bindingPoint);
     }
 
     // ── Write API ─────────────────────────────────────────────────────────────
@@ -250,6 +280,31 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
         bindInternal();
     }
 
+    /**
+     * Binds this buffer AND wires it to {@code shader}.
+     *
+     * <p><strong>Precondition:</strong> {@code shader.bind()} must have been called before this
+     * method. GL uniform/block-index queries require the program to be currently active.</p>
+     *
+     * <p>Behavior by type:</p>
+     * <ul>
+     *   <li><strong>SSBO</strong> — {@code glBindBufferBase} only. The GLSL
+     *       {@code layout(binding=N)} qualifier wires the block automatically.</li>
+     *   <li><strong>TBO</strong> — activates the texture unit, binds the texture, then sets
+     *       {@code glUniform1i(getName(), bindingLocation)} to wire the {@code samplerBuffer}.</li>
+     *   <li><strong>UBO</strong> — {@code glBindBufferBase(GL_UNIFORM_BUFFER, …)} then
+     *       {@code glUniformBlockBinding(programId, blockIndex, bindingLocation)}.
+     *       Replaces the deleted {@code bindBlock()} methods.</li>
+     * </ul>
+     *
+     * @param shader the currently-bound shader program to wire; must not be null
+     * @throws IllegalStateException if this buffer has been deleted
+     */
+    public void bind(CgShader shader) {
+        bind();
+        wireShader(shader);
+    }
+
     /** Unbinds this buffer from its GL binding point. */
     @Override public void unbind() { unbindInternal(); }
 
@@ -295,7 +350,7 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
     // ── Abstract backend contract ─────────────────────────────────────────────
 
     /**
-     * Performs the concrete GL bind operation. Called by {@link #bind(int)} after validations.
+     * Performs the concrete GL bind operation. Called by {@link #bind()} after validations.
      */
     protected abstract void bindInternal();
 
@@ -303,4 +358,18 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
      * Performs the concrete GL unbind operation. Called by {@link #unbind()}.
      */
     protected abstract void unbindInternal();
+
+    /**
+     * Performs the shader-side wiring for this buffer type after {@link #bind()} has run.
+     * Called by {@link #bind(CgShader)} immediately after {@link #bindInternal()}.
+     *
+     * <ul>
+     *   <li>SSBO — no-op; GLSL {@code layout(binding=N)} handles wiring.</li>
+     *   <li>TBO — calls {@code glUniform1i} to wire the {@code samplerBuffer} uniform.</li>
+     *   <li>UBO — calls {@code glUniformBlockBinding}.</li>
+     * </ul>
+     *
+     * @param shader the currently-bound shader program; must not be null
+     */
+    protected abstract void wireShader(CgShader shader);
 }

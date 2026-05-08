@@ -6,14 +6,15 @@ import io.github.somehussar.crystalgraphics.api.shader.CgShaderBindings;
 import io.github.somehussar.crystalgraphics.api.shader.CgShaderPreprocessor;
 import io.github.somehussar.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import io.github.somehussar.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
-import io.github.somehussar.crystalgraphics.gl.buffer.staging.CgBufferWriter;
 import io.github.somehussar.crystalgraphics.gl.material.*;
 import io.github.somehussar.crystalgraphics.api.vertex.CgVertexFormat;
 import io.github.somehussar.crystalgraphics.gl.shader.CgShaderFactory;
 import io.github.somehussar.crystalgraphics.util.io.CgIO;
+import lombok.Setter;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -43,6 +44,12 @@ import java.util.function.Consumer;
  * material.unbind();
  * }</pre>
  *
+ * <h3>Hot-reload</h3>
+ * <p>{@link #markDirty()} marks the material dirty; the full load→parse→compile
+ * pipeline runs lazily on the next {@link #bind()} call via {@link #recompile()}.
+ * The backing {@link CgShader} reference is stable across reloads — only the
+ * underlying GL program ID changes.</p>
+ *
  * <h3>Ownership</h3>
  * <p>The material owns its backing {@link CgShader}. Call {@link #delete()} to free it.
  * {@link CgUniformBuffer} and {@link CgShaderBuffer} passed to {@link #bind} are
@@ -52,28 +59,38 @@ import java.util.function.Consumer;
  * <ul>
  *   <li>No render-state management — no blend, depth, cull setters.</li>
  *   <li>No shader variants — no DEPTH/SHADOW pass in this MVP.</li>
- *   <li>No hot-reload.</li>
  * </ul>
  */
 public final class CgMaterial {
 
     private static final Logger LOGGER = LogManager.getLogger("CgMaterial");
 
-    /** The compiled shader backing this material. Owned by this instance. */
-    private final CgShader shader;
+    /** The compiled shader backing this material. Owned by this instance. Null until first {@link #recompile()}. */
+    private CgShader shader;
 
-    /** Live property objects for this material, containing current values. */
-    private final List<CgMaterialProperty> properties;
+    /** Live property objects for this material, containing current values. Set/updated by {@link #recompile()}. */
+    private List<CgMaterialProperty> properties;
 
     /** Whether {@link #delete()} has been called. */
     private boolean deleted;
 
+    /**
+     * Whether this material needs a full recompile on the next {@link #bind()}.
+     * Set by {@link #markDirty()}; cleared at the start of {@link #recompile()}.
+     */
+    private boolean dirty;
+
+    /**
+     * Resource path to the {@code .shader} file.
+     * {@code null} for programmatic or shader-graph materials that have no backing file.
+     * Set post-construction via {@link #setResourcePath(String)} in {@link #create(String)}.
+     */
+    @Setter
+    private String resourcePath;
+
     // ── Constructor (private — use load()) ───────────────────────────────────
 
-    private CgMaterial(CgShader shader, List<CgMaterialProperty> properties) {
-        this.shader      = shader;
-        this.properties  = properties;
-    }
+    private CgMaterial() {}
 
     // ── Factory ───────────────────────────────────────────────────────────────
 
@@ -101,80 +118,18 @@ public final class CgMaterial {
     }
 
     /**
-     * Compiles a new {@code CgMaterial} from a {@code .shader} file.
-     * This is the actual factory — called only by {@link CgMaterialRegistry}.
-     * External callers must use {@link #load(String)} or {@link #load(CgMaterialKey)}.
+     * Creates a new {@code CgMaterial} from a {@code .shader} file.
+     * Called only by {@link CgMaterialRegistry}; external callers use {@link #load}.
      *
-     * <p>Steps performed:</p>
-     * <ol>
-     *   <li>Reads source via {@link CgIO#loadSource}.</li>
-     *   <li>Parses structure via {@link CgShaderParser#parse}.</li>
-     *   <li>Detects GPU path via {@link CgCapabilities#preferredShaderBufferPath()}.</li>
-     *   <li>Generates GLSL via {@link CgMaterialShaderCompiler#compile}.</li>
-     *   <li>Resolves {@code #include} directives via {@link CgShaderPreprocessor}.</li>
-     *   <li>Compiles via {@link CgShaderFactory#fromSource(String, String, CgVertexFormat)}.</li>
-     *   <li>Wires the {@code CgFrameBlock} UBO persistently via
-     *       {@code shader.bindings().ubo(CgMaterialPipeline.getInstance().frameBuffer())}
-     *       so it survives hot-reload recompile automatically.</li>
-     *   <li>Applies property default values from the {@code Properties} block.</li>
-     * </ol>
-     *
-     * @param resourcePath resource path to the {@code .shader} file
-     * @return a ready-to-use {@code CgMaterial}
-     * @throws IllegalArgumentException if the source cannot be loaded
-     * @throws CgShaderParseException on parse error
-     * @throws IllegalStateException if compilation or linking fails
+     * @throws IllegalArgumentException  if the source cannot be loaded or is empty
+     * @throws CgShaderParseException    on parse error
+     * @throws IllegalStateException     if compilation or linking fails
      * @throws UnsupportedOperationException if the hardware does not support GL 3.3+
      */
     static CgMaterial create(String resourcePath) {
-        // Step 1: Load .shader source
-        String source;
-        try {
-            source = CgIO.loadSource(resourcePath);
-        } catch (Exception e) {
-            throw new IllegalArgumentException("Could not load shader source from: " + resourcePath, e);
-        }
-        if (source == null || source.isEmpty()) {
-            throw new IllegalArgumentException("Could not load shader source from: " + resourcePath);
-        }
-
-        // Step 2: Structural parse — resource path included in all parse exception messages
-        CgParsedShader parsed = CgShaderParser.parse(source, resourcePath);
-
-        // Step 3: Detect GPU path (throws for NONE / pre-GL-3.3 hardware)
-        CgCapabilities.ShaderBufferPath path = CgCapabilities.detect().preferredShaderBufferPath();
-
-        // Step 4: Generate GLSL source strings
-        CgMaterialShaderCompiler.CompiledSource compiled = CgMaterialShaderCompiler.compile(parsed, path);
-
-        String processedVert = new CgShaderPreprocessor().process(compiled.vertexSource(), resourcePath);
-        String processedFrag = new CgShaderPreprocessor().process(compiled.fragmentSource(), resourcePath);
-
-        if (System.getProperty("crystalgraphics.material.dumpGlsl") != null) {
-            LOGGER.info("=== CgMaterial GLSL dump for '{}' ===", resourcePath);
-            LOGGER.info("--- VERTEX ---\n{}", processedVert);
-            LOGGER.info("--- FRAGMENT ---\n{}", processedFrag);
-            LOGGER.info("=== end GLSL dump ===");
-        }
-
-        // Step 6: Compile and link via existing backend waterfall
-        CgShader shader = CgShaderFactory.fromSource(processedVert, processedFrag, CgVertexFormat.SPATIAL);
-
-        // Fail-fast if compile/link failed — never return a broken material
-        if (!shader.isCompiled()) {
-            String err = shader.getLastCompileError();
-            shader.delete();
-            throw new IllegalStateException(
-                "CgMaterial.load() failed for '" + resourcePath + "': " + err);
-        }
-
-        // Step 7: Wire CgFrameBlock UBO persistently via the bindings system so it
-        // survives hot-reload recompile automatically (no explicit GL31 calls needed).
-        CgMaterial mat = new CgMaterial(shader, parsed.properties());
-        mat.shader.bindings().ubo(CgMaterialPipeline.getInstance().frameBuffer());
-        // Defaults are already parsed into each CgMaterialProperty by fromDecl() in the parser.
-        // They will be flushed to GL uniforms on the first bind() call via applyTo().
-
+        CgMaterial mat = new CgMaterial();
+        mat.setResourcePath(resourcePath);
+        mat.recompile();
         return mat;
     }
 
@@ -210,26 +165,26 @@ public final class CgMaterial {
      *
      * <h3>Operations performed in order</h3>
      * <ol>
-     *   <li>Stage property values + TBO sampler (if TBO path) into ephemeral bindings</li>
+     *   <li>If {@link #dirty}, calls {@link #recompile()} to hot-reload the shader.</li>
+     *   <li>Stage property values into ephemeral bindings</li>
      *   <li>{@code shader.bind()} — activates the GL program and flushes all bindings</li>
-     *   <li>Binds the pipeline's object buffer using its last-written record count</li>
+     *   <li>Binds the pipeline's object buffer and wires it to the active shader</li>
      * </ol>
      */
     public void bind() {
         checkNotDeleted();
 
-        final CgShaderBuffer buf = CgMaterialPipeline.getInstance().objectBuffer();
+        if (dirty) recompile();
+        if (shader == null) return;
+
         shader.applyBindings(b -> {
             for (CgMaterialProperty prop : properties) {
                 prop.applyTo(b);
             }
-            if (buf.getPath() == CgCapabilities.ShaderBufferPath.TBO) {
-                b.set1i("cg_ObjectTBO", buf.getBindingLocation());
-            }
         });
 
         shader.bind();
-        buf.bind();
+        objectBuffer().bind(shader);
     }
 
     /**
@@ -293,12 +248,95 @@ public final class CgMaterial {
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
     /**
-     * Marks this material's backing shader dirty so it recompiles on the next {@link #bind()}.
-     * Called by {@link CgMaterialRegistry#reloadAll()} during hot-reload.
+     * Marks this material dirty so it will be fully recompiled from {@link #resourcePath}
+     * on the next {@link #bind()} call. Called by {@link CgMaterialRegistry#reloadAll()}
+     * during hot-reload (F3+T).
+     *
+     * <p>If the material has already been deleted, this is a no-op.</p>
      */
-    public void reload() {
-        if (!deleted) {
-            shader.markDirty();
+    public void markDirty() {
+        if (!deleted) dirty = true;
+    }
+
+    /**
+     * Compiles (or recompiles) this material from {@link #resourcePath}.
+     * Serves as the single compilation path for both initial load and hot-reload.
+     *
+     * <p>On first call ({@code shader == null}): throws on any failure — never returns
+     * with a broken state. On subsequent calls (hot-reload): logs errors and keeps the
+     * old program running on failure.</p>
+     *
+     * <p>No-op when {@code resourcePath} is null (shader-graph / programmatic materials).</p>
+     */
+    public void recompile() {
+        dirty = false;
+        if (resourcePath == null) return;
+
+        boolean isFirst = (shader == null);
+
+        String source;
+        try {
+            source = CgIO.loadSource(resourcePath);
+        } catch (Exception e) {
+            if (isFirst) throw new IllegalArgumentException("Could not load shader source from: " + resourcePath, e);
+            LOGGER.error("Reload failed for '{}': could not load source — {}", resourcePath, e.getMessage());
+            return;
+        }
+        if (source == null || source.isEmpty()) {
+            if (isFirst) throw new IllegalArgumentException("Could not load shader source from: " + resourcePath);
+            LOGGER.error("Reload failed for '{}': empty source", resourcePath);
+            return;
+        }
+
+        CgParsedShader parsed;
+        try {
+            parsed = CgShaderParser.parse(source, resourcePath);
+        } catch (CgShaderParseException e) {
+            if (isFirst) throw e;
+            LOGGER.error("Reload failed for '{}': parse error — {}", resourcePath, e.getMessage());
+            return;
+        }
+
+        CgCapabilities.ShaderBufferPath path = CgCapabilities.detect().preferredShaderBufferPath();
+        if (path == CgCapabilities.ShaderBufferPath.NONE) {
+            if (isFirst) throw new UnsupportedOperationException("GL 3.3+ required for CrystalShader materials");
+            LOGGER.error("Reload failed for '{}': GL 3.3+ not available", resourcePath);
+            return;
+        }
+
+        CgMaterialShaderCompiler.CompiledSource compiled = CgMaterialShaderCompiler.compile(parsed, path);
+        String processedVert = new CgShaderPreprocessor().process(compiled.vertexSource(), resourcePath);
+        String processedFrag = new CgShaderPreprocessor().process(compiled.fragmentSource(), resourcePath);
+
+        if (System.getProperty("crystalgraphics.material.dumpGlsl") != null) {
+            LOGGER.info("=== CgMaterial GLSL dump for '{}' ===", resourcePath);
+            LOGGER.info("--- VERTEX ---\n{}", processedVert);
+            LOGGER.info("--- FRAGMENT ---\n{}", processedFrag);
+            LOGGER.info("=== end GLSL dump ===");
+        }
+
+        if (isFirst) {
+            shader = CgShaderFactory.fromSource(processedVert, processedFrag, CgVertexFormat.SPATIAL);
+            if (!shader.isCompiled()) {
+                String err = shader.getLastCompileError();
+                shader.delete();
+                shader = null;
+                throw new IllegalStateException("CgMaterial.create() failed for '" + resourcePath + "': " + err);
+            }
+        } else {
+            shader.setSource(processedVert, processedFrag);
+            shader.recompile();
+            if (!shader.isCompiled()) {
+                LOGGER.error("Reload failed for '{}': compile error — {}", resourcePath, shader.getLastCompileError());
+                return;
+            }
+        }
+
+        properties = new ArrayList<>(parsed.properties());
+        CgMaterialPipeline.getInstance().frameBuffer().bind(shader);
+
+        if (!isFirst) {
+            LOGGER.info("Reloaded '{}'", resourcePath);
         }
     }
 
@@ -310,7 +348,7 @@ public final class CgMaterial {
     public void delete() {
         if (!deleted) {
             deleted = true;
-            shader.delete();
+            if (shader != null) shader.delete();
         }
     }
 

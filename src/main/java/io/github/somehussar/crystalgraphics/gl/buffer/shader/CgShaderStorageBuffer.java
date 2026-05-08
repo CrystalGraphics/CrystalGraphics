@@ -2,6 +2,7 @@ package io.github.somehussar.crystalgraphics.gl.buffer.shader;
 
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
 import io.github.somehussar.crystalgraphics.api.buffer.CgBufferFormat;
+import io.github.somehussar.crystalgraphics.api.shader.CgShader;
 import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.GL43;
 
@@ -22,17 +23,21 @@ import org.lwjgl.opengl.GL43;
  * <p>GPU buffer management (stream buffer creation, upload, resize, delete) is handled
  * entirely by the parent {@link CgShaderBuffer}. This class only owns its path tag and
  * the bind/unbind GL calls.</p>
+ *
+ * <p>Shader wiring is a true no-op: the GLSL {@code layout(binding=N)} qualifier
+ * automatically associates the SSBO block with its binding point at link time.</p>
  */
 public final class CgShaderStorageBuffer extends CgShaderBuffer {
 
     /**
+     * @param name            debug label for this buffer
      * @param format          typed format descriptor (mandatory)
      * @param path            SSBO hardware path (GL43 core or ARB)
      * @param bindingLocation immutable GL binding point
      */
-    CgShaderStorageBuffer(CgBufferFormat format,
+    CgShaderStorageBuffer(String name, CgBufferFormat format,
                           CgCapabilities.ShaderBufferPath path, int bindingLocation) {
-        super(format, GL43.GL_SHADER_STORAGE_BUFFER, bindingLocation);
+        super(name, format, GL43.GL_SHADER_STORAGE_BUFFER, bindingLocation);
         this.path = path;
     }
 
@@ -44,5 +49,11 @@ public final class CgShaderStorageBuffer extends CgShaderBuffer {
     @Override
     protected void unbindInternal() {
         GL30.glBindBufferBase(GL43.GL_SHADER_STORAGE_BUFFER, bindingLocation, 0);
+    }
+
+    /** SSBO wiring is a no-op — {@code layout(binding=N)} in GLSL handles it at link time. */
+    @Override
+    protected void wireShader(CgShader shader) {
+        // no-op: GLSL layout(binding=N) qualifier automatically wires the SSBO block
     }
 }

@@ -203,7 +203,7 @@ vertex input registry, use the package-local guides first.
 
 - `src/main/java/io/github/somehussar/crystalgraphics/gl/vertex/AGENTS.md`
 - `src/main/java/io/github/somehussar/crystalgraphics/gl/buffer/AGENTS.md`
-- `src/main/java/io/github/somehussar/crystalgraphics/gl/buffer/shader/AGENTS.md` — CrystalShader Wave 1-4 shader buffers: CgShaderBuffer (SSBO/TBO, float[] staging, declaredWriteCount), CgUniformBuffer (UBO frame data)
+- `src/main/java/io/github/somehussar/crystalgraphics/gl/buffer/shader/AGENTS.md` — SSBO/TBO/UBO shader buffer implementations: `CgShaderBuffer` (abstract base, `name` field, `bind(CgShader)`, `wireShader` hook, USER_START offset in factories), `CgUniformBuffer` (UBO, `wireShader` calls `glUniformBlockBinding`), `CgTextureBuffer` (TBO, `wireShader` sets samplerBuffer uniform), `CgShaderBufferRegistry` (ShaderBufferKey/UboKey, 0-based userIndex API)
 
 ### Related API types (in `api/vertex/`)
 

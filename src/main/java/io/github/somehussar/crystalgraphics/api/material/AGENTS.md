@@ -100,8 +100,9 @@ Internal `CgMaterial.create(resourcePath)` steps (package-private, only called b
 4. `CgMaterialShaderCompiler.compile(parsed, path)` — generate GLSL vert + frag strings
 5. `new CgShaderPreprocessor().process(...)` — resolve `#include "cg_env.glsl"` (once)
 6. `CgShaderFactory.fromSource(vert, frag, CgVertexFormat.SPATIAL)` — compile + link
-7. `shader.bindings().ubo(CgMaterialPipeline.getInstance().frameBuffer())` — wire `CgFrameBlock` UBO persistently (survives hot-reload)
-8. Apply property defaults from `Properties` block
+7. `mat.setResourcePath(resourcePath)` — store path for hot-reload
+8. `CgMaterialPipeline.getInstance().frameBuffer().bind(shader)` — wire `CgFrameBlock` UBO block index
+9. Apply property defaults from `Properties` block
 
 Throws `IllegalStateException` if compile/link fails — never returns a broken material.
 
@@ -115,13 +116,25 @@ material.unbind();
 ```
 
 Bind steps (in order):
-1. Stage property values + TBO sampler (if TBO path) into ephemeral bindings
-2. `shader.bind()` — activates GL program and flushes all bindings
-3. `objectBuffer.bind(lastWrittenCount)` — binds SSBO or TBO texture
+1. If `dirty`, calls `recompile()` — hot-reload from `resourcePath`
+2. Stage property values into ephemeral bindings
+3. `shader.bind()` — activates GL program and flushes all bindings
+4. `objectBuffer.bind(shader)` — binds SSBO/TBO and wires it (TBO: sets samplerBuffer uniform)
 
 ### CgMaterial.reload()
 Called by `CgMaterialRegistry.reloadAll()` during hot-reload (F3+T).
-Marks the backing shader dirty; recompile happens lazily on the next `bind()`.
+Sets `dirty = true`; the full load→parse→compile→relink pipeline runs lazily on the next `bind()`.
+
+### CgMaterial.recompile()
+Full hot-reload pipeline (called lazily from `bind()` when `dirty`):
+1. `CgIO.loadSource(resourcePath)` — re-read `.shader` file
+2. `CgShaderParser.parse()` — re-parse
+3. `CgMaterialShaderCompiler.compile()` — regenerate GLSL
+4. `shader.setSource(vert, frag)` + `shader.recompile()` — relink existing GL program in-place
+5. On success: `frameBuffer.bind(shader)` re-wires UBO block index for new program
+6. On failure: old program stays active, error logged
+
+No-op if `resourcePath == null` (shader-graph / programmatic materials).
 
 ### CgVertexFormat.SPATIAL
 ```java
@@ -137,9 +150,10 @@ CgMesh mesh = CgMesh.upload(data);
 
 ## Reserved Texture Unit
 
-`CgTextureBuffer.DEFAULT_TBO_TEXTURE_UNIT` (= 7) is engine-reserved for the TBO
-per-object data path. When using `applyBindings()` to set a `sampler2D` property,
-pass a unit other than 7 to avoid collisions with the engine-managed TBO slot.
+The engine object buffer TBO uses texture unit 0 (`CgBindingPoints.TBO_ENGINE_UNIT`). When using
+`applyBindings()` to set a `sampler2D` property, avoid texture unit 0 to prevent collision with
+the engine-managed TBO slot. The old `DEFAULT_TBO_TEXTURE_UNIT = 7` constant was removed — the
+texture unit is now derived from `bindingLocation` directly.
 
 ## Ownership Rules
 

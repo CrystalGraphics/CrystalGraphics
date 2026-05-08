@@ -557,7 +557,7 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
                 GL430 = CgCapabilities.detect().preferredShaderBufferPath() != CgCapabilities.ShaderBufferPath.TBO;
             if (GL430) return;
 
-            ubo.bindBlock(shader);
+            ubo.bind(shader);
         }
     }
 
