@@ -1,10 +1,6 @@
 package io.github.somehussar.crystalgraphics.api;
 
-import org.lwjgl.opengl.ContextCapabilities;
-import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL13;
-import org.lwjgl.opengl.GL20;
-import org.lwjgl.opengl.GLContext;
+import org.lwjgl.opengl.*;
 
 /**
  * Immutable snapshot of OpenGL capabilities relevant to CrystalGraphics,
@@ -225,6 +221,22 @@ public final class CgCapabilities {
      */
     private final ShaderBufferPath shaderBufferPath;
 
+    /**
+     * Maximum number of SSBO binding points available on this context.
+     * Queried from {@code GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS} (0x90FF) when
+     * SSBO support is present; otherwise {@code 0}.
+     * The OpenGL 4.3 minimum is 8.
+     */
+    private final int maxSsboBindings;
+
+    /**
+     * Maximum number of uniform buffer binding points available on this context.
+     * Queried from {@code GL_MAX_UNIFORM_BUFFER_BINDINGS} (0x8A2F) when
+     * shader support is present; otherwise {@code 0}.
+     * The OpenGL 3.1 minimum is 36.
+     */
+    private final int maxUniformBufferBindings;
+
     private CgCapabilities(boolean coreFbo, boolean arbFbo, boolean extFbo,
                            boolean coreShaders, boolean arbShaders,
                            int maxDrawBuffers, int maxTextureUnits,
@@ -262,6 +274,8 @@ public final class CgCapabilities {
         this.shaderStorageBufferArb = false;
         this.textureBufferMaterialPath = false;
         this.shaderBufferPath = ShaderBufferPath.NONE;
+        this.maxSsboBindings = 0;
+        this.maxUniformBufferBindings = 0;
     }
 
     private CgCapabilities(boolean coreFbo, boolean arbFbo, boolean extFbo,
@@ -309,6 +323,58 @@ public final class CgCapabilities {
         } else {
             this.shaderBufferPath = ShaderBufferPath.NONE;
         }
+        this.maxSsboBindings = 0;
+        this.maxUniformBufferBindings = 0;
+    }
+
+    private CgCapabilities(boolean coreFbo, boolean arbFbo, boolean extFbo,
+                           boolean coreShaders, boolean arbShaders,
+                           int maxDrawBuffers, int maxTextureUnits,
+                           boolean stencil, boolean depth,
+                           boolean packedDepthStencil, boolean depthTexture,
+                           int maxTextureSize, int maxRenderbufferSize,
+                           int maxColorAttachments,
+                           boolean hasVao, boolean hasMapBufferRange,
+                           boolean arbSync,
+                           boolean drawInstanced, boolean vertexAttribDivisor,
+                           int maxVertexAttribs,
+                           boolean shaderStorageBufferCore, boolean shaderStorageBufferArb,
+                           boolean textureBufferMaterialPath,
+                           int maxSsboBindings, int maxUniformBufferBindings) {
+        this.coreFbo = coreFbo;
+        this.arbFbo = arbFbo;
+        this.extFbo = extFbo;
+        this.coreShaders = coreShaders;
+        this.arbShaders = arbShaders;
+        this.maxDrawBuffers = maxDrawBuffers;
+        this.maxTextureUnits = maxTextureUnits;
+        this.stencil = stencil;
+        this.depth = depth;
+        this.packedDepthStencil = packedDepthStencil;
+        this.depthTexture = depthTexture;
+        this.maxTextureSize = maxTextureSize;
+        this.maxRenderbufferSize = maxRenderbufferSize;
+        this.maxColorAttachments = maxColorAttachments;
+        this.hasVao = hasVao;
+        this.hasMapBufferRange = hasMapBufferRange;
+        this.arbSync = arbSync;
+        this.drawInstanced = drawInstanced;
+        this.vertexAttribDivisor = vertexAttribDivisor;
+        this.maxVertexAttribs = maxVertexAttribs;
+        this.shaderStorageBufferCore = shaderStorageBufferCore;
+        this.shaderStorageBufferArb = shaderStorageBufferArb;
+        this.textureBufferMaterialPath = textureBufferMaterialPath;
+        if (shaderStorageBufferCore) {
+            this.shaderBufferPath = ShaderBufferPath.SSBO_GL43;
+        } else if (shaderStorageBufferArb) {
+            this.shaderBufferPath = ShaderBufferPath.SSBO_ARB;
+        } else if (textureBufferMaterialPath) {
+            this.shaderBufferPath = ShaderBufferPath.TBO;
+        } else {
+            this.shaderBufferPath = ShaderBufferPath.NONE;
+        }
+        this.maxSsboBindings = maxSsboBindings;
+        this.maxUniformBufferBindings = maxUniformBufferBindings;
     }
 
     /**
@@ -440,6 +506,12 @@ public final class CgCapabilities {
         boolean ssboArb = !ssboCore && caps.GL_ARB_shader_storage_buffer_object;
         boolean tboPath = !ssboCore && !ssboArb && caps.OpenGL33;
 
+        // GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS (0x90FF): only valid when SSBO is supported
+        int maxSsboBindings = (ssboCore || ssboArb) ? GL11.glGetInteger(GL43.GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS) : 0;
+
+        // GL_MAX_UNIFORM_BUFFER_BINDINGS (0x8A2F): valid when shader support is present (GL 3.1+)
+        int maxUniformBufferBindings = coreShaders ? GL11.glGetInteger(GL31.GL_MAX_UNIFORM_BUFFER_BINDINGS) : 0;
+
         return new CgCapabilities(
             coreFbo, arbFbo, extFbo,
             coreShaders, arbShaders,
@@ -451,7 +523,8 @@ public final class CgCapabilities {
             hasVao, hasMapBufferRange,
             arbSync,
             drawInstanced, vertexAttribDivisor, maxVertexAttribs,
-            ssboCore, ssboArb, tboPath
+            ssboCore, ssboArb, tboPath,
+            maxSsboBindings, maxUniformBufferBindings
         );
     }
 
@@ -487,8 +560,8 @@ public final class CgCapabilities {
         return textureBufferMaterialPath;
     }
 
-    public ShaderBufferPath preferredShaderBufferPath() {
-        return shaderBufferPath;
+    public ShaderBufferPath shaderBufferPath() {
+        return ShaderBufferPath.TBO;
     }
 
 
@@ -737,6 +810,30 @@ public final class CgCapabilities {
     }
 
     /**
+     * Returns the maximum number of SSBO binding points on this context.
+     *
+     * <p>Queried from {@code GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS} when SSBO support is present.
+     * The OpenGL 4.3 minimum is 8. Returns {@code 0} when SSBO is unsupported.</p>
+     *
+     * @return the maximum number of SSBO binding slots, or {@code 0} if SSBO is not supported
+     */
+    public int getMaxSsboBindings() {
+        return maxSsboBindings;
+    }
+
+    /**
+     * Returns the maximum number of uniform buffer binding points on this context.
+     *
+     * <p>Queried from {@code GL_MAX_UNIFORM_BUFFER_BINDINGS} when shader support is present.
+     * The OpenGL 3.1 minimum is 36. Returns {@code 0} when shaders are unsupported.</p>
+     *
+     * @return the maximum number of UBO binding slots, or {@code 0} if shaders are not supported
+     */
+    public int getMaxUniformBufferBindings() {
+        return maxUniformBufferBindings;
+    }
+
+    /**
      * Package-private factory for unit tests that cannot create a GL context.
      */
     static CgCapabilities createForTest(boolean coreFbo, boolean arbFbo, boolean extFbo,
@@ -810,7 +907,9 @@ public final class CgCapabilities {
             hasVao, hasMapBufferRange,
             arbSync,
             drawInstanced, vertexAttribDivisor, maxVertexAttribs,
-            shaderStorageBufferCore, shaderStorageBufferArb, textureBufferMaterialPath);
+            shaderStorageBufferCore, shaderStorageBufferArb, textureBufferMaterialPath,
+            shaderStorageBufferCore || shaderStorageBufferArb ? 8 : 0,
+            coreShaders ? 36 : 0);
     }
 
 

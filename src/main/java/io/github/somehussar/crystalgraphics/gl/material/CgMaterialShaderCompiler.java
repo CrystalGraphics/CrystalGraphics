@@ -1,7 +1,6 @@
 package io.github.somehussar.crystalgraphics.gl.material;
 
 import com.github.bsideup.jabel.Desugar;
-import io.github.somehussar.crystalgraphics.api.CgBindingPoints;
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
 
 import java.util.List;
@@ -128,9 +127,6 @@ public final class CgMaterialShaderCompiler {
             sb.append("#define CG_USE_SSBO 1\n");
         }
 
-        sb.append("#define CG_OBJECT_BUFFER_BINDING ").append(CgBindingPoints.OBJECT_DATA).append("\n");
-        sb.append("#define CG_FRAME_BLOCK_BINDING ").append(CgBindingPoints.FRAME_DATA).append("\n");
-
         sb.append("#include \"").append(ENV_INCLUDE).append("\"\n");
 
         // Step 5: Property uniform declarations
@@ -192,9 +188,6 @@ public final class CgMaterialShaderCompiler {
         if (useSsbo) {
             sb.append("#define CG_USE_SSBO 1\n");
         }
-
-        sb.append("#define CG_OBJECT_BUFFER_BINDING ").append(CgBindingPoints.OBJECT_DATA).append("\n");
-        sb.append("#define CG_FRAME_BLOCK_BINDING ").append(CgBindingPoints.FRAME_DATA).append("\n");
 
         sb.append("#include \"").append(ENV_INCLUDE).append("\"\n");
 

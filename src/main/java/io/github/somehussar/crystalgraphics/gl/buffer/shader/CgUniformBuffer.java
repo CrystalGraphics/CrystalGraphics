@@ -65,7 +65,7 @@ public final class CgUniformBuffer extends CgShaderBuffer {
     /**
      * Creates a user-defined format-aware UBO.
      *
-     * <p>The {@code userIndex} is 0-based. {@link CgBindingPoints#USER_START} is added
+     * <p>The {@code userIndex} is 0-based. {@link CgBindingPoints#USER_START_UBO} is added
      * internally to derive the actual GL binding point.</p>
      *
      * @param format    typed format descriptor (mandatory)
@@ -74,7 +74,7 @@ public final class CgUniformBuffer extends CgShaderBuffer {
      * @return a new {@code CgUniformBuffer}
      */
     public static CgUniformBuffer create(CgBufferFormat format, String name, int userIndex) {
-        int binding = CgBindingPoints.USER_START + userIndex;
+        int binding = CgBindingPoints.USER_START_UBO + userIndex;
         return new CgUniformBuffer(name, format, binding);
     }
 
@@ -109,6 +109,16 @@ public final class CgUniformBuffer extends CgShaderBuffer {
         uploadData(writer().rawData(), floatCount);
     }
 
+    @Override
+    protected void bindInternal() {
+        GL30.glBindBufferBase(GL31.GL_UNIFORM_BUFFER, bindingLocation, getGlBufferId());
+    }
+
+    @Override
+    protected void unbindInternal() {
+        GL30.glBindBufferBase(GL31.GL_UNIFORM_BUFFER, bindingLocation, 0);
+    }
+
     /**
      * Wires the uniform block {@link #getName()} in {@code shader} to this UBO's
      * {@link #bindingLocation} via {@code glUniformBlockBinding}. No-op if the block is absent.
@@ -119,21 +129,11 @@ public final class CgUniformBuffer extends CgShaderBuffer {
      * @param shader the currently-bound shader program; must not be null
      */
     @Override
-    protected void wireShader(CgShader shader) {
+    public void wireShader(CgShader shader) {
         int programId = shader.getProgram().getId();
         int idx = GL31.glGetUniformBlockIndex(programId, getName());
         if (idx != GL31.GL_INVALID_INDEX) {
             GL31.glUniformBlockBinding(programId, idx, bindingLocation);
         }
-    }
-
-    @Override
-    protected void bindInternal() {
-        GL30.glBindBufferBase(GL31.GL_UNIFORM_BUFFER, bindingLocation, getGlBufferId());
-    }
-
-    @Override
-    protected void unbindInternal() {
-        GL30.glBindBufferBase(GL31.GL_UNIFORM_BUFFER, bindingLocation, 0);
     }
 }

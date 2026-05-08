@@ -1,7 +1,6 @@
 package io.github.somehussar.crystalgraphics.mc.shader;
 
 import com.github.bsideup.jabel.Desugar;
-import io.github.somehussar.crystalgraphics.api.CgCapabilities;
 import io.github.somehussar.crystalgraphics.api.shader.CgShaderProgram;
 import io.github.somehussar.crystalgraphics.api.shader.CgShader;
 import io.github.somehussar.crystalgraphics.api.shader.CgShaderBindings;
@@ -12,12 +11,7 @@ import io.github.somehussar.crystalgraphics.api.texture.CgTexture;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.joml.*;
-import org.lwjgl.opengl.ARBMultitexture;
-import org.lwjgl.opengl.ContextCapabilities;
-import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
-import org.lwjgl.opengl.GL31;
-import org.lwjgl.opengl.GLContext;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -544,20 +538,10 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
 
     @Desugar
     private record UniformBufferBindingOp(CgUniformBuffer ubo) implements BindingOp {
-        private static Boolean GL430;
 
         @Override
         public void execute(CgShader shader, CgShaderProgram program, CgShaderBindingsImpl patch) {
-            // On the SSBO path (GLSL 430+), layout(binding=N) is emitted in the GLSL source;
-            // glUniformBlockBinding is redundant. Skip.
-            // On the TBO path (GLSL 330), layout(binding) is NOT supported on uniform blocks,
-            // so glUniformBlockBinding must be called. It is idempotent (writes one integer into
-            // GL program state) so we call it unconditionally — no program-change tracking needed.
-            if (GL430 == null)
-                GL430 = CgCapabilities.detect().preferredShaderBufferPath() != CgCapabilities.ShaderBufferPath.TBO;
-            if (GL430) return;
-
-            ubo.bind(shader);
+            ubo.wireShader(shader);
         }
     }
 

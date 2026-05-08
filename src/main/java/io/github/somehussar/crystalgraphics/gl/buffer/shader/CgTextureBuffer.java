@@ -6,10 +6,12 @@ import io.github.somehussar.crystalgraphics.api.shader.CgShader;
 import io.github.somehussar.crystalgraphics.api.texture.CgTexture;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.lwjgl.opengl.ARBSamplerObjects;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.GL31;
+import org.lwjgl.opengl.GLContext;
 
 /**
  * TBO-backed {@link CgShaderBuffer} fallback for hardware without SSBO support (GL 3.1+).
@@ -33,13 +35,14 @@ import org.lwjgl.opengl.GL31;
  * {@link #wireShader(CgShader)} which calls {@code glUniform1i(getName(), bindingLocation)}.</p>
  *
  * <h3>Texture unit assignment</h3>
- * <p>{@code bindingLocation} IS the texture unit. With {@code USER_START = 5}, a user buffer
- * created with {@code userIndex = 0} uses texture unit 5. The engine object buffer uses
- * texture unit 0 ({@link io.github.somehussar.crystalgraphics.api.CgBindingPoints#TBO_ENGINE_UNIT}).</p>
+ * <p>{@code bindingLocation} IS the texture unit. The engine object buffer uses
+ * texture unit {@code CgBindingPoints.OBJECT_DATA_TBO} = {@code maxTexImageUnits - 1},
+ * resolved at init time to avoid colliding with Minecraft's low-numbered units.</p>
  */
 public final class CgTextureBuffer extends CgShaderBuffer {
 
     private static final Logger LOGGER = LogManager.getLogger("CgTextureBuffer");
+    private static Boolean ARB_sampler_objects;
 
     /**
      * The {@code GL_TEXTURE_BUFFER} texture object.
@@ -77,10 +80,18 @@ public final class CgTextureBuffer extends CgShaderBuffer {
     /**
      * Activates the texture unit equal to {@link #bindingLocation} and binds {@link #tboTexId}
      * to {@code GL_TEXTURE_BUFFER}.
+     *
+     * <p>Intel driver bug: a sampler object bound to the same texture unit as a TBO causes
+     * silent rendering breakage. Any sampler object on this unit is unbound first when
+     * {@code GL_ARB_sampler_objects} is available.</p>
      */
     @Override
     protected void bindInternal() {
         CgTexture.active(bindingLocation);
+        // Intel driver bug: sampler objects on the same unit as a TBO break rendering silently.
+        if (ARB_sampler_objects == null) ARB_sampler_objects = GLContext.getCapabilities().GL_ARB_sampler_objects;
+        if (ARB_sampler_objects) ARBSamplerObjects.glBindSampler(bindingLocation, 0);
+        
         CgTexture.bind(GL31.GL_TEXTURE_BUFFER, tboTexId);
     }
 
@@ -102,7 +113,7 @@ public final class CgTextureBuffer extends CgShaderBuffer {
      * <p>Precondition: {@code shader.bind()} must have been called before this method.</p>
      */
     @Override
-    protected void wireShader(CgShader shader) {
+    public void wireShader(CgShader shader) {
         int loc = shader.getUniformLocation(getName());
         if (loc < 0) {
             LOGGER.warn("TBO '{}' not found in shader — samplerBuffer not declared or optimized out", getName());

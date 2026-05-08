@@ -2,6 +2,7 @@ package io.github.somehussar.crystalgraphics.gl.buffer.shader;
 
 import com.github.bsideup.jabel.Desugar;
 import io.github.somehussar.crystalgraphics.api.CgBindingPoints;
+import io.github.somehussar.crystalgraphics.api.CgCapabilities;
 import io.github.somehussar.crystalgraphics.api.buffer.CgBufferFormat;
 import io.github.somehussar.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 
@@ -13,7 +14,8 @@ import java.util.Map;
  *
  * <p>Provides lifecycle management (via {@link #deleteAll()}) for user-owned buffers.
  * All buffers obtained through this registry use binding points derived from a 0-based
- * {@code userIndex}: the actual binding point is {@code userIndex + CgBindingPoints.USER_START}.</p>
+ * {@code userIndex}: the actual binding point is {@code userIndex + CgBindingPoints.USER_START_SSBO}
+ * (SSBO path) or {@code userIndex + CgBindingPoints.USER_START_TBO} (TBO path).</p>
  *
  * <p><strong>Engine-internal buffers bypass this registry</strong>: the per-object SSBO/TBO and
  * per-frame UBO owned by {@code CgMaterialPipeline} occupy engine-reserved binding points 0 and 1
@@ -52,7 +54,8 @@ public final class CgShaderBufferRegistry {
 
     /**
      * Returns (or lazily creates) a format-aware SSBO/TBO for the given name, format, and
-     * 0-based user index. The actual binding point is {@code userIndex + CgBindingPoints.USER_START}.
+     * 0-based user index. The actual binding point is {@code userIndex + CgBindingPoints.USER_START_SSBO}
+     * (SSBO path) or {@code userIndex + CgBindingPoints.USER_START_TBO} (TBO path).
      *
      * @param name      debug/sampler name for the buffer
      * @param format    typed format descriptor for the buffer records
@@ -60,7 +63,10 @@ public final class CgShaderBufferRegistry {
      * @return the cached or newly-created shader buffer
      */
     public CgShaderBuffer getOrCreate(String name, CgBufferFormat format, int userIndex) {
-        int binding = CgBindingPoints.USER_START + userIndex;
+        CgCapabilities.ShaderBufferPath path = CgCapabilities.detect().shaderBufferPath();
+        int binding = (path == CgCapabilities.ShaderBufferPath.TBO)
+                ? CgBindingPoints.USER_START_TBO + userIndex
+                : CgBindingPoints.USER_START_SSBO + userIndex;
         ShaderBufferKey key = new ShaderBufferKey(name, format, binding);
         CgShaderBuffer existing = shaderBufferCache.get(key);
         if (existing != null) return existing;
@@ -71,7 +77,7 @@ public final class CgShaderBufferRegistry {
 
     /**
      * Returns (or lazily creates) a format-aware UBO for the given format, block name, and
-     * 0-based user index. The actual binding point is {@code userIndex + CgBindingPoints.USER_START}.
+     * 0-based user index. The actual binding point is {@code userIndex + CgBindingPoints.USER_START_UBO}.
      *
      * <p>The {@code name} is part of the cache key — two UBOs with different names
      * but the same format and user index are distinct resources.</p>
@@ -82,7 +88,7 @@ public final class CgShaderBufferRegistry {
      * @return the cached or newly-created UBO
      */
     public CgUniformBuffer getOrCreateUbo(CgBufferFormat format, String name, int userIndex) {
-        int binding = CgBindingPoints.USER_START + userIndex;
+        int binding = CgBindingPoints.USER_START_UBO + userIndex;
         ShaderBufferKey key = new ShaderBufferKey(name, format, binding);
         CgUniformBuffer existing = uboCache.get(key);
         if (existing != null) return existing;

@@ -1,12 +1,8 @@
 #pragma once
 // Naming: cg_PascalCase = GLSL identifiers; CG_UPPER_SNAKE = macros
 
-// Per-frame uniforms (view + proj + time + resolution). Binding point injected by compiler.
-#ifdef CG_USE_SSBO
-layout(std140, binding = CG_FRAME_BLOCK_BINDING) uniform CgFrameBlock {
-#else
+// Per-frame uniforms (view + proj + time + resolution). Block index wired post-link via glUniformBlockBinding.
 layout(std140) uniform CgFrameBlock {
-#endif
     mat4 cg_ViewMatrix;
     mat4 cg_ProjMatrix;
     vec4 cg_Time;        // (t/20, t, t*2, t*3) — seconds, scaled like Unity _Time
@@ -24,7 +20,7 @@ struct CgObjectData {
 };
 
 #ifdef CG_USE_SSBO
-layout(std430, binding = CG_OBJECT_BUFFER_BINDING) readonly buffer CgObjectDataBuffer {
+layout(std430) readonly buffer CgObjectDataBuffer {
     CgObjectData cg_Objects[];
 };
 
