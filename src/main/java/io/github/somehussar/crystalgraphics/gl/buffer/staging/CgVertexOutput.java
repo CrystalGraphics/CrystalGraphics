@@ -9,5 +9,5 @@ package io.github.somehussar.crystalgraphics.gl.buffer.staging;
  */
 interface CgVertexOutput {
     void putFloat(float v);
-    void putColorPacked(int abgr);
+    void putIntBits(int abgr);
 }

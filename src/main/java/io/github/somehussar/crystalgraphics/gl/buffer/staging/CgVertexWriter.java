@@ -31,7 +31,7 @@ import java.nio.ByteBuffer;
  * <p>Public constructor for staging-buffer path; static factory {@link #forBuffer(ByteBuffer, CgVertexFormat)}
  * for direct ByteBuffer output.</p>
  *
- * @see CgStagingBuffer
+ * @see CgStagingByteBuffer
  * @see CgBatchRenderer
  */
 public final class CgVertexWriter implements CgVertexConsumer {
@@ -214,7 +214,7 @@ public final class CgVertexWriter implements CgVertexConsumer {
                     output.putFloat(uvV);
                     break;
                 case COLOR:
-                    output.putColorPacked(colorRGBA);
+                    output.putIntBits(colorRGBA);
                     break;
                 case NORMAL:
                     output.putFloat(normalX);

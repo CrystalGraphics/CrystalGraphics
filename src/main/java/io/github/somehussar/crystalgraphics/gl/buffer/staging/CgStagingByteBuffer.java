@@ -12,7 +12,7 @@ import java.nio.ByteBuffer;
  * without requiring a {@link CgStagingBuffer}.</p>
  *
  * <p>Color values are stored as {@code Float.intBitsToFloat(abgr)}, matching the
- * exact layout expected by {@link CgStagingBuffer#putColorPacked(int)}.</p>
+ * exact layout expected by {@link CgStagingBuffer#putIntBits(int)}.</p>
  */
 final class CgStagingByteBuffer implements CgVertexOutput {
 
@@ -28,8 +28,7 @@ final class CgStagingByteBuffer implements CgVertexOutput {
     }
 
     @Override
-    public void putColorPacked(int abgr) {
-        // Store ABGR int as float bits — matches CgStagingBuffer's putColorPacked convention.
-        buf.putFloat(Float.intBitsToFloat(abgr));
+    public void putIntBits(int i) {
+        buf.putFloat(Float.intBitsToFloat(i));
     }
 }
