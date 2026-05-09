@@ -1,17 +1,14 @@
 package io.github.somehussar.crystalgraphics.mc.shader;
 
 import io.github.somehussar.crystalgraphics.api.shader.*;
+import io.github.somehussar.crystalgraphics.api.state.CgGlSlot;
 import io.github.somehussar.crystalgraphics.api.vertex.CgVertexFormat;
-import io.github.somehussar.crystalgraphics.gl.CrossApiTransition;
 import io.github.somehussar.crystalgraphics.gl.shader.CgShaderFactory;
-import io.github.somehussar.crystalgraphics.gl.state.CallFamily;
-import io.github.somehussar.crystalgraphics.gl.state.CgStateBoundary;
-import io.github.somehussar.crystalgraphics.gl.state.CgStateSnapshot;
-import io.github.somehussar.crystalgraphics.gl.state.GLStateMirror;
+import io.github.somehussar.crystalgraphics.gl.state.CgGlScope;
+import io.github.somehussar.crystalgraphics.gl.state.CgGlState;
 import io.github.somehussar.crystalgraphics.util.io.CgIO;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.lwjgl.opengl.*;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -63,18 +60,7 @@ import java.util.function.Consumer;
  public class CgShaderImpl implements CgShader {
 
     private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
-
-    /**
-     * A no-op scope that does nothing when closed. Returned when the shader
-     * is not compiled or when closing has already occurred. This prevents
-     * NPE and multiple-close issues.
-     */
-    private static final CgShaderScope NOOP_SCOPE = new CgShaderScope() {
-        @Override
-        public void close() {
-        }
-    };
-
+    
     /**
      * Deterministic cache key (vertex location, fragment location, defines).
      * Used to identify this shader uniquely in the shader manager cache.
@@ -283,53 +269,28 @@ import java.util.function.Consumer;
     }
 
     @Override
-    public CgShaderScope bindScoped() {
+    public CgGlScope bindScoped() {
         if (dirty) recompile();
-        
-        if (!compiled) return NOOP_SCOPE;
 
-        final int previousProgram = queryCurrentProgram();
-        final CallFamily previousFamily = GLStateMirror.getCurrentProgramFamily();
+        if (!compiled) return CgGlScope.NOOP_SCOPE;
+
+        CgGlScope saved = CgGlState.saveProgram(); // capture BEFORE binding ours
         program.bind();
         applyAllBindings();
-
-        return new CgShaderScope() {
-            private boolean closed;
-
-            @Override
-            public void close() {
-                if (!closed) {
-                    closed = true;
-                    CrossApiTransition.bindProgram(previousProgram, previousFamily);
-                }
-            }
-        };
+        return saved;
     }
 
     @Override
-    public CgShaderScope bindScoped(CgScopeRestoreOption... options) {
-        if (options == null || options.length == 0 || !containsFullBindings(options)) return bindScoped();
-        
+    public CgGlScope bindScoped(CgGlSlot... slots) {
+        if (slots == null || slots.length == 0) return bindScoped();
         if (dirty) recompile();
-        
-        if (!compiled) return NOOP_SCOPE;
-        
 
-        final CgStateSnapshot snapshot = CgStateBoundary.save();
+        if (!compiled) return CgGlScope.NOOP_SCOPE;
+
+        CgGlScope saved = CgGlState.save(slots); // capture BEFORE binding
         program.bind();
         applyAllBindings();
-
-        return new CgShaderScope() {
-            private boolean closed;
-
-            @Override
-            public void close() {
-                if (!closed) {
-                    closed = true;
-                    CgStateBoundary.restore(snapshot);
-                }
-            }
-        };
+        return saved;
     }
 
     @Override
@@ -361,22 +322,6 @@ import java.util.function.Consumer;
         compiled = false;
         dirty = false;
         uniformLocationCache.clear();
-    }
-
-    private static int queryCurrentProgram() {
-        ContextCapabilities glCaps = GLContext.getCapabilities();
-        if (glCaps.OpenGL20) return GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM);
-        if (glCaps.GL_ARB_shader_objects) return ARBShaderObjects.glGetHandleARB(ARBShaderObjects.GL_PROGRAM_OBJECT_ARB);
-        
-        return 0;
-    }
-
-    private static boolean containsFullBindings(CgScopeRestoreOption[] options) {
-        for (CgScopeRestoreOption option : options) {
-            if (option == CgScopeRestoreOption.FULL_BINDINGS) return true;
-            
-        }
-        return false;
     }
 
     private void applyAllBindings() {
