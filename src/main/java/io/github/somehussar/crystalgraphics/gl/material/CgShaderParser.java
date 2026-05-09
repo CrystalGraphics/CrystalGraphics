@@ -75,7 +75,10 @@ public final class CgShaderParser {
     private static final Set<String> VALID_PROPERTY_TYPES;
 
     static {
-        Set<String> s = new HashSet<String>(Arrays.asList("float", "vec2", "vec3", "vec4", "sampler2D"));
+        Set<String> s = new HashSet<>(Arrays.asList(
+                "float", "vec2", "vec3", "vec4",
+                "int", "color", "Range",
+                "sampler2D", "sampler2DArray", "sampler3D", "samplerCube"));
         VALID_PROPERTY_TYPES = Collections.unmodifiableSet(s);
     }
 

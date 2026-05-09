@@ -1,7 +1,5 @@
 package io.github.somehussar.crystalgraphics.api;
 
-import io.github.somehussar.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
-
 /**
  * Engine-reserved binding slot constants for SSBO, TBO, and UBO resources.
  *
@@ -47,6 +45,14 @@ public final class CgBindingPoints {
      */
     public static int FRAME_DATA_UBO = -1;
 
+    /**
+     * UBO binding slot for the engine's per-material properties block ({@code CgMaterialBlock}).
+     * Set to {@code maxUniformBufferBindings - 2} by {@link #init(CgCapabilities)}.
+     * This slot is engine-reserved and must not be used by user-attached UBOs.
+     * Valid only after {@link #init(CgCapabilities)} has been called.
+     */
+    public static int MATERIAL_PROPERTIES_UBO = -1;
+
     // ── User buffers — allocated from bottom of available range ──────────────
 
     /**
@@ -64,6 +70,8 @@ public final class CgBindingPoints {
     /**
      * First UBO binding slot available to user-defined buffers.
      * User UBOs start at slot 0 and grow upward.
+     * The top two slots ({@code maxUniformBufferBindings - 1} and {@code - 2}) are
+     * engine-reserved for {@link #FRAME_DATA_UBO} and {@link #MATERIAL_PROPERTIES_UBO}.
      */
     public static final int USER_START_UBO = 0;
 
@@ -78,9 +86,14 @@ public final class CgBindingPoints {
      */
     public static void init(CgCapabilities caps) {
         PATH = caps.shaderBufferPath();
+        
+        // ── SSBO/TBO Path bindings ───────────────────────────────────────────────────────────────
         OBJECT_DATA_SSBO = caps.getMaxSsboBindings() - 1;
         OBJECT_DATA_TBO = caps.getMaxTextureUnits() - 1;
+        
+        // ── UBO bindings ───────────────────────────────────────────────────────────────
         FRAME_DATA_UBO = caps.getMaxUniformBufferBindings() - 1;
+        MATERIAL_PROPERTIES_UBO = caps.getMaxUniformBufferBindings() - 2;
     }
 
     /**
