@@ -153,7 +153,7 @@ public class CgTextRenderer {
      * This factory only validates backend availability and creates the façade.</p>
      */
     public static CgTextRenderer create(CgCapabilities caps, CgFontRegistry registry) {
-        if (caps.preferredFboBackend() == CgCapabilities.Backend.NONE || (!caps.isCoreShaders() && !caps.isArbShaders()) || !caps.isVaoSupported() || !caps.isMapBufferRangeSupported()) {
+        if (caps.preferredFboBackend() == CgCapabilities.FramebufferPath.NONE || (!caps.isCoreShaders() && !caps.isArbShaders()) || !caps.isVaoSupported() || !caps.isMapBufferRangeSupported()) {
             throw new IllegalStateException("CgTextRenderer requires a framebuffer backend, a shader backend, VAO support, and glMapBufferRange");
         }
 

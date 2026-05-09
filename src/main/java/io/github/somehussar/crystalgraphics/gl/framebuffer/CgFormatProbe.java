@@ -118,7 +118,7 @@ public final class CgFormatProbe {
      * @return {@code true} if the format produces a complete framebuffer,
      *         {@code false} otherwise
      * @throws UnsupportedOperationException if no FBO backend is available
-     *         ({@link CgCapabilities.Backend#NONE})
+     *         ({@link CgCapabilities.FramebufferPath#NONE})
      * @throws NullPointerException if {@code format} or {@code caps} is null
      */
     public static boolean isSupported(CgTextureFormatSpec format, CgCapabilities caps) {
@@ -136,14 +136,14 @@ public final class CgFormatProbe {
             return cached.booleanValue();
         }
 
-        CgCapabilities.Backend backend = caps.preferredFboBackend();
-        if (backend == CgCapabilities.Backend.NONE) {
+        CgCapabilities.FramebufferPath framebufferPath = caps.preferredFboBackend();
+        if (framebufferPath == CgCapabilities.FramebufferPath.NONE) {
             throw new UnsupportedOperationException(
                     "No FBO backend available for format probe");
         }
 
         boolean supported;
-        switch (backend) {
+        switch (framebufferPath) {
             case CORE_GL30:
                 supported = probeCore(format);
                 break;

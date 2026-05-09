@@ -158,7 +158,7 @@ If implementing Approach B or C, likely touch:
 ## Risks / Gotchas
 
 - Some drivers accept `GL_DEPTH24_STENCIL8` renderbuffers but reject `GL_DEPTH24_STENCIL8` textures.
-- EXT backend requires attaching packed depth-stencil as two attachments (depth + stencil) because there is no combined attachment point.
+- EXT framebufferPath requires attaching packed depth-stencil as two attachments (depth + stencil) because there is no combined attachment point.
 - If you introduce a packed depth-stencil texture mode, keep the existing renderbuffer mode as the default for non-sampling use cases.
 
 ## Reference Links (Specs / LWJGL2)

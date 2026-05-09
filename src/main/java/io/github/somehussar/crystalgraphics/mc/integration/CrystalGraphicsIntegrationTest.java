@@ -1,6 +1,5 @@
 package io.github.somehussar.crystalgraphics.mc.integration;
 
-import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.Mod;
 import cpw.mods.fml.common.event.FMLPostInitializationEvent;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
@@ -15,10 +14,7 @@ import io.github.somehussar.crystalgraphics.api.framebuffer.CgTextureFormatSpec;
 import io.github.somehussar.crystalgraphics.gl.framebuffer.CgFormatProbe;
 import io.github.somehussar.crystalgraphics.gl.framebuffer.CgFramebufferFactory;
 import io.github.somehussar.crystalgraphics.gl.state.GLStateMirror;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.OpenGlHelper;
-import net.minecraft.util.ResourceLocation;
-import net.minecraftforge.common.MinecraftForge;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.opengl.ARBFramebufferObject;
@@ -105,10 +101,10 @@ public class CrystalGraphicsIntegrationTest {
         System.out.println("[CrystalGraphics] Starting integration self-checks...");
 
         final CgCapabilities caps = CgCapabilities.detect();
-        final CgCapabilities.Backend backend = caps.preferredFboBackend();
-        final boolean isExtOnly = (backend == CgCapabilities.Backend.EXT_FBO);
+        final CgCapabilities.FramebufferPath framebufferPath = caps.preferredFboBackend();
+        final boolean isExtOnly = (framebufferPath == CgCapabilities.FramebufferPath.EXT_FBO);
 
-        System.out.println("[CrystalGraphics] Detected backend: " + backend
+        System.out.println("[CrystalGraphics] Detected backend: " + framebufferPath
                 + " (coreFbo=" + caps.isCoreFbo()
                 + ", arbFbo=" + caps.isArbFbo()
                 + ", extFbo=" + caps.isExtFbo()
