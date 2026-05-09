@@ -365,7 +365,9 @@ public final class CgMaterial {
 
         shader.applyBindings(b -> {
             for (CgMaterialProperty prop : properties) {
-                prop.applyTo(b);
+                if (prop.getType().isSampler()) {
+                    prop.applyToSampler(b);
+                }
             }
         });
 

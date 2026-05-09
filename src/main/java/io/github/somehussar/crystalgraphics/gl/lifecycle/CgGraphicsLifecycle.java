@@ -7,6 +7,7 @@ import io.github.somehussar.crystalgraphics.gl.buffer.CgQuadIndexBuffer;
 import io.github.somehussar.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
 import io.github.somehussar.crystalgraphics.gl.mesh.CgMeshRegistry;
 import io.github.somehussar.crystalgraphics.gl.render.CgInstanceRenderer;
+import io.github.somehussar.crystalgraphics.gl.texture.CgFallbackTextures;
 import io.github.somehussar.crystalgraphics.gl.texture.CgTextureManager;
 import io.github.somehussar.crystalgraphics.gl.vertex.CgInstanceVertexArrayBinding;
 import io.github.somehussar.crystalgraphics.gl.vertex.CgVertexArray;
@@ -36,6 +37,16 @@ public final class CgGraphicsLifecycle {
     private CgGraphicsLifecycle() {}
 
     /**
+     * Initializes engine GL resources that require an active GL context.
+     * Must be called once on the GL thread after context creation,
+     * before any material or fallback-texture usage.
+     */
+    public static void initContext() {
+        CgMaterialPipeline.init();
+        CgFallbackTextures.init();
+    }
+
+    /**
      * Destroys all CrystalGraphics GL resources in canonical dependency order,
      * then resets all backend-capability caches.
      *
@@ -43,15 +54,6 @@ public final class CgGraphicsLifecycle {
      *
      * <p>After this call, all VAOs, VBOs, IBOs, and cached GL capability flags are
      * cleared. A new GL context can be initialised immediately afterwards.</p>
-     *
-     * <h3>Caller-owned resources</h3>
-     * <p>{@link io.github.somehussar.crystalgraphics.api.material.CgMaterial},
-     * {@link io.github.somehussar.crystalgraphics.gl.buffer.shader.CgUniformBuffer}, and
-     * {@link io.github.somehussar.crystalgraphics.gl.buffer.shader.CgShaderBuffer} instances
-     * are <em>caller-owned</em> and are NOT auto-registered in any teardown registry.
-     * The caller must call {@code delete()} on each of these before invoking
-     * {@code destroyContext()} to avoid resource leaks. Example teardown order:
-     * {@code material.delete(); frameUbo.delete(); objectBuffer.delete(); CgGraphicsLifecycle.destroyContext();}</p>
      */
     public static void destroyContext() {
         // Step 1: ALL VAOs — CgVertexArrayRegistry.deleteAll() deletes instanced VAOs first,
@@ -71,6 +73,9 @@ public final class CgGraphicsLifecycle {
 
         // Step 5: Free all cached textures.
         CgTextureManager.get().freeAll();
+
+        // Step 5b: Free engine fallback textures.
+        CgFallbackTextures.destroy();
 
         // Step 7a: Materials (shader programs + their property state). Must precede VAO/VBO teardown.
         CgMaterialRegistry.get().deleteAll();
