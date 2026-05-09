@@ -10,7 +10,7 @@ import io.github.somehussar.crystalgraphics.api.font.CgFont;
 import io.github.somehussar.crystalgraphics.api.font.CgFontStyle;
 import io.github.somehussar.crystalgraphics.api.font.CgTextLayoutBuilder;
 import io.github.somehussar.crystalgraphics.api.shader.CgShader;
-import io.github.somehussar.crystalgraphics.api.shader.CgShaderScope;
+import io.github.somehussar.crystalgraphics.gl.state.CgGlScope;
 import io.github.somehussar.crystalgraphics.gl.render.CgBufferSource;
 import io.github.somehussar.crystalgraphics.gl.render.CgDynamicTextureRenderLayer;
 import io.github.somehussar.crystalgraphics.text.render.CgTextLayers;
@@ -230,7 +230,7 @@ public class CrystalGraphicsFontDemo {
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
         GL11.glBindTexture(GL11.GL_TEXTURE_2D, bitmapAtlas.getTextureId());
 
-        try (CgShaderScope scope = diagAtlasShader.bindScoped()) {
+        try (CgGlScope scope = diagAtlasShader.bindScoped()) {
             GL30.glBindVertexArray(diagAtlasVao);
             GL11.glDrawArrays(GL11.GL_TRIANGLE_STRIP, 0, 4);
             GL30.glBindVertexArray(0);
@@ -249,7 +249,7 @@ public class CrystalGraphicsFontDemo {
             diagAtlasShader.applyBindings(b -> b.set1i("u_atlasType", 1));
             GL11.glBindTexture(GL11.GL_TEXTURE_2D, msdfAtlas.getTextureId());
 
-            try (CgShaderScope scope = diagAtlasShader.bindScoped()) {
+            try (CgGlScope scope = diagAtlasShader.bindScoped()) {
                 GL30.glBindVertexArray(diagAtlasVao);
                 GL11.glDrawArrays(GL11.GL_TRIANGLE_STRIP, 0, 4);
                 GL30.glBindVertexArray(0);

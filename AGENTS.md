@@ -407,8 +407,11 @@ These have different method signatures (`glGenFramebuffers()` vs. `glGenFramebuf
 **State Tracking** (`gl/state/`):
 - `GLStateMirror`: Pure-Java tracked state (FBO, program, texture) + recursion depth guard
 - `CallFamily`: Enum tracking GL call families (CORE_GL30, ARB_FBO, EXT_FBO, etc.)
-- `CgStateSnapshot`: Immutable point-in-time state capture
-- `CgStateBoundary`: Save/restore API with fallback to glGet* when mirror is untrusted
+- `CgGlSlot` (in `api/state/`): 16-constant enum identifying capturable GL state domains
+- `CgGlStates`: All 16 per-slot capture+restore implementations (static inner classes)
+- `CgGlScope`: AutoCloseable holding captured `SlotState[]`; restores on close
+- `CgGlState`: Thin static dispatcher — `save(CgGlSlot...)`, `saveProgram()`, `saveFull()`, `saveAll()`
+- Package guides: `gl/state/AGENTS.md`, `api/state/AGENTS.md`
 
 **Coverage**:
 - FULL_MODE (Angelica absent): All tracked callsites rewritten
@@ -621,8 +624,10 @@ io.github.somehussar.crystalgraphics/
 │   └── state/                     # State tracking
 │       ├── GLStateMirror.java
 │       ├── CallFamily.java
-│       ├── CgStateSnapshot.java
-│       └── CgStateBoundary.java
+│       ├── SlotState.java
+│       ├── CgGlStates.java
+│       ├── CgGlScope.java
+│       └── CgGlState.java
 ├── mc/                            # Minecraft/Forge integration
 │   ├── coremod/                   # ASM transformer
 │   │   ├── CrystalGraphicsCoremod.java

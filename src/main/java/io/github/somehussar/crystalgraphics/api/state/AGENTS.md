@@ -9,6 +9,24 @@ Each class represents one GL state slot (depth, cull, texture, or the
 composite render state). These are pure policy objects — they know what GL
 state to set, but they don't own shaders, textures, or GPU resources.
 
+Also contains `CgGlSlot`, the enum used by the GL state save/restore framework.
+
+## `CgGlSlot` — GL State Save/Restore Enum
+
+16-constant enum identifying GL state domains that `CgGlState.save()` can independently
+capture and restore. Pass specific slots to save only what you intend to modify.
+
+| Group | Constants |
+|---|---|
+| Binding slots | `FBO`, `PROGRAM`, `TEXTURES`, `VERTEX_INPUT` |
+| Render state | `BLEND`, `DEPTH`, `CULL`, `STENCIL` |
+| Output / framebuffer | `COLOR_MASK`, `VIEWPORT`, `SCISSOR`, `POLYGON_OFFSET` |
+| Raster / fixed-function | `ALPHA_TEST`, `LINE_WIDTH`, `POLYGON_MODE`, `POINT_SIZE` |
+
+No GL calls, no Minecraft imports. Safe to reference from any layer.
+
+See `gl/state/AGENTS.md` for the full save/restore framework documentation.
+
 ## Type Map
 
 | Type             | Role                                                                                                                                                                       |

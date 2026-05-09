@@ -1,5 +1,8 @@
 package io.github.somehussar.crystalgraphics.api.shader;
 
+import io.github.somehussar.crystalgraphics.api.state.CgGlSlot;
+import io.github.somehussar.crystalgraphics.gl.state.CgGlScope;
+
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -95,21 +98,12 @@ public interface CgShader {
     CgShaderCacheKey getCacheKey();
 
     /**
-     * Binds this shader and returns a scope that automatically restores the
-     * previously active shader program when the scope closes.
-     *
-     * <p>If the shader is not compiled, returns a no-op scope that does nothing.
-     * Otherwise:
-     * <ol>
-     *   <li>Saves the currently active program</li>
-     *   <li>Binds this shader's program</li>
-     *   <li>Applies accumulated bindings</li>
-     *   <li>Returns a scope that restores the saved program on close</li>
-     * </ol></p>
+     * Binds this shader and returns a scope that restores the previously bound program on close.
+     * Equivalent to {@code bindScoped(CgGlSlot.PROGRAM)}. Returns a no-op scope if not compiled.
      *
      * <p>Use with try-with-resources for safe, exception-proof binding:</p>
      * <pre>{@code
-     * try (CgShaderScope scope = shader.bindScoped()) {
+     * try (CgGlScope scope = shader.bindScoped()) {
      *     // render with shader
      * }
      * // shader is unbound here
@@ -117,28 +111,18 @@ public interface CgShader {
      *
      * @return a closeable scope that restores the previous program state, or a no-op if not compiled
      * @see CgShader#bind()
-     * @see CgShader#bindScoped(CgScopeRestoreOption...)
+     * @see CgShader#bindScoped(CgGlSlot...)
      */
-    CgShaderScope bindScoped();
+    CgGlScope bindScoped();
 
     /**
-     * Binds this shader and returns a scope that restores GL state according to
-     * the provided options.
+     * Binds this shader and captures the specified GL state slots, restoring them on close.
+     * Returns a no-op scope if not compiled. Behaves like {@link #bindScoped()} if no slots given.
      *
-     * <p>If no options are provided or {@link CgScopeRestoreOption#FULL_BINDINGS}
-     * is not present, behaves identically to {@link #bindScoped()}.</p>
-     *
-     * <p>If {@link CgScopeRestoreOption#FULL_BINDINGS} is present, saves the entire
-     * GL state (framebuffer, texture bindings, active texture unit, and shader program)
-     * via {@link io.github.somehussar.crystalgraphics.gl.state.CgStateBoundary} and
-     * restores it on scope close. This is more expensive but necessary when rendering
-     * to off-screen framebuffers or complex multi-pass effects.</p>
-     *
-     * @param options optional restore scope options (if any contain FULL_BINDINGS, full state is saved)
+     * @param slots the GL state domains to capture and restore on scope close
      * @return a closeable scope that restores the appropriate GL state, or a no-op if not compiled
-     * @see CgScopeRestoreOption#FULL_BINDINGS
      */
-    CgShaderScope bindScoped(CgScopeRestoreOption... options);
+    CgGlScope bindScoped(CgGlSlot... slots);
 
     /**
      * Returns the bindings container for this shader.
@@ -165,7 +149,7 @@ public interface CgShader {
      * per-shader state instead.</p>
      *
      * <pre>{@code
-     * try (CgShaderScope s = shader.applyBindings(b -> {
+     * try (CgGlScope s = shader.applyBindings(b -> {
      *     b.set1f("noiseSize", outline.noiseSize);
      *     b.argbColor("innerColor", outline.innerColor);
      * }).bindScoped()) {
