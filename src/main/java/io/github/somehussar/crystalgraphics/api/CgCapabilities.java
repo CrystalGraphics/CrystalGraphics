@@ -27,7 +27,7 @@ import org.lwjgl.opengl.*;
  * {@link #detect()} factory method must be called on the render thread
  * with a current OpenGL context.</p>
  *
- * @see Backend
+ * @see FramebufferPath
  */
 public final class CgCapabilities {
 
@@ -42,7 +42,7 @@ public final class CgCapabilities {
      * {@link CgCapabilities#preferredFboBackend()} based on the detected
      * hardware capabilities.</p>
      */
-    public enum Backend {
+    public enum FramebufferPath {
 
         /**
          * Core OpenGL 3.0 framebuffer support.
@@ -593,20 +593,19 @@ public final class CgCapabilities {
      * Returns the preferred framebuffer object backend based on detected
      * capabilities, using the waterfall order: Core GL30 &gt; ARB &gt; EXT.
      *
-     * @return the best available {@link Backend}, or {@link Backend#NONE}
+     * @return the best available {@link FramebufferPath}, or {@link FramebufferPath#NONE}
      *         if no FBO support was detected
      */
-    public Backend preferredFboBackend() {
-        if (coreFbo) {
-            return Backend.CORE_GL30;
-        }
+    public FramebufferPath preferredFboBackend() {
+        if (coreFbo) return FramebufferPath.CORE_GL30;
+        
         if (arbFbo) {
-            return Backend.ARB_FBO;
+            return FramebufferPath.ARB_FBO;
         }
         if (extFbo) {
-            return Backend.EXT_FBO;
+            return FramebufferPath.EXT_FBO;
         }
-        return Backend.NONE;
+        return FramebufferPath.NONE;
     }
 
     public boolean isShaderStorageBufferCore() {

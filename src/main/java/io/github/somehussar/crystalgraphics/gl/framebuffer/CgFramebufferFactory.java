@@ -144,11 +144,11 @@ public final class CgFramebufferFactory {
          }
 
          // Determine the preferred backend
-         CgCapabilities.Backend backend = caps.preferredFboBackend();
+         CgCapabilities.FramebufferPath framebufferPath = caps.preferredFboBackend();
 
          // ── Validation: Check MRT compatibility with EXT backend ────────
          int colorAttachmentCount = spec.getColorAttachmentCount();
-         if (colorAttachmentCount > 1 && backend == CgCapabilities.Backend.EXT_FBO) {
+         if (colorAttachmentCount > 1 && framebufferPath == CgCapabilities.FramebufferPath.EXT_FBO) {
              throw new UnsupportedOperationException(
                      "EXT_framebuffer_object backend does not support MRT. "
                      + "Requested " + colorAttachmentCount + " color attachments "
@@ -205,7 +205,7 @@ public final class CgFramebufferFactory {
           }
 
           // ── Backend routing ──────────────────────────────────────────────
-          switch (backend) {
+          switch (framebufferPath) {
               case CORE_GL30:
                   return CgCoreFramebuffer.createFromSpec(spec);
               case ARB_FBO:
@@ -214,7 +214,7 @@ public final class CgFramebufferFactory {
                   return CgExtFramebuffer.createFromSpec(spec);
               default:
                   throw new UnsupportedOperationException(
-                          "Unknown backend for spec-based creation: " + backend);
+                          "Unknown backend for spec-based creation: " + framebufferPath);
           }
      }
 
