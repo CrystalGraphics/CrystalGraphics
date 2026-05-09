@@ -80,7 +80,8 @@ For any work on shader loading, preprocessing, uniform binding, or the GLSL stan
 For `.shader` file loading, GLSL generation, and material bind/draw, use these guides:
 
 - `src/main/java/io/github/somehussar/crystalgraphics/api/material/AGENTS.md` — public material API: `CgMaterial` load/bind/property-set/delete, `CgMaterialPipeline` format constants + `beginFrame(CgFrameUniforms)`, object buffer write lifecycle
-- `src/main/java/io/github/somehussar/crystalgraphics/gl/material/AGENTS.md` — parser and compiler internals: `CgShaderParser` grammar and restrictions, `CgMaterialShaderCompiler` GLSL generation sequence (steps 1–11 vert, 1–10 frag), `CompiledMaterialSource`
+- `src/main/java/io/github/somehussar/crystalgraphics/gl/material/AGENTS.md` — public surface: `CgMaterialProperty` (runtime value + binding), `CgMaterialProperties` (UBO/sampler partition)
+- `src/main/java/io/github/somehussar/crystalgraphics/gl/material/parse/AGENTS.md` — internal parse/compile subpackage: `CgShaderParser` facade, `CgParsedShader`, `CgMaterialShaderCompiler`, and the package-private sub-parsers (`CgStructureParser`, `CgRenderStateParser`, `CgPropertiesParser`, `CgQueueParser`, `CgBufferGlslEmitter`)
 - `src/main/java/io/github/somehussar/crystalgraphics/api/buffer/AGENTS.md` — GPU buffer format descriptors: `CgGpuType`, `CgBufferField`, `CgBufferFormat` builder, std140/std430 alignment table, format-aware write mechanics
 - `src/main/java/io/github/somehussar/crystalgraphics/gl/buffer/shader/AGENTS.md` — SSBO/TBO/UBO implementations, `CgShaderBufferRegistry`, binding point rules, lifecycle
 

@@ -6,6 +6,8 @@ import io.github.somehussar.crystalgraphics.api.texture.CgTexture;
 import io.github.somehussar.crystalgraphics.gl.buffer.staging.CgBufferWriter;
 import lombok.Getter;
 
+import java.util.Locale;
+
 /**
  * A material property — declaration, current value, and binding logic for one
  * entry in a {@code .shader} file's {@code Properties { }} block.
@@ -25,6 +27,12 @@ public final class CgMaterialProperty {
         VEC3("vec3", "vec3", 3),
         VEC4("vec4", "vec4", 4),
         INT("int", "int", 1),
+        /**
+         * Boolean property. User writes {@code bool} in the {@code .shader} Properties block;
+         * GLSL type is {@code bool}. Stored as {@code intValue} (0 = false, 1 = true).
+         * Default string accepts {@code "true"}/{@code "false"} (case-insensitive) or {@code "0"}/{@code "1"}.
+         */
+        BOOLEAN("boolean", "bool", 1),
         /**
          * Color property. User writes {@code color} in the {@code .shader} Properties block;
          * the compiled GLSL type is {@code vec4}. {@code fromGlsl("color")} returns {@code null}
@@ -109,6 +117,13 @@ public final class CgMaterialProperty {
 
     @Getter
     private final String name;
+    /**
+     * The human-readable display name declared in the {@code .shader} Properties block,
+     * e.g. {@code "Main Texture"} for {@code _MainTex ("Main Texture", sampler2D) = "white"}.
+     * Falls back to {@link #name} for old-style declarations ({@code _Name : type}).
+     */
+    @Getter
+    private final String displayName;
     @Getter
     private final Type   type;
     /**
@@ -148,11 +163,12 @@ public final class CgMaterialProperty {
      * raw default string into {@link #floatValue}.
      * Sampler properties always start with no texture (unit = -1).
      *
-     * @param name       the property name (e.g. {@code "_Alpha"})
-     * @param typeName   the property type as written in the {@code .shader} Properties block
-     * @param rawDefault the default value string, or {@code null}
+     * @param name        the property name (e.g. {@code "_Alpha"})
+     * @param displayName the human-readable display name (e.g. {@code "Opacity"}), or {@code null} to fall back to name
+     * @param typeName    the property type as written in the {@code .shader} Properties block
+     * @param rawDefault  the default value string, or {@code null}
      */
-    public static CgMaterialProperty fromDecl(String name, String typeName, String rawDefault) {
+    public static CgMaterialProperty fromDecl(String name, String displayName, String typeName, String rawDefault) {
         Type type = Type.fromPropertyType(typeName);
         if (type == null) {
             // Fallback: try glsl lookup for backward compatibility
@@ -161,19 +177,19 @@ public final class CgMaterialProperty {
         if (type == null) {
             throw new IllegalArgumentException("Unknown material property type: " + typeName);
         }
-        CgMaterialProperty p = new CgMaterialProperty(name, type, rawDefault);
+        CgMaterialProperty p = new CgMaterialProperty(name, displayName != null ? displayName : name, type, rawDefault);
         if (rawDefault != null && !type.isSampler()) {
             p.setFromRaw(rawDefault);
         }
         return p;
     }
 
-    private CgMaterialProperty(String name, Type type, String rawDefault) {
-        this.name       = name;
-        this.type       = type;
-        this.rawDefault = rawDefault;
-        // Allocate at least 1 slot; zero-initialised by JVM
-        this.floatValue = new float[Math.max(1, type.getComponents())];
+    private CgMaterialProperty(String name, String displayName, Type type, String rawDefault) {
+        this.name        = name;
+        this.displayName = displayName;
+        this.type        = type;
+        this.rawDefault  = rawDefault;
+        this.floatValue  = new float[Math.max(1, type.getComponents())];
     }
 
     // ── Declaration accessors ─────────────────────────────────────────────────
@@ -319,6 +335,9 @@ public final class CgMaterialProperty {
         try {
             if (type == Type.INT) {
                 intValue = Integer.parseInt(raw.trim());
+            } else if (type == Type.BOOLEAN) {
+                String v = raw.trim().toLowerCase(Locale.ROOT);
+                intValue = (v.equals("true") || v.equals("1")) ? 1 : 0;
             } else if (type.getComponents() == 1) {
                 floatValue[0] = Float.parseFloat(raw.trim());
             } else {

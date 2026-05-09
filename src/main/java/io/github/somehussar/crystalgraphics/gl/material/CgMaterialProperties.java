@@ -27,7 +27,7 @@ final class CgMaterialProperties {
     private final List<CgMaterialProperty> samplerProps;
 
     CgMaterialProperties(List<CgMaterialProperty> all) {
-        this.all = List.copyOf(all);
+        this.all = Collections.unmodifiableList(new ArrayList<>(all));
         List<CgMaterialProperty> ubo     = new ArrayList<>();
         List<CgMaterialProperty> sampler = new ArrayList<>();
         for (CgMaterialProperty p : all) {

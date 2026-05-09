@@ -1,9 +1,10 @@
-package io.github.somehussar.crystalgraphics.gl.material;
+package io.github.somehussar.crystalgraphics.gl.material.parse;
 
 import com.github.bsideup.jabel.Desugar;
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
 import io.github.somehussar.crystalgraphics.api.material.CgAttachedBuffer;
 import io.github.somehussar.crystalgraphics.api.shader.CgPreprocessorException;
+import io.github.somehussar.crystalgraphics.gl.material.CgMaterialProperty;
 
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -37,15 +38,15 @@ import java.util.Set;
  */
 public final class CgMaterialShaderCompiler {
 
-    /** Immutable pair of complete GLSL source strings produced by {@link #compile}. 
+    /** Immutable pair of complete GLSL source strings produced by {@link #compile}.
      * @param vertexSource
-    Complete GLSL vertex shader source, starting with {@code #version} and containing
-    all generated declarations, user property uniforms, v2f varying outputs, global
-    declarations, and the {@code main()} wrapper.
+     Complete GLSL vertex shader source, starting with {@code #version} and containing
+     all generated declarations, user property uniforms, v2f varying outputs, global
+     declarations, and the {@code main()} wrapper.
      * @param fragmentSource
-    Complete GLSL fragment shader source, starting with {@code #version} and containing
-    all generated declarations, user property uniforms, v2f varying inputs, global
-    declarations, and the {@code main()} wrapper.*/
+     Complete GLSL fragment shader source, starting with {@code #version} and containing
+     all generated declarations, user property uniforms, v2f varying inputs, global
+     declarations, and the {@code main()} wrapper.*/
     @Desugar
     public record CompiledSource(String vertexSource, String fragmentSource) {
     }
