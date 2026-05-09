@@ -1,5 +1,7 @@
 package io.github.somehussar.crystalgraphics.api;
 
+import lombok.AccessLevel;
+import lombok.Getter;
 import org.lwjgl.opengl.*;
 
 /**
@@ -29,427 +31,143 @@ import org.lwjgl.opengl.*;
  *
  * @see FramebufferPath
  */
+@Getter
 public final class CgCapabilities {
 
-    private static String cachedParsedVersionKey = null;
-    private static int[] cachedParsedVersionValue = null;
+    private static String cachedParsedVersionKey   = null;
+    private static int[]  cachedParsedVersionValue = null;
+    private static volatile CgCapabilities cachedCaps = null;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Enums
+    // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Enumerates the available framebuffer object backends in order of
-     * preference.
+     * Enumerates the available framebuffer object backends in order of preference.
      *
-     * <p>The preferred backend is selected by
-     * {@link CgCapabilities#preferredFboBackend()} based on the detected
-     * hardware capabilities.</p>
+     * <p>The preferred backend is selected by {@link CgCapabilities#preferredFboBackend()}
+     * based on the detected hardware capabilities.</p>
      */
     public enum FramebufferPath {
-
-        /**
-         * Core OpenGL 3.0 framebuffer support.
-         * This is the preferred backend, offering full feature coverage
-         * including separate draw/read targets and MRT.
-         */
+        /** Core OpenGL 3.0 framebuffer support — preferred path, full MRT. */
         CORE_GL30,
-
-        /**
-         * ARB framebuffer object extension ({@code GL_ARB_framebuffer_object}).
-         * Semantically identical to Core GL30 but routed through the ARB
-         * extension entry point.  Supports separate draw/read targets and MRT.
-         */
+        /** {@code GL_ARB_framebuffer_object} — semantically identical to Core GL30, full MRT. */
         ARB_FBO,
-
-        /**
-         * EXT framebuffer object extension ({@code GL_EXT_framebuffer_object}).
-         * Legacy path with {@code *EXT}-suffixed methods.  Does not support
-         * separate draw/read targets and may lack MRT support.
-         */
+        /** {@code GL_EXT_framebuffer_object} — legacy, no separate draw/read, limited MRT. */
         EXT_FBO,
-
-        /**
-         * No framebuffer support detected.  FBO creation will fail.
-         */
+        /** No framebuffer support detected. FBO creation will fail. */
         NONE
     }
-
-    /** Whether Core OpenGL 3.0 framebuffer support is available. */
-    private final boolean coreFbo;
-
-    /** Whether the {@code GL_ARB_framebuffer_object} extension is available. */
-    private final boolean arbFbo;
-
-    /** Whether the {@code GL_EXT_framebuffer_object} extension is available. */
-    private final boolean extFbo;
-
-    /** Whether Core OpenGL 2.0 shader support ({@code glUseProgram} etc.) is available. */
-    private final boolean coreShaders;
-
-    /** Whether the {@code GL_ARB_shader_objects} extension is available. */
-    private final boolean arbShaders;
-
-    /**
-     * Maximum number of simultaneous draw buffer outputs (MRT).
-     * A value of 1 means MRT is not supported or not available.
-     */
-    private final int maxDrawBuffers;
-
-    /**
-     * Maximum number of texture image units available for fragment shaders,
-     * or the number of fixed-function texture units if shaders are unavailable.
-     */
-    private final int maxTextureUnits;
-
-    /** Whether stencil buffer attachments are supported. */
-    private final boolean stencil;
-
-    /** Whether depth buffer attachments are supported. */
-    private final boolean depth;
-
-    /** Whether packed depth-stencil formats are supported. */
-    private final boolean packedDepthStencil;
-
-    /** Whether depth textures are supported via {@code GL_ARB_depth_texture}. */
-    private final boolean depthTexture;
-
-    /** Maximum texture dimension (width/height) for 2D textures. */
-    private final int maxTextureSize;
-
-    /** Maximum renderbuffer dimension (width/height). */
-    private final int maxRenderbufferSize;
-
-    /** Maximum number of color attachments available on FBOs. */
-    private final int maxColorAttachments;
-
-    /**
-     * Whether vertex array objects (VAOs) are supported.
-     * True if Core OpenGL 3.0 or {@code GL_ARB_vertex_array_object} is available.
-     */
-    private final boolean hasVao;
-
-    /**
-     * Whether {@code glMapBufferRange} is supported.
-     * True if Core OpenGL 3.0 or {@code GL_ARB_map_buffer_range} is available.
-     */
-    private final boolean hasMapBufferRange;
-
-    /**
-     * Whether {@code GL_ARB_sync} (fence sync) is available.
-     * True if Core OpenGL 3.2 or the {@code GL_ARB_sync} extension is present.
-     * Required for the Tier-A sync-ring stream buffer strategy.
-     */
-    private final boolean arbSync;
-
-    /**
-     * Whether instanced draw calls ({@code glDrawArraysInstanced} /
-     * {@code glDrawElementsInstanced}) are available.
-     * True if Core OpenGL 3.1 or {@code GL_ARB_draw_instanced} is present.
-     */
-    private final boolean drawInstanced;
-
-    /**
-     * Whether per-attribute divisors ({@code glVertexAttribDivisor}) are available.
-     * True if Core OpenGL 3.3 or {@code GL_ARB_instanced_arrays} is present.
-     * Required for instanced vertex attribute rendering.
-     */
-    private final boolean vertexAttribDivisor;
-
-    /**
-     * Maximum number of vertex attributes (attribute slots) available for shaders.
-     * Queried from {@code GL_MAX_VERTEX_ATTRIBS} when shader support exists; 0 otherwise.
-     * A {@code mat4} instance attribute consumes 4 of these slots.
-     */
-    private final int maxVertexAttribs;
-
-    // ── Shader-Buffer Capability Fields ─────────────────────────────────────
 
     /**
      * Enumerates the available GPU-resident shader buffer paths in preference order.
      *
-     * <p>The CrystalShader material pipeline requires at least GL 3.3 (GLSL 330 core).
-     * SSBO is the preferred path (GL 4.3 core or ARB fallback). TBO is the fallback
-     * for GL 3.3+ contexts that lack SSBO. NONE means the material pipeline cannot
-     * be used on this context.</p>
+     * <p>SSBO is preferred (GL 4.3 core or ARB). TBO is the fallback for GL 3.3+ contexts
+     * that lack SSBO. NONE means the material pipeline cannot be used on this context.</p>
      */
     public enum ShaderBufferPath {
-        /**
-         * Core OpenGL 4.3 SSBO path. Uses {@code org.lwjgl.opengl.GL43} entry points.
-         * Shader-storage buffers bound at layout binding 0 for object data.
-         */
+        /** Core OpenGL 4.3 SSBO via {@code org.lwjgl.opengl.GL43}. */
         SSBO_GL43,
-
-        /**
-         * ARB shader-storage buffer object extension path.
-         * Uses {@code org.lwjgl.opengl.ARBShaderStorageBufferObject} entry points.
-         * Activated when core 4.3 is absent but the ARB extension is present.
-         */
+        /** {@code GL_ARB_shader_storage_buffer_object} SSBO when core 4.3 is absent. */
         SSBO_ARB,
-
-        /**
-         * Texture buffer object fallback path (GL 3.1+, sampler-based).
-         * Activated when SSBO is unavailable but GL 3.3 baseline is met.
-         * Object data is read via {@code samplerBuffer} / {@code texelFetch}.
-         */
+        /** Texture buffer object fallback (GL 3.1+, sampler-based). */
         TBO,
-
-        /**
-         * No usable shader buffer path detected. Attempting to create a
-         * CrystalShader material on this context will throw.
-         */
+        /** No usable shader buffer path. Material pipeline creation will throw. */
         NONE
     }
 
-    /**
-     * Whether Core OpenGL 4.3 SSBO is available
-     * ({@code GLContext.getCapabilities().OpenGL43}).
-     */
-    private final boolean shaderStorageBufferCore;
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Capability fields  (package-private — accessible to same-package tests)
+    // ─────────────────────────────────────────────────────────────────────────
 
-    /**
-     * Whether the {@code GL_ARB_shader_storage_buffer_object} extension is available
-     * and core 4.3 is absent.
-     */
-    private final boolean shaderStorageBufferArb;
+    // ── Framebuffer backends ──────────────────────────────────────────────────
+    /** Whether Core OpenGL 3.0 framebuffer support is available. */
+    boolean coreFbo;
+    /** Whether the {@code GL_ARB_framebuffer_object} extension is available. */
+    boolean arbFbo;
+    /** Whether the {@code GL_EXT_framebuffer_object} extension is available. */
+    boolean extFbo;
 
-    /**
-     * Whether the TBO (texture buffer) material fallback path is available.
-     * True when SSBO is unavailable and {@code OpenGL33} is present.
-     */
-    private final boolean textureBufferMaterialPath;
+    // ── Shader backends ───────────────────────────────────────────────────────
+    /** Whether Core OpenGL 2.0 shader support ({@code glUseProgram} etc.) is available. */
+    boolean coreShaders;
+    /** Whether the {@code GL_ARB_shader_objects} extension is available. */
+    boolean arbShaders;
 
-    /**
-     * The preferred shader buffer path for the current GL context, determined
-     * at construction time from the above three flags.
-     */
-    private final ShaderBufferPath shaderBufferPath;
+    // ── Render limits ─────────────────────────────────────────────────────────
+    /** Maximum number of simultaneous draw buffer outputs (MRT); at least 1. */
+    int maxDrawBuffers;
+    /** Maximum texture image units (shader) or fixed-function texture units. */
+    int maxTextureUnits;
+    /** Maximum 2D texture dimension (width/height). */
+    int maxTextureSize;
+    /** Maximum renderbuffer dimension; falls back to {@link #maxTextureSize} on EXT-only. */
+    int maxRenderbufferSize;
+    /** Maximum color attachments on FBOs; typically 1 (EXT) or 8+ (Core/ARB). */
+    int maxColorAttachments;
 
-    /**
-     * Maximum number of SSBO binding points available on this context.
-     * Queried from {@code GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS} (0x90FF) when
-     * SSBO support is present; otherwise {@code 0}.
-     * The OpenGL 4.3 minimum is 8.
-     */
-    private final int maxSsboBindings;
+    // ── Depth / Stencil ───────────────────────────────────────────────────────
+    /** Stencil buffer support (assumed universally available on target hardware). */
+    @Getter(AccessLevel.NONE) boolean stencil;
+    /** Depth buffer support (assumed universally available on target hardware). */
+    @Getter(AccessLevel.NONE) boolean depth;
+    /** Packed depth-stencil via {@code GL_EXT_packed_depth_stencil} or {@code GL_NV_packed_depth_stencil}. */
+    @Getter(AccessLevel.NONE) boolean packedDepthStencil;
+    /** Depth texture support via {@code GL_ARB_depth_texture}. */
+    @Getter(AccessLevel.NONE) boolean depthTexture;
 
-    /**
-     * Maximum number of uniform buffer binding points available on this context.
-     * Queried from {@code GL_MAX_UNIFORM_BUFFER_BINDINGS} (0x8A2F) when
-     * shader support is present; otherwise {@code 0}.
-     * The OpenGL 3.1 minimum is 36.
-     */
-    private final int maxUniformBufferBindings;
+    // ── Buffer / VAO ─────────────────────────────────────────────────────────
+    /** Whether VAOs are supported (Core GL30 or {@code GL_ARB_vertex_array_object}). */
+    @Getter(AccessLevel.NONE) boolean hasVao;
+    /** Whether {@code glMapBufferRange} is supported (Core GL30 or {@code GL_ARB_map_buffer_range}). */
+    @Getter(AccessLevel.NONE) boolean hasMapBufferRange;
+    /** Whether fence sync is available (Core GL32 or {@code GL_ARB_sync}). */
+    boolean arbSync;
 
-    /** Whether {@code GL_ARB_gpu_shader_int64} is supported. */
-    private final boolean gpuShaderInt64;
+    // ── Instancing ────────────────────────────────────────────────────────────
+    /** Whether instanced draw calls are available (Core GL31 or {@code GL_ARB_draw_instanced}). */
+    @Getter(AccessLevel.NONE) boolean drawInstanced;
+    /** Whether per-attribute divisors are available (Core GL33 or {@code GL_ARB_instanced_arrays}). */
+    @Getter(AccessLevel.NONE) boolean vertexAttribDivisor;
+    /** Maximum vertex attribute slots; 0 if shader support is absent. A mat4 consumes 4 slots. */
+    int maxVertexAttribs;
 
-    private CgCapabilities(boolean coreFbo, boolean arbFbo, boolean extFbo,
-                           boolean coreShaders, boolean arbShaders,
-                           int maxDrawBuffers, int maxTextureUnits,
-                           boolean stencil, boolean depth,
-                           boolean packedDepthStencil, boolean depthTexture,
-                           int maxTextureSize, int maxRenderbufferSize,
-                           int maxColorAttachments,
-                           boolean hasVao, boolean hasMapBufferRange,
-                           boolean arbSync,
-                           boolean drawInstanced, boolean vertexAttribDivisor,
-                           int maxVertexAttribs) {
-        this.coreFbo = coreFbo;
-        this.arbFbo = arbFbo;
-        this.extFbo = extFbo;
-        this.coreShaders = coreShaders;
-        this.arbShaders = arbShaders;
-        this.maxDrawBuffers = maxDrawBuffers;
-        this.maxTextureUnits = maxTextureUnits;
-        this.stencil = stencil;
-        this.depth = depth;
-        this.packedDepthStencil = packedDepthStencil;
-        this.depthTexture = depthTexture;
-        this.maxTextureSize = maxTextureSize;
-        this.maxRenderbufferSize = maxRenderbufferSize;
-        this.maxColorAttachments = maxColorAttachments;
-        this.hasVao = hasVao;
-        this.hasMapBufferRange = hasMapBufferRange;
-        this.arbSync = arbSync;
-        this.drawInstanced = drawInstanced;
-        this.vertexAttribDivisor = vertexAttribDivisor;
-        this.maxVertexAttribs = maxVertexAttribs;
-        // Shader-buffer path detection delegated to the overload that accepts explicit flags.
-        // For backward-compat callers that don't supply them, detect from current context lazily.
-        this.shaderStorageBufferCore = false;
-        this.shaderStorageBufferArb = false;
-        this.textureBufferMaterialPath = false;
-        this.shaderBufferPath = ShaderBufferPath.NONE;
-        this.maxSsboBindings = 0;
-        this.maxUniformBufferBindings = 0;
-        this.gpuShaderInt64 = false;
-    }
+    // ── Shader buffers ────────────────────────────────────────────────────────
+    /** Whether Core OpenGL 4.3 SSBO is available. */
+    boolean shaderStorageBufferCore;
+    /** Whether {@code GL_ARB_shader_storage_buffer_object} is available (and core 4.3 is absent). */
+    boolean shaderStorageBufferArb;
+    /** Whether the TBO material fallback path is available (GL33+, no SSBO). */
+    boolean textureBufferMaterialPath;
+    /** Preferred shader buffer path, derived from the three flags above. */
+    @Getter(AccessLevel.NONE) ShaderBufferPath shaderBufferPath;
+    /** Max SSBO binding points (min 8 per GL4.3 spec); 0 when SSBO is unsupported. */
+    int maxSsboBindings;
+    /** Max UBO binding points (min 36 per GL3.1 spec); 0 when shader support is absent. */
+    int maxUniformBufferBindings;
+    /** Whether {@code GL_ARB_gpu_shader_int64} (OpenGL 4.0+) is supported. */
+    boolean gpuShaderInt64;
 
-    private CgCapabilities(boolean coreFbo, boolean arbFbo, boolean extFbo,
-                           boolean coreShaders, boolean arbShaders,
-                           int maxDrawBuffers, int maxTextureUnits,
-                           boolean stencil, boolean depth,
-                           boolean packedDepthStencil, boolean depthTexture,
-                           int maxTextureSize, int maxRenderbufferSize,
-                           int maxColorAttachments,
-                           boolean hasVao, boolean hasMapBufferRange,
-                           boolean arbSync,
-                           boolean drawInstanced, boolean vertexAttribDivisor,
-                           int maxVertexAttribs,
-                           boolean shaderStorageBufferCore, boolean shaderStorageBufferArb,
-                           boolean textureBufferMaterialPath) {
-        this.coreFbo = coreFbo;
-        this.arbFbo = arbFbo;
-        this.extFbo = extFbo;
-        this.coreShaders = coreShaders;
-        this.arbShaders = arbShaders;
-        this.maxDrawBuffers = maxDrawBuffers;
-        this.maxTextureUnits = maxTextureUnits;
-        this.stencil = stencil;
-        this.depth = depth;
-        this.packedDepthStencil = packedDepthStencil;
-        this.depthTexture = depthTexture;
-        this.maxTextureSize = maxTextureSize;
-        this.maxRenderbufferSize = maxRenderbufferSize;
-        this.maxColorAttachments = maxColorAttachments;
-        this.hasVao = hasVao;
-        this.hasMapBufferRange = hasMapBufferRange;
-        this.arbSync = arbSync;
-        this.drawInstanced = drawInstanced;
-        this.vertexAttribDivisor = vertexAttribDivisor;
-        this.maxVertexAttribs = maxVertexAttribs;
-        this.shaderStorageBufferCore = shaderStorageBufferCore;
-        this.shaderStorageBufferArb = shaderStorageBufferArb;
-        this.textureBufferMaterialPath = textureBufferMaterialPath;
-        if (shaderStorageBufferCore) {
-            this.shaderBufferPath = ShaderBufferPath.SSBO_GL43;
-        } else if (shaderStorageBufferArb) {
-            this.shaderBufferPath = ShaderBufferPath.SSBO_ARB;
-        } else if (textureBufferMaterialPath) {
-            this.shaderBufferPath = ShaderBufferPath.TBO;
-        } else {
-            this.shaderBufferPath = ShaderBufferPath.NONE;
-        }
-        this.maxSsboBindings = 0;
-        this.maxUniformBufferBindings = 0;
-        this.gpuShaderInt64 = false;
-    }
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Constructor
+    // ─────────────────────────────────────────────────────────────────────────
 
-    private CgCapabilities(boolean coreFbo, boolean arbFbo, boolean extFbo,
-                           boolean coreShaders, boolean arbShaders,
-                           int maxDrawBuffers, int maxTextureUnits,
-                           boolean stencil, boolean depth,
-                           boolean packedDepthStencil, boolean depthTexture,
-                           int maxTextureSize, int maxRenderbufferSize,
-                           int maxColorAttachments,
-                           boolean hasVao, boolean hasMapBufferRange,
-                           boolean arbSync,
-                           boolean drawInstanced, boolean vertexAttribDivisor,
-                           int maxVertexAttribs,
-                           boolean shaderStorageBufferCore, boolean shaderStorageBufferArb,
-                           boolean textureBufferMaterialPath,
-                           int maxSsboBindings, int maxUniformBufferBindings) {
-        this.coreFbo = coreFbo;
-        this.arbFbo = arbFbo;
-        this.extFbo = extFbo;
-        this.coreShaders = coreShaders;
-        this.arbShaders = arbShaders;
-        this.maxDrawBuffers = maxDrawBuffers;
-        this.maxTextureUnits = maxTextureUnits;
-        this.stencil = stencil;
-        this.depth = depth;
-        this.packedDepthStencil = packedDepthStencil;
-        this.depthTexture = depthTexture;
-        this.maxTextureSize = maxTextureSize;
-        this.maxRenderbufferSize = maxRenderbufferSize;
-        this.maxColorAttachments = maxColorAttachments;
-        this.hasVao = hasVao;
-        this.hasMapBufferRange = hasMapBufferRange;
-        this.arbSync = arbSync;
-        this.drawInstanced = drawInstanced;
-        this.vertexAttribDivisor = vertexAttribDivisor;
-        this.maxVertexAttribs = maxVertexAttribs;
-        this.shaderStorageBufferCore = shaderStorageBufferCore;
-        this.shaderStorageBufferArb = shaderStorageBufferArb;
-        this.textureBufferMaterialPath = textureBufferMaterialPath;
-        if (shaderStorageBufferCore) {
-            this.shaderBufferPath = ShaderBufferPath.SSBO_GL43;
-        } else if (shaderStorageBufferArb) {
-            this.shaderBufferPath = ShaderBufferPath.SSBO_ARB;
-        } else if (textureBufferMaterialPath) {
-            this.shaderBufferPath = ShaderBufferPath.TBO;
-        } else {
-            this.shaderBufferPath = ShaderBufferPath.NONE;
-        }
-        this.maxSsboBindings = maxSsboBindings;
-        this.maxUniformBufferBindings = maxUniformBufferBindings;
-        this.gpuShaderInt64 = false;
-    }
+    /** Package-private: allows {@link #detectUncached()} and same-package tests to construct. */
+    CgCapabilities() {}
 
-    private CgCapabilities(boolean coreFbo, boolean arbFbo, boolean extFbo,
-                           boolean coreShaders, boolean arbShaders,
-                           int maxDrawBuffers, int maxTextureUnits,
-                           boolean stencil, boolean depth,
-                           boolean packedDepthStencil, boolean depthTexture,
-                           int maxTextureSize, int maxRenderbufferSize,
-                           int maxColorAttachments,
-                           boolean hasVao, boolean hasMapBufferRange,
-                           boolean arbSync,
-                           boolean drawInstanced, boolean vertexAttribDivisor,
-                           int maxVertexAttribs,
-                           boolean shaderStorageBufferCore, boolean shaderStorageBufferArb,
-                           boolean textureBufferMaterialPath,
-                           int maxSsboBindings, int maxUniformBufferBindings,
-                           boolean gpuShaderInt64) {
-        this.coreFbo = coreFbo;
-        this.arbFbo = arbFbo;
-        this.extFbo = extFbo;
-        this.coreShaders = coreShaders;
-        this.arbShaders = arbShaders;
-        this.maxDrawBuffers = maxDrawBuffers;
-        this.maxTextureUnits = maxTextureUnits;
-        this.stencil = stencil;
-        this.depth = depth;
-        this.packedDepthStencil = packedDepthStencil;
-        this.depthTexture = depthTexture;
-        this.maxTextureSize = maxTextureSize;
-        this.maxRenderbufferSize = maxRenderbufferSize;
-        this.maxColorAttachments = maxColorAttachments;
-        this.hasVao = hasVao;
-        this.hasMapBufferRange = hasMapBufferRange;
-        this.arbSync = arbSync;
-        this.drawInstanced = drawInstanced;
-        this.vertexAttribDivisor = vertexAttribDivisor;
-        this.maxVertexAttribs = maxVertexAttribs;
-        this.shaderStorageBufferCore = shaderStorageBufferCore;
-        this.shaderStorageBufferArb = shaderStorageBufferArb;
-        this.textureBufferMaterialPath = textureBufferMaterialPath;
-        if (shaderStorageBufferCore) {
-            this.shaderBufferPath = ShaderBufferPath.SSBO_GL43;
-        } else if (shaderStorageBufferArb) {
-            this.shaderBufferPath = ShaderBufferPath.SSBO_ARB;
-        } else if (textureBufferMaterialPath) {
-            this.shaderBufferPath = ShaderBufferPath.TBO;
-        } else {
-            this.shaderBufferPath = ShaderBufferPath.NONE;
-        }
-        this.maxSsboBindings = maxSsboBindings;
-        this.maxUniformBufferBindings = maxUniformBufferBindings;
-        this.gpuShaderInt64 = gpuShaderInt64;
-    }
-
-    /**
-     * Cached singleton instance, lazily initialized on first {@link #detect()} call.
-     */
-    private static volatile CgCapabilities cachedCaps = null;
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Cache management
+    // ─────────────────────────────────────────────────────────────────────────
 
     /**
      * Returns a lazily-cached capabilities snapshot.
      *
-     * <p>The first call probes the current OpenGL context and caches the
-     * result; subsequent calls return the cached instance.  Must be called
-     * on the render thread with an active GL context (at least on the first
-     * invocation).</p>
+     * <p>The first call probes the current OpenGL context and caches the result;
+     * subsequent calls return the cached instance.  Must be called on the render thread
+     * with an active GL context (at least on the first invocation).</p>
      *
-     * <p>If the GL context is destroyed and recreated, call
-     * {@link #clearCache()} to force re-detection on the next call.</p>
+     * <p>If the GL context is destroyed and recreated, call {@link #clearCache()} to
+     * force re-detection on the next call.</p>
      *
      * @return the cached {@code CgCapabilities} for the current context
      * @see #detectUncached()
@@ -467,523 +185,152 @@ public final class CgCapabilities {
     /**
      * Clears the cached capabilities singleton.
      *
-     * <p>After this call, the next invocation of {@link #detect()} will
-     * re-probe the OpenGL context.  Use this when the GL context is
-     * destroyed and recreated (e.g., window resize on some drivers).</p>
+     * <p>After this call, the next invocation of {@link #detect()} will re-probe
+     * the OpenGL context.  Use this when the GL context is destroyed and recreated.</p>
      */
-    public static void clearCache() {
-        cachedCaps = null;
-    }
+    public static void clearCache() { cachedCaps = null; }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Detection
+    // ─────────────────────────────────────────────────────────────────────────
 
     /**
      * Detects capabilities from the current OpenGL context (uncached).
      *
      * <p>Must be called on the render thread with an active GL context.
-     * This method queries LWJGL's {@link GLContext#getCapabilities()} and
-     * relevant {@code glGetInteger} values to populate all capability
-     * fields.</p>
+     * Prefer {@link #detect()} for most use cases.</p>
      *
      * <p>Depth and stencil support are assumed to be universally available
      * on the target hardware range (OpenGL 2.0+ / Intel HD 3000 and above).</p>
-     *
-     * <p>Prefer {@link #detect()} for most use cases, which returns a
-     * cached instance.</p>
      *
      * @return a new {@code CgCapabilities} reflecting the current context
      * @see #detect()
      */
     public static CgCapabilities detectUncached() {
-        ContextCapabilities caps = GLContext.getCapabilities();
+        ContextCapabilities gl = GLContext.getCapabilities();
+        CgCapabilities caps = new CgCapabilities();
 
-        boolean coreFbo = caps.OpenGL30;
-        boolean arbFbo = caps.GL_ARB_framebuffer_object;
-        boolean extFbo = caps.GL_EXT_framebuffer_object;
-        boolean coreShaders = caps.OpenGL20;
-        boolean arbShaders = caps.GL_ARB_shader_objects;
+        // ── Framebuffer backends ──────────────────────────────────────────────
+        caps.coreFbo = gl.OpenGL30;
+        caps.arbFbo  = gl.GL_ARB_framebuffer_object;
+        caps.extFbo  = gl.GL_EXT_framebuffer_object;
 
-        int maxDrawBuffers;
-        if (coreShaders) {
-            maxDrawBuffers = GL11.glGetInteger(GL20.GL_MAX_DRAW_BUFFERS);
-        } else {
-            maxDrawBuffers = 1;
-        }
+        // ── Shader backends ───────────────────────────────────────────────────
+        caps.coreShaders = gl.OpenGL20;
+        caps.arbShaders  = gl.GL_ARB_shader_objects;
 
-        int maxTextureUnits;
-        if (coreShaders) {
-            maxTextureUnits = GL11.glGetInteger(GL20.GL_MAX_TEXTURE_IMAGE_UNITS);
-        } else {
-            maxTextureUnits = GL11.glGetInteger(GL13.GL_MAX_TEXTURE_UNITS);
-        }
+        // ── Render limits ─────────────────────────────────────────────────────
+        caps.maxDrawBuffers      = caps.coreShaders ? GL11.glGetInteger(GL20.GL_MAX_DRAW_BUFFERS) : 1;
+        caps.maxTextureUnits     = caps.coreShaders ? GL11.glGetInteger(GL20.GL_MAX_TEXTURE_IMAGE_UNITS) : GL11.glGetInteger(GL13.GL_MAX_TEXTURE_UNITS);
+        caps.maxTextureSize      = GL11.glGetInteger(GL11.GL_MAX_TEXTURE_SIZE);
+        caps.maxRenderbufferSize = (caps.coreFbo || caps.arbFbo) ? GL11.glGetInteger(0x84E8 /* GL_MAX_RENDERBUFFER_SIZE */) : caps.maxTextureSize;
+        caps.maxColorAttachments = (caps.coreFbo || caps.arbFbo) ? GL11.glGetInteger(0x8CDF /* GL_MAX_COLOR_ATTACHMENTS */) : 1;
 
-        // Depth and stencil are universally supported on the target hardware
-        // range (Intel HD 3000 / OpenGL 2.0+ and above).
-        boolean depth = true;
-        boolean stencil = true;
+        // ── Depth / Stencil ───────────────────────────────────────────────────
+        caps.depth              = true; // universally available on target hardware
+        caps.stencil            = true;
+        caps.packedDepthStencil = gl.GL_EXT_packed_depth_stencil || gl.GL_NV_packed_depth_stencil;
+        caps.depthTexture       = gl.GL_ARB_depth_texture;
 
-        // Packed depth-stencil support: EXT or NV variant
-        boolean packedDepthStencil = caps.GL_EXT_packed_depth_stencil || caps.GL_NV_packed_depth_stencil;
+        // ── Buffer / VAO ──────────────────────────────────────────────────────
+        caps.hasVao            = gl.OpenGL30 || gl.GL_ARB_vertex_array_object;
+        caps.hasMapBufferRange = gl.OpenGL30 || gl.GL_ARB_map_buffer_range;
+        caps.arbSync           = gl.OpenGL32 || gl.GL_ARB_sync;
 
-        // Depth texture support via ARB extension
-        boolean depthTexture = caps.GL_ARB_depth_texture;
+        // ── Instancing ────────────────────────────────────────────────────────
+        caps.drawInstanced       = gl.OpenGL31 || gl.GL_ARB_draw_instanced;
+        caps.vertexAttribDivisor = gl.OpenGL33 || gl.GL_ARB_instanced_arrays;
+        caps.maxVertexAttribs    = caps.coreShaders ? GL11.glGetInteger(GL20.GL_MAX_VERTEX_ATTRIBS) : 0;
 
-        // Maximum texture size (universal, always available)
-        int maxTextureSize = GL11.glGetInteger(GL11.GL_MAX_TEXTURE_SIZE);
+        // ── Shader buffers (waterfall: GL43 SSBO > ARB SSBO > TBO > NONE) ────
+        caps.shaderStorageBufferCore   = gl.OpenGL43;
+        caps.shaderStorageBufferArb    = !caps.shaderStorageBufferCore && gl.GL_ARB_shader_storage_buffer_object;
+        caps.textureBufferMaterialPath = !caps.shaderStorageBufferCore && !caps.shaderStorageBufferArb && gl.OpenGL33;
+        caps.maxSsboBindings           = (caps.shaderStorageBufferCore || caps.shaderStorageBufferArb) ? GL11.glGetInteger(GL43.GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS) : 0;
+        caps.maxUniformBufferBindings  = caps.coreShaders ? GL11.glGetInteger(GL31.GL_MAX_UNIFORM_BUFFER_BINDINGS) : 0;
+        caps.gpuShaderInt64            = gl.OpenGL40;
 
-        // Maximum renderbuffer size; use maxTextureSize as fallback if unavailable
-        int maxRenderbufferSize;
-        if (coreFbo || arbFbo) {
-            maxRenderbufferSize = GL11.glGetInteger(0x84E8); // GL_MAX_RENDERBUFFER_SIZE
-        } else {
-            maxRenderbufferSize = maxTextureSize;
-        }
+        if      (caps.shaderStorageBufferCore)   caps.shaderBufferPath = ShaderBufferPath.SSBO_GL43;
+        else if (caps.shaderStorageBufferArb)    caps.shaderBufferPath = ShaderBufferPath.SSBO_ARB;
+        else if (caps.textureBufferMaterialPath) caps.shaderBufferPath = ShaderBufferPath.TBO;
+        else                                     caps.shaderBufferPath = ShaderBufferPath.NONE;
 
-        // Maximum color attachments; varies by backend
-        int maxColorAttachments;
-        if (coreFbo || arbFbo) {
-            maxColorAttachments = GL11.glGetInteger(0x8CDF); // GL_MAX_COLOR_ATTACHMENTS
-        } else if (extFbo) {
-            // EXT framebuffer object typically limited to 1 color attachment
-            maxColorAttachments = 1;
-        } else {
-            maxColorAttachments = 1;
-        }
-
-        boolean hasVao = caps.OpenGL30 || caps.GL_ARB_vertex_array_object;
-        boolean hasMapBufferRange = caps.OpenGL30 || caps.GL_ARB_map_buffer_range;
-        boolean arbSync = caps.OpenGL32 || caps.GL_ARB_sync;
-
-        // Instancing capability: draw calls require GL 3.1 or ARB_draw_instanced
-        boolean drawInstanced = caps.OpenGL31 || caps.GL_ARB_draw_instanced;
-        // Divisor capability: per-attribute divisors require GL 3.3 or ARB_instanced_arrays
-        boolean vertexAttribDivisor = caps.OpenGL33 || caps.GL_ARB_instanced_arrays;
-        // Max vertex attribs: queried when shader support exists; each mat4 instance attr consumes 4 slots
-        int maxVertexAttribs = coreShaders ? GL11.glGetInteger(GL20.GL_MAX_VERTEX_ATTRIBS) : 0;
-
-        // Shader-buffer path detection (waterfall: GL43 SSBO > ARB SSBO > TBO > NONE)
-        boolean ssboCore = caps.OpenGL43;
-        boolean ssboArb = !ssboCore && caps.GL_ARB_shader_storage_buffer_object;
-        boolean tboPath = !ssboCore && !ssboArb && caps.OpenGL33;
-
-        // GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS (0x90FF): only valid when SSBO is supported
-        int maxSsboBindings = (ssboCore || ssboArb) ? GL11.glGetInteger(GL43.GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS) : 0;
-
-        // GL_MAX_UNIFORM_BUFFER_BINDINGS (0x8A2F): valid when shader support is present (GL 3.1+)
-        int maxUniformBufferBindings = coreShaders ? GL11.glGetInteger(GL31.GL_MAX_UNIFORM_BUFFER_BINDINGS) : 0;
-
-        boolean gpuShaderInt64 = caps.OpenGL40;
-
-        return new CgCapabilities(
-            coreFbo, arbFbo, extFbo,
-            coreShaders, arbShaders,
-            maxDrawBuffers, maxTextureUnits,
-            stencil, depth,
-            packedDepthStencil, depthTexture,
-            maxTextureSize, maxRenderbufferSize,
-            maxColorAttachments,
-            hasVao, hasMapBufferRange,
-            arbSync,
-            drawInstanced, vertexAttribDivisor, maxVertexAttribs,
-            ssboCore, ssboArb, tboPath,
-            maxSsboBindings, maxUniformBufferBindings,
-            gpuShaderInt64
-        );
+        return caps;
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Public API — custom-named getters (Lombok suppressed on matching fields)
+    // ─────────────────────────────────────────────────────────────────────────
+
     /**
-     * Returns the preferred framebuffer object backend based on detected
-     * capabilities, using the waterfall order: Core GL30 &gt; ARB &gt; EXT.
+     * Returns the preferred framebuffer object backend based on detected capabilities,
+     * using the waterfall order: Core GL30 &gt; ARB &gt; EXT.
      *
      * @return the best available {@link FramebufferPath}, or {@link FramebufferPath#NONE}
      *         if no FBO support was detected
      */
     public FramebufferPath preferredFboBackend() {
         if (coreFbo) return FramebufferPath.CORE_GL30;
-        
-        if (arbFbo) {
-            return FramebufferPath.ARB_FBO;
-        }
-        if (extFbo) {
-            return FramebufferPath.EXT_FBO;
-        }
+        if (arbFbo)  return FramebufferPath.ARB_FBO;
+        if (extFbo)  return FramebufferPath.EXT_FBO;
         return FramebufferPath.NONE;
     }
 
-    public boolean isShaderStorageBufferCore() {
-        return shaderStorageBufferCore;
-    }
+    /** Returns whether stencil buffer attachments are supported. */
+    public boolean hasStencil() { return stencil; }
 
-    public boolean isShaderStorageBufferArb() {
-        return shaderStorageBufferArb;
-    }
-
-    public boolean isTextureBufferMaterialPath() {
-        return textureBufferMaterialPath;
-    }
-
-    public boolean isGpuShaderInt64() {
-        return gpuShaderInt64;
-    }
-
-    public ShaderBufferPath shaderBufferPath() {
-        return shaderBufferPath;
-    }
-
-
+    /** Returns whether depth buffer attachments are supported. */
+    public boolean hasDepth() { return depth; }
 
     /**
-     * Returns whether Core OpenGL 3.0 framebuffer support is available.
-     *
-     * @return {@code true} if {@code GL30.glBindFramebuffer} and related
-     *         methods are available
+     * Returns whether packed depth-stencil formats are supported
+     * ({@code GL_EXT_packed_depth_stencil} or {@code GL_NV_packed_depth_stencil}).
      */
-    public boolean isCoreFbo() {
-        return coreFbo;
-    }
+    public boolean hasPackedDepthStencil() { return packedDepthStencil; }
+
+    /** Returns whether depth textures are supported via {@code GL_ARB_depth_texture}. */
+    public boolean hasDepthTexture() { return depthTexture; }
 
     /**
-     * Returns whether the {@code GL_ARB_framebuffer_object} extension is
-     * available.
-     *
-     * @return {@code true} if {@code ARBFramebufferObject.glBindFramebuffer}
-     *         and related methods are available
+     * Returns whether vertex array objects (VAOs) are supported
+     * (Core GL30 or {@code GL_ARB_vertex_array_object}).
      */
-    public boolean isArbFbo() {
-        return arbFbo;
-    }
+    public boolean isVaoSupported() { return hasVao; }
 
     /**
-     * Returns whether the {@code GL_EXT_framebuffer_object} extension is
-     * available.
-     *
-     * @return {@code true} if {@code EXTFramebufferObject.glBindFramebufferEXT}
-     *         and related methods are available
+     * Returns whether {@code glMapBufferRange} is supported
+     * (Core GL30 or {@code GL_ARB_map_buffer_range}).
      */
-    public boolean isExtFbo() {
-        return extFbo;
-    }
+    public boolean isMapBufferRangeSupported() { return hasMapBufferRange; }
 
     /**
-     * Returns whether Core OpenGL 2.0 shader support is available.
-     *
-     * @return {@code true} if {@code GL20.glUseProgram} and related
-     *         methods are available
+     * Returns whether instanced draw calls ({@code glDrawArraysInstanced} /
+     * {@code glDrawElementsInstanced}) are available
+     * (Core GL31 or {@code GL_ARB_draw_instanced}).
      */
-    public boolean isCoreShaders() {
-        return coreShaders;
-    }
+    public boolean isDrawInstancedSupported() { return drawInstanced; }
 
     /**
-     * Returns whether the {@code GL_ARB_shader_objects} extension is available.
-     *
-     * @return {@code true} if {@code ARBShaderObjects.glUseProgramObjectARB}
-     *         and related methods are available
+     * Returns whether per-attribute vertex divisors ({@code glVertexAttribDivisor})
+     * are available (Core GL33 or {@code GL_ARB_instanced_arrays}).
      */
-    public boolean isArbShaders() {
-        return arbShaders;
-    }
+    public boolean isVertexAttribDivisorSupported() { return vertexAttribDivisor; }
+
+    /** Returns the preferred shader buffer path for the current GL context. */
+    public ShaderBufferPath shaderBufferPath() { return shaderBufferPath; }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  GL version string parsing
+    // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Returns the maximum number of simultaneous draw buffer outputs (MRT).
-     *
-     * <p>A value of 1 means only a single color attachment can be drawn to
-     * at a time (no MRT support).  Values greater than 1 indicate the
-     * number of {@code GL_COLOR_ATTACHMENTi} targets that can be active
-     * simultaneously via {@code glDrawBuffers}.</p>
-     *
-     * @return the maximum number of draw buffers (at least 1)
-     */
-    public int getMaxDrawBuffers() {
-        return maxDrawBuffers;
-    }
-
-    /**
-     * Returns the maximum number of texture units available.
-     *
-     * <p>When shaders are supported, this returns the number of texture
-     * image units available for fragment shader samplers
-     * ({@code GL_MAX_TEXTURE_IMAGE_UNITS}).  Otherwise, it returns the
-     * number of fixed-function texture units ({@code GL_MAX_TEXTURE_UNITS}).</p>
-     *
-     * @return the maximum number of texture units (at least 1)
-     */
-    public int getMaxTextureUnits() {
-        return maxTextureUnits;
-    }
-
-    /**
-     * Returns whether stencil buffer attachments are supported.
-     *
-     * @return {@code true} if stencil attachments can be created on FBOs
-     */
-    public boolean hasStencil() {
-        return stencil;
-    }
-
-    /**
-     * Returns whether depth buffer attachments are supported.
-     *
-     * @return {@code true} if depth attachments can be created on FBOs
-     */
-    public boolean hasDepth() {
-        return depth;
-    }
-
-    /**
-     * Returns whether packed depth-stencil formats are supported.
-     *
-     * <p>Packed depth-stencil allows a single renderbuffer or texture to
-     * store both depth and stencil data, reducing memory usage and improving
-     * performance.  This is indicated by either {@code GL_EXT_packed_depth_stencil}
-     * or {@code GL_NV_packed_depth_stencil} extension support.</p>
-     *
-     * @return {@code true} if packed depth-stencil formats are available
-     */
-    public boolean hasPackedDepthStencil() {
-        return packedDepthStencil;
-    }
-
-    /**
-     * Returns whether depth textures are supported via the
-     * {@code GL_ARB_depth_texture} extension.
-     *
-     * <p>Depth textures allow the depth buffer to be sampled as a texture,
-     * enabling shadow mapping and other advanced rendering techniques.</p>
-     *
-     * @return {@code true} if depth textures can be created and sampled
-     */
-    public boolean hasDepthTexture() {
-        return depthTexture;
-    }
-
-    /**
-     * Returns the maximum texture dimension (width/height) for 2D textures.
-     *
-     * <p>This is the maximum size of a single 2D texture in either dimension.
-     * Typical values are 2048, 4096, 8192, or 16384 depending on GPU
-     * generation and driver.</p>
-     *
-     * @return the maximum texture size in pixels (at least 64)
-     */
-    public int getMaxTextureSize() {
-        return maxTextureSize;
-    }
-
-    /**
-     * Returns the maximum renderbuffer dimension (width/height).
-     *
-     * <p>This is the maximum size of a renderbuffer attachment on an FBO.
-     * On hardware supporting {@code GL_ARB_framebuffer_object} or Core GL3.0+,
-     * this typically matches {@code GL_MAX_TEXTURE_SIZE}.  On older hardware
-     * with only {@code GL_EXT_framebuffer_object}, it may be smaller or
-     * equal to the maximum texture size.</p>
-     *
-     * @return the maximum renderbuffer size in pixels
-     */
-    public int getMaxRenderbufferSize() {
-        return maxRenderbufferSize;
-    }
-
-    /**
-     * Returns the maximum number of color attachments available on FBOs.
-     *
-     * <p>This determines how many simultaneous color render targets (MRT)
-     * can be bound to an FBO via {@code glDrawBuffers}.  Typical values:
-     * <ul>
-     *   <li>1 - Only single-target rendering (EXT framebuffer)</li>
-     *   <li>8 - Modern Core/ARB framebuffer (typical default)</li>
-     *   <li>16 - High-end GPUs</li>
-     * </ul></p>
-     *
-     * @return the maximum number of color attachments (at least 1)
-     */
-    public int getMaxColorAttachments() {
-        return maxColorAttachments;
-    }
-
-    /**
-     * Returns whether vertex array objects (VAOs) are supported.
-     *
-     * <p>True if Core OpenGL 3.0 or the {@code GL_ARB_vertex_array_object}
-     * extension is available.</p>
-     *
-     * @return {@code true} if VAOs can be used
-     */
-    public boolean isVaoSupported() {
-        return hasVao;
-    }
-
-    /**
-     * Returns whether {@code glMapBufferRange} is supported.
-     *
-     * <p>True if Core OpenGL 3.0 or the {@code GL_ARB_map_buffer_range}
-     * extension is available.</p>
-     *
-     * @return {@code true} if {@code glMapBufferRange} can be used
-     */
-    public boolean isMapBufferRangeSupported() {
-        return hasMapBufferRange;
-    }
-
-    /**
-     * Returns whether {@code GL_ARB_sync} (fence sync) is available.
-     *
-     * <p>True if Core OpenGL 3.2 or the {@code GL_ARB_sync} extension is
-     * present. This capability is required for the Tier-A sync-ring stream
-     * buffer strategy ({@code MapAndSyncStreamBuffer}).</p>
-     *
-     * @return {@code true} if fence sync can be used
-     */
-    public boolean isArbSync() {
-        return arbSync;
-    }
-
-    /**
-     * Returns whether instanced draw calls are available.
-     *
-     * <p>True if Core OpenGL 3.1 or {@code GL_ARB_draw_instanced} is present.</p>
-     *
-     * @return {@code true} if {@code glDrawArraysInstanced} and
-     *         {@code glDrawElementsInstanced} can be used
-     */
-    public boolean isDrawInstancedSupported() {
-        return drawInstanced;
-    }
-
-    /**
-     * Returns whether per-attribute vertex divisors are available.
-     *
-     * <p>True if Core OpenGL 3.3 or {@code GL_ARB_instanced_arrays} is present.
-     * Required for instanced vertex attribute arrays ({@code glVertexAttribDivisor}).</p>
-     *
-     * @return {@code true} if {@code glVertexAttribDivisor} can be used
-     */
-    public boolean isVertexAttribDivisorSupported() {
-        return vertexAttribDivisor;
-    }
-
-    /**
-     * Returns the maximum number of vertex attribute slots.
-     *
-     * <p>Queried from {@code GL_MAX_VERTEX_ATTRIBS} when shader support is available;
-     * returns {@code 0} otherwise. A {@code mat4} instance attribute consumes 4 slots.</p>
-     *
-     * @return the maximum number of vertex attrib slots, or {@code 0} if unknown
-     */
-    public int getMaxVertexAttribs() {
-        return maxVertexAttribs;
-    }
-
-    /**
-     * Returns the maximum number of SSBO binding points on this context.
-     *
-     * <p>Queried from {@code GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS} when SSBO support is present.
-     * The OpenGL 4.3 minimum is 8. Returns {@code 0} when SSBO is unsupported.</p>
-     *
-     * @return the maximum number of SSBO binding slots, or {@code 0} if SSBO is not supported
-     */
-    public int getMaxSsboBindings() {
-        return maxSsboBindings;
-    }
-
-    /**
-     * Returns the maximum number of uniform buffer binding points on this context.
-     *
-     * <p>Queried from {@code GL_MAX_UNIFORM_BUFFER_BINDINGS} when shader support is present.
-     * The OpenGL 3.1 minimum is 36. Returns {@code 0} when shaders are unsupported.</p>
-     *
-     * @return the maximum number of UBO binding slots, or {@code 0} if shaders are not supported
-     */
-    public int getMaxUniformBufferBindings() {
-        return maxUniformBufferBindings;
-    }
-
-    /**
-     * Package-private factory for unit tests that cannot create a GL context.
-     */
-    static CgCapabilities createForTest(boolean coreFbo, boolean arbFbo, boolean extFbo,
-                                        boolean coreShaders, boolean arbShaders,
-                                        int maxDrawBuffers, int maxTextureUnits,
-                                        boolean stencil, boolean depth,
-                                        boolean packedDepthStencil, boolean depthTexture,
-                                        int maxTextureSize, int maxRenderbufferSize,
-                                        int maxColorAttachments,
-                                        boolean hasVao, boolean hasMapBufferRange,
-                                        boolean arbSync) {
-        return new CgCapabilities(coreFbo, arbFbo, extFbo,
-            coreShaders, arbShaders,
-            maxDrawBuffers, maxTextureUnits,
-            stencil, depth,
-            packedDepthStencil, depthTexture,
-            maxTextureSize, maxRenderbufferSize,
-            maxColorAttachments,
-            hasVao, hasMapBufferRange,
-            arbSync,
-            false, false, 0);
-    }
-
-    /**
-     * Package-private factory for unit tests that includes instancing capability parameters.
-     */
-    static CgCapabilities createForTest(boolean coreFbo, boolean arbFbo, boolean extFbo,
-                                        boolean coreShaders, boolean arbShaders,
-                                        int maxDrawBuffers, int maxTextureUnits,
-                                        boolean stencil, boolean depth,
-                                        boolean packedDepthStencil, boolean depthTexture,
-                                        int maxTextureSize, int maxRenderbufferSize,
-                                        int maxColorAttachments,
-                                        boolean hasVao, boolean hasMapBufferRange,
-                                        boolean arbSync,
-                                        boolean drawInstanced, boolean vertexAttribDivisor,
-                                        int maxVertexAttribs) {
-        return new CgCapabilities(coreFbo, arbFbo, extFbo,
-            coreShaders, arbShaders,
-            maxDrawBuffers, maxTextureUnits,
-            stencil, depth,
-            packedDepthStencil, depthTexture,
-            maxTextureSize, maxRenderbufferSize,
-            maxColorAttachments,
-            hasVao, hasMapBufferRange,
-            arbSync,
-            drawInstanced, vertexAttribDivisor, maxVertexAttribs);
-    }
-
-    static CgCapabilities createForTest(boolean coreFbo, boolean arbFbo, boolean extFbo,
-                                        boolean coreShaders, boolean arbShaders,
-                                        int maxDrawBuffers, int maxTextureUnits,
-                                        boolean stencil, boolean depth,
-                                        boolean packedDepthStencil, boolean depthTexture,
-                                        int maxTextureSize, int maxRenderbufferSize,
-                                        int maxColorAttachments,
-                                        boolean hasVao, boolean hasMapBufferRange,
-                                        boolean arbSync,
-                                        boolean drawInstanced, boolean vertexAttribDivisor,
-                                        int maxVertexAttribs,
-                                        boolean shaderStorageBufferCore,
-                                        boolean shaderStorageBufferArb,
-                                        boolean textureBufferMaterialPath) {
-        return new CgCapabilities(coreFbo, arbFbo, extFbo,
-            coreShaders, arbShaders,
-            maxDrawBuffers, maxTextureUnits,
-            stencil, depth,
-            packedDepthStencil, depthTexture,
-            maxTextureSize, maxRenderbufferSize,
-            maxColorAttachments,
-            hasVao, hasMapBufferRange,
-            arbSync,
-            drawInstanced, vertexAttribDivisor, maxVertexAttribs,
-            shaderStorageBufferCore, shaderStorageBufferArb, textureBufferMaterialPath,
-            shaderStorageBufferCore || shaderStorageBufferArb ? 8 : 0,
-            coreShaders ? 36 : 0);
-    }
-
-
-    /**
+     * Parses a raw GL version string (e.g. {@code "4.6.0 NVIDIA 537.58"}) into a
+     * {@code {major, minor}} array.
      *
      * <p>Accepts the raw string returned by {@code GL11.glGetString(GL11.GL_VERSION)}
-     * as well as simple {@code "major.minor"} expressions.  The parser
-     * locates the first occurrence of a {@code digit(s).digit(s)} pattern
-     * in the input, ignoring any prefix text (e.g. {@code "OpenGL ES"}) and
-     * any trailing driver/vendor information.</p>
+     * as well as simple {@code "major.minor"} expressions.  The parser locates the first
+     * occurrence of a {@code digit(s).digit(s)} pattern in the input, ignoring any prefix
+     * text (e.g. {@code "OpenGL ES"}) and any trailing driver/vendor information.</p>
      *
      * <p>If parsing fails (null, empty, garbage), returns {@code {0, 0}}.</p>
      *
@@ -991,65 +338,40 @@ public final class CgCapabilities {
      * @return a two-element array {@code {major, minor}}, or {@code {0, 0}} if unparseable
      */
     public static int[] parseGLVersion(String glVersionString) {
-        if (glVersionString == null || glVersionString.isEmpty()) {
-            return new int[]{0, 0};
-        }
+        if (glVersionString == null || glVersionString.isEmpty()) return new int[]{0, 0};
 
         int[] cached = cachedParsedVersionValue;
-        if (cached != null && glVersionString.equals(cachedParsedVersionKey)) {
+        if (cached != null && glVersionString.equals(cachedParsedVersionKey))
             return new int[]{cached[0], cached[1]};
-        }
 
-        // Scan for the first occurrence of digits.digits
         int len = glVersionString.length();
         int i = 0;
 
-        // Skip non-digit prefix (e.g. "OpenGL ES ")
-        while (i < len && !isAsciiDigit(glVersionString.charAt(i))) {
-            i++;
-        }
+        while (i < len && !isAsciiDigit(glVersionString.charAt(i))) i++;
+        if (i >= len) return new int[]{0, 0};
 
-        if (i >= len) {
-            return new int[]{0, 0};
-        }
-
-        // Parse major version
         int majorStart = i;
-        while (i < len && isAsciiDigit(glVersionString.charAt(i))) {
-            i++;
-        }
-        if (i >= len || glVersionString.charAt(i) != '.') {
-            return new int[]{0, 0};
-        }
+        while (i < len && isAsciiDigit(glVersionString.charAt(i))) i++;
+        if (i >= len || glVersionString.charAt(i) != '.') return new int[]{0, 0};
         int major = parseIntSubstring(glVersionString, majorStart, i);
 
-        // Skip the dot
-        i++;
+        i++; // skip '.'
 
-        // Parse minor version
         int minorStart = i;
-        while (i < len && isAsciiDigit(glVersionString.charAt(i))) {
-            i++;
-        }
-        if (minorStart == i) {
-            return new int[]{0, 0};
-        }
+        while (i < len && isAsciiDigit(glVersionString.charAt(i))) i++;
+        if (minorStart == i) return new int[]{0, 0};
         int minor = parseIntSubstring(glVersionString, minorStart, i);
-        int[] parsed = new int[]{major, minor};
-        cachedParsedVersionKey = glVersionString;
-        cachedParsedVersionValue = new int[]{parsed[0], parsed[1]};
-        return parsed;
+
+        cachedParsedVersionKey   = glVersionString;
+        cachedParsedVersionValue = new int[]{major, minor};
+        return new int[]{major, minor};
     }
 
-    private static boolean isAsciiDigit(char c) {
-        return c >= '0' && c <= '9';
-    }
+    private static boolean isAsciiDigit(char c) { return c >= '0' && c <= '9'; }
 
     private static int parseIntSubstring(String s, int from, int to) {
         int result = 0;
-        for (int i = from; i < to; i++) {
-            result = result * 10 + (s.charAt(i) - '0');
-        }
+        for (int i = from; i < to; i++) result = result * 10 + (s.charAt(i) - '0');
         return result;
     }
 }

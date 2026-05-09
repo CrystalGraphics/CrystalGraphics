@@ -13,12 +13,11 @@ import static org.junit.Assert.*;
 public class CgInstancingSupportTest {
 
     private static CgCapabilities caps(boolean drawInstanced, boolean vertexAttribDivisor, int maxAttribs) {
-        return CgCapabilities.createForTest(
-            false, false, false, true, false,
-            1, 8, true, true, false, false,
-            4096, 4096, 8, true, true, false,
-            drawInstanced, vertexAttribDivisor, maxAttribs
-        );
+        CgCapabilities caps = new CgCapabilities();
+        caps.drawInstanced       = drawInstanced;
+        caps.vertexAttribDivisor = vertexAttribDivisor;
+        caps.maxVertexAttribs    = maxAttribs;
+        return caps;
     }
 
     @Test
