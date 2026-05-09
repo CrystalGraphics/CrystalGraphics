@@ -5,7 +5,7 @@
 layout(std140) uniform CgFrameBlock {
     mat4 cg_ViewMatrix;
     mat4 cg_ProjMatrix;
-    vec4 cg_Time;        // (t/20, t, t*2, t*3) — seconds, scaled like Unity _Time
+    vec4 cg_Time;        // (t/20, t, t*2, t*3) - seconds, scaled like Unity _Time
     vec2 cg_Resolution;  // viewport size in pixels
 };
 
@@ -85,7 +85,7 @@ flat in int cg_InstanceId;
 #define CG_MATRIX_MVP (cg_ProjMatrix * cg_ViewMatrix * CG_OBJECT_TO_WORLD)
 
 // -- Vertex Attribute Aliases (vertex stage only) ----------------------------
-// No explicit layout(location=N) — attribute binding is done by
+// No explicit layout(location=N) - attribute binding is done by
 // CgShaderFactory.fromSource(vert, frag, format) before link.
 #ifdef CG_VERTEX_STAGE
 in vec3 cg_Position;

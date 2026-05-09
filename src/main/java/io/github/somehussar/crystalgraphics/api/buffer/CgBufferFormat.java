@@ -1,6 +1,7 @@
 package io.github.somehussar.crystalgraphics.api.buffer;
 
 import io.github.somehussar.crystalgraphics.gl.buffer.staging.CgBufferWriter;
+import lombok.Getter;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -65,24 +66,34 @@ public final class CgBufferFormat {
 
     private final CgBufferField[] fields;
     private final Map<String, CgBufferField> fieldMap;
+    /**
+     * -- GETTER --
+     * Returns the total byte stride of one record (sum of aligned field sizes with padding). 
+     */
+    @Getter
     private final int stride;
+    /**
+     * -- GETTER --
+     * Returns the memory layout this format was built for. 
+     */
+    @Getter
     private final MemoryLayout memoryLayout;
-    private final String debugName;
+    private final String glslName;
     private final int hash;
 
     private CgBufferFormat(CgBufferField[] fields, Map<String, CgBufferField> fieldMap,
-                            int stride, MemoryLayout memoryLayout, String debugName) {
+                            int stride, MemoryLayout memoryLayout, String glslName) {
         this.fields      = fields;
         this.fieldMap    = fieldMap;
         this.stride      = stride;
         this.memoryLayout = memoryLayout;
-        this.debugName   = debugName;
+        this.glslName    = glslName;
         this.hash        = computeHash(fields, stride, memoryLayout);
     }
 
-    /** Creates a new format builder with the given debug name and memory layout. */
-    public static Builder builder(String debugName, MemoryLayout memoryLayout) {
-        return new Builder(debugName, memoryLayout);
+    /** Creates a new format builder with the given GLSL struct type name and memory layout. */
+    public static Builder builder(String glslName, MemoryLayout memoryLayout) {
+        return new Builder(glslName, memoryLayout);
     }
 
     /** Returns the number of fields in this format. */
@@ -106,15 +117,10 @@ public final class CgBufferFormat {
         CgBufferField f = fieldMap.get(name);
         if (f == null) {
             throw new IllegalArgumentException(
-                "No field '" + name + "' in CgBufferFormat '" + debugName + "'. "
+                "No field '" + name + "' in CgBufferFormat '" + glslName + "'. "
                 + "Declared fields: " + Arrays.toString(fields));
         }
         return f;
-    }
-
-    /** Returns the total byte stride of one record (sum of aligned field sizes with padding). */
-    public int getStride() {
-        return stride;
     }
 
     /**
@@ -126,14 +132,9 @@ public final class CgBufferFormat {
         return stride / 4;
     }
 
-    /** Returns the memory layout this format was built for. */
-    public MemoryLayout getMemoryLayout() {
-        return memoryLayout;
-    }
-
-    /** Returns the debug/diagnostic name (excluded from equality). */
-    public String getDebugName() {
-        return debugName;
+    /** Returns the GLSL identifier used as this format's struct type name in code generation. */
+    public String getGlslName() {
+        return glslName;
     }
 
     @Override
@@ -153,7 +154,7 @@ public final class CgBufferFormat {
 
     @Override
     public String toString() {
-        return "CgBufferFormat{" + debugName + ", " + memoryLayout
+        return "CgBufferFormat{" + glslName + ", " + memoryLayout
                 + ", stride=" + stride + " bytes (" + getFloatCount() + " floats)"
                 + ", fields=" + Arrays.toString(fields) + "}";
     }
@@ -171,13 +172,13 @@ public final class CgBufferFormat {
     // ── Builder ──────────────────────────────────────────────────────────────
 
     public static final class Builder {
-        private final String debugName;
+        private final String glslName;
         private final MemoryLayout memoryLayout;
         private final List<CgBufferField> fields = new ArrayList<CgBufferField>();
         private int cursor = 0;
 
-        private Builder(String debugName, MemoryLayout memoryLayout) {
-            this.debugName    = debugName != null ? debugName : "unnamed";
+        private Builder(String glslName, MemoryLayout memoryLayout) {
+            this.glslName     = glslName != null ? glslName : "unnamed";
             this.memoryLayout = memoryLayout;
         }
 
@@ -215,26 +216,41 @@ public final class CgBufferFormat {
         /** Adds a {@link CgGpuType#MAT4} field (64 bytes). */
         public Builder mat4(String name)   { return add(name, CgGpuType.MAT4); }
 
-        /**
-         * Adds an {@link CgGpuType#INT} field.
-         * <p><strong>v1</strong>: Correct stride and offset computation only.
-         * Named write method ({@code int_}) deferred to v2.</p>
-         */
+        /** Adds an {@link CgGpuType#INT} field. */
         public Builder int_(String name)   { return add(name, CgGpuType.INT); }
 
-        /**
-         * Adds a {@link CgGpuType#UINT} field.
-         * <p><strong>v1</strong>: Correct stride and offset computation only.
-         * Named write method ({@code uint}) deferred to v2.</p>
-         */
+        /** Adds a {@link CgGpuType#UINT} field. */
         public Builder uint(String name)   { return add(name, CgGpuType.UINT); }
 
-        /**
-         * Adds a {@link CgGpuType#BOOL} field.
-         * <p><strong>v1</strong>: Correct stride and offset computation only.
-         * Named write method ({@code bool_}) deferred to v2.</p>
-         */
+        /** Adds a {@link CgGpuType#BOOL} field. */
         public Builder bool_(String name)  { return add(name, CgGpuType.BOOL); }
+
+        /** Adds an {@link CgGpuType#IVEC2} field. TBO path: not supported in v1. */
+        public Builder ivec2(String name)  { return add(name, CgGpuType.IVEC2); }
+
+        /** Adds an {@link CgGpuType#IVEC3} field. TBO path: not supported in v1. */
+        public Builder ivec3(String name)  { return add(name, CgGpuType.IVEC3); }
+
+        /** Adds an {@link CgGpuType#IVEC4} field. TBO path: not supported in v1. */
+        public Builder ivec4(String name)  { return add(name, CgGpuType.IVEC4); }
+
+        /** Adds a {@link CgGpuType#UVEC2} field (bindless texture handles, etc.).
+         * TBO path: not supported in v1. */
+        public Builder uvec2(String name)  { return add(name, CgGpuType.UVEC2); }
+
+        /** Adds a {@link CgGpuType#UVEC3} field. TBO path: not supported in v1. */
+        public Builder uvec3(String name)  { return add(name, CgGpuType.UVEC3); }
+
+        /** Adds a {@link CgGpuType#UVEC4} field. TBO path: not supported in v1. */
+        public Builder uvec4(String name)  { return add(name, CgGpuType.UVEC4); }
+
+        /** Adds a {@link CgGpuType#UINT64} field (64-bit; requires ARB_gpu_shader_int64).
+         * TBO path: not supported in v1. */
+        public Builder uint64(String name) { return add(name, CgGpuType.UINT64); }
+
+        /** Adds a {@link CgGpuType#INT64} field (64-bit; requires ARB_gpu_shader_int64).
+         * TBO path: not supported in v1. */
+        public Builder int64(String name)  { return add(name, CgGpuType.INT64); }
 
         /**
          * Builds the immutable format descriptor.
@@ -250,10 +266,10 @@ public final class CgBufferFormat {
             for (CgBufferField f : arr) {
                 if (map.put(f.getName(), f) != null) {
                     throw new IllegalStateException(
-                        "Duplicate field name '" + f.getName() + "' in CgBufferFormat '" + debugName + "'");
+                        "Duplicate field name '" + f.getName() + "' in CgBufferFormat '" + glslName + "'");
                 }
             }
-            return new CgBufferFormat(arr, map, cursor, memoryLayout, debugName);
+            return new CgBufferFormat(arr, map, cursor, memoryLayout, glslName);
         }
     }
 }

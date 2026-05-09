@@ -95,6 +95,45 @@ public final class CgStagingBuffer implements CgVertexOutput {
         data[cursor++] = Float.intBitsToFloat(abgr);
     }
 
+    /**
+     * Writes {@code v} directly at absolute index {@code absIndex} without advancing
+     * the cursor. The index must be within the already-reserved range
+     * ({@code 0 <= absIndex < rawCursor()}).
+     *
+     * <p>Used by named field writes in {@link CgBufferWriter} to scatter float values
+     * into specific offsets within a pre-reserved record.</p>
+     *
+     * @param absIndex zero-based index into the backing array
+     * @param v        the value to write
+     * @throws IndexOutOfBoundsException if {@code absIndex} is outside the reserved range
+     */
+    public void setFloatAt(int absIndex, float v) {
+        if (absIndex < 0 || absIndex >= cursor) {
+            throw new IndexOutOfBoundsException(
+                    "setFloatAt: index " + absIndex + " is out of reserved range [0, " + cursor + ")");
+        }
+        data[absIndex] = v;
+    }
+
+    /**
+     * Writes integer bits at absolute index {@code absIndex} without advancing the cursor,
+     * reinterpreted as a float via {@link Float#intBitsToFloat(int)}.
+     *
+     * <p>Used by named integer field writes in {@link CgBufferWriter} (INT, UINT, BOOL,
+     * IVEC*, UVEC*, INT64, UINT64). The index must be within the already-reserved range.</p>
+     *
+     * @param absIndex zero-based index into the backing array
+     * @param bits     the raw int bits to store
+     * @throws IndexOutOfBoundsException if {@code absIndex} is outside the reserved range
+     */
+    public void setIntBitsAt(int absIndex, int bits) {
+        if (absIndex < 0 || absIndex >= cursor) {
+            throw new IndexOutOfBoundsException(
+                    "setIntBitsAt: index " + absIndex + " is out of reserved range [0, " + cursor + ")");
+        }
+        data[absIndex] = Float.intBitsToFloat(bits);
+    }
+
     // ── Capacity management ───────────────────────────────────────────────────
 
     /**
@@ -192,25 +231,5 @@ public final class CgStagingBuffer implements CgVertexOutput {
         }
         cursor += floatCount;
         return start;
-    }
-
-    /**
-     * Writes {@code v} directly at absolute index {@code absIndex} without advancing
-     * the cursor. The index must be within the already-reserved range
-     * ({@code 0 <= absIndex < rawCursor()}).
-     *
-     * <p>Used by named field writes in {@link CgBufferWriter} to scatter float values
-     * into specific offsets within a pre-reserved record.</p>
-     *
-     * @param absIndex zero-based index into the backing array
-     * @param v        the value to write
-     * @throws IndexOutOfBoundsException if {@code absIndex} is outside the reserved range
-     */
-    public void setFloatAt(int absIndex, float v) {
-        if (absIndex < 0 || absIndex >= cursor) {
-            throw new IndexOutOfBoundsException(
-                "setFloatAt: index " + absIndex + " is out of reserved range [0, " + cursor + ")");
-        }
-        data[absIndex] = v;
     }
 }

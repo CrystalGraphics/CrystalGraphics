@@ -149,7 +149,7 @@ shader.unbind();
 
 - **`name` is first constructor param** for all subclasses. Never null.
 - **`wireToShader` vs `bind(CgShader)`**: prefer `wireToShader` after link (engine); use `bind(shader)` for user buffers (does both bind + wire in one call, requires program already active).
-- **`bind(CgShader)` requires shader to be already bound** — GL uniform queries need the program active.
+- **`bind(CgShader)` requires shader to be already bound AND shader must not be null** — GL uniform queries need the program active. If buffer is attached to a `CgMaterial`, prefer argless `bind()` — material handles `wireShader()` automatically on each compile.
 - **SSBO `wireShader` is NOT a no-op** — calls `glShaderStorageBlockBinding` post-link.
 - **TBO `bindingLocation` IS the texture unit** — no separate offset or DEFAULT_TBO_TEXTURE_UNIT constant.
 - **`validateBindingPoint()` was removed** — `create()` adds per-type USER_START internally.

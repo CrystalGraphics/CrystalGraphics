@@ -14,7 +14,8 @@ This is the top of the CrystalShader material stack.
 
 | Type | Role |
 |------|------|
-| `CgMaterial` | User-facing material handle. `load(path)` delegates to `CgMaterialRegistry.get().getOrCreate(path)`. `load(CgMaterialKey)` overload for typed keys. `applyBindings(Consumer<CgShaderBindings>)` writes persistent property values into the shader's bindings object. `bind()` activates shader + properties + object buffer. `unbind()` deactivates shader. `reload()` marks shader dirty (called by registry on hot-reload). `delete()` frees the backing shader. Registry-owned — not caller-owned; use `CgMaterialRegistry.get().deleteAll()` for teardown. |
+| `CgMaterial` | User-facing material handle. `load(path)` delegates to `CgMaterialRegistry.get().getOrCreate(path)`. `load(CgMaterialKey)` overload for typed keys. `applyBindings(Consumer<CgShaderBindings>)` writes persistent property values into the shader's bindings object. `bind()` activates shader + properties + object buffer. `unbind()` deactivates shader. `reload()` marks shader dirty (called by registry on hot-reload). `delete()` frees the backing shader. `attach(CgShaderBuffer, macroName)` / `detach(macroName)` for SSBO/TBO auto-injection. `attach(CgUniformBuffer)` / `detachUbo(blockName)` for UBO flat-block injection. Registry-owned — not caller-owned; use `CgMaterialRegistry.get().deleteAll()` for teardown. |
+| `CgAttachedBuffer` | Immutable descriptor for a user-attached SSBO/TBO or UBO buffer. Created via `CgAttachedBuffer.of(buffer, macroName)` (SSBO/TBO, STD430) or `CgAttachedBuffer.of(CgUniformBuffer)` (UBO, STD140). `isUbo()` returns `true` for UBO entries (macroName is null). SSBO/TBO fields: `buffer`, `macroName`, `structName` (= `format.getGlslName()`), `ssboArrayName` (`_cg_{lowerFirst}Arr`), `tboGetterName` (`_cg_get{structName}`). UBO entries: only `buffer` is set; macroName/structName/ssboArrayName/tboGetterName are all null. Block/sampler/UBO block name is always `buffer.getName()` — required for `wireShader()`. |
 | `CgMaterialRegistry` | Singleton load/reload/delete lifecycle manager. `get()` returns the singleton. `getOrCreate(String)` / `getOrCreate(CgMaterialKey)` check cache; on miss call `CgMaterial.create()`, cache, and return. `reloadAll()` calls `mat.reload()` on each cached material. `deleteAll()` deletes all cached materials. Registered for teardown in `CgGraphicsLifecycle.destroyContext()`. |
 | `CgMaterialKey` | `@Desugar record` wrapping a resource-path string. `of(String)` factory. Value equality. Used as a typed alternative to raw strings. |
 | `CgMaterialPipeline` | Singleton pipeline owning per-frame UBO and per-object SSBO/TBO. `OBJECT_FORMAT` (std430, 48 floats) and `FRAME_BLOCK_FORMAT` (std140, 38 floats) are the engine-canonical typed buffer format descriptors. `frameBuffer()` returns the frame UBO for advanced wiring. `objectBuffer()` returns the shared per-object buffer. `getFrameUniforms()` returns the pipeline-owned mutable `CgFrameUniforms` holder. `beginFrame()` (no-arg) reads from the owned holder and uploads frame data each frame via named writes. `init()` / `destroy()` manage the singleton lifecycle. |
@@ -160,6 +161,69 @@ texture unit is now derived from `bindingLocation` directly.
 - `CgMaterialRegistry` owns all `CgMaterial` instances it creates. Call `CgMaterialRegistry.get().deleteAll()` to free them.
 - `CgGraphicsLifecycle.destroyContext()` calls `CgMaterialRegistry.get().deleteAll()` and `CgMaterialPipeline.destroy()` automatically.
 - Callers that hold a reference to a material must not call `delete()` on it directly — the registry owns teardown.
+
+## User-Attached Buffer API
+
+### SSBO/TBO path — `attach(CgShaderBuffer, macroName)` / `detach(macroName)`
+
+```java
+// Define format for per-glyph metrics
+CgBufferFormat glyphFmt = CgBufferFormat.builder("GlyphMetrics", STD430)
+    .vec4("bbox")
+    .vec2("uv0").vec2("uv1")
+    .float_("advance").float_("bearing").float_("descent").float_("pad")
+    .build();
+CgShaderBuffer glyphBuf = CgShaderBuffer.create("GlyphMetricsBuffer", glyphFmt, 0);
+
+// Attach: GLSL struct + SSBO/TBO block auto-injected on next compile
+material.attach(glyphBuf, "GLYPH_DATA");
+
+// In shader: GLYPH_DATA(n).advance
+// Detach:
+material.detach("GLYPH_DATA");
+```
+
+- `macroName` must match `^[A-Z][A-Z0-9_]*$` — validated by `CgAttachedBuffer.of()`.
+- `format.getMemoryLayout()` must be STD430 — throws for STD140.
+- Duplicate macroName or duplicate `format.getGlslName()` (struct name) throws.
+- TBO-path constraints (field types, stride % 16) validated at compile time, not attach time.
+- `attach()` calls `markDirty()` — next `bind()` triggers recompile.
+- **Ownership warning**: `CgMaterial.load(path)` returns a shared cached instance. Only call `attach()` on materials you exclusively own.
+- **Runtime binding**: `buffer.bind()` is your responsibility before each draw call — `attach()` registers for GLSL injection and `wireShader()` wiring only.
+
+### UBO path — `attach(CgUniformBuffer)` / `detachUbo(blockName)`
+
+```java
+CgBufferFormat sceneFmt = CgBufferFormat.builder("SceneParams", STD140)
+    .vec4("ambientColor").float_("exposure").build();
+CgUniformBuffer sceneUbo = CgUniformBuffer.create(sceneFmt, "SceneParams", 0);
+
+material.attach(sceneUbo);  // emits: layout(std140) uniform SceneParams { vec4 ambientColor; float exposure; };
+// In shader: ambientColor  (direct scope — no block prefix, no macro)
+material.detachUbo("SceneParams");
+```
+
+- `format.getMemoryLayout()` must be STD140 — throws for STD430.
+- Duplicate block name (`buffer.getName()`) throws.
+- **UBO flat-scope semantics**: `emitUbo()` emits no struct, no instance name, no macro. All fields land in direct shader scope — write `fieldName`, not `BlockName.fieldName`.
+- `attach(CgUniformBuffer)` takes no `macroName` — UBO data is a single instance, not an indexed array.
+
+### What NOT to pass
+
+Do NOT pass engine pipeline buffers (`CgMaterialPipeline.objectBuffer()`, `frameBuffer()`) — those are declared in `cg_env.glsl` and wired automatically by the engine. Passing them here causes duplicate GLSL declarations that fail to compile.
+
+### GLSL symbol naming (SSBO/TBO)
+
+Given `buffer.getName() = "FontMetricsBuffer"`, `format.getGlslName() = "FontMetrics"`, `macroName = "FONT_METRICS"`:
+
+| Symbol | Value | Visibility |
+|--------|-------|------------|
+| Struct type | `FontMetrics` | User-visible |
+| SSBO block interface name | `FontMetricsBuffer` | Internal — must match for `wireShader()` |
+| SSBO array instance name | `_cg_fontMetricsArr` | Internal |
+| TBO sampler uniform name | `FontMetricsBuffer` | Internal — must match for `wireShader()` |
+| TBO getter function | `_cg_getFontMetrics` | Internal |
+| User macro | `FONT_METRICS(n)` | User-facing entry point |
 
 ## Guardrails (NOT in this package)
 

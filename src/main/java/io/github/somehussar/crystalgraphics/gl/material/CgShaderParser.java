@@ -125,6 +125,11 @@ public final class CgShaderParser {
         validateNoMainFunction(vertexBody, "vertex", resourcePath);
         validateNoMainFunction(fragmentBody, "fragment", resourcePath);
 
+        String preambleDirectives = parsePreambleDirectives(source, resourcePath);
+        if (!preambleDirectives.isEmpty()) {
+            globalDecls = preambleDirectives + (globalDecls.isEmpty() ? "" : "\n" + globalDecls);
+        }
+
         return new CgParsedShader(shaderType, properties, v2fBody, globalDecls, vertexBody, fragmentBody);
     }
 
@@ -156,6 +161,29 @@ public final class CgShaderParser {
     }
 
     // ── Private parsing helpers ────────────────────────────────────────────
+
+    private static String parsePreambleDirectives(String source, String resourcePath) {
+        StringBuilder result = new StringBuilder();
+        boolean seenType = false;
+        for (String rawLine : source.split("\n")) {
+            String line = rawLine.trim();
+            if (!seenType) {
+                if (line.startsWith("#type")) seenType = true;
+                continue;
+            }
+            if (line.startsWith("Properties {") || line.startsWith("Properties{")
+                    || line.startsWith("struct v2f {") || line.startsWith("struct v2f{")
+                    || line.startsWith("void vertex(")) {
+                break;
+            }
+            if (line.isEmpty() || line.startsWith("//") || line.startsWith("#type")) continue;
+            if (line.startsWith("#")) {
+                if (result.length() > 0) result.append('\n');
+                result.append(line);
+            }
+        }
+        return result.toString();
+    }
 
     private static String parseShaderType(String source, String resourcePath) {
         for (String rawLine : source.split("\n")) {
