@@ -1,8 +1,11 @@
 package io.github.somehussar.crystalgraphics.api.material;
 
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
+import io.github.somehussar.crystalgraphics.api.buffer.CgBufferFormat;
+import io.github.somehussar.crystalgraphics.api.buffer.CgGpuType;
 import io.github.somehussar.crystalgraphics.api.shader.CgShader;
 import io.github.somehussar.crystalgraphics.api.shader.CgShaderBindings;
+import io.github.somehussar.crystalgraphics.api.shader.CgPreprocessorException;
 import io.github.somehussar.crystalgraphics.api.shader.CgShaderPreprocessor;
 import io.github.somehussar.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import io.github.somehussar.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
@@ -81,6 +84,14 @@ public final class CgMaterial {
     private boolean dirty;
 
     /**
+     * User-defined auxiliary buffers (SSBO/TBO and UBO) attached to this material for GLSL
+     * auto-injection. SSBO/TBO entries have a non-null {@code macroName}; UBO entries have
+     * {@code macroName == null} (see {@link CgAttachedBuffer#isUbo()}).
+     * These are NOT engine pipeline buffers — see {@link CgAttachedBuffer} for details.
+     */
+    private final List<CgAttachedBuffer> attachedBuffers = new ArrayList<>();
+
+    /**
      * Resource path to the {@code .shader} file.
      * {@code null} for programmatic or shader-graph materials that have no backing file.
      * Set post-construction via {@link #setResourcePath(String)} in {@link #create(String)}.
@@ -121,16 +132,189 @@ public final class CgMaterial {
      * Creates a new {@code CgMaterial} from a {@code .shader} file.
      * Called only by {@link CgMaterialRegistry}; external callers use {@link #load}.
      *
-     * @throws IllegalArgumentException  if the source cannot be loaded or is empty
-     * @throws CgShaderParseException    on parse error
-     * @throws IllegalStateException     if compilation or linking fails
-     * @throws UnsupportedOperationException if the hardware does not support GL 3.3+
+     * <p>Compilation is <strong>deferred</strong> to the first {@link #bind()} call so that
+     * {@link #attach(CgShaderBuffer, String) attach()}
+     * calls made between {@code load()} and {@code bind()} are included in the compiled GLSL.
+     * Any exceptions that were previously thrown here (compile/link failures,
+     * {@link IllegalStateException}, {@link UnsupportedOperationException}) will now surface
+     * from the first {@code bind()} invocation instead.</p>
+     *
+     * <p>Typical usage:</p>
+     * <pre>{@code
+     * CgMaterial mat = CgMaterial.load("mymod:shaders/foo.shader");
+     * mat.attach(myBuffer, "MY_BUF");   // attach before first bind()
+     * // ... later, on each frame:
+     * mat.bind();                        // lazy compile happens here on the first call
+     * mesh.drawInstanced(N);
+     * mat.unbind();
+     * }</pre>
+     *
+     * @throws IllegalArgumentException  if the source cannot be loaded or is empty (from {@code bind()})
+     * @throws CgShaderParseException    on parse error (from {@code bind()})
+     * @throws IllegalStateException     if compilation or linking fails (from {@code bind()})
+     * @throws UnsupportedOperationException if the hardware does not support GL 3.3+ (from {@code bind()})
      */
     static CgMaterial create(String resourcePath) {
         CgMaterial mat = new CgMaterial();
         mat.setResourcePath(resourcePath);
-        mat.recompile();
+        mat.markDirty();
         return mat;
+    }
+
+    // ── Buffer attachment API ─────────────────────────────────────────────────
+
+    /**
+     * Attaches a user-defined auxiliary buffer to this material.
+     *
+     * <p>On the next compile, the buffer's GLSL struct and either an SSBO block or a TBO
+     * sampler + fetch function are injected into both vertex and fragment shader source.
+     * Access it in GLSL via {@code macroName(n).fieldName}.</p>
+     *
+     * <p><strong>What this is for</strong>: per-material auxiliary data — font glyph metrics,
+     * light tables, bindless texture handle pools ({@code uvec2} handles), tile properties,
+     * animation curves, etc. Any structured dataset your shader needs beyond what the engine's
+     * {@code cg_env.glsl} provides.</p>
+     *
+     * <p><strong>What NOT to pass</strong>: engine pipeline buffers
+     * ({@code CgMaterialPipeline.objectBuffer()}, etc.). Those are wired automatically by the
+     * engine and declared in {@code cg_env.glsl}. Passing them here causes duplicate declarations.</p>
+     *
+     * <p><strong>Ownership warning</strong>: {@code CgMaterial.load(path)} returns a
+     * <em>shared cached instance</em> from {@code CgMaterialRegistry}. Do NOT call
+     * {@code attach()} on a loaded material that other systems may hold. Either create the
+     * material outside the registry, or ensure you are the sole owner before attaching.</p>
+     *
+     * <p><strong>TBO-path constraints</strong> (validated at compile time, not here):
+     * <ul>
+     *   <li>All field types must satisfy {@link CgGpuType#isTboCompatible()} — float-family only.
+     *       INT, UINT, BOOL, IVEC*, UVEC*, INT64, UINT64 are not accepted and will throw an exception.</li>
+     *   <li>Format stride must be a multiple of 16 bytes (one TBO texel = 16 bytes).</li>
+     * </ul>
+     *
+     * <p><strong>Runtime binding</strong>: per-context GL binding ({@code glBindBufferBase} /
+     * {@code glActiveTexture+glBindTexture}) is <em>your responsibility</em>. Call
+     * {@code buffer.bind()} before your draw call. This method only registers the buffer for
+     * GLSL generation and per-program block/sampler wiring.</p>
+     *
+     * @param buffer    the buffer to attach; format must use {@code STD430}
+     * @param macroName uppercase GLSL-style identifier function, e.g. {@code "FONT_METRICS"};
+     *                  used in shader as {@code macroName(n).fieldName}
+     * @return {@code this} for fluent chaining
+     * @apiNote Never throws — validation failures are logged as warnings and the call becomes a no-op.
+     */
+    public CgMaterial attach(CgShaderBuffer buffer, String macroName) {
+        CgAttachedBuffer ab;
+        try {
+            ab = CgAttachedBuffer.of(buffer, macroName);
+        } catch (IllegalArgumentException e) {
+            LOGGER.warn("attach() skipped for macro '{}': {}", macroName, e.getMessage());
+            return this;
+        }
+        for (CgAttachedBuffer existing : attachedBuffers) {
+            if (existing.isUbo()) continue;
+            if (existing.getMacroName().equals(macroName)) {
+                LOGGER.warn("attach() skipped: macro name \"{}\" is already attached to this material.", macroName);
+                return this;
+            }
+            if (existing.getStructName().equals(ab.getStructName())) {
+                LOGGER.warn("attach() skipped: GLSL struct name collision for \"{}\" (already in use by macro \"{}\").",
+                        ab.getStructName(), existing.getMacroName());
+                return this;
+            }
+        }
+        attachedBuffers.add(ab);
+        markDirty();
+        return this;
+    }
+
+    /**
+     * Detaches the SSBO/TBO buffer registered under {@code macroName}; no-op if not found.
+     *
+     * @return {@code this} for fluent chaining
+     */
+    public CgMaterial detach(String macroName) {
+        if (attachedBuffers.removeIf(ab -> ab.getMacroName().equals(macroName))) {
+            markDirty();
+        }
+        return this;
+    }
+
+    /**
+     * Detaches the SSBO/TBO buffer by reference; no-op if not attached.
+     *
+     * @return {@code this} for fluent chaining
+     */
+    public CgMaterial detach(CgShaderBuffer buffer) {
+        if (attachedBuffers.removeIf(ab -> ab.getBuffer() == buffer)) {
+            markDirty();
+        }
+        return this;
+    }
+
+    /**
+     * Attaches a UBO to this material for GLSL flat-block auto-injection.
+     *
+     * <p>On the next compile, a {@code layout(std140) uniform BlockName { ... };} block is
+     * injected into both vertex and fragment shader source. All fields land in direct scope —
+     * write {@code fieldName} in your shader, not {@code BlockName.fieldName}.</p>
+     *
+     * <p>Use this for single-instance uniform data: scene parameters, per-pass constants,
+     * camera extras, light properties — anything that is the same for all instances in a draw.</p>
+     *
+     * <p>For per-instance indexed data, use {@link #attach(CgShaderBuffer, String)} instead.</p>
+     *
+     * <p><strong>Ownership warning</strong>: see {@link #attach(CgShaderBuffer, String)}.
+     * Same rule applies here.</p>
+     *
+     * <p><strong>Runtime binding</strong>: call {@code buffer.bind()} before your draw call.
+     * This method only registers the buffer for GLSL generation and block-index wiring.</p>
+     *
+     * @param buffer UBO to attach; format must use {@link CgBufferFormat.MemoryLayout#STD140}
+     * @return {@code this} for fluent chaining
+     * @apiNote Never throws — validation failures are logged as warnings and the call becomes a no-op.
+     */
+    public CgMaterial attach(CgUniformBuffer buffer) {
+        CgAttachedBuffer ab;
+        try {
+            ab = CgAttachedBuffer.of(buffer);
+        } catch (IllegalArgumentException e) {
+            LOGGER.warn("attach(CgUniformBuffer) skipped for '{}': {}", buffer == null ? "null" : buffer.getName(), e.getMessage());
+            return this;
+        }
+        for (CgAttachedBuffer existing : attachedBuffers) {
+            if (existing.isUbo() && existing.getBuffer().getName().equals(buffer.getName())) {
+                LOGGER.warn("attach(CgUniformBuffer) skipped: UBO block name \"{}\" is already attached.",
+                        buffer.getName());
+                return this;
+            }
+        }
+        attachedBuffers.add(ab);
+        markDirty();
+        return this;
+    }
+
+    /**
+     * Detaches the UBO with the given block name; no-op if not found.
+     *
+     * @return {@code this} for fluent chaining
+     */
+    public CgMaterial detachUbo(String blockName) {
+        if (attachedBuffers.removeIf(ab -> ab.isUbo() && ab.getBuffer().getName().equals(blockName))) {
+            markDirty();
+        }
+        return this;
+    }
+
+    /**
+     * Detaches the UBO by reference; no-op if not attached.
+     *
+     * @return {@code this} for fluent chaining
+     */
+    public CgMaterial detach(CgUniformBuffer buffer) {
+        if (attachedBuffers.removeIf(ab -> ab.isUbo() && ab.getBuffer() == buffer)) {
+            markDirty();
+        }
+        return this;
     }
 
     // ── Property bindings ─────────────────────────────────────────────────────
@@ -306,7 +490,14 @@ public final class CgMaterial {
             return;
         }
 
-        CgMaterialShaderCompiler.CompiledSource compiled = CgMaterialShaderCompiler.compile(parsed, path);
+        CgMaterialShaderCompiler.CompiledSource compiled;
+        try {
+            compiled = CgMaterialShaderCompiler.compile(parsed, path, attachedBuffers);
+        } catch (CgPreprocessorException e) {
+            if (isFirst) throw e;
+            LOGGER.error("Reload failed for '{}': buffer injection error — {}", resourcePath, e.getMessage());
+            return;
+        }
         String processedVert = new CgShaderPreprocessor().process(compiled.vertexSource(), resourcePath);
         String processedFrag = new CgShaderPreprocessor().process(compiled.fragmentSource(), resourcePath);
 
@@ -323,7 +514,8 @@ public final class CgMaterial {
                 String err = shader.getLastCompileError();
                 shader.delete();
                 shader = null;
-                throw new IllegalStateException("CgMaterial.create() failed for '" + resourcePath + "': " + err);
+                LOGGER.error("CgMaterial.create() failed for '{}': {}", resourcePath, err);
+                return;
             }
         } else {
             shader.setSource(processedVert, processedFrag);
@@ -342,6 +534,9 @@ public final class CgMaterial {
         shader.bind();
         pipeline.frameBuffer().wireShader(shader);   // glUniformBlockBinding for CgFrameBlock
         pipeline.objectBuffer().wireShader(shader);  // glShaderStorageBlockBinding (SSBO) or glUniform1i (TBO)
+        for (CgAttachedBuffer ab : attachedBuffers) 
+            ab.getBuffer().wireShader(shader);
+        
         shader.unbind();
 
         if (!isFirst) {

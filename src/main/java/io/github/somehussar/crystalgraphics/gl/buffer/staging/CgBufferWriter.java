@@ -207,7 +207,166 @@ public final class CgBufferWriter {
         return this;
     }
 
-    // TODO v2: int_/uint/bool_ named writes with CgStagingBuffer.setIntBitsAt(int, int)
+    /**
+     * Named write — writes an {@code int} field (32-bit signed integer).
+     * Stores the raw int bits via {@link Float#intBitsToFloat(int)}.
+     *
+     * @param fieldName name of the INT field in the attached format
+     * @param v         the integer value
+     * @return {@code this} for chaining
+     * @throws IllegalStateException if the field does not exist or is not of type INT
+     */
+    public CgBufferWriter int_(String fieldName, int v) {
+        int base = resolveField(fieldName, CgGpuType.INT);
+        staging.setIntBitsAt(base, v);
+        return this;
+    }
+
+    /**
+     * Named write — writes a {@code uint} field (32-bit unsigned integer).
+     * Pass the unsigned value as a signed Java {@code int} (raw bits are preserved).
+     *
+     * @param fieldName name of the UINT field
+     * @return {@code this} for chaining
+     */
+    public CgBufferWriter uint(String fieldName, int v) {
+        int base = resolveField(fieldName, CgGpuType.UINT);
+        staging.setIntBitsAt(base, v);
+        return this;
+    }
+
+    /**
+     * Named write — writes a {@code bool} field (GPU bool = 1 int slot, 0 or 1).
+     *
+     * @param fieldName name of the BOOL field
+     * @return {@code this} for chaining
+     */
+    public CgBufferWriter bool_(String fieldName, boolean v) {
+        int base = resolveField(fieldName, CgGpuType.BOOL);
+        staging.setIntBitsAt(base, v ? 1 : 0);
+        return this;
+    }
+
+    /**
+     * Named write — writes an {@code ivec2} field (2-component signed integer vector).
+     *
+     * @param fieldName name of the IVEC2 field
+     * @return {@code this} for chaining
+     */
+    public CgBufferWriter ivec2(String fieldName, int x, int y) {
+        int base = resolveField(fieldName, CgGpuType.IVEC2);
+        staging.setIntBitsAt(base,     x);
+        staging.setIntBitsAt(base + 1, y);
+        return this;
+    }
+
+    /**
+     * Named write — writes an {@code ivec3} field (3-component signed integer vector).
+     * The 4th slot (padding to 16-byte alignment) is pre-zeroed by {@link #beginRecord()}.
+     *
+     * @param fieldName name of the IVEC3 field
+     * @return {@code this} for chaining
+     */
+    public CgBufferWriter ivec3(String fieldName, int x, int y, int z) {
+        int base = resolveField(fieldName, CgGpuType.IVEC3);
+        staging.setIntBitsAt(base,     x);
+        staging.setIntBitsAt(base + 1, y);
+        staging.setIntBitsAt(base + 2, z);
+        // slot base+3 is the 16-byte alignment pad — already zero from reserveAndZero
+        return this;
+    }
+
+    /**
+     * Named write — writes an {@code ivec4} field (4-component signed integer vector).
+     *
+     * @param fieldName name of the IVEC4 field
+     * @return {@code this} for chaining
+     */
+    public CgBufferWriter ivec4(String fieldName, int x, int y, int z, int w) {
+        int base = resolveField(fieldName, CgGpuType.IVEC4);
+        staging.setIntBitsAt(base,     x);
+        staging.setIntBitsAt(base + 1, y);
+        staging.setIntBitsAt(base + 2, z);
+        staging.setIntBitsAt(base + 3, w);
+        return this;
+    }
+
+    /**
+     * Named write — writes a {@code uvec2} field (2-component unsigned integer vector).
+     * Pass unsigned values as signed Java {@code int}s (raw bits are preserved).
+     * Also used for bindless texture handle storage ({@code ARB_bindless_texture}).
+     *
+     * @param fieldName name of the UVEC2 field
+     * @return {@code this} for chaining
+     */
+    public CgBufferWriter uvec2(String fieldName, int x, int y) {
+        int base = resolveField(fieldName, CgGpuType.UVEC2);
+        staging.setIntBitsAt(base,     x);
+        staging.setIntBitsAt(base + 1, y);
+        return this;
+    }
+
+    /**
+     * Named write — writes a {@code uvec3} field (3-component unsigned integer vector).
+     * The 4th slot (padding to 16-byte alignment) is pre-zeroed.
+     *
+     * @param fieldName name of the UVEC3 field
+     * @return {@code this} for chaining
+     */
+    public CgBufferWriter uvec3(String fieldName, int x, int y, int z) {
+        int base = resolveField(fieldName, CgGpuType.UVEC3);
+        staging.setIntBitsAt(base,     x);
+        staging.setIntBitsAt(base + 1, y);
+        staging.setIntBitsAt(base + 2, z);
+        return this;
+    }
+
+    /**
+     * Named write — writes a {@code uvec4} field (4-component unsigned integer vector).
+     *
+     * @param fieldName name of the UVEC4 field
+     * @return {@code this} for chaining
+     */
+    public CgBufferWriter uvec4(String fieldName, int x, int y, int z, int w) {
+        int base = resolveField(fieldName, CgGpuType.UVEC4);
+        staging.setIntBitsAt(base,     x);
+        staging.setIntBitsAt(base + 1, y);
+        staging.setIntBitsAt(base + 2, z);
+        staging.setIntBitsAt(base + 3, w);
+        return this;
+    }
+
+    /**
+     * Named write — writes a {@code uint64_t} field (64-bit unsigned integer).
+     * Stored as two consecutive 32-bit float slots: low word at {@code base}, high word at {@code base+1}.
+     * Requires {@code ARB_gpu_shader_int64} or {@code ARB_bindless_texture} in the shader.
+     *
+     * @param fieldName name of the UINT64 field
+     * @param v         the 64-bit value (interpreted as unsigned)
+     * @return {@code this} for chaining
+     */
+    public CgBufferWriter uint64(String fieldName, long v) {
+        int base = resolveField(fieldName, CgGpuType.UINT64);
+        staging.setIntBitsAt(base,     (int) v);
+        staging.setIntBitsAt(base + 1, (int)(v >>> 32));
+        return this;
+    }
+
+    /**
+     * Named write — writes an {@code int64_t} field (64-bit signed integer).
+     * Stored as two consecutive 32-bit float slots: low word at {@code base}, high word at {@code base+1}.
+     * Requires {@code ARB_gpu_shader_int64} in the shader.
+     *
+     * @param fieldName name of the INT64 field
+     * @param v         the 64-bit signed value
+     * @return {@code this} for chaining
+     */
+    public CgBufferWriter int64(String fieldName, long v) {
+        int base = resolveField(fieldName, CgGpuType.INT64);
+        staging.setIntBitsAt(base,     (int) v);
+        staging.setIntBitsAt(base + 1, (int)(v >> 32));
+        return this;
+    }
 
     // ── Staging access ────────────────────────────────────────────────────────
 
@@ -247,7 +406,7 @@ public final class CgBufferWriter {
         if (field.getType() != expectedType) {
             throw new IllegalStateException(
                     "Type mismatch for field '" + fieldName + "' in format '"
-                            + format.getDebugName() + "': expected " + expectedType
+                            + format.getGlslName() + "': expected " + expectedType
                             + " but field is " + field.getType() + ".");
         }
         return recordStartIdx + field.getFloatOffset();

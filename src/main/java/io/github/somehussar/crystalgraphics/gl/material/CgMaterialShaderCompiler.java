@@ -2,8 +2,12 @@ package io.github.somehussar.crystalgraphics.gl.material;
 
 import com.github.bsideup.jabel.Desugar;
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
+import io.github.somehussar.crystalgraphics.api.material.CgAttachedBuffer;
+import io.github.somehussar.crystalgraphics.api.shader.CgPreprocessorException;
 
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Generates complete GLSL vertex and fragment source strings from a {@link CgParsedShader}.
@@ -67,26 +71,49 @@ public final class CgMaterialShaderCompiler {
      * @param parsed          structural parse result from {@link CgShaderParser#parse(String)}
      * @param shaderBufferPath which GPU path is active; drives {@code #version} selection and
      *                         the {@code CG_USE_SSBO} define
+     * @param attachedBuffers  user-defined SSBO/TBO and UBO buffers to inject (may be empty);
+     *                         UBO entries are identified via {@link CgAttachedBuffer#isUbo()}
      * @return a {@link CompiledSource} holding the complete vertex and fragment sources
      * @throws IllegalArgumentException if {@code shaderBufferPath} is {@code NONE}
+     * @throws CgPreprocessorException  if a TBO-path buffer contains incompatible field types
      */
     public static CompiledSource compile(CgParsedShader parsed,
-                                         CgCapabilities.ShaderBufferPath shaderBufferPath) {
+                                         CgCapabilities.ShaderBufferPath shaderBufferPath,
+                                         List<CgAttachedBuffer> attachedBuffers) {
         if (shaderBufferPath == CgCapabilities.ShaderBufferPath.NONE) {
             throw new IllegalArgumentException(
                     "Cannot compile material shader: ShaderBufferPath is NONE (GL 3.3+ required)");
         }
 
-        // Determine whether we are on the SSBO path (GL43 or ARB) or TBO fallback
         boolean useSsbo = (shaderBufferPath == CgCapabilities.ShaderBufferPath.SSBO_GL43
                 || shaderBufferPath == CgCapabilities.ShaderBufferPath.SSBO_ARB);
 
+        Set<String> requiredExtensions = new LinkedHashSet<>();
+        for (CgAttachedBuffer ab : attachedBuffers) {
+            for (int i = 0; i < ab.getBuffer().getFormat().getFieldCount(); i++) {
+                String ext = ab.getBuffer().getFormat().getField(i).getType().requiredExtension();
+                if (ext != null) requiredExtensions.add(ext);
+            }
+        }
+        if (!requiredExtensions.isEmpty()) {
+            CgCapabilities caps = CgCapabilities.detect();
+            for (String ext : requiredExtensions) {
+                if ("GL_ARB_gpu_shader_int64".equals(ext) && !caps.isGpuShaderInt64()) {
+                    throw new CgPreprocessorException(
+                            "Buffer format requires extension '" + ext + "' (type INT64 or UINT64), "
+                            + "but the current GPU/driver does not support it.",
+                            "<material>", 0);
+                }
+            }
+        }
+
         List<CgMaterialProperty> properties = parsed.properties();
-        // Parse v2f fields once — used in both stages
         List<CgShaderParser.V2fField> v2fFields = CgShaderParser.parseV2fFields(parsed);
 
-        String vertexSource = buildVertexSource(parsed, properties, v2fFields, useSsbo);
-        String fragmentSource = buildFragmentSource(parsed, properties, v2fFields, useSsbo);
+        String vertexSource = buildVertexSource(parsed, properties, v2fFields, useSsbo,
+                shaderBufferPath, attachedBuffers, requiredExtensions);
+        String fragmentSource = buildFragmentSource(parsed, properties, v2fFields, useSsbo,
+                shaderBufferPath, attachedBuffers, requiredExtensions);
 
         return new CompiledSource(vertexSource, fragmentSource);
     }
@@ -112,13 +139,22 @@ public final class CgMaterialShaderCompiler {
      * </ol>
      */
     private static String buildVertexSource(CgParsedShader parsed,
-                                            List<CgMaterialProperty> properties,
-                                            List<CgShaderParser.V2fField> v2fFields,
-                                            boolean useSsbo) {
+                                             List<CgMaterialProperty> properties,
+                                             List<CgShaderParser.V2fField> v2fFields,
+                                             boolean useSsbo,
+                                             CgCapabilities.ShaderBufferPath shaderBufferPath,
+                                             List<CgAttachedBuffer> attachedBuffers,
+                                             Set<String> requiredExtensions) {
         StringBuilder sb = new StringBuilder(1024);
 
         // Step 1: #version
         sb.append(useSsbo ? "#version 430 core\n" : "#version 330 core\n");
+
+        String[] gd = partitionGlobalDecls(parsed.globalDecls());
+        String directiveLines = gd[0];
+        String codeLines = gd[1];
+        if (!directiveLines.isEmpty()) sb.append(directiveLines).append('\n');
+        appendAutoRequiredExtensions(sb, requiredExtensions, directiveLines);
 
         // Step 2: CG_VERTEX_STAGE define
         sb.append("#define CG_VERTEX_STAGE 1\n");
@@ -132,6 +168,8 @@ public final class CgMaterialShaderCompiler {
         // Step 5: Property uniform declarations
         appendPropertyUniforms(sb, properties);
 
+        appendAttachedBuffers(sb, attachedBuffers, shaderBufferPath);
+
         // Step 6: v2f struct
         appendV2fStruct(sb, parsed.v2fStructBody());
 
@@ -141,8 +179,8 @@ public final class CgMaterialShaderCompiler {
         // Step 8: v2f varying outputs
         appendV2fVaryingOutputs(sb, v2fFields);
 
-        // Step 9: Global declarations (helper functions, additional uniforms, etc.)
-        appendGlobalDecls(sb, parsed.globalDecls());
+        // Step 9: Global declarations (code lines only — directives emitted above)
+        appendGlobalDecls(sb, codeLines);
 
         // Step 10: User vertex function
         sb.append("// User vertex function\n");
@@ -176,13 +214,22 @@ public final class CgMaterialShaderCompiler {
      * </ol>
      */
     private static String buildFragmentSource(CgParsedShader parsed,
-                                              List<CgMaterialProperty> properties,
-                                              List<CgShaderParser.V2fField> v2fFields,
-                                              boolean useSsbo) {
+                                               List<CgMaterialProperty> properties,
+                                               List<CgShaderParser.V2fField> v2fFields,
+                                               boolean useSsbo,
+                                               CgCapabilities.ShaderBufferPath shaderBufferPath,
+                                               List<CgAttachedBuffer> attachedBuffers,
+                                               Set<String> requiredExtensions) {
         StringBuilder sb = new StringBuilder(1024);
 
         // Step 1: #version
         sb.append(useSsbo ? "#version 430 core\n" : "#version 330 core\n");
+
+        String[] gd = partitionGlobalDecls(parsed.globalDecls());
+        String directiveLines = gd[0];
+        String codeLines = gd[1];
+        if (!directiveLines.isEmpty()) sb.append(directiveLines).append('\n');
+        appendAutoRequiredExtensions(sb, requiredExtensions, directiveLines);
 
         // Step 2: CG_USE_SSBO (SSBO path only; fragment has no CG_VERTEX_STAGE)
         if (useSsbo) {
@@ -194,14 +241,16 @@ public final class CgMaterialShaderCompiler {
         // Step 4: Property uniform declarations (same as vertex; unused uniforms compiled out by driver)
         appendPropertyUniforms(sb, properties);
 
+        appendAttachedBuffers(sb, attachedBuffers, shaderBufferPath);
+
         // Step 5: v2f struct
         appendV2fStruct(sb, parsed.v2fStructBody());
 
         // Step 6: v2f varying inputs
         appendV2fVaryingInputs(sb, v2fFields);
 
-        // Step 7: Global declarations
-        appendGlobalDecls(sb, parsed.globalDecls());
+        // Step 7: Global declarations (code lines only — directives emitted above)
+        appendGlobalDecls(sb, codeLines);
 
         // Step 8: fragment color output
         sb.append("out vec4 _cg_fragColor;\n");
@@ -219,6 +268,53 @@ public final class CgMaterialShaderCompiler {
     }
 
     // ── Shared section builders ───────────────────────────────────────────────
+
+    private static String[] partitionGlobalDecls(String globalDecls) {
+        if (globalDecls == null || globalDecls.trim().isEmpty()) return new String[]{"", ""};
+        StringBuilder directives = new StringBuilder();
+        StringBuilder code = new StringBuilder();
+        for (String rawLine : globalDecls.split("\n", -1)) {
+            if (rawLine.trim().startsWith("#")) {
+                if (directives.length() > 0) directives.append('\n');
+                directives.append(rawLine);
+            } else {
+                if (code.length() > 0) code.append('\n');
+                code.append(rawLine);
+            }
+        }
+        return new String[]{directives.toString(), code.toString()};
+    }
+
+    private static void appendAutoRequiredExtensions(StringBuilder sb, Set<String> required,
+                                                      String existingDirectives) {
+        for (String ext : required) {
+            if (!existingDirectives.contains(ext)) {
+                sb.append("#extension ").append(ext).append(" : enable\n");
+            }
+        }
+    }
+
+    /**
+     * Injects SSBO/TBO and UBO declarations for all user-attached buffers.
+     * No-op when the list is empty. Dispatches on {@link CgAttachedBuffer#isUbo()}.
+     * UBO declarations are path-independent (identical on SSBO and TBO paths).
+     */
+    private static void appendAttachedBuffers(StringBuilder sb,
+                                               List<CgAttachedBuffer> attachedBuffers,
+                                               CgCapabilities.ShaderBufferPath path) {
+        boolean useSsbo = (path == CgCapabilities.ShaderBufferPath.SSBO_GL43
+                || path == CgCapabilities.ShaderBufferPath.SSBO_ARB);
+        for (CgAttachedBuffer ab : attachedBuffers) {
+            if (ab.isUbo()) {
+                sb.append(CgBufferGlslEmitter.emitUbo(ab.getBuffer().getFormat(), ab.getBuffer().getName())).append('\n');
+            } else {
+                String block = useSsbo
+                        ? CgBufferGlslEmitter.emitSsbo(ab)
+                        : CgBufferGlslEmitter.emitTbo(ab);
+                sb.append(block).append('\n');
+            }
+        }
+    }
 
     /**
      * Emits one {@code uniform <type> <name>;} line per property.

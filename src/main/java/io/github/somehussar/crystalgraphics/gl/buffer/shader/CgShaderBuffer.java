@@ -298,7 +298,11 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
      *       Replaces the deleted {@code bindBlock()} methods.</li>
      * </ul>
      *
-     * @param shader the currently-bound shader program to wire; must not be null
+     * @param shader the currently-bound shader program to wire; must not be null.
+     *               If this buffer is attached to a {@link io.github.somehussar.crystalgraphics.api.material.CgMaterial},
+     *               the material calls {@link #wireShader(CgShader)} automatically on each compile —
+     *               prefer the no-arg {@link #bind()} in that case; {@code bind(CgShader)} is for
+     *               standalone (non-material) usage only, where the caller manages the active program.
      * @throws IllegalStateException if this buffer has been deleted
      */
     public void bind(CgShader shader) {
@@ -369,6 +373,14 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
      * {@code glActiveTexture+glBindTexture}) is handled separately in
      * {@link #bind()} — typically called once per frame from
      * {@code CgMaterialPipeline.beginFrame()}.</p>
+     *
+     * <p>{@code shader} must not be null and must be the currently-bound program —
+     * the GL program must be active via {@code shader.bind()} before this call,
+     * as GL uniform/block-index queries require the program to be active.</p>
+     *
+     * <p>If this buffer is attached to a {@link io.github.somehussar.crystalgraphics.api.material.CgMaterial},
+     * {@code wireShader} is called automatically on each material compile — do not call
+     * this manually in that case.</p>
      *
      * @param shader the currently-bound shader program; must not be null
      */

@@ -26,8 +26,8 @@ the start of {@code void vertex(}. May be empty but never null.
  * @param vertexBody
 Content of the {@code void vertex(out v2f o) \{ \}} block (body only, no braces).
  * @param fragmentBody
-Content of the {@code void fragment(in v2f i, out vec4 fragColor) \{ \}} block
-(body only, no braces).
+ * Content of the {@code void fragment(in v2f i, out vec4 fragColor) \{ \}} block
+ * (body only, no braces).
  */
 @Desugar
 public record CgParsedShader(String shaderType, List<CgMaterialProperty> properties, String v2fStructBody,

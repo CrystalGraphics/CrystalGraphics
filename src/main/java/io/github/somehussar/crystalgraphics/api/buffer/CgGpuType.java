@@ -18,6 +18,12 @@ import io.github.somehussar.crystalgraphics.gl.buffer.staging.CgBufferWriter;
  * Array-of-scalars stride differs between std140 and std430 (std140 pads each element
  * to 16 bytes; std430 does not). Array fields are not supported in v1 — see
  * TODO v2 in {@link CgBufferFormat}.</p>
+ *
+ * <p><strong>Sampler types absent</strong>: {@code sampler2D}, {@code sampler2DArray}, etc.
+ * are opaque GLSL types and are illegal inside buffer blocks per GLSL §4.1.7.
+ * They are intentionally absent from this enum.
+ * For bindless texture handles, use {@link #UVEC2} (2 × uint32 = one 64-bit handle) or
+ * {@link #UINT64} (single uint64_t, requires {@code ARB_gpu_shader_int64}).</p>
  */
 public enum CgGpuType {
 
@@ -53,28 +59,60 @@ public enum CgGpuType {
     /**
      * {@code int} — 32-bit signed integer. 4 bytes, 4-byte aligned.
      *
-     * <p><strong>v1</strong>: Format declaration is supported (correct stride/offset).
-     * Named write method ({@code int_}) deferred to v2. Unwritten INT fields are
-     * pre-zeroed by {@code beginRecord()}.
-     * TODO v2: add {@code int_} named write with {@code CgStagingBuffer.setIntBitsAt}.</p>
+     * <p>Named write: {@code CgBufferWriter.int_()}.</p>
      */
     INT(0, 4, 4, 4, "int"),
 
     /**
      * {@code uint} — 32-bit unsigned integer. 4 bytes, 4-byte aligned.
      *
-     * <p><strong>v1</strong>: Format declaration supported. Named write deferred to v2.
-     * TODO v2: add {@code uint} named write method.</p>
+     * <p>Named write: {@code CgBufferWriter.uint()}.</p>
      */
     UINT(0, 4, 4, 4, "uint"),
 
     /**
      * {@code bool} — GPU boolean, always 4 bytes, 4-byte aligned.
      *
-     * <p><strong>v1</strong>: Format declaration supported. Named write deferred to v2.
-     * TODO v2: add {@code bool_} named write method.</p>
+     * <p>Named write: {@code CgBufferWriter.bool_()}.</p>
      */
-    BOOL(0, 4, 4, 4, "bool");
+    BOOL(0, 4, 4, 4, "bool"),
+
+    /** {@code ivec2} — 2-component signed integer vector. 8 bytes, 8-byte aligned.
+     * <p>TBO path: not supported in v1 (requires {@code isamplerBuffer} + {@code GL_RGBA32I}).</p> */
+    IVEC2(0, 8, 8, 8, "ivec2"),
+
+    /** {@code ivec3} — 3-component signed integer vector. 12 bytes data, 16-byte aligned slot.
+     * <p>TBO path: not supported in v1.</p> */
+    IVEC3(0, 12, 16, 16, "ivec3"),
+
+    /** {@code ivec4} — 4-component signed integer vector. 16 bytes, 16-byte aligned.
+     * <p>TBO path: not supported in v1.</p> */
+    IVEC4(0, 16, 16, 16, "ivec4"),
+
+    /** {@code uvec2} — 2-component unsigned integer vector. 8 bytes, 8-byte aligned.
+     * <p>Primary type for bindless texture handles ({@code ARB_bindless_texture}):
+     * a {@code uvec2} stores one 64-bit GL texture handle as two uint32 components.</p>
+     * <p>TBO path: not supported in v1 (requires {@code usamplerBuffer} + {@code GL_RGBA32UI}).</p> */
+    UVEC2(0, 8, 8, 8, "uvec2"),
+
+    /** {@code uvec3} — 3-component unsigned integer vector. 12 bytes data, 16-byte aligned slot.
+     * <p>TBO path: not supported in v1.</p> */
+    UVEC3(0, 12, 16, 16, "uvec3"),
+
+    /** {@code uvec4} — 4-component unsigned integer vector. 16 bytes, 16-byte aligned.
+     * <p>TBO path: not supported in v1.</p> */
+    UVEC4(0, 16, 16, 16, "uvec4"),
+
+    /** {@code uint64_t} — 64-bit unsigned integer. 8 bytes, 8-byte aligned.
+     * <p>Requires {@code ARB_gpu_shader_int64} or {@code ARB_bindless_texture}.
+     * Stores a full 64-bit GL texture handle in a single field (vs two uint32 with UVEC2).</p>
+     * <p>TBO path: not supported in v1 (no standard 64-bit TBO internal format).</p> */
+    UINT64(0, 8, 8, 8, "uint64_t"),
+
+    /** {@code int64_t} — 64-bit signed integer. 8 bytes, 8-byte aligned.
+     * <p>Requires {@code ARB_gpu_shader_int64}.</p>
+     * <p>TBO path: not supported in v1.</p> */
+    INT64(0, 8, 8, 8, "int64_t");
 
     private final int floatComponents;
     private final int dataBytes;
@@ -123,10 +161,45 @@ public enum CgGpuType {
     }
 
     /**
+     * Returns the GLSL extension string required to use this type, or {@code null} if none.
+     * INT64 and UINT64 generate {@code int64_t}/{@code uint64_t} declarations that require
+     * {@code GL_ARB_gpu_shader_int64}.
+     */
+    public String requiredExtension() {
+        switch (this) {
+            case INT64:
+            case UINT64:
+                return "GL_ARB_gpu_shader_int64";
+            default:
+                return null;
+        }
+    }
+
+    /**
      * Convenience: returns the number of float slots this type occupies in a buffer
      * ({@code alignedBytes / 4}). Useful for computing float-based offsets.
      */
     public int getFloatCount() {
         return alignedBytes / 4;
+    }
+
+    /**
+     * Returns {@code true} if this type can be used in a TBO-path attached buffer.
+     *
+     * <p>The TBO float path uses {@code samplerBuffer} + {@code GL_RGBA32F}. Only float-family
+     * types map naturally to this format. Integer and 64-bit types require
+     * {@code isamplerBuffer}/{@code usamplerBuffer} with {@code GL_RGBA32I}/{@code GL_RGBA32UI},
+     * which the current {@code CgTextureBuffer} does not support.</p>
+     *
+     * <p>TBO-compatible: FLOAT, VEC2, VEC3, VEC4, MAT3, MAT4.<br>
+     * Not TBO-compatible: INT, UINT, BOOL, IVEC2-4, UVEC2-4, INT64, UINT64.</p>
+     */
+    public boolean isTboCompatible() {
+        switch (this) {
+            case FLOAT: case VEC2: case VEC3: case VEC4: case MAT3: case MAT4:
+                return true;
+            default:
+                return false;
+        }
     }
 }

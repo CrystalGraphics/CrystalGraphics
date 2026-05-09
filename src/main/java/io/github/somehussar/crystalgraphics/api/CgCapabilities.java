@@ -237,6 +237,9 @@ public final class CgCapabilities {
      */
     private final int maxUniformBufferBindings;
 
+    /** Whether {@code GL_ARB_gpu_shader_int64} is supported. */
+    private final boolean gpuShaderInt64;
+
     private CgCapabilities(boolean coreFbo, boolean arbFbo, boolean extFbo,
                            boolean coreShaders, boolean arbShaders,
                            int maxDrawBuffers, int maxTextureUnits,
@@ -276,6 +279,7 @@ public final class CgCapabilities {
         this.shaderBufferPath = ShaderBufferPath.NONE;
         this.maxSsboBindings = 0;
         this.maxUniformBufferBindings = 0;
+        this.gpuShaderInt64 = false;
     }
 
     private CgCapabilities(boolean coreFbo, boolean arbFbo, boolean extFbo,
@@ -325,6 +329,7 @@ public final class CgCapabilities {
         }
         this.maxSsboBindings = 0;
         this.maxUniformBufferBindings = 0;
+        this.gpuShaderInt64 = false;
     }
 
     private CgCapabilities(boolean coreFbo, boolean arbFbo, boolean extFbo,
@@ -375,6 +380,59 @@ public final class CgCapabilities {
         }
         this.maxSsboBindings = maxSsboBindings;
         this.maxUniformBufferBindings = maxUniformBufferBindings;
+        this.gpuShaderInt64 = false;
+    }
+
+    private CgCapabilities(boolean coreFbo, boolean arbFbo, boolean extFbo,
+                           boolean coreShaders, boolean arbShaders,
+                           int maxDrawBuffers, int maxTextureUnits,
+                           boolean stencil, boolean depth,
+                           boolean packedDepthStencil, boolean depthTexture,
+                           int maxTextureSize, int maxRenderbufferSize,
+                           int maxColorAttachments,
+                           boolean hasVao, boolean hasMapBufferRange,
+                           boolean arbSync,
+                           boolean drawInstanced, boolean vertexAttribDivisor,
+                           int maxVertexAttribs,
+                           boolean shaderStorageBufferCore, boolean shaderStorageBufferArb,
+                           boolean textureBufferMaterialPath,
+                           int maxSsboBindings, int maxUniformBufferBindings,
+                           boolean gpuShaderInt64) {
+        this.coreFbo = coreFbo;
+        this.arbFbo = arbFbo;
+        this.extFbo = extFbo;
+        this.coreShaders = coreShaders;
+        this.arbShaders = arbShaders;
+        this.maxDrawBuffers = maxDrawBuffers;
+        this.maxTextureUnits = maxTextureUnits;
+        this.stencil = stencil;
+        this.depth = depth;
+        this.packedDepthStencil = packedDepthStencil;
+        this.depthTexture = depthTexture;
+        this.maxTextureSize = maxTextureSize;
+        this.maxRenderbufferSize = maxRenderbufferSize;
+        this.maxColorAttachments = maxColorAttachments;
+        this.hasVao = hasVao;
+        this.hasMapBufferRange = hasMapBufferRange;
+        this.arbSync = arbSync;
+        this.drawInstanced = drawInstanced;
+        this.vertexAttribDivisor = vertexAttribDivisor;
+        this.maxVertexAttribs = maxVertexAttribs;
+        this.shaderStorageBufferCore = shaderStorageBufferCore;
+        this.shaderStorageBufferArb = shaderStorageBufferArb;
+        this.textureBufferMaterialPath = textureBufferMaterialPath;
+        if (shaderStorageBufferCore) {
+            this.shaderBufferPath = ShaderBufferPath.SSBO_GL43;
+        } else if (shaderStorageBufferArb) {
+            this.shaderBufferPath = ShaderBufferPath.SSBO_ARB;
+        } else if (textureBufferMaterialPath) {
+            this.shaderBufferPath = ShaderBufferPath.TBO;
+        } else {
+            this.shaderBufferPath = ShaderBufferPath.NONE;
+        }
+        this.maxSsboBindings = maxSsboBindings;
+        this.maxUniformBufferBindings = maxUniformBufferBindings;
+        this.gpuShaderInt64 = gpuShaderInt64;
     }
 
     /**
@@ -512,6 +570,8 @@ public final class CgCapabilities {
         // GL_MAX_UNIFORM_BUFFER_BINDINGS (0x8A2F): valid when shader support is present (GL 3.1+)
         int maxUniformBufferBindings = coreShaders ? GL11.glGetInteger(GL31.GL_MAX_UNIFORM_BUFFER_BINDINGS) : 0;
 
+        boolean gpuShaderInt64 = caps.OpenGL40;
+
         return new CgCapabilities(
             coreFbo, arbFbo, extFbo,
             coreShaders, arbShaders,
@@ -524,7 +584,8 @@ public final class CgCapabilities {
             arbSync,
             drawInstanced, vertexAttribDivisor, maxVertexAttribs,
             ssboCore, ssboArb, tboPath,
-            maxSsboBindings, maxUniformBufferBindings
+            maxSsboBindings, maxUniformBufferBindings,
+            gpuShaderInt64
         );
     }
 
@@ -560,8 +621,12 @@ public final class CgCapabilities {
         return textureBufferMaterialPath;
     }
 
+    public boolean isGpuShaderInt64() {
+        return gpuShaderInt64;
+    }
+
     public ShaderBufferPath shaderBufferPath() {
-        return ShaderBufferPath.TBO;
+        return shaderBufferPath;
     }
 
 

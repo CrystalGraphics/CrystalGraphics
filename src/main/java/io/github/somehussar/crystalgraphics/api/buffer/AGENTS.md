@@ -18,7 +18,7 @@ operates at the GLSL compound-type level (mat4, vec4, mat3).
 |------|------|
 | `CgGpuType` | Enum of GLSL compound field types. Each entry carries: `floatComponents` (logical floats), `dataBytes` (raw data size), `alignedBytes` (bytes in std140/std430 slot including padding), `alignment` (byte alignment requirement), `glslName`. `getFloatCount()` = `alignedBytes / 4`. Values are spec-derived from OpenGL 4.5 §7.6.2.2. |
 | `CgBufferField` | Immutable value object for a single named field: `name`, `type (CgGpuType)`, `byteOffset`, `floatOffset` (derived). Package-private constructor — only `CgBufferFormat.Builder` creates these. Value equality on (name, type, byteOffset). |
-| `CgBufferFormat` | Immutable buffer layout descriptor. Tracks an ordered array of `CgBufferField`, total `stride`, and `MemoryLayout`. Builder auto-computes field byte offsets with correct inter-field alignment padding. Value-equal by (fields, stride, memoryLayout) — `debugName` excluded. `getFloatCount()` = stride/4. `getField(String)` throws `IllegalArgumentException` on miss. |
+| `CgBufferFormat` | Immutable buffer layout descriptor. Tracks an ordered array of `CgBufferField`, total `stride`, and `MemoryLayout`. Builder auto-computes field byte offsets with correct inter-field alignment padding. Value-equal by (fields, stride, memoryLayout) — `glslName` excluded. `getFloatCount()` = stride/4. `getField(String)` throws `IllegalArgumentException` on miss. |
 | `CgObjectBuffer` | Marker/capability interface for all GPU-resident shader-accessible buffer objects (SSBO, TBO, UBO). `bind()`, `unbind()`, `delete()`, `isDeleted()`, `getGlBufferId()`. |
 
 ## std140/std430 Alignment Table
@@ -34,6 +34,30 @@ operates at the GLSL compound-type level (mat4, vec4, mat3).
 | INT       | 4         | 4            | 4         | v1: no named write method (deferred to v2)                                   |
 | UINT      | 4         | 4            | 4         | v1: no named write method                                                    |
 | BOOL      | 4         | 4            | 4         | GPU bool is always 32 bits. v1: no named write method                        |
+| IVEC2     | 8         | 8            | 8         | 2-component signed int vector. **Not TBO-compatible** (needs isamplerBuffer) |
+| IVEC3     | 12        | 16           | 16        | 3-component signed int vector. **Not TBO-compatible**                        |
+| IVEC4     | 16        | 16           | 16        | 4-component signed int vector. **Not TBO-compatible**                        |
+| UVEC2     | 8         | 8            | 8         | 2-component unsigned int. Use for bindless handles (ARB_bindless_texture). **Not TBO-compatible** |
+| UVEC3     | 12        | 16           | 16        | 3-component unsigned int. **Not TBO-compatible**                             |
+| UVEC4     | 16        | 16           | 16        | 4-component unsigned int. **Not TBO-compatible**                             |
+| UINT64    | 8         | 8            | 8         | 64-bit unsigned int. Requires ARB_gpu_shader_int64. **Not TBO-compatible**   |
+| INT64     | 8         | 8            | 8         | 64-bit signed int. Requires ARB_gpu_shader_int64. **Not TBO-compatible**     |
+
+### `isTboCompatible()` — TBO path type gate
+
+`CgGpuType.isTboCompatible()` returns `true` only for: FLOAT, VEC2, VEC3, VEC4, MAT3, MAT4.
+
+All other types (INT, UINT, BOOL, IVEC2-4, UVEC2-4, INT64, UINT64) return `false`.
+`CgBufferGlslEmitter.emitTbo()` throws `CgPreprocessorException` for any field whose type
+returns `false`. TBO float path uses `samplerBuffer` + `GL_RGBA32F`; integer types would need
+`isamplerBuffer`/`usamplerBuffer` + `GL_RGBA32I`/`GL_RGBA32UI` — unsupported in v1.
+
+### Why sampler types are absent
+
+`sampler2D`, `sampler2DArray`, etc. are opaque GLSL types — illegal inside buffer blocks per
+GLSL §4.1.7. They are intentionally absent from `CgGpuType` and `CgBufferFormat`. For
+bindless texture handles use `UVEC2` (2 × uint32 = one 64-bit GL handle) or `UINT64`
+(single uint64_t, requires ARB_gpu_shader_int64).
 
 ## Builder Pattern
 
