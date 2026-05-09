@@ -28,7 +28,7 @@ import java.util.Arrays;
  * reallocations while capping worst-case overshoot.</p>
  *
  * <h3>Color packing</h3>
- * <p>{@link #putColorPacked(int)} stores an ABGR-packed int as a float slot via
+ * <p>{@link #putIntBits(int)} stores an ABGR-packed int as a float slot via
  * {@link Float#intBitsToFloat(int)}. This matches the GPU layout when the attribute is
  * {@code GL_UNSIGNED_BYTE × 4} with normalisation enabled.</p>
  */
@@ -75,24 +75,19 @@ public final class CgStagingBuffer implements CgVertexOutput {
      */
     @Override
     public void putFloat(float v) {
-        // Grow lazily: only allocate when we actually run out of space.
-        if (cursor >= data.length) {
-            data = Arrays.copyOf(data, Math.max(data.length * 3 / 2, cursor + 1));
-        }
+        ensureRoomForFloat();
         data[cursor++] = v;
     }
 
     /**
-     * Writes an ABGR-packed int reinterpreted as a float (via {@link Float#intBitsToFloat}).
-     * Used for colour attributes; the GPU reads the four bytes as normalised RGBA.
+     * Writes an int reinterpreted as a float (via {@link Float#intBitsToFloat}).
+     * Used for color attributes and general int packing; the GPU reads the four bytes as normalised RGBA.
      * Auto-grows the backing array if full.
      */
     @Override
-    public void putColorPacked(int abgr) {
-        if (cursor >= data.length) {
-            data = Arrays.copyOf(data, Math.max(data.length * 3 / 2, cursor + 1));
-        }
-        data[cursor++] = Float.intBitsToFloat(abgr);
+    public void putIntBits(int i) {
+        ensureRoomForFloat();
+        data[cursor++] = Float.intBitsToFloat(i);
     }
 
     /**
@@ -136,6 +131,17 @@ public final class CgStagingBuffer implements CgVertexOutput {
 
     // ── Capacity management ───────────────────────────────────────────────────
 
+    /**
+     * Ensures there is room for one more vertex ({@code floatsPerVertex} more floats).
+     * Called by {@link CgVertexWriter#endVertex()} and {@link CgInstanceWriter#endInstance()}
+     * after each record to pre-allocate the next slot.
+     */
+    public void ensureRoomForFloat() {
+        if (cursor >= data.length) {
+            data = Arrays.copyOf(data, Math.max(data.length * 3 / 2, cursor + 1));
+        }
+    }
+    
     /**
      * Ensures there is room for one more vertex ({@code floatsPerVertex} more floats).
      * Called by {@link CgVertexWriter#endVertex()} and {@link CgInstanceWriter#endInstance()}

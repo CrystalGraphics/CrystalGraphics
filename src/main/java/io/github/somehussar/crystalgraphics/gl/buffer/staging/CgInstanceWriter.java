@@ -85,7 +85,7 @@ public final class CgInstanceWriter {
     }
 
     public CgInstanceWriter color(int r, int g, int b, int a) {
-        staging.putColorPacked(CgColorPacking.packNativeOrder(r, g, b, a));
+        staging.putIntBits(CgColorPacking.packNativeOrder(r, g, b, a));
         return this;
     }
 

@@ -22,7 +22,7 @@ awareness of shaders, textures, or render state.
 | `CgVertexWriter` | V1 format-aware `CgVertexConsumer` implementation. Routes fluent calls (vertex/uv/color/normal) to a `CgVertexOutput` based on format attribute semantics. Static factory `forBuffer(ByteBuffer, CgVertexFormat)` enables direct ByteBuffer writes for mesh builders. |
 | `CgInstanceWriter` | Per-instance data writer backed by `CgStagingBuffer`. Fluent API: `mat4(...).color(...).putVec4(...).endInstance()`. `beginInstance()`/`endInstance()` validate stride in DEBUG mode. `mat3()` here is tight 9-float (vertex attribute packing — not std140). |
 | `CgColorPacking` | Utility for packing RGBA components into ABGR int. `packAbgr(r,g,b,a)` is endian-aware. |
-| `CgVertexOutput` | Package-private write target interface. Two methods: `putFloat(float)` and `putColorPacked(int)`. Implemented by `CgStagingBuffer` and `CgStagingByteBuffer`. |
+| `CgVertexOutput` | Package-private write target interface. Two methods: `putFloat(float)` and `putIntBits(int)`. Implemented by `CgStagingBuffer` and `CgStagingByteBuffer`. |
 | `CgStagingByteBuffer` | Package-private `CgVertexOutput` backed by a direct `ByteBuffer`. Used by `CgVertexWriter.forBuffer()`. |
 
 ## mat3 Naming Convention
@@ -44,7 +44,7 @@ CgVertexWriter (implements CgVertexConsumer)
   │  endVertex() writes to staging in FORMAT DECLARATION ORDER
   ▼
 CgStagingBuffer (float[] + cursor)
-  │  putFloat() / putColorPacked()
+  │  putFloat() / putIntBits()
   ▼
 CgBatchRenderer.flush()
   │  reads rawData()/rawCursor()
@@ -80,7 +80,7 @@ absent attributes are auto-skipped. Out-of-order calls throw
 Colors are stored as ABGR-packed integers reinterpreted as floats:
 ```java
 int abgr = ((a & 0xFF) << 24) | ((b & 0xFF) << 16) | ((g & 0xFF) << 8) | (r & 0xFF);
-staging.putColorPacked(abgr);  // Float.intBitsToFloat(abgr)
+staging.putIntBits(abgr);  // Float.intBitsToFloat(abgr)
 ```
 
 This matches the GPU layout when the attribute is `GL_UNSIGNED_BYTE × 4`
@@ -89,7 +89,7 @@ with normalization enabled (4 bytes = 1 float slot in the staging array).
 ## Design Rules
 
 - **No GL calls** — these types are pure CPU. GL upload is `CgBatchRenderer`'s job.
-- **No allocation in hot path** — `putFloat()` / `putColorPacked()` are
+- **No allocation in hot path** — `putFloat()` / `putIntBits()` are
   array writes. Growth only happens at vertex boundaries.
 - **Format declaration order for writes** — `endVertex()` iterates the
   format's attribute array, not the API call order. This ensures the
