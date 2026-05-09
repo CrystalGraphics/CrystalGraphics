@@ -1,11 +1,14 @@
 package io.github.somehussar.crystalgraphics.gl.render;
 
+import io.github.somehussar.crystalgraphics.api.shader.CgShader;
 import io.github.somehussar.crystalgraphics.api.state.CgRenderState;
 import io.github.somehussar.crystalgraphics.api.vertex.CgVertexFormat;
 
 import io.github.somehussar.crystalgraphics.gl.buffer.staging.CgStagingBuffer;
 import io.github.somehussar.crystalgraphics.gl.buffer.staging.CgVertexWriter;
 import org.joml.Matrix4f;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL13;
 
 /**
  * Dynamic-texture render layer that auto-flushes when the active texture changes.
@@ -20,28 +23,59 @@ import org.joml.Matrix4f;
  * which likewise triggers a flush before applying the new state. This supports
  * cases where different text blocks require different shader configurations.</p>
  *
+ * <p>An optional {@link CgShader} can be attached via {@link #setShader}. When set,
+ * the shader is bound before each flush and unbound after — restoring shader binding
+ * that was previously carried by {@code CgRenderState} before T8.</p>
+ *
  * @see CgRenderLayer for fixed-texture layers
  */
 public final class CgDynamicTextureRenderLayer implements CgLayer {
 
     private final String name;
     private CgRenderState state;
+    private CgShader shader;
     private final CgBatchRenderer renderer;
     private final Matrix4f projection = new Matrix4f();
     private int activeTextureId = -1;
     private boolean begun;
 
+    /** Creates a layer without a bound shader (for non-text layers). */
     public static CgDynamicTextureRenderLayer create(String name,
                                                      CgRenderState state,
                                                      CgVertexFormat format,
                                                      int initialMaxQuads) {
-        return new CgDynamicTextureRenderLayer(name, state, CgBatchRenderer.create(format, initialMaxQuads));
+        return new CgDynamicTextureRenderLayer(name, null, state, CgBatchRenderer.create(format, initialMaxQuads));
     }
 
-    private CgDynamicTextureRenderLayer(String name, CgRenderState state, CgBatchRenderer renderer) {
+    /** Creates a layer with an initial shader that is bound/unbound around each flush. */
+    public static CgDynamicTextureRenderLayer create(String name,
+                                                     CgShader shader,
+                                                     CgRenderState state,
+                                                     CgVertexFormat format,
+                                                     int initialMaxQuads) {
+        return new CgDynamicTextureRenderLayer(name, shader, state, CgBatchRenderer.create(format, initialMaxQuads));
+    }
+
+    private CgDynamicTextureRenderLayer(String name, CgShader shader, CgRenderState state, CgBatchRenderer renderer) {
         this.name = name;
+        this.shader = shader;
         this.state = state;
         this.renderer = renderer;
+    }
+
+    /**
+     * Swaps the active shader, flushing any pending geometry first so it renders
+     * under the previous shader. Accepts {@code null} to clear the shader.
+     */
+    public void setShader(CgShader shader) {
+        if (this.shader != shader) {
+            flush();
+            this.shader = shader;
+        }
+    }
+
+    public CgShader getShader() {
+        return shader;
     }
 
     public void setRenderState(CgRenderState state) {
@@ -75,9 +109,19 @@ public final class CgDynamicTextureRenderLayer implements CgLayer {
     @Override
     public void flush() {
         if (!begun || !renderer.isDirty()) return;
-        state.apply(projection, activeTextureId);
+        if (shader != null) shader.bind();
+        if (activeTextureId >= 0) {
+            GL13.glActiveTexture(GL13.GL_TEXTURE0);
+            GL11.glBindTexture(GL11.GL_TEXTURE_2D, activeTextureId);
+        }
+        state.apply();
         renderer.flush();
         state.clear();
+        if (shader != null) shader.unbind();
+        if (activeTextureId >= 0) {
+            GL13.glActiveTexture(GL13.GL_TEXTURE0);
+            GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+        }
     }
 
     @Override

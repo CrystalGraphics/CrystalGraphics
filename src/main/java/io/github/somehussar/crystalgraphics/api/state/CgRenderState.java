@@ -1,90 +1,87 @@
 package io.github.somehussar.crystalgraphics.api.state;
 
-import io.github.somehussar.crystalgraphics.api.shader.CgShader;
-
-import org.joml.Matrix4f;
-
 /**
  * Immutable composite render state assembled from typed slots.
  *
- * <p>One {@code CgRenderState} per render layer. Each slot (blend, depth, cull,
- * texture) is an independently shareable object — the same {@link CgBlendState#ALPHA}
- * instance can be used across multiple render states.</p>
+ * <p>One {@code CgRenderState} per render layer or material pass. Each slot (blend,
+ * depth, cull, stencil) is an independently shareable object — the same
+ * {@link CgBlendState#ALPHA} instance can be used across multiple render states.</p>
  *
  * <h3>Apply/Clear Contract</h3>
- * <p>{@link #apply(Matrix4f)} binds the shader, sets the projection uniform, binds
- * the texture (if any), and enables blend/depth/cull state. {@link #clear()} reverses
- * all state changes in reverse order: disables cull, disables depth, disables blend,
- * unbinds texture, and unbinds the shader. This bracketed apply/clear pattern ensures
- * no GL state leaks between layers.</p>
+ * <p>{@link #apply()} enables blend/depth/cull/stencil state for the current pass.
+ * {@link #clear()} reverses all state changes: disables cull, resets depth (test off,
+ * write on, func GL_LESS), disables blend and resets equations, and disables stencil.
+ * This bracketed apply/clear pattern prevents GL state leaks between passes.</p>
  *
- * <p>The render state does <strong>not</strong> own the shader or texture — it holds
- * references and delegates lifecycle to the caller.</p>
+ * <p>The render state does <strong>not</strong> own shaders or textures — those are
+ * the caller's responsibility.</p>
  *
  * @see CgBlendState
  * @see CgDepthState
  * @see CgCullState
- * @see CgTextureState
+ * @see CgStencilState
  */
 public final class CgRenderState {
 
-    private final CgShader shader;
+    /**
+     * Default opaque-geometry state: blend disabled, depth test+write (LEqual),
+     * back-face culling, stencil disabled.
+     */
+    public static final CgRenderState DEFAULT = builder().build();
+
     private final CgBlendState blend;
     private final CgDepthState depth;
     private final CgCullState cull;
-    private final CgTextureState texture;
-    private final String projectionUniform;
+    private final CgStencilState stencil;
 
     private CgRenderState(Builder b) {
-        this.shader = b.shader;
-        this.blend = b.blend != null ? b.blend : CgBlendState.ALPHA;
-        this.depth = b.depth != null ? b.depth : CgDepthState.TEST_WRITE;
-        this.cull = b.cull != null ? b.cull : CgCullState.NONE;
-        this.texture = b.texture != null ? b.texture : CgTextureState.none();
-        this.projectionUniform = b.projectionUniform != null ? b.projectionUniform : "u_projection";
+        this.blend   = b.blend   != null ? b.blend   : CgBlendState.DISABLED;
+        this.depth   = b.depth   != null ? b.depth   : CgDepthState.TEST_WRITE;
+        this.cull    = b.cull    != null ? b.cull    : CgCullState.BACK;
+        this.stencil = b.stencil != null ? b.stencil : CgStencilState.DISABLED;
     }
 
-    public void apply(Matrix4f projection) {
-        apply(projection, -1);
-    }
-
-    public void apply(Matrix4f projection, int overrideTextureId) {
-        if (!shader.isCompiled()) return;
-        
-        shader.applyBindings(b -> b.mat4(projectionUniform, projection)).bind();
-        texture.apply(shader, overrideTextureId);
+    /**
+     * Applies all state slots to the current GL context: blend, depth, cull, stencil.
+     */
+    public void apply() {
         blend.apply();
         depth.apply();
         cull.apply();
+        stencil.apply();
     }
 
+    /**
+     * Restores all slots to GL defaults: blend disabled (equations reset), depth test
+     * disabled (write on, func GL_LESS), cull disabled, stencil disabled.
+     */
     public void clear() {
-        cull.clear();
+        CgBlendState.clearToDefault();
         depth.clear();
-        CgBlendState.DISABLED.apply();
-        texture.clear();
-        shader.unbind();
+        cull.clear();
+        CgStencilState.DISABLED.apply();
     }
 
-    public CgShader getShader() { return shader; }
+    public CgBlendState   getBlend()   { return blend; }
+    public CgDepthState   getDepth()   { return depth; }
+    public CgCullState    getCull()    { return cull; }
+    public CgStencilState getStencil() { return stencil; }
 
-    public static Builder builder(CgShader shader) { return new Builder(shader); }
+    /** Returns a builder with default values: blend=DISABLED, depth=TEST_WRITE, cull=BACK, stencil=DISABLED. */
+    public static Builder builder() { return new Builder(); }
 
     public static final class Builder {
-        private final CgShader shader;
-        private CgBlendState blend;
-        private CgDepthState depth;
-        private CgCullState cull;
-        private CgTextureState texture;
-        private String projectionUniform;
+        private CgBlendState   blend;
+        private CgDepthState   depth;
+        private CgCullState    cull;
+        private CgStencilState stencil;
 
-        private Builder(CgShader shader) { this.shader = shader; }
+        private Builder() {}
 
-        public Builder blend(CgBlendState blend) { this.blend = blend; return this; }
-        public Builder depth(CgDepthState depth) { this.depth = depth; return this; }
-        public Builder cull(CgCullState cull) { this.cull = cull; return this; }
-        public Builder texture(CgTextureState texture) { this.texture = texture; return this; }
-        public Builder projectionUniform(String projectionUniform) { this.projectionUniform = projectionUniform; return this; }
-        public CgRenderState build() { return new CgRenderState(this); }
+        public Builder blend(CgBlendState blend)     { this.blend   = blend;   return this; }
+        public Builder depth(CgDepthState depth)     { this.depth   = depth;   return this; }
+        public Builder cull(CgCullState cull)        { this.cull    = cull;    return this; }
+        public Builder stencil(CgStencilState s)     { this.stencil = s;       return this; }
+        public CgRenderState build()                 { return new CgRenderState(this); }
     }
 }
