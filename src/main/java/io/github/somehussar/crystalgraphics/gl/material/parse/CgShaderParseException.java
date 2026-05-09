@@ -1,4 +1,4 @@
-package io.github.somehussar.crystalgraphics.gl.material;
+package io.github.somehussar.crystalgraphics.gl.material.parse;
 
 /**
  * Thrown by {@link CgShaderParser} when a {@code .shader} source file

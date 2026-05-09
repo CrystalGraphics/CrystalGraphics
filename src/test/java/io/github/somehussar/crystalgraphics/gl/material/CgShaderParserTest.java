@@ -1,5 +1,8 @@
 package io.github.somehussar.crystalgraphics.gl.material;
 
+import io.github.somehussar.crystalgraphics.gl.material.parse.CgParsedShader;
+import io.github.somehussar.crystalgraphics.gl.material.parse.CgShaderParseException;
+import io.github.somehussar.crystalgraphics.gl.material.parse.CgShaderParser;
 import org.junit.Test;
 
 import java.util.List;

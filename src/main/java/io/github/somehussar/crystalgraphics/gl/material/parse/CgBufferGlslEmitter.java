@@ -1,4 +1,4 @@
-package io.github.somehussar.crystalgraphics.gl.material;
+package io.github.somehussar.crystalgraphics.gl.material.parse;
 
 import io.github.somehussar.crystalgraphics.api.buffer.CgBufferField;
 import io.github.somehussar.crystalgraphics.api.buffer.CgBufferFormat;
