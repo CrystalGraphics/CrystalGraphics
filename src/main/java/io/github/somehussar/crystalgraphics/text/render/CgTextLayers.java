@@ -5,9 +5,9 @@ import io.github.somehussar.crystalgraphics.api.vertex.CgVertexFormat;
 import io.github.somehussar.crystalgraphics.gl.render.CgDynamicTextureRenderLayer;
 import io.github.somehussar.crystalgraphics.gl.render.CgLayer;
 import io.github.somehussar.crystalgraphics.api.state.CgRenderState;
-import io.github.somehussar.crystalgraphics.api.state.CgTextureState;
 import io.github.somehussar.crystalgraphics.api.state.CgBlendState;
-import org.lwjgl.opengl.GL11;
+import io.github.somehussar.crystalgraphics.api.state.CgCullState;
+import io.github.somehussar.crystalgraphics.api.state.CgDepthState;
 
 /**
  * Cg-owned text render layer factory and typed key holder.
@@ -77,10 +77,11 @@ public final class CgTextLayers {
      */
     public static CgDynamicTextureRenderLayer msdf(CgShader shader) {
         return CgDynamicTextureRenderLayer.create(
-            "cg:text_msdf",
-            CgRenderState.builder(shader)
+            "cg:text_msdf", shader,
+            CgRenderState.builder()
                 .blend(CgBlendState.ALPHA)
-                .texture(CgTextureState.dynamic(GL11.GL_TEXTURE_2D, 0, "u_atlas"))
+                .cull(CgCullState.NONE)
+                .depth(CgDepthState.NONE)
                 .build(),
             CgVertexFormat.POS2_UV2_COL4UB,
             4096
@@ -99,10 +100,11 @@ public final class CgTextLayers {
      */
     public static CgDynamicTextureRenderLayer bitmap(CgShader shader) {
         return CgDynamicTextureRenderLayer.create(
-            "cg:text_bitmap",
-            CgRenderState.builder(shader)
+            "cg:text_bitmap", shader,
+            CgRenderState.builder()
                 .blend(CgBlendState.ALPHA)
-                .texture(CgTextureState.dynamic(GL11.GL_TEXTURE_2D, 0, "u_atlas"))
+                .cull(CgCullState.NONE)
+                .depth(CgDepthState.NONE)
                 .build(),
             CgVertexFormat.POS2_UV2_COL4UB,
             4096

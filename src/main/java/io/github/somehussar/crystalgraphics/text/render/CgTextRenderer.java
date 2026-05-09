@@ -10,13 +10,13 @@ import io.github.somehussar.crystalgraphics.api.text.CgTextLayout;
 import io.github.somehussar.crystalgraphics.api.vertex.CgVertexConsumer;
 import io.github.somehussar.crystalgraphics.gl.render.CgDynamicTextureRenderLayer;
 import io.github.somehussar.crystalgraphics.api.state.CgRenderState;
-import io.github.somehussar.crystalgraphics.api.state.CgTextureState;
 import io.github.somehussar.crystalgraphics.api.state.CgBlendState;
+import io.github.somehussar.crystalgraphics.api.state.CgCullState;
+import io.github.somehussar.crystalgraphics.api.state.CgDepthState;
 import io.github.somehussar.crystalgraphics.gl.shader.CgShaderFactory;
 import io.github.somehussar.crystalgraphics.api.vertex.CgVertexFormat;
 import io.github.somehussar.crystalgraphics.text.cache.CgFontRegistry;
 import org.joml.Matrix4f;
-import org.lwjgl.opengl.GL11;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -116,19 +116,22 @@ public class CgTextRenderer {
     private static final String MTSDF_VERT = "/shader/mtsdf_text.vert", MTSDF_FRAG = "/shader/mtsdf_text.frag";
     public static final CgShader MTSDF_SHADER = CgShaderFactory.load(MTSDF_VERT, MTSDF_FRAG, CgVertexFormat.POS2_UV2_COL4UB);
 
-    private static final CgRenderState BITMAP_LAYER_STATE = CgRenderState.builder(BITMAP_SHADER)
+    private static final CgRenderState BITMAP_LAYER_STATE = CgRenderState.builder()
             .blend(CgBlendState.ALPHA)
-            .texture(CgTextureState.dynamic(GL11.GL_TEXTURE_2D, 0, "u_atlas"))
+            .cull(CgCullState.NONE)
+            .depth(CgDepthState.NONE)
             .build();
 
-    private static final CgRenderState MSDF_LAYER_STATE = CgRenderState.builder(MSDF_SHADER)
+    private static final CgRenderState MSDF_LAYER_STATE = CgRenderState.builder()
             .blend(CgBlendState.ALPHA)
-            .texture(CgTextureState.dynamic(GL11.GL_TEXTURE_2D, 0, "u_atlas"))
+            .cull(CgCullState.NONE)
+            .depth(CgDepthState.NONE)
             .build();
 
-    private static final CgRenderState MTSDF_LAYER_STATE = CgRenderState.builder(MTSDF_SHADER)
+    private static final CgRenderState MTSDF_LAYER_STATE = CgRenderState.builder()
             .blend(CgBlendState.ALPHA)
-            .texture(CgTextureState.dynamic(GL11.GL_TEXTURE_2D, 0, "u_atlas"))
+            .cull(CgCullState.NONE)
+            .depth(CgDepthState.NONE)
             .build();
     
     // ══════════════════════════════════════════════════════════════════════════════════════════
@@ -605,16 +608,18 @@ public class CgTextRenderer {
             if (currentKey == null || !thisKey.equals(currentKey)) {
                 CgRenderState renderState = thisKey.isMtsdf() ? MTSDF_LAYER_STATE
                         : thisKey.isDistanceField() ? MSDF_LAYER_STATE : BITMAP_LAYER_STATE;
+
+                // Resolve the shader for this batch key's atlas type and apply
+                // per-batch uniforms via ephemeral bindings. These bindings are
+                // consumed when the layer's shader is applied at the next flush.
+                CgShader shader = thisKey.isMtsdf() ? MTSDF_SHADER
+                        : thisKey.isDistanceField() ? MSDF_SHADER : BITMAP_SHADER;
+                textLayer.setShader(shader);
                 textLayer.setRenderState(renderState);
 
                 // Set texture on the dynamic layer — triggers flush if texture changed
                 textLayer.setTexture(thisKey.getTextureId());
 
-                // Resolve the shader for this batch key's atlas type and apply
-                // per-batch uniforms via ephemeral bindings. These bindings are
-                // consumed when the layer's CgRenderState applies the shader at
-                // the next flush.
-                CgShader shader = renderState.getShader();
                 shader.applyBindings(bi -> {
                     bi.mat4("u_modelview", modelView);
                     bi.mat4("u_projection", context.getProjection());

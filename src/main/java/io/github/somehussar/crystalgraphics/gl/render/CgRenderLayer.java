@@ -50,7 +50,7 @@ public final class CgRenderLayer implements CgLayer {
     @Override
     public void flush() {
         if (!begun || !renderer.isDirty()) return;
-        state.apply(projection);
+        state.apply();
         renderer.flush();
         state.clear();
     }

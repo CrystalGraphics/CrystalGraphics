@@ -4,10 +4,10 @@
 
 ## What This Package Is
 
-Immutable render state descriptors used by the batch rendering layer system.
-Each class represents one GL state slot (depth, cull, texture, or the
-composite render state). These are pure policy objects — they know what GL
-state to set, but they don't own shaders, textures, or GPU resources.
+Immutable render state descriptors used by the batch rendering layer system and
+the CrystalShader material pipeline. Each class represents one GL state slot
+(blend, depth, cull, stencil, or texture). These are pure policy objects — they
+know what GL state to set, but they don't own shaders, textures, or GPU resources.
 
 Also contains `CgGlSlot`, the enum used by the GL state save/restore framework.
 
@@ -29,57 +29,49 @@ See `gl/state/AGENTS.md` for the full save/restore framework documentation.
 
 ## Type Map
 
-| Type             | Role                                                                                                                                                                       |
-|------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `CgRenderState`  | Immutable composite: shader ref + blend + depth + cull + texture slots. `apply(projection)` sets all GL state; `clear()` restores defaults. One instance per render layer. |
-| `CgDepthState`   | Depth test + depth write policy. Pre-defined: `NONE`, `TEST_ONLY`, `TEST_WRITE`.                                                                                           |
-| `CgBlendState`   | Blend policy + blend func policy. Pre-defined: `DISABLED`, `ALPHA`, `PREMULTIPLIED_ALPHA`, `ADDITIVE`.                                                                     |
-| `CgCullState`    | Face culling policy. Pre-defined: `NONE`, `BACK`, `FRONT`.                                                                                                                 |
-| `CgTextureState` | Texture-bind policy with three modes: `none()` (no texture), `fixed(target, id, unit, sampler)` / `fixed(CgTexture, unit, sampler)` (static atlas), `dynamic(target, unit, sampler)` (texture ID per-flush). |
+| Type             | Role |
+|------------------|------|
+| `CgRenderState`  | Immutable composite: blend + depth + cull + stencil slots. `apply()` applies all slots; `clear()` restores GL defaults. One instance per render layer or material pass. `DEFAULT` constant = blend disabled, depth TEST_WRITE, cull BACK, stencil DISABLED. |
+| `CgDepthState`   | Depth test + depth write + compare function. Pre-defined: `NONE`, `TEST_ONLY`, `TEST_WRITE`, `TEST_WRITE_EQUAL`, `TEST_WRITE_ALWAYS`. |
+| `CgBlendState`   | Blend policy + blend equations. Pre-defined: `DISABLED`, `ALPHA`, `PREMULTIPLIED_ALPHA`, `ADDITIVE`, `MULTIPLY`. Static `clearToDefault()` for use by `CgRenderState.clear()`. |
+| `CgCullState`    | Face culling policy. Pre-defined: `NONE`, `BACK`, `FRONT`. |
+| `CgStencilState` | Stencil test policy. Pre-defined: `DISABLED`. `apply()` dispatches `glStencilFunc/Mask/Op`; `clear()` disables stencil and resets write mask. |
+| `CgTextureState` | Texture-bind policy with three modes: `none()`, `fixed(target, id, unit, sampler)` / `fixed(CgTexture, unit, sampler)`, `dynamic(target, unit, sampler)`. Not part of `CgRenderState` — caller's responsibility. |
 
-## Relationship to `CgBlendState`
+## `CgRenderState` — Shader and Texture Coupling Removed (T8)
 
-`CgBlendState` lives in `gl/pass/` (it predates the batch layer system and is
-shared by the render pass system). `CgRenderState` references it as a slot but
-does not duplicate or re-export it.
+`CgRenderState` no longer holds a `CgShader` reference, texture binding, or projection uniform.
+It is a **pure GL state descriptor** — blend, depth, cull, stencil only.
 
-## Relationship to `CgTexture`
-
-`CgTextureState.fixed` accepts either a raw `(target, textureId)` pair or a
-`CgTexture` instance from `api/texture/`. The state object only references the
-texture by id; lifecycle remains the caller's responsibility. The previous
-`CgTextureBinding` value type has been removed — its (target, id) role is now
-inlined into the `CgTextureState` record itself.
+- `builder()` takes no shader argument.
+- `apply()` takes no parameters — just applies the four state slots.
+- `clear()` restores all four slots to GL defaults.
+- Shader binding, texture binding, and projection uniforms are the **caller's responsibility**.
 
 ## Ownership Model
 
-- Slots are **shareable**: the same `CgDepthState.NONE` instance can be used
-  by many `CgRenderState` builders.
-- `CgRenderState` does **not own** the shader or texture — it holds references.
-  Lifecycle management of shaders/textures is the caller's responsibility.
+- Slots are **shareable**: the same `CgDepthState.NONE` instance can be used by many render states.
 - Slot objects are immutable and allocation-free after construction.
 
 ## Apply/Clear Contract
 
-Every `CgRenderState.apply(projection)`:
-1. Binds shader (with projection uniform)
-2. Binds texture (if any)
-3. Applies blend, depth, cull
+Every `CgRenderState.apply()`:
+1. Applies blend (enable/disable + func + equations)
+2. Applies depth (test enable/disable + write mask + compare func)
+3. Applies cull (enable/disable + face)
+4. Applies stencil (enable/disable + func + mask + ops)
 
 Every `CgRenderState.clear()`:
-1. Disables cull
-2. Disables depth
-3. Disables blend (`CgBlendState.DISABLED.apply()`)
-4. Unbinds texture
-5. Unbinds shader
+1. `CgBlendState.clearToDefault()` — disable blend, reset equations to GL_FUNC_ADD
+2. `depth.clear()` — disable depth test, write=true, func=GL_LESS
+3. `cull.clear()` — disable cull face
+4. `CgStencilState.DISABLED.apply()` — disable stencil test
 
-This bracketed pattern prevents GL state leaks between render layers.
+This bracketed pattern prevents GL state leaks between render layers and material passes.
 
 ## Design Rules
 
 - **Never add GL resource ownership** to these types. They are descriptors.
 - **Never add mutable state** — all fields are final.
-- **Prefer pre-defined constants** for depth/cull. Custom instances are allowed
-  but should be rare.
-- **CgTextureState.dynamic** requires the overrideTextureId to be supplied at
-  `apply()` time by the owning layer (e.g. `CgDynamicTextureRenderLayer`).
+- **No shader or texture references** in `CgRenderState` — removed in T8.
+- **Prefer pre-defined constants** for depth/cull/stencil. Custom instances allowed but rare.
