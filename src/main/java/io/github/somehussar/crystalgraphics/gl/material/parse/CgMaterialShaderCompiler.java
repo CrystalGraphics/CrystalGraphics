@@ -297,17 +297,15 @@ public final class CgMaterialShaderCompiler {
         // Step 7: Global declarations (code lines only — directives emitted above)
         appendGlobalDecls(sb, codeLines);
 
-        // Step 8: fragment color output
-        sb.append("out vec4 _cg_fragColor;\n");
+        // Step 8: fragment output declarations (single-output or MRT)
+        appendFragmentOutputDeclarations(sb, parsed);
 
         // Step 9: User fragment function
         sb.append("// User fragment function\n");
-        sb.append("void fragment(in v2f i, out vec4 fragColor) {\n")
-          .append(parsed.fragmentBody()).append("\n")
-          .append("}\n");
+        appendFragmentUserFunction(sb, parsed);
 
         // Step 10: Generated main()
-        appendFragmentMain(sb, v2fFields);
+        appendFragmentMain(sb, v2fFields, parsed);
 
         return sb.toString();
     }
@@ -432,14 +430,53 @@ public final class CgMaterialShaderCompiler {
         sb.append("}\n");
     }
 
-    private static void appendFragmentMain(StringBuilder sb, List<CgShaderParser.V2fField> fields) {
+    private static void appendFragmentOutputDeclarations(StringBuilder sb, CgParsedShader parsed) {
+        if (!parsed.fragOutput().isMrt()) {
+            sb.append("out vec4 _cg_fragColor;\n");
+        } else {
+            List<String> fieldNames = parsed.fragOutput().fieldNames();
+            List<Integer> locations = parsed.fragOutput().locations();
+            for (int i = 0; i < fieldNames.size(); i++) {
+                int loc = locations.get(i);
+                sb.append("layout(location = ").append(loc).append(") out vec4 _cg_RT").append(loc).append(";\n");
+            }
+        }
+    }
+
+    private static void appendFragmentUserFunction(StringBuilder sb, CgParsedShader parsed) {
+        if (!parsed.fragOutput().isMrt()) {
+            sb.append("void fragment(in v2f i, out vec4 ")
+              .append(parsed.fragOutput().outParamName()).append(") {\n")
+              .append(parsed.fragmentBody()).append("\n")
+              .append("}\n");
+        } else {
+            sb.append("void fragment(in v2f i, out ").append(parsed.fragOutput().mrtStructName())
+              .append(" ").append(parsed.fragOutput().outParamName()).append(") {\n")
+              .append(parsed.fragmentBody()).append("\n")
+              .append("}\n");
+        }
+    }
+
+    private static void appendFragmentMain(StringBuilder sb, List<CgShaderParser.V2fField> fields,
+                                            CgParsedShader parsed) {
         sb.append("void main() {\n");
         sb.append("  v2f _v2f_local;\n");
         for (CgShaderParser.V2fField f : fields) {
             sb.append("  _v2f_local.").append(f.name())
               .append(" = _cg_v2f.").append(f.name()).append(";\n");
         }
-        sb.append("  fragment(_v2f_local, _cg_fragColor);\n");
+        if (!parsed.fragOutput().isMrt()) {
+            sb.append("  fragment(_v2f_local, _cg_fragColor);\n");
+        } else {
+            sb.append("  ").append(parsed.fragOutput().mrtStructName()).append(" _cg_mrtOut;\n");
+            sb.append("  fragment(_v2f_local, _cg_mrtOut);\n");
+            List<String> fieldNames = parsed.fragOutput().fieldNames();
+            List<Integer> locations = parsed.fragOutput().locations();
+            for (int i = 0; i < fieldNames.size(); i++) {
+                int loc = locations.get(i);
+                sb.append("  _cg_RT").append(loc).append(" = _cg_mrtOut.").append(fieldNames.get(i)).append(";\n");
+            }
+        }
         sb.append("}\n");
     }
 }

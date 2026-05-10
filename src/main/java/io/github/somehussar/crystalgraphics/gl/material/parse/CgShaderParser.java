@@ -100,10 +100,29 @@ public final class CgShaderParser {
             globalDecls = preamble + (globalDecls.isEmpty() ? "" : "\n" + globalDecls);
         }
 
+        CgFragOutputParser.FragOutput fragOutput = CgFragOutputParser.parse(source, resourcePath);
+
+        if (fragOutput.isMrt()) {
+            String annotatedPattern = "struct " + fragOutput.mrtStructName() + " {";
+            int structStart = globalDecls.indexOf(annotatedPattern);
+            if (structStart >= 0) {
+                int braceOpen = globalDecls.indexOf('{', structStart);
+                int braceClose = CgStructureParser.matchBrace(globalDecls, braceOpen);
+                int semiIdx = globalDecls.indexOf(';', braceClose);
+                int declEnd = semiIdx >= 0 ? semiIdx + 1 : braceClose + 1;
+                String cleanStruct = "struct " + fragOutput.mrtStructName() + " {\n"
+                        + fragOutput.mrtStructBody() + "};";
+                globalDecls = globalDecls.substring(0, structStart) + cleanStruct
+                        + globalDecls.substring(declEnd);
+            }
+        }
+
         return new CgParsedShader(shaderType, properties, v2fBody, globalDecls,
                 vertexBody, fragmentBody,
                 CgRenderStateParser.parse(source, resourcePath),
-                CgQueueParser.parse(source, resourcePath));
+                CgQueueParser.parse(source, resourcePath),
+                fragOutput,
+                Collections.emptyList());
     }
 
     /**
