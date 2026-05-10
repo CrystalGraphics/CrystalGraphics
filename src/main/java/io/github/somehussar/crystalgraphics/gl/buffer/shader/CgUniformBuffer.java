@@ -109,6 +109,18 @@ public final class CgUniformBuffer extends CgShaderBuffer {
         uploadData(writer().rawData(), floatCount);
     }
 
+    /**
+     * Updates the format descriptor and resets the CPU-side writer staging buffer.
+     * Called by {@code CgMaterial.recompile()} when the properties layout changes
+     * between hot-reloads (e.g., properties added or removed).
+     *
+     * @param newFormat the updated buffer format to apply
+     */
+    public void resetFormat(CgBufferFormat newFormat) {
+        super.resetFormat(newFormat);
+        writer.resetFormat(newFormat);
+    }
+
     @Override
     protected void bindInternal() {
         GL30.glBindBufferBase(GL31.GL_UNIFORM_BUFFER, bindingLocation, getGlBufferId());

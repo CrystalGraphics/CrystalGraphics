@@ -594,4 +594,87 @@ public class CgShaderParserTest {
         assertEquals("_MainTex", mainTex.getName());
         assertNull("Default value must be null when not specified", mainTex.getRawDefault());
     }
+
+    // ── Additional edge-case tests ─────────────────────────────────────────────
+
+    @Test
+    public void testOldStyleIntPropertyParsed() {
+        // Old colon-style: _N : int = 42
+        String src =
+            "#type spatial\n" +
+            "Properties {\n" +
+            "    _N : int = 42\n" +
+            "}\n" +
+            "struct v2f {\n    vec2 uv;\n};\n" +
+            "void vertex(out v2f o) {}\n" +
+            "void fragment(in v2f i, out vec4 fragColor) {}\n";
+        CgParsedShader parsed = CgShaderParser.parse(src);
+        assertEquals(1, parsed.properties().size());
+        assertEquals("_N", parsed.properties().get(0).getName());
+        assertEquals(CgMaterialProperty.Type.INT, parsed.properties().get(0).getType());
+    }
+
+    @Test
+    public void testOldStyleSamplerCubePropertyParsed() {
+        String src =
+            "#type spatial\n" +
+            "Properties {\n" +
+            "    _Sky : samplerCube\n" +
+            "}\n" +
+            "struct v2f {\n    vec2 uv;\n};\n" +
+            "void vertex(out v2f o) {}\n" +
+            "void fragment(in v2f i, out vec4 fragColor) {}\n";
+        CgParsedShader parsed = CgShaderParser.parse(src);
+        assertEquals(CgMaterialProperty.Type.SAMPLER_CUBE, parsed.properties().get(0).getType());
+    }
+
+    @Test
+    public void testOldStyleSampler2DArrayPropertyParsed() {
+        String src =
+            "#type spatial\n" +
+            "Properties {\n" +
+            "    _TexArr : sampler2DArray\n" +
+            "}\n" +
+            "struct v2f {\n    vec2 uv;\n};\n" +
+            "void vertex(out v2f o) {}\n" +
+            "void fragment(in v2f i, out vec4 fragColor) {}\n";
+        CgParsedShader parsed = CgShaderParser.parse(src);
+        assertEquals(CgMaterialProperty.Type.SAMPLER2D_ARRAY, parsed.properties().get(0).getType());
+    }
+
+    @Test
+    public void testThrowsOnUnknownRenderStateKey() {
+        String src =
+            "#type spatial\n" +
+            "RenderState { UnknownGarbage foo }\n" +
+            "struct v2f {\n    vec2 uv;\n};\n" +
+            "void vertex(out v2f o) {}\n" +
+            "void fragment(in v2f i, out vec4 fragColor) {}\n";
+        try {
+            CgShaderParser.parse(src);
+            fail("Expected CgShaderParseException for unknown RenderState key");
+        } catch (io.github.somehussar.crystalgraphics.gl.material.parse.CgShaderParseException e) {
+            assertTrue("Error should mention the unknown key",
+                e.getMessage().contains("UnknownGarbage") ||
+                e.getMessage().toLowerCase().contains("unknown") ||
+                e.getMessage().toLowerCase().contains("unexpected"));
+        }
+    }
+
+    @Test
+    public void testPropertyCommentsSkipped() {
+        // Lines starting with // inside Properties block should be silently ignored
+        String src =
+            "#type spatial\n" +
+            "Properties {\n" +
+            "    // This is a comment\n" +
+            "    _Alpha : float = 1.0\n" +
+            "}\n" +
+            "struct v2f {\n    vec2 uv;\n};\n" +
+            "void vertex(out v2f o) {}\n" +
+            "void fragment(in v2f i, out vec4 fragColor) {}\n";
+        CgParsedShader parsed = CgShaderParser.parse(src);
+        assertEquals("Comment line must not produce a property", 1, parsed.properties().size());
+        assertEquals("_Alpha", parsed.properties().get(0).getName());
+    }
 }

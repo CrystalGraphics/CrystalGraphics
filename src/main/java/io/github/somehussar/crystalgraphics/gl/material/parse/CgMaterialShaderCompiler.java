@@ -4,6 +4,7 @@ import com.github.bsideup.jabel.Desugar;
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
 import io.github.somehussar.crystalgraphics.api.material.CgAttachedBuffer;
 import io.github.somehussar.crystalgraphics.api.shader.CgPreprocessorException;
+import io.github.somehussar.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 import io.github.somehussar.crystalgraphics.gl.material.CgMaterialProperty;
 
 import java.util.LinkedHashSet;
@@ -69,7 +70,7 @@ public final class CgMaterialShaderCompiler {
      * the {@code cg_env.glsl} include before passing to
      * {@link io.github.somehussar.crystalgraphics.gl.shader.CgShaderFactory#fromSource}.</p>
      *
-     * @param parsed          structural parse result from {@link CgShaderParser#parse(String)}
+     * @param parsed           structural parse result from {@link CgShaderParser#parse(String)}
      * @param shaderBufferPath which GPU path is active; drives {@code #version} selection and
      *                         the {@code CG_USE_SSBO} define
      * @param attachedBuffers  user-defined SSBO/TBO and UBO buffers to inject (may be empty);
@@ -81,6 +82,37 @@ public final class CgMaterialShaderCompiler {
     public static CompiledSource compile(CgParsedShader parsed,
                                          CgCapabilities.ShaderBufferPath shaderBufferPath,
                                          List<CgAttachedBuffer> attachedBuffers) {
+        return compile(parsed, shaderBufferPath, attachedBuffers, null);
+    }
+
+    /**
+     * Compiles a {@link CgParsedShader} into GLSL vertex + fragment source strings,
+     * optionally injecting the engine-managed material properties UBO block.
+     *
+     * <p>When {@code matPropsEntry} is non-null, a {@code layout(std140) uniform CgMaterialBlock { ... };}
+     * block is emitted before the user-attached buffers. Non-sampler properties that were previously
+     * emitted as individual {@code uniform} declarations are now placed in this UBO block instead;
+     * only sampler properties ({@code sampler2D}, {@code sampler2DArray}, {@code sampler3D},
+     * {@code samplerCube}) continue to emit individual {@code uniform samplerXxx name;} declarations.</p>
+     *
+     * <p>The {@code matPropsEntry} is <em>not</em> added to {@code attachedBuffers} — it is an
+     * engine-internal buffer wired separately via {@code CgBindingPoints.MATERIAL_PROPERTIES_UBO}
+     * and must not be exposed to user-attached-buffer logic.</p>
+     *
+     * @param parsed           structural parse result from {@link CgShaderParser#parse(String)}
+     * @param shaderBufferPath which GPU path is active; drives {@code #version} selection and
+     *                         the {@code CG_USE_SSBO} define
+     * @param attachedBuffers  user-defined SSBO/TBO and UBO buffers to inject (may be empty)
+     * @param matPropsEntry    engine-managed material properties UBO entry, or {@code null} for
+     *                         sampler-only shaders or when no non-sampler properties are present
+     * @return a {@link CompiledSource} holding the complete vertex and fragment sources
+     * @throws IllegalArgumentException if {@code shaderBufferPath} is {@code NONE}
+     * @throws CgPreprocessorException  if a TBO-path buffer contains incompatible field types
+     */
+    public static CompiledSource compile(CgParsedShader parsed,
+                                         CgCapabilities.ShaderBufferPath shaderBufferPath,
+                                         List<CgAttachedBuffer> attachedBuffers,
+                                         CgUniformBuffer matPropsEntry) {
         if (shaderBufferPath == CgCapabilities.ShaderBufferPath.NONE) {
             throw new IllegalArgumentException(
                     "Cannot compile material shader: ShaderBufferPath is NONE (GL 3.3+ required)");
@@ -112,9 +144,9 @@ public final class CgMaterialShaderCompiler {
         List<CgShaderParser.V2fField> v2fFields = CgShaderParser.parseV2fFields(parsed);
 
         String vertexSource = buildVertexSource(parsed, properties, v2fFields, useSsbo,
-                shaderBufferPath, attachedBuffers, requiredExtensions);
+                shaderBufferPath, attachedBuffers, requiredExtensions, matPropsEntry);
         String fragmentSource = buildFragmentSource(parsed, properties, v2fFields, useSsbo,
-                shaderBufferPath, attachedBuffers, requiredExtensions);
+                shaderBufferPath, attachedBuffers, requiredExtensions, matPropsEntry);
 
         return new CompiledSource(vertexSource, fragmentSource);
     }
@@ -145,7 +177,8 @@ public final class CgMaterialShaderCompiler {
                                              boolean useSsbo,
                                              CgCapabilities.ShaderBufferPath shaderBufferPath,
                                              List<CgAttachedBuffer> attachedBuffers,
-                                             Set<String> requiredExtensions) {
+                                             Set<String> requiredExtensions,
+                                             CgUniformBuffer matPropsEntry) {
         StringBuilder sb = new StringBuilder(1024);
 
         // Step 1: #version
@@ -166,8 +199,13 @@ public final class CgMaterialShaderCompiler {
 
         sb.append("#include \"").append(ENV_INCLUDE).append("\"\n");
 
-        // Step 5: Property uniform declarations
+        // Step 5: Property uniform declarations (sampler types only; non-sampler go into CgMaterialBlock UBO)
         appendPropertyUniforms(sb, properties);
+
+        // Material properties UBO (CgMaterialBlock) — emitted before user-attached buffers
+        if (matPropsEntry != null) {
+            sb.append(CgBufferGlslEmitter.emitUbo(matPropsEntry)).append('\n');
+        }
 
         appendAttachedBuffers(sb, attachedBuffers, shaderBufferPath);
 
@@ -220,7 +258,8 @@ public final class CgMaterialShaderCompiler {
                                                boolean useSsbo,
                                                CgCapabilities.ShaderBufferPath shaderBufferPath,
                                                List<CgAttachedBuffer> attachedBuffers,
-                                               Set<String> requiredExtensions) {
+                                               Set<String> requiredExtensions,
+                                               CgUniformBuffer matPropsEntry) {
         StringBuilder sb = new StringBuilder(1024);
 
         // Step 1: #version
@@ -239,8 +278,13 @@ public final class CgMaterialShaderCompiler {
 
         sb.append("#include \"").append(ENV_INCLUDE).append("\"\n");
 
-        // Step 4: Property uniform declarations (same as vertex; unused uniforms compiled out by driver)
+        // Step 4: Property uniform declarations (sampler types only; non-sampler go into CgMaterialBlock UBO)
         appendPropertyUniforms(sb, properties);
+
+        // Material properties UBO (CgMaterialBlock) — emitted before user-attached buffers
+        if (matPropsEntry != null) {
+            sb.append(CgBufferGlslEmitter.emitUbo(matPropsEntry)).append('\n');
+        }
 
         appendAttachedBuffers(sb, attachedBuffers, shaderBufferPath);
 
@@ -318,15 +362,20 @@ public final class CgMaterialShaderCompiler {
     }
 
     /**
-     * Emits one {@code uniform <type> <name>;} line per property.
-     * Properties are emitted in both stages; unused uniforms are optimised out by the driver.
-     * {@code sampler2D} properties are emitted as {@code uniform sampler2D <name>;}.
+     * Emits one {@code uniform samplerXxx name;} line per sampler property.
+     * Non-sampler properties (float, int, vec*, color, range) are excluded —
+     * they are declared in the {@code CgMaterialBlock} UBO block instead.
      */
     private static void appendPropertyUniforms(StringBuilder sb, List<CgMaterialProperty> properties) {
-        if (properties.isEmpty()) return;
-        sb.append("// Properties\n");
+        boolean hasSamplers = false;
         for (CgMaterialProperty p : properties) {
-            sb.append("uniform ").append(p.getGlslType()).append(' ').append(p.getName()).append(";\n");
+            if (p.getType().isSampler()) {
+                if (!hasSamplers) {
+                    sb.append("// Sampler properties\n");
+                    hasSamplers = true;
+                }
+                sb.append("uniform ").append(p.getGlslType()).append(' ').append(p.getName()).append(";\n");
+            }
         }
     }
 

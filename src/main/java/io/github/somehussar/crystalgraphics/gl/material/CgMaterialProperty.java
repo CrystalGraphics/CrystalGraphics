@@ -199,7 +199,7 @@ public final class CgMaterialProperty {
 
     // ── Value setters ─────────────────────────────────────────────────────────
 
-    public void set(float v)                              { floatValue[0] = v; }
+    public void set(float v)                             { floatValue[0] = (type == Type.RANGE) ? Math.max(rangeMin, Math.min(rangeMax, v)) : v; }
     public void set(float x, float y)                    { floatValue[0] = x; floatValue[1] = y; }
     public void set(float x, float y, float z)           { floatValue[0] = x; floatValue[1] = y; floatValue[2] = z; }
     public void set(float x, float y, float z, float w)  { floatValue[0] = x; floatValue[1] = y; floatValue[2] = z; floatValue[3] = w; }

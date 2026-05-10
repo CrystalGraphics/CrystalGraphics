@@ -1,5 +1,6 @@
 package io.github.somehussar.crystalgraphics.api.material;
 
+import io.github.somehussar.crystalgraphics.api.CgBindingPoints;
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
 import io.github.somehussar.crystalgraphics.api.buffer.CgBufferFormat;
 import io.github.somehussar.crystalgraphics.api.buffer.CgGpuType;
@@ -7,13 +8,18 @@ import io.github.somehussar.crystalgraphics.api.shader.CgShader;
 import io.github.somehussar.crystalgraphics.api.shader.CgShaderBindings;
 import io.github.somehussar.crystalgraphics.api.shader.CgPreprocessorException;
 import io.github.somehussar.crystalgraphics.api.shader.CgShaderPreprocessor;
+import io.github.somehussar.crystalgraphics.api.state.CgGlSlot;
+import io.github.somehussar.crystalgraphics.api.state.CgRenderState;
 import io.github.somehussar.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import io.github.somehussar.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 import io.github.somehussar.crystalgraphics.gl.material.*;
 import io.github.somehussar.crystalgraphics.api.vertex.CgVertexFormat;
 import io.github.somehussar.crystalgraphics.gl.material.parse.*;
 import io.github.somehussar.crystalgraphics.gl.shader.CgShaderFactory;
+import io.github.somehussar.crystalgraphics.gl.state.CgGlScope;
+import io.github.somehussar.crystalgraphics.gl.state.CgGlState;
 import io.github.somehussar.crystalgraphics.util.io.CgIO;
+import lombok.Getter;
 import lombok.Setter;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -35,7 +41,7 @@ import java.util.function.Consumer;
  * <h3>Load pattern</h3>
  * <pre>{@code
  * CgMaterial material = CgMaterial.load("mymod:shaders/terrain.shader");
- * material.applyBindings(b -> b.vec4("_Color", 1f, 0f, 0f, 1f));
+ * material.applyProperties(b -> b.vec4("_Color", 1f, 0f, 0f, 1f));
  * }</pre>
  *
  * <h3>Per-frame bind pattern</h3>
@@ -68,7 +74,10 @@ import java.util.function.Consumer;
 public final class CgMaterial {
 
     private static final Logger LOGGER = LogManager.getLogger("CgMaterial");
-
+    
+    /** Block name of matPropsUbo**/
+    public static final String MATERIAL_PROPERTIES_BLOCK = "CgMaterialBlock";
+    
     /** The compiled shader backing this material. Owned by this instance. Null until first {@link #recompile()}. */
     private CgShader shader;
 
@@ -83,6 +92,43 @@ public final class CgMaterial {
      * Set by {@link #markDirty()}; cleared at the start of {@link #recompile()}.
      */
     private boolean dirty;
+
+    /** Render state applied during {@link #bind()} and saved/restored on unbind. */
+    private CgRenderState renderState = CgRenderState.DEFAULT;
+
+    /** Numeric render queue priority — 2000 by default (Geometry queue). 
+     * -- GETTER --
+     * Returns the numeric render queue priority for this material (default: 2000 = Geometry). 
+     */
+    @Getter
+    private int renderQueue = 2000;
+
+    /** GL state snapshot saved on bind and restored on unbind via {@link CgGlScope#close()}. */
+    private CgGlScope stateScope = null;
+
+    /**
+     * Partitioned view of all properties for this material. Null until first recompile.
+     * Never reallocated after creation — {@link CgMaterialProperties#rebuild} updates it in-place.
+     */
+    private CgMaterialProperties propStore = null;
+
+    /**
+     * UBO backing the non-sampler properties (CgMaterialBlock).
+     * Created on first recompile with UBO props, then reused (via {@code resetFormat}) forever —
+     * never deleted or nulled on subsequent recompiles.
+     */
+    private CgUniformBuffer matPropsUbo = null;
+
+    /** Whether property values have changed since the last GPU upload. */
+    private boolean materialPropsDirty = true;
+
+    /** Optional next material pass in a multi-pass draw chain. 
+     * -- GETTER --
+     * Returns the next material pass in the draw chain, or 
+     *  if none. 
+     */
+    @Getter
+    private CgMaterial nextPass = null;
 
     /**
      * User-defined auxiliary buffers (SSBO/TBO and UBO) attached to this material for GLSL
@@ -160,6 +206,13 @@ public final class CgMaterial {
         mat.setResourcePath(resourcePath);
         mat.markDirty();
         return mat;
+    }
+
+    static CgMaterial forTest(CgRenderState renderState, int renderQueue) {
+        CgMaterial m = new CgMaterial();
+        m.renderState = renderState;
+        m.renderQueue = renderQueue;
+        return m;
     }
 
     // ── Buffer attachment API ─────────────────────────────────────────────────
@@ -321,23 +374,25 @@ public final class CgMaterial {
     // ── Property bindings ─────────────────────────────────────────────────────
 
     /**
-     * Applies persistent property bindings to the underlying shader.
-     * The consumer receives the shader's {@link CgShaderBindings} instance directly —
-     * values written here persist across frames until overwritten.
+     * Sets material property values by name. Only Properties block declarations are accepted.
+     * Matrix uniforms, raw buffers, and other non-property operations are not supported here;
+     * use {@code shader.bindings()} for those.
      *
      * <pre>{@code
-     * material.applyBindings(b -> {
+     * material.applyProperties(b -> {
      *     b.set1f("_Alpha", 0.5f);
      *     b.vec4("_Color", 1f, 0f, 0f, 1f);
      * });
      * }</pre>
      *
-     * @param consumer receives the persistent bindings; must not be null
+     * @param consumer receives a property-routing bindings adapter; must not be null
      * @return this for chaining
      */
-    public CgMaterial applyBindings(Consumer<CgShaderBindings> consumer) {
+    public CgMaterial applyProperties(Consumer<CgShaderBindings> consumer) {
         checkNotDeleted();
-        consumer.accept(shader.bindings());
+        if (propStore == null) return this;
+        consumer.accept(propStore);
+        materialPropsDirty = true;
         return this;
     }
 
@@ -351,8 +406,12 @@ public final class CgMaterial {
      * <h3>Operations performed in order</h3>
      * <ol>
      *   <li>If {@link #dirty}, calls {@link #recompile()} to hot-reload the shader.</li>
-     *   <li>Stage property values into ephemeral bindings</li>
-     *   <li>{@code shader.bind()} — activates the GL program and flushes all bindings</li>
+     *   <li>Saves blend, depth, cull, stencil, alpha-test, and color-mask GL state.</li>
+     *   <li>Uploads material property UBO if values are dirty.</li>
+     *   <li>Binds material property UBO (if present).</li>
+     *   <li>Applies sampler properties to the shader.</li>
+     *   <li>Applies {@link CgRenderState} GL state.</li>
+     *   <li>{@code shader.bind()} — activates the GL program.</li>
      * </ol>
      *
      * <p>The pipeline's object buffer is bound once per frame in {@link CgMaterialPipeline#beginFrame()},
@@ -364,26 +423,41 @@ public final class CgMaterial {
         if (dirty) recompile();
         if (shader == null) return;
 
-        shader.applyBindings(b -> {
-            for (CgMaterialProperty prop : properties) {
-                if (prop.getType().isSampler()) {
-                    prop.applyToSampler(b);
-                }
-            }
-        });
+        stateScope = CgGlState.save(
+                CgGlSlot.BLEND, CgGlSlot.DEPTH, CgGlSlot.CULL,
+                CgGlSlot.STENCIL, CgGlSlot.ALPHA_TEST, CgGlSlot.COLOR_MASK);
 
+        if (materialPropsDirty && matPropsUbo != null) {
+            propStore.writeUboProps(matPropsUbo.writer());
+            matPropsUbo.endRecord();
+            matPropsUbo.upload();
+            materialPropsDirty = false;
+        }
+
+        if (matPropsUbo != null) matPropsUbo.bind();
+
+        if (propStore != null && propStore.hasSamplerProps()) 
+            shader.applyBindings(b -> propStore.applySamplerProps(b));
+
+        renderState.apply();
         shader.bind();
-        // objectBuffer bind is handled once per frame by CgMaterialPipeline.beginFrame()
     }
 
     /**
-     * Unbinds shader, frame UBO, and object buffer without GL errors.
+     * Unbinds shader and restores all GL state saved during {@link #bind()}.
      *
-     * <p>Must be called after the draw call sequence to leave GL state clean.</p>
+     * <p>Must be called after the draw call sequence to leave GL state clean.
+     * State is restored via the saved {@link CgGlScope} — never by calling
+     * {@code renderState.clear()}, which would set state incorrectly.</p>
      */
     public void unbind() {
         if (deleted) return;
-        shader.unbind();
+        if (shader != null) shader.unbind();
+        if (matPropsUbo != null) matPropsUbo.unbind();
+        if (stateScope != null) {
+            stateScope.close();
+            stateScope = null;
+        }
     }
 
     // ── Accessors ─────────────────────────────────────────────────────────────
@@ -421,6 +495,14 @@ public final class CgMaterial {
      */
     public CgShaderBuffer objectBuffer() {
         return CgMaterialPipeline.getInstance().objectBuffer();
+    }
+
+    /**
+     * Returns the material properties UBO, or {@code null} for sampler-only shaders.
+     * Engine-owned — do not delete.
+     */
+    public CgUniformBuffer materialBuffer() {
+        return matPropsUbo;
     }
 
     /**
@@ -486,6 +568,13 @@ public final class CgMaterial {
             return;
         }
 
+        this.renderState = parsed.renderState();
+        this.renderQueue = parsed.renderQueue();
+        if (propStore == null) propStore = new CgMaterialProperties(parsed.properties());
+        else propStore.rebuild(parsed.properties());
+        
+
+
         CgCapabilities.ShaderBufferPath path = CgCapabilities.detect().shaderBufferPath();
         if (path == CgCapabilities.ShaderBufferPath.NONE) {
             if (isFirst) throw new UnsupportedOperationException("GL 3.3+ required for CrystalShader materials");
@@ -493,9 +582,18 @@ public final class CgMaterial {
             return;
         }
 
+        if (propStore.hasUboProps()) {
+            CgBufferFormat newFormat = propStore.buildUboFormat();
+            if (matPropsUbo == null) 
+                matPropsUbo = new CgUniformBuffer(MATERIAL_PROPERTIES_BLOCK, newFormat, CgBindingPoints.MATERIAL_PROPERTIES_UBO);
+            else matPropsUbo.resetFormat(newFormat);
+        }
+        
+        this.materialPropsDirty = true;
+
         CgMaterialShaderCompiler.CompiledSource compiled;
         try {
-            compiled = CgMaterialShaderCompiler.compile(parsed, path, attachedBuffers);
+            compiled = CgMaterialShaderCompiler.compile(parsed, path, attachedBuffers, matPropsUbo);
         } catch (CgPreprocessorException e) {
             if (isFirst) throw e;
             LOGGER.error("Reload failed for '{}': buffer injection error — {}", resourcePath, e.getMessage());
@@ -532,11 +630,14 @@ public final class CgMaterial {
         properties = new ArrayList<>(parsed.properties());
 
         // Wire per-program block indices after each link — does NOT bind to GL context.
-        // glUniform1i (TBO path) requires an active program, so bind shader around both calls.
+        // glUniform1i (TBO path) requires an active program, so bind shader around all wiring calls.
         CgMaterialPipeline pipeline = CgMaterialPipeline.getInstance();
         shader.bind();
+        
         pipeline.frameBuffer().wireShader(shader);   // glUniformBlockBinding for CgFrameBlock
         pipeline.objectBuffer().wireShader(shader);  // glShaderStorageBlockBinding (SSBO) or glUniform1i (TBO)
+        matPropsUbo.wireShader(shader);
+        
         for (CgAttachedBuffer ab : attachedBuffers) 
             ab.getBuffer().wireShader(shader);
         
@@ -548,22 +649,63 @@ public final class CgMaterial {
     }
 
     /**
-     * Frees the backing shader program. After this call, the material is unusable.
+     * Frees the backing shader program and material properties UBO.
+     * After this call, the material is unusable.
      *
      * <p>Idempotent — subsequent calls are no-ops.</p>
      */
     public void delete() {
         if (!deleted) {
             deleted = true;
-            if (shader != null) shader.delete();
+            if (shader != null) {
+                shader.delete();
+                shader = null;
+            }
+            if (matPropsUbo != null) {
+                matPropsUbo.delete();
+                matPropsUbo = null;
+            }
         }
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
 
     private void checkNotDeleted() {
-        if (deleted) {
-            throw new IllegalStateException("CgMaterial has been deleted");
+        if (deleted) throw new IllegalStateException("CgMaterial has been deleted");
+    }
+
+    // ── Multi-pass draw chain ─────────────────────────────────────────────────
+
+    /**
+     * Sets the next material pass in a multi-pass draw chain.
+     * Cycles are detected eagerly; a cyclic chain throws {@link IllegalStateException}.
+     *
+     * @param next the next pass material, or {@code null} to clear the chain
+     * @return {@code this} for chaining
+     */
+    public CgMaterial setNextPass(CgMaterial next) {
+        CgMaterial cursor = next;
+        while (cursor != null) {
+            if (cursor == this) throw new IllegalStateException("Cyclic nextPass chain detected, nextPass was set as this");
+            cursor = cursor.nextPass;
+        }
+        this.nextPass = next;
+        return this;
+    }
+
+    /**
+     * Executes {@code drawCommand} once per pass in this material's draw chain,
+     * binding each pass before the draw and unbinding it after.
+     *
+     * @param drawCommand the draw logic to invoke for each pass
+     */
+    public void drawChain(Runnable drawCommand) {
+        CgMaterial pass = this;
+        while (pass != null) {
+            pass.bind();
+            drawCommand.run();
+            pass.unbind();
+            pass = pass.nextPass;
         }
     }
 }

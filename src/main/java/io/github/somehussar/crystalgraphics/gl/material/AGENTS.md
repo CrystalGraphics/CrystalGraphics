@@ -19,8 +19,9 @@ Implementation tasks:
 
 | Type | Role |
 |------|------|
-| `CgMaterialProperty` | Mutable runtime property object. Holds the declaration (`name`, `displayName`, `type`, `rawDefault`), the current float/sampler value, and self-binding logic. `fromDecl(name, displayName, typeName, rawDefault)` creates and eagerly parses the default. `applyTo(CgShaderBindings)` flushes the current value to shader uniforms. `set(...)` overloads for float/vec2/vec3/vec4; `setTexture(unit, CgTexture)` for sampler types. `resetToDefault()` restores the parsed default. Inner enum `Type` maps type name strings to component counts and GLSL names. |
-| `CgMaterialProperties` | Partitioned view of a material's full property list — splits into UBO-eligible (non-sampler) properties and sampler properties. Used by `CgMaterial.recompile()` and the compiler. |
+| `CgMaterialProperty` | Mutable runtime property object. Holds the declaration (`name`, `displayName`, `type`, `rawDefault`), the current float/int/sampler value, and self-binding logic. `fromDecl(name, displayName, typeName, rawDefault)` creates and eagerly parses the default. `applyToSampler(CgShaderBindings)` flushes sampler value to shader uniforms (sampler-only). `writeToUbo(CgBufferWriter)` writes non-sampler value into the material UBO. `addToFormatBuilder(CgBufferFormat.Builder)` registers the field in the UBO layout. `set(...)` overloads for float/vec2/vec3/vec4; `setInt(int)` for INT; `setTexture(unit, CgTexture)` for sampler types. `resetToDefault()` restores the parsed default. Inner enum `Type` maps property type names to GLSL names and component counts; `isSampler()` is the canonical discriminator. |
+| `CgMaterialProperties` | Partitioned view of a material's full property list — splits into UBO-eligible (non-sampler) and sampler properties at construction. Implements `CgShaderBindings` for name-based property writes from `CgMaterial.applyProperties()`. `propsByName` HashMap built during construction/rebuild for O(1) name lookup. `rebuild(List<CgMaterialProperty>)` repopulates all internal state in-place — called on hot-reload to avoid reallocation. `buildUboFormat()` builds the `CgBufferFormat` for `CgMaterialBlock`. `writeUboProps(CgBufferWriter)` uploads all non-sampler values. `applySamplerProps(CgShaderBindings)` binds all sampler values. `EMPTY` sentinel for contexts needing a non-null default. |
+| `CgMaterialBindingsAdapter` | **Deprecated stub** — logic fully absorbed into `CgMaterialProperties`. |
 
 ## Class Map — `parse/` Subpackage
 
@@ -43,8 +44,9 @@ See [`parse/AGENTS.md`](parse/AGENTS.md) for the full class map. Key external-fa
 3. `#define CG_USE_SSBO 1` (SSBO path only)
 4. `#define CG_OBJECT_BUFFER_BINDING <CgBindingPoints.OBJECT_DATA>` + `#define CG_FRAME_BLOCK_BINDING <CgBindingPoints.FRAME_DATA>`
 5. `#include "crystalgraphics:shaders/env/cg_env.glsl"`
-6. Property uniform declarations (`uniform <type> <name>;`)
-7. User-attached SSBO/TBO buffers (emitted by `CgBufferGlslEmitter`)
+6. `CgMaterialBlock` UBO block (emitted via `CgBufferGlslEmitter.emitUbo()` when non-sampler properties exist; no `binding=` qualifier — wired post-link by `wireShader()` at slot `CgBindingPoints.MATERIAL_PROPERTIES_UBO`)
+7. Sampler property uniform declarations (`uniform sampler2D/sampler2DArray/sampler3D/samplerCube <name>;` — one per sampler property)
+8. User-attached SSBO/TBO buffers (emitted by `CgBufferGlslEmitter`)
 8. User-attached UBO blocks (emitted by `CgBufferGlslEmitter`) — path-independent
 9. `struct v2f { <v2fStructBody> };`
 10. `flat out int cg_InstanceId;`
@@ -59,8 +61,9 @@ See [`parse/AGENTS.md`](parse/AGENTS.md) for the full class map. Key external-fa
 2. `#define CG_USE_SSBO 1` (SSBO path; no `CG_VERTEX_STAGE`)
 3. `#define CG_OBJECT_BUFFER_BINDING` + `#define CG_FRAME_BLOCK_BINDING`
 4. `#include "crystalgraphics:shaders/env/cg_env.glsl"`
-5. Property uniform declarations
-6. User-attached SSBO/TBO buffers
+5. `CgMaterialBlock` UBO block (when non-sampler properties exist)
+6. Sampler property uniform declarations
+7. User-attached SSBO/TBO buffers
 7. User-attached UBO blocks
 8. `struct v2f { ... };`
 9. v2f interface block (`in _CgV2fBlock { <fields> } _cg_v2f;`)
