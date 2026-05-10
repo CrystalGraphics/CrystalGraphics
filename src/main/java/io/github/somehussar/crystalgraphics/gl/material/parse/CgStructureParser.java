@@ -152,6 +152,7 @@ final class CgStructureParser {
                     || line.startsWith("void vertex(")) break;
             if (line.isEmpty() || line.startsWith("//") || line.startsWith("#type")) continue;
             if (line.startsWith("#")) {
+                if (line.startsWith("#pragma cg_feature")) continue;
                 if (result.length() > 0) result.append('\n');
                 result.append(line);
             }

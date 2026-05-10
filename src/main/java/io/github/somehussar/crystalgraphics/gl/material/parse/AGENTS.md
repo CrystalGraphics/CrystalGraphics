@@ -17,14 +17,16 @@ static final fields.
 
 | Class | Access | Role |
 |-------|--------|------|
-| `CgShaderParser` | `public final` | Public parse facade. `parse(String)` / `parse(String, String)` → `CgParsedShader`. `parseV2fFields(CgParsedShader)` → `List<V2fField>`. Nested `V2fField` record (public). Delegates to the four package-private sub-parsers below. |
+| `CgShaderParser` | `public final` | Public parse facade. `parse(String)` / `parse(String, String)` → `CgParsedShader`. `parseV2fFields(CgParsedShader)` → `List<V2fField>`. Nested `V2fField` record (public). Delegates to the package-private sub-parsers below. |
 | `CgShaderParseException` | `public` | `RuntimeException` thrown on any `.shader` format violation. All messages include a `[resourcePath]` prefix. |
-| `CgParsedShader` | `public record` | Immutable parse result. Fields: `shaderType`, `properties`, `v2fStructBody`, `globalDecls`, `vertexBody`, `fragmentBody`, `renderState`, `renderQueue`. Consumed by `CgMaterialShaderCompiler`. |
+| `CgParsedShader` | `public record` | Immutable parse result. Fields: `shaderType`, `properties`, `v2fStructBody`, `globalDecls`, `vertexBody`, `fragmentBody`, `renderState`, `renderQueue`, `fragOutput`, `featureNames`. Consumed by `CgMaterialShaderCompiler`. |
 | `CgMaterialShaderCompiler` | `public final` | Generates complete GLSL vertex + fragment source strings from a `CgParsedShader`. Nested `CompiledSource` record (public): `vertexSource`, `fragmentSource`. |
+| `CgFragOutputParser` | package-private | Parses the `void fragment()` signature to produce a `CgFragOutputParser.FragOutput`. Handles single-output (`out vec4`) and MRT struct path (`out GBuffer o`), including `: RTN` annotation resolution, all-or-none validation, duplicate/range checks, and clean struct body construction. Owns the nested `FragOutput` public record (see below). |
+| `CgFragOutputParser.FragOutput` | `public static record` (nested) | Fragment output descriptor, nested inside `CgFragOutputParser`. `isMrt()` distinguishes single-output (`mrtStructName==null`) from MRT struct path. Fields: `mrtStructName`, `outParamName`, `fieldNames`, `locations`, `mrtStructBody`. Static factory: `singleOutput(String)`. |
 | `CgBufferGlslEmitter` | package-private | Pure GLSL string generator for SSBO, TBO, and UBO blocks. Package-private test seam: `emitSsbo/emitTbo/emitUbo(CgBufferFormat, String, ...)`. |
 | `CgShaderKeywords` | package-private | Registry of all render-state keyword token sets (compare funcs, blend factors, blend equations, cull modes, on/off, stencil ops) and grammar descriptors. Used by `CgRenderStateParser`. |
 | `TokenSet<V>` | package-private | Immutable, case-insensitive keyword → value lookup table with a fluent `Builder`. Used by `CgShaderKeywords` to define each token domain. |
-| `CgStructureParser` | package-private | Structural parsing and validation: brace matching, section extraction (`v2f` body, `globalDecls`, vertex/fragment blocks), preamble directive passthrough, `#type` parsing, and all `validate*` format checks (no `#version`, no `main()`, reserved-prefix enforcement, section ordering, duplicate-section detection). |
+| `CgStructureParser` | package-private | Structural parsing and validation: brace matching, section extraction (`v2f` body, `globalDecls`, vertex/fragment blocks), preamble directive passthrough, `#type` parsing, and all `validate*` format checks (no `#version`, no `main()`, reserved-prefix enforcement, section ordering, duplicate-section detection). Does **not** own fragment output parsing — that belongs to `CgFragOutputParser`. |
 | `CgRenderStateParser` | package-private | Parses the `RenderState { }` block into a `CgRenderState`. Handles `DepthTest`, `DepthWrite`, `Blend`, `BlendEquation`, `Cull`, `AlphaTest`, `ColorMask`, and the `Stencil { }` sub-block. Rejects deprecated keywords (`ZTest`, `ZWrite`, `BlendOp`) with migration hints. |
 | `CgPropertiesParser` | package-private | Parses the `Properties { }` block into `List<CgMaterialProperty>`. Supports old-style (`_Name : type [= default]`) and new-style (`_Name ("Display Name", type) [= default]`) declarations. Handles `Range(min, max)` bounds, sampler default quote-stripping, and reserved-prefix validation. |
 | `CgQueueParser` | package-private | Parses the `Queue = "Name"` keyword into a numeric render-queue priority. Accepts named queues (`Background`, `Geometry`, `AlphaTest`, `Transparent`, `Overlay`) and bare integer values. Rejects old-style `RenderQueue <Name>` syntax with a migration hint. |
@@ -36,6 +38,7 @@ Callers outside this package should import only:
 - `CgShaderParser` — entry point for parsing
 - `CgShaderParseException` — catch for format errors
 - `CgParsedShader` — parse result consumed by the compiler
+- `CgFragOutputParser.FragOutput` — fragment output descriptor (accessed via `parsed.fragOutput()`; nested inside `CgFragOutputParser`)
 - `CgMaterialShaderCompiler` + `CgMaterialShaderCompiler.CompiledSource` — GLSL compilation
 
 All other classes are package-private implementation details.
@@ -49,6 +52,7 @@ All other classes are package-private implementation details.
 - **Comment lines stripped** — `//` comments are stripped before tokenizing `RenderState` and `Properties` blocks.
 - **`#` directive passthrough** — preamble `#`-lines (between `#type` and first structural section) are collected by `CgStructureParser.parsePreambleDirectives()` and prepended to `globalDecls`; `CgMaterialShaderCompiler.partitionGlobalDecls()` emits them immediately after `#version`.
 - **Auto-inject extensions** — `CgGpuType.requiredExtension()` drives automatic `#extension` emission for `INT64`/`UINT64` buffer fields; throws `CgPreprocessorException` if the capability is absent on the current context.
+- **Fragment output ownership** — `CgFragOutputParser` owns all fragment-output parse logic; `CgStructureParser` does not parse fragment outputs.
 
 ## Internal Pipeline Flow
 
@@ -65,6 +69,7 @@ CgShaderParser.parse(source, path)
     ├── CgStructureParser.extractBlock()  ×2  (vertex, fragment)
     ├── CgStructureParser.validateNoMainFunction()  ×2
     ├── CgStructureParser.parsePreambleDirectives()
+    ├── CgFragOutputParser.parse()          ← MRT output descriptor
     ├── CgRenderStateParser.parse()
     └── CgQueueParser.parse()
     → CgParsedShader

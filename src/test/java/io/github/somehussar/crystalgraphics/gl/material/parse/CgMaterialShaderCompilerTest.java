@@ -177,4 +177,122 @@ public class CgMaterialShaderCompilerTest {
         assertFalse("Non-sampler prop must not be emitted as a standalone uniform when matPropsUbo=null",
                 cs.fragmentSource().contains("uniform float _Alpha"));
     }
+
+    // ── MRT output-struct tests (T5) ──────────────────────────────────────────
+
+    private static final String MRT_3_SHADER =
+            "#type spatial\n" +
+            "struct v2f {\n    vec2 uv;\n};\n" +
+            "struct GBuffer {\n" +
+            "    vec4 albedo : RT0;\n" +
+            "    vec4 normal : RT1;\n" +
+            "    vec4 material : RT2;\n" +
+            "};\n" +
+            "void vertex(out v2f o) { o.uv = vec2(0.0); }\n" +
+            "void fragment(in v2f i, out GBuffer o) { o.albedo = vec4(1.0); }\n";
+
+    private static final String MRT_SKIPPED_SHADER =
+            "#type spatial\n" +
+            "struct v2f {\n    vec2 uv;\n};\n" +
+            "struct GBuffer {\n" +
+            "    vec4 albedo : RT0;\n" +
+            "    vec4 emission : RT2;\n" +
+            "};\n" +
+            "void vertex(out v2f o) { o.uv = vec2(0.0); }\n" +
+            "void fragment(in v2f i, out GBuffer o) { o.albedo = vec4(1.0); }\n";
+
+    @Test
+    public void compiler_singleOutput_emitsFragColorOut() {
+        CgMaterialShaderCompiler.CompiledSource cs =
+                CgMaterialShaderCompiler.compile(parse(MINIMAL), TBO, NO_BUFFERS);
+        assertTrue(cs.fragmentSource().contains("out vec4 _cg_fragColor;"));
+    }
+
+    @Test
+    public void compiler_singleOutput_mainCallsFragment() {
+        CgMaterialShaderCompiler.CompiledSource cs =
+                CgMaterialShaderCompiler.compile(parse(MINIMAL), TBO, NO_BUFFERS);
+        assertTrue(cs.fragmentSource().contains("fragment(_v2f_local, _cg_fragColor);"));
+    }
+
+    @Test
+    public void compiler_singleOutput_noRtNAnnotationsInOutput() {
+        CgMaterialShaderCompiler.CompiledSource cs =
+                CgMaterialShaderCompiler.compile(parse(MINIMAL), TBO, NO_BUFFERS);
+        assertFalse(cs.fragmentSource().contains(": RT"));
+        assertFalse(cs.vertexSource().contains(": RT"));
+    }
+
+    @Test
+    public void compiler_mrt3Fields_emitsThreeLayoutQualifiedOuts() {
+        CgMaterialShaderCompiler.CompiledSource cs =
+                CgMaterialShaderCompiler.compile(parse(MRT_3_SHADER), TBO, NO_BUFFERS);
+        assertTrue(cs.fragmentSource().contains("layout(location = 0) out vec4 _cg_RT0;"));
+        assertTrue(cs.fragmentSource().contains("layout(location = 1) out vec4 _cg_RT1;"));
+        assertTrue(cs.fragmentSource().contains("layout(location = 2) out vec4 _cg_RT2;"));
+        assertFalse("MRT must not emit _cg_fragColor",
+                cs.fragmentSource().contains("_cg_fragColor"));
+    }
+
+    @Test
+    public void compiler_mrt3Fields_emitsFragmentFunctionWithStructSignature() {
+        CgMaterialShaderCompiler.CompiledSource cs =
+                CgMaterialShaderCompiler.compile(parse(MRT_3_SHADER), TBO, NO_BUFFERS);
+        assertTrue(cs.fragmentSource().contains("void fragment(in v2f i, out GBuffer o)"));
+    }
+
+    @Test
+    public void compiler_mrt3Fields_mainDeclaresStructLocal_andCopiesFields() {
+        CgMaterialShaderCompiler.CompiledSource cs =
+                CgMaterialShaderCompiler.compile(parse(MRT_3_SHADER), TBO, NO_BUFFERS);
+        String frag = cs.fragmentSource();
+        assertTrue(frag.contains("GBuffer _cg_mrtOut;"));
+        assertTrue(frag.contains("fragment(_v2f_local, _cg_mrtOut);"));
+        assertTrue(frag.contains("_cg_RT0 = _cg_mrtOut.albedo;"));
+        assertTrue(frag.contains("_cg_RT1 = _cg_mrtOut.normal;"));
+        assertTrue(frag.contains("_cg_RT2 = _cg_mrtOut.material;"));
+    }
+
+    @Test
+    public void compiler_mrtSkippedLocation_emitsCorrectLocationNumbers() {
+        CgMaterialShaderCompiler.CompiledSource cs =
+                CgMaterialShaderCompiler.compile(parse(MRT_SKIPPED_SHADER), TBO, NO_BUFFERS);
+        String frag = cs.fragmentSource();
+        assertTrue(frag.contains("layout(location = 0) out vec4 _cg_RT0;"));
+        assertTrue(frag.contains("layout(location = 2) out vec4 _cg_RT2;"));
+        assertFalse("Must not emit RT1 for skipped location", frag.contains("_cg_RT1"));
+    }
+
+    @Test
+    public void compiler_mrt_structNotEmittedTwice() {
+        CgMaterialShaderCompiler.CompiledSource cs =
+                CgMaterialShaderCompiler.compile(parse(MRT_3_SHADER), TBO, NO_BUFFERS);
+        String frag = cs.fragmentSource();
+        int firstIdx = frag.indexOf("struct GBuffer {");
+        assertTrue("struct GBuffer must appear at least once", firstIdx >= 0);
+        int secondIdx = frag.indexOf("struct GBuffer {", firstIdx + 1);
+        assertEquals("struct GBuffer must NOT appear twice", -1, secondIdx);
+    }
+
+    @Test
+    public void compiler_mrt_noAnnotationTokensInGlsl() {
+        CgMaterialShaderCompiler.CompiledSource cs =
+                CgMaterialShaderCompiler.compile(parse(MRT_3_SHADER), TBO, NO_BUFFERS);
+        assertFalse("No ': RT' tokens must appear in fragment GLSL",
+                cs.fragmentSource().contains(": RT"));
+        assertFalse("No ': RT' tokens must appear in vertex GLSL",
+                cs.vertexSource().contains(": RT"));
+    }
+
+    @Test
+    public void compiler_vertexSource_unchangedForMrt() {
+        CgMaterialShaderCompiler.CompiledSource csMrt =
+                CgMaterialShaderCompiler.compile(parse(MRT_3_SHADER), TBO, NO_BUFFERS);
+        assertTrue(csMrt.vertexSource().contains("void vertex(out v2f o)"));
+        assertTrue(csMrt.vertexSource().contains("void main()"));
+        // MRT layout-qualified outputs must NOT appear in vertex shader
+        assertFalse("Vertex must not emit layout-qualified RT outputs",
+                csMrt.vertexSource().contains("layout(location") && csMrt.vertexSource().contains("_cg_RT"));
+        assertFalse("Vertex must not reference _cg_mrtOut", csMrt.vertexSource().contains("_cg_mrtOut"));
+    }
 }

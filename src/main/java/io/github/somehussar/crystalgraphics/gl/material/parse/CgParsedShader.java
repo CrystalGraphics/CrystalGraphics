@@ -27,6 +27,9 @@ import java.util.List;
  * @param globalDecls
  * Everything between the closing {@code \};} of {@code struct v2f} and
  * the start of {@code void vertex(}. May be empty but never null.
+ * For MRT shaders, this already contains the <em>clean</em> struct body
+ * (with {@code : RTN} annotations stripped) — populated by
+ * {@link CgFragOutputParser}.
  * @param vertexBody
  * Content of the {@code void vertex(out v2f o) \{ \}} block (body only, no braces).
  * @param fragmentBody
@@ -35,16 +38,22 @@ import java.util.List;
  * @param renderState
  * Composite render state parsed from the optional {@code RenderState { }} block.
  * Defaults to {@link CgRenderState#DEFAULT} when the block is absent.
- * Real parsing of the block is implemented in T9; this field carries the placeholder
- * default until then.
  * @param renderQueue
  * Numeric render queue priority parsed from the optional {@code RenderQueue} keyword.
  * Defaults to {@link CgRenderQueue#GEOMETRY} value (2000) when absent.
- * Real parsing is implemented in T9.
+ * @param fragOutput
+ * Fragment output descriptor produced by {@link CgFragOutputParser}.
+ * Holds the output param name, struct type name (MRT only), field names,
+ * resolved layout locations, and the annotation-free struct body.
+ * Never null; use {@link CgFragOutputParser.FragOutput#isMrt()} to distinguish MRT from single-output.
+ * @param featureNames
+ * Ordered feature flag names from {@code #pragma cg_feature} declarations. Always
+ * {@link java.util.Collections#emptyList()} in Wave A (Wave E replaces with real parsing).
  */
 @Desugar
 public record CgParsedShader(String shaderType, List<CgMaterialProperty> properties, String v2fStructBody,
-                             String globalDecls, String vertexBody, String fragmentBody,
-                             CgRenderState renderState, int renderQueue) {
+                               String globalDecls, String vertexBody, String fragmentBody,
+                               CgRenderState renderState, int renderQueue,
+                               CgFragOutputParser.FragOutput fragOutput, List<String> featureNames) {
 
 }

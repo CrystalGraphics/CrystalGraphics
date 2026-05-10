@@ -636,7 +636,7 @@ public final class CgMaterial {
         
         pipeline.frameBuffer().wireShader(shader);   // glUniformBlockBinding for CgFrameBlock
         pipeline.objectBuffer().wireShader(shader);  // glShaderStorageBlockBinding (SSBO) or glUniform1i (TBO)
-        matPropsUbo.wireShader(shader);
+        if(matPropsUbo != null) matPropsUbo.wireShader(shader);
         
         for (CgAttachedBuffer ab : attachedBuffers) 
             ab.getBuffer().wireShader(shader);
