@@ -95,7 +95,16 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
 
     /** Format descriptor. Required — all shader buffers must have a typed format. */
     @Getter
-    private final CgBufferFormat format;
+    private CgBufferFormat format;
+
+    /**
+     * Updates the format descriptor of this buffer without recreating GL resources.
+     * Called by {@link CgUniformBuffer#resetFormat(CgBufferFormat)} when a material
+     * is recompiled with a changed properties layout.
+     */
+    protected void resetFormat(CgBufferFormat newFormat) {
+        this.format = newFormat;
+    }
 
     /**
      * Set to {@code true} by {@link #delete()}. Checked by {@link #bind()} to guard

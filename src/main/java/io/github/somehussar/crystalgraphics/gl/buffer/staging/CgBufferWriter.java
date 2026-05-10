@@ -3,6 +3,7 @@ package io.github.somehussar.crystalgraphics.gl.buffer.staging;
 import io.github.somehussar.crystalgraphics.api.buffer.CgBufferField;
 import io.github.somehussar.crystalgraphics.api.buffer.CgBufferFormat;
 import io.github.somehussar.crystalgraphics.api.buffer.CgGpuType;
+import io.github.somehussar.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
@@ -39,7 +40,7 @@ public final class CgBufferWriter {
     private final CgStagingBuffer staging;
 
     /** Format descriptor. Always non-null — all shader buffers must carry a typed format. */
-    private final CgBufferFormat format;
+    private CgBufferFormat format;
 
     /**
      * Start index within the staging array for the current record.
@@ -389,9 +390,21 @@ public final class CgBufferWriter {
         return staging.rawData();
     }
 
-    /** Returns the current write cursor — number of floats written since the last {@link #reset()}. */
+    /**
+     * Returns the current write cursor — number of floats written since the last {@link #reset()}.
+     */
     public int rawCursor() {
         return staging.rawCursor();
+    }
+
+    /**
+     * Replaces the format descriptor and resets the staging buffer cursor.
+     * Called by {@link CgUniformBuffer#resetFormat}
+     * when a material's properties layout changes between hot-reloads.
+     */
+    public void resetFormat(CgBufferFormat newFormat) {
+        this.format = newFormat;
+        staging.reset();
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────

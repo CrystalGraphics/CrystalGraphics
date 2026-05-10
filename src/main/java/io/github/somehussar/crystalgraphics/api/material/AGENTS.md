@@ -14,7 +14,7 @@ This is the top of the CrystalShader material stack.
 
 | Type | Role |
 |------|------|
-| `CgMaterial` | User-facing material handle. `load(path)` delegates to `CgMaterialRegistry.get().getOrCreate(path)`. `load(CgMaterialKey)` overload for typed keys. `applyBindings(Consumer<CgShaderBindings>)` writes persistent property values into the shader's bindings object. `bind()` activates shader + properties + object buffer. `unbind()` deactivates shader. `reload()` marks shader dirty (called by registry on hot-reload). `delete()` frees the backing shader. `attach(CgShaderBuffer, macroName)` / `detach(macroName)` for SSBO/TBO auto-injection. `attach(CgUniformBuffer)` / `detachUbo(blockName)` for UBO flat-block injection. Registry-owned — not caller-owned; use `CgMaterialRegistry.get().deleteAll()` for teardown. |
+| `CgMaterial` | User-facing material handle. `load(path)` delegates to `CgMaterialRegistry.get().getOrCreate(path)`. `load(CgMaterialKey)` overload for typed keys. `applyProperties(Consumer<CgShaderBindings>)` writes persistent property values by name — routes through the material's `CgMaterialProperties` instance (which implements `CgShaderBindings`). `bind()` activates shader + properties + object buffer. `unbind()` deactivates shader. `reload()` marks shader dirty (called by registry on hot-reload). `delete()` frees the backing shader. `attach(CgShaderBuffer, macroName)` / `detach(macroName)` for SSBO/TBO auto-injection. `attach(CgUniformBuffer)` / `detachUbo(blockName)` for UBO flat-block injection. Registry-owned — not caller-owned; use `CgMaterialRegistry.get().deleteAll()` for teardown. |
 | `CgAttachedBuffer` | Immutable descriptor for a user-attached SSBO/TBO or UBO buffer. Created via `CgAttachedBuffer.of(buffer, macroName)` (SSBO/TBO, STD430) or `CgAttachedBuffer.of(CgUniformBuffer)` (UBO, STD140). `isUbo()` returns `true` for UBO entries (macroName is null). SSBO/TBO fields: `buffer`, `macroName`, `structName` (= `format.getGlslName()`), `ssboArrayName` (`_cg_{lowerFirst}Arr`), `tboGetterName` (`_cg_get{structName}`). UBO entries: only `buffer` is set; macroName/structName/ssboArrayName/tboGetterName are all null. Block/sampler/UBO block name is always `buffer.getName()` — required for `wireShader()`. |
 | `CgMaterialRegistry` | Singleton load/reload/delete lifecycle manager. `get()` returns the singleton. `getOrCreate(String)` / `getOrCreate(CgMaterialKey)` check cache; on miss call `CgMaterial.create()`, cache, and return. `reloadAll()` calls `mat.reload()` on each cached material. `deleteAll()` deletes all cached materials. Registered for teardown in `CgGraphicsLifecycle.destroyContext()`. |
 | `CgMaterialKey` | `@Desugar record` wrapping a resource-path string. `of(String)` factory. Value equality. Used as a typed alternative to raw strings. |
@@ -74,17 +74,17 @@ Available named fields in `FRAME_BLOCK_FORMAT` (STD140, 38 floats):
 - `cg_Time` — vec4: `t/20, t, t*2, t*3`
 - `cg_Resolution` — vec2: viewport width, height
 
-### CgMaterial.applyBindings(consumer)
+### CgMaterial.applyProperties(consumer)
 ```java
-material.applyBindings(b -> {
+material.applyProperties(b -> {
     b.set1f("_Alpha", 0.5f);
     b.vec4("_Color", 1f, 0f, 0f, 1f);
 });
 ```
-Passes the shader's **persistent** `CgShaderBindings` instance directly to the consumer.
-Values written here survive across frames until overwritten. Returns `this` for chaining.
-This is NOT `shader.applyBindings()` (which is ephemeral). The persistent bindings are
-flushed during `bind()` via `shader.bindings().apply(shader)`.
+Routes writes through the material's `CgMaterialProperties` instance (which implements
+`CgShaderBindings`). Values are stored persistently on the property objects and survive
+across frames until overwritten. Returns `this` for chaining. Unknown names are silently
+ignored. Non-property operations (`mat4`, `ubo`, etc.) throw `UnsupportedOperationException`.
 
 ### CgMaterial.load(resourcePath) / load(CgMaterialKey)
 ```java

@@ -192,6 +192,7 @@ final class CgPropertiesParser {
                     if (parts.length == 2) {
                         prop.setRange(Float.parseFloat(parts[0].trim()),
                                       Float.parseFloat(parts[1].trim()));
+                        prop.set(prop.getFloatValue()[0]);
                     }
                 }
             } catch (NumberFormatException ignored) {
