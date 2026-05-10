@@ -494,8 +494,10 @@ final class CgGlStates {
         }
 
         public static ColorMaskState capture() {
-            // GL_COLOR_WRITEMASK is a 4-component boolean vector; LWJGL 2 buffer overload:
-            ByteBuffer buf = BufferUtils.createByteBuffer(4);
+            // GL_COLOR_WRITEMASK is a 4-component boolean vector.
+            // LWJGL 2's glGetBoolean(int, ByteBuffer) validates capacity >= 16 regardless
+            // of how many values the query actually writes, so allocate 16.
+            ByteBuffer buf = BufferUtils.createByteBuffer(16);
             GL11.glGetBoolean(GL11.GL_COLOR_WRITEMASK, buf);
             return new ColorMaskState(
                     buf.get(0) != 0,
