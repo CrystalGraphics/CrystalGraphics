@@ -6,6 +6,7 @@ import io.github.somehussar.crystalgraphics.api.material.CgMaterialRegistry;
 import io.github.somehussar.crystalgraphics.gl.buffer.CgQuadIndexBuffer;
 import io.github.somehussar.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
 import io.github.somehussar.crystalgraphics.gl.framebuffer.CgFrameBufferRegistry;
+import io.github.somehussar.crystalgraphics.gl.material.CgMaterialShaderRegistry;
 import io.github.somehussar.crystalgraphics.gl.mesh.CgMeshRegistry;
 import io.github.somehussar.crystalgraphics.gl.render.CgInstanceRenderer;
 import io.github.somehussar.crystalgraphics.gl.texture.CgFallbackTextures;
@@ -89,8 +90,9 @@ public final class CgGraphicsLifecycle {
         // Step 5b: Free engine fallback textures.
         CgFallbackTextures.destroy();
 
-        // Step 7a: Materials (shader programs + their property state). Must precede VAO/VBO teardown.
+        // Step 7a: Material instances (property UBOs) + their backing shader assets (GL programs).
         CgMaterialRegistry.get().deleteAll();
+        CgMaterialShaderRegistry.get().deleteAll();
 
         // Step 7b: User-created SSBO/TBO/UBO resources managed by CgShaderBufferRegistry.
         //   Must be freed before the GL context is lost. Engine-owned pipeline buffers

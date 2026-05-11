@@ -184,4 +184,58 @@ public class CgMaterialPropertyTest {
         p.set(5.5f);
         assertEquals(5.5f, p.getFloatValue()[0], 0.0001f);
     }
+
+    // ── copyWithDefaults ──────────────────────────────────────────────────────
+
+    @Test
+    public void copyWithDefaults_producesIndependentInstance() {
+        CgMaterialProperty orig = CgMaterialProperty.fromDecl("_Color", "Color", "vec4", "(0.5, 0.5, 0.5, 1.0)");
+        CgMaterialProperty copy = orig.copyWithDefaults();
+        assertNotSame("copyWithDefaults() must return a new instance", orig, copy);
+    }
+
+    @Test
+    public void copyWithDefaults_copiesDeclarationFields() {
+        CgMaterialProperty orig = CgMaterialProperty.fromDecl("_Alpha", "Opacity", "float", "0.7");
+        CgMaterialProperty copy = orig.copyWithDefaults();
+        assertEquals(orig.getName(), copy.getName());
+        assertEquals(orig.getDisplayName(), copy.getDisplayName());
+        assertEquals(orig.getType(), copy.getType());
+        assertEquals(orig.getRawDefault(), copy.getRawDefault());
+    }
+
+    @Test
+    public void copyWithDefaults_copyHasDefaultValue() {
+        CgMaterialProperty orig = CgMaterialProperty.fromDecl("_Color", "_Color", "vec4", "(0.2, 0.4, 0.6, 1.0)");
+        CgMaterialProperty copy = orig.copyWithDefaults();
+        assertArrayEquals(new float[]{0.2f, 0.4f, 0.6f, 1.0f}, copy.getFloatValue(), 1e-4f);
+    }
+
+    @Test
+    public void copyWithDefaults_mutatingCopyDoesNotAffectOriginal() {
+        CgMaterialProperty orig = CgMaterialProperty.fromDecl("_Alpha", "_Alpha", "float", "0.5");
+        CgMaterialProperty copy = orig.copyWithDefaults();
+        copy.set(0.9f);
+        assertEquals("Original must be unaffected by mutation of copy",
+                0.5f, orig.getFloatValue()[0], 1e-4f);
+    }
+
+    @Test
+    public void copyWithDefaults_mutatingOriginalDoesNotAffectCopy() {
+        CgMaterialProperty orig = CgMaterialProperty.fromDecl("_Alpha", "_Alpha", "float", "0.5");
+        CgMaterialProperty copy = orig.copyWithDefaults();
+        orig.set(0.1f);
+        assertEquals("Copy must be unaffected by mutation of original",
+                0.5f, copy.getFloatValue()[0], 1e-4f);
+    }
+
+    @Test
+    public void copyWithDefaults_rangeBoundsPreserved() {
+        CgMaterialProperty orig = CgMaterialProperty.fromDecl("_Speed", "_Speed", "Range", "5.0");
+        orig.setRange(0.0f, 10.0f);
+        CgMaterialProperty copy = orig.copyWithDefaults();
+        assertEquals("Range bounds min must be copied", 0.0f, copy.getRangeMin(), 1e-4f);
+        assertEquals("Range bounds max must be copied", 10.0f, copy.getRangeMax(), 1e-4f);
+        assertEquals("Default value within range must be preserved", 5.0f, copy.getFloatValue()[0], 1e-4f);
+    }
 }

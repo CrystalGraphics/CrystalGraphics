@@ -4,6 +4,7 @@ import io.github.somehussar.crystalgraphics.api.buffer.CgBufferFormat;
 import io.github.somehussar.crystalgraphics.api.shader.CgShaderBindings;
 import io.github.somehussar.crystalgraphics.api.texture.CgTexture;
 import io.github.somehussar.crystalgraphics.gl.buffer.staging.CgBufferWriter;
+import io.github.somehussar.crystalgraphics.gl.material.parse.CgParsedShader;
 import lombok.Getter;
 
 import java.util.Locale;
@@ -327,6 +328,25 @@ public final class CgMaterialProperty {
         if (rawDefault != null && !type.isSampler()) {
             setFromRaw(rawDefault);
         }
+    }
+
+    /**
+     * Returns a fresh {@code CgMaterialProperty} with the same name, display name, type, and
+     * raw default, with the value reset to that default. Used when initialising per-material
+     * property stores from a shared {@link CgParsedShader}.
+     *
+     * <p>The returned instance is independent — mutating the copy does not affect the original.</p>
+     */
+    public CgMaterialProperty copyWithDefaults() {
+        CgMaterialProperty copy = CgMaterialProperty.fromDecl(name, displayName, type.getPropertyTypeName(), rawDefault);
+        // For RANGE type, fromDecl clamps the default value to [rangeMin, rangeMax] = [0, 0],
+        // which gives 0 instead of the parsed default. Copy the bounds and re-apply the default
+        // so the copy has the correct value within the correct range.
+        if (type == Type.RANGE) {
+            copy.setRange(rangeMin, rangeMax);
+            copy.resetToDefault();
+        }
+        return copy;
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
