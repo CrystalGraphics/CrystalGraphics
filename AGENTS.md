@@ -426,22 +426,22 @@ These have different method signatures (`glGenFramebuffers()` vs. `glGenFramebuf
 
 #### 2. Framebuffer Abstraction (✅ COMPLETE)
 
-**Public API** (`api/`):
-- `CgFramebuffer`: Unified FBO interface (bind/unbind/resize/drawBuffers/ownership)
-- `CgCapabilities`: Capability detection with preferred backend selection
+**Public API** (`api/framebuffer/`):
+- `CgFrameBufferFormat`: Immutable attachment layout descriptor — color slots (texture or renderbuffer), depth slot, builder API
 
 **Implementations** (`gl/framebuffer/`):
-- `CgAbstractFramebuffer`: Base class — owns all shared logic, fields, and abstract GL dispatch hooks
-- `CgCoreFramebuffer`: GL30 backend with MRT support (factories + 10 dispatch overrides)
-- `CgArbFramebuffer`: ARB_framebuffer_object backend with MRT support (factories + 10 dispatch overrides)
-- `CgExtFramebuffer`: EXT_framebuffer_object backend (no MRT, no separate draw/read; factories + 10 dispatch overrides)
-- `CgFramebufferFactory`: Waterfall factory (Core → ARB → EXT)
+- `CgFrameBuffer`: Abstract base — shared logic, `Attachment` inner class, `create/wrap/createScreenSized` factories, `deleteAll()`
+- `CgCoreFrameBuffer`: GL30 backend (9 dispatch overrides, package-private)
+- `CgArbFrameBuffer`: ARB_framebuffer_object backend (9 dispatch overrides, package-private)
+- `CgExtFrameBuffer`: EXT_framebuffer_object backend (no MRT, no separate draw/read; overrides + 9 dispatch overrides, package-private)
+- `CgFrameBufferRegistry`: Screen-sized FBO cache; auto-resizes on `CgGraphicsLifecycle.onResize()`
 
-**Source package guide**:
-- `src/main/java/io/github/somehussar/crystalgraphics/gl/framebuffer/AGENTS.md` — parent/dispatch architecture, EXT quirks, resize paths, ownership model, how to add a new backend
+**Source package guides**:
+- `src/main/java/io/github/somehussar/crystalgraphics/api/framebuffer/AGENTS.md` — `CgFrameBufferFormat` builder API
+- `src/main/java/io/github/somehussar/crystalgraphics/gl/framebuffer/AGENTS.md` — dispatch architecture, `CgFrameBufferRegistry`, EXT quirks, ownership model
 
 **Cross-API Safety**:
-- `CrossApiTransition`: Explicit unbind-on-family-change behavior (Core <-> ARB <-> EXT)
+- `CrossApiTransition`: Explicit unbind-on-family-change behavior (Core ↔ ARB ↔ EXT)
 
 #### 3. Shader Abstraction (✅ COMPLETE)
 
@@ -506,15 +506,15 @@ These have different method signatures (`glGenFramebuffers()` vs. `glGenFramebuf
 **Priority Order**: Core (GL30) → ARB → EXT
 
 ```java
-// CgFramebufferFactory.create()
+// CgFrameBuffer.create()
 if (caps.isCoreFbo()) {
-    return CgCoreFramebuffer.create(width, height, depth, mrt);
+    return new CgCoreFrameBuffer(name, format, width, height);
 }
 if (caps.isArbFbo()) {
-    return CgArbFramebuffer.create(width, height, depth, mrt);
+    return new CgArbFrameBuffer(name, format, width, height);
 }
 if (caps.isExtFbo()) {
-    return CgExtFramebuffer.create(width, height, depth, mrt);
+    return new CgExtFrameBuffer(name, format, width, height);
 }
 throw new UnsupportedOperationException("No FBO support available");
 ```
@@ -571,12 +571,12 @@ bindViaFamily(targetFamily, target, id);
 
 ```java
 // CrystalGraphics-created FBOs can be deleted
-CgFramebuffer fbo = CgFramebufferFactory.create(caps, w, h, depth, mrt);
+CgFrameBuffer fbo = CgFrameBuffer.create("my_fbo", w, h, format);
 fbo.delete(); // OK
 
-// Wrapped external FBOs cannot be deleted
-CgFramebuffer wrapped = CgFramebufferFactory.wrap(id, w, h, family);
-wrapped.delete(); // Throws IllegalStateException
+// Wrapped external FBOs: delete() is a no-op
+CgFrameBuffer wrapped = CgFrameBuffer.wrap("external", id, w, h, family);
+wrapped.delete(); // no-op — caller is responsible
 ```
 
 ### 6. Boundary Save/Restore
@@ -601,8 +601,7 @@ try {
 ```
 io.github.somehussar.crystalgraphics/
 ├── CrystalGraphics.java           # Forge @Mod container (dependency resolution)
-├── api/                           # Stable public contracts (no MC imports)
-│   ├── CgFramebuffer.java         # FBO interface
+│   ├── api/                           # Stable public contracts (no MC imports)
 │   ├── CgShaderProgram.java       # Shader interface
 │   └── CgCapabilities.java        # Capability detection
 ├── gl/                            # OpenGL backends + state logic
@@ -618,11 +617,11 @@ io.github.somehussar.crystalgraphics/
 │   │   ├── CgVertexArrayBinding.java      # Pairs VAO + stream buffer per format
 │   │   └── CgVertexArrayRegistry.java     # Singleton: format → binding cache
 │   ├── framebuffer/               # FBO implementations
-│   │   ├── CgAbstractFramebuffer.java
-│   │   ├── CgCoreFramebuffer.java
-│   │   ├── CgArbFramebuffer.java
-│   │   ├── CgExtFramebuffer.java
-│   │   └── CgFramebufferFactory.java
+│   │   ├── CgFrameBuffer.java
+│   │   ├── CgCoreFrameBuffer.java
+│   │   ├── CgArbFrameBuffer.java
+│   │   ├── CgExtFrameBuffer.java
+│   │   └── CgFrameBufferRegistry.java
 │   ├── shader/                    # Shader implementations
 │   │   ├── CgAbstractShaderProgram.java
 │   │   ├── CgCoreShaderProgram.java
@@ -824,8 +823,8 @@ Lombok generates Java 8-compatible bytecode. All annotations listed above work c
    - Fail fast if required extension is unavailable
 
 3. **Respect the ownership model**:
-   - If `isOwned() == false`, NEVER call `delete()`
-   - Use `CgFramebufferFactory.wrap()` for externally-created FBOs
+   - If `isOwned() == false`, `delete()` is a no-op — do not rely on it for cleanup
+   - Use `CgFrameBuffer.wrap()` for externally-created FBOs
 
 4. **EXT suffix is mandatory**:
    - Always use `*EXT` methods for EXT extension
