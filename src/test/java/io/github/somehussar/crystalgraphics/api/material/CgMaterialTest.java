@@ -1,8 +1,11 @@
 package io.github.somehussar.crystalgraphics.api.material;
 
 import io.github.somehussar.crystalgraphics.api.state.CgRenderState;
+import io.github.somehussar.crystalgraphics.gl.material.CgMaterialProperties;
+import io.github.somehussar.crystalgraphics.gl.material.CgMaterialProperty;
 import org.junit.Test;
 
+import java.util.Collections;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.Assert.*;
@@ -109,5 +112,29 @@ public class CgMaterialTest {
     public void getRenderQueue_returnsConstructedValue() {
         CgMaterial m = CgMaterial.forTest(CgRenderState.DEFAULT, 3000);
         assertEquals(3000, m.getRenderQueue());
+    }
+
+    // ── T7: property defaults ─────────────────────────────────────────────────
+
+    @Test
+    public void freshMaterial_hasDefaultPropertyInUbo() {
+        CgMaterialProperty prop = CgMaterialProperty.fromDecl("_Color", "_Color", "vec4", "(0.5, 0.5, 0.5, 1.0)");
+        CgMaterialProperties props = new CgMaterialProperties(Collections.singletonList(prop));
+        CgMaterial m = CgMaterial.forTest(CgRenderState.DEFAULT, 2000, props);
+
+        float[] values = m.getPropertyForTest("_Color").getFloatValue();
+        assertArrayEquals(new float[]{0.5f, 0.5f, 0.5f, 1.0f}, values, 1e-4f);
+    }
+
+    @Test
+    public void applyProperties_overridesDefault() {
+        CgMaterialProperty prop = CgMaterialProperty.fromDecl("_Color", "_Color", "vec4", "(0.5, 0.5, 0.5, 1.0)");
+        CgMaterialProperties props = new CgMaterialProperties(Collections.singletonList(prop));
+        CgMaterial m = CgMaterial.forTest(CgRenderState.DEFAULT, 2000, props);
+
+        m.applyProperties(b -> b.vec4("_Color", 1f, 0f, 0f, 1f));
+
+        float[] values = m.getPropertyForTest("_Color").getFloatValue();
+        assertArrayEquals(new float[]{1f, 0f, 0f, 1f}, values, 1e-4f);
     }
 }
