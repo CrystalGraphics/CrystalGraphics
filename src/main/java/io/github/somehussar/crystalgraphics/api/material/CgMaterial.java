@@ -81,9 +81,6 @@ public final class CgMaterial {
     /** The compiled shader backing this material. Owned by this instance. Null until first {@link #recompile()}. */
     private CgShader shader;
 
-    /** Live property objects for this material, containing current values. Set/updated by {@link #recompile()}. */
-    private List<CgMaterialProperty> properties;
-
     /** Whether {@link #delete()} has been called. */
     private boolean deleted;
 
@@ -637,9 +634,7 @@ public final class CgMaterial {
                 return;
             }
         }
-
-        properties = new ArrayList<>(parsed.properties());
-
+        
         // Wire per-program block indices after each link — does NOT bind to GL context.
         // glUniform1i (TBO path) requires an active program, so bind shader around all wiring calls.
         CgMaterialPipeline pipeline = CgMaterialPipeline.getInstance();
