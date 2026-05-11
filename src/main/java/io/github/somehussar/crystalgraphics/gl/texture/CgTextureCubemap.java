@@ -98,9 +98,9 @@ public final class CgTextureCubemap extends CgTextureAbstract {
         try {
             GL11.glBindTexture(GL_TEXTURE_CUBE_MAP, id);
             try {
-                int internalFormat = spec.getFormat().getInternalFormat();
-                int pf = spec.getFormat().getPixelFormat();
-                int pt = spec.getFormat().getPixelType();
+                int internalFormat = spec.getGlInternalFormat();
+                int pf = spec.getGlBaseFormat();
+                int pt = spec.getGlType();
                 for (int face : FACE_TARGETS) {
                     GL11.glTexImage2D(face, 0, internalFormat, size, size, 0, pf, pt, (ByteBuffer) null);
                 }
@@ -132,7 +132,7 @@ public final class CgTextureCubemap extends CgTextureAbstract {
         int uploadPixelFormat = pixelFormatForChannels(faces[0].channels());
         GL11.glBindTexture(GL_TEXTURE_CUBE_MAP, textureId);
         try {
-            int internalFormat = spec.getFormat().getInternalFormat();
+            int internalFormat = spec.getGlInternalFormat();
             for (int i = 0; i < 6; i++) {
                 GL11.glTexImage2D(FACE_TARGETS[i], 0, internalFormat, size, size, 0,
                         uploadPixelFormat, GL_UNSIGNED_BYTE, faces[i].pixels());

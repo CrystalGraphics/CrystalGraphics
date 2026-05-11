@@ -84,7 +84,7 @@ public final class CgTexture2D extends CgTextureAbstract {
     /** Creates an empty 2D texture with no image data. Not cached; caller owns the lifecycle. */
     public static CgTexture2D createEmpty(int width, int height, CgTextureSpec spec) {
         return doCreate(width, height, null,
-                spec.getFormat().getPixelFormat(), spec.getFormat().getPixelType(), spec, null);
+                spec.getGlBaseFormat(), spec.getGlType(), spec, null);
     }
 
     /**
@@ -92,8 +92,8 @@ public final class CgTexture2D extends CgTextureAbstract {
      * Not cached; caller owns the lifecycle. Use for procedural/dynamic textures.
      */
     public static CgTexture2D createFromPixels(int width, int height, ByteBuffer pixels, CgTextureSpec spec) {
-        return doCreate(width, height, pixels, 
-                spec.getFormat().getPixelFormat(), spec.getFormat().getPixelType(), spec, null);
+        return doCreate(width, height, pixels,
+                spec.getGlBaseFormat(), spec.getGlType(), spec, null);
     }
 
     // ── Upload ────────────────────────────────────────────────────────
@@ -110,7 +110,7 @@ public final class CgTexture2D extends CgTextureAbstract {
         GL11.glBindTexture(GL_TEXTURE_2D, textureId);
         try {
             GL11.glTexImage2D(GL_TEXTURE_2D, 0,
-                    spec.getFormat().getInternalFormat(), image.width(), image.height(), 0,
+                    spec.getGlInternalFormat(), image.width(), image.height(), 0,
                     pixelFormatForChannels(image.channels()), GL_UNSIGNED_BYTE, image.pixels());
             spec.applyTo(GL_TEXTURE_2D);
          
@@ -137,7 +137,7 @@ public final class CgTexture2D extends CgTextureAbstract {
         GL11.glBindTexture(GL_TEXTURE_2D, textureId);
         try {
             GL11.glTexImage2D(GL_TEXTURE_2D, 0,
-                    spec.getFormat().getInternalFormat(), width, height, 0,
+                    spec.getGlInternalFormat(), width, height, 0,
                     pixelFormat, pixelType, pixels);
             spec.applyTo(GL_TEXTURE_2D);
           

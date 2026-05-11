@@ -1,6 +1,6 @@
 package io.github.somehussar.crystalgraphics.api.framebuffer;
 
-import io.github.somehussar.crystalgraphics.api.CgMipmapConfig;
+import io.github.somehussar.crystalgraphics.api.texture.CgMipmapConfig;
 
 /**
  * Immutable specification of a single color attachment for a framebuffer.

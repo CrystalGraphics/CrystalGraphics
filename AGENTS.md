@@ -223,10 +223,16 @@ vertex input registry, use the package-local guides first.
 Owned GL textures (`CgTexture` and friends) are the public API for 2D / 2D-array
 / 3D texture creation and binding.
 
+### Key types (Phase 1+)
+
+- `CgTextureType` — typed enum of ~42 GL formats. Single source of truth for (internalFormat, baseFormat, type) triple. `toTextureSpec()` for default spec. `glAttachmentPoint(int)` for FBO use (Phase 2).
+- `CgTextureSpec` — immutable Lombok builder; `type` field replaces raw `CgTextureFormatSpec`; `getGlInternalFormat/BaseFormat/Type()` delegates; `compareMode/compareFunc` for PCF; `DEPTH24_SHADOW` is the only preset with compare mode.
+- `CgMipmapConfig` — moved to `api/texture/` in Phase 1; `levels` removed; use `NONE`, `TRILINEAR`, or `NEAREST` constants.
+
 ### Source package guides
 
-- `src/main/java/io/github/somehussar/crystalgraphics/api/texture/AGENTS.md` — public API: `CgTexture` (single unified interface) and `CgTextureSpec` (Lombok-built spec with pre-built `RGBA8_LINEAR` / `RGBA8_NEAREST` / `RGBA16F_LINEAR`; also exposes `applyTo(target)` + `generateMipmaps(target)` GL helpers)
-- `src/main/java/io/github/somehussar/crystalgraphics/gl/texture/AGENTS.md` — concrete GL impls (`CgTexture2D`, `CgTexture2DArray`, `CgTexture3D` — each `implements CgTexture` directly with own static factories); failure-atomic allocation pattern
+- `src/main/java/io/github/somehussar/crystalgraphics/api/texture/AGENTS.md` — public API: `CgTexture`, `CgTextureType` (format enum), `CgTextureSpec` (Lombok builder, zero hex, `DEPTH24_SHADOW`), `CgMipmapConfig` (moved here, `NONE`/`TRILINEAR`/`NEAREST`)
+- `src/main/java/io/github/somehussar/crystalgraphics/gl/texture/AGENTS.md` — concrete GL impls (`CgTexture2D`, `CgTexture2DArray`, `CgTexture3D`, `CgTextureCubemap`); use `spec.getGlInternalFormat/BaseFormat/Type()` (not `spec.getFormat().*`)
 - `util/io/CgTextureIO` — image loader (asset path → direct RGBA `ByteBuffer`) delegating to `CgIO.openStream` for path resolution
 
 ## Mesh System — Start Here
