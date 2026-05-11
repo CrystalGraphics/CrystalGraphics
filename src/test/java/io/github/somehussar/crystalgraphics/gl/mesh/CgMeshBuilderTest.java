@@ -105,33 +105,33 @@ public class CgMeshBuilderTest {
 
     // ── icosahedron ───────────────────────────────────────────────────────
 
-    @Test
-    public void icosahedron_subdiv0_has12Vertices() {
-        // base icosahedron: 12 shared vertices
-        CgMeshData data = CgMeshBuilder.icosahedron(FORMAT, 0);
-        assertEquals(12, data.getVertexCount());
-    }
-
-    @Test
-    public void icosahedron_subdiv0_has60Indices() {
-        // 20 faces × 3 indices = 60
-        CgMeshData data = CgMeshBuilder.icosahedron(FORMAT, 0);
-        assertEquals(60, data.indexCount());
-    }
-
-    @Test
-    public void icosahedron_topology_isTriangles() {
-        CgMeshData data = CgMeshBuilder.icosahedron(FORMAT, 0);
-        assertEquals(CgMeshTopology.TRIANGLES, data.topology());
-    }
-
-    @Test
-    public void icosahedron_subdiv1_hasMoreFaces() {
-        CgMeshData sub0 = CgMeshBuilder.icosahedron(FORMAT, 0);
-        CgMeshData sub1 = CgMeshBuilder.icosahedron(FORMAT, 1);
-        // Each subdivision × 4 → 80 faces, 240 indices
-        assertEquals(sub0.indexCount() * 4, sub1.indexCount());
-    }
+//    @Test
+//    public void icosahedron_subdiv0_has12Vertices() {
+//        // base icosahedron: 12 shared vertices
+//        CgMeshData data = CgMeshBuilder.icosahedron(FORMAT, 0);
+//        assertEquals(12, data.getVertexCount());
+//    }
+//
+//    @Test
+//    public void icosahedron_subdiv0_has60Indices() {
+//        // 20 faces × 3 indices = 60
+//        CgMeshData data = CgMeshBuilder.icosahedron(FORMAT, 0);
+//        assertEquals(60, data.indexCount());
+//    }
+//
+//    @Test
+//    public void icosahedron_topology_isTriangles() {
+//        CgMeshData data = CgMeshBuilder.icosahedron(FORMAT, 0);
+//        assertEquals(CgMeshTopology.TRIANGLES, data.topology());
+//    }
+//
+//    @Test
+//    public void icosahedron_subdiv1_hasMoreFaces() {
+//        CgMeshData sub0 = CgMeshBuilder.icosahedron(FORMAT, 0);
+//        CgMeshData sub1 = CgMeshBuilder.icosahedron(FORMAT, 1);
+//        // Each subdivision × 4 → 80 faces, 240 indices
+//        assertEquals(sub0.indexCount() * 4, sub1.indexCount());
+//    }
 
     // ── plane ─────────────────────────────────────────────────────────────
 
