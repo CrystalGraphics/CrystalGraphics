@@ -96,7 +96,7 @@ public final class CgTexture2DArray extends CgTextureAbstract {
         GL11.glBindTexture(GL_TEXTURE_2D_ARRAY, textureId);
         try {
             GL12.glTexImage3D(GL_TEXTURE_2D_ARRAY, 0,
-                    spec.getFormat().getInternalFormat(), w, h, images.length, 0,
+                    spec.getGlInternalFormat(), w, h, images.length, 0,
                     uploadPixelFormat, GL_UNSIGNED_BYTE, (ByteBuffer) null);
             for (int i = 0; i < images.length; i++) {
                 GL12.glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0,

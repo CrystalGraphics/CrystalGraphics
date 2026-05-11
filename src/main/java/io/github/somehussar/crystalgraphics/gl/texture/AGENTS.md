@@ -148,9 +148,30 @@ best-effort and the user gets `GL_LINEAR` filtering at level 0.
 - `GL_TEXTURE_MIN_FILTER` / `GL_TEXTURE_MAG_FILTER`
 - `GL_TEXTURE_WRAP_S` / `GL_TEXTURE_WRAP_T`
 - `GL_TEXTURE_WRAP_R` (only for `GL_TEXTURE_3D` and `GL_TEXTURE_2D_ARRAY`)
+- Shadow compare params (`GL_TEXTURE_COMPARE_MODE` / `GL_TEXTURE_COMPARE_FUNC`) when `compareMode != GL_NONE`
 
 Called inside `upload()` after `glTexImage*` so params are always applied
 to a fully-allocated texture object.
+
+## CgTextureSpec Format API (Phase 1 change)
+
+After Phase 1, the format triple is accessed via convenience delegates on `CgTextureSpec`
+rather than through `spec.getFormat().*`:
+
+```java
+// OLD (Phase 0, removed):
+spec.getFormat().getInternalFormat()
+spec.getFormat().getPixelFormat()
+spec.getFormat().getPixelType()
+
+// NEW (Phase 1+):
+spec.getGlInternalFormat()
+spec.getGlBaseFormat()
+spec.getGlType()
+```
+
+These delegate to `spec.getType().glInternalFormat` etc. `CgTextureFormatSpec` is gone;
+format is now a `CgTextureType` enum constant.
 
 ## Design Rules
 

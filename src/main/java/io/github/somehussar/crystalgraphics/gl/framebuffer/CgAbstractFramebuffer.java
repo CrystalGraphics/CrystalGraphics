@@ -1,6 +1,7 @@
 package io.github.somehussar.crystalgraphics.gl.framebuffer;
 
-import io.github.somehussar.crystalgraphics.api.CgMipmapConfig;
+import io.github.somehussar.crystalgraphics.api.texture.CgMipmapConfig;
+import io.github.somehussar.crystalgraphics.api.texture.CgTextureType;
 import io.github.somehussar.crystalgraphics.api.framebuffer.CgColorAttachmentProvider;
 import io.github.somehussar.crystalgraphics.api.framebuffer.CgColorAttachmentSpec;
 import io.github.somehussar.crystalgraphics.api.framebuffer.CgFramebuffer;
@@ -792,9 +793,16 @@ public abstract class CgAbstractFramebuffer implements CgFramebuffer {
 
     /**
      * Builds a {@link CgTextureSpec} from an attachment's format + mipmap config.
+     *
+     * <p><em>Phase 2 bridge</em>: {@code CgAbstractFramebuffer} is deleted in Task 6.
+     * This method maps the legacy {@link CgTextureFormatSpec} back to a {@link CgTextureType}
+     * by matching the internal format constant.</p>
      */
     protected static CgTextureSpec specFrom(CgTextureFormatSpec fmt, CgMipmapConfig mips) {
-        CgTextureSpec.CgTextureSpecBuilder b = CgTextureSpec.builder().format(fmt);
+        // Match the legacy internalFormat int back to the typed enum.
+        CgTextureType type = findCgTextureType(fmt.getInternalFormat());
+        if (type == null) type = CgTextureType.RGBA8; // safe fallback
+        CgTextureSpec.CgTextureSpecBuilder b = CgTextureSpec.builder().type(type);
         if (mips != null && mips.isEnabled()) {
             b.minFilter(mips.getMinFilter()).magFilter(mips.getMagFilter());
         }
@@ -804,14 +812,26 @@ public abstract class CgAbstractFramebuffer implements CgFramebuffer {
     /**
      * Builds a {@link CgTextureSpec} for a depth-only texture.
      *
+     * <p><em>Phase 2 bridge</em>: deleted in Task 6.</p>
+     *
      * @param depthInternalFormat e.g. {@code GL_DEPTH_COMPONENT24}
      */
     protected static CgTextureSpec depthSpecFrom(int depthInternalFormat) {
+        CgTextureType type = findCgTextureType(depthInternalFormat);
+        if (type == null) type = CgTextureType.DEPTH24; // safe fallback
         return CgTextureSpec.builder()
-                .format(new CgTextureFormatSpec(depthInternalFormat, GL_DEPTH_COMPONENT, GL_UNSIGNED_BYTE))
+                .type(type)
                 .minFilter(GL_NEAREST)
                 .magFilter(GL_NEAREST)
                 .build();
+    }
+
+    /** Linear scan over {@link CgTextureType} values to find a match by internalFormat int. */
+    private static CgTextureType findCgTextureType(int internalFormat) {
+        for (CgTextureType t : CgTextureType.values()) {
+            if (t.glInternalFormat == internalFormat) return t;
+        }
+        return null;
     }
 
     // ── Abstract hooks for subclasses ────────────────────────────────────
