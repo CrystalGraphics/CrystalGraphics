@@ -215,6 +215,17 @@ public final class CgMaterial {
         return m;
     }
 
+    static CgMaterial forTest(CgRenderState renderState, int renderQueue, CgMaterialProperties propStore) {
+        CgMaterial m = forTest(renderState, renderQueue);
+        m.propStore = propStore;
+        return m;
+    }
+
+    CgMaterialProperty getPropertyForTest(String name) {
+        if (propStore == null) return null;
+        return propStore.all().stream().filter(p -> p.getName().equals(name)).findFirst().orElse(null);
+    }
+
     // ── Buffer attachment API ─────────────────────────────────────────────────
 
     /**
@@ -642,6 +653,16 @@ public final class CgMaterial {
             ab.getBuffer().wireShader(shader);
         
         shader.unbind();
+
+        // Upload property defaults to UBO immediately after successful compile/link,
+        // so a freshly-loaded material has its parsed default values in the GPU buffer
+        // before any applyProperties() call from the caller. (T7)
+        if (matPropsUbo != null) {
+            propStore.writeUboProps(matPropsUbo.writer());
+            matPropsUbo.endRecord();
+            matPropsUbo.upload();
+            materialPropsDirty = false;
+        }
 
         if (!isFirst) {
             LOGGER.info("Reloaded '{}'", resourcePath);
