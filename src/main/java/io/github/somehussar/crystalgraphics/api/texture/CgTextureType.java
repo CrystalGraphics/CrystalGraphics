@@ -170,18 +170,4 @@ public enum CgTextureType {
                 .magFilter(filter)
                 .build();
     }
-
-    /**
-     * Probes whether this format is usable as an FBO attachment on the current hardware.
-     *
-     * <p>Phase 1 stub — always returns {@code true}. This will be replaced in Phase 2
-     * (Task 5) when {@code CgFrameBuffer.probeRenderable(this)} becomes available.</p>
-     *
-     * @return {@code true} (Phase 1 stub; full probe implemented in Phase 2)
-     * @see <a href="#TODO-Task5">TODO: Task 5 — wire to CgFrameBuffer.probeRenderable</a>
-     */
-    public boolean isRenderable() {
-        // TODO: Task 5 — replace with CgFrameBuffer.probeRenderable(this)
-        return true;
-    }
 }

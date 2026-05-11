@@ -5,6 +5,7 @@ import io.github.somehussar.crystalgraphics.api.material.CgMaterialPipeline;
 import io.github.somehussar.crystalgraphics.api.material.CgMaterialRegistry;
 import io.github.somehussar.crystalgraphics.gl.buffer.CgQuadIndexBuffer;
 import io.github.somehussar.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
+import io.github.somehussar.crystalgraphics.gl.framebuffer.CgFrameBufferRegistry;
 import io.github.somehussar.crystalgraphics.gl.mesh.CgMeshRegistry;
 import io.github.somehussar.crystalgraphics.gl.render.CgInstanceRenderer;
 import io.github.somehussar.crystalgraphics.gl.texture.CgFallbackTextures;
@@ -44,6 +45,17 @@ public final class CgGraphicsLifecycle {
     public static void initContext() {
         CgMaterialPipeline.init();
         CgFallbackTextures.init();
+    }
+
+    /**
+     * Notifies CrystalGraphics that the window has been resized.
+     * Triggers recreation of all screen-sized framebuffers.
+     *
+     * @param width  new viewport width in pixels
+     * @param height new viewport height in pixels
+     */
+    public static void onResize(int width, int height) {
+        CgFrameBufferRegistry.get().onResize(width, height);
     }
 
     /**
@@ -88,6 +100,9 @@ public final class CgGraphicsLifecycle {
 
         // Step 7c: Pipeline-owned frame UBO + object SSBO. Independent from vertex buffers.
         CgMaterialPipeline.destroy();
+
+        // Step 8: All owned framebuffers — must be first.
+        CgFrameBufferRegistry.get().deleteAll();
         
         
         // Reset all backend-capability caches so context recreation re-probes correctly.

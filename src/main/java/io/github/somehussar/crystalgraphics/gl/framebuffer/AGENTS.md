@@ -1,51 +1,65 @@
 # gl/framebuffer — Framebuffer Abstraction Layer
 
+> Root guide: [`CrystalGraphics/AGENTS.md`](../../../../../../../../../AGENTS.md)
+
 Provides a unified FBO (Framebuffer Object) API across three OpenGL backends:
 **Core GL30**, **ARB_framebuffer_object**, and **EXT_framebuffer_object**.
+
+## Delegation Pattern
+
+`CgFrameBuffer.create(name, w, h, format)` → `CgFrameBufferRegistry.get().getOrCreate(...)` → `CgFrameBuffer.createInternal(...)` (on cache miss).
+
+This mirrors `CgMaterial.load` → `CgMaterialRegistry.getOrCreate` → `CgMaterial.create` exactly.
 
 ---
 
 ## Architecture: Parent + Dispatch Pattern
 
-All shared logic lives in `CgAbstractFramebuffer`. Each concrete subclass contains
-only static factory methods and 10 one-line `glDo*()` dispatch overrides that route
-calls to their respective LWJGL class.
+All shared logic lives in `CgFrameBuffer`. Each concrete backend contains
+only a constructor and nine one-line dispatch overrides that route calls to
+their respective LWJGL class.
 
 ```
-CgFramebuffer (interface, api/framebuffer/)
-    └── CgAbstractFramebuffer (all shared logic + 10 abstract dispatch methods)
-            ├── CgCoreFramebuffer   → routes via GL30.*
-            ├── CgArbFramebuffer    → routes via ARBFramebufferObject.*
-            └── CgExtFramebuffer    → routes via EXTFramebufferObject.*EXT()
-```
+CgFrameBuffer (abstract base, gl/framebuffer/)
+    ├── CgCoreFrameBuffer   → routes via GL30.*
+    ├── CgArbFrameBuffer    → routes via ARBFramebufferObject.*
+    └── CgExtFrameBuffer    → routes via EXTFramebufferObject.*EXT()
 
-`CgFramebufferFactory` selects the best available backend via waterfall
-(Core → ARB → EXT) and exposes `create`, `createFromSpec`, and `wrap`.
+CgFrameBufferRegistry       → single source of truth for all owned FBOs;
+                              framebuffers LinkedHashMap; screen-sized auto-resize
+```
 
 ---
 
-## What CgAbstractFramebuffer Owns
+## What CgFrameBuffer Owns
 
 | Concern | Location |
-|---|---|
-| Instance fields (`fboId`, `width`, `height`, `colorTextures`, `depthTexture`, etc.) | `CgAbstractFramebuffer` |
-| `RuntimeSlot` inner class (runtime attachment tracking) | `CgAbstractFramebuffer` |
-| `specFrom` / `depthSpecFrom` static helpers | `CgAbstractFramebuffer` |
-| `getColorTextureId`, `getDepthTextureId` | `CgAbstractFramebuffer` |
-| `getRuntimeAttachments`, `RuntimeAttachmentsImpl` inner class | `CgAbstractFramebuffer` |
-| `drawBuffers` (Core + ARB; EXT overrides to always throw) | `CgAbstractFramebuffer` |
-| `freeGlResources` (uses abstract dispatch) | `CgAbstractFramebuffer` |
-| `resize` / `resizeLegacy` / `resizeSpec` / `resizeRuntimeSlots` | `CgAbstractFramebuffer` |
-| Static ownership tracker `ALL_OWNED` + `freeAll()` | `CgAbstractFramebuffer` |
+|---------|----------|
+| Instance fields (`fboId`, `width`, `height`, `name`, `format`, `owned`, `deleted`, `screenSized`) | `CgFrameBuffer` |
+| `colorAttachments` (TreeMap<Integer, Attachment>) + `depthAttachment` | `CgFrameBuffer` |
+| `initGl(w, h, format)` — allocates textures/renderbuffers, checks completeness | `CgFrameBuffer` |
+| `bind/bindDraw/bindRead/unbind` — route through `CrossApiTransition` | `CgFrameBuffer` |
+| `drawBuffers(int... slotIds)` — slot indices 0,1,2 → GL_COLOR_ATTACHMENT0+n | `CgFrameBuffer` |
+| `reattachColor/reattachColorRaw/reattachDepth` | `CgFrameBuffer` |
+| `getColorTexture/getDepthTexture/getColorAttachment/getDepthAttachment` | `CgFrameBuffer` |
+| `isScreenSized()` — true if created via `CgFrameBufferRegistry.acquireScreenSized` | `CgFrameBuffer` |
+| `delete()` — frees GL resources; sets `deleted = true`; does NOT touch registry | `CgFrameBuffer` |
+| `wrap(name, fboId, w, h, family)` — non-owned wrapper via `WrappedFrameBuffer` inner class | `CgFrameBuffer` |
+| `createScreenSized(name, format)` — delegates to `CgFrameBufferRegistry.acquireScreenSized` | `CgFrameBuffer` |
 
-## What Each Subclass Owns
+## Factory Split
 
-- `create(width, height, depth, mrt)` — legacy single-color factory
-- `createFromSpec(CgFramebufferSpec)` — multi-attachment spec factory
-- `cleanupOnFailure(...)` — static failure-atomic cleanup for its backend
-- `callFamily()` — returns `CORE_GL30`, `ARB_FBO`, or `EXT_FBO`
-- `newFromSpec(spec)` — delegates to `createFromSpec` (used by `resizeSpec`)
-- 10 `glDo*()` dispatch overrides (one line each)
+| Method | Visibility | Role |
+|--------|-----------|------|
+| `CgFrameBuffer.create(name, w, h, format)` | `public static` | Thin delegator → `CgFrameBufferRegistry.get().getOrCreate(...)` |
+| `CgFrameBuffer.createInternal(name, w, h, format)` | `package-private static` | Real work — backend selection, `initGl`, validation; called only by registry |
+
+## What Each Backend Owns
+
+- One package-private constructor `(String name, CgFrameBufferFormat format, int width, int height)`
+  calling `super(name, format, width, height)`.
+- `callFamily()` — returns `CORE_GL30`, `ARB_FBO`, or `EXT_FBO`.
+- Nine dispatch overrides (one line each) — see table below.
 
 ---
 
@@ -53,80 +67,103 @@ CgFramebuffer (interface, api/framebuffer/)
 
 These are the only things that differ between backends. Each is a single LWJGL call:
 
-| Method | Core | ARB | EXT |
-|---|---|---|---|
-| `glDoGenFramebuffer()` | `GL30.glGenFramebuffers()` | `ARBFramebufferObject.glGenFramebuffers()` | `EXTFramebufferObject.glGenFramebuffersEXT()` |
-| `glDoDeleteFramebuffer(id)` | `GL30.glDeleteFramebuffers` | `ARBFramebufferObject.glDeleteFramebuffers` | `EXTFramebufferObject.glDeleteFramebuffersEXT` |
-| `glDoBindFbo(id)` | `GL30.glBindFramebuffer(GL_FRAMEBUFFER, id)` | `ARBFramebufferObject.glBindFramebuffer(...)` | `EXTFramebufferObject.glBindFramebufferEXT(...)` |
-| `glDoFramebufferTexture2D(att, texId)` | `GL30.glFramebufferTexture2D(...)` | `ARBFramebufferObject.glFramebufferTexture2D(...)` | `EXTFramebufferObject.glFramebufferTexture2DEXT(...)` |
-| `glDoCheckFramebufferStatus()` | `GL30.glCheckFramebufferStatus(...)` | `ARBFramebufferObject.glCheckFramebufferStatus(...)` | `EXTFramebufferObject.glCheckFramebufferStatusEXT(...)` |
-| `glDoGenRenderbuffer()` | `GL30.glGenRenderbuffers()` | `ARBFramebufferObject.glGenRenderbuffers()` | `EXTFramebufferObject.glGenRenderbuffersEXT()` |
-| `glDoBindRenderbuffer(id)` | `GL30.glBindRenderbuffer(...)` | `ARBFramebufferObject.glBindRenderbuffer(...)` | `EXTFramebufferObject.glBindRenderbufferEXT(...)` |
-| `glDoRenderbufferStorage(fmt,w,h)` | `GL30.glRenderbufferStorage(...)` | `ARBFramebufferObject.glRenderbufferStorage(...)` | `EXTFramebufferObject.glRenderbufferStorageEXT(...)` |
-| `glDoDeleteRenderbuffer(id)` | `GL30.glDeleteRenderbuffers` | `ARBFramebufferObject.glDeleteRenderbuffers` | `EXTFramebufferObject.glDeleteRenderbuffersEXT` |
-| `glDoFramebufferRenderbuffer(att,rbo)` | `GL30.glFramebufferRenderbuffer(...)` | `ARBFramebufferObject.glFramebufferRenderbuffer(...)` | `EXTFramebufferObject.glFramebufferRenderbufferEXT(...)` |
+| Abstract Method | Core | ARB | EXT |
+|----------------|------|-----|-----|
+| `doGenFramebuffer()` | `GL30.glGenFramebuffers()` | `ARBFramebufferObject.glGenFramebuffers()` | `EXTFramebufferObject.glGenFramebuffersEXT()` |
+| `deleteFramebuffer(id)` | `GL30.glDeleteFramebuffers` | `ARBFramebufferObject.glDeleteFramebuffers` | `EXTFramebufferObject.glDeleteFramebuffersEXT` |
+| `deleteRenderbuffer(id)` | `GL30.glDeleteRenderbuffers` | `ARBFramebufferObject.glDeleteRenderbuffers` | `EXTFramebufferObject.glDeleteRenderbuffersEXT` |
+| `doBindFbo(target, id)` | `GL30.glBindFramebuffer(target, id)` | `ARBFramebufferObject.glBindFramebuffer(target, id)` | `EXTFramebufferObject.glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, id)` |
+| `doFramebufferTexture2D(target, att, texTarget, texId)` | `GL30.glFramebufferTexture2D(...)` | `ARBFramebufferObject.glFramebufferTexture2D(...)` | `EXTFramebufferObject.glFramebufferTexture2DEXT(...)` |
+| `doFramebufferRenderbuffer(target, att, rboId)` | `GL30.glFramebufferRenderbuffer(...)` | `ARBFramebufferObject.glFramebufferRenderbuffer(...)` | `EXTFramebufferObject.glFramebufferRenderbufferEXT(...)` |
+| `doGenRenderbuffer()` | `GL30.glGenRenderbuffers()` | `ARBFramebufferObject.glGenRenderbuffers()` | `EXTFramebufferObject.glGenRenderbuffersEXT()` |
+| `doRenderbufferStorage(fmt,w,h)` | `GL30.glRenderbufferStorage(...)` | `ARBFramebufferObject.glRenderbufferStorage(...)` | `EXTFramebufferObject.glRenderbufferStorageEXT(...)` |
+| `doCheckFramebufferStatus()` | `GL30.glCheckFramebufferStatus(...)` | `ARBFramebufferObject.glCheckFramebufferStatus(...)` | `EXTFramebufferObject.glCheckFramebufferStatusEXT(...)` |
 
 ---
 
 ## EXT-Specific Quirks
 
 - **No separate draw/read targets**: `bindDraw()` and `bindRead()` both bind to
-  `GL_FRAMEBUFFER_EXT`. Overridden in `CgExtFramebuffer`.
+  `GL_FRAMEBUFFER_EXT`. Overridden in `CgExtFrameBuffer`.
 - **No MRT**: `drawBuffers()` always throws `UnsupportedOperationException`. Overridden.
-- **No `GL_DEPTH_STENCIL_ATTACHMENT`**: Packed depth-stencil attaches the same RBO
-  to both `GL_DEPTH_ATTACHMENT_EXT` and `GL_STENCIL_ATTACHMENT_EXT`. The factory
-  sets `stencilRenderbufferId = depthRenderbufferId`. `freeGlResources` guards against
-  double-delete with `stencilRenderbufferId != depthRenderbufferId`.
+- **`doBindFbo` ignores the `target` argument**: EXT only exposes the combined target.
 
 ---
 
-## Two Creation Paths
+## Attachment Model
 
-### Legacy path — `create(width, height, depth, mrt)`
-Single color texture at `GL_COLOR_ATTACHMENT0`, optional depth renderbuffer.
-Uses `singleColorTexture` field. `spec` is `null`.
+`CgFrameBuffer.Attachment` is a public static inner class with two paths:
 
-### Spec-based path — `createFromSpec(CgFramebufferSpec)`
-N color textures, optional depth/stencil as texture or renderbuffer, optional
-packed depth-stencil. Uses `colorTextures[]` array. `spec` is retained for resize.
+- **Texture path**: `texture != null`, `renderbufferId == 0` — sampleable via `getTexture()`
+- **Renderbuffer path**: `texture == null`, `renderbufferId != 0` — non-sampleable, faster
+
+`Attachment.delete()` calls `parent.deleteRenderbuffer(id)` — routes through the
+backend's abstract dispatch. Never calls `GL30.glDeleteRenderbuffers` directly.
 
 ---
 
-## Resize Behavior
+## drawBuffers API
 
-`resize(w, h)` dispatches to:
-- `resizeLegacy` — if `spec == null`: frees old resources, allocates new ones via
-  `glDo*` dispatch, re-attaches runtime slots.
-- `resizeSpec` — if `spec != null`: calls `newFromSpec(newSpec)` to build a fresh
-  instance, then steals its GL resource IDs into `this` and marks the shell deleted.
-  Runtime slots are re-attached via `resizeRuntimeSlots`.
+```java
+fbo.bind();
+fbo.drawBuffers(0, 1, 2);  // slot INDICES, not GL_COLOR_ATTACHMENT0+n constants
+```
+
+`drawBuffers(int... slotIds)` converts internally to `GL_COLOR_ATTACHMENT0 + n`.
+EXT backend always throws `UnsupportedOperationException`.
+
+---
+
+## Depth-Only FBOs
+
+When `CgFrameBufferFormat.isDepthOnly()` is true (no color slots),
+`GL_DRAW_BUFFER` and `GL_READ_BUFFER` are automatically set to `GL_NONE`
+during `initGl`. No manual call needed.
 
 ---
 
 ## Ownership & Lifecycle
 
-- **Owned** (`owned == true`): added to `ALL_OWNED` on construction. `delete()` calls
-  `freeGlResources()` then removes from `ALL_OWNED`. `freeAll()` deletes all at shutdown.
-- **Wrapped** (`owned == false`): not in `ALL_OWNED`. `delete()` throws
-  `IllegalStateException`. Created via `CgFramebufferFactory.wrap(...)`.
+`CgFrameBufferRegistry.framebuffers` (`LinkedHashMap<FrameBufferKey, CgFrameBuffer>`) is the
+single source of truth for all owned FBOs, keyed by `(name, format)`.
+
+- **Owned** (`owned == true`): created via `createInternal`; stored in `framebuffers` by registry.
+  `delete()` frees GL resources and sets `deleted = true` — does NOT remove from `framebuffers`.
+- **Wrapped** (`owned == false`): never in `framebuffers`. `delete()` is a no-op.
+  Created via `CgFrameBuffer.wrap(...)`.
+- **Screen-sized** (`screenSized == true`): owned FBOs created via `acquireScreenSized`.
+  On resize, `fbo.resize(w, h)` is called in-place — the Java reference stays valid.
 
 ---
 
-## GL Constants
+## CgFrameBufferRegistry
 
-All constants used by shared logic are defined as `static final int` in
-`CgAbstractFramebuffer` with package-level visibility (`static final int`, no modifier).
-Subclasses define only the constants they need for their own factory methods.
-All numeric values are identical between Core/ARB/EXT (e.g. `GL_FRAMEBUFFER = 0x8D40`).
+```java
+// Fixed-size FBO (cached by name+format):
+CgFrameBuffer fbo = CgFrameBuffer.create("shadow_map", 1024, 1024, SHADOW_FORMAT);
+
+// Screen-sized FBO — reference is stable across window resizes:
+CgFrameBuffer fbo = CgFrameBuffer.createScreenSized("hdr_buffer", HDR_FORMAT);
+
+// In your window-resize handler:
+CgGraphicsLifecycle.onResize(newWidth, newHeight);
+```
+
+- `getOrCreate(name, w, h, format)` — returns cached FBO or creates at given dimensions on miss.
+- `acquireScreenSized(name, format)` — like `getOrCreate` but sets `fbo.screenSized = true`. The returned reference is stable.
+- `onResize(w, h)` — calls `fbo.resize(w, h)` in-place on all screen-sized FBOs. Java references remain valid.
+- `deleteAll()` — deletes all owned FBOs and clears `framebuffers`. Called by `CgGraphicsLifecycle.destroyContext()`.
+
+**Do not cache screen-sized FBOs across frames** — re-query each frame; the registry
+replaces the internal FBO on every resize.
 
 ---
 
 ## Adding a New Backend
 
-1. Extend `CgAbstractFramebuffer`.
-2. Add two private constructors (legacy path + spec path) calling the appropriate
-   `super(...)` constructor.
-3. Add a package-private wrap constructor calling `super(fboId, width, height, supportsMrt)`.
-4. Implement `create`, `createFromSpec`, `cleanupOnFailure`, `callFamily`, `newFromSpec`.
-5. Implement all 10 `glDo*()` methods, each a single call to your LWJGL class.
-6. Register the new backend in `CgFramebufferFactory` waterfall.
+1. Extend `CgFrameBuffer` (package-private — no `public`).
+2. Add one package-private constructor `(String name, CgFrameBufferFormat format, int w, int h)` calling `super(name, format, w, h)`.
+3. Implement `callFamily()`.
+4. Implement all nine abstract dispatch methods (one line each).
+5. Override `bindDraw()`, `bindRead()`, and `drawBuffers()` if needed (EXT pattern).
+6. No factory methods needed — `CgFrameBuffer.createInternal()` handles backend selection.
