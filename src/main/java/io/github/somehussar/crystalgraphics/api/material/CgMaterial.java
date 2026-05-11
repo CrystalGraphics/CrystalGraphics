@@ -1,26 +1,22 @@
 package io.github.somehussar.crystalgraphics.api.material;
 
 import io.github.somehussar.crystalgraphics.api.CgBindingPoints;
-import io.github.somehussar.crystalgraphics.api.CgCapabilities;
 import io.github.somehussar.crystalgraphics.api.buffer.CgBufferFormat;
 import io.github.somehussar.crystalgraphics.api.buffer.CgGpuType;
 import io.github.somehussar.crystalgraphics.api.shader.CgShader;
 import io.github.somehussar.crystalgraphics.api.shader.CgShaderBindings;
-import io.github.somehussar.crystalgraphics.api.shader.CgPreprocessorException;
-import io.github.somehussar.crystalgraphics.api.shader.CgShaderPreprocessor;
 import io.github.somehussar.crystalgraphics.api.state.CgGlSlot;
 import io.github.somehussar.crystalgraphics.api.state.CgRenderState;
 import io.github.somehussar.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import io.github.somehussar.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
-import io.github.somehussar.crystalgraphics.gl.material.*;
-import io.github.somehussar.crystalgraphics.api.vertex.CgVertexFormat;
-import io.github.somehussar.crystalgraphics.gl.material.parse.*;
-import io.github.somehussar.crystalgraphics.gl.shader.CgShaderFactory;
+import io.github.somehussar.crystalgraphics.gl.material.CgMaterialProperties;
+import io.github.somehussar.crystalgraphics.gl.material.CgMaterialProperty;
+import io.github.somehussar.crystalgraphics.gl.material.CgMaterialShader;
+import io.github.somehussar.crystalgraphics.gl.material.CgMaterialShaderRegistry;
+import io.github.somehussar.crystalgraphics.gl.material.parse.CgParsedShader;
 import io.github.somehussar.crystalgraphics.gl.state.CgGlScope;
 import io.github.somehussar.crystalgraphics.gl.state.CgGlState;
-import io.github.somehussar.crystalgraphics.util.io.CgIO;
 import lombok.Getter;
-import lombok.Setter;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -29,25 +25,30 @@ import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * User-facing material that wraps a compiled {@code .shader} file.
+ * User-facing material handle backed by a shared {@link CgMaterialShader} asset.
  *
- * <p>A {@code CgMaterial} encapsulates a linked GLSL shader program,
- * property uniforms (declared in the {@code Properties { }} block), and the
- * {@code bind()} / {@code unbind()} lifecycle for draw calls. One material
- * instance is shared across both non-instanced ({@code drawDirect()}) and
- * instanced ({@code drawInstanced(N)}) draw calls — no modification, no
- * variants, no {@code #ifdef INSTANCED}.</p>
+ * <p>A {@code CgMaterial} holds per-instance state only: property values ({@code propStore}),
+ * the material properties UBO ({@code matPropsUbo}), and revision tracking. The compiled GL
+ * programs, render state, and render queue all live on the shared {@link CgMaterialShader} asset,
+ * which may be shared across multiple {@code CgMaterial} instances created from the same path.</p>
  *
- * <h3>Load pattern</h3>
+ * <h3>Load pattern (cached — same instance per path)</h3>
  * <pre>{@code
  * CgMaterial material = CgMaterial.load("mymod:shaders/terrain.shader");
  * material.applyProperties(b -> b.vec4("_Color", 1f, 0f, 0f, 1f));
  * }</pre>
  *
+ * <h3>Multiple instances for the same shader (independent property values)</h3>
+ * <pre>{@code
+ * CgMaterial mat1 = CgMaterial.newInstance("mymod:shaders/terrain.shader");
+ * CgMaterial mat2 = CgMaterial.newInstance("mymod:shaders/terrain.shader");
+ * // mat1 and mat2 share compiled GL programs but have independent property values.
+ * // Both callers must call mat.delete() when done.
+ * }</pre>
+ *
  * <h3>Per-frame bind pattern</h3>
  * <pre>{@code
  * // pipeline.beginFrame() uploads frame UBO automatically.
- * // Write per-object data:
  * objectBuffer.writeSingle(modelMatrix);
  * material.bind();
  * mesh.drawDirect();
@@ -55,14 +56,17 @@ import java.util.function.Consumer;
  * }</pre>
  *
  * <h3>Hot-reload</h3>
- * <p>{@link #markDirty()} marks the material dirty; the full load→parse→compile
- * pipeline runs lazily on the next {@link #bind()} call via {@link #recompile()}.
- * The backing {@link CgShader} reference is stable across reloads — only the
- * underlying GL program ID changes.</p>
+ * <p>Hot-reload is asset-level: {@link CgMaterialShader#markDirty()} is set on the shared asset,
+ * which increments its {@link CgMaterialShader#getRevisionNumber()} on the next successful
+ * compile. {@code CgMaterial.bind()} detects the revision change and calls
+ * {@link #onShaderRecompiled()} to rebuild per-instance state.</p>
  *
  * <h3>Ownership</h3>
- * <p>The material owns its backing {@link CgShader}. Call {@link #delete()} to free it.
- * {@link CgUniformBuffer} and {@link CgShaderBuffer} passed to {@link #bind} are
+ * <p>The material owns its per-instance property UBO only. The backing GL programs are owned
+ * by the shared {@link CgMaterialShader} and managed by {@link CgMaterialShaderRegistry}.
+ * Call {@link #delete()} to free the property UBO. Registry-managed materials are deleted
+ * by {@link CgMaterialRegistry#deleteAll()}.
+ * {@link CgUniformBuffer} and {@link CgShaderBuffer} passed to {@link #attach} are
  * <em>caller-owned</em> — this class never deletes them.</p>
  *
  * <h3>Scope guardrails</h3>
@@ -74,28 +78,41 @@ import java.util.function.Consumer;
 public final class CgMaterial {
 
     private static final Logger LOGGER = LogManager.getLogger("CgMaterial");
-    
-    /** Block name of matPropsUbo**/
+
+    /** Block name of the engine-managed material properties UBO. */
     public static final String MATERIAL_PROPERTIES_BLOCK = "CgMaterialBlock";
-    
-    /** The compiled shader backing this material. Owned by this instance. Null until first {@link #recompile()}. */
-    private CgShader shader;
+
+    // ── Shared shader asset (asset-level, not instance-level) ─────────────────
+
+    /**
+     * Shared shader asset for this material. Owns compilation, render state, render queue,
+     * and attached buffers. {@code null} for materials created via {@link #forTest}.
+     */
+    private final CgMaterialShader cgMaterialShader;
+
+    /**
+     * Last shader revision seen by this material instance.
+     * Starts at {@code -1}; set to {@link CgMaterialShader#getRevisionNumber()} after
+     * each successful {@link #onShaderRecompiled()} call. A mismatch triggers a rebuild.
+     */
+    private int lastKnownRevision = -1;
+
+    // ── Per-instance state ─────────────────────────────────────────────────────
 
     /** Whether {@link #delete()} has been called. */
     private boolean deleted;
 
     /**
-     * Whether this material needs a full recompile on the next {@link #bind()}.
-     * Set by {@link #markDirty()}; cleared at the start of {@link #recompile()}.
+     * Fallback render state for materials created via {@link #forTest(CgRenderState, int)}.
+     * In real materials this is delegated to {@link CgMaterialShader#getRenderState()}.
      */
-    private boolean dirty;
-
-    /** Render state applied during {@link #bind()} and saved/restored on unbind. */
     private CgRenderState renderState = CgRenderState.DEFAULT;
 
-    /** Numeric render queue priority — 2000 by default (Geometry queue). 
+    /**
+     * Fallback render queue for materials created via {@link #forTest(CgRenderState, int)}.
+     * In real materials this is delegated to {@link CgMaterialShader#getRenderQueue()}.
      * -- GETTER --
-     * Returns the numeric render queue priority for this material (default: 2000 = Geometry). 
+     * Returns the numeric render queue priority for this material (default: 2000 = Geometry).
      */
     @Getter
     private int renderQueue = 2000;
@@ -104,54 +121,49 @@ public final class CgMaterial {
     private CgGlScope stateScope = null;
 
     /**
-     * Partitioned view of all properties for this material. Null until first recompile.
-     * Never reallocated after creation — {@link CgMaterialProperties#rebuild} updates it in-place.
+     * Partitioned view of all properties for this material instance. Null until first
+     * {@link #onShaderRecompiled()} call. Never reallocated after creation —
+     * {@link CgMaterialProperties#rebuild} updates it in-place on hot-reload.
      */
     private CgMaterialProperties propStore = null;
 
     /**
-     * UBO backing the non-sampler properties (CgMaterialBlock).
-     * Created on first recompile with UBO props, then reused (via {@code resetFormat}) forever —
-     * never deleted or nulled on subsequent recompiles.
+     * Per-instance UBO backing the non-sampler properties (CgMaterialBlock).
+     * Created on first {@link #onShaderRecompiled()} with UBO props, then reused
+     * (via {@code resetFormat}) forever — never deleted or nulled on subsequent recompiles.
      */
     private CgUniformBuffer matPropsUbo = null;
 
     /** Whether property values have changed since the last GPU upload. */
     private boolean materialPropsDirty = true;
 
-    /** Optional next material pass in a multi-pass draw chain. 
+    /**
+     * Optional next material pass in a multi-pass draw chain.
      * -- GETTER --
-     * Returns the next material pass in the draw chain, or 
-     *  if none. 
+     * Returns the next material pass in the draw chain, or {@code null} if none.
      */
     @Getter
     private CgMaterial nextPass = null;
 
-    /**
-     * User-defined auxiliary buffers (SSBO/TBO and UBO) attached to this material for GLSL
-     * auto-injection. SSBO/TBO entries have a non-null {@code macroName}; UBO entries have
-     * {@code macroName == null} (see {@link CgAttachedBuffer#isUbo()}).
-     * These are NOT engine pipeline buffers — see {@link CgAttachedBuffer} for details.
-     */
-    private final List<CgAttachedBuffer> attachedBuffers = new ArrayList<>();
+    // ── Constructors (private — use factory methods) ──────────────────────────
 
-    /**
-     * Resource path to the {@code .shader} file.
-     * {@code null} for programmatic or shader-graph materials that have no backing file.
-     * Set post-construction via {@link #setResourcePath(String)} in {@link #create(String)}.
-     */
-    @Setter
-    private String resourcePath;
+    /** Private no-arg constructor used by {@link #forTest} overloads. */
+    private CgMaterial() {
+        this.cgMaterialShader = null;
+    }
 
-    // ── Constructor (private — use load()) ───────────────────────────────────
-
-    private CgMaterial() {}
+    /** Private constructor used by {@link #create(String)}, {@link #newInstance(String)}, and {@link #fromShader(CgMaterialShader)}. */
+    private CgMaterial(CgMaterialShader asset) {
+        this.cgMaterialShader = asset;
+    }
 
     // ── Factory ───────────────────────────────────────────────────────────────
 
     /**
      * Returns the cached material for {@code resourcePath}, loading it on first access.
      * Delegates to {@link CgMaterialRegistry#get()} which caches by resource path.
+     *
+     * <p>For independent property values on the same shader, use {@link #newInstance(String)}.</p>
      *
      * @param resourcePath resource path to the {@code .shader} file,
      *                     e.g. {@code "mymod:shaders/terrain.shader"}
@@ -173,25 +185,45 @@ public final class CgMaterial {
     }
 
     /**
+     * Creates a new, non-registry-cached {@code CgMaterial} backed by the shared shader asset
+     * for {@code resourcePath}. Use when you need independent property values for the same shader.
+     *
+     * <p>Unlike {@link #load(String)}, this always returns a new instance. The caller is
+     * responsible for calling {@link #delete()} when done.</p>
+     *
+     * <p>Two calls with the same path share the same compiled GL programs but have independent
+     * {@code propStore} and {@code matPropsUbo}.</p>
+     *
+     * @param resourcePath resource path to the {@code .shader} file
+     * @return a fresh {@code CgMaterial} instance; never the same object as a prior call
+     */
+    public static CgMaterial newInstance(String resourcePath) {
+        CgMaterialShader asset = CgMaterialShaderRegistry.get().getOrCreate(resourcePath);
+        return new CgMaterial(asset);
+    }
+
+    /**
+     * Creates a new {@code CgMaterial} from an explicit {@link CgMaterialShader} asset.
+     * Intended for shader-graph-generated or programmatically constructed shaders that have
+     * no backing resource path.
+     * The caller is responsible for calling {@link #delete()} when done.
+     *
+     * @param shaderAsset the shared shader asset to back this material
+     * @return a fresh {@code CgMaterial} instance
+     * @throws IllegalArgumentException if {@code shaderAsset} is null
+     */
+    public static CgMaterial fromShader(CgMaterialShader shaderAsset) {
+        if (shaderAsset == null) throw new IllegalArgumentException("shaderAsset must not be null");
+        return new CgMaterial(shaderAsset);
+    }
+
+    /**
      * Creates a new {@code CgMaterial} from a {@code .shader} file.
      * Called only by {@link CgMaterialRegistry}; external callers use {@link #load}.
      *
      * <p>Compilation is <strong>deferred</strong> to the first {@link #bind()} call so that
-     * {@link #attach(CgShaderBuffer, String) attach()}
-     * calls made between {@code load()} and {@code bind()} are included in the compiled GLSL.
-     * Any exceptions that were previously thrown here (compile/link failures,
-     * {@link IllegalStateException}, {@link UnsupportedOperationException}) will now surface
-     * from the first {@code bind()} invocation instead.</p>
-     *
-     * <p>Typical usage:</p>
-     * <pre>{@code
-     * CgMaterial mat = CgMaterial.load("mymod:shaders/foo.shader");
-     * mat.attach(myBuffer, "MY_BUF");   // attach before first bind()
-     * // ... later, on each frame:
-     * mat.bind();                        // lazy compile happens here on the first call
-     * mesh.drawInstanced(N);
-     * mat.unbind();
-     * }</pre>
+     * {@link #attach(CgShaderBuffer, String) attach()} calls made between {@code load()} and
+     * {@code bind()} are included in the compiled GLSL.</p>
      *
      * @throws IllegalArgumentException  if the source cannot be loaded or is empty (from {@code bind()})
      * @throws CgShaderParseException    on parse error (from {@code bind()})
@@ -199,10 +231,8 @@ public final class CgMaterial {
      * @throws UnsupportedOperationException if the hardware does not support GL 3.3+ (from {@code bind()})
      */
     static CgMaterial create(String resourcePath) {
-        CgMaterial mat = new CgMaterial();
-        mat.setResourcePath(resourcePath);
-        mat.markDirty();
-        return mat;
+        CgMaterialShader asset = CgMaterialShaderRegistry.get().getOrCreate(resourcePath);
+        return new CgMaterial(asset);
     }
 
     static CgMaterial forTest(CgRenderState renderState, int renderQueue) {
@@ -226,7 +256,7 @@ public final class CgMaterial {
     // ── Buffer attachment API ─────────────────────────────────────────────────
 
     /**
-     * Attaches a user-defined auxiliary buffer to this material.
+     * Attaches a user-defined auxiliary buffer to this material's backing shader asset.
      *
      * <p>On the next compile, the buffer's GLSL struct and either an SSBO block or a TBO
      * sampler + fetch function are injected into both vertex and fragment shader source.
@@ -242,50 +272,28 @@ public final class CgMaterial {
      * engine and declared in {@code cg_env.glsl}. Passing them here causes duplicate declarations.</p>
      *
      * <p><strong>Ownership warning</strong>: {@code CgMaterial.load(path)} returns a
-     * <em>shared cached instance</em> from {@code CgMaterialRegistry}. Do NOT call
-     * {@code attach()} on a loaded material that other systems may hold. Either create the
-     * material outside the registry, or ensure you are the sole owner before attaching.</p>
+     * <em>shared cached instance</em> from {@code CgMaterialRegistry}, backed by a shared
+     * {@link CgMaterialShader}. Attaching a buffer affects all materials sharing the same
+     * shader. Only call {@code attach()} on materials you exclusively own.</p>
      *
      * <p><strong>TBO-path constraints</strong> (validated at compile time, not here):
      * <ul>
      *   <li>All field types must satisfy {@link CgGpuType#isTboCompatible()} — float-family only.
-     *       INT, UINT, BOOL, IVEC*, UVEC*, INT64, UINT64 are not accepted and will throw an exception.</li>
+     *       INT, UINT, BOOL, IVEC*, UVEC*, INT64, UINT64 are not accepted.</li>
      *   <li>Format stride must be a multiple of 16 bytes (one TBO texel = 16 bytes).</li>
      * </ul>
      *
      * <p><strong>Runtime binding</strong>: per-context GL binding ({@code glBindBufferBase} /
      * {@code glActiveTexture+glBindTexture}) is <em>your responsibility</em>. Call
-     * {@code buffer.bind()} before your draw call. This method only registers the buffer for
-     * GLSL generation and per-program block/sampler wiring.</p>
+     * {@code buffer.bind()} before your draw call.</p>
      *
      * @param buffer    the buffer to attach; format must use {@code STD430}
-     * @param macroName uppercase GLSL-style identifier function, e.g. {@code "FONT_METRICS"};
-     *                  used in shader as {@code macroName(n).fieldName}
+     * @param macroName uppercase GLSL-style identifier function, e.g. {@code "FONT_METRICS"}
      * @return {@code this} for fluent chaining
      * @apiNote Never throws — validation failures are logged as warnings and the call becomes a no-op.
      */
     public CgMaterial attach(CgShaderBuffer buffer, String macroName) {
-        CgAttachedBuffer ab;
-        try {
-            ab = CgAttachedBuffer.of(buffer, macroName);
-        } catch (IllegalArgumentException e) {
-            LOGGER.warn("attach() skipped for macro '{}': {}", macroName, e.getMessage());
-            return this;
-        }
-        for (CgAttachedBuffer existing : attachedBuffers) {
-            if (existing.isUbo()) continue;
-            if (existing.getMacroName().equals(macroName)) {
-                LOGGER.warn("attach() skipped: macro name \"{}\" is already attached to this material.", macroName);
-                return this;
-            }
-            if (existing.getStructName().equals(ab.getStructName())) {
-                LOGGER.warn("attach() skipped: GLSL struct name collision for \"{}\" (already in use by macro \"{}\").",
-                        ab.getStructName(), existing.getMacroName());
-                return this;
-            }
-        }
-        attachedBuffers.add(ab);
-        markDirty();
+        if (cgMaterialShader != null) cgMaterialShader.attach(buffer, macroName);
         return this;
     }
 
@@ -295,9 +303,7 @@ public final class CgMaterial {
      * @return {@code this} for fluent chaining
      */
     public CgMaterial detach(String macroName) {
-        if (attachedBuffers.removeIf(ab -> ab.getMacroName().equals(macroName))) {
-            markDirty();
-        }
+        if (cgMaterialShader != null) cgMaterialShader.detach(macroName);
         return this;
     }
 
@@ -307,14 +313,12 @@ public final class CgMaterial {
      * @return {@code this} for fluent chaining
      */
     public CgMaterial detach(CgShaderBuffer buffer) {
-        if (attachedBuffers.removeIf(ab -> ab.getBuffer() == buffer)) {
-            markDirty();
-        }
+        if (cgMaterialShader != null) cgMaterialShader.detach(buffer);
         return this;
     }
 
     /**
-     * Attaches a UBO to this material for GLSL flat-block auto-injection.
+     * Attaches a UBO to this material's backing shader asset for GLSL flat-block auto-injection.
      *
      * <p>On the next compile, a {@code layout(std140) uniform BlockName { ... };} block is
      * injected into both vertex and fragment shader source. All fields land in direct scope —
@@ -328,30 +332,14 @@ public final class CgMaterial {
      * <p><strong>Ownership warning</strong>: see {@link #attach(CgShaderBuffer, String)}.
      * Same rule applies here.</p>
      *
-     * <p><strong>Runtime binding</strong>: call {@code buffer.bind()} before your draw call.
-     * This method only registers the buffer for GLSL generation and block-index wiring.</p>
+     * <p><strong>Runtime binding</strong>: call {@code buffer.bind()} before your draw call.</p>
      *
      * @param buffer UBO to attach; format must use {@link CgBufferFormat.MemoryLayout#STD140}
      * @return {@code this} for fluent chaining
      * @apiNote Never throws — validation failures are logged as warnings and the call becomes a no-op.
      */
     public CgMaterial attach(CgUniformBuffer buffer) {
-        CgAttachedBuffer ab;
-        try {
-            ab = CgAttachedBuffer.of(buffer);
-        } catch (IllegalArgumentException e) {
-            LOGGER.warn("attach(CgUniformBuffer) skipped for '{}': {}", buffer == null ? "null" : buffer.getName(), e.getMessage());
-            return this;
-        }
-        for (CgAttachedBuffer existing : attachedBuffers) {
-            if (existing.isUbo() && existing.getBuffer().getName().equals(buffer.getName())) {
-                LOGGER.warn("attach(CgUniformBuffer) skipped: UBO block name \"{}\" is already attached.",
-                        buffer.getName());
-                return this;
-            }
-        }
-        attachedBuffers.add(ab);
-        markDirty();
+        if (cgMaterialShader != null) cgMaterialShader.attach(buffer);
         return this;
     }
 
@@ -361,9 +349,7 @@ public final class CgMaterial {
      * @return {@code this} for fluent chaining
      */
     public CgMaterial detachUbo(String blockName) {
-        if (attachedBuffers.removeIf(ab -> ab.isUbo() && ab.getBuffer().getName().equals(blockName))) {
-            markDirty();
-        }
+        if (cgMaterialShader != null) cgMaterialShader.detachUbo(blockName);
         return this;
     }
 
@@ -373,9 +359,7 @@ public final class CgMaterial {
      * @return {@code this} for fluent chaining
      */
     public CgMaterial detach(CgUniformBuffer buffer) {
-        if (attachedBuffers.removeIf(ab -> ab.isUbo() && ab.getBuffer() == buffer)) {
-            markDirty();
-        }
+        if (cgMaterialShader != null) cgMaterialShader.detach(buffer);
         return this;
     }
 
@@ -413,7 +397,9 @@ public final class CgMaterial {
      *
      * <h3>Operations performed in order</h3>
      * <ol>
-     *   <li>If {@link #dirty}, calls {@link #recompile()} to hot-reload the shader.</li>
+     *   <li>If the shader asset is dirty, triggers {@link CgMaterialShader#recompile()} and
+     *       {@link #onShaderRecompiled()} to rebuild per-instance state.</li>
+     *   <li>If the shader's revision changed since last bind, calls {@link #onShaderRecompiled()}.</li>
      *   <li>Saves blend, depth, cull, stencil, alpha-test, and color-mask GL state.</li>
      *   <li>Uploads material property UBO if values are dirty.</li>
      *   <li>Binds material property UBO (if present).</li>
@@ -428,7 +414,17 @@ public final class CgMaterial {
     public void bind() {
         checkNotDeleted();
 
-        if (dirty) recompile();
+        // Detect shader recompile (hot-reload or first compile).
+        if (cgMaterialShader != null) {
+            if (cgMaterialShader.isDirty()) {
+                cgMaterialShader.recompile();
+                onShaderRecompiled();
+            } else if (cgMaterialShader.getRevisionNumber() != lastKnownRevision) {
+                onShaderRecompiled();
+            }
+        }
+
+        CgShader shader = cgMaterialShader != null ? cgMaterialShader.getShader() : null;
         if (shader == null) return;
 
         stateScope = CgGlState.save(
@@ -444,10 +440,11 @@ public final class CgMaterial {
 
         if (matPropsUbo != null) matPropsUbo.bind();
 
-        if (propStore != null && propStore.hasSamplerProps()) 
+        if (propStore != null && propStore.hasSamplerProps())
             shader.applyBindings(b -> propStore.applySamplerProps(b));
 
-        renderState.apply();
+        CgRenderState rs = cgMaterialShader != null ? cgMaterialShader.getRenderState() : renderState;
+        rs.apply();
         shader.bind();
     }
 
@@ -460,6 +457,7 @@ public final class CgMaterial {
      */
     public void unbind() {
         if (deleted) return;
+        CgShader shader = cgMaterialShader != null ? cgMaterialShader.getShader() : null;
         if (shader != null) shader.unbind();
         if (matPropsUbo != null) matPropsUbo.unbind();
         if (stateScope != null) {
@@ -480,8 +478,6 @@ public final class CgMaterial {
      * CgShaderBuffer buf = material.objectBuffer();
      * CgBufferWriter w = buf.beginWrite(N);
      * for (int i = 0; i < N; i++) {
-     *     Matrix4f model  = ...;
-     *     Matrix4f normal = new Matrix4f(model).invert().transpose();
      *     w.beginRecord()
      *      .mat4("modelMatrix", model)
      *      .mat4("normalMatrix", normal)
@@ -493,10 +489,6 @@ public final class CgMaterial {
      * mesh.drawInstanced(N);
      * material.unbind();
      * }</pre>
-     *
-     * <p>The buffer auto-grows when {@code N} exceeds its current capacity.
-     * Each {@code beginWrite/endWrite} cycle overwrites the previous content —
-     * write a fresh batch every frame.</p>
      *
      * @return the pipeline's object buffer; never {@code null}
      * @throws IllegalStateException if {@link CgMaterialPipeline} has not been initialized
@@ -515,168 +507,53 @@ public final class CgMaterial {
 
     /**
      * Returns the backing {@link CgShader} for advanced use (e.g. wiring a UBO block
-     * after initial setup).
+     * after initial setup). May be {@code null} before the first successful compile.
      *
-     * @return the compiled shader handle; never {@code null}
+     * @return the compiled shader handle, or {@code null} if not yet compiled
      */
     public CgShader getShader() {
         checkNotDeleted();
-        return shader;
+        return cgMaterialShader != null ? cgMaterialShader.getShader() : null;
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
     /**
-     * Marks this material dirty so it will be fully recompiled from {@link #resourcePath}
-     * on the next {@link #bind()} call. Called by {@link CgMaterialRegistry#reloadAll()}
-     * during hot-reload (F3+T).
+     * Marks the backing shader asset dirty so it will be recompiled on the next
+     * {@link #bind()} call. Called by {@link CgMaterialRegistry#reloadAll()} during
+     * hot-reload (F3+T), but now delegates through to the shared asset.
      *
-     * <p>If the material has already been deleted, this is a no-op.</p>
+     * <p>If the material has already been deleted or has no shader asset (forTest), this is a no-op.</p>
      */
     public void markDirty() {
-        if (!deleted) dirty = true;
+        if (!deleted && cgMaterialShader != null) cgMaterialShader.markDirty();
     }
 
     /**
-     * Compiles (or recompiles) this material from {@link #resourcePath}.
-     * Serves as the single compilation path for both initial load and hot-reload.
+     * Triggers a recompile of the backing shader asset, then rebuilds per-instance state.
      *
-     * <p>On first call ({@code shader == null}): throws on any failure — never returns
-     * with a broken state. On subsequent calls (hot-reload): logs errors and keeps the
-     * old program running on failure.</p>
-     *
-     * <p>No-op when {@code resourcePath} is null (shader-graph / programmatic materials).</p>
+     * <p>Serves as the public API for explicit recompilation. In normal usage, recompilation
+     * happens lazily on {@link #bind()}. No-op when there is no shader asset ({@code forTest} path).</p>
      */
     public void recompile() {
-        dirty = false;
-        if (resourcePath == null) return;
-
-        boolean isFirst = (shader == null);
-
-        String source;
-        try {
-            source = CgIO.loadSource(resourcePath);
-        } catch (Exception e) {
-            if (isFirst) throw new IllegalArgumentException("Could not load shader source from: " + resourcePath, e);
-            LOGGER.error("Reload failed for '{}': could not load source — {}", resourcePath, e.getMessage());
-            return;
-        }
-        if (source == null || source.isEmpty()) {
-            if (isFirst) throw new IllegalArgumentException("Could not load shader source from: " + resourcePath);
-            LOGGER.error("Reload failed for '{}': empty source", resourcePath);
-            return;
-        }
-
-        CgParsedShader parsed;
-        try {
-            parsed = CgShaderParser.parse(source, resourcePath);
-        } catch (CgShaderParseException e) {
-            if (isFirst) throw e;
-            LOGGER.error("Reload failed for '{}': parse error — {}", resourcePath, e.getMessage());
-            return;
-        }
-
-        this.renderState = parsed.renderState();
-        this.renderQueue = parsed.renderQueue();
-        if (propStore == null) propStore = new CgMaterialProperties(parsed.properties());
-        else propStore.rebuild(parsed.properties());
-        
-
-
-        CgCapabilities.ShaderBufferPath path = CgCapabilities.detect().shaderBufferPath();
-        if (path == CgCapabilities.ShaderBufferPath.NONE) {
-            if (isFirst) throw new UnsupportedOperationException("GL 3.3+ required for CrystalShader materials");
-            LOGGER.error("Reload failed for '{}': GL 3.3+ not available", resourcePath);
-            return;
-        }
-
-        if (propStore.hasUboProps()) {
-            CgBufferFormat newFormat = propStore.buildUboFormat();
-            if (matPropsUbo == null) 
-                matPropsUbo = new CgUniformBuffer(MATERIAL_PROPERTIES_BLOCK, newFormat, CgBindingPoints.MATERIAL_PROPERTIES_UBO);
-            else matPropsUbo.resetFormat(newFormat);
-        }
-        
-        this.materialPropsDirty = true;
-
-        CgMaterialShaderCompiler.CompiledSource compiled;
-        try {
-            compiled = CgMaterialShaderCompiler.compile(parsed, path, attachedBuffers, matPropsUbo);
-        } catch (CgPreprocessorException e) {
-            if (isFirst) throw e;
-            LOGGER.error("Reload failed for '{}': buffer injection error — {}", resourcePath, e.getMessage());
-            return;
-        }
-        String processedVert = new CgShaderPreprocessor().process(compiled.vertexSource(), resourcePath);
-        String processedFrag = new CgShaderPreprocessor().process(compiled.fragmentSource(), resourcePath);
-
-        if (System.getProperty("crystalgraphics.material.dumpGlsl") != null) {
-            LOGGER.info("=== CgMaterial GLSL dump for '{}' ===", resourcePath);
-            LOGGER.info("--- VERTEX ---\n{}", processedVert);
-            LOGGER.info("--- FRAGMENT ---\n{}", processedFrag);
-            LOGGER.info("=== end GLSL dump ===");
-        }
-
-        if (isFirst) {
-            shader = CgShaderFactory.fromSource(processedVert, processedFrag, CgVertexFormat.SPATIAL);
-            if (!shader.isCompiled()) {
-                String err = shader.getLastCompileError();
-                shader.delete();
-                shader = null;
-                LOGGER.error("CgMaterial.create() failed for '{}': {}", resourcePath, err);
-                return;
-            }
-        } else {
-            shader.setSource(processedVert, processedFrag);
-            shader.recompile();
-            if (!shader.isCompiled()) {
-                LOGGER.error("Reload failed for '{}': compile error — {}", resourcePath, shader.getLastCompileError());
-                return;
-            }
-        }
-        
-        // Wire per-program block indices after each link — does NOT bind to GL context.
-        // glUniform1i (TBO path) requires an active program, so bind shader around all wiring calls.
-        CgMaterialPipeline pipeline = CgMaterialPipeline.getInstance();
-        shader.bind();
-        
-        pipeline.frameBuffer().wireShader(shader);   // glUniformBlockBinding for CgFrameBlock
-        pipeline.objectBuffer().wireShader(shader);  // glShaderStorageBlockBinding (SSBO) or glUniform1i (TBO)
-        if(matPropsUbo != null) matPropsUbo.wireShader(shader);
-        
-        for (CgAttachedBuffer ab : attachedBuffers) 
-            ab.getBuffer().wireShader(shader);
-        
-        shader.unbind();
-
-        // Upload property defaults to UBO immediately after successful compile/link,
-        // so a freshly-loaded material has its parsed default values in the GPU buffer
-        // before any applyProperties() call from the caller. (T7)
-        if (matPropsUbo != null) {
-            propStore.writeUboProps(matPropsUbo.writer());
-            matPropsUbo.endRecord();
-            matPropsUbo.upload();
-            materialPropsDirty = false;
-        }
-
-        if (!isFirst) {
-            LOGGER.info("Reloaded '{}'", resourcePath);
-        }
+        if (cgMaterialShader == null) return; // forTest() path
+        cgMaterialShader.recompile();
+        onShaderRecompiled();
     }
 
     /**
-     * Frees the backing shader program and material properties UBO.
-     * After this call, the material is unusable.
+     * Frees the per-instance property UBO. After this call, the material is unusable.
+     *
+     * <p>The backing shader programs are <strong>not</strong> deleted here — they are owned by
+     * the shared {@link CgMaterialShader} asset and managed by {@link CgMaterialShaderRegistry}.
+     * Only the property UBO (instance-owned) is freed.</p>
      *
      * <p>Idempotent — subsequent calls are no-ops.</p>
      */
     public void delete() {
         if (!deleted) {
             deleted = true;
-            if (shader != null) {
-                shader.delete();
-                shader = null;
-            }
+            // Do NOT delete cgMaterialShader.getShader() — that is asset-owned, not instance-owned.
             if (matPropsUbo != null) {
                 matPropsUbo.delete();
                 matPropsUbo = null;
@@ -685,6 +562,65 @@ public final class CgMaterial {
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
+
+    /**
+     * Rebuilds per-instance state (propStore, matPropsUbo) after the shared shader asset
+     * has been successfully recompiled. Called from {@link #bind()} whenever the asset's
+     * {@link CgMaterialShader#getRevisionNumber()} diverges from {@link #lastKnownRevision}.
+     *
+     * <p>No-op if the shader's parse result is null (compile failed — keep old state).</p>
+     */
+    private void onShaderRecompiled() {
+        CgParsedShader parsed = cgMaterialShader.getParsed();
+        if (parsed == null) return; // compile failed, keep old state
+
+        // Rebuild property store with fresh clones of parsed defaults.
+        if (propStore == null) {
+            propStore = new CgMaterialProperties(cloneProperties(parsed.properties()));
+        } else {
+            propStore.rebuild(cloneProperties(parsed.properties()));
+        }
+
+        // Re-create or reset the per-instance UBO if property layout changed.
+        if (propStore.hasUboProps()) {
+            CgBufferFormat newFormat = propStore.buildUboFormat();
+            if (matPropsUbo == null) {
+                matPropsUbo = new CgUniformBuffer(MATERIAL_PROPERTIES_BLOCK, newFormat, CgBindingPoints.MATERIAL_PROPERTIES_UBO);
+            } else {
+                matPropsUbo.resetFormat(newFormat);
+            }
+
+            // Wire this material's UBO block index to the (potentially new) shader program.
+            CgShader shader = cgMaterialShader.getShader();
+            if (shader != null) {
+                shader.bind();
+                matPropsUbo.wireShader(shader);
+                shader.unbind();
+            }
+
+            // Upload property defaults immediately after successful compile/link (T7 behaviour),
+            // so a freshly-loaded material has its parsed default values in the GPU buffer
+            // before any applyProperties() call from the caller.
+            propStore.writeUboProps(matPropsUbo.writer());
+            matPropsUbo.endRecord();
+            matPropsUbo.upload();
+            materialPropsDirty = false;
+        }
+
+        lastKnownRevision = cgMaterialShader.getRevisionNumber();
+    }
+
+    /**
+     * Returns a fresh list of per-instance property clones from a shared parsed property list.
+     * Each property is cloned via {@link CgMaterialProperty#copyWithDefaults()} so that each
+     * material instance has independent, mutable property objects.
+     */
+    private static List<CgMaterialProperty> cloneProperties(List<CgMaterialProperty> source) {
+        List<CgMaterialProperty> result = new ArrayList<>(source.size());
+        for (CgMaterialProperty p : source)
+            result.add(p.copyWithDefaults());
+        return result;
+    }
 
     private void checkNotDeleted() {
         if (deleted) throw new IllegalStateException("CgMaterial has been deleted");

@@ -2,6 +2,7 @@ package io.github.somehussar.crystalgraphics.mc;
 
 import io.github.somehussar.crystalgraphics.api.material.CgMaterialRegistry;
 import io.github.somehussar.crystalgraphics.api.shader.CgShaderManager;
+import io.github.somehussar.crystalgraphics.gl.material.CgMaterialShaderRegistry;
 import io.github.somehussar.crystalgraphics.gl.texture.CgTextureManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.IResourceManager;
@@ -75,6 +76,7 @@ public final class CgAssetReloader {
     private static void reloadMaterials() {
         try {
             CgMaterialRegistry.get().reloadAll();
+            CgMaterialShaderRegistry.get().reloadAll();
         } catch (Exception e) {
             LOGGER.error("Failed to reload materials", e);
         }

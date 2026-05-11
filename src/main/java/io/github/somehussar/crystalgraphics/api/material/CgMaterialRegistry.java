@@ -1,5 +1,7 @@
 package io.github.somehussar.crystalgraphics.api.material;
 
+import io.github.somehussar.crystalgraphics.gl.material.CgMaterialShaderRegistry;
+
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -10,9 +12,12 @@ import java.util.Map;
  * twice for the same path returns the same instance. The singleton is accessible
  * via {@link #get()}.</p>
  *
- * <p>For hot-reload support, call {@link #reloadAll()} from your reload hook
- * (e.g. inside a callback registered with {@code CgAssetReloader}).
- * {@link #deleteAll()} must be called before {@code CgGraphicsLifecycle.destroyContext()}.</p>
+ * <p>Hot-reload: {@link #reloadAll()} delegates to {@link CgMaterialShaderRegistry#reloadAll()},
+ * marking all shader assets dirty. Materials detect the revision change on the next
+ * {@code bind()} call. Wire this to your reload hook (F3+T / resource pack reload).</p>
+ *
+ * <p>Teardown: {@link #deleteAll()} frees per-instance property UBOs first, then cascades to
+ * {@link CgMaterialShaderRegistry#deleteAll()} to release GL shader programs.</p>
  */
 public final class CgMaterialRegistry {
 
@@ -58,7 +63,9 @@ public final class CgMaterialRegistry {
     }
 
     /**
-     * Marks all tracked materials dirty so they recompile on the next {@code bind()}.
+     * Marks all shader assets dirty so they recompile on the next {@code bind()}.
+     * Delegates to {@link CgMaterialShaderRegistry#reloadAll()} — materials detect the
+     * revision change on next {@code bind()} without a per-material loop here.
      * Wire this to your reload hook (F3+T / resource pack reload).
      */
     public void reloadAll() {
@@ -67,14 +74,18 @@ public final class CgMaterialRegistry {
     }
 
     /**
-     * Deletes all tracked materials and clears the cache. Idempotent.
-     * Must be called before {@code CgGraphicsLifecycle.destroyContext()}.
+     * Deletes all tracked material instances (freeing per-instance property UBOs), then
+     * cascades to {@link CgMaterialShaderRegistry#deleteAll()} to release GL shader programs.
+     * Idempotent. Must be called before {@code CgGraphicsLifecycle.destroyContext()}.
+     *
+     * <p>Material instances must be deleted before shader assets so that property UBOs
+     * are freed while the GL context is still valid.</p>
      */
     public void deleteAll() {
         if (!deleted) {
             deleted = true;
             for (CgMaterial mat : materials.values())
-                mat.delete();
+                mat.delete();          // frees per-instance matPropsUbo
             materials.clear();
         }
     }
