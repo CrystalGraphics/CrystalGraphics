@@ -39,7 +39,7 @@ public class CgMaterialShaderCompilerTest {
     @Test
     public void tboPath_emits330Version() {
         CgMaterialShaderCompiler.CompiledSource cs =
-                CgMaterialShaderCompiler.compile(parse(MINIMAL), TBO, NO_BUFFERS);
+                CgMaterialShaderCompiler.compile(parse(MINIMAL), NO_BUFFERS);
         assertTrue("Vertex must start with #version 330 core",
                 cs.vertexSource().startsWith("#version 330 core"));
         assertTrue("Fragment must start with #version 330 core",
@@ -50,7 +50,7 @@ public class CgMaterialShaderCompilerTest {
     public void ssboGl43Path_emits430Version() {
         CgMaterialShaderCompiler.CompiledSource cs =
                 CgMaterialShaderCompiler.compile(parse(MINIMAL),
-                        CgCapabilities.ShaderBufferPath.SSBO_GL43, NO_BUFFERS);
+                        NO_BUFFERS);
         assertTrue(cs.vertexSource().startsWith("#version 430 core"));
         assertTrue(cs.fragmentSource().startsWith("#version 430 core"));
     }
@@ -58,7 +58,7 @@ public class CgMaterialShaderCompilerTest {
     @Test(expected = IllegalArgumentException.class)
     public void nonePath_throws() {
         CgMaterialShaderCompiler.compile(parse(MINIMAL),
-                CgCapabilities.ShaderBufferPath.NONE, NO_BUFFERS);
+                NO_BUFFERS);
     }
 
     // ── Define injection ──────────────────────────────────────────────────────
@@ -66,7 +66,7 @@ public class CgMaterialShaderCompilerTest {
     @Test
     public void vertex_definesVertexStage() {
         CgMaterialShaderCompiler.CompiledSource cs =
-                CgMaterialShaderCompiler.compile(parse(MINIMAL), TBO, NO_BUFFERS);
+                CgMaterialShaderCompiler.compile(parse(MINIMAL), NO_BUFFERS);
         assertTrue(cs.vertexSource().contains("#define CG_VERTEX_STAGE 1"));
         assertFalse("Fragment must NOT have CG_VERTEX_STAGE",
                 cs.fragmentSource().contains("CG_VERTEX_STAGE"));
@@ -75,7 +75,7 @@ public class CgMaterialShaderCompilerTest {
     @Test
     public void tboPath_doesNotEmitUseSsbo() {
         CgMaterialShaderCompiler.CompiledSource cs =
-                CgMaterialShaderCompiler.compile(parse(MINIMAL), TBO, NO_BUFFERS);
+                CgMaterialShaderCompiler.compile(parse(MINIMAL), NO_BUFFERS);
         assertFalse(cs.vertexSource().contains("CG_USE_SSBO"));
         assertFalse(cs.fragmentSource().contains("CG_USE_SSBO"));
     }
@@ -84,7 +84,7 @@ public class CgMaterialShaderCompilerTest {
     public void ssboPath_emitsUseSsbo() {
         CgMaterialShaderCompiler.CompiledSource cs =
                 CgMaterialShaderCompiler.compile(parse(MINIMAL),
-                        CgCapabilities.ShaderBufferPath.SSBO_GL43, NO_BUFFERS);
+                        NO_BUFFERS);
         assertTrue(cs.vertexSource().contains("#define CG_USE_SSBO 1"));
         assertTrue(cs.fragmentSource().contains("#define CG_USE_SSBO 1"));
     }
@@ -94,7 +94,7 @@ public class CgMaterialShaderCompilerTest {
     @Test
     public void both_includeEnvGlsl() {
         CgMaterialShaderCompiler.CompiledSource cs =
-                CgMaterialShaderCompiler.compile(parse(MINIMAL), TBO, NO_BUFFERS);
+                CgMaterialShaderCompiler.compile(parse(MINIMAL), NO_BUFFERS);
         assertTrue(cs.vertexSource().contains("cg_env.glsl"));
         assertTrue(cs.fragmentSource().contains("cg_env.glsl"));
     }
@@ -104,7 +104,7 @@ public class CgMaterialShaderCompilerTest {
     @Test
     public void both_containV2fStruct() {
         CgMaterialShaderCompiler.CompiledSource cs =
-                CgMaterialShaderCompiler.compile(parse(MINIMAL), TBO, NO_BUFFERS);
+                CgMaterialShaderCompiler.compile(parse(MINIMAL), NO_BUFFERS);
         assertTrue(cs.vertexSource().contains("struct v2f"));
         assertTrue(cs.fragmentSource().contains("struct v2f"));
     }
@@ -112,7 +112,7 @@ public class CgMaterialShaderCompilerTest {
     @Test
     public void both_containCgV2fInterfaceBlock() {
         CgMaterialShaderCompiler.CompiledSource cs =
-                CgMaterialShaderCompiler.compile(parse(MINIMAL), TBO, NO_BUFFERS);
+                CgMaterialShaderCompiler.compile(parse(MINIMAL), NO_BUFFERS);
         assertTrue(cs.vertexSource().contains("_CgV2fBlock"));
         assertTrue(cs.fragmentSource().contains("_CgV2fBlock"));
     }
@@ -122,21 +122,21 @@ public class CgMaterialShaderCompilerTest {
     @Test
     public void vertex_containsUserVertexFunction() {
         CgMaterialShaderCompiler.CompiledSource cs =
-                CgMaterialShaderCompiler.compile(parse(MINIMAL), TBO, NO_BUFFERS);
+                CgMaterialShaderCompiler.compile(parse(MINIMAL), NO_BUFFERS);
         assertTrue(cs.vertexSource().contains("void vertex(out v2f o)"));
     }
 
     @Test
     public void fragment_containsUserFragmentFunction() {
         CgMaterialShaderCompiler.CompiledSource cs =
-                CgMaterialShaderCompiler.compile(parse(MINIMAL), TBO, NO_BUFFERS);
+                CgMaterialShaderCompiler.compile(parse(MINIMAL), NO_BUFFERS);
         assertTrue(cs.fragmentSource().contains("void fragment(in v2f i"));
     }
 
     @Test
     public void both_containGeneratedMain() {
         CgMaterialShaderCompiler.CompiledSource cs =
-                CgMaterialShaderCompiler.compile(parse(MINIMAL), TBO, NO_BUFFERS);
+                CgMaterialShaderCompiler.compile(parse(MINIMAL), NO_BUFFERS);
         assertTrue(cs.vertexSource().contains("void main()"));
         assertTrue(cs.fragmentSource().contains("void main()"));
     }
@@ -154,7 +154,7 @@ public class CgMaterialShaderCompilerTest {
                 "void vertex(out v2f o) { o.uv = vec2(0.0); }\n" +
                 "void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(1.0); }\n";
         CgMaterialShaderCompiler.CompiledSource cs =
-                CgMaterialShaderCompiler.compile(parse(src), TBO, NO_BUFFERS);
+                CgMaterialShaderCompiler.compile(parse(src), NO_BUFFERS);
         assertTrue("Sampler must be emitted as a uniform declaration",
                 cs.fragmentSource().contains("uniform sampler2D _MainTex"));
     }
@@ -204,21 +204,21 @@ public class CgMaterialShaderCompilerTest {
     @Test
     public void compiler_singleOutput_emitsFragColorOut() {
         CgMaterialShaderCompiler.CompiledSource cs =
-                CgMaterialShaderCompiler.compile(parse(MINIMAL), TBO, NO_BUFFERS);
+                CgMaterialShaderCompiler.compile(parse(MINIMAL), NO_BUFFERS);
         assertTrue(cs.fragmentSource().contains("out vec4 _cg_fragColor;"));
     }
 
     @Test
     public void compiler_singleOutput_mainCallsFragment() {
         CgMaterialShaderCompiler.CompiledSource cs =
-                CgMaterialShaderCompiler.compile(parse(MINIMAL), TBO, NO_BUFFERS);
+                CgMaterialShaderCompiler.compile(parse(MINIMAL), NO_BUFFERS);
         assertTrue(cs.fragmentSource().contains("fragment(_v2f_local, _cg_fragColor);"));
     }
 
     @Test
     public void compiler_singleOutput_noRtNAnnotationsInOutput() {
         CgMaterialShaderCompiler.CompiledSource cs =
-                CgMaterialShaderCompiler.compile(parse(MINIMAL), TBO, NO_BUFFERS);
+                CgMaterialShaderCompiler.compile(parse(MINIMAL), NO_BUFFERS);
         assertFalse(cs.fragmentSource().contains(": RT"));
         assertFalse(cs.vertexSource().contains(": RT"));
     }
@@ -226,7 +226,7 @@ public class CgMaterialShaderCompilerTest {
     @Test
     public void compiler_mrt3Fields_emitsThreeLayoutQualifiedOuts() {
         CgMaterialShaderCompiler.CompiledSource cs =
-                CgMaterialShaderCompiler.compile(parse(MRT_3_SHADER), TBO, NO_BUFFERS);
+                CgMaterialShaderCompiler.compile(parse(MRT_3_SHADER), NO_BUFFERS);
         assertTrue(cs.fragmentSource().contains("layout(location = 0) out vec4 _cg_RT0;"));
         assertTrue(cs.fragmentSource().contains("layout(location = 1) out vec4 _cg_RT1;"));
         assertTrue(cs.fragmentSource().contains("layout(location = 2) out vec4 _cg_RT2;"));
@@ -237,14 +237,14 @@ public class CgMaterialShaderCompilerTest {
     @Test
     public void compiler_mrt3Fields_emitsFragmentFunctionWithStructSignature() {
         CgMaterialShaderCompiler.CompiledSource cs =
-                CgMaterialShaderCompiler.compile(parse(MRT_3_SHADER), TBO, NO_BUFFERS);
+                CgMaterialShaderCompiler.compile(parse(MRT_3_SHADER), NO_BUFFERS);
         assertTrue(cs.fragmentSource().contains("void fragment(in v2f i, out GBuffer o)"));
     }
 
     @Test
     public void compiler_mrt3Fields_mainDeclaresStructLocal_andCopiesFields() {
         CgMaterialShaderCompiler.CompiledSource cs =
-                CgMaterialShaderCompiler.compile(parse(MRT_3_SHADER), TBO, NO_BUFFERS);
+                CgMaterialShaderCompiler.compile(parse(MRT_3_SHADER), NO_BUFFERS);
         String frag = cs.fragmentSource();
         assertTrue(frag.contains("GBuffer _cg_mrtOut;"));
         assertTrue(frag.contains("fragment(_v2f_local, _cg_mrtOut);"));
@@ -256,7 +256,7 @@ public class CgMaterialShaderCompilerTest {
     @Test
     public void compiler_mrtSkippedLocation_emitsCorrectLocationNumbers() {
         CgMaterialShaderCompiler.CompiledSource cs =
-                CgMaterialShaderCompiler.compile(parse(MRT_SKIPPED_SHADER), TBO, NO_BUFFERS);
+                CgMaterialShaderCompiler.compile(parse(MRT_SKIPPED_SHADER), NO_BUFFERS);
         String frag = cs.fragmentSource();
         assertTrue(frag.contains("layout(location = 0) out vec4 _cg_RT0;"));
         assertTrue(frag.contains("layout(location = 2) out vec4 _cg_RT2;"));
@@ -266,7 +266,7 @@ public class CgMaterialShaderCompilerTest {
     @Test
     public void compiler_mrt_structNotEmittedTwice() {
         CgMaterialShaderCompiler.CompiledSource cs =
-                CgMaterialShaderCompiler.compile(parse(MRT_3_SHADER), TBO, NO_BUFFERS);
+                CgMaterialShaderCompiler.compile(parse(MRT_3_SHADER), NO_BUFFERS);
         String frag = cs.fragmentSource();
         int firstIdx = frag.indexOf("struct GBuffer {");
         assertTrue("struct GBuffer must appear at least once", firstIdx >= 0);
@@ -277,7 +277,7 @@ public class CgMaterialShaderCompilerTest {
     @Test
     public void compiler_mrt_noAnnotationTokensInGlsl() {
         CgMaterialShaderCompiler.CompiledSource cs =
-                CgMaterialShaderCompiler.compile(parse(MRT_3_SHADER), TBO, NO_BUFFERS);
+                CgMaterialShaderCompiler.compile(parse(MRT_3_SHADER), NO_BUFFERS);
         assertFalse("No ': RT' tokens must appear in fragment GLSL",
                 cs.fragmentSource().contains(": RT"));
         assertFalse("No ': RT' tokens must appear in vertex GLSL",
@@ -287,7 +287,7 @@ public class CgMaterialShaderCompilerTest {
     @Test
     public void compiler_vertexSource_unchangedForMrt() {
         CgMaterialShaderCompiler.CompiledSource csMrt =
-                CgMaterialShaderCompiler.compile(parse(MRT_3_SHADER), TBO, NO_BUFFERS);
+                CgMaterialShaderCompiler.compile(parse(MRT_3_SHADER), NO_BUFFERS);
         assertTrue(csMrt.vertexSource().contains("void vertex(out v2f o)"));
         assertTrue(csMrt.vertexSource().contains("void main()"));
         // MRT layout-qualified outputs must NOT appear in vertex shader

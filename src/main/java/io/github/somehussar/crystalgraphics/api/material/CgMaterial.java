@@ -21,7 +21,14 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.function.Consumer;
 
 /**
@@ -55,6 +62,15 @@ import java.util.function.Consumer;
  * material.unbind();
  * }</pre>
  *
+ * <h3>Keyword system</h3>
+ * <p>Shaders declare optional features via {@code #pragma cg_feature NAME} in their preamble.
+ * Enabling a keyword injects {@code #define NAME 1} into both vertex and fragment sources.
+ * Each distinct (variant, keyword-set) combination is compiled lazily and cached.</p>
+ * <pre>{@code
+ * material.enableKeyword("SHADOWS_ON");
+ * material.bind(); // compiles STANDARD + {"SHADOWS_ON"} variant on first call
+ * }</pre>
+ *
  * <h3>Hot-reload</h3>
  * <p>Hot-reload is asset-level: {@link CgMaterialShader#markDirty()} is set on the shared asset,
  * which increments its {@link CgMaterialShader#getRevisionNumber()} on the next successful
@@ -68,12 +84,6 @@ import java.util.function.Consumer;
  * by {@link CgMaterialRegistry#deleteAll()}.
  * {@link CgUniformBuffer} and {@link CgShaderBuffer} passed to {@link #attach} are
  * <em>caller-owned</em> — this class never deletes them.</p>
- *
- * <h3>Scope guardrails</h3>
- * <ul>
- *   <li>No render-state management — no blend, depth, cull setters.</li>
- *   <li>No shader variants — no DEPTH/SHADOW pass in this MVP.</li>
- * </ul>
  */
 public final class CgMaterial {
 
@@ -138,12 +148,64 @@ public final class CgMaterial {
     private boolean materialPropsDirty = true;
 
     /**
+     * Active feature-flag keywords declared via {@code #pragma cg_feature}.
+     * Only names present in {@link CgParsedShader#featureNames()} are accepted.
+     */
+    private final Set<String> enabledKeywords = new LinkedHashSet<>();
+
+    /**
+     * Tracks which compiled {@link CgShader} instances the per-instance {@code matPropsUbo}
+     * has been wired to. Cleared on hot-reload so newly compiled variants get wired on first bind.
+     */
+    private final Set<CgShader> wiredToMatPropsUbo = new HashSet<>();
+
+    /**
+     * Property-apply consumers buffered before {@code propStore} was first initialised.
+     * This happens when {@link #applyProperties} is called before the first {@link #bind()}
+     * and the shader hasn't compiled yet.
+     * Drained into {@code propStore} inside {@link #onShaderRecompiled()} after the first
+     * successful compile. Lazily allocated — null until first buffered call.
+     */
+    private List<Consumer<CgShaderBindings>> pendingApplyConsumers = null;
+
+    /**
      * Optional next material pass in a multi-pass draw chain.
      * -- GETTER --
      * Returns the next material pass in the draw chain, or {@code null} if none.
      */
     @Getter
     private CgMaterial nextPass = null;
+
+    // ── forTest-only fields (null for real materials) ──────────────────────────
+
+    /**
+     * Declared feature names injected for the forTest path (used by
+     * {@link #enableKeyword(String)} validation in forTest mode).
+     */
+    private List<String> testFeatureNames;
+
+    // ── Immutable key for the forTest program cache ────────────────────────────
+
+    /** Cache key for active keywords on the forTest path. Set-equality for keywords. */
+    private static final class ForTestKey {
+        final Set<String> keywords;
+
+        ForTestKey(Set<String> keywords) {
+            this.keywords = Collections.unmodifiableSet(new LinkedHashSet<>(keywords));
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof ForTestKey)) return false;
+            return keywords.equals(((ForTestKey) o).keywords);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(keywords);
+        }
+    }
 
     // ── Constructors (private — use factory methods) ──────────────────────────
 
@@ -220,15 +282,6 @@ public final class CgMaterial {
     /**
      * Creates a new {@code CgMaterial} from a {@code .shader} file.
      * Called only by {@link CgMaterialRegistry}; external callers use {@link #load}.
-     *
-     * <p>Compilation is <strong>deferred</strong> to the first {@link #bind()} call so that
-     * {@link #attach(CgShaderBuffer, String) attach()} calls made between {@code load()} and
-     * {@code bind()} are included in the compiled GLSL.</p>
-     *
-     * @throws IllegalArgumentException  if the source cannot be loaded or is empty (from {@code bind()})
-     * @throws CgShaderParseException    on parse error (from {@code bind()})
-     * @throws IllegalStateException     if compilation or linking fails (from {@code bind()})
-     * @throws UnsupportedOperationException if the hardware does not support GL 3.3+ (from {@code bind()})
      */
     static CgMaterial create(String resourcePath) {
         CgMaterialShader asset = CgMaterialShaderRegistry.get().getOrCreate(resourcePath);
@@ -245,6 +298,22 @@ public final class CgMaterial {
     static CgMaterial forTest(CgRenderState renderState, int renderQueue, CgMaterialProperties propStore) {
         CgMaterial m = forTest(renderState, renderQueue);
         m.propStore = propStore;
+        return m;
+    }
+
+    /**
+     * Creates a test material with declared feature names for unit-testing keyword
+     * enable/disable validation without a real GL context.
+     *
+     * @param renderState  render state for this test material
+     * @param renderQueue  render queue priority
+     * @param featureNames declared feature names to accept in {@link #enableKeyword(String)}
+     * @return a test material with keyword validation backed by the given names
+     */
+    static CgMaterial forTest(CgRenderState renderState, int renderQueue,
+                               List<String> featureNames) {
+        CgMaterial m = forTest(renderState, renderQueue);
+        m.testFeatureNames = Collections.unmodifiableList(new ArrayList<>(featureNames));
         return m;
     }
 
@@ -382,24 +451,88 @@ public final class CgMaterial {
      */
     public CgMaterial applyProperties(Consumer<CgShaderBindings> consumer) {
         checkNotDeleted();
-        if (propStore == null) return this;
+        // Lazy-init propStore if the shader asset exists but propStore hasn't been built yet
+        // (e.g. applyProperties() called before the first bind()). Mirrors the enableKeyword pattern.
+        if (propStore == null && cgMaterialShader != null) recompile();
+        
+        if (propStore == null) {
+            // Shader hasn't compiled yet (compile failed, or forTest path with no asset) —
+            // buffer the consumer so it's replayed after the first successful compile.
+            if (pendingApplyConsumers == null) pendingApplyConsumers = new ArrayList<>();
+            pendingApplyConsumers.add(consumer);
+            return this;
+        }
         consumer.accept(propStore);
         materialPropsDirty = true;
         return this;
     }
 
+    // ── Keyword API ───────────────────────────────────────────────────────────
+
+    /**
+     * Enables a feature-flag keyword declared via {@code #pragma cg_feature NAME} in the shader.
+     * Subsequent {@link #bind()} calls will compile and use a variant with
+     * {@code #define NAME 1} injected into both vertex and fragment sources.
+     *
+     * <p>Safe to call before the first {@link #bind()} — if the backing shader asset has not
+     * been compiled yet, a lazy compile is triggered here so that {@code featureNames} are
+     * available for validation. This mirrors the same compile path taken by {@code bind()}.</p>
+     *
+     * @param name keyword name to enable; must be declared in the shader's {@code #pragma cg_feature} list
+     * @throws IllegalArgumentException if {@code name} is not declared as a feature in this shader
+     */
+    public void enableKeyword(String name) {
+        checkNotDeleted();
+        // If the shader asset exists but hasn't been compiled yet (e.g. called in init() before
+        // bind()), trigger a compile now so featureNames are populated for validation.
+        if (cgMaterialShader != null && cgMaterialShader.getParsed() == null) {
+            cgMaterialShader.recompile();
+        }
+        List<String> declared = getDeclaredFeatureNames();
+        if (!declared.contains(name)) {
+            throw new IllegalArgumentException(
+                    "Keyword '" + name + "' is not declared as #pragma cg_feature in this shader");
+        }
+        enabledKeywords.add(name);
+    }
+
+    /**
+     * Disables a previously-enabled keyword. No-op if the keyword is not currently enabled.
+     *
+     * @param name keyword name to disable
+     */
+    public void disableKeyword(String name) {
+        checkNotDeleted();
+        enabledKeywords.remove(name);
+    }
+
+    /**
+     * Returns {@code true} if the given keyword is currently enabled on this material instance.
+     *
+     * @param name keyword name to query
+     * @return {@code true} if enabled, {@code false} otherwise
+     */
+    public boolean isKeywordEnabled(String name) {
+        checkNotDeleted();
+        return enabledKeywords.contains(name);
+    }
+
     // ── Draw-time API ─────────────────────────────────────────────────────────
 
     /**
-     * Binds this material for rendering. Must be called after
-     * {@link CgMaterialPipeline#beginFrame} and after writing object records into
-     * {@link CgMaterialPipeline#objectBuffer()}.
+     * Binds this material for rendering using the current set of enabled keywords.
+     *
+     * <p>The keyword set is compiled lazily on first call and cached
+     * for subsequent calls. After a hot-reload all cached programs are cleared and the first
+     * bind triggers recompilation.</p>
      *
      * <h3>Operations performed in order</h3>
      * <ol>
      *   <li>If the shader asset is dirty, triggers {@link CgMaterialShader#recompile()} and
      *       {@link #onShaderRecompiled()} to rebuild per-instance state.</li>
      *   <li>If the shader's revision changed since last bind, calls {@link #onShaderRecompiled()}.</li>
+     *   <li>{@link CgMaterialShader#getOrCompile(Set)} — retrieves or compiles the program.</li>
+     *   <li>Wires the per-instance property UBO to a newly compiled variant (once per program).</li>
      *   <li>Saves blend, depth, cull, stencil, alpha-test, and color-mask GL state.</li>
      *   <li>Uploads material property UBO if values are dirty.</li>
      *   <li>Binds material property UBO (if present).</li>
@@ -407,45 +540,51 @@ public final class CgMaterial {
      *   <li>Applies {@link CgRenderState} GL state.</li>
      *   <li>{@code shader.bind()} — activates the GL program.</li>
      * </ol>
-     *
-     * <p>The pipeline's object buffer is bound once per frame in {@link CgMaterialPipeline#beginFrame()},
-     * not per material.</p>
      */
     public void bind() {
         checkNotDeleted();
 
-        // Detect shader recompile (hot-reload or first compile).
         if (cgMaterialShader != null) {
             if (cgMaterialShader.isDirty()) {
                 cgMaterialShader.recompile();
+                wiredToMatPropsUbo.clear();
                 onShaderRecompiled();
             } else if (cgMaterialShader.getRevisionNumber() != lastKnownRevision) {
+                wiredToMatPropsUbo.clear();
                 onShaderRecompiled();
             }
+
+            Set<String> keywords = Collections.unmodifiableSet(enabledKeywords);
+            CgShader shader = cgMaterialShader.getOrCompile(keywords);
+            if (shader == null) return;
+
+            // Wire per-instance matPropsUbo to this keyword variant on first use
+            if (matPropsUbo != null && !wiredToMatPropsUbo.contains(shader)) {
+                matPropsUbo.wireShader(shader);
+                wiredToMatPropsUbo.add(shader);
+            }
+
+
+            stateScope = CgGlState.save(
+                    CgGlSlot.BLEND, CgGlSlot.DEPTH, CgGlSlot.CULL,
+                    CgGlSlot.STENCIL, CgGlSlot.ALPHA_TEST, CgGlSlot.COLOR_MASK);
+
+            if (materialPropsDirty && matPropsUbo != null) {
+                propStore.writeUboProps(matPropsUbo.writer());
+                matPropsUbo.endRecord();
+                matPropsUbo.upload();
+                materialPropsDirty = false;
+            }
+
+            if (matPropsUbo != null) matPropsUbo.bind();
+
+            if (propStore != null && propStore.hasSamplerProps())
+                shader.applyBindings(b -> propStore.applySamplerProps(b));
+
+            cgMaterialShader.getRenderState().apply();
+            shader.bind();
         }
-
-        CgShader shader = cgMaterialShader != null ? cgMaterialShader.getShader() : null;
-        if (shader == null) return;
-
-        stateScope = CgGlState.save(
-                CgGlSlot.BLEND, CgGlSlot.DEPTH, CgGlSlot.CULL,
-                CgGlSlot.STENCIL, CgGlSlot.ALPHA_TEST, CgGlSlot.COLOR_MASK);
-
-        if (materialPropsDirty && matPropsUbo != null) {
-            propStore.writeUboProps(matPropsUbo.writer());
-            matPropsUbo.endRecord();
-            matPropsUbo.upload();
-            materialPropsDirty = false;
-        }
-
-        if (matPropsUbo != null) matPropsUbo.bind();
-
-        if (propStore != null && propStore.hasSamplerProps())
-            shader.applyBindings(b -> propStore.applySamplerProps(b));
-
-        CgRenderState rs = cgMaterialShader != null ? cgMaterialShader.getRenderState() : renderState;
-        rs.apply();
-        shader.bind();
+        // forTest without cgMaterialShader — no-op
     }
 
     /**
@@ -457,7 +596,7 @@ public final class CgMaterial {
      */
     public void unbind() {
         if (deleted) return;
-        CgShader shader = cgMaterialShader != null ? cgMaterialShader.getShader() : null;
+        CgShader shader = getShader();
         if (shader != null) shader.unbind();
         if (matPropsUbo != null) matPropsUbo.unbind();
         if (stateScope != null) {
@@ -506,14 +645,18 @@ public final class CgMaterial {
     }
 
     /**
-     * Returns the backing {@link CgShader} for advanced use (e.g. wiring a UBO block
-     * after initial setup). May be {@code null} before the first successful compile.
+     * Returns the most recently compiled/returned {@link CgShader} for advanced use
+     * (e.g. wiring a UBO block after initial setup).
      *
-     * @return the compiled shader handle, or {@code null} if not yet compiled
+     * <p>Returns the shader last returned by {@link CgMaterialShader#getOrCompile}, updated on
+     * each {@link #bind()} call. Returns {@code null} before the first successful compile/bind.</p>
+     *
+     * @return the last-bound compiled shader handle, or {@code null} if not yet compiled
      */
     public CgShader getShader() {
         checkNotDeleted();
-        return cgMaterialShader != null ? cgMaterialShader.getShader() : null;
+        if (cgMaterialShader != null) return cgMaterialShader.getShader();
+        return null;
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
@@ -533,11 +676,13 @@ public final class CgMaterial {
      * Triggers a recompile of the backing shader asset, then rebuilds per-instance state.
      *
      * <p>Serves as the public API for explicit recompilation. In normal usage, recompilation
-     * happens lazily on {@link #bind()}. No-op when there is no shader asset ({@code forTest} path).</p>
+     * happens lazily on {@link #bind()}. For the forTest path (no cgMaterialShader), this
+     * clears the test program cache so the next bind triggers the factory again.</p>
      */
     public void recompile() {
-        if (cgMaterialShader == null) return; // forTest() path
+        if (cgMaterialShader == null) return;
         cgMaterialShader.recompile();
+        wiredToMatPropsUbo.clear();
         onShaderRecompiled();
     }
 
@@ -565,23 +710,35 @@ public final class CgMaterial {
 
     /**
      * Rebuilds per-instance state (propStore, matPropsUbo) after the shared shader asset
-     * has been successfully recompiled. Called from {@link #bind()} whenever the asset's
-     * {@link CgMaterialShader#getRevisionNumber()} diverges from {@link #lastKnownRevision}.
+     * has been successfully recompiled. Called from {@link #bind()} whenever
+     * the asset's {@link CgMaterialShader#getRevisionNumber()} diverges from
+     * {@link #lastKnownRevision}.
      *
      * <p>No-op if the shader's parse result is null (compile failed — keep old state).</p>
      */
     private void onShaderRecompiled() {
         CgParsedShader parsed = cgMaterialShader.getParsed();
-        if (parsed == null) return; // compile failed, keep old state
+        if (parsed == null) return;
 
-        // Rebuild property store with fresh clones of parsed defaults.
         if (propStore == null) {
             propStore = new CgMaterialProperties(cloneProperties(parsed.properties()));
         } else {
-            propStore.rebuild(cloneProperties(parsed.properties()));
+            // Snapshot the current user-set values before rebuild so they survive hot-reload.
+            // Keyed by name; type-checked during restore so type-changed properties reset to default.
+            Map<String, CgMaterialProperty> oldValues = new HashMap<>();
+            for (CgMaterialProperty p : propStore.all()) {
+                oldValues.put(p.getName(), p);
+            }
+            List<CgMaterialProperty> newClones = cloneProperties(parsed.properties());
+            for (CgMaterialProperty newProp : newClones) {
+                CgMaterialProperty old = oldValues.get(newProp.getName());
+                if (old != null && old.getType() == newProp.getType()) {
+                    newProp.copyValueFrom(old);
+                }
+            }
+            propStore.rebuild(newClones);
         }
 
-        // Re-create or reset the per-instance UBO if property layout changed.
         if (propStore.hasUboProps()) {
             CgBufferFormat newFormat = propStore.buildUboFormat();
             if (matPropsUbo == null) {
@@ -590,17 +747,16 @@ public final class CgMaterial {
                 matPropsUbo.resetFormat(newFormat);
             }
 
-            // Wire this material's UBO block index to the (potentially new) shader program.
+            // Wire this material's UBO to the newly compiled STANDARD variant
             CgShader shader = cgMaterialShader.getShader();
             if (shader != null) {
                 shader.bind();
                 matPropsUbo.wireShader(shader);
                 shader.unbind();
+                wiredToMatPropsUbo.add(shader);
             }
 
-            // Upload property defaults immediately after successful compile/link (T7 behaviour),
-            // so a freshly-loaded material has its parsed default values in the GPU buffer
-            // before any applyProperties() call from the caller.
+            // Upload property defaults immediately after successful compile/link (T7 behaviour)
             propStore.writeUboProps(matPropsUbo.writer());
             matPropsUbo.endRecord();
             matPropsUbo.upload();
@@ -608,6 +764,29 @@ public final class CgMaterial {
         }
 
         lastKnownRevision = cgMaterialShader.getRevisionNumber();
+
+        // Drain any consumers buffered by applyProperties() calls made before propStore existed.
+        if (pendingApplyConsumers != null && !pendingApplyConsumers.isEmpty()) {
+            for (Consumer<CgShaderBindings> pending : pendingApplyConsumers) {
+                pending.accept(propStore);
+            }
+            pendingApplyConsumers.clear();
+            materialPropsDirty = true;
+        }
+    }
+
+    /**
+     * Returns the declared feature names for this material.
+     * For real materials: from the last successful parse. For forTest: from {@code testFeatureNames}.
+     */
+    private List<String> getDeclaredFeatureNames() {
+        if (cgMaterialShader != null && cgMaterialShader.getParsed() != null) {
+            return cgMaterialShader.getParsed().featureNames();
+        }
+        if (testFeatureNames != null) {
+            return testFeatureNames;
+        }
+        return Collections.emptyList();
     }
 
     /**
