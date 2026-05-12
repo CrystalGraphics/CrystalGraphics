@@ -25,7 +25,7 @@ import io.github.somehussar.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
  *
  * // Per-frame:
  * CgMaterialPipeline pipeline = CgMaterialPipeline.getInstance();
- * pipeline.beginFrame(frameUniforms);  // frameUniforms is a reusable CgFrameUniforms instance
+ * pipeline.beginFrame();
  *
  * CgShaderBuffer buf = pipeline.objectBuffer();
  * CgBufferWriter w = buf.beginWrite(N);

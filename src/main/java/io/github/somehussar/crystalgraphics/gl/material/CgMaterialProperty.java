@@ -230,10 +230,8 @@ public final class CgMaterialProperty {
      * Writes this property's current value into the material UBO writer at the field named
      * {@link #getName()}. Must only be called on non-sampler properties.
      *
-     * <p>Dispatch table: FLOAT/RANGE → {@code float_}; INT → {@code int_};
-     * COLOR/VEC4 → {@code vec4}; VEC3 → {@code vec3}
-     * <!-- TODO: old Intel drivers may misread vec3 in UBOs; consider vec4+w=0 if artifacts occur -->
-     * ; VEC2 → {@code vec2}.</p>
+     * <p>Dispatch table: FLOAT/RANGE → {@code float_}; INT/BOOLEAN → {@code int_};
+     * COLOR/VEC4 → {@code vec4}; VEC2 → {@code vec2}.</p>
      * 
      * Doesn't write sampler properties, these must be passed to shader via {@code #applyToSampler}
      *
@@ -249,13 +247,12 @@ public final class CgMaterialProperty {
             case INT:
                 w.int_(name, intValue);
                 break;
+            case BOOLEAN:
+                w.int_(name, intValue);
+                break;
             case COLOR:
             case VEC4:
                 w.vec4(name, floatValue[0], floatValue[1], floatValue[2], floatValue[3]);
-                break;
-            case VEC3:
-                // TODO: old Intel drivers may misread vec3 in UBOs; consider vec4+w=0 if artifacts occur
-                w.vec3(name, floatValue[0], floatValue[1], floatValue[2]);
                 break;
             case VEC2:
                 w.vec2(name, floatValue[0], floatValue[1]);
@@ -288,12 +285,12 @@ public final class CgMaterialProperty {
             case INT:
                 b.int_(name);
                 break;
+            case BOOLEAN:
+                b.int_(name);
+                break;
             case COLOR:
             case VEC4:
                 b.vec4(name);
-                break;
-            case VEC3:
-                b.vec3(name);
                 break;
             case VEC2:
                 b.vec2(name);

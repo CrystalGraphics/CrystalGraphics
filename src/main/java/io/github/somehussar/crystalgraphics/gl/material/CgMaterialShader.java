@@ -219,10 +219,6 @@ public final class CgMaterialShader {
             return;
         }
 
-        this.lastParsed = parsed;
-        this.renderState = parsed.renderState();
-        this.renderQueue = parsed.renderQueue();
-
         // ── Step 3: Capability check ───────────────────────────────────────────
         CgCapabilities.ShaderBufferPath path = CgCapabilities.detect().shaderBufferPath();
         if (path == CgCapabilities.ShaderBufferPath.NONE) {
@@ -233,24 +229,16 @@ public final class CgMaterialShader {
 
         // ── Step 4: Build template UBO for GLSL emission ───────────────────────
         CgMaterialProperties tempProps = new CgMaterialProperties(parsed.properties());
+        CgUniformBuffer newMatPropsUbo = null;
         if (tempProps.hasUboProps()) {
-            if (matPropsUbo == null) {
-                matPropsUbo = new CgUniformBuffer(CgMaterial.MATERIAL_PROPERTIES_BLOCK, tempProps.buildUboFormat(), 
-                        CgBindingPoints.MATERIAL_PROPERTIES_UBO);
-            } else {
-                matPropsUbo.resetFormat(tempProps.buildUboFormat());
-            }
-        } else {
-            if (matPropsUbo != null) {
-                matPropsUbo.delete();
-                matPropsUbo = null;
-            }
+            newMatPropsUbo = new CgUniformBuffer(CgMaterial.MATERIAL_PROPERTIES_BLOCK, tempProps.buildUboFormat(),
+                    CgBindingPoints.MATERIAL_PROPERTIES_UBO);
         }
 
         // ── Step 5: GLSL compile + preprocess (STANDARD variant) ──────────────
         CgMaterialShaderCompiler.CompiledSource compiled;
         try {
-            compiled = CgMaterialShaderCompiler.compile(parsed, attachedBuffers, matPropsUbo,
+            compiled = CgMaterialShaderCompiler.compile(parsed, attachedBuffers, newMatPropsUbo,
                     CgMaterialShaderCompiler.CompileConfig.DEFAULT);
         } catch (CgPreprocessorException e) {
             if (isFirst) throw e;
@@ -272,6 +260,7 @@ public final class CgMaterialShader {
         if (!newShader.isCompiled()) {
             String err = newShader.getLastCompileError();
             newShader.delete();
+            if (newMatPropsUbo != null) newMatPropsUbo.delete();
             if (isFirst) {
                 LOGGER.error("CgMaterialShader.recompile() failed for '{}': {}", resourcePath, err);
             } else {
@@ -294,7 +283,7 @@ public final class CgMaterialShader {
         pipeline.frameBuffer().wireShader(newShader);
         pipeline.objectBuffer().wireShader(newShader);
 
-        if (matPropsUbo != null) matPropsUbo.wireShader(newShader);
+        if (newMatPropsUbo != null) newMatPropsUbo.wireShader(newShader);
 
         for (CgAttachedBuffer ab : attachedBuffers)
             ab.getBuffer().wireShader(newShader);
@@ -305,6 +294,13 @@ public final class CgMaterialShader {
         VariantKey standardKey = new VariantKey(Collections.emptySet());
         programCache.put(standardKey, newShader);
         lastBound = newShader;
+
+        // Commit metadata atomically — only reached on successful link
+        if (this.matPropsUbo != null) this.matPropsUbo.delete();
+        this.matPropsUbo   = newMatPropsUbo;
+        this.lastParsed    = parsed;
+        this.renderState   = parsed.renderState();
+        this.renderQueue   = parsed.renderQueue();
 
         // ── Increment revision — materials detect this on next bind() ──────────
         revisionNumber++;
@@ -469,7 +465,7 @@ public final class CgMaterialShader {
      * @return {@code this} for fluent chaining
      */
     public CgMaterialShader detach(String macroName) {
-        if (attachedBuffers.removeIf(ab -> ab.getMacroName().equals(macroName))) {
+        if (attachedBuffers.removeIf(ab -> !ab.isUbo() && ab.getMacroName().equals(macroName))) {
             markDirty();
         }
         return this;

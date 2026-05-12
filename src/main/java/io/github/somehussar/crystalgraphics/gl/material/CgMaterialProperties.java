@@ -6,6 +6,8 @@ import io.github.somehussar.crystalgraphics.api.shader.CgShaderBindings;
 import io.github.somehussar.crystalgraphics.api.texture.CgTexture;
 import io.github.somehussar.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 import io.github.somehussar.crystalgraphics.gl.buffer.staging.CgBufferWriter;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 import org.joml.Vector2f;
@@ -39,6 +41,8 @@ import java.util.Map;
  * {@code shader.bindings()} instead.</p>
  */
 public final class CgMaterialProperties implements CgShaderBindings {
+
+    private static final Logger LOGGER = LogManager.getLogger("CgMaterialProperties");
 
     /** Sentinel for contexts that need a non-null empty instance (e.g. static defaults). */
     public static final CgMaterialProperties EMPTY = new CgMaterialProperties(Collections.emptyList());
@@ -146,7 +150,14 @@ public final class CgMaterialProperties implements CgShaderBindings {
     @Override
     public CgShaderBindings vec3(String name, float x, float y, float z) {
         CgMaterialProperty p = propsByName.get(name);
-        if (p != null) p.set(x, y, z);
+        if (p != null) {
+            if (p.getType() == CgMaterialProperty.Type.VEC4) {
+                LOGGER.warn("vec3() called on property '{}' which has type VEC4. " +
+                        "Only x, y, z will be updated — w retains its current value. " +
+                        "Use vec4() to set all components.", name);
+            }
+            p.set(x, y, z);
+        }
         return this;
     }
 
