@@ -761,6 +761,12 @@ public final class CgMaterial {
             matPropsUbo.endRecord();
             matPropsUbo.upload();
             materialPropsDirty = false;
+        } else {
+            // Shader dropped all non-sampler properties on hot-reload — free the instance UBO.
+            if (matPropsUbo != null) {
+                matPropsUbo.delete();
+                matPropsUbo = null;
+            }
         }
 
         lastKnownRevision = cgMaterialShader.getRevisionNumber();

@@ -35,10 +35,10 @@ CgMaterialPipeline.init();
 // Per-frame:
 CgMaterialPipeline pipeline = CgMaterialPipeline.getInstance();
 CgFrameUniforms fu = pipeline.getFrameUniforms();
-fu.view(viewMatrix);
-  .proj(projMatrix);
-  .timeSecs(elapsedSeconds);
-  .viewportW(width);
+fu.view(viewMatrix)
+  .proj(projMatrix)
+  .timeSecs(elapsedSeconds)
+  .viewportW(width)
   .viewportH(height);
 pipeline.beginFrame();
 
