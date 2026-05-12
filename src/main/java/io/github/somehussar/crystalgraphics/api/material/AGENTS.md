@@ -14,7 +14,7 @@ This is the top of the CrystalShader material stack.
 
 | Type | Role |
 |------|------|
-| `CgMaterial` | User-facing material handle backed by a shared `CgMaterialShader` asset. `load(path)` delegates to `CgMaterialRegistry.get().getOrCreate(path)` — returns the same cached instance per path. `newInstance(path)` creates a fresh non-cached instance sharing the same compiled programs. `fromShader(CgMaterialShader)` creates a material from a programmatically constructed asset. `applyProperties(Consumer<CgShaderBindings>)` writes persistent property values. `bind()` activates shader + properties + object buffer; detects hot-reload via revision check on `CgMaterialShader.revisionNumber`. `unbind()` deactivates shader. `markDirty()` delegates to `cgMaterialShader.markDirty()`. `delete()` frees only the per-instance property UBO — NOT the backing shader programs (those are asset-owned). `attach(CgShaderBuffer, macroName)` / `detach(...)` / `attach(CgUniformBuffer)` / `detachUbo(...)` delegate to `CgMaterialShader`. |
+| `CgMaterial` | User-facing material handle backed by a shared `CgMaterialShader` asset. `load(path)` delegates to `CgMaterialRegistry.get().getOrCreate(path)` — returns the same cached instance per path. `newInstance(path)` creates a fresh non-cached instance sharing the same compiled programs. `fromShader(CgMaterialShader)` creates a material from a programmatically constructed asset. `applyProperties(Consumer<CgShaderBindings>)` writes persistent property values. `bind()` activates shader + properties + object buffer; detects hot-reload via revision check on `CgMaterialShader.revisionNumber`. Keyword programs compiled lazily on first use, cached by `activeKeywords` set in `CgMaterialShader.programCache`. `enableKeyword(name)` / `disableKeyword(name)` toggle a `#pragma cg_feature`-declared keyword; throws `IllegalArgumentException` for undeclared names. `isKeywordEnabled(name)` queries current state. `unbind()` deactivates shader. `markDirty()` delegates to `cgMaterialShader.markDirty()`. `delete()` frees only the per-instance property UBO — NOT the backing shader programs (those are asset-owned). `attach(CgShaderBuffer, macroName)` / `detach(...)` / `attach(CgUniformBuffer)` / `detachUbo(...)` delegate to `CgMaterialShader`. |
 | `CgAttachedBuffer` | Immutable descriptor for a user-attached SSBO/TBO or UBO buffer. Created via `CgAttachedBuffer.of(buffer, macroName)` (SSBO/TBO, STD430) or `CgAttachedBuffer.of(CgUniformBuffer)` (UBO, STD140). `isUbo()` returns `true` for UBO entries (macroName is null). SSBO/TBO fields: `buffer`, `macroName`, `structName` (= `format.getGlslName()`), `ssboArrayName` (`_cg_{lowerFirst}Arr`), `tboGetterName` (`_cg_get{structName}`). UBO entries: only `buffer` is set; macroName/structName/ssboArrayName/tboGetterName are all null. Block/sampler/UBO block name is always `buffer.getName()` — required for `wireShader()`. |
 | `CgMaterialRegistry` | Singleton load/reload/delete lifecycle manager. `get()` returns the singleton. `getOrCreate(String)` / `getOrCreate(CgMaterialKey)` check cache; on miss call `CgMaterial.create()` (which uses `CgMaterialShaderRegistry` internally), cache, and return. `reloadAll()` delegates to `CgMaterialShaderRegistry.get().reloadAll()` — marks all shader assets dirty; materials detect revision change on next `bind()`. `deleteAll()` deletes all cached material instances (freeing per-instance UBOs), then cascades to `CgMaterialShaderRegistry.get().deleteAll()` to free GL shader programs. Registered for teardown in `CgGraphicsLifecycle.destroyContext()`. |
 | `CgMaterialKey` | `@Desugar record` wrapping a resource-path string. `of(String)` factory. Value equality. Used as a typed alternative to raw strings. |
@@ -85,6 +85,82 @@ Routes writes through the material's `CgMaterialProperties` instance (which impl
 `CgShaderBindings`). Values are stored persistently on the property objects and survive
 across frames until overwritten. Returns `this` for chaining. Unknown names are silently
 ignored. Non-property operations (`mat4`, `ubo`, etc.) throw `UnsupportedOperationException`.
+
+**Safe to call before first `bind()`**: if `applyProperties()` is called before the shader
+has been compiled (i.e. before the first `bind()`), the consumer is buffered and replayed
+automatically once the shader compiles successfully. Values set this way are not lost.
+
+### Shader Keywords / Variants
+
+Shaders declare optional compile-time feature flags using `#pragma cg_feature` in their preamble.
+Each enabled keyword injects `#define NAME 1` into both vertex and fragment sources.
+Every unique keyword-set combination is compiled into a separate GL program and cached lazily
+on the first `bind()` call with that combination.
+
+**Declaring keywords in a `.shader` file:**
+```glsl
+#type spatial
+
+#pragma cg_feature RECEIVE_SHADOWS
+#pragma cg_feature FOG_ON
+#pragma cg_feature NORMAL_MAP
+```
+
+**Complete example with keyword-gated code:**
+```glsl
+#type spatial
+
+#pragma cg_feature RECEIVE_SHADOWS
+#pragma cg_feature FOG_ON
+
+Properties {
+    _MainTex   ("Main Texture",  sampler2D)  = "white"
+    _FogColor  ("Fog Color",     vec4)       = (0.7, 0.7, 0.7, 1.0)
+    _FogDensity("Fog Density",   Range(0,1)) = 0.05
+}
+
+struct v2f {
+    vec2 uv;
+    vec3 worldPos;
+};
+
+void vertex(out v2f o) {
+    gl_Position = CG_MATRIX_MVP * vec4(cg_Position, 1.0);
+    o.uv        = cg_TexCoord0;
+    o.worldPos  = (CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0)).xyz;
+}
+
+void fragment(in v2f i, out vec4 fragColor) {
+    fragColor = texture(_MainTex, i.uv);
+
+#ifdef RECEIVE_SHADOWS
+    // shadow map sampling
+#endif
+
+#ifdef FOG_ON
+    float dist    = length(i.worldPos);
+    float fogFact = exp(-_FogDensity * dist);
+    fragColor.rgb = mix(_FogColor.rgb, fragColor.rgb, clamp(fogFact, 0.0, 1.0));
+#endif
+}
+```
+
+**Enabling / disabling keywords at runtime:**
+```java
+material.enableKeyword("RECEIVE_SHADOWS");   // next bind() compiles + caches this variant
+material.disableKeyword("FOG_ON");           // reverts to variant without FOG_ON
+boolean on = material.isKeywordEnabled("FOG_ON");  // false by default
+```
+
+**Rules and limits:**
+- Maximum **8 keywords** per shader. Exceeding this throws `CgShaderParseException` at parse time.
+- Keyword names must match `[A-Z][A-Z0-9_]*` — all uppercase, start with a letter.
+- Only names declared with `#pragma cg_feature` in that shader are accepted — `enableKeyword()`
+  throws `IllegalArgumentException` for undeclared names.
+- `#pragma cg_feature` lines are **never emitted** in the generated GLSL — they are stripped
+  during parsing. Only the `#define NAME 1` lines (for enabled keywords) appear in compiled output.
+- `enableKeyword()` is safe to call before the first `bind()` — triggers a lazy compile if needed.
+- Each unique keyword combination shares the same `propStore` and UBO — only the GL program differs.
 
 ### CgMaterial.load(resourcePath) / load(CgMaterialKey)
 ```java
@@ -228,7 +304,7 @@ Given `buffer.getName() = "FontMetricsBuffer"`, `format.getGlslName() = "FontMet
 ## Guardrails (NOT in this package)
 
 - No render-state management (blend, depth, cull)
-- No variant system (DEPTH/SHADOW passes)
+- No render-pass system (depth/shadow passes are out of scope)
 - No `CgRenderState.apply()` calls
 
 ## Related Packages

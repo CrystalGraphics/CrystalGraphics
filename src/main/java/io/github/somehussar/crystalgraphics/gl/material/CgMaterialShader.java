@@ -1,5 +1,6 @@
 package io.github.somehussar.crystalgraphics.gl.material;
 
+import com.github.bsideup.jabel.Desugar;
 import io.github.somehussar.crystalgraphics.api.CgBindingPoints;
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
 import io.github.somehussar.crystalgraphics.api.material.CgAttachedBuffer;
@@ -24,7 +25,11 @@ import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Shared shader asset compiled from a {@code .shader} file. Owned by {@link CgMaterialShaderRegistry}.
@@ -35,6 +40,12 @@ import java.util.List;
  * <p>{@link #getRevisionNumber()} increments on each successful {@link #recompile()}; materials
  * detect recompiles via revision comparison on every {@code bind()} call.</p>
  *
+ * <h3>Keyword program cache</h3>
+ * <p>Each active-keyword set is compiled lazily on first use and cached in
+ * {@link VariantKey} → {@code CgShader} pairs. Call {@link #getOrCompile(Set)}
+ * to retrieve or compile a specific combination. The {@link #recompile()} method resets the
+ * entire cache and immediately compiles the no-keyword variant.</p>
+ *
  * <h3>Lifecycle</h3>
  * <p>Created exclusively by {@link CgMaterialShaderRegistry#getOrCreate(String)}. Deleted by
  * {@link CgMaterialShaderRegistry#deleteAll()} on context destruction. Do not call
@@ -44,8 +55,32 @@ public final class CgMaterialShader {
 
     private static final Logger LOGGER = LogManager.getLogger("CgMaterialShader");
 
-    /** Block name constant, mirrors {@code CgMaterial.MATERIAL_PROPERTIES_BLOCK}. */
-    private static final String MATERIAL_PROPERTIES_BLOCK = "CgMaterialBlock";
+    // ── Nested key type ───────────────────────────────────────────────────────
+
+    /**
+     * Immutable cache key for a compiled keyword variant.
+     *
+     * <p>Equality is set-based for {@code keywords} — order does not matter.
+     * Two keys with {@code {"A","B"}} and {@code {"B","A"}} are equal and share the same
+     * cache entry.</p>
+     * @param keywords  always unmodifiable LinkedHashSet
+     */
+    @Desugar
+    record VariantKey(Set<String> keywords) {
+        VariantKey(Set<String> keywords) {
+            this.keywords = Collections.unmodifiableSet(new LinkedHashSet<>(keywords));
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof VariantKey)) return false;
+            VariantKey other = (VariantKey) o;
+            return keywords.equals(other.keywords);
+        }
+    }
+
+    // ── Fields ────────────────────────────────────────────────────────────────
 
     /** Resource path to the {@code .shader} file. */
     private final String resourcePath;
@@ -54,15 +89,17 @@ public final class CgMaterialShader {
     private CgParsedShader lastParsed;
 
     /**
-     * Backing GL shader program. {@code null} until first compile.
-     * Will become {@code Map<ProgramKey, CgShader>} in T11 (variant system).
-     * -- GETTER --
-     * Returns the backing GL shader program; 
-     *  before first successful compile. 
-
+     * Per-(variant, keywords) program cache. Each entry is a fully linked and wired GL program.
+     * Cleared and rebuilt from scratch on hot-reload.
      */
-    @Getter
-    private CgShader shader;
+    private final Map<VariantKey, CgShader> programCache = new LinkedHashMap<>();
+
+    /**
+     * The most recently compiled-or-returned shader from {@link #getOrCompile} or
+     * {@link #recompile()}. Updated on every successful compile. {@code null} until
+     * first successful compile.
+     */
+    private CgShader lastBound;
 
     /**
      * Template UBO created from the parsed properties for GLSL block emission and post-link wiring.
@@ -71,16 +108,18 @@ public final class CgMaterialShader {
      */
     private CgUniformBuffer matPropsUbo;
 
-    /** Render state extracted from the parsed {@code RenderState { }} block. 
+    /**
+     * Render state extracted from the parsed {@code RenderState { }} block.
      * -- GETTER --
-     * Returns the render state extracted from the last successful compile. 
+     * Returns the render state extracted from the last successful compile.
      */
     @Getter
     private CgRenderState renderState = CgRenderState.DEFAULT;
 
-    /** Numeric render queue priority extracted from {@code Queue = "..."} (default 2000 = Geometry). 
+    /**
+     * Numeric render queue priority extracted from {@code Queue = "..."} (default 2000 = Geometry).
      * -- GETTER --
-     * Returns the numeric render queue priority from the last successful compile (default 2000). 
+     * Returns the numeric render queue priority from the last successful compile (default 2000).
      */
     @Getter
     private int renderQueue = 2000;
@@ -95,10 +134,7 @@ public final class CgMaterialShader {
      * Whether the shader needs a full recompile on the next {@code bind()} call.
      * Set by {@link #markDirty()}; cleared at the start of {@link #recompile()}.
      * -- GETTER --
-     * Returns 
-     *  if this shader needs a recompile on the next 
-     *  call. 
-
+     * Returns {@code true} if this shader needs a recompile on the next {@code bind()} call.
      */
     @Getter
     private boolean dirty;
@@ -112,12 +148,9 @@ public final class CgMaterialShader {
      * {@code CgMaterial} stores {@code lastKnownRevision} and calls {@code onShaderRecompiled()}
      * when it diverges from this value.
      * -- GETTER --
-     *  Returns the monotonically increasing revision counter.
-     *  Incremented on each successful 
-     * .
-     *
-     *  uses this to detect when a hot-reload has occurred.
-
+     * Returns the monotonically increasing revision counter.
+     * Incremented on each successful {@link #recompile()}.
+     * {@link CgMaterial} uses this to detect when a hot-reload has occurred.
      */
     @Getter
     private int revisionNumber = 0;
@@ -144,20 +177,22 @@ public final class CgMaterialShader {
     /**
      * Compiles (or recompiles) this shader asset from {@link #resourcePath}.
      *
-     * <p>On first call ({@code shader == null}): throws on any failure — never returns
+     * <p>On first call (empty cache): throws on any failure — never returns
      * with a broken state. On subsequent calls (hot-reload): logs errors and keeps the
-     * old program running on failure.</p>
+     * old programs running on failure.</p>
      *
      * <p>No-op when {@code resourcePath} is null (programmatic / shader-graph shaders).</p>
      *
-     * <p>On success: increments {@link #revisionNumber} so materials detect the change on
-     * the next {@code bind()} call.</p>
+     * <p>On success: clears the program cache, compiles the
+     * no-keyword variant immediately, then increments
+     * {@link #revisionNumber} so materials detect the change on the next {@code bind()} call.
+     * Keyword variants are compiled lazily via {@link #getOrCompile}.</p>
      */
     public void recompile() {
         dirty = false;
         if (resourcePath == null) return;
 
-        boolean isFirst = (shader == null);
+        boolean isFirst = programCache.isEmpty();
 
         // ── Step 1: Load source ────────────────────────────────────────────────
         String source;
@@ -197,30 +232,26 @@ public final class CgMaterialShader {
         }
 
         // ── Step 4: Build template UBO for GLSL emission ───────────────────────
-        // This UBO is used only for GLSL CgMaterialBlock declaration and post-link block binding.
-        // Per-material UBOs handle actual value storage — see CgMaterial.onShaderRecompiled().
         CgMaterialProperties tempProps = new CgMaterialProperties(parsed.properties());
         if (tempProps.hasUboProps()) {
             if (matPropsUbo == null) {
-                matPropsUbo = new CgUniformBuffer(
-                        MATERIAL_PROPERTIES_BLOCK,
-                        tempProps.buildUboFormat(),
+                matPropsUbo = new CgUniformBuffer(CgMaterial.MATERIAL_PROPERTIES_BLOCK, tempProps.buildUboFormat(), 
                         CgBindingPoints.MATERIAL_PROPERTIES_UBO);
             } else {
                 matPropsUbo.resetFormat(tempProps.buildUboFormat());
             }
         } else {
-            // If there were UBO props before but not now (unlikely, but safe), delete old template UBO.
             if (matPropsUbo != null) {
                 matPropsUbo.delete();
                 matPropsUbo = null;
             }
         }
 
-        // ── Step 5: GLSL compile + preprocess ─────────────────────────────────
+        // ── Step 5: GLSL compile + preprocess (STANDARD variant) ──────────────
         CgMaterialShaderCompiler.CompiledSource compiled;
         try {
-            compiled = CgMaterialShaderCompiler.compile(parsed, path, attachedBuffers, matPropsUbo);
+            compiled = CgMaterialShaderCompiler.compile(parsed, attachedBuffers, matPropsUbo,
+                    CgMaterialShaderCompiler.CompileConfig.DEFAULT);
         } catch (CgPreprocessorException e) {
             if (isFirst) throw e;
             LOGGER.error("Reload failed for '{}': buffer injection error — {}", resourcePath, e.getMessage());
@@ -237,41 +268,43 @@ public final class CgMaterialShader {
         }
 
         // ── Step 6: GL link ────────────────────────────────────────────────────
-        if (isFirst) {
-            shader = CgShaderFactory.fromSource(processedVert, processedFrag, CgVertexFormat.SPATIAL);
-            if (!shader.isCompiled()) {
-                String err = shader.getLastCompileError();
-                shader.delete();
-                shader = null;
+        CgShader newShader = CgShaderFactory.fromSource(processedVert, processedFrag, CgVertexFormat.SPATIAL);
+        if (!newShader.isCompiled()) {
+            String err = newShader.getLastCompileError();
+            newShader.delete();
+            if (isFirst) {
                 LOGGER.error("CgMaterialShader.recompile() failed for '{}': {}", resourcePath, err);
-                return;
+            } else {
+                LOGGER.error("Reload failed for '{}': compile error — {}", resourcePath, err);
             }
-        } else {
-            shader.setSource(processedVert, processedFrag);
-            shader.recompile();
-            if (!shader.isCompiled()) {
-                LOGGER.error("Reload failed for '{}': compile error — {}", resourcePath, shader.getLastCompileError());
-                return;
-            }
+            return;
+        }
+
+        // ── Step 6b: On hot-reload, delete all existing variant programs ───────
+        if (!isFirst) {
+            for (CgShader s : programCache.values()) s.delete();
+            programCache.clear();
+            lastBound = null;
         }
 
         // ── Step 7: wireShader — bind program indices for pipeline buffers ─────
-        // glUniform1i (TBO path) requires an active program; bind shader around all wiring.
         CgMaterialPipeline pipeline = CgMaterialPipeline.getInstance();
-        shader.bind();
+        newShader.bind();
 
-        pipeline.frameBuffer().wireShader(shader);   // glUniformBlockBinding for CgFrameBlock
-        pipeline.objectBuffer().wireShader(shader);  // glShaderStorageBlockBinding (SSBO) or glUniform1i (TBO)
+        pipeline.frameBuffer().wireShader(newShader);
+        pipeline.objectBuffer().wireShader(newShader);
 
-        // Wire the template UBO block index — sets CgMaterialBlock binding point in this program.
-        // Per-material UBOs will also call wireShader() in CgMaterial.onShaderRecompiled() to
-        // refresh their own block index mapping after each recompile.
-        if (matPropsUbo != null) matPropsUbo.wireShader(shader);
+        if (matPropsUbo != null) matPropsUbo.wireShader(newShader);
 
         for (CgAttachedBuffer ab : attachedBuffers)
-            ab.getBuffer().wireShader(shader);
+            ab.getBuffer().wireShader(newShader);
 
-        shader.unbind();
+        newShader.unbind();
+
+        // ── Store no-keyword variant in cache ─────────────────────────────────
+        VariantKey standardKey = new VariantKey(Collections.emptySet());
+        programCache.put(standardKey, newShader);
+        lastBound = newShader;
 
         // ── Increment revision — materials detect this on next bind() ──────────
         revisionNumber++;
@@ -281,7 +314,73 @@ public final class CgMaterialShader {
         }
     }
 
+    /**
+     * Returns the compiled {@link CgShader} for the given active keyword set,
+     * compiling and caching it on the first access.
+     *
+     * <p>The returned shader is fully linked and wired for the pipeline buffers and the
+     * template material properties UBO. Callers ({@link CgMaterial}) must additionally
+     * wire any per-instance UBOs after receiving the shader.</p>
+     *
+     * <p>Must be called after at least one successful {@link #recompile()}.</p>
+     *
+     * @param activeKeywords active feature-flag keyword names (set-equal keys share a cache entry)
+     * @return a fully compiled and wired shader; never {@code null}
+     * @throws IllegalStateException    if {@link #recompile()} has not completed successfully
+     * @throws CgPreprocessorException  if buffer injection fails
+     * @throws UnsupportedOperationException if GL 3.3+ is not available
+     */
+    public CgShader getOrCompile(Set<String> activeKeywords) {
+        VariantKey key = new VariantKey(activeKeywords);
+        CgShader cached = programCache.get(key);
+        if (cached != null) {
+            lastBound = cached;
+            return cached;
+        }
+
+        if (lastParsed == null) {
+            LOGGER.error("Cannot compile keyword variant: shader '{}' has not been successfully compiled yet — " +
+                            "call recompile() first", resourcePath);
+        }
+
+        CgMaterialShaderCompiler.CompiledSource compiled = CgMaterialShaderCompiler.compile(lastParsed,
+                attachedBuffers, matPropsUbo, new CgMaterialShaderCompiler.CompileConfig(activeKeywords));
+
+        String processedVert = new CgShaderPreprocessor().process(compiled.vertexSource(), resourcePath);
+        String processedFrag = new CgShaderPreprocessor().process(compiled.fragmentSource(), resourcePath);
+
+
+        CgShader newShader = CgShaderFactory.fromSource(processedVert, processedFrag, CgVertexFormat.SPATIAL);
+        if (!newShader.isCompiled()) {
+            String err = newShader.getLastCompileError();
+            newShader.delete();
+            LOGGER.error("Failed to compile keyword variant for '{}': {}", resourcePath, err);
+            return null;
+        }
+
+        CgMaterialPipeline pipeline = CgMaterialPipeline.getInstance();
+        newShader.bind();
+        pipeline.frameBuffer().wireShader(newShader);
+        pipeline.objectBuffer().wireShader(newShader);
+        if (matPropsUbo != null) matPropsUbo.wireShader(newShader);
+        for (CgAttachedBuffer ab : attachedBuffers) ab.getBuffer().wireShader(newShader);
+        newShader.unbind();
+
+        programCache.put(key, newShader);
+        lastBound = newShader;
+        return newShader;
+    }
+
     // ── Accessors ─────────────────────────────────────────────────────────────
+
+    /**
+     * Returns the most recently compiled or returned shader program from
+     * {@link #getOrCompile} or {@link #recompile()}.
+     * {@code null} before the first successful compile.
+     */
+    public CgShader getShader() {
+        return lastBound;
+    }
 
     /** Returns the last successful parse result; {@code null} before first successful compile. */
     public CgParsedShader getParsed() {
@@ -304,17 +403,16 @@ public final class CgMaterialShader {
     }
 
     /**
-     * Deletes the backing GL shader program and template UBO. Idempotent.
+     * Deletes all cached GL shader programs and the template UBO. Idempotent.
      * Called by {@link CgMaterialShaderRegistry#deleteAll()} on context destruction.
      * Do NOT call directly — the registry owns lifecycle.
      */
     public void delete() {
         if (!deleted) {
             deleted = true;
-            if (shader != null) {
-                shader.delete();
-                shader = null;
-            }
+            for (CgShader s : programCache.values()) s.delete();
+            programCache.clear();
+            lastBound = null;
             if (matPropsUbo != null) {
                 matPropsUbo.delete();
                 matPropsUbo = null;

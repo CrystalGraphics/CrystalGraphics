@@ -19,7 +19,7 @@ Implementation tasks:
 
 | Type | Role |
 |------|------|
-| `CgMaterialShader` | Shared shader asset compiled from a `.shader` file. Owned by `CgMaterialShaderRegistry`. Owns the full compile pipeline: source load → parse → GLSL generation → preprocess → GL link → `wireShader()` for pipeline + attached buffers. Fields: `resourcePath`, `lastParsed`, `shader`, `matPropsUbo` (template UBO for GLSL emission), `renderState`, `renderQueue`, `attachedBuffers`, `dirty`, `revisionNumber`. `recompile()` increments `revisionNumber` on each success; `markDirty()` triggers a lazy recompile on next bind. `attach(CgShaderBuffer, macroName)` / `detach(...)` / `attach(CgUniformBuffer)` / `detachUbo(...)` mirror the `CgMaterial` attach API. `delete()` frees GL programs; called by registry only. |
+| `CgMaterialShader` | Shared shader asset compiled from a `.shader` file. Owned by `CgMaterialShaderRegistry`. Owns the full compile pipeline: source load → parse → GLSL generation → preprocess → GL link → `wireShader()` for pipeline + attached buffers. Fields: `resourcePath`, `lastParsed`, `programCache` (`Map<ProgramKey, CgShader>`), `lastBound`, `matPropsUbo` (template UBO for GLSL emission), `renderState`, `renderQueue`, `attachedBuffers`, `dirty`, `revisionNumber`. `recompile()` increments `revisionNumber` on each success; `markDirty()` triggers a lazy recompile on next bind. `getOrCompile(Set<String> activeKeywords)` looks up or lazily compiles a keyword combination — result cached under `ProgramKey` (keyed by keyword set only). `getShader()` returns the most recently compiled-or-returned shader from `getOrCompile`/`recompile`. `attach(CgShaderBuffer, macroName)` / `detach(...)` / `attach(CgUniformBuffer)` / `detachUbo(...)` mirror the `CgMaterial` attach API. `delete()` frees all cached GL programs (iterates `programCache.values()`); called by registry only. |
 | `CgMaterialShaderRegistry` | Singleton path→asset cache. `getOrCreate(path)` returns the shared `CgMaterialShader` instance, creating it on miss (marked dirty). `reloadAll()` marks all assets dirty — materials detect revision change on next `bind()`. `deleteAll()` deletes all assets and clears cache; cascaded from `CgMaterialRegistry.deleteAll()`. `resetForTest()` is a package-private reset for unit tests. |
 | `CgMaterialProperty` | Mutable runtime property object. Holds the declaration (`name`, `displayName`, `type`, `rawDefault`), the current float/int/sampler value, and self-binding logic. `fromDecl(name, displayName, typeName, rawDefault)` creates and eagerly parses the default. `copyWithDefaults()` returns a fresh independent clone with the default value applied — used by `CgMaterial.onShaderRecompiled()` to initialise per-instance property stores. `applyToSampler(CgShaderBindings)` flushes sampler value to shader uniforms (sampler-only). `writeToUbo(CgBufferWriter)` writes non-sampler value into the material UBO. `addToFormatBuilder(CgBufferFormat.Builder)` registers the field in the UBO layout. `set(...)` overloads for float/vec2/vec3/vec4; `setInt(int)` for INT; `setTexture(unit, CgTexture)` for sampler types. `resetToDefault()` restores the parsed default. Inner enum `Type` maps property type names to GLSL names and component counts; `isSampler()` is the canonical discriminator. |
 | `CgMaterialProperties` | Partitioned view of a material's full property list — splits into UBO-eligible (non-sampler) and sampler properties at construction. Implements `CgShaderBindings` for name-based property writes from `CgMaterial.applyProperties()`. `propsByName` HashMap built during construction/rebuild for O(1) name lookup. `rebuild(List<CgMaterialProperty>)` repopulates all internal state in-place — called on hot-reload to avoid reallocation. `buildUboFormat()` builds the `CgBufferFormat` for `CgMaterialBlock`. `writeUboProps(CgBufferWriter)` uploads all non-sampler values. `applySamplerProps(CgShaderBindings)` binds all sampler values. `EMPTY` sentinel for contexts needing a non-null default. |
@@ -112,6 +112,40 @@ No struct, no instance name, no macro. Block name = `buffer.getName()`. Path-ind
 - **Comment lines skipped** in `v2f` body and `Properties` block.
 - **`#` directive passthrough** — preamble `#`-lines are collected by `CgStructureParser.parsePreambleDirectives()` and prepended to `globalDecls`; the compiler's `partitionGlobalDecls()` emits them right after `#version`.
 - **Auto-inject extensions** — `CgGpuType.requiredExtension()` drives automatic `#extension` emission for `INT64`/`UINT64` fields; throws `CgPreprocessorException` if the capability is absent.
+- **vec3 is banned from Properties** — `CgPropertiesParser` throws `CgShaderParseException` and `CgMaterialProperty.fromDecl()` throws `UnsupportedOperationException` when `vec3` is used as a property type. Root cause: STD140 pads `vec3` to 16 bytes but the GLSL compiler places the next field 12 bytes later, causing a 4-byte offset mismatch. Use `vec4` instead.
+
+## Keyword Variant Internals
+
+`CgMaterialShader` compiles one GL program per unique enabled-keyword set. The key design points:
+
+**Storage — `programCache`:**
+- `Map<ProgramKey, CgShader> programCache` — each entry is a fully linked + wired GL program.
+- `ProgramKey` wraps an unmodifiable `Set<String>` of keyword names. Equality is set-based — order
+  doesn't matter. Two keys with `{"A","B"}` and `{"B","A"}` are equal and share a cache entry.
+- The no-keyword (STANDARD) variant uses an empty-set key and is compiled immediately by `recompile()`.
+- All other keyword combinations are compiled lazily on the first `getOrCompile(keywords)` call
+  with that set.
+
+**Compile flow for a keyword variant:**
+1. `CgMaterial.enableKeyword("NAME")` adds the name to `CgMaterial.enabledKeywords`.
+2. `CgMaterial.bind()` calls `cgMaterialShader.getOrCompile(enabledKeywords)`.
+3. `getOrCompile()` constructs a `ProgramKey` and looks up `programCache` — cache hit returns immediately.
+4. On miss: calls `CgMaterialShaderCompiler.compile(parsed, ..., new CompileConfig(activeKeywords))`.
+   `CompileConfig` holds the normalised keyword set; the compiler emits `#define NAME 1` for each
+   active keyword immediately after `#version`.
+5. The compiled program is wired (`wireShader()` for pipeline buffers + any attached buffers)
+   and stored in `programCache` under the new `ProgramKey`.
+
+**Hot-reload interaction:**
+- `recompile()` clears `programCache` entirely and rebuilds only the STANDARD (no-keyword) variant.
+- `revisionNumber` increments so `CgMaterial` instances detect the change on the next `bind()`.
+- `CgMaterial.onShaderRecompiled()` clears `wiredToMatPropsUbo` so the per-instance UBO is
+  re-wired to any newly compiled keyword variants on their first use.
+
+**Pre-compile `enableKeyword()` path:**
+`enableKeyword()` may be called before the first `bind()`. If `cgMaterialShader.getParsed() == null`
+(i.e. not yet compiled), `enableKeyword()` calls `cgMaterialShader.recompile()` eagerly to
+populate `featureNames` for validation. This is the same lazy-compile path used by `applyProperties()`.
 
 ## Relationship to Other Packages
 

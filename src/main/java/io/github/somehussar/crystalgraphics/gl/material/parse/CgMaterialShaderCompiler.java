@@ -7,6 +7,7 @@ import io.github.somehussar.crystalgraphics.api.shader.CgPreprocessorException;
 import io.github.somehussar.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 import io.github.somehussar.crystalgraphics.gl.material.CgMaterialProperty;
 
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -52,6 +53,27 @@ public final class CgMaterialShaderCompiler {
     public record CompiledSource(String vertexSource, String fragmentSource) {
     }
 
+    /**
+     * Configuration for a single shader compilation pass.
+     *
+     * <p>Specifies the set of active {@code #pragma cg_feature} keyword names to inject as
+     * {@code #define NAME 1} directives before user preamble lines.</p>
+     *
+     * <p>{@link #activeKeywords()} is always an unmodifiable copy normalised at construction.</p>
+     *
+     * @param activeKeywords active feature-flag keyword names; copied and made unmodifiable
+     */
+    @Desugar
+    public record CompileConfig(Set<String> activeKeywords) {
+        /** Normalises {@code activeKeywords} to an unmodifiable, insertion-ordered copy. */
+        public CompileConfig {
+            activeKeywords = Collections.unmodifiableSet(new LinkedHashSet<>(activeKeywords));
+        }
+
+        /** Default config: no active keywords. */
+        public static final CompileConfig DEFAULT = new CompileConfig(Collections.emptySet());
+    }
+
     private static final String ENV_INCLUDE = "crystalgraphics:shaders/env/cg_env.glsl";
 
     private CgMaterialShaderCompiler() {
@@ -70,19 +92,15 @@ public final class CgMaterialShaderCompiler {
      * the {@code cg_env.glsl} include before passing to
      * {@link io.github.somehussar.crystalgraphics.gl.shader.CgShaderFactory#fromSource}.</p>
      *
-     * @param parsed           structural parse result from {@link CgShaderParser#parse(String)}
-     * @param shaderBufferPath which GPU path is active; drives {@code #version} selection and
-     *                         the {@code CG_USE_SSBO} define
-     * @param attachedBuffers  user-defined SSBO/TBO and UBO buffers to inject (may be empty);
-     *                         UBO entries are identified via {@link CgAttachedBuffer#isUbo()}
+     * @param parsed          structural parse result from {@link CgShaderParser#parse(String)}
+     * @param attachedBuffers user-defined SSBO/TBO and UBO buffers to inject (may be empty);
+     *                        UBO entries are identified via {@link CgAttachedBuffer#isUbo()}
      * @return a {@link CompiledSource} holding the complete vertex and fragment sources
      * @throws IllegalArgumentException if {@code shaderBufferPath} is {@code NONE}
      * @throws CgPreprocessorException  if a TBO-path buffer contains incompatible field types
      */
-    public static CompiledSource compile(CgParsedShader parsed,
-                                         CgCapabilities.ShaderBufferPath shaderBufferPath,
-                                         List<CgAttachedBuffer> attachedBuffers) {
-        return compile(parsed, shaderBufferPath, attachedBuffers, null);
+    public static CompiledSource compile(CgParsedShader parsed, List<CgAttachedBuffer> attachedBuffers) {
+        return compile(parsed, attachedBuffers, null, CompileConfig.DEFAULT);
     }
 
     /**
@@ -113,13 +131,35 @@ public final class CgMaterialShaderCompiler {
                                          CgCapabilities.ShaderBufferPath shaderBufferPath,
                                          List<CgAttachedBuffer> attachedBuffers,
                                          CgUniformBuffer matPropsEntry) {
-        if (shaderBufferPath == CgCapabilities.ShaderBufferPath.NONE) {
-            throw new IllegalArgumentException(
-                    "Cannot compile material shader: ShaderBufferPath is NONE (GL 3.3+ required)");
-        }
+        return compile(parsed, attachedBuffers, matPropsEntry, CompileConfig.DEFAULT);
+    }
 
-        boolean useSsbo = (shaderBufferPath == CgCapabilities.ShaderBufferPath.SSBO_GL43
-                || shaderBufferPath == CgCapabilities.ShaderBufferPath.SSBO_ARB);
+    /**
+     * Compiles a {@link CgParsedShader} into GLSL vertex + fragment source strings,
+     * applying the given {@link CompileConfig} for keyword injection.
+     *
+     * <p>This overload is the primary entry point when keyword-injected compilation is
+     * required. The two-arg and four-arg public overloads delegate here with {@link CompileConfig#DEFAULT}.</p>
+     *
+     * @param parsed          structural parse result from {@link CgShaderParser#parse(String)}
+     * @param attachedBuffers user-defined SSBO/TBO and UBO buffers (may be empty)
+     * @param matPropsEntry   engine-managed properties UBO, or {@code null}
+     * @param config          active-keyword config; use {@link CompileConfig#DEFAULT}
+     *                        for the no-keyword path
+     * @return a {@link CompiledSource} holding the complete vertex and fragment sources
+     * @throws IllegalArgumentException if {@code shaderBufferPath} is {@code NONE}
+     * @throws CgPreprocessorException  if a TBO-path buffer contains incompatible field types
+     */
+    public static CompiledSource compile(CgParsedShader parsed,
+                                         List<CgAttachedBuffer> attachedBuffers,
+                                         CgUniformBuffer matPropsEntry,
+                                         CompileConfig config) {
+        CgCapabilities.ShaderBufferPath path = CgCapabilities.detect().shaderBufferPath();
+        if (path == CgCapabilities.ShaderBufferPath.NONE) 
+            throw new IllegalArgumentException("Cannot compile material shader: ShaderBufferPath is NONE (GL 3.3+ required)");
+
+        boolean useSsbo = (path == CgCapabilities.ShaderBufferPath.SSBO_GL43
+                || path == CgCapabilities.ShaderBufferPath.SSBO_ARB);
 
         Set<String> requiredExtensions = new LinkedHashSet<>();
         for (CgAttachedBuffer ab : attachedBuffers) {
@@ -144,9 +184,9 @@ public final class CgMaterialShaderCompiler {
         List<CgShaderParser.V2fField> v2fFields = CgShaderParser.parseV2fFields(parsed);
 
         String vertexSource = buildVertexSource(parsed, properties, v2fFields, useSsbo,
-                shaderBufferPath, attachedBuffers, requiredExtensions, matPropsEntry);
+                path, attachedBuffers, requiredExtensions, matPropsEntry, config);
         String fragmentSource = buildFragmentSource(parsed, properties, v2fFields, useSsbo,
-                shaderBufferPath, attachedBuffers, requiredExtensions, matPropsEntry);
+                path, attachedBuffers, requiredExtensions, matPropsEntry, config);
 
         return new CompiledSource(vertexSource, fragmentSource);
     }
@@ -159,6 +199,8 @@ public final class CgMaterialShaderCompiler {
      * <p>Generation sequence (matches plan T8, steps 1–11):</p>
      * <ol>
      *   <li>{@code #version} directive</li>
+     *   <li>Keyword {@code #define NAME 1} lines (from {@code config}, in {@code featureNames} order)</li>
+     *   <li>User preamble {@code #}-directive lines (from {@code globalDecls} partition)</li>
      *   <li>{@code #define CG_VERTEX_STAGE 1}</li>
      *   <li>{@code #define CG_USE_SSBO 1} (SSBO path only)</li>
      *   <li>{@code #include "crystalgraphics:shaders/env/cg_env.glsl"}</li>
@@ -178,11 +220,15 @@ public final class CgMaterialShaderCompiler {
                                              CgCapabilities.ShaderBufferPath shaderBufferPath,
                                              List<CgAttachedBuffer> attachedBuffers,
                                              Set<String> requiredExtensions,
-                                             CgUniformBuffer matPropsEntry) {
+                                             CgUniformBuffer matPropsEntry,
+                                             CompileConfig config) {
         StringBuilder sb = new StringBuilder(1024);
 
         // Step 1: #version
         sb.append(useSsbo ? "#version 430 core\n" : "#version 330 core\n");
+
+        // Keyword #define injection — in featureNames declaration order, before user #-lines
+        appendKeywordDefines(sb, parsed.featureNames(), config.activeKeywords());
 
         String[] gd = partitionGlobalDecls(parsed.globalDecls());
         String directiveLines = gd[0];
@@ -241,13 +287,15 @@ public final class CgMaterialShaderCompiler {
      * <p>Generation sequence (matches plan T8, steps 1–10):</p>
      * <ol>
      *   <li>{@code #version} directive</li>
+     *   <li>Keyword {@code #define NAME 1} lines (from {@code config}, in {@code featureNames} order)</li>
+     *   <li>User preamble {@code #}-directive lines</li>
      *   <li>{@code #define CG_USE_SSBO 1} (SSBO path only; no CG_VERTEX_STAGE)</li>
      *   <li>{@code #include "crystalgraphics:shaders/env/cg_env.glsl"}</li>
      *   <li>Property uniform declarations</li>
      *   <li>v2f struct</li>
      *   <li>v2f varying inputs ({@code in <type> _v2f_<name>;})</li>
      *   <li>Global declarations</li>
-     *   <li>{@code out vec4 _cg_fragColor;}</li>
+     *   <li>{@code out vec4 _cg_fragColor;} (single-output) or layout-qualified RT outputs (MRT)</li>
      *   <li>User fragment function</li>
      *   <li>Generated {@code void main()}</li>
      * </ol>
@@ -259,11 +307,15 @@ public final class CgMaterialShaderCompiler {
                                                CgCapabilities.ShaderBufferPath shaderBufferPath,
                                                List<CgAttachedBuffer> attachedBuffers,
                                                Set<String> requiredExtensions,
-                                               CgUniformBuffer matPropsEntry) {
+                                               CgUniformBuffer matPropsEntry,
+                                               CompileConfig config) {
         StringBuilder sb = new StringBuilder(1024);
 
         // Step 1: #version
         sb.append(useSsbo ? "#version 430 core\n" : "#version 330 core\n");
+
+        // Keyword #define injection — in featureNames declaration order, before user #-lines
+        appendKeywordDefines(sb, parsed.featureNames(), config.activeKeywords());
 
         String[] gd = partitionGlobalDecls(parsed.globalDecls());
         String directiveLines = gd[0];
@@ -333,6 +385,21 @@ public final class CgMaterialShaderCompiler {
         for (String ext : required) {
             if (!existingDirectives.contains(ext)) {
                 sb.append("#extension ").append(ext).append(" : enable\n");
+            }
+        }
+    }
+
+    /**
+     * Injects {@code #define NAME 1} for each active keyword, iterating
+     * {@code featureNames} in declaration order (not set iteration order).
+     * No-op when {@code activeKeywords} is empty.
+     */
+    private static void appendKeywordDefines(StringBuilder sb, List<String> featureNames,
+                                              Set<String> activeKeywords) {
+        if (activeKeywords.isEmpty()) return;
+        for (String name : featureNames) {
+            if (activeKeywords.contains(name)) {
+                sb.append("#define ").append(name).append(" 1\n");
             }
         }
     }

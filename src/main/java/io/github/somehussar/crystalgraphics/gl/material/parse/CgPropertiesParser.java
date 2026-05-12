@@ -157,8 +157,16 @@ final class CgPropertiesParser {
         if (!VALID_PROPERTY_TYPES.contains(base)) {
             throw new CgShaderParseException(
                     "[" + resourcePath + "] Unknown property type '" + base + "' in Properties block. "
-                    + "Valid types: float, vec2, vec3, vec4, int, color, Range, sampler2D, "
-                    + "sampler2DArray, sampler3D, samplerCube. In: '" + line + "'");
+                    + "Valid types: float, vec2, vec4, int, color, Range, sampler2D, "
+                    + "sampler2DArray, sampler3D, samplerCube. (vec3 is not supported — use vec4.) "
+                    + "In: '" + line + "'");
+        }
+        // Hard-ban vec3: STD140 pads vec3 to 16 bytes but the GLSL compiler places the next
+        // field 12 bytes later, causing a 4-byte offset mismatch. Use vec4 instead.
+        if ("vec3".equals(base)) {
+            throw new CgShaderParseException(
+                    "[" + resourcePath + "] vec3 is not supported as a material property type "
+                    + "due to STD140 alignment ambiguity — use vec4 instead. In: '" + line + "'");
         }
         return base;
     }

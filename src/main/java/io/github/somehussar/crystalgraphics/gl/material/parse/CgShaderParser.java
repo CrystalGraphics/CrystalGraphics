@@ -122,7 +122,7 @@ public final class CgShaderParser {
                 CgRenderStateParser.parse(source, resourcePath),
                 CgQueueParser.parse(source, resourcePath),
                 fragOutput,
-                Collections.emptyList());
+                CgStructureParser.parseFeaturePragmas(source, resourcePath));
     }
 
     /**

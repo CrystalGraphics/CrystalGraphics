@@ -20,7 +20,7 @@ static final fields.
 | `CgShaderParser` | `public final` | Public parse facade. `parse(String)` / `parse(String, String)` → `CgParsedShader`. `parseV2fFields(CgParsedShader)` → `List<V2fField>`. Nested `V2fField` record (public). Delegates to the package-private sub-parsers below. |
 | `CgShaderParseException` | `public` | `RuntimeException` thrown on any `.shader` format violation. All messages include a `[resourcePath]` prefix. |
 | `CgParsedShader` | `public record` | Immutable parse result. Fields: `shaderType`, `properties`, `v2fStructBody`, `globalDecls`, `vertexBody`, `fragmentBody`, `renderState`, `renderQueue`, `fragOutput`, `featureNames`. Consumed by `CgMaterialShaderCompiler`. |
-| `CgMaterialShaderCompiler` | `public final` | Generates complete GLSL vertex + fragment source strings from a `CgParsedShader`. Nested `CompiledSource` record (public): `vertexSource`, `fragmentSource`. |
+| `CgMaterialShaderCompiler` | `public final` | Generates complete GLSL vertex + fragment source strings from a `CgParsedShader`. Nested `CompiledSource` record (public): `vertexSource`, `fragmentSource`. Nested `CompileConfig` record (public): `activeKeywords` (normalised unmodifiable `Set<String>`), `DEFAULT` constant (empty keywords). `compile(parsed, bufferPath, attachedBuffers)` and `compile(parsed, bufferPath, attachedBuffers, matPropsEntry)` delegate to the 5-arg `compile(..., CompileConfig)` with `CompileConfig.DEFAULT`. Active keywords are injected as `#define NAME 1` lines (in declaration order from `featureNames`) immediately after `#version`. `#pragma cg_feature` lines are never emitted in output GLSL. |
 | `CgFragOutputParser` | package-private | Parses the `void fragment()` signature to produce a `CgFragOutputParser.FragOutput`. Handles single-output (`out vec4`) and MRT struct path (`out GBuffer o`), including `: RTN` annotation resolution, all-or-none validation, duplicate/range checks, and clean struct body construction. Owns the nested `FragOutput` public record (see below). |
 | `CgFragOutputParser.FragOutput` | `public static record` (nested) | Fragment output descriptor, nested inside `CgFragOutputParser`. `isMrt()` distinguishes single-output (`mrtStructName==null`) from MRT struct path. Fields: `mrtStructName`, `outParamName`, `fieldNames`, `locations`, `mrtStructBody`. Static factory: `singleOutput(String)`. |
 | `CgBufferGlslEmitter` | package-private | Pure GLSL string generator for SSBO, TBO, and UBO blocks. Package-private test seam: `emitSsbo/emitTbo/emitUbo(CgBufferFormat, String, ...)`. |
@@ -78,6 +78,44 @@ CgMaterialShaderCompiler.compile(parsed, bufferPath, attachedBuffers)
     ├── CgBufferGlslEmitter.emitSsbo/emitTbo/emitUbo()  (per attached buffer)
     └── → CompiledSource { vertexSource, fragmentSource }
 ```
+
+## `#pragma cg_feature` — Keyword Parsing
+
+**Where it lives:** `CgStructureParser.parseFeaturePragmas(String source, String resourcePath)`
+
+**What it does:**
+- Scans the source preamble (lines before the first structural section such as `Properties {`,
+  `struct v2f`, `void vertex(`) for lines matching `#pragma cg_feature <NAME>`.
+- Each found name is validated and added to an ordered list.
+- The result is stored as `CgParsedShader.featureNames()` — a `List<String>` in declaration order.
+- `#pragma cg_feature` lines that appear **inside** a function body are ignored (not parsed as features).
+- `#pragma once` lines in the preamble are silently skipped (not confused with `cg_feature`).
+
+**Validation rules enforced at parse time:**
+- Feature name must be non-empty — throws if blank after `#pragma cg_feature`.
+- Feature name must match `^[A-Z][A-Z0-9_]*$` (uppercase identifier) — throws with message.
+- Duplicate feature names throw `CgShaderParseException`.
+- Maximum of **8 feature names** per shader — throws if exceeded.
+
+**How the compiler uses `featureNames`:**
+`CgMaterialShaderCompiler.CompileConfig` holds the active keyword set. During compilation,
+the compiler iterates `featureNames` in declaration order and, for each name present in
+`activeKeywords`, emits `#define NAME 1` immediately after `#version` in both vertex and
+fragment sources. `#pragma cg_feature` lines are never forwarded to GLSL output — they are
+consumed entirely at parse time.
+
+**Output example** for `activeKeywords = {"RECEIVE_SHADOWS"}`:
+```glsl
+#version 430 core
+#define RECEIVE_SHADOWS 1
+// ... rest of generated GLSL
+```
+
+**vec3 ban in Properties:**
+`CgPropertiesParser.resolvePropertyTypeBase()` throws `CgShaderParseException` if the resolved
+property type is `vec3`. The error message explains the STD140 alignment root cause and directs
+authors to use `vec4` instead. `CgMaterialProperty.fromDecl()` throws `UnsupportedOperationException`
+as a defense-in-depth guard for any code path that bypasses the parser.
 
 ## Relationship to `gl/material/`
 

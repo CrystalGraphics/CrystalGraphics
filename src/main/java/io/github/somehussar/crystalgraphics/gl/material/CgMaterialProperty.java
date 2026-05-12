@@ -178,6 +178,11 @@ public final class CgMaterialProperty {
         if (type == null) {
             throw new IllegalArgumentException("Unknown material property type: " + typeName);
         }
+        if (type == Type.VEC3) {
+            throw new UnsupportedOperationException(
+                    "vec3 is not supported as a material property type due to STD140 alignment "
+                    + "ambiguity — use vec4 instead.");
+        }
         CgMaterialProperty p = new CgMaterialProperty(name, displayName != null ? displayName : name, type, rawDefault);
         if (rawDefault != null && !type.isSampler()) {
             p.setFromRaw(rawDefault);
@@ -347,6 +352,31 @@ public final class CgMaterialProperty {
             copy.resetToDefault();
         }
         return copy;
+    }
+
+    /**
+     * Copies the current runtime value from {@code src} into this property.
+     * No-op if types differ — type-changed properties retain their default value.
+     * Used by {@code CgMaterial.onShaderRecompiled()} to preserve user-set values across
+     * hot-reload rebuilds of the property store.
+     *
+     * @param src the source property to copy values from; must not be null
+     */
+    public void copyValueFrom(CgMaterialProperty src) {
+        if (src.type != this.type) return;
+        if (type.isSampler()) {
+            this.samplerUnit    = src.samplerUnit;
+            this.samplerTexture = src.samplerTexture;
+        } else if (type == Type.INT || type == Type.BOOLEAN) {
+            this.intValue = src.intValue;
+        } else {
+            System.arraycopy(src.floatValue, 0, this.floatValue, 0, this.floatValue.length);
+            if (type == Type.RANGE) {
+                // Preserve the range bounds so the copy stays within the same clamp window.
+                this.rangeMin = src.rangeMin;
+                this.rangeMax = src.rangeMax;
+            }
+        }
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────

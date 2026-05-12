@@ -3,6 +3,11 @@ package io.github.somehussar.crystalgraphics.gl.material.parse;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -158,6 +163,73 @@ final class CgStructureParser {
             }
         }
         return result.toString();
+    }
+
+    /**
+     * Scans the preamble region (between {@code #type} and the first structural section:
+     * {@code Properties}, {@code struct v2f}, or {@code void vertex}) for
+     * {@code #pragma cg_feature <NAME>} lines and returns the feature names in declaration order.
+     *
+     * <p>Validations (all throw {@link CgShaderParseException}):</p>
+     * <ul>
+     *   <li>Max 8 feature names — throws on 9+.</li>
+     *   <li>Feature name must match {@code [A-Za-z_][A-Za-z0-9_]*} — throws on invalid identifier.</li>
+     *   <li>Duplicate declaration — throws on second occurrence of the same name.</li>
+     * </ul>
+     *
+     * <p>{@code #pragma once} is silently ignored (not confused with cg_feature).</p>
+     * <p>Does NOT scan inside vertex/fragment function bodies.</p>
+     *
+     * @param source       the full {@code .shader} source
+     * @param resourcePath used in exception messages
+     * @return unmodifiable ordered list of feature names; empty if none declared
+     * @throws CgShaderParseException on any validation failure
+     */
+    static List<String> parseFeaturePragmas(String source, String resourcePath) {
+        List<String> names = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+        boolean seenType = false;
+        for (String rawLine : source.split("\n")) {
+            String line = rawLine.trim();
+            if (!seenType) {
+                if (line.startsWith("#type")) seenType = true;
+                continue;
+            }
+            // Stop at first structural section — do not scan function bodies
+            if (line.startsWith("Properties {") || line.startsWith("Properties{")
+                    || line.startsWith("struct v2f {") || line.startsWith("struct v2f{")
+                    || line.startsWith("void vertex(")) {
+                break;
+            }
+            // Only process #pragma cg_feature lines
+            if (!line.startsWith("#pragma cg_feature")) continue;
+            // Extract the name token after the pragma keyword
+            String rest = line.substring("#pragma cg_feature".length()).trim();
+            if (rest.isEmpty()) {
+                throw new CgShaderParseException(
+                        "[" + resourcePath + "] #pragma cg_feature: missing feature name");
+            }
+            // Validate identifier: [A-Za-z_][A-Za-z0-9_]*
+            if (!rest.matches("[A-Za-z_][A-Za-z0-9_]*")) {
+                throw new CgShaderParseException(
+                        "[" + resourcePath + "] #pragma cg_feature: invalid feature name '"
+                        + rest + "' — must match [A-Za-z_][A-Za-z0-9_]*");
+            }
+            // Reject duplicates
+            if (seen.contains(rest)) {
+                throw new CgShaderParseException(
+                        "[" + resourcePath + "] #pragma cg_feature: duplicate feature name '" + rest + "'");
+            }
+            // Enforce max 8 declarations
+            if (names.size() >= 8) {
+                throw new CgShaderParseException(
+                        "[" + resourcePath + "] #pragma cg_feature: maximum of 8 feature names exceeded"
+                        + " (found '" + rest + "' as 9th declaration)");
+            }
+            names.add(rest);
+            seen.add(rest);
+        }
+        return Collections.unmodifiableList(names);
     }
 
     // ── Validation helpers ────────────────────────────────────────────────────
