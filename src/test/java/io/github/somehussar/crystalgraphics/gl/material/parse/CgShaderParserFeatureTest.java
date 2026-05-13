@@ -2,35 +2,56 @@ package io.github.somehussar.crystalgraphics.gl.material.parse;
 
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
 import io.github.somehussar.crystalgraphics.api.material.CgAttachedBuffer;
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
 import java.util.Collections;
 import java.util.List;
 
 import static org.junit.Assert.*;
 
-/**
- * Unit tests for {@code CgStructureParser.parseFeaturePragmas()} exercised indirectly
- * through {@link CgShaderParser#parse(String, String)}.
- *
- * <p>All tests are pure string-processing — no GL context required.</p>
- */
 public class CgShaderParserFeatureTest {
 
     private static final CgCapabilities.ShaderBufferPath TBO = CgCapabilities.ShaderBufferPath.TBO;
     private static final List<CgAttachedBuffer> NO_BUFFERS = Collections.emptyList();
 
+    @BeforeClass
+    public static void injectTboCapabilities() throws Exception {
+        Constructor<CgCapabilities> ctor = CgCapabilities.class.getDeclaredConstructor();
+        ctor.setAccessible(true);
+        CgCapabilities stub = ctor.newInstance();
+        Field pathField = CgCapabilities.class.getDeclaredField("shaderBufferPath");
+        pathField.setAccessible(true);
+        pathField.set(stub, CgCapabilities.ShaderBufferPath.TBO);
+        Field cacheField = CgCapabilities.class.getDeclaredField("cachedCaps");
+        cacheField.setAccessible(true);
+        cacheField.set(null, stub);
+    }
+
+    @AfterClass
+    public static void clearCapabilitiesCache() throws Exception {
+        Field cacheField = CgCapabilities.class.getDeclaredField("cachedCaps");
+        cacheField.setAccessible(true);
+        cacheField.set(null, null);
+    }
+
     // ── Shared minimal shader skeleton ────────────────────────────────────────
 
-    private static final String BODY_SUFFIX =
-            "struct v2f {\n    vec2 uv;\n};\n"
-            + "void vertex(out v2f o) { o.uv = vec2(0.0); }\n"
-            + "void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(1.0); }\n";
+    private static final String PASS_BODY =
+            "Pass {\n"
+            + "    Tags { \"LightMode\" = \"Forward\" }\n"
+            + "    struct v2f {\n    vec2 uv;\n};\n"
+            + "    void vertex(out v2f o) { o.uv = vec2(0.0); }\n"
+            + "    void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(1.0); }\n"
+            + "}\n";
 
     private static String shader(String... preambleLines) {
         StringBuilder sb = new StringBuilder("#type spatial\n");
         for (String line : preambleLines) sb.append(line).append("\n");
-        sb.append(BODY_SUFFIX);
+        sb.append(PASS_BODY);
         return sb.toString();
     }
 
@@ -74,16 +95,19 @@ public class CgShaderParserFeatureTest {
 
     @Test
     public void featureNameInVertexBody_notParsed() {
-        // A #pragma cg_feature that appears after "void vertex(" should be ignored
+        // A #pragma cg_feature that appears inside a Pass block must be ignored
         String src = "#type spatial\n"
-                + "struct v2f {\n    vec2 uv;\n};\n"
-                + "void vertex(out v2f o) {\n"
-                + "    #pragma cg_feature INSIDE_VERTEX\n"
-                + "    o.uv = vec2(0.0);\n"
-                + "}\n"
-                + "void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(1.0); }\n";
+                + "Pass {\n"
+                + "    Tags { \"LightMode\" = \"Forward\" }\n"
+                + "    struct v2f {\n    vec2 uv;\n};\n"
+                + "    void vertex(out v2f o) {\n"
+                + "        #pragma cg_feature INSIDE_VERTEX\n"
+                + "        o.uv = vec2(0.0);\n"
+                + "    }\n"
+                + "    void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(1.0); }\n"
+                + "}\n";
         CgParsedShader parsed = CgShaderParser.parse(src, "test");
-        assertTrue("Feature inside vertex body must not be parsed", parsed.featureNames().isEmpty());
+        assertTrue("Feature inside Pass body must not be parsed", parsed.featureNames().isEmpty());
     }
 
     @Test

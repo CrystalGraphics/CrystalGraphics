@@ -2,8 +2,12 @@ package io.github.somehussar.crystalgraphics.gl.material.parse;
 
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
 import io.github.somehussar.crystalgraphics.api.material.CgAttachedBuffer;
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashSet;
@@ -12,38 +16,62 @@ import java.util.Set;
 
 import static org.junit.Assert.*;
 
-/**
- * Unit tests for the keyword injection system in {@link CgMaterialShaderCompiler}.
- *
- * <p>All tests are pure string transformation — no GL context required.</p>
- */
 public class CgMaterialShaderCompilerVariantTest {
 
     private static final CgCapabilities.ShaderBufferPath TBO = CgCapabilities.ShaderBufferPath.TBO;
     private static final List<CgAttachedBuffer> NO_BUFFERS = Collections.emptyList();
 
+    @BeforeClass
+    public static void injectTboCapabilities() throws Exception {
+        Constructor<CgCapabilities> ctor = CgCapabilities.class.getDeclaredConstructor();
+        ctor.setAccessible(true);
+        CgCapabilities stub = ctor.newInstance();
+        Field pathField = CgCapabilities.class.getDeclaredField("shaderBufferPath");
+        pathField.setAccessible(true);
+        pathField.set(stub, CgCapabilities.ShaderBufferPath.TBO);
+        Field cacheField = CgCapabilities.class.getDeclaredField("cachedCaps");
+        cacheField.setAccessible(true);
+        cacheField.set(null, stub);
+    }
+
+    @AfterClass
+    public static void clearCapabilitiesCache() throws Exception {
+        Field cacheField = CgCapabilities.class.getDeclaredField("cachedCaps");
+        cacheField.setAccessible(true);
+        cacheField.set(null, null);
+    }
+
     private static final String SHADER_WITH_TWO_FEATURES =
             "#type spatial\n"
             + "#pragma cg_feature SHADOWS_ON\n"
             + "#pragma cg_feature FOG\n"
-            + "struct v2f {\n    vec2 uv;\n};\n"
-            + "void vertex(out v2f o) { o.uv = vec2(0.0); }\n"
-            + "void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(1.0); }\n";
+            + "Pass {\n"
+            + "    Tags { \"LightMode\" = \"Forward\" }\n"
+            + "    struct v2f {\n    vec2 uv;\n};\n"
+            + "    void vertex(out v2f o) { o.uv = vec2(0.0); }\n"
+            + "    void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(1.0); }\n"
+            + "}\n";
 
     private static final String MINIMAL =
             "#type spatial\n"
             + "Properties { _Alpha (\"Alpha\", float) = 1.0 }\n"
-            + "struct v2f {\n    vec2 uv;\n};\n"
-            + "void vertex(out v2f o) { o.uv = vec2(0.0); }\n"
-            + "void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(i.uv, 0.0, 1.0); }\n";
+            + "Pass {\n"
+            + "    Tags { \"LightMode\" = \"Forward\" }\n"
+            + "    struct v2f {\n    vec2 uv;\n};\n"
+            + "    void vertex(out v2f o) { o.uv = vec2(0.0); }\n"
+            + "    void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(i.uv, 0.0, 1.0); }\n"
+            + "}\n";
 
     private static final String SHADER_WITH_EXTENSION_IN_PREAMBLE =
             "#type spatial\n"
             + "#pragma cg_feature MY_FEATURE\n"
             + "#extension GL_OES_x : enable\n"
-            + "struct v2f {\n    vec2 uv;\n};\n"
-            + "void vertex(out v2f o) { o.uv = vec2(0.0); }\n"
-            + "void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(1.0); }\n";
+            + "Pass {\n"
+            + "    Tags { \"LightMode\" = \"Forward\" }\n"
+            + "    struct v2f {\n    vec2 uv;\n};\n"
+            + "    void vertex(out v2f o) { o.uv = vec2(0.0); }\n"
+            + "    void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(1.0); }\n"
+            + "}\n";
 
     private static CgParsedShader parse(String src) {
         return CgShaderParser.parse(src, "test");
@@ -174,14 +202,17 @@ public class CgMaterialShaderCompilerVariantTest {
     public void mrt_layoutQualifiedOuts() {
         String mrtShader =
                 "#type spatial\n"
-                + "struct v2f {\n    vec2 uv;\n};\n"
-                + "struct GBuffer {\n"
-                + "    vec4 albedo : RT0;\n"
-                + "    vec4 normal : RT1;\n"
-                + "    vec4 emission : RT2;\n"
-                + "};\n"
-                + "void vertex(out v2f o) { o.uv = vec2(0.0); }\n"
-                + "void fragment(in v2f i, out GBuffer o) { o.albedo = vec4(1.0); }\n";
+                + "Pass {\n"
+                + "    Tags { \"LightMode\" = \"Forward\" }\n"
+                + "    struct v2f {\n    vec2 uv;\n};\n"
+                + "    struct GBuffer {\n"
+                + "        vec4 albedo : RT0;\n"
+                + "        vec4 normal : RT1;\n"
+                + "        vec4 emission : RT2;\n"
+                + "    };\n"
+                + "    void vertex(out v2f o) { o.uv = vec2(0.0); }\n"
+                + "    void fragment(in v2f i, out GBuffer o) { o.albedo = vec4(1.0); }\n"
+                + "}\n";
 
         CgParsedShader parsed = parse(mrtShader);
         CgMaterialShaderCompiler.CompiledSource cs = compile(parsed, CgMaterialShaderCompiler.CompileConfig.DEFAULT);

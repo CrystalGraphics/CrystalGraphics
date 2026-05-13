@@ -13,10 +13,15 @@ import java.util.regex.Pattern;
 
 /**
  * Structural parsing and validation helpers for CrystalShader {@code .shader} source.
- * Handles brace matching, section extraction, v2f validation, and format constraint enforcement.
+ * Handles brace matching, {@code Pass { }} block extraction, per-pass section extraction
+ * (v2f body, globalDecls, vertex/fragment blocks), preamble directive passthrough,
+ * {@code #type} parsing, and all {@code validate*} format checks.
  *
- * <p>All methods are static. No GL calls — pure string processing. Every format violation
- * throws {@link CgShaderParseException} with a {@code [resourcePath]} prefix.</p>
+ * <p>All methods are static. No GL calls — pure string processing. Every structural
+ * format violation throws {@link CgShaderParseException} with a {@code [resourcePath]}
+ * prefix.</p>
+ *
+ * <p>Tag parsing ({@code Tags { }}) is handled by {@link CgTagParser}.</p>
  */
 final class CgStructureParser {
 
@@ -30,6 +35,9 @@ final class CgStructureParser {
 
     private static final Pattern OLD_RENDER_QUEUE_PATTERN =
             Pattern.compile("(?m)^\\s*RenderQueue\\s+\\S");
+
+    /** Matches a {@code Pass} keyword followed by optional whitespace and an opening brace. */
+    private static final Pattern PASS_BLOCK_PATTERN = Pattern.compile("\\bPass\\s*\\{");
 
     static final String[] RESERVED_PREFIXES = {"cg_", "CG_", "_v2f_"};
     static final String TYPE_SPATIAL = "spatial";
@@ -63,6 +71,155 @@ final class CgStructureParser {
         return sb.toString();
     }
 
+    /**
+     * Extracts the raw content (between the outer braces) of every
+     * {@code Pass { ... }} block in the source, in declaration order.
+     *
+     * <p>Uses brace-counter matching ({@link #matchBrace}) to correctly handle
+     * nested {@code RenderState { }}, {@code Tags { }}, and function bodies.</p>
+     *
+     * <p>Does <em>not</em> validate the pass count — that is the caller's
+     * ({@link CgShaderParser}'s) responsibility. An empty list is returned when
+     * no {@code Pass} blocks are found.</p>
+     *
+     * @param source       the full {@code .shader} source
+     * @param resourcePath used in exception messages
+     * @return unmodifiable ordered list of raw pass body strings (content between the outer braces);
+     *         empty if no {@code Pass} blocks found
+     */
+    static List<String> extractPassBlocks(String source, String resourcePath) {
+        List<String> blocks = new ArrayList<>();
+        Matcher m = PASS_BLOCK_PATTERN.matcher(source);
+        while (m.find()) {
+            // The pattern ends with '\{', so m.end() - 1 is the index of '{'
+            int braceOpen = m.end() - 1;
+            int braceClose = matchBrace(source, braceOpen);
+            blocks.add(source.substring(braceOpen + 1, braceClose));
+        }
+        return Collections.unmodifiableList(blocks);
+    }
+
+    /**
+     * Finds and parses a top-level {@code struct v2f { }} block that exists
+     * <em>outside</em> all {@code Pass { }} blocks (shared v2f).
+     *
+     * <p>Returns an empty string when no top-level {@code struct v2f} is found.
+     * When present, validates all field declarations (type, reserved-prefix, no integer types)
+     * using the same rules as per-pass parsing.</p>
+     *
+     * @param source       the full {@code .shader} source
+     * @param resourcePath used in exception messages
+     * @return body content between the outer braces of the top-level {@code struct v2f},
+     *         or {@code ""} if absent; never {@code null}
+     * @throws CgShaderParseException if the struct body contains invalid field declarations
+     */
+    static String parseSharedV2f(String source, String resourcePath) {
+        // Only search before the first Pass block
+        Matcher passM = PASS_BLOCK_PATTERN.matcher(source);
+        String searchRegion = passM.find() ? source.substring(0, passM.start()) : source;
+
+        int start = searchRegion.indexOf("struct v2f {");
+        if (start == -1) start = searchRegion.indexOf("struct v2f{");
+        if (start == -1) return "";
+
+        int braceOpen  = searchRegion.indexOf('{', start);
+        int braceClose = matchBrace(searchRegion, braceOpen);
+        String body = searchRegion.substring(braceOpen + 1, braceClose);
+        validateV2fBody(body, resourcePath);
+        return body;
+    }
+
+    /**
+     * Parses the v2f struct body for a specific pass body, falling back to
+     * {@code sharedV2f} if the pass does not declare its own {@code struct v2f}.
+     *
+     * <p>Per-pass {@code struct v2f} declarations override the shared top-level one.
+     * When no v2f is found in {@code passBody}, returns {@code sharedV2f} as-is
+     * (which may itself be empty if no shared v2f was declared).</p>
+     *
+     * @param passBody     raw content of a single {@code Pass { }} block (without outer braces)
+     * @param sharedV2f    the top-level shared v2f body from {@link #parseSharedV2f};
+     *                     used as fallback when the pass has no v2f
+     * @param resourcePath used in exception messages
+     * @return the v2f struct body to use for this pass; never {@code null}
+     * @throws CgShaderParseException if the pass-local v2f body has invalid fields
+     */
+    static String parsePassV2fBody(String passBody, String sharedV2f, String resourcePath) {
+        int start = passBody.indexOf("struct v2f {");
+        if (start == -1) start = passBody.indexOf("struct v2f{");
+        if (start == -1) return sharedV2f; // Inherit from shared top-level v2f
+
+        int braceOpen  = passBody.indexOf('{', start);
+        int braceClose = matchBrace(passBody, braceOpen);
+        String body = passBody.substring(braceOpen + 1, braceClose);
+        validateV2fBody(body, resourcePath);
+        return body;
+    }
+
+    /**
+     * Extracts the global declarations section for a pass: everything between the closing
+     * {@code };} of {@code struct v2f} (if present) and {@code void vertex(}.
+     *
+     * <p>Analogous to the old top-level {@code parseGlobalDecls} but scoped to
+     * a single pass body.</p>
+     *
+     * @param passBody     raw content of a single {@code Pass { }} block (without outer braces)
+     * @param resourcePath used in exception messages
+     * @return global declarations text for this pass; {@code ""} if absent; never {@code null}
+     */
+    static String parsePassGlobalDecls(String passBody, String resourcePath) {
+        // Find end of v2f, if any
+        int v2fEnd = 0;
+        int v2fStart = passBody.indexOf("struct v2f {");
+        if (v2fStart == -1) v2fStart = passBody.indexOf("struct v2f{");
+        if (v2fStart >= 0) {
+            int braceOpen  = passBody.indexOf('{', v2fStart);
+            int braceClose = matchBrace(passBody, braceOpen);
+            int semi = passBody.indexOf(';', braceClose);
+            v2fEnd = semi >= 0 ? semi + 1 : braceClose + 1;
+        }
+
+        int vertexStart = passBody.indexOf("void vertex(");
+        if (vertexStart == -1) return "";
+        if (v2fEnd >= vertexStart) return "";
+        return passBody.substring(v2fEnd, vertexStart).trim();
+    }
+
+    /**
+     * Validates a pass body for structural constraints that are hard errors (not silent-fail):
+     * no {@code #version} directive, no {@code main()} function.
+     *
+     * @param passBody     raw content of a single {@code Pass { }} block
+     * @param passName     pass name for error messages
+     * @param resourcePath used in exception messages
+     * @throws CgShaderParseException if any forbidden construct is found
+     */
+    static void validatePassBody(String passBody, String passName, String resourcePath) {
+        for (String rawLine : passBody.split("\n")) {
+            String line = rawLine.trim();
+            if (line.startsWith("#version")) {
+                throw new CgShaderParseException(
+                        "[" + resourcePath + "] Pass '" + passName + "': #version directive is forbidden in Pass blocks. "
+                        + "The compiler injects the version header automatically. "
+                        + "Remove the '#version' line from this pass.");
+            }
+        }
+        validateNoMainFunction(passBody, "Pass '" + passName + "'", resourcePath);
+    }
+
+    static String extractBlock(String source, String signature, String name, String resourcePath) {
+        int sigStart = source.indexOf(signature);
+        if (sigStart == -1) {
+            throw new CgShaderParseException("[" + resourcePath + "] '" + signature + "...' function not found");
+        }
+        int braceOpen = source.indexOf('{', sigStart);
+        if (braceOpen == -1) {
+            throw new CgShaderParseException("[" + resourcePath + "] Opening brace for '" + name + "()' not found");
+        }
+        int braceClose = matchBrace(source, braceOpen);
+        return source.substring(braceOpen + 1, braceClose);
+    }
+
     static String parseShaderType(String source, String resourcePath) {
         for (String rawLine : source.split("\n")) {
             String line = rawLine.trim();
@@ -87,62 +244,14 @@ final class CgStructureParser {
         throw new CgShaderParseException("[" + resourcePath + "] #type declaration missing");
     }
 
-    static String parseV2fBody(String source, String resourcePath) {
-        int start = source.indexOf("struct v2f {");
-        if (start == -1) start = source.indexOf("struct v2f{");
-        if (start == -1) throw new CgShaderParseException("[" + resourcePath + "] 'struct v2f { }' block not found");
-        int braceOpen  = source.indexOf('{', start);
-        int braceClose = matchBrace(source, braceOpen);
-        String body = source.substring(braceOpen + 1, braceClose);
-        for (String rawLine : body.split("\n")) {
-            String line = rawLine.trim();
-            if (line.isEmpty() || line.startsWith("//")) continue;
-            if (INTEGER_TYPE_PATTERN.matcher(line).find()) {
-                throw new CgShaderParseException(
-                        "[" + resourcePath + "] Integer types forbidden in struct v2f. Found: '" + line + "'");
-            }
-            Matcher m = V2F_FIELD_PATTERN.matcher(line);
-            if (!m.matches()) {
-                throw new CgShaderParseException(
-                        "[" + resourcePath + "] Invalid v2f field: '" + line + "'.");
-            }
-            validateNotReservedPrefix(m.group(2), "struct v2f", resourcePath);
-        }
-        return body;
-    }
-
-    static int findV2fEnd(String source, String resourcePath) {
-        int start = source.indexOf("struct v2f {");
-        if (start == -1) start = source.indexOf("struct v2f{");
-        if (start == -1) throw new CgShaderParseException("[" + resourcePath + "] 'struct v2f { }' block not found");
-        int braceOpen  = source.indexOf('{', start);
-        int braceClose = matchBrace(source, braceOpen);
-        int semi = source.indexOf(';', braceClose);
-        return semi >= 0 ? semi + 1 : braceClose + 1;
-    }
-
-    static String parseGlobalDecls(String source, int v2fEnd, String resourcePath) {
-        int vertexStart = source.indexOf("void vertex(");
-        if (vertexStart == -1) {
-            throw new CgShaderParseException("[" + resourcePath + "] 'void vertex(' function not found");
-        }
-        if (v2fEnd > vertexStart) return "";
-        return source.substring(v2fEnd, vertexStart).trim();
-    }
-
-    static String extractBlock(String source, String signature, String name, String resourcePath) {
-        int sigStart = source.indexOf(signature);
-        if (sigStart == -1) {
-            throw new CgShaderParseException("[" + resourcePath + "] '" + signature + "...' function not found");
-        }
-        int braceOpen = source.indexOf('{', sigStart);
-        if (braceOpen == -1) {
-            throw new CgShaderParseException("[" + resourcePath + "] Opening brace for '" + name + "()' not found");
-        }
-        int braceClose = matchBrace(source, braceOpen);
-        return source.substring(braceOpen + 1, braceClose);
-    }
-
+    /**
+     * Collects preamble {@code #}-directive lines (between {@code #type} and the first
+     * structural section) for passthrough into global declarations.
+     *
+     * <p>Stop conditions: {@code Properties {/}, {@code struct v2f {/},
+     * {@code void vertex(}, {@code Pass {/}, {@code Pass{}}.
+     * {@code #pragma cg_feature} lines are silently consumed here and never forwarded.</p>
+     */
     static String parsePreambleDirectives(String source, String resourcePath) {
         StringBuilder result = new StringBuilder();
         boolean seenType = false;
@@ -152,9 +261,11 @@ final class CgStructureParser {
                 if (line.startsWith("#type")) seenType = true;
                 continue;
             }
+            // Stop at first structural section or Pass block
             if (line.startsWith("Properties {") || line.startsWith("Properties{")
                     || line.startsWith("struct v2f {") || line.startsWith("struct v2f{")
-                    || line.startsWith("void vertex(")) break;
+                    || line.startsWith("void vertex(")
+                    || line.startsWith("Pass {") || line.startsWith("Pass{")) break;
             if (line.isEmpty() || line.startsWith("//") || line.startsWith("#type")) continue;
             if (line.startsWith("#")) {
                 if (line.startsWith("#pragma cg_feature")) continue;
@@ -166,9 +277,13 @@ final class CgStructureParser {
     }
 
     /**
-     * Scans the preamble region (between {@code #type} and the first structural section:
-     * {@code Properties}, {@code struct v2f}, or {@code void vertex}) for
-     * {@code #pragma cg_feature <NAME>} lines and returns the feature names in declaration order.
+     * Scans the preamble region (between {@code #type} and the first structural section
+     * or {@code Pass { }} block) for {@code #pragma cg_feature <NAME>} lines and returns
+     * the feature names in declaration order.
+     *
+     * <p>Stop conditions include {@code Pass {} and {@code Pass{} in addition to the
+     * standard structural section markers, so that feature pragmas inside a Pass body
+     * are not mistakenly collected as material-level features.</p>
      *
      * <p>Validations (all throw {@link CgShaderParseException}):</p>
      * <ul>
@@ -178,7 +293,6 @@ final class CgStructureParser {
      * </ul>
      *
      * <p>{@code #pragma once} is silently ignored (not confused with cg_feature).</p>
-     * <p>Does NOT scan inside vertex/fragment function bodies.</p>
      *
      * @param source       the full {@code .shader} source
      * @param resourcePath used in exception messages
@@ -195,10 +309,11 @@ final class CgStructureParser {
                 if (line.startsWith("#type")) seenType = true;
                 continue;
             }
-            // Stop at first structural section — do not scan function bodies
+            // Stop at first structural section or Pass block — do not scan function bodies
             if (line.startsWith("Properties {") || line.startsWith("Properties{")
                     || line.startsWith("struct v2f {") || line.startsWith("struct v2f{")
-                    || line.startsWith("void vertex(")) {
+                    || line.startsWith("void vertex(")
+                    || line.startsWith("Pass {") || line.startsWith("Pass{")) {
                 break;
             }
             // Only process #pragma cg_feature lines
@@ -277,59 +392,6 @@ final class CgStructureParser {
         }
     }
 
-    static void validateSectionStructure(String source, String resourcePath) {
-        int propsCount = countMarker(source, "Properties {") + countMarker(source, "Properties{");
-        if (propsCount > 1) {
-            throw new CgShaderParseException(
-                    "[" + resourcePath + "] 'Properties { }' block appears more than once; each section must appear exactly once");
-        }
-
-        int v2fCount = countMarker(source, "struct v2f {") + countMarker(source, "struct v2f{");
-        if (v2fCount > 1) {
-            throw new CgShaderParseException(
-                    "[" + resourcePath + "] 'struct v2f { }' block appears more than once; each section must appear exactly once");
-        }
-
-        int vertexCount = countMarker(source, "void vertex(");
-        if (vertexCount > 1) {
-            throw new CgShaderParseException(
-                    "[" + resourcePath + "] 'void vertex(' function appears more than once; each section must appear exactly once");
-        }
-
-        int fragCount = countMarker(source, "void fragment(");
-        if (fragCount > 1) {
-            throw new CgShaderParseException(
-                    "[" + resourcePath + "] 'void fragment(' function appears more than once; each section must appear exactly once");
-        }
-
-        // Duplicate RenderState block is an error
-        int rsCount = countMarker(source, "RenderState {") + countMarker(source, "RenderState{");
-        if (rsCount > 1) {
-            throw new CgShaderParseException("[" + resourcePath + "] Duplicate RenderState block");
-        }
-
-        int propertiesPos = firstOf(source, "Properties {", "Properties{");
-        int v2fPos        = firstOf(source, "struct v2f {",  "struct v2f{");
-        int vertexPos     = source.indexOf("void vertex(");
-        int fragmentPos   = source.indexOf("void fragment(");
-
-        if (propertiesPos >= 0 && v2fPos >= 0 && propertiesPos > v2fPos) {
-            throw new CgShaderParseException(
-                    "[" + resourcePath + "] Section ordering violation: 'struct v2f' appears before 'Properties { }'. " +
-                            "Required order: #type, Properties, struct v2f, vertex(), fragment()");
-        }
-        if (v2fPos >= 0 && vertexPos >= 0 && v2fPos > vertexPos) {
-            throw new CgShaderParseException(
-                    "[" + resourcePath + "] Section ordering violation: 'void vertex(' appears before 'struct v2f'. " +
-                            "Required order: #type, Properties, struct v2f, vertex(), fragment()");
-        }
-        if (vertexPos >= 0 && fragmentPos >= 0 && vertexPos > fragmentPos) {
-            throw new CgShaderParseException(
-                    "[" + resourcePath + "] Section ordering violation: 'void fragment(' appears before 'void vertex('. " +
-                            "Required order: #type, Properties, struct v2f, vertex(), fragment()");
-        }
-    }
-
     static int countMarker(String source, String marker) {
         int count = 0, idx = 0;
         while ((idx = source.indexOf(marker, idx)) != -1) { count++; idx += marker.length(); }
@@ -361,6 +423,29 @@ final class CgStructureParser {
         if (details.length() > 0) {
             LOGGER.warn("[{}] Non-ASCII character(s) in .shader file — invisible unicode silently breaks GLSL: {}",
                     path, details);
+        }
+    }
+
+    // ── Private helpers ───────────────────────────────────────────────────────
+
+    /**
+     * Validates all field lines in a {@code struct v2f} body.
+     * Throws {@link CgShaderParseException} on any invalid field.
+     */
+    private static void validateV2fBody(String body, String resourcePath) {
+        for (String rawLine : body.split("\n")) {
+            String line = rawLine.trim();
+            if (line.isEmpty() || line.startsWith("//")) continue;
+            if (INTEGER_TYPE_PATTERN.matcher(line).find()) {
+                throw new CgShaderParseException(
+                        "[" + resourcePath + "] Integer types forbidden in struct v2f. Found: '" + line + "'");
+            }
+            Matcher m = V2F_FIELD_PATTERN.matcher(line);
+            if (!m.matches()) {
+                throw new CgShaderParseException(
+                        "[" + resourcePath + "] Invalid v2f field: '" + line + "'.");
+            }
+            validateNotReservedPrefix(m.group(2), "struct v2f", resourcePath);
         }
     }
 }
