@@ -6,6 +6,8 @@ import io.github.somehussar.crystalgraphics.api.CgCapabilities;
 import io.github.somehussar.crystalgraphics.api.material.CgAttachedBuffer;
 import io.github.somehussar.crystalgraphics.api.material.CgMaterial;
 import io.github.somehussar.crystalgraphics.api.material.CgMaterialPipeline;
+import io.github.somehussar.crystalgraphics.api.material.CgRenderPassVariant;
+import io.github.somehussar.crystalgraphics.api.material.CgRenderQueue;
 import io.github.somehussar.crystalgraphics.api.shader.CgPreprocessorException;
 import io.github.somehussar.crystalgraphics.api.shader.CgShader;
 import io.github.somehussar.crystalgraphics.api.shader.CgShaderPreprocessor;
@@ -14,6 +16,7 @@ import io.github.somehussar.crystalgraphics.api.vertex.CgVertexFormat;
 import io.github.somehussar.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import io.github.somehussar.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 import io.github.somehussar.crystalgraphics.gl.material.parse.CgMaterialShaderCompiler;
+import io.github.somehussar.crystalgraphics.gl.material.parse.CgParsedPass;
 import io.github.somehussar.crystalgraphics.gl.material.parse.CgParsedShader;
 import io.github.somehussar.crystalgraphics.gl.material.parse.CgShaderParseException;
 import io.github.somehussar.crystalgraphics.gl.material.parse.CgShaderParser;
@@ -35,16 +38,25 @@ import java.util.Set;
  * Shared shader asset compiled from a {@code .shader} file. Owned by {@link CgMaterialShaderRegistry}.
  *
  * <p>Multiple {@link CgMaterial} instances may reference the same {@code CgMaterialShader} and
- * will share compiled GL programs. Per-instance state (property values, UBO) lives on each {@code CgMaterial}.</p>
+ * will share compiled GL programs. Per-instance state (property values, UBO) lives on each
+ * {@code CgMaterial}.</p>
  *
  * <p>{@link #getRevisionNumber()} increments on each successful {@link #recompile()}; materials
  * detect recompiles via revision comparison on every {@code bind()} call.</p>
  *
- * <h3>Keyword program cache</h3>
- * <p>Each active-keyword set is compiled lazily on first use and cached in
- * {@link VariantKey} → {@code CgShader} pairs. Call {@link #getOrCompile(Set)}
- * to retrieve or compile a specific combination. The {@link #recompile()} method resets the
- * entire cache and immediately compiles the no-keyword variant.</p>
+ * <h3>Pass program cache</h3>
+ * <p>Each {@code Pass { }} block compiled during {@link #recompile()} gets its own entry in the
+ * flat {@link ProgramKey} → {@code CgShader} program cache. A {@code ProgramKey} identifies a
+ * program by both its pass name <em>and</em> the active keyword set. Call
+ * {@link #getOrCompile(String, Set)} to retrieve or compile a specific combination. The
+ * {@link #recompile()} method resets the entire cache and immediately compiles the no-keyword
+ * variant of every pass declared in the source.</p>
+ *
+ * <h3>Shadow auto-generation</h3>
+ * <p>If the material has no explicit {@code ShadowCaster} pass, is not transparent, and
+ * {@code castShadows} is true, {@link #recompile()} automatically generates a shadow-caster
+ * program from the first Forward pass. It is stored under
+ * {@code ProgramKey("ShadowCaster", emptySet)} like any other pass — no separate field.</p>
  *
  * <h3>Lifecycle</h3>
  * <p>Created exclusively by {@link CgMaterialShaderRegistry#getOrCreate(String)}. Deleted by
@@ -58,25 +70,34 @@ public final class CgMaterialShader {
     // ── Nested key type ───────────────────────────────────────────────────────
 
     /**
-     * Immutable cache key for a compiled keyword variant.
+     * Immutable flat cache key for a compiled pass-variant program.
      *
-     * <p>Equality is set-based for {@code keywords} — order does not matter.
-     * Two keys with {@code {"A","B"}} and {@code {"B","A"}} are equal and share the same
-     * cache entry.</p>
-     * @param keywords  always unmodifiable LinkedHashSet
+     * <p>Identifies a program by both the pass name <em>and</em> the active keyword set.
+     * The keyword set uses set-based equality — order does not matter.
+     * Two keys with {@code ("Forward", {"A","B"})} and {@code ("Forward", {"B","A"})} are
+     * equal and share the same cache entry.</p>
+     *
+     * @param passName  authored or auto-assigned pass name (e.g. {@code "Pass0"}, {@code "ShadowCaster"})
+     * @param keywords  always an unmodifiable, insertion-ordered copy
      */
     @Desugar
-    record VariantKey(Set<String> keywords) {
-        VariantKey(Set<String> keywords) {
+    record ProgramKey(String passName, Set<String> keywords) {
+        ProgramKey(String passName, Set<String> keywords) {
+            this.passName = passName;
             this.keywords = Collections.unmodifiableSet(new LinkedHashSet<>(keywords));
         }
 
         @Override
         public boolean equals(Object o) {
             if (this == o) return true;
-            if (!(o instanceof VariantKey)) return false;
-            VariantKey other = (VariantKey) o;
-            return keywords.equals(other.keywords);
+            if (!(o instanceof ProgramKey)) return false;
+            ProgramKey other = (ProgramKey) o;
+            return passName.equals(other.passName) && keywords.equals(other.keywords);
+        }
+
+        @Override
+        public int hashCode() {
+            return 31 * passName.hashCode() + keywords.hashCode();
         }
     }
 
@@ -85,21 +106,20 @@ public final class CgMaterialShader {
     /** Resource path to the {@code .shader} file. */
     private final String resourcePath;
 
-    /** Parse result from the last successful compile; {@code null} until first successful compile. */
+    /** Parse result from the last successful compile; {@code null} until first successful compile. 
+     * -- GETTER --
+     * Returns the last successful parse result; 
+     *  before first successful compile. 
+     */
+    @Getter
     private CgParsedShader lastParsed;
 
     /**
-     * Per-(variant, keywords) program cache. Each entry is a fully linked and wired GL program.
+     * Flat pass × keywords program cache. Key = (passName, keywords set).
+     * Each entry is a fully linked and wired GL program.
      * Cleared and rebuilt from scratch on hot-reload.
      */
-    private final Map<VariantKey, CgShader> programCache = new LinkedHashMap<>();
-
-    /**
-     * The most recently compiled-or-returned shader from {@link #getOrCompile} or
-     * {@link #recompile()}. Updated on every successful compile. {@code null} until
-     * first successful compile.
-     */
-    private CgShader lastBound;
+    private final Map<ProgramKey, CgShader> programCache = new LinkedHashMap<>();
 
     /**
      * Template UBO created from the parsed properties for GLSL block emission and post-link wiring.
@@ -109,12 +129,13 @@ public final class CgMaterialShader {
     private CgUniformBuffer matPropsUbo;
 
     /**
-     * Render state extracted from the parsed {@code RenderState { }} block.
+     * Material-level RenderType tag (e.g. {@code "Opaque"}, {@code "Transparent"}).
+     * Extracted from the top-level {@code Tags { "RenderType" = "..." }} block.
      * -- GETTER --
-     * Returns the render state extracted from the last successful compile.
+     * Returns the RenderType tag value from the last successful compile (default {@code "Opaque"}).
      */
     @Getter
-    private CgRenderState renderState = CgRenderState.DEFAULT;
+    private String renderType = "Opaque";
 
     /**
      * Numeric render queue priority extracted from {@code Queue = "..."} (default 2000 = Geometry).
@@ -183,10 +204,16 @@ public final class CgMaterialShader {
      *
      * <p>No-op when {@code resourcePath} is null (programmatic / shader-graph shaders).</p>
      *
-     * <p>On success: clears the program cache, compiles the
-     * no-keyword variant immediately, then increments
-     * {@link #revisionNumber} so materials detect the change on the next {@code bind()} call.
-     * Keyword variants are compiled lazily via {@link #getOrCompile}.</p>
+     * <p>On success: clears the program cache, compiles the no-keyword variant of
+     * every declared pass immediately, then increments {@link #revisionNumber} so
+     * materials detect the change on the next {@code bind()} call.
+     * Keyword variants are compiled lazily via {@link #getOrCompile(String, Set)}.</p>
+     *
+     * <h3>Shadow auto-generation</h3>
+     * <p>When no explicit {@code ShadowCaster} pass is authored, the shader renders
+     * in queue &lt; {@link CgRenderQueue#TRANSPARENT}, and {@code castShadows == true},
+     * a shadow-caster program is auto-generated from the first Forward pass and cached
+     * under {@code ProgramKey("ShadowCaster", emptySet)}.</p>
      */
     public void recompile() {
         dirty = false;
@@ -220,8 +247,8 @@ public final class CgMaterialShader {
         }
 
         // ── Step 3: Capability check ───────────────────────────────────────────
-        CgCapabilities.ShaderBufferPath path = CgCapabilities.detect().shaderBufferPath();
-        if (path == CgCapabilities.ShaderBufferPath.NONE) {
+        CgCapabilities.ShaderBufferPath bufferPath = CgCapabilities.detect().shaderBufferPath();
+        if (bufferPath == CgCapabilities.ShaderBufferPath.NONE) {
             if (isFirst) throw new UnsupportedOperationException("GL 3.3+ required for CrystalShader materials");
             LOGGER.error("Reload failed for '{}': GL 3.3+ not available", resourcePath);
             return;
@@ -231,78 +258,84 @@ public final class CgMaterialShader {
         CgMaterialProperties tempProps = new CgMaterialProperties(parsed.properties());
         CgUniformBuffer newMatPropsUbo = null;
         if (tempProps.hasUboProps()) {
-            newMatPropsUbo = new CgUniformBuffer(CgMaterial.MATERIAL_PROPERTIES_BLOCK, tempProps.buildUboFormat(),
-                    CgBindingPoints.MATERIAL_PROPERTIES_UBO);
+            newMatPropsUbo = new CgUniformBuffer(CgMaterial.MATERIAL_PROPERTIES_BLOCK,
+                    tempProps.buildUboFormat(), CgBindingPoints.MATERIAL_PROPERTIES_UBO);
         }
 
-        // ── Step 5: GLSL compile + preprocess (STANDARD variant) ──────────────
-        CgMaterialShaderCompiler.CompiledSource compiled;
-        try {
-            compiled = CgMaterialShaderCompiler.compile(parsed, attachedBuffers, newMatPropsUbo,
-                    CgMaterialShaderCompiler.CompileConfig.DEFAULT);
-        } catch (CgPreprocessorException e) {
-            if (isFirst) throw e;
-            LOGGER.error("Reload failed for '{}': buffer injection error — {}", resourcePath, e.getMessage());
-            return;
-        }
-        String processedVert = new CgShaderPreprocessor().process(compiled.vertexSource(), resourcePath);
-        String processedFrag = new CgShaderPreprocessor().process(compiled.fragmentSource(), resourcePath);
+        // ── Step 5: Compile all declared passes (no-keyword variant) ──────────
+        // Collect newly compiled shaders so we can delete them on partial failure.
+        List<CgShader> newShaders = new ArrayList<>();
+        Map<ProgramKey, CgShader> newCache = new LinkedHashMap<>();
 
-        if (System.getProperty("crystalgraphics.material.dumpGlsl") != null) {
-            LOGGER.info("=== CgMaterialShader GLSL dump for '{}' ===", resourcePath);
-            LOGGER.info("--- VERTEX ---\n{}", processedVert);
-            LOGGER.info("--- FRAGMENT ---\n{}", processedFrag);
-            LOGGER.info("=== end GLSL dump ===");
-        }
-
-        // ── Step 6: GL link ────────────────────────────────────────────────────
-        CgShader newShader = CgShaderFactory.fromSource(processedVert, processedFrag, CgVertexFormat.SPATIAL);
-        if (!newShader.isCompiled()) {
-            String err = newShader.getLastCompileError();
-            newShader.delete();
-            if (newMatPropsUbo != null) newMatPropsUbo.delete();
-            if (isFirst) {
-                LOGGER.error("CgMaterialShader.recompile() failed for '{}': {}", resourcePath, err);
-            } else {
-                LOGGER.error("Reload failed for '{}': compile error — {}", resourcePath, err);
+        for (CgParsedPass pass : parsed.passes()) {
+            CgMaterialShaderCompiler.CompiledSource compiled;
+            try {
+                compiled = CgMaterialShaderCompiler.compile(parsed, pass, attachedBuffers,
+                        newMatPropsUbo, CgMaterialShaderCompiler.CompileConfig.DEFAULT);
+            } catch (CgPreprocessorException e) {
+                // Abort entire recompile — clean up shaders compiled so far
+                for (CgShader s : newShaders) s.delete();
+                if (newMatPropsUbo != null) newMatPropsUbo.delete();
+                if (isFirst) throw e;
+                LOGGER.error("Reload failed for '{}' pass '{}': buffer injection error — {}",
+                        resourcePath, pass.name(), e.getMessage());
+                return;
             }
-            return;
+
+            if (System.getProperty("crystalgraphics.material.dumpGlsl") != null) {
+                LOGGER.info("=== CgMaterialShader GLSL dump for '{}' pass '{}' ===", resourcePath, pass.name());
+                LOGGER.info("--- VERTEX ---\n{}", compiled.vertexSource());
+                LOGGER.info("--- FRAGMENT ---\n{}", compiled.fragmentSource());
+                LOGGER.info("=== end GLSL dump ===");
+            }
+
+            String processedVert = new CgShaderPreprocessor().process(compiled.vertexSource(), resourcePath);
+            String processedFrag = new CgShaderPreprocessor().process(compiled.fragmentSource(), resourcePath);
+
+            CgShader newShader = CgShaderFactory.fromSource(processedVert, processedFrag, CgVertexFormat.SPATIAL);
+            if (!newShader.isCompiled()) {
+                String err = newShader.getLastCompileError();
+                newShader.delete();
+                // Abort entire recompile — clean up shaders compiled so far
+                for (CgShader s : newShaders) s.delete();
+                if (newMatPropsUbo != null) newMatPropsUbo.delete();
+                if (isFirst) {
+                    LOGGER.error("CgMaterialShader.recompile() failed for '{}' pass '{}': {}",
+                            resourcePath, pass.name(), err);
+                } else {
+                    LOGGER.error("Reload failed for '{}' pass '{}': compile error — {}",
+                            resourcePath, pass.name(), err);
+                }
+                return;
+            }
+
+            newShaders.add(newShader);
+            newCache.put(new ProgramKey(pass.name(), Collections.emptySet()), newShader);
         }
 
-        // ── Step 6b: On hot-reload, delete all existing variant programs ───────
+        // ── Step 6: Shadow auto-generation ────────────────────────────────────────
+        if (!attemptShadowAutoGen(parsed, newMatPropsUbo, newCache, newShaders, isFirst)) return;
+
+        // ── Step 7: On hot-reload, delete all existing variant programs ────────
         if (!isFirst) {
             for (CgShader s : programCache.values()) s.delete();
             programCache.clear();
-            lastBound = null;
         }
 
-        // ── Step 7: wireShader — bind program indices for pipeline buffers ─────
-        CgMaterialPipeline pipeline = CgMaterialPipeline.getInstance();
-        newShader.bind();
+        // ── Step 8: Commit new state ───────────────────────────────────────────
+        programCache.putAll(newCache);
 
-        pipeline.frameBuffer().wireShader(newShader);
-        pipeline.objectBuffer().wireShader(newShader);
-
-        if (newMatPropsUbo != null) newMatPropsUbo.wireShader(newShader);
-
-        for (CgAttachedBuffer ab : attachedBuffers)
-            ab.getBuffer().wireShader(newShader);
-
-        newShader.unbind();
-
-        // ── Store no-keyword variant in cache ─────────────────────────────────
-        VariantKey standardKey = new VariantKey(Collections.emptySet());
-        programCache.put(standardKey, newShader);
-        lastBound = newShader;
-
-        // Commit metadata atomically — only reached on successful link
         if (this.matPropsUbo != null) this.matPropsUbo.delete();
-        this.matPropsUbo   = newMatPropsUbo;
-        this.lastParsed    = parsed;
-        this.renderState   = parsed.renderState();
-        this.renderQueue   = parsed.renderQueue();
+        this.matPropsUbo = newMatPropsUbo;
+        this.lastParsed = parsed;
+        this.renderQueue = parsed.renderQueue();
+        this.renderType = parsed.renderType();
 
-        // ── Increment revision — materials detect this on next bind() ──────────
+        // ── Step 9: Wire all newly compiled programs ───────────────────────────
+        for (Map.Entry<ProgramKey, CgShader> entry : newCache.entrySet())
+            wireShaderBuffers(entry.getValue());
+
+        // Increment revision — materials detect this on next bind()
         revisionNumber++;
 
         if (!isFirst) {
@@ -311,7 +344,7 @@ public final class CgMaterialShader {
     }
 
     /**
-     * Returns the compiled {@link CgShader} for the given active keyword set,
+     * Returns the compiled {@link CgShader} for the given pass name and active keyword set,
      * compiling and caching it on the first access.
      *
      * <p>The returned shader is fully linked and wired for the pipeline buffers and the
@@ -320,67 +353,100 @@ public final class CgMaterialShader {
      *
      * <p>Must be called after at least one successful {@link #recompile()}.</p>
      *
+     * @param passName       the pass to compile ({@link CgParsedPass#name()})
      * @param activeKeywords active feature-flag keyword names (set-equal keys share a cache entry)
-     * @return a fully compiled and wired shader; never {@code null}
-     * @throws IllegalStateException    if {@link #recompile()} has not completed successfully
-     * @throws CgPreprocessorException  if buffer injection fails
-     * @throws UnsupportedOperationException if GL 3.3+ is not available
+     * @return a fully compiled and wired shader; {@code null} on link failure
      */
-    public CgShader getOrCompile(Set<String> activeKeywords) {
-        VariantKey key = new VariantKey(activeKeywords);
+    public CgShader getOrCompile(String passName, Set<String> activeKeywords) {
+        ProgramKey key = new ProgramKey(passName, activeKeywords);
         CgShader cached = programCache.get(key);
-        if (cached != null) {
-            lastBound = cached;
-            return cached;
-        }
+        if (cached != null) return cached;
 
         if (lastParsed == null) {
             LOGGER.error("Cannot compile keyword variant: shader '{}' has not been successfully compiled yet — " +
-                            "call recompile() first", resourcePath);
+                    "call recompile() first", resourcePath);
+            return null;
         }
 
-        CgMaterialShaderCompiler.CompiledSource compiled = CgMaterialShaderCompiler.compile(lastParsed,
-                attachedBuffers, matPropsUbo, new CgMaterialShaderCompiler.CompileConfig(activeKeywords));
+        // Find the pass by name in the last parsed result
+        CgParsedPass pass = lastParsed.getPassByName(passName);
+        if (pass == null) {
+            LOGGER.error("Cannot compile variant: pass '{}' not found in shader '{}'", passName, resourcePath);
+            return null;
+        }
+
+        CgMaterialShaderCompiler.CompiledSource compiled = CgMaterialShaderCompiler.compile(
+                lastParsed, pass, attachedBuffers, matPropsUbo,
+                new CgMaterialShaderCompiler.CompileConfig(activeKeywords));
 
         String processedVert = new CgShaderPreprocessor().process(compiled.vertexSource(), resourcePath);
         String processedFrag = new CgShaderPreprocessor().process(compiled.fragmentSource(), resourcePath);
-
 
         CgShader newShader = CgShaderFactory.fromSource(processedVert, processedFrag, CgVertexFormat.SPATIAL);
         if (!newShader.isCompiled()) {
             String err = newShader.getLastCompileError();
             newShader.delete();
-            LOGGER.error("Failed to compile keyword variant for '{}': {}", resourcePath, err);
+            LOGGER.error("Failed to compile keyword variant for '{}' pass '{}': {}", resourcePath, passName, err);
             return null;
         }
 
-        CgMaterialPipeline pipeline = CgMaterialPipeline.getInstance();
-        newShader.bind();
-        pipeline.frameBuffer().wireShader(newShader);
-        pipeline.objectBuffer().wireShader(newShader);
-        if (matPropsUbo != null) matPropsUbo.wireShader(newShader);
-        for (CgAttachedBuffer ab : attachedBuffers) ab.getBuffer().wireShader(newShader);
-        newShader.unbind();
-
+        wireShaderBuffers(newShader);
         programCache.put(key, newShader);
-        lastBound = newShader;
         return newShader;
+    }
+
+    /**
+     * Convenience: finds the first Forward-lit pass and returns or compiles the keyword variant
+     * for that pass.
+     *
+     * <p>SHADOW and DEPTH variants always use an empty keyword set via
+     * {@link #getOrCompile(String, Set)} directly — keywords apply to Forward passes only.</p>
+     *
+     * @param activeKeywords active feature-flag keyword names
+     * @return compiled shader; {@code null} if no Forward pass exists or on link failure
+     */
+    public CgShader getOrCompileForwardPass(Set<String> activeKeywords) {
+        if (lastParsed == null) return null;
+        CgParsedPass forwardPass = lastParsed.getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
+        if (forwardPass == null) {
+            LOGGER.error("'{}': no Forward pass found — cannot compile forward variant", resourcePath);
+            return null;
+        }
+        return getOrCompile(forwardPass.name(), activeKeywords);
     }
 
     // ── Accessors ─────────────────────────────────────────────────────────────
 
     /**
-     * Returns the most recently compiled or returned shader program from
-     * {@link #getOrCompile} or {@link #recompile()}.
-     * {@code null} before the first successful compile.
+     * Returns the render state for the named pass from the last successful compile.
+     * Falls back to {@link CgRenderState#DEFAULT} when the pass is not found.
+     *
+     * @param passName authored or auto-assigned pass name to look up
+     * @return render state for the pass; never {@code null}
      */
-    public CgShader getShader() {
-        return lastBound;
+    public CgRenderState getRenderState(String passName) {
+        if (lastParsed == null) return CgRenderState.DEFAULT;
+        CgParsedPass pass = lastParsed.getPassByName(passName);
+        return pass != null ? pass.renderState() : CgRenderState.DEFAULT;
     }
 
-    /** Returns the last successful parse result; {@code null} before first successful compile. */
-    public CgParsedShader getParsed() {
-        return lastParsed;
+    /**
+     * Returns {@code true} when the last successful parse includes a pass with the given name.
+     *
+     * @param passName authored or auto-assigned pass name to check
+     */
+    public boolean hasParsedPass(String passName) {
+        return lastParsed != null && lastParsed.getPassByName(passName) != null;
+    }
+
+    /**
+     * Returns {@code true} when a compiled GL program exists in the cache for the given pass name
+     * with an empty keyword set. Does not trigger compilation.
+     *
+     * @param passName authored or auto-assigned pass name to check
+     */
+    public boolean hasCompiledPass(String passName) {
+        return programCache.containsKey(new ProgramKey(passName, Collections.emptySet()));
     }
 
     /** Returns an unmodifiable view of the attached SSBO/TBO and UBO buffers. */
@@ -408,7 +474,6 @@ public final class CgMaterialShader {
             deleted = true;
             for (CgShader s : programCache.values()) s.delete();
             programCache.clear();
-            lastBound = null;
             if (matPropsUbo != null) {
                 matPropsUbo.delete();
                 matPropsUbo = null;
@@ -536,5 +601,72 @@ public final class CgMaterialShader {
             markDirty();
         }
         return this;
+    }
+    
+    /** Wires all pipeline/attached shader buffers to shader*/
+    private void wireShaderBuffers(CgShader shader) {
+        CgMaterialPipeline pipeline = CgMaterialPipeline.getInstance();
+        shader.bind();
+        pipeline.frameBuffer().wireShader(shader);
+        pipeline.objectBuffer().wireShader(shader);
+        if (matPropsUbo != null) matPropsUbo.wireShader(shader);
+        for (CgAttachedBuffer ab : attachedBuffers) ab.getBuffer().wireShader(shader);
+        shader.unbind();
+    }
+
+    /**
+     * ── Step 6: Shadow auto-generation ──────────────────────────────────────────
+     *
+     * <p>Conditions: {@code castShadows=true}, opaque queue, and no explicit ShadowCaster pass.
+     * When all conditions are met, compiles a shadow-caster program from the first Forward pass
+     * and stores it under {@code ProgramKey("ShadowCaster", emptySet)}.</p>
+     *
+     * @return {@code true} to proceed with the rest of recompile(); {@code false} to abort
+     *         (only on buffer injection error — newShaders and newMatPropsUbo already cleaned up)
+     */
+    private boolean attemptShadowAutoGen(CgParsedShader parsed, CgUniformBuffer newMatPropsUbo,
+                                         Map<ProgramKey, CgShader> newCache, List<CgShader> newShaders,
+                                         boolean isFirst) {
+        boolean hasExplicitShadow = parsed.getPassByLightMode(CgRenderPassVariant.SHADOW.lightModeName()) != null;
+        boolean isOpaque = parsed.renderQueue() < CgRenderQueue.TRANSPARENT.getValue();
+
+        if (!parsed.castShadows() || !isOpaque || hasExplicitShadow) return true;
+
+        CgParsedPass forwardPass = parsed.getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
+        if (forwardPass == null) {
+            LOGGER.warn("'{}': castShadows=true but no Forward pass found — shadow auto-gen skipped.",
+                    resourcePath);
+            return true;
+        }
+
+        CgMaterialShaderCompiler.CompiledSource shadowCompiled;
+        try {
+            shadowCompiled = CgMaterialShaderCompiler.compileShadowAutoGen(parsed, forwardPass,
+                    attachedBuffers, newMatPropsUbo, CgMaterialShaderCompiler.CompileConfig.DEFAULT);
+        } catch (CgPreprocessorException e) {
+            // Non-fatal for hot-reload; fatal for first compile
+            for (CgShader s : newShaders) s.delete();
+            if (newMatPropsUbo != null) newMatPropsUbo.delete();
+            if (isFirst) throw e;
+            LOGGER.error("Reload failed for '{}' shadow auto-gen: buffer injection error — {}",
+                    resourcePath, e.getMessage());
+            return false;
+        }
+
+        String shadowVert = new CgShaderPreprocessor().process(shadowCompiled.vertexSource(), resourcePath);
+        String shadowFrag = new CgShaderPreprocessor().process(shadowCompiled.fragmentSource(), resourcePath);
+
+        CgShader shadowShader = CgShaderFactory.fromSource(shadowVert, shadowFrag, CgVertexFormat.SPATIAL);
+        if (!shadowShader.isCompiled()) {
+            String err = shadowShader.getLastCompileError();
+            shadowShader.delete();
+            // Shadow auto-gen failure: non-fatal — log and continue without shadow pass
+            LOGGER.error("'{}' shadow auto-gen failed (continuing without shadow pass): {}", resourcePath, err);
+        } else {
+            newShaders.add(shadowShader);
+            newCache.put(new ProgramKey(CgRenderPassVariant.SHADOW.lightModeName(), Collections.emptySet()),
+                    shadowShader);
+        }
+        return true;
     }
 }

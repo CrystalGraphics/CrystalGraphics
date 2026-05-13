@@ -1,257 +1,220 @@
 // ═════════════════════════════════════════════════════════════════════════════
 // CrystalShader — example.shader
-// Shows every feature available through Wave 1 + Wave 2 of the material system.
+// Shows the pass-based .shader format with all material-level and pass-level
+// features available in the current pipeline.
 // ═════════════════════════════════════════════════════════════════════════════
 
 // ── Shader type ───────────────────────────────────────────────────────────────
 // "spatial" = 3D geometry shader. Future: canvas (2D), compute.
 #type spatial
 
-// ── Feature flags (Wave 2) ────────────────────────────────────────────────────
+// ── Feature flags ─────────────────────────────────────────────────────────────
 // Declare compile-time feature flags. Each becomes a #define injected into both
 // vertex and fragment when enabled at runtime via material.enableKeyword("NAME").
 // Max 8 flags per shader. OFF by default — no #define injected unless enabled.
 //
 // Java:
-//   material.enableKeyword("RECEIVE_SHADOWS");   // → #define RECEIVE_SHADOWS
+//   material.enableKeyword("RECEIVE_SHADOWS");   // → #define RECEIVE_SHADOWS 1
 //   material.disableKeyword("RECEIVE_SHADOWS");  // → no define
 //   material.isKeywordEnabled("FOG_ON");         // → false by default
 //
-// Each unique (variant × keyword-set) combination is a separately compiled
-// program, cached lazily on first use. No combinatorial explosion — only
-// combinations you actually call bind() with get compiled.
+// Each unique (passName × keyword-set) combination is a separately compiled
+// program, cached lazily on first use under a flat ProgramKey.
 #pragma cg_feature RECEIVE_SHADOWS
 #pragma cg_feature FOG_ON
 #pragma cg_feature NORMAL_MAP
+
+// ── Material-level tags ───────────────────────────────────────────────────────
+// "RenderType" controls the shadow auto-generation ladder:
+//   Opaque (default) — castShadows=true and queue<3000 → auto-generate ShadowCaster pass
+//   Transparent      — no auto-gen (translucent objects don't cast hard shadows)
+// "CastShadows" = "Off" disables shadow auto-generation regardless of RenderType.
+Tags {
+    "RenderType" = "Opaque"
+    // "CastShadows" = "Off"    // uncomment to suppress shadow auto-gen
+}
 
 // ── Render queue ──────────────────────────────────────────────────────────────
 // Background=1000 | Geometry=2000 | AlphaTest=2450 | Transparent=3000 | Overlay=4000
 Queue = "Geometry"
 
-// ── Render state (Wave 1) ─────────────────────────────────────────────────────
-RenderState {
-    // ── Blend ─────────────────────────────────────────────────────────────────
-    // Global (all render targets):
-    Blend SRC_ALPHA ONE_MINUS_SRC_ALPHA
-    // Separate RGB + Alpha factors:
-    // Blend SRC_ALPHA ONE_MINUS_SRC_ALPHA, ONE ONE_MINUS_SRC_ALPHA
-    // Per-MRT target (index prefix 0..7):
-    // Blend 0 SRC_ALPHA ONE_MINUS_SRC_ALPHA
-    // Blend 1 ONE ONE
-
-    // ── BlendEquation ─────────────────────────────────────────────────────────
-    // ADD | SUB | REV_SUB | MIN | MAX
-    BlendEquation ADD
-    // Separate RGB + Alpha equations:
-    // BlendEquation ADD, ADD
-    // Per-MRT:
-    // BlendEquation 0 ADD
-    // BlendEquation 1 ADD, REV_SUB
-
-    // ── Depth ─────────────────────────────────────────────────────────────────
-    // LESS | LEQUAL | EQUAL | GEQUAL | GREATER | NOT_EQUAL | ALWAYS | NEVER
-    DepthTest LEQUAL
-    DepthWrite ON
-
-    // ── Cull ──────────────────────────────────────────────────────────────────
-    // BACK | FRONT | OFF
-    Cull BACK
-
-    // ── AlphaTest ─────────────────────────────────────────────────────────────
-    // func: LESS | LEQUAL | EQUAL | GEQUAL | GREATER | NOT_EQUAL | ALWAYS | NEVER
-    // AlphaTest GREATER 0.5
-
-    // ── ColorMask ─────────────────────────────────────────────────────────────
-    // R, G, B, A in any combination, or 0 for none
-    ColorMask RGBA
-    // Per-MRT target:
-    // ColorMask RGB 1
-    // ColorMask 0 2
-
-    // ── Stencil ───────────────────────────────────────────────────────────────
-    Stencil {
-        Ref 1
-        ReadMask 255
-        WriteMask 255
-        // Comp: LESS | LEQUAL | EQUAL | GEQUAL | GREATER | NOT_EQUAL | ALWAYS | NEVER
-        Comp ALWAYS
-        // Ops: KEEP | ZERO | REPLACE | INCR_SAT | DECR_SAT | INVERT | INCR_WRAP | DECR_WRAP
-        Pass REPLACE
-        Fail KEEP
-        ZFail KEEP
-    }
-}
-
-// ── Properties (Wave 1) ───────────────────────────────────────────────────────
-// Defaults are applied to the material UBO immediately at load time (Wave 2).
+// ── Properties ────────────────────────────────────────────────────────────────
+// Defaults applied to the material UBO immediately at load time.
 // A freshly loaded material is visually correct before any applyProperties() call.
 //
-// Java: material.applyProperties(b -> b.set1f("_Roughness", 0.8f));  // overrides default
+// Java: material.applyProperties(b -> b.set1f("_Roughness", 0.8f));
 Properties {
     // Samplers — individual uniform sampler* declarations in generated GLSL.
     // Defaults: "white" | "black" | "normal" | "transparent"
     _MainTex    ("Main Texture",    sampler2D)      = "white"
     _NormalMap  ("Normal Map",      sampler2D)      = "normal"
-    _TexArray   ("Texture Array",   sampler2DArray)
-    _Volume     ("Volume Texture",  sampler3D)
-    _Skybox     ("Cubemap",         samplerCube)
 
     // Non-samplers — packed into layout(std140) uniform CgMaterialBlock { ... }
     _Color      ("Tint Color",      color)          = (1.0, 1.0, 1.0, 1.0)
-    _BaseColor  ("Base Color",      vec4)           = (0.2, 0.4, 0.8, 1.0)
-    _Emission   ("Emission",        vec3)           = (0.0, 0.0, 0.0)
+    _Emission   ("Emission",        vec4)           = (0.0, 0.0, 0.0, 0.0)
     _Offset     ("UV Offset",       vec2)           = (0.0, 0.0)
     _Roughness  ("Roughness",       float)          = 0.5
     _Metallic   ("Metallic",        float)          = 0.0
-    _Count      ("Instance Count",  int)            = 0
-    _Speed      ("Speed",           Range(0, 10))   = 1.0  // clamped to [0,10] on set
     _FogDensity ("Fog Density",     Range(0, 1))    = 0.05
-};
+}
 
-// ── Interpolants ──────────────────────────────────────────────────────────────
+// ── Shared interpolants ───────────────────────────────────────────────────────
+// Declared here at material scope, inherited by all Pass blocks below.
+// A Pass may override by declaring its own struct v2f { } inside the Pass block.
 struct v2f {
     vec2 uv;
     vec3 worldPos;
     vec3 normalWs;
 };
 
-// ── Vertex stage ──────────────────────────────────────────────────────────────
-// Engine-injected via cg_env.glsl (automatic #include):
-//   cg_Position, cg_Normal, cg_TexCoord0  — vertex attribute aliases
-//   CG_OBJECT_TO_WORLD, CG_NORMAL_MATRIX  — per-instance matrices (SSBO/TBO)
-//   CG_MATRIX_MVP                         — proj × view × model (macro)
-//   CG_FRAME_VIEW, CG_FRAME_PROJ          — frame uniforms (UBO)
-//   cg_Time, cg_Resolution                — frame uniforms
-//
-// Feature flags are available here too via #ifdef:
-void vertex(out v2f o) {
-    vec4 worldPos4 = CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0);
-    gl_Position    = CG_MATRIX_MVP * vec4(cg_Position, 1.0);
-    o.worldPos     = worldPos4.xyz;
-    o.normalWs     = normalize(CG_NORMAL_MATRIX * cg_Normal);
-    o.uv           = cg_TexCoord0 + _Offset;
-}
+// ═════════════════════════════════════════════════════════════════════════════
+// PASS BLOCKS
+// Each Pass { } owns its render state, vertex, and fragment.
+// Tags { "LightMode" = "..." } routes the pass into the correct rendering stage:
+//   Forward      — standard forward-lit draw (default when LightMode is absent)
+//   ShadowCaster — depth-from-light (typically auto-generated; no need to author)
+//   Depth        — early depth pre-pass
+// ═════════════════════════════════════════════════════════════════════════════
 
-// ─────────────────────────────────────────────────────────────────────────────
-// FRAGMENT STAGE — two configurations shown below. Use ONE in a real shader.
-// Both are shown active here for documentation purposes only.
-// ─────────────────────────────────────────────────────────────────────────────
+Pass {
+    // ── Pass-level tags ───────────────────────────────────────────────────────
+    // "Name" = user-assigned name used as the ProgramKey pass dimension.
+    //   Auto-assigned when absent: Forward passes → "Pass0", "Pass1", …
+    // "LightMode" = "Forward" (default when absent or unrecognised)
+    Tags {
+        "LightMode" = "Forward"
+        "Name"      = "BaseColor"
+    }
 
-// ── 1. Single render target ───────────────────────────────────────────────────
-// One `out vec4` → layout(location=0) → GL_COLOR_ATTACHMENT0 or backbuffer.
-//
-// DEPTH variant (Wave 2): the engine auto-generates a second compiled program
-// for this same shader whose fragment is `void main() {}` (depth written
-// automatically by the rasterizer). You never write it.
-// Java: material.bind(CgShaderVariant.DEPTH);
-//
-// Feature flags gate code at compile time — each unique (variant × keyword-set)
-// combination is a separately compiled and cached program. No runtime branch cost.
-// Java: material.enableKeyword("RECEIVE_SHADOWS");  // compiled into new cache entry on next bind()
-//
-// void fragment(in v2f i, out vec4 fragColor) {
-//     vec4 albedo = texture(_MainTex, i.uv) * _Color;
-//
-// #ifdef NORMAL_MAP
-//     vec3 n = normalize(texture(_NormalMap, i.uv).rgb * 2.0 - 1.0);
-// #else
-//     vec3 n = normalize(i.normalWs);
-// #endif
-//
-// #ifdef RECEIVE_SHADOWS
-//     float shadow = 1.0; // shadow map sampling goes here
-//     albedo.rgb  *= shadow;
-// #endif
-//
-// #ifdef FOG_ON
-//     float dist    = length(i.worldPos - cg_CameraPos);
-//     float fogFact = exp(-_FogDensity * dist);
-//     albedo.rgb    = mix(vec3(0.7), albedo.rgb, clamp(fogFact, 0.0, 1.0));
-// #endif
-//
-//     fragColor = vec4(albedo.rgb + _Emission, albedo.a);
-// }
+    // ── Per-pass render state ─────────────────────────────────────────────────
+    RenderState {
+        // ── Blend ─────────────────────────────────────────────────────────────
+        // Global (all render targets):
+        Blend SRC_ALPHA ONE_MINUS_SRC_ALPHA
+        // Separate RGB + Alpha factors:
+        // Blend SRC_ALPHA ONE_MINUS_SRC_ALPHA, ONE ONE_MINUS_SRC_ALPHA
+        // Per-MRT target (index prefix 0..7):
+        // Blend 0 SRC_ALPHA ONE_MINUS_SRC_ALPHA
+        // Blend 1 ONE ONE
 
-// ── 2. Multiple render targets / G-buffer (Wave 2) ────────────────────────────
-// Declare an output struct — each vec4 field gets a : RTN location annotation.
-// The struct name is yours (GBuffer, ShadowOut, PostFxOut, etc.).
-// Compiler strips the annotations and emits layout(location=N) out at global scope,
-// then copies struct fields into them after calling fragment().
-//
-// Skipping a slot is natural — RT0 and RT2 with no RT1 needs no dummy field.
-// Without annotations, fields are assigned locations 0, 1, 2… in order (positional).
-// All-or-none: mix of annotated + un-annotated fields throws a parse error.
-//
-// Java setup (once):
-//   CgFramebuffer gBuffer = CgFramebufferFactory.create(
-//       CgFramebufferSpec.builder()
-//           .addColorAttachment(CgColorAttachmentSpec.rgba8())    // → attachment 0
-//           .addColorAttachment(CgColorAttachmentSpec.rgba16f())  // → attachment 1
-//           .addColorAttachment(CgColorAttachmentSpec.rgba8())    // → attachment 2
-//           .depthStencil(CgDepthStencilSpec.depth24())
-//           .build());
-//   gBuffer.bind();
-//   gBuffer.drawBuffers(GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2);
-//   gBuffer.unbind();
-//
-// Java per-frame:
-//   gBuffer.bind();
-//   material.bind();
-//   mesh.drawInstanced(N);
-//   material.unbind();
-//   gBuffer.unbind();
+        // ── BlendEquation ─────────────────────────────────────────────────────
+        // ADD | SUB | REV_SUB | MIN | MAX
+        BlendEquation ADD
 
-struct GBuffer {
-    vec4 albedo   : RT0;   // → layout(location=0) out vec4 _cg_RT0
-    vec4 normal   : RT1;   // → layout(location=1) out vec4 _cg_RT1
-    vec4 material : RT2;   // → layout(location=2) out vec4 _cg_RT2
-};
+        // ── Depth ─────────────────────────────────────────────────────────────
+        // LESS | LEQUAL | EQUAL | GEQUAL | GREATER | NOT_EQUAL | ALWAYS | NEVER
+        DepthTest LEQUAL
+        DepthWrite ON
 
-void fragment(in v2f i, out GBuffer o) {
-    vec4 tex = texture(_MainTex, i.uv) * _Color;
-    vec3 n   = normalize(i.normalWs);
+        // ── Cull ──────────────────────────────────────────────────────────────
+        // BACK | FRONT | OFF
+        Cull BACK
+
+        // ── ColorMask ─────────────────────────────────────────────────────────
+        // R, G, B, A in any combination, or 0 for none
+        ColorMask RGBA
+
+        // ── Stencil ───────────────────────────────────────────────────────────
+        Stencil {
+            Ref 1
+            ReadMask 255
+            WriteMask 255
+            // Comp: LESS | LEQUAL | EQUAL | GEQUAL | GREATER | NOT_EQUAL | ALWAYS | NEVER
+            Comp ALWAYS
+            // Ops: KEEP | ZERO | REPLACE | INCR_SAT | DECR_SAT | INVERT | INCR_WRAP | DECR_WRAP
+            Pass REPLACE
+            Fail KEEP
+            ZFail KEEP
+        }
+    }
+
+    // ── Vertex stage ──────────────────────────────────────────────────────────
+    // Engine-injected via cg_env.glsl (automatic #include):
+    //   cg_Position, cg_Normal, cg_TexCoord0  — vertex attribute aliases
+    //   CG_OBJECT_TO_WORLD, CG_NORMAL_MATRIX  — per-instance matrices (SSBO/TBO)
+    //   CG_MATRIX_MVP                         — proj × view × model (macro)
+    //   CG_FRAME_VIEW, CG_FRAME_PROJ          — frame uniforms (UBO)
+    //   cg_Time, cg_Resolution                — frame uniforms
+    void vertex(out v2f o) {
+        vec4 worldPos4 = CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0);
+        gl_Position    = CG_MATRIX_MVP * vec4(cg_Position, 1.0);
+        o.worldPos     = worldPos4.xyz;
+        o.normalWs     = normalize(CG_NORMAL_MATRIX * cg_Normal);
+        o.uv           = cg_TexCoord0 + _Offset;
+    }
+
+    // ── Fragment stage — single render target ─────────────────────────────────
+    // One out vec4 → layout(location=0) → GL_COLOR_ATTACHMENT0 or backbuffer.
+    //
+    // Feature flags gate code at compile time — each unique (passName × keyword-set)
+    // combination is a separately compiled and cached program. No runtime branch cost.
+    //
+    // MRT alternative: replace `out vec4 fragColor` with `out GBuffer o` and declare
+    // struct GBuffer { vec4 albedo : RT0; vec4 normal : RT1; }; above vertex().
+    void fragment(in v2f i, out vec4 fragColor) {
+        vec4 albedo = texture(_MainTex, i.uv) * _Color;
 
 #ifdef NORMAL_MAP
-    vec3 nMap = texture(_NormalMap, i.uv).rgb * 2.0 - 1.0;
-    n = normalize(nMap);
+        vec3 n = normalize(texture(_NormalMap, i.uv).rgb * 2.0 - 1.0);
+#else
+        vec3 n = normalize(i.normalWs);
 #endif
 
-    o.albedo   = vec4(tex.rgb, 1.0);
-    o.normal   = vec4(n * 0.5 + 0.5, 0.0);              // encode [-1,1] → [0,1]
-    o.material = vec4(_Roughness, _Metallic, 0.0, 0.0);  // packed G-buffer channel
+#ifdef RECEIVE_SHADOWS
+        // Shadow map sampling would go here — cg_ShadowViewProjMatrix,
+        // cg_LightDirection, cg_ShadowParams are available from the frame UBO.
+        float shadow = 1.0;
+        albedo.rgb  *= shadow;
+#endif
+
+#ifdef FOG_ON
+        float dist    = length(i.worldPos);
+        float fogFact = exp(-_FogDensity * dist);
+        albedo.rgb    = mix(vec3(0.7), albedo.rgb, clamp(fogFact, 0.0, 1.0));
+#endif
+
+        fragColor = vec4(albedo.rgb + _Emission.rgb, albedo.a);
+    }
 }
 
-// Compiler generates this (never written by the user):
+// ── ShadowCaster pass — auto-generated ───────────────────────────────────────
+// Because this shader has Tags { "RenderType" = "Opaque" } and does NOT declare
+// an explicit ShadowCaster Pass block, the material pipeline auto-generates one
+// during recompile() when castShadows=true (the default) and renderQueue < 3000.
 //
-//   struct GBuffer { vec4 albedo; vec4 normal; vec4 material; };  // annotations stripped
-//   layout(location=0) out vec4 _cg_RT0;
-//   layout(location=1) out vec4 _cg_RT1;
-//   layout(location=2) out vec4 _cg_RT2;
-//   void fragment(in v2f i, out GBuffer o) { ... }  // verbatim
-//   void main() {
-//       GBuffer _cg_mrtOut;
-//       fragment(_v2f_local, _cg_mrtOut);
-//       _cg_RT0 = _cg_mrtOut.albedo;
-//       _cg_RT1 = _cg_mrtOut.normal;
-//       _cg_RT2 = _cg_mrtOut.material;
-//   }
-
-// ── 3. Multi-pass chain (Wave 1 — nextPass / drawChain) ───────────────────────
-// A second material runs immediately after this one, for the same mesh, in order.
+// The generated pass:
+//   - Simple vertex (no custom attributes or discard): minimal position-only transform
+//       gl_Position = cg_ShadowViewProjMatrix * CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0);
+//   - Fragment: depth-only (empty body — rasterizer writes depth automatically)
 //
-// Java:
-//   CgMaterial base    = CgMaterial.load("mymod:shaders/example.shader");
-//   CgMaterial outline = CgMaterial.load("mymod:shaders/outline.shader");
-//   base.setNextPass(outline);    // cycle guard built in — throws on circular chains
+// To opt out of auto-gen, add "CastShadows" = "Off" to the top-level Tags block,
+// or author an explicit ShadowCaster Pass block above.
 //
-//   // Option A — explicit loop:
-//   CgMaterial pass = base;
-//   while (pass != null) {
-//       pass.bind();
-//       mesh.drawInstanced(N);
-//       pass.unbind();
-//       pass = pass.getNextPass();
-//   }
+// To force a custom shadow vertex (e.g. vertex animation must affect shadow silhouette),
+// author an explicit ShadowCaster Pass below. The auto-gen will be skipped entirely
+// when an explicit one is present.
 //
-//   // Option B — drawChain helper (same result, less boilerplate):
-//   base.drawChain(() -> mesh.drawInstanced(N));
+// Pass {
+//     Tags { "LightMode" = "ShadowCaster" }
+//     RenderState {
+//         Cull OFF      // double-sided for thin surfaces
+//         ColorMask 0   // write depth only
+//         DepthTest LEQUAL
+//         DepthWrite ON
+//     }
+//     void vertex(out v2f o) {
+//         // Run your custom vertex animation here.
+//         // The engine overrides gl_Position with the shadow matrix automatically
+//         // when using compileShadowAutoGen(); if you author this pass manually
+//         // you must compute gl_Position yourself:
+//         gl_Position = cg_ShadowViewProjMatrix * CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0);
+//         o.uv = cg_TexCoord0;
+//         o.worldPos = vec3(0.0);
+//         o.normalWs = vec3(0.0);
+//     }
+//     void fragment(in v2f i, out vec4 fragColor) {
+//         // Depth-only: leave fragColor untouched or discard for alpha-tested shadows:
+//         // if (texture(_MainTex, i.uv).a < 0.5) discard;
+//         fragColor = vec4(0.0);
+//     }
+// }

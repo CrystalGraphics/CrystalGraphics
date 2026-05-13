@@ -13,6 +13,7 @@ import io.github.somehussar.crystalgraphics.gl.material.CgMaterialProperties;
 import io.github.somehussar.crystalgraphics.gl.material.CgMaterialProperty;
 import io.github.somehussar.crystalgraphics.gl.material.CgMaterialShader;
 import io.github.somehussar.crystalgraphics.gl.material.CgMaterialShaderRegistry;
+import io.github.somehussar.crystalgraphics.gl.material.parse.CgParsedPass;
 import io.github.somehussar.crystalgraphics.gl.material.parse.CgParsedShader;
 import io.github.somehussar.crystalgraphics.gl.state.CgGlScope;
 import io.github.somehussar.crystalgraphics.gl.state.CgGlState;
@@ -114,18 +115,22 @@ public final class CgMaterial {
 
     /**
      * Fallback render state for materials created via {@link #forTest(CgRenderState, int)}.
-     * In real materials this is delegated to {@link CgMaterialShader#getRenderState()}.
+     * In real materials, render state is per-pass and fetched via {@link #getPassRenderState(CgRenderPassVariant)}.
      */
     private CgRenderState renderState = CgRenderState.DEFAULT;
 
     /**
      * Fallback render queue for materials created via {@link #forTest(CgRenderState, int)}.
      * In real materials this is delegated to {@link CgMaterialShader#getRenderQueue()}.
-     * -- GETTER --
-     * Returns the numeric render queue priority for this material (default: 2000 = Geometry).
      */
-    @Getter
     private int renderQueue = 2000;
+
+    /**
+     * The most recently bound {@link CgShader} from the last {@link #bind()} or
+     * {@link #bindForVariant(CgRenderPassVariant)} call. Used by {@link #unbind()} to
+     * deactivate the correct program. {@code null} before the first successful bind.
+     */
+    private CgShader lastBoundShader = null;
 
     /** GL state snapshot saved on bind and restored on unbind via {@link CgGlScope#close()}. */
     private CgGlScope stateScope = null;
@@ -485,7 +490,7 @@ public final class CgMaterial {
         checkNotDeleted();
         // If the shader asset exists but hasn't been compiled yet (e.g. called in init() before
         // bind()), trigger a compile now so featureNames are populated for validation.
-        if (cgMaterialShader != null && cgMaterialShader.getParsed() == null) {
+        if (cgMaterialShader != null && cgMaterialShader.getLastParsed() == null) {
             cgMaterialShader.recompile();
         }
         List<String> declared = getDeclaredFeatureNames();
@@ -532,13 +537,7 @@ public final class CgMaterial {
      *       {@link #onShaderRecompiled()} to rebuild per-instance state.</li>
      *   <li>If the shader's revision changed since last bind, calls {@link #onShaderRecompiled()}.</li>
      *   <li>{@link CgMaterialShader#getOrCompile(Set)} — retrieves or compiles the program.</li>
-     *   <li>Wires the per-instance property UBO to a newly compiled variant (once per program).</li>
-     *   <li>Saves blend, depth, cull, stencil, alpha-test, and color-mask GL state.</li>
-     *   <li>Uploads material property UBO if values are dirty.</li>
-     *   <li>Binds material property UBO (if present).</li>
-     *   <li>Applies sampler properties to the shader.</li>
-     *   <li>Applies {@link CgRenderState} GL state.</li>
-     *   <li>{@code shader.bind()} — activates the GL program.</li>
+     *   <li>Delegates the remaining bind steps to {@link #doBind(CgShader, CgRenderPassVariant)}.</li>
      * </ol>
      */
     public void bind() {
@@ -555,34 +554,10 @@ public final class CgMaterial {
             }
 
             Set<String> keywords = Collections.unmodifiableSet(enabledKeywords);
-            CgShader shader = cgMaterialShader.getOrCompile(keywords);
+            CgShader shader = cgMaterialShader.getOrCompileForwardPass(keywords);
             if (shader == null) return;
-
-            // Wire per-instance matPropsUbo to this keyword variant on first use
-            if (matPropsUbo != null && !wiredToMatPropsUbo.contains(shader)) {
-                matPropsUbo.wireShader(shader);
-                wiredToMatPropsUbo.add(shader);
-            }
-
-
-            stateScope = CgGlState.save(
-                    CgGlSlot.BLEND, CgGlSlot.DEPTH, CgGlSlot.CULL,
-                    CgGlSlot.STENCIL, CgGlSlot.ALPHA_TEST, CgGlSlot.COLOR_MASK);
-
-            if (materialPropsDirty && matPropsUbo != null) {
-                propStore.writeUboProps(matPropsUbo.writer());
-                matPropsUbo.endRecord();
-                matPropsUbo.upload();
-                materialPropsDirty = false;
-            }
-
-            if (matPropsUbo != null) matPropsUbo.bind();
-
-            if (propStore != null && propStore.hasSamplerProps())
-                shader.applyBindings(b -> propStore.applySamplerProps(b));
-
-            cgMaterialShader.getRenderState().apply();
-            shader.bind();
+            lastBoundShader = shader;
+            doBind(shader, CgRenderPassVariant.FORWARD);
         }
         // forTest without cgMaterialShader — no-op
     }
@@ -596,8 +571,7 @@ public final class CgMaterial {
      */
     public void unbind() {
         if (deleted) return;
-        CgShader shader = getShader();
-        if (shader != null) shader.unbind();
+        if (lastBoundShader != null) lastBoundShader.unbind();
         if (matPropsUbo != null) matPropsUbo.unbind();
         if (stateScope != null) {
             stateScope.close();
@@ -606,6 +580,131 @@ public final class CgMaterial {
     }
 
     // ── Accessors ─────────────────────────────────────────────────────────────
+
+    /**
+     * Returns the render state for the given pass variant from the last successful compile.
+     * Falls back to the per-instance {@code renderState} field for forTest materials.
+     *
+     * <p>For FORWARD: resolves via the first Forward-lit pass. For SHADOW/DEPTH: resolves by
+     * LightMode tag name. Returns {@link CgRenderState#DEFAULT} when the pass is not found.</p>
+     *
+     * @param variant the pass variant whose render state to retrieve; must not be null
+     * @return render state for the pass; never {@code null}
+     */
+    public CgRenderState getPassRenderState(CgRenderPassVariant variant) {
+        if (cgMaterialShader == null) return renderState;
+        CgParsedShader parsed = cgMaterialShader.getLastParsed();
+        if (parsed == null) return CgRenderState.DEFAULT;
+        if (variant == CgRenderPassVariant.FORWARD) {
+            CgParsedPass forwardPass = parsed.getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
+            if (forwardPass == null) return CgRenderState.DEFAULT;
+            return cgMaterialShader.getRenderState(forwardPass.name());
+        }
+        return cgMaterialShader.getRenderState(variant.lightModeName());
+    }
+
+    /**
+     * Binds the compiled program for the given pass variant.
+     *
+     * <p>FORWARD uses the active enabled-keyword set. SHADOW and DEPTH always use an empty
+     * keyword set — keywords apply to forward passes only. The render state for the targeted
+     * pass is applied. Per-instance property UBO is wired and uploaded as needed.</p>
+     *
+     * <p>Designed for orchestrators that drive multi-pass shadow / depth rendering externally
+     * (e.g. a shadow renderer that calls {@code bindForVariant(CgRenderPassVariant.SHADOW)} and
+     * then draws into a shadow map FBO).</p>
+     *
+     * @param variant the pass variant to bind; must not be null
+     */
+    public void bindForVariant(CgRenderPassVariant variant) {
+        checkNotDeleted();
+        if (cgMaterialShader == null) return;
+
+        if (cgMaterialShader.isDirty()) {
+            cgMaterialShader.recompile();
+            wiredToMatPropsUbo.clear();
+            onShaderRecompiled();
+        } else if (cgMaterialShader.getRevisionNumber() != lastKnownRevision) {
+            wiredToMatPropsUbo.clear();
+            onShaderRecompiled();
+        }
+
+        CgShader shader;
+        if (variant == CgRenderPassVariant.FORWARD) {
+            shader = cgMaterialShader.getOrCompileForwardPass(Collections.unmodifiableSet(enabledKeywords));
+        } else {
+            shader = cgMaterialShader.getOrCompile(variant.lightModeName(), Collections.emptySet());
+        }
+        if (shader == null) return;
+        lastBoundShader = shader;
+        doBind(shader, variant);
+    }
+
+    /**
+     * Shared bind body: wires the per-instance UBO, saves GL state, uploads dirty properties,
+     * binds the UBO and sampler properties, applies per-pass render state, and activates the
+     * GL program. Called by both {@link #bind()} and {@link #bindForVariant(CgRenderPassVariant)}
+     * after shader resolution.
+     *
+     * @param shader  the fully compiled and wired GL program for this frame
+     * @param variant the pass variant whose render state to apply
+     */
+    private void doBind(CgShader shader, CgRenderPassVariant variant) {
+        // Wire per-instance matPropsUbo to this keyword variant on first use
+        if (matPropsUbo != null && !wiredToMatPropsUbo.contains(shader)) {
+            matPropsUbo.wireShader(shader);
+            wiredToMatPropsUbo.add(shader);
+        }
+
+        stateScope = CgGlState.save(
+                CgGlSlot.BLEND, CgGlSlot.DEPTH, CgGlSlot.CULL,
+                CgGlSlot.STENCIL, CgGlSlot.ALPHA_TEST, CgGlSlot.COLOR_MASK);
+
+        if (materialPropsDirty && matPropsUbo != null) {
+            propStore.writeUboProps(matPropsUbo.writer());
+            matPropsUbo.endRecord();
+            matPropsUbo.upload();
+            materialPropsDirty = false;
+        }
+
+        if (matPropsUbo != null) matPropsUbo.bind();
+
+        if (propStore != null && propStore.hasSamplerProps())
+            shader.applyBindings(b -> propStore.applySamplerProps(b));
+
+        getPassRenderState(variant).apply();
+        shader.bind();
+    }
+
+    /**
+     * Returns {@code true} when this material will cast shadows.
+     *
+     * <p>Based on the {@code castShadows} flag from the last successful parse and the render
+     * queue — opaque/alpha-test materials ({@code renderQueue < CgRenderQueue.TRANSPARENT})
+     * with {@code CastShadows = true} (the default) return {@code true} regardless of whether
+     * a ShadowCaster program has been compiled yet. Transparent materials always return
+     * {@code false}.</p>
+     *
+     * <p>A shadow renderer should call {@code bindForVariant(CgRenderPassVariant.SHADOW)} only when
+     * this method returns {@code true}.</p>
+     */
+    public boolean hasShadowCasterPass() {
+        if (cgMaterialShader == null) return false;
+        if (getRenderQueue() >= CgRenderQueue.TRANSPARENT.getValue()) return false;
+        CgParsedShader parsed = cgMaterialShader.getLastParsed();
+        if (parsed == null) return false;
+        return parsed.castShadows();
+    }
+
+    /**
+     * Returns {@code true} when this material has an explicitly authored Depth pass in the
+     * last successful parse. Based on parse-time pass presence — use to gate calls to
+     * {@link #bindForVariant(CgRenderPassVariant) bindForVariant(DEPTH)}.
+     */
+    public boolean hasDepthPass() {
+        return cgMaterialShader != null
+                && cgMaterialShader.hasParsedPass(CgRenderPassVariant.DEPTH.lightModeName());
+    }
 
     /**
      * Returns the pipeline's shared per-object SSBO/TBO.
@@ -645,18 +744,25 @@ public final class CgMaterial {
     }
 
     /**
-     * Returns the most recently compiled/returned {@link CgShader} for advanced use
-     * (e.g. wiring a UBO block after initial setup).
+     * Returns the most recently bound {@link CgShader} from the last {@link #bind()} or
+     * {@link #bindForVariant(CgRenderPassVariant)} call. Useful for advanced wiring of per-frame
+     * UBOs or texture units after bind. {@code null} before the first successful bind.
      *
-     * <p>Returns the shader last returned by {@link CgMaterialShader#getOrCompile}, updated on
-     * each {@link #bind()} call. Returns {@code null} before the first successful compile/bind.</p>
-     *
-     * @return the last-bound compiled shader handle, or {@code null} if not yet compiled
+     * @return the last-bound compiled shader handle, or {@code null} if not yet bound
      */
     public CgShader getShader() {
         checkNotDeleted();
-        if (cgMaterialShader != null) return cgMaterialShader.getShader();
-        return null;
+        return lastBoundShader;
+    }
+
+    /**
+     * Returns the numeric render queue priority for this material (default: 2000 = Geometry).
+     * For real materials, delegates to {@link CgMaterialShader#getRenderQueue()} so the value
+     * always reflects the last successful compile.
+     */
+    public int getRenderQueue() {
+        if (cgMaterialShader != null) return cgMaterialShader.getRenderQueue();
+        return renderQueue;
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
@@ -717,7 +823,7 @@ public final class CgMaterial {
      * <p>No-op if the shader's parse result is null (compile failed — keep old state).</p>
      */
     private void onShaderRecompiled() {
-        CgParsedShader parsed = cgMaterialShader.getParsed();
+        CgParsedShader parsed = cgMaterialShader.getLastParsed();
         if (parsed == null) return;
 
         if (propStore == null) {
@@ -747,8 +853,8 @@ public final class CgMaterial {
                 matPropsUbo.resetFormat(newFormat);
             }
 
-            // Wire this material's UBO to the newly compiled STANDARD variant
-            CgShader shader = cgMaterialShader.getShader();
+        // Wire this material's UBO to the newly compiled STANDARD forward variant
+        CgShader shader = cgMaterialShader.getOrCompileForwardPass(Collections.emptySet());
             if (shader != null) {
                 shader.bind();
                 matPropsUbo.wireShader(shader);
@@ -786,8 +892,8 @@ public final class CgMaterial {
      * For real materials: from the last successful parse. For forTest: from {@code testFeatureNames}.
      */
     private List<String> getDeclaredFeatureNames() {
-        if (cgMaterialShader != null && cgMaterialShader.getParsed() != null) {
-            return cgMaterialShader.getParsed().featureNames();
+        if (cgMaterialShader != null && cgMaterialShader.getLastParsed() != null) {
+            return cgMaterialShader.getLastParsed().featureNames();
         }
         if (testFeatureNames != null) {
             return testFeatureNames;

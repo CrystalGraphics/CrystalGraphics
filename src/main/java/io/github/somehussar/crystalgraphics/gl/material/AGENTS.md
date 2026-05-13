@@ -12,14 +12,14 @@ The bulk of the parse, compile, and GLSL-generation implementation lives in
 `gl/material/parse/`. See [`parse/AGENTS.md`](parse/AGENTS.md) for the full class map.
 
 Implementation tasks:
-- **T7** — `CgShaderParser` (with nested `V2fField`), `CgParsedShader`, `CgMaterialProperty`, `CgShaderParseException`
-- **T8** — `CgMaterialShaderCompiler` (with nested `CompiledSource`), `CgParsedShader`
+- **T7** — `CgShaderParser` pass-aware dispatch, `CgParsedShader` (pass-based schema), `CgParsedPass`, `CgShaderParseException`
+- **T8** — `CgMaterialShaderCompiler` per-pass compile + shadow auto-gen, `CgMaterialShader` ProgramKey cache
 
 ## Class Map — This Package (`gl/material/`)
 
 | Type | Role |
 |------|------|
-| `CgMaterialShader` | Shared shader asset compiled from a `.shader` file. Owned by `CgMaterialShaderRegistry`. Owns the full compile pipeline: source load → parse → GLSL generation → preprocess → GL link → `wireShader()` for pipeline + attached buffers. Fields: `resourcePath`, `lastParsed`, `programCache` (`Map<ProgramKey, CgShader>`), `lastBound`, `matPropsUbo` (template UBO for GLSL emission), `renderState`, `renderQueue`, `attachedBuffers`, `dirty`, `revisionNumber`. `recompile()` increments `revisionNumber` on each success; `markDirty()` triggers a lazy recompile on next bind. `getOrCompile(Set<String> activeKeywords)` looks up or lazily compiles a keyword combination — result cached under `ProgramKey` (keyed by keyword set only). `getShader()` returns the most recently compiled-or-returned shader from `getOrCompile`/`recompile`. `attach(CgShaderBuffer, macroName)` / `detach(...)` / `attach(CgUniformBuffer)` / `detachUbo(...)` mirror the `CgMaterial` attach API. `delete()` frees all cached GL programs (iterates `programCache.values()`); called by registry only. |
+| `CgMaterialShader` | Shared shader asset compiled from a `.shader` file. Owned by `CgMaterialShaderRegistry`. Owns the full compile pipeline: source load → parse → per-pass GLSL generation → preprocess → GL link → `wireShader()` for all passes + attached buffers. Fields: `resourcePath`, `lastParsed`, `programCache` (`Map<ProgramKey, CgShader>`), `matPropsUbo` (template UBO for GLSL emission), `renderType`, `renderQueue`, `attachedBuffers`, `dirty`, `revisionNumber`. `recompile()` compiles every declared `Pass {}` block (no-keyword), delegates shadow auto-generation to private `attemptShadowAutoGen(parsed, newMatPropsUbo, newCache, newShaders, isFirst)` (returns `false` to abort on fatal error), then increments `revisionNumber`. `getOrCompile(String passName, Set<String> keywords)` looks up or lazily compiles a pass × keyword combination — cached under the flat `ProgramKey`. `getOrCompileForwardPass(Set<String> keywords)` finds the first Forward-lit pass and delegates. `getRenderState(String passName)` returns per-pass render state. `hasParsedPass(String)` / `hasCompiledPass(String)` query pass existence. `getLastParsed()` returns the last successful parse result. `attach(CgShaderBuffer, macroName)` / `detach(...)` / `attach(CgUniformBuffer)` / `detachUbo(...)` mirror the `CgMaterial` attach API. `delete()` frees all cached GL programs; called by registry only. |
 | `CgMaterialShaderRegistry` | Singleton path→asset cache. `getOrCreate(path)` returns the shared `CgMaterialShader` instance, creating it on miss (marked dirty). `reloadAll()` marks all assets dirty — materials detect revision change on next `bind()`. `deleteAll()` deletes all assets and clears cache; called directly by `CgGraphicsLifecycle.destroyContext()`. `resetForTest()` is a package-private reset for unit tests. |
 | `CgMaterialProperty` | Mutable runtime property object. Holds the declaration (`name`, `displayName`, `type`, `rawDefault`), the current float/int/sampler value, and self-binding logic. `fromDecl(name, displayName, typeName, rawDefault)` creates and eagerly parses the default. `copyWithDefaults()` returns a fresh independent clone with the default value applied — used by `CgMaterial.onShaderRecompiled()` to initialise per-instance property stores. `applyToSampler(CgShaderBindings)` flushes sampler value to shader uniforms (sampler-only). `writeToUbo(CgBufferWriter)` writes non-sampler value into the material UBO. `addToFormatBuilder(CgBufferFormat.Builder)` registers the field in the UBO layout. `set(...)` overloads for float/vec2/vec3/vec4; `setInt(int)` for INT; `setTexture(unit, CgTexture)` for sampler types. `resetToDefault()` restores the parsed default. Inner enum `Type` maps property type names to GLSL names and component counts; `isSampler()` is the canonical discriminator. |
 | `CgMaterialProperties` | Partitioned view of a material's full property list — splits into UBO-eligible (non-sampler) and sampler properties at construction. Implements `CgShaderBindings` for name-based property writes from `CgMaterial.applyProperties()`. `propsByName` HashMap built during construction/rebuild for O(1) name lookup. `rebuild(List<CgMaterialProperty>)` repopulates all internal state in-place — called on hot-reload to avoid reallocation. `buildUboFormat()` builds the `CgBufferFormat` for `CgMaterialBlock`. `writeUboProps(CgBufferWriter)` uploads all non-sampler values. `applySamplerProps(CgShaderBindings)` binds all sampler values. `EMPTY` sentinel for contexts needing a non-null default. |
@@ -31,10 +31,11 @@ See [`parse/AGENTS.md`](parse/AGENTS.md) for the full class map. Key external-fa
 
 | Type | Role |
 |------|------|
-| `CgShaderParser` | Public parse facade. `parse(String)` / `parse(String, String)` → `CgParsedShader`. `parseV2fFields(CgParsedShader)` → `List<V2fField>`. Nested `V2fField` record. |
+| `CgShaderParser` | Public parse facade. `parse(String)` / `parse(String, String)` → `CgParsedShader`. `parseV2fFields(CgParsedPass)` → `List<V2fField>`. Nested `V2fField` record. |
 | `CgShaderParseException` | `RuntimeException` thrown on any `.shader` format violation. Messages include `[resourcePath]` prefix. |
-| `CgParsedShader` | `@Desugar record` result of `CgShaderParser.parse()`. Fields: `shaderType`, `properties`, `v2fStructBody`, `globalDecls`, `vertexBody`, `fragmentBody`, `renderState`, `renderQueue`. |
-| `CgMaterialShaderCompiler` | Static compiler. `compile(CgParsedShader, ShaderBufferPath, List<CgAttachedBuffer>)` → `CompiledSource`. |
+| `CgParsedShader` | `@Desugar record` result of `CgShaderParser.parse()`. Fields: `shaderType`, `properties`, `featureNames`, `renderQueue`, `renderType`, `castShadows`, `passes`. `getPassByName(String)` / `getPassByLightMode(String)` convenience accessors. Per-pass data lives on `CgParsedPass`. |
+| `CgParsedPass` | `@Desugar record` per-pass parse result. Fields: `lightMode`, `name`, `renderState`, `v2fStructBody`, `globalDecls`, `vertexBody`, `fragmentBody`, `fragOutput`. |
+| `CgMaterialShaderCompiler` | Static compiler. Canonical: `compile(CgParsedShader, CgParsedPass, List<CgAttachedBuffer>, CgUniformBuffer, CompileConfig)` → `CompiledSource`. `compileShadowAutoGen(shader, forwardPass, ...)` → shadow `CompiledSource`. |
 | `CgMaterialShaderCompiler.CompiledSource` | `@Desugar record`: `vertexSource`, `fragmentSource` — both complete, ready for `CgShaderPreprocessor` then `CgShaderFactory`. |
 
 ## Compiler Output Format
@@ -116,36 +117,39 @@ No struct, no instance name, no macro. Block name = `buffer.getName()`. Path-ind
 
 ## Keyword Variant Internals
 
-`CgMaterialShader` compiles one GL program per unique enabled-keyword set. The key design points:
+`CgMaterialShader` compiles one GL program per unique (passName × keyword-set) combination. The key design points:
 
 **Storage — `programCache`:**
-- `Map<ProgramKey, CgShader> programCache` — each entry is a fully linked + wired GL program.
-- `ProgramKey` wraps an unmodifiable `Set<String>` of keyword names. Equality is set-based — order
-  doesn't matter. Two keys with `{"A","B"}` and `{"B","A"}` are equal and share a cache entry.
-- The no-keyword (STANDARD) variant uses an empty-set key and is compiled immediately by `recompile()`.
-- All other keyword combinations are compiled lazily on the first `getOrCompile(keywords)` call
-  with that set.
+- `Map<ProgramKey, CgShader> programCache` — flat cache. Each entry is a fully linked + wired GL program.
+- `ProgramKey(String passName, Set<String> keywords)` — identifies a program by both the pass name and active keyword set. Keyword equality is set-based — order doesn't matter.
+- The no-keyword STANDARD variant for each pass is compiled immediately by `recompile()`.
+- All keyword variants are compiled lazily on the first `getOrCompile(passName, keywords)` call.
+- Shadow auto-gen programs are stored under `ProgramKey("ShadowCaster", emptySet)` — no separate field.
+
+**Shadow auto-generation ladder (inside `recompile()`):**
+- Runs when `castShadows == true && renderQueue < 3000 && no explicit ShadowCaster pass authored`.
+- Finds the first Forward-lit pass → calls `CgMaterialShaderCompiler.compileShadowAutoGen(...)`.
+- On failure (link error): logs a warning and continues without a shadow pass (non-fatal on hot-reload).
+- On success: stored as `ProgramKey(CgRenderPassVariant.SHADOW.lightModeName(), emptySet)`.
 
 **Compile flow for a keyword variant:**
 1. `CgMaterial.enableKeyword("NAME")` adds the name to `CgMaterial.enabledKeywords`.
-2. `CgMaterial.bind()` calls `cgMaterialShader.getOrCompile(enabledKeywords)`.
-3. `getOrCompile()` constructs a `ProgramKey` and looks up `programCache` — cache hit returns immediately.
-4. On miss: calls `CgMaterialShaderCompiler.compile(parsed, ..., new CompileConfig(activeKeywords))`.
-   `CompileConfig` holds the normalised keyword set; the compiler emits `#define NAME 1` for each
-   active keyword immediately after `#version`.
-5. The compiled program is wired (`wireShader()` for pipeline buffers + any attached buffers)
-   and stored in `programCache` under the new `ProgramKey`.
+2. `CgMaterial.bind()` calls `cgMaterialShader.getOrCompileForwardPass(enabledKeywords)`.
+3. `getOrCompileForwardPass()` resolves the first Forward pass name, then calls `getOrCompile(passName, keywords)`.
+4. `getOrCompile()` constructs a `ProgramKey` and checks `programCache` — cache hit returns immediately.
+5. On miss: calls `CgMaterialShaderCompiler.compile(parsed, pass, attachedBuffers, matPropsUbo, CompileConfig(activeKeywords))`.
+6. The compiled program is wired and stored in `programCache` under the new `ProgramKey`.
 
 **Hot-reload interaction:**
-- `recompile()` clears `programCache` entirely and rebuilds only the STANDARD (no-keyword) variant.
+- `recompile()` clears `programCache` entirely and rebuilds all pass STANDARD variants.
 - `revisionNumber` increments so `CgMaterial` instances detect the change on the next `bind()`.
 - `CgMaterial.onShaderRecompiled()` clears `wiredToMatPropsUbo` so the per-instance UBO is
   re-wired to any newly compiled keyword variants on their first use.
 
 **Pre-compile `enableKeyword()` path:**
-`enableKeyword()` may be called before the first `bind()`. If `cgMaterialShader.getParsed() == null`
+`enableKeyword()` may be called before the first `bind()`. If `cgMaterialShader.getLastParsed() == null`
 (i.e. not yet compiled), `enableKeyword()` calls `cgMaterialShader.recompile()` eagerly to
-populate `featureNames` for validation. This is the same lazy-compile path used by `applyProperties()`.
+populate `featureNames` for validation.
 
 ## Relationship to Other Packages
 

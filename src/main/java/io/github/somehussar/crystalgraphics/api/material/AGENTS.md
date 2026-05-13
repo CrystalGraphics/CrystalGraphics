@@ -14,12 +14,13 @@ This is the top of the CrystalShader material stack.
 
 | Type | Role |
 |------|------|
-| `CgMaterial` | User-facing material handle backed by a shared `CgMaterialShader` asset. `load(path)` delegates to `CgMaterialRegistry.get().getOrCreate(path)` — returns the same cached instance per path. `newInstance(path)` creates a fresh non-cached instance sharing the same compiled programs. `fromShader(CgMaterialShader)` creates a material from a programmatically constructed asset. `applyProperties(Consumer<CgShaderBindings>)` writes persistent property values. `bind()` activates shader + properties + object buffer; detects hot-reload via revision check on `CgMaterialShader.revisionNumber`. Keyword programs compiled lazily on first use, cached by `activeKeywords` set in `CgMaterialShader.programCache`. `enableKeyword(name)` / `disableKeyword(name)` toggle a `#pragma cg_feature`-declared keyword; throws `IllegalArgumentException` for undeclared names. `isKeywordEnabled(name)` queries current state. `unbind()` deactivates shader. `markDirty()` delegates to `cgMaterialShader.markDirty()`. `delete()` frees only the per-instance property UBO — NOT the backing shader programs (those are asset-owned). `attach(CgShaderBuffer, macroName)` / `detach(...)` / `attach(CgUniformBuffer)` / `detachUbo(...)` delegate to `CgMaterialShader`. |
+| `CgMaterial` | User-facing material handle backed by a shared `CgMaterialShader` asset. `load(path)` returns the cached instance per path. `newInstance(path)` creates a fresh non-cached instance. `bind()` activates the Forward pass with enabled keywords; detects hot-reload via revision check, then delegates shared bind logic to private `doBind(CgShader, CgRenderPassVariant)`. `bindForVariant(CgRenderPassVariant)` activates a specific pass variant (FORWARD uses active keywords; SHADOW/DEPTH use empty keywords); also delegates to `doBind`. `doBind` (private) owns: UBO wiring, GL state save, UBO upload, sampler binding, render state apply, and `shader.bind()`. `getPassRenderState(CgRenderPassVariant)` returns the render state for the given pass. `hasShadowCasterPass()` — returns `castShadows` parse flag AND `renderQueue < TRANSPARENT` (intent, not compile state). `hasDepthPass()` — true when an explicit Depth pass is present in the parsed result. `enableKeyword(name)` / `disableKeyword(name)` toggle feature flags; throws for undeclared names. `unbind()` deactivates shader using `lastBoundShader`. `delete()` frees only the per-instance property UBO. `attach(CgShaderBuffer, macroName)` / `detach(...)` / `attach(CgUniformBuffer)` / `detachUbo(...)` delegate to `CgMaterialShader`. |
+| `CgRenderPassVariant` | Public enum bridging orchestrators to per-pass LightMode routing. `FORWARD("Forward")`, `SHADOW("ShadowCaster")`, `DEPTH("Depth")`. `lightModeName()` returns the canonical LightMode tag value. Used by `bindForVariant(CgRenderPassVariant)`, `getPassRenderState(CgRenderPassVariant)`, and `hasShadowCasterPass()`/`hasDepthPass()`. |
 | `CgAttachedBuffer` | Immutable descriptor for a user-attached SSBO/TBO or UBO buffer. Created via `CgAttachedBuffer.of(buffer, macroName)` (SSBO/TBO, STD430) or `CgAttachedBuffer.of(CgUniformBuffer)` (UBO, STD140). `isUbo()` returns `true` for UBO entries (macroName is null). SSBO/TBO fields: `buffer`, `macroName`, `structName` (= `format.getGlslName()`), `ssboArrayName` (`_cg_{lowerFirst}Arr`), `tboGetterName` (`_cg_get{structName}`). UBO entries: only `buffer` is set; macroName/structName/ssboArrayName/tboGetterName are all null. Block/sampler/UBO block name is always `buffer.getName()` — required for `wireShader()`. |
 | `CgMaterialRegistry` | Singleton load/reload/delete lifecycle manager. `get()` returns the singleton. `getOrCreate(String)` / `getOrCreate(CgMaterialKey)` check cache; on miss call `CgMaterial.create()` (which uses `CgMaterialShaderRegistry` internally), cache, and return. `reloadAll()` delegates to `CgMaterialShaderRegistry.get().reloadAll()` — marks all shader assets dirty; materials detect revision change on next `bind()`. `deleteAll()` deletes all cached material instances (freeing per-instance UBOs), then cascades to `CgMaterialShaderRegistry.get().deleteAll()` to free GL shader programs. Registered for teardown in `CgGraphicsLifecycle.destroyContext()`. |
 | `CgMaterialKey` | `@Desugar record` wrapping a resource-path string. `of(String)` factory. Value equality. Used as a typed alternative to raw strings. |
-| `CgMaterialPipeline` | Singleton pipeline owning per-frame UBO and per-object SSBO/TBO. `OBJECT_FORMAT` (std430, 48 floats) and `FRAME_BLOCK_FORMAT` (std140, 38 floats) are the engine-canonical typed buffer format descriptors. `frameBuffer()` returns the frame UBO for advanced wiring. `objectBuffer()` returns the shared per-object buffer. `getFrameUniforms()` returns the pipeline-owned mutable `CgFrameUniforms` holder. `beginFrame()` (no-arg) reads from the owned holder and uploads frame data each frame via named writes. `init()` / `destroy()` manage the singleton lifecycle. |
-| `CgFrameUniforms` | `@Data` mutable holder for per-frame uniform data. Fields: `Matrix4f view`, `Matrix4f proj`, `float timeSecs`, `int viewportW`, `int viewportH`. Owned by `CgMaterialPipeline` — mutate via `pipeline.getFrameUniforms().setX(...)` then call `pipeline.beginFrame()`. Adding a new frame global: add field here + to `FRAME_BLOCK_FORMAT` + one named write line in `beginFrame()`. |
+| `CgMaterialPipeline` | Singleton pipeline owning per-frame UBO and per-object SSBO/TBO. `OBJECT_FORMAT` (std430, 48 floats) and `FRAME_BLOCK_FORMAT` (std140, 52 floats) are the engine-canonical typed buffer format descriptors. `frameBuffer()` returns the frame UBO for advanced wiring. `objectBuffer()` returns the shared per-object buffer. `getFrameUniforms()` returns the pipeline-owned mutable `CgFrameUniforms` holder. `beginFrame()` (no-arg) reads from the owned holder and uploads frame data each frame via named writes. `init()` / `destroy()` manage the singleton lifecycle. |
+| `CgFrameUniforms` | `@Data` mutable holder for per-frame uniform data. Fields: `Matrix4f view`, `Matrix4f proj`, `float timeSecs`, `int viewportW`, `int viewportH`. Owned by `CgMaterialPipeline` — mutate via setters then call `pipeline.beginFrame()`. |
 | `package-info.java` | Package-level Javadoc describing the material API and lifecycle contract. |
 
 **Shader compilation**: all compile pipeline logic lives in `gl/material/CgMaterialShader` + `CgMaterialShaderRegistry`. See [`gl/material/AGENTS.md`](../../../../../gl/material/AGENTS.md).
@@ -68,11 +69,40 @@ Available named fields in `OBJECT_FORMAT` (STD430, 48 floats):
 - `normalMatrix` — mat4, floats 16–31 (pass mat3 as full mat4; shader reads upper-left 3×3)
 - `custom0`–`custom3` — vec4, floats 32–47
 
-Available named fields in `FRAME_BLOCK_FORMAT` (STD140, 38 floats):
+Available named fields in `FRAME_BLOCK_FORMAT` (STD140, 52 floats):
 - `cg_ViewMatrix` — mat4
 - `cg_ProjMatrix` — mat4
 - `cg_Time` — vec4: `t/20, t, t*2, t*3`
 - `cg_Resolution` — vec2: viewport width, height
+
+### CgMaterial.bind() and CgMaterial.bindForVariant(CgRenderPassVariant)
+
+`bind()` activates the Forward-lit pass with the current enabled keyword set. Use it for standard opaque/transparent geometry draws.
+
+`bindForVariant(CgRenderPassVariant variant)` activates a specific pass variant:
+- `FORWARD` — same as `bind()` but called explicitly (uses active keywords)
+- `SHADOW` — activates `ShadowCaster` pass with empty keywords (keywords don't apply to shadow passes)
+- `DEPTH` — activates `Depth` pass with empty keywords
+
+```java
+// Forward draw:
+material.bind();
+mesh.drawInstanced(N);
+material.unbind();
+
+// Shadow map draw (from a shadow renderer):
+if (material.hasShadowCasterPass()) {
+    shadowMapFbo.bind();
+    material.bindForVariant(CgRenderPassVariant.SHADOW);
+    mesh.drawInstanced(N);
+    material.unbind();
+    shadowMapFbo.unbind();
+}
+```
+
+`getPassRenderState(CgRenderPassVariant)` returns the `CgRenderState` for the given pass, without binding. Useful for querying cull mode, depth write, etc. without activating the GL program.
+castShadows
+`hasShadowCasterPass()` — true when `=true` (parse flag, default true) AND `renderQueue < TRANSPARENT`. Reflects declared *intent*, not compile state — returns true even before the shadow program is compiled. Transparent materials always return false. `hasDepthPass()` — true when an explicit Depth pass is present in the last successful parse (`hasParsedPass("Depth")`).
 
 ### CgMaterial.applyProperties(consumer)
 ```java

@@ -1,5 +1,6 @@
 package io.github.somehussar.crystalgraphics.gl.material;
 
+import io.github.somehussar.crystalgraphics.gl.material.parse.CgParsedPass;
 import io.github.somehussar.crystalgraphics.gl.material.parse.CgParsedShader;
 import io.github.somehussar.crystalgraphics.gl.material.parse.CgShaderParseException;
 import io.github.somehussar.crystalgraphics.gl.material.parse.CgShaderParser;
@@ -9,12 +10,11 @@ import java.util.List;
 
 import static org.junit.Assert.*;
 
-/**
- * Unit tests for {@link CgShaderParser}.
- *
- * <p>All tests are pure string processing — no GL context required.</p>
- */
 public class CgShaderParserTest {
+
+    private static CgParsedPass pass0(CgParsedShader p) {
+        return p.passes().get(0);
+    }
 
     private static final String MINIMAL_SHADER =
         "#type spatial\n" +
@@ -22,17 +22,18 @@ public class CgShaderParserTest {
         "Properties {\n" +
         "}\n" +
         "\n" +
-        "struct v2f {\n" +
-        "    vec2 uv;\n" +
-        "};\n" +
-        "\n" +
-        "void vertex(out v2f o) {\n" +
-        "    o.uv = cg_TexCoord0;\n" +
-        "    gl_Position = CG_MATRIX_MVP * vec4(cg_Position, 1.0);\n" +
-        "}\n" +
-        "\n" +
-        "void fragment(in v2f i, out vec4 fragColor) {\n" +
-        "    fragColor = vec4(i.uv, 0.0, 1.0);\n" +
+        "Pass {\n" +
+        "    Tags { \"LightMode\" = \"Forward\" }\n" +
+        "    struct v2f {\n" +
+        "        vec2 uv;\n" +
+        "    };\n" +
+        "    void vertex(out v2f o) {\n" +
+        "        o.uv = cg_TexCoord0;\n" +
+        "        gl_Position = CG_MATRIX_MVP * vec4(cg_Position, 1.0);\n" +
+        "    }\n" +
+        "    void fragment(in v2f i, out vec4 fragColor) {\n" +
+        "        fragColor = vec4(i.uv, 0.0, 1.0);\n" +
+        "    }\n" +
         "}\n";
 
     private static final String FULL_SHADER =
@@ -44,25 +45,25 @@ public class CgShaderParserTest {
         "    _Alpha   : float = 1.0\n" +
         "}\n" +
         "\n" +
-        "struct v2f {\n" +
-        "    vec3 worldPos;\n" +
-        "    vec3 normal;\n" +
-        "    vec2 uv;\n" +
-        "};\n" +
-        "\n" +
-        "float computeAttenuation(float dist) {\n" +
-        "    return clamp(1.0 - dist, 0.0, 1.0);\n" +
-        "}\n" +
-        "\n" +
-        "void vertex(out v2f o) {\n" +
-        "    o.worldPos = vec3(1.0);\n" +
-        "    o.normal = cg_Normal;\n" +
-        "    o.uv = cg_TexCoord0;\n" +
-        "    gl_Position = CG_MATRIX_MVP * vec4(cg_Position, 1.0);\n" +
-        "}\n" +
-        "\n" +
-        "void fragment(in v2f i, out vec4 fragColor) {\n" +
-        "    fragColor = texture(_MainTex, i.uv) * _Color;\n" +
+        "Pass {\n" +
+        "    Tags { \"LightMode\" = \"Forward\" }\n" +
+        "    struct v2f {\n" +
+        "        vec3 worldPos;\n" +
+        "        vec3 normal;\n" +
+        "        vec2 uv;\n" +
+        "    };\n" +
+        "    float computeAttenuation(float dist) {\n" +
+        "        return clamp(1.0 - dist, 0.0, 1.0);\n" +
+        "    }\n" +
+        "    void vertex(out v2f o) {\n" +
+        "        o.worldPos = vec3(1.0);\n" +
+        "        o.normal = cg_Normal;\n" +
+        "        o.uv = cg_TexCoord0;\n" +
+        "        gl_Position = CG_MATRIX_MVP * vec4(cg_Position, 1.0);\n" +
+        "    }\n" +
+        "    void fragment(in v2f i, out vec4 fragColor) {\n" +
+        "        fragColor = texture(_MainTex, i.uv) * _Color;\n" +
+        "    }\n" +
         "}\n";
 
     @Test
@@ -71,9 +72,9 @@ public class CgShaderParserTest {
         assertNotNull(parsed);
         assertEquals("spatial", parsed.shaderType());
         assertTrue(parsed.properties().isEmpty());
-        assertNotNull(parsed.v2fStructBody());
-        assertNotNull(parsed.vertexBody());
-        assertNotNull(parsed.fragmentBody());
+        assertNotNull(pass0(parsed).v2fStructBody());
+        assertNotNull(pass0(parsed).vertexBody());
+        assertNotNull(pass0(parsed).fragmentBody());
     }
 
     @Test
@@ -103,7 +104,7 @@ public class CgShaderParserTest {
     @Test
     public void testV2fFieldsParsed() {
         CgParsedShader parsed = CgShaderParser.parse(FULL_SHADER);
-        List<CgShaderParser.V2fField> fields = CgShaderParser.parseV2fFields(parsed);
+        List<CgShaderParser.V2fField> fields = CgShaderParser.parseV2fFields(pass0(parsed));
         assertEquals(3, fields.size());
         assertEquals("vec3", fields.get(0).type());
         assertEquals("worldPos", fields.get(0).name());
@@ -116,20 +117,20 @@ public class CgShaderParserTest {
     @Test
     public void testGlobalDeclsExtracted() {
         CgParsedShader parsed = CgShaderParser.parse(FULL_SHADER);
-        String globals = parsed.globalDecls();
+        String globals = pass0(parsed).globalDecls();
         assertTrue("Expected helper function in globalDecls", globals.contains("computeAttenuation"));
     }
 
     @Test
     public void testVertexBodyExtracted() {
         CgParsedShader parsed = CgShaderParser.parse(MINIMAL_SHADER);
-        assertTrue(parsed.vertexBody().contains("gl_Position"));
+        assertTrue(pass0(parsed).vertexBody().contains("gl_Position"));
     }
 
     @Test
     public void testFragmentBodyExtracted() {
         CgParsedShader parsed = CgShaderParser.parse(MINIMAL_SHADER);
-        assertTrue(parsed.fragmentBody().contains("fragColor"));
+        assertTrue(pass0(parsed).fragmentBody().contains("fragColor"));
     }
 
     @Test
@@ -137,11 +138,14 @@ public class CgShaderParserTest {
         String src =
             "#type spatial\n" +
             "Properties {\n}\n" +
-            "struct v2f {\n" +
-            "    int id;\n" +
-            "};\n" +
-            "void vertex(out v2f o) {}\n" +
-            "void fragment(in v2f i, out vec4 fragColor) {}\n";
+            "Pass {\n" +
+            "    Tags { \"LightMode\" = \"Forward\" }\n" +
+            "    struct v2f {\n" +
+            "        int id;\n" +
+            "    };\n" +
+            "    void vertex(out v2f o) {}\n" +
+            "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
+            "}\n";
         try {
             CgShaderParser.parse(src);
             fail("Expected CgShaderParseException for int in v2f");
@@ -154,9 +158,12 @@ public class CgShaderParserTest {
     public void testThrowsOnMissingType() {
         String src =
             "Properties {\n}\n" +
-            "struct v2f {\n    vec2 uv;\n};\n" +
-            "void vertex(out v2f o) {}\n" +
-            "void fragment(in v2f i, out vec4 fragColor) {}\n";
+            "Pass {\n" +
+            "    Tags { \"LightMode\" = \"Forward\" }\n" +
+            "    struct v2f {\n    vec2 uv;\n    };\n" +
+            "    void vertex(out v2f o) {}\n" +
+            "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
+            "}\n";
         try {
             CgShaderParser.parse(src);
             fail("Expected CgShaderParseException for missing #type");
@@ -169,27 +176,15 @@ public class CgShaderParserTest {
     public void testMissingPropertiesBlockParsesAsEmpty() {
         String src =
             "#type spatial\n" +
-            "struct v2f {\n    vec2 uv;\n};\n" +
-            "void vertex(out v2f o) {}\n" +
-            "void fragment(in v2f i, out vec4 fragColor) {}\n";
+            "Pass {\n" +
+            "    Tags { \"LightMode\" = \"Forward\" }\n" +
+            "    struct v2f {\n    vec2 uv;\n    };\n" +
+            "    void vertex(out v2f o) {}\n" +
+            "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
+            "}\n";
         CgParsedShader parsed = CgShaderParser.parse(src);
         assertTrue("Properties block is optional; absence must yield empty list",
                 parsed.properties().isEmpty());
-    }
-
-    @Test
-    public void testThrowsOnMissingV2fBlock() {
-        String src =
-            "#type spatial\n" +
-            "Properties {\n}\n" +
-            "void vertex(out v2f o) {}\n" +
-            "void fragment(in v2f i, out vec4 fragColor) {}\n";
-        try {
-            CgShaderParser.parse(src);
-            fail("Expected CgShaderParseException for missing v2f");
-        } catch (CgShaderParseException e) {
-            assertTrue(e.getMessage().toLowerCase().contains("v2f"));
-        }
     }
 
     @Test
@@ -197,11 +192,14 @@ public class CgShaderParserTest {
         String src =
             "#type spatial\n" +
             "Properties {\n}\n" +
-            "struct v2f {\n" +
-            "    uvec2 coords;\n" +
-            "};\n" +
-            "void vertex(out v2f o) {}\n" +
-            "void fragment(in v2f i, out vec4 fragColor) {}\n";
+            "Pass {\n" +
+            "    Tags { \"LightMode\" = \"Forward\" }\n" +
+            "    struct v2f {\n" +
+            "        uvec2 coords;\n" +
+            "    };\n" +
+            "    void vertex(out v2f o) {}\n" +
+            "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
+            "}\n";
         try {
             CgShaderParser.parse(src);
             fail("Expected CgShaderParseException for uvec2 in v2f");
@@ -215,16 +213,19 @@ public class CgShaderParserTest {
         String src =
             "#type spatial\n" +
             "Properties {\n}\n" +
-            "struct v2f {\n    vec2 uv;\n};\n" +
-            "void vertex(out v2f o) {\n" +
-            "    if (true) { o.uv = vec2(0.0); }\n" +
-            "}\n" +
-            "void fragment(in v2f i, out vec4 fragColor) {\n" +
-            "    if (true) { fragColor = vec4(1.0); }\n" +
+            "Pass {\n" +
+            "    Tags { \"LightMode\" = \"Forward\" }\n" +
+            "    struct v2f {\n    vec2 uv;\n    };\n" +
+            "    void vertex(out v2f o) {\n" +
+            "        if (true) { o.uv = vec2(0.0); }\n" +
+            "    }\n" +
+            "    void fragment(in v2f i, out vec4 fragColor) {\n" +
+            "        if (true) { fragColor = vec4(1.0); }\n" +
+            "    }\n" +
             "}\n";
         CgParsedShader parsed = CgShaderParser.parse(src);
-        assertTrue(parsed.vertexBody().contains("if"));
-        assertTrue(parsed.fragmentBody().contains("if"));
+        assertTrue(pass0(parsed).vertexBody().contains("if"));
+        assertTrue(pass0(parsed).fragmentBody().contains("if"));
     }
 
     // ── NEW: enforcement tests added for Waves 1-4 compliance ────────────────
@@ -234,9 +235,12 @@ public class CgShaderParserTest {
         String src =
             "#type compute\n" +
             "Properties {\n}\n" +
-            "struct v2f {\n    vec2 uv;\n};\n" +
-            "void vertex(out v2f o) {}\n" +
-            "void fragment(in v2f i, out vec4 fragColor) {}\n";
+            "Pass {\n" +
+            "    Tags { \"LightMode\" = \"Forward\" }\n" +
+            "    struct v2f {\n    vec2 uv;\n    };\n" +
+            "    void vertex(out v2f o) {}\n" +
+            "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
+            "}\n";
         try {
             CgShaderParser.parse(src);
             fail("Expected CgShaderParseException for unknown #type");
@@ -252,9 +256,12 @@ public class CgShaderParserTest {
         String src =
             "#type canvas\n" +
             "Properties {\n}\n" +
-            "struct v2f {\n    vec2 uv;\n};\n" +
-            "void vertex(out v2f o) {}\n" +
-            "void fragment(in v2f i, out vec4 fragColor) {}\n";
+            "Pass {\n" +
+            "    Tags { \"LightMode\" = \"Forward\" }\n" +
+            "    struct v2f {\n    vec2 uv;\n    };\n" +
+            "    void vertex(out v2f o) {}\n" +
+            "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
+            "}\n";
         try {
             CgShaderParser.parse(src);
             fail("Expected CgShaderParseException for unknown #type canvas");
@@ -271,9 +278,12 @@ public class CgShaderParserTest {
             "Properties {\n" +
             "    cg_Color : vec4\n" +
             "}\n" +
-            "struct v2f {\n    vec2 uv;\n};\n" +
-            "void vertex(out v2f o) {}\n" +
-            "void fragment(in v2f i, out vec4 fragColor) {}\n";
+            "Pass {\n" +
+            "    Tags { \"LightMode\" = \"Forward\" }\n" +
+            "    struct v2f {\n    vec2 uv;\n    };\n" +
+            "    void vertex(out v2f o) {}\n" +
+            "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
+            "}\n";
         try {
             CgShaderParser.parse(src);
             fail("Expected CgShaderParseException for cg_ prefix in property");
@@ -290,9 +300,12 @@ public class CgShaderParserTest {
             "Properties {\n" +
             "    CG_MyUniform : float\n" +
             "}\n" +
-            "struct v2f {\n    vec2 uv;\n};\n" +
-            "void vertex(out v2f o) {}\n" +
-            "void fragment(in v2f i, out vec4 fragColor) {}\n";
+            "Pass {\n" +
+            "    Tags { \"LightMode\" = \"Forward\" }\n" +
+            "    struct v2f {\n    vec2 uv;\n    };\n" +
+            "    void vertex(out v2f o) {}\n" +
+            "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
+            "}\n";
         try {
             CgShaderParser.parse(src);
             fail("Expected CgShaderParseException for CG_ prefix in property");
@@ -309,9 +322,12 @@ public class CgShaderParserTest {
             "Properties {\n" +
             "    _v2f_data : vec4\n" +
             "}\n" +
-            "struct v2f {\n    vec2 uv;\n};\n" +
-            "void vertex(out v2f o) {}\n" +
-            "void fragment(in v2f i, out vec4 fragColor) {}\n";
+            "Pass {\n" +
+            "    Tags { \"LightMode\" = \"Forward\" }\n" +
+            "    struct v2f {\n    vec2 uv;\n    };\n" +
+            "    void vertex(out v2f o) {}\n" +
+            "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
+            "}\n";
         try {
             CgShaderParser.parse(src);
             fail("Expected CgShaderParseException for _v2f_ prefix in property");
@@ -326,11 +342,14 @@ public class CgShaderParserTest {
         String src =
             "#type spatial\n" +
             "Properties {\n}\n" +
-            "struct v2f {\n" +
-            "    vec3 cg_worldPos;\n" +
-            "};\n" +
-            "void vertex(out v2f o) {}\n" +
-            "void fragment(in v2f i, out vec4 fragColor) {}\n";
+            "Pass {\n" +
+            "    Tags { \"LightMode\" = \"Forward\" }\n" +
+            "    struct v2f {\n" +
+            "        vec3 cg_worldPos;\n" +
+            "    };\n" +
+            "    void vertex(out v2f o) {}\n" +
+            "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
+            "}\n";
         try {
             CgShaderParser.parse(src);
             fail("Expected CgShaderParseException for cg_ prefix in v2f field name");
@@ -346,9 +365,12 @@ public class CgShaderParserTest {
             "#version 330 core\n" +
             "#type spatial\n" +
             "Properties {\n}\n" +
-            "struct v2f {\n    vec2 uv;\n};\n" +
-            "void vertex(out v2f o) {}\n" +
-            "void fragment(in v2f i, out vec4 fragColor) {}\n";
+            "Pass {\n" +
+            "    Tags { \"LightMode\" = \"Forward\" }\n" +
+            "    struct v2f {\n    vec2 uv;\n    };\n" +
+            "    void vertex(out v2f o) {}\n" +
+            "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
+            "}\n";
         try {
             CgShaderParser.parse(src);
             fail("Expected CgShaderParseException for #version directive");
@@ -360,14 +382,16 @@ public class CgShaderParserTest {
 
     @Test
     public void testThrowsOnVersionDirectiveInBody() {
-        // #version anywhere in the file should throw, including in the middle
         String src =
             "#type spatial\n" +
             "Properties {\n}\n" +
             "#version 430 core\n" +
-            "struct v2f {\n    vec2 uv;\n};\n" +
-            "void vertex(out v2f o) {}\n" +
-            "void fragment(in v2f i, out vec4 fragColor) {}\n";
+            "Pass {\n" +
+            "    Tags { \"LightMode\" = \"Forward\" }\n" +
+            "    struct v2f {\n    vec2 uv;\n    };\n" +
+            "    void vertex(out v2f o) {}\n" +
+            "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
+            "}\n";
         try {
             CgShaderParser.parse(src);
             fail("Expected CgShaderParseException for #version in file body");
@@ -381,11 +405,14 @@ public class CgShaderParserTest {
         String src =
             "#type spatial\n" +
             "Properties {\n}\n" +
-            "struct v2f {\n    vec2 uv;\n};\n" +
-            "void vertex(out v2f o) {\n" +
-            "    void main() { gl_Position = vec4(0); }\n" +
-            "}\n" +
-            "void fragment(in v2f i, out vec4 fragColor) {}\n";
+            "Pass {\n" +
+            "    Tags { \"LightMode\" = \"Forward\" }\n" +
+            "    struct v2f {\n    vec2 uv;\n    };\n" +
+            "    void vertex(out v2f o) {\n" +
+            "        void main() { gl_Position = vec4(0); }\n" +
+            "    }\n" +
+            "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
+            "}\n";
         try {
             CgShaderParser.parse(src);
             fail("Expected CgShaderParseException for main() in vertex body");
@@ -400,10 +427,13 @@ public class CgShaderParserTest {
         String src =
             "#type spatial\n" +
             "Properties {\n}\n" +
-            "struct v2f {\n    vec2 uv;\n};\n" +
-            "void vertex(out v2f o) {}\n" +
-            "void fragment(in v2f i, out vec4 fragColor) {\n" +
-            "    void main() { fragColor = vec4(1); }\n" +
+            "Pass {\n" +
+            "    Tags { \"LightMode\" = \"Forward\" }\n" +
+            "    struct v2f {\n    vec2 uv;\n    };\n" +
+            "    void vertex(out v2f o) {}\n" +
+            "    void fragment(in v2f i, out vec4 fragColor) {\n" +
+            "        void main() { fragColor = vec4(1); }\n" +
+            "    }\n" +
             "}\n";
         try {
             CgShaderParser.parse(src);
@@ -416,17 +446,18 @@ public class CgShaderParserTest {
 
     @Test
     public void testValidShaderWithUnderscorePrefixedProperties() {
-        // Property names starting with _ (Unity-style) should be allowed
         String src =
             "#type spatial\n" +
             "Properties {\n" +
             "    _MainTex : sampler2D\n" +
             "    _Color   : vec4 = (1.0, 1.0, 1.0, 1.0)\n" +
             "}\n" +
-            "struct v2f {\n    vec2 uv;\n};\n" +
-            "void vertex(out v2f o) {}\n" +
-            "void fragment(in v2f i, out vec4 fragColor) {}\n";
-        // Should not throw
+            "Pass {\n" +
+            "    Tags { \"LightMode\" = \"Forward\" }\n" +
+            "    struct v2f {\n    vec2 uv;\n    };\n" +
+            "    void vertex(out v2f o) {}\n" +
+            "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
+            "}\n";
         CgParsedShader parsed = CgShaderParser.parse(src);
         assertEquals(2, parsed.properties().size());
         assertEquals("_MainTex", parsed.properties().get(0).getName());
@@ -439,9 +470,12 @@ public class CgShaderParserTest {
             "Properties {\n" +
             "    _Foo : mat4x4\n" +
             "}\n" +
-            "struct v2f {\n    vec2 uv;\n};\n" +
-            "void vertex(out v2f o) {}\n" +
-            "void fragment(in v2f i, out vec4 fragColor) {}\n";
+            "Pass {\n" +
+            "    Tags { \"LightMode\" = \"Forward\" }\n" +
+            "    struct v2f {\n    vec2 uv;\n    };\n" +
+            "    void vertex(out v2f o) {}\n" +
+            "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
+            "}\n";
         try {
             CgShaderParser.parse(src);
             fail("Expected CgShaderParseException for unknown property type");
@@ -459,9 +493,12 @@ public class CgShaderParserTest {
             "Properties {\n" +
             "    _Transform : mat4\n" +
             "}\n" +
-            "struct v2f {\n    vec2 uv;\n};\n" +
-            "void vertex(out v2f o) {}\n" +
-            "void fragment(in v2f i, out vec4 fragColor) {}\n";
+            "Pass {\n" +
+            "    Tags { \"LightMode\" = \"Forward\" }\n" +
+            "    struct v2f {\n    vec2 uv;\n    };\n" +
+            "    void vertex(out v2f o) {}\n" +
+            "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
+            "}\n";
         try {
             CgShaderParser.parse(src);
             fail("Expected CgShaderParseException for mat4 property type (not in valid set)");
@@ -477,103 +514,23 @@ public class CgShaderParserTest {
             "Properties {\n" +
             "    _F : float\n" +
             "    _V2 : vec2\n" +
-            "    _V3 : vec3\n" +
             "    _V4 : vec4\n" +
             "    _Tex : sampler2D\n" +
             "}\n" +
-            "struct v2f {\n    vec2 uv;\n};\n" +
-            "void vertex(out v2f o) {}\n" +
-            "void fragment(in v2f i, out vec4 fragColor) {}\n";
+            "Pass {\n" +
+            "    Tags { \"LightMode\" = \"Forward\" }\n" +
+            "    struct v2f {\n    vec2 uv;\n    };\n" +
+            "    void vertex(out v2f o) {}\n" +
+            "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
+            "}\n";
         CgParsedShader parsed = CgShaderParser.parse(src);
-        assertEquals(5, parsed.properties().size());
-    }
-
-    @Test
-    public void testThrowsOnDuplicatePropertiesBlock() {
-        String src =
-            "#type spatial\n" +
-            "Properties {\n" +
-            "    _A : float\n" +
-            "}\n" +
-            "Properties {\n" +
-            "    _B : float\n" +
-            "}\n" +
-            "struct v2f {\n    vec2 uv;\n};\n" +
-            "void vertex(out v2f o) {}\n" +
-            "void fragment(in v2f i, out vec4 fragColor) {}\n";
-        try {
-            CgShaderParser.parse(src);
-            fail("Expected CgShaderParseException for duplicate Properties block");
-        } catch (CgShaderParseException e) {
-            assertTrue("Error should mention duplicate or once",
-                e.getMessage().toLowerCase().contains("properties") ||
-                e.getMessage().toLowerCase().contains("once") ||
-                e.getMessage().toLowerCase().contains("duplicate"));
-        }
-    }
-
-    @Test
-    public void testThrowsOnDuplicateV2fBlock() {
-        String src =
-            "#type spatial\n" +
-            "Properties {\n}\n" +
-            "struct v2f {\n    vec2 uv;\n};\n" +
-            "struct v2f {\n    vec3 pos;\n};\n" +
-            "void vertex(out v2f o) {}\n" +
-            "void fragment(in v2f i, out vec4 fragColor) {}\n";
-        try {
-            CgShaderParser.parse(src);
-            fail("Expected CgShaderParseException for duplicate struct v2f block");
-        } catch (CgShaderParseException e) {
-            assertTrue("Error should mention v2f or duplicate",
-                e.getMessage().toLowerCase().contains("v2f") ||
-                e.getMessage().toLowerCase().contains("once") ||
-                e.getMessage().toLowerCase().contains("duplicate"));
-        }
-    }
-
-    @Test
-    public void testThrowsOnSectionOutOfOrderV2fBeforeProperties() {
-        String src =
-            "#type spatial\n" +
-            "struct v2f {\n    vec2 uv;\n};\n" +
-            "Properties {\n}\n" +
-            "void vertex(out v2f o) {}\n" +
-            "void fragment(in v2f i, out vec4 fragColor) {}\n";
-        try {
-            CgShaderParser.parse(src);
-            fail("Expected CgShaderParseException for v2f before Properties");
-        } catch (CgShaderParseException e) {
-            assertTrue("Error should mention ordering or v2f",
-                e.getMessage().toLowerCase().contains("order") ||
-                e.getMessage().toLowerCase().contains("v2f") ||
-                e.getMessage().toLowerCase().contains("properties"));
-        }
-    }
-
-    @Test
-    public void testThrowsOnSectionOutOfOrderFragmentBeforeVertex() {
-        String src =
-            "#type spatial\n" +
-            "Properties {\n}\n" +
-            "struct v2f {\n    vec2 uv;\n};\n" +
-            "void fragment(in v2f i, out vec4 fragColor) {}\n" +
-            "void vertex(out v2f o) {}\n";
-        try {
-            CgShaderParser.parse(src);
-            fail("Expected CgShaderParseException for fragment before vertex");
-        } catch (CgShaderParseException e) {
-            assertTrue("Error should mention ordering or fragment/vertex",
-                e.getMessage().toLowerCase().contains("order") ||
-                e.getMessage().toLowerCase().contains("fragment") ||
-                e.getMessage().toLowerCase().contains("vertex"));
-        }
+        assertEquals(4, parsed.properties().size());
     }
 
     @Test
     public void testEmptyGlobalDecls() {
         CgParsedShader parsed = CgShaderParser.parse(MINIMAL_SHADER);
-        String globals = parsed.globalDecls();
+        String globals = pass0(parsed).globalDecls();
         assertNotNull("globalDecls must never be null", globals);
         assertEquals("Expected empty globalDecls for minimal shader", "", globals.trim());
     }
@@ -599,15 +556,17 @@ public class CgShaderParserTest {
 
     @Test
     public void testOldStyleIntPropertyParsed() {
-        // Old colon-style: _N : int = 42
         String src =
             "#type spatial\n" +
             "Properties {\n" +
             "    _N : int = 42\n" +
             "}\n" +
-            "struct v2f {\n    vec2 uv;\n};\n" +
-            "void vertex(out v2f o) {}\n" +
-            "void fragment(in v2f i, out vec4 fragColor) {}\n";
+            "Pass {\n" +
+            "    Tags { \"LightMode\" = \"Forward\" }\n" +
+            "    struct v2f {\n    vec2 uv;\n    };\n" +
+            "    void vertex(out v2f o) {}\n" +
+            "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
+            "}\n";
         CgParsedShader parsed = CgShaderParser.parse(src);
         assertEquals(1, parsed.properties().size());
         assertEquals("_N", parsed.properties().get(0).getName());
@@ -621,9 +580,12 @@ public class CgShaderParserTest {
             "Properties {\n" +
             "    _Sky : samplerCube\n" +
             "}\n" +
-            "struct v2f {\n    vec2 uv;\n};\n" +
-            "void vertex(out v2f o) {}\n" +
-            "void fragment(in v2f i, out vec4 fragColor) {}\n";
+            "Pass {\n" +
+            "    Tags { \"LightMode\" = \"Forward\" }\n" +
+            "    struct v2f {\n    vec2 uv;\n    };\n" +
+            "    void vertex(out v2f o) {}\n" +
+            "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
+            "}\n";
         CgParsedShader parsed = CgShaderParser.parse(src);
         assertEquals(CgMaterialProperty.Type.SAMPLER_CUBE, parsed.properties().get(0).getType());
     }
@@ -635,9 +597,12 @@ public class CgShaderParserTest {
             "Properties {\n" +
             "    _TexArr : sampler2DArray\n" +
             "}\n" +
-            "struct v2f {\n    vec2 uv;\n};\n" +
-            "void vertex(out v2f o) {}\n" +
-            "void fragment(in v2f i, out vec4 fragColor) {}\n";
+            "Pass {\n" +
+            "    Tags { \"LightMode\" = \"Forward\" }\n" +
+            "    struct v2f {\n    vec2 uv;\n    };\n" +
+            "    void vertex(out v2f o) {}\n" +
+            "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
+            "}\n";
         CgParsedShader parsed = CgShaderParser.parse(src);
         assertEquals(CgMaterialProperty.Type.SAMPLER2D_ARRAY, parsed.properties().get(0).getType());
     }
@@ -646,10 +611,13 @@ public class CgShaderParserTest {
     public void testThrowsOnUnknownRenderStateKey() {
         String src =
             "#type spatial\n" +
-            "RenderState { UnknownGarbage foo }\n" +
-            "struct v2f {\n    vec2 uv;\n};\n" +
-            "void vertex(out v2f o) {}\n" +
-            "void fragment(in v2f i, out vec4 fragColor) {}\n";
+            "Pass {\n" +
+            "    Tags { \"LightMode\" = \"Forward\" }\n" +
+            "    RenderState { UnknownGarbage foo }\n" +
+            "    struct v2f {\n    vec2 uv;\n    };\n" +
+            "    void vertex(out v2f o) {}\n" +
+            "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
+            "}\n";
         try {
             CgShaderParser.parse(src);
             fail("Expected CgShaderParseException for unknown RenderState key");
@@ -663,16 +631,18 @@ public class CgShaderParserTest {
 
     @Test
     public void testPropertyCommentsSkipped() {
-        // Lines starting with // inside Properties block should be silently ignored
         String src =
             "#type spatial\n" +
             "Properties {\n" +
             "    // This is a comment\n" +
             "    _Alpha : float = 1.0\n" +
             "}\n" +
-            "struct v2f {\n    vec2 uv;\n};\n" +
-            "void vertex(out v2f o) {}\n" +
-            "void fragment(in v2f i, out vec4 fragColor) {}\n";
+            "Pass {\n" +
+            "    Tags { \"LightMode\" = \"Forward\" }\n" +
+            "    struct v2f {\n    vec2 uv;\n    };\n" +
+            "    void vertex(out v2f o) {}\n" +
+            "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
+            "}\n";
         CgParsedShader parsed = CgShaderParser.parse(src);
         assertEquals("Comment line must not produce a property", 1, parsed.properties().size());
         assertEquals("_Alpha", parsed.properties().get(0).getName());

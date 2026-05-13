@@ -4,6 +4,7 @@ import com.github.bsideup.jabel.Desugar;
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
 import io.github.somehussar.crystalgraphics.api.material.CgAttachedBuffer;
 import io.github.somehussar.crystalgraphics.api.shader.CgPreprocessorException;
+import io.github.somehussar.crystalgraphics.api.state.CgCullState;
 import io.github.somehussar.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 import io.github.somehussar.crystalgraphics.gl.material.CgMaterialProperty;
 
@@ -13,7 +14,8 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Generates complete GLSL vertex and fragment source strings from a {@link CgParsedShader}.
+ * Generates complete GLSL vertex and fragment source strings from a {@link CgParsedShader}
+ * and a specific {@link CgParsedPass}.
  *
  * <p>This is the bridge between the structural parser ({@link CgShaderParser}) and the
  * GLSL compilation backend ({@link io.github.somehussar.crystalgraphics.gl.shader.CgShaderFactory}).
@@ -22,12 +24,17 @@ import java.util.Set;
  * and its flat-packed varying declarations, global declarations, the user-authored functions,
  * and the generated {@code void main()} wrappers.</p>
  *
+ * <h3>Shadow auto-generation</h3>
+ * <p>The shadow fields {@code cg_ShadowViewProjMatrix}, {@code cg_LightDirection}, and
+ * {@code cg_ShadowParams} are declared in the {@code CgFrameBlock} UBO (injected via
+ * {@code cg_env.glsl}). Auto-generated shadow shaders reference them as plain identifiers —
+ * never as standalone {@code uniform} declarations, which would cause GLSL redeclaration
+ * conflicts.</p>
+ *
  * <h3>Include resolution</h3>
  * <p>The emitted {@code #include "crystalgraphics:shaders/env/cg_env.glsl"} is an absolute
  * resource-location path. {@link io.github.somehussar.crystalgraphics.api.shader.CgShaderPreprocessor}
- * resolves it via {@code CgIO.loadSource()} without requiring a base-path context. {@code CgMaterial.load()}
- * runs the preprocessor exactly once after this compiler runs and before
- * {@link io.github.somehussar.crystalgraphics.gl.shader.CgShaderFactory#fromSource}.</p>
+ * resolves it via {@code CgIO.loadSource()} without requiring a base-path context.</p>
  *
  * <h3>Attribute binding</h3>
  * <p>No explicit {@code layout(location=N)} attributes are emitted — attribute locations
@@ -80,82 +87,34 @@ public final class CgMaterialShaderCompiler {
         throw new AssertionError("CgMaterialShaderCompiler is not instantiable");
     }
 
-    /**
-     * Compiles a {@link CgParsedShader} into GLSL vertex + fragment source strings.
-     *
-     * <p>The returned strings contain the full shader source including {@code #version},
-     * defines, includes, struct declarations, varying declarations, global declarations,
-     * user-authored functions, and the generated {@code void main()} wrappers.</p>
-     *
-     * <p>The returned sources must be run through
-     * {@link io.github.somehussar.crystalgraphics.api.shader.CgShaderPreprocessor} to resolve
-     * the {@code cg_env.glsl} include before passing to
-     * {@link io.github.somehussar.crystalgraphics.gl.shader.CgShaderFactory#fromSource}.</p>
-     *
-     * @param parsed          structural parse result from {@link CgShaderParser#parse(String)}
-     * @param attachedBuffers user-defined SSBO/TBO and UBO buffers to inject (may be empty);
-     *                        UBO entries are identified via {@link CgAttachedBuffer#isUbo()}
-     * @return a {@link CompiledSource} holding the complete vertex and fragment sources
-     * @throws IllegalArgumentException if {@code shaderBufferPath} is {@code NONE}
-     * @throws CgPreprocessorException  if a TBO-path buffer contains incompatible field types
-     */
-    public static CompiledSource compile(CgParsedShader parsed, List<CgAttachedBuffer> attachedBuffers) {
-        return compile(parsed, attachedBuffers, null, CompileConfig.DEFAULT);
-    }
+    // ── Canonical 5-arg compile entry point ──────────────────────────────────
 
     /**
-     * Compiles a {@link CgParsedShader} into GLSL vertex + fragment source strings,
-     * optionally injecting the engine-managed material properties UBO block.
+     * Compiles a single {@link CgParsedPass} (from the given {@link CgParsedShader}) into
+     * GLSL vertex + fragment source strings.
      *
-     * <p>When {@code matPropsEntry} is non-null, a {@code layout(std140) uniform CgMaterialBlock { ... };}
-     * block is emitted before the user-attached buffers. Non-sampler properties that were previously
-     * emitted as individual {@code uniform} declarations are now placed in this UBO block instead;
-     * only sampler properties ({@code sampler2D}, {@code sampler2DArray}, {@code sampler3D},
-     * {@code samplerCube}) continue to emit individual {@code uniform samplerXxx name;} declarations.</p>
+     * <p>This is the canonical compile entry point. All other {@code compile} overloads
+     * delegate here. Material-level data (properties, featureNames) is read from
+     * {@code shader}; per-pass data (v2fStructBody, globalDecls, vertexBody,
+     * fragmentBody, fragOutput) is read from {@code pass}.</p>
      *
-     * <p>The {@code matPropsEntry} is <em>not</em> added to {@code attachedBuffers} — it is an
-     * engine-internal buffer wired separately via {@code CgBindingPoints.MATERIAL_PROPERTIES_UBO}
-     * and must not be exposed to user-attached-buffer logic.</p>
-     *
-     * @param parsed           structural parse result from {@link CgShaderParser#parse(String)}
-     * @param shaderBufferPath which GPU path is active; drives {@code #version} selection and
-     *                         the {@code CG_USE_SSBO} define
-     * @param attachedBuffers  user-defined SSBO/TBO and UBO buffers to inject (may be empty)
-     * @param matPropsEntry    engine-managed material properties UBO entry, or {@code null} for
-     *                         sampler-only shaders or when no non-sampler properties are present
-     * @return a {@link CompiledSource} holding the complete vertex and fragment sources
-     * @throws IllegalArgumentException if {@code shaderBufferPath} is {@code NONE}
-     * @throws CgPreprocessorException  if a TBO-path buffer contains incompatible field types
-     */
-    public static CompiledSource compile(CgParsedShader parsed,
-                                         CgCapabilities.ShaderBufferPath shaderBufferPath,
-                                         List<CgAttachedBuffer> attachedBuffers,
-                                         CgUniformBuffer matPropsEntry) {
-        return compile(parsed, attachedBuffers, matPropsEntry, CompileConfig.DEFAULT);
-    }
-
-    /**
-     * Compiles a {@link CgParsedShader} into GLSL vertex + fragment source strings,
-     * applying the given {@link CompileConfig} for keyword injection.
-     *
-     * <p>This overload is the primary entry point when keyword-injected compilation is
-     * required. The two-arg and four-arg public overloads delegate here with {@link CompileConfig#DEFAULT}.</p>
-     *
-     * @param parsed          structural parse result from {@link CgShaderParser#parse(String)}
-     * @param attachedBuffers user-defined SSBO/TBO and UBO buffers (may be empty)
-     * @param matPropsEntry   engine-managed properties UBO, or {@code null}
+     * @param shader          material-level parse result (properties, featureNames)
+     * @param pass            per-pass parse result (v2f, vertex/fragment bodies, render state)
+     * @param attachedBuffers user-defined SSBO/TBO and UBO buffers to inject (may be empty)
+     * @param matPropsEntry   engine-managed material properties UBO entry, or {@code null}
      * @param config          active-keyword config; use {@link CompileConfig#DEFAULT}
      *                        for the no-keyword path
      * @return a {@link CompiledSource} holding the complete vertex and fragment sources
-     * @throws IllegalArgumentException if {@code shaderBufferPath} is {@code NONE}
+     * @throws IllegalArgumentException if {@code ShaderBufferPath} is {@code NONE}
      * @throws CgPreprocessorException  if a TBO-path buffer contains incompatible field types
      */
-    public static CompiledSource compile(CgParsedShader parsed,
+    public static CompiledSource compile(CgParsedShader shader,
+                                         CgParsedPass pass,
                                          List<CgAttachedBuffer> attachedBuffers,
                                          CgUniformBuffer matPropsEntry,
                                          CompileConfig config) {
         CgCapabilities.ShaderBufferPath path = CgCapabilities.detect().shaderBufferPath();
-        if (path == CgCapabilities.ShaderBufferPath.NONE) 
+        if (path == CgCapabilities.ShaderBufferPath.NONE)
             throw new IllegalArgumentException("Cannot compile material shader: ShaderBufferPath is NONE (GL 3.3+ required)");
 
         boolean useSsbo = (path == CgCapabilities.ShaderBufferPath.SSBO_GL43
@@ -180,40 +139,158 @@ public final class CgMaterialShaderCompiler {
             }
         }
 
-        List<CgMaterialProperty> properties = parsed.properties();
-        List<CgShaderParser.V2fField> v2fFields = CgShaderParser.parseV2fFields(parsed);
+        List<CgMaterialProperty> properties = shader.properties();
+        List<CgShaderParser.V2fField> v2fFields = CgShaderParser.parseV2fFields(pass);
 
-        String vertexSource = buildVertexSource(parsed, properties, v2fFields, useSsbo,
+        String vertexSource = buildVertexSource(shader, pass, properties, v2fFields, useSsbo,
                 path, attachedBuffers, requiredExtensions, matPropsEntry, config);
-        String fragmentSource = buildFragmentSource(parsed, properties, v2fFields, useSsbo,
+        String fragmentSource = buildFragmentSource(shader, pass, properties, v2fFields, useSsbo,
                 path, attachedBuffers, requiredExtensions, matPropsEntry, config);
 
         return new CompiledSource(vertexSource, fragmentSource);
     }
 
-    // ── Vertex shader builder ─────────────────────────────────────────────────
+    // ── Convenience overloads (delegate to canonical 5-arg via passes().get(0)) ──
 
     /**
-     * Generates the complete GLSL vertex shader source.
-     *
-     * <p>Generation sequence (matches plan T8, steps 1–11):</p>
-     * <ol>
-     *   <li>{@code #version} directive</li>
-     *   <li>Keyword {@code #define NAME 1} lines (from {@code config}, in {@code featureNames} order)</li>
-     *   <li>User preamble {@code #}-directive lines (from {@code globalDecls} partition)</li>
-     *   <li>{@code #define CG_VERTEX_STAGE 1}</li>
-     *   <li>{@code #define CG_USE_SSBO 1} (SSBO path only)</li>
-     *   <li>{@code #include "crystalgraphics:shaders/env/cg_env.glsl"}</li>
-     *   <li>Property uniform declarations</li>
-     *   <li>v2f struct</li>
-     *   <li>{@code flat out int cg_InstanceId;}</li>
-     *   <li>v2f varying outputs ({@code out <type> _v2f_<name>;})</li>
-     *   <li>Global declarations</li>
-     *   <li>User vertex function</li>
-     *   <li>Generated {@code void main()}</li>
-     * </ol>
+     * Compiles a {@link CgParsedShader} using its first pass and no active keywords.
+     * Convenience overload — delegates to {@link #compile(CgParsedShader, CgParsedPass, List, CgUniformBuffer, CompileConfig)}.
      */
-    private static String buildVertexSource(CgParsedShader parsed,
+    public static CompiledSource compile(CgParsedShader parsed, List<CgAttachedBuffer> attachedBuffers) {
+        return compile(parsed, parsed.passes().get(0), attachedBuffers, null, CompileConfig.DEFAULT);
+    }
+
+    /**
+     * Compiles a {@link CgParsedShader} using its first pass, with a material properties UBO.
+     * Convenience overload — delegates to {@link #compile(CgParsedShader, CgParsedPass, List, CgUniformBuffer, CompileConfig)}.
+     */
+    public static CompiledSource compile(CgParsedShader parsed,
+                                         CgCapabilities.ShaderBufferPath shaderBufferPath,
+                                         List<CgAttachedBuffer> attachedBuffers,
+                                         CgUniformBuffer matPropsEntry) {
+        return compile(parsed, parsed.passes().get(0), attachedBuffers, matPropsEntry, CompileConfig.DEFAULT);
+    }
+
+    /**
+     * Compiles a {@link CgParsedShader} using its first pass, with a material properties UBO
+     * and an active keyword config. Convenience overload — delegates to the canonical 5-arg.
+     */
+    public static CompiledSource compile(CgParsedShader parsed,
+                                         List<CgAttachedBuffer> attachedBuffers,
+                                         CgUniformBuffer matPropsEntry,
+                                         CompileConfig config) {
+        return compile(parsed, parsed.passes().get(0), attachedBuffers, matPropsEntry, config);
+    }
+
+    // ── Shadow auto-generation ────────────────────────────────────────────────
+
+    /**
+     * Auto-generates a ShadowCaster program from an existing Forward pass.
+     *
+     * <p>The shadow vertex shader either uses a minimal position-only transform
+     * (when {@link #isSimpleVertex(CgParsedPass)} is true) or re-runs the forward
+     * vertex body and overrides {@code gl_Position} with the light-space transform
+     * (for complex vertices with animation or custom attributes).</p>
+     *
+     * <p>The fragment shader is depth-only (empty body; depth written automatically
+     * by the rasterizer).</p>
+     *
+     * <p><strong>UBO contract</strong>: {@code cg_ShadowViewProjMatrix},
+     * {@code cg_LightDirection}, and {@code cg_ShadowParams} are declared in the
+     * {@code CgFrameBlock} UBO (injected via {@code cg_env.glsl}). The generated GLSL
+     * references them as plain identifiers — never as standalone {@code uniform}
+     * declarations, which would cause GLSL redeclaration conflicts.</p>
+     *
+     * @param shader          material-level parse result (properties, featureNames)
+     * @param forwardPass     the Forward pass to derive the shadow vertex from; must not be null
+     * @param attachedBuffers user-defined SSBO/TBO and UBO buffers to inject
+     * @param matPropsUbo     engine-managed material properties UBO, or {@code null}
+     * @param config          active-keyword config (typically {@link CompileConfig#DEFAULT})
+     * @return a {@link CompiledSource} holding the complete shadow vertex and depth-only fragment
+     * @throws IllegalArgumentException if {@code ShaderBufferPath} is {@code NONE}
+     */
+    public static CompiledSource compileShadowAutoGen(CgParsedShader shader,
+                                                       CgParsedPass forwardPass,
+                                                       List<CgAttachedBuffer> attachedBuffers,
+                                                       CgUniformBuffer matPropsUbo,
+                                                       CompileConfig config) {
+        final String shadowVertexBody;
+        if (isSimpleVertex(forwardPass)) {
+            // Simple path: minimal position-only transform using the frame UBO shadow matrix
+            shadowVertexBody =
+                    "    // Auto-generated shadow caster — minimal position transform\n"
+                    + "    gl_Position = cg_ShadowViewProjMatrix * CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0);\n"
+                    + "    // Depth bias to prevent shadow acne (cg_ShadowParams.z)\n"
+                    + "    gl_Position.z += cg_ShadowParams.z * gl_Position.w;\n"
+                    + "    // Pancaking: clamp to avoid near-plane clipping on thin objects\n"
+                    + "    gl_Position.z = max(gl_Position.z, -gl_Position.w);\n";
+        } else {
+            // Complex path: run forward vertex body, then override gl_Position with shadow transform
+            shadowVertexBody =
+                    "    // Auto-generated shadow caster — complex vertex (has animation or custom attributes)\n"
+                    + forwardPass.vertexBody() + "\n"
+                    + "    // Override gl_Position with light-space transform\n"
+                    + "    gl_Position = cg_ShadowViewProjMatrix * CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0);\n"
+                    + "    // Depth bias and pancaking (cg_ShadowParams.z)\n"
+                    + "    gl_Position.z += cg_ShadowParams.z * gl_Position.w;\n"
+                    + "    gl_Position.z = max(gl_Position.z, -gl_Position.w);\n";
+        }
+
+        // Fragment: depth-only — empty body, rasterizer writes depth automatically
+        final String shadowFragmentBody =
+                "    // Depth-only shadow pass — rasterizer writes depth automatically.\n";
+
+        // Build synthetic shadow pass reusing forward pass's v2f for interface block consistency
+        CgFragOutputParser.FragOutput shadowFragOutput =
+                CgFragOutputParser.FragOutput.singleOutput("fragColor");
+        CgParsedPass shadowPass = new CgParsedPass(
+                CgParsedPass.LIGHT_MODE_SHADOW_CASTER,
+                CgParsedPass.LIGHT_MODE_SHADOW_CASTER,
+                io.github.somehussar.crystalgraphics.api.state.CgRenderState.DEFAULT,
+                forwardPass.v2fStructBody(),
+                forwardPass.globalDecls(),
+                shadowVertexBody,
+                shadowFragmentBody,
+                shadowFragOutput);
+
+        return compile(shader, shadowPass, attachedBuffers, matPropsUbo, CompileConfig.DEFAULT);
+    }
+
+    /**
+     * Returns {@code true} when this pass is "simple" enough to share a single auto-generated
+     * shadow material with other simple-geometry drawables (analogue of Godot's
+     * {@code uses_shared_shadow_material}).
+     *
+     * <p>A pass is considered simple when ALL of the following hold:</p>
+     * <ol>
+     *   <li>The vertex body does not reference user-defined shader properties
+     *       (names starting with {@code _} followed by an uppercase letter — e.g. {@code _MainTex}).
+     *       This heuristic detects vertex animation or UV-offset vertex transforms.</li>
+     *   <li>The fragment body contains no {@code discard} keyword (no alpha-clip).</li>
+     *   <li>Face culling is not {@link CgCullState#NONE} (backface culling is active —
+     *       required so the shadow pass covers both faces correctly).</li>
+     * </ol>
+     *
+     * <p>No GL calls — pure string inspection.</p>
+     *
+     * @param pass the pass to evaluate; must not be null
+     * @return {@code true} if a minimal position-only shadow vertex can be used
+     */
+    public static boolean isSimpleVertex(CgParsedPass pass) {
+        // Check 1: vertex body has no user property references (_UpperCaseName pattern)
+        boolean noUserProps = !pass.vertexBody().matches("(?s).*\\b_[A-Z]\\w+.*");
+        // Check 2: fragment body has no discard (no alpha-clip)
+        boolean noDiscard = !pass.fragmentBody().contains("discard");
+        // Check 3: culling is not OFF (NONE means double-sided — shadow pass must cull correctly)
+        CgCullState cull = pass.renderState().getCull();
+        boolean cullingIsOff = (cull != null && cull == CgCullState.NONE);
+        return noUserProps && noDiscard && !cullingIsOff;
+    }
+
+    // ── Vertex shader builder ─────────────────────────────────────────────────
+
+    private static String buildVertexSource(CgParsedShader shader,
+                                             CgParsedPass pass,
                                              List<CgMaterialProperty> properties,
                                              List<CgShaderParser.V2fField> v2fFields,
                                              boolean useSsbo,
@@ -228,9 +305,9 @@ public final class CgMaterialShaderCompiler {
         sb.append(useSsbo ? "#version 430 core\n" : "#version 330 core\n");
 
         // Keyword #define injection — in featureNames declaration order, before user #-lines
-        appendKeywordDefines(sb, parsed.featureNames(), config.activeKeywords());
+        appendKeywordDefines(sb, shader.featureNames(), config.activeKeywords());
 
-        String[] gd = partitionGlobalDecls(parsed.globalDecls());
+        String[] gd = partitionGlobalDecls(pass.globalDecls());
         String directiveLines = gd[0];
         String codeLines = gd[1];
         if (!directiveLines.isEmpty()) sb.append(directiveLines).append('\n');
@@ -245,7 +322,7 @@ public final class CgMaterialShaderCompiler {
 
         sb.append("#include \"").append(ENV_INCLUDE).append("\"\n");
 
-        // Step 5: Property uniform declarations (sampler types only; non-sampler go into CgMaterialBlock UBO)
+        // Property uniform declarations (sampler types only; non-sampler go into CgMaterialBlock UBO)
         appendPropertyUniforms(sb, properties);
 
         // Material properties UBO (CgMaterialBlock) — emitted before user-attached buffers
@@ -255,25 +332,25 @@ public final class CgMaterialShaderCompiler {
 
         appendAttachedBuffers(sb, attachedBuffers, shaderBufferPath);
 
-        // Step 6: v2f struct
-        appendV2fStruct(sb, parsed.v2fStructBody());
+        // v2f struct
+        appendV2fStruct(sb, pass.v2fStructBody());
 
-        // Step 7: compiler-wired flat int varying for instance ID
+        // Compiler-wired flat int varying for instance ID
         sb.append("flat out int cg_InstanceId;\n");
 
-        // Step 8: v2f varying outputs
+        // v2f varying outputs
         appendV2fVaryingOutputs(sb, v2fFields);
 
-        // Step 9: Global declarations (code lines only — directives emitted above)
+        // Global declarations (code lines only — directives emitted above)
         appendGlobalDecls(sb, codeLines);
 
-        // Step 10: User vertex function
+        // User vertex function
         sb.append("// User vertex function\n");
         sb.append("void vertex(out v2f o) {\n")
-          .append(parsed.vertexBody()).append("\n")
+          .append(pass.vertexBody()).append("\n")
           .append("}\n");
 
-        // Step 11: Generated main()
+        // Generated main()
         appendVertexMain(sb, v2fFields);
 
         return sb.toString();
@@ -281,26 +358,8 @@ public final class CgMaterialShaderCompiler {
 
     // ── Fragment shader builder ───────────────────────────────────────────────
 
-    /**
-     * Generates the complete GLSL fragment shader source.
-     *
-     * <p>Generation sequence (matches plan T8, steps 1–10):</p>
-     * <ol>
-     *   <li>{@code #version} directive</li>
-     *   <li>Keyword {@code #define NAME 1} lines (from {@code config}, in {@code featureNames} order)</li>
-     *   <li>User preamble {@code #}-directive lines</li>
-     *   <li>{@code #define CG_USE_SSBO 1} (SSBO path only; no CG_VERTEX_STAGE)</li>
-     *   <li>{@code #include "crystalgraphics:shaders/env/cg_env.glsl"}</li>
-     *   <li>Property uniform declarations</li>
-     *   <li>v2f struct</li>
-     *   <li>v2f varying inputs ({@code in <type> _v2f_<name>;})</li>
-     *   <li>Global declarations</li>
-     *   <li>{@code out vec4 _cg_fragColor;} (single-output) or layout-qualified RT outputs (MRT)</li>
-     *   <li>User fragment function</li>
-     *   <li>Generated {@code void main()}</li>
-     * </ol>
-     */
-    private static String buildFragmentSource(CgParsedShader parsed,
+    private static String buildFragmentSource(CgParsedShader shader,
+                                               CgParsedPass pass,
                                                List<CgMaterialProperty> properties,
                                                List<CgShaderParser.V2fField> v2fFields,
                                                boolean useSsbo,
@@ -315,22 +374,22 @@ public final class CgMaterialShaderCompiler {
         sb.append(useSsbo ? "#version 430 core\n" : "#version 330 core\n");
 
         // Keyword #define injection — in featureNames declaration order, before user #-lines
-        appendKeywordDefines(sb, parsed.featureNames(), config.activeKeywords());
+        appendKeywordDefines(sb, shader.featureNames(), config.activeKeywords());
 
-        String[] gd = partitionGlobalDecls(parsed.globalDecls());
+        String[] gd = partitionGlobalDecls(pass.globalDecls());
         String directiveLines = gd[0];
         String codeLines = gd[1];
         if (!directiveLines.isEmpty()) sb.append(directiveLines).append('\n');
         appendAutoRequiredExtensions(sb, requiredExtensions, directiveLines);
 
-        // Step 2: CG_USE_SSBO (SSBO path only; fragment has no CG_VERTEX_STAGE)
+        // CG_USE_SSBO (SSBO path only; fragment has no CG_VERTEX_STAGE)
         if (useSsbo) {
             sb.append("#define CG_USE_SSBO 1\n");
         }
 
         sb.append("#include \"").append(ENV_INCLUDE).append("\"\n");
 
-        // Step 4: Property uniform declarations (sampler types only; non-sampler go into CgMaterialBlock UBO)
+        // Property uniform declarations (sampler types only; non-sampler go into CgMaterialBlock UBO)
         appendPropertyUniforms(sb, properties);
 
         // Material properties UBO (CgMaterialBlock) — emitted before user-attached buffers
@@ -340,24 +399,24 @@ public final class CgMaterialShaderCompiler {
 
         appendAttachedBuffers(sb, attachedBuffers, shaderBufferPath);
 
-        // Step 5: v2f struct
-        appendV2fStruct(sb, parsed.v2fStructBody());
+        // v2f struct
+        appendV2fStruct(sb, pass.v2fStructBody());
 
-        // Step 6: v2f varying inputs
+        // v2f varying inputs
         appendV2fVaryingInputs(sb, v2fFields);
 
-        // Step 7: Global declarations (code lines only — directives emitted above)
+        // Global declarations (code lines only — directives emitted above)
         appendGlobalDecls(sb, codeLines);
 
-        // Step 8: fragment output declarations (single-output or MRT)
-        appendFragmentOutputDeclarations(sb, parsed);
+        // Fragment output declarations (single-output or MRT)
+        appendFragmentOutputDeclarations(sb, pass);
 
-        // Step 9: User fragment function
+        // User fragment function
         sb.append("// User fragment function\n");
-        appendFragmentUserFunction(sb, parsed);
+        appendFragmentUserFunction(sb, pass);
 
-        // Step 10: Generated main()
-        appendFragmentMain(sb, v2fFields, parsed);
+        // Generated main()
+        appendFragmentMain(sb, v2fFields, pass);
 
         return sb.toString();
     }
@@ -389,11 +448,6 @@ public final class CgMaterialShaderCompiler {
         }
     }
 
-    /**
-     * Injects {@code #define NAME 1} for each active keyword, iterating
-     * {@code featureNames} in declaration order (not set iteration order).
-     * No-op when {@code activeKeywords} is empty.
-     */
     private static void appendKeywordDefines(StringBuilder sb, List<String> featureNames,
                                               Set<String> activeKeywords) {
         if (activeKeywords.isEmpty()) return;
@@ -404,11 +458,6 @@ public final class CgMaterialShaderCompiler {
         }
     }
 
-    /**
-     * Injects SSBO/TBO and UBO declarations for all user-attached buffers.
-     * No-op when the list is empty. Dispatches on {@link CgAttachedBuffer#isUbo()}.
-     * UBO declarations are path-independent (identical on SSBO and TBO paths).
-     */
     private static void appendAttachedBuffers(StringBuilder sb,
                                                List<CgAttachedBuffer> attachedBuffers,
                                                CgCapabilities.ShaderBufferPath path) {
@@ -426,11 +475,6 @@ public final class CgMaterialShaderCompiler {
         }
     }
 
-    /**
-     * Emits one {@code uniform samplerXxx name;} line per sampler property.
-     * Non-sampler properties (float, int, vec*, color, range) are excluded —
-     * they are declared in the {@code CgMaterialBlock} UBO block instead.
-     */
     private static void appendPropertyUniforms(StringBuilder sb, List<CgMaterialProperty> properties) {
         boolean hasSamplers = false;
         for (CgMaterialProperty p : properties) {
@@ -444,9 +488,6 @@ public final class CgMaterialShaderCompiler {
         }
     }
 
-    /**
-     * Emits the {@code struct v2f} declaration block.
-     */
     private static void appendV2fStruct(StringBuilder sb, String v2fStructBody) {
         sb.append("// v2f struct\n");
         sb.append("struct v2f {\n");
@@ -456,8 +497,6 @@ public final class CgMaterialShaderCompiler {
 
     private static void appendV2fVaryingOutputs(StringBuilder sb, List<CgShaderParser.V2fField> fields) {
         if (fields.isEmpty()) return;
-        // Block name must differ from the struct type name 'v2f' — GLSL does not allow an interface
-        // block and a struct to share an identifier in the same scope.
         sb.append("out _CgV2fBlock {\n");
         for (CgShaderParser.V2fField f : fields) {
             sb.append("    ").append(f.type()).append(" ").append(f.name()).append(";\n");
@@ -474,10 +513,6 @@ public final class CgMaterialShaderCompiler {
         sb.append("} _cg_v2f;\n");
     }
 
-    /**
-     * Emits the optional global declarations section (helper functions, additional uniforms).
-     * Empty or blank globalDecls produces no output.
-     */
     private static void appendGlobalDecls(StringBuilder sb, String globalDecls) {
         if (globalDecls != null && !globalDecls.trim().isEmpty()) {
             sb.append("// Global declarations\n");
@@ -497,12 +532,12 @@ public final class CgMaterialShaderCompiler {
         sb.append("}\n");
     }
 
-    private static void appendFragmentOutputDeclarations(StringBuilder sb, CgParsedShader parsed) {
-        if (!parsed.fragOutput().isMrt()) {
+    private static void appendFragmentOutputDeclarations(StringBuilder sb, CgParsedPass pass) {
+        if (!pass.fragOutput().isMrt()) {
             sb.append("out vec4 _cg_fragColor;\n");
         } else {
-            List<String> fieldNames = parsed.fragOutput().fieldNames();
-            List<Integer> locations = parsed.fragOutput().locations();
+            List<String> fieldNames = pass.fragOutput().fieldNames();
+            List<Integer> locations = pass.fragOutput().locations();
             for (int i = 0; i < fieldNames.size(); i++) {
                 int loc = locations.get(i);
                 sb.append("layout(location = ").append(loc).append(") out vec4 _cg_RT").append(loc).append(";\n");
@@ -510,35 +545,35 @@ public final class CgMaterialShaderCompiler {
         }
     }
 
-    private static void appendFragmentUserFunction(StringBuilder sb, CgParsedShader parsed) {
-        if (!parsed.fragOutput().isMrt()) {
+    private static void appendFragmentUserFunction(StringBuilder sb, CgParsedPass pass) {
+        if (!pass.fragOutput().isMrt()) {
             sb.append("void fragment(in v2f i, out vec4 ")
-              .append(parsed.fragOutput().outParamName()).append(") {\n")
-              .append(parsed.fragmentBody()).append("\n")
+              .append(pass.fragOutput().outParamName()).append(") {\n")
+              .append(pass.fragmentBody()).append("\n")
               .append("}\n");
         } else {
-            sb.append("void fragment(in v2f i, out ").append(parsed.fragOutput().mrtStructName())
-              .append(" ").append(parsed.fragOutput().outParamName()).append(") {\n")
-              .append(parsed.fragmentBody()).append("\n")
+            sb.append("void fragment(in v2f i, out ").append(pass.fragOutput().mrtStructName())
+              .append(" ").append(pass.fragOutput().outParamName()).append(") {\n")
+              .append(pass.fragmentBody()).append("\n")
               .append("}\n");
         }
     }
 
     private static void appendFragmentMain(StringBuilder sb, List<CgShaderParser.V2fField> fields,
-                                            CgParsedShader parsed) {
+                                            CgParsedPass pass) {
         sb.append("void main() {\n");
         sb.append("  v2f _v2f_local;\n");
         for (CgShaderParser.V2fField f : fields) {
             sb.append("  _v2f_local.").append(f.name())
               .append(" = _cg_v2f.").append(f.name()).append(";\n");
         }
-        if (!parsed.fragOutput().isMrt()) {
+        if (!pass.fragOutput().isMrt()) {
             sb.append("  fragment(_v2f_local, _cg_fragColor);\n");
         } else {
-            sb.append("  ").append(parsed.fragOutput().mrtStructName()).append(" _cg_mrtOut;\n");
+            sb.append("  ").append(pass.fragOutput().mrtStructName()).append(" _cg_mrtOut;\n");
             sb.append("  fragment(_v2f_local, _cg_mrtOut);\n");
-            List<String> fieldNames = parsed.fragOutput().fieldNames();
-            List<Integer> locations = parsed.fragOutput().locations();
+            List<String> fieldNames = pass.fragOutput().fieldNames();
+            List<Integer> locations = pass.fragOutput().locations();
             for (int i = 0; i < fieldNames.size(); i++) {
                 int loc = locations.get(i);
                 sb.append("  _cg_RT").append(loc).append(" = _cg_mrtOut.").append(fieldNames.get(i)).append(";\n");
