@@ -547,13 +547,13 @@ public class CgShaderParserRenderStateTest {
                 () -> parseWithRS("RenderState { Stencil { UnknownKey 1 } }\n"));
     }
 
-    @Test
-    public void stencil_absent_disabledByDefault() {
-        CgParsedShader p = parseWithRS("RenderState { DepthTest LESS }\n");
-        io.github.somehussar.crystalgraphics.api.state.CgStencilState ss = rs(p).getStencil();
-        System.out.println("✓ stencil_absent_disabledByDefault: enabled=" + ss.enabled());
-        assertFalse(ss.enabled());
-    }
+     @Test
+     public void stencil_absent_disabledByDefault() {
+         CgParsedShader p = parseWithRS("RenderState { DepthTest LESS }\n");
+         io.github.somehussar.crystalgraphics.api.state.CgStencilState ss = rs(p).getStencil();
+         System.out.println("✓ stencil_absent_disabledByDefault: stencil=" + ss);
+         assertNull("Stencil slot should be null when not declared in RenderState block", ss);
+     }
 
     // ── Group 9 — Queue keyword ───────────────────────────────────────────────
 
@@ -571,28 +571,28 @@ public class CgShaderParserRenderStateTest {
     public void queue_Geometry() {
         CgParsedShader p = parseFull(shaderWithQueue("Queue = \"Geometry\""));
         System.out.println("✓ queue_Geometry: renderQueue=" + p.renderQueue());
-        assertEquals(CgRenderQueue.GEOMETRY.getValue(), p.renderQueue());
+        assertEquals(CgRenderQueue.GEOMETRY, p.renderQueue());
     }
 
     @Test
     public void queue_Transparent() {
         CgParsedShader p = parseFull(shaderWithQueue("Queue = \"Transparent\""));
         System.out.println("✓ queue_Transparent: renderQueue=" + p.renderQueue());
-        assertEquals(CgRenderQueue.TRANSPARENT.getValue(), p.renderQueue());
+        assertEquals(CgRenderQueue.TRANSPARENT, p.renderQueue());
     }
 
     @Test
     public void queue_AlphaTest() {
         CgParsedShader p = parseFull(shaderWithQueue("Queue = \"AlphaTest\""));
         System.out.println("✓ queue_AlphaTest: renderQueue=" + p.renderQueue());
-        assertEquals(CgRenderQueue.ALPHA_TEST.getValue(), p.renderQueue());
+        assertEquals(CgRenderQueue.ALPHA_TEST, p.renderQueue());
     }
 
     @Test
     public void queue_Background() {
         CgParsedShader p = parseFull(shaderWithQueue("Queue = \"Background\""));
         System.out.println("✓ queue_Background: renderQueue=" + p.renderQueue());
-        assertEquals(CgRenderQueue.BACKGROUND.getValue(), p.renderQueue());
+        assertEquals(CgRenderQueue.BACKGROUND, p.renderQueue());
     }
 
     @Test
@@ -606,7 +606,7 @@ public class CgShaderParserRenderStateTest {
     public void queue_caseInsensitive_geometry() {
         CgParsedShader p = parseFull(shaderWithQueue("Queue = \"geometry\""));
         System.out.println("✓ queue_caseInsensitive_geometry: renderQueue=" + p.renderQueue());
-        assertEquals(CgRenderQueue.GEOMETRY.getValue(), p.renderQueue());
+        assertEquals(CgRenderQueue.GEOMETRY, p.renderQueue());
     }
 
     @Test
@@ -631,7 +631,7 @@ public class CgShaderParserRenderStateTest {
     public void queue_absent_defaultsToGeometry() {
         CgParsedShader p = parseWithRS("");
         System.out.println("✓ queue_absent_defaultsToGeometry: renderQueue=" + p.renderQueue());
-        assertEquals(CgRenderQueue.GEOMETRY.getValue(), p.renderQueue());
+        assertEquals(CgRenderQueue.GEOMETRY, p.renderQueue());
     }
 
     // ── Group 10 — Property types (new types only) ────────────────────────────
@@ -791,7 +791,7 @@ public class CgShaderParserRenderStateTest {
         System.out.println("✓ absent_blocks_allDefaults: renderState=DEFAULT renderQueue="
                 + p.renderQueue());
         assertEquals(CgRenderState.DEFAULT.getBlend().enabled(), rs(p).getBlend().enabled());
-        assertEquals(CgRenderQueue.GEOMETRY.getValue(), p.renderQueue());
+        assertEquals(CgRenderQueue.GEOMETRY, p.renderQueue());
         assertFalse(rs(p).getAlpha().enabled());
         assertTrue(rs(p).getColorMasks().isEmpty());
     }
@@ -799,10 +799,9 @@ public class CgShaderParserRenderStateTest {
     @Test
     public void renderState_emptyBlock_allDefaults() {
         CgParsedShader p = parseWithRS("RenderState { }\n");
-        System.out.println("✓ renderState_emptyBlock_allDefaults: blend.enabled=" + rs(p).getBlend().enabled());
-        // Empty RenderState block — all slots stay at defaults
-        assertFalse(rs(p).getBlend().enabled());
-        assertFalse(rs(p).getAlpha().enabled());
+        System.out.println("✓ renderState_emptyBlock_allDefaults: blend=" + rs(p).getBlend() + " alpha=" + rs(p).getAlpha());
+        assertNull("Empty RenderState block should leave blend slot null", rs(p).getBlend());
+        assertNull("Empty RenderState block should leave alpha slot null", rs(p).getAlpha());
     }
 
     @Test

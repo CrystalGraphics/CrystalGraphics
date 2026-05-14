@@ -526,7 +526,7 @@ final class CgGlStates {
         }
 
         public static ViewportState capture() {
-            IntBuffer buf = BufferUtils.createIntBuffer(4);
+            IntBuffer buf = BufferUtils.createIntBuffer(16);
             GL11.glGetInteger(GL11.GL_VIEWPORT, buf);
             return new ViewportState(buf.get(0), buf.get(1), buf.get(2), buf.get(3));
         }
@@ -558,7 +558,7 @@ final class CgGlStates {
 
         public static ScissorState capture() {
             boolean enabled = GL11.glGetBoolean(GL11.GL_SCISSOR_TEST);
-            IntBuffer buf = BufferUtils.createIntBuffer(4);
+            IntBuffer buf = BufferUtils.createIntBuffer(16);
             GL11.glGetInteger(GL11.GL_SCISSOR_BOX, buf);
             return new ScissorState(enabled, buf.get(0), buf.get(1), buf.get(2), buf.get(3));
         }
@@ -627,7 +627,7 @@ final class CgGlStates {
         }
 
         public static PolygonModeState capture() {
-            IntBuffer buf = BufferUtils.createIntBuffer(2);
+            IntBuffer buf = BufferUtils.createIntBuffer(16);
             GL11.glGetInteger(GL11.GL_POLYGON_MODE, buf);
             return new PolygonModeState(buf.get(0), buf.get(1));
         }

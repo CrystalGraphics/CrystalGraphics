@@ -1,9 +1,12 @@
 package io.github.somehussar.crystalgraphics.api.material;
 
+import java.util.Locale;
+
 /**
- * Render queue ordering values for CrystalShader materials.
+ * Render queue ordering constants for CrystalShader materials.
  *
- * <p>Values mirror Unity's canonical queue numbers for ecosystem familiarity:</p>
+ * <p>Integer values mirror Unity's canonical queue numbers for ecosystem familiarity.
+ * Any integer value is valid — the named constants are the common anchor points:</p>
  * <ul>
  *   <li>{@link #BACKGROUND} (1000) — skyboxes and other far-background draws</li>
  *   <li>{@link #GEOMETRY} (2000) — standard opaque geometry (default)</li>
@@ -12,71 +15,87 @@ package io.github.somehussar.crystalgraphics.api.material;
  *   <li>{@link #OVERLAY} (4000) — UI, lens flares, post overlays</li>
  * </ul>
  *
- * <p>TODO: A future {@code CgFrameRenderer} orchestrator will use
- * {@code CgMaterial.getRenderQueue()} to sort draw calls globally
- * (opaque → alpha-test → transparent → overlay).
- * Currently this value is parsed and stored but has no automatic sorting effect.</p>
+ * <p>Pass routing uses the threshold constants, not exact equality — any queue value
+ * {@code >= TRANSPARENT_THRESHOLD} is treated as transparent, allowing authors to use
+ * intermediate values like {@code 2600} without special-casing.</p>
  */
-public enum CgRenderQueue {
+public final class CgRenderQueue {
 
-    BACKGROUND(1000),
-    GEOMETRY(2000),
-    ALPHA_TEST(2450),
-    TRANSPARENT(3000),
-    OVERLAY(4000);
+    private CgRenderQueue() {}
 
-    private final int value;
+    // ── Named queue anchors (Unity-compatible) ────────────────────────────────
 
-    CgRenderQueue(int value) {
-        this.value = value;
-    }
+    public static final int BACKGROUND  = 1000;
+    public static final int GEOMETRY    = 2000;
+    public static final int ALPHA_TEST  = 2450;
+    public static final int TRANSPARENT = 3000;
+    public static final int OVERLAY     = 4000;
 
-    /** Returns the numeric queue priority for this slot. */
-    public int getValue() {
-        return value;
-    }
+    // ── Threshold constants for pass-bucket routing ───────────────────────────
 
     /**
-     * Looks up a queue by its name, case-insensitively.
-     * Accepts both {@code "AlphaTest"} and {@code "ALPHA_TEST"} spellings
-     * (the enum name and the Unity-style camel variant are both tried).
-     *
-     * @param name the queue name to look up
-     * @return the matching enum constant
-     * @throws IllegalArgumentException if no constant matches {@code name}
+     * Queue values {@code >= ALPHA_TEST_THRESHOLD} and {@code < TRANSPARENT_THRESHOLD}
+     * are routed to the alpha-test pass bucket.
      */
-    public static CgRenderQueue fromName(String name) {
+    public static final int ALPHA_TEST_THRESHOLD  = 2450;
+
+    /**
+     * Queue values {@code >= TRANSPARENT_THRESHOLD} and {@code < OVERLAY_THRESHOLD}
+     * are routed to the transparent pass bucket.
+     * Matches Unity's opaque/transparent boundary.
+     */
+    public static final int TRANSPARENT_THRESHOLD = 2500;
+
+    /**
+     * Queue values {@code >= OVERLAY_THRESHOLD} are routed to the overlay pass bucket.
+     */
+    public static final int OVERLAY_THRESHOLD     = 4000;
+
+    // ── Lookup utilities ──────────────────────────────────────────────────────
+
+    /**
+     * Maps a queue name to its integer value, accepting both the Unity-style PascalCase
+     * variant ({@code "AlphaTest"}) and the SCREAMING_SNAKE_CASE form ({@code "ALPHA_TEST"}).
+     * The lookup is case-insensitive.
+     *
+     * @param name the queue name; must not be null
+     * @return the corresponding int queue value
+     * @throws IllegalArgumentException if {@code name} does not match any named constant
+     */
+    public static int fromName(String name) {
         if (name == null) throw new IllegalArgumentException("CgRenderQueue name must not be null");
-        String upper = name.toUpperCase(java.util.Locale.ROOT).replace('-', '_');
-        for (CgRenderQueue q : values()) {
-            if (q.name().equals(upper)) return q;
+        String upper = name.toUpperCase(Locale.ROOT).replace('-', '_');
+        // Direct SCREAMING_SNAKE_CASE match
+        switch (upper) {
+            case "BACKGROUND":  return BACKGROUND;
+            case "GEOMETRY":    return GEOMETRY;
+            case "ALPHA_TEST":  return ALPHA_TEST;
+            case "TRANSPARENT": return TRANSPARENT;
+            case "OVERLAY":     return OVERLAY;
+            default: break;
         }
-        // Also accept compact PascalCase variants like "AlphaTest" → "ALPHA_TEST"
-        String spacedUpper = splitCamel(name).toUpperCase(java.util.Locale.ROOT).replace(' ', '_');
-        for (CgRenderQueue q : values()) {
-            if (q.name().equals(spacedUpper)) return q;
+        // Also accept PascalCase variants like "AlphaTest" → "ALPHA_TEST"
+        String spacedUpper = splitCamel(name).toUpperCase(Locale.ROOT).replace(' ', '_');
+        switch (spacedUpper) {
+            case "BACKGROUND":  return BACKGROUND;
+            case "GEOMETRY":    return GEOMETRY;
+            case "ALPHA_TEST":  return ALPHA_TEST;
+            case "TRANSPARENT": return TRANSPARENT;
+            case "OVERLAY":     return OVERLAY;
+            default:
+                throw new IllegalArgumentException("Unknown render queue: '" + name + "'");
         }
-        throw new IllegalArgumentException("Unknown render queue: '" + name + "'");
     }
 
     /**
-     * Returns the queue whose {@link #getValue()} is closest to {@code value}.
-     * On a tie, the lower-valued queue wins.
+     * Identity function — returns {@code value} unchanged. Provided for call-site
+     * compatibility with code that previously called {@code CgRenderQueue.fromValue(int)}.
      *
      * @param value the numeric queue value
-     * @return the closest named queue constant
+     * @return the same value
      */
-    public static CgRenderQueue fromValue(int value) {
-        CgRenderQueue best = GEOMETRY;
-        int bestDist = Math.abs(GEOMETRY.value - value);
-        for (CgRenderQueue q : values()) {
-            int dist = Math.abs(q.value - value);
-            if (dist < bestDist) {
-                best = q;
-                bestDist = dist;
-            }
-        }
-        return best;
+    public static int fromValue(int value) {
+        return value;
     }
 
     /** Inserts spaces before each uppercase letter that follows a lowercase letter. */
