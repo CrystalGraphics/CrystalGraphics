@@ -5,7 +5,7 @@ import io.github.somehussar.crystalgraphics.api.CgBindingPoints;
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
 import io.github.somehussar.crystalgraphics.api.material.CgAttachedBuffer;
 import io.github.somehussar.crystalgraphics.api.material.CgMaterial;
-import io.github.somehussar.crystalgraphics.api.material.CgMaterialPipeline;
+import io.github.somehussar.crystalgraphics.api.render.CgRenderPipeline;
 import io.github.somehussar.crystalgraphics.api.material.CgRenderPassVariant;
 import io.github.somehussar.crystalgraphics.api.material.CgRenderQueue;
 import io.github.somehussar.crystalgraphics.api.shader.CgPreprocessorException;
@@ -605,7 +605,7 @@ public final class CgMaterialShader {
     
     /** Wires all pipeline/attached shader buffers to shader*/
     private void wireShaderBuffers(CgShader shader) {
-        CgMaterialPipeline pipeline = CgMaterialPipeline.getInstance();
+        CgRenderPipeline pipeline = CgRenderPipeline.getInstance();
         shader.bind();
         pipeline.frameBuffer().wireShader(shader);
         pipeline.objectBuffer().wireShader(shader);
@@ -628,7 +628,7 @@ public final class CgMaterialShader {
                                          Map<ProgramKey, CgShader> newCache, List<CgShader> newShaders,
                                          boolean isFirst) {
         boolean hasExplicitShadow = parsed.getPassByLightMode(CgRenderPassVariant.SHADOW.lightModeName()) != null;
-        boolean isOpaque = parsed.renderQueue() < CgRenderQueue.TRANSPARENT.getValue();
+        boolean isOpaque = parsed.renderQueue() < CgRenderQueue.TRANSPARENT_THRESHOLD;
 
         if (!parsed.castShadows() || !isOpaque || hasExplicitShadow) return true;
 

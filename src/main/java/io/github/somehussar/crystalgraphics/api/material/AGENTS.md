@@ -19,61 +19,33 @@ This is the top of the CrystalShader material stack.
 | `CgAttachedBuffer` | Immutable descriptor for a user-attached SSBO/TBO or UBO buffer. Created via `CgAttachedBuffer.of(buffer, macroName)` (SSBO/TBO, STD430) or `CgAttachedBuffer.of(CgUniformBuffer)` (UBO, STD140). `isUbo()` returns `true` for UBO entries (macroName is null). SSBO/TBO fields: `buffer`, `macroName`, `structName` (= `format.getGlslName()`), `ssboArrayName` (`_cg_{lowerFirst}Arr`), `tboGetterName` (`_cg_get{structName}`). UBO entries: only `buffer` is set; macroName/structName/ssboArrayName/tboGetterName are all null. Block/sampler/UBO block name is always `buffer.getName()` — required for `wireShader()`. |
 | `CgMaterialRegistry` | Singleton load/reload/delete lifecycle manager. `get()` returns the singleton. `getOrCreate(String)` / `getOrCreate(CgMaterialKey)` check cache; on miss call `CgMaterial.create()` (which uses `CgMaterialShaderRegistry` internally), cache, and return. `reloadAll()` delegates to `CgMaterialShaderRegistry.get().reloadAll()` — marks all shader assets dirty; materials detect revision change on next `bind()`. `deleteAll()` deletes all cached material instances (freeing per-instance UBOs), then cascades to `CgMaterialShaderRegistry.get().deleteAll()` to free GL shader programs. Registered for teardown in `CgGraphicsLifecycle.destroyContext()`. |
 | `CgMaterialKey` | `@Desugar record` wrapping a resource-path string. `of(String)` factory. Value equality. Used as a typed alternative to raw strings. |
-| `CgMaterialPipeline` | Singleton pipeline owning per-frame UBO and per-object SSBO/TBO. `OBJECT_FORMAT` (std430, 48 floats) and `FRAME_BLOCK_FORMAT` (std140, 52 floats) are the engine-canonical typed buffer format descriptors. `frameBuffer()` returns the frame UBO for advanced wiring. `objectBuffer()` returns the shared per-object buffer. `getFrameUniforms()` returns the pipeline-owned mutable `CgFrameUniforms` holder. `beginFrame()` (no-arg) reads from the owned holder and uploads frame data each frame via named writes. `init()` / `destroy()` manage the singleton lifecycle. |
-| `CgFrameUniforms` | `@Data` mutable holder for per-frame uniform data. Fields: `Matrix4f view`, `Matrix4f proj`, `float timeSecs`, `int viewportW`, `int viewportH`. Owned by `CgMaterialPipeline` — mutate via setters then call `pipeline.beginFrame()`. |
+| `CgRenderQueue` | Final utility class (not an enum). Static `int` constants: `BACKGROUND` (1000), `GEOMETRY` (2000), `ALPHA_TEST` (2450), `TRANSPARENT` (3000), `OVERLAY` (4000). Threshold constants: `ALPHA_TEST_THRESHOLD` (2450), `TRANSPARENT_THRESHOLD` (2500), `OVERLAY_THRESHOLD` (4000). `fromName(String)` maps PascalCase or SCREAMING_SNAKE names to int value; throws for unknown names. |
 | `package-info.java` | Package-level Javadoc describing the material API and lifecycle contract. |
 
 **Shader compilation**: all compile pipeline logic lives in `gl/material/CgMaterialShader` + `CgMaterialShaderRegistry`. See [`gl/material/AGENTS.md`](../../../../../gl/material/AGENTS.md).
 
 ## Key API
 
-### CgMaterialPipeline — Per-Frame Setup
+### CgRenderPipeline — Per-Frame Setup
+
+Per-frame orchestration is owned by `CgRenderPipeline` in `api/render/`. The material API itself
+does not handle frame-level UBO or object buffer management. See [`api/render/AGENTS.md`](../render/AGENTS.md)
+for the full lifecycle and usage pattern.
 
 ```java
-// On GL context creation:
-CgMaterialPipeline.init();
+CgRenderPipeline pipe = CgRenderPipeline.getInstance();
+CgFrameData fd = pipe.getFrameData();
+fd.viewMatrix.set(viewBuf); fd.projMatrix.set(projBuf);
+fd.timeSecs = elapsedSecs; fd.viewportW = w; fd.viewportH = h;
+fd.deriveFromViewMatrix();
 
-// Per-frame:
-CgMaterialPipeline pipeline = CgMaterialPipeline.getInstance();
-CgFrameUniforms fu = pipeline.getFrameUniforms();
-fu.view(viewMatrix)
-  .proj(projMatrix)
-  .timeSecs(elapsedSeconds)
-  .viewportW(width)
-  .viewportH(height);
-pipeline.beginFrame();
-
-// Write per-object records — fields from OBJECT_FORMAT:
-CgShaderBuffer buf = pipeline.objectBuffer();
-CgBufferWriter w = buf.beginWrite(N);
-for (MyObject obj : objects) {
-    w.beginRecord()
-     .mat4("modelMatrix", obj.getModel())
-     .mat4("normalMatrix", obj.getNormal());
-     // custom0-3 auto-zeroed
-    buf.endRecord();
-}
-buf.endWrite();
-
-// Draw:
-material.bind();
-mesh.drawInstanced(N);
-material.unbind();
-
-// On GL context destroy:
-CgMaterialPipeline.destroy();
+CgRenderCommand cmd = pipe.acquireCommand();
+cmd.modelMatrix.translation(x, y, z);
+cmd.worldAabb[0] = x-r; cmd.worldAabb[3] = x+r;  // ... etc.
+cmd.mesh = myMesh; cmd.material = myMaterial;
+pipe.submit(cmd);
+pipe.execute(partialTicks);
 ```
-
-Available named fields in `OBJECT_FORMAT` (STD430, 48 floats):
-- `modelMatrix` — mat4, floats 0–15
-- `normalMatrix` — mat4, floats 16–31 (pass mat3 as full mat4; shader reads upper-left 3×3)
-- `custom0`–`custom3` — vec4, floats 32–47
-
-Available named fields in `FRAME_BLOCK_FORMAT` (STD140, 52 floats):
-- `cg_ViewMatrix` — mat4
-- `cg_ProjMatrix` — mat4
-- `cg_Time` — vec4: `t/20, t, t*2, t*3`
-- `cg_Resolution` — vec2: viewport width, height
 
 ### CgMaterial.bind() and CgMaterial.bindForVariant(CgRenderPassVariant)
 
@@ -101,8 +73,8 @@ if (material.hasShadowCasterPass()) {
 ```
 
 `getPassRenderState(CgRenderPassVariant)` returns the `CgRenderState` for the given pass, without binding. Useful for querying cull mode, depth write, etc. without activating the GL program.
-castShadows
-`hasShadowCasterPass()` — true when `=true` (parse flag, default true) AND `renderQueue < TRANSPARENT`. Reflects declared *intent*, not compile state — returns true even before the shadow program is compiled. Transparent materials always return false. `hasDepthPass()` — true when an explicit Depth pass is present in the last successful parse (`hasParsedPass("Depth")`).
+
+`hasShadowCasterPass()` — true when `castShadows=true` (parse flag, default true) AND `renderQueue < TRANSPARENT`. Reflects declared *intent*, not compile state — returns true even before the shadow program is compiled. Transparent materials always return false. `hasDepthPass()` — true when an explicit Depth pass is present in the last successful parse (`hasParsedPass("Depth")`).
 
 ### CgMaterial.applyProperties(consumer)
 ```java

@@ -3,6 +3,7 @@ package io.github.somehussar.crystalgraphics.api.material;
 import io.github.somehussar.crystalgraphics.api.CgBindingPoints;
 import io.github.somehussar.crystalgraphics.api.buffer.CgBufferFormat;
 import io.github.somehussar.crystalgraphics.api.buffer.CgGpuType;
+import io.github.somehussar.crystalgraphics.api.render.CgRenderPipeline;
 import io.github.somehussar.crystalgraphics.api.shader.CgShader;
 import io.github.somehussar.crystalgraphics.api.shader.CgShaderBindings;
 import io.github.somehussar.crystalgraphics.api.state.CgGlSlot;
@@ -342,7 +343,7 @@ public final class CgMaterial {
      * {@code cg_env.glsl} provides.</p>
      *
      * <p><strong>What NOT to pass</strong>: engine pipeline buffers
-     * ({@code CgMaterialPipeline.objectBuffer()}, etc.). Those are wired automatically by the
+     * ({@code CgRenderPipeline.objectBuffer()}, etc.). Those are wired automatically by the
      * engine and declared in {@code cg_env.glsl}. Passing them here causes duplicate declarations.</p>
      *
      * <p><strong>Ownership warning</strong>: {@code CgMaterial.load(path)} returns a
@@ -690,7 +691,7 @@ public final class CgMaterial {
      */
     public boolean hasShadowCasterPass() {
         if (cgMaterialShader == null) return false;
-        if (getRenderQueue() >= CgRenderQueue.TRANSPARENT.getValue()) return false;
+        if (getRenderQueue() >= CgRenderQueue.TRANSPARENT_THRESHOLD) return false;
         CgParsedShader parsed = cgMaterialShader.getLastParsed();
         if (parsed == null) return false;
         return parsed.castShadows();
@@ -708,9 +709,9 @@ public final class CgMaterial {
 
     /**
      * Returns the pipeline's shared per-object SSBO/TBO.
-     * Equivalent to {@code CgMaterialPipeline.getInstance().objectBuffer()}.
+     * Equivalent to {@code CgRenderPipeline.getInstance().objectBuffer()}.
      *
-     * <p>Each object record is exactly {@link CgMaterialPipeline#OBJECT_FORMAT} = 48 floats.
+     * <p>Each object record is exactly {@code CgRenderPipeline.OBJECT_FORMAT} = 48 floats.
      * Use named writes — unwritten fields are auto-zeroed per record:</p>
      * <pre>{@code
      * CgShaderBuffer buf = material.objectBuffer();
@@ -729,10 +730,10 @@ public final class CgMaterial {
      * }</pre>
      *
      * @return the pipeline's object buffer; never {@code null}
-     * @throws IllegalStateException if {@link CgMaterialPipeline} has not been initialized
+     * @throws IllegalStateException if {@link CgRenderPipeline} has not been initialized
      */
     public CgShaderBuffer objectBuffer() {
-        return CgMaterialPipeline.getInstance().objectBuffer();
+        return CgRenderPipeline.getInstance().objectBuffer();
     }
 
     /**
@@ -946,6 +947,29 @@ public final class CgMaterial {
         CgMaterial pass = this;
         while (pass != null) {
             pass.bind();
+            drawCommand.run();
+            pass.unbind();
+            pass = pass.nextPass;
+        }
+    }
+
+    /**
+     * Executes {@code drawCommand} once per pass in this material's draw chain,
+     * binding each pass for the specified {@link CgRenderPassVariant} before the draw
+     * and unbinding it after.
+     *
+     * <p>Analogues: Unity {@code Material.SetPass(index)} per pass type;
+     * Godot {@code _render_list_template<PASS_MODE>()}; Filament variant routing.</p>
+     *
+     * <p>Source: render-pipeline-curation.md Section 14 (SHOULD-HAVE, Oracle correction D).</p>
+     *
+     * @param variant     the render pass variant to activate for each pass in the chain
+     * @param drawCommand the draw logic to invoke for each pass
+     */
+    public void drawChain(CgRenderPassVariant variant, Runnable drawCommand) {
+        CgMaterial pass = this;
+        while (pass != null) {
+            pass.bindForVariant(variant);
             drawCommand.run();
             pass.unbind();
             pass = pass.nextPass;
