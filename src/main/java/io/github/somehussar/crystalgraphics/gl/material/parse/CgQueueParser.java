@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 /**
  * Parses the {@code Queue = "Name"} keyword from a CrystalShader {@code .shader} source.
  *
- * <p>Returns {@code CgRenderQueue.GEOMETRY.getValue()} (2000) when the keyword is absent.</p>
+ * <p>Returns {@link CgRenderQueue#GEOMETRY} (2000) when the keyword is absent.</p>
  */
 final class CgQueueParser {
 
@@ -24,7 +24,7 @@ final class CgQueueParser {
 
     /**
      * Parses the optional {@code Queue = "Name"} keyword.
-     * Returns {@code CgRenderQueue.GEOMETRY.getValue()} (2000) when absent.
+     * Returns {@link CgRenderQueue#GEOMETRY} (2000) when absent.
      */
     static int parse(String source, String resourcePath) {
         // Detect unquoted form before attempting the quoted match
@@ -33,7 +33,7 @@ final class CgQueueParser {
                     "[" + resourcePath + "] Queue value must be a quoted string, e.g.: Queue = \"Transparent\"");
         }
         Matcher m = QUEUE_QUOTED_PATTERN.matcher(source);
-        if (!m.find()) return CgRenderQueue.GEOMETRY.getValue();
+        if (!m.find()) return CgRenderQueue.GEOMETRY;
 
         String raw = m.group(1).trim();
         // Numeric value?
@@ -42,7 +42,7 @@ final class CgQueueParser {
         } catch (NumberFormatException ignored) {}
         // Named queue — case-insensitive via CgRenderQueue.fromName()
         try {
-            return CgRenderQueue.fromName(raw).getValue();
+            return CgRenderQueue.fromName(raw);
         } catch (IllegalArgumentException e) {
             throw new CgShaderParseException(
                     "[" + resourcePath + "] Unknown Queue name '" + raw
