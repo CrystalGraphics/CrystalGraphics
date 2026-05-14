@@ -1,8 +1,8 @@
 package io.github.somehussar.crystalgraphics.gl.lifecycle;
 
 import io.github.somehussar.crystalgraphics.api.CgCapabilities;
-import io.github.somehussar.crystalgraphics.api.material.CgMaterialPipeline;
 import io.github.somehussar.crystalgraphics.api.material.CgMaterialRegistry;
+import io.github.somehussar.crystalgraphics.api.render.CgRenderPipeline;
 import io.github.somehussar.crystalgraphics.gl.buffer.CgQuadIndexBuffer;
 import io.github.somehussar.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
 import io.github.somehussar.crystalgraphics.gl.framebuffer.CgFrameBufferRegistry;
@@ -44,7 +44,7 @@ public final class CgGraphicsLifecycle {
      * before any material or fallback-texture usage.
      */
     public static void initContext() {
-        CgMaterialPipeline.init();
+        CgRenderPipeline.init();
         CgFallbackTextures.init();
     }
 
@@ -96,14 +96,16 @@ public final class CgGraphicsLifecycle {
 
         // Step 7b: User-created SSBO/TBO/UBO resources managed by CgShaderBufferRegistry.
         //   Must be freed before the GL context is lost. Engine-owned pipeline buffers
-        //   (frameUbo, objectBuffer in CgMaterialPipeline) are NOT in this registry —
+        //   (frameUbo, objectBuffer in CgRenderPipeline) are NOT in this registry —
         //   they are freed in step 7c.
         CgShaderBufferRegistry.get().deleteAll();
 
-        // Step 7c: Pipeline-owned frame UBO + object SSBO. Independent from vertex buffers.
-        CgMaterialPipeline.destroy();
+        // Step 8: Pipeline-owned frame UBO + object SSBO + command queue.
+        // CgRenderPipeline owns both the GPU pipeline buffers (formerly CgMaterialPipeline)
+        // and the render command queue; one destroy call handles all of it.
+        CgRenderPipeline.destroy();
 
-        // Step 8: All owned framebuffers — must be first.
+        // Step 9: All owned framebuffers — must be first.
         CgFrameBufferRegistry.get().deleteAll();
         
         

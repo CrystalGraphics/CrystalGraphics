@@ -16,7 +16,7 @@ package io.github.somehussar.crystalgraphics.api;
  * ({@code USER_START_*}) and grow upward.</p>
  *
  * <h3>Lifecycle</h3>
- * <p>{@link #init(CgCapabilities)} must be called (by {@code CgMaterialPipeline.init()})
+ * <p>{@link #init(CgCapabilities)} must be called (by {@code CgRenderPipeline.init()})
  * before any engine buffer is constructed. The three runtime fields are {@code -1}
  * until then; {@link #isInitialized()} returns {@code false} in that state.</p>
  */
@@ -79,7 +79,7 @@ public final class CgBindingPoints {
 
     /**
      * Resolves the three runtime engine-buffer slots from the detected hardware limits.
-     * Must be called once — by {@code CgMaterialPipeline.init()} — before any engine
+     * Must be called once — by {@code CgRenderPipeline.init()} — before any engine
      * buffer is constructed.
      *
      * @param caps detected capabilities; must not be null

@@ -79,7 +79,8 @@ For any work on shader loading, preprocessing, uniform binding, or the GLSL stan
 
 For `.shader` file loading, GLSL generation, and material bind/draw, use these guides:
 
-- `src/main/java/io/github/somehussar/crystalgraphics/api/material/AGENTS.md` — public material API: `CgMaterial` load/bind/property-set/delete, `CgMaterialPipeline` format constants + `beginFrame(CgFrameUniforms)`, object buffer write lifecycle
+- `src/main/java/io/github/somehussar/crystalgraphics/api/material/AGENTS.md` — public material API: `CgMaterial` load/bind/property-set/delete, pass variant routing, keyword variants, object buffer write lifecycle
+- `src/main/java/io/github/somehussar/crystalgraphics/api/render/AGENTS.md` — render pipeline public API: `CgRenderPipeline` (singleton orchestrator), `CgFrameData` (per-frame data), `CgRenderCommand` / `CgRenderCommandPool` / `CgRenderCommandQueue` (submission + sort), `CgSortKey`
 - `src/main/java/io/github/somehussar/crystalgraphics/gl/material/AGENTS.md` — public surface: `CgMaterialProperty` (runtime value + binding), `CgMaterialProperties` (UBO/sampler partition)
 - `src/main/java/io/github/somehussar/crystalgraphics/gl/material/parse/AGENTS.md` — internal parse/compile subpackage: `CgShaderParser` facade, `CgParsedShader`, `CgMaterialShaderCompiler`, and the package-private sub-parsers (`CgStructureParser`, `CgRenderStateParser`, `CgPropertiesParser`, `CgQueueParser`, `CgBufferGlslEmitter`)
 - `src/main/java/io/github/somehussar/crystalgraphics/api/buffer/AGENTS.md` — GPU buffer format descriptors: `CgGpuType`, `CgBufferField`, `CgBufferFormat` builder, std140/std430 alignment table, format-aware write mechanics
@@ -91,41 +92,35 @@ For `.shader` file loading, GLSL generation, and material bind/draw, use these g
 
 ```java
 // 1. Init (once, on GL context creation)
-CgMaterialPipeline.init();
+CgRenderPipeline.init();
 CgMaterial material = CgMaterial.load("mymod:shaders/terrain.shader");
 
-// 2. Per-frame — upload frame data
-CgMaterialPipeline pipeline = CgMaterialPipeline.getInstance();
-CgFrameUniforms fu = pipeline.getFrameUniforms();
-fu.setView(viewMatrix);
-fu.setProj(projMatrix);
-fu.setTimeSecs(elapsedSeconds);
-fu.setViewportW(width);
-fu.setViewportH(height);
-pipeline.beginFrame();
+// 2. Per-frame — populate frame data
+CgRenderPipeline pipeline = CgRenderPipeline.getInstance();
+CgFrameData fd = pipeline.getFrameData();
+fd.viewMatrix.set(viewBuf);
+fd.projMatrix.set(projBuf);
+fd.timeSecs = elapsedSeconds;
+fd.viewportW = width;
+fd.viewportH = height;
+fd.deriveFromViewMatrix();
 
-// 3. Per-frame — write per-object records
-CgShaderBuffer buf = pipeline.objectBuffer();
-CgBufferWriter w = buf.beginWrite(N);
-for (MyObject obj : objects) {
-    w.beginRecord()
-     .mat4("modelMatrix", obj.getModel())
-     .mat4("normalMatrix", obj.getNormal());
-     // custom0-3 auto-zeroed
-    buf.endRecord();   // ← single call replaces old two-call pattern
-}
-buf.endWrite();
+// 3. Submit render commands
+CgRenderCommand cmd = pipeline.acquireCommand();
+cmd.mesh = mesh;
+cmd.material = material;
+cmd.modelMatrix.translation(x, y, z);
+cmd.worldAabb[0] = x-r; cmd.worldAabb[3] = x+r;  // etc.
+pipeline.submit(cmd);
 
-// 4. Draw
-material.bind();
-mesh.drawInstanced(N);   // or drawDirect() for non-instanced
-material.unbind();
+// 4. Execute (called by CgRenderHook per frame)
+pipeline.execute(partialTicks);
 
 // 5. Teardown
-CgMaterialPipeline.destroy();
+CgRenderPipeline.destroy();
 ```
 
-**`OBJECT_FORMAT` fields** (`CgMaterialPipeline.OBJECT_FORMAT`, STD430, 48 floats):
+**`OBJECT_FORMAT` fields** (`CgRenderPipeline.OBJECT_FORMAT`, STD430, 48 floats):
 
 | Field | Type | Floats |
 |-------|------|--------|
@@ -133,7 +128,7 @@ CgMaterialPipeline.destroy();
 | `normalMatrix` | mat4 | 16–31 (shader reads upper-left 3×3 as mat3) |
 | `custom0`–`custom3` | vec4 | 32–47 |
 
-**`FRAME_BLOCK_FORMAT` fields** (`CgMaterialPipeline.FRAME_BLOCK_FORMAT`, STD140, 38 floats):
+**`FRAME_BLOCK_FORMAT` fields** (`CgRenderPipeline.FRAME_BLOCK_FORMAT`, STD140, 38 floats):
 
 | Field | Type | Content |
 |-------|------|---------|
@@ -151,7 +146,7 @@ material.applyBindings(b -> {
 ```
 
 **Lifecycle**: `CgGraphicsLifecycle.destroyContext()` auto-calls `CgMaterialRegistry.get().deleteAll()`,
-`CgShaderBufferRegistry.get().deleteAll()`, and `CgMaterialPipeline.destroy()` in the correct order.
+`CgShaderBufferRegistry.get().deleteAll()`, and `CgRenderPipeline.destroy()` in the correct order.
 
 ### GLSL Standard Library
 
