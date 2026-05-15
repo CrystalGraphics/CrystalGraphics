@@ -7,6 +7,6 @@
   "target": "@env(DEFAULT)",
   "compatibilityLevel": "JAVA_8",
   "mixins": [],
-  "client": [],
+  "client": ["client.MixinMinecraft", "client.MixinRenderGlobal", "client.CgRenderHook"],
   "server": []
 }
