@@ -1,0 +1,7 @@
+// Additional repositories for RetroFuturaGradle dependencies.
+
+repositories {
+    flatDir {
+        dirs "lib"
+    }
+}
