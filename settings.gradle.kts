@@ -25,6 +25,10 @@ rootProject.name = "CrystalGraphics"
 // JNI bindings subproject (standalone Java library, not Minecraft mod)
 include("freetype-msdfgen-harfbuzz-bindings")
 
+// Platform split subprojects (plain java-library, no gtnhconvention)
+include(":core")
+include(":platform")
+
 // Standalone GL debug harness (no Minecraft/Forge)
 if (file("gl-debug-harness").exists())
     include(":gl-debug-harness")

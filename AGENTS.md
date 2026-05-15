@@ -802,6 +802,11 @@ All 34 package guides under `src/main/java/com/crystalgraphics/`. Relative paths
 |---|---|
 | `gl/debug/AGENTS.md` | `CgDebugBlit` — fullscreen texture blit, covering-triangle, no VBO |
 
+### Platform SPI (platform subproject)
+| Path | What it covers |
+|---|---|
+| `platform/src/main/java/com/crystalgraphics/platform/AGENTS.md` | `CgGlDispatch`, `CgCapabilityProbe`, `CgResourceService`, `CgRenderingService`, `CgLifecycleService`, `CgReloadService`, `CgFrameCallback`, `CgPlatformRegistry` — the 8-file SPI contract between `core/` and `mc1710/` |
+
 ---
 
 # Minecraft Integration Glue

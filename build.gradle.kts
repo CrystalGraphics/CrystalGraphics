@@ -29,6 +29,9 @@ tasks.shadowJar {
     // convention plugin requires RFG obfuscation variant attributes that plain Java
     // subprojects don't publish (causes variant ambiguity errors).
     dependsOn(":freetype-msdfgen-harfbuzz-bindings:jar")
+    // Platform split subprojects — same reasoning as above.
+    dependsOn(":core:jar")
+    dependsOn(":platform:jar")
 }
 
 // Resolve subproject jar output after evaluation (subproject tasks don't exist during
@@ -36,8 +39,12 @@ tasks.shadowJar {
 afterEvaluate {
     tasks.shadowJar.configure {
         val bindingsJar = project(":freetype-msdfgen-harfbuzz-bindings").tasks.named<Jar>("jar").get()
+        val coreJar = project(":core").tasks.named<Jar>("jar").get()
+        val platformJar = project(":platform").tasks.named<Jar>("jar").get()
 
         from(zipTree(bindingsJar.archiveFile.get()))
+        from(zipTree(coreJar.archiveFile.get()))
+        from(zipTree(platformJar.archiveFile.get()))
     }
 }
 
