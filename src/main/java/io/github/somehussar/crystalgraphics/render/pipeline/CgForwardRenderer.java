@@ -77,14 +77,13 @@ public final class CgForwardRenderer {
             }
             objBuf.endWrite();
 
-            // bind/draw/unbind via drawChain — CgMaterial.doBind() owns render state.
-            // Do NOT call rs.apply() / rs.clear() externally here.
+            // Fire the hook once, before bindForPass, so it runs for the base material only.
+            // drawChain traverses the nextPass chain — the hook must NOT re-fire for decorative
+            // chain links (outline, glow, etc.) whose programs are different from the base material.
             final int start = i;
             final int instances = runLen;
-            base.material.drawChain(CgRenderPassVariant.FORWARD, () -> {
-                if (base.preDrawHook != null) base.preDrawHook.apply(sorted, start, instances);
-                base.mesh.drawInstanced(instances);
-            });
+            if (base.preDrawHook != null) base.preDrawHook.apply(sorted, start, instances);
+            base.material.drawChain(CgRenderPassVariant.FORWARD, () -> base.mesh.drawInstanced(instances));
 
             i = j;
         }

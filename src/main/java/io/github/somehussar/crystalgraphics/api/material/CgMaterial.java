@@ -182,9 +182,27 @@ public final class CgMaterial {
     private List<Consumer<CgShaderBindings>> pendingApplyConsumers = null;
 
     /**
-     * Optional next material pass in a multi-pass draw chain.
+     * Optional chained material for multi-draw decorative effects (outline, additive glow,
+     * stencil fill, etc.).
+     *
+     * <p>When {@link #drawChain(Runnable)} or {@link #drawChain(CgRenderPassVariant, Runnable)}
+     * is called, this material's draw executes first; then the chained material's draw executes
+     * immediately after with the same mesh and the same draw command. Ordering is deterministic
+     * and immediate — not deferred through a sort queue.</p>
+     *
+     * <p>Each chained material is a fully independent {@code CgMaterial}: different shader,
+     * different render state, different properties, different keywords. This is NOT Unity's
+     * built-in multi-pass (multiple {@code Pass} blocks in one shader file compiled into one
+     * material). It is analogous to Godot's {@code next_pass}, but with guaranteed immediate
+     * ordering instead of Godot's sort-queue-based execution which has known ordering bugs.</p>
+     *
+     * <p>The CrystalShader {@code .shader} format handles the "different pass types in one
+     * material" axis via {@code LightMode} tags ({@code Forward}, {@code ShadowCaster},
+     * {@code Depth}). This field handles the orthogonal "same pass type, drawn twice for
+     * a visual effect" axis.</p>
+     *
      * -- GETTER --
-     * Returns the next material pass in the draw chain, or {@code null} if none.
+     * Returns the chained material, or {@code null} if none.
      */
     @Getter
     private CgMaterial nextPass = null;
@@ -959,13 +977,21 @@ public final class CgMaterial {
         if (deleted) throw new IllegalStateException("CgMaterial has been deleted");
     }
 
-    // ── Multi-pass draw chain ─────────────────────────────────────────────────
+    // ── Multi-draw chain (decorative effects: outline, glow, stencil, etc.) ────
 
     /**
-     * Sets the next material pass in a multi-pass draw chain.
-     * Cycles are detected eagerly; a cyclic chain throws {@link IllegalStateException}.
+     * Chains another material to this one for multi-draw decorative effects.
      *
-     * @param next the next pass material, or {@code null} to clear the chain
+     * <p>When {@link #drawChain} is called, this material draws first, then {@code next}
+     * draws immediately after with the same mesh. The chain is traversed in-order with
+     * deterministic, immediate execution — not via a sort queue.</p>
+     *
+     * <p>{@code next} must be a fully independent {@link CgMaterial} with its own shader,
+     * render state, and properties. Typical uses: outline (enlarged backface pass),
+     * additive glow, stencil fill. Cycles are detected eagerly and throw
+     * {@link IllegalStateException}.</p>
+     *
+     * @param next the material to draw immediately after this one, or {@code null} to clear
      * @return {@code this} for chaining
      */
     public CgMaterial setNextPass(CgMaterial next) {
@@ -979,10 +1005,13 @@ public final class CgMaterial {
     }
 
     /**
-     * Executes {@code drawCommand} once per pass in this material's draw chain,
-     * binding each pass before the draw and unbinding it after.
+     * Executes {@code drawCommand} once per material in this draw chain, binding each
+     * material's Forward pass before the draw and unbinding it after.
      *
-     * @param drawCommand the draw logic to invoke for each pass
+     * <p>This is the canonical way to draw a mesh with a chained multi-draw material.
+     * If {@link #getNextPass()} is {@code null}, only this material draws.</p>
+     *
+     * @param drawCommand the draw logic (e.g. {@code () -> mesh.drawInstanced(N)})
      */
     public void drawChain(Runnable drawCommand) {
         CgMaterial pass = this;
@@ -995,17 +1024,15 @@ public final class CgMaterial {
     }
 
     /**
-     * Executes {@code drawCommand} once per pass in this material's draw chain,
-     * binding each pass for the specified {@link CgRenderPassVariant} before the draw
-     * and unbinding it after.
+     * Executes {@code drawCommand} once per material in this draw chain, binding each
+     * material for the given {@link CgRenderPassVariant} before the draw and unbinding after.
      *
-     * <p>Analogues: Unity {@code Material.SetPass(index)} per pass type;
-     * Godot {@code _render_list_template<PASS_MODE>()}; Filament variant routing.</p>
+     * <p>Use this overload in renderer code where the pass variant must be explicit
+     * (e.g. {@code FORWARD} in {@code CgForwardRenderer}). If {@link #getNextPass()} is
+     * {@code null}, only this material draws.</p>
      *
-     * <p>Source: render-pipeline-curation.md Section 14 (SHOULD-HAVE, Oracle correction D).</p>
-     *
-     * @param variant     the render pass variant to activate for each pass in the chain
-     * @param drawCommand the draw logic to invoke for each pass
+     * @param variant     the pass variant to activate for each material in the chain
+     * @param drawCommand the draw logic (e.g. {@code () -> mesh.drawInstanced(N)})
      */
     public void drawChain(CgRenderPassVariant variant, Runnable drawCommand) {
         CgMaterial pass = this;
