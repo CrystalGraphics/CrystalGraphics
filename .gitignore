@@ -17,6 +17,8 @@ research_repos/
 options.txt
 /saves/
 /docs/ignored/
+research/
+debug/
 usernamecache.json
 banned-ips.json
 banned-players.json
