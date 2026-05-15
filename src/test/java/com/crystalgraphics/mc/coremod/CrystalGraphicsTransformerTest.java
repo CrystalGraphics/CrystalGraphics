@@ -1,8 +1,5 @@
 package com.crystalgraphics.mc.coremod;
 
-import com.crystalgraphics.mc.coremod.CoverageMatrix;
-import com.crystalgraphics.mc.coremod.CrystalGraphicsCoremod;
-import com.crystalgraphics.mc.coremod.CrystalGraphicsTransformer;
 import org.junit.After;
 import org.junit.Test;
 import org.objectweb.asm.ClassReader;

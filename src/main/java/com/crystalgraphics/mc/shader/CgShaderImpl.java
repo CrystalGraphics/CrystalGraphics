@@ -1,7 +1,6 @@
 package com.crystalgraphics.mc.shader;
 
 import com.crystalgraphics.api.shader.*;
-import com.crystalgraphics.api.shader.*;
 import com.crystalgraphics.api.state.CgGlSlot;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gl.shader.CgShaderFactory;

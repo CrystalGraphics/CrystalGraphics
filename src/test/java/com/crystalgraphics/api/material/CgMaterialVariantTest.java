@@ -1,6 +1,5 @@
 package com.crystalgraphics.api.material;
 
-import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.state.CgRenderState;
 import org.junit.Test;
 

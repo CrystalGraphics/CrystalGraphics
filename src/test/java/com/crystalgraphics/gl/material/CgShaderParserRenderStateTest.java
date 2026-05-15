@@ -6,7 +6,6 @@ import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgRenderState;
 
 import com.crystalgraphics.api.state.CgStencilState;
-import com.crystalgraphics.gl.material.CgMaterialProperty;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
 import com.crystalgraphics.gl.material.parse.CgShaderParseException;
 import com.crystalgraphics.gl.material.parse.CgShaderParser;

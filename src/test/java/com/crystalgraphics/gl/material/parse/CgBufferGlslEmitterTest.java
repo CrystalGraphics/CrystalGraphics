@@ -4,7 +4,6 @@ import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.buffer.CgBufferFormat.MemoryLayout;
 import com.crystalgraphics.api.material.CgAttachedBuffer;
 import com.crystalgraphics.api.shader.CgPreprocessorException;
-import com.crystalgraphics.gl.material.parse.CgBufferGlslEmitter;
 import org.junit.Test;
 
 import static org.junit.Assert.*;

@@ -4,9 +4,7 @@ import com.crystalgraphics.api.font.CgFontKey;
 import com.crystalgraphics.api.font.CgFontStyle;
 import com.crystalgraphics.api.font.CgGlyphKey;
 import com.crystalgraphics.api.font.CgGlyphPlacement;
-import com.crystalgraphics.text.atlas.CgGlyphAtlas;
 
-import com.crystalgraphics.text.atlas.CgPagedGlyphAtlas;
 import org.junit.Test;
 
 import static org.junit.Assert.*;

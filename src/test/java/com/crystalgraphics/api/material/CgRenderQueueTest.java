@@ -1,6 +1,5 @@
 package com.crystalgraphics.api.material;
 
-import com.crystalgraphics.api.material.CgRenderQueue;
 import org.junit.Test;
 
 import static org.junit.Assert.*;

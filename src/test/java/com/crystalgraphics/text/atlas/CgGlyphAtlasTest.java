@@ -4,7 +4,6 @@ import com.crystalgraphics.api.font.CgAtlasRegion;
 import com.crystalgraphics.api.font.CgFontKey;
 import com.crystalgraphics.api.font.CgFontStyle;
 import com.crystalgraphics.api.font.CgGlyphKey;
-import com.crystalgraphics.text.atlas.CgGlyphAtlas;
 import org.junit.After;
 import org.junit.Test;
 

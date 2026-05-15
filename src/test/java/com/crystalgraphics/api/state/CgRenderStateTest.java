@@ -1,6 +1,5 @@
 package com.crystalgraphics.api.state;
 
-import com.crystalgraphics.api.state.*;
 import org.junit.Test;
 
 import static org.junit.Assert.*;

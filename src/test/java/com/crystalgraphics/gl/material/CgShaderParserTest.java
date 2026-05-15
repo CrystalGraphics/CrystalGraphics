@@ -1,6 +1,5 @@
 package com.crystalgraphics.gl.material;
 
-import com.crystalgraphics.gl.material.CgMaterialProperty;
 import com.crystalgraphics.gl.material.parse.CgParsedPass;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
 import com.crystalgraphics.gl.material.parse.CgShaderParseException;

@@ -1,7 +1,6 @@
 package com.crystalgraphics.api.render;
 
 import com.crystalgraphics.api.material.CgRenderQueue;
-import com.crystalgraphics.api.render.CgSortKey;
 import org.junit.Test;
 
 import static org.junit.Assert.*;

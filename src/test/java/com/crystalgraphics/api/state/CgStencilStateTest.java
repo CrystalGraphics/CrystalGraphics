@@ -1,6 +1,5 @@
 package com.crystalgraphics.api.state;
 
-import com.crystalgraphics.api.state.CgStencilState;
 import org.junit.Test;
 import org.lwjgl.opengl.GL11;
 

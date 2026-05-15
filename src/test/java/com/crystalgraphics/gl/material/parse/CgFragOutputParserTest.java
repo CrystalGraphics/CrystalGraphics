@@ -1,8 +1,6 @@
 package com.crystalgraphics.gl.material.parse;
 
 import com.crystalgraphics.api.shader.CgPreprocessorException;
-import com.crystalgraphics.gl.material.parse.CgFragOutputParser;
-import com.crystalgraphics.gl.material.parse.CgShaderParseException;
 import org.junit.Test;
 
 import java.util.Arrays;
