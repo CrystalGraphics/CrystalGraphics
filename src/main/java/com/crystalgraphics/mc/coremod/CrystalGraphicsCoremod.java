@@ -49,7 +49,7 @@ public final class CrystalGraphicsCoremod implements IFMLLoadingPlugin {
     private static final Logger LOGGER = LogManager.getLogger("CrystalGraphicsRedirector");
 
     /** Fully-qualified class name of the ASM transformer registered by this coremod. */
-    private static final String TRANSFORMER_CLASS = "io.github.somehussar.crystalgraphics.mc.coremod.CrystalGraphicsTransformer";
+    private static final String TRANSFORMER_CLASS = "com.crystalgraphics.mc.coremod.CrystalGraphicsTransformer";
 
     /**
      * Classpath resource path used to detect Angelica's presence.

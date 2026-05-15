@@ -35,7 +35,7 @@
  * provides the single-page atlas texture. Multi-page allocation is handled by
  * {@link com.crystalgraphics.text.atlas.CgPagedGlyphAtlas}.</p>
  *
- * @see io.github.somehussar.crystalgraphics.gl.text.render
- * @see io.github.somehussar.crystalgraphics.gl.text.atlas
+ * @see com.crystalgraphics.gl.text.render
+ * @see com.crystalgraphics.gl.text.atlas
  */
 package com.crystalgraphics.text.cache;

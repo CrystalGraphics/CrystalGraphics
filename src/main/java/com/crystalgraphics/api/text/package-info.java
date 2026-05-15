@@ -39,6 +39,6 @@
  *       should migrate to an internal wrapper or re-shaping context.</li>
  * </ul>
  *
- * @see io.github.somehussar.crystalgraphics.api.font
+ * @see com.crystalgraphics.api.font
  */
 package com.crystalgraphics.api.text;

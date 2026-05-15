@@ -20,8 +20,8 @@ import org.apache.logging.log4j.Logger;
  *
  * <p>This class intentionally performs no OpenGL work and does not assume
  * a current GL context. All rendering and interception logic lives under
- * {@code io.github.somehussar.crystalgraphics.mc.coremod} and
- * {@code io.github.somehussar.crystalgraphics.gl}.</p>
+ * {@code com.crystalgraphics.mc.coremod} and
+ * {@code com.crystalgraphics.gl}.</p>
  */
 @Mod(
     modid = CrystalGraphics.MODID,

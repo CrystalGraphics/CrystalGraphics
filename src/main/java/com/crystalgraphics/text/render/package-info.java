@@ -38,7 +38,7 @@
  * {@link com.crystalgraphics.api.font.CgGlyphPlacement} records.</p>
  *
  * @see com.crystalgraphics.text.cache.CgFontRegistry
- * @see io.github.somehussar.crystalgraphics.gl.text.cache
- * @see io.github.somehussar.crystalgraphics.gl.text.atlas
+ * @see com.crystalgraphics.gl.text.cache
+ * @see com.crystalgraphics.gl.text.atlas
  */
 package com.crystalgraphics.text.render;

@@ -3,7 +3,7 @@ package com.crystalgraphics.text.render;
 import com.crystalgraphics.api.CgCapabilities;
 import com.crystalgraphics.api.PoseStack;
 import com.crystalgraphics.api.font.*;
-import io.github.somehussar.crystalgraphics.api.font.*;
+import com.crystalgraphics.api.font.*;
 import com.crystalgraphics.api.shader.CgShader;
 import com.crystalgraphics.api.text.CgShapedRun;
 import com.crystalgraphics.api.text.CgTextConstraints;

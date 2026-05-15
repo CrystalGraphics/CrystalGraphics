@@ -41,7 +41,7 @@ Both `-javaagent` entries are required:
 
 The plugin is registered through `src/main/resources/hotswap-agent.properties`:
 ```
-pluginPackages=io.github.somehussar.crystalgraphics.hotswap
+pluginPackages=com.crystalgraphics.hotswap
 ```
 
 No additional IntelliJ run configuration changes are needed when launching via `runClient`.

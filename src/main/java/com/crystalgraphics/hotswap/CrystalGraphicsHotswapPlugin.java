@@ -15,7 +15,7 @@ import org.hotswap.agent.logging.AgentLogger;
     expectedVersions = "1.7.10")
 public class CrystalGraphicsHotswapPlugin {
 
-    public static final String PLUGIN_PACKAGE = "io.github.somehussar.crystalgraphics.hotswap";
+    public static final String PLUGIN_PACKAGE = "com.crystalgraphics.hotswap";
     private static final AgentLogger LOGGER = AgentLogger.getLogger(CrystalGraphicsHotswapPlugin.class);
 
     private static final boolean DISABLE = Boolean.getBoolean("crystalgraphics.hotswap.disable");
