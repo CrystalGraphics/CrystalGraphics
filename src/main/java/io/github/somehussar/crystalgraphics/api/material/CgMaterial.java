@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 /**
@@ -91,6 +92,12 @@ public final class CgMaterial {
 
     private static final Logger LOGGER = LogManager.getLogger("CgMaterial");
 
+    /** Monotonically incrementing counter — produces unique per-instance IDs across all materials. */
+    private static final AtomicInteger NEXT_MATERIAL_ID = new AtomicInteger(0);
+
+    /** Stable per-instance integer ID. Assigned at construction, never changes. */
+    private final int materialId = NEXT_MATERIAL_ID.getAndIncrement();
+
     /** Block name of the engine-managed material properties UBO. */
     public static final String MATERIAL_PROPERTIES_BLOCK = "CgMaterialBlock";
 
@@ -128,7 +135,7 @@ public final class CgMaterial {
 
     /**
      * The most recently bound {@link CgShader} from the last {@link #bind()} or
-     * {@link #bindForVariant(CgRenderPassVariant)} call. Used by {@link #unbind()} to
+     * {@link #bindForPass(CgRenderPassVariant)} call. Used by {@link #unbind()} to
      * deactivate the correct program. {@code null} before the first successful bind.
      */
     private CgShader lastBoundShader = null;
@@ -612,12 +619,12 @@ public final class CgMaterial {
      * pass is applied. Per-instance property UBO is wired and uploaded as needed.</p>
      *
      * <p>Designed for orchestrators that drive multi-pass shadow / depth rendering externally
-     * (e.g. a shadow renderer that calls {@code bindForVariant(CgRenderPassVariant.SHADOW)} and
+     * (e.g. a shadow renderer that calls {@code bindForPass(CgRenderPassVariant.SHADOW)} and
      * then draws into a shadow map FBO).</p>
      *
      * @param variant the pass variant to bind; must not be null
      */
-    public void bindForVariant(CgRenderPassVariant variant) {
+    public void bindForPass(CgRenderPassVariant variant) {
         checkNotDeleted();
         if (cgMaterialShader == null) return;
 
@@ -644,7 +651,7 @@ public final class CgMaterial {
     /**
      * Shared bind body: wires the per-instance UBO, saves GL state, uploads dirty properties,
      * binds the UBO and sampler properties, applies per-pass render state, and activates the
-     * GL program. Called by both {@link #bind()} and {@link #bindForVariant(CgRenderPassVariant)}
+     * GL program. Called by both {@link #bind()} and {@link #bindForPass(CgRenderPassVariant)}
      * after shader resolution.
      *
      * @param shader  the fully compiled and wired GL program for this frame
@@ -686,7 +693,7 @@ public final class CgMaterial {
      * a ShadowCaster program has been compiled yet. Transparent materials always return
      * {@code false}.</p>
      *
-     * <p>A shadow renderer should call {@code bindForVariant(CgRenderPassVariant.SHADOW)} only when
+     * <p>A shadow renderer should call {@code bindForPass(CgRenderPassVariant.SHADOW)} only when
      * this method returns {@code true}.</p>
      */
     public boolean hasShadowCasterPass() {
@@ -700,11 +707,45 @@ public final class CgMaterial {
     /**
      * Returns {@code true} when this material has an explicitly authored Depth pass in the
      * last successful parse. Based on parse-time pass presence — use to gate calls to
-     * {@link #bindForVariant(CgRenderPassVariant) bindForVariant(DEPTH)}.
+     * {@link #bindForPass(CgRenderPassVariant) bindForPass(DEPTH)}.
+     *
+     * <p>This is a parse-state check (explicit authored {@code [Depth]} block only).
+     * To also detect auto-generated depth variants produced by {@code recompile()},
+     * use {@link #hasCompiledDepthPass()} instead.</p>
+     *
+     * @see #hasCompiledDepthPass()
      */
     public boolean hasDepthPass() {
-        return cgMaterialShader != null
-                && cgMaterialShader.hasParsedPass(CgRenderPassVariant.DEPTH.lightModeName());
+        return cgMaterialShader != null && cgMaterialShader.hasParsedPass(CgRenderPassVariant.DEPTH.lightModeName());
+    }
+
+    /**
+     * Returns {@code true} when a compiled depth prepass GL program exists for this material.
+     *
+     * <p>Unlike {@link #hasDepthPass()} (which checks for an explicit authored
+     * {@code [Depth]} pass), this method also returns {@code true} for auto-generated depth
+     * variants produced by {@link CgMaterialShader#recompile()}
+     * during {@code attemptDepthAutoGen()}. It is the correct query for
+     * {@code CgDepthPrepassRenderer} to decide whether to use
+     * {@code bindForPass(DEPTH)} or fall back to the engine depth shader.</p>
+     *
+     * @return {@code true} if a compiled depth variant program is available
+     */
+    public boolean hasCompiledDepthPass() {
+        return cgMaterialShader != null && cgMaterialShader.hasCompiledPass(CgRenderPassVariant.DEPTH.lightModeName());
+    }
+
+    /**
+     * Returns a stable integer ID unique to this {@code CgMaterial} instance.
+     * Assigned at construction from a monotonically incrementing counter.
+     * Used by {@code CgRenderCommandQueue.submit()} as the 16-bit materialId
+     * in the opaque sort key — more reliable than {@code System.identityHashCode}
+     * which can collide for different live instances.
+     *
+     * @return the per-instance stable material ID (non-negative, unique per instance)
+     */
+    public int getMaterialId() {
+        return materialId;
     }
 
     /**
@@ -746,7 +787,7 @@ public final class CgMaterial {
 
     /**
      * Returns the most recently bound {@link CgShader} from the last {@link #bind()} or
-     * {@link #bindForVariant(CgRenderPassVariant)} call. Useful for advanced wiring of per-frame
+     * {@link #bindForPass(CgRenderPassVariant)} call. Useful for advanced wiring of per-frame
      * UBOs or texture units after bind. {@code null} before the first successful bind.
      *
      * @return the last-bound compiled shader handle, or {@code null} if not yet bound
@@ -969,7 +1010,7 @@ public final class CgMaterial {
     public void drawChain(CgRenderPassVariant variant, Runnable drawCommand) {
         CgMaterial pass = this;
         while (pass != null) {
-            pass.bindForVariant(variant);
+            pass.bindForPass(variant);
             drawCommand.run();
             pass.unbind();
             pass = pass.nextPass;
