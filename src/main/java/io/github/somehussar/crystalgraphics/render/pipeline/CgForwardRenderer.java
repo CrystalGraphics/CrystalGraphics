@@ -1,9 +1,11 @@
 package io.github.somehussar.crystalgraphics.render.pipeline;
 
+import io.github.somehussar.crystalgraphics.api.render.CgPreDrawHook;
 import io.github.somehussar.crystalgraphics.api.render.CgRenderPipeline;
 import io.github.somehussar.crystalgraphics.api.material.CgRenderPassVariant;
 import io.github.somehussar.crystalgraphics.api.render.CgRenderCommand;
 import io.github.somehussar.crystalgraphics.api.state.CgBlendState;
+import io.github.somehussar.crystalgraphics.api.state.CgDepthState;
 import io.github.somehussar.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import io.github.somehussar.crystalgraphics.gl.buffer.staging.CgBufferWriter;
 import org.lwjgl.opengl.GL11;
@@ -18,7 +20,10 @@ import org.lwjgl.opengl.GL11;
  *
  * <h3>GL state owned by this renderer</h3>
  * <ul>
- *   <li>Depth function: {@code depthTestMode} (GL_EQUAL if depth prepass ran, GL_LEQUAL otherwise)</li>
+ *   <li>Depth function: {@code GL_LEQUAL} (pipeline default). Each material's authored
+ *       {@code DepthTest} block overrides this naturally via {@code renderState.apply()}
+ *       inside {@code bindForPass}. Hardware early-Z eliminates depth-prepass overdraw
+ *       without requiring a {@code GL_EQUAL} override.</li>
  *   <li>DepthMask = true</li>
  *   <li>Blend = OFF (opaque pass)</li>
  * </ul>
@@ -35,17 +40,14 @@ public final class CgForwardRenderer {
     /**
      * Executes the opaque forward pass.
      *
-     * @param sorted        pre-sorted opaque command array (front-to-back)
-     * @param count         number of valid entries in {@code sorted}
-     * @param depthTestMode {@code GL_EQUAL} if depth prepass ran; {@code GL_LEQUAL} otherwise
-     * @param pipeline      the active material pipeline (provides the object buffer)
+     * @param sorted   pre-sorted opaque command array (front-to-back)
+     * @param count    number of valid entries in {@code sorted}
+     * @param pipeline the active material pipeline (provides the object buffer)
      */
-    public void execute(CgRenderCommand[] sorted, int count,
-                        int depthTestMode, CgRenderPipeline pipeline) {
+    public void execute(CgRenderCommand[] sorted, int count, CgRenderPipeline pipeline) {
         if (count == 0) return;
 
-        GL11.glDepthFunc(depthTestMode);
-        GL11.glDepthMask(true);
+        CgDepthState.TEST_WRITE.apply();
         CgBlendState.DISABLED.apply();
 
         CgShaderBuffer objBuf = pipeline.objectBuffer();
@@ -54,7 +56,7 @@ public final class CgForwardRenderer {
         while (i < count) {
             CgRenderCommand base = sorted[i];
 
-            // Auto-instancing: find run of consecutive commands with same material + mesh
+            // Auto-instancing: find run of consecutive commands with same material + mesh + hook
             // (Filament instanceify() equivalent — Section 6)
             int j = i + 1;
             while (j < count && canMerge(base, sorted[j])) j++;
@@ -77,22 +79,27 @@ public final class CgForwardRenderer {
 
             // bind/draw/unbind via drawChain — CgMaterial.doBind() owns render state.
             // Do NOT call rs.apply() / rs.clear() externally here.
+            final int start = i;
             final int instances = runLen;
-            base.material.drawChain(CgRenderPassVariant.FORWARD,
-                    () -> base.mesh.drawInstanced(instances));
-            
+            base.material.drawChain(CgRenderPassVariant.FORWARD, () -> {
+                if (base.preDrawHook != null) base.preDrawHook.apply(sorted, start, instances);
+                base.mesh.drawInstanced(instances);
+            });
+
             i = j;
         }
     }
 
     /**
-     * Merge criterion: same {@code CgMaterial} AND same {@code CgMesh} by identity
-     * (reference equality, not {@code equals()}). Matches Filament's
-     * {@code mi == b.mi && rph == b.rph} test in {@code instanceify()}.
+     * Merge criterion: same {@code CgMaterial} AND same {@code CgMesh} AND same
+     * {@code CgPreDrawHook} by identity (reference equality, not {@code equals()}).
+     * Matches Filament's {@code mi == b.mi && rph == b.rph} test in {@code instanceify()}.
+     * Different hook references are never merged — see {@link CgPreDrawHook}.
      *
      * <p>Transparent commands are never passed here (they go to {@link CgTransparentRenderer}).</p>
      */
-    private static boolean canMerge(CgRenderCommand a, CgRenderCommand b) {
-        return a.material == b.material && a.mesh == b.mesh;
+    public static boolean canMerge(CgRenderCommand a, CgRenderCommand b) {
+        return a.material == b.material && a.mesh == b.mesh
+            && a.preDrawHook == b.preDrawHook;  // reference equality — different hook = no merge
     }
 }

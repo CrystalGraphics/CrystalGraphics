@@ -23,6 +23,24 @@
 Run ./gradlew.bat compileJava and WAIT until it finishes. DO NOT be impatient and kill the process, it will take about 60 seconds, 
 and DO NOT run it multiple times in parallel, it will cause out-of-memory errors. 
 
+## Debug Utilities — Start Here
+
+For any work on the debug rendering utilities (texture visualization, framebuffer inspection), use the package guide first.
+
+### Package guide
+
+- `src/main/java/io/github/somehussar/crystalgraphics/gl/debug/AGENTS.md`
+
+### Key class
+
+- `CgDebugBlit` — fullscreen blit of any texture (depth or RGBA) using the covering-triangle technique; no VBO, no mesh, inline GLSL, full GL state save/restore on every call
+
+### Wiring
+
+`CgDebugBlit.dispose()` is called from `CgGraphicsLifecycle.destroyContext()` (Step 10).
+
+---
+
 ## Font/Text System — Start Here
 
 For any work on the font/text framework, use the new documentation and package-local guides first.

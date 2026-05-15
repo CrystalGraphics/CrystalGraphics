@@ -8,7 +8,7 @@ package io.github.somehussar.crystalgraphics.api.material;
  * <p>Unity uses {@code ShaderTagId("ShadowCaster")} for the same purpose; Godot uses
  * {@code PASS_MODE_SHADOW}. This enum serves the identical role in the CrystalShader
  * pipeline: it lets the render orchestrator call
- * {@code material.bindForVariant(CgRenderPassVariant.SHADOW)} without knowing the shader's
+ * {@code material.bindForPass(CgRenderPassVariant.SHADOW)} without knowing the shader's
  * internal pass structure.</p>
  *
  * <h3>Keyword policy</h3>
@@ -21,7 +21,7 @@ package io.github.somehussar.crystalgraphics.api.material;
  *
  * <h3>FORWARD routing</h3>
  * <p>Forward dispatch always routes via
- * {@link CgMaterial#bindForVariant(CgRenderPassVariant)} →
+ * {@link CgMaterial#bindForPass(CgRenderPassVariant)} →
  * {@code cgMaterialShader.getOrCompileForwardPass(keywords)}, which resolves the
  * authored {@code "Name"} tag of the first Forward pass internally. The
  * {@link #lightModeName()} value ({@code "Forward"}) is <em>not</em> used as the
@@ -51,7 +51,7 @@ public enum CgRenderPassVariant {
 
     /**
      * Depth-only pre-pass (v2 — not executed in MVP).
-     * <p>{@code bindForVariant(DEPTH)} silently no-ops if no Depth pass was compiled.</p>
+     * <p>{@code bindForPass(DEPTH)} silently no-ops if no Depth pass was compiled.</p>
      * <p>Keywords are always {@code emptySet()}.</p>
      */
     DEPTH("Depth");

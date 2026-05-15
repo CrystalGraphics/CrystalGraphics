@@ -214,6 +214,14 @@ public final class CgMaterialShader {
      * in queue &lt; {@link CgRenderQueue#TRANSPARENT}, and {@code castShadows == true},
      * a shadow-caster program is auto-generated from the first Forward pass and cached
      * under {@code ProgramKey("ShadowCaster", emptySet)}.</p>
+     *
+     * <h3>Depth auto-generation</h3>
+     * <p>When no explicit {@code Depth} pass is authored and the shader renders in queue
+     * &lt; {@link CgRenderQueue#TRANSPARENT}, a depth-prepass program is auto-generated
+     * from the first Forward pass and cached under {@code ProgramKey("Depth", emptySet)}.
+     * Unlike shadow auto-gen there is no {@code castShadows} gate — every opaque material
+     * needs a correct depth variant. Failure is non-fatal: a warning is logged and the
+     * engine depth shader fallback is used instead.</p>
      */
     public void recompile() {
         dirty = false;
@@ -315,6 +323,9 @@ public final class CgMaterialShader {
 
         // ── Step 6: Shadow auto-generation ────────────────────────────────────────
         if (!attemptShadowAutoGen(parsed, newMatPropsUbo, newCache, newShaders, isFirst)) return;
+
+        // ── Step 6.5: Depth auto-generation ───────────────────────────────────────
+        if (!attemptDepthAutoGen(parsed, newMatPropsUbo, newCache, newShaders, isFirst)) return;
 
         // ── Step 7: On hot-reload, delete all existing variant programs ────────
         if (!isFirst) {
@@ -666,6 +677,63 @@ public final class CgMaterialShader {
             newShaders.add(shadowShader);
             newCache.put(new ProgramKey(CgRenderPassVariant.SHADOW.lightModeName(), Collections.emptySet()),
                     shadowShader);
+        }
+        return true;
+    }
+
+    /**
+     * ── Step 6.5: Depth auto-generation ─────────────────────────────────────────
+     *
+     * <p>Conditions: opaque queue and no explicit Depth pass. No {@code castShadows} gate —
+     * every opaque material needs a correct depth variant.
+     * When all conditions are met, compiles a depth-prepass program from the first Forward pass
+     * and stores it under {@code ProgramKey("Depth", emptySet)}.</p>
+     *
+     * <p>Failure is non-fatal regardless of first/hot-reload: logs an error and continues
+     * without a depth variant (the renderer falls back to the engine depth shader).</p>
+     *
+     * @return {@code true} to proceed with the rest of recompile(); {@code false} to abort
+     *         (only on buffer injection error — newShaders and newMatPropsUbo already cleaned up)
+     */
+    private boolean attemptDepthAutoGen(CgParsedShader parsed, CgUniformBuffer newMatPropsUbo,
+                                         Map<ProgramKey, CgShader> newCache, List<CgShader> newShaders,
+                                         boolean isFirst) {
+        boolean hasExplicitDepth = parsed.getPassByLightMode(CgRenderPassVariant.DEPTH.lightModeName()) != null;
+        boolean isOpaque = parsed.renderQueue() < CgRenderQueue.TRANSPARENT_THRESHOLD;
+
+        if (!isOpaque || hasExplicitDepth) return true;
+
+        CgParsedPass forwardPass = parsed.getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
+        if (forwardPass == null) {
+            LOGGER.warn("'{}': opaque material has no Forward pass — depth auto-gen skipped.", resourcePath);
+            return true;
+        }
+
+        CgMaterialShaderCompiler.CompiledSource depthCompiled;
+        try {
+            depthCompiled = CgMaterialShaderCompiler.compileDepthAutoGen(parsed, forwardPass,
+                    attachedBuffers, newMatPropsUbo, CgMaterialShaderCompiler.CompileConfig.DEFAULT);
+        } catch (CgPreprocessorException e) {
+            for (CgShader s : newShaders) s.delete();
+            if (newMatPropsUbo != null) newMatPropsUbo.delete();
+            if (isFirst) throw e;
+            LOGGER.error("Reload failed for '{}' depth auto-gen: buffer injection error — {}",
+                    resourcePath, e.getMessage());
+            return false;
+        }
+
+        String depthVert = new CgShaderPreprocessor().process(depthCompiled.vertexSource(), resourcePath);
+        String depthFrag = new CgShaderPreprocessor().process(depthCompiled.fragmentSource(), resourcePath);
+
+        CgShader depthShader = CgShaderFactory.fromSource(depthVert, depthFrag, CgVertexFormat.SPATIAL);
+        if (!depthShader.isCompiled()) {
+            String err = depthShader.getLastCompileError();
+            depthShader.delete();
+            LOGGER.error("'{}' depth auto-gen failed (continuing without depth variant): {}", resourcePath, err);
+        } else {
+            newShaders.add(depthShader);
+            newCache.put(new ProgramKey(CgRenderPassVariant.DEPTH.lightModeName(),
+                    Collections.emptySet()), depthShader);
         }
         return true;
     }

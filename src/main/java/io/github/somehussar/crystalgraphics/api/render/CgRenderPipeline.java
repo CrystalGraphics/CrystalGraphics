@@ -11,8 +11,6 @@ import io.github.somehussar.crystalgraphics.render.pipeline.CgDepthPrepassRender
 import io.github.somehussar.crystalgraphics.render.pipeline.CgForwardRenderer;
 import io.github.somehussar.crystalgraphics.render.pipeline.CgTransparentRenderer;
 import lombok.Getter;
-import org.lwjgl.opengl.GL11;
-
 import static io.github.somehussar.crystalgraphics.api.state.CgGlSlot.*;
 
 /**
@@ -48,7 +46,7 @@ import static io.github.somehussar.crystalgraphics.api.state.CgGlSlot.*;
  *
  * <h3>Pass sequence (Phase 1 MVP)</h3>
  * <ol>
- *   <li>Depth prepass — fills depth buffer; enables GL_EQUAL for opaque pass (disabled, returns false)</li>
+ *   <li>Depth prepass — fills depth buffer; hardware early-Z eliminates overdraw in opaque pass without requiring GL_EQUAL override</li>
  *   <li>Opaque forward — GEOMETRY + ALPHA_TEST, front-to-back, auto-instanced</li>
  *   <li>Transparent — TRANSPARENT, back-to-front, per-object</li>
  * </ol>
@@ -213,7 +211,7 @@ public final class CgRenderPipeline {
      * It is a no-op equivalent of the frame-upload portion of {@link #executeOpaquePass(float)},
      * without sorting or dispatching any renderers.</p>
      *
-     * <p>Callers are responsible for applying a {@link io.github.somehussar.crystalgraphics.gl.state.CgGlScope}
+     * <p>Callers are responsible for applying a {@link CgGlScope}
      * if they need GL state save/restore around their manual draw calls.</p>
      */
     public void prepareFrame() {
@@ -234,16 +232,22 @@ public final class CgRenderPipeline {
 
         this.currentPartialTicks = partialTicks;
 
-        // Anaglyph guard — detect replay invocation (second eye in anaglyph mode)
-        long worldTime = frameData.getCurrentWorldTime();
-        if (worldTime != lastWorldTimeTick) {
-            lastWorldTimeTick       = worldTime;
-            invocationCountThisTick = 0;
+        // Anaglyph guard — detect replay invocation (second eye in anaglyph mode).
+        // Only active when anaglyphModeEnabled is true; in harness/non-anaglyph mode,
+        // replayOpaque is always false so every frame sorts and releases normally.
+        if (frameData.anaglyphModeEnabled) {
+            long worldTime = frameData.getCurrentWorldTime();
+            if (worldTime != lastWorldTimeTick) {
+                lastWorldTimeTick       = worldTime;
+                invocationCountThisTick = 0;
+            }
+            long invId = worldTime * 2L + (invocationCountThisTick % 2L);
+            replayOpaque = (invId == lastInvocationId);
+            lastInvocationId = invId;
+            invocationCountThisTick++;
+        } else {
+            replayOpaque = false;
         }
-        long invId = worldTime * 2L + (invocationCountThisTick % 2L);
-        replayOpaque = (invId == lastInvocationId);
-        lastInvocationId = invId;
-        invocationCountThisTick++;
 
         try (CgGlScope scope = CgGlState.save(
                 VERTEX_INPUT, PROGRAM, DEPTH, STENCIL, ALPHA_TEST, BLEND, CULL, COLOR_MASK)) {
@@ -252,15 +256,11 @@ public final class CgRenderPipeline {
             
             beginFrame(frameData);
 
-            boolean prepassRan = false;
-            // depthPrepass disabled until engine depth shader is ready:
-            // prepassRan = depthPrepass.execute(commandQueue.getSortedOpaque(),
-            //         commandQueue.getOpaqueCount(), this);
-            int depthTestMode = prepassRan ? GL11.GL_EQUAL : GL11.GL_LEQUAL;
+            depthPrepass.execute(
+                commandQueue.getSortedOpaque(), commandQueue.getOpaqueCount(), this);
 
             forwardRenderer.execute(
-                commandQueue.getSortedOpaque(), commandQueue.getOpaqueCount(),
-                depthTestMode, this);
+                commandQueue.getSortedOpaque(), commandQueue.getOpaqueCount(), this);
         }
         return true;
     }

@@ -26,7 +26,7 @@ import org.lwjgl.opengl.GL11;
  * </ul>
  *
  * <p>Render state per-material is applied and restored by {@code CgMaterial.doBind()}
- * (called inside {@code bindForVariant()}). Do NOT call {@code rs.apply()} / {@code rs.clear()}
+ * (called inside {@code drawChain(FORWARD, drawCall)}). Do NOT call {@code rs.apply()} / {@code rs.clear()}
  * externally — that would double-manage state and corrupt the save/restore ordering.</p>
  *
  * <p>Source: render-pipeline-curation.md Section 14 (CgTransparentRenderer spec).</p>
@@ -66,9 +66,11 @@ public final class CgTransparentRenderer {
 
             // bind/draw/unbind — CgMaterial.doBind() owns render state save/apply/restore.
             // Do NOT call rs.apply() / rs.clear() externally here.
-            cmd.material.bindForVariant(CgRenderPassVariant.FORWARD);
-            cmd.mesh.drawDirect();   // NOT drawInstanced(1) — per-object, no batch overhead
-            cmd.material.unbind();
+            // TODO(instancing): additive-blend transparent objects are order-independent and could be
+            // batched via canMerge() + drawInstanced(N) like the opaque pass. Deferred — requires a
+            // blend-mode flag in CgRenderCommand.passFlags or a separate TRANSPARENT_ADDITIVE queue slot
+            // so the sort knows not to depth-order these and the renderer knows they are batchable.
+            cmd.material.drawChain(CgRenderPassVariant.FORWARD, () -> cmd.mesh.drawDirect());
         }
 
         // Restore depth write — outer CgGlScope will also restore fully on frame-end

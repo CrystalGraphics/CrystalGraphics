@@ -71,6 +71,16 @@ public final class CgFrameData {
     public int   viewportH = 0;
 
     /**
+     * Set to {@code true} by the MC integration layer when anaglyph stereo mode is active.
+     * Defaults to {@code false}. When {@code false}, the anaglyph replay guard in
+     * {@code CgRenderPipeline.executeOpaquePass()} is bypassed entirely — every frame
+     * sorts and releases commands normally, which is the correct behavior for harness
+     * mode and non-anaglyph MC. Set to {@code true} in the mc/ package where anaglyph mode
+     * is detected alongside {@code worldTimeSampler} assignment.
+     */
+    public boolean anaglyphModeEnabled = false;
+
+    /**
      * Internal MC-agnostic world tick counter used to back {@link #getCurrentWorldTime()}.
      */
     public LongSupplier worldTimeSampler = () -> 0L;

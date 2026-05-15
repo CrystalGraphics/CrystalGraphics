@@ -9,10 +9,10 @@ import io.github.somehussar.crystalgraphics.api.material.CgRenderQueue;
  * bgfx DepthDescending trick (UINT32_MAX-depth) adapted as inverted normalised depth.</p>
  *
  * <pre>
- * Bit 63    60 59    56 55    48 47    32 31          0
- * +---------+---------+---------+---------+-----------+
- * | slot(4b)| prio(4b)| mat(8b) | dep(16b)| reserved  |
- * +---------+---------+---------+---------+-----------+
+ * Bit 63    60 59    56 55         40 39    24 23      8 7     0
+ * +---------+---------+-------------+---------+---------+------+
+ * | slot(4b)| prio(4b)| mat(16b)    | dep(16b)| mesh(16b)|res(8)|
+ * +---------+---------+-------------+---------+---------+------+
  *
  * Bits 63-60: Queue slot (from slotIndex() threshold logic)
  *   queue &lt; ALPHA_TEST_THRESHOLD (2450)                → 0 (OPAQUE bucket)
@@ -23,16 +23,25 @@ import io.github.somehussar.crystalgraphics.api.material.CgRenderQueue;
  * Bits 59-56: Render priority (0-15, user-supplied via renderPriority)
  *   Higher value = renders LATER within the same queue slot.
  *
- * Bits 55-48: Material ID (System.identityHashCode(material) &amp; 0xFF)
+ * Bits 55-40: Material ID (CgMaterial.getMaterialId() &amp; 0xFFFF)
  *   For OPAQUE slots: groups consecutive commands with same material after sort.
+ *   16-bit width pushes the 50% birthday-collision threshold to ~300 materials
+ *   (vs. ~19 for the old 8-bit field), eliminating batching fragmentation in
+ *   typical scenes. Stable per-instance counter (not identityHashCode) prevents
+ *   spurious sort-key changes across GC phases.
  *
- * Bits 47-32: Depth bucket (16-bit quantised camera-space distance)
+ * Bits 39-24: Depth bucket (16-bit quantised camera-space distance)
  *   OPAQUE/ALPHA_TEST: bucket = (normalizedDepth * 0xFFFF)
  *     → smaller = closer to camera → ascending sort = front-to-back (early-Z) ✓
  *   TRANSPARENT/OVERLAY: bucket = ((1 - normalizedDepth) * 0xFFFF)
  *     → smaller = FARTHER from camera → ascending sort = back-to-front (correct blend) ✓
  *
- * Bits 31-0: Reserved (0)
+ * Bits 23-8: Mesh ID (System.identityHashCode(mesh) &amp; 0xFFFF) — OPAQUE only
+ *   Groups commands with the same material+mesh so canMerge() run-finding succeeds
+ *   across unstable sort positions. Collisions only reduce batching — never cause
+ *   incorrect rendering (canMerge() uses reference equality).
+ *
+ * Bits 7-0: Reserved (0)
  * </pre>
  */
 public final class CgSortKey {
@@ -42,26 +51,30 @@ public final class CgSortKey {
     /**
      * Encodes the sort key for opaque/alpha-test commands.
      *
-     * <p>Result: slot(4b) | priority(4b) | materialId(8b) | depthBucket(16b,front-to-back) | 0(32b)</p>
-     * <p>Sort: ascending → front-to-back within each slot, state-minimising by material.</p>
+     * <p>Result: slot(4b) | priority(4b) | materialId(16b) | depthBucket(16b,front-to-back) | meshId(16b) | 0(8b)</p>
+     * <p>Sort: ascending → front-to-back within each slot, state-minimising by material, then by mesh.</p>
      *
      * @param queueValue     integer queue value (e.g. {@link CgRenderQueue#GEOMETRY})
      * @param renderPriority user priority (0-15)
-     * @param materialId     {@code System.identityHashCode(material) & 0xFF}
+     * @param materialId     {@code CgMaterial.getMaterialId() & 0xFFFF}
+     * @param meshId         16-bit mesh identity token; use {@code System.identityHashCode(mesh)}.
+     *                       Collisions only reduce batching — never cause incorrect rendering
+     *                       because {@code canMerge()} uses reference equality.
      * @param cameraDepth    positive z-distance from camera to AABB center
      * @param farPlane       camera far plane distance (world units)
      * @return 64-bit opaque sort key
      */
     public static long buildOpaqueKey(int queueValue, int renderPriority,
-                                      int materialId, float cameraDepth, float farPlane) {
+                                      int materialId, int meshId, float cameraDepth, float farPlane) {
         long key = 0L;
         key |= ((long)(slotIndex(queueValue) & 0xF))  << 60;
         key |= ((long)(renderPriority        & 0xF))  << 56;
-        key |= ((long)(materialId            & 0xFF)) << 48;
+        key |= ((long)(materialId            & 0xFFFF)) << 40;
         // Front-to-back: smaller depth → smaller bucket value → sorted first
         float nd     = clamp01(cameraDepth / farPlane);
         int   bucket = (int)(nd * 0xFFFFL);
-        key |= ((long)(bucket & 0xFFFF)) << 32;
+        key |= ((long)(bucket & 0xFFFF)) << 24;
+        key |= ((long)(meshId  & 0xFFFF)) << 8;
         return key;
     }
 
@@ -87,7 +100,7 @@ public final class CgSortKey {
         // Back-to-front: far=small bucket → sorted first; invert depth
         float nd     = clamp01(cameraDepth / farPlane);
         int   bucket = (int)((1.0f - nd) * 0xFFFFL);
-        key |= ((long)(bucket & 0xFFFF)) << 32;
+        key |= ((long)(bucket & 0xFFFF)) << 24;
         return key;
     }
 

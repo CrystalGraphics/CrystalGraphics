@@ -5,6 +5,7 @@ import io.github.somehussar.crystalgraphics.api.material.CgMaterialRegistry;
 import io.github.somehussar.crystalgraphics.api.render.CgRenderPipeline;
 import io.github.somehussar.crystalgraphics.gl.buffer.CgQuadIndexBuffer;
 import io.github.somehussar.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
+import io.github.somehussar.crystalgraphics.gl.debug.CgDebugBlit;
 import io.github.somehussar.crystalgraphics.gl.framebuffer.CgFrameBufferRegistry;
 import io.github.somehussar.crystalgraphics.gl.material.CgMaterialShaderRegistry;
 import io.github.somehussar.crystalgraphics.gl.mesh.CgMeshRegistry;
@@ -43,7 +44,8 @@ public final class CgGraphicsLifecycle {
      * Must be called once on the GL thread after context creation,
      * before any material or fallback-texture usage.
      */
-    public static void initContext() {
+    public static void initContext(int width, int height) {
+        onResize(width, height);
         CgRenderPipeline.init();
         CgFallbackTextures.init();
     }
@@ -109,6 +111,9 @@ public final class CgGraphicsLifecycle {
         CgFrameBufferRegistry.get().deleteAll();
         
         
+        // Step 10: Debug utilities (lazy singleton — no-op if never used).
+        CgDebugBlit.dispose();
+
         // Reset all backend-capability caches so context recreation re-probes correctly.
         CgCapabilities.clearCache();
         CgVertexArray.resetCoreCache();

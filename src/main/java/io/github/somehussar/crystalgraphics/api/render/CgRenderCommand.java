@@ -6,6 +6,8 @@ import io.github.somehussar.crystalgraphics.gl.mesh.CgMesh;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
 
+import javax.annotation.Nullable;
+
 /**
  * One render submission: mesh + material + transform + metadata.
  * All instances are owned by {@link CgRenderCommandPool} — never allocate directly.
@@ -88,6 +90,24 @@ public final class CgRenderCommand {
     /** Per-instance custom3 channel. */
     public final Vector4f custom3 = new Vector4f();
 
+    /**
+     * CPU-only per-command identity tag. Never written to the GPU SSBO.
+     * Use to identify this command's instance slot inside a {@link CgPreDrawHook}:
+     * {@code batch[offset + k].tag} is the tag for {@code gl_InstanceID = k}.
+     * Reset to {@code null} by the pool each frame.
+     */
+    @Nullable public String tag;
+
+    /**
+     * Optional hook fired once per merged batch, after material bind, before draw.
+     * Fires in every pass that draws this batch (depth prepass + forward).
+     * Must be the same object reference across commands that should batch together.
+     * Reset to {@code null} by the pool each frame.
+     *
+     * @see CgPreDrawHook
+     */
+    @Nullable public CgPreDrawHook preDrawHook;
+
     // ── Sort/routing metadata ─────────────────────────────────────────────────
 
     /**
@@ -153,6 +173,8 @@ public final class CgRenderCommand {
         custom1.set(0, 0, 0, 0);
         custom2.set(0, 0, 0, 0);
         custom3.set(0, 0, 0, 0);
+        tag         = null;
+        preDrawHook = null;
         // Initialise AABB to NaN — submit() validation catches forgotten AABB immediately
         worldAabb[0] = Float.NaN;
         worldAabb[1] = Float.NaN;

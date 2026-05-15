@@ -145,15 +145,16 @@ public final class CgRenderCommandQueue {
         }
 
         // 6. Compute sort key
-        int materialId = System.identityHashCode(cmd.material) & 0xFF;
+        int materialId = cmd.material != null ? cmd.material.getMaterialId() : 0; // stable per-instance counter — no hash collisions
         boolean isTransparent = q >= CgRenderQueue.TRANSPARENT_THRESHOLD
                 && q < CgRenderQueue.OVERLAY_THRESHOLD;
         if (isTransparent) {
             cmd.sortKey = CgSortKey.buildTransparentKey(
                 q, cmd.renderPriority, cmd.cameraDepth, frameData.farPlane);
         } else {
+            int meshId = System.identityHashCode(cmd.mesh); // identity hash sufficient for grouping
             cmd.sortKey = CgSortKey.buildOpaqueKey(
-                q, cmd.renderPriority, materialId, cmd.cameraDepth, frameData.farPlane);
+                q, cmd.renderPriority, materialId, meshId, cmd.cameraDepth, frameData.farPlane);
         }
 
         // 7. Append to arrays; grow if needed

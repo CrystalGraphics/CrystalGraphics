@@ -5,6 +5,7 @@ import io.github.somehussar.crystalgraphics.api.CgCapabilities;
 import io.github.somehussar.crystalgraphics.api.material.CgAttachedBuffer;
 import io.github.somehussar.crystalgraphics.api.shader.CgPreprocessorException;
 import io.github.somehussar.crystalgraphics.api.state.CgCullState;
+import io.github.somehussar.crystalgraphics.api.state.CgRenderState;
 import io.github.somehussar.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 import io.github.somehussar.crystalgraphics.gl.material.CgMaterialProperty;
 
@@ -257,6 +258,71 @@ public final class CgMaterialShaderCompiler {
     }
 
     /**
+     * Auto-generates a depth-prepass program from an existing Forward pass.
+     *
+     * <p>Three cases driven by {@link #isSimpleVertex(CgParsedPass)} and presence of
+     * {@code discard} in the fragment body:</p>
+     * <ol>
+     *   <li><strong>Simple vertex, solid</strong>: minimal position-only transform using the
+     *       camera MVP matrix from the frame UBO — identical to the shared engine depth shader.</li>
+     *   <li><strong>Complex vertex, solid</strong>: forward vertex body copied verbatim, preserving
+     *       vertex animation so depth matches the forward pass exactly.</li>
+     *   <li><strong>Alpha-clip</strong>: forward vertex body + forward fragment body, so the
+     *       {@code discard} in the fragment fires and only surviving fragments write depth.</li>
+     * </ol>
+     *
+     * <p>Uses camera view+projection (not light space — this is a depth prepass, not a shadow map).
+     * No depth bias is applied.</p>
+     *
+     * <p>The forward pass's {@code v2fStructBody} and {@code globalDecls} are reused in the
+     * synthetic depth pass for interface-block parity between vertex and fragment stages.</p>
+     *
+     * @param shader          material-level parse result (properties, featureNames)
+     * @param forwardPass     the Forward pass to derive the depth variant from; must not be null
+     * @param attachedBuffers user-defined SSBO/TBO and UBO buffers to inject
+     * @param matPropsUbo     engine-managed material properties UBO, or {@code null}
+     * @param config          active-keyword config (typically {@link CompileConfig#DEFAULT})
+     * @return a {@link CompiledSource} holding the complete depth vertex and fragment sources
+     * @throws IllegalArgumentException if {@code ShaderBufferPath} is {@code NONE}
+     */
+    public static CompiledSource compileDepthAutoGen(CgParsedShader shader,
+                                                      CgParsedPass forwardPass,
+                                                      List<CgAttachedBuffer> attachedBuffers,
+                                                      CgUniformBuffer matPropsUbo,
+                                                      CompileConfig config) {
+        final String depthVertexBody;
+        if (isSimpleVertex(forwardPass)) {
+            depthVertexBody =
+                    "    // Auto-generated depth prepass — minimal position transform\n"
+                    + "    gl_Position = CG_MATRIX_MVP * vec4(cg_Position, 1.0);\n";
+        } else {
+            depthVertexBody =
+                    "    // Auto-generated depth prepass — preserves vertex animation\n"
+                    + forwardPass.vertexBody() + "\n";
+        }
+
+        final String depthFragmentBody;
+        if (forwardPass.fragmentBody().contains("discard")) {
+            depthFragmentBody = forwardPass.fragmentBody();
+        } else {
+            depthFragmentBody = "    // Depth-only prepass — rasterizer writes depth automatically.\n";
+        }
+
+        CgFragOutputParser.FragOutput depthFragOutput = CgFragOutputParser.FragOutput.singleOutput("fragColor");
+        CgParsedPass depthPass = new CgParsedPass(
+                CgParsedPass.LIGHT_MODE_DEPTH,
+                CgParsedPass.LIGHT_MODE_DEPTH,
+                CgRenderState.DEFAULT,
+                forwardPass.v2fStructBody(),
+                forwardPass.globalDecls(),
+                depthVertexBody,
+                depthFragmentBody,
+                depthFragOutput);
+
+        return compile(shader, depthPass, attachedBuffers, matPropsUbo, CompileConfig.DEFAULT);
+    }
+
+    /**
      * Returns {@code true} when this pass is "simple" enough to share a single auto-generated
      * shadow material with other simple-geometry drawables (analogue of Godot's
      * {@code uses_shared_shadow_material}).
@@ -266,6 +332,10 @@ public final class CgMaterialShaderCompiler {
      *   <li>The vertex body does not reference user-defined shader properties
      *       (names starting with {@code _} followed by an uppercase letter — e.g. {@code _MainTex}).
      *       This heuristic detects vertex animation or UV-offset vertex transforms.</li>
+     *   <li>The vertex body does not reference engine time or per-object custom data
+     *       ({@code cg_Time}, {@code CG_OBJECT_CUSTOM0}–{@code CG_OBJECT_CUSTOM3}).
+     *       Time-driven displacement is indistinguishable from property-driven animation
+     *       and must never fall through to the minimal position-only transform.</li>
      *   <li>The fragment body contains no {@code discard} keyword (no alpha-clip).</li>
      *   <li>Face culling is not {@link CgCullState#NONE} (backface culling is active —
      *       required so the shadow pass covers both faces correctly).</li>
@@ -277,14 +347,21 @@ public final class CgMaterialShaderCompiler {
      * @return {@code true} if a minimal position-only shadow vertex can be used
      */
     public static boolean isSimpleVertex(CgParsedPass pass) {
+        String vertexBody = pass.vertexBody();
         // Check 1: vertex body has no user property references (_UpperCaseName pattern)
-        boolean noUserProps = !pass.vertexBody().matches("(?s).*\\b_[A-Z]\\w+.*");
-        // Check 2: fragment body has no discard (no alpha-clip)
+        boolean noUserProps = !vertexBody.matches("(?s).*\\b_[A-Z]\\w+.*");
+        // Check 2: vertex body has no engine time or per-object custom slot references
+        boolean noEngineAnimation = !vertexBody.contains("cg_Time")
+                && !vertexBody.contains("CG_OBJECT_CUSTOM0")
+                && !vertexBody.contains("CG_OBJECT_CUSTOM1")
+                && !vertexBody.contains("CG_OBJECT_CUSTOM2")
+                && !vertexBody.contains("CG_OBJECT_CUSTOM3");
+        // Check 3: fragment body has no discard (no alpha-clip)
         boolean noDiscard = !pass.fragmentBody().contains("discard");
-        // Check 3: culling is not OFF (NONE means double-sided — shadow pass must cull correctly)
+        // Check 4: culling is not OFF (NONE means double-sided — shadow pass must cull correctly)
         CgCullState cull = pass.renderState().getCull();
         boolean cullingIsOff = (cull != null && cull == CgCullState.NONE);
-        return noUserProps && noDiscard && !cullingIsOff;
+        return noUserProps && noEngineAnimation && noDiscard && !cullingIsOff;
     }
 
     // ── Vertex shader builder ─────────────────────────────────────────────────

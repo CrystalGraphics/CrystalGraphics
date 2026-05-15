@@ -1,16 +1,15 @@
 package io.github.somehussar.crystalgraphics.render.pipeline;
 
+import io.github.somehussar.crystalgraphics.api.material.CgMaterial;
 import io.github.somehussar.crystalgraphics.api.render.CgRenderPipeline;
 import io.github.somehussar.crystalgraphics.api.material.CgRenderPassVariant;
 import io.github.somehussar.crystalgraphics.api.render.CgRenderCommand;
-import io.github.somehussar.crystalgraphics.api.shader.CgShader;
 import io.github.somehussar.crystalgraphics.api.state.CgBlendState;
 import io.github.somehussar.crystalgraphics.api.state.CgColorMask;
 import io.github.somehussar.crystalgraphics.api.state.CgDepthState;
 import io.github.somehussar.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import io.github.somehussar.crystalgraphics.gl.buffer.staging.CgBufferWriter;
-import io.github.somehussar.crystalgraphics.gl.shader.CgShaderFactory;
-import org.lwjgl.opengl.GL11;
+import io.github.somehussar.crystalgraphics.gl.mesh.CgMesh;
 
 /**
  * Depth prepass renderer: fills the depth buffer from the camera's perspective
@@ -20,37 +19,25 @@ import org.lwjgl.opengl.GL11;
  * <p>Returns {@code true} if any geometry was drawn (→ forward pass uses {@code GL_EQUAL}),
  * or {@code false} if nothing was drawn (→ forward pass uses {@code GL_LEQUAL}).</p>
  *
+ * <h3>Auto-instancing</h3>
+ * <p>Consecutive commands with the same {@link CgMaterial}
+ * and {@link CgMesh} identity are merged into
+ * a single {@code drawInstanced(N)} call — same {@code canMerge()} criterion as
+ * {@link CgForwardRenderer}.</p>
+ *
  * <h3>Two-path architecture</h3>
  * <ul>
- *   <li><strong>Path 1 — Solid opaque (GEOMETRY, not ALPHA_TEST)</strong>: shared engine depth
- *       shader — minimal GLSL that only transforms position and writes depth.</li>
- *   <li><strong>Path 2 — Alpha-test (ALPHA_TEST)</strong>: {@code bindForVariant(FORWARD)} to
- *       execute the material's authored fragment discard logic, then {@code colorMask=false}.</li>
+ *   <li><strong>Primary path</strong>: {@code bindForPass(DEPTH)} for all geometry with a
+ *       compiled depth variant (auto-generated or explicit). Preserves vertex animation and
+ *       handles both solid and alpha-clip via the auto-gen case selection.</li>
+ *   <li><strong>Fallback path — alpha-test only</strong>: {@code bindForPass(FORWARD)} for
+ *       alpha-test materials that have no compiled depth variant. Solid geometry without a
+ *       depth variant is skipped entirely (batch advances without drawing).</li>
  * </ul>
  *
  * <p>Source: render-pipeline-curation.md Section 13.</p>
  */
 public final class CgDepthPrepassRenderer {
-
-    /** Shared engine depth shader — minimal position-only, no fragment output. */
-    private final CgShader engineDepthShader;
-
-    /**
-     * Loads the engine depth shader from the crystalgraphics resource domain.
-     * Silently degrades to stub mode ({@code execute()} returns {@code false}) if the
-     * engine shader assets are not present yet.
-     */
-    public CgDepthPrepassRenderer() {
-        CgShader loaded = null;
-        try {
-            loaded = CgShaderFactory.load(
-                "crystalgraphics:shaders/engine/depth_prepass.vert",
-                "crystalgraphics:shaders/engine/depth_prepass.frag");
-        } catch (Exception e) {
-            // Engine shader not yet present or failed to compile — stub mode returns false
-        }
-        this.engineDepthShader = loaded;
-    }
 
     /**
      * Executes the depth prepass over the supplied sorted opaque command list.
@@ -60,7 +47,7 @@ public final class CgDepthPrepassRenderer {
      * Restores {@code ColorMask=true} before returning (the outer {@code CgGlScope}
      * will also restore all state fully on frame-end).</p>
      *
-     * <p>GL state overrides are applied <em>after</em> {@code bindForVariant()} — the
+     * <p>GL state overrides are applied <em>after</em> {@code bindForPass()} — the
      * material's authored {@code RenderState} is applied first, then overridden for
      * depth-only output. This matches the ordering rule from Section 13.</p>
      *
@@ -71,7 +58,7 @@ public final class CgDepthPrepassRenderer {
      *         (caller should use {@code GL_LEQUAL} for the forward pass)
      */
     public boolean execute(CgRenderCommand[] sorted, int count, CgRenderPipeline pipeline) {
-        if (count == 0 || engineDepthShader == null) return false;
+        if (count == 0) return false;
 
         // Global depth prepass state — overrides material state where needed
         CgDepthState.TEST_WRITE.apply();
@@ -80,44 +67,52 @@ public final class CgDepthPrepassRenderer {
         CgShaderBuffer objBuf = pipeline.objectBuffer();
         boolean drew = false;
 
-        for (int i = 0; i < count; i++) {
-            CgRenderCommand cmd = sorted[i];
+        int i = 0;
+        while (i < count) {
+            CgRenderCommand base = sorted[i];
+            boolean isAlphaTest = (base.passFlags & CgRenderCommand.FLAG_ALPHA_TEST) != 0;
 
-            // Write one transform record for this command
-            CgBufferWriter w = objBuf.beginWrite(1);
-            w.beginRecord()
-             .mat4("modelMatrix",  cmd.modelMatrix)
-             .mat4("normalMatrix", cmd.normalMatrix);
-            objBuf.endRecord();
+            int j = i + 1;
+            while (j < count && CgForwardRenderer.canMerge(base, sorted[j])) j++;
+            int runLen = j - i;
+
+            if (!base.material.hasCompiledDepthPass() && !isAlphaTest) {
+                i = j;
+                continue;
+            }
+
+            CgBufferWriter w = objBuf.beginWrite(runLen);
+            for (int k = i; k < j; k++) {
+                CgRenderCommand cmd = sorted[k];
+                w.beginRecord()
+                 .mat4("modelMatrix",  cmd.modelMatrix)
+                 .mat4("normalMatrix", cmd.normalMatrix)
+                 .vec4("custom0",      cmd.custom0)
+                 .vec4("custom1",      cmd.custom1)
+                 .vec4("custom2",      cmd.custom2)
+                 .vec4("custom3",      cmd.custom3);
+                objBuf.endRecord();
+            }
             objBuf.endWrite();
 
-            boolean isAlphaTest = (cmd.passFlags & CgRenderCommand.FLAG_ALPHA_TEST) != 0;
-            if (isAlphaTest) {
-                // Path 2: material's FORWARD pass fragment body contains alpha-clip discard logic.
-                // bindForVariant() applies the material's authored RenderState internally.
-                // Do NOT call rs.apply() before — that would double-manage state.
-                cmd.material.bindForVariant(CgRenderPassVariant.FORWARD);
-            } else {
-                // Path 1: shared engine depth shader — position-only, no color output
-                engineDepthShader.bind();
-            }
+            if (base.preDrawHook != null) base.preDrawHook.apply(sorted, i, runLen);
 
-            // Override colorMask AFTER bind (Section 13 ordering rule)
+            if (base.material.hasCompiledDepthPass()) {
+                base.material.bindForPass(CgRenderPassVariant.DEPTH);
+            } else {
+                base.material.bindForPass(CgRenderPassVariant.FORWARD);
+            }
             CgColorMask.NONE.apply();
-
-            cmd.mesh.drawInstanced(1);
-
-            if (isAlphaTest) {
-                cmd.material.unbind();
-            } else {
-                engineDepthShader.unbind();
-            }
+            base.mesh.drawInstanced(runLen);
+            base.material.unbind();
 
             drew = true;
+            i = j;
         }
 
         // Restore colorMask — outer CgGlScope will also restore fully on frame-end
         CgColorMask.ALL.apply();
         return drew;
     }
+    
 }
