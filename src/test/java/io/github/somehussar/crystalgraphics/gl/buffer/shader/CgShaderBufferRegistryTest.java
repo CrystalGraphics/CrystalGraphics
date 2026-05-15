@@ -1,6 +1,6 @@
 package io.github.somehussar.crystalgraphics.gl.buffer.shader;
 
-import io.github.somehussar.crystalgraphics.api.CgBindingPoints;
+import com.crystalgraphics.api.CgBindingPoints;
 import org.junit.Test;
 
 import static org.junit.Assert.*;

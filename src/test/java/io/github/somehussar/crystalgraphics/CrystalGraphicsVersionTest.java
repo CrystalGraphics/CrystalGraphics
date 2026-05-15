@@ -1,5 +1,6 @@
 package io.github.somehussar.crystalgraphics;
 
+import com.crystalgraphics.CrystalGraphicsVersion;
 import org.junit.Test;
 
 import static org.junit.Assert.*;

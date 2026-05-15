@@ -1,5 +1,6 @@
 package io.github.somehussar.crystalgraphics.api.font;
 
+import com.crystalgraphics.api.font.*;
 import org.junit.Test;
 
 import static org.junit.Assert.*;

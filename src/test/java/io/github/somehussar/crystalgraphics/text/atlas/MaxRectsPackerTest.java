@@ -1,7 +1,7 @@
 package io.github.somehussar.crystalgraphics.text.atlas;
 
-import io.github.somehussar.crystalgraphics.text.atlas.packing.MaxRectsPacker;
-import io.github.somehussar.crystalgraphics.text.atlas.packing.PackedRect;
+import com.crystalgraphics.text.atlas.packing.MaxRectsPacker;
+import com.crystalgraphics.text.atlas.packing.PackedRect;
 import org.junit.Test;
 
 import java.util.ArrayList;

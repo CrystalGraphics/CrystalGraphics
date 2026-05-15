@@ -1,8 +1,11 @@
 package io.github.somehussar.crystalgraphics.api.font;
 
-import io.github.somehussar.crystalgraphics.api.text.CgShapedRun;
-import io.github.somehussar.crystalgraphics.text.layout.CgTextLayoutEngine;
-import io.github.somehussar.crystalgraphics.text.layout.RunReshaper;
+import com.crystalgraphics.api.font.CgFont;
+import com.crystalgraphics.api.font.CgFontFamily;
+import com.crystalgraphics.api.font.CgTextLayoutBuilder;
+import com.crystalgraphics.api.text.CgShapedRun;
+import com.crystalgraphics.text.layout.CgTextLayoutEngine;
+import com.crystalgraphics.text.layout.RunReshaper;
 import org.junit.Test;
 
 import java.util.List;

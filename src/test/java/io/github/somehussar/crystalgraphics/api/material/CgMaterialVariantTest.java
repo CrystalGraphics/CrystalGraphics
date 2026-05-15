@@ -1,6 +1,7 @@
 package io.github.somehussar.crystalgraphics.api.material;
 
-import io.github.somehussar.crystalgraphics.api.state.CgRenderState;
+import com.crystalgraphics.api.material.CgMaterial;
+import com.crystalgraphics.api.state.CgRenderState;
 import org.junit.Test;
 
 import java.util.Arrays;

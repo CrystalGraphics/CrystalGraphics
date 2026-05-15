@@ -1,5 +1,8 @@
 package io.github.somehussar.crystalgraphics.mc.coremod;
 
+import com.crystalgraphics.mc.coremod.CoverageMatrix;
+import com.crystalgraphics.mc.coremod.CrystalGraphicsCoremod;
+import com.crystalgraphics.mc.coremod.CrystalGraphicsTransformer;
 import org.junit.After;
 import org.junit.Test;
 import org.objectweb.asm.ClassReader;
@@ -32,7 +35,7 @@ public class CrystalGraphicsTransformerTest {
 
     /** Internal name of the redirect target class used by all CrystalGraphics redirects. */
     private static final String REDIRECT_OWNER =
-        "io/github/somehussar/crystalgraphics/mc/coremod/CrystalGLRedirects";
+        "com/crystalgraphics/mc/coremod/CrystalGLRedirects";
 
     /**
      * Resets {@code CrystalGraphicsCoremod.gapOnlyMode} to {@code false} after

@@ -1,5 +1,6 @@
 package io.github.somehussar.crystalgraphics.api.vertex;
 
+import com.crystalgraphics.api.vertex.CgInstanceFormat;
 import org.junit.Test;
 
 import static org.junit.Assert.*;

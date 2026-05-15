@@ -1,6 +1,6 @@
 package io.github.somehussar.crystalgraphics.mc.shader;
 
-import io.github.somehussar.crystalgraphics.api.shader.CgShaderPreprocessor;
+import com.crystalgraphics.api.shader.CgShaderPreprocessor;
 import org.junit.Test;
 
 import java.util.LinkedHashMap;

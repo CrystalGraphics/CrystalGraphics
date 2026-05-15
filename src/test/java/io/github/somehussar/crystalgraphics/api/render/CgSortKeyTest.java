@@ -1,6 +1,7 @@
 package io.github.somehussar.crystalgraphics.api.render;
 
-import io.github.somehussar.crystalgraphics.api.material.CgRenderQueue;
+import com.crystalgraphics.api.material.CgRenderQueue;
+import com.crystalgraphics.api.render.CgSortKey;
 import org.junit.Test;
 
 import static org.junit.Assert.*;

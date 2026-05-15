@@ -1,5 +1,8 @@
 package io.github.somehussar.crystalgraphics.gl.material.parse;
 
+import com.crystalgraphics.api.shader.CgPreprocessorException;
+import com.crystalgraphics.gl.material.parse.CgFragOutputParser;
+import com.crystalgraphics.gl.material.parse.CgShaderParseException;
 import org.junit.Test;
 
 import java.util.Arrays;
@@ -206,7 +209,7 @@ public class CgFragOutputParserTest {
             fail("Expected CgShaderParseException");
         } catch (CgShaderParseException e) {
             // Correct — it's a CgShaderParseException, not CgPreprocessorException
-        } catch (io.github.somehussar.crystalgraphics.api.shader.CgPreprocessorException e) {
+        } catch (CgPreprocessorException e) {
             fail("Must NOT throw CgPreprocessorException — parse errors are CgShaderParseException");
         }
     }

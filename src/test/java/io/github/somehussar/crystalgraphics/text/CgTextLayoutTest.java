@@ -1,13 +1,14 @@
 package io.github.somehussar.crystalgraphics.text;
 
-import io.github.somehussar.crystalgraphics.api.font.CgFontKey;
-import io.github.somehussar.crystalgraphics.api.font.CgFontMetrics;
-import io.github.somehussar.crystalgraphics.api.font.CgFontStyle;
-import io.github.somehussar.crystalgraphics.api.text.CgShapedRun;
-import io.github.somehussar.crystalgraphics.api.text.CgTextLayout;
-import io.github.somehussar.crystalgraphics.text.layout.CgLineBreaker;
-import io.github.somehussar.crystalgraphics.text.layout.CgTextShaper;
-import io.github.somehussar.crystalgraphics.text.layout.RunReshaper;
+import com.crystalgraphics.api.font.CgFont;
+import com.crystalgraphics.api.font.CgFontKey;
+import com.crystalgraphics.api.font.CgFontMetrics;
+import com.crystalgraphics.api.font.CgFontStyle;
+import com.crystalgraphics.api.text.CgShapedRun;
+import com.crystalgraphics.api.text.CgTextLayout;
+import com.crystalgraphics.text.layout.CgLineBreaker;
+import com.crystalgraphics.text.layout.CgTextShaper;
+import com.crystalgraphics.text.layout.RunReshaper;
 import org.junit.Test;
 
 import java.util.ArrayList;
@@ -356,8 +357,8 @@ public class CgTextLayoutTest {
     @Test
     public void testTextLayout_stores_resolvedFontsMap() {
         List<List<CgShapedRun>> lines = new ArrayList<List<CgShapedRun>>();
-        java.util.Map<CgFontKey, io.github.somehussar.crystalgraphics.api.font.CgFont> resolved =
-                new java.util.HashMap<CgFontKey, io.github.somehussar.crystalgraphics.api.font.CgFont>();
+        java.util.Map<CgFontKey, CgFont> resolved =
+                new java.util.HashMap<CgFontKey, CgFont>();
 
         CgTextLayout layout = new CgTextLayout(lines, 80.0f, 30.0f, TEST_METRICS, resolved);
 
