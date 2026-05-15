@@ -1,6 +1,7 @@
 package io.github.somehussar.crystalgraphics.gl.buffer.staging;
 
-import io.github.somehussar.crystalgraphics.api.vertex.CgInstanceFormat;
+import com.crystalgraphics.api.vertex.CgInstanceFormat;
+import com.crystalgraphics.gl.buffer.staging.CgInstanceWriter;
 import org.joml.Matrix4f;
 import org.junit.Test;
 

@@ -1,5 +1,7 @@
 package io.github.somehussar.crystalgraphics.api.render;
 
+import com.crystalgraphics.api.render.CgRenderCommand;
+import com.crystalgraphics.api.render.CgRenderCommandPool;
 import org.junit.Test;
 
 import static org.junit.Assert.*;

@@ -1,8 +1,9 @@
 package io.github.somehussar.crystalgraphics.api;
 
-import io.github.somehussar.crystalgraphics.api.vertex.CgInstanceFormat;
-import io.github.somehussar.crystalgraphics.api.vertex.CgVertexFormat;
-import io.github.somehussar.crystalgraphics.gl.vertex.CgInstanceVertexArrayBinding;
+import com.crystalgraphics.api.CgCapabilities;
+import com.crystalgraphics.api.vertex.CgInstanceFormat;
+import com.crystalgraphics.api.vertex.CgVertexFormat;
+import com.crystalgraphics.gl.vertex.CgInstanceVertexArrayBinding;
 import org.junit.Test;
 
 import static org.junit.Assert.*;

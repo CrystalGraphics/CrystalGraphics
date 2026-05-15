@@ -1,6 +1,7 @@
 package io.github.somehussar.crystalgraphics.api.font;
 
-import io.github.somehussar.crystalgraphics.text.atlas.CgGlyphAtlas;
+import com.crystalgraphics.api.font.*;
+import com.crystalgraphics.text.atlas.CgGlyphAtlas;
 
 import org.junit.Test;
 

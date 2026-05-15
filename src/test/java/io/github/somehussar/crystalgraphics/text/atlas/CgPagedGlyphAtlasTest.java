@@ -1,12 +1,12 @@
 package io.github.somehussar.crystalgraphics.text.atlas;
 
-import io.github.somehussar.crystalgraphics.api.font.CgFontKey;
-import io.github.somehussar.crystalgraphics.api.font.CgFontStyle;
-import io.github.somehussar.crystalgraphics.api.font.CgGlyphKey;
-import io.github.somehussar.crystalgraphics.api.font.CgGlyphPlacement;
-import io.github.somehussar.crystalgraphics.text.atlas.CgGlyphAtlas;
+import com.crystalgraphics.api.font.CgFontKey;
+import com.crystalgraphics.api.font.CgFontStyle;
+import com.crystalgraphics.api.font.CgGlyphKey;
+import com.crystalgraphics.api.font.CgGlyphPlacement;
+import com.crystalgraphics.text.atlas.CgGlyphAtlas;
 
-import io.github.somehussar.crystalgraphics.text.atlas.CgPagedGlyphAtlas;
+import com.crystalgraphics.text.atlas.CgPagedGlyphAtlas;
 import org.junit.Test;
 
 import static org.junit.Assert.*;

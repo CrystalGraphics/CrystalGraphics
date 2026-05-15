@@ -1,7 +1,10 @@
 package io.github.somehussar.crystalgraphics.gl.material.parse;
 
-import io.github.somehussar.crystalgraphics.api.CgCapabilities;
-import io.github.somehussar.crystalgraphics.api.material.CgAttachedBuffer;
+import com.crystalgraphics.api.CgCapabilities;
+import com.crystalgraphics.api.material.CgAttachedBuffer;
+import com.crystalgraphics.gl.material.parse.CgMaterialShaderCompiler;
+import com.crystalgraphics.gl.material.parse.CgParsedShader;
+import com.crystalgraphics.gl.material.parse.CgShaderParser;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;

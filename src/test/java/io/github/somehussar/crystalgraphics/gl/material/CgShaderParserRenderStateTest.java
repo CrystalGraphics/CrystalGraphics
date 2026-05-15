@@ -1,12 +1,15 @@
 package io.github.somehussar.crystalgraphics.gl.material;
 
-import io.github.somehussar.crystalgraphics.api.material.CgRenderQueue;
-import io.github.somehussar.crystalgraphics.api.state.CgBlendState;
-import io.github.somehussar.crystalgraphics.api.state.CgRenderState;
+import com.crystalgraphics.api.material.CgRenderQueue;
+import com.crystalgraphics.api.state.CgColorMask;
+import com.crystalgraphics.api.state.CgBlendState;
+import com.crystalgraphics.api.state.CgRenderState;
 
-import io.github.somehussar.crystalgraphics.gl.material.parse.CgParsedShader;
-import io.github.somehussar.crystalgraphics.gl.material.parse.CgShaderParseException;
-import io.github.somehussar.crystalgraphics.gl.material.parse.CgShaderParser;
+import com.crystalgraphics.api.state.CgStencilState;
+import com.crystalgraphics.gl.material.CgMaterialProperty;
+import com.crystalgraphics.gl.material.parse.CgParsedShader;
+import com.crystalgraphics.gl.material.parse.CgShaderParseException;
+import com.crystalgraphics.gl.material.parse.CgShaderParser;
 import org.junit.Test;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL14;
@@ -395,8 +398,8 @@ public class CgShaderParserRenderStateTest {
         List<?> masks = rs(p).getColorMasks();
         System.out.println("✓ colorMask_RGB: masks.size=" + masks.size());
         assertEquals(1, masks.size());
-        io.github.somehussar.crystalgraphics.api.state.CgColorMask m =
-                (io.github.somehussar.crystalgraphics.api.state.CgColorMask) masks.get(0);
+        CgColorMask m =
+                (CgColorMask) masks.get(0);
         assertTrue(m.r()); assertTrue(m.g()); assertTrue(m.b()); assertFalse(m.a());
         assertEquals(-1, m.targetIndex());
     }
@@ -404,8 +407,8 @@ public class CgShaderParserRenderStateTest {
     @Test
     public void colorMask_RGBA() {
         CgParsedShader p = parseWithRS("RenderState { ColorMask RGBA }\n");
-        io.github.somehussar.crystalgraphics.api.state.CgColorMask m =
-                (io.github.somehussar.crystalgraphics.api.state.CgColorMask) rs(p).getColorMasks().get(0);
+        CgColorMask m =
+                (CgColorMask) rs(p).getColorMasks().get(0);
         System.out.println("✓ colorMask_RGBA: r=" + m.r() + " g=" + m.g() + " b=" + m.b() + " a=" + m.a());
         assertTrue(m.r()); assertTrue(m.g()); assertTrue(m.b()); assertTrue(m.a());
         assertEquals(-1, m.targetIndex());
@@ -414,8 +417,8 @@ public class CgShaderParserRenderStateTest {
     @Test
     public void colorMask_R_only() {
         CgParsedShader p = parseWithRS("RenderState { ColorMask R }\n");
-        io.github.somehussar.crystalgraphics.api.state.CgColorMask m =
-                (io.github.somehussar.crystalgraphics.api.state.CgColorMask) rs(p).getColorMasks().get(0);
+        CgColorMask m =
+                (CgColorMask) rs(p).getColorMasks().get(0);
         System.out.println("✓ colorMask_R_only: r=" + m.r() + " g=" + m.g() + " b=" + m.b() + " a=" + m.a());
         assertTrue(m.r()); assertFalse(m.g()); assertFalse(m.b()); assertFalse(m.a());
     }
@@ -423,8 +426,8 @@ public class CgShaderParserRenderStateTest {
     @Test
     public void colorMask_zero_all_false() {
         CgParsedShader p = parseWithRS("RenderState { ColorMask 0 }\n");
-        io.github.somehussar.crystalgraphics.api.state.CgColorMask m =
-                (io.github.somehussar.crystalgraphics.api.state.CgColorMask) rs(p).getColorMasks().get(0);
+        CgColorMask m =
+                (CgColorMask) rs(p).getColorMasks().get(0);
         System.out.println("✓ colorMask_zero_all_false: r=" + m.r() + " g=" + m.g());
         assertFalse(m.r()); assertFalse(m.g()); assertFalse(m.b()); assertFalse(m.a());
     }
@@ -432,8 +435,8 @@ public class CgShaderParserRenderStateTest {
     @Test
     public void colorMask_rgb_lowercase() {
         CgParsedShader p = parseWithRS("RenderState { ColorMask rgb }\n");
-        io.github.somehussar.crystalgraphics.api.state.CgColorMask m =
-                (io.github.somehussar.crystalgraphics.api.state.CgColorMask) rs(p).getColorMasks().get(0);
+        CgColorMask m =
+                (CgColorMask) rs(p).getColorMasks().get(0);
         System.out.println("✓ colorMask_rgb_lowercase: r=" + m.r() + " g=" + m.g() + " b=" + m.b());
         assertTrue(m.r()); assertTrue(m.g()); assertTrue(m.b()); assertFalse(m.a());
     }
@@ -441,8 +444,8 @@ public class CgShaderParserRenderStateTest {
     @Test
     public void colorMask_RGB_mrtIndex_1() {
         CgParsedShader p = parseWithRS("RenderState { ColorMask RGB 1 }\n");
-        io.github.somehussar.crystalgraphics.api.state.CgColorMask m =
-                (io.github.somehussar.crystalgraphics.api.state.CgColorMask) rs(p).getColorMasks().get(0);
+        CgColorMask m =
+                (CgColorMask) rs(p).getColorMasks().get(0);
         System.out.println("✓ colorMask_RGB_mrtIndex_1: targetIndex=" + m.targetIndex());
         assertEquals(1, m.targetIndex());
         assertTrue(m.r()); assertTrue(m.g()); assertTrue(m.b()); assertFalse(m.a());
@@ -451,8 +454,8 @@ public class CgShaderParserRenderStateTest {
     @Test
     public void colorMask_RGBA_mrtIndex_0() {
         CgParsedShader p = parseWithRS("RenderState { ColorMask RGBA 0 }\n");
-        io.github.somehussar.crystalgraphics.api.state.CgColorMask m =
-                (io.github.somehussar.crystalgraphics.api.state.CgColorMask) rs(p).getColorMasks().get(0);
+        CgColorMask m =
+                (CgColorMask) rs(p).getColorMasks().get(0);
         System.out.println("✓ colorMask_RGBA_mrtIndex_0: targetIndex=" + m.targetIndex());
         assertEquals(0, m.targetIndex());
     }
@@ -487,7 +490,7 @@ public class CgShaderParserRenderStateTest {
     @Test
     public void stencil_fullBlock() {
         CgParsedShader p = parseWithRS(FULL_STENCIL_BLOCK);
-        io.github.somehussar.crystalgraphics.api.state.CgStencilState ss = rs(p).getStencil();
+        CgStencilState ss = rs(p).getStencil();
         System.out.println("✓ stencil_fullBlock: enabled=" + ss.enabled() + " ref=" + ss.ref()
                 + " comp=" + ss.compFunc() + " pass=" + ss.passOp());
         assertTrue(ss.enabled());
@@ -503,7 +506,7 @@ public class CgShaderParserRenderStateTest {
     @Test
     public void stencil_partial_defaults() {
         CgParsedShader p = parseWithRS("RenderState {\n  Stencil {\n    Ref 0\n    Comp EQUAL\n    Pass KEEP\n  }\n}\n");
-        io.github.somehussar.crystalgraphics.api.state.CgStencilState ss = rs(p).getStencil();
+        CgStencilState ss = rs(p).getStencil();
         System.out.println("✓ stencil_partial_defaults: enabled=" + ss.enabled() + " ref=" + ss.ref() + " comp=" + ss.compFunc());
         assertTrue(ss.enabled());
         assertEquals(0, ss.ref());
@@ -550,7 +553,7 @@ public class CgShaderParserRenderStateTest {
      @Test
      public void stencil_absent_disabledByDefault() {
          CgParsedShader p = parseWithRS("RenderState { DepthTest LESS }\n");
-         io.github.somehussar.crystalgraphics.api.state.CgStencilState ss = rs(p).getStencil();
+         CgStencilState ss = rs(p).getStencil();
          System.out.println("✓ stencil_absent_disabledByDefault: stencil=" + ss);
          assertNull("Stencil slot should be null when not declared in RenderState block", ss);
      }

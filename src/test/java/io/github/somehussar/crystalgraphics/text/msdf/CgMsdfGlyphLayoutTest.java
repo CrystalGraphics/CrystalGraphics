@@ -1,5 +1,6 @@
 package io.github.somehussar.crystalgraphics.text.msdf;
 
+import com.crystalgraphics.text.msdf.CgMsdfGlyphLayout;
 import org.junit.Test;
 
 import static org.junit.Assert.*;

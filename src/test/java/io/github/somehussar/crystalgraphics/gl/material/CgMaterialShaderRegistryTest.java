@@ -1,5 +1,7 @@
 package io.github.somehussar.crystalgraphics.gl.material;
 
+import com.crystalgraphics.gl.material.CgMaterialShader;
+import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
 import org.junit.After;
 import org.junit.Test;
 

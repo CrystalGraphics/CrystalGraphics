@@ -1,6 +1,6 @@
 package io.github.somehussar.crystalgraphics.api.render;
 
-import org.joml.Matrix4f;
+import com.crystalgraphics.api.render.CgFrameData;
 import org.junit.Test;
 
 import static org.junit.Assert.*;

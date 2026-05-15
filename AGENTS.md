@@ -722,7 +722,7 @@ All registries are **singletons accessed via `.get()`**. You normally interact w
 
 # Package AGENTS.md Index
 
-All 34 package guides under `src/main/java/io/github/somehussar/crystalgraphics/`. Relative paths omit the common prefix.
+All 34 package guides under `src/main/java/com/crystalgraphics/`. Relative paths omit the common prefix.
 
 ### CrystalShader Pipeline
 | Path | What it covers |

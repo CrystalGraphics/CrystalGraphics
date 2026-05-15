@@ -44,9 +44,9 @@ CrystalGraphics already supports *renderbuffer-based* stencil attachments via `C
 
 Implemented in backends:
 
-- Core GL30: `src/main/java/io/github/somehussar/crystalgraphics/gl/framebuffer/CgCoreFramebuffer.java`
-- ARB: `src/main/java/io/github/somehussar/crystalgraphics/gl/framebuffer/CgArbFramebuffer.java`
-- EXT: `src/main/java/io/github/somehussar/crystalgraphics/gl/framebuffer/CgExtFramebuffer.java`
+- Core GL30: `src/main/java/com/crystalgraphics/gl/framebuffer/CgCoreFramebuffer.java`
+- ARB: `src/main/java/com/crystalgraphics/gl/framebuffer/CgArbFramebuffer.java`
+- EXT: `src/main/java/com/crystalgraphics/gl/framebuffer/CgExtFramebuffer.java`
   - EXT has no `GL_DEPTH_STENCIL_ATTACHMENT`; CrystalGraphics correctly attaches a single packed RBO to both depth + stencil attachment points.
 
 What CrystalGraphics does *not* currently support:
@@ -144,15 +144,15 @@ If CrystalGraphics introduces packed depth-stencil textures, it should match Ang
 
 If implementing Approach B or C, likely touch:
 
-- `src/main/java/io/github/somehussar/crystalgraphics/api/framebuffer/CgDepthStencilSpec.java`
+- `src/main/java/com/crystalgraphics/api/framebuffer/CgDepthStencilSpec.java`
   - Add a new mode (packed depth-stencil texture) or a combined "depth texture + stencil renderbuffer" mode.
 
-- `src/main/java/io/github/somehussar/crystalgraphics/gl/framebuffer/CgCoreFramebuffer.java`
-- `src/main/java/io/github/somehussar/crystalgraphics/gl/framebuffer/CgArbFramebuffer.java`
-- `src/main/java/io/github/somehussar/crystalgraphics/gl/framebuffer/CgExtFramebuffer.java`
+- `src/main/java/com/crystalgraphics/gl/framebuffer/CgCoreFramebuffer.java`
+- `src/main/java/com/crystalgraphics/gl/framebuffer/CgArbFramebuffer.java`
+- `src/main/java/com/crystalgraphics/gl/framebuffer/CgExtFramebuffer.java`
   - Allocate/attach the new attachment types.
 
-- `src/main/java/io/github/somehussar/crystalgraphics/api/CgCapabilities.java`
+- `src/main/java/com/crystalgraphics/api/CgCapabilities.java`
   - Possibly add a derived boolean like `hasDepthStencilTexture()` to centralize checks.
 
 ## Risks / Gotchas

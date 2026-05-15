@@ -1,9 +1,10 @@
 package io.github.somehussar.crystalgraphics.gl.material;
 
-import io.github.somehussar.crystalgraphics.gl.material.parse.CgParsedPass;
-import io.github.somehussar.crystalgraphics.gl.material.parse.CgParsedShader;
-import io.github.somehussar.crystalgraphics.gl.material.parse.CgShaderParseException;
-import io.github.somehussar.crystalgraphics.gl.material.parse.CgShaderParser;
+import com.crystalgraphics.gl.material.CgMaterialProperty;
+import com.crystalgraphics.gl.material.parse.CgParsedPass;
+import com.crystalgraphics.gl.material.parse.CgParsedShader;
+import com.crystalgraphics.gl.material.parse.CgShaderParseException;
+import com.crystalgraphics.gl.material.parse.CgShaderParser;
 import org.junit.Test;
 
 import java.util.List;
@@ -621,7 +622,7 @@ public class CgShaderParserTest {
         try {
             CgShaderParser.parse(src);
             fail("Expected CgShaderParseException for unknown RenderState key");
-        } catch (io.github.somehussar.crystalgraphics.gl.material.parse.CgShaderParseException e) {
+        } catch (CgShaderParseException e) {
             assertTrue("Error should mention the unknown key",
                 e.getMessage().contains("UnknownGarbage") ||
                 e.getMessage().toLowerCase().contains("unknown") ||
