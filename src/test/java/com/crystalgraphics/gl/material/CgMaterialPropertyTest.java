@@ -1,6 +1,5 @@
 package com.crystalgraphics.gl.material;
 
-import com.crystalgraphics.gl.material.CgMaterialProperty;
 import org.junit.Test;
 
 import static org.junit.Assert.*;

@@ -1,7 +1,6 @@
 package com.crystalgraphics.gl.buffer.staging;
 
 import com.crystalgraphics.api.buffer.CgBufferFormat;
-import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
 import org.joml.Matrix4f;
 import org.junit.Test;
 

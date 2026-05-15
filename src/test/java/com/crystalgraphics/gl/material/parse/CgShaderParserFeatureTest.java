@@ -2,10 +2,6 @@ package com.crystalgraphics.gl.material.parse;
 
 import com.crystalgraphics.api.CgCapabilities;
 import com.crystalgraphics.api.material.CgAttachedBuffer;
-import com.crystalgraphics.gl.material.parse.CgMaterialShaderCompiler;
-import com.crystalgraphics.gl.material.parse.CgParsedShader;
-import com.crystalgraphics.gl.material.parse.CgShaderParseException;
-import com.crystalgraphics.gl.material.parse.CgShaderParser;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;

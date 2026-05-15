@@ -1,6 +1,5 @@
 package com.crystalgraphics.api.material;
 
-import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.gl.material.CgMaterialProperties;
 import com.crystalgraphics.gl.material.CgMaterialProperty;

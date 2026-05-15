@@ -1,8 +1,5 @@
 package com.crystalgraphics.gl.material.parse;
 
-import com.crystalgraphics.gl.material.parse.CgParsedPass;
-import com.crystalgraphics.gl.material.parse.CgParsedShader;
-import com.crystalgraphics.gl.material.parse.CgShaderParser;
 import org.junit.Test;
 
 import static org.junit.Assert.*;

@@ -3,7 +3,6 @@ package com.crystalgraphics.gl.mesh;
 import com.crystalgraphics.api.mesh.CgMeshData;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
-import com.crystalgraphics.gl.mesh.CgMeshBuilder;
 import org.junit.Test;
 
 import static org.junit.Assert.*;

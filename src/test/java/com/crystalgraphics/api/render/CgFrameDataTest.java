@@ -1,6 +1,5 @@
 package com.crystalgraphics.api.render;
 
-import com.crystalgraphics.api.render.CgFrameData;
 import org.junit.Test;
 
 import static org.junit.Assert.*;

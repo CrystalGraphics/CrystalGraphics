@@ -1,8 +1,5 @@
 package com.crystalgraphics.api.font;
 
-import com.crystalgraphics.api.font.CgFont;
-import com.crystalgraphics.api.font.CgFontFamily;
-import com.crystalgraphics.api.font.CgTextLayoutBuilder;
 import com.crystalgraphics.api.text.CgShapedRun;
 import com.crystalgraphics.text.layout.CgTextLayoutEngine;
 import com.crystalgraphics.text.layout.RunReshaper;
