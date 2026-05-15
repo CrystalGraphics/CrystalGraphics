@@ -50,7 +50,7 @@ import java.util.Map;
  * <ul>
  *   <li>{@code org.lwjgl.} &mdash; loaded by the system classloader; transforming
  *       them would either fail or cause undefined behavior.</li>
- *   <li>{@code io.github.somehussar.crystalgraphics.mc.coremod.} &mdash; our own
+ *   <li>{@code com.crystalgraphics.mc.coremod.} &mdash; our own
  *       redirect target classes; transforming them would cause infinite
  *       recursion.</li>
  *   <li>{@code com.gtnewhorizons.angelica.} &mdash; Angelica has its own
@@ -90,7 +90,7 @@ public final class CrystalGraphicsTransformer implements IClassTransformer {
      */
     private static final String[] EXCLUSION_PREFIXES = {
         "org.lwjgl.",
-        "io.github.somehussar.crystalgraphics.mc.coremod.",
+        "com.crystalgraphics.mc.coremod.",
         "com.gtnewhorizons.angelica.",
         "org.objectweb.asm.",
         "net.minecraft.launchwrapper."

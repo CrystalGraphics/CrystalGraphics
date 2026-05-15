@@ -3,7 +3,7 @@ plugins {
     `java-library`
 }
 
-group = providers.gradleProperty("modGroup").orElse("io.github.somehussar").get()
+group = providers.gradleProperty("modGroup").orElse("com").get()
 version = providers.gradleProperty("modVersion").orElse("1.0.0").get()
 
 apply(from = "repositories.gradle")

@@ -20,7 +20,7 @@ public class TransformHelper {
     private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics-Hotswap");
 
     private static final String CG_TRANSFORMER_CLASS =
-        "io.github.somehussar.crystalgraphics.mc.coremod.CrystalGraphicsTransformer";
+        "com.crystalgraphics.mc.coremod.CrystalGraphicsTransformer";
 
     private static final boolean VERBOSE = Boolean.getBoolean("crystalgraphics.hotswap.verbose");
     private static final boolean FULL_CHAIN = Boolean.getBoolean("crystalgraphics.hotswap.fullChain");
