@@ -1,7 +1,7 @@
 package com.crystalgraphics.gl.buffer;
 
-import org.lwjgl.BufferUtils;
-import org.lwjgl.opengl.GL15;
+import com.crystalgraphics.util.CgBufferUtils;
+import com.crystalgraphics.platform.gl.CgGL;
 
 import java.nio.ShortBuffer;
 
@@ -35,23 +35,23 @@ public final class CgQuadIndexBuffer {
      * at least {@code neededQuads} worth of indices. Grows if necessary.
      */
     public void bindAndEnsureCapacity(int neededQuads) {
-        if (glBuffer == 0) glBuffer = GL15.glGenBuffers();
+        if (glBuffer == 0) glBuffer = CgGL.glGenBuffers();
         
         bind();
         if (neededQuads > currentCapacityQuads) grow(neededQuads);
     }
 
     public void bind() {
-        GL15.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, glBuffer);
+        CgGL.glBindBuffer(CgGL.GL_ELEMENT_ARRAY_BUFFER, glBuffer);
     }
     
     public void unbind() {
-        GL15.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, 0);
+        CgGL.glBindBuffer(CgGL.GL_ELEMENT_ARRAY_BUFFER, 0);
     }
 
     public static void freeAll() {
         if (instance != null && instance.glBuffer != 0) {
-            GL15.glDeleteBuffers(instance.glBuffer);
+            CgGL.glDeleteBuffers(instance.glBuffer);
             instance.glBuffer = 0;
             instance = null;
         }
@@ -64,7 +64,7 @@ public final class CgQuadIndexBuffer {
         );
         if (newCapacity < 256) newCapacity = 256;
 
-        ShortBuffer indices = BufferUtils.createShortBuffer(newCapacity * 6);
+        ShortBuffer indices = CgBufferUtils.createShortBuffer(newCapacity * 6);
         for (int i = 0; i < newCapacity; i++) {
             short base = (short) (i * 4);
             indices.put(base);
@@ -76,7 +76,7 @@ public final class CgQuadIndexBuffer {
         }
         indices.flip();
 
-        GL15.glBufferData(GL15.GL_ELEMENT_ARRAY_BUFFER, indices, GL15.GL_STATIC_DRAW);
+        CgGL.glBufferData(CgGL.GL_ELEMENT_ARRAY_BUFFER, indices, CgGL.GL_STATIC_DRAW);
         currentCapacityQuads = newCapacity;
     }
 }

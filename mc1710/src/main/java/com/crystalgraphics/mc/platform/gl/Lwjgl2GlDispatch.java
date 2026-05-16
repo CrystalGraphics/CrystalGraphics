@@ -1,6 +1,6 @@
 package com.crystalgraphics.mc.platform.gl;
 
-import com.crystalgraphics.platform.gl.CgCapabilityProbe;
+import com.crystalgraphics.platform.gl.CgGLContext;
 import com.crystalgraphics.platform.gl.CgGlDispatch;
 import com.crystalgraphics.platform.CgPlatform;
 import net.minecraft.client.renderer.OpenGlHelper;
@@ -10,6 +10,7 @@ import javax.annotation.Nullable;
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
+import java.nio.ShortBuffer;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -53,14 +54,14 @@ public final class Lwjgl2GlDispatch extends CgGlDispatch {
 
     /** @return {@code true} if Core GL 3.0 FBO is supported */
     private boolean coreGl30() {
-        CgCapabilityProbe p = CgPlatform.capabilities();
-        return p != null && p.isCoreFboSupported();
+        CgGLContext p = CgPlatform.capabilities();
+        return p != null && p.OpenGL30();
     }
 
     /** @return {@code true} if ARB_framebuffer_object is supported */
     private boolean arbFbo() {
-        CgCapabilityProbe p = CgPlatform.capabilities();
-        return p != null && p.isArbFboSupported();
+        CgGLContext p = CgPlatform.capabilities();
+        return p != null && p.GL_ARB_framebuffer_object();
     }
 
     // -------------------------------------------------------------------------
@@ -294,6 +295,12 @@ public final class Lwjgl2GlDispatch extends CgGlDispatch {
     }
 
     @Override
+    public void glBufferData(int target, ShortBuffer data, int usage) {
+        GL15.glBufferData(target, data, usage);
+    }
+
+
+    @Override
     public void glBufferData(int target, long size, int usage) {
         GL15.glBufferData(target, size, usage);
     }
@@ -388,6 +395,13 @@ public final class Lwjgl2GlDispatch extends CgGlDispatch {
     }
 
     @Override
+    public void glTexImage2D(int target, int level, int internalFormat,
+                              int width, int height, int border,
+                              int format, int type, FloatBuffer pixels) {
+        GL11.glTexImage2D(target, level, internalFormat, width, height, border, format, type, pixels);
+    }
+
+    @Override
     public void glTexImage3D(int target, int level, int internalFormat,
                               int width, int height, int depth, int border,
                               int format, int type, ByteBuffer pixels) {
@@ -398,6 +412,13 @@ public final class Lwjgl2GlDispatch extends CgGlDispatch {
     public void glTexSubImage2D(int target, int level,
                                  int xOffset, int yOffset, int width, int height,
                                  int format, int type, ByteBuffer pixels) {
+        GL11.glTexSubImage2D(target, level, xOffset, yOffset, width, height, format, type, pixels);
+    }
+
+    @Override
+    public void glTexSubImage2D(int target, int level,
+                                 int xOffset, int yOffset, int width, int height,
+                                 int format, int type, FloatBuffer pixels) {
         GL11.glTexSubImage2D(target, level, xOffset, yOffset, width, height, format, type, pixels);
     }
 
@@ -578,13 +599,28 @@ public final class Lwjgl2GlDispatch extends CgGlDispatch {
     }
 
     @Override
+    public void glGetInteger(int pname, IntBuffer params) {
+        GL11.glGetInteger(pname, params);
+    }
+
+    @Override
     public boolean glGetBoolean(int pname) {
         return GL11.glGetBoolean(pname);
     }
 
     @Override
+    public void glGetBoolean(int pname, ByteBuffer params) {
+        GL11.glGetBoolean(pname, params);
+    }
+
+    @Override
     public void glGetFloat(int pname, FloatBuffer params) {
         GL11.glGetFloat(pname, params);
+    }
+
+    @Override
+    public float glGetFloat(int pname) {
+        return GL11.glGetFloat(pname);
     }
 
     // -------------------------------------------------------------------------
@@ -672,7 +708,7 @@ public final class Lwjgl2GlDispatch extends CgGlDispatch {
     // -------------------------------------------------------------------------
 
     @Override
-    public int genRenderbuffers() {
+    public int glGenRenderbuffers() {
         if (coreGl30()) {
             return GL30.glGenRenderbuffers();
         } else if (arbFbo()) {
@@ -683,7 +719,7 @@ public final class Lwjgl2GlDispatch extends CgGlDispatch {
     }
 
     @Override
-    public void deleteRenderbuffers(int rbo) {
+    public void glDeleteRenderbuffers(int rbo) {
         if (coreGl30()) {
             GL30.glDeleteRenderbuffers(rbo);
         } else if (arbFbo()) {
@@ -694,7 +730,7 @@ public final class Lwjgl2GlDispatch extends CgGlDispatch {
     }
 
     @Override
-    public void bindRenderbuffer(int target, int renderbuffer) {
+    public void glBindRenderbuffer(int target, int renderbuffer) {
         if (coreGl30()) {
             GL30.glBindRenderbuffer(target, renderbuffer);
         } else if (arbFbo()) {
@@ -705,7 +741,7 @@ public final class Lwjgl2GlDispatch extends CgGlDispatch {
     }
 
     @Override
-    public void renderbufferStorage(int target, int internalFormat, int width, int height) {
+    public void glRenderbufferStorage(int target, int internalFormat, int width, int height) {
         if (coreGl30()) {
             GL30.glRenderbufferStorage(target, internalFormat, width, height);
         } else if (arbFbo()) {
@@ -716,8 +752,8 @@ public final class Lwjgl2GlDispatch extends CgGlDispatch {
     }
 
     @Override
-    public void framebufferRenderbuffer(int target, int attachment,
-                                         int renderbufferTarget, int renderbuffer) {
+    public void glFramebufferRenderbuffer(int target, int attachment,
+                                          int renderbufferTarget, int renderbuffer) {
         if (coreGl30()) {
             GL30.glFramebufferRenderbuffer(target, attachment, renderbufferTarget, renderbuffer);
         } else if (arbFbo()) {
@@ -788,5 +824,24 @@ public final class Lwjgl2GlDispatch extends CgGlDispatch {
     @Override
     public void glUniformMatrix4(int location, boolean transpose, FloatBuffer value) {
         GL20.glUniformMatrix4(location, transpose, value);
+    }
+
+    // -------------------------------------------------------------------------
+    // Fixed-function matrix stack (legacy / compat)
+    // -------------------------------------------------------------------------
+
+    @Override
+    public void glPushMatrix() {
+        GL11.glPushMatrix();
+    }
+
+    @Override
+    public void glPopMatrix() {
+        GL11.glPopMatrix();
+    }
+
+    @Override
+    public void glLoadMatrix(FloatBuffer m) {
+        GL11.glLoadMatrix(m);
     }
 }

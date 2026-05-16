@@ -1,28 +1,26 @@
 package com.crystalgraphics.gl.shader;
 
+
 import com.crystalgraphics.api.shader.CgActiveUniform;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gl.state.CallFamily;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.joml.Matrix3f;
-import org.joml.Matrix4f;
-import org.lwjgl.BufferUtils;
-import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL20;
-
+import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.util.CgBufferUtils;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.joml.Matrix3f;
+import org.joml.Matrix4f;
 import static com.crystalgraphics.gl.shader.CgShaderFactory.JOML_BUFFER;
 
 /**
  * Shader program implementation using Core OpenGL 2.0 entry points.
  *
- * <p>This backend uses {@link GL20} methods ({@code glCreateShader},
+ * <p>This backend uses {@link CgGL} methods ({@code glCreateShader},
  * {@code glUseProgram}, {@code glUniform*}, etc.) for all shader operations.
  * It is the preferred shader backend on hardware that supports OpenGL 2.0
  * or higher.</p>
@@ -82,7 +80,7 @@ public class CgCoreShaderProgram extends CgAbstractShaderProgram {
      *         the info log in the message
      */
     public static CgCoreShaderProgram compile(String vertexSource, String fragmentSource, CgVertexFormat format) {
-        int progId = GL20.glCreateProgram();
+        int progId = CgGL.glCreateProgram();
         CgCoreShaderProgram prog = new CgCoreShaderProgram(progId, true);
         try {
             prog.relink(vertexSource, fragmentSource, format);
@@ -95,52 +93,52 @@ public class CgCoreShaderProgram extends CgAbstractShaderProgram {
 
     @Override
     public void relink(String vertexSource, String fragmentSource, CgVertexFormat format) {
-        IntBuffer countBuf   = BufferUtils.createIntBuffer(1);
-        IntBuffer shadersBuf = BufferUtils.createIntBuffer(16);
-        GL20.glGetAttachedShaders(programId, countBuf, shadersBuf);
+        IntBuffer countBuf   = CgBufferUtils.createIntBuffer(1);
+        IntBuffer shadersBuf = CgBufferUtils.createIntBuffer(16);
+        CgGL.glGetAttachedShaders(programId, countBuf, shadersBuf);
         int attached = countBuf.get(0);
         for (int i = 0; i < attached; i++) {
             int id = shadersBuf.get(i);
-            GL20.glDetachShader(programId, id);
-            GL20.glDeleteShader(id);
+            CgGL.glDetachShader(programId, id);
+            CgGL.glDeleteShader(id);
         }
 
-        int vertId = GL20.glCreateShader(GL20.GL_VERTEX_SHADER);
-        GL20.glShaderSource(vertId, vertexSource);
-        GL20.glCompileShader(vertId);
-        if (GL20.glGetShaderi(vertId, GL20.GL_COMPILE_STATUS) != GL11.GL_TRUE) {
-            String log = GL20.glGetShaderInfoLog(vertId, 4096);
-            GL20.glDeleteShader(vertId);
+        int vertId = CgGL.glCreateShader(CgGL.GL_VERTEX_SHADER);
+        CgGL.glShaderSource(vertId, vertexSource);
+        CgGL.glCompileShader(vertId);
+        if (CgGL.glGetShaderi(vertId, CgGL.GL_COMPILE_STATUS) != CgGL.GL_TRUE) {
+            String log = CgGL.glGetShaderInfoLog(vertId, 4096);
+            CgGL.glDeleteShader(vertId);
             throw new IllegalStateException("Vertex shader compile failed: " + log);
         }
 
-        int fragId = GL20.glCreateShader(GL20.GL_FRAGMENT_SHADER);
-        GL20.glShaderSource(fragId, fragmentSource);
-        GL20.glCompileShader(fragId);
-        if (GL20.glGetShaderi(fragId, GL20.GL_COMPILE_STATUS) != GL11.GL_TRUE) {
-            String log = GL20.glGetShaderInfoLog(fragId, 4096);
-            GL20.glDeleteShader(vertId);
-            GL20.glDeleteShader(fragId);
+        int fragId = CgGL.glCreateShader(CgGL.GL_FRAGMENT_SHADER);
+        CgGL.glShaderSource(fragId, fragmentSource);
+        CgGL.glCompileShader(fragId);
+        if (CgGL.glGetShaderi(fragId, CgGL.GL_COMPILE_STATUS) != CgGL.GL_TRUE) {
+            String log = CgGL.glGetShaderInfoLog(fragId, 4096);
+            CgGL.glDeleteShader(vertId);
+            CgGL.glDeleteShader(fragId);
             throw new IllegalStateException("Fragment shader compile failed: " + log);
         }
 
-        GL20.glAttachShader(programId, vertId);
-        GL20.glAttachShader(programId, fragId);
+        CgGL.glAttachShader(programId, vertId);
+        CgGL.glAttachShader(programId, fragId);
 
         if (format != null) {
             for (int i = 0; i < format.getAttributeCount(); i++)
-                GL20.glBindAttribLocation(programId, i, format.getAttribute(i).getName());
+                CgGL.glBindAttribLocation(programId, i, format.getAttribute(i).getName());
         }
 
-        GL20.glLinkProgram(programId);
+        CgGL.glLinkProgram(programId);
 
-        GL20.glDetachShader(programId, vertId);
-        GL20.glDetachShader(programId, fragId);
-        GL20.glDeleteShader(vertId);
-        GL20.glDeleteShader(fragId);
+        CgGL.glDetachShader(programId, vertId);
+        CgGL.glDetachShader(programId, fragId);
+        CgGL.glDeleteShader(vertId);
+        CgGL.glDeleteShader(fragId);
 
-        if (GL20.glGetProgrami(programId, GL20.GL_LINK_STATUS) != GL11.GL_TRUE) {
-            throw new IllegalStateException("Shader program link failed: " + GL20.glGetProgramInfoLog(programId, 4096));
+        if (CgGL.glGetProgrami(programId, CgGL.GL_LINK_STATUS) != CgGL.GL_TRUE) {
+            throw new IllegalStateException("Shader program link failed: " + CgGL.glGetProgramInfoLog(programId, 4096));
         }
     }
 
@@ -159,11 +157,11 @@ public class CgCoreShaderProgram extends CgAbstractShaderProgram {
     /**
      * {@inheritDoc}
      *
-     * <p>Deletes the program object via {@link GL20#glDeleteProgram(int)}.</p>
+     * <p>Deletes the program object via {@link CgGL#glDeleteProgram(int)}.</p>
      */
     @Override
     protected void freeGlResources() {
-        GL20.glDeleteProgram(programId);
+        CgGL.glDeleteProgram(programId);
     }
 
     // ── Uniform operations ─────────────────────────────────────────────
@@ -172,7 +170,7 @@ public class CgCoreShaderProgram extends CgAbstractShaderProgram {
      * {@inheritDoc}
      *
      * <p>Queries the uniform location via
-     * {@link GL20#glGetUniformLocation(int, CharSequence)}.</p>
+     * {@link CgGL#glGetUniformLocation(int, CharSequence)}.</p>
      *
      * @param name the uniform variable name
      * @return the uniform location, or -1 if not found
@@ -183,33 +181,33 @@ public class CgCoreShaderProgram extends CgAbstractShaderProgram {
         if (name == null) {
             throw new IllegalArgumentException("Uniform name must not be null");
         }
-        return GL20.glGetUniformLocation(programId, name);
+        return CgGL.glGetUniformLocation(programId, name);
     }
 
     /**
      * {@inheritDoc}
      *
-     * <p>Queries active uniforms via {@link GL20#glGetActiveUniform} and
+     * <p>Queries active uniforms via {@link CgGL#glGetActiveUniform} and
      * filters out built-in {@code gl_*} names.</p>
      */
     @Override
     public List<CgActiveUniform> getActiveUniforms() {
-        int count = GL20.glGetProgrami(programId, GL20.GL_ACTIVE_UNIFORMS);
+        int count = CgGL.glGetProgrami(programId, CgGL.GL_ACTIVE_UNIFORMS);
         if (count <= 0) return Collections.emptyList();
-        int maxLen = GL20.glGetProgrami(programId, GL20.GL_ACTIVE_UNIFORM_MAX_LENGTH);
+        int maxLen = CgGL.glGetProgrami(programId, CgGL.GL_ACTIVE_UNIFORM_MAX_LENGTH);
         if (maxLen <= 0) maxLen = 256;
 
         List<CgActiveUniform> result = new ArrayList<>(count);
         // LWJGL2 convenience form: glGetActiveUniform(program, index, maxLength, sizeTypeBuf)
         // fills sizeTypeBuf[0]=size, sizeTypeBuf[1]=type and returns the uniform name.
-        IntBuffer sizeTypeBuf = BufferUtils.createIntBuffer(2);
+        IntBuffer sizeTypeBuf = CgBufferUtils.createIntBuffer(2);
         for (int i = 0; i < count; i++) {
             sizeTypeBuf.clear();
-            String name = GL20.glGetActiveUniform(programId, i, maxLen, sizeTypeBuf);
+            String name = CgGL.glGetActiveUniform(programId, i, maxLen, sizeTypeBuf);
             if (name == null || name.startsWith("gl_")) continue;
             int size = sizeTypeBuf.get(0);
             int glType = sizeTypeBuf.get(1);
-            int loc = GL20.glGetUniformLocation(programId, name);
+            int loc = CgGL.glGetUniformLocation(programId, name);
             result.add(new CgActiveUniform(name, glType, size, loc));
         }
         return Collections.unmodifiableList(result);
@@ -218,34 +216,34 @@ public class CgCoreShaderProgram extends CgAbstractShaderProgram {
     /**
      * {@inheritDoc}
      *
-     * <p>Sets the integer uniform via {@link GL20#glUniform1i(int, int)}.</p>
+     * <p>Sets the integer uniform via {@link CgGL#glUniform1i(int, int)}.</p>
      *
      * @param location the uniform location
      * @param value    the integer value
      */
     @Override
     public void setUniform1i(int location, int value) {
-        GL20.glUniform1i(location, value);
+        CgGL.glUniform1i(location, value);
     }
 
     /**
      * {@inheritDoc}
      *
-     * <p>Sets the float uniform via {@link GL20#glUniform1f(int, float)}.</p>
+     * <p>Sets the float uniform via {@link CgGL#glUniform1f(int, float)}.</p>
      *
      * @param location the uniform location
      * @param value    the float value
      */
     @Override
     public void setUniform1f(int location, float value) {
-        GL20.glUniform1f(location, value);
+        CgGL.glUniform1f(location, value);
     }
 
     /**
      * {@inheritDoc}
      *
      * <p>Sets the 2-component float vector uniform via
-     * {@link GL20#glUniform2f(int, float, float)}.</p>
+     * {@link CgGL#glUniform2f(int, float, float)}.</p>
      *
      * @param location the uniform location
      * @param x        the first component
@@ -253,14 +251,14 @@ public class CgCoreShaderProgram extends CgAbstractShaderProgram {
      */
     @Override
     public void setUniform2f(int location, float x, float y) {
-        GL20.glUniform2f(location, x, y);
+        CgGL.glUniform2f(location, x, y);
     }
 
     /**
      * {@inheritDoc}
      *
      * <p>Sets the 3-component float vector uniform via
-     * {@link GL20#glUniform3f(int, float, float, float)}.</p>
+     * {@link CgGL#glUniform3f(int, float, float, float)}.</p>
      *
      * @param location the uniform location
      * @param x        the first component
@@ -269,14 +267,14 @@ public class CgCoreShaderProgram extends CgAbstractShaderProgram {
      */
     @Override
     public void setUniform3f(int location, float x, float y, float z) {
-        GL20.glUniform3f(location, x, y, z);
+        CgGL.glUniform3f(location, x, y, z);
     }
 
     /**
      * {@inheritDoc}
      *
      * <p>Sets the 4-component float vector uniform via
-     * {@link GL20#glUniform4f(int, float, float, float, float)}.</p>
+     * {@link CgGL#glUniform4f(int, float, float, float, float)}.</p>
      *
      * @param location the uniform location
      * @param x        the first component
@@ -286,14 +284,14 @@ public class CgCoreShaderProgram extends CgAbstractShaderProgram {
      */
     @Override
     public void setUniform4f(int location, float x, float y, float z, float w) {
-        GL20.glUniform4f(location, x, y, z, w);
+        CgGL.glUniform4f(location, x, y, z, w);
     }
 
     /**
      * {@inheritDoc}
      *
      * <p>Binds a texture unit to a sampler uniform via
-     * {@link GL20#glUniform1i(int, int)}.  The {@code textureUnit} parameter
+     * {@link CgGL#glUniform1i(int, int)}.  The {@code textureUnit} parameter
      * is the zero-based unit index (0 = {@code GL_TEXTURE0}).</p>
      *
      * @param location    the sampler uniform location
@@ -301,25 +299,25 @@ public class CgCoreShaderProgram extends CgAbstractShaderProgram {
      */
     @Override
     public void setSampler(int location, int textureUnit) {
-        GL20.glUniform1i(location, textureUnit);
+        CgGL.glUniform1i(location, textureUnit);
     }
 
     @Override
     public void setUniformFloatBuffer(int location, FloatBuffer buffer) {
         if (location < 0) return;
-        GL20.glUniform1(location, buffer);
+        CgGL.glUniform1(location, buffer);
     }
 
     @Override
     public void setUniformIntBuffer(int location, IntBuffer buffer) {
         if (location < 0) return;
-        GL20.glUniform1(location, buffer);
+        CgGL.glUniform1(location, buffer);
     }
 
     @Override
     public void setUniformMatrix3f(int location, FloatBuffer buffer) {
         if (location < 0) return;
-        GL20.glUniformMatrix3(location, false, buffer);
+        CgGL.glUniformMatrix3(location, false, buffer);
     }
     
     @Override
@@ -328,14 +326,14 @@ public class CgCoreShaderProgram extends CgAbstractShaderProgram {
         FloatBuffer buf = JOML_BUFFER.get();
         buf.clear();
         matrix.get(buf).rewind();
-        GL20.glUniformMatrix3(location, false, buf);
+        CgGL.glUniformMatrix3(location, false, buf);
     }
 
     /**
      * {@inheritDoc}
      *
      * <p>Uploads the 4x4 matrix via
-     * {@link GL20#glUniformMatrix4(int, boolean, FloatBuffer)}.</p>
+     * {@link CgGL#glUniformMatrix4(int, boolean, FloatBuffer)}.</p>
      *
      * @param location the uniform location
      * @param buffer   a 16-element FloatBuffer in column-major order
@@ -343,7 +341,7 @@ public class CgCoreShaderProgram extends CgAbstractShaderProgram {
     @Override
     public void setUniformMatrix4f(int location, FloatBuffer buffer) {
         if (location < 0) return;
-        GL20.glUniformMatrix4(location, false, buffer);
+        CgGL.glUniformMatrix4(location, false, buffer);
     }
     
     @Override
@@ -352,7 +350,7 @@ public class CgCoreShaderProgram extends CgAbstractShaderProgram {
         FloatBuffer buf = JOML_BUFFER.get();
         buf.clear();
         matrix.get(buf).rewind();
-        GL20.glUniformMatrix4(location, false, buf);
+        CgGL.glUniformMatrix4(location, false, buf);
     }
     
 }

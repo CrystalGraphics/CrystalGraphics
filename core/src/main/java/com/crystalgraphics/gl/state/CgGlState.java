@@ -1,9 +1,6 @@
 package com.crystalgraphics.gl.state;
 
 import com.crystalgraphics.api.state.CgGlSlot;
-import org.lwjgl.opengl.ContextCapabilities;
-import org.lwjgl.opengl.GLContext;
-
 import java.lang.reflect.Method;
 
 /**
@@ -55,21 +52,19 @@ public final class CgGlState {
                               || GLStateMirror.getProgramId() == 0;
         boolean useGlGet    = forceGlGet || gapOnlyMode || !mirrorOkFbo || !mirrorOkPrg;
 
-        ContextCapabilities caps = GLContext.getCapabilities();
-
         for (CgGlSlot slot : slots) {
-            states[slot.ordinal()] = capture(slot, caps, useGlGet);
+            states[slot.ordinal()] = capture(slot, useGlGet);
         }
         return new CgGlScope(states);
     }
 
-    private static SlotState capture(CgGlSlot slot, ContextCapabilities caps, boolean useGlGet) {
+    private static SlotState capture(CgGlSlot slot, boolean useGlGet) {
         switch (slot) {
-            case FBO:            return CgGlStates.FboState.capture(caps, useGlGet);
-            case PROGRAM:        return CgGlStates.ProgramState.capture(caps, useGlGet);
-            case TEXTURES:       return CgGlStates.TextureState.capture(caps);
-            case VERTEX_INPUT:   return CgGlStates.VertexState.capture(caps);
-            case BLEND:          return CgGlStates.BlendState.capture(caps);
+            case FBO:            return CgGlStates.FboState.capture(useGlGet);
+            case PROGRAM:        return CgGlStates.ProgramState.capture(useGlGet);
+            case TEXTURES:       return CgGlStates.TextureState.capture();
+            case VERTEX_INPUT:   return CgGlStates.VertexState.capture();
+            case BLEND:          return CgGlStates.BlendState.capture();
             case DEPTH:          return CgGlStates.DepthState.capture();
             case CULL:           return CgGlStates.CullState.capture();
             case STENCIL:        return CgGlStates.StencilState.capture();

@@ -1,15 +1,12 @@
 package com.crystalgraphics.gl.vertex;
 
-import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
+
 import com.crystalgraphics.api.CgCapabilities;
 import com.crystalgraphics.api.vertex.CgVertexAttribute;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
-
+import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
+import com.crystalgraphics.platform.gl.CgGL;
 import lombok.Getter;
-import org.lwjgl.opengl.ARBVertexArrayObject;
-import org.lwjgl.opengl.GL20;
-import org.lwjgl.opengl.GL30;
-import org.lwjgl.opengl.GLContext;
 
 /**
  * VAO wrapper that owns vertex array creation, attribute pointer setup,
@@ -87,7 +84,7 @@ public final class CgVertexArray {
         bind();
         for (int i = 0; i < format.getAttributeCount(); i++) {
             CgVertexAttribute attr = format.getAttribute(i);
-            GL20.glVertexAttribPointer(
+            CgGL.glVertexAttribPointer(
                     i,
                     attr.getComponents(),
                     attr.getType().getGlConstant(),
@@ -95,7 +92,7 @@ public final class CgVertexArray {
                     format.getStride(),
                     attr.getOffset()
             );
-            GL20.glEnableVertexAttribArray(i);
+            CgGL.glEnableVertexAttribArray(i);
         }
     }
 
@@ -108,7 +105,7 @@ public final class CgVertexArray {
         bind();
         for (int i = 0; i < format.getAttributeCount(); i++) {
             CgVertexAttribute attr = format.getAttribute(i);
-            GL20.glVertexAttribPointer(
+            CgGL.glVertexAttribPointer(
                     i,
                     attr.getComponents(),
                     attr.getType().getGlConstant(),
@@ -120,14 +117,10 @@ public final class CgVertexArray {
     }
 
     /**
-     * Generates a raw VAO id using the core or ARB path, whichever is available.
-     *
-     * <p>Uses {@link GL30#glGenVertexArrays()} when {@link #isCore()} is true,
-     * otherwise falls back to {@link ARBVertexArrayObject#glGenVertexArrays()}.</p>
+     * Generates a raw VAO id
      */
     private static int gen() {
-        if (isCore()) return GL30.glGenVertexArrays();
-        return ARBVertexArrayObject.glGenVertexArrays();
+        return CgGL.glGenVertexArrays();
     }
 
     /**
@@ -169,8 +162,7 @@ public final class CgVertexArray {
      * @param vao VAO id to bind, or {@code 0} to unbind
      */
     public static void bind(int vao) {
-        if (isCore()) GL30.glBindVertexArray(vao);
-        else ARBVertexArrayObject.glBindVertexArray(vao);
+        CgGL.glBindVertexArray(vao);
     }
 
     /**
@@ -179,8 +171,7 @@ public final class CgVertexArray {
      * @param vao VAO id to delete
      */
     public static void delete(int vao) {
-        if (isCore()) GL30.glDeleteVertexArrays(vao);
-        else ARBVertexArrayObject.glDeleteVertexArrays(vao);
+        CgGL.glDeleteVertexArrays(vao);
     }
 
     /**
@@ -192,7 +183,7 @@ public final class CgVertexArray {
      * on context recreation.</p>
      */
     private static boolean isCore() {
-        if (useCore == null) useCore = GLContext.getCapabilities().OpenGL30;
+        if (useCore == null) useCore = CgCapabilities.detect().isCoreFbo();
         return useCore;
     }
 

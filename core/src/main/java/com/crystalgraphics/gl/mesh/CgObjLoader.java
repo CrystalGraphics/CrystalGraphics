@@ -5,7 +5,7 @@ import com.crystalgraphics.api.mesh.CgMeshData;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gl.buffer.staging.CgVertexWriter;
-import org.lwjgl.BufferUtils;
+import com.crystalgraphics.util.CgBufferUtils;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -82,7 +82,7 @@ public final class CgObjLoader {
         boolean wantsNormal = flags.wantsNormal;
 
         int vertexCount = positions.length / 3;
-        ByteBuffer vbo = BufferUtils.createByteBuffer(vertexCount * format.getStride());
+        ByteBuffer vbo = CgBufferUtils.createByteBuffer(vertexCount * format.getStride());
         CgVertexWriter writer = CgVertexWriter.forBuffer(vbo, format);
 
         for (int i = 0; i < vertexCount; i++) {
@@ -119,12 +119,12 @@ public final class CgObjLoader {
         }
         ByteBuffer ibo;
         if (maxIdx <= 65535) {
-            ibo = BufferUtils.createByteBuffer(indices.length * 2);
+            ibo = CgBufferUtils.createByteBuffer(indices.length * 2);
             for (int idx : indices) {
                 ibo.putShort((short) idx);
             }
         } else {
-            ibo = BufferUtils.createByteBuffer(indices.length * 4);
+            ibo = CgBufferUtils.createByteBuffer(indices.length * 4);
             for (int idx : indices) {
                 ibo.putInt(idx);
             }

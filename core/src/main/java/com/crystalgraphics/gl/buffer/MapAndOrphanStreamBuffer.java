@@ -29,6 +29,7 @@ public class MapAndOrphanStreamBuffer extends CgStreamBuffer {
             CgGL.glBufferData(target, sizeBytes, CgGL.GL_STREAM_DRAW);
             capacityBytes = sizeBytes;
         }
+        
         ByteBuffer mapped = CgGL.glMapBufferRange(target, 0, sizeBytes,
                 CgGL.GL_MAP_WRITE_BIT | CgGL.GL_MAP_INVALIDATE_BUFFER_BIT, null);
         

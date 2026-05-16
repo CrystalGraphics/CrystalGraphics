@@ -262,9 +262,7 @@ public final class CgInstanceVertexArrayBinding {
      * Lazy one-shot cache for the GL33 core divisor path.
      * {@code null} = not yet detected; {@code true/false} = cached result.
      */
-    private static Boolean useGL33 = null;
-
-    /** Returns true if both draw-instanced and vertex-attrib-divisor are available. */
+    private static Boolean useGL33 = null;    /** Returns true if both draw-instanced and vertex-attrib-divisor are available. */
     public static boolean isSupported() {
         return isSupported(CgCapabilities.detect());
     }
@@ -322,30 +320,19 @@ public final class CgInstanceVertexArrayBinding {
     }
 
     /**
-     * Resets the cached GL33 core/ARB dispatch flag.
-     *
-     * <p>Must be called when the GL context is destroyed and recreated so that
-     * the next {@link #vertexAttribDivisor} call re-probes the new context's capabilities.
-     * Called automatically by {@code CgGraphicsLifecycle.destroyContext()}.</p>
+     * No-op retained for lifecycle compatibility — {@code CgGraphicsLifecycle} calls this.
+     * Dispatch routing is handled by {@link com.crystalgraphics.platform.gl.CgGlDispatch}.
      */
     public static void resetCoreCache() {
-        useGL33 = null;
+        useGL33 = null; // reset retained so callers that cache this don't need changes
     }
 
     /**
-     * Issues {@code glVertexAttribDivisor} via GL 3.3 core or ARB_instanced_arrays path.
+     * Issues {@code glVertexAttribDivisor}. The dispatch routes to GL 3.3 core or
+     * ARB_instanced_arrays as appropriate via {@link com.crystalgraphics.platform.gl.CgGlDispatch}.
      * Must be called while the target VAO is bound.
-     *
-     * <p>The GL33 vs ARB decision is cached on the first call (one-shot lazy detection).</p>
      */
     public static void vertexAttribDivisor(int slot, int divisor) {
-        if (useGL33 == null) {
-            useGL33 = GLContext.getCapabilities().OpenGL33;
-        }
-        if (useGL33) {
-            CgGL.glVertexAttribDivisor(slot, divisor);
-        } else {
-            CgGL.glVertexAttribDivisor(slot, divisor);
-        }
+        CgGL.glVertexAttribDivisor(slot, divisor);
     }
 }

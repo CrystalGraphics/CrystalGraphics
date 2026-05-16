@@ -13,12 +13,12 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Cubemap GL texture (target {@code GL_TEXTURE_CUBE_MAP = 0x8513}). Single
+ * Cubemap GL texture (target {@code CgGL.GL_TEXTURE_CUBE_MAP = 0x8513}). Single
  * concrete impl of {@link CgTexture} for cubemaps.
  *
  * <p>A cubemap is six square 2D images uploaded to six discrete face targets
- * ({@code GL_TEXTURE_CUBE_MAP_POSITIVE_X} through
- * {@code GL_TEXTURE_CUBE_MAP_NEGATIVE_Z}, GL constants 0x8515..0x851A). All
+ * ({@code CgGL.GL_TEXTURE_CUBE_MAP_POSITIVE_X} through
+ * {@code CgGL.GL_TEXTURE_CUBE_MAP_NEGATIVE_Z}, GL constants 0x8515..0x851A). All
  * faces must be the same size and share the same pixel format, mipmap config,
  * and sampler params.</p>
  *
@@ -33,21 +33,12 @@ import java.util.logging.Logger;
 public final class CgTextureCubemap extends CgTextureAbstract {
 
     private static final Logger LOGGER = Logger.getLogger(CgTextureCubemap.class.getName());
-
-    // ── GL constants ────────────────────────────────────────────────
-    private static final int GL_TEXTURE_CUBE_MAP            = 0x8513;
-    private static final int GL_TEXTURE_CUBE_MAP_POSITIVE_X = 0x8515;
-    private static final int GL_TEXTURE_CUBE_MAP_NEGATIVE_X = 0x8516;
-    private static final int GL_TEXTURE_CUBE_MAP_POSITIVE_Y = 0x8517;
-    private static final int GL_TEXTURE_CUBE_MAP_NEGATIVE_Y = 0x8518;
-    private static final int GL_TEXTURE_CUBE_MAP_POSITIVE_Z = 0x8519;
-    private static final int GL_TEXTURE_CUBE_MAP_NEGATIVE_Z = 0x851A;
-
+    
     /** Six face targets in canonical order: +X, -X, +Y, -Y, +Z, -Z. */
     private static final int[] FACE_TARGETS = {
-            GL_TEXTURE_CUBE_MAP_POSITIVE_X, GL_TEXTURE_CUBE_MAP_NEGATIVE_X,
-            GL_TEXTURE_CUBE_MAP_POSITIVE_Y, GL_TEXTURE_CUBE_MAP_NEGATIVE_Y,
-            GL_TEXTURE_CUBE_MAP_POSITIVE_Z, GL_TEXTURE_CUBE_MAP_NEGATIVE_Z
+            CgGL.GL_TEXTURE_CUBE_MAP_POSITIVE_X, CgGL.GL_TEXTURE_CUBE_MAP_NEGATIVE_X,
+            CgGL.GL_TEXTURE_CUBE_MAP_POSITIVE_Y, CgGL.GL_TEXTURE_CUBE_MAP_NEGATIVE_Y,
+            CgGL.GL_TEXTURE_CUBE_MAP_POSITIVE_Z, CgGL.GL_TEXTURE_CUBE_MAP_NEGATIVE_Z
     };
 
     /** Source face paths for reload; {@code null} for createDirect and createEmpty. */
@@ -96,7 +87,7 @@ public final class CgTextureCubemap extends CgTextureAbstract {
         int id = CgGL.glGenTextures();
         CgTextureCubemap tex = new CgTextureCubemap(id, size, spec, null);
         try {
-            CgGL.glBindTexture(GL_TEXTURE_CUBE_MAP, id);
+            CgGL.glBindTexture(CgGL.GL_TEXTURE_CUBE_MAP, id);
             try {
                 int internalFormat = spec.getGlInternalFormat();
                 int pf = spec.getGlBaseFormat();
@@ -104,10 +95,10 @@ public final class CgTextureCubemap extends CgTextureAbstract {
                 for (int face : FACE_TARGETS) {
                     CgGL.glTexImage2D(face, 0, internalFormat, size, size, 0, pf, pt, (ByteBuffer) null);
                 }
-                spec.applyTo(GL_TEXTURE_CUBE_MAP);
+                spec.applyTo(CgGL.GL_TEXTURE_CUBE_MAP);
              
             } finally {
-                CgGL.glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+                CgGL.glBindTexture(CgGL.GL_TEXTURE_CUBE_MAP, 0);
             }
             return tex;
         } catch (RuntimeException e) {
@@ -130,7 +121,7 @@ public final class CgTextureCubemap extends CgTextureAbstract {
         checkNotDeleted();
         int size = faces[0].width();
         int uploadPixelFormat = pixelFormatForChannels(faces[0].channels());
-        CgGL.glBindTexture(GL_TEXTURE_CUBE_MAP, textureId);
+        CgGL.glBindTexture(CgGL.GL_TEXTURE_CUBE_MAP, textureId);
         try {
             int internalFormat = spec.getGlInternalFormat();
             for (int i = 0; i < 6; i++) {
@@ -138,12 +129,12 @@ public final class CgTextureCubemap extends CgTextureAbstract {
                         uploadPixelFormat, GL_UNSIGNED_BYTE, faces[i].pixels());
             }
             
-            spec.applyTo(GL_TEXTURE_CUBE_MAP);
+            spec.applyTo(CgGL.GL_TEXTURE_CUBE_MAP);
             
             this.width = size;
             this.height = size;
         } finally {
-            CgGL.glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+            CgGL.glBindTexture(CgGL.GL_TEXTURE_CUBE_MAP, 0);
         }
     }
 
@@ -159,7 +150,7 @@ public final class CgTextureCubemap extends CgTextureAbstract {
         }
     }
 
-    @Override public int getTarget() { return GL_TEXTURE_CUBE_MAP; }
+    @Override public int getTarget() { return CgGL.GL_TEXTURE_CUBE_MAP; }
 
     // ── Internal factory ──────────────────────────────────────────────
 

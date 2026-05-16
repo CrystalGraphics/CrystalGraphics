@@ -2,12 +2,11 @@ package com.crystalgraphics.platform.gl;
 
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
-import java.nio.IntBuffer;
+import java.nio.IntBuffer;import java.nio.ShortBuffer;
 
 /**
  * Static GL facade for the CrystalGraphics core module.
  *
- * <p>Every method delegates to {@link CgGlDispatch#get()} — the platform-registered GL dispatch.
  * This class carries zero {@code org.lwjgl.*} imports; all GL constants are raw {@code int}
  * literals taken directly from the OpenGL specification.</p>
  *
@@ -31,6 +30,7 @@ public final class CgGL {
     // --- Primitives ----------------------------------------------------------
     public static final int GL_POINTS         = 0x0000;
     public static final int GL_LINES          = 0x0001;
+    public static final int GL_LINE_LOOP = 0x0002;
     public static final int GL_LINE_STRIP     = 0x0003;
     public static final int GL_TRIANGLES      = 0x0004;
     public static final int GL_TRIANGLE_STRIP = 0x0005;
@@ -130,18 +130,36 @@ public final class CgGL {
 
     // --- Internal texture formats --------------------------------------------
     public static final int GL_R8             = 0x8229;
+    public static final int GL_R8_SNORM       = 0x8F94;
+    public static final int GL_R8I            = 0x8231;
+    public static final int GL_R8UI           = 0x8232;
     public static final int GL_R16F           = 0x822D;
+    public static final int GL_R16I           = 0x8233;
+    public static final int GL_R16UI          = 0x8234;
     public static final int GL_R32F           = 0x822E;
+    public static final int GL_R32I           = 0x8235;
+    public static final int GL_R32UI          = 0x8236;
     public static final int GL_RG8            = 0x822B;
+    public static final int GL_RG8I           = 0x8237;
+    public static final int GL_RG8UI          = 0x8238;
     public static final int GL_RG16F          = 0x822F;
+    public static final int GL_RG16I          = 0x8239;
+    public static final int GL_RG16UI         = 0x823A;
     public static final int GL_RG32F          = 0x8230;
+    public static final int GL_RG32I          = 0x823B;
+    public static final int GL_RG32UI         = 0x823C;
     public static final int GL_RGB8           = 0x8051;
     public static final int GL_RGB16F         = 0x881B;
     public static final int GL_RGB32F         = 0x8815;
     public static final int GL_R11F_G11F_B10F = 0x8C3A;
     public static final int GL_RGBA8          = 0x8058;
+    public static final int GL_RGBA8_SNORM    = 0x8F97;
     public static final int GL_RGBA16F        = 0x881A;
     public static final int GL_RGBA32F        = 0x8814;
+    public static final int GL_SRGB8_ALPHA8   = 0x8C43;
+    public static final int GL_RGB10_A2       = 0x8059;
+    public static final int GL_RGBA4          = 0x8056;
+    public static final int GL_RGB5_A1        = 0x8057;
     public static final int GL_DEPTH_COMPONENT16  = 0x81A5;
     public static final int GL_DEPTH_COMPONENT24  = 0x81A6;
     public static final int GL_DEPTH_COMPONENT32  = 0x81A7;
@@ -149,6 +167,15 @@ public final class CgGL {
     public static final int GL_DEPTH24_STENCIL8   = 0x88F0;
     public static final int GL_DEPTH32F_STENCIL8  = 0x8CAD;
     public static final int GL_STENCIL_INDEX8     = 0x8D48;
+
+    // --- Integer-sampled internal formats (GL 3.0 / ARB_texture_integer) ----
+    public static final int GL_RGBA8I    = 0x8D8E;
+    public static final int GL_RGBA8UI   = 0x8D7C;
+    public static final int GL_RGBA16I   = 0x8D88;
+    public static final int GL_RGBA16UI  = 0x8D76;
+    public static final int GL_RGBA32I   = 0x8D82;
+    public static final int GL_RGBA32UI  = 0x8D70;
+    public static final int GL_RGB10_A2UI = 0x906F;
 
     // --- Base formats --------------------------------------------------------
     public static final int GL_RED             = 0x1903;
@@ -161,6 +188,17 @@ public final class CgGL {
     public static final int GL_LUMINANCE       = 0x1909;
     public static final int GL_LUMINANCE_ALPHA = 0x190A;
     public static final int GL_ALPHA           = 0x1906;
+
+    // --- Integer base formats (GL 3.0) ----------------------------------------
+    public static final int GL_RED_INTEGER  = 0x8D94;
+    public static final int GL_RG_INTEGER   = 0x8228;
+    public static final int GL_RGB_INTEGER  = 0x8D98;
+    public static final int GL_RGBA_INTEGER = 0x8D99;
+
+    // --- Packed pixel types ---------------------------------------------------
+    public static final int GL_UNSIGNED_INT_2_10_10_10_REV         = 0x8368;
+    public static final int GL_UNSIGNED_INT_10F_11F_11F_REV        = 0x8C3B;
+    public static final int GL_FLOAT_32_UNSIGNED_INT_24_8_REV      = 0x8DAD;
 
     // --- Buffer targets ------------------------------------------------------
     public static final int GL_ARRAY_BUFFER          = 0x8892;
@@ -180,12 +218,12 @@ public final class CgGL {
     public static final int GL_STREAM_READ  = 0x88B1;
 
     // --- Buffer map access bits ----------------------------------------------
-    public static final int GL_MAP_READ_BIT              = 0x0001;
-    public static final int GL_MAP_WRITE_BIT             = 0x0002;
-    public static final int GL_MAP_INVALIDATE_RANGE_BIT  = 0x0004;
-    public static final int GL_MAP_INVALIDATE_BUFFER_BIT = 0x0008;
-    public static final int GL_MAP_FLUSH_EXPLICIT_BIT    = 0x0010;
-    public static final int GL_MAP_UNSYNCHRONIZED_BIT    = 0x0020;
+ 	public static final int GL_MAP_READ_BIT = 0x1,
+		GL_MAP_WRITE_BIT = 0x2,
+		GL_MAP_INVALIDATE_RANGE_BIT = 0x4,
+		GL_MAP_INVALIDATE_BUFFER_BIT = 0x8,
+		GL_MAP_FLUSH_EXPLICIT_BIT = 0x10,
+		GL_MAP_UNSYNCHRONIZED_BIT = 0x20;
 
     // --- Buffer binding query params -----------------------------------------
     public static final int GL_UNIFORM_BUFFER_BINDING        = 0x8A28;
@@ -275,6 +313,8 @@ public final class CgGL {
     public static final int GL_FUNC_ADD              = 0x8006;
     public static final int GL_FUNC_SUBTRACT         = 0x800A;
     public static final int GL_FUNC_REVERSE_SUBTRACT = 0x800B;
+    public static final int GL_MIN = 0x8007;
+    public static final int GL_MAX = 0x8008;
 
     // --- Depth / stencil funcs -----------------------------------------------
     public static final int GL_NEVER    = 0x0200;
@@ -339,11 +379,12 @@ public final class CgGL {
     public static final int GL_VERTEX_ATTRIB_ARRAY_DIVISOR = 0x88FE;
 
     // --- ARB constants that appear in core/ code -----------------------------
-    public static final int GL_OBJECT_COMPILE_STATUS_ARB  = 0x8B81;
-    public static final int GL_OBJECT_LINK_STATUS_ARB     = 0x8B82;
-    public static final int GL_OBJECT_INFO_LOG_LENGTH_ARB = 0x8B84;
-    public static final int GL_OBJECT_ACTIVE_UNIFORMS_ARB = 0x8B86;
-    public static final int GL_PROGRAM_OBJECT_ARB         = 0x8B40;
+    public static final int GL_OBJECT_COMPILE_STATUS_ARB           = 0x8B81;
+    public static final int GL_OBJECT_LINK_STATUS_ARB              = 0x8B82;
+    public static final int GL_OBJECT_INFO_LOG_LENGTH_ARB          = 0x8B84;
+    public static final int GL_OBJECT_ACTIVE_UNIFORMS_ARB          = 0x8B86;
+    public static final int GL_OBJECT_ACTIVE_UNIFORM_MAX_LENGTH_ARB = 0x8B87;
+    public static final int GL_PROGRAM_OBJECT_ARB                  = 0x8B40;
     public static final int GL_FRAMEBUFFER_EXT            = 0x8D40;
     public static final int GL_COLOR_ATTACHMENT0_EXT      = 0x8CE0;
     public static final int GL_DEPTH_ATTACHMENT_EXT       = 0x8D00;
@@ -351,11 +392,81 @@ public final class CgGL {
     public static final int GL_FRAMEBUFFER_COMPLETE_EXT   = 0x8CD5;
     public static final int GL_RENDERBUFFER_EXT           = 0x8D41;
 
+    // --- ARB shader type aliases (same token values as core GL_VERTEX_SHADER / GL_FRAGMENT_SHADER) --
+    public static final int GL_VERTEX_SHADER_ARB   = 0x8B31;
+    public static final int GL_FRAGMENT_SHADER_ARB = 0x8B30;
+
     // --- Multitexture (ARB legacy) -------------------------------------------
     public static final int GL_TEXTURE0_ARB = 0x84C0;
 
-    // =========================================================================
-    // Framebuffer methods — CgGlDispatch uses no-prefix; CgGL exposes gl-prefix
+    // --- Multitexture / active texture queries --------------------------------
+    public static final int GL_ACTIVE_TEXTURE       = 0x84E0;
+    public static final int GL_ACTIVE_TEXTURE_ARB   = 0x84E0;
+
+    // --- Texture binding query -----------------------------------------------
+    public static final int GL_TEXTURE_BINDING_2D   = 0x8069;
+
+    // --- VAO / buffer binding queries ----------------------------------------
+    public static final int GL_VERTEX_ARRAY_BINDING          = 0x85B5;
+    public static final int GL_ARRAY_BUFFER_BINDING          = 0x8894;
+    public static final int GL_ELEMENT_ARRAY_BUFFER_BINDING  = 0x8895;
+
+    // --- FBO binding queries (separate draw/read + EXT alias) ----------------
+    public static final int GL_DRAW_FRAMEBUFFER_BINDING = 0x8CA6;
+    public static final int GL_READ_FRAMEBUFFER_BINDING = 0x8CAA;
+    public static final int GL_FRAMEBUFFER_BINDING_EXT  = 0x8CA6;
+
+    // --- Blend state queries -------------------------------------------------
+    public static final int GL_BLEND_SRC_RGB        = 0x80C9;
+    public static final int GL_BLEND_DST_RGB        = 0x80CA;
+    public static final int GL_BLEND_SRC_ALPHA      = 0x80CB;
+    public static final int GL_BLEND_DST_ALPHA      = 0x80CC;
+    public static final int GL_BLEND_EQUATION       = 0x8009;
+    public static final int GL_BLEND_EQUATION_RGB   = 0x8009;
+    public static final int GL_BLEND_EQUATION_ALPHA = 0x883D;
+
+    // --- Depth state queries -------------------------------------------------
+    public static final int GL_DEPTH_FUNC      = 0x0B74;
+    public static final int GL_DEPTH_WRITEMASK = 0x0B72;
+
+    // --- Cull / face state queries -------------------------------------------
+    public static final int GL_CULL_FACE_MODE = 0x0B45;
+    public static final int GL_FRONT_FACE     = 0x0B46;
+
+    // --- Stencil state queries -----------------------------------------------
+    public static final int GL_STENCIL_FUNC            = 0x0B92;
+    public static final int GL_STENCIL_REF             = 0x0B97;
+    public static final int GL_STENCIL_VALUE_MASK      = 0x0B93;
+    public static final int GL_STENCIL_WRITEMASK       = 0x0B98;
+    public static final int GL_STENCIL_FAIL            = 0x0B94;
+    public static final int GL_STENCIL_PASS_DEPTH_FAIL = 0x0B95;
+    public static final int GL_STENCIL_PASS_DEPTH_PASS = 0x0B96;
+
+    // --- Color mask query ----------------------------------------------------
+    public static final int GL_COLOR_WRITEMASK = 0x0C23;
+
+    // --- Alpha test queries (fixed-function / compat) ------------------------
+    public static final int GL_ALPHA_TEST_FUNC = 0x0BC1;
+    public static final int GL_ALPHA_TEST_REF  = 0x0BC2;
+
+    // --- Polygon offset queries ----------------------------------------------
+    public static final int GL_POLYGON_OFFSET_LINE   = 0x2A02;
+    public static final int GL_POLYGON_OFFSET_POINT  = 0x2A01;
+    public static final int GL_POLYGON_OFFSET_FACTOR = 0x8038;
+    public static final int GL_POLYGON_OFFSET_UNITS  = 0x2A00;
+
+    // --- Polygon mode query --------------------------------------------------
+    public static final int GL_POLYGON_MODE = 0x0B40;
+
+    // --- Line / point size queries -------------------------------------------
+    public static final int GL_LINE_WIDTH = 0x0B21;
+    public static final int GL_POINT_SIZE = 0x0B11;
+
+    // --- Capability limit queries --------------------------------------------
+    public static final int GL_MAX_DRAW_BUFFERS   = 0x8824;
+    public static final int GL_MAX_TEXTURE_UNITS  = 0x84E2;
+    public static final int GL_MAX_VERTEX_ATTRIBS = 0x8869;
+
     // =========================================================================
 
     public static void glBindFramebuffer(int target, int fbo) {
@@ -396,24 +507,24 @@ public final class CgGL {
     // --- Renderbuffer methods (same no-prefix pattern in CgGlDispatch) -------
 
     public static int glGenRenderbuffers() {
-        return backend.genRenderbuffers();
+        return backend.glGenRenderbuffers();
     }
 
     public static void glDeleteRenderbuffers(int rbo) {
-        backend.deleteRenderbuffers(rbo);
+        backend.glDeleteRenderbuffers(rbo);
     }
 
     public static void glBindRenderbuffer(int target, int renderbuffer) {
-        backend.bindRenderbuffer(target, renderbuffer);
+        backend.glBindRenderbuffer(target, renderbuffer);
     }
 
     public static void glRenderbufferStorage(int target, int internalFormat, int width, int height) {
-        backend.renderbufferStorage(target, internalFormat, width, height);
+        backend.glRenderbufferStorage(target, internalFormat, width, height);
     }
 
     public static void glFramebufferRenderbuffer(int target, int attachment,
                                                   int renderbufferTarget, int renderbuffer) {
-        backend.framebufferRenderbuffer(target, attachment, renderbufferTarget, renderbuffer);
+        backend.glFramebufferRenderbuffer(target, attachment, renderbufferTarget, renderbuffer);
     }
 
     // =========================================================================
@@ -587,6 +698,10 @@ public final class CgGL {
     public static void glBufferData(int target, ByteBuffer data, int usage) {
         backend.glBufferData(target, data, usage);
     }
+    
+    public static void glBufferData(int target, ShortBuffer data, int usage) {
+        backend.glBufferData(target, data, usage);
+    }
 
     public static void glBufferData(int target, long size, int usage) {
         backend.glBufferData(target, size, usage);
@@ -662,6 +777,12 @@ public final class CgGL {
         backend.glTexImage2D(target, level, internalFormat, width, height, border, format, type, pixels);
     }
 
+    public static void glTexImage2D(int target, int level, int internalFormat,
+                                     int width, int height, int border,
+                                     int format, int type, FloatBuffer pixels) {
+        backend.glTexImage2D(target, level, internalFormat, width, height, border, format, type, pixels);
+    }
+
     public static void glTexImage3D(int target, int level, int internalFormat,
                                      int width, int height, int depth, int border,
                                      int format, int type, ByteBuffer pixels) {
@@ -671,6 +792,12 @@ public final class CgGL {
     public static void glTexSubImage2D(int target, int level,
                                         int xOffset, int yOffset, int width, int height,
                                         int format, int type, ByteBuffer pixels) {
+        backend.glTexSubImage2D(target, level, xOffset, yOffset, width, height, format, type, pixels);
+    }
+
+    public static void glTexSubImage2D(int target, int level,
+                                        int xOffset, int yOffset, int width, int height,
+                                        int format, int type, FloatBuffer pixels) {
         backend.glTexSubImage2D(target, level, xOffset, yOffset, width, height, format, type, pixels);
     }
 
@@ -822,12 +949,24 @@ public final class CgGL {
         return backend.glGetInteger(pname);
     }
 
+    public static void glGetInteger(int pname, IntBuffer params) {
+        backend.glGetInteger(pname, params);
+    }
+
     public static boolean glGetBoolean(int pname) {
         return backend.glGetBoolean(pname);
     }
 
+    public static void glGetBoolean(int pname, ByteBuffer params) {
+        backend.glGetBoolean(pname, params);
+    }
+
     public static void glGetFloat(int pname, FloatBuffer params) {
         backend.glGetFloat(pname, params);
+    }
+
+    public static float glGetFloat(int pname) {
+        return backend.glGetFloat(pname);
     }
 
     // =========================================================================
@@ -879,5 +1018,21 @@ public final class CgGL {
     /** @return {@code true} if an OpenGL context is current on this thread. */
     public static boolean isContextCurrent() {
         return backend.isContextCurrent();
+    }
+
+    // =========================================================================
+    // Fixed-function matrix stack
+    // =========================================================================
+
+    public static void glPushMatrix() {
+        backend.glPushMatrix();
+    }
+
+    public static void glPopMatrix() {
+        backend.glPopMatrix();
+    }
+
+    public static void glLoadMatrix(FloatBuffer m) {
+        backend.glLoadMatrix(m);
     }
 }

@@ -144,38 +144,22 @@ public final class CgInstanceRenderer extends CgAbstractRenderer {
         instanceStaging.reset();
     }
 
-    // ── Instancing draw-call waterfall (GL31 core vs ARB_draw_instanced) ──────
+    // ── Instancing draw helpers ───────────────────────────────────────────────
 
     /**
-     * Cached GL31 core availability for instanced draw calls.
-     * {@code null} = not yet detected; {@code true/false} = cached result.
-     * Reset via {@link #resetCoreCache()} on context recreation.
-     */
-    private static Boolean useGL31 = null;
-
-    /**
-     * Resets the cached GL31 core dispatch flag.
-     * Called automatically by {@code CgGraphicsLifecycle.destroyContext()}.
+     * No-op retained for lifecycle compatibility — {@code CgGraphicsLifecycle} calls this.
+     * The dispatch is fully handled by {@link com.crystalgraphics.platform.gl.CgGlDispatch}
+     * so no per-context cache is needed here.
      */
     public static void resetCoreCache() {
-        useGL31 = null;
+        // intentionally empty — CgGlDispatch owns dispatch routing
     }
 
     public static void drawArraysInstanced(int mode, int first, int count, int instanceCount) {
-        if (useGL31 == null) useGL31 = GLContext.getCapabilities().OpenGL31;
-        if (useGL31) {
-            CgGL.glDrawArraysInstanced(mode, first, count, instanceCount);
-        } else {
-            CgGL.glDrawArraysInstanced(mode, first, count, instanceCount);
-        }
+        CgGL.glDrawArraysInstanced(mode, first, count, instanceCount);
     }
 
     public static void drawElementsInstanced(int mode, int count, int type, long offset, int instanceCount) {
-        if (useGL31 == null) useGL31 = GLContext.getCapabilities().OpenGL31;
-        if (useGL31) {
-            CgGL.glDrawElementsInstanced(mode, count, type, offset, instanceCount);
-        } else {
-            CgGL.glDrawElementsInstanced(mode, count, type, offset, instanceCount);
-        }
+        CgGL.glDrawElementsInstanced(mode, count, type, offset, instanceCount);
     }
 }

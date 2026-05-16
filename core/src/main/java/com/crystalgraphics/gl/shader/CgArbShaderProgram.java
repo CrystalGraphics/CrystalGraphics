@@ -1,25 +1,20 @@
 package com.crystalgraphics.gl.shader;
 
+
 import com.crystalgraphics.api.shader.CgActiveUniform;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gl.state.CallFamily;
-
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.joml.Matrix3f;
-import org.joml.Matrix4f;
-import org.lwjgl.BufferUtils;
-import org.lwjgl.opengl.ARBFragmentShader;
-import org.lwjgl.opengl.ARBShaderObjects;
-import org.lwjgl.opengl.ARBVertexShader;
-import org.lwjgl.opengl.GL11;
-
+import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.util.CgBufferUtils;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+import org.joml.Matrix3f;
+import org.joml.Matrix4f;
 import static com.crystalgraphics.gl.shader.CgShaderFactory.JOML_BUFFER;
 
 /**
@@ -105,7 +100,7 @@ public class CgArbShaderProgram extends CgAbstractShaderProgram {
      *         the info log in the message
      */
     public static CgArbShaderProgram compile(String vertexSource, String fragmentSource, CgVertexFormat format) {
-        int progId = ARBShaderObjects.glCreateProgramObjectARB();
+        int progId = CgGL.glCreateProgram();
         CgArbShaderProgram prog = new CgArbShaderProgram(progId, true);
         try {
             prog.relink(vertexSource, fragmentSource, format);
@@ -119,52 +114,52 @@ public class CgArbShaderProgram extends CgAbstractShaderProgram {
     @Override
     public void relink(String vertexSource, String fragmentSource, CgVertexFormat format) {
         // glGetAttachedObjectsARB fills countBuf[0] with actual count
-        IntBuffer countBuf   = BufferUtils.createIntBuffer(1);
-        IntBuffer shadersBuf = BufferUtils.createIntBuffer(16);
-        ARBShaderObjects.glGetAttachedObjectsARB(programId, countBuf, shadersBuf);
+        IntBuffer countBuf   = CgBufferUtils.createIntBuffer(1);
+        IntBuffer shadersBuf = CgBufferUtils.createIntBuffer(16);
+        CgGL.glGetAttachedShaders(programId, countBuf, shadersBuf);
         int attached = countBuf.get(0);
         for (int i = 0; i < attached; i++) {
             int id = shadersBuf.get(i);
-            ARBShaderObjects.glDetachObjectARB(programId, id);
-            ARBShaderObjects.glDeleteObjectARB(id);
+            CgGL.glDetachShader(programId, id);
+            CgGL.glDeleteObject(id);
         }
 
-        int vertId = ARBShaderObjects.glCreateShaderObjectARB(ARBVertexShader.GL_VERTEX_SHADER_ARB);
-        ARBShaderObjects.glShaderSourceARB(vertId, vertexSource);
-        ARBShaderObjects.glCompileShaderARB(vertId);
-        if (ARBShaderObjects.glGetObjectParameteriARB(vertId, ARBShaderObjects.GL_OBJECT_COMPILE_STATUS_ARB) != GL11.GL_TRUE) {
-            String log = ARBShaderObjects.glGetInfoLogARB(vertId, 4096);
-            ARBShaderObjects.glDeleteObjectARB(vertId);
+        int vertId = CgGL.glCreateShader(CgGL.GL_VERTEX_SHADER_ARB);
+        CgGL.glShaderSource(vertId, vertexSource);
+        CgGL.glCompileShader(vertId);
+        if (CgGL.glGetObjectParameteri(vertId, CgGL.GL_OBJECT_COMPILE_STATUS_ARB) != CgGL.GL_TRUE) {
+            String log = CgGL.glGetObjectInfoLog(vertId, 4096);
+            CgGL.glDeleteObject(vertId);
             throw new IllegalStateException("Vertex shader compile failed: " + log);
         }
 
-        int fragId = ARBShaderObjects.glCreateShaderObjectARB(ARBFragmentShader.GL_FRAGMENT_SHADER_ARB);
-        ARBShaderObjects.glShaderSourceARB(fragId, fragmentSource);
-        ARBShaderObjects.glCompileShaderARB(fragId);
-        if (ARBShaderObjects.glGetObjectParameteriARB(fragId, ARBShaderObjects.GL_OBJECT_COMPILE_STATUS_ARB) != GL11.GL_TRUE) {
-            String log = ARBShaderObjects.glGetInfoLogARB(fragId, 4096);
-            ARBShaderObjects.glDeleteObjectARB(vertId);
-            ARBShaderObjects.glDeleteObjectARB(fragId);
+        int fragId = CgGL.glCreateShader(CgGL.GL_FRAGMENT_SHADER_ARB);
+        CgGL.glShaderSource(fragId, fragmentSource);
+        CgGL.glCompileShader(fragId);
+        if (CgGL.glGetObjectParameteri(fragId, CgGL.GL_OBJECT_COMPILE_STATUS_ARB) != CgGL.GL_TRUE) {
+            String log = CgGL.glGetObjectInfoLog(fragId, 4096);
+            CgGL.glDeleteObject(vertId);
+            CgGL.glDeleteObject(fragId);
             throw new IllegalStateException("Fragment shader compile failed: " + log);
         }
 
-        ARBShaderObjects.glAttachObjectARB(programId, vertId);
-        ARBShaderObjects.glAttachObjectARB(programId, fragId);
+        CgGL.glAttachShader(programId, vertId);
+        CgGL.glAttachShader(programId, fragId);
 
         if (format != null) {
             for (int i = 0; i < format.getAttributeCount(); i++)
-                ARBVertexShader.glBindAttribLocationARB(programId, i, format.getAttribute(i).getName());
+                CgGL.glBindAttribLocation(programId, i, format.getAttribute(i).getName());
         }
 
-        ARBShaderObjects.glLinkProgramARB(programId);
+        CgGL.glLinkProgram(programId);
 
-        ARBShaderObjects.glDetachObjectARB(programId, vertId);
-        ARBShaderObjects.glDetachObjectARB(programId, fragId);
-        ARBShaderObjects.glDeleteObjectARB(vertId);
-        ARBShaderObjects.glDeleteObjectARB(fragId);
+        CgGL.glDetachShader(programId, vertId);
+        CgGL.glDetachShader(programId, fragId);
+        CgGL.glDeleteObject(vertId);
+        CgGL.glDeleteObject(fragId);
 
-        if (ARBShaderObjects.glGetObjectParameteriARB(programId, ARBShaderObjects.GL_OBJECT_LINK_STATUS_ARB) != GL11.GL_TRUE) {
-            throw new IllegalStateException("Shader program link failed: " + ARBShaderObjects.glGetInfoLogARB(programId, 4096));
+        if (CgGL.glGetObjectParameteri(programId, CgGL.GL_OBJECT_LINK_STATUS_ARB) != CgGL.GL_TRUE) {
+            throw new IllegalStateException("Shader program link failed: " + CgGL.glGetObjectInfoLog(programId, 4096));
         }
     }
 
@@ -188,7 +183,7 @@ public class CgArbShaderProgram extends CgAbstractShaderProgram {
      */
     @Override
     protected void freeGlResources() {
-        ARBShaderObjects.glDeleteObjectARB(programId);
+        CgGL.glDeleteObject(programId);
     }
 
     // ── Uniform operations ─────────────────────────────────────────────
@@ -208,7 +203,7 @@ public class CgArbShaderProgram extends CgAbstractShaderProgram {
         if (name == null) {
             throw new IllegalArgumentException("Uniform name must not be null");
         }
-        return ARBShaderObjects.glGetUniformLocationARB(programId, name);
+        return CgGL.glGetUniformLocation(programId, name);
     }
 
     /**
@@ -219,24 +214,24 @@ public class CgArbShaderProgram extends CgAbstractShaderProgram {
      */
     @Override
     public List<CgActiveUniform> getActiveUniforms() {
-        int count = ARBShaderObjects.glGetObjectParameteriARB(programId,
-                ARBShaderObjects.GL_OBJECT_ACTIVE_UNIFORMS_ARB);
+        int count = CgGL.glGetObjectParameteri(programId,
+                CgGL.GL_OBJECT_ACTIVE_UNIFORMS_ARB);
         if (count <= 0) return Collections.emptyList();
-        int maxLen = ARBShaderObjects.glGetObjectParameteriARB(programId,
-                ARBShaderObjects.GL_OBJECT_ACTIVE_UNIFORM_MAX_LENGTH_ARB);
+        int maxLen = CgGL.glGetObjectParameteri(programId,
+                CgGL.GL_OBJECT_ACTIVE_UNIFORM_MAX_LENGTH_ARB);
         if (maxLen <= 0) maxLen = 256;
 
         List<CgActiveUniform> result = new ArrayList<>(count);
         // LWJGL2 convenience form: glGetActiveUniformARB(program, index, maxLength, sizeTypeBuf)
         // fills sizeTypeBuf[0]=size, sizeTypeBuf[1]=type and returns the uniform name.
-        IntBuffer sizeTypeBuf = BufferUtils.createIntBuffer(2);
+        IntBuffer sizeTypeBuf = CgBufferUtils.createIntBuffer(2);
         for (int i = 0; i < count; i++) {
             sizeTypeBuf.clear();
-            String name = ARBShaderObjects.glGetActiveUniformARB(programId, i, maxLen, sizeTypeBuf);
+            String name = CgGL.glGetActiveUniform(programId, i, maxLen, sizeTypeBuf);
             if (name == null || name.startsWith("gl_")) continue;
             int size = sizeTypeBuf.get(0);
             int glType = sizeTypeBuf.get(1);
-            int loc = ARBShaderObjects.glGetUniformLocationARB(programId, name);
+            int loc = CgGL.glGetUniformLocation(programId, name);
             result.add(new CgActiveUniform(name, glType, size, loc));
         }
         return Collections.unmodifiableList(result);
@@ -253,7 +248,7 @@ public class CgArbShaderProgram extends CgAbstractShaderProgram {
      */
     @Override
     public void setUniform1i(int location, int value) {
-        ARBShaderObjects.glUniform1iARB(location, value);
+        CgGL.glUniform1i(location, value);
     }
 
     /**
@@ -267,7 +262,7 @@ public class CgArbShaderProgram extends CgAbstractShaderProgram {
      */
     @Override
     public void setUniform1f(int location, float value) {
-        ARBShaderObjects.glUniform1fARB(location, value);
+        CgGL.glUniform1f(location, value);
     }
 
     /**
@@ -282,7 +277,7 @@ public class CgArbShaderProgram extends CgAbstractShaderProgram {
      */
     @Override
     public void setUniform2f(int location, float x, float y) {
-        ARBShaderObjects.glUniform2fARB(location, x, y);
+        CgGL.glUniform2f(location, x, y);
     }
 
     /**
@@ -298,7 +293,7 @@ public class CgArbShaderProgram extends CgAbstractShaderProgram {
      */
     @Override
     public void setUniform3f(int location, float x, float y, float z) {
-        ARBShaderObjects.glUniform3fARB(location, x, y, z);
+        CgGL.glUniform3f(location, x, y, z);
     }
 
     /**
@@ -315,7 +310,7 @@ public class CgArbShaderProgram extends CgAbstractShaderProgram {
      */
     @Override
     public void setUniform4f(int location, float x, float y, float z, float w) {
-        ARBShaderObjects.glUniform4fARB(location, x, y, z, w);
+        CgGL.glUniform4f(location, x, y, z, w);
     }
     
     /**
@@ -331,25 +326,25 @@ public class CgArbShaderProgram extends CgAbstractShaderProgram {
      */
     @Override
     public void setSampler(int location, int textureUnit) {
-        ARBShaderObjects.glUniform1iARB(location, textureUnit);
+        CgGL.glUniform1i(location, textureUnit);
     }
 
     @Override
     public void setUniformFloatBuffer(int location, FloatBuffer buffer) {
         if (location < 0) return;
-        ARBShaderObjects.glUniform1ARB(location, buffer);
+        CgGL.glUniform1(location, buffer);
     }
 
     @Override
     public void setUniformIntBuffer(int location, IntBuffer buffer) {
         if (location < 0) return;
-        ARBShaderObjects.glUniform1ARB(location, buffer);
+        CgGL.glUniform1(location, buffer);
     }
 
     @Override
     public void setUniformMatrix3f(int location, FloatBuffer buffer) {
         if (location < 0) return;
-        ARBShaderObjects.glUniformMatrix3ARB(location, false, buffer);
+        CgGL.glUniformMatrix3(location, false, buffer);
     }
     
     @Override
@@ -357,7 +352,7 @@ public class CgArbShaderProgram extends CgAbstractShaderProgram {
         if (location < 0) return;
         FloatBuffer buf = JOML_BUFFER.get();
         matrix.get(buf).rewind();
-        ARBShaderObjects.glUniformMatrix3ARB(location, false, buf);
+        CgGL.glUniformMatrix3(location, false, buf);
     }
 
      /**
@@ -372,7 +367,7 @@ public class CgArbShaderProgram extends CgAbstractShaderProgram {
     @Override
     public void setUniformMatrix4f(int location, FloatBuffer buffer) {
         if (location < 0) return;
-        ARBShaderObjects.glUniformMatrix4ARB(location, false, buffer);
+        CgGL.glUniformMatrix4(location, false, buffer);
     }
 
     @Override
@@ -380,6 +375,6 @@ public class CgArbShaderProgram extends CgAbstractShaderProgram {
         if (location < 0) return;
         FloatBuffer buf = JOML_BUFFER.get();
         matrix.get(buf).rewind();
-        ARBShaderObjects.glUniformMatrix4ARB(location, false, buf);
+        CgGL.glUniformMatrix4(location, false, buf);
     }
 }

@@ -3,8 +3,8 @@ package com.crystalgraphics.api;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
-import org.lwjgl.BufferUtils;
-import org.lwjgl.opengl.GL11;
+import com.crystalgraphics.util.CgBufferUtils;
+import com.crystalgraphics.platform.gl.CgGL;
 
 import java.nio.FloatBuffer;
 import java.util.ArrayDeque;
@@ -54,7 +54,7 @@ public class PoseStack {
      * Thread-local FloatBuffer for uploading 4×4 matrices to GL.
      * Allocated once per thread, reused across all {@link #syncToGL()} calls.
      */
-    private static final ThreadLocal<FloatBuffer> MATRIX_BUFFER = ThreadLocal.withInitial(() -> BufferUtils.createFloatBuffer(16));
+    private static final ThreadLocal<FloatBuffer> MATRIX_BUFFER = ThreadLocal.withInitial(() -> CgBufferUtils.createFloatBuffer(16));
 
     private final Deque<Pose> poseStack;
 
@@ -167,9 +167,9 @@ public class PoseStack {
      * Pushes a copy of the current top entry onto the stack, then
      * synchronizes the JOML matrix to the GL fixed-function MODELVIEW stack.
      *
-     * <p>This calls {@code GL11.glPushMatrix()} to preserve the current GL
+     * <p>This calls {@code CgGL.glPushMatrix()} to preserve the current GL
      * state, then loads the JOML pose matrix into GL via
-     * {@code GL11.glLoadMatrix()}.  The GL matrix mode must be
+     * {@code CgGL.glLoadMatrix()}.  The GL matrix mode must be
      * {@code GL_MODELVIEW} when this is called.</p>
      */
     public void pushPose() {
@@ -180,7 +180,7 @@ public class PoseStack {
         ));
 
         // Sync to fixed-function GL
-        GL11.glPushMatrix();
+        CgGL.glPushMatrix();
         syncToGL();
     }
 
@@ -188,14 +188,14 @@ public class PoseStack {
      * Pops the top entry from the stack and restores the previous GL
      * MODELVIEW matrix.
      *
-     * <p>Calls {@code GL11.glPopMatrix()} to restore the GL state that was
+     * <p>Calls {@code CgGL.glPopMatrix()} to restore the GL state that was
      * saved by the matching {@link #pushPose()} call.</p>
      *
      * @throws java.util.NoSuchElementException if the stack would become empty
      */
     public void popPose() {
         this.poseStack.removeLast();
-        GL11.glPopMatrix();
+        CgGL.glPopMatrix();
     }
 
     /**
@@ -258,7 +258,7 @@ public class PoseStack {
         buf.clear();
         this.poseStack.getLast().pose.get(buf);
         buf.flip();
-        GL11.glLoadMatrix(buf);
+        CgGL.glLoadMatrix(buf);
     }
 
     // ---- Utility ----

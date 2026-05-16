@@ -140,13 +140,6 @@ public final class CgMesh {
      */
     public static CgMesh upload(CgVertexFormat format, CgMeshTopology topology,
                                  ByteBuffer vertexData, ByteBuffer indexData, int indexCount, int indexType) {
-        try {
-            if (!CgGL.isContextCurrent()) {
-                throw new IllegalStateException("CgMesh.upload() must be called on the OpenGL thread");
-            }
-        } catch (org.lwjgl.LWJGLException e) {
-            throw new IllegalStateException("CgMesh.upload() GL thread check failed", e);
-        }
         int vertexCount = vertexData.remaining() / format.getStride();
 
         // ── Upload VBO ────────────────────────────────────────────────────

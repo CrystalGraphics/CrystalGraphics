@@ -1,7 +1,7 @@
 package com.crystalgraphics.platform;
 
-import com.crystalgraphics.platform.gl.CgCapabilityProbe;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.gl.CgGLContext;
 import com.crystalgraphics.platform.gl.CgGlDispatch;
 import com.crystalgraphics.platform.service.CgLifecycleService;
 import com.crystalgraphics.platform.service.CgReloadService;
@@ -47,8 +47,8 @@ public final class CgPlatform {
         return service.gl();
     }
 
-    /** Returns the capability probe. @throws IllegalStateException if called before {@link #register}. */
-    public static CgCapabilityProbe capabilities() {
+    /** Returns the GL context. @throws IllegalStateException if called before {@link #register}. */
+    public static CgGLContext capabilities() {
         ensureCreated();
         return service.capabilities();
     }

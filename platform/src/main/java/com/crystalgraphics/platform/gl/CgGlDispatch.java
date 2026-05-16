@@ -1,11 +1,7 @@
 package com.crystalgraphics.platform.gl;
 
-import com.crystalgraphics.platform.CgPlatform;
-import lombok.Setter;
+import java.nio.*;
 
-import java.nio.ByteBuffer;
-import java.nio.FloatBuffer;
-import java.nio.IntBuffer;
 
 /**
  * Platform abstraction for all raw OpenGL calls made by the CrystalGraphics core engine.
@@ -97,7 +93,7 @@ public abstract class CgGlDispatch {
     public abstract void glUniform2f(int location, float v0, float v1);
     public abstract void glUniform3f(int location, float v0, float v1, float v2);
     public abstract void glUniform4f(int location, float v0, float v1, float v2, float v3);
-    public abstract void glUniformMatrix4fv(int location, boolean transpose, java.nio.FloatBuffer value);
+    public abstract void glUniformMatrix4fv(int location, boolean transpose, FloatBuffer value);
     public abstract void glBindAttribLocation(int program, int index, CharSequence name);
     public abstract int glGetProgramResourceIndex(int program, int programInterface, CharSequence name);
     public abstract void glShaderStorageBlockBinding(int program, int storageBlockIndex, int storageBlockBinding);
@@ -110,9 +106,10 @@ public abstract class CgGlDispatch {
 
     public abstract int glGenBuffers();
     public abstract void glBindBuffer(int target, int buffer);
-    public abstract void glBufferData(int target, java.nio.ByteBuffer data, int usage);
+    public abstract void glBufferData(int target, ByteBuffer data, int usage);
+    public abstract void glBufferData(int target, ShortBuffer data, int usage);
     public abstract void glBufferData(int target, long size, int usage);
-    public abstract void glBufferSubData(int target, long offset, java.nio.ByteBuffer data);
+    public abstract void glBufferSubData(int target, long offset, ByteBuffer data);
     public abstract void glDeleteBuffers(int buffer);
     public abstract void glBindBufferBase(int target, int index, int buffer);
     public abstract void glBindBufferRange(int target, int index, int buffer, long offset, long size);
@@ -138,13 +135,19 @@ public abstract class CgGlDispatch {
     public abstract void glDeleteTextures(int texture);
     public abstract void glTexImage2D(int target, int level, int internalFormat,
                                        int width, int height, int border,
-                                       int format, int type, java.nio.ByteBuffer pixels);
+                                       int format, int type, ByteBuffer pixels);
+    public abstract void glTexImage2D(int target, int level, int internalFormat,
+                                       int width, int height, int border,
+                                       int format, int type, FloatBuffer pixels);
     public abstract void glTexImage3D(int target, int level, int internalFormat,
                                        int width, int height, int depth, int border,
-                                       int format, int type, java.nio.ByteBuffer pixels);
+                                       int format, int type, ByteBuffer pixels);
     public abstract void glTexSubImage2D(int target, int level,
                                           int xOffset, int yOffset, int width, int height,
-                                          int format, int type, java.nio.ByteBuffer pixels);
+                                          int format, int type, ByteBuffer pixels);
+    public abstract void glTexSubImage2D(int target, int level,
+                                          int xOffset, int yOffset, int width, int height,
+                                          int format, int type, FloatBuffer pixels);
     public abstract void glGenerateMipmap(int target);
     public abstract void glActiveTexture(int texture);
     public abstract void glTexParameteri(int target, int pname, int param);
@@ -198,8 +201,12 @@ public abstract class CgGlDispatch {
     // -------------------------------------------------------------------------
 
     public abstract int glGetInteger(int pname);
+    public abstract void glGetInteger(int pname, IntBuffer params);
     public abstract boolean glGetBoolean(int pname);
+    public abstract void glGetBoolean(int pname, ByteBuffer params);
     public abstract void glGetFloat(int pname, FloatBuffer params);
+    /** Returns a single float state value (e.g. {@code GL_LINE_WIDTH}, {@code GL_POINT_SIZE}). */
+    public abstract float glGetFloat(int pname);
 
     // -------------------------------------------------------------------------
     // Samplers
@@ -242,14 +249,22 @@ public abstract class CgGlDispatch {
     public abstract boolean isContextCurrent();
 
     // -------------------------------------------------------------------------
+    // Fixed-function matrix stack (legacy / compat — used by PoseStack)
+    // -------------------------------------------------------------------------
+
+    public abstract void glPushMatrix();
+    public abstract void glPopMatrix();
+    public abstract void glLoadMatrix(FloatBuffer m);
+
+    // -------------------------------------------------------------------------
     // Framebuffers — renderbuffer operations (Core / ARB / EXT waterfall)
     // -------------------------------------------------------------------------
 
-    public abstract int genRenderbuffers();
-    public abstract void deleteRenderbuffers(int rbo);
-    public abstract void bindRenderbuffer(int target, int renderbuffer);
-    public abstract void renderbufferStorage(int target, int internalFormat, int width, int height);
-    public abstract void framebufferRenderbuffer(int target, int attachment, int renderbufferTarget, int renderbuffer);
+    public abstract int glGenRenderbuffers();
+    public abstract void glDeleteRenderbuffers(int rbo);
+    public abstract void glBindRenderbuffer(int target, int renderbuffer);
+    public abstract void glRenderbufferStorage(int target, int internalFormat, int width, int height);
+    public abstract void glFramebufferRenderbuffer(int target, int attachment, int renderbufferTarget, int renderbuffer);
     // -------------------------------------------------------------------------
     // Shaders — ARBShaderObjects unified-handle methods
     //
