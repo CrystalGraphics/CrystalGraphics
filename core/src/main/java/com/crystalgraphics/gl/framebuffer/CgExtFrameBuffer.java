@@ -1,10 +1,9 @@
 package com.crystalgraphics.gl.framebuffer;
 
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
-import com.crystalgraphics.gl.CrossApiTransition;
 import com.crystalgraphics.gl.state.CallFamily;
 
-import org.lwjgl.opengl.EXTFramebufferObject;
+import com.crystalgraphics.platform.gl.CgGL;
 
 /**
  * Framebuffer backend that routes all GL dispatch through the legacy
@@ -53,7 +52,7 @@ final class CgExtFrameBuffer extends CgFrameBuffer {
      */
     @Override
     public void bindDraw() {
-        CrossApiTransition.bindFramebuffer(GL_FRAMEBUFFER_EXT, fboId, callFamily());
+        CgGL.glBindFramebuffer(GL_FRAMEBUFFER_EXT, fboId);
     }
 
     /**
@@ -62,7 +61,7 @@ final class CgExtFrameBuffer extends CgFrameBuffer {
      */
     @Override
     public void bindRead() {
-        CrossApiTransition.bindFramebuffer(GL_FRAMEBUFFER_EXT, fboId, callFamily());
+        CgGL.glBindFramebuffer(GL_FRAMEBUFFER_EXT, fboId);
     }
 
     /**
@@ -76,47 +75,47 @@ final class CgExtFrameBuffer extends CgFrameBuffer {
 
     @Override
     protected int doGenFramebuffer() {
-        return EXTFramebufferObject.glGenFramebuffersEXT();
+        return CgGL.glGenFramebuffers();
     }
 
     @Override
     protected void deleteFramebuffer(int id) {
-        EXTFramebufferObject.glDeleteFramebuffersEXT(id);
+        CgGL.glDeleteFramebuffers(id);
     }
 
     @Override
     protected void deleteRenderbuffer(int id) {
-        EXTFramebufferObject.glDeleteRenderbuffersEXT(id);
+        CgGL.glDeleteRenderbuffers(id);
     }
 
     /** Ignores {@code target} — EXT only exposes {@code GL_FRAMEBUFFER_EXT}. */
     @Override
     protected void doBindFbo(int target, int fboId) {
-        EXTFramebufferObject.glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fboId);
+        CgGL.glBindFramebuffer(GL_FRAMEBUFFER_EXT, fboId);
     }
 
     @Override
     protected void doFramebufferTexture2D(int target, int attachmentPoint, int glTextureTarget, int texId) {
-        EXTFramebufferObject.glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT, attachmentPoint, glTextureTarget, texId, 0);
+        CgGL.glFramebufferTexture2D(GL_FRAMEBUFFER_EXT, attachmentPoint, glTextureTarget, texId, 0);
     }
 
     @Override
     protected void doFramebufferRenderbuffer(int target, int attachmentPoint, int rboId) {
-        EXTFramebufferObject.glFramebufferRenderbufferEXT(GL_FRAMEBUFFER_EXT, attachmentPoint, GL_RENDERBUFFER_EXT, rboId);
+        CgGL.glFramebufferRenderbuffer(GL_FRAMEBUFFER_EXT, attachmentPoint, GL_RENDERBUFFER_EXT, rboId);
     }
 
     @Override
     protected int doGenRenderbuffer() {
-        return EXTFramebufferObject.glGenRenderbuffersEXT();
+        return CgGL.glGenRenderbuffers();
     }
 
     @Override
     protected void doRenderbufferStorage(int internalFormat, int w, int h) {
-        EXTFramebufferObject.glRenderbufferStorageEXT(GL_RENDERBUFFER_EXT, internalFormat, w, h);
+        CgGL.glRenderbufferStorage(GL_RENDERBUFFER_EXT, internalFormat, w, h);
     }
 
     @Override
     protected int doCheckFramebufferStatus() {
-        return EXTFramebufferObject.glCheckFramebufferStatusEXT(GL_FRAMEBUFFER_EXT);
+        return CgGL.glCheckFramebufferStatus(GL_FRAMEBUFFER_EXT);
     }
 }

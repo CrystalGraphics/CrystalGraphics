@@ -2,7 +2,6 @@ package com.crystalgraphics.api.shader;
 
 import com.crystalgraphics.api.CgCapabilities;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
-import com.crystalgraphics.gl.CrossApiTransition;
 import com.crystalgraphics.gl.shader.CgArbShaderProgram;
 import com.crystalgraphics.gl.shader.CgCoreShaderProgram;
 import org.joml.*;
@@ -34,13 +33,6 @@ import java.util.List;
  *       will throw {@link IllegalStateException}.</li>
  * </ul>
  *
- * <h3>Call Family Semantics</h3>
- * <p>Implementations bind programs through a specific OpenGL call family
- * (Core GL20 or ARB shader objects).  When the currently active call family
- * differs from this program's family, the implementation (via
- * {@link CrossApiTransition}) performs
- * a defensive unbind of the previous family before binding through its own,
- * preventing undefined driver behavior on mixed-family transitions.</p>
  *
  * <h3>Uniform and Sampler Binding</h3>
  * <p>Uniform setters operate on the currently bound program.  The program
@@ -54,7 +46,6 @@ import java.util.List;
  * thread).</p>
  *
  * @see CgCapabilities
- * @see CrossApiTransition
  */
 public interface CgShaderProgram {
 

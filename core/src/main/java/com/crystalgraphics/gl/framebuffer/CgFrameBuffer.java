@@ -1,23 +1,19 @@
 package com.crystalgraphics.gl.framebuffer;
 
+
 import com.crystalgraphics.api.CgCapabilities;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureType;
-import com.crystalgraphics.gl.CrossApiTransition;
 import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.gl.state.CallFamily;
 import com.crystalgraphics.gl.texture.CgTexture2D;
-
-import lombok.Getter;
-import org.lwjgl.BufferUtils;
-import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL20;
-import org.lwjgl.opengl.GL30;
-
-import javax.annotation.Nullable;
+import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.util.CgBufferUtils;
 import java.nio.IntBuffer;
 import java.util.TreeMap;
+import javax.annotation.Nullable;
+import lombok.Getter;
 
 /**
  * Abstract base for all CrystalGraphics framebuffer implementations.
@@ -143,7 +139,6 @@ public abstract class CgFrameBuffer {
         }
         return maxColorAttachments;
     }
-
 
     // ── Constructors ───────────────────────────────────────────────────────────
 
@@ -292,7 +287,7 @@ public abstract class CgFrameBuffer {
      */
     private void initGl(int w, int h, CgFrameBufferFormat fmt) {
         if(fboId == 0) fboId = doGenFramebuffer();
-        doBindFbo(GL30.GL_FRAMEBUFFER, fboId);
+        doBindFbo(CgGL.GL_FRAMEBUFFER, fboId);
 
         try {
             // ── Color attachments ──────────────────────────────────────────────
@@ -305,11 +300,11 @@ public abstract class CgFrameBuffer {
                 if (isRbo) {
                     int rboId = doGenRenderbuffer();
                     doRenderbufferStorage(type.glInternalFormat, w, h);
-                    doFramebufferRenderbuffer(GL30.GL_FRAMEBUFFER, glAttach, rboId);
+                    doFramebufferRenderbuffer(CgGL.GL_FRAMEBUFFER, glAttach, rboId);
                     a.setRenderbufferId(rboId);
                 } else {
                     CgTexture2D tex = CgTexture2D.createEmpty(w, h, type.toTextureSpec());
-                    doFramebufferTexture2D(GL30.GL_FRAMEBUFFER, glAttach, GL11.GL_TEXTURE_2D, tex.getId());
+                    doFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, glAttach, CgGL.GL_TEXTURE_2D, tex.getId());
                     a.setTexture(tex);
                 }
                 colorAttachments.put(slot, a);
@@ -325,11 +320,11 @@ public abstract class CgFrameBuffer {
                 if (isRbo) {
                     int rboId = doGenRenderbuffer();
                     doRenderbufferStorage(depthType.glInternalFormat, w, h);
-                    doFramebufferRenderbuffer(GL30.GL_FRAMEBUFFER, glAttach, rboId);
+                    doFramebufferRenderbuffer(CgGL.GL_FRAMEBUFFER, glAttach, rboId);
                     a.setRenderbufferId(rboId);
                 } else {
                     CgTexture2D tex = CgTexture2D.createEmpty(w, h, depthType.toTextureSpec());
-                    doFramebufferTexture2D(GL30.GL_FRAMEBUFFER, glAttach, GL11.GL_TEXTURE_2D, tex.getId());
+                    doFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, glAttach, CgGL.GL_TEXTURE_2D, tex.getId());
                     a.setTexture(tex);
                 }
                 depthAttachment = a;
@@ -337,23 +332,23 @@ public abstract class CgFrameBuffer {
 
             // ── Depth-only: suppress draw/read ─────────────────────────────────
             if (fmt.isDepthOnly()) {
-                GL11.glDrawBuffer(GL11.GL_NONE);
-                GL11.glReadBuffer(GL11.GL_NONE);
+                CgGL.glDrawBuffer(CgGL.GL_NONE);
+                CgGL.glReadBuffer(CgGL.GL_NONE);
             }
 
             // ── Completeness check ─────────────────────────────────────────────
             int status = doCheckFramebufferStatus();
-            if (status != GL30.GL_FRAMEBUFFER_COMPLETE) 
+            if (status != CgGL.GL_FRAMEBUFFER_COMPLETE) 
                 throw new IllegalStateException("FBO '" + name + "' incomplete: 0x" + Integer.toHexString(status));
 
         } catch (RuntimeException e) {
             // Cleanup on failure
             freeGlResources();
-            doBindFbo(GL30.GL_FRAMEBUFFER, 0);
+            doBindFbo(CgGL.GL_FRAMEBUFFER, 0);
             throw e;
         }
 
-        doBindFbo(GL30.GL_FRAMEBUFFER, 0);
+        doBindFbo(CgGL.GL_FRAMEBUFFER, 0);
     }
 
     // ── Core API ───────────────────────────────────────────────────────────────
@@ -363,7 +358,7 @@ public abstract class CgFrameBuffer {
      * Routes through {@link CrossApiTransition} to handle cross-API transitions.
      */
     public void bind() {
-        CrossApiTransition.bindFramebuffer(GL30.GL_FRAMEBUFFER, fboId, callFamily());
+        CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, fboId);
     }
 
     /**
@@ -371,7 +366,7 @@ public abstract class CgFrameBuffer {
      * EXT backends override this to use {@code GL_FRAMEBUFFER_EXT}.
      */
     public void bindDraw() {
-        CrossApiTransition.bindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, fboId, callFamily());
+        CgGL.glBindFramebuffer(CgGL.GL_DRAW_FRAMEBUFFER, fboId);
     }
 
     /**
@@ -379,14 +374,14 @@ public abstract class CgFrameBuffer {
      * EXT backends override this to use {@code GL_FRAMEBUFFER_EXT}.
      */
     public void bindRead() {
-        CrossApiTransition.bindFramebuffer(GL30.GL_READ_FRAMEBUFFER, fboId, callFamily());
+        CgGL.glBindFramebuffer(CgGL.GL_READ_FRAMEBUFFER, fboId);
     }
 
     /**
      * Unbinds this FBO by binding the default framebuffer (ID 0).
      */
     public void unbind() {
-        CrossApiTransition.bindFramebuffer(GL30.GL_FRAMEBUFFER, 0, callFamily());
+        CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, 0);
     }
 
     /** Returns the GL FBO object ID. */
@@ -419,12 +414,12 @@ public abstract class CgFrameBuffer {
         if (slotIds == null || slotIds.length == 0) 
             throw new IllegalArgumentException("At least one draw buffer slot must be specified");
         
-        IntBuffer buf = BufferUtils.createIntBuffer(slotIds.length);
+        IntBuffer buf = CgBufferUtils.createIntBuffer(slotIds.length);
         for (int slot : slotIds) 
-            buf.put(GL30.GL_COLOR_ATTACHMENT0 + slot);
+            buf.put(CgGL.GL_COLOR_ATTACHMENT0 + slot);
         
         buf.flip();
-        GL20.glDrawBuffers(buf);
+        CgGL.glDrawBuffers(buf);
     }
 
     // ── Attachment access ──────────────────────────────────────────────────────
@@ -477,10 +472,10 @@ public abstract class CgFrameBuffer {
      */
     public void reattachColor(int slot, CgTexture texture) {
         if (texture == null) throw new IllegalArgumentException("texture must not be null");
-        int glAttach = GL30.GL_COLOR_ATTACHMENT0 + slot;
-        doBindFbo(GL30.GL_FRAMEBUFFER, fboId);
-        doFramebufferTexture2D(GL30.GL_FRAMEBUFFER, glAttach, GL11.GL_TEXTURE_2D, texture.getId());
-        doBindFbo(GL30.GL_FRAMEBUFFER, 0);
+        int glAttach = CgGL.GL_COLOR_ATTACHMENT0 + slot;
+        doBindFbo(CgGL.GL_FRAMEBUFFER, fboId);
+        doFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, glAttach, CgGL.GL_TEXTURE_2D, texture.getId());
+        doBindFbo(CgGL.GL_FRAMEBUFFER, 0);
         Attachment a = colorAttachments.get(slot);
         if (a != null) a.setTexture(texture instanceof CgTexture2D ? texture : null);
     }
@@ -494,10 +489,10 @@ public abstract class CgFrameBuffer {
      * @param glTarget    GL texture target (e.g. {@code GL_TEXTURE_CUBE_MAP_POSITIVE_X + face})
      */
     public void reattachColorRaw(int slot, int glTextureId, int glTarget) {
-        int glAttach = GL30.GL_COLOR_ATTACHMENT0 + slot;
-        doBindFbo(GL30.GL_FRAMEBUFFER, fboId);
-        doFramebufferTexture2D(GL30.GL_FRAMEBUFFER, glAttach, glTarget, glTextureId);
-        doBindFbo(GL30.GL_FRAMEBUFFER, 0);
+        int glAttach = CgGL.GL_COLOR_ATTACHMENT0 + slot;
+        doBindFbo(CgGL.GL_FRAMEBUFFER, fboId);
+        doFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, glAttach, glTarget, glTextureId);
+        doBindFbo(CgGL.GL_FRAMEBUFFER, 0);
     }
 
     /**
@@ -510,9 +505,9 @@ public abstract class CgFrameBuffer {
         if (depthAttachment == null) throw new IllegalStateException("FBO '" + name + "' has no depth attachment");
         
         int glAttach = depthAttachment.getType().glAttachmentPoint(0);
-        doBindFbo(GL30.GL_FRAMEBUFFER, fboId);
-        doFramebufferTexture2D(GL30.GL_FRAMEBUFFER, glAttach, GL11.GL_TEXTURE_2D, texture.getId());
-        doBindFbo(GL30.GL_FRAMEBUFFER, 0);
+        doBindFbo(CgGL.GL_FRAMEBUFFER, fboId);
+        doFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, glAttach, CgGL.GL_TEXTURE_2D, texture.getId());
+        doBindFbo(CgGL.GL_FRAMEBUFFER, 0);
     }
 
     // ── Lifecycle ──────────────────────────────────────────────────────────────
@@ -769,25 +764,6 @@ public abstract class CgFrameBuffer {
         @Override protected void doFramebufferRenderbuffer(int t, int ap, int rbo)    { /* no-op */ }
         @Override protected int  doGenRenderbuffer()                                   { return 0; }
         @Override protected void doRenderbufferStorage(int fmt, int w, int h)         { /* no-op */ }
-        @Override protected int  doCheckFramebufferStatus()                            { return GL30.GL_FRAMEBUFFER_COMPLETE; }
-
-        /** EXT does not support separate draw/read targets — use combined target. */
-        @Override
-        public void bindDraw() {
-            if (family == CallFamily.EXT_FBO) {
-                CrossApiTransition.bindFramebuffer(GL30.GL_FRAMEBUFFER, fboId, family);
-            } else {
-                super.bindDraw();
-            }
-        }
-
-        @Override
-        public void bindRead() {
-            if (family == CallFamily.EXT_FBO) {
-                CrossApiTransition.bindFramebuffer(GL30.GL_FRAMEBUFFER, fboId, family);
-            } else {
-                super.bindRead();
-            }
-        }
+        @Override protected int  doCheckFramebufferStatus()                            { return CgGL.GL_FRAMEBUFFER_COMPLETE; }
     }
 }
