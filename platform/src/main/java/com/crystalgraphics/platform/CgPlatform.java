@@ -1,6 +1,7 @@
 package com.crystalgraphics.platform;
 
 import com.crystalgraphics.platform.gl.CgCapabilityProbe;
+import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.CgGlDispatch;
 import com.crystalgraphics.platform.service.CgLifecycleService;
 import com.crystalgraphics.platform.service.CgReloadService;
@@ -37,7 +38,7 @@ public final class CgPlatform {
      */
     public static void register(CgPlatformService platform) {
         service = Objects.requireNonNull(platform, "CgPlatformService must not be null");
-        CgGlDispatch.setInstance(platform.gl());
+        CgGL.init(platform.gl());
     }
 
     /** Returns the GL dispatch. @throws IllegalStateException if called before {@link #register}. */

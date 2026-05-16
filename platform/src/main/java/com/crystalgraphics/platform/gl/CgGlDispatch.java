@@ -1,7 +1,10 @@
 package com.crystalgraphics.platform.gl;
 
 import com.crystalgraphics.platform.CgPlatform;
+import lombok.Setter;
 
+import java.nio.ByteBuffer;
+import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 
 /**
@@ -14,6 +17,14 @@ import java.nio.IntBuffer;
  * CgGlDispatch.get().glUseProgram(programId);
  * }</pre>
  *
+ * <h3>FBO naming convention</h3>
+ * FBO methods use the <strong>no-{@code gl}-prefix</strong> naming convention
+ * ({@code bindFramebuffer}, {@code genFramebuffers}, etc.) while all other methods
+ * use the standard {@code glXxx} prefix.  {@code CgGL}, the static facade in
+ * {@code core/}, normalises all methods to the {@code gl}-prefix and delegates
+ * internally (e.g. {@code CgGL.glBindFramebuffer} delegates to
+ * {@code CgGlDispatch.get().bindFramebuffer}).
+ *
  * <h3>FBO waterfall</h3>
  * The {@link #bindFramebufferCompat(int)} method is the platform-neutral substitute for
  * {@code OpenGlHelper.func_153171_g} — mc1710 routes through the Minecraft compat helper,
@@ -21,27 +32,7 @@ import java.nio.IntBuffer;
  * {@code CallFamily.OPENGLHELPER_WRAPPER} routing in core/.
  */
 public abstract class CgGlDispatch {
-
-    // -------------------------------------------------------------------------
-    // Singleton management
-    // -------------------------------------------------------------------------
-
-    private static CgGlDispatch instance;
-
-    /** Returns the registered dispatch instance. Throws if not yet registered. */
-    public static CgGlDispatch get() {
-        if (instance == null) {
-            throw new IllegalStateException(
-                "CgGlDispatch: no dispatch registered. Call CgPlatform.register() during init.");
-        }
-        return instance;
-    }
-
-    /** Registers the active dispatch. Called internally by {@link CgPlatform#register}. */
-    public static void setInstance(CgGlDispatch dispatch) {
-        instance = dispatch;
-    }
-
+    
     // -------------------------------------------------------------------------
     // Lifecycle
     // -------------------------------------------------------------------------
@@ -185,4 +176,126 @@ public abstract class CgGlDispatch {
     public abstract void glStencilFunc(int func, int ref, int mask);
     public abstract void glStencilOp(int sfail, int dpfail, int dppass);
     public abstract void glAlphaFunc(int func, float ref);
+
+    // -------------------------------------------------------------------------
+    // GL state — additional setters
+    // -------------------------------------------------------------------------
+
+    public abstract void glDepthFunc(int func);
+    public abstract void glStencilMask(int mask);
+    public abstract void glBlendEquationSeparate(int modeRGB, int modeAlpha);
+    /** GL 3.0 per-draw-buffer color mask. */
+    public abstract void glColorMaski(int buf, boolean r, boolean g, boolean b, boolean a);
+    public abstract void glFrontFace(int mode);
+    public abstract void glPolygonOffset(float factor, float units);
+    public abstract void glPointSize(float size);
+    public abstract void glDrawBuffer(int mode);
+    public abstract void glReadBuffer(int mode);
+    public abstract void glPixelStorei(int pname, int param);
+
+    // -------------------------------------------------------------------------
+    // GL state — queries
+    // -------------------------------------------------------------------------
+
+    public abstract int glGetInteger(int pname);
+    public abstract boolean glGetBoolean(int pname);
+    public abstract void glGetFloat(int pname, FloatBuffer params);
+
+    // -------------------------------------------------------------------------
+    // Samplers
+    // -------------------------------------------------------------------------
+
+    /** Binds a sampler object to a texture unit (ARB_sampler_objects / GL 3.3). */
+    public abstract void glBindSampler(int unit, int sampler);
+
+    // -------------------------------------------------------------------------
+    // Buffer mapping
+    // -------------------------------------------------------------------------
+
+    /** @return the mapped buffer, or {@code null} if mapping fails */
+    public abstract ByteBuffer glMapBufferRange(int target, long offset, long length, int access);
+    public abstract boolean glUnmapBuffer(int target);
+    public abstract void glFlushMappedBufferRange(int target, long offset, long length);
+
+    // -------------------------------------------------------------------------
+    // Sync objects (ARBSync / GL 3.2)
+    // -------------------------------------------------------------------------
+
+    public abstract long glFenceSync(int condition, int flags);
+    public abstract int glClientWaitSync(long sync, int flags, long timeout);
+    public abstract void glDeleteSync(long sync);
+
+    // -------------------------------------------------------------------------
+    // Texture 3D sub-image
+    // -------------------------------------------------------------------------
+
+    public abstract void glTexSubImage3D(int target, int level,
+                                          int xOffset, int yOffset, int zOffset,
+                                          int width, int height, int depth,
+                                          int format, int type, ByteBuffer pixels);
+
+    // -------------------------------------------------------------------------
+    // Context
+    // -------------------------------------------------------------------------
+
+    /** @return {@code true} if an OpenGL context is current on this thread. */
+    public abstract boolean isContextCurrent();
+
+    // -------------------------------------------------------------------------
+    // Framebuffers — renderbuffer operations (Core / ARB / EXT waterfall)
+    // -------------------------------------------------------------------------
+
+    public abstract int genRenderbuffers();
+    public abstract void deleteRenderbuffers(int rbo);
+    public abstract void bindRenderbuffer(int target, int renderbuffer);
+    public abstract void renderbufferStorage(int target, int internalFormat, int width, int height);
+    public abstract void framebufferRenderbuffer(int target, int attachment, int renderbufferTarget, int renderbuffer);
+    // -------------------------------------------------------------------------
+    // Shaders — ARBShaderObjects unified-handle methods
+    //
+    // ARBShaderObjects used a single "object" concept that could be either a shader
+    // or a program handle.  The GL core split these into glDeleteShader/glDeleteProgram,
+    // glGetShaderi/glGetProgrami, etc.  These unified wrappers preserve the ARB
+    // handle-agnostic semantics so that CgArbShaderProgram and friends can migrate
+    // without requiring per-call type analysis.
+    // -------------------------------------------------------------------------
+
+    /** Delete a shader OR program object handle (ARBShaderObjects unified semantics). */
+    public abstract void glDeleteObject(int handle);
+
+    /**
+     * Query a parameter on a shader or program object handle.
+     * Equivalent to {@code ARBShaderObjects.glGetObjectParameteriARB}.
+     */
+    public abstract int glGetObjectParameteri(int obj, int pname);
+
+    /**
+     * Retrieve the info log for a shader or program object handle.
+     * Equivalent to {@code ARBShaderObjects.glGetInfoLogARB}.
+     */
+    public abstract String glGetObjectInfoLog(int obj, int maxLength);
+
+    /**
+     * Returns the handle of the currently active object for the given target.
+     * Typically called as {@code glGetHandle(GL_PROGRAM_OBJECT_ARB)} to obtain
+     * the currently bound program handle.
+     * Equivalent to {@code ARBShaderObjects.glGetHandleARB}.
+     */
+    public abstract int glGetHandle(int pname);
+
+    // -------------------------------------------------------------------------
+    // Shaders — additional methods
+    // -------------------------------------------------------------------------
+
+    public abstract void glDetachShader(int program, int shader);
+    public abstract void glGetAttachedShaders(int program, IntBuffer count, IntBuffer shaders);
+    /** LWJGL2 convenience form: returns the uniform name; fills {@code sizeTypeBuf[0]=size, [1]=type}. */
+    public abstract String glGetActiveUniform(int program, int index, int maxLength, IntBuffer sizeTypeBuf);
+    /** Sets a float-array uniform ({@code glUniform1fv} semantics). */
+    public abstract void glUniform1(int location, FloatBuffer values);
+    /** Sets an int-array uniform ({@code glUniform1iv} semantics). */
+    public abstract void glUniform1(int location, IntBuffer values);
+    public abstract void glUniformMatrix3(int location, boolean transpose, FloatBuffer value);
+    /** Equivalent to {@link #glUniformMatrix4fv}; present for LWJGL2 naming parity. */
+    public abstract void glUniformMatrix4(int location, boolean transpose, FloatBuffer value);
 }
