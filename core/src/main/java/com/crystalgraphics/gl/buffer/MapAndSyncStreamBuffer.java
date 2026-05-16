@@ -98,7 +98,7 @@ public class MapAndSyncStreamBuffer extends CgStreamBuffer {
         lastMapUsedOrphan = false;
     }
 
-    private void waitOnFence(GLSync fence) {
+    private void waitOnFence(long fence) {
         long elapsed = 0;
         while (elapsed < FENCE_TIMEOUT_NS) {
             long waitNs = Math.min(1_000_000L, FENCE_TIMEOUT_NS - elapsed);

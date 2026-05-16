@@ -1,7 +1,7 @@
 package com.crystalgraphics.api.state;
 
 import org.junit.Test;
-import org.lwjgl.opengl.GL11;
+import com.crystalgraphics.platform.gl.CgGL;
 
 import static org.junit.Assert.*;
 
@@ -14,12 +14,12 @@ public class CgStencilStateTest {
 
     @Test
     public void DISABLED_compFuncIsAlways() {
-        assertEquals(GL11.GL_ALWAYS, CgStencilState.DISABLED.compFunc());
+        assertEquals(CgGL.GL_ALWAYS, CgStencilState.DISABLED.compFunc());
     }
 
     @Test
     public void DISABLED_passOpIsKeep() {
-        assertEquals(GL11.GL_KEEP, CgStencilState.DISABLED.passOp());
+        assertEquals(CgGL.GL_KEEP, CgStencilState.DISABLED.passOp());
     }
 
     @Test
@@ -34,21 +34,21 @@ public class CgStencilStateTest {
 
     @Test
     public void constructor_roundTrip() {
-        CgStencilState s = new CgStencilState(true, 3, 0x0F, 0xFF, GL11.GL_EQUAL, GL11.GL_REPLACE, GL11.GL_KEEP, GL11.GL_KEEP);
+        CgStencilState s = new CgStencilState(true, 3, 0x0F, 0xFF, CgGL.GL_EQUAL, CgGL.GL_REPLACE, CgGL.GL_KEEP, CgGL.GL_KEEP);
         assertTrue(s.enabled());
         assertEquals(3, s.ref());
         assertEquals(0x0F, s.readMask());
-        assertEquals(GL11.GL_EQUAL, s.compFunc());
-        assertEquals(GL11.GL_REPLACE, s.passOp());
+        assertEquals(CgGL.GL_EQUAL, s.compFunc());
+        assertEquals(CgGL.GL_REPLACE, s.passOp());
     }
 
     @Test
     public void DISABLED_failOpIsKeep() {
-        assertEquals(GL11.GL_KEEP, CgStencilState.DISABLED.failOp());
+        assertEquals(CgGL.GL_KEEP, CgStencilState.DISABLED.failOp());
     }
 
     @Test
     public void DISABLED_zfailOpIsKeep() {
-        assertEquals(GL11.GL_KEEP, CgStencilState.DISABLED.zfailOp());
+        assertEquals(CgGL.GL_KEEP, CgStencilState.DISABLED.zfailOp());
     }
 }

@@ -1,12 +1,7 @@
 package com.crystalgraphics.api.texture;
 
-import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL12;
-import org.lwjgl.opengl.GL14;
-import org.lwjgl.opengl.GL21;
-import org.lwjgl.opengl.GL30;
-import org.lwjgl.opengl.GL31;
-import org.lwjgl.opengl.GL33;
+
+import com.crystalgraphics.platform.gl.CgGL;
 
 /**
  * Typed enum of all supported GL texture formats.
@@ -40,60 +35,60 @@ import org.lwjgl.opengl.GL33;
 public enum CgTextureType {
 
     // ── 8-bit color ────────────────────────────────────────────────────────────
-    R8          (GL30.GL_R8,              GL11.GL_RED,          GL11.GL_UNSIGNED_BYTE, false, false),
-    R8_SNORM    (GL31.GL_R8_SNORM,        GL11.GL_RED,          GL11.GL_BYTE,          false, false),
-    R8I         (GL30.GL_R8I,             GL30.GL_RED_INTEGER,  GL11.GL_BYTE,          false, false),
-    R8UI        (GL30.GL_R8UI,            GL30.GL_RED_INTEGER,  GL11.GL_UNSIGNED_BYTE, false, false),
-    RG8         (GL30.GL_RG8,             GL30.GL_RG,           GL11.GL_UNSIGNED_BYTE, false, false),
-    RG8I        (GL30.GL_RG8I,            GL30.GL_RG_INTEGER,   GL11.GL_BYTE,          false, false),
-    RG8UI       (GL30.GL_RG8UI,           GL30.GL_RG_INTEGER,   GL11.GL_UNSIGNED_BYTE, false, false),
-    RGBA8       (GL11.GL_RGBA8,           GL11.GL_RGBA,         GL11.GL_UNSIGNED_BYTE, false, false),
-    RGBA8_SNORM (GL31.GL_RGBA8_SNORM,     GL11.GL_RGBA,         GL11.GL_BYTE,          false, false),
-    RGBA8I      (GL30.GL_RGBA8I,          GL30.GL_RGBA_INTEGER, GL11.GL_BYTE,          false, false),
-    RGBA8UI     (GL30.GL_RGBA8UI,         GL30.GL_RGBA_INTEGER, GL11.GL_UNSIGNED_BYTE, false, false),
-    SRGB8_ALPHA8(GL21.GL_SRGB8_ALPHA8,   GL11.GL_RGBA,         GL11.GL_UNSIGNED_BYTE, false, false),
+    R8          (CgGL.GL_R8,              CgGL.GL_RED,          CgGL.GL_UNSIGNED_BYTE, false, false),
+    R8_SNORM    (CgGL.GL_R8_SNORM,        CgGL.GL_RED,          CgGL.GL_BYTE,          false, false),
+    R8I         (CgGL.GL_R8I,             CgGL.GL_RED_INTEGER,  CgGL.GL_BYTE,          false, false),
+    R8UI        (CgGL.GL_R8UI,            CgGL.GL_RED_INTEGER,  CgGL.GL_UNSIGNED_BYTE, false, false),
+    RG8         (CgGL.GL_RG8,             CgGL.GL_RG,           CgGL.GL_UNSIGNED_BYTE, false, false),
+    RG8I        (CgGL.GL_RG8I,            CgGL.GL_RG_INTEGER,   CgGL.GL_BYTE,          false, false),
+    RG8UI       (CgGL.GL_RG8UI,           CgGL.GL_RG_INTEGER,   CgGL.GL_UNSIGNED_BYTE, false, false),
+    RGBA8       (CgGL.GL_RGBA8,           CgGL.GL_RGBA,         CgGL.GL_UNSIGNED_BYTE, false, false),
+    RGBA8_SNORM (CgGL.GL_RGBA8_SNORM,     CgGL.GL_RGBA,         CgGL.GL_BYTE,          false, false),
+    RGBA8I      (CgGL.GL_RGBA8I,          CgGL.GL_RGBA_INTEGER, CgGL.GL_BYTE,          false, false),
+    RGBA8UI     (CgGL.GL_RGBA8UI,         CgGL.GL_RGBA_INTEGER, CgGL.GL_UNSIGNED_BYTE, false, false),
+    SRGB8_ALPHA8(CgGL.GL_SRGB8_ALPHA8,   CgGL.GL_RGBA,         CgGL.GL_UNSIGNED_BYTE, false, false),
 
     // ── 16-bit color ───────────────────────────────────────────────────────────
-    R16F    (GL30.GL_R16F,    GL11.GL_RED,          GL30.GL_HALF_FLOAT,     false, false),
-    R16I    (GL30.GL_R16I,    GL30.GL_RED_INTEGER,  GL11.GL_SHORT,          false, false),
-    R16UI   (GL30.GL_R16UI,   GL30.GL_RED_INTEGER,  GL11.GL_UNSIGNED_SHORT, false, false),
-    RG16F   (GL30.GL_RG16F,   GL30.GL_RG,           GL30.GL_HALF_FLOAT,     false, false),
-    RG16I   (GL30.GL_RG16I,   GL30.GL_RG_INTEGER,   GL11.GL_SHORT,          false, false),
-    RG16UI  (GL30.GL_RG16UI,  GL30.GL_RG_INTEGER,   GL11.GL_UNSIGNED_SHORT, false, false),
-    RGBA16F (GL30.GL_RGBA16F, GL11.GL_RGBA,         GL30.GL_HALF_FLOAT,     false, false),
-    RGBA16I (GL30.GL_RGBA16I, GL30.GL_RGBA_INTEGER, GL11.GL_SHORT,          false, false),
-    RGBA16UI(GL30.GL_RGBA16UI,GL30.GL_RGBA_INTEGER, GL11.GL_UNSIGNED_SHORT, false, false),
+    R16F    (CgGL.GL_R16F,    CgGL.GL_RED,          CgGL.GL_HALF_FLOAT,     false, false),
+    R16I    (CgGL.GL_R16I,    CgGL.GL_RED_INTEGER,  CgGL.GL_SHORT,          false, false),
+    R16UI   (CgGL.GL_R16UI,   CgGL.GL_RED_INTEGER,  CgGL.GL_UNSIGNED_SHORT, false, false),
+    RG16F   (CgGL.GL_RG16F,   CgGL.GL_RG,           CgGL.GL_HALF_FLOAT,     false, false),
+    RG16I   (CgGL.GL_RG16I,   CgGL.GL_RG_INTEGER,   CgGL.GL_SHORT,          false, false),
+    RG16UI  (CgGL.GL_RG16UI,  CgGL.GL_RG_INTEGER,   CgGL.GL_UNSIGNED_SHORT, false, false),
+    RGBA16F (CgGL.GL_RGBA16F, CgGL.GL_RGBA,         CgGL.GL_HALF_FLOAT,     false, false),
+    RGBA16I (CgGL.GL_RGBA16I, CgGL.GL_RGBA_INTEGER, CgGL.GL_SHORT,          false, false),
+    RGBA16UI(CgGL.GL_RGBA16UI,CgGL.GL_RGBA_INTEGER, CgGL.GL_UNSIGNED_SHORT, false, false),
 
     // ── 32-bit color ───────────────────────────────────────────────────────────
-    R32F    (GL30.GL_R32F,    GL11.GL_RED,          GL11.GL_FLOAT,       false, false),
-    R32I    (GL30.GL_R32I,    GL30.GL_RED_INTEGER,  GL11.GL_INT,         false, false),
-    R32UI   (GL30.GL_R32UI,   GL30.GL_RED_INTEGER,  GL11.GL_UNSIGNED_INT,false, false),
-    RG32F   (GL30.GL_RG32F,   GL30.GL_RG,           GL11.GL_FLOAT,       false, false),
-    RG32I   (GL30.GL_RG32I,   GL30.GL_RG_INTEGER,   GL11.GL_INT,         false, false),
-    RG32UI  (GL30.GL_RG32UI,  GL30.GL_RG_INTEGER,   GL11.GL_UNSIGNED_INT,false, false),
-    RGBA32F (GL30.GL_RGBA32F, GL11.GL_RGBA,         GL11.GL_FLOAT,       false, false),
-    RGBA32I (GL30.GL_RGBA32I, GL30.GL_RGBA_INTEGER, GL11.GL_INT,         false, false),
-    RGBA32UI(GL30.GL_RGBA32UI,GL30.GL_RGBA_INTEGER, GL11.GL_UNSIGNED_INT,false, false),
+    R32F    (CgGL.GL_R32F,    CgGL.GL_RED,          CgGL.GL_FLOAT,       false, false),
+    R32I    (CgGL.GL_R32I,    CgGL.GL_RED_INTEGER,  CgGL.GL_INT,         false, false),
+    R32UI   (CgGL.GL_R32UI,   CgGL.GL_RED_INTEGER,  CgGL.GL_UNSIGNED_INT,false, false),
+    RG32F   (CgGL.GL_RG32F,   CgGL.GL_RG,           CgGL.GL_FLOAT,       false, false),
+    RG32I   (CgGL.GL_RG32I,   CgGL.GL_RG_INTEGER,   CgGL.GL_INT,         false, false),
+    RG32UI  (CgGL.GL_RG32UI,  CgGL.GL_RG_INTEGER,   CgGL.GL_UNSIGNED_INT,false, false),
+    RGBA32F (CgGL.GL_RGBA32F, CgGL.GL_RGBA,         CgGL.GL_FLOAT,       false, false),
+    RGBA32I (CgGL.GL_RGBA32I, CgGL.GL_RGBA_INTEGER, CgGL.GL_INT,         false, false),
+    RGBA32UI(CgGL.GL_RGBA32UI,CgGL.GL_RGBA_INTEGER, CgGL.GL_UNSIGNED_INT,false, false),
 
     // ── Packed / special color ─────────────────────────────────────────────────
-    RGB10_A2      (GL11.GL_RGB10_A2,       GL11.GL_RGBA,         GL12.GL_UNSIGNED_INT_2_10_10_10_REV,   false, false),
+    RGB10_A2      (CgGL.GL_RGB10_A2,       CgGL.GL_RGBA,         CgGL.GL_UNSIGNED_INT_2_10_10_10_REV,   false, false),
     /** Integer variant of RGB10_A2 — base format is RGBA_INTEGER. */
-    RGB10_A2UI    (GL33.GL_RGB10_A2UI,     GL30.GL_RGBA_INTEGER, GL12.GL_UNSIGNED_INT_2_10_10_10_REV,   false, false),
-    R11F_G11F_B10F(GL30.GL_R11F_G11F_B10F, GL11.GL_RGB,          GL30.GL_UNSIGNED_INT_10F_11F_11F_REV,  false, false),
-    RGBA4         (GL11.GL_RGBA4,          GL11.GL_RGBA,         GL11.GL_UNSIGNED_BYTE,                 false, false),
-    RGB5_A1       (GL11.GL_RGB5_A1,        GL11.GL_RGBA,         GL11.GL_UNSIGNED_BYTE,                 false, false),
+    RGB10_A2UI    (CgGL.GL_RGB10_A2UI,     CgGL.GL_RGBA_INTEGER, CgGL.GL_UNSIGNED_INT_2_10_10_10_REV,   false, false),
+    R11F_G11F_B10F(CgGL.GL_R11F_G11F_B10F, CgGL.GL_RGB,          CgGL.GL_UNSIGNED_INT_10F_11F_11F_REV,  false, false),
+    RGBA4         (CgGL.GL_RGBA4,          CgGL.GL_RGBA,         CgGL.GL_UNSIGNED_BYTE,                 false, false),
+    RGB5_A1       (CgGL.GL_RGB5_A1,        CgGL.GL_RGBA,         CgGL.GL_UNSIGNED_BYTE,                 false, false),
 
     // ── Depth ──────────────────────────────────────────────────────────────────
-    DEPTH16  (GL14.GL_DEPTH_COMPONENT16,  GL11.GL_DEPTH_COMPONENT, GL11.GL_UNSIGNED_SHORT, true, false),
-    DEPTH24  (GL14.GL_DEPTH_COMPONENT24,  GL11.GL_DEPTH_COMPONENT, GL11.GL_UNSIGNED_INT,   true, false),
-    DEPTH32F (GL30.GL_DEPTH_COMPONENT32F, GL11.GL_DEPTH_COMPONENT, GL11.GL_FLOAT,          true, false),
+    DEPTH16  (CgGL.GL_DEPTH_COMPONENT16,  CgGL.GL_DEPTH_COMPONENT, CgGL.GL_UNSIGNED_SHORT, true, false),
+    DEPTH24  (CgGL.GL_DEPTH_COMPONENT24,  CgGL.GL_DEPTH_COMPONENT, CgGL.GL_UNSIGNED_INT,   true, false),
+    DEPTH32F (CgGL.GL_DEPTH_COMPONENT32F, CgGL.GL_DEPTH_COMPONENT, CgGL.GL_FLOAT,          true, false),
 
     // ── Depth + stencil ────────────────────────────────────────────────────────
-    DEPTH24_STENCIL8 (GL30.GL_DEPTH24_STENCIL8,  GL30.GL_DEPTH_STENCIL, GL30.GL_UNSIGNED_INT_24_8,              true, true),
-    DEPTH32F_STENCIL8(GL30.GL_DEPTH32F_STENCIL8, GL30.GL_DEPTH_STENCIL, GL30.GL_FLOAT_32_UNSIGNED_INT_24_8_REV, true, true),
+    DEPTH24_STENCIL8 (CgGL.GL_DEPTH24_STENCIL8,  CgGL.GL_DEPTH_STENCIL, CgGL.GL_UNSIGNED_INT_24_8,              true, true),
+    DEPTH32F_STENCIL8(CgGL.GL_DEPTH32F_STENCIL8, CgGL.GL_DEPTH_STENCIL, CgGL.GL_FLOAT_32_UNSIGNED_INT_24_8_REV, true, true),
 
     // ── Stencil-only ───────────────────────────────────────────────────────────
-    STENCIL8(GL30.GL_STENCIL_INDEX8, GL11.GL_STENCIL_INDEX, GL11.GL_UNSIGNED_BYTE, false, true);
+    STENCIL8(CgGL.GL_STENCIL_INDEX8, CgGL.GL_STENCIL_INDEX, CgGL.GL_UNSIGNED_BYTE, false, true);
 
     // ── Fields ─────────────────────────────────────────────────────────────────
 
@@ -140,10 +135,10 @@ public enum CgTextureType {
      * @param colorIndex 0-based color attachment slot (ignored for non-color formats)
      */
     public int glAttachmentPoint(int colorIndex) {
-        if (isDepth && isStencil) return GL30.GL_DEPTH_STENCIL_ATTACHMENT;
-        if (isDepth)              return GL30.GL_DEPTH_ATTACHMENT;
-        if (isStencil)            return GL30.GL_STENCIL_ATTACHMENT;
-        return GL30.GL_COLOR_ATTACHMENT0 + colorIndex;
+        if (isDepth && isStencil) return CgGL.GL_DEPTH_STENCIL_ATTACHMENT;
+        if (isDepth)              return CgGL.GL_DEPTH_ATTACHMENT;
+        if (isStencil)            return CgGL.GL_STENCIL_ATTACHMENT;
+        return CgGL.GL_COLOR_ATTACHMENT0 + colorIndex;
     }
 
     /**
@@ -160,10 +155,10 @@ public enum CgTextureType {
      */
     public CgTextureSpec toTextureSpec() {
         // Integer formats cannot use linear filtering — GL_INVALID_OPERATION otherwise.
-        boolean intFmt = glBaseFormat == GL30.GL_RED_INTEGER
-                      || glBaseFormat == GL30.GL_RG_INTEGER
-                      || glBaseFormat == GL30.GL_RGBA_INTEGER;
-        int filter = intFmt ? GL11.GL_NEAREST : GL11.GL_LINEAR;
+        boolean intFmt = glBaseFormat == CgGL.GL_RED_INTEGER
+                      || glBaseFormat == CgGL.GL_RG_INTEGER
+                      || glBaseFormat == CgGL.GL_RGBA_INTEGER;
+        int filter = intFmt ? CgGL.GL_NEAREST : CgGL.GL_LINEAR;
         return CgTextureSpec.builder()
                 .type(this)
                 .minFilter(filter)

@@ -11,7 +11,7 @@ import com.crystalgraphics.api.texture.CgTexture;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.joml.*;
-import org.lwjgl.opengl.GL13;
+import com.crystalgraphics.platform.gl.CgGL;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -20,7 +20,7 @@ import java.util.Set;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 
-import org.lwjgl.BufferUtils;
+import com.crystalgraphics.util.CgBufferUtils;
 
 /**
  * Default patch-list implementation for {@link CgShaderBindings}.
@@ -106,7 +106,7 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
     
     @Override
     public CgShaderBindings array(String name, int[] array) {
-        IntBuffer buf = BufferUtils.createIntBuffer(array.length);
+        IntBuffer buf = CgBufferUtils.createIntBuffer(array.length);
         buf.put(array);
         buf.flip();
         return buffer(name, buf);
@@ -114,7 +114,7 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
 
     @Override
     public CgShaderBindings array(String name, float[] array) {
-        FloatBuffer buf = BufferUtils.createFloatBuffer(array.length);
+        FloatBuffer buf = CgBufferUtils.createFloatBuffer(array.length);
         buf.put(array);
         buf.flip();
         return buffer(name, buf);
@@ -278,7 +278,7 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
      */
     private static FloatBuffer ensureDirectFloat(FloatBuffer buf) {
         if (!buf.isDirect()) {
-            FloatBuffer direct = BufferUtils.createFloatBuffer(buf.remaining());
+            FloatBuffer direct = CgBufferUtils.createFloatBuffer(buf.remaining());
             direct.put(buf.duplicate());
             direct.flip();
             return direct;
@@ -299,7 +299,7 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
      */
     private static IntBuffer ensureDirectInt(IntBuffer buf) {
         if (!buf.isDirect()) {
-            IntBuffer direct = BufferUtils.createIntBuffer(buf.remaining());
+            IntBuffer direct = CgBufferUtils.createIntBuffer(buf.remaining());
             direct.put(buf.duplicate());
             direct.flip();
             return direct;
@@ -523,7 +523,7 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
             if (loc < 0) return;
             
             int previousUnit = CgTexture.getActiveUnit();
-            int targetUnit = GL13.GL_TEXTURE0 + this.unit;
+            int targetUnit = CgGL.GL_TEXTURE0 + this.unit;
 
             try {
                 CgTexture.active(unit);

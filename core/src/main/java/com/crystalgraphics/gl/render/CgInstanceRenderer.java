@@ -1,18 +1,17 @@
 package com.crystalgraphics.gl.render;
 
+
 import com.crystalgraphics.api.vertex.CgInstanceFormat;
 import com.crystalgraphics.gl.buffer.CgStreamBuffer;
 import com.crystalgraphics.gl.buffer.staging.CgInstanceWriter;
 import com.crystalgraphics.gl.buffer.staging.CgStagingBuffer;
 import com.crystalgraphics.gl.mesh.CgMesh;
-import com.crystalgraphics.gl.vertex.CgInstanceVertexBuffer;
 import com.crystalgraphics.gl.vertex.CgInstanceVertexArrayBinding;
+import com.crystalgraphics.gl.vertex.CgInstanceVertexBuffer;
 import com.crystalgraphics.gl.vertex.CgVertexArray;
 import com.crystalgraphics.gl.vertex.CgVertexArrayRegistry;
 import com.crystalgraphics.gl.vertex.CgVertexBufferRegistry;
-import org.lwjgl.opengl.ARBDrawInstanced;
-import org.lwjgl.opengl.GL31;
-import org.lwjgl.opengl.GLContext;
+import com.crystalgraphics.platform.gl.CgGL;
 
 /**
  * Instanced renderer for a single static mesh.
@@ -165,18 +164,18 @@ public final class CgInstanceRenderer extends CgAbstractRenderer {
     public static void drawArraysInstanced(int mode, int first, int count, int instanceCount) {
         if (useGL31 == null) useGL31 = GLContext.getCapabilities().OpenGL31;
         if (useGL31) {
-            GL31.glDrawArraysInstanced(mode, first, count, instanceCount);
+            CgGL.glDrawArraysInstanced(mode, first, count, instanceCount);
         } else {
-            ARBDrawInstanced.glDrawArraysInstancedARB(mode, first, count, instanceCount);
+            CgGL.glDrawArraysInstanced(mode, first, count, instanceCount);
         }
     }
 
     public static void drawElementsInstanced(int mode, int count, int type, long offset, int instanceCount) {
         if (useGL31 == null) useGL31 = GLContext.getCapabilities().OpenGL31;
         if (useGL31) {
-            GL31.glDrawElementsInstanced(mode, count, type, offset, instanceCount);
+            CgGL.glDrawElementsInstanced(mode, count, type, offset, instanceCount);
         } else {
-            ARBDrawInstanced.glDrawElementsInstancedARB(mode, count, type, offset, instanceCount);
+            CgGL.glDrawElementsInstanced(mode, count, type, offset, instanceCount);
         }
     }
 }

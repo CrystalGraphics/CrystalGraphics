@@ -7,7 +7,7 @@ import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
-import org.lwjgl.opengl.GL11;
+import com.crystalgraphics.platform.gl.CgGL;
 
 /**
  * Back-to-front transparent pass renderer.
@@ -74,6 +74,6 @@ public final class CgTransparentRenderer {
         }
 
         // Restore depth write — outer CgGlScope will also restore fully on frame-end
-        GL11.glDepthMask(true);
+        CgGL.glDepthMask(true);
     }
 }

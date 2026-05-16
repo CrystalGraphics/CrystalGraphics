@@ -1,17 +1,13 @@
 package com.crystalgraphics.gl.buffer.shader;
 
-import com.crystalgraphics.api.CgCapabilities;
+
 import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.CgCapabilities;
 import com.crystalgraphics.api.shader.CgShader;
 import com.crystalgraphics.api.texture.CgTexture;
-import org.apache.logging.log4j.LogManager;
+import com.crystalgraphics.platform.gl.CgGL;
 import org.apache.logging.log4j.Logger;
-import org.lwjgl.opengl.ARBSamplerObjects;
-import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL15;
-import org.lwjgl.opengl.GL30;
-import org.lwjgl.opengl.GL31;
-import org.lwjgl.opengl.GLContext;
+import org.apache.logging.log4j.LogManager;
 
 /**
  * TBO-backed {@link CgShaderBuffer} fallback for hardware without SSBO support (GL 3.1+).
@@ -58,9 +54,9 @@ public final class CgTextureBuffer extends CgShaderBuffer {
      * @param bindingLocation GL texture unit for this TBO; used as-is (no offset added here)
      */
     CgTextureBuffer(String name, CgBufferFormat format, int bindingLocation) {
-        super(name, format, GL15.GL_ARRAY_BUFFER, bindingLocation);
+        super(name, format, CgGL.GL_ARRAY_BUFFER, bindingLocation);
         this.path = CgCapabilities.ShaderBufferPath.TBO;
-        this.tboTexId = GL11.glGenTextures();
+        this.tboTexId = CgGL.glGenTextures();
         attachTextureToBuffer();
     }
 
@@ -71,9 +67,9 @@ public final class CgTextureBuffer extends CgShaderBuffer {
      */
     private void attachTextureToBuffer() {
         CgTexture.active(bindingLocation);
-        CgTexture.bind(GL31.GL_TEXTURE_BUFFER, tboTexId);
-        GL31.glTexBuffer(GL31.GL_TEXTURE_BUFFER, GL30.GL_RGBA32F, getGlBufferId());
-        CgTexture.bind(GL31.GL_TEXTURE_BUFFER, 0);
+        CgTexture.bind(CgGL.GL_TEXTURE_BUFFER, tboTexId);
+        CgGL.glTexBuffer(CgGL.GL_TEXTURE_BUFFER, CgGL.GL_RGBA32F, getGlBufferId());
+        CgTexture.bind(CgGL.GL_TEXTURE_BUFFER, 0);
         CgTexture.active(0);
     }
     
@@ -90,9 +86,9 @@ public final class CgTextureBuffer extends CgShaderBuffer {
         CgTexture.active(bindingLocation);
         // Intel driver bug: sampler objects on the same unit as a TBO break rendering silently.
         if (ARB_sampler_objects == null) ARB_sampler_objects = GLContext.getCapabilities().GL_ARB_sampler_objects;
-        if (ARB_sampler_objects) ARBSamplerObjects.glBindSampler(bindingLocation, 0);
+        if (ARB_sampler_objects) CgGL.glBindSampler(bindingLocation, 0);
         
-        CgTexture.bind(GL31.GL_TEXTURE_BUFFER, tboTexId);
+        CgTexture.bind(CgGL.GL_TEXTURE_BUFFER, tboTexId);
     }
 
     /**
@@ -101,7 +97,7 @@ public final class CgTextureBuffer extends CgShaderBuffer {
     @Override
     protected void unbindInternal() {
         CgTexture.active(bindingLocation);
-        CgTexture.bind(GL31.GL_TEXTURE_BUFFER, 0);
+        CgTexture.bind(CgGL.GL_TEXTURE_BUFFER, 0);
         CgTexture.active(0);
     }
 
@@ -128,6 +124,6 @@ public final class CgTextureBuffer extends CgShaderBuffer {
      */
     @Override
     protected void deleteGlResources() {
-        GL11.glDeleteTextures(tboTexId);
+        CgGL.glDeleteTextures(tboTexId);
     }
 }

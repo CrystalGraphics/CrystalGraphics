@@ -1,7 +1,7 @@
 package com.crystalgraphics.api.state;
 
 import com.github.bsideup.jabel.Desugar;
-import org.lwjgl.opengl.GL11;
+import com.crystalgraphics.platform.gl.CgGL;
 
 /**
  * Immutable stencil-test state slot for {@link CgRenderState}.
@@ -40,7 +40,7 @@ public record CgStencilState(
      */
     public static final CgStencilState DISABLED = new CgStencilState(
             false, 0, 0xFF, 0xFF,
-            GL11.GL_ALWAYS, GL11.GL_KEEP, GL11.GL_KEEP, GL11.GL_KEEP);
+            CgGL.GL_ALWAYS, CgGL.GL_KEEP, CgGL.GL_KEEP, CgGL.GL_KEEP);
 
     /**
      * Applies this stencil state to the current GL context.
@@ -50,13 +50,13 @@ public record CgStencilState(
      */
     public void apply() {
         if (!enabled) {
-            GL11.glDisable(GL11.GL_STENCIL_TEST);
+            CgGL.glDisable(CgGL.GL_STENCIL_TEST);
             return;
         }
-        GL11.glEnable(GL11.GL_STENCIL_TEST);
-        GL11.glStencilFunc(compFunc, ref, readMask);
-        GL11.glStencilMask(writeMask);
-        GL11.glStencilOp(failOp, zfailOp, passOp);
+        CgGL.glEnable(CgGL.GL_STENCIL_TEST);
+        CgGL.glStencilFunc(compFunc, ref, readMask);
+        CgGL.glStencilMask(writeMask);
+        CgGL.glStencilOp(failOp, zfailOp, passOp);
     }
 
     /**
@@ -64,7 +64,7 @@ public record CgStencilState(
      * Always resets the write mask so subsequent depth/stencil clears are unobstructed.
      */
     public void clear() {
-        GL11.glDisable(GL11.GL_STENCIL_TEST);
-        GL11.glStencilMask(0xFF);
+        CgGL.glDisable(CgGL.GL_STENCIL_TEST);
+        CgGL.glStencilMask(0xFF);
     }
 }

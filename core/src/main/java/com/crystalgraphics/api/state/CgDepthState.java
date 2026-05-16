@@ -1,7 +1,7 @@
 package com.crystalgraphics.api.state;
 
 import com.github.bsideup.jabel.Desugar;
-import org.lwjgl.opengl.GL11;
+import com.crystalgraphics.platform.gl.CgGL;
 
 /**
  * Immutable depth-test state slot for {@link CgRenderState}.
@@ -22,19 +22,19 @@ import org.lwjgl.opengl.GL11;
 public record CgDepthState(boolean test, boolean write, int compareFunc) {
 
     /** Depth test disabled, write disabled. {@code compareFunc} is {@code GL_ALWAYS} (unused). */
-    public static final CgDepthState NONE = new CgDepthState(false, false, GL11.GL_ALWAYS);
+    public static final CgDepthState NONE = new CgDepthState(false, false, CgGL.GL_ALWAYS);
 
     /** Depth test enabled (LEqual), writes disabled. Reads depth without modifying it. */
-    public static final CgDepthState TEST_ONLY = new CgDepthState(true, false, GL11.GL_LEQUAL);
+    public static final CgDepthState TEST_ONLY = new CgDepthState(true, false, CgGL.GL_LEQUAL);
 
     /** Depth test and write enabled with {@code GL_LEQUAL}. Standard 3D opaque geometry. */
-    public static final CgDepthState TEST_WRITE = new CgDepthState(true, true, GL11.GL_LEQUAL);
+    public static final CgDepthState TEST_WRITE = new CgDepthState(true, true, CgGL.GL_LEQUAL);
 
     /** Depth test and write enabled with {@code GL_EQUAL}. For secondary passes at equal depth. */
-    public static final CgDepthState TEST_WRITE_EQUAL = new CgDepthState(true, true, GL11.GL_EQUAL);
+    public static final CgDepthState TEST_WRITE_EQUAL = new CgDepthState(true, true, CgGL.GL_EQUAL);
 
     /** Depth test and write enabled with {@code GL_ALWAYS}. Always overwrites depth. */
-    public static final CgDepthState TEST_WRITE_ALWAYS = new CgDepthState(true, true, GL11.GL_ALWAYS);
+    public static final CgDepthState TEST_WRITE_ALWAYS = new CgDepthState(true, true, CgGL.GL_ALWAYS);
 
     /**
      * Applies this depth state to the current GL context.
@@ -45,20 +45,20 @@ public record CgDepthState(boolean test, boolean write, int compareFunc) {
      */
     public void apply() {
         if (test) {
-            GL11.glEnable(GL11.GL_DEPTH_TEST);
-            GL11.glDepthFunc(compareFunc);
+            CgGL.glEnable(CgGL.GL_DEPTH_TEST);
+            CgGL.glDepthFunc(compareFunc);
         } else {
-            GL11.glDisable(GL11.GL_DEPTH_TEST);
+            CgGL.glDisable(CgGL.GL_DEPTH_TEST);
         }
-        GL11.glDepthMask(write);
+        CgGL.glDepthMask(write);
     }
 
     /**
      * Restores GL depth defaults: test disabled, write enabled, compare function {@code GL_LESS}.
      */
     public void clear() {
-        GL11.glDisable(GL11.GL_DEPTH_TEST);
-        GL11.glDepthMask(true);
-        GL11.glDepthFunc(GL11.GL_LESS);
+        CgGL.glDisable(CgGL.GL_DEPTH_TEST);
+        CgGL.glDepthMask(true);
+        CgGL.glDepthFunc(CgGL.GL_LESS);
     }
 }

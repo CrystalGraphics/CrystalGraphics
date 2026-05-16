@@ -333,6 +333,7 @@ public final class CgGL {
     public static final int GL_INVALID_VALUE     = 0x0501;
     public static final int GL_INVALID_OPERATION = 0x0502;
     public static final int GL_OUT_OF_MEMORY     = 0x0505;
+    public static final int GL_INVALID_INDEX = 0xFFFFFFFF;
 
     // --- VAO / instancing ----------------------------------------------------
     public static final int GL_VERTEX_ATTRIB_ARRAY_DIVISOR = 0x88FE;
@@ -843,8 +844,8 @@ public final class CgGL {
     // =========================================================================
 
     /** @return the mapped buffer, or {@code null} if mapping fails */
-    public static ByteBuffer glMapBufferRange(int target, long offset, long length, int access) {
-        return backend.glMapBufferRange(target, offset, length, access);
+    public static ByteBuffer glMapBufferRange(int target, long offset, long length, int access, ByteBuffer oldBuffer) {
+        return backend.glMapBufferRange(target, offset, length, access, oldBuffer);
     }
 
     public static boolean glUnmapBuffer(int target) {

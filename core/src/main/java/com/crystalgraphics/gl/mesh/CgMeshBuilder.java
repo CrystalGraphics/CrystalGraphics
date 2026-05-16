@@ -4,7 +4,7 @@ import com.crystalgraphics.api.mesh.CgMeshData;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gl.buffer.staging.CgVertexWriter;
-import org.lwjgl.BufferUtils;
+import com.crystalgraphics.util.CgBufferUtils;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -79,7 +79,7 @@ public final class CgMeshBuilder {
 
     /** Builds a u16 index buffer from an int array. */
     private static ByteBuffer buildU16Ibo(int[] indices) {
-        ByteBuffer ibo = BufferUtils.createByteBuffer(indices.length * 2);
+        ByteBuffer ibo = CgBufferUtils.createByteBuffer($$$);
         for (int idx : indices) {
             ibo.putShort((short) idx);
         }
@@ -89,7 +89,7 @@ public final class CgMeshBuilder {
 
     /** Builds a u32 index buffer from an int array. */
     private static ByteBuffer buildU32Ibo(int[] indices) {
-        ByteBuffer ibo = BufferUtils.createByteBuffer(indices.length * 4);
+        ByteBuffer ibo = CgBufferUtils.createByteBuffer($$$);
         for (int idx : indices) {
             ibo.putInt(idx);
         }
@@ -123,7 +123,7 @@ public final class CgMeshBuilder {
 
         // 6 faces × 4 vertices = 24 vertices
         int vertexCount = 24;
-        ByteBuffer vbo = BufferUtils.createByteBuffer(vertexCount * format.getStride());
+        ByteBuffer vbo = CgBufferUtils.createByteBuffer($$$);
         CgVertexWriter writer = CgVertexWriter.forBuffer(vbo, format);
 
         // Face data: normal, then 4 vertex positions, then 4 UV pairs
@@ -195,7 +195,7 @@ public final class CgMeshBuilder {
         boolean pos3D = flags.positionIs3D;
 
         int vertexCount = 4;
-        ByteBuffer vbo = BufferUtils.createByteBuffer(vertexCount * format.getStride());
+        ByteBuffer vbo = CgBufferUtils.createByteBuffer($$$);
         CgVertexWriter writer = CgVertexWriter.forBuffer(vbo, format);
 
         // CCW winding: (x0,y0), (x1,y0), (x1,y1), (x0,y1)
@@ -235,7 +235,7 @@ public final class CgMeshBuilder {
         int vertsZ = subdivisionsZ + 1;
         int vertexCount = vertsX * vertsZ;
 
-        ByteBuffer vbo = BufferUtils.createByteBuffer(vertexCount * format.getStride());
+        ByteBuffer vbo = CgBufferUtils.createByteBuffer($$$);
         CgVertexWriter writer = CgVertexWriter.forBuffer(vbo, format);
 
         for (int iz = 0; iz < vertsZ; iz++) {
@@ -292,7 +292,7 @@ public final class CgMeshBuilder {
         int vertsPerRow = sectors + 1;
         int vertexCount = (rings + 1) * vertsPerRow;
 
-        ByteBuffer vbo = BufferUtils.createByteBuffer(vertexCount * format.getStride());
+        ByteBuffer vbo = CgBufferUtils.createByteBuffer($$$);
         CgVertexWriter writer = CgVertexWriter.forBuffer(vbo, format);
 
         for (int ring = 0; ring <= rings; ring++) {
@@ -440,7 +440,7 @@ public final class CgMeshBuilder {
         // Pole vertices (|y| ≈ 1) have an arbitrary atan2 result; we set their U to the
         // average of the other two face vertices so the triangles fan correctly.
         int vertexCount = faces.size() * 3;
-        ByteBuffer vbo = BufferUtils.createByteBuffer(vertexCount * format.getStride());
+        ByteBuffer vbo = CgBufferUtils.createByteBuffer($$$);
         CgVertexWriter writer = CgVertexWriter.forBuffer(vbo, format);
 
         for (int[] face : faces) {

@@ -1,8 +1,7 @@
 package com.crystalgraphics.gl.buffer;
 
-import org.lwjgl.opengl.GL15;
-import org.lwjgl.opengl.GL30;
 
+import com.crystalgraphics.platform.gl.CgGL;
 import java.nio.ByteBuffer;
 
 /**
@@ -19,7 +18,7 @@ public class MapAndOrphanStreamBuffer extends CgStreamBuffer {
         super(target, capacityBytes);
         // Pre-allocate the GL buffer
         bind();
-        GL15.glBufferData(target, capacityBytes, GL15.GL_STREAM_DRAW);
+        CgGL.glBufferData(target, capacityBytes, CgGL.GL_STREAM_DRAW);
         unbind();
     }
 
@@ -27,11 +26,11 @@ public class MapAndOrphanStreamBuffer extends CgStreamBuffer {
     public ByteBuffer map(int sizeBytes) {
         bind();
         if (sizeBytes > capacityBytes) {
-            GL15.glBufferData(target, sizeBytes, GL15.GL_STREAM_DRAW);
+            CgGL.glBufferData(target, sizeBytes, CgGL.GL_STREAM_DRAW);
             capacityBytes = sizeBytes;
         }
-        ByteBuffer mapped = GL30.glMapBufferRange(target, 0, sizeBytes,
-                GL30.GL_MAP_WRITE_BIT | GL30.GL_MAP_INVALIDATE_BUFFER_BIT, null);
+        ByteBuffer mapped = CgGL.glMapBufferRange(target, 0, sizeBytes,
+                CgGL.GL_MAP_WRITE_BIT | CgGL.GL_MAP_INVALIDATE_BUFFER_BIT, null);
         
         if (mapped == null) throw new IllegalStateException("glMapBufferRange (orphan) returned null (size=" + sizeBytes + ")");
         return mapped;
@@ -39,12 +38,12 @@ public class MapAndOrphanStreamBuffer extends CgStreamBuffer {
 
     @Override
     public int commit(int usedBytes) {
-        GL15.glUnmapBuffer(target);
+        CgGL.glUnmapBuffer(target);
         return 0; // orphaning resets to offset 0
     }
 
     @Override
     public void deleteGlResources() {
-        GL15.glDeleteBuffers(glBuffer);
+        CgGL.glDeleteBuffers(glBuffer);
     }
 }

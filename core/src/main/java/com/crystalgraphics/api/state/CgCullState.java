@@ -1,7 +1,7 @@
 package com.crystalgraphics.api.state;
 
 import com.github.bsideup.jabel.Desugar;
-import org.lwjgl.opengl.GL11;
+import com.crystalgraphics.platform.gl.CgGL;
 
 /**
  * Immutable face-culling state slot for {@link CgRenderState}.
@@ -19,19 +19,19 @@ import org.lwjgl.opengl.GL11;
 public record CgCullState(boolean enabled, int face) {
 
     public static final CgCullState NONE = new CgCullState(false, 0);
-    public static final CgCullState BACK = new CgCullState(true, GL11.GL_BACK);
-    public static final CgCullState FRONT = new CgCullState(true, GL11.GL_FRONT);
+    public static final CgCullState BACK = new CgCullState(true, CgGL.GL_BACK);
+    public static final CgCullState FRONT = new CgCullState(true, CgGL.GL_FRONT);
     
     public void apply() {
         if (enabled) {
-            GL11.glEnable(GL11.GL_CULL_FACE);
-            GL11.glCullFace(face);
+            CgGL.glEnable(CgGL.GL_CULL_FACE);
+            CgGL.glCullFace(face);
         } else {
-            GL11.glDisable(GL11.GL_CULL_FACE);
+            CgGL.glDisable(CgGL.GL_CULL_FACE);
         }
     }
 
     public void clear() {
-        GL11.glDisable(GL11.GL_CULL_FACE);
+        CgGL.glDisable(CgGL.GL_CULL_FACE);
     }
 }

@@ -1,7 +1,7 @@
 package com.crystalgraphics.gl.buffer;
 
-import org.lwjgl.BufferUtils;
-import org.lwjgl.opengl.GL15;
+import com.crystalgraphics.util.CgBufferUtils;
+import com.crystalgraphics.platform.gl.CgGL;
 
 import java.nio.ByteBuffer;
 
@@ -14,9 +14,9 @@ public class SubDataStreamBuffer extends CgStreamBuffer {
 
     public SubDataStreamBuffer(int target, int capacityBytes) {
         super(target, capacityBytes);
-        this.staging = BufferUtils.createByteBuffer(capacityBytes);
+        this.staging = CgBufferUtils.createByteBuffer(capacityBytes);
         bind();
-        GL15.glBufferData(target, capacityBytes, GL15.GL_STREAM_DRAW);
+        CgGL.glBufferData(target, capacityBytes, CgGL.GL_STREAM_DRAW);
         unbind();
     }
 
@@ -24,9 +24,9 @@ public class SubDataStreamBuffer extends CgStreamBuffer {
     public ByteBuffer map(int sizeBytes) {
         if (sizeBytes > capacityBytes) {
             capacityBytes = sizeBytes;
-            staging = BufferUtils.createByteBuffer(capacityBytes);
+            staging = CgBufferUtils.createByteBuffer(capacityBytes);
             bind();
-            GL15.glBufferData(target, capacityBytes, GL15.GL_STREAM_DRAW);
+            CgGL.glBufferData(target, capacityBytes, CgGL.GL_STREAM_DRAW);
             unbind();
         }
         staging.clear();
@@ -39,13 +39,13 @@ public class SubDataStreamBuffer extends CgStreamBuffer {
         bind();
         staging.position(0);
         staging.limit(usedBytes);
-        GL15.glBufferSubData(target, 0, staging);
+        CgGL.glBufferSubData(target, 0, staging);
         unbind();
         return 0;
     }
 
     @Override
     public void deleteGlResources() {
-        GL15.glDeleteBuffers(glBuffer);
+        CgGL.glDeleteBuffers(glBuffer);
     }
 }

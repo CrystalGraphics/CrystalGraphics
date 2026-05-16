@@ -6,7 +6,7 @@ import com.crystalgraphics.util.io.CgTextureIO;
 import com.crystalgraphics.util.io.CgTextureIO.CgImageData;
 
 import lombok.Getter;
-import org.lwjgl.opengl.GL11;
+import com.crystalgraphics.platform.gl.CgGL;
 
 import java.nio.ByteBuffer;
 import java.util.logging.Level;
@@ -93,25 +93,25 @@ public final class CgTextureCubemap extends CgTextureAbstract {
     /** Creates an empty cubemap with no image data. Not cached; caller owns the lifecycle. */
     public static CgTextureCubemap createEmpty(int size, CgTextureSpec spec) {
         if (size <= 0) throw new IllegalArgumentException("Cubemap size must be positive, got: " + size);
-        int id = GL11.glGenTextures();
+        int id = CgGL.glGenTextures();
         CgTextureCubemap tex = new CgTextureCubemap(id, size, spec, null);
         try {
-            GL11.glBindTexture(GL_TEXTURE_CUBE_MAP, id);
+            CgGL.glBindTexture(GL_TEXTURE_CUBE_MAP, id);
             try {
                 int internalFormat = spec.getGlInternalFormat();
                 int pf = spec.getGlBaseFormat();
                 int pt = spec.getGlType();
                 for (int face : FACE_TARGETS) {
-                    GL11.glTexImage2D(face, 0, internalFormat, size, size, 0, pf, pt, (ByteBuffer) null);
+                    CgGL.glTexImage2D(face, 0, internalFormat, size, size, 0, pf, pt, (ByteBuffer) null);
                 }
                 spec.applyTo(GL_TEXTURE_CUBE_MAP);
              
             } finally {
-                GL11.glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+                CgGL.glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
             }
             return tex;
         } catch (RuntimeException e) {
-            GL11.glDeleteTextures(id);
+            CgGL.glDeleteTextures(id);
             throw e;
         }
     }
@@ -130,11 +130,11 @@ public final class CgTextureCubemap extends CgTextureAbstract {
         checkNotDeleted();
         int size = faces[0].width();
         int uploadPixelFormat = pixelFormatForChannels(faces[0].channels());
-        GL11.glBindTexture(GL_TEXTURE_CUBE_MAP, textureId);
+        CgGL.glBindTexture(GL_TEXTURE_CUBE_MAP, textureId);
         try {
             int internalFormat = spec.getGlInternalFormat();
             for (int i = 0; i < 6; i++) {
-                GL11.glTexImage2D(FACE_TARGETS[i], 0, internalFormat, size, size, 0,
+                CgGL.glTexImage2D(FACE_TARGETS[i], 0, internalFormat, size, size, 0,
                         uploadPixelFormat, GL_UNSIGNED_BYTE, faces[i].pixels());
             }
             
@@ -143,7 +143,7 @@ public final class CgTextureCubemap extends CgTextureAbstract {
             this.width = size;
             this.height = size;
         } finally {
-            GL11.glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+            CgGL.glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
         }
     }
 
@@ -165,7 +165,7 @@ public final class CgTextureCubemap extends CgTextureAbstract {
 
     private static CgTextureCubemap doCreate(CgTextureSpec spec, String[] paths, String[] sourcePaths) {
         CgImageData[] faces = loadFaces(paths);
-        int id = GL11.glGenTextures();
+        int id = CgGL.glGenTextures();
         CgTextureCubemap tex = new CgTextureCubemap(id, faces[0].width(), spec, sourcePaths);
         try {
             tex.upload(faces);

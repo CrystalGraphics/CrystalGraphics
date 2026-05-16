@@ -1,24 +1,20 @@
 package com.crystalgraphics.gl.mesh;
 
+
 import com.crystalgraphics.api.material.CgMaterial;
-import com.crystalgraphics.gl.buffer.CgStreamBuffer;
-import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.api.mesh.CgMeshData;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
 import com.crystalgraphics.api.vertex.CgAttributeFormat;
 import com.crystalgraphics.api.vertex.CgVertexAttribute;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
+import com.crystalgraphics.gl.buffer.CgStreamBuffer;
+import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.gl.render.CgInstanceRenderer;
 import com.crystalgraphics.gl.vertex.CgVertexArray;
 import com.crystalgraphics.gl.vertex.CgVertexArrayRegistry;
-import lombok.Getter;
-import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL15;
-import org.lwjgl.opengl.GL20;
-
-import org.lwjgl.opengl.Display;
-
+import com.crystalgraphics.platform.gl.CgGL;
 import java.nio.ByteBuffer;
+import lombok.Getter;
 
 /**
  * Immutable static GPU mesh: owns a VBO, an optional IBO, and a standalone VAO.
@@ -121,7 +117,7 @@ public final class CgMesh {
     public static CgMesh upload(CgVertexFormat format, CgMeshTopology topology,
                                  ByteBuffer vertexData, ByteBuffer indexData, int indexCount) {
         int vertexCount = vertexData.remaining() / format.getStride();
-        int indexType = (vertexCount <= 65535) ? GL11.GL_UNSIGNED_SHORT : GL11.GL_UNSIGNED_INT;
+        int indexType = (vertexCount <= 65535) ? CgGL.GL_UNSIGNED_SHORT : CgGL.GL_UNSIGNED_INT;
         return upload(format, topology, vertexData, indexData, indexCount, indexType);
     }
 
@@ -145,7 +141,7 @@ public final class CgMesh {
     public static CgMesh upload(CgVertexFormat format, CgMeshTopology topology,
                                  ByteBuffer vertexData, ByteBuffer indexData, int indexCount, int indexType) {
         try {
-            if (!Display.isCurrent()) {
+            if (!CgGL.isContextCurrent()) {
                 throw new IllegalStateException("CgMesh.upload() must be called on the OpenGL thread");
             }
         } catch (org.lwjgl.LWJGLException e) {
@@ -154,16 +150,16 @@ public final class CgMesh {
         int vertexCount = vertexData.remaining() / format.getStride();
 
         // ── Upload VBO ────────────────────────────────────────────────────
-        int vbo = GL15.glGenBuffers();
-        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, vbo);
-        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, vertexData, GL15.GL_STATIC_DRAW);
+        int vbo = CgGL.glGenBuffers();
+        CgGL.glBindBuffer(CgGL.GL_ARRAY_BUFFER, vbo);
+        CgGL.glBufferData(CgGL.GL_ARRAY_BUFFER, vertexData, CgGL.GL_STATIC_DRAW);
 
         // ── Upload IBO (optional) ─────────────────────────────────────────
         int ibo = 0;
         if (indexData != null) {
-            ibo = GL15.glGenBuffers();
-            GL15.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, ibo);
-            GL15.glBufferData(GL15.GL_ELEMENT_ARRAY_BUFFER, indexData, GL15.GL_STATIC_DRAW);
+            ibo = CgGL.glGenBuffers();
+            CgGL.glBindBuffer(CgGL.GL_ELEMENT_ARRAY_BUFFER, ibo);
+            CgGL.glBufferData(CgGL.GL_ELEMENT_ARRAY_BUFFER, indexData, CgGL.GL_STATIC_DRAW);
         }
 
         // ── Create VAO and configure attribute pointers ───────────────────
@@ -175,7 +171,7 @@ public final class CgMesh {
         CgAttributeFormat layout = format;
         for (int i = 0; i < layout.getAttributeCount(); i++) {
             CgVertexAttribute attr = layout.getAttribute(i);
-            GL20.glVertexAttribPointer(
+            CgGL.glVertexAttribPointer(
                     i,
                     attr.getComponents(),
                     attr.getType().getGlConstant(),
@@ -183,7 +179,7 @@ public final class CgMesh {
                     layout.getStride(),
                     attr.getOffset()
             );
-            GL20.glEnableVertexAttribArray(i);
+            CgGL.glEnableVertexAttribArray(i);
         }
 
         // Capture IBO into VAO state.
@@ -192,16 +188,16 @@ public final class CgMesh {
         // while the VAO is still bound — that would write null into the VAO's
         // element array buffer slot and silently break all indexed draws.
         if (ibo != 0) {
-            GL15.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, ibo);
+            CgGL.glBindBuffer(CgGL.GL_ELEMENT_ARRAY_BUFFER, ibo);
         }
 
         // ── Unbind in safe order ──────────────────────────────────────────
         // Unbind VAO FIRST, then clean up other bindings.
         // Only safe to unbind the IBO after the VAO is unbound.
         CgVertexArray.bind(0);
-        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+        CgGL.glBindBuffer(CgGL.GL_ARRAY_BUFFER, 0);
         if (ibo != 0) {
-            GL15.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, 0);
+            CgGL.glBindBuffer(CgGL.GL_ELEMENT_ARRAY_BUFFER, 0);
         }
 
         return new CgMesh(format, topology, vbo, ibo, vao, vertexCount, indexCount, indexType);
@@ -232,8 +228,8 @@ public final class CgMesh {
         
         CgVertexArray.bind(glVao);
         if (glIndexBuffer != 0) 
-            GL11.glDrawElements(topology.getGlMode(), indexCount, indexType, 0L);
-        else GL11.glDrawArrays(topology.getGlMode(), 0, vertexCount);
+            CgGL.glDrawElements(topology.getGlMode(), indexCount, indexType, 0L);
+        else CgGL.glDrawArrays(topology.getGlMode(), 0, vertexCount);
         
         CgVertexArray.bind(0);
     }
@@ -289,9 +285,9 @@ public final class CgMesh {
         // so they don't linger as stale GPU state pointing at deleted buffer objects.
         CgVertexArrayRegistry.get().invalidateMeshBindings(this);
         CgVertexArray.deleteRaw(glVao);
-        GL15.glDeleteBuffers(glVertexBuffer);
+        CgGL.glDeleteBuffers(glVertexBuffer);
         if (glIndexBuffer != 0) {
-            GL15.glDeleteBuffers(glIndexBuffer);
+            CgGL.glDeleteBuffers(glIndexBuffer);
         }
     }
 }

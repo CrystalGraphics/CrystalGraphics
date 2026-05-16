@@ -1,13 +1,9 @@
 package com.crystalgraphics.api.texture;
 
+
+import com.crystalgraphics.platform.gl.CgGL;
 import lombok.Builder;
 import lombok.Getter;
-
-import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL12;
-import org.lwjgl.opengl.GL13;
-import org.lwjgl.opengl.GL14;
-import org.lwjgl.opengl.GL30;
 
 /**
  * Immutable specification for a GL texture: format + sampler params + optional shadow compare.
@@ -77,23 +73,23 @@ public final class CgTextureSpec {
 
     /** Minification filter. Default {@code GL_LINEAR}. */
     @Builder.Default
-    private final int minFilter = GL11.GL_LINEAR;
+    private final int minFilter = CgGL.GL_LINEAR;
 
     /** Magnification filter. Default {@code GL_LINEAR}. */
     @Builder.Default
-    private final int magFilter = GL11.GL_LINEAR;
+    private final int magFilter = CgGL.GL_LINEAR;
 
     /** Wrap mode for the S coordinate. Default {@code GL_CLAMP_TO_EDGE}. */
     @Builder.Default
-    private final int wrapS = GL12.GL_CLAMP_TO_EDGE;
+    private final int wrapS = CgGL.GL_CLAMP_TO_EDGE;
 
     /** Wrap mode for the T coordinate. Default {@code GL_CLAMP_TO_EDGE}. */
     @Builder.Default
-    private final int wrapT = GL12.GL_CLAMP_TO_EDGE;
+    private final int wrapT = CgGL.GL_CLAMP_TO_EDGE;
 
     /** Wrap mode for the R coordinate (3D / 2D-array targets only). Default {@code GL_CLAMP_TO_EDGE}. */
     @Builder.Default
-    private final int wrapR = GL12.GL_CLAMP_TO_EDGE;
+    private final int wrapR = CgGL.GL_CLAMP_TO_EDGE;
 
     // ── Shadow comparison (depth textures only) ──────────────────────────────────
 
@@ -103,14 +99,14 @@ public final class CgTextureSpec {
      * Only meaningful for depth-format textures; ignored by the GL driver for color formats.
      */
     @Builder.Default
-    private final int compareMode = GL11.GL_NONE;
+    private final int compareMode = CgGL.GL_NONE;
 
     /**
      * Shadow compare function. Default {@code GL_LEQUAL}.
      * Only applied when {@link #compareMode} != {@code GL_NONE}.
      */
     @Builder.Default
-    private final int compareFunc = GL11.GL_LEQUAL;
+    private final int compareFunc = CgGL.GL_LEQUAL;
 
     // ── Pre-built constants (all via CgTextureType, zero hex) ───────────────────
 
@@ -121,59 +117,59 @@ public final class CgTextureSpec {
     /** 8-bit RGBA with nearest filtering (pixel-art / sharp sprites). */
     public static final CgTextureSpec RGBA8_NEAREST = CgTextureSpec.builder()
             .type(CgTextureType.RGBA8)
-            .minFilter(GL11.GL_NEAREST).magFilter(GL11.GL_NEAREST)
+            .minFilter(CgGL.GL_NEAREST).magFilter(CgGL.GL_NEAREST)
             .build();
 
     /** 8-bit RGBA, linear filtering, clamp-to-border. */
     public static final CgTextureSpec RGBA8_LINEAR_CLAMP_BORDER = CgTextureSpec.builder()
             .type(CgTextureType.RGBA8)
-            .wrapS(GL13.GL_CLAMP_TO_BORDER).wrapT(GL13.GL_CLAMP_TO_BORDER).wrapR(GL13.GL_CLAMP_TO_BORDER)
+            .wrapS(CgGL.GL_CLAMP_TO_BORDER).wrapT(CgGL.GL_CLAMP_TO_BORDER).wrapR(CgGL.GL_CLAMP_TO_BORDER)
             .build();
 
     /** 8-bit RGBA with nearest filtering, clamp-to-border. */
     public static final CgTextureSpec RGBA8_NEAREST_CLAMP_BORDER = CgTextureSpec.builder()
             .type(CgTextureType.RGBA8)
-            .minFilter(GL11.GL_NEAREST).magFilter(GL11.GL_NEAREST)
-            .wrapS(GL13.GL_CLAMP_TO_BORDER).wrapT(GL13.GL_CLAMP_TO_BORDER).wrapR(GL13.GL_CLAMP_TO_BORDER)
+            .minFilter(CgGL.GL_NEAREST).magFilter(CgGL.GL_NEAREST)
+            .wrapS(CgGL.GL_CLAMP_TO_BORDER).wrapT(CgGL.GL_CLAMP_TO_BORDER).wrapR(CgGL.GL_CLAMP_TO_BORDER)
             .build();
 
     /** 8-bit RGBA, linear filtering, repeat. */
     public static final CgTextureSpec RGBA8_LINEAR_REPEAT = CgTextureSpec.builder()
             .type(CgTextureType.RGBA8)
-            .wrapS(GL11.GL_REPEAT).wrapT(GL11.GL_REPEAT).wrapR(GL11.GL_REPEAT)
+            .wrapS(CgGL.GL_REPEAT).wrapT(CgGL.GL_REPEAT).wrapR(CgGL.GL_REPEAT)
             .build();
 
     /** 8-bit RGBA with nearest filtering, repeat. */
     public static final CgTextureSpec RGBA8_NEAREST_REPEAT = CgTextureSpec.builder()
             .type(CgTextureType.RGBA8)
-            .minFilter(GL11.GL_NEAREST).magFilter(GL11.GL_NEAREST)
-            .wrapS(GL11.GL_REPEAT).wrapT(GL11.GL_REPEAT).wrapR(GL11.GL_REPEAT)
+            .minFilter(CgGL.GL_NEAREST).magFilter(CgGL.GL_NEAREST)
+            .wrapS(CgGL.GL_REPEAT).wrapT(CgGL.GL_REPEAT).wrapR(CgGL.GL_REPEAT)
             .build();
 
     /** 8-bit RGBA, linear filtering, mirrored-repeat. */
     public static final CgTextureSpec RGBA8_LINEAR_MIRRORED = CgTextureSpec.builder()
             .type(CgTextureType.RGBA8)
-            .wrapS(GL14.GL_MIRRORED_REPEAT).wrapT(GL14.GL_MIRRORED_REPEAT).wrapR(GL14.GL_MIRRORED_REPEAT)
+            .wrapS(CgGL.GL_MIRRORED_REPEAT).wrapT(CgGL.GL_MIRRORED_REPEAT).wrapR(CgGL.GL_MIRRORED_REPEAT)
             .build();
 
     /** 8-bit RGBA with nearest filtering, mirrored-repeat. */
     public static final CgTextureSpec RGBA8_NEAREST_MIRRORED = CgTextureSpec.builder()
             .type(CgTextureType.RGBA8)
-            .minFilter(GL11.GL_NEAREST).magFilter(GL11.GL_NEAREST)
-            .wrapS(GL14.GL_MIRRORED_REPEAT).wrapT(GL14.GL_MIRRORED_REPEAT).wrapR(GL14.GL_MIRRORED_REPEAT)
+            .minFilter(CgGL.GL_NEAREST).magFilter(CgGL.GL_NEAREST)
+            .wrapS(CgGL.GL_MIRRORED_REPEAT).wrapT(CgGL.GL_MIRRORED_REPEAT).wrapR(CgGL.GL_MIRRORED_REPEAT)
             .build();
 
     /** 8-bit R, linear filtering, repeat. For single-channel data (noise, masks, heightmaps). */
     public static final CgTextureSpec R8_LINEAR_REPEAT = CgTextureSpec.builder()
             .type(CgTextureType.R8)
-            .wrapS(GL11.GL_REPEAT).wrapT(GL11.GL_REPEAT).wrapR(GL11.GL_REPEAT)
+            .wrapS(CgGL.GL_REPEAT).wrapT(CgGL.GL_REPEAT).wrapR(CgGL.GL_REPEAT)
             .build();
 
     /** 8-bit R, nearest filtering, repeat. For single-channel data (noise, masks, heightmaps). */
     public static final CgTextureSpec R8_NEAREST_REPEAT = CgTextureSpec.builder()
             .type(CgTextureType.R8)
-            .minFilter(GL11.GL_NEAREST).magFilter(GL11.GL_NEAREST)
-            .wrapS(GL11.GL_REPEAT).wrapT(GL11.GL_REPEAT).wrapR(GL11.GL_REPEAT)
+            .minFilter(CgGL.GL_NEAREST).magFilter(CgGL.GL_NEAREST)
+            .wrapS(CgGL.GL_REPEAT).wrapT(CgGL.GL_REPEAT).wrapR(CgGL.GL_REPEAT)
             .build();
 
     /** 16-bit float RGBA, linear filtering. HDR / intermediate render targets. */
@@ -189,8 +185,8 @@ public final class CgTextureSpec {
      */
     public static final CgTextureSpec DEPTH24_SHADOW = CgTextureSpec.builder()
             .type(CgTextureType.DEPTH24)
-            .compareMode(GL14.GL_COMPARE_R_TO_TEXTURE)
-            .compareFunc(GL11.GL_LEQUAL)
+            .compareMode(CgGL.GL_COMPARE_R_TO_TEXTURE)
+            .compareFunc(CgGL.GL_LEQUAL)
             .build();
 
     // ── GL-side helper ───────────────────────────────────────────────────────────
@@ -209,24 +205,24 @@ public final class CgTextureSpec {
      * the mipmap-aware filters and {@code glGenerateMipmap} is called.</p>
      */
     public void applyTo(int target) {
-        GL11.glTexParameteri(target, GL11.GL_TEXTURE_MIN_FILTER, minFilter);
-        GL11.glTexParameteri(target, GL11.GL_TEXTURE_MAG_FILTER, magFilter);
-        GL11.glTexParameteri(target, GL11.GL_TEXTURE_WRAP_S, wrapS);
-        GL11.glTexParameteri(target, GL11.GL_TEXTURE_WRAP_T, wrapT);
+        CgGL.glTexParameteri(target, CgGL.GL_TEXTURE_MIN_FILTER, minFilter);
+        CgGL.glTexParameteri(target, CgGL.GL_TEXTURE_MAG_FILTER, magFilter);
+        CgGL.glTexParameteri(target, CgGL.GL_TEXTURE_WRAP_S, wrapS);
+        CgGL.glTexParameteri(target, CgGL.GL_TEXTURE_WRAP_T, wrapT);
         // Wrap-R is only meaningful for 3D and 2D-array targets.
-        if (target == GL12.GL_TEXTURE_3D || target == GL30.GL_TEXTURE_2D_ARRAY) {
-            GL11.glTexParameteri(target, GL12.GL_TEXTURE_WRAP_R, wrapR);
+        if (target == CgGL.GL_TEXTURE_3D || target == CgGL.GL_TEXTURE_2D_ARRAY) {
+            CgGL.glTexParameteri(target, CgGL.GL_TEXTURE_WRAP_R, wrapR);
         }
         // Shadow comparison — only when explicitly enabled (DEPTH24_SHADOW etc.)
-        if (compareMode != GL11.GL_NONE) {
-            GL11.glTexParameteri(target, GL14.GL_TEXTURE_COMPARE_MODE, compareMode);
-            GL11.glTexParameteri(target, GL14.GL_TEXTURE_COMPARE_FUNC, compareFunc);
+        if (compareMode != CgGL.GL_NONE) {
+            CgGL.glTexParameteri(target, CgGL.GL_TEXTURE_COMPARE_MODE, compareMode);
+            CgGL.glTexParameteri(target, CgGL.GL_TEXTURE_COMPARE_FUNC, compareFunc);
         }
         // Mipmap — override min/mag filter and generate mip chain
         if (mipmaps != null && mipmaps.isEnabled()) {
-            GL11.glTexParameteri(target, GL11.GL_TEXTURE_MIN_FILTER, mipmaps.getMinFilter());
-            GL11.glTexParameteri(target, GL11.GL_TEXTURE_MAG_FILTER, mipmaps.getMagFilter());
-            GL30.glGenerateMipmap(target);
+            CgGL.glTexParameteri(target, CgGL.GL_TEXTURE_MIN_FILTER, mipmaps.getMinFilter());
+            CgGL.glTexParameteri(target, CgGL.GL_TEXTURE_MAG_FILTER, mipmaps.getMagFilter());
+            CgGL.glGenerateMipmap(target);
         }
     }
 }
