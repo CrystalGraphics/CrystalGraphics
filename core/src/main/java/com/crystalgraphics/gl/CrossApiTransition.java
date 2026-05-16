@@ -3,7 +3,7 @@ package com.crystalgraphics.gl;
 import com.crystalgraphics.gl.state.CallFamily;
 import com.crystalgraphics.gl.state.GLStateMirror;
 
-import com.crystalgraphics.platform.CgGlDispatch;
+import com.crystalgraphics.platform.gl.CgGlDispatch;
 import org.lwjgl.opengl.ARBFramebufferObject;
 import org.lwjgl.opengl.ARBShaderObjects;
 import org.lwjgl.opengl.EXTFramebufferObject;

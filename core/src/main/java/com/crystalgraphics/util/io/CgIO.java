@@ -1,13 +1,12 @@
 package com.crystalgraphics.util.io;
 
-import com.crystalgraphics.platform.CgPlatformRegistry;
-import com.crystalgraphics.platform.CgResourceService;
-import org.apache.commons.io.IOUtils;
+import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.service.CgResourceService;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStream;
-import java.nio.charset.Charset;
 
 public class CgIO {
 
@@ -87,9 +86,9 @@ public class CgIO {
             } catch (Throwable ignored) {}
         }
 
-        // 2. Platform resource service (null before CgPlatformRegistry.register() — falls through to classpath)
+        // 2. Platform resource service (returns null before CgPlatform.register() — falls through to classpath)
         try {
-            CgResourceService svc = CgPlatformRegistry.resourcesOrNull();
+            CgResourceService svc = CgPlatform.resources();
             if (svc != null) {
                 String stripped = normalized.substring(ASSETS_PREFIX.length());
                 int slash = stripped.indexOf('/');
@@ -106,15 +105,16 @@ public class CgIO {
         return CgIO.class.getResourceAsStream(normalized);
     }
 
-    public static String loadSource(String path) throws Exception {
-        InputStream in = openStream(path);
-        if (in == null) return null;
-        try {
-            return IOUtils.toString(in, Charset.forName("UTF-8"));
+    public static String loadSource(String path) {
+        try (InputStream in = openStream(path)) {
+            if (in == null) return null;
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            byte[] chunk = new byte[4096];
+            int n;
+            while ((n = in.read(chunk)) != -1) baos.write(chunk, 0, n);
+            return baos.toString("UTF-8");
         } catch (Throwable t) {
             return null;
-        } finally {
-            IOUtils.closeQuietly(in);
         }
     }
 

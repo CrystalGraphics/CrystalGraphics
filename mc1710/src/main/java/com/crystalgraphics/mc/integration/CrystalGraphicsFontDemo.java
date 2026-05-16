@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.integration;
 
+import com.crystalgraphics.gl.shader.CgShaderFactory;
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
@@ -268,7 +269,7 @@ public class CrystalGraphicsFontDemo {
             return;
         }
 
-        diagAtlasShader = CrystalGraphics.getShaderManager().load(
+        diagAtlasShader = CgShaderFactory.load(
                 "crystalgraphics:shader/diag_atlas.vert",
                 "crystalgraphics:shader/diag_atlas.frag");
 

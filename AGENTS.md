@@ -805,7 +805,7 @@ All 34 package guides under `src/main/java/com/crystalgraphics/`. Relative paths
 ### Platform SPI (platform subproject)
 | Path | What it covers |
 |---|---|
-| `platform/src/main/java/com/crystalgraphics/platform/AGENTS.md` | `CgGlDispatch`, `CgCapabilityProbe`, `CgResourceService`, `CgRenderingService`, `CgLifecycleService`, `CgReloadService`, `CgFrameCallback`, `CgPlatformRegistry` — the 8-file SPI contract between `core/` and `mc1710/` |
+| `platform/src/main/java/com/crystalgraphics/platform/AGENTS.md` | `CgGlDispatch`, `CgCapabilityProbe`, `CgResourceService`, `CgRenderingService`, `CgLifecycleService`, `CgReloadService`, `CgFrameCallback`, `CgPlatform` — the 8-file SPI contract between `core/` and `mc1710/` |
 
 ---
 
@@ -819,7 +819,7 @@ The root `@Mod` class (`modid = "crystalgraphics"`). Intentionally performs **no
 
 ## Render Loop Hook — `CgRenderHook`
 
-`mixins/early/impl/client/CgRenderHook` is a SpongePowered Mixin on `EntityRenderer.renderWorld`. It fires `CgRenderPipeline.getInstance().execute(partialTicks)` **immediately before** MC renders its translucent terrain pass.
+`mixins/early/impl/client/CgRenderHook` is a SpongePowered Mixin on `EntityRenderer.renderWorld`. It calls `CgPlatform.rendering().onFrameBegin(partialTicks)` **immediately before** MC renders its translucent terrain pass. `RenderingService1710.onFrameBegin` executes `CgRenderPipeline.getInstance().execute(partialTick)` directly.
 
 At this hook point:
 - MC has already drawn all opaque world geometry into FBO 0
@@ -831,13 +831,29 @@ This hook is why you never call `pipe.execute()` manually in game code — it is
 
 ## Hot-Reload Hook — `CgAssetReloader`
 
-`mc/CgAssetReloader` registers an `IResourceManagerReloadListener` with Minecraft's resource manager. It fires on **F3+T** and on resource pack changes. On reload it calls, in order:
+`core/mc/CgAssetReloader` (now in `core/`) wires reload callbacks via the platform SPI (`CgReloadService`). It fires on **F3+T** and on resource pack changes via `ReloadService1710`. On reload it calls, in order:
 
 1. `CgTextureManager.get().reloadAll()` — re-uploads all textures
 2. `CgShaderManager.reloadAll()` — marks all raw `CgShader` instances dirty (recompile on next `bind()`)
 3. `CgMaterialRegistry.get().reloadAll()` + `CgMaterialShaderRegistry.get().reloadAll()` — marks all materials dirty
 
 Failures in each step are isolated and logged — a broken shader does not prevent textures from reloading.
+
+## Platform Service Adapters — `mc/platform/`
+
+`mc1710/src/main/java/com/crystalgraphics/mc/platform/` contains the MC 1.7.10 concrete implementations of all six platform SPI interfaces. These are the **only classes** that may reference MC/Forge types. Bootstrap is owned by `PlatformRegistry1710`, called from `CrystalGraphics` event handlers — not from `CrystalGraphics` directly.
+
+**Package guide**: `mc1710/src/main/java/com/crystalgraphics/mc/platform/AGENTS.md`
+
+| Class | Implements | Key role |
+|---|---|---|
+| `PlatformRegistry1710` | — | Two-phase bootstrap: `onPreInit` registers services, `onInit` attaches reload listener |
+| `Lwjgl2GlDispatch` | `CgGlDispatch` | All raw LWJGL2 GL calls; FBO waterfall; `bindFramebufferCompat` → `OpenGlHelper` |
+| `Lwjgl2CapabilityProbe` | `CgCapabilityProbe` | Reads `ContextCapabilities` from LWJGL2 |
+| `ResourceService1710` | `CgResourceService` | Delegates to `IResourceManager` — single `openStream` method |
+| `RenderingService1710` | `CgRenderingService` | Calls `CgRenderPipeline.execute()` directly via `onFrameBegin` |
+| `LifecycleService1710` | `CgLifecycleService` | Delegates `CgGraphicsLifecycle` init/destroy/resize directly |
+| `ReloadService1710` | bridge utility | `attachToResourceManager()` wires `IReloadableResourceManager` → `CgPlatform.reload().onReload()` |
 
 ## GL State Mirror — `CrystalGLRedirects` + `CrystalGraphicsTransformer`
 

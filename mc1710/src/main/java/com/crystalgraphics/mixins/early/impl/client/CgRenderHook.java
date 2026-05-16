@@ -1,6 +1,6 @@
 package com.crystalgraphics.mixins.early.impl.client;
 
-import com.crystalgraphics.api.render.CgRenderPipeline;
+import com.crystalgraphics.platform.CgPlatform;
 import net.minecraft.client.renderer.EntityRenderer;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -34,6 +34,6 @@ public class CgRenderHook {
     )
     private void onBeforeTranslucentBlocks(float partialTicks, long finishTimeNano,
                                             CallbackInfo ci) {
-        CgRenderPipeline.getInstance().execute(partialTicks);
+        CgPlatform.rendering().onFrameBegin(partialTicks);
     }
 }
