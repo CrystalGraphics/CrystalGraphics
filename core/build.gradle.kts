@@ -40,10 +40,6 @@ repositories {
 }
 
 dependencies {
-    // Minecraft patched classes — available after :mc1710:patchedMcClasses runs.
-    // core/ must not import MC types (enforced by the guardrail check below), but some
-    // transitively-bundled MC classes (e.g. obfuscated helpers) may land on this path.
-    compileOnly(files(rootProject.project(":mc1710").layout.buildDirectory.dir("classes/java/patchedMc")))
 
     // JNI bindings subproject — needed for FreeType/HarfBuzz/MSDFgen classes used in text pipeline.
     compileOnly(project(":freetype-msdfgen-harfbuzz-bindings"))

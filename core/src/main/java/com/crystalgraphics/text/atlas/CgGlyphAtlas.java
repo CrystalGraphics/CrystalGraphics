@@ -114,11 +114,11 @@ private static final int GL_CLAMP_TO_EDGE      = 0x812F;
 
         if (!skipGlUpload) {
             if (type == Type.BITMAP) {
-                this.uploadBuffer = CgBufferUtils.createByteBuffer($$$);
+                this.uploadBuffer = CgBufferUtils.createByteBuffer(INITIAL_UPLOAD_BUFFER_SIZE);
             } else if (type == Type.MTSDF) {
-                this.msdfUploadBuffer = CgBufferUtils.createFloatBuffer($$$);
+                this.msdfUploadBuffer = CgBufferUtils.createFloatBuffer(64 * 64 * 4);
             } else {
-                this.msdfUploadBuffer = CgBufferUtils.createFloatBuffer($$$);
+                this.msdfUploadBuffer = CgBufferUtils.createFloatBuffer(64 * 64 * 3);
             }
         }
 
@@ -487,7 +487,7 @@ private static final int GL_CLAMP_TO_EDGE      = 0x812F;
         }
         int required = w * h;
         if (uploadBuffer == null || uploadBuffer.capacity() < required) {
-            uploadBuffer = CgBufferUtils.createByteBuffer($$$);
+            uploadBuffer = CgBufferUtils.createByteBuffer(required);
         }
         uploadBuffer.clear();
         uploadBuffer.put(data, 0, required);
@@ -510,7 +510,7 @@ private static final int GL_CLAMP_TO_EDGE      = 0x812F;
         int glFormat = (type == Type.MTSDF) ? GL_RGBA : GL_RGB;
         int required = w * h * channels;
         if (msdfUploadBuffer == null || msdfUploadBuffer.capacity() < required) {
-            msdfUploadBuffer = CgBufferUtils.createFloatBuffer($$$);
+            msdfUploadBuffer = CgBufferUtils.createFloatBuffer(required);
         }
         msdfUploadBuffer.clear();
         msdfUploadBuffer.put(data, 0, required);

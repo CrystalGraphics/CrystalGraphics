@@ -38,9 +38,7 @@ import org.apache.logging.log4j.LogManager;
 public final class CgTextureBuffer extends CgShaderBuffer {
 
     private static final Logger LOGGER = LogManager.getLogger("CgTextureBuffer");
-    private static Boolean ARB_sampler_objects;
-
-    /**
+    private static Boolean ARB_sampler_objects;    /**
      * The {@code GL_TEXTURE_BUFFER} texture object.
      * Attached to the parent's stream buffer once at construction and never re-attached.
      * Deleted by {@link #deleteGlResources()}.
@@ -85,7 +83,7 @@ public final class CgTextureBuffer extends CgShaderBuffer {
     protected void bindInternal() {
         CgTexture.active(bindingLocation);
         // Intel driver bug: sampler objects on the same unit as a TBO break rendering silently.
-        if (ARB_sampler_objects == null) ARB_sampler_objects = GLContext.getCapabilities().GL_ARB_sampler_objects;
+        if (ARB_sampler_objects == null) ARB_sampler_objects = CgCapabilities.detect().isSamplerObjectsSupported();
         if (ARB_sampler_objects) CgGL.glBindSampler(bindingLocation, 0);
         
         CgTexture.bind(CgGL.GL_TEXTURE_BUFFER, tboTexId);

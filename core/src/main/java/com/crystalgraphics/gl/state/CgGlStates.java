@@ -1,10 +1,10 @@
 package com.crystalgraphics.gl.state;
 
-import com.crystalgraphics.gl.vertex.CgVertexArray;
-import com.crystalgraphics.platform.gl.CgGlDispatch;
-import org.lwjgl.BufferUtils;
-import org.lwjgl.opengl.*;
 
+import com.crystalgraphics.api.CgCapabilities;
+import com.crystalgraphics.gl.vertex.CgVertexArray;
+import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.util.CgBufferUtils;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 
@@ -24,10 +24,6 @@ final class CgGlStates {
 
     public static final class FboState implements SlotState {
 
-        private static final int GL_FRAMEBUFFER      = 0x8D40;
-        private static final int GL_DRAW_FRAMEBUFFER = 0x8CA9;
-        private static final int GL_READ_FRAMEBUFFER = 0x8CA8;
-
         private final int drawFbo;
         private final int readFbo;
         private final CallFamily family;
@@ -38,20 +34,21 @@ final class CgGlStates {
             this.family  = family;
         }
 
-        public static FboState capture(ContextCapabilities caps, boolean useGlGet) {
+        public static FboState capture(boolean useGlGet) {
             int drawFbo, readFbo;
             CallFamily family;
             if (useGlGet) {
-                if (caps.OpenGL30 || caps.GL_ARB_framebuffer_object) {
-                    drawFbo = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
-                    readFbo = GL11.glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING);
-                } else if (caps.GL_EXT_framebuffer_object) {
-                    int bound = GL11.glGetInteger(EXTFramebufferObject.GL_FRAMEBUFFER_BINDING_EXT);
+                CgCapabilities cgCaps = CgCapabilities.detect();
+                if (cgCaps.isCoreFbo() || cgCaps.isArbFbo()) {
+                    drawFbo = CgGL.glGetInteger(CgGL.GL_DRAW_FRAMEBUFFER_BINDING);
+                    readFbo = CgGL.glGetInteger(CgGL.GL_READ_FRAMEBUFFER_BINDING);
+                } else if (cgCaps.isExtFbo()) {
+                    int bound = CgGL.glGetInteger(CgGL.GL_FRAMEBUFFER_BINDING_EXT);
                     drawFbo = readFbo = bound;
                 } else {
                     drawFbo = readFbo = 0;
                 }
-                family = detectFboFamily(caps);
+                family = detectFboFamily(cgCaps);
             } else {
                 drawFbo = GLStateMirror.getDrawFboId();
                 readFbo = GLStateMirror.getReadFboId();
@@ -62,51 +59,34 @@ final class CgGlStates {
 
         @Override
         public void restore() {
+            CgCapabilities cgCaps = CgCapabilities.detect();
             CallFamily currentFamily = GLStateMirror.getCurrentFboFamily();
             if (currentFamily != family && currentFamily != CallFamily.UNKNOWN) {
-                bindFboByFamily(GL_FRAMEBUFFER, 0, currentFamily);
+                bindFboByFamily(CgGL.GL_FRAMEBUFFER, 0, currentFamily);
             }
-            ContextCapabilities caps = GLContext.getCapabilities();
-            boolean separateTargets = caps.OpenGL30 || caps.GL_ARB_framebuffer_object;
+            boolean separateTargets = cgCaps.isCoreFbo() || cgCaps.isArbFbo();
             if (separateTargets && family != CallFamily.EXT_FBO && drawFbo != readFbo) {
-                bindFboByFamily(GL_DRAW_FRAMEBUFFER, drawFbo, family);
-                bindFboByFamily(GL_READ_FRAMEBUFFER, readFbo, family);
+                bindFboByFamily(CgGL.GL_DRAW_FRAMEBUFFER, drawFbo, family);
+                bindFboByFamily(CgGL.GL_READ_FRAMEBUFFER, readFbo, family);
             } else {
-                bindFboByFamily(GL_FRAMEBUFFER, drawFbo, family);
+                bindFboByFamily(CgGL.GL_FRAMEBUFFER, drawFbo, family);
             }
         }
 
-        private static CallFamily detectFboFamily(ContextCapabilities caps) {
-            if (caps.OpenGL30)                  return CallFamily.CORE_GL30;
-            if (caps.GL_ARB_framebuffer_object) return CallFamily.ARB_FBO;
-            if (caps.GL_EXT_framebuffer_object) return CallFamily.EXT_FBO;
+        private static CallFamily detectFboFamily(CgCapabilities cgCaps) {
+            if (cgCaps.isCoreFbo())  return CallFamily.CORE_GL30;
+            if (cgCaps.isArbFbo())   return CallFamily.ARB_FBO;
+            if (cgCaps.isExtFbo())   return CallFamily.EXT_FBO;
             return CallFamily.OPENGLHELPER_WRAPPER;
         }
 
         private static void bindFboByFamily(int target, int fboId, CallFamily family) {
-            switch (family) {
-                case ARB_FBO:
-                    ARBFramebufferObject.glBindFramebuffer(target, fboId);
-                    break;
-                case EXT_FBO:
-                    EXTFramebufferObject.glBindFramebufferEXT(GL_FRAMEBUFFER, fboId);
-                    break;
-                case OPENGLHELPER_WRAPPER:
-                    CgGlDispatch.get().bindFramebufferCompat(fboId);
-                    break;
-                case CORE_GL30:
-                default:
-                    ContextCapabilities caps = GLContext.getCapabilities();
-                    if (caps.OpenGL30) {
-                        GL30.glBindFramebuffer(target, fboId);
-                    } else if (caps.GL_ARB_framebuffer_object) {
-                        ARBFramebufferObject.glBindFramebuffer(target, fboId);
-                    } else if (caps.GL_EXT_framebuffer_object) {
-                        EXTFramebufferObject.glBindFramebufferEXT(target, fboId);
-                    } else {
-                        CgGlDispatch.get().bindFramebufferCompat(fboId);
-                    }
-                    break;
+            if (family == CallFamily.OPENGLHELPER_WRAPPER) {
+                CgGL.glBindFramebufferCompat(fboId);
+            } else if (family == CallFamily.EXT_FBO) {
+                CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, fboId);
+            } else {
+                CgGL.glBindFramebuffer(target, fboId);
             }
         }
     }
@@ -123,15 +103,16 @@ final class CgGlStates {
             this.family    = family;
         }
 
-        public static ProgramState capture(ContextCapabilities caps, boolean useGlGet) {
+        public static ProgramState capture(boolean useGlGet) {
             int programId;
             CallFamily family;
             if (useGlGet) {
-                if (caps.OpenGL20) {
-                    programId = GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM);
+                CgCapabilities cgCaps = CgCapabilities.detect();
+                if (cgCaps.isCoreShaders()) {
+                    programId = CgGL.glGetInteger(CgGL.GL_CURRENT_PROGRAM);
                     family    = CallFamily.CORE_GL20;
-                } else if (caps.GL_ARB_shader_objects) {
-                    programId = ARBShaderObjects.glGetHandleARB(ARBShaderObjects.GL_PROGRAM_OBJECT_ARB);
+                } else if (cgCaps.isArbShaders()) {
+                    programId = CgGL.glGetHandle(CgGL.GL_PROGRAM_OBJECT_ARB);
                     family    = CallFamily.ARB_SHADER_OBJECTS;
                 } else {
                     programId = 0;
@@ -148,26 +129,9 @@ final class CgGlStates {
         public void restore() {
             CallFamily currentFamily = GLStateMirror.getCurrentProgramFamily();
             if (currentFamily != family && currentFamily != CallFamily.UNKNOWN) {
-                useProgramByFamily(0, currentFamily);
+                CgGL.glUseProgram(0);
             }
-            useProgramByFamily(programId, family);
-        }
-
-        private static void useProgramByFamily(int id, CallFamily family) {
-            switch (family) {
-                case ARB_SHADER_OBJECTS:
-                    ARBShaderObjects.glUseProgramObjectARB(id);
-                    break;
-                case CORE_GL20:
-                default:
-                    ContextCapabilities caps = GLContext.getCapabilities();
-                    if (caps.OpenGL20) {
-                        GL20.glUseProgram(id);
-                    } else if (caps.GL_ARB_shader_objects) {
-                        ARBShaderObjects.glUseProgramObjectARB(id);
-                    }
-                    break;
-            }
+            CgGL.glUseProgram(programId);
         }
     }
 
@@ -176,8 +140,6 @@ final class CgGlStates {
     public static final class TextureState implements SlotState {
 
         private static Integer MAX_UNITS;
-        private static final int GL_TEXTURE0  = 0x84C0;
-        private static final int GL_TEXTURE_2D = 0x0DE1;
 
         private final int   activeUnit;
         private final int[] bound2D;
@@ -187,15 +149,10 @@ final class CgGlStates {
             this.bound2D    = bound2D.clone();
         }
 
-        public static TextureState capture(ContextCapabilities caps) {
-            if(MAX_UNITS == null)  MAX_UNITS = GL11.glGetInteger(GL13.GL_MAX_TEXTURE_UNITS);
-            
-            int activeUnit = 0;
-            if (caps.OpenGL13) {
-                activeUnit = GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE) - GL_TEXTURE0;
-            } else if (caps.GL_ARB_multitexture) {
-                activeUnit = GL11.glGetInteger(ARBMultitexture.GL_ACTIVE_TEXTURE_ARB) - GL_TEXTURE0;
-            }
+        public static TextureState capture() {
+            if (MAX_UNITS == null) MAX_UNITS = CgCapabilities.detect().getMaxTextureUnits();
+
+            int activeUnit = CgGL.glGetInteger(CgGL.GL_ACTIVE_TEXTURE) - CgGL.GL_TEXTURE0;
             if (activeUnit < 0) activeUnit = 0;
 
             int[] bound2D = new int[MAX_UNITS];
@@ -206,11 +163,10 @@ final class CgGlStates {
             GLStateMirror.enterRedirect();
             try {
                 for (int i = 0; i < MAX_UNITS; i++) {
-                    setActiveTextureUnit(i, caps);
-                    bound2D[i] = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
+                    CgGL.glActiveTexture(CgGL.GL_TEXTURE0 + i);
+                    bound2D[i] = CgGL.glGetInteger(CgGL.GL_TEXTURE_BINDING_2D);
                 }
-                // restore active unit within capture so the mirror stays consistent
-                setActiveTextureUnit(activeUnit, caps);
+                CgGL.glActiveTexture(CgGL.GL_TEXTURE0 + activeUnit);
             } finally {
                 GLStateMirror.exitRedirect();
             }
@@ -222,28 +178,13 @@ final class CgGlStates {
         public void restore() {
             // NOTE: do NOT use enterRedirect here — glBindTexture calls during restore are
             // intentional and SHOULD update the mirror via the redirect layer.
-            ContextCapabilities caps = GLContext.getCapabilities();
             for (int i = 0; i < bound2D.length; i++) {
                 if (bound2D[i] != GLStateMirror.getBoundTexture2D(i)) {
-                    setActiveTextureUnit(i, caps);
-                    GL11.glBindTexture(GL_TEXTURE_2D, bound2D[i]);
+                    CgGL.glActiveTexture(CgGL.GL_TEXTURE0 + i);
+                    CgGL.glBindTexture(CgGL.GL_TEXTURE_2D, bound2D[i]);
                 }
             }
-            setActiveTextureUnit(activeUnit, caps);
-        }
-
-        private static void setActiveTextureUnit(int unitIndex, ContextCapabilities caps) {
-            int unitConst = GL_TEXTURE0 + unitIndex;
-            if (caps.OpenGL13) {
-                GL13.glActiveTexture(unitConst);
-                return;
-            }
-            if (caps.GL_ARB_multitexture) {
-                ARBMultitexture.glActiveTextureARB(unitConst);
-                return;
-            }
-            throw new IllegalStateException(
-                    "No active-texture API available (OpenGL13 and ARB_multitexture both absent)");
+            CgGL.glActiveTexture(CgGL.GL_TEXTURE0 + activeUnit);
         }
     }
 
@@ -261,11 +202,11 @@ final class CgGlStates {
             this.elemBufId  = elemBufId;
         }
 
-        public static VertexState capture(ContextCapabilities caps) {
-            int vaoId = (caps.OpenGL30 || caps.GL_ARB_vertex_array_object)
-                    ? GL11.glGetInteger(GL30.GL_VERTEX_ARRAY_BINDING) : 0;
-            int arrayBufId = GL11.glGetInteger(GL15.GL_ARRAY_BUFFER_BINDING);
-            int elemBufId  = GL11.glGetInteger(GL15.GL_ELEMENT_ARRAY_BUFFER_BINDING);
+        public static VertexState capture() {
+            int vaoId = CgCapabilities.detect().isVaoSupported()
+                    ? CgGL.glGetInteger(CgGL.GL_VERTEX_ARRAY_BINDING) : 0;
+            int arrayBufId = CgGL.glGetInteger(CgGL.GL_ARRAY_BUFFER_BINDING);
+            int elemBufId  = CgGL.glGetInteger(CgGL.GL_ELEMENT_ARRAY_BUFFER_BINDING);
             return new VertexState(vaoId, arrayBufId, elemBufId);
         }
 
@@ -274,15 +215,14 @@ final class CgGlStates {
             // CRITICAL ORDER: restore VAO first, then VBO, then EBO.
             // Binding an EBO while a VAO is active records it in that VAO's state —
             // restoring EBO before VAO would corrupt the currently-bound VAO.
-            ContextCapabilities caps = GLContext.getCapabilities();
-            if (caps.OpenGL30 || caps.GL_ARB_vertex_array_object) {
+            if (CgCapabilities.detect().isVaoSupported()) {
                 CgVertexArray.bind(vaoId);
                 GLStateMirror.onBindVertexArray(vaoId);
             }
-            GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, arrayBufId);
-            GLStateMirror.onBindBuffer(GL15.GL_ARRAY_BUFFER, arrayBufId);
-            GL15.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, elemBufId);
-            GLStateMirror.onBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, elemBufId);
+            CgGL.glBindBuffer(CgGL.GL_ARRAY_BUFFER, arrayBufId);
+            GLStateMirror.onBindBuffer(CgGL.GL_ARRAY_BUFFER, arrayBufId);
+            CgGL.glBindBuffer(CgGL.GL_ELEMENT_ARRAY_BUFFER, elemBufId);
+            GLStateMirror.onBindBuffer(CgGL.GL_ELEMENT_ARRAY_BUFFER, elemBufId);
         }
     }
     
@@ -306,16 +246,16 @@ final class CgGlStates {
         }
 
         public static AlphaTestState capture() {
-            boolean enabled = GL11.glGetBoolean(GL11.GL_ALPHA_TEST);
-            int func        = GL11.glGetInteger(GL11.GL_ALPHA_TEST_FUNC);
-            float ref       = GL11.glGetFloat(GL11.GL_ALPHA_TEST_REF);
+            boolean enabled = CgGL.glGetBoolean(CgGL.GL_ALPHA_TEST);
+            int func        = CgGL.glGetInteger(CgGL.GL_ALPHA_TEST_FUNC);
+            float ref       = CgGL.glGetFloat(CgGL.GL_ALPHA_TEST_REF);
             return new AlphaTestState(enabled, func, ref);
         }
 
         @Override
         public void restore() {
-            if (enabled) GL11.glEnable(GL11.GL_ALPHA_TEST); else GL11.glDisable(GL11.GL_ALPHA_TEST);
-            GL11.glAlphaFunc(func, ref);
+            if (enabled) CgGL.glEnable(CgGL.GL_ALPHA_TEST); else CgGL.glDisable(CgGL.GL_ALPHA_TEST);
+            CgGL.glAlphaFunc(func, ref);
         }
     }
     
@@ -339,18 +279,18 @@ final class CgGlStates {
             this.eqRgb    = eqRgb;   this.eqAlpha  = eqAlpha;
         }
 
-        public static BlendState capture(ContextCapabilities caps) {
-            boolean enabled  = GL11.glGetBoolean(GL11.GL_BLEND);
-            int srcRgb   = GL11.glGetInteger(GL14.GL_BLEND_SRC_RGB);
-            int dstRgb   = GL11.glGetInteger(GL14.GL_BLEND_DST_RGB);
-            int srcAlpha = GL11.glGetInteger(GL14.GL_BLEND_SRC_ALPHA);
-            int dstAlpha = GL11.glGetInteger(GL14.GL_BLEND_DST_ALPHA);
+        public static BlendState capture() {
+            boolean enabled  = CgGL.glGetBoolean(CgGL.GL_BLEND);
+            int srcRgb   = CgGL.glGetInteger(CgGL.GL_BLEND_SRC_RGB);
+            int dstRgb   = CgGL.glGetInteger(CgGL.GL_BLEND_DST_RGB);
+            int srcAlpha = CgGL.glGetInteger(CgGL.GL_BLEND_SRC_ALPHA);
+            int dstAlpha = CgGL.glGetInteger(CgGL.GL_BLEND_DST_ALPHA);
             int eqRgb, eqAlpha;
-            if (caps.OpenGL20) {
-                eqRgb   = GL11.glGetInteger(GL20.GL_BLEND_EQUATION_RGB);
-                eqAlpha = GL11.glGetInteger(GL20.GL_BLEND_EQUATION_ALPHA);
+            if (CgCapabilities.detect().isCoreShaders()) {
+                eqRgb   = CgGL.glGetInteger(CgGL.GL_BLEND_EQUATION_RGB);
+                eqAlpha = CgGL.glGetInteger(CgGL.GL_BLEND_EQUATION_ALPHA);
             } else {
-                eqRgb   = GL11.glGetInteger(GL14.GL_BLEND_EQUATION);
+                eqRgb   = CgGL.glGetInteger(CgGL.GL_BLEND_EQUATION);
                 eqAlpha = eqRgb;
             }
             return new BlendState(enabled, srcRgb, dstRgb, srcAlpha, dstAlpha, eqRgb, eqAlpha);
@@ -359,11 +299,11 @@ final class CgGlStates {
         @Override
         public void restore() {
             if (!enabled) {
-                GL11.glDisable(GL11.GL_BLEND);
+                CgGL.glDisable(CgGL.GL_BLEND);
             } else {
-                GL11.glEnable(GL11.GL_BLEND);
-                GL14.glBlendFuncSeparate(srcRgb, dstRgb, srcAlpha, dstAlpha);
-                GL20.glBlendEquationSeparate(eqRgb, eqAlpha);
+                CgGL.glEnable(CgGL.GL_BLEND);
+                CgGL.glBlendFuncSeparate(srcRgb, dstRgb, srcAlpha, dstAlpha);
+                CgGL.glBlendEquationSeparate(eqRgb, eqAlpha);
             }
         }
     }
@@ -383,17 +323,17 @@ final class CgGlStates {
         }
 
         public static DepthState capture() {
-            boolean test  = GL11.glGetBoolean(GL11.GL_DEPTH_TEST);
-            int func      = GL11.glGetInteger(GL11.GL_DEPTH_FUNC);
-            boolean write = GL11.glGetBoolean(GL11.GL_DEPTH_WRITEMASK);
+            boolean test  = CgGL.glGetBoolean(CgGL.GL_DEPTH_TEST);
+            int func      = CgGL.glGetInteger(CgGL.GL_DEPTH_FUNC);
+            boolean write = CgGL.glGetBoolean(CgGL.GL_DEPTH_WRITEMASK);
             return new DepthState(test, func, write);
         }
 
         @Override
         public void restore() {
-            if (test) GL11.glEnable(GL11.GL_DEPTH_TEST); else GL11.glDisable(GL11.GL_DEPTH_TEST);
-            GL11.glDepthFunc(func);
-            GL11.glDepthMask(write);
+            if (test) CgGL.glEnable(CgGL.GL_DEPTH_TEST); else CgGL.glDisable(CgGL.GL_DEPTH_TEST);
+            CgGL.glDepthFunc(func);
+            CgGL.glDepthMask(write);
         }
     }
 
@@ -412,21 +352,21 @@ final class CgGlStates {
         }
 
         public static CullState capture() {
-            boolean enabled   = GL11.glGetBoolean(GL11.GL_CULL_FACE);
-            int mode          = GL11.glGetInteger(GL11.GL_CULL_FACE_MODE);
-            int frontFace     = GL11.glGetInteger(GL11.GL_FRONT_FACE);
+            boolean enabled   = CgGL.glGetBoolean(CgGL.GL_CULL_FACE);
+            int mode          = CgGL.glGetInteger(CgGL.GL_CULL_FACE_MODE);
+            int frontFace     = CgGL.glGetInteger(CgGL.GL_FRONT_FACE);
             return new CullState(enabled, mode, frontFace);
         }
 
         @Override
         public void restore() {
             if (enabled) {
-                GL11.glEnable(GL11.GL_CULL_FACE);
-                GL11.glCullFace(mode);
+                CgGL.glEnable(CgGL.GL_CULL_FACE);
+                CgGL.glCullFace(mode);
             } else {
-                GL11.glDisable(GL11.GL_CULL_FACE);
+                CgGL.glDisable(CgGL.GL_CULL_FACE);
             }
-            GL11.glFrontFace(frontFace);
+            CgGL.glFrontFace(frontFace);
         }
     }
 
@@ -460,23 +400,23 @@ final class CgGlStates {
         }
 
         public static StencilState capture() {
-            boolean enabled = GL11.glGetBoolean(GL11.GL_STENCIL_TEST);
-            int func        = GL11.glGetInteger(GL11.GL_STENCIL_FUNC);
-            int ref         = GL11.glGetInteger(GL11.GL_STENCIL_REF);
-            int readMask    = GL11.glGetInteger(GL11.GL_STENCIL_VALUE_MASK);
-            int writeMask   = GL11.glGetInteger(GL11.GL_STENCIL_WRITEMASK);
-            int sfail       = GL11.glGetInteger(GL11.GL_STENCIL_FAIL);
-            int dpfail      = GL11.glGetInteger(GL11.GL_STENCIL_PASS_DEPTH_FAIL);
-            int dppass      = GL11.glGetInteger(GL11.GL_STENCIL_PASS_DEPTH_PASS);
+            boolean enabled = CgGL.glGetBoolean(CgGL.GL_STENCIL_TEST);
+            int func        = CgGL.glGetInteger(CgGL.GL_STENCIL_FUNC);
+            int ref         = CgGL.glGetInteger(CgGL.GL_STENCIL_REF);
+            int readMask    = CgGL.glGetInteger(CgGL.GL_STENCIL_VALUE_MASK);
+            int writeMask   = CgGL.glGetInteger(CgGL.GL_STENCIL_WRITEMASK);
+            int sfail       = CgGL.glGetInteger(CgGL.GL_STENCIL_FAIL);
+            int dpfail      = CgGL.glGetInteger(CgGL.GL_STENCIL_PASS_DEPTH_FAIL);
+            int dppass      = CgGL.glGetInteger(CgGL.GL_STENCIL_PASS_DEPTH_PASS);
             return new StencilState(enabled, func, ref, readMask, writeMask, sfail, dpfail, dppass);
         }
 
         @Override
         public void restore() {
-            if (enabled) GL11.glEnable(GL11.GL_STENCIL_TEST); else GL11.glDisable(GL11.GL_STENCIL_TEST);
-            GL11.glStencilFunc(func, ref, readMask);
-            GL11.glStencilMask(writeMask);
-            GL11.glStencilOp(sfail, dpfail, dppass);
+            if (enabled) CgGL.glEnable(CgGL.GL_STENCIL_TEST); else CgGL.glDisable(CgGL.GL_STENCIL_TEST);
+            CgGL.glStencilFunc(func, ref, readMask);
+            CgGL.glStencilMask(writeMask);
+            CgGL.glStencilOp(sfail, dpfail, dppass);
         }
     }
 
@@ -497,8 +437,8 @@ final class CgGlStates {
             // GL_COLOR_WRITEMASK is a 4-component boolean vector.
             // LWJGL 2's glGetBoolean(int, ByteBuffer) validates capacity >= 16 regardless
             // of how many values the query actually writes, so allocate 16.
-            ByteBuffer buf = BufferUtils.createByteBuffer(16);
-            GL11.glGetBoolean(GL11.GL_COLOR_WRITEMASK, buf);
+            ByteBuffer buf = CgBufferUtils.createByteBuffer(16);
+            CgGL.glGetBoolean(CgGL.GL_COLOR_WRITEMASK, buf);
             return new ColorMaskState(
                     buf.get(0) != 0,
                     buf.get(1) != 0,
@@ -508,7 +448,7 @@ final class CgGlStates {
 
         @Override
         public void restore() {
-            GL11.glColorMask(r, g, b, a);
+            CgGL.glColorMask(r, g, b, a);
         }
     }
 
@@ -526,14 +466,14 @@ final class CgGlStates {
         }
 
         public static ViewportState capture() {
-            IntBuffer buf = BufferUtils.createIntBuffer(16);
-            GL11.glGetInteger(GL11.GL_VIEWPORT, buf);
+            IntBuffer buf = CgBufferUtils.createIntBuffer(4);
+            CgGL.glGetInteger(CgGL.GL_VIEWPORT, buf);
             return new ViewportState(buf.get(0), buf.get(1), buf.get(2), buf.get(3));
         }
 
         @Override
         public void restore() {
-            GL11.glViewport(x, y, width, height);
+            CgGL.glViewport(x, y, width, height);
         }
     }
 
@@ -557,16 +497,16 @@ final class CgGlStates {
         }
 
         public static ScissorState capture() {
-            boolean enabled = GL11.glGetBoolean(GL11.GL_SCISSOR_TEST);
-            IntBuffer buf = BufferUtils.createIntBuffer(16);
-            GL11.glGetInteger(GL11.GL_SCISSOR_BOX, buf);
+            boolean enabled = CgGL.glGetBoolean(CgGL.GL_SCISSOR_TEST);
+            IntBuffer buf = CgBufferUtils.createIntBuffer(4);
+            CgGL.glGetInteger(CgGL.GL_SCISSOR_BOX, buf);
             return new ScissorState(enabled, buf.get(0), buf.get(1), buf.get(2), buf.get(3));
         }
 
         @Override
         public void restore() {
-            if (enabled) GL11.glEnable(GL11.GL_SCISSOR_TEST); else GL11.glDisable(GL11.GL_SCISSOR_TEST);
-            GL11.glScissor(x, y, width, height);
+            if (enabled) CgGL.glEnable(CgGL.GL_SCISSOR_TEST); else CgGL.glDisable(CgGL.GL_SCISSOR_TEST);
+            CgGL.glScissor(x, y, width, height);
         }
     }
 
@@ -590,23 +530,23 @@ final class CgGlStates {
         }
 
         public static PolygonOffsetState capture() {
-            boolean fill  = GL11.glGetBoolean(GL11.GL_POLYGON_OFFSET_FILL);
-            boolean line  = GL11.glGetBoolean(GL11.GL_POLYGON_OFFSET_LINE);
-            boolean point = GL11.glGetBoolean(GL11.GL_POLYGON_OFFSET_POINT);
-            float factor  = GL11.glGetFloat(GL11.GL_POLYGON_OFFSET_FACTOR);
-            float units   = GL11.glGetFloat(GL11.GL_POLYGON_OFFSET_UNITS);
+            boolean fill  = CgGL.glGetBoolean(CgGL.GL_POLYGON_OFFSET_FILL);
+            boolean line  = CgGL.glGetBoolean(CgGL.GL_POLYGON_OFFSET_LINE);
+            boolean point = CgGL.glGetBoolean(CgGL.GL_POLYGON_OFFSET_POINT);
+            float factor  = CgGL.glGetFloat(CgGL.GL_POLYGON_OFFSET_FACTOR);
+            float units   = CgGL.glGetFloat(CgGL.GL_POLYGON_OFFSET_UNITS);
             return new PolygonOffsetState(fill, line, point, factor, units);
         }
 
         @Override
         public void restore() {
-            if (fill)  GL11.glEnable(GL11.GL_POLYGON_OFFSET_FILL);
-            else       GL11.glDisable(GL11.GL_POLYGON_OFFSET_FILL);
-            if (line)  GL11.glEnable(GL11.GL_POLYGON_OFFSET_LINE);
-            else       GL11.glDisable(GL11.GL_POLYGON_OFFSET_LINE);
-            if (point) GL11.glEnable(GL11.GL_POLYGON_OFFSET_POINT);
-            else       GL11.glDisable(GL11.GL_POLYGON_OFFSET_POINT);
-            GL11.glPolygonOffset(factor, units);
+            if (fill)  CgGL.glEnable(CgGL.GL_POLYGON_OFFSET_FILL);
+            else       CgGL.glDisable(CgGL.GL_POLYGON_OFFSET_FILL);
+            if (line)  CgGL.glEnable(CgGL.GL_POLYGON_OFFSET_LINE);
+            else       CgGL.glDisable(CgGL.GL_POLYGON_OFFSET_LINE);
+            if (point) CgGL.glEnable(CgGL.GL_POLYGON_OFFSET_POINT);
+            else       CgGL.glDisable(CgGL.GL_POLYGON_OFFSET_POINT);
+            CgGL.glPolygonOffset(factor, units);
         }
     }
 
@@ -627,15 +567,15 @@ final class CgGlStates {
         }
 
         public static PolygonModeState capture() {
-            IntBuffer buf = BufferUtils.createIntBuffer(16);
-            GL11.glGetInteger(GL11.GL_POLYGON_MODE, buf);
+            IntBuffer buf = CgBufferUtils.createIntBuffer(2);
+            CgGL.glGetInteger(CgGL.GL_POLYGON_MODE, buf);
             return new PolygonModeState(buf.get(0), buf.get(1));
         }
 
         @Override
         public void restore() {
-            GL11.glPolygonMode(GL11.GL_FRONT, front);
-            GL11.glPolygonMode(GL11.GL_BACK, back);
+            CgGL.glPolygonMode(CgGL.GL_FRONT, front);
+            CgGL.glPolygonMode(CgGL.GL_BACK, back);
         }
     }
     
@@ -650,12 +590,12 @@ final class CgGlStates {
         }
 
         public static LineWidthState capture() {
-            return new LineWidthState(GL11.glGetFloat(GL11.GL_LINE_WIDTH));
+            return new LineWidthState(CgGL.glGetFloat(CgGL.GL_LINE_WIDTH));
         }
 
         @Override
         public void restore() {
-            GL11.glLineWidth(width);
+            CgGL.glLineWidth(width);
         }
     }
 
@@ -670,12 +610,12 @@ final class CgGlStates {
         }
 
         public static PointSizeState capture() {
-            return new PointSizeState(GL11.glGetFloat(GL11.GL_POINT_SIZE));
+            return new PointSizeState(CgGL.glGetFloat(CgGL.GL_POINT_SIZE));
         }
 
         @Override
         public void restore() {
-            GL11.glPointSize(size);
+            CgGL.glPointSize(size);
         }
     }
 }

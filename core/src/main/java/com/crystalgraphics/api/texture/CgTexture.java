@@ -1,8 +1,8 @@
 package com.crystalgraphics.api.texture;
 
+
 import com.crystalgraphics.gl.texture.CgTextureManager;
-import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL13;
+import com.crystalgraphics.platform.gl.CgGL;
 
 /**
  * Common abstraction over an owned GL texture object.
@@ -82,7 +82,7 @@ public interface CgTexture {
     /** @return the normalized ID of the active texture unit, between 0-31.
      *  Highly discouraged against, as state querying the GPU via glGet* stalls the CPU-GPU pipeline. */
     static int getActiveUnit() {
-        return GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE) - GL13.GL_TEXTURE0;
+        return CgGL.glGetInteger(CgGL.GL_ACTIVE_TEXTURE) - CgGL.GL_TEXTURE0;
     }
 
     /** Sets the GL texture state
@@ -90,7 +90,7 @@ public interface CgTexture {
      * @param textureId
      */
     static void bind(int target, int textureId) {
-        GL11.glBindTexture(target, textureId);
+        CgGL.glBindTexture(target, textureId);
     }
 
     /**
@@ -98,7 +98,7 @@ public interface CgTexture {
      */
     static void active(int unit) {
         // Normalize the range to 0-31, if fed raw unit value
-        if (unit > GL13.GL_TEXTURE0) unit -= GL13.GL_TEXTURE0;
-        GL13.glActiveTexture(GL13.GL_TEXTURE0 + unit);
+        if (unit > CgGL.GL_TEXTURE0) unit -= CgGL.GL_TEXTURE0;
+        CgGL.glActiveTexture(CgGL.GL_TEXTURE0 + unit);
     }
 }

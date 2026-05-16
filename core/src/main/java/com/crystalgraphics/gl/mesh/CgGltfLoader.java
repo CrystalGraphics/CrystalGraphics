@@ -135,7 +135,7 @@ public final class CgGltfLoader {
         boolean wantsNormal = flags.wantsNormal;
 
         int vertexCount = positions.length / 3;
-        ByteBuffer vbo = CgBufferUtils.createByteBuffer($$$);
+        ByteBuffer vbo = CgBufferUtils.createByteBuffer(vertexCount * format.getStride());
         CgVertexWriter writer = CgVertexWriter.forBuffer(vbo, format);
 
         for (int i = 0; i < vertexCount; i++) {
@@ -178,12 +178,12 @@ public final class CgGltfLoader {
                 if (idx > maxIdx) maxIdx = idx;
             }
             if (maxIdx <= 65535) {
-                ibo = CgBufferUtils.createByteBuffer($$$);
+                ibo = CgBufferUtils.createByteBuffer(indexCount * 2);
                 for (int idx : indices) {
                     ibo.putShort((short) idx);
                 }
             } else {
-                ibo = CgBufferUtils.createByteBuffer($$$);
+                ibo = CgBufferUtils.createByteBuffer(indexCount * 4);
                 for (int idx : indices) {
                     ibo.putInt(idx);
                 }
@@ -192,7 +192,7 @@ public final class CgGltfLoader {
         } else {
             // Non-indexed: sequential index buffer
             indexCount = vertexCount;
-            ibo = CgBufferUtils.createByteBuffer($$$);
+            ibo = CgBufferUtils.createByteBuffer(indexCount * 2);
             for (int i = 0; i < indexCount; i++) {
                 ibo.putShort((short) i);
             }

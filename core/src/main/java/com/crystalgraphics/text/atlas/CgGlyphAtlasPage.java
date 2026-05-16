@@ -92,11 +92,11 @@ public class CgGlyphAtlasPage {
 
         if (!skipGlUpload) {
             if (type == CgGlyphAtlas.Type.BITMAP) {
-                this.uploadBuffer = CgBufferUtils.createByteBuffer($$$);
+                this.uploadBuffer = CgBufferUtils.createByteBuffer(INITIAL_UPLOAD_BUFFER_SIZE);
             } else if (type == CgGlyphAtlas.Type.MTSDF) {
-                this.msdfUploadBuffer = CgBufferUtils.createFloatBuffer($$$);
+                this.msdfUploadBuffer = CgBufferUtils.createFloatBuffer(64 * 64 * 4);
             } else {
-                this.msdfUploadBuffer = CgBufferUtils.createFloatBuffer($$$);
+                this.msdfUploadBuffer = CgBufferUtils.createFloatBuffer(64 * 64 * 4);
             }
         }
     }
@@ -124,16 +124,16 @@ public class CgGlyphAtlasPage {
             CgGL.glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
             CgGL.glTexImage2D(GL_TEXTURE_2D, 0, GL_R8,
                     pageWidth, pageHeight, 0,
-                    GL_RED, GL_UNSIGNED_BYTE, CgBufferUtils.createByteBuffer($$$));
+                    GL_RED, GL_UNSIGNED_BYTE, CgBufferUtils.createByteBuffer(pageWidth * pageHeight));
             CgGL.glPixelStorei(GL_UNPACK_ALIGNMENT, prevAlignment);
         } else if (type == CgGlyphAtlas.Type.MTSDF) {
             CgGL.glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F,
                     pageWidth, pageHeight, 0,
-                    GL_RGBA, GL_FLOAT, CgBufferUtils.createFloatBuffer($$$));
+                    GL_RGBA, GL_FLOAT, CgBufferUtils.createFloatBuffer(pageWidth * pageHeight * 4));
         } else {
             CgGL.glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F,
                     pageWidth, pageHeight, 0,
-                    GL_RGB, GL_FLOAT, CgBufferUtils.createFloatBuffer($$$));
+                    GL_RGB, GL_FLOAT, CgBufferUtils.createFloatBuffer(pageWidth * pageHeight * 3));
         }
 
         if (type == CgGlyphAtlas.Type.BITMAP) {
@@ -355,7 +355,7 @@ public class CgGlyphAtlasPage {
         }
         int required = w * h;
         if (uploadBuffer == null || uploadBuffer.capacity() < required) {
-            uploadBuffer = CgBufferUtils.createByteBuffer($$$);
+            uploadBuffer = CgBufferUtils.createByteBuffer(required);
         }
         uploadBuffer.clear();
         uploadBuffer.put(data, 0, required);
@@ -378,7 +378,7 @@ public class CgGlyphAtlasPage {
         int glFormat = (type == CgGlyphAtlas.Type.MTSDF) ? GL_RGBA : GL_RGB;
         int required = w * h * channels;
         if (msdfUploadBuffer == null || msdfUploadBuffer.capacity() < required) {
-            msdfUploadBuffer = CgBufferUtils.createFloatBuffer($$$);
+            msdfUploadBuffer = CgBufferUtils.createFloatBuffer(required);
         }
         msdfUploadBuffer.clear();
         msdfUploadBuffer.put(data, 0, required);

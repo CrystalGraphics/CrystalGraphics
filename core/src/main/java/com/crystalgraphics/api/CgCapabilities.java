@@ -2,14 +2,16 @@ package com.crystalgraphics.api;
 
 import lombok.AccessLevel;
 import lombok.Getter;
-import org.lwjgl.opengl.*;
+import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.gl.CgGLContext;
 
 /**
  * Immutable snapshot of OpenGL capabilities relevant to CrystalGraphics,
  * detected once per GL context lifecycle.
  *
- * <p>This class queries the LWJGL 2.9 {@link ContextCapabilities} at
- * construction time (via the static {@link #detect()} factory method)
+ * <p>This class is populated at construction time (via the static {@link #detect()} factory
+ * method) by reading flags from the platform's {@link CgGLContext} implementation,
  * and exposes boolean flags and integer limits used by the framebuffer
  * and shader abstraction layers to select the appropriate backend.</p>
  *
@@ -37,6 +39,9 @@ public final class CgCapabilities {
     private static String cachedParsedVersionKey   = null;
     private static int[]  cachedParsedVersionValue = null;
     private static volatile CgCapabilities cachedCaps = null;
+    private static CgGLContext glContext;
+
+    public static void init(CgGLContext ctx) { glContext = ctx; }
 
     // ─────────────────────────────────────────────────────────────────────────
     //  Enums
@@ -66,7 +71,7 @@ public final class CgCapabilities {
      * that lack SSBO. NONE means the material pipeline cannot be used on this context.</p>
      */
     public enum ShaderBufferPath {
-        /** Core OpenGL 4.3 SSBO via {@code org.lwjgl.opengl.GL43}. */
+        /** Core OpenGL 4.3 SSBO. */
         SSBO_GL43,
         /** {@code GL_ARB_shader_storage_buffer_object} SSBO when core 4.3 is absent. */
         SSBO_ARB,
@@ -148,6 +153,10 @@ public final class CgCapabilities {
     /** Whether {@code GL_ARB_gpu_shader_int64} (OpenGL 4.0+) is supported. */
     boolean gpuShaderInt64;
 
+    // ── Sampler objects ───────────────────────────────────────────────────────
+    /** Whether {@code GL_ARB_sampler_objects} is supported (core in GL 3.3). */
+    boolean hasSamplerObjects;
+
     // ─────────────────────────────────────────────────────────────────────────
     //  Constructor
     // ─────────────────────────────────────────────────────────────────────────
@@ -176,6 +185,7 @@ public final class CgCapabilities {
     public static CgCapabilities detect() {
         CgCapabilities local = cachedCaps;
         if (local == null) {
+            if (glContext == null) glContext = CgPlatform.capabilities();
             local = detectUncached();
             cachedCaps = local;
         }
@@ -207,48 +217,51 @@ public final class CgCapabilities {
      * @see #detect()
      */
     public static CgCapabilities detectUncached() {
-        ContextCapabilities gl = GLContext.getCapabilities();
+        CgGLContext gl = glContext;
+        if (gl == null) throw new IllegalStateException("CgGLContext not initialised — call CgCapabilities.init() before detect()");
         CgCapabilities caps = new CgCapabilities();
 
         // ── Framebuffer backends ──────────────────────────────────────────────
-        caps.coreFbo = gl.OpenGL30;
-        caps.arbFbo  = gl.GL_ARB_framebuffer_object;
-        caps.extFbo  = gl.GL_EXT_framebuffer_object;
+        caps.coreFbo = gl.OpenGL30();
+        caps.arbFbo  = gl.GL_ARB_framebuffer_object();
+        caps.extFbo  = gl.GL_EXT_framebuffer_object();
 
         // ── Shader backends ───────────────────────────────────────────────────
-        caps.coreShaders = gl.OpenGL20;
-        caps.arbShaders  = gl.GL_ARB_shader_objects;
+        caps.coreShaders = gl.OpenGL20();
+        caps.arbShaders  = gl.GL_ARB_shader_objects();
 
         // ── Render limits ─────────────────────────────────────────────────────
-        caps.maxDrawBuffers      = caps.coreShaders ? GL11.glGetInteger(GL20.GL_MAX_DRAW_BUFFERS) : 1;
-        caps.maxTextureUnits     = caps.coreShaders ? GL11.glGetInteger(GL20.GL_MAX_TEXTURE_IMAGE_UNITS) : GL11.glGetInteger(GL13.GL_MAX_TEXTURE_UNITS);
-        caps.maxTextureSize      = GL11.glGetInteger(GL11.GL_MAX_TEXTURE_SIZE);
-        caps.maxRenderbufferSize = (caps.coreFbo || caps.arbFbo) ? GL11.glGetInteger(0x84E8 /* GL_MAX_RENDERBUFFER_SIZE */) : caps.maxTextureSize;
-        caps.maxColorAttachments = (caps.coreFbo || caps.arbFbo) ? GL11.glGetInteger(0x8CDF /* GL_MAX_COLOR_ATTACHMENTS */) : 1;
+        caps.maxDrawBuffers      = caps.coreShaders ? CgGL.glGetInteger(CgGL.GL_MAX_DRAW_BUFFERS) : 1;
+        caps.maxTextureUnits     = caps.coreShaders ? CgGL.glGetInteger(CgGL.GL_MAX_TEXTURE_IMAGE_UNITS) : CgGL.glGetInteger(CgGL.GL_MAX_TEXTURE_UNITS);
+        caps.maxTextureSize      = CgGL.glGetInteger(CgGL.GL_MAX_TEXTURE_SIZE);
+        caps.maxRenderbufferSize = (caps.coreFbo || caps.arbFbo) ? CgGL.glGetInteger(0x84E8 /* GL_MAX_RENDERBUFFER_SIZE */) : caps.maxTextureSize;
+        caps.maxColorAttachments = (caps.coreFbo || caps.arbFbo) ? CgGL.glGetInteger(0x8CDF /* GL_MAX_COLOR_ATTACHMENTS */) : 1;
 
         // ── Depth / Stencil ───────────────────────────────────────────────────
         caps.depth              = true; // universally available on target hardware
         caps.stencil            = true;
-        caps.packedDepthStencil = gl.GL_EXT_packed_depth_stencil || gl.GL_NV_packed_depth_stencil;
-        caps.depthTexture       = gl.GL_ARB_depth_texture;
+        caps.packedDepthStencil = gl.GL_EXT_packed_depth_stencil() || gl.GL_NV_packed_depth_stencil();
+        caps.depthTexture       = gl.GL_ARB_depth_texture();
 
         // ── Buffer / VAO ──────────────────────────────────────────────────────
-        caps.hasVao            = gl.OpenGL30 || gl.GL_ARB_vertex_array_object;
-        caps.hasMapBufferRange = gl.OpenGL30 || gl.GL_ARB_map_buffer_range;
-        caps.arbSync           = gl.OpenGL32 || gl.GL_ARB_sync;
+        caps.hasVao            = gl.OpenGL30() || gl.GL_ARB_vertex_array_object();
+        caps.hasMapBufferRange = gl.OpenGL30() || gl.GL_ARB_map_buffer_range();
+        caps.arbSync           = gl.OpenGL32() || gl.GL_ARB_sync();
 
         // ── Instancing ────────────────────────────────────────────────────────
-        caps.drawInstanced       = gl.OpenGL31 || gl.GL_ARB_draw_instanced;
-        caps.vertexAttribDivisor = gl.OpenGL33 || gl.GL_ARB_instanced_arrays;
-        caps.maxVertexAttribs    = caps.coreShaders ? GL11.glGetInteger(GL20.GL_MAX_VERTEX_ATTRIBS) : 0;
+        caps.drawInstanced       = gl.OpenGL31() || gl.GL_ARB_draw_instanced();
+        caps.vertexAttribDivisor = gl.OpenGL33() || gl.GL_ARB_instanced_arrays();
+        caps.maxVertexAttribs    = caps.coreShaders ? CgGL.glGetInteger(CgGL.GL_MAX_VERTEX_ATTRIBS) : 0;
 
         // ── Shader buffers (waterfall: GL43 SSBO > ARB SSBO > TBO > NONE) ────
-        caps.shaderStorageBufferCore   = gl.OpenGL43;
-        caps.shaderStorageBufferArb    = !caps.shaderStorageBufferCore && gl.GL_ARB_shader_storage_buffer_object;
-        caps.textureBufferMaterialPath = !caps.shaderStorageBufferCore && !caps.shaderStorageBufferArb && gl.OpenGL33;
-        caps.maxSsboBindings           = (caps.shaderStorageBufferCore || caps.shaderStorageBufferArb) ? GL11.glGetInteger(GL43.GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS) : 0;
-        caps.maxUniformBufferBindings  = caps.coreShaders ? GL11.glGetInteger(GL31.GL_MAX_UNIFORM_BUFFER_BINDINGS) : 0;
-        caps.gpuShaderInt64            = gl.OpenGL40;
+        caps.shaderStorageBufferCore   = gl.OpenGL43();
+        caps.shaderStorageBufferArb    = !caps.shaderStorageBufferCore && gl.GL_ARB_shader_storage_buffer_object();
+        caps.textureBufferMaterialPath = !caps.shaderStorageBufferCore && !caps.shaderStorageBufferArb && gl.OpenGL33();
+        caps.maxSsboBindings           = (caps.shaderStorageBufferCore || caps.shaderStorageBufferArb) ? CgGL.glGetInteger(CgGL.GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS) : 0;
+        caps.maxUniformBufferBindings  = caps.coreShaders ? CgGL.glGetInteger(CgGL.GL_MAX_UNIFORM_BUFFER_BINDINGS) : 0;
+        caps.gpuShaderInt64            = gl.OpenGL40();
+
+        caps.hasSamplerObjects = gl.OpenGL33() || gl.GL_ARB_sampler_objects();
 
         if      (caps.shaderStorageBufferCore)   caps.shaderBufferPath = ShaderBufferPath.SSBO_GL43;
         else if (caps.shaderStorageBufferArb)    caps.shaderBufferPath = ShaderBufferPath.SSBO_ARB;
@@ -319,6 +332,9 @@ public final class CgCapabilities {
     /** Returns the preferred shader buffer path for the current GL context. */
     public ShaderBufferPath shaderBufferPath() { return shaderBufferPath; }
 
+    /** Returns whether {@code GL_ARB_sampler_objects} (or core GL 3.3) is supported. */
+    public boolean isSamplerObjectsSupported() { return hasSamplerObjects; }
+
     // ─────────────────────────────────────────────────────────────────────────
     //  GL version string parsing
     // ─────────────────────────────────────────────────────────────────────────
@@ -327,7 +343,7 @@ public final class CgCapabilities {
      * Parses a raw GL version string (e.g. {@code "4.6.0 NVIDIA 537.58"}) into a
      * {@code {major, minor}} array.
      *
-     * <p>Accepts the raw string returned by {@code GL11.glGetString(GL11.GL_VERSION)}
+     * <p>Accepts the raw string returned by {@code CgGL.glGetString(CgGL.GL_VERSION)}
      * as well as simple {@code "major.minor"} expressions.  The parser locates the first
      * occurrence of a {@code digit(s).digit(s)} pattern in the input, ignoring any prefix
      * text (e.g. {@code "OpenGL ES"}) and any trailing driver/vendor information.</p>
