@@ -1,5 +1,6 @@
 package com.crystalgraphics.gl.material.parse;
 
+
 import com.crystalgraphics.api.state.CgAlphaState;
 import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgColorMask;
@@ -7,15 +8,12 @@ import com.crystalgraphics.api.state.CgCullState;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.state.CgStencilState;
-
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL14;
-
+import com.crystalgraphics.platform.gl.CgGL;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
 
 /**
  * Parses the {@code RenderState { }} block from a CrystalShader {@code .shader} source
@@ -56,16 +54,16 @@ final class CgRenderStateParser {
         boolean depthTestKwSeen   = false;
         boolean depthWriteKwSeen  = false;
         boolean depthTestEnabled  = true;            // default: depth test on
-        int     depthFunc         = GL11.GL_LEQUAL;  // default compare function
+        int     depthFunc         = CgGL.GL_LEQUAL;  // default compare function
         boolean depthWriteEnabled = true;            // default: writes enabled
 
         // Blend — Blend sets src/dst; BlendEquation can override the equation independently
         boolean blendKwSeen  = false;
         boolean blendEnabled = false;
-        int srcRgb   = GL11.GL_ONE,  dstRgb   = GL11.GL_ZERO;
-        int srcAlpha = GL11.GL_ONE,  dstAlpha = GL11.GL_ZERO;
-        int blendEqRgb   = GL14.GL_FUNC_ADD;
-        int blendEqAlpha = GL14.GL_FUNC_ADD;
+        int srcRgb   = CgGL.GL_ONE,  dstRgb   = CgGL.GL_ZERO;
+        int srcAlpha = CgGL.GL_ONE,  dstAlpha = CgGL.GL_ZERO;
+        int blendEqRgb   = CgGL.GL_FUNC_ADD;
+        int blendEqAlpha = CgGL.GL_FUNC_ADD;
         boolean equationKwSeen = false;
 
         int i = 0;
@@ -115,8 +113,8 @@ final class CgRenderStateParser {
                     if ("off".equals(firstTok.toLowerCase(Locale.ROOT))) {
                         // Blend OFF — disabled, reset to one/zero
                         blendEnabled = false;
-                        srcRgb   = GL11.GL_ONE;  dstRgb   = GL11.GL_ZERO;
-                        srcAlpha = GL11.GL_ONE;  dstAlpha = GL11.GL_ZERO;
+                        srcRgb   = CgGL.GL_ONE;  dstRgb   = CgGL.GL_ZERO;
+                        srcAlpha = CgGL.GL_ONE;  dstAlpha = CgGL.GL_ZERO;
                     } else {
                         // Blend srcFactor dstFactor
                         int src = CgShaderKeywords.BLEND_FACTORS.parse(firstTok, "Blend src factor");
@@ -154,7 +152,7 @@ final class CgRenderStateParser {
                     String val = requireToken(toks, i++, "Cull", resourcePath);
                     int face   = CgShaderKeywords.CULL_MODES.parse(val, "Cull");
                     builder.cull(face == 0        ? CgCullState.NONE
-                               : face == GL11.GL_BACK ? CgCullState.BACK
+                               : face == CgGL.GL_BACK ? CgCullState.BACK
                                : CgCullState.FRONT);
                     break;
                 }
@@ -244,10 +242,10 @@ final class CgRenderStateParser {
         int ref      = 0;
         int readMask = 0xFF;
         int writeMask= 0xFF;
-        int compFunc = GL11.GL_ALWAYS;
-        int passOp   = GL11.GL_KEEP;
-        int failOp   = GL11.GL_KEEP;
-        int zfailOp  = GL11.GL_KEEP;
+        int compFunc = CgGL.GL_ALWAYS;
+        int passOp   = CgGL.GL_KEEP;
+        int failOp   = CgGL.GL_KEEP;
+        int zfailOp  = CgGL.GL_KEEP;
 
         int i = start;
         while (i < toks.size()) {

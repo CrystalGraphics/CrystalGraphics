@@ -4,7 +4,7 @@ import com.crystalgraphics.api.CgCapabilities;
 
 import com.crystalgraphics.api.buffer.CgObjectBuffer;
 import lombok.Getter;
-import org.lwjgl.opengl.GL15;
+import com.crystalgraphics.platform.gl.CgGL;
 
 import java.nio.ByteBuffer;
 
@@ -86,7 +86,7 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
      * @param capacityBytes initial allocated size in bytes
      */
     protected CgStreamBuffer(int target, int capacityBytes) {
-        this.glBuffer = GL15.glGenBuffers();
+        this.glBuffer = CgGL.glGenBuffers();
         this.target = target;
         this.capacityBytes = capacityBytes;
         this.writeOffset = 0;
@@ -144,12 +144,12 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
 
     /** Binds this buffer's GL object to its {@link #target}. */
     public void bind() {
-        GL15.glBindBuffer(target, glBuffer);
+        CgGL.glBindBuffer(target, glBuffer);
     }
 
     /** Unbinds by binding {@code 0} to {@link #target}. */
     public void unbind() {
-        GL15.glBindBuffer(target, 0);
+        CgGL.glBindBuffer(target, 0);
     }
 
     /**
@@ -186,7 +186,7 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
      * @param capacityBytes initial GL buffer capacity in bytes
      */
     public static CgStreamBuffer create(int capacityBytes) {
-        return create(GL15.GL_ARRAY_BUFFER, capacityBytes);
+        return create(CgGL.GL_ARRAY_BUFFER, capacityBytes);
     }
     
     /**

@@ -1,18 +1,15 @@
 package com.crystalgraphics.gl.texture;
 
+
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
-import com.crystalgraphics.util.io.CgTextureIO;
+import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.util.io.CgTextureIO.CgImageData;
-
-import lombok.Getter;
-
-import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL12;
-
+import com.crystalgraphics.util.io.CgTextureIO;
 import java.nio.ByteBuffer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import lombok.Getter;
 
 /**
  * 3D GL texture (target {@code GL_TEXTURE_3D = 0x806F}). Single concrete impl
@@ -92,13 +89,13 @@ public final class CgTexture3D extends CgTextureAbstract {
         int w = images[0].width();
         int h = images[0].height();
         int uploadPixelFormat = pixelFormatForChannels(images[0].channels());
-        GL11.glBindTexture(GL_TEXTURE_3D, textureId);
+        CgGL.glBindTexture(GL_TEXTURE_3D, textureId);
         try {
-            GL12.glTexImage3D(GL_TEXTURE_3D, 0,
+            CgGL.glTexImage3D(GL_TEXTURE_3D, 0,
                     spec.getGlInternalFormat(), w, h, images.length, 0,
                     uploadPixelFormat, GL_UNSIGNED_BYTE, (ByteBuffer) null);
             for (int i = 0; i < images.length; i++) {
-                GL12.glTexSubImage3D(GL_TEXTURE_3D, 0,
+                CgGL.glTexSubImage3D(GL_TEXTURE_3D, 0,
                         0, 0, i, w, h, 1,
                         uploadPixelFormat, GL_UNSIGNED_BYTE, images[i].pixels());
             }
@@ -107,7 +104,7 @@ public final class CgTexture3D extends CgTextureAbstract {
             this.width = w;
             this.height = h;
         } finally {
-            GL11.glBindTexture(GL_TEXTURE_3D, 0);
+            CgGL.glBindTexture(GL_TEXTURE_3D, 0);
         }
     }
 
@@ -130,7 +127,7 @@ public final class CgTexture3D extends CgTextureAbstract {
 
     private static CgTexture3D doCreate(CgTextureSpec spec, String[] paths, String[] sourcePaths) {
         CgImageData[] images = loadAndValidate(paths);
-        int id = GL11.glGenTextures();
+        int id = CgGL.glGenTextures();
         CgTexture3D tex = new CgTexture3D(id, images[0].width(), images[0].height(), paths.length, spec, sourcePaths);
         try {
             tex.upload(images);

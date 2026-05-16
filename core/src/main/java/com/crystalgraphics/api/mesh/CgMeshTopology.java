@@ -1,7 +1,7 @@
 package com.crystalgraphics.api.mesh;
 
 import com.crystalgraphics.gl.mesh.CgMesh;
-import org.lwjgl.opengl.GL11;
+import com.crystalgraphics.platform.gl.CgGL;
 
 /**
  * Primitive topology for mesh rendering.
@@ -11,11 +11,11 @@ import org.lwjgl.opengl.GL11;
  * to avoid scattering raw GL constants through mesh code.</p>
  */
 public enum CgMeshTopology {
-    TRIANGLES(GL11.GL_TRIANGLES),
-    TRIANGLE_STRIP(GL11.GL_TRIANGLE_STRIP),
-    LINES(GL11.GL_LINES),
-    LINE_STRIP(GL11.GL_LINE_STRIP),
-    POINTS(GL11.GL_POINTS);
+    TRIANGLES(CgGL.GL_TRIANGLES),
+    TRIANGLE_STRIP(CgGL.GL_TRIANGLE_STRIP),
+    LINES(CgGL.GL_LINES),
+    LINE_STRIP(CgGL.GL_LINE_STRIP),
+    POINTS(CgGL.GL_POINTS);
 
     private final int glMode;
 
@@ -23,7 +23,7 @@ public enum CgMeshTopology {
         this.glMode = glMode;
     }
 
-    /** Returns the OpenGL draw mode constant (e.g. {@code GL11.GL_TRIANGLES}). */
+    /** Returns the OpenGL draw mode constant (e.g. {@code CgGL.GL_TRIANGLES}). */
     public int getGlMode() {
         return glMode;
     }

@@ -4,7 +4,7 @@ import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 
 import org.joml.*;
-import org.lwjgl.opengl.GL11;
+import com.crystalgraphics.platform.gl.CgGL;
 
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
@@ -266,7 +266,7 @@ public interface CgShaderBindings {
      * @return this instance for chaining
      */
     default CgShaderBindings sampler(String name, int unit, int glTextureId) {
-        return sampler(name, unit, glTextureId, GL11.GL_TEXTURE_2D);
+        return sampler(name, unit, glTextureId, CgGL.GL_TEXTURE_2D);
     }
     /**
      * Records a sampler binding for a raw GL texture id with an explicit

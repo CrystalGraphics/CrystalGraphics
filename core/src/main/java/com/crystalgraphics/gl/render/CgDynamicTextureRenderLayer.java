@@ -1,14 +1,13 @@
 package com.crystalgraphics.gl.render;
 
+
 import com.crystalgraphics.api.shader.CgShader;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
-
 import com.crystalgraphics.gl.buffer.staging.CgStagingBuffer;
 import com.crystalgraphics.gl.buffer.staging.CgVertexWriter;
+import com.crystalgraphics.platform.gl.CgGL;
 import org.joml.Matrix4f;
-import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL13;
 
 /**
  * Dynamic-texture render layer that auto-flushes when the active texture changes.
@@ -111,16 +110,16 @@ public final class CgDynamicTextureRenderLayer implements CgLayer {
         if (!begun || !renderer.isDirty()) return;
         if (shader != null) shader.bind();
         if (activeTextureId >= 0) {
-            GL13.glActiveTexture(GL13.GL_TEXTURE0);
-            GL11.glBindTexture(GL11.GL_TEXTURE_2D, activeTextureId);
+            CgGL.glActiveTexture(CgGL.GL_TEXTURE0);
+            CgGL.glBindTexture(CgGL.GL_TEXTURE_2D, activeTextureId);
         }
         state.apply();
         renderer.flush();
         state.clear();
         if (shader != null) shader.unbind();
         if (activeTextureId >= 0) {
-            GL13.glActiveTexture(GL13.GL_TEXTURE0);
-            GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+            CgGL.glActiveTexture(CgGL.GL_TEXTURE0);
+            CgGL.glBindTexture(CgGL.GL_TEXTURE_2D, 0);
         }
     }
 

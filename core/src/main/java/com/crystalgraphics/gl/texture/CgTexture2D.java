@@ -6,7 +6,7 @@ import com.crystalgraphics.util.io.CgTextureIO;
 import com.crystalgraphics.util.io.CgTextureIO.CgImageData;
 
 import lombok.Getter;
-import org.lwjgl.opengl.GL11;
+import com.crystalgraphics.platform.gl.CgGL;
 
 import java.nio.ByteBuffer;
 import java.util.logging.Level;
@@ -107,9 +107,9 @@ public final class CgTexture2D extends CgTextureAbstract {
      */
     public void upload(CgImageData image) {
         checkNotDeleted();
-        GL11.glBindTexture(GL_TEXTURE_2D, textureId);
+        CgGL.glBindTexture(GL_TEXTURE_2D, textureId);
         try {
-            GL11.glTexImage2D(GL_TEXTURE_2D, 0,
+            CgGL.glTexImage2D(GL_TEXTURE_2D, 0,
                     spec.getGlInternalFormat(), image.width(), image.height(), 0,
                     pixelFormatForChannels(image.channels()), GL_UNSIGNED_BYTE, image.pixels());
             spec.applyTo(GL_TEXTURE_2D);
@@ -117,7 +117,7 @@ public final class CgTexture2D extends CgTextureAbstract {
             this.width = image.width();
             this.height = image.height();
         } finally {
-            GL11.glBindTexture(GL_TEXTURE_2D, 0);
+            CgGL.glBindTexture(GL_TEXTURE_2D, 0);
         }
     }
 
@@ -134,9 +134,9 @@ public final class CgTexture2D extends CgTextureAbstract {
      */
     public void upload(int width, int height, ByteBuffer pixels, int pixelFormat, int pixelType) {
         checkNotDeleted();
-        GL11.glBindTexture(GL_TEXTURE_2D, textureId);
+        CgGL.glBindTexture(GL_TEXTURE_2D, textureId);
         try {
-            GL11.glTexImage2D(GL_TEXTURE_2D, 0,
+            CgGL.glTexImage2D(GL_TEXTURE_2D, 0,
                     spec.getGlInternalFormat(), width, height, 0,
                     pixelFormat, pixelType, pixels);
             spec.applyTo(GL_TEXTURE_2D);
@@ -144,7 +144,7 @@ public final class CgTexture2D extends CgTextureAbstract {
             this.width = width;
             this.height = height;
         } finally {
-            GL11.glBindTexture(GL_TEXTURE_2D, 0);
+            CgGL.glBindTexture(GL_TEXTURE_2D, 0);
         }
     }
 
@@ -177,13 +177,13 @@ public final class CgTexture2D extends CgTextureAbstract {
     private static CgTexture2D doCreate(int width, int height, ByteBuffer pixels,
                                         int pixelFormat, int pixelType,
                                         CgTextureSpec spec, String sourcePath) {
-        int id = GL11.glGenTextures();
+        int id = CgGL.glGenTextures();
         CgTexture2D tex = new CgTexture2D(id, width, height, spec, sourcePath);
         try {
             tex.upload(width, height, pixels, pixelFormat, pixelType);
             return tex;
         } catch (RuntimeException e) {
-            GL11.glDeleteTextures(id);
+            CgGL.glDeleteTextures(id);
             throw e;
         }
     }

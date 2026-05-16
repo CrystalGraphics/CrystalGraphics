@@ -1,20 +1,17 @@
 package com.crystalgraphics.gl.material;
 
-import com.crystalgraphics.api.material.CgRenderQueue;
-import com.crystalgraphics.api.state.CgColorMask;
-import com.crystalgraphics.api.state.CgBlendState;
-import com.crystalgraphics.api.state.CgRenderState;
 
+import com.crystalgraphics.api.material.CgRenderQueue;
+import com.crystalgraphics.api.state.CgBlendState;
+import com.crystalgraphics.api.state.CgColorMask;
+import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.state.CgStencilState;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
 import com.crystalgraphics.gl.material.parse.CgShaderParseException;
 import com.crystalgraphics.gl.material.parse.CgShaderParser;
-import org.junit.Test;
-import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL14;
-
+import com.crystalgraphics.platform.gl.CgGL;
 import java.util.List;
-
+import org.junit.Test;
 import static org.junit.Assert.*;
 
 /**
@@ -73,7 +70,7 @@ public class CgShaderParserRenderStateTest {
         CgParsedShader p = parseWithRS("RenderState { DepthTest LESS }\n");
         int func = rs(p).getDepth().compareFunc();
         System.out.println("✓ depthTest_LESS: compareFunc=" + func);
-        assertEquals(GL11.GL_LESS, func);
+        assertEquals(CgGL.GL_LESS, func);
         assertTrue(rs(p).getDepth().test());
     }
 
@@ -82,7 +79,7 @@ public class CgShaderParserRenderStateTest {
         CgParsedShader p = parseWithRS("RenderState { DepthTest lequal }\n");
         int func = rs(p).getDepth().compareFunc();
         System.out.println("✓ depthTest_lowercase_lequal: compareFunc=" + func);
-        assertEquals(GL11.GL_LEQUAL, func);
+        assertEquals(CgGL.GL_LEQUAL, func);
     }
 
     @Test
@@ -90,21 +87,21 @@ public class CgShaderParserRenderStateTest {
         CgParsedShader p = parseWithRS("RenderState { DepthTest Less }\n");
         int func = rs(p).getDepth().compareFunc();
         System.out.println("✓ depthTest_mixedCase_Less: compareFunc=" + func);
-        assertEquals(GL11.GL_LESS, func);
+        assertEquals(CgGL.GL_LESS, func);
     }
 
     @Test
     public void depthTest_ALWAYS() {
         CgParsedShader p = parseWithRS("RenderState { DepthTest ALWAYS }\n");
         System.out.println("✓ depthTest_ALWAYS: compareFunc=" + rs(p).getDepth().compareFunc());
-        assertEquals(GL11.GL_ALWAYS, rs(p).getDepth().compareFunc());
+        assertEquals(CgGL.GL_ALWAYS, rs(p).getDepth().compareFunc());
     }
 
     @Test
     public void depthTest_NEVER() {
         CgParsedShader p = parseWithRS("RenderState { DepthTest NEVER }\n");
         System.out.println("✓ depthTest_NEVER: compareFunc=" + rs(p).getDepth().compareFunc());
-        assertEquals(GL11.GL_NEVER, rs(p).getDepth().compareFunc());
+        assertEquals(CgGL.GL_NEVER, rs(p).getDepth().compareFunc());
     }
 
     @Test
@@ -181,8 +178,8 @@ public class CgShaderParserRenderStateTest {
         System.out.println("✓ blend_SRC_ALPHA_ONE_MINUS_SRC_ALPHA: enabled=" + b.enabled()
                 + " srcRgb=" + b.srcRgb() + " dstRgb=" + b.dstRgb());
         assertTrue(b.enabled());
-        assertEquals(GL11.GL_SRC_ALPHA, b.srcRgb());
-        assertEquals(GL11.GL_ONE_MINUS_SRC_ALPHA, b.dstRgb());
+        assertEquals(CgGL.GL_SRC_ALPHA, b.srcRgb());
+        assertEquals(CgGL.GL_ONE_MINUS_SRC_ALPHA, b.dstRgb());
     }
 
     @Test
@@ -191,8 +188,8 @@ public class CgShaderParserRenderStateTest {
         CgBlendState b = rs(p).getBlend();
         System.out.println("✓ blend_ONE_ZERO: enabled=" + b.enabled() + " srcRgb=" + b.srcRgb() + " dstRgb=" + b.dstRgb());
         assertTrue(b.enabled());
-        assertEquals(GL11.GL_ONE, b.srcRgb());
-        assertEquals(GL11.GL_ZERO, b.dstRgb());
+        assertEquals(CgGL.GL_ONE, b.srcRgb());
+        assertEquals(CgGL.GL_ZERO, b.dstRgb());
     }
 
     @Test
@@ -239,8 +236,8 @@ public class CgShaderParserRenderStateTest {
         CgBlendState b = rs(p).getBlend();
         System.out.println("✓ blend_SRC_ALPHA_SATURATE: srcRgb=" + b.srcRgb());
         assertTrue(b.enabled());
-        assertEquals(GL11.GL_SRC_ALPHA_SATURATE, b.srcRgb());
-        assertEquals(GL11.GL_ONE, b.dstRgb());
+        assertEquals(CgGL.GL_SRC_ALPHA_SATURATE, b.srcRgb());
+        assertEquals(CgGL.GL_ONE, b.dstRgb());
     }
 
     // ── Group 4 — BlendEquation ───────────────────────────────────────────────
@@ -250,35 +247,35 @@ public class CgShaderParserRenderStateTest {
         CgParsedShader p = parseWithRS("RenderState { BlendEquation ADD }\n");
         int eq = rs(p).getBlend().blendEquationRgb();
         System.out.println("✓ blendEquation_ADD: blendEquationRgb=" + eq);
-        assertEquals(GL14.GL_FUNC_ADD, eq);
+        assertEquals(CgGL.GL_FUNC_ADD, eq);
     }
 
     @Test
     public void blendEquation_lowercase_add() {
         CgParsedShader p = parseWithRS("RenderState { BlendEquation add }\n");
         System.out.println("✓ blendEquation_lowercase_add: blendEquationRgb=" + rs(p).getBlend().blendEquationRgb());
-        assertEquals(GL14.GL_FUNC_ADD, rs(p).getBlend().blendEquationRgb());
+        assertEquals(CgGL.GL_FUNC_ADD, rs(p).getBlend().blendEquationRgb());
     }
 
     @Test
     public void blendEquation_REV_SUB() {
         CgParsedShader p = parseWithRS("RenderState { BlendEquation REV_SUB }\n");
         System.out.println("✓ blendEquation_REV_SUB: blendEquationRgb=" + rs(p).getBlend().blendEquationRgb());
-        assertEquals(GL14.GL_FUNC_REVERSE_SUBTRACT, rs(p).getBlend().blendEquationRgb());
+        assertEquals(CgGL.GL_FUNC_REVERSE_SUBTRACT, rs(p).getBlend().blendEquationRgb());
     }
 
     @Test
     public void blendEquation_mrtIndex_0_ADD() {
         CgParsedShader p = parseWithRS("RenderState { BlendEquation 0 ADD }\n");
         System.out.println("✓ blendEquation_mrtIndex_0_ADD: blendEquationRgb=" + rs(p).getBlend().blendEquationRgb());
-        assertEquals(GL14.GL_FUNC_ADD, rs(p).getBlend().blendEquationRgb());
+        assertEquals(CgGL.GL_FUNC_ADD, rs(p).getBlend().blendEquationRgb());
     }
 
     @Test
     public void blendEquation_mrtIndex_1_MAX() {
         CgParsedShader p = parseWithRS("RenderState { BlendEquation 1 MAX }\n");
         System.out.println("✓ blendEquation_mrtIndex_1_MAX: blendEquationRgb=" + rs(p).getBlend().blendEquationRgb());
-        assertEquals(GL14.GL_MAX, rs(p).getBlend().blendEquationRgb());
+        assertEquals(CgGL.GL_MAX, rs(p).getBlend().blendEquationRgb());
     }
 
     @Test
@@ -300,14 +297,14 @@ public class CgShaderParserRenderStateTest {
         CgParsedShader p = parseWithRS("RenderState { Cull BACK }\n");
         System.out.println("✓ cull_BACK: face=" + rs(p).getCull().face() + " enabled=" + rs(p).getCull().enabled());
         assertTrue(rs(p).getCull().enabled());
-        assertEquals(GL11.GL_BACK, rs(p).getCull().face());
+        assertEquals(CgGL.GL_BACK, rs(p).getCull().face());
     }
 
     @Test
     public void cull_FRONT() {
         CgParsedShader p = parseWithRS("RenderState { Cull FRONT }\n");
         System.out.println("✓ cull_FRONT: face=" + rs(p).getCull().face());
-        assertEquals(GL11.GL_FRONT, rs(p).getCull().face());
+        assertEquals(CgGL.GL_FRONT, rs(p).getCull().face());
     }
 
     @Test
@@ -328,7 +325,7 @@ public class CgShaderParserRenderStateTest {
     public void cull_Back_mixedCase() {
         CgParsedShader p = parseWithRS("RenderState { Cull Back }\n");
         System.out.println("✓ cull_Back_mixedCase: face=" + rs(p).getCull().face());
-        assertEquals(GL11.GL_BACK, rs(p).getCull().face());
+        assertEquals(CgGL.GL_BACK, rs(p).getCull().face());
     }
 
     @Test
@@ -352,7 +349,7 @@ public class CgShaderParserRenderStateTest {
                 + " func=" + rs(p).getAlpha().func()
                 + " cutoff=" + rs(p).getAlpha().cutoff());
         assertTrue(rs(p).getAlpha().enabled());
-        assertEquals(GL11.GL_GREATER, rs(p).getAlpha().func());
+        assertEquals(CgGL.GL_GREATER, rs(p).getAlpha().func());
         assertEquals(0.5f, rs(p).getAlpha().cutoff(), 0.0001f);
     }
 
@@ -360,7 +357,7 @@ public class CgShaderParserRenderStateTest {
     public void alphaTest_LEQUAL_0_0() {
         CgParsedShader p = parseWithRS("RenderState { AlphaTest LEQUAL 0.0 }\n");
         System.out.println("✓ alphaTest_LEQUAL_0_0: func=" + rs(p).getAlpha().func());
-        assertEquals(GL11.GL_LEQUAL, rs(p).getAlpha().func());
+        assertEquals(CgGL.GL_LEQUAL, rs(p).getAlpha().func());
         assertEquals(0.0f, rs(p).getAlpha().cutoff(), 0.0001f);
     }
 
@@ -368,7 +365,7 @@ public class CgShaderParserRenderStateTest {
     public void alphaTest_lowercase_greater() {
         CgParsedShader p = parseWithRS("RenderState { AlphaTest greater 0.5 }\n");
         System.out.println("✓ alphaTest_lowercase_greater: func=" + rs(p).getAlpha().func());
-        assertEquals(GL11.GL_GREATER, rs(p).getAlpha().func());
+        assertEquals(CgGL.GL_GREATER, rs(p).getAlpha().func());
     }
 
     @Test
@@ -494,10 +491,10 @@ public class CgShaderParserRenderStateTest {
                 + " comp=" + ss.compFunc() + " pass=" + ss.passOp());
         assertTrue(ss.enabled());
         assertEquals(1, ss.ref());
-        assertEquals(GL11.GL_ALWAYS, ss.compFunc());
-        assertEquals(GL11.GL_REPLACE, ss.passOp());
-        assertEquals(GL11.GL_KEEP, ss.failOp());
-        assertEquals(GL11.GL_KEEP, ss.zfailOp());
+        assertEquals(CgGL.GL_ALWAYS, ss.compFunc());
+        assertEquals(CgGL.GL_REPLACE, ss.passOp());
+        assertEquals(CgGL.GL_KEEP, ss.failOp());
+        assertEquals(CgGL.GL_KEEP, ss.zfailOp());
         assertEquals(255, ss.readMask());
         assertEquals(255, ss.writeMask());
     }
@@ -509,18 +506,18 @@ public class CgShaderParserRenderStateTest {
         System.out.println("✓ stencil_partial_defaults: enabled=" + ss.enabled() + " ref=" + ss.ref() + " comp=" + ss.compFunc());
         assertTrue(ss.enabled());
         assertEquals(0, ss.ref());
-        assertEquals(GL11.GL_EQUAL, ss.compFunc());
-        assertEquals(GL11.GL_KEEP, ss.passOp());
+        assertEquals(CgGL.GL_EQUAL, ss.compFunc());
+        assertEquals(CgGL.GL_KEEP, ss.passOp());
         // defaults for unspecified ops
-        assertEquals(GL11.GL_KEEP, ss.failOp());
-        assertEquals(GL11.GL_KEEP, ss.zfailOp());
+        assertEquals(CgGL.GL_KEEP, ss.failOp());
+        assertEquals(CgGL.GL_KEEP, ss.zfailOp());
     }
 
     @Test
     public void stencil_caseInsensitive_always() {
         CgParsedShader p = parseWithRS("RenderState { Stencil { Comp always } }\n");
         System.out.println("✓ stencil_caseInsensitive_always: comp=" + rs(p).getStencil().compFunc());
-        assertEquals(GL11.GL_ALWAYS, rs(p).getStencil().compFunc());
+        assertEquals(CgGL.GL_ALWAYS, rs(p).getStencil().compFunc());
     }
 
     @Test
@@ -533,14 +530,14 @@ public class CgShaderParserRenderStateTest {
     public void stencil_INCR_SAT() {
         CgParsedShader p = parseWithRS("RenderState { Stencil { Pass INCR_SAT } }\n");
         System.out.println("✓ stencil_INCR_SAT: passOp=" + rs(p).getStencil().passOp());
-        assertEquals(GL11.GL_INCR, rs(p).getStencil().passOp());
+        assertEquals(CgGL.GL_INCR, rs(p).getStencil().passOp());
     }
 
     @Test
     public void stencil_INCR_WRAP() {
         CgParsedShader p = parseWithRS("RenderState { Stencil { Pass INCR_WRAP } }\n");
         System.out.println("✓ stencil_INCR_WRAP: passOp=" + rs(p).getStencil().passOp());
-        assertEquals(GL14.GL_INCR_WRAP, rs(p).getStencil().passOp());
+        assertEquals(CgGL.GL_INCR_WRAP, rs(p).getStencil().passOp());
     }
 
     @Test
@@ -841,12 +838,12 @@ public class CgShaderParserRenderStateTest {
                 + " alpha.enabled=" + rs2.getAlpha().enabled()
                 + " stencil.enabled=" + rs2.getStencil().enabled()
                 + " masks=" + rs2.getColorMasks().size());
-        assertEquals(GL11.GL_LESS, rs2.getDepth().compareFunc());
+        assertEquals(CgGL.GL_LESS, rs2.getDepth().compareFunc());
         assertFalse(rs2.getDepth().write());
         assertTrue(rs2.getBlend().enabled());
-        assertEquals(GL11.GL_FRONT, rs2.getCull().face());
+        assertEquals(CgGL.GL_FRONT, rs2.getCull().face());
         assertTrue(rs2.getAlpha().enabled());
-        assertEquals(GL11.GL_GREATER, rs2.getAlpha().func());
+        assertEquals(CgGL.GL_GREATER, rs2.getAlpha().func());
         assertEquals(0.5f, rs2.getAlpha().cutoff(), 0.001f);
         assertFalse(rs2.getColorMasks().isEmpty());
         assertTrue(rs2.getStencil().enabled());
@@ -858,9 +855,9 @@ public class CgShaderParserRenderStateTest {
         System.out.println("✓ combined_sameLine: depth.func=" + rs(p).getDepth().compareFunc()
                 + " write=" + rs(p).getDepth().write()
                 + " cull.face=" + rs(p).getCull().face());
-        assertEquals(GL11.GL_LESS, rs(p).getDepth().compareFunc());
+        assertEquals(CgGL.GL_LESS, rs(p).getDepth().compareFunc());
         assertFalse(rs(p).getDepth().write());
-        assertEquals(GL11.GL_FRONT, rs(p).getCull().face());
+        assertEquals(CgGL.GL_FRONT, rs(p).getCull().face());
     }
 
     @Test
@@ -879,6 +876,6 @@ public class CgShaderParserRenderStateTest {
                     "}\n";
         CgParsedShader p = parseWithRS(rs);
         System.out.println("✓ renderState_withComments_commentsIgnored: depth.func=" + rs(p).getDepth().compareFunc());
-        assertEquals(GL11.GL_LESS, rs(p).getDepth().compareFunc());
+        assertEquals(CgGL.GL_LESS, rs(p).getDepth().compareFunc());
     }
 }

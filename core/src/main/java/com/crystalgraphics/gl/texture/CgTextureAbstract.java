@@ -5,7 +5,7 @@ import com.crystalgraphics.api.texture.CgTextureSpec;
 
 import lombok.Getter;
 
-import org.lwjgl.opengl.*;
+import com.crystalgraphics.platform.gl.CgGL;
 
 /**
  * Shared base for all owned GL texture implementations.
@@ -80,7 +80,7 @@ public abstract class CgTextureAbstract implements CgTexture {
     @Override
     public void delete() {
         if (deleted) return;
-        GL11.glDeleteTextures(textureId);
+        CgGL.glDeleteTextures(textureId);
         textureId = 0;
         deleted = true;
     }

@@ -1,9 +1,8 @@
 package com.crystalgraphics.api.state;
 
+
+import com.crystalgraphics.platform.gl.CgGL;
 import com.github.bsideup.jabel.Desugar;
-import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL14;
-import org.lwjgl.opengl.GL20;
 
 /**
  * Immutable description of the blend state for a render pass.
@@ -26,44 +25,44 @@ public record CgBlendState(boolean enabled, int srcRgb, int dstRgb, int srcAlpha
 
     /** No blending. {@code glDisable(GL_BLEND)} is issued. */
     public static final CgBlendState DISABLED = new CgBlendState(false,
-            GL11.GL_ONE, GL11.GL_ZERO, GL11.GL_ONE, GL11.GL_ZERO,
-            GL14.GL_FUNC_ADD, GL14.GL_FUNC_ADD);
+            CgGL.GL_ONE, CgGL.GL_ZERO, CgGL.GL_ONE, CgGL.GL_ZERO,
+            CgGL.GL_FUNC_ADD, CgGL.GL_FUNC_ADD);
 
     /**
      * Standard alpha blending: {@code SRC_ALPHA / ONE_MINUS_SRC_ALPHA}.
      * Used by UI text, panels, and most 2D content.
      */
     public static final CgBlendState ALPHA = new CgBlendState(true,
-            GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
-            GL11.GL_ONE, GL11.GL_ONE_MINUS_SRC_ALPHA,
-            GL14.GL_FUNC_ADD, GL14.GL_FUNC_ADD);
+            CgGL.GL_SRC_ALPHA, CgGL.GL_ONE_MINUS_SRC_ALPHA,
+            CgGL.GL_ONE, CgGL.GL_ONE_MINUS_SRC_ALPHA,
+            CgGL.GL_FUNC_ADD, CgGL.GL_FUNC_ADD);
 
     /**
      * Pre-multiplied alpha blending: {@code ONE / ONE_MINUS_SRC_ALPHA}.
      * Used when textures are stored with pre-multiplied alpha.
      */
     public static final CgBlendState PREMULTIPLIED_ALPHA = new CgBlendState(true,
-            GL11.GL_ONE, GL11.GL_ONE_MINUS_SRC_ALPHA,
-            GL11.GL_ONE, GL11.GL_ONE_MINUS_SRC_ALPHA,
-            GL14.GL_FUNC_ADD, GL14.GL_FUNC_ADD);
+            CgGL.GL_ONE, CgGL.GL_ONE_MINUS_SRC_ALPHA,
+            CgGL.GL_ONE, CgGL.GL_ONE_MINUS_SRC_ALPHA,
+            CgGL.GL_FUNC_ADD, CgGL.GL_FUNC_ADD);
 
     /**
      * Additive blending: {@code SRC_ALPHA / ONE}.
      * Used for glow effects, particle effects, etc.
      */
     public static final CgBlendState ADDITIVE = new CgBlendState(true,
-            GL11.GL_SRC_ALPHA, GL11.GL_ONE,
-            GL11.GL_ONE, GL11.GL_ONE,
-            GL14.GL_FUNC_ADD, GL14.GL_FUNC_ADD);
+            CgGL.GL_SRC_ALPHA, CgGL.GL_ONE,
+            CgGL.GL_ONE, CgGL.GL_ONE,
+            CgGL.GL_FUNC_ADD, CgGL.GL_FUNC_ADD);
 
     /**
      * Multiply blending: {@code DST_COLOR / ZERO}.
      * Darkens the destination by multiplying it with the source colour.
      */
     public static final CgBlendState MULTIPLY = new CgBlendState(true,
-            GL11.GL_DST_COLOR, GL11.GL_ZERO,
-            GL11.GL_DST_ALPHA, GL11.GL_ZERO,
-            GL14.GL_FUNC_ADD, GL14.GL_FUNC_ADD);
+            CgGL.GL_DST_COLOR, CgGL.GL_ZERO,
+            CgGL.GL_DST_ALPHA, CgGL.GL_ZERO,
+            CgGL.GL_FUNC_ADD, CgGL.GL_FUNC_ADD);
 
     /**
      * Creates a blend state with separate RGB and alpha factors and default
@@ -78,7 +77,7 @@ public record CgBlendState(boolean enabled, int srcRgb, int dstRgb, int srcAlpha
      */
     public static CgBlendState of(boolean enabled, int srcRgb, int dstRgb, int srcAlpha, int dstAlpha) {
         return new CgBlendState(enabled, srcRgb, dstRgb, srcAlpha, dstAlpha,
-                GL14.GL_FUNC_ADD, GL14.GL_FUNC_ADD);
+                CgGL.GL_FUNC_ADD, CgGL.GL_FUNC_ADD);
     }
 
     /**
@@ -91,12 +90,12 @@ public record CgBlendState(boolean enabled, int srcRgb, int dstRgb, int srcAlpha
      */
     public void apply() {
         if (!enabled) {
-            GL11.glDisable(GL11.GL_BLEND);
+            CgGL.glDisable(CgGL.GL_BLEND);
             return;
         }
-        GL11.glEnable(GL11.GL_BLEND);
-        GL14.glBlendFuncSeparate(srcRgb, dstRgb, srcAlpha, dstAlpha);
-        GL20.glBlendEquationSeparate(blendEquationRgb, blendEquationAlpha);
+        CgGL.glEnable(CgGL.GL_BLEND);
+        CgGL.glBlendFuncSeparate(srcRgb, dstRgb, srcAlpha, dstAlpha);
+        CgGL.glBlendEquationSeparate(blendEquationRgb, blendEquationAlpha);
     }
 
     /**
@@ -104,8 +103,8 @@ public record CgBlendState(boolean enabled, int srcRgb, int dstRgb, int srcAlpha
      * {@code GL_FUNC_ADD}. For use in {@code CgRenderState.clear()}.
      */
     public static void clearToDefault() {
-        GL11.glDisable(GL11.GL_BLEND);
-        GL20.glBlendEquationSeparate(GL14.GL_FUNC_ADD, GL14.GL_FUNC_ADD);
+        CgGL.glDisable(CgGL.GL_BLEND);
+        CgGL.glBlendEquationSeparate(CgGL.GL_FUNC_ADD, CgGL.GL_FUNC_ADD);
     }
 
     @Override

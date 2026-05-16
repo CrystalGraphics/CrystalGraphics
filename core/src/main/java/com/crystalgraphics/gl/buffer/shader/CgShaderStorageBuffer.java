@@ -1,11 +1,10 @@
 package com.crystalgraphics.gl.buffer.shader;
 
-import com.crystalgraphics.api.CgCapabilities;
+
 import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.CgCapabilities;
 import com.crystalgraphics.api.shader.CgShader;
-import org.lwjgl.opengl.GL30;
-import org.lwjgl.opengl.GL31;
-import org.lwjgl.opengl.GL43;
+import com.crystalgraphics.platform.gl.CgGL;
 
 /**
  * SSBO-backed {@link CgShaderBuffer} implementation.
@@ -39,18 +38,18 @@ public final class CgShaderStorageBuffer extends CgShaderBuffer {
      */
     CgShaderStorageBuffer(String name, CgBufferFormat format,
                           CgCapabilities.ShaderBufferPath path, int bindingLocation) {
-        super(name, format, GL43.GL_SHADER_STORAGE_BUFFER, bindingLocation);
+        super(name, format, CgGL.GL_SHADER_STORAGE_BUFFER, bindingLocation);
         this.path = path;
     }
 
     @Override
     protected void bindInternal() {
-        GL30.glBindBufferBase(GL43.GL_SHADER_STORAGE_BUFFER, bindingLocation, getGlBufferId());
+        CgGL.glBindBufferBase(CgGL.GL_SHADER_STORAGE_BUFFER, bindingLocation, getGlBufferId());
     }
 
     @Override
     protected void unbindInternal() {
-        GL30.glBindBufferBase(GL43.GL_SHADER_STORAGE_BUFFER, bindingLocation, 0);
+        CgGL.glBindBufferBase(CgGL.GL_SHADER_STORAGE_BUFFER, bindingLocation, 0);
     }
 
     /**
@@ -61,9 +60,9 @@ public final class CgShaderStorageBuffer extends CgShaderBuffer {
     @Override
     public void wireShader(CgShader shader) {
         int programId = shader.getProgram().getId();
-        int idx = GL43.glGetProgramResourceIndex(programId, GL43.GL_SHADER_STORAGE_BLOCK, getName());
-        if (idx != GL31.GL_INVALID_INDEX) {
-            GL43.glShaderStorageBlockBinding(programId, idx, bindingLocation);
+        int idx = CgGL.glGetProgramResourceIndex(programId, CgGL.GL_SHADER_STORAGE_BLOCK, getName());
+        if (idx != CgGL.GL_INVALID_INDEX) {
+            CgGL.glShaderStorageBlockBinding(programId, idx, bindingLocation);
         }
     }
 }

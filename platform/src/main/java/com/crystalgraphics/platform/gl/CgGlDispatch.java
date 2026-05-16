@@ -213,7 +213,7 @@ public abstract class CgGlDispatch {
     // -------------------------------------------------------------------------
 
     /** @return the mapped buffer, or {@code null} if mapping fails */
-    public abstract ByteBuffer glMapBufferRange(int target, long offset, long length, int access);
+    public abstract ByteBuffer glMapBufferRange(int target, long offset, long length, int access, ByteBuffer oldBuffer);
     public abstract boolean glUnmapBuffer(int target);
     public abstract void glFlushMappedBufferRange(int target, long offset, long length);
 

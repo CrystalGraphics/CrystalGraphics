@@ -601,8 +601,8 @@ public final class Lwjgl2GlDispatch extends CgGlDispatch {
     // -------------------------------------------------------------------------
 
     @Override
-    public ByteBuffer glMapBufferRange(int target, long offset, long length, int access) {
-        return GL30.glMapBufferRange(target, offset, length, access, null);
+    public ByteBuffer glMapBufferRange(int target, long offset, long length, int access, ByteBuffer oldBuffer) {
+        return GL30.glMapBufferRange(target, offset, length, access, oldBuffer);
     }
 
     @Override

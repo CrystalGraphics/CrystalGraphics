@@ -1,11 +1,11 @@
 package com.crystalgraphics.gl.buffer.shader;
 
-import com.crystalgraphics.api.CgBindingPoints;
+
 import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.shader.CgShader;
 import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
-import org.lwjgl.opengl.GL30;
-import org.lwjgl.opengl.GL31;
+import com.crystalgraphics.platform.gl.CgGL;
 
 /**
  * UBO-backed {@link CgShaderBuffer} for per-frame uniform data.
@@ -59,7 +59,7 @@ public final class CgUniformBuffer extends CgShaderBuffer {
      * @param bindingLocation the GL binding slot to use
      */
     public CgUniformBuffer(String name, CgBufferFormat format, int bindingLocation) {
-        super(name, format, GL31.GL_UNIFORM_BUFFER, bindingLocation);
+        super(name, format, CgGL.GL_UNIFORM_BUFFER, bindingLocation);
     }
 
     /**
@@ -123,12 +123,12 @@ public final class CgUniformBuffer extends CgShaderBuffer {
 
     @Override
     protected void bindInternal() {
-        GL30.glBindBufferBase(GL31.GL_UNIFORM_BUFFER, bindingLocation, getGlBufferId());
+        CgGL.glBindBufferBase(CgGL.GL_UNIFORM_BUFFER, bindingLocation, getGlBufferId());
     }
 
     @Override
     protected void unbindInternal() {
-        GL30.glBindBufferBase(GL31.GL_UNIFORM_BUFFER, bindingLocation, 0);
+        CgGL.glBindBufferBase(CgGL.GL_UNIFORM_BUFFER, bindingLocation, 0);
     }
 
     /**
@@ -143,9 +143,9 @@ public final class CgUniformBuffer extends CgShaderBuffer {
     @Override
     public void wireShader(CgShader shader) {
         int programId = shader.getProgram().getId();
-        int idx = GL31.glGetUniformBlockIndex(programId, getName());
-        if (idx != GL31.GL_INVALID_INDEX) {
-            GL31.glUniformBlockBinding(programId, idx, bindingLocation);
+        int idx = CgGL.glGetUniformBlockIndex(programId, getName());
+        if (idx != CgGL.GL_INVALID_INDEX) {
+            CgGL.glUniformBlockBinding(programId, idx, bindingLocation);
         }
     }
 }

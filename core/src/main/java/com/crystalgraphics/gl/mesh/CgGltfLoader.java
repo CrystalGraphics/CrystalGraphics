@@ -13,7 +13,7 @@ import com.crystalgraphics.api.mesh.CgMeshData;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gl.buffer.staging.CgVertexWriter;
-import org.lwjgl.BufferUtils;
+import com.crystalgraphics.util.CgBufferUtils;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -135,7 +135,7 @@ public final class CgGltfLoader {
         boolean wantsNormal = flags.wantsNormal;
 
         int vertexCount = positions.length / 3;
-        ByteBuffer vbo = BufferUtils.createByteBuffer(vertexCount * format.getStride());
+        ByteBuffer vbo = CgBufferUtils.createByteBuffer($$$);
         CgVertexWriter writer = CgVertexWriter.forBuffer(vbo, format);
 
         for (int i = 0; i < vertexCount; i++) {
@@ -178,12 +178,12 @@ public final class CgGltfLoader {
                 if (idx > maxIdx) maxIdx = idx;
             }
             if (maxIdx <= 65535) {
-                ibo = BufferUtils.createByteBuffer(indexCount * 2);
+                ibo = CgBufferUtils.createByteBuffer($$$);
                 for (int idx : indices) {
                     ibo.putShort((short) idx);
                 }
             } else {
-                ibo = BufferUtils.createByteBuffer(indexCount * 4);
+                ibo = CgBufferUtils.createByteBuffer($$$);
                 for (int idx : indices) {
                     ibo.putInt(idx);
                 }
@@ -192,7 +192,7 @@ public final class CgGltfLoader {
         } else {
             // Non-indexed: sequential index buffer
             indexCount = vertexCount;
-            ibo = BufferUtils.createByteBuffer(indexCount * 2);
+            ibo = CgBufferUtils.createByteBuffer($$$);
             for (int i = 0; i < indexCount; i++) {
                 ibo.putShort((short) i);
             }

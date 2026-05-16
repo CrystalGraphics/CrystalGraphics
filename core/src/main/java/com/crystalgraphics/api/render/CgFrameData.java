@@ -35,10 +35,10 @@ import java.util.function.LongSupplier;
  */
 public final class CgFrameData {
 
-    /** World→view transform. Set from {@code GL11.glGetFloat(GL_MODELVIEW_MATRIX, buf)}. */
+    /** World→view transform. Set from {@code CgGL.glGetFloat(GL_MODELVIEW_MATRIX, buf)}. */
     public final Matrix4f viewMatrix    = new Matrix4f();
 
-    /** View→clip transform. Set from {@code GL11.glGetFloat(GL_PROJECTION_MATRIX, buf)}. */
+    /** View→clip transform. Set from {@code CgGL.glGetFloat(GL_PROJECTION_MATRIX, buf)}. */
     public final Matrix4f projMatrix    = new Matrix4f();
 
     /**

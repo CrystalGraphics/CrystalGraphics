@@ -1,7 +1,7 @@
 package com.crystalgraphics.api.state;
 
 import lombok.Getter;
-import org.lwjgl.opengl.GL11;
+import com.crystalgraphics.platform.gl.CgGL;
 
 /**
  * Reusable mutable clip rectangle for scissor operations.
@@ -55,7 +55,7 @@ public final class CgScissorRect {
      * Does NOT enable/disable {@code GL_SCISSOR_TEST} — the caller manages that.
      */
     public void applyGl() {
-        GL11.glScissor(x, y, width, height);
+        CgGL.glScissor(x, y, width, height);
     }
 
     /**

@@ -1,12 +1,11 @@
 package com.crystalgraphics.api.state;
 
-import com.github.bsideup.jabel.Desugar;
+
 import com.crystalgraphics.api.shader.CgShader;
 import com.crystalgraphics.api.shader.CgShaderProgram;
 import com.crystalgraphics.api.texture.CgTexture;
-
-import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL13;
+import com.crystalgraphics.platform.gl.CgGL;
+import com.github.bsideup.jabel.Desugar;
 
 /**
  * Texture-bind policy slot for {@link CgRenderState}.
@@ -36,7 +35,7 @@ public record CgTextureState(int target, int unit, String samplerUniform,
 
     /** No texture bound; apply/clear no-op. */
     public static CgTextureState none() {
-        return new CgTextureState(GL11.GL_TEXTURE_2D, 0, null, 0, false, false);
+        return new CgTextureState(CgGL.GL_TEXTURE_2D, 0, null, 0, false, false);
     }
 
     /**
@@ -71,8 +70,8 @@ public record CgTextureState(int target, int unit, String samplerUniform,
         int textureId = hasFixed ? fixedTextureId : overrideTextureId;
         if (samplerUniform == null || textureId < 0) return;
 
-        GL13.glActiveTexture(GL13.GL_TEXTURE0 + unit);
-        GL11.glBindTexture(target, textureId);
+        CgGL.glActiveTexture(CgGL.GL_TEXTURE0 + unit);
+        CgGL.glBindTexture(target, textureId);
 
         CgShaderProgram program = shader.getProgram();
         int loc = shader.getUniformLocation(samplerUniform);
@@ -83,8 +82,8 @@ public record CgTextureState(int target, int unit, String samplerUniform,
 
     public void clear() {
         if (samplerUniform == null) return;
-        GL13.glActiveTexture(GL13.GL_TEXTURE0 + unit);
-        GL11.glBindTexture(target, 0);
+        CgGL.glActiveTexture(CgGL.GL_TEXTURE0 + unit);
+        CgGL.glBindTexture(target, 0);
     }
 
     public boolean isDynamic() {

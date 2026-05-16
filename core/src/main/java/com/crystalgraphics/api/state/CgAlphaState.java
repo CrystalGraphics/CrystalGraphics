@@ -1,7 +1,7 @@
 package com.crystalgraphics.api.state;
 
 import com.github.bsideup.jabel.Desugar;
-import org.lwjgl.opengl.GL11;
+import com.crystalgraphics.platform.gl.CgGL;
 
 /**
  * Immutable alpha-test state slot for {@link CgRenderState}.
@@ -13,18 +13,18 @@ import org.lwjgl.opengl.GL11;
 public record CgAlphaState(boolean enabled, int func, float cutoff) {
 
     /** Alpha test disabled. {@code func} is {@code GL_ALWAYS} (unused), {@code cutoff} is 0. */
-    public static final CgAlphaState DISABLED = new CgAlphaState(false, GL11.GL_ALWAYS, 0f);
+    public static final CgAlphaState DISABLED = new CgAlphaState(false, CgGL.GL_ALWAYS, 0f);
 
     public void apply() {
         if (enabled) {
-            GL11.glEnable(GL11.GL_ALPHA_TEST);
-            GL11.glAlphaFunc(func, cutoff);
+            CgGL.glEnable(CgGL.GL_ALPHA_TEST);
+            CgGL.glAlphaFunc(func, cutoff);
         } else {
-            GL11.glDisable(GL11.GL_ALPHA_TEST);
+            CgGL.glDisable(CgGL.GL_ALPHA_TEST);
         }
     }
 
     public void clear() {
-        GL11.glDisable(GL11.GL_ALPHA_TEST);
+        CgGL.glDisable(CgGL.GL_ALPHA_TEST);
     }
 }

@@ -1,18 +1,15 @@
 package com.crystalgraphics.gl.texture;
 
+
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
-import com.crystalgraphics.util.io.CgTextureIO;
+import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.util.io.CgTextureIO.CgImageData;
-
-import lombok.Getter;
-
-import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL12;
-
+import com.crystalgraphics.util.io.CgTextureIO;
 import java.nio.ByteBuffer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import lombok.Getter;
 
 /**
  * 2D-array GL texture (target {@code GL_TEXTURE_2D_ARRAY = 0x8C1A}). Single
@@ -93,13 +90,13 @@ public final class CgTexture2DArray extends CgTextureAbstract {
         int w = images[0].width();
         int h = images[0].height();
         int uploadPixelFormat = pixelFormatForChannels(images[0].channels());
-        GL11.glBindTexture(GL_TEXTURE_2D_ARRAY, textureId);
+        CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, textureId);
         try {
-            GL12.glTexImage3D(GL_TEXTURE_2D_ARRAY, 0,
+            CgGL.glTexImage3D(GL_TEXTURE_2D_ARRAY, 0,
                     spec.getGlInternalFormat(), w, h, images.length, 0,
                     uploadPixelFormat, GL_UNSIGNED_BYTE, (ByteBuffer) null);
             for (int i = 0; i < images.length; i++) {
-                GL12.glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0,
+                CgGL.glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0,
                         0, 0, i, w, h, 1,
                         uploadPixelFormat, GL_UNSIGNED_BYTE, images[i].pixels());
             }
@@ -108,7 +105,7 @@ public final class CgTexture2DArray extends CgTextureAbstract {
             this.width = w;
             this.height = h;
         } finally {
-            GL11.glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+            CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
         }
     }
 
@@ -130,7 +127,7 @@ public final class CgTexture2DArray extends CgTextureAbstract {
 
     private static CgTexture2DArray doCreate(CgTextureSpec spec, String[] paths, String[] sourcePaths) {
         CgImageData[] images = loadAndValidate(paths);
-        int id = GL11.glGenTextures();
+        int id = CgGL.glGenTextures();
         CgTexture2DArray tex = new CgTexture2DArray(id, images[0].width(), images[0].height(), paths.length, spec, sourcePaths);
         try {
             tex.upload(images);

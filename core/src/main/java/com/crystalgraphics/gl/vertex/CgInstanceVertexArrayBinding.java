@@ -1,17 +1,14 @@
 package com.crystalgraphics.gl.vertex;
 
+
 import com.crystalgraphics.api.CgCapabilities;
 import com.crystalgraphics.api.vertex.CgAttributeFormat;
 import com.crystalgraphics.api.vertex.CgInstanceFormat;
 import com.crystalgraphics.api.vertex.CgVertexAttribute;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gl.mesh.CgMesh;
+import com.crystalgraphics.platform.gl.CgGL;
 import lombok.Getter;
-import org.lwjgl.opengl.ARBInstancedArrays;
-import org.lwjgl.opengl.GL15;
-import org.lwjgl.opengl.GL20;
-import org.lwjgl.opengl.GL33;
-import org.lwjgl.opengl.GLContext;
 
 /**
  * Instanced VAO binding keyed by (base source identity, instance source identity).
@@ -120,9 +117,9 @@ public final class CgInstanceVertexArrayBinding {
         base.getStreamBuffer().bind();
         for (int i = 0; i < baseLayout.getAttributeCount(); i++) {
             CgVertexAttribute attr = baseLayout.getAttribute(i);
-            GL20.glVertexAttribPointer(i, attr.getComponents(), attr.getType().getGlConstant(),
+            CgGL.glVertexAttribPointer(i, attr.getComponents(), attr.getType().getGlConstant(),
                     attr.isNormalized(), baseLayout.getStride(), attr.getOffset());
-            GL20.glEnableVertexAttribArray(i);
+            CgGL.glEnableVertexAttribArray(i);
             vertexAttribDivisor(i, 0);
         }
         base.getStreamBuffer().unbind();
@@ -151,25 +148,25 @@ public final class CgInstanceVertexArrayBinding {
         CgVertexArray.bind(vao);
 
         CgAttributeFormat baseLayout = mesh.getFormat();
-        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, mesh.getGlVertexBuffer());
+        CgGL.glBindBuffer(CgGL.GL_ARRAY_BUFFER, mesh.getGlVertexBuffer());
         for (int i = 0; i < baseLayout.getAttributeCount(); i++) {
             CgVertexAttribute attr = baseLayout.getAttribute(i);
-            GL20.glVertexAttribPointer(i, attr.getComponents(), attr.getType().getGlConstant(),
+            CgGL.glVertexAttribPointer(i, attr.getComponents(), attr.getType().getGlConstant(),
                     attr.isNormalized(), baseLayout.getStride(), attr.getOffset());
-            GL20.glEnableVertexAttribArray(i);
+            CgGL.glEnableVertexAttribArray(i);
             vertexAttribDivisor(i, 0);
         }
-        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+        CgGL.glBindBuffer(CgGL.GL_ARRAY_BUFFER, 0);
 
         if (mesh.getGlIndexBuffer() != 0) {
-            GL15.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, mesh.getGlIndexBuffer());
+            CgGL.glBindBuffer(CgGL.GL_ELEMENT_ARRAY_BUFFER, mesh.getGlIndexBuffer());
         }
 
         setupInstanceAttribs(baseLayout.getAttributeCount(), instance);
 
         CgVertexArray.bind(0);
         if (mesh.getGlIndexBuffer() != 0) {
-            GL15.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, 0);
+            CgGL.glBindBuffer(CgGL.GL_ELEMENT_ARRAY_BUFFER, 0);
         }
 
         return new CgInstanceVertexArrayBinding(vao, null, baseLayout, instance, true);
@@ -192,9 +189,9 @@ public final class CgInstanceVertexArrayBinding {
         for (int i = 0; i < instLayout.getAttributeCount(); i++) {
             int slot = baseCount + i;
             CgVertexAttribute attr = instLayout.getAttribute(i);
-            GL20.glVertexAttribPointer(slot, attr.getComponents(), attr.getType().getGlConstant(),
+            CgGL.glVertexAttribPointer(slot, attr.getComponents(), attr.getType().getGlConstant(),
                     attr.isNormalized(), instLayout.getStride(), attr.getOffset());
-            GL20.glEnableVertexAttribArray(slot);
+            CgGL.glEnableVertexAttribArray(slot);
             vertexAttribDivisor(slot, instance.getLayout().getDivisor());
         }
         instance.getStreamBuffer().unbind();
@@ -217,7 +214,7 @@ public final class CgInstanceVertexArrayBinding {
         baseStream.getStreamBuffer().bind();
         for (int i = 0; i < baseLayout.getAttributeCount(); i++) {
             CgVertexAttribute attr = baseLayout.getAttribute(i);
-            GL20.glVertexAttribPointer(i, attr.getComponents(), attr.getType().getGlConstant(),
+            CgGL.glVertexAttribPointer(i, attr.getComponents(), attr.getType().getGlConstant(),
                     attr.isNormalized(), baseLayout.getStride(), offset + attr.getOffset());
         }
         baseStream.getStreamBuffer().unbind();
@@ -243,7 +240,7 @@ public final class CgInstanceVertexArrayBinding {
         for (int i = 0; i < instLayout.getAttributeCount(); i++) {
             int slot = baseCount + i;
             CgVertexAttribute attr = instLayout.getAttribute(i);
-            GL20.glVertexAttribPointer(slot, attr.getComponents(), attr.getType().getGlConstant(),
+            CgGL.glVertexAttribPointer(slot, attr.getComponents(), attr.getType().getGlConstant(),
                     attr.isNormalized(), instLayout.getStride(), offset + attr.getOffset());
         }
         instanceStream.getStreamBuffer().unbind();
@@ -346,9 +343,9 @@ public final class CgInstanceVertexArrayBinding {
             useGL33 = GLContext.getCapabilities().OpenGL33;
         }
         if (useGL33) {
-            GL33.glVertexAttribDivisor(slot, divisor);
+            CgGL.glVertexAttribDivisor(slot, divisor);
         } else {
-            ARBInstancedArrays.glVertexAttribDivisorARB(slot, divisor);
+            CgGL.glVertexAttribDivisor(slot, divisor);
         }
     }
 }

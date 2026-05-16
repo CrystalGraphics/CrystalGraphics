@@ -1,8 +1,8 @@
 package com.crystalgraphics.api.state;
 
+
+import com.crystalgraphics.platform.gl.CgGL;
 import com.github.bsideup.jabel.Desugar;
-import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL30;
 
 /**
  * Immutable color-write mask state slot for {@link CgRenderState}.
@@ -41,9 +41,9 @@ public record CgColorMask(boolean r, boolean g, boolean b, boolean a, int target
 
     public void apply() {
         if (targetIndex < 0) {
-            GL11.glColorMask(r, g, b, a);
+            CgGL.glColorMask(r, g, b, a);
         } else {
-            GL30.glColorMaski(targetIndex, r, g, b, a);
+            CgGL.glColorMaski(targetIndex, r, g, b, a);
         }
     }
 
@@ -52,6 +52,6 @@ public record CgColorMask(boolean r, boolean g, boolean b, boolean a, int target
      * For use in {@code CgRenderState.clear()}.
      */
     public static void clearToDefault() {
-        GL11.glColorMask(true, true, true, true);
+        CgGL.glColorMask(true, true, true, true);
     }
 }

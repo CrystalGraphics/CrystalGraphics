@@ -5,8 +5,8 @@ import com.crystalgraphics.api.font.CgGlyphPlacement;
 import com.crystalgraphics.text.atlas.packing.CgPackingStrategy;
 import com.crystalgraphics.text.atlas.packing.PackedRect;
 
-import org.lwjgl.BufferUtils;
-import org.lwjgl.opengl.GL11;
+import com.crystalgraphics.util.CgBufferUtils;
+import com.crystalgraphics.platform.gl.CgGL;
 
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
@@ -92,11 +92,11 @@ public class CgGlyphAtlasPage {
 
         if (!skipGlUpload) {
             if (type == CgGlyphAtlas.Type.BITMAP) {
-                this.uploadBuffer = BufferUtils.createByteBuffer(INITIAL_UPLOAD_BUFFER_SIZE);
+                this.uploadBuffer = CgBufferUtils.createByteBuffer($$$);
             } else if (type == CgGlyphAtlas.Type.MTSDF) {
-                this.msdfUploadBuffer = BufferUtils.createFloatBuffer(64 * 64 * 4);
+                this.msdfUploadBuffer = CgBufferUtils.createFloatBuffer($$$);
             } else {
-                this.msdfUploadBuffer = BufferUtils.createFloatBuffer(64 * 64 * 3);
+                this.msdfUploadBuffer = CgBufferUtils.createFloatBuffer($$$);
             }
         }
     }
@@ -116,36 +116,36 @@ public class CgGlyphAtlasPage {
     public static CgGlyphAtlasPage create(int pageWidth, int pageHeight,
                                            CgGlyphAtlas.Type type, int pageIndex,
                                            CgPackingStrategy packer) {
-        int texId = GL11.glGenTextures();
-        GL11.glBindTexture(GL_TEXTURE_2D, texId);
+        int texId = CgGL.glGenTextures();
+        CgGL.glBindTexture(GL_TEXTURE_2D, texId);
 
         if (type == CgGlyphAtlas.Type.BITMAP) {
-            int prevAlignment = GL11.glGetInteger(GL_UNPACK_ALIGNMENT);
-            GL11.glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-            GL11.glTexImage2D(GL_TEXTURE_2D, 0, GL_R8,
+            int prevAlignment = CgGL.glGetInteger(GL_UNPACK_ALIGNMENT);
+            CgGL.glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+            CgGL.glTexImage2D(GL_TEXTURE_2D, 0, GL_R8,
                     pageWidth, pageHeight, 0,
-                    GL_RED, GL_UNSIGNED_BYTE, BufferUtils.createByteBuffer(pageWidth * pageHeight));
-            GL11.glPixelStorei(GL_UNPACK_ALIGNMENT, prevAlignment);
+                    GL_RED, GL_UNSIGNED_BYTE, CgBufferUtils.createByteBuffer($$$));
+            CgGL.glPixelStorei(GL_UNPACK_ALIGNMENT, prevAlignment);
         } else if (type == CgGlyphAtlas.Type.MTSDF) {
-            GL11.glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F,
+            CgGL.glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F,
                     pageWidth, pageHeight, 0,
-                    GL_RGBA, GL_FLOAT, BufferUtils.createFloatBuffer(pageWidth * pageHeight * 4));
+                    GL_RGBA, GL_FLOAT, CgBufferUtils.createFloatBuffer($$$));
         } else {
-            GL11.glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F,
+            CgGL.glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F,
                     pageWidth, pageHeight, 0,
-                    GL_RGB, GL_FLOAT, BufferUtils.createFloatBuffer(pageWidth * pageHeight * 3));
+                    GL_RGB, GL_FLOAT, CgBufferUtils.createFloatBuffer($$$));
         }
 
         if (type == CgGlyphAtlas.Type.BITMAP) {
-            GL11.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-            GL11.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            CgGL.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            CgGL.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         } else {
-            GL11.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            GL11.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            CgGL.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            CgGL.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         }
-        GL11.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        GL11.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        GL11.glBindTexture(GL_TEXTURE_2D, 0);
+        CgGL.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        CgGL.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        CgGL.glBindTexture(GL_TEXTURE_2D, 0);
 
         return new CgGlyphAtlasPage(pageIndex, pageWidth, pageHeight,
                 type, texId, false, packer);
@@ -285,7 +285,7 @@ public class CgGlyphAtlasPage {
             return;
         }
         if (!skipGlUpload) {
-            GL11.glDeleteTextures(textureId);
+            CgGL.glDeleteTextures(textureId);
         }
         textureId = 0;
         slotMap.clear();
@@ -355,19 +355,19 @@ public class CgGlyphAtlasPage {
         }
         int required = w * h;
         if (uploadBuffer == null || uploadBuffer.capacity() < required) {
-            uploadBuffer = BufferUtils.createByteBuffer(required);
+            uploadBuffer = CgBufferUtils.createByteBuffer($$$);
         }
         uploadBuffer.clear();
         uploadBuffer.put(data, 0, required);
         uploadBuffer.flip();
 
-        GL11.glBindTexture(GL_TEXTURE_2D, textureId);
-        int prevAlignment = GL11.glGetInteger(GL_UNPACK_ALIGNMENT);
-        GL11.glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        GL11.glTexSubImage2D(GL_TEXTURE_2D, 0, x, y, w, h,
+        CgGL.glBindTexture(GL_TEXTURE_2D, textureId);
+        int prevAlignment = CgGL.glGetInteger(GL_UNPACK_ALIGNMENT);
+        CgGL.glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        CgGL.glTexSubImage2D(GL_TEXTURE_2D, 0, x, y, w, h,
                 GL_RED, GL_UNSIGNED_BYTE, uploadBuffer);
-        GL11.glPixelStorei(GL_UNPACK_ALIGNMENT, prevAlignment);
-        GL11.glBindTexture(GL_TEXTURE_2D, 0);
+        CgGL.glPixelStorei(GL_UNPACK_ALIGNMENT, prevAlignment);
+        CgGL.glBindTexture(GL_TEXTURE_2D, 0);
     }
 
     private void uploadMsdf(int x, int y, int w, int h, float[] data) {
@@ -378,16 +378,16 @@ public class CgGlyphAtlasPage {
         int glFormat = (type == CgGlyphAtlas.Type.MTSDF) ? GL_RGBA : GL_RGB;
         int required = w * h * channels;
         if (msdfUploadBuffer == null || msdfUploadBuffer.capacity() < required) {
-            msdfUploadBuffer = BufferUtils.createFloatBuffer(required);
+            msdfUploadBuffer = CgBufferUtils.createFloatBuffer($$$);
         }
         msdfUploadBuffer.clear();
         msdfUploadBuffer.put(data, 0, required);
         msdfUploadBuffer.flip();
 
-        GL11.glBindTexture(GL_TEXTURE_2D, textureId);
-        GL11.glTexSubImage2D(GL_TEXTURE_2D, 0, x, y, w, h,
+        CgGL.glBindTexture(GL_TEXTURE_2D, textureId);
+        CgGL.glTexSubImage2D(GL_TEXTURE_2D, 0, x, y, w, h,
                 glFormat, GL_FLOAT, msdfUploadBuffer);
-        GL11.glBindTexture(GL_TEXTURE_2D, 0);
+        CgGL.glBindTexture(GL_TEXTURE_2D, 0);
     }
 
     private void checkNotDeleted() {

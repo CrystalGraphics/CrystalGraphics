@@ -1,16 +1,14 @@
 package com.crystalgraphics.gl.render;
 
+
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gl.buffer.CgQuadIndexBuffer;
 import com.crystalgraphics.gl.buffer.staging.CgStagingBuffer;
+import com.crystalgraphics.gl.buffer.staging.CgVertexWriter;
 import com.crystalgraphics.gl.vertex.CgVertexArray;
 import com.crystalgraphics.gl.vertex.CgVertexArrayBinding;
 import com.crystalgraphics.gl.vertex.CgVertexArrayRegistry;
-
-import com.crystalgraphics.gl.buffer.staging.CgVertexWriter;
-import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL15;
-
+import com.crystalgraphics.platform.gl.CgGL;
 import java.nio.ByteBuffer;
 
 /**
@@ -79,7 +77,6 @@ public final class CgBatchRenderer extends CgAbstractRenderer {
         if (!begun || staging.isEmpty()) return;
         if (uploadedForReplay) throw new IllegalStateException("Cannot flush() during replay — use drawUploadedRange()");
 
-
         if ((staging.vertexCount() & 3) != 0) {
             throw new IllegalStateException("CgBatchRenderer.flush() requires complete quads; staged vertex count="
                     + staging.vertexCount());
@@ -99,7 +96,7 @@ public final class CgBatchRenderer extends CgAbstractRenderer {
         binding.rebindPointersIfNeeded(dataOffset);
         CgQuadIndexBuffer.get().bindAndEnsureCapacity(quadCount);
 
-        GL11.glDrawElements(GL11.GL_TRIANGLES, quadCount * 6, GL11.GL_UNSIGNED_SHORT, 0L);
+        CgGL.glDrawElements(CgGL.GL_TRIANGLES, quadCount * 6, CgGL.GL_UNSIGNED_SHORT, 0L);
         binding.getStreamBuffer().afterSubmit();
 
         staging.reset();
@@ -114,7 +111,7 @@ public final class CgBatchRenderer extends CgAbstractRenderer {
             flush();
         }
         CgVertexArray.bind(0);
-        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0);
+        CgGL.glBindBuffer(CgGL.GL_ARRAY_BUFFER, 0);
     }
 
     @Override
@@ -195,7 +192,7 @@ public final class CgBatchRenderer extends CgAbstractRenderer {
         int indexOffset = (vtxStart / 4) * 6;
         long byteOffset = indexOffset * 2L; // GL_UNSIGNED_SHORT = 2 bytes per index
 
-        GL11.glDrawElements(GL11.GL_TRIANGLES, quadCount * 6, GL11.GL_UNSIGNED_SHORT, byteOffset);
+        CgGL.glDrawElements(CgGL.GL_TRIANGLES, quadCount * 6, CgGL.GL_UNSIGNED_SHORT, byteOffset);
     }
 
     /**

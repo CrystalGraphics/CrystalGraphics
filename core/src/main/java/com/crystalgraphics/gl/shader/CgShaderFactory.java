@@ -7,7 +7,7 @@ import com.crystalgraphics.api.shader.CgShaderProgram;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.mc.shader.CgShaderImpl;
 import com.crystalgraphics.mc.shader.CgShaderManagerImpl;
-import org.lwjgl.BufferUtils;
+import com.crystalgraphics.util.CgBufferUtils;
 
 import java.nio.FloatBuffer;
 
@@ -36,7 +36,7 @@ public final class CgShaderFactory {
      * reuses the same buffer with a smaller limit.
      */
     public static final ThreadLocal<FloatBuffer> JOML_BUFFER = 
-               ThreadLocal.withInitial(() -> BufferUtils.createFloatBuffer(16));
+               ThreadLocal.withInitial(() -> CgBufferUtils.createFloatBuffer(16));
     
     /**
      * The lazily-initialized global shader manager singleton.

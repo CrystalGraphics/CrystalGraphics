@@ -1,10 +1,9 @@
 package com.crystalgraphics.gl.framebuffer;
 
+
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.gl.state.CallFamily;
-
-import org.lwjgl.opengl.ARBFramebufferObject;
-import org.lwjgl.opengl.GL30;
+import com.crystalgraphics.platform.gl.CgGL;
 
 /**
  * Framebuffer backend that routes all GL dispatch through the
@@ -35,46 +34,46 @@ final class CgArbFrameBuffer extends CgFrameBuffer {
 
     @Override
     protected int doGenFramebuffer() {
-        return ARBFramebufferObject.glGenFramebuffers();
+        return CgGL.glGenFramebuffers();
     }
 
     @Override
     protected void deleteFramebuffer(int id) {
-        ARBFramebufferObject.glDeleteFramebuffers(id);
+        CgGL.glDeleteFramebuffers(id);
     }
 
     @Override
     protected void deleteRenderbuffer(int id) {
-        ARBFramebufferObject.glDeleteRenderbuffers(id);
+        CgGL.glDeleteRenderbuffers(id);
     }
 
     @Override
     protected void doBindFbo(int target, int fboId) {
-        ARBFramebufferObject.glBindFramebuffer(target, fboId);
+        CgGL.glBindFramebuffer(target, fboId);
     }
 
     @Override
     protected void doFramebufferTexture2D(int target, int attachmentPoint, int glTextureTarget, int texId) {
-        ARBFramebufferObject.glFramebufferTexture2D(target, attachmentPoint, glTextureTarget, texId, 0);
+        CgGL.glFramebufferTexture2D(target, attachmentPoint, glTextureTarget, texId, 0);
     }
 
     @Override
     protected void doFramebufferRenderbuffer(int target, int attachmentPoint, int rboId) {
-        ARBFramebufferObject.glFramebufferRenderbuffer(target, attachmentPoint, GL30.GL_RENDERBUFFER, rboId);
+        CgGL.glFramebufferRenderbuffer(target, attachmentPoint, CgGL.GL_RENDERBUFFER, rboId);
     }
 
     @Override
     protected int doGenRenderbuffer() {
-        return ARBFramebufferObject.glGenRenderbuffers();
+        return CgGL.glGenRenderbuffers();
     }
 
     @Override
     protected void doRenderbufferStorage(int internalFormat, int w, int h) {
-        ARBFramebufferObject.glRenderbufferStorage(GL30.GL_RENDERBUFFER, internalFormat, w, h);
+        CgGL.glRenderbufferStorage(CgGL.GL_RENDERBUFFER, internalFormat, w, h);
     }
 
     @Override
     protected int doCheckFramebufferStatus() {
-        return ARBFramebufferObject.glCheckFramebufferStatus(GL30.GL_FRAMEBUFFER);
+        return CgGL.glCheckFramebufferStatus(CgGL.GL_FRAMEBUFFER);
     }
 }

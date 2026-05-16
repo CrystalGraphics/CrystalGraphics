@@ -1,6 +1,6 @@
 package com.crystalgraphics.api.vertex;
 
-import org.lwjgl.opengl.GL11;
+import com.crystalgraphics.platform.gl.CgGL;
 
 /**
  * Enumerates the primitive data types available for vertex attributes.
@@ -10,13 +10,13 @@ import org.lwjgl.opengl.GL11;
  */
 public enum CgAttribType {
 
-    FLOAT(GL11.GL_FLOAT, 4),
-    UNSIGNED_BYTE(GL11.GL_UNSIGNED_BYTE, 1),
-    BYTE(GL11.GL_BYTE, 1),
-    SHORT(GL11.GL_SHORT, 2),
-    UNSIGNED_SHORT(GL11.GL_UNSIGNED_SHORT, 2),
-    INT(GL11.GL_INT, 4),
-    UNSIGNED_INT(GL11.GL_UNSIGNED_INT, 4);
+    FLOAT(CgGL.GL_FLOAT, 4),
+    UNSIGNED_BYTE(CgGL.GL_UNSIGNED_BYTE, 1),
+    BYTE(CgGL.GL_BYTE, 1),
+    SHORT(CgGL.GL_SHORT, 2),
+    UNSIGNED_SHORT(CgGL.GL_UNSIGNED_SHORT, 2),
+    INT(CgGL.GL_INT, 4),
+    UNSIGNED_INT(CgGL.GL_UNSIGNED_INT, 4);
 
     private final int glConstant;
     private final int byteSize;
