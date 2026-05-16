@@ -1,4 +1,4 @@
-package com.crystalgraphics.platform;
+package com.crystalgraphics.platform.gl;
 
 /**
  * Platform abstraction for OpenGL capability detection. Each platform provides

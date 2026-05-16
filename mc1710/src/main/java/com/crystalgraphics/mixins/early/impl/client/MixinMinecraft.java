@@ -1,5 +1,6 @@
 package com.crystalgraphics.mixins.early.impl.client;
 
+import com.crystalgraphics.platform.CgPlatform;
 import net.minecraft.client.Minecraft;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -18,10 +19,12 @@ public class MixinMinecraft {
 
     @Inject(method = "resize", at = @At("TAIL"))
     private void onResize(int width, int height, CallbackInfo ci) {
+        CgPlatform.lifecycle().onResize(width, height);
     }
 
     @Inject(method = "toggleFullscreen", at = @At("TAIL"))
     private void updateDisplayMode(CallbackInfo ci) {
+        CgPlatform.lifecycle().onResize(displayWidth, displayHeight);
     }
 
     @Inject(method = "refreshResources", at = @At("TAIL"))

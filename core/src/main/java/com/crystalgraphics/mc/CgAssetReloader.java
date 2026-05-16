@@ -4,10 +4,6 @@ import com.crystalgraphics.api.material.CgMaterialRegistry;
 import com.crystalgraphics.api.shader.CgShaderManager;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.gl.texture.CgTextureManager;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.resources.IResourceManager;
-import net.minecraft.client.resources.IResourceManagerReloadListener;
-import net.minecraft.client.resources.IReloadableResourceManager;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -17,26 +13,29 @@ import java.util.Set;
 
 /**
  * Unified asset reload hook that triggers texture and shader recompilation
- * whenever Minecraft's resource manager reloads (e.g. F3+T, resource pack change).
+ * whenever a resource reload is requested by the platform (e.g. F3+T, resource pack change).
  *
  * <p>Handles:</p>
  * <ul>
  *   <li>Shaders — via {@link CgShaderManager}</li>
  *   <li>Textures — via {@link CgTextureManager}</li>
+ *   <li>Materials — via {@link CgMaterialRegistry} and {@link CgMaterialShaderRegistry}</li>
  * </ul>
  *
- * <p>Registers with Minecraft's resource manager. On reload, both textures
- * and shaders are reloaded. Failures are isolated per-type.</p>
+ * <p>This is a plain static utility. The platform side ({@code ReloadService1710}) implements
+ * {@code CgReloadService} and delegates its {@code onReload()} to {@link #reload()} here.
+ * On reload, textures, shaders, and materials are all reloaded in order.
+ * Failures are isolated per-type.</p>
+ *
+ * <p>Previously this class had a {@code register()} method and a Minecraft
+ * {@code IResourceManagerReloadListener LISTENER} field. Those were MC-specific
+ * registration artifacts and have been replaced by the platform SPI.</p>
  */
 public final class CgAssetReloader {
 
     private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
 
-    private static volatile boolean registered = false;
-
     private static final Set<CgShaderManager> shaderManagers = Collections.newSetFromMap(new IdentityHashMap<>());
-
-    public static final IResourceManagerReloadListener LISTENER = resourceManager -> reload();
 
     private CgAssetReloader() {}
 
@@ -86,19 +85,6 @@ public final class CgAssetReloader {
         if (manager == null) return;
         synchronized (shaderManagers) {
             shaderManagers.add(manager);
-        }
-    }
-
-    public static void register() {
-        if (registered) return;
-
-        IResourceManager resourceManager = Minecraft.getMinecraft().getResourceManager();
-        if (resourceManager instanceof IReloadableResourceManager) {
-            ((IReloadableResourceManager) resourceManager).registerReloadListener(LISTENER);
-            registered = true;
-            LOGGER.info("CgAssetReloader registered");
-        } else {
-            LOGGER.warn("Resource manager not reloadable, CgAssetReloader not registered");
         }
     }
 }

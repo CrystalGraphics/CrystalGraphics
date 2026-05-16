@@ -1,7 +1,7 @@
 package com.crystalgraphics.gl.state;
 
 import com.crystalgraphics.gl.vertex.CgVertexArray;
-import com.crystalgraphics.platform.CgGlDispatch;
+import com.crystalgraphics.platform.gl.CgGlDispatch;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.*;
 

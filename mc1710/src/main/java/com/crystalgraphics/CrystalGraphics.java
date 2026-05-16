@@ -1,12 +1,12 @@
 package com.crystalgraphics;
 
+import com.crystalgraphics.mc.platform.PlatformService1710;
 import cpw.mods.fml.common.Mod;
 import cpw.mods.fml.common.event.FMLInitializationEvent;
 import cpw.mods.fml.common.event.FMLPostInitializationEvent;
 import cpw.mods.fml.common.event.FMLPreInitializationEvent;
 import com.crystalgraphics.api.shader.CgShaderManager;
 import com.crystalgraphics.gl.shader.CgShaderFactory;
-import com.crystalgraphics.mc.CgAssetReloader;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -51,6 +51,7 @@ public final class CrystalGraphics{
     @Mod.EventHandler
     public void onPreInit(FMLPreInitializationEvent event) {
         LOGGER.info("{}: preInit (coremod + mixins should already be active)", NAME);
+        PlatformService1710.onPreInit();
     }
 
     /**
@@ -61,14 +62,13 @@ public final class CrystalGraphics{
     @Mod.EventHandler
     public void onInit(FMLInitializationEvent event) {
         LOGGER.info("{}: init", NAME);
-
+        PlatformService1710.onInit();
+        
         // Aggregate validation of all mod OpenGL requirements registered during pre-init.
         // On dedicated server this is a no-op (returns immediately).
         // On client, throws a CustomModLoadingErrorDisplayException if any mod's
         // minimum OpenGL requirement exceeds the detected driver version.
         CrystalGraphicsVersion.processAllRequirements();
-        
-        CgAssetReloader.register();
     }
 
     /**
@@ -79,22 +79,6 @@ public final class CrystalGraphics{
     @Mod.EventHandler
     public void onPostInit(FMLPostInitializationEvent event) {
         LOGGER.info("{}: postInit", NAME);
-    }
-    
-    
-    /**
-     * Returns the global {@link CgShaderManager} instance.
-     *
-     * <p>The shader manager is initialized on the first render tick after the
-     * GL context is available.  Calling this method before that point will
-     * throw an {@link IllegalStateException}.</p>
-     *
-     * @return the initialized shader manager
-     * @throws IllegalStateException if called before the GL context is available
-     *                               and the first render tick has fired
-     */
-    public static CgShaderManager getShaderManager() {
-        return CgShaderFactory.SHADER_MANAGER;
     }
 
 }

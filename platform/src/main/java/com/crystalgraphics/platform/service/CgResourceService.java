@@ -1,4 +1,4 @@
-package com.crystalgraphics.platform;
+package com.crystalgraphics.platform.service;
 
 import java.io.InputStream;
 
@@ -9,19 +9,11 @@ import java.io.InputStream;
  */
 public interface CgResourceService {
     /**
-     * Load a UTF-8 text resource by domain and path.
+     * Open a raw stream for the resource at {@code domain:path}.
+     * Returns {@code null} if not found. Caller must close the stream.
      *
      * @param domain the resource domain (e.g. "crystalgraphics", "mymod")
      * @param path   the resource path within the domain (e.g. "shaders/terrain.shader")
-     * @return the file contents as a UTF-8 string, or {@code null} if not found
-     */
-    String loadText(String domain, String path);
-
-    /**
-     * Open a raw input stream for a resource. Caller is responsible for closing the stream.
-     *
-     * @param domain the resource domain
-     * @param path   the resource path within the domain
      * @return an open {@link InputStream}, or {@code null} if not found
      */
     InputStream openStream(String domain, String path);

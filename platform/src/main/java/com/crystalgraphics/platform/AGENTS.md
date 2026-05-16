@@ -11,14 +11,14 @@ GL harness, future ports). The `core/` module only imports from this package —
 
 | File | Kind | What it owns |
 |---|---|---|
-| `CgFrameCallback.java` | `@FunctionalInterface` | Per-frame callback type; fired before CG render pass |
-| `CgResourceService.java` | Interface | Asset loading (text + raw streams) |
-| `CgRenderingService.java` | Interface | Viewport dimensions + frame callback registration |
-| `CgLifecycleService.java` | Interface | GL context init / destroy / resize callbacks |
-| `CgReloadService.java` | Interface | Hot-reload (F3+T) callback registration |
+| `CgResourceService.java` | Interface | Asset loading — single `openStream` method |
+| `CgRenderingService.java` | Interface | Viewport dimensions + direct-call frame hook (`onFrameBegin`) |
+| `CgLifecycleService.java` | Interface | GL context init / destroy / resize — direct call contract |
+| `CgReloadService.java` | Interface | Hot-reload (F3+T) — direct call contract (`onReload`) |
 | `CgCapabilityProbe.java` | Interface | GL capability detection |
 | `CgGlDispatch.java` | Abstract class (singleton) | All raw GL calls |
-| `CgPlatformRegistry.java` | Final utility class | Central registry; wires all 6 services |
+| `CgPlatform.java` | Final utility class | Central registry; wires all 6 services |
+| `CgPlatformService.java` | Interface | Bundle contract; groups all 6 services into one object |
 
 ---
 
@@ -47,39 +47,27 @@ stencil, alpha, polygon mode, color mask).
 
 ---
 
-## `CgPlatformRegistry` — Central registry
+## `CgPlatform` — Central registry
 
-All 6 services are registered atomically via `register(...)`. The registry must be called
-**exactly once** during platform init before any `core/` code runs.
+All 6 services are registered atomically via `register(CgPlatformService)`. The registry must be
+called **exactly once** during platform init before any `core/` code runs.
 
-### `orNull()` vs strict getters
+The preferred registration path is `CgPlatform.register(new PlatformService1710())` — one
+object, compiler-enforced completeness. The old 6-arg `register(gl, caps, res, rendering,
+lifecycle, reload)` overload still exists but is `@Deprecated`; it delegates to the bundle path.
 
-Several services expose **two getter variants**:
+### Getter variants
 
-| Getter | Behaviour | Use case |
-|---|---|---|
-| `glOrNull()` | Returns `null` pre-registration | Early-boot classpath paths in `CgIO.openStream` |
-| `gl()` | Throws `IllegalStateException` | Any post-init code path |
-| `capabilitiesOrNull()` | Returns `null` pre-registration | `CgCapabilities` early bootstrap |
-| `capabilities()` | Throws `IllegalStateException` | Post-init capability checks |
-| `resourcesOrNull()` | Returns `null` pre-registration | `CgIO.loadSource` fallback before platform init |
-| `resources()` | Throws `IllegalStateException` | Post-init resource loads |
-
-`rendering()`, `lifecycle()`, `reload()` only have strict getters — those services are never
-needed before platform registration.
-
-### Why NOT `ServiceLoader`
-
-FML's classloader in MC 1.7.10 makes `ServiceLoader` unreliable: provider JARs are not always
-on the correct classloader at the time `ServiceLoader.load()` is called during FML preInit. The
-direct argument pattern avoids classloader races entirely and is explicit about registration order.
+`resources()` returns `null` pre-registration (safe for `CgIO.openStream` classpath fallback).
+All other getters (`gl()`, `capabilities()`, `rendering()`, `lifecycle()`, `reload()`) throw
+`IllegalStateException` before registration.
 
 ---
 
 ## `CgCapabilityProbe`
 
 Replaces the LWJGL2-coupled `CgCapabilities.detect()` in `core/`. The probe is called once via
-`probe()` after context creation, then `core/` queries it through `CgPlatformRegistry.capabilities()`.
+`probe()` after context creation, then `core/` queries it through `CgPlatform.capabilities()`.
 
 Capability surface mirrors the existing `CgCapabilities` query surface:
 `isCoreFboSupported()`, `isArbFboSupported()`, `isExtFboSupported()`, `isVaoSupported()`,
@@ -89,19 +77,28 @@ Capability surface mirrors the existing `CgCapabilities` query surface:
 
 ## `CgResourceService`
 
-Replaces `IResourceManager` coupling in `CgIO`. The null-returning `resourcesOrNull()` path
-allows `CgIO.loadSource` to fall back to classpath loading during early boot (e.g., before
-Minecraft's resource manager is initialised). Methods return `null` on not-found — never throw.
+Single method: `openStream(String domain, String path)`. Returns `null` on not-found — never
+throws. Replaces `IResourceManager` coupling in `CgIO`. The null-returning `resources()` path
+allows `CgIO.openStream` to fall back to classpath loading during early boot (e.g., before
+Minecraft's resource manager is initialised).
 
 ---
 
 ## `CgLifecycleService` and `CgRenderingService`
 
-- **`CgLifecycleService`** — replaces `CgGraphicsLifecycle`'s direct Forge/Mixin coupling.
-  All callbacks fire on the GL thread. Context init fires after capabilities have been probed;
-  destroy fires before the context is torn down; resize fires on fullscreen toggle.
-- **`CgRenderingService`** — replaces `CgRenderHook`'s Mixin coupling. The `registerFrameCallback`
-  method is the canonical way for `core/` to hook into the per-frame draw cycle.
+Both use a **direct call contract** — the platform implementation calls the methods directly,
+no `register*Callback` indirection.
+
+- **`CgLifecycleService`** — `onContextInit(w, h)`, `onContextDestroy()`, `onResize(w, h)`.
+  All methods fire on the GL thread.
+- **`CgRenderingService`** — `onFrameBegin(partialTick)` called each frame; `getViewportWidth()`
+  and `getViewportHeight()` for viewport dimensions.
+
+## `CgReloadService`
+
+Direct call contract — single method `onReload()`. No callback registration. The platform
+bridge (`ReloadService1710.attachToResourceManager()`) wires MC's reload event to call
+`CgPlatform.reload().onReload()` directly.
 
 ---
 

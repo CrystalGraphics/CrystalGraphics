@@ -1,4 +1,6 @@
-package com.crystalgraphics.platform;
+package com.crystalgraphics.platform.gl;
+
+import com.crystalgraphics.platform.CgPlatform;
 
 import java.nio.IntBuffer;
 
@@ -30,12 +32,12 @@ public abstract class CgGlDispatch {
     public static CgGlDispatch get() {
         if (instance == null) {
             throw new IllegalStateException(
-                "CgGlDispatch: no dispatch registered. Call CgPlatformRegistry.register() during init.");
+                "CgGlDispatch: no dispatch registered. Call CgPlatform.register() during init.");
         }
         return instance;
     }
 
-    /** Registers the active dispatch. Called internally by {@link CgPlatformRegistry#register}. */
+    /** Registers the active dispatch. Called internally by {@link CgPlatform#register}. */
     public static void setInstance(CgGlDispatch dispatch) {
         instance = dispatch;
     }

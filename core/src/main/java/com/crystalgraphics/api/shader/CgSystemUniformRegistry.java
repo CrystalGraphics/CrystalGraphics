@@ -1,17 +1,12 @@
-package com.crystalgraphics.mc.shader;
+package com.crystalgraphics.api.shader;
 
-import com.crystalgraphics.api.shader.CgShader;
-import com.crystalgraphics.api.shader.CgUniformInjector;
-import net.minecraft.client.Minecraft;
-
+import com.crystalgraphics.mc.shader.CgShaderImpl;
+import com.crystalgraphics.platform.CgPlatform;
+import com.github.bsideup.jabel.Desugar;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.LinkedHashMap;
-import java.util.List;
+import java.util.*;
 
 /**
  * Global singleton registry for per-uniform shader injectors that apply to all shaders.
@@ -119,7 +114,7 @@ public final class CgSystemUniformRegistry {
             int loc = shader.getUniformLocation(name);
             if (loc >= 0)
                 shader.getProgram()
-                      .setUniform2f(loc, Minecraft.getMinecraft().displayWidth, Minecraft.getMinecraft().displayHeight);
+                      .setUniform2f(loc, CgPlatform.rendering().getDisplayWidth(), CgPlatform.rendering().getDisplayHeight());
         });
     }
 
@@ -274,16 +269,6 @@ public final class CgSystemUniformRegistry {
     /**
      * Internal entry representing a single registered uniform injector binding.
      */
-    private static final class Entry {
-
-        final String uniformName;
-        final int priority;
-        final CgUniformInjector injector;
-
-        Entry(String uniformName, int priority, CgUniformInjector injector) {
-            this.uniformName = uniformName;
-            this.priority = priority;
-            this.injector = injector;
-        }
-    }
+    @Desugar
+    private record Entry(String uniformName, int priority, CgUniformInjector injector) {}
 }

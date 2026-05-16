@@ -4,6 +4,7 @@ import com.crystalgraphics.api.shader.CgShader;
 import com.crystalgraphics.api.shader.CgShaderCacheKey;
 import com.crystalgraphics.api.shader.CgShaderManager;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
+import com.crystalgraphics.mc.CgAssetReloader;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -54,7 +55,7 @@ public final class CgShaderManagerImpl implements CgShaderManager {
      * @throws NullPointerException if caps is null
      */
     public CgShaderManagerImpl() {
-       // CgAssetReloader.trackShaderManager(this);
+        CgAssetReloader.trackShaderManager(this);  // was commented out — restored so reload tracking works
     }
 
     @Override
