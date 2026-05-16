@@ -1,8 +1,8 @@
 package com.crystalgraphics.gl.shader;
 
 import com.crystalgraphics.api.shader.CgShaderProgram;
-import com.crystalgraphics.gl.CrossApiTransition;
 import com.crystalgraphics.gl.state.CallFamily;
+import com.crystalgraphics.platform.gl.CgGL;
 
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
@@ -139,7 +139,7 @@ public abstract class CgAbstractShaderProgram implements CgShaderProgram {
      */
     @Override
     public void bind() {
-        CrossApiTransition.bindProgram(programId, callFamily());
+        CgGL.glUseProgram(programId);
     }
 
     /**
@@ -150,7 +150,7 @@ public abstract class CgAbstractShaderProgram implements CgShaderProgram {
      */
     @Override
     public void unbind() {
-        CrossApiTransition.bindProgram(0, callFamily());
+        CgGL.glUseProgram(0);
     }
 
     // ── Deletion ───────────────────────────────────────────────────────

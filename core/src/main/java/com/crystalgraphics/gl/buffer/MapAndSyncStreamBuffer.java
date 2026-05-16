@@ -1,6 +1,6 @@
 package com.crystalgraphics.gl.buffer;
 
-import org.lwjgl.opengl.*;
+import com.crystalgraphics.platform.gl.CgGL;
 
 import java.nio.ByteBuffer;
 
@@ -21,8 +21,8 @@ public class MapAndSyncStreamBuffer extends CgStreamBuffer {
 
     private static final long FENCE_TIMEOUT_NS = 5_000_000_000L; // 5 seconds
 
-    private final GLSync[] fences = new GLSync[RING_FRAMES];
-    private GLSync orphanFence;
+    private final Long[] fences = new Long[RING_FRAMES];
+    private Long orphanFence;
     private int currentSlot;
     private int slotSize;
     /** Tracks whether the last map() fell through to orphan (oversize path). */
@@ -33,7 +33,7 @@ public class MapAndSyncStreamBuffer extends CgStreamBuffer {
         this.slotSize = alignUp(Math.max(1, capacityBytes / RING_FRAMES), SLOT_ALIGNMENT);
         this.capacityBytes = this.slotSize * RING_FRAMES;
         bind();
-        GL15.glBufferData(target, this.capacityBytes, GL15.GL_STREAM_DRAW);
+        CgGL.glBufferData(target, this.capacityBytes, CgGL.GL_STREAM_DRAW);
         unbind();
     }
 
@@ -50,14 +50,14 @@ public class MapAndSyncStreamBuffer extends CgStreamBuffer {
         // must not reuse the new backing store until the draw that consumed it completes.
         if (orphanFence != null) {
             waitOnFence(orphanFence);
-            ARBSync.glDeleteSync(orphanFence);
+            CgGL.glDeleteSync(orphanFence);
             orphanFence = null;
         }
 
         // Block until the GPU finishes reading this slot from a previous frame.
         if (fences[currentSlot] != null) {
             waitOnFence(fences[currentSlot]);
-            ARBSync.glDeleteSync(fences[currentSlot]);
+            CgGL.glDeleteSync(fences[currentSlot]);
             fences[currentSlot] = null;
         }
 
@@ -65,8 +65,8 @@ public class MapAndSyncStreamBuffer extends CgStreamBuffer {
         bind();
         // UNSYNCHRONIZED: we already waited on the fence, so we promise the driver
         // this region is safe to write. FLUSH_EXPLICIT: we'll flush in commit().
-        ByteBuffer mapped = GL30.glMapBufferRange(target, offset, sizeBytes,
-                GL30.GL_MAP_WRITE_BIT | GL30.GL_MAP_FLUSH_EXPLICIT_BIT | GL30.GL_MAP_UNSYNCHRONIZED_BIT,
+        ByteBuffer mapped = CgGL.glMapBufferRange(target, offset, sizeBytes,
+                CgGL.GL_MAP_WRITE_BIT | CgGL.GL_MAP_FLUSH_EXPLICIT_BIT | CgGL.GL_MAP_UNSYNCHRONIZED_BIT,
                 null);
         
         if (mapped == null) throw new IllegalStateException("glMapBufferRange returned null (offset=" + offset + ", size=" + sizeBytes + ")");
@@ -80,19 +80,19 @@ public class MapAndSyncStreamBuffer extends CgStreamBuffer {
         // is the absolute buffer offset returned to the caller for VAO pointer setup.
         int dataOffset = lastMapUsedOrphan ? 0 : currentSlot * slotSize;
         if (!lastMapUsedOrphan) {
-            GL30.glFlushMappedBufferRange(target, 0, usedBytes);
+            CgGL.glFlushMappedBufferRange(target, 0, usedBytes);
         }
-        GL15.glUnmapBuffer(target);
+        CgGL.glUnmapBuffer(target);
         return dataOffset;
     }
 
     @Override
     public void afterSubmit() {
         if (lastMapUsedOrphan) {
-            orphanFence = ARBSync.glFenceSync(ARBSync.GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+            orphanFence = CgGL.glFenceSync(CgGL.GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
         } else {
             // Fence marks the point after the draw using this slot has been queued.
-            fences[currentSlot] = ARBSync.glFenceSync(ARBSync.GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+            fences[currentSlot] = CgGL.glFenceSync(CgGL.GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
             currentSlot = (currentSlot + 1) % RING_FRAMES;
         }
         lastMapUsedOrphan = false;
@@ -102,11 +102,11 @@ public class MapAndSyncStreamBuffer extends CgStreamBuffer {
         long elapsed = 0;
         while (elapsed < FENCE_TIMEOUT_NS) {
             long waitNs = Math.min(1_000_000L, FENCE_TIMEOUT_NS - elapsed);
-            int result = ARBSync.glClientWaitSync(fence, ARBSync.GL_SYNC_FLUSH_COMMANDS_BIT, waitNs);
-            if (result == ARBSync.GL_ALREADY_SIGNALED || result == ARBSync.GL_CONDITION_SATISFIED) {
+            int result = CgGL.glClientWaitSync(fence, CgGL.GL_SYNC_FLUSH_COMMANDS_BIT, waitNs);
+            if (result == CgGL.GL_ALREADY_SIGNALED || result == CgGL.GL_CONDITION_SATISFIED) {
                 return;
             }
-            if (result == ARBSync.GL_WAIT_FAILED) throw new IllegalStateException("glClientWaitSync failed for stream buffer fence");
+            if (result == CgGL.GL_WAIT_FAILED) throw new IllegalStateException("glClientWaitSync failed for stream buffer fence");
             
             elapsed += waitNs;
         }
@@ -123,9 +123,9 @@ public class MapAndSyncStreamBuffer extends CgStreamBuffer {
             capacityBytes = alignUp(sizeBytes, SLOT_ALIGNMENT);
             slotSize = alignUp(Math.max(1, capacityBytes / RING_FRAMES), SLOT_ALIGNMENT);
         }
-        GL15.glBufferData(target, capacityBytes, GL15.GL_STREAM_DRAW);
-        ByteBuffer mapped = GL30.glMapBufferRange(target, 0, sizeBytes,
-                GL30.GL_MAP_WRITE_BIT | GL30.GL_MAP_INVALIDATE_BUFFER_BIT,
+        CgGL.glBufferData(target, capacityBytes, CgGL.GL_STREAM_DRAW);
+        ByteBuffer mapped = CgGL.glMapBufferRange(target, 0, sizeBytes,
+                CgGL.GL_MAP_WRITE_BIT | CgGL.GL_MAP_INVALIDATE_BUFFER_BIT,
                 null);
         
         if (mapped == null) throw new IllegalStateException("glMapBufferRange (orphan) returned null (size=" + sizeBytes + ")");
@@ -140,12 +140,12 @@ public class MapAndSyncStreamBuffer extends CgStreamBuffer {
     private void deleteAllFences() {
         for (int i = 0; i < fences.length; i++) {
             if (fences[i] != null) {
-                ARBSync.glDeleteSync(fences[i]);
+                CgGL.glDeleteSync(fences[i]);
                 fences[i] = null;
             }
         }
         if (orphanFence != null) {
-            ARBSync.glDeleteSync(orphanFence);
+            CgGL.glDeleteSync(orphanFence);
             orphanFence = null;
         }
     }
@@ -153,6 +153,6 @@ public class MapAndSyncStreamBuffer extends CgStreamBuffer {
     @Override
     public void deleteGlResources() {
         deleteAllFences();
-        GL15.glDeleteBuffers(glBuffer);
+        CgGL.glDeleteBuffers(glBuffer);
     }
 }
