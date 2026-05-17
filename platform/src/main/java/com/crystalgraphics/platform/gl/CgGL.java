@@ -11,15 +11,15 @@ import java.nio.IntBuffer;import java.nio.ShortBuffer;
  * literals taken directly from the OpenGL specification.</p>
  *
  * <h3>FBO naming convention</h3>
- * {@link CgGlDispatch} exposes FBO methods without the {@code gl} prefix
+ * {@link CgGLBackend} exposes FBO methods without the {@code gl} prefix
  * ({@code bindFramebuffer}, {@code genFramebuffers}, etc.).  {@code CgGL} normalises all
  * methods to the {@code glXxx} form and delegates to the no-prefix counterpart internally.
  */
 public final class CgGL {
     
-    private static CgGlDispatch backend;
+    private static CgGLBackend backend;
     
-    public static void init(CgGlDispatch dispatch){ backend = dispatch; }
+    public static void init(CgGLBackend dispatch){ backend = dispatch; }
     
     private CgGL() {}
 
@@ -507,7 +507,7 @@ public final class CgGL {
         backend.bindFramebufferCompat(fbo);
     }
 
-    // --- Renderbuffer methods (same no-prefix pattern in CgGlDispatch) -------
+    // --- Renderbuffer methods (same no-prefix pattern in CgGLBackend) -------
 
     public static int glGenRenderbuffers() {
         return backend.glGenRenderbuffers();

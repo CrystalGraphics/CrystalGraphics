@@ -2,7 +2,7 @@ package com.crystalgraphics.mc.platform;
 
 import com.crystalgraphics.CrystalGraphicsVersion;
 import com.crystalgraphics.mc.platform.gl.Lwjgl2GLContext;
-import com.crystalgraphics.mc.platform.gl.Lwjgl2GlDispatch;
+import com.crystalgraphics.mc.platform.gl.Lwjgl2GLBackend;
 import com.crystalgraphics.mc.platform.service.LifecycleService1710;
 import com.crystalgraphics.mc.platform.service.ReloadService1710;
 import com.crystalgraphics.mc.platform.service.RenderingService1710;
@@ -34,10 +34,10 @@ public final class PlatformService1710 implements CgPlatformService {
     public final LifecycleService1710 lifecycleImpl = new LifecycleService1710();
     public final ResourceService1710 resourceImpl = new ResourceService1710();
     public final ReloadService1710 reloadImpl = new ReloadService1710();
-    public final Lwjgl2GlDispatch glDispatchImpl = new Lwjgl2GlDispatch();
+    public final Lwjgl2GLBackend glDispatchImpl = new Lwjgl2GLBackend();
     public final Lwjgl2GLContext glContextImpl = new Lwjgl2GLContext();
 
-    @Override public CgGlDispatch       gl()           { return glDispatchImpl; }
+    @Override public CgGLBackend       gl()           { return glDispatchImpl; }
     @Override public CgGLContext         capabilities() { return glContextImpl; }
     @Override public CgResourceService  resources()    { return resourceImpl; }
     @Override public CgRenderingService rendering()    { return renderingImpl; }

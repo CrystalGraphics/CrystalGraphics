@@ -13,7 +13,7 @@ package com.crystalgraphics.platform.gl;
  * call this interface directly — use {@code CgCapabilities.detect()} instead.</p>
  *
  * <p>Registered via {@code CgCapabilities.init(CgGLContext)} during platform boot,
- * mirroring the {@code CgGL.init(CgGlDispatch)} pattern.</p>
+ * mirroring the {@code CgGL.init(CgGLBackend)} pattern.</p>
  */
 public interface CgGLContext {
 

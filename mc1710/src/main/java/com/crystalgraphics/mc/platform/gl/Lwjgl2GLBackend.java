@@ -1,7 +1,7 @@
 package com.crystalgraphics.mc.platform.gl;
 
 import com.crystalgraphics.platform.gl.CgGLContext;
-import com.crystalgraphics.platform.gl.CgGlDispatch;
+import com.crystalgraphics.platform.gl.CgGLBackend;
 import com.crystalgraphics.platform.CgPlatform;
 import net.minecraft.client.renderer.OpenGlHelper;
 import org.lwjgl.opengl.*;
@@ -13,7 +13,7 @@ import java.nio.ShortBuffer;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * MC 1.7.10 / LWJGL 2.9 implementation of {@link CgGlDispatch}.
+ * MC 1.7.10 / LWJGL 2.9 implementation of {@link CgGLBackend}.
  *
  * <p>All raw OpenGL calls delegate to the appropriate LWJGL 2 static methods.
  * The FBO waterfall follows Core GL30 &gt; ARB &gt; EXT, determined at call time by
@@ -23,7 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@code OpenGlHelper.func_153171_g} so that Minecraft's own FBO tracking
  * remains consistent with CrystalGraphics-issued binds.</p>
  */
-public final class Lwjgl2GlDispatch extends CgGlDispatch {
+public final class Lwjgl2GLBackend extends CgGLBackend {
 
     /** Maps GL sync object handles (long) to LWJGL2 GLSync wrappers. */
     private static final ConcurrentHashMap<Long, GLSync> SYNC_CACHE = new ConcurrentHashMap<>();
