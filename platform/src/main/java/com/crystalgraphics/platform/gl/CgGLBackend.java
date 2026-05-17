@@ -5,12 +5,12 @@ import java.nio.*;
 
 /**
  * Platform abstraction for all raw OpenGL calls made by the CrystalGraphics core engine.
- * Each platform provides a concrete implementation (e.g. {@code Lwjgl2GlDispatch} for
+ * Each platform provides a concrete implementation (e.g. {@code Lwjgl2GLBackend} for
  * MC 1.7.10 with LWJGL2) that delegates to the appropriate native GL bindings.
  *
  * <h3>Singleton access</h3>
  * <pre>{@code
- * CgGlDispatch.get().glUseProgram(programId);
+ * CgGLBackend.get().glUseProgram(programId);
  * }</pre>
  *
  * <h3>FBO naming convention</h3>
@@ -19,7 +19,7 @@ import java.nio.*;
  * use the standard {@code glXxx} prefix.  {@code CgGL}, the static facade in
  * {@code core/}, normalises all methods to the {@code gl}-prefix and delegates
  * internally (e.g. {@code CgGL.glBindFramebuffer} delegates to
- * {@code CgGlDispatch.get().bindFramebuffer}).
+ * {@code CgGLBackend.get().bindFramebuffer}).
  *
  * <h3>FBO waterfall</h3>
  * The {@link #bindFramebufferCompat(int)} method is the platform-neutral substitute for
@@ -27,7 +27,7 @@ import java.nio.*;
  * standalone impls call {@code glBindFramebuffer} directly. Used by
  * {@code CallFamily.OPENGLHELPER_WRAPPER} routing in core/.
  */
-public abstract class CgGlDispatch {
+public abstract class CgGLBackend {
     
     // -------------------------------------------------------------------------
     // Lifecycle

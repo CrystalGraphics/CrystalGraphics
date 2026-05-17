@@ -321,7 +321,7 @@ public final class CgInstanceVertexArrayBinding {
 
     /**
      * No-op retained for lifecycle compatibility — {@code CgGraphicsLifecycle} calls this.
-     * Dispatch routing is handled by {@link com.crystalgraphics.platform.gl.CgGlDispatch}.
+     * Dispatch routing is handled by {@link com.crystalgraphics.platform.gl.CgGLBackend}.
      */
     public static void resetCoreCache() {
         useGL33 = null; // reset retained so callers that cache this don't need changes
@@ -329,7 +329,7 @@ public final class CgInstanceVertexArrayBinding {
 
     /**
      * Issues {@code glVertexAttribDivisor}. The dispatch routes to GL 3.3 core or
-     * ARB_instanced_arrays as appropriate via {@link com.crystalgraphics.platform.gl.CgGlDispatch}.
+     * ARB_instanced_arrays as appropriate via {@link com.crystalgraphics.platform.gl.CgGLBackend}.
      * Must be called while the target VAO is bound.
      */
     public static void vertexAttribDivisor(int slot, int divisor) {

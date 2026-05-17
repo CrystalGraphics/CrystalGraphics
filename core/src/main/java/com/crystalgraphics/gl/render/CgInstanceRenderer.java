@@ -148,11 +148,11 @@ public final class CgInstanceRenderer extends CgAbstractRenderer {
 
     /**
      * No-op retained for lifecycle compatibility — {@code CgGraphicsLifecycle} calls this.
-     * The dispatch is fully handled by {@link com.crystalgraphics.platform.gl.CgGlDispatch}
+     * The dispatch is fully handled by {@link com.crystalgraphics.platform.gl.CgGLBackend}
      * so no per-context cache is needed here.
      */
     public static void resetCoreCache() {
-        // intentionally empty — CgGlDispatch owns dispatch routing
+        // intentionally empty — CgGLBackend owns dispatch routing
     }
 
     public static void drawArraysInstanced(int mode, int first, int count, int instanceCount) {

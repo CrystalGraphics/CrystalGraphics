@@ -3,7 +3,7 @@ package com.crystalgraphics.platform;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.CgGLContext;
-import com.crystalgraphics.platform.gl.CgGlDispatch;
+import com.crystalgraphics.platform.gl.CgGLBackend;
 import com.crystalgraphics.platform.service.CgLifecycleService;
 import com.crystalgraphics.platform.service.CgReloadService;
 import com.crystalgraphics.platform.service.CgRenderingService;
@@ -45,7 +45,7 @@ public final class CgPlatform {
     }
 
     /** Returns the GL dispatch. @throws IllegalStateException if called before {@link #register}. */
-    public static CgGlDispatch gl() {
+    public static CgGLBackend gl() {
         ensureCreated();
         return service.gl();
     }

@@ -15,7 +15,7 @@ import com.crystalgraphics.platform.service.*;
  */
 public interface CgPlatformService {
     /** @return the GL dispatch implementation; must not be {@code null} */
-    CgGlDispatch gl();
+    CgGLBackend gl();
     /** @return the GL context capability implementation; must not be {@code null} */
     CgGLContext capabilities();
     /** @return the resource loading service; must not be {@code null} */
