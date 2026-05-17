@@ -210,13 +210,16 @@ public final class CgGL {
     public static final int GL_PIXEL_UNPACK_BUFFER   = 0x88EC;
 
     // --- Buffer usages -------------------------------------------------------
-    public static final int GL_STATIC_DRAW  = 0x88B4;
-    public static final int GL_DYNAMIC_DRAW = 0x88B8;
-    public static final int GL_STREAM_DRAW  = 0x88B0;
-    public static final int GL_STATIC_READ  = 0x88B5;
-    public static final int GL_DYNAMIC_READ = 0x88B9;
-    public static final int GL_STREAM_READ  = 0x88B1;
-
+    public static final int GL_STATIC_DRAW = 0x88E4, 
+        GL_STREAM_DRAW = 0x88E0,
+		GL_DYNAMIC_DRAW = 0x88E8,
+        GL_STATIC_READ = 0x88E5,
+		GL_STREAM_READ = 0x88E1,
+		GL_DYNAMIC_READ = 0x88E9,
+		GL_STATIC_COPY = 0x88E6,
+		GL_STREAM_COPY = 0x88E2,
+		GL_DYNAMIC_COPY = 0x88EA;
+    
     // --- Buffer map access bits ----------------------------------------------
  	public static final int GL_MAP_READ_BIT = 0x1,
 		GL_MAP_WRITE_BIT = 0x2,
@@ -994,7 +997,7 @@ public final class CgGL {
     public static void glFlushMappedBufferRange(int target, long offset, long length) {
         backend.glFlushMappedBufferRange(target, offset, length);
     }
-
+    
     // =========================================================================
     // Sync objects (ARBSync / GL 3.2)
     // =========================================================================
@@ -1009,6 +1012,14 @@ public final class CgGL {
 
     public static void glDeleteSync(long sync) {
         backend.glDeleteSync(sync);
+    }
+    
+    // =========================================================================
+    // Debug
+    // =========================================================================
+    
+    public static int glGetError()  {
+        return backend.glGetError();
     }
 
     // =========================================================================

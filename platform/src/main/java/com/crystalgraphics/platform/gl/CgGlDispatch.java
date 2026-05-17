@@ -139,15 +139,19 @@ public abstract class CgGlDispatch {
     public abstract void glTexImage2D(int target, int level, int internalFormat,
                                        int width, int height, int border,
                                        int format, int type, FloatBuffer pixels);
-    public abstract void glTexImage3D(int target, int level, int internalFormat,
-                                       int width, int height, int depth, int border,
-                                       int format, int type, ByteBuffer pixels);
     public abstract void glTexSubImage2D(int target, int level,
                                           int xOffset, int yOffset, int width, int height,
                                           int format, int type, ByteBuffer pixels);
     public abstract void glTexSubImage2D(int target, int level,
                                           int xOffset, int yOffset, int width, int height,
                                           int format, int type, FloatBuffer pixels);
+    public abstract void glTexImage3D(int target, int level, int internalFormat,
+                                       int width, int height, int depth, int border,
+                                       int format, int type, ByteBuffer pixels);
+    public abstract void glTexSubImage3D(int target, int level,
+                                          int xOffset, int yOffset, int zOffset,
+                                          int width, int height, int depth,
+                                          int format, int type, ByteBuffer pixels);
     public abstract void glGenerateMipmap(int target);
     public abstract void glActiveTexture(int texture);
     public abstract void glTexParameteri(int target, int pname, int param);
@@ -232,14 +236,12 @@ public abstract class CgGlDispatch {
     public abstract int glClientWaitSync(long sync, int flags, long timeout);
     public abstract void glDeleteSync(long sync);
 
-    // -------------------------------------------------------------------------
-    // Texture 3D sub-image
-    // -------------------------------------------------------------------------
 
-    public abstract void glTexSubImage3D(int target, int level,
-                                          int xOffset, int yOffset, int zOffset,
-                                          int width, int height, int depth,
-                                          int format, int type, ByteBuffer pixels);
+    // -------------------------------------------------------------------------
+    // Debug
+    // -------------------------------------------------------------------------
+    
+        public abstract int glGetError();
 
     // -------------------------------------------------------------------------
     // Context

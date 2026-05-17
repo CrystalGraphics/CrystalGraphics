@@ -6,7 +6,6 @@ import com.crystalgraphics.platform.CgPlatform;
 import net.minecraft.client.renderer.OpenGlHelper;
 import org.lwjgl.opengl.*;
 
-import javax.annotation.Nullable;
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
@@ -824,6 +823,15 @@ public final class Lwjgl2GlDispatch extends CgGlDispatch {
     @Override
     public void glUniformMatrix4(int location, boolean transpose, FloatBuffer value) {
         GL20.glUniformMatrix4(location, transpose, value);
+    }
+    
+    // -------------------------------------------------------------------------
+    // Debug
+    // -------------------------------------------------------------------------
+    
+    @Override
+    public int glGetError() {
+        return GL11.glGetError();
     }
 
     // -------------------------------------------------------------------------
