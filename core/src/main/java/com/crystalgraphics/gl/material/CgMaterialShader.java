@@ -2,7 +2,7 @@ package com.crystalgraphics.gl.material;
 
 import com.github.bsideup.jabel.Desugar;
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.api.CgCapabilities;
+import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.api.material.CgAttachedBuffer;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.render.CgRenderPipeline;

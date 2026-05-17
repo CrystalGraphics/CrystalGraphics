@@ -1,6 +1,6 @@
 package com.crystalgraphics.gl.material.parse;
 
-import com.crystalgraphics.api.CgCapabilities;
+import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.api.material.CgAttachedBuffer;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;

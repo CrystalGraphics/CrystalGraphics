@@ -1,6 +1,6 @@
 package com.crystalgraphics.gl.buffer;
 
-import com.crystalgraphics.api.CgCapabilities;
+import com.crystalgraphics.platform.gl.CgCapabilities;
 
 import com.crystalgraphics.api.buffer.CgObjectBuffer;
 import lombok.Getter;

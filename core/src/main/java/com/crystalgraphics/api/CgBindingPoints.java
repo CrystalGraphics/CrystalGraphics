@@ -1,5 +1,7 @@
 package com.crystalgraphics.api;
 
+import com.crystalgraphics.platform.gl.CgCapabilities;
+
 /**
  * Engine-reserved binding slot constants for SSBO, TBO, and UBO resources.
  *

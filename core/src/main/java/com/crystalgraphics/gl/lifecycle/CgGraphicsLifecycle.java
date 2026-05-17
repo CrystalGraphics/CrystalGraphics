@@ -1,6 +1,6 @@
 package com.crystalgraphics.gl.lifecycle;
 
-import com.crystalgraphics.api.CgCapabilities;
+import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.api.material.CgMaterialRegistry;
 import com.crystalgraphics.api.render.CgRenderPipeline;
 import com.crystalgraphics.gl.buffer.CgQuadIndexBuffer;

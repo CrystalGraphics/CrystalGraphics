@@ -1,7 +1,7 @@
 package com.crystalgraphics.gl.state;
 
 
-import com.crystalgraphics.api.CgCapabilities;
+import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.gl.vertex.CgVertexArray;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.util.CgBufferUtils;

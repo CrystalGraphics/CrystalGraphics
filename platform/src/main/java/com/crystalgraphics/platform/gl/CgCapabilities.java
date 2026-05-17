@@ -1,10 +1,8 @@
-package com.crystalgraphics.api;
+package com.crystalgraphics.platform.gl;
 
 import lombok.AccessLevel;
 import lombok.Getter;
 import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.platform.gl.CgGLContext;
 
 /**
  * Immutable snapshot of OpenGL capabilities relevant to CrystalGraphics,
@@ -35,13 +33,13 @@ import com.crystalgraphics.platform.gl.CgGLContext;
  */
 @Getter
 public final class CgCapabilities {
-
+    
+    @Getter private static CgGLContext context;
+    public static void init(CgGLContext ctx) {  context = ctx; }
+    
     private static String cachedParsedVersionKey   = null;
     private static int[]  cachedParsedVersionValue = null;
     private static volatile CgCapabilities cachedCaps = null;
-    private static CgGLContext glContext;
-
-    public static void init(CgGLContext ctx) { glContext = ctx; }
 
     // ─────────────────────────────────────────────────────────────────────────
     //  Enums
@@ -185,7 +183,7 @@ public final class CgCapabilities {
     public static CgCapabilities detect() {
         CgCapabilities local = cachedCaps;
         if (local == null) {
-            if (glContext == null) glContext = CgPlatform.capabilities();
+            if (context == null) context = CgPlatform.capabilities();
             local = detectUncached();
             cachedCaps = local;
         }
@@ -217,7 +215,7 @@ public final class CgCapabilities {
      * @see #detect()
      */
     public static CgCapabilities detectUncached() {
-        CgGLContext gl = glContext;
+        CgGLContext gl = context;
         if (gl == null) throw new IllegalStateException("CgGLContext not initialised — call CgCapabilities.init() before detect()");
         CgCapabilities caps = new CgCapabilities();
 

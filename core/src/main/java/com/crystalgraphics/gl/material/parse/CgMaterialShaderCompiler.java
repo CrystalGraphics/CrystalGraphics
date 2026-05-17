@@ -4,7 +4,7 @@ import com.crystalgraphics.api.shader.CgShaderPreprocessor;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gl.shader.CgShaderFactory;
 import com.github.bsideup.jabel.Desugar;
-import com.crystalgraphics.api.CgCapabilities;
+import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.api.material.CgAttachedBuffer;
 import com.crystalgraphics.api.shader.CgPreprocessorException;
 import com.crystalgraphics.api.state.CgCullState;

@@ -1,6 +1,6 @@
 package com.crystalgraphics.gl.shader;
 
-import com.crystalgraphics.api.CgCapabilities;
+import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.api.shader.CgShader;
 import com.crystalgraphics.api.shader.CgShaderManager;
 import com.crystalgraphics.api.shader.CgShaderProgram;

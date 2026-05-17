@@ -1,6 +1,6 @@
 package com.crystalgraphics.text.render;
 
-import com.crystalgraphics.api.CgCapabilities;
+import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.api.PoseStack;
 import com.crystalgraphics.api.font.*;
 import com.crystalgraphics.api.shader.CgShader;
