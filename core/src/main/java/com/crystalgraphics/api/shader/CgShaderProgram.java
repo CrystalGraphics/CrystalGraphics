@@ -1,6 +1,6 @@
 package com.crystalgraphics.api.shader;
 
-import com.crystalgraphics.api.CgCapabilities;
+import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gl.shader.CgArbShaderProgram;
 import com.crystalgraphics.gl.shader.CgCoreShaderProgram;

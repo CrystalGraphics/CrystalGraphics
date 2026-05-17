@@ -3,7 +3,7 @@ package com.crystalgraphics.gl.buffer.shader;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.gl.buffer.MapAndOrphanStreamBuffer;
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.api.CgCapabilities;
+import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.buffer.CgObjectBuffer;
 import com.crystalgraphics.api.shader.CgShader;

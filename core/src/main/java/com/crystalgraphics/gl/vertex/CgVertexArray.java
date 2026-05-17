@@ -1,7 +1,7 @@
 package com.crystalgraphics.gl.vertex;
 
 
-import com.crystalgraphics.api.CgCapabilities;
+import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.api.vertex.CgVertexAttribute;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;

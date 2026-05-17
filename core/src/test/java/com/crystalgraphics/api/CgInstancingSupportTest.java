@@ -3,6 +3,7 @@ package com.crystalgraphics.api;
 import com.crystalgraphics.api.vertex.CgInstanceFormat;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gl.vertex.CgInstanceVertexArrayBinding;
+import com.crystalgraphics.platform.gl.CgCapabilities;
 import org.junit.Test;
 
 import static org.junit.Assert.*;

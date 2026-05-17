@@ -2,7 +2,7 @@ package com.crystalgraphics.gl.buffer.shader;
 
 
 import com.crystalgraphics.api.buffer.CgBufferFormat;
-import com.crystalgraphics.api.CgCapabilities;
+import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.api.shader.CgShader;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.platform.gl.CgGL;

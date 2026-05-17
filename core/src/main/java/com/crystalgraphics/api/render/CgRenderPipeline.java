@@ -2,7 +2,7 @@ package com.crystalgraphics.api.render;
 
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.api.CgCapabilities;
+import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
