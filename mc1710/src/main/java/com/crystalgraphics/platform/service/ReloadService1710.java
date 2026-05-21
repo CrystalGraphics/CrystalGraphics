@@ -1,4 +1,4 @@
-package com.crystalgraphics.mc.platform.service;
+package com.crystalgraphics.platform.service;
 
 import com.crystalgraphics.mc.CgAssetReloader;
 import com.crystalgraphics.platform.CgPlatform;

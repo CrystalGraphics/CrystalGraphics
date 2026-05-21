@@ -1,17 +1,14 @@
-package com.crystalgraphics.mc.platform;
+package com.crystalgraphics.platform;
 
 import com.crystalgraphics.CrystalGraphicsVersion;
-import com.crystalgraphics.mc.platform.gl.Lwjgl2GLContext;
-import com.crystalgraphics.mc.platform.gl.Lwjgl2GLBackend;
-import com.crystalgraphics.mc.platform.service.LifecycleService1710;
-import com.crystalgraphics.mc.platform.service.ReloadService1710;
-import com.crystalgraphics.mc.platform.service.RenderingService1710;
-import com.crystalgraphics.mc.platform.service.ResourceService1710;
-import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.gl.Lwjgl2GLContext;
+import com.crystalgraphics.platform.gl.Lwjgl2GLBackend;
+import com.crystalgraphics.platform.service.LifecycleService1710;
+import com.crystalgraphics.platform.service.ReloadService1710;
+import com.crystalgraphics.platform.service.RenderingService1710;
+import com.crystalgraphics.platform.service.ResourceService1710;
 import com.crystalgraphics.platform.service.*;
 import com.crystalgraphics.platform.gl.*;
-import com.crystalgraphics.platform.CgPlatformService;
-import lombok.Getter;
 
 /**
  * Complete MC 1.7.10 platform bundle. Implements {@link CgPlatformService} by composing
