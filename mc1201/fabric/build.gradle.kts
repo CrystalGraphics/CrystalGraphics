@@ -30,10 +30,18 @@ loom {
     }
 }
 
-// Merge platform, core, mc1201:common — same pattern as mc1710
+// Merge platform, core, mc1201:common, and freetype-msdfgen-harfbuzz-bindings — same pattern as mc1710
 tasks.shadowJar {
-    dependsOn(":platform:jar", ":core:jar", ":mc1201:common:jar")
+    dependsOn(":platform:jar", ":core:jar", ":mc1201:common:jar", ":freetype-msdfgen-harfbuzz-bindings:jar")
     configurations = listOf()  // no runtime classpath shadowing — only explicit inclusions below
+}
+afterEvaluate {
+    tasks.shadowJar.configure {
+        from(zipTree(project(":platform").tasks.named<Jar>("jar").get().archiveFile.get()))
+        from(zipTree(project(":core").tasks.named<Jar>("jar").get().archiveFile.get()))
+        from(zipTree(project(":mc1201:common").tasks.named<Jar>("jar").get().archiveFile.get()))
+        from(zipTree(project(":freetype-msdfgen-harfbuzz-bindings").tasks.named<Jar>("jar").get().archiveFile.get()))
+    }
 }
 
 afterEvaluate {

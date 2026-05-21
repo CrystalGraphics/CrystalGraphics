@@ -8,6 +8,7 @@ import net.minecraft.client.Minecraft;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.Mod;
+import net.neoforged.neoforge.client.event.InputEvent;
 import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
 import net.neoforged.neoforge.common.NeoForge;
@@ -20,9 +21,9 @@ public final class CrystalGraphics1201NeoForge {
     private static final Logger LOGGER = LogUtils.getLogger();
 
     public CrystalGraphics1201NeoForge() {
-        LOGGER.info("[CrystalGraphics] NeoForge mod loaded (stub)");
         CgPlatform.register(PlatformService1201.getInstance());
         NeoForge.EVENT_BUS.addListener(CrystalGraphics1201NeoForge::onRenderGui);
+        NeoForge.EVENT_BUS.addListener(CrystalGraphics1201NeoForge::onMouseScroll);
         LOGGER.info("[CrystalGraphics] NeoForge 1.20.4 platform registered");
     }
 
@@ -36,5 +37,12 @@ public final class CrystalGraphics1201NeoForge {
         }
     }
 
+    private static void onRenderGui(RenderGuiEvent.Post event) {
+        Minecraft mc = Minecraft.getInstance();
+        CgFontDemo.INSTANCE.render(mc.getWindow().getWidth(), mc.getWindow().getHeight());
+    }
+
+    private static void onMouseScroll(InputEvent.MouseScrollingEvent event) {
+        CgFontDemo.INSTANCE.onMouseWheel((int) (event.getScrollDeltaY() * 120));
     }
 }

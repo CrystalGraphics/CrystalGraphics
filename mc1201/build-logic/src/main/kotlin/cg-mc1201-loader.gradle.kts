@@ -17,9 +17,13 @@ dependencies {
     "compileOnly"(project(":mc1201:common"))
     "compileOnly"(project(":platform"))
     "compileOnly"(project(":core"))
+    "compileOnly"(project(":freetype-msdfgen-harfbuzz-bindings"))
     "runtimeOnly"(project(":mc1201:common"))
     "runtimeOnly"(project(":platform"))
     "runtimeOnly"(project(":core"))
+    // Fabric/Loom dev runs pick this up from runtimeClasspath.
+    // ModDevGradle (Forge/NeoForge) dev runs need it in the mods{} sourceSet block instead.
+    "runtimeOnly"(project(":freetype-msdfgen-harfbuzz-bindings"))
     // Mixin compileOnly — loaders bundle it at runtime
     "compileOnly"("org.spongepowered:mixin:${rootProject.properties["mc1201.mixin"]}")
     "annotationProcessor"("org.spongepowered:mixin:${rootProject.properties["mc1201.mixin"]}:processor")

@@ -53,13 +53,14 @@ legacyForge {
             sourceSet(project(":platform").extensions.getByType<SourceSetContainer>()["main"])
             sourceSet(project(":core").extensions.getByType<SourceSetContainer>()["main"])
             sourceSet(project(":mc1201:common").extensions.getByType<SourceSetContainer>()["main"])
+            sourceSet(project(":freetype-msdfgen-harfbuzz-bindings").extensions.getByType<SourceSetContainer>()["main"])
         }
     }
 }
 
 // Merge platform, core, mc1201:common — same pattern as mc1710 and mc1201/neoforge.
 tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJar") {
-    dependsOn(":platform:jar", ":core:jar", ":mc1201:common:jar")
+    dependsOn(":platform:jar", ":core:jar", ":mc1201:common:jar", ":freetype-msdfgen-harfbuzz-bindings:jar")
     configurations = listOf()
 }
 afterEvaluate {
@@ -67,6 +68,7 @@ afterEvaluate {
         from(zipTree(project(":platform").tasks.named<Jar>("jar").get().archiveFile.get()))
         from(zipTree(project(":core").tasks.named<Jar>("jar").get().archiveFile.get()))
         from(zipTree(project(":mc1201:common").tasks.named<Jar>("jar").get().archiveFile.get()))
+        from(zipTree(project(":freetype-msdfgen-harfbuzz-bindings").tasks.named<Jar>("jar").get().archiveFile.get()))
     }
 }
 tasks.assemble { dependsOn(tasks.named("shadowJar")) }
