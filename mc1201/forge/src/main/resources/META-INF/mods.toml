@@ -2,6 +2,9 @@ modLoader = "javafml"
 loaderVersion = "[40,)"
 license = "LGPL-3.0-or-later"
 
+[[mixins]]
+    config = "crystalgraphics.forge.mixins.json"
+
 [[dependencies.crystalgraphics]]
     modId = "forge"
     mandatory = true

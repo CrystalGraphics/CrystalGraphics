@@ -1,6 +1,7 @@
 package com.crystalgraphics.gl.lifecycle;
 
 import com.crystalgraphics.platform.gl.CgCapabilities;
+import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.api.material.CgMaterialRegistry;
 import com.crystalgraphics.api.render.CgRenderPipeline;
 import com.crystalgraphics.gl.buffer.CgQuadIndexBuffer;
@@ -36,7 +37,10 @@ import com.crystalgraphics.gl.vertex.CgVertexBufferRegistry;
  * context recreation will re-probe the new context's capabilities.</p>
  */
 public final class CgGraphicsLifecycle {
-
+    
+    private static volatile boolean initialized = false;
+    private static int currentWidth = -1, currentHeight = -1;
+    
     private CgGraphicsLifecycle() {}
 
     /**
@@ -45,9 +49,12 @@ public final class CgGraphicsLifecycle {
      * before any material or fallback-texture usage.
      */
     public static void initContext(int width, int height) {
+        CgPlatform.gl().initContext();
         onResize(width, height);
         CgRenderPipeline.init();
         CgFallbackTextures.init();
+
+        initialized = true;
     }
 
     /**
@@ -59,6 +66,21 @@ public final class CgGraphicsLifecycle {
      */
     public static void onResize(int width, int height) {
         CgFrameBufferRegistry.get().onResize(width, height);
+
+        currentWidth = width;
+        currentHeight = height;
+    }
+
+    /**
+     * Called each frame by {@code MixinGameRenderer} after {@code renderLevel()} returns.
+     * On the first call: probes GL capabilities, initialises the engine, and runs the first frame.
+     * On subsequent calls: detects resize; always executes the render pipeline.
+     */
+    public static void onRenderFrame(float partialTick, int w, int h) {
+        if (!initialized) initContext(w, h);
+        else if (w != currentWidth || h != currentHeight) onResize(w, h);
+
+        CgPlatform.rendering().onFrameBegin(partialTick);
     }
 
     /**
@@ -119,5 +141,9 @@ public final class CgGraphicsLifecycle {
         CgVertexArray.resetCoreCache();
         CgInstanceVertexArrayBinding.resetCoreCache();
         CgInstanceRenderer.resetCoreCache();
+
+        initialized = false;
+        currentWidth = -1;
+        currentHeight = -1;
     }
 }
