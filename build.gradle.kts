@@ -47,3 +47,17 @@ repositories {
     gradlePluginPortal()
     mavenCentral()
 }
+
+// Umbrella task that extracts MC sources and resources for all mc1201 loader modules.
+// Run once after checkout or after toolchain version bumps. Each subproject's extractMcSources
+// task will trigger the appropriate toolchain download + decompile step as needed.
+tasks.register("extractAllMcSources") {
+    description = "Extracts MC sources and resources for all mc1201 loader modules. Run once after checkout."
+    group = "crystalgraphics"
+    // neoforge targets MC 1.20.4 (not 1.20.1 — NeoForge never published a stable 1.20.1 series).
+    dependsOn(
+        ":mc1201:neoforge:extractMcSources",
+        ":mc1201:forge:extractMcSources",
+        ":mc1201:fabric:extractMcSources"
+    )
+}

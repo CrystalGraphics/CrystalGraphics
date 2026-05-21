@@ -42,4 +42,5 @@ addon.local.gradle.kts
 addon.late.local.gradle
 addon.late.local.gradle.kts
 layout.json
+mc1201/*/build/mc-src/
 

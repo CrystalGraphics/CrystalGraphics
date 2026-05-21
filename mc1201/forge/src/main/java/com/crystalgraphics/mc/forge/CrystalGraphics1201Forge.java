@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.forge;
 
+import net.minecraft.world.level.Level;
 import net.minecraftforge.fml.common.Mod;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;

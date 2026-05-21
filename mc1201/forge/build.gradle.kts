@@ -62,3 +62,29 @@ afterEvaluate {
     }
 }
 tasks.assemble { dependsOn(tasks.named("shadowJar")) }
+
+// Extracts MinecraftForge 1.20.1 sources and resources into build/mc-src for local navigation.
+// Sync (not Copy) removes stale files when the source jar changes between toolchain version bumps.
+val extractMcSources by tasks.registering(Sync::class) {
+    description = "Extracts MinecraftForge 1.20.1 sources and resources into build/mc-src for local navigation."
+    group = "crystalgraphics"
+
+    // dependsOn (not mustRunAfter) — mustRunAfter does not cause this task to run on a clean checkout.
+    dependsOn("createMinecraftArtifacts")
+
+    // Lazy providers resolved at execution time — never at configuration time (Gradle 9 rule).
+    val sourcesJar = layout.buildDirectory.dir("moddev/artifacts").map { dir ->
+        dir.asFileTree.matching { include("*-sources.jar") }.singleFile
+    }
+    val resourcesJar = layout.buildDirectory.dir("moddev/artifacts").map { dir ->
+        dir.asFileTree.matching { include("client-extra-*.jar") }.singleFile
+    }
+
+    from(zipTree(sourcesJar)) { into("java") }
+    from(zipTree(resourcesJar)) { into("resources") }
+    into(layout.buildDirectory.dir("mc-src"))
+}
+
+// extractMcSources is cheap (unzips an already-present jar — createMinecraftArtifacts ran first).
+// Wire it into classes so build/mc-src/ is always populated after a normal compile.
+tasks.named("classes") { dependsOn(extractMcSources) }
