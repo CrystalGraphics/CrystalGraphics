@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "crystalgraphics",
+  "version": "${version}",
+  "name": "CrystalGraphics",
+  "description": "Rendering engine library for Minecraft mods.",
+  "license": "LGPL-3.0-or-later",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "com.crystalgraphics.mc.fabric.CrystalGraphics1201Fabric"
+    ]
+  },
+  "mixins": ["crystalgraphics.fabric.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.15.0",
+    "minecraft": "~1.20.1",
+    "fabric-api": "*"
+  }
+}

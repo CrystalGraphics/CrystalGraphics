@@ -1,11 +1,15 @@
 // Root project — pure build coordinator. No source lives here.
 //
-// MC version subprojects (each applies gtnhconvention and owns its own build logic):
-//   :mc1710  — Minecraft 1.7.10 + Forge 10.13.4 (LWJGL 2)
+// MC version subprojects:
+//   :mc1710                — Minecraft 1.7.10 + Forge 10.13.4  (LWJGL 2, gtnhconvention)
+//   :mc1201:common         — Shared 1.20.1 source (plain Java 17 library)
+//   :mc1201:fabric         — MC 1.20.1 Fabric loader  (fabric-loom 1.16.2)
+//   :mc1201:forge          — MC 1.20.1 MinecraftForge (ModDevGradle legacyForge)
+//   :mc1201:neoforge       — MC 1.20.4 NeoForge       (ModDevGradle — see neoforge/build.gradle.kts)
 //
 // Platform-agnostic subprojects:
 //   :core                             — rendering engine (LWJGL as compileOnly)
-//   :platform                         — SPI interfaces
+//   :platform                         — SPI interfaces (zero MC/LWJGL imports)
 //   :freetype-msdfgen-harfbuzz-bindings — JNI font/shape bindings
 //   :gl-debug-harness                 — standalone GL test harness (no Minecraft)
 
