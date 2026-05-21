@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.neoforge;
 
+import net.minecraft.world.level.Level;
 import net.neoforged.fml.common.Mod;
 import org.slf4j.Logger;
 import com.mojang.logging.LogUtils;

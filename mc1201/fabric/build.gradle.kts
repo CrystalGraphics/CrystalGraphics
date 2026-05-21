@@ -46,3 +46,52 @@ afterEvaluate {
 
 
 tasks.assemble { dependsOn(tasks.shadowJar) }
+
+// Extracts Fabric MC 1.20.1 sources and resources into build/mc-src for local navigation.
+// Sync (not Copy) removes stale files when jars change between toolchain version bumps.
+val extractMcSources by tasks.registering(Sync::class) {
+    description = "Extracts Fabric MC 1.20.1 sources and resources into build/mc-src for local navigation."
+    group = "crystalgraphics"
+
+    // genSourcesWithVineflower is Loom's decompile task. dependsOn ensures it runs before extraction.
+    // Running this task triggers Vineflower decompilation — may take several minutes on first run.
+    //
+    // Use the typed GenerateSourcesTask so we can access sourcesOutputJar directly.
+    // task.outputs.files.singleFile would throw because GenerateSourcesTask also declares a
+    // @LocalState working directory, giving it more than one output file in total.
+    val genSources = tasks.named(
+        "genSourcesWithVineflower",
+        net.fabricmc.loom.task.GenerateSourcesTask::class
+    )
+    dependsOn(genSources)
+
+    // sourcesOutputJar is the @OutputFile declared by GenerateSourcesTask — the canonical way
+    // to consume it without spelunking the loom cache path (which is hash-named).
+    val sourcesJar = genSources.flatMap { it.sourcesOutputJar }
+    from(zipTree(sourcesJar)) { into("java") }
+
+    // Resources — filter non-class, non-META-INF content from the merged binary jar.
+    // Loom publishes the named+merged jar to its local maven under "minecraft-merged" — it
+    // lands on the compileClasspath. configurations["minecraft"] is Declarable-only in Gradle 9
+    // (resolvedConfiguration() is not permitted on it), so we filter compileClasspath instead.
+    // provider {} keeps the resolution lazy — executed only at task execution time.
+    val mergedJar = provider {
+        configurations["compileClasspath"].resolvedConfiguration.resolvedArtifacts
+            .first { it.file.name.startsWith("minecraft-merged") }
+            .file
+    }
+    from(zipTree(mergedJar)) {
+        into("resources")
+        exclude("**/*.class")
+        exclude("META-INF/**")
+    }
+
+    into(layout.buildDirectory.dir("mc-src"))
+}
+
+// Wire into ideaSyncTask only — NOT classes.
+// genSourcesWithVineflower (which extractMcSources depends on) is an optional dev task; forcing
+// it on classes would add 2-5 minutes of Vineflower decompilation to every fresh-clone build.
+// ideaSyncTask is Loom's dedicated IDE sync hook — the right moment for one-time source gen.
+// CLI users who want sources without IDE sync: ./gradlew :mc1201:fabric:extractMcSources
+tasks.named("ideaSyncTask") { dependsOn(extractMcSources) }

@@ -60,3 +60,46 @@ IntelliJ injects a Kotlin coroutine debug init script (`ijKotlinCoroutineJvmDebu
 - *Configuration cache errors* — `org.gradle.configuration-cache=false` in root `gradle.properties` is mandatory; ModDevGradle does not support it.
 - *Heap OOM during Forge/NeoForge deobfuscation* — root `gradle.properties` sets `-Xmx4g -Xms1g`; do not reduce below 3 GB.
 - *`runClient` works from CLI but fails in IntelliJ (Fabric only)* — see the IntelliJ init script issue above.
+
+---
+
+## MC Source Extraction (`extractMcSources`)
+
+Each mc1201 loader module provides an `extractMcSources` task that unpacks the toolchain-generated
+sources and MC resources into a predictable local path for agent and developer navigation.
+
+### What it produces
+
+| Path | Contents |
+|---|---|
+| `build/mc-src/java/` | Decompiled, Parchment-mapped Java sources (`net/minecraft/…`) |
+| `build/mc-src/resources/` | MC client assets — `assets/`, `data/`, `pack.mcmeta`, `*.json` |
+
+Both paths are gitignored. Regenerate them after `./gradlew clean` or a fresh checkout.
+
+### When it runs automatically
+
+| Module | Trigger | Why |
+|---|---|---|
+| `mc1201/neoforge` | `classes` (every normal `compileJava` / `build`) | `createMinecraftArtifacts` already ran; extraction is just a cheap unzip |
+| `mc1201/forge` | `classes` (every normal `compileJava` / `build`) | Same — sources jar is already present from ModDevGradle setup |
+| `mc1201/fabric` | IntelliJ Gradle sync (`ideaSyncTask`) — **not** on CLI builds | `genSourcesWithVineflower` (Vineflower decompilation) is an optional dev task; forcing it on `classes` would silently add 2–5 min to every fresh-clone `compileJava` |
+
+### Manual invocation
+
+```bash
+# All three modules at once (recommended after fresh checkout):
+./gradlew extractAllMcSources
+
+# Per module:
+./gradlew :mc1201:neoforge:extractMcSources
+./gradlew :mc1201:forge:extractMcSources
+./gradlew :mc1201:fabric:extractMcSources
+```
+
+### First-run timing
+
+- **NeoForge / Forge**: fast — `createMinecraftArtifacts` downloads and decompiles on first run
+  (2–5 min); extraction itself is instant after that.
+- **Fabric**: `genSourcesWithVineflower` runs Vineflower decompilation on first invocation —
+  expect several minutes. Subsequent runs hit Loom's task output cache and are instant.
