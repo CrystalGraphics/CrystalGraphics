@@ -1,4 +1,4 @@
-package com.crystalgraphics.mc.platform.service;
+package com.crystalgraphics.platform.service;
 
 import com.crystalgraphics.api.render.CgRenderPipeline;
 import com.crystalgraphics.mixins.early.impl.client.CgRenderHook;

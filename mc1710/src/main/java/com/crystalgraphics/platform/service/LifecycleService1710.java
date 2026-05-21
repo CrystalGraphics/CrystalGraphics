@@ -1,4 +1,4 @@
-package com.crystalgraphics.mc.platform.service;
+package com.crystalgraphics.platform.service;
 
 import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.mixins.early.impl.client.MixinMinecraft;

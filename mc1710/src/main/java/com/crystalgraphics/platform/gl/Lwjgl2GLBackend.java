@@ -1,4 +1,4 @@
-package com.crystalgraphics.mc.platform.gl;
+package com.crystalgraphics.platform.gl;
 
 import com.crystalgraphics.platform.gl.CgGLContext;
 import com.crystalgraphics.platform.gl.CgGLBackend;
