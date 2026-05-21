@@ -5,6 +5,7 @@ import com.crystalgraphics.mc.platform.PlatformService1201;
 import com.crystalgraphics.platform.CgPlatform;
 import net.minecraft.client.Minecraft;
 import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.client.event.InputEvent;
 import net.minecraftforge.client.event.RegisterClientReloadListenersEvent;
 import net.minecraftforge.client.event.RenderGuiOverlayEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -19,7 +20,6 @@ public final class CrystalGraphics1201Forge {
     private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
 
     public CrystalGraphics1201Forge() {
-        LOGGER.info("[CrystalGraphics] Forge 1.20.1 mod loaded (stub)");
         CgPlatform.register(PlatformService1201.getInstance());
         LOGGER.info("[CrystalGraphics] Forge 1.20.1 platform registered");
     }
@@ -33,5 +33,17 @@ public final class CrystalGraphics1201Forge {
         }
     }
 
+    @Mod.EventBusSubscriber(modid = MODID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
+    public static final class ForgeClientEvents {
+        @SubscribeEvent
+        public static void onRenderGuiOverlay(RenderGuiOverlayEvent.Post event) {
+            Minecraft mc = Minecraft.getInstance();
+            CgFontDemo.INSTANCE.render(mc.getWindow().getWidth(), mc.getWindow().getHeight());
+        }
+
+        @SubscribeEvent
+        public static void onMouseScroll(InputEvent.MouseScrollingEvent event) {
+            CgFontDemo.INSTANCE.onMouseWheel((int) (event.getScrollDelta() * 120));
+        }
     }
 }

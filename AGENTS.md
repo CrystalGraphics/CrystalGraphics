@@ -722,7 +722,12 @@ All registries are **singletons accessed via `.get()`**. You normally interact w
 
 # Package AGENTS.md Index
 
-All 34 package guides under `src/main/java/com/crystalgraphics/`. Relative paths omit the common prefix.
+All 35 package guides under `src/main/java/com/crystalgraphics/`. Relative paths omit the common prefix.
+
+### Demo / Benchmarks
+| Path | What it covers |
+|---|---|
+| `demo/AGENTS.md` | `CgFontDemo` — platform-agnostic font benchmark and atlas diagnostic viewer |
 
 ### CrystalShader Pipeline
 | Path | What it covers |
