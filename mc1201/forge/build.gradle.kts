@@ -45,6 +45,14 @@ legacyForge {
     mods {
         create("crystalgraphics") {
             sourceSet(sourceSets.main.get())
+            // Dev-run classpath: platform, core, and mc1201:common are compileOnly for production
+            // (shadowJar bundles them via from(zipTree(...))), but ModDevGradle dev runs only see
+            // what's declared in this mods{} block. Adding their source sets here puts their
+            // compiled classes in the mod's virtual JAR, making them visible to ModuleClassLoader
+            // and resolving ClassNotFoundException: com/crystalgraphics/platform/CgPlatformService.
+            sourceSet(project(":platform").extensions.getByType<SourceSetContainer>()["main"])
+            sourceSet(project(":core").extensions.getByType<SourceSetContainer>()["main"])
+            sourceSet(project(":mc1201:common").extensions.getByType<SourceSetContainer>()["main"])
         }
     }
 }
