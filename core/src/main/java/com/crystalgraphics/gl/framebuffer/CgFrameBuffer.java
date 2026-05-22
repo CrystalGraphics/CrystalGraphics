@@ -7,6 +7,8 @@ import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.gl.state.CallFamily;
+import com.crystalgraphics.gl.state.CgGlScope;
+import com.crystalgraphics.gl.state.CgGlState;
 import com.crystalgraphics.gl.texture.CgTexture2D;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.util.CgBufferUtils;
@@ -14,6 +16,8 @@ import java.nio.IntBuffer;
 import java.util.TreeMap;
 import javax.annotation.Nullable;
 import lombok.Getter;
+
+import static com.crystalgraphics.api.state.CgGlSlot.FBO;
 
 /**
  * Abstract base for all CrystalGraphics framebuffer implementations.
@@ -461,6 +465,125 @@ public abstract class CgFrameBuffer {
         return depthAttachment != null ? depthAttachment.getTexture() : null;
     }
 
+    // ── Blit ───────────────────────────────────────────────────────────────────
+
+    /** Blits from {@code source} into this FBO. Extracts GL id and dimensions from the source. */
+    public void blitFrom(CgFrameBuffer source, int mask, int filter) {
+        blitFrom(source.getId(), source.getWidth(), source.getHeight(), mask, filter);
+    }
+
+    /** Blits from {@code sourceFboId} into this FBO assuming equal dimensions; uses {@code GL_NEAREST}. */
+    public void blitFrom(int sourceFboId, int mask) {
+        blitFrom(sourceFboId, width, height, mask, CgGL.GL_NEAREST);
+    }
+
+    /** Blits from {@code sourceFboId} into this FBO with explicit source dimensions and filter. */
+    public void blitFrom(int sourceFboId, int sourceWidth, int sourceHeight, int mask, int filter) {
+        blitFrom(sourceFboId, fboId, 0, 0, width, height, 0, 0, sourceWidth, sourceHeight, mask, filter);
+    }
+
+    /**
+     * Raw blit between two arbitrary FBO ids with full source and destination rect control.
+     * Saves and restores the FBO binding.
+     */
+    public static void blitFrom(int src, int dst, int srcX0, int srcY0, int srcX1, int srcY1,
+                                int dstX0, int dstY0, int dstX1, int dstY1,
+                                int mask, int filter) {
+        try (CgGlScope scope = CgGlState.save(FBO)) {
+            CgGL.glBindFramebuffer(CgGL.GL_READ_FRAMEBUFFER, src);
+            CgGL.glBindFramebuffer(CgGL.GL_DRAW_FRAMEBUFFER, dst);
+            CgGL.glBlitFramebuffer(srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, mask, filter);
+        }
+    }
+
+    /**
+     * Probes the source FBO to determine the optimal GL blit mask for a depth snapshot copy.
+     *
+     * <p>Blitting a {@code DEPTH24_STENCIL8} attachment with only {@code GL_DEPTH_BUFFER_BIT}
+     * forces the driver to unpack the packed 32-bit word, copy only the depth channel, and
+     * repack — a slow path. Passing {@code GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT}
+     * copies the entire packed word as a single memcpy-equivalent operation.</p>
+     *
+     * <p>However, blitting stencil from a depth-only source is a GL error. This method queries
+     * {@code GL_STENCIL_ATTACHMENT} on the source FBO exactly once and returns the appropriate
+     * mask. The result should be cached by the caller.</p>
+     *
+     * @param sourceFboId the GL framebuffer id to probe (bound as read framebuffer temporarily)
+     * @return {@code GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT} when the source has a stencil
+     *         attachment, otherwise {@code GL_DEPTH_BUFFER_BIT}
+     */
+    public static int optimalDepthBlitMask(int sourceFboId) {
+        try (CgGlScope scope = CgGlState.save(FBO)) {
+            CgGL.glBindFramebuffer(CgGL.GL_READ_FRAMEBUFFER, sourceFboId);
+            int objType = CgGL.glGetFramebufferAttachmentParameteriv(
+                    CgGL.GL_READ_FRAMEBUFFER,
+                    CgGL.GL_STENCIL_ATTACHMENT,
+                    CgGL.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);
+            boolean hasStencil = (objType != CgGL.GL_NONE);
+            return hasStencil
+                    ? CgGL.GL_DEPTH_BUFFER_BIT | CgGL.GL_STENCIL_BUFFER_BIT
+                    : CgGL.GL_DEPTH_BUFFER_BIT;
+        }
+    }
+
+    // ── Clear ──────────────────────────────────────────────────────────────────
+
+    /**
+     * Full-parameter clear. Sets each clear value only when the corresponding bit
+     * is present in {@code mask}, then issues {@code glClear}.
+     * Restores the previously bound framebuffer on exit.
+     */
+    public void clear(int mask, float r, float g, float b, float a, double depthValue, int stencilValue) {
+        try (CgGlScope scope = CgGlState.save(FBO)) {
+            bind();
+            if ((mask & CgGL.GL_COLOR_BUFFER_BIT) != 0) CgGL.glClearColor(r, g, b, a);
+            if ((mask & CgGL.GL_DEPTH_BUFFER_BIT) != 0) CgGL.glClearDepth(depthValue);
+            if ((mask & CgGL.GL_STENCIL_BUFFER_BIT) != 0) CgGL.glClearStencil(stencilValue);
+            CgGL.glClear(mask);
+        }
+    }
+
+    /** Clears only the colour buffer to the given RGBA colour. */
+    public void clearColor(float r, float g, float b, float a) {
+        clear(CgGL.GL_COLOR_BUFFER_BIT, r, g, b, a, 1.0, 0);
+    }
+
+    /** Clears only the depth buffer to 1.0 (far plane). */
+    public void clearDepth() {
+        clear(CgGL.GL_DEPTH_BUFFER_BIT, 0, 0, 0, 0, 1.0, 0);
+    }
+
+    /** Clears only the depth buffer to {@code value}. */
+    public void clearDepth(double value) {
+        clear(CgGL.GL_DEPTH_BUFFER_BIT, 0, 0, 0, 0, value, 0);
+    }
+
+    /** Clears only the stencil buffer to 0. */
+    public void clearStencil() {
+        clear(CgGL.GL_STENCIL_BUFFER_BIT, 0, 0, 0, 0, 1.0, 0);
+    }
+
+    /** Clears only the stencil buffer to {@code value}. */
+    public void clearStencil(int value) {
+        clear(CgGL.GL_STENCIL_BUFFER_BIT, 0, 0, 0, 0, 1.0, value);
+    }
+
+    /** Clears depth and stencil buffers. */
+    public void clearDepthStencil() {
+        clear(CgGL.GL_DEPTH_BUFFER_BIT | CgGL.GL_STENCIL_BUFFER_BIT, 0, 0, 0, 0, 1.0, 0);
+    }
+
+    /** Clears depth and stencil buffers. */
+    public void clearDepthStencil(double depthValue, int stencilValue) {
+        clear(CgGL.GL_DEPTH_BUFFER_BIT | CgGL.GL_STENCIL_BUFFER_BIT, 0, 0, 0, 0, depthValue, stencilValue);
+    }
+
+    /** Clears colour, depth, and stencil in one call. Depth resets to 1.0, stencil to 0. */
+    public void clearAll(float r, float g, float b, float a) {
+        clear(CgGL.GL_COLOR_BUFFER_BIT | CgGL.GL_DEPTH_BUFFER_BIT | CgGL.GL_STENCIL_BUFFER_BIT,
+                r, g, b, a, 1.0, 0);
+    }
+    
     // ── Dynamic re-attachment ──────────────────────────────────────────────────
 
     /**

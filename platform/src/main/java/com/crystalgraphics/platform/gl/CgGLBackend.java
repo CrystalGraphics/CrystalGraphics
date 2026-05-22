@@ -55,6 +55,7 @@ public abstract class CgGLBackend {
     public abstract void framebufferTexture2D(int target, int attachment, int texTarget, int texture, int level);
     public abstract int checkFramebufferStatus(int target);
     public abstract void drawBuffers(IntBuffer bufs);
+    public abstract int getFramebufferAttachmentParameteriv(int target, int attachment, int pname);
 
     /**
      * Bind the given FBO using the platform's compatibility path.
@@ -193,6 +194,12 @@ public abstract class CgGLBackend {
 
     /** Sets the depth value used when the depth buffer is cleared. */
     public abstract void glClearDepth(double depth);
+
+    /** Sets the RGBA colour value written when the colour buffer is cleared. */
+    public abstract void glClearColor(float r, float g, float b, float a);
+
+    /** Sets the integer value written to the stencil buffer when it is cleared. */
+    public abstract void glClearStencil(int s);
 
     // -------------------------------------------------------------------------
     // GL state — additional setters

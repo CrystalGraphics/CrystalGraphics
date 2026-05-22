@@ -92,6 +92,17 @@ public final class Lwjgl2GLBackend extends CgGLBackend {
     }
 
     @Override
+    public int getFramebufferAttachmentParameteriv(int target, int attachment, int pname) {
+        if (coreGl30()) {
+            return GL30.glGetFramebufferAttachmentParameteri(target, attachment, pname);
+        } else if (arbFbo()) {
+            return ARBFramebufferObject.glGetFramebufferAttachmentParameteri(target, attachment, pname);
+        } else {
+            return EXTFramebufferObject.glGetFramebufferAttachmentParameteriEXT(target, attachment, pname);
+        }
+    }
+
+    @Override
     public int genFramebuffers() {
         if (coreGl30()) {
             return GL30.glGenFramebuffers();
@@ -551,6 +562,16 @@ public final class Lwjgl2GLBackend extends CgGLBackend {
      @Override
      public void glClearDepth(double depth) {
          GL11.glClearDepth(depth);
+     }
+
+     @Override
+     public void glClearColor(float r, float g, float b, float a) {
+         GL11.glClearColor(r, g, b, a);
+     }
+
+     @Override
+     public void glClearStencil(int s) {
+         GL11.glClearStencil(s);
      }
 
      @Override
