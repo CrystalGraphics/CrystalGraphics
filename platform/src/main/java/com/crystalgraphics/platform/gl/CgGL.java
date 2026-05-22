@@ -907,6 +907,14 @@ public final class CgGL {
         backend.glDepthFunc(func);
     }
 
+    public static void glClear(int mask) {
+        backend.glClear(mask);
+    }
+
+    public static void glClearDepth(double depth) {
+        backend.glClearDepth(depth);
+    }
+
     public static void glStencilMask(int mask) {
         backend.glStencilMask(mask);
     }

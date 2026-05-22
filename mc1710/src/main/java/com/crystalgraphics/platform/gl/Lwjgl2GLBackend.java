@@ -539,16 +539,26 @@ public final class Lwjgl2GLBackend extends CgGLBackend {
     // -------------------------------------------------------------------------
 
     @Override
-    public void glDepthFunc(int func) {
-        GL11.glDepthFunc(func);
-    }
+     public void glDepthFunc(int func) {
+         GL11.glDepthFunc(func);
+     }
 
-    @Override
-    public void glStencilMask(int mask) {
-        GL11.glStencilMask(mask);
-    }
+     @Override
+     public void glClear(int mask) {
+         GL11.glClear(mask);
+     }
 
-    @Override
+     @Override
+     public void glClearDepth(double depth) {
+         GL11.glClearDepth(depth);
+     }
+
+     @Override
+     public void glStencilMask(int mask) {
+         GL11.glStencilMask(mask);
+     }
+
+     @Override
     public void glBlendEquationSeparate(int modeRGB, int modeAlpha) {
         GL20.glBlendEquationSeparate(modeRGB, modeAlpha);
     }
