@@ -12,7 +12,6 @@ import com.crystalgraphics.api.shader.CgPreprocessorException;
 import com.crystalgraphics.api.shader.CgShader;
 import com.crystalgraphics.api.shader.CgShaderPreprocessor;
 import com.crystalgraphics.api.state.CgRenderState;
-import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 import com.crystalgraphics.gl.material.parse.CgMaterialShaderCompiler;
@@ -300,7 +299,7 @@ public final class CgMaterialShader {
             String processedVert = new CgShaderPreprocessor().process(compiled.vertexSource(), resourcePath);
             String processedFrag = new CgShaderPreprocessor().process(compiled.fragmentSource(), resourcePath);
 
-            CgShader newShader = CgShaderFactory.fromSource(processedVert, processedFrag, CgVertexFormat.SPATIAL);
+            CgShader newShader = CgShaderFactory.fromSource(processedVert, processedFrag, compiled.vertexFormat());
             if (!newShader.isCompiled()) {
                 String err = newShader.getLastCompileError();
                 newShader.delete();
@@ -393,7 +392,7 @@ public final class CgMaterialShader {
         String processedVert = new CgShaderPreprocessor().process(compiled.vertexSource(), resourcePath);
         String processedFrag = new CgShaderPreprocessor().process(compiled.fragmentSource(), resourcePath);
 
-        CgShader newShader = CgShaderFactory.fromSource(processedVert, processedFrag, CgVertexFormat.SPATIAL);
+        CgShader newShader = CgShaderFactory.fromSource(processedVert, processedFrag, compiled.vertexFormat());
         if (!newShader.isCompiled()) {
             String err = newShader.getLastCompileError();
             newShader.delete();
@@ -667,7 +666,7 @@ public final class CgMaterialShader {
         String shadowVert = new CgShaderPreprocessor().process(shadowCompiled.vertexSource(), resourcePath);
         String shadowFrag = new CgShaderPreprocessor().process(shadowCompiled.fragmentSource(), resourcePath);
 
-        CgShader shadowShader = CgShaderFactory.fromSource(shadowVert, shadowFrag, CgVertexFormat.SPATIAL);
+        CgShader shadowShader = CgShaderFactory.fromSource(shadowVert, shadowFrag, shadowCompiled.vertexFormat());
         if (!shadowShader.isCompiled()) {
             String err = shadowShader.getLastCompileError();
             shadowShader.delete();
@@ -725,7 +724,7 @@ public final class CgMaterialShader {
         String depthVert = new CgShaderPreprocessor().process(depthCompiled.vertexSource(), resourcePath);
         String depthFrag = new CgShaderPreprocessor().process(depthCompiled.fragmentSource(), resourcePath);
 
-        CgShader depthShader = CgShaderFactory.fromSource(depthVert, depthFrag, CgVertexFormat.SPATIAL);
+        CgShader depthShader = CgShaderFactory.fromSource(depthVert, depthFrag, depthCompiled.vertexFormat());
         if (!depthShader.isCompiled()) {
             String err = depthShader.getLastCompileError();
             depthShader.delete();

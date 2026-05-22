@@ -48,7 +48,7 @@ operates at the GLSL compound-type level (mat4, vec4, mat3).
 `CgGpuType.isTboCompatible()` returns `true` only for: FLOAT, VEC2, VEC3, VEC4, MAT3, MAT4.
 
 All other types (INT, UINT, BOOL, IVEC2-4, UVEC2-4, INT64, UINT64) return `false`.
-`CgBufferGlslEmitter.emitTbo()` throws `CgPreprocessorException` for any field whose type
+`CgGlslEmitter.emitTbo()` throws `CgPreprocessorException` for any field whose type
 returns `false`. TBO float path uses `samplerBuffer` + `GL_RGBA32F`; integer types would need
 `isamplerBuffer`/`usamplerBuffer` + `GL_RGBA32I`/`GL_RGBA32UI` — unsupported in v1.
 

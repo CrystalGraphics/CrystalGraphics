@@ -5,10 +5,13 @@ import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.buffer.CgGpuType;
 import com.crystalgraphics.api.material.CgAttachedBuffer;
 import com.crystalgraphics.api.shader.CgPreprocessorException;
+import com.crystalgraphics.api.vertex.CgVertexAttribute;
+import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 
 /**
- * Generates GLSL declaration blocks for user-attached buffers (SSBO, TBO, UBO).
+ * Generates GLSL declaration blocks for user-attached buffers (SSBO, TBO, UBO)
+ * and vertex attribute input declarations for a given {@link CgVertexFormat}.
  *
  * <p>No GL calls, no instance state. All core methods are package-private and take raw
  * {@code (CgBufferFormat, String)} parameters — no {@code CgShaderBuffer} required.
@@ -17,10 +20,37 @@ import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
  * <p>Public facade methods delegate to the core methods and accept the typed wrapper objects
  * used at compile time.</p>
  */
-final class CgBufferGlslEmitter {
+final class CgGlslEmitter {
 
-    private CgBufferGlslEmitter() {
-        throw new AssertionError("CgBufferGlslEmitter is not instantiable");
+    private CgGlslEmitter() {
+        throw new AssertionError("CgGlslEmitter is not instantiable");
+    }
+
+    /**
+     * Generates {@code in <glslType> <name>;} declarations for all attributes in a vertex format.
+     *
+     * <p>Output shape:</p>
+     * <pre>
+     * // Vertex attributes (format: spatial)
+     * in vec3 cg_Position;
+     * in vec2 cg_TexCoord0;
+     * in vec3 cg_Normal;
+     * </pre>
+     *
+     * <p>Only called from {@code buildVertexSource()} in {@link CgMaterialShaderCompiler} —
+     * never from the fragment stage, because vertex attributes are not visible there.</p>
+     *
+     * @param format the vertex format whose attributes to emit; must not be null
+     * @return GLSL {@code in} declaration block string, terminated with a newline
+     */
+    static String emitVertexInputs(CgVertexFormat format) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("// Vertex attributes (format: ").append(format.getKey()).append(")\n");
+        for (int i = 0; i < format.getAttributeCount(); i++) {
+            CgVertexAttribute attr = format.getAttribute(i);
+            sb.append("in ").append(attr.getGlslType()).append(' ').append(attr.getName()).append(";\n");
+        }
+        return sb.toString();
     }
 
     /**

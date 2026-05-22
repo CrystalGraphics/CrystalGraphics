@@ -4,17 +4,20 @@ import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.buffer.CgBufferFormat.MemoryLayout;
 import com.crystalgraphics.api.material.CgAttachedBuffer;
 import com.crystalgraphics.api.shader.CgPreprocessorException;
+import com.crystalgraphics.api.vertex.CgAttribType;
+import com.crystalgraphics.api.vertex.CgVertexFormat;
+import com.crystalgraphics.api.vertex.CgVertexSemantic;
 import org.junit.Test;
 
 import static org.junit.Assert.*;
 
 /**
- * Exhaustive unit tests for {@link CgBufferGlslEmitter}.
+ * Exhaustive unit tests for {@link CgGlslEmitter}.
  *
  * <p>All tests are pure string generation — no GL context required. Core methods are called
  * directly (package-private seam: {@code emitSsbo/emitTbo/emitUbo(format, name, ...)}).</p>
  */
-public class CgBufferGlslEmitterTest {
+public class CgGlslEmitterTest {
 
     // F1 — all VEC4 (simplest happy path); stride=48, texels=3
     static final CgBufferFormat ALL_VEC4 = CgBufferFormat.builder("InstanceData", MemoryLayout.STD430)
@@ -68,7 +71,7 @@ public class CgBufferGlslEmitterTest {
 
     @Test
     public void testF1_allVec4_ssbo() {
-        String out = CgBufferGlslEmitter.emitSsbo(ALL_VEC4, "InstBuf", "INST");
+        String out = CgGlslEmitter.emitSsbo(ALL_VEC4, "InstBuf", "INST");
 
         assertTrue(out.contains("struct InstanceData {"));
         assertTrue(out.contains("vec4 color;"));
@@ -82,7 +85,7 @@ public class CgBufferGlslEmitterTest {
 
     @Test
     public void testF5_mat3_ssbo() {
-        String out = CgBufferGlslEmitter.emitSsbo(MAT3_FORMAT, "NormBuf", "NORM_DATA");
+        String out = CgGlslEmitter.emitSsbo(MAT3_FORMAT, "NormBuf", "NORM_DATA");
 
         assertTrue(out.contains("mat3 normalMat;"));
         assertTrue(out.contains("layout(std430) readonly buffer"));
@@ -91,7 +94,7 @@ public class CgBufferGlslEmitterTest {
 
     @Test
     public void testF7_uvec2_ssboAllowed() {
-        String out = CgBufferGlslEmitter.emitSsbo(BINDLESS, "TexturePoolBuf", "TEX_POOL");
+        String out = CgGlslEmitter.emitSsbo(BINDLESS, "TexturePoolBuf", "TEX_POOL");
 
         assertTrue(out.contains("uvec2 handle;"));
         assertTrue(out.contains("vec4 uvRect;"));
@@ -100,7 +103,7 @@ public class CgBufferGlslEmitterTest {
 
     @Test
     public void testF1_allVec4_tbo() {
-        String out = CgBufferGlslEmitter.emitTbo(ALL_VEC4, "InstBuf", "INST");
+        String out = CgGlslEmitter.emitTbo(ALL_VEC4, "InstBuf", "INST");
 
         assertTrue(out.contains("uniform samplerBuffer InstBuf;"));
         assertTrue(out.contains("InstanceData _cg_getInstanceData(int n) {"));
@@ -113,7 +116,7 @@ public class CgBufferGlslEmitterTest {
 
     @Test
     public void testF2_allMat4_tbo() {
-        String out = CgBufferGlslEmitter.emitTbo(ALL_MAT4, "TransBuf", "TRANSFORM");
+        String out = CgGlslEmitter.emitTbo(ALL_MAT4, "TransBuf", "TRANSFORM");
 
         assertTrue(out.contains("int _base = n * 8;"));
         assertTrue(out.contains("_r.modelA[0] = texelFetch(TransBuf, _base + 0);"));
@@ -126,7 +129,7 @@ public class CgBufferGlslEmitterTest {
 
     @Test
     public void testF3_packedSmall_tbo() {
-        String out = CgBufferGlslEmitter.emitTbo(PACKED_SMALL, "GlyphBuf", "GLYPH");
+        String out = CgGlslEmitter.emitTbo(PACKED_SMALL, "GlyphBuf", "GLYPH");
 
         assertTrue(out.contains("int _base = n * 3;"));
         assertTrue(out.contains("_r.bbox = texelFetch(GlyphBuf, _base + 0);"));
@@ -140,7 +143,7 @@ public class CgBufferGlslEmitterTest {
 
     @Test
     public void testF4_vec3_tbo() {
-        String out = CgBufferGlslEmitter.emitTbo(VEC3_FORMAT, "LightBuf", "LIGHT");
+        String out = CgGlslEmitter.emitTbo(VEC3_FORMAT, "LightBuf", "LIGHT");
 
         assertTrue(out.contains("int _base = n * 6;"));
         assertTrue(out.contains("_r.color = texelFetch(LightBuf, _base + 4).xyz;"));
@@ -149,7 +152,7 @@ public class CgBufferGlslEmitterTest {
 
     @Test
     public void testF5_mat3_tbo() {
-        String out = CgBufferGlslEmitter.emitTbo(MAT3_FORMAT, "NormBuf", "NORM");
+        String out = CgGlslEmitter.emitTbo(MAT3_FORMAT, "NormBuf", "NORM");
 
         assertTrue(out.contains("int _base = n * 5;"));
         assertTrue(out.contains("_r.normalMat[0] = texelFetch(NormBuf, _base + 1).xyz;"));
@@ -160,7 +163,7 @@ public class CgBufferGlslEmitterTest {
 
     @Test
     public void testF6_mixedMat_tbo() {
-        String out = CgBufferGlslEmitter.emitTbo(MIXED_MAT, "SkinBuf", "SKIN");
+        String out = CgGlslEmitter.emitTbo(MIXED_MAT, "SkinBuf", "SKIN");
 
         assertTrue(out.contains("int _base = n * 8;"));
         assertTrue(out.contains("_r.bindPose[0] = texelFetch(SkinBuf, _base + 0);"));
@@ -176,7 +179,7 @@ public class CgBufferGlslEmitterTest {
     @Test
     public void testF7_uvec2_tboThrows() {
         try {
-            CgBufferGlslEmitter.emitTbo(BINDLESS, "TexturePoolBuf", "TEX_POOL");
+            CgGlslEmitter.emitTbo(BINDLESS, "TexturePoolBuf", "TEX_POOL");
             fail("Expected CgPreprocessorException for UVEC2 on TBO path");
         } catch (CgPreprocessorException e) {
             String msg = e.getMessage().toLowerCase();
@@ -190,7 +193,7 @@ public class CgBufferGlslEmitterTest {
         CgBufferFormat f = CgBufferFormat.builder("BadData", MemoryLayout.STD430)
             .vec4("pos").int_("flags").build();
         try {
-            CgBufferGlslEmitter.emitTbo(f, "BadBuf", "BAD");
+            CgGlslEmitter.emitTbo(f, "BadBuf", "BAD");
             fail("Expected CgPreprocessorException for INT on TBO path");
         } catch (CgPreprocessorException e) {
             assertTrue("Message should mention INT", e.getMessage().contains("INT"));
@@ -202,7 +205,7 @@ public class CgBufferGlslEmitterTest {
         CgBufferFormat f = CgBufferFormat.builder("Handle64", MemoryLayout.STD430)
             .uint64("h").vec4("pad").build();
         try {
-            CgBufferGlslEmitter.emitTbo(f, "H64Buf", "H64");
+            CgGlslEmitter.emitTbo(f, "H64Buf", "H64");
             fail("Expected CgPreprocessorException for UINT64 on TBO path");
         } catch (CgPreprocessorException e) {
             assertTrue("Message should mention UINT64", e.getMessage().contains("UINT64"));
@@ -214,7 +217,7 @@ public class CgBufferGlslEmitterTest {
         CgBufferFormat f = CgBufferFormat.builder("BadStride", MemoryLayout.STD430)
             .float_("a").float_("b").float_("c").build();
         try {
-            CgBufferGlslEmitter.emitTbo(f, "BadStrideBuf", "BAD_STRIDE");
+            CgGlslEmitter.emitTbo(f, "BadStrideBuf", "BAD_STRIDE");
             fail("Expected CgPreprocessorException for stride not multiple of 16");
         } catch (CgPreprocessorException e) {
             assertTrue("Message should mention stride", e.getMessage().toLowerCase().contains("stride"));
@@ -235,7 +238,7 @@ public class CgBufferGlslEmitterTest {
     public void testUbo_simpleFields() {
         CgBufferFormat f = CgBufferFormat.builder("SceneParams", MemoryLayout.STD140)
             .vec4("ambientColor").float_("exposure").vec4("fogColor").build();
-        String out = CgBufferGlslEmitter.emitUbo(f, "SceneParams");
+        String out = CgGlslEmitter.emitUbo(f, "SceneParams");
 
         assertTrue(out.contains("layout(std140) uniform SceneParams {"));
         assertTrue(out.contains("    vec4 ambientColor;"));
@@ -251,7 +254,7 @@ public class CgBufferGlslEmitterTest {
     public void testUbo_matrixFields() {
         CgBufferFormat f = CgBufferFormat.builder("CameraExtras", MemoryLayout.STD140)
             .mat4("prevViewProj").vec4("jitter").build();
-        String out = CgBufferGlslEmitter.emitUbo(f, "CameraExtras");
+        String out = CgGlslEmitter.emitUbo(f, "CameraExtras");
 
         assertTrue(out.contains("mat4 prevViewProj;"));
         assertTrue(out.contains("vec4 jitter;"));
@@ -262,49 +265,81 @@ public class CgBufferGlslEmitterTest {
     public void testUbo_blockNameUsedForBlock() {
         CgBufferFormat f = CgBufferFormat.builder("SomeData", MemoryLayout.STD140)
             .vec4("value").build();
-        String out = CgBufferGlslEmitter.emitUbo(f, "MyCustomBlock");
+        String out = CgGlslEmitter.emitUbo(f, "MyCustomBlock");
 
         assertTrue("Block name must be the passed blockName", out.contains("uniform MyCustomBlock {"));
     }
 
     @Test
     public void testNoBindingQualifierAnywhere() {
-        assertFalse(CgBufferGlslEmitter.emitSsbo(ALL_VEC4, "Buf", "MACRO").contains("binding ="));
-        assertFalse(CgBufferGlslEmitter.emitTbo(ALL_VEC4, "Buf", "MACRO").contains("binding ="));
-        assertFalse(CgBufferGlslEmitter.emitUbo(
+        assertFalse(CgGlslEmitter.emitSsbo(ALL_VEC4, "Buf", "MACRO").contains("binding ="));
+        assertFalse(CgGlslEmitter.emitTbo(ALL_VEC4, "Buf", "MACRO").contains("binding ="));
+        assertFalse(CgGlslEmitter.emitUbo(
             CgBufferFormat.builder("P", MemoryLayout.STD140).vec4("x").build(), "P"
         ).contains("binding ="));
     }
 
     @Test
     public void testUbo_noInstanceName() {
-        CgBufferFormat f = CgBufferFormat.builder("SceneParams", MemoryLayout.STD140)
+        CgBufferFormat f = CgBufferFormat.builder("SceneParams2", MemoryLayout.STD140)
             .vec4("ambientColor").build();
-        String out = CgBufferGlslEmitter.emitUbo(f, "SceneParams");
+        String out = CgGlslEmitter.emitUbo(f, "SceneParams2");
 
-        // The block must end with "};\n" — no instance name between } and ;
         assertTrue(out.endsWith("};\n"));
     }
 
     @Test
     public void testSsbo_blockNameEqualsBufferName() {
-        String out = CgBufferGlslEmitter.emitSsbo(ALL_VEC4, "MyBufferName", "MACRO");
+        String out = CgGlslEmitter.emitSsbo(ALL_VEC4, "MyBufferName", "MACRO");
         assertTrue("Block interface name must equal bufferName",
             out.contains("readonly buffer MyBufferName {"));
     }
 
     @Test
     public void testTbo_samplerNameEqualsBufferName() {
-        String out = CgBufferGlslEmitter.emitTbo(ALL_VEC4, "MyBufferName", "MACRO");
+        String out = CgGlslEmitter.emitTbo(ALL_VEC4, "MyBufferName", "MACRO");
         assertTrue("Sampler uniform name must equal bufferName",
             out.contains("uniform samplerBuffer MyBufferName;"));
     }
 
     @Test
     public void testLowerFirst_helper() {
-        assertEquals("fontMetrics", CgBufferGlslEmitter.lowerFirst("FontMetrics"));
-        assertEquals("x", CgBufferGlslEmitter.lowerFirst("X"));
-        assertEquals("", CgBufferGlslEmitter.lowerFirst(""));
-        assertEquals("already", CgBufferGlslEmitter.lowerFirst("already"));
+        assertEquals("fontMetrics", CgGlslEmitter.lowerFirst("FontMetrics"));
+        assertEquals("x", CgGlslEmitter.lowerFirst("X"));
+        assertEquals("", CgGlslEmitter.lowerFirst(""));
+        assertEquals("already", CgGlslEmitter.lowerFirst("already"));
+    }
+
+    // ── emitVertexInputs tests ────────────────────────────────────────────────
+
+    @Test
+    public void testEmitVertexInputs_spatialFormat() {
+        String out = CgGlslEmitter.emitVertexInputs(CgVertexFormat.SPATIAL);
+
+        assertTrue("Must contain cg_Position as vec3", out.contains("in vec3 cg_Position;"));
+        assertTrue("Must contain cg_TexCoord0 as vec2", out.contains("in vec2 cg_TexCoord0;"));
+        assertTrue("Must contain cg_Normal as vec3",    out.contains("in vec3 cg_Normal;"));
+        assertFalse("Must not contain ifdef wrapper", out.contains("#ifdef"));
+        assertTrue("Must have debug name comment", out.contains("// Vertex attributes (format: spatial)"));
+    }
+
+    @Test
+    public void testEmitVertexInputs_normalizedUbyte_mapsToVec4() {
+        CgVertexFormat fmt = CgVertexFormat.builder("test_norm_ubyte")
+            .add(CgVertexSemantic.COLOR, "a_color", 4, CgAttribType.UNSIGNED_BYTE, true)
+            .build();
+        String out = CgGlslEmitter.emitVertexInputs(fmt);
+
+        assertTrue("Normalized ubyte4 must map to vec4", out.contains("in vec4 a_color;"));
+    }
+
+    @Test
+    public void testEmitVertexInputs_nonNormalizedUbyte_mapsToUvec4() {
+        CgVertexFormat fmt = CgVertexFormat.builder("test_raw_ubyte")
+            .add(CgVertexSemantic.GENERIC, "a_flags", 4, CgAttribType.UNSIGNED_BYTE, false)
+            .build();
+        String out = CgGlslEmitter.emitVertexInputs(fmt);
+
+        assertTrue("Non-normalized ubyte4 must map to uvec4", out.contains("in uvec4 a_flags;"));
     }
 }

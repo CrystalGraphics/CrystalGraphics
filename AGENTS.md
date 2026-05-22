@@ -244,6 +244,10 @@ The primary authoring surface of this repo. Most feature work touches these syst
 
 Structural skeleton (all sections are optional except `#type` and at least one `Pass`):
 
+**`#type <name>`** selects the vertex format by its registered `key`. The compiler resolves the name against `CgVertexFormat.REGISTRY` at parse time and injects the format's vertex attribute declarations (`in <glslType> <name>;`) into the generated vertex GLSL immediately after the `cg_env.glsl` include. Unknown names throw `CgShaderParseException` at parse time listing all registered types.
+
+Built-in types: `spatial` (`CgVertexFormat.SPATIAL` — pos3/uv2/normal3), `pos3_uv2_col4ub`, `pos2_uv2_col4ub`. Custom formats self-register on `CgVertexFormat.build()` under their `debugName` and become immediately usable as a `#type`.
+
 ```glsl
 #type spatial
 #pragma cg_feature RECEIVE_SHADOWS    // compile-time keyword; max 8 per shader

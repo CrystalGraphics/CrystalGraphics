@@ -36,7 +36,7 @@ See [`parse/AGENTS.md`](parse/AGENTS.md) for the full class map. Key external-fa
 | `CgParsedShader` | `@Desugar record` result of `CgShaderParser.parse()`. Fields: `shaderType`, `properties`, `featureNames`, `renderQueue`, `renderType`, `castShadows`, `passes`. `getPassByName(String)` / `getPassByLightMode(String)` convenience accessors. Per-pass data lives on `CgParsedPass`. |
 | `CgParsedPass` | `@Desugar record` per-pass parse result. Fields: `lightMode`, `name`, `renderState`, `v2fStructBody`, `globalDecls`, `vertexBody`, `fragmentBody`, `fragOutput`. |
 | `CgMaterialShaderCompiler` | Static compiler. Canonical: `compile(CgParsedShader, CgParsedPass, List<CgAttachedBuffer>, CgUniformBuffer, CompileConfig)` → `CompiledSource`. `compileShadowAutoGen(shader, forwardPass, ...)` → shadow `CompiledSource`. `compileDepthAutoGen(shader, forwardPass, ...)` → depth-prepass `CompiledSource` (3 cases: simple-vertex/complex-vertex/alpha-clip). |
-| `CgMaterialShaderCompiler.CompiledSource` | `@Desugar record`: `vertexSource`, `fragmentSource` — both complete, ready for `CgShaderPreprocessor` then `CgShaderFactory`. |
+| `CgMaterialShaderCompiler.CompiledSource` | `@Desugar record`: `vertexSource`, `fragmentSource`, `vertexFormat` — complete sources ready for `CgShaderPreprocessor` then `CgShaderFactory`. `vertexFormat` passed to `CgShaderFactory.fromSource()` for attribute binding. |
 
 ## Compiler Output Format
 
@@ -47,10 +47,11 @@ See [`parse/AGENTS.md`](parse/AGENTS.md) for the full class map. Key external-fa
 3. `#define CG_USE_SSBO 1` (SSBO path only)
 4. `#define CG_OBJECT_BUFFER_BINDING <CgBindingPoints.OBJECT_DATA>` + `#define CG_FRAME_BLOCK_BINDING <CgBindingPoints.FRAME_DATA>`
 5. `#include "crystalgraphics:shaders/env/cg_env.glsl"`
-6. `CgMaterialBlock` UBO block (emitted via `CgBufferGlslEmitter.emitUbo()` when non-sampler properties exist; no `binding=` qualifier — wired post-link by `wireShader()` at slot `CgBindingPoints.MATERIAL_PROPERTIES_UBO`)
+5a. **Vertex attribute injection** — `CgGlslEmitter.emitVertexInputs(vertexFormat)` emits `in <type> <name>;` for every attribute in the resolved `CgVertexFormat` (resolved from `shader.shaderType()` via `CgVertexFormat.forShaderType()`). Not present in fragment source.
+6. `CgMaterialBlock` UBO block (emitted via `CgGlslEmitter.emitUbo()` when non-sampler properties exist; no `binding=` qualifier — wired post-link by `wireShader()` at slot `CgBindingPoints.MATERIAL_PROPERTIES_UBO`)
 7. Sampler property uniform declarations (`uniform sampler2D/sampler2DArray/sampler3D/samplerCube <name>;` — one per sampler property)
-8. User-attached SSBO/TBO buffers (emitted by `CgBufferGlslEmitter`)
-8. User-attached UBO blocks (emitted by `CgBufferGlslEmitter`) — path-independent
+8. User-attached SSBO/TBO buffers (emitted by `CgGlslEmitter`)
+8. User-attached UBO blocks (emitted by `CgGlslEmitter`) — path-independent
 9. `struct v2f { <v2fStructBody> };`
 10. `flat out int cg_InstanceId;`
 11. v2f interface block (`out _CgV2fBlock { <fields> } _cg_v2f;`)
@@ -75,7 +76,7 @@ See [`parse/AGENTS.md`](parse/AGENTS.md) for the full class map. Key external-fa
 12. User fragment function (`void fragment(in v2f i, out vec4 fragColor) { <fragmentBody> }`)
 13. Generated `void main()` — reconstructs `v2f _v2f_local`, calls `fragment(_v2f_local, _cg_fragColor)`
 
-## `CgBufferGlslEmitter` — GLSL Generation Details
+## `CgGlslEmitter` — GLSL Generation Details
 
 ### SSBO output shape
 

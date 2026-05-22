@@ -1,5 +1,6 @@
 package com.crystalgraphics.gl.material.parse;
 
+import com.crystalgraphics.api.vertex.CgVertexFormat;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -40,7 +41,6 @@ final class CgStructureParser {
     private static final Pattern PASS_BLOCK_PATTERN = Pattern.compile("\\bPass\\s*\\{");
 
     static final String[] RESERVED_PREFIXES = {"cg_", "CG_", "_v2f_"};
-    static final String TYPE_SPATIAL = "spatial";
 
     private CgStructureParser() {}
 
@@ -230,10 +230,12 @@ final class CgStructureParser {
                     throw new CgShaderParseException("[" + resourcePath + "] #type directive has no type name");
                 }
                 String typeName = parts[1].trim();
-                if (!TYPE_SPATIAL.equals(typeName)) {
+                // Validate against the live registry — any CgVertexFormat built with a key name is valid
+                CgVertexFormat format = CgVertexFormat.forShaderType(typeName);
+                if (format == null) {
                     throw new CgShaderParseException(
-                            "[" + resourcePath + "] Unknown #type '" + typeName + "'. Only '" + TYPE_SPATIAL +
-                                    "' is valid in the MVP. (No pass variants, compute, or canvas types yet.)");
+                            "[" + resourcePath + "] Unknown #type '" + typeName + "'. "
+                            + "Registered types: " + CgVertexFormat.registeredShaderTypes());
                 }
                 return typeName;
             }
