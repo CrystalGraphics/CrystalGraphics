@@ -185,6 +185,16 @@ public abstract class CgGLBackend {
     public abstract void glAlphaFunc(int func, float ref);
 
     // -------------------------------------------------------------------------
+    // GL clear
+    // -------------------------------------------------------------------------
+
+    /** Clears the specified buffer bits on the currently bound framebuffer. */
+    public abstract void glClear(int mask);
+
+    /** Sets the depth value used when the depth buffer is cleared. */
+    public abstract void glClearDepth(double depth);
+
+    // -------------------------------------------------------------------------
     // GL state — additional setters
     // -------------------------------------------------------------------------
 

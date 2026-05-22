@@ -164,8 +164,8 @@ public final class CgFontDemo {
         if (demoTextRenderer != null && !demoTextRenderer.isDeleted()) demoTextRenderer.delete();
         if (demoBufferSource != null) demoBufferSource.delete();
         if (diagAtlasInitialized) {
-            CgPlatform.gl().glDeleteVertexArrays(diagAtlasVao);
-            CgPlatform.gl().glDeleteBuffers(diagAtlasVbo);
+            CgGL.glDeleteVertexArrays(diagAtlasVao);
+            CgGL.glDeleteBuffers(diagAtlasVbo);
             diagAtlasInitialized = false;
         }
     }
@@ -206,21 +206,21 @@ public final class CgFontDemo {
         populateOrthoMatrix(diagAtlasProjection, screenW, screenH);
 
         try (CgGlScope scope = CgGlState.save(CgGlSlot.BLEND, CgGlSlot.DEPTH)) {
-            CgPlatform.gl().glDisable(CgGL.GL_BLEND);
-            CgPlatform.gl().glDisable(CgGL.GL_DEPTH_TEST);
+            CgGL.glDisable(CgGL.GL_BLEND);
+            CgGL.glDisable(CgGL.GL_DEPTH_TEST);
 
             diagAtlasShader.applyBindings(b -> b
                     .mat4("u_projection", diagAtlasProjection)
                     .set1i("u_atlas", 0)
                     .set1i("u_atlasType", 0));
-            CgPlatform.gl().glActiveTexture(CgGL.GL_TEXTURE0);
-            CgPlatform.gl().glBindTexture(CgGL.GL_TEXTURE_2D, bitmapAtlas.getTextureId());
+            CgGL.glActiveTexture(CgGL.GL_TEXTURE0);
+            CgGL.glBindTexture(CgGL.GL_TEXTURE_2D, bitmapAtlas.getTextureId());
 
             try (CgGlScope shaderScope = diagAtlasShader.bindScoped()) {
-                CgPlatform.gl().glBindVertexArray(diagAtlasVao);
-                CgPlatform.gl().glDrawArrays(CgGL.GL_TRIANGLE_STRIP, 0, 4);
-                CgPlatform.gl().glBindVertexArray(0);
-                CgPlatform.gl().glBindBuffer(CgGL.GL_ARRAY_BUFFER, 0);
+                CgGL.glBindVertexArray(diagAtlasVao);
+                CgGL.glDrawArrays(CgGL.GL_TRIANGLE_STRIP, 0, 4);
+                CgGL.glBindVertexArray(0);
+                CgGL.glBindBuffer(CgGL.GL_ARRAY_BUFFER, 0);
             }
 
             CgGlyphAtlas msdfAtlas = demoFontRegistry.findPopulatedMsdfAtlas(demoFont.getKey());
@@ -232,17 +232,17 @@ public final class CgFontDemo {
                 updateDiagAtlasQuad(mx0, my0, mx1, my1);
 
                 diagAtlasShader.applyBindings(b -> b.set1i("u_atlasType", 1));
-                CgPlatform.gl().glBindTexture(CgGL.GL_TEXTURE_2D, msdfAtlas.getTextureId());
+                CgGL.glBindTexture(CgGL.GL_TEXTURE_2D, msdfAtlas.getTextureId());
 
                 try (CgGlScope shaderScope = diagAtlasShader.bindScoped()) {
-                    CgPlatform.gl().glBindVertexArray(diagAtlasVao);
-                    CgPlatform.gl().glDrawArrays(CgGL.GL_TRIANGLE_STRIP, 0, 4);
-                    CgPlatform.gl().glBindVertexArray(0);
-                    CgPlatform.gl().glBindBuffer(CgGL.GL_ARRAY_BUFFER, 0);
+                    CgGL.glBindVertexArray(diagAtlasVao);
+                    CgGL.glDrawArrays(CgGL.GL_TRIANGLE_STRIP, 0, 4);
+                    CgGL.glBindVertexArray(0);
+                    CgGL.glBindBuffer(CgGL.GL_ARRAY_BUFFER, 0);
                 }
             }
 
-            CgPlatform.gl().glBindTexture(CgGL.GL_TEXTURE_2D, 0);
+            CgGL.glBindTexture(CgGL.GL_TEXTURE_2D, 0);
         }
     }
 
@@ -261,12 +261,12 @@ public final class CgFontDemo {
             1.0f, 1.0f, 1.0f, 1.0f
         };
 
-        diagAtlasVao = CgPlatform.gl().glGenVertexArrays();
-        diagAtlasVbo = CgPlatform.gl().glGenBuffers();
+        diagAtlasVao = CgGL.glGenVertexArrays();
+        diagAtlasVbo = CgGL.glGenBuffers();
 
-        CgPlatform.gl().glBindVertexArray(diagAtlasVao);
-        CgPlatform.gl().glBindBuffer(CgGL.GL_ARRAY_BUFFER, diagAtlasVbo);
-        CgPlatform.gl().glBufferData(CgGL.GL_ARRAY_BUFFER, floatsToByteBuffer(quadData), CgGL.GL_DYNAMIC_DRAW);
+        CgGL.glBindVertexArray(diagAtlasVao);
+        CgGL.glBindBuffer(CgGL.GL_ARRAY_BUFFER, diagAtlasVbo);
+        CgGL.glBufferData(CgGL.GL_ARRAY_BUFFER, floatsToByteBuffer(quadData), CgGL.GL_DYNAMIC_DRAW);
 
         // Force compile so the program is live before we configure VAO attrib pointers.
         diagAtlasShader.bind();
@@ -276,15 +276,15 @@ public final class CgFontDemo {
         // them locations 0 and 1 respectively.  glGetAttribLocation is not needed and
         // is not available through CgGLBackend.
         int stride = 4 * 4; // 4 floats × 4 bytes
-        CgPlatform.gl().glVertexAttribPointer(0, 2, CgGL.GL_FLOAT, false, stride, 0);
-        CgPlatform.gl().glEnableVertexAttribArray(0);
-        CgPlatform.gl().glVertexAttribPointer(1, 2, CgGL.GL_FLOAT, false, stride, 8);
-        CgPlatform.gl().glEnableVertexAttribArray(1);
+        CgGL.glVertexAttribPointer(0, 2, CgGL.GL_FLOAT, false, stride, 0);
+        CgGL.glEnableVertexAttribArray(0);
+        CgGL.glVertexAttribPointer(1, 2, CgGL.GL_FLOAT, false, stride, 8);
+        CgGL.glEnableVertexAttribArray(1);
 
         diagAtlasShader.unbind();
 
-        CgPlatform.gl().glBindVertexArray(0);
-        CgPlatform.gl().glBindBuffer(CgGL.GL_ARRAY_BUFFER, 0);
+        CgGL.glBindVertexArray(0);
+        CgGL.glBindBuffer(CgGL.GL_ARRAY_BUFFER, 0);
 
         diagAtlasInitialized = true;
         LOGGER.info("DIAG: atlas viewer initialized (VAO={}, VBO={}, shader={})",
@@ -298,9 +298,9 @@ public final class CgFontDemo {
             x0, y1, 0.0f, 1.0f,
             x1, y1, 1.0f, 1.0f
         };
-        CgPlatform.gl().glBindBuffer(CgGL.GL_ARRAY_BUFFER, diagAtlasVbo);
-        CgPlatform.gl().glBufferSubData(CgGL.GL_ARRAY_BUFFER, 0L, floatsToByteBuffer(quadData));
-        CgPlatform.gl().glBindBuffer(CgGL.GL_ARRAY_BUFFER, 0);
+        CgGL.glBindBuffer(CgGL.GL_ARRAY_BUFFER, diagAtlasVbo);
+        CgGL.glBufferSubData(CgGL.GL_ARRAY_BUFFER, 0L, floatsToByteBuffer(quadData));
+        CgGL.glBindBuffer(CgGL.GL_ARRAY_BUFFER, 0);
     }
 
     private static ByteBuffer floatsToByteBuffer(float[] data) {

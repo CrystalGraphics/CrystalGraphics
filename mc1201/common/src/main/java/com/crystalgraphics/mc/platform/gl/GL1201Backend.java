@@ -556,6 +556,16 @@ public final class GL1201Backend extends CgGLBackend {
     }
 
     @Override
+    public void glClear(int mask) {
+        GL11C.glClear(mask);
+    }
+
+    @Override
+    public void glClearDepth(double depth) {
+        GL11C.glClearDepth(depth);
+    }
+
+    @Override
     public void glStencilMask(int mask) {
         RenderSystem.stencilMask(mask);
     }
