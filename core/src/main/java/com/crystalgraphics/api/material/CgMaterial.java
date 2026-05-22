@@ -16,6 +16,7 @@ import com.crystalgraphics.gl.material.CgMaterialShader;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.gl.material.parse.CgParsedPass;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
+import com.crystalgraphics.gl.scene.CgSceneBuffers;
 import com.crystalgraphics.gl.state.CgGlScope;
 import com.crystalgraphics.gl.state.CgGlState;
 import lombok.Getter;
@@ -700,6 +701,13 @@ public final class CgMaterial {
 
         getPassRenderState(variant).apply();
         shader.bind();
+
+        // Bind cg_DepthBuffer (declared in cg_env.glsl) to the engine-reserved unit.
+        // CgGlSlot.TEXTURES is intentionally absent from stateScope — adding it would
+        // issue glGet on every draw call; the pipeline's saveAll() fence is sufficient.
+        if (CgSceneBuffers.isInitialized()) {
+                shader.applyBindings(b-> b.sampler("cg_DepthBuffer", CgBindingPoints.CG_RESERVED_DEPTH_UNIT, CgSceneBuffers.getDepthSnapshot()));
+        }
     }
 
     /**

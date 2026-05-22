@@ -123,6 +123,67 @@ public final class CgVertexAttribute {
         return result;
     }
 
+    /**
+     * Derives the GLSL type string for this attribute from its primitive type, component count,
+     * and normalization flag.
+     *
+     * <p>Mapping rules:</p>
+     * <ul>
+     *   <li><strong>Float family</strong> — {@link CgAttribType#FLOAT}, or any type with
+     *       {@code normalized=true}: GPU normalizes integers to [0,1] / [-1,1] at fetch time,
+     *       so the GLSL type is {@code float}/{@code vec2}/{@code vec3}/{@code vec4}.</li>
+     *   <li><strong>Signed integer family</strong> — {@link CgAttribType#BYTE},
+     *       {@link CgAttribType#SHORT}, {@link CgAttribType#INT} with {@code normalized=false}:
+     *       {@code int}/{@code ivec2}/{@code ivec3}/{@code ivec4}.</li>
+     *   <li><strong>Unsigned integer family</strong> — {@link CgAttribType#UNSIGNED_BYTE},
+     *       {@link CgAttribType#UNSIGNED_SHORT}, {@link CgAttribType#UNSIGNED_INT} with
+     *       {@code normalized=false}: {@code uint}/{@code uvec2}/{@code uvec3}/{@code uvec4}.</li>
+     * </ul>
+     *
+     * <p>No GL calls — pure derivation from existing fields. Called by
+     * {@code CgGlslEmitter.emitVertexInputs()} to generate {@code in <type> <name>;} declarations
+     * in compiled vertex shader source.</p>
+     *
+     * @return GLSL type string (e.g. {@code "vec3"}, {@code "uvec4"}, {@code "int"})
+     * @throws IllegalStateException if the (type, components, normalized) combination has no
+     *                                GLSL mapping — indicates an unsupported attribute configuration
+     */
+    public String getGlslType() {
+        // Float family: FLOAT always maps to float; any normalized integer also maps to float because
+        // the GPU normalizes the integer value to [0,1] or [-1,1] before presenting it to GLSL.
+        if (type == CgAttribType.FLOAT || normalized) {
+            switch (components) {
+                case 1: return "float";
+                case 2: return "vec2";
+                case 3: return "vec3";
+                case 4: return "vec4";
+            }
+        }
+        // Signed integer family — non-normalized BYTE, SHORT, or INT → int/ivec2/ivec3/ivec4
+        if (type == CgAttribType.BYTE || type == CgAttribType.SHORT || type == CgAttribType.INT) {
+            switch (components) {
+                case 1: return "int";
+                case 2: return "ivec2";
+                case 3: return "ivec3";
+                case 4: return "ivec4";
+            }
+        }
+        // Unsigned integer family — non-normalized UNSIGNED_BYTE/SHORT/INT → uint/uvec2/uvec3/uvec4
+        if (type == CgAttribType.UNSIGNED_BYTE || type == CgAttribType.UNSIGNED_SHORT
+                || type == CgAttribType.UNSIGNED_INT) {
+            switch (components) {
+                case 1: return "uint";
+                case 2: return "uvec2";
+                case 3: return "uvec3";
+                case 4: return "uvec4";
+            }
+        }
+        // Any combination not covered above is an unsupported configuration — never silently emit a wrong type
+        throw new IllegalStateException(
+                "Cannot derive GLSL type for attribute '" + name + "': "
+                + "type=" + type + ", components=" + components + ", normalized=" + normalized);
+    }
+
     @Override
     public String toString() {
         return "CgVertexAttribute{" + name + ", " + components + "x" + type

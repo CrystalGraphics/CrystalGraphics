@@ -4,7 +4,11 @@ import lombok.Getter;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Immutable, hashable vertex format descriptor.
@@ -20,6 +24,17 @@ import java.util.List;
  */
 public final class CgVertexFormat implements CgAttributeFormat {
 
+    /**
+     * Global registry mapping {@code key} → {@code CgVertexFormat}.
+     * Auto-populated when any format is constructed via {@link Builder#build()}.
+     * Used by the CrystalShader material pipeline to resolve {@code #type <name>} declarations
+     * at compile time via {@link #forShaderType(String)}.
+     *
+     * <p>Thread-safe: {@code ConcurrentHashMap} allows concurrent format registration
+     * from multiple threads during mod initialization without external synchronization.</p>
+     */
+    private static final Map<String, CgVertexFormat> REGISTRY = new ConcurrentHashMap<>();
+
     private final CgVertexAttribute[] attributes;
     /**
      * -- GETTER --
@@ -30,10 +45,10 @@ public final class CgVertexFormat implements CgAttributeFormat {
     private final int hash;
     /**
      * -- GETTER --
-     * Returns the debug/diagnostic name. 
+     * Returns the key name. 
      */
     @Getter
-    private final String debugName;
+    private final String key;
 
     // ── Predefined formats ──────────────────────────────────────────────
 
@@ -62,8 +77,10 @@ public final class CgVertexFormat implements CgAttributeFormat {
      * Standard spatial vertex format for the CrystalShader material pipeline:
      * POSITION(vec3) + UV(vec2) + NORMAL(vec3) = 32 bytes stride.
      *
-     * <p>Attribute locations are assigned sequentially in declaration order,
-     * matching the implicit index contract assumed by {@code cg_env.glsl}:</p>
+     * <p>Registered under the {@code #type} key {@code "spatial"} so that any
+     * {@code .shader} file declaring {@code #type spatial} uses this format.</p>
+     *
+     * <p>Attribute locations are assigned sequentially in declaration order:</p>
      * <ul>
      *   <li>Location 0 — {@code cg_Position} (vec3)</li>
      *   <li>Location 1 — {@code cg_TexCoord0} (vec2)</li>
@@ -74,22 +91,49 @@ public final class CgVertexFormat implements CgAttributeFormat {
      * so that {@code glBindAttribLocation} wires each attribute to the correct index
      * before shader link.</p>
      */
-    public static final CgVertexFormat SPATIAL = builder("cg_spatial_pos3_uv2_normal3")
+    public static final CgVertexFormat SPATIAL = builder("spatial")
             .add(CgVertexSemantic.POSITION, "cg_Position",  3, CgAttribType.FLOAT)
             .add(CgVertexSemantic.UV,       "cg_TexCoord0", 2, CgAttribType.FLOAT)
             .add(CgVertexSemantic.NORMAL,   "cg_Normal",    3, CgAttribType.FLOAT)
             .build();
 
-    private CgVertexFormat(CgVertexAttribute[] attributes, int stride, String debugName) {
+    private CgVertexFormat(CgVertexAttribute[] attributes, int stride, String key) {
         this.attributes = attributes;
         this.stride = stride;
-        this.debugName = debugName;
+        this.key = key;
         this.hash = computeHash(attributes);
+        // Auto-register under key as the #type key for the CrystalShader material pipeline.
+        // ConcurrentHashMap.putIfAbsent is atomic — safe for concurrent format construction.
+        CgVertexFormat existing = REGISTRY.putIfAbsent(key, this);
+        if (existing != null && !this.equals(existing)) {
+            throw new IllegalStateException(
+                    "CgVertexFormat registry collision: a different format is already registered under '"
+                    + key + "'. Each key must map to exactly one format layout.");
+        }
     }
 
     /** Creates a new format builder. */
-    public static Builder builder(String debugName) {
-        return new Builder(debugName);
+    public static Builder builder(String key) {
+        return new Builder(key);
+    }
+
+    /**
+     * Looks up a registered format by its {@code #type} name (= its {@code key}).
+     *
+     * @param name the type name from a {@code #type <name>} directive, e.g. {@code "spatial"}
+     * @return the registered format, or {@code null} if no format was registered under that name
+     */
+    public static CgVertexFormat forShaderType(String name) {
+        return REGISTRY.get(name);
+    }
+
+    /**
+     * Returns an unmodifiable view of all currently registered type names.
+     * Used by {@code CgStructureParser} to produce informative error messages
+     * when an unknown {@code #type} name is encountered.
+     */
+    public static Set<String> registeredShaderTypes() {
+        return Collections.unmodifiableSet(REGISTRY.keySet());
     }
 
     /** Returns the number of attributes in this format. */
@@ -130,7 +174,7 @@ public final class CgVertexFormat implements CgAttributeFormat {
 
     @Override
     public String toString() {
-        return "CgVertexFormat{" + debugName + ", stride=" + stride
+        return "CgVertexFormat{" + key + ", stride=" + stride
                 + ", attrs=" + Arrays.toString(attributes) + "}";
     }
 
@@ -145,12 +189,12 @@ public final class CgVertexFormat implements CgAttributeFormat {
     // ── Builder ─────────────────────────────────────────────────────────
 
     public static final class Builder {
-        private final String debugName;
+        private final String key;
         private final List<CgVertexAttribute> attrs = new ArrayList<CgVertexAttribute>();
         private int currentOffset = 0;
 
-        private Builder(String debugName) {
-            this.debugName = debugName != null ? debugName : "unnamed";
+        private Builder(String key) {
+            this.key = key != null ? key : "unnamed";
         }
 
         /**
@@ -213,7 +257,7 @@ public final class CgVertexFormat implements CgAttributeFormat {
         public CgVertexFormat build() {
             if (attrs.isEmpty()) throw new IllegalStateException("Format must have at least one attribute");
             CgVertexAttribute[] arr = attrs.toArray(new CgVertexAttribute[0]);
-            return new CgVertexFormat(arr, currentOffset, debugName);
+            return new CgVertexFormat(arr, currentOffset, key);
         }
     }
 }

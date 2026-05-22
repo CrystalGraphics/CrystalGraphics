@@ -84,11 +84,4 @@ flat in int cg_InstanceId;
 // -- Convenience Macros ------------------------------------------------------
 #define CG_MATRIX_MVP (cg_ProjMatrix * cg_ViewMatrix * CG_OBJECT_TO_WORLD)
 
-// -- Vertex Attribute Aliases (vertex stage only) ----------------------------
-// No explicit layout(location=N) - attribute binding is done by
-// CgShaderFactory.fromSource(vert, frag, format) before link.
-#ifdef CG_VERTEX_STAGE
-in vec3 cg_Position;
-in vec2 cg_TexCoord0;
-in vec3 cg_Normal;
-#endif
+

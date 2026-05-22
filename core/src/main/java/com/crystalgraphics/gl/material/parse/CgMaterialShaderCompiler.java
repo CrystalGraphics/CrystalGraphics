@@ -42,8 +42,10 @@ import java.util.Set;
  *
  * <h3>Attribute binding</h3>
  * <p>No explicit {@code layout(location=N)} attributes are emitted — attribute locations
- * are bound before link by passing {@link CgVertexFormat#SPATIAL}
- * to {@code CgShaderFactory.fromSource(vert, frag, format)}.</p>
+ * are bound before link by passing the resolved {@link CgVertexFormat} (from
+ * {@link CgVertexFormat#forShaderType(String)}) to
+ * {@code CgShaderFactory.fromSource(vert, frag, format)}.
+ * The format is carried in {@link CompiledSource#vertexFormat()} for the caller's use.</p>
  *
  * <h3>v2f varying naming</h3>
  * <p>Varying names are prefixed with {@code _v2f_} (engine-reserved) to avoid collisions
@@ -59,9 +61,13 @@ public final class CgMaterialShaderCompiler {
      * @param fragmentSource
      Complete GLSL fragment shader source, starting with {@code #version} and containing
      all generated declarations, user property uniforms, v2f varying inputs, global
-     declarations, and the {@code main()} wrapper.*/
+     declarations, and the {@code main()} wrapper.
+     * @param vertexFormat
+     The resolved {@link CgVertexFormat} for this compiled source, derived from
+     {@code shader.shaderType()} at compile time. Used by {@code CgMaterialShader} to
+     pass the correct format to {@code CgShaderFactory.fromSource()} for attribute binding.*/
     @Desugar
-    public record CompiledSource(String vertexSource, String fragmentSource) {
+    public record CompiledSource(String vertexSource, String fragmentSource, CgVertexFormat vertexFormat) {
     }
 
     /**
@@ -146,12 +152,21 @@ public final class CgMaterialShaderCompiler {
         List<CgMaterialProperty> properties = shader.properties();
         List<CgShaderParser.V2fField> v2fFields = CgShaderParser.parseV2fFields(pass);
 
+        // Resolve the vertex format from the #type registry. Validation already ran in
+        // CgStructureParser.parseShaderType(), so null here is a defense-in-depth guard.
+        CgVertexFormat vertexFormat = CgVertexFormat.forShaderType(shader.shaderType());
+        if (vertexFormat == null) {
+            throw new IllegalArgumentException(
+                    "Cannot compile: unresolvable #type '" + shader.shaderType()
+                    + "'. Known types: " + CgVertexFormat.registeredShaderTypes());
+        }
+
         String vertexSource = buildVertexSource(shader, pass, properties, v2fFields, useSsbo,
-                path, attachedBuffers, requiredExtensions, matPropsEntry, config);
+                path, attachedBuffers, requiredExtensions, matPropsEntry, config, vertexFormat);
         String fragmentSource = buildFragmentSource(shader, pass, properties, v2fFields, useSsbo,
                 path, attachedBuffers, requiredExtensions, matPropsEntry, config);
 
-        return new CompiledSource(vertexSource, fragmentSource);
+        return new CompiledSource(vertexSource, fragmentSource, vertexFormat);
     }
 
     // ── Convenience overloads (delegate to canonical 5-arg via passes().get(0)) ──
@@ -378,7 +393,8 @@ public final class CgMaterialShaderCompiler {
                                              List<CgAttachedBuffer> attachedBuffers,
                                              Set<String> requiredExtensions,
                                              CgUniformBuffer matPropsEntry,
-                                             CompileConfig config) {
+                                             CompileConfig config,
+                                             CgVertexFormat vertexFormat) {
         StringBuilder sb = new StringBuilder(1024);
 
         // Step 1: #version
@@ -402,21 +418,26 @@ public final class CgMaterialShaderCompiler {
 
         sb.append("#include \"").append(ENV_INCLUDE).append("\"\n");
 
+        // Inject vertex attribute declarations for this format immediately after cg_env.glsl.
+        // Known limitation: compileShadowAutoGen / compileDepthAutoGen generate vertex bodies
+        // that reference cg_Position by literal name — this only works correctly for formats
+        // where the position attribute is named cg_Position (i.e. SPATIAL and SPATIAL-derived
+        // formats). Custom formats with a differently-named position attribute must author an
+        // explicit ShadowCaster / Depth pass to bypass auto-generation.
+        sb.append(CgGlslEmitter.emitVertexInputs(vertexFormat));
+
         // Property uniform declarations (sampler types only; non-sampler go into CgMaterialBlock UBO)
         appendPropertyUniforms(sb, properties);
 
         // Material properties UBO (CgMaterialBlock) — emitted before user-attached buffers
         if (matPropsEntry != null) {
-            sb.append(CgBufferGlslEmitter.emitUbo(matPropsEntry)).append('\n');
+            sb.append(CgGlslEmitter.emitUbo(matPropsEntry)).append('\n');
         }
 
         appendAttachedBuffers(sb, attachedBuffers, shaderBufferPath);
 
         // v2f struct
         appendV2fStruct(sb, pass.v2fStructBody());
-
-        // Compiler-wired flat int varying for instance ID
-        sb.append("flat out int cg_InstanceId;\n");
 
         // v2f varying outputs
         appendV2fVaryingOutputs(sb, v2fFields);
@@ -474,7 +495,7 @@ public final class CgMaterialShaderCompiler {
 
         // Material properties UBO (CgMaterialBlock) — emitted before user-attached buffers
         if (matPropsEntry != null) {
-            sb.append(CgBufferGlslEmitter.emitUbo(matPropsEntry)).append('\n');
+            sb.append(CgGlslEmitter.emitUbo(matPropsEntry)).append('\n');
         }
 
         appendAttachedBuffers(sb, attachedBuffers, shaderBufferPath);
@@ -545,11 +566,11 @@ public final class CgMaterialShaderCompiler {
                 || path == CgCapabilities.ShaderBufferPath.SSBO_ARB);
         for (CgAttachedBuffer ab : attachedBuffers) {
             if (ab.isUbo()) {
-                sb.append(CgBufferGlslEmitter.emitUbo(ab.getBuffer().getFormat(), ab.getBuffer().getName())).append('\n');
+                sb.append(CgGlslEmitter.emitUbo(ab.getBuffer().getFormat(), ab.getBuffer().getName())).append('\n');
             } else {
                 String block = useSsbo
-                        ? CgBufferGlslEmitter.emitSsbo(ab)
-                        : CgBufferGlslEmitter.emitTbo(ab);
+                        ? CgGlslEmitter.emitSsbo(ab)
+                        : CgGlslEmitter.emitTbo(ab);
                 sb.append(block).append('\n');
             }
         }
