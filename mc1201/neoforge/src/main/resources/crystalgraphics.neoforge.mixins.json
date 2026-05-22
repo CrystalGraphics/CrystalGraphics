@@ -3,6 +3,8 @@
   "minVersion": "0.8",
   "package": "com.crystalgraphics.mc.mixin",
   "compatibilityLevel": "JAVA_17",
-  "client": ["MixinGameRenderer", "MixinMinecraftShutdown"],
-  "injectors": { "defaultRequire": 1 }
+  "client": [],
+  "injectors": {
+    "defaultRequire": 1
+  }
 }

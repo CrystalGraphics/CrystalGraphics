@@ -4,6 +4,8 @@
   "package": "com.crystalgraphics.mc.mixin",
   "compatibilityLevel": "JAVA_17",
   "mixins": [],
-  "client": ["MixinGameRenderer", "MixinMinecraftShutdown"],
-  "injectors": { "defaultRequire": 1 }
+  "client": [],
+  "injectors": {
+    "defaultRequire": 1
+  }
 }

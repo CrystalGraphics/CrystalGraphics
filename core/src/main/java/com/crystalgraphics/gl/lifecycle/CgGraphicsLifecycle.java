@@ -80,7 +80,7 @@ public final class CgGraphicsLifecycle {
         if (!initialized) initContext(w, h);
         else if (w != currentWidth || h != currentHeight) onResize(w, h);
 
-        CgPlatform.rendering().onFrameBegin(partialTick);
+        CgRenderPipeline.getInstance().execute(partialTick);
     }
 
     /**
