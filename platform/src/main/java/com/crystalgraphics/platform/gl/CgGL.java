@@ -265,6 +265,9 @@ public final class CgGL {
     public static final int GL_DEPTH_BUFFER_BIT   = 0x00000100;
     public static final int GL_STENCIL_BUFFER_BIT = 0x00000400;
 
+    // --- Framebuffer attachment query ----------------------------------------
+    public static final int GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE = 0x8CD0;
+
     // --- Shader types --------------------------------------------------------
     public static final int GL_VERTEX_SHADER   = 0x8B31;
     public static final int GL_FRAGMENT_SHADER = 0x8B30;
@@ -484,6 +487,10 @@ public final class CgGL {
 
     public static int glGenFramebuffers() {
         return backend.genFramebuffers();
+    }
+
+    public static int glGetFramebufferAttachmentParameteriv(int target, int attachment, int pname) {
+        return backend.getFramebufferAttachmentParameteriv(target, attachment, pname);
     }
 
     public static void glDeleteFramebuffers(int fbo) {
@@ -913,6 +920,14 @@ public final class CgGL {
 
     public static void glClearDepth(double depth) {
         backend.glClearDepth(depth);
+    }
+
+    public static void glClearColor(float r, float g, float b, float a) {
+        backend.glClearColor(r, g, b, a);
+    }
+
+    public static void glClearStencil(int s) {
+        backend.glClearStencil(s);
     }
 
     public static void glStencilMask(int mask) {

@@ -93,6 +93,11 @@ public final class GL1201Backend extends CgGLBackend {
     }
 
     @Override
+    public int getFramebufferAttachmentParameteriv(int target, int attachment, int pname) {
+        return GL30C.glGetFramebufferAttachmentParameteri(target, attachment, pname);
+    }
+
+    @Override
     public int genFramebuffers() {
         return GlStateManager.glGenFramebuffers();
     }
@@ -563,6 +568,16 @@ public final class GL1201Backend extends CgGLBackend {
     @Override
     public void glClearDepth(double depth) {
         GL11C.glClearDepth(depth);
+    }
+
+    @Override
+    public void glClearColor(float r, float g, float b, float a) {
+        RenderSystem.clearColor(r, g, b, a);
+    }
+
+    @Override
+    public void glClearStencil(int s) {
+        GL11C.glClearStencil(s);
     }
 
     @Override
