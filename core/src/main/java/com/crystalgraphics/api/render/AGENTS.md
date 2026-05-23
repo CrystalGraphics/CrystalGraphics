@@ -38,7 +38,11 @@ cmd.queueSlot = CgRenderQueue.GEOMETRY;
 cmd.mesh = myMesh;
 cmd.material = myMaterial;
 pipe.submit(cmd);
-// CgRenderPipeline.execute(partialTicks) is called by CgRenderHook each frame
+// MC loaders call the split API each frame (via stage events / CgRenderHook):
+// pipe.executeOpaquePass(partialTicks, sourceFboId);
+// pipe.executeTransparentPass();
+// pipe.endFrame();
+// pipe.execute(partialTicks) is a convenience wrapper for harness / single-hook paths only
 ```
 
 ## Invariants

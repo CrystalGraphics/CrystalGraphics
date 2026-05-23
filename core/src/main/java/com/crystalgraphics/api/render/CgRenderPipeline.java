@@ -284,6 +284,12 @@ public final class CgRenderPipeline {
         checkNotDeleted();
         if (!hasPendingCommands()) return false;
 
+        if (!irisWarningLogged && CgIrisCompat.isShaderPackActive()) {
+            irisWarningLogged = true;
+            LOGGER.warn(
+                    "[CrystalGraphics] Iris/Oculus shader pack detected. CG geometry renders " + "into the main framebuffer outside Iris's deferred GBuffer chain — geometry " + "will appear unlit under shader packs with deferred pipelines. " + "cg_DepthBuffer remains valid.");
+        }
+
         blitDepthSnapshot(sourceFboId);
 
         this.currentPartialTicks = partialTicks;

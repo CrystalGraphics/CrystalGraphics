@@ -22,7 +22,8 @@ public final class CgEngineNeoForgeEvents {
 
     /** Called once from {@link CrystalGraphics1201NeoForge} constructor. */
     static void register() {
-        NeoForge.EVENT_BUS.addListener(CgEngineNeoForgeEvents::onRenderLevel);
+        NeoForge.EVENT_BUS.addListener(CgEngineNeoForgeEvents::onRenderLevelOpaque);
+        NeoForge.EVENT_BUS.addListener(CgEngineNeoForgeEvents::onRenderLevelTransparent);
         NeoForge.EVENT_BUS.addListener(CgEngineNeoForgeEvents::onGameShuttingDown);
     }
 
@@ -42,13 +43,28 @@ public final class CgEngineNeoForgeEvents {
 
     // ── NEOFORGE bus ───────────────────────────────────────────────────────────
 
-    private static void onRenderLevel(RenderLevelStageEvent event) {
-        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_LEVEL) return;
+    private static void onRenderLevelOpaque(RenderLevelStageEvent event) {
+        // Validated: AFTER_BLOCK_ENTITIES fires at LevelRenderer.java line ~1140 (MC 1.20.4),
+        // after block entities, before renderSectionLayer(translucent).
+        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES) return;
         Minecraft mc = Minecraft.getInstance();
-        CgGraphicsLifecycle.onRenderFrame(
+        mc.getMainRenderTarget().bindWrite(false);
+        CgGraphicsLifecycle.onOpaquePass(
                 event.getPartialTick(),
                 mc.getWindow().getWidth(),
-                mc.getWindow().getHeight());
+                mc.getWindow().getHeight(),
+                mc.getMainRenderTarget().frameBufferId);
+    }
+
+    private static void onRenderLevelTransparent(RenderLevelStageEvent event) {
+        // Validated: AFTER_PARTICLES fires at LevelRenderer.java line ~1215/1230 (MC 1.20.4),
+        // after translucent terrain + tripwire + particles (both Fabulous and non-Fabulous).
+        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_PARTICLES) return;
+        Minecraft mc = Minecraft.getInstance();
+        mc.getMainRenderTarget().bindWrite(false);
+        // Note: CG geometry renders into main FBO outside Iris's GBuffer chain.
+        // See CgIrisCompat for detection API if Iris-specific behaviour is needed.
+        CgGraphicsLifecycle.onTransparentPass();
     }
 
     private static void onGameShuttingDown(GameShuttingDownEvent event) {
