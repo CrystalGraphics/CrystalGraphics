@@ -1,17 +1,25 @@
 package com.crystalgraphics.api.render;
 
-import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
+import com.crystalgraphics.api.material.CgMaterial;
+import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
+import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 import com.crystalgraphics.gl.state.CgGlScope;
 import com.crystalgraphics.gl.state.CgGlState;
+import com.crystalgraphics.mc.compat.CgIrisCompat;
+import com.crystalgraphics.platform.gl.CgCapabilities;
+import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.pipeline.CgDepthPrepassRenderer;
 import com.crystalgraphics.render.pipeline.CgForwardRenderer;
 import com.crystalgraphics.render.pipeline.CgTransparentRenderer;
 import lombok.Getter;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import static com.crystalgraphics.api.state.CgGlSlot.*;
 
 /**
@@ -59,6 +67,8 @@ import static com.crystalgraphics.api.state.CgGlSlot.*;
  */
 public final class CgRenderPipeline {
 
+    private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
+    
     // ── Format constants (engine-canonical; must NOT be duplicated elsewhere) ──
 
     /** Default GLSL uniform block name used by {@code cg_env.glsl}. */
@@ -118,6 +128,9 @@ public final class CgRenderPipeline {
     private final CgUniformBuffer frameUbo;
     private final CgShaderBuffer  objectBuffer;
 
+    private CgFrameBuffer depthSnapshotFbo;
+    private boolean isDepthBlitDone = false;
+
     // ── Pipeline components ───────────────────────────────────────────────────
 
     private final CgRenderCommandPool     pool;
@@ -135,6 +148,10 @@ public final class CgRenderPipeline {
     private float currentPartialTicks     = 0f;
     private boolean replayOpaque          = false;
     private boolean deleted               = false;
+    private boolean irisWarningLogged = false;
+    private int lastSourceFboId = 0;
+    private int depthBlitMask = CgGL.GL_DEPTH_BUFFER_BIT;
+    private boolean depthBlitMaskResolved = false;
 
     // ── Anaglyph guard ────────────────────────────────────────────────────────
 
@@ -147,7 +164,7 @@ public final class CgRenderPipeline {
     private CgRenderPipeline() {
         this.frameUbo      = new CgUniformBuffer(FRAME_BLOCK_NAME, FRAME_FORMAT, CgBindingPoints.FRAME_DATA_UBO);
         this.objectBuffer  = CgShaderBuffer.createInternal(OBJECT_BLOCK_NAME, OBJECT_FORMAT, CgBindingPoints.objectData());
-        
+
         this.pool             = new CgRenderCommandPool();
         this.frameData        = new CgFrameData();
         this.commandQueue     = new CgRenderCommandQueue(pool);
@@ -155,6 +172,9 @@ public final class CgRenderPipeline {
         this.forwardRenderer     = new CgForwardRenderer();
         this.transparentRenderer = new CgTransparentRenderer();
         this.depthPrepass        = new CgDepthPrepassRenderer();
+
+        this.depthSnapshotFbo = CgFrameBuffer.createScreenSized("cg_depth_snapshot", CgFrameBufferFormat.DEPTH);
+        clearDepthSnapshot();
     }
 
     // ── Command submission API ────────────────────────────────────────────────
@@ -203,13 +223,42 @@ public final class CgRenderPipeline {
     // ── Execute API (split and convenience) ───────────────────────────────────
 
     /**
+     * Uploads frame data into the UBO and binds both engine buffers to their GL slots.
+     * Called once per non-replay frame at the start of the opaque pass.
+     * partialTicks is applied to timeSecs here (not stored permanently in frameData).
+     */
+    private void uploadFrameData(CgFrameData fd) {
+        float savedTime = fd.timeSecs;
+        fd.timeSecs += currentPartialTicks * 0.05f;
+        frameUbo.writer()
+                .reset()
+                .beginRecord()
+                .mat4("cg_ViewMatrix", fd.viewMatrix)
+                .mat4("cg_ProjMatrix", fd.projMatrix)
+                .vec4("cg_Time",
+                        fd.timeSecs / 20f, fd.timeSecs,
+                        fd.timeSecs * 2f, fd.timeSecs * 3f)
+                .vec2("cg_Resolution", (float) fd.viewportW, (float) fd.viewportH)
+                .endRecord();
+        fd.timeSecs = savedTime;
+        frameUbo.upload();
+    }
+
+    private void bindFrameResources() {
+        frameUbo.bind();
+        objectBuffer.bind();
+        CgTexture depthSnap = getDepthSnapshot();
+        if (depthSnap != null) depthSnap.bind(CgBindingPoints.DEPTH_TEXTURE_UNIT);
+    }
+
+    /**
      * Uploads the current {@link #getFrameData()} into the frame UBO and binds both
      * engine buffers (frame UBO + object buffer) to their GL binding points.
      *
      * <p>Use this in manual-bind scenes (harness, non-MC consumers) that call
      * {@link CgMaterial#bind()} directly
      * rather than submitting commands through {@link #submit(CgRenderCommand)}.
-     * It is a no-op equivalent of the frame-upload portion of {@link #executeOpaquePass(float)},
+     * It is a no-op equivalent of the frame-upload portion of {@link #executeOpaquePass(float, int)},
      * without sorting or dispatching any renderers.</p>
      *
      * <p>Callers are responsible for applying a {@link CgGlScope}
@@ -217,19 +266,25 @@ public final class CgRenderPipeline {
      */
     public void prepareFrame() {
         checkNotDeleted();
-        beginFrame(frameData);
+        uploadFrameData(frameData);
+        bindFrameResources();
     }
 
     /**
-     * Called after MC entity render. Runs sort + frame UBO upload + depth prepass + opaque forward.
+     * Called after MC entity render. Blits the scene depth snapshot, then runs
+     * sort + frame UBO upload + depth prepass + opaque forward.
      * Sets up the anaglyph guard — must be called before {@link #executeTransparentPass()}.
      *
      * @param partialTicks MC render partial tick (0.0–1.0)
+     * @param sourceFboId  GL framebuffer ID to read depth from (MC's main render target).
+     *                     Pass {@code 0} when rendering to the default framebuffer (harness).
      * @return {@code false} if there are no pending commands (caller may skip transparent pass)
      */
-    public boolean executeOpaquePass(float partialTicks) {
+    public boolean executeOpaquePass(float partialTicks, int sourceFboId) {
         checkNotDeleted();
         if (!hasPendingCommands()) return false;
+
+        blitDepthSnapshot(sourceFboId);
 
         this.currentPartialTicks = partialTicks;
 
@@ -250,12 +305,14 @@ public final class CgRenderPipeline {
             replayOpaque = false;
         }
 
-        try (CgGlScope scope = CgGlState.save(
-                VERTEX_INPUT, PROGRAM, DEPTH, STENCIL, ALPHA_TEST, BLEND, CULL, COLOR_MASK)) {
-            
-            if (!replayOpaque) commandQueue.sort();
-            
-            beginFrame(frameData);
+        try (CgGlScope scope = CgGlState.save(VERTEX_INPUT, PROGRAM, DEPTH, STENCIL, ALPHA_TEST, BLEND, CULL,
+                COLOR_MASK, TEXTURES)) {
+
+            if (!replayOpaque) {
+                commandQueue.sort();
+                uploadFrameData(frameData);
+            }
+            bindFrameResources();
 
             depthPrepass.execute(
                 commandQueue.getSortedOpaque(), commandQueue.getOpaqueCount(), this);
@@ -276,7 +333,10 @@ public final class CgRenderPipeline {
         checkNotDeleted();
         if (commandQueue.getTransparentCount() == 0) return false;
 
-        try (CgGlScope scope = CgGlState.save(VERTEX_INPUT, PROGRAM, DEPTH, BLEND, CULL)) {
+        blitDepthSnapshot(lastSourceFboId);
+
+        try (CgGlScope scope = CgGlState.save(VERTEX_INPUT, PROGRAM, DEPTH, BLEND, CULL, TEXTURES)) {
+            bindFrameResources();
             transparentRenderer.execute(
                     commandQueue.getSortedTransparent(), commandQueue.getTransparentCount(), this);
         }
@@ -285,12 +345,17 @@ public final class CgRenderPipeline {
     }
 
     /**
-     * Releases the command pool. Call after {@link #executeTransparentPass()}.
+     * Releases the command pool and resets the per-frame depth snapshot guard.
+     * Call after {@link #executeTransparentPass()}.
      * Anaglyph replay: pool is NOT released on replay — commands are reused for the second eye.
      */
     public void endFrame() {
         checkNotDeleted();
-        if (!replayOpaque) commandQueue.releaseAll();
+        if (!replayOpaque) {
+            commandQueue.releaseAll();
+            isDepthBlitDone = false;
+            lastSourceFboId = 0;
+        }
     }
 
     /**
@@ -300,11 +365,41 @@ public final class CgRenderPipeline {
      * @param partialTicks MC render partial tick (0.0–1.0)
      */
     public void execute(float partialTicks) {
-        executeOpaquePass(partialTicks);
+        executeOpaquePass(partialTicks, 0);
         executeTransparentPass();
         endFrame();
     }
 
+    // ── Depth snapshot handling ─────────────────────────────────────────────────────────────
+
+    /**
+     * Blits scene depth from {@code sourceFboId} into the depth snapshot FBO, then marks the
+     * blit as done so subsequent calls within the same frame are no-ops.
+     *
+     * <p>On the first call ever, probes the source FBO's stencil attachment once and caches the
+     * optimal blit mask for the context lifetime — see {@link CgFrameBuffer#optimalDepthBlitMask}.
+     *
+     * @param sourceFboId GL framebuffer ID to read depth from; {@code 0} for the default FB (harness)
+     */
+    private void blitDepthSnapshot(int sourceFboId) {
+        if (depthSnapshotFbo == null || isDepthBlitDone) return;
+        if (!depthBlitMaskResolved) {
+            depthBlitMask = CgFrameBuffer.optimalDepthBlitMask(sourceFboId);
+            depthBlitMaskResolved = true;
+        }
+        depthSnapshotFbo.blitFrom(sourceFboId, depthBlitMask);
+        isDepthBlitDone = true;
+        lastSourceFboId = sourceFboId;
+    }
+
+    private void clearDepthSnapshot() {
+        if (depthSnapshotFbo != null) depthSnapshotFbo.clearDepthStencil();
+    }
+
+    public CgTexture getDepthSnapshot() {
+        return depthSnapshotFbo != null ? depthSnapshotFbo.getDepthTexture() : null;
+    }
+    
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
     /**
@@ -334,32 +429,11 @@ public final class CgRenderPipeline {
         }
     }
 
-    // ── Private helpers ───────────────────────────────────────────────────────
-
-    /**
-     * Uploads frame data into the UBO and binds both engine buffers to their GL slots.
-     * Called once per non-replay frame at the start of the opaque pass.
-     * partialTicks is applied to timeSecs here (not stored permanently in frameData).
-     */
-    private void beginFrame(CgFrameData fd) {
-        float savedTime = fd.timeSecs;
-        fd.timeSecs += currentPartialTicks * 0.05f;
-        frameUbo.writer()
-                .reset()
-                .beginRecord()
-                .mat4("cg_ViewMatrix", fd.viewMatrix)
-                .mat4("cg_ProjMatrix", fd.projMatrix)
-                .vec4("cg_Time",
-                        fd.timeSecs / 20f, fd.timeSecs,
-                        fd.timeSecs * 2f, fd.timeSecs * 3f)
-                .vec2("cg_Resolution", (float) fd.viewportW, (float) fd.viewportH)
-                .endRecord();
-        fd.timeSecs = savedTime;
-        frameUbo.upload();
-        
-        frameUbo.bind();
-        objectBuffer.bind();
+    public static void onSceneResize() {
+        if (INSTANCE != null) INSTANCE.clearDepthSnapshot();
     }
+
+    // ── Private helpers ───────────────────────────────────────────────────────
     
     private void delete() {
         if (!deleted) {
@@ -368,6 +442,7 @@ public final class CgRenderPipeline {
             frameUbo.unbind();
             frameUbo.delete();
             objectBuffer.delete();
+            depthSnapshotFbo = null;  // GL object deleted by CgFrameBufferRegistry.deleteAll()
         }
     }
 

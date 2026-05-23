@@ -76,6 +76,12 @@ flat in int cg_InstanceId;
 #define CG_OBJECT_CUSTOM2 (CG_OBJECT_DATA.custom2)
 #define CG_OBJECT_CUSTOM3 (CG_OBJECT_DATA.custom3)
 
+// -- Scene samplers (auto-bound by the engine; do not redeclare or bind manually) -----------
+// cg_DepthBuffer: scene depth snapshot (DEPTH24_STENCIL8) captured just before the opaque pass.
+// Bound to CgBindingPoints.DEPTH_TEXTURE_UNIT in both vertex and fragment stages of every pass.
+// Do NOT use that texture unit in material Properties.
+uniform sampler2D cg_DepthBuffer;
+
 // -- Time and Resolution Macros ---------------------------------------------
 #define CG_TIME           (cg_Time.y)   // most useful: raw seconds
 #define CG_TIME_VEC4      (cg_Time)     // all four: t/20, t, t*2, t*3

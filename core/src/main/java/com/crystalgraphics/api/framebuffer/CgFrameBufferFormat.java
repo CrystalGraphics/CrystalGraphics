@@ -66,6 +66,14 @@ public final class CgFrameBufferFormat {
             .build();
 
     /**
+     * Depth texture only — no color attachment. For depth testing or depth snapshot blitting.
+     * The depth attachment is a sampleable texture suitable for PCF lookup.
+     */
+    public static final CgFrameBufferFormat DEPTH =
+        CgFrameBufferFormat.builder("depth")
+            .depth(CgTextureType.DEPTH24)
+            .build();
+    /**
      * Depth texture only — no color attachment. Shadow map rendering.
      * The depth attachment is a sampleable texture suitable for PCF lookup.
      */
