@@ -168,21 +168,43 @@ final class CgStructureParser {
      * @return global declarations text for this pass; {@code ""} if absent; never {@code null}
      */
     static String parsePassGlobalDecls(String passBody, String resourcePath) {
-        // Find end of v2f, if any
-        int v2fEnd = 0;
+        // globalDecls starts after all dedicated-parser-owned structural sections.
+        // Tags and RenderState are already consumed by CgTagParser / CgRenderStateParser;
+        // struct v2f is consumed by parsePassV2fBody. Find the rightmost end of any of
+        // these sections so we never accidentally include their content in the GLSL output.
+        int regionStart = 0;
+        regionStart = Math.max(regionStart, endOfNamedBlock(passBody, "Tags"));
+        regionStart = Math.max(regionStart, endOfNamedBlock(passBody, "RenderState"));
+
         int v2fStart = passBody.indexOf("struct v2f {");
         if (v2fStart == -1) v2fStart = passBody.indexOf("struct v2f{");
         if (v2fStart >= 0) {
             int braceOpen  = passBody.indexOf('{', v2fStart);
             int braceClose = matchBrace(passBody, braceOpen);
-            int semi = passBody.indexOf(';', braceClose);
-            v2fEnd = semi >= 0 ? semi + 1 : braceClose + 1;
+            int semi       = passBody.indexOf(';', braceClose);
+            regionStart    = Math.max(regionStart, semi >= 0 ? semi + 1 : braceClose + 1);
         }
 
         int vertexStart = passBody.indexOf("void vertex(");
         if (vertexStart == -1) return "";
-        if (v2fEnd >= vertexStart) return "";
-        return passBody.substring(v2fEnd, vertexStart).trim();
+        if (regionStart >= vertexStart) return "";
+
+        return passBody.substring(regionStart, vertexStart).trim();
+    }
+
+    private static int endOfNamedBlock(String text, String blockName) {
+        int search = 0;
+        while (search <= text.length() - blockName.length()) {
+            int found = text.indexOf(blockName, search);
+            if (found == -1) return 0;
+            int j = found + blockName.length();
+            while (j < text.length() && Character.isWhitespace(text.charAt(j))) j++;
+            if (j < text.length() && text.charAt(j) == '{') {
+                return matchBrace(text, j) + 1;
+            }
+            search = found + 1;
+        }
+        return 0;
     }
 
     /**

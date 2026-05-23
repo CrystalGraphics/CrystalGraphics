@@ -439,6 +439,9 @@ public final class CgMaterialShaderCompiler {
         // v2f struct
         appendV2fStruct(sb, pass.v2fStructBody());
 
+        // Compiler-wired flat int varying for instance ID bridging (vertex → fragment)
+        sb.append("flat out int cg_InstanceId;\n");
+
         // v2f varying outputs
         appendV2fVaryingOutputs(sb, v2fFields);
 

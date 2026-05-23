@@ -515,9 +515,10 @@ public abstract class CgFrameBuffer {
     public static int optimalDepthBlitMask(int sourceFboId) {
         try (CgGlScope scope = CgGlState.save(FBO)) {
             CgGL.glBindFramebuffer(CgGL.GL_READ_FRAMEBUFFER, sourceFboId);
+            int stencilToken = (sourceFboId == 0) ? CgGL.GL_STENCIL : CgGL.GL_STENCIL_ATTACHMENT;
             int objType = CgGL.glGetFramebufferAttachmentParameteriv(
                     CgGL.GL_READ_FRAMEBUFFER,
-                    CgGL.GL_STENCIL_ATTACHMENT,
+                    stencilToken,
                     CgGL.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);
             boolean hasStencil = (objType != CgGL.GL_NONE);
             return hasStencil
