@@ -21,6 +21,6 @@ No loader-specific types (Forge/NeoForge/Fabric APIs) appear in this module.
 
 ## Key Design Points
 
-- **No GL calls in constructors** — all GL work deferred to `CgGraphicsLifecycle.onRenderFrame` (first call fires init)
+- **No GL calls in constructors** — all GL work deferred to first `CgGraphicsLifecycle.onOpaquePass` call (lazy init via `onRenderFrame`)
 - **Mixin AP**: provided by `legacyForge`; do NOT add a second `annotationProcessor` for Mixin in this module — it causes duplicate-AP SRG mapping errors
 - **`legacyForge` not `neoForge`**: NeoForm 1.20.1 was never published; `legacyForge{version="1.20.1-47.2.0"}` is the only ModDevGradle path

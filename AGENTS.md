@@ -295,6 +295,12 @@ A `layout(std140) uniform CgFrameBlock` wired post-link by the engine. Available
 | `cg_Time` | `vec4` | `(t/20, t, t×2, t×3)` — seconds |
 | `cg_Resolution` | `vec2` | Viewport size in pixels |
 
+**Scene samplers** — auto-bound by the engine before every material draw; do not declare or bind these yourself:
+
+| GLSL name | Type | Unit | Content |
+|---|---|---|---|
+| `cg_DepthBuffer` | `uniform sampler2D` | `CgBindingPoints.DEPTH_TEXTURE_UNIT` | Scene depth snapshot (DEPTH24_STENCIL8) captured just before the opaque pass via one `glBlitFramebuffer` from MC's main render target. Valid in both vertex and fragment stages of all passes. **Do not bind user Properties samplers to `CgBindingPoints.DEPTH_TEXTURE_UNIT`.** |
+
 Convenience macros over the frame block:
 
 | Macro | Expands to | Use |
@@ -500,14 +506,17 @@ cmd.worldAabb[0] = x-r; cmd.worldAabb[1] = y-r; cmd.worldAabb[2] = z-r;
 cmd.worldAabb[3] = x+r; cmd.worldAabb[4] = y+r; cmd.worldAabb[5] = z+r;
 pipe.submit(cmd);
 
-// 4. Execute (CgRenderHook calls this automatically each MC frame)
-pipe.execute(partialTicks);
+// 4. Execute — MC loaders call the split API; harness uses the convenience wrapper:
+pipe.executeOpaquePass(partialTicks, sourceFboId); // after MC entity render; blits depth snapshot
+pipe.executeTransparentPass();                     // after MC water/translucent render
+pipe.endFrame();
+// pipe.execute(partialTicks) is a convenience wrapper (harness / single-hook paths only)
 
 // 5. Teardown (CgGraphicsLifecycle.destroyContext() calls this automatically)
 CgRenderPipeline.destroy();
 ```
 
-**Execute sequence**: sort (opaque front-to-back, transparent back-to-front) → UBO upload → depth prepass → opaque forward pass → transparent pass. All GL state is saved/restored via `CgGlState.saveAll()` around the full execute block.
+**Execute sequence**: depth snapshot blit (one `glBlitFramebuffer` from MC's main FBO before first opaque call) → sort (opaque front-to-back, transparent back-to-front) → UBO upload → depth prepass → opaque forward pass → transparent pass. All GL state is saved/restored via `CgGlState.saveAll()` around each pass block.
 
 **Per-object buffer layout** (`CgRenderPipeline.OBJECT_FORMAT`, STD430, 48 floats):
 
@@ -826,7 +835,7 @@ CgGraphicsLifecycle.destroyContext();
 | 5 | `CgTextureManager.get().freeAll()` | All cached textures + fallback |
 | 6 | `CgMaterialRegistry.get().deleteAll()` | Material instances + GL shader programs |
 | 7 | `CgShaderBufferRegistry.get().deleteAll()` | User SSBO/TBO/UBO resources |
-| 8 | `CgRenderPipeline.destroy()` | Frame UBO + object SSBO + command queue |
+| 8 | `CgRenderPipeline.destroy()` | Frame UBO + object SSBO + command queue; nulls depth snapshot FBO reference (GL object freed by step 9) |
 | 9 | `CgFrameBufferRegistry.get().deleteAll()` | All owned FBOs |
 | 10 | `CgDebugBlit.dispose()` | Debug blit utility (no-op if never used) |
 
@@ -955,15 +964,12 @@ The root `@Mod` class (`modid = "crystalgraphics"`). Intentionally performs **no
 
 ## Render Loop Hook — `CgRenderHook`
 
-`mixins/early/impl/client/CgRenderHook` is a SpongePowered Mixin on `EntityRenderer.renderWorld`. It calls `CgPlatform.rendering().onFrameBegin(partialTicks)` **immediately before** MC renders its translucent terrain pass. `RenderingService1710.onFrameBegin` executes `CgRenderPipeline.getInstance().execute(partialTick)` directly.
+`mixins/early/impl/client/CgRenderHook` is a SpongePowered Mixin on `EntityRenderer.renderWorld` with two `@Inject` methods:
 
-At this hook point:
-- MC has already drawn all opaque world geometry into FBO 0
-- The depth buffer is fully populated — CG geometry depth-tests correctly against the world
-- CG runs its full sequence: depth prepass → opaque forward → transparent
-- MC then continues with translucent terrain, naturally depth-interleaving with CG geometry
+- **`onBeforeTranslucentBlocks`** — fires immediately before `sortAndRender(pass=1)` (MC line ~1367). Calls `CgGraphicsLifecycle.onOpaquePass(partialTicks, w, h, mc.framebufferMc.framebufferObject)`: blits the depth snapshot from MC's main FBO, then runs depth prepass + opaque forward pass. At this point MC has finished opaque world geometry so the depth buffer is fully populated.
+- **`onAfterTranslucentContent`** — fires immediately before `ForgeHooksClient.dispatchRenderLast` (MC line ~1430). Calls `CgGraphicsLifecycle.onTransparentPass()`: transparent back-to-front pass. MC then continues with its own translucent terrain, naturally depth-interleaving with CG geometry.
 
-This hook is why you never call `pipe.execute()` manually in game code — it is already called once per frame at the right moment.
+This hook is why you never call `pipe.executeOpaquePass/executeTransparentPass` manually in game code — they are called once per frame at the correct moments.
 
 ## Hot-Reload Hook — `CgAssetReloader`
 
@@ -987,7 +993,7 @@ Failures in each step are isolated and logged — a broken shader does not preve
 | `Lwjgl2GlDispatch` | `CgGlDispatch` | All raw LWJGL2 GL calls; FBO waterfall; `bindFramebufferCompat` → `OpenGlHelper` |
 | `Lwjgl2CapabilityProbe` | `CgCapabilityProbe` | Reads `ContextCapabilities` from LWJGL2 |
 | `ResourceService1710` | `CgResourceService` | Delegates to `IResourceManager` — single `openStream` method |
-| `RenderingService1710` | `CgRenderingService` | Calls `CgRenderPipeline.execute()` directly via `onFrameBegin` |
+| `RenderingService1710` | `CgRenderingService` | Legacy `onFrameBegin` path — superseded by `CgRenderHook`'s two-inject split for the opaque/transparent pass separation |
 | `LifecycleService1710` | `CgLifecycleService` | Delegates `CgGraphicsLifecycle` init/destroy/resize directly |
 | `ReloadService1710` | bridge utility | `attachToResourceManager()` wires `IReloadableResourceManager` → `CgPlatform.reload().onReload()` |
 
@@ -1017,7 +1023,7 @@ All platform service logic and mixins that apply to all three mc1201 loaders liv
 |---|---|
 | `PlatformService1201` | Compositor — implements all SPI interfaces, registers as the single `CgPlatformService` |
 | `Mc120xGLBackend` | GL dispatch — routes to `RenderSystem` → `GlStateManager` → raw LWJGL3 GL in that order |
-| `MixinGameRenderer` | Injects after `renderLevel()` to drive `CgGraphicsLifecycle.onRenderFrame()` |
+| `MixinGameRenderer` | Injects after `renderLevel()` to drive `CgGraphicsLifecycle.onOpaquePass` + `onTransparentPass` split; also owns first-frame lazy init via `onRenderFrame` |
 | `MixinMinecraftShutdown` | Injects into MC shutdown to call `CgGraphicsLifecycle.destroyContext()` |
 
 ### Loader Bootstrap Pattern
@@ -1039,6 +1045,19 @@ CgPlatform.register(PlatformService1201.getInstance());
 HudRenderCallback.EVENT.register(...);
 ClientLifecycleEvents.CLIENT_STARTED.register(...);
 ```
+
+### mc1201 Render Stage Events
+
+The pipeline is driven by two per-frame events across all three mc1201 loaders:
+
+| Stage | Forge | NeoForge | Fabric | When |
+|---|---|---|---|---|
+| Opaque | `RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES` | same | `WorldRenderEvents.AFTER_ENTITIES` | After block entities, before `renderChunkLayer(translucent)` |
+| Transparent | `RenderLevelStageEvent.Stage.AFTER_PARTICLES` | same | `WorldRenderEvents.AFTER_TRANSLUCENT` | After translucent terrain + tripwire + particles |
+
+Each handler calls `mc.getMainRenderTarget().bindWrite(false)` before the CG lifecycle call to guard against Fabulous OIT leaving a non-main FBO bound.
+
+**Iris/Oculus**: when a shader pack is active, CG geometry renders into the main FBO **outside** Iris's deferred GBuffer chain and will appear unlit under deferred pipelines. `cg_DepthBuffer` remains valid — the depth texture is shared. Use `CgRenderPipeline.isIrisActive()` (delegates to `CgIrisCompat` in `core/mc/compat/`) for detection.
 
 ### mc1201 Input Event Patterns
 

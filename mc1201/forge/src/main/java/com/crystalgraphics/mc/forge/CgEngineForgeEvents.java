@@ -40,13 +40,29 @@ public final class CgEngineForgeEvents {
         private ForgeBus() {}
 
         @SubscribeEvent
-        public static void onRenderLevel(RenderLevelStageEvent event) {
-            if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_LEVEL) return;
+        public static void onRenderLevelOpaque(RenderLevelStageEvent event) {
+            // Validated: AFTER_BLOCK_ENTITIES fires at LevelRenderer.java line ~1311,
+            // after block entities, before renderChunkLayer(translucent).
+            if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES) return;
             Minecraft mc = Minecraft.getInstance();
-            CgGraphicsLifecycle.onRenderFrame(
+            mc.getMainRenderTarget().bindWrite(false);
+            CgGraphicsLifecycle.onOpaquePass(
                     event.getPartialTick(),
                     mc.getWindow().getWidth(),
-                    mc.getWindow().getHeight());
+                    mc.getWindow().getHeight(),
+                    mc.getMainRenderTarget().frameBufferId);
+        }
+
+        @SubscribeEvent
+        public static void onRenderLevelTransparent(RenderLevelStageEvent event) {
+            // Validated: AFTER_PARTICLES fires at LevelRenderer.java line ~1379/1394,
+            // after translucent terrain + tripwire + particles (both Fabulous and non-Fabulous).
+            if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_PARTICLES) return;
+            Minecraft mc = Minecraft.getInstance();
+            mc.getMainRenderTarget().bindWrite(false);
+            // Note: CG geometry renders into main FBO outside Iris's GBuffer chain.
+            // See CgIrisCompat for detection API if Iris-specific behaviour is needed.
+            CgGraphicsLifecycle.onTransparentPass();
         }
 
         @SubscribeEvent

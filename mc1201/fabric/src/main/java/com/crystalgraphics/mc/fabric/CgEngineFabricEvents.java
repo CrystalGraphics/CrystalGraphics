@@ -43,14 +43,21 @@ final class CgEngineFabricEvents {
     // ── Render pipeline ────────────────────────────────────────────────────────
 
     private static void registerRenderFrame() {
-        // WorldRenderEvents.END fires after all world rendering is complete — the
-        // Fabric-native equivalent of the old MixinGameRenderer injection point.
-        WorldRenderEvents.END.register(context -> {
+        WorldRenderEvents.AFTER_ENTITIES.register(context -> {
             Minecraft mc = Minecraft.getInstance();
-            CgGraphicsLifecycle.onRenderFrame(
+            mc.getMainRenderTarget().bindWrite(false);
+            CgGraphicsLifecycle.onOpaquePass(
                     context.tickDelta(),
                     mc.getWindow().getWidth(),
-                    mc.getWindow().getHeight());
+                    mc.getWindow().getHeight(),
+                    mc.getMainRenderTarget().frameBufferId);
+        });
+        WorldRenderEvents.AFTER_TRANSLUCENT.register(context -> {
+            Minecraft mc = Minecraft.getInstance();
+            mc.getMainRenderTarget().bindWrite(false);
+            // Note: CG geometry renders into main FBO outside Iris's GBuffer chain.
+            // See CgIrisCompat for detection API if Iris-specific behaviour is needed.
+            CgGraphicsLifecycle.onTransparentPass();
         });
     }
 
