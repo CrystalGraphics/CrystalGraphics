@@ -53,6 +53,9 @@ public final class CgMaterialProperties implements CgShaderBindings {
     private List<CgMaterialProperty> all;
     private List<CgMaterialProperty> uboProps;
     private List<CgMaterialProperty> samplerProps;
+
+    /** Set when a sampler property's texture unit changes. Consumed by {@code CgMaterial.applyProperties}. */
+    private boolean samplerUnitChanged = false;
    
 
     public CgMaterialProperties(List<CgMaterialProperty> all) {
@@ -108,10 +111,25 @@ public final class CgMaterialProperties implements CgShaderBindings {
         w.reset().beginRecord();
         for (CgMaterialProperty p : uboProps) p.writeToUbo(w);
     }
+    
+    /** Wires each sampler's texture-unit uniform assignment into {@code shader}. Shader must be bound. */
+    public void wireSamplerUnits(CgShader shader) {
+        for (CgMaterialProperty p : samplerProps) p.wireSamplerUnit(shader);
+    }
 
-    /** Binds all sampler properties to their texture units via shader bindings. */
-    public void applySamplerProps(CgShaderBindings b) {
-        for (CgMaterialProperty p : samplerProps) p.applyToSampler(b);
+    /** Binds each sampler property's texture to its assigned texture unit. Called per-draw. */
+    public void bindSamplerTextures() {
+        for (CgMaterialProperty p : samplerProps) p.bindSamplerTexture();
+    }
+
+    /**
+     * Returns {@code true} and resets the flag if any sampler property's texture unit changed
+     * since the last call. Used by {@code CgMaterial.applyProperties} to invalidate wiredPrograms.
+     */
+    public boolean consumeSamplerUnitChanged() {
+        boolean v = samplerUnitChanged;
+        samplerUnitChanged = false;
+        return v;
     }
 
     // ── CgShaderBindings — float / int scalars ────────────────────────────────
@@ -183,7 +201,10 @@ public final class CgMaterialProperties implements CgShaderBindings {
     @Override
     public CgShaderBindings sampler(String name, int unit, CgTexture texture) {
         CgMaterialProperty p = propsByName.get(name);
-        if (p != null && p.getType().isSampler()) p.setTexture(unit, texture);
+        if (p != null && p.getType().isSampler()) {
+            if (p.getSamplerUnit() != unit) samplerUnitChanged = true;
+            p.setTexture(unit, texture);
+        }
         return this;
     }
 

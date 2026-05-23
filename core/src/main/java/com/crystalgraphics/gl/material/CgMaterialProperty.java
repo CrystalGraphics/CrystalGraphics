@@ -1,6 +1,7 @@
 package com.crystalgraphics.gl.material;
 
 import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.shader.CgShader;
 import com.crystalgraphics.api.shader.CgShaderBindings;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
@@ -303,23 +304,36 @@ public final class CgMaterialProperty {
     // ── Sampler bind ──────────────────────────────────────────────────────────
 
     /**
-     * Applies this property's current texture to the given shader bindings.
-     * Sampler properties with no texture set (unit {@literal <} 0) are skipped.
-     * Uses {@link CgShaderBindings#sampler(String, int, CgTexture)}, which dispatches
-     * to the texture's native GL target — supporting 2D, 2DArray, 3D, and Cubemap.
+     * Wires this sampler property's texture-unit assignment into the given shader via a direct
+     * {@code glUniform1i} call. The shader program must already be bound by the caller.
      *
-     * @param bindings the shader bindings to apply the sampler to
-     * @throws IllegalStateException if called on a non-sampler property
+     * <p>Called once per linked program per material instance from
+     * {@link CgMaterialProperties#wireSamplerUnits}, inside {@code CgMaterial.wirePerInstance}.
+     * No-op when the unit has not been assigned yet ({@code samplerUnit < 0}).</p>
+     *
+     * @param shader the compiled program to wire — must be currently bound
      */
-    public void applyToSampler(CgShaderBindings bindings) {
-        if (!type.isSampler()) {
-            throw new IllegalStateException("applyToSampler() called on non-sampler property: " + name);
-        }
-        if (samplerUnit >= 0 && samplerTexture != null) {
-            bindings.sampler(name, samplerUnit, samplerTexture);
-        }
+    public void wireSamplerUnit(CgShader shader) {
+        if (!type.isSampler() || samplerUnit < 0) return;
+        int loc = shader.getUniformLocation(name);
+        if (loc >= 0) shader.getProgram().setUniform1i(loc, samplerUnit);
     }
 
+    /**
+     * Binds this property's current texture to its assigned texture unit.
+     * No-op when either the unit or the texture has not been set.
+     *
+     * <p>Called per-draw from {@link CgMaterialProperties#bindSamplerTextures}
+     *
+     * @throws IllegalStateException if called on a non-sampler property
+     */
+    public void bindSamplerTexture() {
+        if (!type.isSampler()) throw new IllegalStateException("bindSamplerTexture() called on non-sampler property: " + name);
+        
+        if (samplerUnit >= 0 && samplerTexture != null) 
+            samplerTexture.bind(samplerUnit);
+    }
+    
     // ── Default reset ─────────────────────────────────────────────────────────
 
     /**

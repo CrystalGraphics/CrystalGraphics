@@ -16,7 +16,6 @@ import com.crystalgraphics.gl.material.CgMaterialShader;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.gl.material.parse.CgParsedPass;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
-import com.crystalgraphics.gl.scene.CgSceneBuffers;
 import com.crystalgraphics.gl.state.CgGlScope;
 import com.crystalgraphics.gl.state.CgGlState;
 import lombok.Getter;
@@ -168,10 +167,10 @@ public final class CgMaterial {
     private final Set<String> enabledKeywords = new LinkedHashSet<>();
 
     /**
-     * Tracks which compiled {@link CgShader} instances the per-instance {@code matPropsUbo}
-     * has been wired to. Cleared on hot-reload so newly compiled variants get wired on first bind.
+     * Programs that have had per-instance state wired: matPropsUbo block binding and sampler
+     * unit assignments. Cleared on hot-reload so newly compiled variants are re-wired on first bind.
      */
-    private final Set<CgShader> wiredToMatPropsUbo = new HashSet<>();
+    private final Set<CgShader> wiredPrograms = new HashSet<>();
 
     /**
      * Property-apply consumers buffered before {@code propStore} was first initialised.
@@ -496,6 +495,7 @@ public final class CgMaterial {
         }
         consumer.accept(propStore);
         materialPropsDirty = true;
+        if (propStore.consumeSamplerUnitChanged()) wiredPrograms.clear();
         return this;
     }
 
@@ -573,10 +573,10 @@ public final class CgMaterial {
         if (cgMaterialShader != null) {
             if (cgMaterialShader.isDirty()) {
                 cgMaterialShader.recompile();
-                wiredToMatPropsUbo.clear();
+                wiredPrograms.clear();
                 onShaderRecompiled();
             } else if (cgMaterialShader.getRevisionNumber() != lastKnownRevision) {
-                wiredToMatPropsUbo.clear();
+                wiredPrograms.clear();
                 onShaderRecompiled();
             }
 
@@ -649,10 +649,10 @@ public final class CgMaterial {
 
         if (cgMaterialShader.isDirty()) {
             cgMaterialShader.recompile();
-            wiredToMatPropsUbo.clear();
+            wiredPrograms.clear();
             onShaderRecompiled();
         } else if (cgMaterialShader.getRevisionNumber() != lastKnownRevision) {
-            wiredToMatPropsUbo.clear();
+            wiredPrograms.clear();
             onShaderRecompiled();
         }
 
@@ -674,13 +674,18 @@ public final class CgMaterial {
      * after shader resolution.
      *
      * @param shader  the fully compiled and wired GL program for this frame
-     * @param variant the pass variant whose render state to apply
      */
+    private void wirePerInstance(CgShader shader) {
+        shader.bind();
+        if (matPropsUbo != null) matPropsUbo.wireShader(shader);
+        if (propStore != null) propStore.wireSamplerUnits(shader);
+        shader.unbind();
+    }
+
     private void doBind(CgShader shader, CgRenderPassVariant variant) {
-        // Wire per-instance matPropsUbo to this keyword variant on first use
-        if (matPropsUbo != null && !wiredToMatPropsUbo.contains(shader)) {
-            matPropsUbo.wireShader(shader);
-            wiredToMatPropsUbo.add(shader);
+        if (!wiredPrograms.contains(shader)) {
+            wirePerInstance(shader);
+            wiredPrograms.add(shader);
         }
 
         stateScope = CgGlState.save(
@@ -697,17 +702,10 @@ public final class CgMaterial {
         if (matPropsUbo != null) matPropsUbo.bind();
 
         if (propStore != null && propStore.hasSamplerProps())
-            shader.applyBindings(b -> propStore.applySamplerProps(b));
+            propStore.bindSamplerTextures();
 
         getPassRenderState(variant).apply();
         shader.bind();
-
-        // Bind cg_DepthBuffer (declared in cg_env.glsl) to the engine-reserved unit.
-        // CgGlSlot.TEXTURES is intentionally absent from stateScope — adding it would
-        // issue glGet on every draw call; the pipeline's saveAll() fence is sufficient.
-        if (CgSceneBuffers.isInitialized()) {
-                shader.applyBindings(b-> b.sampler("cg_DepthBuffer", CgBindingPoints.CG_RESERVED_DEPTH_UNIT, CgSceneBuffers.getDepthSnapshot()));
-        }
     }
 
     /**
@@ -856,7 +854,7 @@ public final class CgMaterial {
     public void recompile() {
         if (cgMaterialShader == null) return;
         cgMaterialShader.recompile();
-        wiredToMatPropsUbo.clear();
+        wiredPrograms.clear();
         onShaderRecompiled();
     }
 
@@ -921,14 +919,12 @@ public final class CgMaterial {
                 matPropsUbo.resetFormat(newFormat);
             }
 
-        // Wire this material's UBO to the newly compiled STANDARD forward variant
+        // Wire this material's per-instance state to the newly compiled STANDARD forward variant
         CgShader shader = cgMaterialShader.getOrCompileForwardPass(Collections.emptySet());
-            if (shader != null) {
-                shader.bind();
-                matPropsUbo.wireShader(shader);
-                shader.unbind();
-                wiredToMatPropsUbo.add(shader);
-            }
+        if (shader != null) {
+            wirePerInstance(shader);
+            wiredPrograms.add(shader);
+        }
 
             // Upload property defaults immediately after successful compile/link (T7 behaviour)
             propStore.writeUboProps(matPropsUbo.writer());

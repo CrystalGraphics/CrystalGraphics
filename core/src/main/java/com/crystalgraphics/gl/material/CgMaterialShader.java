@@ -343,7 +343,7 @@ public final class CgMaterialShader {
 
         // ── Step 9: Wire all newly compiled programs ───────────────────────────
         for (Map.Entry<ProgramKey, CgShader> entry : newCache.entrySet())
-            wireShaderBuffers(entry.getValue());
+            wireShader(entry.getValue());
 
         // Increment revision — materials detect this on next bind()
         revisionNumber++;
@@ -400,7 +400,7 @@ public final class CgMaterialShader {
             return null;
         }
 
-        wireShaderBuffers(newShader);
+        wireShader(newShader);
         programCache.put(key, newShader);
         return newShader;
     }
@@ -613,15 +613,24 @@ public final class CgMaterialShader {
         return this;
     }
     
-    /** Wires all pipeline/attached shader buffers to shader*/
+    private void wireShader(CgShader shader) {
+        shader.bind();
+        wireShaderBuffers(shader);
+        wireShaderSamplers(shader);
+        shader.unbind();
+    }
+
     private void wireShaderBuffers(CgShader shader) {
         CgRenderPipeline pipeline = CgRenderPipeline.getInstance();
-        shader.bind();
         pipeline.frameBuffer().wireShader(shader);
         pipeline.objectBuffer().wireShader(shader);
         if (matPropsUbo != null) matPropsUbo.wireShader(shader);
         for (CgAttachedBuffer ab : attachedBuffers) ab.getBuffer().wireShader(shader);
-        shader.unbind();
+    }
+
+    private void wireShaderSamplers(CgShader shader) {
+        int loc = shader.getUniformLocation(CgBindingPoints.DEPTH_TEXTURE_UNIFORM);
+        if (loc >= 0) shader.getProgram().setUniform1i(loc, CgBindingPoints.DEPTH_TEXTURE_UNIT);
     }
 
     /**
