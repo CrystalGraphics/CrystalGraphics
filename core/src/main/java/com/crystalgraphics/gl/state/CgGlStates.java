@@ -246,6 +246,7 @@ final class CgGlStates {
         }
 
         public static AlphaTestState capture() {
+            if (isCore()) return new AlphaTestState(false, 0, 0f);
             boolean enabled = CgGL.glGetBoolean(CgGL.GL_ALPHA_TEST);
             int func        = CgGL.glGetInteger(CgGL.GL_ALPHA_TEST_FUNC);
             float ref       = CgGL.glGetFloat(CgGL.GL_ALPHA_TEST_REF);
@@ -254,8 +255,16 @@ final class CgGlStates {
 
         @Override
         public void restore() {
+            if (isCore()) return;
             if (enabled) CgGL.glEnable(CgGL.GL_ALPHA_TEST); else CgGL.glDisable(CgGL.GL_ALPHA_TEST);
             CgGL.glAlphaFunc(func, ref);
+        }
+
+        private static Boolean CORE;
+
+        private static boolean isCore() {
+            if (!CORE) CORE = CgCapabilities.detect().isCoreProfile();
+            return CORE;
         }
     }
     

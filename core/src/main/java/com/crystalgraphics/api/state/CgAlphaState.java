@@ -1,6 +1,7 @@
 package com.crystalgraphics.api.state;
 
 import com.github.bsideup.jabel.Desugar;
+import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
 
 /**
@@ -16,6 +17,7 @@ public record CgAlphaState(boolean enabled, int func, float cutoff) {
     public static final CgAlphaState DISABLED = new CgAlphaState(false, CgGL.GL_ALWAYS, 0f);
 
     public void apply() {
+        if (isCore()) return;
         if (enabled) {
             CgGL.glEnable(CgGL.GL_ALPHA_TEST);
             CgGL.glAlphaFunc(func, cutoff);
@@ -25,6 +27,14 @@ public record CgAlphaState(boolean enabled, int func, float cutoff) {
     }
 
     public void clear() {
+        if (isCore()) return;
         CgGL.glDisable(CgGL.GL_ALPHA_TEST);
+    }
+    
+    private static Boolean CORE;
+    
+    private static boolean isCore(){
+        if (!CORE) CORE = CgCapabilities.detect().isCoreProfile();
+        return CORE;
     }
 }

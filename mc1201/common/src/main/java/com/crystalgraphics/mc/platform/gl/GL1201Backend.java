@@ -37,6 +37,9 @@ import java.nio.ShortBuffer;
  */
 public final class GL1201Backend extends CgGLBackend {
 
+    private static final int MC_TRACKED_TEXTURE_UNITS = 12;
+    private int activeTextureUnit = 0;
+
     // -------------------------------------------------------------------------
     // Lifecycle
     // -------------------------------------------------------------------------
@@ -361,7 +364,7 @@ public final class GL1201Backend extends CgGLBackend {
 
     @Override
     public void glBindTexture(int target, int texture) {
-        if (target == GL11C.GL_TEXTURE_2D) {
+        if (target == GL11C.GL_TEXTURE_2D && activeTextureUnit < MC_TRACKED_TEXTURE_UNITS) {
             GlStateManager._bindTexture(texture);
             return;
         }
@@ -426,7 +429,12 @@ public final class GL1201Backend extends CgGLBackend {
 
     @Override
     public void glActiveTexture(int texture) {
-        RenderSystem.activeTexture(texture);
+        activeTextureUnit = texture - GL13C.GL_TEXTURE0;
+        if (activeTextureUnit < MC_TRACKED_TEXTURE_UNITS) {
+            RenderSystem.activeTexture(texture);
+            return;
+        }
+        GL13C.glActiveTexture(texture);
     }
 
     @Override
