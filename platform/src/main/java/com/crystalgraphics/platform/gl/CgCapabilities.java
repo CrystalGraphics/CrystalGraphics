@@ -155,6 +155,10 @@ public final class CgCapabilities {
     /** Whether {@code GL_ARB_sampler_objects} is supported (core in GL 3.3). */
     boolean hasSamplerObjects;
 
+    /** Whether the current context is a core profile (GL 3.2+). Fixed-function state
+     *  such as {@code GL_ALPHA_TEST} is unavailable in core profile contexts. */
+    boolean coreProfile;
+
     // ─────────────────────────────────────────────────────────────────────────
     //  Constructor
     // ─────────────────────────────────────────────────────────────────────────
@@ -260,6 +264,10 @@ public final class CgCapabilities {
         caps.gpuShaderInt64            = gl.OpenGL40();
 
         caps.hasSamplerObjects = gl.OpenGL33() || gl.GL_ARB_sampler_objects();
+
+        // GL_CONTEXT_PROFILE_MASK (0x9126) is only queryable in GL 3.2+.
+        // Bit 0x1 = GL_CONTEXT_CORE_PROFILE_BIT.
+        caps.coreProfile = gl.OpenGL32() && (CgGL.glGetInteger(0x9126) & 0x1) != 0;
 
         if      (caps.shaderStorageBufferCore)   caps.shaderBufferPath = ShaderBufferPath.SSBO_GL43;
         else if (caps.shaderStorageBufferArb)    caps.shaderBufferPath = ShaderBufferPath.SSBO_ARB;
