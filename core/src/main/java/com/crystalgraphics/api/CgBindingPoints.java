@@ -107,19 +107,19 @@ public final class CgBindingPoints {
         PATH = caps.shaderBufferPath();
         
         int maxTextureUnits = caps.getMaxTextureUnits();
-        int maxSsboBindings = caps.getMaxTextureUnits();
-        int maxUboBindings = caps.getMaxUniformBufferBindings();
-        
+        int maxSsboBindings = caps.getMaxSsboBindings();
+        int maxUboBindings  = caps.getMaxUniformBufferBindings();
+
         // ── SSBO/TBO Path bindings ───────────────────────────────────────────────────────────────
-        OBJECT_DATA_SSBO = maxSsboBindings--;
-        OBJECT_DATA_TBO = maxTextureUnits--;
-        
+        OBJECT_DATA_SSBO = --maxSsboBindings;
+        OBJECT_DATA_TBO  = --maxTextureUnits;
+
         // ── UBO bindings ───────────────────────────────────────────────────────────────
-        FRAME_DATA_UBO = maxUboBindings--;
-        MATERIAL_PROPERTIES_UBO = maxUboBindings--;
+        FRAME_DATA_UBO          = --maxUboBindings;
+        MATERIAL_PROPERTIES_UBO = --maxUboBindings;
 
         // ── Texture bindings ───────────────────────────────────────────────────────────────
-        DEPTH_TEXTURE_UNIT  = maxTextureUnits--;
+        DEPTH_TEXTURE_UNIT = --maxTextureUnits;
     }
 
     /**

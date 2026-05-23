@@ -3,6 +3,8 @@ package com.crystalgraphics.platform.gl;
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;import java.nio.ShortBuffer;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Static GL facade for the CrystalGraphics core module.
@@ -257,6 +259,8 @@ public final class CgGL {
     public static final int GL_DEPTH_ATTACHMENT         = 0x8D00;
     public static final int GL_STENCIL_ATTACHMENT       = 0x8D20;
     public static final int GL_DEPTH_STENCIL_ATTACHMENT = 0x821A;
+    public static final int GL_DEPTH                    = 0x1801;
+    public static final int GL_STENCIL                  = 0x1802;
     public static final int GL_RENDERBUFFER             = 0x8D41;
     public static final int GL_FRAMEBUFFER_BINDING      = 0x8CA6;
 
@@ -374,11 +378,15 @@ public final class CgGL {
     public static final int GL_PACK_ALIGNMENT   = 0x0D05;
 
     // --- Error codes ---------------------------------------------------------
-    public static final int GL_NO_ERROR          = 0;
-    public static final int GL_INVALID_ENUM      = 0x0500;
-    public static final int GL_INVALID_VALUE     = 0x0501;
-    public static final int GL_INVALID_OPERATION = 0x0502;
-    public static final int GL_OUT_OF_MEMORY     = 0x0505;
+    public static final int GL_NO_ERROR                      = 0;
+    public static final int GL_INVALID_ENUM                  = 0x0500;
+    public static final int GL_INVALID_VALUE                 = 0x0501;
+    public static final int GL_INVALID_OPERATION             = 0x0502;
+    public static final int GL_STACK_OVERFLOW                = 0x0503;
+    public static final int	GL_STACK_UNDERFLOW               = 0x0504;
+    public static final int GL_OUT_OF_MEMORY                 = 0x0505;
+    public static final int GL_INVALID_FRAMEBUFFER_OPERATION = 0x0506;
+    
     public static final int GL_INVALID_INDEX = 0xFFFFFFFF;
 
     // --- VAO / instancing ----------------------------------------------------
@@ -423,10 +431,10 @@ public final class CgGL {
     public static final int GL_FRAMEBUFFER_BINDING_EXT  = 0x8CA6;
 
     // --- Blend state queries -------------------------------------------------
+    public static final int GL_BLEND_DST_RGB        = 0x80C8;
     public static final int GL_BLEND_SRC_RGB        = 0x80C9;
-    public static final int GL_BLEND_DST_RGB        = 0x80CA;
+    public static final int GL_BLEND_DST_ALPHA      = 0x80CA;
     public static final int GL_BLEND_SRC_ALPHA      = 0x80CB;
-    public static final int GL_BLEND_DST_ALPHA      = 0x80CC;
     public static final int GL_BLEND_EQUATION       = 0x8009;
     public static final int GL_BLEND_EQUATION_RGB   = 0x8009;
     public static final int GL_BLEND_EQUATION_ALPHA = 0x883D;
@@ -1043,6 +1051,54 @@ public final class CgGL {
     
     public static int glGetError()  {
         return backend.glGetError();
+    }
+    
+    /**
+     * Drain all pending GL errors. Returns a list of error descriptions.
+     * If no errors are pending, returns an empty list.
+     */
+    public static List<String> drainErrors() {
+        List<String> errors = new ArrayList<>();
+        int count = 0;
+        int err;
+        while ((err = CgGL.glGetError()) != CgGL.GL_NO_ERROR) {
+            String name = errorName(err);
+            errors.add("0x" + Integer.toHexString(err) + " (" + name + ")");
+            count++;
+            if (count > 64) {
+                errors.add("... (stopped after 64 errors)");
+                break;
+            }
+        }
+        return errors;
+    }
+    /**
+     * Maps a GL error code to a human-readable name.
+     */
+    private static String errorName(int error) {
+        switch (error) {
+            case GL_NO_ERROR:                       return "GL_NO_ERROR";
+            case GL_INVALID_ENUM:                   return "GL_INVALID_ENUM";
+            case GL_INVALID_VALUE:                  return "GL_INVALID_VALUE";
+            case GL_INVALID_OPERATION:              return "GL_INVALID_OPERATION";
+            case GL_STACK_OVERFLOW:                 return "GL_STACK_OVERFLOW";
+            case GL_STACK_UNDERFLOW:                return "GL_STACK_UNDERFLOW";
+            case GL_OUT_OF_MEMORY:                  return "GL_OUT_OF_MEMORY";
+            case GL_INVALID_FRAMEBUFFER_OPERATION:  return "GL_INVALID_FRAMEBUFFER_OPERATION";
+            default:                                return "UNKNOWN";
+        }
+    }
+    
+    /**
+     * Assert that no GL errors are pending. Throws {@link AssertionError} if any error is found.
+     *
+     * @param context human-readable description for the error message
+     * @throws AssertionError if any GL error was pending
+     */
+    public static void assertNoGlError(String context) {
+        List<String> errors = drainErrors();
+        if (!errors.isEmpty()) 
+            throw new AssertionError("[GlErrorChecker] GL error(s) after " + context + ": " + errors);
     }
 
     // =========================================================================

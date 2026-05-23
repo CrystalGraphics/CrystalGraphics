@@ -93,7 +93,7 @@ public class CgVertexAttributeInjectionTest {
      * The comment is the first line emitted by emitVertexInputs and serves as a diagnostic marker.
      */
     @Test
-    public void spatial_vertexSource_containsFormatkey nameComment() {
+    public void spatial_vertexSource_containsFormatKeyNameComment() {
         String vert = compile(shaderOf("spatial")).vertexSource();
         assertTrue("Comment must name the spatial format",
                 vert.contains("// Vertex attributes (format: spatial)"));
