@@ -66,21 +66,39 @@ public final class CgGraphicsLifecycle {
      */
     public static void onResize(int width, int height) {
         CgFrameBufferRegistry.get().onResize(width, height);
+        CgRenderPipeline.onSceneResize();
 
         currentWidth = width;
         currentHeight = height;
     }
 
     /**
-     * Called each frame by {@code MixinGameRenderer} after {@code renderLevel()} returns.
-     * On the first call: probes GL capabilities, initialises the engine, and runs the first frame.
-     * On subsequent calls: detects resize; always executes the render pipeline.
+     * Called before MC's translucent terrain pass. Lazy-initialises the engine on the
+     * first call. Performs the per-frame depth snapshot blit, then executes CG's opaque
+     * passes (depth prepass + opaque forward).
+     *
+     * @param partialTick frame interpolation factor
+     * @param w           current viewport width (pixels)
+     * @param h           current viewport height (pixels)
+     * @param sourceFboId GL framebuffer ID to read depth from (MC's main render target FBO)
      */
-    public static void onRenderFrame(float partialTick, int w, int h) {
+    public static void onOpaquePass(float partialTick, int w, int h, int sourceFboId) {
         if (!initialized) initContext(w, h);
         else if (w != currentWidth || h != currentHeight) onResize(w, h);
+        CgRenderPipeline.getInstance().executeOpaquePass(partialTick, sourceFboId);
+    }
 
-        CgRenderPipeline.getInstance().execute(partialTick);
+    /**
+     * Called after MC's translucent terrain + particles pass. Executes CG's transparent
+     * pass then ends the frame (releases the render command pool).
+     *
+     * <p>No-op if the engine context has not been initialised yet (e.g. GUI-only frames).</p>
+     */
+    public static void onTransparentPass() {
+        if (!initialized) return;
+        CgRenderPipeline pipe = CgRenderPipeline.getInstance();
+        pipe.executeTransparentPass();
+        pipe.endFrame();
     }
 
     /**

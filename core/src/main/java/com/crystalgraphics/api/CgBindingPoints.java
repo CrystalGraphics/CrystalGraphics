@@ -55,6 +55,23 @@ public final class CgBindingPoints {
      */
     public static int MATERIAL_PROPERTIES_UBO = -1;
 
+     /**
+      * GL texture unit reserved for {@code cg_DepthBuffer} — the per-frame scene depth snapshot
+      * automatically bound by the engine before each material draw.
+      *
+      * <p>Resolved dynamically from the tail of the available texture unit range at
+      * {@link #init(CgCapabilities)} time. Away from the user sampler range (0–7) and from
+      * {@link #OBJECT_DATA_TBO} which is allocated at the top of the same range.</p>
+      *
+      * <p><strong>Shader authors must NOT use this unit in material Properties.</strong>
+      * The {@code cg_DepthBuffer} uniform declared in {@code cg_env.glsl} is bound here
+      * automatically by the engine on every material draw.</p>
+      */
+    public static int DEPTH_TEXTURE_UNIT = -1;
+
+    /** Name of depth texture sampler2D uniform*/
+    public static final String DEPTH_TEXTURE_UNIFORM = "cg_DepthBuffer";
+
     // ── User buffers — allocated from bottom of available range ──────────────
 
     /**
@@ -89,13 +106,20 @@ public final class CgBindingPoints {
     public static void init(CgCapabilities caps) {
         PATH = caps.shaderBufferPath();
         
+        int maxTextureUnits = caps.getMaxTextureUnits();
+        int maxSsboBindings = caps.getMaxTextureUnits();
+        int maxUboBindings = caps.getMaxUniformBufferBindings();
+        
         // ── SSBO/TBO Path bindings ───────────────────────────────────────────────────────────────
-        OBJECT_DATA_SSBO = caps.getMaxSsboBindings() - 1;
-        OBJECT_DATA_TBO = caps.getMaxTextureUnits() - 1;
+        OBJECT_DATA_SSBO = maxSsboBindings--;
+        OBJECT_DATA_TBO = maxTextureUnits--;
         
         // ── UBO bindings ───────────────────────────────────────────────────────────────
-        FRAME_DATA_UBO = caps.getMaxUniformBufferBindings() - 1;
-        MATERIAL_PROPERTIES_UBO = caps.getMaxUniformBufferBindings() - 2;
+        FRAME_DATA_UBO = maxUboBindings--;
+        MATERIAL_PROPERTIES_UBO = maxUboBindings--;
+
+        // ── Texture bindings ───────────────────────────────────────────────────────────────
+        DEPTH_TEXTURE_UNIT  = maxTextureUnits--;
     }
 
     /**

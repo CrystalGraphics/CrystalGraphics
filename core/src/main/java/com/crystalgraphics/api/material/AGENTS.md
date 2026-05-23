@@ -47,6 +47,10 @@ pipe.submit(cmd);
 pipe.execute(partialTicks);
 ```
 
+> **Reserved texture unit**: `CgBindingPoints.DEPTH_TEXTURE_UNIT` is reserved by the engine for
+> `cg_DepthBuffer`. Do not bind user `Properties` samplers to that unit — the engine will
+> silently overwrite the binding on every `material.bind()` call.
+
 ### CgMaterial.bind() and CgMaterial.bindForPass(CgRenderPassVariant)
 
 `bind()` activates the Forward-lit pass with the current enabled keyword set. Use it for standard opaque/transparent geometry draws.
