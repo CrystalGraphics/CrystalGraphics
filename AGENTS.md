@@ -158,11 +158,16 @@ Use this when adding anything that touches GL, lifecycle, or loader-specific eve
 > 1. As `sourceSet(project(":foo").extensions.getByType<SourceSetContainer>()["main"])` inside the `mods { create("crystalgraphics") { ... } }` block
 > 2. As `from(zipTree(...jar...))` inside the `shadowJar` task
 >
-> Fabric is exempt — Loom reads `runtimeOnly` correctly.
+> **Fabric is NOT exempt** — `runtimeOnly` deps are on the JVM system classpath but Knot classloader
+> does NOT delegate `com.crystalgraphics.*` to the system classloader. Fabric must bundle all
+> sub-project classes into `tasks.jar` (same as Forge/NeoForge) AND add `from(zipTree(...))` inside
+> `tasks.jar` and `shadowJar`. Do NOT use `loom.mods { sourceSet(crossProject) }` — Loom 1.16.2
+> tries to apply `fabric-loom-companion` to the cross-project, which fails for non-Loom projects.
+> See `mc1201/fabric/AGENTS.md` for full details.
 
-9. Add `compileOnly` + `runtimeOnly` in `cg-mc1201-loader.gradle.kts` (Fabric picks this up)
+9. Add `compileOnly` + `runtimeOnly` in `cg-mc1201-loader.gradle.kts`
 10. Add `sourceSet(project(":foo")...)` to `mods{}` in `mc1201/forge/build.gradle.kts` and `mc1201/neoforge/build.gradle.kts`
-11. Add `from(zipTree(...))` to `shadowJar` in all three loader `build.gradle.kts` files
+11. Add `from(zipTree(...))` to **both** `tasks.jar` and `shadowJar` in **all three** loader `build.gradle.kts` files (including Fabric — see note above)
 
 ---
 
@@ -1091,7 +1096,12 @@ ClientLifecycleEvents.CLIENT_STARTED.register(client -> {
 > 1. `sourceSet(project(":foo").extensions.getByType<SourceSetContainer>()["main"])` inside `mods { create("crystalgraphics") { ... } }`
 > 2. `from(zipTree(...jar...))` inside the `shadowJar` task
 >
-> **Fabric is exempt** — Loom reads `runtimeOnly` correctly. See the [Cross-Platform Feature Checklist](#cross-platform-feature-checklist) for the full step-by-step.
+> **Fabric is NOT exempt** — `runtimeOnly` deps are on the JVM system classpath but Knot classloader
+> does NOT delegate `com.crystalgraphics.*` to the system classloader. Fabric must also use JAR
+> bundling — add `from(zipTree(...jar...))` inside `tasks.jar` AND `shadowJar`.
+> Do NOT use `loom.mods { sourceSet(crossProject) }` — Loom 1.16.2 tries to apply
+> `fabric-loom-companion` to the cross-project, which fails for non-Loom projects.
+> See `mc1201/fabric/AGENTS.md` for full details.
 
 ---
 

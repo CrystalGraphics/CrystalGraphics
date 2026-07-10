@@ -68,7 +68,10 @@ dependencies {
     annotationProcessor("com.github.bsideup.jabel:jabel-javac-plugin:$jabelVer")
     compileOnly("com.github.bsideup.jabel:jabel-javac-plugin:$jabelVer")
 
-    implementation(project(":platform"))
+    // api (not implementation): platform contains the SPI interfaces that are part of core's
+    // public API surface. Consumers of core (e.g. mc1201:common) import platform types directly,
+    // so platform must be on their compile classpath via transitive api exposure.
+    api(project(":platform"))
     compileOnly("org.apache.logging.log4j:log4j-api:$log4jVer")
 
     testImplementation("junit:junit:$junitVer")

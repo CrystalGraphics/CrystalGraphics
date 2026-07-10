@@ -26,7 +26,7 @@ public class CrystalGraphicsEarlyMixins implements IMixinConfigPlugin {
 
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
-        return false;
+        return true;
     }
 
     @Override
@@ -41,6 +41,7 @@ public class CrystalGraphicsEarlyMixins implements IMixinConfigPlugin {
         if (side == MixinEnvironment.Side.CLIENT) {
             mixins.add("client.MixinRenderGlobal");
             mixins.add("client.MixinMinecraft");
+            mixins.add("client.CgRenderHook");
         }
 
         return mixins;

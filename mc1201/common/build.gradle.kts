@@ -12,3 +12,10 @@ plugins {
 group = rootProject.properties["modGroup"] as String
 version = rootProject.properties["modVersion"] as String
 base { archivesName.set("crystalgraphics-mc1201-common") }
+
+// freetype JNI bindings — compileOnly here because mc1201:common's platform service
+// implementation references freetype types directly. Each loader's shadowJar bundles
+// the actual JAR; common never shades it.
+dependencies {
+    compileOnly(project(":freetype-msdfgen-harfbuzz-bindings"))
+}

@@ -59,17 +59,17 @@ legacyForge {
 }
 
 // Merge platform, core, mc1201:common — same pattern as mc1710 and mc1201/neoforge.
+val platformJar = project(":platform").tasks.named<Jar>("jar").flatMap { it.archiveFile }
+val coreJar     = project(":core").tasks.named<Jar>("jar").flatMap { it.archiveFile }
+val commonJar   = project(":mc1201:common").tasks.named<Jar>("jar").flatMap { it.archiveFile }
+val freetypeJar = project(":freetype-msdfgen-harfbuzz-bindings").tasks.named<Jar>("jar").flatMap { it.archiveFile }
+
 tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJar") {
-    dependsOn(":platform:jar", ":core:jar", ":mc1201:common:jar", ":freetype-msdfgen-harfbuzz-bindings:jar")
     configurations = listOf()
-}
-afterEvaluate {
-    tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJar") {
-        from(zipTree(project(":platform").tasks.named<Jar>("jar").get().archiveFile.get()))
-        from(zipTree(project(":core").tasks.named<Jar>("jar").get().archiveFile.get()))
-        from(zipTree(project(":mc1201:common").tasks.named<Jar>("jar").get().archiveFile.get()))
-        from(zipTree(project(":freetype-msdfgen-harfbuzz-bindings").tasks.named<Jar>("jar").get().archiveFile.get()))
-    }
+    from(zipTree(platformJar))
+    from(zipTree(coreJar))
+    from(zipTree(commonJar))
+    from(zipTree(freetypeJar))
 }
 tasks.assemble { dependsOn(tasks.named("shadowJar")) }
 
