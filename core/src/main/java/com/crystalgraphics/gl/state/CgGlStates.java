@@ -225,7 +225,7 @@ final class CgGlStates {
             GLStateMirror.onBindBuffer(CgGL.GL_ELEMENT_ARRAY_BUFFER, elemBufId);
         }
     }
-    
+
     // ── ALPHA TEST ────────────────────────────────────────────────────────────
 
     /**
@@ -260,14 +260,14 @@ final class CgGlStates {
             CgGL.glAlphaFunc(func, ref);
         }
 
-        private static Boolean CORE;
+        private static Boolean CORE = Boolean.FALSE;
 
         private static boolean isCore() {
             if (!CORE) CORE = CgCapabilities.detect().isCoreProfile();
             return CORE;
         }
     }
-    
+
     // ── BLEND ─────────────────────────────────────────────────────────────────
 
     public static final class BlendState implements SlotState {
@@ -587,7 +587,7 @@ final class CgGlStates {
             CgGL.glPolygonMode(CgGL.GL_BACK, back);
         }
     }
-    
+
     // ── LINE WIDTH ────────────────────────────────────────────────────────────
 
     public static final class LineWidthState implements SlotState {

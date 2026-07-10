@@ -30,9 +30,9 @@ public record CgAlphaState(boolean enabled, int func, float cutoff) {
         if (isCore()) return;
         CgGL.glDisable(CgGL.GL_ALPHA_TEST);
     }
-    
-    private static Boolean CORE;
-    
+
+    private static Boolean CORE = Boolean.FALSE;
+
     private static boolean isCore(){
         if (!CORE) CORE = CgCapabilities.detect().isCoreProfile();
         return CORE;

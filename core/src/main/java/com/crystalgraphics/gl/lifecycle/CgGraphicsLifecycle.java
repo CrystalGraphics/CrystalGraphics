@@ -7,7 +7,7 @@ import com.crystalgraphics.api.material.CgMaterialRegistry;
 import com.crystalgraphics.api.render.CgRenderPipeline;
 import com.crystalgraphics.gl.buffer.CgQuadIndexBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
-import com.crystalgraphics.gl.debug.CgDebugBlit;
+//import com.crystalgraphics.gl.debug.CgDebugBlit;
 import com.crystalgraphics.gl.framebuffer.CgFrameBufferRegistry;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.gl.mesh.CgMeshRegistry;
@@ -38,10 +38,10 @@ import com.crystalgraphics.gl.vertex.CgVertexBufferRegistry;
  * context recreation will re-probe the new context's capabilities.</p>
  */
 public final class CgGraphicsLifecycle {
-    
+
     private static volatile boolean initialized = false;
     private static int currentWidth = -1, currentHeight = -1;
-    
+
     private CgGraphicsLifecycle() {}
 
     /**
@@ -151,10 +151,10 @@ public final class CgGraphicsLifecycle {
 
         // Step 9: All owned framebuffers — must be first.
         CgFrameBufferRegistry.get().deleteAll();
-        
-        
+
+
         // Step 10: Debug utilities (lazy singleton — no-op if never used).
-        CgDebugBlit.dispose();
+//        CgDebugBlit.dispose();
 
         // Reset all backend-capability caches so context recreation re-probes correctly.
         CgCapabilities.clearCache();
