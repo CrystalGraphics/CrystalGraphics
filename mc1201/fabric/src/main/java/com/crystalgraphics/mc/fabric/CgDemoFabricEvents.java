@@ -1,6 +1,7 @@
 package com.crystalgraphics.mc.fabric;
 
 import com.crystalgraphics.demo.CgFontDemo;
+import com.crystalgraphics.demo.CgRenderDemo;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.minecraft.client.Minecraft;
@@ -39,6 +40,7 @@ final class CgDemoFabricEvents {
             final GLFWScrollCallback[] prev = { GLFW.glfwSetScrollCallback(window, null) };
             GLFW.glfwSetScrollCallback(window, (win, dx, dy) -> {
                 CgFontDemo.INSTANCE.onMouseWheel((int) (dy * 120));
+                CgRenderDemo.INSTANCE.onMouseWheel((int) (dy * 120));
                 if (prev[0] != null) prev[0].invoke(win, dx, dy);
             });
         });

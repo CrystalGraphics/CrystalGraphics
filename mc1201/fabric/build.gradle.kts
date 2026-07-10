@@ -30,28 +30,41 @@ loom {
     }
 }
 
-// Merge platform, core, mc1201:common, and freetype-msdfgen-harfbuzz-bindings — same pattern as mc1710
+// Merge platform, core, mc1201:common, and freetype-msdfgen-harfbuzz-bindings into BOTH
+// tasks.jar and tasks.shadowJar.
+//
+// tasks.jar must include bundled content because Loom uses the REMAPPED JAR (produced from
+// tasks.jar via remapJar) as the mod's classpath when running the dev client. Without bundling
+// here, freetype and other project deps are absent from Knot's classloader at runtime even
+// though they compile fine as compileOnly project deps.
+//
+// NOTE: loom.mods { sourceSet(crossProject) } was attempted but triggers Loom trying to apply
+// 'fabric-loom-companion' to each cross-project — fails because platform/core/freetype don't
+// apply Loom. JAR bundling is the correct approach for Loom dev runs with multi-project mods.
+//
+// tasks.shadowJar is the distribution artifact (tasks.assemble depends on it).
+// Lazy providers — Gradle uses these to wire task-to-task dependencies automatically.
+// Using Provider<RegularFile> (not resolved RegularFile) ensures tasks.jar and tasks.shadowJar
+// both declare an implicit dependsOn on the upstream :jar tasks; no explicit dependsOn needed.
+val platformJar     = project(":platform").tasks.named<Jar>("jar").flatMap { it.archiveFile }
+val coreJar         = project(":core").tasks.named<Jar>("jar").flatMap { it.archiveFile }
+val commonJar       = project(":mc1201:common").tasks.named<Jar>("jar").flatMap { it.archiveFile }
+val freetypeJar     = project(":freetype-msdfgen-harfbuzz-bindings").tasks.named<Jar>("jar").flatMap { it.archiveFile }
+
+tasks.jar {
+    from(zipTree(platformJar))
+    from(zipTree(coreJar))
+    from(zipTree(commonJar))
+    from(zipTree(freetypeJar))
+}
+
 tasks.shadowJar {
-    dependsOn(":platform:jar", ":core:jar", ":mc1201:common:jar", ":freetype-msdfgen-harfbuzz-bindings:jar")
     configurations = listOf()  // no runtime classpath shadowing — only explicit inclusions below
+    from(zipTree(platformJar))
+    from(zipTree(coreJar))
+    from(zipTree(commonJar))
+    from(zipTree(freetypeJar))
 }
-afterEvaluate {
-    tasks.shadowJar.configure {
-        from(zipTree(project(":platform").tasks.named<Jar>("jar").get().archiveFile.get()))
-        from(zipTree(project(":core").tasks.named<Jar>("jar").get().archiveFile.get()))
-        from(zipTree(project(":mc1201:common").tasks.named<Jar>("jar").get().archiveFile.get()))
-        from(zipTree(project(":freetype-msdfgen-harfbuzz-bindings").tasks.named<Jar>("jar").get().archiveFile.get()))
-    }
-}
-
-afterEvaluate {
-    tasks.shadowJar.configure {
-        from(zipTree(project(":platform").tasks.named<Jar>("jar").get().archiveFile.get()))
-        from(zipTree(project(":core").tasks.named<Jar>("jar").get().archiveFile.get()))
-        from(zipTree(project(":mc1201:common").tasks.named<Jar>("jar").get().archiveFile.get()))
-    }
-}
-
 
 tasks.assemble { dependsOn(tasks.shadowJar) }
 

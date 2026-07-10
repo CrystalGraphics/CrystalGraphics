@@ -1,6 +1,7 @@
 package com.crystalgraphics.mc.neoforge;
 
 import com.crystalgraphics.demo.CgFontDemo;
+import com.crystalgraphics.demo.CgRenderDemo;
 import net.minecraft.client.Minecraft;
 import net.neoforged.neoforge.client.event.InputEvent;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
@@ -26,5 +27,6 @@ public final class CgDemoNeoForgeEvents {
 
     private static void onMouseScroll(InputEvent.MouseScrollingEvent event) {
         CgFontDemo.INSTANCE.onMouseWheel((int) (event.getScrollDeltaY() * 120));
+        CgRenderDemo.INSTANCE.onMouseWheel((int) (event.getScrollDeltaY() * 120));
     }
 }

@@ -1,6 +1,7 @@
 package com.crystalgraphics.mc.forge;
 
 import com.crystalgraphics.demo.CgFontDemo;
+import com.crystalgraphics.demo.CgRenderDemo;
 import net.minecraft.client.Minecraft;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.InputEvent;
@@ -27,5 +28,6 @@ public final class CgDemoForgeEvents {
     @SubscribeEvent
     public static void onMouseScroll(InputEvent.MouseScrollingEvent event) {
         CgFontDemo.INSTANCE.onMouseWheel((int) (event.getScrollDelta() * 120));
+        CgRenderDemo.INSTANCE.onMouseWheel((int) (event.getScrollDelta() * 120));
     }
 }

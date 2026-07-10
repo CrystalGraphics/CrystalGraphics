@@ -1,5 +1,6 @@
 package com.crystalgraphics.gl.lifecycle;
 
+import com.crystalgraphics.demo.CgRenderDemo;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.api.material.CgMaterialRegistry;
@@ -85,7 +86,7 @@ public final class CgGraphicsLifecycle {
     public static void onOpaquePass(float partialTick, int w, int h, int sourceFboId) {
         if (!initialized) initContext(w, h);
         else if (w != currentWidth || h != currentHeight) onResize(w, h);
-        CgRenderPipeline.getInstance().executeOpaquePass(partialTick, sourceFboId);
+        CgRenderDemo.INSTANCE.renderOpaque(partialTick, w, h, sourceFboId);
     }
 
     /**
@@ -96,9 +97,7 @@ public final class CgGraphicsLifecycle {
      */
     public static void onTransparentPass() {
         if (!initialized) return;
-        CgRenderPipeline pipe = CgRenderPipeline.getInstance();
-        pipe.executeTransparentPass();
-        pipe.endFrame();
+        CgRenderDemo.INSTANCE.renderTransparent();
     }
 
     /**
@@ -143,6 +142,9 @@ public final class CgGraphicsLifecycle {
         CgShaderBufferRegistry.get().deleteAll();
 
         // Step 8: Pipeline-owned frame UBO + object SSBO + command queue.
+        // Dispose the render demo first so its mesh/material handles are released before
+        // the registries they reference are torn down.
+        CgRenderDemo.INSTANCE.dispose();
         // CgRenderPipeline owns both the GPU pipeline buffers (formerly CgMaterialPipeline)
         // and the render command queue; one destroy call handles all of it.
         CgRenderPipeline.destroy();

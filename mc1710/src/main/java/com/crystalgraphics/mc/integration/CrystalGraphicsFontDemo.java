@@ -1,6 +1,7 @@
 package com.crystalgraphics.mc.integration;
 
 import com.crystalgraphics.demo.CgFontDemo;
+import com.crystalgraphics.demo.CgRenderDemo;
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
@@ -33,7 +34,9 @@ public class CrystalGraphicsFontDemo {
         Minecraft mc = Minecraft.getMinecraft();
         if (mc == null || mc.thePlayer == null) return;
 
-        CgFontDemo.INSTANCE.onMouseWheel(Mouse.getDWheel());
+        int wheel = Mouse.getDWheel();
+        CgFontDemo.INSTANCE.onMouseWheel(wheel);
+        CgRenderDemo.INSTANCE.onMouseWheel(wheel);
     }
 
     @SubscribeEvent
