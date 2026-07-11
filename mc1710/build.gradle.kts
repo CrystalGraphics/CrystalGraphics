@@ -46,6 +46,8 @@ afterEvaluate {
         from(zipTree(coreJar.archiveFile.get()))
         from(zipTree(platformJar.archiveFile.get()))
     }
+
+
 }
 
 fun findJarBySubstring(part: String): File {
@@ -67,6 +69,15 @@ tasks.named<JavaExec>("runClient") {
 
        // val hotswapAgent = findJarBySubstring("hotswap-agent")
       //  jvmArgs("-javaagent:${hotswapAgent.absolutePath}")
+    }
+}
+
+// Fix: RFG's onlyIf predicate on mergeVanillaSidedJars uses Provider.get() which
+// crashes during Gradle daemon task graph evaluation on first run (clean outputs).
+// Replace with a safe direct file existence check.
+tasks.named("mergeVanillaSidedJars") {
+    setOnlyIf {
+        !layout.buildDirectory.file("rfg/vanilla_merged_minecraft.jar").get().asFile.exists()
     }
 }
 
