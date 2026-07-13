@@ -31,6 +31,7 @@ import java.util.logging.Logger;
 public final class CgTextureIO {
 
     private static final Logger LOGGER = Logger.getLogger(CgTextureIO.class.getName());
+    public static boolean FOLLOW_MC_CONVENTION = true;
 
     private CgTextureIO() {
         // no instances
@@ -79,7 +80,7 @@ public final class CgTextureIO {
         if (cm.getNumColorComponents() == 1 && !cm.hasAlpha()) channels = 1;
         else if (!cm.hasAlpha()) channels = 3;
         else channels = 4;
-        
+
 
         BufferedImage argb = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = argb.createGraphics();
@@ -94,19 +95,39 @@ public final class CgTextureIO {
 
         ByteBuffer buf = ByteBuffer.allocateDirect(w * h * channels).order(ByteOrder.nativeOrder());
 
-        // OpenGL origin is bottom-left; BufferedImage origin is top-left.
-        for (int y = h - 1; y >= 0; y--) {
-            for (int x = 0; x < w; x++) {
-                int p = pixels[y * w + x];
-                byte r = (byte) ((p >> 16) & 0xFF);
-                if (channels == 1) {
-                    buf.put(r);
-                } else {
-                    byte g2 = (byte) ((p >> 8) & 0xFF);
-                    byte b = (byte) (p & 0xFF);
-                    buf.put(r).put(g2).put(b);
-                    if (channels == 4) {
-                        buf.put((byte) ((p >> 24) & 0xFF));
+        if (FOLLOW_MC_CONVENTION) {
+            // MC follows top-left as origin, upload as is.
+            for (int y = 0; y < h; y++) {
+                for (int x = 0; x < w; x++) {
+                    int p = pixels[y * w + x];
+                    byte r = (byte) ((p >> 16) & 0xFF);
+                    if (channels == 1) {
+                        buf.put(r);
+                    } else {
+                        byte g2 = (byte) ((p >> 8) & 0xFF);
+                        byte b = (byte) (p & 0xFF);
+                        buf.put(r).put(g2).put(b);
+                        if (channels == 4) {
+                            buf.put((byte) ((p >> 24) & 0xFF));
+                        }
+                    }
+                }
+            }
+        } else {
+            // OpenGL origin is bottom-left; BufferedImage origin is top-left.
+            for (int y = h - 1; y >= 0; y--) {
+                for (int x = 0; x < w; x++) {
+                    int p = pixels[y * w + x];
+                    byte r = (byte) ((p >> 16) & 0xFF);
+                    if (channels == 1) {
+                        buf.put(r);
+                    } else {
+                        byte g2 = (byte) ((p >> 8) & 0xFF);
+                        byte b = (byte) (p & 0xFF);
+                        buf.put(r).put(g2).put(b);
+                        if (channels == 4) {
+                            buf.put((byte) ((p >> 24) & 0xFF));
+                        }
                     }
                 }
             }
