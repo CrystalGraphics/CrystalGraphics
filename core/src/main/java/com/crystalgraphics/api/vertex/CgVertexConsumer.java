@@ -155,6 +155,11 @@ public interface CgVertexConsumer {
         return CgVertexTransformUtil.vertex(this, matrix, x, y, z);
     }
 
+
+    default CgVertexConsumer vertex(Matrix4f matrix, float x, float y) {
+        return CgVertexTransformUtil.vertex(this, matrix, x, y);
+    }
+
     default CgVertexConsumer normal(Matrix3f matrix, float x, float y, float z) {
         return CgVertexTransformUtil.normal(this, matrix, x, y, z);
     }
