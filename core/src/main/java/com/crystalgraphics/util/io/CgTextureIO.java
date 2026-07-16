@@ -7,7 +7,6 @@ import org.apache.commons.io.IOUtils;
 
 import javax.imageio.ImageIO;
 
-import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.awt.image.ColorModel;
 import java.io.InputStream;
@@ -31,6 +30,7 @@ import java.util.logging.Logger;
 public final class CgTextureIO {
 
     private static final Logger LOGGER = Logger.getLogger(CgTextureIO.class.getName());
+    public static boolean FOLLOW_MC_CONVENTION = true;
 
     private CgTextureIO() {
         // no instances
@@ -73,49 +73,64 @@ public final class CgTextureIO {
     private static CgImageData convertNative(BufferedImage src) {
         int w = src.getWidth();
         int h = src.getHeight();
-
-        ColorModel cm = src.getColorModel();
-        final int channels;
-        if (cm.getNumColorComponents() == 1 && !cm.hasAlpha()) channels = 1;
-        else if (!cm.hasAlpha()) channels = 3;
-        else channels = 4;
-        
-
-        BufferedImage argb = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D g = argb.createGraphics();
-        try {
-            g.drawImage(src, 0, 0, null);
-        } finally {
-            g.dispose();
-        }
-
-        int[] pixels = new int[w * h];
-        argb.getRGB(0, 0, w, h, pixels, 0, w);
+        int channels = determineChannelCount(src.getColorModel());
 
         ByteBuffer buf = ByteBuffer.allocateDirect(w * h * channels).order(ByteOrder.nativeOrder());
+        int[] rowPixels = new int[w];
 
-        // OpenGL origin is bottom-left; BufferedImage origin is top-left.
-        for (int y = h - 1; y >= 0; y--) {
-            for (int x = 0; x < w; x++) {
-                int p = pixels[y * w + x];
-                byte r = (byte) ((p >> 16) & 0xFF);
-                if (channels == 1) {
-                    buf.put(r);
-                } else {
-                    byte g2 = (byte) ((p >> 8) & 0xFF);
-                    byte b = (byte) (p & 0xFF);
-                    buf.put(r).put(g2).put(b);
-                    if (channels == 4) {
-                        buf.put((byte) ((p >> 24) & 0xFF));
-                    }
-                }
-            }
+        for (int i = 0; i < h; i++) {
+            // Determine which row to read based on the Y-axis convention
+            int y = FOLLOW_MC_CONVENTION ? i : (h - 1 - i);
+
+            // Extract directly into our reusable row array
+            src.getRGB(0, y, w, 1, rowPixels, 0, w);
+
+            // Write the converted bytes to the buffer
+            writeRowToBuffer(buf, rowPixels, w, channels);
         }
-        buf.flip();
 
+        buf.flip();
         return new CgImageData(buf, w, h, channels);
     }
 
+    /**
+     * Determines the target channel count based on the source image's ColorModel.
+     */
+    private static int determineChannelCount(ColorModel cm) {
+        if (cm.getNumColorComponents() == 1 && !cm.hasAlpha()) {
+            return 1;
+        } else if (!cm.hasAlpha()) {
+            return 3;
+        }
+        return 4;
+    }
+
+    /**
+     * Parses ARGB integers and writes the requested channels directly into the ByteBuffer.
+     */
+    private static void writeRowToBuffer(ByteBuffer buf, int[] rowPixels, int width, int channels) {
+        if (channels == 4) {
+            for (int x = 0; x < width; x++) {
+                int p = rowPixels[x];
+                buf.put((byte) ((p >> 16) & 0xFF)); // R
+                buf.put((byte) ((p >> 8) & 0xFF));  // G
+                buf.put((byte) (p & 0xFF));         // B
+                buf.put((byte) ((p >> 24) & 0xFF)); // A
+            }
+        } else if (channels == 3) {
+            for (int x = 0; x < width; x++) {
+                int p = rowPixels[x];
+                buf.put((byte) ((p >> 16) & 0xFF)); // R
+                buf.put((byte) ((p >> 8) & 0xFF));  // G
+                buf.put((byte) (p & 0xFF));         // B
+            }
+        } else {
+            // Grayscale: In ARGB space, R=G=B, so we just grab the Red channel
+            for (int x = 0; x < width; x++) {
+                buf.put((byte) ((rowPixels[x] >> 16) & 0xFF));
+            }
+        }
+    }
     /**
      * Generates the 8×8 purple/black checkerboard fallback texture.
      * Purple = (255, 0, 255, 255), Black = (0, 0, 0, 255).
