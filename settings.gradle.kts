@@ -1,4 +1,6 @@
 
+rootProject.name = "CrystalGraphics"
+
 pluginManagement {
     // Default plugin version so submodules can use 'id' without specifying version.
     // gtnhgradle is loaded into the settings classloader so all submodules share the
@@ -37,13 +39,6 @@ pluginManagement {
 
 
 
-plugins {
-    id("net.neoforged.moddev.repositories") version "2.0.141"
-}
-
-includeBuild("mc1201/build-logic")
-
-rootProject.name = "CrystalGraphics"
 
 // JNI bindings subproject (standalone Java library, not Minecraft mod)
 include("freetype-msdfgen-harfbuzz-bindings")
@@ -51,17 +46,17 @@ include("freetype-msdfgen-harfbuzz-bindings")
 // Platform split subprojects (plain java-library, no gtnhconvention)
 include(":core")
 include(":platform")
+//
+//// MC version subprojects (each applies gtnhconvention)
+include("mc1710")
 
-// MC version subprojects (each applies gtnhconvention)
-include(":mc1710")
+//// Standalone GL debug harness (no Minecraft/Forge)
+//if (file("gl-debug-harness").exists())
+//    include(":gl-debug-harness")
 
-// Standalone GL debug harness (no Minecraft/Forge)
-if (file("gl-debug-harness").exists())
-    include(":gl-debug-harness")
-
-// mc1201 subprojects — nested under mc1201/
-include(":mc1201:common")
-include(":mc1201:neoforge")
-include(":mc1201:fabric")
-include(":mc1201:forge")
-
+//// mc1201 subprojects — nested under mc1201/
+//include(":mc1201:common")
+//include(":mc1201:neoforge")
+//include(":mc1201:fabric")
+//include(":mc1201:forge")
+//
