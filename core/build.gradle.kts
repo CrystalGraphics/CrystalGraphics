@@ -24,6 +24,10 @@ java {
         languageVersion.set(JavaLanguageVersion.of(17))
     }
 }
+
+tasks.withType<Jar>().configureEach {
+    archiveBaseName.set("graphicsCore")
+}
 //// 2. CONFIGURATIONS & VARIANTS
 //val jvmAttr = Attribute.of("org.gradle.jvm.version", Int::class.javaObjectType)
 //
