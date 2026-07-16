@@ -1,17 +1,3 @@
-// Root project — pure build coordinator. No source lives here.
-//
-// MC version subprojects:
-//   :mc1710                — Minecraft 1.7.10 + Forge 10.13.4  (LWJGL 2, gtnhconvention)
-//   :mc1201:common         — Shared 1.20.1 source (plain Java 17 library)
-//   :mc1201:fabric         — MC 1.20.1 Fabric loader  (fabric-loom 1.16.2)
-//   :mc1201:forge          — MC 1.20.1 MinecraftForge (ModDevGradle legacyForge)
-//   :mc1201:neoforge       — MC 1.20.4 NeoForge       (ModDevGradle — see neoforge/build.gradle.kts)
-//
-// Platform-agnostic subprojects:
-//   :core                             — rendering engine (LWJGL as compileOnly)
-//   :platform                         — SPI interfaces (zero MC/LWJGL imports)
-//   :freetype-msdfgen-harfbuzz-bindings — JNI font/shape bindings
-//   :gl-debug-harness                 — standalone GL test harness (no Minecraft)
 
 plugins {
     idea
@@ -25,39 +11,17 @@ tasks.register("processIdeaSettings") {
     description = "No-op task for IntelliJ IDEA Gradle sync compatibility"
 }
 
-// gtnhsettingsconvention (applied in settings.gradle.kts) injects spotless and other
-// plugins onto this project's buildscript classpath. Declare buildscript repositories
-// here so those plugins can resolve even though root applies no MC convention plugin.
-buildscript {
-    repositories {
-        maven {
-            name = "GTNH Maven"
-            url = uri("https://nexus.gtnewhorizons.com/repository/public/")
-        }
-        gradlePluginPortal()
-        mavenCentral()
-    }
-}
-
-repositories {
-    maven {
-        name = "GTNH Maven"
-        url = uri("https://nexus.gtnewhorizons.com/repository/public/")
-    }
-    gradlePluginPortal()
-    mavenCentral()
-}
-
-// Umbrella task that extracts MC sources and resources for all mc1201 loader modules.
-// Run once after checkout or after toolchain version bumps. Each subproject's extractMcSources
-// task will trigger the appropriate toolchain download + decompile step as needed.
-tasks.register("extractAllMcSources") {
-    description = "Extracts MC sources and resources for all mc1201 loader modules. Run once after checkout."
-    group = "crystalgraphics"
-    // neoforge targets MC 1.20.4 (not 1.20.1 — NeoForge never published a stable 1.20.1 series).
-    dependsOn(
-        ":mc1201:neoforge:extractMcSources",
-        ":mc1201:forge:extractMcSources",
-        ":mc1201:fabric:extractMcSources"
-    )
-}
+//
+//// Umbrella task that extracts MC sources and resources for all mc1201 loader modules.
+//// Run once after checkout or after toolchain version bumps. Each subproject's extractMcSources
+//// task will trigger the appropriate toolchain download + decompile step as needed.
+//tasks.register("extractAllMcSources") {
+//    description = "Extracts MC sources and resources for all mc1201 loader modules. Run once after checkout."
+//    group = "crystalgraphics"
+//    // neoforge targets MC 1.20.4 (not 1.20.1 — NeoForge never published a stable 1.20.1 series).
+//    dependsOn(
+//        ":mc1201:neoforge:extractMcSources",
+//        ":mc1201:forge:extractMcSources",
+//        ":mc1201:fabric:extractMcSources"
+//    )
+//}
