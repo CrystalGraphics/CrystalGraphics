@@ -37,7 +37,13 @@ dependencies {
     // Platform split subprojects — plain java-library, no RFG variant attributes.
     // Included in the shadow JAR via explicit from(zipTree(...)) in build.gradle.kts,
     // same pattern as freetype-msdfgen-harfbuzz-bindings.
-    implementation(project(':core'))
+    implementation(project(":core")) {
+        attributes {
+            def jvmAttr = Attribute.of("org.gradle.jvm.version", Int::class.javaObjectType)
+            attribute(jvmAttr, 17)
+            attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage::class.java, Usage.JAVA_RUNTIME))
+        }
+    }
     implementation(project(':platform'))
 
     //runtimeOnlyNonPublishable("com.github.GTNewHorizons:NotEnoughItems:2.7.69-GTNH:dev")
