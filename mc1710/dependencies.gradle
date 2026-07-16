@@ -33,25 +33,49 @@
  *
  * For more details, see https://docs.gradle.org/8.0.1/userguide/java_library_plugin.html#sec:java_library_configurations_graph
  */
-dependencies {
-    // Platform split subprojects — plain java-library, no RFG variant attributes.
-    // Included in the shadow JAR via explicit from(zipTree(...)) in build.gradle.kts,
-    // same pattern as freetype-msdfgen-harfbuzz-bindings.
-    // api (not implementation) so that consumers of mc1710 (e.g. gl-debug-harness,
-    // CrystalGUI) see core/platform classes on their compile classpath without
-    // needing a separate direct dependency on each subproject.
-    api(project(':core'))
-    api(project(':platform'))
 
-    //runtimeOnlyNonPublishable("com.github.GTNewHorizons:NotEnoughItems:2.7.69-GTNH:dev")
+
+dependencies {
+
+//    shadowImplementation(project(':core'))
+
+//
+    // Platform and Bindings:
+    // We use the same neutralization logic so they don't crash when RFG is present in mc1710.
+    shadowImplementation(project(':platform')){
+        attributes {
+            // Explicitly set the obfuscation to 'none' so Gradle knows it's a normal library
+            attribute(Attribute.of("com.gtnewhorizons.retrofuturagradle.obfuscation", String.class), "none")
+            attribute(Attribute.of("rfgDeobfuscatorTransformed", Boolean.class), false)
+        }
+    }
+
+    shadowImplementation(project(':core')) {
+        attributes {
+            // Explicitly set the obfuscation to 'none' so Gradle knows it's a normal library
+            attribute(Attribute.of("com.gtnewhorizons.retrofuturagradle.obfuscation", String.class), "none")
+            attribute(Attribute.of("rfgDeobfuscatorTransformed", Boolean.class), false)
+        }
+    }
+
+    shadowImplementation(project(':freetype-msdfgen-harfbuzz-bindings')) {
+        attributes {
+            // Explicitly set the obfuscation to 'none' so Gradle knows it's a normal library
+            attribute(Attribute.of("com.gtnewhorizons.retrofuturagradle.obfuscation", String.class), "none")
+            attribute(Attribute.of("rfgDeobfuscatorTransformed", Boolean.class), false)
+        }
+    }
+
+
+    // ... rest of your dependencies
     shadowImplementation('org.joml:joml-jdk8:1.10.1') {
         exclude group: 'org.jetbrains.kotlin'
     }
     shadowImplementation('de.javagl:obj:0.4.0')
     shadowImplementation('de.javagl:jgltf-model:2.0.4')
     // QoL additions. Requires Intellij Plugins to show correctly in IDE
-    compileOnly("org.projectlombok:lombok:1.18.32")
-    annotationProcessor("org.projectlombok:lombok:1.18.32")
+    compileOnly("org.projectlombok:lombok:1.18.40")
+    annotationProcessor("org.projectlombok:lombok:1.18.40")
 
     // Testing
     testImplementation("junit:junit:4.13.2")
@@ -65,11 +89,5 @@ dependencies {
     compileOnly("org.hotswapagent:hotswap-agent-core:1.4.1")
     runtimeOnlyNonPublishable("org.hotswapagent:hotswap-agent-core:1.4.1")
 
-    // JNI bindings subproject — use implementation so its classes AND resources
-    // (including /natives/ directories) are on both the compile and test classpaths.
-    // Cannot use shadowImplementation because the GTNH convention plugin requires
-    // RFG obfuscation variant attributes that plain Java subprojects don't publish.
-    // The shadow JAR includes it via explicit from(zipTree(...)) in build.gradle.kts.
-    implementation(project(':freetype-msdfgen-harfbuzz-bindings'))
 
 }
