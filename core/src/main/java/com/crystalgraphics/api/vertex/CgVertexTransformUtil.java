@@ -20,6 +20,17 @@ public final class CgVertexTransformUtil {
     private static final ThreadLocal<Vector3f> SCRATCH_VEC3 = ThreadLocal.withInitial(() -> new Vector3f());
 
     /**
+     * Transforms a 2D position by the given matrix and writes it to the consumer.
+     * Uses a thread-local scratch vector — zero allocations.
+     */
+    public static CgVertexConsumer vertex(CgVertexConsumer consumer, Matrix4f matrix, float x, float y) {
+        Vector4f v = SCRATCH_VEC4.get();
+        v.set(x, y, 0, 1.0f);
+        matrix.transform(v);
+        return consumer.vertex(v.x(), v.y());
+    }
+
+    /**
      * Transforms a 3D position by the given matrix and writes it to the consumer.
      * Uses a thread-local scratch vector — zero allocations.
      */
@@ -40,6 +51,7 @@ public final class CgVertexTransformUtil {
         matrix.transform(v);
         return consumer.normal(v.x(), v.y(), v.z());
     }
+
 
     private CgVertexTransformUtil() {}
 }

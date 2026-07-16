@@ -475,7 +475,7 @@ final class CgGlStates {
         }
 
         public static ViewportState capture() {
-            IntBuffer buf = CgBufferUtils.createIntBuffer(4);
+            IntBuffer buf = CgBufferUtils.createIntBuffer(16);
             CgGL.glGetInteger(CgGL.GL_VIEWPORT, buf);
             return new ViewportState(buf.get(0), buf.get(1), buf.get(2), buf.get(3));
         }

@@ -57,13 +57,19 @@ public class PoseStack {
     private static final ThreadLocal<FloatBuffer> MATRIX_BUFFER = ThreadLocal.withInitial(() -> CgBufferUtils.createFloatBuffer(16));
 
     private final Deque<Pose> poseStack;
+    private final boolean syncsToGL;
 
     /**
      * Creates a new PoseStack with a single identity entry.
      */
     public PoseStack() {
+        this(true);
+    }
+
+    public PoseStack(boolean syncsToGL) {
         this.poseStack = new ArrayDeque<Pose>();
         this.poseStack.add(new Pose(new Matrix4f(), new Matrix3f()));
+        this.syncsToGL = syncsToGL;
     }
 
     /**
@@ -180,8 +186,10 @@ public class PoseStack {
         ));
 
         // Sync to fixed-function GL
-        CgGL.glPushMatrix();
-        syncToGL();
+        if (syncsToGL) {
+            CgGL.glPushMatrix();
+            syncToGL();
+        }
     }
 
     /**
@@ -195,7 +203,8 @@ public class PoseStack {
      */
     public void popPose() {
         this.poseStack.removeLast();
-        CgGL.glPopMatrix();
+        if (syncsToGL)
+           CgGL.glPopMatrix();
     }
 
     /**
