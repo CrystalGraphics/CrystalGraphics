@@ -97,6 +97,20 @@ public final class CgVertexFormat implements CgAttributeFormat {
             .add(CgVertexSemantic.NORMAL,   "cg_Normal",    3, CgAttribType.FLOAT)
             .build();
 
+    /**
+     * Standard UI 2D vertex format for the CrystalShader material pipeline:
+     * POSITION(vec2) + UV(vec2) + COLOR(ubyte4) = 20 bytes stride.
+     *
+     <p>Registered under the {@code #type} key {@code "UI"} so that any
+     * {@code .shader} file declaring {@code #type spatial} uses this format.</p>
+     */
+    public static final CgVertexFormat UI = builder("UI")
+            .add(CgVertexSemantic.POSITION, "cg_Position",  2, CgAttribType.FLOAT)
+            .add(CgVertexSemantic.UV      , "cg_TexCoord0", 2, CgAttribType.FLOAT)
+            .add(CgVertexSemantic.COLOR   , "cg_Color",     4, CgAttribType.UNSIGNED_BYTE, true)
+            .build();
+
+
     private CgVertexFormat(CgVertexAttribute[] attributes, int stride, String key) {
         this.attributes = attributes;
         this.stride = stride;
