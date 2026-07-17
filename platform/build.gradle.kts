@@ -25,8 +25,10 @@ repositories {
 }
 
 dependencies {
-    compileOnly("org.projectlombok:lombok:$lombokVer")
-    annotationProcessor("org.projectlombok:lombok:$lombokVer")
+    compileOnly("org.projectlombok:lombok:1.18.44")
+    annotationProcessor("org.projectlombok:lombok:1.18.44")
+    testCompileOnly("org.projectlombok:lombok:1.18.44")
+    testAnnotationProcessor("org.projectlombok:lombok:1.18.44")
     implementation("org.apache.logging.log4j:log4j-api:$log4jVer")
 }
 
