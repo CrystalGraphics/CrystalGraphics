@@ -266,7 +266,6 @@ public class PoseStack {
         FloatBuffer buf = MATRIX_BUFFER.get();
         buf.clear();
         this.poseStack.getLast().pose.get(buf);
-        buf.flip();
         CgGL.glLoadMatrix(buf);
     }
 
