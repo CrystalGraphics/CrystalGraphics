@@ -86,8 +86,10 @@ dependencies {
     compileOnly("org.lwjgl.lwjgl:lwjgl:$lwjglVer")
     compileOnly("org.joml:joml-jdk8:$jomlVer")
 
-    compileOnly("org.projectlombok:lombok:$lombokVer")
-    annotationProcessor("org.projectlombok:lombok:$lombokVer")
+    compileOnly("org.projectlombok:lombok:1.18.44")
+    annotationProcessor("org.projectlombok:lombok:1.18.44")
+    testCompileOnly("org.projectlombok:lombok:1.18.44")
+    testAnnotationProcessor("org.projectlombok:lombok:1.18.44")
 
     // Keep compileOnly so `import ...Desugar` doesn't crash the pure Java 17 compile
     // Notice: We NO LONGER have annotationProcessor(jabel) here.
@@ -100,6 +102,7 @@ dependencies {
     testImplementation("org.lwjgl.lwjgl:lwjgl:$lwjglVer")
     testImplementation("org.joml:joml-jdk8:$jomlVer")
     testImplementation(project(":freetype-msdfgen-harfbuzz-bindings"))
+    testImplementation(project(":platform"))
 }
 
 //// 5. PIPELINE A: PURE JAVA 17 COMPILATION

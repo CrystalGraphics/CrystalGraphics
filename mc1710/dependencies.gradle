@@ -74,8 +74,10 @@ dependencies {
     shadowImplementation('de.javagl:obj:0.4.0')
     shadowImplementation('de.javagl:jgltf-model:2.0.4')
     // QoL additions. Requires Intellij Plugins to show correctly in IDE
-    compileOnly("org.projectlombok:lombok:1.18.40")
-    annotationProcessor("org.projectlombok:lombok:1.18.40")
+    compileOnly("org.projectlombok:lombok:1.18.44")
+    annotationProcessor("org.projectlombok:lombok:1.18.44")
+    testCompileOnly("org.projectlombok:lombok:1.18.44")
+    testAnnotationProcessor("org.projectlombok:lombok:1.18.44")
 
     // Testing
     testImplementation("junit:junit:4.13.2")
