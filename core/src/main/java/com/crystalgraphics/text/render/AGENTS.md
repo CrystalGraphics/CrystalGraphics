@@ -13,14 +13,13 @@ The core question here is:
 ## Reading order
 
 1. `CgTextRenderer`
-2. `CgTextQuadSink`
-3. `CgTextRenderContext`
-4. `CgWorldTextRenderContext`
-5. `CgTextScaleResolver`
-6. `OrthographicScaleResolver`
-7. `PerspectiveScaleResolver`
-8. `ProjectedSizeEstimator`
-9. `CgDrawBatchKey`
+2. `CgTextRenderContext`
+3. `CgWorldTextRenderContext`
+4. `CgTextScaleResolver`
+5. `OrthographicScaleResolver`
+6. `PerspectiveScaleResolver`
+7. `ProjectedSizeEstimator`
+8. `CgDrawBatchKey`
 
 ## Class-by-class details
 
@@ -36,16 +35,13 @@ Main responsibilities:
 - building paged glyph batches
 - sorting placements by `CgDrawBatchKey`
 - submitting quads through `CgDynamicTextureRenderLayer` (layer path)
-- submitting quads through `CgTextQuadSink` (generic target path — V3.2)
 - resolving shaders from `CgDrawBatchKey`
 - swapping layer render state and texture on batch-key transitions
 
-Two internal emission paths:
+One internal emission paths:
 
 1. **Layer path** (`drawInternalLayer`) — existing path, submits through
    `CgDynamicTextureRenderLayer`. Used by non-UI 2D text and world text.
-2. **Target path** (`drawInternalTarget`) — V3.2 path, submits through
-   `CgTextQuadSink`. Used by CrystalGUI's draw-list paint context.
 
 Both paths share the same batch-key sorting, glyph placement resolution,
 and quad generation logic. They differ only in the final emission sink.
@@ -63,33 +59,6 @@ All `draw()` and `drawWorld()` methods require a caller-provided
 "begun" state (managed by the owning `CgBufferSource`). Text layer factories
 live in `gl/text/CgTextLayers`.
 
-The `drawInternalTarget()` methods accept a `CgTextQuadSink` instead
-of a layer. These are public and intended for callers (like CrystalGUI's
-`CgUiPaintContext`) that manage their own submission model.
-
-### `CgTextQuadSink`
-
-Quad-oriented text emission sink interface (V3.2, replaces V3.1's `CgTextEmissionTarget`).
-
-Decouples glyph quad emission from any specific submission model:
-
-- `beginBatch(CgRenderState, int textureId, float pxRange)` — signals a batch transition; flushes pending vertices
-- `emitQuad(x0, y0, x1, y1, u0, v0, u1, v1, r, g, b, a)` — emits a single glyph quad; the sink owns vertex writing
-- `endText()` — flushes remaining vertices as a draw command
-
-This interface lives in CrystalGraphics (not CrystalGUI) because the text
-renderer cannot depend on CrystalGUI types. CrystalGUI provides an adapter
-(`CgUiPaintContext.DrawListTextSink`) that bridges this to draw-list recording.
-The adapter tracks the vertex cursor internally (before/after text emission) and
-records text draw commands on `beginBatch()` transitions and at `endText()` time.
-
-Unlike the previous `CgTextEmissionTarget`, this interface does not expose
-`vertexConsumer()` or `reserveQuads()`. The renderer calls `emitQuad()`
-directly, keeping adapter implementations trivially simple (~40 lines vs. ~90).
-
-Key ordering rule: one element's text emission must remain contiguous in the
-global draw list. Internal page/material grouping via `beginBatch()` is allowed
-only within a single text emission call.
 
 ### `CgTextRenderContext`
 
@@ -165,7 +134,6 @@ Package-level description of render-side responsibilities.
 - world-text and 2D text share most of the pipeline until raster-tier / projection policy differs
 - the renderer owns NO GL objects — all GPU resources come from the shared layer/batch infrastructure
 - layer-based `draw()` and `drawWorld()` overloads require a `CgDynamicTextureRenderLayer` — there is no self-contained draw path
-- target-based `drawInternalTarget()` overloads require a `CgTextQuadSink` — the caller controls the submission model
 - GL state is managed by the layer's `CgRenderState` (layer path) or by the executor's state transitions (target path)
 - the layer is expected to already be "begun" (managed by the owning `CgBufferSource`) on the layer path
 - text layer factories live in `gl/text/CgTextLayers`
@@ -180,5 +148,3 @@ Package-level description of render-side responsibilities.
 - Do not reintroduce per-renderer `begin()/end()` batch lifecycle on the layer path. The owning `CgBufferSource` manages layer lifecycle.
 - Do not reintroduce a self-contained draw path that secretly constructs a batcher or layer. All draw paths require a caller-provided layer or sink.
 - Do not use allocating matrix-transform helpers in the text hot path. Use `CgVertexConsumer.vertex(Matrix4f, x, y, z)` or `CgVertexTransformUtil.vertex(...)` which delegate to ThreadLocal scratch vectors (zero allocations).
-- Do not create `CgTextQuadSink` implementations that break the contiguity rule — one element's text must be one unbroken sequence in the draw list.
-- Do not re-introduce `CgTextEmissionTarget` or a vertex-consumer-leaking equivalent.
