@@ -945,7 +945,7 @@ All 35 package guides under `src/main/java/com/crystalgraphics/`. Relative paths
 | `text/atlas/AGENTS.md` | Atlas storage |
 | `text/atlas/packing/AGENTS.md` | Packing algorithms |
 | `text/msdf/AGENTS.md` | Distance-field generation logic |
-| `text/render/AGENTS.md` | Draw-time orchestration, `CgTextQuadSink` |
+| `text/render/AGENTS.md` | Draw-time orchestration |
 
 ### Debug
 | Path | What it covers |
