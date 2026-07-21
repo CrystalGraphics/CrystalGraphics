@@ -1,6 +1,7 @@
 package com.crystalgraphics.text.render;
 
 import com.crystalgraphics.api.PoseStack;
+import org.joml.Matrix4f;
 
 /**
  * World-space/3D implementation of {@link CgTextScaleResolver}.
@@ -13,8 +14,8 @@ import com.crystalgraphics.api.PoseStack;
  * model-view positioning (entity rotation, billboard transforms), not UI scale.</p>
  *
  * <h3>Projected-Size Hint</h3>
- * <p>Callers can supply a projected-size hint via {@link #setProjectedSizeHint(float)}
- * (typically computed by {@link ProjectedSizeEstimator}) to adapt the MSDF atlas
+ * <p>Callers can supply a projected-size hint via {@link #updateProjectedSize}
+ * (which uses {@link ProjectedSizeEstimator} internally) to adapt the MSDF atlas
  * raster tier to the text's apparent on-screen size. When set, the hint directly
  * replaces the default multiplier for raster tier selection, ensuring that distant
  * text uses a smaller atlas tier (saving GPU memory and generation work) while
@@ -40,7 +41,7 @@ import com.crystalgraphics.api.PoseStack;
  *
  * @see CgTextScaleResolver
  * @see ProjectedSizeEstimator
- * @see CgWorldTextRenderContext#updateProjectedSize
+ * @see CgTextRenderContext#updateProjectedSize
  */
 final class PerspectiveScaleResolver implements CgTextScaleResolver {
 
@@ -100,17 +101,27 @@ final class PerspectiveScaleResolver implements CgTextScaleResolver {
     }
 
     /**
-     * Sets the projected-size hint for MSDF raster tier selection.
-     *
-     * <p>When set to a positive value, {@link #resolveEffectiveTargetPx} uses this
-     * as the raw effective pixel size instead of applying the default multiplier.
-     * Call this once per frame before drawing world text to adapt the raster tier
-     * to the text's apparent on-screen size.</p>
-     *
-     * @param projectedPx estimated screen pixel coverage, or {@code <= 0} to clear
+     * Always returns {@code true} — this resolver is only ever used for world-space
+     * text (see {@link CgTextRenderContext#world}).
      */
-    void setProjectedSizeHint(float projectedPx) {
-        this.projectedSizeHint = projectedPx;
+    @Override
+    public boolean isWorldText() {
+        return true;
+    }
+
+    /**
+     * Computes the projected-size hint via {@link ProjectedSizeEstimator} and stores
+     * it for the next {@link #resolveEffectiveTargetPx} call.
+     *
+     * <p>Called once per frame (via {@link CgTextRenderContext#updateProjectedSize})
+     * before drawing world text, to adapt the MSDF raster tier to the text's
+     * apparent on-screen size.</p>
+     */
+    @Override
+    public void updateProjectedSize(Matrix4f modelView, Matrix4f projection,
+                                     int viewportWidth, int viewportHeight, int baseTargetPx) {
+        this.projectedSizeHint = ProjectedSizeEstimator.estimateScreenPx(
+                modelView, projection, viewportWidth, viewportHeight, baseTargetPx);
     }
 
     /**
@@ -126,7 +137,8 @@ final class PerspectiveScaleResolver implements CgTextScaleResolver {
      * Clears the projected-size hint, reverting to the default
      * {@link #DEFAULT_RASTER_MULTIPLIER}x raster tier.
      */
-    void clearProjectedSizeHint() {
+    @Override
+    public void clearProjectedSizeHint() {
         this.projectedSizeHint = -1.0f;
     }
 }

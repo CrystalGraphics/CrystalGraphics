@@ -77,12 +77,14 @@ import java.util.logging.Logger;
  *
  * <h3>World-Space Extension</h3>
  * <p>World-space/3D text uses the same {@link #draw} entry point as 2D UI text — passing a
- * {@link CgWorldTextRenderContext} instead of a plain {@link CgTextRenderContext} is what
- * switches it on. That subclass enforces always-MSDF rendering, depth-tested render state
- * (see {@link #BITMAP_RENDER_STATE_WORLD} and siblings), and projection-aware quality/LOD
- * policy via {@link ProjectedSizeEstimator}. The PoseStack in world mode represents model-view
- * positioning (entity rotation, billboard transforms), not UI zoom. Layout metrics remain in
- * logical space regardless of camera distance or FOV.</p>
+ * {@link CgTextRenderContext} built via {@link CgTextRenderContext#world} instead of
+ * {@link CgTextRenderContext#orthographic} is what switches it on. That context's
+ * {@link PerspectiveScaleResolver} enforces always-MSDF rendering and projection-aware
+ * quality/LOD policy via {@link ProjectedSizeEstimator}; depth-tested render state
+ * (see {@link #BITMAP_RENDER_STATE_WORLD} and siblings) is selected in this class via
+ * {@link CgTextRenderContext#isWorldText()}. The PoseStack in world mode represents
+ * model-view positioning (entity rotation, billboard transforms), not UI zoom. Layout
+ * metrics remain in logical space regardless of camera distance or FOV.</p>
  *
  * <h3>Owned Batch Lifecycle</h3>
  * <p>{@code CgTextRenderer} owns a private {@link CgBatchRenderer} (format
@@ -145,7 +147,7 @@ public class CgTextRenderer {
      * {@link #MTSDF_RENDER_STATE} — depth-tested against opaque scene geometry (so world text
      * can be occluded by objects in front of it) but not depth-writing (so overlapping/blended
      * glyph edges within the same text block don't z-fight each other), per
-     * {@link CgWorldTextRenderContext}'s documented depth-test contract. Selected via
+     * world text's documented depth-test contract. Selected via
      * {@link CgTextRenderContext#isWorldText()} in {@link #submitSortedQuads}.
      */
     private static final CgRenderState BITMAP_RENDER_STATE_WORLD = CgRenderState.builder()
@@ -295,14 +297,15 @@ public class CgTextRenderer {
     /**
      * Canonical draw entry point — 2D UI text and 3D world-space text alike.
      *
-     * <p>There is no separate world-space entry point. {@code context}'s actual runtime type
-     * fully determines 2D-vs-world behavior polymorphically: pass a plain
-     * {@link CgTextRenderContext} (e.g. {@link CgTextRenderContext#orthographic}) for 2D UI
-     * text, or a {@link CgWorldTextRenderContext} for 3D world text (always-MSDF, depth-tested
-     * render state, projection-aware raster tier via {@link ProjectedSizeEstimator}) — both
-     * flow through the exact same code path ({@link #drawInternal}, {@link #submitSortedQuads}),
-     * which reads {@link CgTextRenderContext#isWorldText()}/{@link CgTextRenderContext#getScaleResolver()}
-     * to decide behavior rather than branching on a separate method.</p>
+     * <p>There is no separate world-space entry point, and no separate world-space
+     * context class. {@link CgTextRenderContext} is a single concrete class; which
+     * {@link CgTextScaleResolver} strategy it holds (built via
+     * {@link CgTextRenderContext#orthographic} vs {@link CgTextRenderContext#world})
+     * fully determines 2D-vs-world behavior. Both flow through the exact same code
+     * path ({@link #drawInternal}, {@link #submitSortedQuads}), which reads
+     * {@link CgTextRenderContext#isWorldText()}/{@link CgTextRenderContext#getScaleResolver()}
+     * — themselves just delegating to the resolver — to decide behavior rather than
+     * branching on a separate method or class.</p>
      *
      * <p>Submits text quads to the renderer's own {@link CgBatchRenderer}. If no
      * {@link #beginBatch()} batch is active, this call transparently wraps itself in its
@@ -314,8 +317,8 @@ public class CgTextRenderer {
      * @param y         local logical Y origin
      * @param rgba      packed RGBA color (0xRRGGBBAA)
      * @param frame     current frame number for atlas LRU
-     * @param context   the render context providing projection and scale resolver — pass a
-     *                  {@link CgWorldTextRenderContext} for 3D world-space text
+     * @param context   the render context providing projection and scale resolver — build via
+     *                  {@link CgTextRenderContext#world} for 3D world-space text
      * @param pose      the current PoseStack providing model-view transform
      */
     public void draw(CgTextLayout layout, CgFontFamily family,
@@ -460,13 +463,13 @@ public class CgTextRenderer {
         CgFontKey fontKey = family.getPrimarySource().getKey();
         CgFontMetrics metrics = layout.getMetrics();
 
-        int previousEffectiveTargetPx = context.getPreviousEffectiveTargetPx(fontKey);
+        CgTextRenderContext.RasterHistory previous = context.getHistory(fontKey);
+        int previousEffectiveTargetPx = previous != null ? previous.effectiveTargetPx() : -1;
         int effectiveTargetPx = scaleResolver.resolveEffectiveTargetPx(fontKey.getTargetPx(), pose, previousEffectiveTargetPx);
-        context.setPreviousEffectiveTargetPx(fontKey, effectiveTargetPx);
 
-        boolean previousMsdf = previousEffectiveTargetPx > 0 ? context.wasMsdf(fontKey) : effectiveTargetPx >= 32;
+        boolean previousMsdf = previous != null ? previous.wasMsdf() : effectiveTargetPx >= 32;
         boolean wantMsdf = scaleResolver.shouldUseMsdf(effectiveTargetPx, previousMsdf);
-        context.setWasMsdf(fontKey, wantMsdf);
+        context.setHistory(fontKey, effectiveTargetPx, wantMsdf);
 
         PagedGlyphBatch glyphBatch = buildPagedGlyphBatch(layout, family, x, y, frame, context, fontKey, effectiveTargetPx, wantMsdf, metrics);
 

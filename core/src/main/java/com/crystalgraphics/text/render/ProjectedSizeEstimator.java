@@ -11,7 +11,7 @@ import org.joml.Vector4f;
  * model-view-projection (MVP) matrix and viewport to estimate how many screen
  * pixels one logical text unit will occupy. The result feeds
  * {@link PerspectiveScaleResolver#setProjectedSizeHint(float)} via
- * {@link CgWorldTextRenderContext#updateProjectedSize}, which uses it to select
+ * {@link CgTextRenderContext#updateProjectedSize}, which uses it to select
  * the MSDF atlas raster tier — not layout metrics.</p>
  *
  * <h3>Usage</h3>
@@ -31,7 +31,7 @@ import org.joml.Vector4f;
  * </ul>
  *
  * @see PerspectiveScaleResolver
- * @see CgWorldTextRenderContext#updateProjectedSize
+ * @see CgTextRenderContext#updateProjectedSize
  */
 public final class ProjectedSizeEstimator {
 

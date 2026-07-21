@@ -7,9 +7,9 @@
  * <ul>
  *   <li>{@link com.crystalgraphics.text.render.CgTextRenderer} —
  *       top-level render façade (layout → placements → sort → layer submit → draw)</li>
- *   <li>{@link com.crystalgraphics.text.render.CgTextRenderContext} /
- *       {@link com.crystalgraphics.text.render.CgWorldTextRenderContext} —
- *       projection and scale-resolver state</li>
+ *   <li>{@link com.crystalgraphics.text.render.CgTextRenderContext} —
+ *       projection and scale-resolver state, for both 2D UI and 3D world text
+ *       (no separate world-space context class; see its class javadoc)</li>
  *   <li>{@link com.crystalgraphics.text.render.CgTextScaleResolver} —
  *       effective raster tier resolution (orthographic, world-space)</li>
  *   <li>{@link com.crystalgraphics.text.render.ProjectedSizeEstimator} —
@@ -23,9 +23,10 @@
  * {@code CgBatchRenderer} directly — no caller-provided layer or buffer source is
  * required. {@code beginBatch()}/{@code endBatch()} optionally batch multiple draws
  * together; {@code draw()} otherwise auto-wraps itself standalone. There is a single
- * {@code draw()} entry point for both 2D UI text and 3D world-space text — the
- * render-context argument's runtime type ({@code CgTextRenderContext} vs
- * {@code CgWorldTextRenderContext}) determines which behavior applies. GL state
+ * {@code draw()} entry point for both 2D UI text and 3D world-space text — which
+ * {@code CgTextScaleResolver} strategy the {@code CgTextRenderContext} argument holds
+ * (built via {@code orthographic(...)} vs {@code world(...)}) determines which
+ * behavior applies; there is no separate world-space context class. GL state
  * (shader bind/unbind, texture bind/unbind,
  * {@code CgRenderState} apply/clear) is managed directly by the renderer on
  * batch-key transitions.
