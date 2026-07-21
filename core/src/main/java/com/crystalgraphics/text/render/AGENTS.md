@@ -14,12 +14,11 @@ The core question here is:
 
 1. `CgTextRenderer`
 2. `CgTextRenderContext`
-3. `CgWorldTextRenderContext`
-4. `CgTextScaleResolver`
-5. `OrthographicScaleResolver`
-6. `PerspectiveScaleResolver`
-7. `ProjectedSizeEstimator`
-8. `CgDrawBatchKey`
+3. `CgTextScaleResolver`
+4. `OrthographicScaleResolver`
+5. `PerspectiveScaleResolver`
+6. `ProjectedSizeEstimator`
+7. `CgDrawBatchKey`
 
 ## Class-by-class details
 
@@ -67,17 +66,19 @@ directly and fully self-contained.
 **Single `draw()` entry point for 2D and 3D world text — no `drawWorld()` anymore.**
 `drawWorld()` was removed: it was byte-for-byte identical to `draw()` (same body,
 same standalone-tolerant wrapping) except for the static parameter type — and
-`CgWorldTextRenderContext extends CgTextRenderContext`, so passing one into `draw()`
-already worked. `drawInternal`/`submitSortedQuads` dispatch 2D-vs-world behavior
-polymorphically off `context.isWorldText()`/`context.getScaleResolver()`, not off which
-method was called. World-space text is just `draw(layout, family, x, y, rgba, frame,
-worldContext, pose)` where `worldContext` is a `CgWorldTextRenderContext` instead of a
-plain `CgTextRenderContext`. Depth-tested render states for world text
-(`BITMAP_RENDER_STATE_WORLD`/`MSDF_RENDER_STATE_WORLD`/`MTSDF_RENDER_STATE_WORLD`) are
-selected in `submitSortedQuads` via `context.isWorldText()` — this actually implements
-`CgWorldTextRenderContext`'s long-documented "depth test enabled" contract, which the
-pre-merge code declared in javadoc but never actually applied (all three original
-render-state constants hardcoded `CgDepthState.NONE` regardless of world-vs-2D).
+`CgWorldTextRenderContext` (since removed too, see `CgTextRenderContext`'s section
+below) extended `CgTextRenderContext`, so passing one into `draw()` already worked.
+`drawInternal`/`submitSortedQuads` dispatch 2D-vs-world behavior polymorphically off
+`context.isWorldText()`/`context.getScaleResolver()`, not off which method was
+called. World-space text is just `draw(layout, family, x, y, rgba, frame,
+worldContext, pose)` where `worldContext` is a `CgTextRenderContext` built via
+`CgTextRenderContext.world(...)` instead of `.orthographic(...)`. Depth-tested render
+states for world text (`BITMAP_RENDER_STATE_WORLD`/`MSDF_RENDER_STATE_WORLD`/
+`MTSDF_RENDER_STATE_WORLD`) are selected in `submitSortedQuads` via
+`context.isWorldText()` — this actually implements world text's long-documented
+"depth test enabled" contract, which the pre-merge code declared in javadoc but never
+actually applied (all three original render-state constants hardcoded
+`CgDepthState.NONE` regardless of world-vs-2D).
 
 `CgDynamicTextureRenderLayer`/`CgTextLayers` still exist as classes but are **no
 longer used by `CgTextRenderer`** — confirm no other consumer exists before
@@ -110,31 +111,54 @@ convention of every other begin/end pair in this codebase (`CgBatchRenderer`,
 
 ### `CgTextRenderContext`
 
-General render context.
+The render context — one concrete class for both 2D UI text and 3D world text.
+There is **no** `CgWorldTextRenderContext` subclass (removed — see below).
 
 Owns:
 
 - current projection matrix (`Matrix4f`)
-- scale resolver
-- per-font history used for raster-tier hysteresis
+- scale resolver (`CgTextScaleResolver` — `OrthographicScaleResolver` or
+  `PerspectiveScaleResolver`)
+- viewport dimensions (used by world text's `updateProjectedSize`; harmless dead
+  fields for 2D UI text)
+- per-font history used for raster-tier hysteresis — one `Map<CgFontKey, RasterHistory>`,
+  not two parallel maps (see below)
 
 Important note:
 
 - this is not just a bag of matrices
 - it also stores draw-history state that affects raster-tier stability
 
-### `CgWorldTextRenderContext`
+**One history map, not two.** `previousEffectiveTargetPx`/`previousMsdf` used to be
+separate `Map<CgFontKey, Integer>`/`Map<CgFontKey, Boolean>` fields, always read and
+written together per font in `CgTextRenderer.drawInternal` — a parallel-map smell for
+state that's really one thing. Collapsed into a single
+`Map<CgFontKey, RasterHistory>`, where `RasterHistory` is a small package-private
+record (`effectiveTargetPx`, `wasMsdf`). Package-private accessors: `getHistory(fontKey)`
+(returns `null` if none yet) and `setHistory(fontKey, effectiveTargetPx, wasMsdf)`.
+Do not reintroduce two parallel maps here — if a third piece of per-font hysteresis
+state is ever needed, add a field to `RasterHistory`, not a third map.
 
-World-space specialization of the render context.
+**Constructor is private — build via `orthographic(...)`/`world(...)` only.** Grepped
+the whole tree before trimming: nothing called the old three public constructors
+directly, everything went through the two static factories. Do not add a public
+constructor back without checking real usage first — the same
+`orthographic`/`world` factory-only pattern used here matches
+`CgTextRenderer.create(...)`'s own private-constructor convention.
 
-Adds:
-
-- viewport dimensions
-- projection update path
-- projected-size hint updates
-- world-text semantics (`isWorldText() == true`)
-
-This class is the main place to look for 3D text behavior differences.
+**Why there's no world-space subclass.** `isWorldText()`/`updateProjectedSize(...)`/
+`clearProjectedSizeHint()` all delegate straight to `scaleResolver` — the "is this
+world text" question is fully answered by which `CgTextScaleResolver` strategy is
+active, so a parallel context subclass just duplicated that distinction. Two
+factories build the same class: `orthographic(w, h)` (uses the shared stateless
+`CgTextScaleResolver.ORTHOGRAPHIC` singleton) and `world(projection, w, h)` (uses a
+fresh `PerspectiveScaleResolver`, since that resolver is stateful — it holds the
+projected-size hint — and cannot be a shared singleton). This also fixed a real bug
+that existed in the old subclass: `CgWorldTextRenderContext.updateProjection()` did
+`projection.set(projection)` — a no-op self-assignment (should have been
+`this.projection.set(projection)`), caused by the subclass shadowing the field name.
+Collapsing to one class removed that whole bug class since there is only one
+`projection` field anywhere now.
 
 ### `CgTextScaleResolver`
 
@@ -211,8 +235,21 @@ Package-level description of render-side responsibilities.
 - Do not make `draw()` require an active `beginBatch()` — the standalone-tolerant
   auto-wrap behavior is deliberate, not a gap. `CgTextRenderer` must stay usable as a directly
   instantiated object with no owning render pass.
-- Do not reintroduce a separate `drawWorld()` method. `CgWorldTextRenderContext extends
-  CgTextRenderContext`, and `drawInternal`/`submitSortedQuads` already dispatch 2D-vs-world
-  behavior off the context's runtime type (`isWorldText()`, `getScaleResolver()`) — a second
-  method would only ever be a byte-for-byte duplicate of `draw()`, as it was before this merge.
+- Do not reintroduce a separate `drawWorld()` method. `drawInternal`/`submitSortedQuads`
+  already dispatch 2D-vs-world behavior off the context's `isWorldText()`/`getScaleResolver()`
+  — a second method would only ever be a byte-for-byte duplicate of `draw()`, as it was
+  before this merge.
+- Do not reintroduce a `CgWorldTextRenderContext` (or any world-space `CgTextRenderContext`
+  subclass). `isWorldText()`/`updateProjectedSize`/`clearProjectedSizeHint` on
+  `CgTextRenderContext` already delegate to whichever `CgTextScaleResolver` is active — a
+  subclass would only duplicate that distinction and previously caused a real bug (see
+  `CgTextRenderContext`'s section above). If world text needs new state or behavior, add it to
+  `PerspectiveScaleResolver` (or a new `CgTextScaleResolver` method with a no-op default), not
+  to a context subclass.
+- Do not split `CgTextRenderContext`'s per-font history back into two parallel maps.
+  `effectiveTargetPx` and `wasMsdf` are always read/written together per font — keep them in
+  one `RasterHistory` record behind one map.
+- Do not add a public constructor to `CgTextRenderContext` without checking real usage first —
+  it was made private specifically because nothing called the old public constructors directly;
+  build via `orthographic(...)`/`world(...)`.
 - Do not use allocating matrix-transform helpers in the text hot path. Use `CgVertexConsumer.vertex(Matrix4f, x, y, z)` or `CgVertexTransformUtil.vertex(...)` which delegate to ThreadLocal scratch vectors (zero allocations).

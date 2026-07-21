@@ -1,6 +1,7 @@
 package com.crystalgraphics.text.render;
 
 import com.crystalgraphics.api.PoseStack;
+import org.joml.Matrix4f;
 /**
  * Strategy interface for resolving the effective physical glyph raster size
  * from a {@link PoseStack} transform and a base target pixel size.
@@ -101,6 +102,45 @@ public interface CgTextScaleResolver {
      * @return {@code true} if MSDF should be used
      */
     boolean shouldUseMsdf(int effectiveTargetPx, boolean previouslyMsdf);
+
+    /**
+     * Whether this resolver is configured for world-space text.
+     *
+     * <p>{@link CgTextRenderContext#isWorldText()} delegates here — the "is this
+     * world text" question is fully answered by which resolver strategy is active,
+     * so there is no separate world-space context subclass. Default {@code false};
+     * {@link PerspectiveScaleResolver} overrides to {@code true}.</p>
+     */
+    default boolean isWorldText() {
+        return false;
+    }
+
+    /**
+     * Updates the projected-size hint used for raster-tier selection, from the
+     * given model-view/projection matrices and viewport dimensions.
+     *
+     * <p>No-op by default. {@link PerspectiveScaleResolver} overrides this to
+     * compute the hint via {@link ProjectedSizeEstimator} and store it for the next
+     * {@link #resolveEffectiveTargetPx} call. Resolvers that don't use a
+     * projected-size hint (like {@link OrthographicScaleResolver}) simply ignore
+     * this call.</p>
+     *
+     * @param modelView      the model-view matrix positioning the text in world space
+     * @param projection     the current projection matrix
+     * @param viewportWidth  viewport width in pixels
+     * @param viewportHeight viewport height in pixels
+     * @param baseTargetPx   the base font target pixel size
+     */
+    default void updateProjectedSize(Matrix4f modelView, Matrix4f projection,
+                                      int viewportWidth, int viewportHeight, int baseTargetPx) {
+    }
+
+    /**
+     * Clears any projected-size hint set via {@link #updateProjectedSize}, reverting
+     * to this resolver's default tier-selection behavior. No-op by default.
+     */
+    default void clearProjectedSizeHint() {
+    }
 
     // ── Shipped implementations ─────────────────────────────────────────
 
