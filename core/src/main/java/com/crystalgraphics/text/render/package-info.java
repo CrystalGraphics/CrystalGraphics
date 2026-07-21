@@ -22,8 +22,11 @@
  * <p>{@link com.crystalgraphics.text.render.CgTextRenderer} owns a private
  * {@code CgBatchRenderer} directly — no caller-provided layer or buffer source is
  * required. {@code beginBatch()}/{@code endBatch()} optionally batch multiple draws
- * together; {@code draw()}/{@code drawWorld()} otherwise auto-wrap themselves
- * standalone. GL state (shader bind/unbind, texture bind/unbind,
+ * together; {@code draw()} otherwise auto-wraps itself standalone. There is a single
+ * {@code draw()} entry point for both 2D UI text and 3D world-space text — the
+ * render-context argument's runtime type ({@code CgTextRenderContext} vs
+ * {@code CgWorldTextRenderContext}) determines which behavior applies. GL state
+ * (shader bind/unbind, texture bind/unbind,
  * {@code CgRenderState} apply/clear) is managed directly by the renderer on
  * batch-key transitions.
  *

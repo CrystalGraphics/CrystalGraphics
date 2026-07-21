@@ -46,11 +46,11 @@ see `CrystalGraphics/docs/CGTEXTRENDERER_MATERIAL_OVERHAUL_PLAN.md` §2.6/§2.7)
 caller-provided layer or `CgBufferSource` in the draw path anymore — the renderer is
 directly and fully self-contained.
 
-- `beginBatch()`/`endBatch()` (no args) open/close a batching window: `draw()`/
-  `drawWorld()` calls made in between record into the same underlying batch and are
-  flushed together wherever the GL state (shader/texture/render-state) permits.
-- `draw()`/`drawWorld()` **tolerate being called with no active batch** — each such
-  call transparently wraps itself in its own begin/flush/end. This is a deliberate,
+- `beginBatch()`/`endBatch()` (no args) open/close a batching window: `draw()` calls
+  made in between record into the same underlying batch and are flushed together
+  wherever the GL state (shader/texture/render-state) permits.
+- `draw()` **tolerates being called with no active batch** — each such call
+  transparently wraps itself in its own begin/flush/end. This is a deliberate,
   permanent design choice, not a gap to close: `CgTextRenderer` must remain usable as
   a standalone, directly-instantiated object with no owning render pass (a user
   creates one and calls `draw()` whenever they want), unlike UI's `CgUiRenderer`
@@ -63,6 +63,21 @@ directly and fully self-contained.
 - Shader bind/unbind and `CgRenderState` apply/clear on batch-key transitions are
   now handled directly inside `CgTextRenderer` (`transitionTo`/`flushPending`) since
   there is no layer left to own that responsibility.
+
+**Single `draw()` entry point for 2D and 3D world text — no `drawWorld()` anymore.**
+`drawWorld()` was removed: it was byte-for-byte identical to `draw()` (same body,
+same standalone-tolerant wrapping) except for the static parameter type — and
+`CgWorldTextRenderContext extends CgTextRenderContext`, so passing one into `draw()`
+already worked. `drawInternal`/`submitSortedQuads` dispatch 2D-vs-world behavior
+polymorphically off `context.isWorldText()`/`context.getScaleResolver()`, not off which
+method was called. World-space text is just `draw(layout, family, x, y, rgba, frame,
+worldContext, pose)` where `worldContext` is a `CgWorldTextRenderContext` instead of a
+plain `CgTextRenderContext`. Depth-tested render states for world text
+(`BITMAP_RENDER_STATE_WORLD`/`MSDF_RENDER_STATE_WORLD`/`MTSDF_RENDER_STATE_WORLD`) are
+selected in `submitSortedQuads` via `context.isWorldText()` — this actually implements
+`CgWorldTextRenderContext`'s long-documented "depth test enabled" contract, which the
+pre-merge code declared in javadoc but never actually applied (all three original
+render-state constants hardcoded `CgDepthState.NONE` regardless of world-vs-2D).
 
 `CgDynamicTextureRenderLayer`/`CgTextLayers` still exist as classes but are **no
 longer used by `CgTextRenderer`** — confirm no other consumer exists before
@@ -84,7 +99,7 @@ it does not always flush it. If a caller opens `beginBatch()`, draws, and forget
 - `delete()` already closes a dangling batch (`if (batchActive) endBatch();`), so
   teardown does not leak the pending batch either.
 
-Adding a flush at the end of every `draw()`/`drawWorld()` call would force an
+Adding a flush at the end of every `draw()` call would force an
 upload+draw on every single call regardless of whether a `beginBatch()` is still
 open — silently defeating the entire cross-call batching win this architecture
 exists to deliver, with no signal to the caller that batching stopped working.
@@ -168,9 +183,11 @@ Package-level description of render-side responsibilities.
 - the renderer owns NO GL objects itself — its owned `CgBatchRenderer`'s VAO/VBO/IBO still come
   from the shared `CgVertexArrayRegistry`/`CgQuadIndexBuffer`; only CPU-side staging is
   renderer-owned
-- `draw()`/`drawWorld()` are self-contained — no caller-provided layer or sink is required.
-  `beginBatch()`/`endBatch()` are optional, used only to batch multiple draws together;
-  each call auto-wraps itself with its own begin/flush/end if no batch is active
+- `draw()` is self-contained — no caller-provided layer or sink is required, and there is
+  a single entry point for both 2D UI text and 3D world text (see `CgTextRenderer`'s
+  "Single `draw()` entry point" note above). `beginBatch()`/`endBatch()` are optional, used
+  only to batch multiple draws together; each call auto-wraps itself with its own
+  begin/flush/end if no batch is active
 - GL state (shader bind/unbind, texture bind/unbind, `CgRenderState` apply/clear) is managed
   directly by `CgTextRenderer` on batch-key transitions (`transitionTo`/`flushPending`)
 - `CgDynamicTextureRenderLayer`/`CgTextLayers` are no longer part of this renderer's draw path —
@@ -188,10 +205,14 @@ Package-level description of render-side responsibilities.
   `CgBatchRenderer` consumer. Per-instance ownership of the *batcher* (CPU staging only) is
   correct and intentional; per-instance ownership of *GPU objects* is not.
 - Do not reintroduce a caller-provided `CgDynamicTextureRenderLayer`/`CgBufferSource` parameter
-  on `draw()`/`drawWorld()` — this was the pre-migration design and is now superseded. The
+  on `draw()` — this was the pre-migration design and is now superseded. The
   renderer owns its batch lifecycle directly (see `CgTextRenderer`'s "Owned batch lifecycle"
   section above).
-- Do not make `draw()`/`drawWorld()` require an active `beginBatch()` — the standalone-tolerant
+- Do not make `draw()` require an active `beginBatch()` — the standalone-tolerant
   auto-wrap behavior is deliberate, not a gap. `CgTextRenderer` must stay usable as a directly
   instantiated object with no owning render pass.
+- Do not reintroduce a separate `drawWorld()` method. `CgWorldTextRenderContext extends
+  CgTextRenderContext`, and `drawInternal`/`submitSortedQuads` already dispatch 2D-vs-world
+  behavior off the context's runtime type (`isWorldText()`, `getScaleResolver()`) — a second
+  method would only ever be a byte-for-byte duplicate of `draw()`, as it was before this merge.
 - Do not use allocating matrix-transform helpers in the text hot path. Use `CgVertexConsumer.vertex(Matrix4f, x, y, z)` or `CgVertexTransformUtil.vertex(...)` which delegate to ThreadLocal scratch vectors (zero allocations).

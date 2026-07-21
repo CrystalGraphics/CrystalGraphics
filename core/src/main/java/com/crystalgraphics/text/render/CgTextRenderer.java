@@ -76,12 +76,13 @@ import java.util.logging.Logger;
  * is passed directly to the draw method.</p>
  *
  * <h3>World-Space Extension</h3>
- * <p>World-space/3D text uses a separate entry point ({@link #drawWorld}) with a
- * {@link CgWorldTextRenderContext} that enforces always-MSDF rendering, enables
- * depth testing, and supports projection-aware quality/LOD policy via
- * {@link ProjectedSizeEstimator}. The PoseStack in world mode represents model-view
- * positioning (entity rotation, billboard transforms), not UI zoom. Layout metrics
- * remain in logical space regardless of camera distance or FOV.</p>
+ * <p>World-space/3D text uses the same {@link #draw} entry point as 2D UI text — passing a
+ * {@link CgWorldTextRenderContext} instead of a plain {@link CgTextRenderContext} is what
+ * switches it on. That subclass enforces always-MSDF rendering, depth-tested render state
+ * (see {@link #BITMAP_RENDER_STATE_WORLD} and siblings), and projection-aware quality/LOD
+ * policy via {@link ProjectedSizeEstimator}. The PoseStack in world mode represents model-view
+ * positioning (entity rotation, billboard transforms), not UI zoom. Layout metrics remain in
+ * logical space regardless of camera distance or FOV.</p>
  *
  * <h3>Owned Batch Lifecycle</h3>
  * <p>{@code CgTextRenderer} owns a private {@link CgBatchRenderer} (format
@@ -89,15 +90,14 @@ import java.util.logging.Logger;
  * source is required. The renderer is frame-agnostic: {@link #beginBatch()}/
  * {@link #endBatch()} mark a batching window, not a render frame — the renderer has
  * no notion of "frame" at all beyond the {@code frame} counter parameter each
- * {@code draw()}/{@code drawWorld()} call takes for atlas LRU purposes. Callers that
- * issue several {@code draw()}/{@code drawWorld()} calls that should share one
- * upload+draw wrap them in {@link #beginBatch()}/{@link #endBatch()}. {@code draw()}/
- * {@code drawWorld()} also tolerate being called with no active batch: each such call
- * transparently wraps itself in its own begin/flush/end, exactly as if a
- * single-call {@code beginBatch()}/{@code endBatch()} pair had been used. This makes
- * {@code CgTextRenderer} usable as a standalone, directly-instantiated object with no
- * owning render pass — unlike UI's {@code CgUiRenderer}, which is always driven by a
- * larger owning context.</p>
+ * {@code draw()} call takes for atlas LRU purposes. Callers that issue several
+ * {@code draw()} calls that should share one upload+draw wrap them in
+ * {@link #beginBatch()}/{@link #endBatch()}. {@code draw()} also tolerates being called
+ * with no active batch: each such call transparently wraps itself in its own
+ * begin/flush/end, exactly as if a single-call {@code beginBatch()}/{@code endBatch()}
+ * pair had been used. This makes {@code CgTextRenderer} usable as a standalone,
+ * directly-instantiated object with no owning render pass — unlike UI's
+ * {@code CgUiRenderer}, which is always driven by a larger owning context.</p>
  *
  * <h3>Authoritative Hot Path</h3>
  * <p>The current pipeline is centered on the paged-atlas path:</p>
@@ -138,6 +138,32 @@ public class CgTextRenderer {
             .blend(CgBlendState.ALPHA)
             .cull(CgCullState.NONE)
             .depth(CgDepthState.NONE)
+            .build();
+
+    /**
+     * World-space counterparts of {@link #BITMAP_RENDER_STATE}/{@link #MSDF_RENDER_STATE}/
+     * {@link #MTSDF_RENDER_STATE} — depth-tested against opaque scene geometry (so world text
+     * can be occluded by objects in front of it) but not depth-writing (so overlapping/blended
+     * glyph edges within the same text block don't z-fight each other), per
+     * {@link CgWorldTextRenderContext}'s documented depth-test contract. Selected via
+     * {@link CgTextRenderContext#isWorldText()} in {@link #submitSortedQuads}.
+     */
+    private static final CgRenderState BITMAP_RENDER_STATE_WORLD = CgRenderState.builder()
+            .blend(CgBlendState.ALPHA)
+            .cull(CgCullState.NONE)
+            .depth(CgDepthState.TEST_ONLY)
+            .build();
+
+    private static final CgRenderState MSDF_RENDER_STATE_WORLD = CgRenderState.builder()
+            .blend(CgBlendState.ALPHA)
+            .cull(CgCullState.NONE)
+            .depth(CgDepthState.TEST_ONLY)
+            .build();
+
+    private static final CgRenderState MTSDF_RENDER_STATE_WORLD = CgRenderState.builder()
+            .blend(CgBlendState.ALPHA)
+            .cull(CgCullState.NONE)
+            .depth(CgDepthState.TEST_ONLY)
             .build();
 
     /** Initial CPU staging capacity of the owned {@link CgBatchRenderer}, in quads. */
@@ -182,15 +208,15 @@ public class CgTextRenderer {
     // ══════════════════════════════════════════════════════════════════════════════════════════
 
     /**
-     * Opens a batching window: {@code draw()}/{@code drawWorld()} calls made until the
-     * matching {@link #endBatch()} record into the same underlying {@link CgBatchRenderer}
-     * pass and are flushed together wherever the GL state permits (same shader/texture/
-     * render state). This has no relation to a render frame — it is purely a batching
-     * scope, hence the name; nothing here reads or depends on frame boundaries.
+     * Opens a batching window: {@code draw()} calls made until the matching
+     * {@link #endBatch()} record into the same underlying {@link CgBatchRenderer} pass and
+     * are flushed together wherever the GL state permits (same shader/texture/render state).
+     * This has no relation to a render frame — it is purely a batching scope, hence the name;
+     * nothing here reads or depends on frame boundaries.
      *
-     * <p>Not required — {@code draw()}/{@code drawWorld()} tolerate being called with no
-     * active batch, auto-wrapping themselves. Call this only when issuing multiple draws
-     * that should batch together.</p>
+     * <p>Not required — {@code draw()} tolerates being called with no active batch,
+     * auto-wrapping itself. Call this only when issuing multiple draws that should batch
+     * together.</p>
      *
      * @throws IllegalStateException if a batch is already active, or the renderer is deleted
      */
@@ -263,11 +289,20 @@ public class CgTextRenderer {
     }
 
     // ══════════════════════════════════════════════════════════════════════════════════════════
-    //  2D / UI DRAW ENTRY POINTS
+    //  DRAW ENTRY POINTS
     // ══════════════════════════════════════════════════════════════════════════════════════════
 
     /**
-     * Canonical 2D draw entry point.
+     * Canonical draw entry point — 2D UI text and 3D world-space text alike.
+     *
+     * <p>There is no separate world-space entry point. {@code context}'s actual runtime type
+     * fully determines 2D-vs-world behavior polymorphically: pass a plain
+     * {@link CgTextRenderContext} (e.g. {@link CgTextRenderContext#orthographic}) for 2D UI
+     * text, or a {@link CgWorldTextRenderContext} for 3D world text (always-MSDF, depth-tested
+     * render state, projection-aware raster tier via {@link ProjectedSizeEstimator}) — both
+     * flow through the exact same code path ({@link #drawInternal}, {@link #submitSortedQuads}),
+     * which reads {@link CgTextRenderContext#isWorldText()}/{@link CgTextRenderContext#getScaleResolver()}
+     * to decide behavior rather than branching on a separate method.</p>
      *
      * <p>Submits text quads to the renderer's own {@link CgBatchRenderer}. If no
      * {@link #beginBatch()} batch is active, this call transparently wraps itself in its
@@ -279,7 +314,8 @@ public class CgTextRenderer {
      * @param y         local logical Y origin
      * @param rgba      packed RGBA color (0xRRGGBBAA)
      * @param frame     current frame number for atlas LRU
-     * @param context   the render context providing projection and scale resolver
+     * @param context   the render context providing projection and scale resolver — pass a
+     *                  {@link CgWorldTextRenderContext} for 3D world-space text
      * @param pose      the current PoseStack providing model-view transform
      */
     public void draw(CgTextLayout layout, CgFontFamily family,
@@ -398,141 +434,6 @@ public class CgTextRenderer {
     }
 
     // ══════════════════════════════════════════════════════════════════════════════════════════
-    //  WORLD-SPACE / 3D DRAW ENTRY POINTS
-    // ══════════════════════════════════════════════════════════════════════════════════════════
-
-    /**
-     * Canonical world-space 3D text draw entry point.
-     *
-     * <p>Renders text in 3D world space with always-MSDF rendering. Unlike the
-     * 2D {@link #draw} method, this entry point uses world-text semantics from the
-     * {@link CgWorldTextRenderContext}. Submits to the renderer's own
-     * {@link CgBatchRenderer}, same owned-lifecycle contract as {@link #draw}.</p>
-     *
-     * @param layout    the pre-built text layout (logical coordinates)
-     * @param family    the font family to render with
-     * @param x         local logical X origin inside the current pose
-     * @param y         local logical Y origin inside the current pose
-     * @param rgba      packed RGBA color (0xRRGGBBAA)
-     * @param frame     current frame number for atlas LRU
-     * @param context   the world-text render context (always-MSDF, projection-aware)
-     * @param pose      the current PoseStack providing model-view transform
-     */
-    public void drawWorld(CgTextLayout layout, CgFontFamily family,
-                          float x, float y, int rgba, long frame, CgWorldTextRenderContext context, PoseStack pose) {
-        if (family == null) throw new IllegalArgumentException("family must not be null");
-        if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
-        if (layout == null || layout.getLines().isEmpty()) return;
-
-        boolean standalone = !batchActive;
-        if (standalone) beginBatch();
-        try {
-            drawInternal(layout, family, x, y, rgba, frame, context, pose.last(), context.getScaleResolver());
-        } finally {
-            if (standalone) endBatch();
-        }
-    }
-
-    /**
-     * World-space draw with single font (convenience).
-     */
-    public void drawWorld(CgTextLayout layout, CgFont font,
-                          float x, float y, int rgba, long frame, CgWorldTextRenderContext context, PoseStack pose) {
-        if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
-        if (layout == null || layout.getLines().isEmpty()) return;
-        drawWorld(layout, CgFontFamily.of(font), x, y, rgba, frame, context, pose);
-    }
-
-    /**
-     * World-space draw with single font + targetPx (convenience).
-     */
-    public void drawWorld(CgTextLayout layout, CgFont font, int targetPx,
-                          float x, float y, int rgba, long frame, CgWorldTextRenderContext context, PoseStack pose) {
-        CgFont sizedFont = requireSizedFont(font, targetPx);
-        drawWorld(layout, sizedFont, x, y, rgba, frame, context, pose);
-    }
-
-    /**
-     * World-space draw from string (convenience).
-     */
-    public void drawWorld(String text, CgFontFamily family,
-                          float x, float y, int rgba, long frame, CgWorldTextRenderContext context, PoseStack pose) {
-        drawWorld(text, family, CgTextConstraints.UNBOUNDED, x, y, rgba, frame, context, pose);
-    }
-
-    /**
-     * World-space draw from string with constraints (convenience).
-     */
-    public void drawWorld(String text, CgFontFamily family,
-                          CgTextConstraints constraints, float x, float y, int rgba, long frame,
-                          CgWorldTextRenderContext context, PoseStack pose) {
-        drawWorld(layout(text, family, constraints), family, x, y, rgba, frame, context, pose);
-    }
-
-    /**
-     * World-space draw from string with single font (convenience).
-     */
-    public void drawWorld(String text, CgFont font,
-                          float x, float y, int rgba, long frame, CgWorldTextRenderContext context, PoseStack pose) {
-        requireSizedFont(font);
-        drawWorld(layout(text, font, CgTextConstraints.UNBOUNDED), font, x, y, rgba, frame, context, pose);
-    }
-
-    /**
-     * World-space draw from string with single font + constraints (convenience).
-     */
-    public void drawWorld(String text, CgFont font,
-                          CgTextConstraints constraints, float x, float y, int rgba, long frame,
-                          CgWorldTextRenderContext context, PoseStack pose) {
-        requireSizedFont(font);
-        drawWorld(layout(text, font, constraints), font, x, y, rgba, frame, context, pose);
-    }
-
-    /**
-     * World-space draw from string with single font + targetPx (convenience).
-     */
-    public void drawWorld(String text, CgFont font, int targetPx,
-                          float x, float y, int rgba, long frame, CgWorldTextRenderContext context, PoseStack pose) {
-        drawWorld(text, font, targetPx, CgTextConstraints.UNBOUNDED, x, y, rgba, frame, context, pose);
-    }
-
-    /**
-     * World-space draw from string with single font + targetPx + constraints (convenience).
-     */
-    public void drawWorld(String text, CgFont font, int targetPx,
-                          CgTextConstraints constraints, float x, float y, int rgba, long frame,
-                          CgWorldTextRenderContext context, PoseStack pose) {
-        CgFont sizedFont = requireSizedFont(font, targetPx);
-        drawWorld(layout(text, sizedFont, constraints), sizedFont, x, y, rgba, frame, context, pose);
-    }
-
-    /**
-     * World-space draw with family + targetPx (convenience).
-     */
-    public void drawWorld(CgTextLayout layout, CgFontFamily family, int targetPx,
-                          float x, float y, int rgba, long frame, CgWorldTextRenderContext context, PoseStack pose) {
-        drawWorld(layout, sizeFamily(family, targetPx), x, y, rgba, frame, context, pose);
-    }
-
-    /**
-     * World-space draw from string with family + targetPx (convenience).
-     */
-    public void drawWorld(String text, CgFontFamily family, int targetPx,
-                          float x, float y, int rgba, long frame, CgWorldTextRenderContext context, PoseStack pose) {
-        drawWorld(text, family, targetPx, CgTextConstraints.UNBOUNDED, x, y, rgba, frame, context, pose);
-    }
-
-    /**
-     * World-space draw from string with family + targetPx + constraints (convenience).
-     */
-    public void drawWorld(String text, CgFontFamily family, int targetPx,
-                          CgTextConstraints constraints, float x, float y, int rgba, long frame,
-                          CgWorldTextRenderContext context, PoseStack pose) {
-        CgFontFamily sizedFamily = sizeFamily(family, targetPx);
-        drawWorld(layout(text, sizedFamily, constraints), sizedFamily, x, y, rgba, frame, context, pose);
-    }
-
-    // ══════════════════════════════════════════════════════════════════════════════════════════
     //  LIFECYCLE
     // ══════════════════════════════════════════════════════════════════════════════════════════
 
@@ -633,14 +534,16 @@ public class CgTextRenderer {
         // Submit sorted quads. On batch-key change, transition shader/render-state/texture
         // (flushing whatever was pending under the previous combination) and set shader uniforms.
         CgDrawBatchKey currentKey = null;
+        boolean worldText = context.isWorldText();
 
         for (int s = 0; s < visibleCount; s++) {
             CgDrawBatchKey thisKey = batchKeys[s];
 
             // On batch key change, transition shader/texture/render-state.
             if (currentKey == null || !thisKey.equals(currentKey)) {
-                CgRenderState renderState = thisKey.isMtsdf() ? MTSDF_RENDER_STATE
-                        : thisKey.isDistanceField() ? MSDF_RENDER_STATE : BITMAP_RENDER_STATE;
+                CgRenderState renderState = thisKey.isMtsdf() ? (worldText ? MTSDF_RENDER_STATE_WORLD : MTSDF_RENDER_STATE)
+                        : thisKey.isDistanceField() ? (worldText ? MSDF_RENDER_STATE_WORLD : MSDF_RENDER_STATE)
+                        : (worldText ? BITMAP_RENDER_STATE_WORLD : BITMAP_RENDER_STATE);
 
                 CgShader shader = thisKey.isMtsdf() ? MTSDF_SHADER
                         : thisKey.isDistanceField() ? MSDF_SHADER : BITMAP_SHADER;
