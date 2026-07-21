@@ -6,8 +6,6 @@ import com.crystalgraphics.api.font.CgFontStyle;
 import com.crystalgraphics.api.font.CgTextLayoutBuilder;
 import com.crystalgraphics.api.shader.CgShader;
 import com.crystalgraphics.api.state.CgGlSlot;
-import com.crystalgraphics.gl.render.CgBufferSource;
-import com.crystalgraphics.gl.render.CgDynamicTextureRenderLayer;
 import com.crystalgraphics.gl.shader.CgShaderFactory;
 import com.crystalgraphics.gl.state.CgGlScope;
 import com.crystalgraphics.gl.state.CgGlState;
@@ -16,7 +14,6 @@ import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.text.atlas.CgGlyphAtlas;
 import com.crystalgraphics.text.cache.CgFontRegistry;
-import com.crystalgraphics.text.render.CgTextLayers;
 import com.crystalgraphics.text.render.CgTextRenderContext;
 import com.crystalgraphics.text.render.CgTextRenderer;
 import org.apache.logging.log4j.LogManager;
@@ -62,9 +59,6 @@ public final class CgFontDemo {
     private int lastDisplayWidth;
     private int lastDisplayHeight;
 
-    private CgBufferSource demoBufferSource;
-    private final Matrix4f demoProjection = new Matrix4f();
-
     // Raw GL handles are acceptable here: this class is a self-contained diagnostic
     // utility that owns its own VAO/VBO pair, analogous to CgDebugBlit.
     private CgShader diagAtlasShader;
@@ -98,11 +92,7 @@ public final class CgFontDemo {
             demoFrame++;
             demoFontRegistry.tickFrame(demoFrame);
 
-            // Projection matches the overlay coordinate space: [0, w] × [0, h], Y-down.
-            demoProjection.identity().ortho(0, displayWidth, displayHeight, 0, -1, 1);
-
-            CgDynamicTextureRenderLayer textLayer = demoBufferSource.get(CgTextLayers.MSDF);
-            demoBufferSource.begin(demoProjection);
+            demoTextRenderer.beginBatch();
 
             PoseStack poseStack = new PoseStack();
             poseStack.scale(demoPoseScale, demoPoseScale, 1.0f);
@@ -110,7 +100,6 @@ public final class CgFontDemo {
             demoRenderContext.clearHistory();
 
             demoTextRenderer.draw(
-                    textLayer,
                     demoLayoutBuilder.layout(
                             DEMO_TEXT + " [base " + demoFontSize + "px, pose "
                                     + String.format("%.1f", demoPoseScale) + "x]",
@@ -127,7 +116,6 @@ public final class CgFontDemo {
 
             PoseStack identityPose = new PoseStack();
             demoTextRenderer.draw(
-                    textLayer,
                     demoLayoutBuilder.layout(DEMO_TEXT_2D_LABEL, demoFont, (float) displayWidth, 0),
                     demoFont,
                     20.0f,
@@ -137,7 +125,7 @@ public final class CgFontDemo {
                     demoRenderContext,
                     identityPose);
 
-            demoBufferSource.end();
+            demoTextRenderer.endBatch();
 
             drawDiagAtlas(displayWidth, displayHeight);
         } catch (Exception e) {
@@ -162,7 +150,6 @@ public final class CgFontDemo {
     public void dispose() {
         if (demoFont != null && !demoFont.isDisposed()) demoFont.dispose();
         if (demoTextRenderer != null && !demoTextRenderer.isDeleted()) demoTextRenderer.delete();
-        if (demoBufferSource != null) demoBufferSource.delete();
         if (diagAtlasInitialized) {
             CgGL.glDeleteVertexArrays(diagAtlasVao);
             CgGL.glDeleteBuffers(diagAtlasVbo);
@@ -180,11 +167,6 @@ public final class CgFontDemo {
         }
         if (demoTextRenderer == null || demoTextRenderer.isDeleted()) {
             demoTextRenderer = CgTextRenderer.create(CgCapabilities.detect(), demoFontRegistry);
-        }
-        if (demoBufferSource == null) {
-            demoBufferSource = CgBufferSource.builder()
-                    .layer(CgTextLayers.MSDF, CgTextLayers.msdf(CgTextRenderer.MSDF_SHADER))
-                    .build();
         }
     }
 

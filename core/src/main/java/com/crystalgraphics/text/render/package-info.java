@@ -19,15 +19,19 @@
  * </ul>
  *
  * <h3>Batch Infrastructure</h3>
- * <p>All text submission goes through
- * {@link com.crystalgraphics.gl.render.CgDynamicTextureRenderLayer}
- * from the batching/layer architecture. GL state management is delegated to
- * the layer's {@code CgRenderState}. Text layer factories are provided by
- * {@link com.crystalgraphics.text.render.CgTextLayers}.</p>
+ * <p>{@link com.crystalgraphics.text.render.CgTextRenderer} owns a private
+ * {@code CgBatchRenderer} directly — no caller-provided layer or buffer source is
+ * required. {@code beginFrame()}/{@code endFrame()} optionally batch multiple draws
+ * per frame together; {@code draw()}/{@code drawWorld()} otherwise auto-wrap
+ * themselves standalone. GL state (shader bind/unbind, texture bind/unbind,
+ * {@code CgRenderState} apply/clear) is managed directly by the renderer on
+ * batch-key transitions.
  *
- * <p>No per-renderer GL object ownership exists in this package — all GPU resources
- * are managed by {@link com.crystalgraphics.gl.vertex.CgVertexArrayRegistry}
- * and {@link com.crystalgraphics.gl.buffer.CgQuadIndexBuffer}.</p>
+ * <p>No per-renderer GPU object ownership exists in this package — the owned
+ * batch renderer's VAO/VBO/IBO still come from
+ * {@link com.crystalgraphics.gl.vertex.CgVertexArrayRegistry}
+ * and {@link com.crystalgraphics.gl.buffer.CgQuadIndexBuffer}; only CPU-side
+ * staging is renderer-owned.</p>
  *
  * <h3>Boundary with cache/generation</h3>
  * <p>The renderer calls into

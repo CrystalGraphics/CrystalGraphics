@@ -8,14 +8,16 @@ import com.crystalgraphics.api.text.CgShapedRun;
 import com.crystalgraphics.api.text.CgTextConstraints;
 import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.api.vertex.CgVertexConsumer;
-import com.crystalgraphics.gl.render.CgDynamicTextureRenderLayer;
+import com.crystalgraphics.gl.render.CgBatchRenderer;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgCullState;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.gl.shader.CgShaderFactory;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
+import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.text.cache.CgFontRegistry;
+import lombok.Getter;
 import org.joml.Matrix4f;
 
 import java.util.ArrayList;
@@ -27,10 +29,9 @@ import java.util.logging.Logger;
  *
  * <p>The renderer consumes a pre-built {@link CgTextLayout}, resolves glyphs
  * through {@link CgFontRegistry}, sorts them by GL state, then submits quads
- * through the layer-based batching architecture via {@link CgDynamicTextureRenderLayer}.
- * The layer handles automatic flushing on texture state changes. GL state
- * (blend, depth, cull) is managed by the layer's {@code CgRenderState} at
- * flush time, not by this renderer.</p>
+ * through its own owned {@link CgBatchRenderer}. Shader bind/unbind, texture
+ * bind/unbind, and {@code CgRenderState} apply/clear on batch-key transitions
+ * are handled directly by this class — see {@link #transitionTo}.</p>
  *
  * <h3>Multi-Page Atlas Batching</h3>
  * <p>The renderer supports multi-page atlases by converting glyph atlas regions
@@ -38,7 +39,8 @@ import java.util.logging.Logger;
  * texture ID), plane bounds, and per-page distance-field configuration ({@code pxRange}).
  * Quads are sorted by {@link CgDrawBatchKey} (atlas mode, page texture, pxRange)
  * so bitmap batches draw before distance-field batches. On batch-key transitions
- * the layer's texture and render state are swapped (triggering auto-flush).</p>
+ * the active shader, texture, and render state are swapped (triggering a flush of
+ * whatever was pending under the previous state).</p>
  *
  * <h3>Three-Space Model</h3>
  * <p>The text rendering pipeline enforces a strict three-space separation
@@ -81,26 +83,30 @@ import java.util.logging.Logger;
  * positioning (entity rotation, billboard transforms), not UI zoom. Layout metrics
  * remain in logical space regardless of camera distance or FOV.</p>
  *
- * <h3>Layer-Based Submission</h3>
- * <p>All draw methods require a caller-provided {@link CgDynamicTextureRenderLayer}.
- * The layer manages texture state transitions (atlas page changes) and batches quads
- * via the new {@code CgVertexWriter}/{@code CgVertexConsumer} infrastructure. GL state
- * (depth, cull, blend) is handled by the layer's {@code CgRenderState} at flush time,
- * not by this renderer.</p>
- *
- * <p>The layer is expected to already be in the "begun" state (managed by the
- * owning {@code CgBufferSource}). This renderer does not call begin/end on the
- * layer. Text layer factories are provided by
- * {@link CgTextLayers}.</p>
+ * <h3>Owned Batch Lifecycle</h3>
+ * <p>{@code CgTextRenderer} owns a private {@link CgBatchRenderer} (format
+ * {@link CgVertexFormat#POS2_UV2_COL4UB}) — no caller-provided layer or buffer
+ * source is required. The renderer is frame-agnostic: {@link #beginBatch()}/
+ * {@link #endBatch()} mark a batching window, not a render frame — the renderer has
+ * no notion of "frame" at all beyond the {@code frame} counter parameter each
+ * {@code draw()}/{@code drawWorld()} call takes for atlas LRU purposes. Callers that
+ * issue several {@code draw()}/{@code drawWorld()} calls that should share one
+ * upload+draw wrap them in {@link #beginBatch()}/{@link #endBatch()}. {@code draw()}/
+ * {@code drawWorld()} also tolerate being called with no active batch: each such call
+ * transparently wraps itself in its own begin/flush/end, exactly as if a
+ * single-call {@code beginBatch()}/{@code endBatch()} pair had been used. This makes
+ * {@code CgTextRenderer} usable as a standalone, directly-instantiated object with no
+ * owning render pass — unlike UI's {@code CgUiRenderer}, which is always driven by a
+ * larger owning context.</p>
  *
  * <h3>Authoritative Hot Path</h3>
  * <p>The current pipeline is centered on the paged-atlas path:</p>
  * <ol>
  *   <li>String-based draw overloads call {@link #layout(String, CgFontFamily, CgTextConstraints)} or its font variant</li>
  *   <li>{@link CgTextLayoutBuilder} produces a {@link CgTextLayout}</li>
- *   <li>{@link #drawInternalLayer} resolves raster tier</li>
+ *   <li>{@link #drawInternal} resolves raster tier</li>
  *   <li>{@link #buildPagedGlyphBatch} converts layout output into {@link CgGlyphPlacement} records</li>
- *   <li>{@link #submitSortedQuadsToLayer} sorts quads by GL state and submits them through the layer</li>
+ *   <li>{@link #submitSortedQuads} sorts quads by GL state and submits them to the owned batch renderer</li>
  * </ol>
  */
 public class CgTextRenderer {
@@ -116,44 +122,52 @@ public class CgTextRenderer {
     private static final String MTSDF_VERT = "/shader/mtsdf_text.vert", MTSDF_FRAG = "/shader/mtsdf_text.frag";
     public static final CgShader MTSDF_SHADER = CgShaderFactory.load(MTSDF_VERT, MTSDF_FRAG, CgVertexFormat.POS2_UV2_COL4UB);
 
-    private static final CgRenderState BITMAP_LAYER_STATE = CgRenderState.builder()
+    private static final CgRenderState BITMAP_RENDER_STATE = CgRenderState.builder()
             .blend(CgBlendState.ALPHA)
             .cull(CgCullState.NONE)
             .depth(CgDepthState.NONE)
             .build();
 
-    private static final CgRenderState MSDF_LAYER_STATE = CgRenderState.builder()
+    private static final CgRenderState MSDF_RENDER_STATE = CgRenderState.builder()
             .blend(CgBlendState.ALPHA)
             .cull(CgCullState.NONE)
             .depth(CgDepthState.NONE)
             .build();
 
-    private static final CgRenderState MTSDF_LAYER_STATE = CgRenderState.builder()
+    private static final CgRenderState MTSDF_RENDER_STATE = CgRenderState.builder()
             .blend(CgBlendState.ALPHA)
             .cull(CgCullState.NONE)
             .depth(CgDepthState.NONE)
             .build();
-    
+
+    /** Initial CPU staging capacity of the owned {@link CgBatchRenderer}, in quads. */
+    private static final int INITIAL_MAX_QUADS = 4096;
+
     // ══════════════════════════════════════════════════════════════════════════════════════════
-    
+
     private static final Logger LOGGER = Logger.getLogger(CgTextRenderer.class.getName());
     public static boolean diagnosticLogging = false;
 
     private static final CgTextLayoutBuilder LAYOUT_BUILDER = new CgTextLayoutBuilder();
     private final CgFontRegistry registry;
 
+    // ── Owned batch lifecycle ────────────────────────────────────────────────
+    private final CgBatchRenderer batchRenderer;
+    private boolean batchActive;
+    private CgShader activeShader;
+    private CgRenderState activeRenderState;
+    private int activeTextureId = -1;
+
+    @Getter
     private boolean deleted;
 
     private CgTextRenderer(CgFontRegistry registry) {
         this.registry = registry;
+        this.batchRenderer = CgBatchRenderer.create(CgVertexFormat.POS2_UV2_COL4UB, INITIAL_MAX_QUADS);
     }
 
     /**
-     * Creates the renderer façade.
-     *
-     * <p>The canonical renderer does not create any batch infrastructure.
-     * Batch/layer ownership belongs to the caller / buffer source / render context.
-     * This factory only validates backend availability and creates the façade.</p>
+     * Creates the renderer façade, including its owned {@link CgBatchRenderer}.
      */
     public static CgTextRenderer create(CgCapabilities caps, CgFontRegistry registry) {
         if (caps.preferredFboBackend() == CgCapabilities.FramebufferPath.NONE || (!caps.isCoreShaders() && !caps.isArbShaders()) || !caps.isVaoSupported() || !caps.isMapBufferRangeSupported()) {
@@ -164,23 +178,101 @@ public class CgTextRenderer {
     }
 
     // ══════════════════════════════════════════════════════════════════════════════════════════
-    //  2D / UI DRAW ENTRY POINTS (layer-based)
+    //  BATCH LIFECYCLE
     // ══════════════════════════════════════════════════════════════════════════════════════════
 
     /**
-     * Layer-based 2D draw entry point — the canonical path for UI text rendering.
+     * Opens a batching window: {@code draw()}/{@code drawWorld()} calls made until the
+     * matching {@link #endBatch()} record into the same underlying {@link CgBatchRenderer}
+     * pass and are flushed together wherever the GL state permits (same shader/texture/
+     * render state). This has no relation to a render frame — it is purely a batching
+     * scope, hence the name; nothing here reads or depends on frame boundaries.
      *
-     * <p>Submits text quads through the caller-provided {@link CgDynamicTextureRenderLayer}.
-     * The layer manages texture state transitions (atlas page changes) and batches quads
-     * via the new {@code CgVertexWriter}/{@code CgVertexConsumer} infrastructure. GL state
-     * (depth, cull, blend) is handled by the layer's {@code CgRenderState} at flush time,
-     * not by this method.</p>
+     * <p>Not required — {@code draw()}/{@code drawWorld()} tolerate being called with no
+     * active batch, auto-wrapping themselves. Call this only when issuing multiple draws
+     * that should batch together.</p>
      *
-     * <p>This method does <strong>not</strong> perform GL state save/restore. That
-     * responsibility belongs to the render pass or buffer source that owns the layer
-     * lifecycle.</p>
+     * @throws IllegalStateException if a batch is already active, or the renderer is deleted
+     */
+    public void beginBatch() {
+        if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
+        if (batchActive) throw new IllegalStateException("CgTextRenderer.beginBatch() called without a matching endBatch()");
+
+        activeShader = null;
+        activeRenderState = null;
+        activeTextureId = -1;
+        batchActive = true;
+        batchRenderer.begin();
+    }
+
+    /**
+     * Closes the batching window opened by {@link #beginBatch()}, flushing any pending
+     * quads and unbinding whatever shader/texture/state is currently active.
      *
-     * @param textLayer the dynamic texture render layer for text submission
+     * <p>Lenient: does nothing if no batch is active.</p>
+     */
+    public void endBatch() {
+        if (!batchActive) return;
+
+        flushPending();
+        batchRenderer.end();
+        activeShader = null;
+        activeRenderState = null;
+        activeTextureId = -1;
+        batchActive = false;
+    }
+
+    /**
+     * Flushes whatever is currently staged under {@link #activeShader}/
+     * {@link #activeRenderState}/{@link #activeTextureId}, binding/applying them for the
+     * duration of the draw call and restoring afterward. No-op if nothing is staged.
+     */
+    private void flushPending() {
+        if (!batchRenderer.isDirty()) return;
+
+        if (activeShader != null) activeShader.bind();
+        if (activeTextureId >= 0) {
+            CgGL.glActiveTexture(CgGL.GL_TEXTURE0);
+            CgGL.glBindTexture(CgGL.GL_TEXTURE_2D, activeTextureId);
+        }
+        if (activeRenderState != null) activeRenderState.apply();
+
+        batchRenderer.flush();
+
+        if (activeRenderState != null) activeRenderState.clear();
+        if (activeTextureId >= 0) {
+            CgGL.glActiveTexture(CgGL.GL_TEXTURE0);
+            CgGL.glBindTexture(CgGL.GL_TEXTURE_2D, 0);
+        }
+        if (activeShader != null) activeShader.unbind();
+    }
+
+    /**
+     * Transitions to the given shader/render-state/texture, flushing whatever was pending
+     * under the previous combination first (mirrors the old
+     * {@code CgDynamicTextureRenderLayer.setShader/setRenderState/setTexture} flush-on-change
+     * behavior, collapsed into a single flush per actual transition).
+     */
+    private void transitionTo(CgShader shader, CgRenderState state, int textureId) {
+        if (shader != activeShader || state != activeRenderState || textureId != activeTextureId) {
+            flushPending();
+            activeShader = shader;
+            activeRenderState = state;
+            activeTextureId = textureId;
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+    //  2D / UI DRAW ENTRY POINTS
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Canonical 2D draw entry point.
+     *
+     * <p>Submits text quads to the renderer's own {@link CgBatchRenderer}. If no
+     * {@link #beginBatch()} batch is active, this call transparently wraps itself in its
+     * own begin/flush/end.</p>
+     *
      * @param layout    the pre-built text layout
      * @param family    the font family to render with
      * @param x         local logical X origin
@@ -190,129 +282,133 @@ public class CgTextRenderer {
      * @param context   the render context providing projection and scale resolver
      * @param pose      the current PoseStack providing model-view transform
      */
-    public void draw(CgDynamicTextureRenderLayer textLayer, CgTextLayout layout, CgFontFamily family,
+    public void draw(CgTextLayout layout, CgFontFamily family,
                      float x, float y, int rgba, long frame, CgTextRenderContext context, PoseStack pose) {
-        if (textLayer == null) throw new IllegalArgumentException("textLayer must not be null");
         if (family == null) throw new IllegalArgumentException("family must not be null");
         if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
         if (layout == null || layout.getLines().isEmpty()) return;
 
-        drawInternalLayer(textLayer, layout, family, x, y, rgba, frame, context, pose.last(), context.getScaleResolver());
+        boolean standalone = !batchActive;
+        if (standalone) beginBatch();
+        try {
+            drawInternal(layout, family, x, y, rgba, frame, context, pose.last(), context.getScaleResolver());
+        } finally {
+            if (standalone) endBatch();
+        }
     }
 
     /**
-     * Layer-based 2D draw with single font (convenience).
+     * 2D draw with single font (convenience).
      */
-    public void draw(CgDynamicTextureRenderLayer textLayer, CgTextLayout layout, CgFont font,
+    public void draw(CgTextLayout layout, CgFont font,
                      float x, float y, int rgba, long frame, CgTextRenderContext context, PoseStack pose) {
         if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
         if (layout == null || layout.getLines().isEmpty()) return;
-        draw(textLayer, layout, CgFontFamily.of(font), x, y, rgba, frame, context, pose);
+        draw(layout, CgFontFamily.of(font), x, y, rgba, frame, context, pose);
     }
 
     /**
-     * Layer-based 2D draw from string (convenience).
+     * 2D draw from string (convenience).
      */
-    public void draw(CgDynamicTextureRenderLayer textLayer, String text, CgFontFamily family,
+    public void draw(String text, CgFontFamily family,
                      float x, float y, int rgba, long frame, CgTextRenderContext context, PoseStack pose) {
-        draw(textLayer, text, family, CgTextConstraints.UNBOUNDED, x, y, rgba, frame, context, pose);
+        draw(text, family, CgTextConstraints.UNBOUNDED, x, y, rgba, frame, context, pose);
     }
 
     /**
-     * Layer-based 2D draw from string with constraints (convenience).
+     * 2D draw from string with constraints (convenience).
      */
-    public void draw(CgDynamicTextureRenderLayer textLayer, String text, CgFontFamily family,
+    public void draw(String text, CgFontFamily family,
                      CgTextConstraints constraints, float x, float y, int rgba, long frame,
                      CgTextRenderContext context, PoseStack pose) {
-        draw(textLayer, layout(text, family, constraints), family, x, y, rgba, frame, context, pose);
+        draw(layout(text, family, constraints), family, x, y, rgba, frame, context, pose);
     }
 
     /**
-     * Layer-based 2D draw from string with single font (convenience).
+     * 2D draw from string with single font (convenience).
      */
-    public void draw(CgDynamicTextureRenderLayer textLayer, String text, CgFont font,
+    public void draw(String text, CgFont font,
                      float x, float y, int rgba, long frame, CgTextRenderContext context, PoseStack pose) {
         requireSizedFont(font);
-        draw(textLayer, layout(text, font, CgTextConstraints.UNBOUNDED), font, x, y, rgba, frame, context, pose);
+        draw(layout(text, font, CgTextConstraints.UNBOUNDED), font, x, y, rgba, frame, context, pose);
     }
 
     /**
-     * Layer-based 2D draw from string with single font and constraints (convenience).
+     * 2D draw from string with single font and constraints (convenience).
      */
-    public void draw(CgDynamicTextureRenderLayer textLayer, String text, CgFont font,
+    public void draw(String text, CgFont font,
                      CgTextConstraints constraints, float x, float y, int rgba, long frame,
                      CgTextRenderContext context, PoseStack pose) {
         requireSizedFont(font);
-        draw(textLayer, layout(text, font, constraints), font, x, y, rgba, frame, context, pose);
+        draw(layout(text, font, constraints), font, x, y, rgba, frame, context, pose);
     }
 
     /**
-     * Layer-based 2D draw with explicit targetPx and single font (convenience).
+     * 2D draw with explicit targetPx and single font (convenience).
      */
-    public void draw(CgDynamicTextureRenderLayer textLayer, String text, CgFont font, int targetPx,
+    public void draw(String text, CgFont font, int targetPx,
                      float x, float y, int rgba, long frame, CgTextRenderContext context, PoseStack pose) {
         CgFont sizedFont = requireSizedFont(font, targetPx);
-        draw(textLayer, layout(text, sizedFont, CgTextConstraints.UNBOUNDED), sizedFont, x, y, rgba, frame, context, pose);
+        draw(layout(text, sizedFont, CgTextConstraints.UNBOUNDED), sizedFont, x, y, rgba, frame, context, pose);
     }
 
     /**
-     * Layer-based 2D draw with explicit targetPx, constraints, and single font (convenience).
+     * 2D draw with explicit targetPx, constraints, and single font (convenience).
      */
-    public void draw(CgDynamicTextureRenderLayer textLayer, String text, CgFont font, int targetPx,
+    public void draw(String text, CgFont font, int targetPx,
                      CgTextConstraints constraints, float x, float y, int rgba, long frame,
                      CgTextRenderContext context, PoseStack pose) {
         CgFont sizedFont = requireSizedFont(font, targetPx);
-        draw(textLayer, layout(text, sizedFont, constraints), sizedFont, x, y, rgba, frame, context, pose);
+        draw(layout(text, sizedFont, constraints), sizedFont, x, y, rgba, frame, context, pose);
     }
 
     /**
-     * Layer-based 2D draw with layout + single font + explicit targetPx (convenience).
+     * 2D draw with layout + single font + explicit targetPx (convenience).
      */
-    public void draw(CgDynamicTextureRenderLayer textLayer, CgTextLayout layout, CgFont font, int targetPx,
+    public void draw(CgTextLayout layout, CgFont font, int targetPx,
                      float x, float y, int rgba, long frame, CgTextRenderContext context, PoseStack pose) {
         CgFont sizedFont = requireSizedFont(font, targetPx);
-        draw(textLayer, layout, sizedFont, x, y, rgba, frame, context, pose);
+        draw(layout, sizedFont, x, y, rgba, frame, context, pose);
     }
 
     /**
-     * Layer-based 2D draw with layout + family + explicit targetPx (convenience).
+     * 2D draw with layout + family + explicit targetPx (convenience).
      */
-    public void draw(CgDynamicTextureRenderLayer textLayer, CgTextLayout layout, CgFontFamily family, int targetPx,
+    public void draw(CgTextLayout layout, CgFontFamily family, int targetPx,
                      float x, float y, int rgba, long frame, CgTextRenderContext context, PoseStack pose) {
-        draw(textLayer, layout, sizeFamily(family, targetPx), x, y, rgba, frame, context, pose);
+        draw(layout, sizeFamily(family, targetPx), x, y, rgba, frame, context, pose);
     }
 
     /**
-     * Layer-based 2D draw from string with family + explicit targetPx (convenience).
+     * 2D draw from string with family + explicit targetPx (convenience).
      */
-    public void draw(CgDynamicTextureRenderLayer textLayer, String text, CgFontFamily family, int targetPx,
+    public void draw(String text, CgFontFamily family, int targetPx,
                      float x, float y, int rgba, long frame, CgTextRenderContext context, PoseStack pose) {
-        draw(textLayer, text, family, targetPx, CgTextConstraints.UNBOUNDED, x, y, rgba, frame, context, pose);
+        draw(text, family, targetPx, CgTextConstraints.UNBOUNDED, x, y, rgba, frame, context, pose);
     }
 
     /**
-     * Layer-based 2D draw from string with family + explicit targetPx + constraints (convenience).
+     * 2D draw from string with family + explicit targetPx + constraints (convenience).
      */
-    public void draw(CgDynamicTextureRenderLayer textLayer, String text, CgFontFamily family, int targetPx,
+    public void draw(String text, CgFontFamily family, int targetPx,
                      CgTextConstraints constraints, float x, float y, int rgba, long frame,
                      CgTextRenderContext context, PoseStack pose) {
         CgFontFamily sizedFamily = sizeFamily(family, targetPx);
-        draw(textLayer, layout(text, sizedFamily, constraints), sizedFamily, x, y, rgba, frame, context, pose);
+        draw(layout(text, sizedFamily, constraints), sizedFamily, x, y, rgba, frame, context, pose);
     }
 
     // ══════════════════════════════════════════════════════════════════════════════════════════
-    //  WORLD-SPACE / 3D DRAW ENTRY POINTS (layer-based)
+    //  WORLD-SPACE / 3D DRAW ENTRY POINTS
     // ══════════════════════════════════════════════════════════════════════════════════════════
 
     /**
-     * Layer-based world-space 3D text draw entry point.
+     * Canonical world-space 3D text draw entry point.
      *
      * <p>Renders text in 3D world space with always-MSDF rendering. Unlike the
      * 2D {@link #draw} method, this entry point uses world-text semantics from the
-     * {@link CgWorldTextRenderContext}. Depth testing and GL state are managed
-     * by the layer's render state, not by this method.</p>
+     * {@link CgWorldTextRenderContext}. Submits to the renderer's own
+     * {@link CgBatchRenderer}, same owned-lifecycle contract as {@link #draw}.</p>
      *
-     * @param textLayer the dynamic texture render layer for text submission
      * @param layout    the pre-built text layout (logical coordinates)
      * @param family    the font family to render with
      * @param x         local logical X origin inside the current pose
@@ -322,113 +418,118 @@ public class CgTextRenderer {
      * @param context   the world-text render context (always-MSDF, projection-aware)
      * @param pose      the current PoseStack providing model-view transform
      */
-    public void drawWorld(CgDynamicTextureRenderLayer textLayer, CgTextLayout layout, CgFontFamily family,
+    public void drawWorld(CgTextLayout layout, CgFontFamily family,
                           float x, float y, int rgba, long frame, CgWorldTextRenderContext context, PoseStack pose) {
-        if (textLayer == null) throw new IllegalArgumentException("textLayer must not be null");
         if (family == null) throw new IllegalArgumentException("family must not be null");
         if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
         if (layout == null || layout.getLines().isEmpty()) return;
 
-        drawInternalLayer(textLayer, layout, family, x, y, rgba, frame, context, pose.last(), context.getScaleResolver());
+        boolean standalone = !batchActive;
+        if (standalone) beginBatch();
+        try {
+            drawInternal(layout, family, x, y, rgba, frame, context, pose.last(), context.getScaleResolver());
+        } finally {
+            if (standalone) endBatch();
+        }
     }
 
     /**
-     * Layer-based world-space draw with single font (convenience).
+     * World-space draw with single font (convenience).
      */
-    public void drawWorld(CgDynamicTextureRenderLayer textLayer, CgTextLayout layout, CgFont font,
+    public void drawWorld(CgTextLayout layout, CgFont font,
                           float x, float y, int rgba, long frame, CgWorldTextRenderContext context, PoseStack pose) {
         if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
         if (layout == null || layout.getLines().isEmpty()) return;
-        drawWorld(textLayer, layout, CgFontFamily.of(font), x, y, rgba, frame, context, pose);
+        drawWorld(layout, CgFontFamily.of(font), x, y, rgba, frame, context, pose);
     }
 
     /**
-     * Layer-based world-space draw with single font + targetPx (convenience).
+     * World-space draw with single font + targetPx (convenience).
      */
-    public void drawWorld(CgDynamicTextureRenderLayer textLayer, CgTextLayout layout, CgFont font, int targetPx,
+    public void drawWorld(CgTextLayout layout, CgFont font, int targetPx,
                           float x, float y, int rgba, long frame, CgWorldTextRenderContext context, PoseStack pose) {
         CgFont sizedFont = requireSizedFont(font, targetPx);
-        drawWorld(textLayer, layout, sizedFont, x, y, rgba, frame, context, pose);
+        drawWorld(layout, sizedFont, x, y, rgba, frame, context, pose);
     }
 
     /**
-     * Layer-based world-space draw from string (convenience).
+     * World-space draw from string (convenience).
      */
-    public void drawWorld(CgDynamicTextureRenderLayer textLayer, String text, CgFontFamily family,
+    public void drawWorld(String text, CgFontFamily family,
                           float x, float y, int rgba, long frame, CgWorldTextRenderContext context, PoseStack pose) {
-        drawWorld(textLayer, text, family, CgTextConstraints.UNBOUNDED, x, y, rgba, frame, context, pose);
+        drawWorld(text, family, CgTextConstraints.UNBOUNDED, x, y, rgba, frame, context, pose);
     }
 
     /**
-     * Layer-based world-space draw from string with constraints (convenience).
+     * World-space draw from string with constraints (convenience).
      */
-    public void drawWorld(CgDynamicTextureRenderLayer textLayer, String text, CgFontFamily family,
+    public void drawWorld(String text, CgFontFamily family,
                           CgTextConstraints constraints, float x, float y, int rgba, long frame,
                           CgWorldTextRenderContext context, PoseStack pose) {
-        drawWorld(textLayer, layout(text, family, constraints), family, x, y, rgba, frame, context, pose);
+        drawWorld(layout(text, family, constraints), family, x, y, rgba, frame, context, pose);
     }
 
     /**
-     * Layer-based world-space draw from string with single font (convenience).
+     * World-space draw from string with single font (convenience).
      */
-    public void drawWorld(CgDynamicTextureRenderLayer textLayer, String text, CgFont font,
+    public void drawWorld(String text, CgFont font,
                           float x, float y, int rgba, long frame, CgWorldTextRenderContext context, PoseStack pose) {
         requireSizedFont(font);
-        drawWorld(textLayer, layout(text, font, CgTextConstraints.UNBOUNDED), font, x, y, rgba, frame, context, pose);
+        drawWorld(layout(text, font, CgTextConstraints.UNBOUNDED), font, x, y, rgba, frame, context, pose);
     }
 
     /**
-     * Layer-based world-space draw from string with single font + constraints (convenience).
+     * World-space draw from string with single font + constraints (convenience).
      */
-    public void drawWorld(CgDynamicTextureRenderLayer textLayer, String text, CgFont font,
+    public void drawWorld(String text, CgFont font,
                           CgTextConstraints constraints, float x, float y, int rgba, long frame,
                           CgWorldTextRenderContext context, PoseStack pose) {
         requireSizedFont(font);
-        drawWorld(textLayer, layout(text, font, constraints), font, x, y, rgba, frame, context, pose);
+        drawWorld(layout(text, font, constraints), font, x, y, rgba, frame, context, pose);
     }
 
     /**
-     * Layer-based world-space draw from string with single font + targetPx (convenience).
+     * World-space draw from string with single font + targetPx (convenience).
      */
-    public void drawWorld(CgDynamicTextureRenderLayer textLayer, String text, CgFont font, int targetPx,
+    public void drawWorld(String text, CgFont font, int targetPx,
                           float x, float y, int rgba, long frame, CgWorldTextRenderContext context, PoseStack pose) {
-        drawWorld(textLayer, text, font, targetPx, CgTextConstraints.UNBOUNDED, x, y, rgba, frame, context, pose);
+        drawWorld(text, font, targetPx, CgTextConstraints.UNBOUNDED, x, y, rgba, frame, context, pose);
     }
 
     /**
-     * Layer-based world-space draw from string with single font + targetPx + constraints (convenience).
+     * World-space draw from string with single font + targetPx + constraints (convenience).
      */
-    public void drawWorld(CgDynamicTextureRenderLayer textLayer, String text, CgFont font, int targetPx,
+    public void drawWorld(String text, CgFont font, int targetPx,
                           CgTextConstraints constraints, float x, float y, int rgba, long frame,
                           CgWorldTextRenderContext context, PoseStack pose) {
         CgFont sizedFont = requireSizedFont(font, targetPx);
-        drawWorld(textLayer, layout(text, sizedFont, constraints), sizedFont, x, y, rgba, frame, context, pose);
+        drawWorld(layout(text, sizedFont, constraints), sizedFont, x, y, rgba, frame, context, pose);
     }
 
     /**
-     * Layer-based world-space draw with family + targetPx (convenience).
+     * World-space draw with family + targetPx (convenience).
      */
-    public void drawWorld(CgDynamicTextureRenderLayer textLayer, CgTextLayout layout, CgFontFamily family, int targetPx,
+    public void drawWorld(CgTextLayout layout, CgFontFamily family, int targetPx,
                           float x, float y, int rgba, long frame, CgWorldTextRenderContext context, PoseStack pose) {
-        drawWorld(textLayer, layout, sizeFamily(family, targetPx), x, y, rgba, frame, context, pose);
+        drawWorld(layout, sizeFamily(family, targetPx), x, y, rgba, frame, context, pose);
     }
 
     /**
-     * Layer-based world-space draw from string with family + targetPx (convenience).
+     * World-space draw from string with family + targetPx (convenience).
      */
-    public void drawWorld(CgDynamicTextureRenderLayer textLayer, String text, CgFontFamily family, int targetPx,
+    public void drawWorld(String text, CgFontFamily family, int targetPx,
                           float x, float y, int rgba, long frame, CgWorldTextRenderContext context, PoseStack pose) {
-        drawWorld(textLayer, text, family, targetPx, CgTextConstraints.UNBOUNDED, x, y, rgba, frame, context, pose);
+        drawWorld(text, family, targetPx, CgTextConstraints.UNBOUNDED, x, y, rgba, frame, context, pose);
     }
 
     /**
-     * Layer-based world-space draw from string with family + targetPx + constraints (convenience).
+     * World-space draw from string with family + targetPx + constraints (convenience).
      */
-    public void drawWorld(CgDynamicTextureRenderLayer textLayer, String text, CgFontFamily family, int targetPx,
+    public void drawWorld(String text, CgFontFamily family, int targetPx,
                           CgTextConstraints constraints, float x, float y, int rgba, long frame,
                           CgWorldTextRenderContext context, PoseStack pose) {
         CgFontFamily sizedFamily = sizeFamily(family, targetPx);
-        drawWorld(textLayer, layout(text, sizedFamily, constraints), sizedFamily, x, y, rgba, frame, context, pose);
+        drawWorld(layout(text, sizedFamily, constraints), sizedFamily, x, y, rgba, frame, context, pose);
     }
 
     // ══════════════════════════════════════════════════════════════════════════════════════════
@@ -437,27 +538,24 @@ public class CgTextRenderer {
 
     public void delete() {
         if (deleted) return;
+        if (batchActive) endBatch();
+        batchRenderer.delete();
         deleted = true;
     }
 
-    public boolean isDeleted() {
-        return deleted;
-    }
-
     // ══════════════════════════════════════════════════════════════════════════════════════════
-    //  INTERNAL LAYER-BASED PIPELINE
+    //  INTERNAL PIPELINE
     // ══════════════════════════════════════════════════════════════════════════════════════════
 
     /**
-     * Layer-based renderer core.
+     * Renderer core shared by the 2D and world-space entry points.
      *
      * <p>Resolves the effective raster tier, builds the paged glyph batch, and
-     * submits sorted quads through the provided {@link CgDynamicTextureRenderLayer}.
-     * GL state is managed by the layer's render state, not by this method.</p>
+     * submits sorted quads to the owned {@link CgBatchRenderer}.</p>
      */
-    private void drawInternalLayer(CgDynamicTextureRenderLayer textLayer, CgTextLayout layout, CgFontFamily family,
-                                    float x, float y, int rgba, long frame, CgTextRenderContext context,
-                                    PoseStack.Pose pose, CgTextScaleResolver scaleResolver) {
+    private void drawInternal(CgTextLayout layout, CgFontFamily family,
+                               float x, float y, int rgba, long frame, CgTextRenderContext context,
+                               PoseStack.Pose pose, CgTextScaleResolver scaleResolver) {
         CgFontKey fontKey = family.getPrimarySource().getKey();
         CgFontMetrics metrics = layout.getMetrics();
 
@@ -471,33 +569,29 @@ public class CgTextRenderer {
 
         PagedGlyphBatch glyphBatch = buildPagedGlyphBatch(layout, family, x, y, frame, context, fontKey, effectiveTargetPx, wantMsdf, metrics);
 
-        submitSortedQuadsToLayer(textLayer, glyphBatch.placements, glyphBatch.glyphX, glyphBatch.glyphY, rgba,
+        submitSortedQuads(glyphBatch.placements, glyphBatch.glyphX, glyphBatch.glyphY, rgba,
                 fontKey.getTargetPx(), effectiveTargetPx, context, pose.pose());
     }
 
 
     /**
-     * Sorts glyph placements by GL state and submits them through the provided
-     * {@link CgDynamicTextureRenderLayer}.
+     * Sorts glyph placements by GL state and submits them to the owned
+     * {@link CgBatchRenderer}.
      *
      * <p>On batch-key transitions (atlas page / atlas mode changes), this method:
      * <ol>
-     *   <li>Calls {@link CgDynamicTextureRenderLayer#setTexture(int)} to signal
-     *       the texture change (the layer auto-flushes if the texture ID differs)</li>
+     *   <li>Calls {@link #transitionTo} to flush any pending quads under the previous
+     *       shader/render-state/texture combination, then adopt the new one</li>
      *   <li>Applies per-batch shader uniforms ({@code u_modelview}, {@code u_pxRange})
-     *       via the shader's ephemeral bindings — these are picked up when the layer
-     *       flushes and applies its {@code CgRenderState}</li>
-     *   <li>Emits glyph quads through the layer's {@code CgVertexConsumer}</li>
+     *       via the shader's ephemeral bindings — these are picked up the next time the
+     *       shader is bound (at the next {@link #flushPending()})</li>
+     *   <li>Emits glyph quads through the batch renderer's {@code CgVertexConsumer}</li>
      * </ol>
-     *
-     * <p>The layer is expected to already be in the "begun" state (managed by the
-     * owning {@code CgBufferSource}). This method does not call begin/end on the
-     * layer.</p>
      */
-    void submitSortedQuadsToLayer(CgDynamicTextureRenderLayer textLayer, CgGlyphPlacement[] placements,
-                                  float[] glyphX, float[] glyphY, int rgba,
-                                  int baseTargetPx, int effectiveTargetPx,
-                                  CgTextRenderContext context, Matrix4f modelView) {
+    void submitSortedQuads(CgGlyphPlacement[] placements,
+                           float[] glyphX, float[] glyphY, int rgba,
+                           int baseTargetPx, int effectiveTargetPx,
+                           CgTextRenderContext context, Matrix4f modelView) {
         // Count visible placements
         int visibleCount = 0;
         for (int i = 0; i < placements.length; i++) {
@@ -536,28 +630,22 @@ public class CgTextRenderer {
             sortedIndices[j + 1] = idxI;
         }
 
-        // Submit sorted quads through the layer. On batch-key change, update the
-        // layer's texture (which triggers an auto-flush) and set shader uniforms.
+        // Submit sorted quads. On batch-key change, transition shader/render-state/texture
+        // (flushing whatever was pending under the previous combination) and set shader uniforms.
         CgDrawBatchKey currentKey = null;
 
         for (int s = 0; s < visibleCount; s++) {
             CgDrawBatchKey thisKey = batchKeys[s];
 
-            // On batch key change, update texture and shader uniforms on the layer
+            // On batch key change, transition shader/texture/render-state.
             if (currentKey == null || !thisKey.equals(currentKey)) {
-                CgRenderState renderState = thisKey.isMtsdf() ? MTSDF_LAYER_STATE
-                        : thisKey.isDistanceField() ? MSDF_LAYER_STATE : BITMAP_LAYER_STATE;
+                CgRenderState renderState = thisKey.isMtsdf() ? MTSDF_RENDER_STATE
+                        : thisKey.isDistanceField() ? MSDF_RENDER_STATE : BITMAP_RENDER_STATE;
 
-                // Resolve the shader for this batch key's atlas type and apply
-                // per-batch uniforms via ephemeral bindings. These bindings are
-                // consumed when the layer's shader is applied at the next flush.
                 CgShader shader = thisKey.isMtsdf() ? MTSDF_SHADER
                         : thisKey.isDistanceField() ? MSDF_SHADER : BITMAP_SHADER;
-                textLayer.setShader(shader);
-                textLayer.setRenderState(renderState);
 
-                // Set texture on the dynamic layer — triggers flush if texture changed
-                textLayer.setTexture(thisKey.getTextureId());
+                transitionTo(shader, renderState, thisKey.getTextureId());
 
                 shader.applyBindings(bi -> {
                     bi.mat4("u_modelview", modelView);
@@ -573,10 +661,10 @@ public class CgTextRenderer {
             CgGlyphPlacement p = placements[origIdx];
             int placementTargetPx = p.getKey().getFontKey().getTargetPx();
             float scaleFactor = logicalMetricScale(baseTargetPx, p.isDistanceField() ? placementTargetPx : effectiveTargetPx);
-            addQuadFromPlacementToLayer(textLayer, p, glyphX[origIdx], glyphY[origIdx], rgba, scaleFactor);
+            addQuadFromPlacement(p, glyphX[origIdx], glyphY[origIdx], rgba, scaleFactor);
 
             if (diagnosticLogging) {
-                LOGGER.info("[LayerBatchDiag] atlasType=" + thisKey.getAtlasType()
+                LOGGER.info("[BatchDiag] atlasType=" + thisKey.getAtlasType()
                         + ", textureId=" + thisKey.getTextureId()
                         + ", pxRange=" + thisKey.getPxRange());
             }
@@ -584,15 +672,15 @@ public class CgTextRenderer {
     }
 
     /**
-     * Computes quad geometry from a {@link CgGlyphPlacement} and submits it to the
-     * {@link CgDynamicTextureRenderLayer}.
+     * Computes quad geometry from a {@link CgGlyphPlacement} and submits it to the owned
+     * {@link CgBatchRenderer}.
      *
      * <p>Uses plane bounds for geometry placement. The quad is submitted through
-     * the layer's {@link CgVertexConsumer} (which is a {@code CgVertexWriter}
-     * backed by the layer's staging buffer).</p>
+     * the batch renderer's {@link CgVertexConsumer} (a {@code CgVertexWriter}
+     * backed by the batch renderer's staging buffer).</p>
      */
-    private void addQuadFromPlacementToLayer(CgDynamicTextureRenderLayer textLayer, CgGlyphPlacement p,
-                                             float penX, float penY, int rgba, float scaleFactor) {
+    private void addQuadFromPlacement(CgGlyphPlacement p,
+                                      float penX, float penY, int rgba, float scaleFactor) {
         // Plane bounds are in physical raster space; normalize to logical.
         // planeLeft = bearing offset from pen; planeTop = bearing above baseline.
         // The quad origin is (penX + bearingX, penY - bearingY) in the existing
@@ -607,7 +695,7 @@ public class CgTextRenderer {
 
         if (diagnosticLogging) {
             LOGGER.info(String.format(
-                    "[LayerQuadDiag] glyphId=%d penX=%.2f penY=%.2f planeL=%.2f planeB=%.2f planeT=%.2f planeW=%.2f planeH=%.2f qx=%.2f qy=%.2f page=%d tex=%d atlasType=%s distanceField=%b pxRange=%.1f",
+                    "[QuadDiag] glyphId=%d penX=%.2f penY=%.2f planeL=%.2f planeB=%.2f planeT=%.2f planeW=%.2f planeH=%.2f qx=%.2f qy=%.2f page=%d tex=%d atlasType=%s distanceField=%b pxRange=%.1f",
                     p.getKey().getGlyphId(), penX, penY,
                     logicalBearingX, p.getPlaneBottom() * scaleFactor,
                     logicalBearingY, logicalWidth, logicalHeight,
@@ -615,22 +703,16 @@ public class CgTextRenderer {
                     p.getPageIndex(), p.getPageTextureId(),
                     p.getAtlasType(), p.isDistanceField(), p.getPxRange()));
         }
-        
+
         float u0 = p.getU0(), v0 = p.getV0(), u1 = p.getU1(), v1 = p.getV1();
 
-        // Extract RGBA components for the vertex consumer's color(r,g,b,a) contract
-        int r = (rgba >>> 24) & 0xFF;
-        int g = (rgba >>> 16) & 0xFF;
-        int b = (rgba >>> 8)  & 0xFF;
-        int a =  rgba         & 0xFF;
-
-        CgVertexConsumer vc = textLayer.vertex();
-        vc.vertex(qx, qy).uv(u0, v0).color(r, g, b, a).endVertex();
-        vc.vertex(qx + logicalWidth, qy).uv(u1, v0).color(r, g, b, a).endVertex();
-        vc.vertex(qx + logicalWidth, qy + logicalHeight).uv(u1, v1).color(r, g, b, a).endVertex();
-        vc.vertex(qx, qy + logicalHeight).uv(u0, v1).color(r, g, b, a).endVertex();
+        CgVertexConsumer vc = batchRenderer.vertex();
+        vc.vertex(qx, qy).uv(u0, v0).colorRgba(rgba).endVertex();
+        vc.vertex(qx + logicalWidth, qy).uv(u1, v0).colorRgba(rgba).endVertex();
+        vc.vertex(qx + logicalWidth, qy + logicalHeight).uv(u1, v1).colorRgba(rgba).endVertex();
+        vc.vertex(qx, qy + logicalHeight).uv(u0, v1).colorRgba(rgba).endVertex();
     }
-    
+
     // ══════════════════════════════════════════════════════════════════════════════════════════
     //  PAGED GLYPH BATCH CONSTRUCTION
     // ══════════════════════════════════════════════════════════════════════════════════════════
@@ -660,7 +742,7 @@ public class CgTextRenderer {
     private static CgFont resolveRunFont(CgTextLayout layout, CgFontFamily family, CgFontKey runFontKey) {
         CgFont resolvedFromLayout = layout.getResolvedFontsByKey().get(runFontKey);
         if (resolvedFromLayout != null) return resolvedFromLayout;
-        
+
         return family.resolveLoadedFont(runFontKey);
     }
 
@@ -673,8 +755,8 @@ public class CgTextRenderer {
      * key for the current raster tier, and asks {@link CgFontRegistry} where that
      * glyph lives in the atlas page set.</p>
      */
-    private PagedGlyphBatch populatePagedGlyphBatch(CgTextLayout layout, CgFontFamily family, float x, float y, long frame, 
-                                                    CgTextRenderContext context, CgFontKey fontKey, int effectiveTargetPx, 
+    private PagedGlyphBatch populatePagedGlyphBatch(CgTextLayout layout, CgFontFamily family, float x, float y, long frame,
+                                                    CgTextRenderContext context, CgFontKey fontKey, int effectiveTargetPx,
                                                     boolean wantMsdf, CgFontMetrics metrics) {
         List<List<CgShapedRun>> lines = layout.getLines();
         int totalGlyphs = countGlyphs(lines);
@@ -758,7 +840,7 @@ public class CgTextRenderer {
     private int countGlyphs(List<List<CgShapedRun>> lines) {
         int total = 0;
         for (List<CgShapedRun> line : lines) for (CgShapedRun run : line) total += run.getGlyphIds().length;
-        
+
         return total;
     }
 
@@ -777,10 +859,10 @@ public class CgTextRenderer {
     static float logicalMetricScale(int baseTargetPx, int effectiveTargetPx) {
         if (baseTargetPx <= 0) throw new IllegalArgumentException("baseTargetPx must be > 0");
         if (effectiveTargetPx <= 0) throw new IllegalArgumentException("effectiveTargetPx must be > 0");
-        
+
         return (float) baseTargetPx / (float) effectiveTargetPx;
     }
-    
+
     /**
      * Selects the sub-pixel bucket based on the effective target pixel size.
      * Uses the effective size (not base targetPx) because the effective size
@@ -788,20 +870,20 @@ public class CgTextRenderer {
      */
     static int selectSubPixelBucket(int effectiveTargetPx, float xOffset) {
         if (effectiveTargetPx >= CgGlyphKey.SUB_PIXEL_BUCKET_MAX_PX) return 0;
-        
+
         float fractional = xOffset - (float) Math.floor(xOffset);
         if (fractional < 0.125f) return 0;
         if (fractional < 0.375f) return 1;
         if (fractional < 0.625f) return 2;
         if (fractional < 0.875f) return 3;
-        
+
         return 0;
     }
 
     static int resolveSubPixelBucket(CgTextRenderContext context, CgFontKey fontKey, int effectiveTargetPx, float xOffset) {
         if (context.isWorldText()) return 0;
         if (context.isScaledUiRaster(fontKey, effectiveTargetPx)) return 0;
-        
+
         return selectSubPixelBucket(effectiveTargetPx, xOffset);
     }
 
@@ -816,35 +898,35 @@ public class CgTextRenderer {
     static CgTextLayout layout(String text, CgFont font, CgTextConstraints constraints) {
         if (text == null) throw new IllegalArgumentException("text must not be null");
         if (constraints == null) throw new IllegalArgumentException("constraints must not be null");
-        
+
         return LAYOUT_BUILDER.layout(text, font, constraints.getMaxWidth(), constraints.getMaxHeight());
     }
 
     static CgTextLayout layout(String text, CgFontFamily family, CgTextConstraints constraints) {
         if (text == null) throw new IllegalArgumentException("text must not be null");
         if (constraints == null) throw new IllegalArgumentException("constraints must not be null");
-        
+
         return LAYOUT_BUILDER.layout(text, family, constraints.getMaxWidth(), constraints.getMaxHeight());
     }
 
     static CgFont requireSizedFont(CgFont font) {
         if (font == null) throw new IllegalArgumentException("font must not be null");
         if (!font.isSizeBound()) throw new IllegalArgumentException("font must be size-bound or supplied with targetPx");
-        
+
         return font;
     }
 
     static CgFont requireSizedFont(CgFont font, int targetPx) {
         if (font == null) throw new IllegalArgumentException("font must not be null");
         if (targetPx <= 0) throw new IllegalArgumentException("targetPx must be > 0, got: " + targetPx);
-        
+
         return font.isSizeBound() && font.getTargetPx() == targetPx ? font : font.atSize(targetPx);
     }
 
     static CgFontFamily sizeFamily(CgFontFamily family, int targetPx) {
         if (family == null) throw new IllegalArgumentException("family must not be null");
         if (targetPx <= 0) throw new IllegalArgumentException("targetPx must be > 0, got: " + targetPx);
-        
+
         CgFont primary = family.getPrimarySource().requireFont().atSize(targetPx);
         List<CgFontSource> fallbackSources = new ArrayList<CgFontSource>();
         for (CgFontSource fallback : family.getFallbackSources()) {
