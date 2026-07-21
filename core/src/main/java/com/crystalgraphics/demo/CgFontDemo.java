@@ -10,7 +10,6 @@ import com.crystalgraphics.gl.shader.CgShaderFactory;
 import com.crystalgraphics.gl.state.CgGlScope;
 import com.crystalgraphics.gl.state.CgGlState;
 import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.text.atlas.CgGlyphAtlas;
 import com.crystalgraphics.text.cache.CgFontRegistry;
@@ -18,7 +17,6 @@ import com.crystalgraphics.text.render.CgTextRenderContext;
 import com.crystalgraphics.text.render.CgTextRenderer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.joml.Matrix4f;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -159,14 +157,14 @@ public final class CgFontDemo {
 
     private void ensureDemoFontSystem() {
         if (demoFontRegistry == null) {
-            demoFontRegistry = new CgFontRegistry();
+            demoFontRegistry = CgFontRegistry.get();
         }
         if (demoFont == null || demoFont.isDisposed() || demoFont.getKey().getTargetPx() != demoFontSize) {
             if (demoFont != null && !demoFont.isDisposed()) demoFont.dispose();
             demoFont = CgFont.load(DEMO_FONT_PATH, CgFontStyle.REGULAR, demoFontSize);
         }
         if (demoTextRenderer == null || demoTextRenderer.isDeleted()) {
-            demoTextRenderer = CgTextRenderer.create(CgCapabilities.detect(), demoFontRegistry);
+            demoTextRenderer = CgTextRenderer.create();
         }
     }
 

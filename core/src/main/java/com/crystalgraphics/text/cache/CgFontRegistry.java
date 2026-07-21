@@ -81,6 +81,31 @@ import java.util.logging.Logger;
  * <p>The registry also wires font disposal to atlas cleanup.  It is not thread
  * safe and must only be used on the render thread.</p>
  *
+ * <h3>Singleton, like every other GPU-resource registry</h3>
+ * <p>The default-config registry is a shared singleton, accessed via {@link #get()} —
+ * matching {@code CgTextureManager}, {@code CgMaterialRegistry}, {@code CgMeshRegistry},
+ * and every other GPU-resource-owning registry in this codebase. It is torn down by
+ * {@code CgGraphicsLifecycle.destroyContext()} calling {@link #releaseAll()}, and
+ * remains usable immediately afterward (a fresh GL context can initialize right away —
+ * see {@link #releaseAll()}'s javadoc for how the background executor survives that).
+ * Consumers needing a non-default atlas page size or {@link CgMsdfAtlasConfig} (e.g.
+ * harness scenes testing atlas packing at specific sizes) still construct their own
+ * instance via {@link #CgFontRegistry(int, CgMsdfAtlasConfig)} — only the
+ * default-config path is a singleton.</p>
+ *
+ * <p><strong>Known limitation, not yet solved:</strong> {@link #tickFrame(long)} takes
+ * a caller-supplied frame number and has no idempotency guard. Each of today's
+ * consumers ({@code CgUiPaintContext}, {@code HUDRenderer}, etc.) maintains its own
+ * independent local frame counter — there is no single authoritative "current frame"
+ * shared across them. If multiple consumers tick the shared singleton within the same
+ * real frame, the MSDF per-frame generation budget gets reset more than once (softer
+ * throttling than intended, not a correctness bug) and atlas LRU clocks may receive
+ * out-of-order frame numbers from different counters. Solving this properly means
+ * giving the registry its own authoritative frame counter and changing every
+ * {@code CgTextRenderer.draw(...)} call site's {@code frame} argument across the whole
+ * repo to stop supplying an independent one — deliberately out of scope for the
+ * singleton-conversion change that added this note; track separately.</p>
+ *
  * @see CgRasterFontKey
  * @see CgMsdfAtlasKey
  * @see CgGlyphGenerationExecutor
@@ -113,12 +138,35 @@ public class CgFontRegistry {
 
     private final Set<CgFontKey> registeredFonts = new HashSet<CgFontKey>();
     private final CgMsdfGenerator msdfGenerator = new CgMsdfGenerator();
-    private final CgGlyphGenerationExecutor glyphGenerationExecutor = new CgGlyphGenerationExecutor();
+    // Not final — releaseAll() replaces this with a fresh instance so the shared
+    // singleton stays usable after a GL context is destroyed and recreated (see
+    // CgGraphicsLifecycle). CgGlyphGenerationExecutor.shutdown() is permanent —
+    // a fresh instance is the only way back to a submittable state.
+    private CgGlyphGenerationExecutor glyphGenerationExecutor = new CgGlyphGenerationExecutor();
 
     /** Maximum number of async glyph results committed (uploaded) per frame tick. */
     private static final int MAX_COMMITS_PER_FRAME = 32;
 
-    public CgFontRegistry() {
+    /**
+     * The shared default-config registry, matching every other GPU-resource registry
+     * in this codebase ({@code CgTextureManager}, {@code CgMaterialRegistry},
+     * {@code CgMeshRegistry}, etc.) — accessed via {@link #get()}, torn down via
+     * {@code CgGraphicsLifecycle.destroyContext()} calling {@link #releaseAll()}.
+     *
+     * <p>Consumers that need a <em>differently configured</em> registry (custom atlas
+     * page size or {@link CgMsdfAtlasConfig} — used by harness scenes to test atlas
+     * packing at specific sizes) should still construct their own instance via
+     * {@link #CgFontRegistry(int, CgMsdfAtlasConfig)}; that constructor stays public
+     * for exactly that purpose. Only the default-config path is a singleton.</p>
+     */
+    private static final CgFontRegistry INSTANCE = new CgFontRegistry();
+
+    /** Returns the shared default-config font registry. See {@link #INSTANCE}. */
+    public static CgFontRegistry get() {
+        return INSTANCE;
+    }
+
+    private CgFontRegistry() {
         this(DEFAULT_BITMAP_ATLAS_SIZE, CgMsdfAtlasConfig.defaultConfig());
     }
 
@@ -1171,10 +1219,19 @@ public class CgFontRegistry {
     }
 
     /**
-     * Releases all atlas resources across all fonts and shuts down the
-     * background generation executor.
+     * Releases all atlas resources across all fonts and resets the registry back to
+     * a freshly-constructed, immediately reusable state.
      *
-     * <p>Called during renderer/system shutdown.</p>
+     * <p>Called by {@code CgGraphicsLifecycle.destroyContext()} for the shared
+     * {@link #get()} instance. Since that instance is a permanent static singleton
+     * (unlike the old per-caller construction model, where a fresh
+     * {@code new CgFontRegistry()} naturally came with a fresh executor), this method
+     * must leave the registry usable again immediately — a new GL context can be
+     * initialized right after {@code destroyContext()} returns. The background
+     * generation executor is shut down (permanently — {@code CgGlyphGenerationExecutor}
+     * cannot be restarted) and replaced with a fresh instance, matching how
+     * {@code CgGraphicsLifecycle} resets other backend caches in place rather than
+     * requiring a new object.</p>
      */
     public void releaseAll() {
         for (CgGlyphAtlas atlas : bitmapAtlases.values()) {
@@ -1221,6 +1278,7 @@ public class CgFontRegistry {
 
         registeredFonts.clear();
         glyphGenerationExecutor.shutdown();
+        glyphGenerationExecutor = new CgGlyphGenerationExecutor();
     }
 
     private void releaseRasterAtlasesForFont(CgFontKey baseKey) {

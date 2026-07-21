@@ -160,6 +160,8 @@ public class CgTextRenderContext {
      * @param height new viewport height in pixels
      */
     public void updateOrtho(int width, int height) {
+        if (this.viewportWidth == width && this.viewportHeight == height) return;
+        
         populateOrthographic(projection, width, height);
         this.viewportWidth = width;
         this.viewportHeight = height;
@@ -175,13 +177,15 @@ public class CgTextRenderContext {
      * misalign with the rest of the scene.</p>
      *
      * @param projection     the scene's current camera projection matrix
-     * @param viewportWidth  new viewport width
-     * @param viewportHeight new viewport height
+     * @param width  new viewport width
+     * @param height new viewport height
      */
-    public void updateProjection(Matrix4f projection, int viewportWidth, int viewportHeight) {
+    public void updateProjection(Matrix4f projection, int width, int height) {
+        if (this.viewportWidth == width && this.viewportHeight == height && this.projection.equals(projection)) return;
+
         this.projection.set(projection);
-        this.viewportWidth = viewportWidth;
-        this.viewportHeight = viewportHeight;
+        this.viewportWidth = width;
+        this.viewportHeight = height;
     }
 
     /** Returns the last-stabilized history for this font, or {@code null} if none yet. */

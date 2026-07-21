@@ -18,6 +18,7 @@ import com.crystalgraphics.gl.vertex.CgInstanceVertexArrayBinding;
 import com.crystalgraphics.gl.vertex.CgVertexArray;
 import com.crystalgraphics.gl.vertex.CgVertexArrayRegistry;
 import com.crystalgraphics.gl.vertex.CgVertexBufferRegistry;
+import com.crystalgraphics.text.cache.CgFontRegistry;
 
 /**
  * Coordinates teardown of all CrystalGraphics GL resources in the correct order.
@@ -130,6 +131,11 @@ public final class CgGraphicsLifecycle {
 
         // Step 5b: Free engine fallback textures.
         CgFallbackTextures.destroy();
+
+        // Step 5c: Font/glyph atlas textures + background generation executor, then reset
+        //   the shared registry back to a freshly-constructed, immediately reusable state
+        //   (a new GL context can be initialized right after this method returns).
+        CgFontRegistry.get().releaseAll();
 
         // Step 7a: Material instances (property UBOs) + their backing shader assets (GL programs).
         CgMaterialRegistry.get().deleteAll();
