@@ -169,7 +169,7 @@ public class CgTextRenderer {
             .build();
 
     /** Initial CPU staging capacity of the owned {@link CgBatchRenderer}, in quads. */
-    private static final int INITIAL_MAX_QUADS = 4096;
+    private static final int INITIAL_MAX_QUADS = 1024;
 
     // ══════════════════════════════════════════════════════════════════════════════════════════
 
@@ -177,7 +177,7 @@ public class CgTextRenderer {
     public static boolean diagnosticLogging = false;
 
     private static final CgTextLayoutBuilder LAYOUT_BUILDER = new CgTextLayoutBuilder();
-    private final CgFontRegistry registry;
+    private final CgFontRegistry registry = CgFontRegistry.get();
 
     // ── Owned batch lifecycle ────────────────────────────────────────────────
     private final CgBatchRenderer batchRenderer;
@@ -189,20 +189,41 @@ public class CgTextRenderer {
     @Getter
     private boolean deleted;
 
-    private CgTextRenderer(CgFontRegistry registry) {
-        this.registry = registry;
+    private CgTextRenderer() {
         this.batchRenderer = CgBatchRenderer.create(CgVertexFormat.POS2_UV2_COL4UB, INITIAL_MAX_QUADS);
     }
 
     /**
      * Creates the renderer façade, including its owned {@link CgBatchRenderer}.
      */
-    public static CgTextRenderer create(CgCapabilities caps, CgFontRegistry registry) {
+    public static CgTextRenderer create() {
+        CgCapabilities caps = CgCapabilities.detect();
         if (caps.preferredFboBackend() == CgCapabilities.FramebufferPath.NONE || (!caps.isCoreShaders() && !caps.isArbShaders()) || !caps.isVaoSupported() || !caps.isMapBufferRangeSupported()) {
             throw new IllegalStateException("CgTextRenderer requires a framebuffer backend, a shader backend, VAO support, and glMapBufferRange");
         }
 
-        return new CgTextRenderer(registry);
+        return new CgTextRenderer();
+    }
+
+    /**
+     * Advances the owned {@link CgFontRegistry}'s frame clock — resets its per-frame
+     * MSDF generation budget, drains completed async glyph results, and ticks atlas
+     * LRU clocks. Must be called once per render frame before any {@code draw()} calls
+     * for that frame, exactly as {@code CgFontRegistry.tickFrame(long)} itself
+     * documents.
+     *
+     * <p>Exists so callers never need to reach around this façade to touch
+     * {@link CgFontRegistry} directly — {@code CgTextRenderer.create()} already fetches
+     * it internally ({@link CgFontRegistry#get()}), so callers have no registry
+     * reference to call {@code tickFrame} on themselves unless they happen to hold one
+     * for other reasons (e.g. atlas diagnostics).</p>
+     *
+     * <p>See {@link CgFontRegistry}'s class javadoc for the known limitation this
+     * inherits: no idempotency guard against multiple independent callers ticking the
+     * shared registry within the same real frame.</p>
+     */
+    public void tickFrame(long frame) {
+        registry.tickFrame(frame);
     }
 
     // ══════════════════════════════════════════════════════════════════════════════════════════

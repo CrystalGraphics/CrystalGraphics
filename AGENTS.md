@@ -838,6 +838,7 @@ CgGraphicsLifecycle.destroyContext();
 | 3 | `CgVertexBufferRegistry.get().deleteAll()` | All streaming VBOs (base + instance) |
 | 4 | `CgQuadIndexBuffer.freeAll()` | Shared quad IBO |
 | 5 | `CgTextureManager.get().freeAll()` | All cached textures + fallback |
+| 5c | `CgFontRegistry.get().releaseAll()` | Glyph atlas textures + background generation executor, reset in place (reusable immediately) |
 | 6 | `CgMaterialRegistry.get().deleteAll()` | Material instances + GL shader programs |
 | 7 | `CgShaderBufferRegistry.get().deleteAll()` | User SSBO/TBO/UBO resources |
 | 8 | `CgRenderPipeline.destroy()` | Frame UBO + object SSBO + command queue; nulls depth snapshot FBO reference (GL object freed by step 9) |
@@ -861,6 +862,7 @@ All registries are **singletons accessed via `.get()`**. You normally interact w
 | `CgVertexArrayRegistry` | `CgVertexArrayRegistry.get()` | All VAOs (non-instanced + instanced) | Internal — do not create VAOs manually |
 | `CgVertexBufferRegistry` | `CgVertexBufferRegistry.get()` | All streaming VBOs (base + instance) | Internal — do not create VBOs manually |
 | `CgShaderBufferRegistry` | `CgShaderBufferRegistry.get()` | User-attached SSBO/TBO/UBO objects | `deleteAll()` on teardown (via lifecycle) |
+| `CgFontRegistry` | `CgFontRegistry.get()` | Glyph atlas textures (bitmap/MSDF/MTSDF) + background generation executor | `releaseAll()` on teardown (via lifecycle); parameterized constructors remain public for harness testing of custom atlas sizes/configs — see `text/cache/AGENTS.md` |
 
 
 ---

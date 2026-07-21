@@ -36,6 +36,42 @@ Main responsibilities:
 
 The class is intentionally organized in pipeline order. Read it top-to-bottom.
 
+**Singleton, like every other GPU-resource registry.** `CgFontRegistry.get()` returns
+the shared default-config instance — matching `CgTextureManager`, `CgMaterialRegistry`,
+`CgMeshRegistry`, and every other GPU-resource registry in this codebase. The no-arg
+constructor is private; only `get()` and the two public `(atlasSize[, config])`
+constructors remain. `CgGraphicsLifecycle.destroyContext()` calls
+`CgFontRegistry.get().releaseAll()` to tear it down, exactly like
+`CgTextureManager.get().freeAll()`/`CgMaterialRegistry.get().deleteAll()`.
+
+The `(int atlasSize)`/`(int atlasSize, CgMsdfAtlasConfig config)` constructors stay
+public and are **not** dead API — `gl-debug-harness`'s `TextScene2D`/`AtlasDumpScene`/
+`WorldTextRenderHelper` deliberately construct their own non-singleton instances via
+these to test atlas packing at specific page sizes/configs. Only the parameterless
+default-config path is a singleton; do not make the parameterized constructors private
+or route them through `get()` — that would break real, intentional test usage.
+
+`releaseAll()` must leave the shared instance immediately reusable, not permanently
+dead — `CgGraphicsLifecycle` supports initializing a new GL context right after
+`destroyContext()` returns. `CgGlyphGenerationExecutor.shutdown()` is irreversible, so
+`releaseAll()` replaces the (non-final) `glyphGenerationExecutor` field with a fresh
+instance at the end, rather than leaving the shared singleton stuck with a dead
+executor forever after the first context teardown.
+
+**Known unsolved limitation**: `tickFrame(long frame)` has no idempotency guard. Every
+consumer maintains its own independent local frame counter (`CgUiPaintContext`,
+`HUDRenderer`, etc.) — there is no shared authoritative "current frame" to guard
+against. If multiple consumers tick the shared singleton within the same real frame,
+the MSDF per-frame generation budget resets more than once (a soft throttling
+degradation, not a correctness bug) and atlas LRU clocks can receive frame numbers
+out of order across different counters. Fixing this properly means giving the registry
+its own authoritative frame counter and changing `CgTextRenderer.draw(...)`'s `frame`
+parameter (and every call site in the whole repo) to stop supplying an independent
+one — deliberately out of scope for the singleton-conversion change that introduced
+this note. Do not paper over it with a naive `if (frame <= lastTickedFrame) return;`
+guard — that assumes a shared counter that does not exist and would silently break
+whichever consumer's local counter is numerically behind another's.
+
 ### `CgRasterFontKey`
 
 Internal cache key describing a base font at one effective raster size.
@@ -105,3 +141,14 @@ The authoritative path is:
 - Do not split internal key/generation helpers away from `CgFontRegistry` in tiny moves.
 - Do not let renderer batch/shader concerns creep into this package.
 - Keep `CgFontRegistry` readable in pipeline order; it is still the main complexity hub here.
+- Do not construct `CgFontRegistry` directly (`new CgFontRegistry()`) for production/game
+  code — use `CgFontRegistry.get()`. The parameterized constructors are reserved for
+  harness testing of custom atlas sizes/configs.
+- Do not call `.releaseAll()` on the shared `get()` instance from an individual consumer's
+  dispose/delete method — that would tear down the registry for every other consumer
+  still using it. Only `CgGraphicsLifecycle.destroyContext()` should call it on the
+  singleton. (Non-singleton test instances constructed via the parameterized
+  constructors are fine to release themselves — they're not shared.)
+- Do not make `glyphGenerationExecutor` `final` again — `releaseAll()` needs to replace
+  it with a fresh instance after `shutdown()`, since the shared singleton must survive
+  a GL context destroy/recreate cycle.
