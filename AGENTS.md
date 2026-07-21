@@ -759,7 +759,7 @@ CgCullState.BACK               // GL_BACK face culling
 
 ## Batch Render Layer System
 
-For UI, 2D overlays, and non-material draw paths (not the CrystalShader material pipeline). `CgBatchRenderer` + `CgRenderLayer` — layer-based immediate-mode quad/triangle batching. `CgBufferSource` — per-context owner, not a singleton. `CgTextLayers` — factory for MSDF/bitmap text layers used by the text renderer.
+For UI, 2D overlays, and non-material draw paths (not the CrystalShader material pipeline). `CgBatchRenderer` + `CgRenderLayer` — layer-based immediate-mode quad/triangle batching. `CgBufferSource` — per-context owner, not a singleton. `CgTextLayers`/`CgDynamicTextureRenderLayer` still exist but are **no longer used by `CgTextRenderer`** — as of the batch-ownership migration (see `text/render/AGENTS.md`), `CgTextRenderer` owns its own private `CgBatchRenderer` directly instead of going through a caller-provided layer.
 
 **Package guides**: `gl/render/AGENTS.md` · `gl/buffer/staging/AGENTS.md`
 
