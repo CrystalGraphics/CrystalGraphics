@@ -43,6 +43,18 @@ public final class CgGraphicsLifecycle {
     private static volatile boolean initialized = false;
     private static int currentWidth = -1, currentHeight = -1;
 
+    // ── Canonical per-frame tick ────────────────────────────────────────────
+    private static long frameCounter = 0;
+    private static long lastTickNanos = Long.MIN_VALUE;
+    /**
+     * Debounce window for {@link #tickFrame()} — collapses multiple call sites
+     * (world render, UI paint, font demo overlay) that may each try to tick within
+     * the same real frame into a single actual tick. Deliberately short relative to
+     * real frame durations (well under 1ms of budget even at 1000+ fps) so it never
+     * swallows a genuinely distinct frame.
+     */
+    private static final long MIN_TICK_INTERVAL_NANOS = 1_000_000L; // 1ms
+
     private CgGraphicsLifecycle() {}
 
     /**
@@ -87,7 +99,61 @@ public final class CgGraphicsLifecycle {
     public static void onOpaquePass(float partialTick, int w, int h, int sourceFboId) {
         if (!initialized) initContext(w, h);
         else if (w != currentWidth || h != currentHeight) onResize(w, h);
+        // TEMPORARY safety net: the canonical tick point is now
+        // CgLifecycleService.onFrameRendered() (see its javadoc), wired for MC 1.7.10
+        // (MixinMinecraft, tail of runGameLoop) and the gl-debug-harness's own render
+        // loop. mc1201's forge/neoforge/fabric loaders do not yet wire
+        // onFrameRendered() to a native per-frame event (needs loader-specific research
+        // — see LifecycleService1201's javadoc) — remove this call once that lands,
+        // since it would otherwise leave MC 1.20.1 with no ticking at all. Harmless to
+        // double-tick in the meantime; tickFrame() is debounced.
+        tickFrame();
         CgRenderDemo.INSTANCE.renderOpaque(partialTick, w, h, sourceFboId);
+    }
+
+    /**
+     * Canonical per-real-frame tick point for engine-owned singletons that need
+     * per-frame bookkeeping — currently just {@link CgFontRegistry#tickFrame(long)}.
+     * Wire additional systems here as needed, mirroring how {@link #destroyContext()}
+     * enumerates every registry for teardown.
+     *
+     * <p>Debounced by wall-clock time (see {@link #MIN_TICK_INTERVAL_NANOS}), not by
+     * a caller-supplied frame number — there is no single authoritative frame counter
+     * shared across every caller (world render, {@code CgUiPaintContext}, the font
+     * demo overlay), so a caller-supplied-number guard would silently break whichever
+     * caller's own local counter runs behind another's. Real time is the one thing
+     * every caller actually shares. Multiple call sites invoking this within the same
+     * real frame collapse into one actual tick.</p>
+     *
+     * <p>Called automatically from {@link #onOpaquePass} for the real Minecraft path.
+     * Callers with no equivalent automatic per-frame hook (the standalone gl-debug-harness's
+     * interactive scenes, {@code CgUiPaintContext.beginFrame()}) must call this explicitly
+     * once per their own rendered frame.</p>
+     *
+     * <p><strong>Not for synthetic/prewarm frame sequencing.</strong> Code that
+     * deliberately fast-forwards through many fake frames with no real time passing
+     * (e.g. the harness's MSDF-generation prewarm loops, forcing convergence before a
+     * single screenshot) must call {@link CgFontRegistry#tickFrame(long)} directly with
+     * its own synthetic frame numbers — routing that through this debounced method would
+     * silently drop nearly all of the rapid-fire calls and the prewarm would never
+     * converge.</p>
+     */
+    public static void tickFrame() {
+        long now = System.nanoTime();
+        if (now - lastTickNanos < MIN_TICK_INTERVAL_NANOS) return;
+        lastTickNanos = now;
+        frameCounter++;
+        CgFontRegistry.get().tickFrame(frameCounter);
+    }
+
+    /**
+     * Returns the current authoritative frame number, as last advanced by
+     * {@link #tickFrame()}. Callers that need a {@code frame} argument for
+     * {@code CgTextRenderer.draw(...)}'s atlas-LRU bookkeeping should read this instead
+     * of maintaining their own local frame counter.
+     */
+    public static long getCurrentFrame() {
+        return frameCounter;
     }
 
     /**
@@ -171,5 +237,7 @@ public final class CgGraphicsLifecycle {
         initialized = false;
         currentWidth = -1;
         currentHeight = -1;
+        frameCounter = 0;
+        lastTickNanos = Long.MIN_VALUE;
     }
 }
