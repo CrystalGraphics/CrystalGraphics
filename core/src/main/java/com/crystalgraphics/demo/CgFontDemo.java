@@ -6,6 +6,7 @@ import com.crystalgraphics.api.font.CgFontStyle;
 import com.crystalgraphics.api.font.CgTextLayoutBuilder;
 import com.crystalgraphics.api.shader.CgShader;
 import com.crystalgraphics.api.state.CgGlSlot;
+import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.gl.shader.CgShaderFactory;
 import com.crystalgraphics.gl.state.CgGlScope;
 import com.crystalgraphics.gl.state.CgGlState;
@@ -87,8 +88,11 @@ public final class CgFontDemo {
                 lastDisplayHeight = displayHeight;
             }
 
-            demoFrame++;
-            demoFontRegistry.tickFrame(demoFrame);
+            // The shared CgFontRegistry's per-frame tick happens exclusively via the
+            // platform lifecycle service (CgLifecycleService.onFrameRendered()) — this
+            // class must not call CgGraphicsLifecycle.tickFrame() itself. Just read the
+            // shared frame number for atlas-LRU bookkeeping in the draw() calls below.
+            demoFrame = CgGraphicsLifecycle.getCurrentFrame();
 
             demoTextRenderer.beginBatch();
 

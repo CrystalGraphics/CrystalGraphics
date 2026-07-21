@@ -205,27 +205,6 @@ public class CgTextRenderer {
         return new CgTextRenderer();
     }
 
-    /**
-     * Advances the owned {@link CgFontRegistry}'s frame clock — resets its per-frame
-     * MSDF generation budget, drains completed async glyph results, and ticks atlas
-     * LRU clocks. Must be called once per render frame before any {@code draw()} calls
-     * for that frame, exactly as {@code CgFontRegistry.tickFrame(long)} itself
-     * documents.
-     *
-     * <p>Exists so callers never need to reach around this façade to touch
-     * {@link CgFontRegistry} directly — {@code CgTextRenderer.create()} already fetches
-     * it internally ({@link CgFontRegistry#get()}), so callers have no registry
-     * reference to call {@code tickFrame} on themselves unless they happen to hold one
-     * for other reasons (e.g. atlas diagnostics).</p>
-     *
-     * <p>See {@link CgFontRegistry}'s class javadoc for the known limitation this
-     * inherits: no idempotency guard against multiple independent callers ticking the
-     * shared registry within the same real frame.</p>
-     */
-    public void tickFrame(long frame) {
-        registry.tickFrame(frame);
-    }
-
     // ══════════════════════════════════════════════════════════════════════════════════════════
     //  BATCH LIFECYCLE
     // ══════════════════════════════════════════════════════════════════════════════════════════
@@ -344,6 +323,7 @@ public class CgTextRenderer {
      */
     public void draw(CgTextLayout layout, CgFontFamily family,
                      float x, float y, int rgba, long frame, CgTextRenderContext context, PoseStack pose) {
+        
         if (family == null) throw new IllegalArgumentException("family must not be null");
         if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
         if (layout == null || layout.getLines().isEmpty()) return;

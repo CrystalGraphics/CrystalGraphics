@@ -89,8 +89,24 @@ Minecraft's resource manager is initialised).
 Both use a **direct call contract** — the platform implementation calls the methods directly,
 no `register*Callback` indirection.
 
-- **`CgLifecycleService`** — `onContextInit(w, h)`, `onContextDestroy()`, `onResize(w, h)`.
-  All methods fire on the GL thread.
+- **`CgLifecycleService`** — `onContextInit(w, h)`, `onContextDestroy()`, `onResize(w, h)`,
+  `onFrameRendered()`. All methods fire on the GL thread.
+  `onFrameRendered()` is the canonical, and *only sanctioned*, per-frame tick point for
+  engine-owned singletons that need per-frame bookkeeping (currently
+  `CgFontRegistry.tickFrame()`, called via `CgGraphicsLifecycle.tickFrame()`). Feature-level
+  code (`CgUiPaintContext`, demo overlays, etc.) must never call
+  `CgGraphicsLifecycle.tickFrame()` directly — only `CgLifecycleService` implementations
+  should, wired to whatever native hook reliably fires exactly when a frame is actually
+  rendered. For MC 1.7.10 this is `CgRenderHook`'s dedicated mixin on
+  `EntityRenderer.updateCameraAndRender` at `@At("TAIL")` — **not**
+  `Minecraft.runGameLoop()` (the general tick-and-maybe-render dispatch that can complete
+  an iteration with zero actual rendering) and **not** `renderWorld` alone (never fires
+  without a loaded world). `updateCameraAndRender`'s body was verified to have no early
+  returns: it is one straight-line sequence gated by a single outer
+  `if (!this.mc.skipRenderWorld)` that wraps both the world-render branch and the
+  no-world overlay-setup branch, followed by the unconditional GUI screen draw — so TAIL
+  fires exactly once per call and covers the in-world case, the no-world-with-GUI case
+  (main menu, etc.), and the skip-render-world case uniformly. No known gap remains.
 - **`CgRenderingService`** — `onFrameBegin(partialTick)` called each frame; `getViewportWidth()`
   and `getViewportHeight()` for viewport dimensions.
 
