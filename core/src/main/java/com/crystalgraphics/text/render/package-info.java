@@ -21,9 +21,9 @@
  * <h3>Batch Infrastructure</h3>
  * <p>{@link com.crystalgraphics.text.render.CgTextRenderer} owns a private
  * {@code CgBatchRenderer} directly — no caller-provided layer or buffer source is
- * required. {@code beginFrame()}/{@code endFrame()} optionally batch multiple draws
- * per frame together; {@code draw()}/{@code drawWorld()} otherwise auto-wrap
- * themselves standalone. GL state (shader bind/unbind, texture bind/unbind,
+ * required. {@code beginBatch()}/{@code endBatch()} optionally batch multiple draws
+ * together; {@code draw()}/{@code drawWorld()} otherwise auto-wrap themselves
+ * standalone. GL state (shader bind/unbind, texture bind/unbind,
  * {@code CgRenderState} apply/clear) is managed directly by the renderer on
  * batch-key transitions.
  *

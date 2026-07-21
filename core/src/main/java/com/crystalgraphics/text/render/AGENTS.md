@@ -49,7 +49,7 @@ directly and fully self-contained.
 - `beginBatch()`/`endBatch()` (no args) open/close a batching window: `draw()`/
   `drawWorld()` calls made in between record into the same underlying batch and are
   flushed together wherever the GL state (shader/texture/render-state) permits.
-- `draw()`/`drawWorld()` **tolerate being called with no active frame** — each such
+- `draw()`/`drawWorld()` **tolerate being called with no active batch** — each such
   call transparently wraps itself in its own begin/flush/end. This is a deliberate,
   permanent design choice, not a gap to close: `CgTextRenderer` must remain usable as
   a standalone, directly-instantiated object with no owning render pass (a user
@@ -77,11 +77,11 @@ it does not always flush it. If a caller opens `beginBatch()`, draws, and forget
 `endBatch()`, the staged quads simply sit unflushed until something calls
 `flushPending()` — they are not silently lost forever:
 - the *next* `beginBatch()` call on that same instance throws immediately
-  (`frameActive` only clears in `endBatch()`), which fails loudly on the very next
-  frame instead of quietly dropping text — a stronger guarantee than a silent
+  (`batchActive` only clears in `endBatch()`), which fails loudly on the very next
+  attempt instead of quietly dropping text — a stronger guarantee than a silent
   auto-flush would give, since auto-flushing would mask the caller's mistake
   instead of surfacing it;
-- `delete()` already closes a dangling frame (`if (frameActive) endBatch();`), so
+- `delete()` already closes a dangling batch (`if (batchActive) endBatch();`), so
   teardown does not leak the pending batch either.
 
 Adding a flush at the end of every `draw()`/`drawWorld()` call would force an
@@ -169,8 +169,8 @@ Package-level description of render-side responsibilities.
   from the shared `CgVertexArrayRegistry`/`CgQuadIndexBuffer`; only CPU-side staging is
   renderer-owned
 - `draw()`/`drawWorld()` are self-contained — no caller-provided layer or sink is required.
-  `beginBatch()`/`endBatch()` are optional, used only to batch multiple draws in one frame
-  together; each call auto-wraps itself with its own begin/flush/end if no frame is active
+  `beginBatch()`/`endBatch()` are optional, used only to batch multiple draws together;
+  each call auto-wraps itself with its own begin/flush/end if no batch is active
 - GL state (shader bind/unbind, texture bind/unbind, `CgRenderState` apply/clear) is managed
   directly by `CgTextRenderer` on batch-key transitions (`transitionTo`/`flushPending`)
 - `CgDynamicTextureRenderLayer`/`CgTextLayers` are no longer part of this renderer's draw path —
