@@ -5,6 +5,7 @@ import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgFontStyle;
 import com.crystalgraphics.api.font.CgTextLayoutBuilder;
 import com.crystalgraphics.api.shader.CgShader;
+import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.api.state.CgGlSlot;
 import com.crystalgraphics.gl.shader.CgShaderFactory;
 import com.crystalgraphics.gl.state.CgGlScope;
@@ -76,27 +77,19 @@ public final class CgFontDemo {
             float logicalViewportWidth = (float) displayWidth / demoPoseScale;
             demoTextRenderer.context().clearHistory();
 
-            demoTextRenderer.draw(
-                    demoLayoutBuilder.layout(
-                            DEMO_TEXT + " [base " + demoFontSize + "px, pose "
-                                    + String.format("%.1f", demoPoseScale) + "x]",
-                            demoFont, logicalViewportWidth, 0),
-                    demoFont,
-                    20.0f,
-                    40.0f + demoFontSize,
-                    0xFFFFFFFF,
-                    poseStack);
+            CgTextLayout demoLayout = demoLayoutBuilder.layout(
+                    DEMO_TEXT + " [base " + demoFontSize + "px, pose "
+                            + String.format("%.1f", demoPoseScale) + "x]",
+                    demoFont, logicalViewportWidth, 0);
+            demoTextRenderer.draw().layout(demoLayout).font(demoFont).at(20.0f, 40.0f + demoFontSize)
+                    .color(0xFFFFFFFF).pose(poseStack).submit();
 
             demoTextRenderer.context().clearHistory();
 
             PoseStack identityPose = new PoseStack();
-            demoTextRenderer.draw(
-                    demoLayoutBuilder.layout(DEMO_TEXT_2D_LABEL, demoFont, (float) displayWidth, 0),
-                    demoFont,
-                    20.0f,
-                    20.0f,
-                    0xAAFFAAFF,
-                    identityPose);
+            CgTextLayout labelLayout = demoLayoutBuilder.layout(DEMO_TEXT_2D_LABEL, demoFont, (float) displayWidth, 0);
+            demoTextRenderer.draw().layout(labelLayout).font(demoFont).at(20.0f, 20.0f)
+                    .color(0xAAFFAAFF).pose(identityPose).submit();
 
             demoTextRenderer.endBatch();
 

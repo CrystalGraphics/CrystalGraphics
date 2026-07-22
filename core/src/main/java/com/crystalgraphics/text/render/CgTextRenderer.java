@@ -1,6 +1,5 @@
 package com.crystalgraphics.text.render;
 
-import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.api.PoseStack;
 import com.crystalgraphics.api.font.*;
 import com.crystalgraphics.api.shader.CgShader;
@@ -79,8 +78,8 @@ import java.util.logging.Logger;
  * draw method.</p>
  *
  * <h3>World-Space Extension</h3>
- * <p>World-space/3D text uses the same {@link #draw} entry point as 2D UI text —
- * calling {@link #context(CgTextRenderContext)} with one built via
+ * <p>World-space/3D text uses the same {@link #draw()}/{@link Draw#submit()} entry point
+ * as 2D UI text — calling {@link #context(CgTextRenderContext)} with one built via
  * {@link CgTextRenderContext#world} instead of {@link CgTextRenderContext#orthographic}
  * is what switches it on. That context's {@link PerspectiveScaleResolver} enforces
  * always-MSDF rendering and projection-aware quality/LOD policy via
@@ -109,12 +108,19 @@ import java.util.logging.Logger;
  * <h3>Authoritative Hot Path</h3>
  * <p>The current pipeline is centered on the paged-atlas path:</p>
  * <ol>
- *   <li>String-based draw overloads call {@link #layout(String, CgFontFamily, CgTextConstraints)} or its font variant</li>
+ *   <li>{@link Draw#submit()} calls {@link #layout(String, CgFontFamily, CgTextConstraints)} or its font
+ *       variant when {@link Draw#text(String)} was used instead of a prebuilt {@link Draw#layout(CgTextLayout)}</li>
  *   <li>{@link CgTextLayoutBuilder} produces a {@link CgTextLayout}</li>
  *   <li>{@link #drawInternal} resolves raster tier</li>
  *   <li>{@link #buildPagedGlyphBatch} converts layout output into {@link CgGlyphPlacement} records</li>
  *   <li>{@link #submitSortedQuads} sorts quads by GL state and submits them to the owned batch renderer</li>
  * </ol>
+ *
+ * <h3>Draw API</h3>
+ * <p>{@link #draw()}/{@link #newDraw()} return a fluent {@link Draw} request object —
+ * see that class's javadoc for the full chain-method surface and field-priority rules.
+ * This replaced a fixed-arity {@code draw(...)} overload matrix that grew combinatorially
+ * with every new optional parameter.</p>
  */
 public class CgTextRenderer {
     // ══════════════════════════════════════════════════════════════════════════════════════════
@@ -353,148 +359,198 @@ public class CgTextRenderer {
     }
 
     // ══════════════════════════════════════════════════════════════════════════════════════════
-    //  DRAW ENTRY POINTS
+    //  FLUENT DRAW REQUEST
     // ══════════════════════════════════════════════════════════════════════════════════════════
 
+    /** Reused scratch {@link Draw} instance returned by {@link #draw()}. */
+    private final Draw scratchDraw = new Draw();
+
     /**
-     * Canonical draw entry point — 2D UI text and 3D world-space text alike.
+     * Starts a fluent draw request using this renderer's single reused scratch instance —
+     * zero allocation. Build it and call {@link Draw#submit()} in the same expression;
+     * do not hold the returned reference past that, since any other {@code draw()} call
+     * on this renderer (even from an unrelated call site) resets and reuses the same
+     * instance. For a draw descriptor you want to hold across frames, use {@link #newDraw()}
+     * instead.
      *
-     * <p>There is no separate world-space entry point, and no separate world-space
-     * context class. {@link CgTextRenderContext} is a single concrete class; which
-     * {@link CgTextScaleResolver} strategy it holds (built via
-     * {@link CgTextRenderContext#orthographic} vs {@link CgTextRenderContext#world})
-     * fully determines 2D-vs-world behavior. Both flow through the exact same code
-     * path ({@link #drawInternal}, {@link #submitSortedQuads}), which reads
-     * {@link CgTextRenderContext#isWorldText()}/{@link CgTextRenderContext#getScaleResolver()}
-     * — themselves just delegating to the resolver — to decide behavior rather than
-     * branching on a separate method or class.</p>
+     * <p>Replaces the fixed-arity {@code draw(...)} overloads above for new call sites —
+     * new optional parameters become new chain methods instead of new overloads.</p>
      *
-     * <p>Submits text quads to the renderer's own {@link CgBatchRenderer}. If no
-     * {@link #beginBatch()} batch is active, this call transparently wraps itself in its
-     * own begin/flush/end.</p>
-     *
-     * @param layout    the pre-built text layout
-     * @param family    the font family to render with
-     * @param x         local logical X origin
-     * @param y         local logical Y origin
-     * @param rgba      packed RGBA color (0xRRGGBBAA)
-     * @param pose      the current PoseStack providing model-view transform
+     * <pre>{@code
+     * renderer.draw().text("Hello").font(myFont).at(x, y).color(0xFFFFFFFF).pose(pose).submit();
+     * }</pre>
      */
-    public void draw(CgTextLayout layout, CgFontFamily family,
-                     float x, float y, int rgba, PoseStack pose) {
-
-        if (family == null) throw new IllegalArgumentException("family must not be null");
+    public Draw draw() {
         if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
-        if (layout == null || layout.getLines().isEmpty()) return;
+        return scratchDraw.reset();
+    }
 
-        boolean standalone = !batchActive;
-        if (standalone) beginBatch();
-        try {
-            long frame = CgGraphicsLifecycle.getCurrentFrame();
-            drawInternal(layout, family, x, y, rgba, frame, context, pose.last(), context.getScaleResolver());
-        } finally {
-            if (standalone) endBatch();
+    /**
+     * Allocates a standalone {@link Draw} instance the caller owns and may hold across
+     * frames — e.g. build once, then call {@link Draw#submit()} every tick, mutating only
+     * whatever field changed. Independent of {@link #draw()}'s shared scratch instance and
+     * of any other renderer's or call site's {@code newDraw()} result.
+     */
+    public Draw newDraw() {
+        if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
+        return new Draw();
+    }
+
+    /**
+     * Fluent, mutable draw request — the replacement for {@code CgTextRenderer}'s fixed-arity
+     * {@code draw(...)} overload matrix. Obtain one via {@link #draw()} (shared scratch,
+     * zero-allocation, submit immediately) or {@link #newDraw()} (standalone, holdable
+     * across frames).
+     *
+     * <h3>Field priority, not exclusivity</h3>
+     * <p>{@link #layout(CgTextLayout)} and {@link #text(String)} may both be set; if so,
+     * the prebuilt {@code layout} wins — it already paid the shaping cost and is presumably
+     * what the caller actually wants drawn. Likewise {@link #family(CgFontFamily)} wins over
+     * {@link #font(CgFont)} when both are set, since a family is the strictly more capable
+     * superset (a single font is just wrapped into one internally via
+     * {@link CgFontFamily#of(CgFont)}).</p>
+     *
+     * <h3>Required fields</h3>
+     * <p>{@link #submit()} throws {@link IllegalStateException} unless at least one of
+     * {@code layout}/{@code text} and at least one of {@code family}/{@code font} have been
+     * set, and {@link #pose(PoseStack)} has been called. {@link #at(float, float)} and
+     * {@link #color(int)} default to {@code (0, 0)} and opaque white ({@code 0xFFFFFFFF})
+     * respectively if never called.</p>
+     */
+    public final class Draw {
+        private CgTextLayout layout;
+        private String text;
+        private CgFont font;
+        private CgFontFamily family;
+        private CgTextConstraints constraints = CgTextConstraints.UNBOUNDED;
+        private int targetPx = -1;
+        private float x;
+        private float y;
+        private int rgba = 0xFFFFFFFF;
+        private PoseStack pose;
+
+        private Draw() {}
+
+        private Draw reset() {
+            layout = null;
+            text = null;
+            font = null;
+            family = null;
+            constraints = CgTextConstraints.UNBOUNDED;
+            targetPx = -1;
+            x = 0f;
+            y = 0f;
+            rgba = 0xFFFFFFFF;
+            pose = null;
+            return this;
         }
-    }
 
-    /**
-     * 2D draw with single font (convenience).
-     */
-    public void draw(CgTextLayout layout, CgFont font,
-                     float x, float y, int rgba, PoseStack pose) {
-        if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
-        if (layout == null || layout.getLines().isEmpty()) return;
-        draw(layout, CgFontFamily.of(font), x, y, rgba, pose);
-    }
+        /** Sets a prebuilt layout. Wins over {@link #text(String)} if both are set. */
+        public Draw layout(CgTextLayout layout) {
+            this.layout = layout;
+            return this;
+        }
 
-    /**
-     * 2D draw from string (convenience).
-     */
-    public void draw(String text, CgFontFamily family,
-                     float x, float y, int rgba, PoseStack pose) {
-        draw(text, family, CgTextConstraints.UNBOUNDED, x, y, rgba, pose);
-    }
+        /** Sets raw text to be laid out at {@link #submit()} time. */
+        public Draw text(String text) {
+            this.text = text;
+            return this;
+        }
 
-    /**
-     * 2D draw from string with constraints (convenience).
-     */
-    public void draw(String text, CgFontFamily family,
-                     CgTextConstraints constraints, float x, float y, int rgba,
-                     PoseStack pose) {
-        draw(layout(text, family, constraints), family, x, y, rgba, pose);
-    }
+        /** Sets a single font. Loses to {@link #family(CgFontFamily)} if both are set. */
+        public Draw font(CgFont font) {
+            this.font = font;
+            return this;
+        }
 
-    /**
-     * 2D draw from string with single font (convenience).
-     */
-    public void draw(String text, CgFont font,
-                     float x, float y, int rgba, PoseStack pose) {
-        requireSizedFont(font);
-        draw(layout(text, font, CgTextConstraints.UNBOUNDED), font, x, y, rgba, pose);
-    }
+        /** Sets a font family. Wins over {@link #font(CgFont)} if both are set. */
+        public Draw family(CgFontFamily family) {
+            this.family = family;
+            return this;
+        }
 
-    /**
-     * 2D draw from string with single font and constraints (convenience).
-     */
-    public void draw(String text, CgFont font,
-                     CgTextConstraints constraints, float x, float y, int rgba,
-                     PoseStack pose) {
-        requireSizedFont(font);
-        draw(layout(text, font, constraints), font, x, y, rgba, pose);
-    }
+        /**
+         * Explicit raster target size in pixels. When set, resizes whichever of
+         * {@code font}/{@code family} is in effect. When unset (default {@code -1}), the
+         * font/family is used as-is — it must already be size-bound if building a layout
+         * from {@link #text(String)}.
+         */
+        public Draw targetPx(int targetPx) {
+            this.targetPx = targetPx;
+            return this;
+        }
 
-    /**
-     * 2D draw with explicit targetPx and single font (convenience).
-     */
-    public void draw(String text, CgFont font, int targetPx,
-                     float x, float y, int rgba, PoseStack pose) {
-        CgFont sizedFont = requireSizedFont(font, targetPx);
-        draw(layout(text, sizedFont, CgTextConstraints.UNBOUNDED), sizedFont, x, y, rgba, pose);
-    }
+        /** Wrap/height constraints used when building a layout from {@link #text(String)}. */
+        public Draw constraints(CgTextConstraints constraints) {
+            this.constraints = constraints;
+            return this;
+        }
 
-    /**
-     * 2D draw with explicit targetPx, constraints, and single font (convenience).
-     */
-    public void draw(String text, CgFont font, int targetPx,
-                     CgTextConstraints constraints, float x, float y, int rgba,
-                     PoseStack pose) {
-        CgFont sizedFont = requireSizedFont(font, targetPx);
-        draw(layout(text, sizedFont, constraints), sizedFont, x, y, rgba, pose);
-    }
+        /** Local logical draw origin. Defaults to {@code (0, 0)} if never called. */
+        public Draw at(float x, float y) {
+            this.x = x;
+            this.y = y;
+            return this;
+        }
 
-    /**
-     * 2D draw with layout + single font + explicit targetPx (convenience).
-     */
-    public void draw(CgTextLayout layout, CgFont font, int targetPx,
-                     float x, float y, int rgba, PoseStack pose) {
-        CgFont sizedFont = requireSizedFont(font, targetPx);
-        draw(layout, sizedFont, x, y, rgba, pose);
-    }
+        /** Packed RGBA color (0xRRGGBBAA). Defaults to opaque white if never called. */
+        public Draw color(int rgba) {
+            this.rgba = rgba;
+            return this;
+        }
 
-    /**
-     * 2D draw with layout + family + explicit targetPx (convenience).
-     */
-    public void draw(CgTextLayout layout, CgFontFamily family, int targetPx,
-                     float x, float y, int rgba, PoseStack pose) {
-        draw(layout, sizeFamily(family, targetPx), x, y, rgba, pose);
-    }
+        /** The current PoseStack providing model-view transform. Required before {@link #submit()}. */
+        public Draw pose(PoseStack pose) {
+            this.pose = pose;
+            return this;
+        }
 
-    /**
-     * 2D draw from string with family + explicit targetPx (convenience).
-     */
-    public void draw(String text, CgFontFamily family, int targetPx,
-                     float x, float y, int rgba, PoseStack pose) {
-        draw(text, family, targetPx, CgTextConstraints.UNBOUNDED, x, y, rgba, pose);
-    }
+        /**
+         * Resolves and submits this draw request through the same pipeline the fixed-arity
+         * {@code draw(...)} overloads use ({@link #drawInternal}).
+         *
+         * @throws IllegalStateException if neither {@code layout} nor {@code text} was set,
+         *                                neither {@code family} nor {@code font} was set, or
+         *                                {@code pose} was never set
+         */
+        public void submit() {
+            if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
+            if (pose == null) throw new IllegalStateException("CgTextRenderer.Draw requires pose(...) before submit()");
+            if (layout == null && text == null) throw new IllegalStateException("CgTextRenderer.Draw requires text(...) or layout(...) before submit()");
+            if (family == null && font == null) throw new IllegalStateException("CgTextRenderer.Draw requires font(...) or family(...) before submit()");
 
-    /**
-     * 2D draw from string with family + explicit targetPx + constraints (convenience).
-     */
-    public void draw(String text, CgFontFamily family, int targetPx,
-                     CgTextConstraints constraints, float x, float y, int rgba,
-                     PoseStack pose) {
-        CgFontFamily sizedFamily = sizeFamily(family, targetPx);
-        draw(layout(text, sizedFamily, constraints), sizedFamily, x, y, rgba, pose);
+            CgTextLayout resolvedLayout;
+            CgFontFamily resolvedFamily;
+
+            if (family != null) {
+                resolvedFamily = targetPx > 0 ? sizeFamily(family, targetPx) : family;
+                resolvedLayout = layout != null ? layout : CgTextRenderer.layout(text, resolvedFamily, constraints);
+            } else {
+                CgFont resolvedFont;
+                if (targetPx > 0) {
+                    resolvedFont = requireSizedFont(font, targetPx);
+                } else if (layout == null) {
+                    // Building a layout from text requires an already-sized font.
+                    resolvedFont = requireSizedFont(font);
+                } else {
+                    // Prebuilt layout, no explicit targetPx: trust the caller, matching
+                    // draw(CgTextLayout, CgFont, ...)'s existing no-check behavior.
+                    resolvedFont = font;
+                }
+                resolvedFamily = CgFontFamily.of(resolvedFont);
+                resolvedLayout = layout != null ? layout : CgTextRenderer.layout(text, resolvedFont, constraints);
+            }
+
+            if (resolvedLayout == null || resolvedLayout.getLines().isEmpty()) return;
+
+            boolean standalone = !batchActive;
+            if (standalone) beginBatch();
+            try {
+                drawInternal(resolvedLayout, resolvedFamily, x, y, rgba, context, pose.last());
+            } finally {
+                if (standalone) endBatch();
+            }
+        }
     }
 
     // ══════════════════════════════════════════════════════════════════════════════════════════
@@ -520,17 +576,18 @@ public class CgTextRenderer {
      * submits sorted quads to the owned {@link CgBatchRenderer}.</p>
      */
     private void drawInternal(CgTextLayout layout, CgFontFamily family,
-                               float x, float y, int rgba, long frame, CgTextRenderContext context,
-                               PoseStack.Pose pose, CgTextScaleResolver scaleResolver) {
+                              float x, float y, int rgba, CgTextRenderContext context,
+                              PoseStack.Pose pose) {
         CgFontKey fontKey = family.getPrimarySource().getKey();
         CgFontMetrics metrics = layout.getMetrics();
+        long frame = CgGraphicsLifecycle.getCurrentFrame();
 
         CgTextRenderContext.RasterHistory previous = context.getHistory(fontKey);
         int previousEffectiveTargetPx = previous != null ? previous.effectiveTargetPx() : -1;
-        int effectiveTargetPx = scaleResolver.resolveEffectiveTargetPx(fontKey.getTargetPx(), pose, previousEffectiveTargetPx);
+        int effectiveTargetPx = context.getScaleResolver().resolveEffectiveTargetPx(fontKey.getTargetPx(), pose, previousEffectiveTargetPx);
 
         boolean previousMsdf = previous != null ? previous.wasMsdf() : effectiveTargetPx >= 32;
-        boolean wantMsdf = scaleResolver.shouldUseMsdf(effectiveTargetPx, previousMsdf);
+        boolean wantMsdf =  context.getScaleResolver().shouldUseMsdf(effectiveTargetPx, previousMsdf);
         context.setHistory(fontKey, effectiveTargetPx, wantMsdf);
 
         PagedGlyphBatch glyphBatch = buildPagedGlyphBatch(layout, family, x, y, frame, context, fontKey, effectiveTargetPx, wantMsdf, metrics);
