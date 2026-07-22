@@ -71,18 +71,21 @@ import java.util.logging.Logger;
  *
  * <h3>Projection and Context Model</h3>
  * <p>Rather than requiring callers to pass a raw {@code FloatBuffer projectionMatrix}
- * on every draw call, the renderer consumes a {@link CgTextRenderContext} that holds
- * the projection matrix and scale resolver. The context is set once (or updated on
- * resize) and reused across frames. The {@link PoseStack} — which changes per draw —
- * is passed directly to the draw method.</p>
+ * (or even a {@link CgTextRenderContext}) on every draw call, the renderer owns a
+ * single {@link CgTextRenderContext} internally (see {@link #context()}). Callers
+ * reach it via {@link #context()} for resize/projection updates or history resets,
+ * and replace it wholesale via {@link #context(CgTextRenderContext)} to switch modes.
+ * The {@link PoseStack} — which changes per draw — is still passed directly to the
+ * draw method.</p>
  *
  * <h3>World-Space Extension</h3>
- * <p>World-space/3D text uses the same {@link #draw} entry point as 2D UI text — passing a
- * {@link CgTextRenderContext} built via {@link CgTextRenderContext#world} instead of
- * {@link CgTextRenderContext#orthographic} is what switches it on. That context's
- * {@link PerspectiveScaleResolver} enforces always-MSDF rendering and projection-aware
- * quality/LOD policy via {@link ProjectedSizeEstimator}; depth-tested render state
- * (see {@link #BITMAP_RENDER_STATE_WORLD} and siblings) is selected in this class via
+ * <p>World-space/3D text uses the same {@link #draw} entry point as 2D UI text —
+ * calling {@link #context(CgTextRenderContext)} with one built via
+ * {@link CgTextRenderContext#world} instead of {@link CgTextRenderContext#orthographic}
+ * is what switches it on. That context's {@link PerspectiveScaleResolver} enforces
+ * always-MSDF rendering and projection-aware quality/LOD policy via
+ * {@link ProjectedSizeEstimator}; depth-tested render state (see
+ * {@link #BITMAP_RENDER_STATE_WORLD} and siblings) is selected in this class via
  * {@link CgTextRenderContext#isWorldText()}. The PoseStack in world mode represents
  * model-view positioning (entity rotation, billboard transforms), not UI zoom. Layout
  * metrics remain in logical space regardless of camera distance or FOV.</p>
@@ -188,11 +191,40 @@ public class CgTextRenderer {
     private CgRenderState activeRenderState;
     private int activeTextureId = -1;
 
+    // ── Owned render context ────────────────────────────────────────────────
+    private CgTextRenderContext context = CgTextRenderContext.orthographic(0, 0);
+
     @Getter
     private boolean deleted;
 
     private CgTextRenderer() {
         this.batchRenderer = CgBatchRenderer.create(CgVertexFormat.POS2_UV2_COL4UB, INITIAL_MAX_QUADS);
+    }
+
+    /**
+     * Returns this renderer's owned {@link CgTextRenderContext}.
+     *
+     * <p>The returned context is fully mutable — callers use it directly for
+     * resize/projection updates ({@link CgTextRenderContext#updateOrtho},
+     * {@link CgTextRenderContext#updateProjection}), raster-history resets
+     * ({@link CgTextRenderContext#clearHistory()}), and world-text projected-size
+     * hints ({@link CgTextRenderContext#updateProjectedSize}). Defaults to an
+     * orthographic context at (0, 0) — size it via {@link CgTextRenderContext#updateOrtho}
+     * before first use, or replace it entirely via {@link #context(CgTextRenderContext)}.</p>
+     */
+    public CgTextRenderContext context() {
+        return context;
+    }
+
+    /**
+     * Replaces this renderer's owned {@link CgTextRenderContext} — the way to switch
+     * between orthographic (2D UI) and world-space (3D) modes, since the two differ
+     * in which {@link CgTextScaleResolver} they hold. Build the replacement via
+     * {@link CgTextRenderContext#orthographic} or {@link CgTextRenderContext#world}.
+     */
+    public void context(CgTextRenderContext context) {
+        if (context == null) throw new IllegalArgumentException("context must not be null");
+        this.context = context;
     }
 
     /**
@@ -318,12 +350,10 @@ public class CgTextRenderer {
      * @param x         local logical X origin
      * @param y         local logical Y origin
      * @param rgba      packed RGBA color (0xRRGGBBAA)
-     * @param context   the render context providing projection and scale resolver — build via
-     *                  {@link CgTextRenderContext#world} for 3D world-space text
      * @param pose      the current PoseStack providing model-view transform
      */
     public void draw(CgTextLayout layout, CgFontFamily family,
-                     float x, float y, int rgba, CgTextRenderContext context, PoseStack pose) {
+                     float x, float y, int rgba, PoseStack pose) {
 
         if (family == null) throw new IllegalArgumentException("family must not be null");
         if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
@@ -343,18 +373,18 @@ public class CgTextRenderer {
      * 2D draw with single font (convenience).
      */
     public void draw(CgTextLayout layout, CgFont font,
-                     float x, float y, int rgba, CgTextRenderContext context, PoseStack pose) {
+                     float x, float y, int rgba, PoseStack pose) {
         if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
         if (layout == null || layout.getLines().isEmpty()) return;
-        draw(layout, CgFontFamily.of(font), x, y, rgba, context, pose);
+        draw(layout, CgFontFamily.of(font), x, y, rgba, pose);
     }
 
     /**
      * 2D draw from string (convenience).
      */
     public void draw(String text, CgFontFamily family,
-                     float x, float y, int rgba, CgTextRenderContext context, PoseStack pose) {
-        draw(text, family, CgTextConstraints.UNBOUNDED, x, y, rgba, context, pose);
+                     float x, float y, int rgba, PoseStack pose) {
+        draw(text, family, CgTextConstraints.UNBOUNDED, x, y, rgba, pose);
     }
 
     /**
@@ -362,17 +392,17 @@ public class CgTextRenderer {
      */
     public void draw(String text, CgFontFamily family,
                      CgTextConstraints constraints, float x, float y, int rgba,
-                     CgTextRenderContext context, PoseStack pose) {
-        draw(layout(text, family, constraints), family, x, y, rgba, context, pose);
+                     PoseStack pose) {
+        draw(layout(text, family, constraints), family, x, y, rgba, pose);
     }
 
     /**
      * 2D draw from string with single font (convenience).
      */
     public void draw(String text, CgFont font,
-                     float x, float y, int rgba, CgTextRenderContext context, PoseStack pose) {
+                     float x, float y, int rgba, PoseStack pose) {
         requireSizedFont(font);
-        draw(layout(text, font, CgTextConstraints.UNBOUNDED), font, x, y, rgba, context, pose);
+        draw(layout(text, font, CgTextConstraints.UNBOUNDED), font, x, y, rgba, pose);
     }
 
     /**
@@ -380,18 +410,18 @@ public class CgTextRenderer {
      */
     public void draw(String text, CgFont font,
                      CgTextConstraints constraints, float x, float y, int rgba,
-                     CgTextRenderContext context, PoseStack pose) {
+                     PoseStack pose) {
         requireSizedFont(font);
-        draw(layout(text, font, constraints), font, x, y, rgba, context, pose);
+        draw(layout(text, font, constraints), font, x, y, rgba, pose);
     }
 
     /**
      * 2D draw with explicit targetPx and single font (convenience).
      */
     public void draw(String text, CgFont font, int targetPx,
-                     float x, float y, int rgba, CgTextRenderContext context, PoseStack pose) {
+                     float x, float y, int rgba, PoseStack pose) {
         CgFont sizedFont = requireSizedFont(font, targetPx);
-        draw(layout(text, sizedFont, CgTextConstraints.UNBOUNDED), sizedFont, x, y, rgba, context, pose);
+        draw(layout(text, sizedFont, CgTextConstraints.UNBOUNDED), sizedFont, x, y, rgba, pose);
     }
 
     /**
@@ -399,34 +429,34 @@ public class CgTextRenderer {
      */
     public void draw(String text, CgFont font, int targetPx,
                      CgTextConstraints constraints, float x, float y, int rgba,
-                     CgTextRenderContext context, PoseStack pose) {
+                     PoseStack pose) {
         CgFont sizedFont = requireSizedFont(font, targetPx);
-        draw(layout(text, sizedFont, constraints), sizedFont, x, y, rgba, context, pose);
+        draw(layout(text, sizedFont, constraints), sizedFont, x, y, rgba, pose);
     }
 
     /**
      * 2D draw with layout + single font + explicit targetPx (convenience).
      */
     public void draw(CgTextLayout layout, CgFont font, int targetPx,
-                     float x, float y, int rgba, CgTextRenderContext context, PoseStack pose) {
+                     float x, float y, int rgba, PoseStack pose) {
         CgFont sizedFont = requireSizedFont(font, targetPx);
-        draw(layout, sizedFont, x, y, rgba, context, pose);
+        draw(layout, sizedFont, x, y, rgba, pose);
     }
 
     /**
      * 2D draw with layout + family + explicit targetPx (convenience).
      */
     public void draw(CgTextLayout layout, CgFontFamily family, int targetPx,
-                     float x, float y, int rgba, CgTextRenderContext context, PoseStack pose) {
-        draw(layout, sizeFamily(family, targetPx), x, y, rgba, context, pose);
+                     float x, float y, int rgba, PoseStack pose) {
+        draw(layout, sizeFamily(family, targetPx), x, y, rgba, pose);
     }
 
     /**
      * 2D draw from string with family + explicit targetPx (convenience).
      */
     public void draw(String text, CgFontFamily family, int targetPx,
-                     float x, float y, int rgba, CgTextRenderContext context, PoseStack pose) {
-        draw(text, family, targetPx, CgTextConstraints.UNBOUNDED, x, y, rgba, context, pose);
+                     float x, float y, int rgba, PoseStack pose) {
+        draw(text, family, targetPx, CgTextConstraints.UNBOUNDED, x, y, rgba, pose);
     }
 
     /**
@@ -434,9 +464,9 @@ public class CgTextRenderer {
      */
     public void draw(String text, CgFontFamily family, int targetPx,
                      CgTextConstraints constraints, float x, float y, int rgba,
-                     CgTextRenderContext context, PoseStack pose) {
+                     PoseStack pose) {
         CgFontFamily sizedFamily = sizeFamily(family, targetPx);
-        draw(layout(text, sizedFamily, constraints), sizedFamily, x, y, rgba, context, pose);
+        draw(layout(text, sizedFamily, constraints), sizedFamily, x, y, rgba, pose);
     }
 
     // ══════════════════════════════════════════════════════════════════════════════════════════

@@ -13,7 +13,6 @@ import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.text.atlas.CgGlyphAtlas;
 import com.crystalgraphics.text.cache.CgFontRegistry;
-import com.crystalgraphics.text.render.CgTextRenderContext;
 import com.crystalgraphics.text.render.CgTextRenderer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -52,7 +51,6 @@ public final class CgFontDemo {
     private CgFontRegistry demoFontRegistry;
     private CgTextRenderer demoTextRenderer;
     private final CgTextLayoutBuilder demoLayoutBuilder = new CgTextLayoutBuilder();
-    private CgTextRenderContext demoRenderContext;
     private int lastDisplayWidth;
     private int lastDisplayHeight;
 
@@ -74,14 +72,8 @@ public final class CgFontDemo {
             ensureDemoFontSystem();
 
             // Update render context when the display size changes.
-            if (demoRenderContext == null
-                    || displayWidth != lastDisplayWidth
-                    || displayHeight != lastDisplayHeight) {
-                if (demoRenderContext == null) {
-                    demoRenderContext = CgTextRenderContext.orthographic(displayWidth, displayHeight);
-                } else {
-                    demoRenderContext.updateOrtho(displayWidth, displayHeight);
-                }
+            if (displayWidth != lastDisplayWidth || displayHeight != lastDisplayHeight) {
+                demoTextRenderer.context().updateOrtho(displayWidth, displayHeight);
                 lastDisplayWidth = displayWidth;
                 lastDisplayHeight = displayHeight;
             }
@@ -91,7 +83,7 @@ public final class CgFontDemo {
             PoseStack poseStack = new PoseStack();
             poseStack.scale(demoPoseScale, demoPoseScale, 1.0f);
             float logicalViewportWidth = (float) displayWidth / demoPoseScale;
-            demoRenderContext.clearHistory();
+            demoTextRenderer.context().clearHistory();
 
             demoTextRenderer.draw(
                     demoLayoutBuilder.layout(
@@ -102,10 +94,9 @@ public final class CgFontDemo {
                     20.0f,
                     40.0f + demoFontSize,
                     0xFFFFFFFF,
-                    demoRenderContext,
                     poseStack);
 
-            demoRenderContext.clearHistory();
+            demoTextRenderer.context().clearHistory();
 
             PoseStack identityPose = new PoseStack();
             demoTextRenderer.draw(
@@ -114,7 +105,6 @@ public final class CgFontDemo {
                     20.0f,
                     20.0f,
                     0xAAFFAAFF,
-                    demoRenderContext,
                     identityPose);
 
             demoTextRenderer.endBatch();
