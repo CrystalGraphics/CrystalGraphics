@@ -93,18 +93,15 @@ import java.util.logging.Logger;
  * instance via {@link #CgFontRegistry(int, CgMsdfAtlasConfig)} — only the
  * default-config path is a singleton.</p>
  *
- * <p><strong>Known limitation, not yet solved:</strong> {@link #tickFrame(long)} takes
- * a caller-supplied frame number and has no idempotency guard. Each of today's
- * consumers ({@code CgUiPaintContext}, {@code HUDRenderer}, etc.) maintains its own
- * independent local frame counter — there is no single authoritative "current frame"
- * shared across them. If multiple consumers tick the shared singleton within the same
- * real frame, the MSDF per-frame generation budget gets reset more than once (softer
- * throttling than intended, not a correctness bug) and atlas LRU clocks may receive
- * out-of-order frame numbers from different counters. Solving this properly means
- * giving the registry its own authoritative frame counter and changing every
- * {@code CgTextRenderer.draw(...)} call site's {@code frame} argument across the whole
- * repo to stop supplying an independent one — deliberately out of scope for the
- * singleton-conversion change that added this note; track separately.</p>
+ * <p><strong>Resolved:</strong> {@link #tickFrame(long)} still takes a caller-supplied
+ * frame number, but {@code CgTextRenderer.draw(...)} no longer exposes a {@code frame}
+ * parameter — it reads {@code CgGraphicsLifecycle.getCurrentFrame()} internally, the
+ * single authoritative per-real-frame counter incremented by
+ * {@code CgGraphicsLifecycle.tickFrame()} (see that class's javadoc). All production
+ * draw call sites therefore stamp glyphs from the same clock. {@link #tickFrame(long)}
+ * itself remains a public entry point for harness code that intentionally drives a
+ * synthetic, faster-than-real-time clock to force MSDF convergence before a screenshot
+ * capture (e.g. {@code AtlasDumpScene}, {@code TextScene2D}, {@code WorldTextRenderHelper}).</p>
  *
  * @see CgRasterFontKey
  * @see CgMsdfAtlasKey

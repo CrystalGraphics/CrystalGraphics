@@ -8,6 +8,7 @@ import com.crystalgraphics.api.text.CgShapedRun;
 import com.crystalgraphics.api.text.CgTextConstraints;
 import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.api.vertex.CgVertexConsumer;
+import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.gl.render.CgBatchRenderer;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.state.CgBlendState;
@@ -90,9 +91,10 @@ import java.util.logging.Logger;
  * <p>{@code CgTextRenderer} owns a private {@link CgBatchRenderer} (format
  * {@link CgVertexFormat#POS2_UV2_COL4UB}) — no caller-provided layer or buffer
  * source is required. The renderer is frame-agnostic: {@link #beginBatch()}/
- * {@link #endBatch()} mark a batching window, not a render frame — the renderer has
- * no notion of "frame" at all beyond the {@code frame} counter parameter each
- * {@code draw()} call takes for atlas LRU purposes. Callers that issue several
+ * {@link #endBatch()} mark a batching window, not a render frame. The atlas LRU
+ * clock used internally for glyph bookkeeping is read directly from
+ * {@link CgGraphicsLifecycle#getCurrentFrame()} — callers no longer supply a
+ * {@code frame} argument. Callers that issue several
  * {@code draw()} calls that should share one upload+draw wrap them in
  * {@link #beginBatch()}/{@link #endBatch()}. {@code draw()} also tolerates being called
  * with no active batch: each such call transparently wraps itself in its own
@@ -316,14 +318,13 @@ public class CgTextRenderer {
      * @param x         local logical X origin
      * @param y         local logical Y origin
      * @param rgba      packed RGBA color (0xRRGGBBAA)
-     * @param frame     current frame number for atlas LRU
      * @param context   the render context providing projection and scale resolver — build via
      *                  {@link CgTextRenderContext#world} for 3D world-space text
      * @param pose      the current PoseStack providing model-view transform
      */
     public void draw(CgTextLayout layout, CgFontFamily family,
-                     float x, float y, int rgba, long frame, CgTextRenderContext context, PoseStack pose) {
-        
+                     float x, float y, int rgba, CgTextRenderContext context, PoseStack pose) {
+
         if (family == null) throw new IllegalArgumentException("family must not be null");
         if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
         if (layout == null || layout.getLines().isEmpty()) return;
@@ -331,6 +332,7 @@ public class CgTextRenderer {
         boolean standalone = !batchActive;
         if (standalone) beginBatch();
         try {
+            long frame = CgGraphicsLifecycle.getCurrentFrame();
             drawInternal(layout, family, x, y, rgba, frame, context, pose.last(), context.getScaleResolver());
         } finally {
             if (standalone) endBatch();
@@ -341,100 +343,100 @@ public class CgTextRenderer {
      * 2D draw with single font (convenience).
      */
     public void draw(CgTextLayout layout, CgFont font,
-                     float x, float y, int rgba, long frame, CgTextRenderContext context, PoseStack pose) {
+                     float x, float y, int rgba, CgTextRenderContext context, PoseStack pose) {
         if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
         if (layout == null || layout.getLines().isEmpty()) return;
-        draw(layout, CgFontFamily.of(font), x, y, rgba, frame, context, pose);
+        draw(layout, CgFontFamily.of(font), x, y, rgba, context, pose);
     }
 
     /**
      * 2D draw from string (convenience).
      */
     public void draw(String text, CgFontFamily family,
-                     float x, float y, int rgba, long frame, CgTextRenderContext context, PoseStack pose) {
-        draw(text, family, CgTextConstraints.UNBOUNDED, x, y, rgba, frame, context, pose);
+                     float x, float y, int rgba, CgTextRenderContext context, PoseStack pose) {
+        draw(text, family, CgTextConstraints.UNBOUNDED, x, y, rgba, context, pose);
     }
 
     /**
      * 2D draw from string with constraints (convenience).
      */
     public void draw(String text, CgFontFamily family,
-                     CgTextConstraints constraints, float x, float y, int rgba, long frame,
+                     CgTextConstraints constraints, float x, float y, int rgba,
                      CgTextRenderContext context, PoseStack pose) {
-        draw(layout(text, family, constraints), family, x, y, rgba, frame, context, pose);
+        draw(layout(text, family, constraints), family, x, y, rgba, context, pose);
     }
 
     /**
      * 2D draw from string with single font (convenience).
      */
     public void draw(String text, CgFont font,
-                     float x, float y, int rgba, long frame, CgTextRenderContext context, PoseStack pose) {
+                     float x, float y, int rgba, CgTextRenderContext context, PoseStack pose) {
         requireSizedFont(font);
-        draw(layout(text, font, CgTextConstraints.UNBOUNDED), font, x, y, rgba, frame, context, pose);
+        draw(layout(text, font, CgTextConstraints.UNBOUNDED), font, x, y, rgba, context, pose);
     }
 
     /**
      * 2D draw from string with single font and constraints (convenience).
      */
     public void draw(String text, CgFont font,
-                     CgTextConstraints constraints, float x, float y, int rgba, long frame,
+                     CgTextConstraints constraints, float x, float y, int rgba,
                      CgTextRenderContext context, PoseStack pose) {
         requireSizedFont(font);
-        draw(layout(text, font, constraints), font, x, y, rgba, frame, context, pose);
+        draw(layout(text, font, constraints), font, x, y, rgba, context, pose);
     }
 
     /**
      * 2D draw with explicit targetPx and single font (convenience).
      */
     public void draw(String text, CgFont font, int targetPx,
-                     float x, float y, int rgba, long frame, CgTextRenderContext context, PoseStack pose) {
+                     float x, float y, int rgba, CgTextRenderContext context, PoseStack pose) {
         CgFont sizedFont = requireSizedFont(font, targetPx);
-        draw(layout(text, sizedFont, CgTextConstraints.UNBOUNDED), sizedFont, x, y, rgba, frame, context, pose);
+        draw(layout(text, sizedFont, CgTextConstraints.UNBOUNDED), sizedFont, x, y, rgba, context, pose);
     }
 
     /**
      * 2D draw with explicit targetPx, constraints, and single font (convenience).
      */
     public void draw(String text, CgFont font, int targetPx,
-                     CgTextConstraints constraints, float x, float y, int rgba, long frame,
+                     CgTextConstraints constraints, float x, float y, int rgba,
                      CgTextRenderContext context, PoseStack pose) {
         CgFont sizedFont = requireSizedFont(font, targetPx);
-        draw(layout(text, sizedFont, constraints), sizedFont, x, y, rgba, frame, context, pose);
+        draw(layout(text, sizedFont, constraints), sizedFont, x, y, rgba, context, pose);
     }
 
     /**
      * 2D draw with layout + single font + explicit targetPx (convenience).
      */
     public void draw(CgTextLayout layout, CgFont font, int targetPx,
-                     float x, float y, int rgba, long frame, CgTextRenderContext context, PoseStack pose) {
+                     float x, float y, int rgba, CgTextRenderContext context, PoseStack pose) {
         CgFont sizedFont = requireSizedFont(font, targetPx);
-        draw(layout, sizedFont, x, y, rgba, frame, context, pose);
+        draw(layout, sizedFont, x, y, rgba, context, pose);
     }
 
     /**
      * 2D draw with layout + family + explicit targetPx (convenience).
      */
     public void draw(CgTextLayout layout, CgFontFamily family, int targetPx,
-                     float x, float y, int rgba, long frame, CgTextRenderContext context, PoseStack pose) {
-        draw(layout, sizeFamily(family, targetPx), x, y, rgba, frame, context, pose);
+                     float x, float y, int rgba, CgTextRenderContext context, PoseStack pose) {
+        draw(layout, sizeFamily(family, targetPx), x, y, rgba, context, pose);
     }
 
     /**
      * 2D draw from string with family + explicit targetPx (convenience).
      */
     public void draw(String text, CgFontFamily family, int targetPx,
-                     float x, float y, int rgba, long frame, CgTextRenderContext context, PoseStack pose) {
-        draw(text, family, targetPx, CgTextConstraints.UNBOUNDED, x, y, rgba, frame, context, pose);
+                     float x, float y, int rgba, CgTextRenderContext context, PoseStack pose) {
+        draw(text, family, targetPx, CgTextConstraints.UNBOUNDED, x, y, rgba, context, pose);
     }
 
     /**
      * 2D draw from string with family + explicit targetPx + constraints (convenience).
      */
     public void draw(String text, CgFontFamily family, int targetPx,
-                     CgTextConstraints constraints, float x, float y, int rgba, long frame,
+                     CgTextConstraints constraints, float x, float y, int rgba,
                      CgTextRenderContext context, PoseStack pose) {
         CgFontFamily sizedFamily = sizeFamily(family, targetPx);
-        draw(layout(text, sizedFamily, constraints), sizedFamily, x, y, rgba, frame, context, pose);
+        draw(layout(text, sizedFamily, constraints), sizedFamily, x, y, rgba, context, pose);
     }
 
     // ══════════════════════════════════════════════════════════════════════════════════════════

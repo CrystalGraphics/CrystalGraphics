@@ -6,7 +6,6 @@ import com.crystalgraphics.api.font.CgFontStyle;
 import com.crystalgraphics.api.font.CgTextLayoutBuilder;
 import com.crystalgraphics.api.shader.CgShader;
 import com.crystalgraphics.api.state.CgGlSlot;
-import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.gl.shader.CgShaderFactory;
 import com.crystalgraphics.gl.state.CgGlScope;
 import com.crystalgraphics.gl.state.CgGlState;
@@ -49,7 +48,6 @@ public final class CgFontDemo {
     private boolean demoEnabled = true;
     private int demoFontSize = 24;
     private float demoPoseScale = 1.0f;
-    private long demoFrame = 0L;
     private CgFont demoFont;
     private CgFontRegistry demoFontRegistry;
     private CgTextRenderer demoTextRenderer;
@@ -88,12 +86,6 @@ public final class CgFontDemo {
                 lastDisplayHeight = displayHeight;
             }
 
-            // The shared CgFontRegistry's per-frame tick happens exclusively via the
-            // platform lifecycle service (CgLifecycleService.onFrameRendered()) — this
-            // class must not call CgGraphicsLifecycle.tickFrame() itself. Just read the
-            // shared frame number for atlas-LRU bookkeeping in the draw() calls below.
-            demoFrame = CgGraphicsLifecycle.getCurrentFrame();
-
             demoTextRenderer.beginBatch();
 
             PoseStack poseStack = new PoseStack();
@@ -110,7 +102,6 @@ public final class CgFontDemo {
                     20.0f,
                     40.0f + demoFontSize,
                     0xFFFFFFFF,
-                    demoFrame,
                     demoRenderContext,
                     poseStack);
 
@@ -123,7 +114,6 @@ public final class CgFontDemo {
                     20.0f,
                     20.0f,
                     0xAAFFAAFF,
-                    demoFrame,
                     demoRenderContext,
                     identityPose);
 

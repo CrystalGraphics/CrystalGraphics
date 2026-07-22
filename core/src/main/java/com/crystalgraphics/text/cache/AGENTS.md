@@ -58,19 +58,17 @@ dead — `CgGraphicsLifecycle` supports initializing a new GL context right afte
 instance at the end, rather than leaving the shared singleton stuck with a dead
 executor forever after the first context teardown.
 
-**Known unsolved limitation**: `tickFrame(long frame)` has no idempotency guard. Every
-consumer maintains its own independent local frame counter (`CgUiPaintContext`,
-`HUDRenderer`, etc.) — there is no shared authoritative "current frame" to guard
-against. If multiple consumers tick the shared singleton within the same real frame,
-the MSDF per-frame generation budget resets more than once (a soft throttling
-degradation, not a correctness bug) and atlas LRU clocks can receive frame numbers
-out of order across different counters. Fixing this properly means giving the registry
-its own authoritative frame counter and changing `CgTextRenderer.draw(...)`'s `frame`
-parameter (and every call site in the whole repo) to stop supplying an independent
-one — deliberately out of scope for the singleton-conversion change that introduced
-this note. Do not paper over it with a naive `if (frame <= lastTickedFrame) return;`
-guard — that assumes a shared counter that does not exist and would silently break
-whichever consumer's local counter is numerically behind another's.
+**Resolved**: `CgTextRenderer.draw(...)` no longer takes a `frame` parameter — it reads
+`CgGraphicsLifecycle.getCurrentFrame()` internally, the single authoritative per-real-frame
+counter incremented by `CgGraphicsLifecycle.tickFrame()` (wired via
+`CgLifecycleService.onFrameRendered()`). Every production draw call site now stamps
+glyphs from that same shared clock. `tickFrame(long frame)` itself is still a public,
+un-debounced entry point — harness scenes that need a synthetic, faster-than-real-time
+clock to force MSDF convergence before a screenshot (`AtlasDumpScene`, `TextScene2D`,
+`WorldTextRenderHelper`) still call it directly with their own frame numbers, independent
+of the real per-frame counter. That is intentional, not a bug: those loops need many
+synthetic ticks within a single real frame, which the debounced
+`CgGraphicsLifecycle.tickFrame()` path cannot provide.
 
 ### `CgRasterFontKey`
 
