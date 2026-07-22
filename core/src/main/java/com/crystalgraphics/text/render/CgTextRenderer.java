@@ -156,6 +156,9 @@ public class CgTextRenderer {
             .depth(CgDepthState.NONE)
             .build();
 
+    @Getter @Setter @Accessors(chain = true)
+    private Runnable batchEndListener;
+
     /**
      * World-space counterparts of {@link #BITMAP_RENDER_STATE}/{@link #MSDF_RENDER_STATE}/
      * {@link #MTSDF_RENDER_STATE} — depth-tested against opaque scene geometry (so world text
@@ -318,6 +321,8 @@ public class CgTextRenderer {
         activeRenderState = null;
         activeTextureId = -1;
         batchActive = false;
+        if (batchEndListener != null)
+            batchEndListener.run();
     }
 
     /**
