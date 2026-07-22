@@ -848,7 +848,7 @@ public class CgTextRenderer {
 
         boolean usedBitmapFallback = false;
         int index = 0;
-        float penY = y;
+        float penY = y + metrics.getAscender();
         prequeueVisibleGlyphs(layout, family, effectiveTargetPx, wantMsdf, context, frame);
         for (List<CgShapedRun> line : lines) {
             float penX = x;
