@@ -538,6 +538,12 @@ public final class CgMaterial {
         enabledKeywords.remove(name);
     }
 
+    /** Disables all previously-enabled keyword. */
+    public void disableAllKeywords() {
+        checkNotDeleted();
+        enabledKeywords.clear();
+    }
+
     /**
      * Returns {@code true} if the given keyword is currently enabled on this material instance.
      *
