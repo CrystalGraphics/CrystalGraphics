@@ -192,7 +192,14 @@ public class CgTextRenderer {
     private int activeTextureId = -1;
 
     // ── Owned render context ────────────────────────────────────────────────
-    private CgTextRenderContext context = CgTextRenderContext.orthographic(0, 0);
+    private CgTextRenderContext context = CgTextRenderContext.orthographic(
+            CgGraphicsLifecycle.getCurrentWidth(), CgGraphicsLifecycle.getCurrentHeight());
+
+    /** Tracks the display window's resolution automatically — every {@link CgGraphicsLifecycle#onResize} call resizes
+     * it in place, no manual per-frame dimension check needed.
+     * Only resizes a 2D orthographic {@link #context}, 3D perspective contexts need to be manually resized.*/
+    @Getter
+    private boolean screenSized;
 
     @Getter
     private boolean deleted;
@@ -209,8 +216,10 @@ public class CgTextRenderer {
      * {@link CgTextRenderContext#updateProjection}), raster-history resets
      * ({@link CgTextRenderContext#clearHistory()}), and world-text projected-size
      * hints ({@link CgTextRenderContext#updateProjectedSize}). Defaults to an
-     * orthographic context at (0, 0) — size it via {@link CgTextRenderContext#updateOrtho}
-     * before first use, or replace it entirely via {@link #context(CgTextRenderContext)}.</p>
+     * orthographic context sized to {@link CgGraphicsLifecycle}'s current known window
+     * dimensions (0×0 before the engine's first resize/init) — size it via
+     * {@link CgTextRenderContext#updateOrtho} before first use if needed, or replace it
+     * entirely via {@link #context(CgTextRenderContext)}.</p>
      */
     public CgTextRenderContext context() {
         return context;
@@ -228,15 +237,34 @@ public class CgTextRenderer {
     }
 
     /**
-     * Creates the renderer façade, including its owned {@link CgBatchRenderer}.
+     * Creates the renderer façade, including its owned {@link CgBatchRenderer}, and
+     * registers it with {@link CgTextRendererRegistry} — the registry doesn't own release
+     * timing (callers must still call {@link #delete()} promptly when done), but sweeps
+     * any renderer still alive at GL context teardown as a backstop, matching every other
+     * GPU-resource registry in this codebase.
      */
     public static CgTextRenderer create() {
-        CgCapabilities caps = CgCapabilities.detect();
-        if (caps.preferredFboBackend() == CgCapabilities.FramebufferPath.NONE || (!caps.isCoreShaders() && !caps.isArbShaders()) || !caps.isVaoSupported() || !caps.isMapBufferRangeSupported()) {
-            throw new IllegalStateException("CgTextRenderer requires a framebuffer backend, a shader backend, VAO support, and glMapBufferRange");
-        }
+        CgTextRenderer renderer = new CgTextRenderer();
+        CgTextRendererRegistry.get().register(renderer);
+        return renderer;
+    }
 
-        return new CgTextRenderer();
+    /**
+     * Creates the renderer façade like {@link #create()}, but additionally flags it as
+     * screen-sized so its owned {@link CgTextRenderContext} tracks the display window's
+     * resolution automatically — every {@link CgGraphicsLifecycle#onResize} call resizes
+     * it in place, no manual per-frame dimension check needed.
+     *
+     * <p>Only for renderers whose context should follow the real display window
+     * (UI overlays, HUDs). Renderers sized to something else — an offscreen FBO capture,
+     * an atlas dump, a fixed test viewport — must use {@link #create()} and size their
+     * context manually instead; auto-tracking window resize for those would silently
+     * desync their projection from their actual target size.</p>
+     */
+    public static CgTextRenderer createScreenSized() {
+        CgTextRenderer renderer = create();
+        renderer.screenSized = true;
+        return renderer;
     }
 
     // ══════════════════════════════════════════════════════════════════════════════════════════
@@ -477,6 +505,7 @@ public class CgTextRenderer {
         if (deleted) return;
         if (batchActive) endBatch();
         batchRenderer.delete();
+        CgTextRendererRegistry.get().unregister(this);
         deleted = true;
     }
 

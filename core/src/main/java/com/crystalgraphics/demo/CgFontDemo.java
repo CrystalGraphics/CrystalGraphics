@@ -51,8 +51,6 @@ public final class CgFontDemo {
     private CgFontRegistry demoFontRegistry;
     private CgTextRenderer demoTextRenderer;
     private final CgTextLayoutBuilder demoLayoutBuilder = new CgTextLayoutBuilder();
-    private int lastDisplayWidth;
-    private int lastDisplayHeight;
 
     // Raw GL handles are acceptable here: this class is a self-contained diagnostic
     // utility that owns its own VAO/VBO pair, analogous to CgDebugBlit.
@@ -70,13 +68,6 @@ public final class CgFontDemo {
 
         try {
             ensureDemoFontSystem();
-
-            // Update render context when the display size changes.
-            if (displayWidth != lastDisplayWidth || displayHeight != lastDisplayHeight) {
-                demoTextRenderer.context().updateOrtho(displayWidth, displayHeight);
-                lastDisplayWidth = displayWidth;
-                lastDisplayHeight = displayHeight;
-            }
 
             demoTextRenderer.beginBatch();
 
@@ -148,7 +139,9 @@ public final class CgFontDemo {
             demoFont = CgFont.load(DEMO_FONT_PATH, CgFontStyle.REGULAR, demoFontSize);
         }
         if (demoTextRenderer == null || demoTextRenderer.isDeleted()) {
-            demoTextRenderer = CgTextRenderer.create();
+            // Screen-sized: the owned context's orthographic projection auto-tracks the
+            // display window resolution via CgTextRendererRegistry (see CgGraphicsLifecycle.onResize).
+            demoTextRenderer = CgTextRenderer.createScreenSized();
         }
     }
 

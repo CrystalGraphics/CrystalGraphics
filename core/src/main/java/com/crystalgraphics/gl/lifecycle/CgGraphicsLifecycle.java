@@ -19,6 +19,8 @@ import com.crystalgraphics.gl.vertex.CgVertexArray;
 import com.crystalgraphics.gl.vertex.CgVertexArrayRegistry;
 import com.crystalgraphics.gl.vertex.CgVertexBufferRegistry;
 import com.crystalgraphics.text.cache.CgFontRegistry;
+import com.crystalgraphics.text.render.CgTextRendererRegistry;
+import lombok.Getter;
 
 /**
  * Coordinates teardown of all CrystalGraphics GL resources in the correct order.
@@ -41,7 +43,20 @@ import com.crystalgraphics.text.cache.CgFontRegistry;
 public final class CgGraphicsLifecycle {
 
     private static volatile boolean initialized = false;
-    private static int currentWidth = -1, currentHeight = -1;
+    /**
+     * -- GETTER --
+     * Current window width in pixels, as last reported to 
+     * ; -1 before the first resize/init. 
+     */
+    @Getter
+    private static int currentWidth = -1;
+    /**
+     * -- GETTER --
+     * Current window height in pixels, as last reported to 
+     * ; -1 before the first resize/init. 
+     */
+    @Getter
+    private static int currentHeight = -1;
 
     // ── Canonical per-frame tick ────────────────────────────────────────────
     private static long frameCounter = 0;
@@ -80,6 +95,7 @@ public final class CgGraphicsLifecycle {
      */
     public static void onResize(int width, int height) {
         CgFrameBufferRegistry.get().onResize(width, height);
+        CgTextRendererRegistry.get().onResize(width, height);
         CgRenderPipeline.onSceneResize();
 
         currentWidth = width;
@@ -198,10 +214,6 @@ public final class CgGraphicsLifecycle {
         // Step 5b: Free engine fallback textures.
         CgFallbackTextures.destroy();
 
-        // Step 5c: Font/glyph atlas textures + background generation executor, then reset
-        //   the shared registry back to a freshly-constructed, immediately reusable state
-        //   (a new GL context can be initialized right after this method returns).
-        CgFontRegistry.get().releaseAll();
 
         // Step 7a: Material instances (property UBOs) + their backing shader assets (GL programs).
         CgMaterialRegistry.get().deleteAll();
@@ -212,6 +224,18 @@ public final class CgGraphicsLifecycle {
         //   (frameUbo, objectBuffer in CgRenderPipeline) are NOT in this registry —
         //   they are freed in step 7c.
         CgShaderBufferRegistry.get().deleteAll();
+
+        // Step 6a: All CgTextRenderer instances still alive (backstop for callers that
+        //   forgot to call delete() themselves) — deletes each renderer's owned
+        //   CgBatchRenderer (VAO/VBO) individually before the bulk VAO/VBO sweep below,
+        //   so those objects are already gone (no-op) by the time steps 1/3 run.
+        CgTextRendererRegistry.get().deleteAll();
+        
+        // Step 6b: Font/glyph atlas textures + background generation executor, then reset
+        //   the shared registry back to a freshly-constructed, immediately reusable state
+        //   (a new GL context can be initialized right after this method returns).
+        CgFontRegistry.get().releaseAll();
+
 
         // Step 8: Pipeline-owned frame UBO + object SSBO + command queue.
         // Dispose the render demo first so its mesh/material handles are released before
