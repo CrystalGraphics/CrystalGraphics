@@ -5,9 +5,11 @@ import com.crystalgraphics.api.text.CgShapedRun;
 import com.crystalgraphics.api.text.CgTextLayout;
 
 import java.text.Bidi;
+import java.text.BreakIterator;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Stateless line breaker that splits shaped runs into visual lines.
@@ -20,17 +22,28 @@ import java.util.List;
  * <ol>
  *   <li>Accumulate runs onto the current line until adding a run would exceed
  *       {@code maxWidth} (if positive).</li>
- *   <li>When a run exceeds the remaining width, attempt to break it at a space
- *       boundary within the run. If no break opportunity exists, the run is placed
- *       on a new line (forced break).</li>
+ *   <li>When a run overflows, split it at real Unicode line-break boundaries
+ *       ({@link BreakIterator#getLineInstance}, UAX #14) — the largest fitting
+ *       prefix is found via binary search rather than linear scan, since a full
+ *       re-shape is required to measure each candidate. If no word-level boundary
+ *       produces a fitting prefix at all (a single token wider than the line on
+ *       its own), fall back to forced grapheme-cluster-level breaking
+ *       ({@link BreakIterator#getCharacterInstance}) so the token still gets
+ *       sliced to fit — never severing a combining-character sequence or
+ *       surrogate pair. Word-level wrapping resumes immediately for whatever
+ *       text follows the forced break.</li>
  *   <li>After gathering all logical runs for a line, apply per-line BiDi visual
  *       reordering using {@link Bidi#reorderVisually}.</li>
  *   <li>Stop adding lines when total height exceeds {@code maxHeight} (if positive).</li>
  * </ol>
  *
  * <h3>Break opportunities</h3>
- * <p>Breaks are permitted after: space (U+0020), zero-width space (U+200B),
- * and soft hyphen (U+00AD).</p>
+ * <p>Word-level break opportunities are whatever {@link BreakIterator#getLineInstance}
+ * reports for the {@linkplain Locale#ROOT root locale} (UAX #14 — spaces, hyphens,
+ * CJK ideograph boundaries, punctuation classes, etc., not a hardcoded character
+ * list). When none of those fit, grapheme-cluster boundaries from
+ * {@link BreakIterator#getCharacterInstance} are used instead, guaranteeing
+ * {@code maxWidth} is respected even for a single unbreakable token.</p>
  *
  * @see CgShapedRun
  * @see CgTextLayout
@@ -40,10 +53,11 @@ public class CgLineBreaker {
     /**
      * Break shaped runs into visual lines with optional intra-run word wrapping.
      *
-     * <p>When a run overflows and carries source-text context, the breaker scans
-     * the source text for break opportunities (space, ZWSP, soft hyphen), re-shapes
-     * the fragments via the {@code reshaper}, and splits across lines. If no reshaper
-     * is provided or the run lacks source context, whole-run wrapping is used.</p>
+     * <p>When a run overflows and carries source-text context, the breaker splits
+     * it at Unicode line-break boundaries (falling back to forced grapheme-cluster
+     * breaking when nothing fits), re-shapes the fragments via the {@code reshaper},
+     * and places them across lines. If no reshaper is provided or the run lacks
+     * source context, whole-run wrapping is used.</p>
      *
      * @param runs       shaped runs in logical (paragraph) order
      * @param maxWidth   maximum line width in pixels; {@code <= 0} means unbounded
@@ -87,7 +101,7 @@ public class CgLineBreaker {
             // Try intra-run splitting if the run still overflows the (possibly fresh) line
             if (maxWidth > 0 && run.getTotalAdvance() > remainingWidth
                     && run.hasSourceContext() && reshaper != null) {
-                List<CgShapedRun> fragments = splitRunAtBreakOpportunities(
+                List<CgShapedRun> fragments = splitAtLineBreaks(
                         run, remainingWidth, maxWidth, reshaper);
 
                 if (fragments != null && fragments.size() > 1) {
@@ -144,72 +158,104 @@ public class CgLineBreaker {
     }
 
     /**
-     * Attempts to split a run at word-break opportunities within its source text.
+     * Splits a run at Unicode line-break boundaries (UAX #14, via
+     * {@link BreakIterator#getLineInstance}). Finds the largest boundary whose
+     * re-shaped prefix still fits {@code availableWidth} via binary search — width
+     * is assumed to grow monotonically with included text, the same assumption
+     * production line breakers make for this purpose.
      *
-     * <p>Scans the source text segment for break characters (space, ZWSP, soft hyphen)
-     * and finds the last break position where the re-shaped prefix fits within
-     * {@code availableWidth}. If a valid split is found, returns two or more
-     * re-shaped fragments. Returns {@code null} if no valid break was found.</p>
-     *
-     * <p>Break positions are always <em>after</em> the break character (i.e., the
-     * space stays at the end of the first fragment). This respects cluster boundaries
-     * because the split happens in the source text, not in the glyph array.</p>
+     * <p>Falls back to {@link #splitAtGraphemeBreaks} when no word-level boundary
+     * fits (including when the segment has no line-break boundaries at all, e.g.
+     * a single unbroken token).</p>
      *
      * @param run            the run to split (must have source context)
      * @param availableWidth remaining width on the current line
      * @param maxLineWidth   full line width for subsequent fragments
      * @param reshaper       callback to re-shape text sub-ranges
-     * @return list of re-shaped fragments, or {@code null} if no break found
+     * @return list of re-shaped fragments, or {@code null} if no split was possible
      */
-    private List<CgShapedRun> splitRunAtBreakOpportunities(CgShapedRun run,
-                                                            float availableWidth,
-                                                            float maxLineWidth,
-                                                            RunReshaper reshaper) {
+    private List<CgShapedRun> splitAtLineBreaks(CgShapedRun run,
+                                                 float availableWidth,
+                                                 float maxLineWidth,
+                                                 RunReshaper reshaper) {
+        String sourceText = run.getSourceText();
+        int runStart = run.getSourceStart();
+        int runEnd = run.getSourceEnd();
+        String segment = sourceText.substring(runStart, runEnd);
+        if (segment.isEmpty()) {
+            return null;
+        }
+
+        int[] boundaries = collectBoundaries(BreakIterator.getLineInstance(Locale.ROOT), segment);
+        int best = findBestFittingBoundary(boundaries, run, runStart, availableWidth, reshaper);
+
+        if (best <= 0) {
+            // Nothing at word granularity fits — a single token is wider than the line
+            // on its own. Force a character-level break instead of giving up entirely.
+            return splitAtGraphemeBreaks(run, availableWidth, maxLineWidth, reshaper);
+        }
+
+        List<CgShapedRun> fragments = buildFragments(run, runStart, runEnd, best, maxLineWidth, reshaper);
+        return fragments.size() > 1 ? fragments : null;
+    }
+
+    /**
+     * Forces a break at a grapheme-cluster boundary ({@link BreakIterator#getCharacterInstance})
+     * when no word-level break fits — guarantees {@code maxWidth} is respected even for a
+     * single unbreakable token, at the cost of splitting mid-word. Never severs a
+     * combining-character sequence or surrogate pair, since grapheme-cluster boundaries
+     * are exactly the positions where doing so is safe.
+     *
+     * <p>If even a single grapheme cluster doesn't fit {@code availableWidth}, it is placed
+     * anyway — an empty fragment would make no progress, and a one-cluster-wide overflow is
+     * the unavoidable minimum once a line is narrower than a single glyph.</p>
+     *
+     * @return list of re-shaped fragments, or {@code null} if the segment is a single
+     *         atomic grapheme cluster with no boundary to split at at all
+     */
+    private List<CgShapedRun> splitAtGraphemeBreaks(CgShapedRun run,
+                                                      float availableWidth,
+                                                      float maxLineWidth,
+                                                      RunReshaper reshaper) {
         String sourceText = run.getSourceText();
         int runStart = run.getSourceStart();
         int runEnd = run.getSourceEnd();
         String segment = sourceText.substring(runStart, runEnd);
 
-        // Scan for break opportunities: find the rightmost break position
-        // where the re-shaped prefix fits within availableWidth.
-        // Break opportunities are *after* break characters.
-        int bestBreak = -1;
-        for (int i = 0; i < segment.length(); i++) {
-            char c = segment.charAt(i);
-            if (isBreakOpportunity(c)) {
-                int breakPos = i + 1; // break *after* the break character
-                if (breakPos >= segment.length()) {
-                    continue; // no point splitting at the very end
-                }
-                CgShapedRun prefix = reshaper.reshape(run, runStart, runStart + breakPos);
-                if (prefix != null && prefix.getTotalAdvance() <= availableWidth) {
-                    bestBreak = breakPos;
-                } else if (prefix != null && prefix.getTotalAdvance() > availableWidth) {
-                    // Past the available width — stop scanning
-                    break;
-                }
-            }
-        }
-
-        if (bestBreak <= 0) {
+        int[] boundaries = collectBoundaries(BreakIterator.getCharacterInstance(Locale.ROOT), segment);
+        if (boundaries.length == 0) {
             return null;
         }
 
-        // Re-shape the two fragments
+        int best = findBestFittingBoundary(boundaries, run, runStart, availableWidth, reshaper);
+        if (best <= 0) {
+            best = boundaries[0];
+        }
+
+        List<CgShapedRun> fragments = buildFragments(run, runStart, runEnd, best, maxLineWidth, reshaper);
+        return fragments.size() > 1 ? fragments : null;
+    }
+
+    /**
+     * Re-shapes the head/tail fragments at {@code breakPos} (absolute index into the run's
+     * source text). Recurses back into {@link #splitAtLineBreaks} for the tail if it still
+     * overflows a fresh line — so a forced grapheme break doesn't force everything after it
+     * to also break mid-word; normal word wrapping resumes as soon as it can.
+     */
+    private List<CgShapedRun> buildFragments(CgShapedRun run, int runStart, int runEnd, int breakPos,
+                                              float maxLineWidth, RunReshaper reshaper) {
         List<CgShapedRun> fragments = new ArrayList<CgShapedRun>();
-        CgShapedRun head = reshaper.reshape(run, runStart, runStart + bestBreak);
+        CgShapedRun head = reshaper.reshape(run, runStart, runStart + breakPos);
         if (head != null) {
             fragments.add(head);
         }
 
-        // Recursively split the tail if it also overflows
-        int tailStart = runStart + bestBreak;
+        int tailStart = runStart + breakPos;
         if (tailStart < runEnd) {
             CgShapedRun tail = reshaper.reshape(run, tailStart, runEnd);
             if (tail != null) {
                 if (tail.getTotalAdvance() > maxLineWidth && tail.hasSourceContext()) {
-                    List<CgShapedRun> tailFragments = splitRunAtBreakOpportunities(
-                            tail, maxLineWidth, maxLineWidth, reshaper);
+                    List<CgShapedRun> tailFragments = splitAtLineBreaks(tail, maxLineWidth, maxLineWidth, reshaper);
                     if (tailFragments != null) {
                         fragments.addAll(tailFragments);
                     } else {
@@ -221,14 +267,57 @@ public class CgLineBreaker {
             }
         }
 
-        return fragments.size() > 1 ? fragments : null;
+        return fragments;
     }
 
     /**
-     * Returns {@code true} if the character is a valid word-break opportunity.
+     * Binary-searches {@code boundaries} (sorted ascending) for the largest offset whose
+     * re-shaped prefix {@code [runStart, runStart+boundary)} fits within {@code availableWidth}.
+     * Assumes prefix width grows monotonically with boundary position.
+     *
+     * @return the largest fitting boundary, or {@code -1} if even the first one doesn't fit
      */
-    private static boolean isBreakOpportunity(char c) {
-        return c == ' ' || c == '\u200B' || c == '\u00AD';
+    private int findBestFittingBoundary(int[] boundaries, CgShapedRun run, int runStart,
+                                         float availableWidth, RunReshaper reshaper) {
+        int lo = 0, hi = boundaries.length - 1, best = -1;
+        while (lo <= hi) {
+            int mid = (lo + hi) >>> 1;
+            int breakPos = boundaries[mid];
+            CgShapedRun prefix = reshaper.reshape(run, runStart, runStart + breakPos);
+            float width = prefix != null ? prefix.getTotalAdvance() : Float.MAX_VALUE;
+            if (width <= availableWidth) {
+                best = breakPos;
+                lo = mid + 1;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        return best;
+    }
+
+    /**
+     * Collects break boundaries from a {@link BreakIterator} over {@code segment}, excluding
+     * the boundary at {@code segment.length()} (there's no point splitting at the very end —
+     * nothing follows) and the implicit boundary at 0 (breaking before any text is useless).
+     * Each returned offset is a position where {@code segment} may be split, matching the
+     * "break *after* this position" convention {@link #buildFragments} expects.
+     */
+    private static int[] collectBoundaries(BreakIterator iterator, String segment) {
+        iterator.setText(segment);
+        List<Integer> boundaries = new ArrayList<Integer>();
+        iterator.first();
+        int boundary = iterator.next();
+        while (boundary != BreakIterator.DONE) {
+            if (boundary < segment.length()) {
+                boundaries.add(boundary);
+            }
+            boundary = iterator.next();
+        }
+        int[] result = new int[boundaries.size()];
+        for (int i = 0; i < result.length; i++) {
+            result[i] = boundaries.get(i);
+        }
+        return result;
     }
 
     /**

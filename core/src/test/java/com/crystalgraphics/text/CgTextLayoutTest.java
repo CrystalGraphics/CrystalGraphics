@@ -498,9 +498,19 @@ public class CgTextLayoutTest {
             }
         };
 
-        // No break opportunity → falls back to whole-run placement
+        // No word-level break opportunity → forced grapheme-level break splits the token
+        // itself to fit maxWidth: "abcde" (50px) + "fghij" (50px), instead of the old
+        // behavior of placing the whole 100px token on one overflowing line.
         List<List<CgShapedRun>> lines = breaker.breakLines(runs, 50.0f, 0, TEST_METRICS, reshaper);
-        assertEquals("Should have 1 line (forced break)", 1, lines.size());
+        assertEquals("Should force-split into 2 lines to respect maxWidth", 2, lines.size());
+        for (int i = 0; i < lines.size(); i++) {
+            float lineWidth = 0;
+            for (CgShapedRun r : lines.get(i)) {
+                lineWidth += r.getTotalAdvance();
+            }
+            assertTrue("Line " + i + " should not exceed maxWidth: " + lineWidth,
+                    lineWidth <= 50.0f + 0.001f);
+        }
     }
 
     @Test
