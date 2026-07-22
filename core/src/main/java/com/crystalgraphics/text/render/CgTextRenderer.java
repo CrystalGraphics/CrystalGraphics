@@ -156,9 +156,6 @@ public class CgTextRenderer {
             .depth(CgDepthState.NONE)
             .build();
 
-    @Getter @Setter @Accessors(chain = true)
-    private Runnable batchEndListener;
-
     /**
      * World-space counterparts of {@link #BITMAP_RENDER_STATE}/{@link #MSDF_RENDER_STATE}/
      * {@link #MTSDF_RENDER_STATE} — depth-tested against opaque scene geometry (so world text
@@ -202,6 +199,11 @@ public class CgTextRenderer {
     private CgShader activeShader;
     private CgRenderState activeRenderState;
     private int activeTextureId = -1;
+    /**
+     * Optional caller-supplied hook invoked at the end of every {@link #endBatch()} (manual
+     * or {@link Draw#submit()}'s standalone auto-batch alike) — see {@link #restoreStateWith}.
+     */
+    private Runnable postBatchRestore;
 
     // ── Owned render context ────────────────────────────────────────────────
     /**
@@ -308,7 +310,8 @@ public class CgTextRenderer {
 
     /**
      * Closes the batching window opened by {@link #beginBatch()}, flushing any pending
-     * quads and unbinding whatever shader/texture/state is currently active.
+     * quads and unbinding whatever shader/texture/state is currently active, then invoking
+     * {@link #restoreStateWith}'s hook, if one was registered.
      *
      * <p>Lenient: does nothing if no batch is active.</p>
      */
@@ -321,8 +324,41 @@ public class CgTextRenderer {
         activeRenderState = null;
         activeTextureId = -1;
         batchActive = false;
-        if (batchEndListener != null)
-            batchEndListener.run();
+
+        if (postBatchRestore != null) postBatchRestore.run();
+    }
+
+    /**
+     * Registers a hook that runs at the end of every {@link #endBatch()} — including the
+     * standalone auto-batch that {@link Draw#submit()} opens/closes around a single
+     * one-shot draw when no batch is already active, which is the common case for
+     * {@code ctx.text().draw()...submit()} call sites.
+     *
+     * <p><strong>Why this exists instead of a generic GL-state snapshot/restore:</strong>
+     * a batch's internal shader/texture/render-state transitions ({@link #flushPending})
+     * always end by unbinding to a neutral state (program 0, texture unit 0 unbound,
+     * render state cleared to GL defaults) — never back to whatever the caller had bound
+     * beforehand. A caller that shares the GL context with other immediate-mode drawing in
+     * the same frame (e.g. {@code CgUiPaintContext}, which binds its box-model material
+     * once per frame and leaves it bound across many {@code fillRect}/{@code drawImage}
+     * calls) needs that neutral state undone after every text draw interleaved between its
+     * own draws. The naive fix is to snapshot the caller's real GL state via
+     * {@code CgGlState.save(...)} before the batch and restore it after — but capturing
+     * {@code CgGlSlot.TEXTURES} alone issues one {@code glGetInteger} per texture unit
+     * (see {@code CgGlStates.TextureState.capture()}), and that cost would be paid on
+     * every standalone text draw (i.e. potentially every label, every frame) rather than
+     * once per UI frame. Since the caller already knows what it wants bound — it doesn't
+     * need to be discovered via {@code glGet} — supplying a cheap explicit restore
+     * closure (a couple of plain {@code bind()} calls, zero queries) is strictly better
+     * than a generic introspective snapshot here.</p>
+     *
+     * @param restoreAction closure re-establishing the caller's own GL state (e.g.
+     *                       re-binding its own material/texture); pass {@code null} to
+     *                       clear a previously registered hook
+     */
+    public CgTextRenderer restoreStateWith(Runnable restoreAction) {
+        this.postBatchRestore = restoreAction;
+        return this;
     }
 
     /**
