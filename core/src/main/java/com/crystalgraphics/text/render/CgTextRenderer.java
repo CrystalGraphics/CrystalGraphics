@@ -568,6 +568,20 @@ public class CgTextRenderer {
             return this;
         }
 
+        /**
+         * Wrap/height constraints used when building a layout from {@link #text(String)},
+         * given directly as {@code maxWidth}/{@code maxHeight} instead of a pre-built
+         * {@link CgTextConstraints} — convenient for callers deriving these every draw
+         * (e.g. from a live layout box) who would otherwise have to construct a fresh
+         * {@link CgTextConstraints} at the call site just to pass it straight through.
+         * {@code <= 0} on either axis means unbounded, matching {@link CgTextConstraints}'s
+         * own convention.
+         */
+        public Draw constraints(float maxWidth, float maxHeight) {
+            this.constraints = new CgTextConstraints(maxWidth, maxHeight);
+            return this;
+        }
+
         /** Local logical draw origin. Defaults to {@code (0, 0)} if never called. */
         public Draw at(float x, float y) {
             this.x = x;
