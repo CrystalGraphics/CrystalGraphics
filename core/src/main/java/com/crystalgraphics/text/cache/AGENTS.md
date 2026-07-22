@@ -58,9 +58,10 @@ dead — `CgGraphicsLifecycle` supports initializing a new GL context right afte
 instance at the end, rather than leaving the shared singleton stuck with a dead
 executor forever after the first context teardown.
 
-**Resolved**: `CgTextRenderer.draw(...)` no longer takes a `frame` parameter — it reads
-`CgGraphicsLifecycle.getCurrentFrame()` internally, the single authoritative per-real-frame
-counter incremented by `CgGraphicsLifecycle.tickFrame()` (wired via
+**Resolved**: `CgTextRenderer`'s draw path (`Draw.submit()` — see `text/render/AGENTS.md`,
+there is no fixed-arity `draw(...)` method anymore) never takes a `frame` parameter — it
+reads `CgGraphicsLifecycle.getCurrentFrame()` internally, the single authoritative
+per-real-frame counter incremented by `CgGraphicsLifecycle.tickFrame()` (wired via
 `CgLifecycleService.onFrameRendered()`). Every production draw call site now stamps
 glyphs from that same shared clock. `tickFrame(long frame)` itself is still a public,
 un-debounced entry point — harness scenes that need a synthetic, faster-than-real-time

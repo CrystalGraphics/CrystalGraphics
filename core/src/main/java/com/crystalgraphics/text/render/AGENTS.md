@@ -13,12 +13,14 @@ The core question here is:
 ## Reading order
 
 1. `CgTextRenderer`
-2. `CgTextRenderContext`
-3. `CgTextScaleResolver`
-4. `OrthographicScaleResolver`
-5. `PerspectiveScaleResolver`
-6. `ProjectedSizeEstimator`
-7. `CgDrawBatchKey`
+2. `CgTextRenderer.Draw`
+3. `CgTextRendererRegistry`
+4. `CgTextRenderContext`
+5. `CgTextScaleResolver`
+6. `OrthographicScaleResolver`
+7. `PerspectiveScaleResolver`
+8. `ProjectedSizeEstimator`
+9. `CgDrawBatchKey`
 
 ## Class-by-class details
 
@@ -63,22 +65,81 @@ directly and fully self-contained.
   now handled directly inside `CgTextRenderer` (`transitionTo`/`flushPending`) since
   there is no layer left to own that responsibility.
 
-**Single `draw()` entry point for 2D and 3D world text — no `drawWorld()` anymore.**
-`drawWorld()` was removed: it was byte-for-byte identical to `draw()` (same body,
-same standalone-tolerant wrapping) except for the static parameter type — and
-`CgWorldTextRenderContext` (since removed too, see `CgTextRenderContext`'s section
-below) extended `CgTextRenderContext`, so passing one into `draw()` already worked.
+**Single `draw()`/`retainedDraw()` entry point for 2D and 3D world text — no `drawWorld()`.**
 `drawInternal`/`submitSortedQuads` dispatch 2D-vs-world behavior polymorphically off
-`context.isWorldText()`/`context.getScaleResolver()`, not off which method was
-called. World-space text is just `draw(layout, family, x, y, rgba, frame,
-worldContext, pose)` where `worldContext` is a `CgTextRenderContext` built via
-`CgTextRenderContext.world(...)` instead of `.orthographic(...)`. Depth-tested render
-states for world text (`BITMAP_RENDER_STATE_WORLD`/`MSDF_RENDER_STATE_WORLD`/
+`context.isWorldText()`/`context.getScaleResolver()`, not off which method was called.
+World-space text is the exact same fluent chain as 2D text — the only difference is
+that the renderer's context was set to one built via `CgTextRenderContext.world(...)`
+instead of `.orthographic(...)` (see `context(CgTextRenderContext)` below). Depth-tested
+render states for world text (`BITMAP_RENDER_STATE_WORLD`/`MSDF_RENDER_STATE_WORLD`/
 `MTSDF_RENDER_STATE_WORLD`) are selected in `submitSortedQuads` via
 `context.isWorldText()` — this actually implements world text's long-documented
 "depth test enabled" contract, which the pre-merge code declared in javadoc but never
 actually applied (all three original render-state constants hardcoded
 `CgDepthState.NONE` regardless of world-vs-2D).
+
+**Fluent `Draw` request replaced the fixed-arity `draw(...)` overload matrix.**
+The old design had ~13 overloads (`draw(CgTextLayout/String, CgFont/CgFontFamily,
+[int targetPx], [CgTextConstraints], x, y, rgba, CgTextRenderContext, PoseStack)`) —
+combinatorial, and every new optional draw-time parameter would have doubled the
+matrix again. That entire surface is gone. The only public entry points now are:
+
+- `renderer.draw()` — returns the renderer's single reused scratch `Draw` instance
+  (zero allocation). Contract: build it and call `.submit()` in the same
+  expression/statement; the reference is invalidated by the *next* `draw()` call on
+  that renderer, from *any* call site.
+- `renderer.retainedDraw()` — allocates a standalone `Draw` the caller may hold across
+  frames (e.g. a cached HUD line, mutating only `.text(...)` each tick).
+- `Draw` chain methods: `layout(CgTextLayout)`/`text(String)` (layout wins if both
+  set — it already paid the shaping cost), `font(CgFont)`/`family(CgFontFamily)`
+  (family wins if both set — strictly more capable superset), `targetPx(int)`,
+  `constraints(CgTextConstraints)`, `at(float, float)` (defaults `(0,0)`),
+  `color(int)` (defaults opaque white), `pose(PoseStack)` (falls back to the
+  renderer's own `poseStack()` if never called — see below).
+- `Draw.submit()` resolves everything (mirroring the exact sizing/validation branches
+  the old overloads had — `requireSizedFont`/`sizeFamily` — see the method body if
+  touching this logic) and calls `drawInternal(...)` directly. Returns the owning
+  `CgTextRenderer`, so a manually-opened batch's last `submit()` can chain into
+  `.endBatch()`.
+
+There is no `CgTextRenderContext`/`frame` parameter on any draw call anymore — both
+moved to renderer-owned state (see next two subsections).
+
+**Renderer owns its `CgTextRenderContext` — no longer a caller-passed parameter.**
+`context()` returns the live mutable context (defaults to an orthographic context
+sized from `CgGraphicsLifecycle`'s current known window dimensions);
+`context(CgTextRenderContext)` replaces it wholesale — the way to switch orthographic
+↔ world mode, since the two differ in which `CgTextScaleResolver` they hold. Callers
+reach `context().updateOrtho(...)`/`.updateProjection(...)`/`.clearHistory()`/
+`.updateProjectedSize(...)` directly instead of holding a separate instance.
+
+**Renderer owns an optional fallback `PoseStack` — niche, not the default path.**
+`poseStack()`/`poseStack(PoseStack)` (Lombok `@Getter @Setter @Accessors(fluent =
+true)`) hold a `PoseStack` that's `null` until a caller opts in. `Draw.submit()` uses
+it only when `.pose(...)` was never called on that `Draw`; if both are unset, `submit()`
+throws. `CgUiPaintContext` wires its own pose stack in here in its constructor
+(`CgTextRenderer.create().poseStack(this.poseStack)`) so that any draw issued through
+`ctx.text()` without an explicit `.pose(...)` still works — but its own `drawText()`-style
+call sites still pass `.pose(poseStack)` explicitly; this field is a backstop, not
+something call sites should rely on by default.
+
+**`CgTextRendererRegistry` — resize tracking + teardown backstop, opt-in per feature.**
+Every `create()`/`createScreenSized()` call registers with the singleton
+`CgTextRendererRegistry.get()`, mirroring `CgFrameBufferRegistry`'s ownership model:
+- `onResize(w, h)` (called from `CgGraphicsLifecycle.onResize`) auto-resizes only
+  renderers created via `createScreenSized()` and currently in orthographic mode —
+  it skips non-screen-sized renderers and any renderer whose context reports
+  `isWorldText()` (calling `updateOrtho` on a world context would clobber the
+  perspective projection). `HUDRenderer`/`CgFontDemo` use `createScreenSized()` since
+  their dimensions are proven to come from the same source that drives
+  `CgGraphicsLifecycle.onResize()`; `CgUiPaintContext` deliberately does **not** —
+  its dimensions come from `UIWindow`'s own independent resize path, with no proven
+  lockstep guarantee, so it still manually calls `textRenderer.context().updateOrtho(...)`
+  in `beginFrame(w, h)`.
+- `deleteAll()` (called from `CgGraphicsLifecycle.destroyContext()`, before the
+  VAO/VBO bulk sweep) deletes any renderer still alive as a backstop — individual
+  owners (`CgUiPaintContext`, `HUDRenderer`, harness scenes) remain responsible for
+  calling `delete()` promptly; this registry does not change that expectation.
 
 `CgDynamicTextureRenderLayer`/`CgTextLayers` still exist as classes but are **no
 longer used by `CgTextRenderer`** — confirm no other consumer exists before
@@ -108,6 +169,29 @@ Treat a forgotten `endBatch()` as a caller bug that should fail fast, matching t
 convention of every other begin/end pair in this codebase (`CgBatchRenderer`,
 `CgUiRenderer`, `CgBufferSource` — none of them defensively auto-flush either).
 
+### `CgTextRenderer.Draw`
+
+Non-static inner class — the fluent draw request. See "Fluent `Draw` request replaced
+the fixed-arity `draw(...)` overload matrix" above for the full chain-method surface
+and the field-priority rules (`layout` > `text`, `family` > `font`). Obtained via
+`draw()` (shared scratch) or `retainedDraw()` (standalone); never construct it any other way
+— the constructor is private.
+
+`submit()` is the only place that calls `drawInternal(...)` — there is no other public
+draw path left. If you're touching sizing/validation logic, it all lives in this one
+method; read it in full before changing any of the `targetPx`/`layout`/`text`
+resolution branches, since they're a faithful (branch-for-branch) port of what the old
+overloads each did.
+
+### `CgTextRendererRegistry`
+
+Singleton registry — see "`CgTextRendererRegistry`" above for the resize-tracking and
+teardown-backstop behavior. Structurally mirrors
+`com.crystalgraphics.gl.framebuffer.CgFrameBufferRegistry` (screen-sized vs.
+fixed-size tracking, `deleteAll()` sweep at context teardown) but does **not** own
+renderer *lifecycle* the way the FBO registry owns FBO lifecycle — renderers are still
+created and (in the common case) deleted by their own owner; this registry is purely a
+backstop plus the resize dispatcher.
 
 ### `CgTextRenderContext`
 
@@ -207,17 +291,23 @@ Package-level description of render-side responsibilities.
 - the renderer owns NO GL objects itself — its owned `CgBatchRenderer`'s VAO/VBO/IBO still come
   from the shared `CgVertexArrayRegistry`/`CgQuadIndexBuffer`; only CPU-side staging is
   renderer-owned
-- `draw()` is self-contained — no caller-provided layer or sink is required, and there is
-  a single entry point for both 2D UI text and 3D world text (see `CgTextRenderer`'s
-  "Single `draw()` entry point" note above). `beginBatch()`/`endBatch()` are optional, used
-  only to batch multiple draws together; each call auto-wraps itself with its own
-  begin/flush/end if no batch is active
+- `draw()`/`retainedDraw()` are self-contained — no caller-provided layer or sink is required,
+  and there is a single fluent request type (`Draw`) for both 2D UI text and 3D world
+  text (see `CgTextRenderer`'s "Fluent `Draw` request" note above). `beginBatch()`/
+  `endBatch()` are optional, used only to batch multiple draws together; each
+  `Draw.submit()` auto-wraps itself with its own begin/flush/end if no batch is active
 - GL state (shader bind/unbind, texture bind/unbind, `CgRenderState` apply/clear) is managed
   directly by `CgTextRenderer` on batch-key transitions (`transitionTo`/`flushPending`)
 - `CgDynamicTextureRenderLayer`/`CgTextLayers` are no longer part of this renderer's draw path —
   they still exist as classes but are unused here (confirm no other consumer before deleting)
 - text emission through the owned batch renderer must be contiguous — no interleaving from
   other draw-list commands
+- there is no fixed-arity `draw(...)` method anymore — `Draw.submit()` is the only path into
+  `drawInternal(...)`; `CgTextRenderContext` and `frame` are both renderer-owned state now,
+  never draw-call parameters (see `context()`/`poseStack()`/`CgGraphicsLifecycle.getCurrentFrame()`)
+- `CgTextRendererRegistry` tracks every renderer for teardown, and additionally auto-resizes
+  screen-sized (`createScreenSized()`) ones — see its section above before adding a new
+  `CgTextRenderer`-owning class, to decide whether it should opt into `createScreenSized()`
 
 ## Common agent mistakes to avoid
 
@@ -228,11 +318,25 @@ Package-level description of render-side responsibilities.
   from the shared `CgVertexArrayRegistry`/`CgQuadIndexBuffer`, same as every other
   `CgBatchRenderer` consumer. Per-instance ownership of the *batcher* (CPU staging only) is
   correct and intentional; per-instance ownership of *GPU objects* is not.
-- Do not reintroduce a caller-provided `CgDynamicTextureRenderLayer`/`CgBufferSource` parameter
-  on `draw()` — this was the pre-migration design and is now superseded. The
-  renderer owns its batch lifecycle directly (see `CgTextRenderer`'s "Owned batch lifecycle"
-  section above).
-- Do not make `draw()` require an active `beginBatch()` — the standalone-tolerant
+- Do not reintroduce a fixed-arity `draw(...)` overload matrix (or a caller-provided
+  `CgDynamicTextureRenderLayer`/`CgBufferSource`/`CgTextRenderContext`/`frame` parameter) —
+  every one of those concerns is now renderer-owned state reached through `Draw`,
+  `context()`, or `poseStack()`. A new optional draw-time parameter should become a new
+  `Draw` chain method, never a new overload.
+- Do not make `Draw.layout(...)`/`.text(...)` or `.family(...)`/`.font(...)` mutually
+  exclusive (e.g. clearing one when the other is set). They're priority-based, not
+  exclusive — `layout` wins over `text`, `family` wins over `font` — see `Draw.submit()`.
+- Do not hold a reference returned by `renderer.draw()` past the `.submit()` call in the
+  same expression — it's the renderer's single shared scratch instance and any other
+  `draw()` call anywhere resets it. Use `renderer.retainedDraw()` for anything held across frames.
+- Do not add a `CgTextRenderContext` or `frame` parameter back onto any draw-time method —
+  the renderer owns both (`context()`/`context(CgTextRenderContext)`,
+  `CgGraphicsLifecycle.getCurrentFrame()` read internally by `drawInternal`).
+- Do not auto-register every new `CgTextRenderer` consumer for screen-sized resize tracking.
+  `createScreenSized()` is opt-in and only correct when the consumer's dimensions are proven
+  to come from the same source driving `CgGraphicsLifecycle.onResize()` — see
+  `CgTextRendererRegistry`'s section above for why `CgUiPaintContext` deliberately doesn't use it.
+- Do not make `Draw.submit()` require an active `beginBatch()` — the standalone-tolerant
   auto-wrap behavior is deliberate, not a gap. `CgTextRenderer` must stay usable as a directly
   instantiated object with no owning render pass.
 - Do not reintroduce a separate `drawWorld()` method. `drawInternal`/`submitSortedQuads`

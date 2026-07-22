@@ -64,6 +64,12 @@ This layer decides:
 - shader selection and binding
 - final GL submission
 
+Draw calls go through `CgTextRenderer.draw()`/`retainedDraw()`, which return a fluent
+`CgTextRenderer.Draw` request object (chain methods, terminated by `.submit()`) — there
+is no fixed-arity `draw(...)` method. `CgTextRendererRegistry` tracks every renderer
+instance for teardown and (opt-in, via `createScreenSized()`) automatic resize. See
+`text/render/AGENTS.md` for the full API.
+
 ## Best reading order through the implementation
 
 If you need the whole system, read in this order:
