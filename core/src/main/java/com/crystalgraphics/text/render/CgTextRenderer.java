@@ -1,19 +1,19 @@
 package com.crystalgraphics.text.render;
 
 import com.crystalgraphics.api.PoseStack;
+import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.font.*;
-import com.crystalgraphics.api.shader.CgShader;
+import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.text.CgShapedRun;
 import com.crystalgraphics.api.text.CgTextConstraints;
 import com.crystalgraphics.api.text.CgTextLayout;
+import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.vertex.CgVertexConsumer;
+import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
+import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.gl.render.CgBatchRenderer;
-import com.crystalgraphics.api.state.CgRenderState;
-import com.crystalgraphics.api.state.CgBlendState;
-import com.crystalgraphics.api.state.CgCullState;
 import com.crystalgraphics.api.state.CgDepthState;
-import com.crystalgraphics.gl.shader.CgShaderFactory;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.text.cache.CgFontRegistry;
@@ -32,9 +32,9 @@ import java.util.logging.Logger;
  *
  * <p>The renderer consumes a pre-built {@link CgTextLayout}, resolves glyphs
  * through {@link CgFontRegistry}, sorts them by GL state, then submits quads
- * through its own owned {@link CgBatchRenderer}. Shader bind/unbind, texture
- * bind/unbind, and {@code CgRenderState} apply/clear on batch-key transitions
- * are handled directly by this class — see {@link #transitionTo}.</p>
+ * through its own owned {@link CgBatchRenderer}. Material bind/unbind, keyword
+ * toggling, and atlas texture swaps on batch-key transitions are handled directly
+ * by this class — see {@link #transitionToMaterial}.</p>
  *
  * <h3>Multi-Page Atlas Batching</h3>
  * <p>The renderer supports multi-page atlases by converting glyph atlas regions
@@ -42,8 +42,8 @@ import java.util.logging.Logger;
  * texture ID), plane bounds, and per-page distance-field configuration ({@code pxRange}).
  * Quads are sorted by {@link CgDrawBatchKey} (atlas mode, page texture, pxRange)
  * so bitmap batches draw before distance-field batches. On batch-key transitions
- * the active shader, texture, and render state are swapped (triggering a flush of
- * whatever was pending under the previous state).</p>
+ * the active material keywords, atlas texture, and pxRange property are swapped
+ * (triggering a flush of whatever was pending under the previous state).</p>
  *
  * <h3>Three-Space Model</h3>
  * <p>The text rendering pipeline enforces a strict three-space separation
@@ -86,9 +86,9 @@ import java.util.logging.Logger;
  * {@link CgTextRenderContext#world} instead of {@link CgTextRenderContext#orthographic}
  * is what switches it on. That context's {@link PerspectiveScaleResolver} enforces
  * always-MSDF rendering and projection-aware quality/LOD policy via
- * {@link ProjectedSizeEstimator}; depth-tested render state (see
- * {@link #BITMAP_RENDER_STATE_WORLD} and siblings) is selected in this class via
- * {@link CgTextRenderContext#isWorldText()}. The PoseStack in world mode represents
+ * {@link ProjectedSizeEstimator}; depth-tested render state is applied in this class
+ * via {@link CgTextRenderContext#isWorldText()} — see {@link #flushPendingMaterial}.
+ * The PoseStack in world mode represents
  * model-view positioning (entity rotation, billboard transforms), not UI zoom. Layout
  * metrics remain in logical space regardless of camera distance or FOV.</p>
  *
@@ -126,64 +126,130 @@ import java.util.logging.Logger;
  * with every new optional parameter.</p>
  */
 public class CgTextRenderer {
+    /** Initial CPU staging capacity of the owned {@link CgBatchRenderer}, in quads. */
+    private static final int INITIAL_MAX_QUADS = 1024;
+
     // ══════════════════════════════════════════════════════════════════════════════════════════
-    //  SHADERS SETUP
+    //  CgMaterial SETUP
     // ══════════════════════════════════════════════════════════════════════════════════════════
-    private static final String BITMAP_VERT = "/shader/bitmap_text.vert", BITMAP_FRAG = "/shader/bitmap_text.frag";
-    public static final CgShader BITMAP_SHADER = CgShaderFactory.load(BITMAP_VERT, BITMAP_FRAG, CgVertexFormat.POS2_UV2_COL4UB);
 
-    private static final String MSDF_VERT = "/shader/msdf_text.vert", MSDF_FRAG = "/shader/msdf_text.frag";
-    public static final CgShader MSDF_SHADER = CgShaderFactory.load(MSDF_VERT, MSDF_FRAG, CgVertexFormat.POS2_UV2_COL4UB);
+    /**
+     * Shared static material — every {@code CgTextRenderer} instance binds/toggles keywords on
+     * this same instance (mirrors the already-static raw shaders above). Loaded via
+     * {@link CgMaterial#load(String)} (cache-per-path), not {@code newInstance()}, so it
+     * participates in {@code CgMaterialRegistry}'s hot-reload (F3+T) and teardown for free.
+     */
+    public static final CgMaterial TEXT_MATERIAL = CgMaterial.load("crystalgraphics:shaders/text.shader");
 
-    private static final String MTSDF_VERT = "/shader/mtsdf_text.vert", MTSDF_FRAG = "/shader/mtsdf_text.frag";
-    public static final CgShader MTSDF_SHADER = CgShaderFactory.load(MTSDF_VERT, MTSDF_FRAG, CgVertexFormat.POS2_UV2_COL4UB);
+    /**
+     * 0-based user UBO slot, picked away from indices 0/1 already used by ad-hoc
+     * harness/test UBOs (see gl-debug-harness's {@code CgAttachedBufferStressScene}) to avoid a
+     * binding-point collision — see {@link CgShaderBufferRegistry}.
+     */
+    private static final int TEXT_TRANSFORM_UBO_USER_INDEX = 31;
 
-    private static final CgRenderState BITMAP_RENDER_STATE = CgRenderState.builder()
-            .blend(CgBlendState.ALPHA)
-            .cull(CgCullState.NONE)
-            .depth(CgDepthState.NONE)
-            .build();
-
-    private static final CgRenderState MSDF_RENDER_STATE = CgRenderState.builder()
-            .blend(CgBlendState.ALPHA)
-            .cull(CgCullState.NONE)
-            .depth(CgDepthState.NONE)
-            .build();
-
-    private static final CgRenderState MTSDF_RENDER_STATE = CgRenderState.builder()
-            .blend(CgBlendState.ALPHA)
-            .cull(CgCullState.NONE)
-            .depth(CgDepthState.NONE)
+    private static final CgBufferFormat TEXT_TRANSFORM_FORMAT = CgBufferFormat
+            .builder("TextTransform", CgBufferFormat.MemoryLayout.STD140)
+            .mat4("u_projection")
+            .mat4("u_modelview")
             .build();
 
     /**
-     * World-space counterparts of {@link #BITMAP_RENDER_STATE}/{@link #MSDF_RENDER_STATE}/
-     * {@link #MTSDF_RENDER_STATE} — depth-tested against opaque scene geometry (so world text
-     * can be occluded by objects in front of it) but not depth-writing (so overlapping/blended
-     * glyph edges within the same text block don't z-fight each other), per
-     * world text's documented depth-test contract. Selected via
-     * {@link CgTextRenderContext#isWorldText()} in {@link #submitSortedQuads}.
+     * Shared static UBO carrying only the two matrices — {@code u_pxRange} lives on
+     * {@link #TEXT_MATERIAL}'s Properties block instead (it changes every batch-key transition;
+     * the matrices are constant for a whole {@code draw()} call — see
+     * {@link #uploadTransformIfChanged}). Created via the registry (not a bare
+     * {@code CgUniformBuffer.create()}) so it's covered by
+     * {@code CgShaderBufferRegistry.deleteAll()}'s teardown — no individual
+     * {@code CgTextRenderer} instance owns or deletes it.
      */
-    private static final CgRenderState BITMAP_RENDER_STATE_WORLD = CgRenderState.builder()
-            .blend(CgBlendState.ALPHA)
-            .cull(CgCullState.NONE)
-            .depth(CgDepthState.TEST_ONLY)
-            .build();
+    private static final CgUniformBuffer TEXT_TRANSFORM_UBO = CgShaderBufferRegistry.get().getOrCreateUbo(
+            TEXT_TRANSFORM_FORMAT, "TextTransform", TEXT_TRANSFORM_UBO_USER_INDEX);
 
-    private static final CgRenderState MSDF_RENDER_STATE_WORLD = CgRenderState.builder()
-            .blend(CgBlendState.ALPHA)
-            .cull(CgCullState.NONE)
-            .depth(CgDepthState.TEST_ONLY)
-            .build();
+    /**
+     * Mutable adapter over whatever raw GL atlas-page texture id is currently active.
+     * {@code CgMaterial}'s Properties-block sampler API ({@code applyProperties(b -> b.sampler(...))})
+     * requires a real {@link CgTexture}, not a raw int — atlas pages
+     * ({@code CgGlyphAtlasPage}) own only a raw GL texture id with no such wrapper. This view
+     * (never owns/deletes the real texture) is registered once via {@link #TEXT_MATERIAL}'s
+     * Properties block at class-init, then its id is mutated per atlas-page transition — the
+     * property system rebinds whatever this wrapper currently points to on every
+     * {@code material.bind()}, so no repeated {@code applyProperties} sampler call is needed.
+     */
+    private static final class MutableAtlasTextureRef implements CgTexture {
+        private int id;
 
-    private static final CgRenderState MTSDF_RENDER_STATE_WORLD = CgRenderState.builder()
-            .blend(CgBlendState.ALPHA)
-            .cull(CgCullState.NONE)
-            .depth(CgDepthState.TEST_ONLY)
-            .build();
+        void setId(int id) {this.id = id;}
 
-    /** Initial CPU staging capacity of the owned {@link CgBatchRenderer}, in quads. */
-    private static final int INITIAL_MAX_QUADS = 1024;
+        @Override
+        public void bind() {CgGL.glBindTexture(CgGL.GL_TEXTURE_2D, id);}
+
+        @Override
+        public void bind(int unit) {
+            CgGL.glActiveTexture(CgGL.GL_TEXTURE0 + unit);
+            CgGL.glBindTexture(CgGL.GL_TEXTURE_2D, id);
+        }
+
+        @Override
+        public int getId() {return id;}
+
+        @Override
+        public int getWidth() {return 0;}
+
+        @Override
+        public int getHeight() {return 0;}
+
+        @Override
+        public int getTarget() {return CgGL.GL_TEXTURE_2D;}
+
+        @Override
+        public boolean isDeleted() {return false;}
+
+        @Override
+        public void delete() { /* view only — CgGlyphAtlasPage owns the real texture */ }
+    }
+
+    private static final MutableAtlasTextureRef ATLAS_TEXTURE_REF = new MutableAtlasTextureRef();
+
+    /**
+     * Last-uploaded transform, cached statically alongside {@link #TEXT_TRANSFORM_UBO} — since
+     * the UBO is shared across every live {@code CgTextRenderer}, this must reflect the buffer's
+     * actual current contents regardless of which instance wrote it last. A per-instance cache
+     * would be a correctness bug: renderer B could wrongly skip its own reupload after renderer A
+     * clobbers the shared buffer. Defensive copies — never held references to a caller's mutable
+     * {@link PoseStack} matrix.
+     */
+    private static Matrix4f lastUploadedProjection = null;
+    private static Matrix4f lastUploadedModelview = null;
+
+    static {
+        TEXT_MATERIAL.attach(TEXT_TRANSFORM_UBO);
+        TEXT_MATERIAL.applyProperties(b -> b.sampler("_MainTex", 0, ATLAS_TEXTURE_REF));
+    }
+
+    /**
+     * Rewrites and uploads {@link #TEXT_TRANSFORM_UBO} only when {@code projection}/
+     * {@code modelView} actually differ from what's currently resident — avoids paying a full
+     * map/orphan/unmap round trip on every batch-key transition when only the atlas page or mode
+     * changed within the same {@code draw()} call (pose/projection are constant for the whole
+     * call).
+     */
+    private static void uploadTransformIfChanged(Matrix4f projection, Matrix4f modelView) {
+        if (lastUploadedProjection != null && lastUploadedProjection.equals(
+                projection) && lastUploadedModelview != null && lastUploadedModelview.equals(modelView)) {
+            return;
+        }
+
+        TEXT_TRANSFORM_UBO.writer().reset().beginRecord().mat4("u_projection", projection)
+                          .mat4("u_modelview", modelView);
+        TEXT_TRANSFORM_UBO.endRecord();
+        TEXT_TRANSFORM_UBO.upload();
+
+        if (lastUploadedProjection == null) lastUploadedProjection = new Matrix4f(projection);
+        else lastUploadedProjection.set(projection);
+        if (lastUploadedModelview == null) lastUploadedModelview = new Matrix4f(modelView);
+        else lastUploadedModelview.set(modelView);
+    }
 
     // ══════════════════════════════════════════════════════════════════════════════════════════
 
@@ -196,14 +262,29 @@ public class CgTextRenderer {
     // ── Owned batch lifecycle ────────────────────────────────────────────────
     private final CgBatchRenderer batchRenderer;
     private boolean batchActive;
-    private CgShader activeShader;
-    private CgRenderState activeRenderState;
-    private int activeTextureId = -1;
+    /** Batch-key transition tracking — see {@link #transitionToMaterial}. */
+    private CgDrawBatchKey activeBatchKey;
     /**
      * Optional caller-supplied hook invoked at the end of every {@link #endBatch()} (manual
      * or {@link Draw#submit()}'s standalone auto-batch alike) — see {@link #restoreStateWith}.
      */
     private Runnable postBatchRestore;
+    
+        /**
+     * Registers a hook that runs at the end of every {@link #endBatch()} — including the
+     * standalone auto-batch that {@link Draw#submit()} opens/closes around a single
+     * one-shot draw when no batch is already active, which is the common case for
+     * {@code ctx.text().draw()...submit()} call sites.
+     *
+     * @param restoreAction closure re-establishing the caller's own GL state (e.g.
+     *                       re-binding its own material/texture); pass {@code null} to
+     *                       clear a previously registered hook
+     */
+    public CgTextRenderer restoreStateWith(Runnable restoreAction) {
+        this.postBatchRestore = restoreAction;
+        return this;
+    }
+
 
     // ── Owned render context ────────────────────────────────────────────────
     /**
@@ -301,9 +382,7 @@ public class CgTextRenderer {
         if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
         if (batchActive) throw new IllegalStateException("CgTextRenderer.beginBatch() called without a matching endBatch()");
 
-        activeShader = null;
-        activeRenderState = null;
-        activeTextureId = -1;
+        activeBatchKey = null;
         batchActive = true;
         batchRenderer.begin();
     }
@@ -318,87 +397,64 @@ public class CgTextRenderer {
     public void endBatch() {
         if (!batchActive) return;
 
-        flushPending();
+        flushPendingMaterial();
         batchRenderer.end();
-        activeShader = null;
-        activeRenderState = null;
-        activeTextureId = -1;
+        activeBatchKey = null;
         batchActive = false;
 
         if (postBatchRestore != null) postBatchRestore.run();
     }
 
-    /**
-     * Registers a hook that runs at the end of every {@link #endBatch()} — including the
-     * standalone auto-batch that {@link Draw#submit()} opens/closes around a single
-     * one-shot draw when no batch is already active, which is the common case for
-     * {@code ctx.text().draw()...submit()} call sites.
-     *
-     * <p><strong>Why this exists instead of a generic GL-state snapshot/restore:</strong>
-     * a batch's internal shader/texture/render-state transitions ({@link #flushPending})
-     * always end by unbinding to a neutral state (program 0, texture unit 0 unbound,
-     * render state cleared to GL defaults) — never back to whatever the caller had bound
-     * beforehand. A caller that shares the GL context with other immediate-mode drawing in
-     * the same frame (e.g. {@code CgUiPaintContext}, which binds its box-model material
-     * once per frame and leaves it bound across many {@code fillRect}/{@code drawImage}
-     * calls) needs that neutral state undone after every text draw interleaved between its
-     * own draws. The naive fix is to snapshot the caller's real GL state via
-     * {@code CgGlState.save(...)} before the batch and restore it after — but capturing
-     * {@code CgGlSlot.TEXTURES} alone issues one {@code glGetInteger} per texture unit
-     * (see {@code CgGlStates.TextureState.capture()}), and that cost would be paid on
-     * every standalone text draw (i.e. potentially every label, every frame) rather than
-     * once per UI frame. Since the caller already knows what it wants bound — it doesn't
-     * need to be discovered via {@code glGet} — supplying a cheap explicit restore
-     * closure (a couple of plain {@code bind()} calls, zero queries) is strictly better
-     * than a generic introspective snapshot here.</p>
-     *
-     * @param restoreAction closure re-establishing the caller's own GL state (e.g.
-     *                       re-binding its own material/texture); pass {@code null} to
-     *                       clear a previously registered hook
-     */
-    public CgTextRenderer restoreStateWith(Runnable restoreAction) {
-        this.postBatchRestore = restoreAction;
-        return this;
-    }
 
     /**
-     * Flushes whatever is currently staged under {@link #activeShader}/
-     * {@link #activeRenderState}/{@link #activeTextureId}, binding/applying them for the
-     * duration of the draw call and restoring afterward. No-op if nothing is staged.
+     * Flushes whatever is currently staged under {@link #activeBatchKey}, binding
+     * {@link #TEXT_MATERIAL} (with whatever keywords/properties/atlas texture were last set by
+     * {@link #transitionToMaterial}) plus {@link #TEXT_TRANSFORM_UBO} for the duration of the
+     * draw, and unbinding both afterward. No-op if nothing is staged.
+     *
+     * <p>The real depth state (disabled for UI text, test-only for world text — see
+     * {@link CgTextRenderContext#isWorldText()}) is applied <em>after</em> {@code TEXT_MATERIAL.bind()}
+     * since a {@code Pass}'s {@code RenderState} is baked at author time and can't itself express
+     * this split (see {@code text.shader}'s placeholder {@code DepthTest}/{@code DepthWrite}
+     * lines). No explicit {@code .clear()} is needed afterward — {@code TEXT_MATERIAL.unbind()}'s
+     * own {@code CgGlScope} already restores depth (along with blend/cull/etc.) to whatever was
+     * active before {@code bind()}, which is more correct than resetting to hard GL defaults.</p>
      */
-    private void flushPending() {
+    private void flushPendingMaterial() {
         if (!batchRenderer.isDirty()) return;
 
-        if (activeShader != null) activeShader.bind();
-        if (activeTextureId >= 0) {
-            CgGL.glActiveTexture(CgGL.GL_TEXTURE0);
-            CgGL.glBindTexture(CgGL.GL_TEXTURE_2D, activeTextureId);
-        }
-        if (activeRenderState != null) activeRenderState.apply();
+        TEXT_MATERIAL.bind();
+        TEXT_TRANSFORM_UBO.bind();
+        (context.isWorldText() ? CgDepthState.TEST_ONLY : CgDepthState.NONE).apply();
 
         batchRenderer.flush();
-
-        if (activeRenderState != null) activeRenderState.clear();
-        if (activeTextureId >= 0) {
-            CgGL.glActiveTexture(CgGL.GL_TEXTURE0);
-            CgGL.glBindTexture(CgGL.GL_TEXTURE_2D, 0);
-        }
-        if (activeShader != null) activeShader.unbind();
+        
+        // No need to unbind as they are wasteful
     }
 
     /**
-     * Transitions to the given shader/render-state/texture, flushing whatever was pending
-     * under the previous combination first (mirrors the old
-     * {@code CgDynamicTextureRenderLayer.setShader/setRenderState/setTexture} flush-on-change
-     * behavior, collapsed into a single flush per actual transition).
+     * Transitions {@link #TEXT_MATERIAL} to the given batch key, flushing whatever was pending
+     * under the previous key first.
+     *
+     * <p>Every transition explicitly sets {@code MSDF_MODE} — one keyword covers both
+     * distance-field atlas types (MSDF and MTSDF), since the fragment logic is identical for
+     * both today (see {@code text.shader}). {@link #TEXT_MATERIAL} is shared static state, so
+     * this is always an explicit enable-or-disable, never a bare {@code enableKeyword()} alone
+     * — a stale keyword left on by a previous transition (this renderer's or another live
+     * instance's) would otherwise silently persist into the next bind's compiled variant.</p>
      */
-    private void transitionTo(CgShader shader, CgRenderState state, int textureId) {
-        if (shader != activeShader || state != activeRenderState || textureId != activeTextureId) {
-            flushPending();
-            activeShader = shader;
-            activeRenderState = state;
-            activeTextureId = textureId;
-        }
+    private void transitionToMaterial(CgDrawBatchKey key) {
+        if (activeBatchKey != null && activeBatchKey.equals(key)) return;
+
+        flushPendingMaterial();
+
+        if (key.isDistanceField()) TEXT_MATERIAL.enableKeyword("MSDF_MODE");
+        else TEXT_MATERIAL.disableKeyword("MSDF_MODE");
+
+        ATLAS_TEXTURE_REF.setId(key.getTextureId());
+        TEXT_MATERIAL.applyProperties(b -> b.set1f("_PxRange", key.getPxRange()));
+
+        activeBatchKey = key;
     }
 
     // ══════════════════════════════════════════════════════════════════════════════════════════
@@ -715,11 +771,11 @@ public class CgTextRenderer {
      *
      * <p>On batch-key transitions (atlas page / atlas mode changes), this method:
      * <ol>
-     *   <li>Calls {@link #transitionTo} to flush any pending quads under the previous
-     *       shader/render-state/texture combination, then adopt the new one</li>
-     *   <li>Applies per-batch shader uniforms ({@code u_modelview}, {@code u_pxRange})
-     *       via the shader's ephemeral bindings — these are picked up the next time the
-     *       shader is bound (at the next {@link #flushPending()})</li>
+     *   <li>Calls {@link #transitionToMaterial} to flush any pending quads under the previous
+     *       keyword/property/texture combination, then adopt the new one</li>
+     *   <li>The transform ({@code u_projection}/{@code u_modelview}) is constant for the whole
+     *       call and is uploaded once up-front via {@link #uploadTransformIfChanged} — see that
+     *       method and {@link #TEXT_TRANSFORM_UBO}</li>
      *   <li>Emits glyph quads through the batch renderer's {@code CgVertexConsumer}</li>
      * </ol>
      */
@@ -749,47 +805,48 @@ public class CgTextRenderer {
             }
         }
 
-        // Sort by batch key using insertion sort (stable, good for small N
-        // and nearly-sorted data which is common since glyphs from the same
-        // atlas page are often consecutive in the layout)
+        // Fast path (§3.4): if every glyph in this draw already shares one batch key — the
+        // dominant case, one font/tier for the whole string — sorting is a guaranteed no-op.
+        // Skip it: one linear scan against batchKeys[0] instead of an O(n log n) insertion sort.
+        boolean uniformBatch = true;
         for (int i = 1; i < visibleCount; i++) {
-            CgDrawBatchKey keyI = batchKeys[i];
-            int idxI = sortedIndices[i];
-            int j = i - 1;
-            while (j >= 0 && batchKeys[j].compareTo(keyI) > 0) {
-                batchKeys[j + 1] = batchKeys[j];
-                sortedIndices[j + 1] = sortedIndices[j];
-                j--;
+            if (!batchKeys[i].equals(batchKeys[0])) {
+                uniformBatch = false;
+                break;
             }
-            batchKeys[j + 1] = keyI;
-            sortedIndices[j + 1] = idxI;
         }
 
-        // Submit sorted quads. On batch-key change, transition shader/render-state/texture
-        // (flushing whatever was pending under the previous combination) and set shader uniforms.
+        if (!uniformBatch) {
+            // General path: sort by batch key using insertion sort (stable, good for small N
+            // and nearly-sorted data which is common since glyphs from the same
+            // atlas page are often consecutive in the layout)
+            for (int i = 1; i < visibleCount; i++) {
+                CgDrawBatchKey keyI = batchKeys[i];
+                int idxI = sortedIndices[i];
+                int j = i - 1;
+                while (j >= 0 && batchKeys[j].compareTo(keyI) > 0) {
+                    batchKeys[j + 1] = batchKeys[j];
+                    sortedIndices[j + 1] = sortedIndices[j];
+                    j--;
+                }
+                batchKeys[j + 1] = keyI;
+                sortedIndices[j + 1] = idxI;
+            }
+        }
+
+        // Transform is constant for this whole draw() call — upload once, not per transition.
+        uploadTransformIfChanged(context.getProjection(), modelView);
+
+        // Submit sorted quads. On batch-key change, transition material state (flushing whatever
+        // was pending under the previous combination).
         CgDrawBatchKey currentKey = null;
-        boolean worldText = context.isWorldText();
 
         for (int s = 0; s < visibleCount; s++) {
             CgDrawBatchKey thisKey = batchKeys[s];
 
-            // On batch key change, transition shader/texture/render-state.
+            // On batch key change, transition material keywords/properties/texture.
             if (currentKey == null || !thisKey.equals(currentKey)) {
-                CgRenderState renderState = thisKey.isMtsdf() ? (worldText ? MTSDF_RENDER_STATE_WORLD : MTSDF_RENDER_STATE)
-                        : thisKey.isDistanceField() ? (worldText ? MSDF_RENDER_STATE_WORLD : MSDF_RENDER_STATE)
-                        : (worldText ? BITMAP_RENDER_STATE_WORLD : BITMAP_RENDER_STATE);
-
-                CgShader shader = thisKey.isMtsdf() ? MTSDF_SHADER
-                        : thisKey.isDistanceField() ? MSDF_SHADER : BITMAP_SHADER;
-
-                transitionTo(shader, renderState, thisKey.getTextureId());
-
-                shader.applyBindings(bi -> {
-                    bi.mat4("u_modelview", modelView);
-                    bi.mat4("u_projection", context.getProjection());
-                    bi.set1i("u_atlas", 0);
-                    if (thisKey.isDistanceField()) bi.set1f("u_pxRange", thisKey.getPxRange());
-                });
+                transitionToMaterial(thisKey);
 
                 currentKey = thisKey;
             }
