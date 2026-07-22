@@ -833,6 +833,7 @@ CgGraphicsLifecycle.destroyContext();
 
 | Step | What | Why |
 |------|------|-----|
+| 0 | `CgTextRendererRegistry.get().deleteAll()` | Any `CgTextRenderer` still alive (backstop — individual owners should already have called `delete()`); runs first so each renderer's owned `CgBatchRenderer` (VAO/VBO) releases individually before the bulk sweep below |
 | 1 | `CgVertexArrayRegistry.get().deleteAll()` | All VAOs — instanced first (they reference both VBOs), then non-instanced |
 | 2 | `CgMeshRegistry.get().deleteAll()` | Static mesh VBOs + IBOs + per-mesh VAOs |
 | 3 | `CgVertexBufferRegistry.get().deleteAll()` | All streaming VBOs (base + instance) |
@@ -863,6 +864,7 @@ All registries are **singletons accessed via `.get()`**. You normally interact w
 | `CgVertexBufferRegistry` | `CgVertexBufferRegistry.get()` | All streaming VBOs (base + instance) | Internal — do not create VBOs manually |
 | `CgShaderBufferRegistry` | `CgShaderBufferRegistry.get()` | User-attached SSBO/TBO/UBO objects | `deleteAll()` on teardown (via lifecycle) |
 | `CgFontRegistry` | `CgFontRegistry.get()` | Glyph atlas textures (bitmap/MSDF/MTSDF) + background generation executor | `releaseAll()` on teardown (via lifecycle); parameterized constructors remain public for harness testing of custom atlas sizes/configs — see `text/cache/AGENTS.md` |
+| `CgTextRendererRegistry` | `CgTextRendererRegistry.get()` | Tracks every `CgTextRenderer` for teardown; auto-resizes screen-sized ones (`createScreenSized()`) on `onResize()` | Does not own renderer *lifecycle* the way other registries do — owners still call `delete()` themselves; `deleteAll()` on teardown is a backstop, not the primary path — see `text/render/AGENTS.md` |
 
 
 ---

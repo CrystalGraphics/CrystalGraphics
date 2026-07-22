@@ -119,7 +119,7 @@ import java.util.logging.Logger;
  * </ol>
  *
  * <h3>Draw API</h3>
- * <p>{@link #draw()}/{@link #newDraw()} return a fluent {@link Draw} request object —
+ * <p>{@link #draw()}/{@link #retainedDraw()} return a fluent {@link Draw} request object —
  * see that class's javadoc for the full chain-method surface and field-priority rules.
  * This replaced a fixed-arity {@code draw(...)} overload matrix that grew combinatorially
  * with every new optional parameter.</p>
@@ -385,8 +385,8 @@ public class CgTextRenderer {
      * zero allocation. Build it and call {@link Draw#submit()} in the same expression;
      * do not hold the returned reference past that, since any other {@code draw()} call
      * on this renderer (even from an unrelated call site) resets and reuses the same
-     * instance. For a draw descriptor you want to hold across frames, use {@link #newDraw()}
-     * instead.
+     * instance. For a draw descriptor you want to hold across frames, use
+     * {@link #retainedDraw()} instead.
      *
      * <p>Replaces the fixed-arity {@code draw(...)} overloads above for new call sites —
      * new optional parameters become new chain methods instead of new overloads.</p>
@@ -401,12 +401,13 @@ public class CgTextRenderer {
     }
 
     /**
-     * Allocates a standalone {@link Draw} instance the caller owns and may hold across
-     * frames — e.g. build once, then call {@link Draw#submit()} every tick, mutating only
-     * whatever field changed. Independent of {@link #draw()}'s shared scratch instance and
-     * of any other renderer's or call site's {@code newDraw()} result.
+     * Allocates a standalone, retained-mode {@link Draw} instance the caller owns and may
+     * hold across frames — e.g. build once, then call {@link Draw#submit()} every tick,
+     * mutating only whatever field changed. Independent of {@link #draw()}'s shared
+     * immediate-mode scratch instance and of any other renderer's or call site's
+     * {@code retainedDraw()} result.
      */
-    public Draw newDraw() {
+    public Draw retainedDraw() {
         if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
         return new Draw();
     }
@@ -414,8 +415,8 @@ public class CgTextRenderer {
     /**
      * Fluent, mutable draw request — the replacement for {@code CgTextRenderer}'s fixed-arity
      * {@code draw(...)} overload matrix. Obtain one via {@link #draw()} (shared scratch,
-     * zero-allocation, submit immediately) or {@link #newDraw()} (standalone, holdable
-     * across frames).
+     * zero-allocation, immediate-mode: submit right away) or {@link #retainedDraw()}
+     * (standalone, retained-mode: holdable across frames).
      *
      * <h3>Field priority, not exclusivity</h3>
      * <p>{@link #layout(CgTextLayout)} and {@link #text(String)} may both be set; if so,
@@ -428,9 +429,47 @@ public class CgTextRenderer {
      * <h3>Required fields</h3>
      * <p>{@link #submit()} throws {@link IllegalStateException} unless at least one of
      * {@code layout}/{@code text} and at least one of {@code family}/{@code font} have been
-     * set, and {@link #pose(PoseStack)} has been called. {@link #at(float, float)} and
-     * {@link #color(int)} default to {@code (0, 0)} and opaque white ({@code 0xFFFFFFFF})
-     * respectively if never called.</p>
+     * set. {@link #pose(PoseStack)} is usually required too, unless the owning
+     * {@link CgTextRenderer} has a fallback set via {@link CgTextRenderer#poseStack(PoseStack)}.
+     * {@link #at(float, float)} and {@link #color(int)} default to {@code (0, 0)} and opaque
+     * white ({@code 0xFFFFFFFF}) respectively if never called.</p>
+     *
+     * <h3>Example</h3>
+     * <pre>{@code
+     * // One-shot: build and submit in the same expression, zero allocation
+     * // (renderer.draw() reuses a single scratch instance internally).
+     * renderer.draw()
+     *         .text("Hello world")
+     *         .font(myFont)
+     *         .at(20.0f, 40.0f)
+     *         .color(0xFFFFFFFF)
+     *         .pose(poseStack)
+     *         .submit();
+     *
+     * // A prebuilt CgTextLayout wins over text(), and family() wins over font() —
+     * // useful when you already have both and want the more specific one to apply.
+     * renderer.draw()
+     *         .layout(prebuiltLayout)
+     *         .family(myFontFamily)
+     *         .at(x, y)
+     *         .color(argb)
+     *         .pose(poseStack)
+     *         .submit();
+     *
+     * // Retained: held across frames, only the text changes each tick.
+     * // Independent of renderer.draw()'s shared immediate-mode scratch instance.
+     * CgTextRenderer.Draw hudDraw = renderer.retainedDraw()
+     *         .font(hudFont).at(8.0f, 8.0f).color(0xFFFFFFFF).pose(poseStack);
+     * // ... later, once per frame:
+     * hudDraw.text(currentFpsString).submit();
+     *
+     * // Manually-batched: several draws sharing one upload+draw. submit() returns the
+     * // owning CgTextRenderer, so the last call in the batch can chain into endBatch().
+     * renderer.beginBatch();
+     * renderer.draw().text(line1).font(font).at(20.0f, 20.0f).color(0xFFFFFFFF).pose(poseStack).submit();
+     * renderer.draw().text(line2).font(font).at(20.0f, 40.0f).color(0xFFFFFFFF).pose(poseStack)
+     *         .submit().endBatch();
+     * }</pre>
      */
     public final class Draw {
         private CgTextLayout layout;
@@ -527,14 +566,18 @@ public class CgTextRenderer {
 
         /**
          * Resolves and submits this draw request through the same pipeline the fixed-arity
-         * {@code draw(...)} overloads use ({@link #drawInternal}).
+         * {@code draw(...)} overloads use ({@link #drawInternal}). Returns the owning
+         * {@link CgTextRenderer} so a manually-opened batch's final {@code submit()} call
+         * can chain straight into {@link CgTextRenderer#endBatch()} — see the class
+         * javadoc's example.
          *
+         * @return the owning {@link CgTextRenderer}, for chaining into {@link CgTextRenderer#endBatch()}
          * @throws IllegalStateException if neither {@code layout} nor {@code text} was set,
          *                                neither {@code family} nor {@code font} was set, or
          *                                {@code pose} was never set and the renderer has no
          *                                fallback {@link CgTextRenderer#poseStack(PoseStack)}
          */
-        public void submit() {
+        public CgTextRenderer submit() {
             if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
             if (layout == null && text == null) throw new IllegalStateException("CgTextRenderer.Draw requires text(...) or layout(...) before submit()");
             if (family == null && font == null) throw new IllegalStateException("CgTextRenderer.Draw requires font(...) or family(...) before submit()");
@@ -561,7 +604,7 @@ public class CgTextRenderer {
                 resolvedLayout = layout != null ? layout : CgTextRenderer.layout(text, resolvedFont, constraints);
             }
 
-            if (resolvedLayout == null || resolvedLayout.getLines().isEmpty()) return;
+            if (resolvedLayout == null || resolvedLayout.getLines().isEmpty()) return CgTextRenderer.this;
 
             PoseStack effectivePose = pose != null ? pose : CgTextRenderer.this.poseStack;
             if (effectivePose == null) {
@@ -576,6 +619,7 @@ public class CgTextRenderer {
             } finally {
                 if (standalone) endBatch();
             }
+            return CgTextRenderer.this;
         }
     }
 
