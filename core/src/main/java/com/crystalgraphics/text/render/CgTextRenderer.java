@@ -18,6 +18,8 @@ import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.text.cache.CgFontRegistry;
 import lombok.Getter;
+import lombok.Setter;
+import lombok.experimental.Accessors;
 import org.joml.Matrix4f;
 
 import java.util.ArrayList;
@@ -241,6 +243,19 @@ public class CgTextRenderer {
         if (context == null) throw new IllegalArgumentException("context must not be null");
         this.context = context;
     }
+
+    // ── Optional fallback pose stack ─────────────────────────────────────────
+    /**
+     * Not instantiated by default — {@code null} until a caller opts in via
+     * {@link #poseStack(PoseStack)}. In the common case a caller supplies its own
+     * {@link PoseStack} directly to every draw via {@link Draw#pose(PoseStack)}; this
+     * field only exists as a niche fallback for {@link Draw#submit()} when that wasn't
+     * called.
+     */
+    @Getter
+    @Setter
+    @Accessors(fluent = true)
+    private PoseStack poseStack;
 
     /**
      * Creates the renderer façade, including its owned {@link CgBatchRenderer}, and
@@ -499,7 +514,12 @@ public class CgTextRenderer {
             return this;
         }
 
-        /** The current PoseStack providing model-view transform. Required before {@link #submit()}. */
+        /**
+         * The current PoseStack providing model-view transform. Usually required — the
+         * only exception is when the owning {@link CgTextRenderer} has a fallback pose
+         * stack set via {@link CgTextRenderer#poseStack(PoseStack)}, in which case this
+         * call may be omitted and {@link #submit()} falls back to that instead.
+         */
         public Draw pose(PoseStack pose) {
             this.pose = pose;
             return this;
@@ -511,11 +531,11 @@ public class CgTextRenderer {
          *
          * @throws IllegalStateException if neither {@code layout} nor {@code text} was set,
          *                                neither {@code family} nor {@code font} was set, or
-         *                                {@code pose} was never set
+         *                                {@code pose} was never set and the renderer has no
+         *                                fallback {@link CgTextRenderer#poseStack(PoseStack)}
          */
         public void submit() {
             if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
-            if (pose == null) throw new IllegalStateException("CgTextRenderer.Draw requires pose(...) before submit()");
             if (layout == null && text == null) throw new IllegalStateException("CgTextRenderer.Draw requires text(...) or layout(...) before submit()");
             if (family == null && font == null) throw new IllegalStateException("CgTextRenderer.Draw requires font(...) or family(...) before submit()");
 
@@ -543,10 +563,16 @@ public class CgTextRenderer {
 
             if (resolvedLayout == null || resolvedLayout.getLines().isEmpty()) return;
 
+            PoseStack effectivePose = pose != null ? pose : CgTextRenderer.this.poseStack;
+            if (effectivePose == null) {
+                throw new IllegalStateException(
+                        "CgTextRenderer.Draw requires pose(...) before submit() (no fallback set via CgTextRenderer.poseStack(...))");
+            }
+
             boolean standalone = !batchActive;
             if (standalone) beginBatch();
             try {
-                drawInternal(resolvedLayout, resolvedFamily, x, y, rgba, context, pose.last());
+                drawInternal(resolvedLayout, resolvedFamily, x, y, rgba, context, effectivePose.last());
             } finally {
                 if (standalone) endBatch();
             }
