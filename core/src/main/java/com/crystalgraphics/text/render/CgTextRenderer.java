@@ -18,6 +18,7 @@ import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.text.cache.CgFontRegistry;
 import lombok.Getter;
+import lombok.NonNull;
 import lombok.Setter;
 import lombok.experimental.Accessors;
 import org.joml.Matrix4f;
@@ -200,49 +201,22 @@ public class CgTextRenderer {
     private int activeTextureId = -1;
 
     // ── Owned render context ────────────────────────────────────────────────
+    /**
+     * Defaults to an orthographic context sized to {@link CgGraphicsLifecycle}'s current
+     * known window dimensions (0×0 before the engine's first resize/init) — size it via
+     * {@link CgTextRenderContext#updateOrtho} before first use if needed, or replace it
+     * entirely via {@link #context(CgTextRenderContext)}. Fluent Lombok accessors:
+     * {@link #context()} (getter), {@link #context(CgTextRenderContext)} (setter — the way
+     * to switch between orthographic/2D and world/3D modes, since the two differ in which
+     * {@link CgTextScaleResolver} they hold; build the replacement via
+     * {@link CgTextRenderContext#orthographic} or {@link CgTextRenderContext#world}).
+     */
+    @Getter
+    @Setter
+    @Accessors(fluent = true)
+    @NonNull
     private CgTextRenderContext context = CgTextRenderContext.orthographic(
             CgGraphicsLifecycle.getCurrentWidth(), CgGraphicsLifecycle.getCurrentHeight());
-
-    /** Tracks the display window's resolution automatically — every {@link CgGraphicsLifecycle#onResize} call resizes
-     * it in place, no manual per-frame dimension check needed.
-     * Only resizes a 2D orthographic {@link #context}, 3D perspective contexts need to be manually resized.*/
-    @Getter
-    private boolean screenSized;
-
-    @Getter
-    private boolean deleted;
-
-    private CgTextRenderer() {
-        this.batchRenderer = CgBatchRenderer.create(CgVertexFormat.POS2_UV2_COL4UB, INITIAL_MAX_QUADS);
-    }
-
-    /**
-     * Returns this renderer's owned {@link CgTextRenderContext}.
-     *
-     * <p>The returned context is fully mutable — callers use it directly for
-     * resize/projection updates ({@link CgTextRenderContext#updateOrtho},
-     * {@link CgTextRenderContext#updateProjection}), raster-history resets
-     * ({@link CgTextRenderContext#clearHistory()}), and world-text projected-size
-     * hints ({@link CgTextRenderContext#updateProjectedSize}). Defaults to an
-     * orthographic context sized to {@link CgGraphicsLifecycle}'s current known window
-     * dimensions (0×0 before the engine's first resize/init) — size it via
-     * {@link CgTextRenderContext#updateOrtho} before first use if needed, or replace it
-     * entirely via {@link #context(CgTextRenderContext)}.</p>
-     */
-    public CgTextRenderContext context() {
-        return context;
-    }
-
-    /**
-     * Replaces this renderer's owned {@link CgTextRenderContext} — the way to switch
-     * between orthographic (2D UI) and world-space (3D) modes, since the two differ
-     * in which {@link CgTextScaleResolver} they hold. Build the replacement via
-     * {@link CgTextRenderContext#orthographic} or {@link CgTextRenderContext#world}.
-     */
-    public void context(CgTextRenderContext context) {
-        if (context == null) throw new IllegalArgumentException("context must not be null");
-        this.context = context;
-    }
 
     // ── Optional fallback pose stack ─────────────────────────────────────────
     /**
@@ -256,6 +230,19 @@ public class CgTextRenderer {
     @Setter
     @Accessors(fluent = true)
     private PoseStack poseStack;
+
+    /** Tracks the display window's resolution automatically — every {@link CgGraphicsLifecycle#onResize} call resizes
+     * it in place, no manual per-frame dimension check needed.
+     * Only resizes a 2D orthographic {@link #context}, 3D perspective contexts need to be manually resized.*/
+    @Getter
+    private boolean screenSized;
+
+    @Getter
+    private boolean deleted;
+
+    private CgTextRenderer() {
+        this.batchRenderer = CgBatchRenderer.create(CgVertexFormat.POS2_UV2_COL4UB, INITIAL_MAX_QUADS);
+    }
 
     /**
      * Creates the renderer façade, including its owned {@link CgBatchRenderer}, and
@@ -424,7 +411,7 @@ public class CgTextRenderer {
      * what the caller actually wants drawn. Likewise {@link #family(CgFontFamily)} wins over
      * {@link #font(CgFont)} when both are set, since a family is the strictly more capable
      * superset (a single font is just wrapped into one internally via
-     * {@link CgFontFamily#of(CgFont)}).</p>
+     * {@link CgFontFamily#of(CgFont, CgFont...)}).</p>
      *
      * <h3>Required fields</h3>
      * <p>{@link #submit()} throws {@link IllegalStateException} unless at least one of
