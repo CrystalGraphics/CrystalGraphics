@@ -55,6 +55,16 @@ public final class CgBindingPoints {
      */
     public static int MATERIAL_PROPERTIES_UBO = -1;
 
+    /**
+     * UBO binding slot for {@code CgTextRenderer}'s shared {@code "TextData"} transform block
+     * ({@code u_projection}/{@code u_modelview}). Set to {@code maxUniformBufferBindings - 3} by
+     * {@link #init(CgCapabilities)}, following the same top-of-range pattern as
+     * {@link #FRAME_DATA_UBO}/{@link #MATERIAL_PROPERTIES_UBO}. This slot is engine-reserved and
+     * must not be used by user-attached UBOs — see {@link CgShaderBufferRegistry}.
+     * Valid only after {@link #init(CgCapabilities)} has been called.
+     */
+    public static int TEXT_DATA_UBO = -1;
+
      /**
       * GL texture unit reserved for {@code cg_DepthBuffer} — the per-frame scene depth snapshot
       * automatically bound by the engine before each material draw.
@@ -117,6 +127,7 @@ public final class CgBindingPoints {
         // ── UBO bindings ───────────────────────────────────────────────────────────────
         FRAME_DATA_UBO          = --maxUboBindings;
         MATERIAL_PROPERTIES_UBO = --maxUboBindings;
+        TEXT_DATA_UBO           = --maxUboBindings;
 
         // ── Texture bindings ───────────────────────────────────────────────────────────────
         DEPTH_TEXTURE_UNIT = --maxTextureUnits;

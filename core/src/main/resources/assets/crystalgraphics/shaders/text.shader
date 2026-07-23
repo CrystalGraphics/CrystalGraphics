@@ -54,14 +54,14 @@ Pass {
     }
 
     // u_projection/u_modelview reach this shader via CgTextRenderer's attached, shared
-    // static "TextTransform" CgUniformBuffer (flat STD140 scope — referenced directly,
+    // static "TextData" CgUniformBuffer (flat STD140 scope — referenced directly,
     // no block prefix). Do not declare them here; do not use cg_env.glsl's camera/instancing
     // macros (CG_MATRIX_MVP, CG_OBJECT_TO_WORLD, etc.) — text has neither a frame camera nor
     // a per-instance object record, each draw carries its own arbitrary transform.
     void vertex(out v2f o) {
-        gl_Position = u_projection * u_modelview * vec4(a_pos, 0.0, 1.0);
-        o.uv = a_uv;
-        o.color = a_color;
+        gl_Position = u_Projection * u_ModelView * vec4(cg_Position, 0.0, 1.0);
+        o.uv    = cg_TexCoord0;
+        o.color = cg_Color;
     }
 
     void fragment(in v2f i, out vec4 fragColor) {
