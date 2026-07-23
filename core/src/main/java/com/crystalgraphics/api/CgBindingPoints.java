@@ -145,9 +145,8 @@ public final class CgBindingPoints {
         int maxUboBindings  = caps.getMaxUniformBufferBindings();
 
         // ── SSBO/TBO Path bindings ───────────────────────────────────────────────────────────────
-        OBJECT_DATA_SSBO = --maxSsboBindings;
-        OBJECT_DATA_TBO  = --maxTextureUnits;
         OBJECT_DATA = new Binding(--maxSsboBindings, --maxTextureUnits);
+        QUAD_RENDERER = new Binding(--maxSsboBindings, --maxTextureUnits);
 
         // ── UBO bindings ───────────────────────────────────────────────────────────────
         FRAME_DATA_UBO          = --maxUboBindings;
