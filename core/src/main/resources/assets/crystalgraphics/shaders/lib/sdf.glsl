@@ -24,6 +24,27 @@ float sdf_rounded_box(vec2 p, vec2 halfSize, vec4 radii) {
     return sdf_rounded_box(p, halfSize, radius);
 }
 
+// Elliptical per-corner overload: `radiiX`/`radiiY` are independent horizontal/vertical radii per
+// corner, same (TL,TR,BR,BL) order/quadrant-selection as the vec4 overload above. Approximate but
+// visually correct (exact only when rx==ry per corner): normalizes the corner-region offset by
+// (rx,ry) before the circular distance evaluation, then scales the result back by min(rx,ry) so
+// AA/coverage stays in consistent real-distance units.
+float sdf_rounded_box(vec2 p, vec2 halfSize, vec4 radiiX, vec4 radiiY) {
+    vec2 rxTopBottom = (p.x > 0.0) ? radiiX.yz : radiiX.xw;
+    float rx = (p.y < 0.0) ? rxTopBottom.x : rxTopBottom.y;
+    vec2 ryTopBottom = (p.x > 0.0) ? radiiY.yz : radiiY.xw;
+    float ry = (p.y < 0.0) ? ryTopBottom.x : ryTopBottom.y;
+
+    rx = min(rx, halfSize.x);
+    ry = min(ry, halfSize.y);
+    vec2 q = abs(p) - halfSize + vec2(rx, ry);
+    if (rx <= 0.0 || ry <= 0.0) {
+        return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0);
+    }
+    vec2 n = max(q, 0.0) / vec2(rx, ry);
+    return (length(n) - 1.0) * min(rx, ry) + min(max(q.x, q.y), 0.0);
+}
+
 // 1.0 inside the shape, 0.0 outside, antialiased across ~1px at the edge using screen-space
 // derivatives. `dist` is an `sdf_*` distance (negative inside, per the convention above).
 float sdf_coverage(float dist) {
