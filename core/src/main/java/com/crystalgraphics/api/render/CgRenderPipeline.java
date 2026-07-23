@@ -163,7 +163,7 @@ public final class CgRenderPipeline {
 
     private CgRenderPipeline() {
         this.frameUbo      = new CgUniformBuffer(FRAME_BLOCK_NAME, FRAME_FORMAT, CgBindingPoints.FRAME_DATA_UBO);
-        this.objectBuffer  = CgShaderBuffer.createInternal(OBJECT_BLOCK_NAME, OBJECT_FORMAT, CgBindingPoints.objectData());
+        this.objectBuffer  = CgShaderBuffer.createInternal(OBJECT_BLOCK_NAME, OBJECT_FORMAT, CgBindingPoints.OBJECT_DATA);
 
         this.pool             = new CgRenderCommandPool();
         this.frameData        = new CgFrameData();

@@ -76,6 +76,40 @@ public final class CgShaderBufferRegistry {
     }
 
     /**
+     * Returns (or lazily creates) a format-aware SSBO/TBO at an <strong>engine-reserved</strong>
+     * binding — a {@link CgBindingPoints.Binding} (such as {@code CgBindingPoints.QUAD_RENDERER})
+     * rather than a {@code USER_START_*}-relative user index. Unlike
+     * {@link #getOrCreate(String, CgBufferFormat, int)}, no offset is added — the binding
+     * resolves itself to an absolute SSBO binding point or TBO texture unit (see
+     * {@link CgBindingPoints.Binding#resolve()}), used verbatim, matching
+     * {@link CgShaderBuffer#createInternal(String, CgBufferFormat, int)}'s own contract.
+     *
+     * <p>Still participates in this registry's cache (dedup by name+format+binding) and in
+     * {@link #deleteAll()} teardown, same as {@link #getOrCreate(String, CgBufferFormat, int)} —
+     * the only difference is binding-point resolution.</p>
+     *
+     * <p><strong>Engine-internal.</strong> Reserve a new {@link CgBindingPoints.Binding} constant
+     * (resolved in {@link CgBindingPoints#init(CgCapabilities)})
+     * for each distinct engine subsystem that needs one — do not share a single reserved
+     * {@code Binding} across unrelated consumers, and do not call this with a raw user-chosen
+     * integer.</p>
+     *
+     * @param name    debug/sampler name for the buffer
+     * @param format  typed format descriptor for the buffer records
+     * @param binding the reserved {@link CgBindingPoints.Binding} to bind at
+     * @return the cached or newly-created shader buffer
+     */
+    public CgShaderBuffer getOrCreateInternal(String name, CgBufferFormat format, CgBindingPoints.Binding binding) {
+        int resolvedBinding = binding.resolve();
+        ShaderBufferKey key = new ShaderBufferKey(name, format, resolvedBinding);
+        CgShaderBuffer existing = shaderBufferCache.get(key);
+        if (existing != null) return existing;
+        CgShaderBuffer buf = CgShaderBuffer.createInternal(name, format, resolvedBinding);
+        shaderBufferCache.put(key, buf);
+        return buf;
+    }
+
+    /**
      * Returns (or lazily creates) a format-aware UBO for the given format, block name, and
      * 0-based user index. The actual binding point is {@code userIndex + CgBindingPoints.USER_START_UBO}.
      *

@@ -209,6 +209,24 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
         return new CgShaderStorageBuffer(name, format, path, bindingPoint);
     }
 
+    /**
+     * Creates the best available SSBO/TBO shader buffer for engine-internal use, resolving
+     * {@code binding} against the currently-active capability path (see
+     * {@link CgBindingPoints.Binding#resolve()}) instead of the caller doing that resolution
+     * itself and passing a raw {@code int}.
+     *
+     * <p><strong>Engine-internal. Do not use from user code.</strong></p>
+     *
+     * @param name    debug/sampler name (must be non-null)
+     * @param format  typed buffer format
+     * @param binding the reserved {@link CgBindingPoints.Binding} to bind at
+     * @return {@link CgShaderStorageBuffer} or {@link CgTextureBuffer} depending on hardware
+     * @throws UnsupportedOperationException if the hardware does not support GL 3.3+
+     */
+    public static CgShaderBuffer createInternal(String name, CgBufferFormat format, CgBindingPoints.Binding binding) {
+        return createInternal(name, format, binding.resolve());
+    }
+
     // ── Write API ─────────────────────────────────────────────────────────────
 
     /**
