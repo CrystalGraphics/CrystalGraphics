@@ -1,5 +1,6 @@
 package com.crystalgraphics.text.render;
 
+import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.PoseStack;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.font.*;
@@ -7,7 +8,6 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.text.CgShapedRun;
 import com.crystalgraphics.api.text.CgTextConstraints;
 import com.crystalgraphics.api.text.CgTextLayout;
-import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.vertex.CgVertexConsumer;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
@@ -15,6 +15,7 @@ import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.gl.render.CgBatchRenderer;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
+import com.crystalgraphics.gl.texture.CgTextureMutable;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.text.cache.CgFontRegistry;
 import lombok.Getter;
@@ -141,114 +142,100 @@ public class CgTextRenderer {
      */
     public static final CgMaterial TEXT_MATERIAL = CgMaterial.load("crystalgraphics:shaders/text.shader");
 
-    /**
-     * 0-based user UBO slot, picked away from indices 0/1 already used by ad-hoc
-     * harness/test UBOs (see gl-debug-harness's {@code CgAttachedBufferStressScene}) to avoid a
-     * binding-point collision — see {@link CgShaderBufferRegistry}.
-     */
-    private static final int TEXT_TRANSFORM_UBO_USER_INDEX = 31;
-
-    private static final CgBufferFormat TEXT_TRANSFORM_FORMAT = CgBufferFormat
-            .builder("TextTransform", CgBufferFormat.MemoryLayout.STD140)
-            .mat4("u_projection")
-            .mat4("u_modelview")
+    
+    private static final CgBufferFormat TEXT_DATA_FORMAT = CgBufferFormat
+            .builder("TextData", CgBufferFormat.MemoryLayout.STD140)
+            .mat4("u_Projection")
+            .mat4("u_ModelView")
             .build();
 
     /**
      * Shared static UBO carrying only the two matrices — {@code u_pxRange} lives on
      * {@link #TEXT_MATERIAL}'s Properties block instead (it changes every batch-key transition;
      * the matrices are constant for a whole {@code draw()} call — see
-     * {@link #uploadTransformIfChanged}). Created via the registry (not a bare
+     * {@link #uploadTransform}). Created via the registry (not a bare
      * {@code CgUniformBuffer.create()}) so it's covered by
      * {@code CgShaderBufferRegistry.deleteAll()}'s teardown — no individual
      * {@code CgTextRenderer} instance owns or deletes it.
      */
-    private static final CgUniformBuffer TEXT_TRANSFORM_UBO = CgShaderBufferRegistry.get().getOrCreateUbo(
-            TEXT_TRANSFORM_FORMAT, "TextTransform", TEXT_TRANSFORM_UBO_USER_INDEX);
+    private static final CgUniformBuffer TEXT_DATA_UBO = CgShaderBufferRegistry.get().getOrCreateUbo(
+            TEXT_DATA_FORMAT, "TextData", CgBindingPoints.TEXT_DATA_UBO);
 
     /**
      * Mutable adapter over whatever raw GL atlas-page texture id is currently active.
      * {@code CgMaterial}'s Properties-block sampler API ({@code applyProperties(b -> b.sampler(...))})
-     * requires a real {@link CgTexture}, not a raw int — atlas pages
-     * ({@code CgGlyphAtlasPage}) own only a raw GL texture id with no such wrapper. This view
+     * requires a real {@link com.crystalgraphics.api.texture.CgTexture}, not a raw int — atlas
+     * pages ({@code CgGlyphAtlasPage}) own only a raw GL texture id with no such wrapper. This view
      * (never owns/deletes the real texture) is registered once via {@link #TEXT_MATERIAL}'s
      * Properties block at class-init, then its id is mutated per atlas-page transition — the
      * property system rebinds whatever this wrapper currently points to on every
      * {@code material.bind()}, so no repeated {@code applyProperties} sampler call is needed.
      */
-    private static final class MutableAtlasTextureRef implements CgTexture {
-        private int id;
-
-        void setId(int id) {this.id = id;}
-
-        @Override
-        public void bind() {CgGL.glBindTexture(CgGL.GL_TEXTURE_2D, id);}
-
-        @Override
-        public void bind(int unit) {
-            CgGL.glActiveTexture(CgGL.GL_TEXTURE0 + unit);
-            CgGL.glBindTexture(CgGL.GL_TEXTURE_2D, id);
-        }
-
-        @Override
-        public int getId() {return id;}
-
-        @Override
-        public int getWidth() {return 0;}
-
-        @Override
-        public int getHeight() {return 0;}
-
-        @Override
-        public int getTarget() {return CgGL.GL_TEXTURE_2D;}
-
-        @Override
-        public boolean isDeleted() {return false;}
-
-        @Override
-        public void delete() { /* view only — CgGlyphAtlasPage owns the real texture */ }
-    }
-
-    private static final MutableAtlasTextureRef ATLAS_TEXTURE_REF = new MutableAtlasTextureRef();
-
-    /**
-     * Last-uploaded transform, cached statically alongside {@link #TEXT_TRANSFORM_UBO} — since
-     * the UBO is shared across every live {@code CgTextRenderer}, this must reflect the buffer's
-     * actual current contents regardless of which instance wrote it last. A per-instance cache
-     * would be a correctness bug: renderer B could wrongly skip its own reupload after renderer A
-     * clobbers the shared buffer. Defensive copies — never held references to a caller's mutable
-     * {@link PoseStack} matrix.
-     */
-    private static Matrix4f lastUploadedProjection = null;
-    private static Matrix4f lastUploadedModelview = null;
+    private static final CgTextureMutable ATLAS_TEXTURE_REF = new CgTextureMutable(CgGL.GL_TEXTURE_2D);
 
     static {
-        TEXT_MATERIAL.attach(TEXT_TRANSFORM_UBO);
+        TEXT_MATERIAL.attach(TEXT_DATA_UBO);
         TEXT_MATERIAL.applyProperties(b -> b.sampler("_MainTex", 0, ATLAS_TEXTURE_REF));
     }
 
     /**
-     * Rewrites and uploads {@link #TEXT_TRANSFORM_UBO} only when {@code projection}/
-     * {@code modelView} actually differ from what's currently resident — avoids paying a full
-     * map/orphan/unmap round trip on every batch-key transition when only the atlas page or mode
-     * changed within the same {@code draw()} call (pose/projection are constant for the whole
-     * call).
+     * Unconditionally rewrites and uploads {@link #TEXT_DATA_UBO} with {@code projection}/
+     * {@code modelView}.
+     *
+     * <p>No dirty-check against a previous value: {@link #submitSortedQuads} already calls this
+     * exactly once per {@code draw()} call — not per glyph, not per batch-key transition — so this
+     * is already off the hot path. A cross-call cache would only pay for itself on the (narrow)
+     * case of two consecutive draws sharing the exact same transform, at the cost of static
+     * mutable shadow state that has to reason about every other live {@code CgTextRenderer}
+     * clobbering the same shared UBO first. {@code CgUniformBuffer}'s write model also can't
+     * skip just one matrix anyway — {@code beginRecord()} always reserves/zeroes the whole
+     * record — so a partial skip would need a second UBO (its own binding slot and GLSL block)
+     * for one matrix alone, which isn't worth it next to the per-transition
+     * {@code CgMaterial.bind()} cost already accepted in {@link #transitionToMaterial}.</p>
      */
-    private static void uploadTransformIfChanged(Matrix4f projection, Matrix4f modelView) {
-        if (lastUploadedProjection != null && lastUploadedProjection.equals(
-                projection) && lastUploadedModelview != null && lastUploadedModelview.equals(modelView)) {
+    private static void uploadTransform(Matrix4f projection, Matrix4f modelView) {
+        TEXT_DATA_UBO.writer().reset().beginRecord()
+                     .mat4("u_Projection", projection)
+                     .mat4("u_ModelView", modelView);
+        TEXT_DATA_UBO.endRecord();
+        TEXT_DATA_UBO.upload();
+    }
+
+    /**
+     * Ensures {@link #TEXT_DATA_UBO} holds {@code projection}/{@code modelView} for the quads
+     * about to be submitted, flushing whatever this renderer already has queued under a
+     * different transform first.
+     *
+     * <p>Quads from multiple {@code draw()} calls can land in the owned
+     * {@link CgBatchRenderer} without an intervening flush — only an atlas batch-key change
+     * (see {@link #transitionToMaterial}) forces one. The transform, unlike the atlas
+     * state, isn't per-vertex: it's one shared UBO. So if a caller fires several
+     * {@code draw()} calls with different transforms before anything flushes, the eventual
+     * flush would render every one of them with only the last-uploaded transform — a real
+     * correctness bug, not just a missed optimization. A transform change must flush first,
+     * same as a batch-key change, to close out whatever's pending under the old transform
+     * before the new one takes effect. No material rebind is needed here (keywords/texture/
+     * properties are untouched), so this stays a plain {@link #flushPendingMaterial()} call
+     * rather than routing through {@link #transitionToMaterial}.</p>
+     *
+     * <p>{@link #activeProjection}/{@link #activeModelView} reset to {@code null} in
+     * {@link #beginBatch()} — another live {@code CgTextRenderer} may have overwritten the
+     * shared UBO between batches, so the first {@code draw()} of every batch always
+     * (re)uploads regardless of whether the values happen to match the previous batch's.</p>
+     */
+    private void uploadTransformIfNeeded(Matrix4f projection, Matrix4f modelView) {
+        if (activeProjection != null && activeProjection.equals(projection)
+                && activeModelView != null && activeModelView.equals(modelView)) {
             return;
         }
 
-        TEXT_TRANSFORM_UBO.writer().reset().beginRecord().mat4("u_projection", projection)
-                          .mat4("u_modelview", modelView);
-        TEXT_TRANSFORM_UBO.endRecord();
-        TEXT_TRANSFORM_UBO.upload();
+        flushPendingMaterial();
+        uploadTransform(projection, modelView);
 
-        if (lastUploadedProjection == null) lastUploadedProjection = new Matrix4f(projection);
-        else lastUploadedProjection.set(projection);
-        if (lastUploadedModelview == null) lastUploadedModelview = new Matrix4f(modelView);
-        else lastUploadedModelview.set(modelView);
+        if (activeProjection == null) activeProjection = new Matrix4f(projection);
+        else activeProjection.set(projection);
+        if (activeModelView == null) activeModelView = new Matrix4f(modelView);
+        else activeModelView.set(modelView);
     }
 
     // ══════════════════════════════════════════════════════════════════════════════════════════
@@ -264,6 +251,16 @@ public class CgTextRenderer {
     private boolean batchActive;
     /** Batch-key transition tracking — see {@link #transitionToMaterial}. */
     private CgDrawBatchKey activeBatchKey;
+    /**
+     * Transform currently resident in {@link #TEXT_DATA_UBO} on behalf of this renderer's
+     * queued-but-unflushed quads — {@code null} at the start of every batch (see
+     * {@link #beginBatch()}), since another live {@code CgTextRenderer} may have clobbered the
+     * shared UBO since this renderer's last upload. Compared by value, not reference, in
+     * {@link #uploadTransformIfNeeded} — a caller's {@link PoseStack} matrix is mutable and can
+     * change in place between calls, so these hold defensive copies snapshotted at upload time.
+     */
+    private Matrix4f activeProjection;
+    private Matrix4f activeModelView;
     /**
      * Optional caller-supplied hook invoked at the end of every {@link #endBatch()} (manual
      * or {@link Draw#submit()}'s standalone auto-batch alike) — see {@link #restoreStateWith}.
@@ -383,6 +380,8 @@ public class CgTextRenderer {
         if (batchActive) throw new IllegalStateException("CgTextRenderer.beginBatch() called without a matching endBatch()");
 
         activeBatchKey = null;
+        activeProjection = null;
+        activeModelView = null;
         batchActive = true;
         batchRenderer.begin();
     }
@@ -400,6 +399,8 @@ public class CgTextRenderer {
         flushPendingMaterial();
         batchRenderer.end();
         activeBatchKey = null;
+        activeProjection = null;
+        activeModelView = null;
         batchActive = false;
 
         if (postBatchRestore != null) postBatchRestore.run();
@@ -409,7 +410,7 @@ public class CgTextRenderer {
     /**
      * Flushes whatever is currently staged under {@link #activeBatchKey}, binding
      * {@link #TEXT_MATERIAL} (with whatever keywords/properties/atlas texture were last set by
-     * {@link #transitionToMaterial}) plus {@link #TEXT_TRANSFORM_UBO} for the duration of the
+     * {@link #transitionToMaterial}) plus {@link #TEXT_DATA_UBO} for the duration of the
      * draw, and unbinding both afterward. No-op if nothing is staged.
      *
      * <p>The real depth state (disabled for UI text, test-only for world text — see
@@ -424,7 +425,7 @@ public class CgTextRenderer {
         if (!batchRenderer.isDirty()) return;
 
         TEXT_MATERIAL.bind();
-        TEXT_TRANSFORM_UBO.bind();
+        TEXT_DATA_UBO.bind();
         (context.isWorldText() ? CgDepthState.TEST_ONLY : CgDepthState.NONE).apply();
 
         batchRenderer.flush();
@@ -773,9 +774,10 @@ public class CgTextRenderer {
      * <ol>
      *   <li>Calls {@link #transitionToMaterial} to flush any pending quads under the previous
      *       keyword/property/texture combination, then adopt the new one</li>
-     *   <li>The transform ({@code u_projection}/{@code u_modelview}) is constant for the whole
-     *       call and is uploaded once up-front via {@link #uploadTransformIfChanged} — see that
-     *       method and {@link #TEXT_TRANSFORM_UBO}</li>
+     *   <li>The transform ({@code u_Projection}/{@code u_ModelView}) is constant for the whole
+     *       call and is checked/uploaded once up-front via {@link #uploadTransformIfNeeded} —
+     *       flushing first if it differs from what this renderer already has queued under the
+     *       old transform (see that method and {@link #TEXT_DATA_UBO})</li>
      *   <li>Emits glyph quads through the batch renderer's {@code CgVertexConsumer}</li>
      * </ol>
      */
@@ -834,8 +836,9 @@ public class CgTextRenderer {
             }
         }
 
-        // Transform is constant for this whole draw() call — upload once, not per transition.
-        uploadTransformIfChanged(context.getProjection(), modelView);
+        // Transform is constant for this whole draw() call. Flushes first if it differs from
+        // what's already queued under a different transform — see uploadTransformIfNeeded().
+        uploadTransformIfNeeded(context.getProjection(), modelView);
 
         // Submit sorted quads. On batch-key change, transition material state (flushing whatever
         // was pending under the previous combination).
