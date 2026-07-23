@@ -298,6 +298,28 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
         inWrite = false;
     }
 
+    /**
+     * Uploads pre-accumulated raw floats directly, bypassing the count-declared
+     * {@link #beginWrite}/{@link #endRecord}/{@link #endWrite} session entirely.
+     *
+     * <p>For callers that accumulate records into their own standalone
+     * {@link CgBufferWriter}/{@link CgStagingBuffer} pair (built with this buffer's
+     * {@link #getFormat()}) across a window whose final record count isn't known
+     * until upload time — a real {@link #beginWrite(int)} session can't declare a
+     * count it doesn't have yet. Mirrors {@link CgUniformBuffer#upload()}'s existing
+     * no-session upload pattern for the SSBO/TBO case.</p>
+     *
+     * @param data       backing float array of the caller's own accumulation buffer
+     * @param floatCount number of valid floats in {@code data} (must be a whole
+     *                   multiple of {@link CgBufferFormat#getFloatCount()})
+     * @throws IllegalStateException if a {@link #beginWrite(int)} session is currently open
+     */
+    public void uploadRaw(float[] data, int floatCount) {
+        if (inWrite) throw new IllegalStateException("Cannot uploadRaw() during an open beginWrite() session");
+        uploadData(data, floatCount);
+        lastWrittenCount = floatCount / format.getFloatCount();
+    }
+
     // ── Bind / unbind ─────────────────────────────────────────────────────────
 
     /**

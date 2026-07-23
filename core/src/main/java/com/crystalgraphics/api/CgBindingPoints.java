@@ -57,11 +57,14 @@ public final class CgBindingPoints {
     public static Binding OBJECT_DATA;
 
     /**
-     * GL texture unit for the engine's per-object data buffer ({@code CgObjectDataBuffer}) TBO.
-     * Set to {@code maxTextureImageUnits - 1} by {@link #init(CgCapabilities)}.
-     * Valid only after {@link #init(CgCapabilities)} has been called.
+     * Reserved binding pair for {@code CgQuadRenderer}'s shared {@code "CgQuadRendererInstances"}
+     * buffer — {@code ssbo} one below {@link #OBJECT_DATA}'s, {@code tbo} one below
+     * {@link #OBJECT_DATA}'s, continuing the same top-of-range countdown. Engine-reserved,
+     * must not be used by user-attached SSBOs/TBOs — see
+     * {@code CgShaderBufferRegistry.getOrCreateInternal}. {@code null} until
+     * {@link #init(CgCapabilities)} has been called.
      */
-    public static int OBJECT_DATA_TBO = -1;
+    public static Binding QUAD_RENDERER;
 
     /**
      * UBO binding slot for the engine's per-frame uniform block ({@code CgFrameBlock}).
@@ -79,8 +82,9 @@ public final class CgBindingPoints {
     public static int MATERIAL_PROPERTIES_UBO = -1;
 
     /**
-     * UBO binding slot for {@code CgTextRenderer}'s shared {@code "TextData"} transform block
-     * ({@code u_projection}/{@code u_modelview}). Set to {@code maxUniformBufferBindings - 3} by
+     * UBO binding slot for {@code CgTextRenderer}'s shared {@code "TextData"} block
+     * ({@code u_projection} — renderer-local, deliberately separate from the engine's shared
+     * per-frame {@code cg_ProjMatrix}). Set to {@code maxUniformBufferBindings - 3} by
      * {@link #init(CgCapabilities)}, following the same top-of-range pattern as
      * {@link #FRAME_DATA_UBO}/{@link #MATERIAL_PROPERTIES_UBO}. This slot is engine-reserved and
      * must not be used by user-attached UBOs — see {@link CgShaderBufferRegistry}.
