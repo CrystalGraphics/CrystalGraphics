@@ -28,6 +28,10 @@ java {
 tasks.withType<Jar>().configureEach {
     archiveBaseName.set("graphicsCore")
 }
+
+tasks.withType<JavaCompile>().configureEach {
+    options.encoding = "UTF-8"
+}
 //// 2. CONFIGURATIONS & VARIANTS
 //val jvmAttr = Attribute.of("org.gradle.jvm.version", Int::class.javaObjectType)
 //

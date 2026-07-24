@@ -25,6 +25,22 @@ import java.util.logging.Logger;
  *   <li>If no existing page fits, create a new page.</li>
  * </ol>
  *
+ * <h3>Page Budget / Eviction</h3>
+ * <p>Unbounded page growth is a real leak for continuously-varying text (e.g.
+ * a scrolling/animated HUD generates a new sub-pixel-bucket glyph variant on
+ * every distinct fractional offset it passes through). When creating a new
+ * page would exceed {@code maxPages}, the atlas evicts the <strong>coldest
+ * whole page</strong> first — the one with the lowest {@link
+ * CgGlyphAtlasPage#getLastTouchedFrame()} — freeing all of its slots at once,
+ * rather than the per-slot LRU eviction {@link CgGlyphAtlas} (the legacy
+ * single-page model) does. This preserves placement stability for every
+ * glyph on every page that survives; a glyph is only ever displaced by
+ * losing its entire page, never individually. {@code maxPages <= 0} means
+ * unbounded (the historical behavior, still the default for {@link
+ * #createForTest}, matched by existing tests asserting unlimited paging
+ * under test conditions) — production registries opt into a bounded budget
+ * via {@link #createForPagedRegistry}.</p>
+ *
  * <h3>Packing Strategy</h3>
  * <p>Each page uses a {@link CgPackingStrategy} instance. By default, new pages
  * use {@link CgGuillotinePacker} for MSDF parity. Callers can supply a custom
@@ -66,6 +82,16 @@ public class CgPagedGlyphAtlas {
     public static final PackerFactory MAX_RECTS_FACTORY = (pageWidth, pageHeight, spacingPx) ->
             new MaxRectsPacker(pageWidth, pageHeight);
 
+    /**
+     * Default page budget for {@link #createForPagedRegistry} — the production
+     * entry point. {@code 0} (unbounded) remains the default everywhere else,
+     * including {@link #createForTest}.
+     */
+    public static final int DEFAULT_MAX_PAGES = 32;
+
+    /** Sentinel meaning "no page budget — grow forever" (the historical behavior). */
+    public static final int UNBOUNDED_PAGES = 0;
+
     // ── Instance fields ────────────────────────────────────────────────
 
     private final int pageWidth;
@@ -74,9 +100,15 @@ public class CgPagedGlyphAtlas {
     private final PackerFactory packerFactory;
     private final boolean skipGlUpload;
     private final int spacingPx;
+    private final int maxPages;
 
     private final List<CgGlyphAtlasPage> pages;
     private boolean deleted;
+
+    // Monotonic — never reused, even after eviction removes a page from `pages`.
+    // Reusing pages.size() as the next index would collide with a surviving
+    // page's index once eviction has removed an earlier page from the list.
+    private int nextPageIndex;
 
     // ── Constructors ──────────────────────────────────────────────────
 
@@ -114,10 +146,19 @@ public class CgPagedGlyphAtlas {
     }
 
     /**
-     * Internal constructor with skip-GL-upload flag for testing.
+     * Internal constructor with skip-GL-upload flag for testing. Unbounded page budget.
      */
     CgPagedGlyphAtlas(int pageWidth, int pageHeight, CgGlyphAtlas.Type type,
                       PackerFactory packerFactory, boolean skipGlUpload, int spacingPx) {
+        this(pageWidth, pageHeight, type, packerFactory, skipGlUpload, spacingPx, UNBOUNDED_PAGES);
+    }
+
+    /**
+     * Internal constructor with skip-GL-upload flag and an explicit page budget.
+     */
+    CgPagedGlyphAtlas(int pageWidth, int pageHeight, CgGlyphAtlas.Type type,
+                      PackerFactory packerFactory, boolean skipGlUpload, int spacingPx,
+                      int maxPages) {
         if (pageWidth <= 0 || pageHeight <= 0) {
             throw new IllegalArgumentException(
                     "Page dimensions must be positive, got: " + pageWidth + "x" + pageHeight);
@@ -128,12 +169,13 @@ public class CgPagedGlyphAtlas {
         this.packerFactory = packerFactory;
         this.skipGlUpload = skipGlUpload;
         this.spacingPx = spacingPx;
+        this.maxPages = maxPages;
         this.pages = new ArrayList<CgGlyphAtlasPage>();
         this.deleted = false;
     }
 
     /**
-     * Creates a test-mode paged atlas that skips all GL calls.
+     * Creates a test-mode paged atlas that skips all GL calls. Unbounded page budget.
      */
     public static CgPagedGlyphAtlas createForTest(int pageWidth, int pageHeight,
                                                    CgGlyphAtlas.Type type) {
@@ -142,7 +184,7 @@ public class CgPagedGlyphAtlas {
     }
 
     /**
-     * Creates a test-mode paged atlas with a custom packer factory.
+     * Creates a test-mode paged atlas with a custom packer factory. Unbounded page budget.
      */
     public static CgPagedGlyphAtlas createForTest(int pageWidth, int pageHeight,
                                                      CgGlyphAtlas.Type type,
@@ -152,21 +194,43 @@ public class CgPagedGlyphAtlas {
     }
 
     /**
-     * Creates a paged atlas for live registry use (with GL texture allocation).
+     * Creates a test-mode paged atlas with an explicit page budget, so eviction
+     * behavior can be exercised without allocating dozens of real pages.
+     */
+    public static CgPagedGlyphAtlas createForTest(int pageWidth, int pageHeight,
+                                                     CgGlyphAtlas.Type type,
+                                                     PackerFactory packerFactory,
+                                                     int maxPages) {
+        return new CgPagedGlyphAtlas(pageWidth, pageHeight, type, packerFactory, true,
+                CgPackingStrategy.DEFAULT_SPACING_PX, maxPages);
+    }
+
+    /**
+     * Creates a paged atlas for live registry use (with GL texture allocation),
+     * bounded by {@link #DEFAULT_MAX_PAGES}.
      */
     public static CgPagedGlyphAtlas createForPagedRegistry(int pageWidth, int pageHeight,
                                                              CgGlyphAtlas.Type type) {
-        PackerFactory factory = type == CgGlyphAtlas.Type.BITMAP ? GUILLOTINE_FACTORY : MAX_RECTS_FACTORY;
-        return new CgPagedGlyphAtlas(pageWidth, pageHeight, type, factory, false,
-                CgPackingStrategy.DEFAULT_SPACING_PX);
+        return createForPagedRegistry(pageWidth, pageHeight, type,
+                CgPackingStrategy.DEFAULT_SPACING_PX, DEFAULT_MAX_PAGES);
     }
 
     public static CgPagedGlyphAtlas createForPagedRegistry(int pageWidth, int pageHeight,
                                                              CgGlyphAtlas.Type type,
                                                              int spacingPx) {
+        return createForPagedRegistry(pageWidth, pageHeight, type, spacingPx, DEFAULT_MAX_PAGES);
+    }
+
+    /**
+     * Creates a paged atlas for live registry use with an explicit page budget.
+     * Pass {@link #UNBOUNDED_PAGES} to opt out of eviction entirely.
+     */
+    public static CgPagedGlyphAtlas createForPagedRegistry(int pageWidth, int pageHeight,
+                                                             CgGlyphAtlas.Type type,
+                                                             int spacingPx, int maxPages) {
         PackerFactory factory = type == CgGlyphAtlas.Type.BITMAP ? GUILLOTINE_FACTORY : MAX_RECTS_FACTORY;
         return new CgPagedGlyphAtlas(pageWidth, pageHeight, type, factory, false,
-                spacingPx);
+                spacingPx, maxPages);
     }
 
     // ── Core API ───────────────────────────────────────────────────────
@@ -314,14 +378,19 @@ public class CgPagedGlyphAtlas {
         return total;
     }
 
+    /** Returns the configured page budget, or {@link #UNBOUNDED_PAGES} if unbounded. */
+    public int getMaxPages() { return maxPages; }
+
     // ── LRU tick ───────────────────────────────────────────────────────
 
     /**
-     * Advances the LRU frame counter. Currently a no-op as frame tracking
-     * is per-slot, but reserved for future per-page maintenance.
+     * Advances the LRU frame counter. Per-slot/per-page recency is tracked
+     * directly by {@code allocate*}/{@code get} instead, so this remains a
+     * no-op; page-budget eviction happens lazily in {@link #createPage()}
+     * only when a new page is actually about to be allocated, not on every tick.
      */
     public void tickFrame(long frame) {
-        // Reserved for future per-page maintenance (e.g., page GC).
+        // Intentionally a no-op — see javadoc.
     }
 
     // ── Deletion ──────────────────────────────────────────────────────
@@ -345,7 +414,11 @@ public class CgPagedGlyphAtlas {
     // ── Internal: page allocation ─────────────────────────────────────
 
     private CgGlyphAtlasPage createPage() {
-        int newPageIndex = pages.size();
+        if (maxPages > UNBOUNDED_PAGES && pages.size() >= maxPages) {
+            evictColdestPage();
+        }
+
+        int newPageIndex = nextPageIndex++;
         CgPackingStrategy packer = packerFactory.create(pageWidth, pageHeight, spacingPx);
 
         CgGlyphAtlasPage page;
@@ -361,6 +434,39 @@ public class CgPagedGlyphAtlas {
         LOGGER.fine("Allocated new atlas page " + newPageIndex
                 + " (" + pageWidth + "x" + pageHeight + " " + type + ")");
         return page;
+    }
+
+    /**
+     * Deletes the page with the lowest {@link CgGlyphAtlasPage#getLastTouchedFrame()}
+     * and removes it from {@link #pages}. Every glyph that was resident on it
+     * becomes a cache miss on its next lookup and is re-rasterized/re-allocated
+     * like any other uncached glyph — the same fallback path already used for a
+     * glyph that was never cached, so no special invalidation signal is needed
+     * by callers.
+     *
+     * <p>No-op if there are no pages yet (can't happen via {@link #createPage()}'s
+     * guard, since {@code maxPages > 0} implies at least one page must already
+     * exist to trigger eviction, but kept defensive for direct callers.)</p>
+     */
+    private void evictColdestPage() {
+        if (pages.isEmpty()) {
+            return;
+        }
+
+        int coldestIndex = 0;
+        long coldestFrame = pages.get(0).getLastTouchedFrame();
+        for (int i = 1; i < pages.size(); i++) {
+            long touched = pages.get(i).getLastTouchedFrame();
+            if (touched < coldestFrame) {
+                coldestFrame = touched;
+                coldestIndex = i;
+            }
+        }
+
+        CgGlyphAtlasPage evicted = pages.remove(coldestIndex);
+        LOGGER.fine("Evicting atlas page " + evicted.getPageIndex()
+                + " (last touched frame " + coldestFrame + ") — page budget " + maxPages + " reached");
+        evicted.delete();
     }
 
     private void checkNotDeleted() {
