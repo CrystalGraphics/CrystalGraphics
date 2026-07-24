@@ -176,20 +176,53 @@ public class CgShaderParserRenderStateTest {
         CgParsedShader p = parseWithRS("RenderState { Blend SRC_ALPHA ONE_MINUS_SRC_ALPHA }\n");
         CgBlendState b = rs(p).getBlend();
         System.out.println("✓ blend_SRC_ALPHA_ONE_MINUS_SRC_ALPHA: enabled=" + b.enabled()
-                + " srcRgb=" + b.srcRgb() + " dstRgb=" + b.dstRgb());
+                + " srcRgb=" + b.srcRgb() + " dstRgb=" + b.dstRgb()
+                + " srcAlpha=" + b.srcAlpha() + " dstAlpha=" + b.dstAlpha());
         assertTrue(b.enabled());
         assertEquals(CgGL.GL_SRC_ALPHA, b.srcRgb());
         assertEquals(CgGL.GL_ONE_MINUS_SRC_ALPHA, b.dstRgb());
+        // No comma form given — legacy behavior mirrors RGB factors into alpha.
+        assertEquals(b.srcRgb(), b.srcAlpha());
+        assertEquals(b.dstRgb(), b.dstAlpha());
     }
 
     @Test
     public void blend_ONE_ZERO() {
         CgParsedShader p = parseWithRS("RenderState { Blend ONE ZERO }\n");
         CgBlendState b = rs(p).getBlend();
-        System.out.println("✓ blend_ONE_ZERO: enabled=" + b.enabled() + " srcRgb=" + b.srcRgb() + " dstRgb=" + b.dstRgb());
+        System.out.println("✓ blend_ONE_ZERO: enabled=" + b.enabled() + " srcRgb=" + b.srcRgb() + " dstRgb=" + b.dstRgb()
+                + " srcAlpha=" + b.srcAlpha() + " dstAlpha=" + b.dstAlpha());
         assertTrue(b.enabled());
         assertEquals(CgGL.GL_ONE, b.srcRgb());
         assertEquals(CgGL.GL_ZERO, b.dstRgb());
+        assertEquals(b.srcRgb(), b.srcAlpha());
+        assertEquals(b.dstRgb(), b.dstAlpha());
+    }
+
+    @Test
+    public void blend_commaForm_separateAlphaFactors() {
+        CgParsedShader p = parseWithRS(
+                "RenderState { Blend SRC_ALPHA ONE_MINUS_SRC_ALPHA, ONE ONE_MINUS_SRC_ALPHA }\n");
+        CgBlendState b = rs(p).getBlend();
+        System.out.println("✓ blend_commaForm_separateAlphaFactors: srcRgb=" + b.srcRgb()
+                + " dstRgb=" + b.dstRgb() + " srcAlpha=" + b.srcAlpha() + " dstAlpha=" + b.dstAlpha());
+        assertTrue(b.enabled());
+        assertEquals(CgGL.GL_SRC_ALPHA, b.srcRgb());
+        assertEquals(CgGL.GL_ONE_MINUS_SRC_ALPHA, b.dstRgb());
+        assertEquals(CgGL.GL_ONE, b.srcAlpha());
+        assertEquals(CgGL.GL_ONE_MINUS_SRC_ALPHA, b.dstAlpha());
+    }
+
+    @Test
+    public void blend_commaForm_missingAlphaDst_throws() {
+        assertThrows("blend_commaForm_missingAlphaDst_throws",
+                () -> parseWithRS("RenderState { Blend ONE ZERO, ONE }\n"));
+    }
+
+    @Test
+    public void blend_commaForm_trailingComma_throws() {
+        assertThrows("blend_commaForm_trailingComma_throws",
+                () -> parseWithRS("RenderState { Blend ONE ZERO, }\n"));
     }
 
     @Test

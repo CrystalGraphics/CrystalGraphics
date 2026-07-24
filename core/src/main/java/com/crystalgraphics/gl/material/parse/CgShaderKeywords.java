@@ -79,7 +79,7 @@ public final class CgShaderKeywords {
     
     static final Keyword DEPTH_TEST      = new Keyword("DepthTest",      "LESS | LEQUAL | EQUAL | GEQUAL | GREATER | NOT_EQUAL | ALWAYS | NEVER");
     static final Keyword DEPTH_WRITE     = new Keyword("DepthWrite",     "ON | OFF");
-    static final Keyword BLEND           = new Keyword("Blend",          "OFF | <srcFactor> <dstFactor>");
+    static final Keyword BLEND           = new Keyword("Blend",          "OFF | <srcFactor> <dstFactor> [, <srcAlphaFactor> <dstAlphaFactor>]");
     static final Keyword BLEND_EQUATION  = new Keyword("BlendEquation",  "[N] ADD | SUB | REV_SUB | MIN | MAX");
     static final Keyword CULL            = new Keyword("Cull",           "BACK | FRONT | OFF");
     static final Keyword ALPHA_TEST      = new Keyword("AlphaTest",      "<compareFunc> <cutoff>");

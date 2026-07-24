@@ -41,8 +41,8 @@ final class CgRenderStateParser {
         int braceClose = CgStructureParser.matchBrace(source, braceOpen);
         String body    = source.substring(braceOpen + 1, braceClose);
 
-        // Tokenize: strip // comments, pad { } so they split from adjacent text
-        String cleaned = CgStructureParser.stripLineComments(body).replace("{", " { ").replace("}", " } ");
+        // Tokenize: strip // comments, pad { } , so they split from adjacent text
+        String cleaned = CgStructureParser.stripLineComments(body).replace("{", " { ").replace("}", " } ").replace(",", " , ");
         List<String> toks = new ArrayList<>();
         for (String t : cleaned.split("\\s+")) {
             if (!t.isEmpty()) toks.add(t);
@@ -116,13 +116,26 @@ final class CgRenderStateParser {
                         srcRgb   = CgGL.GL_ONE;  dstRgb   = CgGL.GL_ZERO;
                         srcAlpha = CgGL.GL_ONE;  dstAlpha = CgGL.GL_ZERO;
                     } else {
-                        // Blend srcFactor dstFactor
+                        // Blend srcFactor dstFactor [, srcAlphaFactor dstAlphaFactor]
                         int src = CgShaderKeywords.BLEND_FACTORS.parse(firstTok, "Blend src factor");
                         String dstTok = requireToken(toks, i++, "Blend dst factor", resourcePath);
                         int dst = CgShaderKeywords.BLEND_FACTORS.parse(dstTok, "Blend dst factor");
                         blendEnabled = true;
-                        srcRgb   = src;  dstRgb   = dst;
-                        srcAlpha = src;  dstAlpha = dst;
+                        srcRgb = src;
+                        dstRgb = dst;
+                        if (i < toks.size() && ",".equals(toks.get(i))) {
+                            i++; // consume comma
+                            String srcAlphaTok = requireToken(toks, i++, "Blend srcAlpha factor", resourcePath);
+                            int sa = CgShaderKeywords.BLEND_FACTORS.parse(srcAlphaTok, "Blend srcAlpha factor");
+                            String dstAlphaTok = requireToken(toks, i++, "Blend dstAlpha factor", resourcePath);
+                            int da = CgShaderKeywords.BLEND_FACTORS.parse(dstAlphaTok, "Blend dstAlpha factor");
+                            srcAlpha = sa;
+                            dstAlpha = da;
+                        } else {
+                            // No comma form given — mirror RGB factors into alpha (legacy behavior)
+                            srcAlpha = src;
+                            dstAlpha = dst;
+                        }
                     }
                     blendKwSeen = true;
                     break;
