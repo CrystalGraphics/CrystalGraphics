@@ -299,7 +299,7 @@ public class CgFontRegistry {
      * paged atlas.
      *
      * <p>The renderer calls this during the pre-queue pass
-     * ({@code prequeueVisibleGlyphs}) to submit glyph generation jobs to the
+     * ({@code CgResolvedGlyphs.flattenAndPrequeue}) to submit glyph generation jobs to the
      * background executor <em>before</em> the synchronous {@code ensureGlyphPaged}
      * calls.  This reduces frame spikes by spreading generation work across
      * multiple frames.</p>
