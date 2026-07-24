@@ -12,7 +12,7 @@ import com.crystalgraphics.gl.state.CgGlScope;
 import com.crystalgraphics.gl.state.CgGlState;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.text.atlas.CgGlyphAtlas;
+import com.crystalgraphics.text.atlas.CgGlyphAtlasPage;
 import com.crystalgraphics.text.cache.CgFontRegistry;
 import com.crystalgraphics.text.render.CgTextRenderer;
 import org.apache.logging.log4j.LogManager;
@@ -143,7 +143,7 @@ public final class CgFontDemo {
 
         ensureDiagAtlasResources();
 
-        CgGlyphAtlas bitmapAtlas = demoFontRegistry.findPopulatedBitmapAtlas(demoFont.getKey());
+        CgGlyphAtlasPage bitmapAtlas = demoFontRegistry.findPopulatedPagedBitmapPage(demoFont.getKey());
         if (bitmapAtlas == null || bitmapAtlas.isDeleted() || bitmapAtlas.getTextureId() == 0) return;
 
         int atlasDisplaySize = Math.min(256, Math.min(screenW / 2, screenH / 2));
@@ -173,7 +173,7 @@ public final class CgFontDemo {
                 CgGL.glBindBuffer(CgGL.GL_ARRAY_BUFFER, 0);
             }
 
-            CgGlyphAtlas msdfAtlas = demoFontRegistry.findPopulatedMsdfAtlas(demoFont.getKey());
+            CgGlyphAtlasPage msdfAtlas = demoFontRegistry.findPopulatedPagedMsdfPage(demoFont.getKey());
             if (msdfAtlas != null && !msdfAtlas.isDeleted() && msdfAtlas.getTextureId() != 0) {
                 float mx0 = x1 + 10.0f;
                 float my0 = y0;

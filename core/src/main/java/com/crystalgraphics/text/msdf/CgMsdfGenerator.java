@@ -6,11 +6,8 @@ import com.crystalgraphics.msdfgen.MSDFGenerator;
 import com.crystalgraphics.msdfgen.MSDFException;
 import com.crystalgraphics.msdfgen.MSDFShape;
 import com.crystalgraphics.msdfgen.MSDFTransform;
-import com.crystalgraphics.api.font.CgAtlasRegion;
 import com.crystalgraphics.api.font.CgFontKey;
 import com.crystalgraphics.api.font.CgGlyphKey;
-import com.crystalgraphics.api.font.CgGlyphPlacement;
-import com.crystalgraphics.text.atlas.CgGlyphAtlas;
 import com.crystalgraphics.text.atlas.CgPagedGlyphAtlas;
 import com.crystalgraphics.text.cache.CgFontRegistry;
 import com.crystalgraphics.text.cache.CgGlyphGenerationResult;
@@ -23,18 +20,17 @@ import java.util.logging.Logger;
  * Render-thread MSDF generator for glyph atlases.
  *
  * <p>This class converts glyph outlines from the local msdfgen bindings into
- * RGB float MSDF images and uploads them into a {@link CgGlyphAtlas}. A strict
+ * RGB float MSDF images and uploads them into a {@link CgPagedGlyphAtlas}. A strict
  * per-frame budget is enforced to avoid frame spikes. When generation is not
  * allowed for the current glyph or budget, callers are expected to use the
  * bitmap fallback path.</p>
  *
  * <h3>Pipeline Role</h3>
  * <p>CgMsdfGenerator is the <em>render-thread MSDF rasterizer</em> in the glyph
- * cache pipeline.  {@link CgFontRegistry} delegates paged and legacy MSDF
- * generation here.  The generator loads glyph outlines via msdfgen's FreeType
- * integration, applies edge-coloring and projection, then hands the resulting
- * pixel data to the atlas layer ({@link CgGlyphAtlas} or
- * {@link CgPagedGlyphAtlas}) for GPU upload.</p>
+ * cache pipeline.  {@link CgFontRegistry} delegates paged MSDF generation here.
+ * The generator loads glyph outlines via msdfgen's FreeType integration, applies
+ * edge-coloring and projection, then hands the resulting pixel data to the
+ * {@link CgPagedGlyphAtlas} for GPU upload.</p>
  *
  * <h3>Visibility</h3>
  * <p>The class is {@code public} because the debug harness and
@@ -45,9 +41,7 @@ import java.util.logging.Logger;
  * <h3>Reading Order</h3>
  * <ol>
  *   <li><strong>Paged generation</strong> &mdash; {@link #preparePagedGlyphWithinBudget} /
- *       {@link #preparePagedGlyph} (authoritative path)</li>
- *   <li><strong>Legacy single-page generation</strong> &mdash; {@link #queueOrGenerate}
- *       (compatibility path)</li>
+ *       {@link #preparePagedGlyph} (the only path)</li>
  *   <li><strong>Shape preparation</strong> &mdash; normalize, orient, edge-color</li>
  *   <li><strong>Heuristics / utilities</strong> &mdash; cell sizing, complexity threshold, row flip</li>
  * </ol>
@@ -78,214 +72,6 @@ public class CgMsdfGenerator {
 
     public CgMsdfGenerator() {
         this.generatedThisFrame = 0;
-    }
-
-    // ── Legacy single-page generation ────────────────────────────────
-    //
-    // These methods generate MSDF glyphs into the old single-page
-    // CgGlyphAtlas.  The paged path (preparePagedGlyph*) is the
-    // authoritative path for new code.
-
-    /**
-     * Generates one MSDF glyph and inserts it into the target atlas.
-     *
-     * <p><strong>Legacy path:</strong> uses single-page atlases and a fixed-cell
-     * model.  New code should use the paged path via
-     * {@link CgFontRegistry#ensureGlyphPaged} instead.</p>
-     *
-     * <p>Returns {@code null} when the frame budget is exhausted, when the
-     * shape is empty, when the complexity heuristic says bitmap rendering is
-     * still the better choice at the current font size, or when the glyph
-     * does not fit in the atlas cell at the current font size.</p>
-     *
-     * @param key          glyph key
-     * @param font         msdfgen FreeType font handle
-     * @param atlas        target MSDF atlas
-     * @param ftBearingX   unused (reserved for future FreeType metric override)
-     * @param ftBearingY   unused (reserved for future FreeType metric override)
-     * @param currentFrame current frame number for LRU tracking
-     * @return the atlas region, or {@code null} if generation was skipped
-     */
-    public CgAtlasRegion queueOrGenerate(CgGlyphKey key,
-                                         FreeTypeMSDFIntegration.Font font,
-                                         CgGlyphAtlas atlas,
-                                         float ftBearingX,
-                                         float ftBearingY,
-                                         long currentFrame) {
-        return queueOrGenerate(key, font, atlas, CgMsdfAtlasConfig.defaultConfig(), currentFrame);
-    }
-
-    public CgAtlasRegion queueOrGenerate(CgGlyphKey key,
-                                         FreeTypeMSDFIntegration.Font font,
-                                         CgGlyphAtlas atlas,
-                                         CgMsdfAtlasConfig config,
-                                         long currentFrame) {
-        if (generatedThisFrame >= MAX_PER_FRAME) {
-            return null;
-        }
-        if (config == null) {
-            throw new IllegalArgumentException("config must not be null");
-        }
-
-        FreeTypeMSDFIntegration.GlyphData glyphData;
-        try {
-            glyphData = font.loadGlyphByIndex(key.getGlyphId(), FreeTypeMSDFIntegration.FONT_SCALING_EM_NORMALIZED);
-        } catch (MSDFException e) {
-            LOGGER.log(Level.FINE, "Failed to load glyph index " + key.getGlyphId(), e);
-            return null;
-        }
-
-        // DO NOT call shape.free() manually. Shape has a finalize() method
-        // that calls free(), but its 'freed' flag is not volatile. If we call
-        // shape.free() on the render thread, the finalizer thread can still
-        // see the stale freed==false and call nShapeFree a second time —
-        // corrupting the native heap. The corruption is silent until a later
-        // native allocation (e.g. nLoadGlyphByIndex) traverses the damaged
-        // free-list and crashes. Letting the finalizer be the sole owner of
-        // the free() call eliminates the race entirely.
-        MSDFShape shape = glyphData.getShape();
-
-        if (shape.getEdgeCount() == 0) {
-            return null;
-        }
-        if (!shouldUseMsdf(shape, key.getFontKey().getTargetPx())) {
-            return null;
-        }
-
-        prepareShapeForMsdf(shape, key.getGlyphId(), config);
-
-        int targetPx = key.getFontKey().getTargetPx();
-        int cellSize = cellSizeForFontPx(targetPx);
-        double[] bounds = shape.getBounds();
-        double shapeL = bounds[0];
-        double shapeB = bounds[1];
-        double shapeR = bounds[2];
-        double shapeT = bounds[3];
-
-        // Uniform scale: 1 EM = targetPx cell pixels = targetPx screen pixels.
-        // All glyphs at the same font size share this scale, so relative
-        // sizes are preserved (unlike autoFrame which scales each glyph
-        // individually to fill the cell).
-        double scale = targetPx;
-        double halfRange = PX_RANGE / 2.0;
-
-        // Check that the glyph + SDF border fits in the cell.
-        double neededW = (shapeR - shapeL) * scale + PX_RANGE;
-        double neededH = (shapeT - shapeB) * scale + PX_RANGE;
-        if (neededW > cellSize || neededH > cellSize) {
-            return null;
-        }
-
-        // Projection formula: pixel = scale*(coord + tx).
-        // Position shapeL at pixel halfRange (left SDF margin).
-        double tx = -shapeL + halfRange / scale;
-        double ty = -shapeB + halfRange / scale;
-
-        // Centre remaining slack.
-        double slackX = cellSize - neededW;
-        double slackY = cellSize - neededH;
-        tx += (slackX / 2.0) / scale;
-        ty += (slackY / 2.0) / scale;
-
-        double rangeInShapeUnits = halfRange / scale;
-
-        MSDFTransform transform = new MSDFTransform()
-                .scale(scale)
-                .translate(tx, ty)
-                .range(-rangeInShapeUnits, rangeInShapeUnits);
-
-        MSDFBitmap bitmap = config.isMtsdf()
-                ? MSDFBitmap.allocMtsdf(cellSize, cellSize)
-                : MSDFBitmap.allocMsdf(cellSize, cellSize);
-        try {
-            if (config.isMtsdf()) {
-                MSDFGenerator.generateMtsdf(bitmap, shape, transform,
-                        config.isOverlapSupport(),
-                        config.getErrorCorrectionMode(),
-                        config.getDistanceCheckMode(),
-                        config.getMinDeviationRatio(),
-                        config.getMinImproveRatio());
-            } else {
-                MSDFGenerator.generateMsdf(bitmap, shape, transform,
-                        config.isOverlapSupport(),
-                        config.getErrorCorrectionMode(),
-                        config.getDistanceCheckMode(),
-                        config.getMinDeviationRatio(),
-                        config.getMinImproveRatio());
-            }
-
-            float[] pixelData = bitmap.getPixelData();
-            int channels = config.isMtsdf() ? 4 : 3;
-            flipRows(pixelData, cellSize, cellSize, channels);
-
-            // bearingX = -(scale * tx)  : pen is scale*tx pixels from cell left
-            // bearingY = cellSize - scale*ty : baseline is scale*ty from cell bottom,
-            //            i.e. cellSize - scale*ty from cell top (after flipRows)
-            float bearingX = (float) -(scale * tx);
-            float bearingY = (float) (cellSize - scale * ty);
-            float metricsWidth = (float) ((shapeR - shapeL) * scale);
-            float metricsHeight = (float) ((shapeT - shapeB) * scale);
-
-            CgAtlasRegion region = atlas.getOrAllocateMsdf(key, pixelData,
-                    cellSize, cellSize, bearingX, bearingY,
-                    metricsWidth, metricsHeight, currentFrame);
-            generatedThisFrame++;
-            return region;
-        } finally {
-            bitmap.free();
-        }
-    }
-
-    /**
-     * Paged-atlas MSDF generation using upstream-parity glyph layout.
-     *
-     * <p>Uses {@link CgMsdfGlyphLayout} for per-glyph box sizing instead of the
-     * fixed-cell model in {@link #queueOrGenerate}. The generated MSDF bitmap is
-     * uploaded to a {@link CgPagedGlyphAtlas} which handles page allocation and
-     * returns a {@link CgGlyphPlacement} directly.</p>
-     *
-     * <p>Returns {@code null} when the frame budget is exhausted, the shape is
-     * empty.</p>
-     *
-     * @param key          glyph key
-     * @param font         msdfgen FreeType font handle
-     * @param pagedAtlas   target paged MSDF atlas
-     * @param currentFrame current frame number for LRU tracking
-     * @return the glyph placement, or {@code null} if generation was skipped
-     */
-    public CgGlyphPlacement queueOrGeneratePaged(CgGlyphKey key,
-                                                 FreeTypeMSDFIntegration.Font font,
-                                                 CgPagedGlyphAtlas pagedAtlas,
-                                                 CgMsdfAtlasConfig config,
-                                                 long currentFrame) {
-        if (config == null) {
-            throw new IllegalArgumentException("config must not be null");
-        }
-
-        CgGlyphGenerationResult prepared = preparePagedGlyphWithinBudget(
-                key,
-                key.getFontKey(),
-                font,
-                new CgMsdfAtlasKey(key.getFontKey(), config));
-        if (prepared == null || prepared.isEmptyGeometry()) {
-            return null;
-        }
-
-        return pagedAtlas.allocateMsdf(
-                key,
-                prepared.getMsdfData(),
-                prepared.getWidth(),
-                prepared.getHeight(),
-                prepared.getBearingX(),
-                prepared.getBearingY(),
-                prepared.getPlaneLeft(),
-                prepared.getPlaneBottom(),
-                prepared.getPlaneRight(),
-                prepared.getPlaneTop(),
-                prepared.getMetricsWidth(),
-                prepared.getMetricsHeight(),
-                prepared.getPxRange(),
-                currentFrame);
     }
 
     public CgGlyphGenerationResult preparePagedGlyphWithinBudget(CgGlyphKey key,

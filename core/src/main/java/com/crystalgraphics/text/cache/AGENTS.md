@@ -25,13 +25,12 @@ The central cache hub and the most important file in this package.
 
 Main responsibilities:
 
-- maintain atlas maps
-- maintain paged atlas families
+- maintain paged atlas families (the sole storage model — the old single-page
+  compatibility paths were removed once nothing called them anymore)
 - transform public glyph requests into internal cache keys
 - resolve paged glyph placements
 - submit async generation work
 - drain/commit async results
-- keep legacy single-page compatibility paths alive
 - own font-disposal → atlas-cleanup wiring
 
 The class is intentionally organized in pipeline order. Read it top-to-bottom.

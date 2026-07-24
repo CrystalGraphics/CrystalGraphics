@@ -27,7 +27,7 @@ Main responsibilities:
 - loading and sizing fonts (`CgFont`)
 - grouping fonts into fallback families (`CgFontFamily`, `CgFontSource`)
 - describing font identity and variation (`CgFontKey`, `CgFontStyle`, `CgFontVariation`, `CgFontAxisInfo`)
-- describing glyph identity and placement payloads (`CgGlyphKey`, `CgGlyphMetrics`, `CgAtlasRegion`, `CgGlyphPlacement`)
+- describing glyph identity and placement payloads (`CgGlyphKey`, `CgGlyphMetrics`, `CgGlyphPlacement`)
 - exposing the public layout entrypoint (`CgTextLayoutBuilder`)
 
 ### `api/text`

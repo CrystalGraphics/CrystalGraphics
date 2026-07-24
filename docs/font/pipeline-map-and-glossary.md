@@ -258,10 +258,6 @@ One directional run of shaped text (`CgShapedRun`) containing glyph IDs and spac
 
 Final public layout result (`CgTextLayout`) — lines of shaped runs plus dimensions.
 
-### Atlas region
-
-Legacy single-page glyph location (`CgAtlasRegion`).
-
 ### Glyph placement
 
 Modern paged-atlas glyph location (`CgGlyphPlacement`) with page identity and plane bounds.
