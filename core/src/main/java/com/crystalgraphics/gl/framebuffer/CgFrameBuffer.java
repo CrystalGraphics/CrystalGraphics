@@ -245,6 +245,27 @@ public abstract class CgFrameBuffer {
     }
 
     /**
+     * Allocates a new, independently-owned framebuffer that bypasses
+     * {@link CgFrameBufferRegistry}'s name-keyed cache entirely.
+     *
+     * <p>Use this for framebuffers whose count and size are caller-managed and don't fit the
+     * registry's "small set of well-known named buffers" or "exactly screen-sized" models — e.g.
+     * one small offscreen target per UI element that needs isolated compositing. The registry's
+     * {@link #create} silently returns the existing FBO on a name hit regardless of size
+     * mismatch; callers of this method own their instance outright and must call {@link #resize}
+     * themselves when their target size changes, and {@link #delete()} when done.</p>
+     *
+     * @param name   human-readable instance name (for debugging only — not a cache key)
+     * @param width  width in pixels (must be &gt; 0)
+     * @param height height in pixels (must be &gt; 0)
+     * @param format attachment layout descriptor
+     * @return a new, independently-owned {@code CgFrameBuffer}
+     */
+    public static CgFrameBuffer createOwned(String name, int width, int height, CgFrameBufferFormat format) {
+        return createInternal(name, width, height, format);
+    }
+
+    /**
      * Returns (or lazily creates) a screen-sized FBO managed by
      * {@link CgFrameBufferRegistry}.
      *
@@ -644,7 +665,7 @@ public abstract class CgFrameBuffer {
      * @param newWidth  new width in pixels (must be &gt; 0)
      * @param newHeight new height in pixels (must be &gt; 0)
      */
-    void resize(int newWidth, int newHeight) {
+    public void resize(int newWidth, int newHeight) {
         freeGlResources();
         this.width  = newWidth;
         this.height = newHeight;
