@@ -555,6 +555,16 @@ public final class CgMaterial {
         return enabledKeywords.contains(name);
     }
 
+    /**
+     * Toggles keyword on/off according to the enabled boolean passed.
+     *
+     * @param name keyword name to query
+     */
+    public void toggleKeyword(String name, boolean enabled) {
+        if (enabled && !isKeywordEnabled(name)) enableKeyword(name);
+        else if (!enabled && isKeywordEnabled(name)) disableKeyword(name);
+    }
+
     // ── Draw-time API ─────────────────────────────────────────────────────────
 
     /**

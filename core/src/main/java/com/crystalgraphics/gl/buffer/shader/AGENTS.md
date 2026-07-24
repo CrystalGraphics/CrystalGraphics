@@ -66,12 +66,17 @@ Engine buffers take from the **high end** of each range; user buffers from the *
 
 | Resource | Slot | Constant |
 |----------|------|----------|
-| SSBO (per-object, engine) | `maxSsboBindings - 1` (e.g. 7) | `CgBindingPoints.OBJECT_DATA_SSBO` |
-| TBO (per-object, engine)  | `maxTexImageUnits - 1` (e.g. 15) | `CgBindingPoints.OBJECT_DATA_TBO` |
+| SSBO/TBO (per-object, engine) | ssbo `maxSsboBindings - 1` (e.g. 7), tbo `maxTexImageUnits - 1` (e.g. 15) | `CgBindingPoints.OBJECT_DATA` (a `Binding(ssbo, tbo)` record — call `.resolve()` for the active path) |
+| SSBO/TBO (`CgQuadRenderer`, engine) | one slot below `OBJECT_DATA`'s on each namespace | `CgBindingPoints.QUAD_RENDERER` (same `Binding` shape) |
 | UBO (per-frame, engine)   | `maxUniformBufferBindings - 1` (e.g. 35) | `CgBindingPoints.FRAME_DATA_UBO` |
 | User SSBOs | `CgBindingPoints.USER_START_SSBO` (0) upward | pass 0-based `userIndex` to factories |
 | User TBOs  | `CgBindingPoints.USER_START_TBO` (5) upward | pass 0-based `userIndex` to factories |
 | User UBOs  | `CgBindingPoints.USER_START_UBO` (0) upward | pass 0-based `userIndex` to factories |
+
+Reserved engine SSBO/TBO pairs are `CgBindingPoints.Binding(ssbo, tbo)` records, not two loose
+`int`s — bundles both namespace slots together and knows how to `resolve()` itself against the
+already-detected capability path, so a consumer needing one reserved pair
+(`CgShaderBufferRegistry.getOrCreateInternal(name, format, binding)`) passes a single object.
 
 `CgBindingPoints.init(CgCapabilities)` must be called (by `CgMaterialPipeline.init()`) before
 any engine buffer is constructed.
