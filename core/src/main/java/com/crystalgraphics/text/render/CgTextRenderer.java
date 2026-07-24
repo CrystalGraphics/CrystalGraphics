@@ -5,7 +5,6 @@ import com.crystalgraphics.api.PoseStack;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.font.*;
 import com.crystalgraphics.api.material.CgMaterial;
-import com.crystalgraphics.api.text.CgShapedRun;
 import com.crystalgraphics.api.text.CgTextConstraints;
 import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
@@ -23,6 +22,7 @@ import lombok.experimental.Accessors;
 import org.joml.Matrix4f;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.logging.Logger;
 
@@ -111,11 +111,12 @@ import java.util.logging.Logger;
  * <h3>Authoritative Hot Path</h3>
  * <p>The current pipeline is centered on the paged-atlas path:</p>
  * <ol>
- *   <li>{@link Draw#submit()} calls {@link #layout(String, CgFontFamily, CgTextConstraints)} or its font
- *       variant when {@link Draw#text(String)} was used instead of a prebuilt {@link Draw#layout(CgTextLayout)}</li>
- *   <li>{@link CgTextLayoutBuilder} produces a {@link CgTextLayout}</li>
- *   <li>{@link #drawInternal} resolves raster tier</li>
- *   <li>{@link #buildPagedGlyphBatch} converts layout output into {@link CgGlyphPlacement} records</li>
+ *   <li>{@link Draw#submit()} hands the whole {@link Draw} request to {@link #drawInternal},
+ *       which resolves layout/family precedence and raster tier</li>
+ *   <li>{@link CgTextLayoutBuilder} produces a {@link CgTextLayout} when built from raw text</li>
+ *   <li>{@link CgResolvedGlyphs#flattenAndPrequeue} walks the layout once into per-glyph
+ *       scratch buffers and prequeues async atlas generation</li>
+ *   <li>{@link CgResolvedGlyphs#resolvePlacements} resolves each glyph's {@link CgGlyphPlacement}</li>
  *   <li>{@link #submitSortedQuads} sorts quads by GL state and submits them to the owned batch renderer</li>
  * </ol>
  *
@@ -203,7 +204,7 @@ public class CgTextRenderer {
      * renderer's last upload. Used only to decide whether a {@link #context(CgTextRenderContext)}
      * change mid-batch must flush first (see {@link #syncProjection}) — unlike the model-view
      * transform, which is baked per-glyph-instance via {@code Quad.pose()} (see
-     * {@link #addQuadFromPlacement}) and needs no such tracking at all. Compared by value, not
+     * {@link #submitSortedQuads}) and needs no such tracking at all. Compared by value, not
      * reference, since {@link CgTextRenderContext#getProjection()} is a live, mutable matrix
      * owned by the context.
      */
@@ -213,6 +214,42 @@ public class CgTextRenderer {
      * or {@link Draw#submit()}'s standalone auto-batch alike) — see {@link #restoreStateWith}.
      */
     private Runnable postBatchRestore;
+
+    // ── Per-glyph scratch buffers ────────────────────────────────────────────
+    /**
+     * Flat, grow-only, instance-owned scratch storage for one {@link #drawInternal}
+     * call's glyphs — indices {@code [0, glyphCount)} are valid until the next
+     * {@code drawInternal} call on this renderer overwrites them.
+     *
+     * <p>Sized to the largest draw this renderer has ever handled and never shrunk,
+     * so steady-state text drawing (the common case — same HUD/labels every frame)
+     * allocates nothing per draw. Grown via {@link #ensureScratchCapacity}, which
+     * also resizes {@link #scratchSortedIndices}/{@link #scratchBatchKeys} since
+     * neither ever needs to hold more than {@code glyphCount} entries either.</p>
+     *
+     * <p>{@code scratchFontKeys}/{@code scratchFonts} are populated once per glyph
+     * by {@link #flattenAndPrequeueGlyphs} (a single walk of the layout tree) and
+     * read again by {@link #ensurePlacements} — this is what lets the MSDF→bitmap
+     * fallback retry in {@link #resolveGlyphPlacements} re-run just the atlas
+     * lookup, not the tree walk.</p>
+     */
+    /**
+     * Owns the layout→atlas-placement resolution pipeline for this renderer — a distinct
+     * concern from everything else in this class (batch lifecycle, material/projection
+     * transitions, GPU quad submission). See {@link CgResolvedGlyphs}'s class javadoc.
+     */
+    private final CgResolvedGlyphs resolvedGlyphs = new CgResolvedGlyphs(registry);
+
+    /** Sort scratch — see {@link #submitSortedQuads}. Never needs more than {@code glyphCount} entries. */
+    private int[] scratchSortedIndices = new int[0];
+    private CgDrawBatchKey[] scratchBatchKeys = new CgDrawBatchKey[0];
+
+    private void ensureSortScratchCapacity(int count) {
+        if (count <= scratchSortedIndices.length) return;
+        int newCap = Math.max(count, scratchSortedIndices.length * 2);
+        scratchSortedIndices = Arrays.copyOf(scratchSortedIndices, newCap);
+        scratchBatchKeys = Arrays.copyOf(scratchBatchKeys, newCap);
+    }
     
         /**
      * Registers a hook that runs at the end of every {@link #endBatch()} — including the
@@ -640,11 +677,13 @@ public class CgTextRenderer {
         }
 
         /**
-         * Resolves and submits this draw request through the same pipeline the fixed-arity
-         * {@code draw(...)} overloads use ({@link #drawInternal}). Returns the owning
-         * {@link CgTextRenderer} so a manually-opened batch's final {@code submit()} call
-         * can chain straight into {@link CgTextRenderer#endBatch()} — see the class
-         * javadoc's example.
+         * Validates required fields and hands this request off to {@link #drawInternal},
+         * which reads whatever raw fields it needs directly off {@code this} — resolution
+         * (family/font sizing, layout-from-text, prebuilt-layout precedence) lives there,
+         * not here, so a new optional {@link Draw} field never requires touching this
+         * method's signature. Returns the owning {@link CgTextRenderer} so a manually-opened
+         * batch's final {@code submit()} call can chain straight into
+         * {@link CgTextRenderer#endBatch()} — see the class javadoc's example.
          *
          * @return the owning {@link CgTextRenderer}, for chaining into {@link CgTextRenderer#endBatch()}
          * @throws IllegalStateException if neither {@code layout} nor {@code text} was set,
@@ -657,30 +696,6 @@ public class CgTextRenderer {
             if (layout == null && text == null) throw new IllegalStateException("CgTextRenderer.Draw requires text(...) or layout(...) before submit()");
             if (family == null && font == null) throw new IllegalStateException("CgTextRenderer.Draw requires font(...) or family(...) before submit()");
 
-            CgTextLayout resolvedLayout;
-            CgFontFamily resolvedFamily;
-
-            if (family != null) {
-                resolvedFamily = targetPx > 0 ? sizeFamily(family, targetPx) : family;
-                resolvedLayout = layout != null ? layout : CgTextRenderer.layout(text, resolvedFamily, constraints);
-            } else {
-                CgFont resolvedFont;
-                if (targetPx > 0) {
-                    resolvedFont = requireSizedFont(font, targetPx);
-                } else if (layout == null) {
-                    // Building a layout from text requires an already-sized font.
-                    resolvedFont = requireSizedFont(font);
-                } else {
-                    // Prebuilt layout, no explicit targetPx: trust the caller, matching
-                    // draw(CgTextLayout, CgFont, ...)'s existing no-check behavior.
-                    resolvedFont = font;
-                }
-                resolvedFamily = CgFontFamily.of(resolvedFont);
-                resolvedLayout = layout != null ? layout : CgTextRenderer.layout(text, resolvedFont, constraints);
-            }
-
-            if (resolvedLayout == null || resolvedLayout.getLines().isEmpty()) return CgTextRenderer.this;
-
             PoseStack effectivePose = pose != null ? pose : CgTextRenderer.this.poseStack;
             if (effectivePose == null) {
                 throw new IllegalStateException(
@@ -690,7 +705,7 @@ public class CgTextRenderer {
             boolean standalone = !batchActive;
             if (standalone) beginBatch();
             try {
-                drawInternal(resolvedLayout, resolvedFamily, x, y, rgba, context, effectivePose.last());
+                drawInternal(this, effectivePose.last());
             } finally {
                 if (standalone) endBatch();
             }
@@ -715,16 +730,42 @@ public class CgTextRenderer {
     // ══════════════════════════════════════════════════════════════════════════════════════════
 
     /**
-     * Renderer core shared by the 2D and world-space entry points.
+     * Renderer core shared by the 2D and world-space entry points. Reads whatever raw
+     * fields it needs directly off {@code draw} — new optional {@link Draw} fields never
+     * require touching this signature — and resolves the family/font/layout precedence
+     * rules documented on {@link Draw}'s class javadoc.
      *
-     * <p>Resolves the effective raster tier, builds the paged glyph batch, and
-     * submits sorted quads to the owned {@link CgQuadRenderer}.</p>
+     * <p>Resolves the effective raster tier, delegates layout flattening/prequeueing and
+     * atlas placement resolution to {@link #resolvedGlyphs}, then sorts and submits
+     * ({@link #submitSortedQuads}).</p>
      */
-    private void drawInternal(CgTextLayout layout, CgFontFamily family,
-                              float x, float y, int rgba, CgTextRenderContext context,
-                              PoseStack.Pose pose) {
-        CgFontKey fontKey = family.getPrimarySource().getKey();
-        CgFontMetrics metrics = layout.getMetrics();
+    private void drawInternal(Draw draw, PoseStack.Pose pose) {
+        CgFontFamily resolvedFamily;
+        CgTextLayout resolvedLayout;
+
+        if (draw.family != null) {
+            resolvedFamily = draw.targetPx > 0 ? sizeFamily(draw.family, draw.targetPx) : draw.family;
+            resolvedLayout = draw.layout != null ? draw.layout : layout(draw.text, resolvedFamily, draw.constraints);
+        } else {
+            CgFont resolvedFont;
+            if (draw.targetPx > 0) {
+                resolvedFont = requireSizedFont(draw.font, draw.targetPx);
+            } else if (draw.layout == null) {
+                // Building a layout from text requires an already-sized font.
+                resolvedFont = requireSizedFont(draw.font);
+            } else {
+                // Prebuilt layout, no explicit targetPx: trust the caller, matching
+                // draw(CgTextLayout, CgFont, ...)'s existing no-check behavior.
+                resolvedFont = draw.font;
+            }
+            resolvedFamily = CgFontFamily.of(resolvedFont);
+            resolvedLayout = draw.layout != null ? draw.layout : layout(draw.text, resolvedFont, draw.constraints);
+        }
+
+        if (resolvedLayout == null || resolvedLayout.getLines().isEmpty()) return;
+
+        CgFontKey fontKey = resolvedFamily.getPrimarySource().getKey();
+        CgFontMetrics metrics = resolvedLayout.getMetrics();
         long frame = CgGraphicsLifecycle.getCurrentFrame();
 
         CgTextRenderContext.RasterHistory previous = context.getHistory(fontKey);
@@ -732,19 +773,24 @@ public class CgTextRenderer {
         int effectiveTargetPx = context.getScaleResolver().resolveEffectiveTargetPx(fontKey.getTargetPx(), pose, previousEffectiveTargetPx);
 
         boolean previousMsdf = previous != null ? previous.wasMsdf() : effectiveTargetPx >= 32;
-        boolean wantMsdf =  context.getScaleResolver().shouldUseMsdf(effectiveTargetPx, previousMsdf);
+        boolean wantMsdf = context.getScaleResolver().shouldUseMsdf(effectiveTargetPx, previousMsdf);
         context.setHistory(fontKey, effectiveTargetPx, wantMsdf);
 
-        PagedGlyphBatch glyphBatch = buildPagedGlyphBatch(layout, family, x, y, frame, context, fontKey, effectiveTargetPx, wantMsdf, metrics);
+        int glyphCount = resolvedGlyphs.flattenAndPrequeue(resolvedLayout, resolvedFamily, draw.x, draw.y, frame, context, effectiveTargetPx, wantMsdf, metrics);
+        if (glyphCount == 0) return;
 
-        submitSortedQuads(glyphBatch.placements, glyphBatch.glyphX, glyphBatch.glyphY, rgba,
-                fontKey.getTargetPx(), effectiveTargetPx, context, pose.pose());
+        resolvedGlyphs.resolvePlacements(glyphCount, frame, effectiveTargetPx, wantMsdf);
+        submitSortedQuads(glyphCount, draw.rgba, fontKey.getTargetPx(), effectiveTargetPx, pose.pose());
     }
 
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+    //  SORT + SUBMIT
+    // ══════════════════════════════════════════════════════════════════════════════════════════
 
     /**
-     * Sorts glyph placements by GL state and submits them to the owned
-     * {@link CgQuadRenderer}.
+     * Sorts the {@code glyphCount} placements in {@link #scratchPlacements} by GL state and
+     * submits them to the owned {@link CgQuadRenderer}, one instanced-quad record per glyph
+     * with its model-view transform baked in per-glyph via {@code Quad.pose(modelView)}.
      *
      * <p>On batch-key transitions (atlas page / atlas mode changes), this method:
      * <ol>
@@ -753,43 +799,36 @@ public class CgTextRenderer {
      *   <li>The projection is constant for the whole call and is synced to {@link #TEXT_DATA_UBO}
      *       once up-front via {@link #syncProjection} — flushing first if it differs from what
      *       this renderer already has queued under a different projection. The model-view
-     *       transform needs no such check anymore — it's baked per-glyph-instance via
-     *       {@code Quad.pose()}, see {@link #addQuadFromPlacement}.</li>
+     *       transform needs no such check anymore — it's baked per-glyph-instance.</li>
      *   <li>Emits one instanced-quad record per glyph via {@link CgQuadRenderer#quad()}</li>
      * </ol>
      */
-    void submitSortedQuads(CgGlyphPlacement[] placements,
-                           float[] glyphX, float[] glyphY, int rgba,
-                           int baseTargetPx, int effectiveTargetPx,
-                           CgTextRenderContext context, Matrix4f modelView) {
-        // Count visible placements
+    private void submitSortedQuads(int glyphCount, int rgba, int baseTargetPx, int effectiveTargetPx, Matrix4f modelView) {
+        CgGlyphPlacement[] placements = resolvedGlyphs.placements;
+
         int visibleCount = 0;
-        for (int i = 0; i < placements.length; i++) {
-            if (placements[i] != null && placements[i].hasGeometry())
-                visibleCount++;
+        for (int i = 0; i < glyphCount; i++) {
+            if (placements[i] != null && placements[i].hasGeometry()) visibleCount++;
         }
         if (visibleCount == 0) return;
 
-        // Build sortable entries: (batchKey, originalIndex)
-        int[] sortedIndices = new int[visibleCount];
-        CgDrawBatchKey[] batchKeys = new CgDrawBatchKey[visibleCount];
+        ensureSortScratchCapacity(glyphCount);
         int si = 0;
-        for (int i = 0; i < placements.length; i++) {
+        for (int i = 0; i < glyphCount; i++) {
             CgGlyphPlacement p = placements[i];
             if (p != null && p.hasGeometry()) {
-                sortedIndices[si] = i;
-                batchKeys[si] = new CgDrawBatchKey(
-                        p.getAtlasType(), p.getPageTextureId(), p.getPxRange());
+                scratchSortedIndices[si] = i;
+                scratchBatchKeys[si] = new CgDrawBatchKey(p.getAtlasType(), p.getPageTextureId(), p.getPxRange());
                 si++;
             }
         }
 
         // Fast path (§3.4): if every glyph in this draw already shares one batch key — the
         // dominant case, one font/tier for the whole string — sorting is a guaranteed no-op.
-        // Skip it: one linear scan against batchKeys[0] instead of an O(n log n) insertion sort.
+        // Skip it: one linear scan against scratchBatchKeys[0] instead of an O(n log n) insertion sort.
         boolean uniformBatch = true;
         for (int i = 1; i < visibleCount; i++) {
-            if (!batchKeys[i].equals(batchKeys[0])) {
+            if (!scratchBatchKeys[i].equals(scratchBatchKeys[0])) {
                 uniformBatch = false;
                 break;
             }
@@ -800,16 +839,16 @@ public class CgTextRenderer {
             // and nearly-sorted data which is common since glyphs from the same
             // atlas page are often consecutive in the layout)
             for (int i = 1; i < visibleCount; i++) {
-                CgDrawBatchKey keyI = batchKeys[i];
-                int idxI = sortedIndices[i];
+                CgDrawBatchKey keyI = scratchBatchKeys[i];
+                int idxI = scratchSortedIndices[i];
                 int j = i - 1;
-                while (j >= 0 && batchKeys[j].compareTo(keyI) > 0) {
-                    batchKeys[j + 1] = batchKeys[j];
-                    sortedIndices[j + 1] = sortedIndices[j];
+                while (j >= 0 && scratchBatchKeys[j].compareTo(keyI) > 0) {
+                    scratchBatchKeys[j + 1] = scratchBatchKeys[j];
+                    scratchSortedIndices[j + 1] = scratchSortedIndices[j];
                     j--;
                 }
-                batchKeys[j + 1] = keyI;
-                sortedIndices[j + 1] = idxI;
+                scratchBatchKeys[j + 1] = keyI;
+                scratchSortedIndices[j + 1] = idxI;
             }
         }
 
@@ -817,25 +856,32 @@ public class CgTextRenderer {
         // what's already queued under a different projection — see syncProjection().
         syncProjection(context.getProjection());
 
-        // Submit sorted quads. On batch-key change, transition material state (flushing whatever
-        // was pending under the previous combination).
         CgDrawBatchKey currentKey = null;
-
         for (int s = 0; s < visibleCount; s++) {
-            CgDrawBatchKey thisKey = batchKeys[s];
+            CgDrawBatchKey thisKey = scratchBatchKeys[s];
 
-            // On batch key change, transition material keywords/properties/texture.
             if (currentKey == null || !thisKey.equals(currentKey)) {
                 transitionToMaterial(thisKey);
-
                 currentKey = thisKey;
             }
 
-            int origIdx = sortedIndices[s];
+            int origIdx = scratchSortedIndices[s];
             CgGlyphPlacement p = placements[origIdx];
             int placementTargetPx = p.getKey().getFontKey().getTargetPx();
-            float scaleFactor = logicalMetricScale(baseTargetPx, p.isDistanceField() ? placementTargetPx : effectiveTargetPx);
-            addQuadFromPlacement(p, glyphX[origIdx], glyphY[origIdx], rgba, scaleFactor, modelView);
+            float scaleFactor = CgResolvedGlyphs.logicalMetricScale(baseTargetPx, p.isDistanceField() ? placementTargetPx : effectiveTargetPx);
+
+            // Plane bounds are in physical raster space; normalize to logical. planeLeft/planeTop
+            // are bearing offsets from the pen (Y-down screen space, bearingY positive = above baseline).
+            float logicalBearingX = p.getPlaneLeft() * scaleFactor, logicalBearingY = p.getPlaneTop() * scaleFactor;
+            float logicalWidth = p.getPlaneWidth() * scaleFactor, logicalHeight = p.getPlaneHeight() * scaleFactor;
+            float qx = resolvedGlyphs.glyphX[origIdx] + logicalBearingX, qy = resolvedGlyphs.glyphY[origIdx] - logicalBearingY;
+
+            quadRenderer.quad()
+                    .at(qx, qy).size(logicalWidth, logicalHeight)
+                    .uv(p.getU0(), p.getV0(), p.getU1(), p.getV1())
+                    .color((rgba >>> 8) | ((rgba & 0xFF) << 24))
+                    .pose(modelView)
+                    .submit();
 
             if (diagnosticLogging) {
                 LOGGER.info("[BatchDiag] atlasType=" + thisKey.getAtlasType()
@@ -845,217 +891,9 @@ public class CgTextRenderer {
         }
     }
 
-    /**
-     * Computes quad geometry from a {@link CgGlyphPlacement} and submits it to the owned
-     * {@link CgQuadRenderer} as one instance record, its model-view transform baked in
-     * per-glyph via {@code Quad.pose(modelView)} (see {@code CgQuadRenderer.Quad#pose}).
-     *
-     * <p>Uses plane bounds for geometry placement.</p>
-     */
-    private void addQuadFromPlacement(CgGlyphPlacement p,
-                                      float penX, float penY, int rgba, float scaleFactor,
-                                      Matrix4f modelView) {
-        // Plane bounds are in physical raster space; normalize to logical.
-        // planeLeft = bearing offset from pen; planeTop = bearing above baseline.
-        // The quad origin is (penX + bearingX, penY - bearingY) in the existing
-        // convention (Y-down screen space, bearingY positive = above baseline).
-        float logicalBearingX = p.getPlaneLeft() * scaleFactor, logicalBearingY = p.getPlaneTop() * scaleFactor;
-        float logicalWidth = p.getPlaneWidth() * scaleFactor, logicalHeight = p.getPlaneHeight() * scaleFactor;
-
-        float qx = penX + logicalBearingX, qy = penY - logicalBearingY;
-        float u0 = p.getU0(), v0 = p.getV0(), u1 = p.getU1(), v1 = p.getV1();
-
-        if (diagnosticLogging) {
-            LOGGER.info(String.format(
-                    "[QuadDiag] glyphId=%d penX=%.2f penY=%.2f planeL=%.2f planeB=%.2f planeT=%.2f planeW=%.2f planeH=%.2f qx=%.2f qy=%.2f page=%d tex=%d atlasType=%s distanceField=%b pxRange=%.1f",
-                    p.getKey().getGlyphId(), penX, penY,
-                    logicalBearingX, p.getPlaneBottom() * scaleFactor,
-                    logicalBearingY, logicalWidth, logicalHeight,
-                    qx, qy,
-                    p.getPageIndex(), p.getPageTextureId(),
-                    p.getAtlasType(), p.isDistanceField(), p.getPxRange()));
-        }
-        
-        quadRenderer.quad()
-                    .at(qx, qy).size(logicalWidth, logicalHeight)
-                    .uv(u0, v0, u1, v1).color((rgba >>> 8) | ((rgba & 0xFF) << 24))
-                    .pose(modelView)
-                    .submit();
-    }
-
-    // ══════════════════════════════════════════════════════════════════════════════════════════
-    //  PAGED GLYPH BATCH CONSTRUCTION
-    // ══════════════════════════════════════════════════════════════════════════════════════════
-
-    /**
-     * Builds the authoritative paged-atlas glyph batch for the current draw.
-     *
-     * <p>If a draw prefers distance fields but any visible glyph has to fall back
-     * to bitmap for the current frame, the method reruns the batch in bitmap mode
-     * so one draw never mixes bitmap and distance-field quality tiers.</p>
-     */
-    private PagedGlyphBatch buildPagedGlyphBatch(CgTextLayout layout, CgFontFamily family, float x, float y, long frame,
-                                                 CgTextRenderContext context, CgFontKey fontKey, int effectiveTargetPx,
-                                                 boolean wantMsdf, CgFontMetrics metrics) {
-        PagedGlyphBatch batch = populatePagedGlyphBatch(layout, family, x, y, frame, context,
-                fontKey, effectiveTargetPx, wantMsdf, metrics);
-        if (!wantMsdf || !batch.usedBitmapFallback) return batch;
-
-        // Do not mix MSDF and bitmap glyphs inside the same draw. If any glyph
-        // in an MSDF-targeted draw falls back to bitmap (for example due to the
-        // per-frame MSDF generation budget), rerender the whole batch in bitmap
-        // for this frame so all glyphs share the same quality tier.
-        return populatePagedGlyphBatch(layout, family, x, y, frame, context,
-                fontKey, effectiveTargetPx, false, metrics);
-    }
-
-    private static CgFont resolveRunFont(CgTextLayout layout, CgFontFamily family, CgFontKey runFontKey) {
-        CgFont resolvedFromLayout = layout.getResolvedFontsByKey().get(runFontKey);
-        if (resolvedFromLayout != null) return resolvedFromLayout;
-
-        return family.resolveLoadedFont(runFontKey);
-    }
-
-    /**
-     * Converts logical layout output into paged {@link CgGlyphPlacement}
-     * records plus per-glyph pen positions.
-     *
-     * <p>This is the central layout-to-atlas boundary. The method walks shaped
-     * runs in logical order, converts each glyph into the correct runtime cache
-     * key for the current raster tier, and asks {@link CgFontRegistry} where that
-     * glyph lives in the atlas page set.</p>
-     */
-    private PagedGlyphBatch populatePagedGlyphBatch(CgTextLayout layout, CgFontFamily family, float x, float y, long frame,
-                                                    CgTextRenderContext context, CgFontKey fontKey, int effectiveTargetPx,
-                                                    boolean wantMsdf, CgFontMetrics metrics) {
-        List<List<CgShapedRun>> lines = layout.getLines();
-        int totalGlyphs = countGlyphs(lines);
-        float[] glyphX = new float[totalGlyphs];
-        float[] glyphY = new float[totalGlyphs];
-        CgGlyphPlacement[] placements = new CgGlyphPlacement[totalGlyphs];
-
-        boolean usedBitmapFallback = false;
-        int index = 0;
-        float penY = y + metrics.getAscender();
-        prequeueVisibleGlyphs(layout, family, effectiveTargetPx, wantMsdf, context, frame);
-        for (List<CgShapedRun> line : lines) {
-            float penX = x;
-            for (CgShapedRun run : line) {
-                CgFontKey runFontKey = run.getFontKey();
-                CgFont runFont = resolveRunFont(layout, family, runFontKey);
-                int[] glyphIds = run.getGlyphIds();
-                float[] advancesX = run.getAdvancesX();
-                float[] offsetsX = run.getOffsetsX();
-                float[] offsetsY = run.getOffsetsY();
-                for (int i = 0; i < glyphIds.length; i++) {
-                    int subPixelBucket = resolveSubPixelBucket(context, runFontKey, effectiveTargetPx, offsetsX[i]);
-                    CgGlyphKey glyphKey = new CgGlyphKey(runFontKey, glyphIds[i], wantMsdf, subPixelBucket);
-                    placements[index] = registry.ensureGlyphPaged(
-                            runFont, glyphKey, effectiveTargetPx, subPixelBucket, frame);
-                    if (wantMsdf && placements[index] != null && !placements[index].isDistanceField()) {
-                        usedBitmapFallback = true;
-                    }
-                    glyphX[index] = penX + offsetsX[i];
-                    glyphY[index] = penY + offsetsY[i];
-                    penX += advancesX[i];
-                    index++;
-                }
-            }
-            penY += metrics.getLineHeight();
-        }
-        return new PagedGlyphBatch(glyphX, glyphY, placements, usedBitmapFallback);
-    }
-
-    /**
-     * Prequeues visible glyphs for asynchronous generation before the main ensure
-     * pass runs.
-     *
-     * <p>This is a latency-hiding step, not a correctness step. The later
-     * synchronous {@code ensureGlyphPaged(...)} calls still define the frame's
-     * authoritative result, but prequeueing gives worker threads a chance to
-     * prepare expensive glyphs before the immediate render request reaches them.</p>
-     */
-    private void prequeueVisibleGlyphs(CgTextLayout layout, CgFontFamily family, int effectiveTargetPx, boolean wantMsdf,
-                                       CgTextRenderContext context, long frame) {
-        List<List<CgShapedRun>> lines = layout.getLines();
-        for (List<CgShapedRun> line : lines) {
-            for (CgShapedRun run : line) {
-                CgFontKey runFontKey = run.getFontKey();
-                CgFont runFont = resolveRunFont(layout, family, runFontKey);
-                int[] glyphIds = run.getGlyphIds();
-                float[] offsetsX = run.getOffsetsX();
-                for (int i = 0; i < glyphIds.length; i++) {
-                    int subPixelBucket = resolveSubPixelBucket(context, runFontKey, effectiveTargetPx, offsetsX[i]);
-                    CgGlyphKey glyphKey = new CgGlyphKey(runFontKey, glyphIds[i], wantMsdf, subPixelBucket);
-                    registry.queueGlyphPaged(runFont, glyphKey, effectiveTargetPx, subPixelBucket, frame);
-                }
-            }
-        }
-    }
-
-    private static final class PagedGlyphBatch {
-        private final float[] glyphX;
-        private final float[] glyphY;
-        private final CgGlyphPlacement[] placements;
-        private final boolean usedBitmapFallback;
-
-        private PagedGlyphBatch(float[] glyphX, float[] glyphY, CgGlyphPlacement[] placements, boolean usedBitmapFallback) {
-            this.glyphX = glyphX;
-            this.glyphY = glyphY;
-            this.placements = placements;
-            this.usedBitmapFallback = usedBitmapFallback;
-        }
-    }
-
-    private int countGlyphs(List<List<CgShapedRun>> lines) {
-        int total = 0;
-        for (List<CgShapedRun> line : lines) for (CgShapedRun run : line) total += run.getGlyphIds().length;
-
-        return total;
-    }
-
     // ══════════════════════════════════════════════════════════════════════════════════════════
     //  UTILITIES
     // ══════════════════════════════════════════════════════════════════════════════════════════
-
-    /**
-     * Converts physical atlas metrics back into logical placement units.
-     *
-     * <p>The renderer shapes and advances text in logical/base units, but glyphs may
-     * be rasterized at a larger or smaller effective physical size due to UI scale.
-     * Placement must therefore normalize raster-time bearings and extents back into
-     * logical space before combining them with pen positions.</p>
-     */
-    static float logicalMetricScale(int baseTargetPx, int effectiveTargetPx) {
-        if (baseTargetPx <= 0) throw new IllegalArgumentException("baseTargetPx must be > 0");
-        if (effectiveTargetPx <= 0) throw new IllegalArgumentException("effectiveTargetPx must be > 0");
-
-        return (float) baseTargetPx / (float) effectiveTargetPx;
-    }
-
-    /**
-     * Selects the sub-pixel bucket based on the effective target pixel size.
-     * Uses the effective size (not base targetPx) because the effective size
-     * determines whether sub-pixel positioning is perceptible.
-     */
-    static int selectSubPixelBucket(int effectiveTargetPx, float xOffset) {
-        if (effectiveTargetPx >= CgGlyphKey.SUB_PIXEL_BUCKET_MAX_PX) return 0;
-
-        float fractional = xOffset - (float) Math.floor(xOffset);
-        if (fractional < 0.125f) return 0;
-        if (fractional < 0.375f) return 1;
-        if (fractional < 0.625f) return 2;
-        if (fractional < 0.875f) return 3;
-
-        return 0;
-    }
-
-    static int resolveSubPixelBucket(CgTextRenderContext context, CgFontKey fontKey, int effectiveTargetPx, float xOffset) {
-        if (context.isWorldText()) return 0;
-        if (context.isScaledUiRaster(fontKey, effectiveTargetPx)) return 0;
-
-        return selectSubPixelBucket(effectiveTargetPx, xOffset);
-    }
 
     /**
      * Shared layout helper used by the string-based draw overloads.

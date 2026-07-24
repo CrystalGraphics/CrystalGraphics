@@ -44,8 +44,7 @@ public class CgGlyphKey {
      *
      * <p>This constant is aligned with the bitmap/MSDF handoff boundary
      * ({@link CgMsdfGenerator#SIMPLE_MSDF_MIN_PX}).
-     * All three consumers — {@code CgGlyphKey}, {@code CgTextRenderer.selectSubPixelBucket()},
-     * and {@code CgFontRegistry.ensureBitmapGlyph()} — must use this single constant.</p>
+     * All three consumers — {@code CgGlyphKey}, {@code CgResolvedGlyphs.selectSubPixelBucket()},
      * and {@code CgFontRegistry.ensureBitmapGlyph()} — must use this single constant.</p>
      */
     public static final int SUB_PIXEL_BUCKET_MAX_PX = 32;
