@@ -28,9 +28,8 @@ public class CgShaderBufferRegistryTest {
         // CgBindingPoints runtime fields start at -1 (uninitialised).
         // This test runs outside a GL context so init() has never been called in this JVM.
         // Reset fields to -1 to guarantee a clean starting state.
-        CgBindingPoints.OBJECT_DATA_SSBO = -1;
-        CgBindingPoints.OBJECT_DATA_TBO  = -1;
-        CgBindingPoints.FRAME_DATA_UBO   = -1;
+        CgBindingPoints.OBJECT_DATA    = null;
+        CgBindingPoints.FRAME_DATA_UBO = -1;
 
         assertFalse("isInitialized() should return false before init()", CgBindingPoints.isInitialized());
     }
