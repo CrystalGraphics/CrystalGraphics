@@ -427,9 +427,7 @@ public class CgTextRenderer {
 
         flush();
 
-        if (key.isDistanceField()) TEXT_MATERIAL.enableKeyword("MSDF_MODE");
-        else TEXT_MATERIAL.disableKeyword("MSDF_MODE");
-
+        TEXT_MATERIAL.toggleKeyword("MSDF_MODE", key.isDistanceField());
         ATLAS_TEXTURE_REF.setId(key.getTextureId());
         TEXT_MATERIAL.applyProperties(b -> b.set1f("_PxRange", key.getPxRange()));
 
