@@ -45,9 +45,15 @@ Important idea:
 
 ### `CgGlyphAtlas`
 
-Legacy single-page atlas.
-
-Still used for compatibility paths and as the historical storage model. It remains important because parts of the system still support both legacy and paged flows.
+Formerly the legacy single-page, LRU-evicting atlas storage model. That
+implementation had zero production callers once the paged path became the
+sole rasterization pipeline in `CgFontRegistry`, and was removed. All that
+remains is the `Type` enum (`BITMAP`/`MSDF`/`MTSDF`), kept here — rather than
+moved to its own file — only to avoid a repo-wide rename of every
+`CgGlyphAtlas.Type` reference in `CgGlyphAtlasPage`, `CgPagedGlyphAtlas`,
+`CgFontRegistry`, and the msdf/cache packages. Do not add instance behavior
+back to this class; if you need atlas storage logic, it belongs in
+`CgGlyphAtlasPage`/`CgPagedGlyphAtlas`.
 
 ### `text/atlas/packing/*`
 
@@ -66,10 +72,12 @@ Algorithm layer used by pages to fit glyph boxes into the page rectangle.
 - this package owns storage, not fallback/font policy
 - page allocation should preserve placement stability
 - renderer should consume placements, not mutate atlas state directly
-- `CgGlyphAtlas` is still valid but is no longer the only or primary abstraction
+- `CgGlyphAtlas` is a type-tag holder only — `CgPagedGlyphAtlas` is the only
+  storage model
 
 ## Common agent mistakes to avoid
 
 - Do not move generation policy here.
 - Do not mix renderer draw-batch logic into atlas classes.
-- Treat `CgPagedGlyphAtlas` as the modern path and `CgGlyphAtlas` as the legacy-compatible path.
+- Do not treat `CgGlyphAtlas` as a live storage class — it has no instances
+  to create; `CgPagedGlyphAtlas`/`CgGlyphAtlasPage` are the only storage path.

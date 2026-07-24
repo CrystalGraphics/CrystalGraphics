@@ -7,7 +7,6 @@ import com.crystalgraphics.freetype.FTLoadFlags;
 import com.crystalgraphics.freetype.FTRenderMode;
 import com.crystalgraphics.freetype.FreeTypeException;
 import com.crystalgraphics.msdfgen.FreeTypeMSDFIntegration;
-import com.crystalgraphics.api.font.CgAtlasRegion;
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgFontKey;
 import com.crystalgraphics.api.font.CgGlyphKey;
@@ -36,10 +35,10 @@ import java.util.logging.Logger;
  * <h3>Pipeline Role</h3>
  * <p>{@code CgFontRegistry} is the <em>supply side</em> of the text rendering
  * pipeline.  The renderer ({@link CgTextRenderer})
- * calls into the registry to convert a {@link CgGlyphKey} into atlas-resident
- * pixel data (either a {@link CgAtlasRegion} or a {@link CgGlyphPlacement}).
- * The registry owns atlas textures, generation scheduling, and frame-tick
- * bookkeeping; the renderer only consumes the placement data and texture IDs.</p>
+ * calls into the registry to convert a {@link CgGlyphKey} into an atlas-resident
+ * {@link CgGlyphPlacement}. The registry owns atlas textures, generation
+ * scheduling, and frame-tick bookkeeping; the renderer only consumes the
+ * placement data and texture IDs.</p>
  *
  * <h3>Reading Order</h3>
  * <p>This class is organized in pipeline order.  A reader tracing the glyph
@@ -55,15 +54,13 @@ import java.util.logging.Logger;
  *   <li><strong>Paged MSDF generation</strong> &mdash; MSDF path for paged atlases (with bitmap fallback)</li>
  *   <li><strong>Async job submission</strong> &mdash; submitting bitmap/MSDF jobs to the background executor</li>
  *   <li><strong>Async commit</strong> &mdash; draining completed results and uploading into atlas pages</li>
- *   <li><strong>Legacy single-page path</strong> &mdash; pre-paged entry points retained for
- *       backward-compatible and identity-scale rendering</li>
  *   <li><strong>Atlas inspection / enumeration</strong> &mdash; diagnostic utilities for the debug harness</li>
  *   <li><strong>Font registration &amp; atlas cleanup</strong> &mdash; dispose listener wiring and release helpers</li>
  *   <li><strong>Low-level utilities</strong> &mdash; bitmap buffer normalization, font state restore</li>
  * </ol>
  *
  * <h3>Physical Raster Space Only</h3>
- * <p>All glyph metrics stored in atlas regions ({@link CgAtlasRegion}) are in
+ * <p>All glyph metrics stored in atlas placements ({@link CgGlyphPlacement}) are in
  * <strong>physical raster space</strong> &mdash; bearings, widths, and heights are
  * captured at the effective raster size, not in logical layout units.  The
  * registry must never normalize these values into logical space; that
@@ -73,10 +70,8 @@ import java.util.logging.Logger;
  * <h3>Effective-Size-Aware Lookup</h3>
  * <p>When text is rendered under a PoseStack transform, the effective physical
  * raster size may differ from the base {@code CgFontKey.targetPx}.  The registry
- * supports this via {@link CgRasterFontKey}-keyed atlas maps that allow the same
- * logical font to have multiple atlas buckets at different raster sizes.  The
- * original {@link CgFontKey}-keyed accessors remain for backward compatibility
- * and identity-scale rendering.</p>
+ * supports this via {@link CgRasterFontKey}-keyed paged atlas maps that allow the
+ * same logical font to have multiple atlas buckets at different raster sizes.</p>
  *
  * <p>The registry also wires font disposal to atlas cleanup.  It is not thread
  * safe and must only be used on the render thread.</p>
@@ -118,14 +113,6 @@ public class CgFontRegistry {
 
     private final int atlasSize;
     private final CgMsdfAtlasConfig msdfAtlasConfig;
-
-    // Legacy single-page atlas maps (keyed by base CgFontKey — identity scale)
-    private final Map<CgFontKey, CgGlyphAtlas> bitmapAtlases = new HashMap<CgFontKey, CgGlyphAtlas>();
-    private final Map<CgFontKey, CgGlyphAtlas> msdfAtlases = new HashMap<CgFontKey, CgGlyphAtlas>();
-
-    // Effective-size-aware single-page atlas maps (keyed by CgRasterFontKey)
-    private final Map<CgRasterFontKey, CgGlyphAtlas> rasterBitmapAtlases = new HashMap<CgRasterFontKey, CgGlyphAtlas>();
-    private final Map<CgRasterFontKey, CgGlyphAtlas> rasterMsdfAtlases = new HashMap<CgRasterFontKey, CgGlyphAtlas>();
 
     // Paged atlas maps — the active/authoritative path for new allocations.
     // Bitmap paged atlases are keyed by CgRasterFontKey (effective-size-aware);
@@ -200,19 +187,7 @@ public class CgFontRegistry {
         //    to ensureGlyph* calls later in the same frame.
         drainCompletedGlyphs(frame, MAX_COMMITS_PER_FRAME);
 
-        // 2. Tick every atlas family (legacy + raster + paged).
-        for (CgGlyphAtlas atlas : bitmapAtlases.values()) {
-            atlas.tickFrame(frame);
-        }
-        for (CgGlyphAtlas atlas : msdfAtlases.values()) {
-            atlas.tickFrame(frame);
-        }
-        for (CgGlyphAtlas atlas : rasterBitmapAtlases.values()) {
-            atlas.tickFrame(frame);
-        }
-        for (CgGlyphAtlas atlas : rasterMsdfAtlases.values()) {
-            atlas.tickFrame(frame);
-        }
+        // 2. Tick every paged atlas family.
         for (CgPagedGlyphAtlas atlas : pagedBitmapAtlases.values()) {
             atlas.tickFrame(frame);
         }
@@ -400,15 +375,6 @@ public class CgFontRegistry {
                 rasterGlyphKey.getGlyphId(),
                 rasterGlyphKey.isMsdf(),
                 rasterGlyphKey.getSubPixelBucket());
-    }
-
-    /**
-     * Alias for {@link #toBitmapAtlasGlyphKey} used by the legacy single-page
-     * path.  Kept as a separate method to avoid coupling the legacy callers to
-     * the bitmap-specific name.
-     */
-    private CgGlyphKey toAtlasGlyphKey(CgRasterGlyphKey rasterGlyphKey) {
-        return toBitmapAtlasGlyphKey(rasterGlyphKey);
     }
 
     /**
@@ -699,295 +665,6 @@ public class CgFontRegistry {
     }
 
     // ────────────────────────────────────────────────────────────────────
-    //  § 10. Legacy single-page path
-    //
-    //  These entry points predate the paged atlas system.  They are retained
-    //  for backward compatibility (identity-scale rendering, single-atlas
-    //  consumers, and the debug harness).
-    //
-    //  New code should use ensureGlyphPaged() / queueGlyphPaged() instead.
-    //
-    //  ──── COMPATIBILITY / TRANSITION CODE ────
-    // ────────────────────────────────────────────────────────────────────
-
-    /**
-     * Returns the atlas region for a glyph, creating and uploading it if needed.
-     *
-     * <p><strong>Legacy path:</strong> uses single-page atlases keyed by base
-     * {@link CgFontKey}.  Bitmap keys go through the bitmap rasterization path.
-     * MSDF keys try the MSDF path first and fall back to bitmap when generation
-     * is unavailable or intentionally skipped.</p>
-     *
-     * @deprecated Prefer {@link #ensureGlyphPaged} for new code.
-     */
-    public CgAtlasRegion ensureGlyph(CgFont font, CgGlyphKey key, long currentFrame) {
-        if (font.isDisposed()) {
-            throw new IllegalStateException("Cannot ensureGlyph on disposed font: " + font.getKey());
-        }
-
-        registerFont(font);
-        return key.isMsdf() ? ensureMsdfGlyph(font, key, currentFrame) : ensureBitmapGlyph(font, key, currentFrame);
-    }
-
-    /**
-     * Ensures a glyph is available at the given effective raster size.
-     *
-     * <p><strong>Legacy path:</strong> uses single-page raster-keyed atlases.
-     * This is the effective-size-aware entry point used by the PoseStack-aware
-     * renderer path before paged atlases were available.</p>
-     *
-     * @deprecated Prefer {@link #ensureGlyphPaged} for new code.
-     */
-    public CgAtlasRegion ensureGlyphAtEffectiveSize(CgFont font,
-                                             CgGlyphKey key,
-                                             int effectiveTargetPx,
-                                             int subPixelBucket,
-                                             long currentFrame) {
-        if (font.isDisposed()) {
-            throw new IllegalStateException("Cannot ensureGlyph on disposed font: " + font.getKey());
-        }
-
-        registerFont(font);
-        CgRasterFontKey rasterFontKey = new CgRasterFontKey(key.getFontKey(), effectiveTargetPx);
-        CgRasterGlyphKey rasterGlyphKey = new CgRasterGlyphKey(
-                rasterFontKey, key.getGlyphId(), key.isMsdf(), subPixelBucket);
-
-        if (key.isMsdf()) {
-            return ensureMsdfGlyphAtEffectiveSize(font, key, rasterFontKey, rasterGlyphKey,
-                    effectiveTargetPx, subPixelBucket, currentFrame);
-        } else {
-            return ensureBitmapGlyphAtEffectiveSize(font, key, rasterFontKey, rasterGlyphKey,
-                    effectiveTargetPx, subPixelBucket, currentFrame);
-        }
-    }
-
-    // ── Legacy single-page atlas accessors ─────────────────────────────
-
-    public CgGlyphAtlas getBitmapAtlas(CgFontKey key) {
-        CgGlyphAtlas atlas = bitmapAtlases.get(key);
-        if (atlas == null) {
-            atlas = CgGlyphAtlas.create(atlasSize, atlasSize, CgGlyphAtlas.Type.BITMAP);
-            bitmapAtlases.put(key, atlas);
-        }
-        return atlas;
-    }
-
-    public CgGlyphAtlas getMsdfAtlas(CgFontKey key) {
-        CgGlyphAtlas atlas = msdfAtlases.get(key);
-        if (atlas == null) {
-            atlas = CgGlyphAtlas.create(atlasSize, atlasSize, resolveMsdfAtlasConfig(key).resolveAtlasType());
-            msdfAtlases.put(key, atlas);
-        }
-        return atlas;
-    }
-
-    /**
-     * Returns the bitmap atlas for the given effective-size-aware raster key,
-     * creating it if needed.
-     */
-    public CgGlyphAtlas getBitmapAtlas(CgRasterFontKey rasterKey) {
-        CgGlyphAtlas atlas = rasterBitmapAtlases.get(rasterKey);
-        if (atlas == null) {
-            atlas = CgGlyphAtlas.create(atlasSize, atlasSize, CgGlyphAtlas.Type.BITMAP);
-            rasterBitmapAtlases.put(rasterKey, atlas);
-        }
-        return atlas;
-    }
-
-    /**
-     * Returns the MSDF atlas for the given effective-size-aware raster key,
-     * creating it if needed.
-     */
-    public CgGlyphAtlas getMsdfAtlas(CgRasterFontKey rasterKey) {
-        CgGlyphAtlas atlas = rasterMsdfAtlases.get(rasterKey);
-        if (atlas == null) {
-            atlas = CgGlyphAtlas.create(
-                    atlasSize,
-                    atlasSize,
-                    resolveMsdfAtlasConfig(rasterKey.getBaseFontKey()).resolveAtlasType());
-            rasterMsdfAtlases.put(rasterKey, atlas);
-        }
-        return atlas;
-    }
-
-    // ── Legacy single-page glyph ensure (bitmap) ───────────────────────
-
-    private CgAtlasRegion ensureBitmapGlyph(CgFont font, CgGlyphKey key, long currentFrame) {
-        CgGlyphAtlas atlas = getBitmapAtlas(key.getFontKey());
-        CgAtlasRegion cached = atlas.get(key, currentFrame);
-        if (cached != null) {
-            return cached;
-        }
-
-        FTFace face = font.getFtFace();
-        try {
-            face.setPixelSizes(0, key.getFontKey().getTargetPx());
-
-            int loadFlags = FTLoadFlags.FT_LOAD_DEFAULT;
-            boolean subBucket = key.getSubPixelBucket() > 0 && key.getFontKey()
-                                                          .getTargetPx() < CgGlyphKey.SUB_PIXEL_BUCKET_MAX_PX;
-            if (subBucket) {
-                loadFlags = FTLoadFlags.FT_LOAD_NO_BITMAP;
-            }
-
-            loadGlyphOrFallback(face, key.getGlyphId(), loadFlags);
-
-            if (subBucket) {
-                face.outlineTranslate(key.getSubPixelBucket() * 16L, 0L);
-            }
-
-            face.renderGlyph(FTRenderMode.FT_RENDER_MODE_NORMAL);
-
-            FTBitmap bitmap = face.getGlyphBitmap();
-            int width = bitmap.getWidth();
-            int height = bitmap.getHeight();
-            if (width == 0 || height == 0) {
-                return new CgAtlasRegion(0, 0, 0, 0, 0, 0, 0, 0, key, 0, 0, 0, 0);
-            }
-
-            byte[] pixels = normalizeBitmapBuffer(bitmap);
-            FTGlyphMetrics metrics = face.getGlyphMetrics();
-            float bearingX = metrics.getHoriBearingX() / 64.0f;
-            float bearingY = metrics.getHoriBearingY() / 64.0f;
-            float metricsWidth = metrics.getWidth() / 64.0f;
-            float metricsHeight = metrics.getHeight() / 64.0f;
-            return atlas.getOrAllocate(key, pixels, width, height, bearingX, bearingY,
-                    metricsWidth, metricsHeight, currentFrame);
-        } catch (FreeTypeException e) {
-            LOGGER.log(Level.WARNING, "Failed to rasterize glyph " + key, e);
-            return null;
-        } finally {
-            restoreFontShapingState(font);
-        }
-    }
-
-    // ── Legacy single-page glyph ensure (MSDF with bitmap fallback) ───
-
-    private CgAtlasRegion ensureMsdfGlyph(CgFont font, CgGlyphKey key, long currentFrame) {
-        CgGlyphAtlas msdfAtlas = getMsdfAtlas(key.getFontKey());
-        CgAtlasRegion cached = msdfAtlas.get(key, currentFrame);
-        if (cached != null) {
-            return cached;
-        }
-
-        FreeTypeMSDFIntegration.Font msdfFont = font.getMsdfFont();
-        if (msdfFont != null) {
-            CgMsdfAtlasConfig config = resolveMsdfAtlasConfig(key.getFontKey());
-            CgAtlasRegion region = msdfGenerator.queueOrGenerate(
-                    key, msdfFont, msdfAtlas, config, currentFrame);
-            if (region != null) {
-                return region;
-            }
-        }
-
-        CgGlyphKey bitmapKey = new CgGlyphKey(key.getFontKey(), key.getGlyphId(), false, key.getSubPixelBucket());
-        return ensureBitmapGlyph(font, bitmapKey, currentFrame);
-    }
-
-    // ── Legacy effective-size single-page glyph ensure ─────────────────
-
-    private CgAtlasRegion ensureBitmapGlyphAtEffectiveSize(CgFont font, CgGlyphKey key,
-                                                             CgRasterFontKey rasterFontKey,
-                                                             CgRasterGlyphKey rasterGlyphKey,
-                                                             int effectiveTargetPx,
-                                                             int subPixelBucket,
-                                                            long currentFrame) {
-        CgGlyphAtlas atlas = getBitmapAtlas(rasterFontKey);
-        CgAtlasRegion cached = atlas.get(toAtlasGlyphKey(rasterGlyphKey), currentFrame);
-        if (cached != null) {
-            return cached;
-        }
-
-        FTFace face = font.getFtFace();
-        try {
-            face.setPixelSizes(0, effectiveTargetPx);
-
-            int loadFlags = FTLoadFlags.FT_LOAD_DEFAULT;
-            boolean subBucket = subPixelBucket > 0
-                    && effectiveTargetPx < CgGlyphKey.SUB_PIXEL_BUCKET_MAX_PX;
-            if (subBucket) {
-                loadFlags = FTLoadFlags.FT_LOAD_NO_BITMAP;
-            }
-
-            loadGlyphOrFallback(face, key.getGlyphId(), loadFlags);
-
-            if (subBucket) {
-                face.outlineTranslate(subPixelBucket * 16L, 0L);
-            }
-
-            face.renderGlyph(FTRenderMode.FT_RENDER_MODE_NORMAL);
-
-            FTBitmap bitmap = face.getGlyphBitmap();
-            int width = bitmap.getWidth();
-            int height = bitmap.getHeight();
-            if (width == 0 || height == 0) {
-                return new CgAtlasRegion(0, 0, 0, 0, 0, 0, 0, 0,
-                        toAtlasGlyphKey(rasterGlyphKey), 0, 0, 0, 0);
-            }
-
-            byte[] pixels = normalizeBitmapBuffer(bitmap);
-            FTGlyphMetrics metrics = face.getGlyphMetrics();
-            float bearingX = metrics.getHoriBearingX() / 64.0f;
-            float bearingY = metrics.getHoriBearingY() / 64.0f;
-
-            // Compute placement metrics at base size to avoid hinting-rounding
-            // drift when scaling back from effective size to logical space.
-            // The glyph bitmap uses effectiveTargetPx for raster quality, but
-            // placement extents must represent the true logical glyph dimensions.
-            int basePx = key.getFontKey().getTargetPx();
-            float metricsWidth;
-            float metricsHeight;
-            if (effectiveTargetPx != basePx) {
-                face.setPixelSizes(0, basePx);
-                loadGlyphOrFallback(face, key.getGlyphId(), FTLoadFlags.FT_LOAD_DEFAULT);
-                FTGlyphMetrics baseMetrics = face.getGlyphMetrics();
-                metricsWidth = baseMetrics.getWidth() / 64.0f;
-                metricsHeight = baseMetrics.getHeight() / 64.0f;
-                bearingX = baseMetrics.getHoriBearingX() / 64.0f;
-                bearingY = baseMetrics.getHoriBearingY() / 64.0f;
-            } else {
-                metricsWidth = metrics.getWidth() / 64.0f;
-                metricsHeight = metrics.getHeight() / 64.0f;
-            }
-            return atlas.getOrAllocate(toAtlasGlyphKey(rasterGlyphKey), pixels, width, height,
-                    bearingX, bearingY, metricsWidth, metricsHeight, currentFrame);
-        } catch (FreeTypeException e) {
-            LOGGER.log(Level.WARNING, "Failed to rasterize glyph at effective size " + effectiveTargetPx + ": " + key, e);
-            return null;
-        } finally {
-            restoreFontShapingState(font);
-        }
-    }
-
-    private CgAtlasRegion ensureMsdfGlyphAtEffectiveSize(CgFont font, CgGlyphKey key,
-                                                           CgRasterFontKey rasterFontKey,
-                                                           CgRasterGlyphKey rasterGlyphKey,
-                                                           int effectiveTargetPx,
-                                                           int subPixelBucket,
-                                                           long currentFrame) {
-        CgGlyphAtlas msdfAtlas = getMsdfAtlas(rasterFontKey);
-        CgAtlasRegion cached = msdfAtlas.get(toAtlasGlyphKey(rasterGlyphKey), currentFrame);
-        if (cached != null) {
-            return cached;
-        }
-
-        FreeTypeMSDFIntegration.Font msdfFont = font.getMsdfFont();
-        if (msdfFont != null) {
-            CgMsdfAtlasConfig config = resolveMsdfAtlasConfig(key.getFontKey());
-            CgAtlasRegion region = msdfGenerator.queueOrGenerate(
-                    toAtlasGlyphKey(rasterGlyphKey), msdfFont, msdfAtlas, config, currentFrame);
-            if (region != null) {
-                return region;
-            }
-        }
-
-        CgGlyphKey bitmapKey = new CgGlyphKey(key.getFontKey(), key.getGlyphId(), false);
-        return ensureBitmapGlyphAtEffectiveSize(font, bitmapKey, rasterFontKey,
-                new CgRasterGlyphKey(rasterFontKey, bitmapKey.getGlyphId(), false, subPixelBucket),
-                effectiveTargetPx, subPixelBucket, currentFrame);
-    }
-
-    // ────────────────────────────────────────────────────────────────────
     //  § 11. Atlas inspection / enumeration
     //
     //  Diagnostic utilities used by the debug harness and integration demo
@@ -997,113 +674,41 @@ public class CgFontRegistry {
     // ────────────────────────────────────────────────────────────────────
 
     /**
-     * Returns the first non-empty bitmap atlas that was populated during rendering
-     * for the given base font key. Searches raster-keyed atlases (used by the
-     * PoseStack-aware renderer path) and falls back to the identity-scale atlas.
+     * Returns the first non-empty paged bitmap atlas page that was populated
+     * during rendering for the given base font key. Searches every raster-keyed
+     * paged bitmap atlas family for that font.
      *
-     * @return a populated bitmap atlas, or null if none exists
+     * @return a populated bitmap atlas page, or null if none exists
      */
-    public CgGlyphAtlas findPopulatedBitmapAtlas(CgFontKey key) {
-        // Check raster-keyed atlases first (populated by ensureGlyphAtEffectiveSize)
-        for (Map.Entry<CgRasterFontKey, CgGlyphAtlas> entry : rasterBitmapAtlases.entrySet()) {
-            CgRasterFontKey rk = entry.getKey();
-            if (rk.getBaseFontKey().equals(key)) {
-                CgGlyphAtlas atlas = entry.getValue();
-                if (!atlas.isDeleted() && atlas.getTextureId() != 0 && atlas.getSlotCount() > 0) {
-                    return atlas;
+    public CgGlyphAtlasPage findPopulatedPagedBitmapPage(CgFontKey key) {
+        for (Map.Entry<CgRasterFontKey, CgPagedGlyphAtlas> entry : pagedBitmapAtlases.entrySet()) {
+            if (entry.getKey().getBaseFontKey().equals(key)) {
+                CgGlyphAtlasPage page = entry.getValue().getFirstPopulatedPage();
+                if (page != null) {
+                    return page;
                 }
             }
-        }
-        // Fall back to identity-scale atlas
-        CgGlyphAtlas atlas = bitmapAtlases.get(key);
-        if (atlas != null && !atlas.isDeleted() && atlas.getTextureId() != 0 && atlas.getSlotCount() > 0) {
-            return atlas;
         }
         return null;
     }
 
     /**
-     * Returns the first non-empty MSDF atlas that was populated during rendering
-     * for the given base font key. Searches raster-keyed atlases (used by the
-     * PoseStack-aware renderer path) and falls back to the identity-scale atlas.
+     * Returns the first non-empty paged MSDF atlas page that was populated
+     * during rendering for the given base font key. Searches every paged MSDF
+     * atlas family for that font.
      *
-     * @return a populated MSDF atlas, or null if none exists
+     * @return a populated MSDF atlas page, or null if none exists
      */
-    public CgGlyphAtlas findPopulatedMsdfAtlas(CgFontKey key) {
-        // Check raster-keyed atlases first (populated by ensureGlyphAtEffectiveSize)
-        for (Map.Entry<CgRasterFontKey, CgGlyphAtlas> entry : rasterMsdfAtlases.entrySet()) {
-            CgRasterFontKey rk = entry.getKey();
-            if (rk.getBaseFontKey().equals(key)) {
-                CgGlyphAtlas atlas = entry.getValue();
-                if (!atlas.isDeleted() && atlas.getTextureId() != 0 && atlas.getSlotCount() > 0) {
-                    return atlas;
+    public CgGlyphAtlasPage findPopulatedPagedMsdfPage(CgFontKey key) {
+        for (Map.Entry<CgMsdfAtlasKey, CgPagedGlyphAtlas> entry : pagedMsdfAtlases.entrySet()) {
+            if (entry.getKey().getBaseFontKey().equals(key)) {
+                CgGlyphAtlasPage page = entry.getValue().getFirstPopulatedPage();
+                if (page != null) {
+                    return page;
                 }
             }
-        }
-        // Fall back to identity-scale atlas
-        CgGlyphAtlas atlas = msdfAtlases.get(key);
-        if (atlas != null && !atlas.isDeleted() && atlas.getTextureId() != 0 && atlas.getSlotCount() > 0) {
-            return atlas;
         }
         return null;
-    }
-
-    /**
-     * Returns all non-empty bitmap atlases for the given base font key.
-     * Searches both raster-keyed atlases and the identity-scale atlas.
-     * The returned list is ordered: raster-keyed first, then identity-scale.
-     *
-     * <p>Used by the harness multi-page dump path to enumerate every atlas page
-     * that was populated during rendering.</p>
-     *
-     * @return unmodifiable list of populated bitmap atlases (may be empty, never null)
-     */
-    public List<CgGlyphAtlas> findAllPopulatedBitmapAtlases(CgFontKey key) {
-        List<CgGlyphAtlas> result = new ArrayList<CgGlyphAtlas>();
-        for (Map.Entry<CgRasterFontKey, CgGlyphAtlas> entry : rasterBitmapAtlases.entrySet()) {
-            CgRasterFontKey rk = entry.getKey();
-            if (rk.getBaseFontKey().equals(key)) {
-                CgGlyphAtlas atlas = entry.getValue();
-                if (!atlas.isDeleted() && atlas.getTextureId() != 0 && atlas.getSlotCount() > 0) {
-                    result.add(atlas);
-                }
-            }
-        }
-        CgGlyphAtlas identity = bitmapAtlases.get(key);
-        if (identity != null && !identity.isDeleted() && identity.getTextureId() != 0
-                && identity.getSlotCount() > 0 && !result.contains(identity)) {
-            result.add(identity);
-        }
-        return Collections.unmodifiableList(result);
-    }
-
-    /**
-     * Returns all non-empty MSDF atlases for the given base font key.
-     * Searches both raster-keyed atlases and the identity-scale atlas.
-     * The returned list is ordered: raster-keyed first, then identity-scale.
-     *
-     * <p>Used by the harness multi-page dump path to enumerate every atlas page
-     * that was populated during rendering.</p>
-     *
-     * @return unmodifiable list of populated MSDF atlases (may be empty, never null)
-     */
-    public List<CgGlyphAtlas> findAllPopulatedMsdfAtlases(CgFontKey key) {
-        List<CgGlyphAtlas> result = new ArrayList<CgGlyphAtlas>();
-        for (Map.Entry<CgRasterFontKey, CgGlyphAtlas> entry : rasterMsdfAtlases.entrySet()) {
-            CgRasterFontKey rk = entry.getKey();
-            if (rk.getBaseFontKey().equals(key)) {
-                CgGlyphAtlas atlas = entry.getValue();
-                if (!atlas.isDeleted() && atlas.getTextureId() != 0 && atlas.getSlotCount() > 0) {
-                    result.add(atlas);
-                }
-            }
-        }
-        CgGlyphAtlas identity = msdfAtlases.get(key);
-        if (identity != null && !identity.isDeleted() && identity.getTextureId() != 0
-                && identity.getSlotCount() > 0 && !result.contains(identity)) {
-            result.add(identity);
-        }
-        return Collections.unmodifiableList(result);
     }
 
     /**
@@ -1158,9 +763,8 @@ public class CgFontRegistry {
     //  § 12. Font registration & atlas cleanup
     //
     //  Manages the lifecycle link between CgFont instances and their atlas
-    //  resources.  When a font is disposed, all associated atlases (legacy,
-    //  raster-keyed, and paged) are released, and pending async jobs for
-    //  that font are cleared.
+    //  resources.  When a font is disposed, all associated paged atlases are
+    //  released, and pending async jobs for that font are cleared.
     // ────────────────────────────────────────────────────────────────────
 
     private void registerFont(final CgFont font) {
@@ -1180,22 +784,10 @@ public class CgFontRegistry {
      * Releases all atlas resources associated with the given font key.
      *
      * <p>Clears any pending/failed async jobs for the font, then deletes
-     * and removes all legacy, raster-keyed, and paged atlases.</p>
+     * and removes all paged atlases.</p>
      */
     public void releaseFontAtlases(CgFontKey key) {
         glyphGenerationExecutor.clearFont(key);
-        CgGlyphAtlas bitmap = bitmapAtlases.remove(key);
-        if (bitmap != null && !bitmap.isDeleted()) {
-            bitmap.delete();
-        }
-
-        CgGlyphAtlas msdf = msdfAtlases.remove(key);
-        if (msdf != null && !msdf.isDeleted()) {
-            msdf.delete();
-        }
-
-        // Also release any effective-size-aware atlases for this base font
-        releaseRasterAtlasesForFont(key);
         releasePagedAtlasesForFont(key);
     }
 
@@ -1215,34 +807,6 @@ public class CgFontRegistry {
      * requiring a new object.</p>
      */
     public void releaseAll() {
-        for (CgGlyphAtlas atlas : bitmapAtlases.values()) {
-            if (!atlas.isDeleted()) {
-                atlas.delete();
-            }
-        }
-        bitmapAtlases.clear();
-
-        for (CgGlyphAtlas atlas : msdfAtlases.values()) {
-            if (!atlas.isDeleted()) {
-                atlas.delete();
-            }
-        }
-        msdfAtlases.clear();
-
-        for (CgGlyphAtlas atlas : rasterBitmapAtlases.values()) {
-            if (!atlas.isDeleted()) {
-                atlas.delete();
-            }
-        }
-        rasterBitmapAtlases.clear();
-
-        for (CgGlyphAtlas atlas : rasterMsdfAtlases.values()) {
-            if (!atlas.isDeleted()) {
-                atlas.delete();
-            }
-        }
-        rasterMsdfAtlases.clear();
-
         for (CgPagedGlyphAtlas atlas : pagedBitmapAtlases.values()) {
             if (!atlas.isDeleted()) {
                 atlas.delete();
@@ -1260,32 +824,6 @@ public class CgFontRegistry {
         registeredFonts.clear();
         glyphGenerationExecutor.shutdown();
         glyphGenerationExecutor = new CgGlyphGenerationExecutor();
-    }
-
-    private void releaseRasterAtlasesForFont(CgFontKey baseKey) {
-        java.util.Iterator<Map.Entry<CgRasterFontKey, CgGlyphAtlas>> bitmapIt =
-                rasterBitmapAtlases.entrySet().iterator();
-        while (bitmapIt.hasNext()) {
-            Map.Entry<CgRasterFontKey, CgGlyphAtlas> entry = bitmapIt.next();
-            if (entry.getKey().getBaseFontKey().equals(baseKey)) {
-                if (!entry.getValue().isDeleted()) {
-                    entry.getValue().delete();
-                }
-                bitmapIt.remove();
-            }
-        }
-
-        java.util.Iterator<Map.Entry<CgRasterFontKey, CgGlyphAtlas>> msdfIt =
-                rasterMsdfAtlases.entrySet().iterator();
-        while (msdfIt.hasNext()) {
-            Map.Entry<CgRasterFontKey, CgGlyphAtlas> entry = msdfIt.next();
-            if (entry.getKey().getBaseFontKey().equals(baseKey)) {
-                if (!entry.getValue().isDeleted()) {
-                    entry.getValue().delete();
-                }
-                msdfIt.remove();
-            }
-        }
     }
 
     private void releasePagedAtlasesForFont(CgFontKey baseKey) {

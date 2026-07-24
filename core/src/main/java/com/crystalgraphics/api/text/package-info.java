@@ -19,9 +19,9 @@
  * lives in {@code text/} and {@code gl/text/} — those packages <em>produce</em>
  * these types but do not own them.</p>
  *
- * <p>Runtime transport structures (e.g., {@code CgGlyphPlacement},
- * {@code CgAtlasRegion}) remain in {@code api/font} or closer to
- * their runtime consumers in {@code gl/text/}.</p>
+ * <p>Runtime transport structures (e.g., {@code CgGlyphPlacement})
+ * remain in {@code api/font} or closer to their runtime consumers
+ * in {@code gl/text/}.</p>
  *
  * <h3>Known API-boundary leaks</h3>
  * <p>Two groups of fields currently expose internal pipeline state through these

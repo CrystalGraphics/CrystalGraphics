@@ -6,8 +6,7 @@ import com.crystalgraphics.text.atlas.CgGlyphAtlas;
  * Immutable placement record describing a glyph's location within a paged atlas.
  *
  * <p>This is the renderer-facing contract for glyph placement in the multi-page
- * atlas system, replacing the single-page assumptions of {@link CgAtlasRegion}.
- * It separates <strong>plane bounds</strong> (geometry-space quad extents) from
+ * atlas system. It separates <strong>plane bounds</strong> (geometry-space quad extents) from
  * <strong>atlas bounds</strong> (texture-space sample coordinates) and carries
  * per-page identity and MSDF configuration needed for correct draw batching.</p>
  *
@@ -40,13 +39,6 @@ import com.crystalgraphics.text.atlas.CgGlyphAtlas;
  * to set {@code u_pxRange} per batch when different pages or font sizes use
  * different range values, rather than treating it as a global constant.</p>
  *
- * <h3>Backward Compatibility</h3>
- * <p>{@link CgAtlasRegion} remains as the atlas-internal allocation record.
- * {@code CgGlyphPlacement} is the canonical renderer-facing contract. A static
- * factory {@link #fromAtlasRegion} bridges the two during the transition period
- * where single-page atlases still produce {@code CgAtlasRegion}.</p>
- *
- * @see CgAtlasRegion
  * @see CgGlyphKey
  */
 public final class CgGlyphPlacement {
@@ -194,74 +186,6 @@ public final class CgGlyphPlacement {
         this.u1 = u1;
         this.v1 = v1;
         this.pxRange = pxRange;
-    }
-
-    // ── Static factories ───────────────────────────────────────────────
-
-    /**
-     * Bridges a legacy {@link CgAtlasRegion} into a {@code CgGlyphPlacement}.
-     *
-     * <p>This factory is used during the transition period where single-page
-     * atlases still produce {@code CgAtlasRegion}. It maps the old bearing/
-     * metrics model into plane bounds and assumes page index 0.</p>
-     *
-     * <p>For <strong>bitmap</strong> regions, plane bounds are derived from
-     * bearingX/bearingY and metricsWidth/metricsHeight (the logical-space
-     * outline extents). For <strong>MSDF</strong> regions, plane bounds use
-     * bearingX/bearingY and the full cell width/height (which includes the
-     * SDF range border).</p>
-     *
-     * @param region      the legacy atlas region
-     * @param textureId   GL texture ID of the atlas page
-     * @param pxRange     SDF pixel range (0 for bitmap)
-     * @return a placement record bridging the legacy region
-     */
-    public static CgGlyphPlacement fromAtlasRegion(CgAtlasRegion region,
-                                                     int textureId,
-                                                     CgGlyphAtlas.Type atlasType,
-                                                     float pxRange) {
-        if (region == null) {
-            throw new IllegalArgumentException("region must not be null");
-        }
-
-        // Plane bounds: the quad extent in physical raster space.
-        // For bitmap: use metricsWidth/metricsHeight (the visible glyph outline).
-        // For MSDF: use the full cell width/height (includes SDF range border).
-        float planeLeft = region.getBearingX();
-        float planeTop = region.getBearingY();
-        float quadWidth;
-        float quadHeight;
-        if (atlasType != CgGlyphAtlas.Type.BITMAP) {
-            quadWidth = region.getWidth();
-            quadHeight = region.getHeight();
-        } else {
-            quadWidth = region.getMetricsWidth();
-            quadHeight = region.getMetricsHeight();
-        }
-        // planeRight = planeLeft + quadWidth
-        // planeBottom = planeTop - quadHeight (bearing is above baseline, quad extends down)
-        float planeRight = planeLeft + quadWidth;
-        float planeBottom = planeTop - quadHeight;
-
-        return new CgGlyphPlacement(
-                region.getKey(),
-                0,  // single-page legacy: page index 0
-                textureId,
-                atlasType,
-                planeLeft,
-                planeBottom,
-                planeRight,
-                planeTop,
-                region.getAtlasX(),
-                region.getAtlasY() + region.getHeight(),  // bottom = top + height in top-left-origin
-                region.getAtlasX() + region.getWidth(),
-                region.getAtlasY(),
-                region.getU0(),
-                region.getV0(),
-                region.getU1(),
-                region.getV1(),
-                pxRange
-        );
     }
 
     // ── Accessors ──────────────────────────────────────────────────────

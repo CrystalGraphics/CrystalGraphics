@@ -7,9 +7,9 @@
 
 The instinct is correct, but it's aimed at the wrong layer. **`text/render`** (the newest code — `CgTextRenderer`, `CgResolvedGlyphs`, `CgTextRenderContext`) is genuinely well-designed: single-walk flattening, packed-long sort keys instead of key objects, grow-only scratch arrays, a real three-space model, a fluent `Draw` API that replaced a 13-overload matrix. That part reads like it was written once, deliberately, by someone who knew what they wanted.
 
-**`text/cache` and `text/atlas`** are where the "ad-hoc, stitched together" feeling is 100% justified. `CgFontRegistry` is 1387 lines carrying **three parallel implementations of the same glyph-rasterization pipeline** (legacy single-page, effective-size-aware single-page, paged) that were never consolidated after the paged system became authoritative. `CgGlyphAtlas` and `CgGlyphAtlasPage` are near-duplicate classes — same GL constants block, same upload logic, same texture creation — that diverged slightly during the copy. This is classic incremental-feature-addition-without-cleanup: every new capability (paging, effective-size raster, MSDF) was added *alongside* the old path instead of *replacing* it, and the old path was never deleted because something still depends on it (the debug harness, mostly).
+**`text/cache` and `text/atlas`** were where the "ad-hoc, stitched together" feeling was 100% justified — `CgFontRegistry` carried **three parallel implementations of the same glyph-rasterization pipeline** (legacy single-page, effective-size-aware single-page, paged) that were never consolidated after the paged system became authoritative, and `CgGlyphAtlas`/`CgGlyphAtlasPage` were near-duplicate classes that had already drifted. **This has been fixed** — see A1/A2 below. This was classic incremental-feature-addition-without-cleanup: every new capability (paging, effective-size raster, MSDF) was added *alongside* the old path instead of *replacing* it, and the old path was never deleted because something still depended on it (the debug harness) — until that dependency was migrated to the paged equivalents and the legacy path was deleted outright.
 
-So: not "no architecture." **Two architectures, superimposed, with the old one never torn out.**
+So: this used to be "two architectures, superimposed, with the old one never torn out." As of the A1/A2 fix, it's one.
 
 ---
 
@@ -17,7 +17,7 @@ So: not "no architecture." **Two architectures, superimposed, with the old one n
 
 ### A. Architecture / Duplication
 
-**A1. `CgFontRegistry` carries a full second (and third) copy of glyph rasterization — HIGH**
+**A1. `CgFontRegistry` carries a full second (and third) copy of glyph rasterization — HIGH — ✅ FIXED**
 `CgFontRegistry.java`:
 - `ensureBitmapGlyphPaged` (§5, ~L460–528) — paged path, FreeType rasterize + re-measure-at-base-size
 - `ensureBitmapGlyph` (§10, ~L831–878) — legacy single-page, **same FreeType calls, same re-measure logic, same sub-pixel-bucket branch**, different atlas type
@@ -27,7 +27,9 @@ All three do: `setPixelSizes` → compute `loadFlags` from `subPixelBucket`/`SUB
 
 *Why it matters:* every FreeType-rasterization bugfix (e.g. a hinting-rounding fix, a sub-pixel-bucket edge case) has to be applied in up to three places, and there's no compiler check that they stay in sync. The package's own `AGENTS.md` even documents this by carving the class into "§10 Legacy single-page path... **COMPATIBILITY / TRANSITION CODE**" — the maintainers know it's there, and it's been left as a `@deprecated`-annotated dead weight rather than migrated/removed. This is precisely what "stitched together in an ad-hoc fashion" looks like from the inside: nobody deleted the old implementation when the new one landed.
 
-**A2. `CgGlyphAtlas` and `CgGlyphAtlasPage` are ~90% duplicate classes that have already drifted — HIGH**
+> **Fixed.** Confirmed zero external callers anywhere in the repo (including tests) for `ensureGlyph`, `ensureGlyphAtEffectiveSize`, `getBitmapAtlas`/`getMsdfAtlas` (all overloads) — the paged path (`ensureGlyphPaged`/`queueGlyphPaged`) was already the sole path real rendering code used. Deleted the full §10 legacy block (all three rasterization copies, both MSDF `queueOrGenerate` overloads in `CgMsdfGenerator`, the legacy/raster atlas maps, `releaseRasterAtlasesForFont`, and the `toAtlasGlyphKey` alias). The three debug-harness call sites that *did* depend on the legacy enumeration API (`AtlasDumpScene`, `TextScene2D`, `CgFontDemo`) were migrated to new paged-equivalent finders (`findPopulatedPagedBitmapPage`/`findPopulatedPagedMsdfPage`, alongside the pre-existing `findAllPopulatedPagedBitmapPages`/`findAllPopulatedPagedMsdfPages`) before deletion. `CgFontRegistry` dropped from 1387 lines to 909. Verified via full `core` test suite (574 tests, only the 2 pre-existing unrelated `CgVertexAttributeInjectionTest` failures remain) and manual harness verification (Text Scene 3D rendered correctly post-fix).
+
+**A2. `CgGlyphAtlas` and `CgGlyphAtlasPage` are ~90% duplicate classes that have already drifted — HIGH — ✅ FIXED**
 Compare `CgGlyphAtlas.java` and `CgGlyphAtlasPage.java`:
 - Both redeclare the **exact same 16 raw GL constants** (`GL_TEXTURE_2D = 0x0DE1`, `GL_R8 = 0x8229`, …) as private statics instead of using the project's own `CgTextureType`/`CgGL` (the codebase's own `AGENTS.md` calls `CgTextureType` "the single source of truth" for ~42 format constants — these two classes ignore it and hand-roll their own copy of a subset).
 - Both have byte-for-byte identical `uploadBitmap`/`uploadMsdf` bodies (`CgGlyphAtlas.java:484-523` vs `CgGlyphAtlasPage.java:352-391`).
@@ -36,10 +38,14 @@ Compare `CgGlyphAtlas.java` and `CgGlyphAtlasPage.java`:
 
 *Why it matters:* this isn't two unrelated classes with similar responsibilities — `CgGlyphAtlasPage` is what `CgGlyphAtlas` should have become when paging was added, and instead it was written next to it. A new engineer reading the atlas package has to hold both mental models simultaneously to know which one is live for their code path.
 
-**A3. Two independent storage models with incompatible eviction semantics — HIGH**
+> **Fixed as part of A1's deletion.** `CgGlyphAtlas` no longer has any instance behavior — its constructor, `create()`/`createForTest()`, `getOrAllocate`/`getOrAllocateMsdf`, `evictAndInsert`, the duplicated GL-constant block, and both upload methods were all deleted along with `CgGlyphAtlasTest.java` (their only remaining caller). The class now holds only the `Type` enum (`BITMAP`/`MSDF`/`MTSDF`), kept under the same name/location specifically to avoid a repo-wide rename of every `CgGlyphAtlas.Type` reference in `CgGlyphAtlasPage`, `CgPagedGlyphAtlas`, `CgFontRegistry`, and the msdf/cache packages. The duplicate GL constants and upload logic this finding flagged now exist in exactly one place: `CgGlyphAtlasPage`.
+
+**A3. Two independent storage models with incompatible eviction semantics — HIGH — ✅ FIXED**
 `CgGlyphAtlas` (legacy) does **LRU eviction**: `evictAndInsert` (`CgGlyphAtlas.java:454-480`) finds the coldest slot, calls `packer.remove()`, and overwrites that texture region on the next allocation. `CgPagedGlyphAtlas`/`CgGlyphAtlasPage` (current) does **no eviction at all** — `tickFrame` is a literal no-op (`CgPagedGlyphAtlas.java:323-325`, `"Reserved for future per-page maintenance (e.g., page GC)"`), and a full page just causes a new page to be allocated forever.
 
 *Why it matters, concretely:* any UI text that continuously varies at fine sub-pixel granularity (a scrolling list, a smoothly moving HUD element) generates a new `(font, glyph, subPixelBucket 0-3)` combination on every distinct fractional pixel offset it passes through. With no eviction, a long play session with animated/scrolling text will monotonically grow atlas pages — this is a slow, real texture-memory leak in the *authoritative* path, not the deprecated one. The legacy path guards against exactly this failure mode and the replacement dropped the guard without a stated remediation plan beyond a comment.
+
+> **Fixed.** `CgPagedGlyphAtlas` now supports a page budget (`DEFAULT_MAX_PAGES = 32` for `createForPagedRegistry`, unbounded — `UNBOUNDED_PAGES` — for `createForTest`, preserving the existing `testNoEviction_pagingInstead` test). When a new page would exceed the budget, the **coldest whole page** is evicted (lowest `CgGlyphAtlasPage.getLastTouchedFrame()`, an O(1)-maintained per-page recency stamp) — not per-slot LRU, so every glyph on a surviving page keeps its placement-stability guarantee; a glyph is only ever displaced by losing its entire page. Page indices are now assigned from a monotonic counter (not `pages.size()`) so an evicted index is never reused by a live page. Covered by two new tests (`testPageBudget_evictsColdestPageOnOverflow`, `testPageBudget_unboundedByDefaultForTest`).
 
 **A4. Renderer-owned material state is global/static, coupling every `CgTextRenderer` instance — MEDIUM**
 `CgTextRenderer.TEXT_MATERIAL`, `TEXT_DATA_UBO`, and `ATLAS_TEXTURE_REF` are all `static` (`CgTextRenderer.java:141-185`), shared across every renderer instance. `transitionToMaterial` explicitly toggles `MSDF_MODE` on the shared material every batch transition specifically *because* another live renderer could have left it in a different state (see the class's own javadoc: "a stale keyword left on by a previous transition ... would otherwise silently persist"). This is a documented, defended design choice, not an oversight — but it means every draw call anywhere in the process is implicitly serialized through one shared GPU-resource singleton, and `syncProjection`'s comment about "another live instance may have overwritten [TEXT_DATA_UBO] since" confirms the same is true of projection state. This is workable single-threaded (render thread only) but is a real constraint that will bite the moment anything tries to pipeline or parallelize draw submission.
@@ -54,10 +60,12 @@ Compare `CgGlyphAtlas.java` and `CgGlyphAtlasPage.java`:
 
 ### C. Performance
 
-**C1. Two `CgGlyphKey` allocations per visible glyph per frame — MEDIUM**
+**C1. Two `CgGlyphKey` allocations per visible glyph per frame — MEDIUM — ✅ FIXED**
 `CgResolvedGlyphs.flattenAndPrequeue` (`CgResolvedGlyphs.java:126-129`) allocates one `new CgGlyphKey(...)` per glyph for the pre-queue pass; `ensurePlacements` (`CgResolvedGlyphs.java:150-158`) allocates a **second** `new CgGlyphKey(...)` per glyph for the actual lookup — same glyph, same frame, two immutable Lombok `@Value` objects (which also means two `hashCode()` computations over `(CgFontKey, int, boolean, int)`, and `CgFontKey.hashCode()` itself hashes over a `List<CgFontVariation>`). For a modest HUD (a few hundred visible glyphs), that's 500+ short-lived allocations and hash computations every single frame, done specifically to key into `HashMap`s (`CgGlyphAtlas.slotMap`, `CgGlyphAtlasPage.slotMap`) that are then walked **linearly across every atlas page** (`CgPagedGlyphAtlas.get`, `CgPagedGlyphAtlas.java:181-190`, hot page first but O(pages) worst case) on top of that.
 
 This is exactly the class of thing the rest of `text/render` was clearly written to avoid — `CgResolvedGlyphs`'s own javadoc brags about the flatten pass allocating nothing in steady state via grow-only scratch arrays, and the sort-key packing in `CgTextRenderer` was explicitly built to avoid "a per-glyph key object." The glyph *cache lookup* key wasn't given the same treatment. A single mutable scratch `CgGlyphKey` (or a raw long/tuple hash used directly against the map) reused across the loop, or restructuring `slotMap` to avoid boxing a key per lookup, would close this gap and make the pipeline allocation-free end-to-end for the steady-state case it already optimizes for everywhere else.
+
+> **Fixed.** `CgResolvedGlyphs` now has a `glyphKeys[]` scratch array (grown the same way as its other per-glyph arrays). `flattenAndPrequeue`'s prequeue loop stores the key it builds into `glyphKeys[i]` instead of discarding it. `ensurePlacements`'s primary pass (the one `resolvePlacements` always calls first, with the exact same `wantMsdf` value the prequeue pass used) reuses `glyphKeys[i]` directly instead of allocating a second key; only the rarer MSDF→bitmap fallback retry pass (where `wantMsdf` genuinely differs) still builds a fresh key, since it must. Halves per-glyph key allocation/hashing for the common case.
 
 **C2. `MaxRectsPacker.insert` is O(freeRects) per insert with an O(n²) prune every insert — LOW**
 `splitFreeRects` + `pruneContained` (`MaxRectsPacker.java:213-275`) run on every single `insert`, and `pruneContained` is a nested loop over the current free-rect list. Free-rect count grows with fragmentation, not just packed-rect count, so this is superlinear in the number of glyphs packed into a page over that page's lifetime. At current page sizes (1024², glyphs tens of pixels) this stays small in practice — flagging as low severity, but it's the kind of algorithm that quietly gets worse if page size or glyph density assumptions change later, with no defensive cap.
@@ -67,14 +75,16 @@ This is exactly the class of thing the rest of `text/render` was clearly written
 
 ### D. Code Quality / Consistency
 
-**D1. `queueGlyphPagedPublic` is a pure pass-through wrapper that exists only to route around Java package-privacy — LOW**
+**D1. `queueGlyphPagedPublic` is a pure pass-through wrapper that exists only to route around Java package-privacy — LOW — ✅ FIXED**
 `CgFontRegistry.java:349-355` — a public method whose entire body is `queueGlyphPaged(font, key, effectiveTargetPx, subPixelBucket, currentFrame);`, added "so that code outside the cache package (e.g. the debug harness) can pre-queue glyphs." This is a symptom of the same root cause as A1/A2: production API surface growing to accommodate test/harness access patterns instead of the harness depending on the real internal API (module-level visibility, a test-only accessor, or just making `queueGlyphPaged` public outright, since `queueGlyphPagedPublic` proves there's no actual encapsulation benefit being preserved).
+
+> **Fixed.** `queueGlyphPaged` was already `public` — the wrapper added zero encapsulation. Deleted the wrapper; its one caller (`AtlasDumpScene`) now calls `queueGlyphPaged` directly.
 
 **D2. Inconsistent logging levels for structurally similar failures.**
 Rasterization failures in the paged bitmap path log at `WARNING` (`CgFontRegistry.java:523`, `:971`); MSDF generation failures in `CgMsdfGenerator` log at `FINE` (`CgMsdfGenerator.java:134`, `:323`). Both represent "we could not produce this glyph" — the severity split isn't argued for anywhere, it's just what each author happened to pick when they wrote that call site.
 
 **D3. `§` section-comment banners in `CgFontRegistry` are a workaround for the file being too big to navigate, not a design.**
-The file is genuinely well *organized* — the 13-section banner comment scheme is a real, if unusual, effort to keep 1387 lines legible. But needing a hand-rolled table-of-contents inside a single class is itself evidence that this class has taken on three pipelines' worth of responsibility (A1) that would be three much smaller, individually comprehensible classes if the legacy paths were finally removed.
+The file is genuinely well *organized* — the section banner comment scheme is a real, if unusual, effort to keep a large class legible. It carried three pipelines' worth of responsibility at 1387 lines when this was first written (A1); with the legacy paths now deleted (909 lines), the remaining sections map much more directly to one pipeline. The banner scheme itself is still worth revisiting if the file grows again, but the underlying cause (A1) is resolved.
 
 ### E. Missing capabilities vs. production text engines
 
@@ -147,15 +157,17 @@ Peer-group calibration: measured against Skia's glyph pipeline, TextMeshPro, God
 
 ## Ranked remediation list
 
-1. **Delete the legacy/effective-size single-page atlas paths in `CgFontRegistry` and `CgGlyphAtlas`, once the debug harness is migrated to the paged path.** (A1, A2) This alone would cut `CgFontRegistry` by roughly a third and eliminate the classes' cross-drift risk (A2's stray buffer-size bug is a preview of what keeps happening while both paths live).
-2. **Give the paged atlas an eviction or page-budget policy** — even a coarse "cap total pages per atlas family, evict oldest page's glyphs on overflow" beats an unbounded grow-forever `tickFrame` no-op. (A3)
-3. **Collapse `CgGlyphAtlas`/`CgGlyphAtlasPage`'s duplicated GL-constant and upload-buffer logic** into one shared internal helper (or make `CgGlyphAtlas` a thin wrapper around a single-page `CgPagedGlyphAtlas`), and route texture-format constants through `CgTextureType` instead of a hand-rolled duplicate. (A2)
+1. ✅ **DONE** — ~~Delete the legacy/effective-size single-page atlas paths in `CgFontRegistry` and `CgGlyphAtlas`, once the debug harness is migrated to the paged path.~~ (A1, A2) Migrated `AtlasDumpScene`/`TextScene2D`/`CgFontDemo` to paged-equivalent finders, then deleted the full legacy rasterization block. `CgFontRegistry` went from 1387 → 909 lines.
+2. ✅ **DONE** — ~~Give the paged atlas an eviction or page-budget policy~~ — `CgPagedGlyphAtlas` now evicts the coldest whole page on overflow past a configurable budget (`DEFAULT_MAX_PAGES = 32` in production). (A3)
+3. ✅ **DONE** — ~~Collapse `CgGlyphAtlas`/`CgGlyphAtlasPage`'s duplicated GL-constant and upload-buffer logic~~ — `CgGlyphAtlas` was stripped to just the shared `Type` enum; `CgGlyphAtlasPage` is now the only place the upload/GL-constant logic exists. (A2)
 4. **Add a shaped-layout cache keyed by `(text, resolvedFontKey, constraints)`**, invalidated when any of those three change, so `Draw.submit()` built from raw `.text(...)` doesn't pay full HarfBuzz+BiDi+UAX#14 cost on every call for unchanged strings — the single biggest capability gap versus the peer group, not just implementation debt. (E1)
-5. **Eliminate the double `CgGlyphKey` allocation per glyph per frame** in `CgResolvedGlyphs` — reuse a mutable scratch key or restructure the lookup to avoid allocating a key object for the hot path, matching the allocation discipline already used everywhere else in that class. Directly compounds with #4 today (a static HUD label pays both costs every frame). (C1)
+5. ✅ **DONE** — ~~Eliminate the double `CgGlyphKey` allocation per glyph per frame~~ in `CgResolvedGlyphs` — the primary resolve pass now reuses the key built during prequeue; only the rarer MSDF→bitmap fallback retry still allocates a second key. (C1)
 6. **Raise MSDF generation failure logging from `FINE` to at least `WARNING`**, matching the bitmap path, given the authors' own documented history of native crashes in this exact call path. (B2)
-7. **Remove `queueGlyphPagedPublic`** and just make `queueGlyphPaged` public, or give the harness proper test-scoped access — the wrapper adds a line of indirection with no actual encapsulation behind it. (D1)
+7. ✅ **DONE** — ~~Remove `queueGlyphPagedPublic`~~ and just make `queueGlyphPaged` public — it already was; wrapper deleted, harness caller updated. (D1)
 8. **Add a tracked follow-up for the `MSDFShape.free()` finalizer dependency** (B1) — not urgent to fix immediately, but should be a known risk item, not just a comment, given it's a native heap corruption mode under sustained load.
 9. Lower priority: revisit `MAX_COMMITS_PER_FRAME`'s fixed budget (C3), `MaxRectsPacker`'s per-insert prune cost (C2) if/when atlas page sizes or glyph churn rates change, and the scope-dependent E2/E3 capability ceilings (color glyphs, justification/hyphenation) only if a concrete feature needs them.
+
+**Remaining open items: #4 (E1 shape cache), #6 (B2 logging level), #8 (B1 finalizer tracked risk), #9 (low-priority C2/C3/E2/E3).**
 
 Items 1–4 are the ones that will actually change how the codebase *feels* to work in and how it performs under real UI load — 1–3 are the direct cause of the "ad-hoc, stitched together" read (concentrated in `text/cache` + `text/atlas`), and 4 is the one place `text/render` itself has a real gap rather than just polish.
 

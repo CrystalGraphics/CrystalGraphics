@@ -32,8 +32,8 @@ import java.util.logging.Logger;
  * page would exceed {@code maxPages}, the atlas evicts the <strong>coldest
  * whole page</strong> first — the one with the lowest {@link
  * CgGlyphAtlasPage#getLastTouchedFrame()} — freeing all of its slots at once,
- * rather than the per-slot LRU eviction {@link CgGlyphAtlas} (the legacy
- * single-page model) does. This preserves placement stability for every
+ * rather than per-slot LRU eviction (what the old single-page storage model
+ * did, before it was removed). This preserves placement stability for every
  * glyph on every page that survives; a glyph is only ever displaced by
  * losing its entire page, never individually. {@code maxPages <= 0} means
  * unbounded (the historical behavior, still the default for {@link

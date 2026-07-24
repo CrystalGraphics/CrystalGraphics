@@ -131,13 +131,7 @@ Carries:
 - plane bounds / bearings / metrics
 - atlas type details
 
-This is one of the most important handoff types in the system: cache/atlas produces it, renderer consumes it.
-
-### `CgAtlasRegion`
-
-Legacy single-page atlas payload.
-
-Still exists because compatibility and older single-page flows still need it. Treat it as a valid but older storage contract.
+This is one of the most important handoff types in the system: cache/atlas produces it, renderer consumes it. It is the *only* renderer-facing glyph placement payload — `CgAtlasRegion` (the legacy single-page atlas payload) has been removed along with the single-page storage model that produced it.
 
 ### `CgFontKey`
 
