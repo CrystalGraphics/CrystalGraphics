@@ -14,8 +14,8 @@
  *       effective raster tier resolution (orthographic, world-space)</li>
  *   <li>{@link com.crystalgraphics.text.render.ProjectedSizeEstimator} —
  *       MVP-based screen pixel coverage estimation for world-text raster tier</li>
- *   <li>{@link com.crystalgraphics.text.render.CgDrawBatchKey} —
- *       GL-state grouping key for sorted quad submission</li>
+ *   <li>{@link com.crystalgraphics.text.render.CgResolvedGlyphs} —
+ *       resolves one draw's layout into flat per-glyph atlas placements</li>
  * </ul>
  *
  * <h3>Batch Infrastructure</h3>

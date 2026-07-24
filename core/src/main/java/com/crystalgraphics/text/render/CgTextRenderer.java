@@ -41,10 +41,10 @@ import java.util.logging.Logger;
  * <p>The renderer supports multi-page atlases by converting glyph atlas regions
  * into {@link CgGlyphPlacement} records that carry page identity (index and GL
  * texture ID), plane bounds, and per-page distance-field configuration ({@code pxRange}).
- * Quads are sorted by {@link CgDrawBatchKey} (atlas mode, page texture, pxRange)
- * so bitmap batches draw before distance-field batches. On batch-key transitions
- * the active material keywords, atlas texture, and pxRange property are swapped
- * (triggering a flush of whatever was pending under the previous state).</p>
+ * Quads are sorted by a packed {@code long} key (atlas mode, page texture, pxRange — see
+ * {@link #submitSortedQuads}) so bitmap batches draw before distance-field batches. On
+ * batch-state transitions the active material keywords, atlas texture, and pxRange property
+ * are swapped (triggering a flush of whatever was pending under the previous state).</p>
  *
  * <h3>Three-Space Model</h3>
  * <p>The text rendering pipeline enforces a strict three-space separation
@@ -195,8 +195,6 @@ public class CgTextRenderer {
     // ── Owned batch lifecycle ────────────────────────────────────────────────
     private final CgQuadRenderer quadRenderer;
     private boolean batchActive;
-    /** Batch-key transition tracking — see {@link #transitionToMaterial}. */
-    private CgDrawBatchKey activeBatchKey;
     /**
      * Projection this renderer's queued-but-unflushed quads were computed against —
      * {@code null} at the start of every batch (see {@link #beginBatch()}), since another live
@@ -215,24 +213,6 @@ public class CgTextRenderer {
      */
     private Runnable postBatchRestore;
 
-    // ── Per-glyph scratch buffers ────────────────────────────────────────────
-    /**
-     * Flat, grow-only, instance-owned scratch storage for one {@link #drawInternal}
-     * call's glyphs — indices {@code [0, glyphCount)} are valid until the next
-     * {@code drawInternal} call on this renderer overwrites them.
-     *
-     * <p>Sized to the largest draw this renderer has ever handled and never shrunk,
-     * so steady-state text drawing (the common case — same HUD/labels every frame)
-     * allocates nothing per draw. Grown via {@link #ensureScratchCapacity}, which
-     * also resizes {@link #scratchSortedIndices}/{@link #scratchBatchKeys} since
-     * neither ever needs to hold more than {@code glyphCount} entries either.</p>
-     *
-     * <p>{@code scratchFontKeys}/{@code scratchFonts} are populated once per glyph
-     * by {@link #flattenAndPrequeueGlyphs} (a single walk of the layout tree) and
-     * read again by {@link #ensurePlacements} — this is what lets the MSDF→bitmap
-     * fallback retry in {@link #resolveGlyphPlacements} re-run just the atlas
-     * lookup, not the tree walk.</p>
-     */
     /**
      * Owns the layout→atlas-placement resolution pipeline for this renderer — a distinct
      * concern from everything else in this class (batch lifecycle, material/projection
@@ -240,15 +220,16 @@ public class CgTextRenderer {
      */
     private final CgResolvedGlyphs resolvedGlyphs = new CgResolvedGlyphs(registry);
 
-    /** Sort scratch — see {@link #submitSortedQuads}. Never needs more than {@code glyphCount} entries. */
-    private int[] scratchSortedIndices = new int[0];
-    private CgDrawBatchKey[] scratchBatchKeys = new CgDrawBatchKey[0];
+    /**
+     * Grow-only per-glyph sort-key scratch for {@link #submitSortedQuads} — see its javadoc
+     * for the bit layout. Never needs more than {@code glyphCount} entries, so it's grown
+     * directly off that count rather than tracking its own separate capacity field.
+     */
+    private long[] scratchSortKeys = new long[0];
 
     private void ensureSortScratchCapacity(int count) {
-        if (count <= scratchSortedIndices.length) return;
-        int newCap = Math.max(count, scratchSortedIndices.length * 2);
-        scratchSortedIndices = Arrays.copyOf(scratchSortedIndices, newCap);
-        scratchBatchKeys = Arrays.copyOf(scratchBatchKeys, newCap);
+        if (count <= scratchSortKeys.length) return;
+        scratchSortKeys = Arrays.copyOf(scratchSortKeys, Math.max(count, scratchSortKeys.length * 2));
     }
     
         /**
@@ -364,7 +345,6 @@ public class CgTextRenderer {
         if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
         if (batchActive) throw new IllegalStateException("CgTextRenderer.beginBatch() called without a matching endBatch()");
 
-        activeBatchKey = null;
         activeProjection = null;
         batchActive = true;
         quadRenderer.begin();
@@ -382,7 +362,6 @@ public class CgTextRenderer {
 
         flush();
         quadRenderer.end();
-        activeBatchKey = null;
         activeProjection = null;
         batchActive = false;
 
@@ -391,8 +370,8 @@ public class CgTextRenderer {
 
 
     /**
-     * Flushes whatever is currently staged under {@link #activeBatchKey}, binding
-     * {@link #TEXT_MATERIAL} (with whatever keywords/properties/atlas texture were last set by
+     * Flushes whatever is currently staged, binding {@link #TEXT_MATERIAL} (with whatever
+     * keywords/properties/atlas texture were last set by
      * {@link #transitionToMaterial}) via {@link CgQuadRenderer#useMaterial}, plus
      * {@link #TEXT_DATA_UBO} for the duration of the draw, and issuing the instanced draw. No-op
      * if nothing is staged.
@@ -449,8 +428,10 @@ public class CgTextRenderer {
     }
 
     /**
-     * Transitions {@link #TEXT_MATERIAL} to the given batch key, flushing whatever was pending
-     * under the previous key first.
+     * Transitions {@link #TEXT_MATERIAL} to the given batch state, flushing whatever was
+     * pending under the previous state first. Callers (just {@link #submitSortedQuads}) are
+     * responsible for only calling this when the state actually changed — this method always
+     * flushes and applies unconditionally, it does not re-check for a no-op transition itself.
      *
      * <p>Every transition explicitly sets {@code MSDF_MODE} — one keyword covers both
      * distance-field atlas types (MSDF and MTSDF), since the fragment logic is identical for
@@ -459,16 +440,12 @@ public class CgTextRenderer {
      * — a stale keyword left on by a previous transition (this renderer's or another live
      * instance's) would otherwise silently persist into the next bind's compiled variant.</p>
      */
-    private void transitionToMaterial(CgDrawBatchKey key) {
-        if (activeBatchKey != null && activeBatchKey.equals(key)) return;
-
+    private void transitionToMaterial(boolean isDistanceField, int textureId, float pxRange) {
         flush();
 
-        TEXT_MATERIAL.toggleKeyword("MSDF_MODE", key.isDistanceField());
-        ATLAS_TEXTURE_REF.setId(key.getTextureId());
-        TEXT_MATERIAL.applyProperties(b -> b.set1f("_PxRange", key.getPxRange()));
-
-        activeBatchKey = key;
+        TEXT_MATERIAL.toggleKeyword("MSDF_MODE", isDistanceField);
+        ATLAS_TEXTURE_REF.setId(textureId);
+        TEXT_MATERIAL.applyProperties(b -> b.set1f("_PxRange", pxRange));
     }
 
     // ══════════════════════════════════════════════════════════════════════════════════════════
@@ -787,12 +764,47 @@ public class CgTextRenderer {
     //  SORT + SUBMIT
     // ══════════════════════════════════════════════════════════════════════════════════════════
 
+    // Bit layout of each entry in scratchSortKeys, MSB → LSB. Ordered coarsest-to-finest so an
+    // unsigned numeric sort of the whole long already sorts by (mode, textureId, pxRange), with
+    // the original glyph index riding along in the low bits purely so the sorted array alone
+    // tells you which glyph each entry came from — no parallel index array needed.
+    //   [63:62] mode      (0 = bitmap, 1 = distance-field — MSDF/MTSDF share one shader keyword,
+    //                       see text.shader, so they don't need distinct mode values today)
+    //   [61:38] textureId (GL atlas-page texture id, masked to 24 bits — real ids never come
+    //                       close to that range)
+    //   [37:16] pxRange   (top 22 bits of the SDF pixel range's raw float bits; valid only
+    //                       because pxRange is always >= 0, so its raw bits are already
+    //                       monotonic with its value — dropping the low 10 bits just coarsens
+    //                       ties between distances closer than ~0.01%, far finer than any two
+    //                       real atlas configs differ by)
+    //   [15:0]  glyphIndex
+    private static final int SORT_INDEX_BITS = 16;
+    private static final int SORT_PXRANGE_SHIFT = SORT_INDEX_BITS;
+    private static final int SORT_TEXTURE_SHIFT = SORT_PXRANGE_SHIFT + 22;
+    private static final int SORT_MODE_SHIFT = SORT_TEXTURE_SHIFT + 24;
+    private static final long SORT_INDEX_MASK = (1L << SORT_INDEX_BITS) - 1;
+    /** Mask isolating everything except the glyph index — two keys under this mask are equal iff their batch state (mode/texture/pxRange) is. */
+    private static final long SORT_BATCH_MASK = ~SORT_INDEX_MASK;
+
+    private static long packSortKey(CgGlyphPlacement p, int glyphIndex) {
+        long mode = p.isDistanceField() ? 1L : 0L;
+        long textureId = p.getPageTextureId() & 0xFFFFFFL;
+        long pxRangeBits = (Float.floatToRawIntBits(p.getPxRange()) & 0xFFFFFFFFL) >>> 10;
+        return (mode << SORT_MODE_SHIFT) | (textureId << SORT_TEXTURE_SHIFT) | (pxRangeBits << SORT_PXRANGE_SHIFT) | glyphIndex;
+    }
+
     /**
-     * Sorts the {@code glyphCount} placements in {@link #scratchPlacements} by GL state and
-     * submits them to the owned {@link CgQuadRenderer}, one instanced-quad record per glyph
-     * with its model-view transform baked in per-glyph via {@code Quad.pose(modelView)}.
+     * Sorts the {@code glyphCount} placements in {@link CgResolvedGlyphs#placements} by GL
+     * state and submits them to the owned {@link CgQuadRenderer}, one instanced-quad record
+     * per glyph with its model-view transform baked in per-glyph via {@code Quad.pose(modelView)}.
      *
-     * <p>On batch-key transitions (atlas page / atlas mode changes), this method:
+     * <p>Each visible glyph's batch state (atlas mode, page texture, pxRange) is packed into a
+     * single {@code long} sort key (layout above) alongside its original glyph index, so
+     * {@link Arrays#sort(long[], int, int)} — the JDK's primitive dual-pivot quicksort, which
+     * already detects nearly-sorted runs and falls back to insertion sort for small ranges —
+     * does the entire sort with no per-glyph allocation and no hand-rolled fast path.</p>
+     *
+     * <p>On batch-state transitions, this method:
      * <ol>
      *   <li>Calls {@link #transitionToMaterial} to flush any pending quads under the previous
      *       keyword/property/texture combination, then adopt the new one</li>
@@ -812,61 +824,34 @@ public class CgTextRenderer {
         }
         if (visibleCount == 0) return;
 
-        ensureSortScratchCapacity(glyphCount);
+        ensureSortScratchCapacity(visibleCount);
         int si = 0;
         for (int i = 0; i < glyphCount; i++) {
             CgGlyphPlacement p = placements[i];
             if (p != null && p.hasGeometry()) {
-                scratchSortedIndices[si] = i;
-                scratchBatchKeys[si] = new CgDrawBatchKey(p.getAtlasType(), p.getPageTextureId(), p.getPxRange());
-                si++;
+                scratchSortKeys[si++] = packSortKey(p, i);
             }
         }
-
-        // Fast path (§3.4): if every glyph in this draw already shares one batch key — the
-        // dominant case, one font/tier for the whole string — sorting is a guaranteed no-op.
-        // Skip it: one linear scan against scratchBatchKeys[0] instead of an O(n log n) insertion sort.
-        boolean uniformBatch = true;
-        for (int i = 1; i < visibleCount; i++) {
-            if (!scratchBatchKeys[i].equals(scratchBatchKeys[0])) {
-                uniformBatch = false;
-                break;
-            }
-        }
-
-        if (!uniformBatch) {
-            // General path: sort by batch key using insertion sort (stable, good for small N
-            // and nearly-sorted data which is common since glyphs from the same
-            // atlas page are often consecutive in the layout)
-            for (int i = 1; i < visibleCount; i++) {
-                CgDrawBatchKey keyI = scratchBatchKeys[i];
-                int idxI = scratchSortedIndices[i];
-                int j = i - 1;
-                while (j >= 0 && scratchBatchKeys[j].compareTo(keyI) > 0) {
-                    scratchBatchKeys[j + 1] = scratchBatchKeys[j];
-                    scratchSortedIndices[j + 1] = scratchSortedIndices[j];
-                    j--;
-                }
-                scratchBatchKeys[j + 1] = keyI;
-                scratchSortedIndices[j + 1] = idxI;
-            }
-        }
+        Arrays.sort(scratchSortKeys, 0, visibleCount);
 
         // Projection is constant for this whole draw() call. Flushes first if it differs from
         // what's already queued under a different projection — see syncProjection().
         syncProjection(context.getProjection());
 
-        CgDrawBatchKey currentKey = null;
+        long currentBatchBits = 0;
+        boolean batchStarted = false;
         for (int s = 0; s < visibleCount; s++) {
-            CgDrawBatchKey thisKey = scratchBatchKeys[s];
+            long key = scratchSortKeys[s];
+            long batchBits = key & SORT_BATCH_MASK;
+            int origIdx = (int) (key & SORT_INDEX_MASK);
+            CgGlyphPlacement p = placements[origIdx];
 
-            if (currentKey == null || !thisKey.equals(currentKey)) {
-                transitionToMaterial(thisKey);
-                currentKey = thisKey;
+            if (!batchStarted || batchBits != currentBatchBits) {
+                transitionToMaterial(p.isDistanceField(), p.getPageTextureId(), p.getPxRange());
+                currentBatchBits = batchBits;
+                batchStarted = true;
             }
 
-            int origIdx = scratchSortedIndices[s];
-            CgGlyphPlacement p = placements[origIdx];
             int placementTargetPx = p.getKey().getFontKey().getTargetPx();
             float scaleFactor = CgResolvedGlyphs.logicalMetricScale(baseTargetPx, p.isDistanceField() ? placementTargetPx : effectiveTargetPx);
 
@@ -884,9 +869,9 @@ public class CgTextRenderer {
                     .submit();
 
             if (diagnosticLogging) {
-                LOGGER.info("[BatchDiag] atlasType=" + thisKey.getAtlasType()
-                        + ", textureId=" + thisKey.getTextureId()
-                        + ", pxRange=" + thisKey.getPxRange());
+                LOGGER.info("[BatchDiag] atlasType=" + p.getAtlasType()
+                        + ", textureId=" + p.getPageTextureId()
+                        + ", pxRange=" + p.getPxRange());
             }
         }
     }

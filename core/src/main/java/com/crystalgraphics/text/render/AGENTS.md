@@ -20,7 +20,7 @@ The core question here is:
 6. `OrthographicScaleResolver`
 7. `PerspectiveScaleResolver`
 8. `ProjectedSizeEstimator`
-9. `CgDrawBatchKey`
+9. `CgResolvedGlyphs`
 
 ## Class-by-class details
 
@@ -32,12 +32,11 @@ Main responsibilities:
 
 - string/layout draw entrypoints
 - resolving effective raster tier for the current draw
-- asking `CgFontRegistry` for glyph placements
-- building paged glyph batches
-- sorting placements by `CgDrawBatchKey`
-- submitting quads to its own owned `CgBatchRenderer`
-- resolving shaders from `CgDrawBatchKey`
-- transitioning shader/texture/render-state on batch-key changes (`transitionTo`),
+- delegating layout flattening/prequeueing and atlas placement resolution to `CgResolvedGlyphs`
+- sorting placements by a packed `long` GL-state sort key (mode/textureId/pxRange — see
+  `submitSortedQuads`), avoiding a per-glyph key object
+- submitting quads to its own owned `CgQuadRenderer`
+- transitioning shader/texture/render-state on batch-state changes (`transitionToMaterial`),
   flushing whatever was pending under the previous combination first
 
 **Owned batch lifecycle (current architecture, post batch-ownership migration —
@@ -266,17 +265,18 @@ Math helper for estimating on-screen size of world text.
 
 It matters only for world-space raster-tier decisions, not for logical layout metrics.
 
-### `CgDrawBatchKey`
+### `CgResolvedGlyphs`
 
-Immutable grouping key for draw batches.
+Resolves one `drawInternal` call's `CgTextLayout` into flat per-glyph atlas-placement data —
+font key/font, glyph id, subpixel bucket, pen position, and finally each glyph's
+`CgGlyphPlacement`. Pure layout/atlas-cache concern, no GL/`CgQuadRenderer`/`CgMaterial`
+dependency — that boundary starts once `CgTextRenderer` reads its `glyphX`/`glyphY`/`placements`
+back out. Owned per-`CgTextRenderer` instance with grow-only scratch arrays, reused across draws.
 
-Defines when two glyph ranges can share a draw call based on:
-
-- atlas mode
-- texture id
-- `pxRange`
-
-It is also the authoritative source of shader selection in the current renderer.
+There is no separate grouping-key class anymore — `submitSortedQuads` packs each visible glyph's
+(atlas mode, texture id, `pxRange`) directly into a `long` sort key (see its javadoc for the bit
+layout) and sorts with `Arrays.sort(long[], int, int)`. This is also the authoritative source of
+shader selection in the current renderer, via `transitionToMaterial`.
 
 ### `package-info.java`
 
@@ -286,7 +286,7 @@ Package-level description of render-side responsibilities.
 
 - renderer consumes placements; it does not own glyph generation
 - layout remains in logical space; raster tier is a draw-time physical decision
-- `CgDrawBatchKey` drives shader selection
+- the packed `long` sort key in `submitSortedQuads` drives shader selection
 - world-text and 2D text share most of the pipeline until raster-tier / projection policy differs
 - the renderer owns NO GL objects itself — its owned `CgBatchRenderer`'s VAO/VBO/IBO still come
   from the shared `CgVertexArrayRegistry`/`CgQuadIndexBuffer`; only CPU-side staging is
