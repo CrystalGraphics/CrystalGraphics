@@ -89,11 +89,16 @@ Pass {
     // ── Per-pass render state ─────────────────────────────────────────────────
     RenderState {
         // ── Blend ─────────────────────────────────────────────────────────────
-        // Global (all render targets):
+        // Global (all render targets), RGB and alpha channels share one factor pair:
         Blend SRC_ALPHA ONE_MINUS_SRC_ALPHA
-        // Separate RGB + Alpha factors:
+        // Separate RGB + Alpha factors (comma form) — needed whenever this material's
+        // output can land in a transparent-cleared destination (an offscreen FBO, not
+        // just the opaque screen), since compositing "over" a possibly-transparent
+        // destination requires srcAlpha=ONE, not SRC_ALPHA, to keep alpha accumulating
+        // correctly:
         // Blend SRC_ALPHA ONE_MINUS_SRC_ALPHA, ONE ONE_MINUS_SRC_ALPHA
-        // Per-MRT target (index prefix 0..7):
+        // Per-MRT target (index prefix 0..7) — NOT YET IMPLEMENTED, CgBlendState/
+        // CgRenderState hold only one global blend state, no per-target array:
         // Blend 0 SRC_ALPHA ONE_MINUS_SRC_ALPHA
         // Blend 1 ONE ONE
 

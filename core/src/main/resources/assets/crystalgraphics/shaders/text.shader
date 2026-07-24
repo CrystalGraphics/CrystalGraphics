@@ -41,7 +41,7 @@ Pass {
     }
 
     RenderState {
-        Blend SRC_ALPHA ONE_MINUS_SRC_ALPHA
+        Blend SRC_ALPHA ONE_MINUS_SRC_ALPHA, ONE ONE_MINUS_SRC_ALPHA
         Cull OFF
 
         // Placeholder only — never actually observed at draw time. Depth behavior differs
