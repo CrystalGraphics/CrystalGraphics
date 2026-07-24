@@ -48,6 +48,14 @@ final class CgResolvedGlyphs {
     /** Resolved atlas placement for glyph {@code i}, filled by {@link #resolvePlacements}. */
     CgGlyphPlacement[] placements = new CgGlyphPlacement[0];
 
+    /**
+     * The {@link CgGlyphKey} built for glyph {@code i} during {@link #flattenAndPrequeue},
+     * reused by {@link #resolvePlacements}'s primary (matching-mode) pass so each glyph's
+     * key is allocated once per frame instead of twice — see {@code CgGlyphKey}'s two
+     * lookup sites this used to duplicate.
+     */
+    private CgGlyphKey[] glyphKeys = new CgGlyphKey[0];
+
     CgResolvedGlyphs(CgFontRegistry registry) {
         this.registry = registry;
     }
@@ -62,6 +70,7 @@ final class CgResolvedGlyphs {
         glyphX = Arrays.copyOf(glyphX, newCap);
         glyphY = Arrays.copyOf(glyphY, newCap);
         placements = Arrays.copyOf(placements, newCap);
+        glyphKeys = Arrays.copyOf(glyphKeys, newCap);
     }
 
     private static CgFont resolveRunFont(CgTextLayout layout, CgFontFamily family, CgFontKey runFontKey) {
@@ -125,6 +134,7 @@ final class CgResolvedGlyphs {
         // call gives worker threads a head start on the whole batch.
         for (int i = 0; i < totalGlyphs; i++) {
             CgGlyphKey glyphKey = new CgGlyphKey(fontKeys[i], glyphIds[i], wantMsdf, subPixel[i]);
+            glyphKeys[i] = glyphKey;
             registry.queueGlyphPaged(fonts[i], glyphKey, effectiveTargetPx, subPixel[i], frame);
         }
 
@@ -146,11 +156,19 @@ final class CgResolvedGlyphs {
         }
     }
 
-    /** @return true if any glyph in an MSDF-targeted pass fell back to bitmap */
+    /**
+     * @return true if any glyph in an MSDF-targeted pass fell back to bitmap
+     */
     private boolean ensurePlacements(int glyphCount, long frame, int effectiveTargetPx, boolean wantMsdf) {
         boolean usedBitmapFallback = false;
         for (int i = 0; i < glyphCount; i++) {
-            CgGlyphKey glyphKey = new CgGlyphKey(fontKeys[i], glyphIds[i], wantMsdf, subPixel[i]);
+            // The primary pass always runs with the same wantMsdf that flattenAndPrequeue
+            // built glyphKeys[i] with (see CgTextRenderer.drawInternal), so it can reuse
+            // that key instead of allocating a second one for the same glyph this frame.
+            // Only the rarer bitmap-fallback retry (mode differs) needs a fresh key.
+            CgGlyphKey glyphKey = glyphKeys[i].isMsdf() == wantMsdf
+                    ? glyphKeys[i]
+                    : new CgGlyphKey(fontKeys[i], glyphIds[i], wantMsdf, subPixel[i]);
             CgGlyphPlacement placement = registry.ensureGlyphPaged(fonts[i], glyphKey, effectiveTargetPx, subPixel[i], frame);
             placements[i] = placement;
             if (wantMsdf && placement != null && !placement.isDistanceField()) usedBitmapFallback = true;

@@ -338,22 +338,6 @@ public class CgFontRegistry {
         }
     }
 
-    /**
-     * Public convenience wrapper for {@link #queueGlyphPaged}.
-     *
-     * <p><strong>Compatibility note:</strong> this method exists so that code
-     * outside the cache package (e.g. the debug harness) can pre-queue glyphs
-     * without reaching into package-private infrastructure.  New code should
-     * prefer calling {@link #queueGlyphPaged} directly when visible.</p>
-     */
-    public void queueGlyphPagedPublic(CgFont font,
-                                      CgGlyphKey key,
-                                      int effectiveTargetPx,
-                                      int subPixelBucket,
-                                      long currentFrame) {
-        queueGlyphPaged(font, key, effectiveTargetPx, subPixelBucket, currentFrame);
-    }
-
     // ────────────────────────────────────────────────────────────────────
     //  § 4. Key transformation helpers
     //

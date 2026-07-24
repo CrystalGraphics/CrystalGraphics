@@ -6,7 +6,7 @@ package com.crystalgraphics.gl.render;
  * <p>Eliminates the duplicate {@code begun} field and identical
  * {@link #begin()}/{@link #end()}/{@link #isDirty()}/{@link #delete()} bodies
  * across all batch renderer subclasses ({@link CgInstanceRenderer},
- * {@link CgQuadInstanceRenderer}, etc.).</p>
+ * {@link CgQuadRenderer}, etc.).</p>
  *
  * <p>Subclasses implement {@link #onBegin()} to reset their staging buffers
  * and {@link #hasPendingWork()} to report dirtiness. The {@link #flush()}

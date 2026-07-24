@@ -20,8 +20,11 @@ import java.util.logging.Logger;
  *
  * <p>Each page owns one GL texture and one packing strategy instance. Glyph
  * placements within a page are <strong>stable</strong>: once a glyph is
- * allocated, its position never changes. There is no LRU eviction at the
- * page level — when a page is full, the paged atlas allocates a new page.</p>
+ * allocated, its position never changes. There is no <em>slot-level</em>
+ * eviction within a page — when a page is full, the paged atlas allocates a
+ * new page. {@link CgPagedGlyphAtlas} may still evict this page as a whole
+ * (all its slots at once) once the atlas is over its page budget; see
+ * {@link #getLastTouchedFrame()}.</p>
  *
  * <h3>GL Texture</h3>
  * <p>The page texture is allocated lazily on first use or eagerly via
@@ -69,6 +72,14 @@ public class CgGlyphAtlasPage {
 
     private int textureId;
     private boolean deleted;
+
+    /**
+     * Highest {@code lastUsedFrame} of any glyph currently resident on this page —
+     * i.e. how recently this whole page was last touched. Used by
+     * {@link CgPagedGlyphAtlas}'s page-budget eviction to pick the coldest page,
+     * without scanning every page's slot map on every allocation.
+     */
+    private long lastTouchedFrame = -1;
 
     private final Map<CgGlyphKey, SlotEntry> slotMap;
 
@@ -176,6 +187,9 @@ public class CgGlyphAtlasPage {
             return null;
         }
         entry.lastUsedFrame = currentFrame;
+        if (currentFrame > lastTouchedFrame) {
+            lastTouchedFrame = currentFrame;
+        }
         return entry.placement;
     }
 
@@ -202,6 +216,9 @@ public class CgGlyphAtlasPage {
                 bearingX, bearingY - metricsHeight, bearingX + metricsWidth, bearingY,
                 metricsWidth, metricsHeight, 0f);
         slotMap.put(key, new SlotEntry(packed, placement, currentFrame));
+        if (currentFrame > lastTouchedFrame) {
+            lastTouchedFrame = currentFrame;
+        }
         return placement;
     }
 
@@ -231,6 +248,9 @@ public class CgGlyphAtlasPage {
                 planeLeft, planeBottom, planeRight, planeTop,
                 metricsWidth, metricsHeight, pxRange);
         slotMap.put(key, new SlotEntry(packed, placement, currentFrame));
+        if (currentFrame > lastTouchedFrame) {
+            lastTouchedFrame = currentFrame;
+        }
         return placement;
     }
 
@@ -256,6 +276,15 @@ public class CgGlyphAtlasPage {
 
     /** Returns the number of glyphs currently stored in this page. */
     public int getSlotCount() { return slotMap.size(); }
+
+    /**
+     * Returns the highest {@code currentFrame} any glyph on this page was
+     * touched at (a cache hit via {@link #get} or the frame it was first
+     * allocated), or {@code -1} if the page has never been touched. Used by
+     * {@link CgPagedGlyphAtlas} to identify the coldest page for page-budget
+     * eviction.
+     */
+    public long getLastTouchedFrame() { return lastTouchedFrame; }
 
     /** Returns the packing utilization ratio for this page. */
     public float getUtilization() { return packer.utilization(); }
