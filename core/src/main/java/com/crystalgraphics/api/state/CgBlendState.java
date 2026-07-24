@@ -65,6 +65,19 @@ public record CgBlendState(boolean enabled, int srcRgb, int dstRgb, int srcAlpha
             CgGL.GL_FUNC_ADD, CgGL.GL_FUNC_ADD);
 
     /**
+     * Mask-alpha-multiply: {@code (ZERO, SRC_ALPHA)} for both RGB and alpha.
+     * Multiplies the destination's existing color and alpha by this pass's source alpha,
+     * ignoring the source's own color entirely — the standard technique for compositing a
+     * separately-rendered alpha mask onto an already-drawn offscreen target (draw the mask
+     * shape into its own texture, then blend it over the target with this state to "punch out"
+     * everywhere the mask's alpha is 0).
+     */
+    public static final CgBlendState MASK_ALPHA_MULTIPLY = new CgBlendState(true,
+            CgGL.GL_ZERO, CgGL.GL_SRC_ALPHA,
+            CgGL.GL_ZERO, CgGL.GL_SRC_ALPHA,
+            CgGL.GL_FUNC_ADD, CgGL.GL_FUNC_ADD);
+
+    /**
      * Creates a blend state with separate RGB and alpha factors and default
      * {@code GL_FUNC_ADD} equations for both channels.
      *
