@@ -90,4 +90,33 @@ uniform sampler2D cg_DepthBuffer;
 // -- Convenience Macros ------------------------------------------------------
 #define CG_MATRIX_MVP (cg_ProjMatrix * cg_ViewMatrix * CG_OBJECT_TO_WORLD)
 
+// -- CgQuadRenderer convenience macros ---------------------------------------
+// CgQuadRenderer (gl/render/CgQuadRenderer.java) is a general SSBO/TBO-backed instanced
+// quad renderer with a fixed per-instance schema: vec3 origin/right/up (world-space quad
+// origin + two edge vectors, CPU-baked per instance via Quad.pose(...) — see
+// CGTEXTRENDERER_INSTANCING_FOUNDATIONS.md Decision 2), vec2 uv0/uv1, vec4 color. These
+// macros hardcode both the attach() macro name (QUAD_DATA, = CgQuadRenderer.MACRO_NAME —
+// fixed, not caller-chosen) and CG_INSTANCE_ID, so no `QuadInstance inst = QUAD_DATA(...)`
+// declaration is needed in the shader at all. Zero-argument, so QUAD_DATA(CG_INSTANCE_ID)
+// is textually repeated per use; this is the same repeated-texelFetch-on-the-same-index
+// pattern the TBO struct getter codegen already relies on being driver-CSE'd (see
+// gl/material/parse/CgGlslEmitter.java's own comment on appendTboFieldFetch). Vertex stage
+// only, and only valid when the material's #type provides a 2D cg_Position/cg_TexCoord0
+// (i.e. CgQuadRenderer's own unit quad mesh, #type pos2_uv2_col4ub), and only resolves if
+// the material was wired via CgQuadRenderer.attachTo(material) (or an equivalent raw
+// material.attach(buffer, "QUAD_DATA") call using that exact name).
+//
+// CG_QUAD_NORMAL — every quad instance is flat (a plane spanned by right/up), so its face
+// normal is fully derivable from data already present; no per-instance normal field is stored
+// (nothing to desync from the actual right/up if only one were ever updated).
+//
+//   gl_Position = cg_ProjMatrix * vec4(CG_QUAD_WORLD_POS, 1.0);
+//   o.uv = CG_QUAD_UV;
+//   o.color = CG_QUAD_COLOR;
+//   o.normalWs = CG_QUAD_NORMAL;
+#define CG_QUAD_WORLD_POS (QUAD_DATA(CG_INSTANCE_ID).origin + cg_Position.x * QUAD_DATA(CG_INSTANCE_ID).right + cg_Position.y * QUAD_DATA(CG_INSTANCE_ID).up)
+#define CG_QUAD_UV (mix(QUAD_DATA(CG_INSTANCE_ID).uv0, QUAD_DATA(CG_INSTANCE_ID).uv1, cg_TexCoord0))
+#define CG_QUAD_COLOR (QUAD_DATA(CG_INSTANCE_ID).color)
+#define CG_QUAD_NORMAL (normalize(cross(QUAD_DATA(CG_INSTANCE_ID).right, QUAD_DATA(CG_INSTANCE_ID).up)))
+
 

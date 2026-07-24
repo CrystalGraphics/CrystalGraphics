@@ -32,7 +32,7 @@ import org.apache.logging.log4j.LogManager;
  *
  * <h3>Texture unit assignment</h3>
  * <p>{@code bindingLocation} IS the texture unit. The engine object buffer uses
- * texture unit {@code CgBindingPoints.OBJECT_DATA_TBO} = {@code maxTexImageUnits - 1},
+ * texture unit {@code CgBindingPoints.OBJECT_DATA.tbo()} = {@code maxTexImageUnits - 1},
  * resolved at init time to avoid colliding with Minecraft's low-numbered units.</p>
  */
 public final class CgTextureBuffer extends CgShaderBuffer {

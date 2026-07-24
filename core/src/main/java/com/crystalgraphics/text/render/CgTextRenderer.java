@@ -1,5 +1,6 @@
 package com.crystalgraphics.text.render;
 
+import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.PoseStack;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.font.*;
@@ -7,14 +8,12 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.text.CgShapedRun;
 import com.crystalgraphics.api.text.CgTextConstraints;
 import com.crystalgraphics.api.text.CgTextLayout;
-import com.crystalgraphics.api.texture.CgTexture;
-import com.crystalgraphics.api.vertex.CgVertexConsumer;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
-import com.crystalgraphics.gl.render.CgBatchRenderer;
+import com.crystalgraphics.gl.render.CgQuadRenderer;
 import com.crystalgraphics.api.state.CgDepthState;
-import com.crystalgraphics.api.vertex.CgVertexFormat;
+import com.crystalgraphics.gl.texture.CgTextureMutable;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.text.cache.CgFontRegistry;
 import lombok.Getter;
@@ -32,9 +31,11 @@ import java.util.logging.Logger;
  *
  * <p>The renderer consumes a pre-built {@link CgTextLayout}, resolves glyphs
  * through {@link CgFontRegistry}, sorts them by GL state, then submits quads
- * through its own owned {@link CgBatchRenderer}. Material bind/unbind, keyword
- * toggling, and atlas texture swaps on batch-key transitions are handled directly
- * by this class — see {@link #transitionToMaterial}.</p>
+ * through its own owned {@link CgQuadRenderer} — each glyph becomes one
+ * instanced-quad record (transform baked per-glyph via {@code Quad.pose()}), not a
+ * batch of raw vertices. Material bind/unbind, keyword toggling, and atlas texture
+ * swaps on batch-key transitions are handled directly by this class — see
+ * {@link #transitionToMaterial}.</p>
  *
  * <h3>Multi-Page Atlas Batching</h3>
  * <p>The renderer supports multi-page atlases by converting glyph atlas regions
@@ -87,15 +88,14 @@ import java.util.logging.Logger;
  * is what switches it on. That context's {@link PerspectiveScaleResolver} enforces
  * always-MSDF rendering and projection-aware quality/LOD policy via
  * {@link ProjectedSizeEstimator}; depth-tested render state is applied in this class
- * via {@link CgTextRenderContext#isWorldText()} — see {@link #flushPendingMaterial}.
+ * via {@link CgTextRenderContext#isWorldText()} — see {@link #flush}.
  * The PoseStack in world mode represents
  * model-view positioning (entity rotation, billboard transforms), not UI zoom. Layout
  * metrics remain in logical space regardless of camera distance or FOV.</p>
  *
  * <h3>Owned Batch Lifecycle</h3>
- * <p>{@code CgTextRenderer} owns a private {@link CgBatchRenderer} (format
- * {@link CgVertexFormat#POS2_UV2_COL4UB}) — no caller-provided layer or buffer
- * source is required. The renderer is frame-agnostic: {@link #beginBatch()}/
+ * <p>{@code CgTextRenderer} owns a private {@link CgQuadRenderer} — no caller-provided
+ * layer or buffer source is required. The renderer is frame-agnostic: {@link #beginBatch()}/
  * {@link #endBatch()} mark a batching window, not a render frame. The atlas LRU
  * clock used internally for glyph bookkeeping is read directly from
  * {@link CgGraphicsLifecycle#getCurrentFrame()} — callers no longer supply a
@@ -126,8 +126,6 @@ import java.util.logging.Logger;
  * with every new optional parameter.</p>
  */
 public class CgTextRenderer {
-    /** Initial CPU staging capacity of the owned {@link CgBatchRenderer}, in quads. */
-    private static final int INITIAL_MAX_QUADS = 1024;
 
     // ══════════════════════════════════════════════════════════════════════════════════════════
     //  CgMaterial SETUP
@@ -142,113 +140,47 @@ public class CgTextRenderer {
     public static final CgMaterial TEXT_MATERIAL = CgMaterial.load("crystalgraphics:shaders/text.shader");
 
     /**
-     * 0-based user UBO slot, picked away from indices 0/1 already used by ad-hoc
-     * harness/test UBOs (see gl-debug-harness's {@code CgAttachedBufferStressScene}) to avoid a
-     * binding-point collision — see {@link CgShaderBufferRegistry}.
+     * Text-only per-renderer uniform data — currently just {@code u_Projection}. Deliberately
+     * kept as its own small UBO rather than reusing the engine's shared per-frame
+     * {@code CgFrameData}/{@code cg_ProjMatrix}: that block is frame-owner state (set once by
+     * whoever actually drives the frame — a 3D scene, the MC render hook, etc.), and a text
+     * renderer overwriting it on every flush would clobber the real projection for anything
+     * else sharing that frame. {@code CgTextRenderContext}'s projection is renderer-local (often
+     * an orthographic UI projection with nothing to do with the scene camera), so it gets its
+     * own private slot instead. Also the natural home for any future text-only uniform that
+     * isn't a good fit for either {@link #TEXT_MATERIAL}'s Properties block (per-batch-key, not
+     * per-draw) or {@code CgQuadRenderer}'s per-instance record (per-glyph, not per-renderer) —
+     * {@code u_ModelView} was here before this migration but is gone now: model-view is baked
+     * per-glyph-instance via {@code Quad.pose()}, see {@link #addQuadFromPlacement}.
      */
-    private static final int TEXT_TRANSFORM_UBO_USER_INDEX = 31;
-
-    private static final CgBufferFormat TEXT_TRANSFORM_FORMAT = CgBufferFormat
-            .builder("TextTransform", CgBufferFormat.MemoryLayout.STD140)
-            .mat4("u_projection")
-            .mat4("u_modelview")
+    private static final CgBufferFormat TEXT_DATA_FORMAT = CgBufferFormat
+            .builder("TextData", CgBufferFormat.MemoryLayout.STD140)
+            .mat4("u_Projection")
             .build();
 
     /**
-     * Shared static UBO carrying only the two matrices — {@code u_pxRange} lives on
-     * {@link #TEXT_MATERIAL}'s Properties block instead (it changes every batch-key transition;
-     * the matrices are constant for a whole {@code draw()} call — see
-     * {@link #uploadTransformIfChanged}). Created via the registry (not a bare
-     * {@code CgUniformBuffer.create()}) so it's covered by
-     * {@code CgShaderBufferRegistry.deleteAll()}'s teardown — no individual
-     * {@code CgTextRenderer} instance owns or deletes it.
+     * Created via the registry (not a bare {@code CgUniformBuffer.create()}) so it's covered by
+     * {@code CgShaderBufferRegistry.deleteAll()}'s teardown — no individual {@code CgTextRenderer}
+     * instance owns or deletes it.
      */
-    private static final CgUniformBuffer TEXT_TRANSFORM_UBO = CgShaderBufferRegistry.get().getOrCreateUbo(
-            TEXT_TRANSFORM_FORMAT, "TextTransform", TEXT_TRANSFORM_UBO_USER_INDEX);
+    private static final CgUniformBuffer TEXT_DATA_UBO = CgShaderBufferRegistry.get().getOrCreateUbo(
+            TEXT_DATA_FORMAT, "TextData", CgBindingPoints.TEXT_DATA_UBO);
 
     /**
      * Mutable adapter over whatever raw GL atlas-page texture id is currently active.
      * {@code CgMaterial}'s Properties-block sampler API ({@code applyProperties(b -> b.sampler(...))})
-     * requires a real {@link CgTexture}, not a raw int — atlas pages
-     * ({@code CgGlyphAtlasPage}) own only a raw GL texture id with no such wrapper. This view
+     * requires a real {@link com.crystalgraphics.api.texture.CgTexture}, not a raw int — atlas
+     * pages ({@code CgGlyphAtlasPage}) own only a raw GL texture id with no such wrapper. This view
      * (never owns/deletes the real texture) is registered once via {@link #TEXT_MATERIAL}'s
      * Properties block at class-init, then its id is mutated per atlas-page transition — the
      * property system rebinds whatever this wrapper currently points to on every
      * {@code material.bind()}, so no repeated {@code applyProperties} sampler call is needed.
      */
-    private static final class MutableAtlasTextureRef implements CgTexture {
-        private int id;
-
-        void setId(int id) {this.id = id;}
-
-        @Override
-        public void bind() {CgGL.glBindTexture(CgGL.GL_TEXTURE_2D, id);}
-
-        @Override
-        public void bind(int unit) {
-            CgGL.glActiveTexture(CgGL.GL_TEXTURE0 + unit);
-            CgGL.glBindTexture(CgGL.GL_TEXTURE_2D, id);
-        }
-
-        @Override
-        public int getId() {return id;}
-
-        @Override
-        public int getWidth() {return 0;}
-
-        @Override
-        public int getHeight() {return 0;}
-
-        @Override
-        public int getTarget() {return CgGL.GL_TEXTURE_2D;}
-
-        @Override
-        public boolean isDeleted() {return false;}
-
-        @Override
-        public void delete() { /* view only — CgGlyphAtlasPage owns the real texture */ }
-    }
-
-    private static final MutableAtlasTextureRef ATLAS_TEXTURE_REF = new MutableAtlasTextureRef();
-
-    /**
-     * Last-uploaded transform, cached statically alongside {@link #TEXT_TRANSFORM_UBO} — since
-     * the UBO is shared across every live {@code CgTextRenderer}, this must reflect the buffer's
-     * actual current contents regardless of which instance wrote it last. A per-instance cache
-     * would be a correctness bug: renderer B could wrongly skip its own reupload after renderer A
-     * clobbers the shared buffer. Defensive copies — never held references to a caller's mutable
-     * {@link PoseStack} matrix.
-     */
-    private static Matrix4f lastUploadedProjection = null;
-    private static Matrix4f lastUploadedModelview = null;
+    private static final CgTextureMutable ATLAS_TEXTURE_REF = new CgTextureMutable(CgGL.GL_TEXTURE_2D);
 
     static {
-        TEXT_MATERIAL.attach(TEXT_TRANSFORM_UBO);
+        TEXT_MATERIAL.attach(TEXT_DATA_UBO);
         TEXT_MATERIAL.applyProperties(b -> b.sampler("_MainTex", 0, ATLAS_TEXTURE_REF));
-    }
-
-    /**
-     * Rewrites and uploads {@link #TEXT_TRANSFORM_UBO} only when {@code projection}/
-     * {@code modelView} actually differ from what's currently resident — avoids paying a full
-     * map/orphan/unmap round trip on every batch-key transition when only the atlas page or mode
-     * changed within the same {@code draw()} call (pose/projection are constant for the whole
-     * call).
-     */
-    private static void uploadTransformIfChanged(Matrix4f projection, Matrix4f modelView) {
-        if (lastUploadedProjection != null && lastUploadedProjection.equals(
-                projection) && lastUploadedModelview != null && lastUploadedModelview.equals(modelView)) {
-            return;
-        }
-
-        TEXT_TRANSFORM_UBO.writer().reset().beginRecord().mat4("u_projection", projection)
-                          .mat4("u_modelview", modelView);
-        TEXT_TRANSFORM_UBO.endRecord();
-        TEXT_TRANSFORM_UBO.upload();
-
-        if (lastUploadedProjection == null) lastUploadedProjection = new Matrix4f(projection);
-        else lastUploadedProjection.set(projection);
-        if (lastUploadedModelview == null) lastUploadedModelview = new Matrix4f(modelView);
-        else lastUploadedModelview.set(modelView);
     }
 
     // ══════════════════════════════════════════════════════════════════════════════════════════
@@ -260,10 +192,22 @@ public class CgTextRenderer {
     private final CgFontRegistry registry = CgFontRegistry.get();
 
     // ── Owned batch lifecycle ────────────────────────────────────────────────
-    private final CgBatchRenderer batchRenderer;
+    private final CgQuadRenderer quadRenderer;
     private boolean batchActive;
     /** Batch-key transition tracking — see {@link #transitionToMaterial}. */
     private CgDrawBatchKey activeBatchKey;
+    /**
+     * Projection this renderer's queued-but-unflushed quads were computed against —
+     * {@code null} at the start of every batch (see {@link #beginBatch()}), since another live
+     * {@code CgTextRenderer} may have overwritten the shared {@link #TEXT_DATA_UBO} since this
+     * renderer's last upload. Used only to decide whether a {@link #context(CgTextRenderContext)}
+     * change mid-batch must flush first (see {@link #syncProjection}) — unlike the model-view
+     * transform, which is baked per-glyph-instance via {@code Quad.pose()} (see
+     * {@link #addQuadFromPlacement}) and needs no such tracking at all. Compared by value, not
+     * reference, since {@link CgTextRenderContext#getProjection()} is a live, mutable matrix
+     * owned by the context.
+     */
+    private Matrix4f activeProjection;
     /**
      * Optional caller-supplied hook invoked at the end of every {@link #endBatch()} (manual
      * or {@link Draw#submit()}'s standalone auto-batch alike) — see {@link #restoreStateWith}.
@@ -327,11 +271,12 @@ public class CgTextRenderer {
     private boolean deleted;
 
     private CgTextRenderer() {
-        this.batchRenderer = CgBatchRenderer.create(CgVertexFormat.POS2_UV2_COL4UB, INITIAL_MAX_QUADS);
+        this.quadRenderer = CgQuadRenderer.create();        
+        quadRenderer.useMaterial(TEXT_MATERIAL);
     }
 
     /**
-     * Creates the renderer façade, including its owned {@link CgBatchRenderer}, and
+     * Creates the renderer façade, including its owned {@link CgQuadRenderer}, and
      * registers it with {@link CgTextRendererRegistry} — the registry doesn't own release
      * timing (callers must still call {@link #delete()} promptly when done), but sweeps
      * any renderer still alive at GL context teardown as a backstop, matching every other
@@ -367,7 +312,7 @@ public class CgTextRenderer {
 
     /**
      * Opens a batching window: {@code draw()} calls made until the matching
-     * {@link #endBatch()} record into the same underlying {@link CgBatchRenderer} pass and
+     * {@link #endBatch()} record into the same underlying {@link CgQuadRenderer} pass and
      * are flushed together wherever the GL state permits (same shader/texture/render state).
      * This has no relation to a render frame — it is purely a batching scope, hence the name;
      * nothing here reads or depends on frame boundaries.
@@ -383,8 +328,9 @@ public class CgTextRenderer {
         if (batchActive) throw new IllegalStateException("CgTextRenderer.beginBatch() called without a matching endBatch()");
 
         activeBatchKey = null;
+        activeProjection = null;
         batchActive = true;
-        batchRenderer.begin();
+        quadRenderer.begin();
     }
 
     /**
@@ -397,9 +343,10 @@ public class CgTextRenderer {
     public void endBatch() {
         if (!batchActive) return;
 
-        flushPendingMaterial();
-        batchRenderer.end();
+        flush();
+        quadRenderer.end();
         activeBatchKey = null;
+        activeProjection = null;
         batchActive = false;
 
         if (postBatchRestore != null) postBatchRestore.run();
@@ -409,27 +356,59 @@ public class CgTextRenderer {
     /**
      * Flushes whatever is currently staged under {@link #activeBatchKey}, binding
      * {@link #TEXT_MATERIAL} (with whatever keywords/properties/atlas texture were last set by
-     * {@link #transitionToMaterial}) plus {@link #TEXT_TRANSFORM_UBO} for the duration of the
-     * draw, and unbinding both afterward. No-op if nothing is staged.
+     * {@link #transitionToMaterial}) via {@link CgQuadRenderer#useMaterial}, plus
+     * {@link #TEXT_DATA_UBO} for the duration of the draw, and issuing the instanced draw. No-op
+     * if nothing is staged.
      *
      * <p>The real depth state (disabled for UI text, test-only for world text — see
-     * {@link CgTextRenderContext#isWorldText()}) is applied <em>after</em> {@code TEXT_MATERIAL.bind()}
-     * since a {@code Pass}'s {@code RenderState} is baked at author time and can't itself express
-     * this split (see {@code text.shader}'s placeholder {@code DepthTest}/{@code DepthWrite}
-     * lines). No explicit {@code .clear()} is needed afterward — {@code TEXT_MATERIAL.unbind()}'s
-     * own {@code CgGlScope} already restores depth (along with blend/cull/etc.) to whatever was
-     * active before {@code bind()}, which is more correct than resetting to hard GL defaults.</p>
+     * {@link CgTextRenderContext#isWorldText()}) is applied <em>after</em>
+     * {@code quadRenderer.useMaterial(TEXT_MATERIAL)} binds the material, since a {@code Pass}'s
+     * {@code RenderState} is baked at author time and can't itself express this split (see
+     * {@code text.shader}'s placeholder {@code DepthTest}/{@code DepthWrite} lines). No explicit
+     * {@code .clear()} is needed afterward — {@code CgMaterial.unbind()}'s own {@code CgGlScope}
+     * already restores depth (along with blend/cull/etc.) to whatever was active before
+     * {@code bind()}, which is more correct than resetting to hard GL defaults.</p>
      */
-    private void flushPendingMaterial() {
-        if (!batchRenderer.isDirty()) return;
+    private void flush() {
+        if (!quadRenderer.isDirty()) return;
 
-        TEXT_MATERIAL.bind();
-        TEXT_TRANSFORM_UBO.bind();
+        quadRenderer.useMaterial(TEXT_MATERIAL);
+        TEXT_DATA_UBO.bind();
         (context.isWorldText() ? CgDepthState.TEST_ONLY : CgDepthState.NONE).apply();
 
-        batchRenderer.flush();
+        quadRenderer.flush();
+
+        // No need to unbind as they are wasteful — useMaterial() unbinds-old on the next call.
+    }
+
+    /**
+     * Ensures {@link #TEXT_DATA_UBO} holds {@code projection} for the glyphs about to be
+     * submitted. Two independent things happen here, in order:
+     *
+     * <ol>
+     *   <li><b>Flush first if this renderer's own queued-but-unflushed quads were placed under a
+     *       different projection</b> ({@link #activeProjection}). Projection is shared GPU state
+     *       at flush time (unlike model-view, which is baked per-glyph-instance) — without this,
+     *       a {@link #context(CgTextRenderContext)} switch mid-batch would silently re-project
+     *       already-queued glyphs onto the new projection instead of the one they were placed
+     *       for.</li>
+     *   <li><b>Always (re)upload</b>, even if {@code projection} equals what this renderer last
+     *       uploaded — {@link #TEXT_DATA_UBO} is shared across every live {@code CgTextRenderer},
+     *       so another instance may have overwritten it since. Cheap: one small UBO write per
+     *       {@code draw()} call, not per glyph.</li>
+     * </ol>
+     */
+    private void syncProjection(Matrix4f projection) {
+        if(activeProjection != null) {
+            if (activeProjection.equals(projection)) return;
+            else flush();
+            activeProjection.set(projection);
+        } else activeProjection = new Matrix4f(projection);
         
-        // No need to unbind as they are wasteful
+
+        TEXT_DATA_UBO.writer().reset().beginRecord().mat4("u_Projection", projection);
+        TEXT_DATA_UBO.endRecord();
+        TEXT_DATA_UBO.upload();
     }
 
     /**
@@ -446,11 +425,9 @@ public class CgTextRenderer {
     private void transitionToMaterial(CgDrawBatchKey key) {
         if (activeBatchKey != null && activeBatchKey.equals(key)) return;
 
-        flushPendingMaterial();
+        flush();
 
-        if (key.isDistanceField()) TEXT_MATERIAL.enableKeyword("MSDF_MODE");
-        else TEXT_MATERIAL.disableKeyword("MSDF_MODE");
-
+        TEXT_MATERIAL.toggleKeyword("MSDF_MODE", key.isDistanceField());
         ATLAS_TEXTURE_REF.setId(key.getTextureId());
         TEXT_MATERIAL.applyProperties(b -> b.set1f("_PxRange", key.getPxRange()));
 
@@ -728,7 +705,7 @@ public class CgTextRenderer {
     public void delete() {
         if (deleted) return;
         if (batchActive) endBatch();
-        batchRenderer.delete();
+        quadRenderer.delete();
         CgTextRendererRegistry.get().unregister(this);
         deleted = true;
     }
@@ -741,7 +718,7 @@ public class CgTextRenderer {
      * Renderer core shared by the 2D and world-space entry points.
      *
      * <p>Resolves the effective raster tier, builds the paged glyph batch, and
-     * submits sorted quads to the owned {@link CgBatchRenderer}.</p>
+     * submits sorted quads to the owned {@link CgQuadRenderer}.</p>
      */
     private void drawInternal(CgTextLayout layout, CgFontFamily family,
                               float x, float y, int rgba, CgTextRenderContext context,
@@ -767,16 +744,18 @@ public class CgTextRenderer {
 
     /**
      * Sorts glyph placements by GL state and submits them to the owned
-     * {@link CgBatchRenderer}.
+     * {@link CgQuadRenderer}.
      *
      * <p>On batch-key transitions (atlas page / atlas mode changes), this method:
      * <ol>
      *   <li>Calls {@link #transitionToMaterial} to flush any pending quads under the previous
      *       keyword/property/texture combination, then adopt the new one</li>
-     *   <li>The transform ({@code u_projection}/{@code u_modelview}) is constant for the whole
-     *       call and is uploaded once up-front via {@link #uploadTransformIfChanged} — see that
-     *       method and {@link #TEXT_TRANSFORM_UBO}</li>
-     *   <li>Emits glyph quads through the batch renderer's {@code CgVertexConsumer}</li>
+     *   <li>The projection is constant for the whole call and is synced to {@link #TEXT_DATA_UBO}
+     *       once up-front via {@link #syncProjection} — flushing first if it differs from what
+     *       this renderer already has queued under a different projection. The model-view
+     *       transform needs no such check anymore — it's baked per-glyph-instance via
+     *       {@code Quad.pose()}, see {@link #addQuadFromPlacement}.</li>
+     *   <li>Emits one instanced-quad record per glyph via {@link CgQuadRenderer#quad()}</li>
      * </ol>
      */
     void submitSortedQuads(CgGlyphPlacement[] placements,
@@ -834,8 +813,9 @@ public class CgTextRenderer {
             }
         }
 
-        // Transform is constant for this whole draw() call — upload once, not per transition.
-        uploadTransformIfChanged(context.getProjection(), modelView);
+        // Projection is constant for this whole draw() call. Flushes first if it differs from
+        // what's already queued under a different projection — see syncProjection().
+        syncProjection(context.getProjection());
 
         // Submit sorted quads. On batch-key change, transition material state (flushing whatever
         // was pending under the previous combination).
@@ -855,7 +835,7 @@ public class CgTextRenderer {
             CgGlyphPlacement p = placements[origIdx];
             int placementTargetPx = p.getKey().getFontKey().getTargetPx();
             float scaleFactor = logicalMetricScale(baseTargetPx, p.isDistanceField() ? placementTargetPx : effectiveTargetPx);
-            addQuadFromPlacement(p, glyphX[origIdx], glyphY[origIdx], rgba, scaleFactor);
+            addQuadFromPlacement(p, glyphX[origIdx], glyphY[origIdx], rgba, scaleFactor, modelView);
 
             if (diagnosticLogging) {
                 LOGGER.info("[BatchDiag] atlasType=" + thisKey.getAtlasType()
@@ -867,25 +847,23 @@ public class CgTextRenderer {
 
     /**
      * Computes quad geometry from a {@link CgGlyphPlacement} and submits it to the owned
-     * {@link CgBatchRenderer}.
+     * {@link CgQuadRenderer} as one instance record, its model-view transform baked in
+     * per-glyph via {@code Quad.pose(modelView)} (see {@code CgQuadRenderer.Quad#pose}).
      *
-     * <p>Uses plane bounds for geometry placement. The quad is submitted through
-     * the batch renderer's {@link CgVertexConsumer} (a {@code CgVertexWriter}
-     * backed by the batch renderer's staging buffer).</p>
+     * <p>Uses plane bounds for geometry placement.</p>
      */
     private void addQuadFromPlacement(CgGlyphPlacement p,
-                                      float penX, float penY, int rgba, float scaleFactor) {
+                                      float penX, float penY, int rgba, float scaleFactor,
+                                      Matrix4f modelView) {
         // Plane bounds are in physical raster space; normalize to logical.
         // planeLeft = bearing offset from pen; planeTop = bearing above baseline.
         // The quad origin is (penX + bearingX, penY - bearingY) in the existing
         // convention (Y-down screen space, bearingY positive = above baseline).
-        float logicalBearingX = p.getPlaneLeft() * scaleFactor;
-        float logicalBearingY = p.getPlaneTop() * scaleFactor;
-        float logicalWidth = p.getPlaneWidth() * scaleFactor;
-        float logicalHeight = p.getPlaneHeight() * scaleFactor;
+        float logicalBearingX = p.getPlaneLeft() * scaleFactor, logicalBearingY = p.getPlaneTop() * scaleFactor;
+        float logicalWidth = p.getPlaneWidth() * scaleFactor, logicalHeight = p.getPlaneHeight() * scaleFactor;
 
-        float qx = penX + logicalBearingX;
-        float qy = penY - logicalBearingY;
+        float qx = penX + logicalBearingX, qy = penY - logicalBearingY;
+        float u0 = p.getU0(), v0 = p.getV0(), u1 = p.getU1(), v1 = p.getV1();
 
         if (diagnosticLogging) {
             LOGGER.info(String.format(
@@ -897,14 +875,12 @@ public class CgTextRenderer {
                     p.getPageIndex(), p.getPageTextureId(),
                     p.getAtlasType(), p.isDistanceField(), p.getPxRange()));
         }
-
-        float u0 = p.getU0(), v0 = p.getV0(), u1 = p.getU1(), v1 = p.getV1();
-
-        CgVertexConsumer vc = batchRenderer.vertex();
-        vc.vertex(qx, qy).uv(u0, v0).colorRgba(rgba).endVertex();
-        vc.vertex(qx + logicalWidth, qy).uv(u1, v0).colorRgba(rgba).endVertex();
-        vc.vertex(qx + logicalWidth, qy + logicalHeight).uv(u1, v1).colorRgba(rgba).endVertex();
-        vc.vertex(qx, qy + logicalHeight).uv(u0, v1).colorRgba(rgba).endVertex();
+        
+        quadRenderer.quad()
+                    .at(qx, qy).size(logicalWidth, logicalHeight)
+                    .uv(u0, v0, u1, v1).color((rgba >>> 8) | ((rgba & 0xFF) << 24))
+                    .pose(modelView)
+                    .submit();
     }
 
     // ══════════════════════════════════════════════════════════════════════════════════════════

@@ -1,5 +1,6 @@
 package com.crystalgraphics.api;
 
+import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 
 /**
@@ -8,8 +9,9 @@ import com.crystalgraphics.platform.gl.CgCapabilities;
  * <h3>Two separate namespaces</h3>
  * <p>SSBO binding points and TBO texture units are <em>distinct</em> namespaces in OpenGL.
  * An SSBO at binding slot N and a TBO at texture unit N are completely independent resources.
- * Constants in this class make the distinction explicit:
- * {@code *_SSBO} fields are SSBO binding slots; {@code *_TBO} fields are GL texture units.</p>
+ * Reserved SSBO/TBO pairs (see {@link Binding}) make the distinction explicit: {@code ssbo} is
+ * an SSBO binding slot, {@code tbo} is a GL texture unit. UBO-only reservations (no TBO fallback
+ * concept applies to UBOs) stay plain {@code int} fields.</p>
  *
  * <h3>Top-vs-bottom allocation strategy</h3>
  * <p>Engine-reserved slots are allocated from the <em>top</em> of the available range
@@ -19,26 +21,50 @@ import com.crystalgraphics.platform.gl.CgCapabilities;
  *
  * <h3>Lifecycle</h3>
  * <p>{@link #init(CgCapabilities)} must be called (by {@code CgRenderPipeline.init()})
- * before any engine buffer is constructed. The three runtime fields are {@code -1}
- * until then; {@link #isInitialized()} returns {@code false} in that state.</p>
+ * before any engine buffer is constructed. The runtime {@link Binding} fields are {@code null}
+ * and the runtime {@code int} fields are {@code -1} until then; {@link #isInitialized()} returns
+ * {@code false} in that state.</p>
  */
 public final class CgBindingPoints {
     public static CgCapabilities.ShaderBufferPath PATH;
+
+    /**
+     * A reserved engine binding <em>pair</em> — one slot for the SSBO path, one for the TBO
+     * fallback path (distinct GL namespaces, see class javadoc) — that knows how to resolve
+     * itself against the currently-detected {@link CgCapabilities.ShaderBufferPath}.
+     *
+     * <p>Exists so a consumer needing one reserved slot (e.g.
+     * {@code CgShaderBufferRegistry.getOrCreateInternal}) takes a single object instead of two
+     * loose ints plus its own copy of the SSBO-vs-TBO branch — the branch lives here, once.</p>
+     *
+     * @param ssbo SSBO binding point to use when the SSBO path is active
+     * @param tbo  GL texture unit to use when the TBO fallback path is active
+     */
+    public record Binding(int ssbo, int tbo) {
+        /** Returns {@link #ssbo} or {@link #tbo}, whichever matches the currently-active path. */
+        public int resolve() {
+            return PATH == CgCapabilities.ShaderBufferPath.TBO ? tbo : ssbo;
+        }
+    }
+
     // ── Engine buffers — resolved to top of available range at init() ─────────
 
     /**
-     * SSBO binding slot for the engine's per-object data buffer ({@code CgObjectDataBuffer}).
-     * Set to {@code maxSsboBindings - 1} by {@link #init(CgCapabilities)}.
-     * Valid only after {@link #init(CgCapabilities)} has been called.
+     * Reserved binding pair for the engine's per-object data buffer ({@code CgObjectDataBuffer}).
+     * {@code ssbo} = {@code maxSsboBindings - 1}, {@code tbo} = {@code maxTextureImageUnits - 1}.
+     * {@code null} until {@link #init(CgCapabilities)} has been called.
      */
-    public static int OBJECT_DATA_SSBO = -1;
+    public static Binding OBJECT_DATA;
 
     /**
-     * GL texture unit for the engine's per-object data buffer ({@code CgObjectDataBuffer}) TBO.
-     * Set to {@code maxTextureImageUnits - 1} by {@link #init(CgCapabilities)}.
-     * Valid only after {@link #init(CgCapabilities)} has been called.
+     * Reserved binding pair for {@code CgQuadRenderer}'s shared {@code "CgQuadRendererInstances"}
+     * buffer — {@code ssbo} one below {@link #OBJECT_DATA}'s, {@code tbo} one below
+     * {@link #OBJECT_DATA}'s, continuing the same top-of-range countdown. Engine-reserved,
+     * must not be used by user-attached SSBOs/TBOs — see
+     * {@code CgShaderBufferRegistry.getOrCreateInternal}. {@code null} until
+     * {@link #init(CgCapabilities)} has been called.
      */
-    public static int OBJECT_DATA_TBO = -1;
+    public static Binding QUAD_RENDERER;
 
     /**
      * UBO binding slot for the engine's per-frame uniform block ({@code CgFrameBlock}).
@@ -54,6 +80,17 @@ public final class CgBindingPoints {
      * Valid only after {@link #init(CgCapabilities)} has been called.
      */
     public static int MATERIAL_PROPERTIES_UBO = -1;
+
+    /**
+     * UBO binding slot for {@code CgTextRenderer}'s shared {@code "TextData"} block
+     * ({@code u_projection} — renderer-local, deliberately separate from the engine's shared
+     * per-frame {@code cg_ProjMatrix}). Set to {@code maxUniformBufferBindings - 3} by
+     * {@link #init(CgCapabilities)}, following the same top-of-range pattern as
+     * {@link #FRAME_DATA_UBO}/{@link #MATERIAL_PROPERTIES_UBO}. This slot is engine-reserved and
+     * must not be used by user-attached UBOs — see {@link CgShaderBufferRegistry}.
+     * Valid only after {@link #init(CgCapabilities)} has been called.
+     */
+    public static int TEXT_DATA_UBO = -1;
 
      /**
       * GL texture unit reserved for {@code cg_DepthBuffer} — the per-frame scene depth snapshot
@@ -89,8 +126,9 @@ public final class CgBindingPoints {
     /**
      * First UBO binding slot available to user-defined buffers.
      * User UBOs start at slot 0 and grow upward.
-     * The top two slots ({@code maxUniformBufferBindings - 1} and {@code - 2}) are
-     * engine-reserved for {@link #FRAME_DATA_UBO} and {@link #MATERIAL_PROPERTIES_UBO}.
+     * The top three slots ({@code maxUniformBufferBindings - 1} through {@code - 3}) are
+     * engine-reserved for {@link #FRAME_DATA_UBO}, {@link #MATERIAL_PROPERTIES_UBO}, and
+     * {@link #TEXT_DATA_UBO}.
      */
     public static final int USER_START_UBO = 0;
 
@@ -111,12 +149,13 @@ public final class CgBindingPoints {
         int maxUboBindings  = caps.getMaxUniformBufferBindings();
 
         // ── SSBO/TBO Path bindings ───────────────────────────────────────────────────────────────
-        OBJECT_DATA_SSBO = --maxSsboBindings;
-        OBJECT_DATA_TBO  = --maxTextureUnits;
+        OBJECT_DATA = new Binding(--maxSsboBindings, --maxTextureUnits);
+        QUAD_RENDERER = new Binding(--maxSsboBindings, --maxTextureUnits);
 
         // ── UBO bindings ───────────────────────────────────────────────────────────────
         FRAME_DATA_UBO          = --maxUboBindings;
         MATERIAL_PROPERTIES_UBO = --maxUboBindings;
+        TEXT_DATA_UBO           = --maxUboBindings;
 
         // ── Texture bindings ───────────────────────────────────────────────────────────────
         DEPTH_TEXTURE_UNIT = --maxTextureUnits;
@@ -126,11 +165,6 @@ public final class CgBindingPoints {
      * Returns {@code true} after {@link #init(CgCapabilities)} has been called.
      */
     public static boolean isInitialized() {
-        return OBJECT_DATA_SSBO >= 0;
-    }
-
-    /**Returns OBJECT_DATA binding point for the current capability path.*/
-    public static int objectData() {
-        return PATH == CgCapabilities.ShaderBufferPath.TBO ? CgBindingPoints.OBJECT_DATA_TBO : CgBindingPoints.OBJECT_DATA_SSBO;
+        return OBJECT_DATA != null;
     }
 }

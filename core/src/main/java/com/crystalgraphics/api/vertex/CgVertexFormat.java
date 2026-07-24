@@ -57,9 +57,9 @@ public final class CgVertexFormat implements CgAttributeFormat {
      * Matches the legacy CgGlyphVbo layout (same stride=20, same offsets).
      */
     public static final CgVertexFormat POS2_UV2_COL4UB = builder("pos2_uv2_col4ub")
-            .add(CgVertexSemantic.POSITION, "a_pos"  , 2, CgAttribType.FLOAT)
-            .add(CgVertexSemantic.UV      , "a_uv"   , 2, CgAttribType.FLOAT)
-            .add(CgVertexSemantic.COLOR   , "a_color", 4, CgAttribType.UNSIGNED_BYTE, true)
+            .add(CgVertexSemantic.POSITION, "cg_Position"  , 2, CgAttribType.FLOAT)
+            .add(CgVertexSemantic.UV      , "cg_TexCoord0"   , 2, CgAttribType.FLOAT)
+            .add(CgVertexSemantic.COLOR   , "cg_Color", 4, CgAttribType.UNSIGNED_BYTE, true)
             .build();
 
     /**
@@ -68,9 +68,9 @@ public final class CgVertexFormat implements CgAttributeFormat {
      * requires a Z coordinate.
      */
     public static final CgVertexFormat POS3_UV2_COL4UB = builder("pos3_uv2_col4ub")
-            .add(CgVertexSemantic.POSITION, "a_pos"  , 3, CgAttribType.FLOAT)
-            .add(CgVertexSemantic.UV      , "a_uv"   , 2, CgAttribType.FLOAT)
-            .add(CgVertexSemantic.COLOR   , "a_color", 4, CgAttribType.UNSIGNED_BYTE, true)
+            .add(CgVertexSemantic.POSITION, "cg_Position"  , 3, CgAttribType.FLOAT)
+            .add(CgVertexSemantic.UV      , "cg_TexCoord0"   , 2, CgAttribType.FLOAT)
+            .add(CgVertexSemantic.COLOR   , "cg_Color", 4, CgAttribType.UNSIGNED_BYTE, true)
             .build();
 
     /**

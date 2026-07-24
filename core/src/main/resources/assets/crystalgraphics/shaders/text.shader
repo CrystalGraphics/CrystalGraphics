@@ -53,15 +53,20 @@ Pass {
         DepthWrite ON
     }
 
-    // u_projection/u_modelview reach this shader via CgTextRenderer's attached, shared
-    // static "TextTransform" CgUniformBuffer (flat STD140 scope — referenced directly,
-    // no block prefix). Do not declare them here; do not use cg_env.glsl's camera/instancing
-    // macros (CG_MATRIX_MVP, CG_OBJECT_TO_WORLD, etc.) — text has neither a frame camera nor
-    // a per-instance object record, each draw carries its own arbitrary transform.
+    // Per-glyph model-view is baked CPU-side into origin/right/up (see CgQuadRenderer.Quad#pose,
+    // called by CgTextRenderer#addQuadFromPlacement) and delivered per-instance via the
+    // CG_QUAD_* macros below (cg_env.glsl) — no per-draw uniform transform.
+    //
+    // u_Projection reaches this shader via CgTextRenderer's attached, shared static "TextData"
+    // CgUniformBuffer (flat STD140 scope — referenced directly, no block prefix). Deliberately
+    // NOT the engine's shared cg_ProjMatrix (CgFrameBlock): that's frame-owner state (the actual
+    // scene camera), and CgTextRenderContext's projection is renderer-local (often an
+    // orthographic UI projection unrelated to the scene camera) — reusing cg_ProjMatrix would
+    // clobber whatever the real frame projection is for anything else sharing that frame.
     void vertex(out v2f o) {
-        gl_Position = u_projection * u_modelview * vec4(a_pos, 0.0, 1.0);
-        o.uv = a_uv;
-        o.color = a_color;
+        gl_Position = u_Projection * vec4(CG_QUAD_WORLD_POS, 1.0);
+        o.uv    = CG_QUAD_UV;
+        o.color = CG_QUAD_COLOR;
     }
 
     void fragment(in v2f i, out vec4 fragColor) {
