@@ -213,15 +213,19 @@ public class CgGlslEmitterTest {
     }
 
     @Test
-    public void testError_strideNotMultiple16_tboThrows() {
-        CgBufferFormat f = CgBufferFormat.builder("BadStride", MemoryLayout.STD430)
+    public void testBuild_strideAlwaysRoundedTo16_tboNeverThrowsOnStride() {
+        // CgBufferFormat.Builder.build() rounds the final stride up to a multiple of 16
+        // (the struct's own base alignment when used in an array — every SSBO/TBO record
+        // is exactly that) regardless of what the fields alone sum to. Three floats sum to
+        // 12 bytes unrounded; build() must round that to 16, so emitTbo's own defensive
+        // stride check can no longer be triggered via the public builder API at all — this
+        // replaces the old test that constructed a deliberately misaligned (12-byte)
+        // format and asserted emitTbo rejected it, which is no longer constructible.
+        CgBufferFormat f = CgBufferFormat.builder("ThreeFloats", MemoryLayout.STD430)
             .float_("a").float_("b").float_("c").build();
-        try {
-            CgGlslEmitter.emitTbo(f, "BadStrideBuf", "BAD_STRIDE");
-            fail("Expected CgPreprocessorException for stride not multiple of 16");
-        } catch (CgPreprocessorException e) {
-            assertTrue("Message should mention stride", e.getMessage().toLowerCase().contains("stride"));
-        }
+        assertEquals("build() must round stride up to a multiple of 16", 16, f.getStride());
+        // Must not throw — stride is valid by construction.
+        CgGlslEmitter.emitTbo(f, "ThreeFloatsBuf", "THREE_FLOATS");
     }
 
     @Test

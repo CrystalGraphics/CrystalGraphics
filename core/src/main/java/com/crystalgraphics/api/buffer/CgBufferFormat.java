@@ -269,7 +269,27 @@ public final class CgBufferFormat {
                         "Duplicate field name '" + f.getName() + "' in CgBufferFormat '" + glslName + "'");
                 }
             }
-            return new CgBufferFormat(arr, map, cursor, memoryLayout, glslName);
+            // std140/std430 both require a struct's own overall size (its per-element
+            // stride when used in an array, e.g. every CgBufferFormat here — SSBO/TBO
+            // records are always arrays of this struct) to be rounded up to a multiple
+            // of 16 (the base alignment of vec4), on top of each individual field's own
+            // alignment already applied by add() above. Every supported field type here
+            // (float/vec2/vec3/vec4/mat3/mat4/int/uint/bool) tops out at 16-byte
+            // alignment, so rounding the final cursor to 16 is always correct — not just
+            // "the common case." Skipping this rounding is silently correct only when a
+            // format's fields happen to sum to an exact multiple of 16 already (true for
+            // every format that existed before this fix, which is exactly why this was
+            // never caught) and silently WRONG otherwise: the GPU still applies this
+            // rounding when indexing an array of this struct (QUAD_DATA(n) et al.)
+            // regardless of what stride the CPU side assumes, so an unrounded stride
+            // here desyncs every record after the first — each subsequent instance's
+            // fields get read from the wrong byte offset, worse with each index.
+            int stride = roundUpTo16(cursor);
+            return new CgBufferFormat(arr, map, stride, memoryLayout, glslName);
+        }
+
+        private static int roundUpTo16(int bytes) {
+            return (bytes + 15) & ~15;
         }
     }
 }
