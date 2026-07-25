@@ -20,57 +20,56 @@ import java.util.List;
  * here touches GL, {@code CgQuadRenderer}, or {@code CgMaterial} — that boundary starts once
  * {@code CgTextRenderer} reads {@link #glyphX}/{@link #glyphY}/{@link #placements} back out.
  *
- * <p>Owned by a single {@code CgTextRenderer} instance (not shared/static) and reused across
- * draws: {@link #flattenAndPrequeue} grows the backing arrays via {@link #ensureCapacity} but
- * never shrinks them, so steady-state text (the common case — the same HUD/labels every
- * frame) allocates nothing per draw. Indices {@code [0, glyphCount)} from the most recent
- * {@link #flattenAndPrequeue} call stay valid until the next call overwrites them.</p>
- *
- * <h3>Two-phase resolution</h3>
- * <p>{@link #flattenAndPrequeue} walks the {@link CgTextLayout} line/run/glyph tree exactly
- * once — filling every field except {@link #placements} — and prequeues each glyph for async
- * atlas generation. {@link #resolvePlacements} then does the synchronous atlas lookup into
- * {@link #placements} as a separate step, so its MSDF→bitmap fallback retry (see its javadoc)
- * can re-run just the flat lookup loop without ever re-walking the layout tree.</p>
+ * <h3>Why a cache is needed even with an O(1) atlas</h3>
+ * <p>{@link #resolve} checks {@link CgGlyphPlacementCache} before doing any layout-tree walk
+ * or atlas work — see that class's javadoc for the cache's own design (capacity, LRU
+ * structure, global scope, key composition, staleness bound). Even after
+ * {@code CgPagedGlyphAtlas.get()} became {@code O(1)} and
+ * {@link CgFontRegistry#resolveGlyphPaged} collapsed the old two-call-per-glyph pattern into
+ * one, resolving a static 1000-glyph layout fresh every frame still means ~1000 fresh
+ * {@link CgGlyphKey} allocations (each hashing a nested {@link CgFontKey}) plus ~1000 hashmap
+ * probes, every single frame, forever — {@code O(1)} describes the lookup's algorithmic
+ * complexity, not its absolute cost, and that cost is not zero. A cache hit skips all of it:
+ * no tree walk, no key allocation, no atlas probe, just repointing {@link #glyphX}/
+ * {@link #glyphY}/{@link #placements} at the cached entry's own arrays.</p>
  */
 final class CgResolvedGlyphs {
 
     private final CgFontRegistry registry;
 
-    private CgFontKey[] fontKeys = new CgFontKey[0];
-    private CgFont[] fonts = new CgFont[0];
-    private int[] glyphIds = new int[0];
-    private int[] subPixel = new int[0];
+    // ── Scratch arrays: always the write target of a fresh resolve. Never shrink. ──
+    private CgFontKey[] scratchFontKeys = new CgFontKey[0];
+    private CgFont[] scratchFonts = new CgFont[0];
+    private int[] scratchGlyphIds = new int[0];
+    private int[] scratchSubPixel = new int[0];
+    private CgGlyphKey[] scratchGlyphKeys = new CgGlyphKey[0];
+    private float[] scratchGlyphX = new float[0];
+    private float[] scratchGlyphY = new float[0];
+    private CgGlyphPlacement[] scratchPlacements = new CgGlyphPlacement[0];
 
-    /** Pen position for glyph {@code i}, valid for {@code [0, glyphCount)} — read by {@code CgTextRenderer}. */
+    /** Pen position for glyph {@code i} of the most recent {@link #resolve} call, valid for
+     * {@code [0, <returned glyphCount>)} — read by {@code CgTextRenderer}. Points at either the
+     * scratch arrays (fresh resolve) or a cache entry's own arrays (cache hit). */
     float[] glyphX = new float[0];
     float[] glyphY = new float[0];
-    /** Resolved atlas placement for glyph {@code i}, filled by {@link #resolvePlacements}. */
+    /** Resolved atlas placement for glyph {@code i} of the most recent {@link #resolve} call. */
     CgGlyphPlacement[] placements = new CgGlyphPlacement[0];
-
-    /**
-     * The {@link CgGlyphKey} built for glyph {@code i} during {@link #flattenAndPrequeue},
-     * reused by {@link #resolvePlacements}'s primary (matching-mode) pass so each glyph's
-     * key is allocated once per frame instead of twice — see {@code CgGlyphKey}'s two
-     * lookup sites this used to duplicate.
-     */
-    private CgGlyphKey[] glyphKeys = new CgGlyphKey[0];
 
     CgResolvedGlyphs(CgFontRegistry registry) {
         this.registry = registry;
     }
 
     private void ensureCapacity(int count) {
-        if (count <= fontKeys.length) return;
-        int newCap = Math.max(count, fontKeys.length * 2);
-        fontKeys = Arrays.copyOf(fontKeys, newCap);
-        fonts = Arrays.copyOf(fonts, newCap);
-        glyphIds = Arrays.copyOf(glyphIds, newCap);
-        subPixel = Arrays.copyOf(subPixel, newCap);
-        glyphX = Arrays.copyOf(glyphX, newCap);
-        glyphY = Arrays.copyOf(glyphY, newCap);
-        placements = Arrays.copyOf(placements, newCap);
-        glyphKeys = Arrays.copyOf(glyphKeys, newCap);
+        if (count <= scratchFontKeys.length) return;
+        int newCap = Math.max(count, scratchFontKeys.length * 2);
+        scratchFontKeys = Arrays.copyOf(scratchFontKeys, newCap);
+        scratchFonts = Arrays.copyOf(scratchFonts, newCap);
+        scratchGlyphIds = Arrays.copyOf(scratchGlyphIds, newCap);
+        scratchSubPixel = Arrays.copyOf(scratchSubPixel, newCap);
+        scratchGlyphX = Arrays.copyOf(scratchGlyphX, newCap);
+        scratchGlyphY = Arrays.copyOf(scratchGlyphY, newCap);
+        scratchPlacements = Arrays.copyOf(scratchPlacements, newCap);
+        scratchGlyphKeys = Arrays.copyOf(scratchGlyphKeys, newCap);
     }
 
     private static CgFont resolveRunFont(CgTextLayout layout, CgFontFamily family, CgFontKey runFontKey) {
@@ -88,18 +87,55 @@ final class CgResolvedGlyphs {
     }
 
     /**
+     * Resolves {@code layout} into {@link #glyphX}/{@link #glyphY}/{@link #placements}, either
+     * by reusing a matching {@link CgGlyphPlacementCache} entry or by performing a fresh
+     * layout-walk + atlas-resolve and caching the result. See that class's javadoc.
+     *
+     * @return the number of glyphs resolved (may be 0 for an all-whitespace layout)
+     */
+    int resolve(CgTextLayout layout, CgFontFamily family, float x, float y, long frame,
+               CgTextRenderContext context, int effectiveTargetPx, boolean wantMsdf,
+               CgFontMetrics metrics, CgFontKey fontKey) {
+        CgGlyphPlacementCache.Key key = CgGlyphPlacementCache.key(layout, x, y, wantMsdf, fontKey);
+        CgGlyphPlacementCache.Entry hit = CgGlyphPlacementCache.get(key, effectiveTargetPx, frame);
+        if (hit != null) {
+            this.glyphX = hit.glyphX();
+            this.glyphY = hit.glyphY();
+            this.placements = hit.placements();
+            return hit.glyphCount();
+        }
+
+        int glyphCount = flatten(layout, family, x, y, context, effectiveTargetPx, wantMsdf, metrics);
+        boolean distanceField = false;
+        if (glyphCount > 0) {
+            distanceField = resolvePlacements(glyphCount, frame, effectiveTargetPx, wantMsdf);
+        }
+
+        this.glyphX = scratchGlyphX;
+        this.glyphY = scratchGlyphY;
+        this.placements = scratchPlacements;
+
+        CgGlyphPlacementCache.put(key, new CgGlyphPlacementCache.Entry(
+                distanceField, effectiveTargetPx, frame, glyphCount,
+                Arrays.copyOf(scratchGlyphX, glyphCount),
+                Arrays.copyOf(scratchGlyphY, glyphCount),
+                Arrays.copyOf(scratchPlacements, glyphCount)));
+
+        return glyphCount;
+    }
+
+    /**
      * Single walk of the layout tree: flattens every glyph's font key/font/id/subpixel
-     * bucket/pen position into this instance's arrays, then prequeues each for async atlas
-     * generation.
+     * bucket/pen position/{@link CgGlyphKey} into this instance's scratch arrays.
      *
      * <p>This is the only place the {@code CgTextLayout} line/run/glyph tree gets walked.
-     * {@link #resolvePlacements}'s MSDF→bitmap fallback retry re-runs only the flat
+     * {@link #ensurePlacements}'s MSDF→bitmap fallback retry re-runs only the flat
      * atlas-lookup loop over these already-flattened arrays — never this walk again.</p>
      *
      * @return the number of glyphs flattened (may be 0 for an all-whitespace layout)
      */
-    int flattenAndPrequeue(CgTextLayout layout, CgFontFamily family, float x, float y, long frame,
-                           CgTextRenderContext context, int effectiveTargetPx, boolean wantMsdf, CgFontMetrics metrics) {
+    private int flatten(CgTextLayout layout, CgFontFamily family, float x, float y,
+                        CgTextRenderContext context, int effectiveTargetPx, boolean wantMsdf, CgFontMetrics metrics) {
         List<List<CgShapedRun>> lines = layout.getLines();
         int totalGlyphs = countGlyphs(lines);
         ensureCapacity(totalGlyphs);
@@ -116,12 +152,14 @@ final class CgResolvedGlyphs {
                 float[] offsetsX = run.getOffsetsX();
                 float[] offsetsY = run.getOffsetsY();
                 for (int i = 0; i < glyphIdsArr.length; i++) {
-                    fontKeys[index] = runFontKey;
-                    fonts[index] = runFont;
-                    glyphIds[index] = glyphIdsArr[i];
-                    subPixel[index] = resolveSubPixelBucket(context, runFontKey, effectiveTargetPx, offsetsX[i]);
-                    glyphX[index] = penX + offsetsX[i];
-                    glyphY[index] = penY + offsetsY[i];
+                    int subPixel = resolveSubPixelBucket(context, runFontKey, effectiveTargetPx, offsetsX[i]);
+                    scratchFontKeys[index] = runFontKey;
+                    scratchFonts[index] = runFont;
+                    scratchGlyphIds[index] = glyphIdsArr[i];
+                    scratchSubPixel[index] = subPixel;
+                    scratchGlyphKeys[index] = new CgGlyphKey(runFontKey, glyphIdsArr[i], wantMsdf, subPixel);
+                    scratchGlyphX[index] = penX + offsetsX[i];
+                    scratchGlyphY[index] = penY + offsetsY[i];
                     penX += advancesX[i];
                     index++;
                 }
@@ -129,31 +167,27 @@ final class CgResolvedGlyphs {
             penY += metrics.getLineHeight();
         }
 
-        // Latency-hiding only, not correctness — the ensure pass in resolvePlacements still
-        // defines the frame's authoritative result. Queueing every glyph before any ensure
-        // call gives worker threads a head start on the whole batch.
-        for (int i = 0; i < totalGlyphs; i++) {
-            CgGlyphKey glyphKey = new CgGlyphKey(fontKeys[i], glyphIds[i], wantMsdf, subPixel[i]);
-            glyphKeys[i] = glyphKey;
-            registry.queueGlyphPaged(fonts[i], glyphKey, effectiveTargetPx, subPixel[i], frame);
-        }
-
         return totalGlyphs;
     }
 
     /**
      * Resolves atlas placements for the {@code glyphCount} glyphs already flattened by
-     * {@link #flattenAndPrequeue}, into {@link #placements}.
+     * {@link #flatten}, into {@link #scratchPlacements}.
      *
      * <p>If a draw prefers distance fields but any visible glyph had to fall back to
      * bitmap this frame, reruns just this atlas-lookup loop in bitmap mode so one draw
      * never mixes bitmap and distance-field quality tiers — no re-walk of the layout tree.</p>
+     *
+     * @return {@code true} if the final result is uniformly distance-field (i.e. {@code wantMsdf}
+     *         was requested and no glyph fell back to bitmap) — see {@link CgGlyphPlacementCache.Entry#distanceField}
      */
-    void resolvePlacements(int glyphCount, long frame, int effectiveTargetPx, boolean wantMsdf) {
+    private boolean resolvePlacements(int glyphCount, long frame, int effectiveTargetPx, boolean wantMsdf) {
         boolean usedBitmapFallback = ensurePlacements(glyphCount, frame, effectiveTargetPx, wantMsdf);
         if (wantMsdf && usedBitmapFallback) {
             ensurePlacements(glyphCount, frame, effectiveTargetPx, false);
+            return false;
         }
+        return wantMsdf;
     }
 
     /**
@@ -162,15 +196,15 @@ final class CgResolvedGlyphs {
     private boolean ensurePlacements(int glyphCount, long frame, int effectiveTargetPx, boolean wantMsdf) {
         boolean usedBitmapFallback = false;
         for (int i = 0; i < glyphCount; i++) {
-            // The primary pass always runs with the same wantMsdf that flattenAndPrequeue
-            // built glyphKeys[i] with (see CgTextRenderer.drawInternal), so it can reuse
+            // The primary pass always runs with the same wantMsdf that flatten() built
+            // scratchGlyphKeys[i] with (see CgTextRenderer.drawInternal), so it can reuse
             // that key instead of allocating a second one for the same glyph this frame.
             // Only the rarer bitmap-fallback retry (mode differs) needs a fresh key.
-            CgGlyphKey glyphKey = glyphKeys[i].isMsdf() == wantMsdf
-                    ? glyphKeys[i]
-                    : new CgGlyphKey(fontKeys[i], glyphIds[i], wantMsdf, subPixel[i]);
-            CgGlyphPlacement placement = registry.ensureGlyphPaged(fonts[i], glyphKey, effectiveTargetPx, subPixel[i], frame);
-            placements[i] = placement;
+            CgGlyphKey glyphKey = scratchGlyphKeys[i].isMsdf() == wantMsdf
+                    ? scratchGlyphKeys[i]
+                    : new CgGlyphKey(scratchFontKeys[i], scratchGlyphIds[i], wantMsdf, scratchSubPixel[i]);
+            CgGlyphPlacement placement = registry.resolveGlyphPaged(scratchFonts[i], glyphKey, effectiveTargetPx, scratchSubPixel[i], frame);
+            scratchPlacements[i] = placement;
             if (wantMsdf && placement != null && !placement.isDistanceField()) usedBitmapFallback = true;
         }
         return usedBitmapFallback;

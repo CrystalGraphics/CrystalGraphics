@@ -10,7 +10,9 @@ import com.crystalgraphics.text.atlas.packing.CgPackingStrategy;
 import lombok.Getter;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Logger;
 
 /**
@@ -41,6 +43,12 @@ import java.util.logging.Logger;
  * ever reads {@code .rgb} in MSDF mode), avoiding a separate 3-component array
  * format with its own driver-alignment history for a channel count that's
  * different only by convention, not by anything the fragment shader needs.</p>
+ *
+ * <h3>Lookup vs. Allocation — two different costs</h3>
+ * <p>Looking up an <em>already-placed</em> glyph ({@link #get(CgGlyphKey, long)}) is
+ * {@code O(1)} — a single {@code glyphIndex} map lookup, not a per-page scan. Finding room
+ * for a <em>new</em> glyph is a different concern and still scans pages (see "Page Allocation
+ * Policy" below); that only happens on an actual cache miss, not on every lookup.</p>
  *
  * <h3>Page Allocation Policy</h3>
  * <ol>
@@ -176,6 +184,18 @@ public class CgPagedGlyphAtlas {
     @Getter
     private boolean deleted;
 
+    /**
+     * Atlas-wide {@code CgGlyphKey → owning page} index, so {@link #get(CgGlyphKey, long)} is
+     * {@code O(1)} instead of scanning every page's own slot map hot-page-first. Updated on
+     * every successful {@link #allocateBitmap}/{@link #allocateMsdf}; a page's entries are
+     * removed from here when that page is evicted (see {@link #evictColdestPageAndFreeLayer()})
+     * — otherwise a stale entry would point at a layer index some other page now owns.
+     * {@link #createPage}'s own page-selection scan (finding room for a <em>new</em> glyph) is
+     * a different concern and is untouched by this — this index only accelerates looking up a
+     * glyph that's already been placed somewhere.
+     */
+    private final Map<CgGlyphKey, CgGlyphAtlasPage> glyphIndex = new HashMap<>();
+
     // ── Constructors ──────────────────────────────────────────────────
     //
     // No public constructors — every real (non-test) atlas must go through
@@ -281,21 +301,16 @@ public class CgPagedGlyphAtlas {
     // ── Core API ───────────────────────────────────────────────────────
 
     /**
-     * Looks up a cached glyph placement across all pages.
+     * Looks up a cached glyph placement — {@code O(1)} via {@link #glyphIndex}, not a
+     * per-page scan.
      *
      * @param key          glyph key
      * @param currentFrame current frame for LRU tracking
      * @return the placement, or {@code null} if not found in any page
      */
     public CgGlyphPlacement get(CgGlyphKey key, long currentFrame) {
-        // Search pages in reverse (hot page first)
-        for (int i = pages.size() - 1; i >= 0; i--) {
-            CgGlyphPlacement placement = pages.get(i).get(key, currentFrame);
-            if (placement != null) {
-                return placement;
-            }
-        }
-        return null;
+        CgGlyphAtlasPage page = glyphIndex.get(key);
+        return page != null ? page.get(key, currentFrame) : null;
     }
 
     /**
@@ -321,19 +336,25 @@ public class CgPagedGlyphAtlas {
 
         // Try existing pages (hot page first)
         for (int i = pages.size() - 1; i >= 0; i--) {
-            CgGlyphPlacement placement = pages.get(i).allocateBitmap(
+            CgGlyphAtlasPage page = pages.get(i);
+            CgGlyphPlacement placement = page.allocateBitmap(
                     key, bitmapData, width, height,
                     bearingX, bearingY, metricsWidth, metricsHeight, currentFrame);
             if (placement != null) {
+                glyphIndex.put(key, page);
                 return placement;
             }
         }
 
         // Create a new page and try again
         CgGlyphAtlasPage newPage = createPage();
-        return newPage.allocateBitmap(
+        CgGlyphPlacement placement = newPage.allocateBitmap(
                 key, bitmapData, width, height,
                 bearingX, bearingY, metricsWidth, metricsHeight, currentFrame);
+        if (placement != null) {
+            glyphIndex.put(key, newPage);
+        }
+        return placement;
     }
 
     /**
@@ -357,22 +378,28 @@ public class CgPagedGlyphAtlas {
         }
 
         for (int i = pages.size() - 1; i >= 0; i--) {
-            CgGlyphPlacement placement = pages.get(i).allocateMsdf(
+            CgGlyphAtlasPage page = pages.get(i);
+            CgGlyphPlacement placement = page.allocateMsdf(
                     key, msdfData, width, height,
                     bearingX, bearingY,
                     planeLeft, planeBottom, planeRight, planeTop,
                     metricsWidth, metricsHeight, pxRange, currentFrame);
             if (placement != null) {
+                glyphIndex.put(key, page);
                 return placement;
             }
         }
 
         CgGlyphAtlasPage newPage = createPage();
-        return newPage.allocateMsdf(
+        CgGlyphPlacement placement = newPage.allocateMsdf(
                 key, msdfData, width, height,
                 bearingX, bearingY,
                 planeLeft, planeBottom, planeRight, planeTop,
                 metricsWidth, metricsHeight, pxRange, currentFrame);
+        if (placement != null) {
+            glyphIndex.put(key, newPage);
+        }
+        return placement;
     }
 
     // ── Page queries ──────────────────────────────────────────────────
@@ -423,11 +450,12 @@ public class CgPagedGlyphAtlas {
      */
     public void delete() {
         if (deleted) return;
-        
-        for (CgGlyphAtlasPage page : pages) 
+
+        for (CgGlyphAtlasPage page : pages)
             if (!page.isDeleted()) page.delete();
-        
+
         pages.clear();
+        glyphIndex.clear();
         if (arrayTexture != null && !arrayTexture.isDeleted()) arrayTexture.delete();
         deleted = true;
     }
@@ -525,6 +553,12 @@ public class CgPagedGlyphAtlas {
         }
 
         CgGlyphAtlasPage evicted = pages.remove(coldestIndex);
+        // Must happen before evicted.delete(), which clears the page's own key set —
+        // otherwise glyphIndex would keep stale entries pointing at a page whose layer
+        // index is about to be handed to a brand-new page with completely different glyphs.
+        for (CgGlyphKey key : evicted.getGlyphKeys()) {
+            glyphIndex.remove(key);
+        }
         LOGGER.fine("[AtlasDiag] Evicting atlas page/layer " + evicted.getPageIndex()
                 + " (last touched frame " + coldestFrame + ") — page budget " + maxPages + " reached");
         evicted.delete();

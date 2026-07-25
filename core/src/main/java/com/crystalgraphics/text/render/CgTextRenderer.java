@@ -114,12 +114,13 @@ import java.util.logging.Logger;
  * <ol>
  *   <li>{@link Draw#submit()} hands the whole {@link Draw} request to {@link #drawInternal},
  *       which resolves layout/family precedence and raster tier</li>
- *   <li>{@link CgTextLayoutBuilder} produces a {@link CgTextLayout} when built from raw text</li>
+ *   <li>{@link CgTextLayoutBuilder} produces a {@link CgTextLayout} when built from raw text
+ *       — see {@link CgTextLayoutCache} for how repeated text content skips re-shaping</li>
  *   <li>{@code CgResolvedGlyphs.resolve} is the sole entry into glyph resolution: on a cache
- *       hit (the steady-state common case — see that class's javadoc "Placement cache") it
- *       skips straight to a cached result; on a miss it walks the layout once into per-glyph
- *       scratch buffers, prequeues async atlas generation, then resolves each glyph's
- *       {@link CgGlyphPlacement} via the atlas</li>
+ *       hit (the steady-state common case — see that class's javadoc) it skips straight to a
+ *       cached result; on a miss it walks the layout once into per-glyph scratch buffers,
+ *       then resolves each glyph's {@link CgGlyphPlacement} via the atlas (itself {@code O(1)}
+ *       per glyph — see {@code CgPagedGlyphAtlas}'s javadoc)</li>
  *   <li>{@link #submitSortedQuads} sorts quads by GL state and submits them to the owned batch renderer</li>
  * </ol>
  *
@@ -200,6 +201,7 @@ public class CgTextRenderer {
     public static boolean diagnosticLogging = false;
 
     private static final CgTextLayoutBuilder LAYOUT_BUILDER = new CgTextLayoutBuilder();
+
     private final CgFontRegistry registry = CgFontRegistry.get();
 
     // ── Owned batch lifecycle ────────────────────────────────────────────────
@@ -763,10 +765,9 @@ public class CgTextRenderer {
         boolean wantMsdf = context.getScaleResolver().shouldUseMsdf(effectiveTargetPx, previousMsdf);
         context.setHistory(fontKey, effectiveTargetPx, wantMsdf);
 
-        int glyphCount = resolvedGlyphs.flattenAndPrequeue(resolvedLayout, resolvedFamily, draw.x, draw.y, frame, context, effectiveTargetPx, wantMsdf, metrics);
+        int glyphCount = resolvedGlyphs.resolve(resolvedLayout, resolvedFamily, draw.x, draw.y, frame, context, effectiveTargetPx, wantMsdf, metrics, fontKey);
         if (glyphCount == 0) return;
 
-        resolvedGlyphs.resolvePlacements(glyphCount, frame, effectiveTargetPx, wantMsdf);
         submitSortedQuads(glyphCount, draw.rgba, fontKey.getTargetPx(), effectiveTargetPx, pose.pose());
     }
 
@@ -906,23 +907,37 @@ public class CgTextRenderer {
     /**
      * Shared layout helper used by the string-based draw overloads.
      *
-     * <p>This is the string-to-layout boundary for the renderer. The actual
-     * shaping, fallback resolution, and line breaking happen inside
-     * {@link CgTextLayoutBuilder}; renderer code should treat the returned
-     * {@link CgTextLayout} as the stable hand-off format for glyph resolution.</p>
+     * <p>This is the string-to-layout boundary for the renderer. Checks {@link CgTextLayoutCache}
+     * first — see that class's javadoc; on a miss, shaping/fallback resolution/line breaking
+     * happen inside {@link CgTextLayoutBuilder} as before. Renderer code should treat the
+     * returned {@link CgTextLayout} as the stable hand-off format for glyph resolution, and
+     * must not mutate it — a cache hit may hand the same instance to multiple unrelated
+     * callers.</p>
      */
     static CgTextLayout layout(String text, CgFont font, CgTextConstraints constraints) {
         if (text == null) throw new IllegalArgumentException("text must not be null");
         if (constraints == null) throw new IllegalArgumentException("constraints must not be null");
 
-        return LAYOUT_BUILDER.layout(text, font, constraints.getMaxWidth(), constraints.getMaxHeight());
+        CgTextLayoutCache.Key key = CgTextLayoutCache.key(text, font, constraints.getMaxWidth(), constraints.getMaxHeight());
+        CgTextLayout cached = CgTextLayoutCache.get(key);
+        if (cached != null) return cached;
+
+        CgTextLayout built = LAYOUT_BUILDER.layout(text, font, constraints.getMaxWidth(), constraints.getMaxHeight());
+        CgTextLayoutCache.put(key, built);
+        return built;
     }
 
     static CgTextLayout layout(String text, CgFontFamily family, CgTextConstraints constraints) {
         if (text == null) throw new IllegalArgumentException("text must not be null");
         if (constraints == null) throw new IllegalArgumentException("constraints must not be null");
 
-        return LAYOUT_BUILDER.layout(text, family, constraints.getMaxWidth(), constraints.getMaxHeight());
+        CgTextLayoutCache.Key key = CgTextLayoutCache.key(text, family, constraints.getMaxWidth(), constraints.getMaxHeight());
+        CgTextLayout cached = CgTextLayoutCache.get(key);
+        if (cached != null) return cached;
+
+        CgTextLayout built = LAYOUT_BUILDER.layout(text, family, constraints.getMaxWidth(), constraints.getMaxHeight());
+        CgTextLayoutCache.put(key, built);
+        return built;
     }
 
     static CgFont requireSizedFont(CgFont font) {

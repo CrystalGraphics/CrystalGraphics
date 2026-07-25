@@ -285,6 +285,66 @@ public class CgFontRegistry {
     }
 
     /**
+     * Combined replacement for calling {@link #queueGlyphPaged} and {@link #ensureGlyphPaged}
+     * separately for the same glyph in the same frame — which is exactly what
+     * {@code CgResolvedGlyphs} used to do, and which meant every visible glyph paid for the
+     * atlas-key transformation (font-key rewrite, MSDF config resolution, a fresh
+     * {@link CgGlyphKey}/{@link CgMsdfAtlasKey} allocation) <strong>twice</strong> per frame —
+     * once in each call — even though both calls need the exact same transformed key. That
+     * duplication kept per-frame cost high even after {@code CgPagedGlyphAtlas.get()} became
+     * {@code O(1)}: the win from a cheap lookup was being paid right back by doing the (much
+     * more expensive) key transformation and allocation twice instead of once.
+     *
+     * <p>Transforms the key exactly once, checks the atlas exactly once. On a cache hit (the
+     * common, steady-state case) returns immediately — no job submission, no generation
+     * attempt, just the one transform and the one {@code O(1)} lookup. On a miss, preserves
+     * the exact prior combined behavior: submits an async job (what {@link #queueGlyphPaged}
+     * used to do) and attempts synchronous generation within the small per-frame budget (what
+     * {@link #ensureGlyphPaged} used to do), including the MSDF→bitmap fallback.</p>
+     *
+     * @return the placement if cached or synchronously generated this call, else {@code null}
+     *         (the glyph has been queued for async generation and will be available on a
+     *         later frame)
+     */
+    public CgGlyphPlacement resolveGlyphPaged(CgFont font,
+                                      CgGlyphKey key,
+                                      int effectiveTargetPx,
+                                      int subPixelBucket,
+                                      long currentFrame) {
+        if (font.isDisposed()) {
+            throw new IllegalStateException("Cannot resolve glyph on disposed font: " + font.getKey());
+        }
+
+        registerFont(font);
+        CgRasterFontKey rasterFontKey = new CgRasterFontKey(key.getFontKey(), effectiveTargetPx);
+
+        if (key.isMsdf()) {
+            CgMsdfAtlasConfig config = resolveMsdfAtlasConfig(key.getFontKey());
+            CgMsdfAtlasKey msdfAtlasKey = toMsdfAtlasKey(key.getFontKey(), config);
+            CgGlyphKey atlasKey = toMsdfAtlasGlyphKey(key, config);
+            CgPagedGlyphAtlas pagedAtlas = getPagedMsdfAtlas(msdfAtlasKey);
+
+            CgGlyphPlacement cached = pagedAtlas.get(atlasKey, currentFrame);
+            if (cached != null) {
+                return cached;
+            }
+            submitMsdfGlyphJob(font, atlasKey, msdfAtlasKey);
+            return ensureMsdfGlyphPaged(font, atlasKey, msdfAtlasKey, effectiveTargetPx, subPixelBucket, currentFrame);
+        }
+
+        CgGlyphKey atlasKey = toBitmapAtlasGlyphKey(
+                new CgRasterGlyphKey(rasterFontKey, key.getGlyphId(), false, subPixelBucket));
+        CgPagedGlyphAtlas pagedAtlas = getPagedBitmapAtlas(rasterFontKey);
+
+        CgGlyphPlacement cached = pagedAtlas.get(atlasKey, currentFrame);
+        if (cached != null) {
+            return cached;
+        }
+        submitBitmapGlyphJob(font, atlasKey, rasterFontKey, effectiveTargetPx, subPixelBucket);
+        return ensureBitmapGlyphPaged(font, atlasKey, rasterFontKey, effectiveTargetPx, subPixelBucket, currentFrame);
+    }
+
+    /**
      * Pre-queues a glyph for async generation if it is not already in the
      * paged atlas.
      *
