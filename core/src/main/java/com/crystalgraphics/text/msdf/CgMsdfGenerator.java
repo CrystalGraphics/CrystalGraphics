@@ -106,89 +106,103 @@ public class CgMsdfGenerator {
         try {
             glyphData = font.loadGlyphByIndex(key.getGlyphId(), FreeTypeMSDFIntegration.FONT_SCALING_EM_NORMALIZED);
         } catch (MSDFException e) {
-            LOGGER.log(Level.FINE, "Failed to load glyph index " + key.getGlyphId(), e);
+            // WARNING, matching the bitmap rasterization path's severity for the
+            // same class of failure (CgFontRegistry's "Failed to rasterize glyph..."
+            // catch) — this call site has a known history of native crashes in
+            // msdfgen (see class javadoc), so silently degrading at FINE is
+            // under-alarmed for a failure mode already known to be real.
+            LOGGER.log(Level.WARNING, "Failed to load glyph index " + key.getGlyphId(), e);
             return null;
         }
 
+        // Freed explicitly in the finally block below on every exit path (empty
+        // shape, empty layout, or successful generation) — safe now that
+        // MSDFShape.free() is idempotent/thread-safe against a concurrent
+        // finalizer (see its javadoc), so this no longer has to leave the
+        // shape's native memory to be reclaimed whenever GC gets to it.
         MSDFShape shape = glyphData.getShape();
-        if (shape.getEdgeCount() == 0) {
-            return CgGlyphGenerationResult.emptyMsdf(sourceFontKey, key, atlasKey, config.getPxRange());
-        }
-        prepareShapeForMsdf(shape, key.getGlyphId(), config);
-
-        int targetPx = config.getAtlasScalePx();
-        double[] bounds = shape.getBounds();
-        if (config.getMiterLimit() > 0.0f) {
-            double border = (config.getPxRange() * 0.5) / targetPx;
-            bounds = shape.getBoundsMiters(bounds, border, config.getMiterLimit(), 1);
-        }
-        double shapeL = bounds[0];
-        double shapeB = bounds[1];
-        double shapeR = bounds[2];
-        double shapeT = bounds[3];
-
-        CgMsdfGlyphLayout layout = CgMsdfGlyphLayout.compute(
-                shapeL, shapeB, shapeR, shapeT,
-                targetPx,
-                config.getPxRange(),
-                config.getMiterLimit(),
-                config.isAlignOriginX(),
-                config.isAlignOriginY());
-
-        if (layout.isEmpty()) {
-            return CgGlyphGenerationResult.emptyMsdf(sourceFontKey, key, atlasKey, config.getPxRange());
-        }
-
-        int boxWidth = layout.getBoxWidth();
-        int boxHeight = layout.getBoxHeight();
-        double scale = layout.getScale();
-        double tx = layout.getTranslateX();
-        double ty = layout.getTranslateY();
-        double rangeInShapeUnits = layout.getRangeInShapeUnits();
-
-        MSDFBitmap bitmap = config.isMtsdf()
-                ? MSDFBitmap.allocMtsdf(boxWidth, boxHeight)
-                : MSDFBitmap.allocMsdf(boxWidth, boxHeight);
-        MSDFTransform transform = new MSDFTransform()
-                .scale(scale)
-                .translate(tx, ty)
-                .range(-rangeInShapeUnits, rangeInShapeUnits);
         try {
-            if (config.isMtsdf()) {
-                MSDFGenerator.generateMtsdf(bitmap, shape, transform,
-                        config.isOverlapSupport(),
-                        config.getErrorCorrectionMode(),
-                        config.getDistanceCheckMode(),
-                        config.getMinDeviationRatio(),
-                        config.getMinImproveRatio());
-            } else {
-                MSDFGenerator.generateMsdf(bitmap, shape, transform,
-                        config.isOverlapSupport(),
-                        config.getErrorCorrectionMode(),
-                        config.getDistanceCheckMode(),
-                        config.getMinDeviationRatio(),
-                        config.getMinImproveRatio());
+            if (shape.getEdgeCount() == 0) {
+                return CgGlyphGenerationResult.emptyMsdf(sourceFontKey, key, atlasKey, config.pxRange());
+            }
+            prepareShapeForMsdf(shape, key.getGlyphId(), config);
+
+            int targetPx = config.atlasScalePx();
+            double[] bounds = shape.getBounds();
+            if (config.miterLimit() > 0.0f) {
+                double border = (config.pxRange() * 0.5) / targetPx;
+                bounds = shape.getBoundsMiters(bounds, border, config.miterLimit(), 1);
+            }
+            double shapeL = bounds[0];
+            double shapeB = bounds[1];
+            double shapeR = bounds[2];
+            double shapeT = bounds[3];
+
+            CgMsdfGlyphLayout layout = CgMsdfGlyphLayout.compute(
+                    shapeL, shapeB, shapeR, shapeT,
+                    targetPx,
+                    config.pxRange(),
+                    config.miterLimit(),
+                    config.alignOriginX(),
+                    config.alignOriginY());
+
+            if (layout.isEmpty()) {
+                return CgGlyphGenerationResult.emptyMsdf(sourceFontKey, key, atlasKey, config.pxRange());
             }
 
-            float[] pixelData = bitmap.getPixelData();
-            int channels = config.isMtsdf() ? 4 : 3;
-            flipRows(pixelData, boxWidth, boxHeight, channels);
+            int boxWidth = layout.getBoxWidth();
+            int boxHeight = layout.getBoxHeight();
+            double scale = layout.getScale();
+            double tx = layout.getTranslateX();
+            double ty = layout.getTranslateY();
+            double rangeInShapeUnits = layout.getRangeInShapeUnits();
 
-            float bearingX = (float) (layout.getPlaneLeft() * scale);
-            float bearingY = (float) (layout.getPlaneTop() * scale);
-            float planeLeft = (float) (layout.getPlaneLeft() * scale);
-            float planeBottom = (float) (layout.getPlaneBottom() * scale);
-            float planeRight = (float) (layout.getPlaneRight() * scale);
-            float planeTop = (float) (layout.getPlaneTop() * scale);
-            float metricsWidth = (float) ((shapeR - shapeL) * scale);
-            float metricsHeight = (float) ((shapeT - shapeB) * scale);
+            MSDFBitmap bitmap = config.mtsdf()
+                    ? MSDFBitmap.allocMtsdf(boxWidth, boxHeight)
+                    : MSDFBitmap.allocMsdf(boxWidth, boxHeight);
+            MSDFTransform transform = new MSDFTransform()
+                    .scale(scale)
+                    .translate(tx, ty)
+                    .range(-rangeInShapeUnits, rangeInShapeUnits);
+            try {
+                if (config.mtsdf()) {
+                    MSDFGenerator.generateMtsdf(bitmap, shape, transform,
+                            config.overlapSupport(),
+                            config.errorCorrectionMode(),
+                            config.distanceCheckMode(),
+                            config.minDeviationRatio(),
+                            config.minImproveRatio());
+                } else {
+                    MSDFGenerator.generateMsdf(bitmap, shape, transform,
+                            config.overlapSupport(),
+                            config.errorCorrectionMode(),
+                            config.distanceCheckMode(),
+                            config.minDeviationRatio(),
+                            config.minImproveRatio());
+                }
 
-            return CgGlyphGenerationResult.msdf(sourceFontKey, key, atlasKey, pixelData, boxWidth, boxHeight,
-                    bearingX, bearingY,
-                    planeLeft, planeBottom, planeRight, planeTop,
-                    metricsWidth, metricsHeight, config.getPxRange());
+                float[] pixelData = bitmap.getPixelData();
+                int channels = config.mtsdf() ? 4 : 3;
+                flipRows(pixelData, boxWidth, boxHeight, channels);
+
+                float bearingX = (float) (layout.getPlaneLeft() * scale);
+                float bearingY = (float) (layout.getPlaneTop() * scale);
+                float planeLeft = (float) (layout.getPlaneLeft() * scale);
+                float planeBottom = (float) (layout.getPlaneBottom() * scale);
+                float planeRight = (float) (layout.getPlaneRight() * scale);
+                float planeTop = (float) (layout.getPlaneTop() * scale);
+                float metricsWidth = (float) ((shapeR - shapeL) * scale);
+                float metricsHeight = (float) ((shapeT - shapeB) * scale);
+
+                return CgGlyphGenerationResult.msdf(sourceFontKey, key, atlasKey, pixelData, boxWidth, boxHeight,
+                        bearingX, bearingY,
+                        planeLeft, planeBottom, planeRight, planeTop,
+                        metricsWidth, metricsHeight, config.pxRange());
+            } finally {
+                bitmap.free();
+            }
         } finally {
-            bitmap.free();
+            shape.free();
         }
     }
 
@@ -217,8 +231,8 @@ public class CgMsdfGenerator {
     }
 
     public static void applyEdgeColoring(MSDFShape shape, CgMsdfAtlasConfig config) {
-        CgMsdfEdgeColoringMode mode = config.getEdgeColoringMode();
-        double threshold = config.getEdgeColoringAngleThreshold();
+        CgMsdfEdgeColoringMode mode = config.edgeColoringMode();
+        double threshold = config.edgeColoringAngleThreshold();
         if (mode == CgMsdfEdgeColoringMode.INK_TRAP) {
             shape.edgeColoringInkTrap(threshold);
             return;
@@ -241,7 +255,7 @@ public class CgMsdfGenerator {
             }
         }
         if (!shape.validate()) {
-            LOGGER.log(Level.FINE,
+            LOGGER.log(Level.WARNING,
                     "MSDF shape validation failed for glyph {0}; continuing with normalized shape",
                     Integer.valueOf(glyphId));
         }

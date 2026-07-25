@@ -25,35 +25,7 @@ import com.crystalgraphics.text.render.CgTextScaleResolver;
  * @see CgRasterFontKey
  * @see CgTextScaleResolver
  */
-final class CgRasterGlyphKey {
-
-    private final CgRasterFontKey rasterFontKey;
-    private final int glyphId;
-    private final boolean msdf;
-    private final int subPixelBucket;
-
-    CgRasterGlyphKey(CgRasterFontKey rasterFontKey, int glyphId, boolean msdf, int subPixelBucket) {
-        this.rasterFontKey = rasterFontKey;
-        this.glyphId = glyphId;
-        this.msdf = msdf;
-        this.subPixelBucket = subPixelBucket;
-    }
-
-    CgRasterFontKey getRasterFontKey() {
-        return rasterFontKey;
-    }
-
-    int getGlyphId() {
-        return glyphId;
-    }
-
-    boolean isMsdf() {
-        return msdf;
-    }
-
-    int getSubPixelBucket() {
-        return subPixelBucket;
-    }
+record CgRasterGlyphKey(CgRasterFontKey rasterFontKey, int glyphId, boolean msdf, int subPixelBucket) {
 
     @Override
     public boolean equals(Object o) {
@@ -64,15 +36,6 @@ final class CgRasterGlyphKey {
                 && msdf == that.msdf
                 && subPixelBucket == that.subPixelBucket
                 && rasterFontKey.equals(that.rasterFontKey);
-    }
-
-    @Override
-    public int hashCode() {
-        int result = rasterFontKey.hashCode();
-        result = 31 * result + glyphId;
-        result = 31 * result + (msdf ? 1 : 0);
-        result = 31 * result + subPixelBucket;
-        return result;
     }
 
     @Override

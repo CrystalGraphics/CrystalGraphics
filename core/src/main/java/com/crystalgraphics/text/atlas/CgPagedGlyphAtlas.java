@@ -5,6 +5,7 @@ import com.crystalgraphics.api.font.CgGlyphPlacement;
 import com.crystalgraphics.text.atlas.packing.CgGuillotinePacker;
 import com.crystalgraphics.text.atlas.packing.MaxRectsPacker;
 import com.crystalgraphics.text.atlas.packing.CgPackingStrategy;
+import lombok.Getter;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -94,15 +95,46 @@ public class CgPagedGlyphAtlas {
 
     // ── Instance fields ────────────────────────────────────────────────
 
+    /**
+     * -- GETTER --
+     * Returns the page width in pixels. 
+     */
+    @Getter
     private final int pageWidth;
+    /**
+     * -- GETTER --
+     * Returns the page height in pixels. 
+     */
+    @Getter
     private final int pageHeight;
+    /**
+     * -- GETTER --
+     * Returns the atlas type. 
+     */
+    @Getter
     private final CgGlyphAtlas.Type type;
     private final PackerFactory packerFactory;
     private final boolean skipGlUpload;
     private final int spacingPx;
+    /**
+     * -- GETTER --
+     * Returns the configured page budget, or 
+     *  if unbounded. 
+     */
+    @Getter
     private final int maxPages;
 
+    /**
+     * -- GETTER --
+     * Returns the list of all pages (read-only intent). 
+     */
+    @Getter
     private final List<CgGlyphAtlasPage> pages;
+    /**
+     * -- GETTER --
+     * Whether this atlas is deleted. 
+     */
+    @Getter
     private boolean deleted;
 
     // Monotonic — never reused, even after eviction removes a page from `pages`.
@@ -337,11 +369,6 @@ public class CgPagedGlyphAtlas {
         return pages.size();
     }
 
-    /** Returns the list of all pages (read-only intent). */
-    public List<CgGlyphAtlasPage> getPages() {
-        return pages;
-    }
-
     /**
      * Returns the first page with glyphs, or {@code null} if none exist.
      * For backward compatibility with single-page dump code.
@@ -355,18 +382,6 @@ public class CgPagedGlyphAtlas {
         return null;
     }
 
-    /** Returns the page width in pixels. */
-    public int getPageWidth() { return pageWidth; }
-
-    /** Returns the page height in pixels. */
-    public int getPageHeight() { return pageHeight; }
-
-    /** Returns the atlas type. */
-    public CgGlyphAtlas.Type getType() { return type; }
-
-    /** Whether this atlas is deleted. */
-    public boolean isDeleted() { return deleted; }
-
     /**
      * Returns the total number of glyphs across all pages.
      */
@@ -377,9 +392,6 @@ public class CgPagedGlyphAtlas {
         }
         return total;
     }
-
-    /** Returns the configured page budget, or {@link #UNBOUNDED_PAGES} if unbounded. */
-    public int getMaxPages() { return maxPages; }
 
     // ── LRU tick ───────────────────────────────────────────────────────
 
