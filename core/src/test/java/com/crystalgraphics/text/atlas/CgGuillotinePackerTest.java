@@ -26,13 +26,13 @@ public class CgGuillotinePackerTest {
         PackedRect r = packer.insert(16, 24, "test");
 
         assertNotNull(r);
-        assertEquals(16, r.getWidth());
-        assertEquals(24, r.getHeight());
-        assertEquals("test", r.getId());
-        assertTrue(r.getX() >= 0);
-        assertTrue(r.getY() >= 0);
-        assertTrue(r.getX() + r.getWidth() <= 256);
-        assertTrue(r.getY() + r.getHeight() <= 256);
+        assertEquals(16, r.width());
+        assertEquals(24, r.height());
+        assertEquals("test", r.id());
+        assertTrue(r.x() >= 0);
+        assertTrue(r.y() >= 0);
+        assertTrue(r.x() + r.width() <= 256);
+        assertTrue(r.y() + r.height() <= 256);
     }
 
     @Test
@@ -54,10 +54,10 @@ public class CgGuillotinePackerTest {
 
         for (int i = 0; i < packed.size(); i++) {
             PackedRect a = packed.get(i);
-            assertTrue(a.getX() >= 0);
-            assertTrue(a.getY() >= 0);
-            assertTrue(a.getX() + a.getWidth() <= 1024);
-            assertTrue(a.getY() + a.getHeight() <= 1024);
+            assertTrue(a.x() >= 0);
+            assertTrue(a.y() >= 0);
+            assertTrue(a.x() + a.width() <= 1024);
+            assertTrue(a.y() + a.height() <= 1024);
 
             for (int j = i + 1; j < packed.size(); j++) {
                 PackedRect b = packed.get(j);
@@ -233,11 +233,11 @@ public class CgGuillotinePackerTest {
     }
 
     private static boolean rectsOverlap(PackedRect a, PackedRect b) {
-        int ax2 = a.getX() + a.getWidth();
-        int ay2 = a.getY() + a.getHeight();
-        int bx2 = b.getX() + b.getWidth();
-        int by2 = b.getY() + b.getHeight();
-        return a.getX() < bx2 && ax2 > b.getX()
-                && a.getY() < by2 && ay2 > b.getY();
+        int ax2 = a.x() + a.width();
+        int ay2 = a.y() + a.height();
+        int bx2 = b.x() + b.width();
+        int by2 = b.y() + b.height();
+        return a.x() < bx2 && ax2 > b.x()
+                && a.y() < by2 && ay2 > b.y();
     }
 }

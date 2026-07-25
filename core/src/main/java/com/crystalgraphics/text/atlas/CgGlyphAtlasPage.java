@@ -228,7 +228,7 @@ public class CgGlyphAtlasPage {
             return null;
         }
 
-        uploadBitmap(packed.getX(), packed.getY(), width, height, bitmapData);
+        uploadBitmap(packed.x(), packed.y(), width, height, bitmapData);
 
         CgGlyphPlacement placement = buildPlacement(
                 packed, key, bearingX, bearingY,
@@ -260,7 +260,7 @@ public class CgGlyphAtlasPage {
             return null;
         }
 
-        uploadMsdf(packed.getX(), packed.getY(), width, height, msdfData);
+        uploadMsdf(packed.x(), packed.y(), width, height, msdfData);
 
         CgGlyphPlacement placement = buildPlacement(
                 packed, key, bearingX, bearingY,
@@ -296,7 +296,7 @@ public class CgGlyphAtlasPage {
     public long getPackedArea() {
         long area = 0;
         for (SlotEntry entry : slotMap.values()) {
-            area += (long) entry.packed.getWidth() * entry.packed.getHeight();
+            area += (long) entry.packed.width() * entry.packed.height();
         }
         return area;
     }
@@ -332,10 +332,10 @@ public class CgGlyphAtlasPage {
                                              float planeRight, float planeTop,
                                              float metricsWidth, float metricsHeight,
                                              float pxRange) {
-        int px = packed.getX();
-        int py = packed.getY();
-        int pw = packed.getWidth();
-        int ph = packed.getHeight();
+        int px = packed.x();
+        int py = packed.y();
+        int pw = packed.width();
+        int ph = packed.height();
 
         boolean distanceField = type != CgGlyphAtlas.Type.BITMAP;
         float insetX = distanceField && pw > 1 ? 0.5f : 0.0f;
