@@ -33,6 +33,7 @@ import lombok.Getter;
  *   <li>{@link #RGBA8_NEAREST_MIRRORED} — 8-bit RGBA, nearest, mirrored-repeat</li>
  *   <li>{@link #R8_LINEAR_REPEAT} — 8-bit R, linear, repeat</li>
  *   <li>{@link #R8_NEAREST_REPEAT} — 8-bit R, nearest, repeat</li>
+ *   <li>{@link #R8_NEAREST} — 8-bit R, nearest filter, clamp wrap (glyph bitmap atlases)</li>
  *   <li>{@link #RGBA16F_LINEAR} — 16-bit float RGBA, linear filter (HDR)</li>
  *   <li>{@link #DEPTH24_SHADOW} — 24-bit depth with hardware PCF (shadow map sampling)</li>
  * </ul>
@@ -159,12 +160,23 @@ public final class CgTextureSpec {
             .wrapS(CgGL.GL_MIRRORED_REPEAT).wrapT(CgGL.GL_MIRRORED_REPEAT).wrapR(CgGL.GL_MIRRORED_REPEAT)
             .build();
 
+    
     /** 8-bit R, linear filtering, repeat. For single-channel data (noise, masks, heightmaps). */
     public static final CgTextureSpec R8_LINEAR_REPEAT = CgTextureSpec.builder()
             .type(CgTextureType.R8)
             .wrapS(CgGL.GL_REPEAT).wrapT(CgGL.GL_REPEAT).wrapR(CgGL.GL_REPEAT)
             .build();
-
+    
+    /**
+     * 8-bit R, nearest filtering, clamp-to-edge. Single-channel data that must not
+     * blend across texel boundaries — e.g. bitmap glyph atlas pages, where filtering
+     * would smear pixel-exact coverage data.
+     */
+    public static final CgTextureSpec R8_NEAREST = CgTextureSpec.builder()
+            .type(CgTextureType.R8)
+            .minFilter(CgGL.GL_NEAREST).magFilter(CgGL.GL_NEAREST)
+            .build();
+    
     /** 8-bit R, nearest filtering, repeat. For single-channel data (noise, masks, heightmaps). */
     public static final CgTextureSpec R8_NEAREST_REPEAT = CgTextureSpec.builder()
             .type(CgTextureType.R8)
@@ -172,7 +184,11 @@ public final class CgTextureSpec {
             .wrapS(CgGL.GL_REPEAT).wrapT(CgGL.GL_REPEAT).wrapR(CgGL.GL_REPEAT)
             .build();
 
-    /** 16-bit float RGBA, linear filtering. HDR / intermediate render targets. */
+    /**
+     * 16-bit float RGBA, linear filtering, clamp-to-edge. HDR / intermediate render
+     * targets — also used for distance-field (MSDF/MTSDF) glyph atlas pages, where
+     * the alpha channel is left unused/undefined for MSDF.
+     */
     public static final CgTextureSpec RGBA16F_LINEAR =
             CgTextureType.RGBA16F.toTextureSpec();
 

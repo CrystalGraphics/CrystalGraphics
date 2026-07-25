@@ -2,11 +2,12 @@ package com.crystalgraphics.text.atlas;
 
 import com.crystalgraphics.api.font.CgGlyphKey;
 import com.crystalgraphics.api.font.CgGlyphPlacement;
+import com.crystalgraphics.gl.texture.CgTexture2DArray;
+import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.text.atlas.packing.CgPackingStrategy;
 import com.crystalgraphics.text.atlas.packing.PackedRect;
 
 import com.crystalgraphics.util.CgBufferUtils;
-import com.crystalgraphics.platform.gl.CgGL;
 import lombok.Getter;
 
 import java.nio.ByteBuffer;
@@ -17,20 +18,24 @@ import java.util.Set;
 import java.util.logging.Logger;
 
 /**
- * A single atlas page within a {@link CgPagedGlyphAtlas}.
+ * A single atlas page within a {@link CgPagedGlyphAtlas} — one layer of the
+ * atlas family's shared {@link CgTexture2DArray}, plus one packing strategy
+ * instance. Glyph placements within a page are <strong>stable</strong>: once
+ * a glyph is allocated, its position never changes. There is no
+ * <em>slot-level</em> eviction within a page — when a page is full, the
+ * paged atlas allocates a new page (a fresh layer, or a reused layer freed by
+ * whole-page eviction — see {@link CgPagedGlyphAtlas}).
  *
- * <p>Each page owns one GL texture and one packing strategy instance. Glyph
- * placements within a page are <strong>stable</strong>: once a glyph is
- * allocated, its position never changes. There is no <em>slot-level</em>
- * eviction within a page — when a page is full, the paged atlas allocates a
- * new page. {@link CgPagedGlyphAtlas} may still evict this page as a whole
- * (all its slots at once) once the atlas is over its page budget; see
- * {@link #getLastTouchedFrame()}.</p>
- *
- * <h3>GL Texture</h3>
- * <p>The page texture is allocated lazily on first use or eagerly via
- * {@link #create(int, int, CgGlyphAtlas.Type, int, CgPackingStrategy)}.
- * Format is either {@code GL_R8} (bitmap) or {@code GL_RGB16F} (MSDF).</p>
+ * <h3>Ownership</h3>
+ * <p>Unlike the pre-array-migration version of this class, a page owns
+ * <strong>no GL resource of its own</strong> — the GL texture (the array) is
+ * owned once by the parent {@link CgPagedGlyphAtlas}. A page is just a
+ * {@code (layerIndex, CgPackingStrategy)} pair that knows how to upload into
+ * its one assigned layer of the shared array via
+ * {@link CgTexture2DArray#uploadLayerRegion}. {@link #delete()} therefore
+ * does not free any GL object — it only clears this page's own bookkeeping,
+ * since the array texture itself outlives any individual page/layer being
+ * evicted and reused.</p>
  *
  * <h3>Thread Safety</h3>
  * <p>Not thread-safe. Must only be used from the GL context thread.</p>
@@ -41,29 +46,18 @@ public class CgGlyphAtlasPage {
 
     private static final Logger LOGGER = Logger.getLogger(CgGlyphAtlasPage.class.getName());
 
-    // ── GL constants ───────────────────────────────────────────────────
-    private static final int GL_TEXTURE_2D         = 0x0DE1;
-    private static final int GL_R8                 = 0x8229;
-    private static final int GL_RED                = 0x1903;
-    private static final int GL_RGB                = 0x1907;
-    private static final int GL_RGBA               = 0x1908;
-    private static final int GL_RGB16F             = 0x881B;
-    private static final int GL_RGBA16F            = 0x881A;
-    private static final int GL_UNSIGNED_BYTE      = 0x1401;
-    private static final int GL_FLOAT              = 0x1406;
-    private static final int GL_TEXTURE_MIN_FILTER = 0x2801;
-    private static final int GL_TEXTURE_MAG_FILTER = 0x2800;
-    private static final int GL_TEXTURE_WRAP_S     = 0x2802;
-    private static final int GL_TEXTURE_WRAP_T     = 0x2803;
-    private static final int GL_NEAREST            = 0x2600;
-    private static final int GL_LINEAR             = 0x2601;
-    private static final int GL_CLAMP_TO_EDGE      = 0x812F;
-    private static final int GL_UNPACK_ALIGNMENT   = 0x0CF5;
+    // ── GL constants (upload-format only — no texture-object constants needed anymore) ──
+    private static final int GL_RED           = CgGL.GL_RED;
+    private static final int GL_RGB           = CgGL.GL_RGB;
+    private static final int GL_RGBA          = CgGL.GL_RGBA;
+    private static final int GL_UNSIGNED_BYTE = CgGL.GL_UNSIGNED_BYTE;
+    private static final int GL_FLOAT         = CgGL.GL_FLOAT;
 
     private static final int INITIAL_UPLOAD_BUFFER_SIZE = 64 * 64;
 
     // ── Instance fields ────────────────────────────────────────────────
 
+    /** Index of this page's layer within the owning atlas's array texture. */
     @Getter
     private final int pageIndex;
     @Getter
@@ -73,10 +67,10 @@ public class CgGlyphAtlasPage {
     @Getter
     private final CgGlyphAtlas.Type type;
     private final CgPackingStrategy packer;
-    private final boolean skipGlUpload;
 
-    @Getter
-    private int textureId;
+    /** The owning atlas's shared array texture. {@code null} in {@link #createForTest} mode. */
+    private final CgTexture2DArray arrayTexture;
+
     @Getter
     private boolean deleted;
 
@@ -85,17 +79,6 @@ public class CgGlyphAtlasPage {
      * i.e. how recently this whole page was last touched. Used by
      * {@link CgPagedGlyphAtlas}'s page-budget eviction to pick the coldest page,
      * without scanning every page's slot map on every allocation.
-     * -- GETTER --
-     *  Returns the highest 
-     *  any glyph on this page was
-     *  touched at (a cache hit via 
-     *  or the frame it was first
-     *  allocated), or 
-     *  if the page has never been touched. Used by
-     *
-     *  to identify the coldest page for page-budget
-     *  eviction.
-
      */
     @Getter
     private long lastTouchedFrame = -1;
@@ -108,23 +91,20 @@ public class CgGlyphAtlasPage {
     // ── Constructor (use factory methods) ──────────────────────────────
 
     private CgGlyphAtlasPage(int pageIndex, int pageWidth, int pageHeight,
-                             CgGlyphAtlas.Type type, int textureId,
-                             boolean skipGlUpload, CgPackingStrategy packer) {
+                             CgGlyphAtlas.Type type, CgTexture2DArray arrayTexture,
+                             CgPackingStrategy packer) {
         this.pageIndex = pageIndex;
         this.pageWidth = pageWidth;
         this.pageHeight = pageHeight;
         this.type = type;
-        this.textureId = textureId;
-        this.skipGlUpload = skipGlUpload;
+        this.arrayTexture = arrayTexture;
         this.packer = packer;
         this.deleted = false;
-        this.slotMap = new HashMap<CgGlyphKey, SlotEntry>();
+        this.slotMap = new HashMap<>();
 
-        if (!skipGlUpload) {
+        if (arrayTexture != null) {
             if (type == CgGlyphAtlas.Type.BITMAP) {
                 this.uploadBuffer = CgBufferUtils.createByteBuffer(INITIAL_UPLOAD_BUFFER_SIZE);
-            } else if (type == CgGlyphAtlas.Type.MTSDF) {
-                this.msdfUploadBuffer = CgBufferUtils.createFloatBuffer(64 * 64 * 4);
             } else {
                 this.msdfUploadBuffer = CgBufferUtils.createFloatBuffer(64 * 64 * 4);
             }
@@ -134,61 +114,36 @@ public class CgGlyphAtlasPage {
     // ── Factory ────────────────────────────────────────────────────────
 
     /**
-     * Creates a new atlas page with a GL texture. Requires a GL context.
+     * Creates a new atlas page backed by layer {@code atlasPageIndex} of
+     * {@code arrayTexture}. The array itself must already be allocated by the
+     * caller ({@link CgPagedGlyphAtlas} owns it) — this only records which
+     * layer this page uploads into.
      *
-     * @param pageWidth  page width in pixels
-     * @param pageHeight page height in pixels
-     * @param type       bitmap or MSDF
-     * @param pageIndex  index within the paged atlas
-     * @param packer     packing strategy to use for this page
+     * @param pageWidth    layer width in pixels
+     * @param pageHeight   layer height in pixels
+     * @param type         bitmap or MSDF/MTSDF
+     * @param pageIndex    layer index within {@code arrayTexture}
+     * @param arrayTexture the owning atlas's shared array texture (never null here)
+     * @param packer       packing strategy to use for this page
      * @return a new page instance
      */
     public static CgGlyphAtlasPage create(int pageWidth, int pageHeight,
                                            CgGlyphAtlas.Type type, int pageIndex,
+                                           CgTexture2DArray arrayTexture,
                                            CgPackingStrategy packer) {
-        int texId = CgGL.glGenTextures();
-        CgGL.glBindTexture(GL_TEXTURE_2D, texId);
-
-        if (type == CgGlyphAtlas.Type.BITMAP) {
-            int prevAlignment = CgGL.glGetInteger(GL_UNPACK_ALIGNMENT);
-            CgGL.glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-            CgGL.glTexImage2D(GL_TEXTURE_2D, 0, GL_R8,
-                    pageWidth, pageHeight, 0,
-                    GL_RED, GL_UNSIGNED_BYTE, CgBufferUtils.createByteBuffer(pageWidth * pageHeight));
-            CgGL.glPixelStorei(GL_UNPACK_ALIGNMENT, prevAlignment);
-        } else if (type == CgGlyphAtlas.Type.MTSDF) {
-            CgGL.glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F,
-                    pageWidth, pageHeight, 0,
-                    GL_RGBA, GL_FLOAT, CgBufferUtils.createFloatBuffer(pageWidth * pageHeight * 4));
-        } else {
-            CgGL.glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F,
-                    pageWidth, pageHeight, 0,
-                    GL_RGB, GL_FLOAT, CgBufferUtils.createFloatBuffer(pageWidth * pageHeight * 3));
+        if (arrayTexture == null) {
+            throw new IllegalArgumentException("arrayTexture must not be null for a real (non-test) page");
         }
-
-        if (type == CgGlyphAtlas.Type.BITMAP) {
-            CgGL.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-            CgGL.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        } else {
-            CgGL.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            CgGL.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        }
-        CgGL.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        CgGL.glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        CgGL.glBindTexture(GL_TEXTURE_2D, 0);
-
-        return new CgGlyphAtlasPage(pageIndex, pageWidth, pageHeight,
-                type, texId, false, packer);
+        return new CgGlyphAtlasPage(pageIndex, pageWidth, pageHeight, type, arrayTexture, packer);
     }
 
     /**
-     * Creates a test-mode page that skips GL calls.
+     * Creates a test-mode page that skips all GL calls (no array texture).
      */
     static CgGlyphAtlasPage createForTest(int pageWidth, int pageHeight,
                                            CgGlyphAtlas.Type type, int pageIndex,
                                            CgPackingStrategy packer) {
-        return new CgGlyphAtlasPage(pageIndex, pageWidth, pageHeight,
-                type, 0, true, packer);
+        return new CgGlyphAtlasPage(pageIndex, pageWidth, pageHeight, type, null, packer);
     }
 
     // ── Core API ───────────────────────────────────────────────────────
@@ -286,6 +241,15 @@ public class CgGlyphAtlasPage {
 
     // ── Queries ────────────────────────────────────────────────────────
 
+    /**
+     * Returns the GL texture id of the owning atlas's shared array texture
+     * (the same id for every page/layer of this atlas family), or {@code 0}
+     * in test mode.
+     */
+    public int getTextureId() {
+        return arrayTexture != null ? arrayTexture.getId() : 0;
+    }
+
     /** Returns the number of glyphs currently stored in this page. */
     public int getSlotCount() { return slotMap.size(); }
 
@@ -309,17 +273,18 @@ public class CgGlyphAtlasPage {
     // ── Deletion ───────────────────────────────────────────────────────
 
     /**
-     * Deletes the GL texture and clears all slot tracking.
-     * Subsequent calls are no-ops.
+     * Clears this page's bookkeeping (slot map, packer state stays as-is —
+     * the caller replaces this page object entirely rather than reusing it).
+     * Frees no GL resource — the array texture is owned by the parent
+     * {@link CgPagedGlyphAtlas} and outlives individual evicted pages; its
+     * layer is simply reassigned to whatever page reuses this layer index
+     * next, letting new uploads overwrite the pixels this page's glyphs used
+     * to occupy. Subsequent calls are no-ops.
      */
     public void delete() {
         if (deleted) {
             return;
         }
-        if (!skipGlUpload) {
-            CgGL.glDeleteTextures(textureId);
-        }
-        textureId = 0;
         slotMap.clear();
         deleted = true;
     }
@@ -371,7 +336,7 @@ public class CgGlyphAtlasPage {
         int atlasTop = py;
 
         return new CgGlyphPlacement(
-                key, pageIndex, textureId, type,
+                key, getTextureId(), pageIndex, type,
                 resolvedPlaneLeft, resolvedPlaneBottom, resolvedPlaneRight, resolvedPlaneTop,
                 atlasLeft, atlasBottom, atlasRight, atlasTop,
                 u0, v0, u1, v1,
@@ -379,10 +344,10 @@ public class CgGlyphAtlasPage {
         );
     }
 
-    // ── Internal: GL upload ────────────────────────────────────────────
+    // ── Internal: array-layer upload ────────────────────────────────────
 
     private void uploadBitmap(int x, int y, int w, int h, byte[] data) {
-        if (skipGlUpload) {
+        if (arrayTexture == null) {
             return;
         }
         int required = w * h;
@@ -393,19 +358,19 @@ public class CgGlyphAtlasPage {
         uploadBuffer.put(data, 0, required);
         uploadBuffer.flip();
 
-        CgGL.glBindTexture(GL_TEXTURE_2D, textureId);
-        int prevAlignment = CgGL.glGetInteger(GL_UNPACK_ALIGNMENT);
-        CgGL.glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        CgGL.glTexSubImage2D(GL_TEXTURE_2D, 0, x, y, w, h,
-                GL_RED, GL_UNSIGNED_BYTE, uploadBuffer);
-        CgGL.glPixelStorei(GL_UNPACK_ALIGNMENT, prevAlignment);
-        CgGL.glBindTexture(GL_TEXTURE_2D, 0);
+        arrayTexture.uploadLayerRegion(pageIndex, x, y, w, h, GL_RED, GL_UNSIGNED_BYTE, uploadBuffer);
     }
 
     private void uploadMsdf(int x, int y, int w, int h, float[] data) {
-        if (skipGlUpload) {
+        if (arrayTexture == null) {
             return;
         }
+        // Client-side upload format matches what CgMsdfGenerator actually produces
+        // (3 floats/pixel for MSDF, 4 for MTSDF) — independent of the array's
+        // unified RGBA16F internal storage format (see CgPagedGlyphAtlas javadoc).
+        // For plain MSDF this leaves the destination alpha channel untouched
+        // (undefined initial content from the empty allocation); harmless, since
+        // text.shader's MSDF path only ever reads .rgb.
         int channels = (type == CgGlyphAtlas.Type.MTSDF) ? 4 : 3;
         int glFormat = (type == CgGlyphAtlas.Type.MTSDF) ? GL_RGBA : GL_RGB;
         int required = w * h * channels;
@@ -416,10 +381,7 @@ public class CgGlyphAtlasPage {
         msdfUploadBuffer.put(data, 0, required);
         msdfUploadBuffer.flip();
 
-        CgGL.glBindTexture(GL_TEXTURE_2D, textureId);
-        CgGL.glTexSubImage2D(GL_TEXTURE_2D, 0, x, y, w, h,
-                glFormat, GL_FLOAT, msdfUploadBuffer);
-        CgGL.glBindTexture(GL_TEXTURE_2D, 0);
+        arrayTexture.uploadLayerRegion(pageIndex, x, y, w, h, glFormat, GL_FLOAT, msdfUploadBuffer);
     }
 
     private void checkNotDeleted() {

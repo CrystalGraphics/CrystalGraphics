@@ -25,13 +25,14 @@ Tags {
 Queue = "Overlay"
 
 Properties {
-    _MainTex ("Atlas Texture", sampler2D) = "white"
+    _MainTex ("Atlas Texture", sampler2DArray) = "white"
     _PxRange ("MSDF/MTSDF Pixel Range",  float) = 0.0
 }
 
 struct v2f {
     vec2 uv;
     vec4 color;
+    float atlasLayer;
 };
 
 Pass {
@@ -65,16 +66,18 @@ Pass {
     // clobber whatever the real frame projection is for anything else sharing that frame.
     void vertex(out v2f o) {
         gl_Position = u_Projection * vec4(CG_QUAD_WORLD_POS, 1.0);
-        o.uv    = CG_QUAD_UV;
-        o.color = CG_QUAD_COLOR;
+        o.uv         = CG_QUAD_UV;
+        o.color      = CG_QUAD_COLOR;
+        o.atlasLayer = CG_QUAD_ATLAS_LAYER;
     }
 
     void fragment(in v2f i, out vec4 fragColor) {
+        vec3 uvw = vec3(i.uv, i.atlasLayer);
 #ifdef MSDF_MODE
-        vec3 field = texture(_MainTex, i.uv).rgb;
+        vec3 field = texture(_MainTex, uvw).rgb;
         float signedDistance = max(min(field.r, field.g), min(max(field.r, field.g), field.b));
 
-        vec2 atlasSize = vec2(textureSize(_MainTex, 0));
+        vec2 atlasSize = vec2(textureSize(_MainTex, 0).xy);
         vec2 unitRange = vec2(_PxRange) / atlasSize;
         vec2 uvFwidth = max(fwidth(i.uv), vec2(1.0e-6));
         vec2 screenTexSize = vec2(1.0) / uvFwidth;
@@ -88,7 +91,7 @@ Pass {
 
         fragColor = vec4(i.color.rgb, alpha);
 #else
-        float alpha = texture(_MainTex, i.uv).r * i.color.a;
+        float alpha = texture(_MainTex, uvw).r * i.color.a;
         fragColor = vec4(i.color.rgb, alpha);
 #endif
     }

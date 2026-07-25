@@ -110,13 +110,25 @@ uniform sampler2D cg_DepthBuffer;
 // normal is fully derivable from data already present; no per-instance normal field is stored
 // (nothing to desync from the actual right/up if only one were ever updated).
 //
+// CG_QUAD_ATLAS_LAYER — sampler2DArray layer index for atlas-backed quad consumers (e.g.
+// text.shader). 0 for ordinary sampler2D consumers, which never reference this macro at
+// all. Not bridged as a `flat` fragment-stage varying the way CG_INSTANCE_ID is: every
+// vertex of one quad instance writes the textually identical QUAD_DATA(...).atlasLayer
+// value (a true per-instance constant, not a per-vertex quantity), so interpolating
+// across the quad's two triangles reproduces that same value everywhere — there is no
+// per-vertex data to lose by not marking it flat. (The .shader v2f struct DSL has no
+// flat-qualifier syntax to ask for regardless — see CgMaterialShaderCompiler, which only
+// wires one compiler-generated flat varying, cg_InstanceId itself.)
+//
 //   gl_Position = cg_ProjMatrix * vec4(CG_QUAD_WORLD_POS, 1.0);
 //   o.uv = CG_QUAD_UV;
 //   o.color = CG_QUAD_COLOR;
 //   o.normalWs = CG_QUAD_NORMAL;
+//   o.atlasLayer = CG_QUAD_ATLAS_LAYER;
 #define CG_QUAD_WORLD_POS (QUAD_DATA(CG_INSTANCE_ID).origin + cg_Position.x * QUAD_DATA(CG_INSTANCE_ID).right + cg_Position.y * QUAD_DATA(CG_INSTANCE_ID).up)
 #define CG_QUAD_UV (mix(QUAD_DATA(CG_INSTANCE_ID).uv0, QUAD_DATA(CG_INSTANCE_ID).uv1, cg_TexCoord0))
 #define CG_QUAD_COLOR (QUAD_DATA(CG_INSTANCE_ID).color)
 #define CG_QUAD_NORMAL (normalize(cross(QUAD_DATA(CG_INSTANCE_ID).right, QUAD_DATA(CG_INSTANCE_ID).up)))
+#define CG_QUAD_ATLAS_LAYER (QUAD_DATA(CG_INSTANCE_ID).atlasLayer)
 
 
