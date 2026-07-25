@@ -4,6 +4,7 @@ import com.crystalgraphics.api.font.CgFontStyle;
 import com.crystalgraphics.api.font.CgFontKey;
 import com.crystalgraphics.text.render.CgTextRenderer;
 import com.crystalgraphics.text.render.CgTextScaleResolver;
+import lombok.Getter;
 
 /**
  * Cache-internal discriminator for effective-size-aware glyph/atlas lookup.
@@ -39,6 +40,13 @@ import com.crystalgraphics.text.render.CgTextScaleResolver;
  */
 public final class CgRasterFontKey {
 
+    /**
+     * -- GETTER --
+     *  Returns the base font identity (path + style + original targetPx).
+     *  <p>This is the only accessor exposed outside the cache package.
+     *  External consumers should not need the effective pixel size directly.</p>
+     */
+    @Getter
     private final CgFontKey baseFontKey;
     private final int effectiveTargetPx;
 
@@ -48,16 +56,6 @@ public final class CgRasterFontKey {
         }
         this.baseFontKey = baseFontKey;
         this.effectiveTargetPx = effectiveTargetPx;
-    }
-
-    /**
-     * Returns the base font identity (path + style + original targetPx).
-     *
-     * <p>This is the only accessor exposed outside the cache package.
-     * External consumers should not need the effective pixel size directly.</p>
-     */
-    public CgFontKey getBaseFontKey() {
-        return baseFontKey;
     }
 
     // ── Package-private accessors (cache-internal use only) ────────────

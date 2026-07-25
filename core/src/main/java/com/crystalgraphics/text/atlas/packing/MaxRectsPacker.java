@@ -2,6 +2,7 @@ package com.crystalgraphics.text.atlas.packing;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.logging.Logger;
 
 /**
  * Pure-Java 2D bin packing using the MaxRects algorithm with Best Short-Side Fit
@@ -30,6 +31,16 @@ import java.util.List;
  */
 public class MaxRectsPacker implements CgPackingStrategy {
 
+    private static final Logger LOGGER = Logger.getLogger(MaxRectsPacker.class.getName());
+
+    /**
+     * Defensive threshold for the free-rect list size. {@link #pruneContained}
+     * is O(n^2) in free-rect count, so a page/glyph-density combination that
+     * fragments far more than expected degrades quietly with no signal — this
+     * logs once per packer instance instead of leaving it silent.
+     */
+    private static final int FREE_RECT_WARN_THRESHOLD = 2048;
+
     /** Width of the bin in pixels. */
     private final int binWidth;
 
@@ -41,6 +52,9 @@ public class MaxRectsPacker implements CgPackingStrategy {
 
     /** List of packed rectangles currently occupying space. */
     private final List<PackedRect> packedRects;
+
+    /** Whether {@link #FREE_RECT_WARN_THRESHOLD} has already been logged once. */
+    private boolean warnedAboutFreeRectCount;
 
     /**
      * Creates a new packer with the given bin dimensions.
@@ -229,7 +243,7 @@ public class MaxRectsPacker implements CgPackingStrategy {
             }
 
             // Remove overlapping free rect
-            freeRects.remove(i);
+            removeFreeRectAt(i);
 
             // Left remainder
             if (px > free.x) {
@@ -267,11 +281,37 @@ public class MaxRectsPacker implements CgPackingStrategy {
                 if (i == j) continue;
                 Rect b = freeRects.get(j);
                 if (contains(b, a)) {
-                    freeRects.remove(i);
+                    removeFreeRectAt(i);
                     break;
                 }
             }
         }
+
+        if (!warnedAboutFreeRectCount && freeRects.size() > FREE_RECT_WARN_THRESHOLD) {
+            warnedAboutFreeRectCount = true;
+            LOGGER.warning("MaxRectsPacker free-rect list exceeded " + FREE_RECT_WARN_THRESHOLD
+                    + " entries (" + freeRects.size() + ") for a " + binWidth + "x" + binHeight
+                    + " bin — pruneContained() is O(n^2) in free-rect count and packing may be "
+                    + "noticeably slower than expected. This usually means the page size/glyph "
+                    + "density assumptions this packer was tuned for no longer hold.");
+        }
+    }
+
+    /**
+     * Removes the free rect at {@code index} in O(1) by swapping it with the
+     * last element instead of shifting every subsequent element down
+     * ({@link List#remove(int)} on an {@code ArrayList} is O(n)). Safe here
+     * because neither {@link #pruneContained} nor {@link #splitFreeRects}
+     * depend on free-rect array order — both scan every remaining element
+     * regardless of position, so reordering during removal cannot change
+     * which rects survive.
+     */
+    private void removeFreeRectAt(int index) {
+        int lastIndex = freeRects.size() - 1;
+        if (index != lastIndex) {
+            freeRects.set(index, freeRects.get(lastIndex));
+        }
+        freeRects.remove(lastIndex);
     }
 
     /**

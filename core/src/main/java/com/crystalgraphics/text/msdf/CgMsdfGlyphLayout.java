@@ -1,5 +1,7 @@
 package com.crystalgraphics.text.msdf;
 
+import lombok.Getter;
+
 /**
  * Upstream-parity MSDF glyph box computation.
  *
@@ -35,6 +37,7 @@ package com.crystalgraphics.text.msdf;
  *
  * @see CgMsdfGenerator
  */
+@Getter
 public final class CgMsdfGlyphLayout {
 
     // ── Glyph attributes (inputs) ─────────────────────────────────────
@@ -238,25 +241,6 @@ public final class CgMsdfGlyphLayout {
     }
 
     // ── Accessors ─────────────────────────────────────────────────────
-
-    public double getScale() { return scale; }
-    public double getPxRange() { return pxRange; }
-    public double getMiterLimit() { return miterLimit; }
-    public boolean isPxAlignOriginX() { return pxAlignOriginX; }
-    public boolean isPxAlignOriginY() { return pxAlignOriginY; }
-
-    public int getBoxWidth() { return boxWidth; }
-    public int getBoxHeight() { return boxHeight; }
-    public double getTranslateX() { return translateX; }
-    public double getTranslateY() { return translateY; }
-    public double getRangeInShapeUnits() { return rangeInShapeUnits; }
-
-    public double getPlaneLeft() { return planeLeft; }
-    public double getPlaneBottom() { return planeBottom; }
-    public double getPlaneRight() { return planeRight; }
-    public double getPlaneTop() { return planeTop; }
-
-    public boolean isEmpty() { return empty; }
 
     @Override
     public String toString() {

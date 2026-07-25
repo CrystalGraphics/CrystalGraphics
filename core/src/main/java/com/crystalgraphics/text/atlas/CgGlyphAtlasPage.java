@@ -7,6 +7,7 @@ import com.crystalgraphics.text.atlas.packing.PackedRect;
 
 import com.crystalgraphics.util.CgBufferUtils;
 import com.crystalgraphics.platform.gl.CgGL;
+import lombok.Getter;
 
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
@@ -63,14 +64,20 @@ public class CgGlyphAtlasPage {
 
     // ── Instance fields ────────────────────────────────────────────────
 
+    @Getter
     private final int pageIndex;
+    @Getter
     private final int pageWidth;
+    @Getter
     private final int pageHeight;
+    @Getter
     private final CgGlyphAtlas.Type type;
     private final CgPackingStrategy packer;
     private final boolean skipGlUpload;
 
+    @Getter
     private int textureId;
+    @Getter
     private boolean deleted;
 
     /**
@@ -78,7 +85,19 @@ public class CgGlyphAtlasPage {
      * i.e. how recently this whole page was last touched. Used by
      * {@link CgPagedGlyphAtlas}'s page-budget eviction to pick the coldest page,
      * without scanning every page's slot map on every allocation.
+     * -- GETTER --
+     *  Returns the highest 
+     *  any glyph on this page was
+     *  touched at (a cache hit via 
+     *  or the frame it was first
+     *  allocated), or 
+     *  if the page has never been touched. Used by
+     *
+     *  to identify the coldest page for page-budget
+     *  eviction.
+
      */
+    @Getter
     private long lastTouchedFrame = -1;
 
     private final Map<CgGlyphKey, SlotEntry> slotMap;
@@ -267,24 +286,8 @@ public class CgGlyphAtlasPage {
 
     // ── Queries ────────────────────────────────────────────────────────
 
-    public int getPageIndex() { return pageIndex; }
-    public int getPageWidth() { return pageWidth; }
-    public int getPageHeight() { return pageHeight; }
-    public int getTextureId() { return textureId; }
-    public CgGlyphAtlas.Type getType() { return type; }
-    public boolean isDeleted() { return deleted; }
-
     /** Returns the number of glyphs currently stored in this page. */
     public int getSlotCount() { return slotMap.size(); }
-
-    /**
-     * Returns the highest {@code currentFrame} any glyph on this page was
-     * touched at (a cache hit via {@link #get} or the frame it was first
-     * allocated), or {@code -1} if the page has never been touched. Used by
-     * {@link CgPagedGlyphAtlas} to identify the coldest page for page-budget
-     * eviction.
-     */
-    public long getLastTouchedFrame() { return lastTouchedFrame; }
 
     /** Returns the packing utilization ratio for this page. */
     public float getUtilization() { return packer.utilization(); }

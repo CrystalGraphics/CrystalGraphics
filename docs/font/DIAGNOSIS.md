@@ -47,16 +47,22 @@ Compare `CgGlyphAtlas.java` and `CgGlyphAtlasPage.java`:
 
 > **Fixed.** `CgPagedGlyphAtlas` now supports a page budget (`DEFAULT_MAX_PAGES = 32` for `createForPagedRegistry`, unbounded — `UNBOUNDED_PAGES` — for `createForTest`, preserving the existing `testNoEviction_pagingInstead` test). When a new page would exceed the budget, the **coldest whole page** is evicted (lowest `CgGlyphAtlasPage.getLastTouchedFrame()`, an O(1)-maintained per-page recency stamp) — not per-slot LRU, so every glyph on a surviving page keeps its placement-stability guarantee; a glyph is only ever displaced by losing its entire page. Page indices are now assigned from a monotonic counter (not `pages.size()`) so an evicted index is never reused by a live page. Covered by two new tests (`testPageBudget_evictsColdestPageOnOverflow`, `testPageBudget_unboundedByDefaultForTest`).
 
-**A4. Renderer-owned material state is global/static, coupling every `CgTextRenderer` instance — MEDIUM**
+**A4. Renderer-owned material state is global/static, coupling every `CgTextRenderer` instance — MEDIUM — INTENTIONALLY NOT FIXED**
 `CgTextRenderer.TEXT_MATERIAL`, `TEXT_DATA_UBO`, and `ATLAS_TEXTURE_REF` are all `static` (`CgTextRenderer.java:141-185`), shared across every renderer instance. `transitionToMaterial` explicitly toggles `MSDF_MODE` on the shared material every batch transition specifically *because* another live renderer could have left it in a different state (see the class's own javadoc: "a stale keyword left on by a previous transition ... would otherwise silently persist"). This is a documented, defended design choice, not an oversight — but it means every draw call anywhere in the process is implicitly serialized through one shared GPU-resource singleton, and `syncProjection`'s comment about "another live instance may have overwritten [TEXT_DATA_UBO] since" confirms the same is true of projection state. This is workable single-threaded (render thread only) but is a real constraint that will bite the moment anything tries to pipeline or parallelize draw submission.
+
+> **Confirmed with the project owner: left as-is.** Not a bug — a deliberate, already-documented tradeoff. Fixing it means redesigning for parallel draw submission, which nothing in this project needs today or has concrete plans for.
 
 ### B. Correctness / Robustness
 
-**B1. `CgMsdfGenerator`'s "do not call `shape.free()`" comment is a real landmine, correctly handled but fragile — MEDIUM**
+**B1. `CgMsdfGenerator`'s "do not call `shape.free()`" comment is a real landmine, correctly handled but fragile — MEDIUM — ✅ FIXED**
 `CgMsdfGenerator.java:138-145` documents a genuine native-memory double-free race: `MSDFShape.free()` is *only* safe to be called by its own finalizer thread because the `freed` flag isn't `volatile`. The comment is honest and the code obeys the constraint (never calls `shape.free()`). But this means correctness for one of the hottest allocation paths in the whole pipeline (every uncached glyph, every frame) depends on Java's GC finalizer thread running before native heap pressure builds up, with no explicit backpressure mechanism tying MSDF shape allocation rate to finalizer throughput. This is the kind of thing that works fine in every test you'll ever run and then produces a heap-corruption crash under sustained load in production (many unique glyphs, e.g. a chat log with mixed scripts). Worth a tracked follow-up (e.g. an explicit shape pool) rather than relying on finalization.
 
-**B2. Silent fallback chains hide generation failures — LOW/MEDIUM**
+> **Fixed at the root, not just tracked.** `MSDFShape` (and the structurally identical `MSDFBitmap`, `MSDFContour`, `MSDFSegment`, all in `freetype-msdfgen-harfbuzz-bindings` — code this repo owns, not a third-party library) switched their plain `boolean freed` field to an `AtomicBoolean`, and `free()` now calls the native free via `compareAndSet(false, true)` instead of a check-then-set. This makes `free()` idempotent and race-free no matter which thread calls it or how many times, closing the double-free hole the original comment worked around. With the race gone, `CgMsdfGenerator.preparePagedGlyph` (the live paged-path method; the legacy method this finding originally cited was removed in the A1 cleanup) and the harness's `MsdfVerificationTool` now explicitly `free()` the shape in a `finally` block on every exit path, restoring the class's own documented intended usage (`FreeTypeMSDFIntegration`'s class javadoc always showed explicit `shape.free()`) instead of leaving it to whenever GC gets around to finalization — directly closing the "no explicit backpressure" gap, not just documenting it as a risk.
+
+**B2. Silent fallback chains hide generation failures — LOW/MEDIUM — ✅ FIXED**
 `ensureMsdfGlyphPaged` falls back to bitmap when `msdfFont == null` or generation returns `null`; `queueOrGenerate` returns `null` on `MSDFException` after only `LOGGER.log(Level.FINE, ...)` (`CgMsdfGenerator.java:133-136`) — `FINE` is below default logging thresholds almost everywhere, so a systematically failing MSDF path (e.g. a corrupt font, an msdfgen native crash pattern) degrades to "text looks blurrier than expected" with no visible signal unless someone already knows to raise the log level. Given `CgMsdfGenerator`'s own javadoc flags a *known* native crash history in this exact call path, silently swallowing exceptions here at FINE is under-alarmed for a failure mode the authors already know is real.
+
+> **Fixed.** Both MSDF failure log sites in `CgMsdfGenerator` (glyph load failure in `preparePagedGlyph`, shape validation failure in `prepareShapeForMsdf`) now log at `WARNING`, matching the bitmap rasterization path's severity for the same class of failure (see D2).
 
 ### C. Performance
 
@@ -67,11 +73,15 @@ This is exactly the class of thing the rest of `text/render` was clearly written
 
 > **Fixed.** `CgResolvedGlyphs` now has a `glyphKeys[]` scratch array (grown the same way as its other per-glyph arrays). `flattenAndPrequeue`'s prequeue loop stores the key it builds into `glyphKeys[i]` instead of discarding it. `ensurePlacements`'s primary pass (the one `resolvePlacements` always calls first, with the exact same `wantMsdf` value the prequeue pass used) reuses `glyphKeys[i]` directly instead of allocating a second key; only the rarer MSDF→bitmap fallback retry pass (where `wantMsdf` genuinely differs) still builds a fresh key, since it must. Halves per-glyph key allocation/hashing for the common case.
 
-**C2. `MaxRectsPacker.insert` is O(freeRects) per insert with an O(n²) prune every insert — LOW**
+**C2. `MaxRectsPacker.insert` is O(freeRects) per insert with an O(n²) prune every insert — LOW — ✅ FIXED**
 `splitFreeRects` + `pruneContained` (`MaxRectsPacker.java:213-275`) run on every single `insert`, and `pruneContained` is a nested loop over the current free-rect list. Free-rect count grows with fragmentation, not just packed-rect count, so this is superlinear in the number of glyphs packed into a page over that page's lifetime. At current page sizes (1024², glyphs tens of pixels) this stays small in practice — flagging as low severity, but it's the kind of algorithm that quietly gets worse if page size or glyph density assumptions change later, with no defensive cap.
 
-**C3. `drainCompletedGlyphs` / `MAX_COMMITS_PER_FRAME` is a flat constant, not adaptive — LOW**
+> **Fixed the two concrete complaints, not the whole algorithm.** A full spatial-index rewrite was out of scope for a LOW-severity, "revisit if assumptions change" finding — instead: (1) `freeRects.remove(i)` (an O(n) `ArrayList` shift) is now a swap-with-last-and-pop O(1) removal in both `splitFreeRects` and `pruneContained`, safe because neither method's correctness depends on free-rect array order (verified — all 12 `MaxRectsPackerTest` cases still pass unchanged); this removes the extra O(n) factor the "O(n²) per prune with O(n) removals" complaint was really about. (2) The literal "no defensive cap" gap is closed: a `FREE_RECT_WARN_THRESHOLD` (2048) now logs once per packer instance if free-rect fragmentation grows unexpectedly large, so a future page-size/density change that breaks the current assumptions is visible instead of silently slow.
+
+**C3. `drainCompletedGlyphs` / `MAX_COMMITS_PER_FRAME` is a flat constant, not adaptive — LOW — ✅ FIXED**
 `CgFontRegistry.MAX_COMMITS_PER_FRAME = 32` (`CgFontRegistry.java:145`) is a fixed per-frame upload budget regardless of frame time headroom, atlas type, or upload size (an MSDF float upload is 3-4x the bytes of a bitmap upload for the same pixel dimensions, and this budget doesn't distinguish them). Fine as a v1 knob, but it's a magic number with no documented derivation and no telemetry hook to justify or retune it.
+
+> **Fixed the atlas-type-blindness specifically.** Replaced the flat glyph-count budget with a byte-based one: `MAX_COMMIT_BYTES_PER_FRAME` (1 MiB) plus a `MAX_COMMIT_COUNT_PER_FRAME` (256) safety cap on GL call count. `estimateUploadBytes` computes each result's real upload cost from `CgGlyphGenerationResult.getAtlasType()` (1 byte/pixel bitmap, 12 bitmap/MSDF, 16 bytes/pixel MTSDF), so a frame with mostly-MSDF results now gets a proportionally smaller glyph count than a frame with mostly-bitmap results, instead of always committing exactly 32 regardless of type. Frame-time-adaptive budgeting (the "regardless of frame time headroom" half of the finding) is a larger change (needs a frame-timing signal threaded in) and was left out as a separate, bigger undertaking than this pass's scope.
 
 ### D. Code Quality / Consistency
 
@@ -80,8 +90,10 @@ This is exactly the class of thing the rest of `text/render` was clearly written
 
 > **Fixed.** `queueGlyphPaged` was already `public` — the wrapper added zero encapsulation. Deleted the wrapper; its one caller (`AtlasDumpScene`) now calls `queueGlyphPaged` directly.
 
-**D2. Inconsistent logging levels for structurally similar failures.**
+**D2. Inconsistent logging levels for structurally similar failures. — ✅ FIXED**
 Rasterization failures in the paged bitmap path log at `WARNING` (`CgFontRegistry.java:523`, `:971`); MSDF generation failures in `CgMsdfGenerator` log at `FINE` (`CgMsdfGenerator.java:134`, `:323`). Both represent "we could not produce this glyph" — the severity split isn't argued for anywhere, it's just what each author happened to pick when they wrote that call site.
+
+> **Fixed as part of B2** — both MSDF failure sites now log at `WARNING`, matching the bitmap path.
 
 **D3. `§` section-comment banners in `CgFontRegistry` are a workaround for the file being too big to navigate, not a design.**
 The file is genuinely well *organized* — the section banner comment scheme is a real, if unusual, effort to keep a large class legible. It carried three pipelines' worth of responsibility at 1387 lines when this was first written (A1); with the legacy paths now deleted (909 lines), the remaining sections map much more directly to one pipeline. The banner scheme itself is still worth revisiting if the file grows again, but the underlying cause (A1) is resolved.
@@ -113,7 +125,7 @@ allocation per glyph per frame): today a static HUD label pays full re-shape *an
 per-glyph-key-allocation cost every frame, when a shape cache alone would eliminate the former
 entirely for the common case.
 
-**E2. No color glyph support (COLR/CPAL, emoji bitmap strikes) — LOW (scope-dependent)**
+**E2. No color glyph support (COLR/CPAL, emoji bitmap strikes) — LOW (scope-dependent) — CONFIRMED OUT OF SCOPE**
 The rasterization pipeline is grayscale-bitmap-or-distance-field only (`CgGlyphAtlas.Type` is
 `BITMAP`/`MSDF`/`MTSDF` — no RGBA color-glyph channel anywhere in `text/cache`/`text/msdf`). Skia,
 DirectWrite, and HarfBuzz+FreeType-with-`FT_LOAD_COLOR` stacks all support color/emoji glyphs. Likely
@@ -121,12 +133,16 @@ fine to leave out of scope given the Minecraft-adjacent UI context (vanilla MC d
 emoji either), but worth naming as a known ceiling rather than an oversight, in case a future feature
 (custom emoji, colored icon fonts) needs it.
 
-**E3. No justification or hyphenation — LOW (scope-dependent)**
+> Confirmed with the project owner: this is a new feature, not a defect, and not needed right now.
+
+**E3. No justification or hyphenation — LOW (scope-dependent) — CONFIRMED OUT OF SCOPE**
 `CgLineBreaker` stops at UAX #14 break opportunities (real `BreakIterator`-driven word/grapheme
 boundaries — see "What's actually done well") with no soft-hyphen insertion and no justified-spacing
 distribution across a line. Most engines in the actual peer group (TextMeshPro, Godot, Slug-based UIs)
 skip this too, so it's a ceiling shared with peers, not a gap behind them — noted for completeness,
 not urgency.
+
+> Confirmed with the project owner: this is a new feature, not a defect, and not needed right now.
 
 **E4. Shaping/layout is single-threaded, with no independent mitigation — MEDIUM**
 Only *rasterization* is backgrounded (`CgGlyphGenerationExecutor`); BiDi/HarfBuzz/line-breaking all
@@ -162,12 +178,12 @@ Peer-group calibration: measured against Skia's glyph pipeline, TextMeshPro, God
 3. ✅ **DONE** — ~~Collapse `CgGlyphAtlas`/`CgGlyphAtlasPage`'s duplicated GL-constant and upload-buffer logic~~ — `CgGlyphAtlas` was stripped to just the shared `Type` enum; `CgGlyphAtlasPage` is now the only place the upload/GL-constant logic exists. (A2)
 4. **Add a shaped-layout cache keyed by `(text, resolvedFontKey, constraints)`**, invalidated when any of those three change, so `Draw.submit()` built from raw `.text(...)` doesn't pay full HarfBuzz+BiDi+UAX#14 cost on every call for unchanged strings — the single biggest capability gap versus the peer group, not just implementation debt. (E1)
 5. ✅ **DONE** — ~~Eliminate the double `CgGlyphKey` allocation per glyph per frame~~ in `CgResolvedGlyphs` — the primary resolve pass now reuses the key built during prequeue; only the rarer MSDF→bitmap fallback retry still allocates a second key. (C1)
-6. **Raise MSDF generation failure logging from `FINE` to at least `WARNING`**, matching the bitmap path, given the authors' own documented history of native crashes in this exact call path. (B2)
+6. ✅ **DONE** — ~~Raise MSDF generation failure logging from `FINE` to at least `WARNING`~~, matching the bitmap path — both MSDF failure sites now log at `WARNING`. (B2, D2)
 7. ✅ **DONE** — ~~Remove `queueGlyphPagedPublic`~~ and just make `queueGlyphPaged` public — it already was; wrapper deleted, harness caller updated. (D1)
-8. **Add a tracked follow-up for the `MSDFShape.free()` finalizer dependency** (B1) — not urgent to fix immediately, but should be a known risk item, not just a comment, given it's a native heap corruption mode under sustained load.
-9. Lower priority: revisit `MAX_COMMITS_PER_FRAME`'s fixed budget (C3), `MaxRectsPacker`'s per-insert prune cost (C2) if/when atlas page sizes or glyph churn rates change, and the scope-dependent E2/E3 capability ceilings (color glyphs, justification/hyphenation) only if a concrete feature needs them.
+8. ✅ **DONE** — ~~Add a tracked follow-up for the `MSDFShape.free()` finalizer dependency~~ — fixed at the root instead of just tracked: `MSDFShape`/`MSDFBitmap`/`MSDFContour`/`MSDFSegment` (all in `freetype-msdfgen-harfbuzz-bindings`, code this repo owns) switched their racy `boolean freed` to an atomic, idempotent `free()`. The paged MSDF path and the harness verification tool now explicitly free shapes in a `finally` block instead of relying on GC finalizer timing. (B1)
+9. ✅ **DONE** — ~~Lower priority: revisit `MAX_COMMITS_PER_FRAME`'s fixed budget (C3), `MaxRectsPacker`'s per-insert prune cost (C2)~~ — C3 is now byte-budgeted per atlas type; C2's O(n) removal cost is now O(1) plus a defensive free-rect-count warning. E2/E3 (color glyphs, justification/hyphenation) were explicitly left out of scope — confirmed with the project owner these are net-new features, not defects, and not needed right now.
 
-**Remaining open items: #4 (E1 shape cache), #6 (B2 logging level), #8 (B1 finalizer tracked risk), #9 (low-priority C2/C3/E2/E3).**
+**Remaining open items: only #4 (E1, the shaped-layout cache) — everything else in this list is done.** A4 (static/global `CgTextRenderer` material state) was explicitly left as-is: it's a deliberate, documented tradeoff for single-threaded rendering, not a bug, and nothing in this project parallelizes draw submission today.
 
 Items 1–4 are the ones that will actually change how the codebase *feels* to work in and how it performs under real UI load — 1–3 are the direct cause of the "ad-hoc, stitched together" read (concentrated in `text/cache` + `text/atlas`), and 4 is the one place `text/render` itself has a real gap rather than just polish.
 

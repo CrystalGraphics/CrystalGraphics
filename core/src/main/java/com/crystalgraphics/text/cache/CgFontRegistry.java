@@ -128,8 +128,24 @@ public class CgFontRegistry {
     // a fresh instance is the only way back to a submittable state.
     private CgGlyphGenerationExecutor glyphGenerationExecutor = new CgGlyphGenerationExecutor();
 
-    /** Maximum number of async glyph results committed (uploaded) per frame tick. */
-    private static final int MAX_COMMITS_PER_FRAME = 32;
+    /**
+     * Per-frame async-commit upload budget, in estimated pixel-data bytes rather
+     * than a flat glyph count — an MSDF/MTSDF float upload is 3-4x the bytes of
+     * a bitmap upload for the same pixel dimensions (see {@link #estimateUploadBytes}),
+     * so a count-based budget under- or over-commits depending on glyph mix.
+     * ~1 MiB/frame is roughly the old 32-bitmap-glyph budget at a typical ~64x64
+     * cell size (32 * 64*64 = 131072 B), sized up to also give MSDF/MTSDF results
+     * reasonable per-frame throughput at the same glyph count.
+     */
+    private static final long MAX_COMMIT_BYTES_PER_FRAME = 1024L * 1024L;
+
+    /**
+     * Hard cap on the number of individual GL upload calls per frame tick,
+     * independent of the byte budget above — bounds per-frame driver-call
+     * overhead even for a queue of many tiny glyphs (e.g. punctuation) that
+     * would otherwise pass the byte budget for a very long time.
+     */
+    private static final int MAX_COMMIT_COUNT_PER_FRAME = 256;
 
     /**
      * The shared default-config registry, matching every other GPU-resource registry
@@ -176,8 +192,9 @@ public class CgFontRegistry {
 
     /**
      * Advances all atlas clocks, resets the per-frame MSDF budget, and
-     * uploads up to {@value #MAX_COMMITS_PER_FRAME} completed async glyph
-     * results into their target atlases.
+     * uploads up to {@value #MAX_COMMIT_BYTES_PER_FRAME} bytes (capped at
+     * {@value #MAX_COMMIT_COUNT_PER_FRAME} individual uploads) of completed
+     * async glyph results into their target atlases.
      *
      * <p>Must be called exactly once per render frame, before any
      * {@code ensureGlyph*} or {@code queueGlyph*} calls for that frame.</p>
@@ -185,7 +202,7 @@ public class CgFontRegistry {
     public void tickFrame(long frame) {
         // 1. Drain completed async results first so they are available
         //    to ensureGlyph* calls later in the same frame.
-        drainCompletedGlyphs(frame, MAX_COMMITS_PER_FRAME);
+        drainCompletedGlyphs(frame, MAX_COMMIT_BYTES_PER_FRAME, MAX_COMMIT_COUNT_PER_FRAME);
 
         // 2. Tick every paged atlas family.
         for (CgPagedGlyphAtlas atlas : pagedBitmapAtlases.values()) {
@@ -355,7 +372,7 @@ public class CgFontRegistry {
      * independent and do not use sub-pixel positioning.</p>
      */
     CgGlyphKey toMsdfAtlasGlyphKey(CgGlyphKey requestedKey, CgMsdfAtlasConfig config) {
-        CgFontKey atlasFontKey = requestedKey.getFontKey().withTargetPx(config.getAtlasScalePx());
+        CgFontKey atlasFontKey = requestedKey.getFontKey().withTargetPx(config.atlasScalePx());
         return new CgGlyphKey(atlasFontKey, requestedKey.getGlyphId(), true, 0);
     }
 
@@ -367,14 +384,14 @@ public class CgFontRegistry {
      * from the raster key, preserving the sub-pixel bucket.</p>
      */
     CgGlyphKey toBitmapAtlasGlyphKey(CgRasterGlyphKey rasterGlyphKey) {
-        CgFontKey atlasFontKey = rasterGlyphKey.getRasterFontKey()
+        CgFontKey atlasFontKey = rasterGlyphKey.rasterFontKey()
                 .getBaseFontKey()
-                .withTargetPx(rasterGlyphKey.getRasterFontKey().getEffectiveTargetPx());
+                .withTargetPx(rasterGlyphKey.rasterFontKey().getEffectiveTargetPx());
         return new CgGlyphKey(
                 atlasFontKey,
-                rasterGlyphKey.getGlyphId(),
-                rasterGlyphKey.isMsdf(),
-                rasterGlyphKey.getSubPixelBucket());
+                rasterGlyphKey.glyphId(),
+                rasterGlyphKey.msdf(),
+                rasterGlyphKey.subPixelBucket());
     }
 
     /**
@@ -569,15 +586,39 @@ public class CgFontRegistry {
     //  tickFrame() at the start of each render frame.
     // ────────────────────────────────────────────────────────────────────
 
-    private void drainCompletedGlyphs(long frame, int maxCommits) {
+    private void drainCompletedGlyphs(long frame, long maxBytes, int maxCommits) {
+        long bytesCommitted = 0;
         int committed = 0;
-        while (committed < maxCommits) {
+        while (committed < maxCommits && bytesCommitted < maxBytes) {
             CgGlyphGenerationResult result = glyphGenerationExecutor.pollCompleted();
             if (result == null) {
                 break;
             }
             commitGeneratedGlyph(result, frame);
             committed++;
+            bytesCommitted += estimateUploadBytes(result);
+        }
+    }
+
+    /**
+     * Estimates the GPU upload size of a glyph result's pixel data, in bytes.
+     * Bitmap uploads are {@code GL_R8} (1 byte/pixel); MSDF/MTSDF uploads are
+     * {@code GL_FLOAT} (4 bytes/channel, 3 or 4 channels) — roughly 3-4x the
+     * bytes of a bitmap upload at the same pixel dimensions. Used to keep the
+     * per-frame commit budget ({@link #MAX_COMMIT_BYTES_PER_FRAME}) meaningful
+     * across a mixed bitmap/MSDF/MTSDF workload instead of a flat glyph count
+     * that treats every result as the same upload cost.
+     */
+    private static long estimateUploadBytes(CgGlyphGenerationResult result) {
+        long pixels = (long) result.getWidth() * result.getHeight();
+        switch (result.getAtlasType()) {
+            case MTSDF:
+                return pixels * 4L /* channels */ * 4L /* bytes per float */;
+            case MSDF:
+                return pixels * 3L * 4L;
+            case BITMAP:
+            default:
+                return pixels;
         }
     }
 
@@ -655,10 +696,10 @@ public class CgFontRegistry {
         CgPagedGlyphAtlas atlas = pagedMsdfAtlases.get(atlasKey);
         if (atlas == null) {
             atlas = CgPagedGlyphAtlas.createForPagedRegistry(
-                    atlasKey.getConfig().getPageSize(),
-                    atlasKey.getConfig().getPageSize(),
+                    atlasKey.getConfig().pageSize(),
+                    atlasKey.getConfig().pageSize(),
                     atlasKey.getConfig().resolveAtlasType(),
-                    atlasKey.getConfig().getSpacingPx());
+                    atlasKey.getConfig().spacingPx());
             pagedMsdfAtlases.put(atlasKey, atlas);
         }
         return atlas;

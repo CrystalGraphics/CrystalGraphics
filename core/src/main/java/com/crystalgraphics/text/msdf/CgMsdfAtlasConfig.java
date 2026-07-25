@@ -10,7 +10,11 @@ import com.crystalgraphics.text.atlas.CgGlyphAtlas;
  * A single MSDF atlas family is generated at one fixed atlas scale and can
  * then be reused across many output sizes by the runtime shader.</p>
  */
-public final class CgMsdfAtlasConfig {
+public record CgMsdfAtlasConfig(int atlasScalePx, float pxRange, int pageSize, int spacingPx, float miterLimit,
+                                boolean alignOriginX, boolean alignOriginY, boolean overlapSupport,
+                                int errorCorrectionMode, int distanceCheckMode, double minDeviationRatio,
+                                double minImproveRatio, CgMsdfEdgeColoringMode edgeColoringMode,
+                                double edgeColoringAngleThreshold, boolean mtsdf) {
 
     public static final int DEFAULT_ATLAS_SCALE_PX = 80;
     public static final float DEFAULT_PX_RANGE = 6.0f;
@@ -27,22 +31,6 @@ public final class CgMsdfAtlasConfig {
     public static final CgMsdfEdgeColoringMode DEFAULT_EDGE_COLORING_MODE = CgMsdfEdgeColoringMode.INK_TRAP;
     public static final double DEFAULT_EDGE_COLORING_ANGLE_THRESHOLD = 3.0d;
     public static final boolean DEFAULT_MTSDF = true;
-
-    private final int atlasScalePx;
-    private final float pxRange;
-    private final int pageSize;
-    private final int spacingPx;
-    private final float miterLimit;
-    private final boolean alignOriginX;
-    private final boolean alignOriginY;
-    private final boolean overlapSupport;
-    private final int errorCorrectionMode;
-    private final int distanceCheckMode;
-    private final double minDeviationRatio;
-    private final double minImproveRatio;
-    private final CgMsdfEdgeColoringMode edgeColoringMode;
-    private final double edgeColoringAngleThreshold;
-    private final boolean mtsdf;
 
     public CgMsdfAtlasConfig(int atlasScalePx,
                              float pxRange,
@@ -66,21 +54,7 @@ public final class CgMsdfAtlasConfig {
                 DEFAULT_MTSDF);
     }
 
-    public CgMsdfAtlasConfig(int atlasScalePx,
-                             float pxRange,
-                             int pageSize,
-                             int spacingPx,
-                             float miterLimit,
-                             boolean alignOriginX,
-                             boolean alignOriginY,
-                             boolean overlapSupport,
-                             int errorCorrectionMode,
-                             int distanceCheckMode,
-                             double minDeviationRatio,
-                             double minImproveRatio,
-                             CgMsdfEdgeColoringMode edgeColoringMode,
-                             double edgeColoringAngleThreshold,
-                             boolean mtsdf) {
+    public CgMsdfAtlasConfig {
         if (atlasScalePx <= 0) {
             throw new IllegalArgumentException("atlasScalePx must be > 0, got " + atlasScalePx);
         }
@@ -106,23 +80,9 @@ public final class CgMsdfAtlasConfig {
             throw new IllegalArgumentException("edgeColoringMode must not be null");
         }
         if (edgeColoringAngleThreshold <= 0.0d) {
-            throw new IllegalArgumentException("edgeColoringAngleThreshold must be > 0, got " + edgeColoringAngleThreshold);
+            throw new IllegalArgumentException(
+                    "edgeColoringAngleThreshold must be > 0, got " + edgeColoringAngleThreshold);
         }
-        this.atlasScalePx = atlasScalePx;
-        this.pxRange = pxRange;
-        this.pageSize = pageSize;
-        this.spacingPx = spacingPx;
-        this.miterLimit = miterLimit;
-        this.alignOriginX = alignOriginX;
-        this.alignOriginY = alignOriginY;
-        this.overlapSupport = overlapSupport;
-        this.errorCorrectionMode = errorCorrectionMode;
-        this.distanceCheckMode = distanceCheckMode;
-        this.minDeviationRatio = minDeviationRatio;
-        this.minImproveRatio = minImproveRatio;
-        this.edgeColoringMode = edgeColoringMode;
-        this.edgeColoringAngleThreshold = edgeColoringAngleThreshold;
-        this.mtsdf = mtsdf;
     }
 
     public static CgMsdfAtlasConfig defaultConfig() {
@@ -346,66 +306,6 @@ public final class CgMsdfAtlasConfig {
                 minImproveRatio,
                 newEdgeColoringMode,
                 newAngleThreshold);
-    }
-
-    public int getAtlasScalePx() {
-        return atlasScalePx;
-    }
-
-    public float getPxRange() {
-        return pxRange;
-    }
-
-    public int getPageSize() {
-        return pageSize;
-    }
-
-    public int getSpacingPx() {
-        return spacingPx;
-    }
-
-    public float getMiterLimit() {
-        return miterLimit;
-    }
-
-    public boolean isAlignOriginX() {
-        return alignOriginX;
-    }
-
-    public boolean isAlignOriginY() {
-        return alignOriginY;
-    }
-
-    public boolean isOverlapSupport() {
-        return overlapSupport;
-    }
-
-    public int getErrorCorrectionMode() {
-        return errorCorrectionMode;
-    }
-
-    public int getDistanceCheckMode() {
-        return distanceCheckMode;
-    }
-
-    public double getMinDeviationRatio() {
-        return minDeviationRatio;
-    }
-
-    public double getMinImproveRatio() {
-        return minImproveRatio;
-    }
-
-    public CgMsdfEdgeColoringMode getEdgeColoringMode() {
-        return edgeColoringMode;
-    }
-
-    public double getEdgeColoringAngleThreshold() {
-        return edgeColoringAngleThreshold;
-    }
-
-    public boolean isMtsdf() {
-        return mtsdf;
     }
 
     public CgGlyphAtlas.Type resolveAtlasType() {
