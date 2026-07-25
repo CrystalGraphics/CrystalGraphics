@@ -47,7 +47,7 @@ public class CgPagedGlyphAtlasTest {
 
         assertNotNull(p);
         assertEquals(1, atlas.getPageCount());
-        assertEquals(0, p.getPageIndex());
+        assertEquals(0, p.atlasPageIndex());
     }
 
     @Test
@@ -61,7 +61,7 @@ public class CgPagedGlyphAtlasTest {
                 0, 32, 32, 32, 1);
         assertNotNull(p1);
         assertEquals(1, atlas.getPageCount());
-        assertEquals(0, p1.getPageIndex());
+        assertEquals(0, p1.atlasPageIndex());
 
         // This should overflow to page 1
         CgGlyphPlacement p2 = atlas.allocateBitmap(
@@ -69,7 +69,7 @@ public class CgPagedGlyphAtlasTest {
                 0, 16, 16, 16, 2);
         assertNotNull(p2);
         assertEquals(2, atlas.getPageCount());
-        assertEquals(1, p2.getPageIndex());
+        assertEquals(1, p2.atlasPageIndex());
     }
 
     @Test
@@ -88,9 +88,9 @@ public class CgPagedGlyphAtlasTest {
         // p1's placement should be unchanged (stable)
         CgGlyphPlacement p1Again = atlas.get(bitmapKey(1), 3);
         assertNotNull(p1Again);
-        assertEquals(p1.getPageIndex(), p1Again.getPageIndex());
-        assertEquals(p1.getU0(), p1Again.getU0(), 0.0001f);
-        assertEquals(p1.getV0(), p1Again.getV0(), 0.0001f);
+        assertEquals(p1.atlasPageIndex(), p1Again.atlasPageIndex());
+        assertEquals(p1.u0(), p1Again.u0(), 0.0001f);
+        assertEquals(p1.v0(), p1Again.v0(), 0.0001f);
     }
 
     @Test
@@ -120,7 +120,7 @@ public class CgPagedGlyphAtlasTest {
                 20.0f, 25.0f, 4.0f, 1);
 
         assertNotNull(p);
-        assertEquals(4.0f, p.getPxRange(), 0.001f);
+        assertEquals(4.0f, p.pxRange(), 0.001f);
         assertTrue(p.isMsdf());
     }
 
@@ -197,10 +197,10 @@ public class CgPagedGlyphAtlasTest {
 
         assertNotNull(p);
         // For bitmap: plane bounds use metrics width/height
-        assertEquals(3.0f, p.getPlaneLeft(), 0.001f);
-        assertEquals(28.0f, p.getPlaneTop(), 0.001f);
-        assertEquals(3.0f + 18.0f, p.getPlaneRight(), 0.001f); // bearingX + metricsWidth
-        assertEquals(28.0f - 26.0f, p.getPlaneBottom(), 0.001f); // bearingY - metricsHeight
+        assertEquals(3.0f, p.planeLeft(), 0.001f);
+        assertEquals(28.0f, p.planeTop(), 0.001f);
+        assertEquals(3.0f + 18.0f, p.planeRight(), 0.001f); // bearingX + metricsWidth
+        assertEquals(28.0f - 26.0f, p.planeBottom(), 0.001f); // bearingY - metricsHeight
     }
 
     @Test
@@ -255,9 +255,9 @@ public class CgPagedGlyphAtlasTest {
 
         assertNotNull(p);
         // For MSDF: plane bounds use full box size (includes SDF range border)
-        assertEquals(-5.0f, p.getPlaneLeft(), 0.001f);
-        assertEquals(35.0f, p.getPlaneTop(), 0.001f);
-        assertEquals(-5.0f + 36.0f, p.getPlaneRight(), 0.001f); // bearingX + boxWidth
-        assertEquals(35.0f - 42.0f, p.getPlaneBottom(), 0.001f); // bearingY - boxHeight
+        assertEquals(-5.0f, p.planeLeft(), 0.001f);
+        assertEquals(35.0f, p.planeTop(), 0.001f);
+        assertEquals(-5.0f + 36.0f, p.planeRight(), 0.001f); // bearingX + boxWidth
+        assertEquals(35.0f - 42.0f, p.planeBottom(), 0.001f); // bearingY - boxHeight
     }
 }

@@ -37,12 +37,14 @@ import java.util.Set;
  *
  * <h3>Fixed instance schema</h3>
  * <pre>
- * vec3 origin   // world-space quad origin
- * vec3 right    // world-space right edge vector
- * vec3 up       // world-space up edge vector
- * vec2 uv0      // texture UV top-left
- * vec2 uv1      // texture UV bottom-right
- * vec4 color    // unpacked float rgba
+ * vec3 origin      // world-space quad origin
+ * vec3 right       // world-space right edge vector
+ * vec3 up          // world-space up edge vector
+ * vec2 uv0         // texture UV top-left
+ * vec2 uv1         // texture UV bottom-right
+ * vec4 color       // unpacked float rgba
+ * float atlasLayer // sampler2DArray layer index, as a float (0 for non-array-texture
+ *                   // consumers — ignored by ordinary sampler2D shaders)
  * </pre>
  * <p>Not caller-extensible for now — a normal additive schema change to
  * {@link #INSTANCE_FORMAT} if a real consumer ever needs more fields, not a
@@ -102,6 +104,7 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
             .vec3("origin").vec3("right").vec3("up")
             .vec2("uv0").vec2("uv1")
             .vec4("color")
+            .float_("atlasLayer")
             .build();
 
     private static final String GPU_BUFFER_NAME = "CgQuadRendererInstances";
@@ -322,6 +325,7 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
         private boolean sizeSet;
         private float u0, v0, u1, v1;
         private int argb;
+        private float atlasLayer;
         private Matrix4f pose;
 
         // Reused across every submit() call on this Quad instance — never reallocated.
@@ -345,6 +349,7 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
             u1 = 1f;
             v1 = 1f;
             argb = 0xFFFFFFFF;
+            atlasLayer = 0f;
             pose = null;
             return this;
         }
@@ -398,6 +403,17 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
         /** Packed ARGB color (alpha in the top byte). Defaults to opaque white. */
         public Quad color(int argb) {
             this.argb = argb;
+            return this;
+        }
+
+        /**
+         * Array-texture layer index for consumers whose material samples a
+         * {@code sampler2DArray} (e.g. {@code text.shader}'s atlas). Defaults to
+         * {@code 0} — harmless for ordinary {@code sampler2D} consumers, which
+         * never read {@code CG_QUAD_ATLAS_LAYER} at all.
+         */
+        public Quad atlasLayer(int layer) {
+            this.atlasLayer = layer;
             return this;
         }
 
@@ -463,6 +479,7 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
                     .vec2("uv0", u0, v0)
                     .vec2("uv1", u1, v1)
                     .vec4("color", r, g, b, a)
+                    .float_("atlasLayer", atlasLayer)
                     .endRecord();
 
             return CgQuadRenderer.this;

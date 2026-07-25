@@ -7,6 +7,7 @@ import com.crystalgraphics.api.font.*;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.text.CgTextConstraints;
 import com.crystalgraphics.api.text.CgTextLayout;
+import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
@@ -114,9 +115,11 @@ import java.util.logging.Logger;
  *   <li>{@link Draw#submit()} hands the whole {@link Draw} request to {@link #drawInternal},
  *       which resolves layout/family precedence and raster tier</li>
  *   <li>{@link CgTextLayoutBuilder} produces a {@link CgTextLayout} when built from raw text</li>
- *   <li>{@link CgResolvedGlyphs#flattenAndPrequeue} walks the layout once into per-glyph
- *       scratch buffers and prequeues async atlas generation</li>
- *   <li>{@link CgResolvedGlyphs#resolvePlacements} resolves each glyph's {@link CgGlyphPlacement}</li>
+ *   <li>{@code CgResolvedGlyphs.resolve} is the sole entry into glyph resolution: on a cache
+ *       hit (the steady-state common case — see that class's javadoc "Placement cache") it
+ *       skips straight to a cached result; on a miss it walks the layout once into per-glyph
+ *       scratch buffers, prequeues async atlas generation, then resolves each glyph's
+ *       {@link CgGlyphPlacement} via the atlas</li>
  *   <li>{@link #submitSortedQuads} sorts quads by GL state and submits them to the owned batch renderer</li>
  * </ol>
  *
@@ -168,16 +171,23 @@ public class CgTextRenderer {
             TEXT_DATA_FORMAT, "TextData", CgBindingPoints.TEXT_DATA_UBO);
 
     /**
-     * Mutable adapter over whatever raw GL atlas-page texture id is currently active.
+     * Mutable adapter over whatever raw GL atlas-array texture id is currently active.
      * {@code CgMaterial}'s Properties-block sampler API ({@code applyProperties(b -> b.sampler(...))})
-     * requires a real {@link com.crystalgraphics.api.texture.CgTexture}, not a raw int — atlas
-     * pages ({@code CgGlyphAtlasPage}) own only a raw GL texture id with no such wrapper. This view
-     * (never owns/deletes the real texture) is registered once via {@link #TEXT_MATERIAL}'s
-     * Properties block at class-init, then its id is mutated per atlas-page transition — the
-     * property system rebinds whatever this wrapper currently points to on every
-     * {@code material.bind()}, so no repeated {@code applyProperties} sampler call is needed.
+     * requires a real {@link CgTexture}, not a raw int — atlas
+     * pages ({@code CgGlyphAtlasPage}) don't own a texture at all since the atlas texture-array
+     * migration ({@code CgPagedGlyphAtlas} owns one {@code CgTexture2DArray} per atlas family; a
+     * page is just a layer index into it). This view (never owns/deletes the real texture) is
+     * registered once via {@link #TEXT_MATERIAL}'s Properties block at class-init, then its id is
+     * mutated per atlas-family transition — the property system rebinds whatever this wrapper
+     * currently points to on every {@code material.bind()}, so no repeated {@code applyProperties}
+     * sampler call is needed.
+     *
+     * <p><strong>Target is {@code GL_TEXTURE_2D_ARRAY}</strong>, matching {@code text.shader}'s
+     * {@code _MainTex} being a {@code sampler2DArray} — a texture object's target is fixed at
+     * first bind, so this must match what {@code CgTexture2DArray} actually allocated with, not
+     * the pre-array-migration {@code GL_TEXTURE_2D}.</p>
      */
-    private static final CgTextureMutable ATLAS_TEXTURE_REF = new CgTextureMutable(CgGL.GL_TEXTURE_2D);
+    private static final CgTextureMutable ATLAS_TEXTURE_REF = new CgTextureMutable(CgGL.GL_TEXTURE_2D_ARRAY);
 
     static {
         TEXT_MATERIAL.attach(TEXT_DATA_UBO);
@@ -770,13 +780,22 @@ public class CgTextRenderer {
     // tells you which glyph each entry came from — no parallel index array needed.
     //   [63:62] mode      (0 = bitmap, 1 = distance-field — MSDF/MTSDF share one shader keyword,
     //                       see text.shader, so they don't need distinct mode values today)
-    //   [61:38] textureId (GL atlas-page texture id, masked to 24 bits — real ids never come
-    //                       close to that range)
+    //   [61:38] textureId (GL atlas-ARRAY texture id — since the atlas texture-array migration,
+    //                       CgGlyphPlacement.getPageTextureId() returns the same id for every
+    //                       page/layer of one atlas family, not a per-page id, so this already
+    //                       batches every page of a family together with no further code change
+    //                       needed here — masked to 24 bits, real ids never come close to that
+    //                       range)
     //   [37:16] pxRange   (top 22 bits of the SDF pixel range's raw float bits; valid only
     //                       because pxRange is always >= 0, so its raw bits are already
     //                       monotonic with its value — dropping the low 10 bits just coarsens
     //                       ties between distances closer than ~0.01%, far finer than any two
-    //                       real atlas configs differ by)
+    //                       real atlas configs differ by. In practice this is always constant
+    //                       within one textureId already — one CgPagedGlyphAtlas is one config,
+    //                       one pxRange — so it adds no further batch-break granularity beyond
+    //                       textureId today; kept rather than removed since promoting pxRange to
+    //                       a genuinely per-instance field is a separate, optional decision — see
+    //                       docs_research/CGTEXTRENDERER_INSTANCING_FOUNDATIONS.md's "adjacent win.")
     //   [15:0]  glyphIndex
     private static final int SORT_INDEX_BITS = 16;
     private static final int SORT_PXRANGE_SHIFT = SORT_INDEX_BITS;
@@ -788,8 +807,8 @@ public class CgTextRenderer {
 
     private static long packSortKey(CgGlyphPlacement p, int glyphIndex) {
         long mode = p.isDistanceField() ? 1L : 0L;
-        long textureId = p.getPageTextureId() & 0xFFFFFFL;
-        long pxRangeBits = (Float.floatToRawIntBits(p.getPxRange()) & 0xFFFFFFFFL) >>> 10;
+        long textureId = p.atlasTextureId() & 0xFFFFFFL;
+        long pxRangeBits = (Float.floatToRawIntBits(p.pxRange()) & 0xFFFFFFFFL) >>> 10;
         return (mode << SORT_MODE_SHIFT) | (textureId << SORT_TEXTURE_SHIFT) | (pxRangeBits << SORT_PXRANGE_SHIFT) | glyphIndex;
     }
 
@@ -819,9 +838,8 @@ public class CgTextRenderer {
         CgGlyphPlacement[] placements = resolvedGlyphs.placements;
 
         int visibleCount = 0;
-        for (int i = 0; i < glyphCount; i++) {
+        for (int i = 0; i < glyphCount; i++) 
             if (placements[i] != null && placements[i].hasGeometry()) visibleCount++;
-        }
         if (visibleCount == 0) return;
 
         ensureSortScratchCapacity(visibleCount);
@@ -847,31 +865,36 @@ public class CgTextRenderer {
             CgGlyphPlacement p = placements[origIdx];
 
             if (!batchStarted || batchBits != currentBatchBits) {
-                transitionToMaterial(p.isDistanceField(), p.getPageTextureId(), p.getPxRange());
+                transitionToMaterial(p.isDistanceField(), p.atlasTextureId(), p.pxRange());
                 currentBatchBits = batchBits;
                 batchStarted = true;
             }
 
-            int placementTargetPx = p.getKey().getFontKey().getTargetPx();
+            int placementTargetPx = p.key().getFontKey().getTargetPx();
             float scaleFactor = CgResolvedGlyphs.logicalMetricScale(baseTargetPx, p.isDistanceField() ? placementTargetPx : effectiveTargetPx);
 
             // Plane bounds are in physical raster space; normalize to logical. planeLeft/planeTop
             // are bearing offsets from the pen (Y-down screen space, bearingY positive = above baseline).
-            float logicalBearingX = p.getPlaneLeft() * scaleFactor, logicalBearingY = p.getPlaneTop() * scaleFactor;
+            float logicalBearingX = p.planeLeft() * scaleFactor, logicalBearingY = p.planeTop() * scaleFactor;
             float logicalWidth = p.getPlaneWidth() * scaleFactor, logicalHeight = p.getPlaneHeight() * scaleFactor;
             float qx = resolvedGlyphs.glyphX[origIdx] + logicalBearingX, qy = resolvedGlyphs.glyphY[origIdx] - logicalBearingY;
 
             quadRenderer.quad()
                     .at(qx, qy).size(logicalWidth, logicalHeight)
-                    .uv(p.getU0(), p.getV0(), p.getU1(), p.getV1())
+                    .uv(p.u0(), p.v0(), p.u1(), p.v1())
                     .color((rgba >>> 8) | ((rgba & 0xFF) << 24))
+                    .atlasLayer(p.atlasPageIndex())
                     .pose(modelView)
                     .submit();
 
             if (diagnosticLogging) {
-                LOGGER.info("[BatchDiag] atlasType=" + p.getAtlasType()
-                        + ", textureId=" + p.getPageTextureId()
-                        + ", pxRange=" + p.getPxRange());
+                LOGGER.info("[BatchDiag] glyphId=" + p.key().getGlyphId()
+                        + ", atlasType=" + p.atlasType()
+                        + ", textureId=" + p.atlasTextureId()
+                        + ", atlasPageIndex/layer=" + p.atlasPageIndex()
+                        + ", pxRange=" + p.pxRange()
+                        + ", uv=[" + p.u0() + "," + p.v0() + "," + p.u1() + "," + p.v1() + "]"
+                        + ", pos=[" + qx + "," + qy + "], size=[" + logicalWidth + "," + logicalHeight + "]");
             }
         }
     }
