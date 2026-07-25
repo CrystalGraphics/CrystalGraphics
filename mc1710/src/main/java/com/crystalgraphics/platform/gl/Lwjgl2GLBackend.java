@@ -419,6 +419,13 @@ public final class Lwjgl2GLBackend extends CgGLBackend {
     }
 
     @Override
+    public void glTexImage3D(int target, int level, int internalFormat,
+                              int width, int height, int depth, int border,
+                              int format, int type, FloatBuffer pixels) {
+        GL12.glTexImage3D(target, level, internalFormat, width, height, depth, border, format, type, pixels);
+    }
+
+    @Override
     public void glTexSubImage2D(int target, int level,
                                  int xOffset, int yOffset, int width, int height,
                                  int format, int type, ByteBuffer pixels) {
@@ -716,6 +723,15 @@ public final class Lwjgl2GLBackend extends CgGLBackend {
                                  int xOffset, int yOffset, int zOffset,
                                  int width, int height, int depth,
                                  int format, int type, ByteBuffer pixels) {
+        GL12.glTexSubImage3D(target, level, xOffset, yOffset, zOffset,
+                width, height, depth, format, type, pixels);
+    }
+
+    @Override
+    public void glTexSubImage3D(int target, int level,
+                                 int xOffset, int yOffset, int zOffset,
+                                 int width, int height, int depth,
+                                 int format, int type, FloatBuffer pixels) {
         GL12.glTexSubImage3D(target, level, xOffset, yOffset, zOffset,
                 width, height, depth, format, type, pixels);
     }

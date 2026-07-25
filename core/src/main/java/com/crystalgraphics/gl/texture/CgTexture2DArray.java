@@ -7,6 +7,7 @@ import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.util.io.CgTextureIO.CgImageData;
 import com.crystalgraphics.util.io.CgTextureIO;
 import java.nio.ByteBuffer;
+import java.nio.FloatBuffer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import lombok.Getter;
@@ -73,6 +74,105 @@ public final class CgTexture2DArray extends CgTextureAbstract {
      */
     public static CgTexture2DArray createDirect(CgTextureSpec spec, String... paths) {
         return doCreate(spec, paths, null);
+    }
+
+    /**
+     * Allocates an empty {@code layers}-deep array texture with no initial pixel
+     * data — one {@code glTexImage3D} call with a {@code null} data pointer,
+     * orphaning/reserving storage for every layer up front. Pairs with
+     * {@link #uploadLayerRegion} to push data into individual layers afterward.
+     *
+     * <p>Not registered with {@link CgTextureManager}; caller owns the lifecycle.
+     * No reload support (there is no source path to reload from). This is the
+     * "N-layer atlas built up incrementally over many frames" entry point, as
+     * opposed to {@link #create}/{@link #createDirect}'s "N whole images,
+     * uploaded once" model.</p>
+     *
+     * @param width  layer width in pixels (must be positive)
+     * @param height layer height in pixels (must be positive)
+     * @param layers number of layers to reserve (must be positive; fixed for
+     *               the lifetime of this texture — growing it requires a new
+     *               texture and copying every existing layer)
+     * @param spec   format/filter/wrap; {@link CgTextureSpec#getGlType()} is used
+     *               only for this initial allocation call (no real data is
+     *               transferred with a null pointer) — {@link #uploadLayerRegion}
+     *               takes its own explicit format/type per call, which does not
+     *               need to match this spec's type (e.g. uploading {@code float}
+     *               data into an {@code RGBA16F}-internal-format array, whose
+     *               spec type may be {@code GL_HALF_FLOAT}).
+     */
+    public static CgTexture2DArray allocateEmpty(int width, int height, int layers, CgTextureSpec spec) {
+        if (width <= 0 || height <= 0) 
+            throw new IllegalArgumentException("width/height must be positive, got: " + width + "x" + height);
+        if (layers <= 0) 
+            throw new IllegalArgumentException("layers must be positive, got: " + layers);
+        
+        int id = CgGL.glGenTextures();
+        CgTexture2DArray tex = new CgTexture2DArray(id, width, height, layers, spec, null);
+        CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, id);
+        try {
+            CgGL.glTexImage3D(GL_TEXTURE_2D_ARRAY, 0,
+                    spec.getGlInternalFormat(), width, height, layers, 0,
+                    spec.getGlBaseFormat(), spec.getGlType(), (ByteBuffer) null);
+            spec.applyTo(GL_TEXTURE_2D_ARRAY);
+        } finally {
+            CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+        }
+        return tex;
+    }
+
+    // ── Per-layer sub-rect upload ───────────────────────────────────────
+
+    /**
+     * Uploads pixel data into a sub-rectangle of a single layer, via
+     * {@code glTexSubImage3D}. Pairs with {@link #allocateEmpty}.
+     *
+     * <p>{@code format}/{@code type} describe {@code data}'s actual layout and
+     * are supplied explicitly by the caller rather than derived from this
+     * texture's spec — the spec describes GPU-side storage, not what a given
+     * upload call's CPU-side data looks like (e.g. this array's internal
+     * format may be {@code RGBA16F} while a caller uploads plain {@code float}
+     * data via {@code GL_FLOAT}, letting the driver quantize on upload).</p>
+     *
+     * @param layer  target layer index, {@code [0, getDepth())}
+     * @param x      sub-rectangle left edge within the layer, in pixels
+     * @param y      sub-rectangle top edge within the layer, in pixels
+     * @param w      sub-rectangle width, in pixels
+     * @param h      sub-rectangle height, in pixels
+     * @param format GL pixel format of {@code data} (e.g. {@code GL_RED}, {@code GL_RGBA})
+     * @param type   GL pixel type of {@code data} (e.g. {@code GL_UNSIGNED_BYTE}, {@code GL_FLOAT})
+     * @param data   tightly-packed pixel data, {@code w * h * channels(format)} elements
+     */
+    public void uploadLayerRegion(int layer, int x, int y, int w, int h,
+                                   int format, int type, ByteBuffer data) {
+        checkNotDeleted();
+        CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, textureId);
+        // GL defaults GL_UNPACK_ALIGNMENT to 4 (rows padded to a 4-byte boundary in the
+        // client buffer). data here is tightly packed with no such padding, so any
+        // single-byte-per-pixel upload (e.g. R8 bitmap glyphs) whose row width isn't a
+        // multiple of 4 gets every row after the first misread — the driver skips/shifts
+        // bytes trying to find each row's "padded" start, corrupting the uploaded pixels.
+        // Must be set to 1 for the sub-image call itself, then restored.
+        int prevAlignment = CgGL.glGetInteger(CgGL.GL_UNPACK_ALIGNMENT);
+        CgGL.glPixelStorei(CgGL.GL_UNPACK_ALIGNMENT, 1);
+        try {
+            CgGL.glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, x, y, layer, w, h, 1, format, type, data);
+        } finally {
+            CgGL.glPixelStorei(CgGL.GL_UNPACK_ALIGNMENT, prevAlignment);
+            CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+        }
+    }
+
+    /** {@code float}-data variant of {@link #uploadLayerRegion(int, int, int, int, int, int, int, ByteBuffer)}. */
+    public void uploadLayerRegion(int layer, int x, int y, int w, int h,
+                                   int format, int type, FloatBuffer data) {
+        checkNotDeleted();
+        CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, textureId);
+        try {
+            CgGL.glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, x, y, layer, w, h, 1, format, type, data);
+        } finally {
+            CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+        }
     }
 
     // ── Upload ────────────────────────────────────────────────────────
