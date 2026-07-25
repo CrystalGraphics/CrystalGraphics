@@ -1,5 +1,7 @@
 package com.crystalgraphics.text.atlas.packing;
 
+import lombok.Getter;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Logger;
@@ -41,10 +43,22 @@ public class MaxRectsPacker implements CgPackingStrategy {
      */
     private static final int FREE_RECT_WARN_THRESHOLD = 2048;
 
-    /** Width of the bin in pixels. */
+    /** Width of the bin in pixels. 
+     * -- GETTER --
+     *  Returns the bin width.
+     *
+     * @return bin width in pixels
+     */
+    @Getter
     private final int binWidth;
 
-    /** Height of the bin in pixels. */
+    /** Height of the bin in pixels. 
+     * -- GETTER --
+     *  Returns the bin height.
+     *
+     * @return bin height in pixels
+     */
+    @Getter
     private final int binHeight;
 
     /** List of free rectangles available for packing. */
@@ -163,7 +177,7 @@ public class MaxRectsPacker implements CgPackingStrategy {
         packedRects.remove(rect);
 
         // Add the freed area back to the free list
-        freeRects.add(new Rect(rect.getX(), rect.getY(), rect.getWidth(), rect.getHeight()));
+        freeRects.add(new Rect(rect.x(), rect.y(), rect.width(), rect.height()));
 
         // Prune contained rects — the new free rect may contain or be contained by others
         pruneContained();
@@ -181,7 +195,7 @@ public class MaxRectsPacker implements CgPackingStrategy {
         long usedArea = 0;
         for (int i = 0; i < packedRects.size(); i++) {
             PackedRect r = packedRects.get(i);
-            usedArea += (long) r.getWidth() * r.getHeight();
+            usedArea += (long) r.width() * r.height();
         }
         return (float) usedArea / ((long) binWidth * binHeight);
     }
@@ -193,24 +207,6 @@ public class MaxRectsPacker implements CgPackingStrategy {
      */
     public int getPackedCount() {
         return packedRects.size();
-    }
-
-    /**
-     * Returns the bin width.
-     *
-     * @return bin width in pixels
-     */
-    public int getBinWidth() {
-        return binWidth;
-    }
-
-    /**
-     * Returns the bin height.
-     *
-     * @return bin height in pixels
-     */
-    public int getBinHeight() {
-        return binHeight;
     }
 
     // ---------------------------------------------------------------
@@ -225,10 +221,10 @@ public class MaxRectsPacker implements CgPackingStrategy {
      * right of the placed rect within the free rect).</p>
      */
     private void splitFreeRects(PackedRect placed) {
-        int px = placed.getX();
-        int py = placed.getY();
-        int pw = placed.getWidth();
-        int ph = placed.getHeight();
+        int px = placed.x();
+        int py = placed.y();
+        int pw = placed.width();
+        int ph = placed.height();
         int px2 = px + pw;
         int py2 = py + ph;
 
@@ -329,25 +325,14 @@ public class MaxRectsPacker implements CgPackingStrategy {
     // ---------------------------------------------------------------
 
     /**
-     * Lightweight mutable rectangle used only for the internal free-rect list.
-     * Not exposed in the public API.
-     */
-    static final class Rect {
-        final int x;
-        final int y;
-        final int width;
-        final int height;
-
-        Rect(int x, int y, int width, int height) {
-            this.x = x;
-            this.y = y;
-            this.width = width;
-            this.height = height;
-        }
+         * Lightweight mutable rectangle used only for the internal free-rect list.
+         * Not exposed in the public API.
+         */
+        record Rect(int x, int y, int width, int height) {
 
         @Override
-        public String toString() {
-            return "Rect{" + x + "," + y + " " + width + "x" + height + "}";
+            public String toString() {
+                return "Rect{" + x + "," + y + " " + width + "x" + height + "}";
+            }
         }
-    }
 }

@@ -1,5 +1,7 @@
 package com.crystalgraphics.text.atlas.packing;
 
+import java.util.Objects;
+
 /**
  * Immutable value representing a rectangle packed into a bin atlas.
  *
@@ -11,23 +13,23 @@ package com.crystalgraphics.text.atlas.packing;
  * and should not be constructed directly by callers.</p>
  *
  * @see MaxRectsPacker
+ * @param x  X position of the top-left corner within the bin (pixels). 
+-- GETTER --
+Returns the X position of the top-left corner within the bin. 
+ * @param y  Y position of the top-left corner within the bin (pixels). 
+-- GETTER --
+Returns the Y position of the top-left corner within the bin. 
+ * @param width  Width of the packed rectangle (pixels). 
+-- GETTER --
+Returns the width of the packed rectangle. 
+ * @param height  Height of the packed rectangle (pixels). 
+-- GETTER --
+Returns the height of the packed rectangle. 
+ * @param id  Caller-provided identifier (e.g., CgGlyphKey). 
+-- GETTER --
+Returns the caller-provided identifier. 
  */
-public final class PackedRect {
-
-    /** X position of the top-left corner within the bin (pixels). */
-    private final int x;
-
-    /** Y position of the top-left corner within the bin (pixels). */
-    private final int y;
-
-    /** Width of the packed rectangle (pixels). */
-    private final int width;
-
-    /** Height of the packed rectangle (pixels). */
-    private final int height;
-
-    /** Caller-provided identifier (e.g., CgGlyphKey). */
-    private final Object id;
+public record PackedRect(int x, int y, int width, int height, Object id) {
 
     /**
      * Constructs a packed rectangle.
@@ -38,37 +40,7 @@ public final class PackedRect {
      * @param height rectangle height
      * @param id     caller-provided identifier
      */
-    public PackedRect(int x, int y, int width, int height, Object id) {
-        this.x = x;
-        this.y = y;
-        this.width = width;
-        this.height = height;
-        this.id = id;
-    }
-
-    /** Returns the X position of the top-left corner within the bin. */
-    public int getX() {
-        return x;
-    }
-
-    /** Returns the Y position of the top-left corner within the bin. */
-    public int getY() {
-        return y;
-    }
-
-    /** Returns the width of the packed rectangle. */
-    public int getWidth() {
-        return width;
-    }
-
-    /** Returns the height of the packed rectangle. */
-    public int getHeight() {
-        return height;
-    }
-
-    /** Returns the caller-provided identifier. */
-    public Object getId() {
-        return id;
+    public PackedRect {
     }
 
     @Override
@@ -82,17 +54,7 @@ public final class PackedRect {
         if (y != that.y) return false;
         if (width != that.width) return false;
         if (height != that.height) return false;
-        return id != null ? id.equals(that.id) : that.id == null;
-    }
-
-    @Override
-    public int hashCode() {
-        int result = x;
-        result = 31 * result + y;
-        result = 31 * result + width;
-        result = 31 * result + height;
-        result = 31 * result + (id != null ? id.hashCode() : 0);
-        return result;
+        return Objects.equals(id, that.id);
     }
 
     @Override

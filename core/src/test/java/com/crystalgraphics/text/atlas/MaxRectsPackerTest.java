@@ -47,12 +47,12 @@ public class MaxRectsPackerTest {
         for (int i = 0; i < packed.size(); i++) {
             PackedRect a = packed.get(i);
             // Verify within bin bounds
-            assertTrue("Rect " + i + " x >= 0", a.getX() >= 0);
-            assertTrue("Rect " + i + " y >= 0", a.getY() >= 0);
+            assertTrue("Rect " + i + " x >= 0", a.x() >= 0);
+            assertTrue("Rect " + i + " y >= 0", a.y() >= 0);
             assertTrue("Rect " + i + " right <= binWidth",
-                    a.getX() + a.getWidth() <= 1024);
+                    a.x() + a.width() <= 1024);
             assertTrue("Rect " + i + " bottom <= binHeight",
-                    a.getY() + a.getHeight() <= 1024);
+                    a.y() + a.height() <= 1024);
 
             for (int j = i + 1; j < packed.size(); j++) {
                 PackedRect b = packed.get(j);
@@ -164,9 +164,9 @@ public class MaxRectsPackerTest {
         PackedRect r = packer.insert(16, 24, "test");
 
         assertNotNull("Should pack successfully", r);
-        assertEquals("Width should match", 16, r.getWidth());
-        assertEquals("Height should match", 24, r.getHeight());
-        assertEquals("Id should match", "test", r.getId());
+        assertEquals("Width should match", 16, r.width());
+        assertEquals("Height should match", 24, r.height());
+        assertEquals("Id should match", "test", r.id());
     }
 
     /**
@@ -290,12 +290,12 @@ public class MaxRectsPackerTest {
      * Returns true if two PackedRects overlap (share any interior area).
      */
     private static boolean rectsOverlap(PackedRect a, PackedRect b) {
-        int ax2 = a.getX() + a.getWidth();
-        int ay2 = a.getY() + a.getHeight();
-        int bx2 = b.getX() + b.getWidth();
-        int by2 = b.getY() + b.getHeight();
+        int ax2 = a.x() + a.width();
+        int ay2 = a.y() + a.height();
+        int bx2 = b.x() + b.width();
+        int by2 = b.y() + b.height();
 
-        return a.getX() < bx2 && ax2 > b.getX()
-                && a.getY() < by2 && ay2 > b.getY();
+        return a.x() < bx2 && ax2 > b.x()
+                && a.y() < by2 && ay2 > b.y();
     }
 }

@@ -230,25 +230,14 @@ public class CgGuillotinePacker implements CgPackingStrategy {
     // ── Internal rect representation ──────────────────────────────────
 
     /**
-     * Lightweight immutable rectangle for the internal free-space list.
-     * Not exposed in the public API.
-     */
-    static final class Rect {
-        final int x;
-        final int y;
-        final int w;
-        final int h;
-
-        Rect(int x, int y, int w, int h) {
-            this.x = x;
-            this.y = y;
-            this.w = w;
-            this.h = h;
-        }
+         * Lightweight immutable rectangle for the internal free-space list.
+         * Not exposed in the public API.
+         */
+        record Rect(int x, int y, int w, int h) {
 
         @Override
-        public String toString() {
-            return "Rect{" + x + "," + y + " " + w + "x" + h + "}";
+            public String toString() {
+                return "Rect{" + x + "," + y + " " + w + "x" + h + "}";
+            }
         }
-    }
 }
