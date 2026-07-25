@@ -15,6 +15,7 @@ This package is correct for:
 - layout constraints
 - final layout results
 - shaped directional runs that callers may inspect or hand back to the renderer
+- flat baked-glyph data derived from a layout
 
 This package is not correct for:
 
@@ -27,8 +28,9 @@ This package is not correct for:
 
 1. `CgTextConstraints`
 2. `CgShapedRun`
-3. `CgTextLayout`
-4. `package-info.java`
+3. `CgBakedGlyphs`
+4. `CgTextLayout`
+5. `package-info.java`
 
 ## Class-by-class details
 
@@ -56,12 +58,19 @@ Carries:
 - advances and offsets
 - total advance
 - run direction
-- source text and source range
 - font key
+- resolved font handle (`resolvedFont`, excluded from equality — fully determined by `fontKey`)
+- source position (`sourceStart`/`sourceEnd`) within its paragraph
 
 Important nuance:
 
-`CgShapedRun` is public **and** still carries a known internal leak: the source text and source range fields. Those are still needed because line-breaking may re-shape a subrange of a run. Until that reshaping contract is moved elsewhere, those fields are intentional.
+`CgShapedRun` no longer carries the paragraph's source **text** — that used to be a known leak (a copy of the input string retained on every run just so line-breaking could re-shape sub-ranges). It's now supplied externally, once per paragraph, via `text.layout.CgReshapeContext`. `sourceStart`/`sourceEnd` remain on the run (cheap ints, not a leak) because line-breaking still needs to know *where* within that external text this run's segment falls.
+
+### `CgBakedGlyphs`
+
+Flat, per-glyph baked layout data for one `CgTextLayout` — pen positions (relative to the layout's own origin), resolved font key/font/glyph id per glyph, a `justifiable` flag per glyph (Seam A — unconsumed until text justification is built), and per-line height/glyph-start-index arrays.
+
+Computed once by the layout engine's bake step so renderer-side consumers (`CgResolvedGlyphs`) can do a flat translate-only loop instead of re-walking the `lines` tree and re-resolving fonts by key on every draw.
 
 ### `CgTextLayout`
 
@@ -73,11 +82,11 @@ Carries:
 - total width
 - total height
 - metrics
-- `resolvedFontsByKey`
+- `baked` (`CgBakedGlyphs`)
 
 Important nuance:
 
-`resolvedFontsByKey` is still a public/internal leak because the renderer needs resolved `CgFont` handles at draw time for glyph lookup. This means `CgTextLayout` is not yet a perfect pure DTO.
+`resolvedFontsByKey` (a `Map<CgFontKey, CgFont>`) used to live here as an acknowledged leak. It's gone — every `CgShapedRun` and every baked glyph now carries its own resolved font directly, so a separate by-key map is redundant.
 
 ## Boundary rules
 
@@ -85,32 +94,15 @@ Important nuance:
 - It should contain values callers genuinely need.
 - It should not absorb the internal layout algorithm or renderer/cache helpers.
 
-## Practical meaning of the current leaks
-
-### `CgTextLayout.resolvedFontsByKey`
-
-Keep in mind:
-
-- renderer currently relies on it
-- callers should avoid building independent long-lived logic around those `CgFont` handles
-- long-term, this probably wants to move into a render-context or resolver object instead
-
-### `CgShapedRun.sourceText/sourceStart/sourceEnd`
-
-Keep in mind:
-
-- line breaker / reshaper still depends on them
-- they are not accidental leftovers
-- do not remove them unless the reshaping contract has been redesigned first
-
 ## Best files to modify for common tasks
 
 - layout bounds API → `CgTextConstraints`
 - public shaped-run semantics → `CgShapedRun`
+- baked per-glyph data → `CgBakedGlyphs`
 - public layout result semantics → `CgTextLayout`
 
 ## Common agent mistakes to avoid
 
-- Do not treat these types as perfectly clean DTOs without checking the current leak fields.
 - Do not move algorithmic classes here just because callers see the output.
 - Do not add cache or renderer convenience methods here unless they genuinely belong in the public text API.
+- Do not reintroduce a font-by-key map on `CgTextLayout` — resolve via `CgShapedRun.getResolvedFont()` or `CgBakedGlyphs.fonts()[i]` instead.
