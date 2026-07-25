@@ -3,6 +3,7 @@ package com.crystalgraphics.api.font;
 import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.harfbuzz.HBFont;
 import com.crystalgraphics.api.text.CgShapedRun;
+import com.crystalgraphics.text.layout.CgReshapeContext;
 import com.crystalgraphics.text.layout.CgTextLayoutEngine;
 import com.crystalgraphics.text.layout.CgTextShaper;
 import com.crystalgraphics.text.layout.RunReshaper;
@@ -82,10 +83,12 @@ public class CgTextLayoutBuilder extends CgTextLayoutEngine {
         List<CgFontFamily.ResolvedFontRun> resolvedRuns = family.resolveRuns(text, start, end);
         for (CgFontFamily.ResolvedFontRun resolvedRun : resolvedRuns) {
             HBFont hbFont = resolvedRun.requireHbFont();
+            CgFont resolvedFont = resolvedRun.getSource().requireFont();
             CgShapedRun run = shaper.shape(text,
                     resolvedRun.getStart(),
                     resolvedRun.getEnd(),
                     resolvedRun.getFontKey(),
+                    resolvedFont,
                     rtl,
                     hbFont);
             out.add(run);
@@ -107,10 +110,11 @@ public class CgTextLayoutBuilder extends CgTextLayoutEngine {
         // shaping for the fragment instead of slicing glyph arrays blindly.
         return new RunReshaper() {
             @Override
-            public CgShapedRun reshape(CgShapedRun run, int subStart, int subEnd) {
+            public CgShapedRun reshape(CgReshapeContext context, CgShapedRun run, int subStart, int subEnd) {
                 HBFont hbFont = family.requireShapingFont(run.getFontKey());
-                return shaper.shape(run.getSourceText(), subStart, subEnd,
-                        run.getFontKey(), run.isRtl(), hbFont);
+                CgFont resolvedFont = family.resolveLoadedFont(run.getFontKey());
+                return shaper.shape(context.sourceText(), subStart, subEnd,
+                        run.getFontKey(), resolvedFont, run.isRtl(), hbFont);
             }
         };
     }

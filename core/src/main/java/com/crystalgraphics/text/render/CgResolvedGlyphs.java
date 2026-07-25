@@ -1,17 +1,14 @@
 package com.crystalgraphics.text.render;
 
 import com.crystalgraphics.api.font.CgFont;
-import com.crystalgraphics.api.font.CgFontFamily;
 import com.crystalgraphics.api.font.CgFontKey;
-import com.crystalgraphics.api.font.CgFontMetrics;
 import com.crystalgraphics.api.font.CgGlyphKey;
 import com.crystalgraphics.api.font.CgGlyphPlacement;
-import com.crystalgraphics.api.text.CgShapedRun;
+import com.crystalgraphics.api.text.CgBakedGlyphs;
 import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.text.cache.CgFontRegistry;
 
 import java.util.Arrays;
-import java.util.List;
 
 /**
  * Resolves one {@code CgTextRenderer.drawInternal} call's {@link CgTextLayout} into flat,
@@ -21,7 +18,7 @@ import java.util.List;
  * {@code CgTextRenderer} reads {@link #glyphX}/{@link #glyphY}/{@link #placements} back out.
  *
  * <h3>Why a cache is needed even with an O(1) atlas</h3>
- * <p>{@link #resolve} checks {@link CgGlyphPlacementCache} before doing any layout-tree walk
+ * <p>{@link #resolve} checks {@link CgGlyphPlacementCache} before doing any bake-array pass
  * or atlas work — see that class's javadoc for the cache's own design (capacity, LRU
  * structure, global scope, key composition, staleness bound). Even after
  * {@code CgPagedGlyphAtlas.get()} became {@code O(1)} and
@@ -30,7 +27,7 @@ import java.util.List;
  * {@link CgGlyphKey} allocations (each hashing a nested {@link CgFontKey}) plus ~1000 hashmap
  * probes, every single frame, forever — {@code O(1)} describes the lookup's algorithmic
  * complexity, not its absolute cost, and that cost is not zero. A cache hit skips all of it:
- * no tree walk, no key allocation, no atlas probe, just repointing {@link #glyphX}/
+ * no bake-array pass, no key allocation, no atlas probe, just repointing {@link #glyphX}/
  * {@link #glyphY}/{@link #placements} at the cached entry's own arrays.</p>
  */
 final class CgResolvedGlyphs {
@@ -72,30 +69,16 @@ final class CgResolvedGlyphs {
         scratchGlyphKeys = Arrays.copyOf(scratchGlyphKeys, newCap);
     }
 
-    private static CgFont resolveRunFont(CgTextLayout layout, CgFontFamily family, CgFontKey runFontKey) {
-        CgFont resolvedFromLayout = layout.getResolvedFontsByKey().get(runFontKey);
-        if (resolvedFromLayout != null) return resolvedFromLayout;
-
-        return family.resolveLoadedFont(runFontKey);
-    }
-
-    private static int countGlyphs(List<List<CgShapedRun>> lines) {
-        int total = 0;
-        for (List<CgShapedRun> line : lines) for (CgShapedRun run : line) total += run.getGlyphIds().length;
-
-        return total;
-    }
-
     /**
      * Resolves {@code layout} into {@link #glyphX}/{@link #glyphY}/{@link #placements}, either
      * by reusing a matching {@link CgGlyphPlacementCache} entry or by performing a fresh
-     * layout-walk + atlas-resolve and caching the result. See that class's javadoc.
+     * translate-only bake read + atlas-resolve and caching the result. See that class's javadoc.
      *
      * @return the number of glyphs resolved (may be 0 for an all-whitespace layout)
      */
-    int resolve(CgTextLayout layout, CgFontFamily family, float x, float y, long frame,
+    int resolve(CgTextLayout layout, float x, float y, long frame,
                CgTextRenderContext context, int effectiveTargetPx, boolean wantMsdf,
-               CgFontMetrics metrics, CgFontKey fontKey) {
+               CgFontKey fontKey) {
         CgGlyphPlacementCache.Key key = CgGlyphPlacementCache.key(layout, x, y, wantMsdf, fontKey);
         CgGlyphPlacementCache.Entry hit = CgGlyphPlacementCache.get(key, effectiveTargetPx, frame);
         if (hit != null) {
@@ -105,7 +88,7 @@ final class CgResolvedGlyphs {
             return hit.glyphCount();
         }
 
-        int glyphCount = flatten(layout, family, x, y, context, effectiveTargetPx, wantMsdf, metrics);
+        int glyphCount = flatten(layout, x, y, context, effectiveTargetPx, wantMsdf);
         boolean distanceField = false;
         if (glyphCount > 0) {
             distanceField = resolvePlacements(glyphCount, frame, effectiveTargetPx, wantMsdf);
@@ -125,49 +108,37 @@ final class CgResolvedGlyphs {
     }
 
     /**
-     * Single walk of the layout tree: flattens every glyph's font key/font/id/subpixel
-     * bucket/pen position/{@link CgGlyphKey} into this instance's scratch arrays.
+     * Single translate-only pass over {@code layout}'s already-baked {@link CgBakedGlyphs}:
+     * every glyph's font key/font/id/subpixel bucket/pen position/{@link CgGlyphKey} into this
+     * instance's scratch arrays. Pen positions only need {@code x, y} added — everything else
+     * (line breaking, BiDi, per-line height) was already folded in once by the layout engine's
+     * bake step, not re-derived here.
      *
-     * <p>This is the only place the {@code CgTextLayout} line/run/glyph tree gets walked.
-     * {@link #ensurePlacements}'s MSDF→bitmap fallback retry re-runs only the flat
-     * atlas-lookup loop over these already-flattened arrays — never this walk again.</p>
+     * <p>{@link #ensurePlacements}'s MSDF→bitmap fallback retry re-runs only the flat
+     * atlas-lookup loop over these already-flattened arrays — never this pass again.</p>
      *
      * @return the number of glyphs flattened (may be 0 for an all-whitespace layout)
      */
-    private int flatten(CgTextLayout layout, CgFontFamily family, float x, float y,
-                        CgTextRenderContext context, int effectiveTargetPx, boolean wantMsdf, CgFontMetrics metrics) {
-        List<List<CgShapedRun>> lines = layout.getLines();
-        int totalGlyphs = countGlyphs(lines);
-        ensureCapacity(totalGlyphs);
+    private int flatten(CgTextLayout layout, float x, float y,
+                        CgTextRenderContext context, int effectiveTargetPx, boolean wantMsdf) {
+        CgBakedGlyphs baked = layout.baked();
+        int glyphCount = baked.glyphCount();
+        ensureCapacity(glyphCount);
 
-        int index = 0;
-        float penY = y + metrics.getAscender();
-        for (List<CgShapedRun> line : lines) {
-            float penX = x;
-            for (CgShapedRun run : line) {
-                CgFontKey runFontKey = run.getFontKey();
-                CgFont runFont = resolveRunFont(layout, family, runFontKey);
-                int[] glyphIdsArr = run.getGlyphIds();
-                float[] advancesX = run.getAdvancesX();
-                float[] offsetsX = run.getOffsetsX();
-                float[] offsetsY = run.getOffsetsY();
-                for (int i = 0; i < glyphIdsArr.length; i++) {
-                    int subPixel = resolveSubPixelBucket(context, runFontKey, effectiveTargetPx, offsetsX[i]);
-                    scratchFontKeys[index] = runFontKey;
-                    scratchFonts[index] = runFont;
-                    scratchGlyphIds[index] = glyphIdsArr[i];
-                    scratchSubPixel[index] = subPixel;
-                    scratchGlyphKeys[index] = new CgGlyphKey(runFontKey, glyphIdsArr[i], wantMsdf, subPixel);
-                    scratchGlyphX[index] = penX + offsetsX[i];
-                    scratchGlyphY[index] = penY + offsetsY[i];
-                    penX += advancesX[i];
-                    index++;
-                }
-            }
-            penY += metrics.getLineHeight();
+        for (int i = 0; i < glyphCount; i++) {
+            CgFontKey fontKey = baked.fontKeys()[i];
+            int glyphId = baked.glyphIds()[i];
+            int subPixel = resolveSubPixelBucket(context, fontKey, effectiveTargetPx, baked.offsetX()[i]);
+            scratchFontKeys[i] = fontKey;
+            scratchFonts[i] = baked.fonts()[i];
+            scratchGlyphIds[i] = glyphId;
+            scratchSubPixel[i] = subPixel;
+            scratchGlyphKeys[i] = new CgGlyphKey(fontKey, glyphId, wantMsdf, subPixel);
+            scratchGlyphX[i] = x + baked.penX()[i];
+            scratchGlyphY[i] = y + baked.penY()[i];
         }
 
-        return totalGlyphs;
+        return glyphCount;
     }
 
     /**

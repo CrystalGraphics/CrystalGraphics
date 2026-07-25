@@ -1,6 +1,9 @@
 package com.crystalgraphics.api.text;
 
+import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgFontKey;
+import com.crystalgraphics.text.layout.CgLineBreaker;
+import com.crystalgraphics.text.layout.CgReshapeContext;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.ToString;
@@ -10,7 +13,9 @@ import lombok.ToString;
  *
  * <p>A shaped run contains the glyph IDs, cluster IDs, advances, and offsets
  * produced by HarfBuzz for a contiguous run of text with a single direction
- * (LTR or RTL). All arrays have the same length — one entry per shaped glyph.</p>
+ * (LTR or RTL). {@code glyphIds}, {@code clusterIds}, {@code advancesX},
+ * {@code offsetsX}, and {@code offsetsY} all have the same length — one
+ * entry per shaped glyph.</p>
  *
  * <h3>Glyph ID semantics</h3>
  * <p>{@code glyphIds} contains <strong>glyph indices</strong> (from
@@ -30,31 +35,26 @@ import lombok.ToString;
  * values are part of the logical layout space in the three-space model and must
  * never be mutated by draw-time transforms such as UI scale or PoseStack.</p>
  *
+ * <h3>Source position, not source text</h3>
+ * <p>{@link #sourceStart}/{@link #sourceEnd} record this run's character range
+ * within its paragraph — needed by {@link CgLineBreaker}
+ * to re-shape sub-ranges when splitting an overflowing run at a word or grapheme
+ * boundary. The paragraph text itself is supplied separately, once per paragraph,
+ * via {@link CgReshapeContext} — this run does not
+ * carry its own copy of the source string.</p>
+ *
+ * <h3>Resolved font</h3>
+ * <p>{@link #resolvedFont} is the concrete {@link CgFont} this run was shaped
+ * with, as opposed to {@link #fontKey} which only identifies it. Carrying the
+ * resolved handle directly on the run lets later pipeline stages (glyph baking,
+ * rendering) skip a second font-table lookup by key. Excluded from equality —
+ * it is fully determined by {@link #fontKey}.</p>
+ *
  * <h3>Public Text API</h3>
  * <p>This type lives in {@code api/text} because it is publicly exposed through
- * {@link CgTextLayout#getLines()} — any consumer of a layout result necessarily
+ * {@link CgTextLayout#lines()} — any consumer of a layout result necessarily
  * works with shaped runs. The internal shaping machinery produces this type but
  * does not own it.</p>
- *
- * <h3>Known API-boundary leak: source-context fields</h3>
- * <p>The fields {@link #sourceText}, {@link #sourceStart}, and {@link #sourceEnd}
- * carry the original input text and character range that produced this run. This
- * is internal pipeline state — the shaped result (glyphs, advances, offsets) is
- * the public contract, not the source text that went into it.</p>
- *
- * <p><strong>Why they are exposed today:</strong> the intra-run word wrapper needs
- * to re-shape sub-segments of a run when breaking a long word. This requires
- * access to the original source text and offsets so it can call HarfBuzz again
- * on a substring. Without these fields on the run itself, the wrapper would need
- * an out-of-band lookup table mapping runs back to their source, which adds
- * complexity for a single consumer.</p>
- *
- * <p><strong>Future direction:</strong> these fields should migrate to an internal
- * pipeline-only wrapper or be passed through a separate re-shaping context, leaving
- * this class as a pure shaped-result DTO. The {@link #hasSourceContext()} method and
- * the backward-compatible constructor (which sets source fields to {@code null}/0/0)
- * already anticipate this separation — callers that do not need re-shaping should
- * use the shorter constructor and not depend on source fields.</p>
  *
  * @see CgTextLayout
  */
@@ -65,6 +65,11 @@ public final class CgShapedRun {
 
     /** Font this run was shaped with. */
     private final CgFontKey fontKey;
+
+    /** Resolved font handle for {@link #fontKey}; see class Javadoc. */
+    @EqualsAndHashCode.Exclude
+    @ToString.Exclude
+    private final CgFont resolvedFont;
 
     /** {@code true} if this run is right-to-left. */
     private final boolean rtl;
@@ -94,45 +99,28 @@ public final class CgShapedRun {
     private final float totalAdvance;
 
     /**
-     * Original source text used for shaping this run.
-     *
-     * <p><strong>API-boundary note:</strong> this is an internal pipeline concern
-     * exposed for intra-run word wrapping (re-shaping sub-segments via HarfBuzz).
-     * Excluded from equals/hashCode because it does not define the shaped result.
-     * External callers should not depend on this value; use
-     * {@link #hasSourceContext()} to check availability.</p>
-     */
-    @EqualsAndHashCode.Exclude
-    @ToString.Exclude
-    private final String sourceText;
-
-    /**
-     * Start index (inclusive) into {@link #sourceText} for this run's segment.
-     *
-     * <p><strong>API-boundary note:</strong> internal pipeline context; see
-     * {@link #sourceText} and class-level Javadoc for rationale.</p>
+     * Start index (inclusive) into the paragraph text for this run's segment.
+     * See {@link com.crystalgraphics.text.layout.CgReshapeContext}.
      */
     @EqualsAndHashCode.Exclude
     private final int sourceStart;
 
     /**
-     * End index (exclusive) into {@link #sourceText} for this run's segment.
-     *
-     * <p><strong>API-boundary note:</strong> internal pipeline context; see
-     * {@link #sourceText} and class-level Javadoc for rationale.</p>
+     * End index (exclusive) into the paragraph text for this run's segment.
+     * See {@link com.crystalgraphics.text.layout.CgReshapeContext}.
      */
     @EqualsAndHashCode.Exclude
     private final int sourceEnd;
 
-    /**
-     * Full constructor with source-text context for cluster-aware re-shaping.
-     */
-    public CgShapedRun(CgFontKey fontKey, boolean rtl,
-                       int[] glyphIds, int[] clusterIds,
-                       float[] advancesX, float[] offsetsX, float[] offsetsY,
-                       float totalAdvance,
-                       String sourceText, int sourceStart, int sourceEnd) {
+    public CgShapedRun(CgFontKey fontKey, CgFont resolvedFont, boolean rtl,
+                        int[] glyphIds, int[] clusterIds,
+                        float[] advancesX, float[] offsetsX, float[] offsetsY,
+                        float totalAdvance, int sourceStart, int sourceEnd) {
+        if (fontKey == null) {
+            throw new IllegalArgumentException("fontKey must not be null");
+        }
         this.fontKey = fontKey;
+        this.resolvedFont = resolvedFont;
         this.rtl = rtl;
         this.glyphIds = glyphIds;
         this.clusterIds = clusterIds;
@@ -140,30 +128,7 @@ public final class CgShapedRun {
         this.offsetsX = offsetsX;
         this.offsetsY = offsetsY;
         this.totalAdvance = totalAdvance;
-        this.sourceText = sourceText;
         this.sourceStart = sourceStart;
         this.sourceEnd = sourceEnd;
-    }
-
-    /**
-     * Backward-compatible constructor without source-text context.
-     *
-     * <p>Source fields are set to {@code null}/0/0. Runs created this way cannot
-     * be split by the intra-run word wrapper, but remain valid for all other uses.</p>
-     */
-    public CgShapedRun(CgFontKey fontKey, boolean rtl,
-                       int[] glyphIds, int[] clusterIds,
-                       float[] advancesX, float[] offsetsX, float[] offsetsY,
-                       float totalAdvance) {
-        this(fontKey, rtl, glyphIds, clusterIds, advancesX, offsetsX, offsetsY,
-                totalAdvance, null, 0, 0);
-    }
-
-    /**
-     * Returns {@code true} if this run carries source-text context sufficient
-     * for cluster-aware re-shaping (e.g., intra-run word wrapping).
-     */
-    public boolean hasSourceContext() {
-        return sourceText != null && sourceEnd > sourceStart;
     }
 }
