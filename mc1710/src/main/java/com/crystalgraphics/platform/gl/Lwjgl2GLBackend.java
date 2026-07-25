@@ -736,6 +736,11 @@ public final class Lwjgl2GLBackend extends CgGLBackend {
                 width, height, depth, format, type, pixels);
     }
 
+    @Override
+    public void glGetTexImage(int target, int level, int format, int type, ByteBuffer pixels) {
+        GL11.glGetTexImage(target, level, format, type, pixels);
+    }
+
     // -------------------------------------------------------------------------
     // Context
     // -------------------------------------------------------------------------

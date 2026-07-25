@@ -837,6 +837,10 @@ public final class CgGL {
         backend.glTexParameteri(target, pname, param);
     }
 
+    public static void glGetTexImage(int target, int level, int format, int type, ByteBuffer pixels) {
+        backend.glGetTexImage(target, level, format, type, pixels);
+    }
+
     public static void glTexSubImage3D(int target, int level,
                                         int xOffset, int yOffset, int zOffset,
                                         int width, int height, int depth,

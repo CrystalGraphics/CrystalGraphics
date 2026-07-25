@@ -163,6 +163,8 @@ public abstract class CgGLBackend {
     public abstract void glGenerateMipmap(int target);
     public abstract void glActiveTexture(int texture);
     public abstract void glTexParameteri(int target, int pname, int param);
+    /** Reads back the currently bound texture's mip level 0 (all layers/faces, for array/cubemap targets). */
+    public abstract void glGetTexImage(int target, int level, int format, int type, ByteBuffer pixels);
 
     // -------------------------------------------------------------------------
     // Draw calls

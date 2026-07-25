@@ -458,6 +458,11 @@ public final class GL1201Backend extends CgGLBackend {
         RenderSystem.texParameter(target, pname, param);
     }
 
+    @Override
+    public void glGetTexImage(int target, int level, int format, int type, ByteBuffer pixels) {
+        GL11C.glGetTexImage(target, level, format, type, pixels);
+    }
+
     // -------------------------------------------------------------------------
     // Draw calls — Tier 3 (raw GL11C / GL31C)
     // -------------------------------------------------------------------------
