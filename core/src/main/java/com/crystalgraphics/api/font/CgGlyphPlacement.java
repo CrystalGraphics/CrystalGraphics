@@ -1,5 +1,6 @@
 package com.crystalgraphics.api.font;
 
+import com.crystalgraphics.gl.texture.CgTexture2DArray;
 import com.crystalgraphics.text.atlas.CgGlyphAtlas;
 
 /**
@@ -29,7 +30,7 @@ import com.crystalgraphics.text.atlas.CgGlyphAtlas;
  * the page dimensions. The renderer uses UVs for texture sampling only.</p>
  *
  * <h3>Page Identity</h3>
- * <p>Each placement carries a {@code pageIndex} and {@code pageTextureId} so the
+ * <p>Each placement carries a {@code atlasPageIndex} and {@code atlasTextureId} so the
  * renderer can group glyphs by atlas page for draw batching. The texture ID is
  * the GL texture name of the specific page this glyph resides on.</p>
  *
@@ -39,175 +40,75 @@ import com.crystalgraphics.text.atlas.CgGlyphAtlas;
  * to set {@code u_pxRange} per batch when different pages or font sizes use
  * different range values, rather than treating it as a global constant.</p>
  *
+ * @param key            The glyph key this placement was allocated for.
+ * @param atlasTextureId GL texture ID of the {@link CgTexture2DArray} atlas this glyph resides on.
+ *
+ *                       <p>This is resolved at placement time so the renderer does not need
+ *                       to look up page handles during draw. A value of 0 indicates a
+ *                       test-mode placement with no backing GL texture.</p>
+ * @param atlasPageIndex      Zero-based page index within the paged atlas.
+ * @param planeLeft      Left edge of the glyph quad in physical raster units, measured from
+ *                       the pen origin. For bitmap glyphs this equals bearingX. For MSDF
+ *                       glyphs this includes the SDF range padding to the left of the
+ *                       visible glyph edge.
+ * @param planeBottom    Bottom edge of the glyph quad in physical raster units, measured
+ *                       from the baseline. Positive values extend below the baseline.
+ *                       For MSDF glyphs this includes the SDF range padding below the
+ *                       visible glyph edge.
+ * @param planeRight     Right edge of the glyph quad in physical raster units.
+ *                       {@code planeRight - planeLeft} gives the full quad width including
+ *                       any SDF padding.
+ * @param planeTop       Top edge of the glyph quad in physical raster units, measured from
+ *                       the baseline. Positive values extend above the baseline (the common
+ *                       case for most glyphs). For MSDF glyphs this includes SDF range
+ *                       padding above the visible glyph edge.
+ * @param atlasLeft      Left edge of the glyph region in the atlas page (pixels).
+ * @param atlasBottom    Bottom edge of the glyph region in the atlas page (pixels).
+ * @param atlasRight     Right edge of the glyph region in the atlas page (pixels).
+ * @param atlasTop       Top edge of the glyph region in the atlas page (pixels).
+ * @param u0             Normalized U coordinate of the left edge [0, 1].
+ * @param v0             Normalized V coordinate of the top edge [0, 1].
+ * @param u1             Normalized U coordinate of the right edge [0, 1].
+ * @param v1             Normalized V coordinate of the bottom edge [0, 1].
+ * @param pxRange        SDF pixel range for this page/bucket, used as {@code u_pxRange} in
+ *                       the MSDF fragment shader.
+ *
+ *                       <p>For bitmap placements this is 0.0f (unused). For MSDF placements
+ *                       this carries the range value that was used during SDF generation so
+ *                       the renderer can set the correct uniform per batch.</p>
  * @see CgGlyphKey
  */
-public final class CgGlyphPlacement {
-
-    // ── Glyph identity ─────────────────────────────────────────────────
-
-    /** The glyph key this placement was allocated for. */
-    private final CgGlyphKey key;
-
-    // ── Page identity ──────────────────────────────────────────────────
-
-    /** Zero-based page index within the paged atlas. */
-    private final int pageIndex;
-
-    /**
-     * GL texture ID of the atlas page this glyph resides on.
-     *
-     * <p>This is resolved at placement time so the renderer does not need
-     * to look up page handles during draw. A value of 0 indicates a
-     * test-mode placement with no backing GL texture.</p>
-     */
-    private final int pageTextureId;
-
-    private final CgGlyphAtlas.Type atlasType;
-
-    // ── Plane bounds (physical raster space) ───────────────────────────
-
-    /**
-     * Left edge of the glyph quad in physical raster units, measured from
-     * the pen origin. For bitmap glyphs this equals bearingX. For MSDF
-     * glyphs this includes the SDF range padding to the left of the
-     * visible glyph edge.
-     */
-    private final float planeLeft;
-
-    /**
-     * Bottom edge of the glyph quad in physical raster units, measured
-     * from the baseline. Positive values extend below the baseline.
-     * For MSDF glyphs this includes the SDF range padding below the
-     * visible glyph edge.
-     */
-    private final float planeBottom;
-
-    /**
-     * Right edge of the glyph quad in physical raster units.
-     * {@code planeRight - planeLeft} gives the full quad width including
-     * any SDF padding.
-     */
-    private final float planeRight;
-
-    /**
-     * Top edge of the glyph quad in physical raster units, measured from
-     * the baseline. Positive values extend above the baseline (the common
-     * case for most glyphs). For MSDF glyphs this includes SDF range
-     * padding above the visible glyph edge.
-     */
-    private final float planeTop;
-
-    // ── Atlas bounds (page-local pixel coordinates) ────────────────────
-
-    /** Left edge of the glyph region in the atlas page (pixels). */
-    private final int atlasLeft;
-
-    /** Bottom edge of the glyph region in the atlas page (pixels). */
-    private final int atlasBottom;
-
-    /** Right edge of the glyph region in the atlas page (pixels). */
-    private final int atlasRight;
-
-    /** Top edge of the glyph region in the atlas page (pixels). */
-    private final int atlasTop;
-
-    // ── Normalized UVs ─────────────────────────────────────────────────
-
-    /** Normalized U coordinate of the left edge [0, 1]. */
-    private final float u0;
-
-    /** Normalized V coordinate of the top edge [0, 1]. */
-    private final float v0;
-
-    /** Normalized U coordinate of the right edge [0, 1]. */
-    private final float u1;
-
-    /** Normalized V coordinate of the bottom edge [0, 1]. */
-    private final float v1;
-
-    // ── MSDF page configuration ────────────────────────────────────────
-
-    /**
-     * SDF pixel range for this page/bucket, used as {@code u_pxRange} in
-     * the MSDF fragment shader.
-     *
-     * <p>For bitmap placements this is 0.0f (unused). For MSDF placements
-     * this carries the range value that was used during SDF generation so
-     * the renderer can set the correct uniform per batch.</p>
-     */
-    private final float pxRange;
-
-    // ── Constructor ────────────────────────────────────────────────────
-
+public record CgGlyphPlacement(CgGlyphKey key, int atlasTextureId, int atlasPageIndex, CgGlyphAtlas.Type atlasType,
+                               float planeLeft, float planeBottom, float planeRight, float planeTop, int atlasLeft,
+                               int atlasBottom, int atlasRight, int atlasTop, float u0, float v0, float u1, float v1,
+                               float pxRange) {
+    
     /**
      * Full constructor. Prefer the static factories for common construction
      * patterns.
      */
-    public CgGlyphPlacement(CgGlyphKey key,
-                            int pageIndex,
-                            int pageTextureId,
-                            CgGlyphAtlas.Type atlasType,
-                            float planeLeft,
-                            float planeBottom,
-                            float planeRight,
-                            float planeTop,
-                            int atlasLeft,
-                            int atlasBottom,
-                            int atlasRight,
-                            int atlasTop,
-                            float u0,
-                            float v0,
-                            float u1,
-                            float v1,
-                            float pxRange) {
-        if (key == null) {
-            throw new IllegalArgumentException("key must not be null");
-        }
-        if (pageIndex < 0) {
-            throw new IllegalArgumentException("pageIndex must be >= 0, got " + pageIndex);
-        }
-        if (atlasType == null) {
-            throw new IllegalArgumentException("atlasType must not be null");
-        }
-        this.key = key;
-        this.pageIndex = pageIndex;
-        this.pageTextureId = pageTextureId;
-        this.atlasType = atlasType;
-        this.planeLeft = planeLeft;
-        this.planeBottom = planeBottom;
-        this.planeRight = planeRight;
-        this.planeTop = planeTop;
-        this.atlasLeft = atlasLeft;
-        this.atlasBottom = atlasBottom;
-        this.atlasRight = atlasRight;
-        this.atlasTop = atlasTop;
-        this.u0 = u0;
-        this.v0 = v0;
-        this.u1 = u1;
-        this.v1 = v1;
-        this.pxRange = pxRange;
+    public CgGlyphPlacement {
+        if (key == null) throw new IllegalArgumentException("key must not be null");
+        if (atlasPageIndex < 0) throw new IllegalArgumentException("atlasPageIndex must be >= 0, got " + atlasPageIndex);
+        if (atlasType == null) throw new IllegalArgumentException("atlasType must not be null");
+        
     }
 
-    // ── Accessors ──────────────────────────────────────────────────────
+    /**
+     * Returns whether this is an MSDF placement (delegates to the glyph key).
+     */
+    public boolean isMsdf() {
+        return atlasType == CgGlyphAtlas.Type.MSDF;
+    }
 
-    public CgGlyphKey getKey() { return key; }
-    public int getPageIndex() { return pageIndex; }
-    public int getPageTextureId() { return pageTextureId; }
-    public CgGlyphAtlas.Type getAtlasType() { return atlasType; }
-    public float getPlaneLeft() { return planeLeft; }
-    public float getPlaneBottom() { return planeBottom; }
-    public float getPlaneRight() { return planeRight; }
-    public float getPlaneTop() { return planeTop; }
-    public int getAtlasLeft() { return atlasLeft; }
-    public int getAtlasBottom() { return atlasBottom; }
-    public int getAtlasRight() { return atlasRight; }
-    public int getAtlasTop() { return atlasTop; }
-    public float getU0() { return u0; }
-    public float getV0() { return v0; }
-    public float getU1() { return u1; }
-    public float getV1() { return v1; }
-    public float getPxRange() { return pxRange; }
+    public boolean isMtsdf() {
+        return atlasType == CgGlyphAtlas.Type.MTSDF;
+    }
 
+    public boolean isDistanceField() {
+        return atlasType != CgGlyphAtlas.Type.BITMAP;
+    }
+    
     // ── Derived geometry queries ───────────────────────────────────────
 
     /**
@@ -234,27 +135,12 @@ public final class CgGlyphPlacement {
         return getPlaneWidth() > 0 && getPlaneHeight() > 0;
     }
 
-    /**
-     * Returns whether this is an MSDF placement (delegates to the glyph key).
-     */
-    public boolean isMsdf() {
-        return atlasType == CgGlyphAtlas.Type.MSDF;
-    }
-
-    public boolean isMtsdf() {
-        return atlasType == CgGlyphAtlas.Type.MTSDF;
-    }
-
-    public boolean isDistanceField() {
-        return atlasType != CgGlyphAtlas.Type.BITMAP;
-    }
-
     @Override
     public String toString() {
         return "CgGlyphPlacement{" +
                 "key=" + key +
-                ", page=" + pageIndex +
-                ", texId=" + pageTextureId +
+                ", page=" + atlasPageIndex +
+                ", texId=" + atlasTextureId +
                 ", atlasType=" + atlasType +
                 ", plane=[" + planeLeft + "," + planeBottom + "," + planeRight + "," + planeTop + "]" +
                 ", uv=[" + u0 + "," + v0 + "," + u1 + "," + v1 + "]" +
@@ -267,8 +153,8 @@ public final class CgGlyphPlacement {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         CgGlyphPlacement that = (CgGlyphPlacement) o;
-        return pageIndex == that.pageIndex &&
-                pageTextureId == that.pageTextureId &&
+        return atlasPageIndex == that.atlasPageIndex &&
+                atlasTextureId == that.atlasTextureId &&
                 atlasType == that.atlasType &&
                 Float.compare(that.planeLeft, planeLeft) == 0 &&
                 Float.compare(that.planeBottom, planeBottom) == 0 &&
@@ -289,8 +175,8 @@ public final class CgGlyphPlacement {
     @Override
     public int hashCode() {
         int result = key.hashCode();
-        result = 31 * result + pageIndex;
-        result = 31 * result + pageTextureId;
+        result = 31 * result + atlasPageIndex;
+        result = 31 * result + atlasTextureId;
         result = 31 * result + atlasType.hashCode();
         result = 31 * result + Float.floatToIntBits(planeLeft);
         result = 31 * result + Float.floatToIntBits(planeTop);
