@@ -117,8 +117,8 @@ public class CgFontRegistry {
     // Paged atlas maps — the active/authoritative path for new allocations.
     // Bitmap paged atlases are keyed by CgRasterFontKey (effective-size-aware);
     // MSDF paged atlases are keyed by CgMsdfAtlasKey (size-agnostic, config-aware).
-    private final Map<CgRasterFontKey, CgPagedGlyphAtlas> pagedBitmapAtlases = new HashMap<CgRasterFontKey, CgPagedGlyphAtlas>();
-    private final Map<CgMsdfAtlasKey, CgPagedGlyphAtlas> pagedMsdfAtlases = new HashMap<CgMsdfAtlasKey, CgPagedGlyphAtlas>();
+    private final Map<CgRasterFontKey, CgPagedGlyphAtlas> pagedBitmapAtlases = new HashMap<>();
+    private final Map<CgMsdfAtlasKey, CgPagedGlyphAtlas> pagedMsdfAtlases = new HashMap<>();
 
     private final Set<CgFontKey> registeredFonts = new HashSet<CgFontKey>();
     private final CgMsdfGenerator msdfGenerator = new CgMsdfGenerator();
@@ -205,12 +205,10 @@ public class CgFontRegistry {
         drainCompletedGlyphs(frame, MAX_COMMIT_BYTES_PER_FRAME, MAX_COMMIT_COUNT_PER_FRAME);
 
         // 2. Tick every paged atlas family.
-        for (CgPagedGlyphAtlas atlas : pagedBitmapAtlases.values()) {
+        for (CgPagedGlyphAtlas atlas : pagedBitmapAtlases.values()) 
             atlas.tickFrame(frame);
-        }
-        for (CgPagedGlyphAtlas atlas : pagedMsdfAtlases.values()) {
+        for (CgPagedGlyphAtlas atlas : pagedMsdfAtlases.values()) 
             atlas.tickFrame(frame);
-        }
 
         // 3. Reset the MSDF generator's per-frame budget counter.
         msdfGenerator.tickFrame();
