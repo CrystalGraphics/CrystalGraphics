@@ -149,10 +149,17 @@ public abstract class CgGLBackend {
     public abstract void glTexImage3D(int target, int level, int internalFormat,
                                        int width, int height, int depth, int border,
                                        int format, int type, ByteBuffer pixels);
+    public abstract void glTexImage3D(int target, int level, int internalFormat,
+                                       int width, int height, int depth, int border,
+                                       int format, int type, FloatBuffer pixels);
     public abstract void glTexSubImage3D(int target, int level,
                                           int xOffset, int yOffset, int zOffset,
                                           int width, int height, int depth,
                                           int format, int type, ByteBuffer pixels);
+    public abstract void glTexSubImage3D(int target, int level,
+                                          int xOffset, int yOffset, int zOffset,
+                                          int width, int height, int depth,
+                                          int format, int type, FloatBuffer pixels);
     public abstract void glGenerateMipmap(int target);
     public abstract void glActiveTexture(int texture);
     public abstract void glTexParameteri(int target, int pname, int param);

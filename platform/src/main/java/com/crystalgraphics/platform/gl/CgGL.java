@@ -807,6 +807,12 @@ public final class CgGL {
         backend.glTexImage3D(target, level, internalFormat, width, height, depth, border, format, type, pixels);
     }
 
+    public static void glTexImage3D(int target, int level, int internalFormat,
+                                     int width, int height, int depth, int border,
+                                     int format, int type, FloatBuffer pixels) {
+        backend.glTexImage3D(target, level, internalFormat, width, height, depth, border, format, type, pixels);
+    }
+
     public static void glTexSubImage2D(int target, int level,
                                         int xOffset, int yOffset, int width, int height,
                                         int format, int type, ByteBuffer pixels) {
@@ -835,6 +841,13 @@ public final class CgGL {
                                         int xOffset, int yOffset, int zOffset,
                                         int width, int height, int depth,
                                         int format, int type, ByteBuffer pixels) {
+        backend.glTexSubImage3D(target, level, xOffset, yOffset, zOffset, width, height, depth, format, type, pixels);
+    }
+
+    public static void glTexSubImage3D(int target, int level,
+                                        int xOffset, int yOffset, int zOffset,
+                                        int width, int height, int depth,
+                                        int format, int type, FloatBuffer pixels) {
         backend.glTexSubImage3D(target, level, xOffset, yOffset, zOffset, width, height, depth, format, type, pixels);
     }
 
