@@ -5,7 +5,9 @@
  * callers interact with when using CrystalGraphics text rendering:</p>
  * <ul>
  *   <li>{@link com.crystalgraphics.api.text.CgTextLayout} —
- *       immutable layout result (lines of shaped runs + metrics)</li>
+ *       immutable layout result (lines of shaped runs + metrics + baked glyphs)</li>
+ *   <li>{@link com.crystalgraphics.api.text.CgBakedGlyphs} —
+ *       flat, per-glyph pen positions/font identity/line metadata for a layout</li>
  *   <li>{@link com.crystalgraphics.api.text.CgTextConstraints} —
  *       layout bounds (max width / max height)</li>
  *   <li>{@link com.crystalgraphics.api.text.CgShapedRun} —
@@ -23,20 +25,19 @@
  * remain in {@code api/font} or closer to their runtime consumers
  * in {@code gl/text/}.</p>
  *
- * <h3>Known API-boundary leaks</h3>
- * <p>Two groups of fields currently expose internal pipeline state through these
- * public types. They are acknowledged as temporary and documented in-place:</p>
+ * <h3>Resolved API-boundary leaks</h3>
+ * <p>Two internal-state leaks previously documented here have been removed:</p>
  * <ul>
- *   <li>{@link com.crystalgraphics.api.text.CgTextLayout#getResolvedFontsByKey()
- *       CgTextLayout.resolvedFontsByKey} — heavyweight {@code CgFont} handles needed
- *       by the renderer at draw time; should migrate to a render-context once one exists.</li>
- *   <li>{@link com.crystalgraphics.api.text.CgShapedRun#getSourceText()
- *       CgShapedRun.sourceText} /
- *       {@link com.crystalgraphics.api.text.CgShapedRun#getSourceStart()
- *       sourceStart} /
- *       {@link com.crystalgraphics.api.text.CgShapedRun#getSourceEnd()
- *       sourceEnd} — original input text retained for intra-run re-shaping;
- *       should migrate to an internal wrapper or re-shaping context.</li>
+ *   <li>{@code CgTextLayout.resolvedFontsByKey} — removed. Every
+ *       {@link com.crystalgraphics.api.text.CgShapedRun} now carries its own resolved
+ *       {@code CgFont} directly ({@link com.crystalgraphics.api.text.CgShapedRun#getResolvedFont()}),
+ *       and {@link com.crystalgraphics.api.text.CgBakedGlyphs} carries one per baked glyph —
+ *       no separate font-by-key map is needed.</li>
+ *   <li>{@code CgShapedRun.sourceText} — removed. The paragraph text a run was shaped
+ *       from is now supplied externally, once per paragraph, via
+ *       {@code text.layout.CgReshapeContext} rather than copied onto every run.
+ *       {@code CgShapedRun} still carries {@code sourceStart}/{@code sourceEnd} (its
+ *       position within that external text), needed for intra-run re-shaping.</li>
  * </ul>
  *
  * @see com.crystalgraphics.api.font
