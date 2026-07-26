@@ -1,6 +1,7 @@
 package com.crystalgraphics.api.font;
 
 import com.crystalgraphics.api.text.CgTextLayout;
+import com.crystalgraphics.api.text.CgTextLayoutRequest;
 import com.crystalgraphics.harfbuzz.HBFont;
 import com.crystalgraphics.api.text.CgShapedRun;
 import com.crystalgraphics.text.layout.CgReshapeContext;
@@ -42,13 +43,17 @@ import java.util.List;
  * placement exception: a <em>text</em> entry-point whose implementation
  * demands co-location with font-family internals.</p>
  *
- * <h3>Usage</h3>
- * <pre>
- * CgTextLayoutBuilder builder = new CgTextLayoutBuilder();
- * CgTextLayout layout = builder.layout("Hello, world!", font, 400, 0);
- * </pre>
+ * <h3>Not the public entry point</h3>
+ * <p>Callers should use {@link CgTextLayoutRequest} (e.g.
+ * {@code CgTextLayoutRequest.obtain("Hello, world!", font).maxWidth(400).build()}),
+ * not this class directly — {@code CgTextLayoutRequest} holds the single shared instance
+ * of this builder internally. This class exists so {@code CgTextLayoutRequest} (which
+ * lives in {@code api/text} and cannot see package-private {@code api/font} members) has
+ * a concrete {@link CgTextLayoutEngine} to delegate {@code shape()}/{@code shapeStyled()}
+ * calls to.</p>
  *
- * @see CgTextLayoutEngine  the base algorithm (BiDi, line breaking, scaling)
+ * @see CgTextLayoutEngine  the base algorithm (BiDi, line breaking, shape/wrap split)
+ * @see CgTextLayoutRequest the public entry point
  * @see CgFontFamily        font-fallback resolution and glyph coverage
  * @see CgTextShaper         stateless HarfBuzz shaping delegate
  * @see CgTextLayout  layout result type
@@ -99,18 +104,23 @@ public class CgTextLayoutBuilder extends CgTextLayoutEngine {
      * Creates a reshaper that the line breaker can call when it needs to split
      * an already-shaped run at a word or wrap boundary.
      *
-     * <p>Uses the package-private {@link CgFontFamily#requireShapingFont} to
-     * obtain the native {@code HBFont} for the fragment's font key, then
-     * re-shapes through HarfBuzz so glyph clusters remain correct.</p>
+     * <p>Resolves the fragment's font <em>by the run's own style</em> —
+     * {@code group.resolve(run.getFontKey().getStyle())} — rather than always against
+     * whichever single family the reshaper was built with, so a bold run's forced
+     * line-break re-shapes against the bold face and not the regular one. Uses the
+     * package-private {@link CgFontFamily#requireShapingFont} to obtain the native
+     * {@code HBFont} for the fragment's font key, then re-shapes through HarfBuzz so
+     * glyph clusters remain correct.</p>
      */
     @Override
-    protected RunReshaper createRunReshaper(final CgFontFamily family) {
+    protected RunReshaper createRunReshaper(final CgFontFamilyGroup group) {
         // Line breaking may need to split an already-shaped run at a word or
         // wrap boundary. Re-shaping the sub-range preserves correct HarfBuzz
         // shaping for the fragment instead of slicing glyph arrays blindly.
         return new RunReshaper() {
             @Override
             public CgShapedRun reshape(CgReshapeContext context, CgShapedRun run, int subStart, int subEnd) {
+                CgFontFamily family = group.resolve(run.getFontKey().getStyle());
                 HBFont hbFont = family.requireShapingFont(run.getFontKey());
                 CgFont resolvedFont = family.resolveLoadedFont(run.getFontKey());
                 return shaper.shape(context.sourceText(), subStart, subEnd,

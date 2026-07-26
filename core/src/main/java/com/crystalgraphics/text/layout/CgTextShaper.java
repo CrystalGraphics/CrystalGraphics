@@ -92,6 +92,7 @@ public class CgTextShaper {
             float[] advancesX = new float[glyphCount];
             float[] offsetsX = new float[glyphCount];
             float[] offsetsY = new float[glyphCount];
+            boolean[] safeToBreakBefore = new boolean[glyphCount];
             float totalAdvance = 0.0f;
 
             for (int i = 0; i < glyphCount; i++) {
@@ -100,13 +101,15 @@ public class CgTextShaper {
                 advancesX[i] = positions[i].getXAdvance() / 64.0f;
                 offsetsX[i] = positions[i].getXOffset() / 64.0f;
                 offsetsY[i] = positions[i].getYOffset() / 64.0f;
+                safeToBreakBefore[i] = !infos[i].isUnsafeToBreak();
                 totalAdvance += advancesX[i];
             }
 
             return new CgShapedRun(fontKey, resolvedFont, rtl,
                     glyphIds, clusterIds,
                     advancesX, offsetsX, offsetsY,
-                    totalAdvance, start, end);
+                    totalAdvance, start, end,
+                    0, null, null, 0f, safeToBreakBefore);
         } finally {
             buf.destroy();
         }

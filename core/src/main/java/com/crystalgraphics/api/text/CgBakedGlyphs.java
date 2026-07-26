@@ -21,6 +21,13 @@ import com.crystalgraphics.api.font.CgFontKey;
  * needs the glyph's local offset in isolation, not the fully-accumulated pen position —
  * matching the pre-baking behavior this replaces.</p>
  *
+ * <h3>{@code argbColor} — override color, {@code 0} = inherit the draw's default</h3>
+ * <p>Copied from each glyph's originating {@code CgShapedRun.getArgbColor()} (itself
+ * copied from the {@code CgStyleSpan} that produced the run — see phases 8/9). {@code 0}
+ * means the glyph has no per-span color override and should render with whatever default
+ * color the draw call specifies; a renderer resolves the effective color as
+ * {@code argbColor[i] != 0 ? argbColor[i] : draw.rgba}.</p>
+ *
  * <h3>{@code justifiable} — Seam A, unconsumed</h3>
  * <p>{@code true} for a glyph immediately following a UAX#14 word/space boundary,
  * excluding the last such position on its line — a valid justification expansion
@@ -35,6 +42,19 @@ import com.crystalgraphics.api.font.CgFontKey;
  * is that line's height. Both arrays have one entry per line (plus the sentinel on
  * {@code lineStart}) even though every line shares the same height today — real
  * per-line metrics land later without changing this shape.</p>
+ *
+ * <h3>{@code decorations} — baked underline/strikethrough rectangles</h3>
+ * <p>One {@link CgTextDecorationRect} per contiguous {@link CgShapedRun} whose
+ * {@link CgShapedRun#getDecoration()} is not {@link CgTextDecoration#NONE} — see
+ * {@link CgTextDecorationRect} for the formulas. Empty for layouts with no decorated
+ * spans (the common case).</p>
+ *
+ * <h3>{@code syntheticBold}/{@code syntheticItalic} — per-glyph faux-style flags</h3>
+ * <p>Copied from each glyph's originating {@link CgShapedRun#isSyntheticBold()}/
+ * {@link CgShapedRun#isSyntheticItalic()} — {@code true} when that run's requested style had
+ * no distinct face and needs a rasterizer-side embolden/shear instead. Read by
+ * {@code CgResolvedGlyphs} when building each glyph's {@code CgGlyphKey}, so synthesized and
+ * plain-regular glyphs never collide in the atlas.</p>
  */
 public record CgBakedGlyphs(
         int glyphCount,
@@ -47,11 +67,13 @@ public record CgBakedGlyphs(
         boolean[] justifiable,
         float[] lineHeight,
         int[] lineStart
+        boolean[] syntheticBold,
+        boolean[] syntheticItalic
 ) {
 
     /** Shared empty instance for zero-glyph layouts (e.g. an empty-string layout). */
     public static final CgBakedGlyphs EMPTY = new CgBakedGlyphs(
             0, new CgFontKey[0], new CgFont[0], new int[0],
-            new float[0], new float[0], new float[0], new boolean[0],
-            new float[0], new int[]{0});
+            new float[0], new float[0], new float[0], new int[0], new boolean[0],
+            new float[0], new int[]{0}, CgTextDecorationRect.NONE, new boolean[0], new boolean[0]);
 }
