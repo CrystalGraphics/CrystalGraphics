@@ -817,10 +817,12 @@ public class CgFontRegistry {
         if (msdf) {
             CgMsdfAtlasConfig config = resolveMsdfAtlasConfig(fontKey);
             CgMsdfAtlasKey msdfAtlasKey = toMsdfAtlasKey(fontKey, config);
-            return getPagedMsdfAtlas(msdfAtlasKey).reserveWhiteTexel();
+            return getPagedMsdfAtlas(msdfAtlasKey).reserveWhiteTexel(config.pxRange());
         }
         CgRasterFontKey rasterFontKey = new CgRasterFontKey(fontKey, effectiveTargetPx);
-        return getPagedBitmapAtlas(rasterFontKey).reserveWhiteTexel();
+        // Bitmap CgGlyphPlacements always carry pxRange=0f (unused for that tier) — matching
+        // that here is what lets a decoration's batch key equal a bitmap glyph's exactly.
+        return getPagedBitmapAtlas(rasterFontKey).reserveWhiteTexel(0f);
     }
 
     CgPagedGlyphAtlas getPagedBitmapAtlas(CgRasterFontKey rasterKey) {
