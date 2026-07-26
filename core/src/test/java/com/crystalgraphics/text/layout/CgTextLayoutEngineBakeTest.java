@@ -148,8 +148,8 @@ public class CgTextLayoutEngineBakeTest {
             advancesX[i] = CHAR_ADVANCE;
             total += CHAR_ADVANCE;
         }
-        return new CgShapedRun(TEST_FONT_KEY, null, false,
-                glyphIds, clusterIds, advancesX, offsetsX, offsetsY,
-                total, sourceStart, sourceEnd);
+        return new CgShapedRun().fontKey(TEST_FONT_KEY).resolvedFont(null).rtl(false)
+                .glyphIds(glyphIds).clusterIds(clusterIds).advancesX(advancesX).offsetsX(offsetsX).offsetsY(offsetsY)
+                .totalAdvance(total).sourceStart(sourceStart).sourceEnd(sourceEnd);
     }
 }

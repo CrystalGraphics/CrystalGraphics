@@ -69,10 +69,11 @@ public class CgTextShaper {
 
         String substring = text.substring(start, end);
         if (substring.isEmpty()) {
-            return new CgShapedRun(fontKey, resolvedFont, rtl,
-                    new int[0], new int[0],
-                    new float[0], new float[0], new float[0],
-                    0.0f, start, end);
+            return new CgShapedRun()
+                    .fontKey(fontKey).resolvedFont(resolvedFont).rtl(rtl)
+                    .glyphIds(new int[0]).clusterIds(new int[0])
+                    .advancesX(new float[0]).offsetsX(new float[0]).offsetsY(new float[0])
+                    .totalAdvance(0.0f).sourceStart(start).sourceEnd(end);
         }
 
         HBBuffer buf = HBBuffer.create();
@@ -105,11 +106,12 @@ public class CgTextShaper {
                 totalAdvance += advancesX[i];
             }
 
-            return new CgShapedRun(fontKey, resolvedFont, rtl,
-                    glyphIds, clusterIds,
-                    advancesX, offsetsX, offsetsY,
-                    totalAdvance, start, end,
-                    0, null, null, 0f, safeToBreakBefore);
+            return new CgShapedRun()
+                    .fontKey(fontKey).resolvedFont(resolvedFont).rtl(rtl)
+                    .glyphIds(glyphIds).clusterIds(clusterIds)
+                    .advancesX(advancesX).offsetsX(offsetsX).offsetsY(offsetsY)
+                    .totalAdvance(totalAdvance).sourceStart(start).sourceEnd(end)
+                    .safeToBreakBefore(safeToBreakBefore);
         } finally {
             buf.destroy();
         }

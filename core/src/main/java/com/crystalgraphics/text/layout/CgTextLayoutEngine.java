@@ -195,7 +195,7 @@ public abstract class CgTextLayoutEngine {
     private static float lineWidth(List<CgShapedRun> line) {
         float width = 0;
         for (CgShapedRun run : line) {
-            width += run.getTotalAdvance();
+            width += run.totalAdvance();
         }
         return width;
     }
@@ -203,7 +203,7 @@ public abstract class CgTextLayoutEngine {
     private static int countGlyphs(List<CgShapedRun> line) {
         int count = 0;
         for (CgShapedRun run : line) {
-            count += run.getGlyphIds().length;
+            count += run.glyphIds().length;
         }
         return count;
     }
@@ -220,7 +220,7 @@ public abstract class CgTextLayoutEngine {
     private static List<CgShapedRun> applyEllipsis(List<CgShapedRun> lastLine, List<CgShapedRun> ellipsisRuns, float maxWidth) {
         float ellipsisWidth = 0;
         for (CgShapedRun r : ellipsisRuns) {
-            ellipsisWidth += r.getTotalAdvance();
+            ellipsisWidth += r.totalAdvance();
         }
 
         List<CgShapedRun> trimmed = new ArrayList<>(lastLine);
@@ -228,7 +228,7 @@ public abstract class CgTextLayoutEngine {
             float width = lineWidth(trimmed);
             while (!trimmed.isEmpty() && width + ellipsisWidth > maxWidth) {
                 CgShapedRun removed = trimmed.remove(trimmed.size() - 1);
-                width -= removed.getTotalAdvance();
+                width -= removed.totalAdvance();
             }
         }
         trimmed.addAll(ellipsisRuns);
@@ -405,7 +405,7 @@ public abstract class CgTextLayoutEngine {
                 for (CgShapedRun r : splitAndShapeRuns(segment, family, direction)) {
                     CgShapedRun offset = offsetRunSource(r, segmentStart);
                     result.add(offset);
-                    column += offset.getTotalAdvance();
+                    column += offset.totalAdvance();
                 }
             }
 
@@ -429,18 +429,25 @@ public abstract class CgTextLayoutEngine {
     /** Rebuilds {@code r} with its source position shifted by {@code offset} — same shape data. */
     private static CgShapedRun offsetRunSource(CgShapedRun r, int offset) {
         if (offset == 0) return r;
-        return new CgShapedRun(r.getFontKey(), r.getResolvedFont(), r.isRtl(),
-                r.getGlyphIds(), r.getClusterIds(), r.getAdvancesX(), r.getOffsetsX(), r.getOffsetsY(),
-                r.getTotalAdvance(), r.getSourceStart() + offset, r.getSourceEnd() + offset,
-                r.getArgbColor(), r.getDecorations(), r.getFontFeatures(), r.getBaselineShift(),
-                r.getSafeToBreakBefore());
+        return new CgShapedRun()
+                .fontKey(r.fontKey()).resolvedFont(r.resolvedFont()).rtl(r.rtl())
+                .glyphIds(r.glyphIds()).clusterIds(r.clusterIds())
+                .advancesX(r.advancesX()).offsetsX(r.offsetsX()).offsetsY(r.offsetsY())
+                .totalAdvance(r.totalAdvance())
+                .sourceStart(r.sourceStart() + offset).sourceEnd(r.sourceEnd() + offset)
+                .argbColor(r.argbColor()).decorations(r.decorations())
+                .fontFeatures(r.fontFeatures()).baselineShift(r.baselineShift())
+                .safeToBreakBefore(r.safeToBreakBefore())
+                .syntheticBold(r.syntheticBold()).syntheticItalic(r.syntheticItalic());
     }
 
     /** A zero-glyph run whose only purpose is to advance the pen by a tab stop's width. */
     private static CgShapedRun makeTabRun(CgFontFamily family, int sourceIndex, float advance) {
-        return new CgShapedRun(family.getPrimarySource().getKey(), family.getPrimaryFont(), false,
-                new int[0], new int[0], new float[0], new float[0], new float[0],
-                advance, sourceIndex, sourceIndex + 1);
+        return new CgShapedRun()
+                .fontKey(family.getPrimarySource().getKey()).resolvedFont(family.getPrimaryFont()).rtl(false)
+                .glyphIds(new int[0]).clusterIds(new int[0])
+                .advancesX(new float[0]).offsetsX(new float[0]).offsetsY(new float[0])
+                .totalAdvance(advance).sourceStart(sourceIndex).sourceEnd(sourceIndex + 1);
     }
 
     /**
@@ -498,7 +505,7 @@ public abstract class CgTextLayoutEngine {
      * {@code resolvedFamily} is what it actually got back. When {@code resolvedFamily} has no
      * distinct face for a requested bold/italic bit (the group fell back to
      * {@link CgFontStyle#REGULAR}), the corresponding {@code synthetic*} flag is set so the
-     * rasterizer fakes it — see {@link CgShapedRun#isSyntheticBold()}.</p>
+     * rasterizer fakes it — see {@link CgShapedRun#syntheticBold()}.</p>
      */
     private static CgShapedRun applyStyle(CgShapedRun run, CgStyleSpan span, CgFontStyle requested, CgFontFamily resolvedFamily) {
         CgFontStyle actual = resolvedFamily.getPrimaryFont().getKey().getStyle();
@@ -511,12 +518,15 @@ public abstract class CgTextLayoutEngine {
         // stale pre-shear glyph metrics bbox squishing the real, wider rendered bitmap into a
         // too-narrow quad — see FTFace#outlineShear); once that's fixed at the source, advances
         // don't need adjusting.
-        return new CgShapedRun(run.getFontKey(), run.getResolvedFont(), run.isRtl(),
-                run.getGlyphIds(), run.getClusterIds(), run.getAdvancesX(),
-                run.getOffsetsX(), run.getOffsetsY(), run.getTotalAdvance(),
-                run.getSourceStart(), run.getSourceEnd(),
-                span.argbColor(), span.decorations(), span.fontFeatures(), span.baselineShift(),
-                run.getSafeToBreakBefore(), syntheticBold, syntheticItalic);
+        return new CgShapedRun()
+                .fontKey(run.fontKey()).resolvedFont(run.resolvedFont()).rtl(run.rtl())
+                .glyphIds(run.glyphIds()).clusterIds(run.clusterIds()).advancesX(run.advancesX())
+                .offsetsX(run.offsetsX()).offsetsY(run.offsetsY()).totalAdvance(run.totalAdvance())
+                .sourceStart(run.sourceStart()).sourceEnd(run.sourceEnd())
+                .argbColor(span.argbColor()).decorations(span.decorations())
+                .fontFeatures(span.fontFeatures()).baselineShift(span.baselineShift())
+                .safeToBreakBefore(run.safeToBreakBefore())
+                .syntheticBold(syntheticBold).syntheticItalic(syntheticItalic);
     }
 
     /**
@@ -578,7 +588,7 @@ public abstract class CgTextLayoutEngine {
         int glyphCount = 0;
         for (List<CgShapedRun> line : lines) {
             for (CgShapedRun run : line) {
-                glyphCount += run.getGlyphIds().length;
+                glyphCount += run.glyphIds().length;
             }
         }
 
@@ -611,12 +621,12 @@ public abstract class CgTextLayoutEngine {
             float penXCursor = 0;
             int glyphInLine = 0;
             for (CgShapedRun run : line) {
-                CgFontKey fontKey = run.getFontKey();
-                CgFont font = run.getResolvedFont();
-                int[] ids = run.getGlyphIds();
-                float[] advances = run.getAdvancesX();
-                float[] offsetsX = run.getOffsetsX();
-                float[] offsetsY = run.getOffsetsY();
+                CgFontKey fontKey = run.fontKey();
+                CgFont font = run.resolvedFont();
+                int[] ids = run.glyphIds();
+                float[] advances = run.advancesX();
+                float[] offsetsX = run.offsetsX();
+                float[] offsetsY = run.offsetsY();
                 float runStartX = penXCursor;
                 for (int i = 0; i < ids.length; i++) {
                     fontKeys[index] = fontKey;
@@ -625,20 +635,20 @@ public abstract class CgTextLayoutEngine {
                     penX[index] = penXCursor + offsetsX[i];
                     penY[index] = lineBaseline + offsetsY[i];
                     offsetX[index] = offsetsX[i];
-                    argbColor[index] = run.getArgbColor();
+                    argbColor[index] = run.argbColor();
                     justifiable[index] = lineJustifiable[glyphInLine];
-                    syntheticBold[index] = run.isSyntheticBold();
-                    syntheticItalic[index] = run.isSyntheticItalic();
+                    syntheticBold[index] = run.syntheticBold();
+                    syntheticItalic[index] = run.syntheticItalic();
                     penXCursor += advances[i];
                     index++;
                     glyphInLine++;
                 }
                 if (ids.length == 0) {
                     // Zero-glyph advance-only run (tab stop) — still moves the pen.
-                    penXCursor += run.getTotalAdvance();
+                    penXCursor += run.totalAdvance();
                 }
-                if (!run.getDecorations().isEmpty() && penXCursor > runStartX) {
-                    for (CgTextDecoration kind : run.getDecorations()) {
+                if (!run.decorations().isEmpty() && penXCursor > runStartX) {
+                    for (CgTextDecoration kind : run.decorations()) {
                         decorationRects.add(buildDecorationSegment(
                                 run, kind, fontKey, font, fallbackMetrics, runStartX, penXCursor, lineBaseline));
                     }
@@ -678,7 +688,7 @@ public abstract class CgTextLayoutEngine {
                 y = baseline + gap;
             }
         }
-        return new CgTextDecorationRect(x0, x1, y, thickness, run.getArgbColor(), fontKey);
+        return new CgTextDecorationRect(x0, x1, y, thickness, run.argbColor(), fontKey);
     }
 
     /**
@@ -692,7 +702,7 @@ public abstract class CgTextLayoutEngine {
         }
         List<CgFontMetrics> collected = new ArrayList<>(line.size());
         for (CgShapedRun run : line) {
-            CgFont font = run.getResolvedFont();
+            CgFont font = run.resolvedFont();
             collected.add(font != null ? font.getMetrics() : fallbackMetrics);
         }
         return CgFontFamily.combineMetrics(collected);
@@ -729,17 +739,17 @@ public abstract class CgTextLayoutEngine {
                                          List<CgShapedRun> line) {
         int glyphCount = 0;
         for (CgShapedRun run : line) {
-            glyphCount += run.getGlyphIds().length;
+            glyphCount += run.glyphIds().length;
         }
 
         boolean[] result = new boolean[glyphCount];
         int index = 0;
         int lastJustifiableIndex = -1;
         for (CgShapedRun run : line) {
-            int runStart = run.getSourceStart();
+            int runStart = run.sourceStart();
             int[] byteToChar = Utf8ClusterMapper.byteOffsetToCharOffset(
-                    paragraphText.substring(runStart, run.getSourceEnd()));
-            for (int cluster : run.getClusterIds()) {
+                    paragraphText.substring(runStart, run.sourceEnd()));
+            for (int cluster : run.clusterIds()) {
                 int absoluteCharOffset = runStart + byteToChar[cluster];
                 if (lineBreakBoundaries.get(absoluteCharOffset)) {
                     result[index] = true;

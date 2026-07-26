@@ -22,7 +22,7 @@ import com.crystalgraphics.api.font.CgFontKey;
  * matching the pre-baking behavior this replaces.</p>
  *
  * <h3>{@code argbColor} — override color, {@code 0} = inherit the draw's default</h3>
- * <p>Copied from each glyph's originating {@code CgShapedRun.getArgbColor()} (itself
+ * <p>Copied from each glyph's originating {@code CgShapedRun.argbColor()} (itself
  * copied from the {@code CgStyleSpan} that produced the run — see phases 8/9). {@code 0}
  * means the glyph has no per-span color override and should render with whatever default
  * color the draw call specifies; a renderer resolves the effective color as
