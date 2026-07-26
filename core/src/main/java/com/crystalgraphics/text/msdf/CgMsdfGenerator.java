@@ -166,9 +166,11 @@ public class CgMsdfGenerator {
             // budgets for AA at the shape's own true edge. Widen it for synthetic-bold glyphs
             // specifically, both for the layout/generation below and the placement's stored
             // pxRange (read back by the shader at draw time), so the two stay consistent.
+            // Headroom needed is the actual per-edge dilation in pixels -- see applyBoldBias's
+            // call site below for why that's SYNTHETIC_BOLD_STRENGTH_EM/2, not the full value.
             float effectivePxRange = config.pxRange();
             if (key.isSyntheticBold()) {
-                effectivePxRange += 2f * (float) (SYNTHETIC_BOLD_STRENGTH_EM * targetPx);
+                effectivePxRange += (float) (SYNTHETIC_BOLD_STRENGTH_EM * targetPx);
             }
 
             double[] bounds = shape.getBounds();
@@ -230,12 +232,19 @@ public class CgMsdfGenerator {
 
                 if (key.isSyntheticBold()) {
                     // Dilate: shift every distance-carrying channel (R/G/B — never MTSDF's
-                    // alpha) toward "inside" by the same fraction of the stored range that
-                    // SYNTHETIC_BOLD_STRENGTH_EM represents in shape units. This moves the
-                    // reconstructed 0.5-threshold edge outward by exactly that amount,
-                    // uniformly, on the already-correct (unmodified) shape's distance field —
-                    // no geometry, no self-intersection risk.
-                    float bias = (float) (SYNTHETIC_BOLD_STRENGTH_EM / (2.0 * rangeInShapeUnits));
+                    // alpha) toward "inside" so the reconstructed 0.5-threshold edge moves
+                    // outward, uniformly, on the already-correct (unmodified) shape's distance
+                    // field — no geometry, no self-intersection risk.
+                    //
+                    // A uniform SDF bias dilates EVERY edge by the full bias amount, all
+                    // around the shape -- unlike FreeType's FT_Outline_Embolden(strength),
+                    // which the bitmap path uses and which moves each edge outward by only
+                    // strength/2 (so a stroke's total width grows by strength, both edges
+                    // combined; see FTFace#outlineEmbolden's javadoc). To match that same
+                    // total growth here, each edge must dilate by SYNTHETIC_BOLD_STRENGTH_EM/2,
+                    // not the full value -- using the full value here doubles the effective
+                    // bold weight (both edges each growing by the full amount instead of half).
+                    float bias = (float) ((SYNTHETIC_BOLD_STRENGTH_EM / 2.0) / (2.0 * rangeInShapeUnits));
                     applyBoldBias(pixelData, channels, bias);
                 }
 
