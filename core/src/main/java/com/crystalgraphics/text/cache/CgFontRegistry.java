@@ -2,7 +2,6 @@ package com.crystalgraphics.text.cache;
 
 import com.crystalgraphics.freetype.FTBitmap;
 import com.crystalgraphics.freetype.FTFace;
-import com.crystalgraphics.freetype.FTGlyphMetrics;
 import com.crystalgraphics.freetype.FTLoadFlags;
 import com.crystalgraphics.freetype.FTRenderMode;
 import com.crystalgraphics.freetype.FreeTypeException;
@@ -482,10 +481,21 @@ public class CgFontRegistry {
     //  § 5. Paged bitmap rasterization
     //
     //  Rasterizes a glyph via FreeType at the effective target pixel size
-    //  and allocates it into the paged bitmap atlas.  When effectiveTargetPx
-    //  differs from the base font key's targetPx, placement metrics (bearing,
-    //  width, height) are re-measured at the base size to avoid hinting-
-    //  rounding drift when the renderer scales back to logical space.
+    //  and allocates it into the paged bitmap atlas. Placement metrics
+    //  (bearing, width, height) MUST come from this same effectiveTargetPx
+    //  render, matching the bitmap pixels just captured -- CgResolvedGlyphs
+    //  #logicalMetricScale expects raw plane bounds in raster-time
+    //  (effective-px) units and itself normalizes them back to logical/
+    //  base-px space by multiplying by (baseTargetPx / effectiveTargetPx).
+    //  This used to re-measure metrics at basePx instead (intended to avoid
+    //  hinting-rounding drift), but hinting is a non-linear, per-glyph,
+    //  per-size grid-fit -- a glyph hinted at 18px and one hinted at 22px
+    //  are not simply scaled versions of each other, so sizing/positioning
+    //  the 18px-rendered bitmap's quad using 22px-hinted metrics stretched
+    //  or cropped its content inconsistently per glyph (worse for synthetic
+    //  bold/italic, whose embolden/shear amplifies the mismatch further) --
+    //  visible only when effectiveTargetPx != basePx, i.e. any non-1.0 UI
+    //  scale still in the bitmap raster tier.
     // ────────────────────────────────────────────────────────────────────
 
     private CgGlyphPlacement ensureBitmapGlyphPaged(CgFont font, CgGlyphKey atlasKey,
@@ -539,30 +549,21 @@ public class CgFontRegistry {
             }
 
             byte[] pixels = normalizeBitmapBuffer(bitmap);
-            FTGlyphMetrics metrics = face.getGlyphMetrics();
-            float bearingX = metrics.getHoriBearingX() / 64.0f;
-            float bearingY = metrics.getHoriBearingY() / 64.0f;
-
-            // When the effective raster size differs from the base font size,
-            // re-measure placement metrics at base size to avoid hinting-
-            // rounding drift when the renderer scales back to logical space.
-            int basePx = atlasKey.getFontKey().getTargetPx();
-            float metricsWidth;
-            float metricsHeight;
-            if (effectiveTargetPx != basePx) {
-                face.setPixelSizes(0, basePx);
-                loadGlyphOrFallback(face, atlasKey.getGlyphId(),
-                        synthesize ? (FTLoadFlags.FT_LOAD_NO_BITMAP | FTLoadFlags.FT_LOAD_NO_HINTING) : FTLoadFlags.FT_LOAD_DEFAULT);
-                applySyntheticStyle(face, atlasKey, basePx);
-                FTGlyphMetrics baseMetrics = face.getGlyphMetrics();
-                metricsWidth = baseMetrics.getWidth() / 64.0f;
-                metricsHeight = baseMetrics.getHeight() / 64.0f;
-                bearingX = baseMetrics.getHoriBearingX() / 64.0f;
-                bearingY = baseMetrics.getHoriBearingY() / 64.0f;
-            } else {
-                metricsWidth = metrics.getWidth() / 64.0f;
-                metricsHeight = metrics.getHeight() / 64.0f;
-            }
+            // Bearing/size MUST come from this bitmap's own left/top/width/height, NOT from
+            // FTGlyphMetrics (the outline's sub-pixel-precise bounding box) -- see
+            // CgWorkerFontContext#generateBitmap's javadoc-comment for the full explanation.
+            // FreeType hints/grid-fits the outline during rendering (a per-glyph, per-size,
+            // non-linear adjustment) and bakes the result into bitmap.left/top/width/height,
+            // but does not update FT_Glyph_Metrics to match. This used to also re-measure at
+            // basePx when effectiveTargetPx != basePx (matching CgWorkerFontContext's old,
+            // now-fixed bug) -- dead code here specifically, since toBitmapAtlasGlyphKey
+            // already rewrites atlasKey's font key to effectiveTargetPx, so that condition
+            // was always false -- but the FTGlyphMetrics-vs-bitmap mismatch itself was real
+            // and is what this fixes.
+            float bearingX = bitmap.getLeft();
+            float bearingY = bitmap.getTop();
+            float metricsWidth = width;
+            float metricsHeight = height;
             return pagedAtlas.allocateBitmap(atlasKey, pixels, width, height,
                     bearingX, bearingY, metricsWidth, metricsHeight, currentFrame);
         } catch (FreeTypeException e) {

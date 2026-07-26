@@ -2,7 +2,6 @@ package com.crystalgraphics.text.cache;
 
 import com.crystalgraphics.freetype.FTBitmap;
 import com.crystalgraphics.freetype.FTFace;
-import com.crystalgraphics.freetype.FTGlyphMetrics;
 import com.crystalgraphics.freetype.FTLoadFlags;
 import com.crystalgraphics.freetype.FTRenderMode;
 import com.crystalgraphics.freetype.FreeTypeException;
@@ -64,24 +63,20 @@ final class CgWorkerFontContext {
         }
 
         byte[] pixels = normalizeBitmapBuffer(bitmap);
-        FTGlyphMetrics metrics = face.getGlyphMetrics();
-        float bearingX = metrics.getHoriBearingX() / 64.0f;
-        float bearingY = metrics.getHoriBearingY() / 64.0f;
-        float metricsWidth;
-        float metricsHeight;
-        int basePx = job.getSourceFontKey().getTargetPx();
-        if (job.getEffectiveTargetPx() != basePx) {
-            face.setPixelSizes(0, basePx);
-            loadGlyphOrFallback(face, job.getAtlasKey().getGlyphId(), FTLoadFlags.FT_LOAD_DEFAULT);
-            FTGlyphMetrics baseMetrics = face.getGlyphMetrics();
-            bearingX = baseMetrics.getHoriBearingX() / 64.0f;
-            bearingY = baseMetrics.getHoriBearingY() / 64.0f;
-            metricsWidth = baseMetrics.getWidth() / 64.0f;
-            metricsHeight = baseMetrics.getHeight() / 64.0f;
-        } else {
-            metricsWidth = metrics.getWidth() / 64.0f;
-            metricsHeight = metrics.getHeight() / 64.0f;
-        }
+        // Bearing/size MUST come from this bitmap's own left/top/width/height, NOT from
+        // FTGlyphMetrics (the outline's sub-pixel-precise bounding box). FreeType hints/
+        // grid-fits the outline to the pixel grid during rendering -- a per-glyph, per-size,
+        // non-linear adjustment -- and bakes the result into bitmap.left/top/width/height,
+        // but FT_Glyph_Metrics is NOT updated to match; it stays the pre-hint "ideal" value.
+        // Sizing/positioning the quad from FTGlyphMetrics while its UV rect covers the
+        // hint-adjusted bitmap pixels mismatches the two by an amount that varies per glyph
+        // outline and per effective pixel size -- exactly the inconsistent, scale-dependent
+        // glyph distortion this was causing (worse for synthetic bold/italic, whose
+        // embolden/shear further perturbs the hinting-vs-outline divergence).
+        float bearingX = bitmap.getLeft();
+        float bearingY = bitmap.getTop();
+        float metricsWidth = width;
+        float metricsHeight = height;
         return CgGlyphGenerationResult.bitmap(
                 job.getSourceFontKey(),
                 job.getAtlasKey(),
