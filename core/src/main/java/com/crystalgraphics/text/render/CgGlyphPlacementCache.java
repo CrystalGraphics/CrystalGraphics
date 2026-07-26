@@ -56,8 +56,8 @@ final class CgGlyphPlacementCache {
      * Builds the lookup key for one draw. Callers should build this once and pass the same
      * instance to both {@link #get} and {@link #put} rather than rebuilding it twice.
      */
-    static Key key(CgTextLayout layout, float x, float y, boolean wantMsdf, CgFontKey fontKey) {
-        return new Key(layout, x, y, wantMsdf, fontKey);
+    static Key key(CgTextLayout layout, float x, float y, boolean wantMsdf, CgFontKey fontKey, int rgba) {
+        return new Key(layout, x, y, wantMsdf, fontKey, rgba);
     }
 
     /**
@@ -81,8 +81,14 @@ final class CgGlyphPlacementCache {
      * resolve it's avoiding. {@code fontKey} compares/hashes by value (a small type, cheap to
      * hash, and callers may legitimately hand back a fresh-but-equal instance rather than the
      * exact same one).
+     *
+     * <p>{@code rgba} — the draw's default color — is part of the key so two draws of the
+     * same cached layout at the same position with two <em>different</em> default colors
+     * don't incorrectly share an entry: {@link Entry#argbColor} is the already-resolved
+     * per-glyph effective color (override color if the glyph's span had one, else this
+     * {@code rgba}), so an entry built for one {@code rgba} is simply wrong for another.</p>
      */
-    record Key(CgTextLayout layout, float x, float y, boolean wantMsdf, CgFontKey fontKey) {
+    record Key(CgTextLayout layout, float x, float y, boolean wantMsdf, CgFontKey fontKey, int rgba) {
         @Override
         public int hashCode() {
             int h = System.identityHashCode(layout);
@@ -90,6 +96,7 @@ final class CgGlyphPlacementCache {
             h = 31 * h + Float.floatToIntBits(y);
             h = 31 * h + (wantMsdf ? 1 : 0);
             h = 31 * h + fontKey.hashCode();
+            h = 31 * h + rgba;
             return h;
         }
 
@@ -99,7 +106,7 @@ final class CgGlyphPlacementCache {
             if (!(o instanceof Key)) return false;
             Key k = (Key) o;
             return layout == k.layout && x == k.x && y == k.y
-                    && wantMsdf == k.wantMsdf && fontKey.equals(k.fontKey);
+                    && wantMsdf == k.wantMsdf && fontKey.equals(k.fontKey) && rgba == k.rgba;
         }
     }
 
@@ -114,9 +121,12 @@ final class CgGlyphPlacementCache {
      * {@code effectiveTargetPx} can shift on essentially every camera movement even though
      * distance-field output never changes; without this exclusion, panning/zooming the camera
      * would bust the cache on nearly every frame.
+     *
+     * <p>{@code argbColor} is the already-resolved effective color per glyph (span override,
+     * or the draw's default {@code rgba} baked into {@link Key} — see that field's javadoc).</p>
      */
     record Entry(boolean distanceField, int effectiveTargetPx, long builtFrame, int glyphCount,
-                 float[] glyphX, float[] glyphY, CgGlyphPlacement[] placements) {
+                 float[] glyphX, float[] glyphY, int[] argbColor, CgGlyphPlacement[] placements) {
         boolean matches(int effectiveTargetPx, long frame) {
             return (distanceField || this.effectiveTargetPx == effectiveTargetPx)
                     && (frame - builtFrame) < REFRESH_FRAMES;

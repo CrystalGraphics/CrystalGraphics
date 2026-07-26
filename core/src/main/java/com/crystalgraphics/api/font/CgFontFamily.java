@@ -167,20 +167,40 @@ public final class CgFontFamily {
     }
 
     private static CgFontMetrics combineMetrics(List<CgFontSource> sources) {
+        List<CgFontMetrics> metricsList = new ArrayList<CgFontMetrics>(sources.size());
+        for (CgFontSource source : sources) {
+            metricsList.add(source.getMetrics());
+        }
+        return combineMetrics(metricsList);
+    }
+
+    /**
+     * Combines multiple faces' metrics into one "max over every dimension" metrics — the
+     * same reduction a family uses to compute its own {@link #getLayoutMetrics()}, exposed
+     * here for reuse when a single line mixes runs shaped through different families (e.g.
+     * a bold run alongside a regular one) and needs the max over all of them.
+     *
+     * @throws IllegalArgumentException if {@code metricsList} is empty
+     */
+    public static CgFontMetrics combineMetrics(Iterable<CgFontMetrics> metricsList) {
         float ascender = 0.0f;
         float descender = 0.0f;
         float lineGap = 0.0f;
         float lineHeight = 0.0f;
         float xHeight = 0.0f;
         float capHeight = 0.0f;
-        for (CgFontSource source : sources) {
-            CgFontMetrics metrics = source.getMetrics();
+        boolean any = false;
+        for (CgFontMetrics metrics : metricsList) {
+            any = true;
             ascender = Math.max(ascender, metrics.getAscender());
             descender = Math.max(descender, metrics.getDescender());
             lineGap = Math.max(lineGap, metrics.getLineGap());
             lineHeight = Math.max(lineHeight, metrics.getLineHeight());
             xHeight = Math.max(xHeight, metrics.getXHeight());
             capHeight = Math.max(capHeight, metrics.getCapHeight());
+        }
+        if (!any) {
+            throw new IllegalArgumentException("metricsList must not be empty");
         }
         return new CgFontMetrics(ascender, descender, lineGap, lineHeight, xHeight, capHeight);
     }

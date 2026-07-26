@@ -71,7 +71,7 @@ public interface CgMarkupParser {
 }
 
 // text/richtext/CgHtmlLikeMarkupParser.java — <b>/<strong>, <i>/<em>, <u>, <color=#RRGGBB>...</color>
-// text/richtext/CgMcFormattingCodeParser.java — optional sibling: §l/§o/§n/§r-style codes
+// text/richtext/CgMinecraftColorCodeParser.java — optional sibling: §l/§o/§n/§r-style codes
 ```
 
 **Open decision, not resolved here:** which syntax is the primary one to ship. This is a

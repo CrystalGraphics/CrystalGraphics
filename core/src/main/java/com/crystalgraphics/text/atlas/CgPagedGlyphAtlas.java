@@ -196,6 +196,14 @@ public class CgPagedGlyphAtlas {
      */
     private final Map<CgGlyphKey, CgGlyphAtlasPage> glyphIndex = new HashMap<>();
 
+    /**
+     * The page holding this atlas's reserved white texel (see {@link #reserveWhiteTexel()}),
+     * or {@code null} if never reserved. Excluded from {@link #evictColdestPageAndFreeLayer()}'s
+     * candidate scan so a bounded (eviction-enabled) atlas never displaces the one texel every
+     * decoration-line draw depends on.
+     */
+    private CgGlyphAtlasPage whiteTexelPage;
+
     // ── Constructors ──────────────────────────────────────────────────
     //
     // No public constructors — every real (non-test) atlas must go through
@@ -402,6 +410,35 @@ public class CgPagedGlyphAtlas {
         return placement;
     }
 
+    /**
+     * Returns this atlas's reserved opaque-white texel UV rect + page identity, allocating
+     * it on first call (creating the first page if none exist yet). Used by
+     * {@code CgTextRenderer} to draw underline/strikethrough decoration quads through the
+     * same material/page already bound for this atlas's glyphs — see
+     * {@link CgGlyphAtlasPage#reserveWhiteTexel()}.
+     *
+     * @return the reserved texel's page identity and UV rect
+     */
+    public WhiteTexel reserveWhiteTexel() {
+        checkNotDeleted();
+        if (whiteTexelPage != null) {
+            float[] uv = whiteTexelPage.reserveWhiteTexel();
+            return new WhiteTexel(whiteTexelPage.getTextureId(), whiteTexelPage.getPageIndex(),
+                    uv[0], uv[1], uv[2], uv[3]);
+        }
+        CgGlyphAtlasPage page = pages.isEmpty() ? createPage() : pages.get(pages.size() - 1);
+        float[] uv = page.reserveWhiteTexel();
+        if (uv == null) {
+            page = createPage();
+            uv = page.reserveWhiteTexel();
+        }
+        whiteTexelPage = page;
+        return new WhiteTexel(page.getTextureId(), page.getPageIndex(), uv[0], uv[1], uv[2], uv[3]);
+    }
+
+    /** Result of {@link #reserveWhiteTexel()} — a flat-fill sample point for decoration quads. */
+    public record WhiteTexel(int atlasTextureId, int atlasPageIndex, float u0, float v0, float u1, float v1) { }
+
     // ── Page queries ──────────────────────────────────────────────────
 
     /** Returns the number of pages currently allocated. */
@@ -542,17 +579,29 @@ public class CgPagedGlyphAtlas {
      * @return the freed layer index
      */
     private int evictColdestPageAndFreeLayer() {
-        int coldestIndex = 0;
-        long coldestFrame = pages.get(0).getLastTouchedFrame();
-        for (int i = 1; i < pages.size(); i++) {
-            long touched = pages.get(i).getLastTouchedFrame();
-            if (touched < coldestFrame) {
+        int coldestIndex = -1;
+        long coldestFrame = Long.MAX_VALUE;
+        for (int i = 0; i < pages.size(); i++) {
+            CgGlyphAtlasPage candidate = pages.get(i);
+            if (candidate == whiteTexelPage) {
+                continue;
+            }
+            long touched = candidate.getLastTouchedFrame();
+            if (coldestIndex == -1 || touched < coldestFrame) {
                 coldestFrame = touched;
                 coldestIndex = i;
             }
         }
+        if (coldestIndex == -1) {
+            // Every page holds the reserved white texel (single-page atlas) — nothing
+            // evictable without breaking decoration rendering; fall back to page 0.
+            coldestIndex = 0;
+        }
 
         CgGlyphAtlasPage evicted = pages.remove(coldestIndex);
+        if (evicted == whiteTexelPage) {
+            whiteTexelPage = null;
+        }
         // Must happen before evicted.delete(), which clears the page's own key set —
         // otherwise glyphIndex would keep stale entries pointing at a page whose layer
         // index is about to be handed to a brand-new page with completely different glyphs.

@@ -5,8 +5,10 @@ import com.crystalgraphics.api.PoseStack;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.font.*;
 import com.crystalgraphics.api.material.CgMaterial;
+import com.crystalgraphics.api.text.CgTextDecorationRect;
 import com.crystalgraphics.api.text.CgTextConstraints;
 import com.crystalgraphics.api.text.CgTextLayout;
+import com.crystalgraphics.api.text.CgTextLayoutRequest;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
@@ -15,6 +17,7 @@ import com.crystalgraphics.gl.render.CgQuadRenderer;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.gl.texture.CgTextureMutable;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.text.atlas.CgPagedGlyphAtlas;
 import com.crystalgraphics.text.cache.CgFontRegistry;
 import lombok.Getter;
 import lombok.NonNull;
@@ -200,7 +203,6 @@ public class CgTextRenderer {
     private static final Logger LOGGER = Logger.getLogger(CgTextRenderer.class.getName());
     public static boolean diagnosticLogging = false;
 
-    private static final CgTextLayoutBuilder LAYOUT_BUILDER = new CgTextLayoutBuilder();
 
     private final CgFontRegistry registry = CgFontRegistry.get();
 
@@ -764,10 +766,57 @@ public class CgTextRenderer {
         boolean wantMsdf = context.getScaleResolver().shouldUseMsdf(effectiveTargetPx, previousMsdf);
         context.setHistory(fontKey, effectiveTargetPx, wantMsdf);
 
-        int glyphCount = resolvedGlyphs.resolve(resolvedLayout, draw.x, draw.y, frame, context, effectiveTargetPx, wantMsdf, fontKey);
-        if (glyphCount == 0) return;
+        int glyphCount = resolvedGlyphs.resolve(resolvedLayout, draw.x, draw.y, frame, context, effectiveTargetPx, wantMsdf, fontKey, draw.rgba);
+        if (glyphCount > 0) {
+            submitSortedQuads(glyphCount, fontKey.getTargetPx(), effectiveTargetPx, pose.pose());
+        }
 
-        submitSortedQuads(glyphCount, draw.rgba, fontKey.getTargetPx(), effectiveTargetPx, pose.pose());
+        CgTextDecorationRect[] decorations = resolvedLayout.baked().decorations();
+        if (decorations.length > 0) {
+            submitDecorations(decorations, draw.x, draw.y, draw.rgba, effectiveTargetPx, wantMsdf, pose.pose());
+        }
+    }
+
+    /**
+     * Draws baked underline/strikethrough segments as flat-colored quads, sampling each
+     * segment's own font's reserved white texel (see
+     * {@link CgFontRegistry#getDecorationWhiteTexel}) so decoration lines batch onto the same
+     * atlas page/material transition their run's glyphs already use — no shader change, no
+     * extra texture bind beyond what the glyphs already required.
+     *
+     * <p>{@code x0}/{@code x1}/{@code y} are layout-origin-relative logical pixels, the same
+     * space as {@link com.crystalgraphics.api.text.CgBakedGlyphs#penX()}/{@code penY()} —
+     * translated by the draw's own {@code x}/{@code y} exactly like glyph pen positions are in
+     * {@code CgResolvedGlyphs#resolve}, and otherwise drawn at 1:1 logical scale (no
+     * raster-tier rescaling — a flat rectangle has no atlas-resolution dependency).</p>
+     */
+    private void submitDecorations(CgTextDecorationRect[] decorations, float x, float y, int drawRgba,
+                                   int effectiveTargetPx, boolean wantMsdf, Matrix4f modelView) {
+        syncProjection(context.getProjection());
+        for (CgTextDecorationRect seg : decorations) {
+            CgFontKey segFontKey = seg.fontKey();
+            if (segFontKey == null) continue;
+
+            CgPagedGlyphAtlas.WhiteTexel texel = registry.getDecorationWhiteTexel(segFontKey, effectiveTargetPx, wantMsdf);
+            if (texel == null) continue;
+
+            flush();
+            TEXT_MATERIAL.toggleKeyword("MSDF_MODE", wantMsdf);
+            ATLAS_TEXTURE_REF.setId(texel.atlasTextureId());
+            TEXT_MATERIAL.applyProperties(b -> b.set1f("_PxRange", 0f));
+
+            int rgba = seg.argbColor() != 0 ? seg.argbColor() : drawRgba;
+            float qx = x + seg.x0();
+            float qy = y + seg.y() - seg.thickness() / 2f;
+
+            quadRenderer.quad()
+                    .at(qx, qy).size(seg.x1() - seg.x0(), seg.thickness())
+                    .uv(texel.u0(), texel.v0(), texel.u1(), texel.v1())
+                    .color(rgba)
+                    .atlasLayer(texel.atlasPageIndex())
+                    .pose(modelView)
+                    .submit();
+        }
     }
 
     // ══════════════════════════════════════════════════════════════════════════════════════════
@@ -834,7 +883,7 @@ public class CgTextRenderer {
      *   <li>Emits one instanced-quad record per glyph via {@link CgQuadRenderer#quad()}</li>
      * </ol>
      */
-    private void submitSortedQuads(int glyphCount, int rgba, int baseTargetPx, int effectiveTargetPx, Matrix4f modelView) {
+    private void submitSortedQuads(int glyphCount, int baseTargetPx, int effectiveTargetPx, Matrix4f modelView) {
         CgGlyphPlacement[] placements = resolvedGlyphs.placements;
 
         int visibleCount = 0;
@@ -878,11 +927,12 @@ public class CgTextRenderer {
             float logicalBearingX = p.planeLeft() * scaleFactor, logicalBearingY = p.planeTop() * scaleFactor;
             float logicalWidth = p.getPlaneWidth() * scaleFactor, logicalHeight = p.getPlaneHeight() * scaleFactor;
             float qx = resolvedGlyphs.glyphX[origIdx] + logicalBearingX, qy = resolvedGlyphs.glyphY[origIdx] - logicalBearingY;
+            int rgba = resolvedGlyphs.argbColor[origIdx];
 
             quadRenderer.quad()
                     .at(qx, qy).size(logicalWidth, logicalHeight)
                     .uv(p.u0(), p.v0(), p.u1(), p.v1())
-                    .color((rgba >>> 8) | ((rgba & 0xFF) << 24))
+                    .color(rgba)
                     .atlasLayer(p.atlasPageIndex())
                     .pose(modelView)
                     .submit();
@@ -907,11 +957,10 @@ public class CgTextRenderer {
      * Shared layout helper used by the string-based draw overloads.
      *
      * <p>This is the string-to-layout boundary for the renderer. Checks {@link CgTextLayoutCache}
-     * first — see that class's javadoc; on a miss, shaping/fallback resolution/line breaking
-     * happen inside {@link CgTextLayoutBuilder} as before. Renderer code should treat the
-     * returned {@link CgTextLayout} as the stable hand-off format for glyph resolution, and
-     * must not mutate it — a cache hit may hand the same instance to multiple unrelated
-     * callers.</p>
+     * first — see that class's javadoc; on a miss, builds a default-knobs {@link CgTextLayoutRequest}.
+     * Renderer code should treat the returned {@link CgTextLayout} as the stable hand-off
+     * format for glyph resolution, and must not mutate it — a cache hit may hand the same
+     * instance to multiple unrelated callers.</p>
      */
     static CgTextLayout layout(String text, CgFont font, CgTextConstraints constraints) {
         if (text == null) throw new IllegalArgumentException("text must not be null");
@@ -921,7 +970,9 @@ public class CgTextRenderer {
         CgTextLayout cached = CgTextLayoutCache.get(key);
         if (cached != null) return cached;
 
-        CgTextLayout built = LAYOUT_BUILDER.layout(text, font, constraints.getMaxWidth(), constraints.getMaxHeight());
+        CgTextLayout built = CgTextLayoutRequest.of(text, font)
+                .maxWidth(constraints.getMaxWidth()).maxHeight(constraints.getMaxHeight())
+                .build();
         CgTextLayoutCache.put(key, built);
         return built;
     }
@@ -934,7 +985,9 @@ public class CgTextRenderer {
         CgTextLayout cached = CgTextLayoutCache.get(key);
         if (cached != null) return cached;
 
-        CgTextLayout built = LAYOUT_BUILDER.layout(text, family, constraints.getMaxWidth(), constraints.getMaxHeight());
+        CgTextLayout built = CgTextLayoutRequest.of(text, family)
+                .maxWidth(constraints.getMaxWidth()).maxHeight(constraints.getMaxHeight())
+                .build();
         CgTextLayoutCache.put(key, built);
         return built;
     }

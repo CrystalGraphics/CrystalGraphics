@@ -42,6 +42,7 @@ final class CgResolvedGlyphs {
     private CgGlyphKey[] scratchGlyphKeys = new CgGlyphKey[0];
     private float[] scratchGlyphX = new float[0];
     private float[] scratchGlyphY = new float[0];
+    private int[] scratchArgbColor = new int[0];
     private CgGlyphPlacement[] scratchPlacements = new CgGlyphPlacement[0];
 
     /** Pen position for glyph {@code i} of the most recent {@link #resolve} call, valid for
@@ -49,6 +50,10 @@ final class CgResolvedGlyphs {
      * scratch arrays (fresh resolve) or a cache entry's own arrays (cache hit). */
     float[] glyphX = new float[0];
     float[] glyphY = new float[0];
+    /** Effective per-glyph color for the most recent {@link #resolve} call — already resolved
+     * as {@code span override != 0 ? span override : draw's default rgba}, read by
+     * {@code CgTextRenderer}. */
+    int[] argbColor = new int[0];
     /** Resolved atlas placement for glyph {@code i} of the most recent {@link #resolve} call. */
     CgGlyphPlacement[] placements = new CgGlyphPlacement[0];
 
@@ -65,30 +70,36 @@ final class CgResolvedGlyphs {
         scratchSubPixel = Arrays.copyOf(scratchSubPixel, newCap);
         scratchGlyphX = Arrays.copyOf(scratchGlyphX, newCap);
         scratchGlyphY = Arrays.copyOf(scratchGlyphY, newCap);
+        scratchArgbColor = Arrays.copyOf(scratchArgbColor, newCap);
         scratchPlacements = Arrays.copyOf(scratchPlacements, newCap);
         scratchGlyphKeys = Arrays.copyOf(scratchGlyphKeys, newCap);
     }
 
     /**
-     * Resolves {@code layout} into {@link #glyphX}/{@link #glyphY}/{@link #placements}, either
-     * by reusing a matching {@link CgGlyphPlacementCache} entry or by performing a fresh
-     * translate-only bake read + atlas-resolve and caching the result. See that class's javadoc.
+     * Resolves {@code layout} into {@link #glyphX}/{@link #glyphY}/{@link #argbColor}/
+     * {@link #placements}, either by reusing a matching {@link CgGlyphPlacementCache} entry
+     * or by performing a fresh translate-only bake read + atlas-resolve and caching the
+     * result. See that class's javadoc.
      *
+     * @param rgba the draw's default color — also part of the cache key, since two draws of
+     *             the same layout/position with different default colors must not share a
+     *             cache entry (see {@link CgGlyphPlacementCache.Key#rgba()})
      * @return the number of glyphs resolved (may be 0 for an all-whitespace layout)
      */
     int resolve(CgTextLayout layout, float x, float y, long frame,
                CgTextRenderContext context, int effectiveTargetPx, boolean wantMsdf,
-               CgFontKey fontKey) {
-        CgGlyphPlacementCache.Key key = CgGlyphPlacementCache.key(layout, x, y, wantMsdf, fontKey);
+               CgFontKey fontKey, int rgba) {
+        CgGlyphPlacementCache.Key key = CgGlyphPlacementCache.key(layout, x, y, wantMsdf, fontKey, rgba);
         CgGlyphPlacementCache.Entry hit = CgGlyphPlacementCache.get(key, effectiveTargetPx, frame);
         if (hit != null) {
             this.glyphX = hit.glyphX();
             this.glyphY = hit.glyphY();
+            this.argbColor = hit.argbColor();
             this.placements = hit.placements();
             return hit.glyphCount();
         }
 
-        int glyphCount = flatten(layout, x, y, context, effectiveTargetPx, wantMsdf);
+        int glyphCount = flatten(layout, x, y, context, effectiveTargetPx, wantMsdf, rgba);
         boolean distanceField = false;
         if (glyphCount > 0) {
             distanceField = resolvePlacements(glyphCount, frame, effectiveTargetPx, wantMsdf);
@@ -96,12 +107,14 @@ final class CgResolvedGlyphs {
 
         this.glyphX = scratchGlyphX;
         this.glyphY = scratchGlyphY;
+        this.argbColor = scratchArgbColor;
         this.placements = scratchPlacements;
 
         CgGlyphPlacementCache.put(key, new CgGlyphPlacementCache.Entry(
                 distanceField, effectiveTargetPx, frame, glyphCount,
                 Arrays.copyOf(scratchGlyphX, glyphCount),
                 Arrays.copyOf(scratchGlyphY, glyphCount),
+                Arrays.copyOf(scratchArgbColor, glyphCount),
                 Arrays.copyOf(scratchPlacements, glyphCount)));
 
         return glyphCount;
@@ -109,10 +122,10 @@ final class CgResolvedGlyphs {
 
     /**
      * Single translate-only pass over {@code layout}'s already-baked {@link CgBakedGlyphs}:
-     * every glyph's font key/font/id/subpixel bucket/pen position/{@link CgGlyphKey} into this
-     * instance's scratch arrays. Pen positions only need {@code x, y} added — everything else
-     * (line breaking, BiDi, per-line height) was already folded in once by the layout engine's
-     * bake step, not re-derived here.
+     * every glyph's font key/font/id/subpixel bucket/pen position/effective color/
+     * {@link CgGlyphKey} into this instance's scratch arrays. Pen positions only need
+     * {@code x, y} added — everything else (line breaking, BiDi, per-line height) was
+     * already folded in once by the layout engine's bake step, not re-derived here.
      *
      * <p>{@link #ensurePlacements}'s MSDF→bitmap fallback retry re-runs only the flat
      * atlas-lookup loop over these already-flattened arrays — never this pass again.</p>
@@ -120,7 +133,7 @@ final class CgResolvedGlyphs {
      * @return the number of glyphs flattened (may be 0 for an all-whitespace layout)
      */
     private int flatten(CgTextLayout layout, float x, float y,
-                        CgTextRenderContext context, int effectiveTargetPx, boolean wantMsdf) {
+                        CgTextRenderContext context, int effectiveTargetPx, boolean wantMsdf, int rgba) {
         CgBakedGlyphs baked = layout.baked();
         int glyphCount = baked.glyphCount();
         ensureCapacity(glyphCount);
@@ -129,6 +142,7 @@ final class CgResolvedGlyphs {
             CgFontKey fontKey = baked.fontKeys()[i];
             int glyphId = baked.glyphIds()[i];
             int subPixel = resolveSubPixelBucket(context, fontKey, effectiveTargetPx, baked.offsetX()[i]);
+            int overrideColor = baked.argbColor()[i];
             scratchFontKeys[i] = fontKey;
             scratchFonts[i] = baked.fonts()[i];
             scratchGlyphIds[i] = glyphId;
@@ -137,6 +151,7 @@ final class CgResolvedGlyphs {
                     baked.syntheticBold()[i], baked.syntheticItalic()[i]);
             scratchGlyphX[i] = x + baked.penX()[i];
             scratchGlyphY[i] = y + baked.penY()[i];
+            scratchArgbColor[i] = overrideColor != 0 ? overrideColor : rgba;
         }
 
         return glyphCount;

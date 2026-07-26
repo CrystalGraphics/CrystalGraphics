@@ -64,9 +64,11 @@ public record CgBakedGlyphs(
         float[] penX,
         float[] penY,
         float[] offsetX,
+        int[] argbColor,
         boolean[] justifiable,
         float[] lineHeight,
-        int[] lineStart
+        int[] lineStart,
+        CgTextDecorationRect[] decorations,
         boolean[] syntheticBold,
         boolean[] syntheticItalic
 ) {
