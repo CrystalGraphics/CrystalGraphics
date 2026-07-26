@@ -23,6 +23,7 @@ import lombok.NonNull;
 import lombok.Setter;
 import lombok.experimental.Accessors;
 import org.joml.Matrix4f;
+import org.joml.Vector3f;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -239,6 +240,14 @@ public class CgTextRenderer {
      * directly off that count rather than tracking its own separate capacity field.
      */
     private long[] scratchSortKeys = new long[0];
+
+    /**
+     * Reusable scratch for {@link #pixelSnapDelta} — the inverse of the current draw call's
+     * model-view (recomputed once per {@link #submitSortedQuads} call, not per-glyph) plus two
+     * throwaway vectors, kept as fields purely to avoid a small allocation per glyph.
+     */
+    private final Matrix4f scratchInverseModelView = new Matrix4f();
+    private final Vector3f scratchLocalDelta = new Vector3f();
 
     private void ensureSortScratchCapacity(int count) {
         if (count <= scratchSortKeys.length) return;
@@ -1032,6 +1041,10 @@ public class CgTextRenderer {
         // what's already queued under a different projection — see syncProjection().
         syncProjection(context.getProjection());
 
+        // World text is always MSDF (see PerspectiveScaleResolver#shouldUseMsdf), so gating
+        // pixel-snap on !isDistanceField alone already excludes it -- no separate world check.
+        scratchInverseModelView.set(modelView).invert();
+
         long currentBatchBits = 0;
         boolean batchStarted = false;
         for (int s = 0; s < totalCount; s++) {
@@ -1075,6 +1088,16 @@ public class CgTextRenderer {
                 w = p.getPlaneWidth() * scaleFactor; h = p.getPlaneHeight() * scaleFactor;
                 qx = resolvedGlyphs.glyphX[localIndex] + logicalBearingX;
                 qy = resolvedGlyphs.glyphY[localIndex] - logicalBearingY;
+
+                // Bitmap-only (see pixelSnapDelta's javadoc); snaps from the shared line
+                // baseline rather than qy so every glyph on a line gets the same correction,
+                // since qy already has this glyph's own bearingY baked in.
+                if (!isDistanceField) {
+                    pixelSnapDelta(modelView, scratchInverseModelView, qx, resolvedGlyphs.glyphY[localIndex], scratchLocalDelta);
+                    qx += scratchLocalDelta.x;
+                    qy += scratchLocalDelta.y;
+                }
+
                 u0 = p.u0(); v0 = p.v0(); u1 = p.u1(); v1 = p.v1();
                 rgba = resolvedGlyphs.argbColor[localIndex];
                 atlasLayer = p.atlasPageIndex();
@@ -1104,6 +1127,22 @@ public class CgTextRenderer {
                         + ", pos=[" + qx + "," + qy + "], size=[" + w + "," + h + "]");
             }
         }
+    }
+
+    /**
+     * Local-space correction that, added to {@code (qx, qy)}, makes this glyph's on-screen
+     * position (after {@code modelView}) land on a whole pixel — {@code GL_NEAREST} sampling
+     * isn't invariant under sub-pixel translation, so an unsnapped position can drop/duplicate
+     * a texel row at an edge. Floors (not rounds) to match the sub-pixel bucket convention.
+     */
+    private static void pixelSnapDelta(Matrix4f modelView, Matrix4f invModelView,
+                                        float qx, float qy, Vector3f outLocalDelta) {
+        outLocalDelta.set(qx, qy, 0f);
+        modelView.transformPosition(outLocalDelta);
+        float screenDeltaX = (float) Math.floor(outLocalDelta.x) - outLocalDelta.x;
+        float screenDeltaY = (float) Math.floor(outLocalDelta.y) - outLocalDelta.y;
+        outLocalDelta.set(screenDeltaX, screenDeltaY, 0f);
+        invModelView.transformDirection(outLocalDelta);
     }
 
     // ══════════════════════════════════════════════════════════════════════════════════════════
