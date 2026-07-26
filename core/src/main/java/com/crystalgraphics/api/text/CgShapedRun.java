@@ -10,6 +10,7 @@ import lombok.Getter;
 import lombok.ToString;
 
 import java.util.List;
+import java.util.Set;
 
 /**
  * Immutable result of shaping a single directional run of text.
@@ -60,7 +61,7 @@ import java.util.List;
  * does not own it.</p>
  *
  * <h3>Rich-text span fields</h3>
- * <p>{@link #argbColor}, {@link #decoration}, {@link #fontFeatures}, and
+ * <p>{@link #argbColor}, {@link #decorations}, {@link #fontFeatures}, and
  * {@link #baselineShift} mirror {@link CgStyleSpan}'s fields — copied onto whichever
  * run resulted from shaping that span's sub-range. Landed here ahead of the splitting
  * logic that actually populates them: nothing constructs a run with non-default values
@@ -126,8 +127,8 @@ public final class CgShapedRun {
     /** Override color, {@code 0} = inherit the draw's default color. See {@link CgStyleSpan#argbColor()}. */
     private final int argbColor;
 
-    /** See {@link CgStyleSpan#decoration()}. */
-    private final CgTextDecoration decoration;
+    /** See {@link CgStyleSpan#decorations()}. */
+    private final Set<CgTextDecoration> decorations;
 
     /** OpenType features to enable for this run's shaping. See {@link CgStyleSpan#fontFeatures()}. */
     private final List<CgFontFeature> fontFeatures;
@@ -166,7 +167,7 @@ public final class CgShapedRun {
                         int[] glyphIds, int[] clusterIds,
                         float[] advancesX, float[] offsetsX, float[] offsetsY,
                         float totalAdvance, int sourceStart, int sourceEnd,
-                        int argbColor, CgTextDecoration decoration,
+                        int argbColor, Set<CgTextDecoration> decorations,
                         List<CgFontFeature> fontFeatures, float baselineShift,
                         boolean[] safeToBreakBefore, boolean syntheticBold, boolean syntheticItalic) {
         if (fontKey == null) {
@@ -184,7 +185,7 @@ public final class CgShapedRun {
         this.sourceStart = sourceStart;
         this.sourceEnd = sourceEnd;
         this.argbColor = argbColor;
-        this.decoration = decoration != null ? decoration : CgTextDecoration.NONE;
+        this.decorations = decorations == null || decorations.isEmpty() ? Set.of() : Set.copyOf(decorations);
         this.fontFeatures = fontFeatures == null ? List.of() : List.copyOf(fontFeatures);
         this.baselineShift = baselineShift;
         this.safeToBreakBefore = safeToBreakBefore;
@@ -198,11 +199,11 @@ public final class CgShapedRun {
                         int[] glyphIds, int[] clusterIds,
                         float[] advancesX, float[] offsetsX, float[] offsetsY,
                         float totalAdvance, int sourceStart, int sourceEnd,
-                        int argbColor, CgTextDecoration decoration,
+                        int argbColor, Set<CgTextDecoration> decorations,
                         List<CgFontFeature> fontFeatures, float baselineShift,
                         boolean[] safeToBreakBefore) {
         this(fontKey, resolvedFont, rtl, glyphIds, clusterIds, advancesX, offsetsX, offsetsY,
-                totalAdvance, sourceStart, sourceEnd, argbColor, decoration, fontFeatures, baselineShift,
+                totalAdvance, sourceStart, sourceEnd, argbColor, decorations, fontFeatures, baselineShift,
                 safeToBreakBefore, false, false);
     }
 
@@ -211,17 +212,16 @@ public final class CgShapedRun {
                         int[] glyphIds, int[] clusterIds,
                         float[] advancesX, float[] offsetsX, float[] offsetsY,
                         float totalAdvance, int sourceStart, int sourceEnd,
-                        int argbColor, CgTextDecoration decoration,
+                        int argbColor, Set<CgTextDecoration> decorations,
                         List<CgFontFeature> fontFeatures, float baselineShift) {
         this(fontKey, resolvedFont, rtl, glyphIds, clusterIds, advancesX, offsetsX, offsetsY,
-                totalAdvance, sourceStart, sourceEnd, argbColor, decoration, fontFeatures, baselineShift, null);
+                totalAdvance, sourceStart, sourceEnd, argbColor, decorations, fontFeatures, baselineShift, null);
     }
 
     /**
      * Convenience constructor without rich-text span fields — defaults
-     * {@code argbColor} to {@code 0} (inherit), {@code decoration} to
-     * {@link CgTextDecoration#NONE}, {@code fontFeatures} to empty, and
-     * {@code baselineShift} to {@code 0}.
+     * {@code argbColor} to {@code 0} (inherit), {@code decorations} to empty,
+     * {@code fontFeatures} to empty, and {@code baselineShift} to {@code 0}.
      */
     public CgShapedRun(CgFontKey fontKey, CgFont resolvedFont, boolean rtl,
                         int[] glyphIds, int[] clusterIds,
@@ -229,6 +229,6 @@ public final class CgShapedRun {
                         float totalAdvance, int sourceStart, int sourceEnd) {
         this(fontKey, resolvedFont, rtl, glyphIds, clusterIds, advancesX, offsetsX, offsetsY,
                 totalAdvance, sourceStart, sourceEnd,
-                0, CgTextDecoration.NONE, List.of(), 0f, null);
+                0, Set.of(), List.of(), 0f, null);
     }
 }

@@ -7,6 +7,7 @@ import com.crystalgraphics.api.text.CgTextDecoration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -32,13 +33,12 @@ import java.util.Map;
  * the fold of every tag open over it. A span is only emitted when the folded style is actually
  * non-default (a plain, unstyled run of text needs no span at all).</p>
  *
- * <h3>Innermost wins for single-valued attributes</h3>
- * <p>The fold runs outermost → innermost, so for an attribute that can only hold one value at a
- * time — {@link CgStyleSpan#decoration()}, {@link CgStyleSpan#argbColor()} — the innermost
- * enclosing tag wins. {@code <s><u>x</u></s>} therefore renders underlined, not both;
- * {@link CgTextDecoration} is a single value, not a combinable set. Widening it to a bitmask is
- * the fix if simultaneous decorations are ever needed — {@link Tag}'s effects would then OR
- * instead of assign, with no other change here.</p>
+ * <h3>Decorations combine, single-valued attributes don't</h3>
+ * <p>The fold runs outermost → innermost. {@link Style#decorations} is a set that every
+ * decoration tag's {@link Effect} adds to, so {@code <s><u>x</u></s>} renders both underlined
+ * <em>and</em> struck through. {@link CgStyleSpan#argbColor()}, by contrast, can only hold one
+ * value — the innermost {@code <color>} wins there, since its effect assigns rather than
+ * accumulates.</p>
  *
  * <h3>Lenient by default</h3>
  * <p>Unless constructed with {@code strict = true}:</p>
@@ -68,11 +68,11 @@ public final class CgTagMarkupParser implements CgMarkupParser {
     private static final class Style {
         boolean bold;
         boolean italic;
-        CgTextDecoration decoration = CgTextDecoration.NONE;
+        final EnumSet<CgTextDecoration> decorations = EnumSet.noneOf(CgTextDecoration.class);
         int argb;
 
         boolean isDefault() {
-            return !bold && !italic && decoration == CgTextDecoration.NONE && argb == 0;
+            return !bold && !italic && decorations.isEmpty() && argb == 0;
         }
     }
 
@@ -117,9 +117,9 @@ public final class CgTagMarkupParser implements CgMarkupParser {
     private enum Tag {
         BOLD((style, payload) -> style.bold = true, "b", "strong"),
         ITALIC((style, payload) -> style.italic = true, "i", "em"),
-        UNDERLINE((style, payload) -> style.decoration = CgTextDecoration.UNDERLINE, "u"),
-        STRIKETHROUGH((style, payload) -> style.decoration = CgTextDecoration.STRIKETHROUGH, "s", "strike"),
-        OVERLINE((style, payload) -> style.decoration = CgTextDecoration.OVERLINE, "overline"),
+        UNDERLINE((style, payload) -> style.decorations.add(CgTextDecoration.UNDERLINE), "u"),
+        STRIKETHROUGH((style, payload) -> style.decorations.add(CgTextDecoration.STRIKETHROUGH), "s", "strike"),
+        OVERLINE((style, payload) -> style.decorations.add(CgTextDecoration.OVERLINE), "overline"),
         COLOR((style, payload) -> style.argb = payload, ValueSyntax.COLOR, "color");
 
         private static final Map<String, Tag> BY_NAME = new HashMap<>();
@@ -284,7 +284,7 @@ public final class CgTagMarkupParser implements CgMarkupParser {
                     spans.add(CgStyleSpan.builder()
                             .start(runStart).end(end)
                             .bold(style.bold).italic(style.italic)
-                            .decoration(style.decoration)
+                            .decorations(style.decorations)
                             .argbColor(style.argb)
                             .build());
                 }
@@ -292,7 +292,12 @@ public final class CgTagMarkupParser implements CgMarkupParser {
             runStart = end;
         }
 
-        /** Applies every open tag outermost → innermost, so the innermost wins on conflict. */
+        /**
+         * Applies every open tag outermost → innermost — decorations accumulate into
+         * {@link Style#decorations} regardless of order, while single-valued fields (bold,
+         * italic, color) simply end up holding whatever the innermost tag that touches them
+         * set last.
+         */
         private Style foldOpenTags() {
             Style style = new Style();
             for (Iterator<Open> outermostFirst = openTags.descendingIterator(); outermostFirst.hasNext(); ) {

@@ -5,6 +5,7 @@ import com.crystalgraphics.api.text.CgStyledText;
 import com.crystalgraphics.api.text.CgTextDecoration;
 
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
 
 /**
@@ -39,12 +40,12 @@ import java.util.List;
  * Wire up real obfuscation support — a new {@code CgStyleSpan} field threaded through
  * {@code CgShapedRun}/baking/the renderer — as a separate, larger change if it's ever needed.</p>
  *
- * <h3>Only one decoration at a time</h3>
- * <p>{@link CgStyleSpan#decoration()} is a single {@link CgTextDecoration} value, not a
- * combinable set — {@code §n§m} (underline then strikethrough) shows only strikethrough, the
- * last one applied. Same limitation as {@link CgTagMarkupParser}; widening
- * {@code CgTextDecoration} to a bitmask is the fix for both if simultaneous decorations are
- * ever needed.</p>
+ * <h3>Decorations combine</h3>
+ * <p>{@link CgStyleSpan#decorations()} is a set — {@code §n§m} (underline, then strikethrough)
+ * shows both at once, same as {@link CgTagMarkupParser}. A color code or {@code §r} clears the
+ * whole set along with bold/italic (see above); there's no way to turn off just one
+ * decoration without a code for that specifically, matching vanilla (which has the same
+ * flat-toggle limitation).</p>
  *
  * <h3>Lenient by default</h3>
  * <p>Unless constructed with {@code strict = true}, an unrecognized code (e.g. {@code §z}) is
@@ -61,18 +62,18 @@ public final class CgMinecraftColorCodeParser implements CgMarkupParser {
     private static final class Style {
         boolean bold;
         boolean italic;
-        CgTextDecoration decoration = CgTextDecoration.NONE;
+        final EnumSet<CgTextDecoration> decorations = EnumSet.noneOf(CgTextDecoration.class);
         int argb;
         // §k obfuscated is intentionally not tracked here — see class javadoc.
 
         boolean isDefault() {
-            return !bold && !italic && decoration == CgTextDecoration.NONE && argb == 0;
+            return !bold && !italic && decorations.isEmpty() && argb == 0;
         }
 
         void resetStyles() {
             bold = false;
             italic = false;
-            decoration = CgTextDecoration.NONE;
+            decorations.clear();
         }
     }
 
@@ -111,8 +112,8 @@ public final class CgMinecraftColorCodeParser implements CgMarkupParser {
         // ── Styles ──
         OBFUSCATED('k', style -> { /* parsed and discarded — see class javadoc */ }),
         BOLD('l', style -> style.bold = true),
-        STRIKETHROUGH('m', style -> style.decoration = CgTextDecoration.STRIKETHROUGH),
-        UNDERLINE('n', style -> style.decoration = CgTextDecoration.UNDERLINE),
+        STRIKETHROUGH('m', style -> style.decorations.add(CgTextDecoration.STRIKETHROUGH)),
+        UNDERLINE('n', style -> style.decorations.add(CgTextDecoration.UNDERLINE)),
         ITALIC('o', style -> style.italic = true),
 
         // ── Reset ──
@@ -228,7 +229,7 @@ public final class CgMinecraftColorCodeParser implements CgMarkupParser {
                 spans.add(CgStyleSpan.builder()
                         .start(runStart).end(end)
                         .bold(style.bold).italic(style.italic)
-                        .decoration(style.decoration)
+                        .decorations(style.decorations)
                         .argbColor(style.argb)
                         .build());
             }

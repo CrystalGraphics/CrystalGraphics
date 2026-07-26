@@ -45,7 +45,8 @@ import com.crystalgraphics.api.font.CgFontKey;
  *
  * <h3>{@code decorations} — baked underline/strikethrough rectangles</h3>
  * <p>One {@link CgTextDecorationRect} per contiguous {@link CgShapedRun} whose
- * {@link CgShapedRun#getDecoration()} is not {@link CgTextDecoration#NONE} — see
+ * active {@link CgTextDecoration} on {@link CgShapedRun#getDecorations()} — one rect per
+ * simultaneously-active decoration on a run, not just one per run — see
  * {@link CgTextDecorationRect} for the formulas. Empty for layouts with no decorated
  * spans (the common case).</p>
  *

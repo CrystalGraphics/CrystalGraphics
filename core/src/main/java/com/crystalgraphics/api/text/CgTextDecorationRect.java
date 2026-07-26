@@ -5,8 +5,9 @@ import com.crystalgraphics.api.font.CgFontKey;
 /**
  * A single baked underline/strikethrough/overline rectangle, in the same layout-origin-relative
  * coordinate space as {@link CgBakedGlyphs#penX()}/{@link CgBakedGlyphs#penY()} — one per
- * contiguous {@link CgShapedRun} whose {@link CgShapedRun#getDecoration()} is not
- * {@link CgTextDecoration#NONE}.
+ * contiguous {@link CgShapedRun}'s {@link CgShapedRun#getDecorations()} — one per
+ * simultaneously-active decoration, so an underlined-and-struck-through run produces two
+ * of these, not one.
  *
  * <h3>Formulas</h3>
  * <p>Thickness and vertical offset follow Blink's fallback formulas
