@@ -88,6 +88,15 @@ public class CgGlyphAtlasPage {
     private ByteBuffer uploadBuffer;
     private FloatBuffer msdfUploadBuffer;
 
+    /**
+     * UV rect of the reserved opaque-white texel (see {@link #reserveWhiteTexel()}), or
+     * {@code null} if not yet reserved on this page.
+     */
+    private float[] whiteTexelUv;
+
+    /** Sentinel packer id for the reserved white texel — never a real {@link CgGlyphKey}. */
+    private static final Object WHITE_TEXEL_ID = new Object();
+
     // ── Constructor (use factory methods) ──────────────────────────────
 
     private CgGlyphAtlasPage(int pageIndex, int pageWidth, int pageHeight,
@@ -237,6 +246,48 @@ public class CgGlyphAtlasPage {
     public PackedRect tryAllocate(int width, int height, Object id) {
         checkNotDeleted();
         return packer.insert(width, height, id);
+    }
+
+    /**
+     * Reserves (once) a 1x1 opaque-white texel on this page — RGB/R all {@code 1.0},
+     * which reads back as full white under both the bitmap fragment path
+     * ({@code texture.r * color.a}) and the MSDF path (a max-channel median of
+     * {@code 1,1,1} decodes to full inside-coverage). Text decoration lines
+     * (underline/strikethrough) sample this texel through the same {@code text.shader}
+     * material already bound for this page's glyphs, so they draw as flat-colored
+     * quads without any shader change or extra material/texture bind.
+     *
+     * @return this page's white-texel UV rect ({@code u0,v0,u1,v1}), or {@code null}
+     *         if the page has no room left for it
+     */
+    public float[] reserveWhiteTexel() {
+        checkNotDeleted();
+        if (whiteTexelUv != null) {
+            return whiteTexelUv;
+        }
+        PackedRect packed = packer.insert(1, 1, WHITE_TEXEL_ID);
+        if (packed == null) {
+            return null;
+        }
+        if (type == CgGlyphAtlas.Type.BITMAP) {
+            uploadBitmap(packed.x(), packed.y(), 1, 1, new byte[]{(byte) 0xFF});
+        } else {
+            int channels = (type == CgGlyphAtlas.Type.MTSDF) ? 4 : 3;
+            float[] white = new float[channels];
+            java.util.Arrays.fill(white, 1.0f);
+            uploadMsdf(packed.x(), packed.y(), 1, 1, white);
+        }
+        // Sample dead-center of the texel — no distance-field inset needed since this
+        // is a flat 1x1 fill, not a rasterized glyph shape.
+        float u = (packed.x() + 0.5f) / pageWidth;
+        float v = (packed.y() + 0.5f) / pageHeight;
+        whiteTexelUv = new float[]{u, v, u, v};
+        return whiteTexelUv;
+    }
+
+    /** {@code true} if {@link #reserveWhiteTexel()} has already succeeded on this page. */
+    public boolean hasWhiteTexel() {
+        return whiteTexelUv != null;
     }
 
     // ── Queries ────────────────────────────────────────────────────────

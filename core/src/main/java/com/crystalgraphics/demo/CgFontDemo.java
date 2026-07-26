@@ -3,9 +3,9 @@ package com.crystalgraphics.demo;
 import com.crystalgraphics.api.PoseStack;
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgFontStyle;
-import com.crystalgraphics.api.font.CgTextLayoutBuilder;
 import com.crystalgraphics.api.shader.CgShader;
 import com.crystalgraphics.api.text.CgTextLayout;
+import com.crystalgraphics.api.text.CgTextLayoutRequest;
 import com.crystalgraphics.api.state.CgGlSlot;
 import com.crystalgraphics.gl.shader.CgShaderFactory;
 import com.crystalgraphics.gl.state.CgGlScope;
@@ -51,7 +51,6 @@ public final class CgFontDemo {
     private CgFont demoFont;
     private CgFontRegistry demoFontRegistry;
     private CgTextRenderer demoTextRenderer;
-    private final CgTextLayoutBuilder demoLayoutBuilder = new CgTextLayoutBuilder();
 
     // Raw GL handles are acceptable here: this class is a self-contained diagnostic
     // utility that owns its own VAO/VBO pair, analogous to CgDebugBlit.
@@ -77,17 +76,21 @@ public final class CgFontDemo {
             float logicalViewportWidth = (float) displayWidth / demoPoseScale;
             demoTextRenderer.context().clearHistory();
 
-            CgTextLayout demoLayout = demoLayoutBuilder.layout(
-                    DEMO_TEXT + " [base " + demoFontSize + "px, pose "
-                            + String.format("%.1f", demoPoseScale) + "x]",
-                    demoFont, logicalViewportWidth, 0);
+            CgTextLayout demoLayout = CgTextLayoutRequest.of(
+                            DEMO_TEXT + " [base " + demoFontSize + "px, pose "
+                                    + String.format("%.1f", demoPoseScale) + "x]",
+                            demoFont)
+                    .maxWidth(logicalViewportWidth)
+                    .build();
             demoTextRenderer.draw().layout(demoLayout).font(demoFont).at(20.0f, 40.0f + demoFontSize)
                     .color(0xFFFFFFFF).pose(poseStack).submit();
 
             demoTextRenderer.context().clearHistory();
 
             PoseStack identityPose = new PoseStack();
-            CgTextLayout labelLayout = demoLayoutBuilder.layout(DEMO_TEXT_2D_LABEL, demoFont, (float) displayWidth, 0);
+            CgTextLayout labelLayout = CgTextLayoutRequest.of(DEMO_TEXT_2D_LABEL, demoFont)
+                    .maxWidth((float) displayWidth)
+                    .build();
             demoTextRenderer.draw().layout(labelLayout).font(demoFont).at(20.0f, 20.0f)
                     .color(0xAAFFAAFF).pose(identityPose).submit();
 

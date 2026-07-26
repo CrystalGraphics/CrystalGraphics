@@ -4,7 +4,9 @@ import com.crystalgraphics.api.font.CgFontKey;
 import com.crystalgraphics.api.font.CgFontMetrics;
 import com.crystalgraphics.api.font.CgFontStyle;
 import com.crystalgraphics.api.text.CgBakedGlyphs;
+import com.crystalgraphics.api.text.CgFontFeature;
 import com.crystalgraphics.api.text.CgShapedRun;
+import com.crystalgraphics.api.text.CgTextDecoration;
 import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.text.layout.CgLineBreaker;
 import com.crystalgraphics.text.layout.CgReshapeContext;
@@ -117,6 +119,42 @@ public class CgTextLayoutTest {
                 5.0f, 3, 9);
 
         assertEquals("Source position should not affect equality", a, b);
+    }
+
+    @Test
+    public void testShapedRun_convenienceConstructor_defaultsRichSpanFields() {
+        CgShapedRun run = new CgShapedRun(TEST_FONT_KEY, null, false,
+                new int[]{1}, new int[]{0}, new float[]{5.0f}, new float[]{0}, new float[]{0},
+                5.0f, 0, 1);
+
+        assertEquals(0, run.getArgbColor());
+        assertEquals(CgTextDecoration.NONE, run.getDecoration());
+        assertTrue(run.getFontFeatures().isEmpty());
+        assertEquals(0f, run.getBaselineShift(), 0.001f);
+    }
+
+    @Test
+    public void testShapedRun_fullConstructor_storesRichSpanFields() {
+        CgShapedRun run = new CgShapedRun(TEST_FONT_KEY, null, false,
+                new int[]{1}, new int[]{0}, new float[]{5.0f}, new float[]{0}, new float[]{0},
+                5.0f, 0, 1,
+                0xFFFF0000, CgTextDecoration.UNDERLINE, List.of(CgFontFeature.enable("smcp")), 2.0f);
+
+        assertEquals(0xFFFF0000, run.getArgbColor());
+        assertEquals(CgTextDecoration.UNDERLINE, run.getDecoration());
+        assertEquals(List.of(CgFontFeature.enable("smcp")), run.getFontFeatures());
+        assertEquals(2.0f, run.getBaselineShift(), 0.001f);
+    }
+
+    @Test
+    public void testShapedRun_fullConstructor_nullDecorationDefaultsToNone() {
+        CgShapedRun run = new CgShapedRun(TEST_FONT_KEY, null, false,
+                new int[]{1}, new int[]{0}, new float[]{5.0f}, new float[]{0}, new float[]{0},
+                5.0f, 0, 1,
+                0, null, null, 0f);
+
+        assertEquals(CgTextDecoration.NONE, run.getDecoration());
+        assertTrue(run.getFontFeatures().isEmpty());
     }
 
     // ---------------------------------------------------------------
@@ -574,6 +612,66 @@ public class CgTextLayoutTest {
     }
 
     // ---------------------------------------------------------------
+    //  Phase 13: HarfBuzz unsafe-to-break fast path
+    // ---------------------------------------------------------------
+
+    @Test
+    public void testLineBreaker_unsafeToBreakFastPath_reducesReshapeCalls_sameOutput() {
+        // Long sentence with many word-break opportunities, forced to wrap at a narrow
+        // width -- exercises many binary-search steps in findBestFittingBoundary.
+        String text = "aa bb cc dd ee ff gg hh ii jj";
+        float perChar = 10.0f;
+        CgReshapeContext context = new CgReshapeContext(text);
+        CgLineBreaker breaker = new CgLineBreaker();
+
+        CgShapedRun safeRun = makeMultiGlyphRun(text, perChar, true);
+        CountingReshaper safeReshaper = new CountingReshaper(perChar);
+        List<List<CgShapedRun>> safeLines = breaker.breakLines(
+                List.of(safeRun), 50.0f, 0, TEST_METRICS, context, safeReshaper);
+
+        CgShapedRun unknownRun = makeMultiGlyphRun(text, perChar, false);
+        CountingReshaper unknownReshaper = new CountingReshaper(perChar);
+        List<List<CgShapedRun>> unknownLines = breaker.breakLines(
+                List.of(unknownRun), 50.0f, 0, TEST_METRICS, context, unknownReshaper);
+
+        // Output must be byte-identical regardless of the fast path -- same line count,
+        // same glyph count per line.
+        assertEquals("Fast path must not change the number of lines produced",
+                unknownLines.size(), safeLines.size());
+        for (int i = 0; i < safeLines.size(); i++) {
+            assertEquals("Line " + i + " glyph count should match between fast-path and fallback",
+                    countGlyphs(unknownLines.get(i)), countGlyphs(safeLines.get(i)));
+        }
+
+        assertTrue("A fully-safe-to-break run should need fewer reshape() calls than an "
+                        + "unknown-safety run wrapping the same text: safe=" + safeReshaper.calls
+                        + ", unknown=" + unknownReshaper.calls,
+                safeReshaper.calls < unknownReshaper.calls);
+    }
+
+    @Test
+    public void testLineBreaker_unsafeToBreakFastPath_rtlRunAlwaysReshapes() {
+        // The fast path is LTR-only (see CgLineBreaker.measurePrefixWidth) -- an RTL run
+        // marked fully safe-to-break must still go through the reshaper for every candidate,
+        // since glyph array order is visual (reversed), not logical, for RTL.
+        String text = "aa bb cc dd ee";
+        float perChar = 10.0f;
+        CgReshapeContext context = new CgReshapeContext(text);
+        CgLineBreaker breaker = new CgLineBreaker();
+
+        CgShapedRun rtlSafeRun = makeMultiGlyphRun(text, perChar, true, true);
+        CountingReshaper rtlReshaper = new CountingReshaper(perChar);
+        breaker.breakLines(List.of(rtlSafeRun), 50.0f, 0, TEST_METRICS, context, rtlReshaper);
+
+        CgShapedRun ltrSafeRun = makeMultiGlyphRun(text, perChar, true, false);
+        CountingReshaper ltrReshaper = new CountingReshaper(perChar);
+        breaker.breakLines(List.of(ltrSafeRun), 50.0f, 0, TEST_METRICS, context, ltrReshaper);
+
+        assertTrue("RTL run should not take the fast path even when marked fully safe",
+                rtlReshaper.calls > ltrReshaper.calls);
+    }
+
+    // ---------------------------------------------------------------
     //  Helper methods
     // ---------------------------------------------------------------
 
@@ -618,5 +716,79 @@ public class CgTextLayoutTest {
                 new float[]{0.0f},
                 new float[]{0.0f},
                 totalAdvance, sourceStart, sourceEnd);
+    }
+
+    /**
+     * One glyph per char (ASCII, so cluster id == char offset), covering all of {@code text}
+     * as a single run. {@code allSafeToBreak} controls {@link CgShapedRun#getSafeToBreakBefore()}:
+     * {@code true} marks every glyph safe (all except index 0, which is always implicitly
+     * safe), {@code false} leaves it {@code null} (unknown — today's always-reshape behavior).
+     */
+    private static CgShapedRun makeMultiGlyphRun(String text, float perCharAdvance, boolean allSafeToBreak) {
+        return makeMultiGlyphRun(text, perCharAdvance, allSafeToBreak, false);
+    }
+
+    private static CgShapedRun makeMultiGlyphRun(String text, float perCharAdvance,
+                                                  boolean allSafeToBreak, boolean rtl) {
+        int n = text.length();
+        int[] glyphIds = new int[n];
+        int[] clusterIds = new int[n];
+        float[] advancesX = new float[n];
+        float[] offsetsX = new float[n];
+        float[] offsetsY = new float[n];
+        boolean[] safeToBreakBefore = allSafeToBreak ? new boolean[n] : null;
+        float total = 0;
+        for (int i = 0; i < n; i++) {
+            glyphIds[i] = text.charAt(i);
+            clusterIds[i] = i;
+            advancesX[i] = perCharAdvance;
+            total += perCharAdvance;
+            if (safeToBreakBefore != null) {
+                safeToBreakBefore[i] = true;
+            }
+        }
+        return new CgShapedRun(TEST_FONT_KEY, null, rtl,
+                glyphIds, clusterIds, advancesX, offsetsX, offsetsY,
+                total, 0, n,
+                0, null, null, 0f, safeToBreakBefore);
+    }
+
+    private static int countGlyphs(List<CgShapedRun> line) {
+        int count = 0;
+        for (CgShapedRun run : line) {
+            count += run.getGlyphIds().length;
+        }
+        return count;
+    }
+
+    /** Reshapes deterministically (perCharAdvance per char) and counts how many times it's called. */
+    private static final class CountingReshaper implements RunReshaper {
+        int calls = 0;
+        private final float perCharAdvance;
+
+        CountingReshaper(float perCharAdvance) {
+            this.perCharAdvance = perCharAdvance;
+        }
+
+        @Override
+        public CgShapedRun reshape(CgReshapeContext context, CgShapedRun r, int subStart, int subEnd) {
+            calls++;
+            int len = subEnd - subStart;
+            int[] glyphIds = new int[len];
+            int[] clusterIds = new int[len];
+            float[] advancesX = new float[len];
+            float[] offsetsX = new float[len];
+            float[] offsetsY = new float[len];
+            float total = 0;
+            for (int i = 0; i < len; i++) {
+                glyphIds[i] = 1;
+                clusterIds[i] = i;
+                advancesX[i] = perCharAdvance;
+                total += perCharAdvance;
+            }
+            return new CgShapedRun(TEST_FONT_KEY, null, r.isRtl(),
+                    glyphIds, clusterIds, advancesX, offsetsX, offsetsY,
+                    total, subStart, subEnd);
+        }
     }
 }

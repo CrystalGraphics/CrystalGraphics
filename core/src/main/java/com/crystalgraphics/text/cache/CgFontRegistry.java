@@ -434,7 +434,6 @@ public class CgFontRegistry {
      */
     CgGlyphKey toMsdfAtlasGlyphKey(CgGlyphKey requestedKey, CgMsdfAtlasConfig config) {
         CgFontKey atlasFontKey = requestedKey.getFontKey().withTargetPx(config.atlasScalePx());
-        return new CgGlyphKey(atlasFontKey, requestedKey.getGlyphId(), true, 0);
         return new CgGlyphKey(atlasFontKey, requestedKey.getGlyphId(), true, 0,
                 requestedKey.isSyntheticBold(), requestedKey.isSyntheticItalic());
     }
@@ -802,6 +801,27 @@ public class CgFontRegistry {
     //  or MSDF atlas key (MSDF).  These are package-private — only the
     //  registry and tests should call them directly.
     // ────────────────────────────────────────────────────────────────────
+
+    /**
+     * Returns the reserved opaque-white texel for whichever atlas would hold glyphs of
+     * {@code fontKey} at this raster tier — the same key transformation
+     * {@link #ensureGlyphPaged} uses, so a decoration line drawn alongside this font's glyphs
+     * samples from the exact atlas/page those glyphs are already on, needing no extra material
+     * transition. Used by {@code CgTextRenderer} to draw underline/strikethrough quads.
+     *
+     * @param effectiveTargetPx ignored when {@code msdf} is {@code true} (MSDF atlases are
+     *                          keyed by font identity only, not raster size — see
+     *                          {@link #toMsdfAtlasKey})
+     */
+    public CgPagedGlyphAtlas.WhiteTexel getDecorationWhiteTexel(CgFontKey fontKey, int effectiveTargetPx, boolean msdf) {
+        if (msdf) {
+            CgMsdfAtlasConfig config = resolveMsdfAtlasConfig(fontKey);
+            CgMsdfAtlasKey msdfAtlasKey = toMsdfAtlasKey(fontKey, config);
+            return getPagedMsdfAtlas(msdfAtlasKey).reserveWhiteTexel();
+        }
+        CgRasterFontKey rasterFontKey = new CgRasterFontKey(fontKey, effectiveTargetPx);
+        return getPagedBitmapAtlas(rasterFontKey).reserveWhiteTexel();
+    }
 
     CgPagedGlyphAtlas getPagedBitmapAtlas(CgRasterFontKey rasterKey) {
         CgPagedGlyphAtlas atlas = pagedBitmapAtlases.get(rasterKey);

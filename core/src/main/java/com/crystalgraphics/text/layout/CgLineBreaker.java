@@ -277,8 +277,15 @@ public class CgLineBreaker {
 
     /**
      * Binary-searches {@code boundaries} (sorted ascending) for the largest offset whose
-     * re-shaped prefix {@code [runStart, runStart+boundary)} fits within {@code availableWidth}.
+     * prefix {@code [runStart, runStart+boundary)} fits within {@code availableWidth}.
      * Assumes prefix width grows monotonically with boundary position.
+     *
+     * <p>Each candidate's width is normally measured by asking {@code reshaper} to actually
+     * re-shape that prefix through HarfBuzz — correct, but a real re-shape call per binary-
+     * search step. {@link #measurePrefixWidth} skips that call when HarfBuzz already told us
+     * (via {@link CgShapedRun#getSafeToBreakBefore()}) that slicing the run's own already-
+     * shaped glyph/advance arrays at this exact boundary is provably safe — see that
+     * method's javadoc for the LTR-only scope of this fast path.</p>
      *
      * @return the largest fitting boundary, or {@code -1} if even the first one doesn't fit
      */
@@ -288,8 +295,7 @@ public class CgLineBreaker {
         while (lo <= hi) {
             int mid = (lo + hi) >>> 1;
             int breakPos = boundaries[mid];
-            CgShapedRun prefix = reshaper.reshape(context, run, runStart, runStart + breakPos);
-            float width = prefix != null ? prefix.getTotalAdvance() : Float.MAX_VALUE;
+            float width = measurePrefixWidth(context, run, runStart, breakPos, reshaper);
             if (width <= availableWidth) {
                 best = breakPos;
                 lo = mid + 1;
@@ -298,6 +304,59 @@ public class CgLineBreaker {
             }
         }
         return best;
+    }
+
+    /**
+     * Measures the width of {@code run}'s prefix ending {@code breakPos} chars after
+     * {@code runStart}, via the unsafe-to-break fast path when possible, else by asking
+     * {@code reshaper} to actually re-shape the prefix.
+     *
+     * <h3>Fast path — LTR only</h3>
+     * <p>Applies only when {@code !run.isRtl()}: HarfBuzz emits glyphs for an LTR run in the
+     * same order as the source text, so summing {@code advancesX[0, glyphIndex)} for the
+     * glyph exactly at the boundary gives the correct prefix width. For an RTL run, glyph
+     * array order is <em>visual</em> (reversed from logical), so the same summation would
+     * total the wrong subset of glyphs — RTL runs always take the re-shape path.</p>
+     *
+     * <p>Even for an LTR run, the fast path only applies when {@code breakPos} lands exactly
+     * on a glyph boundary that HarfBuzz marked safe (via {@link CgShapedRun#getSafeToBreakBefore()});
+     * any other case (unknown data, no exact cluster match, or the boundary marked unsafe)
+     * falls back to re-shaping — so output is always identical to the non-optimized path,
+     * this only ever changes how many re-shape calls that output costs.</p>
+     */
+    private static float measurePrefixWidth(CgReshapeContext context, CgShapedRun run, int runStart,
+                                             int breakPos, RunReshaper reshaper) {
+        boolean[] safeToBreakBefore = run.getSafeToBreakBefore();
+        if (!run.isRtl() && safeToBreakBefore != null) {
+            String runText = context.sourceText().substring(runStart, run.getSourceEnd());
+            int[] byteToChar = Utf8ClusterMapper.byteOffsetToCharOffset(runText);
+            int glyphIndex = glyphIndexAtCharOffset(run.getClusterIds(), byteToChar, breakPos);
+            if (glyphIndex >= 0 && (glyphIndex == 0 || safeToBreakBefore[glyphIndex])) {
+                float[] advances = run.getAdvancesX();
+                float width = 0f;
+                for (int i = 0; i < glyphIndex; i++) {
+                    width += advances[i];
+                }
+                return width;
+            }
+        }
+
+        CgShapedRun prefix = reshaper.reshape(context, run, runStart, runStart + breakPos);
+        return prefix != null ? prefix.getTotalAdvance() : Float.MAX_VALUE;
+    }
+
+    /**
+     * @return the index of the glyph whose cluster maps to exactly {@code charOffset}
+     *         (i.e. the first glyph of the prefix ending there), or {@code -1} if no glyph
+     *         starts exactly at that char offset (no exact cluster-boundary match)
+     */
+    private static int glyphIndexAtCharOffset(int[] clusterIds, int[] byteToChar, int charOffset) {
+        for (int i = 0; i < clusterIds.length; i++) {
+            if (byteToChar[clusterIds[i]] == charOffset) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     /**

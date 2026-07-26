@@ -57,7 +57,7 @@ public class CgTextLayoutEngineBakeTest {
         justifiableByLine.add(new boolean[8]);
         justifiableByLine.add(new boolean[5]);
 
-        CgBakedGlyphs baked = CgTextLayoutEngine.bakeGlyphs(lines, justifiableByLine, TEST_METRICS);
+        CgBakedGlyphs baked = CgTextLayoutEngine.bakeGlyphs(lines, justifiableByLine, TEST_METRICS, 0f);
 
         assertEquals(13, baked.glyphCount());
         assertArrayEquals(new int[]{0, 8, 13}, baked.lineStart());
@@ -82,7 +82,7 @@ public class CgTextLayoutEngineBakeTest {
     @Test
     public void testBakeGlyphs_emptyLayout() {
         CgBakedGlyphs baked = CgTextLayoutEngine.bakeGlyphs(
-                new ArrayList<>(), new ArrayList<>(), TEST_METRICS);
+                new ArrayList<>(), new ArrayList<>(), TEST_METRICS, 0f);
 
         assertEquals(0, baked.glyphCount());
         assertArrayEquals(new int[]{0}, baked.lineStart());

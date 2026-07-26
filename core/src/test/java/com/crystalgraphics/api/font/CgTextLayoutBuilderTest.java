@@ -30,7 +30,7 @@ public class CgTextLayoutBuilderTest {
         }
 
         @Override
-        protected RunReshaper createRunReshaper(CgFontFamily family) {
+        protected RunReshaper createRunReshaper(CgFontFamilyGroup group) {
             throw new UnsupportedOperationException("Paragraph splitting tests do not reshape runs");
         }
 
@@ -39,7 +39,6 @@ public class CgTextLayoutBuilderTest {
         }
     }
 
-    private final CgTextLayoutBuilder builder = new CgTextLayoutBuilder();
     private final ParagraphProbe paragraphProbe = new ParagraphProbe();
 
     // ---------------------------------------------------------------
@@ -148,29 +147,30 @@ public class CgTextLayoutBuilderTest {
 
     // ---------------------------------------------------------------
     //  Layout API signature verification
+    //
+    //  The old layout(String/CgStyledText, CgFont/CgFontFamily/CgFontFamilyGroup,
+    //  maxWidth, maxHeight[, logicalPx]) overload family is gone — replaced outright by
+    //  CgTextLayoutRequest/CgShapedParagraph (phase 12). These checks now verify the
+    //  shape/shapeStyled methods CgTextLayoutRequest delegates to still exist with the
+    //  expected signature, and that the deleted overloads are actually gone.
     // ---------------------------------------------------------------
 
     @Test
-    public void testLayoutMethodExists_4arg() throws NoSuchMethodException {
+    public void testShapeMethodExists() throws NoSuchMethodException {
+        CgTextLayoutBuilder.class.getMethod("shape",
+                String.class, CgFontFamily.class, com.crystalgraphics.api.text.CgParagraphKnobs.class);
+    }
+
+    @Test
+    public void testShapeStyledMethodExists() throws NoSuchMethodException {
+        CgTextLayoutBuilder.class.getMethod("shapeStyled",
+                com.crystalgraphics.api.text.CgStyledText.class, CgFontFamilyGroup.class,
+                com.crystalgraphics.api.text.CgParagraphKnobs.class);
+    }
+
+    @Test(expected = NoSuchMethodException.class)
+    public void testOldLayoutOverload_noLongerExists() throws NoSuchMethodException {
         CgTextLayoutBuilder.class.getMethod("layout",
                 String.class, CgFont.class, float.class, float.class);
-    }
-
-    @Test
-    public void testLayoutMethodExists_5arg_withLogicalPx() throws NoSuchMethodException {
-        CgTextLayoutBuilder.class.getMethod("layout",
-                String.class, CgFont.class, float.class, float.class, float.class);
-    }
-
-    @Test
-    public void testLayoutMethodExists_4arg_family() throws NoSuchMethodException {
-        CgTextLayoutBuilder.class.getMethod("layout",
-                String.class, CgFontFamily.class, float.class, float.class);
-    }
-
-    @Test
-    public void testLayoutMethodExists_5arg_family_withLogicalPx() throws NoSuchMethodException {
-        CgTextLayoutBuilder.class.getMethod("layout",
-                String.class, CgFontFamily.class, float.class, float.class, float.class);
     }
 }
