@@ -5,6 +5,8 @@ import com.crystalgraphics.api.text.CgStyledText;
 import com.crystalgraphics.api.text.CgTextDecoration;
 import org.junit.Test;
 
+import java.util.Set;
+
 import static org.junit.Assert.*;
 
 /**
@@ -45,7 +47,14 @@ public class CgMinecraftColorCodeParserTest {
     @Test
     public void testUnderlineCode() {
         CgStyledText result = lenient.parse(S + "nunderlined");
-        assertEquals(CgTextDecoration.UNDERLINE, result.spans().get(0).decoration());
+        assertEquals(Set.of(CgTextDecoration.UNDERLINE), result.spans().get(0).decorations());
+    }
+
+    @Test
+    public void testUnderlineAndStrikethrough_combineOnOneSpan() {
+        CgStyledText result = lenient.parse(S + "n" + S + "mboth");
+        assertEquals(Set.of(CgTextDecoration.UNDERLINE, CgTextDecoration.STRIKETHROUGH),
+                result.spans().get(0).decorations());
     }
 
     @Test
@@ -145,7 +154,7 @@ public class CgMinecraftColorCodeParserTest {
     @Test
     public void testStrikethroughCode() {
         CgStyledText result = lenient.parse(S + "mstrike");
-        assertEquals(CgTextDecoration.STRIKETHROUGH, result.spans().get(0).decoration());
+        assertEquals(Set.of(CgTextDecoration.STRIKETHROUGH), result.spans().get(0).decorations());
     }
 
     @Test

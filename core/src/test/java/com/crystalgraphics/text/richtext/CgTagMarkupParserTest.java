@@ -6,6 +6,7 @@ import com.crystalgraphics.api.text.CgTextDecoration;
 import org.junit.Test;
 
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.Assert.*;
 
@@ -50,7 +51,14 @@ public class CgTagMarkupParserTest {
     public void testUnderlineTag() {
         CgStyledText result = lenient.parse("<u>under</u>");
         CgStyleSpan span = result.spans().get(0);
-        assertEquals(CgTextDecoration.UNDERLINE, span.decoration());
+        assertEquals(Set.of(CgTextDecoration.UNDERLINE), span.decorations());
+    }
+
+    @Test
+    public void testNestedDecorationTags_combineOnOneSpan() {
+        CgStyledText result = lenient.parse("<s><u>both</u></s>");
+        CgStyleSpan span = result.spans().get(0);
+        assertEquals(Set.of(CgTextDecoration.STRIKETHROUGH, CgTextDecoration.UNDERLINE), span.decorations());
     }
 
     @Test

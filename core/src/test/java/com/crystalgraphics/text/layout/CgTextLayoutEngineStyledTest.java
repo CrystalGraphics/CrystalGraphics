@@ -99,7 +99,7 @@ public class CgTextLayoutEngineStyledTest {
                 regular.getPrimarySource().getKey(), runs.get(0).getFontKey());
         assertEquals("'b' should resolve against the bold family",
                 bold.getPrimarySource().getKey(), runs.get(1).getFontKey());
-        assertTrue(runs.get(1).getDecoration() != null); // rich fields present, not null
+        assertTrue(runs.get(1).getDecorations() != null); // rich fields present, not null
     }
 
     @Test

@@ -16,6 +16,7 @@ import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.Assert.*;
 
@@ -128,7 +129,7 @@ public class CgTextLayoutTest {
                 5.0f, 0, 1);
 
         assertEquals(0, run.getArgbColor());
-        assertEquals(CgTextDecoration.NONE, run.getDecoration());
+        assertTrue(run.getDecorations().isEmpty());
         assertTrue(run.getFontFeatures().isEmpty());
         assertEquals(0f, run.getBaselineShift(), 0.001f);
     }
@@ -138,22 +139,22 @@ public class CgTextLayoutTest {
         CgShapedRun run = new CgShapedRun(TEST_FONT_KEY, null, false,
                 new int[]{1}, new int[]{0}, new float[]{5.0f}, new float[]{0}, new float[]{0},
                 5.0f, 0, 1,
-                0xFFFF0000, CgTextDecoration.UNDERLINE, List.of(CgFontFeature.enable("smcp")), 2.0f);
+                0xFFFF0000, Set.of(CgTextDecoration.UNDERLINE), List.of(CgFontFeature.enable("smcp")), 2.0f);
 
         assertEquals(0xFFFF0000, run.getArgbColor());
-        assertEquals(CgTextDecoration.UNDERLINE, run.getDecoration());
+        assertEquals(Set.of(CgTextDecoration.UNDERLINE), run.getDecorations());
         assertEquals(List.of(CgFontFeature.enable("smcp")), run.getFontFeatures());
         assertEquals(2.0f, run.getBaselineShift(), 0.001f);
     }
 
     @Test
-    public void testShapedRun_fullConstructor_nullDecorationDefaultsToNone() {
+    public void testShapedRun_fullConstructor_nullDecorationsDefaultsToEmpty() {
         CgShapedRun run = new CgShapedRun(TEST_FONT_KEY, null, false,
                 new int[]{1}, new int[]{0}, new float[]{5.0f}, new float[]{0}, new float[]{0},
                 5.0f, 0, 1,
                 0, null, null, 0f);
 
-        assertEquals(CgTextDecoration.NONE, run.getDecoration());
+        assertTrue(run.getDecorations().isEmpty());
         assertTrue(run.getFontFeatures().isEmpty());
     }
 

@@ -3,6 +3,7 @@ package com.crystalgraphics.api.text;
 import org.junit.Test;
 
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.Assert.*;
 
@@ -14,14 +15,14 @@ public class CgStyleSpanTest {
     @Test
     public void testConstructor_storesFields() {
         CgStyleSpan span = new CgStyleSpan(0, 5, true, false,
-                CgTextDecoration.UNDERLINE, 0xFFFF0000, List.of("Arial"),
+                Set.of(CgTextDecoration.UNDERLINE), 0xFFFF0000, List.of("Arial"),
                 List.of(CgFontFeature.enable("smcp")), 2.0f);
 
         assertEquals(0, span.start());
         assertEquals(5, span.end());
         assertTrue(span.bold());
         assertFalse(span.italic());
-        assertEquals(CgTextDecoration.UNDERLINE, span.decoration());
+        assertEquals(Set.of(CgTextDecoration.UNDERLINE), span.decorations());
         assertEquals(0xFFFF0000, span.argbColor());
         assertEquals(List.of("Arial"), span.fontFamilyOverride());
         assertEquals(List.of(CgFontFeature.enable("smcp")), span.fontFeatures());
@@ -29,9 +30,9 @@ public class CgStyleSpanTest {
     }
 
     @Test
-    public void testConstructor_nullDecoration_defaultsToNone() {
+    public void testConstructor_nullDecorations_defaultsToEmpty() {
         CgStyleSpan span = new CgStyleSpan(0, 5, false, false, null, 0, null, null, 0);
-        assertEquals(CgTextDecoration.NONE, span.decoration());
+        assertTrue(span.decorations().isEmpty());
     }
 
     @Test
@@ -57,7 +58,7 @@ public class CgStyleSpanTest {
 
         assertFalse(span.bold());
         assertFalse(span.italic());
-        assertEquals(CgTextDecoration.NONE, span.decoration());
+        assertTrue(span.decorations().isEmpty());
         assertEquals(0, span.argbColor());
         assertTrue(span.fontFamilyOverride().isEmpty());
         assertTrue(span.fontFeatures().isEmpty());
@@ -69,13 +70,23 @@ public class CgStyleSpanTest {
         CgStyleSpan span = CgStyleSpan.builder()
                 .start(2).end(8)
                 .bold(true)
-                .decoration(CgTextDecoration.STRIKETHROUGH)
+                .decorations(Set.of(CgTextDecoration.STRIKETHROUGH))
                 .build();
 
         assertEquals(2, span.start());
         assertEquals(8, span.end());
         assertTrue(span.bold());
-        assertEquals(CgTextDecoration.STRIKETHROUGH, span.decoration());
+        assertEquals(Set.of(CgTextDecoration.STRIKETHROUGH), span.decorations());
+    }
+
+    @Test
+    public void testBuilder_setsMultipleSimultaneousDecorations() {
+        CgStyleSpan span = CgStyleSpan.builder()
+                .start(0).end(3)
+                .decorations(Set.of(CgTextDecoration.UNDERLINE, CgTextDecoration.STRIKETHROUGH))
+                .build();
+
+        assertEquals(Set.of(CgTextDecoration.UNDERLINE, CgTextDecoration.STRIKETHROUGH), span.decorations());
     }
 
     // ---------------------------------------------------------------

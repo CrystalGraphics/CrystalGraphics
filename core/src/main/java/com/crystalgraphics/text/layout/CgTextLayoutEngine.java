@@ -432,7 +432,7 @@ public abstract class CgTextLayoutEngine {
         return new CgShapedRun(r.getFontKey(), r.getResolvedFont(), r.isRtl(),
                 r.getGlyphIds(), r.getClusterIds(), r.getAdvancesX(), r.getOffsetsX(), r.getOffsetsY(),
                 r.getTotalAdvance(), r.getSourceStart() + offset, r.getSourceEnd() + offset,
-                r.getArgbColor(), r.getDecoration(), r.getFontFeatures(), r.getBaselineShift(),
+                r.getArgbColor(), r.getDecorations(), r.getFontFeatures(), r.getBaselineShift(),
                 r.getSafeToBreakBefore());
     }
 
@@ -515,7 +515,7 @@ public abstract class CgTextLayoutEngine {
                 run.getGlyphIds(), run.getClusterIds(), run.getAdvancesX(),
                 run.getOffsetsX(), run.getOffsetsY(), run.getTotalAdvance(),
                 run.getSourceStart(), run.getSourceEnd(),
-                span.argbColor(), span.decoration(), span.fontFeatures(), span.baselineShift(),
+                span.argbColor(), span.decorations(), span.fontFeatures(), span.baselineShift(),
                 run.getSafeToBreakBefore(), syntheticBold, syntheticItalic);
     }
 
@@ -535,7 +535,7 @@ public abstract class CgTextLayoutEngine {
                         .end(clampedEnd - rangeStart)
                         .bold(span.bold())
                         .italic(span.italic())
-                        .decoration(span.decoration())
+                        .decorations(span.decorations())
                         .argbColor(span.argbColor())
                         .fontFamilyOverride(span.fontFamilyOverride())
                         .fontFeatures(span.fontFeatures())
@@ -594,7 +594,7 @@ public abstract class CgTextLayoutEngine {
         boolean[] syntheticItalic = new boolean[glyphCount];
         float[] lineHeights = new float[lines.size()];
         int[] lineStart = new int[lines.size() + 1];
-        List<CgTextDecorationRect> decorations = new ArrayList<>();
+        List<CgTextDecorationRect> decorationRects = new ArrayList<>();
 
         int index = 0;
         float cumulativeY = 0f;
@@ -637,10 +637,11 @@ public abstract class CgTextLayoutEngine {
                     // Zero-glyph advance-only run (tab stop) — still moves the pen.
                     penXCursor += run.getTotalAdvance();
                 }
-                CgTextDecoration decoration = run.getDecoration();
-                if (decoration != CgTextDecoration.NONE && penXCursor > runStartX) {
-                    decorations.add(buildDecorationSegment(
-                            run, fontKey, font, fallbackMetrics, runStartX, penXCursor, lineBaseline));
+                if (!run.getDecorations().isEmpty() && penXCursor > runStartX) {
+                    for (CgTextDecoration kind : run.getDecorations()) {
+                        decorationRects.add(buildDecorationSegment(
+                                run, kind, fontKey, font, fallbackMetrics, runStartX, penXCursor, lineBaseline));
+                    }
                 }
             }
             cumulativeY += thisLineHeight;
@@ -648,7 +649,7 @@ public abstract class CgTextLayoutEngine {
         lineStart[lines.size()] = glyphCount;
 
         return new CgBakedGlyphs(glyphCount, fontKeys, fonts, glyphIds, penX, penY, offsetX, argbColor, justifiable,
-                lineHeights, lineStart, decorations.toArray(CgTextDecorationRect.NONE), syntheticBold, syntheticItalic);
+                lineHeights, lineStart, decorationRects.toArray(CgTextDecorationRect.NONE), syntheticBold, syntheticItalic);
     }
 
     /**
@@ -658,14 +659,15 @@ public abstract class CgTextLayoutEngine {
      * falling back to {@code fallbackMetrics}' ascender+descender when {@code fontKey} is
      * {@code null} (hand-built test fixtures without a resolved font).
      */
-    private static CgTextDecorationRect buildDecorationSegment(CgShapedRun run, CgFontKey fontKey, CgFont font,
+    private static CgTextDecorationRect buildDecorationSegment(CgShapedRun run, CgTextDecoration kind,
+                                                               CgFontKey fontKey, CgFont font,
                                                                CgFontMetrics fallbackMetrics,
                                                                float x0, float x1, float baseline) {
         CgFontMetrics metrics = font != null ? font.getMetrics() : fallbackMetrics;
         float fontSizePx = fontKey != null ? fontKey.getTargetPx() : (metrics.getAscender() + metrics.getDescender());
         float thickness = Math.max(1f, fontSizePx / 10f);
         float y;
-        switch (run.getDecoration()) {
+        switch (kind) {
             // Centered on half of x-height — the visual middle of lowercase letters, not a
             // fraction of the full ascent (which overshoots into cap-height/ascender territory
             // for fonts with generous ascent headroom, confirmed visually too high in the demo).
