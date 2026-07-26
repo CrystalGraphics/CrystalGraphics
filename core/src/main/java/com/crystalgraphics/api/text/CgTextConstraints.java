@@ -59,4 +59,20 @@ public final class CgTextConstraints {
     public static CgTextConstraints bounded(float maxWidth, float maxHeight) {
         return new CgTextConstraints(maxWidth, maxHeight);
     }
+
+    /**
+     * Divides each bounded axis by {@code scale}, leaving an unbounded ({@code <= 0}) axis
+     * unbounded — used to convert a design-space constraint (e.g. "wrap at 960px") into the
+     * logical-space constraint that produces that same on-screen result once a draw-time
+     * transform's scale is taken into account. {@code scale <= 1.0001f} (no real scaling, the
+     * overwhelmingly common case) returns {@code this} unchanged to avoid an allocation.
+     */
+    public CgTextConstraints scaledBy(float scale) {
+        if (scale <= 0f || Math.abs(scale - 1f) < 0.0001f) {
+            return this;
+        }
+        float scaledWidth = maxWidth > 0f ? maxWidth / scale : maxWidth;
+        float scaledHeight = maxHeight > 0f ? maxHeight / scale : maxHeight;
+        return new CgTextConstraints(scaledWidth, scaledHeight);
+    }
 }

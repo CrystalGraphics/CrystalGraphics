@@ -5,6 +5,7 @@ import com.crystalgraphics.api.PoseStack;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.font.*;
 import com.crystalgraphics.api.material.CgMaterial;
+import com.crystalgraphics.api.text.CgShapedParagraph;
 import com.crystalgraphics.api.text.CgTextDecorationRect;
 import com.crystalgraphics.api.text.CgTextConstraints;
 import com.crystalgraphics.api.text.CgTextLayout;
@@ -507,12 +508,27 @@ public class CgTextRenderer {
      * (standalone, retained-mode: holdable across frames).
      *
      * <h3>Field priority, not exclusivity</h3>
-     * <p>{@link #layout(CgTextLayout)} and {@link #text(String)} may both be set; if so,
-     * the prebuilt {@code layout} wins — it already paid the shaping cost and is presumably
-     * what the caller actually wants drawn. Likewise {@link #family(CgFontFamily)} wins over
-     * {@link #font(CgFont)} when both are set, since a family is the strictly more capable
-     * superset (a single font is just wrapped into one internally via
-     * {@link CgFontFamily#of(CgFont, CgFont...)}).</p>
+     * <p>{@link #layout(CgTextLayout)}, {@link #paragraph(CgShapedParagraph)}, and
+     * {@link #text(String)} may all be set; if so, {@code layout} wins over {@code paragraph},
+     * which wins over {@code text} — each is strictly "more already-done" than the next.
+     * Likewise {@link #family(CgFontFamily)} wins over {@link #font(CgFont)} when both are set,
+     * since a family is the strictly more capable superset (a single font is just wrapped into
+     * one internally via {@link CgFontFamily#of(CgFont, CgFont...)}).</p>
+     *
+     * <h3>{@code layout} vs. {@code paragraph}: scale-reactive wrap</h3>
+     * <p>A prebuilt {@link #layout(CgTextLayout)} is honored verbatim — its wrap points never
+     * change, matching this class's documented "logical layout space never changes based on
+     * draw-time transforms" model. {@link #paragraph(CgShapedParagraph)} is different: on every
+     * {@link #submit()}, its {@link #constraints(float, float)} are divided by the current
+     * orthographic PoseStack scale (the same scale already resolved for raster crispness — see
+     * {@link CgTextScaleResolver}) before re-wrapping via {@link CgShapedParagraph#layout}, so a
+     * caller's {@code maxWidth} keeps meaning "this many on-screen pixels" regardless of the
+     * live transform, instead of silently doubling in screen space the way a prebuilt
+     * {@code CgTextLayout} does under a 2x PoseStack scale. The re-wrap is cheap and memoized
+     * (see that method's javadoc) — only the frame where the effective scale actually steps
+     * pays for line-breaking again. Not applied for world-space text (see
+     * {@link PerspectiveScaleResolver}'s "Layout Invariance" — camera distance must never
+     * reflow a billboard/world paragraph).</p>
      *
      * <h3>Required fields</h3>
      * <p>{@link #submit()} throws {@link IllegalStateException} unless at least one of
@@ -561,6 +577,7 @@ public class CgTextRenderer {
      */
     public final class Draw {
         private CgTextLayout layout;
+        private CgShapedParagraph paragraph;
         private String text;
         private CgFont font;
         private CgFontFamily family;
@@ -575,6 +592,7 @@ public class CgTextRenderer {
 
         private Draw reset() {
             layout = null;
+            paragraph = null;
             text = null;
             font = null;
             family = null;
@@ -587,9 +605,20 @@ public class CgTextRenderer {
             return this;
         }
 
-        /** Sets a prebuilt layout. Wins over {@link #text(String)} if both are set. */
+        /** Sets a prebuilt layout. Wins over {@link #paragraph(CgShapedParagraph)}/{@link #text(String)} if set. */
         public Draw layout(CgTextLayout layout) {
             this.layout = layout;
+            return this;
+        }
+
+        /**
+         * Sets a retained, shaped-but-not-wrapped paragraph — re-wrapped at
+         * {@link #constraints(float, float)} on every {@link #submit()}, scale-adjusted for
+         * orthographic/UI draws (see this class's javadoc, "{@code layout} vs. {@code paragraph}").
+         * Wins over {@link #text(String)}; loses to {@link #layout(CgTextLayout)} if both are set.
+         */
+        public Draw paragraph(CgShapedParagraph paragraph) {
+            this.paragraph = paragraph;
             return this;
         }
 
@@ -683,7 +712,7 @@ public class CgTextRenderer {
          */
         public CgTextRenderer submit() {
             if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
-            if (layout == null && text == null) throw new IllegalStateException("CgTextRenderer.Draw requires text(...) or layout(...) before submit()");
+            if (layout == null && paragraph == null && text == null) throw new IllegalStateException("CgTextRenderer.Draw requires text(...), paragraph(...), or layout(...) before submit()");
             if (family == null && font == null) throw new IllegalStateException("CgTextRenderer.Draw requires font(...) or family(...) before submit()");
 
             PoseStack effectivePose = pose != null ? pose : CgTextRenderer.this.poseStack;
@@ -700,6 +729,32 @@ public class CgTextRenderer {
                 if (standalone) endBatch();
             }
             return CgTextRenderer.this;
+        }
+
+        /**
+         * Resolves (without drawing) the exact {@link CgTextLayout} {@link #submit()} would
+         * draw right now — same font/scale/paragraph-reflow resolution, including the
+         * pose-scale-aware constraint division for {@link #paragraph}/{@link #text}. Useful
+         * for measuring a section's on-screen size (e.g. {@code totalHeight()}) to position
+         * whatever comes after it, without the caller ever computing scale itself: this asks
+         * the renderer the same question it's about to answer for real. Cheap even when
+         * called every frame just for measurement — {@link CgShapedParagraph#layout} memoizes
+         * identical {@code (maxWidth, maxHeight)} pairs, and {@link #submit()} immediately
+         * after re-resolves to the same cached result.
+         *
+         * @throws IllegalStateException under the same conditions as {@link #submit()}
+         */
+        public CgTextLayout measure() {
+            if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
+            if (layout == null && paragraph == null && text == null) throw new IllegalStateException("CgTextRenderer.Draw requires text(...), paragraph(...), or layout(...) before measure()");
+            if (family == null && font == null) throw new IllegalStateException("CgTextRenderer.Draw requires font(...) or family(...) before measure()");
+
+            PoseStack effectivePose = pose != null ? pose : CgTextRenderer.this.poseStack;
+            if (effectivePose == null) {
+                throw new IllegalStateException(
+                        "CgTextRenderer.Draw requires pose(...) before measure() (no fallback set via CgTextRenderer.poseStack(...))");
+            }
+            return resolveDraw(this, effectivePose.last()).layout();
         }
     }
 
@@ -729,33 +784,45 @@ public class CgTextRenderer {
      * atlas placement resolution to {@link #resolvedGlyphs}, then sorts and submits
      * ({@link #submitSortedQuads}).</p>
      */
-    private void drawInternal(Draw draw, PoseStack.Pose pose) {
+    /**
+     * Holds everything {@link #drawInternal} needs beyond {@code CgTextLayout} resolution
+     * itself (font key, resolved raster tier) alongside the resolved layout — shared by
+     * {@link #drawInternal} and {@link Draw#measure()} so measuring a paragraph's on-screen
+     * size never drifts from what actually gets drawn.
+     */
+    private record ResolvedDraw(CgFontKey fontKey, int effectiveTargetPx, boolean wantMsdf, CgTextLayout layout) {
+    }
+
+    /**
+     * Resolves font/family, raster tier (via {@link CgTextScaleResolver}), and the final
+     * {@link CgTextLayout} for {@code draw} — the family/font/layout precedence rules
+     * documented on {@link Draw}'s class javadoc, plus the pose-scale-aware constraint
+     * division for {@link Draw#paragraph}/{@link Draw#text} (see {@link Draw}'s "{@code layout}
+     * vs. {@code paragraph}" section). Pure resolution — no glyph placement, no GPU submission,
+     * so it's safe to call from {@link Draw#measure()} without side effects beyond the
+     * {@link CgTextRenderContext} raster-history bookkeeping every draw already does.
+     */
+    private ResolvedDraw resolveDraw(Draw draw, PoseStack.Pose pose) {
         CgFontFamily resolvedFamily;
-        CgTextLayout resolvedLayout;
+        CgFont resolvedFont = null; // only populated (and only needed) on the family==null branch
 
         if (draw.family != null) {
             resolvedFamily = draw.targetPx > 0 ? sizeFamily(draw.family, draw.targetPx) : draw.family;
-            resolvedLayout = draw.layout != null ? draw.layout : layout(draw.text, resolvedFamily, draw.constraints);
         } else {
-            CgFont resolvedFont;
             if (draw.targetPx > 0) {
                 resolvedFont = requireSizedFont(draw.font, draw.targetPx);
-            } else if (draw.layout == null) {
+            } else if (draw.layout == null && draw.paragraph == null) {
                 // Building a layout from text requires an already-sized font.
                 resolvedFont = requireSizedFont(draw.font);
             } else {
-                // Prebuilt layout, no explicit targetPx: trust the caller, matching
+                // Prebuilt layout/paragraph, no explicit targetPx: trust the caller, matching
                 // draw(CgTextLayout, CgFont, ...)'s existing no-check behavior.
                 resolvedFont = draw.font;
             }
             resolvedFamily = CgFontFamily.of(resolvedFont);
-            resolvedLayout = draw.layout != null ? draw.layout : layout(draw.text, resolvedFont, draw.constraints);
         }
 
-        if (resolvedLayout == null || resolvedLayout.lines().isEmpty()) return;
-
         CgFontKey fontKey = resolvedFamily.getPrimarySource().getKey();
-        long frame = CgGraphicsLifecycle.getCurrentFrame();
 
         CgTextRenderContext.RasterHistory previous = context.getHistory(fontKey);
         int previousEffectiveTargetPx = previous != null ? previous.effectiveTargetPx() : -1;
@@ -765,6 +832,47 @@ public class CgTextRenderer {
         boolean wantMsdf = context.getScaleResolver().shouldUseMsdf(effectiveTargetPx, previousMsdf);
         context.setHistory(fontKey, effectiveTargetPx, wantMsdf);
 
+        CgTextLayout resolvedLayout;
+        if (draw.layout != null) {
+            // Prebuilt, immutable layout -- honored verbatim, no reflow. See this class's
+            // "Three-Space Model" javadoc: logical layout space never changes based on
+            // draw-time transforms, by design, for callers who explicitly opted into a
+            // frozen CgTextLayout.
+            resolvedLayout = draw.layout;
+        } else {
+            // draw.constraints is expressed in the same design-space pixels as fontKey's base
+            // size. Divide by the same scale already resolved above for raster crispness
+            // (effectiveTargetPx / baseTargetPx) so maxWidth keeps meaning "this many on-screen
+            // pixels" regardless of the live PoseStack scale -- see Draw's class javadoc.
+            // Never applied to world-space text: PerspectiveScaleResolver's effectiveTargetPx
+            // reflects raster tier / view distance, not UI zoom, and world paragraphs must not
+            // reflow as the camera moves (see PerspectiveScaleResolver's "Layout Invariance").
+            CgTextConstraints effectiveConstraints = context.isWorldText()
+                    ? draw.constraints
+                    : draw.constraints.scaledBy(effectiveTargetPx / (float) fontKey.getTargetPx());
+
+            if (draw.paragraph != null) {
+                resolvedLayout = draw.paragraph.layout(effectiveConstraints.getMaxWidth(), effectiveConstraints.getMaxHeight());
+            } else if (draw.family != null) {
+                resolvedLayout = layout(draw.text, resolvedFamily, effectiveConstraints);
+            } else {
+                resolvedLayout = layout(draw.text, resolvedFont, effectiveConstraints);
+            }
+        }
+
+        return new ResolvedDraw(fontKey, effectiveTargetPx, wantMsdf, resolvedLayout);
+    }
+
+    private void drawInternal(Draw draw, PoseStack.Pose pose) {
+        ResolvedDraw resolved = resolveDraw(draw, pose);
+        CgFontKey fontKey = resolved.fontKey();
+        int effectiveTargetPx = resolved.effectiveTargetPx();
+        boolean wantMsdf = resolved.wantMsdf();
+        CgTextLayout resolvedLayout = resolved.layout();
+
+        if (resolvedLayout == null || resolvedLayout.lines().isEmpty()) return;
+
+        long frame = CgGraphicsLifecycle.getCurrentFrame();
         int glyphCount = resolvedGlyphs.resolve(resolvedLayout, draw.x, draw.y, frame, context, effectiveTargetPx, wantMsdf, fontKey, draw.rgba);
         CgTextDecorationRect[] decorations = resolvedLayout.baked().decorations();
         if (glyphCount > 0 || decorations.length > 0) {

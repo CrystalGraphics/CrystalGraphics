@@ -42,6 +42,13 @@ public final class CgShapedParagraph {
     private final List<CgShapedRun> ellipsisRuns;
     private final CgParagraphKnobs knobs;
 
+    // Last-call memo (mutable, unlike everything else on this otherwise-immutable holder) --
+    // see layout()'s javadoc. Deliberately not thread-safe: one CgShapedParagraph is drawn from
+    // one draw call site, never shared across threads.
+    private float lastMaxWidth = Float.NaN;
+    private float lastMaxHeight = Float.NaN;
+    private CgTextLayout lastLayout;
+
     public CgShapedParagraph(List<Slice> slices, CgFontMetrics metrics, RunReshaper reshaper,
                               List<CgShapedRun> ellipsisRuns, CgParagraphKnobs knobs) {
         this.slices = slices;
@@ -54,8 +61,25 @@ public final class CgShapedParagraph {
     /**
      * Wraps this already-shaped content at {@code maxWidth}/{@code maxHeight} — re-runs only
      * line-breaking and the bake step (no re-parse, no re-shape, no re-split).
+     *
+     * <p>Memoizes the last {@code (maxWidth, maxHeight)} pair and returns the cached
+     * {@link CgTextLayout} unchanged when called again with the same values (exact float
+     * equality — callers driving this from a quantized/hysteresis-smoothed value, e.g. a
+     * draw-time scale resolver, will naturally get the same bits frame-to-frame whenever the
+     * effective scale hasn't stepped). This is what makes it safe to call {@code layout(...)}
+     * every draw instead of only when the caller knows the width changed — e.g. a text
+     * renderer re-wrapping every frame in response to the current PoseStack scale skips the
+     * actual line-breaking work on every frame except the one where the scale genuinely
+     * changed, the same way a browser only reflows on an actual zoom step.</p>
      */
     public CgTextLayout layout(float maxWidth, float maxHeight) {
-        return CgTextLayoutEngine.wrap(slices, metrics, reshaper, ellipsisRuns, maxWidth, maxHeight, knobs);
+        if (lastLayout != null && maxWidth == lastMaxWidth && maxHeight == lastMaxHeight) {
+            return lastLayout;
+        }
+        CgTextLayout result = CgTextLayoutEngine.wrap(slices, metrics, reshaper, ellipsisRuns, maxWidth, maxHeight, knobs);
+        lastMaxWidth = maxWidth;
+        lastMaxHeight = maxHeight;
+        lastLayout = result;
+        return result;
     }
 }
