@@ -89,23 +89,31 @@ public class CgLineBreaker {
         for (CgShapedRun run : runs) {
             float remainingWidth = maxWidth > 0 ? maxWidth - currentWidth : Float.MAX_VALUE;
 
-            if (maxWidth > 0 && run.totalAdvance() > remainingWidth && !currentLine.isEmpty()) {
-                // Current line is full — finalize it and start a new line
-                lines.add(reorderVisually(currentLine));
-                totalHeight += lineHeight;
-                if (maxHeight > 0 && totalHeight + lineHeight > maxHeight) {
-                    return lines;
-                }
-                currentLine = new ArrayList<CgShapedRun>();
-                currentWidth = 0.0f;
-                remainingWidth = maxWidth;
-            }
+            if (maxWidth > 0 && run.totalAdvance() > remainingWidth) {
+                // Try to split the run against the CURRENT line's remaining space first —
+                // finalizing the line before even attempting a split (the old behavior) threw
+                // away however much of the run would still have fit, leaving the line short of
+                // maxWidth whenever a multi-run paragraph (styled/BiDi-split text) handed us a
+                // large run while the current line still had room left.
+                List<CgShapedRun> fragments = (context != null && reshaper != null)
+                        ? splitAtLineBreaks(context, run, remainingWidth, maxWidth, reshaper)
+                        : null;
 
-            // Try intra-run splitting if the run still overflows the (possibly fresh) line
-            if (maxWidth > 0 && run.totalAdvance() > remainingWidth
-                    && context != null && reshaper != null) {
-                List<CgShapedRun> fragments = splitAtLineBreaks(
-                        context, run, remainingWidth, maxWidth, reshaper);
+                if ((fragments == null || fragments.size() <= 1) && !currentLine.isEmpty()) {
+                    // Nothing from this run fits the remaining space — finalize the current
+                    // line and retry the split against a fresh, full-width line.
+                    lines.add(reorderVisually(currentLine));
+                    totalHeight += lineHeight;
+                    if (maxHeight > 0 && totalHeight + lineHeight > maxHeight) {
+                        return lines;
+                    }
+                    currentLine = new ArrayList<CgShapedRun>();
+                    currentWidth = 0.0f;
+                    remainingWidth = maxWidth;
+                    if (context != null && reshaper != null && run.totalAdvance() > remainingWidth) {
+                        fragments = splitAtLineBreaks(context, run, remainingWidth, maxWidth, reshaper);
+                    }
+                }
 
                 if (fragments != null && fragments.size() > 1) {
                     for (CgShapedRun fragment : fragments) {
@@ -129,7 +137,7 @@ public class CgLineBreaker {
                 }
             }
 
-            // Whole-run placement (fallback)
+            // Whole-run placement: the run fits as-is, or no splitting was possible/available.
             currentLine.add(run);
             currentWidth += run.totalAdvance();
         }
