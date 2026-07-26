@@ -6,6 +6,7 @@ import com.crystalgraphics.harfbuzz.HBFont;
 import com.crystalgraphics.harfbuzz.HBGlyphInfo;
 import com.crystalgraphics.harfbuzz.HBGlyphPosition;
 import com.crystalgraphics.harfbuzz.HBShape;
+import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgFontKey;
 import com.crystalgraphics.api.text.CgShapedRun;
 
@@ -19,7 +20,7 @@ import com.crystalgraphics.api.text.CgShapedRun;
  * <h3>Usage</h3>
  * <pre>
  * CgTextShaper shaper = new CgTextShaper();
- * CgShapedRun run = shaper.shape("Hello", 0, 5, fontKey, false, hbFont);
+ * CgShapedRun run = shaper.shape("Hello", 0, 5, fontKey, resolvedFont, false, hbFont);
  * // run.getGlyphIds() contains shaped glyph indices
  * </pre>
  *
@@ -39,17 +40,19 @@ public class CgTextShaper {
      * <p>Extracts the substring {@code text[start..end)}, feeds it to HarfBuzz
      * with the given direction, and returns shaped glyph data.</p>
      *
-     * @param text    the full input string (Java UTF-16)
-     * @param start   logical start index into {@code text} (inclusive)
-     * @param end     logical end index into {@code text} (exclusive)
-     * @param fontKey font key for the resulting {@link CgShapedRun}
-     * @param rtl     {@code true} for right-to-left direction
-     * @param hbFont  caller-managed HarfBuzz font (already set to correct pixel size)
+     * @param text         the full input string (Java UTF-16)
+     * @param start        logical start index into {@code text} (inclusive)
+     * @param end          logical end index into {@code text} (exclusive)
+     * @param fontKey      font key for the resulting {@link CgShapedRun}
+     * @param resolvedFont the concrete font {@code fontKey} resolved to; carried on the
+     *                     resulting run so later stages don't need a second lookup by key
+     * @param rtl          {@code true} for right-to-left direction
+     * @param hbFont       caller-managed HarfBuzz font (already set to correct pixel size)
      * @return shaped run with glyph IDs, advances, and offsets in pixels
      * @throws IllegalArgumentException if parameters are invalid
      */
     public CgShapedRun shape(String text, int start, int end,
-                             CgFontKey fontKey, boolean rtl, HBFont hbFont) {
+                             CgFontKey fontKey, CgFont resolvedFont, boolean rtl, HBFont hbFont) {
         if (text == null) {
             throw new IllegalArgumentException("text must not be null");
         }
@@ -66,11 +69,10 @@ public class CgTextShaper {
 
         String substring = text.substring(start, end);
         if (substring.isEmpty()) {
-            return new CgShapedRun(fontKey, rtl,
+            return new CgShapedRun(fontKey, resolvedFont, rtl,
                     new int[0], new int[0],
                     new float[0], new float[0], new float[0],
-                    0.0f,
-                    text, start, end);
+                    0.0f, start, end);
         }
 
         HBBuffer buf = HBBuffer.create();
@@ -101,11 +103,10 @@ public class CgTextShaper {
                 totalAdvance += advancesX[i];
             }
 
-            return new CgShapedRun(fontKey, rtl,
+            return new CgShapedRun(fontKey, resolvedFont, rtl,
                     glyphIds, clusterIds,
                     advancesX, offsetsX, offsetsY,
-                    totalAdvance,
-                    text, start, end);
+                    totalAdvance, start, end);
         } finally {
             buf.destroy();
         }

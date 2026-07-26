@@ -1,12 +1,13 @@
 package com.crystalgraphics.text;
 
-import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgFontKey;
 import com.crystalgraphics.api.font.CgFontMetrics;
 import com.crystalgraphics.api.font.CgFontStyle;
+import com.crystalgraphics.api.text.CgBakedGlyphs;
 import com.crystalgraphics.api.text.CgShapedRun;
 import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.text.layout.CgLineBreaker;
+import com.crystalgraphics.text.layout.CgReshapeContext;
 import com.crystalgraphics.text.layout.CgTextShaper;
 import com.crystalgraphics.text.layout.RunReshaper;
 import org.junit.Test;
@@ -47,8 +48,8 @@ public class CgTextLayoutTest {
         float[] offsetsY = {0.0f, 0.0f, 0.0f};
         float totalAdvance = 23.75f;
 
-        CgShapedRun run = new CgShapedRun(TEST_FONT_KEY, false,
-                glyphIds, clusterIds, advancesX, offsetsX, offsetsY, totalAdvance);
+        CgShapedRun run = new CgShapedRun(TEST_FONT_KEY, null, false,
+                glyphIds, clusterIds, advancesX, offsetsX, offsetsY, totalAdvance, 0, 0);
 
         assertSame(TEST_FONT_KEY, run.getFontKey());
         assertFalse(run.isRtl());
@@ -74,8 +75,8 @@ public class CgTextLayoutTest {
         float[] ox = {0, 0, 0};
         float[] oy = {0, 0, 0};
 
-        CgShapedRun a = new CgShapedRun(TEST_FONT_KEY, false, glyphs, clusters, adv, ox, oy, 15.0f);
-        CgShapedRun b = new CgShapedRun(TEST_FONT_KEY, false, glyphs, clusters, adv, ox, oy, 15.0f);
+        CgShapedRun a = new CgShapedRun(TEST_FONT_KEY, null, false, glyphs, clusters, adv, ox, oy, 15.0f, 0, 0);
+        CgShapedRun b = new CgShapedRun(TEST_FONT_KEY, null, false, glyphs, clusters, adv, ox, oy, 15.0f, 0, 0);
 
         assertEquals("Same-field shaped runs should be equal", a, b);
         assertEquals("Equal shaped runs must have same hashCode", a.hashCode(), b.hashCode());
@@ -83,47 +84,39 @@ public class CgTextLayoutTest {
 
     @Test
     public void testShapedRun_empty_run() {
-        CgShapedRun run = new CgShapedRun(TEST_FONT_KEY, false,
+        CgShapedRun run = new CgShapedRun(TEST_FONT_KEY, null, false,
                 new int[0], new int[0],
                 new float[0], new float[0], new float[0],
-                0.0f);
+                0.0f, 0, 0);
 
         assertEquals(0, run.getGlyphIds().length);
         assertEquals(0.0f, run.getTotalAdvance(), 0.001f);
-        assertFalse("Backward-compat constructor should not have source context",
-                run.hasSourceContext());
     }
 
     @Test
-    public void testShapedRun_sourceContext_retained() {
-        String source = "Hello World";
-        CgShapedRun run = new CgShapedRun(TEST_FONT_KEY, false,
+    public void testShapedRun_sourcePosition_stored() {
+        CgShapedRun run = new CgShapedRun(TEST_FONT_KEY, null, false,
                 new int[]{1, 2}, new int[]{0, 1},
                 new float[]{5.0f, 5.0f}, new float[]{0, 0}, new float[]{0, 0},
-                10.0f,
-                source, 0, 5);
+                10.0f, 0, 5);
 
-        assertTrue("Should have source context", run.hasSourceContext());
-        assertSame(source, run.getSourceText());
         assertEquals(0, run.getSourceStart());
         assertEquals(5, run.getSourceEnd());
     }
 
     @Test
-    public void testShapedRun_sourceContext_excludedFromEquality() {
-        CgShapedRun withContext = new CgShapedRun(TEST_FONT_KEY, false,
+    public void testShapedRun_sourcePositionAndResolvedFont_excludedFromEquality() {
+        CgShapedRun a = new CgShapedRun(TEST_FONT_KEY, null, false,
                 new int[]{1}, new int[]{0},
                 new float[]{5.0f}, new float[]{0}, new float[]{0},
-                5.0f,
-                "Hello", 0, 5);
+                5.0f, 0, 5);
 
-        CgShapedRun withoutContext = new CgShapedRun(TEST_FONT_KEY, false,
+        CgShapedRun b = new CgShapedRun(TEST_FONT_KEY, null, false,
                 new int[]{1}, new int[]{0},
                 new float[]{5.0f}, new float[]{0}, new float[]{0},
-                5.0f);
+                5.0f, 3, 9);
 
-        assertEquals("Source context should not affect equality",
-                withContext, withoutContext);
+        assertEquals("Source position should not affect equality", a, b);
     }
 
     // ---------------------------------------------------------------
@@ -134,7 +127,7 @@ public class CgTextLayoutTest {
     public void testShaper_rejects_null_text() {
         CgTextShaper shaper = new CgTextShaper();
         try {
-            shaper.shape(null, 0, 0, TEST_FONT_KEY, false, null);
+            shaper.shape(null, 0, 0, TEST_FONT_KEY, null, false, null);
             fail("Should throw IllegalArgumentException for null text");
         } catch (IllegalArgumentException e) {
             assertTrue(e.getMessage().contains("text"));
@@ -145,7 +138,7 @@ public class CgTextLayoutTest {
     public void testShaper_rejects_null_fontKey() {
         CgTextShaper shaper = new CgTextShaper();
         try {
-            shaper.shape("hello", 0, 5, null, false, null);
+            shaper.shape("hello", 0, 5, null, null, false, null);
             fail("Should throw IllegalArgumentException for null fontKey");
         } catch (IllegalArgumentException e) {
             assertTrue(e.getMessage().contains("fontKey"));
@@ -160,7 +153,7 @@ public class CgTextLayoutTest {
             // Need a non-null non-destroyed HBFont - this test validates the range check
             // Since we can't easily create a mock HBFont, we verify the exception message
             // when hbFont is null (fontKey check happens first if null, so pass non-null fontKey)
-            shaper.shape("hello", 3, 1, TEST_FONT_KEY, false, null);
+            shaper.shape("hello", 3, 1, TEST_FONT_KEY, null, false, null);
             fail("Should throw IllegalArgumentException for start > end");
         } catch (IllegalArgumentException e) {
             // Expected — either range error or hbFont error
@@ -348,21 +341,28 @@ public class CgTextLayoutTest {
 
         CgTextLayout layout = new CgTextLayout(lines, 80.0f, 30.0f, TEST_METRICS);
 
-        assertEquals(2, layout.getLines().size());
-        assertEquals(80.0f, layout.getTotalWidth(), 0.001f);
-        assertEquals(30.0f, layout.getTotalHeight(), 0.001f);
-        assertSame(TEST_METRICS, layout.getMetrics());
+        assertEquals(2, layout.lines().size());
+        assertEquals(80.0f, layout.totalWidth(), 0.001f);
+        assertEquals(30.0f, layout.totalHeight(), 0.001f);
+        assertSame(TEST_METRICS, layout.metrics());
     }
 
     @Test
-    public void testTextLayout_stores_resolvedFontsMap() {
+    public void testTextLayout_stores_bakedGlyphs() {
         List<List<CgShapedRun>> lines = new ArrayList<List<CgShapedRun>>();
-        java.util.Map<CgFontKey, CgFont> resolved =
-                new java.util.HashMap<CgFontKey, CgFont>();
+        CgBakedGlyphs baked = CgBakedGlyphs.EMPTY;
 
-        CgTextLayout layout = new CgTextLayout(lines, 80.0f, 30.0f, TEST_METRICS, resolved);
+        CgTextLayout layout = new CgTextLayout(lines, 80.0f, 30.0f, TEST_METRICS, baked);
 
-        assertSame(resolved, layout.getResolvedFontsByKey());
+        assertSame(baked, layout.baked());
+    }
+
+    @Test
+    public void testTextLayout_defaultConstructor_usesEmptyBaked() {
+        List<List<CgShapedRun>> lines = new ArrayList<List<CgShapedRun>>();
+        CgTextLayout layout = new CgTextLayout(lines, 80.0f, 30.0f, TEST_METRICS);
+
+        assertSame(CgBakedGlyphs.EMPTY, layout.baked());
     }
 
     @Test
@@ -403,8 +403,8 @@ public class CgTextLayoutTest {
         CgTextLayout layout = new CgTextLayout(
                 lines, totalWidth, TEST_METRICS.getLineHeight(), TEST_METRICS);
 
-        assertEquals(120.0f, layout.getTotalWidth(), 0.001f);
-        assertEquals(15.0f, layout.getTotalHeight(), 0.001f);
+        assertEquals(120.0f, layout.totalWidth(), 0.001f);
+        assertEquals(15.0f, layout.totalHeight(), 0.001f);
     }
 
     @Test
@@ -438,8 +438,8 @@ public class CgTextLayoutTest {
                 TEST_METRICS);
 
         assertTrue("Total width should not exceed 100px",
-                layout.getTotalWidth() <= 100.0f + 0.001f);
-        assertTrue("Should have non-zero height", layout.getTotalHeight() > 0);
+                layout.totalWidth() <= 100.0f + 0.001f);
+        assertTrue("Should have non-zero height", layout.totalHeight() > 0);
     }
 
     // ---------------------------------------------------------------
@@ -459,18 +459,18 @@ public class CgTextLayoutTest {
         // Mock reshaper: 10px per character
         RunReshaper reshaper = new RunReshaper() {
             @Override
-            public CgShapedRun reshape(CgShapedRun r, int subStart, int subEnd) {
-                String sub = r.getSourceText().substring(subStart, subEnd);
+            public CgShapedRun reshape(CgReshapeContext context, CgShapedRun r, int subStart, int subEnd) {
+                String sub = context.sourceText().substring(subStart, subEnd);
                 float width = sub.length() * 10.0f;
-                return new CgShapedRun(TEST_FONT_KEY, r.isRtl(),
+                return new CgShapedRun(TEST_FONT_KEY, null, r.isRtl(),
                         new int[]{1}, new int[]{0},
                         new float[]{width}, new float[]{0}, new float[]{0},
-                        width,
-                        r.getSourceText(), subStart, subEnd);
+                        width, subStart, subEnd);
             }
         };
 
-        List<List<CgShapedRun>> lines = breaker.breakLines(runs, 60.0f, 0, TEST_METRICS, reshaper);
+        List<List<CgShapedRun>> lines = breaker.breakLines(
+                runs, 60.0f, 0, TEST_METRICS, new CgReshapeContext(source), reshaper);
 
         assertTrue("Should split into at least 2 lines", lines.size() >= 2);
     }
@@ -487,21 +487,21 @@ public class CgTextLayoutTest {
 
         RunReshaper reshaper = new RunReshaper() {
             @Override
-            public CgShapedRun reshape(CgShapedRun r, int subStart, int subEnd) {
-                String sub = r.getSourceText().substring(subStart, subEnd);
+            public CgShapedRun reshape(CgReshapeContext context, CgShapedRun r, int subStart, int subEnd) {
+                String sub = context.sourceText().substring(subStart, subEnd);
                 float width = sub.length() * 10.0f;
-                return new CgShapedRun(TEST_FONT_KEY, r.isRtl(),
+                return new CgShapedRun(TEST_FONT_KEY, null, r.isRtl(),
                         new int[]{1}, new int[]{0},
                         new float[]{width}, new float[]{0}, new float[]{0},
-                        width,
-                        r.getSourceText(), subStart, subEnd);
+                        width, subStart, subEnd);
             }
         };
 
         // No word-level break opportunity → forced grapheme-level break splits the token
         // itself to fit maxWidth: "abcde" (50px) + "fghij" (50px), instead of the old
         // behavior of placing the whole 100px token on one overflowing line.
-        List<List<CgShapedRun>> lines = breaker.breakLines(runs, 50.0f, 0, TEST_METRICS, reshaper);
+        List<List<CgShapedRun>> lines = breaker.breakLines(
+                runs, 50.0f, 0, TEST_METRICS, new CgReshapeContext(source), reshaper);
         assertEquals("Should force-split into 2 lines to respect maxWidth", 2, lines.size());
         for (int i = 0; i < lines.size(); i++) {
             float lineWidth = 0;
@@ -514,23 +514,23 @@ public class CgTextLayoutTest {
     }
 
     @Test
-    public void testLineBreaker_intraRun_withoutSourceContext_fallback() {
-        // Run without source context — should fall back to whole-run wrapping
+    public void testLineBreaker_intraRun_withoutReshapeContext_fallback() {
+        // No CgReshapeContext supplied — should fall back to whole-run wrapping
         CgLineBreaker breaker = new CgLineBreaker();
-        CgShapedRun run = makeRun(false, 200.0f); // no source context
+        CgShapedRun run = makeRun(false, 200.0f);
 
         List<CgShapedRun> runs = new ArrayList<CgShapedRun>();
         runs.add(run);
 
         RunReshaper reshaper = new RunReshaper() {
             @Override
-            public CgShapedRun reshape(CgShapedRun r, int subStart, int subEnd) {
+            public CgShapedRun reshape(CgReshapeContext context, CgShapedRun r, int subStart, int subEnd) {
                 return null; // should never be called
             }
         };
 
-        List<List<CgShapedRun>> lines = breaker.breakLines(runs, 100.0f, 0, TEST_METRICS, reshaper);
-        assertEquals("No source context → 1 line (forced)", 1, lines.size());
+        List<List<CgShapedRun>> lines = breaker.breakLines(runs, 100.0f, 0, TEST_METRICS, null, reshaper);
+        assertEquals("No reshape context → 1 line (forced)", 1, lines.size());
     }
 
     @Test
@@ -545,18 +545,18 @@ public class CgTextLayoutTest {
 
         RunReshaper reshaper = new RunReshaper() {
             @Override
-            public CgShapedRun reshape(CgShapedRun r, int subStart, int subEnd) {
-                String sub = r.getSourceText().substring(subStart, subEnd);
+            public CgShapedRun reshape(CgReshapeContext context, CgShapedRun r, int subStart, int subEnd) {
+                String sub = context.sourceText().substring(subStart, subEnd);
                 float width = sub.length() * 10.0f;
-                return new CgShapedRun(TEST_FONT_KEY, r.isRtl(),
+                return new CgShapedRun(TEST_FONT_KEY, null, r.isRtl(),
                         new int[]{1}, new int[]{0},
                         new float[]{width}, new float[]{0}, new float[]{0},
-                        width,
-                        r.getSourceText(), subStart, subEnd);
+                        width, subStart, subEnd);
             }
         };
 
-        List<List<CgShapedRun>> lines = breaker.breakLines(runs, 50.0f, 0, TEST_METRICS, reshaper);
+        List<List<CgShapedRun>> lines = breaker.breakLines(
+                runs, 50.0f, 0, TEST_METRICS, new CgReshapeContext(source), reshaper);
         assertTrue("Multiple words should wrap into multiple lines", lines.size() >= 3);
     }
 
@@ -581,13 +581,13 @@ public class CgTextLayoutTest {
      * Create a minimal CgShapedRun with a single dummy glyph.
      */
     private static CgShapedRun makeRun(boolean rtl, float totalAdvance) {
-        return new CgShapedRun(TEST_FONT_KEY, rtl,
+        return new CgShapedRun(TEST_FONT_KEY, null, rtl,
                 new int[]{1},
                 new int[]{0},
                 new float[]{totalAdvance},
                 new float[]{0.0f},
                 new float[]{0.0f},
-                totalAdvance);
+                totalAdvance, 0, 0);
     }
 
     /**
@@ -595,27 +595,28 @@ public class CgTextLayoutTest {
      * The glyphId is used as a label to identify runs in visual order tests.
      */
     private static CgShapedRun makeRunLabeled(boolean rtl, float totalAdvance, int label) {
-        return new CgShapedRun(TEST_FONT_KEY, rtl,
+        return new CgShapedRun(TEST_FONT_KEY, null, rtl,
                 new int[]{label},
                 new int[]{0},
                 new float[]{totalAdvance},
                 new float[]{0.0f},
                 new float[]{0.0f},
-                totalAdvance);
+                totalAdvance, 0, 0);
     }
 
     /**
-     * Create a CgShapedRun with source-text context for intra-run wrapping tests.
+     * Create a CgShapedRun positioned at {@code [sourceStart, sourceEnd)} within its
+     * paragraph, for intra-run wrapping tests. {@code sourceText} itself is passed to the
+     * test's {@link CgReshapeContext}, not stored on the run.
      */
     private static CgShapedRun makeRunWithSource(boolean rtl, float totalAdvance,
                                                   String sourceText, int sourceStart, int sourceEnd) {
-        return new CgShapedRun(TEST_FONT_KEY, rtl,
+        return new CgShapedRun(TEST_FONT_KEY, null, rtl,
                 new int[]{1},
                 new int[]{0},
                 new float[]{totalAdvance},
                 new float[]{0.0f},
                 new float[]{0.0f},
-                totalAdvance,
-                sourceText, sourceStart, sourceEnd);
+                totalAdvance, sourceStart, sourceEnd);
     }
 }

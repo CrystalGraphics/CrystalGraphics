@@ -30,7 +30,15 @@ The layout layer is responsible for:
 - fallback run collection through `CgFontFamily`
 - HarfBuzz shaping
 - line breaking
+- baking the final line/run tree into a flat `api/text/CgBakedGlyphs` (pen positions,
+  resolved font/glyph id, per-line height, justifiable-position tagging — see
+  `text/layout/CgTextLayoutEngine`'s `bakeGlyphs`/`computeJustifiable`)
 - producing `api/text/CgTextLayout`
+
+Paragraph source text is not retained on `CgShapedRun` — it is threaded through
+`text/layout/CgReshapeContext`, one instance per paragraph, so line-breaking's
+intra-run re-shaping (`RunReshaper`) has the text it needs without every run
+carrying its own copy.
 
 ### 2. Cache / generation
 
@@ -111,13 +119,15 @@ Renderer code should ask for placements and consume them. It should not start re
 
 - Moving layout internals into public packages just to avoid bridge code
 - Letting `CgTextRenderer` absorb cache or atlas ownership
-- Treating `CgShapedRun` as a pure DTO and deleting source-text fields without preserving reshaping support
+- Reintroducing a source-text copy on `CgShapedRun` instead of threading it through `CgReshapeContext`
 - Splitting package-private cache helpers away from `CgFontRegistry` without moving the owner too
 - Adding shader-generation or atlas-storage logic into the wrong neighborhood
+- Re-walking `CgTextLayout.getLines()` for per-glyph draw data in a new consumer instead of reading the already-baked `CgTextLayout.getBaked()`
 
-## What this tree still intentionally leaks
+## Resolved leaks (historical — no longer true)
 
-- `CgTextLayout.resolvedFontsByKey`
-- `CgShapedRun.sourceText/sourceStart/sourceEnd`
-
-Those are known current tradeoffs, not accidental leftovers.
+`CgTextLayout.resolvedFontsByKey` and `CgShapedRun.sourceText` were previously documented
+here as intentional leaks. Both are gone: every `CgShapedRun` carries its own resolved
+font directly, and paragraph text is supplied externally via `CgReshapeContext` instead
+of being copied onto each run. `CgShapedRun.sourceStart`/`sourceEnd` remain (cheap ints,
+not a leak) for intra-run re-shaping.

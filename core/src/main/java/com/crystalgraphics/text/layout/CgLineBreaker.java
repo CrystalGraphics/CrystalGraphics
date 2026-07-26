@@ -63,12 +63,15 @@ public class CgLineBreaker {
      * @param maxWidth   maximum line width in pixels; {@code <= 0} means unbounded
      * @param maxHeight  maximum total layout height in pixels; {@code <= 0} means unbounded
      * @param metrics    font metrics for line height calculation
+     * @param context    the paragraph's source-text context; may be {@code null} if
+     *                   {@code reshaper} is also {@code null}
      * @param reshaper   callback for re-shaping run fragments; may be {@code null}
      * @return list of lines; each line is a list of {@link CgShapedRun} in visual order
      */
     public List<List<CgShapedRun>> breakLines(List<CgShapedRun> runs,
                                                float maxWidth, float maxHeight,
                                                CgFontMetrics metrics,
+                                               CgReshapeContext context,
                                                RunReshaper reshaper) {
         if (runs == null || runs.isEmpty()) {
             return Collections.emptyList();
@@ -100,9 +103,9 @@ public class CgLineBreaker {
 
             // Try intra-run splitting if the run still overflows the (possibly fresh) line
             if (maxWidth > 0 && run.getTotalAdvance() > remainingWidth
-                    && run.hasSourceContext() && reshaper != null) {
+                    && context != null && reshaper != null) {
                 List<CgShapedRun> fragments = splitAtLineBreaks(
-                        run, remainingWidth, maxWidth, reshaper);
+                        context, run, remainingWidth, maxWidth, reshaper);
 
                 if (fragments != null && fragments.size() > 1) {
                     for (CgShapedRun fragment : fragments) {
@@ -154,7 +157,7 @@ public class CgLineBreaker {
     public List<List<CgShapedRun>> breakLines(List<CgShapedRun> runs,
                                                float maxWidth, float maxHeight,
                                                CgFontMetrics metrics) {
-        return breakLines(runs, maxWidth, maxHeight, metrics, null);
+        return breakLines(runs, maxWidth, maxHeight, metrics, null, null);
     }
 
     /**
@@ -168,17 +171,18 @@ public class CgLineBreaker {
      * fits (including when the segment has no line-break boundaries at all, e.g.
      * a single unbroken token).</p>
      *
-     * @param run            the run to split (must have source context)
+     * @param context        the paragraph's source-text context
+     * @param run            the run to split
      * @param availableWidth remaining width on the current line
      * @param maxLineWidth   full line width for subsequent fragments
      * @param reshaper       callback to re-shape text sub-ranges
      * @return list of re-shaped fragments, or {@code null} if no split was possible
      */
-    private List<CgShapedRun> splitAtLineBreaks(CgShapedRun run,
+    private List<CgShapedRun> splitAtLineBreaks(CgReshapeContext context, CgShapedRun run,
                                                  float availableWidth,
                                                  float maxLineWidth,
                                                  RunReshaper reshaper) {
-        String sourceText = run.getSourceText();
+        String sourceText = context.sourceText();
         int runStart = run.getSourceStart();
         int runEnd = run.getSourceEnd();
         String segment = sourceText.substring(runStart, runEnd);
@@ -187,15 +191,15 @@ public class CgLineBreaker {
         }
 
         int[] boundaries = collectBoundaries(BreakIterator.getLineInstance(Locale.ROOT), segment);
-        int best = findBestFittingBoundary(boundaries, run, runStart, availableWidth, reshaper);
+        int best = findBestFittingBoundary(context, boundaries, run, runStart, availableWidth, reshaper);
 
         if (best <= 0) {
             // Nothing at word granularity fits — a single token is wider than the line
             // on its own. Force a character-level break instead of giving up entirely.
-            return splitAtGraphemeBreaks(run, availableWidth, maxLineWidth, reshaper);
+            return splitAtGraphemeBreaks(context, run, availableWidth, maxLineWidth, reshaper);
         }
 
-        List<CgShapedRun> fragments = buildFragments(run, runStart, runEnd, best, maxLineWidth, reshaper);
+        List<CgShapedRun> fragments = buildFragments(context, run, runStart, runEnd, best, maxLineWidth, reshaper);
         return fragments.size() > 1 ? fragments : null;
     }
 
@@ -213,11 +217,11 @@ public class CgLineBreaker {
      * @return list of re-shaped fragments, or {@code null} if the segment is a single
      *         atomic grapheme cluster with no boundary to split at at all
      */
-    private List<CgShapedRun> splitAtGraphemeBreaks(CgShapedRun run,
+    private List<CgShapedRun> splitAtGraphemeBreaks(CgReshapeContext context, CgShapedRun run,
                                                       float availableWidth,
                                                       float maxLineWidth,
                                                       RunReshaper reshaper) {
-        String sourceText = run.getSourceText();
+        String sourceText = context.sourceText();
         int runStart = run.getSourceStart();
         int runEnd = run.getSourceEnd();
         String segment = sourceText.substring(runStart, runEnd);
@@ -227,12 +231,12 @@ public class CgLineBreaker {
             return null;
         }
 
-        int best = findBestFittingBoundary(boundaries, run, runStart, availableWidth, reshaper);
+        int best = findBestFittingBoundary(context, boundaries, run, runStart, availableWidth, reshaper);
         if (best <= 0) {
             best = boundaries[0];
         }
 
-        List<CgShapedRun> fragments = buildFragments(run, runStart, runEnd, best, maxLineWidth, reshaper);
+        List<CgShapedRun> fragments = buildFragments(context, run, runStart, runEnd, best, maxLineWidth, reshaper);
         return fragments.size() > 1 ? fragments : null;
     }
 
@@ -242,20 +246,21 @@ public class CgLineBreaker {
      * overflows a fresh line — so a forced grapheme break doesn't force everything after it
      * to also break mid-word; normal word wrapping resumes as soon as it can.
      */
-    private List<CgShapedRun> buildFragments(CgShapedRun run, int runStart, int runEnd, int breakPos,
+    private List<CgShapedRun> buildFragments(CgReshapeContext context, CgShapedRun run,
+                                              int runStart, int runEnd, int breakPos,
                                               float maxLineWidth, RunReshaper reshaper) {
         List<CgShapedRun> fragments = new ArrayList<CgShapedRun>();
-        CgShapedRun head = reshaper.reshape(run, runStart, runStart + breakPos);
+        CgShapedRun head = reshaper.reshape(context, run, runStart, runStart + breakPos);
         if (head != null) {
             fragments.add(head);
         }
 
         int tailStart = runStart + breakPos;
         if (tailStart < runEnd) {
-            CgShapedRun tail = reshaper.reshape(run, tailStart, runEnd);
+            CgShapedRun tail = reshaper.reshape(context, run, tailStart, runEnd);
             if (tail != null) {
-                if (tail.getTotalAdvance() > maxLineWidth && tail.hasSourceContext()) {
-                    List<CgShapedRun> tailFragments = splitAtLineBreaks(tail, maxLineWidth, maxLineWidth, reshaper);
+                if (tail.getTotalAdvance() > maxLineWidth) {
+                    List<CgShapedRun> tailFragments = splitAtLineBreaks(context, tail, maxLineWidth, maxLineWidth, reshaper);
                     if (tailFragments != null) {
                         fragments.addAll(tailFragments);
                     } else {
@@ -277,13 +282,13 @@ public class CgLineBreaker {
      *
      * @return the largest fitting boundary, or {@code -1} if even the first one doesn't fit
      */
-    private int findBestFittingBoundary(int[] boundaries, CgShapedRun run, int runStart,
+    private int findBestFittingBoundary(CgReshapeContext context, int[] boundaries, CgShapedRun run, int runStart,
                                          float availableWidth, RunReshaper reshaper) {
         int lo = 0, hi = boundaries.length - 1, best = -1;
         while (lo <= hi) {
             int mid = (lo + hi) >>> 1;
             int breakPos = boundaries[mid];
-            CgShapedRun prefix = reshaper.reshape(run, runStart, runStart + breakPos);
+            CgShapedRun prefix = reshaper.reshape(context, run, runStart, runStart + breakPos);
             float width = prefix != null ? prefix.getTotalAdvance() : Float.MAX_VALUE;
             if (width <= availableWidth) {
                 best = breakPos;

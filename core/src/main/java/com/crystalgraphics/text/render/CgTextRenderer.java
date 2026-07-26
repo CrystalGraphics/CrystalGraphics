@@ -751,10 +751,9 @@ public class CgTextRenderer {
             resolvedLayout = draw.layout != null ? draw.layout : layout(draw.text, resolvedFont, draw.constraints);
         }
 
-        if (resolvedLayout == null || resolvedLayout.getLines().isEmpty()) return;
+        if (resolvedLayout == null || resolvedLayout.lines().isEmpty()) return;
 
         CgFontKey fontKey = resolvedFamily.getPrimarySource().getKey();
-        CgFontMetrics metrics = resolvedLayout.getMetrics();
         long frame = CgGraphicsLifecycle.getCurrentFrame();
 
         CgTextRenderContext.RasterHistory previous = context.getHistory(fontKey);
@@ -765,7 +764,7 @@ public class CgTextRenderer {
         boolean wantMsdf = context.getScaleResolver().shouldUseMsdf(effectiveTargetPx, previousMsdf);
         context.setHistory(fontKey, effectiveTargetPx, wantMsdf);
 
-        int glyphCount = resolvedGlyphs.resolve(resolvedLayout, resolvedFamily, draw.x, draw.y, frame, context, effectiveTargetPx, wantMsdf, metrics, fontKey);
+        int glyphCount = resolvedGlyphs.resolve(resolvedLayout, draw.x, draw.y, frame, context, effectiveTargetPx, wantMsdf, fontKey);
         if (glyphCount == 0) return;
 
         submitSortedQuads(glyphCount, draw.rgba, fontKey.getTargetPx(), effectiveTargetPx, pose.pose());

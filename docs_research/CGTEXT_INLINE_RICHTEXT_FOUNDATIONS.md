@@ -1,5 +1,10 @@
 # Inline rich-text formatting (bold/italic/underline/color spans)
 
+**→ See `TEXT_ENGINE_REWRITE_MASTER_PLAN.md` for the implementation-ready,
+dependency-ordered phase sequence (phases 6–11 cover this document). This
+document remains the source of rationale/citations; work from the master
+plan.**
+
 ## Status: investigated, not started
 
 Design sketch for letting a single logical string carry mixed inline formatting — `<b>bold</b>`,
