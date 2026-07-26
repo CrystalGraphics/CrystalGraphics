@@ -5,6 +5,7 @@ import com.crystalgraphics.msdfgen.FreeTypeMSDFIntegration;
 import com.crystalgraphics.msdfgen.MSDFGenerator;
 import com.crystalgraphics.msdfgen.MSDFException;
 import com.crystalgraphics.msdfgen.MSDFShape;
+import com.crystalgraphics.msdfgen.MSDFShapeSynthesis;
 import com.crystalgraphics.msdfgen.MSDFTransform;
 import com.crystalgraphics.api.font.CgFontKey;
 import com.crystalgraphics.api.font.CgGlyphKey;
@@ -68,6 +69,24 @@ public class CgMsdfGenerator {
     static final int SIMPLE_MSDF_MIN_PX = 32;
     static final int COMPLEX_MSDF_MIN_PX = 48;
 
+    /**
+     * Synthetic-bold strength as a fraction of 1 em — Skia's pixel-space formula is
+     * {@code strength_px = pixelSize / 24} (see {@code FTFace.outlineEmbolden} javadoc); since
+     * glyphs here are loaded EM-normalized ({@link FreeTypeMSDFIntegration#FONT_SCALING_EM_NORMALIZED},
+     * 1.0 unit = 1 em = the current pixel size), the same strength expressed as a fraction of
+     * em is size-independent: {@code (pixelSize / 24) / pixelSize = 1 / 24}.
+     */
+    private static final double SYNTHETIC_BOLD_STRENGTH_EM = 1.0 / 24.0;
+
+    /**
+     * Synthetic-oblique shear magnitude (0.25, matching Skia's constant) — positive here, not
+     * Skia's {@code -0.25}: msdfgen's {@link MSDFShape} coordinates are Y-up (same font-design
+     * convention as FreeType's outline space), while Skia's constant is expressed in its own
+     * Y-down screen-space convention. See {@code CgFontRegistry.SYNTHETIC_ITALIC_SKEW}, which
+     * hit the same sign flip (confirmed empirically — negative leaned backslash-direction).
+     */
+    private static final double SYNTHETIC_ITALIC_SKEW = 0.25;
+
     private int generatedThisFrame;
 
     public CgMsdfGenerator() {
@@ -125,12 +144,36 @@ public class CgMsdfGenerator {
             if (shape.getEdgeCount() == 0) {
                 return CgGlyphGenerationResult.emptyMsdf(sourceFontKey, key, atlasKey, config.pxRange());
             }
-            prepareShapeForMsdf(shape, key.getGlyphId(), config);
+            normalizeShape(shape);
+            // Synthetic italic (shear) is a plain affine transform on the vector geometry —
+            // always safe, preserves every edge relationship exactly. Synthetic BOLD is
+            // deliberately NOT done as a geometry edit here (see SYNTHETIC_BOLD_STRENGTH_EM's
+            // javadoc): naive per-vertex "inflate" schemes on Bezier curves reliably produce
+            // self-intersecting slivers on tight curves (o/d/g counters) — exactly the garbled
+            // look this replaces. Bold is applied further down as a distance-field threshold
+            // bias instead, the standard technique real SDF/MSDF text engines use (e.g. Slug,
+            // TextMeshPro's "Face Dilate") — mathematically safe on a continuous field with no
+            // topology to break.
+            if (key.isSyntheticItalic()) {
+                MSDFShapeSynthesis.shear(shape, SYNTHETIC_ITALIC_SKEW);
+            }
+            orientAndColorShape(shape, key.getGlyphId(), config);
 
             int targetPx = config.atlasScalePx();
+
+            // A distance-field bias needs headroom in the stored range to still show a smooth
+            // (anti-aliased) transition at the new, dilated edge — the normal pxRange only
+            // budgets for AA at the shape's own true edge. Widen it for synthetic-bold glyphs
+            // specifically, both for the layout/generation below and the placement's stored
+            // pxRange (read back by the shader at draw time), so the two stay consistent.
+            float effectivePxRange = config.pxRange();
+            if (key.isSyntheticBold()) {
+                effectivePxRange += 2f * (float) (SYNTHETIC_BOLD_STRENGTH_EM * targetPx);
+            }
+
             double[] bounds = shape.getBounds();
             if (config.miterLimit() > 0.0f) {
-                double border = (config.pxRange() * 0.5) / targetPx;
+                double border = (effectivePxRange * 0.5) / targetPx;
                 bounds = shape.getBoundsMiters(bounds, border, config.miterLimit(), 1);
             }
             double shapeL = bounds[0];
@@ -141,7 +184,7 @@ public class CgMsdfGenerator {
             CgMsdfGlyphLayout layout = CgMsdfGlyphLayout.compute(
                     shapeL, shapeB, shapeR, shapeT,
                     targetPx,
-                    config.pxRange(),
+                    effectivePxRange,
                     config.miterLimit(),
                     config.alignOriginX(),
                     config.alignOriginY());
@@ -185,6 +228,17 @@ public class CgMsdfGenerator {
                 int channels = config.mtsdf() ? 4 : 3;
                 flipRows(pixelData, boxWidth, boxHeight, channels);
 
+                if (key.isSyntheticBold()) {
+                    // Dilate: shift every distance-carrying channel (R/G/B — never MTSDF's
+                    // alpha) toward "inside" by the same fraction of the stored range that
+                    // SYNTHETIC_BOLD_STRENGTH_EM represents in shape units. This moves the
+                    // reconstructed 0.5-threshold edge outward by exactly that amount,
+                    // uniformly, on the already-correct (unmodified) shape's distance field —
+                    // no geometry, no self-intersection risk.
+                    float bias = (float) (SYNTHETIC_BOLD_STRENGTH_EM / (2.0 * rangeInShapeUnits));
+                    applyBoldBias(pixelData, channels, bias);
+                }
+
                 float bearingX = (float) (layout.getPlaneLeft() * scale);
                 float bearingY = (float) (layout.getPlaneTop() * scale);
                 float planeLeft = (float) (layout.getPlaneLeft() * scale);
@@ -197,7 +251,7 @@ public class CgMsdfGenerator {
                 return CgGlyphGenerationResult.msdf(sourceFontKey, key, atlasKey, pixelData, boxWidth, boxHeight,
                         bearingX, bearingY,
                         planeLeft, planeBottom, planeRight, planeTop,
-                        metricsWidth, metricsHeight, config.pxRange());
+                        metricsWidth, metricsHeight, effectivePxRange);
             } finally {
                 bitmap.free();
             }
@@ -244,8 +298,21 @@ public class CgMsdfGenerator {
         shape.edgeColoringSimple(threshold);
     }
 
-    private static void prepareShapeForMsdf(MSDFShape shape, int glyphId, CgMsdfAtlasConfig config) {
+    /**
+     * Split into two halves so synthetic bold/italic (see
+     * {@link MSDFShapeSynthesis}) can run between them — normalize first (topological
+     * cleanup: splits mixed segments, on the shape as FreeType/msdfgen actually produced it),
+     * then synthesize, then orient+color the FINAL synthesized geometry. Coloring must see the
+     * post-synthesis shape: edge colors are assigned from corner angles, and assigning them
+     * before a geometric change (especially embolden, which meaningfully alters corner
+     * sharpness) leaves them describing angles that no longer exist, which is exactly the
+     * kind of mismatch that produces MSDF reconstruction artifacts.
+     */
+    private static void normalizeShape(MSDFShape shape) {
         shape.normalize();
+    }
+
+    private static void orientAndColorShape(MSDFShape shape, int glyphId, CgMsdfAtlasConfig config) {
         double[] bounds = shape.getBounds();
         double outerX = bounds[0] - (bounds[2] - bounds[0]) - 1.0;
         double outerY = bounds[1] - (bounds[3] - bounds[1]) - 1.0;
@@ -283,6 +350,22 @@ public class CgMsdfGenerator {
             System.arraycopy(pixels, topOff, tmp, 0, rowStride);
             System.arraycopy(pixels, botOff, pixels, topOff, rowStride);
             System.arraycopy(tmp, 0, pixels, botOff, rowStride);
+        }
+    }
+
+    /**
+     * Adds {@code bias} to every distance-carrying channel (R/G/B; MTSDF's 4th/alpha channel
+     * is untouched — see {@code text.shader}'s MSDF path, which only ever reads {@code .rgb}),
+     * clamped to {@code [0,1]}. See the synthetic-bold call site in
+     * {@link #preparePagedGlyph} for why this replaces a geometry-level embolden.
+     */
+    private static void applyBoldBias(float[] pixels, int channels, float bias) {
+        int distanceChannels = Math.min(channels, 3);
+        for (int i = 0; i < pixels.length; i += channels) {
+            for (int c = 0; c < distanceChannels; c++) {
+                float v = pixels[i + c] + bias;
+                pixels[i + c] = v < 0f ? 0f : (v > 1f ? 1f : v);
+            }
         }
     }
 

@@ -112,6 +112,18 @@ public final class CgShapedRun {
     @EqualsAndHashCode.Exclude
     private final int sourceEnd;
 
+
+    /**
+     * {@code true} when this run requested {@link CgFontStyle#BOLD}/{@link CgFontStyle#BOLD_ITALIC}
+     * but {@link #resolvedFont}'s family had no distinct bold face to shape against (see
+     * {@code CgFontFamilyGroup#resolve} falling back to {@link CgFontStyle#REGULAR}) — a signal
+     * to the rasterizer to synthesize bold via {@code FTFace.outlineEmbolden}/an equivalent MSDF
+     * shape-dilation pass, rather than silently rendering as plain regular weight.
+     */
+    private final boolean syntheticBold;
+
+    /** Same as {@link #syntheticBold}, for {@link CgFontStyle#ITALIC}/{@link CgFontStyle#BOLD_ITALIC}. */
+    private final boolean syntheticItalic;
     public CgShapedRun(CgFontKey fontKey, CgFont resolvedFont, boolean rtl,
                         int[] glyphIds, int[] clusterIds,
                         float[] advancesX, float[] offsetsX, float[] offsetsY,
@@ -130,5 +142,7 @@ public final class CgShapedRun {
         this.totalAdvance = totalAdvance;
         this.sourceStart = sourceStart;
         this.sourceEnd = sourceEnd;
+        this.syntheticBold = syntheticBold;
+        this.syntheticItalic = syntheticItalic;
     }
 }

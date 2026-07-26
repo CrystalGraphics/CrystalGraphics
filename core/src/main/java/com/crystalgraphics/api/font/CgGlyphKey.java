@@ -66,11 +66,22 @@ public class CgGlyphKey {
 
     int subPixelBucket;
 
+    /** {@code true} if this glyph slot needs a rasterizer-side synthetic bold (embolden). */
+    boolean syntheticBold;
+
+    /** {@code true} if this glyph slot needs a rasterizer-side synthetic italic (shear). */
+    boolean syntheticItalic;
+
     public CgGlyphKey(CgFontKey fontKey, int glyphId, boolean msdf) {
         this(fontKey, glyphId, msdf, 0);
     }
 
     public CgGlyphKey(CgFontKey fontKey, int glyphId, boolean msdf, int subPixelBucket) {
+        this(fontKey, glyphId, msdf, subPixelBucket, false, false);
+    }
+
+    public CgGlyphKey(CgFontKey fontKey, int glyphId, boolean msdf, int subPixelBucket,
+                       boolean syntheticBold, boolean syntheticItalic) {
         if (fontKey == null) {
             throw new IllegalArgumentException("fontKey must not be null");
         }
@@ -89,5 +100,7 @@ public class CgGlyphKey {
         this.fontKey = fontKey;
         this.glyphId = glyphId;
         this.msdf = msdf;
+        this.syntheticBold = syntheticBold;
+        this.syntheticItalic = syntheticItalic;
     }
 }

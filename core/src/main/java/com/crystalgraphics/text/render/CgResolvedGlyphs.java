@@ -133,7 +133,8 @@ final class CgResolvedGlyphs {
             scratchFonts[i] = baked.fonts()[i];
             scratchGlyphIds[i] = glyphId;
             scratchSubPixel[i] = subPixel;
-            scratchGlyphKeys[i] = new CgGlyphKey(fontKey, glyphId, wantMsdf, subPixel);
+            scratchGlyphKeys[i] = new CgGlyphKey(fontKey, glyphId, wantMsdf, subPixel,
+                    baked.syntheticBold()[i], baked.syntheticItalic()[i]);
             scratchGlyphX[i] = x + baked.penX()[i];
             scratchGlyphY[i] = y + baked.penY()[i];
         }
@@ -173,7 +174,8 @@ final class CgResolvedGlyphs {
             // Only the rarer bitmap-fallback retry (mode differs) needs a fresh key.
             CgGlyphKey glyphKey = scratchGlyphKeys[i].isMsdf() == wantMsdf
                     ? scratchGlyphKeys[i]
-                    : new CgGlyphKey(scratchFontKeys[i], scratchGlyphIds[i], wantMsdf, scratchSubPixel[i]);
+                    : new CgGlyphKey(scratchFontKeys[i], scratchGlyphIds[i], wantMsdf, scratchSubPixel[i],
+                            scratchGlyphKeys[i].isSyntheticBold(), scratchGlyphKeys[i].isSyntheticItalic());
             CgGlyphPlacement placement = registry.resolveGlyphPaged(scratchFonts[i], glyphKey, effectiveTargetPx, scratchSubPixel[i], frame);
             scratchPlacements[i] = placement;
             if (wantMsdf && placement != null && !placement.isDistanceField()) usedBitmapFallback = true;

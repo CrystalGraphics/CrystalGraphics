@@ -279,7 +279,8 @@ public class CgFontRegistry {
             return ensureMsdfGlyphPaged(font, atlasKey, msdfAtlasKey, effectiveTargetPx, subPixelBucket, currentFrame);
         } else {
             CgGlyphKey atlasKey = toBitmapAtlasGlyphKey(
-                    new CgRasterGlyphKey(rasterFontKey, key.getGlyphId(), false, subPixelBucket));
+                    new CgRasterGlyphKey(rasterFontKey, key.getGlyphId(), false, subPixelBucket,
+                            key.isSyntheticBold(), key.isSyntheticItalic()));
             return ensureBitmapGlyphPaged(font, atlasKey, rasterFontKey, effectiveTargetPx, subPixelBucket, currentFrame);
         }
     }
@@ -333,7 +334,8 @@ public class CgFontRegistry {
         }
 
         CgGlyphKey atlasKey = toBitmapAtlasGlyphKey(
-                new CgRasterGlyphKey(rasterFontKey, key.getGlyphId(), false, subPixelBucket));
+                new CgRasterGlyphKey(rasterFontKey, key.getGlyphId(), false, subPixelBucket,
+                        key.isSyntheticBold(), key.isSyntheticItalic()));
         CgPagedGlyphAtlas pagedAtlas = getPagedBitmapAtlas(rasterFontKey);
 
         CgGlyphPlacement cached = pagedAtlas.get(atlasKey, currentFrame);
@@ -381,7 +383,8 @@ public class CgFontRegistry {
         }
 
         CgGlyphKey atlasKey = toBitmapAtlasGlyphKey(
-                new CgRasterGlyphKey(rasterFontKey, key.getGlyphId(), false, subPixelBucket));
+                new CgRasterGlyphKey(rasterFontKey, key.getGlyphId(), false, subPixelBucket,
+                        key.isSyntheticBold(), key.isSyntheticItalic()));
         CgPagedGlyphAtlas pagedAtlas = getPagedBitmapAtlas(rasterFontKey);
         if (pagedAtlas.get(atlasKey, currentFrame) == null) {
             submitBitmapGlyphJob(font, atlasKey, rasterFontKey, effectiveTargetPx, subPixelBucket);
@@ -432,6 +435,8 @@ public class CgFontRegistry {
     CgGlyphKey toMsdfAtlasGlyphKey(CgGlyphKey requestedKey, CgMsdfAtlasConfig config) {
         CgFontKey atlasFontKey = requestedKey.getFontKey().withTargetPx(config.atlasScalePx());
         return new CgGlyphKey(atlasFontKey, requestedKey.getGlyphId(), true, 0);
+        return new CgGlyphKey(atlasFontKey, requestedKey.getGlyphId(), true, 0,
+                requestedKey.isSyntheticBold(), requestedKey.isSyntheticItalic());
     }
 
     /**
@@ -449,7 +454,9 @@ public class CgFontRegistry {
                 atlasFontKey,
                 rasterGlyphKey.glyphId(),
                 rasterGlyphKey.msdf(),
-                rasterGlyphKey.subPixelBucket());
+                rasterGlyphKey.subPixelBucket(),
+                rasterGlyphKey.syntheticBold(),
+                rasterGlyphKey.syntheticItalic());
     }
 
     /**
@@ -494,17 +501,30 @@ public class CgFontRegistry {
         }
 
         FTFace face = font.getFtFace();
+        boolean synthesize = atlasKey.isSyntheticBold() || atlasKey.isSyntheticItalic();
         try {
             face.setPixelSizes(0, effectiveTargetPx);
 
             int loadFlags = FTLoadFlags.FT_LOAD_DEFAULT;
             boolean subBucket = subPixelBucket > 0
                     && effectiveTargetPx < CgGlyphKey.SUB_PIXEL_BUCKET_MAX_PX;
-            if (subBucket) {
+            // Embolden/shear operate on FT_Outline — a bitmap-only glyph (e.g. an emoji/color
+            // strike) has no outline to transform, so this is best-effort like real browsers'
+            // synthesis: no outline means no visible faux-style, not a hard failure.
+            if (subBucket || synthesize) {
                 loadFlags = FTLoadFlags.FT_LOAD_NO_BITMAP;
+            }
+            // Bytecode/autohinting grid-fits stems assuming an UPRIGHT glyph; shearing (or even
+            // embolden's point-shift) after that hinting has already snapped stems to whole
+            // pixels breaks the per-height grid-fit consistency, producing broken/jagged stems
+            // at small sizes. Disabling hinting for synthesized glyphs avoids this — the same
+            // reason production font engines skip/reduce hinting for synthetic oblique.
+            if (synthesize) {
+                loadFlags |= FTLoadFlags.FT_LOAD_NO_HINTING;
             }
 
             loadGlyphOrFallback(face, atlasKey.getGlyphId(), loadFlags);
+            applySyntheticStyle(face, atlasKey, effectiveTargetPx);
 
             if (subBucket) {
                 face.outlineTranslate(subPixelBucket * 16L, 0L);
@@ -532,7 +552,9 @@ public class CgFontRegistry {
             float metricsHeight;
             if (effectiveTargetPx != basePx) {
                 face.setPixelSizes(0, basePx);
-                loadGlyphOrFallback(face, atlasKey.getGlyphId(), FTLoadFlags.FT_LOAD_DEFAULT);
+                loadGlyphOrFallback(face, atlasKey.getGlyphId(),
+                        synthesize ? (FTLoadFlags.FT_LOAD_NO_BITMAP | FTLoadFlags.FT_LOAD_NO_HINTING) : FTLoadFlags.FT_LOAD_DEFAULT);
+                applySyntheticStyle(face, atlasKey, basePx);
                 FTGlyphMetrics baseMetrics = face.getGlyphMetrics();
                 metricsWidth = baseMetrics.getWidth() / 64.0f;
                 metricsHeight = baseMetrics.getHeight() / 64.0f;
@@ -549,6 +571,45 @@ public class CgFontRegistry {
             return null;
         } finally {
             restoreFontShapingState(font);
+        }
+    }
+
+    /**
+     * Synthetic-oblique shear magnitude, matching Chromium/Skia's fake-italic matrix
+     * ({@code SkScalerContext_FreeType}, magnitude {@code 0.25}). The sign is positive here,
+     * not Skia's {@code -0.25}: Skia's constant is expressed in its own Y-down screen-space
+     * convention, while {@code FTFace.outlineShear} operates directly on FreeType's outline,
+     * which is Y-up (font design space, ascenders positive) — the same visual rightward lean
+     * needs the opposite sign under the flipped Y axis. Confirmed empirically: {@code -0.25}
+     * produced a backslash-direction (leaning left) lean instead of the correct forward lean.
+     */
+    private static final double SYNTHETIC_ITALIC_SKEW = 0.25;
+
+    /**
+     * Applies {@code atlasKey}'s synthetic bold/italic flags (see {@link CgGlyphKey#isSyntheticBold()}/
+     * {@link CgGlyphKey#isSyntheticItalic()}) to the glyph currently loaded on {@code face}, at
+     * {@code pixelSizePx}. Must be called after {@code loadGlyphOrFallback} (with
+     * {@code FT_LOAD_NO_BITMAP}) and before {@code renderGlyph}/reading metrics. A no-op for a
+     * bitmap-only glyph (no outline to transform) — matches how real browsers silently skip
+     * synthesis for color/bitmap-strike glyphs rather than failing the whole draw.
+     *
+     * @param pixelSizePx the pixel size {@code face} was just set to — embolden strength is
+     *                    derived from this, per Skia's {@code strength = pixelSize26_6 / 24}
+     */
+    private void applySyntheticStyle(FTFace face, CgGlyphKey atlasKey, int pixelSizePx) {
+        if (!atlasKey.isSyntheticBold() && !atlasKey.isSyntheticItalic()) {
+            return;
+        }
+        try {
+            if (atlasKey.isSyntheticBold()) {
+                long strength = Math.round(pixelSizePx * 64.0 / 24.0);
+                face.outlineEmbolden(strength);
+            }
+            if (atlasKey.isSyntheticItalic()) {
+                face.outlineShear(SYNTHETIC_ITALIC_SKEW);
+            }
+        } catch (IllegalStateException e) {
+            LOGGER.log(Level.FINE, "Skipping synthetic bold/italic for glyph with no outline: " + atlasKey, e);
         }
     }
 
@@ -595,7 +656,8 @@ public class CgFontRegistry {
         // Fall back to bitmap via paged atlas
         CgRasterFontKey bitmapRasterKey = new CgRasterFontKey(font.getKey(), effectiveTargetPx);
         CgGlyphKey bitmapAtlasKey = toBitmapAtlasGlyphKey(
-                new CgRasterGlyphKey(bitmapRasterKey, atlasKey.getGlyphId(), false, subPixelBucket));
+                new CgRasterGlyphKey(bitmapRasterKey, atlasKey.getGlyphId(), false, subPixelBucket,
+                        atlasKey.isSyntheticBold(), atlasKey.isSyntheticItalic()));
         return ensureBitmapGlyphPaged(font, bitmapAtlasKey, bitmapRasterKey,
                 effectiveTargetPx, subPixelBucket, currentFrame);
     }

@@ -25,7 +25,8 @@ import com.crystalgraphics.text.render.CgTextScaleResolver;
  * @see CgRasterFontKey
  * @see CgTextScaleResolver
  */
-record CgRasterGlyphKey(CgRasterFontKey rasterFontKey, int glyphId, boolean msdf, int subPixelBucket) {
+record CgRasterGlyphKey(CgRasterFontKey rasterFontKey, int glyphId, boolean msdf, int subPixelBucket,
+                        boolean syntheticBold, boolean syntheticItalic) {
 
     @Override
     public boolean equals(Object o) {
@@ -35,12 +36,15 @@ record CgRasterGlyphKey(CgRasterFontKey rasterFontKey, int glyphId, boolean msdf
         return glyphId == that.glyphId
                 && msdf == that.msdf
                 && subPixelBucket == that.subPixelBucket
+                && syntheticBold == that.syntheticBold
+                && syntheticItalic == that.syntheticItalic
                 && rasterFontKey.equals(that.rasterFontKey);
     }
 
     @Override
     public String toString() {
         return "CgRasterGlyphKey{" + rasterFontKey + ", glyph=" + glyphId
-                + ", msdf=" + msdf + ", bucket=" + subPixelBucket + "}";
+                + ", msdf=" + msdf + ", bucket=" + subPixelBucket
+                + ", synthBold=" + syntheticBold + ", synthItalic=" + syntheticItalic + "}";
     }
 }
