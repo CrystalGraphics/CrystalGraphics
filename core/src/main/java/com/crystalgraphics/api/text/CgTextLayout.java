@@ -39,7 +39,6 @@ import java.util.List;
  *
  * @see CgShapedRun
  * @see CgBakedGlyphs
- * @see CgTextConstraints
  * @param lines  Lines of shaped runs in visual order. Outer = lines, inner = runs. 
  * @param totalWidth  Width of the widest line in logical layout pixels. 
  * @param totalHeight  Total height of all lines in logical layout pixels. 

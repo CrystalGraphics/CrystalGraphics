@@ -89,12 +89,16 @@ matrix again. That entire surface is gone. The only public entry points now are:
   that renderer, from *any* call site.
 - `renderer.retainedDraw()` — allocates a standalone `Draw` the caller may hold across
   frames (e.g. a cached HUD line, mutating only `.text(...)` each tick).
-- `Draw` chain methods: `layout(CgTextLayout)`/`text(String)` (layout wins if both
-  set — it already paid the shaping cost), `font(CgFont)`/`family(CgFontFamily)`
-  (family wins if both set — strictly more capable superset), `targetPx(int)`,
-  `constraints(CgTextConstraints)`, `at(float, float)` (defaults `(0,0)`),
+- `Draw` chain methods: `layout(CgTextLayout)`/`paragraph(CgShapedParagraph)`/`text(String)`
+  (each wins over the next — layout is already fully resolved, paragraph is already shaped,
+  text needs both), `font(CgFont)`/`family(CgFontFamily)` (family wins if both set — strictly
+  more capable superset), `targetPx(int)`, `constraints(float maxWidth, float maxHeight)`
+  (`<= 0` means unbounded on that axis), `at(float, float)` (defaults `(0,0)`),
   `color(int)` (defaults opaque white), `pose(PoseStack)` (falls back to the
   renderer's own `poseStack()` if never called — see below).
+- `Draw.measure()` resolves (without drawing) the exact `CgTextLayout` `submit()` would draw
+  right now — same font/scale/paragraph-reflow resolution — for callers that need to know a
+  section's on-screen size (e.g. for stacking layout) before/after drawing it.
 - `Draw.submit()` resolves everything (mirroring the exact sizing/validation branches
   the old overloads had — `requireSizedFont`/`sizeFamily` — see the method body if
   touching this logic) and calls `drawInternal(...)` directly. Returns the owning

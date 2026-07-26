@@ -7,7 +7,6 @@ import com.crystalgraphics.api.font.*;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.text.CgShapedParagraph;
 import com.crystalgraphics.api.text.CgTextDecorationRect;
-import com.crystalgraphics.api.text.CgTextConstraints;
 import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.api.text.CgTextLayoutRequest;
 import com.crystalgraphics.api.texture.CgTexture;
@@ -581,7 +580,8 @@ public class CgTextRenderer {
         private String text;
         private CgFont font;
         private CgFontFamily family;
-        private CgTextConstraints constraints = CgTextConstraints.UNBOUNDED;
+        private float maxWidth;
+        private float maxHeight;
         private int targetPx = -1;
         private float x;
         private float y;
@@ -596,7 +596,8 @@ public class CgTextRenderer {
             text = null;
             font = null;
             family = null;
-            constraints = CgTextConstraints.UNBOUNDED;
+            maxWidth = 0f;
+            maxHeight = 0f;
             targetPx = -1;
             x = 0f;
             y = 0f;
@@ -651,23 +652,14 @@ public class CgTextRenderer {
             return this;
         }
 
-        /** Wrap/height constraints used when building a layout from {@link #text(String)}. */
-        public Draw constraints(CgTextConstraints constraints) {
-            this.constraints = constraints;
-            return this;
-        }
-
         /**
-         * Wrap/height constraints used when building a layout from {@link #text(String)},
-         * given directly as {@code maxWidth}/{@code maxHeight} instead of a pre-built
-         * {@link CgTextConstraints} — convenient for callers deriving these every draw
-         * (e.g. from a live layout box) who would otherwise have to construct a fresh
-         * {@link CgTextConstraints} at the call site just to pass it straight through.
-         * {@code <= 0} on either axis means unbounded, matching {@link CgTextConstraints}'s
-         * own convention.
+         * Wrap/height constraints used when building a layout from {@link #text(String)}/
+         * {@link #paragraph(CgShapedParagraph)}. {@code <= 0} on either axis means unbounded
+         * (the default).
          */
         public Draw constraints(float maxWidth, float maxHeight) {
-            this.constraints = new CgTextConstraints(maxWidth, maxHeight);
+            this.maxWidth = maxWidth;
+            this.maxHeight = maxHeight;
             return this;
         }
 
@@ -840,27 +832,40 @@ public class CgTextRenderer {
             // frozen CgTextLayout.
             resolvedLayout = draw.layout;
         } else {
-            // draw.constraints is expressed in the same design-space pixels as fontKey's base
-            // size. Divide by the same scale already resolved above for raster crispness
-            // (effectiveTargetPx / baseTargetPx) so maxWidth keeps meaning "this many on-screen
-            // pixels" regardless of the live PoseStack scale -- see Draw's class javadoc.
-            // Never applied to world-space text: PerspectiveScaleResolver's effectiveTargetPx
-            // reflects raster tier / view distance, not UI zoom, and world paragraphs must not
-            // reflow as the camera moves (see PerspectiveScaleResolver's "Layout Invariance").
-            CgTextConstraints effectiveConstraints = context.isWorldText()
-                    ? draw.constraints
-                    : draw.constraints.scaledBy(effectiveTargetPx / (float) fontKey.getTargetPx());
+            // draw.constraintMaxWidth/Height are expressed in the same design-space pixels as
+            // fontKey's base size. Divide by the same scale already resolved above for raster
+            // crispness (effectiveTargetPx / baseTargetPx) so maxWidth keeps meaning "this many
+            // on-screen pixels" regardless of the live PoseStack scale -- see Draw's class
+            // javadoc. Never applied to world-space text: PerspectiveScaleResolver's
+            // effectiveTargetPx reflects raster tier / view distance, not UI zoom, and world
+            // paragraphs must not reflow as the camera moves (see PerspectiveScaleResolver's
+            // "Layout Invariance").
+            float scale = context.isWorldText() ? 1f : effectiveTargetPx / (float) fontKey.getTargetPx();
+            float effectiveMaxWidth = scaleConstraint(draw.maxWidth, scale);
+            float effectiveMaxHeight = scaleConstraint(draw.maxHeight, scale);
 
             if (draw.paragraph != null) {
-                resolvedLayout = draw.paragraph.layout(effectiveConstraints.getMaxWidth(), effectiveConstraints.getMaxHeight());
+                resolvedLayout = draw.paragraph.layout(effectiveMaxWidth, effectiveMaxHeight);
             } else if (draw.family != null) {
-                resolvedLayout = layout(draw.text, resolvedFamily, effectiveConstraints);
+                resolvedLayout = layout(draw.text, resolvedFamily, effectiveMaxWidth, effectiveMaxHeight);
             } else {
-                resolvedLayout = layout(draw.text, resolvedFont, effectiveConstraints);
+                resolvedLayout = layout(draw.text, resolvedFont, effectiveMaxWidth, effectiveMaxHeight);
             }
         }
 
         return new ResolvedDraw(fontKey, effectiveTargetPx, wantMsdf, resolvedLayout);
+    }
+
+    /**
+     * Divides {@code value} by {@code scale}, leaving an unbounded ({@code <= 0}) value
+     * unbounded, and skipping the division entirely when {@code scale} is (effectively) 1 or
+     * non-positive -- the common case, and avoids float noise on an exact no-op.
+     */
+    private static float scaleConstraint(float value, float scale) {
+        if (value <= 0f || scale <= 0f || Math.abs(scale - 1f) < 0.0001f) {
+            return value;
+        }
+        return value / scale;
     }
 
     private void drawInternal(Draw draw, PoseStack.Pose pose) {
@@ -1114,31 +1119,29 @@ public class CgTextRenderer {
      * format for glyph resolution, and must not mutate it — a cache hit may hand the same
      * instance to multiple unrelated callers.</p>
      */
-    static CgTextLayout layout(String text, CgFont font, CgTextConstraints constraints) {
+    static CgTextLayout layout(String text, CgFont font, float maxWidth, float maxHeight) {
         if (text == null) throw new IllegalArgumentException("text must not be null");
-        if (constraints == null) throw new IllegalArgumentException("constraints must not be null");
 
-        CgTextLayoutCache.Key key = CgTextLayoutCache.key(text, font, constraints.getMaxWidth(), constraints.getMaxHeight());
+        CgTextLayoutCache.Key key = CgTextLayoutCache.key(text, font, maxWidth, maxHeight);
         CgTextLayout cached = CgTextLayoutCache.get(key);
         if (cached != null) return cached;
 
         CgTextLayout built = CgTextLayoutRequest.of(text, font)
-                .maxWidth(constraints.getMaxWidth()).maxHeight(constraints.getMaxHeight())
+                .maxWidth(maxWidth).maxHeight(maxHeight)
                 .build();
         CgTextLayoutCache.put(key, built);
         return built;
     }
 
-    static CgTextLayout layout(String text, CgFontFamily family, CgTextConstraints constraints) {
+    static CgTextLayout layout(String text, CgFontFamily family, float maxWidth, float maxHeight) {
         if (text == null) throw new IllegalArgumentException("text must not be null");
-        if (constraints == null) throw new IllegalArgumentException("constraints must not be null");
 
-        CgTextLayoutCache.Key key = CgTextLayoutCache.key(text, family, constraints.getMaxWidth(), constraints.getMaxHeight());
+        CgTextLayoutCache.Key key = CgTextLayoutCache.key(text, family, maxWidth, maxHeight);
         CgTextLayout cached = CgTextLayoutCache.get(key);
         if (cached != null) return cached;
 
         CgTextLayout built = CgTextLayoutRequest.of(text, family)
-                .maxWidth(constraints.getMaxWidth()).maxHeight(constraints.getMaxHeight())
+                .maxWidth(maxWidth).maxHeight(maxHeight)
                 .build();
         CgTextLayoutCache.put(key, built);
         return built;

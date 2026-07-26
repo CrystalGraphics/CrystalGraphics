@@ -8,8 +8,6 @@
  *       immutable layout result (lines of shaped runs + metrics + baked glyphs)</li>
  *   <li>{@link com.crystalgraphics.api.text.CgBakedGlyphs} —
  *       flat, per-glyph pen positions/font identity/line metadata for a layout</li>
- *   <li>{@link com.crystalgraphics.api.text.CgTextConstraints} —
- *       layout bounds (max width / max height)</li>
  *   <li>{@link com.crystalgraphics.api.text.CgShapedRun} —
  *       shaped glyph data for a single directional run</li>
  * </ul>
