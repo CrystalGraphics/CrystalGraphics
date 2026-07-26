@@ -5,10 +5,14 @@ import com.crystalgraphics.api.font.CgFontKey;
 import com.crystalgraphics.api.font.CgGlyphKey;
 import com.crystalgraphics.api.font.CgGlyphPlacement;
 import com.crystalgraphics.api.text.CgBakedGlyphs;
+import com.crystalgraphics.api.text.CgTextDecorationRect;
 import com.crystalgraphics.api.text.CgTextLayout;
+import com.crystalgraphics.text.atlas.CgPagedGlyphAtlas;
 import com.crystalgraphics.text.cache.CgFontRegistry;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 /**
  * Resolves one {@code CgTextRenderer.drawInternal} call's {@link CgTextLayout} into flat,
@@ -29,6 +33,14 @@ import java.util.Arrays;
  * complexity, not its absolute cost, and that cost is not zero. A cache hit skips all of it:
  * no bake-array pass, no key allocation, no atlas probe, just repointing {@link #glyphX}/
  * {@link #glyphY}/{@link #placements} at the cached entry's own arrays.</p>
+ *
+ * <h3>Decoration resolution</h3>
+ * <p>{@link #resolveDecorations} is the same kind of concern as glyph resolution — turning a
+ * baked, atlas-agnostic description ({@link CgTextDecorationRect}) into something with a real
+ * atlas texel and screen-space geometry — so it lives here rather than in {@code CgTextRenderer},
+ * which only ever sees the already-resolved {@link ResolvedDecoration} list. It stays a
+ * genuinely separate output from {@link #placements}, never merged into one array or one
+ * cache — see that method's javadoc for why.</p>
  */
 final class CgResolvedGlyphs {
 
@@ -235,5 +247,56 @@ final class CgResolvedGlyphs {
         if (context.isScaledUiRaster(fontKey, effectiveTargetPx)) return 0;
 
         return selectSubPixelBucket(effectiveTargetPx, xOffset);
+    }
+
+    /**
+     * Pre-resolved, single-draw-call-lifetime view of one {@link CgTextDecorationRect} — its
+     * atlas texel already looked up and its quad geometry already computed, so
+     * {@code CgTextRenderer.submitSortedQuads} can sort/emit it exactly like a
+     * {@link CgGlyphPlacement} without the two ever being the same type or living in the same
+     * cache. {@code isDistanceField}/{@code pxRange} come straight off the atlas's own
+     * {@link CgPagedGlyphAtlas.WhiteTexel} (see that record's javadoc) — always equal to what a
+     * real glyph from this same atlas would report, which is what lets a decoration interleave
+     * into that font's existing batch instead of forcing a separate one. Built fresh every draw
+     * call in {@link #resolveDecorations}; never stored anywhere.
+     */
+    record ResolvedDecoration(int atlasTextureId, int atlasPageIndex, boolean isDistanceField, float pxRange,
+                              float u0, float v0, float u1, float v1,
+                              float qx, float qy, float w, float h, int rgba) {
+    }
+
+    /**
+     * Resolves each decoration rect's atlas white texel (see
+     * {@link CgFontRegistry#getDecorationWhiteTexel}) and computes its screen-space quad geometry
+     * up front, so the renderer can fold decorations into the very same sort pass as glyphs —
+     * same batch-key format, same material transitions, no separate flush. Skips a rect with no
+     * font key or no resolvable texel (e.g. an atlas that's momentarily out of room).
+     *
+     * <p>{@code x0}/{@code x1}/{@code y} are layout-origin-relative logical pixels, the same
+     * space as {@link CgBakedGlyphs#penX()}/{@code penY()} — translated by the draw's own
+     * {@code x}/{@code y} exactly like glyph pen positions are in {@link #flatten}, and
+     * otherwise drawn at 1:1 logical scale (no raster-tier rescaling — a flat rectangle has no
+     * atlas-resolution dependency).</p>
+     */
+    List<ResolvedDecoration> resolveDecorations(CgTextDecorationRect[] decorations, float x, float y,
+                                                int drawRgba, int effectiveTargetPx, boolean wantMsdf) {
+        if (decorations.length == 0) return List.of();
+        List<ResolvedDecoration> resolved = new ArrayList<>(decorations.length);
+        for (CgTextDecorationRect seg : decorations) {
+            CgFontKey segFontKey = seg.fontKey();
+            if (segFontKey == null) continue;
+
+            CgPagedGlyphAtlas.WhiteTexel texel = registry.getDecorationWhiteTexel(segFontKey, effectiveTargetPx, wantMsdf);
+            if (texel == null) continue;
+
+            int rgba = seg.argbColor() != 0 ? seg.argbColor() : drawRgba;
+            float qx = x + seg.x0();
+            float qy = y + seg.y() - seg.thickness() / 2f;
+            resolved.add(new ResolvedDecoration(texel.atlasTextureId(), texel.atlasPageIndex(),
+                    texel.isDistanceField(), texel.pxRange(),
+                    texel.u0(), texel.v0(), texel.u1(), texel.v1(),
+                    qx, qy, seg.x1() - seg.x0(), seg.thickness(), rgba));
+        }
+        return resolved;
     }
 }

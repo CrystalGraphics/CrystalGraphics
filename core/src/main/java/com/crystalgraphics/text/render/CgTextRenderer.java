@@ -17,7 +17,6 @@ import com.crystalgraphics.gl.render.CgQuadRenderer;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.gl.texture.CgTextureMutable;
 import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.text.atlas.CgPagedGlyphAtlas;
 import com.crystalgraphics.text.cache.CgFontRegistry;
 import lombok.Getter;
 import lombok.NonNull;
@@ -767,55 +766,10 @@ public class CgTextRenderer {
         context.setHistory(fontKey, effectiveTargetPx, wantMsdf);
 
         int glyphCount = resolvedGlyphs.resolve(resolvedLayout, draw.x, draw.y, frame, context, effectiveTargetPx, wantMsdf, fontKey, draw.rgba);
-        if (glyphCount > 0) {
-            submitSortedQuads(glyphCount, fontKey.getTargetPx(), effectiveTargetPx, pose.pose());
-        }
-
         CgTextDecorationRect[] decorations = resolvedLayout.baked().decorations();
-        if (decorations.length > 0) {
-            submitDecorations(decorations, draw.x, draw.y, draw.rgba, effectiveTargetPx, wantMsdf, pose.pose());
-        }
-    }
-
-    /**
-     * Draws baked underline/strikethrough segments as flat-colored quads, sampling each
-     * segment's own font's reserved white texel (see
-     * {@link CgFontRegistry#getDecorationWhiteTexel}) so decoration lines batch onto the same
-     * atlas page/material transition their run's glyphs already use — no shader change, no
-     * extra texture bind beyond what the glyphs already required.
-     *
-     * <p>{@code x0}/{@code x1}/{@code y} are layout-origin-relative logical pixels, the same
-     * space as {@link com.crystalgraphics.api.text.CgBakedGlyphs#penX()}/{@code penY()} —
-     * translated by the draw's own {@code x}/{@code y} exactly like glyph pen positions are in
-     * {@code CgResolvedGlyphs#resolve}, and otherwise drawn at 1:1 logical scale (no
-     * raster-tier rescaling — a flat rectangle has no atlas-resolution dependency).</p>
-     */
-    private void submitDecorations(CgTextDecorationRect[] decorations, float x, float y, int drawRgba,
-                                   int effectiveTargetPx, boolean wantMsdf, Matrix4f modelView) {
-        syncProjection(context.getProjection());
-        for (CgTextDecorationRect seg : decorations) {
-            CgFontKey segFontKey = seg.fontKey();
-            if (segFontKey == null) continue;
-
-            CgPagedGlyphAtlas.WhiteTexel texel = registry.getDecorationWhiteTexel(segFontKey, effectiveTargetPx, wantMsdf);
-            if (texel == null) continue;
-
-            flush();
-            TEXT_MATERIAL.toggleKeyword("MSDF_MODE", wantMsdf);
-            ATLAS_TEXTURE_REF.setId(texel.atlasTextureId());
-            TEXT_MATERIAL.applyProperties(b -> b.set1f("_PxRange", 0f));
-
-            int rgba = seg.argbColor() != 0 ? seg.argbColor() : drawRgba;
-            float qx = x + seg.x0();
-            float qy = y + seg.y() - seg.thickness() / 2f;
-
-            quadRenderer.quad()
-                    .at(qx, qy).size(seg.x1() - seg.x0(), seg.thickness())
-                    .uv(texel.u0(), texel.v0(), texel.u1(), texel.v1())
-                    .color(rgba)
-                    .atlasLayer(texel.atlasPageIndex())
-                    .pose(modelView)
-                    .submit();
+        if (glyphCount > 0 || decorations.length > 0) {
+            submitSortedQuads(glyphCount, decorations, fontKey.getTargetPx(), effectiveTargetPx, wantMsdf,
+                    draw.x, draw.y, draw.rgba, pose.pose());
         }
     }
 
@@ -845,32 +799,82 @@ public class CgTextRenderer {
     //                       textureId today; kept rather than removed since promoting pxRange to
     //                       a genuinely per-instance field is a separate, optional decision — see
     //                       docs_research/CGTEXTRENDERER_INSTANCING_FOUNDATIONS.md's "adjacent win.")
-    //   [15:0]  glyphIndex
+    //   [63]    kind      (0 = glyph, localIndex into CgResolvedGlyphs#placements; 1 = decoration,
+    //                       localIndex into the resolveDecorations() list built for this draw
+    //                       call — see submitSortedQuads. A decoration's own (mode, textureId,
+    //                       pxRange) is packed identically to a glyph's, so the two interleave
+    //                       into one GL-state-ordered sequence and share the same
+    //                       transitionToMaterial calls; only the two data SOURCES stay distinct,
+    //                       never stitched into one cache or one placement type. Lives in the
+    //                       mode field's own top bit rather than carving into localIndex below:
+    //                       mode only ever holds 0 or 1 despite its 2-bit-wide field, so this
+    //                       bit was already unconditionally 0 — using it costs nothing.)
+    //   [62]    mode      (0 = bitmap, 1 = distance-field — see below)
+    //   [15:0]  localIndex (index within whichever array [kind] selects — the FULL 16 bits,
+    //                       independently for glyphs and decorations, since kind no longer
+    //                       shares this field. Silently wrapping this would alias two different
+    //                       entries onto the same key and corrupt rendering, not just degrade
+    //                       performance, so keep this at the full width it already was before
+    //                       decorations were folded in here.)
     private static final int SORT_INDEX_BITS = 16;
     private static final int SORT_PXRANGE_SHIFT = SORT_INDEX_BITS;
     private static final int SORT_TEXTURE_SHIFT = SORT_PXRANGE_SHIFT + 22;
     private static final int SORT_MODE_SHIFT = SORT_TEXTURE_SHIFT + 24;
     private static final long SORT_INDEX_MASK = (1L << SORT_INDEX_BITS) - 1;
-    /** Mask isolating everything except the glyph index — two keys under this mask are equal iff their batch state (mode/texture/pxRange) is. */
-    private static final long SORT_BATCH_MASK = ~SORT_INDEX_MASK;
+    private static final long KIND_DECORATION_BIT = 1L << 63;
+    private static final long LOCAL_INDEX_MASK = SORT_INDEX_MASK;
+    /**
+     * Mask isolating mode+textureId+pxRange only — deliberately excludes BOTH localIndex and
+     * the kind bit, so a glyph and a decoration sharing the same atlas/mode/pxRange compare
+     * equal here and never trigger a transition purely because one came from the placements
+     * array and the other from resolveDecorations(). Kind still participates in the raw sort
+     * (glyphs sort before decorations within an otherwise-tied group), just not in this
+     * batch-state comparison.
+     */
+    private static final long SORT_BATCH_MASK = (~SORT_INDEX_MASK) & ~KIND_DECORATION_BIT;
 
-    private static long packSortKey(CgGlyphPlacement p, int glyphIndex) {
-        long mode = p.isDistanceField() ? 1L : 0L;
-        long textureId = p.atlasTextureId() & 0xFFFFFFL;
-        long pxRangeBits = (Float.floatToRawIntBits(p.pxRange()) & 0xFFFFFFFFL) >>> 10;
-        return (mode << SORT_MODE_SHIFT) | (textureId << SORT_TEXTURE_SHIFT) | (pxRangeBits << SORT_PXRANGE_SHIFT) | glyphIndex;
+    private static long packBatchBits(boolean isDistanceField, int textureId, float pxRange) {
+        long mode = isDistanceField ? 1L : 0L;
+        long textureIdBits = textureId & 0xFFFFFFL;
+        long pxRangeBits = (Float.floatToRawIntBits(pxRange) & 0xFFFFFFFFL) >>> 10;
+        return (mode << SORT_MODE_SHIFT) | (textureIdBits << SORT_TEXTURE_SHIFT) | (pxRangeBits << SORT_PXRANGE_SHIFT);
+    }
+
+    private static long packGlyphSortKey(CgGlyphPlacement p, int glyphIndex) {
+        return packBatchBits(p.isDistanceField(), p.atlasTextureId(), p.pxRange()) | glyphIndex;
+    }
+
+    private static long packDecorationSortKey(CgResolvedGlyphs.ResolvedDecoration d, int decorationIndex) {
+        // isDistanceField/pxRange come straight off the same atlas a real glyph of this font
+        // would report (see CgResolvedGlyphs.ResolvedDecoration's javadoc) — that equality is
+        // what lets a decoration land in the exact same sorted batch as its font's glyphs,
+        // needing no material transition beyond what those glyphs already required.
+        return packBatchBits(d.isDistanceField(), d.atlasTextureId(), d.pxRange()) | KIND_DECORATION_BIT | decorationIndex;
     }
 
     /**
-     * Sorts the {@code glyphCount} placements in {@link CgResolvedGlyphs#placements} by GL
-     * state and submits them to the owned {@link CgQuadRenderer}, one instanced-quad record
-     * per glyph with its model-view transform baked in per-glyph via {@code Quad.pose(modelView)}.
+     * Sorts this draw call's glyph placements ({@link CgResolvedGlyphs#placements}) AND baked
+     * decoration rects (pre-resolved via {@link CgResolvedGlyphs#resolveDecorations}) together
+     * by GL batch state, then submits both to the owned {@link CgQuadRenderer} in that single
+     * order — one instanced-quad record per glyph or decoration, transform baked in via
+     * {@code Quad.pose(modelView)}.
      *
-     * <p>Each visible glyph's batch state (atlas mode, page texture, pxRange) is packed into a
-     * single {@code long} sort key (layout above) alongside its original glyph index, so
-     * {@link Arrays#sort(long[], int, int)} — the JDK's primitive dual-pivot quicksort, which
+     * <p>Glyphs and decorations are never merged into one data type or one cache — they stay
+     * two entirely separate sources (a {@code CgGlyphPlacement[]} and a
+     * {@code List<CgResolvedGlyphs.ResolvedDecoration>}) for their entire lifetime, resolved by
+     * two entirely separate methods on {@link CgResolvedGlyphs}. What's shared is only the
+     * {@code long} sort key's bit layout (see above) and this one sort+submit pass. A
+     * decoration's batch bits are built from the exact same atlas its font's glyphs use (see
+     * {@link CgResolvedGlyphs.ResolvedDecoration}'s javadoc), so in the common case — a
+     * decoration interleaved with glyphs of the same font/mode — it lands in the very same
+     * sorted run as those glyphs and triggers zero extra {@link #transitionToMaterial} calls;
+     * a transition only ever happens where the batch state genuinely changes (a different
+     * font's atlas, bitmap vs. MSDF, etc.), never merely because an entry happens to be a
+     * decoration.</p>
+     *
+     * <p>{@link Arrays#sort(long[], int, int)} — the JDK's primitive dual-pivot quicksort, which
      * already detects nearly-sorted runs and falls back to insertion sort for small ranges —
-     * does the entire sort with no per-glyph allocation and no hand-rolled fast path.</p>
+     * does the entire sort with no per-entry allocation and no hand-rolled fast path.</p>
      *
      * <p>On batch-state transitions, this method:
      * <ol>
@@ -879,27 +883,37 @@ public class CgTextRenderer {
      *   <li>The projection is constant for the whole call and is synced to {@link #TEXT_DATA_UBO}
      *       once up-front via {@link #syncProjection} — flushing first if it differs from what
      *       this renderer already has queued under a different projection. The model-view
-     *       transform needs no such check anymore — it's baked per-glyph-instance.</li>
-     *   <li>Emits one instanced-quad record per glyph via {@link CgQuadRenderer#quad()}</li>
+     *       transform needs no such check anymore — it's baked per-instance.</li>
+     *   <li>Emits one instanced-quad record via {@link CgQuadRenderer#quad()}</li>
      * </ol>
      */
-    private void submitSortedQuads(int glyphCount, int baseTargetPx, int effectiveTargetPx, Matrix4f modelView) {
+    private void submitSortedQuads(int glyphCount, CgTextDecorationRect[] decorations,
+                                    int baseTargetPx, int effectiveTargetPx, boolean wantMsdf,
+                                    float drawX, float drawY, int drawRgba, Matrix4f modelView) {
         CgGlyphPlacement[] placements = resolvedGlyphs.placements;
 
-        int visibleCount = 0;
-        for (int i = 0; i < glyphCount; i++) 
-            if (placements[i] != null && placements[i].hasGeometry()) visibleCount++;
-        if (visibleCount == 0) return;
+        int visibleGlyphCount = 0;
+        for (int i = 0; i < glyphCount; i++)
+            if (placements[i] != null && placements[i].hasGeometry()) visibleGlyphCount++;
 
-        ensureSortScratchCapacity(visibleCount);
+        List<CgResolvedGlyphs.ResolvedDecoration> resolvedDecorations =
+                resolvedGlyphs.resolveDecorations(decorations, drawX, drawY, drawRgba, effectiveTargetPx, wantMsdf);
+
+        int totalCount = visibleGlyphCount + resolvedDecorations.size();
+        if (totalCount == 0) return;
+
+        ensureSortScratchCapacity(totalCount);
         int si = 0;
         for (int i = 0; i < glyphCount; i++) {
             CgGlyphPlacement p = placements[i];
             if (p != null && p.hasGeometry()) {
-                scratchSortKeys[si++] = packSortKey(p, i);
+                scratchSortKeys[si++] = packGlyphSortKey(p, i);
             }
         }
-        Arrays.sort(scratchSortKeys, 0, visibleCount);
+        for (int i = 0; i < resolvedDecorations.size(); i++) {
+            scratchSortKeys[si++] = packDecorationSortKey(resolvedDecorations.get(i), i);
+        }
+        Arrays.sort(scratchSortKeys, 0, totalCount);
 
         // Projection is constant for this whole draw() call. Flushes first if it differs from
         // what's already queued under a different projection — see syncProjection().
@@ -907,44 +921,74 @@ public class CgTextRenderer {
 
         long currentBatchBits = 0;
         boolean batchStarted = false;
-        for (int s = 0; s < visibleCount; s++) {
+        for (int s = 0; s < totalCount; s++) {
             long key = scratchSortKeys[s];
             long batchBits = key & SORT_BATCH_MASK;
-            int origIdx = (int) (key & SORT_INDEX_MASK);
-            CgGlyphPlacement p = placements[origIdx];
+            boolean isDecoration = (key & KIND_DECORATION_BIT) != 0;
+            int localIndex = (int) (key & LOCAL_INDEX_MASK);
+
+            // Both branches only compute this entry's batch identity + quad geometry — the
+            // actual transition check and quad() submission below are shared, so a decoration
+            // and a glyph in the same batch (the common case — see packDecorationSortKey)
+            // never duplicate either.
+            CgGlyphPlacement p = null;
+            boolean isDistanceField;
+            int textureId;
+            float pxRange;
+            float qx, qy, w, h, u0, v0, u1, v1;
+            int rgba, atlasLayer;
+
+            if (isDecoration) {
+                CgResolvedGlyphs.ResolvedDecoration d = resolvedDecorations.get(localIndex);
+                isDistanceField = d.isDistanceField();
+                textureId = d.atlasTextureId();
+                pxRange = d.pxRange();
+                qx = d.qx(); qy = d.qy(); w = d.w(); h = d.h();
+                u0 = d.u0(); v0 = d.v0(); u1 = d.u1(); v1 = d.v1();
+                rgba = d.rgba();
+                atlasLayer = d.atlasPageIndex();
+            } else {
+                p = placements[localIndex];
+                isDistanceField = p.isDistanceField();
+                textureId = p.atlasTextureId();
+                pxRange = p.pxRange();
+
+                int placementTargetPx = p.key().getFontKey().getTargetPx();
+                float scaleFactor = CgResolvedGlyphs.logicalMetricScale(baseTargetPx, isDistanceField ? placementTargetPx : effectiveTargetPx);
+
+                // Plane bounds are in physical raster space; normalize to logical. planeLeft/planeTop
+                // are bearing offsets from the pen (Y-down screen space, bearingY positive = above baseline).
+                float logicalBearingX = p.planeLeft() * scaleFactor, logicalBearingY = p.planeTop() * scaleFactor;
+                w = p.getPlaneWidth() * scaleFactor; h = p.getPlaneHeight() * scaleFactor;
+                qx = resolvedGlyphs.glyphX[localIndex] + logicalBearingX;
+                qy = resolvedGlyphs.glyphY[localIndex] - logicalBearingY;
+                u0 = p.u0(); v0 = p.v0(); u1 = p.u1(); v1 = p.v1();
+                rgba = resolvedGlyphs.argbColor[localIndex];
+                atlasLayer = p.atlasPageIndex();
+            }
 
             if (!batchStarted || batchBits != currentBatchBits) {
-                transitionToMaterial(p.isDistanceField(), p.atlasTextureId(), p.pxRange());
+                transitionToMaterial(isDistanceField, textureId, pxRange);
                 currentBatchBits = batchBits;
                 batchStarted = true;
             }
 
-            int placementTargetPx = p.key().getFontKey().getTargetPx();
-            float scaleFactor = CgResolvedGlyphs.logicalMetricScale(baseTargetPx, p.isDistanceField() ? placementTargetPx : effectiveTargetPx);
-
-            // Plane bounds are in physical raster space; normalize to logical. planeLeft/planeTop
-            // are bearing offsets from the pen (Y-down screen space, bearingY positive = above baseline).
-            float logicalBearingX = p.planeLeft() * scaleFactor, logicalBearingY = p.planeTop() * scaleFactor;
-            float logicalWidth = p.getPlaneWidth() * scaleFactor, logicalHeight = p.getPlaneHeight() * scaleFactor;
-            float qx = resolvedGlyphs.glyphX[origIdx] + logicalBearingX, qy = resolvedGlyphs.glyphY[origIdx] - logicalBearingY;
-            int rgba = resolvedGlyphs.argbColor[origIdx];
-
             quadRenderer.quad()
-                    .at(qx, qy).size(logicalWidth, logicalHeight)
-                    .uv(p.u0(), p.v0(), p.u1(), p.v1())
+                    .at(qx, qy).size(w, h)
+                    .uv(u0, v0, u1, v1)
                     .color(rgba)
-                    .atlasLayer(p.atlasPageIndex())
+                    .atlasLayer(atlasLayer)
                     .pose(modelView)
                     .submit();
 
-            if (diagnosticLogging) {
+            if (diagnosticLogging && p != null) {
                 LOGGER.info("[BatchDiag] glyphId=" + p.key().getGlyphId()
                         + ", atlasType=" + p.atlasType()
                         + ", textureId=" + p.atlasTextureId()
                         + ", atlasPageIndex/layer=" + p.atlasPageIndex()
                         + ", pxRange=" + p.pxRange()
                         + ", uv=[" + p.u0() + "," + p.v0() + "," + p.u1() + "," + p.v1() + "]"
-                        + ", pos=[" + qx + "," + qy + "], size=[" + logicalWidth + "," + logicalHeight + "]");
+                        + ", pos=[" + qx + "," + qy + "], size=[" + w + "," + h + "]");
             }
         }
     }

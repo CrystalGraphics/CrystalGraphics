@@ -413,18 +413,28 @@ public class CgPagedGlyphAtlas {
     /**
      * Returns this atlas's reserved opaque-white texel UV rect + page identity, allocating
      * it on first call (creating the first page if none exist yet). Used by
-     * {@code CgTextRenderer} to draw underline/strikethrough decoration quads through the
+     * {@code CgResolvedGlyphs} to draw underline/strikethrough decoration quads through the
      * same material/page already bound for this atlas's glyphs — see
      * {@link CgGlyphAtlasPage#reserveWhiteTexel()}.
      *
-     * @return the reserved texel's page identity and UV rect
+     * <p>{@code pxRange} is the caller's atlas-generation pxRange (0 for a bitmap atlas, the
+     * real {@code CgMsdfAtlasConfig.pxRange()} for an MSDF one) — carried on the returned
+     * {@link WhiteTexel} purely so a decoration quad's batch key (mode/textureId/pxRange) comes
+     * out byte-for-byte identical to a real glyph's from this same atlas. That's what lets a
+     * decoration interleave into the exact same sorted batch as its font's glyphs with no extra
+     * material transition, instead of forcing one just because pxRange didn't match (a flat
+     * white-texel sample gives full opacity regardless of what pxRange is — see
+     * {@code text.shader}'s MSDF branch — so this costs nothing to get right).</p>
+     *
+     * @return the reserved texel's page identity, UV rect, and batch-key fields
      */
-    public WhiteTexel reserveWhiteTexel() {
+    public WhiteTexel reserveWhiteTexel(float pxRange) {
         checkNotDeleted();
+        boolean isDistanceField = type != CgGlyphAtlas.Type.BITMAP;
         if (whiteTexelPage != null) {
             float[] uv = whiteTexelPage.reserveWhiteTexel();
             return new WhiteTexel(whiteTexelPage.getTextureId(), whiteTexelPage.getPageIndex(),
-                    uv[0], uv[1], uv[2], uv[3]);
+                    uv[0], uv[1], uv[2], uv[3], isDistanceField, pxRange);
         }
         CgGlyphAtlasPage page = pages.isEmpty() ? createPage() : pages.get(pages.size() - 1);
         float[] uv = page.reserveWhiteTexel();
@@ -433,11 +443,17 @@ public class CgPagedGlyphAtlas {
             uv = page.reserveWhiteTexel();
         }
         whiteTexelPage = page;
-        return new WhiteTexel(page.getTextureId(), page.getPageIndex(), uv[0], uv[1], uv[2], uv[3]);
+        return new WhiteTexel(page.getTextureId(), page.getPageIndex(), uv[0], uv[1], uv[2], uv[3],
+                isDistanceField, pxRange);
     }
 
-    /** Result of {@link #reserveWhiteTexel()} — a flat-fill sample point for decoration quads. */
-    public record WhiteTexel(int atlasTextureId, int atlasPageIndex, float u0, float v0, float u1, float v1) { }
+    /**
+     * Result of {@link #reserveWhiteTexel(float)} — a flat-fill sample point for decoration
+     * quads, carrying its own {@code isDistanceField}/{@code pxRange} so it packs into the
+     * exact same batch-sort-key shape a {@code CgGlyphPlacement} from this atlas would.
+     */
+    public record WhiteTexel(int atlasTextureId, int atlasPageIndex, float u0, float v0, float u1, float v1,
+                              boolean isDistanceField, float pxRange) { }
 
     // ── Page queries ──────────────────────────────────────────────────
 
