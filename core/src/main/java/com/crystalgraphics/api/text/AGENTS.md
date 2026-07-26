@@ -4,7 +4,7 @@
 
 This package is the **public text-domain boundary**.
 
-It exists so callers can work with text values — constraints, shaped runs, layouts — without learning the internal cache/atlas/render implementation packages.
+It exists so callers can work with text values — shaped runs, layouts — without learning the internal cache/atlas/render implementation packages.
 
 ## What belongs here
 
@@ -12,7 +12,6 @@ Only public text-domain values should live here.
 
 This package is correct for:
 
-- layout constraints
 - final layout results
 - shaped directional runs that callers may inspect or hand back to the renderer
 - flat baked-glyph data derived from a layout
@@ -26,26 +25,12 @@ This package is not correct for:
 
 ## Reading order
 
-1. `CgTextConstraints`
-2. `CgShapedRun`
-3. `CgBakedGlyphs`
-4. `CgTextLayout`
-5. `package-info.java`
+1. `CgShapedRun`
+2. `CgBakedGlyphs`
+3. `CgTextLayout`
+4. `package-info.java`
 
 ## Class-by-class details
-
-### `CgTextConstraints`
-
-Public layout bounds.
-
-Use it to express:
-
-- max width only
-- max height only
-- both
-- no bounds (`UNBOUNDED`)
-
-It is a public API type because callers need to specify layout limits before the engine runs.
 
 ### `CgShapedRun`
 
@@ -96,7 +81,6 @@ Important nuance:
 
 ## Best files to modify for common tasks
 
-- layout bounds API → `CgTextConstraints`
 - public shaped-run semantics → `CgShapedRun`
 - baked per-glyph data → `CgBakedGlyphs`
 - public layout result semantics → `CgTextLayout`
