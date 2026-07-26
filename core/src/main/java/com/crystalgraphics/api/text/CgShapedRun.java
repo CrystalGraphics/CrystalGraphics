@@ -7,19 +7,28 @@ import com.crystalgraphics.text.layout.CgLineBreaker;
 import com.crystalgraphics.text.layout.CgReshapeContext;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
+import lombok.Setter;
 import lombok.ToString;
+import lombok.experimental.Accessors;
 
 import java.util.List;
 import java.util.Set;
 
 /**
- * Immutable result of shaping a single directional run of text.
+ * Result of shaping a single directional run of text.
  *
  * <p>A shaped run contains the glyph IDs, cluster IDs, advances, and offsets
  * produced by HarfBuzz for a contiguous run of text with a single direction
  * (LTR or RTL). {@code glyphIds}, {@code clusterIds}, {@code advancesX},
  * {@code offsetsX}, and {@code offsetsY} all have the same length — one
  * entry per shaped glyph.</p>
+ *
+ * <h3>Construction</h3>
+ * <p>Built via the implicit no-arg constructor plus fluent chain accessors
+ * ({@code @Getter @Setter @Accessors(fluent = true, chain = true)}), e.g.
+ * {@code new CgShapedRun().fontKey(k).resolvedFont(f).rtl(false).glyphIds(ids)...}.
+ * Not treated as immutable once built — callers that hand out a {@code CgShapedRun}
+ * to other code should not assume it won't be mutated further.</p>
  *
  * <h3>Glyph ID semantics</h3>
  * <p>{@code glyphIds} contains <strong>glyph indices</strong> (from
@@ -71,70 +80,72 @@ import java.util.Set;
  * @see CgStyleSpan
  */
 @Getter
+@Setter
+@Accessors(fluent = true, chain = true)
 @EqualsAndHashCode
 @ToString
 public final class CgShapedRun {
 
     /** Font this run was shaped with. */
-    private final CgFontKey fontKey;
+    private CgFontKey fontKey;
 
     /** Resolved font handle for {@link #fontKey}; see class Javadoc. */
     @EqualsAndHashCode.Exclude
     @ToString.Exclude
-    private final CgFont resolvedFont;
+    private CgFont resolvedFont;
 
     /** {@code true} if this run is right-to-left. */
-    private final boolean rtl;
+    private boolean rtl;
 
     /**
      * HarfBuzz glyph IDs (= FreeType glyph indices).
      * NOT Unicode codepoints.
      */
-    private final int[] glyphIds;
+    private int[] glyphIds;
 
     /**
      * HarfBuzz cluster IDs (byte offsets into UTF-8 source text).
      * Used for cluster/selection mapping only.
      */
-    private final int[] clusterIds;
+    private int[] clusterIds;
 
     /** Per-glyph horizontal advance in logical layout pixels. */
-    private final float[] advancesX;
+    private float[] advancesX;
 
     /** Per-glyph horizontal offset in logical layout pixels. */
-    private final float[] offsetsX;
+    private float[] offsetsX;
 
     /** Per-glyph vertical offset in logical layout pixels. */
-    private final float[] offsetsY;
+    private float[] offsetsY;
 
     /** Sum of all {@code advancesX} values (total run width in logical layout pixels). */
-    private final float totalAdvance;
+    private float totalAdvance;
 
     /**
      * Start index (inclusive) into the paragraph text for this run's segment.
      * See {@link com.crystalgraphics.text.layout.CgReshapeContext}.
      */
     @EqualsAndHashCode.Exclude
-    private final int sourceStart;
+    private int sourceStart;
 
     /**
      * End index (exclusive) into the paragraph text for this run's segment.
      * See {@link com.crystalgraphics.text.layout.CgReshapeContext}.
      */
     @EqualsAndHashCode.Exclude
-    private final int sourceEnd;
+    private int sourceEnd;
 
     /** Override color, {@code 0} = inherit the draw's default color. See {@link CgStyleSpan#argbColor()}. */
-    private final int argbColor;
+    private int argbColor;
 
     /** See {@link CgStyleSpan#decorations()}. */
-    private final Set<CgTextDecoration> decorations;
+    private Set<CgTextDecoration> decorations = Set.of();
 
     /** OpenType features to enable for this run's shaping. See {@link CgStyleSpan#fontFeatures()}. */
-    private final List<CgFontFeature> fontFeatures;
+    private List<CgFontFeature> fontFeatures = List.of();
 
     /** Vertical baseline offset in logical pixels; {@code 0} = none. See {@link CgStyleSpan#baselineShift()}. */
-    private final float baselineShift;
+    private float baselineShift;
 
     /**
      * {@code true} when this run requested {@link CgFontStyle#BOLD}/{@link CgFontStyle#BOLD_ITALIC}
@@ -143,10 +154,10 @@ public final class CgShapedRun {
      * to the rasterizer to synthesize bold via {@code FTFace.outlineEmbolden}/an equivalent MSDF
      * shape-dilation pass, rather than silently rendering as plain regular weight.
      */
-    private final boolean syntheticBold;
+    private boolean syntheticBold;
 
     /** Same as {@link #syntheticBold}, for {@link CgFontStyle#ITALIC}/{@link CgFontStyle#BOLD_ITALIC}. */
-    private final boolean syntheticItalic;
+    private boolean syntheticItalic;
 
     /**
      * Per-glyph "is a line break immediately before this glyph provably safe" flag, from
@@ -159,76 +170,9 @@ public final class CgShapedRun {
      */
     @EqualsAndHashCode.Exclude
     @ToString.Exclude
-    private final boolean[] safeToBreakBefore;
+    private boolean[] safeToBreakBefore;
 
-    /** Full constructor including rich-text span fields, the unsafe-to-break fast-path hint,
-     * and synthetic bold/italic flags. */
-    public CgShapedRun(CgFontKey fontKey, CgFont resolvedFont, boolean rtl,
-                        int[] glyphIds, int[] clusterIds,
-                        float[] advancesX, float[] offsetsX, float[] offsetsY,
-                        float totalAdvance, int sourceStart, int sourceEnd,
-                        int argbColor, Set<CgTextDecoration> decorations,
-                        List<CgFontFeature> fontFeatures, float baselineShift,
-                        boolean[] safeToBreakBefore, boolean syntheticBold, boolean syntheticItalic) {
-        if (fontKey == null) {
-            throw new IllegalArgumentException("fontKey must not be null");
-        }
-        this.fontKey = fontKey;
-        this.resolvedFont = resolvedFont;
-        this.rtl = rtl;
-        this.glyphIds = glyphIds;
-        this.clusterIds = clusterIds;
-        this.advancesX = advancesX;
-        this.offsetsX = offsetsX;
-        this.offsetsY = offsetsY;
-        this.totalAdvance = totalAdvance;
-        this.sourceStart = sourceStart;
-        this.sourceEnd = sourceEnd;
-        this.argbColor = argbColor;
-        this.decorations = decorations == null || decorations.isEmpty() ? Set.of() : Set.copyOf(decorations);
-        this.fontFeatures = fontFeatures == null ? List.of() : List.copyOf(fontFeatures);
-        this.baselineShift = baselineShift;
-        this.safeToBreakBefore = safeToBreakBefore;
-        this.syntheticBold = syntheticBold;
-        this.syntheticItalic = syntheticItalic;
-    }
-
-    /** Full constructor including rich-text span fields and the unsafe-to-break fast-path hint;
-     * defaults synthetic bold/italic to {@code false}. */
-    public CgShapedRun(CgFontKey fontKey, CgFont resolvedFont, boolean rtl,
-                        int[] glyphIds, int[] clusterIds,
-                        float[] advancesX, float[] offsetsX, float[] offsetsY,
-                        float totalAdvance, int sourceStart, int sourceEnd,
-                        int argbColor, Set<CgTextDecoration> decorations,
-                        List<CgFontFeature> fontFeatures, float baselineShift,
-                        boolean[] safeToBreakBefore) {
-        this(fontKey, resolvedFont, rtl, glyphIds, clusterIds, advancesX, offsetsX, offsetsY,
-                totalAdvance, sourceStart, sourceEnd, argbColor, decorations, fontFeatures, baselineShift,
-                safeToBreakBefore, false, false);
-    }
-
-    /** Convenience constructor with rich-text span fields but no unsafe-to-break data (defaults to unknown). */
-    public CgShapedRun(CgFontKey fontKey, CgFont resolvedFont, boolean rtl,
-                        int[] glyphIds, int[] clusterIds,
-                        float[] advancesX, float[] offsetsX, float[] offsetsY,
-                        float totalAdvance, int sourceStart, int sourceEnd,
-                        int argbColor, Set<CgTextDecoration> decorations,
-                        List<CgFontFeature> fontFeatures, float baselineShift) {
-        this(fontKey, resolvedFont, rtl, glyphIds, clusterIds, advancesX, offsetsX, offsetsY,
-                totalAdvance, sourceStart, sourceEnd, argbColor, decorations, fontFeatures, baselineShift, null);
-    }
-
-    /**
-     * Convenience constructor without rich-text span fields — defaults
-     * {@code argbColor} to {@code 0} (inherit), {@code decorations} to empty,
-     * {@code fontFeatures} to empty, and {@code baselineShift} to {@code 0}.
-     */
-    public CgShapedRun(CgFontKey fontKey, CgFont resolvedFont, boolean rtl,
-                        int[] glyphIds, int[] clusterIds,
-                        float[] advancesX, float[] offsetsX, float[] offsetsY,
-                        float totalAdvance, int sourceStart, int sourceEnd) {
-        this(fontKey, resolvedFont, rtl, glyphIds, clusterIds, advancesX, offsetsX, offsetsY,
-                totalAdvance, sourceStart, sourceEnd,
-                0, Set.of(), List.of(), 0f, null);
-    }
+    // Fluent chain accessors (fontKey(x) / fontKey()) generated by @Getter @Setter @Accessors above.
+    // Construct with the implicit no-arg constructor, then set only the fields this run needs:
+    // new CgShapedRun().fontKey(k).resolvedFont(f).rtl(false).glyphIds(ids)...
 }

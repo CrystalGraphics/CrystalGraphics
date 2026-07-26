@@ -120,11 +120,11 @@ public class CgTextLayoutBuilder extends CgTextLayoutEngine {
         return new RunReshaper() {
             @Override
             public CgShapedRun reshape(CgReshapeContext context, CgShapedRun run, int subStart, int subEnd) {
-                CgFontFamily family = group.resolve(run.getFontKey().getStyle());
-                HBFont hbFont = family.requireShapingFont(run.getFontKey());
-                CgFont resolvedFont = family.resolveLoadedFont(run.getFontKey());
+                CgFontFamily family = group.resolve(run.fontKey().getStyle());
+                HBFont hbFont = family.requireShapingFont(run.fontKey());
+                CgFont resolvedFont = family.resolveLoadedFont(run.fontKey());
                 return shaper.shape(context.sourceText(), subStart, subEnd,
-                        run.getFontKey(), resolvedFont, run.isRtl(), hbFont);
+                        run.fontKey(), resolvedFont, run.rtl(), hbFont);
             }
         };
     }

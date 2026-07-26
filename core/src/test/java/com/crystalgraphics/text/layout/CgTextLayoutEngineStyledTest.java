@@ -96,10 +96,10 @@ public class CgTextLayoutEngineStyledTest {
 
         assertEquals(2, runs.size());
         assertEquals("'a' should resolve against the regular family",
-                regular.getPrimarySource().getKey(), runs.get(0).getFontKey());
+                regular.getPrimarySource().getKey(), runs.get(0).fontKey());
         assertEquals("'b' should resolve against the bold family",
-                bold.getPrimarySource().getKey(), runs.get(1).getFontKey());
-        assertTrue(runs.get(1).getDecorations() != null); // rich fields present, not null
+                bold.getPrimarySource().getKey(), runs.get(1).fontKey());
+        assertTrue(runs.get(1).decorations() != null); // rich fields present, not null
     }
 
     @Test
@@ -113,8 +113,8 @@ public class CgTextLayoutEngineStyledTest {
         CgTextLayout layout = CgTextLayoutRequest.of(text, group).build();
         List<CgShapedRun> runs = layout.lines().get(0);
 
-        assertEquals(0, runs.get(0).getArgbColor());
-        assertEquals(0xFFFF0000, runs.get(1).getArgbColor());
+        assertEquals(0, runs.get(0).argbColor());
+        assertEquals(0xFFFF0000, runs.get(1).argbColor());
     }
 
     @Test
@@ -154,12 +154,12 @@ public class CgTextLayoutEngineStyledTest {
         boolean foundRegularLtr = false;
         boolean foundBoldRtl = false;
         for (CgShapedRun run : runs) {
-            if (!run.isRtl() && run.getFontKey().equals(regular.getPrimarySource().getKey())) {
+            if (!run.rtl() && run.fontKey().equals(regular.getPrimarySource().getKey())) {
                 foundRegularLtr = true;
             }
-            if (run.isRtl()) {
+            if (run.rtl()) {
                 assertEquals("RTL sub-run inside the bold span should resolve to the bold family",
-                        bold.getPrimarySource().getKey(), run.getFontKey());
+                        bold.getPrimarySource().getKey(), run.fontKey());
                 foundBoldRtl = true;
             }
         }
@@ -195,7 +195,7 @@ public class CgTextLayoutEngineStyledTest {
             for (CgShapedRun run : line) {
                 assertEquals("Every wrapped fragment of the bold run should still resolve "
                                 + "to the bold family's font key",
-                        bold.getPrimarySource().getKey(), run.getFontKey());
+                        bold.getPrimarySource().getKey(), run.fontKey());
             }
         }
     }

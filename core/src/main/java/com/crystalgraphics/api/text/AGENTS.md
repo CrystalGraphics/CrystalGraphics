@@ -105,4 +105,4 @@ Important nuance:
 
 - Do not move algorithmic classes here just because callers see the output.
 - Do not add cache or renderer convenience methods here unless they genuinely belong in the public text API.
-- Do not reintroduce a font-by-key map on `CgTextLayout` — resolve via `CgShapedRun.getResolvedFont()` or `CgBakedGlyphs.fonts()[i]` instead.
+- Do not reintroduce a font-by-key map on `CgTextLayout` — resolve via `CgShapedRun.resolvedFont()` or `CgBakedGlyphs.fonts()[i]` instead.

@@ -51,23 +51,24 @@ public class CgTextLayoutTest {
         float[] offsetsY = {0.0f, 0.0f, 0.0f};
         float totalAdvance = 23.75f;
 
-        CgShapedRun run = new CgShapedRun(TEST_FONT_KEY, null, false,
-                glyphIds, clusterIds, advancesX, offsetsX, offsetsY, totalAdvance, 0, 0);
+        CgShapedRun run = new CgShapedRun().fontKey(TEST_FONT_KEY).resolvedFont(null).rtl(false)
+                .glyphIds(glyphIds).clusterIds(clusterIds).advancesX(advancesX).offsetsX(offsetsX).offsetsY(offsetsY)
+                .totalAdvance(totalAdvance).sourceStart(0).sourceEnd(0);
 
-        assertSame(TEST_FONT_KEY, run.getFontKey());
-        assertFalse(run.isRtl());
-        assertArrayEquals(glyphIds, run.getGlyphIds());
-        assertArrayEquals(clusterIds, run.getClusterIds());
-        assertArrayEquals(advancesX, run.getAdvancesX(), 0.001f);
-        assertArrayEquals(offsetsX, run.getOffsetsX(), 0.001f);
-        assertArrayEquals(offsetsY, run.getOffsetsY(), 0.001f);
-        assertEquals(23.75f, run.getTotalAdvance(), 0.001f);
+        assertSame(TEST_FONT_KEY, run.fontKey());
+        assertFalse(run.rtl());
+        assertArrayEquals(glyphIds, run.glyphIds());
+        assertArrayEquals(clusterIds, run.clusterIds());
+        assertArrayEquals(advancesX, run.advancesX(), 0.001f);
+        assertArrayEquals(offsetsX, run.offsetsX(), 0.001f);
+        assertArrayEquals(offsetsY, run.offsetsY(), 0.001f);
+        assertEquals(23.75f, run.totalAdvance(), 0.001f);
     }
 
     @Test
     public void testShapedRun_rtl_flag() {
         CgShapedRun run = makeRun(true, 50.0f);
-        assertTrue("RTL run should report rtl=true", run.isRtl());
+        assertTrue("RTL run should report rtl=true", run.rtl());
     }
 
     @Test
@@ -78,8 +79,12 @@ public class CgTextLayoutTest {
         float[] ox = {0, 0, 0};
         float[] oy = {0, 0, 0};
 
-        CgShapedRun a = new CgShapedRun(TEST_FONT_KEY, null, false, glyphs, clusters, adv, ox, oy, 15.0f, 0, 0);
-        CgShapedRun b = new CgShapedRun(TEST_FONT_KEY, null, false, glyphs, clusters, adv, ox, oy, 15.0f, 0, 0);
+        CgShapedRun a = new CgShapedRun().fontKey(TEST_FONT_KEY).resolvedFont(null).rtl(false)
+                .glyphIds(glyphs).clusterIds(clusters).advancesX(adv).offsetsX(ox).offsetsY(oy)
+                .totalAdvance(15.0f).sourceStart(0).sourceEnd(0);
+        CgShapedRun b = new CgShapedRun().fontKey(TEST_FONT_KEY).resolvedFont(null).rtl(false)
+                .glyphIds(glyphs).clusterIds(clusters).advancesX(adv).offsetsX(ox).offsetsY(oy)
+                .totalAdvance(15.0f).sourceStart(0).sourceEnd(0);
 
         assertEquals("Same-field shaped runs should be equal", a, b);
         assertEquals("Equal shaped runs must have same hashCode", a.hashCode(), b.hashCode());
@@ -87,75 +92,80 @@ public class CgTextLayoutTest {
 
     @Test
     public void testShapedRun_empty_run() {
-        CgShapedRun run = new CgShapedRun(TEST_FONT_KEY, null, false,
-                new int[0], new int[0],
-                new float[0], new float[0], new float[0],
-                0.0f, 0, 0);
+        CgShapedRun run = new CgShapedRun().fontKey(TEST_FONT_KEY).resolvedFont(null).rtl(false)
+                .glyphIds(new int[0]).clusterIds(new int[0])
+                .advancesX(new float[0]).offsetsX(new float[0]).offsetsY(new float[0])
+                .totalAdvance(0.0f).sourceStart(0).sourceEnd(0);
 
-        assertEquals(0, run.getGlyphIds().length);
-        assertEquals(0.0f, run.getTotalAdvance(), 0.001f);
+        assertEquals(0, run.glyphIds().length);
+        assertEquals(0.0f, run.totalAdvance(), 0.001f);
     }
 
     @Test
     public void testShapedRun_sourcePosition_stored() {
-        CgShapedRun run = new CgShapedRun(TEST_FONT_KEY, null, false,
-                new int[]{1, 2}, new int[]{0, 1},
-                new float[]{5.0f, 5.0f}, new float[]{0, 0}, new float[]{0, 0},
-                10.0f, 0, 5);
+        CgShapedRun run = new CgShapedRun().fontKey(TEST_FONT_KEY).resolvedFont(null).rtl(false)
+                .glyphIds(new int[]{1, 2}).clusterIds(new int[]{0, 1})
+                .advancesX(new float[]{5.0f, 5.0f}).offsetsX(new float[]{0, 0}).offsetsY(new float[]{0, 0})
+                .totalAdvance(10.0f).sourceStart(0).sourceEnd(5);
 
-        assertEquals(0, run.getSourceStart());
-        assertEquals(5, run.getSourceEnd());
+        assertEquals(0, run.sourceStart());
+        assertEquals(5, run.sourceEnd());
     }
 
     @Test
     public void testShapedRun_sourcePositionAndResolvedFont_excludedFromEquality() {
-        CgShapedRun a = new CgShapedRun(TEST_FONT_KEY, null, false,
-                new int[]{1}, new int[]{0},
-                new float[]{5.0f}, new float[]{0}, new float[]{0},
-                5.0f, 0, 5);
+        CgShapedRun a = new CgShapedRun().fontKey(TEST_FONT_KEY).resolvedFont(null).rtl(false)
+                .glyphIds(new int[]{1}).clusterIds(new int[]{0})
+                .advancesX(new float[]{5.0f}).offsetsX(new float[]{0}).offsetsY(new float[]{0})
+                .totalAdvance(5.0f).sourceStart(0).sourceEnd(5);
 
-        CgShapedRun b = new CgShapedRun(TEST_FONT_KEY, null, false,
-                new int[]{1}, new int[]{0},
-                new float[]{5.0f}, new float[]{0}, new float[]{0},
-                5.0f, 3, 9);
+        CgShapedRun b = new CgShapedRun().fontKey(TEST_FONT_KEY).resolvedFont(null).rtl(false)
+                .glyphIds(new int[]{1}).clusterIds(new int[]{0})
+                .advancesX(new float[]{5.0f}).offsetsX(new float[]{0}).offsetsY(new float[]{0})
+                .totalAdvance(5.0f).sourceStart(3).sourceEnd(9);
 
         assertEquals("Source position should not affect equality", a, b);
     }
 
     @Test
     public void testShapedRun_convenienceConstructor_defaultsRichSpanFields() {
-        CgShapedRun run = new CgShapedRun(TEST_FONT_KEY, null, false,
-                new int[]{1}, new int[]{0}, new float[]{5.0f}, new float[]{0}, new float[]{0},
-                5.0f, 0, 1);
+        CgShapedRun run = new CgShapedRun().fontKey(TEST_FONT_KEY).resolvedFont(null).rtl(false)
+                .glyphIds(new int[]{1}).clusterIds(new int[]{0})
+                .advancesX(new float[]{5.0f}).offsetsX(new float[]{0}).offsetsY(new float[]{0})
+                .totalAdvance(5.0f).sourceStart(0).sourceEnd(1);
 
-        assertEquals(0, run.getArgbColor());
-        assertTrue(run.getDecorations().isEmpty());
-        assertTrue(run.getFontFeatures().isEmpty());
-        assertEquals(0f, run.getBaselineShift(), 0.001f);
+        assertEquals(0, run.argbColor());
+        assertTrue(run.decorations().isEmpty());
+        assertTrue(run.fontFeatures().isEmpty());
+        assertEquals(0f, run.baselineShift(), 0.001f);
     }
 
     @Test
     public void testShapedRun_fullConstructor_storesRichSpanFields() {
-        CgShapedRun run = new CgShapedRun(TEST_FONT_KEY, null, false,
-                new int[]{1}, new int[]{0}, new float[]{5.0f}, new float[]{0}, new float[]{0},
-                5.0f, 0, 1,
-                0xFFFF0000, Set.of(CgTextDecoration.UNDERLINE), List.of(CgFontFeature.enable("smcp")), 2.0f);
+        CgShapedRun run = new CgShapedRun()
+                .fontKey(TEST_FONT_KEY).resolvedFont(null).rtl(false)
+                .glyphIds(new int[]{1}).clusterIds(new int[]{0})
+                .advancesX(new float[]{5.0f}).offsetsX(new float[]{0}).offsetsY(new float[]{0})
+                .totalAdvance(5.0f).sourceStart(0).sourceEnd(1)
+                .argbColor(0xFFFF0000).decorations(Set.of(CgTextDecoration.UNDERLINE))
+                .fontFeatures(List.of(CgFontFeature.enable("smcp"))).baselineShift(2.0f);
 
-        assertEquals(0xFFFF0000, run.getArgbColor());
-        assertEquals(Set.of(CgTextDecoration.UNDERLINE), run.getDecorations());
-        assertEquals(List.of(CgFontFeature.enable("smcp")), run.getFontFeatures());
-        assertEquals(2.0f, run.getBaselineShift(), 0.001f);
+        assertEquals(0xFFFF0000, run.argbColor());
+        assertEquals(Set.of(CgTextDecoration.UNDERLINE), run.decorations());
+        assertEquals(List.of(CgFontFeature.enable("smcp")), run.fontFeatures());
+        assertEquals(2.0f, run.baselineShift(), 0.001f);
     }
 
     @Test
     public void testShapedRun_fullConstructor_nullDecorationsDefaultsToEmpty() {
-        CgShapedRun run = new CgShapedRun(TEST_FONT_KEY, null, false,
-                new int[]{1}, new int[]{0}, new float[]{5.0f}, new float[]{0}, new float[]{0},
-                5.0f, 0, 1,
-                0, null, null, 0f);
+        CgShapedRun run = new CgShapedRun()
+                .fontKey(TEST_FONT_KEY).resolvedFont(null).rtl(false)
+                .glyphIds(new int[]{1}).clusterIds(new int[]{0})
+                .advancesX(new float[]{5.0f}).offsetsX(new float[]{0}).offsetsY(new float[]{0})
+                .totalAdvance(5.0f).sourceStart(0).sourceEnd(1);
 
-        assertTrue(run.getDecorations().isEmpty());
-        assertTrue(run.getFontFeatures().isEmpty());
+        assertTrue(run.decorations().isEmpty());
+        assertTrue(run.fontFeatures().isEmpty());
     }
 
     // ---------------------------------------------------------------
@@ -213,7 +223,7 @@ public class CgTextLayoutTest {
 
         assertEquals("Should have 1 line", 1, lines.size());
         assertEquals("Should have 1 run in line", 1, lines.get(0).size());
-        assertFalse("Run should be LTR", lines.get(0).get(0).isRtl());
+        assertFalse("Run should be LTR", lines.get(0).get(0).rtl());
     }
 
     @Test
@@ -226,7 +236,7 @@ public class CgTextLayoutTest {
 
         assertEquals("Should have 1 line", 1, lines.size());
         assertEquals("Should have 1 run", 1, lines.get(0).size());
-        assertTrue("Run should be RTL", lines.get(0).get(0).isRtl());
+        assertTrue("Run should be RTL", lines.get(0).get(0).rtl());
     }
 
     @Test
@@ -248,7 +258,7 @@ public class CgTextLayoutTest {
         // Bidi.reorderVisually with levels [0, 1, 0] → visual order [0, 1, 2]
         // The RTL run stays in the middle position visually
         // (its INTERNAL glyphs are reversed by HarfBuzz, not its position among runs)
-        assertTrue("Middle run should be RTL", line.get(1).isRtl());
+        assertTrue("Middle run should be RTL", line.get(1).rtl());
     }
 
     @Test
@@ -267,7 +277,7 @@ public class CgTextLayoutTest {
         // First line: first two runs (50+50=100 <= 100)
         float line0Width = 0;
         for (CgShapedRun r : lines.get(0)) {
-            line0Width += r.getTotalAdvance();
+            line0Width += r.totalAdvance();
         }
         assertTrue("First line should not exceed maxWidth", line0Width <= 100.0f + 0.001f);
     }
@@ -289,7 +299,7 @@ public class CgTextLayoutTest {
         for (int i = 0; i < lines.size(); i++) {
             float lineWidth = 0;
             for (CgShapedRun r : lines.get(i)) {
-                lineWidth += r.getTotalAdvance();
+                lineWidth += r.totalAdvance();
             }
             assertTrue("Line " + i + " should not exceed 100px: " + lineWidth,
                     lineWidth <= 100.0f + 0.001f);
@@ -437,7 +447,7 @@ public class CgTextLayoutTest {
         // Build CgTextLayout
         float totalWidth = 0;
         for (CgShapedRun r : lines.get(0)) {
-            totalWidth += r.getTotalAdvance();
+            totalWidth += r.totalAdvance();
         }
         CgTextLayout layout = new CgTextLayout(
                 lines, totalWidth, TEST_METRICS.getLineHeight(), TEST_METRICS);
@@ -466,7 +476,7 @@ public class CgTextLayoutTest {
         for (List<CgShapedRun> line : lines) {
             float w = 0;
             for (CgShapedRun r : line) {
-                w += r.getTotalAdvance();
+                w += r.totalAdvance();
             }
             if (w > maxLineWidth) maxLineWidth = w;
         }
@@ -501,10 +511,10 @@ public class CgTextLayoutTest {
             public CgShapedRun reshape(CgReshapeContext context, CgShapedRun r, int subStart, int subEnd) {
                 String sub = context.sourceText().substring(subStart, subEnd);
                 float width = sub.length() * 10.0f;
-                return new CgShapedRun(TEST_FONT_KEY, null, r.isRtl(),
-                        new int[]{1}, new int[]{0},
-                        new float[]{width}, new float[]{0}, new float[]{0},
-                        width, subStart, subEnd);
+                return new CgShapedRun().fontKey(TEST_FONT_KEY).resolvedFont(null).rtl(r.rtl())
+                        .glyphIds(new int[]{1}).clusterIds(new int[]{0})
+                        .advancesX(new float[]{width}).offsetsX(new float[]{0}).offsetsY(new float[]{0})
+                        .totalAdvance(width).sourceStart(subStart).sourceEnd(subEnd);
             }
         };
 
@@ -529,10 +539,10 @@ public class CgTextLayoutTest {
             public CgShapedRun reshape(CgReshapeContext context, CgShapedRun r, int subStart, int subEnd) {
                 String sub = context.sourceText().substring(subStart, subEnd);
                 float width = sub.length() * 10.0f;
-                return new CgShapedRun(TEST_FONT_KEY, null, r.isRtl(),
-                        new int[]{1}, new int[]{0},
-                        new float[]{width}, new float[]{0}, new float[]{0},
-                        width, subStart, subEnd);
+                return new CgShapedRun().fontKey(TEST_FONT_KEY).resolvedFont(null).rtl(r.rtl())
+                        .glyphIds(new int[]{1}).clusterIds(new int[]{0})
+                        .advancesX(new float[]{width}).offsetsX(new float[]{0}).offsetsY(new float[]{0})
+                        .totalAdvance(width).sourceStart(subStart).sourceEnd(subEnd);
             }
         };
 
@@ -545,7 +555,7 @@ public class CgTextLayoutTest {
         for (int i = 0; i < lines.size(); i++) {
             float lineWidth = 0;
             for (CgShapedRun r : lines.get(i)) {
-                lineWidth += r.getTotalAdvance();
+                lineWidth += r.totalAdvance();
             }
             assertTrue("Line " + i + " should not exceed maxWidth: " + lineWidth,
                     lineWidth <= 50.0f + 0.001f);
@@ -587,10 +597,10 @@ public class CgTextLayoutTest {
             public CgShapedRun reshape(CgReshapeContext context, CgShapedRun r, int subStart, int subEnd) {
                 String sub = context.sourceText().substring(subStart, subEnd);
                 float width = sub.length() * 10.0f;
-                return new CgShapedRun(TEST_FONT_KEY, null, r.isRtl(),
-                        new int[]{1}, new int[]{0},
-                        new float[]{width}, new float[]{0}, new float[]{0},
-                        width, subStart, subEnd);
+                return new CgShapedRun().fontKey(TEST_FONT_KEY).resolvedFont(null).rtl(r.rtl())
+                        .glyphIds(new int[]{1}).clusterIds(new int[]{0})
+                        .advancesX(new float[]{width}).offsetsX(new float[]{0}).offsetsY(new float[]{0})
+                        .totalAdvance(width).sourceStart(subStart).sourceEnd(subEnd);
             }
         };
 
@@ -680,13 +690,13 @@ public class CgTextLayoutTest {
      * Create a minimal CgShapedRun with a single dummy glyph.
      */
     private static CgShapedRun makeRun(boolean rtl, float totalAdvance) {
-        return new CgShapedRun(TEST_FONT_KEY, null, rtl,
-                new int[]{1},
-                new int[]{0},
-                new float[]{totalAdvance},
-                new float[]{0.0f},
-                new float[]{0.0f},
-                totalAdvance, 0, 0);
+        return new CgShapedRun().fontKey(TEST_FONT_KEY).resolvedFont(null).rtl(rtl)
+                .glyphIds(new int[]{1})
+                .clusterIds(new int[]{0})
+                .advancesX(new float[]{totalAdvance})
+                .offsetsX(new float[]{0.0f})
+                .offsetsY(new float[]{0.0f})
+                .totalAdvance(totalAdvance).sourceStart(0).sourceEnd(0);
     }
 
     /**
@@ -694,13 +704,13 @@ public class CgTextLayoutTest {
      * The glyphId is used as a label to identify runs in visual order tests.
      */
     private static CgShapedRun makeRunLabeled(boolean rtl, float totalAdvance, int label) {
-        return new CgShapedRun(TEST_FONT_KEY, null, rtl,
-                new int[]{label},
-                new int[]{0},
-                new float[]{totalAdvance},
-                new float[]{0.0f},
-                new float[]{0.0f},
-                totalAdvance, 0, 0);
+        return new CgShapedRun().fontKey(TEST_FONT_KEY).resolvedFont(null).rtl(rtl)
+                .glyphIds(new int[]{label})
+                .clusterIds(new int[]{0})
+                .advancesX(new float[]{totalAdvance})
+                .offsetsX(new float[]{0.0f})
+                .offsetsY(new float[]{0.0f})
+                .totalAdvance(totalAdvance).sourceStart(0).sourceEnd(0);
     }
 
     /**
@@ -710,18 +720,18 @@ public class CgTextLayoutTest {
      */
     private static CgShapedRun makeRunWithSource(boolean rtl, float totalAdvance,
                                                   String sourceText, int sourceStart, int sourceEnd) {
-        return new CgShapedRun(TEST_FONT_KEY, null, rtl,
-                new int[]{1},
-                new int[]{0},
-                new float[]{totalAdvance},
-                new float[]{0.0f},
-                new float[]{0.0f},
-                totalAdvance, sourceStart, sourceEnd);
+        return new CgShapedRun().fontKey(TEST_FONT_KEY).resolvedFont(null).rtl(rtl)
+                .glyphIds(new int[]{1})
+                .clusterIds(new int[]{0})
+                .advancesX(new float[]{totalAdvance})
+                .offsetsX(new float[]{0.0f})
+                .offsetsY(new float[]{0.0f})
+                .totalAdvance(totalAdvance).sourceStart(sourceStart).sourceEnd(sourceEnd);
     }
 
     /**
      * One glyph per char (ASCII, so cluster id == char offset), covering all of {@code text}
-     * as a single run. {@code allSafeToBreak} controls {@link CgShapedRun#getSafeToBreakBefore()}:
+     * as a single run. {@code allSafeToBreak} controls {@link CgShapedRun#safeToBreakBefore()}:
      * {@code true} marks every glyph safe (all except index 0, which is always implicitly
      * safe), {@code false} leaves it {@code null} (unknown — today's always-reshape behavior).
      */
@@ -748,16 +758,18 @@ public class CgTextLayoutTest {
                 safeToBreakBefore[i] = true;
             }
         }
-        return new CgShapedRun(TEST_FONT_KEY, null, rtl,
-                glyphIds, clusterIds, advancesX, offsetsX, offsetsY,
-                total, 0, n,
-                0, null, null, 0f, safeToBreakBefore);
+        return new CgShapedRun()
+                .fontKey(TEST_FONT_KEY).resolvedFont(null).rtl(rtl)
+                .glyphIds(glyphIds).clusterIds(clusterIds)
+                .advancesX(advancesX).offsetsX(offsetsX).offsetsY(offsetsY)
+                .totalAdvance(total).sourceStart(0).sourceEnd(n)
+                .safeToBreakBefore(safeToBreakBefore);
     }
 
     private static int countGlyphs(List<CgShapedRun> line) {
         int count = 0;
         for (CgShapedRun run : line) {
-            count += run.getGlyphIds().length;
+            count += run.glyphIds().length;
         }
         return count;
     }
@@ -787,9 +799,9 @@ public class CgTextLayoutTest {
                 advancesX[i] = perCharAdvance;
                 total += perCharAdvance;
             }
-            return new CgShapedRun(TEST_FONT_KEY, null, r.isRtl(),
-                    glyphIds, clusterIds, advancesX, offsetsX, offsetsY,
-                    total, subStart, subEnd);
+            return new CgShapedRun().fontKey(TEST_FONT_KEY).resolvedFont(null).rtl(r.rtl())
+                    .glyphIds(glyphIds).clusterIds(clusterIds).advancesX(advancesX).offsetsX(offsetsX).offsetsY(offsetsY)
+                    .totalAdvance(total).sourceStart(subStart).sourceEnd(subEnd);
         }
     }
 }

@@ -89,7 +89,7 @@ public class CgLineBreaker {
         for (CgShapedRun run : runs) {
             float remainingWidth = maxWidth > 0 ? maxWidth - currentWidth : Float.MAX_VALUE;
 
-            if (maxWidth > 0 && run.getTotalAdvance() > remainingWidth && !currentLine.isEmpty()) {
+            if (maxWidth > 0 && run.totalAdvance() > remainingWidth && !currentLine.isEmpty()) {
                 // Current line is full — finalize it and start a new line
                 lines.add(reorderVisually(currentLine));
                 totalHeight += lineHeight;
@@ -102,7 +102,7 @@ public class CgLineBreaker {
             }
 
             // Try intra-run splitting if the run still overflows the (possibly fresh) line
-            if (maxWidth > 0 && run.getTotalAdvance() > remainingWidth
+            if (maxWidth > 0 && run.totalAdvance() > remainingWidth
                     && context != null && reshaper != null) {
                 List<CgShapedRun> fragments = splitAtLineBreaks(
                         context, run, remainingWidth, maxWidth, reshaper);
@@ -110,7 +110,7 @@ public class CgLineBreaker {
                 if (fragments != null && fragments.size() > 1) {
                     for (CgShapedRun fragment : fragments) {
                         float fragRemaining = maxWidth > 0 ? maxWidth - currentWidth : Float.MAX_VALUE;
-                        if (maxWidth > 0 && fragment.getTotalAdvance() > fragRemaining
+                        if (maxWidth > 0 && fragment.totalAdvance() > fragRemaining
                                 && !currentLine.isEmpty()) {
                             lines.add(reorderVisually(currentLine));
                             totalHeight += lineHeight;
@@ -120,9 +120,9 @@ public class CgLineBreaker {
                             currentLine = new ArrayList<CgShapedRun>();
                             currentWidth = 0.0f;
                         }
-                        if (fragment.getGlyphIds().length > 0) {
+                        if (fragment.glyphIds().length > 0) {
                             currentLine.add(fragment);
-                            currentWidth += fragment.getTotalAdvance();
+                            currentWidth += fragment.totalAdvance();
                         }
                     }
                     continue;
@@ -131,7 +131,7 @@ public class CgLineBreaker {
 
             // Whole-run placement (fallback)
             currentLine.add(run);
-            currentWidth += run.getTotalAdvance();
+            currentWidth += run.totalAdvance();
         }
 
         // Finalize last line
@@ -183,8 +183,8 @@ public class CgLineBreaker {
                                                  float maxLineWidth,
                                                  RunReshaper reshaper) {
         String sourceText = context.sourceText();
-        int runStart = run.getSourceStart();
-        int runEnd = run.getSourceEnd();
+        int runStart = run.sourceStart();
+        int runEnd = run.sourceEnd();
         String segment = sourceText.substring(runStart, runEnd);
         if (segment.isEmpty()) {
             return null;
@@ -222,8 +222,8 @@ public class CgLineBreaker {
                                                       float maxLineWidth,
                                                       RunReshaper reshaper) {
         String sourceText = context.sourceText();
-        int runStart = run.getSourceStart();
-        int runEnd = run.getSourceEnd();
+        int runStart = run.sourceStart();
+        int runEnd = run.sourceEnd();
         String segment = sourceText.substring(runStart, runEnd);
 
         int[] boundaries = collectBoundaries(BreakIterator.getCharacterInstance(Locale.ROOT), segment);
@@ -259,7 +259,7 @@ public class CgLineBreaker {
         if (tailStart < runEnd) {
             CgShapedRun tail = reshaper.reshape(context, run, tailStart, runEnd);
             if (tail != null) {
-                if (tail.getTotalAdvance() > maxLineWidth) {
+                if (tail.totalAdvance() > maxLineWidth) {
                     List<CgShapedRun> tailFragments = splitAtLineBreaks(context, tail, maxLineWidth, maxLineWidth, reshaper);
                     if (tailFragments != null) {
                         fragments.addAll(tailFragments);
@@ -283,7 +283,7 @@ public class CgLineBreaker {
      * <p>Each candidate's width is normally measured by asking {@code reshaper} to actually
      * re-shape that prefix through HarfBuzz — correct, but a real re-shape call per binary-
      * search step. {@link #measurePrefixWidth} skips that call when HarfBuzz already told us
-     * (via {@link CgShapedRun#getSafeToBreakBefore()}) that slicing the run's own already-
+     * (via {@link CgShapedRun#safeToBreakBefore()}) that slicing the run's own already-
      * shaped glyph/advance arrays at this exact boundary is provably safe — see that
      * method's javadoc for the LTR-only scope of this fast path.</p>
      *
@@ -312,27 +312,27 @@ public class CgLineBreaker {
      * {@code reshaper} to actually re-shape the prefix.
      *
      * <h3>Fast path — LTR only</h3>
-     * <p>Applies only when {@code !run.isRtl()}: HarfBuzz emits glyphs for an LTR run in the
+     * <p>Applies only when {@code !run.rtl()}: HarfBuzz emits glyphs for an LTR run in the
      * same order as the source text, so summing {@code advancesX[0, glyphIndex)} for the
      * glyph exactly at the boundary gives the correct prefix width. For an RTL run, glyph
      * array order is <em>visual</em> (reversed from logical), so the same summation would
      * total the wrong subset of glyphs — RTL runs always take the re-shape path.</p>
      *
      * <p>Even for an LTR run, the fast path only applies when {@code breakPos} lands exactly
-     * on a glyph boundary that HarfBuzz marked safe (via {@link CgShapedRun#getSafeToBreakBefore()});
+     * on a glyph boundary that HarfBuzz marked safe (via {@link CgShapedRun#safeToBreakBefore()});
      * any other case (unknown data, no exact cluster match, or the boundary marked unsafe)
      * falls back to re-shaping — so output is always identical to the non-optimized path,
      * this only ever changes how many re-shape calls that output costs.</p>
      */
     private static float measurePrefixWidth(CgReshapeContext context, CgShapedRun run, int runStart,
                                              int breakPos, RunReshaper reshaper) {
-        boolean[] safeToBreakBefore = run.getSafeToBreakBefore();
-        if (!run.isRtl() && safeToBreakBefore != null) {
-            String runText = context.sourceText().substring(runStart, run.getSourceEnd());
+        boolean[] safeToBreakBefore = run.safeToBreakBefore();
+        if (!run.rtl() && safeToBreakBefore != null) {
+            String runText = context.sourceText().substring(runStart, run.sourceEnd());
             int[] byteToChar = Utf8ClusterMapper.byteOffsetToCharOffset(runText);
-            int glyphIndex = glyphIndexAtCharOffset(run.getClusterIds(), byteToChar, breakPos);
+            int glyphIndex = glyphIndexAtCharOffset(run.clusterIds(), byteToChar, breakPos);
             if (glyphIndex >= 0 && (glyphIndex == 0 || safeToBreakBefore[glyphIndex])) {
-                float[] advances = run.getAdvancesX();
+                float[] advances = run.advancesX();
                 float width = 0f;
                 for (int i = 0; i < glyphIndex; i++) {
                     width += advances[i];
@@ -342,7 +342,7 @@ public class CgLineBreaker {
         }
 
         CgShapedRun prefix = reshaper.reshape(context, run, runStart, runStart + breakPos);
-        return prefix != null ? prefix.getTotalAdvance() : Float.MAX_VALUE;
+        return prefix != null ? prefix.totalAdvance() : Float.MAX_VALUE;
     }
 
     /**
@@ -403,7 +403,7 @@ public class CgLineBreaker {
         // Check if any run is RTL — if not, skip reordering
         boolean hasRtl = false;
         for (CgShapedRun run : logicalRuns) {
-            if (run.isRtl()) {
+            if (run.rtl()) {
                 hasRtl = true;
                 break;
             }
@@ -415,7 +415,7 @@ public class CgLineBreaker {
         // Assign BiDi embedding levels: LTR = 0, RTL = 1
         byte[] levels = new byte[logicalRuns.size()];
         for (int i = 0; i < logicalRuns.size(); i++) {
-            levels[i] = (byte) (logicalRuns.get(i).isRtl() ? 1 : 0);
+            levels[i] = (byte) (logicalRuns.get(i).rtl() ? 1 : 0);
         }
 
         // Bidi.reorderVisually reorders the objects array in-place

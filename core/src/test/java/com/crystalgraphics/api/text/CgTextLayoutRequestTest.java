@@ -200,7 +200,7 @@ public class CgTextLayoutRequestTest {
     private static float lineWidth(List<CgShapedRun> line) {
         float width = 0;
         for (CgShapedRun run : line) {
-            width += run.getTotalAdvance();
+            width += run.totalAdvance();
         }
         return width;
     }
@@ -208,7 +208,7 @@ public class CgTextLayoutRequestTest {
     private static int countGlyphs(List<CgShapedRun> line) {
         int count = 0;
         for (CgShapedRun run : line) {
-            count += run.getGlyphIds().length;
+            count += run.glyphIds().length;
         }
         return count;
     }
