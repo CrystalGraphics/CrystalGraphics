@@ -1,5 +1,6 @@
 package com.crystalgraphics.api.material;
 
+import com.crystalgraphics.util.profiling.CgProfiler;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.buffer.CgGpuType;
@@ -588,7 +589,9 @@ public final class CgMaterial {
 
         if (cgMaterialShader != null) {
             if (cgMaterialShader.isDirty()) {
-                cgMaterialShader.recompile();
+                try (CgProfiler.Scope ignored = CgProfiler.scope("material.recompile")) {
+                    cgMaterialShader.recompile();
+                }
                 wiredPrograms.clear();
                 onShaderRecompiled();
             } else if (cgMaterialShader.getRevisionNumber() != lastKnownRevision) {
@@ -597,10 +600,19 @@ public final class CgMaterial {
             }
 
             Set<String> keywords = Collections.unmodifiableSet(enabledKeywords);
-            CgShader shader = cgMaterialShader.getOrCompileForwardPass(keywords);
+            // Compiles-and-caches the variant for this exact keyword set on first use, so the
+            // first bind after a keyword toggle pays a full GLSL compile+link. Scoped because
+            // that cost is otherwise invisible: it surfaces inside whatever draw happened to
+            // trigger the toggle, not at any obvious "compiling now" call site.
+            CgShader shader;
+            try (CgProfiler.Scope ignored = CgProfiler.scope("material.getOrCompileVariant")) {
+                shader = cgMaterialShader.getOrCompileForwardPass(keywords);
+            }
             if (shader == null) return;
             lastBoundShader = shader;
-            doBind(shader, CgRenderPassVariant.FORWARD);
+            try (CgProfiler.Scope ignored = CgProfiler.scope("material.doBind")) {
+                doBind(shader, CgRenderPassVariant.FORWARD);
+            }
         }
         // forTest without cgMaterialShader — no-op
     }
@@ -699,29 +711,51 @@ public final class CgMaterial {
     }
 
     private void doBind(CgShader shader, CgRenderPassVariant variant) {
-        if (!wiredPrograms.contains(shader)) {
-            wirePerInstance(shader);
-            wiredPrograms.add(shader);
+        try (CgProfiler.Scope ignored = CgProfiler.scope("doBind.wire")) {
+            if (!wiredPrograms.contains(shader)) {
+                wirePerInstance(shader);
+                wiredPrograms.add(shader);
+            }
         }
 
-        stateScope = CgGlState.save(
-                CgGlSlot.BLEND, CgGlSlot.DEPTH, CgGlSlot.CULL,
-                CgGlSlot.STENCIL, CgGlSlot.ALPHA_TEST, CgGlSlot.COLOR_MASK);
-
-        if (materialPropsDirty && matPropsUbo != null) {
-            propStore.writeUboProps(matPropsUbo.writer());
-            matPropsUbo.endRecord();
-            matPropsUbo.upload();
-            materialPropsDirty = false;
+        // Scoped separately from everything below because this is the prime suspect for a
+        // pipeline stall: CgGlState.save falls back to real glGet* calls whenever GLStateMirror
+        // is not populated (it is fed by the ASM coremod, so it is UNKNOWN in the standalone
+        // harness), and a glGet is a synchronisation point — the driver must drain queued work
+        // to answer it. That produces a cost that scales with how much GPU work is outstanding
+        // rather than with anything this method does, which matches the observed 0.5ms -> 225ms
+        // swing exactly.
+        try (CgProfiler.Scope ignored = CgProfiler.scope("doBind.stateSave")) {
+            stateScope = CgGlState.save(
+                    CgGlSlot.BLEND, CgGlSlot.DEPTH, CgGlSlot.CULL,
+                    CgGlSlot.STENCIL, CgGlSlot.ALPHA_TEST, CgGlSlot.COLOR_MASK);
         }
 
-        if (matPropsUbo != null) matPropsUbo.bind();
+        try (CgProfiler.Scope ignored = CgProfiler.scope("doBind.propsUpload")) {
+            if (materialPropsDirty && matPropsUbo != null) {
+                propStore.writeUboProps(matPropsUbo.writer());
+                matPropsUbo.endRecord();
+                matPropsUbo.upload();
+                materialPropsDirty = false;
+            }
+        }
 
-        if (propStore != null && propStore.hasSamplerProps())
-            propStore.bindSamplerTextures();
+        try (CgProfiler.Scope ignored = CgProfiler.scope("doBind.uboBind")) {
+            if (matPropsUbo != null) matPropsUbo.bind();
+        }
 
-        getPassRenderState(variant).apply();
-        shader.bind();
+        try (CgProfiler.Scope ignored = CgProfiler.scope("doBind.samplers")) {
+            if (propStore != null && propStore.hasSamplerProps())
+                propStore.bindSamplerTextures();
+        }
+
+        try (CgProfiler.Scope ignored = CgProfiler.scope("doBind.renderState")) {
+            getPassRenderState(variant).apply();
+        }
+
+        try (CgProfiler.Scope ignored = CgProfiler.scope("doBind.shaderBind")) {
+            shader.bind();
+        }
     }
 
     /**
