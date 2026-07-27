@@ -50,6 +50,41 @@ public abstract class CgGLBackend {
     public abstract void blitFramebuffer(int srcX0, int srcY0, int srcX1, int srcY1,
                                           int dstX0, int dstY0, int dstX1, int dstY1,
                                           int mask, int filter);
+
+    // ── GPU-side texture copy ────────────────────────────────────────────────
+    //
+    // Deliberately NOT abstract, unlike everything above: these are optional fast paths, so a
+    // backend that has not implemented one leaves the default in place and CgTextureCopy falls
+    // through to its next strategy. Making them abstract would force every present and future
+    // loader backend to implement an optional path immediately.
+    //
+    // Whether the CONTEXT supports these is CgCapabilities' question
+    // (isCopyImageSubDataSupported / isFramebufferTextureLayerSupported), not the backend's —
+    // the backend only answers "have I wired this call up". CgTextureCopy checks the former and
+    // treats UnsupportedOperationException from the latter as "fall through", so the two can
+    // disagree safely.
+
+    /**
+     * Direct GPU-to-GPU texel copy between two texture images, no CPU round trip
+     * ({@code glCopyImageSubData}, core GL 4.3).
+     *
+     * @throws UnsupportedOperationException if this backend has not implemented it
+     */
+    public void copyImageSubData(int srcName, int srcTarget, int srcLevel, int srcX, int srcY, int srcZ,
+                                  int dstName, int dstTarget, int dstLevel, int dstX, int dstY, int dstZ,
+                                  int srcWidth, int srcHeight, int srcDepth) {
+        throw new UnsupportedOperationException("glCopyImageSubData unsupported by this backend");
+    }
+
+    /**
+     * Attaches a single layer of an array/3D texture to the bound framebuffer
+     * ({@code glFramebufferTextureLayer}, core GL 3.0).
+     *
+     * @throws UnsupportedOperationException if this backend has not implemented it
+     */
+    public void framebufferTextureLayer(int target, int attachment, int texture, int level, int layer) {
+        throw new UnsupportedOperationException("glFramebufferTextureLayer unsupported by this backend");
+    }
     public abstract int genFramebuffers();
     public abstract void deleteFramebuffers(int fbo);
     public abstract void framebufferTexture2D(int target, int attachment, int texTarget, int texture, int level);
@@ -160,6 +195,11 @@ public abstract class CgGLBackend {
                                           int xOffset, int yOffset, int zOffset,
                                           int width, int height, int depth,
                                           int format, int type, FloatBuffer pixels);
+    /** {@code short}-data variant — the natural fit for {@code GL_HALF_FLOAT} uploads. */
+    public abstract void glTexSubImage3D(int target, int level,
+                                          int xOffset, int yOffset, int zOffset,
+                                          int width, int height, int depth,
+                                          int format, int type, ShortBuffer pixels);
     public abstract void glGenerateMipmap(int target);
     public abstract void glActiveTexture(int texture);
     public abstract void glTexParameteri(int target, int pname, int param);

@@ -95,6 +95,21 @@ public final class GL1201Backend extends CgGLBackend {
                 dstX0, dstY0, dstX1, dstY1, mask, filter);
     }
 
+    // ── GPU-side texture copy (see CgTextureCopy) ────────────────────────────
+
+    @Override
+    public void copyImageSubData(int srcName, int srcTarget, int srcLevel, int srcX, int srcY, int srcZ,
+                                  int dstName, int dstTarget, int dstLevel, int dstX, int dstY, int dstZ,
+                                  int srcWidth, int srcHeight, int srcDepth) {
+        GL43C.glCopyImageSubData(srcName, srcTarget, srcLevel, srcX, srcY, srcZ,
+                dstName, dstTarget, dstLevel, dstX, dstY, dstZ, srcWidth, srcHeight, srcDepth);
+    }
+
+    @Override
+    public void framebufferTextureLayer(int target, int attachment, int texture, int level, int layer) {
+        GL30C.glFramebufferTextureLayer(target, attachment, texture, level, layer);
+    }
+
     @Override
     public int getFramebufferAttachmentParameteriv(int target, int attachment, int pname) {
         return GL30C.glGetFramebufferAttachmentParameteri(target, attachment, pname);
@@ -434,6 +449,15 @@ public final class GL1201Backend extends CgGLBackend {
                                  int xOffset, int yOffset, int zOffset,
                                  int width, int height, int depth,
                                  int format, int type, FloatBuffer pixels) {
+        GL12C.glTexSubImage3D(target, level, xOffset, yOffset, zOffset,
+                width, height, depth, format, type, pixels);
+    }
+
+    @Override
+    public void glTexSubImage3D(int target, int level,
+                                 int xOffset, int yOffset, int zOffset,
+                                 int width, int height, int depth,
+                                 int format, int type, ShortBuffer pixels) {
         GL12C.glTexSubImage3D(target, level, xOffset, yOffset, zOffset,
                 width, height, depth, format, type, pixels);
     }
