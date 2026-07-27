@@ -5,6 +5,7 @@ import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.api.buffer.CgObjectBuffer;
 import lombok.Getter;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.util.profiling.CgProfiler;
 
 import java.nio.ByteBuffer;
 
@@ -51,6 +52,22 @@ import java.nio.ByteBuffer;
  */
 public abstract class CgStreamBuffer implements CgObjectBuffer {
 
+    /**
+     * Uploads at or below this many bytes take {@link #uploadSmall} instead of map/commit.
+     *
+     * <p>{@code glMapBufferRange}/{@code glUnmapBuffer} carry a fixed per-call driver cost —
+     * buffer bookkeeping, orphan allocation, mapping setup — that is irrelevant when amortised
+     * over a large batch and dominant for a tiny one. Measured on this codebase's own text UBO:
+     * 2,286 uploads of 64 bytes each cost <strong>438 ms of map time for 146 KB total</strong>
+     * (~0.19 ms per call), while the SSBO instance path pushed <strong>106 MB through the same
+     * code in 57 ms</strong>. Per byte the small writes were ~5,500x more expensive — the cost
+     * tracks call count, not size.
+     *
+     * <p>256 bytes is comfortably above the small-constant-block case this targets (a mat4 is
+     * 64) and far below any real streaming batch, so no bulk path changes behaviour.</p>
+     */
+    protected static final int SMALL_UPLOAD_THRESHOLD_BYTES = 256;
+
     /** The GL buffer object name allocated at construction. Never changes for the lifetime of this instance. */
     @Getter
     protected final int glBuffer;
@@ -90,7 +107,27 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
         this.target = target;
         this.capacityBytes = capacityBytes;
         this.writeOffset = 0;
+
+        // Built once here, never per upload. This matters: uploadFloats is the single hottest
+        // path in the engine (every vertex, instance, UBO, SSBO and TBO write goes through it),
+        // and building a scope name inline would concatenate strings on every call — the
+        // argument is evaluated before CgProfiler.scope() can check whether profiling is even
+        // enabled, so "zero cost when disabled" would silently become "allocates four strings
+        // per buffer upload, forever".
+        String prefix = "streamBuffer." + targetLabel() + ".";
+        this.profileMapName = prefix + "map";
+        this.profileWriteName = prefix + "write";
+        this.profileCommitName = prefix + "commit";
+        this.profileBytesName = prefix + "bytes";
+        this.profileSmallUploadName = prefix + "smallUpload";
     }
+
+    // Pre-built profiling names — see the constructor for why these are not built inline.
+    private final String profileMapName;
+    private final String profileWriteName;
+    private final String profileCommitName;
+    private final String profileBytesName;
+    private final String profileSmallUploadName;
 
     /**
      * Reserves {@code sizeBytes} bytes for writing and returns a {@code ByteBuffer} pointing
@@ -137,9 +174,67 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
      */
     public int uploadFloats(float[] data, int floatCount) {
         int byteCount = floatCount * Float.BYTES;
-        java.nio.ByteBuffer mapped = map(byteCount);
-        mapped.asFloatBuffer().put(data, 0, floatCount);
-        return commit(byteCount);
+
+        // Small writes bypass map/unmap entirely — see SMALL_UPLOAD_THRESHOLD_BYTES.
+        if (byteCount <= SMALL_UPLOAD_THRESHOLD_BYTES && uploadSmall(data, floatCount, byteCount)) {
+            CgProfiler.count(profileSmallUploadName);
+            return 0;
+        }
+
+        // Split into three scopes because this is the single upload path shared by EVERY
+        // stream buffer — vertex, instance, UBO, SSBO, TBO alike. If a GL stall lives in here
+        // it is a pipeline-wide problem, not a per-feature one, so the scopes are named by GL
+        // target: a cost that shows up only under one target is a usage-pattern issue, while
+        // one spread across all of them is the shared machinery.
+        java.nio.ByteBuffer mapped;
+        try (CgProfiler.Scope ignored = CgProfiler.scope(profileMapName)) {
+            mapped = map(byteCount);
+        }
+        try (CgProfiler.Scope ignored = CgProfiler.scope(profileWriteName)) {
+            mapped.asFloatBuffer().put(data, 0, floatCount);
+        }
+        try (CgProfiler.Scope ignored = CgProfiler.scope(profileCommitName)) {
+            CgProfiler.count(profileBytesName, byteCount);
+            return commit(byteCount);
+        }
+    }
+
+    /**
+     * Fast path for tiny uploads, bypassing map/unmap. Default returns {@code false}, meaning
+     * "not supported — use the normal path".
+     *
+     * <p>Only meaningful for implementations that always write at offset 0 (Tier B orphan and
+     * Tier C subdata). The Tier A ring buffer deliberately does <em>not</em> override this: its
+     * whole design is writing successive slots at rotating offsets so the GPU can read older
+     * slots while the CPU writes newer ones, and a fixed offset-0 subdata write would clobber a
+     * slot still in flight — reintroducing exactly the stall the ring exists to avoid.</p>
+     *
+     * @return {@code true} if the upload was performed; {@code false} to fall back to map/commit
+     */
+    protected boolean uploadSmall(float[] data, int floatCount, int byteCount) {
+        return false;
+    }
+
+    /**
+     * Short GL-target name for profiling scope names — see {@link #uploadFloats}. Only called
+     * when the profiler is enabled would be ideal, but the cost is a switch on an int, which is
+     * negligible next to the map/unmap it labels.
+     */
+    private String targetLabel() {
+        switch (target) {
+            case CgGL.GL_ARRAY_BUFFER:
+                return "vertex";
+            case CgGL.GL_UNIFORM_BUFFER:
+                return "ubo";
+            case CgGL.GL_SHADER_STORAGE_BUFFER:
+                return "ssbo";
+            case CgGL.GL_TEXTURE_BUFFER:
+                return "tbo";
+            case CgGL.GL_ELEMENT_ARRAY_BUFFER:
+                return "index";
+            default:
+                return "other";
+        }
     }
 
     /** Binds this buffer's GL object to its {@link #target}. */
