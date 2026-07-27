@@ -841,15 +841,23 @@ public class CgTextRenderer {
             // frozen CgTextLayout.
             resolvedLayout = draw.layout;
         } else {
-            // draw.constraintMaxWidth/Height are expressed in the same design-space pixels as
-            // fontKey's base size. Divide by the same scale already resolved above for raster
-            // crispness (effectiveTargetPx / baseTargetPx) so maxWidth keeps meaning "this many
-            // on-screen pixels" regardless of the live PoseStack scale -- see Draw's class
-            // javadoc. Never applied to world-space text: PerspectiveScaleResolver's
-            // effectiveTargetPx reflects raster tier / view distance, not UI zoom, and world
-            // paragraphs must not reflow as the camera moves (see PerspectiveScaleResolver's
-            // "Layout Invariance").
-            float scale = context.isWorldText() ? 1f : effectiveTargetPx / (float) fontKey.getTargetPx();
+            // draw.maxWidth/maxHeight are expressed in the same design-space pixels as
+            // fontKey's base size. Divide by the PoseStack's true scale so maxWidth keeps
+            // meaning "this many on-screen pixels" regardless of the live UI zoom -- see
+            // Draw's class javadoc. Never applied to world-space text: world paragraphs must
+            // not reflow as the camera moves (see PerspectiveScaleResolver's "Layout
+            // Invariance").
+            //
+            // Deliberately NOT effectiveTargetPx/baseTargetPx here (what raster-tier crispness
+            // uses) -- effectiveTargetPx is clamped to MAX_EFFECTIVE_PX (256) to cap atlas cell
+            // size at extreme zoom, so that ratio silently under-reports the true scale once a
+            // glyph's raw target size exceeds the clamp (e.g. a 22px font at 20x zoom wants a
+            // 440px raster, clamped to 256 -- the ratio then implies only ~11.6x, not 20x). The
+            // wrap width would then divide by the wrong, smaller scale and let more text fit
+            // per line than the PoseStack's real (unclamped) transform actually displays,
+            // overflowing past maxWidth on screen. extractMaxScale reads the PoseStack directly
+            // and is never clamped, so it stays correct past the raster clamp.
+            float scale = context.isWorldText() ? 1f : OrthographicScaleResolver.extractMaxScale(pose.pose());
             float effectiveMaxWidth = scaleConstraint(draw.maxWidth, scale);
             float effectiveMaxHeight = scaleConstraint(draw.maxHeight, scale);
 
