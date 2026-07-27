@@ -2,6 +2,7 @@ package com.crystalgraphics.gl.buffer;
 
 
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.util.CgBufferUtils;
 import java.nio.ByteBuffer;
 
 /**
@@ -42,6 +43,35 @@ public class MapAndOrphanStreamBuffer extends CgStreamBuffer {
         CgGL.glUnmapBuffer(target);
         return 0; // orphaning resets to offset 0
     }
+
+    /**
+     * Small uploads go straight to {@code glBufferSubData} rather than orphan-mapping — see
+     * {@link CgStreamBuffer#SMALL_UPLOAD_THRESHOLD_BYTES} for the measurements motivating this.
+     *
+     * <p>Safe because this tier always writes at offset 0 and never reads back what it wrote:
+     * a subdata write replaces exactly the bytes the next draw will consume. It does forgo the
+     * orphan hint, so in principle the driver could stall if the previous contents were still
+     * in flight — but for a write this small that is strictly cheaper in practice than paying
+     * the map/unmap overhead every single call, which was costing ~0.19 ms each.</p>
+     */
+    @Override
+    protected boolean uploadSmall(float[] data, int floatCount, int byteCount) {
+        if (byteCount > capacityBytes) return false; // let the normal path handle the grow
+
+        if (scratch == null || scratch.capacity() < byteCount) {
+            scratch = CgBufferUtils.createByteBuffer(Math.max(byteCount, SMALL_UPLOAD_THRESHOLD_BYTES));
+        }
+        scratch.clear();
+        scratch.asFloatBuffer().put(data, 0, floatCount);
+        scratch.position(0).limit(byteCount);
+
+        bind();
+        CgGL.glBufferSubData(target, 0L, scratch);
+        return true;
+    }
+
+    /** Reused staging buffer for {@link #uploadSmall} — grow-only, allocated on first small upload. */
+    private ByteBuffer scratch;
 
     @Override
     public void deleteGlResources() {
