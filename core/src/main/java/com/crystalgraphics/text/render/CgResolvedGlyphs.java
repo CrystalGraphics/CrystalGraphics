@@ -9,6 +9,7 @@ import com.crystalgraphics.api.text.CgTextDecorationRect;
 import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.text.atlas.CgPagedGlyphAtlas;
 import com.crystalgraphics.text.cache.CgFontRegistry;
+import com.crystalgraphics.util.profiling.CgProfiler;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -107,14 +108,26 @@ final class CgResolvedGlyphs {
         CgGlyphPlacementCache.Key key = CgGlyphPlacementCache.key(layout, x, y, wantMsdf, fontKey, rgba);
         CgGlyphPlacementCache.Entry hit = CgGlyphPlacementCache.get(key, effectiveTargetPx, contentGeneration, evictionGeneration, frame);
         if (hit != null) {
+            CgProfiler.count("placementCache.hit");
             this.glyphX = hit.glyphX();
             this.glyphY = hit.glyphY();
             this.argbColor = hit.argbColor();
             this.placements = hit.placements();
             return hit.glyphCount();
         }
+        // A miss here means CgGlyphPlacementCache.Entry.matches() rejected the existing entry
+        // (if any) -- either this is the first draw of this layout/position/mode, or the prior
+        // entry's distanceField was false (so effectiveTargetPx must match exactly -- see that
+        // class's javadoc) and it drifted, or REFRESH_FRAMES elapsed. effectiveTargetPx is
+        // sampled here specifically to see whether it's drifting frame-to-frame during MSDF
+        // atlas warmup for world-space text (PerspectiveScaleResolver recomputes it every frame).
+        CgProfiler.count("placementCache.miss");
+        CgProfiler.sample("placementCache.miss.effectiveTargetPx", effectiveTargetPx);
 
-        int glyphCount = flatten(layout, x, y, context, effectiveTargetPx, wantMsdf, rgba);
+        int glyphCount;
+        try (CgProfiler.Scope ignored = CgProfiler.scope("flatten")) {
+            glyphCount = flatten(layout, x, y, context, effectiveTargetPx, wantMsdf, rgba);
+        }
         // Salvage already-converged placements from the stale entry we're replacing, so a
         // refresh only re-queries the glyphs that can actually still improve. See
         // CgGlyphPlacementCache#getForUpgrade.
@@ -124,8 +137,13 @@ final class CgResolvedGlyphs {
 
         boolean distanceField = false;
         if (glyphCount > 0) {
-            distanceField = resolvePlacements(glyphCount, frame, effectiveTargetPx, wantMsdf);
+            try (CgProfiler.Scope ignored = CgProfiler.scope("resolvePlacements")) {
+                distanceField = resolvePlacements(glyphCount, frame, effectiveTargetPx, wantMsdf, reusable);
+            }
         }
+        // Whether the resulting cache entry (about to be put() below) will require an exact
+        // effectiveTargetPx match on its next lookup -- see CgGlyphPlacementCache.Entry.matches().
+        CgProfiler.sample("placementCache.miss.resultDistanceField", distanceField ? 1.0 : 0.0);
 
         this.glyphX = scratchGlyphX;
         this.glyphY = scratchGlyphY;
@@ -138,7 +156,6 @@ final class CgResolvedGlyphs {
         // guaranteeing a miss on the very next frame and defeating the cache entirely. The
         // post-resolve value is the atlas state this entry's placements actually describe.
         CgGlyphPlacementCache.put(key, new CgGlyphPlacementCache.Entry(
-                distanceField, effectiveTargetPx, frame, glyphCount,
                 distanceField, effectiveTargetPx,
                 registry.getAtlasContentGeneration(), registry.getAtlasEvictionGeneration(),
                 frame, glyphCount,
@@ -259,8 +276,17 @@ final class CgResolvedGlyphs {
                             scratchGlyphKeys[i].isSyntheticBold(), scratchGlyphKeys[i].isSyntheticItalic());
             CgGlyphPlacement placement = registry.resolveGlyphPaged(scratchFonts[i], glyphKey, effectiveTargetPx, scratchSubPixel[i], frame);
             scratchPlacements[i] = placement;
-            if (wantMsdf && placement != null && !placement.isDistanceField()) usedBitmapFallback = true;
+            // hasGeometry() guard: a known-empty glyph (space/control — see
+            // CgPagedGlyphAtlas#markEmpty) resolves through the bitmap atlas and so reports
+            // isDistanceField()==false, but it draws nothing at all and therefore cannot make
+            // a draw visually mix quality tiers. Without this guard a single space would drag
+            // the entire layout back down to the bitmap tier and force a full second resolve
+            // pass over every glyph.
+            if (wantMsdf && placement != null && placement.hasGeometry() && !placement.isDistanceField()) usedBitmapFallback = true;
+            
         }
+        CgProfiler.count("resolvePlacements.reusedDistanceField", reused);
+        CgProfiler.count("resolvePlacements.queried", glyphCount - reused);
         return usedBitmapFallback;
     }
 
