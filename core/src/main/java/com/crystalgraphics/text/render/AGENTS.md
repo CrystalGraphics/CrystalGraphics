@@ -121,24 +121,24 @@ reach `context().updateOrtho(...)`/`.updateProjection(...)`/`.clearHistory()`/
 true)`) hold a `PoseStack` that's `null` until a caller opts in. `Draw.submit()` uses
 it only when `.pose(...)` was never called on that `Draw`; if both are unset, `submit()`
 throws. `CgUiPaintContext` wires its own pose stack in here in its constructor
-(`CgTextRenderer.create().poseStack(this.poseStack)`) so that any draw issued through
+(`CgTextRenderer.createManualSized().poseStack(this.poseStack)`) so that any draw issued through
 `ctx.text()` without an explicit `.pose(...)` still works — but its own `drawText()`-style
 call sites still pass `.pose(poseStack)` explicitly; this field is a backstop, not
 something call sites should rely on by default.
 
 **`CgTextRendererRegistry` — resize tracking + teardown backstop, opt-in per feature.**
-Every `create()`/`createScreenSized()` call registers with the singleton
+Every `create()`/`createManualSized()` call registers with the singleton
 `CgTextRendererRegistry.get()`, mirroring `CgFrameBufferRegistry`'s ownership model:
 - `onResize(w, h)` (called from `CgGraphicsLifecycle.onResize`) auto-resizes only
-  renderers created via `createScreenSized()` and currently in orthographic mode —
-  it skips non-screen-sized renderers and any renderer whose context reports
+  screen-sized renderers (the `create()` default) currently in orthographic mode —
+  it skips renderers built via `createManualSized()` and any renderer whose context reports
   `isWorldText()` (calling `updateOrtho` on a world context would clobber the
-  perspective projection). `HUDRenderer`/`CgFontDemo` use `createScreenSized()` since
+  perspective projection). `HUDRenderer`/`CgFontDemo` use `create()` since
   their dimensions are proven to come from the same source that drives
-  `CgGraphicsLifecycle.onResize()`; `CgUiPaintContext` deliberately does **not** —
-  its dimensions come from `UIWindow`'s own independent resize path, with no proven
-  lockstep guarantee, so it still manually calls `textRenderer.context().updateOrtho(...)`
-  in `beginFrame(w, h)`.
+  `CgGraphicsLifecycle.onResize()`; `CgUiPaintContext` deliberately uses
+  `createManualSized()` instead — its dimensions come from `UIWindow`'s own independent
+  resize path, with no proven lockstep guarantee, so it still manually calls
+  `textRenderer.context().updateOrtho(...)` in `beginFrame(w, h)`.
 - `deleteAll()` (called from `CgGraphicsLifecycle.destroyContext()`, before the
   VAO/VBO bulk sweep) deletes any renderer still alive as a backstop — individual
   owners (`CgUiPaintContext`, `HUDRenderer`, harness scenes) remain responsible for
@@ -310,8 +310,9 @@ Package-level description of render-side responsibilities.
   `drawInternal(...)`; `CgTextRenderContext` and `frame` are both renderer-owned state now,
   never draw-call parameters (see `context()`/`poseStack()`/`CgGraphicsLifecycle.getCurrentFrame()`)
 - `CgTextRendererRegistry` tracks every renderer for teardown, and additionally auto-resizes
-  screen-sized (`createScreenSized()`) ones — see its section above before adding a new
-  `CgTextRenderer`-owning class, to decide whether it should opt into `createScreenSized()`
+  screen-sized (`create()`, the default) ones — see its section above before adding a new
+  `CgTextRenderer`-owning class, to decide whether it should stay screen-sized or opt into
+  `createManualSized()`
 
 ## Common agent mistakes to avoid
 
@@ -336,10 +337,11 @@ Package-level description of render-side responsibilities.
 - Do not add a `CgTextRenderContext` or `frame` parameter back onto any draw-time method —
   the renderer owns both (`context()`/`context(CgTextRenderContext)`,
   `CgGraphicsLifecycle.getCurrentFrame()` read internally by `drawInternal`).
-- Do not auto-register every new `CgTextRenderer` consumer for screen-sized resize tracking.
-  `createScreenSized()` is opt-in and only correct when the consumer's dimensions are proven
-  to come from the same source driving `CgGraphicsLifecycle.onResize()` — see
-  `CgTextRendererRegistry`'s section above for why `CgUiPaintContext` deliberately doesn't use it.
+- Do not assume every new `CgTextRenderer` consumer wants screen-sized resize tracking.
+  `create()` (screen-sized) is the default and only correct when the consumer's dimensions are
+  proven to come from the same source driving `CgGraphicsLifecycle.onResize()` — otherwise use
+  `createManualSized()`. See `CgTextRendererRegistry`'s section above for why `CgUiPaintContext`
+  deliberately uses `createManualSized()`.
 - Do not make `Draw.submit()` require an active `beginBatch()` — the standalone-tolerant
   auto-wrap behavior is deliberate, not a gap. `CgTextRenderer` must stay usable as a directly
   instantiated object with no owning render pass.

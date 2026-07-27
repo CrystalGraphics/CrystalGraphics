@@ -321,28 +321,32 @@ public class CgTextRenderer {
      * timing (callers must still call {@link #delete()} promptly when done), but sweeps
      * any renderer still alive at GL context teardown as a backstop, matching every other
      * GPU-resource registry in this codebase.
+     *
+     * <p>Flags the renderer as screen-sized, so its owned {@link CgTextRenderContext} tracks
+     * the display window's resolution automatically — every {@link CgGraphicsLifecycle#onResize}
+     * call resizes it in place, no manual per-frame dimension check needed. This is the default
+     * and the right choice for the common case (UI overlays, HUDs) — use {@link #createManualSized()}
+     * only when the context should NOT follow the real display window.</p>
      */
     public static CgTextRenderer create() {
         CgTextRenderer renderer = new CgTextRenderer();
         CgTextRendererRegistry.get().register(renderer);
+        renderer.screenSized = true;
         return renderer;
     }
 
     /**
-     * Creates the renderer façade like {@link #create()}, but additionally flags it as
-     * screen-sized so its owned {@link CgTextRenderContext} tracks the display window's
-     * resolution automatically — every {@link CgGraphicsLifecycle#onResize} call resizes
-     * it in place, no manual per-frame dimension check needed.
+     * Creates the renderer façade like {@link #create()}, but does NOT flag it as screen-sized —
+     * its owned {@link CgTextRenderContext} is never auto-resized by {@link CgGraphicsLifecycle#onResize}
+     * and must be sized manually by the caller.
      *
-     * <p>Only for renderers whose context should follow the real display window
-     * (UI overlays, HUDs). Renderers sized to something else — an offscreen FBO capture,
-     * an atlas dump, a fixed test viewport — must use {@link #create()} and size their
-     * context manually instead; auto-tracking window resize for those would silently
-     * desync their projection from their actual target size.</p>
+     * <p>Use this for renderers sized to something other than the real display window — an
+     * offscreen FBO capture, an atlas dump, a fixed test viewport — where auto-tracking window
+     * resize would silently desync the projection from the actual target size.</p>
      */
-    public static CgTextRenderer createScreenSized() {
+    public static CgTextRenderer createManualSized() {
         CgTextRenderer renderer = create();
-        renderer.screenSized = true;
+        renderer.screenSized = false;
         return renderer;
     }
 

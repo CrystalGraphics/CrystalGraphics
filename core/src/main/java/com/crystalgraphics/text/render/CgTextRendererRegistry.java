@@ -12,7 +12,7 @@ import java.util.Set;
  * mirrors {@link com.crystalgraphics.gl.framebuffer.CgFrameBufferRegistry}'s ownership
  * model, but for text renderers instead of framebuffers.
  *
- * <p>Every {@link CgTextRenderer#create()}/{@link CgTextRenderer#createScreenSized()} call
+ * <p>Every {@link CgTextRenderer#createManualSized()}/{@link CgTextRenderer#create()} call
  * registers here. Individual owners ({@code CgUiPaintContext}, {@code HUDRenderer},
  * {@code CgFontDemo}, harness scenes, etc.) remain responsible for calling
  * {@link CgTextRenderer#delete()} promptly when they're done with a renderer — this
@@ -22,10 +22,10 @@ import java.util.Set;
  * GPU-resource registry in this codebase.</p>
  *
  * <h3>Screen-sized resize tracking</h3>
- * <p>Only renderers created via {@link CgTextRenderer#createScreenSized()} — tracked via
+ * <p>Only renderers created via {@link CgTextRenderer#create()} — tracked via
  * {@link CgTextRenderer#isScreenSized()} — have their owned {@link CgTextRenderContext}
  * auto-resized on {@link #onResize}. Renderers created via the plain
- * {@link CgTextRenderer#create()} (offscreen FBO dumps, atlas captures, and other
+ * {@link CgTextRenderer#createManualSized()} (offscreen FBO dumps, atlas captures, and other
  * fixed-size contexts unrelated to the display window — see {@code AtlasDumpScene},
  * {@code TextScene2D}, {@code WorldTextRenderHelper}) are still tracked for teardown, just
  * never auto-resized; their owner sizes the context explicitly.</p>
@@ -54,7 +54,7 @@ public final class CgTextRendererRegistry {
 
     /**
      * Registers a renderer for teardown-time cleanup (and, if screen-sized, resize
-     * propagation). Called by {@link CgTextRenderer#create()} — not a public entry point.
+     * propagation). Called by {@link CgTextRenderer#createManualSized()} — not a public entry point.
      */
     void register(CgTextRenderer renderer) {
         renderers.add(renderer);
