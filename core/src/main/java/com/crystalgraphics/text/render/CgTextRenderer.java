@@ -148,6 +148,14 @@ public class CgTextRenderer {
     public static final CgMaterial TEXT_MATERIAL = CgMaterial.load("crystalgraphics:shaders/text.shader");
 
     /**
+     * Last-resort identity pose used by {@link Draw#submit()}/{@link Draw#measure()} when
+     * neither {@link Draw#pose(PoseStack)} nor {@link #poseStack(PoseStack)} was set. Built with
+     * {@code syncsToGL = false} — it only ever backs a single never-pushed identity {@code Pose}
+     * entry, so it must never touch the real GL matrix stack. Shared, never mutated.
+     */
+    private static final PoseStack IDENTITY_POSE_STACK = new PoseStack(false);
+
+    /**
      * Text-only per-renderer uniform data — currently just {@code u_Projection}. Deliberately
      * kept as its own small UBO rather than reusing the engine's shared per-frame
      * {@code CgFrameData}/{@code cg_ProjMatrix}: that block is frame-owner state (set once by
@@ -545,8 +553,10 @@ public class CgTextRenderer {
      * <h3>Required fields</h3>
      * <p>{@link #submit()} throws {@link IllegalStateException} unless at least one of
      * {@code layout}/{@code text} and at least one of {@code family}/{@code font} have been
-     * set. {@link #pose(PoseStack)} is usually required too, unless the owning
-     * {@link CgTextRenderer} has a fallback set via {@link CgTextRenderer#poseStack(PoseStack)}.
+     * set. {@link #pose(PoseStack)} is optional: an unset pose falls back to the owning
+     * {@link CgTextRenderer}'s {@link CgTextRenderer#poseStack(PoseStack)}, and finally to a
+     * shared identity pose if neither was ever set — so callers with no real transform (plain
+     * screen-space text) can skip {@code pose(...)} entirely.
      * {@link #at(float, float)} and {@link #color(int)} default to {@code (0, 0)} and opaque
      * white ({@code 0xFFFFFFFF}) respectively if never called.</p>
      *
@@ -690,10 +700,10 @@ public class CgTextRenderer {
         }
 
         /**
-         * The current PoseStack providing model-view transform. Usually required — the
-         * only exception is when the owning {@link CgTextRenderer} has a fallback pose
-         * stack set via {@link CgTextRenderer#poseStack(PoseStack)}, in which case this
-         * call may be omitted and {@link #submit()} falls back to that instead.
+         * The current PoseStack providing model-view transform. Optional — if omitted,
+         * {@link #submit()}/{@link #measure()} fall back to the owning {@link CgTextRenderer}'s
+         * {@link CgTextRenderer#poseStack(PoseStack)} if one is set, and finally to a shared
+         * identity pose (no transform) if neither was ever set.
          */
         public Draw pose(PoseStack pose) {
             this.pose = pose;
@@ -710,26 +720,18 @@ public class CgTextRenderer {
          * {@link CgTextRenderer#endBatch()} — see the class javadoc's example.
          *
          * @return the owning {@link CgTextRenderer}, for chaining into {@link CgTextRenderer#endBatch()}
-         * @throws IllegalStateException if neither {@code layout} nor {@code text} was set,
-         *                                neither {@code family} nor {@code font} was set, or
-         *                                {@code pose} was never set and the renderer has no
-         *                                fallback {@link CgTextRenderer#poseStack(PoseStack)}
+         * @throws IllegalStateException if neither {@code layout} nor {@code text} was set, or
+         *                                neither {@code family} nor {@code font} was set
          */
         public CgTextRenderer submit() {
             if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
             if (layout == null && paragraph == null && text == null) throw new IllegalStateException("CgTextRenderer.Draw requires text(...), paragraph(...), or layout(...) before submit()");
             if (family == null && font == null) throw new IllegalStateException("CgTextRenderer.Draw requires font(...) or family(...) before submit()");
-
-            PoseStack effectivePose = pose != null ? pose : CgTextRenderer.this.poseStack;
-            if (effectivePose == null) {
-                throw new IllegalStateException(
-                        "CgTextRenderer.Draw requires pose(...) before submit() (no fallback set via CgTextRenderer.poseStack(...))");
-            }
-
+            
             boolean standalone = !batchActive;
             if (standalone) beginBatch();
             try {
-                drawInternal(this, effectivePose.last());
+                drawInternal(this, effectivePose().last());
             } finally {
                 if (standalone) endBatch();
             }
@@ -754,12 +756,20 @@ public class CgTextRenderer {
             if (layout == null && paragraph == null && text == null) throw new IllegalStateException("CgTextRenderer.Draw requires text(...), paragraph(...), or layout(...) before measure()");
             if (family == null && font == null) throw new IllegalStateException("CgTextRenderer.Draw requires font(...) or family(...) before measure()");
 
-            PoseStack effectivePose = pose != null ? pose : CgTextRenderer.this.poseStack;
-            if (effectivePose == null) {
-                throw new IllegalStateException(
-                        "CgTextRenderer.Draw requires pose(...) before measure() (no fallback set via CgTextRenderer.poseStack(...))");
-            }
-            return resolveDraw(this, effectivePose.last()).layout();
+            return resolveDraw(this, effectivePose().last()).layout();
+        }
+
+        /**
+         * Resolves the {@link PoseStack} this draw should use: an explicit {@link #pose(PoseStack)}
+         * wins, then the owning renderer's fallback {@link CgTextRenderer#poseStack(PoseStack)},
+         * then a shared identity {@link PoseStack} — so callers that genuinely don't need a
+         * transform (screen-space HUD text with no camera/zoom involved) can omit {@code pose(...)}
+         * entirely instead of being forced to construct a throwaway identity stack themselves.
+         */
+        private PoseStack effectivePose() {
+            if (pose != null) return pose;
+            if (CgTextRenderer.this.poseStack != null) return CgTextRenderer.this.poseStack;
+            return IDENTITY_POSE_STACK;
         }
     }
 
