@@ -13,22 +13,48 @@ import org.joml.Matrix4f;
  * PoseStack scale as a UI zoom signal — the PoseStack in 3D represents
  * model-view positioning (entity rotation, billboard transforms), not UI scale.</p>
  *
- * <h3>Projected-Size Hint</h3>
- * <p>Callers can supply a projected-size hint via {@link #updateProjectedSize}
- * (which uses {@link ProjectedSizeEstimator} internally) to adapt the MSDF atlas
- * raster tier to the text's apparent on-screen size. When set, the hint directly
- * replaces the default multiplier for raster tier selection, ensuring that distant
- * text uses a smaller atlas tier (saving GPU memory and generation work) while
- * close-up text uses a larger tier (preserving crispness). When no hint is set,
- * or after {@link #clearProjectedSizeHint()}, the resolver falls back to a stable
- * {@link #DEFAULT_RASTER_MULTIPLIER}x tier.</p>
+ * <h3>Fixed raster tier — the projected-size hint deliberately does NOT drive it</h3>
+ * <p>{@link #resolveEffectiveTargetPx} always returns a fixed
+ * {@link #DEFAULT_RASTER_MULTIPLIER}x multiple of the base target size, independent of the
+ * camera. The projected-size hint is still recorded by {@link #updateProjectedSize} (and
+ * readable via {@link #getProjectedSizeHint()}) but is intentionally not consulted here.
  *
- * <h3>Hysteresis</h3>
- * <p>When a projected-size hint is active, the resolver applies the same
- * quantization-deadband hysteresis as {@link OrthographicScaleResolver} to prevent
- * raster tier churn when the camera oscillates near a quantization boundary. The
- * {@code previousEffectiveTargetPx} fed back by the render context provides the
- * stable baseline for the deadband.</p>
+ * <p>This class used to feed the hint straight into the raster tier, on the stated rationale
+ * that "distant text uses a smaller atlas tier while close-up text uses a larger tier."
+ * That rationale does not survive contact with how MSDF atlases are actually keyed:
+ * {@code CgFontRegistry#toMsdfAtlasGlyphKey} rewrites the font key's target size to
+ * {@code CgMsdfAtlasConfig#atlasScalePx()} and forces the sub-pixel bucket to 0, so
+ * <strong>the MSDF atlas ignores {@code effectiveTargetPx} entirely</strong>. Distance-field
+ * glyphs are resolution-independent by construction; there is no per-distance MSDF tier for
+ * the hint to select. Empirically confirmed by an atlas dump: one MSDF family, seven bitmap
+ * families, same 735 glyphs in each.</p>
+ *
+ * <p>So for world text the hint only ever reached three things, all of them warmup-only
+ * artifacts, and all of them harmful when it moves:</p>
+ * <ol>
+ *   <li><strong>The bitmap fallback atlas size.</strong> {@code CgFontRegistry} keys bitmap
+ *       atlas families by {@code CgRasterFontKey(fontKey, effectiveTargetPx)}, so a
+ *       continuously camera-varying value mints a whole new atlas family — and re-rasterizes
+ *       every glyph into it — each time it lands on a new integer. A single camera dolly
+ *       produced 7 families / 333 pages of 1024x1024 (~333 MB) holding the same 735 glyphs,
+ *       versus 24 pages for the one MSDF family that actually gets rendered.</li>
+ *   <li><strong>{@code CgGlyphPlacementCache} staleness.</strong> {@code Entry#matches}
+ *       requires an exact {@code effectiveTargetPx} match whenever {@code distanceField} is
+ *       false — i.e. throughout MSDF warmup — so a drifting value turns every frame into a
+ *       full re-resolve of the entire layout (measured: 250-850 ms/frame for ~1750 glyphs).</li>
+ *   <li>{@code CgResolvedGlyphs#logicalMetricScale} for bitmap-tier glyphs, which stays
+ *       self-consistent precisely because the value is now fixed.</li>
+ * </ol>
+ *
+ * <p>Pinning the tier costs nothing visually: the bitmap tier is a transient placeholder shown
+ * for a couple of seconds until each glyph's real MSDF result lands, after which world text is
+ * 100% distance-field forever (see {@link #shouldUseMsdf}). It buys exactly one bitmap atlas
+ * family per base font size — the minimum possible — at a small raster size that packs
+ * hundreds of glyphs per page instead of ~11.</p>
+ *
+ * <p>Reintroduce hint-driven tiering only if MSDF atlases ever become genuinely size-tiered;
+ * until then it is pure cost. Note the hysteresis/deadband machinery this class used to need
+ * is likewise gone: a constant cannot churn.</p>
  *
  * <h3>Always-MSDF Guarantee</h3>
  * <p>{@link #shouldUseMsdf(int, boolean)} always returns {@code true}. World
@@ -46,50 +72,37 @@ import org.joml.Matrix4f;
 final class PerspectiveScaleResolver implements CgTextScaleResolver {
 
     /**
-     * Default MSDF raster tier multiplier when no projected-size hint is available.
-     * World text uses 2x the base size to ensure a reasonable MSDF atlas quality
-     * for typical viewing distances.
+     * The world-text raster tier, as a multiple of the base target size. Applied
+     * unconditionally — see the class javadoc for why this is fixed rather than derived from
+     * the projected-size hint. 2x keeps the transient bitmap-fallback placeholder legible
+     * without inflating atlas cell size (a 24px font rasterizes at 48px, packing hundreds of
+     * glyphs per 1024x1024 page instead of ~11 at camera-derived sizes in the 200-256px range).
      */
     static final int DEFAULT_RASTER_MULTIPLIER = 2;
 
     /**
-     * The current projected-size hint in screen pixels, or {@code <= 0} if unset.
-     * When positive, this replaces the default raster multiplier for tier selection.
+     * Most recent projected on-screen size in pixels from {@link #updateProjectedSize}, or
+     * {@code <= 0} if never set. Recorded for diagnostics only — deliberately NOT consulted by
+     * {@link #resolveEffectiveTargetPx}; see the class javadoc.
      */
     private float projectedSizeHint = -1.0f;
 
+    /**
+     * Returns a fixed {@link #DEFAULT_RASTER_MULTIPLIER}x tier, ignoring both the camera-derived
+     * projected-size hint and {@code previousEffectiveTargetPx}.
+     *
+     * <p>Constant per base font size by design — see the class javadoc. Because the result never
+     * varies frame to frame, the quantization deadband/hysteresis this method used to apply is
+     * unnecessary (there is nothing left to churn), and {@code previousEffectiveTargetPx} is
+     * unused. {@code pose} is likewise irrelevant: a world-space PoseStack encodes model-view
+     * placement, not UI zoom (see the class javadoc's "Layout Invariance").</p>
+     */
     @Override
     public int resolveEffectiveTargetPx(int baseTargetPx,
                                         PoseStack.Pose pose,
                                         int previousEffectiveTargetPx) {
-        // When a projected-size hint is available, use it directly as the
-        // effective raster size instead of the fixed multiplier. This allows
-        // the atlas tier to adapt to viewing distance: distant text gets a
-        // smaller tier, close-up text gets a larger tier.
-        float rawEffective;
-        if (projectedSizeHint > 0.0f) {
-            rawEffective = projectedSizeHint;
-        } else {
-            rawEffective = (float) (baseTargetPx * DEFAULT_RASTER_MULTIPLIER);
-        }
-
-        int quantized = Math.round(rawEffective);
-        quantized = Math.max(MIN_EFFECTIVE_PX, Math.min(MAX_EFFECTIVE_PX, quantized));
-
-        // Apply hysteresis from the caller-provided previous value to prevent
-        // raster tier churn when the camera oscillates near a quantization boundary.
-        if (previousEffectiveTargetPx > 0) {
-            if (quantized > previousEffectiveTargetPx
-                    && rawEffective < previousEffectiveTargetPx + HYSTERESIS_BAND) {
-                return previousEffectiveTargetPx;
-            }
-            if (quantized < previousEffectiveTargetPx
-                    && rawEffective > previousEffectiveTargetPx - HYSTERESIS_BAND) {
-                return previousEffectiveTargetPx;
-            }
-        }
-
-        return quantized;
+        int tier = baseTargetPx * DEFAULT_RASTER_MULTIPLIER;
+        return Math.max(MIN_EFFECTIVE_PX, Math.min(MAX_EFFECTIVE_PX, tier));
     }
 
     /**
@@ -110,12 +123,13 @@ final class PerspectiveScaleResolver implements CgTextScaleResolver {
     }
 
     /**
-     * Computes the projected-size hint via {@link ProjectedSizeEstimator} and stores
-     * it for the next {@link #resolveEffectiveTargetPx} call.
+     * Records the projected on-screen size via {@link ProjectedSizeEstimator}.
      *
-     * <p>Called once per frame (via {@link CgTextRenderContext#updateProjectedSize})
-     * before drawing world text, to adapt the MSDF raster tier to the text's
-     * apparent on-screen size.</p>
+     * <p><strong>Does not affect raster tier selection</strong> — {@link #resolveEffectiveTargetPx}
+     * deliberately ignores this value (see the class javadoc). Kept because it is the natural
+     * place to compute the measurement, it is a genuinely useful diagnostic, and it is what a
+     * future genuinely-size-tiered distance-field atlas would consult. Callers may keep calling
+     * it once per frame; doing so is cheap and has no effect on atlas identity or caching.</p>
      */
     @Override
     public void updateProjectedSize(Matrix4f modelView, Matrix4f projection,
@@ -125,7 +139,8 @@ final class PerspectiveScaleResolver implements CgTextScaleResolver {
     }
 
     /**
-     * Returns the current projected-size hint.
+     * Returns the most recently recorded projected size — diagnostics only; it does not
+     * influence {@link #resolveEffectiveTargetPx}.
      *
      * @return the projected size in screen pixels, or {@code <= 0} if unset
      */
@@ -134,8 +149,8 @@ final class PerspectiveScaleResolver implements CgTextScaleResolver {
     }
 
     /**
-     * Clears the projected-size hint, reverting to the default
-     * {@link #DEFAULT_RASTER_MULTIPLIER}x raster tier.
+     * Clears the recorded projected size. Has no effect on the raster tier, which is fixed
+     * regardless (see {@link #resolveEffectiveTargetPx}).
      */
     @Override
     public void clearProjectedSizeHint() {
