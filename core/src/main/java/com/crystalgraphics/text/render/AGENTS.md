@@ -95,7 +95,8 @@ matrix again. That entire surface is gone. The only public entry points now are:
   more capable superset), `targetPx(int)`, `constraints(float maxWidth, float maxHeight)`
   (`<= 0` means unbounded on that axis), `at(float, float)` (defaults `(0,0)`),
   `color(int)` (defaults opaque white), `pose(PoseStack)` (falls back to the
-  renderer's own `poseStack()` if never called — see below).
+  renderer's own `poseStack()` if never called, and finally to a shared identity
+  `PoseStack` if neither was ever set — see below).
 - `Draw.measure()` resolves (without drawing) the exact `CgTextLayout` `submit()` would draw
   right now — same font/scale/paragraph-reflow resolution — for callers that need to know a
   section's on-screen size (e.g. for stacking layout) before/after drawing it.
@@ -118,9 +119,13 @@ reach `context().updateOrtho(...)`/`.updateProjection(...)`/`.clearHistory()`/
 
 **Renderer owns an optional fallback `PoseStack` — niche, not the default path.**
 `poseStack()`/`poseStack(PoseStack)` (Lombok `@Getter @Setter @Accessors(fluent =
-true)`) hold a `PoseStack` that's `null` until a caller opts in. `Draw.submit()` uses
-it only when `.pose(...)` was never called on that `Draw`; if both are unset, `submit()`
-throws. `CgUiPaintContext` wires its own pose stack in here in its constructor
+true)`) hold a `PoseStack` that's `null` until a caller opts in. `Draw.submit()`/
+`Draw.measure()` use it only when `.pose(...)` was never called on that `Draw`; if
+both are unset, they fall through further to a shared, never-mutated identity
+`PoseStack` (`IDENTITY_POSE_STACK`, built with `syncsToGL = false` so it never
+touches the real GL matrix stack) rather than throwing — plain screen-space text
+with no real transform can skip `.pose(...)` entirely. `CgUiPaintContext` wires
+its own pose stack in here in its constructor
 (`CgTextRenderer.createManualSized().poseStack(this.poseStack)`) so that any draw issued through
 `ctx.text()` without an explicit `.pose(...)` still works — but its own `drawText()`-style
 call sites still pass `.pose(poseStack)` explicitly; this field is a backstop, not
