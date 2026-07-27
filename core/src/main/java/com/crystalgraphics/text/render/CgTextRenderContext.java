@@ -151,6 +151,15 @@ public class CgTextRenderContext {
     }
 
     /**
+     * Updates context resolution with respective update ortho/perspective calls
+     * @param width  new viewport width in pixels
+     * @param height new viewport height in pixels
+     */
+    public void update(int width, int height) {
+        if (isWorldText()) updateProjection(projection, width, height);
+        else updateOrtho(width, height);
+    }
+    /**
      * Updates the projection matrix for a viewport resize.
      *
      * <p>Re-populates the existing matrix with a new orthographic projection.

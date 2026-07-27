@@ -83,9 +83,7 @@ public final class CgTextRendererRegistry {
         if (width <= 0 || height <= 0) return;
         for (CgTextRenderer renderer : renderers) {
             if (renderer.isDeleted() || !renderer.isScreenSized()) continue;
-            CgTextRenderContext context = renderer.context();
-            if (context.isWorldText()) continue;
-            context.updateOrtho(width, height);
+            renderer.context().update(width, height);
         }
     }
 
