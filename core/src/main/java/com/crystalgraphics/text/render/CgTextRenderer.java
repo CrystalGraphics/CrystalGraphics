@@ -17,6 +17,7 @@ import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.gl.texture.CgTextureMutable;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.text.cache.CgFontRegistry;
+import com.crystalgraphics.util.profiling.CgProfiler;
 import lombok.Getter;
 import lombok.NonNull;
 import lombok.Setter;
@@ -423,11 +424,14 @@ public class CgTextRenderer {
     private void flush() {
         if (!quadRenderer.isDirty()) return;
 
-        quadRenderer.useMaterial(TEXT_MATERIAL);
-        TEXT_DATA_UBO.bind();
-        (context.isWorldText() ? CgDepthState.TEST_ONLY : CgDepthState.NONE).apply();
+        try (CgProfiler.Scope ignored = CgProfiler.scope("glFlush")) {
+            CgProfiler.count("glFlush.count");
+            quadRenderer.useMaterial(TEXT_MATERIAL);
+            TEXT_DATA_UBO.bind();
+            (context.isWorldText() ? CgDepthState.TEST_ONLY : CgDepthState.NONE).apply();
 
-        quadRenderer.flush();
+            quadRenderer.flush();
+        }
 
         // No need to unbind as they are wasteful — useMaterial() unbinds-old on the next call.
     }
@@ -455,7 +459,6 @@ public class CgTextRenderer {
             else flush();
             activeProjection.set(projection);
         } else activeProjection = new Matrix4f(projection);
-        
 
         TEXT_DATA_UBO.writer().reset().beginRecord().mat4("u_Projection", projection);
         TEXT_DATA_UBO.endRecord();
@@ -478,9 +481,15 @@ public class CgTextRenderer {
     private void transitionToMaterial(boolean isDistanceField, int textureId, float pxRange) {
         flush();
 
-        TEXT_MATERIAL.toggleKeyword("MSDF_MODE", isDistanceField);
-        ATLAS_TEXTURE_REF.setId(textureId);
-        TEXT_MATERIAL.applyProperties(b -> b.set1f("_PxRange", pxRange));
+        // Counted to expose batch fragmentation: each transition is a flush + keyword toggle +
+        // property re-apply. A warmup frame mixing bitmap-fallback and MSDF glyphs across many
+        // atlas pages can produce far more of these than a settled frame.
+        CgProfiler.count("materialTransition");
+        try (CgProfiler.Scope ignored = CgProfiler.scope("materialTransition")) {
+            TEXT_MATERIAL.toggleKeyword("MSDF_MODE", isDistanceField);
+            ATLAS_TEXTURE_REF.setId(textureId);
+            TEXT_MATERIAL.applyProperties(b -> b.set1f("_PxRange", pxRange));
+        }
     }
 
     // ══════════════════════════════════════════════════════════════════════════════════════════
@@ -927,23 +936,29 @@ public class CgTextRenderer {
         ResolvedDraw resolved = resolveDraw(draw, pose);
         CgFontKey fontKey = resolved.fontKey();
         int effectiveTargetPx = resolved.effectiveTargetPx();
-        boolean wantMsdf = resolved.wantMsdf();
+        boolean wantMsdf =  resolved.wantMsdf();
         CgTextLayout resolvedLayout = resolved.layout();
 
         if (resolvedLayout == null || resolvedLayout.lines().isEmpty()) return;
 
         long frame = CgGraphicsLifecycle.getCurrentFrame();
-        int glyphCount = resolvedGlyphs.resolve(resolvedLayout, draw.x, draw.y, frame, context, effectiveTargetPx, wantMsdf, fontKey, draw.rgba);
+        int glyphCount;
+        try (CgProfiler.Scope ignored = CgProfiler.scope("resolveGlyphs")) {
+            glyphCount = resolvedGlyphs.resolve(resolvedLayout, draw.x, draw.y, frame, context, effectiveTargetPx, wantMsdf, fontKey, draw.rgba);
+        }
+        CgProfiler.sample("draw.glyphCount", glyphCount);
         CgTextDecorationRect[] decorations = resolvedLayout.baked().decorations();
         if (glyphCount > 0 || decorations.length > 0) {
-            submitSortedQuads(glyphCount, decorations, fontKey.getTargetPx(), effectiveTargetPx, wantMsdf,
-                    draw.x, draw.y, draw.rgba, pose.pose());
+            try (CgProfiler.Scope ignored = CgProfiler.scope("submitSortedQuads")) {
+                submitSortedQuads(glyphCount, decorations, fontKey.getTargetPx(), effectiveTargetPx, wantMsdf,
+                        draw.x, draw.y, draw.rgba, pose.pose());
+            }
         }
     }
 
     // ══════════════════════════════════════════════════════════════════════════════════════════
     //  SORT + SUBMIT
-    // ══════════════════════════════════════════════════════════════════════════════════════════
+    // ══════════════════════════════════════════════════════════════════════════════════════════t
 
     // Bit layout of each entry in scratchSortKeys, MSB → LSB. Ordered coarsest-to-finest so an
     // unsigned numeric sort of the whole long already sorts by (mode, textureId, pxRange), with
@@ -1061,31 +1076,40 @@ public class CgTextRenderer {
         CgGlyphPlacement[] placements = resolvedGlyphs.placements;
 
         int visibleGlyphCount = 0;
-        for (int i = 0; i < glyphCount; i++)
-            if (placements[i] != null && placements[i].hasGeometry()) visibleGlyphCount++;
+        try (CgProfiler.Scope ignored = CgProfiler.scope("visibilityScan")) {
+            for (int i = 0; i < glyphCount; i++)
+                if (placements[i] != null && placements[i].hasGeometry()) visibleGlyphCount++;
+        }
 
-        List<CgResolvedGlyphs.ResolvedDecoration> resolvedDecorations =
-                resolvedGlyphs.resolveDecorations(decorations, drawX, drawY, drawRgba, effectiveTargetPx, wantMsdf);
+        List<CgResolvedGlyphs.ResolvedDecoration> resolvedDecorations;
+        try (CgProfiler.Scope ignored = CgProfiler.scope("resolveDecorations")) {
+            resolvedDecorations =
+                    resolvedGlyphs.resolveDecorations(decorations, drawX, drawY, drawRgba, effectiveTargetPx, wantMsdf);
+        }
 
         int totalCount = visibleGlyphCount + resolvedDecorations.size();
         if (totalCount == 0) return;
 
-        ensureSortScratchCapacity(totalCount);
-        int si = 0;
-        for (int i = 0; i < glyphCount; i++) {
-            CgGlyphPlacement p = placements[i];
-            if (p != null && p.hasGeometry()) {
-                scratchSortKeys[si++] = packGlyphSortKey(p, i);
+        try (CgProfiler.Scope ignored = CgProfiler.scope("sortKeys")) {
+            ensureSortScratchCapacity(totalCount);
+            int si = 0;
+            for (int i = 0; i < glyphCount; i++) {
+                CgGlyphPlacement p = placements[i];
+                if (p != null && p.hasGeometry()) {
+                    scratchSortKeys[si++] = packGlyphSortKey(p, i);
+                }
             }
+            for (int i = 0; i < resolvedDecorations.size(); i++) {
+                scratchSortKeys[si++] = packDecorationSortKey(resolvedDecorations.get(i), i);
+            }
+            Arrays.sort(scratchSortKeys, 0, totalCount);
         }
-        for (int i = 0; i < resolvedDecorations.size(); i++) {
-            scratchSortKeys[si++] = packDecorationSortKey(resolvedDecorations.get(i), i);
-        }
-        Arrays.sort(scratchSortKeys, 0, totalCount);
 
         // Projection is constant for this whole draw() call. Flushes first if it differs from
         // what's already queued under a different projection — see syncProjection().
-        syncProjection(context.projection());
+        try (CgProfiler.Scope ignored = CgProfiler.scope("syncProjection")) {
+            syncProjection(context.projection());
+        }
 
         // Pixel-snap is an ORTHO-ONLY correction: pixelSnapDelta floors the modelView-transformed
         // position, which is only meaningful when modelView maps into screen-pixel space. For
@@ -1097,6 +1121,7 @@ public class CgTextRenderer {
 
         long currentBatchBits = 0;
         boolean batchStarted = false;
+        try (CgProfiler.Scope ignored = CgProfiler.scope("quadLoop")) {
         for (int s = 0; s < totalCount; s++) {
             long key = scratchSortKeys[s];
             long batchBits = key & SORT_BATCH_MASK;
@@ -1177,6 +1202,7 @@ public class CgTextRenderer {
                         + ", uv=[" + p.u0() + "," + p.v0() + "," + p.u1() + "," + p.v1() + "]"
                         + ", pos=[" + qx + "," + qy + "], size=[" + w + "," + h + "]");
             }
+        }
         }
     }
 
