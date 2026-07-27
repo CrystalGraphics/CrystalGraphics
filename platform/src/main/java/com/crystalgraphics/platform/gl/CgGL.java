@@ -2,7 +2,8 @@ package com.crystalgraphics.platform.gl;
 
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
-import java.nio.IntBuffer;import java.nio.ShortBuffer;
+import java.nio.ShortBuffer;
+import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -487,6 +488,19 @@ public final class CgGL {
         backend.bindFramebuffer(target, fbo);
     }
 
+    /** @see CgGLBackend#copyImageSubData */
+    public static void glCopyImageSubData(int srcName, int srcTarget, int srcLevel, int srcX, int srcY, int srcZ,
+                                           int dstName, int dstTarget, int dstLevel, int dstX, int dstY, int dstZ,
+                                           int srcWidth, int srcHeight, int srcDepth) {
+        backend.copyImageSubData(srcName, srcTarget, srcLevel, srcX, srcY, srcZ,
+                dstName, dstTarget, dstLevel, dstX, dstY, dstZ, srcWidth, srcHeight, srcDepth);
+    }
+
+    /** @see CgGLBackend#framebufferTextureLayer */
+    public static void glFramebufferTextureLayer(int target, int attachment, int texture, int level, int layer) {
+        backend.framebufferTextureLayer(target, attachment, texture, level, layer);
+    }
+
     public static void glBlitFramebuffer(int srcX0, int srcY0, int srcX1, int srcY1,
                                           int dstX0, int dstY0, int dstX1, int dstY1,
                                           int mask, int filter) {
@@ -852,6 +866,14 @@ public final class CgGL {
                                         int xOffset, int yOffset, int zOffset,
                                         int width, int height, int depth,
                                         int format, int type, FloatBuffer pixels) {
+        backend.glTexSubImage3D(target, level, xOffset, yOffset, zOffset, width, height, depth, format, type, pixels);
+    }
+
+    /** {@code short}-data variant — the natural fit for {@code GL_HALF_FLOAT} uploads. */
+    public static void glTexSubImage3D(int target, int level,
+                                        int xOffset, int yOffset, int zOffset,
+                                        int width, int height, int depth,
+                                        int format, int type, ShortBuffer pixels) {
         backend.glTexSubImage3D(target, level, xOffset, yOffset, zOffset, width, height, depth, format, type, pixels);
     }
 

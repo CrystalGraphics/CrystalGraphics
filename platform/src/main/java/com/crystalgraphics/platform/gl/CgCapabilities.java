@@ -127,6 +127,25 @@ public final class CgCapabilities {
     /** Whether fence sync is available (Core GL32 or {@code GL_ARB_sync}). */
     boolean arbSync;
 
+    // ── Texture copy ──────────────────────────────────────────────────────────
+    /**
+     * Whether {@code glCopyImageSubData} is available (Core GL43). Enables direct GPU-to-GPU
+     * texel copies with no CPU round trip — see {@code CgTextureCopy}.
+     *
+     * <p>Gated on core 4.3 only, deliberately not also probing {@code GL_ARB_copy_image}:
+     * {@code CgTextureCopy} already falls back to a framebuffer blit that works on the GL 3.0
+     * baseline, so the ARB path would only cover the narrow band of drivers that expose the
+     * extension without 4.3 — not worth an extra probe on every {@code CgGLContext}
+     * implementation.</p>
+     */
+    @Getter(AccessLevel.NONE) boolean copyImageSubData;
+    /**
+     * Whether {@code glFramebufferTextureLayer} is available (Core GL30 or
+     * {@code GL_ARB_framebuffer_object}) — needed to attach a single array-texture layer as a
+     * framebuffer attachment, which is what makes {@code CgTextureCopy}'s blit fallback possible.
+     */
+    @Getter(AccessLevel.NONE) boolean framebufferTextureLayer;
+
     // ── Instancing ────────────────────────────────────────────────────────────
     /** Whether instanced draw calls are available (Core GL31 or {@code GL_ARB_draw_instanced}). */
     @Getter(AccessLevel.NONE) boolean drawInstanced;
@@ -250,6 +269,10 @@ public final class CgCapabilities {
         caps.hasMapBufferRange = gl.OpenGL30() || gl.GL_ARB_map_buffer_range();
         caps.arbSync           = gl.OpenGL32() || gl.GL_ARB_sync();
 
+        // ── Texture copy ──────────────────────────────────────────────────────
+        caps.copyImageSubData        = gl.OpenGL43();
+        caps.framebufferTextureLayer = gl.OpenGL30() || gl.GL_ARB_framebuffer_object();
+
         // ── Instancing ────────────────────────────────────────────────────────
         caps.drawInstanced       = gl.OpenGL31() || gl.GL_ARB_draw_instanced();
         caps.vertexAttribDivisor = gl.OpenGL33() || gl.GL_ARB_instanced_arrays();
@@ -314,6 +337,12 @@ public final class CgCapabilities {
      * Returns whether vertex array objects (VAOs) are supported
      * (Core GL30 or {@code GL_ARB_vertex_array_object}).
      */
+    /** @see #copyImageSubData */
+    public boolean isCopyImageSubDataSupported() { return copyImageSubData; }
+
+    /** @see #framebufferTextureLayer */
+    public boolean isFramebufferTextureLayerSupported() { return framebufferTextureLayer; }
+
     public boolean isVaoSupported() { return hasVao; }
 
     /**
