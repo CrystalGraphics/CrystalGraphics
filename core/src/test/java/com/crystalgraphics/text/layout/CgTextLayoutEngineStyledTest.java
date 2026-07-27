@@ -8,7 +8,6 @@ import com.crystalgraphics.api.text.CgShapedRun;
 import com.crystalgraphics.api.text.CgStyleSpan;
 import com.crystalgraphics.api.text.CgStyledText;
 import com.crystalgraphics.api.text.CgTextLayout;
-import com.crystalgraphics.api.text.CgTextLayoutRequest;
 import org.junit.After;
 import org.junit.Test;
 
@@ -24,7 +23,7 @@ import static org.junit.Assert.*;
 /**
  * Phase 9 tests: BiDi ∩ style-span splitting and real per-line metrics —
  * {@link CgTextLayoutEngine#shapeStyled(CgStyledText, CgFontFamilyGroup, com.crystalgraphics.api.text.CgParagraphKnobs)}
- * via {@link CgTextLayoutRequest}.
+ * via {@link CgTextLayout.Request}.
  *
  * <p>Uses real loaded fonts (native FreeType/HarfBuzz), same pattern as
  * {@link com.crystalgraphics.api.font.CgFontFamilyGroupTest} — every created
@@ -56,7 +55,7 @@ public class CgTextLayoutEngineStyledTest {
         CgStyledText text = new CgStyledText("plain BOLD", List.of(
                 CgStyleSpan.builder().start(6).end(10).bold(true).build()));
 
-        CgTextLayout layout = CgTextLayoutRequest.of(text, group).build();
+        CgTextLayout layout = CgTextLayout.of(text, group).build();
 
         assertEquals(1, layout.lines().size());
         float expected = CgFontFamily.combineMetrics(
@@ -75,7 +74,7 @@ public class CgTextLayoutEngineStyledTest {
                 CgFontStyle.BOLD, bold));
 
         CgStyledText text = CgStyledText.plain("no styling here");
-        CgTextLayout layout = CgTextLayoutRequest.of(text, group).build();
+        CgTextLayout layout = CgTextLayout.of(text, group).build();
 
         assertEquals(regular.getLayoutMetrics().getLineHeight(), layout.baked().lineHeight()[0], 0.01f);
     }
@@ -91,7 +90,7 @@ public class CgTextLayoutEngineStyledTest {
         CgStyledText text = new CgStyledText("ab", List.of(
                 CgStyleSpan.builder().start(1).end(2).bold(true).build()));
 
-        CgTextLayout layout = CgTextLayoutRequest.of(text, group).build();
+        CgTextLayout layout = CgTextLayout.of(text, group).build();
         List<CgShapedRun> runs = layout.lines().get(0);
 
         assertEquals(2, runs.size());
@@ -110,7 +109,7 @@ public class CgTextLayoutEngineStyledTest {
         CgStyledText text = new CgStyledText("ab", List.of(
                 CgStyleSpan.builder().start(1).end(2).bold(true).argbColor(0xFFFF0000).build()));
 
-        CgTextLayout layout = CgTextLayoutRequest.of(text, group).build();
+        CgTextLayout layout = CgTextLayout.of(text, group).build();
         List<CgShapedRun> runs = layout.lines().get(0);
 
         assertEquals(0, runs.get(0).argbColor());
@@ -126,7 +125,7 @@ public class CgTextLayoutEngineStyledTest {
         CgStyledText text = new CgStyledText("ab", List.of(
                 CgStyleSpan.builder().start(1).end(2).bold(true).argbColor(0xFFFF0000).build()));
 
-        CgTextLayout layout = CgTextLayoutRequest.of(text, group).build();
+        CgTextLayout layout = CgTextLayout.of(text, group).build();
         int[] bakedColors = layout.baked().argbColor();
 
         assertEquals(2, bakedColors.length);
@@ -148,7 +147,7 @@ public class CgTextLayoutEngineStyledTest {
         CgStyledText text = new CgStyledText(fullText, List.of(
                 CgStyleSpan.builder().start(2).end(fullText.length()).bold(true).build()));
 
-        CgTextLayout layout = CgTextLayoutRequest.of(text, group).build();
+        CgTextLayout layout = CgTextLayout.of(text, group).build();
         List<CgShapedRun> runs = layout.lines().get(0);
 
         boolean foundRegularLtr = false;
@@ -187,7 +186,7 @@ public class CgTextLayoutEngineStyledTest {
         CgStyledText text = new CgStyledText(longWord, List.of(
                 CgStyleSpan.builder().start(0).end(longWord.length()).bold(true).build()));
 
-        CgTextLayout layout = CgTextLayoutRequest.of(text, group).maxWidth(40.0f).build();
+        CgTextLayout layout = CgTextLayout.of(text, group).maxWidth(40.0f).build();
 
         assertTrue("Bold text at 64px should need more than one line at maxWidth=40",
                 layout.lines().size() > 1);

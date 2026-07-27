@@ -15,7 +15,7 @@ import java.util.List;
 import static org.junit.Assert.*;
 
 /**
- * Phase 12 tests — one per {@link CgTextLayoutRequest} paragraph-level knob: alignment,
+ * Phase 12 tests — one per {@link CgTextLayout.Request} paragraph-level knob: alignment,
  * max-lines truncation (with and without ellipsis), tab-stop expansion, line-height
  * override, and direction override. Uses a real loaded font (native FreeType/HarfBuzz),
  * same pattern as {@link com.crystalgraphics.api.font.CgFontFamilyGroupTest}.
@@ -38,14 +38,14 @@ public class CgTextLayoutRequestTest {
 
     @Test
     public void testAlign_left_isDefault_noOffset() {
-        CgTextLayout layout = CgTextLayoutRequest.of("aaaaaaaaaa\nbb", family()).build();
+        CgTextLayout layout = CgTextLayout.of("aaaaaaaaaa\nbb", family()).build();
         int[] lineStart = layout.baked().lineStart();
         assertEquals(0f, layout.baked().penX()[lineStart[1]], 0.01f);
     }
 
     @Test
     public void testAlign_center_offsetsShorterLineHalfway() {
-        CgTextLayout layout = CgTextLayoutRequest.of("aaaaaaaaaa\nbb", family())
+        CgTextLayout layout = CgTextLayout.of("aaaaaaaaaa\nbb", family())
                 .align(CgTextAlign.CENTER)
                 .build();
 
@@ -59,7 +59,7 @@ public class CgTextLayoutRequestTest {
 
     @Test
     public void testAlign_right_offsetsShorterLineToTheRightEdge() {
-        CgTextLayout layout = CgTextLayoutRequest.of("aaaaaaaaaa\nbb", family())
+        CgTextLayout layout = CgTextLayout.of("aaaaaaaaaa\nbb", family())
                 .align(CgTextAlign.RIGHT)
                 .build();
 
@@ -76,7 +76,7 @@ public class CgTextLayoutRequestTest {
 
     @Test
     public void testMaxLines_truncatesWithoutEllipsis() {
-        CgTextLayout layout = CgTextLayoutRequest.of("a\nb\nc\nd", family())
+        CgTextLayout layout = CgTextLayout.of("a\nb\nc\nd", family())
                 .maxLines(2)
                 .build();
         assertEquals(2, layout.lines().size());
@@ -84,7 +84,7 @@ public class CgTextLayoutRequestTest {
 
     @Test
     public void testMaxLines_notExceeded_noTruncation() {
-        CgTextLayout layout = CgTextLayoutRequest.of("a\nb", family())
+        CgTextLayout layout = CgTextLayout.of("a\nb", family())
                 .maxLines(5)
                 .build();
         assertEquals(2, layout.lines().size());
@@ -92,10 +92,10 @@ public class CgTextLayoutRequestTest {
 
     @Test
     public void testMaxLines_withEllipsis_appendsMarkerGlyphsToLastLine() {
-        CgTextLayout withEllipsis = CgTextLayoutRequest.of("a\nb\nc\nd", family())
+        CgTextLayout withEllipsis = CgTextLayout.of("a\nb\nc\nd", family())
                 .maxLines(2).ellipsis("...")
                 .build();
-        CgTextLayout withoutEllipsis = CgTextLayoutRequest.of("a\nb\nc\nd", family())
+        CgTextLayout withoutEllipsis = CgTextLayout.of("a\nb\nc\nd", family())
                 .maxLines(2)
                 .build();
 
@@ -112,10 +112,10 @@ public class CgTextLayoutRequestTest {
 
     @Test
     public void testTabStopWidth_pushesFollowingGlyphToNextStop() {
-        CgTextLayout withTab = CgTextLayoutRequest.of("a\tb", family())
+        CgTextLayout withTab = CgTextLayout.of("a\tb", family())
                 .tabStopWidth(50f)
                 .build();
-        CgTextLayout withoutTab = CgTextLayoutRequest.of("ab", family()).build();
+        CgTextLayout withoutTab = CgTextLayout.of("ab", family()).build();
 
         assertEquals("'a' + tab + 'b' should bake to exactly 2 glyphs (tab has none)",
                 2, withTab.baked().glyphCount());
@@ -127,7 +127,7 @@ public class CgTextLayoutRequestTest {
 
     @Test
     public void testTabStopWidth_disabledByDefault_tabsShapeNormally() {
-        CgTextLayout layout = CgTextLayoutRequest.of("a\tb", family()).build();
+        CgTextLayout layout = CgTextLayout.of("a\tb", family()).build();
         // Without tabStopWidth set, the tab char is shaped like any other character —
         // not stripped, not treated specially — so it contributes at least one glyph slot.
         assertTrue(layout.baked().glyphCount() >= 2);
@@ -139,7 +139,7 @@ public class CgTextLayoutRequestTest {
 
     @Test
     public void testLineHeightOverride_replacesComputedHeightUniformly() {
-        CgTextLayout layout = CgTextLayoutRequest.of("a\nb", family())
+        CgTextLayout layout = CgTextLayout.of("a\nb", family())
                 .lineHeightOverride(100f)
                 .build();
 
@@ -149,7 +149,7 @@ public class CgTextLayoutRequestTest {
     @Test
     public void testLineHeightOverride_disabledByDefault_usesRealMetrics() {
         CgFontFamily family = family();
-        CgTextLayout layout = CgTextLayoutRequest.of("a\nb", family).build();
+        CgTextLayout layout = CgTextLayout.of("a\nb", family).build();
 
         float expected = family.getLayoutMetrics().getLineHeight();
         assertArrayEquals(new float[]{expected, expected}, layout.baked().lineHeight(), 0.01f);
@@ -167,10 +167,10 @@ public class CgTextLayoutRequestTest {
         CgFontFamily family = family();
         String mixedText = "Hello مرحبا";
 
-        CgTextLayout ltrForced = CgTextLayoutRequest.of(mixedText, family)
+        CgTextLayout ltrForced = CgTextLayout.of(mixedText, family)
                 .direction(CgTextDirection.LTR)
                 .build();
-        CgTextLayout rtlForced = CgTextLayoutRequest.of(mixedText, family)
+        CgTextLayout rtlForced = CgTextLayout.of(mixedText, family)
                 .direction(CgTextDirection.RTL)
                 .build();
 
@@ -185,10 +185,10 @@ public class CgTextLayoutRequestTest {
         CgFontFamily family = family();
         String text = "Hello world";
 
-        CgTextLayout explicit = CgTextLayoutRequest.of(text, family)
+        CgTextLayout explicit = CgTextLayout.of(text, family)
                 .direction(CgTextDirection.AUTO)
                 .build();
-        CgTextLayout implicit = CgTextLayoutRequest.of(text, family).build();
+        CgTextLayout implicit = CgTextLayout.of(text, family).build();
 
         assertEquals(explicit.lines(), implicit.lines());
     }

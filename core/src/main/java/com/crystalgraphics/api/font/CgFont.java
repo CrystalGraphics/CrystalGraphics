@@ -30,7 +30,7 @@ import java.util.logging.Logger;
  *       enough native state for glyph coverage queries and can lazily vend cached
  *       size-bound variants via {@link #atSize(int)}.</li>
  *   <li><strong>Size-bound</strong> — created with a concrete target pixel size. This
- *       is the renderable/shapable form used by {@link CgTextLayoutBuilder} and
+ *       is the renderable/shapable form used by {@link com.crystalgraphics.text.layout.CgTextLayoutEngine} and
  *       {@code CgTextRenderer}.</li>
  * </ul>
  *

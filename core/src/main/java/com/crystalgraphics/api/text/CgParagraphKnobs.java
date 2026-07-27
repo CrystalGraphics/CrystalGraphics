@@ -1,7 +1,7 @@
 package com.crystalgraphics.api.text;
 
 /**
- * Paragraph-level layout knobs — the fixed configuration a {@link CgTextLayoutRequest}
+ * Paragraph-level layout knobs — the fixed configuration a {@link CgTextLayout.Request}
  * captures at {@code shape()} time and a {@link CgShapedParagraph} retains for every
  * subsequent {@code layout(maxWidth, maxHeight)} re-wrap.
  *
@@ -17,7 +17,7 @@ package com.crystalgraphics.api.text;
  * @param tabStopWidth      {@code \t} expansion width in logical pixels; {@code <= 0} disables
  *                          expansion (tabs shape as whatever glyph the font has for U+0009).
  *                          <strong>v1 limitation:</strong> only implemented for the plain-text
- *                          overload ({@link CgTextLayoutRequest#of(String, com.crystalgraphics.api.font.CgFontFamily)}),
+ *                          overload ({@link CgTextLayout#of(String, com.crystalgraphics.api.font.CgFontFamily)}),
  *                          not the styled-text one; and tab-stop columns are computed assuming
  *                          the paragraph is not yet line-wrapped (a genuine simplification —
  *                          real column position after a soft-wrap is not tracked)

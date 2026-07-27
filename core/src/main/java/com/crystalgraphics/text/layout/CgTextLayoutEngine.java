@@ -1,5 +1,6 @@
 package com.crystalgraphics.text.layout;
 
+import com.crystalgraphics.harfbuzz.HBFont;
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgFontFamily;
 import com.crystalgraphics.api.font.CgFontFamilyGroup;
@@ -27,26 +28,32 @@ import java.util.Locale;
 import java.util.TreeSet;
 
 /**
- * Internal base implementation of the text layout pipeline.
+ * Internal implementation of the text layout pipeline.
  *
- * <p>The concrete shaping/fallback bridge is supplied by a subclass so the real
- * algorithm can live in the {@code text} package while package-private font
- * internals remain encapsulated inside {@code api/font}.</p>
+ * <p>Font-fallback resolution and HarfBuzz shaping ({@link CgFontFamily#resolveRuns}/
+ * {@link CgFontFamily#requireShapingFont}) are called directly — those members are public
+ * specifically so this class (living in {@code text/layout}, not {@code api/font}) can reach
+ * them without an {@code api/font}-resident bridge subclass. There used to be one
+ * ({@code CgTextLayoutBuilder}); it added a layer of indirection for zero behavioral benefit
+ * once the two members it existed solely to reach were made public, so it was removed.</p>
  *
  * <h3>Shape / wrap split</h3>
  * <p>{@link #shape}/{@link #shapeStyled} do the expensive, one-time part — paragraph
  * splitting, BiDi (∩ style-span) analysis, HarfBuzz shaping — and return a
  * {@link CgShapedParagraph}. {@link #wrap} does the cheap, re-runnable part — line
- * breaking and baking — and is a {@code static} method with no dependency on the
- * shaping hooks, since by that point shaping has already happened; it is what
+ * breaking and baking — since by that point shaping has already happened; it is what
  * {@link CgShapedParagraph#layout(float, float)} calls into. There is no public
  * {@code layout(String, ...)} entry point on this class anymore — that role now
- * belongs to {@code api.text.CgTextLayoutRequest}, which calls {@link #shape}/
- * {@link #shapeStyled} then {@link CgShapedParagraph#layout}.</p>
+ * belongs to {@code api.text.CgTextLayout.Request}, which calls {@link #shape}/
+ * {@link #shapeStyled} then {@link CgShapedParagraph#layout}. Stateless — every method
+ * is {@code static}, so this class is never instantiated.</p>
  */
-public abstract class CgTextLayoutEngine {
+public final class CgTextLayoutEngine {
 
     private static final CgLineBreaker LINE_BREAKER = new CgLineBreaker();
+    private static final CgTextShaper SHAPER = new CgTextShaper();
+
+    private CgTextLayoutEngine() {}
 
     /**
      * Shapes plain text against a single family — paragraph splitting, tab-stop expansion
@@ -54,7 +61,7 @@ public abstract class CgTextLayoutEngine {
      * without line-breaking or baking. Call {@link CgShapedParagraph#layout} on the result
      * to wrap it at a width.
      */
-    public CgShapedParagraph shape(String text, CgFontFamily family, CgParagraphKnobs knobs) {
+    public static CgShapedParagraph shape(String text, CgFontFamily family, CgParagraphKnobs knobs) {
         if (text == null) throw new IllegalArgumentException("text must not be null");
         if (family == null) throw new IllegalArgumentException("family must not be null");
         if (knobs == null) knobs = CgParagraphKnobs.DEFAULT;
@@ -84,7 +91,7 @@ public abstract class CgTextLayoutEngine {
      * drive family resolution. {@link CgParagraphKnobs#tabStopWidth()} is not implemented
      * for this overload (v1 limitation — see that field's javadoc).</p>
      */
-    public CgShapedParagraph shapeStyled(CgStyledText text, CgFontFamilyGroup group, CgParagraphKnobs knobs) {
+    public static CgShapedParagraph shapeStyled(CgStyledText text, CgFontFamilyGroup group, CgParagraphKnobs knobs) {
         if (text == null) throw new IllegalArgumentException("text must not be null");
         if (group == null) throw new IllegalArgumentException("group must not be null");
         if (knobs == null) knobs = CgParagraphKnobs.DEFAULT;
@@ -267,7 +274,7 @@ public abstract class CgTextLayoutEngine {
     }
 
     /** Splits {@code text} into paragraphs on {@code \r\n}/{@code \r}/{@code \n}. */
-    protected List<String> splitParagraphs(String text) {
+    static List<String> splitParagraphs(String text) {
         List<String> paragraphs = new ArrayList<>();
         for (int[] range : paragraphRanges(text)) {
             paragraphs.add(text.substring(range[0], range[1]));
@@ -307,7 +314,7 @@ public abstract class CgTextLayoutEngine {
         };
     }
 
-    private List<CgShapedRun> splitAndShapeRuns(String text, CgFontFamily family, CgTextDirection direction) {
+    private static List<CgShapedRun> splitAndShapeRuns(String text, CgFontFamily family, CgTextDirection direction) {
         Bidi bidi = new Bidi(text, bidiFlagFor(direction));
         int runCount = bidi.getRunCount();
         List<CgShapedRun> runs = new ArrayList<CgShapedRun>(runCount);
@@ -328,11 +335,11 @@ public abstract class CgTextLayoutEngine {
      * boundary falling inside it (sorted-interval intersection between the BiDi run's
      * {@code [start,end)} and {@code spans}), resolves {@code group.resolve(...)} for the
      * sub-range's bold/italic combination to pick the family, then calls the same
-     * {@link #collectShapedRuns} hook — its signature is unchanged; the resulting runs are
+     * {@link #collectShapedRuns} helper — its signature is unchanged; the resulting runs are
      * re-wrapped afterward with the covering span's rich fields (color/decoration/features/
      * baseline-shift), if any.
      */
-    private List<CgShapedRun> splitAndShapeRunsStyled(String text, List<CgStyleSpan> spans, CgFontFamilyGroup group,
+    private static List<CgShapedRun> splitAndShapeRunsStyled(String text, List<CgStyleSpan> spans, CgFontFamilyGroup group,
                                                        CgTextDirection direction) {
         Bidi bidi = new Bidi(text, bidiFlagFor(direction));
         int runCount = bidi.getRunCount();
@@ -369,7 +376,7 @@ public abstract class CgTextLayoutEngine {
      * {@code family} so {@link CgTextLayoutEngine#wrap} never needs to re-shape anything —
      * matching its own "no re-shape" contract.
      */
-    private List<CgShapedRun> shapeEllipsis(String marker, CgFontFamily family, CgTextDirection direction) {
+    private static List<CgShapedRun> shapeEllipsis(String marker, CgFontFamily family, CgTextDirection direction) {
         if (marker == null || marker.isEmpty()) {
             return List.of();
         }
@@ -387,7 +394,7 @@ public abstract class CgTextLayoutEngine {
      * paragraph is not yet line-wrapped — real column position after a soft-wrap is not
      * tracked. See {@link CgParagraphKnobs#tabStopWidth()}.</p>
      */
-    private List<CgShapedRun> shapeParagraphText(String paragraph, CgFontFamily family, CgTextDirection direction, float tabStopWidth) {
+    private static List<CgShapedRun> shapeParagraphText(String paragraph, CgFontFamily family, CgTextDirection direction, float tabStopWidth) {
         if (tabStopWidth <= 0 || paragraph.indexOf('\t') < 0) {
             return splitAndShapeRuns(paragraph, family, direction);
         }
@@ -556,9 +563,38 @@ public abstract class CgTextLayoutEngine {
         return rebased;
     }
 
-    protected abstract void collectShapedRuns(String text, int start, int end, boolean rtl, CgFontFamily family, List<CgShapedRun> out);
+    /**
+     * Resolves font-fallback runs for {@code text[start,end)} via {@link CgFontFamily#resolveRuns}
+     * (splitting the range by glyph coverage across {@code family}'s primary and fallback
+     * sources), then shapes each resulting {@link CgFontFamily.ResolvedFontRun} through HarfBuzz.
+     */
+    private static void collectShapedRuns(String text, int start, int end, boolean rtl, CgFontFamily family, List<CgShapedRun> out) {
+        List<CgFontFamily.ResolvedFontRun> resolvedRuns = family.resolveRuns(text, start, end);
+        for (CgFontFamily.ResolvedFontRun resolvedRun : resolvedRuns) {
+            HBFont hbFont = resolvedRun.requireHbFont();
+            CgFont resolvedFont = resolvedRun.getSource().requireFont();
+            CgShapedRun run = SHAPER.shape(text,
+                    resolvedRun.getStart(),
+                    resolvedRun.getEnd(),
+                    resolvedRun.getFontKey(),
+                    resolvedFont,
+                    rtl,
+                    hbFont);
+            out.add(run);
+        }
+    }
 
     /**
+     * Creates a reshaper the line breaker can call when it needs to split an already-shaped
+     * run at a word or wrap boundary.
+     *
+     * <p>Resolves the fragment's font <em>by the run's own style</em> —
+     * {@code group.resolve(run.fontKey().getStyle())} — rather than always against
+     * {@code group}'s regular face, so a bold run's forced line-break re-shapes against the
+     * bold face and not the regular one. Uses {@link CgFontFamily#requireShapingFont} to obtain
+     * the native {@code HBFont} for the fragment's font key, then re-shapes through HarfBuzz so
+     * glyph clusters remain correct.
+     *
      * @param group the family group to resolve each fragment's font against, by its
      *              {@link CgFontKey#getStyle()} — for the plain-family overloads this is a
      *              single-family group ({@link CgFontFamilyGroup#ofRegular}), so a bold/italic
@@ -566,7 +602,27 @@ public abstract class CgTextLayoutEngine {
      *              overload it's the real group, so a bold run's intra-run word-wrap re-shape
      *              resolves the bold face instead of always the regular one
      */
-    protected abstract RunReshaper createRunReshaper(CgFontFamilyGroup group);
+    private static RunReshaper createRunReshaper(final CgFontFamilyGroup group) {
+        return (context, run, subStart, subEnd) -> {
+            CgFontFamily family = group.resolve(run.fontKey().getStyle());
+            HBFont hbFont = family.requireShapingFont(run.fontKey());
+            CgFont resolvedFont = family.resolveLoadedFont(run.fontKey());
+            CgShapedRun fragment = SHAPER.shape(context.sourceText(), subStart, subEnd,
+                    run.fontKey(), resolvedFont, run.rtl(), hbFont);
+            // shaper.shape() only knows glyph/advance/cluster data -- it has no idea this
+            // sub-range came from a run carrying rich styling (a colored/decorated/bold
+            // span the line breaker had to split). Without copying these over, any styled
+            // run that genuinely needs splitting across lines silently reverts to
+            // plain/unstyled for the split-off fragment(s).
+            return fragment
+                    .argbColor(run.argbColor())
+                    .decorations(run.decorations())
+                    .fontFeatures(run.fontFeatures())
+                    .baselineShift(run.baselineShift())
+                    .syntheticBold(run.syntheticBold())
+                    .syntheticItalic(run.syntheticItalic());
+        };
+    }
 
     /**
      * Bakes {@code lines} (and their parallel {@code justifiableByLine} flags) into a flat

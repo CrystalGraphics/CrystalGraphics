@@ -8,7 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Global, bounded LRU cache of {@code CgTextLayoutBuilder.layout(...)} results — i.e. shaped
+ * Global, bounded LRU cache of {@code CgTextLayoutEngine.shape(...)/wrap(...)} results — i.e. shaped
  * text (HarfBuzz + BiDi + UAX#14 line breaking already applied) — keyed by <em>content</em>,
  * not identity. Used by {@code CgTextRenderer.layout(String, ...)} so a caller using
  * {@code Draw.text(String)} with repeated content (the common case — most UI text is the same
