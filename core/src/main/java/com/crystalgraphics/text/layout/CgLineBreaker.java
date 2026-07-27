@@ -95,8 +95,17 @@ public class CgLineBreaker {
                 // away however much of the run would still have fit, leaving the line short of
                 // maxWidth whenever a multi-run paragraph (styled/BiDi-split text) handed us a
                 // large run while the current line still had room left.
+                // allowGraphemeFallback only when the current line is already empty -- then
+                // remainingWidth == maxWidth, i.e. this attempt already IS against a fresh
+                // line, so a forced mid-word split here is the genuine last resort (a single
+                // token wider than a whole line). When the line already has content,
+                // remainingWidth is just whatever's left over; forcing a mid-word split to
+                // grab that small sliver instead of moving the whole word to a fresh line
+                // (where it likely fits fine on its own) would split a word that didn't need
+                // to be split at all -- that case defers to the fresh-line retry below.
+                boolean allowGraphemeFallback = currentLine.isEmpty();
                 List<CgShapedRun> fragments = (context != null && reshaper != null)
-                        ? splitAtLineBreaks(context, run, remainingWidth, maxWidth, reshaper)
+                        ? splitAtLineBreaks(context, run, remainingWidth, maxWidth, reshaper, allowGraphemeFallback)
                         : null;
 
                 if ((fragments == null || fragments.size() <= 1) && !currentLine.isEmpty()) {
@@ -111,7 +120,7 @@ public class CgLineBreaker {
                     currentWidth = 0.0f;
                     remainingWidth = maxWidth;
                     if (context != null && reshaper != null && run.totalAdvance() > remainingWidth) {
-                        fragments = splitAtLineBreaks(context, run, remainingWidth, maxWidth, reshaper);
+                        fragments = splitAtLineBreaks(context, run, remainingWidth, maxWidth, reshaper, true);
                     }
                 }
 
@@ -175,21 +184,34 @@ public class CgLineBreaker {
      * is assumed to grow monotonically with included text, the same assumption
      * production line breakers make for this purpose.
      *
-     * <p>Falls back to {@link #splitAtGraphemeBreaks} when no word-level boundary
-     * fits (including when the segment has no line-break boundaries at all, e.g.
-     * a single unbroken token).</p>
+     * <p>Falls back to {@link #splitAtGraphemeBreaks} when no word-level boundary fits AND
+     * {@code allowGraphemeFallback} is {@code true} (including when the segment has no
+     * line-break boundaries at all, e.g. a single unbroken token) — see that parameter's
+     * doc for why this is conditional.</p>
      *
-     * @param context        the paragraph's source-text context
-     * @param run            the run to split
-     * @param availableWidth remaining width on the current line
-     * @param maxLineWidth   full line width for subsequent fragments
-     * @param reshaper       callback to re-shape text sub-ranges
+     * @param context               the paragraph's source-text context
+     * @param run                   the run to split
+     * @param availableWidth        remaining width on the current line
+     * @param maxLineWidth          full line width for subsequent fragments
+     * @param reshaper              callback to re-shape text sub-ranges
+     * @param allowGraphemeFallback whether to force a mid-word character split when no word
+     *                              boundary fits {@code availableWidth}. Pass {@code true}
+     *                              only when {@code availableWidth} is itself a full, fresh
+     *                              line's width — that is the actual "last resort" case (the
+     *                              token doesn't fit a whole line on its own). Pass
+     *                              {@code false} when {@code availableWidth} is merely
+     *                              whatever's left over on an already-partially-filled line:
+     *                              forcing a mid-word break there to grab a small leftover
+     *                              sliver, instead of moving the whole token to a fresh line
+     *                              where it likely fits fine, splits a word that didn't need
+     *                              to be split at all.
      * @return list of re-shaped fragments, or {@code null} if no split was possible
      */
     private List<CgShapedRun> splitAtLineBreaks(CgReshapeContext context, CgShapedRun run,
                                                  float availableWidth,
                                                  float maxLineWidth,
-                                                 RunReshaper reshaper) {
+                                                 RunReshaper reshaper,
+                                                 boolean allowGraphemeFallback) {
         String sourceText = context.sourceText();
         int runStart = run.sourceStart();
         int runEnd = run.sourceEnd();
@@ -202,9 +224,12 @@ public class CgLineBreaker {
         int best = findBestFittingBoundary(context, boundaries, run, runStart, availableWidth, reshaper);
 
         if (best <= 0) {
-            // Nothing at word granularity fits — a single token is wider than the line
-            // on its own. Force a character-level break instead of giving up entirely.
-            return splitAtGraphemeBreaks(context, run, availableWidth, maxLineWidth, reshaper);
+            // Nothing at word granularity fits. Only force a character-level break when this
+            // is genuinely a last resort (see allowGraphemeFallback's doc) — otherwise defer
+            // to the whole-run relocation path, which moves the token to a fresh line intact.
+            return allowGraphemeFallback
+                    ? splitAtGraphemeBreaks(context, run, availableWidth, maxLineWidth, reshaper)
+                    : null;
         }
 
         List<CgShapedRun> fragments = buildFragments(context, run, runStart, runEnd, best, maxLineWidth, reshaper);
@@ -268,7 +293,9 @@ public class CgLineBreaker {
             CgShapedRun tail = reshaper.reshape(context, run, tailStart, runEnd);
             if (tail != null) {
                 if (tail.totalAdvance() > maxLineWidth) {
-                    List<CgShapedRun> tailFragments = splitAtLineBreaks(context, tail, maxLineWidth, maxLineWidth, reshaper);
+                    // maxLineWidth here IS a full, fresh line's width (the tail starts a new
+                    // line), so grapheme fallback is the genuine last resort -- true.
+                    List<CgShapedRun> tailFragments = splitAtLineBreaks(context, tail, maxLineWidth, maxLineWidth, reshaper, true);
                     if (tailFragments != null) {
                         fragments.addAll(tailFragments);
                     } else {

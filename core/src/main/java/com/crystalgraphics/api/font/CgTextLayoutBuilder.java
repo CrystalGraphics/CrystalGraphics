@@ -123,8 +123,20 @@ public class CgTextLayoutBuilder extends CgTextLayoutEngine {
                 CgFontFamily family = group.resolve(run.fontKey().getStyle());
                 HBFont hbFont = family.requireShapingFont(run.fontKey());
                 CgFont resolvedFont = family.resolveLoadedFont(run.fontKey());
-                return shaper.shape(context.sourceText(), subStart, subEnd,
+                CgShapedRun fragment = shaper.shape(context.sourceText(), subStart, subEnd,
                         run.fontKey(), resolvedFont, run.rtl(), hbFont);
+                // shaper.shape() only knows glyph/advance/cluster data -- it has no idea this
+                // sub-range came from a run carrying rich styling (a colored/decorated/bold
+                // span the line breaker had to split). Without copying these over, any styled
+                // run that genuinely needs splitting across lines silently reverts to
+                // plain/unstyled for the split-off fragment(s).
+                return fragment
+                        .argbColor(run.argbColor())
+                        .decorations(run.decorations())
+                        .fontFeatures(run.fontFeatures())
+                        .baselineShift(run.baselineShift())
+                        .syntheticBold(run.syntheticBold())
+                        .syntheticItalic(run.syntheticItalic());
             }
         };
     }
