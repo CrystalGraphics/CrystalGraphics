@@ -13,6 +13,7 @@ import com.crystalgraphics.gl.framebuffer.CgFrameBufferRegistry;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.gl.mesh.CgMeshRegistry;
 import com.crystalgraphics.gl.render.CgInstanceRenderer;
+import com.crystalgraphics.gl.texture.CgTextureCopy;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
 import com.crystalgraphics.gl.texture.CgTextureManager;
 import com.crystalgraphics.gl.vertex.CgInstanceVertexArrayBinding;
@@ -229,6 +230,10 @@ public final class CgGraphicsLifecycle {
 
         // Step 10: Debug utilities (lazy singleton — no-op if never used).
 //        CgDebugBlit.dispose();
+
+        // Scratch framebuffers used by the GPU-side texture copy path (lazily created —
+        // no-op if no texture ever grew). Safe to reuse after this; they are recreated on demand.
+        CgTextureCopy.dispose();
 
         // Reset all backend-capability caches so context recreation re-probes correctly.
         CgCapabilities.clearCache();

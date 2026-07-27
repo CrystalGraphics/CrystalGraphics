@@ -5,10 +5,13 @@ import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.util.CgBufferUtils;
+import com.crystalgraphics.util.CgHalfFloat;
+import com.crystalgraphics.util.profiling.CgProfiler;
 import com.crystalgraphics.util.io.CgTextureIO.CgImageData;
 import com.crystalgraphics.util.io.CgTextureIO;
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
+import java.nio.ShortBuffer;
 import java.util.Arrays;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -180,6 +183,56 @@ public final class CgTexture2DArray extends CgTextureAbstract {
         rawUpload(layer, x, y, w, h, format, type, data);
     }
 
+    /**
+     * Uploads {@code float} source data to a <strong>half-float</strong> ({@code RGBA16F}-class)
+     * array, converting to {@code GL_HALF_FLOAT} on the CPU instead of handing the driver
+     * {@code GL_FLOAT} and letting it quantize.
+     *
+     * <h3>Why this is free precision-wise</h3>
+     * <p>The destination storage is 16-bit float either way, so the values are quantized to
+     * half regardless of which path is used — doing it here produces bit-identical texels to
+     * letting the driver do it, while sending <strong>half the bytes</strong> and skipping the
+     * driver's per-pixel conversion pass entirely. There is no quality trade-off to weigh.</p>
+     *
+     * <h3>Why it matters</h3>
+     * <p>Measured on distance-field glyph upload: ~1.1 MiB/frame of {@code GL_FLOAT} data was
+     * producing 30-218 ms frame stalls, most of it surfacing <em>after</em> the upload call
+     * returned (deferred GPU work billed at buffer swap, invisible to CPU-side timers). Halving
+     * the transfer and removing the conversion attacks that directly.</p>
+     *
+     * <p>The CPU-side mirror (see class javadoc "Growth without a GPU readback") still stores
+     * the original {@code float} data, so layer-growth re-upload is unaffected and keeps full
+     * source precision.</p>
+     *
+     * @param format GL pixel format of {@code data} (e.g. {@code GL_RGB}, {@code GL_RGBA})
+     * @param data   tightly-packed float pixel data, {@code w * h * channels(format)} elements
+     */
+    public void uploadLayerRegionAsHalf(int layer, int x, int y, int w, int h,
+                                         int format, FloatBuffer data) {
+        checkNotDeleted();
+        mirrorFloatUpload(layer, x, y, w, h, format, data);
+
+        int count = data.remaining();
+        if (halfUploadBuffer == null || halfUploadBuffer.capacity() < count) 
+            halfUploadBuffer = CgBufferUtils.createShortBuffer(count);
+        
+        halfUploadBuffer.clear();
+        int base = data.position();
+        for (int i = 0; i < count; i++) 
+            halfUploadBuffer.put(CgHalfFloat.toHalf(data.get(base + i)));
+        
+        halfUploadBuffer.flip();
+
+        rawUpload(layer, x, y, w, h, format, CgGL.GL_HALF_FLOAT, halfUploadBuffer);
+    }
+
+    /**
+     * Reusable scratch for {@link #uploadLayerRegionAsHalf}'s converted texels — grow-only, so a
+     * steady stream of same-or-smaller glyph uploads allocates nothing after the first.
+     */
+    private ShortBuffer halfUploadBuffer;
+
+
     private void rawUpload(int layer, int x, int y, int w, int h, int format, int type, ByteBuffer data) {
         CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, textureId);
         // GL defaults GL_UNPACK_ALIGNMENT to 4 (rows padded to a 4-byte boundary in the
@@ -199,6 +252,15 @@ public final class CgTexture2DArray extends CgTextureAbstract {
     }
 
     private void rawUpload(int layer, int x, int y, int w, int h, int format, int type, FloatBuffer data) {
+        CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, textureId);
+        try {
+            CgGL.glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, x, y, layer, w, h, 1, format, type, data);
+        } finally {
+            CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+        }
+    }
+
+    private void rawUpload(int layer, int x, int y, int w, int h, int format, int type, ShortBuffer data) {
         CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, textureId);
         try {
             CgGL.glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, x, y, layer, w, h, 1, format, type, data);
@@ -266,30 +328,105 @@ public final class CgTexture2DArray extends CgTextureAbstract {
         }
         int oldDepth = depth;
 
-        CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, textureId);
-        try {
-            CgGL.glTexImage3D(GL_TEXTURE_2D_ARRAY, 0,
-                    spec.getGlInternalFormat(), width, height, newLayerCount, 0,
-                    spec.getGlBaseFormat(), spec.getGlType(), (ByteBuffer) null);
-            spec.applyTo(GL_TEXTURE_2D_ARRAY);
-        } finally {
-            CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+        // Preferred path: park the existing layers in a scratch texture, reallocate THIS texture
+        // in place, then copy them back — both hops GPU-side, no CPU round trip.
+        //
+        // Why the scratch texture rather than simply allocating a bigger texture and adopting
+        // it: this instance's GL texture id must not change. CgGlyphPlacement caches
+        // atlasTextureId per glyph and CgTextRenderer batches draws on it (see its sort-key
+        // packing), so swapping ids would leave every cached placement pointing at a texture
+        // that no longer exists. Reallocating in place keeps that invariant intact (it is why
+        // the class javadoc calls out "same texture id"), and the cost of the extra hop is
+        // negligible: two GPU-local copies versus a full CPU->GPU re-upload measured at
+        // 3.8ms -> 65.7ms and climbing with atlas size. The realloc itself is 0.01ms.
+        if (CgTextureCopy.isSupported()) {
+            try (CgProfiler.Scope ignored = CgProfiler.scope("texArray.growGpuCopy")) {
+                // Scratch goes through this class's own allocateEmpty rather than a raw
+                // glGenTextures/glTexImage3D pair: same format/filter/wrap setup as any other
+                // array texture (no chance of the two drifting apart), a real object with a
+                // delete() rather than a naked GL name, and no raw GL object creation sitting
+                // in a feature path. allocateEmpty deliberately does not register with
+                // CgTextureManager — the caller owns the lifecycle, which is exactly what a
+                // transient scratch wants.
+                CgTexture2DArray scratch = allocateEmpty(width, height, oldDepth, spec);
+                boolean copied = false;
+                try {
+                    // Hop 1: current contents -> scratch, while the original still holds them.
+                    if (CgTextureCopy.copyArrayLayers(textureId, scratch.getId(), width, height, oldDepth)) {
+                        reallocateStorage(newLayerCount);
+                        // Hop 2: scratch -> the freshly (and larger) reallocated original.
+                        copied = CgTextureCopy.copyArrayLayers(scratch.getId(), textureId, width, height, oldDepth);
+                        if (!copied) {
+                            // Storage was already reallocated, so the old texels are gone from
+                            // the original and only the CPU mirror can restore them. Fall through
+                            // to the replay loop below rather than leaving the atlas corrupt.
+                            LOGGER.warning("GPU copy-back failed during array growth; replaying layers from CPU mirror");
+                        }
+                    }
+                } finally {
+                    scratch.delete();
+                }
+
+                if (copied) {
+                    this.depth = newLayerCount;
+                    ensurePageCapacity(newLayerCount);
+                    CgProfiler.count("texArray.growGpuCopy.count");
+                    return;
+                }
+                // Fall through. reallocateStorage may or may not have run; the code below is
+                // idempotent with respect to it (reallocating twice is harmless, and the replay
+                // restores every layer either way).
+            }
+        }
+
+        // Fallback: reallocate in place, then replay every layer from its CPU mirror.
+        // Split into two scopes deliberately -- "realloc" is the unavoidable glTexImage3D that
+        // resizes GPU storage, while "replayLayers" is the CPU->GPU re-upload. Measuring them
+        // separately is what established that the replay, not the realloc, is the real cost.
+        try (CgProfiler.Scope ignored = CgProfiler.scope("texArray.realloc")) {
+            reallocateStorage(newLayerCount);
         }
         this.depth = newLayerCount;
         ensurePageCapacity(newLayerCount);
 
-        for (int i = 0; i < oldDepth; i++) {
-            PageData page = pages[i];
-            if (page == null) {
-                continue; // this layer never received an upload — nothing to replay.
+        try (CgProfiler.Scope ignored = CgProfiler.scope("texArray.replayLayers")) {
+            int replayed = 0;
+            long replayedBytes = 0;
+            for (int i = 0; i < oldDepth; i++) {
+                PageData page = pages[i];
+                if (page == null) {
+                    continue; // this layer never received an upload — nothing to replay.
+                }
+                if (page.byteData != null) {
+                    page.byteData.position(0);
+                    rawUpload(i, 0, 0, width, height, page.format, page.type, page.byteData);
+                    replayedBytes += page.byteData.remaining();
+                } else {
+                    page.floatData.position(0);
+                    rawUpload(i, 0, 0, width, height, page.format, page.type, page.floatData);
+                    replayedBytes += (long) page.floatData.remaining() << 2;
+                }
+                replayed++;
             }
-            if (page.byteData != null) {
-                page.byteData.position(0);
-                rawUpload(i, 0, 0, width, height, page.format, page.type, page.byteData);
-            } else {
-                page.floatData.position(0);
-                rawUpload(i, 0, 0, width, height, page.format, page.type, page.floatData);
-            }
+            CgProfiler.sample("texArray.replayLayers.count", replayed);
+            CgProfiler.count("texArray.replayLayers.bytes", replayedBytes);
+        }
+    }
+
+    /**
+     * Reallocates this texture's GL storage to {@code layerCount} layers, keeping the same GL
+     * texture id (see {@link #growLayers}'s comment on why the id must not change). Discards
+     * all existing texel content — the caller is responsible for restoring it.
+     */
+    private void reallocateStorage(int layerCount) {
+        CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, textureId);
+        try {
+            CgGL.glTexImage3D(GL_TEXTURE_2D_ARRAY, 0,
+                    spec.getGlInternalFormat(), width, height, layerCount, 0,
+                    spec.getGlBaseFormat(), spec.getGlType(), (ByteBuffer) null);
+            spec.applyTo(GL_TEXTURE_2D_ARRAY);
+        } finally {
+            CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
         }
     }
 

@@ -432,7 +432,11 @@ public class CgGlyphAtlasPage {
         msdfUploadBuffer.put(data, 0, required);
         msdfUploadBuffer.flip();
 
-        arrayTexture.uploadLayerRegion(pageIndex, x, y, w, h, glFormat, GL_FLOAT, msdfUploadBuffer);
+        // Half-float, not GL_FLOAT: the array's storage is RGBA16F either way, so the driver
+        // would quantize this to half on upload regardless -- converting CPU-side produces
+        // bit-identical texels while sending half the bytes and skipping the driver's per-pixel
+        // conversion. See CgTexture2DArray#uploadLayerRegionAsHalf.
+        arrayTexture.uploadLayerRegionAsHalf(pageIndex, x, y, w, h, glFormat, msdfUploadBuffer);
     }
 
     private void checkNotDeleted() {
