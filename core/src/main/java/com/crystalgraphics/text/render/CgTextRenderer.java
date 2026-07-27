@@ -1083,7 +1083,7 @@ public class CgTextRenderer {
 
         // Projection is constant for this whole draw() call. Flushes first if it differs from
         // what's already queued under a different projection — see syncProjection().
-        syncProjection(context.getProjection());
+        syncProjection(context.projection());
 
         // World text is always MSDF (see PerspectiveScaleResolver#shouldUseMsdf), so gating
         // pixel-snap on !isDistanceField alone already excludes it -- no separate world check.

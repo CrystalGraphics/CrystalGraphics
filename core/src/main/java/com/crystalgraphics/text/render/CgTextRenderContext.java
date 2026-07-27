@@ -3,6 +3,8 @@ package com.crystalgraphics.text.render;
 import com.crystalgraphics.api.PoseStack;
 import com.crystalgraphics.api.font.CgFontKey;
 import lombok.Getter;
+import lombok.Setter;
+import lombok.experimental.Accessors;
 import org.joml.Matrix4f;
 
 import java.util.HashMap;
@@ -64,8 +66,9 @@ public class CgTextRenderContext {
      *
      * @return the projection matrix
      */
-    @Getter
-    protected final Matrix4f projection;
+    @Getter @Setter
+    @Accessors(fluent = true, chain = true)
+    protected Matrix4f projection;
     /**
      * -- GETTER --
      *  Returns the scale resolver used by this context.
