@@ -8,7 +8,6 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.text.CgShapedParagraph;
 import com.crystalgraphics.api.text.CgTextDecorationRect;
 import com.crystalgraphics.api.text.CgTextLayout;
-import com.crystalgraphics.api.text.CgTextLayoutRequest;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
@@ -117,7 +116,7 @@ import java.util.logging.Logger;
  * <ol>
  *   <li>{@link Draw#submit()} hands the whole {@link Draw} request to {@link #drawInternal},
  *       which resolves layout/family precedence and raster tier</li>
- *   <li>{@link CgTextLayoutBuilder} produces a {@link CgTextLayout} when built from raw text
+ *   <li>{@link com.crystalgraphics.text.layout.CgTextLayoutEngine} produces a {@link CgTextLayout} when built from raw text
  *       — see {@link CgTextLayoutCache} for how repeated text content skips re-shaping</li>
  *   <li>{@code CgResolvedGlyphs.resolve} is the sole entry into glyph resolution: on a cache
  *       hit (the steady-state common case — see that class's javadoc) it skips straight to a
@@ -146,14 +145,6 @@ public class CgTextRenderer {
      * participates in {@code CgMaterialRegistry}'s hot-reload (F3+T) and teardown for free.
      */
     public static final CgMaterial TEXT_MATERIAL = CgMaterial.load("crystalgraphics:shaders/text.shader");
-
-    /**
-     * Last-resort identity pose used by {@link Draw#submit()}/{@link Draw#measure()} when
-     * neither {@link Draw#pose(PoseStack)} nor {@link #poseStack(PoseStack)} was set. Built with
-     * {@code syncsToGL = false} — it only ever backs a single never-pushed identity {@code Pose}
-     * entry, so it must never touch the real GL matrix stack. Shared, never mutated.
-     */
-    private static final PoseStack IDENTITY_POSE_STACK = new PoseStack(false);
 
     /**
      * Text-only per-renderer uniform data — currently just {@code u_Projection}. Deliberately
@@ -249,6 +240,14 @@ public class CgTextRenderer {
      */
     private long[] scratchSortKeys = new long[0];
 
+    /**
+     * Last-resort identity pose used by {@link Draw#submit()}/{@link Draw#measure()} when
+     * neither {@link Draw#pose(PoseStack)} nor {@link #poseStack(PoseStack)} was set. Built with
+     * {@code syncsToGL = false} — it only ever backs a single never-pushed identity {@code Pose}
+     * entry, so it must never touch the real GL matrix stack. Shared, never mutated.
+     */
+    private static final PoseStack IDENTITY_POSE_STACK = new PoseStack(false);
+    
     /**
      * Reusable scratch for {@link #pixelSnapDelta} — the inverse of the current draw call's
      * model-view (recomputed once per {@link #submitSortedQuads} call, not per-glyph) plus two
@@ -552,8 +551,11 @@ public class CgTextRenderer {
      *
      * <h3>Required fields</h3>
      * <p>{@link #submit()} throws {@link IllegalStateException} unless at least one of
-     * {@code layout}/{@code text} and at least one of {@code family}/{@code font} have been
-     * set. {@link #pose(PoseStack)} is optional: an unset pose falls back to the owning
+     * {@code layout}/{@code text} has been set. {@code family}/{@code font} are also required
+     * <em>except</em> when {@code layout} was set to a non-empty {@link CgTextLayout} — its own
+     * {@link CgBakedGlyphs} already carries a {@code CgFontKey} per glyph, so a representative
+     * one is derived straight from that instead of forcing a redundant {@code font(...)}/
+     * {@code family(...)} call. {@link #pose(PoseStack)} is optional: an unset pose falls back to the owning
      * {@link CgTextRenderer}'s {@link CgTextRenderer#poseStack(PoseStack)}, and finally to a
      * shared identity pose if neither was ever set — so callers with no real transform (plain
      * screen-space text) can skip {@code pose(...)} entirely.
@@ -721,12 +723,14 @@ public class CgTextRenderer {
          *
          * @return the owning {@link CgTextRenderer}, for chaining into {@link CgTextRenderer#endBatch()}
          * @throws IllegalStateException if neither {@code layout} nor {@code text} was set, or
-         *                                neither {@code family} nor {@code font} was set
+         *                                neither {@code family} nor {@code font} was set and
+         *                                {@code layout} (if set) has no glyphs to derive one from
          */
         public CgTextRenderer submit() {
             if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
             if (layout == null && paragraph == null && text == null) throw new IllegalStateException("CgTextRenderer.Draw requires text(...), paragraph(...), or layout(...) before submit()");
-            if (family == null && font == null) throw new IllegalStateException("CgTextRenderer.Draw requires font(...) or family(...) before submit()");
+            if (layout == null && family == null && font == null) throw new IllegalStateException(
+                    "CgTextRenderer.Draw requires font(...) or family(...) before submit()");
             
             boolean standalone = !batchActive;
             if (standalone) beginBatch();
@@ -754,7 +758,8 @@ public class CgTextRenderer {
         public CgTextLayout measure() {
             if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
             if (layout == null && paragraph == null && text == null) throw new IllegalStateException("CgTextRenderer.Draw requires text(...), paragraph(...), or layout(...) before measure()");
-            if (family == null && font == null) throw new IllegalStateException("CgTextRenderer.Draw requires font(...) or family(...) before measure()");
+            if (layout == null && family == null && font == null) throw new IllegalStateException(
+                    "CgTextRenderer.Draw requires font(...) or family(...) before measure()");
 
             return resolveDraw(this, effectivePose().last()).layout();
         }
@@ -818,12 +823,16 @@ public class CgTextRenderer {
      * {@link CgTextRenderContext} raster-history bookkeeping every draw already does.
      */
     private ResolvedDraw resolveDraw(Draw draw, PoseStack.Pose pose) {
-        CgFontFamily resolvedFamily;
+        CgFontFamily resolvedFamily = null; // stays null on the layout-derived branch below --
+        // draw.layout is honored verbatim, so nothing ever
+        // needs a CgFontFamily to (re)build it
         CgFont resolvedFont = null; // only populated (and only needed) on the family==null branch
+        CgFontKey fontKey;
 
         if (draw.family != null) {
             resolvedFamily = draw.targetPx > 0 ? sizeFamily(draw.family, draw.targetPx) : draw.family;
-        } else {
+            fontKey = resolvedFamily.getPrimarySource().getKey();
+        } else if (draw.font != null) {
             if (draw.targetPx > 0) {
                 resolvedFont = requireSizedFont(draw.font, draw.targetPx);
             } else if (draw.layout == null && draw.paragraph == null) {
@@ -835,9 +844,22 @@ public class CgTextRenderer {
                 resolvedFont = draw.font;
             }
             resolvedFamily = CgFontFamily.of(resolvedFont);
+            fontKey = resolvedFamily.getPrimarySource().getKey();
+        } else if (draw.layout != null) {
+            // No font(...)/family(...) given -- a prebuilt CgTextLayout already carries its own
+            // per-glyph CgFontKey (CgBakedGlyphs.fontKeys()), so redundantly requiring the caller
+            // to pass a font again just to identify "the" font for raster-tier history is
+            // unnecessary. Use the first glyph's font key as the representative one.
+            CgFontKey[] bakedKeys = draw.layout.baked().fontKeys();
+            if (bakedKeys.length == 0) {
+                throw new IllegalStateException(
+                        "CgTextRenderer.Draw requires font(...) or family(...) when layout(...) has no glyphs to derive a font from");
+            }
+            fontKey = bakedKeys[0];
+        } else {
+            throw new IllegalStateException(
+                    "CgTextRenderer.Draw requires font(...) or family(...) before submit()/measure()");
         }
-
-        CgFontKey fontKey = resolvedFamily.getPrimarySource().getKey();
 
         CgTextRenderContext.RasterHistory previous = context.getHistory(fontKey);
         int previousEffectiveTargetPx = previous != null ? previous.effectiveTargetPx() : -1;
@@ -1175,7 +1197,7 @@ public class CgTextRenderer {
      * Shared layout helper used by the string-based draw overloads.
      *
      * <p>This is the string-to-layout boundary for the renderer. Checks {@link CgTextLayoutCache}
-     * first — see that class's javadoc; on a miss, builds a default-knobs {@link CgTextLayoutRequest}.
+     * first — see that class's javadoc; on a miss, builds a default-knobs {@link CgTextLayout.Request}.
      * Renderer code should treat the returned {@link CgTextLayout} as the stable hand-off
      * format for glyph resolution, and must not mutate it — a cache hit may hand the same
      * instance to multiple unrelated callers.</p>
@@ -1187,9 +1209,7 @@ public class CgTextRenderer {
         CgTextLayout cached = CgTextLayoutCache.get(key);
         if (cached != null) return cached;
 
-        CgTextLayout built = CgTextLayoutRequest.of(text, font)
-                .maxWidth(maxWidth).maxHeight(maxHeight)
-                .build();
+        CgTextLayout built = CgTextLayout.of(text, font).maxWidth(maxWidth).maxHeight(maxHeight).build();
         CgTextLayoutCache.put(key, built);
         return built;
     }
@@ -1201,9 +1221,7 @@ public class CgTextRenderer {
         CgTextLayout cached = CgTextLayoutCache.get(key);
         if (cached != null) return cached;
 
-        CgTextLayout built = CgTextLayoutRequest.of(text, family)
-                .maxWidth(maxWidth).maxHeight(maxHeight)
-                .build();
+        CgTextLayout built = CgTextLayout.of(text, family).maxWidth(maxWidth).maxHeight(maxHeight).build();
         CgTextLayoutCache.put(key, built);
         return built;
     }
@@ -1227,10 +1245,10 @@ public class CgTextRenderer {
         if (targetPx <= 0) throw new IllegalArgumentException("targetPx must be > 0, got: " + targetPx);
 
         CgFont primary = family.getPrimarySource().requireFont().atSize(targetPx);
-        List<CgFontSource> fallbackSources = new ArrayList<CgFontSource>();
-        for (CgFontSource fallback : family.getFallbackSources()) {
+        List<CgFontSource> fallbackSources = new ArrayList<>();
+        for (CgFontSource fallback : family.getFallbackSources()) 
             fallbackSources.add(new CgFontSource(fallback.requireFont().atSize(targetPx), fallback.getSourceLabel()));
-        }
+        
         return new CgFontFamily(family.getFamilyId(), new CgFontSource(primary, family.getPrimarySource().getSourceLabel()), fallbackSources);
     }
 }

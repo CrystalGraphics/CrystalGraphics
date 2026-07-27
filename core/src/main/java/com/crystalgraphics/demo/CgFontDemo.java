@@ -5,7 +5,6 @@ import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgFontStyle;
 import com.crystalgraphics.api.shader.CgShader;
 import com.crystalgraphics.api.text.CgTextLayout;
-import com.crystalgraphics.api.text.CgTextLayoutRequest;
 import com.crystalgraphics.api.state.CgGlSlot;
 import com.crystalgraphics.gl.shader.CgShaderFactory;
 import com.crystalgraphics.gl.state.CgGlScope;
@@ -76,7 +75,7 @@ public final class CgFontDemo {
             float logicalViewportWidth = (float) displayWidth / demoPoseScale;
             demoTextRenderer.context().clearHistory();
 
-            CgTextLayout demoLayout = CgTextLayoutRequest.of(
+            CgTextLayout demoLayout = CgTextLayout.of(
                             DEMO_TEXT + " [base " + demoFontSize + "px, pose "
                                     + String.format("%.1f", demoPoseScale) + "x]",
                             demoFont)
@@ -88,7 +87,7 @@ public final class CgFontDemo {
             demoTextRenderer.context().clearHistory();
 
             PoseStack identityPose = new PoseStack();
-            CgTextLayout labelLayout = CgTextLayoutRequest.of(DEMO_TEXT_2D_LABEL, demoFont)
+            CgTextLayout labelLayout = CgTextLayout.of(DEMO_TEXT_2D_LABEL, demoFont)
                     .maxWidth((float) displayWidth)
                     .build();
             demoTextRenderer.draw().layout(labelLayout).font(demoFont).at(20.0f, 20.0f)

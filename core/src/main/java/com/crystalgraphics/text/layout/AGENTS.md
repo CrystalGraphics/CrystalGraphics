@@ -32,23 +32,26 @@ It is responsible for turning text + font-family information into shaped runs an
 
 ### `CgTextLayoutEngine`
 
-Abstract base implementation of the layout pipeline.
+Concrete, stateless (all-`static`, never instantiated — `final class` with a private constructor)
+implementation of the layout pipeline. It is also the public entrypoint: `api.text.CgTextLayout.Request`
+calls `shape`/`shapeStyled` directly.
 
 Main responsibilities:
 
 - split input into paragraphs
 - run Java `Bidi` over each paragraph
 - iterate directional runs
-- delegate concrete shaping/fallback collection through protected hooks
+- collect shaped runs and build a reshaper by calling `CgFontFamily#resolveRuns`/
+  `#requireShapingFont` directly (both `public` specifically for this)
 - call the line breaker
 - assemble the final `CgTextLayout`
 
-Why it is abstract:
-
-- the actual algorithm belongs here
-- but the public bridge still has to supply package-private font-family/HarfBuzz access from `api/font`
-
-This file is the best place to understand the algorithm skeleton without the font-package bridge noise.
+There used to be an abstract-hooks version of this class with a thin `api/font`-resident subclass
+(`CgTextLayoutBuilder`) supplying the two hooks, purely to reach `CgFontFamily`'s then-package-private
+shaping seam. That subclass added indirection for zero behavioral benefit once the seam members
+were simply made `public` — so the hooks were inlined directly into this class and the subclass
+was deleted. Don't reintroduce that split; if a new `CgFontFamily` member is ever needed here,
+widen its visibility on `CgFontFamily` instead of adding a bridge class.
 
 ### `CgTextShaper`
 
@@ -83,8 +86,8 @@ This exists so the line breaker can remain layout-focused while still asking the
 
 This package sits between:
 
-- `api/font/CgTextLayoutBuilder` (public bridge)
-- and `api/text/CgTextLayout` (public result)
+- `api/font/CgFontFamily` (font-fallback resolution, called directly — see `CgTextLayoutEngine` above)
+- and `api/text/CgTextLayout` (public result, produced via `api/text/CgTextLayout.Request`)
 
 It is the purest place in the pipeline to understand:
 
@@ -96,4 +99,5 @@ It is the purest place in the pipeline to understand:
 
 - Do not move atlas/cache/render concerns into this package.
 - Do not remove source-text fields from `CgShapedRun` without preserving reshaping support.
-- Do not move `CgTextLayoutBuilder` here unless the package-private bridge seam changes too.
+- Do not reintroduce a bridge subclass to reach `CgFontFamily` — its `resolveRuns`/`ResolvedFontRun`/
+  `requireShapingFont` are already `public` for exactly that purpose; call them directly.

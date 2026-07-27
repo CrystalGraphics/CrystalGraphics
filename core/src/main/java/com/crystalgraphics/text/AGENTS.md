@@ -21,7 +21,10 @@ Use this file as the first stop when you need to orient yourself across the inte
 
 ### 1. Layout
 
-`api/font/CgTextLayoutBuilder` is the public bridge, but the real work starts in `text/layout/CgTextLayoutEngine`.
+`text/layout/CgTextLayoutEngine` is both the algorithm and the entrypoint — `api.text.CgTextLayout.Request`
+calls its `shape`/`shapeStyled` directly. There is no separate `api/font` bridge class anymore
+(the old `CgTextLayoutBuilder` was deleted): `CgFontFamily#resolveRuns`/`ResolvedFontRun`/
+`requireShapingFont` are `public` specifically so this package can call them without one.
 
 The layout layer is responsible for:
 
@@ -83,14 +86,13 @@ automatic resize. See
 
 If you need the whole system, read in this order:
 
-1. `api/font/CgTextLayoutBuilder`
-2. `text/layout/CgTextLayoutEngine`
-3. `api/font/CgFontFamily`
-4. `api/text/CgTextLayout`
-5. `text/render/CgTextRenderer`
-6. `text/cache/CgFontRegistry`
-7. `text/atlas/CgPagedGlyphAtlas`
-8. `text/msdf/CgMsdfGenerator`
+1. `text/layout/CgTextLayoutEngine`
+2. `api/font/CgFontFamily`
+3. `api/text/CgTextLayout`
+4. `text/render/CgTextRenderer`
+5. `text/cache/CgFontRegistry`
+6. `text/atlas/CgPagedGlyphAtlas`
+7. `text/msdf/CgMsdfGenerator`
 
 This gives the clearest “string to draw” story.
 
@@ -98,11 +100,16 @@ This gives the clearest “string to draw” story.
 
 ### Public text types already moved
 
-`CgTextLayout`, `CgTextConstraints`, and `CgShapedRun` are no longer implementation classes. They now live in `api/text` because callers see them directly.
+`CgTextLayout` and `CgShapedRun` are no longer implementation classes. They now live in `api/text` because callers see them directly. (`CgTextConstraints` was a separate, unrelated type that has since been deleted entirely — plain `float maxWidth`/`maxHeight` replaced it, see `CgTextRenderer.Draw#constraints`.)
 
-### `CgTextLayoutBuilder` is still an intentional exception
+### There is no `api/font` layout bridge class anymore
 
-The public layout bridge still lives in `api/font`, even though the reusable algorithm lives in `text/layout`. That is intentional because it still bridges package-private font-family/HarfBuzz seams.
+`CgTextLayoutEngine` (in `text/layout`) used to need a thin `api/font`-resident subclass
+(`CgTextLayoutBuilder`) purely to reach `CgFontFamily`'s package-private shaping seam. That seam
+(`resolveRuns`/`ResolvedFontRun`/`requireShapingFont`) is now `public` on `CgFontFamily`, so
+`CgTextLayoutEngine` calls it directly and the bridge class was deleted — one less class for the
+exact same behavior. Don't reintroduce a bridge subclass; if `CgTextLayoutEngine` ever needs a
+new `CgFontFamily` seam member, widen that member's visibility instead.
 
 ### Cache helpers want to stay near their owner
 

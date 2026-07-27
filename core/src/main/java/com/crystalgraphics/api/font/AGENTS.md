@@ -4,7 +4,7 @@
 
 This package is the **public font-domain boundary** for the text system.
 
-It owns the types callers use to talk about fonts, families, glyph identity, and renderer-facing glyph payloads. It is also where the public layout bridge still lives.
+It owns the types callers use to talk about fonts, families, glyph identity, and renderer-facing glyph payloads.
 
 ## What belongs here
 
@@ -16,7 +16,6 @@ This package is appropriate for:
 - fallback composition
 - glyph identity inputs
 - renderer-facing glyph location payloads
-- the public bridge into the internal layout algorithm
 
 This package is **not** the home of the internal layout algorithm, atlas allocation logic, async generation pipeline, or GL submission code.
 
@@ -25,10 +24,9 @@ This package is **not** the home of the internal layout algorithm, atlas allocat
 1. `CgFont`
 2. `CgFontFamily`
 3. `CgFontSource`
-4. `CgTextLayoutBuilder`
-5. `CgGlyphKey`
-6. `CgGlyphPlacement`
-7. supporting value types
+4. `CgGlyphKey`
+5. `CgGlyphPlacement`
+6. supporting value types
 
 ## Class-by-class details
 
@@ -69,7 +67,9 @@ What it does:
 - guarantees a single shared targetPx across the family
 - combines metrics across sources for layout use
 - resolves text cluster ranges to concrete font sources
-- owns the nested `ResolvedFontRun` helper used during layout bridging
+- owns the nested `ResolvedFontRun` helper, and `resolveRuns`/`requireShapingFont`, all `public`
+  specifically so `text/layout/CgTextLayoutEngine` (which lives in a different package) can call
+  them directly — see "Layout bridge" below
 
 Important invariants:
 
@@ -91,21 +91,20 @@ Provides:
 
 This is the granularity at which fallback resolution reasons about “one candidate font”.
 
-### `CgTextLayoutBuilder`
+### Layout bridge — no bridge class, just public seam members
 
-Public entrypoint for layout building.
+There used to be a `CgTextLayoutBuilder` class here: a thin subclass of
+`text/layout/CgTextLayoutEngine` that existed *solely* to reach `CgFontFamily`'s
+package-private `resolveRuns`/`ResolvedFontRun`/`requireShapingFont` (the algorithm's two shaping
+hooks needed same-package access to those). It added an indirection layer for zero behavioral
+benefit once those three members were simply made `public` on `CgFontFamily` — so it was deleted.
 
-This class is an **intentional placement exception**.
-
-Semantically, layout logic belongs in `text/layout`. Practically, this class stays in `api/font` because it is the narrow public bridge that can legally access package-private font-family/HarfBuzz seams without exposing those internals broadly.
-
-Important facts:
-
-- the reusable algorithm is in `text/layout/CgTextLayoutEngine`
-- this class subclasses that engine and supplies the font-package bridge hooks
-- callers should still use this class as the public layout entrypoint
-
-Do not “clean this up” by casually moving it unless the bridge seam changes too.
+`CgTextLayoutEngine` (in `text/layout`) now calls `family.resolveRuns(...)` /
+`family.requireShapingFont(...)` directly, and is the sole public layout entrypoint
+(`CgTextLayoutEngine.shape`/`shapeStyled`, called by `api.text.CgTextLayout.Request`). This
+package still doesn't own the algorithm — `resolveRuns`/`ResolvedFontRun`/`requireShapingFont`
+are public *specifically* to be called from `text/layout`, not because they're meant for general
+external use; treat them as the layout engine's private seam, not ordinary `CgFontFamily` API.
 
 ### `CgGlyphKey`
 
@@ -162,21 +161,24 @@ Glyph-level metrics value type.
 ## Important boundaries and exceptions
 
 - `api/font` owns public font-domain concepts.
-- It does **not** own the internal layout algorithm.
+- It does **not** own the internal layout algorithm — that's `text/layout/CgTextLayoutEngine`.
 - It does **not** own atlas storage or glyph generation scheduling.
-- `CgTextLayoutBuilder` is the one deliberate bridge exception.
+- `CgFontFamily#resolveRuns`/`ResolvedFontRun`/`requireShapingFont` are public only as the layout
+  engine's bridge seam — see "Layout bridge" above. Don't treat them as ordinary public API.
 - `CgGlyphPlacement` is public but should be thought of as a renderer-facing runtime payload, not a clean business-object DTO.
 
 ## Best files to modify for common tasks
 
 - font loading / sizing issues → `CgFont`
 - fallback resolution issues → `CgFontFamily`
-- public layout entrypoint issues → `CgTextLayoutBuilder`
+- public layout entrypoint issues → `text/layout/CgTextLayoutEngine` (via `api.text.CgTextLayout.Request`)
 - glyph identity changes → `CgGlyphKey`
 - placement payload changes → `CgGlyphPlacement`
 
 ## Common agent mistakes to avoid
 
-- Do not move `CgTextLayoutBuilder` without also solving the bridge seam.
+- Do not reintroduce a bridge subclass (`CgTextLayoutBuilder`-style) to reach `CgFontFamily`'s
+  shaping seam — `resolveRuns`/`ResolvedFontRun`/`requireShapingFont` are already public for
+  exactly that purpose; call them directly from `text/layout`.
 - Do not add atlas/cache/generation logic here for convenience.
 - Do not assume `CgGlyphPlacement` is a pure public DTO with no runtime coupling.

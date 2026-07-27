@@ -96,7 +96,13 @@ public final class CgFontFamily {
         return source.requireFont();
     }
 
-    HBFont requireShapingFont(CgFontKey key) {
+    /**
+     * Retrieves the native HarfBuzz font handle for {@code key} — used by
+     * {@link com.crystalgraphics.text.layout.CgTextLayoutEngine} to re-shape a run fragment
+     * during line-break splitting. Public because the layout engine lives in {@code text/layout},
+     * not this package.
+     */
+    public HBFont requireShapingFont(CgFontKey key) {
         return resolveLoadedFont(key).getHbFontInternal();
     }
 
@@ -119,7 +125,13 @@ public final class CgFontFamily {
         return previousSource != null ? previousSource : primarySource;
     }
 
-    List<ResolvedFontRun> resolveRuns(String text, int start, int end) {
+    /**
+     * Splits {@code text[start,end)} into font-fallback segments, resolving which family
+     * source displays each grapheme cluster. Used by
+     * {@link com.crystalgraphics.text.layout.CgTextLayoutEngine} to collect and shape runs.
+     * Public because the layout engine lives in {@code text/layout}, not this package.
+     */
+    public List<ResolvedFontRun> resolveRuns(String text, int start, int end) {
         if (text == null) {
             throw new IllegalArgumentException("text must not be null");
         }
@@ -273,7 +285,13 @@ public final class CgFontFamily {
                 || (codePoint >= 0xE0100 && codePoint <= 0xE01EF);
     }
 
-    static final class ResolvedFontRun {
+    /**
+     * One font-fallback segment of a {@link #resolveRuns} result — a {@code [start,end)}
+     * sub-range and the family source that displays it. Public because
+     * {@link com.crystalgraphics.text.layout.CgTextLayoutEngine} (in {@code text/layout})
+     * consumes {@link #resolveRuns}'s return value directly.
+     */
+    public static final class ResolvedFontRun {
 
         private final CgFontSource source;
         private final int start;
@@ -291,23 +309,23 @@ public final class CgFontFamily {
             this.end = end;
         }
 
-        CgFontSource getSource() {
+        public CgFontSource getSource() {
             return source;
         }
 
-        int getStart() {
+        public int getStart() {
             return start;
         }
 
-        int getEnd() {
+        public int getEnd() {
             return end;
         }
 
-        CgFontKey getFontKey() {
+        public CgFontKey getFontKey() {
             return source.getKey();
         }
 
-        HBFont requireHbFont() {
+        public HBFont requireHbFont() {
             return source.requireFont().getHbFontInternal();
         }
     }
