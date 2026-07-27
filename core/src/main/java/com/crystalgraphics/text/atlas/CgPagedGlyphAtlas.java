@@ -7,6 +7,7 @@ import com.crystalgraphics.gl.texture.CgTexture2DArray;
 import com.crystalgraphics.text.atlas.packing.CgGuillotinePacker;
 import com.crystalgraphics.text.atlas.packing.MaxRectsPacker;
 import com.crystalgraphics.text.atlas.packing.CgPackingStrategy;
+import com.crystalgraphics.util.profiling.CgProfiler;
 import lombok.Getter;
 
 import java.util.ArrayList;
@@ -197,12 +198,74 @@ public class CgPagedGlyphAtlas {
     private final Map<CgGlyphKey, CgGlyphAtlasPage> glyphIndex = new HashMap<>();
 
     /**
+     * Glyphs known to have <strong>no renderable geometry</strong> — a space, an ideographic
+     * space, a control character, or any glyph whose outline is empty and whose rasterized
+     * bitmap comes back 0x0. They occupy no atlas pixels, so they can never live in
+     * {@link #glyphIndex} (there is no page to point at), and {@link #get} would therefore
+     * return {@code null} for them forever.
+     *
+     * <p>That {@code null} is indistinguishable from "not generated yet", so without this set
+     * every resolve re-runs the full miss path for them — MSDF generation attempt, then a
+     * FreeType rasterize that produces 0x0 and is thrown away — on every single frame that
+     * misses the placement cache. Measured on a 1781-glyph CJK layout: <strong>542 futile
+     * FreeType calls per resolve</strong>, forever, since the answer never changes.
+     *
+     * <p>Recording the verdict once turns those into an {@code O(1)} hit returning
+     * {@link #EMPTY_PLACEMENT_MARKER}-shaped data (zero plane bounds, so
+     * {@link CgGlyphPlacement#hasGeometry()} is {@code false} and every draw path already
+     * skips it — see {@code CgTextRenderer#submitSortedQuads}'s {@code visibleGlyphCount}
+     * filter, which is why a 1781-glyph layout only ever submitted 1242 quads).
+     */
+    private final Map<CgGlyphKey, CgGlyphPlacement> emptyGlyphs = new HashMap<>();
+
+    /**
      * The page holding this atlas's reserved white texel (see {@link #reserveWhiteTexel()}),
      * or {@code null} if never reserved. Excluded from {@link #evictColdestPageAndFreeLayer()}'s
      * candidate scan so a bounded (eviction-enabled) atlas never displaces the one texel every
      * decoration-line draw depends on.
      */
     private CgGlyphAtlasPage whiteTexelPage;
+
+    /**
+     * Monotonic counter bumped every time this atlas gains content a previous lookup could not
+     * have seen — a newly allocated bitmap/MSDF glyph, or a newly recorded empty glyph.
+     *
+     * <p>This is the <em>event</em> signal that replaces {@code CgGlyphPlacementCache}'s old
+     * time-based {@code REFRESH_FRAMES} poll. A cached resolve that fell back to bitmap for
+     * some glyphs is stale exactly when new content arrives (an MSDF upgrade may now be
+     * available) — not "every 300 frames", which was simultaneously too slow to pick the
+     * upgrade up promptly and expensive enough to cost a ~34ms full re-resolve hitch on a
+     * large layout forever, even once fully converged. Mirrors
+     * {@code CgMaterialShader#getRevisionNumber()}, which this codebase already uses for
+     * exactly this "did the thing I cached against change?" question.</p>
+     *
+     * @see #getEvictionGeneration()
+     */
+    private long contentGeneration;
+
+    /**
+     * Monotonic counter bumped every time a page is evicted, invalidating any placement that
+     * referenced it (its layer index now belongs to a different page — see
+     * {@link #glyphIndex}'s javadoc).
+     *
+     * <p>Tracked separately from {@link #contentGeneration} because the two invalidate
+     * different things. New content only matters to a consumer still holding bitmap-fallback
+     * placements it would like to upgrade; an eviction matters to <em>every</em> consumer,
+     * including one whose placements are already uniformly distance-field. On the default
+     * unbounded atlas nothing is ever evicted, so this stays {@code 0} for the process
+     * lifetime and fully-converged cache entries never need re-resolving at all.</p>
+     */
+    private long evictionGeneration;
+
+    /** @see #contentGeneration */
+    public long getContentGeneration() {
+        return contentGeneration;
+    }
+
+    /** @see #evictionGeneration */
+    public long getEvictionGeneration() {
+        return evictionGeneration;
+    }
 
     // ── Constructors ──────────────────────────────────────────────────
     //
@@ -310,15 +373,47 @@ public class CgPagedGlyphAtlas {
 
     /**
      * Looks up a cached glyph placement — {@code O(1)} via {@link #glyphIndex}, not a
-     * per-page scan.
+     * per-page scan. Also resolves glyphs previously recorded as empty via
+     * {@link #markEmpty} (see {@link #emptyGlyphs}), so a space is answered from cache
+     * instead of being re-rasterized on every miss.
      *
      * @param key          glyph key
      * @param currentFrame current frame for LRU tracking
-     * @return the placement, or {@code null} if not found in any page
+     * @return the placement (possibly zero-geometry, for a known-empty glyph), or
+     *         {@code null} if this glyph has not been generated yet
      */
     public CgGlyphPlacement get(CgGlyphKey key, long currentFrame) {
         CgGlyphAtlasPage page = glyphIndex.get(key);
-        return page != null ? page.get(key, currentFrame) : null;
+        if (page != null) return page.get(key, currentFrame);
+        // Checked second: a real placement always wins, and this map only ever holds keys
+        // that genuinely cannot occupy pixels, so the two are disjoint in practice.
+        return emptyGlyphs.get(key);
+    }
+
+    /**
+     * Records that {@code key} has no renderable geometry, so subsequent {@link #get} calls
+     * answer {@code O(1)} from cache rather than re-running generation/rasterization that is
+     * guaranteed to produce nothing. See {@link #emptyGlyphs} for why this is worth doing.
+     *
+     * <p>Idempotent, and cheap to call speculatively — a key already known empty is not
+     * re-recorded and does not bump {@link #getContentGeneration()}.</p>
+     *
+     * @return the zero-geometry placement now cached for {@code key}
+     */
+    public CgGlyphPlacement markEmpty(CgGlyphKey key) {
+        checkNotDeleted();
+        CgGlyphPlacement existing = emptyGlyphs.get(key);
+        if (existing != null) return existing;
+
+        CgGlyphPlacement empty = new CgGlyphPlacement(
+                key, 0 /* no texture */, 0 /* no page */, type,
+                0f, 0f, 0f, 0f,   // planeLeft/Bottom/Right/Top — all zero => hasGeometry() == false
+                0, 0, 0, 0,       // atlasLeft/Bottom/Right/Top — occupies no texels
+                0f, 0f, 0f, 0f,   // u0/v0/u1/v1
+                0f);              // pxRange
+        emptyGlyphs.put(key, empty);
+        contentGeneration++;
+        return empty;
     }
 
     /**
@@ -350,6 +445,7 @@ public class CgPagedGlyphAtlas {
                     bearingX, bearingY, metricsWidth, metricsHeight, currentFrame);
             if (placement != null) {
                 glyphIndex.put(key, page);
+                contentGeneration++;
                 return placement;
             }
         }
@@ -361,6 +457,7 @@ public class CgPagedGlyphAtlas {
                 bearingX, bearingY, metricsWidth, metricsHeight, currentFrame);
         if (placement != null) {
             glyphIndex.put(key, newPage);
+            contentGeneration++;
         }
         return placement;
     }
@@ -394,6 +491,7 @@ public class CgPagedGlyphAtlas {
                     metricsWidth, metricsHeight, pxRange, currentFrame);
             if (placement != null) {
                 glyphIndex.put(key, page);
+                contentGeneration++;
                 return placement;
             }
         }
@@ -406,6 +504,7 @@ public class CgPagedGlyphAtlas {
                 metricsWidth, metricsHeight, pxRange, currentFrame);
         if (placement != null) {
             glyphIndex.put(key, newPage);
+            contentGeneration++;
         }
         return placement;
     }
@@ -509,6 +608,7 @@ public class CgPagedGlyphAtlas {
 
         pages.clear();
         glyphIndex.clear();
+        emptyGlyphs.clear();
         if (arrayTexture != null && !arrayTexture.isDeleted()) arrayTexture.delete();
         deleted = true;
     }
@@ -572,10 +672,46 @@ public class CgPagedGlyphAtlas {
      * Only called when {@code arrayTexture != null} and there is still room to
      * grow (unbounded, or {@code capacity < maxPages}).
      */
+    /**
+     * Layers added per growth once past {@link #GEOMETRIC_GROWTH_LIMIT_LAYERS} — a fixed step,
+     * not a multiplier.
+     *
+     * <p>Geometric growth is the right default when elements are cheap, but an atlas layer is
+     * 1-2 MB of GPU memory, so a 1.5x/2x factor makes the over-allocation <em>proportional to
+     * atlas size</em>: a 24-layer atlas would jump to 36-48 and sit on 12-24 MB nobody asked
+     * for, and a 250-layer one would waste hundreds of MB. An additive step bounds the waste to
+     * a <strong>constant</strong> — at most {@code ADDITIVE_GROWTH_LAYERS} layers, regardless of
+     * how large the atlas gets.</p>
+     *
+     * <p>The trade geometric growth normally buys is fewer (expensive) growth events. That
+     * trade no longer applies: growth is now a GPU-side copy rather than a full CPU->GPU replay
+     * of the entire atlas (see {@link CgTexture2DArray#growLayers}), so each event is cheap and
+     * minimising wasted memory is the better use of the knob.</p>
+     */
+    private static final int ADDITIVE_GROWTH_LAYERS = 4;
+
+    /**
+     * Below this many layers, grow geometrically (1.5x) — at that size the absolute waste is
+     * trivial (a handful of MB at most) and it gets a small atlas to its working size in fewer
+     * steps. Past it, {@link #ADDITIVE_GROWTH_LAYERS} takes over.
+     */
+    private static final int GEOMETRIC_GROWTH_LIMIT_LAYERS = 8;
+
     private void growCapacity() {
-        int grown = Math.max(capacity + 1, (capacity * 3 + 1) / 2);
+        int grown = capacity < GEOMETRIC_GROWTH_LIMIT_LAYERS
+                ? Math.max(capacity + 1, (capacity * 3 + 1) / 2)
+                : capacity + ADDITIVE_GROWTH_LAYERS;
         int newCapacity = maxPages == UNBOUNDED_PAGES ? grown : Math.min(maxPages, grown);
-        arrayTexture.growLayers(newCapacity);
+        // Instrumented to test whether array growth is what's behind the isolated 30-66ms
+        // single-glyph commit stalls: growLayers() reallocates the array and re-uploads every
+        // existing layer from its CPU mirror, so its cost scales with current atlas size and
+        // gets billed to whichever glyph happened to trigger it.
+        try (CgProfiler.Scope ignored = CgProfiler.scope("atlas.growCapacity")) {
+            CgProfiler.count("atlas.growCapacity.count");
+            CgProfiler.sample("atlas.growCapacity.fromLayers", capacity);
+            CgProfiler.sample("atlas.growCapacity.toLayers", newCapacity);
+            arrayTexture.growLayers(newCapacity);
+        }
         capacity = newCapacity;
     }
 
@@ -627,6 +763,9 @@ public class CgPagedGlyphAtlas {
         LOGGER.fine("[AtlasDiag] Evicting atlas page/layer " + evicted.getPageIndex()
                 + " (last touched frame " + coldestFrame + ") — page budget " + maxPages + " reached");
         evicted.delete();
+        // Any cached resolve holding a placement from this page is now dangling — its layer
+        // index is about to be reused by a different page. See evictionGeneration's javadoc.
+        evictionGeneration++;
         return evicted.getPageIndex();
     }
 
