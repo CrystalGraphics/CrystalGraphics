@@ -17,13 +17,7 @@ import com.crystalgraphics.text.msdf.CgMsdfAtlasConfig;
 import com.crystalgraphics.text.msdf.CgMsdfGenerator;
 import com.crystalgraphics.text.render.CgTextRenderer;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -943,6 +937,69 @@ public class CgFontRegistry {
         return Collections.unmodifiableList(result);
     }
 
+    /**
+     * Same search as {@link #findAllPopulatedPagedBitmapPages}, but keeps each raster bucket's
+     * pages under its own <strong>real</strong> {@code effectiveTargetPx} instead of flattening
+     * every bucket into one list. A single base {@link CgFontKey} can back several bitmap atlas
+     * families at once — one per effective raster size ever resolved for it at draw time (e.g.
+     * the same font drawn under different {@link com.crystalgraphics.api.PoseStack} scales) — so
+     * a caller that needs to label pages by their true pixel size (as opposed to the font's
+     * merely-declared {@link CgFontKey#getTargetPx()}) must go through this method, not the
+     * flattened one.
+     *
+     * @return unmodifiable map of effective target px → unmodifiable list of that bucket's
+     *         populated pages (may be empty, never null)
+     */
+    public Map<Integer, List<CgGlyphAtlasPage>> findAllPopulatedBitmapPagesBySize(CgFontKey key) {
+        Map<Integer, List<CgGlyphAtlasPage>> result = new LinkedHashMap<>();
+        for (Map.Entry<CgRasterFontKey, CgPagedGlyphAtlas> entry : pagedBitmapAtlases.entrySet()) {
+            CgRasterFontKey rk = entry.getKey();
+            if (!rk.getBaseFontKey().equals(key)) continue;
+
+            CgPagedGlyphAtlas pagedAtlas = entry.getValue();
+            if (pagedAtlas.isDeleted()) continue;
+
+            for (CgGlyphAtlasPage page : pagedAtlas.getPages())
+                if (page.getSlotCount() > 0 && !page.isDeleted())
+                    result.computeIfAbsent(rk.getEffectiveTargetPx(), ignored -> new ArrayList<>()).add(page);
+        }
+        for (Map.Entry<Integer, List<CgGlyphAtlasPage>> entry : result.entrySet())
+            entry.setValue(Collections.unmodifiableList(entry.getValue()));
+        return Collections.unmodifiableMap(result);
+    }
+
+    /**
+     * Same search as {@link #findAllPopulatedPagedMsdfPages}, but keeps each atlas family's
+     * pages under its own <strong>real</strong> {@code atlasScalePx} (from
+     * {@link com.crystalgraphics.text.msdf.CgMsdfAtlasConfig#atlasScalePx()}) instead of
+     * flattening every family into one list. Unlike bitmap buckets, MSDF atlas families are
+     * deliberately size-independent of the requested render size (see {@link CgMsdfAtlasKey}'s
+     * javadoc) — {@code atlasScalePx} is the only real "how big were these glyphs generated at"
+     * value, and is unrelated to {@link CgFontKey#getTargetPx()}, so a caller that needs a
+     * truthful size label for an MSDF dump must go through this method, not the font key's
+     * declared px.
+     *
+     * @return unmodifiable map of atlas-generation px → unmodifiable list of that family's
+     *         populated pages (may be empty, never null)
+     */
+    public Map<Integer, List<CgGlyphAtlasPage>> findAllPopulatedMSDFPagesBySize(CgFontKey key) {
+        Map<Integer, List<CgGlyphAtlasPage>> result = new LinkedHashMap<>();
+        for (Map.Entry<CgMsdfAtlasKey, CgPagedGlyphAtlas> entry : pagedMsdfAtlases.entrySet()) {
+            CgMsdfAtlasKey rk = entry.getKey();
+            if (!rk.getBaseFontKey().equals(key)) continue;
+
+            CgPagedGlyphAtlas pagedAtlas = entry.getValue();
+            if (pagedAtlas.isDeleted()) continue;
+
+            for (CgGlyphAtlasPage page : pagedAtlas.getPages())
+                if (page.getSlotCount() > 0 && !page.isDeleted())
+                    result.computeIfAbsent(rk.getConfig().atlasScalePx(), ignored -> new ArrayList<>()).add(page);
+        }
+        for (Map.Entry<Integer, List<CgGlyphAtlasPage>> entry : result.entrySet())
+            entry.setValue(Collections.unmodifiableList(entry.getValue()));
+        return Collections.unmodifiableMap(result);
+    }
+
     // ────────────────────────────────────────────────────────────────────
     //  § 12. Font registration & atlas cleanup
     //
@@ -954,12 +1011,9 @@ public class CgFontRegistry {
     private void registerFont(final CgFont font) {
         final CgFontKey fontKey = font.getKey();
         if (registeredFonts.add(fontKey)) {
-            font.setDisposeListener(new Runnable() {
-                @Override
-                public void run() {
-                    releaseFontAtlases(fontKey);
-                    registeredFonts.remove(fontKey);
-                }
+            font.setDisposeListener(() -> {
+                releaseFontAtlases(fontKey);
+                registeredFonts.remove(fontKey);
             });
         }
     }
