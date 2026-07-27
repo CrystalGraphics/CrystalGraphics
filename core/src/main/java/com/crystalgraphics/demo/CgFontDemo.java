@@ -137,7 +137,7 @@ public final class CgFontDemo {
         if (demoTextRenderer == null || demoTextRenderer.isDeleted()) {
             // Screen-sized: the owned context's orthographic projection auto-tracks the
             // display window resolution via CgTextRendererRegistry (see CgGraphicsLifecycle.onResize).
-            demoTextRenderer = CgTextRenderer.createScreenSized();
+            demoTextRenderer = CgTextRenderer.create();
         }
     }
 
