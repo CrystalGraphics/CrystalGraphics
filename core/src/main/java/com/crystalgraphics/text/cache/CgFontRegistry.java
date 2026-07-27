@@ -16,6 +16,7 @@ import com.crystalgraphics.text.atlas.CgPagedGlyphAtlas;
 import com.crystalgraphics.text.msdf.CgMsdfAtlasConfig;
 import com.crystalgraphics.text.msdf.CgMsdfGenerator;
 import com.crystalgraphics.text.render.CgTextRenderer;
+import com.crystalgraphics.util.profiling.CgProfiler;
 
 import java.util.*;
 import java.util.logging.Level;
@@ -141,6 +142,24 @@ public class CgFontRegistry {
     private static final int MAX_COMMIT_COUNT_PER_FRAME = 256;
 
     /**
+     * Wall-clock ceiling for one frame's async-commit drain, in nanoseconds.
+     *
+     * <p>The byte and count budgets above bound <em>how much</em> is uploaded, but not <em>how
+     * long</em> it takes, and those turn out to be only loosely related: measured GL upload
+     * throughput for the same ~1 MiB of glyph data varied from 613 MB/s down to 15 MB/s
+     * — a 40x spread — depending on whether the driver stalled writing into a texture the
+     * previous frame was still sampling. At the low end, a drain that respected every existing
+     * budget still blew 30-65 ms, producing exactly the kind of isolated hitch the budgets
+     * were introduced to prevent.
+     *
+     * <p>A time budget bounds the thing that actually matters. It is checked between commits
+     * (a single commit is never interrupted), so an unusually expensive individual upload can
+     * still overshoot slightly; the remainder simply stays queued for the next frame, which is
+     * already the normal steady state during warmup.</p>
+     */
+    private static final long MAX_COMMIT_NANOS_PER_FRAME = 2_000_000L; // 2ms
+
+    /**
      * The shared default-config registry, matching every other GPU-resource registry
      * in this codebase ({@code CgTextureManager}, {@code CgMaterialRegistry},
      * {@code CgMeshRegistry}, etc.) — accessed via {@link #get()}, torn down via
@@ -193,18 +212,28 @@ public class CgFontRegistry {
      * {@code ensureGlyph*} or {@code queueGlyph*} calls for that frame.</p>
      */
     public void tickFrame(long frame) {
-        // 1. Drain completed async results first so they are available
-        //    to ensureGlyph* calls later in the same frame.
-        drainCompletedGlyphs(frame, MAX_COMMIT_BYTES_PER_FRAME, MAX_COMMIT_COUNT_PER_FRAME);
+        // NOTE (profiling): this runs from CgGraphicsLifecycle.onFrameRendered(), which the
+        // harness calls AFTER scene.render() -- i.e. after TextScene3D's CgProfiler.endFrame().
+        // These scopes therefore land in the NEXT frame's report, one frame late. Magnitude is
+        // still accurate; only the frame attribution is shifted by one.
+        try (CgProfiler.Scope ignored = CgProfiler.scope("registry.tickFrame")) {
+            // 1. Drain completed async results first so they are available
+            //    to ensureGlyph* calls later in the same frame.
+            try (CgProfiler.Scope drain = CgProfiler.scope("drainCompletedGlyphs")) {
+                    drainCompletedGlyphs(frame, MAX_COMMIT_BYTES_PER_FRAME, MAX_COMMIT_COUNT_PER_FRAME, MAX_COMMIT_NANOS_PER_FRAME);
+            }
 
-        // 2. Tick every paged atlas family.
-        for (CgPagedGlyphAtlas atlas : pagedBitmapAtlases.values()) 
-            atlas.tickFrame(frame);
-        for (CgPagedGlyphAtlas atlas : pagedMsdfAtlases.values()) 
-            atlas.tickFrame(frame);
+            // 2. Tick every paged atlas family.
+            try (CgProfiler.Scope atlasTick = CgProfiler.scope("atlasTick")) {
+                for (CgPagedGlyphAtlas atlas : pagedBitmapAtlases.values())
+                    atlas.tickFrame(frame);
+                for (CgPagedGlyphAtlas atlas : pagedMsdfAtlases.values())
+                    atlas.tickFrame(frame);
+            }
 
-        // 3. Reset the MSDF generator's per-frame budget counter.
-        msdfGenerator.tickFrame();
+            // 3. Reset the MSDF generator's per-frame budget counter.
+            msdfGenerator.tickFrame();
+        }
     }
 
     /**
@@ -220,6 +249,52 @@ public class CgFontRegistry {
     /** Returns the number of glyph generation jobs currently in-flight. */
     public int getPendingAsyncGlyphCount() {
         return glyphGenerationExecutor.getPendingJobCount();
+    }
+
+    /**
+     * Sum of every live atlas's {@link CgPagedGlyphAtlas#getContentGeneration()} — bumped
+     * whenever <em>any</em> atlas gains a glyph (or records one as empty).
+     *
+     * <p>This is the invalidation signal for {@code CgGlyphPlacementCache}: a cached resolve
+     * that had to fall back to bitmap for some glyphs is potentially stale exactly when new
+     * content lands (its MSDF upgrade may have just become available), and is <em>not</em>
+     * stale at any other time. It replaces that cache's former {@code REFRESH_FRAMES} timer,
+     * which polled on a fixed 300-frame cadence — simultaneously too slow to pick an upgrade
+     * up promptly (up to ~5s of stale bitmap-tier text) and expensive enough to cost a full
+     * re-resolve of the entire layout every 2.5s forever, even once fully converged.</p>
+     *
+     * <p>Summing is deliberate and safe: the counters are monotonic, so the sum is monotonic,
+     * and any individual bump changes it. It is coarse — a change to an unrelated font's atlas
+     * also invalidates — but only ever causes a redundant re-resolve, never a missed one, and
+     * it stays completely still once every atlas in play has converged, which is the case that
+     * actually matters for steady-state cost.</p>
+     *
+     * @see #getAtlasEvictionGeneration()
+     */
+    public long getAtlasContentGeneration() {
+        long sum = 0;
+        for (CgPagedGlyphAtlas atlas : pagedBitmapAtlases.values()) sum += atlas.getContentGeneration();
+        for (CgPagedGlyphAtlas atlas : pagedMsdfAtlases.values()) sum += atlas.getContentGeneration();
+        return sum;
+    }
+
+    /**
+     * Sum of every live atlas's {@link CgPagedGlyphAtlas#getEvictionGeneration()} — bumped
+     * only when a page is actually evicted, which invalidates <em>every</em> placement that
+     * referenced it (the freed layer index is immediately reused by a different page).
+     *
+     * <p>Separate from {@link #getAtlasContentGeneration()} because the two invalidate
+     * different populations: new content only concerns a consumer still holding bitmap
+     * placements it would like upgraded, whereas an eviction concerns everyone, including a
+     * consumer whose placements are already uniformly distance-field. On the default unbounded
+     * atlases nothing is ever evicted, so this stays {@code 0} for the process lifetime and
+     * fully-converged cache entries need no revalidation at all.</p>
+     */
+    public long getAtlasEvictionGeneration() {
+        long sum = 0;
+        for (CgPagedGlyphAtlas atlas : pagedBitmapAtlases.values()) sum += atlas.getEvictionGeneration();
+        for (CgPagedGlyphAtlas atlas : pagedMsdfAtlases.values()) sum += atlas.getEvictionGeneration();
+        return sum;
     }
 
     // ────────────────────────────────────────────────────────────────────
@@ -252,6 +327,15 @@ public class CgFontRegistry {
      * glyphs for a font share one atlas regardless of requested render size.
      * For bitmap, the key is rewritten to embed the effective raster size and
      * sub-pixel bucket.  See § 4 (key transformations) for details.</p>
+     *
+     * <h4>Synchronous — unlike {@link #resolveGlyphPaged}</h4>
+     * <p>This is the "make the glyph exist now" entry point: it generates an MSDF inline
+     * (within {@code CgMsdfGenerator.MAX_PER_FRAME}) rather than settling for the bitmap
+     * fallback and waiting on the async executor. That inline generation costs ~30 ms per
+     * glyph, which is exactly why the per-frame render path deliberately does <em>not</em> come
+     * through here — see {@link #resolveGlyphPaged}. Use this for deterministic, non-realtime
+     * convergence (atlas dumps, prewarm/parity tooling, tests), where a stall does not matter
+     * and "the glyph is definitely present when this returns" is the property that does.</p>
      */
     public CgGlyphPlacement ensureGlyphPaged(CgFont font,
                                       CgGlyphKey key,
@@ -269,7 +353,7 @@ public class CgFontRegistry {
             CgMsdfAtlasConfig config = resolveMsdfAtlasConfig(key.getFontKey());
             CgMsdfAtlasKey msdfAtlasKey = toMsdfAtlasKey(key.getFontKey(), config);
             CgGlyphKey atlasKey = toMsdfAtlasGlyphKey(key, config);
-            return ensureMsdfGlyphPaged(font, atlasKey, msdfAtlasKey, effectiveTargetPx, subPixelBucket, currentFrame);
+            return ensureMsdfGlyphPaged(font, atlasKey, msdfAtlasKey, effectiveTargetPx, subPixelBucket, currentFrame, true);
         } else {
             CgGlyphKey atlasKey = toBitmapAtlasGlyphKey(
                     new CgRasterGlyphKey(rasterFontKey, key.getGlyphId(), false, subPixelBucket,
@@ -296,9 +380,24 @@ public class CgFontRegistry {
      * used to do) and attempts synchronous generation within the small per-frame budget (what
      * {@link #ensureGlyphPaged} used to do), including the MSDF→bitmap fallback.</p>
      *
-     * @return the placement if cached or synchronously generated this call, else {@code null}
-     *         (the glyph has been queued for async generation and will be available on a
-     *         later frame)
+     * <h4>Never generates MSDF synchronously — that is {@link #ensureGlyphPaged}'s job</h4>
+     * <p>On an MSDF miss this submits the async job and then takes the bitmap fallback for
+     * <em>this</em> frame, rather than blocking to generate the distance field inline. The
+     * inline path costs ~30 ms per glyph and is capped at
+     * {@code CgMsdfGenerator.MAX_PER_FRAME} (4), so a frame that has to touch it spends ~120 ms
+     * regardless of how few glyphs actually needed it — measured as the entire remaining cost
+     * of a warmup refresh once redundant lookups were eliminated. The background executor
+     * produces exactly the same glyphs off the render thread and is what converges the atlas in
+     * practice anyway; paying for four of them inline only buys those four glyphs a slightly
+     * earlier upgrade, at the price of a visible hitch.
+     *
+     * <p>The bitmap fallback makes this safe: a glyph awaiting its distance field still renders
+     * this frame, just on the bitmap tier, and upgrades on a later frame once the async result
+     * lands (mixed tiers within one draw are fine — see
+     * {@code CgResolvedGlyphs#resolvePlacements}).</p>
+     *
+     * @return the placement if cached, or a bitmap fallback placement; {@code null} only if the
+     *         glyph could not be resolved on either tier
      */
     public CgGlyphPlacement resolveGlyphPaged(CgFont font,
                                       CgGlyphKey key,
@@ -323,7 +422,7 @@ public class CgFontRegistry {
                 return cached;
             }
             submitMsdfGlyphJob(font, atlasKey, msdfAtlasKey);
-            return ensureMsdfGlyphPaged(font, atlasKey, msdfAtlasKey, effectiveTargetPx, subPixelBucket, currentFrame);
+            return ensureMsdfGlyphPaged(font, atlasKey, msdfAtlasKey, effectiveTargetPx, subPixelBucket, currentFrame, false);
         }
 
         CgGlyphKey atlasKey = toBitmapAtlasGlyphKey(
@@ -500,66 +599,75 @@ public class CgFontRegistry {
         CgPagedGlyphAtlas pagedAtlas = getPagedBitmapAtlas(rasterFontKey);
         CgGlyphPlacement cached = pagedAtlas.get(atlasKey, currentFrame);
         if (cached != null) {
+            CgProfiler.count("glyph.bitmap.atlasHit");
             return cached;
         }
+        // Deliberately uncapped, unlike the MSDF sync path's CgMsdfGenerator.MAX_PER_FRAME budget
+        // -- see the CgProfiler instrumentation added here specifically to quantify how much
+        // render-thread time this uncapped fallback costs during MSDF atlas warmup, when most
+        // glyphs land here every frame until their real MSDF result completes asynchronously.
+        CgProfiler.count("glyph.bitmap.syncRasterized");
 
         FTFace face = font.getFtFace();
         boolean synthesize = atlasKey.isSyntheticBold() || atlasKey.isSyntheticItalic();
         try {
-            face.setPixelSizes(0, effectiveTargetPx);
+            try (CgProfiler.Scope ignored = CgProfiler.scope("freetype.rasterize")) {
+                face.setPixelSizes(0, effectiveTargetPx);
 
-            int loadFlags = FTLoadFlags.FT_LOAD_DEFAULT;
-            boolean subBucket = subPixelBucket > 0
-                    && effectiveTargetPx < CgGlyphKey.SUB_PIXEL_BUCKET_MAX_PX;
-            // Embolden/shear operate on FT_Outline — a bitmap-only glyph (e.g. an emoji/color
-            // strike) has no outline to transform, so this is best-effort like real browsers'
-            // synthesis: no outline means no visible faux-style, not a hard failure.
-            if (subBucket || synthesize) {
-                loadFlags = FTLoadFlags.FT_LOAD_NO_BITMAP;
+                int loadFlags = FTLoadFlags.FT_LOAD_DEFAULT;
+                boolean subBucket = subPixelBucket > 0 && effectiveTargetPx < CgGlyphKey.SUB_PIXEL_BUCKET_MAX_PX;
+                // Embolden/shear operate on FT_Outline — a bitmap-only glyph (e.g. an emoji/color
+                // strike) has no outline to transform, so this is best-effort like real browsers'
+                // synthesis: no outline means no visible faux-style, not a hard failure.
+                if (subBucket || synthesize) loadFlags = FTLoadFlags.FT_LOAD_NO_BITMAP;
+                
+                // Bytecode/autohinting grid-fits stems assuming an UPRIGHT glyph; shearing (or even
+                // embolden's point-shift) after that hinting has already snapped stems to whole
+                // pixels breaks the per-height grid-fit consistency, producing broken/jagged stems
+                // at small sizes. Disabling hinting for synthesized glyphs avoids this — the same
+                // reason production font engines skip/reduce hinting for synthetic oblique.
+                if (synthesize) loadFlags |= FTLoadFlags.FT_LOAD_NO_HINTING;
+                
+
+                loadGlyphOrFallback(face, atlasKey.getGlyphId(), loadFlags);
+                applySyntheticStyle(face, atlasKey, effectiveTargetPx);
+
+                if (subBucket) face.outlineTranslate(subPixelBucket * 16L, 0L);
+                
+
+                face.renderGlyph(FTRenderMode.FT_RENDER_MODE_NORMAL);
+
+                FTBitmap bitmap = face.getGlyphBitmap();
+                int width = bitmap.getWidth();
+                int height = bitmap.getHeight();
+                if (width == 0 || height == 0) {
+                    // A space/control/blank glyph. Record the verdict instead of returning a
+                    // bare null: null is indistinguishable from "not generated yet", so every
+                    // later resolve would re-run this whole MSDF-attempt + FreeType path to
+                    // rediscover the same nothing. See CgPagedGlyphAtlas#emptyGlyphs.
+                    CgProfiler.count("glyph.bitmap.markedEmpty");
+                    return pagedAtlas.markEmpty(atlasKey);
+                }
+
+                byte[] pixels = normalizeBitmapBuffer(bitmap);
+                // Bearing/size MUST come from this bitmap's own left/top/width/height, NOT from
+                // FTGlyphMetrics (the outline's sub-pixel-precise bounding box) -- see
+                // CgWorkerFontContext#generateBitmap's javadoc-comment for the full explanation.
+                // FreeType hints/grid-fits the outline during rendering (a per-glyph, per-size,
+                // non-linear adjustment) and bakes the result into bitmap.left/top/width/height,
+                // but does not update FT_Glyph_Metrics to match. This used to also re-measure at
+                // basePx when effectiveTargetPx != basePx (matching CgWorkerFontContext's old,
+                // now-fixed bug) -- dead code here specifically, since toBitmapAtlasGlyphKey
+                // already rewrites atlasKey's font key to effectiveTargetPx, so that condition
+                // was always false -- but the FTGlyphMetrics-vs-bitmap mismatch itself was real
+                // and is what this fixes.
+                float bearingX = bitmap.getLeft();
+                float bearingY = bitmap.getTop();
+                float metricsWidth = width;
+                float metricsHeight = height;
+                return pagedAtlas.allocateBitmap(atlasKey, pixels, width, height,
+                        bearingX, bearingY, metricsWidth, metricsHeight, currentFrame);
             }
-            // Bytecode/autohinting grid-fits stems assuming an UPRIGHT glyph; shearing (or even
-            // embolden's point-shift) after that hinting has already snapped stems to whole
-            // pixels breaks the per-height grid-fit consistency, producing broken/jagged stems
-            // at small sizes. Disabling hinting for synthesized glyphs avoids this — the same
-            // reason production font engines skip/reduce hinting for synthetic oblique.
-            if (synthesize) {
-                loadFlags |= FTLoadFlags.FT_LOAD_NO_HINTING;
-            }
-
-            loadGlyphOrFallback(face, atlasKey.getGlyphId(), loadFlags);
-            applySyntheticStyle(face, atlasKey, effectiveTargetPx);
-
-            if (subBucket) {
-                face.outlineTranslate(subPixelBucket * 16L, 0L);
-            }
-
-            face.renderGlyph(FTRenderMode.FT_RENDER_MODE_NORMAL);
-
-            FTBitmap bitmap = face.getGlyphBitmap();
-            int width = bitmap.getWidth();
-            int height = bitmap.getHeight();
-            if (width == 0 || height == 0) {
-                return null;
-            }
-
-            byte[] pixels = normalizeBitmapBuffer(bitmap);
-            // Bearing/size MUST come from this bitmap's own left/top/width/height, NOT from
-            // FTGlyphMetrics (the outline's sub-pixel-precise bounding box) -- see
-            // CgWorkerFontContext#generateBitmap's javadoc-comment for the full explanation.
-            // FreeType hints/grid-fits the outline during rendering (a per-glyph, per-size,
-            // non-linear adjustment) and bakes the result into bitmap.left/top/width/height,
-            // but does not update FT_Glyph_Metrics to match. This used to also re-measure at
-            // basePx when effectiveTargetPx != basePx (matching CgWorkerFontContext's old,
-            // now-fixed bug) -- dead code here specifically, since toBitmapAtlasGlyphKey
-            // already rewrites atlasKey's font key to effectiveTargetPx, so that condition
-            // was always false -- but the FTGlyphMetrics-vs-bitmap mismatch itself was real
-            // and is what this fixes.
-            float bearingX = bitmap.getLeft();
-            float bearingY = bitmap.getTop();
-            float metricsWidth = width;
-            float metricsHeight = height;
-            return pagedAtlas.allocateBitmap(atlasKey, pixels, width, height,
-                    bearingX, bearingY, metricsWidth, metricsHeight, currentFrame);
         } catch (FreeTypeException e) {
             LOGGER.log(Level.WARNING, "Failed to rasterize glyph at effective size " + effectiveTargetPx + ": " + atlasKey, e);
             return null;
@@ -620,33 +728,46 @@ public class CgFontRegistry {
                                                    CgMsdfAtlasKey msdfAtlasKey,
                                                    int effectiveTargetPx,
                                                    int subPixelBucket,
-                                                   long currentFrame) {
+                                                   long currentFrame,
+                                                   boolean allowSyncGeneration) {
         CgPagedGlyphAtlas pagedAtlas = getPagedMsdfAtlas(msdfAtlasKey);
         CgGlyphPlacement cached = pagedAtlas.get(atlasKey, currentFrame);
         if (cached != null) {
+            CgProfiler.count("glyph.msdf.atlasHit");
             return cached;
         }
 
         FreeTypeMSDFIntegration.Font msdfFont = font.getMsdfFont();
-        if (msdfFont != null) {
+        if (msdfFont != null && allowSyncGeneration) {
             try {
-                CgGlyphGenerationResult generated = msdfGenerator.preparePagedGlyphWithinBudget(
-                        atlasKey,
-                        font.getKey(),
-                        msdfFont,
-                        msdfAtlasKey);
+                CgGlyphGenerationResult generated;
+                try (CgProfiler.Scope ignored = CgProfiler.scope("msdfgen.generate")) {
+                    generated = msdfGenerator.preparePagedGlyphWithinBudget(
+                            atlasKey,
+                            font.getKey(),
+                            msdfFont,
+                            msdfAtlasKey);
+                }
                 if (generated != null) {
                     commitGeneratedGlyph(generated, currentFrame);
                     CgGlyphPlacement placement = pagedAtlas.get(atlasKey, currentFrame);
                     if (placement != null) {
+                        CgProfiler.count("glyph.msdf.syncGenerated");
                         return placement;
                     }
+                } else {
+                    // CgMsdfGenerator.MAX_PER_FRAME already reached this frame, or a real
+                    // generation failure -- either way this glyph falls through to the
+                    // uncapped bitmap path below, every frame, until its atlas-committed
+                    // MSDF result (async or a future sync attempt) actually lands.
+                    CgProfiler.count("glyph.msdf.syncBudgetExhaustedOrFailed");
                 }
             } finally {
                 restoreFontShapingState(font);
             }
         }
 
+        CgProfiler.count("glyph.msdf.fellBackToBitmap");
         // Fall back to bitmap via paged atlas
         CgRasterFontKey bitmapRasterKey = new CgRasterFontKey(font.getKey(), effectiveTargetPx);
         CgGlyphKey bitmapAtlasKey = toBitmapAtlasGlyphKey(
@@ -700,10 +821,17 @@ public class CgFontRegistry {
     //  tickFrame() at the start of each render frame.
     // ────────────────────────────────────────────────────────────────────
 
-    private void drainCompletedGlyphs(long frame, long maxBytes, int maxCommits) {
+    private void drainCompletedGlyphs(long frame, long maxBytes, int maxCommits, long maxNanos) {
+        long start = System.nanoTime();
         long bytesCommitted = 0;
         int committed = 0;
         while (committed < maxCommits && bytesCommitted < maxBytes) {
+            // Time check before polling, so an already-dequeued result is never dropped and a
+            // fully drained queue costs one nanoTime() call, not a wasted poll.
+            if (System.nanoTime() - start >= maxNanos) {
+                CgProfiler.count("asyncCommit.timeBudgetHit");
+                break;
+            }
             CgGlyphGenerationResult result = glyphGenerationExecutor.pollCompleted();
             if (result == null) {
                 break;
@@ -712,6 +840,8 @@ public class CgFontRegistry {
             committed++;
             bytesCommitted += estimateUploadBytes(result);
         }
+        CgProfiler.count("asyncCommit.glyphsUploaded", committed);
+        CgProfiler.count("asyncCommit.bytesUploaded", bytesCommitted);
     }
 
     /**
@@ -750,6 +880,8 @@ public class CgFontRegistry {
                 return;
             }
             if (result.isEmptyGeometry()) {
+                // Record rather than drop — see the matching case in ensureBitmapGlyphPaged.
+                atlas.markEmpty(result.getAtlasKey());
                 return;
             }
             atlas.allocateMsdf(
