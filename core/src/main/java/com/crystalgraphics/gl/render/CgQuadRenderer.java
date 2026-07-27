@@ -206,10 +206,17 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
      * renderer's buffer is actually attached to whatever material ends up bound at
      * {@link #flush()} time.</p>
      *
+     * <p>Static, not instance-bound — {@link #GPU_BUFFER}/{@link #MACRO_NAME} are class-wide
+     * shared state (see class javadoc), so this never actually needed a {@code CgQuadRenderer}
+     * instance to call. Being callable without one matters in practice: a consumer whose material
+     * is shared/static (e.g. {@code CgTextRenderer.TEXT_MATERIAL}) needs this wired in at
+     * class-init time, before any per-instance {@code CgQuadRenderer} even exists — see
+     * {@code CgTextRenderer}'s static initializer.</p>
+     *
      * @param material the material to wire this buffer into
      * @return {@code material}, for continued fluent configuration
      */
-    public CgMaterial attachTo(CgMaterial material) {
+    public static CgMaterial attachTo(CgMaterial material) {
         return material.attach(GPU_BUFFER, MACRO_NAME);
     }
 
