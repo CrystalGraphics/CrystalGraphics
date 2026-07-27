@@ -101,8 +101,11 @@ final class CgResolvedGlyphs {
     int resolve(CgTextLayout layout, float x, float y, long frame,
                CgTextRenderContext context, int effectiveTargetPx, boolean wantMsdf,
                CgFontKey fontKey, int rgba) {
+        long contentGeneration = registry.getAtlasContentGeneration();
+        long evictionGeneration = registry.getAtlasEvictionGeneration();
+
         CgGlyphPlacementCache.Key key = CgGlyphPlacementCache.key(layout, x, y, wantMsdf, fontKey, rgba);
-        CgGlyphPlacementCache.Entry hit = CgGlyphPlacementCache.get(key, effectiveTargetPx, frame);
+        CgGlyphPlacementCache.Entry hit = CgGlyphPlacementCache.get(key, effectiveTargetPx, contentGeneration, evictionGeneration, frame);
         if (hit != null) {
             this.glyphX = hit.glyphX();
             this.glyphY = hit.glyphY();
@@ -112,6 +115,13 @@ final class CgResolvedGlyphs {
         }
 
         int glyphCount = flatten(layout, x, y, context, effectiveTargetPx, wantMsdf, rgba);
+        // Salvage already-converged placements from the stale entry we're replacing, so a
+        // refresh only re-queries the glyphs that can actually still improve. See
+        // CgGlyphPlacementCache#getForUpgrade.
+        CgGlyphPlacementCache.Entry upgradeFrom = CgGlyphPlacementCache.getForUpgrade(key, evictionGeneration);
+        CgGlyphPlacement[] reusable = upgradeFrom != null && upgradeFrom.glyphCount() == glyphCount
+                ? upgradeFrom.placements() : null;
+
         boolean distanceField = false;
         if (glyphCount > 0) {
             distanceField = resolvePlacements(glyphCount, frame, effectiveTargetPx, wantMsdf);
@@ -122,8 +132,16 @@ final class CgResolvedGlyphs {
         this.argbColor = scratchArgbColor;
         this.placements = scratchPlacements;
 
+        // Re-read AFTER resolving, not before: resolving is itself what commits newly generated
+        // glyphs (and records empty ones), so it bumps the content generation. Stamping the
+        // entry with the pre-resolve value would make it stale the instant it was written,
+        // guaranteeing a miss on the very next frame and defeating the cache entirely. The
+        // post-resolve value is the atlas state this entry's placements actually describe.
         CgGlyphPlacementCache.put(key, new CgGlyphPlacementCache.Entry(
                 distanceField, effectiveTargetPx, frame, glyphCount,
+                distanceField, effectiveTargetPx,
+                registry.getAtlasContentGeneration(), registry.getAtlasEvictionGeneration(),
+                frame, glyphCount,
                 Arrays.copyOf(scratchGlyphX, glyphCount),
                 Arrays.copyOf(scratchGlyphY, glyphCount),
                 Arrays.copyOf(scratchArgbColor, glyphCount),
@@ -139,8 +157,9 @@ final class CgResolvedGlyphs {
      * {@code x, y} added — everything else (line breaking, BiDi, per-line height) was
      * already folded in once by the layout engine's bake step, not re-derived here.
      *
-     * <p>{@link #ensurePlacements}'s MSDF→bitmap fallback retry re-runs only the flat
-     * atlas-lookup loop over these already-flattened arrays — never this pass again.</p>
+     * <p>Cheap relative to placement resolution (~0.07 ms vs ~100 ms for a 1757-glyph layout),
+     * which is why a refresh re-runs this pass in full and economises on
+     * {@link #ensurePlacements} instead.</p>
      *
      * @return the number of glyphs flattened (may be 0 for an all-whitespace layout)
      */
@@ -171,30 +190,65 @@ final class CgResolvedGlyphs {
 
     /**
      * Resolves atlas placements for the {@code glyphCount} glyphs already flattened by
-     * {@link #flatten}, into {@link #scratchPlacements}.
+     * {@link #flatten}, into {@link #scratchPlacements}. One pass — glyphs land on whichever
+     * tier is actually available for them right now.
      *
-     * <p>If a draw prefers distance fields but any visible glyph had to fall back to
-     * bitmap this frame, reruns just this atlas-lookup loop in bitmap mode so one draw
-     * never mixes bitmap and distance-field quality tiers — no re-walk of the layout tree.</p>
+     * <h3>Mixed tiers are allowed (this used to force a uniform downgrade)</h3>
+     * <p>This previously re-ran the whole atlas-lookup loop in bitmap mode whenever <em>any</em>
+     * visible glyph fell back, so that one draw never mixed bitmap and distance-field glyphs.
+     * That cost far more than the extra pass it looks like:</p>
+     * <ul>
+     *   <li>It doubled every unconverged resolve outright ({@code 2 x glyphCount} registry
+     *       round trips — measured at ~3559 for a 1757-glyph layout).</li>
+     *   <li>Worse, it <strong>destroyed partial progress</strong>. The downgrade overwrote
+     *       distance-field placements that had already converged, so the stored entry contained
+     *       zero of them, so the next refresh had nothing to reuse and had to re-query
+     *       everything again — permanently pinning each refresh at ~90-120 ms instead of letting
+     *       it decay toward zero as warmup progressed. The incremental-reuse path in
+     *       {@link #ensurePlacements} literally could not fire while this existed.</li>
+     * </ul>
      *
-     * @return {@code true} if the final result is uniformly distance-field (i.e. {@code wantMsdf}
-     *         was requested and no glyph fell back to bitmap) — see {@link CgGlyphPlacementCache.Entry#distanceField}
+     * <p>Allowing the mix is nearly free at draw time: {@code CgTextRenderer}'s sort key is
+     * ordered {@code (mode, textureId, pxRange)}, and since the atlas texture-array migration
+     * one atlas family is a single texture id with a single pxRange regardless of page count.
+     * So a mixed draw costs exactly <strong>two</strong> batches — one bitmap, one
+     * distance-field — for any number of glyphs, not one batch per glyph or per page.</p>
+     *
+     * <p>The visible trade is that a large layout now converges glyph-by-glyph during warmup
+     * rather than flipping tier all at once.</p>
+     *
+     * @return {@code true} only if the result is uniformly distance-field — i.e. {@code wantMsdf}
+     *         was requested and no visible glyph fell back. This is what marks a cache entry
+     *         fully converged and therefore immune to further refreshes; a mixed result stays
+     *         {@code false} so it keeps being revisited until every glyph has upgraded.
+     *         See {@link CgGlyphPlacementCache.Entry#distanceField}.
      */
-    private boolean resolvePlacements(int glyphCount, long frame, int effectiveTargetPx, boolean wantMsdf) {
-        boolean usedBitmapFallback = ensurePlacements(glyphCount, frame, effectiveTargetPx, wantMsdf);
-        if (wantMsdf && usedBitmapFallback) {
-            ensurePlacements(glyphCount, frame, effectiveTargetPx, false);
-            return false;
-        }
-        return wantMsdf;
+    private boolean resolvePlacements(int glyphCount, long frame, int effectiveTargetPx, boolean wantMsdf,
+                                       CgGlyphPlacement[] reusable) {
+        boolean usedBitmapFallback = ensurePlacements(glyphCount, frame, effectiveTargetPx, wantMsdf, reusable);
+        return wantMsdf && !usedBitmapFallback;
     }
 
     /**
      * @return true if any glyph in an MSDF-targeted pass fell back to bitmap
      */
-    private boolean ensurePlacements(int glyphCount, long frame, int effectiveTargetPx, boolean wantMsdf) {
+    private boolean ensurePlacements(int glyphCount, long frame, int effectiveTargetPx, boolean wantMsdf,
+                                      CgGlyphPlacement[] reusable) {
         boolean usedBitmapFallback = false;
+        int reused = 0;
         for (int i = 0; i < glyphCount; i++) {
+            // A glyph already on the distance-field tier cannot improve — reuse it rather than
+            // paying another registry round trip (which, on a miss, costs an MSDF generation
+            // attempt plus a bitmap-fallback rasterize). This is what makes a refresh cost
+            // O(glyphs still awaiting upgrade) instead of O(entire layout).
+            if (reusable != null) {
+                CgGlyphPlacement prior = reusable[i];
+                if (prior != null && prior.isDistanceField()) {
+                    scratchPlacements[i] = prior;
+                    reused++;
+                    continue;
+                }
+            }
             // The primary pass always runs with the same wantMsdf that flatten() built
             // scratchGlyphKeys[i] with (see CgTextRenderer.drawInternal), so it can reuse
             // that key instead of allocating a second one for the same glyph this frame.

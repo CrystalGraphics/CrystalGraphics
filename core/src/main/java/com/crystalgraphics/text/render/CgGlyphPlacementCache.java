@@ -33,13 +33,27 @@ final class CgGlyphPlacementCache {
     private static final int CAPACITY = 1024;
 
     /**
-     * Force a fresh resolve at least this often even on an otherwise-matching entry — ~5s at
-     * 60 FPS, cheap insurance rather than a hot-path cost. Bounds how long a warmup-era
-     * bitmap-fallback result could survive after the real distance-field glyph becomes ready,
-     * and keeps atlas-page LRU bookkeeping fresh for a bounded, actively-evicting atlas
-     * (irrelevant for the default unbounded one, but harmless).
+     * Minimum frames between re-resolves of a <em>not-yet-converged</em> (non-distance-field)
+     * entry, regardless of how many times the atlas changed in between.
+     *
+     * <p>This is a rate limiter, not a staleness policy — {@link Entry#matches} decides
+     * <em>whether</em> an entry is stale from the atlas content generation; this only bounds
+     * <em>how often</em> acting on that is allowed to cost a full re-resolve.
+     *
+     * <p>It exists because during warmup the async glyph drain commits new glyphs on nearly
+     * every frame, so a purely generation-driven policy invalidates on nearly every frame, and
+     * a large layout's re-resolve is 35-145 ms. Measured without this limiter: warmup collapsed
+     * to 5-41 fps for ~11 s while steady state was perfect. The old fixed 300-frame timer this
+     * replaced was accidentally providing exactly this rate limit — that was the one job it was
+     * genuinely doing, and the reason removing it outright regressed warmup.
+     *
+     * <p>Deliberately far shorter than that old 300-frame timer. It can afford to be, because
+     * unlike the timer it never applies once an entry converges to distance-field: a converged
+     * layout is exempt entirely and re-resolves zero times, forever. So this only trades a
+     * little warmup CPU for faster visual convergence (~1 s at 120 FPS instead of up to ~5 s),
+     * and costs nothing in steady state.</p>
      */
-    private static final long REFRESH_FRAMES = 300;
+    private static final long MIN_REFRESH_FRAMES_WHILE_UNCONVERGED = 120;
 
     private static final Map<Key, Entry> MAP =
             new LinkedHashMap<Key, Entry>(CAPACITY * 4 / 3, 0.75f, true) {
@@ -61,16 +75,49 @@ final class CgGlyphPlacementCache {
     }
 
     /**
-     * @return the cached entry if present and not stale for {@code effectiveTargetPx}/
-     *         {@code frame} (see {@link Entry#matches}), else {@code null}
+     * @return the cached entry if present and not stale for {@code effectiveTargetPx} and the
+     *         current atlas generations (see {@link Entry#matches}), else {@code null}
      */
-    static Entry get(Key key, int effectiveTargetPx, long frame) {
+    static Entry get(Key key, int effectiveTargetPx, long contentGeneration, long evictionGeneration,
+                     long frame) {
         Entry entry = MAP.get(key);
-        return entry != null && entry.matches(effectiveTargetPx, frame) ? entry : null;
+        return entry != null && entry.matches(effectiveTargetPx, contentGeneration, evictionGeneration, frame)
+                ? entry : null;
     }
 
     static void put(Key key, Entry entry) {
         MAP.put(key, entry);
+    }
+
+    /**
+     * Returns a stale entry whose already-converged placements can still be salvaged, or
+     * {@code null} if there is nothing safely reusable.
+     *
+     * <p>Used by {@link CgResolvedGlyphs#resolve} on a miss: a refresh triggered because the
+     * atlas gained content is looking for glyphs that can now be <em>upgraded</em> from bitmap
+     * to distance-field, but the glyphs already on distance-field cannot improve any further
+     * and do not need re-querying. Reusing them turns a refresh from {@code O(all glyphs)} into
+     * {@code O(glyphs still awaiting an upgrade)}, which decays to zero as warmup converges —
+     * measured at ~100-128 ms per refresh for a 1757-glyph layout when everything is re-queried.
+     *
+     * <p>Two safety conditions, both necessary:</p>
+     * <ul>
+     *   <li><b>Eviction generation must match.</b> After an eviction a freed layer index is
+     *       reused by another page, so the cached placements may point at someone else's
+     *       glyphs — nothing from this entry is trustworthy.</li>
+     *   <li><b>The entry must not already be fully distance-field.</b> Such an entry would have
+     *       satisfied {@link Entry#matches} and never reached this path; if one does, there is
+     *       nothing to upgrade and the caller should do a normal resolve.</li>
+     * </ul>
+     *
+     * <p>Deliberately does <em>not</em> check {@code effectiveTargetPx}: only distance-field
+     * placements are ever reused from the returned entry, and those are size-independent by
+     * construction (see {@link Entry#matches}).</p>
+     */
+    static Entry getForUpgrade(Key key, long evictionGeneration) {
+        Entry entry = MAP.get(key);
+        if (entry == null || entry.distanceField()) return null;
+        return entry.builtEvictionGeneration() == evictionGeneration ? entry : null;
     }
 
     /**
@@ -125,11 +172,48 @@ final class CgGlyphPlacementCache {
      * <p>{@code argbColor} is the already-resolved effective color per glyph (span override,
      * or the draw's default {@code rgba} baked into {@link Key} — see that field's javadoc).</p>
      */
-    record Entry(boolean distanceField, int effectiveTargetPx, long builtFrame, int glyphCount,
+    record Entry(boolean distanceField, int effectiveTargetPx, long builtContentGeneration,
+                 long builtEvictionGeneration, long builtFrame, int glyphCount,
                  float[] glyphX, float[] glyphY, int[] argbColor, CgGlyphPlacement[] placements) {
-        boolean matches(int effectiveTargetPx, long frame) {
-            return (distanceField || this.effectiveTargetPx == effectiveTargetPx)
-                    && (frame - builtFrame) < REFRESH_FRAMES;
+
+        /**
+         * Revision-based staleness — this entry is valid until something it was built against
+         * actually changed, rather than until a fixed number of frames elapsed.
+         *
+         * <p>Three independent checks, each guarding a distinct way an entry can go wrong:</p>
+         * <ol>
+         *   <li><b>Eviction.</b> Any eviction anywhere invalidates unconditionally: a freed
+         *       layer index is immediately reused by a different page, so every placement this
+         *       entry holds may now point at someone else's glyphs. On the default unbounded
+         *       atlases this never fires (see
+         *       {@code CgFontRegistry#getAtlasEvictionGeneration()}).</li>
+         *   <li><b>New atlas content, but only for a non-distance-field entry.</b> New content
+         *       matters solely because a glyph that had to fall back to bitmap might now have
+         *       its real MSDF result available. An entry that is already uniformly
+         *       distance-field has nothing left to upgrade to, so it is immune by construction
+         *       — which is what makes a converged layout cost <em>zero</em> re-resolves in
+         *       steady state instead of one full re-resolve every 300 frames forever.</li>
+         *   <li><b>{@code effectiveTargetPx}, again only for a non-distance-field entry.</b>
+         *       Unchanged in spirit from before: bitmap placements are rasterized at a specific
+         *       effective size, while {@code CgFontRegistry#toMsdfAtlasGlyphKey} rewrites the
+         *       key to the atlas's fixed {@code atlasScalePx} and zeroes the sub-pixel bucket,
+         *       so a distance-field entry is size-independent.</li>
+         * </ol>
+         *
+         * <p>The content-generation check is additionally rate-limited by
+         * {@link #MIN_REFRESH_FRAMES_WHILE_UNCONVERGED} — see that constant for why a purely
+         * generation-driven policy collapses warmup framerate. The rate limit applies only to
+         * the unconverged branch; a distance-field entry returns above it and is never
+         * re-resolved on a timer at all.</p>
+         */
+        boolean matches(int effectiveTargetPx, long contentGeneration, long evictionGeneration, long frame) {
+            if (evictionGeneration != builtEvictionGeneration) return false;
+            if (distanceField) return true;
+            if (this.effectiveTargetPx != effectiveTargetPx) return false;
+            if (contentGeneration == builtContentGeneration) return true;
+            // Atlas content changed, so an upgrade may be available -- but honour the rate
+            // limit before paying for a full re-resolve of the whole layout.
+            return (frame - builtFrame) < MIN_REFRESH_FRAMES_WHILE_UNCONVERGED;
         }
     }
 }
