@@ -194,6 +194,8 @@ public class CgTextRenderer {
 
     static {
         TEXT_MATERIAL.attach(TEXT_DATA_UBO);
+        // Must run before ANYTHING can toggle a keyword on TEXT_MATERIAL.
+        CgQuadRenderer.attachTo(TEXT_MATERIAL);
         TEXT_MATERIAL.applyProperties(b -> b.sampler("_MainTex", 0, ATLAS_TEXTURE_REF));
     }
 
@@ -1085,8 +1087,12 @@ public class CgTextRenderer {
         // what's already queued under a different projection — see syncProjection().
         syncProjection(context.projection());
 
-        // World text is always MSDF (see PerspectiveScaleResolver#shouldUseMsdf), so gating
-        // pixel-snap on !isDistanceField alone already excludes it -- no separate world check.
+        // Pixel-snap is an ORTHO-ONLY correction: pixelSnapDelta floors the modelView-transformed
+        // position, which is only meaningful when modelView maps into screen-pixel space. For
+        // world text it maps into world units (a whole text block often spans < 1 unit), so
+        // flooring collapses every glyph onto the same integer world coordinate -- and the
+        // inverse-transform back to local space then multiplies that error by 1/worldScale.
+        boolean pixelSnap = !context.isWorldText();
         scratchInverseModelView.set(modelView).invert();
 
         long currentBatchBits = 0;
@@ -1133,10 +1139,11 @@ public class CgTextRenderer {
                 qx = resolvedGlyphs.glyphX[localIndex] + logicalBearingX;
                 qy = resolvedGlyphs.glyphY[localIndex] - logicalBearingY;
 
-                // Bitmap-only (see pixelSnapDelta's javadoc); snaps from the shared line
-                // baseline rather than qy so every glyph on a line gets the same correction,
-                // since qy already has this glyph's own bearingY baked in.
-                if (!isDistanceField) {
+                // Bitmap-only, and ortho-only (see pixelSnapDelta's javadoc and the pixelSnap
+                // computation above); snaps from the shared line baseline rather than qy so every
+                // glyph on a line gets the same correction, since qy already has this glyph's own
+                // bearingY baked in.
+                if (pixelSnap && !isDistanceField) {
                     pixelSnapDelta(modelView, scratchInverseModelView, qx, resolvedGlyphs.glyphY[localIndex], scratchLocalDelta);
                     qx += scratchLocalDelta.x;
                     qy += scratchLocalDelta.y;
@@ -1178,6 +1185,14 @@ public class CgTextRenderer {
      * position (after {@code modelView}) land on a whole pixel — {@code GL_NEAREST} sampling
      * isn't invariant under sub-pixel translation, so an unsnapped position can drop/duplicate
      * a texel row at an edge. Floors (not rounds) to match the sub-pixel bucket convention.
+     *
+     * <p><strong>Orthographic/UI text only.</strong> This is only meaningful when
+     * {@code modelView} maps into screen-pixel space. Under a world-space {@code modelView}
+     * it transforms into world units instead, where an entire text block routinely spans less
+     * than one unit — {@link Math#floor} then snaps every glyph to the same integer coordinate,
+     * and the inverse-transform back to local space scales that error up by {@code 1/worldScale}.
+     * Callers must gate on {@link CgTextRenderContext#isWorldText()}; do not rely on
+     * {@code isDistanceField} as a proxy for "not world text" (see {@code submitSortedQuads}).</p>
      */
     private static void pixelSnapDelta(Matrix4f modelView, Matrix4f invModelView,
                                         float qx, float qy, Vector3f outLocalDelta) {
