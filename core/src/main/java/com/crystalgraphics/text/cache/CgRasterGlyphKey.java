@@ -1,7 +1,7 @@
 package com.crystalgraphics.text.cache;
 
 import com.crystalgraphics.api.font.CgGlyphKey;
-import com.crystalgraphics.text.render.CgTextScaleResolver;
+import com.crystalgraphics.text.render.context.CgTextScaleResolver;
 
 /**
  * Internal cache discriminator for effective-size-aware individual glyph lookup.

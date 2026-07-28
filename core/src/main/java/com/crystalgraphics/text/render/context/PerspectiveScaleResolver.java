@@ -1,4 +1,4 @@
-package com.crystalgraphics.text.render;
+package com.crystalgraphics.text.render.context;
 
 import com.crystalgraphics.api.PoseStack;
 import org.joml.Matrix4f;
@@ -69,7 +69,7 @@ import org.joml.Matrix4f;
  * @see ProjectedSizeEstimator
  * @see CgTextRenderContext#updateProjectedSize
  */
-final class PerspectiveScaleResolver implements CgTextScaleResolver {
+public final class PerspectiveScaleResolver implements CgTextScaleResolver {
 
     /**
      * The world-text raster tier, as a multiple of the base target size. Applied
@@ -144,7 +144,7 @@ final class PerspectiveScaleResolver implements CgTextScaleResolver {
      *
      * @return the projected size in screen pixels, or {@code <= 0} if unset
      */
-    float getProjectedSizeHint() {
+    public float getProjectedSizeHint() {
         return projectedSizeHint;
     }
 

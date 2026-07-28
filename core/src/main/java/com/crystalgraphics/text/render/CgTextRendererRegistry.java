@@ -1,6 +1,7 @@
 package com.crystalgraphics.text.render;
 
 import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
+import com.crystalgraphics.text.render.context.CgTextRenderContext;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;

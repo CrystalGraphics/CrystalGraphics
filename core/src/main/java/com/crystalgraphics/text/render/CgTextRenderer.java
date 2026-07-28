@@ -17,6 +17,7 @@ import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.gl.texture.CgTextureMutable;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.text.cache.CgFontRegistry;
+import com.crystalgraphics.text.render.context.*;
 import com.crystalgraphics.util.profiling.CgProfiler;
 import lombok.Getter;
 import lombok.NonNull;

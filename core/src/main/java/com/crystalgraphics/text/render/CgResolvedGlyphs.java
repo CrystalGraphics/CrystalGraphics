@@ -9,6 +9,7 @@ import com.crystalgraphics.api.text.CgTextDecorationRect;
 import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.text.atlas.CgGlyphAtlas;
 import com.crystalgraphics.text.cache.CgFontRegistry;
+import com.crystalgraphics.text.render.context.CgTextRenderContext;
 import com.crystalgraphics.util.profiling.CgProfiler;
 
 import java.util.ArrayList;
@@ -100,8 +101,8 @@ final class CgResolvedGlyphs {
      * @return the number of glyphs resolved (may be 0 for an all-whitespace layout)
      */
     int resolve(CgTextLayout layout, float x, float y, long frame,
-               CgTextRenderContext context, int effectiveTargetPx, boolean wantMsdf,
-               CgFontKey fontKey, int rgba) {
+                CgTextRenderContext context, int effectiveTargetPx, boolean wantMsdf,
+                CgFontKey fontKey, int rgba) {
         long contentGeneration = registry.getAtlasContentGeneration();
         long evictionGeneration = registry.getAtlasEvictionGeneration();
 
