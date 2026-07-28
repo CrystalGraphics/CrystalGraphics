@@ -187,6 +187,11 @@ public class CgGlyphAtlasPage {
                                             float metricsWidth, float metricsHeight,
                                             long currentFrame) {
         checkNotDeleted();
+        // Cheap reject before the packer's free-list walk — see CgPackingStrategy#mayFit and
+        // CgPagedGlyphAtlas's oldest-first page scan, which relies on this to stay affordable.
+        if (!packer.mayFit(width, height)) {
+            return null;
+        }
         PackedRect packed = packer.insert(width, height, key);
         if (packed == null) {
             return null;
@@ -219,6 +224,11 @@ public class CgGlyphAtlasPage {
                                           float pxRange,
                                           long currentFrame) {
         checkNotDeleted();
+        // Cheap reject before the packer's free-list walk — see CgPackingStrategy#mayFit and
+        // CgPagedGlyphAtlas's oldest-first page scan, which relies on this to stay affordable.
+        if (!packer.mayFit(width, height)) {
+            return null;
+        }
         PackedRect packed = packer.insert(width, height, key);
         if (packed == null) {
             return null;
@@ -306,6 +316,22 @@ public class CgGlyphAtlasPage {
 
     /** Returns the packing utilization ratio for this page. */
     public float getUtilization() { return packer.utilization(); }
+
+    /**
+     * Diagnostic: how many free regions on this page could still accept a
+     * {@code width x height} glyph. See {@link CgPackingStrategy#countFreeRegionsFitting} —
+     * distinguishes "this page looks half empty in a dump image" from "this page has space a
+     * glyph could actually use".
+     */
+    public int countFreeRegionsFitting(int width, int height) {
+        return packer.countFreeRegionsFitting(width, height);
+    }
+
+    /** Diagnostic: this page's free regions as {@code {x, y, w, h}}, largest first.
+     * See {@link CgPackingStrategy#describeFreeRegions}. */
+    public int[][] describeFreeRegions() {
+        return packer.describeFreeRegions();
+    }
 
     /** Returns the total pixel area occupied by packed glyph slots. */
     public long getPackedArea() {
