@@ -12,7 +12,6 @@ package com.crystalgraphics.text.atlas.packing;
  * (no removal in the default path). Implementations may optionally support
  * removal for backward-compatible LRU eviction flows.</p>
  *
- * @see CgGuillotinePacker
  * @see MaxRectsPacker
  */
 public interface CgPackingStrategy {
@@ -27,14 +26,14 @@ public interface CgPackingStrategy {
      * @param id     caller-provided identifier (e.g., CgGlyphKey)
      * @return the packed rectangle with position, or {@code null} if it does not fit
      */
-    PackedRect insert(int width, int height, Object id);
+    MaxRectsPacker.PackedRect insert(int width, int height, Object id);
 
     /**
      * Attempts to pack a rectangle while reserving trailing spacing in allocator space.
      * The returned rectangle still reports the original glyph width/height so UVs
      * and plane bounds remain tied to the visible glyph box.
      */
-    PackedRect insert(int width, int height, int spacing, Object id);
+    MaxRectsPacker.PackedRect insert(int width, int height, int spacing, Object id);
 
     /**
      * Returns the utilization ratio of the bin (packed area / total area).

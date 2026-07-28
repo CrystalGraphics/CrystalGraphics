@@ -207,7 +207,7 @@ public class CgGlyphAtlasTest {
     public void testPageBudget_evictsColdestPageOnOverflow() {
         // 32x32 pages hold exactly one 32x32 glyph each; budget of 2 pages.
         CgGlyphAtlas atlas = CgGlyphAtlas.createForTest(
-                32, 32, CgGlyphAtlas.Type.BITMAP, CgGlyphAtlas.GUILLOTINE_FACTORY, 2);
+                32, 32, CgGlyphAtlas.Type.BITMAP, CgGlyphAtlas.MAX_RECTS_FACTORY, 2);
 
         CgGlyphPlacement p0 = atlas.allocateBitmap(
                 bitmapKey(0), dummyBitmap(32, 32), 32, 32, 0, 32, 32, 32, /*frame*/ 1);

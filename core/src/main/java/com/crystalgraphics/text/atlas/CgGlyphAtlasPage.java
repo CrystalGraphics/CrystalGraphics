@@ -5,7 +5,7 @@ import com.crystalgraphics.api.font.CgGlyphPlacement;
 import com.crystalgraphics.gl.texture.CgTexture2DArray;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.text.atlas.packing.CgPackingStrategy;
-import com.crystalgraphics.text.atlas.packing.PackedRect;
+import com.crystalgraphics.text.atlas.packing.MaxRectsPacker;
 
 import com.crystalgraphics.util.CgBufferUtils;
 import lombok.Getter;
@@ -193,7 +193,7 @@ public class CgGlyphAtlasPage {
         if (!packer.mayFit(width, height)) {
             return null;
         }
-        PackedRect packed = packer.insert(width, height, key);
+        MaxRectsPacker.PackedRect packed = packer.insert(width, height, key);
         if (packed == null) {
             return null;
         }
@@ -230,7 +230,7 @@ public class CgGlyphAtlasPage {
         if (!packer.mayFit(width, height)) {
             return null;
         }
-        PackedRect packed = packer.insert(width, height, key);
+        MaxRectsPacker.PackedRect packed = packer.insert(width, height, key);
         if (packed == null) {
             return null;
         }
@@ -254,7 +254,7 @@ public class CgGlyphAtlasPage {
      *
      * @return the packed rect, or {@code null} if it does not fit
      */
-    public PackedRect tryAllocate(int width, int height, Object id) {
+    public MaxRectsPacker.PackedRect tryAllocate(int width, int height, Object id) {
         checkNotDeleted();
         return packer.insert(width, height, id);
     }
@@ -276,7 +276,7 @@ public class CgGlyphAtlasPage {
         if (whiteTexelUv != null) {
             return whiteTexelUv;
         }
-        PackedRect packed = packer.insert(1, 1, WHITE_TEXEL_ID);
+        MaxRectsPacker.PackedRect packed = packer.insert(1, 1, WHITE_TEXEL_ID);
         if (packed == null) {
             return null;
         }
@@ -369,12 +369,12 @@ public class CgGlyphAtlasPage {
 
     // ── Internal: placement builder ───────────────────────────────────
 
-    private CgGlyphPlacement buildPlacement(PackedRect packed, CgGlyphKey key,
-                                             float bearingX, float bearingY,
-                                             float planeLeft, float planeBottom,
-                                             float planeRight, float planeTop,
-                                             float metricsWidth, float metricsHeight,
-                                             float pxRange) {
+    private CgGlyphPlacement buildPlacement(MaxRectsPacker.PackedRect packed, CgGlyphKey key,
+                                            float bearingX, float bearingY,
+                                            float planeLeft, float planeBottom,
+                                            float planeRight, float planeTop,
+                                            float metricsWidth, float metricsHeight,
+                                            float pxRange) {
         int px = packed.x();
         int py = packed.y();
         int pw = packed.width();
@@ -479,11 +479,11 @@ public class CgGlyphAtlasPage {
      * Mutable entry tracking a packed glyph slot's position, placement, and LRU frame.
      */
     static final class SlotEntry {
-        final PackedRect packed;
+        final MaxRectsPacker.PackedRect packed;
         final CgGlyphPlacement placement;
         long lastUsedFrame;
 
-        SlotEntry(PackedRect packed, CgGlyphPlacement placement, long lastUsedFrame) {
+        SlotEntry(MaxRectsPacker.PackedRect packed, CgGlyphPlacement placement, long lastUsedFrame) {
             this.packed = packed;
             this.placement = placement;
             this.lastUsedFrame = lastUsedFrame;
