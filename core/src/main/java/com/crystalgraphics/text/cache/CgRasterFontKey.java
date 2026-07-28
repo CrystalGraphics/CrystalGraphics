@@ -3,7 +3,7 @@ package com.crystalgraphics.text.cache;
 import com.crystalgraphics.api.font.CgFontStyle;
 import com.crystalgraphics.api.font.CgFontKey;
 import com.crystalgraphics.text.render.CgTextRenderer;
-import com.crystalgraphics.text.render.CgTextScaleResolver;
+import com.crystalgraphics.text.render.context.CgTextScaleResolver;
 import lombok.Getter;
 
 /**

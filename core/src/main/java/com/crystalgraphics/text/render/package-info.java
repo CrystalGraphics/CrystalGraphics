@@ -7,12 +7,12 @@
  * <ul>
  *   <li>{@link com.crystalgraphics.text.render.CgTextRenderer} —
  *       top-level render façade (layout → placements → sort → layer submit → draw)</li>
- *   <li>{@link com.crystalgraphics.text.render.CgTextRenderContext} —
+ *   <li>{@link com.crystalgraphics.text.render.context.CgTextRenderContext} —
  *       projection and scale-resolver state, for both 2D UI and 3D world text
  *       (no separate world-space context class; see its class javadoc)</li>
- *   <li>{@link com.crystalgraphics.text.render.CgTextScaleResolver} —
+ *   <li>{@link com.crystalgraphics.text.render.context.CgTextScaleResolver} —
  *       effective raster tier resolution (orthographic, world-space)</li>
- *   <li>{@link com.crystalgraphics.text.render.ProjectedSizeEstimator} —
+ *   <li>{@link com.crystalgraphics.text.render.context.ProjectedSizeEstimator} —
  *       MVP-based screen pixel coverage estimation for world-text raster tier</li>
  *   <li>{@link com.crystalgraphics.text.render.CgResolvedGlyphs} —
  *       resolves one draw's layout into flat per-glyph atlas placements</li>

@@ -1,4 +1,4 @@
-package com.crystalgraphics.text.render;
+package com.crystalgraphics.text.render.context;
 
 import com.crystalgraphics.api.PoseStack;
 import org.joml.Matrix4f;
@@ -32,7 +32,7 @@ import org.joml.Matrix4f;
  *
  * @see CgTextScaleResolver
  */
-final class OrthographicScaleResolver implements CgTextScaleResolver {
+public final class OrthographicScaleResolver implements CgTextScaleResolver {
 
     @Override
     public int resolveEffectiveTargetPx(int baseTargetPx,
@@ -87,7 +87,7 @@ final class OrthographicScaleResolver implements CgTextScaleResolver {
      * @param matrix the pose matrix
      * @return {@code max(|sx|, |sy|)}, always >= 0
      */
-    static float extractMaxScale(Matrix4f matrix) {
+    public static float extractMaxScale(Matrix4f matrix) {
         // X basis vector length
         float sx = (float) Math.sqrt(
                 matrix.m00() * matrix.m00() +

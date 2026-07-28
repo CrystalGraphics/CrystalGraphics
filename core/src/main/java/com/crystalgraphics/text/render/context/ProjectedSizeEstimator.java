@@ -1,4 +1,4 @@
-package com.crystalgraphics.text.render;
+package com.crystalgraphics.text.render.context;
 
 import org.joml.Matrix4f;
 import org.joml.Vector4f;

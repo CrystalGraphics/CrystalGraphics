@@ -1,7 +1,8 @@
-package com.crystalgraphics.text.render;
+package com.crystalgraphics.text.render.context;
 
 import com.crystalgraphics.api.PoseStack;
 import com.crystalgraphics.api.font.CgFontKey;
+import com.crystalgraphics.text.render.CgTextRenderer;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.experimental.Accessors;
@@ -91,7 +92,7 @@ public class CgTextRenderContext {
      * These two values are always read and written together per font, so they live
      * in one map entry rather than two parallel maps.
      */ 
-    record RasterHistory(int effectiveTargetPx, boolean wasMsdf) {
+    public record RasterHistory(int effectiveTargetPx, boolean wasMsdf) {
     }
 
     /**
@@ -201,11 +202,11 @@ public class CgTextRenderContext {
     }
 
     /** Returns the last-stabilized history for this font, or {@code null} if none yet. */
-    RasterHistory getHistory(CgFontKey fontKey) {
+    public RasterHistory getHistory(CgFontKey fontKey) {
         return history.get(fontKey);
     }
 
-    void setHistory(CgFontKey fontKey, int effectiveTargetPx, boolean wasMsdf) {
+    public void setHistory(CgFontKey fontKey, int effectiveTargetPx, boolean wasMsdf) {
         history.put(fontKey, new RasterHistory(effectiveTargetPx, wasMsdf));
     }
 
@@ -220,7 +221,7 @@ public class CgTextRenderContext {
         history.clear();
     }
 
-    boolean isScaledUiRaster(CgFontKey fontKey, int effectiveTargetPx) {
+    public boolean isScaledUiRaster(CgFontKey fontKey, int effectiveTargetPx) {
         return !isWorldText() && effectiveTargetPx != fontKey.getTargetPx();
     }
 
@@ -265,7 +266,7 @@ public class CgTextRenderContext {
      * Delegates to JOML's orthographic matrix construction so the renderer no longer
      * maintains a hand-written matrix layout here.</p>
      */
-    static Matrix4f populateOrthographic(Matrix4f matrix, int width, int height) {
+    public static Matrix4f populateOrthographic(Matrix4f matrix, int width, int height) {
         return matrix.setOrtho(0.0f, width, height, 0.0f, -1.0f, 1.0f);
     }
 }

@@ -1,6 +1,7 @@
-package com.crystalgraphics.text.render;
+package com.crystalgraphics.text.render.context;
 
 import com.crystalgraphics.api.PoseStack;
+import com.crystalgraphics.text.render.CgTextRenderer;
 import org.joml.Matrix4f;
 /**
  * Strategy interface for resolving the effective physical glyph raster size
