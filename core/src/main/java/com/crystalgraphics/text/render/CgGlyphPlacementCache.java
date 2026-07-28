@@ -25,7 +25,7 @@ import java.util.Map;
  * them via the {@code CgFontRegistry} singleton) and {@code CgTextRenderer.SHAPE_CACHE}'s own
  * global scope — every cache in this pipeline is global for the same reason.</p>
  */
-final class CgGlyphPlacementCache {
+public final class CgGlyphPlacementCache {
 
     /** Entries are per-<em>layout</em>, not per-glyph, so this comfortably covers hundreds of
      * simultaneously visible distinct texts (e.g. every label across every open UI window)
@@ -55,9 +55,7 @@ final class CgGlyphPlacementCache {
      */
     private static final long MIN_REFRESH_FRAMES_WHILE_UNCONVERGED = 120;
 
-    private static final Map<Key, Entry> MAP =
-            new LinkedHashMap<Key, Entry>(CAPACITY * 4 / 3, 0.75f, true) {
-                @Override
+    private static final Map<Key, Entry> MAP = new LinkedHashMap<>(CAPACITY * 4 / 3, 0.75f, true) {
                 protected boolean removeEldestEntry(Map.Entry<Key, Entry> eldest) {
                     return size() > CAPACITY;
                 }
@@ -70,7 +68,7 @@ final class CgGlyphPlacementCache {
      * Builds the lookup key for one draw. Callers should build this once and pass the same
      * instance to both {@link #get} and {@link #put} rather than rebuilding it twice.
      */
-    static Key key(CgTextLayout layout, float x, float y, boolean wantMsdf, CgFontKey fontKey, int rgba) {
+    public static Key key(CgTextLayout layout, float x, float y, boolean wantMsdf, CgFontKey fontKey, int rgba) {
         return new Key(layout, x, y, wantMsdf, fontKey, rgba);
     }
 
@@ -78,14 +76,12 @@ final class CgGlyphPlacementCache {
      * @return the cached entry if present and not stale for {@code effectiveTargetPx} and the
      *         current atlas generations (see {@link Entry#matches}), else {@code null}
      */
-    static Entry get(Key key, int effectiveTargetPx, long contentGeneration, long evictionGeneration,
-                     long frame) {
+    public static Entry get(Key key, int effectiveTargetPx, long contentGeneration, long evictionGeneration, long frame) {
         Entry entry = MAP.get(key);
-        return entry != null && entry.matches(effectiveTargetPx, contentGeneration, evictionGeneration, frame)
-                ? entry : null;
+        return entry != null && entry.matches(effectiveTargetPx, contentGeneration, evictionGeneration, frame) ? entry : null;
     }
 
-    static void put(Key key, Entry entry) {
+    public static void put(Key key, Entry entry) {
         MAP.put(key, entry);
     }
 
@@ -114,7 +110,7 @@ final class CgGlyphPlacementCache {
      * placements are ever reused from the returned entry, and those are size-independent by
      * construction (see {@link Entry#matches}).</p>
      */
-    static Entry getForUpgrade(Key key, long evictionGeneration) {
+    public static Entry getForUpgrade(Key key, long evictionGeneration) {
         Entry entry = MAP.get(key);
         if (entry == null || entry.distanceField()) return null;
         return entry.builtEvictionGeneration() == evictionGeneration ? entry : null;
@@ -135,7 +131,7 @@ final class CgGlyphPlacementCache {
      * per-glyph effective color (override color if the glyph's span had one, else this
      * {@code rgba}), so an entry built for one {@code rgba} is simply wrong for another.</p>
      */
-    record Key(CgTextLayout layout, float x, float y, boolean wantMsdf, CgFontKey fontKey, int rgba) {
+    public record Key(CgTextLayout layout, float x, float y, boolean wantMsdf, CgFontKey fontKey, int rgba) {
         @Override
         public int hashCode() {
             int h = System.identityHashCode(layout);
@@ -172,7 +168,7 @@ final class CgGlyphPlacementCache {
      * <p>{@code argbColor} is the already-resolved effective color per glyph (span override,
      * or the draw's default {@code rgba} baked into {@link Key} — see that field's javadoc).</p>
      */
-    record Entry(boolean distanceField, int effectiveTargetPx, long builtContentGeneration,
+    public record Entry(boolean distanceField, int effectiveTargetPx, long builtContentGeneration,
                  long builtEvictionGeneration, long builtFrame, int glyphCount,
                  float[] glyphX, float[] glyphY, int[] argbColor, CgGlyphPlacement[] placements) {
 
@@ -206,7 +202,7 @@ final class CgGlyphPlacementCache {
          * the unconverged branch; a distance-field entry returns above it and is never
          * re-resolved on a timer at all.</p>
          */
-        boolean matches(int effectiveTargetPx, long contentGeneration, long evictionGeneration, long frame) {
+        public boolean matches(int effectiveTargetPx, long contentGeneration, long evictionGeneration, long frame) {
             if (evictionGeneration != builtEvictionGeneration) return false;
             if (distanceField) return true;
             if (this.effectiveTargetPx != effectiveTargetPx) return false;
