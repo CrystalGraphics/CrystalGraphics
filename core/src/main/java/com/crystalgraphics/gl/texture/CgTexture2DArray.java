@@ -5,7 +5,6 @@ import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.util.CgBufferUtils;
-import com.crystalgraphics.util.CgHalfFloat;
 import com.crystalgraphics.util.profiling.CgProfiler;
 import com.crystalgraphics.util.io.CgTextureIO.CgImageData;
 import com.crystalgraphics.util.io.CgTextureIO;
@@ -180,57 +179,22 @@ public final class CgTexture2DArray extends CgTextureAbstract {
                                    int format, int type, FloatBuffer data) {
         checkNotDeleted();
         mirrorFloatUpload(layer, x, y, w, h, format, data);
-        rawUpload(layer, x, y, w, h, format, type, data);
+        // Hand the driver GL_FLOAT and let it convert, rather than quantising CPU-side first.
+        //
+        // Converting in Java was tried and is a clear pessimisation. It sends a quarter of the
+        // bytes, but the scalar clamp/round/put loop costs far more than the transfer it saves:
+        // measured on matched 28224-component uploads, 2.403 ms converting versus 0.035 ms just
+        // handing over floats, and ~8x worse per component in warm steady state (2.72 ns vs
+        // 0.34 ns). The driver's own conversion is native and vectorised; a Java loop cannot
+        // compete with it, and the bus was never the bottleneck. See git history for
+        // uploadLayerRegionAsUnorm8 and the half-float variant before it, which made the same
+        // trade and measured ~2%.
+        long bytes = (long) data.remaining() << 2;
+        try (CgProfiler.Scope ignored = CgProfiler.scope("texArray.upload.texSubImage")) {
+            rawUpload(layer, x, y, w, h, format, type, data);
+        }
+        CgProfiler.count("texArray.upload.bytes", bytes);
     }
-
-    /**
-     * Uploads {@code float} source data to a <strong>half-float</strong> ({@code RGBA16F}-class)
-     * array, converting to {@code GL_HALF_FLOAT} on the CPU instead of handing the driver
-     * {@code GL_FLOAT} and letting it quantize.
-     *
-     * <h3>Why this is free precision-wise</h3>
-     * <p>The destination storage is 16-bit float either way, so the values are quantized to
-     * half regardless of which path is used — doing it here produces bit-identical texels to
-     * letting the driver do it, while sending <strong>half the bytes</strong> and skipping the
-     * driver's per-pixel conversion pass entirely. There is no quality trade-off to weigh.</p>
-     *
-     * <h3>Why it matters</h3>
-     * <p>Measured on distance-field glyph upload: ~1.1 MiB/frame of {@code GL_FLOAT} data was
-     * producing 30-218 ms frame stalls, most of it surfacing <em>after</em> the upload call
-     * returned (deferred GPU work billed at buffer swap, invisible to CPU-side timers). Halving
-     * the transfer and removing the conversion attacks that directly.</p>
-     *
-     * <p>The CPU-side mirror (see class javadoc "Growth without a GPU readback") still stores
-     * the original {@code float} data, so layer-growth re-upload is unaffected and keeps full
-     * source precision.</p>
-     *
-     * @param format GL pixel format of {@code data} (e.g. {@code GL_RGB}, {@code GL_RGBA})
-     * @param data   tightly-packed float pixel data, {@code w * h * channels(format)} elements
-     */
-    public void uploadLayerRegionAsHalf(int layer, int x, int y, int w, int h,
-                                         int format, FloatBuffer data) {
-        checkNotDeleted();
-        mirrorFloatUpload(layer, x, y, w, h, format, data);
-
-        int count = data.remaining();
-        if (halfUploadBuffer == null || halfUploadBuffer.capacity() < count) 
-            halfUploadBuffer = CgBufferUtils.createShortBuffer(count);
-        
-        halfUploadBuffer.clear();
-        int base = data.position();
-        for (int i = 0; i < count; i++) 
-            halfUploadBuffer.put(CgHalfFloat.toHalf(data.get(base + i)));
-        
-        halfUploadBuffer.flip();
-
-        rawUpload(layer, x, y, w, h, format, CgGL.GL_HALF_FLOAT, halfUploadBuffer);
-    }
-
-    /**
-     * Reusable scratch for {@link #uploadLayerRegionAsHalf}'s converted texels — grow-only, so a
-     * steady stream of same-or-smaller glyph uploads allocates nothing after the first.
-     */
-    private ShortBuffer halfUploadBuffer;
 
 
     private void rawUpload(int layer, int x, int y, int w, int h, int format, int type, ByteBuffer data) {

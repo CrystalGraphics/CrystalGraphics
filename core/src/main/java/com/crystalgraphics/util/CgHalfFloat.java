@@ -15,7 +15,14 @@ package com.crystalgraphics.util;
  * <h3>Why it matters</h3>
  * <p>Uploading {@code GL_FLOAT} data into a {@code *16F} texture makes the driver quantize to half
  * anyway, so converting on the CPU is free precision-wise while halving bus traffic and skipping
- * the driver's per-pixel conversion. See {@code CgTexture2DArray#uploadLayerRegionAsHalf}.</p>
+ * the driver's per-pixel conversion.</p>
+ *
+ * <p><strong>Currently unused.</strong> Its one caller was the distance-field glyph atlas upload
+ * path, which moved to 8-bit unorm once measurement showed {@code RGBA16F} bought no visible
+ * quality for distance fields (see {@code CgMsdfFieldStorageTest}). Kept because half-float
+ * conversion is a general primitive with a passing test and is the obvious thing to reach for the
+ * next time anything targets an {@code RGBA16F} texture — HDR render targets, packed instance
+ * data — not because anything depends on it today.</p>
  *
  * <h3>Correctness</h3>
  * <p>Round-to-nearest-even, with the edge cases such conversions classically get wrong handled
