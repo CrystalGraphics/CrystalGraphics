@@ -13,13 +13,13 @@ package com.crystalgraphics.text.atlas;
  */
 public final class CgGlyphAtlas {
 
-    /** Discriminates bitmap (GL_R8), MSDF (GL_RGB16F), and MTSDF (GL_RGBA16F) atlas textures. */
+    /** Discriminates bitmap (GL_R8), MSDF and MTSDF (both GL_RGBA8) atlas textures. */
     public enum Type {
         /** Single-channel bitmap atlas ({@code GL_R8}, {@code GL_UNSIGNED_BYTE}). */
         BITMAP,
         /** Three-channel MSDF atlas ({@code GL_RGB16F}, uploaded as {@code GL_FLOAT}). */
         MSDF,
-        /** Four-channel MTSDF atlas ({@code GL_RGBA16F}, uploaded as {@code GL_FLOAT}). */
+        /** Four-channel MTSDF atlas ({@code GL_RGBA8}, uploaded as {@code GL_UNSIGNED_BYTE}). */
         MTSDF
     }
 
