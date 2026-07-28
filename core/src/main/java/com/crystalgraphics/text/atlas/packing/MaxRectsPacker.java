@@ -156,7 +156,76 @@ public class MaxRectsPacker implements CgPackingStrategy {
         pruneContained();
 
         packedRects.add(packed);
+        freeExtentsDirty = true;
         return packed;
+    }
+
+    /**
+     * Largest free-rect width and height currently available, cached and recomputed lazily.
+     * {@code -1} means dirty. See {@link #mayFit}.
+     */
+    private int maxFreeWidth = -1;
+    private int maxFreeHeight = -1;
+    private boolean freeExtentsDirty = true;
+
+    /**
+     * Rejects a rectangle only when <em>no</em> free rect is wide enough or <em>none</em> is
+     * tall enough — both are necessary conditions, so this never rejects something placeable.
+     *
+     * <p>It is deliberately not a sufficient test: width and height are tracked independently,
+     * so a bin holding one 200x10 rect and one 10x200 rect reports "may fit" for 90x90 even
+     * though neither can take it. That costs one wasted {@code insert} scan and nothing else,
+     * whereas a tighter-but-unsound test would strand space permanently.</p>
+     *
+     * <p>Spacing is deliberately excluded: {@link #insert} pads by it, so testing the unpadded
+     * size errs toward "may fit", which is the safe direction.</p>
+     */
+    @Override
+    public boolean mayFit(int width, int height) {
+        if (freeExtentsDirty) {
+            maxFreeWidth = 0;
+            maxFreeHeight = 0;
+            for (int i = 0; i < freeRects.size(); i++) {
+                Rect r = freeRects.get(i);
+                if (r.width > maxFreeWidth) maxFreeWidth = r.width;
+                if (r.height > maxFreeHeight) maxFreeHeight = r.height;
+            }
+            freeExtentsDirty = false;
+        }
+        return width <= maxFreeWidth && height <= maxFreeHeight;
+    }
+
+    @Override
+    public int countFreeRegionsFitting(int width, int height) {
+        int count = 0;
+        for (int i = 0; i < freeRects.size(); i++) {
+            Rect r = freeRects.get(i);
+            if (width <= r.width && height <= r.height) count++;
+        }
+        return count;
+    }
+
+    @Override
+    public int[][] describeFreeRegions() {
+        int[][] out = new int[freeRects.size()][];
+        for (int i = 0; i < freeRects.size(); i++) {
+            Rect r = freeRects.get(i);
+            out[i] = new int[]{r.x, r.y, r.width, r.height};
+        }
+        java.util.Arrays.sort(out, (a, b) -> Long.compare((long) b[2] * b[3], (long) a[2] * a[3]));
+        return out;
+    }
+
+    @Override
+    public long totalFreeArea() {
+        // Note: MaxRects free rects OVERLAP by design, so this over-counts and is only a rough
+        // upper bound. countFreeRegionsFitting is the trustworthy signal.
+        long area = 0;
+        for (int i = 0; i < freeRects.size(); i++) {
+            Rect r = freeRects.get(i);
+            area += (long) r.width * r.height;
+        }
+        return area;
     }
 
     /**
@@ -181,6 +250,7 @@ public class MaxRectsPacker implements CgPackingStrategy {
 
         // Prune contained rects — the new free rect may contain or be contained by others
         pruneContained();
+        freeExtentsDirty = true; // freeing space can only grow the extents — see mayFit
     }
 
     /**

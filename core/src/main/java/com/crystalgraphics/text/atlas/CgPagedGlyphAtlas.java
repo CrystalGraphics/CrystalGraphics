@@ -53,8 +53,10 @@ import java.util.logging.Logger;
  *
  * <h3>Page Allocation Policy</h3>
  * <ol>
- *   <li>Try the most recently allocated page (hot page).</li>
- *   <li>If the glyph does not fit, scan earlier pages for available space.</li>
+ *   <li>Scan existing pages <strong>oldest first</strong>, placing the glyph in the first one
+ *       that has room. Each page rejects in {@code O(1)} via
+ *       {@link CgPackingStrategy#mayFit} when it provably cannot take the glyph, so this stays
+ *       cheap even with dozens of pages.</li>
  *   <li>If no existing page fits, create a new page — a fresh layer, growing
  *       the backing array first if needed (see below), or — only for an atlas
  *       given an explicit {@link #maxPages} bound — a reused layer freed by
@@ -89,9 +91,11 @@ import java.util.logging.Logger;
  * entire page, never individually.</p>
  *
  * <h3>Packing Strategy</h3>
- * <p>Each page uses a {@link CgPackingStrategy} instance. By default, new pages
- * use {@link CgGuillotinePacker} for MSDF parity. Callers can supply a custom
- * strategy factory via the constructor.</p>
+ * <p>Every production page uses {@link MaxRectsPacker} (see
+ * {@link #createForPagedRegistry(int, int, CgGlyphAtlas.Type, int, int)});
+ * {@link CgGuillotinePacker} remains available for tests and for callers wanting
+ * msdf-atlas-gen output parity. Callers can supply a custom strategy factory via the
+ * constructor.</p>
  *
  * <h3>Thread Safety</h3>
  * <p>Not thread-safe. Must only be used from the GL context thread.</p>
@@ -118,7 +122,12 @@ public class CgPagedGlyphAtlas {
         CgPackingStrategy create(int pageWidth, int pageHeight, int spacingPx);
     }
 
-    /** Default packer factory using upstream-parity guillotine packing. */
+    /**
+     * Guillotine packing — retained for {@link #createForTest} and for callers that explicitly
+     * want msdf-atlas-gen output parity. <strong>Not used by any production atlas</strong>: see
+     * {@link #createForPagedRegistry(int, int, CgGlyphAtlas.Type, int, int)} for the measurement
+     * showing it packs ~16 points worse than {@link #MAX_RECTS_FACTORY}.
+     */
     public static final PackerFactory GUILLOTINE_FACTORY = new PackerFactory() {
         @Override
         public CgPackingStrategy create(int pageWidth, int pageHeight, int spacingPx) {
@@ -364,8 +373,27 @@ public class CgPagedGlyphAtlas {
     public static CgPagedGlyphAtlas createForPagedRegistry(int pageWidth, int pageHeight,
                                                              CgGlyphAtlas.Type type,
                                                              int spacingPx, int maxPages) {
-        PackerFactory factory = type == CgGlyphAtlas.Type.BITMAP ? GUILLOTINE_FACTORY : MAX_RECTS_FACTORY;
-        return new CgPagedGlyphAtlas(pageWidth, pageHeight, type, factory, false,
+        // MaxRects for every atlas type, bitmap included.
+        //
+        // Bitmap used to get CgGuillotinePacker while only distance-field atlases got MaxRects.
+        // That split was inherited from when guillotine was kept for msdf-atlas-gen output
+        // parity; distance-field atlases have since moved to MaxRects, so the parity rationale
+        // no longer applied to the one path still using it.
+        //
+        // Measured (M+ 1p, 720 bitmap glyphs at 48px, 1024px pages): the first page's fill went
+        // from roughly 70% under guillotine to 87.6% under MaxRects — 491 glyphs on page 0
+        // instead of ~390.
+        //
+        // Note what that does and does not buy, because the obvious metric is misleading here.
+        // Total glyph area is a property of the glyph set (1,351,534 px), and page count was
+        // already at its geometric minimum (2 pages = 2,097,152 px, and one page cannot hold
+        // 1,351,534). So MEAN utilisation across pages is pinned at 64.4% for any packer that
+        // fits in two pages, and does not move at all here — the two pages simply must sum to
+        // 128.9% however the glyphs are distributed. What improves is headroom: a denser first
+        // page means the glyph set can grow considerably further before a third page is needed.
+        // Judge a packer by page count at the margin and by fill of non-final pages, never by
+        // mean utilisation when page count is already minimal.
+        return new CgPagedGlyphAtlas(pageWidth, pageHeight, type, MAX_RECTS_FACTORY, false,
                 spacingPx, maxPages);
     }
 
@@ -438,7 +466,13 @@ public class CgPagedGlyphAtlas {
         }
 
         // Try existing pages (hot page first)
-        for (int i = pages.size() - 1; i >= 0; i--) {
+        // Oldest page first. Newest-first (the previous order) meant that once a new page
+        // existed with room, every subsequent glyph landed there and the gaps left in earlier
+        // pages were never revisited -- so a 24-page atlas could be carrying 20+ usable holes
+        // while still allocating page 25. Scanning oldest-first refills those holes; pages that
+        // cannot possibly take the glyph reject in O(1) via CgPackingStrategy#mayFit, so this
+        // does not become a free-list walk per page per glyph.
+        for (int i = 0; i < pages.size(); i++) {
             CgGlyphAtlasPage page = pages.get(i);
             CgGlyphPlacement placement = page.allocateBitmap(
                     key, bitmapData, width, height,
@@ -482,7 +516,8 @@ public class CgPagedGlyphAtlas {
             return existing;
         }
 
-        for (int i = pages.size() - 1; i >= 0; i--) {
+        // Oldest page first -- see the matching comment in allocateBitmap.
+        for (int i = 0; i < pages.size(); i++) {
             CgGlyphAtlasPage page = pages.get(i);
             CgGlyphPlacement placement = page.allocateMsdf(
                     key, msdfData, width, height,
