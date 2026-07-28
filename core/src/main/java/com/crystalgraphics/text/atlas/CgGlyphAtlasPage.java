@@ -18,18 +18,18 @@ import java.util.Set;
 import java.util.logging.Logger;
 
 /**
- * A single atlas page within a {@link CgPagedGlyphAtlas} — one layer of the
+ * A single atlas page within a {@link CgGlyphAtlas} — one layer of the
  * atlas family's shared {@link CgTexture2DArray}, plus one packing strategy
  * instance. Glyph placements within a page are <strong>stable</strong>: once
  * a glyph is allocated, its position never changes. There is no
  * <em>slot-level</em> eviction within a page — when a page is full, the
  * paged atlas allocates a new page (a fresh layer, or a reused layer freed by
- * whole-page eviction — see {@link CgPagedGlyphAtlas}).
+ * whole-page eviction — see {@link CgGlyphAtlas}).
  *
  * <h3>Ownership</h3>
  * <p>Unlike the pre-array-migration version of this class, a page owns
  * <strong>no GL resource of its own</strong> — the GL texture (the array) is
- * owned once by the parent {@link CgPagedGlyphAtlas}. A page is just a
+ * owned once by the parent {@link CgGlyphAtlas}. A page is just a
  * {@code (layerIndex, CgPackingStrategy)} pair that knows how to upload into
  * its one assigned layer of the shared array via
  * {@link CgTexture2DArray#uploadLayerRegion}. {@link #delete()} therefore
@@ -40,7 +40,7 @@ import java.util.logging.Logger;
  * <h3>Thread Safety</h3>
  * <p>Not thread-safe. Must only be used from the GL context thread.</p>
  *
- * @see CgPagedGlyphAtlas
+ * @see CgGlyphAtlas
  */
 public class CgGlyphAtlasPage {
 
@@ -78,7 +78,7 @@ public class CgGlyphAtlasPage {
     /**
      * Highest {@code lastUsedFrame} of any glyph currently resident on this page —
      * i.e. how recently this whole page was last touched. Used by
-     * {@link CgPagedGlyphAtlas}'s page-budget eviction to pick the coldest page,
+     * {@link CgGlyphAtlas}'s page-budget eviction to pick the coldest page,
      * without scanning every page's slot map on every allocation.
      */
     @Getter
@@ -126,7 +126,7 @@ public class CgGlyphAtlasPage {
     /**
      * Creates a new atlas page backed by layer {@code atlasPageIndex} of
      * {@code arrayTexture}. The array itself must already be allocated by the
-     * caller ({@link CgPagedGlyphAtlas} owns it) — this only records which
+     * caller ({@link CgGlyphAtlas} owns it) — this only records which
      * layer this page uploads into.
      *
      * @param pageWidth    layer width in pixels
@@ -138,9 +138,9 @@ public class CgGlyphAtlasPage {
      * @return a new page instance
      */
     public static CgGlyphAtlasPage create(int pageWidth, int pageHeight,
-                                           CgGlyphAtlas.Type type, int pageIndex,
-                                           CgTexture2DArray arrayTexture,
-                                           CgPackingStrategy packer) {
+                                          CgGlyphAtlas.Type type, int pageIndex,
+                                          CgTexture2DArray arrayTexture,
+                                          CgPackingStrategy packer) {
         if (arrayTexture == null) {
             throw new IllegalArgumentException("arrayTexture must not be null for a real (non-test) page");
         }
@@ -151,8 +151,8 @@ public class CgGlyphAtlasPage {
      * Creates a test-mode page that skips all GL calls (no array texture).
      */
     static CgGlyphAtlasPage createForTest(int pageWidth, int pageHeight,
-                                           CgGlyphAtlas.Type type, int pageIndex,
-                                           CgPackingStrategy packer) {
+                                          CgGlyphAtlas.Type type, int pageIndex,
+                                          CgPackingStrategy packer) {
         return new CgGlyphAtlasPage(pageIndex, pageWidth, pageHeight, type, null, packer);
     }
 
@@ -189,7 +189,7 @@ public class CgGlyphAtlasPage {
                                             long currentFrame) {
         checkNotDeleted();
         // Cheap reject before the packer's free-list walk — see CgPackingStrategy#mayFit and
-        // CgPagedGlyphAtlas's oldest-first page scan, which relies on this to stay affordable.
+        // CgGlyphAtlas's oldest-first page scan, which relies on this to stay affordable.
         if (!packer.mayFit(width, height)) {
             return null;
         }
@@ -226,7 +226,7 @@ public class CgGlyphAtlasPage {
                                           long currentFrame) {
         checkNotDeleted();
         // Cheap reject before the packer's free-list walk — see CgPackingStrategy#mayFit and
-        // CgPagedGlyphAtlas's oldest-first page scan, which relies on this to stay affordable.
+        // CgGlyphAtlas's oldest-first page scan, which relies on this to stay affordable.
         if (!packer.mayFit(width, height)) {
             return null;
         }
@@ -354,7 +354,7 @@ public class CgGlyphAtlasPage {
      * Clears this page's bookkeeping (slot map, packer state stays as-is —
      * the caller replaces this page object entirely rather than reusing it).
      * Frees no GL resource — the array texture is owned by the parent
-     * {@link CgPagedGlyphAtlas} and outlives individual evicted pages; its
+     * {@link CgGlyphAtlas} and outlives individual evicted pages; its
      * layer is simply reassigned to whatever page reuses this layer index
      * next, letting new uploads overwrite the pixels this page's glyphs used
      * to occupy. Subsequent calls are no-ops.
@@ -445,7 +445,7 @@ public class CgGlyphAtlasPage {
         }
         // Client-side upload format matches what CgMsdfGenerator actually produces
         // (3 floats/pixel for MSDF, 4 for MTSDF) — independent of the array's
-        // unified RGBA8 internal storage format (see CgPagedGlyphAtlas javadoc).
+        // unified RGBA8 internal storage format (see CgGlyphAtlas javadoc).
         // For plain MSDF this leaves the destination alpha channel untouched
         // (undefined initial content from the empty allocation); harmless, since
         // text.shader's MSDF path only ever reads .rgb.

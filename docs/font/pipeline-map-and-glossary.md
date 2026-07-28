@@ -12,7 +12,7 @@ The current text pipeline is:
 6. the result becomes a public **`CgTextLayout`**
 7. **render-time raster tier selection** happens in `CgTextRenderer`
 8. **glyph lookup / generation** happens in `CgFontRegistry`
-9. **atlas placement** comes from `CgPagedGlyphAtlas` / `CgGlyphAtlasPage`
+9. **atlas placement** comes from `CgGlyphAtlas` / `CgGlyphAtlasPage`
 10. **batching + quad submission** happen in `CgTextRenderer` + `CgQuadBatcher`
 11. shaders sample atlas textures and perform the final **draw**
 
@@ -152,10 +152,14 @@ Atlas ownership lives in `text/atlas`.
 
 Main classes:
 
-- `CgGlyphAtlas` — legacy single-page atlas
-- `CgPagedGlyphAtlas` — multi-page atlas manager
-- `CgGlyphAtlasPage` — one page in a paged atlas
+- `CgGlyphAtlas` — the paged, multi-page atlas manager; also owns the `Type` enum
+- `CgGlyphAtlasPage` — one page in a paged atlas (one array-texture layer)
+- `CgOldGlyphAtlas` — the retired single-page atlas, no callers
 - `text/atlas/packing/*` — packing strategies
+
+Two atlases exist process-wide, shared by every font: `R8` for bitmap glyphs and `RGBA8`
+for distance fields. Atlas identity is per texture format, never per font — glyph identity
+already carries the font via `CgGlyphKey`.
 
 The renderer-facing result of atlas allocation is:
 
@@ -288,5 +292,5 @@ The final model-view-projection-transformed space used by the GPU when drawing q
 4. `api/text/CgTextLayout.java`
 5. `text/render/CgTextRenderer.java`
 6. `text/cache/CgFontRegistry.java`
-7. `text/atlas/CgPagedGlyphAtlas.java`
+7. `text/atlas/CgGlyphAtlas.java`
 8. `text/msdf/CgMsdfGenerator.java`

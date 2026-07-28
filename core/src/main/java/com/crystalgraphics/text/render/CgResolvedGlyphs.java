@@ -7,7 +7,7 @@ import com.crystalgraphics.api.font.CgGlyphPlacement;
 import com.crystalgraphics.api.text.CgBakedGlyphs;
 import com.crystalgraphics.api.text.CgTextDecorationRect;
 import com.crystalgraphics.api.text.CgTextLayout;
-import com.crystalgraphics.text.atlas.CgPagedGlyphAtlas;
+import com.crystalgraphics.text.atlas.CgGlyphAtlas;
 import com.crystalgraphics.text.cache.CgFontRegistry;
 import com.crystalgraphics.util.profiling.CgProfiler;
 
@@ -26,8 +26,8 @@ import java.util.List;
  * <p>{@link #resolve} checks {@link CgGlyphPlacementCache} before doing any bake-array pass
  * or atlas work — see that class's javadoc for the cache's own design (capacity, LRU
  * structure, global scope, key composition, staleness bound). Even after
- * {@code CgPagedGlyphAtlas.get()} became {@code O(1)} and
- * {@link CgFontRegistry#resolveGlyphPaged} collapsed the old two-call-per-glyph pattern into
+ * {@code CgGlyphAtlas.get()} became {@code O(1)} and
+ * {@link CgFontRegistry#resolveGlyph} collapsed the old two-call-per-glyph pattern into
  * one, resolving a static 1000-glyph layout fresh every frame still means ~1000 fresh
  * {@link CgGlyphKey} allocations (each hashing a nested {@link CgFontKey}) plus ~1000 hashmap
  * probes, every single frame, forever — {@code O(1)} describes the lookup's algorithmic
@@ -274,10 +274,10 @@ final class CgResolvedGlyphs {
                     ? scratchGlyphKeys[i]
                     : new CgGlyphKey(scratchFontKeys[i], scratchGlyphIds[i], wantMsdf, scratchSubPixel[i],
                             scratchGlyphKeys[i].isSyntheticBold(), scratchGlyphKeys[i].isSyntheticItalic());
-            CgGlyphPlacement placement = registry.resolveGlyphPaged(scratchFonts[i], glyphKey, effectiveTargetPx, scratchSubPixel[i], frame);
+            CgGlyphPlacement placement = registry.resolveGlyph(scratchFonts[i], glyphKey, effectiveTargetPx, scratchSubPixel[i], frame);
             scratchPlacements[i] = placement;
             // hasGeometry() guard: a known-empty glyph (space/control — see
-            // CgPagedGlyphAtlas#markEmpty) resolves through the bitmap atlas and so reports
+            // CgGlyphAtlas#markEmpty) resolves through the bitmap atlas and so reports
             // isDistanceField()==false, but it draws nothing at all and therefore cannot make
             // a draw visually mix quality tiers. Without this guard a single space would drag
             // the entire layout back down to the bitmap tier and force a full second resolve
@@ -335,7 +335,7 @@ final class CgResolvedGlyphs {
      * {@code CgTextRenderer.submitSortedQuads} can sort/emit it exactly like a
      * {@link CgGlyphPlacement} without the two ever being the same type or living in the same
      * cache. {@code isDistanceField}/{@code pxRange} come straight off the atlas's own
-     * {@link CgPagedGlyphAtlas.WhiteTexel} (see that record's javadoc) — always equal to what a
+     * {@link CgGlyphAtlas.WhiteTexel} (see that record's javadoc) — always equal to what a
      * real glyph from this same atlas would report, which is what lets a decoration interleave
      * into that font's existing batch instead of forcing a separate one. Built fresh every draw
      * call in {@link #resolveDecorations}; never stored anywhere.
@@ -366,7 +366,7 @@ final class CgResolvedGlyphs {
             CgFontKey segFontKey = seg.fontKey();
             if (segFontKey == null) continue;
 
-            CgPagedGlyphAtlas.WhiteTexel texel = registry.getDecorationWhiteTexel(segFontKey, effectiveTargetPx, wantMsdf);
+            CgGlyphAtlas.WhiteTexel texel = registry.getDecorationWhiteTexel(segFontKey, effectiveTargetPx, wantMsdf);
             if (texel == null) continue;
 
             int rgba = seg.argbColor() != 0 ? seg.argbColor() : drawRgba;

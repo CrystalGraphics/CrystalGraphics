@@ -92,7 +92,7 @@ final class CgWorkerFontContext {
 
     CgGlyphGenerationResult generateMsdf(CgGlyphGenerationJob job) {
         FreeTypeMSDFIntegration.Font msdfFont = getMsdfFont(job.getSourceFontKey(), job.getFontBytes());
-        return CgMsdfGenerator.preparePagedGlyph(
+        return CgMsdfGenerator.prepareGlyph(
                 job.getAtlasKey(),
                 job.getSourceFontKey(),
                 msdfFont,

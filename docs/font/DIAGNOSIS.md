@@ -1,7 +1,26 @@
 # Text/Font Stack — Engineering Diagnosis
 
+> ## ⚠️ Historical record — read the naming note before the findings
+>
+> This is a dated diagnosis with its findings annotated as fixed. It is **not** a current-state
+> reference; for that see `architecture.md` and `api-guide.md`.
+>
+> **Two atlas classes existed when this was written**: a paged one whose name carried the word
+> "Paged", and a legacy single-page LRU atlas holding the plain `CgGlyphAtlas` name. The legacy
+> one has since been retired (it survives as `CgOldGlyphAtlas`, no callers) and the paged one took
+> the plain name. A later repo-wide rename collapsed both identifiers in this document into
+> `CgGlyphAtlas`, so **sentences below that appear to compare the class with itself are comparing
+> the paged atlas against the retired one** — for example "`CgGlyphAtlas` (legacy) does LRU
+> eviction… `CgGlyphAtlas` (current) does no eviction at all". Read the first as the retired class
+> and the second as today's.
+>
+> **Also since superseded:** the eviction section's claim that `createForPagedRegistry` defaults to
+> `DEFAULT_MAX_PAGES = 32` is no longer true — registry atlases are created with
+> `UNBOUNDED_PAGES` and never evict. And atlases are no longer keyed per font at all: two exist
+> process-wide, one per texture format, shared by every font.
+
 **Scope:** `com.crystalgraphics.text.*` (`layout`, `cache`, `atlas`, `atlas/packing`, `msdf`, `render`) plus `api/font`, `api/text`.
-**Method:** full read of `CgTextRenderer`, `CgFontRegistry` (1387 lines), `CgPagedGlyphAtlas`, `CgGlyphAtlas`, `CgGlyphAtlasPage`, `CgMsdfGenerator`, `CgResolvedGlyphs`, `CgTextLayoutEngine`, `CgGlyphGenerationExecutor`, `MaxRectsPacker`, `CgFontKey`/`CgGlyphKey`, plus every package `AGENTS.md`.
+**Method:** full read of `CgTextRenderer`, `CgFontRegistry` (1387 lines), `CgOldGlyphAtlas`, `CgGlyphAtlas`, `CgGlyphAtlasPage`, `CgMsdfGenerator`, `CgResolvedGlyphs`, `CgTextLayoutEngine`, `CgGlyphGenerationExecutor`, `MaxRectsPacker`, `CgFontKey`/`CgGlyphKey`, plus every package `AGENTS.md`.
 
 ## Verdict up front
 
@@ -38,14 +57,14 @@ Compare `CgGlyphAtlas.java` and `CgGlyphAtlasPage.java`:
 
 *Why it matters:* this isn't two unrelated classes with similar responsibilities — `CgGlyphAtlasPage` is what `CgGlyphAtlas` should have become when paging was added, and instead it was written next to it. A new engineer reading the atlas package has to hold both mental models simultaneously to know which one is live for their code path.
 
-> **Fixed as part of A1's deletion.** `CgGlyphAtlas` no longer has any instance behavior — its constructor, `create()`/`createForTest()`, `getOrAllocate`/`getOrAllocateMsdf`, `evictAndInsert`, the duplicated GL-constant block, and both upload methods were all deleted along with `CgGlyphAtlasTest.java` (their only remaining caller). The class now holds only the `Type` enum (`BITMAP`/`MSDF`/`MTSDF`), kept under the same name/location specifically to avoid a repo-wide rename of every `CgGlyphAtlas.Type` reference in `CgGlyphAtlasPage`, `CgPagedGlyphAtlas`, `CgFontRegistry`, and the msdf/cache packages. The duplicate GL constants and upload logic this finding flagged now exist in exactly one place: `CgGlyphAtlasPage`.
+> **Fixed as part of A1's deletion.** `CgGlyphAtlas` no longer has any instance behavior — its constructor, `create()`/`createForTest()`, `getOrAllocate`/`getOrAllocateMsdf`, `evictAndInsert`, the duplicated GL-constant block, and both upload methods were all deleted along with `CgGlyphAtlasTest.java` (their only remaining caller). The class now holds only the `Type` enum (`BITMAP`/`MSDF`/`MTSDF`), kept under the same name/location specifically to avoid a repo-wide rename of every `CgGlyphAtlas.Type` reference in `CgGlyphAtlasPage`, `CgGlyphAtlas`, `CgFontRegistry`, and the msdf/cache packages. The duplicate GL constants and upload logic this finding flagged now exist in exactly one place: `CgGlyphAtlasPage`.
 
 **A3. Two independent storage models with incompatible eviction semantics — HIGH — ✅ FIXED**
-`CgGlyphAtlas` (legacy) does **LRU eviction**: `evictAndInsert` (`CgGlyphAtlas.java:454-480`) finds the coldest slot, calls `packer.remove()`, and overwrites that texture region on the next allocation. `CgPagedGlyphAtlas`/`CgGlyphAtlasPage` (current) does **no eviction at all** — `tickFrame` is a literal no-op (`CgPagedGlyphAtlas.java:323-325`, `"Reserved for future per-page maintenance (e.g., page GC)"`), and a full page just causes a new page to be allocated forever.
+`CgGlyphAtlas` (legacy) does **LRU eviction**: `evictAndInsert` (`CgGlyphAtlas.java:454-480`) finds the coldest slot, calls `packer.remove()`, and overwrites that texture region on the next allocation. `CgGlyphAtlas`/`CgGlyphAtlasPage` (current) does **no eviction at all** — `tickFrame` is a literal no-op (`CgGlyphAtlas.java:323-325`, `"Reserved for future per-page maintenance (e.g., page GC)"`), and a full page just causes a new page to be allocated forever.
 
 *Why it matters, concretely:* any UI text that continuously varies at fine sub-pixel granularity (a scrolling list, a smoothly moving HUD element) generates a new `(font, glyph, subPixelBucket 0-3)` combination on every distinct fractional pixel offset it passes through. With no eviction, a long play session with animated/scrolling text will monotonically grow atlas pages — this is a slow, real texture-memory leak in the *authoritative* path, not the deprecated one. The legacy path guards against exactly this failure mode and the replacement dropped the guard without a stated remediation plan beyond a comment.
 
-> **Fixed.** `CgPagedGlyphAtlas` now supports a page budget (`DEFAULT_MAX_PAGES = 32` for `createForPagedRegistry`, unbounded — `UNBOUNDED_PAGES` — for `createForTest`, preserving the existing `testNoEviction_pagingInstead` test). When a new page would exceed the budget, the **coldest whole page** is evicted (lowest `CgGlyphAtlasPage.getLastTouchedFrame()`, an O(1)-maintained per-page recency stamp) — not per-slot LRU, so every glyph on a surviving page keeps its placement-stability guarantee; a glyph is only ever displaced by losing its entire page. Page indices are now assigned from a monotonic counter (not `pages.size()`) so an evicted index is never reused by a live page. Covered by two new tests (`testPageBudget_evictsColdestPageOnOverflow`, `testPageBudget_unboundedByDefaultForTest`).
+> **Fixed.** `CgGlyphAtlas` now supports a page budget (`DEFAULT_MAX_PAGES = 32` for `createForPagedRegistry`, unbounded — `UNBOUNDED_PAGES` — for `createForTest`, preserving the existing `testNoEviction_pagingInstead` test). When a new page would exceed the budget, the **coldest whole page** is evicted (lowest `CgGlyphAtlasPage.getLastTouchedFrame()`, an O(1)-maintained per-page recency stamp) — not per-slot LRU, so every glyph on a surviving page keeps its placement-stability guarantee; a glyph is only ever displaced by losing its entire page. Page indices are now assigned from a monotonic counter (not `pages.size()`) so an evicted index is never reused by a live page. Covered by two new tests (`testPageBudget_evictsColdestPageOnOverflow`, `testPageBudget_unboundedByDefaultForTest`).
 
 **A4. Renderer-owned material state is global/static, coupling every `CgTextRenderer` instance — MEDIUM — INTENTIONALLY NOT FIXED**
 `CgTextRenderer.TEXT_MATERIAL`, `TEXT_DATA_UBO`, and `ATLAS_TEXTURE_REF` are all `static` (`CgTextRenderer.java:141-185`), shared across every renderer instance. `transitionToMaterial` explicitly toggles `MSDF_MODE` on the shared material every batch transition specifically *because* another live renderer could have left it in a different state (see the class's own javadoc: "a stale keyword left on by a previous transition ... would otherwise silently persist"). This is a documented, defended design choice, not an oversight — but it means every draw call anywhere in the process is implicitly serialized through one shared GPU-resource singleton, and `syncProjection`'s comment about "another live instance may have overwritten [TEXT_DATA_UBO] since" confirms the same is true of projection state. This is workable single-threaded (render thread only) but is a real constraint that will bite the moment anything tries to pipeline or parallelize draw submission.
@@ -67,7 +86,7 @@ Compare `CgGlyphAtlas.java` and `CgGlyphAtlasPage.java`:
 ### C. Performance
 
 **C1. Two `CgGlyphKey` allocations per visible glyph per frame — MEDIUM — ✅ FIXED**
-`CgResolvedGlyphs.flattenAndPrequeue` (`CgResolvedGlyphs.java:126-129`) allocates one `new CgGlyphKey(...)` per glyph for the pre-queue pass; `ensurePlacements` (`CgResolvedGlyphs.java:150-158`) allocates a **second** `new CgGlyphKey(...)` per glyph for the actual lookup — same glyph, same frame, two immutable Lombok `@Value` objects (which also means two `hashCode()` computations over `(CgFontKey, int, boolean, int)`, and `CgFontKey.hashCode()` itself hashes over a `List<CgFontVariation>`). For a modest HUD (a few hundred visible glyphs), that's 500+ short-lived allocations and hash computations every single frame, done specifically to key into `HashMap`s (`CgGlyphAtlas.slotMap`, `CgGlyphAtlasPage.slotMap`) that are then walked **linearly across every atlas page** (`CgPagedGlyphAtlas.get`, `CgPagedGlyphAtlas.java:181-190`, hot page first but O(pages) worst case) on top of that.
+`CgResolvedGlyphs.flattenAndPrequeue` (`CgResolvedGlyphs.java:126-129`) allocates one `new CgGlyphKey(...)` per glyph for the pre-queue pass; `ensurePlacements` (`CgResolvedGlyphs.java:150-158`) allocates a **second** `new CgGlyphKey(...)` per glyph for the actual lookup — same glyph, same frame, two immutable Lombok `@Value` objects (which also means two `hashCode()` computations over `(CgFontKey, int, boolean, int)`, and `CgFontKey.hashCode()` itself hashes over a `List<CgFontVariation>`). For a modest HUD (a few hundred visible glyphs), that's 500+ short-lived allocations and hash computations every single frame, done specifically to key into `HashMap`s (`CgGlyphAtlas.slotMap`, `CgGlyphAtlasPage.slotMap`) that are then walked **linearly across every atlas page** (`CgGlyphAtlas.get`, `CgGlyphAtlas.java:181-190`, hot page first but O(pages) worst case) on top of that.
 
 This is exactly the class of thing the rest of `text/render` was clearly written to avoid — `CgResolvedGlyphs`'s own javadoc brags about the flatten pass allocating nothing in steady state via grow-only scratch arrays, and the sort-key packing in `CgTextRenderer` was explicitly built to avoid "a per-glyph key object." The glyph *cache lookup* key wasn't given the same treatment. A single mutable scratch `CgGlyphKey` (or a raw long/tuple hash used directly against the map) reused across the loop, or restructuring `slotMap` to avoid boxing a key per lookup, would close this gap and make the pipeline allocation-free end-to-end for the steady-state case it already optimizes for everywhere else.
 
@@ -174,7 +193,7 @@ Peer-group calibration: measured against Skia's glyph pipeline, TextMeshPro, God
 ## Ranked remediation list
 
 1. ✅ **DONE** — ~~Delete the legacy/effective-size single-page atlas paths in `CgFontRegistry` and `CgGlyphAtlas`, once the debug harness is migrated to the paged path.~~ (A1, A2) Migrated `AtlasDumpScene`/`TextScene2D`/`CgFontDemo` to paged-equivalent finders, then deleted the full legacy rasterization block. `CgFontRegistry` went from 1387 → 909 lines.
-2. ✅ **DONE** — ~~Give the paged atlas an eviction or page-budget policy~~ — `CgPagedGlyphAtlas` now evicts the coldest whole page on overflow past a configurable budget (`DEFAULT_MAX_PAGES = 32` in production). (A3)
+2. ✅ **DONE** — ~~Give the paged atlas an eviction or page-budget policy~~ — `CgGlyphAtlas` now evicts the coldest whole page on overflow past a configurable budget (`DEFAULT_MAX_PAGES = 32` in production). (A3)
 3. ✅ **DONE** — ~~Collapse `CgGlyphAtlas`/`CgGlyphAtlasPage`'s duplicated GL-constant and upload-buffer logic~~ — `CgGlyphAtlas` was stripped to just the shared `Type` enum; `CgGlyphAtlasPage` is now the only place the upload/GL-constant logic exists. (A2)
 4. **Add a shaped-layout cache keyed by `(text, resolvedFontKey, constraints)`**, invalidated when any of those three change, so `Draw.submit()` built from raw `.text(...)` doesn't pay full HarfBuzz+BiDi+UAX#14 cost on every call for unchanged strings — the single biggest capability gap versus the peer group, not just implementation debt. (E1)
 5. ✅ **DONE** — ~~Eliminate the double `CgGlyphKey` allocation per glyph per frame~~ in `CgResolvedGlyphs` — the primary resolve pass now reuses the key built during prequeue; only the rarer MSDF→bitmap fallback retry still allocates a second key. (C1)
@@ -202,7 +221,7 @@ mode/format-identical. Collapsing all pages of a family into one array's layers 
 fixed ~2-valued dimension (bitmap array vs. distance-field array), independent of page count.
 
 Full investigation — GL storage model, growth strategy, format unification, `CgGlyphPlacement`/
-`CgQuadRenderer`/shader changes, ownership inversion in `CgGlyphAtlasPage`/`CgPagedGlyphAtlas`, harness
+`CgQuadRenderer`/shader changes, ownership inversion in `CgGlyphAtlasPage`/`CgGlyphAtlas`, harness
 impact, and an ordered implementation sequence — is written up in
 `docs_research/CGTEXTRENDERER_INSTANCING_FOUNDATIONS.md`, under **"Atlas texture array — investigated,
 not started."** Key takeaways that bear directly on the remediation list above:

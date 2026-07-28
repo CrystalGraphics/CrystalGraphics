@@ -34,7 +34,7 @@ import java.util.Map;
  *
  * <h3>Not instantiable — every member is static</h3>
  * <p>There is exactly one cache, shared by every {@code CgTextRenderer} instance in the
- * process — matching {@link CgGlyphPlacementCache} and {@code CgPagedGlyphAtlas}'s own global
+ * process — matching {@link CgGlyphPlacementCache} and {@code CgGlyphAtlas}'s own global
  * scope.</p>
  *
  * <h3>Known caveat</h3>

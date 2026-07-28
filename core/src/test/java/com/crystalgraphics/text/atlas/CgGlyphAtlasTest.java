@@ -10,12 +10,12 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 /**
- * Unit tests for {@link CgPagedGlyphAtlas}.
+ * Unit tests for {@link CgGlyphAtlas}.
  *
  * <p>Validates multi-page atlas management: page allocation on overflow,
  * stable glyph placement, cross-page lookup, and page count growth.</p>
  */
-public class CgPagedGlyphAtlasTest {
+public class CgGlyphAtlasTest {
 
     private static final CgFontKey FONT_KEY = new CgFontKey("test.ttf", CgFontStyle.REGULAR, 48);
 
@@ -37,7 +37,7 @@ public class CgPagedGlyphAtlasTest {
 
     @Test
     public void testFirstAllocation_createsOnePage() {
-        CgPagedGlyphAtlas atlas = CgPagedGlyphAtlas.createForTest(256, 256, CgGlyphAtlas.Type.BITMAP);
+        CgGlyphAtlas atlas = CgGlyphAtlas.createForTest(256, 256, CgGlyphAtlas.Type.BITMAP);
 
         assertEquals(0, atlas.getPageCount());
 
@@ -53,7 +53,7 @@ public class CgPagedGlyphAtlasTest {
     @Test
     public void testOverflow_createsNewPage() {
         // Use a tiny 32x32 page so it fills quickly
-        CgPagedGlyphAtlas atlas = CgPagedGlyphAtlas.createForTest(32, 32, CgGlyphAtlas.Type.BITMAP);
+        CgGlyphAtlas atlas = CgGlyphAtlas.createForTest(32, 32, CgGlyphAtlas.Type.BITMAP);
 
         // Fill the first page: 32x32 can hold one 32x32 rect
         CgGlyphPlacement p1 = atlas.allocateBitmap(
@@ -74,7 +74,7 @@ public class CgPagedGlyphAtlasTest {
 
     @Test
     public void testStablePlacement_afterPageGrowth() {
-        CgPagedGlyphAtlas atlas = CgPagedGlyphAtlas.createForTest(32, 32, CgGlyphAtlas.Type.BITMAP);
+        CgGlyphAtlas atlas = CgGlyphAtlas.createForTest(32, 32, CgGlyphAtlas.Type.BITMAP);
 
         CgGlyphPlacement p1 = atlas.allocateBitmap(
                 bitmapKey(1), dummyBitmap(32, 32), 32, 32,
@@ -95,7 +95,7 @@ public class CgPagedGlyphAtlasTest {
 
     @Test
     public void testDuplicateKey_returnsCached() {
-        CgPagedGlyphAtlas atlas = CgPagedGlyphAtlas.createForTest(256, 256, CgGlyphAtlas.Type.BITMAP);
+        CgGlyphAtlas atlas = CgGlyphAtlas.createForTest(256, 256, CgGlyphAtlas.Type.BITMAP);
 
         CgGlyphPlacement p1 = atlas.allocateBitmap(
                 bitmapKey(1), dummyBitmap(16, 16), 16, 16,
@@ -111,7 +111,7 @@ public class CgPagedGlyphAtlasTest {
 
     @Test
     public void testMsdfAllocation_withPxRange() {
-        CgPagedGlyphAtlas atlas = CgPagedGlyphAtlas.createForTest(256, 256, CgGlyphAtlas.Type.MSDF);
+        CgGlyphAtlas atlas = CgGlyphAtlas.createForTest(256, 256, CgGlyphAtlas.Type.MSDF);
 
         CgGlyphPlacement p = atlas.allocateMsdf(
                 msdfKey(1), dummyMsdf(32, 32), 32, 32,
@@ -126,7 +126,7 @@ public class CgPagedGlyphAtlasTest {
 
     @Test
     public void testMultiplePages_distinctTextureIds() {
-        CgPagedGlyphAtlas atlas = CgPagedGlyphAtlas.createForTest(32, 32, CgGlyphAtlas.Type.BITMAP);
+        CgGlyphAtlas atlas = CgGlyphAtlas.createForTest(32, 32, CgGlyphAtlas.Type.BITMAP);
 
         // Fill pages
         for (int i = 0; i < 5; i++) {
@@ -144,7 +144,7 @@ public class CgPagedGlyphAtlasTest {
 
     @Test
     public void testDelete_clearsPages() {
-        CgPagedGlyphAtlas atlas = CgPagedGlyphAtlas.createForTest(64, 64, CgGlyphAtlas.Type.BITMAP);
+        CgGlyphAtlas atlas = CgGlyphAtlas.createForTest(64, 64, CgGlyphAtlas.Type.BITMAP);
         atlas.allocateBitmap(
                 bitmapKey(1), dummyBitmap(16, 16), 16, 16,
                 0, 16, 16, 16, 1);
@@ -157,7 +157,7 @@ public class CgPagedGlyphAtlasTest {
 
     @Test(expected = IllegalStateException.class)
     public void testAllocateAfterDelete_throws() {
-        CgPagedGlyphAtlas atlas = CgPagedGlyphAtlas.createForTest(64, 64, CgGlyphAtlas.Type.BITMAP);
+        CgGlyphAtlas atlas = CgGlyphAtlas.createForTest(64, 64, CgGlyphAtlas.Type.BITMAP);
         atlas.delete();
         atlas.allocateBitmap(
                 bitmapKey(1), dummyBitmap(16, 16), 16, 16,
@@ -167,7 +167,7 @@ public class CgPagedGlyphAtlasTest {
     @Test
     public void testNoEviction_pagingInstead() {
         // Verify that paged atlas never evicts — it always creates new pages
-        CgPagedGlyphAtlas atlas = CgPagedGlyphAtlas.createForTest(32, 32, CgGlyphAtlas.Type.BITMAP);
+        CgGlyphAtlas atlas = CgGlyphAtlas.createForTest(32, 32, CgGlyphAtlas.Type.BITMAP);
 
         // Allocate 10 glyphs that each fill an entire page
         for (int i = 0; i < 10; i++) {
@@ -189,7 +189,7 @@ public class CgPagedGlyphAtlasTest {
 
     @Test
     public void testPlacement_planeBounds() {
-        CgPagedGlyphAtlas atlas = CgPagedGlyphAtlas.createForTest(256, 256, CgGlyphAtlas.Type.BITMAP);
+        CgGlyphAtlas atlas = CgGlyphAtlas.createForTest(256, 256, CgGlyphAtlas.Type.BITMAP);
 
         CgGlyphPlacement p = atlas.allocateBitmap(
                 bitmapKey(1), dummyBitmap(20, 30), 20, 30,
@@ -206,8 +206,8 @@ public class CgPagedGlyphAtlasTest {
     @Test
     public void testPageBudget_evictsColdestPageOnOverflow() {
         // 32x32 pages hold exactly one 32x32 glyph each; budget of 2 pages.
-        CgPagedGlyphAtlas atlas = CgPagedGlyphAtlas.createForTest(
-                32, 32, CgGlyphAtlas.Type.BITMAP, CgPagedGlyphAtlas.GUILLOTINE_FACTORY, 2);
+        CgGlyphAtlas atlas = CgGlyphAtlas.createForTest(
+                32, 32, CgGlyphAtlas.Type.BITMAP, CgGlyphAtlas.GUILLOTINE_FACTORY, 2);
 
         CgGlyphPlacement p0 = atlas.allocateBitmap(
                 bitmapKey(0), dummyBitmap(32, 32), 32, 32, 0, 32, 32, 32, /*frame*/ 1);
@@ -239,13 +239,13 @@ public class CgPagedGlyphAtlasTest {
     public void testPageBudget_unboundedByDefaultForTest() {
         // createForTest's plain overloads must keep the historical unbounded
         // behavior that testNoEviction_pagingInstead relies on.
-        CgPagedGlyphAtlas atlas = CgPagedGlyphAtlas.createForTest(32, 32, CgGlyphAtlas.Type.BITMAP);
-        assertEquals(CgPagedGlyphAtlas.UNBOUNDED_PAGES, atlas.getMaxPages());
+        CgGlyphAtlas atlas = CgGlyphAtlas.createForTest(32, 32, CgGlyphAtlas.Type.BITMAP);
+        assertEquals(CgGlyphAtlas.UNBOUNDED_PAGES, atlas.getMaxPages());
     }
 
     @Test
     public void testPlacement_msdfPlaneBounds_usesFullBoxSize() {
-        CgPagedGlyphAtlas atlas = CgPagedGlyphAtlas.createForTest(256, 256, CgGlyphAtlas.Type.MSDF);
+        CgGlyphAtlas atlas = CgGlyphAtlas.createForTest(256, 256, CgGlyphAtlas.Type.MSDF);
 
         CgGlyphPlacement p = atlas.allocateMsdf(
                 msdfKey(1), dummyMsdf(36, 42), 36, 42,

@@ -347,7 +347,7 @@ planeLeft_px = (-translateX + 0.5/scale) * scale
              = -translateX*scale + 0.5
 ```
 
-This is the plane bounds in pixel space. Whether this is correct depends on what the downstream consumer expects. If the consumer (`CgPagedGlyphAtlas.allocateMsdf()`) expects EM-normalized bounds, this multiplication is wrong. If it expects pixel bounds, it's fine.
+This is the plane bounds in pixel space. Whether this is correct depends on what the downstream consumer expects. If the consumer (`CgGlyphAtlas.allocateMsdf()`) expects EM-normalized bounds, this multiplication is wrong. If it expects pixel bounds, it's fine.
 
 **The bearing computation also uses scaled plane bounds**:
 ```java
@@ -543,7 +543,7 @@ bounds = shape.getBoundsMiters(bounds, border, config.getMiterLimit(), 1);
 
 ### 5.3. Verify planeBounds Convention (D6) — **Priority: HIGH**
 
-Determine whether `CgPagedGlyphAtlas.allocateMsdf()` expects EM-normalized plane bounds or pixel-space plane bounds. If EM-normalized:
+Determine whether `CgGlyphAtlas.allocateMsdf()` expects EM-normalized plane bounds or pixel-space plane bounds. If EM-normalized:
 
 ```java
 // Remove the scale multiplication:

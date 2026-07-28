@@ -1,7 +1,6 @@
 package com.crystalgraphics.api.font;
 
 import com.crystalgraphics.text.atlas.CgGlyphAtlas;
-
 import org.junit.Test;
 
 import static org.junit.Assert.*;
