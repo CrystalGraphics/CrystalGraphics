@@ -34,7 +34,7 @@ Main responsibilities:
 - resolving effective raster tier for the current draw
 - delegating layout flattening/prequeueing and atlas placement resolution to `CgResolvedGlyphs`
 - sorting placements by a packed `long` GL-state sort key (mode/textureId/pxRange — see
-  `submitSortedQuads`), avoiding a per-glyph key object
+  `submitBatchedQuads`), avoiding a per-glyph key object
 - submitting quads to its own owned `CgQuadRenderer`
 - transitioning shader/texture/render-state on batch-state changes (`transitionToMaterial`),
   flushing whatever was pending under the previous combination first
@@ -65,13 +65,13 @@ directly and fully self-contained.
   there is no layer left to own that responsibility.
 
 **Single `draw()`/`retainedDraw()` entry point for 2D and 3D world text — no `drawWorld()`.**
-`drawInternal`/`submitSortedQuads` dispatch 2D-vs-world behavior polymorphically off
+`drawInternal`/`submitBatchedQuads` dispatch 2D-vs-world behavior polymorphically off
 `context.isWorldText()`/`context.getScaleResolver()`, not off which method was called.
 World-space text is the exact same fluent chain as 2D text — the only difference is
 that the renderer's context was set to one built via `CgTextRenderContext.world(...)`
 instead of `.orthographic(...)` (see `context(CgTextRenderContext)` below). Depth-tested
 render states for world text (`BITMAP_RENDER_STATE_WORLD`/`MSDF_RENDER_STATE_WORLD`/
-`MTSDF_RENDER_STATE_WORLD`) are selected in `submitSortedQuads` via
+`MTSDF_RENDER_STATE_WORLD`) are selected in `submitBatchedQuads` via
 `context.isWorldText()` — this actually implements world text's long-documented
 "depth test enabled" contract, which the pre-merge code declared in javadoc but never
 actually applied (all three original render-state constants hardcoded
@@ -154,8 +154,8 @@ longer used by `CgTextRenderer`** — confirm no other consumer exists before
 considering their removal; that decision is explicitly out of scope for the
 batch-ownership migration.
 
-**No defensive flush at the end of `submitSortedQuads`/`drawInternal` — this is
-intentional, do not add one.** `submitSortedQuads` always calls `transitionTo` at
+**No defensive flush at the end of `submitBatchedQuads`/`drawInternal` — this is
+intentional, do not add one.** `submitBatchedQuads` always calls `transitionTo` at
 least once if there are any visible glyphs (`currentKey == null` is true on the
 first placement), so a `draw()` call with visible glyphs always stages something;
 it does not always flush it. If a caller opens `beginBatch()`, draws, and forgets
@@ -282,7 +282,7 @@ font key/font, glyph id, subpixel bucket, pen position, and finally each glyph's
 dependency — that boundary starts once `CgTextRenderer` reads its `glyphX`/`glyphY`/`placements`
 back out. Owned per-`CgTextRenderer` instance with grow-only scratch arrays, reused across draws.
 
-There is no separate grouping-key class anymore — `submitSortedQuads` packs each visible glyph's
+There is no separate grouping-key class anymore — `submitBatchedQuads` packs each visible glyph's
 (atlas mode, texture id, `pxRange`) directly into a `long` sort key (see its javadoc for the bit
 layout) and sorts with `Arrays.sort(long[], int, int)`. This is also the authoritative source of
 shader selection in the current renderer, via `transitionToMaterial`.
@@ -295,7 +295,7 @@ Package-level description of render-side responsibilities.
 
 - renderer consumes placements; it does not own glyph generation
 - layout remains in logical space; raster tier is a draw-time physical decision
-- the packed `long` sort key in `submitSortedQuads` drives shader selection
+- the packed `long` sort key in `submitBatchedQuads` drives shader selection
 - world-text and 2D text share most of the pipeline until raster-tier / projection policy differs
 - the renderer owns NO GL objects itself — its owned `CgBatchRenderer`'s VAO/VBO/IBO still come
   from the shared `CgVertexArrayRegistry`/`CgQuadIndexBuffer`; only CPU-side staging is
@@ -350,7 +350,7 @@ Package-level description of render-side responsibilities.
 - Do not make `Draw.submit()` require an active `beginBatch()` — the standalone-tolerant
   auto-wrap behavior is deliberate, not a gap. `CgTextRenderer` must stay usable as a directly
   instantiated object with no owning render pass.
-- Do not reintroduce a separate `drawWorld()` method. `drawInternal`/`submitSortedQuads`
+- Do not reintroduce a separate `drawWorld()` method. `drawInternal`/`submitBatchedQuads`
   already dispatch 2D-vs-world behavior off the context's `isWorldText()`/`getScaleResolver()`
   — a second method would only ever be a byte-for-byte duplicate of `draw()`, as it was
   before this merge.

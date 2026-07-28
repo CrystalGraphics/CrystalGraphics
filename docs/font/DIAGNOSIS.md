@@ -175,7 +175,7 @@ actually matters (a first-class production engine would close at least one of th
 
 ## What's actually done well (don't lose this in a rewrite)
 
-- **`CgTextRenderer`'s sort-key packing** (`packSortKey`/`submitSortedQuads`, `CgTextRenderer.java:767-877`) — packing (mode, textureId, pxRange, glyphIndex) into one `long` and using `Arrays.sort(long[], ...)` instead of a comparator over key objects is exactly right for a per-frame hot path, and it's the *right example* to generalize C1 from.
+- **`CgTextRenderer`'s sort-key packing** (`packSortKey`/`submitBatchedQuads`, `CgTextRenderer.java:767-877`) — packing (mode, textureId, pxRange, glyphIndex) into one `long` and using `Arrays.sort(long[], ...)` instead of a comparator over key objects is exactly right for a per-frame hot path, and it's the *right example* to generalize C1 from.
 - **`CgResolvedGlyphs`'s two-phase flatten/resolve split** with grow-only scratch arrays and a documented "never re-walk the layout tree" invariant — this is the correct shape for a per-frame text pipeline and is genuinely closer to how production engines (e.g. Skia's glyph run cache) structure this step.
 - **The three-space model** (logical / physical raster / composite) documented on `CgTextRenderer` and actually respected by `logicalMetricScale` — this is a real, non-obvious correctness property (UI scale shouldn't corrupt kerning) and it's implemented consistently, not just asserted in a comment.
 - **Placement stability in the paged atlas** (`CgGlyphAtlasPage` never moves a glyph once allocated) is the right tradeoff versus LRU churn for a page-based model, and is explicitly chosen over the old evicting model for exactly that reason.
@@ -214,7 +214,7 @@ Items 1–4 are the ones that will actually change how the codebase *feels* to w
 `GL_TEXTURE_2D` textures (one GL texture id per `CgGlyphAtlasPage`) to a single
 `GL_TEXTURE_2D_ARRAY` per atlas family (one for bitmap, one shared for MSDF/MTSDF), with each page
 becoming a layer index instead of a separate texture. This directly attacks the batching cost A3/C1
-gesture at: `CgTextRenderer.submitSortedQuads`'s sort key currently breaks batches on
+gesture at: `CgTextRenderer.submitBatchedQuads`'s sort key currently breaks batches on
 `(mode, textureId, pxRange)`, and `textureId` is per-*page* today — text spanning N atlas pages costs
 N draw calls purely because each page is its own GL texture, even when every glyph is otherwise
 mode/format-identical. Collapsing all pages of a family into one array's layers turns that into a
@@ -271,7 +271,7 @@ render-side color plumbing — is written up in full in
   (`CgFontStyle` already has all four weight/style variants) — the glyph cache already keys on
   `CgFontKey` correctly. This is purely a `text/layout` + `text/render` change.
 - **Per-glyph color is already a supported GPU capability, not a gap.** `CgQuadRenderer.INSTANCE_FORMAT`
-  already carries a per-instance `vec4 color`, and `CgTextRenderer.submitSortedQuads` already submits
+  already carries a per-instance `vec4 color`, and `CgTextRenderer.submitBatchedQuads` already submits
   color per glyph — the only real gap is that the CPU side currently reads one uniform `rgba` for the
   whole `Draw` instead of per-glyph. Small, contained plumbing fix once `CgShapedRun` carries an
   optional color field.
