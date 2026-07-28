@@ -5,11 +5,21 @@ import com.crystalgraphics.api.font.CgFontStyle;
 import com.crystalgraphics.text.msdf.CgMsdfAtlasConfig;
 
 /**
- * Internal atlas-family key for shared MSDF atlases.
+ * Carrier for the MSDF generation configuration along the async glyph pipeline.
  *
- * <p>Unlike {@link CgRasterFontKey}, this key deliberately ignores requested
- * render size. One atlas family is shared per font/style plus atlas-generation
- * configuration.</p>
+ * <p><strong>No longer an atlas key, despite the name.</strong> There is now exactly one shared
+ * distance-field atlas for every font (see {@code CgFontRegistry}'s atlas fields), so nothing keys
+ * an atlas by font identity any more. What survives is this type's second job: carrying the
+ * {@link CgMsdfAtlasConfig} from job submission through to result application, which
+ * {@code CgGlyphGenerationJob} and {@code CgGlyphGenerationResult} still need.
+ *
+ * <p>Its {@code baseFontKey} component is consequently vestigial for atlas selection. It is
+ * retained because it still participates in job equality, where it is harmless, and removing it
+ * touches four files in the async pipeline for no behavioural gain. Renaming this to something like
+ * {@code CgMsdfGenerationParams} and dropping the font component is a clean follow-up, not a
+ * correctness issue.
+ *
+ * <p>Unlike {@link CgRasterFontKey}, it deliberately ignores requested render size.</p>
  *
  * <h3>Pipeline Role</h3>
  * <p>CgMsdfAtlasKey groups glyphs that share the same MSDF generation

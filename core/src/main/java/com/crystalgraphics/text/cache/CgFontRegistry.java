@@ -109,10 +109,27 @@ public class CgFontRegistry {
     private final CgMsdfAtlasConfig msdfAtlasConfig;
 
     // Paged atlas maps — the active/authoritative path for new allocations.
-    // Bitmap paged atlases are keyed by CgRasterFontKey (effective-size-aware);
-    // MSDF paged atlases are keyed by CgMsdfAtlasKey (size-agnostic, config-aware).
-    private final Map<CgRasterFontKey, CgPagedGlyphAtlas> pagedBitmapAtlases = new HashMap<>();
-    private final Map<CgMsdfAtlasKey, CgPagedGlyphAtlas> pagedMsdfAtlases = new HashMap<>();
+    // Two global atlases, one per texture format.
+    //
+    // Every font shares these. There is exactly one atlas per tier because a CgTexture2DArray has
+    // a single internal format across all its layers and the two tiers need different ones (R8 for
+    // bitmap coverage, RGBA8 for distance fields). That format split is the ONLY reason there are
+    // two atlases rather than one.
+    //
+    // These used to be keyed per font (CgRasterFontKey / CgMsdfAtlasKey), giving every font its own
+    // texture array. A UI font with forty glyphs then owned an entire page and filled a fraction of
+    // it, and mixed-font text cost a texture rebind (hence a batch flush) per font. Sharing fixes
+    // both: pages fill densely no matter how few glyphs any one font contributes, and a run
+    // spanning several faces batches as one.
+    //
+    // Glyph identity still carries the font -- CgGlyphKey holds the full CgFontKey -- so glyphs
+    // from different faces cannot collide inside a shared page.
+    //
+    // Deliberate consequence: MSDF config is now necessarily registry-wide. One atlas cannot hold
+    // two atlas scales, so resolveMsdfAtlasConfig is a registry-level setting and no longer a
+    // per-font extension point.
+    private CgPagedGlyphAtlas bitmapAtlas;
+    private CgPagedGlyphAtlas msdfAtlas;
 
     private final Set<CgFontKey> registeredFonts = new HashSet<CgFontKey>();
     private final CgMsdfGenerator msdfGenerator = new CgMsdfGenerator();
@@ -225,9 +242,7 @@ public class CgFontRegistry {
 
             // 2. Tick every paged atlas family.
             try (CgProfiler.Scope atlasTick = CgProfiler.scope("atlasTick")) {
-                for (CgPagedGlyphAtlas atlas : pagedBitmapAtlases.values())
-                    atlas.tickFrame(frame);
-                for (CgPagedGlyphAtlas atlas : pagedMsdfAtlases.values())
+                for (CgPagedGlyphAtlas atlas : liveAtlases())
                     atlas.tickFrame(frame);
             }
 
@@ -273,8 +288,7 @@ public class CgFontRegistry {
      */
     public long getAtlasContentGeneration() {
         long sum = 0;
-        for (CgPagedGlyphAtlas atlas : pagedBitmapAtlases.values()) sum += atlas.getContentGeneration();
-        for (CgPagedGlyphAtlas atlas : pagedMsdfAtlases.values()) sum += atlas.getContentGeneration();
+        for (CgPagedGlyphAtlas atlas : liveAtlases()) sum += atlas.getContentGeneration();
         return sum;
     }
 
@@ -292,8 +306,7 @@ public class CgFontRegistry {
      */
     public long getAtlasEvictionGeneration() {
         long sum = 0;
-        for (CgPagedGlyphAtlas atlas : pagedBitmapAtlases.values()) sum += atlas.getEvictionGeneration();
-        for (CgPagedGlyphAtlas atlas : pagedMsdfAtlases.values()) sum += atlas.getEvictionGeneration();
+        for (CgPagedGlyphAtlas atlas : liveAtlases()) sum += atlas.getEvictionGeneration();
         return sum;
     }
 
@@ -415,7 +428,7 @@ public class CgFontRegistry {
             CgMsdfAtlasConfig config = resolveMsdfAtlasConfig(key.getFontKey());
             CgMsdfAtlasKey msdfAtlasKey = toMsdfAtlasKey(key.getFontKey(), config);
             CgGlyphKey atlasKey = toMsdfAtlasGlyphKey(key, config);
-            CgPagedGlyphAtlas pagedAtlas = getPagedMsdfAtlas(msdfAtlasKey);
+            CgPagedGlyphAtlas pagedAtlas = getPagedMsdfAtlas(msdfAtlasKey.getConfig());
 
             CgGlyphPlacement cached = pagedAtlas.get(atlasKey, currentFrame);
             if (cached != null) {
@@ -428,7 +441,7 @@ public class CgFontRegistry {
         CgGlyphKey atlasKey = toBitmapAtlasGlyphKey(
                 new CgRasterGlyphKey(rasterFontKey, key.getGlyphId(), false, subPixelBucket,
                         key.isSyntheticBold(), key.isSyntheticItalic()));
-        CgPagedGlyphAtlas pagedAtlas = getPagedBitmapAtlas(rasterFontKey);
+        CgPagedGlyphAtlas pagedAtlas = getPagedBitmapAtlas();
 
         CgGlyphPlacement cached = pagedAtlas.get(atlasKey, currentFrame);
         if (cached != null) {
@@ -467,7 +480,7 @@ public class CgFontRegistry {
             CgMsdfAtlasConfig config = resolveMsdfAtlasConfig(key.getFontKey());
             CgMsdfAtlasKey msdfAtlasKey = toMsdfAtlasKey(key.getFontKey(), config);
             CgGlyphKey atlasKey = toMsdfAtlasGlyphKey(key, config);
-            CgPagedGlyphAtlas pagedAtlas = getPagedMsdfAtlas(msdfAtlasKey);
+            CgPagedGlyphAtlas pagedAtlas = getPagedMsdfAtlas(msdfAtlasKey.getConfig());
             if (pagedAtlas.get(atlasKey, currentFrame) == null) {
                 submitMsdfGlyphJob(font, atlasKey, msdfAtlasKey);
             }
@@ -477,7 +490,7 @@ public class CgFontRegistry {
         CgGlyphKey atlasKey = toBitmapAtlasGlyphKey(
                 new CgRasterGlyphKey(rasterFontKey, key.getGlyphId(), false, subPixelBucket,
                         key.isSyntheticBold(), key.isSyntheticItalic()));
-        CgPagedGlyphAtlas pagedAtlas = getPagedBitmapAtlas(rasterFontKey);
+        CgPagedGlyphAtlas pagedAtlas = getPagedBitmapAtlas();
         if (pagedAtlas.get(atlasKey, currentFrame) == null) {
             submitBitmapGlyphJob(font, atlasKey, rasterFontKey, effectiveTargetPx, subPixelBucket);
         }
@@ -596,7 +609,7 @@ public class CgFontRegistry {
                                                       int effectiveTargetPx,
                                                       int subPixelBucket,
                                                       long currentFrame) {
-        CgPagedGlyphAtlas pagedAtlas = getPagedBitmapAtlas(rasterFontKey);
+        CgPagedGlyphAtlas pagedAtlas = getPagedBitmapAtlas();
         CgGlyphPlacement cached = pagedAtlas.get(atlasKey, currentFrame);
         if (cached != null) {
             CgProfiler.count("glyph.bitmap.atlasHit");
@@ -730,7 +743,7 @@ public class CgFontRegistry {
                                                    int subPixelBucket,
                                                    long currentFrame,
                                                    boolean allowSyncGeneration) {
-        CgPagedGlyphAtlas pagedAtlas = getPagedMsdfAtlas(msdfAtlasKey);
+        CgPagedGlyphAtlas pagedAtlas = getPagedMsdfAtlas(msdfAtlasKey.getConfig());
         CgGlyphPlacement cached = pagedAtlas.get(atlasKey, currentFrame);
         if (cached != null) {
             CgProfiler.count("glyph.msdf.atlasHit");
@@ -875,7 +888,7 @@ public class CgFontRegistry {
      */
     private void commitGeneratedGlyph(CgGlyphGenerationResult result, long frame) {
         if (result.isDistanceField()) {
-            CgPagedGlyphAtlas atlas = getPagedMsdfAtlas(result.getMsdfAtlasKey());
+            CgPagedGlyphAtlas atlas = getPagedMsdfAtlas(result.getMsdfAtlasKey().getConfig());
             if (atlas.get(result.getAtlasKey(), frame) != null) {
                 return;
             }
@@ -902,7 +915,7 @@ public class CgFontRegistry {
             return;
         }
 
-        CgPagedGlyphAtlas atlas = getPagedBitmapAtlas(result.getBitmapRasterKey());
+        CgPagedGlyphAtlas atlas = getPagedBitmapAtlas();
         if (atlas.get(result.getAtlasKey(), frame) != null) {
             return;
         }
@@ -944,34 +957,42 @@ public class CgFontRegistry {
         if (msdf) {
             CgMsdfAtlasConfig config = resolveMsdfAtlasConfig(fontKey);
             CgMsdfAtlasKey msdfAtlasKey = toMsdfAtlasKey(fontKey, config);
-            return getPagedMsdfAtlas(msdfAtlasKey).reserveWhiteTexel(config.pxRange());
+            return getPagedMsdfAtlas(config).reserveWhiteTexel(config.pxRange());
         }
         CgRasterFontKey rasterFontKey = new CgRasterFontKey(fontKey, effectiveTargetPx);
         // Bitmap CgGlyphPlacements always carry pxRange=0f (unused for that tier) — matching
         // that here is what lets a decoration's batch key equal a bitmap glyph's exactly.
-        return getPagedBitmapAtlas(rasterFontKey).reserveWhiteTexel(0f);
+        return getPagedBitmapAtlas().reserveWhiteTexel(0f);
     }
 
-    CgPagedGlyphAtlas getPagedBitmapAtlas(CgRasterFontKey rasterKey) {
-        CgPagedGlyphAtlas atlas = pagedBitmapAtlases.get(rasterKey);
-        if (atlas == null) {
-            atlas = CgPagedGlyphAtlas.createForPagedRegistry(atlasSize, atlasSize, CgGlyphAtlas.Type.BITMAP);
-            pagedBitmapAtlases.put(rasterKey, atlas);
+    /** The one bitmap atlas, shared by every font at every raster size. Created on first use. */
+    CgPagedGlyphAtlas getPagedBitmapAtlas() {
+        if (bitmapAtlas == null) {
+            bitmapAtlas = CgPagedGlyphAtlas.createForPagedRegistry(atlasSize, atlasSize, CgGlyphAtlas.Type.BITMAP);
         }
-        return atlas;
+        return bitmapAtlas;
     }
 
-    CgPagedGlyphAtlas getPagedMsdfAtlas(CgMsdfAtlasKey atlasKey) {
-        CgPagedGlyphAtlas atlas = pagedMsdfAtlases.get(atlasKey);
-        if (atlas == null) {
-            atlas = CgPagedGlyphAtlas.createForPagedRegistry(
-                    atlasKey.getConfig().pageSize(),
-                    atlasKey.getConfig().pageSize(),
-                    atlasKey.getConfig().resolveAtlasType(),
-                    atlasKey.getConfig().spacingPx());
-            pagedMsdfAtlases.put(atlasKey, atlas);
+    /**
+     * The one distance-field atlas, shared by every font. Created on first use from {@code config},
+     * which is registry-wide -- see the field declaration for why per-font configs cannot exist
+     * once the atlas is shared.
+     */
+    CgPagedGlyphAtlas getPagedMsdfAtlas(CgMsdfAtlasConfig config) {
+        if (msdfAtlas == null) {
+            msdfAtlas = CgPagedGlyphAtlas.createForPagedRegistry(
+                    config.pageSize(), config.pageSize(),
+                    config.resolveAtlasType(), config.spacingPx());
         }
-        return atlas;
+        return msdfAtlas;
+    }
+
+    /** Live atlases, for the few operations that apply to both tiers. */
+    private List<CgPagedGlyphAtlas> liveAtlases() {
+        List<CgPagedGlyphAtlas> live = new ArrayList<>(2);
+        if (bitmapAtlas != null) live.add(bitmapAtlas);
+        if (msdfAtlas != null) live.add(msdfAtlas);
+        return live;
     }
 
     // ────────────────────────────────────────────────────────────────────
@@ -983,153 +1004,105 @@ public class CgFontRegistry {
     //  find populated atlases for visualization/debugging.
     // ────────────────────────────────────────────────────────────────────
 
+    // NOTE ON THE FONT-KEY PARAMETERS BELOW
+    //
+    // These used to filter atlas families by font. With one shared atlas per tier a page holds
+    // glyphs from many fonts at once, so "this font's pages" is no longer a thing that exists --
+    // the question cannot be answered at page granularity, by construction rather than by
+    // omission. The parameters are kept so existing diagnostic callers still compile, and are
+    // ignored; every method now reports the whole tier.
+    //
+    // If a genuinely per-font view is ever needed again it has to come from CgGlyphKey (which
+    // still carries the full CgFontKey) by walking a page's slot map, not from atlas identity.
+
     /**
-     * Returns the first non-empty paged bitmap atlas page that was populated
-     * during rendering for the given base font key. Searches every raster-keyed
-     * paged bitmap atlas family for that font.
+     * First populated page of the shared bitmap atlas.
      *
-     * @return a populated bitmap atlas page, or null if none exists
+     * @param key ignored -- see the note above this method group
+     * @return a populated bitmap atlas page, or {@code null} if none exists
      */
     public CgGlyphAtlasPage findPopulatedPagedBitmapPage(CgFontKey key) {
-        for (Map.Entry<CgRasterFontKey, CgPagedGlyphAtlas> entry : pagedBitmapAtlases.entrySet()) {
-            if (entry.getKey().getBaseFontKey().equals(key)) {
-                CgGlyphAtlasPage page = entry.getValue().getFirstPopulatedPage();
-                if (page != null) {
-                    return page;
-                }
-            }
-        }
-        return null;
+        return bitmapAtlas == null ? null : bitmapAtlas.getFirstPopulatedPage();
     }
 
     /**
-     * Returns the first non-empty paged MSDF atlas page that was populated
-     * during rendering for the given base font key. Searches every paged MSDF
-     * atlas family for that font.
+     * First populated page of the shared distance-field atlas.
      *
-     * @return a populated MSDF atlas page, or null if none exists
+     * @param key ignored -- see the note above this method group
+     * @return a populated MSDF atlas page, or {@code null} if none exists
      */
     public CgGlyphAtlasPage findPopulatedPagedMsdfPage(CgFontKey key) {
-        for (Map.Entry<CgMsdfAtlasKey, CgPagedGlyphAtlas> entry : pagedMsdfAtlases.entrySet()) {
-            if (entry.getKey().getBaseFontKey().equals(key)) {
-                CgGlyphAtlasPage page = entry.getValue().getFirstPopulatedPage();
-                if (page != null) {
-                    return page;
-                }
-            }
-        }
-        return null;
+        return msdfAtlas == null ? null : msdfAtlas.getFirstPopulatedPage();
     }
 
     /**
-     * Returns all populated paged bitmap atlas pages for the given base font key.
-     * Searches the paged bitmap atlas maps keyed by raster font key.
+     * Every populated page of the shared bitmap atlas.
      *
-     * @return unmodifiable list of populated bitmap atlas pages (may be empty, never null)
+     * @param key ignored -- see the note above this method group
      */
     public List<CgGlyphAtlasPage> findAllPopulatedPagedBitmapPages(CgFontKey key) {
-        List<CgGlyphAtlasPage> result = new ArrayList<CgGlyphAtlasPage>();
-        for (Map.Entry<CgRasterFontKey, CgPagedGlyphAtlas> entry : pagedBitmapAtlases.entrySet()) {
-            CgRasterFontKey rk = entry.getKey();
-            if (rk.getBaseFontKey().equals(key)) {
-                CgPagedGlyphAtlas pagedAtlas = entry.getValue();
-                if (!pagedAtlas.isDeleted()) {
-                    for (CgGlyphAtlasPage page : pagedAtlas.getPages()) {
-                        if (page.getSlotCount() > 0 && !page.isDeleted()) {
-                            result.add(page);
-                        }
-                    }
-                }
-            }
-        }
-        return Collections.unmodifiableList(result);
+        return populatedPagesOf(bitmapAtlas);
     }
 
     /**
-     * Returns all populated paged MSDF atlas pages for the given base font key.
-     * Searches the paged MSDF atlas maps keyed by raster font key.
+     * Every populated page of the shared distance-field atlas.
      *
-     * @return unmodifiable list of populated MSDF atlas pages (may be empty, never null)
+     * @param key ignored -- see the note above this method group
      */
     public List<CgGlyphAtlasPage> findAllPopulatedPagedMsdfPages(CgFontKey key) {
+        return populatedPagesOf(msdfAtlas);
+    }
+
+    /**
+     * Populated bitmap pages, reported under a single bucket.
+     *
+     * <p>The bucket key is no longer a real raster size. Bitmap glyphs of every size now share one
+     * atlas, so a page routinely mixes them and cannot be labelled with one number; the single
+     * entry is keyed by {@link #atlasSize} purely so existing dump code has something to group by.
+     * Treat the label as "the shared bitmap atlas", not as a pixel size.
+     *
+     * @param key ignored -- see the note above this method group
+     */
+    public Map<Integer, List<CgGlyphAtlasPage>> findAllPopulatedBitmapPagesBySize(CgFontKey key) {
+        List<CgGlyphAtlasPage> pages = populatedPagesOf(bitmapAtlas);
+        if (pages.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        Map<Integer, List<CgGlyphAtlasPage>> result = new LinkedHashMap<>();
+        result.put(atlasSize, pages);
+        return Collections.unmodifiableMap(result);
+    }
+
+    /**
+     * Populated distance-field pages, reported under their generation scale.
+     *
+     * <p>Unlike the bitmap case this label stays truthful: the shared MSDF atlas has exactly one
+     * {@link com.crystalgraphics.text.msdf.CgMsdfAtlasConfig#atlasScalePx()} by construction, so
+     * every page really was generated at it.
+     *
+     * @param key ignored -- see the note above this method group
+     */
+    public Map<Integer, List<CgGlyphAtlasPage>> findAllPopulatedMSDFPagesBySize(CgFontKey key) {
+        List<CgGlyphAtlasPage> pages = populatedPagesOf(msdfAtlas);
+        if (pages.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        Map<Integer, List<CgGlyphAtlasPage>> result = new LinkedHashMap<>();
+        result.put(msdfAtlasConfig.atlasScalePx(), pages);
+        return Collections.unmodifiableMap(result);
+    }
+
+    private static List<CgGlyphAtlasPage> populatedPagesOf(CgPagedGlyphAtlas atlas) {
+        if (atlas == null || atlas.isDeleted()) {
+            return Collections.emptyList();
+        }
         List<CgGlyphAtlasPage> result = new ArrayList<CgGlyphAtlasPage>();
-        for (Map.Entry<CgMsdfAtlasKey, CgPagedGlyphAtlas> entry : pagedMsdfAtlases.entrySet()) {
-            CgMsdfAtlasKey rk = entry.getKey();
-            if (rk.getBaseFontKey().equals(key)) {
-                CgPagedGlyphAtlas pagedAtlas = entry.getValue();
-                if (!pagedAtlas.isDeleted()) {
-                    for (CgGlyphAtlasPage page : pagedAtlas.getPages()) {
-                        if (page.getSlotCount() > 0 && !page.isDeleted()) {
-                            result.add(page);
-                        }
-                    }
-                }
+        for (CgGlyphAtlasPage page : atlas.getPages()) {
+            if (page.getSlotCount() > 0 && !page.isDeleted()) {
+                result.add(page);
             }
         }
         return Collections.unmodifiableList(result);
-    }
-
-    /**
-     * Same search as {@link #findAllPopulatedPagedBitmapPages}, but keeps each raster bucket's
-     * pages under its own <strong>real</strong> {@code effectiveTargetPx} instead of flattening
-     * every bucket into one list. A single base {@link CgFontKey} can back several bitmap atlas
-     * families at once — one per effective raster size ever resolved for it at draw time (e.g.
-     * the same font drawn under different {@link com.crystalgraphics.api.PoseStack} scales) — so
-     * a caller that needs to label pages by their true pixel size (as opposed to the font's
-     * merely-declared {@link CgFontKey#getTargetPx()}) must go through this method, not the
-     * flattened one.
-     *
-     * @return unmodifiable map of effective target px → unmodifiable list of that bucket's
-     *         populated pages (may be empty, never null)
-     */
-    public Map<Integer, List<CgGlyphAtlasPage>> findAllPopulatedBitmapPagesBySize(CgFontKey key) {
-        Map<Integer, List<CgGlyphAtlasPage>> result = new LinkedHashMap<>();
-        for (Map.Entry<CgRasterFontKey, CgPagedGlyphAtlas> entry : pagedBitmapAtlases.entrySet()) {
-            CgRasterFontKey rk = entry.getKey();
-            if (!rk.getBaseFontKey().equals(key)) continue;
-
-            CgPagedGlyphAtlas pagedAtlas = entry.getValue();
-            if (pagedAtlas.isDeleted()) continue;
-
-            for (CgGlyphAtlasPage page : pagedAtlas.getPages())
-                if (page.getSlotCount() > 0 && !page.isDeleted())
-                    result.computeIfAbsent(rk.getEffectiveTargetPx(), ignored -> new ArrayList<>()).add(page);
-        }
-        for (Map.Entry<Integer, List<CgGlyphAtlasPage>> entry : result.entrySet())
-            entry.setValue(Collections.unmodifiableList(entry.getValue()));
-        return Collections.unmodifiableMap(result);
-    }
-
-    /**
-     * Same search as {@link #findAllPopulatedPagedMsdfPages}, but keeps each atlas family's
-     * pages under its own <strong>real</strong> {@code atlasScalePx} (from
-     * {@link com.crystalgraphics.text.msdf.CgMsdfAtlasConfig#atlasScalePx()}) instead of
-     * flattening every family into one list. Unlike bitmap buckets, MSDF atlas families are
-     * deliberately size-independent of the requested render size (see {@link CgMsdfAtlasKey}'s
-     * javadoc) — {@code atlasScalePx} is the only real "how big were these glyphs generated at"
-     * value, and is unrelated to {@link CgFontKey#getTargetPx()}, so a caller that needs a
-     * truthful size label for an MSDF dump must go through this method, not the font key's
-     * declared px.
-     *
-     * @return unmodifiable map of atlas-generation px → unmodifiable list of that family's
-     *         populated pages (may be empty, never null)
-     */
-    public Map<Integer, List<CgGlyphAtlasPage>> findAllPopulatedMSDFPagesBySize(CgFontKey key) {
-        Map<Integer, List<CgGlyphAtlasPage>> result = new LinkedHashMap<>();
-        for (Map.Entry<CgMsdfAtlasKey, CgPagedGlyphAtlas> entry : pagedMsdfAtlases.entrySet()) {
-            CgMsdfAtlasKey rk = entry.getKey();
-            if (!rk.getBaseFontKey().equals(key)) continue;
-
-            CgPagedGlyphAtlas pagedAtlas = entry.getValue();
-            if (pagedAtlas.isDeleted()) continue;
-
-            for (CgGlyphAtlasPage page : pagedAtlas.getPages())
-                if (page.getSlotCount() > 0 && !page.isDeleted())
-                    result.computeIfAbsent(rk.getConfig().atlasScalePx(), ignored -> new ArrayList<>()).add(page);
-        }
-        for (Map.Entry<Integer, List<CgGlyphAtlasPage>> entry : result.entrySet())
-            entry.setValue(Collections.unmodifiableList(entry.getValue()));
-        return Collections.unmodifiableMap(result);
     }
 
     // ────────────────────────────────────────────────────────────────────
@@ -1177,49 +1150,40 @@ public class CgFontRegistry {
      * requiring a new object.</p>
      */
     public void releaseAll() {
-        for (CgPagedGlyphAtlas atlas : pagedBitmapAtlases.values()) {
+        for (CgPagedGlyphAtlas atlas : liveAtlases()) {
             if (!atlas.isDeleted()) {
                 atlas.delete();
             }
         }
-        pagedBitmapAtlases.clear();
-
-        for (CgPagedGlyphAtlas atlas : pagedMsdfAtlases.values()) {
-            if (!atlas.isDeleted()) {
-                atlas.delete();
-            }
-        }
-        pagedMsdfAtlases.clear();
+        bitmapAtlas = null;
+        msdfAtlas = null;
 
         registeredFonts.clear();
         glyphGenerationExecutor.shutdown();
         glyphGenerationExecutor = new CgGlyphGenerationExecutor();
     }
 
+    /**
+     * Releasing a single font's atlas storage is <strong>intentionally a no-op</strong> now that
+     * atlases are shared.
+     *
+     * <p>A disposed font's glyphs sit in pages alongside other fonts' glyphs, so there is no
+     * texture that belongs to it and no page that is solely its own. Reclaiming its space eagerly
+     * would require glyph-granular removal, which in turn requires a packing strategy that can free
+     * individual rects -- reintroducing fragmentation for no real benefit.
+     *
+     * <p>The space is reclaimed lazily instead: the font's glyphs stop being touched, the pages
+     * holding them drift to the bottom of the atlas LRU, and they are evicted whole once page
+     * pressure arrives. This is the same policy Skia uses for its shared glyph cache, and it is why
+     * eviction here is page-granular rather than per-glyph.
+     *
+     * <p>Note that registry atlases are currently created with
+     * {@link CgPagedGlyphAtlas#UNBOUNDED_PAGES}, so nothing is evicted yet and the memory is simply
+     * retained. Sharing is what makes enabling eviction later a single decision in one place rather
+     * than a per-font policy.
+     */
     private void releasePagedAtlasesForFont(CgFontKey baseKey) {
-        java.util.Iterator<Map.Entry<CgRasterFontKey, CgPagedGlyphAtlas>> pagedBitmapIt =
-                pagedBitmapAtlases.entrySet().iterator();
-        while (pagedBitmapIt.hasNext()) {
-            Map.Entry<CgRasterFontKey, CgPagedGlyphAtlas> entry = pagedBitmapIt.next();
-            if (entry.getKey().getBaseFontKey().equals(baseKey)) {
-                if (!entry.getValue().isDeleted()) {
-                    entry.getValue().delete();
-                }
-                pagedBitmapIt.remove();
-            }
-        }
-
-        java.util.Iterator<Map.Entry<CgMsdfAtlasKey, CgPagedGlyphAtlas>> pagedMsdfIt =
-                pagedMsdfAtlases.entrySet().iterator();
-        while (pagedMsdfIt.hasNext()) {
-            Map.Entry<CgMsdfAtlasKey, CgPagedGlyphAtlas> entry = pagedMsdfIt.next();
-            if (entry.getKey().getBaseFontKey().equals(baseKey)) {
-                if (!entry.getValue().isDeleted()) {
-                    entry.getValue().delete();
-                }
-                pagedMsdfIt.remove();
-            }
-        }
+        // Deliberately empty -- see javadoc.
     }
 
     // ────────────────────────────────────────────────────────────────────

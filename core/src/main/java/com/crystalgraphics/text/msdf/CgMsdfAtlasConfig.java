@@ -16,9 +16,57 @@ public record CgMsdfAtlasConfig(int atlasScalePx, float pxRange, int pageSize, i
                                 double minImproveRatio, CgMsdfEdgeColoringMode edgeColoringMode,
                                 double edgeColoringAngleThreshold, boolean mtsdf) {
 
+    /**
+     * Atlas generation scale in px/em for every distance-field atlas.
+     *
+     * <p><strong>Do not lower this to 64 for CJK — it was tried and visibly fails.</strong>
+     * 64 (with {@link #DEFAULT_PX_RANGE} left at 6) produced obvious reconstruction artifacts on
+     * dense kanji when rendered, confirmed visually against an 80px dump of the same font
+     * (M+ 1p). The arithmetic that suggested it would be fine — dense kanji strokes are around
+     * 1/40 em, so ~2.0px at 80 and ~1.6px at 64, both nominally above the ~1 texel MSDF floor —
+     * is not sufficient in practice. Treat 80 as the empirically established floor for dense CJK
+     * at this pxRange.
+     *
+     * <p>A second attempt at 64 with the range corrected to a scale-proportional 4.8 texels
+     * (6.25% of em — <em>tighter</em> than 80 runs at) improved the worst glyphs, confirming
+     * range interference was one real cause, but artifacts persisted on others. That residue is
+     * a genuine resolution floor rather than a range problem: at 64 one texel is 1.56% of em and
+     * the densest kanji strokes sit near 1/50 em, i.e. ~1.28 texels — below what median-of-3
+     * reconstruction holds at <em>any</em> range. At 80 the same stroke is ~1.6 texels, which
+     * survives. Two independent failure modes, one fixed, one fundamental.
+     *
+     * <p>Consequence for memory: a smaller cell is simply not available for dense CJK. The win
+     * has to come from not imposing CJK's requirement on every font — Latin stems are far
+     * thicker relative to em and have no comparable floor — which means deriving this per font
+     * from glyph complexity (p95 of {@code MSDFShape.getEdgeCount()}) rather than one global
+     * constant.
+     */
     public static final int DEFAULT_ATLAS_SCALE_PX = 80;
-    public static final float DEFAULT_PX_RANGE = 6.0f;
-    public static final int DEFAULT_PAGE_SIZE = 512;
+
+    /**
+     * Distance range in <strong>atlas texels</strong>, so its effect scales inversely with
+     * {@link #DEFAULT_ATLAS_SCALE_PX} — the two must always be considered together.
+     *
+     * <p>Held at 6, the value dense CJK was actually validated against at
+     * {@link #DEFAULT_ATLAS_SCALE_PX} = 80. A tighter 4.8 was tried, but only ever at scale 64,
+     * where it was compensating for that scale's much worse range-to-em ratio; it was never shown
+     * to beat 6 at 80, so 6 stands as the tested pairing. msdf-atlas-gen's own default is 2, so
+     * this remains generous either way.
+     *
+     * <p>Range interference is nonetheless a real, visible failure mode and the reason this knob
+     * cannot be raised freely: when the range exceeds the gap between two edges their fields
+     * overlap, the median reconstruction picks wrong values between them, and the gap fills in —
+     * bloated strokes, shrunken counters. That is what the 64px experiments demonstrated. The
+     * opposing pressure is antialiasing headroom: pxRange sets how many screen pixels the edge
+     * transition spans, so too small eventually reads as hard, aliased edges on very large text.
+     * Dense scripts push this down, large on-screen text pushes it up.
+     *
+     * <p><strong>Any change here invalidates the atlas scale.</strong> The two constants were
+     * validated as a pair; moving one without re-checking the other against dense CJK is how the
+     * 64px regressions happened.
+     */
+    public static final float DEFAULT_PX_RANGE = 6f;
+    public static final int DEFAULT_PAGE_SIZE = 1024;
     public static final int DEFAULT_SPACING_PX = 1;
     public static final float DEFAULT_MITER_LIMIT = 2.0f;
     public static final boolean DEFAULT_ALIGN_ORIGIN_X = false;
