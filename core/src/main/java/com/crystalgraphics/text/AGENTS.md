@@ -91,7 +91,7 @@ If you need the whole system, read in this order:
 3. `api/text/CgTextLayout`
 4. `text/render/CgTextRenderer`
 5. `text/cache/CgFontRegistry`
-6. `text/atlas/CgPagedGlyphAtlas`
+6. `text/atlas/CgGlyphAtlas`
 7. `text/msdf/CgMsdfGenerator`
 
 This gives the clearest “string to draw” story.

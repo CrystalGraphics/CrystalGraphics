@@ -145,7 +145,7 @@ public final class CgFontDemo {
 
         ensureDiagAtlasResources();
 
-        CgGlyphAtlasPage bitmapAtlas = demoFontRegistry.findPopulatedPagedBitmapPage(demoFont.getKey());
+        CgGlyphAtlasPage bitmapAtlas = demoFontRegistry.findPopulatedBitmapPage(demoFont.getKey());
         if (bitmapAtlas == null || bitmapAtlas.isDeleted() || bitmapAtlas.getTextureId() == 0) return;
 
         int atlasDisplaySize = Math.min(256, Math.min(screenW / 2, screenH / 2));
@@ -175,7 +175,7 @@ public final class CgFontDemo {
                 CgGL.glBindBuffer(CgGL.GL_ARRAY_BUFFER, 0);
             }
 
-            CgGlyphAtlasPage msdfAtlas = demoFontRegistry.findPopulatedPagedMsdfPage(demoFont.getKey());
+            CgGlyphAtlasPage msdfAtlas = demoFontRegistry.findPopulatedMsdfPage(demoFont.getKey());
             if (msdfAtlas != null && !msdfAtlas.isDeleted() && msdfAtlas.getTextureId() != 0) {
                 float mx0 = x1 + 10.0f;
                 float my0 = y0;

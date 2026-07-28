@@ -123,7 +123,7 @@ import java.util.logging.Logger;
  *       hit (the steady-state common case — see that class's javadoc) it skips straight to a
  *       cached result; on a miss it walks the layout once into per-glyph scratch buffers,
  *       then resolves each glyph's {@link CgGlyphPlacement} via the atlas (itself {@code O(1)}
- *       per glyph — see {@code CgPagedGlyphAtlas}'s javadoc)</li>
+ *       per glyph — see {@code CgGlyphAtlas}'s javadoc)</li>
  *   <li>{@link #submitSortedQuads} sorts quads by GL state and submits them to the owned batch renderer</li>
  * </ol>
  *
@@ -179,7 +179,7 @@ public class CgTextRenderer {
      * {@code CgMaterial}'s Properties-block sampler API ({@code applyProperties(b -> b.sampler(...))})
      * requires a real {@link CgTexture}, not a raw int — atlas
      * pages ({@code CgGlyphAtlasPage}) don't own a texture at all since the atlas texture-array
-     * migration ({@code CgPagedGlyphAtlas} owns one {@code CgTexture2DArray} per atlas family; a
+     * migration ({@code CgGlyphAtlas} owns one {@code CgTexture2DArray} per atlas family; a
      * page is just a layer index into it). This view (never owns/deletes the real texture) is
      * registered once via {@link #TEXT_MATERIAL}'s Properties block at class-init, then its id is
      * mutated per atlas-family transition — the property system rebinds whatever this wrapper
@@ -977,7 +977,7 @@ public class CgTextRenderer {
     //                       monotonic with its value — dropping the low 10 bits just coarsens
     //                       ties between distances closer than ~0.01%, far finer than any two
     //                       real atlas configs differ by. In practice this is always constant
-    //                       within one textureId already — one CgPagedGlyphAtlas is one config,
+    //                       within one textureId already — one CgGlyphAtlas is one config,
     //                       one pxRange — so it adds no further batch-break granularity beyond
     //                       textureId today; kept rather than removed since promoting pxRange to
     //                       a genuinely per-instance field is a separate, optional decision — see

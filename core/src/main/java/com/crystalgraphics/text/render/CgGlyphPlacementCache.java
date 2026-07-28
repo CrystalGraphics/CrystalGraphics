@@ -21,9 +21,9 @@ import java.util.Map;
  * not of which renderer happens to be drawing it — two renderers drawing the same cached
  * layout with the same parameters should both benefit from the same entry, and a single
  * shared pool uses far less memory than N renderers each keeping their own. This matches
- * {@code CgPagedGlyphAtlas} (one atlas per font, shared globally via the {@code CgFontRegistry}
- * singleton) and {@code CgTextRenderer.SHAPE_CACHE}'s own global scope — every cache in this
- * pipeline is global for the same reason.</p>
+ * {@code CgGlyphAtlas} (two atlases process-wide, one per texture format, every font sharing
+ * them via the {@code CgFontRegistry} singleton) and {@code CgTextRenderer.SHAPE_CACHE}'s own
+ * global scope — every cache in this pipeline is global for the same reason.</p>
  */
 final class CgGlyphPlacementCache {
 

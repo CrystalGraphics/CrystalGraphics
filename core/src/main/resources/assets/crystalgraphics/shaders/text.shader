@@ -17,7 +17,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // ATLAS STORAGE IS RGBA8, NOT RGBA16F — READ THIS BEFORE USING THE 4TH CHANNEL
 // ─────────────────────────────────────────────────────────────────────────────
-// The distance-field atlas allocates GL_RGBA8 (CgPagedGlyphAtlas), so every channel
+// The distance-field atlas allocates GL_RGBA8 (CgGlyphAtlas), so every channel
 // carries 256 levels, not half-float precision. It used to be RGBA16F; the switch
 // halved atlas memory (88 MB -> 44 MB on a 3-font CJK workload) and was validated by
 // measurement, NOT by assumption — see CgMsdfFieldStorageTest: quantising to 8 bits
@@ -38,7 +38,7 @@
 // glow falloff, the atlas format is the first suspect, not your effect math. Options in
 // order of preference: dither the ramp in-shader; narrow the effect's distance range so
 // fewer levels cover it; or, last resort, move the atlas back to RGBA16F_LINEAR in
-// CgPagedGlyphAtlas and pay the 2x memory. Extend CgMsdfQualityProbe to score the 4th
+// CgGlyphAtlas and pay the 2x memory. Extend CgMsdfQualityProbe to score the 4th
 // channel before deciding — it currently only does median-of-3.
 #pragma cg_feature MSDF_MODE
 

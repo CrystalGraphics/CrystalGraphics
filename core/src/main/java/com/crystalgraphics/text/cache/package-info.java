@@ -31,9 +31,9 @@
  * only consumes the placement data and texture IDs.</p>
  *
  * <h3>Boundary with atlas storage</h3>
- * <p>{@link com.crystalgraphics.text.atlas.CgGlyphAtlas} (parent package)
+ * <p>{@link com.crystalgraphics.text.atlas.CgOldGlyphAtlas} (parent package)
  * provides the single-page atlas texture. Multi-page allocation is handled by
- * {@link com.crystalgraphics.text.atlas.CgPagedGlyphAtlas}.</p>
+ * {@link com.crystalgraphics.text.atlas.CgGlyphAtlas}.</p>
  *
  * @see com.crystalgraphics.gl.text.render
  * @see com.crystalgraphics.gl.text.atlas

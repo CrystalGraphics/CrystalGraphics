@@ -9,7 +9,7 @@ import com.crystalgraphics.msdfgen.MSDFShapeSynthesis;
 import com.crystalgraphics.msdfgen.MSDFTransform;
 import com.crystalgraphics.api.font.CgFontKey;
 import com.crystalgraphics.api.font.CgGlyphKey;
-import com.crystalgraphics.text.atlas.CgPagedGlyphAtlas;
+import com.crystalgraphics.text.atlas.CgGlyphAtlas;
 import com.crystalgraphics.text.cache.CgFontRegistry;
 import com.crystalgraphics.text.cache.CgGlyphGenerationResult;
 import com.crystalgraphics.text.cache.CgMsdfAtlasKey;
@@ -21,7 +21,7 @@ import java.util.logging.Logger;
  * Render-thread MSDF generator for glyph atlases.
  *
  * <p>This class converts glyph outlines from the local msdfgen bindings into
- * RGB float MSDF images and uploads them into a {@link CgPagedGlyphAtlas}. A strict
+ * RGB float MSDF images and uploads them into a {@link CgGlyphAtlas}. A strict
  * per-frame budget is enforced to avoid frame spikes. When generation is not
  * allowed for the current glyph or budget, callers are expected to use the
  * bitmap fallback path.</p>
@@ -31,7 +31,7 @@ import java.util.logging.Logger;
  * cache pipeline.  {@link CgFontRegistry} delegates paged MSDF generation here.
  * The generator loads glyph outlines via msdfgen's FreeType integration, applies
  * edge-coloring and projection, then hands the resulting pixel data to the
- * {@link CgPagedGlyphAtlas} for GPU upload.</p>
+ * {@link CgGlyphAtlas} for GPU upload.</p>
  *
  * <h3>Visibility</h3>
  * <p>The class is {@code public} because the debug harness and
@@ -41,8 +41,8 @@ import java.util.logging.Logger;
  *
  * <h3>Reading Order</h3>
  * <ol>
- *   <li><strong>Paged generation</strong> &mdash; {@link #preparePagedGlyphWithinBudget} /
- *       {@link #preparePagedGlyph} (the only path)</li>
+ *   <li><strong>Paged generation</strong> &mdash; {@link #prepareGlyphWithinBudget} /
+ *       {@link #prepareGlyph} (the only path)</li>
  *   <li><strong>Shape preparation</strong> &mdash; normalize, orient, edge-color</li>
  *   <li><strong>Heuristics / utilities</strong> &mdash; cell sizing, complexity threshold, row flip</li>
  * </ol>
@@ -93,14 +93,14 @@ public class CgMsdfGenerator {
         this.generatedThisFrame = 0;
     }
 
-    public CgGlyphGenerationResult preparePagedGlyphWithinBudget(CgGlyphKey key,
-                                                          CgFontKey sourceFontKey,
-                                                          FreeTypeMSDFIntegration.Font font,
-                                                          CgMsdfAtlasKey atlasKey) {
+    public CgGlyphGenerationResult prepareGlyphWithinBudget(CgGlyphKey key,
+                                                            CgFontKey sourceFontKey,
+                                                            FreeTypeMSDFIntegration.Font font,
+                                                            CgMsdfAtlasKey atlasKey) {
         if (generatedThisFrame >= MAX_PER_FRAME) {
             return null;
         }
-        CgGlyphGenerationResult result = preparePagedGlyph(
+        CgGlyphGenerationResult result = prepareGlyph(
                 key,
                 sourceFontKey,
                 font,
@@ -112,11 +112,11 @@ public class CgMsdfGenerator {
         return result;
     }
 
-    public static CgGlyphGenerationResult preparePagedGlyph(CgGlyphKey key,
-                                                     CgFontKey sourceFontKey,
-                                                     FreeTypeMSDFIntegration.Font font,
-                                                     CgMsdfAtlasKey atlasKey,
-                                                     CgMsdfAtlasConfig config) {
+    public static CgGlyphGenerationResult prepareGlyph(CgGlyphKey key,
+                                                       CgFontKey sourceFontKey,
+                                                       FreeTypeMSDFIntegration.Font font,
+                                                       CgMsdfAtlasKey atlasKey,
+                                                       CgMsdfAtlasConfig config) {
         if (config == null) {
             throw new IllegalArgumentException("config must not be null");
         }
@@ -366,7 +366,7 @@ public class CgMsdfGenerator {
      * Adds {@code bias} to every distance-carrying channel (R/G/B; MTSDF's 4th/alpha channel
      * is untouched — see {@code text.shader}'s MSDF path, which only ever reads {@code .rgb}),
      * clamped to {@code [0,1]}. See the synthetic-bold call site in
-     * {@link #preparePagedGlyph} for why this replaces a geometry-level embolden.
+     * {@link #prepareGlyph} for why this replaces a geometry-level embolden.
      */
     private static void applyBoldBias(float[] pixels, int channels, float bias) {
         int distanceChannels = Math.min(channels, 3);

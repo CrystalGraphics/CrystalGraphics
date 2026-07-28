@@ -128,7 +128,7 @@ so the low-level GL plumbing exists; only the atlas-shaped entry points on top o
 #### 2. Fixed layer count vs. growth
 
 A `GL_TEXTURE_2D_ARRAY`'s depth is fixed at `glTexImage3D` time — unlike today's page list
-(`CgPagedGlyphAtlas.pages`, `ArrayList<CgGlyphAtlasPage>`, which just appends a brand-new independent
+(`CgGlyphAtlas.pages`, `ArrayList<CgGlyphAtlasPage>`, which just appends a brand-new independent
 texture when full), you cannot add a layer to an existing array without reallocating the whole array
 and copying every existing layer into the bigger one (`glCopyImageSubData`, GL 4.3+, or an FBO-blit
 fallback for the 3.x baseline). Two options, not mutually exclusive:
@@ -197,18 +197,18 @@ would let a single draw call span different pxRange configs as well — collapsi
 just `mode` (bitmap vs. distance-field, 2 values). **Optional, adjacent scope** — worth deciding
 explicitly rather than doing by default, since it's not required to get the page-batching win.
 
-#### 6. `CgGlyphAtlasPage`/`CgPagedGlyphAtlas` ownership inversion
+#### 6. `CgGlyphAtlasPage`/`CgGlyphAtlas` ownership inversion
 
 Today `CgGlyphAtlasPage` owns one GL texture (`CgGlyphAtlasPage.java:70`, `textureId`) plus one
 `CgPackingStrategy`. Under the array model, ownership inverts: the array texture is owned once, by
-whatever replaces `CgPagedGlyphAtlas` (or a new class), and a "page" becomes a lightweight
+whatever replaces `CgGlyphAtlas` (or a new class), and a "page" becomes a lightweight
 `(layerIndex, CgPackingStrategy)` pair with no GL resource of its own. **The packing algorithm layer
 (`text/atlas/packing/` — `MaxRectsPacker`, `CgGuillotinePacker`) needs zero changes** — per its own
 `AGENTS.md`, it's already correctly ignorant of GL/texture concerns and only fits rectangles into a
 page-sized bin; a bin is a bin whether it's backed by an independent texture or an array layer. Only
 the upload/texture-creation code in `CgGlyphAtlasPage` and the page-creation code in
-`CgPagedGlyphAtlas` change. The existing `createForTest`/`skipGlUpload` pattern
-(`CgGlyphAtlasPage.java:157-162`, `CgPagedGlyphAtlas.java:138-152`) needs an equivalent no-GL path
+`CgGlyphAtlas` change. The existing `createForTest`/`skipGlUpload` pattern
+(`CgGlyphAtlasPage.java:157-162`, `CgGlyphAtlas.java:138-152`) needs an equivalent no-GL path
 preserved so packing/placement unit tests keep working without a real GL context.
 
 This also creates real pressure to finally resolve **DIAGNOSIS A1/A2** (the legacy single-page
@@ -246,7 +246,7 @@ specifically because "one conformant driver" assumptions have broken before here
 4. `CgGlyphPlacement.pageIndex` reinterpreted as array layer index (no new field); new `atlasLayer`
    per-instance field on `CgQuadRenderer`/`cg_env.glsl`/`text.shader`; `_MainTex` becomes
    `sampler2DArray` (already-supported property type, first real consumer).
-5. `CgGlyphAtlasPage`/`CgPagedGlyphAtlas` ownership inversion (array owns the texture; pages become
+5. `CgGlyphAtlasPage`/`CgGlyphAtlas` ownership inversion (array owns the texture; pages become
    layer indices) — packing algorithms (`text/atlas/packing/`) untouched.
 6. Sort-key simplification in `CgTextRenderer.submitSortedQuads` (`textureId` → small fixed
    array-id space); optional adjacent win: promote `pxRange` to per-instance data too.

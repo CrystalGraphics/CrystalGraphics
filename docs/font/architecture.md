@@ -80,12 +80,20 @@ Owns atlas storage.
 
 Main classes:
 
-- `CgGlyphAtlas` — legacy single-page atlas
-- `CgGlyphAtlasPage` — one page in the multi-page model
-- `CgPagedGlyphAtlas` — paged atlas manager
+- `CgGlyphAtlas` — the paged atlas: page list, allocation, and the `Type` enum
+  (`BITMAP`/`MSDF`/`MTSDF`)
+- `CgGlyphAtlasPage` — one page, backing one layer of a `CgTexture2DArray`
+- `CgOldGlyphAtlas` — the retired single-page LRU model, kept for reference, no callers
 - `text/atlas/packing/*` — packing strategies and packed-rect values
 
 This package owns page allocation and packing, not fallback resolution.
+
+**Two atlases exist process-wide and every font shares them:** one `R8` bitmap atlas
+(all fonts, all raster sizes) and one `RGBA8` distance-field atlas (all fonts, a single
+atlas scale). There are two rather than one only because a `CgTexture2DArray` carries a
+single internal format across its layers. Atlases were formerly keyed per font, which gave
+a small UI font an entire page to itself and cost a texture rebind per font in mixed-font
+text.
 
 ### `text/msdf`
 
@@ -140,7 +148,7 @@ This package answers:
 
 ### 4. Atlas ownership
 
-- `CgPagedGlyphAtlas` and `CgGlyphAtlasPage` allocate stable glyph locations
+- `CgGlyphAtlas` and `CgGlyphAtlasPage` allocate stable glyph locations
 - `CgGlyphPlacement` becomes the renderer-facing placement record
 
 ### 5. Render ownership
@@ -178,7 +186,7 @@ Still public because line-breaking still needs to re-shape subranges accurately.
 5. `api/text/CgTextLayout.java`
 6. `text/render/CgTextRenderer.java`
 7. `text/cache/CgFontRegistry.java`
-8. `text/atlas/CgPagedGlyphAtlas.java`
+8. `text/atlas/CgGlyphAtlas.java`
 9. `text/msdf/CgMsdfGenerator.java`
 
 This order tells the cleanest top-down story.

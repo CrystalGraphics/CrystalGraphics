@@ -45,7 +45,7 @@ If you want the implementation story in code form, start here:
 4. `api/text/CgTextLayout.java`
 5. `text/render/CgTextRenderer.java`
 6. `text/cache/CgFontRegistry.java`
-7. `text/atlas/CgPagedGlyphAtlas.java`
+7. `text/atlas/CgGlyphAtlas.java`
 8. `text/msdf/CgMsdfGenerator.java`
 
 ## Package-local agent docs
