@@ -232,6 +232,40 @@ public class CgTextRenderer {
     private Runnable postBatchRestore;
 
     /**
+     * Batch identity {@link #TEXT_MATERIAL} is currently configured for, or {@link #NO_ACTIVE_BATCH}
+     * when nothing is known to be configured.
+     *
+     * <p>These were locals in {@link #submitBatchedQuads}, which meant every {@code draw()} call
+     * began with no knowledge of the material's state and unconditionally transitioned on its first
+     * quad — a flush plus keyword toggle plus property re-apply, per draw. For a UI frame issuing a
+     * thousand labels that all share one atlas and one shader mode, that was a thousand transitions
+     * where one would do, and it dominated the frame.
+     *
+     * <p><strong>Static on purpose.</strong> {@link #TEXT_MATERIAL} and {@link #ATLAS_TEXTURE_REF}
+     * are shared across every live {@code CgTextRenderer}, so this tracks the shared material rather
+     * than one renderer's view of it. Per-instance fields would be unsound: two renderers with
+     * interleaved batches would each believe the material still held the state <em>they</em> last
+     * set, and whichever flushed second would draw its quads with the other's keywords and atlas
+     * texture. Because every transition goes through {@link #transitionToMaterial}, keeping the
+     * record beside the state it describes means any renderer's change is immediately visible to
+     * all the others.
+     *
+     * <p>Reset at {@link #beginBatch()} rather than trusted across batches. Between batches the GL
+     * binding is torn down and an arbitrary {@link #restoreStateWith} hook may have run, so the
+     * assumption that the material is still configured as recorded no longer holds. That costs one
+     * redundant transition per batch and removes the need to reason about what happens in between;
+     * the win is inside the batch, where the thousand draws are.
+     */
+    private static long activeBatchBits = -1L;
+
+    /**
+     * Sentinel for "no batch state is known". Not a valid batch identity: {@link CgTextSortKey}
+     * reserves bit 63 clear so keys sort correctly under Java's signed {@code Arrays.sort(long[])},
+     * so a negative value can never collide with a real batch and be mistaken for a match.
+     */
+    private static final long NO_ACTIVE_BATCH = -1L;
+
+    /**
      * Owns the layout→atlas-placement resolution pipeline for this renderer — a distinct
      * concern from everything else in this class (batch lifecycle, material/projection
      * transitions, GPU quad submission). See {@link CgResolvedGlyphs}'s class javadoc.
@@ -384,6 +418,9 @@ public class CgTextRenderer {
         if (batchActive) throw new IllegalStateException("CgTextRenderer.beginBatch() called without a matching endBatch()");
 
         activeProjection = null;
+        // Between batches the material binding was torn down and a restore hook may have run, so
+        // whatever was recorded about the shared material can no longer be trusted.
+        activeBatchBits = NO_ACTIVE_BATCH;
         batchActive = true;
         quadRenderer.begin();
     }
@@ -473,6 +510,11 @@ public class CgTextRenderer {
      * responsible for only calling this when the state actually changed — this method always
      * flushes and applies unconditionally, it does not re-check for a no-op transition itself.
      *
+     * <p>Records {@code batchBits} into {@link #activeBatchBits} as the last step, so the record of
+     * what the shared material holds is updated in the same place the material is. Callers must not
+     * maintain their own copy: see {@link #activeBatchBits} for why tracking this per renderer
+     * rather than per material is unsound.
+     *
      * <p>Every transition explicitly sets {@code MSDF_MODE} — one keyword covers both
      * distance-field atlas types (MSDF and MTSDF), since the fragment logic is identical for
      * both today (see {@code text.shader}). {@link #TEXT_MATERIAL} is shared static state, so
@@ -480,7 +522,7 @@ public class CgTextRenderer {
      * — a stale keyword left on by a previous transition (this renderer's or another live
      * instance's) would otherwise silently persist into the next bind's compiled variant.</p>
      */
-    private void transitionToMaterial(boolean isDistanceField, int textureId, float pxRange) {
+    private void transitionToMaterial(long batchBits, boolean isDistanceField, int textureId, float pxRange) {
         flush();
 
         // Counted to expose batch fragmentation: each transition is a flush + keyword toggle +
@@ -491,6 +533,7 @@ public class CgTextRenderer {
             TEXT_MATERIAL.toggleKeyword("MSDF_MODE", isDistanceField);
             ATLAS_TEXTURE_REF.setId(textureId);
             TEXT_MATERIAL.applyProperties(b -> b.set1f("_PxRange", pxRange));
+            activeBatchBits = batchBits;
         }
     }
 
@@ -1074,9 +1117,6 @@ public class CgTextRenderer {
         boolean pixelSnap = !context.isWorldText();
         if (pixelSnap) scratchInverseModelView.set(modelView).invert();
 
-        long currentBatchBits = 0;
-        boolean batchStarted = false;
-
         try (CgProfiler.Scope ignored = CgProfiler.scope("quadLoop")) {
         for (int s = 0; s < totalCount; s++) {
             long key = scratchSortKeys[s];
@@ -1135,10 +1175,8 @@ public class CgTextRenderer {
                 atlasLayer = p.atlasPageIndex();
             }
 
-            if (!batchStarted || batchBits != currentBatchBits) {
-                transitionToMaterial(isDistanceField, textureId, pxRange);
-                currentBatchBits = batchBits;
-                batchStarted = true;
+            if (batchBits != activeBatchBits) {
+                transitionToMaterial(batchBits, isDistanceField, textureId, pxRange);
             }
 
             quadRenderer.quad()

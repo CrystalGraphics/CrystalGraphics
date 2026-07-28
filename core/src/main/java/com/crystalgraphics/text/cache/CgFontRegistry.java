@@ -752,6 +752,18 @@ public class CgFontRegistry {
         }
 
         FreeTypeMSDFIntegration.Font msdfFont = font.getMsdfFont();
+        // Never duplicate work a background worker already has in flight. Generating a glyph costs
+        // 13 ms on average and 32 ms for dense CJK, all of it on the render thread, and
+        // commitGeneratedGlyph discards whichever copy arrives second — so the duplicate buys
+        // nothing but a dropped frame. Falling through to the bitmap path shows the glyph
+        // immediately and lets the worker's result replace it a few frames later.
+        if (msdfFont != null && allowSyncGeneration
+                && glyphGenerationExecutor.isPending(
+                        CgGlyphGenerationJob.msdf(font.getKey(), font.getFontBytes(),
+                                atlasKey, msdfAtlasKey, msdfAtlasKey.getConfig()))) {
+            CgProfiler.count("glyph.msdf.syncSkippedAlreadyPending");
+            allowSyncGeneration = false;
+        }
         if (msdfFont != null && allowSyncGeneration) {
             try {
                 CgGlyphGenerationResult generated;

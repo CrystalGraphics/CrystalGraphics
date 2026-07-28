@@ -26,6 +26,7 @@ import java.util.BitSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.TreeSet;
+import com.crystalgraphics.util.profiling.CgProfiler;
 
 /**
  * Internal implementation of the text layout pipeline.
@@ -67,16 +68,24 @@ public final class CgTextLayoutEngine {
         if (knobs == null) knobs = CgParagraphKnobs.DEFAULT;
 
         List<CgShapedParagraph.Slice> slices = new ArrayList<>();
-        for (int[] range : paragraphRanges(text)) {
-            String paragraph = text.substring(range[0], range[1]);
-            List<CgShapedRun> runs = paragraph.isEmpty()
-                    ? new ArrayList<>()
-                    : shapeParagraphText(paragraph, family, knobs.direction(), knobs.tabStopWidth());
-            slices.add(new CgShapedParagraph.Slice(paragraph, runs, new CgReshapeContext(paragraph)));
+        try (CgProfiler.Scope ignored = CgProfiler.scope("shape.runs")) {
+            for (int[] range : paragraphRanges(text)) {
+                String paragraph = text.substring(range[0], range[1]);
+                List<CgShapedRun> runs = paragraph.isEmpty()
+                        ? new ArrayList<>()
+                        : shapeParagraphText(paragraph, family, knobs.direction(), knobs.tabStopWidth());
+                slices.add(new CgShapedParagraph.Slice(paragraph, runs, new CgReshapeContext(paragraph)));
+            }
         }
 
-        RunReshaper reshaper = createRunReshaper(CgFontFamilyGroup.ofRegular(family));
-        List<CgShapedRun> ellipsisRuns = shapeEllipsis(knobs.ellipsisMarker(), family, knobs.direction());
+        RunReshaper reshaper;
+        try (CgProfiler.Scope ignored = CgProfiler.scope("shape.reshaper")) {
+            reshaper = createRunReshaper(CgFontFamilyGroup.ofRegular(family));
+        }
+        List<CgShapedRun> ellipsisRuns;
+        try (CgProfiler.Scope ignored = CgProfiler.scope("shape.ellipsis")) {
+            ellipsisRuns = shapeEllipsis(knobs.ellipsisMarker(), family, knobs.direction());
+        }
 
         return new CgShapedParagraph(slices, family.getLayoutMetrics(), reshaper, ellipsisRuns, knobs);
     }
@@ -152,14 +161,22 @@ public final class CgTextLayoutEngine {
             }
 
             float remainingHeight = maxHeight > 0 ? maxHeight - totalHeight : 0;
-            List<List<CgShapedRun>> paraLines = LINE_BREAKER.breakLines(
-                    slice.runs(), maxWidth, remainingHeight, metrics, slice.context(), reshaper);
+            List<List<CgShapedRun>> paraLines;
+            try (CgProfiler.Scope ignored = CgProfiler.scope("wrap.breakLines")) {
+                paraLines = LINE_BREAKER.breakLines(
+                        slice.runs(), maxWidth, remainingHeight, metrics, slice.context(), reshaper);
+            }
 
-            BitSet lineBreakBoundaries = collectLineBreakBoundaries(paragraph);
-            for (List<CgShapedRun> line : paraLines) {
-                allLines.add(line);
-                justifiableByLine.add(computeJustifiable(paragraph, lineBreakBoundaries, line));
-                lineWidths.add(lineWidth(line));
+            BitSet lineBreakBoundaries;
+            try (CgProfiler.Scope ignored = CgProfiler.scope("wrap.breakBoundaries")) {
+                lineBreakBoundaries = collectLineBreakBoundaries(paragraph);
+            }
+            try (CgProfiler.Scope ignored = CgProfiler.scope("wrap.justify")) {
+                for (List<CgShapedRun> line : paraLines) {
+                    allLines.add(line);
+                    justifiableByLine.add(computeJustifiable(paragraph, lineBreakBoundaries, line));
+                    lineWidths.add(lineWidth(line));
+                }
             }
             totalHeight += paraLines.size() * lineHeight;
         }
@@ -186,7 +203,10 @@ public final class CgTextLayoutEngine {
             if (w > totalWidth) totalWidth = w;
         }
 
-        CgBakedGlyphs baked = bakeGlyphs(allLines, justifiableByLine, metrics, knobs.lineHeightOverride());
+        CgBakedGlyphs baked;
+        try (CgProfiler.Scope ignored = CgProfiler.scope("wrap.bakeGlyphs")) {
+            baked = bakeGlyphs(allLines, justifiableByLine, metrics, knobs.lineHeightOverride());
+        }
 
         float boxWidth = maxWidth > 0 ? maxWidth : totalWidth;
         applyAlignment(baked, lineWidths, knobs.align(), boxWidth);
@@ -315,16 +335,21 @@ public final class CgTextLayoutEngine {
     }
 
     private static List<CgShapedRun> splitAndShapeRuns(String text, CgFontFamily family, CgTextDirection direction) {
-        Bidi bidi = new Bidi(text, bidiFlagFor(direction));
+        Bidi bidi;
+        try (CgProfiler.Scope ignored = CgProfiler.scope("shape.bidi")) {
+            bidi = new Bidi(text, bidiFlagFor(direction));
+        }
         int runCount = bidi.getRunCount();
         List<CgShapedRun> runs = new ArrayList<CgShapedRun>(runCount);
 
-        for (int i = 0; i < runCount; i++) {
-            int start = bidi.getRunStart(i);
-            int end = bidi.getRunLimit(i);
-            int level = bidi.getRunLevel(i);
-            boolean rtl = (level % 2) != 0;
-            collectShapedRuns(text, start, end, rtl, family, runs);
+        try (CgProfiler.Scope ignored = CgProfiler.scope("shape.collectRuns")) {
+            for (int i = 0; i < runCount; i++) {
+                int start = bidi.getRunStart(i);
+                int end = bidi.getRunLimit(i);
+                int level = bidi.getRunLevel(i);
+                boolean rtl = (level % 2) != 0;
+                collectShapedRuns(text, start, end, rtl, family, runs);
+            }
         }
 
         return runs;
@@ -569,18 +594,23 @@ public final class CgTextLayoutEngine {
      * sources), then shapes each resulting {@link CgFontFamily.ResolvedFontRun} through HarfBuzz.
      */
     private static void collectShapedRuns(String text, int start, int end, boolean rtl, CgFontFamily family, List<CgShapedRun> out) {
-        List<CgFontFamily.ResolvedFontRun> resolvedRuns = family.resolveRuns(text, start, end);
-        for (CgFontFamily.ResolvedFontRun resolvedRun : resolvedRuns) {
-            HBFont hbFont = resolvedRun.requireHbFont();
-            CgFont resolvedFont = resolvedRun.getSource().requireFont();
-            CgShapedRun run = SHAPER.shape(text,
-                    resolvedRun.getStart(),
-                    resolvedRun.getEnd(),
-                    resolvedRun.getFontKey(),
-                    resolvedFont,
-                    rtl,
-                    hbFont);
-            out.add(run);
+        List<CgFontFamily.ResolvedFontRun> resolvedRuns;
+        try (CgProfiler.Scope ignored = CgProfiler.scope("shape.resolveRuns")) {
+            resolvedRuns = family.resolveRuns(text, start, end);
+        }
+        try (CgProfiler.Scope ignored = CgProfiler.scope("shape.harfbuzz")) {
+            for (CgFontFamily.ResolvedFontRun resolvedRun : resolvedRuns) {
+                HBFont hbFont = resolvedRun.requireHbFont();
+                CgFont resolvedFont = resolvedRun.getSource().requireFont();
+                CgShapedRun run = SHAPER.shape(text,
+                        resolvedRun.getStart(),
+                        resolvedRun.getEnd(),
+                        resolvedRun.getFontKey(),
+                        resolvedFont,
+                        rtl,
+                        hbFont);
+                out.add(run);
+            }
         }
     }
 

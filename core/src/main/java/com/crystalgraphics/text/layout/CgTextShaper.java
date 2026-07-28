@@ -9,6 +9,7 @@ import com.crystalgraphics.harfbuzz.HBShape;
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgFontKey;
 import com.crystalgraphics.api.text.CgShapedRun;
+import com.crystalgraphics.util.profiling.CgProfiler;
 
 /**
  * Stateless text shaper that delegates to HarfBuzz for a single directional run.
@@ -51,6 +52,54 @@ public class CgTextShaper {
      * @return shaped run with glyph IDs, advances, and offsets in pixels
      * @throws IllegalArgumentException if parameters are invalid
      */
+    /**
+     * Reusable readback buffers for {@link HBBuffer#getGlyphData}.
+     *
+     * <p>Thread-local rather than instance state because {@code CgTextLayoutEngine} holds one
+     * shared {@code CgTextShaper}, and shaping happens both on the render thread and on the
+     * background glyph-generation executor. Grow-only, so a steady stream of shaping settles at
+     * zero allocation.
+     */
+    private static final class Scratch {
+        int[] info = new int[64 * HBBuffer.INFO_STRIDE];
+        int[] pos = new int[64 * HBBuffer.POSITION_STRIDE];
+
+        /**
+         * One reused HarfBuzz buffer per thread, reset between runs rather than created and
+         * destroyed each time.
+         *
+         * <p>{@code hb_buffer_create}/{@code hb_buffer_destroy} cost ~0.52us per shaped run --
+         * small next to what readback used to cost, but pure overhead once that was fixed.
+         * {@code hb_buffer_reset} is exactly the API HarfBuzz provides for this.
+         *
+         * <p>Never destroyed: it lives as long as the owning thread. That is deliberate but worth
+         * knowing -- a thread that shapes text and then dies leaks one hb_buffer. The threads that
+         * shape here (the render thread and the glyph-generation executor) are long-lived, so this
+         * is bounded by pool size rather than by work done.
+         */
+        HBBuffer buffer;
+
+        HBBuffer buffer() {
+            if (buffer == null || buffer.isDestroyed()) {
+                buffer = HBBuffer.create();
+            } else {
+                buffer.reset();
+            }
+            return buffer;
+        }
+
+        void grow(int glyphCount) {
+            if (info.length < glyphCount * HBBuffer.INFO_STRIDE) {
+                info = new int[glyphCount * HBBuffer.INFO_STRIDE];
+            }
+            if (pos.length < glyphCount * HBBuffer.POSITION_STRIDE) {
+                pos = new int[glyphCount * HBBuffer.POSITION_STRIDE];
+            }
+        }
+    }
+
+    private static final ThreadLocal<Scratch> SCRATCH = ThreadLocal.withInitial(Scratch::new);
+
     public CgShapedRun shape(String text, int start, int end,
                              CgFontKey fontKey, CgFont resolvedFont, boolean rtl, HBFont hbFont) {
         if (text == null) {
@@ -76,44 +125,68 @@ public class CgTextShaper {
                     .totalAdvance(0.0f).sourceStart(start).sourceEnd(end);
         }
 
-        HBBuffer buf = HBBuffer.create();
-        try {
+        Scratch scratch = SCRATCH.get();
+        HBBuffer buf;
+        try (CgProfiler.Scope ignored = CgProfiler.scope("hb.bufferCreate")) {
+            buf = scratch.buffer();
+        }
+
+        try (CgProfiler.Scope ignored = CgProfiler.scope("hb.bufferFill")) {
             buf.addUTF8(substring);
             buf.setDirection(rtl ? HBDirection.HB_DIRECTION_RTL : HBDirection.HB_DIRECTION_LTR);
             buf.guessSegmentProperties();
-
-            HBShape.shape(hbFont, buf);
-
-            HBGlyphInfo[] infos = buf.getGlyphInfos();
-            HBGlyphPosition[] positions = buf.getGlyphPositions();
-
-            int glyphCount = infos.length;
-            int[] glyphIds = new int[glyphCount];
-            int[] clusterIds = new int[glyphCount];
-            float[] advancesX = new float[glyphCount];
-            float[] offsetsX = new float[glyphCount];
-            float[] offsetsY = new float[glyphCount];
-            boolean[] safeToBreakBefore = new boolean[glyphCount];
-            float totalAdvance = 0.0f;
-
-            for (int i = 0; i < glyphCount; i++) {
-                glyphIds[i] = infos[i].getCodepoint();
-                clusterIds[i] = infos[i].getCluster();
-                advancesX[i] = positions[i].getXAdvance() / 64.0f;
-                offsetsX[i] = positions[i].getXOffset() / 64.0f;
-                offsetsY[i] = positions[i].getYOffset() / 64.0f;
-                safeToBreakBefore[i] = !infos[i].isUnsafeToBreak();
-                totalAdvance += advancesX[i];
-            }
-
-            return new CgShapedRun()
-                    .fontKey(fontKey).resolvedFont(resolvedFont).rtl(rtl)
-                    .glyphIds(glyphIds).clusterIds(clusterIds)
-                    .advancesX(advancesX).offsetsX(offsetsX).offsetsY(offsetsY)
-                    .totalAdvance(totalAdvance).sourceStart(start).sourceEnd(end)
-                    .safeToBreakBefore(safeToBreakBefore);
-        } finally {
-            buf.destroy();
         }
+
+        try (CgProfiler.Scope ignored = CgProfiler.scope("hb.shape")) {
+            HBShape.shape(hbFont, buf);
+        }
+
+        // Primitive readback into reusable scratch. getGlyphInfos()/getGlyphPositions() would
+        // allocate one wrapper object per glyph and do a FindClass + GetMethodID natively on
+        // every call -- measured at 63% of all HarfBuzz time, and fixed per call rather than
+        // per glyph, so it dominated short strings.
+        int glyphCount;
+        int[] info;
+        int[] pos;
+        try (CgProfiler.Scope ignored = CgProfiler.scope("hb.readBack")) {
+            glyphCount = buf.getGlyphData(scratch.info, scratch.pos);
+            if (glyphCount < 0) {
+                // Negative means the arrays were too small and nothing was written; grow to
+                // exactly what this run needs and retry once.
+                scratch.grow(-glyphCount);
+                glyphCount = buf.getGlyphData(scratch.info, scratch.pos);
+            }
+            info = scratch.info;
+            pos = scratch.pos;
+        }
+
+        int[] glyphIds = new int[glyphCount];
+        int[] clusterIds = new int[glyphCount];
+        float[] advancesX = new float[glyphCount];
+        float[] offsetsX = new float[glyphCount];
+        float[] offsetsY = new float[glyphCount];
+        boolean[] safeToBreakBefore = new boolean[glyphCount];
+        float totalAdvance = 0.0f;
+
+        for (int i = 0; i < glyphCount; i++) {
+            int ib = i * HBBuffer.INFO_STRIDE;
+            int pb = i * HBBuffer.POSITION_STRIDE;
+            glyphIds[i] = info[ib];
+            clusterIds[i] = info[ib + 1];
+            safeToBreakBefore[i] = (info[ib + 2] & HBGlyphInfo.HB_GLYPH_FLAG_UNSAFE_TO_BREAK) == 0;
+            advancesX[i] = pos[pb] / 64.0f;
+            offsetsX[i] = pos[pb + 2] / 64.0f;
+            offsetsY[i] = pos[pb + 3] / 64.0f;
+            totalAdvance += advancesX[i];
+        }
+
+        return new CgShapedRun()
+                .fontKey(fontKey).resolvedFont(resolvedFont).rtl(rtl)
+                .glyphIds(glyphIds).clusterIds(clusterIds)
+                .advancesX(advancesX).offsetsX(offsetsX).offsetsY(offsetsY)
+                .totalAdvance(totalAdvance).sourceStart(start).sourceEnd(end)
+                .safeToBreakBefore(safeToBreakBefore);
+        // No try/finally + destroy any more: the buffer belongs to the thread-local Scratch and is
+        // reset on next use. Destroying it per call is what made this a native allocation per run.
     }
 }
