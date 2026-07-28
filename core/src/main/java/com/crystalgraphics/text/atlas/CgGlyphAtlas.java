@@ -4,7 +4,6 @@ import com.crystalgraphics.api.font.CgGlyphKey;
 import com.crystalgraphics.api.font.CgGlyphPlacement;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.gl.texture.CgTexture2DArray;
-import com.crystalgraphics.text.atlas.packing.CgGuillotinePacker;
 import com.crystalgraphics.text.atlas.packing.MaxRectsPacker;
 import com.crystalgraphics.text.atlas.packing.CgPackingStrategy;
 import com.crystalgraphics.util.profiling.CgProfiler;
@@ -131,14 +130,6 @@ public class CgGlyphAtlas {
          */
         CgPackingStrategy create(int pageWidth, int pageHeight, int spacingPx);
     }
-
-    /**
-     * Guillotine packing — retained for {@link #createForTest} and for callers that explicitly
-     * want msdf-atlas-gen output parity. <strong>Not used by any production atlas</strong>: see
-     * {@link #createForRegistry(int, int, Type, int, int)} for the measurement
-     * showing it packs ~16 points worse than {@link #MAX_RECTS_FACTORY}.
-     */
-    public static final PackerFactory GUILLOTINE_FACTORY = (pageWidth, pageHeight, spacingPx) -> new CgGuillotinePacker(pageWidth, pageHeight);
 
     public static final PackerFactory MAX_RECTS_FACTORY = (pageWidth, pageHeight, spacingPx) -> new MaxRectsPacker(pageWidth, pageHeight);
 
@@ -329,17 +320,17 @@ public class CgGlyphAtlas {
     /**
      * Creates a test-mode paged atlas that skips all GL calls. Unbounded page budget.
      */
-    public static CgGlyphAtlas createForTest(int pageWidth, int pageHeight,
-                                             Type type) {
-        return new CgGlyphAtlas(pageWidth, pageHeight, type, GUILLOTINE_FACTORY, true, CgPackingStrategy.DEFAULT_SPACING_PX);
+    public static CgGlyphAtlas createForTest(int pageWidth, int pageHeight, Type type) {
+        // MaxRects, matching production. Tests used to build pages with a guillotine packer while
+        // every real atlas used MaxRects, so nothing exercised the packer that actually ships.
+        return new CgGlyphAtlas(pageWidth, pageHeight, type, MAX_RECTS_FACTORY, true, CgPackingStrategy.DEFAULT_SPACING_PX);
     }
 
     /**
      * Creates a test-mode paged atlas with an explicit page budget, so eviction
      * behavior can be exercised without allocating dozens of real pages.
      */
-    public static CgGlyphAtlas createForTest(int pageWidth, int pageHeight, Type type, PackerFactory packerFactory,
-                                             int maxPages) {
+    public static CgGlyphAtlas createForTest(int pageWidth, int pageHeight, Type type, PackerFactory packerFactory, int maxPages) {
         return new CgGlyphAtlas(pageWidth, pageHeight, type, packerFactory, true, CgPackingStrategy.DEFAULT_SPACING_PX, maxPages);
     }
 

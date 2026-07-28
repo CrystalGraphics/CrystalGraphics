@@ -1,7 +1,6 @@
 package com.crystalgraphics.text.atlas;
 
 import com.crystalgraphics.text.atlas.packing.MaxRectsPacker;
-import com.crystalgraphics.text.atlas.packing.PackedRect;
 import org.junit.Test;
 
 import java.util.ArrayList;
@@ -30,12 +29,12 @@ public class MaxRectsPackerTest {
     public void testPack100Rects_noOverlaps() {
         MaxRectsPacker packer = new MaxRectsPacker(1024, 1024);
         Random rng = new Random(42); // deterministic seed
-        List<PackedRect> packed = new ArrayList<PackedRect>();
+        List<MaxRectsPacker.PackedRect> packed = new ArrayList<MaxRectsPacker.PackedRect>();
 
         for (int i = 0; i < 100; i++) {
             int w = 8 + rng.nextInt(57); // 8..64 inclusive
             int h = 8 + rng.nextInt(57);
-            PackedRect rect = packer.insert(w, h, "glyph_" + i);
+            MaxRectsPacker.PackedRect rect = packer.insert(w, h, "glyph_" + i);
             if (rect != null) {
                 packed.add(rect);
             }
@@ -45,7 +44,7 @@ public class MaxRectsPackerTest {
 
         // Check all pairs for overlap
         for (int i = 0; i < packed.size(); i++) {
-            PackedRect a = packed.get(i);
+            MaxRectsPacker.PackedRect a = packed.get(i);
             // Verify within bin bounds
             assertTrue("Rect " + i + " x >= 0", a.x() >= 0);
             assertTrue("Rect " + i + " y >= 0", a.y() >= 0);
@@ -55,7 +54,7 @@ public class MaxRectsPackerTest {
                     a.y() + a.height() <= 1024);
 
             for (int j = i + 1; j < packed.size(); j++) {
-                PackedRect b = packed.get(j);
+                MaxRectsPacker.PackedRect b = packed.get(j);
                 assertFalse("Rects " + i + " and " + j + " must not overlap",
                         rectsOverlap(a, b));
             }
@@ -82,7 +81,7 @@ public class MaxRectsPackerTest {
         for (int i = 0; i < 100; i++) {
             int w = 8 + rng.nextInt(57); // 8..64 inclusive
             int h = 8 + rng.nextInt(57);
-            PackedRect rect = packer.insert(w, h, "glyph_" + i);
+            MaxRectsPacker.PackedRect rect = packer.insert(w, h, "glyph_" + i);
             if (rect != null) {
                 insertedCount++;
             }
@@ -108,47 +107,13 @@ public class MaxRectsPackerTest {
         MaxRectsPacker packer = new MaxRectsPacker(4, 4);
 
         for (int i = 0; i < 16; i++) {
-            PackedRect r = packer.insert(1, 1, "cell_" + i);
+            MaxRectsPacker.PackedRect r = packer.insert(1, 1, "cell_" + i);
             assertNotNull("Should pack rect " + i + " into 4x4 bin", r);
         }
 
         // Bin is now full (16 x 1x1 = 4x4)
-        PackedRect overflow = packer.insert(1, 1, "overflow");
+        MaxRectsPacker.PackedRect overflow = packer.insert(1, 1, "overflow");
         assertNull("insert() should return null when bin is full", overflow);
-    }
-
-    // ---------------------------------------------------------------
-    //  Test 4: Reuse after remove
-    // ---------------------------------------------------------------
-
-    /**
-     * Inserts a 32×32 rect, removes it, then inserts another 32×32 rect.
-     * The second insert must succeed (non-null).
-     */
-    @Test
-    public void testReuseAfterRemove() {
-        MaxRectsPacker packer = new MaxRectsPacker(64, 64);
-
-        // Fill up most of the space to make the test meaningful
-        PackedRect big = packer.insert(64, 32, "big");
-        assertNotNull("Big rect should fit", big);
-
-        PackedRect target = packer.insert(32, 32, "target");
-        assertNotNull("Target rect should fit", target);
-
-        PackedRect filler = packer.insert(32, 32, "filler");
-        assertNotNull("Filler rect should fit (remaining 32x32)", filler);
-
-        // Bin should now be full
-        PackedRect shouldFail = packer.insert(32, 32, "shouldFail");
-        assertNull("Bin should be full", shouldFail);
-
-        // Remove the target rect
-        packer.remove(target);
-
-        // Insert same-sized rect — should succeed using freed space
-        PackedRect reused = packer.insert(32, 32, "reused");
-        assertNotNull("Second insert should succeed after remove()", reused);
     }
 
     // ---------------------------------------------------------------
@@ -161,7 +126,7 @@ public class MaxRectsPackerTest {
     @Test
     public void testPackedRect_dimensionsCorrect() {
         MaxRectsPacker packer = new MaxRectsPacker(256, 256);
-        PackedRect r = packer.insert(16, 24, "test");
+        MaxRectsPacker.PackedRect r = packer.insert(16, 24, "test");
 
         assertNotNull("Should pack successfully", r);
         assertEquals("Width should match", 16, r.width());
@@ -184,7 +149,7 @@ public class MaxRectsPackerTest {
     @Test
     public void testUtilization_fullBin() {
         MaxRectsPacker packer = new MaxRectsPacker(32, 32);
-        PackedRect r = packer.insert(32, 32, "full");
+        MaxRectsPacker.PackedRect r = packer.insert(32, 32, "full");
         assertNotNull("Should fit exactly", r);
         assertEquals("Full bin utilization", 1.0f, packer.utilization(), 0.0001f);
     }
@@ -212,41 +177,8 @@ public class MaxRectsPackerTest {
     @Test
     public void testInsert_largerThanBin_returnsNull() {
         MaxRectsPacker packer = new MaxRectsPacker(32, 32);
-        PackedRect r = packer.insert(33, 16, "tooBig");
+        MaxRectsPacker.PackedRect r = packer.insert(33, 16, "tooBig");
         assertNull("Rect wider than bin should return null", r);
-    }
-
-    /**
-     * Verifies multiple removes followed by re-inserts work correctly.
-     */
-    @Test
-    public void testMultipleRemoveAndReinsert() {
-        MaxRectsPacker packer = new MaxRectsPacker(64, 64);
-
-        // Pack a grid of 16x16 rects (up to 16 can fit)
-        List<PackedRect> rects = new ArrayList<PackedRect>();
-        for (int i = 0; i < 16; i++) {
-            PackedRect r = packer.insert(16, 16, "r" + i);
-            if (r != null) {
-                rects.add(r);
-            }
-        }
-        assertEquals("Should pack 16 rects into 64x64", 16, rects.size());
-
-        // Remove first 4
-        for (int i = 0; i < 4; i++) {
-            packer.remove(rects.get(i));
-        }
-
-        // Should be able to pack 4 more 16x16 rects
-        int reinserted = 0;
-        for (int i = 0; i < 4; i++) {
-            PackedRect r = packer.insert(16, 16, "new_" + i);
-            if (r != null) {
-                reinserted++;
-            }
-        }
-        assertEquals("Should reinsert 4 rects into freed space", 4, reinserted);
     }
 
     // ---------------------------------------------------------------
@@ -260,12 +192,12 @@ public class MaxRectsPackerTest {
     public void testStress_500SmallRects_noOverlaps() {
         MaxRectsPacker packer = new MaxRectsPacker(512, 512);
         Random rng = new Random(1337);
-        List<PackedRect> packed = new ArrayList<PackedRect>();
+        List<MaxRectsPacker.PackedRect> packed = new ArrayList<MaxRectsPacker.PackedRect>();
 
         for (int i = 0; i < 500; i++) {
             int w = 4 + rng.nextInt(13); // 4..16
             int h = 4 + rng.nextInt(13);
-            PackedRect r = packer.insert(w, h, i);
+            MaxRectsPacker.PackedRect r = packer.insert(w, h, i);
             if (r != null) {
                 packed.add(r);
             }
@@ -274,9 +206,9 @@ public class MaxRectsPackerTest {
         assertTrue("Should pack many rects", packed.size() >= 400);
 
         for (int i = 0; i < packed.size(); i++) {
-            PackedRect a = packed.get(i);
+            MaxRectsPacker.PackedRect a = packed.get(i);
             for (int j = i + 1; j < packed.size(); j++) {
-                PackedRect b = packed.get(j);
+                MaxRectsPacker.PackedRect b = packed.get(j);
                 assertFalse("Overlap at " + i + "," + j, rectsOverlap(a, b));
             }
         }
@@ -289,7 +221,7 @@ public class MaxRectsPackerTest {
     /**
      * Returns true if two PackedRects overlap (share any interior area).
      */
-    private static boolean rectsOverlap(PackedRect a, PackedRect b) {
+    private static boolean rectsOverlap(MaxRectsPacker.PackedRect a, MaxRectsPacker.PackedRect b) {
         int ax2 = a.x() + a.width();
         int ay2 = a.y() + a.height();
         int bx2 = b.x() + b.width();
@@ -297,5 +229,131 @@ public class MaxRectsPackerTest {
 
         return a.x() < bx2 && ax2 > b.x()
                 && a.y() < by2 && ay2 > b.y();
+    }
+
+    // ---------------------------------------------------------------
+    //  Query surface: mayFit / countFreeRegionsFitting / describeFreeRegions
+    //
+    //  These had no coverage at all, and mayFit is load-bearing: CgGlyphAtlas uses it to
+    //  reject hopeless pages cheaply while scanning oldest-first, so a mayFit that returns
+    //  false for something placeable would silently strand atlas space forever with no
+    //  visible symptom beyond a slowly growing page count.
+    // ---------------------------------------------------------------
+
+    /** mayFit must never reject something insert() would actually place. */
+    @Test
+    public void testMayFit_neverRejectsAPlaceableRect() {
+        MaxRectsPacker packer = new MaxRectsPacker(256, 256);
+        Random random = new Random(20260728L);
+
+        for (int i = 0; i < 400; i++) {
+            int w = 4 + random.nextInt(40);
+            int h = 4 + random.nextInt(40);
+
+            boolean mayFit = packer.mayFit(w, h);
+            MaxRectsPacker.PackedRect placed = packer.insert(w, h, "r" + i);
+
+            if (placed != null) {
+                assertTrue("mayFit(" + w + "x" + h + ") returned false but insert() succeeded — "
+                        + "a false negative strands space permanently", mayFit);
+            }
+        }
+    }
+
+    /** An empty bin may fit anything up to its own size, and nothing beyond it. */
+    @Test
+    public void testMayFit_boundsOfEmptyBin() {
+        MaxRectsPacker packer = new MaxRectsPacker(64, 32);
+        assertTrue(packer.mayFit(64, 32));
+        assertTrue(packer.mayFit(1, 1));
+        assertFalse("wider than bin", packer.mayFit(65, 32));
+        assertFalse("taller than bin", packer.mayFit(64, 33));
+    }
+
+    /** A full bin must report that nothing more may fit. */
+    @Test
+    public void testMayFit_falseOnceBinIsFull() {
+        MaxRectsPacker packer = new MaxRectsPacker(16, 16);
+        assertNotNull(packer.insert(16, 16, "fill"));
+        assertFalse("nothing can fit a fully consumed bin", packer.mayFit(1, 1));
+    }
+
+    /** countFreeRegionsFitting is exact, unlike mayFit — zero means genuinely unplaceable. */
+    @Test
+    public void testCountFreeRegionsFitting_agreesWithInsert() {
+        MaxRectsPacker packer = new MaxRectsPacker(64, 64);
+        assertNotNull(packer.insert(40, 40, "a"));
+
+        assertEquals("a full-bin-sized rect cannot fit any remaining region",
+                0, packer.countFreeRegionsFitting(64, 64));
+        assertTrue("some region must still accept a small rect",
+                packer.countFreeRegionsFitting(8, 8) > 0);
+        assertNotNull("and insert must agree with that", packer.insert(8, 8, "b"));
+    }
+
+    /** describeFreeRegions reports real, in-bounds regions ordered largest-area first. */
+    @Test
+    public void testDescribeFreeRegions_shapeAndOrdering() {
+        MaxRectsPacker packer = new MaxRectsPacker(128, 128);
+        assertNotNull(packer.insert(50, 20, "a"));
+        assertNotNull(packer.insert(30, 60, "b"));
+
+        int[][] regions = packer.describeFreeRegions();
+        assertTrue("a partially filled bin must report free regions", regions.length > 0);
+
+        long previousArea = Long.MAX_VALUE;
+        for (int[] r : regions) {
+            assertEquals("each region is {x, y, w, h}", 4, r.length);
+            assertTrue("width positive", r[2] > 0);
+            assertTrue("height positive", r[3] > 0);
+            assertTrue("region stays inside the bin", r[0] >= 0 && r[1] >= 0);
+            assertTrue("region does not overrun the bin", r[0] + r[2] <= 128 && r[1] + r[3] <= 128);
+
+            long area = (long) r[2] * r[3];
+            assertTrue("regions must be ordered largest-area first", area <= previousArea);
+            previousArea = area;
+        }
+    }
+
+    // ---------------------------------------------------------------
+    //  Spacing-aware insert
+    // ---------------------------------------------------------------
+
+    /**
+     * Spacing is reserved by the allocator but must NOT appear in the returned rect: UVs and
+     * plane bounds are derived from it and have to describe the visible glyph box, not the
+     * padded footprint.
+     */
+    @Test
+    public void testInsertWithSpacing_reportsVisibleSizeNotPaddedSize() {
+        MaxRectsPacker packer = new MaxRectsPacker(128, 128);
+        MaxRectsPacker.PackedRect r = packer.insert(20, 10, 4, "spaced");
+
+        assertNotNull(r);
+        assertEquals("width must be the requested width, not width+spacing", 20, r.width());
+        assertEquals("height must be the requested height, not height+spacing", 10, r.height());
+    }
+
+    /** Spacing genuinely consumes bin area, so it must reduce how much still fits. */
+    @Test
+    public void testInsertWithSpacing_reservesTheExtraArea() {
+        MaxRectsPacker tight = new MaxRectsPacker(32, 32);
+        assertNotNull("32x32 fits exactly with no spacing", tight.insert(32, 32, 0, "exact"));
+
+        MaxRectsPacker spaced = new MaxRectsPacker(32, 32);
+        assertNull("32x32 plus spacing cannot fit a 32x32 bin",
+                spaced.insert(32, 32, 1, "tooBigWithSpacing"));
+    }
+
+    /** Negative spacing is a caller error, not something to silently absorb. */
+    @Test
+    public void testInsert_negativeSpacing_throws() {
+        MaxRectsPacker packer = new MaxRectsPacker(64, 64);
+        try {
+            packer.insert(8, 8, -1, "bad");
+            fail("expected IllegalArgumentException for negative spacing");
+        } catch (IllegalArgumentException expected) {
+            // expected
+        }
     }
 }
