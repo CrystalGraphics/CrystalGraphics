@@ -13,6 +13,33 @@
 // mode is "not enabled". Reintroduce a separate MTSDF_MODE keyword only if/when MTSDF's
 // alpha channel actually needs different fragment logic (see
 // docs_research/font/MTSDF_SHADER_RECONSTRUCTION_RESEARCH.md).
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// ATLAS STORAGE IS RGBA8, NOT RGBA16F — READ THIS BEFORE USING THE 4TH CHANNEL
+// ─────────────────────────────────────────────────────────────────────────────
+// The distance-field atlas allocates GL_RGBA8 (CgPagedGlyphAtlas), so every channel
+// carries 256 levels, not half-float precision. It used to be RGBA16F; the switch
+// halved atlas memory (88 MB -> 44 MB on a 3-font CJK workload) and was validated by
+// measurement, NOT by assumption — see CgMsdfFieldStorageTest: quantising to 8 bits
+// introduced zero structural defects across six atlas scales on dense kanji (no counter
+// closed, no stroke merged), costing 0.04 percentage points of ink-relative edge error
+// at the shipping 80px scale.
+//
+// That validation covers ONLY the .rgb channels this shader reads today. The median-of-3
+// edge is razor thin — roughly one screen pixel wide — so 8-bit quantisation there is
+// invisible, which is why it measured clean.
+//
+// The 4th channel is a different risk profile. It is a true SDF intended for WIDE effects
+// (outlines, glows, soft shadows), where the gradient is deliberately spread over many
+// screen pixels. Stretching 256 levels across a wide, shallow ramp is exactly where 8-bit
+// banding shows up, and nothing has tested it because nothing samples it yet.
+//
+// So: if you start reading .a here and see banding or stair-stepping in an outline or
+// glow falloff, the atlas format is the first suspect, not your effect math. Options in
+// order of preference: dither the ramp in-shader; narrow the effect's distance range so
+// fewer levels cover it; or, last resort, move the atlas back to RGBA16F_LINEAR in
+// CgPagedGlyphAtlas and pay the 2x memory. Extend CgMsdfQualityProbe to score the 4th
+// channel before deciding — it currently only does median-of-3.
 #pragma cg_feature MSDF_MODE
 
 Tags {

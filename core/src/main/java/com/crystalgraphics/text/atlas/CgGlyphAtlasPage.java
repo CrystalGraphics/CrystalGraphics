@@ -53,6 +53,7 @@ public class CgGlyphAtlasPage {
     private static final int GL_UNSIGNED_BYTE = CgGL.GL_UNSIGNED_BYTE;
     private static final int GL_FLOAT         = CgGL.GL_FLOAT;
 
+
     private static final int INITIAL_UPLOAD_BUFFER_SIZE = 64 * 64;
 
     // ── Instance fields ────────────────────────────────────────────────
@@ -444,7 +445,7 @@ public class CgGlyphAtlasPage {
         }
         // Client-side upload format matches what CgMsdfGenerator actually produces
         // (3 floats/pixel for MSDF, 4 for MTSDF) — independent of the array's
-        // unified RGBA16F internal storage format (see CgPagedGlyphAtlas javadoc).
+        // unified RGBA8 internal storage format (see CgPagedGlyphAtlas javadoc).
         // For plain MSDF this leaves the destination alpha channel untouched
         // (undefined initial content from the empty allocation); harmless, since
         // text.shader's MSDF path only ever reads .rgb.
@@ -458,11 +459,12 @@ public class CgGlyphAtlasPage {
         msdfUploadBuffer.put(data, 0, required);
         msdfUploadBuffer.flip();
 
-        // Half-float, not GL_FLOAT: the array's storage is RGBA16F either way, so the driver
-        // would quantize this to half on upload regardless -- converting CPU-side produces
-        // bit-identical texels while sending half the bytes and skipping the driver's per-pixel
-        // conversion. See CgTexture2DArray#uploadLayerRegionAsHalf.
-        arrayTexture.uploadLayerRegionAsHalf(pageIndex, x, y, w, h, glFormat, msdfUploadBuffer);
+        // GL_FLOAT into an RGBA8 array: the driver clamps and quantises to 8-bit unorm itself.
+        // Quantising CPU-side first was measured and is slower -- see uploadLayerRegion's javadoc.
+        // 8 bits is enough for a distance field regardless of who does the conversion: measured on
+        // M+ 1p, quantising introduced zero structural defects across six atlas scales (no counter
+        // closed, no stroke merged). See CgMsdfFieldStorageTest.
+        arrayTexture.uploadLayerRegion(pageIndex, x, y, w, h, glFormat, GL_FLOAT, msdfUploadBuffer);
     }
 
     private void checkNotDeleted() {

@@ -39,7 +39,7 @@ import java.util.logging.Logger;
  *
  * <h3>Format</h3>
  * <p>Bitmap atlases allocate their array as {@code R8}. Distance-field atlases
- * (MSDF and MTSDF alike) allocate their array as {@code RGBA16F} — MSDF simply
+ * (MSDF and MTSDF alike) allocate their array as {@code RGBA8} — MSDF simply
  * leaves the alpha channel unused/undefined at upload time (the shader only
  * ever reads {@code .rgb} in MSDF mode), avoiding a separate 3-component array
  * format with its own driver-alignment history for a channel count that's
@@ -321,8 +321,8 @@ public class CgPagedGlyphAtlas {
         } else {
             this.capacity = INITIAL_PAGES;
             this.arrayTexture = CgTexture2DArray.allocateEmpty(pageWidth, pageHeight, capacity,
-                    // MSDF and MTSDF both allocate RGBA16F — see class javadoc "Format".
-                    type == CgGlyphAtlas.Type.BITMAP ? CgTextureSpec.R8_NEAREST : CgTextureSpec.RGBA16F_LINEAR);
+                    // MSDF and MTSDF both allocate RGBA8 — see class javadoc "Format".
+                    type == CgGlyphAtlas.Type.BITMAP ? CgTextureSpec.R8_NEAREST : CgTextureSpec.RGBA8_LINEAR);
         }
     }
 
