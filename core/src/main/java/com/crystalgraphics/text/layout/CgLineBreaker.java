@@ -283,14 +283,28 @@ public class CgLineBreaker {
                                               int runStart, int runEnd, int breakPos,
                                               float maxLineWidth, RunReshaper reshaper) {
         List<CgShapedRun> fragments = new ArrayList<CgShapedRun>();
-        CgShapedRun head = reshaper.reshape(context, run, runStart, runStart + breakPos);
+
+        // When HarfBuzz has told us this boundary is safe to break at, the already-shaped glyphs
+        // on either side are exactly what a fresh shape would produce -- that is precisely what
+        // HB_GLYPH_FLAG_UNSAFE_TO_BREAK being absent means -- so the run can be sliced instead of
+        // re-shaped. measurePrefixWidth already takes this path when *measuring* candidate
+        // boundaries; this extends it to actually building the fragments, which was still paying
+        // two HarfBuzz calls per split. Measured at 1000 wrapped labels, breakLines was 43% of a
+        // reshape and larger than shaping itself.
+        int splitGlyph = sliceFastPathDisabled ? -1 : safeGlyphBoundary(context, run, runStart, breakPos);
+
+        CgShapedRun head = splitGlyph >= 0
+                ? sliceRun(run, 0, splitGlyph, runStart, runStart + breakPos)
+                : reshaper.reshape(context, run, runStart, runStart + breakPos);
         if (head != null) {
             fragments.add(head);
         }
 
         int tailStart = runStart + breakPos;
         if (tailStart < runEnd) {
-            CgShapedRun tail = reshaper.reshape(context, run, tailStart, runEnd);
+            CgShapedRun tail = splitGlyph >= 0
+                    ? sliceRun(run, splitGlyph, run.glyphIds().length, tailStart, runEnd)
+                    : reshaper.reshape(context, run, tailStart, runEnd);
             if (tail != null) {
                 if (tail.totalAdvance() > maxLineWidth) {
                     // maxLineWidth here IS a full, fresh line's width (the tail starts a new
@@ -308,6 +322,115 @@ public class CgLineBreaker {
         }
 
         return fragments;
+    }
+
+
+    /**
+     * Glyph index at {@code breakPos} if the run can be <em>sliced</em> there instead of
+     * re-shaped, else {@code -1}.
+     *
+     * <p>Same conditions {@link #measurePrefixWidth} uses for its measuring fast path, and for the
+     * same reasons:
+     * <ul>
+     *   <li><b>LTR only.</b> HarfBuzz emits LTR glyphs in source order, so a prefix of the glyph
+     *       array corresponds to a prefix of the text. RTL glyph order is visual, so the same
+     *       slice would take the wrong glyphs.</li>
+     *   <li><b>Exact cluster boundary.</b> The break must land on a glyph's cluster start, or the
+     *       split would cut a cluster in half.</li>
+     *   <li><b>Marked safe.</b> If HarfBuzz flagged the glyph unsafe-to-break, shaping across the
+     *       boundary is context-dependent (ligatures, kerning) and slicing would produce different
+     *       glyphs than a real re-shape.</li>
+     * </ul>
+     */
+    /**
+     * Test-only escape hatch forcing every split through {@code reshaper}, bypassing
+     * {@link #sliceRun}. Exists so a test can wrap identical text both ways and assert the two
+     * produce identical layouts — which is the only way to show the slice path is correct rather
+     * than merely faster. Never set outside tests.
+     */
+    static boolean sliceFastPathDisabled = false;
+
+    private static int safeGlyphBoundary(CgReshapeContext context, CgShapedRun run,
+                                         int runStart, int breakPos) {
+        if (run.rtl()) {
+            return -1;
+        }
+        boolean[] safeToBreakBefore = run.safeToBreakBefore();
+        int[] clusterIds = run.clusterIds();
+        if (safeToBreakBefore == null || clusterIds == null) {
+            return -1;
+        }
+
+        String runText = context.sourceText().substring(runStart, run.sourceEnd());
+        int[] byteToChar = Utf8ClusterMapper.byteOffsetToCharOffset(runText);
+        int glyphIndex = glyphIndexAtCharOffset(clusterIds, byteToChar, breakPos);
+        if (glyphIndex <= 0 || glyphIndex >= clusterIds.length) {
+            // 0 would make an empty head; past the end makes an empty tail. Both mean there is
+            // nothing to split, so fall back rather than fabricate a zero-glyph fragment.
+            return -1;
+        }
+        return safeToBreakBefore[glyphIndex] ? glyphIndex : -1;
+    }
+
+    /**
+     * Builds a fragment from {@code run}'s glyphs in {@code [glyphFrom, glyphTo)} without calling
+     * HarfBuzz. Only valid at a boundary {@link #safeGlyphBoundary} approved.
+     *
+     * <p>Carries over every field a re-shaped fragment would have — including the rich-span data
+     * ({@code argbColor}, decorations, features, baseline shift, synthetic bold/italic) that
+     * {@code createRunReshaper} has to copy manually after shaping. Because this slices the source
+     * run it inherits them directly, and keeps the same {@code resolvedFont} that actually produced
+     * these glyphs.
+     *
+     * <p><b>Cluster ids are rebased.</b> A shaped run's clusters are UTF-8 byte offsets relative to
+     * that run's own start, which is what a re-shaped fragment produces. Slicing without
+     * subtracting the split point's offset would leave the tail's clusters relative to the original
+     * run instead, and everything downstream that maps glyphs back to source text would be wrong.
+     */
+    private static CgShapedRun sliceRun(CgShapedRun run, int glyphFrom, int glyphTo,
+                                        int sourceStart, int sourceEnd) {
+        int count = glyphTo - glyphFrom;
+        int[] glyphIds = new int[count];
+        int[] clusterIds = new int[count];
+        float[] advancesX = new float[count];
+        float[] offsetsX = new float[count];
+        float[] offsetsY = new float[count];
+        boolean[] safeToBreakBefore = new boolean[count];
+
+        int[] srcClusters = run.clusterIds();
+        int clusterBase = srcClusters[glyphFrom];
+        float totalAdvance = 0f;
+
+        for (int i = 0; i < count; i++) {
+            int src = glyphFrom + i;
+            glyphIds[i] = run.glyphIds()[src];
+            clusterIds[i] = srcClusters[src] - clusterBase;
+            advancesX[i] = run.advancesX()[src];
+            offsetsX[i] = run.offsetsX()[src];
+            offsetsY[i] = run.offsetsY()[src];
+            safeToBreakBefore[i] = run.safeToBreakBefore()[src];
+            totalAdvance += advancesX[i];
+        }
+
+        return new CgShapedRun()
+                .fontKey(run.fontKey())
+                .resolvedFont(run.resolvedFont())
+                .rtl(false)
+                .glyphIds(glyphIds)
+                .clusterIds(clusterIds)
+                .advancesX(advancesX)
+                .offsetsX(offsetsX)
+                .offsetsY(offsetsY)
+                .totalAdvance(totalAdvance)
+                .sourceStart(sourceStart)
+                .sourceEnd(sourceEnd)
+                .safeToBreakBefore(safeToBreakBefore)
+                .argbColor(run.argbColor())
+                .decorations(run.decorations())
+                .fontFeatures(run.fontFeatures())
+                .baselineShift(run.baselineShift())
+                .syntheticBold(run.syntheticBold())
+                .syntheticItalic(run.syntheticItalic());
     }
 
     /**

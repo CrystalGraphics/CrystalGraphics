@@ -16,6 +16,7 @@ import com.crystalgraphics.text.cache.CgMsdfAtlasKey;
 
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import com.crystalgraphics.util.profiling.CgProfiler;
 
 /**
  * Render-thread MSDF generator for glyph atlases.
@@ -52,19 +53,52 @@ import java.util.logging.Logger;
  * pixels using explicit layout math.</p>
  *
  * <h3>Error Correction</h3>
- * <p>MSDF generation uses {@code ERROR_CORRECTION_DISABLED} because the
- * default internal error-correction pass in msdfgen's {@code generateMSDF}
- * has been observed to crash on certain glyph shapes over time
- * ({@code EXCEPTION_ACCESS_VIOLATION} in {@code freetype_msdfgen_harfbuzz_jni.dll}).
- * At the cell sizes used here (32-64px) the artifacts that error correction
- * fixes are imperceptible.</p>
+ * <p>MSDF generation uses {@code ERROR_CORRECTION_EDGE_PRIORITY} (see
+ * {@link CgMsdfAtlasConfig#DEFAULT_ERROR_CORRECTION_MODE}).</p>
+ *
+ * <p>This was previously disabled, on the belief that msdfgen's error-correction pass crashed on
+ * certain glyph shapes — {@code EXCEPTION_ACCESS_VIOLATION} in
+ * {@code freetype_msdfgen_harfbuzz_jni.dll}. That diagnosis was wrong. The crash was a reachability
+ * race in the bindings: generation passes raw handles owned by finalizable wrappers into a native
+ * call lasting 13-32 ms, and the wrappers could be collected and finalized — freeing those handles —
+ * while the call was still running. Error correction was implicated only because it widened the
+ * window. See {@code NativeReachability} and the "finalizers can free a handle mid-call" section of
+ * {@code freetype-msdfgen-harfbuzz-bindings/AGENTS.md}.</p>
  */
 public class CgMsdfGenerator {
 
     private static final Logger LOGGER = Logger.getLogger(CgMsdfGenerator.class.getName());
 
     public static final float PX_RANGE = CgMsdfAtlasConfig.DEFAULT_PX_RANGE;
+
+    /**
+     * Hard ceiling on synchronous generations per frame, retained as a backstop under
+     * {@link #FRAME_BUDGET_NANOS}. The time budget is the real limit; this only bounds per-glyph
+     * fixed overhead in the degenerate case where every glyph is nearly free.
+     */
     public static final int MAX_PER_FRAME = 4;
+
+    /**
+     * How much wall time synchronous glyph generation may take from a single frame.
+     *
+     * <p>This used to be a count of four glyphs, which silently assumed glyphs cost the same. They
+     * do not: measured on the shipped fonts, one glyph ranges from under a millisecond for simple
+     * Latin to 32 ms for dense CJK, because msdfgen's cost scales with box area times edge count.
+     * Four of the expensive kind is 128 ms — an eight-frame stall at 60 Hz, produced by a limit
+     * whose whole purpose was to prevent frame spikes.
+     *
+     * <p>Two milliseconds is a slice a frame can absorb, and the check deliberately reads the budget
+     * <em>before</em> generating rather than predicting cost. That makes the behaviour fall out
+     * without a special case: the first glyph of a frame always proceeds, since nothing has been
+     * spent yet, so progress is guaranteed even when a single glyph costs more than the entire
+     * budget — but it also exhausts the frame, so an expensive glyph stalls once instead of four
+     * times. Cheap glyphs keep fitting several per frame, which is the common case.
+     *
+     * <p>Glyphs refused here are not lost. They fall back to the bitmap path for the frame and are
+     * picked up by the background generation executor, so the visible cost is a few frames at lower
+     * fidelity rather than a hitch.
+     */
+    private static final long FRAME_BUDGET_NANOS = 2_000_000L;
     static final int COMPLEXITY_EDGE_THRESHOLD = 24;
     static final int SIMPLE_MSDF_MIN_PX = 32;
     static final int COMPLEX_MSDF_MIN_PX = 48;
@@ -88,24 +122,31 @@ public class CgMsdfGenerator {
     private static final double SYNTHETIC_ITALIC_SKEW = 0.25;
 
     private int generatedThisFrame;
+    private long generationNanosThisFrame;
 
     public CgMsdfGenerator() {
         this.generatedThisFrame = 0;
+        this.generationNanosThisFrame = 0L;
     }
 
     public CgGlyphGenerationResult prepareGlyphWithinBudget(CgGlyphKey key,
                                                             CgFontKey sourceFontKey,
                                                             FreeTypeMSDFIntegration.Font font,
                                                             CgMsdfAtlasKey atlasKey) {
-        if (generatedThisFrame >= MAX_PER_FRAME) {
+        if (generatedThisFrame >= MAX_PER_FRAME || generationNanosThisFrame >= FRAME_BUDGET_NANOS) {
+            CgProfiler.count("msdfgen.syncBudgetRefused");
             return null;
         }
+        long start = System.nanoTime();
         CgGlyphGenerationResult result = prepareGlyph(
                 key,
                 sourceFontKey,
                 font,
                 atlasKey,
                 atlasKey.getConfig());
+        // Charged even for empty/failed geometry: the frame spent the time either way, and not
+        // charging it would let a run of failures blow the budget without ever tripping it.
+        generationNanosThisFrame += System.nanoTime() - start;
         if (result != null && !result.isEmptyGeometry()) {
             generatedThisFrame++;
         }
@@ -117,12 +158,22 @@ public class CgMsdfGenerator {
                                                        FreeTypeMSDFIntegration.Font font,
                                                        CgMsdfAtlasKey atlasKey,
                                                        CgMsdfAtlasConfig config) {
+        try (CgProfiler.Scope ignored = CgProfiler.scope("msdfgen.prepareGlyph")) {
+            return prepareGlyphInternal(key, sourceFontKey, font, atlasKey, config);
+        }
+    }
+
+    private static CgGlyphGenerationResult prepareGlyphInternal(CgGlyphKey key,
+                                                       CgFontKey sourceFontKey,
+                                                       FreeTypeMSDFIntegration.Font font,
+                                                       CgMsdfAtlasKey atlasKey,
+                                                       CgMsdfAtlasConfig config) {
         if (config == null) {
             throw new IllegalArgumentException("config must not be null");
         }
 
         FreeTypeMSDFIntegration.GlyphData glyphData;
-        try {
+        try (CgProfiler.Scope ignored = CgProfiler.scope("msdfgen.loadGlyph")) {
             glyphData = font.loadGlyphByIndex(key.getGlyphId(), FreeTypeMSDFIntegration.FONT_SCALING_EM_NORMALIZED);
         } catch (MSDFException e) {
             // WARNING, matching the bitmap rasterization path's severity for the
@@ -144,7 +195,9 @@ public class CgMsdfGenerator {
             if (shape.getEdgeCount() == 0) {
                 return CgGlyphGenerationResult.emptyMsdf(sourceFontKey, key, atlasKey, config.pxRange());
             }
-            normalizeShape(shape);
+            try (CgProfiler.Scope ignored = CgProfiler.scope("msdfgen.normalize")) {
+                normalizeShape(shape);
+            }
             // Synthetic italic (shear) is a plain affine transform on the vector geometry —
             // always safe, preserves every edge relationship exactly. Synthetic BOLD is
             // deliberately NOT done as a geometry edit here (see SYNTHETIC_BOLD_STRENGTH_EM's
@@ -157,7 +210,9 @@ public class CgMsdfGenerator {
             if (key.isSyntheticItalic()) {
                 MSDFShapeSynthesis.shear(shape, SYNTHETIC_ITALIC_SKEW);
             }
-            orientAndColorShape(shape, key.getGlyphId(), config);
+            try (CgProfiler.Scope ignored = CgProfiler.scope("msdfgen.edgeColor")) {
+                orientAndColorShape(shape, key.getGlyphId(), config);
+            }
 
             int targetPx = config.atlasScalePx();
 
@@ -173,10 +228,13 @@ public class CgMsdfGenerator {
                 effectivePxRange += (float) (SYNTHETIC_BOLD_STRENGTH_EM * targetPx);
             }
 
-            double[] bounds = shape.getBounds();
-            if (config.miterLimit() > 0.0f) {
-                double border = (effectivePxRange * 0.5) / targetPx;
-                bounds = shape.getBoundsMiters(bounds, border, config.miterLimit(), 1);
+            double[] bounds;
+            try (CgProfiler.Scope ignored = CgProfiler.scope("msdfgen.bounds")) {
+                bounds = shape.getBounds();
+                if (config.miterLimit() > 0.0f) {
+                    double border = (effectivePxRange * 0.5) / targetPx;
+                    bounds = shape.getBoundsMiters(bounds, border, config.miterLimit(), 1);
+                }
             }
             double shapeL = bounds[0];
             double shapeB = bounds[1];
@@ -202,33 +260,51 @@ public class CgMsdfGenerator {
             double ty = layout.getTranslateY();
             double rangeInShapeUnits = layout.getRangeInShapeUnits();
 
-            MSDFBitmap bitmap = config.mtsdf()
-                    ? MSDFBitmap.allocMtsdf(boxWidth, boxHeight)
-                    : MSDFBitmap.allocMsdf(boxWidth, boxHeight);
+            MSDFBitmap bitmap;
+            try (CgProfiler.Scope ignored = CgProfiler.scope("msdfgen.allocBitmap")) {
+                bitmap = config.mtsdf()
+                        ? MSDFBitmap.allocMtsdf(boxWidth, boxHeight)
+                        : MSDFBitmap.allocMsdf(boxWidth, boxHeight);
+            }
             MSDFTransform transform = new MSDFTransform()
                     .scale(scale)
                     .translate(tx, ty)
                     .range(-rangeInShapeUnits, rangeInShapeUnits);
             try {
-                if (config.mtsdf()) {
-                    MSDFGenerator.generateMtsdf(bitmap, shape, transform,
-                            config.overlapSupport(),
-                            config.errorCorrectionMode(),
-                            config.distanceCheckMode(),
-                            config.minDeviationRatio(),
-                            config.minImproveRatio());
-                } else {
-                    MSDFGenerator.generateMsdf(bitmap, shape, transform,
-                            config.overlapSupport(),
-                            config.errorCorrectionMode(),
-                            config.distanceCheckMode(),
-                            config.minDeviationRatio(),
-                            config.minImproveRatio());
+                // Only pay for overlap resolution on shapes whose contours can actually meet.
+                boolean overlapSupport;
+                try (CgProfiler.Scope ignored = CgProfiler.scope("msdfgen.overlapGate")) {
+                    overlapSupport = config.overlapSupport() && needsOverlapSupport(shape);
+                }
+                CgProfiler.sample("msdfgen.overlapUsed", overlapSupport ? 1 : 0);
+
+                try (CgProfiler.Scope ignored = CgProfiler.scope("msdfgen.generate")) {
+                    if (config.mtsdf()) {
+                        MSDFGenerator.generateMtsdf(bitmap, shape, transform,
+                                overlapSupport,
+                                config.errorCorrectionMode(),
+                                config.distanceCheckMode(),
+                                config.minDeviationRatio(),
+                                config.minImproveRatio());
+                    } else {
+                        MSDFGenerator.generateMsdf(bitmap, shape, transform,
+                                overlapSupport,
+                                config.errorCorrectionMode(),
+                                config.distanceCheckMode(),
+                                config.minDeviationRatio(),
+                                config.minImproveRatio());
+                    }
                 }
 
-                float[] pixelData = bitmap.getPixelData();
+                float[] pixelData;
+                try (CgProfiler.Scope ignored = CgProfiler.scope("msdfgen.readPixels")) {
+                    pixelData = bitmap.getPixelData();
+                }
+                CgProfiler.sample("msdfgen.pixelFloats", pixelData.length);
                 int channels = config.mtsdf() ? 4 : 3;
-                flipRows(pixelData, boxWidth, boxHeight, channels);
+                try (CgProfiler.Scope ignored = CgProfiler.scope("msdfgen.flipRows")) {
+                    flipRows(pixelData, boxWidth, boxHeight, channels);
+                }
 
                 if (key.isSyntheticBold()) {
                     // Dilate: shift every distance-carrying channel (R/G/B — never MTSDF's
@@ -270,7 +346,9 @@ public class CgMsdfGenerator {
     }
 
     public void tickFrame() {
+        CgProfiler.sample("msdfgen.syncFrameMicros", generationNanosThisFrame / 1000L);
         generatedThisFrame = 0;
+        generationNanosThisFrame = 0L;
     }
 
     public static int cellSizeForFontPx(int fontPx) {
@@ -292,6 +370,65 @@ public class CgMsdfGenerator {
         }
         return fontPx >= SIMPLE_MSDF_MIN_PX;
     }
+
+    /**
+     * Whether this shape can actually benefit from msdfgen's overlap-support path.
+     *
+     * <p>Overlap support is the most expensive generation flag by a wide margin — measured at 36% of
+     * total generation time, or roughly 12ms down to 8ms per dense CJK glyph. It exists for outlines
+     * built from overlapping contours, where the plain winding rule resolves the sign incorrectly
+     * where two strokes cross. It cannot change the result anywhere else: with nothing to overlap,
+     * per-contour resolution and whole-shape resolution agree by construction.
+     *
+     * <p>Measured on the shipped fonts, disabling it wholesale is bit-identical across all sampled
+     * Latin glyphs, and identical for all but one CJK glyph in 120 — where it differs by a full sign
+     * inversion. So the flag is nearly always dead weight and occasionally load-bearing, which makes
+     * it a gating problem rather than something to turn off.
+     *
+     * <p>The gate is deliberately conservative: it compares axis-aligned contour bounds, which
+     * over-approximate the contours themselves. Disjoint bounds prove the contours cannot touch, so
+     * skipping is always safe; overlapping bounds do not prove they do touch, so some glyphs still
+     * pay for overlap they never needed. That asymmetry is the right way round — a false "needed"
+     * costs milliseconds, a false "not needed" corrupts a glyph.
+     */
+    static boolean needsOverlapSupport(MSDFShape shape) {
+        int contourCount = shape.getContourCount();
+        // A single contour has nothing to overlap with; the per-contour path degenerates to the
+        // plain one. Zero contours cannot generate anything at all.
+        if (contourCount < 2) {
+            return false;
+        }
+        // Bounds are [minX, minY, maxX, maxY] in shape units, flattened to avoid n small arrays.
+        double[] bounds = new double[contourCount * 4];
+        for (int i = 0; i < contourCount; i++) {
+            double[] contourBounds = shape.getContour(i).getBounds();
+            System.arraycopy(contourBounds, 0, bounds, i * 4, 4);
+        }
+        for (int a = 0; a < contourCount; a++) {
+            int ai = a * 4;
+            for (int b = a + 1; b < contourCount; b++) {
+                int bi = b * 4;
+                boolean disjoint =
+                        bounds[ai + 2] < bounds[bi] - BOUNDS_TOUCH_EPSILON      // a entirely left of b
+                        || bounds[bi + 2] < bounds[ai] - BOUNDS_TOUCH_EPSILON   // b entirely left of a
+                        || bounds[ai + 3] < bounds[bi + 1] - BOUNDS_TOUCH_EPSILON // a entirely below b
+                        || bounds[bi + 3] < bounds[ai + 1] - BOUNDS_TOUCH_EPSILON; // b entirely below a
+                if (!disjoint) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Slack applied when testing contour bounds for disjointness, in em-normalized shape units.
+     *
+     * <p>Signed the safe way: it treats bounds that merely come close as overlapping, so
+     * floating-point noise in the bounds can only ever push a glyph onto the slower correct path,
+     * never off it.
+     */
+    private static final double BOUNDS_TOUCH_EPSILON = 1e-6;
 
     public static void applyEdgeColoring(MSDFShape shape, CgMsdfAtlasConfig config) {
         CgMsdfEdgeColoringMode mode = config.edgeColoringMode();
