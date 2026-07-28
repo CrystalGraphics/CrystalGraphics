@@ -1,8 +1,9 @@
-package com.crystalgraphics.text.render;
+package com.crystalgraphics.text.layout;
 
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgFontFamily;
 import com.crystalgraphics.api.text.CgTextLayout;
+import com.crystalgraphics.text.render.CgGlyphPlacementCache;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -44,35 +45,32 @@ import java.util.Map;
  * the reload path), flagged here as a known follow-up if font hot-reload while this cache is
  * warm ever becomes a real issue.</p>
  */
-final class CgTextLayoutCache {
+public final class CgTextLayoutCache {
 
     private static final int CAPACITY = 512;
 
-    private static final Map<Key, CgTextLayout> MAP =
-            new LinkedHashMap<Key, CgTextLayout>(CAPACITY * 4 / 3, 0.75f, true) {
-                @Override
+    private static final Map<Key, CgTextLayout> MAP = new LinkedHashMap<>(CAPACITY * 4 / 3, 0.75f, true) {
                 protected boolean removeEldestEntry(Map.Entry<Key, CgTextLayout> eldest) {
                     return size() > CAPACITY;
                 }
             };
 
-    private CgTextLayoutCache() {
-    }
+    private CgTextLayoutCache() {}
 
     /**
      * Builds the lookup key for one {@code layout(...)} call. Callers should build this once
      * and reuse it for both {@link #get} and {@link #put} rather than rebuilding it twice.
      */
-    static Key key(String text, Object fontOrFamily, float maxWidth, float maxHeight) {
+    public static Key key(String text, Object fontOrFamily, float maxWidth, float maxHeight) {
         return new Key(text, fontOrFamily, maxWidth, maxHeight);
     }
 
     /** @return the cached layout if present, else {@code null} */
-    static CgTextLayout get(Key key) {
+    public static CgTextLayout get(Key key) {
         return MAP.get(key);
     }
 
-    static void put(Key key, CgTextLayout layout) {
+    public static void put(Key key, CgTextLayout layout) {
         MAP.put(key, layout);
     }
 
@@ -85,7 +83,7 @@ final class CgTextLayoutCache {
      * {@code CgFontRegistry}), so identity is both cheaper than a value comparison and the
      * semantically correct notion of "same font" here.
      */
-    record Key(String text, Object fontOrFamily, float maxWidth, float maxHeight) {
+    public record Key(String text, Object fontOrFamily, float maxWidth, float maxHeight) {
         @Override
         public int hashCode() {
             int h = text.hashCode();
