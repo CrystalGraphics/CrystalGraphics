@@ -63,7 +63,7 @@ uploaded as shared, whole-draw-call GPU state — forcing a flush on every trans
   `identity()`), inside `flushPendingMaterial()` — the same pattern every other CrystalShader
   consumer (`CgUiPaintContext`, `CgQuadRendererTestScene`) already uses for `cg_ProjMatrix`.
 - **One remaining, much smaller correctness guard**: a single `Matrix4f activeProjection` field
-  (`activeModelView` is gone entirely). `submitSortedQuads` flushes first if `context.getProjection()`
+  (`activeModelView` is gone entirely). `submitBatchedQuads` flushes first if `context.getProjection()`
   differs from `activeProjection` before queuing more glyphs — necessary because projection, unlike
   modelView, is still shared GPU state at flush time, so a mid-batch `context(...)` switch could
   otherwise mis-project glyphs queued under the previous context.
@@ -104,7 +104,7 @@ started — this is a design/scoping pass, not an implementation.**
 
 #### Why this pays off (what today's batching actually costs)
 
-`CgTextRenderer.submitSortedQuads`'s packed sort key (`CgTextRenderer.java`, `packSortKey`) currently
+`CgTextRenderer.submitBatchedQuads`'s packed sort key (`CgTextRenderer.java`, `packSortKey`) currently
 breaks batches on `(mode, textureId, pxRange)`. `textureId` is page-specific — every `CgGlyphAtlasPage`
 owns its own raw GL texture id (`CgGlyphAtlasPage.java:70`), so text spanning N pages of the same
 atlas family costs N draw calls even though every one of those glyphs is otherwise mode/format
@@ -248,7 +248,7 @@ specifically because "one conformant driver" assumptions have broken before here
    `sampler2DArray` (already-supported property type, first real consumer).
 5. `CgGlyphAtlasPage`/`CgGlyphAtlas` ownership inversion (array owns the texture; pages become
    layer indices) — packing algorithms (`text/atlas/packing/`) untouched.
-6. Sort-key simplification in `CgTextRenderer.submitSortedQuads` (`textureId` → small fixed
+6. Sort-key simplification in `CgTextRenderer.submitBatchedQuads` (`textureId` → small fixed
    array-id space); optional adjacent win: promote `pxRange` to per-instance data too.
 7. Retire the legacy single-page `CgGlyphAtlas` path (DIAGNOSIS #1) — it has no layer concept and
    would otherwise become a second, permanently-diverging storage model.

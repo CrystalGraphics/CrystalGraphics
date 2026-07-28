@@ -183,15 +183,15 @@ change — the reshaping mechanism itself (HarfBuzz re-shape via `CgTextShaper`)
 
 **The GPU instance format already supports this for free.** `CgQuadRenderer.INSTANCE_FORMAT`
 (`CgQuadRenderer.java:100-105`) already has a per-instance `vec4 color` field, and
-`CgTextRenderer.submitSortedQuads` already calls `quadRenderer.quad()....color(...)` **per glyph**
+`CgTextRenderer.submitBatchedQuads` already calls `quadRenderer.quad()....color(...)` **per glyph**
 (`CgTextRenderer.java:864-869`) — the batching/GPU-submission layer has never been the bottleneck
-here. The only thing standing in the way is that `submitSortedQuads` currently reads one uniform
+here. The only thing standing in the way is that `submitBatchedQuads` currently reads one uniform
 `rgba` value for the whole draw call (`CgTextRenderer.java:818`, the `rgba` parameter threaded down
 from `Draw.color(int)`, `CgTextRenderer.java:640-643`) instead of per-glyph.
 
 Fix: once `CgShapedRun` carries an optional per-run color (§4.3) and `CgResolvedGlyphs` threads it
 through alongside the existing per-glyph font key/glyph id/pen position it already flattens
-(`CgResolvedGlyphs.java:92-132`), `submitSortedQuads` resolves each glyph's effective color as
+(`CgResolvedGlyphs.java:92-132`), `submitBatchedQuads` resolves each glyph's effective color as
 `run.getArgbColor() != 0 ? run.getArgbColor() : draw.rgba` instead of always using `draw.rgba`. Pure
 CPU-side plumbing — no new GPU-side capability required.
 
@@ -215,7 +215,7 @@ CPU-side plumbing — no new GPU-side capability required.
 4. `CgTextLayoutEngine` BiDi∩style-span splitting + per-line metrics max in `CgLineBreaker` — the
    real algorithmic work in this list.
 5. `CgTextLayoutBuilder`'s reshaper resolved against the family group instead of one family (§4.5).
-6. `CgResolvedGlyphs`/`CgTextRenderer.submitSortedQuads` per-glyph color resolution (§5).
+6. `CgResolvedGlyphs`/`CgTextRenderer.submitBatchedQuads` per-glyph color resolution (§5).
 7. `text/richtext/` markup parser(s) — can be built and unit-tested fully in parallel with 1–6,
    since its only output is a `CgStyledText`; it has no dependency on the layout-engine changes.
 8. (Separate, later, out of scope here) a block-tag → `UIElement`-tree translator in CrystalGUI,

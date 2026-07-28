@@ -53,7 +53,7 @@ was in scope for this phase — it still targets the existing raw shaders/render
 
 ### 2.1 Phase 1.5 — merged `draw()`/`drawWorld()` into one entry point
 
-`drawInternal`/`submitSortedQuads` already dispatched 2D-vs-world purely off the context
+`drawInternal`/`submitBatchedQuads` already dispatched 2D-vs-world purely off the context
 argument's runtime type, making every `drawWorld()` overload byte-for-byte duplicate of `draw()`.
 Deleted all 12 `drawWorld()` overloads; `draw(...)` is now the only entry point (pass a
 world-mode context to get 3D behavior). One real caller updated (`WorldTextRenderHelper`, 3 call
@@ -126,7 +126,7 @@ All four original open questions are answered — nothing left to check before w
   `batchRenderer.flush()`, just moved to wrap the material bind. This is also why only **one**
   `text.shader` is needed instead of separate UI/world variants.
 - Keywords `MSDF_MODE`/`MTSDF_MODE` (bitmap = neither enabled), toggled on the owned `CgMaterial`
-  per batch-key transition — replaces shader-instance selection in `submitSortedQuads`.
+  per batch-key transition — replaces shader-instance selection in `submitBatchedQuads`.
 - **Keyword-toggle discipline: every transition sets both keywords explicitly, never a bare
   `enableKeyword()` alone.** `MSDF_MODE`/`MTSDF_MODE` are independent toggles, not a 3-way enum,
   and the material is shared static state (see §3.3) — a stale keyword left on by a previous
@@ -169,7 +169,7 @@ else here is CgTextRenderer-specific reasoning about *how often* to actually rew
   it puts it under the registry's `deleteAll()`, already wired into the canonical teardown sequence
   (step 7) alongside every other shared GPU resource.
 - **Rewritten/uploaded unconditionally once per `draw()` call, no dirty-check/cache.** Rewrite
-  happens exactly once per `submitSortedQuads()` invocation (up front, before the per-transition
+  happens exactly once per `submitBatchedQuads()` invocation (up front, before the per-transition
   loop) — never once per batch-key transition — so it's already off the hot path regardless. A
   cross-call "did this change since last time" cache was tried and rejected: it needs `static`
   shadow state (the UBO is a shared singleton — an instance-level cache would let renderer B
@@ -219,9 +219,9 @@ away.
    `MSDF_MODE`/`MTSDF_MODE` explicitly (§3.2's keyword discipline, never a bare
    `enableKeyword()`) — bracketed by the `CgDepthState.NONE`/`TEST_ONLY` apply/clear from §3.2
    (keyed off `context.isWorldText()`, same as today's `worldText` boolean in
-   `submitSortedQuads`), plus the unconditional transform upload from §3.3 (once per `draw()`
+   `submitBatchedQuads`), plus the unconditional transform upload from §3.3 (once per `draw()`
    call, up front).
-5. Implement fast/general path split in `submitSortedQuads` per §3.4 (linear-scan detection, no
+5. Implement fast/general path split in `submitBatchedQuads` per §3.4 (linear-scan detection, no
    extra sort).
 6. Delete `BITMAP_SHADER`/`MSDF_SHADER`/`MTSDF_SHADER` and the six `CgRenderState` constants once
    the new path is verified equivalent.

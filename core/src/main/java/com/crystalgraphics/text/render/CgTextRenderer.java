@@ -48,7 +48,7 @@ import java.util.logging.Logger;
  * into {@link CgGlyphPlacement} records that carry page identity (index and GL
  * texture ID), plane bounds, and per-page distance-field configuration ({@code pxRange}).
  * Quads are sorted by a packed {@code long} key (atlas mode, page texture, pxRange — see
- * {@link #submitSortedQuads}) so bitmap batches draw before distance-field batches. On
+ * {@link #submitBatchedQuads}) so bitmap batches draw before distance-field batches. On
  * batch-state transitions the active material keywords, atlas texture, and pxRange property
  * are swapped (triggering a flush of whatever was pending under the previous state).</p>
  *
@@ -126,7 +126,7 @@ import java.util.logging.Logger;
  *       cached result; on a miss it walks the layout once into per-glyph scratch buffers,
  *       then resolves each glyph's {@link CgGlyphPlacement} via the atlas (itself {@code O(1)}
  *       per glyph — see {@code CgGlyphAtlas}'s javadoc)</li>
- *   <li>{@link #submitSortedQuads} sorts quads by GL state and submits them to the owned batch renderer</li>
+ *   <li>{@link #submitBatchedQuads} sorts quads by GL state and submits them to the owned batch renderer</li>
  * </ol>
  *
  * <h3>Draw API</h3>
@@ -220,7 +220,7 @@ public class CgTextRenderer {
      * renderer's last upload. Used only to decide whether a {@link #context(CgTextRenderContext)}
      * change mid-batch must flush first (see {@link #syncProjection}) — unlike the model-view
      * transform, which is baked per-glyph-instance via {@code Quad.pose()} (see
-     * {@link #submitSortedQuads}) and needs no such tracking at all. Compared by value, not
+     * {@link #submitBatchedQuads}) and needs no such tracking at all. Compared by value, not
      * reference, since {@link CgTextRenderContext#getProjection()} is a live, mutable matrix
      * owned by the context.
      */
@@ -239,7 +239,7 @@ public class CgTextRenderer {
     private final CgResolvedGlyphs resolvedGlyphs = new CgResolvedGlyphs(registry);
 
     /**
-     * Grow-only per-glyph sort-key scratch for {@link #submitSortedQuads} — see its javadoc
+     * Grow-only per-glyph sort-key scratch for {@link #submitBatchedQuads} — see its javadoc
      * for the bit layout. Never needs more than {@code glyphCount} entries, so it's grown
      * directly off that count rather than tracking its own separate capacity field.
      */
@@ -255,7 +255,7 @@ public class CgTextRenderer {
     
     /**
      * Reusable scratch for {@link #pixelSnapDelta} — the inverse of the current draw call's
-     * model-view (recomputed once per {@link #submitSortedQuads} call, not per-glyph) plus two
+     * model-view (recomputed once per {@link #submitBatchedQuads} call, not per-glyph) plus two
      * throwaway vectors, kept as fields purely to avoid a small allocation per glyph.
      */
     private final Matrix4f scratchInverseModelView = new Matrix4f();
@@ -469,7 +469,7 @@ public class CgTextRenderer {
 
     /**
      * Transitions {@link #TEXT_MATERIAL} to the given batch state, flushing whatever was
-     * pending under the previous state first. Callers (just {@link #submitSortedQuads}) are
+     * pending under the previous state first. Callers (just {@link #submitBatchedQuads}) are
      * responsible for only calling this when the state actually changed — this method always
      * flushes and applies unconditionally, it does not re-check for a no-op transition itself.
      *
@@ -815,7 +815,7 @@ public class CgTextRenderer {
      *
      * <p>Resolves the effective raster tier, delegates layout flattening/prequeueing and
      * atlas placement resolution to {@link #resolvedGlyphs}, then sorts and submits
-     * ({@link #submitSortedQuads}).</p>
+     * ({@link #submitBatchedQuads}).</p>
      */
     /**
      * Holds everything {@link #drawInternal} needs beyond {@code CgTextLayout} resolution
@@ -952,15 +952,15 @@ public class CgTextRenderer {
         CgTextDecorationRect[] decorations = resolvedLayout.baked().decorations();
         if (glyphCount > 0 || decorations.length > 0) {
             try (CgProfiler.Scope ignored = CgProfiler.scope("submitSortedQuads")) {
-                submitSortedQuads(glyphCount, decorations, fontKey.getTargetPx(), effectiveTargetPx, wantMsdf,
+                submitBatchedQuads(glyphCount, decorations, fontKey.getTargetPx(), effectiveTargetPx, wantMsdf,
                         draw.x, draw.y, draw.rgba, pose.pose());
             }
         }
     }
 
     // ══════════════════════════════════════════════════════════════════════════════════════════
-    //  SORT + SUBMIT
-    // ══════════════════════════════════════════════════════════════════════════════════════════t
+    //  BATCH + SUBMIT
+    // ══════════════════════════════════════════════════════════════════════════════════════════
 
     // Sort-key packing lives in CgTextSortKey: the bit layout, the width arithmetic, and the
     // batch-identity mask are one cohesive concern with invariants worth stating once and
@@ -970,41 +970,65 @@ public class CgTextRenderer {
 
 
     /**
-     * Sorts this draw call's glyph placements ({@link CgResolvedGlyphs#placements}) AND baked
-     * decoration rects (pre-resolved via {@link CgResolvedGlyphs#resolveDecorations}) together
-     * by GL batch state, then submits both to the owned {@link CgQuadRenderer} in that single
-     * order — one instanced-quad record per glyph or decoration, transform baked in via
-     * {@code Quad.pose(modelView)}.
+     * Turns one draw call's glyphs and decorations into the <strong>fewest possible GL batches</strong>,
+     * then submits them in that order.
      *
-     * <p>Glyphs and decorations are never merged into one data type or one cache — they stay
-     * two entirely separate sources (a {@code CgGlyphPlacement[]} and a
-     * {@code List<CgResolvedGlyphs.ResolvedDecoration>}) for their entire lifetime, resolved by
-     * two entirely separate methods on {@link CgResolvedGlyphs}. What's shared is only the
-     * {@code long} sort key's bit layout (see above) and this one sort+submit pass. A
-     * decoration's batch bits are built from the exact same atlas its font's glyphs use (see
-     * {@link CgResolvedGlyphs.ResolvedDecoration}'s javadoc), so in the common case — a
-     * decoration interleaved with glyphs of the same font/mode — it lands in the very same
-     * sorted run as those glyphs and triggers zero extra {@link #transitionToMaterial} calls;
-     * a transition only ever happens where the batch state genuinely changes (a different
-     * font's atlas, bitmap vs. MSDF, etc.), never merely because an entry happens to be a
-     * decoration.</p>
+     * <p>Every change of atlas texture or shader mode costs a flush plus a material rebind, so the
+     * cost of a draw is set by how many times that state changes, not by how many quads it emits.
+     * This method's whole job is to make that number as small as it can be: it groups everything
+     * that can share a state into contiguous runs, so a draw performs exactly as many transitions
+     * as it has genuinely distinct states — and never one more because two entries that could have
+     * shared a batch happened to arrive in the wrong order.
      *
-     * <p>{@link Arrays#sort(long[], int, int)} — the JDK's primitive dual-pivot quicksort, which
-     * already detects nearly-sorted runs and falls back to insertion sort for small ranges —
-     * does the entire sort with no per-entry allocation and no hand-rolled fast path.</p>
+     * <p>Since the glyph atlases were merged into one per texture format, "distinct state" no
+     * longer means "distinct font": two fonts now report the same texture id and batch together.
+     * A mixed-font run costs the same as a single-font one.
      *
-     * <p>On batch-state transitions, this method:
+     * <h4>What happens, and how often</h4>
      * <ol>
-     *   <li>Calls {@link #transitionToMaterial} to flush any pending quads under the previous
-     *       keyword/property/texture combination, then adopt the new one</li>
-     *   <li>The projection is constant for the whole call and is synced to {@link #TEXT_DATA_UBO}
-     *       once up-front via {@link #syncProjection} — flushing first if it differs from what
-     *       this renderer already has queued under a different projection. The model-view
-     *       transform needs no such check anymore — it's baked per-instance.</li>
-     *   <li>Emits one instanced-quad record via {@link CgQuadRenderer#quad()}</li>
+     *   <li><b>Once per call</b> — count visible glyphs, resolve decoration rects, build a
+     *       {@link CgTextSortKey} per entry, and sort. The key is laid out so a single numeric
+     *       sort produces batch order directly; see that class for the bit layout.</li>
+     *   <li><b>Once per call</b> — sync the projection to {@link #TEXT_DATA_UBO} via
+     *       {@link #syncProjection}, flushing first if this renderer has quads queued under a
+     *       different one. The model-view transform needs no equivalent check: it is baked
+     *       per-instance rather than held as shared state.</li>
+     *   <li><b>Once per batch boundary</b> — {@link #transitionToMaterial} flushes the quads
+     *       accumulated under the previous state and adopts the new one.</li>
+     *   <li><b>Once per entry</b> — emit one instanced-quad record via
+     *       {@link CgQuadRenderer#quad()}, with the transform baked in through
+     *       {@code Quad.pose(modelView)}.</li>
      * </ol>
+     *
+     * <h4>Glyphs and decorations share the ordering, not the data</h4>
+     * <p>They remain two separate sources for their entire lifetime — a {@code CgGlyphPlacement[]}
+     * and a {@code List<CgResolvedGlyphs.ResolvedDecoration>}, resolved by two separate methods on
+     * {@link CgResolvedGlyphs}. The only thing they share is the sort key's layout and this one
+     * pass.
+     *
+     * <p>That sharing is what makes decorations free: a decoration's batch bits come from the same
+     * atlas its font's glyphs use (see {@link CgResolvedGlyphs.ResolvedDecoration}), so an underline
+     * drawn alongside text lands in the same sorted run as that text and adds
+     * <strong>zero</strong> transitions. A transition happens only where the state genuinely
+     * changes — a different atlas, or bitmap versus distance field — never because an entry
+     * happened to be a decoration rather than a glyph.
+     *
+     * <h4>Sorting</h4>
+     * <p>{@link Arrays#sort(long[], int, int)} — the JDK's primitive dual-pivot quicksort, which
+     * already detects nearly-sorted runs and drops to insertion sort for small ranges — does the
+     * whole sort with no per-entry allocation and no hand-rolled fast path. Note it sorts
+     * <em>signed</em>, which is why {@link CgTextSortKey} keeps bit 63 clear.
+     *
+     * @param glyphCount        number of entries in {@link CgResolvedGlyphs#placements} to consider;
+     *                          null or geometry-less placements are skipped
+     * @param decorations       baked decoration rects for this draw, resolved here rather than by
+     *                          the caller
+     * @param baseTargetPx      the font's declared size, the denominator for metric normalisation
+     * @param effectiveTargetPx the size glyphs were actually rasterised at this frame
+     * @param wantMsdf          whether this draw prefers distance-field glyphs
+     * @param modelView         transform baked into each emitted quad
      */
-    private void submitSortedQuads(int glyphCount, CgTextDecorationRect[] decorations,
+    private void submitBatchedQuads(int glyphCount, CgTextDecorationRect[] decorations,
                                     int baseTargetPx, int effectiveTargetPx, boolean wantMsdf,
                                     float drawX, float drawY, int drawRgba, Matrix4f modelView) {
         CgGlyphPlacement[] placements = resolvedGlyphs.placements;
@@ -1017,8 +1041,7 @@ public class CgTextRenderer {
 
         List<CgResolvedGlyphs.ResolvedDecoration> resolvedDecorations;
         try (CgProfiler.Scope ignored = CgProfiler.scope("resolveDecorations")) {
-            resolvedDecorations =
-                    resolvedGlyphs.resolveDecorations(decorations, drawX, drawY, drawRgba, effectiveTargetPx, wantMsdf);
+            resolvedDecorations = resolvedGlyphs.resolveDecorations(decorations, drawX, drawY, drawRgba, effectiveTargetPx, wantMsdf);
         }
 
         int totalCount = visibleGlyphCount + resolvedDecorations.size();
@@ -1029,13 +1052,11 @@ public class CgTextRenderer {
             int si = 0;
             for (int i = 0; i < glyphCount; i++) {
                 CgGlyphPlacement p = placements[i];
-                if (p != null && p.hasGeometry()) {
-                    scratchSortKeys[si++] = CgTextSortKey.forGlyph(p, i);
-                }
+                if (p != null && p.hasGeometry()) scratchSortKeys[si++] = CgTextSortKey.forGlyph(p, i);
             }
-            for (int i = 0; i < resolvedDecorations.size(); i++) {
+            for (int i = 0; i < resolvedDecorations.size(); i++) 
                 scratchSortKeys[si++] = CgTextSortKey.forDecoration(resolvedDecorations.get(i), i);
-            }
+            
             Arrays.sort(scratchSortKeys, 0, totalCount);
         }
 
@@ -1051,10 +1072,11 @@ public class CgTextRenderer {
         // flooring collapses every glyph onto the same integer world coordinate -- and the
         // inverse-transform back to local space then multiplies that error by 1/worldScale.
         boolean pixelSnap = !context.isWorldText();
-        scratchInverseModelView.set(modelView).invert();
+        if (pixelSnap) scratchInverseModelView.set(modelView).invert();
 
         long currentBatchBits = 0;
         boolean batchStarted = false;
+
         try (CgProfiler.Scope ignored = CgProfiler.scope("quadLoop")) {
         for (int s = 0; s < totalCount; s++) {
             long key = scratchSortKeys[s];
