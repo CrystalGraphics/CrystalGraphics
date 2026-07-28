@@ -960,80 +960,12 @@ public class CgTextRenderer {
     //  SORT + SUBMIT
     // ══════════════════════════════════════════════════════════════════════════════════════════t
 
-    // Bit layout of each entry in scratchSortKeys, MSB → LSB. Ordered coarsest-to-finest so an
-    // unsigned numeric sort of the whole long already sorts by (mode, textureId, pxRange), with
-    // the original glyph index riding along in the low bits purely so the sorted array alone
-    // tells you which glyph each entry came from — no parallel index array needed.
-    //   [63:62] mode      (0 = bitmap, 1 = distance-field — MSDF/MTSDF share one shader keyword,
-    //                       see text.shader, so they don't need distinct mode values today)
-    //   [61:38] textureId (GL atlas-ARRAY texture id — since the atlas texture-array migration,
-    //                       CgGlyphPlacement.getPageTextureId() returns the same id for every
-    //                       page/layer of one atlas family, not a per-page id, so this already
-    //                       batches every page of a family together with no further code change
-    //                       needed here — masked to 24 bits, real ids never come close to that
-    //                       range)
-    //   [37:16] pxRange   (top 22 bits of the SDF pixel range's raw float bits; valid only
-    //                       because pxRange is always >= 0, so its raw bits are already
-    //                       monotonic with its value — dropping the low 10 bits just coarsens
-    //                       ties between distances closer than ~0.01%, far finer than any two
-    //                       real atlas configs differ by. In practice this is always constant
-    //                       within one textureId already — one CgGlyphAtlas is one config,
-    //                       one pxRange — so it adds no further batch-break granularity beyond
-    //                       textureId today; kept rather than removed since promoting pxRange to
-    //                       a genuinely per-instance field is a separate, optional decision — see
-    //                       docs_research/CGTEXTRENDERER_INSTANCING_FOUNDATIONS.md's "adjacent win.")
-    //   [63]    kind      (0 = glyph, localIndex into CgResolvedGlyphs#placements; 1 = decoration,
-    //                       localIndex into the resolveDecorations() list built for this draw
-    //                       call — see submitSortedQuads. A decoration's own (mode, textureId,
-    //                       pxRange) is packed identically to a glyph's, so the two interleave
-    //                       into one GL-state-ordered sequence and share the same
-    //                       transitionToMaterial calls; only the two data SOURCES stay distinct,
-    //                       never stitched into one cache or one placement type. Lives in the
-    //                       mode field's own top bit rather than carving into localIndex below:
-    //                       mode only ever holds 0 or 1 despite its 2-bit-wide field, so this
-    //                       bit was already unconditionally 0 — using it costs nothing.)
-    //   [62]    mode      (0 = bitmap, 1 = distance-field — see below)
-    //   [15:0]  localIndex (index within whichever array [kind] selects — the FULL 16 bits,
-    //                       independently for glyphs and decorations, since kind no longer
-    //                       shares this field. Silently wrapping this would alias two different
-    //                       entries onto the same key and corrupt rendering, not just degrade
-    //                       performance, so keep this at the full width it already was before
-    //                       decorations were folded in here.)
-    private static final int SORT_INDEX_BITS = 16;
-    private static final int SORT_PXRANGE_SHIFT = SORT_INDEX_BITS;
-    private static final int SORT_TEXTURE_SHIFT = SORT_PXRANGE_SHIFT + 22;
-    private static final int SORT_MODE_SHIFT = SORT_TEXTURE_SHIFT + 24;
-    private static final long SORT_INDEX_MASK = (1L << SORT_INDEX_BITS) - 1;
-    private static final long KIND_DECORATION_BIT = 1L << 63;
-    private static final long LOCAL_INDEX_MASK = SORT_INDEX_MASK;
-    /**
-     * Mask isolating mode+textureId+pxRange only — deliberately excludes BOTH localIndex and
-     * the kind bit, so a glyph and a decoration sharing the same atlas/mode/pxRange compare
-     * equal here and never trigger a transition purely because one came from the placements
-     * array and the other from resolveDecorations(). Kind still participates in the raw sort
-     * (glyphs sort before decorations within an otherwise-tied group), just not in this
-     * batch-state comparison.
-     */
-    private static final long SORT_BATCH_MASK = (~SORT_INDEX_MASK) & ~KIND_DECORATION_BIT;
+    // Sort-key packing lives in CgTextSortKey: the bit layout, the width arithmetic, and the
+    // batch-identity mask are one cohesive concern with invariants worth stating once and
+    // enforcing (the widths are checked to sum to 64, and out-of-range indices throw rather than
+    // aliasing two entries onto one key). See that class for why bit 63 stays clear and why
+    // `kind` sorts below the batch fields rather than above them.
 
-    private static long packBatchBits(boolean isDistanceField, int textureId, float pxRange) {
-        long mode = isDistanceField ? 1L : 0L;
-        long textureIdBits = textureId & 0xFFFFFFL;
-        long pxRangeBits = (Float.floatToRawIntBits(pxRange) & 0xFFFFFFFFL) >>> 10;
-        return (mode << SORT_MODE_SHIFT) | (textureIdBits << SORT_TEXTURE_SHIFT) | (pxRangeBits << SORT_PXRANGE_SHIFT);
-    }
-
-    private static long packGlyphSortKey(CgGlyphPlacement p, int glyphIndex) {
-        return packBatchBits(p.isDistanceField(), p.atlasTextureId(), p.pxRange()) | glyphIndex;
-    }
-
-    private static long packDecorationSortKey(CgResolvedGlyphs.ResolvedDecoration d, int decorationIndex) {
-        // isDistanceField/pxRange come straight off the same atlas a real glyph of this font
-        // would report (see CgResolvedGlyphs.ResolvedDecoration's javadoc) — that equality is
-        // what lets a decoration land in the exact same sorted batch as its font's glyphs,
-        // needing no material transition beyond what those glyphs already required.
-        return packBatchBits(d.isDistanceField(), d.atlasTextureId(), d.pxRange()) | KIND_DECORATION_BIT | decorationIndex;
-    }
 
     /**
      * Sorts this draw call's glyph placements ({@link CgResolvedGlyphs#placements}) AND baked
@@ -1096,11 +1028,11 @@ public class CgTextRenderer {
             for (int i = 0; i < glyphCount; i++) {
                 CgGlyphPlacement p = placements[i];
                 if (p != null && p.hasGeometry()) {
-                    scratchSortKeys[si++] = packGlyphSortKey(p, i);
+                    scratchSortKeys[si++] = CgTextSortKey.forGlyph(p, i);
                 }
             }
             for (int i = 0; i < resolvedDecorations.size(); i++) {
-                scratchSortKeys[si++] = packDecorationSortKey(resolvedDecorations.get(i), i);
+                scratchSortKeys[si++] = CgTextSortKey.forDecoration(resolvedDecorations.get(i), i);
             }
             Arrays.sort(scratchSortKeys, 0, totalCount);
         }
@@ -1124,13 +1056,13 @@ public class CgTextRenderer {
         try (CgProfiler.Scope ignored = CgProfiler.scope("quadLoop")) {
         for (int s = 0; s < totalCount; s++) {
             long key = scratchSortKeys[s];
-            long batchBits = key & SORT_BATCH_MASK;
-            boolean isDecoration = (key & KIND_DECORATION_BIT) != 0;
-            int localIndex = (int) (key & LOCAL_INDEX_MASK);
+            long batchBits = CgTextSortKey.batchOf(key);
+            boolean isDecoration = CgTextSortKey.isDecoration(key);
+            int localIndex = CgTextSortKey.localIndexOf(key);
 
             // Both branches only compute this entry's batch identity + quad geometry — the
             // actual transition check and quad() submission below are shared, so a decoration
-            // and a glyph in the same batch (the common case — see packDecorationSortKey)
+            // and a glyph in the same batch (the common case — see CgTextSortKey.forDecoration)
             // never duplicate either.
             CgGlyphPlacement p = null;
             boolean isDistanceField;
