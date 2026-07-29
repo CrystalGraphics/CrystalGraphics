@@ -100,9 +100,21 @@ final class CgResolvedGlyphs {
      *             cache entry (see {@link CgGlyphPlacementCache.Key#rgba()})
      * @return the number of glyphs resolved (may be 0 for an all-whitespace layout)
      */
+    /**
+     * Set during {@link #resolvePlacements} when any glyph resolved to {@code null} — i.e. it is
+     * queued for asynchronous generation and cannot be drawn yet.
+     *
+     * <p>Load-bearing for correctness, not performance. {@link CgGlyphPlacementCache} would happily
+     * store an array containing nulls, and the next frame would then be a cache <em>hit</em> on
+     * those nulls — so the glyph would never be re-requested and would stay invisible forever rather
+     * than for a frame. That is exactly what happened the first time this was attempted.
+     */
+    private boolean hasDeferredGlyphs;
+
     int resolve(CgTextLayout layout, float x, float y, long frame,
                 CgTextRenderContext context, int effectiveTargetPx, boolean wantMsdf,
                 CgFontKey fontKey, int rgba) {
+        hasDeferredGlyphs = false;
         long contentGeneration = registry.getAtlasContentGeneration();
         long evictionGeneration = registry.getAtlasEvictionGeneration();
 
@@ -164,6 +176,12 @@ final class CgResolvedGlyphs {
         // post-resolve value is the atlas state this entry's placements actually describe.
         // Scoped because it is four array copies per draw, and was the largest unattributed
         // remainder inside resolveGlyphs once its other children were measured.
+        if (hasDeferredGlyphs) {
+            // Do not cache a partially-resolved result. Re-resolving next frame is what lets the
+            // deferred glyphs appear once their worker results land; caching would freeze them out.
+            CgProfiler.count("placementCache.skippedDeferred");
+            return glyphCount;
+        }
         try (CgProfiler.Scope ignored = CgProfiler.scope("placementCache.put")) {
             CgGlyphPlacementCache.put(key, new CgGlyphPlacementCache.Entry(
                     distanceField, effectiveTargetPx,
@@ -287,6 +305,9 @@ final class CgResolvedGlyphs {
                             scratchGlyphKeys[i].isSyntheticBold(), scratchGlyphKeys[i].isSyntheticItalic());
             CgGlyphPlacement placement = registry.resolveGlyph(scratchFonts[i], glyphKey, effectiveTargetPx, scratchSubPixel[i], frame);
             scratchPlacements[i] = placement;
+            // null means the glyph is being generated on a worker and is not drawable yet. Recorded
+            // so resolve() can refuse to cache this array — see hasDeferredGlyphs.
+            if (placement == null) hasDeferredGlyphs = true;
             // hasGeometry() guard: a known-empty glyph (space/control — see
             // CgGlyphAtlas#markEmpty) resolves through the bitmap atlas and so reports
             // isDistanceField()==false, but it draws nothing at all and therefore cannot make

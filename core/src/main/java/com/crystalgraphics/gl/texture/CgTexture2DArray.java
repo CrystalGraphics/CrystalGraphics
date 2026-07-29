@@ -197,6 +197,11 @@ public final class CgTexture2DArray extends CgTextureAbstract {
     }
 
 
+    // NOTE: there is deliberately no upload-batching API here (a begin/end pair hoisting the bind
+    // and GL_UNPACK_ALIGNMENT setup out of a run of uploads). It was built twice and removed
+    // twice; see CgFontRegistry#drainCompletedGlyphs for the measurements and for what would have
+    // to be true of a workload to justify bringing it back.
+
     private void rawUpload(int layer, int x, int y, int w, int h, int format, int type, ByteBuffer data) {
         CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, textureId);
         // GL defaults GL_UNPACK_ALIGNMENT to 4 (rows padded to a 4-byte boundary in the
@@ -281,6 +286,15 @@ public final class CgTexture2DArray extends CgTextureAbstract {
      * <p>Intended as a cold-path operation — growth events should be rare
      * relative to per-frame work (e.g. a glyph atlas doubling its page budget
      * only when it actually runs out of room), not something called every frame.</p>
+     *
+     * <p><b>Rebinds the 2D-array target.</b> This binds other textures (the scratch array) and
+     * leaves the target unbound on exit — {@link #reallocateStorage} unbinds in its
+     * {@code finally}. Any future caller that hoists a bind across a run of uploads must account
+     * for that, because growth fires <em>indirectly</em>: nothing can predict which individual
+     * upload will be the one that exhausts the layers. Getting it wrong is silent — the uploads
+     * afterwards land on texture 0 and are simply lost. That is not a hypothetical; it is what
+     * happened the one time this was not accounted for (see
+     * {@code CgFontRegistry#drainCompletedGlyphs}).</p>
      *
      * @param newLayerCount new depth; must exceed the current {@link #getDepth()}
      */
