@@ -270,6 +270,9 @@ public class CgTextRenderer {
      */
     private final CgResolvedGlyphs resolvedGlyphs = new CgResolvedGlyphs(registry);
 
+    /** Per-renderer, since two renderers can be mid-draw under different projections. */
+    private final CgTextCuller culler = new CgTextCuller();
+
     /**
      * Grow-only per-glyph sort-key scratch for {@link #submitBatchedQuads} — see its javadoc
      * for the bit layout. Never needs more than {@code glyphCount} entries, so it's grown
@@ -1030,6 +1033,13 @@ public class CgTextRenderer {
         CgTextLayout resolvedLayout = resolved.layout();
 
         if (resolvedLayout == null || resolvedLayout.lines().isEmpty()) return;
+
+        // Before resolveGlyphs, not inside the quad loop: an off-screen layout otherwise pays for
+        // full glyph resolution and quad building before anything notices. See CgTextCuller.
+        if (culler.isCulled(resolvedLayout, draw.x, draw.y, context.projection(), pose.pose())) {
+            CgProfiler.count("text.drawsCulled");
+            return;
+        }
 
         long frame = CgGraphicsLifecycle.getCurrentFrame();
         int glyphCount;
