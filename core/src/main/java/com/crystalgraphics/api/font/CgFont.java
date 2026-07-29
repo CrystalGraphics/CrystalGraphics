@@ -6,6 +6,7 @@ import com.crystalgraphics.freetype.FTVariationAxisInfo;
 import com.crystalgraphics.freetype.FreeTypeException;
 import com.crystalgraphics.freetype.FreeTypeLibrary;
 import com.crystalgraphics.harfbuzz.HBFont;
+import com.crystalgraphics.util.profiling.CgProfiler;
 import com.crystalgraphics.text.FreeTypeHarfBuzzIntegration;
 import com.crystalgraphics.msdfgen.FreeTypeMSDFIntegration;
 
@@ -183,10 +184,29 @@ public class CgFont {
                 state.ftLibrary, state.ftFace, state.hbFont, baseFont);
     }
 
+    /**
+     * The single chokepoint every {@code load(...)} overload funnels through, which is why the
+     * profiling scope lives here rather than on the public entry points.
+     *
+     * <p>Font loading is a startup cost that had never been measured — it creates a FreeType
+     * library and face, optionally an HarfBuzz font, and parses the whole font file. Cheap per call
+     * but called once per font per size, and entirely on whichever thread asked.
+     */
     private static LoadedNativeState loadNativeState(byte[] data,
                                                      List<CgFontVariation> variations,
                                                      Integer targetPx,
                                                      boolean createHbFont) {
+        try (CgProfiler.Scope ignored = CgProfiler.scope("font.loadNative")) {
+            CgProfiler.count("font.loadNative.count");
+            CgProfiler.sample("font.loadNative.bytes", data.length);
+            return loadNativeStateInternal(data, variations, targetPx, createHbFont);
+        }
+    }
+
+    private static LoadedNativeState loadNativeStateInternal(byte[] data,
+                                                             List<CgFontVariation> variations,
+                                                             Integer targetPx,
+                                                             boolean createHbFont) {
         FreeTypeLibrary ftLib = FreeTypeLibrary.create();
         FTFace face = null;
         HBFont hbFont = null;

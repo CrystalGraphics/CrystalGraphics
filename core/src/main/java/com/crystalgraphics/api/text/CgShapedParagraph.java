@@ -1,5 +1,6 @@
 package com.crystalgraphics.api.text;
 
+import com.crystalgraphics.util.profiling.CgProfiler;
 import com.crystalgraphics.api.font.CgFontMetrics;
 import com.crystalgraphics.text.layout.CgReshapeContext;
 import com.crystalgraphics.text.layout.CgTextLayoutEngine;
@@ -74,8 +75,10 @@ public final class CgShapedParagraph {
      */
     public CgTextLayout layout(float maxWidth, float maxHeight) {
         if (lastLayout != null && maxWidth == lastMaxWidth && maxHeight == lastMaxHeight) {
+            CgProfiler.count("paragraphLayout.hit");
             return lastLayout;
         }
+        CgProfiler.count("paragraphLayout.miss");
         CgTextLayout result = CgTextLayoutEngine.wrap(slices, metrics, reshaper, ellipsisRuns, maxWidth, maxHeight, knobs);
         lastMaxWidth = maxWidth;
         lastMaxHeight = maxHeight;

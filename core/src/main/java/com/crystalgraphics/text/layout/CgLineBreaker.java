@@ -293,8 +293,14 @@ public class CgLineBreaker {
         // reshape and larger than shaping itself.
         int splitGlyph = sliceFastPathDisabled ? -1 : safeGlyphBoundary(context, run, runStart, breakPos);
 
+        // RTL glyphs are in visual order, so the logical prefix is the UPPER part of the array and
+        // the suffix the lower — the mirror image of the LTR split. Getting this backwards would
+        // silently render the two halves of every wrapped RTL line in the wrong places.
+        boolean rtl = run.rtl();
+        int glyphCount = run.glyphIds().length;
         CgShapedRun head = splitGlyph >= 0
-                ? sliceRun(run, 0, splitGlyph, runStart, runStart + breakPos)
+                ? (rtl ? sliceRun(run, splitGlyph, glyphCount, runStart, runStart + breakPos)
+                       : sliceRun(run, 0, splitGlyph, runStart, runStart + breakPos))
                 : reshaper.reshape(context, run, runStart, runStart + breakPos);
         if (head != null) {
             fragments.add(head);
@@ -303,7 +309,8 @@ public class CgLineBreaker {
         int tailStart = runStart + breakPos;
         if (tailStart < runEnd) {
             CgShapedRun tail = splitGlyph >= 0
-                    ? sliceRun(run, splitGlyph, run.glyphIds().length, tailStart, runEnd)
+                    ? (rtl ? sliceRun(run, 0, splitGlyph, tailStart, runEnd)
+                           : sliceRun(run, splitGlyph, glyphCount, tailStart, runEnd))
                     : reshaper.reshape(context, run, tailStart, runEnd);
             if (tail != null) {
                 if (tail.totalAdvance() > maxLineWidth) {
@@ -343,18 +350,21 @@ public class CgLineBreaker {
      * </ul>
      */
     /**
-     * Test-only escape hatch forcing every split through {@code reshaper}, bypassing
-     * {@link #sliceRun}. Exists so a test can wrap identical text both ways and assert the two
-     * produce identical layouts — which is the only way to show the slice path is correct rather
-     * than merely faster. Never set outside tests.
+     * Test-only escape hatch forcing every split <em>and every width measurement</em> through
+     * {@code reshaper}, bypassing {@link #sliceRun} and {@link #measurePrefixWidth}'s fast path.
+     *
+     * <p>Exists so a test can wrap identical text both ways and assert the two produce identical
+     * layouts — the only way to show these paths are correct rather than merely faster. It
+     * deliberately gates both: measurement decides *which* boundary is chosen, so a wrong fast
+     * measurement changes the resulting layout just as surely as a wrong slice, and a hatch that
+     * covered only slicing would leave half the risk untested.
+     *
+     * <p>Never set outside tests.
      */
     static boolean sliceFastPathDisabled = false;
 
     private static int safeGlyphBoundary(CgReshapeContext context, CgShapedRun run,
                                          int runStart, int breakPos) {
-        if (run.rtl()) {
-            return -1;
-        }
         boolean[] safeToBreakBefore = run.safeToBreakBefore();
         int[] clusterIds = run.clusterIds();
         if (safeToBreakBefore == null || clusterIds == null) {
@@ -363,13 +373,53 @@ public class CgLineBreaker {
 
         String runText = context.sourceText().substring(runStart, run.sourceEnd());
         int[] byteToChar = Utf8ClusterMapper.byteOffsetToCharOffset(runText);
-        int glyphIndex = glyphIndexAtCharOffset(clusterIds, byteToChar, breakPos);
+        int glyphIndex = run.rtl()
+                ? rtlGlyphIndexAtCharOffset(clusterIds, byteToChar, breakPos)
+                : glyphIndexAtCharOffset(clusterIds, byteToChar, breakPos);
         if (glyphIndex <= 0 || glyphIndex >= clusterIds.length) {
             // 0 would make an empty head; past the end makes an empty tail. Both mean there is
             // nothing to split, so fall back rather than fabricate a zero-glyph fragment.
             return -1;
         }
-        return safeToBreakBefore[glyphIndex] ? glyphIndex : -1;
+        // HarfBuzz's unsafe-to-break flag belongs to the glyph whose cluster *starts* at the break
+        // offset. Under LTR that glyph begins the tail and sits at glyphIndex. Under RTL the array
+        // is visually ordered, so the glyph starting that cluster is the top of the suffix — one
+        // below the split. Checking glyphIndex there tests the wrong boundary, which is what made
+        // sliced RTL diverge from a real reshape by a glyph's advance.
+        int flagIndex = run.rtl() ? glyphIndex - 1 : glyphIndex;
+        return safeToBreakBefore[flagIndex] ? glyphIndex : -1;
+    }
+
+    /**
+     * RTL counterpart of {@link #glyphIndexAtCharOffset}.
+     *
+     * <p>HarfBuzz emits RTL glyphs in <em>visual</em> order, so cluster ids run downward as the
+     * glyph index rises: the logically-first character is the last glyph in the array. A logical
+     * break therefore splits the array the other way round from LTR — everything at and above the
+     * returned index is the logical <em>prefix</em>, everything below it the suffix.
+     *
+     * <p>Returns the lowest glyph index whose cluster is still below {@code breakPos} in byte
+     * terms, which is the first glyph belonging to the logical prefix. Requires an exact cluster
+     * boundary for the same reason LTR does — landing mid-cluster would cut a cluster in half.
+     */
+    private static int rtlGlyphIndexAtCharOffset(int[] clusterIds, int[] byteToChar, int charOffset) {
+        int index = -1;
+        for (int i = clusterIds.length - 1; i >= 0; i--) {
+            int cluster = clusterIds[i];
+            if (cluster < 0 || cluster >= byteToChar.length) {
+                return -1;
+            }
+            int charAt = byteToChar[cluster];
+            if (charAt < charOffset) {
+                index = i;
+            } else if (charAt == charOffset) {
+                // Exact boundary: this glyph starts the suffix, so the prefix begins one above it.
+                return index;
+            } else {
+                break;
+            }
+        }
+        return -1;
     }
 
     /**
@@ -398,7 +448,11 @@ public class CgLineBreaker {
         boolean[] safeToBreakBefore = new boolean[count];
 
         int[] srcClusters = run.clusterIds();
-        int clusterBase = srcClusters[glyphFrom];
+        // Rebase by the SMALLEST cluster in the slice, which is the fragment's own logical start.
+        // For LTR that is at glyphFrom, but RTL clusters descend with glyph index, so there it is
+        // the last glyph in the range. Using glyphFrom unconditionally would leave every RTL tail
+        // with negative cluster ids and break every glyph-to-source mapping downstream.
+        int clusterBase = run.rtl() ? srcClusters[glyphTo - 1] : srcClusters[glyphFrom];
         float totalAdvance = 0f;
 
         for (int i = 0; i < count; i++) {
@@ -415,7 +469,7 @@ public class CgLineBreaker {
         return new CgShapedRun()
                 .fontKey(run.fontKey())
                 .resolvedFont(run.resolvedFont())
-                .rtl(false)
+                .rtl(run.rtl())
                 .glyphIds(glyphIds)
                 .clusterIds(clusterIds)
                 .advancesX(advancesX)
@@ -485,17 +539,37 @@ public class CgLineBreaker {
     private static float measurePrefixWidth(CgReshapeContext context, CgShapedRun run, int runStart,
                                              int breakPos, RunReshaper reshaper) {
         boolean[] safeToBreakBefore = run.safeToBreakBefore();
-        if (!run.rtl() && safeToBreakBefore != null) {
+        if (!sliceFastPathDisabled && safeToBreakBefore != null) {
             String runText = context.sourceText().substring(runStart, run.sourceEnd());
             int[] byteToChar = Utf8ClusterMapper.byteOffsetToCharOffset(runText);
-            int glyphIndex = glyphIndexAtCharOffset(run.clusterIds(), byteToChar, breakPos);
-            if (glyphIndex >= 0 && (glyphIndex == 0 || safeToBreakBefore[glyphIndex])) {
-                float[] advances = run.advancesX();
-                float width = 0f;
-                for (int i = 0; i < glyphIndex; i++) {
-                    width += advances[i];
+            float[] advances = run.advancesX();
+
+            if (run.rtl()) {
+                // Mirror of the LTR case, for the same reason the split itself mirrors: RTL glyphs
+                // are in visual order, so the logical prefix is the TOP of the array. Without this
+                // every binary-search step measuring a candidate boundary re-shaped the prefix
+                // through HarfBuzz purely to learn its width — measured at 2000 extra shape calls
+                // for 1000 wrapped Arabic labels, twice the shaping the text itself needed.
+                int glyphIndex = rtlGlyphIndexAtCharOffset(run.clusterIds(), byteToChar, breakPos);
+                int glyphCount = run.clusterIds().length;
+                // glyphIndex <= 0 means no exact cluster boundary, or a prefix starting at glyph 0
+                // (the whole run) — neither is a usable measurement, so fall through to a reshape.
+                if (glyphIndex > 0 && safeToBreakBefore[glyphIndex - 1]) {
+                    float width = 0f;
+                    for (int i = glyphIndex; i < glyphCount; i++) {
+                        width += advances[i];
+                    }
+                    return width;
                 }
-                return width;
+            } else {
+                int glyphIndex = glyphIndexAtCharOffset(run.clusterIds(), byteToChar, breakPos);
+                if (glyphIndex >= 0 && (glyphIndex == 0 || safeToBreakBefore[glyphIndex])) {
+                    float width = 0f;
+                    for (int i = 0; i < glyphIndex; i++) {
+                        width += advances[i];
+                    }
+                    return width;
+                }
             }
         }
 

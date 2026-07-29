@@ -4,6 +4,7 @@ import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgFontFamily;
 import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.text.render.CgGlyphPlacementCache;
+import com.crystalgraphics.util.profiling.CgProfiler;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -67,11 +68,22 @@ public final class CgTextLayoutCache {
 
     /** @return the cached layout if present, else {@code null} */
     public static CgTextLayout get(Key key) {
-        return MAP.get(key);
+        // Hit rate is reported because it decides how much any further shaping optimisation is
+        // worth: a hit skips shaping entirely, so a benchmark that misses every time (every label's
+        // text changing each frame) measures a workload real UI rarely produces. Without this
+        // number there is no way to tell which regime a given scene is in.
+        CgTextLayout layout = MAP.get(key);
+        if (layout != null) {
+            CgProfiler.count("layoutCache.hit");
+        } else {
+            CgProfiler.count("layoutCache.miss");
+        }
+        return layout;
     }
 
     public static void put(Key key, CgTextLayout layout) {
         MAP.put(key, layout);
+        CgProfiler.sample("layoutCache.size", MAP.size());
     }
 
     /**

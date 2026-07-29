@@ -122,11 +122,11 @@ public class CgVertexAttributeInjectionTest {
     @Test
     public void pos3Uv2Col4ub_vertexSource_containsCorrectDeclarations() {
         String vert = compile(shaderOf("pos3_uv2_col4ub")).vertexSource();
-        assertTrue("3D position must be vec3",             vert.contains("in vec3 a_pos;"));
-        assertTrue("UV must be vec2",                      vert.contains("in vec2 a_uv;"));
+        assertTrue("3D position must be vec3",             vert.contains("in vec3 cg_Position;"));
+        assertTrue("UV must be vec2",                      vert.contains("in vec2 cg_TexCoord0;"));
         // normalized UNSIGNED_BYTE×4 → float family → vec4 (not uvec4)
-        assertTrue("Normalized ubyte4 color must be vec4", vert.contains("in vec4 a_color;"));
-        assertFalse("Must not emit non-normalized uvec4",  vert.contains("in uvec4 a_color;"));
+        assertTrue("Normalized ubyte4 color must be vec4", vert.contains("in vec4 cg_Color;"));
+        assertFalse("Must not emit non-normalized uvec4",  vert.contains("in uvec4 cg_Color;"));
         assertTrue("Comment must name the format",
                 vert.contains("// Vertex attributes (format: pos3_uv2_col4ub)"));
     }
@@ -144,15 +144,20 @@ public class CgVertexAttributeInjectionTest {
     /**
      * Verifies that the 2D-textured-quad format generates a vec2 position declaration —
      * NOT vec3. This confirms the compiler picks the correct format from the registry
-     * and does not hard-code the SPATIAL attribute names.
+     * rather than hard-coding one.
+     *
+     * <p>Note that {@code pos2}, {@code pos3} and {@code spatial} now all name their position
+     * attribute {@code cg_Position} (renamed from {@code a_pos} in commit 328a617, aligning these
+     * formats with the {@code cg_*} aliases {@code cg_env.glsl} declares). The component count is
+     * therefore what distinguishes them, which is exactly what this asserts.</p>
      */
     @Test
     public void pos2Uv2Col4ub_vertexSource_positionIsVec2NotVec3() {
         String vert = compile(shaderOf("pos2_uv2_col4ub")).vertexSource();
-        assertTrue("2D position must be vec2", vert.contains("in vec2 a_pos;"));
-        assertFalse("2D format must NOT produce vec3 position", vert.contains("in vec3 a_pos;"));
-        assertTrue("UV must be vec2",          vert.contains("in vec2 a_uv;"));
-        assertTrue("Normalized ubyte4 color must be vec4", vert.contains("in vec4 a_color;"));
+        assertTrue("2D position must be vec2", vert.contains("in vec2 cg_Position;"));
+        assertFalse("2D format must NOT produce vec3 position", vert.contains("in vec3 cg_Position;"));
+        assertTrue("UV must be vec2",          vert.contains("in vec2 cg_TexCoord0;"));
+        assertTrue("Normalized ubyte4 color must be vec4", vert.contains("in vec4 cg_Color;"));
     }
     /**
      * Verifies correct format propagation for the POS2 variant.

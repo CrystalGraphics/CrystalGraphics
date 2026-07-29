@@ -9,6 +9,7 @@ import com.crystalgraphics.gl.vertex.CgVertexArray;
 import com.crystalgraphics.gl.vertex.CgVertexArrayBinding;
 import com.crystalgraphics.gl.vertex.CgVertexArrayRegistry;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.util.profiling.CgProfiler;
 import java.nio.ByteBuffer;
 
 /**
@@ -82,25 +83,54 @@ public final class CgBatchRenderer extends CgAbstractRenderer {
                     + staging.vertexCount());
         }
 
-        int quadCount = staging.quadCount();
-        int floatCount = staging.rawCursor();
-        int byteCount = floatCount * Float.BYTES;
+        // Instrumented per stage: this method was the single largest unmeasured block in the text
+        // draw path -- roughly a third of draw time belonged to no scope at all, because quadLoop
+        // covers submitting quads and nothing covered getting them to the GPU.
+        try (CgProfiler.Scope ignored = CgProfiler.scope("batch.flush")) {
+            int quadCount = staging.quadCount();
+            int floatCount = staging.rawCursor();
+            int byteCount = floatCount * Float.BYTES;
 
-        ByteBuffer mapped = binding.getStreamBuffer().map(byteCount);
-        mapped.asFloatBuffer().put(staging.rawData(), 0, floatCount);
-        int dataOffset = binding.getStreamBuffer().commit(byteCount);
+            CgProfiler.count("batch.flush.count");
+            CgProfiler.sample("batch.flush.quads", quadCount);
+            CgProfiler.sample("batch.flush.bytes", byteCount);
 
-        // VAO must be bound BEFORE rebindPointers — glVertexAttribPointer
-        // writes into the currently bound VAO state.
-        binding.getVertexArray().bind();
-        binding.rebindPointersIfNeeded(dataOffset);
-        CgQuadIndexBuffer.get().bindAndEnsureCapacity(quadCount);
+            ByteBuffer mapped;
+            try (CgProfiler.Scope ignored2 = CgProfiler.scope("batch.map")) {
+                mapped = binding.getStreamBuffer().map(byteCount);
+            }
+            try (CgProfiler.Scope ignored2 = CgProfiler.scope("batch.copyToMapped")) {
+                mapped.asFloatBuffer().put(staging.rawData(), 0, floatCount);
+            }
+            int dataOffset;
+            try (CgProfiler.Scope ignored2 = CgProfiler.scope("batch.commit")) {
+                dataOffset = binding.getStreamBuffer().commit(byteCount);
+            }
 
-        CgGL.glDrawElements(CgGL.GL_TRIANGLES, quadCount * 6, CgGL.GL_UNSIGNED_SHORT, 0L);
-        binding.getStreamBuffer().afterSubmit();
+            // VAO must be bound BEFORE rebindPointers — glVertexAttribPointer
+            // writes into the currently bound VAO state.
+            try (CgProfiler.Scope ignored2 = CgProfiler.scope("batch.bindVao")) {
+                binding.getVertexArray().bind();
+            }
+            try (CgProfiler.Scope ignored2 = CgProfiler.scope("batch.rebindPointers")) {
+                binding.rebindPointersIfNeeded(dataOffset);
+            }
+            try (CgProfiler.Scope ignored2 = CgProfiler.scope("batch.indexBuffer")) {
+                CgQuadIndexBuffer.get().bindAndEnsureCapacity(quadCount);
+            }
 
-        staging.reset();
-        staging.ensureRoomForNextVertex();
+            try (CgProfiler.Scope ignored2 = CgProfiler.scope("batch.drawElements")) {
+                CgGL.glDrawElements(CgGL.GL_TRIANGLES, quadCount * 6, CgGL.GL_UNSIGNED_SHORT, 0L);
+            }
+            try (CgProfiler.Scope ignored2 = CgProfiler.scope("batch.afterSubmit")) {
+                binding.getStreamBuffer().afterSubmit();
+            }
+
+            try (CgProfiler.Scope ignored2 = CgProfiler.scope("batch.stagingReset")) {
+                staging.reset();
+                staging.ensureRoomForNextVertex();
+            }
+        }
     }
 
     @Override

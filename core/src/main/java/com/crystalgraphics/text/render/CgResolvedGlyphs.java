@@ -106,8 +106,14 @@ final class CgResolvedGlyphs {
         long contentGeneration = registry.getAtlasContentGeneration();
         long evictionGeneration = registry.getAtlasEvictionGeneration();
 
-        CgGlyphPlacementCache.Key key = CgGlyphPlacementCache.key(layout, x, y, wantMsdf, fontKey, rgba);
-        CgGlyphPlacementCache.Entry hit = CgGlyphPlacementCache.get(key, effectiveTargetPx, contentGeneration, evictionGeneration, frame);
+        // Scoped because it runs on every draw whether or not it hits, so it is the one part of
+        // resolve() that a perfectly-cached frame still pays in full.
+        CgGlyphPlacementCache.Key key;
+        CgGlyphPlacementCache.Entry hit;
+        try (CgProfiler.Scope ignored = CgProfiler.scope("placementCache.lookup")) {
+            key = CgGlyphPlacementCache.key(layout, x, y, wantMsdf, fontKey, rgba);
+            hit = CgGlyphPlacementCache.get(key, effectiveTargetPx, contentGeneration, evictionGeneration, frame);
+        }
         if (hit != null) {
             CgProfiler.count("placementCache.hit");
             this.glyphX = hit.glyphX();
@@ -156,14 +162,18 @@ final class CgResolvedGlyphs {
         // entry with the pre-resolve value would make it stale the instant it was written,
         // guaranteeing a miss on the very next frame and defeating the cache entirely. The
         // post-resolve value is the atlas state this entry's placements actually describe.
-        CgGlyphPlacementCache.put(key, new CgGlyphPlacementCache.Entry(
-                distanceField, effectiveTargetPx,
-                registry.getAtlasContentGeneration(), registry.getAtlasEvictionGeneration(),
-                frame, glyphCount,
-                Arrays.copyOf(scratchGlyphX, glyphCount),
-                Arrays.copyOf(scratchGlyphY, glyphCount),
-                Arrays.copyOf(scratchArgbColor, glyphCount),
-                Arrays.copyOf(scratchPlacements, glyphCount)));
+        // Scoped because it is four array copies per draw, and was the largest unattributed
+        // remainder inside resolveGlyphs once its other children were measured.
+        try (CgProfiler.Scope ignored = CgProfiler.scope("placementCache.put")) {
+            CgGlyphPlacementCache.put(key, new CgGlyphPlacementCache.Entry(
+                    distanceField, effectiveTargetPx,
+                    registry.getAtlasContentGeneration(), registry.getAtlasEvictionGeneration(),
+                    frame, glyphCount,
+                    Arrays.copyOf(scratchGlyphX, glyphCount),
+                    Arrays.copyOf(scratchGlyphY, glyphCount),
+                    Arrays.copyOf(scratchArgbColor, glyphCount),
+                    Arrays.copyOf(scratchPlacements, glyphCount)));
+        }
 
         return glyphCount;
     }

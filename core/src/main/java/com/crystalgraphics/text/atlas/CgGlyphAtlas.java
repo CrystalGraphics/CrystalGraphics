@@ -745,6 +745,21 @@ public class CgGlyphAtlas {
      * @return the freed layer index
      */
     private int evictColdestPageAndFreeLayer() {
+        // The only atlas path that can stall *mid-session* rather than at startup, and the one
+        // benchmarks never reach because they do not fill the atlas. Instrumented so that when it
+        // does fire, its cost is attributable.
+        //
+        // The scope alone understates it: freeing the page is cheap, but dropping its glyphs bumps
+        // evictionGeneration, which invalidates every CgGlyphPlacementCache entry built against the
+        // old generation. Those re-resolve on their next draw, which can in turn pull glyphs back
+        // into the atlas. glyphsDropped is the size of that downstream wave and is the number to
+        // watch -- a cascade would show up as evictions clustering rather than as one slow frame.
+        try (CgProfiler.Scope ignored = CgProfiler.scope("atlas.evictPage")) {
+            return evictColdestPageAndFreeLayerInternal();
+        }
+    }
+
+    private int evictColdestPageAndFreeLayerInternal() {
         int coldestIndex = -1;
         long coldestFrame = Long.MAX_VALUE;
         for (int i = 0; i < pages.size(); i++) {
@@ -769,6 +784,8 @@ public class CgGlyphAtlas {
         // Must happen before evicted.delete(), which clears the page's own key set —
         // otherwise glyphIndex would keep stale entries pointing at a page whose layer
         // index is about to be handed to a brand-new page with completely different glyphs.
+        CgProfiler.count("atlas.evictPage.count");
+        CgProfiler.sample("atlas.evictPage.glyphsDropped", evicted.getGlyphKeys().size());
         for (CgGlyphKey key : evicted.getGlyphKeys()) glyphIndex.remove(key);
         
         LOGGER.fine("[AtlasDiag] Evicting atlas page/layer " + evicted.getPageIndex()
