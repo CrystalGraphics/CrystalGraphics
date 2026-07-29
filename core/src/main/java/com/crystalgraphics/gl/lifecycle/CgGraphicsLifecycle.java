@@ -69,6 +69,50 @@ public final class CgGraphicsLifecycle {
     // ── Canonical per-frame tick ────────────────────────────────────────────
     private static long frameCounter = 0;
 
+    // ── External lifecycle listeners ────────────────────────────────────────
+    /**
+     * Listeners owned by code outside CrystalGraphics — see {@link CgLifecycleListener}.
+     *
+     * <p>Storage, iteration order and failure isolation all live in
+     * {@link CgLifecycleListener.Registry}; what stays here is the policy that only this class can
+     * know — when a context becomes live, when it is torn down, and that a late registrant must be
+     * caught up.</p>
+     */
+    private static final CgLifecycleListener.Registry listeners = new CgLifecycleListener.Registry();
+
+    /**
+     * Registers a lifecycle listener. Idempotent — registering the same instance twice does not
+     * make it fire twice, since a double-fire of {@code onDestroy} would mean a double free.
+     *
+     * <p>Registration order is dispatch order for init/frame, and reverse dispatch order for
+     * destroy.</p>
+     *
+     * <h3>Late registration still receives {@code onInit}</h3>
+     * <p>If a context is already live ({@link #isInitialized()}), {@link CgLifecycleListener#onInit}
+     * fires <b>immediately, from this call</b>, with the current viewport size. The guarantee a
+     * listener can rely on is therefore "{@code onInit} exactly once per context, whether I
+     * registered before or after that context existed" — not "only if I happened to register early
+     * enough".</p>
+     *
+     * <p>Removing and re-adding a listener while a context is live will therefore deliver
+     * {@code onInit} again — which is the intended reading of re-subscribing.</p>
+     */
+    public static void addListener(CgLifecycleListener listener) {
+        if (!listeners.add(listener)) return;
+        if (initialized) listeners.fire(listener, "onInit", l -> l.onInit(currentWidth, currentHeight));
+        
+    }
+
+    /** Unregisters a listener. Safe to call from inside a callback. */
+    public static boolean removeListener(CgLifecycleListener listener) {
+        return listeners.remove(listener);
+    }
+
+    /** Whether a GL context is currently initialised. See {@link #addListener} for why this matters. */
+    public static boolean isInitialized() {
+        return initialized;
+    }
+
     private CgGraphicsLifecycle() {}
 
     /**
@@ -84,6 +128,11 @@ public final class CgGraphicsLifecycle {
         warmUpDeferredStartupCosts();
 
         initialized = true;
+
+        // Last, and after `initialized` is set: a listener may legitimately touch anything the
+        // engine just brought up (pipeline, fallback textures, capability probes), and may call back
+        // into isInitialized().
+        listeners.dispatch("onInit", l -> l.onInit(width, height));
     }
 
     /**
@@ -185,6 +234,7 @@ public final class CgGraphicsLifecycle {
     public static void tickFrame() {
         frameCounter++;
         CgFontRegistry.get().tickFrame(frameCounter);
+        listeners.dispatch("onFrame", l -> l.onFrame(frameCounter));
     }
 
     /**
@@ -218,6 +268,15 @@ public final class CgGraphicsLifecycle {
      * cleared. A new GL context can be initialised immediately afterwards.</p>
      */
     public static void destroyContext() {
+        // Step 0: External listeners, BEFORE the engine frees anything.
+        //
+        // This ordering is the whole contract. A listener (CrystalGUI's CgUiLifecycle, a mod's
+        // renderer) owns GL objects the engine has no handle on — its own framebuffers, renderers,
+        // buffers — and can only release them while the context is still whole. Run this after any
+        // of the sweeps below and those handles already refer to deleted objects, and any cache the
+        // listener holds of engine-owned resources (fonts, textures, materials) is silently stale.
+        listeners.dispatchReverse("onDestroy", CgLifecycleListener::onDestroy);
+
         // Step 1: ALL VAOs — CgVertexArrayRegistry.deleteAll() deletes instanced VAOs first,
         //   then non-instanced VAOs, ensuring no VBO referenced by a VAO is deleted first.
         CgVertexArrayRegistry.get().deleteAll();
