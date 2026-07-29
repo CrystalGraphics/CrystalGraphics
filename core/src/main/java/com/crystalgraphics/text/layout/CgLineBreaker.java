@@ -8,6 +8,7 @@ import com.crystalgraphics.util.profiling.CgProfiler;
 import java.text.Bidi;
 import java.text.BreakIterator;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
@@ -223,11 +224,7 @@ public class CgLineBreaker {
 
         int[] boundaries;
         try (CgProfiler.Scope ignored = CgProfiler.scope("lineBreak.collectBoundaries")) {
-            BreakIterator iterator;
-            try (CgProfiler.Scope ignored2 = CgProfiler.scope("lineBreak.iteratorCreate")) {
-                iterator = BreakIterator.getLineInstance(Locale.ROOT);
-            }
-            boundaries = collectBoundaries(iterator, segment);
+            boundaries = collectBoundaries(LINE_ITERATOR.get(), segment);
         }
         CgProfiler.count("lineBreak.splitCalls");
         CgProfiler.count("lineBreak.segmentChars", segment.length());
@@ -284,14 +281,25 @@ public class CgLineBreaker {
         int runEnd = run.sourceEnd();
         String segment = sourceText.substring(runStart, runEnd);
 
-        int[] boundaries = collectBoundaries(BreakIterator.getCharacterInstance(Locale.ROOT), segment);
-        if (boundaries.length == 0) {
+        // Slice of the paragraph-wide boundary set, not a fresh scan of this segment -- see
+        // CgReshapeContext#graphemeBoundaries for why that is equivalent and why it matters.
+        int[] all;
+        try (CgProfiler.Scope ignored = CgProfiler.scope("lineBreak.graphemeCollect")) {
+            all = context.graphemeBoundaries();
+        }
+        int from = lowerBound(all, runStart + 1); // strictly after the segment start
+        int to = lowerBound(all, runEnd);         // strictly before the segment end
+        CgProfiler.count("lineBreak.graphemeBoundaries", to - from);
+        if (to <= from) {
             return null;
         }
 
-        int best = findBestFittingBoundary(context, boundaries, run, runStart, availableWidth, reshaper);
+        int best;
+        try (CgProfiler.Scope ignored = CgProfiler.scope("lineBreak.graphemeFind")) {
+            best = findBestFittingBoundary(context, all, from, to, runStart, run, runStart, availableWidth, reshaper);
+        }
         if (best <= 0) {
-            best = boundaries[0];
+            best = all[from] - runStart;
         }
 
         List<CgShapedRun> fragments = buildFragments(context, run, runStart, runEnd, best, maxLineWidth, reshaper);
@@ -493,29 +501,40 @@ public class CgLineBreaker {
         // the same tail over and over".
         CgProfiler.count("lineBreak.slicedGlyphs", count);
         CgProfiler.count("lineBreak.sliceCalls");
-        int[] glyphIds = new int[count];
-        int[] clusterIds = new int[count];
-        float[] advancesX = new float[count];
-        float[] offsetsX = new float[count];
-        float[] offsetsY = new float[count];
-        boolean[] safeToBreakBefore = new boolean[count];
 
+        // Source arrays hoisted out of the copy loop. Five of the six are copied verbatim, so they
+        // go through Arrays.copyOfRange (System.arraycopy, an intrinsic) rather than an
+        // element-at-a-time loop that re-invoked five accessors per glyph.
+        //
+        // Worth doing because this method copies far more than it looks: buildFragments recurses on
+        // the tail, so a paragraph wrapped into N lines re-copies the shrinking remainder N times.
+        // Measured on a 3363-char paragraph: 66,636 glyphs copied for 6,726 real ones, 9.9x
+        // amplification. This does not remove that amplification — it makes each copy cheap. The
+        // quadratic itself needs buildFragments to iterate over the original run with a moving
+        // offset instead of slicing a fresh tail per line, which is a genuine restructure of
+        // RTL-sensitive code and is tracked separately in PERFORMANCE_TODO.
+        int[] srcGlyphIds = run.glyphIds();
         int[] srcClusters = run.clusterIds();
+        float[] srcAdvances = run.advancesX();
+        float[] srcOffsetsX = run.offsetsX();
+        float[] srcOffsetsY = run.offsetsY();
+        boolean[] srcSafe = run.safeToBreakBefore();
+
+        int[] glyphIds = Arrays.copyOfRange(srcGlyphIds, glyphFrom, glyphTo);
+        float[] advancesX = Arrays.copyOfRange(srcAdvances, glyphFrom, glyphTo);
+        float[] offsetsX = Arrays.copyOfRange(srcOffsetsX, glyphFrom, glyphTo);
+        float[] offsetsY = Arrays.copyOfRange(srcOffsetsY, glyphFrom, glyphTo);
+        boolean[] safeToBreakBefore = Arrays.copyOfRange(srcSafe, glyphFrom, glyphTo);
+
         // Rebase by the SMALLEST cluster in the slice, which is the fragment's own logical start.
         // For LTR that is at glyphFrom, but RTL clusters descend with glyph index, so there it is
         // the last glyph in the range. Using glyphFrom unconditionally would leave every RTL tail
         // with negative cluster ids and break every glyph-to-source mapping downstream.
         int clusterBase = run.rtl() ? srcClusters[glyphTo - 1] : srcClusters[glyphFrom];
+        int[] clusterIds = new int[count];
         float totalAdvance = 0f;
-
         for (int i = 0; i < count; i++) {
-            int src = glyphFrom + i;
-            glyphIds[i] = run.glyphIds()[src];
-            clusterIds[i] = srcClusters[src] - clusterBase;
-            advancesX[i] = run.advancesX()[src];
-            offsetsX[i] = run.offsetsX()[src];
-            offsetsY[i] = run.offsetsY()[src];
-            safeToBreakBefore[i] = run.safeToBreakBefore()[src];
+            clusterIds[i] = srcClusters[glyphFrom + i] - clusterBase;
             totalAdvance += advancesX[i];
         }
 
@@ -554,7 +573,45 @@ public class CgLineBreaker {
      *
      * @return the largest fitting boundary, or {@code -1} if even the first one doesn't fit
      */
+    /** Sums {@code advances[from, to)}. */
+    private static float sumAdvances(float[] advances, int from, int to) {
+        float sum = 0f;
+        for (int i = from; i < to; i++) sum += advances[i];
+        return sum;
+    }
+
+    /** Index of the first element of {@code sorted} that is {@code >= key}, else {@code length}. */
+    private static int lowerBound(int[] sorted, int key) {
+        int lo = 0, hi = sorted.length;
+        while (lo < hi) {
+            int mid = (lo + hi) >>> 1;
+            if (sorted[mid] < key) lo = mid + 1; else hi = mid;
+        }
+        return lo;
+    }
+
+    /**
+     * Whole-array form: candidates are {@code boundaries[0..length)} already relative to
+     * {@code runStart}.
+     */
     private int findBestFittingBoundary(CgReshapeContext context, int[] boundaries, CgShapedRun run, int runStart,
+                                         float availableWidth, RunReshaper reshaper) {
+        return findBestFittingBoundary(context, boundaries, 0, boundaries.length, 0, run, runStart,
+                availableWidth, reshaper);
+    }
+
+    /**
+     * Sub-range form, so a caller can search a slice of a shared, paragraph-wide boundary array
+     * without copying it. Candidate break positions are {@code boundaries[i] - offset}, i.e. the
+     * array holds absolute offsets into the source text and {@code offset} rebases them onto the
+     * run being split.
+     *
+     * @param from   first index to consider, inclusive
+     * @param to     last index to consider, exclusive
+     * @param offset subtracted from each entry to make it relative to {@code runStart}
+     */
+    private int findBestFittingBoundary(CgReshapeContext context, int[] boundaries, int from, int to, int offset,
+                                         CgShapedRun run, int runStart,
                                          float availableWidth, RunReshaper reshaper) {
         // Built once per search, not once per step. The byte->char map depends only on
         // (sourceText, runStart, run), every one of which is fixed for the whole binary search,
@@ -566,16 +623,23 @@ public class CgLineBreaker {
         // int[] map roughly 480 times. Measured on text-3d, where two such paragraphs made
         // wrap.breakLines 31.9 ms -- four times what HarfBuzz spent actually shaping the same text
         // (8.1 ms), which is backwards: breaking lines should be far cheaper than shaping them.
+        // TRIED AND REVERTED: prefix-summing advancesX here to make each fast-path measurement O(1)
+        // instead of O(glyphs). Asymptotically better and measurably nothing -- graphemeFind was
+        // 4.83 ms before and 4.55 ms after, inside run-to-run noise -- while adding a
+        // float[glyphs+1] allocation per search (~238 of them, ~13 KB each, on a cold frame).
+        // The summation was never the cost; glyphIndexAtCharOffset's linear scan over clusterIds is.
+        // Binary-searching that (clusterIds are monotonic, ascending for LTR and descending for RTL)
+        // is the change worth making if this path ever matters.
         int[] byteToChar = null;
         if (!sliceFastPathDisabled && run.safeToBreakBefore() != null) {
             byteToChar = Utf8ClusterMapper.byteOffsetToCharOffset(
                     context.sourceText().substring(runStart, run.sourceEnd()));
         }
 
-        int lo = 0, hi = boundaries.length - 1, best = -1;
+        int lo = from, hi = to - 1, best = -1;
         while (lo <= hi) {
             int mid = (lo + hi) >>> 1;
-            int breakPos = boundaries[mid];
+            int breakPos = boundaries[mid] - offset;
             float width = measurePrefixWidth(context, run, runStart, breakPos, reshaper, byteToChar);
             if (width <= availableWidth) {
                 best = breakPos;
@@ -627,21 +691,15 @@ public class CgLineBreaker {
                 // glyphIndex <= 0 means no exact cluster boundary, or a prefix starting at glyph 0
                 // (the whole run) — neither is a usable measurement, so fall through to a reshape.
                 if (glyphIndex > 0 && safeToBreakBefore[glyphIndex - 1]) {
-                    float width = 0f;
-                    for (int i = glyphIndex; i < glyphCount; i++) {
-                        width += advances[i];
-                    }
-                    return width;
+                    // Suffix sum [glyphIndex, glyphCount) == total - prefix[glyphIndex].
+                    CgProfiler.count("lineBreak.measureFastPath");
+                    return sumAdvances(advances, glyphIndex, glyphCount);
                 }
             } else {
                 int glyphIndex = glyphIndexAtCharOffset(run.clusterIds(), byteToChar, breakPos);
                 if (glyphIndex >= 0 && (glyphIndex == 0 || safeToBreakBefore[glyphIndex])) {
-                    float width = 0f;
-                    for (int i = 0; i < glyphIndex; i++) {
-                        width += advances[i];
-                    }
                     CgProfiler.count("lineBreak.measureFastPath");
-                    return width;
+                    return sumAdvances(advances, 0, glyphIndex);
                 }
             }
         }
@@ -680,21 +738,43 @@ public class CgLineBreaker {
      */
     private static int[] collectBoundaries(BreakIterator iterator, String segment) {
         iterator.setText(segment);
-        List<Integer> boundaries = new ArrayList<Integer>();
+        int length = segment.length();
+
+        // Grown int[] rather than an ArrayList<Integer>. The character-instance caller emits one
+        // boundary per grapheme, so the boxed version allocated an Integer for very nearly every
+        // character of every segment it scanned -- measured at 49,190 boxes across 105 grapheme
+        // fallbacks on one cold frame, which is most of what made that path 10.6 ms.
+        int[] result = new int[16];
+        int count = 0;
+
         iterator.first();
-        int boundary = iterator.next();
-        while (boundary != BreakIterator.DONE) {
-            if (boundary < segment.length()) {
-                boundaries.add(boundary);
-            }
-            boundary = iterator.next();
+        for (int boundary = iterator.next(); boundary != BreakIterator.DONE; boundary = iterator.next()) {
+            // The boundary at length() is excluded deliberately -- see this method's javadoc.
+            if (boundary >= length) continue;
+            if (count == result.length) result = Arrays.copyOf(result, count * 2);
+            result[count++] = boundary;
         }
-        int[] result = new int[boundaries.size()];
-        for (int i = 0; i < result.length; i++) {
-            result[i] = boundaries.get(i);
-        }
-        return result;
+        return count == result.length ? result : Arrays.copyOf(result, count);
     }
+
+    /**
+     * Per-thread {@link BreakIterator}s, because constructing one is not cheap (rule-based, with
+     * table setup) and {@link #splitAtGraphemeBreaks} was constructing a fresh character instance
+     * on every call — 105 of them on a single cold frame of {@code text-3d}.
+     *
+     * <p>Thread-local rather than plain fields: {@code CgTextLayoutEngine} holds one
+     * {@code CgLineBreaker} in a {@code static final}, so the breaker is shared process-wide, and
+     * {@code BreakIterator} is explicitly not thread-safe — it carries the text and a cursor. A
+     * shared instance would corrupt concurrent layout in a way that shows up as wrong wrap points
+     * under load and nowhere else.</p>
+     *
+     * <p>Both are stateless between uses from the caller's point of view: {@link #collectBoundaries}
+     * calls {@code setText} before reading anything, which resets the cursor.</p>
+     */
+    private static final ThreadLocal<BreakIterator> LINE_ITERATOR =
+            ThreadLocal.withInitial(() -> BreakIterator.getLineInstance(Locale.ROOT));
+    private static final ThreadLocal<BreakIterator> CHARACTER_ITERATOR =
+            ThreadLocal.withInitial(() -> BreakIterator.getCharacterInstance(Locale.ROOT));
 
     /**
      * Reorder runs within a single line from logical to visual order using

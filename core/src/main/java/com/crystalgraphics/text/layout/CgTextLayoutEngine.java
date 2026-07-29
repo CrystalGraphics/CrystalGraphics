@@ -23,6 +23,8 @@ import java.text.Bidi;
 import java.text.BreakIterator;
 import java.util.ArrayList;
 import java.util.BitSet;
+import com.crystalgraphics.api.text.CgFontFeature;
+
 import java.util.List;
 import java.util.Locale;
 import java.util.TreeSet;
@@ -96,8 +98,10 @@ public final class CgTextLayoutEngine {
      * always the regular one, and the resulting runs carry that span's color/decoration/
      * features/baseline-shift (see {@link CgShapedRun}'s rich-span fields).
      *
-     * <p>{@link CgStyleSpan#fontFamilyOverride()} is not consumed yet — only bold/italic
-     * drive family resolution. {@link CgParagraphKnobs#tabStopWidth()} is not implemented
+     * <p>Family resolution is driven by {@code bold}/{@code italic} against {@code group}, plus
+     * per-codepoint fallback inside {@link CgFontFamily#resolveRuns}. There is deliberately no
+     * per-span family override — one existed as an unconsumed {@code CgStyleSpan} field and was
+     * removed rather than implemented. {@link CgParagraphKnobs#tabStopWidth()} is not implemented
      * for this overload (v1 limitation — see that field's javadoc).</p>
      */
     public static CgShapedParagraph shapeStyled(CgStyledText text, CgFontFamilyGroup group, CgParagraphKnobs knobs) {
@@ -384,7 +388,11 @@ public final class CgTextLayoutEngine {
                 CgFontFamily resolvedFamily = group.resolve(requested);
 
                 int before = runs.size();
-                collectShapedRuns(text, subStart, subEnd, rtl, resolvedFamily, runs);
+                // Features must reach the shaper, not just the run: they change which glyphs
+                // HarfBuzz produces (ligatures, small caps, tabular figures), so applying them
+                // after shaping the way argbColor/decorations are applied would do nothing at all.
+                collectShapedRuns(text, subStart, subEnd, rtl, resolvedFamily, runs,
+                        span == null ? null : span.fontFeatures());
                 if (span != null) {
                     for (int idx = before; idx < runs.size(); idx++) {
                         runs.set(idx, applyStyle(runs.get(idx), span, requested, resolvedFamily));
@@ -579,7 +587,6 @@ public final class CgTextLayoutEngine {
                         .italic(span.italic())
                         .decorations(span.decorations())
                         .argbColor(span.argbColor())
-                        .fontFamilyOverride(span.fontFamilyOverride())
                         .fontFeatures(span.fontFeatures())
                         .baselineShift(span.baselineShift())
                         .build());
@@ -594,6 +601,17 @@ public final class CgTextLayoutEngine {
      * sources), then shapes each resulting {@link CgFontFamily.ResolvedFontRun} through HarfBuzz.
      */
     private static void collectShapedRuns(String text, int start, int end, boolean rtl, CgFontFamily family, List<CgShapedRun> out) {
+        collectShapedRuns(text, start, end, rtl, family, out, null);
+    }
+
+    /**
+     * @param features OpenType features to enable for this range's shaping, or {@code null}/empty
+     *                 for none. Applied at shaping time because they determine which glyphs exist
+     *                 at all — unlike colour or decorations, which are stamped onto the run
+     *                 afterwards.
+     */
+    private static void collectShapedRuns(String text, int start, int end, boolean rtl, CgFontFamily family,
+                                          List<CgShapedRun> out, List<CgFontFeature> features) {
         List<CgFontFamily.ResolvedFontRun> resolvedRuns;
         try (CgProfiler.Scope ignored = CgProfiler.scope("shape.resolveRuns")) {
             resolvedRuns = family.resolveRuns(text, start, end);
@@ -608,7 +626,8 @@ public final class CgTextLayoutEngine {
                         resolvedRun.getFontKey(),
                         resolvedFont,
                         rtl,
-                        hbFont);
+                        hbFont,
+                        features);
                 out.add(run);
             }
         }
@@ -714,12 +733,23 @@ public final class CgTextLayoutEngine {
                 float[] offsetsX = run.offsetsX();
                 float[] offsetsY = run.offsetsY();
                 float runStartX = penXCursor;
+                // Applied here, at bake, because this is the only place a glyph's final pen
+                // position is decided. Negative moves the run up the screen (superscript), matching
+                // the sign convention of penY itself, where the baseline grows downward.
+                //
+                // Deliberately does NOT feed line height. A shifted span can therefore overhang its
+                // line box, which is the same thing CSS `vertical-align` does for superscripts by
+                // default -- growing the line to fit would change the layout of every line that
+                // merely contains a shifted span, which is a much bigger behavioural change than
+                // "the glyph moves". If line-box growth is wanted later it belongs with the
+                // per-line metrics pass, not here.
+                float baselineShift = run.baselineShift();
                 for (int i = 0; i < ids.length; i++) {
                     fontKeys[index] = fontKey;
                     fonts[index] = font;
                     glyphIds[index] = ids[i];
                     penX[index] = penXCursor + offsetsX[i];
-                    penY[index] = lineBaseline + offsetsY[i];
+                    penY[index] = lineBaseline + offsetsY[i] + baselineShift;
                     offsetX[index] = offsetsX[i];
                     argbColor[index] = run.argbColor();
                     justifiable[index] = lineJustifiable[glyphInLine];

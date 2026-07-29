@@ -8,8 +8,11 @@ import com.crystalgraphics.harfbuzz.HBGlyphPosition;
 import com.crystalgraphics.harfbuzz.HBShape;
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgFontKey;
+import com.crystalgraphics.api.text.CgFontFeature;
 import com.crystalgraphics.api.text.CgShapedRun;
 import com.crystalgraphics.util.profiling.CgProfiler;
+
+import java.util.List;
 
 /**
  * Stateless text shaper that delegates to HarfBuzz for a single directional run.
@@ -102,6 +105,37 @@ public class CgTextShaper {
 
     public CgShapedRun shape(String text, int start, int end,
                              CgFontKey fontKey, CgFont resolvedFont, boolean rtl, HBFont hbFont) {
+        return shape(text, start, end, fontKey, resolvedFont, rtl, hbFont, null);
+    }
+
+    /**
+     * Converts {@code features} to HarfBuzz's own feature-string syntax, or returns {@code null}
+     * for none.
+     *
+     * <p>{@code "tag=value"} is what {@code hb_feature_from_string} parses — the same syntax
+     * {@code hb-shape --features} takes. The JNI layer runs every string through that parser and
+     * silently skips any it rejects, so a malformed tag degrades to "that feature is off" rather
+     * than failing the shape. {@link CgFontFeature} already enforces the 4-character tag length at
+     * construction, so rejection here would take real effort.</p>
+     */
+    private static String[] toHarfBuzzFeatures(List<CgFontFeature> features) {
+        if (features == null || features.isEmpty()) return null;
+        String[] out = new String[features.size()];
+        for (int i = 0; i < out.length; i++) {
+            CgFontFeature f = features.get(i);
+            out[i] = f.tag() + "=" + f.value();
+        }
+        return out;
+    }
+
+    /**
+     * @param features OpenType features to enable for this run, or {@code null} for none.
+     *                 Passed to HarfBuzz at shape time, which is the only point they can take
+     *                 effect — they decide which glyphs are produced.
+     */
+    public CgShapedRun shape(String text, int start, int end,
+                             CgFontKey fontKey, CgFont resolvedFont, boolean rtl, HBFont hbFont,
+                             List<CgFontFeature> features) {
         if (text == null) {
             throw new IllegalArgumentException("text must not be null");
         }
@@ -138,7 +172,7 @@ public class CgTextShaper {
         }
 
         try (CgProfiler.Scope ignored = CgProfiler.scope("hb.shape")) {
-            HBShape.shape(hbFont, buf);
+            HBShape.shape(hbFont, buf, toHarfBuzzFeatures(features));
         }
 
         // Primitive readback into reusable scratch. getGlyphInfos()/getGlyphPositions() would
@@ -160,6 +194,22 @@ public class CgTextShaper {
             pos = scratch.pos;
         }
 
+        // DELIBERATELY UNSCOPED — measured, then the scopes were removed again.
+        //
+        // This block (six per-run array allocations plus the O(glyphs) unpack below) is what the
+        // "~1.06 ms unattributed shaping gap" in PERFORMANCE_TODO turned out to contain. Scoping it
+        // measured it at 0.196 ms, with the substring and run construction adding 0.030 and
+        // 0.033 ms -- 0.259 ms total, against a ~1.06 ms gap.
+        //
+        // The rest of the gap is the profiler itself. text-stress issues ~1000 shape() calls per
+        // frame and the four scopes already inside this method cost ~1.00 ms at ~250 ns each; three
+        // more added ~0.75 ms. So instrumenting the gap costs more than the gap contains, and the
+        // measurement stopped being able to see past its own cost -- a control run without the new
+        // scopes came out *higher* than one with them, because run-to-run variance exceeds the
+        // effect.
+        //
+        // Do not re-add scopes here without a workload that shapes far less often than text-stress
+        // does. In a real UI, layout caching means shape() barely runs and none of this matters.
         int[] glyphIds = new int[glyphCount];
         int[] clusterIds = new int[glyphCount];
         float[] advancesX = new float[glyphCount];

@@ -15,7 +15,7 @@ public class CgStyleSpanTest {
     @Test
     public void testConstructor_storesFields() {
         CgStyleSpan span = new CgStyleSpan(0, 5, true, false,
-                Set.of(CgTextDecoration.UNDERLINE), 0xFFFF0000, List.of("Arial"),
+                Set.of(CgTextDecoration.UNDERLINE), 0xFFFF0000,
                 List.of(CgFontFeature.enable("smcp")), 2.0f);
 
         assertEquals(0, span.start());
@@ -24,32 +24,30 @@ public class CgStyleSpanTest {
         assertFalse(span.italic());
         assertEquals(Set.of(CgTextDecoration.UNDERLINE), span.decorations());
         assertEquals(0xFFFF0000, span.argbColor());
-        assertEquals(List.of("Arial"), span.fontFamilyOverride());
         assertEquals(List.of(CgFontFeature.enable("smcp")), span.fontFeatures());
         assertEquals(2.0f, span.baselineShift(), 0.001f);
     }
 
     @Test
     public void testConstructor_nullDecorations_defaultsToEmpty() {
-        CgStyleSpan span = new CgStyleSpan(0, 5, false, false, null, 0, null, null, 0);
+        CgStyleSpan span = new CgStyleSpan(0, 5, false, false, null, 0, null, 0);
         assertTrue(span.decorations().isEmpty());
     }
 
     @Test
     public void testConstructor_nullLists_defaultToEmpty() {
-        CgStyleSpan span = new CgStyleSpan(0, 5, false, false, null, 0, null, null, 0);
-        assertTrue(span.fontFamilyOverride().isEmpty());
+        CgStyleSpan span = new CgStyleSpan(0, 5, false, false, null, 0, null, 0);
         assertTrue(span.fontFeatures().isEmpty());
     }
 
     @Test(expected = IllegalArgumentException.class)
     public void testConstructor_rejectsNegativeStart() {
-        new CgStyleSpan(-1, 5, false, false, null, 0, null, null, 0);
+        new CgStyleSpan(-1, 5, false, false, null, 0, null, 0);
     }
 
     @Test(expected = IllegalArgumentException.class)
     public void testConstructor_rejectsEndNotAfterStart() {
-        new CgStyleSpan(5, 5, false, false, null, 0, null, null, 0);
+        new CgStyleSpan(5, 5, false, false, null, 0, null, 0);
     }
 
     @Test
@@ -60,7 +58,6 @@ public class CgStyleSpanTest {
         assertFalse(span.italic());
         assertTrue(span.decorations().isEmpty());
         assertEquals(0, span.argbColor());
-        assertTrue(span.fontFamilyOverride().isEmpty());
         assertTrue(span.fontFeatures().isEmpty());
         assertEquals(0f, span.baselineShift(), 0.001f);
     }

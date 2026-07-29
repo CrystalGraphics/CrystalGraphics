@@ -3,7 +3,9 @@ package com.crystalgraphics.text.render;
 import com.crystalgraphics.api.font.CgFontKey;
 import com.crystalgraphics.api.font.CgGlyphPlacement;
 import com.crystalgraphics.api.text.CgTextLayout;
+import com.crystalgraphics.util.profiling.CgProfiler;
 
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -56,10 +58,16 @@ public final class CgGlyphPlacementCache {
     private static final long MIN_REFRESH_FRAMES_WHILE_UNCONVERGED = 120;
 
     private static final Map<Key, Entry> MAP = new LinkedHashMap<>(CAPACITY * 4 / 3, 0.75f, true) {
-                protected boolean removeEldestEntry(Map.Entry<Key, Entry> eldest) {
-                    return size() > CAPACITY;
-                }
-            };
+        protected boolean removeEldestEntry(Map.Entry<Key, Entry> eldest) {
+            boolean evict = size() > CAPACITY;
+            // Keep the byte total honest when the count budget is what does the evicting.
+            // removeEldestEntry is the only eviction path that does not run through
+            // trimToByteBudget, so without this the running total drifts upward forever
+            // and eventually every put() would trigger a pointless trim sweep.
+            if (evict) cachedBytes -= eldest.getValue().estimatedBytes();
+            return evict;
+        }
+    };
 
     private CgGlyphPlacementCache() {
     }
@@ -82,7 +90,76 @@ public final class CgGlyphPlacementCache {
     }
 
     public static void put(Key key, Entry entry) {
-        MAP.put(key, entry);
+        Entry replaced = MAP.put(key, entry);
+        if (replaced != null) cachedBytes -= replaced.estimatedBytes();
+        cachedBytes += entry.estimatedBytes();
+        // removeEldestEntry already handled the count budget during put(); this handles the byte
+        // budget, which needs to evict more than one entry at a time and so cannot go through it.
+        trimToByteBudget();
+    }
+
+    /**
+     * Running estimate of the bytes held by all entries. Maintained incrementally rather than
+     * recomputed, so {@link #put} stays O(1).
+     */
+    private static long cachedBytes;
+
+    /**
+     * Byte ceiling, evicted against alongside {@link #CAPACITY}.
+     *
+     * <h4>Why a count alone was wrong</h4>
+     * <p>An {@link Entry} holds {@code glyphX}, {@code glyphY}, {@code argbColor} and
+     * {@code placements} arrays, so its real cost scales with that layout's glyph count — and
+     * glyph counts across entries differ by <strong>orders of magnitude</strong>. A two-glyph
+     * button and a 3363-glyph paragraph (a real case, measured in {@code text-3d}) counted
+     * identically toward a flat 1024-entry cap, which therefore bounded memory anywhere between a
+     * few hundred KB and ~69 MB depending purely on what was on screen. That is not a bound.
+     *
+     * <p>Skia's {@code SkStrikeCache} — the production analogue this was checked against — uses
+     * exactly this pair, 2 MB and 2048 entries, evicting LRU against whichever is reached first.
+     * 8 MB here because these entries are per-layout rather than per-glyph and the working set is
+     * a whole UI's worth of visible text; it is a memory ceiling, not a target, and a typical UI
+     * never approaches it.
+     */
+    private static final long MAX_BYTES = 8L * 1024L * 1024L;
+
+    /**
+     * Evicts least-recently-used entries until {@link #MAX_BYTES} is satisfied, but never empties
+     * the cache.
+     *
+     * <p>The last-entry guard matters: a single layout can exceed the whole budget on its own (a
+     * 3363-glyph paragraph is ~54 KB, and nothing stops a caller building something far larger).
+     * Evicting it the instant it is inserted would mean the one layout most expensive to resolve is
+     * the one layout never cached — every draw of it would re-resolve from scratch, which is
+     * precisely the cost this cache exists to remove. Better to sit over budget than to thrash.</p>
+     */
+    private static void trimToByteBudget() {
+        if (cachedBytes <= MAX_BYTES) return;
+        Iterator<Map.Entry<Key, Entry>> it = MAP.entrySet().iterator();
+        // Access-order LinkedHashMap: iteration starts at the least-recently-used entry, so this
+        // evicts in the same order removeEldestEntry would.
+        while (cachedBytes > MAX_BYTES && MAP.size() > 1 && it.hasNext()) {
+            Map.Entry<Key, Entry> eldest = it.next();
+            cachedBytes -= eldest.getValue().estimatedBytes();
+            it.remove();
+            CgProfiler.count("placementCache.evictedForBytes");
+        }
+    }
+
+    /** Drops every entry. Test-only; production invalidation happens via eviction generations. */
+    public static void clearForTest() {
+        MAP.clear();
+        cachedBytes = 0L;
+    }
+
+    /** Current estimated footprint, for diagnostics and tests. */
+    public static long estimatedBytes() {
+        return cachedBytes;
+    }
+
+    /** Entry count, for diagnostics and tests. */
+    public static int size() {
+        return MAP.size();
     }
 
     /**
@@ -171,6 +248,24 @@ public final class CgGlyphPlacementCache {
     public record Entry(boolean distanceField, int effectiveTargetPx, long builtContentGeneration,
                  long builtEvictionGeneration, long builtFrame, int glyphCount,
                  float[] glyphX, float[] glyphY, int[] argbColor, CgGlyphPlacement[] placements) {
+
+        /**
+         * Approximate heap footprint, for {@link #MAX_BYTES}. Four parallel arrays of
+         * {@code glyphCount}: three 4-byte primitives plus one reference (assumed 4 bytes under
+         * compressed oops), so 16 bytes per glyph, plus a fixed allowance for the record header,
+         * the four array headers and the scalar fields.
+         *
+         * <p>Deliberately an estimate rather than a measurement. It only has to be
+         * <em>proportional</em> to real cost for eviction to prioritise correctly, and the
+         * alternative — instrumentation-based sizing — costs more than the cache saves. It counts
+         * the {@code placements} array itself but <strong>not</strong> the
+         * {@link CgGlyphPlacement} objects it points at: those are owned by the atlas and shared
+         * across every entry that references the same glyph, so charging them here would
+         * multiply-count them and evict far too eagerly.</p>
+         */
+        public long estimatedBytes() {
+            return 96L + (long) glyphCount * 16L;
+        }
 
         /**
          * Revision-based staleness — this entry is valid until something it was built against
