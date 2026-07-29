@@ -3,6 +3,7 @@ package com.crystalgraphics.text.layout;
 import com.crystalgraphics.api.font.CgFontMetrics;
 import com.crystalgraphics.api.text.CgShapedRun;
 import com.crystalgraphics.api.text.CgTextLayout;
+import com.crystalgraphics.util.profiling.CgProfiler;
 
 import java.text.Bidi;
 import java.text.BreakIterator;
@@ -220,16 +221,40 @@ public class CgLineBreaker {
             return null;
         }
 
-        int[] boundaries = collectBoundaries(BreakIterator.getLineInstance(Locale.ROOT), segment);
-        int best = findBestFittingBoundary(context, boundaries, run, runStart, availableWidth, reshaper);
+        int[] boundaries;
+        try (CgProfiler.Scope ignored = CgProfiler.scope("lineBreak.collectBoundaries")) {
+            BreakIterator iterator;
+            try (CgProfiler.Scope ignored2 = CgProfiler.scope("lineBreak.iteratorCreate")) {
+                iterator = BreakIterator.getLineInstance(Locale.ROOT);
+            }
+            boundaries = collectBoundaries(iterator, segment);
+        }
+        CgProfiler.count("lineBreak.splitCalls");
+        CgProfiler.count("lineBreak.segmentChars", segment.length());
+        int best;
+        try (CgProfiler.Scope ignored = CgProfiler.scope("lineBreak.findBoundary")) {
+            best = findBestFittingBoundary(context, boundaries, run, runStart, availableWidth, reshaper);
+        }
 
         if (best <= 0) {
             // Nothing at word granularity fits. Only force a character-level break when this
             // is genuinely a last resort (see allowGraphemeFallback's doc) — otherwise defer
             // to the whole-run relocation path, which moves the token to a fresh line intact.
-            return allowGraphemeFallback
-                    ? splitAtGraphemeBreaks(context, run, availableWidth, maxLineWidth, reshaper)
-                    : null;
+            if (!allowGraphemeFallback) return null;
+            // Counted, deliberately NOT scoped: this path recurses back through buildFragments into
+            // splitAtLineBreaks, so a scope here re-enters itself and its total double-counts
+            // (measured 154.9 ms against a 30.4 ms parent). The count is the diagnostic that
+            // matters anyway -- it says how often word-level breaking failed and a whole second,
+            // character-level breaking pass had to run.
+            //
+            // Worth knowing what a high ratio means: it is a property of the TEXT, not a defect.
+            // Prose breaks at word boundaries and never comes here. Text with almost no break
+            // opportunities -- CJK, symbol ranges, one enormous token -- comes here on nearly every
+            // line. A 3363-char string containing a single space measured 105 fallbacks across 133
+            // splits and 30 ms of breakLines, while 1000 realistically-wrapped Latin labels
+            // measured 0.748 ms total. Check this counter before concluding line breaking is slow.
+            CgProfiler.count("lineBreak.graphemeFallbacks");
+            return splitAtGraphemeBreaks(context, run, availableWidth, maxLineWidth, reshaper);
         }
 
         List<CgShapedRun> fragments = buildFragments(context, run, runStart, runEnd, best, maxLineWidth, reshaper);
@@ -291,27 +316,49 @@ public class CgLineBreaker {
         // boundaries; this extends it to actually building the fragments, which was still paying
         // two HarfBuzz calls per split. Measured at 1000 wrapped labels, breakLines was 43% of a
         // reshape and larger than shaping itself.
-        int splitGlyph = sliceFastPathDisabled ? -1 : safeGlyphBoundary(context, run, runStart, breakPos);
+        int splitGlyph;
+        try (CgProfiler.Scope ignored = CgProfiler.scope("lineBreak.safeGlyphBoundary")) {
+            splitGlyph = sliceFastPathDisabled ? -1 : safeGlyphBoundary(context, run, runStart, breakPos);
+        }
 
         // RTL glyphs are in visual order, so the logical prefix is the UPPER part of the array and
         // the suffix the lower — the mirror image of the LTR split. Getting this backwards would
         // silently render the two halves of every wrapped RTL line in the wrong places.
         boolean rtl = run.rtl();
         int glyphCount = run.glyphIds().length;
-        CgShapedRun head = splitGlyph >= 0
-                ? (rtl ? sliceRun(run, splitGlyph, glyphCount, runStart, runStart + breakPos)
-                       : sliceRun(run, 0, splitGlyph, runStart, runStart + breakPos))
-                : reshaper.reshape(context, run, runStart, runStart + breakPos);
+        CgShapedRun head;
+        if (splitGlyph >= 0) {
+            try (CgProfiler.Scope ignored = CgProfiler.scope("lineBreak.sliceRun")) {
+                head = rtl ? sliceRun(run, splitGlyph, glyphCount, runStart, runStart + breakPos)
+                           : sliceRun(run, 0, splitGlyph, runStart, runStart + breakPos);
+            }
+        } else {
+            // The slow half of the split, and previously unscoped -- which made it invisible and
+            // let its cost be attributed to sliceRun by subtraction. A fragment reshape is a full
+            // HarfBuzz call, so a handful of these outweighs thousands of array copies.
+            CgProfiler.count("lineBreak.fragmentReshapes");
+            try (CgProfiler.Scope ignored = CgProfiler.scope("lineBreak.fragmentReshape")) {
+                head = reshaper.reshape(context, run, runStart, runStart + breakPos);
+            }
+        }
         if (head != null) {
             fragments.add(head);
         }
 
         int tailStart = runStart + breakPos;
         if (tailStart < runEnd) {
-            CgShapedRun tail = splitGlyph >= 0
-                    ? (rtl ? sliceRun(run, 0, splitGlyph, tailStart, runEnd)
-                           : sliceRun(run, splitGlyph, glyphCount, tailStart, runEnd))
-                    : reshaper.reshape(context, run, tailStart, runEnd);
+            CgShapedRun tail;
+            if (splitGlyph >= 0) {
+                try (CgProfiler.Scope ignored = CgProfiler.scope("lineBreak.sliceRun")) {
+                    tail = rtl ? sliceRun(run, 0, splitGlyph, tailStart, runEnd)
+                               : sliceRun(run, splitGlyph, glyphCount, tailStart, runEnd);
+                }
+            } else {
+                CgProfiler.count("lineBreak.fragmentReshapes");
+                try (CgProfiler.Scope ignored = CgProfiler.scope("lineBreak.fragmentReshape")) {
+                    tail = reshaper.reshape(context, run, tailStart, runEnd);
+                }
+            }
             if (tail != null) {
                 if (tail.totalAdvance() > maxLineWidth) {
                     // maxLineWidth here IS a full, fresh line's width (the tail starts a new
@@ -440,6 +487,12 @@ public class CgLineBreaker {
     private static CgShapedRun sliceRun(CgShapedRun run, int glyphFrom, int glyphTo,
                                         int sourceStart, int sourceEnd) {
         int count = glyphTo - glyphFrom;
+        // Counted because the recursive head/tail split makes total copied glyphs quadratic in run
+        // length if the tail is re-sliced on every line: comparing this against the run's actual
+        // glyph count is what distinguishes "slicing is inherently the cost" from "we are copying
+        // the same tail over and over".
+        CgProfiler.count("lineBreak.slicedGlyphs", count);
+        CgProfiler.count("lineBreak.sliceCalls");
         int[] glyphIds = new int[count];
         int[] clusterIds = new int[count];
         float[] advancesX = new float[count];
@@ -503,11 +556,27 @@ public class CgLineBreaker {
      */
     private int findBestFittingBoundary(CgReshapeContext context, int[] boundaries, CgShapedRun run, int runStart,
                                          float availableWidth, RunReshaper reshaper) {
+        // Built once per search, not once per step. The byte->char map depends only on
+        // (sourceText, runStart, run), every one of which is fixed for the whole binary search,
+        // but measurePrefixWidth used to rebuild it on each iteration -- a substring copy of the
+        // entire remaining run plus a full UTF-8 scan of it, per step.
+        //
+        // That made line breaking superlinear in run length for no reason: ~12 steps per line and
+        // one line per ~80 chars means a 3363-char paragraph rebuilt a 3363-char String and its
+        // int[] map roughly 480 times. Measured on text-3d, where two such paragraphs made
+        // wrap.breakLines 31.9 ms -- four times what HarfBuzz spent actually shaping the same text
+        // (8.1 ms), which is backwards: breaking lines should be far cheaper than shaping them.
+        int[] byteToChar = null;
+        if (!sliceFastPathDisabled && run.safeToBreakBefore() != null) {
+            byteToChar = Utf8ClusterMapper.byteOffsetToCharOffset(
+                    context.sourceText().substring(runStart, run.sourceEnd()));
+        }
+
         int lo = 0, hi = boundaries.length - 1, best = -1;
         while (lo <= hi) {
             int mid = (lo + hi) >>> 1;
             int breakPos = boundaries[mid];
-            float width = measurePrefixWidth(context, run, runStart, breakPos, reshaper);
+            float width = measurePrefixWidth(context, run, runStart, breakPos, reshaper, byteToChar);
             if (width <= availableWidth) {
                 best = breakPos;
                 lo = mid + 1;
@@ -535,13 +604,16 @@ public class CgLineBreaker {
      * any other case (unknown data, no exact cluster match, or the boundary marked unsafe)
      * falls back to re-shaping — so output is always identical to the non-optimized path,
      * this only ever changes how many re-shape calls that output costs.</p>
+     *
+     * @param byteToChar byte-offset-to-char-offset map for {@code [runStart, run.sourceEnd())},
+     *                   built once per binary search by {@link #findBestFittingBoundary} — it is
+     *                   invariant across the search, and rebuilding it per step is what made line
+     *                   breaking superlinear in run length. {@code null} disables the fast path.
      */
     private static float measurePrefixWidth(CgReshapeContext context, CgShapedRun run, int runStart,
-                                             int breakPos, RunReshaper reshaper) {
+                                             int breakPos, RunReshaper reshaper, int[] byteToChar) {
         boolean[] safeToBreakBefore = run.safeToBreakBefore();
-        if (!sliceFastPathDisabled && safeToBreakBefore != null) {
-            String runText = context.sourceText().substring(runStart, run.sourceEnd());
-            int[] byteToChar = Utf8ClusterMapper.byteOffsetToCharOffset(runText);
+        if (!sliceFastPathDisabled && safeToBreakBefore != null && byteToChar != null) {
             float[] advances = run.advancesX();
 
             if (run.rtl()) {
@@ -568,13 +640,21 @@ public class CgLineBreaker {
                     for (int i = 0; i < glyphIndex; i++) {
                         width += advances[i];
                     }
+                    CgProfiler.count("lineBreak.measureFastPath");
                     return width;
                 }
             }
         }
 
-        CgShapedRun prefix = reshaper.reshape(context, run, runStart, runStart + breakPos);
-        return prefix != null ? prefix.totalAdvance() : Float.MAX_VALUE;
+        // Counted, not assumed: the fast path silently degrading to a HarfBuzz re-shape per
+        // binary-search step is the difference between line breaking costing microseconds and
+        // costing more than shaping the text did. Which of these two counters dominates decides
+        // where any further work belongs.
+        CgProfiler.count("lineBreak.measureReshape");
+        try (CgProfiler.Scope ignored = CgProfiler.scope("lineBreak.reshape")) {
+            CgShapedRun prefix = reshaper.reshape(context, run, runStart, runStart + breakPos);
+            return prefix != null ? prefix.totalAdvance() : Float.MAX_VALUE;
+        }
     }
 
     /**
