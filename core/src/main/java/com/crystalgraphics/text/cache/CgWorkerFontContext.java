@@ -1,5 +1,6 @@
 package com.crystalgraphics.text.cache;
 
+import com.crystalgraphics.util.profiling.CgProfiler;
 import com.crystalgraphics.freetype.FTBitmap;
 import com.crystalgraphics.freetype.FTFace;
 import com.crystalgraphics.freetype.FTLoadFlags;
@@ -35,7 +36,19 @@ final class CgWorkerFontContext {
         this.ftLibrary = FreeTypeLibrary.create();
     }
 
+    /**
+     * Instrumented separately from {@code freetype.rasterize}, which covers only the *synchronous*
+     * render-thread fallback in {@code CgFontRegistry}. This is the same work on a background
+     * worker, and without its own scope it was invisible: a cross-thread report showed MSDF
+     * generation but nothing of the bitmap glyphs generated alongside it.
+     */
     CgGlyphGenerationResult generateBitmap(CgGlyphGenerationJob job) {
+        try (CgProfiler.Scope ignored = CgProfiler.scope("worker.rasterizeBitmap")) {
+            return generateBitmapInternal(job);
+        }
+    }
+
+    private CgGlyphGenerationResult generateBitmapInternal(CgGlyphGenerationJob job) {
         FTFace face = getBitmapFace(job.getSourceFontKey(), job.getFontBytes());
         face.setPixelSizes(0, job.getEffectiveTargetPx());
 

@@ -155,8 +155,18 @@ public class CgFontRegistry {
      * independent of the byte budget above — bounds per-frame driver-call
      * overhead even for a queue of many tiny glyphs (e.g. punctuation) that
      * would otherwise pass the byte budget for a very long time.
+     *
+     * <p>Raised from 256 once the bitmap fallback became asynchronous. That change put thousands of
+     * <em>tiny</em> results through this drain — a bitmap glyph uploads ~576 bytes against an MTSDF
+     * glyph's ~82 KB — so the count cap, not the byte budget, became what limited convergence: a
+     * cold CJK screen needs ~8700 glyphs, and at 256/frame that is 34 frames of visibly incomplete
+     * text before the byte budget is anywhere near spent.
+     *
+     * <p>The byte budget above and the wall-clock budget below still bound the real cost, and both
+     * scale with what is actually being uploaded. This cap only exists to bound driver-call count,
+     * so it can be generous when the calls are small.
      */
-    private static final int MAX_COMMIT_COUNT_PER_FRAME = 256;
+    private static final int MAX_COMMIT_COUNT_PER_FRAME = 2048;
 
     /**
      * Wall-clock ceiling for one frame's async-commit drain, in nanoseconds.
@@ -237,7 +247,8 @@ public class CgFontRegistry {
             // 1. Drain completed async results first so they are available
             //    to ensureGlyph* calls later in the same frame.
             try (CgProfiler.Scope drain = CgProfiler.scope("drainCompletedGlyphs")) {
-                    drainCompletedGlyphs(frame, MAX_COMMIT_BYTES_PER_FRAME, MAX_COMMIT_COUNT_PER_FRAME, MAX_COMMIT_NANOS_PER_FRAME);
+                    drainCompletedGlyphs(frame, MAX_COMMIT_BYTES_PER_FRAME, MAX_COMMIT_COUNT_PER_FRAME,
+                            commitNanosForBacklog(glyphGenerationExecutor.completedBacklog()));
             }
 
             // 2. Tick every  atlas family.
@@ -828,6 +839,37 @@ public class CgFontRegistry {
                 new CgRasterGlyphKey(bitmapRasterKey, atlasKey.getGlyphId(), false, subPixelBucket,
                         atlasKey.isSyntheticBold(), atlasKey.isSyntheticItalic()));
 
+        // Already rasterised by a worker on an earlier frame -> just use it.
+        CgGlyphAtlas bitmapAtlas = getBitmapAtlas();
+        CgGlyphPlacement bitmapCached = bitmapAtlas.get(bitmapAtlasKey, currentFrame);
+        if (bitmapCached != null) {
+            CgProfiler.count("glyph.bitmap.atlasHit");
+            return bitmapCached;
+        }
+
+        // Generate on a worker and draw nothing for this glyph this frame, rather than rasterising
+        // here. Rasterising synchronously put every bitmap glyph on the render thread: 4810 calls
+        // totalling 387 ms, essentially all inside frame 1 — the largest single block of
+        // render-thread work in the engine. A glyph arriving a frame or two late is imperceptible;
+        // a half-second frame is not.
+        //
+        // Returning null is safe: submitBatchedQuads skips null placements when building sort keys.
+        // What is NOT safe is letting that null be cached — see resolvePlacements, which refuses to
+        // cache a placement array containing one, so the glyph is re-requested next frame instead of
+        // being permanently invisible.
+        CgGlyphGenerationJob job = CgGlyphGenerationJob.bitmap(
+                font.getKey(), font.getFontBytes(), bitmapAtlasKey, bitmapRasterKey,
+                effectiveTargetPx, subPixelBucket);
+
+        // Fall back to synchronous generation whenever the async route cannot be relied on:
+        // a previously failed job is refused forever, and a rejected submission (queue full) means
+        // nothing is coming. Both would otherwise leave this glyph invisible indefinitely.
+        if (!glyphGenerationExecutor.hasFailed(job) && glyphGenerationExecutor.submit(job)) {
+            CgProfiler.count("glyph.bitmap.deferredToWorker");
+            return null;
+        }
+
+        CgProfiler.count("glyph.bitmap.syncFallbackAfterAsyncRefused");
         return ensureBitmapGlyph(font, bitmapAtlasKey, bitmapRasterKey,
                 effectiveTargetPx, subPixelBucket, currentFrame);
     }
@@ -876,6 +918,73 @@ public class CgFontRegistry {
     //  tickFrame() at the start of each render frame.
     // ────────────────────────────────────────────────────────────────────
 
+    /**
+     * Per-frame commit budget, scaled to the size of the backlog.
+     *
+     * <p>A flat 2 ms is right in steady state — the queue is empty or nearly so, and the budget is
+     * never reached. It is wrong immediately after a cold screen, where thousands of glyphs finish
+     * at once: at ~15 us per upload, 2 ms buys ~130 glyphs, so ~8700 of them take ~65 frames and the
+     * text visibly fills in over more than a second. Measured directly — {@code timeBudgetHit} fired
+     * on every early frame while the count and byte budgets sat at a fraction of their caps.
+     *
+     * <p>Scaling with the backlog spends more only when there is a visible backlog to clear, and
+     * changes nothing once there is not. The ceiling stays well inside a frame so that clearing a
+     * backlog never becomes its own stall — the whole point of moving this work off the render
+     * thread was to stop trading a smooth frame for a fast one.
+     */
+    private static long commitNanosForBacklog(int backlog) {
+        if (backlog <= COMMIT_BACKLOG_SMALL) return MAX_COMMIT_NANOS_PER_FRAME;
+        if (backlog <= COMMIT_BACKLOG_LARGE) return MAX_COMMIT_NANOS_PER_FRAME * 2L;
+        return MAX_COMMIT_NANOS_PER_FRAME * 3L;
+    }
+
+    /** Backlog below which the steady-state budget applies unchanged. */
+    private static final int COMMIT_BACKLOG_SMALL = 256;
+    /** Backlog above which the largest budget applies — a cold screen, not a trickle. */
+    private static final int COMMIT_BACKLOG_LARGE = 2048;
+
+    /**
+     * Commits finished glyph results into their atlases, within the given budgets.
+     *
+     * <h4>Uploads are deliberately NOT batched — built twice, measured, deleted twice</h4>
+     * <p>The idea: bind the atlas texture and set {@code GL_UNPACK_ALIGNMENT} once for the whole
+     * drain instead of per glyph, since every {@code glTexSubImage3D} otherwise carries a bind, a
+     * {@code glGetInteger(GL_UNPACK_ALIGNMENT)}, a {@code glPixelStorei}, a restore and an unbind,
+     * none of which change between glyphs going into the same texture. Both attempts are gone:</p>
+     * <ol>
+     *   <li><b>First — incorrect.</b> Committing a glyph can grow the atlas, and
+     *       {@link CgTexture2DArray#growLayers} rebinds and then <em>unbinds</em> the 2D-array
+     *       target. Uploads after that skip their own bind, land on texture 0 and vanish; the
+     *       glyphs regenerate and convergence went ~1.0s -> ~5s. Silent — nothing throws, the only
+     *       symptom is that it gets slower.</li>
+     *   <li><b>Second — correct, but not worth having.</b> With growth suspending the batch and
+     *       the batch scoped per atlas, an A/B in {@code text-3d} measured {@code texSubImage}
+     *       8.08 us -> 6.73 us (1.20x; 1.22x after also grouping commits by tier, since MSDF and
+     *       bitmap results interleave and were flipping the batch on nearly every glyph — 3550
+     *       switches across 3627 uploads).</li>
+     * </ol>
+     *
+     * <h4>Why it does not pay, and the counter that hid it</h4>
+     * <p>The premise was simply false. This drain performs <strong>4.6 texture uploads per frame
+     * — median 4, max 37 across an 857-frame run</strong>, not the thousands the optimisation was
+     * designed around. The entire {@code texArray.upload.texSubImage} scope totals 24.9 ms across
+     * that run, i.e. 0.029 ms/frame, so a 1.22x cut saves roughly <strong>5 microseconds per
+     * frame</strong> — in exchange for a bind-lifetime invariant spanning three classes that had
+     * already broken once.</p>
+     *
+     * <p>What made a trickle look like a flood: {@code asyncCommit.glyphsUploaded} counts commits
+     * <em>attempted</em>, not uploads <em>performed</em> — {@link #commitGeneratedGlyph}
+     * early-returns for a glyph already in the atlas or with empty geometry. In the same run the
+     * two differ by ~16x (61787 counted vs 3752 actual {@code glTexSubImage3D} calls). Measure
+     * with the {@code texSubImageCalls} column in {@code TextScene3D}'s CSV, never with
+     * {@code glyphsUploaded}.</p>
+     *
+     * <p><b>Before rebuilding it</b>, check that column and confirm the workload actually issues
+     * uploads in bulk within a single frame — a cold multi-thousand-glyph screen that is not
+     * already spread across frames by the commit budget above. If it does, the shape that works is:
+     * partition the polled results by tier, bind once per tier, and suspend the batch around
+     * {@code growLayers}.</p>
+     */
     private void drainCompletedGlyphs(long frame, long maxBytes, int maxCommits, long maxNanos) {
         long start = System.nanoTime();
         long bytesCommitted = 0;

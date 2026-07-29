@@ -113,8 +113,49 @@ That decision depends on:
 - the current render context
 - the selected scale resolver
 - previous frame state for hysteresis
+- **the geometry of the draw's pose matrix** (see below)
 
 This stage decides whether the draw uses bitmap, MSDF, or MTSDF glyphs.
+
+#### Transform override: rotated and sheared draws are never bitmap
+
+Size and hysteresis choose the tier only for draws whose transform keeps the text quad's XY
+plane mapped onto the screen axes. Any other transform overrides that choice and forces the
+distance-field tier at **any** size.
+
+Bitmap glyphs are pre-rasterized at one orientation, so they only survive resampling while the
+sampling grid stays parallel to the raster grid. Off-axis, a bilinear fetch smears each texel
+across neighbouring pixels and the glyph goes visibly soft and stair-stepped along its stems —
+precisely the artifact distance fields exist to avoid, since an MSDF reconstructs the outline
+analytically at whatever orientation it is sampled.
+
+| Transform | Tier |
+|---|---|
+| Translate, scale (incl. non-uniform), axis flip | size-derived — bitmap allowed |
+| Rotation by an exact multiple of 90° | size-derived — bitmap allowed (texel-exact) |
+| Any other rotation | **forced distance-field** |
+| Shear | **forced distance-field** |
+| Out-of-plane tilt (X/Y rotation) | **forced distance-field** |
+
+The predicate is `OrthographicScaleResolver.isAxisAligned(Matrix4f)`; the override is applied in
+`CgTextRenderer.resolveDraw` and counted as `text.msdfForcedByTransform`. It is evaluated only
+when the size-derived answer was bitmap, so it costs nothing for world-space text (always MSDF)
+or for any draw already above the size threshold.
+
+Two consequences worth knowing:
+
+- The **size-derived** decision, not the forced one, is what gets written back as hysteresis
+  history. Otherwise a single rotated draw could pin a later unrotated draw of the same font to
+  MSDF while it sat in the hysteresis band.
+- `CgGlyphPlacementCache.Key` already includes `wantMsdf`, so rotated and unrotated draws of the
+  same layout occupy separate cache entries and cannot hand each other the wrong tier.
+
+The transient bitmap fallback *inside* MSDF warmup (`CgFontRegistry.ensureMsdfGlyph`) is a
+separate mechanism and still applies — a rotated draw may briefly show bitmap glyphs while its
+distance fields are still being generated on a worker, then upgrade. Suppressing that too would
+trade a couple of seconds of slightly soft text for a couple of seconds of *no* text.
+
+Harness coverage: `--mode=text-feature-stress`, modes `ROTATED`, `QUARTER_TURN`, `SHEARED`.
 
 Important distinction:
 
