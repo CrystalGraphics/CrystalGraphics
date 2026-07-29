@@ -915,6 +915,44 @@ public final class Lwjgl2GLBackend extends CgGLBackend {
     }
 
     // -------------------------------------------------------------------------
+    // Timer queries (GPU timing)
+    //
+    // Requires GL 3.3 / ARB_timer_query for the 64-bit result read; the query
+    // object calls themselves are GL 1.5. Capability is probed once rather than
+    // assumed, so a context without it reports unsupported instead of throwing.
+    // -------------------------------------------------------------------------
+
+    @Override
+    public int glGenQuery() {
+        return GL15.glGenQueries();
+    }
+
+    @Override
+    public void glBeginTimeElapsedQuery(int query) {
+        GL15.glBeginQuery(GL33.GL_TIME_ELAPSED, query);
+    }
+
+    @Override
+    public void glEndTimeElapsedQuery() {
+        GL15.glEndQuery(GL33.GL_TIME_ELAPSED);
+    }
+
+    @Override
+    public boolean glIsQueryResultAvailable(int query) {
+        return GL15.glGetQueryObjecti(query, GL15.GL_QUERY_RESULT_AVAILABLE) != 0;
+    }
+
+    @Override
+    public long glGetQueryResultNanos(int query) {
+        return GL33.glGetQueryObjectui64(query, GL15.GL_QUERY_RESULT);
+    }
+
+    @Override
+    public void glDeleteQuery(int query) {
+        GL15.glDeleteQueries(query);
+    }
+
+    // -------------------------------------------------------------------------
     // Fixed-function matrix stack (legacy / compat)
     // -------------------------------------------------------------------------
 

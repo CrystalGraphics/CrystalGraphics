@@ -65,4 +65,9 @@ public final class Lwjgl2GLContext implements CgGLContext {
 
     @Override public boolean GL_ARB_shader_storage_buffer_object() { return caps().GL_ARB_shader_storage_buffer_object; }
     @Override public boolean GL_ARB_sampler_objects()      { return caps().GL_ARB_sampler_objects; }
+
+    // ── Queries ──────────────────────────────────────────────
+
+    @Override public boolean GL_ARB_timer_query() {return caps().GL_ARB_timer_query;}
+
 }

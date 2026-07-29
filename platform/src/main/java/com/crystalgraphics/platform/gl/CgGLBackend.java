@@ -152,6 +152,31 @@ public abstract class CgGLBackend {
     public abstract void glTexBuffer(int target, int internalFormat, int buffer);
 
     // -------------------------------------------------------------------------
+    // Timer queries (GPU timing)
+    //
+    // Concrete rather than abstract, defaulting to "unsupported", because these are
+    // optional: they need ARB_timer_query / GL 3.3, which is not guaranteed on the
+    // GL 2.1-era contexts MC 1.7.10 can run on. A backend opts in by overriding
+    // supportsTimerQueries() and the five methods below; everything else keeps
+    // compiling and callers degrade to reporting no GPU timing rather than crashing.
+    //
+    // GL_TIME_ELAPSED queries CANNOT be nested — only one may be active at a time.
+    // Reading a result in the same frame it was issued stalls the pipeline and
+    // destroys the thing being measured, so callers must poll with
+    // glIsQueryResultAvailable() on a later frame.
+    // -------------------------------------------------------------------------
+    
+    public abstract int glGenQuery() ;
+    /** Begins a {@code GL_TIME_ELAPSED} query. Must not be nested inside another. */
+    public abstract void glBeginTimeElapsedQuery(int query) ;
+    public abstract void glEndTimeElapsedQuery() ;
+    /** Non-blocking. Polling this instead of reading directly is what avoids a pipeline stall. */
+    public abstract boolean glIsQueryResultAvailable(int query) ;
+    /** @return elapsed GPU time in nanoseconds; only valid once {@link #glIsQueryResultAvailable} is true */
+    public abstract long glGetQueryResultNanos(int query) ;
+    public abstract void glDeleteQuery(int query);
+
+    // -------------------------------------------------------------------------
     // Vertex Array Objects
     // -------------------------------------------------------------------------
 
