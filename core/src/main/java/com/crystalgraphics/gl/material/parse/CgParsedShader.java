@@ -25,6 +25,10 @@ import java.util.List;
  *     Ordered list of material properties from the {@code Properties { }} block.
  *     Each entry holds the declaration, parsed default value, and current value.
  *     May be empty but never null.
+ * @param engineBuffers
+ *     Tokens from {@code #pragma cg_use} declarations — engine-provided shader buffers this shader
+ *     reads. Resolved through {@code CgEngineBufferRegistry} and attached at parse time, before
+ *     anything can compile. See that class for why this is declared rather than attached in Java.
  * @param featureNames
  *     Ordered feature flag names from {@code #pragma cg_feature} declarations.
  *     Always {@link java.util.Collections#emptyList()} if none declared.
@@ -47,7 +51,7 @@ import java.util.List;
  */
 @Desugar
 public record CgParsedShader(String shaderType, List<CgMaterialProperty> properties,
-                              List<String> featureNames, int renderQueue,
+                              List<String> featureNames, List<String> engineBuffers, int renderQueue,
                               String renderType, boolean castShadows,
                               List<CgParsedPass> passes) {
 

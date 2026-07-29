@@ -5,6 +5,7 @@ import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
+import com.crystalgraphics.gl.buffer.shader.CgEngineBufferRegistry;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
 import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
@@ -15,8 +16,6 @@ import com.crystalgraphics.gl.mesh.CgMeshRegistry;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
-import java.util.HashSet;
-import java.util.Set;
 
 /**
  * Instanced quad renderer whose per-instance data lives in a single, class-wide
@@ -58,7 +57,7 @@ import java.util.Set;
  * since the last {@code flush()}/{@link #begin()}:</p>
  * <pre>{@code
  * // Every frame — not just once at setup:
- * renderer.useMaterial(material);  // (re)binds every call; attaches + flushes-old only on an actual switch
+ * renderer.useMaterial(material);  // (re)binds every call; flushes the old batch only on an actual switch
  * renderer.begin();
  * renderer.quad().at(x, y).size(w, h).uv(u0, v0, u1, v1).color(argb).submit();  // flat
  * renderer.quad().at(cx, cy).size(w, h).pose(myPose).color(argb).submit();      // transformed
@@ -71,8 +70,8 @@ import java.util.Set;
  * every frame (or more often), even for the same material: it unbinds whatever was bound and
  * rebinds {@code material} on <em>every</em> call, not only when the material reference changes,
  * because other rendering code sharing the GL context can rebind a different program between
- * two frames of your own. Calling only {@link #attachTo(CgMaterial)} wires the shader side but
- * does not satisfy this requirement, and does not bind anything. You never call
+ * two frames of your own. Declaring {@code #pragma cg_use quad} wires the shader side but does not
+ * satisfy this requirement, and does not bind anything. You never call
  * {@code material.bind()}/{@code unbind()} yourself — see {@link #useMaterial(CgMaterial)} for
  * the exact rules (bind/unbind is independent of {@link #begin()}/{@link #end()}).</p>
  *
@@ -86,9 +85,18 @@ import java.util.Set;
  * o.uv = CG_QUAD_UV;
  * o.color = CG_QUAD_COLOR;
  * }</pre>
- * <p>These macros hardcode {@link #MACRO_NAME} ({@code "QUAD_DATA"}) — they only resolve if
- * the material was wired via {@link #attachTo(CgMaterial)} (or an equivalent raw
- * {@code material.attach(buffer, "QUAD_DATA")} call using that exact name).</p>
+ * <p>These macros hardcode {@link #MACRO_NAME} ({@code "QUAD_DATA"}), which only resolves once this
+ * renderer's buffer is attached. <b>Declare that in the shader:</b></p>
+ * <pre>{@code
+ * #type pos2_uv2_col4ub
+ * #pragma cg_use quad
+ * }</pre>
+ * <p>The pragma attaches the buffer during parsing, before anything can compile, and the parser
+ * <em>rejects</em> a shader that uses {@code CG_QUAD_*}/{@code QUAD_DATA} without it. There is
+ * deliberately no Java-side attach helper: one existed, and attaching whenever the caller happened
+ * to run lost to any path that compiled the shader earlier — which failed as a GLSL error about an
+ * undefined {@code QUAD_DATA}, surfacing several layers up as an unrelated
+ * {@code #pragma cg_feature} complaint.</p>
  */
 public final class CgQuadRenderer extends CgAbstractRenderer {
 
@@ -114,9 +122,8 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
      * Fixed {@code attach()} macro name every {@code CgQuadRenderer} consumer must use —
      * not caller-chosen, so there is exactly one string to get right, and {@code cg_env.glsl}'s
      * {@code CG_QUAD_*} macros (see below) can hardcode it rather than taking a parameter.
-     * Use {@link #attachTo(CgMaterial)} instead of calling
-     * {@code material.attach(getBuffer(), ...)} directly, so this name is never spelled out
-     * at a call site at all.
+     * Shaders declare {@code #pragma cg_use quad} rather than naming this string, so it is never
+     * spelled out at a call site at all.
      */
     public static final String MACRO_NAME = "QUAD_DATA";
 
@@ -141,14 +148,17 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
      * a plain user index (e.g. {@code 0}) risks a real GL binding-point collision if some
      * unrelated user-attached SSBO/TBO happens to pick the same index (the registry's cache
      * dedups by name+format+binding, but two buffers with different names can still be assigned
-     * the same numeric GL binding point, and only one can be bound there at a time). Relies on
-     * the same lazy-class-initialization guarantee as {@link #QUAD_MESH}:
-     * {@link CgBindingPoints#init} must have already run (via {@code CgRenderPipeline.init()} ←
-     * {@code CgGraphicsLifecycle.initContext()}) by the time this class is first touched, i.e.
-     * by the first real {@link #create()} call — see {@code CgShaderBufferRegistry#getOrCreateInternal}
-     * for the fail-fast check if that's ever violated (confirmed to actually happen for
-     * {@code CgTextRenderer}'s analogous {@code TEXT_DATA_UBO} — see
-     * {@code CGTEXTRENDERER_INSTANCING_FOUNDATIONS.md}).
+     * the same numeric GL binding point, and only one can be bound there at a time).
+     *
+     * <p>Relies on the JVM's lazy class-initialization guarantee, same as {@link #QUAD_MESH}:
+     * {@link CgBindingPoints#init} must have run (via {@code CgRenderPipeline.init()} ←
+     * {@code CgGraphicsLifecycle.initContext()}) by the time this class is first touched, i.e. by
+     * the first real {@link #create()} call. Note {@code CgEngineBufferRegistry} seeds the
+     * {@code quad} pragma token with a <em>method reference</em> to {@link #instanceBuffer()}
+     * precisely so that registering the token does not count as touching this class — see
+     * {@code CgShaderBufferRegistry#getOrCreateInternal} for the fail-fast check if that is ever
+     * violated (it has genuinely fired for {@code CgTextRenderer}'s analogous
+     * {@code TEXT_DATA_UBO}).</p>
      */
     private static final CgShaderBuffer GPU_BUFFER = CgShaderBufferRegistry.get()
             .getOrCreateInternal(GPU_BUFFER_NAME, INSTANCE_FORMAT, CgBindingPoints.QUAD_RENDERER);
@@ -160,8 +170,6 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
     /** Reused scratch {@link Quad} instance returned by {@link #quad()}. */
     private final Quad scratchQuad = new Quad();
 
-    /** Materials this instance has already {@link #attachTo(CgMaterial)}'d, tracked by {@link #useMaterial(CgMaterial)}. */
-    private final Set<CgMaterial> attachedMaterials = new HashSet<>();
     /** The material {@link #useMaterial(CgMaterial)} last switched to, or {@code null} if never called. */
     private CgMaterial currentMaterial;
 
@@ -184,54 +192,25 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
     }
 
     /**
-     * Returns the shared shader buffer. Prefer {@link #useMaterial(CgMaterial)} for normal use
-     * — exposed mainly for callers that need the raw {@link CgShaderBuffer} for some other
-     * purpose, or that want to attach it manually via {@link #attachTo(CgMaterial)} without
-     * {@code useMaterial}'s tracking/auto-flush behavior.
+     * The shared instance buffer, without needing a renderer instance.
+     *
+     * <p>Exists for {@code CgEngineBufferRegistry}, which seeds the {@code quad} {@code #pragma
+     * cg_use} token with a reference to this method. Being a method reference rather than a direct
+     * field read, it does not trigger this class's static initialization at registration time — which
+     * matters, because {@link #GPU_BUFFER} allocates against {@code CgBindingPoints} and is only
+     * valid after {@code CgRenderPipeline.init()}.</p>
      */
-    public CgShaderBuffer getBuffer() {
+    public static CgShaderBuffer instanceBuffer() {
         return GPU_BUFFER;
     }
 
     /**
-     * Attaches this renderer's shared shader buffer to {@code material} under the fixed
-     * {@link #MACRO_NAME}, so {@code material}'s vertex/fragment stages can read
-     * {@code QuadInstance} records via {@code QUAD_DATA(n)} (or, more conveniently, via the
-     * zero-argument {@code CG_QUAD_WORLD_POS}/{@code CG_QUAD_UV}/{@code CG_QUAD_COLOR} macros
-     * in {@code cg_env.glsl}, which already assume this exact macro name).
-     *
-     * <p>This is the low-level primitive {@link #useMaterial(CgMaterial)} is built on — prefer
-     * {@code useMaterial(material)} for normal use. Calling only {@code attachTo(...)} wires the
-     * GLSL side correctly, but {@link Quad#submit()} still throws unless {@code useMaterial(...)}
-     * was also called at least once, since {@code submit()} has no other way to know this
-     * renderer's buffer is actually attached to whatever material ends up bound at
-     * {@link #flush()} time.</p>
-     *
-     * <p>Static, not instance-bound — {@link #GPU_BUFFER}/{@link #MACRO_NAME} are class-wide
-     * shared state (see class javadoc), so this never actually needed a {@code CgQuadRenderer}
-     * instance to call. Being callable without one matters in practice: a consumer whose material
-     * is shared/static (e.g. {@code CgTextRenderer.TEXT_MATERIAL}) needs this wired in at
-     * class-init time, before any per-instance {@code CgQuadRenderer} even exists — see
-     * {@code CgTextRenderer}'s static initializer.</p>
-     *
-     * @param material the material to wire this buffer into
-     * @return {@code material}, for continued fluent configuration
-     */
-    public static CgMaterial attachTo(CgMaterial material) {
-        return material.attach(GPU_BUFFER, MACRO_NAME);
-    }
-
-    /**
      * Marks {@code material} as the one this renderer's next {@code quad()...submit()} calls
-     * belong to. This is the required entry point before any {@link Quad#submit()} call — calling
-     * only {@link #attachTo(CgMaterial)} wires the shader side but {@code submit()} still throws,
-     * since it has no other way to confirm this renderer's buffer is actually attached to
-     * whatever material is bound:
+     * belong to. This is the required entry point before any {@link Quad#submit()} call —
+     * declaring {@code #pragma cg_use quad} wires the shader side but {@code submit()} still throws,
+     * since it has no other way to confirm this renderer is the one owning the queued instances:
      *
      * <ul>
-     *   <li><b>Auto-attach, once per material.</b> The first time a given {@code material}
-     *       instance is passed here, {@link #attachTo(CgMaterial)} is called automatically.
-     *       Subsequent calls with the same instance are a cheap no-op on that front.</li>
      *   <li><b>Auto-flush on material change.</b> If {@code material} differs (by reference)
      *       from whatever was active before, {@link #flush()} is called first. Instances
      *       already queued were computed for the *previous* material's shader/state; drawing
@@ -256,7 +235,6 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
     public CgQuadRenderer useMaterial(CgMaterial material) {
         if (material != currentMaterial) {
             flush();
-            if (attachedMaterials.add(material)) attachTo(material);
             if (currentMaterial != null) currentMaterial.unbind();
             currentMaterial = material;
         }

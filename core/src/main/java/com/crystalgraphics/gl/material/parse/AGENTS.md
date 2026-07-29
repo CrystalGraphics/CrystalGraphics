@@ -125,6 +125,41 @@ the compiler iterates `featureNames` in declaration order and, for each name pre
 `activeKeywords`, emits `#define NAME 1` immediately after `#version` in both vertex and
 fragment sources. `#pragma cg_feature` lines are never forwarded to GLSL output.
 
+## `#pragma cg_use` — Engine Buffer Opt-In
+
+**Where it lives:** `CgStructureParser.parseUsePragmas(String source, String resourcePath)`, with
+cross-checking in `CgShaderParser.validateEngineBufferUsage(...)`.
+
+Declares that a shader reads an engine-provided shader buffer — currently only `quad`
+(`CgQuadRenderer`'s per-instance buffer, unlocking `QUAD_DATA` and the `CG_QUAD_*` macros). Tokens
+land in `CgParsedShader.engineBuffers()`.
+
+**Same preamble region and stop conditions as `cg_feature`** — never collected from inside a `Pass`
+body, and stripped from `parsePreambleDirectives` output so the line never reaches GLSL.
+
+**Validation, all `CgShaderParseException` at parse time:**
+- Missing token after `#pragma cg_use`.
+- Token must match `^[A-Za-z_][A-Za-z0-9_]*$`.
+- Duplicate token.
+- Token not registered in `CgEngineBufferRegistry` — message lists the registered ones.
+- **Reverse check:** source references `QUAD_DATA` or `CG_QUAD_` *without* declaring the token —
+  message names the exact pragma line to add.
+
+That reverse check is the point of the whole mechanism. The buffer used to be attached from Java at
+a material's first use, so anything that compiled the shader earlier (notably
+`CgMaterial.enableKeyword`, which recompiles on the spot when the shader has not been parsed yet)
+produced GLSL with `QUAD_DATA` undeclared — and since a failed compile leaves the feature list
+empty, it surfaced as *"Keyword 'X' is not declared as #pragma cg_feature"*, naming a pragma that was
+present and correct.
+
+**Detection is textual, against the raw `.shader` source** — deliberately not the preprocessed
+output, which would contain `cg_env.glsl`'s own `CG_QUAD_*` *definitions* and therefore flag every
+shader in the engine.
+
+**How the attach happens:** `CgMaterialShader.recompile()` step 2b resolves each token through
+`CgEngineBufferRegistry` and calls `attach(...)` — after parse, before compile. Covered by
+`CgShaderParserUsePragmaTest`.
+
 ## Shadow Auto-Generation
 
 `CgMaterialShaderCompiler.compileShadowAutoGen(shader, forwardPass, attachedBuffers, matPropsUbo, config)`:

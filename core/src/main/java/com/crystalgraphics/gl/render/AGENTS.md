@@ -110,7 +110,27 @@ Multiple buffer sources can coexist. Each owns its layers independently.
 | `CgBufferSource.java` | Ordered layer collection with dirty-aware flush |
 | `CgInstanceRenderer.java` | Instanced draw for one static `CgMesh`. State-blind. Zero-instance flush is a no-op. Owns CPU instance staging only; GPU resources borrowed from registries. Extends `CgAbstractRenderer`. |
 | `CgQuadInstanceRenderer.java` | Convenience instanced renderer for quads. Delegates to `CgInstanceRenderer`. Caches shared unit quad mesh in `CgMeshRegistry`. |
+| `CgQuadRenderer.java` | Instanced quad renderer. Per-instance data (`origin`/`right`/`up`/UVs/colour/atlasLayer) lives in a class-wide SSBO/TBO at the engine-reserved `CgBindingPoints.QUAD_RENDERER`, not in vertex attributes. Fluent `quad()…submit()` queues; `flush()` uploads + draws once. Backs `CgTextRenderer` and all of CrystalGUI's box-model drawing. |
 | `CgAbstractRenderer.java` | Abstract base for all batch renderers. Provides shared `begun` field + final `begin()`/`end()`/`isDirty()` + overridable `onBegin()`/`onEnd()`/`hasPendingWork()` hooks. Extended by `CgBatchRenderer`, `CgInstanceRenderer`, `CgQuadInstanceRenderer`. |
+
+### `CgQuadRenderer` — the shader side is declared, not attached
+
+A shader drawn through `CgQuadRenderer` **must** declare the buffer it reads:
+
+```glsl
+#type pos2_uv2_col4ub
+#pragma cg_use quad     // unlocks QUAD_DATA / CG_QUAD_WORLD_POS / CG_QUAD_UV / CG_QUAD_COLOR
+```
+
+The pragma attaches the buffer during parsing, before anything can compile, and the parser rejects a
+shader that uses those symbols without it. See `gl/buffer/shader/AGENTS.md` for the registry.
+
+> There is deliberately **no** `attachTo(material)` helper — one existed and was removed. Attaching
+> from Java happens whenever the caller runs, which loses to any path that compiles the shader
+> earlier (`CgMaterial.enableKeyword` recompiles on the spot when the shader is unparsed). The
+> resulting undeclared `QUAD_DATA` surfaced as an unrelated *"Keyword 'X' is not declared as
+> `#pragma cg_feature`"*. `useMaterial(material)` is still required before `submit()` — it binds and
+> claims ownership of the batch, which is separate from wiring the buffer.
 
 ## Deleted Classes (Migration Note)
 

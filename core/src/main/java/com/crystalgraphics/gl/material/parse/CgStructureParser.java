@@ -293,6 +293,7 @@ final class CgStructureParser {
             if (line.isEmpty() || line.startsWith("//") || line.startsWith("#type")) continue;
             if (line.startsWith("#")) {
                 if (line.startsWith("#pragma cg_feature")) continue;
+                if (line.startsWith("#pragma cg_use")) continue;
                 if (result.length() > 0) result.append('\n');
                 result.append(line);
             }
@@ -369,6 +370,56 @@ final class CgStructureParser {
             seen.add(rest);
         }
         return Collections.unmodifiableList(names);
+    }
+
+    /**
+     * Scans the preamble for {@code #pragma cg_use <token>} lines — a shader declaring that it reads
+     * an engine-provided shader buffer (see {@code CgEngineBufferRegistry}).
+     *
+     * <p>Same preamble region and stop conditions as {@link #parseFeaturePragmas}: material-level
+     * only, never scanned out of a {@code Pass} body.</p>
+     *
+     * <p>Validations (all throw {@link CgShaderParseException}): missing token, invalid identifier,
+     * duplicate declaration, and — checked by the caller, which has the full source — an unknown
+     * token or a shader that uses an engine buffer's symbols without declaring it.</p>
+     *
+     * @return unmodifiable ordered list of tokens; empty if none declared
+     */
+    static List<String> parseUsePragmas(String source, String resourcePath) {
+        List<String> tokens = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+        boolean seenType = false;
+        for (String rawLine : source.split("\n")) {
+            String line = rawLine.trim();
+            if (!seenType) {
+                if (line.startsWith("#type")) seenType = true;
+                continue;
+            }
+            if (line.startsWith("Properties {") || line.startsWith("Properties{")
+                    || line.startsWith("struct v2f {") || line.startsWith("struct v2f{")
+                    || line.startsWith("void vertex(")
+                    || line.startsWith("Pass {") || line.startsWith("Pass{")) {
+                break;
+            }
+            if (!line.startsWith("#pragma cg_use")) continue;
+
+            String rest = line.substring("#pragma cg_use".length()).trim();
+            if (rest.isEmpty()) {
+                throw new CgShaderParseException(
+                        "[" + resourcePath + "] #pragma cg_use: missing buffer token");
+            }
+            if (!rest.matches("[A-Za-z_][A-Za-z0-9_]*")) {
+                throw new CgShaderParseException(
+                        "[" + resourcePath + "] #pragma cg_use: invalid token '" + rest
+                        + "' — must match [A-Za-z_][A-Za-z0-9_]*");
+            }
+            if (!seen.add(rest)) {
+                throw new CgShaderParseException(
+                        "[" + resourcePath + "] #pragma cg_use: duplicate token '" + rest + "'");
+            }
+            tokens.add(rest);
+        }
+        return Collections.unmodifiableList(tokens);
     }
 
     // ── Validation helpers ────────────────────────────────────────────────────
