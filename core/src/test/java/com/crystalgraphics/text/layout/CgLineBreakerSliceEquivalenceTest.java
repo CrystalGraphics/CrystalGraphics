@@ -48,6 +48,27 @@ public class CgLineBreakerSliceEquivalenceTest {
             "Hyphen-ated words and slash/separated tokens",
     };
 
+    /**
+     * RTL and bidirectional text, added when the slice fast path was extended to RTL runs.
+     *
+     * <p>RTL was previously excluded outright — {@code safeGlyphBoundary} returned -1 for any RTL
+     * run — so every wrapped Arabic line paid a full HarfBuzz re-shape per break candidate. Measured
+     * on the feature benchmark that made {@code wrap.breakLines} 13.2 ms against Latin's 0.64 ms,
+     * twenty times worse and the single largest cost anywhere in the text stack.
+     *
+     * <p>Slicing RTL is the mirror of LTR, and mirroring it wrongly is invisible rather than loud:
+     * HarfBuzz emits RTL glyphs in visual order, so the logical prefix is the upper part of the
+     * glyph array and cluster ids descend as the index rises. A backwards split still produces a
+     * plausible-looking run of glyphs — just the wrong ones, in the wrong places. Comparing against
+     * a real re-shape is the only way to know it is right.
+     */
+    private static final String[] RTL_TEXTS = {
+            "مرحبا بالعالم النص العربي",
+            "هذا نص عربي طويل للاختبار مع عدة كلمات",
+            "Item 42 مرحبا world النص 7",
+            "abc مرحبا def بالعالم ghi",
+    };
+
     private static CgFont font;
 
     private static CgFontFamily family() {
@@ -69,6 +90,10 @@ public class CgLineBreakerSliceEquivalenceTest {
         if (font != null) {
             font.dispose();
             font = null;
+        }
+        if (arabicFont != null) {
+            arabicFont.dispose();
+            arabicFont = null;
         }
     }
 
@@ -92,6 +117,50 @@ public class CgLineBreakerSliceEquivalenceTest {
         assertTrue("expected some comparisons", comparisons > 0);
         System.out.println("[slice-equivalence] " + comparisons
                 + " text/width combinations identical between slice and reshape paths");
+    }
+
+    @Test
+    public void slicedRtlWrapMatchesReshapedWrapExactly() {
+        CgFontFamily family = rtlFamily();
+        if (family == null) {
+            System.out.println("[slice-equivalence] no Arabic font available, skipping RTL");
+            return;
+        }
+
+        int comparisons = 0;
+        for (String text : RTL_TEXTS) {
+            for (float width : WRAP_WIDTHS) {
+                CgTextLayout sliced = layoutWith(text, family, width, false);
+                CgTextLayout reshaped = layoutWith(text, family, width, true);
+                assertLayoutsIdentical(text, width, reshaped, sliced);
+                comparisons++;
+            }
+        }
+        assertTrue("expected some RTL comparisons", comparisons > 0);
+        System.out.println("[slice-equivalence] " + comparisons
+                + " RTL/BiDi text/width combinations identical between slice and reshape paths");
+    }
+
+    private static CgFont arabicFont;
+
+    /** Arabic primary with Latin fallback, so the bidirectional strings resolve fully. */
+    private static CgFontFamily rtlFamily() {
+        if (arabicFont == null) {
+            for (String path : new String[]{
+                    "src/main/resources/assets/crystalgraphics/NotoSansArabic-Regular.ttf",
+                    "src/main/resources/assets/crystalgraphics/IBMPlexSansArabic-Regular.ttf"}) {
+                File f = new File(path);
+                if (f.isFile()) {
+                    arabicFont = CgFont.load(f.getPath(), CgFontStyle.REGULAR, 16);
+                    break;
+                }
+            }
+        }
+        if (arabicFont == null) return null;
+        CgFontFamily latin = family();
+        return latin == null
+                ? CgFontFamily.of(arabicFont)
+                : CgFontFamily.of(arabicFont, font);
     }
 
     private static CgTextLayout layoutWith(String text, CgFontFamily family, float width, boolean forceReshape) {

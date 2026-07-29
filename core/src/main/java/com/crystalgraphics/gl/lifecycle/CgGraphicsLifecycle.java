@@ -21,7 +21,11 @@ import com.crystalgraphics.gl.vertex.CgVertexArray;
 import com.crystalgraphics.gl.vertex.CgVertexArrayRegistry;
 import com.crystalgraphics.gl.vertex.CgVertexBufferRegistry;
 import com.crystalgraphics.text.cache.CgFontRegistry;
+import com.crystalgraphics.NativeLoader;
+import com.crystalgraphics.text.render.CgTextRenderer;
 import com.crystalgraphics.text.render.CgTextRendererRegistry;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import lombok.Getter;
 
 /**
@@ -43,6 +47,8 @@ import lombok.Getter;
  * context recreation will re-probe the new context's capabilities.</p>
  */
 public final class CgGraphicsLifecycle {
+
+    private static final Logger LOGGER = Logger.getLogger(CgGraphicsLifecycle.class.getName());
 
     private static volatile boolean initialized = false;
     /**
@@ -75,8 +81,48 @@ public final class CgGraphicsLifecycle {
         onResize(width, height);
         CgRenderPipeline.init();
         CgFallbackTextures.init();
+        warmUpDeferredStartupCosts();
 
         initialized = true;
+    }
+
+    /**
+     * Pays lazily-triggered one-time costs here, where no frame is being rendered yet.
+     *
+     * <p>Several startup costs are lazy, so whichever frame happens to touch them first absorbs the
+     * whole thing. Measured on the CJK warmup that produced two separate visible stalls: **frame 1
+     * spent ~130 ms** inside the first {@code CgFont.load} (the JNI library load, charged to
+     * whichever native call ran first), and **frame 2 spent ~134 ms** in {@code material.doBind}
+     * compiling the text shader's first variant. Neither is avoidable work — but neither has to
+     * land on a frame the user is watching.
+     *
+     * <p>This does not make startup faster. It moves the cost to init, where a stall is expected
+     * and invisible, instead of appearing as two dropped frames after rendering has begun. Total
+     * time to first *usable* frame is unchanged; time to first *smooth* frame improves.
+     *
+     * <p>Failures are logged and swallowed rather than propagated. Everything here is an
+     * optimisation — if a platform cannot pre-warm something, the lazy path still works exactly as
+     * it did before, and refusing to boot over a failed warmup would be strictly worse than the
+     * hitch it was trying to avoid.
+     */
+    private static void warmUpDeferredStartupCosts() {
+        // The JNI library backing FreeType/HarfBuzz/msdfgen. Not GL work, but it is the single
+        // largest deferred cost and it lands on whichever thread first touches a font.
+        try {
+            NativeLoader.ensureLoaded();
+        } catch (Throwable t) {
+            LOGGER.log(Level.WARNING, "Native text library pre-load failed; "
+                    + "it will load lazily on first use instead", t);
+        }
+
+        // The text material's first bind compiles its shader variant. Doing it here means the
+        // first drawn string does not.
+        try {
+            CgTextRenderer.warmUpMaterial();
+        } catch (Throwable t) {
+            LOGGER.log(Level.WARNING, "Text material pre-warm failed; "
+                    + "the shader will compile on first text draw instead", t);
+        }
     }
 
     /**

@@ -374,6 +374,33 @@ public class CgTextRenderer {
      * and the right choice for the common case (UI overlays, HUDs) — use {@link #createManualSized()}
      * only when the context should NOT follow the real display window.</p>
      */
+    /**
+     * Compiles {@link #TEXT_MATERIAL}'s shader variants ahead of the first draw.
+     *
+     * <p>Material variants compile lazily on first {@code bind()} with a given keyword set, so
+     * without this the first string drawn pays for it — measured at ~134 ms on a frame that had
+     * already started rendering. Called from {@code CgGraphicsLifecycle.initContext}, where a stall
+     * costs nothing.
+     *
+     * <p>Compiles <strong>both</strong> keyword states. {@code MSDF_MODE} on and off are separate
+     * cached programs, and text routinely uses both in one frame — bitmap fallback while an MSDF
+     * glyph is still generating. Warming only one would leave the other to compile mid-frame and
+     * defeat the point.
+     *
+     * <p>GL thread only, and only meaningful with a live context.
+     */
+    public static void warmUpMaterial() {
+        for (boolean msdf : new boolean[]{false, true}) {
+            TEXT_MATERIAL.toggleKeyword("MSDF_MODE", msdf);
+            TEXT_MATERIAL.bind();
+            TEXT_MATERIAL.unbind();
+        }
+        // Leave no keyword state behind: the material is shared static, and the first real
+        // transition must not be skipped because the material already happens to match.
+        TEXT_MATERIAL.toggleKeyword("MSDF_MODE", false);
+        activeBatchBits = NO_ACTIVE_BATCH;
+    }
+
     public static CgTextRenderer create() {
         CgTextRenderer renderer = new CgTextRenderer();
         CgTextRendererRegistry.get().register(renderer);

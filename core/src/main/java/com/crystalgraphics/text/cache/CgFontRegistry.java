@@ -457,7 +457,19 @@ public class CgFontRegistry {
      *  atlas.
      *
      * <p>The renderer calls this during the pre-queue pass
-     * ({@code CgResolvedGlyphs.flattenAndPrequeue}) to submit glyph generation jobs to the
+     * <p><strong>Currently unused — no caller exists.</strong> The pre-queue pass this was written
+     * for, {@code CgResolvedGlyphs.flattenAndPrequeue}, no longer exists (it became {@code flatten},
+     * without the queueing). Consequently {@code submitBitmapGlyphJob} is unreachable in practice
+     * and {@code CgWorkerFontContext.generateBitmap} never runs: every bitmap glyph is rasterised
+     * synchronously on the render thread via {@code ensureBitmapGlyph}. Measured on text-3d: 4810
+     * synchronous rasterisations, 0 worker rasterisations.
+     *
+     * <p>Kept rather than deleted because restoring a pre-queue pass is the single largest remaining
+     * opportunity to take work off the render thread — but it is a behaviour change, not a
+     * refactor: a glyph generated asynchronously is not available to draw on the frame that asked
+     * for it. See docs/font/PERFORMANCE_TODO.md.
+     *
+     * <p>Historical note: it was called during the pre-queue pass to submit generation jobs to the
      * background executor <em>before</em> the synchronous {@code ensureGlyph}
      * calls.  This reduces frame spikes by spreading generation work across
      * multiple frames.</p>
@@ -626,7 +638,9 @@ public class CgFontRegistry {
         boolean synthesize = atlasKey.isSyntheticBold() || atlasKey.isSyntheticItalic();
         try {
             try (CgProfiler.Scope ignored = CgProfiler.scope("freetype.rasterize")) {
-                face.setPixelSizes(0, effectiveTargetPx);
+                try (CgProfiler.Scope ignoredSize = CgProfiler.scope("ftRaster.setPixelSizes")) {
+                    face.setPixelSizes(0, effectiveTargetPx);
+                }
 
                 int loadFlags = FTLoadFlags.FT_LOAD_DEFAULT;
                 boolean subBucket = subPixelBucket > 0 && effectiveTargetPx < CgGlyphKey.SUB_PIXEL_BUCKET_MAX_PX;
@@ -643,15 +657,24 @@ public class CgFontRegistry {
                 if (synthesize) loadFlags |= FTLoadFlags.FT_LOAD_NO_HINTING;
                 
 
-                loadGlyphOrFallback(face, atlasKey.getGlyphId(), loadFlags);
-                applySyntheticStyle(face, atlasKey, effectiveTargetPx);
+                try (CgProfiler.Scope ignoredLoad = CgProfiler.scope("ftRaster.loadGlyph")) {
+                    loadGlyphOrFallback(face, atlasKey.getGlyphId(), loadFlags);
+                }
+                try (CgProfiler.Scope ignoredSynth = CgProfiler.scope("ftRaster.synthetic")) {
+                    applySyntheticStyle(face, atlasKey, effectiveTargetPx);
+                }
 
                 if (subBucket) face.outlineTranslate(subPixelBucket * 16L, 0L);
                 
 
-                face.renderGlyph(FTRenderMode.FT_RENDER_MODE_NORMAL);
+                try (CgProfiler.Scope ignoredRender = CgProfiler.scope("ftRaster.renderGlyph")) {
+                    face.renderGlyph(FTRenderMode.FT_RENDER_MODE_NORMAL);
+                }
 
-                FTBitmap bitmap = face.getGlyphBitmap();
+                FTBitmap bitmap;
+                try (CgProfiler.Scope ignoredGet = CgProfiler.scope("ftRaster.getBitmap")) {
+                    bitmap = face.getGlyphBitmap();
+                }
                 int width = bitmap.getWidth();
                 int height = bitmap.getHeight();
                 if (width == 0 || height == 0) {
@@ -663,7 +686,10 @@ public class CgFontRegistry {
                     return atlas.markEmpty(atlasKey);
                 }
 
-                byte[] pixels = normalizeBitmapBuffer(bitmap);
+                byte[] pixels;
+                try (CgProfiler.Scope ignoredNorm = CgProfiler.scope("ftRaster.normalizeBuffer")) {
+                    pixels = normalizeBitmapBuffer(bitmap);
+                }
                 // Bearing/size MUST come from this bitmap's own left/top/width/height, NOT from
                 // FTGlyphMetrics (the outline's sub-pixel-precise bounding box) -- see
                 // CgWorkerFontContext#generateBitmap's javadoc-comment for the full explanation.
@@ -679,8 +705,10 @@ public class CgFontRegistry {
                 float bearingY = bitmap.getTop();
                 float metricsWidth = width;
                 float metricsHeight = height;
-                return atlas.allocateBitmap(atlasKey, pixels, width, height,
-                        bearingX, bearingY, metricsWidth, metricsHeight, currentFrame);
+                try (CgProfiler.Scope ignoredAlloc = CgProfiler.scope("ftRaster.atlasAllocate")) {
+                    return atlas.allocateBitmap(atlasKey, pixels, width, height,
+                            bearingX, bearingY, metricsWidth, metricsHeight, currentFrame);
+                }
             }
         } catch (FreeTypeException e) {
             LOGGER.log(Level.WARNING, "Failed to rasterize glyph at effective size " + effectiveTargetPx + ": " + atlasKey, e);
@@ -799,6 +827,7 @@ public class CgFontRegistry {
         CgGlyphKey bitmapAtlasKey = toBitmapAtlasGlyphKey(
                 new CgRasterGlyphKey(bitmapRasterKey, atlasKey.getGlyphId(), false, subPixelBucket,
                         atlasKey.isSyntheticBold(), atlasKey.isSyntheticItalic()));
+
         return ensureBitmapGlyph(font, bitmapAtlasKey, bitmapRasterKey,
                 effectiveTargetPx, subPixelBucket, currentFrame);
     }

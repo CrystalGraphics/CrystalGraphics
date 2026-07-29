@@ -1,5 +1,6 @@
 package com.crystalgraphics.gl.render;
 
+import com.crystalgraphics.util.profiling.CgProfiler;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.material.CgMaterial;
@@ -507,11 +508,25 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
             accumStaging.reset();
             return;
         }
-        int instanceCount = accumStaging.vertexCount();
-        GPU_BUFFER.uploadRaw(accumStaging.rawData(), accumStaging.rawCursor());
-        GPU_BUFFER.bind();
-        QUAD_MESH.drawInstanced(instanceCount);
-        accumStaging.reset();
+        // Instrumented per stage because this is where text actually reaches the GPU. The text draw
+        // path runs through CgQuadRenderer (instanced quads), not CgBatchRenderer, so this method —
+        // not that one — is the tail of every glyph draw.
+        try (CgProfiler.Scope ignored = CgProfiler.scope("quadRenderer.flush")) {
+            int instanceCount = accumStaging.vertexCount();
+            CgProfiler.count("quadRenderer.flush.count");
+            CgProfiler.sample("quadRenderer.instances", instanceCount);
+
+            try (CgProfiler.Scope ignored2 = CgProfiler.scope("quadRenderer.upload")) {
+                GPU_BUFFER.uploadRaw(accumStaging.rawData(), accumStaging.rawCursor());
+            }
+            try (CgProfiler.Scope ignored2 = CgProfiler.scope("quadRenderer.bindBuffer")) {
+                GPU_BUFFER.bind();
+            }
+            try (CgProfiler.Scope ignored2 = CgProfiler.scope("quadRenderer.drawInstanced")) {
+                QUAD_MESH.drawInstanced(instanceCount);
+            }
+            accumStaging.reset();
+        }
     }
 
     /**
