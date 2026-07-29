@@ -4,6 +4,7 @@ import com.crystalgraphics.api.material.CgMaterialRegistry;
 import com.crystalgraphics.api.shader.CgShaderManager;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.gl.texture.CgTextureManager;
+import com.crystalgraphics.text.layout.CgTextLayoutCache;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -43,6 +44,25 @@ public final class CgAssetReloader {
         reloadTextures();
         reloadShaders();
         reloadMaterials();
+        invalidateTextCaches();
+    }
+
+    /**
+     * Drops cached text layouts, which are built from font data and go stale when fonts reload.
+     *
+     * <p>Isolated in its own try/catch like every other step here: a failure to clear a cache must
+     * not prevent textures or shaders from reloading, and vice versa.</p>
+     *
+     * <p>Only the layout cache needs clearing. {@code CgGlyphPlacementCache} is keyed by
+     * {@code CgTextLayout} identity, so once the layouts are gone its entries are unreachable and
+     * are reclaimed by its own eviction — clearing it too would be harmless but redundant.</p>
+     */
+    private static void invalidateTextCaches() {
+        try {
+            CgTextLayoutCache.clear();
+        } catch (Exception e) {
+            LOGGER.error("Failed to invalidate text layout cache", e);
+        }
     }
 
     private static void reloadTextures() {

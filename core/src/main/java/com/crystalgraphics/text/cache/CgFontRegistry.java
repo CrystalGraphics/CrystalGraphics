@@ -187,6 +187,30 @@ public class CgFontRegistry {
     private static final long MAX_COMMIT_NANOS_PER_FRAME = 2_000_000L; // 2ms
 
     /**
+     * TRIED AND REVERTED (2026-07-29): scaling this budget by the frame's remaining headroom.
+     *
+     * <p>The idea was to give the drain whatever was left of an 8.33 ms frame target after the
+     * rest of the frame's work, instead of a flat backlog-scaled tier. A/B in {@code text-3d}:</p>
+     * <ul>
+     *   <li><b>Cost, consistent:</b> convergence to 7000 committed glyphs went 0.77 s -> 1.42 s,
+     *       reproduced at both an 8.33 ms and a 12 ms target. Warmup non-drain work is 7-9 ms on
+     *       its own, so headroom is ~0 and the budget pins to its floor every frame — the policy
+     *       does not adapt, it just reverts to the base budget.</li>
+     *   <li><b>Benefit, not reproducible:</b> frames over 15 ms went 19 -> 10 at an 8.33 ms target
+     *       but 19 -> 30 at 12 ms, i.e. noise.</li>
+     *   <li><b>The headline "win" was a misattribution.</b> A 89.5 ms drain in the control run
+     *       looked like proof a tighter budget was needed. That frame committed <em>3 glyphs with
+     *       3 uploads and no atlas growth</em> — 30 ms per upload with no work behind it, the same
+     *       external-stall signature that exonerated {@code quadLoop}. No budget can prevent it;
+     *       the budget is checked between commits and only three occurred.</li>
+     * </ul>
+     *
+     * <p>Also worth knowing: the problem this was written for had already been fixed elsewhere.
+     * "Drain flat at 6.5-7.2 ms across ~13 warmup frames" was measured <em>before</em> the
+     * placement-cache {@code markEmpty} fix; afterwards median drain on draining frames is 2.19 ms
+     * and those heavy frames are gone. Re-measure before reviving this.
+     */
+    /**
      * The shared default-config registry, matching every other GPU-resource registry
      * in this codebase ({@code CgTextureManager}, {@code CgMaterialRegistry},
      * {@code CgMeshRegistry}, etc.) — accessed via {@link #get()}, torn down via
@@ -239,10 +263,10 @@ public class CgFontRegistry {
      * {@code ensureGlyph*} or {@code queueGlyph*} calls for that frame.</p>
      */
     public void tickFrame(long frame) {
-        // NOTE (profiling): this runs from CgGraphicsLifecycle.onFrameRendered(), which the
-        // harness calls AFTER scene.render() -- i.e. after TextScene3D's CgProfiler.endFrame().
-        // These scopes therefore land in the NEXT frame's report, one frame late. Magnitude is
-        // still accurate; only the frame attribution is shifted by one.
+        // NOTE (profiling): this runs from CgGraphicsLifecycle.onFrameRendered(). Scenes that close
+        // their profiler frame from InteractiveSceneLifecycle#onFrameEnd (as TextScene3D does) get
+        // these scopes attributed to the correct frame. A scene that instead ends its frame inside
+        // render() will see them one frame late, since render() runs earlier in the loop.
         try (CgProfiler.Scope ignored = CgProfiler.scope("registry.tickFrame")) {
             // 1. Drain completed async results first so they are available
             //    to ensureGlyph* calls later in the same frame.

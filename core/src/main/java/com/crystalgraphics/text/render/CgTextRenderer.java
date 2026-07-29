@@ -205,6 +205,17 @@ public class CgTextRenderer {
     private static final Logger LOGGER = Logger.getLogger(CgTextRenderer.class.getName());
     public static boolean diagnosticLogging = false;
 
+    /**
+     * {@code -Dcrystalgraphics.text.traceQuadLoop=true} times every individual iteration of the
+     * quad-submission loop and reports the slowest one.
+     *
+     * <p>Off by default because it adds a {@code System.nanoTime()} per quad (~25 ns x 8103 quads
+     * = ~0.2 ms on a 1.1 ms loop). Turn it on only to distinguish a blocking call inside the loop
+     * from the render thread being descheduled — see the comment at the loop head.</p>
+     */
+    private static final boolean traceQuadLoop =
+            Boolean.getBoolean("crystalgraphics.text.traceQuadLoop");
+
 
     private final CgFontRegistry registry = CgFontRegistry.get();
 
@@ -1145,6 +1156,15 @@ public class CgTextRenderer {
         int totalCount = visibleGlyphCount + resolvedDecorations.size();
         if (totalCount == 0) return;
 
+        // A COUNTER, summed over every draw in the frame -- unlike draw.glyphCount, which is a
+        // SAMPLE and therefore reports only the last draw's count. Mistaking the sample for a
+        // per-frame total makes quadLoop look ~150x more expensive per glyph than it is (45 vs
+        // ~6771 in text-3d), which is exactly how a perfectly healthy loop gets "optimised".
+        //
+        // Note "visible" here means hasGeometry(), NOT on-screen: there is no viewport cull at
+        // this level, so a layout positioned off-screen still emits every one of its quads.
+        CgProfiler.count("draw.quadsEmitted", totalCount);
+
         try (CgProfiler.Scope ignored = CgProfiler.scope("sortKeys")) {
             ensureSortScratchCapacity(totalCount);
             int si = 0;
@@ -1173,6 +1193,17 @@ public class CgTextRenderer {
         if (pixelSnap) scratchInverseModelView.set(modelView).invert();
 
         try (CgProfiler.Scope ignored = CgProfiler.scope("quadLoop")) {
+        // Per-iteration timing, off unless -Dcrystalgraphics.text.traceQuadLoop=true.
+        //
+        // Exists to answer one question that the scope total cannot: when quadLoop occasionally
+        // costs 133 ms instead of 1.1 ms for the *same* 8103 quads, 5 flushes and 5 material
+        // transitions, is that ONE blocking call inside the loop, or the whole loop running slowly
+        // because the thread lost the CPU? Those have opposite fixes, and the aggregate time is
+        // identical either way. maxIter answers it directly: ~130 ms in one iteration means a
+        // blocking call (a buffer flush waiting on the GPU); ~16 us spread over every iteration
+        // means preemption and there is nothing here to fix.
+        long traceMaxNanos = 0, traceMaxIndex = -1, traceSlowIters = 0, traceIterStart = 0;
+        if (traceQuadLoop) traceIterStart = System.nanoTime();
         for (int s = 0; s < totalCount; s++) {
             long key = scratchSortKeys[s];
             long batchBits = CgTextSortKey.batchOf(key);
@@ -1242,6 +1273,14 @@ public class CgTextRenderer {
                     .pose(modelView)
                     .submit();
 
+            if (traceQuadLoop) {
+                long now = System.nanoTime();
+                long iterNanos = now - traceIterStart;
+                traceIterStart = now;
+                if (iterNanos > traceMaxNanos) { traceMaxNanos = iterNanos; traceMaxIndex = s; }
+                if (iterNanos > 1_000_000L) traceSlowIters++;
+            }
+
             if (diagnosticLogging && p != null) {
                 LOGGER.info("[BatchDiag] glyphId=" + p.key().getGlyphId()
                         + ", atlasType=" + p.atlasType()
@@ -1251,6 +1290,11 @@ public class CgTextRenderer {
                         + ", uv=[" + p.u0() + "," + p.v0() + "," + p.u1() + "," + p.v1() + "]"
                         + ", pos=[" + qx + "," + qy + "], size=[" + w + "," + h + "]");
             }
+        }
+        if (traceQuadLoop) {
+            CgProfiler.sample("quadLoop.maxIterUs", traceMaxNanos / 1000.0);
+            CgProfiler.sample("quadLoop.maxIterIndex", traceMaxIndex);
+            CgProfiler.sample("quadLoop.slowIters", traceSlowIters);
         }
         }
     }

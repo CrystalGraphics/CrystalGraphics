@@ -167,15 +167,22 @@ final class CgGlyphGenerationExecutor {
         ThreadPoolExecutor target = job.isDistanceField() ? msdfExecutor : bitmapExecutor;
         try {
             target.execute(() -> {
+                CgGlyphGenerationResult result = null;
                 try {
-                    CgGlyphGenerationResult result = generate(job);
-                    if (result != null) completedResults.add(result);
-                    else failedJobs.put(job, Boolean.TRUE);
+                    result = generate(job);
+                    if (result != null) {
+                        // Un-marked at POLL time, not here -- see completedJobs.
+                        completedJobs.put(result, job);
+                        completedResults.add(result);
+                    } else {
+                        failedJobs.put(job, Boolean.TRUE);
+                    }
                 } catch (Throwable throwable) {
                     failedJobs.put(job, Boolean.TRUE);
                     LOGGER.log(Level.WARNING, "Glyph generation failed for " + job, throwable);
                 } finally {
-                    pendingJobs.remove(job);
+                    // A generated-but-unpolled job stays pending; only failures release here.
+                    if (result == null) pendingJobs.remove(job);
                 }
             });
             return true;
@@ -184,6 +191,29 @@ final class CgGlyphGenerationExecutor {
             return false;
         }
     }
+
+    /**
+     * Results generated but not yet handed to the render thread, mapped back to the job that
+     * produced them so {@link #pollCompleted} can release the dedup entry at the right moment.
+     *
+     * <h4>Why the release moved out of the worker</h4>
+     * <p>{@code pendingJobs} is the "somebody is already making this glyph" guard, and it used to
+     * be cleared the instant generation <em>finished</em>. But a finished glyph is not a usable
+     * glyph: it sits in {@link #completedResults} until {@code drainCompletedGlyphs} commits it
+     * into the atlas, and that drain is deliberately budget-limited. Throughout that window the
+     * atlas still misses, the dedup guard is already released, and so the very next frame submits
+     * the same glyph again — and the frame after that, and so on until the commit finally lands.
+     *
+     * <p>Measured on {@code text-3d}: <strong>~24,800 bitmap rasterizations for ~7,000 distinct
+     * glyphs</strong>, a 3.5x multiplier. Not a round number precisely because it is proportional
+     * to how long results wait, not to anything structural. Every duplicate is a full FreeType
+     * rasterization on a worker thread, and {@code commitGeneratedGlyph} throws the loser away.
+     *
+     * <p>Holding the entry until poll closes the window to the microseconds between polling and
+     * committing inside one drain iteration. It also makes {@link #isPending} mean what its callers
+     * already assume — "a usable result is coming" — rather than "somebody is mid-rasterize".
+     */
+    private final Map<CgGlyphGenerationResult, CgGlyphGenerationJob> completedJobs = new ConcurrentHashMap<>();
 
     /**
      * Whether an equivalent job is already queued or running on a background worker.
@@ -231,7 +261,16 @@ final class CgGlyphGenerationExecutor {
     }
 
     CgGlyphGenerationResult pollCompleted() {
-        return completedResults.poll();
+        CgGlyphGenerationResult result = completedResults.poll();
+        if (result != null) {
+            // Release the dedup entry here rather than when generation finished -- see
+            // completedJobs. The caller commits this within the same drain iteration, so the
+            // window in which a re-submission could slip through is microseconds instead of the
+            // many frames a budget-limited drain can take.
+            CgGlyphGenerationJob job = completedJobs.remove(result);
+            if (job != null) pendingJobs.remove(job);
+        }
+        return result;
     }
 
     boolean hasPendingWork() {
@@ -276,6 +315,8 @@ final class CgGlyphGenerationExecutor {
         
         workerContexts.clear();
         pendingJobs.clear();
+        // Results generated but never polled would otherwise keep their jobs pending forever.
+        completedJobs.clear();
         failedJobs.clear();
         completedResults.clear();
     }
