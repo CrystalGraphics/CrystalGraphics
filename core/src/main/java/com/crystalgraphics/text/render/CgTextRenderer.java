@@ -949,8 +949,28 @@ public class CgTextRenderer {
         int effectiveTargetPx = context.getScaleResolver().resolveEffectiveTargetPx(fontKey.getTargetPx(), pose, previousEffectiveTargetPx);
 
         boolean previousMsdf = previous != null ? previous.wasMsdf() : effectiveTargetPx >= 32;
-        boolean wantMsdf = context.getScaleResolver().shouldUseMsdf(effectiveTargetPx, previousMsdf);
-        context.setHistory(fontKey, effectiveTargetPx, wantMsdf);
+        boolean sizeWantsMsdf = context.getScaleResolver().shouldUseMsdf(effectiveTargetPx, previousMsdf);
+
+        // Record the *size-derived* decision, not the transform-forced one below. shouldUseMsdf
+        // applies hysteresis against this history, and that hysteresis is meant to damp size
+        // changes only -- feeding a forced value back into it would let one rotated draw pin a
+        // later unrotated draw of the same font to MSDF while it sits in the band.
+        context.setHistory(fontKey, effectiveTargetPx, sizeWantsMsdf);
+
+        // A rotated or sheared transform forces the distance-field tier at any size. Bitmap
+        // glyphs are pre-rasterized at one orientation and only survive resampling while the
+        // sampling grid stays parallel to the raster grid; off-axis, they go soft and
+        // stair-stepped. Quarter-turns and flips stay on the bitmap tier -- they are texel-exact.
+        // See OrthographicScaleResolver#isAxisAligned.
+        //
+        // Short-circuited on sizeWantsMsdf so the matrix inspection is skipped entirely for the
+        // draws that were already going to be MSDF anyway -- which includes all world-space text,
+        // since PerspectiveScaleResolver#shouldUseMsdf is unconditionally true.
+        boolean wantMsdf = sizeWantsMsdf;
+        if (!wantMsdf && !OrthographicScaleResolver.isAxisAligned(pose.pose())) {
+            wantMsdf = true;
+            CgProfiler.count("text.msdfForcedByTransform");
+        }
 
         CgTextLayout resolvedLayout;
         if (draw.layout != null) {
