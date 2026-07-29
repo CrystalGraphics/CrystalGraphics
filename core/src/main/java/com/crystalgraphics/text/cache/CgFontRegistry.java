@@ -1071,6 +1071,24 @@ public class CgFontRegistry {
             return;
         }
         if (result.isEmptyGeometry()) {
+            // Record the verdict, exactly as the MSDF branch above and the synchronous
+            // ensureBitmapGlyph already do. Returning without recording leaves the atlas with no
+            // entry for this glyph, and a missing entry is indistinguishable from "not generated
+            // yet" -- so the glyph is re-requested, re-queued and re-rasterized every frame,
+            // forever, and resolveGlyph keeps answering null for it.
+            //
+            // That null is far more expensive than the wasted rasterize: CgResolvedGlyphs refuses
+            // to cache a placement array containing one (see its hasDeferredGlyphs), so a single
+            // space character stops an entire layout from ever entering CgGlyphPlacementCache.
+            // Measured on text-3d: 2 of 4 draws missed the cache on every frame forever, forcing
+            // a re-resolve of 3406 glyphs per frame to draw 45 of them -- 1.68 ms, a third of the
+            // steady-state frame.
+            //
+            // This is why it regressed: the synchronous path has always marked empty (with a
+            // comment saying precisely this), but bitmap fallback became asynchronous and the
+            // async commit did not, so the correct behaviour stopped being the one that runs.
+            CgProfiler.count("glyph.bitmap.markedEmptyAsync");
+            atlas.markEmpty(result.getAtlasKey());
             return;
         }
         atlas.allocateBitmap(
