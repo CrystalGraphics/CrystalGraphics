@@ -264,8 +264,23 @@ public final class CgGraphicsLifecycle {
      *
      * <p><strong>Must be called on the GL thread.</strong></p>
      *
-     * <p>After this call, all VAOs, VBOs, IBOs, and cached GL capability flags are
-     * cleared. A new GL context can be initialised immediately afterwards.</p>
+     * <p>After this call, all VAOs, VBOs, IBOs, and cached GL capability flags are cleared.</p>
+     *
+     * <h3>This is a shutdown path, not a recycle path</h3>
+     * <p><strong>Call this once, when the process is going away.</strong> There is no supported
+     * destroy-then-{@link #initContext} cycle inside a running game, and calling {@code initContext}
+     * again after this would not work: several singletons latch a {@code deleted} flag that nothing
+     * resets. {@link CgMaterialRegistry} is the clearest case — its
+     * {@code INSTANCE} is {@code static final} and its {@code checkNotDeleted()} throws
+     * {@code IllegalStateException} on every subsequent {@code getOrCreate}, so the first material
+     * load in a second context would fail outright. The one reset that exists,
+     * {@code CgMaterialShaderRegistry.resetForTest()}, is package-private and documented as
+     * test-only.</p>
+     *
+     * <p>An earlier version of this javadoc claimed "a new GL context can be initialised immediately
+     * afterwards". It could not, and downstream code was written against that promise — hence the
+     * correction here rather than a quiet deletion. Supporting genuine context recreation means
+     * giving every latching singleton a real reset path first; until then, treat this as terminal.</p>
      */
     public static void destroyContext() {
         // Step 0: External listeners, BEFORE the engine frees anything.
