@@ -102,4 +102,10 @@ public interface CgGLContext {
      *         This extension is promoted to core in OpenGL 3.3.
      */
     boolean GL_ARB_sampler_objects();
+    
+       /**
+     * @return {@code true} if {@code GL_ARB_timer_query} is supported.
+     *         This extension is promoted to core in OpenGL 3.3.
+     */
+    boolean GL_ARB_timer_query();
 }

@@ -40,7 +40,7 @@ public final class CgCapabilities {
     private static String cachedParsedVersionKey   = null;
     private static int[]  cachedParsedVersionValue = null;
     private static volatile CgCapabilities cachedCaps = null;
-
+    
     // ─────────────────────────────────────────────────────────────────────────
     //  Enums
     // ─────────────────────────────────────────────────────────────────────────
@@ -177,6 +177,10 @@ public final class CgCapabilities {
     /** Whether the current context is a core profile (GL 3.2+). Fixed-function state
      *  such as {@code GL_ALPHA_TEST} is unavailable in core profile contexts. */
     boolean coreProfile;
+    
+    
+    @Getter() 
+    boolean timerQueries;
 
     // ─────────────────────────────────────────────────────────────────────────
     //  Constructor
@@ -287,6 +291,8 @@ public final class CgCapabilities {
         caps.gpuShaderInt64            = gl.OpenGL40();
 
         caps.hasSamplerObjects = gl.OpenGL33() || gl.GL_ARB_sampler_objects();
+        
+        caps.timerQueries = gl.OpenGL33() || gl.GL_ARB_timer_query();
 
         // GL_CONTEXT_PROFILE_MASK (0x9126) is only queryable in GL 3.2+.
         // Bit 0x1 = GL_CONTEXT_CORE_PROFILE_BIT.
@@ -369,6 +375,9 @@ public final class CgCapabilities {
 
     /** Returns whether {@code GL_ARB_sampler_objects} (or core GL 3.3) is supported. */
     public boolean isSamplerObjectsSupported() { return hasSamplerObjects; }
+    
+    /** Returns timer queries {@code GL_ARB_timer_query} (or core GL 3.3) for GPU profiling. */
+    public boolean isTimerQueriesSupported() { return timerQueries; }
 
     // ─────────────────────────────────────────────────────────────────────────
     //  GL version string parsing

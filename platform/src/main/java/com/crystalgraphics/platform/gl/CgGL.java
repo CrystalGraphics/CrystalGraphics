@@ -481,12 +481,13 @@ public final class CgGL {
     public static final int GL_MAX_DRAW_BUFFERS   = 0x8824;
     public static final int GL_MAX_TEXTURE_UNITS  = 0x84E2;
     public static final int GL_MAX_VERTEX_ATTRIBS = 0x8869;
-
+    
+    // --- Timer queries (GPU timing) ------------------------------------------
+    public static final int GL_TIME_ELAPSED = 0x88BF;
+    public static final int GL_QUERY_RESULT = 0x8866;
+    public static final int GL_QUERY_RESULT_AVAILABLE = 0x8867;
+    
     // =========================================================================
-
-    public static void glBindFramebuffer(int target, int fbo) {
-        backend.bindFramebuffer(target, fbo);
-    }
 
     /** @see CgGLBackend#copyImageSubData */
     public static void glCopyImageSubData(int srcName, int srcTarget, int srcLevel, int srcX, int srcY, int srcZ,
@@ -1138,6 +1139,40 @@ public final class CgGL {
         List<String> errors = drainErrors();
         if (!errors.isEmpty()) 
             throw new AssertionError("[GlErrorChecker] GL error(s) after " + context + ": " + errors);
+    }
+
+
+    // --- Timer queries (GPU timing) ------------------------------------------
+    // See CgGLBackend for why these are optional and why results must be polled
+    // on a later frame rather than read immediately.
+
+
+    public static int glGenQuery() {
+        return backend.glGenQuery();
+    }
+
+    public static void glBeginTimeElapsedQuery(int query) {
+        backend.glBeginTimeElapsedQuery(query);
+    }
+
+    public static void glEndTimeElapsedQuery() {
+        backend.glEndTimeElapsedQuery();
+    }
+
+    public static boolean glIsQueryResultAvailable(int query) {
+        return backend.glIsQueryResultAvailable(query);
+    }
+
+    public static long glGetQueryResultNanos(int query) {
+        return backend.glGetQueryResultNanos(query);
+    }
+
+    public static void glDeleteQuery(int query) {
+        backend.glDeleteQuery(query);
+    }
+
+    public static void glBindFramebuffer(int target, int fbo) {
+        backend.bindFramebuffer(target, fbo);
     }
 
     // =========================================================================
