@@ -102,9 +102,17 @@ uniform sampler2D cg_DepthBuffer;
 // pattern the TBO struct getter codegen already relies on being driver-CSE'd (see
 // gl/material/parse/CgGlslEmitter.java's own comment on appendTboFieldFetch). Vertex stage
 // only, and only valid when the material's #type provides a 2D cg_Position/cg_TexCoord0
-// (i.e. CgQuadRenderer's own unit quad mesh, #type pos2_uv2_col4ub), and only resolves if
-// the material was wired via CgQuadRenderer.attachTo(material) (or an equivalent raw
-// material.attach(buffer, "QUAD_DATA") call using that exact name).
+// (i.e. CgQuadRenderer's own unit quad mesh, #type pos2_uv2_col4ub).
+//
+// These are DEFINED unconditionally, here, but only RESOLVE in a shader that declares:
+//
+//     #pragma cg_use quad
+//
+// which is what attaches the buffer QUAD_DATA refers to. Defining them unconditionally costs
+// nothing — an unexpanded macro is not a declaration, so it burns no binding point and no
+// texture unit, unlike the buffer itself (which is exactly why the buffer is opt-in and these
+// are not). Using one without the pragma is rejected at parse time with a message naming the
+// missing line, so the half-state never reaches the GLSL compiler.
 //
 // CG_QUAD_NORMAL — every quad instance is flat (a plane spanned by right/up), so its face
 // normal is fully derivable from data already present; no per-instance normal field is stored

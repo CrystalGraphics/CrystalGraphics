@@ -197,8 +197,6 @@ public class CgTextRenderer {
 
     static {
         TEXT_MATERIAL.attach(TEXT_DATA_UBO);
-        // Must run before ANYTHING can toggle a keyword on TEXT_MATERIAL.
-        CgQuadRenderer.attachTo(TEXT_MATERIAL);
         TEXT_MATERIAL.applyProperties(b -> b.sampler("_MainTex", 0, ATLAS_TEXTURE_REF));
     }
 

@@ -24,6 +24,34 @@
 #pragma cg_feature FOG_ON
 #pragma cg_feature NORMAL_MAP
 
+// ── Engine buffers: #pragma cg_use ────────────────────────────────────────────
+// Declares that this shader reads an engine-provided shader buffer. The buffer's
+// GLSL declaration is injected during PARSING — before anything can compile — so
+// the symbols always exist no matter what triggers the first compile.
+//
+//   #pragma cg_use quad
+//
+// Registered tokens (see CgEngineBufferRegistry):
+//   quad — CgQuadRenderer's per-instance buffer. Unlocks QUAD_DATA(n) and the
+//          convenience macros CG_QUAD_WORLD_POS / CG_QUAD_UV / CG_QUAD_COLOR /
+//          CG_QUAD_NORMAL / CG_QUAD_ATLAS_LAYER. Required by any shader drawn
+//          through CgQuadRenderer — UI quads, text glyphs, SDF rects.
+//
+// This is OPT-IN, unlike CgFrameBlock/CgObjectDataBuffer which cg_env.glsl
+// declares unconditionally: only a minority of shaders draw instanced quads, and
+// on the TBO fallback path the declaration costs a texture unit.
+//
+// Using the symbols WITHOUT declaring the pragma is a hard parse error naming the
+// missing line. That check exists because the old failure mode was badly
+// misleading: the buffer used to be attached from Java at first use, so a shader
+// compiled earlier (e.g. by enableKeyword, which recompiles on the spot) built
+// GLSL with QUAD_DATA undeclared — and the empty feature list that left behind
+// surfaced as "Keyword 'X' is not declared as #pragma cg_feature", pointing at a
+// pragma that was present and correct.
+//
+// This example shader is a spatial/lit material and does NOT draw through
+// CgQuadRenderer, so it deliberately declares no cg_use.
+
 // ── Material-level tags ───────────────────────────────────────────────────────
 // "RenderType" controls the shadow auto-generation ladder:
 //   Opaque (default) — castShadows=true and queue<3000 → auto-generate ShadowCaster pass

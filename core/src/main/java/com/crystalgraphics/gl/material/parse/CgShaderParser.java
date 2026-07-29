@@ -2,6 +2,7 @@ package com.crystalgraphics.gl.material.parse;
 
 import com.github.bsideup.jabel.Desugar;
 import com.crystalgraphics.api.state.CgRenderState;
+import com.crystalgraphics.gl.buffer.shader.CgEngineBufferRegistry;
 import com.crystalgraphics.gl.material.CgMaterialProperty;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -107,6 +108,8 @@ public final class CgShaderParser {
         // ── Step 2: material-level declarations ────────────────────────────
         String shaderType              = CgStructureParser.parseShaderType(source, resourcePath);
         List<String> featureNames      = CgStructureParser.parseFeaturePragmas(source, resourcePath);
+        List<String> engineBuffers     = CgStructureParser.parseUsePragmas(source, resourcePath);
+        validateEngineBufferUsage(source, engineBuffers, resourcePath);
         List<CgMaterialProperty> props = CgPropertiesParser.parse(source, resourcePath);
         int renderQueue                = CgQueueParser.parse(source, resourcePath);
 
@@ -240,8 +243,43 @@ public final class CgShaderParser {
         }
 
         // ── Step 8: return assembled parsed shader ─────────────────────────
-        return new CgParsedShader(shaderType, props, featureNames, renderQueue,
+        return new CgParsedShader(shaderType, props, featureNames, engineBuffers, renderQueue,
                 renderType, castShadows, Collections.unmodifiableList(passes));
+    }
+
+    /**
+     * Enforces that {@code #pragma cg_use} and actual symbol usage agree, in both directions.
+     *
+     * <p>The forward check — a declared token must be registered — is ordinary validation. The
+     * reverse check is the important one: a shader that reads an engine buffer's symbols
+     * <em>without</em> declaring it used to compile anyway, right up until the exact moment the
+     * buffer happened not to be attached yet, and then failed with a GLSL error about an undefined
+     * variable, several layers below anything the author wrote. Catching it here turns a
+     * runtime-ordering bug into a parse-time message naming the missing line.</p>
+     *
+     * <p>Detection is textual: the macro family ({@code CG_QUAD_}) and the raw macro name
+     * ({@code QUAD_DATA}) are both looked for, so it fires whether the author used the convenience
+     * macros or indexed the buffer directly.</p>
+     */
+    private static void validateEngineBufferUsage(String source, List<String> declared, String resourcePath) {
+        for (String token : declared) {
+            if (CgEngineBufferRegistry.get(token) == null) {
+                throw new CgShaderParseException(
+                        "[" + resourcePath + "] #pragma cg_use: unknown buffer token '" + token
+                        + "' — registered tokens: " + CgEngineBufferRegistry.tokens());
+            }
+        }
+        for (String token : CgEngineBufferRegistry.tokens()) {
+            if (declared.contains(token)) continue;
+            String macro = CgEngineBufferRegistry.get(token).macroName();
+            // "CG_QUAD_" from "QUAD_DATA" — the convenience-macro prefix that expands to the raw name.
+            String family = "CG_" + (macro.endsWith("_DATA") ? macro.substring(0, macro.length() - 5) : macro) + "_";
+            if (source.contains(macro) || source.contains(family)) {
+                throw new CgShaderParseException(
+                        "[" + resourcePath + "] uses '" + macro + "'/'" + family
+                        + "*' but does not declare it — add '#pragma cg_use " + token + "'");
+            }
+        }
     }
 
     /**

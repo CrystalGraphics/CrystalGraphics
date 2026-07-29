@@ -257,6 +257,7 @@ Built-in types: `spatial` (`CgVertexFormat.SPATIAL` — pos3/uv2/normal3), `pos3
 #type spatial
 #pragma cg_feature RECEIVE_SHADOWS    // compile-time keyword; max 8 per shader
 #pragma cg_feature FOG_ON
+#pragma cg_use quad                   // opt into an engine buffer (see below); omit if unused
 
 Tags { "RenderType" = "Opaque" }      // controls shadow auto-generation
 Queue = "Geometry"                    // Background|Geometry|AlphaTest|Transparent|Overlay
@@ -386,6 +387,46 @@ material.enableKeyword("RECEIVE_SHADOWS");  // compiled + cached on next bind()
 material.disableKeyword("FOG_ON");
 boolean on = material.isKeywordEnabled("NORMAL_MAP"); // false by default
 ```
+
+---
+
+## Engine Buffers — `#pragma cg_use`
+
+`CgFrameBlock` and `CgObjectDataBuffer` are declared unconditionally in `cg_env.glsl` because
+essentially every shader wants them. Buffers that only a minority of shaders need are **opt-in**:
+
+```glsl
+#type pos2_uv2_col4ub
+#pragma cg_use quad
+```
+
+| Token | Provides | Needed by |
+|---|---|---|
+| `quad` | `QUAD_DATA(n)` + `CG_QUAD_WORLD_POS` / `CG_QUAD_UV` / `CG_QUAD_COLOR` / `CG_QUAD_NORMAL` / `CG_QUAD_ATLAS_LAYER` | Any shader drawn through `CgQuadRenderer` — UI quads, text glyphs, SDF rects |
+
+The buffer's GLSL declaration is injected **during parsing, before anything can compile**, so the
+symbols exist no matter what triggers the first compile. Register a new token with
+`CgEngineBufferRegistry.register(...)` — providers hold a `Supplier`, so registration never forces
+the provider class's static init (which would allocate against `CgBindingPoints` too early).
+
+**Both directions are hard parse errors:**
+
+| Mistake | Result |
+|---|---|
+| Uses `CG_QUAD_*`/`QUAD_DATA` without `#pragma cg_use quad` | `CgShaderParseException` naming the line to add |
+| Declares an unregistered token | `CgShaderParseException` listing registered tokens |
+| Duplicate or malformed token | `CgShaderParseException` |
+
+> **Do not attach these from Java.** A `CgQuadRenderer.attachTo(material)` helper used to exist and
+> was removed. Attaching at first use loses to anything that compiles the shader earlier — notably
+> `CgMaterial.enableKeyword`, which recompiles on the spot when the shader has not been parsed yet.
+> The result was GLSL built with `QUAD_DATA` undeclared, and because a failed compile leaves the
+> parsed feature list empty, it surfaced as **"Keyword 'X' is not declared as `#pragma cg_feature`"**
+> — naming a pragma that was present and correct. Declaring the dependency in the shader removes the
+> ordering question entirely.
+
+Like `cg_feature`, `cg_use` lines are stripped and never reach generated GLSL, and are only read
+from the material-level preamble (never from inside a `Pass` body).
 
 ---
 

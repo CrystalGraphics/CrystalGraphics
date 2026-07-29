@@ -6,6 +6,7 @@
 // ═════════════════════════════════════════════════════════════════════════════
 
 #type pos2_uv2_col4ub
+#pragma cg_use quad
 
 // One keyword covers both distance-field atlas types (MSDF and MTSDF) — the fragment
 // logic is byte-for-byte identical for both today (same median-based reconstruction,

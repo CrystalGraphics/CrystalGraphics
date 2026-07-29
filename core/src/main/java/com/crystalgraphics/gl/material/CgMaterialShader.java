@@ -12,6 +12,7 @@ import com.crystalgraphics.api.shader.CgPreprocessorException;
 import com.crystalgraphics.api.shader.CgShader;
 import com.crystalgraphics.api.shader.CgShaderPreprocessor;
 import com.crystalgraphics.api.state.CgRenderState;
+import com.crystalgraphics.gl.buffer.shader.CgEngineBufferRegistry;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 import com.crystalgraphics.gl.material.parse.CgMaterialShaderCompiler;
@@ -251,6 +252,19 @@ public final class CgMaterialShader {
             if (isFirst) throw e;
             LOGGER.error("Reload failed for '" + resourcePath + "': parse error — " + e.getMessage());
             return;
+        }
+
+        // ── Step 2b: Attach engine buffers declared via #pragma cg_use ─────────
+        // Before compilation, deliberately. These buffers inject GLSL declarations, so attaching
+        // them after a compile would be too late — that ordering is exactly what made a shader read
+        // an undeclared QUAD_DATA when something forced an early recompile. Doing it here means a
+        // declared buffer is wired for every compile of this shader, including the first.
+        //
+        // Unknown tokens were already rejected at parse time, so the provider is non-null. attach()
+        // dedupes by macro name, so a caller that also attached manually is harmless.
+        for (String token : parsed.engineBuffers()) {
+            CgEngineBufferRegistry.Provider provider = CgEngineBufferRegistry.get(token);
+            attach(provider.buffer().get(), provider.macroName());
         }
 
         // ── Step 3: Capability check ───────────────────────────────────────────
