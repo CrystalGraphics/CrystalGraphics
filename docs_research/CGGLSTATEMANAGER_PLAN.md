@@ -1,16 +1,29 @@
 # `CgGlStateManager` — Design & Implementation Plan
 
-**Status:** plan, no code written. Authored 2026-07-30.
-**Replaces:** `GLStateMirror` and `CgGlStates`/`SlotState` (the `glGet` capture machinery), plus the
-1.7.10 coremod.
-**Keeps unchanged:** `CgGlState`, `CgGlScope`, `CgGlSlot` — the public API — and `CallFamily`, which the
-Core/ARB/EXT waterfall depends on. Their *implementations* change; their signatures do not.
+**Status: SHIPPED.** Two commits on `master`:
+
+| Commit | What |
+|---|---|
+| `26873b6` | Replace the `glGet`-based GL state framework with a `CgGL`-level shadow (42 files, +6746/−1088) |
+| `ffa6fac` | Delete the GL redirect coremod and `GLStateMirror` (16 files, −3303 net) |
+
+**Replaced:** `GLStateMirror`, `CgGlStates`/`SlotState`, the ten per-domain state records, `CgStateGroup`,
+the write-observer pair, the `cgStateWriteGuard` build task, and the entire 1.7.10 ASM coremod.
+**Kept:** `CgGlState` / `CgGlScope` / `CgGlSlot` as the public API — signatures unchanged, so no call site
+was edited. (`CallFamily` was *also* on this list, defended twice as load-bearing. It was not — see
+below — and is now deleted too.)
 **Predecessor findings:** [`GL_STATE_SYNC_STALL_FINDINGS.md`](GL_STATE_SYNC_STALL_FINDINGS.md) — the
-measurement that motivates this. Read it first; this document does not repeat the numbers.
+measurement that motivates all of this. Read it first; this document does not repeat the numbers.
+
+> **Read this if you read nothing else.** Every bug this subsystem has produced — four now — has been a
+> **missing GL call**: it renders wrongly, throws nothing, and surfaces far from its cause. Unit tests pass
+> through all of them. Two of the four were found only by running the harness, and one only after building a
+> test double that made the restore path observable at all. Treat a green suite as necessary and nowhere
+> near sufficient.
 
 ---
 
-## V2 — move the tracker into `CgGL` (IN PROGRESS 2026-07-30)
+## V2 — move the tracker into `CgGL` (COMPLETE 2026-07-31)
 
 ### Progress — SWITCHOVER COMPLETE
 
@@ -25,8 +38,14 @@ measurement that motivates this. Read it first; this document does not repeat th
 | Repoint imports across both repos | ✅ 18 files |
 | Remove `cgStateWriteGuard` | ✅ — raw `CgGL` writes are now fully equivalent to the typed path |
 | Tests for the new manager | ✅ 16, in `platform/src/test` |
+| Tests | ✅ **27** in `platform/src/test`, incl. `RecordingGlBackend` (generated, 141 methods) |
+| `hostForeign` boundary for Minecraft's own renderers | ✅ added |
+| `PROGRAM`/`FBO` exempted from dedup | ✅ tracked but always issued |
+| Package split — `platform.gl` (manager) / `platform.gl.state` (API + SPI) | ✅ done, docs follow |
+| Delete the coremod + `GLStateMirror` | ✅ `ffa6fac` — see below |
+| Runtime verification | ✅ `text-3d` 1120–1143 frames clean; `cgui-gallery` pixel-identical |
 | Port `Blaze3DStateProvider` | ⬜ still on the old signature; `mc1201` is not in the build so it does not block |
-| Runtime verification | ⬜ **required** — see below |
+| Re-measure `doBind` for V2 | ⬜ the numbers below are **V1's** — see TODO |
 
 **Green:** `:platform:test` (16) · `:core:check` (**761**, 0 failures) · `:mc1710:compileJava` + `:mc1710:test`.
 CrystalGUI's *main* source compiles; its test/harness compile is broken by an unrelated in-flight refactor
@@ -34,9 +53,8 @@ in that repo (`com.crystalgui.core.input` deleted by another change, visible as 
 
 **Deleted (20):** `CgStateGroup` · old `CgGlState`/`CgGlScope`/`CgGlSlot`/`CgGlStateManager`/`CgGlStateProvider`/`CgGlGetStateProvider` · `CgGlWriteObserver` + `CgGlStateWriteObserver` · `CgFboState` · `CgProgramState` · `CgTextureUnitsState` · `CgVertexInputState` · `CgColorMaskState` · `CgViewportState` · `CgScissorState` · `CgPolygonOffsetState` · `CgPolygonModeState` · `CgLineWidthState` · `CgPointSizeState` · plus the guard task and four obsolete test classes.
 
-**Kept deliberately:** `GLStateMirror` — now inert and documented as such. It survives only because
-`CrystalGLRedirects` feeds it and the hotswap plugin locates `CrystalGraphicsTransformer` in the
-LaunchWrapper chain. Removing the coremod means reworking hotswap first.
+**Coremod + mirror: deleted** in `ffa6fac`, superseding the "kept deliberately" note that stood here. The
+hotswap entanglement turned out to be narrower than feared — see *Removing the coremod* below.
 
 ### Bug found at first run: the element array buffer is not global state
 
@@ -62,6 +80,86 @@ nothing).
 > **The general lesson for any future domain:** the shadow may only dedupe values that are truly global
 > context state. Anything an object binding implicitly swaps has to be invalidated when that object
 > changes, or dedup silently drops a required call.
+
+### Bug found second: a domain is written field by field, but trusted as a whole
+
+Caught by a *test*, not a run — but only because building `RecordingGlBackend` made the restore path
+observable for the first time.
+
+`issue()` clears the unknown bit for a whole **domain**, yet a domain is written **field by field**. So the
+first field re-issued marked the domain trusted, and every remaining field then compared equal to the stale
+shadow and was skipped. Restoring `DEPTH` emitted `glEnable(GL_DEPTH_TEST)` and silently dropped both
+`glDepthMask` and `glDepthFunc` — two thirds of the domain left on whatever the foreign code had set.
+
+**Fix.** `reissue` suspends deduplication (`forcing`) for the duration of one *stale* domain. A domain
+nobody disturbed still takes the normal path and usually emits nothing, so the fast case is untouched.
+
+> This is the strongest argument in the document for the recording backend. The manager agreed with itself
+> perfectly throughout: `isTrusted` said trusted, the shadow held the right values, and the calls never
+> reached the driver. Only asserting on **what the backend received** could see it.
+
+### `hostForeign` — the boundary for hosting Minecraft's renderers
+
+Raised as an objection to the whole design, and it was a fair one: this engine will run `ItemRenderer`,
+entity previews and block models *inside* its own passes — foreign GL writes are a designed, frequent
+feature, not a rare accident. Frame-boundary invalidation is useless against code running deep inside a
+pass.
+
+`CgGlState.hostForeign(slots…)` is a scope that differs from `save()` in exactly one way: **on exit it drops
+all trust before restoring**, so declared domains are re-asserted for real rather than deduplicated away
+against a shadow known to be lying. Entry is free — no `glGet`, since our shadow is still truthful going in.
+
+> **It fixes our half only.** Minecraft keeps its own shadow, and every write we make through `CgGL` is
+> equally invisible to *it*. Two shadows, each blind to the other. Before calling in, state MC cares about
+> must be set through **MC's** API. On 1.7.10 + Angelica the problem largely dissolves, because our provider
+> reads Angelica's mirror, which observed both sides.
+
+### `PROGRAM` and `FBO`: tracked, never deduplicated
+
+`hostForeign` covers boundaries we *know* about. This covers the ones we forget to mark.
+
+Deduplication is a bet that nothing wrote GL behind our back, and the stake differs sharply by domain:
+
+| | redundant call costs | wrong value costs |
+|---|---|---|
+| `FBO` | a handful of binds/frame — nothing measurable | draws into the wrong target, often **no visible output at all** |
+| `PROGRAM` | `glUseProgram` is cheap, never synchronises | wrong shader; MC, Iris and every shader mod rebind constantly |
+
+`TEXTURES` and `VERTEX_INPUT` keep dedup — high call volume justifies the narrower risk.
+
+> **The trade is far cheaper than it looks, and this is the key realisation:** the headline win came from
+> removing `glGet` **synchronisation in scope capture**, *not* from eliminating writes. Write dedup is a
+> second-order gain layered on top, so exempting a domain costs almost none of the actual saving. Confirmed:
+> `text-3d` and `cgui-gallery` render identically with the exemption in place.
+
+### Removing the coremod — the hotswap tangle was narrower than feared
+
+The transformer's entire purpose was rewriting call sites so `CrystalGLRedirects` could feed `GLStateMirror`
+(`CoverageMatrix` = the redirect table, `CrystalGLRedirects` = the targets). One thing, four files.
+
+`TransformHelper` had **two** modes and only one was ours:
+
+- *CrystalGraphics-only* — re-applies our transformer. Dead with it, and it was the **default**.
+- *full-chain* — re-applies the entire LaunchWrapper chain, **Mixins included**. Real value independent of
+  the mirror, and it was gated behind an opt-in flag defaulting to **off**.
+
+So hotswap survives with the CG-only branch removed and full-chain unconditional. Net effect: hot reload now
+re-applies Mixins **by default**, which it previously did not unless you knew to pass
+`-Dcrystalgraphics.hotswap.fullChain`. A small improvement that fell out of the cleanup.
+
+`CallFamily` was kept at this point, defended as "the Core/ARB/EXT waterfall used by nine files outside
+`gl/state`". **That was wrong, and it has since been deleted.** The nine were files that *mentioned* the
+symbol; every use was a `protected CallFamily callFamily() { return CONSTANT; }` override of an abstract
+method with zero callers. Its consumer `CrossApiTransition` was already gone, so the javadoc referred to a
+deleted class. `CgFrameBuffer.wrap()` took, validated and stored one — and had no callers either.
+
+`CgCapabilities.FramebufferPath` in `platform` is the correct home for the concept and already existed:
+capability detection belongs beside the capability probe, not in a state package that tagged bindings for a
+mirror that no longer exists.
+
+> **Method note, having now produced two wrong "load-bearing" claims in one session:** `grep -l` counts
+> files that *mention* a symbol — imports, javadoc, overrides. It cannot tell a caller from a producer.
+> Search for invocations before defending anything.
 
 ### Runtime verification
 
@@ -325,99 +423,121 @@ already.
 
 ---
 
-## TODO — everything remaining, 2026-07-30
+## TODO — everything remaining, updated 2026-07-31
 
-**The engine is done, measured and shipping-green.** What is left is one blocked integration, two
-deliberate deferrals, and cleanup. Nothing below blocks anything above it.
+**The engine is done, deleted-down, documented and green.** What is left is one blocked integration, one
+unverified claim, two deliberate deferrals, and somebody else's flaky tests. Nothing below blocks anything
+above it.
 
-### Measured outcome (`text-3d`, 1010 frames)
+### ⚠️ The one claim in this document that is not evidenced
 
-| | before | after |
+The measurement below is **V1's**. V2 changed dedup from whole-value to per-field, added the `forcing`
+path, and now always issues `PROGRAM`/`FBO` — all of which move `doBind`, plausibly in either direction.
+The verification runs had main-thread profiling scopes disabled, so this is **unconfirmed, not regressed**.
+
+| | before | after (V1) |
 |---|---|---|
 | `doBind.stateSave` | 1,599 ms / 838 frames (~1.9 ms/frame) | **0.00 ms** — scope removed |
 | worst single frame | **346.8 ms** | whole `doBind` max **2.16 ms** |
 | whole `doBind` | ~1,650 ms | **73.56 ms** (p50 0.050 ms) |
 
-Shadow staleness under `-Dcrystalgraphics.state.verify=true`: **1 report in ~1,130 frames** (frame 1,
-before any boundary exists; self-corrects). Suite: **816 tests, 0 failures.** Rendering confirmed by eye in
-`cgui-gallery` and `text-3d`.
-
----
+- [ ] **Re-measure `doBind` under V2** with main-thread profiling enabled, against the row above. Cheapest
+      remaining item and the last gap between "it works" and "it works, and here is the number".
 
 ### 🔴 1 — Blocked on you: re-add `mc1201`, then compile and test together
 
-**`Blaze3DStateProvider` is written but has never been through a compiler**, because `mc1201` is absent from
-`settings.gradle.kts` (the build has only `platform`, `core`, `mc1710`, bindings).
+**`Blaze3DStateProvider` is written but has never been through a compiler**, and is still on the *old*
+provider signature (pre-`read(slot, shadow)`), because `mc1201` is absent from `settings.gradle.kts`.
 
 - [ ] Re-add `mc1201` to `settings.gradle.kts`
-- [ ] Compile `Blaze3DStateProvider` — **expect syntax errors**; field names and Iris semantics are
-      source-verified, the syntax is not
-- [ ] Wire it into `PlatformService1201` (mirroring `PlatformService1710.onPreInit()`)
-- [ ] Run with a shader pack **active** to exercise the Iris gate — the locks are `false` when idle, so an
-      idle run proves nothing about it
+- [ ] Port it to the fill-the-shadow signature, then compile — **expect errors**; field names and Iris
+      semantics are source-verified, the syntax is not
+- [ ] Wire into `PlatformService1201` (mirroring `PlatformService1710.onPreInit()`)
+- [ ] Run with a shader pack **active** — the Iris locks are `false` when idle, so an idle run proves
+      nothing about the gate
 - [ ] Run with `-Dcrystalgraphics.state.verify=true` and confirm no stale-shadow reports
 
 ### 🟡 2 — Needs a real 1.7.10 instance
 
-- [ ] **Runtime-test `AngelicaStateProvider`.** Compiles, never run. Reflection is fail-soft (any miss falls
-      back to `glGet`), so the risk is "no speedup", not breakage — but that also means a total failure
-      would be **silent**. Check `glstate.adopted` counters, or temporarily log on fallback.
+- [ ] **Runtime-test `AngelicaStateProvider`.** Compiles, never run — and it no longer has a predecessor,
+      since the mirror it replaced is deleted. Reflection is fail-soft (any miss falls back to `glGet`), so
+      the risk is "no speedup" rather than breakage — but that also makes total failure **silent**. Check
+      the `adopted` counter, or temporarily log on fallback.
 
-### 🟢 3 — Deferred by decision, not blocked
+### 🟠 3 — Arising from this session's work
 
-- [ ] **Delete the 1.7.10 coremod (step 13).** *You said keep it for now.* Blocked technically too: the
-      **hotswap plugin depends on the transformer** — `hotswap/TransformHelper` locates
-      `CrystalGraphicsTransformer` in the LaunchWrapper chain and re-runs it (`:23`, `:104`, `:118`), and
-      `HotswapRewriteTest` instantiates it directly. The dependency is *incidental* (the transformer now
-      feeds a mirror nothing reads), but untangling it means reworking hotswap, which cannot be tested from
-      this build.
-      **Safe order when picked up:** neutralise `CoverageMatrix` first so the process-wide bytecode rewriting
-      stops → confirm hotswap still works → then delete. Angelica detection is already relocated into
-      `AngelicaStateProvider`, so nothing else depends on the coremod.
+- [ ] **`hostForeign` has zero callers.** The primitive is unit-tested but has never wrapped a real
+      `ItemRenderer`. Its first genuine use is the real test, and that needs `mc1201`. **When it is used,
+      remember the other half**: set the state MC cares about through MC's own API first, or its shadow is
+      as stale as ours was.
+- [ ] **Decide whether `TEXTURES`/`VERTEX_INPUT` should also be exempt.** They are the remaining exposure
+      inside an *unmarked* foreign block. Kept deduplicated deliberately (high call volume), but that is a
+      bet, not a proof — revisit if `verify` mode ever reports them.
+- [ ] **Regenerate `RecordingGlBackend` when `CgGLBackend` gains methods.** It is generated, and the
+      compiler enforces completeness (an unimplemented abstract fails the build), so this is a "you will be
+      told" item rather than a silent rot risk. Regenerate; do not hand-edit.
 
-- [ ] **Re-enable CrystalGraphics' import guard** (`core/build.gradle.kts:113–136`, commented out inside a
-      disabled dual-pipeline experiment). `AGENTS.md` now carries a warning instead of claiming enforcement
-      it does not have. `cgStateWriteGuard` shows the working pattern.
-      *(CrystalGUI's equivalent guard is active — only this repo's is off.)*
+### 🟢 4 — Deferred by decision, not blocked
 
+- [ ] **Re-enable CrystalGraphics' import guard** (`core/build.gradle.kts`, commented out inside a disabled
+      dual-pipeline experiment). `AGENTS.md` carries a warning instead of claiming enforcement it lacks.
+      Copy CrystalGUI's, which is active. *(The `cgStateWriteGuard` once cited here as the working pattern
+      is gone — V2 made the rule it enforced unnecessary.)*
 - [ ] **Dedicated state-thrash benchmark scene.** N materials alternating render states, measuring
-      `glstate.callsIssued` / `callsSkipped` directly. `text-3d` found the original stall by accident.
-      Deliberately last: it produces a number nobody has asked for.
+      `callsIssued` / `callsSkipped` directly. `text-3d` found the original stall by accident. Deliberately
+      last: it produces a number nobody has asked for.
 
-- [ ] **Optional: runtime `CgGL` interception**, only if `cgStateWriteGuard` proves insufficient. Must be a
-      *decorating* `CgGLBackend` where the manager holds the **raw** delegate — an observer inside `CgGL`
-      fires on the manager's own `emit()` and invalidates what it just established, collapsing dedup.
-      Sidestepping that with a re-entrancy flag would reintroduce `GLStateMirror`'s
-      `enterRedirect`/`exitRedirect`. Cost: a ~141-method generated decorator.
-
-### ⚪ 4 — Not ours, but it bites
+### ⚪ 5 — Not ours, but it bites
 
 - [ ] **Flaky MSDF tests:** `CgMsdfFieldStorageTest`, `CgMsdfGenerationCostTest`, `CgMsdfSyncBudgetTest`
-      assert timing and generation budgets, fail under machine load, and pass in isolation. Hit three times
-      during this work. They make `:core:check` unreliable as a gate — **a contended run is not evidence
-      either way**, which cost real time here. Worth converting to deterministic assertions.
+      assert timing and generation budgets, fail under machine load, pass in isolation. Hit three times
+      during this work. They make `:core:check` unreliable as a gate — **a contended run is evidence of
+      nothing**, which cost real time here. Worth converting to deterministic assertions.
+- [ ] **CrystalGUI's submodule pointer** to CrystalGraphics is stale. Left alone deliberately: that repo
+      also holds another agent's in-flight P6 work, and bumping the pointer would drag it into the commit.
 
 ---
 
 ### Done
 
-**Engine:** manager · 16 state groups · `glGet` provider · `CgGlState`/`CgGlScope` re-backed with **no API
-change** (no call site edited) · `CgRenderState` routed · per-bind save deleted · frame- and pass-boundary
-invalidation · `CgGlStates`/`SlotState` removed · render-thread assertion · dedup narrowed to a six-domain
-allow-list · `cgStateWriteGuard` (build-time, self-tested) · `verify` and `noDedup` diagnostic flags.
+**Engine:** manager in `platform.gl`, API + SPI in `platform.gl.state` · dedup inside `CgGL`'s 28 setters ·
+per-field shadow · restore re-issued through `CgGL` (no second write path) · `hostForeign` · `PROGRAM`/`FBO`
+dedup exemption · `forcing` for stale-domain restore · per-VAO element-buffer handling · frame- and
+pass-boundary invalidation · render-thread assertion · `verify` and `noDedup` diagnostics.
 
-**Platform:** `AngelicaStateProvider` (mc1710, wired, compiles) · `Blaze3DStateProvider` (mc1201, written,
-uncompiled) · Iris/Oculus interception verified exhaustively and gated.
+**Deleted:** 20 classes in the switchover (`CgStateGroup`, the old framework, the observer pair, the ten
+per-domain records, the guard task, four test classes) plus the entire coremod, `GLStateMirror` and two
+coremod test suites — **~3,300 further lines**.
 
-**Docs:** root `AGENTS.md` and `gl/state/AGENTS.md` rewritten; eight implementation corrections (C1–C8)
-recorded below.
+**Tests:** 27 in `platform`, including `RecordingGlBackend` — a generated 141-method double that made the
+restore path testable for the first time across *two* architectures, and immediately found a real bug.
 
-**Declined with reasoning:** D6 texture-unit split (would make restore unbind CrystalGraphics' own
-textures, for 3 units out of 32) · a separate Iris provider (impossible in principle — Iris keeps no
-general-purpose mirror to read from).
+**Platform:** `AngelicaStateProvider` (mc1710, wired, compiles, unrun) · `Blaze3DStateProvider` (mc1201,
+written, uncompiled, old signature) · Iris/Oculus interception verified exhaustively and gated.
+
+**Docs:** root `AGENTS.md`, `gl/state/`, `api/state/`, `gl/buffer/`, `mc/shader/` — plus three stale claims
+corrected that predated this work (`CgRenderState`'s "four slots" when it has six; buffer bindings described
+as mirror-tracked; `bindScoped()` described via `GLStateMirror` and a `CgStateBoundary` that never existed).
+
+**Declined with reasoning:** D6 texture-unit split (restore would unbind CrystalGraphics' own textures, for
+3 units of 32) · a separate Iris provider (impossible in principle — Iris keeps no general-purpose mirror
+to read) · deleting the hotswap package
+(its full-chain mode re-applies Mixins, which outlives the coremod).
 
 ---
 
+# ─── Everything below is the original design record ───
+
+**Historical, from 2026-07-30, before any code existed.** It is kept because the *reasoning* is still the
+best account of why the design is shaped this way — the four-tier boundary model, why interception cannot
+be a foundation, why Iris cannot have its own provider. But it describes intent, not the code.
+
+Where the two disagree, **the code and the sections above win.** In particular: "Implementation order",
+"Decisions taken — step 1 is unblocked" and the class sketches are finished work, not a plan; the shadow
+sketch is explicitly marked superseded; and the six-domain dedup allow-list it argues for was later widened
+to fourteen and then narrowed differently (see *`PROGRAM` and `FBO`* above).
+
+---
 
 ## TL;DR
 
@@ -769,9 +889,10 @@ final class CgGlStateShadow {
 }
 ```
 
-`CallFamily` stays exactly here: the rule that *an FBO bound via one family must be unbound via the
-same family* survives the mirror's death, so the family travels with the binding
-(`bindFbo(target, id, family)`) instead of being looked up.
+~~`CallFamily` stays exactly here~~ — **superseded.** The rule that *an FBO bound via one family must be
+unbound via the same family* does survive the mirror's death, but the shipped design gets it without the
+enum: `fboChanged` derives the family from the **bind target** (`GL_FRAMEBUFFER_EXT` self-identifies, and
+Core and ARB share an object namespace). No family is threaded through any call. `CallFamily` is deleted.
 
 ### Dirty semantics — two states, one invariant
 
@@ -1146,7 +1267,12 @@ probe, consumed by the 1.7.10 `CgGlStateProvider`.
 **Rewritten, not deleted:** the FBO-tracking assertion in `CrystalGraphicsIntegrationTest:129–150`
 must be re-pointed at the new shadow rather than dropped.
 
-> **`CallFamily` stays — do not delete it.** It looks like part of the mirror because
+> ⛔ **This callout is WRONG and was acted on twice. `CallFamily` is deleted (2026-07-31).** Every "user"
+> below is a `protected CallFamily callFamily() { return CONSTANT; }` override of an abstract method with
+> **zero callers** — its consumer `CrossApiTransition` was already deleted. The correct home for the concept
+> is `CgCapabilities.FramebufferPath`, which already existed. Original text follows.
+>
+> ~~**`CallFamily` stays — do not delete it.**~~ It looks like part of the mirror because
 > `GLStateMirror` tracks a family per binding, but it is independently load-bearing for the
 > **Core/ARB/EXT waterfall**: nine files outside `gl/state/` use it, including
 > `CgCoreFrameBuffer` / `CgArbFrameBuffer` / `CgExtFrameBuffer`, `CgAbstractShaderProgram` and its
@@ -1699,7 +1825,7 @@ deliberately). It **diverges** on three points that matter:
 |---|---|
 | "No caching for non-observed domains" | Inherited from `render-system-designs.md` §5.4. Keeps `glGet` for blend/depth/cull — i.e. **executing that plan would preserve the 347 ms stall.** It predates the profiling and never mentions `doBind`, `glGet`, sync points or boundaries. |
 | "Build `CgRenderSystem`" | Already exists as `CgGL`. That plan predates the platform abstraction. |
-| "Remove `CallFamily`" | Would break the Core/ARB/EXT framebuffer waterfall — nine dependent files outside `gl/state/`. |
+| ~~"Remove `CallFamily`"~~ | **This entry was wrong.** Reversed 2026-07-31: the nine "dependents" were producers with no consumer. Removed. |
 
 **Harvested from it:** its "Codebase Ground Truth" section is verified and accurate, and its
 `CoverageMatrix` FULL_MODE / GAP_ONLY_MODE listings independently confirm the transformer observes

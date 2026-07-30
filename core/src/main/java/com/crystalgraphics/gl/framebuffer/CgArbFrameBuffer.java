@@ -2,7 +2,6 @@ package com.crystalgraphics.gl.framebuffer;
 
 
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
-import com.crystalgraphics.gl.state.CallFamily;
 import com.crystalgraphics.platform.gl.CgGL;
 
 /**
@@ -27,10 +26,6 @@ final class CgArbFrameBuffer extends CgFrameBuffer {
         super(name, format, width, height);
     }
 
-    @Override
-    protected CallFamily callFamily() {
-        return CallFamily.ARB_FBO;
-    }
 
     @Override
     protected int doGenFramebuffer() {

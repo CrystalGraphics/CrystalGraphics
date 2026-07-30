@@ -3,7 +3,6 @@ package com.crystalgraphics.gl.shader;
 
 import com.crystalgraphics.api.shader.CgActiveUniform;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
-import com.crystalgraphics.gl.state.CallFamily;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.util.CgBufferUtils;
 import java.nio.FloatBuffer;
@@ -165,15 +164,6 @@ public class CgArbShaderProgram extends CgAbstractShaderProgram {
 
     // ── Abstract hook implementations ──────────────────────────────────
 
-    /**
-     * {@inheritDoc}
-     *
-     * @return {@link CallFamily#ARB_SHADER_OBJECTS}
-     */
-    @Override
-    protected CallFamily callFamily() {
-        return CallFamily.ARB_SHADER_OBJECTS;
-    }
 
     /**
      * {@inheritDoc}

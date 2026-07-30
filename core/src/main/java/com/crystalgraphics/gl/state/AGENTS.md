@@ -5,11 +5,22 @@
 **`com.crystalgraphics.platform.gl.state`**, and `CgGlStateManager` in **`com.crystalgraphics.platform.gl`**
 beside the `CgGL` that calls into it.
 
-One file remains, and it is not part of that framework:
+**This package is now empty of code** — only this guide remains.
 
-| File | Status |
-|---|---|
-| `CallFamily` | **Live and load-bearing.** The Core/ARB/EXT waterfall selector; nine files outside this package use it. Not related to the state manager, and repeatedly mistaken for dead code. Do not delete. |
+`CallFamily` is **deleted**. It was defended twice as "live and load-bearing, nine files outside this
+package use it" — that was a count of files *referencing* it, not of code *using* it. Every one was a
+`protected CallFamily callFamily() { return CONSTANT; }` override of an abstract method with **zero
+callers**; its only consumer, `CrossApiTransition`, had been deleted long before, leaving javadoc `{@link}`s
+pointing at a class that no longer existed. `CgFrameBuffer.wrap()` took one as a parameter, validated it,
+stored it — and `wrap()` had no callers either.
+
+Where the concept genuinely belongs is `CgCapabilities.FramebufferPath` (`CORE_GL30`/`ARB_FBO`/`EXT_FBO`/
+`NONE`) in `platform`, which is where capability detection lives and where the waterfall is actually
+selected. `CallFamily` sat in a *state* package because the mirror once tagged bindings with it.
+
+> **The lesson, since it has now cost two wrong claims in one session:** `grep -l` counts files that mention
+> a symbol. It does not distinguish a caller from an override, a javadoc link, or an import. Before calling
+> something load-bearing, search for *invocations*.
 
 `GLStateMirror` is **gone**, along with the entire ASM coremod that fed it (`CrystalGraphicsCoremod`,
 `CrystalGraphicsTransformer`, `CrystalGLRedirects`, `CoverageMatrix`) and their tests. Process-wide bytecode

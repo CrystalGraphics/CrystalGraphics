@@ -1036,7 +1036,7 @@ All 35 package guides under `src/main/java/com/crystalgraphics/`. Relative paths
 | Path | What it covers |
 |---|---|
 | `api/state/AGENTS.md` | `CgRenderState`, `CgDepthState`, `CgBlendState`, `CgCullState`, `CgStencilState`, `CgTextureState` (`CgGlSlot` moved to `platform.gl.state`) |
-| `gl/state/AGENTS.md` | `CallFamily` (live) and a pointer to the state framework — which now lives in `platform.gl` / `platform.gl.state`, not here |
+| `gl/state/AGENTS.md` | Nothing — the package is empty. Kept as a signpost to the state framework in `platform.gl` / `platform.gl.state`, and a record of what was removed |
 
 ### Batch Render Layer
 | Path | What it covers |

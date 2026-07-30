@@ -6,7 +6,6 @@ import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
-import com.crystalgraphics.gl.state.CallFamily;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.gl.texture.CgTexture2D;
@@ -40,7 +39,7 @@ import static com.crystalgraphics.platform.gl.state.CgGlSlot.FBO;
  *       {@link CgGraphicsLifecycle#onResize}.
  *       <strong>Do not cache the returned instance across frames</strong> — re-query
  *       each frame; the registry replaces the internal FBO on resize.</li>
- *   <li>{@link #wrap(String, int, int, int, CallFamily)} — wraps an
+ *   <li>{@link #wrap(String, int, int, int)} — wraps an
  *       externally-created FBO ID.  {@link #delete()} is a no-op on wrapped
  *       instances.</li>
  * </ul>
@@ -290,15 +289,10 @@ public abstract class CgFrameBuffer {
      * @param fboId  external GL framebuffer object ID
      * @param width  known width in pixels (informational)
      * @param height known height in pixels (informational)
-     * @param family call family used to create/bind this external FBO
      * @return a non-owned wrapped framebuffer
      */
-    public static CgFrameBuffer wrap(String name, int fboId, int width, int height,
-                                      CallFamily family) {
-        if (family == null) throw new IllegalArgumentException("CallFamily must not be null");
-        if (!family.isFramebufferFamily()) throw new IllegalArgumentException("CallFamily must be a framebuffer family, got: " + family);
-        
-        return new WrappedFrameBuffer(name, fboId, width, height, family);
+    public static CgFrameBuffer wrap(String name, int fboId, int width, int height) {
+        return new WrappedFrameBuffer(name, fboId, width, height);
     }
 
     // ── GL initialisation (called once by createInternal()) ───────────────────
@@ -705,12 +699,6 @@ public abstract class CgFrameBuffer {
     // ── Abstract GL dispatch (implemented by each backend) ─────────────────────
 
     /**
-     * Returns the {@link CallFamily} for this backend — used by
-     * {@link CrossApiTransition} during bind/unbind.
-     */
-    protected abstract CallFamily callFamily();
-
-    /**
      * Generates a new GL framebuffer object and returns its ID.
      * Called once from {@link #initGl}.
      */
@@ -886,15 +874,9 @@ public abstract class CgFrameBuffer {
      */
     private static final class WrappedFrameBuffer extends CgFrameBuffer {
 
-        private final CallFamily family;
-
-        WrappedFrameBuffer(String name, int fboId, int width, int height,
-                           CallFamily family) {
+        WrappedFrameBuffer(String name, int fboId, int width, int height) {
             super(name, fboId, width, height);
-            this.family = family;
         }
-
-        @Override protected CallFamily callFamily()  { return family; }
 
         // ── delete is no-op for wrapped FBOs ──────────────────────────────────
         @Override
