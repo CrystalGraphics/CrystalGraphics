@@ -160,6 +160,21 @@ public final class CgMaterialShader {
     @Getter
     private boolean dirty;
 
+    /**
+     * Set when the last {@link #recompile()} attempt failed; cleared by {@link #markDirty()} and by
+     * a successful recompile.
+     *
+     * <p>This is negative caching, and it exists because there was none. {@code CgMaterial}'s two
+     * lazy-compile guards ask "is this state still missing?", not "have we already tried?" — so a
+     * shader that cannot compile was re-read, re-parsed, re-generated and re-{@code glCompileShader}-ed
+     * for <em>every draw of every frame</em>. One broken rounded rect produced 3044 identical error
+     * lines in about a second and a 900KB log, which buried the one line that mattered.</p>
+     *
+     * <p>{@link #markDirty()} clearing it is the part that keeps hot-reload working: without that, a
+     * shader that failed once could never be fixed without restarting the game.</p>
+     */
+    private boolean compileFailed;
+
     /** Whether {@link #delete()} has been called. */
     private boolean deleted;
 
@@ -227,6 +242,11 @@ public final class CgMaterialShader {
         dirty = false;
         if (resourcePath == null) return;
 
+        // Pessimistic latch: every early return below this line is a failure path. Set here and
+        // cleared once at the end rather than at each return, so a new failure branch cannot
+        // silently forget to latch and reopen the retry storm. See #compileFailed.
+        compileFailed = true;
+
         boolean isFirst = programCache.isEmpty();
 
         // ── Step 1: Load source ────────────────────────────────────────────────
@@ -253,6 +273,21 @@ public final class CgMaterialShader {
             LOGGER.error("Reload failed for '" + resourcePath + "': parse error — " + e.getMessage());
             return;
         }
+
+        // ── Step 2a: commit the pure-parse products immediately ────────────────
+        // These are CPU-side facts about the source text — the declared feature list, the queue, the
+        // render type — with no GL dependency whatsoever. Publishing them here, rather than with the
+        // compiled programs in Step 8, decouples "we understand this shader" from "the driver
+        // accepted its GLSL".
+        //
+        // Why it matters: when the GLSL compile failed, the good parse used to be thrown away, so
+        // getDeclaredFeatureNames() fell back to an empty list and the next enableKeyword("X") threw
+        // "Keyword 'X' is not declared as #pragma cg_feature in this shader" — pointing at the
+        // author's pragma, which was present and correct, instead of at the codegen bug that
+        // actually failed. The real error was three lines earlier in a 900KB log.
+        this.lastParsed = parsed;
+        this.renderQueue = parsed.renderQueue();
+        this.renderType = parsed.renderType();
 
         // ── Step 2b: Attach engine buffers declared via #pragma cg_use ─────────
         // Before compilation, deliberately. These buffers inject GLSL declarations, so attaching
@@ -351,9 +386,10 @@ public final class CgMaterialShader {
 
         if (this.matPropsUbo != null) this.matPropsUbo.delete();
         this.matPropsUbo = newMatPropsUbo;
-        this.lastParsed = parsed;
-        this.renderQueue = parsed.renderQueue();
-        this.renderType = parsed.renderType();
+        // lastParsed / renderQueue / renderType were committed in Step 2a — they are parse products,
+        // not compile products, and must survive a GLSL failure.
+
+        compileFailed = false;
 
         // ── Step 9: Wire all newly compiled programs ───────────────────────────
         for (Map.Entry<ProgramKey, CgShader> entry : newCache.entrySet())
@@ -485,7 +521,23 @@ public final class CgMaterialShader {
      * No-op if already deleted.
      */
     public void markDirty() {
-        if (!deleted) dirty = true;
+        if (!deleted) {
+            dirty = true;
+            // Clear the failure latch — a hot-reload is exactly the event that might fix it, and a
+            // latch that survived one would make a broken shader unrecoverable without a restart.
+            compileFailed = false;
+        }
+    }
+
+    /**
+     * Returns {@code true} when the last {@link #recompile()} attempt failed and nothing has marked
+     * this shader dirty since.
+     *
+     * <p>Callers that lazily trigger a compile must consult this, or they re-attempt a known-failing
+     * compile on every call. See {@link #compileFailed}.</p>
+     */
+    public boolean hasCompileFailed() {
+        return compileFailed;
     }
 
     /**

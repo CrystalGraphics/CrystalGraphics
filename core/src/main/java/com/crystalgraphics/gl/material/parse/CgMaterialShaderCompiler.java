@@ -403,14 +403,20 @@ public final class CgMaterialShaderCompiler {
         // Keyword #define injection — in featureNames declaration order, before user #-lines
         appendKeywordDefines(sb, shader.featureNames(), config.activeKeywords());
 
+        // Step 2: CG_VERTEX_STAGE define.
+        //
+        // MUST precede the user directive block below. partitionGlobalDecls hoists every '#' line
+        // — including material-scope #includes — into BOTH stages, so an included lib is the only
+        // place a stage guard can live. Emitting this define after those #includes made every such
+        // guard evaluate identically in both stages, i.e. do nothing: that is how sdf.glsl's
+        // fwidth() reached the vertex shader, which NVIDIA accepted and AMD correctly rejected.
+        sb.append("#define CG_VERTEX_STAGE 1\n");
+
         String[] gd = partitionGlobalDecls(pass.globalDecls());
         String directiveLines = gd[0];
         String codeLines = gd[1];
         if (!directiveLines.isEmpty()) sb.append(directiveLines).append('\n');
         appendAutoRequiredExtensions(sb, requiredExtensions, directiveLines);
-
-        // Step 2: CG_VERTEX_STAGE define
-        sb.append("#define CG_VERTEX_STAGE 1\n");
 
         if (useSsbo) {
             sb.append("#define CG_USE_SSBO 1\n");
@@ -480,13 +486,17 @@ public final class CgMaterialShaderCompiler {
         // Keyword #define injection — in featureNames declaration order, before user #-lines
         appendKeywordDefines(sb, shader.featureNames(), config.activeKeywords());
 
+        // Stage define — the symmetric counterpart of CG_VERTEX_STAGE, and like it, emitted before
+        // the user directive block so a guard inside an included lib can actually see it.
+        sb.append("#define CG_FRAGMENT_STAGE 1\n");
+
         String[] gd = partitionGlobalDecls(pass.globalDecls());
         String directiveLines = gd[0];
         String codeLines = gd[1];
         if (!directiveLines.isEmpty()) sb.append(directiveLines).append('\n');
         appendAutoRequiredExtensions(sb, requiredExtensions, directiveLines);
 
-        // CG_USE_SSBO (SSBO path only; fragment has no CG_VERTEX_STAGE)
+        // CG_USE_SSBO (SSBO path only; fragment never defines CG_VERTEX_STAGE)
         if (useSsbo) {
             sb.append("#define CG_USE_SSBO 1\n");
         }
