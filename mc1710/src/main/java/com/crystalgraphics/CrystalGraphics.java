@@ -11,15 +11,16 @@ import org.apache.logging.log4j.Logger;
 /**
  * Main Forge mod container for CrystalGraphics.
  *
- * <p>CrystalGraphics primarily ships functionality via an always-on coremod
- * transformer and Mixins, but Forge still expects a normal {@link Mod}
- * container when other mods declare dependencies on {@code modid=crystalgraphics}.
- * This class provides that container and a central place for lifecycle logging.</p>
+ * <p>CrystalGraphics ships its Minecraft-facing functionality via Mixins, but Forge still expects a normal
+ * {@link Mod} container when other mods declare dependencies on {@code modid=crystalgraphics}. This class
+ * provides that container and a central place for lifecycle logging.</p>
  *
- * <p>This class intentionally performs no OpenGL work and does not assume
- * a current GL context. All rendering and interception logic lives under
- * {@code com.crystalgraphics.mc.coremod} and
- * {@code com.crystalgraphics.gl}.</p>
+ * <p>This class intentionally performs no OpenGL work and does not assume a current GL context. Rendering
+ * lives under {@code com.crystalgraphics.gl}.</p>
+ *
+ * <p>There is <strong>no coremod</strong> any more. The ASM transformer that used to redirect GL call sites
+ * process-wide was deleted along with the state mirror it fed: GL state now comes from
+ * {@code AngelicaStateProvider}, which reads Angelica's own mirror, and falls back to {@code glGet}.</p>
  */
 @Mod(
     modid = CrystalGraphics.MODID,
@@ -48,7 +49,7 @@ public final class CrystalGraphics{
      */
     @Mod.EventHandler
     public void onPreInit(FMLPreInitializationEvent event) {
-        LOGGER.info("{}: preInit (coremod + mixins should already be active)", NAME);
+        LOGGER.info("{}: preInit (mixins should already be active)", NAME);
         PlatformService1710.onPreInit();
     }
 

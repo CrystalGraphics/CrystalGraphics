@@ -9,7 +9,6 @@ import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
-import com.crystalgraphics.gl.state.GLStateMirror;
 import net.minecraft.client.renderer.OpenGlHelper;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -29,7 +28,6 @@ import org.lwjgl.opengl.GLContext;
  *
  * <h3>Tests Performed</h3>
  * <ol>
- *   <li>GL redirect layer — verifies {@link GLStateMirror} tracks FBO binds</li>
  *   <li>Single-attachment FBO creation — verifies basic framebuffer setup</li>
  *   <li>Multi-attachment FBO creation — verifies MRT framebuffers (skipped on EXT)</li>
  *   <li>Packed depth-stencil path — verifies depth/stencil attachment</li>
@@ -40,7 +38,6 @@ import org.lwjgl.opengl.GLContext;
  * <p>This mod is intended for development and CI testing only.  It is not
  * included in production builds and should never be shipped to end users.</p>
  *
- * @see GLStateMirror
  * @see CgFrameBuffer
  */
 @Mod(
@@ -88,10 +85,6 @@ public class CrystalGraphicsIntegrationTest {
                 + ", extFbo=" + caps.isExtFbo()
                 + ", maxDrawBuffers=" + caps.getMaxDrawBuffers() + ")");
 
-        runTest("GL redirect layer", new Runnable() {
-            @Override public void run() { testGlRedirectLayer(); }
-        });
-
         runTest("Single-attachment FBO", new Runnable() {
             @Override public void run() { testSingleAttachmentFbo(); }
         });
@@ -125,34 +118,6 @@ public class CrystalGraphicsIntegrationTest {
                 result, passCount, failCount);
     }
 
-    private void testGlRedirectLayer() {
-        int mirrorFboBefore = GLStateMirror.getDrawFboId();
-
-        ContextCapabilities glCaps = GLContext.getCapabilities();
-        String api;
-        if (glCaps.OpenGL30) {
-            api = "GL30";
-            GL30.glBindFramebuffer(0x8D40, 0);
-        } else if (glCaps.GL_ARB_framebuffer_object) {
-            api = "ARB";
-            ARBFramebufferObject.glBindFramebuffer(0x8D40, 0);
-        } else if (glCaps.GL_EXT_framebuffer_object) {
-            api = "EXT";
-            EXTFramebufferObject.glBindFramebufferEXT(0x8D40, 0);
-        } else {
-            api = "OpenGlHelper";
-            OpenGlHelper.func_153171_g(0x8D40, 0);
-        }
-
-        int mirrorFboAfter = GLStateMirror.getDrawFboId();
-        if (mirrorFboAfter != 0) {
-            throw new AssertionError(
-                    "GLStateMirror did not track FBO bind (api=" + api
-                    + ", before=" + mirrorFboBefore
-                    + ", after=" + mirrorFboAfter + ")");
-        }
-        System.out.println("[CrystalGraphics]     Redirect layer verified via " + api);
-    }
 
     private void testSingleAttachmentFbo() {
         CgFrameBufferFormat fmt = CgFrameBufferFormat.builder("test_single")

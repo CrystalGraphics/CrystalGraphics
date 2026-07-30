@@ -11,10 +11,14 @@ package com.crystalgraphics.gl.state;
  * state, because each family uses different method signatures and enum
  * constants.</p>
  *
- * <p>This enum is used by {@link GLStateMirror} to tag every tracked binding
- * with the family that produced it.</p>
+ * <p>Originally this tagged every binding tracked by {@code GLStateMirror}, which is deleted. It survives
+ * because the <strong>waterfall selection</strong> it encodes is used independently of any state tracking —
+ * nine files outside this package pick a framebuffer or shader entry point through it. It is repeatedly
+ * mistaken for dead code left over from the mirror; it is not.</p>
  *
- * @see GLStateMirror
+ * <p>Note that the current state shadow does <em>not</em> need this: it derives the framebuffer family from
+ * the bind target instead ({@code GL_FRAMEBUFFER_EXT} self-identifies, and Core and ARB share an object
+ * namespace), which is why no {@code CallFamily} is threaded through it.</p>
  */
 public enum CallFamily {
 

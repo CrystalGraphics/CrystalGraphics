@@ -5,12 +5,17 @@
 **`com.crystalgraphics.platform.gl.state`**, and `CgGlStateManager` in **`com.crystalgraphics.platform.gl`**
 beside the `CgGL` that calls into it.
 
-Two files remain, and neither is part of that framework:
+One file remains, and it is not part of that framework:
 
 | File | Status |
 |---|---|
 | `CallFamily` | **Live and load-bearing.** The Core/ARB/EXT waterfall selector; nine files outside this package use it. Not related to the state manager, and repeatedly mistaken for dead code. Do not delete. |
-| `GLStateMirror` | **Inert.** Kept only because `CrystalGLRedirects` still writes to it and the hotswap plugin locates `CrystalGraphicsTransformer` in the LaunchWrapper chain. Nothing reads it. Removing it means reworking hotswap first. |
+
+`GLStateMirror` is **gone**, along with the entire ASM coremod that fed it (`CrystalGraphicsCoremod`,
+`CrystalGraphicsTransformer`, `CrystalGLRedirects`, `CoverageMatrix`) and their tests. Process-wide bytecode
+interception could never be authoritative — ours was modelled on Angelica's, targeted the same call sites,
+and was observed being redirected *into* Angelica's. `AngelicaStateProvider` reads Angelica's own mirror
+instead, which is strictly more complete and costs nothing to maintain.
 
 Design record, including the V2 rationale and every correction made along the way:
 `docs_research/CGGLSTATEMANAGER_PLAN.md`
