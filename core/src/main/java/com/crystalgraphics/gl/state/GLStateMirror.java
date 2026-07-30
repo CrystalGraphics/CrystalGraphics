@@ -5,6 +5,15 @@ import lombok.Getter;
 /**
  * Pure-Java, thread-local mirror of selected OpenGL state.
  *
+ * <p><strong>Superseded and inert.</strong> GL state tracking now lives in
+ * {@code com.crystalgraphics.platform.gl.CgGlStateManager}, which observes writes at the point of the call
+ * ({@code CgGL}) rather than by rewriting bytecode process-wide. Nothing reads this class any more.</p>
+ *
+ * <p>It survives solely because {@code CrystalGLRedirects} still feeds it, and that class survives because
+ * the hotswap plugin locates {@code CrystalGraphicsTransformer} in the LaunchWrapper chain and re-runs it
+ * on hotswapped classes. Deleting the coremod means reworking hotswap first — see the plan's step 13.
+ * Do not build anything new on this.</p>
+ *
  * <p>This class is the heart of CrystalGraphics' state capture system.  It
  * tracks framebuffer bindings, shader program bindings, active texture units,
  * and bound 2D textures <em>without ever issuing an OpenGL call</em>.  All

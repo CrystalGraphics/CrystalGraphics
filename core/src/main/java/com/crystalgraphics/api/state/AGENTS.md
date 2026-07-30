@@ -9,44 +9,42 @@ the CrystalShader material pipeline. Each class represents one GL state slot
 (blend, depth, cull, stencil, or texture). These are pure policy objects — they
 know what GL state to set, but they don't own shaders, textures, or GPU resources.
 
-Also contains `CgGlSlot`, the enum used by the GL state save/restore framework.
+> **`CgGlSlot` is no longer here.** It moved to **`com.crystalgraphics.platform.gl.state`** in the
+> 2026-07-31 state rewrite, along with `CgGlState`, `CgGlScope` and the provider SPI — deduplication happens
+> where the GL call is made, which is `CgGL` in `platform`. (`CgGlStateManager` itself sits one level up in
+> `platform.gl`, beside the `CgGL` that calls into it on every setter.) This guide described it as living here; it does not.
 
-## `CgGlSlot` — GL State Save/Restore Enum
+## How these records reach GL
 
-16-constant enum identifying GL state domains that `CgGlState.save()` can independently
-capture and restore. Pass specific slots to save only what you intend to modify.
+Each record's `apply()` calls `CgGL` directly. `CgGL` deduplicates against a CPU-side shadow and issues only
+what actually changes, so calling `apply()` with the value already in effect costs nothing and needs no
+caller-side guard.
 
-| Group | Constants |
-|---|---|
-| Binding slots | `FBO`, `PROGRAM`, `TEXTURES`, `VERTEX_INPUT` |
-| Render state | `BLEND`, `DEPTH`, `CULL`, `STENCIL` |
-| Output / framebuffer | `COLOR_MASK`, `VIEWPORT`, `SCISSOR`, `POLYGON_OFFSET` |
-| Raster / fixed-function | `ALPHA_TEST`, `LINE_WIDTH`, `POLYGON_MODE`, `POINT_SIZE` |
+They no longer implement a common `CgStateGroup` interface — that abstraction existed to let the old
+core-side manager store and re-emit them, and went away with it. They are plain immutable records again.
 
-No GL calls, no Minecraft imports. Safe to reference from any layer.
-
-See `gl/state/AGENTS.md` for the full save/restore framework documentation.
+Framework documentation: `platform/src/main/java/com/crystalgraphics/platform/gl/state/`, summarised in
+`gl/state/AGENTS.md`.
 
 ## Type Map
 
 | Type             | Role |
 |------------------|------|
-| `CgRenderState`  | Immutable composite: blend + depth + cull + stencil slots. `apply()` applies all slots; `clear()` restores GL defaults. One instance per render layer or material pass. `DEFAULT` constant = blend disabled, depth TEST_WRITE, cull BACK, stencil DISABLED. |
-| `CgDepthState`   | Depth test + depth write + compare function. Pre-defined: `NONE`, `TEST_ONLY`, `TEST_WRITE`, `TEST_WRITE_EQUAL`, `TEST_WRITE_ALWAYS`. |
-| `CgBlendState`   | Blend policy + blend equations. Pre-defined: `DISABLED`, `ALPHA`, `PREMULTIPLIED_ALPHA`, `ADDITIVE`, `MULTIPLY`. Static `clearToDefault()` for use by `CgRenderState.clear()`. |
-| `CgCullState`    | Face culling policy. Pre-defined: `NONE`, `BACK`, `FRONT`. |
+| `CgRenderState`  | Immutable composite over **six** slots: blend, depth, cull, stencil, alpha and a list of `CgColorMask`. A null slot means *undeclared* — `apply()` leaves it alone rather than forcing a default. One instance per render layer or material pass. `DEFAULT` = blend disabled, depth TEST_WRITE, cull BACK, stencil DISABLED. |
+| `CgDepthState`   | Depth test + depth write + compare function. Pre-defined: `NONE`, `TEST_ONLY`, `TEST_WRITE`, `TEST_WRITE_EQUAL`, `TEST_WRITE_ALWAYS`, and `GL_DEFAULT` (the GL initial value — test off, write on, `GL_LESS` — used by `clear()`). |
+| `CgBlendState`   | Blend policy + blend equations. Pre-defined: `DISABLED`, `ALPHA`, `PREMULTIPLIED_ALPHA`, `ADDITIVE`, `MULTIPLY`. `clearToDefault()` exists but **is no longer called by `CgRenderState.clear()`**, which applies `DISABLED` instead; same for `CgColorMask.clearToDefault()`. Both are unreferenced public API today. |
+| `CgCullState`    | Face culling: enabled + face + **winding** (`frontFace`). Three components, not two — the 2-arg constructor is a convenience defaulting to `GL_CCW`. Pre-defined: `NONE`, `BACK`, `FRONT`. `NONE` carries `GL_BACK` rather than `0`, so disabling culling never writes a bogus face mode. |
 | `CgStencilState` | Stencil test policy. Pre-defined: `DISABLED`. `apply()` dispatches `glStencilFunc/Mask/Op`; `clear()` disables stencil and resets write mask. |
 | `CgTextureState` | Texture-bind policy with three modes: `none()`, `fixed(target, id, unit, sampler)` / `fixed(CgTexture, unit, sampler)`, `dynamic(target, unit, sampler)`. Not part of `CgRenderState` — caller's responsibility. |
 
-## `CgRenderState` — Shader and Texture Coupling Removed (T8)
+## `CgRenderState` holds no shader or texture
 
-`CgRenderState` no longer holds a `CgShader` reference, texture binding, or projection uniform.
-It is a **pure GL state descriptor** — blend, depth, cull, stencil only.
+It is a **pure GL state descriptor**: blend, depth, cull, stencil, alpha and colour masks. Shader binding,
+texture binding and projection uniforms are the **caller's** responsibility, and `builder()` takes no shader
+argument.
 
-- `builder()` takes no shader argument.
-- `apply()` takes no parameters — just applies the four state slots.
-- `clear()` restores all four slots to GL defaults.
-- Shader binding, texture binding, and projection uniforms are the **caller's responsibility**.
+> An earlier revision of this guide said "the four state slots" throughout. There are six — alpha and the
+> `CgColorMask` list were added later, and a `clear()` that only restored four would leak the other two.
 
 ## Ownership Model
 
@@ -55,19 +53,20 @@ It is a **pure GL state descriptor** — blend, depth, cull, stencil only.
 
 ## Apply/Clear Contract
 
-Every `CgRenderState.apply()`:
-1. Applies blend (enable/disable + func + equations)
-2. Applies depth (test enable/disable + write mask + compare func)
-3. Applies cull (enable/disable + face)
-4. Applies stencil (enable/disable + func + mask + ops)
+`apply()` applies only the **non-null** slots. A null slot is *undeclared*, meaning the prior pass's value
+stands — this is what stops a transparent pass that declares no `Depth` block from silently overwriting
+ZWrite.
 
-Every `CgRenderState.clear()`:
-1. `CgBlendState.clearToDefault()` — disable blend, reset equations to GL_FUNC_ADD
-2. `depth.clear()` — disable depth test, write=true, func=GL_LESS
-3. `cull.clear()` — disable cull face
-4. `CgStencilState.DISABLED.apply()` — disable stencil test
+`clear()` restores a declared slot by **applying that slot's GL-default constant** — `CgDepthState.GL_DEFAULT`,
+`CgCullState.NONE`, `CgAlphaState.DISABLED`, `CgColorMask.ALL` — rather than calling a bespoke `clear()` on it.
+Restoring is just applying a known value, so there is no second code path that can drift from `apply()`.
 
-This bracketed pattern prevents GL state leaks between render layers and material passes.
+Blend and stencil are reset **unconditionally**, even when undeclared: both are global GL state that must not
+leak into the next pass regardless of what the material said.
+
+> All of this routes through `CgGL`, which deduplicates against its shadow. Clearing a slot that is already at
+> its default therefore issues **no GL call at all**, so the bracketed apply/clear pattern is safe to use
+> liberally — it costs only what actually changed.
 
 ## Design Rules
 

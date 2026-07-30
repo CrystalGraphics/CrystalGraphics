@@ -34,6 +34,9 @@ public record CgStencilState(
         int     zfailOp
 ) {
 
+
+
+
     /**
      * Stencil test disabled. Write mask is fully open (0xFF) so subsequent clears are unobstructed.
      * All operation fields are set to {@code GL_KEEP} / {@code GL_ALWAYS} — harmless if accidentally applied.
@@ -47,6 +50,12 @@ public record CgStencilState(
      *
      * <p>If enabled, calls {@code glEnable(GL_STENCIL_TEST)}, sets the comparison function,
      * write mask, and stencil operations. If disabled, calls {@code glDisable(GL_STENCIL_TEST)}.</p>
+     */
+    /**
+     * Makes this state current.
+     *
+     * <p>Calls {@code CgGL} directly; {@code CgGL} decides whether each call reaches the driver, so a
+     * repeated apply of the same value costs nothing.</p>
      */
     public void apply() {
         if (!enabled) {

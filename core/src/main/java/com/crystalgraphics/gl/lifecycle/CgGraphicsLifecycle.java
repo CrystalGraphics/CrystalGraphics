@@ -3,6 +3,7 @@ package com.crystalgraphics.gl.lifecycle;
 import com.crystalgraphics.demo.CgRenderDemo;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.platform.service.CgLifecycleService;
 import com.crystalgraphics.api.material.CgMaterialRegistry;
 import com.crystalgraphics.api.render.CgRenderPipeline;
@@ -201,6 +202,12 @@ public final class CgGraphicsLifecycle {
      * @param sourceFboId GL framebuffer ID to read depth from (MC's main render target FBO)
      */
     public static void onOpaquePass(float partialTick, int w, int h, int sourceFboId) {
+        // Pass entry. Minecraft and other mods rendered immediately before this — between our opaque and
+        // transparent passes MC draws translucent terrain and particles, and every mod hooking the same
+        // render stages runs too. The scopes below adopt the slots they name; this covers the ones they
+        // do not, which would otherwise stay trusted-but-stale until the next frame boundary.
+        CgGlState.invalidateAllIfPresent();
+
         if (!initialized) initContext(w, h);
         else if (w != currentWidth || h != currentHeight) onResize(w, h);
  
@@ -233,8 +240,18 @@ public final class CgGraphicsLifecycle {
      */
     public static void tickFrame() {
         frameCounter++;
+
+        // Frame boundary: trust nothing about GL state. Control was outside CrystalGraphics between
+        // frames, so anything could have written state through an API we cannot observe.
+        CgGlState.invalidateAllIfPresent();
+
         CgFontRegistry.get().tickFrame(frameCounter);
         listeners.dispatch("onFrame", l -> l.onFrame(frameCounter));
+
+        // And again AFTER dispatch. Listeners are third-party code that may render, and anything they
+        // wrote lands after the invalidation above — leaving the shadow stale for the rest of the frame.
+        // Two integer writes per frame is not a cost worth reasoning about; a silently elided GL call is.
+        CgGlState.invalidateAllIfPresent();
     }
 
     /**
@@ -254,6 +271,12 @@ public final class CgGraphicsLifecycle {
      * <p>No-op if the engine context has not been initialised yet (e.g. GUI-only frames).</p>
      */
     public static void onTransparentPass() {
+        // Pass entry. Minecraft and other mods rendered immediately before this — between our opaque and
+        // transparent passes MC draws translucent terrain and particles, and every mod hooking the same
+        // render stages runs too. The scopes below adopt the slots they name; this covers the ones they
+        // do not, which would otherwise stay trusted-but-stale until the next frame boundary.
+        CgGlState.invalidateAllIfPresent();
+
         if (!initialized) return;
         CgRenderDemo.INSTANCE.renderTransparent();
     }

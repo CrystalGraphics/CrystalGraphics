@@ -48,6 +48,7 @@ public final class CgForwardRenderer {
     public void execute(CgRenderCommand[] sorted, int count, CgRenderPipeline pipeline) {
         if (count == 0) return;
 
+        // Opaque pass ambient state. Re-asserted per batch below, not just here — see there.
         CgDepthState.TEST_WRITE.apply();
         CgBlendState.DISABLED.apply();
 
@@ -81,6 +82,18 @@ public final class CgForwardRenderer {
             // Fire the hook once, before bindForPass, so it runs for the base material only.
             // drawChain traverses the nextPass chain — the hook must NOT re-fire for decorative
             // chain links (outline, glow, etc.) whose programs are different from the base material.
+            // Re-assert the pass ambient state before every batch.
+            //
+            // CgMaterial.doBind() no longer saves and restores GL state around each bind (it cannot: bind
+            // and unbind are not last-in-first-out). It applies only the domains its render state
+            // DECLARES, so without this a material that declares one would leave it set for the next
+            // material that declares none — the isolation the old per-bind restore used to provide.
+            //
+            // Nearly free: CgGlStateManager eliminates these when the previous batch did not disturb
+            // them, which is the common case within a pass.
+            CgDepthState.TEST_WRITE.apply();
+            CgBlendState.DISABLED.apply();
+
             final int start = i;
             final int instances = runLen;
             if (base.preDrawHook != null) base.preDrawHook.apply(sorted, start, instances);

@@ -23,6 +23,9 @@ import com.github.bsideup.jabel.Desugar;
 public record CgBlendState(boolean enabled, int srcRgb, int dstRgb, int srcAlpha, int dstAlpha,
                             int blendEquationRgb, int blendEquationAlpha) {
 
+
+
+
     /** No blending. {@code glDisable(GL_BLEND)} is issued. */
     public static final CgBlendState DISABLED = new CgBlendState(false,
             CgGL.GL_ONE, CgGL.GL_ZERO, CgGL.GL_ONE, CgGL.GL_ZERO,
@@ -100,6 +103,12 @@ public record CgBlendState(boolean enabled, int srcRgb, int dstRgb, int srcAlpha
      * Otherwise calls {@code glEnable(GL_BLEND)}, sets the blend function
      * via {@code glBlendFuncSeparate}, and sets the blend equations via
      * {@code glBlendEquationSeparate}.</p>
+     */
+    /**
+     * Makes this state current.
+     *
+     * <p>Calls {@code CgGL} directly; {@code CgGL} decides whether each call reaches the driver, so a
+     * repeated apply of the same value costs nothing.</p>
      */
     public void apply() {
         if (!enabled) {

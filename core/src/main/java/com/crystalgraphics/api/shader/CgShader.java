@@ -1,8 +1,8 @@
 package com.crystalgraphics.api.shader;
 
-import com.crystalgraphics.api.state.CgGlSlot;
+import com.crystalgraphics.platform.gl.state.CgGlSlot;
 import com.crystalgraphics.gl.shader.CgShaderFactory;
-import com.crystalgraphics.gl.state.CgGlScope;
+import com.crystalgraphics.platform.gl.state.CgGlScope;
 
 import java.util.List;
 import java.util.function.Consumer;

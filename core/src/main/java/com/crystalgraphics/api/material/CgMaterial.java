@@ -7,7 +7,6 @@ import com.crystalgraphics.api.buffer.CgGpuType;
 import com.crystalgraphics.api.render.CgRenderPipeline;
 import com.crystalgraphics.api.shader.CgShader;
 import com.crystalgraphics.api.shader.CgShaderBindings;
-import com.crystalgraphics.api.state.CgGlSlot;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
@@ -17,8 +16,6 @@ import com.crystalgraphics.gl.material.CgMaterialShader;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.gl.material.parse.CgParsedPass;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
-import com.crystalgraphics.gl.state.CgGlScope;
-import com.crystalgraphics.gl.state.CgGlState;
 import lombok.Getter;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -141,8 +138,6 @@ public final class CgMaterial {
      */
     private CgShader lastBoundShader = null;
 
-    /** GL state snapshot saved on bind and restored on unbind via {@link CgGlScope#close()}. */
-    private CgGlScope stateScope = null;
 
     /**
      * Partitioned view of all properties for this material instance. Null until first
@@ -628,20 +623,20 @@ public final class CgMaterial {
     }
 
     /**
-     * Unbinds shader and restores all GL state saved during {@link #bind()}.
+     * Unbinds the shader and its property UBO.
      *
-     * <p>Must be called after the draw call sequence to leave GL state clean.
-     * State is restored via the saved {@link CgGlScope} — never by calling
-     * {@code renderState.clear()}, which would set state incorrectly.</p>
+     * <p>Deliberately does <strong>not</strong> restore GL state. Nothing here saved any: the enclosing
+     * render pass owns the handback to Minecraft, and material-to-material isolation is handled by
+     * {@code CgGlStateManager} when the next material applies its render state — see the note in
+     * {@code doBind}.</p>
+     *
+     * <p>Still never call {@code renderState.clear()} from this path: that resets domains to GL defaults
+     * rather than to what the pass began with, which is not what unbinding a material should mean.</p>
      */
     public void unbind() {
         if (deleted) return;
         if (lastBoundShader != null) lastBoundShader.unbind();
         if (matPropsUbo != null) matPropsUbo.unbind();
-        if (stateScope != null) {
-            stateScope.close();
-            stateScope = null;
-        }
     }
 
     // ── Accessors ─────────────────────────────────────────────────────────────
@@ -728,18 +723,27 @@ public final class CgMaterial {
             }
         }
 
-        // Scoped separately from everything below because this is the prime suspect for a
-        // pipeline stall: CgGlState.save falls back to real glGet* calls whenever GLStateMirror
-        // is not populated (it is fed by the ASM coremod, so it is UNKNOWN in the standalone
-        // harness), and a glGet is a synchronisation point — the driver must drain queued work
-        // to answer it. That produces a cost that scales with how much GPU work is outstanding
-        // rather than with anything this method does, which matches the observed 0.5ms -> 225ms
-        // swing exactly.
-        try (CgProfiler.Scope ignored = CgProfiler.scope("doBind.stateSave")) {
-            stateScope = CgGlState.save(
-                    CgGlSlot.BLEND, CgGlSlot.DEPTH, CgGlSlot.CULL,
-                    CgGlSlot.STENCIL, CgGlSlot.ALPHA_TEST, CgGlSlot.COLOR_MASK);
-        }
+        // No per-bind GL state scope here. Two independent reasons, both learned the hard way:
+        //
+        // 1. It CANNOT be a scope, because material bind/unbind is not last-in-first-out.
+        //    CgQuadRenderer.useMaterial calls bind() on every call but unbind() only when the material
+        //    changes, and UI painting opens nested FBO/viewport scopes while a material is bound. A
+        //    stack-based scope closed under those conditions throws "closed out of order" — which is
+        //    exactly what happened when this was briefly reinstated. The old glGet-based version did not
+        //    crash only because overwriting its single `stateScope` field leaked the previous capture
+        //    silently, restoring stale values or none at all.
+        //
+        // 2. It is NOT NEEDED. The enclosing render pass (CgRenderPipeline's opaque/transparent passes,
+        //    CgUiPaintContext.beginFrame) restores Minecraft's state at pass exit, and per-material
+        //    isolation falls out of getPassRenderState(variant).apply() below: every DECLARED domain is
+        //    written through CgGlStateManager, so it overrides whatever the previous material left.
+        //    Undeclared domains are deliberately left alone — callers configure ambient state around
+        //    materials (CgUiPaintContext enables blending for UI text), and a variant that reverted
+        //    undeclared domains to the scope baseline switched that blending off and rendered every
+        //    glyph as an opaque block.
+        //
+        // What this removes is ~25 glGet* driver synchronisation points per bind; one observed frame
+        // spent 346.8 ms in them.
 
         try (CgProfiler.Scope ignored = CgProfiler.scope("doBind.propsUpload")) {
             if (materialPropsDirty && matPropsUbo != null) {

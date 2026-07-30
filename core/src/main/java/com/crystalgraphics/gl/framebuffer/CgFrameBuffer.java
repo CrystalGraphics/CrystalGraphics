@@ -7,8 +7,8 @@ import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.gl.state.CallFamily;
-import com.crystalgraphics.gl.state.CgGlScope;
-import com.crystalgraphics.gl.state.CgGlState;
+import com.crystalgraphics.platform.gl.state.CgGlScope;
+import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.gl.texture.CgTexture2D;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.util.CgBufferUtils;
@@ -17,7 +17,7 @@ import java.util.TreeMap;
 import javax.annotation.Nullable;
 import lombok.Getter;
 
-import static com.crystalgraphics.api.state.CgGlSlot.FBO;
+import static com.crystalgraphics.platform.gl.state.CgGlSlot.FBO;
 
 /**
  * Abstract base for all CrystalGraphics framebuffer implementations.
