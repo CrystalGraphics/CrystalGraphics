@@ -22,12 +22,17 @@ import java.util.List;
  * overwriting ZWrite / DepthFunc when the material doesn't declare a Depth block.</p>
  *
  * <h3>Apply/Clear Contract</h3>
- * <p>{@link #apply()} enables only the slots that are non-null.
- * {@link #clear()} null-guards <em>instance</em> calls ({@code alpha.clear()},
- * {@code depth.clear()}, {@code cull.clear()}) but <em>always</em> fires the two
- * static GL resets ({@link CgBlendState#clearToDefault()} and
- * {@link CgStencilState#DISABLED DISABLED.apply()}) unconditionally — these are
- * global GL state resets that must run regardless of what the material declared.</p>
+ * <p>{@link #apply()} applies only the slots that are non-null.</p>
+ *
+ * <p>{@link #clear()} restores a declared slot by applying its GL-default constant
+ * ({@code CgDepthState.GL_DEFAULT}, {@code CgCullState.NONE}, …) rather than calling a
+ * {@code clear()} of its own — restoring is just applying a known value, so there is no
+ * second code path that can disagree with {@code apply()}. Blend and stencil are reset
+ * <em>unconditionally</em> even when undeclared, because both are global GL state that
+ * must not leak into the next pass whatever the material said.</p>
+ *
+ * <p>Every one of these routes through {@code CgGL}, which deduplicates against its
+ * shadow, so clearing a slot already at its default costs nothing.</p>
  *
  * <p>The render state does <strong>not</strong> own shaders or textures — those are
  * the caller's responsibility.</p>
@@ -77,6 +82,9 @@ public final class CgRenderState {
      * GL state is left as the previous pass left it.
      */
     public void apply() {
+        // Each declared domain applies itself through CgGL, which decides whether the call reaches the
+        // driver. Undeclared domains are deliberately left alone — that is what a null slot means, and it
+        // is what stops a transparent pass silently overwriting ZWrite for a material with no Depth block.
         if (alpha   != null) alpha.apply();
         if (blend   != null) blend.apply();
         if (depth   != null) depth.apply();
@@ -86,21 +94,18 @@ public final class CgRenderState {
     }
 
     /**
-     * Reverses all state changes, restoring GL defaults.
+     * Resets the domains this state touches back to GL defaults.
      *
-     * <p>Instance calls ({@code alpha.clear()}, {@code depth.clear()}, {@code cull.clear()})
-     * are skipped when the slot is null. The two static GL resets —
-     * {@link CgBlendState#clearToDefault()} and {@link CgStencilState#DISABLED}.apply() —
-     * always fire regardless of whether blend/stencil slots were set, because they reset
-     * global GL blend/stencil state that may have been modified by the previous pass.</p>
+     * <p>Used by the batch render layers, which bracket a flush as {@code apply(); flush(); clear();} so a
+     * layer cannot leak state into the next one.</p>
      */
     public void clear() {
-        if (alpha != null) alpha.clear();
-        CgBlendState.clearToDefault();       // always fires — global GL blend reset
-        if (depth != null) depth.clear();
-        if (cull  != null) cull.clear();
-        CgStencilState.DISABLED.apply();     // always fires — global GL stencil reset
-        if (!colorMasks.isEmpty()) CgColorMask.clearToDefault();
+        if (alpha != null) CgAlphaState.DISABLED.apply();
+        CgBlendState.DISABLED.apply();                 // always fired, as before
+        if (depth != null) CgDepthState.GL_DEFAULT.apply();
+        if (cull  != null) CgCullState.NONE.apply();
+        CgStencilState.DISABLED.apply();               // always fired, as before
+        if (!colorMasks.isEmpty()) CgColorMask.ALL.apply();
     }
 
     /**

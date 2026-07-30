@@ -43,7 +43,7 @@ public final class CgTransparentRenderer {
     public void execute(CgRenderCommand[] sorted, int count, CgRenderPipeline pipeline) {
         if (count == 0) return;
 
-        // Transparent pass global state
+        // Transparent pass ambient state. Re-asserted per command below, not just here — see there.
         CgDepthState.TEST_ONLY.apply(); // ZWrite OFF — preserve opaque depth
         CgBlendState.ALPHA.apply();
 
@@ -64,8 +64,23 @@ public final class CgTransparentRenderer {
             objBuf.endRecord();
             objBuf.endWrite();
 
-            // bind/draw/unbind — CgMaterial.doBind() owns render state save/apply/restore.
-            // Do NOT call rs.apply() / rs.clear() externally here.
+            // Re-assert the pass ambient state before every material.
+            //
+            // CgMaterial.doBind() no longer saves and restores GL state around each bind (it cannot: bind
+            // and unbind are not last-in-first-out, so a scope closed there throws). It applies only the
+            // domains its render state DECLARES, and leaves the rest untouched.
+            //
+            // Without this, a material declaring "DepthWrite ON" (text.shader does) would leave ZWrite on
+            // for the next material that declares no Depth block — silently writing depth in the
+            // transparent pass, which the TEST_ONLY above exists specifically to prevent. Re-asserting
+            // gives every material the same starting point the old per-bind restore used to guarantee.
+            //
+            // Nearly free: CgGlStateManager eliminates these as redundant whenever the previous material
+            // did not disturb them, which is the common case.
+            CgDepthState.TEST_ONLY.apply();
+            CgBlendState.ALPHA.apply();
+
+            // Do NOT call rs.apply() / rs.clear() externally here — doBind applies the render state.
             // TODO(instancing): additive-blend transparent objects are order-independent and could be
             // batched via canMerge() + drawInstanced(N) like the opaque pass. Deferred — requires a
             // blend-mode flag in CgRenderCommand.passFlags or a separate TRANSPARENT_ADDITIVE queue slot
@@ -73,7 +88,8 @@ public final class CgTransparentRenderer {
             cmd.material.drawChain(CgRenderPassVariant.FORWARD, () -> cmd.mesh.drawDirect());
         }
 
-        // Restore depth write — outer CgGlScope will also restore fully on frame-end
-        CgGL.glDepthMask(true);
+        // Restore depth write. Routed through the state manager rather than raw glDepthMask so the
+        // shadow stays truthful — a raw write here desynced DEPTH and showed up as a stale-shadow report.
+        CgDepthState.TEST_WRITE.apply();
     }
 }

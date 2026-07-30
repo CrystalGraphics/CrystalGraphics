@@ -1,11 +1,11 @@
 package com.crystalgraphics.mc.shader;
 
 import com.crystalgraphics.api.shader.*;
-import com.crystalgraphics.api.state.CgGlSlot;
+import com.crystalgraphics.platform.gl.state.CgGlSlot;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gl.shader.CgShaderFactory;
-import com.crystalgraphics.gl.state.CgGlScope;
-import com.crystalgraphics.gl.state.CgGlState;
+import com.crystalgraphics.platform.gl.state.CgGlScope;
+import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.util.io.CgIO;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;

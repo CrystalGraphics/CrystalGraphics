@@ -21,7 +21,19 @@ import com.crystalgraphics.platform.gl.CgGL;
 @Desugar
 public record CgDepthState(boolean test, boolean write, int compareFunc) {
 
+
+
+
     /** Depth test disabled, write disabled. {@code compareFunc} is {@code GL_ALWAYS} (unused). */
+    /**
+     * The OpenGL default: depth test disabled, depth writes enabled, compare function {@code GL_LESS}.
+     *
+     * <p>Distinct from {@link #NONE}, which disables writes and uses {@code GL_ALWAYS}. This is the value
+     * a reset-to-defaults wants; {@code NONE} is the value a pass that must not touch depth at all wants.
+     * Conflating them would silently leave depth writes disabled after a reset.</p>
+     */
+    public static final CgDepthState GL_DEFAULT = new CgDepthState(false, true, CgGL.GL_LESS);
+
     public static final CgDepthState NONE = new CgDepthState(false, false, CgGL.GL_ALWAYS);
 
     /** Depth test enabled (LEqual), writes disabled. Reads depth without modifying it. */
@@ -42,6 +54,12 @@ public record CgDepthState(boolean test, boolean write, int compareFunc) {
      * <p>Enables or disables the depth test, sets the depth write mask, and
      * when the test is enabled also sets the depth comparison function via
      * {@code glDepthFunc}.</p>
+     */
+    /**
+     * Makes this state current.
+     *
+     * <p>Calls {@code CgGL} directly; {@code CgGL} decides whether each call reaches the driver, so a
+     * repeated apply of the same value costs nothing.</p>
      */
     public void apply() {
         if (test) {

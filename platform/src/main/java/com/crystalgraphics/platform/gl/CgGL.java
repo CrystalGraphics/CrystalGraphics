@@ -1,5 +1,7 @@
 package com.crystalgraphics.platform.gl;
 
+import com.crystalgraphics.platform.gl.state.CgGlState;
+
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.nio.ShortBuffer;
@@ -23,6 +25,22 @@ public final class CgGL {
     private static CgGLBackend backend;
     
     public static void init(CgGLBackend dispatch){ backend = dispatch; }
+
+    // ── State tracking ────────────────────────────────────────────────────────
+    //
+    // Each state setter below asks the manager whether the value actually changed, and skips the driver
+    // call when it did not. This is the single chokepoint the whole design rests on: every caller — the
+    // typed state records, raw CgGL users, other mods — is tracked and deduplicated identically, and none
+    // of them has to know it is happening.
+    //
+    // The design this replaces tracked state in core at the level of composite value objects, which left
+    // two paths and needed an observer, a bridge and a build-time guard to hold them together. Callers had
+    // to announce raw writes; forty-six hand-placed notifications later, a base class was still missed.
+
+    private static CgGlStateManager state() {
+        return CgGlState.manager();
+    }
+
     
     private CgGL() {}
 
@@ -534,7 +552,7 @@ public final class CgGL {
 
     /** Platform-neutral FBO bind that routes through MC's compat helper on mc1710. */
     public static void glBindFramebufferCompat(int fbo) {
-        backend.bindFramebufferCompat(fbo);
+        if (state().fboCompatChanged(fbo)) backend.bindFramebufferCompat(fbo);
     }
 
     // --- Renderbuffer methods (same no-prefix pattern in CgGLBackend) -------
@@ -609,7 +627,7 @@ public final class CgGL {
     }
 
     public static void glUseProgram(int program) {
-        backend.glUseProgram(program);
+        if (state().programChanged(program)) backend.glUseProgram(program);
     }
 
     public static void glDeleteProgram(int program) {
@@ -725,7 +743,7 @@ public final class CgGL {
     }
 
     public static void glBindBuffer(int target, int buffer) {
-        backend.glBindBuffer(target, buffer);
+        if (state().bufferChanged(target, buffer)) backend.glBindBuffer(target, buffer);
     }
 
     public static void glBufferData(int target, ByteBuffer data, int usage) {
@@ -769,7 +787,7 @@ public final class CgGL {
     }
 
     public static void glBindVertexArray(int array) {
-        backend.glBindVertexArray(array);
+        if (state().vertexArrayChanged(array)) backend.glBindVertexArray(array);
     }
 
     public static void glDeleteVertexArrays(int array) {
@@ -797,7 +815,7 @@ public final class CgGL {
     }
 
     public static void glBindTexture(int target, int texture) {
-        backend.glBindTexture(target, texture);
+        if (state().textureChanged(target, texture)) backend.glBindTexture(target, texture);
     }
 
     public static void glDeleteTextures(int texture) {
@@ -845,7 +863,7 @@ public final class CgGL {
     }
 
     public static void glActiveTexture(int texture) {
-        backend.glActiveTexture(texture);
+        if (state().activeTextureChanged(texture)) backend.glActiveTexture(texture);
     }
 
     public static void glTexParameteri(int target, int pname, int param) {
@@ -903,63 +921,63 @@ public final class CgGL {
     // =========================================================================
 
     public static void glEnable(int cap) {
-        backend.glEnable(cap);
+        if (state().capabilityChanged(cap, true)) backend.glEnable(cap);
     }
 
     public static void glDisable(int cap) {
-        backend.glDisable(cap);
+        if (state().capabilityChanged(cap, false)) backend.glDisable(cap);
     }
 
     public static void glBlendFunc(int sfactor, int dfactor) {
-        backend.glBlendFunc(sfactor, dfactor);
+        if (state().blendFuncChanged(sfactor, dfactor, sfactor, dfactor)) backend.glBlendFunc(sfactor, dfactor);
     }
 
     public static void glBlendFuncSeparate(int srcRGB, int dstRGB, int srcAlpha, int dstAlpha) {
-        backend.glBlendFuncSeparate(srcRGB, dstRGB, srcAlpha, dstAlpha);
+        if (state().blendFuncChanged(srcRGB, dstRGB, srcAlpha, dstAlpha)) backend.glBlendFuncSeparate(srcRGB, dstRGB, srcAlpha, dstAlpha);
     }
 
     public static void glDepthMask(boolean flag) {
-        backend.glDepthMask(flag);
+        if (state().depthMaskChanged(flag)) backend.glDepthMask(flag);
     }
 
     public static void glCullFace(int mode) {
-        backend.glCullFace(mode);
+        if (state().cullFaceChanged(mode)) backend.glCullFace(mode);
     }
 
     public static void glViewport(int x, int y, int width, int height) {
-        backend.glViewport(x, y, width, height);
+        if (state().viewportChanged(x, y, width, height)) backend.glViewport(x, y, width, height);
     }
 
     public static void glScissor(int x, int y, int width, int height) {
-        backend.glScissor(x, y, width, height);
+        if (state().scissorChanged(x, y, width, height)) backend.glScissor(x, y, width, height);
     }
 
     public static void glLineWidth(float width) {
-        backend.glLineWidth(width);
+        if (state().lineWidthChanged(width)) backend.glLineWidth(width);
     }
 
     public static void glPolygonMode(int face, int mode) {
-        backend.glPolygonMode(face, mode);
+        if (state().polygonModeChanged(face, mode)) backend.glPolygonMode(face, mode);
     }
 
     public static void glColorMask(boolean red, boolean green, boolean blue, boolean alpha) {
-        backend.glColorMask(red, green, blue, alpha);
+        if (state().colorMaskChanged(red, green, blue, alpha)) backend.glColorMask(red, green, blue, alpha);
     }
 
     public static void glStencilFunc(int func, int ref, int mask) {
-        backend.glStencilFunc(func, ref, mask);
+        if (state().stencilFuncChanged(func, ref, mask)) backend.glStencilFunc(func, ref, mask);
     }
 
     public static void glStencilOp(int sfail, int dpfail, int dppass) {
-        backend.glStencilOp(sfail, dpfail, dppass);
+        if (state().stencilOpChanged(sfail, dpfail, dppass)) backend.glStencilOp(sfail, dpfail, dppass);
     }
 
     public static void glAlphaFunc(int func, float ref) {
-        backend.glAlphaFunc(func, ref);
+        if (state().alphaFuncChanged(func, ref)) backend.glAlphaFunc(func, ref);
     }
 
     public static void glDepthFunc(int func) {
-        backend.glDepthFunc(func);
+        if (state().depthFuncChanged(func)) backend.glDepthFunc(func);
     }
 
     public static void glClear(int mask) {
@@ -979,28 +997,28 @@ public final class CgGL {
     }
 
     public static void glStencilMask(int mask) {
-        backend.glStencilMask(mask);
+        if (state().stencilMaskChanged(mask)) backend.glStencilMask(mask);
     }
 
     public static void glBlendEquationSeparate(int modeRGB, int modeAlpha) {
-        backend.glBlendEquationSeparate(modeRGB, modeAlpha);
+        if (state().blendEquationChanged(modeRGB, modeAlpha)) backend.glBlendEquationSeparate(modeRGB, modeAlpha);
     }
 
     /** GL 3.0 per-draw-buffer color mask. */
     public static void glColorMaski(int buf, boolean r, boolean g, boolean b, boolean a) {
-        backend.glColorMaski(buf, r, g, b, a);
+        if (state().colorMaskiChanged(buf, r, g, b, a)) backend.glColorMaski(buf, r, g, b, a);
     }
 
     public static void glFrontFace(int mode) {
-        backend.glFrontFace(mode);
+        if (state().frontFaceChanged(mode)) backend.glFrontFace(mode);
     }
 
     public static void glPolygonOffset(float factor, float units) {
-        backend.glPolygonOffset(factor, units);
+        if (state().polygonOffsetChanged(factor, units)) backend.glPolygonOffset(factor, units);
     }
 
     public static void glPointSize(float size) {
-        backend.glPointSize(size);
+        if (state().pointSizeChanged(size)) backend.glPointSize(size);
     }
 
     public static void glDrawBuffer(int mode) {
@@ -1172,7 +1190,7 @@ public final class CgGL {
     }
 
     public static void glBindFramebuffer(int target, int fbo) {
-        backend.bindFramebuffer(target, fbo);
+        if (state().fboChanged(target, fbo)) backend.bindFramebuffer(target, fbo);
     }
 
     // =========================================================================

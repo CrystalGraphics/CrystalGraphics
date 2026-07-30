@@ -45,6 +45,10 @@ repositories {
 dependencies {
     compileOnly("xyz.wagyourtail.jvmdowngrader:jvmdowngrader-java-api:$downgraderVer:downgraded-8")
 
+    // The state manager's deduplication decisions are pure logic — no GL context, no backend — so they are
+    // unit-testable here. Whether CgGL calls them from the right places still needs a live context.
+    testImplementation("junit:junit:${rootProject.properties["dep.junit"]}")
+
     compileOnly("org.projectlombok:lombok:1.18.44")
     annotationProcessor("org.projectlombok:lombok:1.18.44")
     testCompileOnly("org.projectlombok:lombok:1.18.44")
@@ -95,4 +99,9 @@ if (isStandalone) {
             }
         }
     }
+}
+
+
+tasks.named<Test>("test") {
+    useJUnit()
 }

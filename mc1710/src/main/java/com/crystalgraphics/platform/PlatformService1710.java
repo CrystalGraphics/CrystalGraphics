@@ -9,6 +9,8 @@ import com.crystalgraphics.platform.service.RenderingService1710;
 import com.crystalgraphics.platform.service.ResourceService1710;
 import com.crystalgraphics.platform.service.*;
 import com.crystalgraphics.platform.gl.*;
+import com.crystalgraphics.platform.gl.state.CgGlState;
+import com.crystalgraphics.platform.state.AngelicaStateProvider;
 
 /**
  * Complete MC 1.7.10 platform bundle. Implements {@link CgPlatformService} by composing
@@ -55,6 +57,20 @@ public final class PlatformService1710 implements CgPlatformService {
      */
     public static void onPreInit() {
         CgPlatform.register(PlatformService1710.getInstance());
+
+        // Prefer Angelica's mirror over the driver for GL state reads.
+        //
+        // Angelica redirects ~200 GL call sites process-wide, so its mirror observes writes from Minecraft
+        // and every other mod — coverage we could not obtain ourselves, and the reason our own redirector
+        // was scrapped rather than extended. Reading it costs plain field access instead of a glGet, and a
+        // glGet is a driver synchronisation point.
+        //
+        // Registered before any GL context exists, which is fine: the provider is only consulted when a
+        // scope adopts. If Angelica is absent, or a future version renames something, every read falls back
+        // to the glGet base — so this can cost performance, never correctness.
+        if (AngelicaStateProvider.isAvailable()) {
+            CgGlState.setProvider(new AngelicaStateProvider());
+        }
     }
 
     /**

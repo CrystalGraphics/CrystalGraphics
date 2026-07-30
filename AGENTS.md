@@ -93,7 +93,14 @@ The repository is a Gradle multi-project build. Every subproject has a distinct 
 | `mc1201/neoforge/` | 17 | LWJGL3 | MC 1.20.4 / NeoForge. Same pattern as forge. Despite living under `mc1201/`, targets MC 1.20.4. |
 | `mc1201/fabric/` | 17 | LWJGL3 | MC 1.20.1 / Fabric. Same pattern, uses Fabric API callbacks + GLFW for inputs with no Fabric API equivalent. |
 
-**Rule**: `core/` and `platform/` have zero compile dependency on LWJGL, MC, or any loader. The build enforces this — an accidental `import net.minecraft.*` in `core/` is a compile error.
+**Rule**: `core/` and `platform/` have zero compile dependency on LWJGL, MC, or any loader.
+
+> ⚠️ **Not currently enforced here.** The import-guard `doLast` in `core/build.gradle.kts` is commented
+> out (inside a disabled dual-pipeline experiment), so a stray `import net.minecraft.*` in `core/` would
+> compile. CrystalGUI's equivalent guard *is* active — do not assume this one is by analogy. Either
+> re-enable it or keep this warning; silently claiming enforcement that does not exist is worse than
+> having none. (The `cgStateWriteGuard` task once cited here as the working pattern no longer exists — the
+> V2 state rewrite made the rule it enforced unnecessary. Copy CrystalGUI's guard instead.)
 
 ---
 
@@ -227,7 +234,7 @@ These rules apply everywhere. All agents must internalize them.
 
 | In module | Forbidden | Reason |
 |---|---|---|
-| `core/`, `platform/` | `net.minecraft.*`, `net.minecraftforge.*`, `org.lwjgl.*` | Loader-blind — build enforces this |
+| `core/`, `platform/` | `net.minecraft.*`, `net.minecraftforge.*`, `org.lwjgl.*` | Loader-blind — **guard currently disabled**, see the warning above |
 | `mc1201/*` | `org.lwjgl.input.Mouse`, LWJGL2 input types | LWJGL3 environment |
 | `mc1710/*` | LWJGL3 GL calls, `com.mojang.*` | LWJGL2 environment |
 
@@ -812,6 +819,8 @@ Raw shaders can use the same standard library as `.shader` materials. Include an
 
 Wrap any block of GL work in a `CgGlScope` to guarantee state restoration on exit — even on exceptions. Always save only the slots you intend to modify.
 
+> Imports come from **`com.crystalgraphics.platform.gl.state`** (`CgGlState`, `CgGlScope`, `CgGlSlot`); `CgGlStateManager` is in `platform.gl`.
+
 ```java
 // Save specific slots:
 try (CgGlScope scope = CgGlState.save(CgGlSlot.FBO, CgGlSlot.PROGRAM)) {
@@ -1026,8 +1035,8 @@ All 35 package guides under `src/main/java/com/crystalgraphics/`. Relative paths
 ### GL State
 | Path | What it covers |
 |---|---|
-| `api/state/AGENTS.md` | `CgRenderState`, `CgDepthState`, `CgBlendState`, `CgCullState`, `CgStencilState`, `CgTextureState`, `CgGlSlot` |
-| `gl/state/AGENTS.md` | `CgGlState` / `CgGlScope` (save/restore), `GLStateMirror`, `CallFamily` |
+| `api/state/AGENTS.md` | `CgRenderState`, `CgDepthState`, `CgBlendState`, `CgCullState`, `CgStencilState`, `CgTextureState` (`CgGlSlot` moved to `platform.gl.state`) |
+| `gl/state/AGENTS.md` | `CallFamily` (live), the inert `GLStateMirror`, and a pointer to the state framework — which now lives in `platform.gl` / `platform.gl.state`, not here |
 
 ### Batch Render Layer
 | Path | What it covers |
@@ -1065,7 +1074,7 @@ This section covers the layer that wires CrystalGraphics into the Minecraft/Forg
 
 ## `CrystalGraphics.java` — Forge Mod Container
 
-The root `@Mod` class (`modid = "crystalgraphics"`). Intentionally performs **no GL work** — it is purely a Forge dependency anchor and lifecycle logger. All rendering and interception logic lives in `mc/coremod/` and `mixins/`. Other mods declare `required-after:crystalgraphics` in their `mcmod.info` to depend on this mod.
+The root `@Mod` class (`modid = "crystalgraphics"`). Intentionally performs **no GL work** — it is purely a Forge dependency anchor and lifecycle logger. All rendering logic lives in `mixins/`. (`mc/coremod/` still exists but its GL-redirect layer is dead — see [GL state](#gl-state--cgglstatemanager) — and it is scheduled for removal.) Other mods declare `required-after:crystalgraphics` in their `mcmod.info` to depend on this mod.
 
 ## Render Loop Hook — `CgRenderHook`
 
@@ -1102,17 +1111,43 @@ Failures in each step are isolated and logged — a broken shader does not preve
 | `LifecycleService1710` | `CgLifecycleService` | Delegates `CgGraphicsLifecycle` init/destroy/resize directly |
 | `ReloadService1710` | bridge utility | `attachToResourceManager()` wires `IReloadableResourceManager` → `CgPlatform.reload().onReload()` |
 
-## GL State Mirror — `CrystalGLRedirects` + `CrystalGraphicsTransformer`
+## GL state — `CgGlStateManager`
 
-`mc/coremod/CrystalGraphicsTransformer` is an ASM coremod that rewrites GL call sites across the **entire Minecraft process** — including vanilla MC and other loaded mods — redirecting them to `CrystalGLRedirects`. Each redirect:
+> **Superseded 2026-07-30.** `GLStateMirror` and `CgGlStates` are **deleted**. The ASM coremod
+> (`mc/coremod/`) still exists but no longer feeds anything and is scheduled for removal. Earlier revisions
+> of this file described the mirror as what made `CgGlState.save/restore` reliable — it never could be.
 
-1. Checks the recursion guard (`GLStateMirror.isInRedirect()`) to prevent infinite recursion
-2. Updates `GLStateMirror` with the new GL state **before** the actual GL call
-3. Calls the original LWJGL / `OpenGlHelper` method inside a `try/finally`
+**Why the mirror was abandoned.** It depended on an ASM transformer rewriting GL call sites process-wide.
+That cannot be made reliable: our redirector is modelled on Angelica's, targets the same call sites, and has
+been observed with **Angelica redirecting ours into its own**. Two transformers competing for the same
+bytecode cannot both be authoritative, and any third mod doing raw GL ends the guarantee regardless. It was
+also only ever fed on 1.7.10 — on the other three targets it was inert.
 
-This is what makes `CgGlState.save/restore` reliable in a multi-mod environment — CG knows the true GL state even when other mods make GL calls outside CG's control.
+**What replaced it.** `gl/state/CgGlStateManager` keeps a CPU-side shadow, eliminates redundant GL calls,
+and takes truth from a `CgGlStateProvider` at declared boundaries rather than by observing other code.
+`CgGlState` / `CgGlScope` / `CgGlSlot` kept their signatures, so no call site changed.
 
-The JVM flags for this layer are listed in the [Debug / JVM Flags](#debug--jvm-flags) section.
+Measured on the `text-3d` harness scene: `doBind.stateSave` went from **1,599 ms over 838 frames** to
+**0.00 ms**, and the worst single frame from **346.8 ms** to a whole-`doBind` max of **2.16 ms**.
+
+Package guide: `core/src/main/java/com/crystalgraphics/gl/state/AGENTS.md`.
+Design record and eight implementation corrections: `docs_research/CGGLSTATEMANAGER_PLAN.md`.
+
+**Four rules worth knowing before touching rendering code:**
+
+1. **Raw `CgGL` is fine.** Tracking lives *inside* `CgGL`'s setters, so there is no way to write GL state
+   without the shadow seeing it. The typed records (`CgBlendState`, `CgDepthState`, …) are a convenience,
+   not a safety requirement — the `cgStateWriteGuard` task that used to police this was deleted along with
+   the problem it policed.
+2. Any code that resets GL state wholesale **with raw GL that bypasses `CgGL`** — the harness's
+   `GlStateResetHelper`, a foreign mod — must call `CgGlState.invalidateAllIfPresent()`. Only what goes
+   around `CgGL` is invisible.
+3. **Only genuinely global state may be deduplicated.** Anything an object binding implicitly swaps must be
+   invalidated when that object changes — `GL_ELEMENT_ARRAY_BUFFER` is per-VAO state, and treating it as
+   global elided a required bind and killed every indexed draw through the affected VAO.
+4. A wrong decision here produces a **missing GL call** — wrong rendering, no exception. Diagnose with
+   `-Dcrystalgraphics.state.verify=true`, which names the offending domain, or
+   `-Dcrystalgraphics.state.noDedup=true` to rule the manager out entirely.
 
 ---
 
@@ -1265,8 +1300,12 @@ Per-module details: [`mc1201/neoforge/AGENTS.md`](mc1201/neoforge/AGENTS.md) ·
 -Dcrystalgraphics.redirector.verbosePrefix=net.minecraft.  # limit verbose to prefix
 -Dcrystalgraphics.redirector.forceAngelica=true|false  # override Angelica detection
 
-# State boundary
--Dcrystalgraphics.boundary.forceGlGet=true           # force glGet* capture even if mirror valid
+# GL state manager (see gl/state/AGENTS.md)
+-Dcrystalgraphics.state.verify=true                  # verify the shadow against the driver before
+                                                     # eliminating any call; logs the offending domain
+                                                     # with tracked-vs-actual. Very slow — diagnosis only.
+-Dcrystalgraphics.state.noDedup=true                 # never eliminate a call; distinguishes "the shadow
+                                                     # is lying" from a semantic regression in one run
 
 # Shader
 -Dcrystalgraphics.shader.devmode=true                # emit #line directives in preprocessed output

@@ -13,9 +13,18 @@ import com.crystalgraphics.platform.gl.CgGL;
 @Desugar
 public record CgAlphaState(boolean enabled, int func, float cutoff) {
 
+
+
+
     /** Alpha test disabled. {@code func} is {@code GL_ALWAYS} (unused), {@code cutoff} is 0. */
     public static final CgAlphaState DISABLED = new CgAlphaState(false, CgGL.GL_ALWAYS, 0f);
 
+    /**
+     * Makes this state current.
+     *
+     * <p>Calls {@code CgGL} directly; {@code CgGL} decides whether each call reaches the driver, so a
+     * repeated apply of the same value costs nothing.</p>
+     */
     public void apply() {
         if (isCore()) return;
         if (enabled) {

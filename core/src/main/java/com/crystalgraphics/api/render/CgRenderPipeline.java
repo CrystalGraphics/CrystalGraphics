@@ -8,8 +8,8 @@ import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
-import com.crystalgraphics.gl.state.CgGlScope;
-import com.crystalgraphics.gl.state.CgGlState;
+import com.crystalgraphics.platform.gl.state.CgGlScope;
+import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.mc.compat.CgIrisCompat;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
@@ -20,7 +20,7 @@ import lombok.Getter;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import static com.crystalgraphics.api.state.CgGlSlot.*;
+import static com.crystalgraphics.platform.gl.state.CgGlSlot.*;
 
 /**
  * Singleton orchestrator for the CrystalGraphics forward render pipeline.

@@ -1,95 +1,173 @@
-# `gl/state` — GL State Save/Restore Framework
+# `gl/state` — what is left of it
 
-## Class Map
+**Rewritten 2026-07-31 (V2).** This package used to hold the whole GL state framework. It no longer does:
+`CgGlState`, `CgGlScope`, `CgGlSlot`, the shadow and the providers now live in
+**`com.crystalgraphics.platform.gl.state`**, and `CgGlStateManager` in **`com.crystalgraphics.platform.gl`**
+beside the `CgGL` that calls into it.
 
-### `CgGlState` (public)
-Thin static dispatcher. Entry point for all state capture.
+Two files remain, and neither is part of that framework:
 
-```java
-// Save specific slots
-try (CgGlScope scope = CgGlState.save(CgGlSlot.FBO, CgGlSlot.PROGRAM)) {
-    // GL operations
-}
+| File | Status |
+|---|---|
+| `CallFamily` | **Live and load-bearing.** The Core/ARB/EXT waterfall selector; nine files outside this package use it. Not related to the state manager, and repeatedly mistaken for dead code. Do not delete. |
+| `GLStateMirror` | **Inert.** Kept only because `CrystalGLRedirects` still writes to it and the hotswap plugin locates `CrystalGraphicsTransformer` in the LaunchWrapper chain. Nothing reads it. Removing it means reworking hotswap first. |
 
-// Convenience shorthands
-CgGlState.saveProgram()  // → save(PROGRAM)
-CgGlState.saveFull()     // → save(FBO, PROGRAM, TEXTURES, VERTEX_INPUT)
-CgGlState.saveAll()      // → save all 16 slots
-```
+Design record, including the V2 rationale and every correction made along the way:
+`docs_research/CGGLSTATEMANAGER_PLAN.md`
 
-Mirror-vs-glGet trust is resolved **once** per `save()` call via:
-- `crystalgraphics.boundary.forceGlGet` system property
-- `CrystalGraphicsCoremod.isGapOnlyMode()` reflection
-- `GLStateMirror.getCurrentFboFamily()` / `getCurrentProgramFamily()` trust check
+---
 
-No GL calls live in `CgGlState` itself — all GL access is in the `CgGlStates` inner classes.
+## Why it moved
 
-### `CgGlScope` (public)
-Thin `AutoCloseable`. Holds a `SlotState[]` indexed by `CgGlSlot.ordinal()`.
+Deduplication has to happen **where the GL call is made**, and every GL call in this project goes through
+`CgGL`, which lives in `platform`. With the manager in `core`, keeping the shadow truthful required callers
+to report their writes — an extra notification next to every state call. That is a design that depends on
+nobody ever forgetting, and it was already being forgotten: 46 notification sites across 8 files, and a base
+class was still missed.
 
-- `restore()` — iterates the array, calls `s.restore()` for each non-null entry; idempotent
-- `close()` — delegates to `restore()`
-- Constructor is package-private; only `CgGlState` creates instances
-- **Zero slot-specific logic** — adding a new `CgGlSlot` constant requires no change here
-
-### `CgGlStates` (package-private)
-Container for all 16 GL state slot implementations. Pure namespace — no instance.
-
-Each static inner class (`FboState`, `ProgramState`, `TextureState`, `VertexState`,
-`BlendState`, `DepthState`, `CullState`, `StencilState`, `ColorMaskState`, `ViewportState`,
-`ScissorState`, `PolygonOffsetState`, `AlphaTestState`, `LineWidthState`, `PolygonModeState`,
-`PointSizeState`) follows this pattern:
+So the write and the tracking became the same statement. Every `CgGL` setter now reads:
 
 ```java
-static final class XxxState implements SlotState {
-    // private final fields
-    private XxxState(...) { ... }
-    static XxxState capture(...) { /* glGet calls */ return new XxxState(...); }
-    @Override public void restore() { /* GL restore calls */ }
+public static void glDepthMask(boolean flag) {
+    if (state().depthMaskChanged(flag)) backend.glDepthMask(flag);
 }
 ```
 
-No public constructors, no accessors — inner classes are opaque outside `gl/state/`.
+There is no way to write GL state without the shadow seeing it, because there is no other path. The
+`cgStateWriteGuard` build task that used to police this was deleted along with the problem — raw `CgGL` is
+now exactly as safe as the typed records.
 
-**Critical implementation notes:**
-- `FboState` and `ProgramState` store `CallFamily` for correct cross-API restore dispatch
-- `TextureState.capture()` wraps the `glActiveTexture` loop in `enterRedirect()`/`exitRedirect()` to prevent mirror corruption
-- `VertexState.restore()` restores VAO **before** VBO/EBO — binding EBO while wrong VAO corrupts that VAO's recorded EBO
-- `ScissorState` captures both enable bit and the 4-int scissor box
+## Where to read about the framework now
 
-### `SlotState` (package-private interface)
-Single method: `void restore()`. Implemented by all 16 inner classes of `CgGlStates`.
+| Package | Holds |
+|---|---|
+| `platform.gl` | `CgGlStateManager` — the engine, beside `CgGL`, which consults it on every state setter |
+| `platform.gl.state` | `CgGlState` (facade), `CgGlScope`, `CgGlSlot`, `CgGlStateShadow`, `CgGlStateProvider`, `CgGlGetProvider` |
 
-### `GLStateMirror` (public)
-Pure-Java mirror of FBO, program, texture, VAO, and buffer bindings. No GL calls.
-Updated by the ASM redirect layer. Used by `CgGlState` for the mirror-vs-glGet trust decision.
+The split follows the call direction: `CgGL` depends on the manager, and the manager depends on the value
+and SPI types — so only the manager needs to sit next to `CgGL`.
 
-### `CallFamily` (public enum)
-Tags a binding with the GL call family that produced it:
-`CORE_GL30`, `ARB_FBO`, `EXT_FBO`, `OPENGLHELPER_WRAPPER`, `CORE_GL20`, `ARB_SHADER_OBJECTS`, `UNKNOWN`.
+The short version of what changed beyond the move:
 
-## Deleted (replaced)
-- `CgStateBoundary` → replaced by `CgGlState`
-- `CgStateSnapshot` → replaced by `CgGlScope`
+- **Fourteen of sixteen domains dedupe.** V1's allow-list (six) existed because binding domains could not
+  *report* reliably; routing through `CgGL` removed that constraint. Two are still exempt, for a different
+  reason — see below.
+- **Per-field, not per-record.** The shadow is one flat mutable struct; setting only the depth *mask* twice
+  is recognised as redundant without the func being involved.
+- **Restore is not a second write path.** It re-issues through `CgGL`, so an undisturbed domain emits
+  nothing and there is no restore implementation that can drift from the apply one.
+- **`CgStateGroup` is gone.** The `api/state` records are plain records again; their `apply()` calls `CgGL`.
 
-## Usage Pattern
+## The invariants that actually bite
+
+These are the ones that have produced real bugs. All of them fail as a **missing GL call** — wrong
+rendering, no exception, nowhere near the cause.
+
+1. **Only genuinely global state may be deduped.** Anything an object binding implicitly swaps must be
+   invalidated when that object changes. `GL_ELEMENT_ARRAY_BUFFER` is **per-VAO state** —
+   `glBindVertexArray` swaps it with no `glBindBuffer` to observe. Tracking it as a global meant a shared
+   IBO looked already-bound after a VAO switch, so the bind was elided and the VAO was left with no index
+   buffer; it surfaced as *"Cannot use offsets when Element Array Buffer Object is disabled"* at a draw call
+   several binds later. `GL_ARRAY_BUFFER` is genuinely global and needs no such treatment.
+
+2. **Code that resets GL state wholesale must call `CgGlState.invalidateAllIfPresent()`.** Raw GL outside
+   `CgGL` is invisible by construction. The harness's `GlStateResetHelper` is the canonical case; omitting
+   it left blending disabled and rendered every bitmap glyph as an opaque quad.
+
+3. **Trust never survives leaving our control.** An *outermost* `save()` re-reads unconditionally; only a
+   *nested* one may trust the shadow. Between two outermost scopes, Minecraft or another mod ran.
+
+4. **A null `CgRenderState` slot means "leave alone", not "revert to baseline".** Callers legitimately
+   configure ambient state *inside* a scope.
+
+5. **Material bind/unbind is not LIFO**, so `CgMaterial` cannot hold a scope. Material isolation comes from
+   the pass renderers re-asserting ambient state per batch.
+
+## `PROGRAM` and `FBO` are tracked but never deduplicated
+
+Deduplication is a bet that nothing wrote GL behind our back, and the stake differs sharply by domain.
+These two are where it pays least and loses worst, so every write to them is issued:
+
+| | Redundant call costs | Wrong value costs |
+|---|---|---|
+| `FBO` | a handful of binds per frame — nothing measurable | draws into the wrong target, often producing **no visible output at all** |
+| `PROGRAM` | `glUseProgram` is cheap and never synchronises | wrong shader; MC, Iris and every shader mod rebind constantly |
+
+`TEXTURES` and `VERTEX_INPUT` stay deduplicated: they are the high-frequency binds, where elimination is
+worth the narrower risk.
+
+Both exempt domains remain **tracked**, because the shadow is what a scope restores from — and always
+issuing means restore cannot re-establish a stale remembered value either.
+
+> **The trade is cheaper than it looks.** The measured win — 346.8 ms of `glGet` per frame down to 0.00 ms —
+> came from removing driver synchronisation in *scope capture*, not from eliminating writes. Write
+> deduplication is a second-order gain on top, so exempting a domain costs almost none of the actual saving.
+> Verified: `text-3d` and `cgui-gallery` render identically with the exemption in place.
+
+## Hosting Minecraft's renderers — `hostForeign`
+
+This engine deliberately runs foreign rendering code *inside* its own passes: an item icon, an entity
+preview, a block model in a CrystalGUI panel. That code writes GL through Blaze3D or raw calls, none of
+which `CgGL` sees, so on the way out the shadow is not merely suspect — it is **known** to describe a world
+that no longer exists. A plain `save()` trusts it across the block and deduplicates away precisely the calls
+needed to undo what the foreign code did.
 
 ```java
-// Minimal: save only what you modify
-try (CgGlScope scope = CgGlState.save(CgGlSlot.FBO, CgGlSlot.PROGRAM)) {
-    fbo.bind();
-    shader.bind();
-    // draw
-}
-// FBO and program restored here
-
-// Shader convenience (via CgShader.bindScoped)
-try (CgGlScope scope = shader.bindScoped()) {
-    // renders with shader; PROGRAM slot auto-saved
-}
-
-// Full save for complex multi-pass effects
-try (CgGlScope scope = shader.bindScoped(CgGlSlot.FBO, CgGlSlot.PROGRAM, CgGlSlot.TEXTURES)) {
-    // all 3 slots restored on close
-}
+try (CgGlScope s = CgGlState.hostForeign(CgGlSlot.BLEND, CgGlSlot.DEPTH, CgGlSlot.PROGRAM)) {
+    minecraft.getItemRenderer().renderStatic(stack, ...);
+}   // declared domains re-asserted for real; everything else marked unknown
 ```
+
+Entry is free — no `glGet`, because our shadow is still truthful going in. The whole cost is one re-assert
+of what you named, on the way out. Declaring nothing is valid: it invalidates without restoring.
+
+> **This fixes our half only.** Minecraft keeps its own shadow (`GlStateManager` on 1.20.x, Angelica's on
+> 1.7.10) and every write we make through `CgGL` is equally invisible to *it*. Before calling in, set the
+> state MC cares about through **MC's** API so its mirror is truthful too. Two shadows, each blind to the
+> other; this scope stands on only one side of that boundary. On 1.7.10 with Angelica the problem largely
+> dissolves, because our provider reads Angelica's mirror, which observed both sides.
+
+### Why re-establishing a domain suspends deduplication
+
+Trust is tracked per **domain**, but a domain is written **field by field**. The first field re-issued marks
+the domain trusted, after which every remaining field of that domain compares equal to the stale shadow and
+is skipped. `DEPTH` emitted its enable and silently dropped both the write mask and the compare function —
+two thirds of the domain left on whatever the foreign code set.
+
+So `reissue` suspends deduplication for the duration of one stale domain (`forcing`). A domain nobody
+disturbed still takes the normal path and usually emits nothing, so the fast case is unaffected.
+
+## Diagnostics — reach for these before reasoning
+
+Reasoning from symptoms produced a wrong answer three times in this subsystem's history; each of these gave
+the right one in a single run.
+
+| Flag | Effect |
+|---|---|
+| `-Dcrystalgraphics.state.verify=true` | Re-read the domain before eliminating a call and compare. Logs domain plus tracked-vs-actual on mismatch, then emits anyway. **Names the culprit.** Very slow — diagnosis only. |
+| `-Dcrystalgraphics.state.noDedup=true` | Never eliminate. Separates "the shadow is lying" from "a semantic regression", and is the support answer for a user with a broken modpack. |
+
+## Platform providers
+
+| Platform | Source | `glGet` per adopt |
+|---|---|---|
+| 1.7.10 + Angelica | `AngelicaStateProvider` (mc1710), reads Angelica's mirror by reflection | near zero |
+| 1.7.10 vanilla · harness | `CgGlGetProvider` | full sweep |
+| 1.20.x | `Blaze3DStateProvider` exists but is **not compiled** — `mc1201` is absent from `settings.gradle.kts` | — |
+
+> **Trap, found by reading Angelica's source rather than assuming:** its `DepthState.enabled` is the depth
+> **write mask**, not the depth test — `glDepthMask` stores into it, and the test is a separate `depthTest`
+> stack. This is the *opposite* of Blaze3D's convention; do not carry either workaround across. Angelica's
+> `BlendState` also carries no blend equation, exactly like Blaze3D's.
+
+Providers must be **total**. Extending `CgGlGetProvider` makes that structural: override what you can read
+cheaply, inherit `glGet` for the rest, so a reflection miss costs performance and never correctness.
+
+## What the tests can and cannot tell you
+
+`CgGlStateManagerTest` (in `platform`) needs no GL context, because the `*Changed` methods are pure: they
+compare against the shadow, record, and report whether the driver should be told.
+
+That is also their limit. **They verify the manager decides correctly, not that its picture of the world is
+true.** Every bug this subsystem has had passed the full suite — including the VAO one above, which was
+found by running the harness. `verify` mode is what closes that gap.
