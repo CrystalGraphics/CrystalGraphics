@@ -24,8 +24,9 @@ import java.nio.*;
  * <h3>FBO waterfall</h3>
  * The {@link #bindFramebufferCompat(int)} method is the platform-neutral substitute for
  * {@code OpenGlHelper.func_153171_g} — mc1710 routes through the Minecraft compat helper,
- * standalone impls call {@code glBindFramebuffer} directly. Used by
- * {@code CallFamily.OPENGLHELPER_WRAPPER} routing in core/.
+ * standalone impls call {@code glBindFramebuffer} directly. (This replaced a
+ * {@code CallFamily.OPENGLHELPER_WRAPPER} routing enum in core/, since deleted — the choice is the
+ * backend's, which is why it is a method here rather than a tag a caller has to carry.)
  */
 public abstract class CgGLBackend {
     
@@ -99,8 +100,8 @@ public abstract class CgGLBackend {
      * so that Minecraft's own FBO tracking remains consistent. Standalone / harness implementations
      * call {@code glBindFramebuffer(GL_FRAMEBUFFER, fbo)} directly.</p>
      *
-     * <p>This is the replacement for {@code OpenGlHelper.func_153171_g} in core/.
-     * Used by {@code CallFamily.OPENGLHELPER_WRAPPER} routing.</p>
+     * <p>This is the replacement for {@code OpenGlHelper.func_153171_g} in core/, and for the
+     * {@code CallFamily.OPENGLHELPER_WRAPPER} tag that used to select it.</p>
      *
      * @param fbo the framebuffer object name to bind, or 0 to unbind
      */

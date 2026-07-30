@@ -1,7 +1,6 @@
 package com.crystalgraphics.gl.shader;
 
 import com.crystalgraphics.api.shader.CgShaderProgram;
-import com.crystalgraphics.gl.state.CallFamily;
 import com.crystalgraphics.platform.gl.CgGL;
 
 import java.util.Set;
@@ -132,10 +131,8 @@ public abstract class CgAbstractShaderProgram implements CgShaderProgram {
     /**
      * {@inheritDoc}
      *
-     * <p>Binds this shader program for rendering via
-     * {@link CrossApiTransition#bindProgram(int, CallFamily)}, ensuring safe
-     * cross-API transitions when the previously-active program was bound
-     * through a different call family.</p>
+     * <p>Binds this program through {@link CgGL}, which deduplicates against the
+     * GL state shadow and dispatches Core vs ARB inside the backend.</p>
      */
     @Override
     public void bind() {
@@ -145,8 +142,7 @@ public abstract class CgAbstractShaderProgram implements CgShaderProgram {
     /**
      * {@inheritDoc}
      *
-     * <p>Unbinds this shader program by binding program 0 (the fixed-function
-     * pipeline) via {@link CrossApiTransition#bindProgram(int, CallFamily)}.</p>
+     * <p>Unbinds by binding program 0 (the fixed-function pipeline).</p>
      */
     @Override
     public void unbind() {
@@ -189,16 +185,6 @@ public abstract class CgAbstractShaderProgram implements CgShaderProgram {
      * {@code ARBShaderObjects.glDeleteObjectARB}).</p>
      */
     protected abstract void freeGlResources();
-
-    /**
-     * Returns the GL call family used by this shader program implementation.
-     *
-     * <p>Used by binding methods to route through
-     * {@link CrossApiTransition#bindProgram(int, CallFamily)}.</p>
-     *
-     * @return the {@link CallFamily} for this shader backend
-     */
-    protected abstract CallFamily callFamily();
 
     // ── Static lifecycle ───────────────────────────────────────────────
 

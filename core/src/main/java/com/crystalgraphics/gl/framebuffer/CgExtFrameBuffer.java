@@ -1,7 +1,6 @@
 package com.crystalgraphics.gl.framebuffer;
 
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
-import com.crystalgraphics.gl.state.CallFamily;
 
 import com.crystalgraphics.platform.gl.CgGL;
 
@@ -41,10 +40,6 @@ final class CgExtFrameBuffer extends CgFrameBuffer {
         super(name, format, width, height);
     }
 
-    @Override
-    protected CallFamily callFamily() {
-        return CallFamily.EXT_FBO;
-    }
 
     /**
      * Binds using {@code GL_FRAMEBUFFER_EXT}.

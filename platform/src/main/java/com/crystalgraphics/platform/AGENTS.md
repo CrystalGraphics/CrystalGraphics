@@ -48,7 +48,7 @@ CgGlDispatch.get().glUseProgram(programId);
 - MC 1.7.10 implementation delegates to `OpenGlHelper.func_153171_g(GL_FRAMEBUFFER, fbo)` so
   that Minecraft's internal FBO tracking remains consistent.
 - Standalone / harness implementations call `glBindFramebuffer(GL_FRAMEBUFFER, fbo)` directly.
-- This replaces all `CallFamily.OPENGLHELPER_WRAPPER` routing in the existing `CgGlState` / FBO
+- This replaces the former `CallFamily.OPENGLHELPER_WRAPPER` routing (that enum is deleted) in the FBO
   code once those classes are migrated to `core/`.
 
 **Coverage**: Framebuffers, shaders (create/compile/link/uniforms/UBO/SSBO bindings), buffers
