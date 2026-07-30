@@ -47,7 +47,22 @@ float sdf_rounded_box(vec2 p, vec2 halfSize, vec4 radiiX, vec4 radiiY) {
 
 // 1.0 inside the shape, 0.0 outside, antialiased across ~1px at the edge using screen-space
 // derivatives. `dist` is an `sdf_*` distance (negative inside, per the convention above).
+//
+// FRAGMENT-ONLY. `fwidth` is a derivative builtin and does not exist in the vertex stage. This lib
+// gets included at material scope, and the compiler hoists every material-scope `#` line into BOTH
+// generated stages — so without this guard the function lands in the vertex shader. NVIDIA compiles
+// it anyway; AMD correctly refuses, and the whole material fails with
+// "ERROR: 'fwidth' : no matching overloaded function found".
+//
+// The polarity is deliberate: `#ifndef CG_VERTEX_STAGE`, NOT `#ifdef CG_FRAGMENT_STAGE`. Raw
+// .vert/.frag files go through CgShaderPreprocessor with no stage defines at all, so an `#ifdef`
+// would silently delete this function from every one of them. `#ifndef` keeps it everywhere except
+// the one stage that cannot have it.
+//
+// Everything above this line is pure maths and stays available to vertex shaders.
+#ifndef CG_VERTEX_STAGE
 float sdf_coverage(float dist) {
     float aa = fwidth(dist) * 0.5;
     return 1.0 - smoothstep(-aa, aa, dist);
 }
+#endif

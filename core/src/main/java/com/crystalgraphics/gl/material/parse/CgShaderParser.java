@@ -259,7 +259,10 @@ public final class CgShaderParser {
      *
      * <p>Detection is textual: the macro family ({@code CG_QUAD_}) and the raw macro name
      * ({@code QUAD_DATA}) are both looked for, so it fires whether the author used the convenience
-     * macros or indexed the buffer directly.</p>
+     * macros or indexed the buffer directly. It runs against a comment-stripped copy of the source —
+     * a shader that merely <em>documents</em> these symbols is not using them, and scanning raw text
+     * made {@code example.shader}, the reference file this project tells authors to read first,
+     * unparseable by the very feature it describes.</p>
      */
     private static void validateEngineBufferUsage(String source, List<String> declared, String resourcePath) {
         for (String token : declared) {
@@ -269,17 +272,43 @@ public final class CgShaderParser {
                         + "' — registered tokens: " + CgEngineBufferRegistry.tokens());
             }
         }
+        String code = stripGlslComments(source);
         for (String token : CgEngineBufferRegistry.tokens()) {
             if (declared.contains(token)) continue;
             String macro = CgEngineBufferRegistry.get(token).macroName();
             // "CG_QUAD_" from "QUAD_DATA" — the convenience-macro prefix that expands to the raw name.
             String family = "CG_" + (macro.endsWith("_DATA") ? macro.substring(0, macro.length() - 5) : macro) + "_";
-            if (source.contains(macro) || source.contains(family)) {
+            if (code.contains(macro) || code.contains(family)) {
                 throw new CgShaderParseException(
                         "[" + resourcePath + "] uses '" + macro + "'/'" + family
                         + "*' but does not declare it — add '#pragma cg_use " + token + "'");
             }
         }
+    }
+
+    /**
+     * Blanks out {@code //} and block comments, preserving newlines so line numbers still line up.
+     * Used only for symbol-usage scanning — parsing itself still sees the original source.
+     */
+    private static String stripGlslComments(String src) {
+        StringBuilder out = new StringBuilder(src.length());
+        for (int i = 0; i < src.length(); i++) {
+            char c = src.charAt(i);
+            if (c == '/' && i + 1 < src.length() && src.charAt(i + 1) == '/') {
+                while (i < src.length() && src.charAt(i) != '\n') i++;
+                out.append('\n');
+            } else if (c == '/' && i + 1 < src.length() && src.charAt(i + 1) == '*') {
+                i += 2;
+                while (i + 1 < src.length() && !(src.charAt(i) == '*' && src.charAt(i + 1) == '/')) {
+                    if (src.charAt(i) == '\n') out.append('\n');
+                    i++;
+                }
+                i++; // land on '/', the loop's i++ steps past it
+            } else {
+                out.append(c);
+            }
+        }
+        return out.toString();
     }
 
     /**

@@ -485,8 +485,14 @@ public final class CgMaterial {
         checkNotDeleted();
         // Lazy-init propStore if the shader asset exists but propStore hasn't been built yet
         // (e.g. applyProperties() called before the first bind()). Mirrors the enableKeyword pattern.
-        if (propStore == null && cgMaterialShader != null) recompile();
-        
+        // hasCompileFailed() is what makes this a lazy init rather than a retry loop: the condition
+        // above stays true forever once a compile fails, so without the latch this re-parsed and
+        // re-compiled a known-broken shader on every call.
+        if (propStore == null && cgMaterialShader != null && !cgMaterialShader.hasCompileFailed()) {
+            recompile();
+        }
+
+
         if (propStore == null) {
             // Shader hasn't compiled yet (compile failed, or forTest path with no asset) —
             // buffer the consumer so it's replayed after the first successful compile.
@@ -518,7 +524,11 @@ public final class CgMaterial {
         checkNotDeleted();
         // If the shader asset exists but hasn't been compiled yet (e.g. called in init() before
         // bind()), trigger a compile now so featureNames are populated for validation.
-        if (cgMaterialShader != null && cgMaterialShader.getLastParsed() == null) {
+        // Skip when a previous attempt already failed — the parse products are committed as soon as
+        // parsing succeeds, so if lastParsed is still null the source is unreadable or unparseable
+        // and trying again per call only floods the log.
+        if (cgMaterialShader != null && cgMaterialShader.getLastParsed() == null
+                && !cgMaterialShader.hasCompileFailed()) {
             cgMaterialShader.recompile();
         }
         List<String> declared = getDeclaredFeatureNames();
@@ -941,6 +951,11 @@ public final class CgMaterial {
     private void onShaderRecompiled() {
         CgParsedShader parsed = cgMaterialShader.getLastParsed();
         if (parsed == null) return;
+        // Parse products are now published even when the GLSL compile failed, so a non-null parse no
+        // longer implies a live program. Keep the old state in that case: building propStore and a
+        // per-instance UBO for a material with no working shader allocates GL objects for something
+        // that cannot draw, and hides the failure behind half-initialised state.
+        if (cgMaterialShader.hasCompileFailed()) return;
 
         if (propStore == null) {
             propStore = new CgMaterialProperties(cloneProperties(parsed.properties()));

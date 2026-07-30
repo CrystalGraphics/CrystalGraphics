@@ -63,6 +63,7 @@ For any work that touches rendering, shaders, FBOs, text, or atlas generation �
 ./gradlew :gl-debug-harness:runHarness --args="--mode=atlas-dump"             # Glyph atlas
 ./gradlew :gl-debug-harness:runHarness --args="--mode=text-3d"                # Full text pipeline
 ./gradlew :gl-debug-harness:runHarness --args="--mode=capability-report"      # GL capability probe
+./gradlew :gl-debug-harness:runHarness --args="--mode=shader-compile-audit"  # every shipped .shader + keyword variant, one report
 
 # Outputs land in gl-debug-harness/harness-output/{scene}/
 ```
@@ -360,6 +361,55 @@ Available in the vertex stage only. Locations are bound by `CgShaderFactory` bef
 ### Why objectBuffer and frameBuffer Must NOT Be Attached
 
 `cg_env.glsl` already declares `CgObjectDataBuffer` and `CgFrameBlock`. The engine wires them automatically post-link. **Never call `material.attach()` with `CgMaterialPipeline.objectBuffer()` or `frameBuffer()`** — it produces duplicate GLSL declarations and a compile failure. Only user-owned buffers belong in `attach()`.
+
+### Stage defines — `CG_VERTEX_STAGE` / `CG_FRAGMENT_STAGE`
+
+One `.shader` file becomes **two** GLSL programs, and `partitionGlobalDecls` hoists **every** `#`-line
+from a material or pass preamble — `#include` very much included — into **both** of them. There is no
+stage filtering, by design: a shader author writes one preamble, not two.
+
+The consequence is the rule:
+
+> **A lib included at material scope is compiled into the vertex stage too. If any of it is
+> fragment-only, it must guard itself.**
+
+The compiler emits exactly one of these into each generated source, **before** the user directive
+block, so an included lib can see it:
+
+| Define | Present in |
+|---|---|
+| `CG_VERTEX_STAGE 1` | generated vertex source only |
+| `CG_FRAGMENT_STAGE 1` | generated fragment source only |
+
+```glsl
+#ifndef CG_VERTEX_STAGE
+float sdf_coverage(float dist) { return 1.0 - smoothstep(-fwidth(dist), fwidth(dist), dist); }
+#endif
+```
+
+**Use `#ifndef CG_VERTEX_STAGE`, not `#ifdef CG_FRAGMENT_STAGE`.** Raw `.vert`/`.frag` files go
+through `CgShaderPreprocessor` with *no* stage defines at all, so an `#ifdef` silently deletes the
+function from every one of them. `#ifndef` includes it everywhere except the one stage that cannot
+have it.
+
+> **Both facts here were learned the expensive way.** `sdf.glsl`'s `fwidth` reached the vertex stage
+> and an AMD tester could not launch the UI gallery at all, while it ran flawlessly on NVIDIA —
+> NVIDIA accepts derivative builtins in a vertex shader, AMD correctly refuses. And the define used
+> to be emitted *after* the user `#include`s, which meant every guard evaluated identically in both
+> stages and did nothing at all. Ordering is what makes the guard mechanism exist.
+
+Fragment-only, i.e. never legal in a vertex shader: `fwidth`/`dFdx`/`dFdy` and their `Fine`/`Coarse`
+variants, `discard`, `gl_FragCoord`, `gl_FrontFacing`, `gl_PointCoord`, `gl_FragDepth`,
+`interpolateAt*`, `gl_SampleID`/`gl_SamplePosition`/`gl_SampleMask`.
+
+Two things enforce this so it cannot regress silently:
+
+- **`ShippedShaderStagePurityTest`** (in both CrystalGraphics and CrystalGUI) compiles every shipped
+  `.shader` and asserts no such identifier is *reachable* in the generated vertex source. It resolves
+  the stage conditionals itself, because `CgShaderPreprocessor` expands `#include` but leaves
+  `#ifdef` to the driver. GL-free, so it catches this on any machine.
+- **`--mode=shader-compile-audit`** puts the real driver over every shipped shader and keyword
+  variant, collecting failures instead of crashing on the first. Run it on any GPU that disagrees.
 
 ---
 
