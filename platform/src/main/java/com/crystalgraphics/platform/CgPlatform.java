@@ -4,10 +4,13 @@ import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.CgGLContext;
 import com.crystalgraphics.platform.gl.CgGLBackend;
+import com.crystalgraphics.platform.service.CgCursorService;
+import com.crystalgraphics.platform.service.CgInputService;
 import com.crystalgraphics.platform.service.CgLifecycleService;
 import com.crystalgraphics.platform.service.CgReloadService;
 import com.crystalgraphics.platform.service.CgRenderingService;
 import com.crystalgraphics.platform.service.CgResourceService;
+import com.crystalgraphics.platform.service.CgSoundService;
 
 import java.util.Objects;
 
@@ -35,11 +38,11 @@ public final class CgPlatform {
      * Register a complete platform bundle. Must be called exactly once, before any
      * core engine code runs. Calling more than once replaces all existing registrations.
      *
-     * @param platform the platform bundle providing all six services; must not be {@code null}
+     * @param platform the platform bundle providing the services; must not be {@code null}
      */
     public static void register(CgPlatformService platform) {
         service = Objects.requireNonNull(platform, "CgPlatformService must not be null");
-        
+
         CgGL.init(platform.gl());
         CgCapabilities.init(platform.capabilities());
     }
@@ -82,6 +85,24 @@ public final class CgPlatform {
     public static CgReloadService reload() {
         ensureCreated();
         return service.reload();
+    }
+
+    /** Returns the input and clipboard service. @throws IllegalStateException if called before {@link #register}. */
+    public static CgInputService input() {
+        ensureCreated();
+        return service.input();
+    }
+
+    /** Returns the UI sound service. @throws IllegalStateException if called before {@link #register}. */
+    public static CgSoundService sound() {
+        ensureCreated();
+        return service.sound();
+    }
+
+    /** Returns the cursor presentation service. @throws IllegalStateException if called before {@link #register}. */
+    public static CgCursorService cursor() {
+        ensureCreated();
+        return service.cursor();
     }
 
     public static void ensureCreated() {

@@ -12,7 +12,7 @@ import com.crystalgraphics.platform.gl.*;
 
 /**
  * Complete MC 1.7.10 platform bundle. Implements {@link CgPlatformService} by composing
- * the six mc1710 service adapters. Register via {@code CgPlatform.register(new PlatformService1710())}.
+ * the mc1710 service adapters. Register via {@code CgPlatform.register(new PlatformService1710())}.
  *
  * <p>{@link RenderingService1710} and {@link LifecycleService1710} instances are exposed
  * via package-visible accessors if needed.</p>
@@ -33,6 +33,9 @@ public final class PlatformService1710 implements CgPlatformService {
     public final ReloadService1710 reloadImpl = new ReloadService1710();
     public final Lwjgl2GLBackend glDispatchImpl = new Lwjgl2GLBackend();
     public final Lwjgl2GLContext glContextImpl = new Lwjgl2GLContext();
+    public final InputService1710 inputImpl = new InputService1710();
+    public final SoundService1710 soundImpl = new SoundService1710();
+    public final CursorService1710 cursorImpl = new CursorService1710();
 
     @Override public CgGLBackend       gl()           { return glDispatchImpl; }
     @Override public CgGLContext         capabilities() { return glContextImpl; }
@@ -40,6 +43,9 @@ public final class PlatformService1710 implements CgPlatformService {
     @Override public CgRenderingService rendering()    { return renderingImpl; }
     @Override public CgLifecycleService lifecycle()    { return lifecycleImpl; }
     @Override public CgReloadService    reload()       { return reloadImpl; }
+    @Override public CgInputService     input()        { return inputImpl; }
+    @Override public CgSoundService     sound()        { return soundImpl; }
+    @Override public CgCursorService    cursor()       { return cursorImpl; }
     
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
