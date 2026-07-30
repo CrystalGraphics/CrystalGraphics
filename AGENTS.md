@@ -12,7 +12,7 @@
 
 # CrystalGraphics — Agent Knowledge Base
 
-**Project type**: Multi-loader Minecraft graphics library | **Targets**: MC 1.7.10 (Forge/LWJGL2) · MC 1.20.1 (Forge, Fabric) · MC 1.20.4 (NeoForge/LWJGL3) | **Core authored in**: Java 25, compiled to Java 8 bytecode via Jabel + jvmDowngrader | **Build**: Gradle multi-project
+**Project type**: Multi-loader Minecraft graphics library | **Targets**: MC 1.7.10 (Forge/LWJGL2) · MC 1.20.1 (Forge, Fabric) · MC 1.20.4 (NeoForge/LWJGL3) | **Core authored in**: Java 17 (`core/` and `platform/`, toolchain 17) | **Build**: Gradle multi-project
 
 ## TO BUILD
 ```bash
@@ -210,12 +210,17 @@ These rules apply everywhere. All agents must internalize them.
 
 **Vertex data via `CgVertexWriter`** — never write vertex bytes via raw `ByteBuffer.putFloat()`. All vertex packing goes through `CgVertexWriter.forBuffer()`. Index buffer `putShort()`/`putInt()` is the only exception.
 
-**Java version by module** — `core/` and `platform/` are authored in modern Java (currently Java 25) and compiled down to Java 8 bytecode via **Jabel** (syntax desugar via `@Desugar`) and **jvmDowngrader**. Modern syntax (`var`, records, sealed classes, lambdas, streams) is fully permitted in these modules. The only constraint is avoiding Java 9+ *runtime* stdlib APIs that jvmDowngrader does not backport and that do not exist in Java 8's standard library. `mc1201/` modules target Java 17 with no downgrade.
+**Java version by module** — `core/` and `platform/` are **Java 17 source and target, toolchain 17**, and produce Java 17 bytecode. Modern syntax (`var`, records, sealed classes, pattern matching, streams) is fully permitted in both.
+
+> ⚠️ **The Jabel + jvmDowngrader dual pipeline is written but commented out.** `core/build.gradle.kts` still carries it — `compileJabel`, `downgradeClasses`, the java8/java17 variants — behind comments, and both modules keep `jabel-javac-plugin` and `jvmdowngrader-java-api` as `compileOnly` so an `import ...Desugar` still compiles. Neither has an `annotationProcessor(jabel)`, so **nothing is desugaring or downgrading today**. Earlier revisions of this file described the Java 25 → Java 8 pipeline as live; it is not. Do not rely on Java 8 bytecode being produced, and do not add a Java 8-only constraint on the belief that it is.
+
+`platform/` was genuinely Java 8 source until 2026-07-30, which is a different thing from the pipeline above and was simply out of step with `core/`. The two are consumed together and shadowed into the same loader jar, so they now match. `mc1710/` gets modern Java through the GTNH convention plugin (`enableModernJavaSyntax = jvmDowngrader` in `mc1710/gradle.properties`), which is a separate mechanism from the commented-out one here. `mc1201/` modules target Java 17 with no downgrade.
 
 | Module | Authored in | Compiled to | Notes |
 |---|---|---|---|
-| `core/`, `platform/`, `freetype-msdfgen-harfbuzz-bindings/` | Java 25 | Java 8 bytecode | Modern syntax OK; avoid Java 9+ runtime-only APIs unless backported |
-| `mc1710/` | Java 25 | Java 8 bytecode | Same rules as core/ |
+| `core/`, `platform/` | Java 17 | Java 17 bytecode | Toolchain 17. Modern syntax OK. Jabel/jvmDowngrader present but inactive — see the warning above |
+| `freetype-msdfgen-harfbuzz-bindings/` | Java 8 | Java 8 bytecode | Genuinely Java 8 source; JNI bindings, deliberately minimal |
+| `mc1710/` | Modern (GTNH convention) | Java 8 bytecode | `enableModernJavaSyntax = jvmDowngrader` in `mc1710/gradle.properties` — the convention plugin's mechanism, not this repo's |
 | `mc1201/common/`, `mc1201/forge/`, `mc1201/neoforge/`, `mc1201/fabric/` | Java 17 | Java 17 | Full Java 17 API available |
 
 **Forbidden cross-module imports:**

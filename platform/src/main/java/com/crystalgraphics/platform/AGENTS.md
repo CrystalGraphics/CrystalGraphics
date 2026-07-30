@@ -1,9 +1,13 @@
 # Platform SPI — `com.crystalgraphics.platform`
 
-This package defines the **8-file Service Provider Interface (SPI)** that isolates the
-CrystalGraphics `core/` module from any platform-specific runtime (Minecraft 1.7.10, standalone
-GL harness, future ports). The `core/` module only imports from this package — never from
-`net.minecraft.*`, `org.lwjgl.*`, or `cpw.mods.*`.
+This package defines the Service Provider Interface (SPI) that isolates the CrystalGraphics `core/`
+module from any platform-specific runtime (Minecraft 1.7.10, standalone GL harness, future ports). The
+`core/` module only imports from this package — never from `net.minecraft.*`, `org.lwjgl.*`, or
+`cpw.mods.*`.
+
+**It also serves CrystalGUI**, which is a separate project built on top of CrystalGraphics and has no
+platform registry of its own. Its input, sound, clipboard and cursor seams are the last three services
+below — see [UI-facing services](#ui-facing-services).
 
 ---
 
@@ -17,8 +21,15 @@ GL harness, future ports). The `core/` module only imports from this package —
 | `CgReloadService.java` | Interface | Hot-reload (F3+T) — direct call contract (`onReload`) |
 | `CgCapabilityProbe.java` | Interface | GL capability detection |
 | `CgGlDispatch.java` | Abstract class (singleton) | All raw GL calls |
-| `CgPlatform.java` | Final utility class | Central registry; wires all 6 services |
-| `CgPlatformService.java` | Interface | Bundle contract; groups all 6 services into one object |
+| `CgPlatform.java` | Final utility class | Central registry; wires every service |
+| `CgPlatformService.java` | Interface | Bundle contract; groups every service into one object |
+| `service/CgInputService.java` | Interface | Key/mouse code translation, modifier and button state, **and the clipboard** |
+| `service/CgSoundService.java` | Interface | UI sounds |
+| `service/CgCursorService.java` | Interface | Presenting a mouse cursor |
+| `input/CgSystemInput.java` | Interface | Raw mouse/keyboard event sink + the two event types |
+| `input/CgKeyCodes.java`, `CgMouseCodes.java`, `CgModifiers.java` | Constants | LWJGL2-shaped, with no LWJGL import |
+| `input/CgCursor.java` | Enum | The cursor keyword set (CSS UI 4's, because it is the complete one) |
+| `input/CgCursorBitmaps.java` | Utility | Procedural 32×32 ARGB cursor artwork, for platforms with no system cursors |
 
 ---
 
@@ -49,7 +60,7 @@ stencil, alpha, polygon mode, color mask).
 
 ## `CgPlatform` — Central registry
 
-All 6 services are registered atomically via `register(CgPlatformService)`. The registry must be
+All services are registered atomically via `register(CgPlatformService)`. The registry must be
 called **exactly once** during platform init before any `core/` code runs.
 
 The preferred registration path is `CgPlatform.register(new PlatformService1710())` — one
@@ -125,4 +136,56 @@ bridge (`ReloadService1710.attachToResourceManager()`) wires MC's reload event t
 - Lombok `compileOnly` (annotation processor for future concrete helper classes)
 
 `core/` depends on `platform/` but NOT on the root project's `gtnhconvention` classpath.
-`platform/` is designed to be compilable standalone on any Java 8 JDK without Minecraft.
+`platform/` is designed to be compilable standalone on a Java 17 JDK without Minecraft.
+
+
+---
+
+## UI-facing services
+
+Three services exist for CrystalGUI rather than for CrystalGraphics' own rendering. They sit here, in the
+parent project's SPI, because CrystalGraphics is always present wherever CrystalGUI is — so a second
+registry in the child project bought nothing and cost a failure mode: a loader could register one and not
+the other, coming up with a working GL backend and a dead keyboard, with nothing to report it.
+
+| Reached via | Provides |
+|---|---|
+| `CgPlatform.input()` | `translateKeyboardCodes`, `translateMouseCodes`, `getCurrentModifiers`, `isKeyDown`, `isMouseDown`, `howManyMouseButtons`, `getClipboard`, `setClipboard` |
+| `CgPlatform.sound()` | `play(String soundId)` |
+| `CgPlatform.cursor()` | `setCursor(CgCursor)` |
+
+**The clipboard is on `CgInputService`, not a service of its own.** It is not conceptually input, but it
+is reached the same way — one loader-owned handle, needed by exactly the code that handles keys — and
+every implementation that provides one already provides the rest of the interface. Two methods do not earn
+a registration slot. Both default to a no-op pair.
+
+### No defaults, anywhere in this SPI
+
+**Every method on `CgPlatformService` and `CgInputService` is abstract, and neither `CgSoundService` nor
+`CgCursorService` ships a `NOOP` constant.** This is a deliberate rule, not an oversight:
+
+> A default is an answer chosen on behalf of someone who never saw the question. A new platform compiles
+> cleanly while silently inheriting "no sound, no cursor, no clipboard", and nothing reports it — inheriting
+> a no-op is indistinguishable from deciding on one. The same applies when a service is *added* here later:
+> with defaults, every existing bundle keeps compiling and quietly does without the new capability.
+
+Abstract methods make the compiler the reminder. **A platform with nothing to offer is still free to say
+so** — an empty `play`, an empty `setCursor`, a `getClipboard` returning `""` are all correct answers. They
+just have to be written in that platform's own source, where a reader can see the decision was made.
+
+`mc1201`'s three UI services are exactly this case today: written out as visible stubs with a note on what
+a real implementation needs, rather than inherited silently. `translateMouseCodes` is the subtlest one —
+the identity mapping is right on every platform seen so far, which is precisely why inheriting it without
+looking would be a mistake on the first platform where it isn't.
+
+### Java level
+
+This module mirrors `:core` exactly — toolchain 17, source/target 17, with Jabel and the jvmDowngrader
+API as `compileOnly` (so an `import ...Desugar` compiles) and no annotation processor, because the dual
+compile pipeline in `core/build.gradle.kts` is commented out in both. Records, `var`, switch expressions
+and pattern matching are all available.
+
+> It was Java 8 source until 2026-07-30, which meant this module could not use records while `core/`
+> could — `CgSystemInput`'s two event types had to be hand-written classes with record-shaped accessors.
+> The two modules are consumed together and shadowed into the same loader jar, so there was never a
+> reason for them to disagree.
