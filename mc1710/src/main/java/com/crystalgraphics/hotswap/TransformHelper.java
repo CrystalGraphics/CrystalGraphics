@@ -14,16 +14,22 @@ import org.apache.logging.log4j.Logger;
  * Helper functions that run within the app classloader domain.
  * Called reflectively from {@link CrystalGraphicsHotswapPlugin} so that
  * LaunchClassLoader types are resolved against the correct classloader.
+ *
+ * <p>Re-applies the LaunchWrapper transformer chain to hot-swapped class bytes. HotswapAgent hands us the
+ * <em>untransformed</em> bytes on redefine, so without this a reloaded class loses every transform it had
+ * when originally loaded — most importantly its Mixins.</p>
+ *
+ * <p><strong>Runs the whole chain, and no longer has a CrystalGraphics-only mode.</strong> That mode existed
+ * to re-apply the GL redirect coremod, which is deleted — its state mirror was superseded by
+ * {@code AngelicaStateProvider}, which reads Angelica's far more complete mirror. With no transformer of our
+ * own left there is nothing a "CrystalGraphics-only" pass could apply, so the flag that selected it
+ * ({@code -Dcrystalgraphics.hotswap.fullChain}) is gone and full-chain is unconditional.</p>
  */
 public class TransformHelper {
 
     private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics-Hotswap");
 
-    private static final String CG_TRANSFORMER_CLASS =
-        "com.crystalgraphics.mc.coremod.CrystalGraphicsTransformer";
-
     private static final boolean VERBOSE = Boolean.getBoolean("crystalgraphics.hotswap.verbose");
-    private static final boolean FULL_CHAIN = Boolean.getBoolean("crystalgraphics.hotswap.fullChain");
 
     // Cached reflection fields
     private static Field classLoaderExceptionsField;
@@ -33,15 +39,9 @@ public class TransformHelper {
         try {
             return transformInternal(loader, name, classBytes);
         } catch (Exception e) {
-            LOGGER.error("Error transforming {} during hotswap", name, e);
-            if (FULL_CHAIN) {
-                try {
-                    LOGGER.warn("fullChain failed for {}, falling back to CrystalGraphics-only transform", name);
-                    return transformCgOnly((LaunchClassLoader) loader, name, classBytes);
-                } catch (Exception fallbackException) {
-                    LOGGER.error("Fallback CrystalGraphics-only transform failed for {}", name, fallbackException);
-                }
-            }
+            // Returning the input unchanged degrades to "this class lost its transforms" rather than
+            // failing the redefine outright, which is the right trade for a dev-only convenience.
+            LOGGER.error("Error transforming {} during hotswap; using untransformed bytes", name, e);
             return classBytes;
         }
     }
@@ -83,43 +83,16 @@ public class TransformHelper {
             }
         }
 
-        if (FULL_CHAIN) {
-            // Apply the full transformer chain in order
-            if (VERBOSE) {
-                LOGGER.debug("Running full transformer chain on {}", name);
-            }
-            List<IClassTransformer> transformers = lcl.getTransformers();
-            for (IClassTransformer xformer : transformers) {
-                classBytes = xformer.transform(name, name, classBytes);
-            }
-        } else {
-            classBytes = transformCgOnly(lcl, name, classBytes);
+        // Apply the full transformer chain in order.
+        if (VERBOSE) {
+            LOGGER.debug("Running full transformer chain on {}", name);
+        }
+        List<IClassTransformer> transformers = lcl.getTransformers();
+        for (IClassTransformer xformer : transformers) {
+            classBytes = xformer.transform(name, name, classBytes);
         }
 
         return classBytes;
     }
 
-    private static byte[] transformCgOnly(LaunchClassLoader lcl, String name, byte[] classBytes) throws Exception {
-        if (VERBOSE) {
-            LOGGER.debug("Running CrystalGraphicsTransformer only on {}", name);
-        }
-
-        IClassTransformer cgTransformer = null;
-
-        List<IClassTransformer> transformers = lcl.getTransformers();
-        for (IClassTransformer xformer : transformers) {
-            if (CG_TRANSFORMER_CLASS.equals(xformer.getClass().getName())) {
-                cgTransformer = xformer;
-                break;
-            }
-        }
-
-        if (cgTransformer == null) {
-            LOGGER.warn("CrystalGraphicsTransformer not found in transformer chain, falling back to reflective instantiation");
-            Class<?> xformerClass = Class.forName(CG_TRANSFORMER_CLASS, true, lcl);
-            cgTransformer = (IClassTransformer) xformerClass.newInstance();
-        }
-
-        return cgTransformer.transform(name, name, classBytes);
-    }
 }

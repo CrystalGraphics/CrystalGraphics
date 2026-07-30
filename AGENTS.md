@@ -1036,7 +1036,7 @@ All 35 package guides under `src/main/java/com/crystalgraphics/`. Relative paths
 | Path | What it covers |
 |---|---|
 | `api/state/AGENTS.md` | `CgRenderState`, `CgDepthState`, `CgBlendState`, `CgCullState`, `CgStencilState`, `CgTextureState` (`CgGlSlot` moved to `platform.gl.state`) |
-| `gl/state/AGENTS.md` | `CallFamily` (live), the inert `GLStateMirror`, and a pointer to the state framework — which now lives in `platform.gl` / `platform.gl.state`, not here |
+| `gl/state/AGENTS.md` | `CallFamily` (live) and a pointer to the state framework — which now lives in `platform.gl` / `platform.gl.state`, not here |
 
 ### Batch Render Layer
 | Path | What it covers |
@@ -1074,7 +1074,7 @@ This section covers the layer that wires CrystalGraphics into the Minecraft/Forg
 
 ## `CrystalGraphics.java` — Forge Mod Container
 
-The root `@Mod` class (`modid = "crystalgraphics"`). Intentionally performs **no GL work** — it is purely a Forge dependency anchor and lifecycle logger. All rendering logic lives in `mixins/`. (`mc/coremod/` still exists but its GL-redirect layer is dead — see [GL state](#gl-state--cgglstatemanager) — and it is scheduled for removal.) Other mods declare `required-after:crystalgraphics` in their `mcmod.info` to depend on this mod.
+The root `@Mod` class (`modid = "crystalgraphics"`). Intentionally performs **no GL work** — it is purely a Forge dependency anchor and lifecycle logger. All rendering logic lives in `mixins/`. **There is no coremod** — `mc/coremod/` and its GL-redirect layer were deleted on 2026-07-31; see [GL state](#gl-state--cgglstatemanager). Other mods declare `required-after:crystalgraphics` in their `mcmod.info` to depend on this mod.
 
 ## Render Loop Hook — `CgRenderHook`
 
@@ -1113,8 +1113,8 @@ Failures in each step are isolated and logged — a broken shader does not preve
 
 ## GL state — `CgGlStateManager`
 
-> **Superseded 2026-07-30.** `GLStateMirror` and `CgGlStates` are **deleted**. The ASM coremod
-> (`mc/coremod/`) still exists but no longer feeds anything and is scheduled for removal. Earlier revisions
+> **Superseded 2026-07-30, finished 2026-07-31.** `GLStateMirror`, `CgGlStates` and the entire ASM coremod
+> (`mc/coremod/` — coremod, transformer, redirects, coverage matrix) are **deleted**. Earlier revisions
 > of this file described the mirror as what made `CgGlState.save/restore` reliable — it never could be.
 
 **Why the mirror was abandoned.** It depended on an ASM transformer rewriting GL call sites process-wide.
@@ -1294,11 +1294,9 @@ Per-module details: [`mc1201/neoforge/AGENTS.md`](mc1201/neoforge/AGENTS.md) ·
 # Debug / JVM Flags
 
 ```bash
-# Coremod / ASM transformer
--Dcrystalgraphics.redirector.disable=true            # disable all transforms
--Dcrystalgraphics.redirector.verbose=true            # enable verbose logging
--Dcrystalgraphics.redirector.verbosePrefix=net.minecraft.  # limit verbose to prefix
--Dcrystalgraphics.redirector.forceAngelica=true|false  # override Angelica detection
+# Hotswap (dev only) — re-applies the LaunchWrapper transformer chain, Mixins included,
+# to classes HotswapAgent redefines. The redirector.* flags are gone with the coremod.
+-Dcrystalgraphics.hotswap.verbose=true               # log each class transformed
 
 # GL state manager (see gl/state/AGENTS.md)
 -Dcrystalgraphics.state.verify=true                  # verify the shadow against the driver before

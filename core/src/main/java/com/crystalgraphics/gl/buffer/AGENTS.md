@@ -89,7 +89,8 @@ contract and are interchangeable from the consumer's perspective.
 - **One quad IBO for everything** — `CgQuadIndexBuffer` is a global singleton;
   all quad-based renderers share it. Max 16384 quads due to `GL_UNSIGNED_SHORT`.
 - **No buffer mapping state tracking** — the stream buffers do not participate
-  in the `GLStateMirror` system. They use direct `GL15.glBindBuffer` calls.
+  by the GL state shadow. They use direct `GL15.glBindBuffer` calls. (`GLStateMirror` itself is deleted;
+  buffer-target bindings are still not modelled — only `GL_ARRAY_BUFFER` and `GL_ELEMENT_ARRAY_BUFFER` are.)
 
 ## Lifecycle Rules
 

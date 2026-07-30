@@ -42,7 +42,9 @@ Two preprocessor fields exist:
 2. `bindings.apply(this)` — persistent per-shader bindings
 3. `ephemeralBindings.apply(this)` — one-shot from `applyBindings()`; auto-cleared after
 
-**`bindScoped()`** saves the previously bound program (via `GLStateMirror` + `GLContext.getCapabilities`) and restores it on scope close. `bindScoped(FULL_BINDINGS)` saves full GL state via `CgStateBoundary`.
+**`bindScoped()`** captures the previously bound program via `CgGlState.saveProgram()` **before** binding its own, and restores it on scope close. **`bindScoped(CgGlSlot...)`** is the overload for saving additional domains; passing none delegates to the no-arg form.
+
+> Earlier revisions described this as `GLStateMirror` + `GLContext.getCapabilities`, and named a `bindScoped(FULL_BINDINGS)` taking a constant. Neither is true: `GLStateMirror` is deleted, `CgStateBoundary` never survived, and the overload takes varargs slots.
 
 ### `CgShaderManagerImpl`
 `CgShaderManager` backed by a `HashMap<CgShaderCacheKey, CgShader>`.
