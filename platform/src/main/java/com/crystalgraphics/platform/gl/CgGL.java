@@ -281,6 +281,12 @@ public final class CgGL {
     public static final int GL_DEPTH                    = 0x1801;
     public static final int GL_STENCIL                  = 0x1802;
     public static final int GL_RENDERBUFFER             = 0x8D41;
+    /** Texture target for a multisampled texture attachment. */
+    public static final int GL_TEXTURE_2D_MULTISAMPLE   = 0x9100;
+    /** Query for the maximum sample count the driver supports — a request above this is clamped. */
+    public static final int GL_MAX_SAMPLES              = 0x8D57;
+    public static final int GL_MAX_COLOR_TEXTURE_SAMPLES = 0x910E;
+    public static final int GL_MAX_DEPTH_TEXTURE_SAMPLES = 0x910F;
     public static final int GL_FRAMEBUFFER_BINDING      = 0x8CA6;
 
     // --- Clear / blit bits ---------------------------------------------------
@@ -567,6 +573,33 @@ public final class CgGL {
 
     public static void glBindRenderbuffer(int target, int renderbuffer) {
         backend.glBindRenderbuffer(target, renderbuffer);
+    }
+
+    /**
+     * Multisampled renderbuffer storage. {@code samples} is clamped by the driver to what it supports.
+     *
+     * @see CgGLBackend#glRenderbufferStorageMultisample
+     */
+    public static void glRenderbufferStorageMultisample(int target, int samples, int internalFormat,
+                                                        int width, int height) {
+        backend.glRenderbufferStorageMultisample(target, samples, internalFormat, width, height);
+    }
+
+    /**
+     * Multisampled texture storage for {@code GL_TEXTURE_2D_MULTISAMPLE}.
+     *
+     * @see CgGLBackend#glTexImage2DMultisample
+     */
+    public static void glTexImage2DMultisample(int target, int samples, int internalFormat,
+                                               int width, int height, boolean fixedSampleLocations) {
+        backend.glTexImage2DMultisample(target, samples, internalFormat, width, height,
+                fixedSampleLocations);
+    }
+
+    /** The driver's maximum sample count, or 1 when multisampling is unavailable. */
+    public static int maxSamples() {
+        int max = glGetInteger(GL_MAX_SAMPLES);
+        return max < 1 ? 1 : max;
     }
 
     public static void glRenderbufferStorage(int target, int internalFormat, int width, int height) {

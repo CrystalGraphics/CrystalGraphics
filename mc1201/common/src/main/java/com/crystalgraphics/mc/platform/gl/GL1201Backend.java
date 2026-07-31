@@ -832,6 +832,25 @@ public final class GL1201Backend extends CgGLBackend {
         GlStateManager._glRenderbufferStorage(target, internalFormat, width, height);
     }
 
+    /**
+     * Straight to LWJGL3: {@code GlStateManager} has no multisample wrapper.
+     *
+     * <p>Safe here because MC 1.20's context is core 3.2+, where both entry points are guaranteed —
+     * there is no waterfall to walk, unlike the 1.7.10 backend.</p>
+     */
+    @Override
+    public void glRenderbufferStorageMultisample(int target, int samples, int internalFormat,
+                                                 int width, int height) {
+        org.lwjgl.opengl.GL30.glRenderbufferStorageMultisample(target, samples, internalFormat, width, height);
+    }
+
+    @Override
+    public void glTexImage2DMultisample(int target, int samples, int internalFormat,
+                                        int width, int height, boolean fixedSampleLocations) {
+        org.lwjgl.opengl.GL32.glTexImage2DMultisample(target, samples, internalFormat, width, height,
+                fixedSampleLocations);
+    }
+
     @Override
     public void glFramebufferRenderbuffer(int target, int attachment,
                                           int renderbufferTarget, int renderbuffer) {

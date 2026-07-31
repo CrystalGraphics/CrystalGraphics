@@ -129,6 +129,16 @@ public final class CgFrameBufferFormat {
     @Getter
     private final boolean depthRenderbuffer;
 
+    /**
+     * Samples per pixel. 1 means no multisampling.
+     *
+     * <p>Part of the format, and therefore part of {@link #equals} — a 4× target and a 1× target of
+     * otherwise identical shape are <b>not interchangeable</b>, and {@code CgFrameBufferRegistry} keys
+     * its cache on the format. Leaving it out would let a registry lookup hand back a single-sampled FBO
+     * to a caller that asked for MSAA, which fails as "antialiasing silently does nothing".</p>
+     */
+    private final int samples;
+
     /** Pre-computed sorted array of slot indices that have a non-null color type. 
      * -- GETTER --
      *  Returns a pre-computed sorted array of active color slot indices.
@@ -143,12 +153,14 @@ public final class CgFrameBufferFormat {
                                  CgTextureType[] colorSlots,
                                  boolean[] colorRenderbuffer,
                                  CgTextureType depthType,
-                                 boolean depthRenderbuffer) {
+                                 boolean depthRenderbuffer,
+                                 int samples) {
         this.name              = name;
         this.colorSlots        = colorSlots.clone();
         this.colorRenderbuffer = colorRenderbuffer.clone();
         this.depthType         = depthType;
         this.depthRenderbuffer = depthRenderbuffer;
+        this.samples           = samples;
 
         // Pre-compute active slot ids
         int count = 0;
@@ -195,6 +207,12 @@ public final class CgFrameBufferFormat {
     /** Returns the number of active (non-null) color slots. */
     public int colorSlotCount() { return activeColorSlotIds.length; }
 
+    /** Samples per pixel; 1 when this format is not multisampled. */
+    public int getSamples() { return samples; }
+
+    /** Whether this format requests multisampling. */
+    public boolean isMultisampled() { return samples > 1; }
+
     // ── equals / hashCode / toString ──────────────────────────────────────────
 
     @Override
@@ -203,6 +221,7 @@ public final class CgFrameBufferFormat {
         if (!(o instanceof CgFrameBufferFormat)) return false;
         CgFrameBufferFormat that = (CgFrameBufferFormat) o;
         return depthRenderbuffer == that.depthRenderbuffer
+                && samples == that.samples
                 && name.equals(that.name)
                 && Arrays.equals(colorSlots, that.colorSlots)
                 && Arrays.equals(colorRenderbuffer, that.colorRenderbuffer)
@@ -216,6 +235,7 @@ public final class CgFrameBufferFormat {
         h = 31 * h + Arrays.hashCode(colorRenderbuffer);
         h = 31 * h + (depthType != null ? depthType.hashCode() : 0);
         h = 31 * h + (depthRenderbuffer ? 1 : 0);
+        h = 31 * h + samples;
         return h;
     }
 
@@ -251,6 +271,7 @@ public final class CgFrameBufferFormat {
         private final String name;
         private final CgTextureType[] colorSlots        = new CgTextureType[MAX_COLOR_SLOTS];
         private final boolean[]       colorRenderbuffer = new boolean[MAX_COLOR_SLOTS];
+        private int                   samples           = 1;
         private CgTextureType depthType        = null;
         private boolean       depthRenderbuffer = false;
 
@@ -266,6 +287,29 @@ public final class CgFrameBufferFormat {
          * @param type a color {@link CgTextureType} (must have {@code isColor() == true})
          * @return this builder
          */
+        /**
+         * Requests multisampling at {@code samples} samples per pixel. 1 (the default) disables it.
+         *
+         * <h4>What this costs you, stated plainly</h4>
+         * <p>A multisampled attachment <b>cannot be sampled by an ordinary {@code sampler2D}</b>. Colour
+         * slots declared with {@link #color} become {@code GL_TEXTURE_2D_MULTISAMPLE} textures, readable
+         * only through {@code sampler2DMS}; slots declared with {@link #colorRenderbuffer} cannot be read
+         * at all. To use the result as a normal texture, render into a multisampled FBO and
+         * {@code blitFrom} it into a matching single-sampled one — that blit <em>is</em> the resolve.</p>
+         *
+         * <p>The count is a request. Drivers clamp to {@code GL_MAX_SAMPLES}, so asking for 16 where 4 is
+         * supported yields 4 rather than an error, and this builder does not pre-validate it: the maximum
+         * is a property of the live context, which a format outlives.</p>
+         */
+        public Builder samples(int samples) {
+            if (samples < 1) {
+                throw new IllegalArgumentException(
+                        "CgFrameBufferFormat '" + name + "': samples must be >= 1, got " + samples);
+            }
+            this.samples = samples;
+            return this;
+        }
+
         public Builder color(int slot, CgTextureType type) {
             validateColorSlot(slot, type, false);
             colorSlots[slot]        = type;
@@ -343,7 +387,8 @@ public final class CgFrameBufferFormat {
                         "CgFrameBufferFormat '" + name + "': at least one attachment "
                         + "(color or depth) must be defined");
             }
-            return new CgFrameBufferFormat(name, colorSlots, colorRenderbuffer, depthType, depthRenderbuffer);
+            return new CgFrameBufferFormat(name, colorSlots, colorRenderbuffer, depthType,
+                    depthRenderbuffer, samples);
         }
 
         // ── Validation helpers ─────────────────────────────────────────────────

@@ -318,9 +318,23 @@ public abstract class CgFrameBuffer {
                 Attachment a = new Attachment(slot, type, isRbo, this);
                 if (isRbo) {
                     int rboId = doGenRenderbuffer();
-                    doRenderbufferStorage(type.glInternalFormat, w, h);
+                    doBindRenderbuffer(rboId);
+                    if (fmt.isMultisampled()) {
+                        doRenderbufferStorageMultisample(fmt.getSamples(), type.glInternalFormat, w, h);
+                    } else {
+                        doRenderbufferStorage(type.glInternalFormat, w, h);
+                    }
                     doFramebufferRenderbuffer(CgGL.GL_FRAMEBUFFER, glAttach, rboId);
                     a.setRenderbufferId(rboId);
+                } else if (fmt.isMultisampled()) {
+                    // A multisampled COLOR slot backed by a texture would need GL_TEXTURE_2D_MULTISAMPLE
+                    // and a sampler2DMS to read it — a different type from CgTexture2D. Refused loudly
+                    // rather than silently built single-sampled, because "my MSAA does nothing" is the
+                    // hardest kind of graphics bug to find.
+                    throw new IllegalArgumentException(
+                            "CgFrameBufferFormat '" + fmt + "': colour slot " + slot + " is multisampled "
+                            + "but declared as a sampleable texture. Use colorRenderbuffer(...) and "
+                            + "resolve with blitFrom(...), which is what a sampler2D can read.");
                 } else {
                     CgTexture2D tex = CgTexture2D.createEmpty(w, h, type.toTextureSpec());
                     doFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, glAttach, CgGL.GL_TEXTURE_2D, tex.getId());
@@ -338,9 +352,20 @@ public abstract class CgFrameBuffer {
                 Attachment a = new Attachment(-1, depthType, isRbo, this);
                 if (isRbo) {
                     int rboId = doGenRenderbuffer();
-                    doRenderbufferStorage(depthType.glInternalFormat, w, h);
+                    doBindRenderbuffer(rboId);
+                    // Depth MUST match the colour attachments' sample count or the framebuffer is
+                    // incomplete — GL has no notion of mixing them.
+                    if (fmt.isMultisampled()) {
+                        doRenderbufferStorageMultisample(fmt.getSamples(), depthType.glInternalFormat, w, h);
+                    } else {
+                        doRenderbufferStorage(depthType.glInternalFormat, w, h);
+                    }
                     doFramebufferRenderbuffer(CgGL.GL_FRAMEBUFFER, glAttach, rboId);
                     a.setRenderbufferId(rboId);
+                } else if (fmt.isMultisampled()) {
+                    throw new IllegalArgumentException(
+                            "CgFrameBufferFormat '" + fmt + "': depth is multisampled but declared as a "
+                            + "sampleable texture. Use depthRenderbuffer(...).");
                 } else {
                     CgTexture2D tex = CgTexture2D.createEmpty(w, h, depthType.toTextureSpec());
                     doFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, glAttach, CgGL.GL_TEXTURE_2D, tex.getId());
@@ -763,6 +788,29 @@ public abstract class CgFrameBuffer {
     protected abstract void doRenderbufferStorage(int internalFormat, int w, int h);
 
     /**
+     * Multisampled renderbuffer storage.
+     *
+     * <p>Concrete rather than abstract, unlike its single-sampled twin: every backend that has
+     * multisampling at all reaches it through the same {@code GL_RENDERBUFFER} target, and the one that
+     * does not ({@link CgExtFrameBuffer}) overrides this to fall back. Making it abstract would force
+     * three identical overrides to say the same thing.</p>
+     */
+    protected void doRenderbufferStorageMultisample(int samples, int internalFormat, int w, int h) {
+        CgGL.glRenderbufferStorageMultisample(CgGL.GL_RENDERBUFFER, samples, internalFormat, w, h);
+    }
+
+    /**
+     * Binds a renderbuffer so storage can be allocated into it.
+     *
+     * <p><b>{@code glRenderbufferStorage} operates on the BOUND renderbuffer, not on an id</b> — and
+     * generating one does not bind it. Without this the allocation lands on whatever was bound
+     * previously (or on nothing), and the attachment ends up with no storage.</p>
+     */
+    protected void doBindRenderbuffer(int rboId) {
+        CgGL.glBindRenderbuffer(CgGL.GL_RENDERBUFFER, rboId);
+    }
+
+    /**
      * Checks the completeness status of the currently bound framebuffer.
      *
      * @return GL framebuffer status constant
@@ -891,6 +939,8 @@ public abstract class CgFrameBuffer {
         @Override protected void doFramebufferRenderbuffer(int t, int ap, int rbo)    { /* no-op */ }
         @Override protected int  doGenRenderbuffer()                                   { return 0; }
         @Override protected void doRenderbufferStorage(int fmt, int w, int h)         { /* no-op */ }
+        @Override protected void doBindRenderbuffer(int rboId)                        { /* no-op */ }
+        @Override protected void doRenderbufferStorageMultisample(int s, int f, int w, int h) { /* no-op */ }
         @Override protected int  doCheckFramebufferStatus()                            { return CgGL.GL_FRAMEBUFFER_COMPLETE; }
     }
 }

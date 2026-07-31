@@ -831,6 +831,29 @@ public final class Lwjgl2GLBackend extends CgGLBackend {
     }
 
     @Override
+    public void glRenderbufferStorageMultisample(int target, int samples, int internalFormat,
+                                                 int width, int height) {
+        if (coreGl30()) {
+            GL30.glRenderbufferStorageMultisample(target, samples, internalFormat, width, height);
+        } else if (arbFbo()) {
+            ARBFramebufferObject.glRenderbufferStorageMultisample(target, samples, internalFormat, width, height);
+        } else {
+            // EXT_framebuffer_object has no multisample entry point — that lives in the separate
+            // EXT_framebuffer_multisample extension, which a driver this old may well not have either.
+            // A single-sampled attachment renders correctly and merely without antialiasing, which is
+            // the waterfall's whole philosophy: degrade the quality, never the correctness.
+            EXTFramebufferObject.glRenderbufferStorageEXT(target, internalFormat, width, height);
+        }
+    }
+
+    @Override
+    public void glTexImage2DMultisample(int target, int samples, int internalFormat,
+                                        int width, int height, boolean fixedSampleLocations) {
+        // GL 3.2 / ARB_texture_multisample. LWJGL2 exposes it on GL32.
+        GL32.glTexImage2DMultisample(target, samples, internalFormat, width, height, fixedSampleLocations);
+    }
+
+    @Override
     public void glFramebufferRenderbuffer(int target, int attachment,
                                           int renderbufferTarget, int renderbuffer) {
         if (coreGl30()) {
