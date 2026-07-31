@@ -358,7 +358,35 @@ public abstract class CgGLBackend {
     public abstract void glDeleteRenderbuffers(int rbo);
     public abstract void glBindRenderbuffer(int target, int renderbuffer);
     public abstract void glRenderbufferStorage(int target, int internalFormat, int width, int height);
+
+    /**
+     * Multisampled renderbuffer storage — the backing call for MSAA framebuffers.
+     *
+     * <p>{@code samples} is a request, not a guarantee: GL silently clamps to the implementation's
+     * maximum, so a caller asking for 16 on hardware offering 4 gets 4 rather than an error.</p>
+     *
+     * <p>An implementation with no multisample entry point at all must fall back to
+     * {@link #glRenderbufferStorage}, which yields a working single-sampled attachment rather than a
+     * broken framebuffer — the same waterfall philosophy as the rest of this interface.</p>
+     */
+    public abstract void glRenderbufferStorageMultisample(int target, int samples, int internalFormat,
+                                                          int width, int height);
+
     public abstract void glFramebufferRenderbuffer(int target, int attachment, int renderbufferTarget, int renderbuffer);
+
+    /**
+     * Multisampled <b>texture</b> storage, for {@code GL_TEXTURE_2D_MULTISAMPLE}.
+     *
+     * <p>The difference from {@link #glRenderbufferStorageMultisample} is that this attachment can be
+     * <b>sampled</b> — a shader reads it through {@code sampler2DMS} and picks individual samples, which
+     * a renderbuffer cannot offer at all. Use a renderbuffer when the target will only ever be resolved
+     * by a blit; use this when a pass needs to read the samples itself.</p>
+     *
+     * <p>{@code fixedSampleLocations} must be true for an attachment mixed with renderbuffers in the
+     * same framebuffer, or completeness fails.</p>
+     */
+    public abstract void glTexImage2DMultisample(int target, int samples, int internalFormat,
+                                                 int width, int height, boolean fixedSampleLocations);
     // -------------------------------------------------------------------------
     // Shaders — ARBShaderObjects unified-handle methods
     //

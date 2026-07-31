@@ -109,6 +109,25 @@ final class CgExtFrameBuffer extends CgFrameBuffer {
         CgGL.glRenderbufferStorage(GL_RENDERBUFFER_EXT, internalFormat, w, h);
     }
 
+    /**
+     * EXT_framebuffer_object predates multisampling — that is a separate extension
+     * ({@code EXT_framebuffer_multisample}) which hardware this old frequently lacks.
+     *
+     * <p>Falls back to a single-sampled attachment rather than failing: the framebuffer is complete and
+     * renders correctly, it simply is not antialiased. Degrading quality is the waterfall's contract;
+     * degrading correctness is not.</p>
+     */
+    @Override
+    protected void doRenderbufferStorageMultisample(int samples, int internalFormat, int w, int h) {
+        CgGL.glRenderbufferStorage(GL_RENDERBUFFER_EXT, internalFormat, w, h);
+    }
+
+    /** EXT uses its own renderbuffer target constant. @see CgFrameBuffer#doBindRenderbuffer */
+    @Override
+    protected void doBindRenderbuffer(int rboId) {
+        CgGL.glBindRenderbuffer(GL_RENDERBUFFER_EXT, rboId);
+    }
+
     @Override
     protected int doCheckFramebufferStatus() {
         return CgGL.glCheckFramebufferStatus(GL_FRAMEBUFFER_EXT);

@@ -173,6 +173,8 @@ public final class RecordingGlBackend extends CgGLBackend {
     @Override public void glDeleteRenderbuffers(int rbo) { record("glDeleteRenderbuffers"); }
     @Override public void glBindRenderbuffer(int target, int renderbuffer) { record("glBindRenderbuffer"); }
     @Override public void glRenderbufferStorage(int target, int internalFormat, int width, int height) { record("glRenderbufferStorage"); }
+    @Override public void glRenderbufferStorageMultisample(int target, int samples, int internalFormat, int width, int height) { record("glRenderbufferStorageMultisample"); }
+    @Override public void glTexImage2DMultisample(int target, int samples, int internalFormat, int width, int height, boolean fixedSampleLocations) { record("glTexImage2DMultisample"); }
     @Override public void glFramebufferRenderbuffer(int target, int attachment, int renderbufferTarget, int renderbuffer) { record("glFramebufferRenderbuffer"); }
     @Override public void glDeleteObject(int handle) { record("glDeleteObject"); }
     @Override public int glGetObjectParameteri(int obj, int pname) { record("glGetObjectParameteri"); return 0; }
