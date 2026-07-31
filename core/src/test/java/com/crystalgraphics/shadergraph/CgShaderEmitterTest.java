@@ -40,6 +40,59 @@ public class CgShaderEmitterTest {
                 .build();
     }
 
+    // ── Mapping a line back to the node that wrote it ───────────────────────
+
+    /**
+     * <b>Every mapped line resolves to the node whose statement actually sits there.</b>
+     *
+     * <p>This is what makes a driver error actionable, and it is worth an exact assertion rather than a
+     * count: an off-by-one still returns a node id for every line, so it looks like it works and simply
+     * blames the neighbour. The check reads the emitted line and confirms the owner's variable is on it.</p>
+     */
+    @Test
+    public void everyMappedLineNamesTheNodeThatWroteIt() {
+        CgShaderGraph graph = new CgShaderGraph();
+        graph.add(new CgShaderGraph.Instance("c1", colourConstant(), java.util.Map.of()));
+        graph.add(new CgShaderGraph.Instance("p1", objectPosition(), java.util.Map.of()));
+        graph.add(new CgShaderGraph.Instance("m1", new CgMasterNode(), java.util.Map.of()));
+        graph.link("c1", "Out", "m1", CgMasterNode.BASE_COLOR);
+        graph.link("p1", "Out", "m1", CgMasterNode.POSITION);
+        graph.output("m1");
+
+        CgShaderEmitter.Result result = CgShaderEmitter.emit(graph, new CgMasterNode());
+        String[] lines = result.source().split("\n", -1);
+
+        assertFalse("something must be mapped at all", result.lineOwners().isEmpty());
+        for (var owned : result.lineOwners().entrySet()) {
+            int line = owned.getKey();
+            String owner = owned.getValue();
+            assertTrue("line " + line + " is out of range", line >= 1 && line <= lines.length);
+            String text = lines[line - 1];
+            // Every line a node emits either declares or assigns one of its own variables, or is the
+            // comment header naming it. Nothing else should be attributed to it.
+            assertTrue("line " + line + " attributed to '" + owner + "' but reads: " + text,
+                    text.contains("node_" + owner + "_") || text.contains("(" + owner + ")")
+                            || text.isBlank());
+        }
+    }
+
+    /** The mapping must survive the vertex/fragment split — both stages are offset differently. */
+    @Test
+    public void bothStagesAreMapped() {
+        CgShaderGraph graph = new CgShaderGraph();
+        graph.add(new CgShaderGraph.Instance("c1", colourConstant(), java.util.Map.of()));
+        graph.add(new CgShaderGraph.Instance("p1", objectPosition(), java.util.Map.of()));
+        graph.add(new CgShaderGraph.Instance("m1", new CgMasterNode(), java.util.Map.of()));
+        graph.link("c1", "Out", "m1", CgMasterNode.BASE_COLOR);
+        graph.link("p1", "Out", "m1", CgMasterNode.POSITION);
+        graph.output("m1");
+
+        CgShaderEmitter.Result result = CgShaderEmitter.emit(graph, new CgMasterNode());
+
+        assertTrue("the vertex-stage node must be mapped", result.lineOwners().containsValue("p1"));
+        assertTrue("and the fragment-stage one too", result.lineOwners().containsValue("c1"));
+    }
+
     // ── A whole file ────────────────────────────────────────────────────────
 
     /**

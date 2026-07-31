@@ -37,9 +37,33 @@ public final class CgShaderEmitter {
     }
 
     /** The emitted source, plus what it took to produce and what went wrong. */
-    public record Result(String source, List<Varying> varyings, List<String> errors) {
+    public record Result(String source, List<Varying> varyings, List<String> errors,
+                         Map<Integer, String> lineOwners) {
+
+        /** The shape for callers with no interest in which node wrote which line. */
+        public Result(String source, List<Varying> varyings, List<String> errors) {
+            this(source, varyings, errors, Map.of());
+        }
+
         public boolean ok() {
             return errors.isEmpty();
+        }
+
+        /**
+         * Which node emitted a given <b>line of {@link #source}</b>, 1-based, or null for scaffolding.
+         *
+         * <p>This is what turns a compile failure into something actionable. A driver reports a line in
+         * generated code the user never wrote, and without a mapping the editor can only repeat it back;
+         * with one it can say <em>which node</em> to go and look at.</p>
+         *
+         * <p>Note the difference from {@link CgGraphCompiler.Result#ownerOfLine}: that indexes the
+         * statements the compiler produced, while this indexes the finished {@code .shader} file, which
+         * has a preamble, a struct and two function bodies around them. The offset between the two is
+         * exactly what made this worth recording at write time rather than reconstructing.</p>
+         */
+        @Nullable
+        public String ownerOfLine(int line) {
+            return lineOwners.get(line);
         }
     }
 
@@ -98,9 +122,10 @@ public final class CgShaderEmitter {
         vertexCode = merge(vertexCode, hoisted);
 
         List<Varying> varyings = findVaryings(graph, vertexSet, fragmentSet);
-        String source = write(graph, master, masterId, vertexCode, fragmentCode, varyings,
+        Map<Integer, String> lineOwners = new LinkedHashMap<>();
+        String source = write(graph, master, masterId, lineOwners, vertexCode, fragmentCode, varyings,
                 positionRoot, colourRoot);
-        return new Result(source, varyings, errors);
+        return new Result(source, varyings, errors, Map.copyOf(lineOwners));
     }
 
     /** The node feeding one of the master's inputs, or null when it is left at its default. */
@@ -139,12 +164,17 @@ public final class CgShaderEmitter {
         if (rest.isEmpty()) return first;
         StringBuilder code = new StringBuilder(first.code());
         Set<String> includes = new LinkedHashSet<>(first.includes());
+        Map<String, CgShaderType> outputTypes = new LinkedHashMap<>(first.outputTypes());
         for (CgGraphCompiler.Result part : rest) {
             code.append(part.code());
             includes.addAll(part.includes());
+            // Carried through, not dropped: a hoisted chain declares variables the merged result is the
+            // only remaining record of, and a caller asking what type one is would otherwise get null
+            // for exactly the nodes that were moved.
+            outputTypes.putAll(part.outputTypes());
         }
         return new CgGraphCompiler.Result(code.toString(), List.copyOf(includes),
-                first.lineOwners(), List.of());
+                first.lineOwners(), List.of(), Map.copyOf(outputTypes));
     }
 
     /** A fragment-domain node feeding the vertex stage is impossible, not merely awkward. */
@@ -187,6 +217,7 @@ public final class CgShaderEmitter {
     // ── Writing the file ────────────────────────────────────────────────────
 
     private static String write(CgShaderGraph graph, CgMasterNode master, String masterId,
+                                Map<Integer, String> lineOwners,
                                 CgGraphCompiler.Result vertex, CgGraphCompiler.Result fragment,
                                 List<Varying> varyings,
                                 @Nullable String positionRoot, @Nullable String colourRoot) {
@@ -204,9 +235,9 @@ public final class CgShaderEmitter {
         out.append("Tags { \"RenderType\" = \"").append(master.renderType()).append("\" }\n");
         out.append("Queue = \"").append(master.queue()).append("\"\n\n");
 
-        if (!master.properties().isEmpty()) {
+        if (!master.shaderProperties().isEmpty()) {
             out.append("Properties {\n");
-            for (CgMasterNode.Property property : master.properties()) {
+            for (CgMasterNode.Property property : master.shaderProperties()) {
                 out.append("    ").append(property.name())
                         .append(" (\"").append(property.name()).append("\", ")
                         .append(property.type().propertyTypeName()).append(") = ")
@@ -228,6 +259,7 @@ public final class CgShaderEmitter {
         out.append("    Tags { \"LightMode\" = \"Forward\" }\n\n");
 
         out.append("    void vertex(out v2f o) {\n");
+        mapOwners(lineOwners, vertex.lineOwners(), nextLine(out));
         out.append(reindent(vertex.code()));
         out.append("        gl_Position = CG_MATRIX_MVP * vec4(")
                 .append(expressionFor(graph, masterId, CgMasterNode.POSITION, positionRoot))
@@ -239,6 +271,7 @@ public final class CgShaderEmitter {
         out.append("    }\n\n");
 
         out.append("    void fragment(in v2f i, out vec4 fragColor) {\n");
+        mapOwners(lineOwners, fragment.lineOwners(), nextLine(out));
         out.append(reindent(substituteVaryings(fragment.code(), varyings)));
         out.append("        fragColor = ")
                 .append(substituteVaryings(
@@ -276,13 +309,47 @@ public final class CgShaderEmitter {
         return out;
     }
 
-    /** The compiler indents to one level; a pass body sits at two. */
+    /**
+     * The compiler indents to one level; a pass body sits at two.
+     *
+     * <p><b>Preserves the line count exactly</b>, blank lines included. It used to drop empties, which
+     * was invisible in the output and fatal to {@link Result#ownerOfLine}: every line after the first
+     * blank one would be attributed to the wrong node, and the error would point at a plausible
+     * neighbour rather than the culprit.</p>
+     */
     private static String reindent(String code) {
         if (code.isEmpty()) return "";
         StringBuilder out = new StringBuilder(code.length() + 32);
         for (String line : code.split("\n", -1)) {
-            if (!line.isEmpty()) out.append("    ").append(line).append('\n');
+            if (!line.isEmpty()) out.append("    ").append(line);
+            out.append('\n');
         }
+        // split() with a trailing newline yields one empty trailing element, so the loop added a newline
+        // the source did not have.
+        if (code.endsWith("\n")) out.setLength(out.length() - 1);
         return out.toString();
+    }
+
+    /** The 1-based line number the next append will start on. */
+    private static int nextLine(StringBuilder out) {
+        int lines = 1;
+        for (int i = 0; i < out.length(); i++) {
+            if (out.charAt(i) == '\n') lines++;
+        }
+        return lines;
+    }
+
+    /**
+     * Shifts a compiler-relative line map onto the finished file.
+     *
+     * <p>The compiler numbers the statements it produced from 1; those land partway down a file with a
+     * preamble, a struct and a function signature above them. This is that offset, applied once per
+     * stage — the reason the mapping is recorded while writing rather than reconstructed afterwards.</p>
+     */
+    private static void mapOwners(Map<Integer, String> into, Map<Integer, String> compilerOwners,
+                                  int startLine) {
+        for (Map.Entry<Integer, String> owned : compilerOwners.entrySet()) {
+            into.put(startLine + owned.getKey() - 1, owned.getValue());
+        }
     }
 }

@@ -38,6 +38,24 @@ public interface CgShaderNode {
     List<CgShaderPort> ports();
 
     /**
+     * Compile-time choices this node offers — the dropdowns the editor draws in its body.
+     *
+     * <p>Empty for almost everything. See {@link CgShaderNodeProperty} for why these are not simply
+     * extra input ports with defaults.</p>
+     */
+    default List<CgShaderNodeProperty> properties() {
+        return List.of();
+    }
+
+    /** The property with this id, or null. */
+    default CgShaderNodeProperty property(String propertyId) {
+        for (CgShaderNodeProperty property : properties()) {
+            if (property.id().equals(propertyId)) return property;
+        }
+        return null;
+    }
+
+    /**
      * Which stage this node may be emitted into. {@link CgShaderDomain#ANY} unless GLSL forbids one —
      * a derivative or a discard is fragment-only, reading a vertex attribute is vertex-only.
      *
@@ -47,6 +65,49 @@ public interface CgShaderNode {
      */
     default CgShaderDomain domain() {
         return CgShaderDomain.ANY;
+    }
+
+    /**
+     * What this node's preview thumbnail is drawn on.
+     *
+     * <p>{@link CgPreviewGeometry#INHERIT} for almost everything — a node that produces a colour does not
+     * care, and should take the answer from whatever is feeding it. Declare {@link
+     * CgPreviewGeometry#SPHERE} only for genuinely spatial outputs (position, normal, view direction),
+     * where a flat quad would show one uniform colour and tell the user nothing.</p>
+     *
+     * <p>The declaration <b>propagates downstream</b>, so declaring it once on Position is what makes
+     * every node fed by a Position preview as a sphere too. See {@link CgPreviewGeometry#resolve}.</p>
+     */
+    default CgPreviewGeometry previewGeometry() {
+        return CgPreviewGeometry.INHERIT;
+    }
+
+    /**
+     * Whether this node's output is worth drawing a thumbnail of.
+     *
+     * <p>False for a <b>constant</b>. A Float or a Vector 4 previews as a flat field of exactly the colour
+     * its own knobs already state, so the thumbnail is a large, expensive restatement of the numbers
+     * sitting immediately above it — and it makes the node several times taller than the values it holds.
+     * Unity draws none on these for the same reason.</p>
+     *
+     * <p>Everything else defaults to true: the moment a node <em>computes</em> something, the picture is
+     * the fastest way to see what it computed.</p>
+     */
+    default boolean showsPreview() {
+        return true;
+    }
+
+    /**
+     * Whether {@link #generateCode} emits something different, and fragment-safe, when
+     * {@code ctx.forPreview()}.
+     *
+     * <p>Only matters for a {@link CgShaderDomain#VERTEX} node. A preview evaluates the whole chain in
+     * the fragment stage, so a node reading {@code cg_Position} would emit a vertex attribute into a
+     * fragment body — which the preview emitter refuses <em>unless</em> the node says it has a form that
+     * reads the preview's varying instead.</p>
+     */
+    default boolean hasPreviewForm() {
+        return false;
     }
 
     /**

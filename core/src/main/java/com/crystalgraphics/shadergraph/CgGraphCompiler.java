@@ -28,10 +28,30 @@ public final class CgGraphCompiler {
 
     /** Everything a compile produced, plus what went wrong. */
     public record Result(String code, List<String> includes, Map<Integer, String> lineOwners,
-                         List<String> errors) {
+                         List<String> errors, Map<String, CgShaderType> outputTypes) {
+
+        /** Backwards-compatible shape for callers with no interest in resolved types. */
+        public Result(String code, List<String> includes, Map<Integer, String> lineOwners,
+                      List<String> errors) {
+            this(code, includes, lineOwners, errors, Map.of());
+        }
 
         public boolean ok() {
             return errors.isEmpty();
+        }
+
+        /**
+         * The type an emitted output variable settled on — keyed by the variable name the code uses,
+         * e.g. {@code node_a1b2_Out}.
+         *
+         * <p><b>Only the compiler can answer this.</b> A dynamic port has no type until resolution has
+         * looked at everything feeding it, so a caller that needs to wrap an output — a preview deciding
+         * how to turn it into a colour — cannot re-derive it from the node declaration. Recording it
+         * while emitting is free; reconstructing it afterwards means parsing the GLSL.</p>
+         */
+        @Nullable
+        public CgShaderType typeOf(String variableName) {
+            return outputTypes.get(variableName);
         }
 
         /**
@@ -112,6 +132,9 @@ public final class CgGraphCompiler {
         // nodeId -> portId -> the variable holding that output, and the type it settled on.
         Map<String, Map<String, String>> emittedOutputs = new HashMap<>();
         Map<String, Map<String, CgShaderType>> emittedTypes = new HashMap<>();
+        // Variable name -> the type it was declared with. Flat, because that is how a caller refers to
+        // it: by the name that appears in the emitted code.
+        Map<String, CgShaderType> outputTypes = new LinkedHashMap<>();
         int line = 1;
 
         for (CgShaderGraph.Instance instance : ordered) {
@@ -137,6 +160,7 @@ public final class CgGraphCompiler {
                 }
                 declarations.append("    ").append(type.glsl()).append(' ').append(name).append(";\n");
                 outputs.put(port.id(), name);
+                outputTypes.put(name, type);
             }
             emittedOutputs.put(instance.id(), outputs);
             emittedTypes.put(instance.id(), resolved);
@@ -147,8 +171,14 @@ public final class CgGraphCompiler {
             String header = "    // " + instance.type().id() + " (" + instance.id() + ")\n";
             String body;
             try {
+                // Property choices are resolved per instance, so a stale option in a stored document
+                // becomes the node's default rather than a variant that does not exist.
+                Map<String, String> chosen = new LinkedHashMap<>();
+                for (CgShaderNodeProperty property : instance.type().properties()) {
+                    chosen.put(property.id(), instance.propertyOr(property.id()));
+                }
                 body = instance.type().generateCode(
-                        new CgNodeCodeContext(inputs, outputs, resolved, forPreview));
+                        new CgNodeCodeContext(inputs, outputs, resolved, forPreview, chosen));
             } catch (RuntimeException broken) {
                 // A broken node definition must name itself. Left to the driver this surfaces as a
                 // syntax error in generated code the user never wrote.
@@ -162,7 +192,8 @@ public final class CgGraphCompiler {
             code.append(chunk);
         }
 
-        return new Result(code.toString(), List.copyOf(includes), lineOwners, errors);
+        return new Result(code.toString(), List.copyOf(includes), lineOwners, errors,
+                Map.copyOf(outputTypes));
     }
 
     /**

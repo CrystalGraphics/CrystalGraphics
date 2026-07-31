@@ -32,8 +32,11 @@ public final class CgMasterNode implements CgShaderNode {
     /** Fragment-stage output: the colour written to the render target. */
     public static final String BASE_COLOR = "BaseColor";
 
+    // Position falls back to the mesh's own vertex, which is an ENGINE expression — there is nothing for
+    // a user to type there, so it gets no inline editor. BaseColor's fallback is an ordinary literal and
+    // is editable like any other.
     private static final List<CgShaderPort> PORTS = List.of(
-            CgShaderPort.input(POSITION, CgShaderType.VEC3, "cg_Position"),
+            CgShaderPort.engineDefault(POSITION, CgShaderType.VEC3, "cg_Position"),
             CgShaderPort.input(BASE_COLOR, CgShaderType.VEC4, "vec4(1.0, 1.0, 1.0, 1.0)"));
 
     /** One entry of the generated {@code Properties} block. */
@@ -100,8 +103,16 @@ public final class CgMasterNode implements CgShaderNode {
     public String renderType() { return renderType; }
     public String queue() { return queue; }
 
-    /** Declared properties, in declaration order. */
-    public Collection<Property> properties() {
+    /**
+     * The material's {@code Properties { }} block — declared uniforms, in declaration order.
+     *
+     * <p>Named {@code shaderProperties} rather than {@code properties} to keep it apart from
+     * {@link CgShaderNode#properties()}, which is a completely different thing: those are the
+     * <b>editor dropdowns</b> that select which GLSL a node emits, whereas these are runtime uniforms
+     * the finished material exposes. The two collided the moment nodes gained dropdowns, and the name
+     * that had to move is this one — a node property is the more general concept.</p>
+     */
+    public Collection<Property> shaderProperties() {
         return properties.values();
     }
 }
