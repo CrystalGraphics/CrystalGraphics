@@ -67,6 +67,21 @@ public final class CgBindingPoints {
     public static Binding QUAD_RENDERER;
 
     /**
+     * Reserved binding pair for {@code CgCurveRenderer}'s shared {@code "CgCurveRendererInstances"}
+     * buffer — one below {@link #QUAD_RENDERER}'s on both paths, continuing the same top-of-range
+     * countdown. Engine-reserved, must not be used by user-attached SSBOs/TBOs — see
+     * {@code CgShaderBufferRegistry.getOrCreateInternal}. {@code null} until
+     * {@link #init(CgCapabilities)} has been called.
+     *
+     * <p>Unlike {@link #QUAD_RENDERER}, this buffer is read from the <em>fragment</em> stage as well
+     * as the vertex stage: a curve's stroke is an analytic SDF evaluated per pixel, so the fragment
+     * needs the control points themselves. That works on both paths without any compiler change —
+     * {@code CgMaterialShaderCompiler.appendAttachedBuffers} runs for the fragment source too — but
+     * it does mean the TBO fallback consumes this texture unit in both stages rather than one.</p>
+     */
+    public static Binding CURVE_RENDERER;
+
+    /**
      * UBO binding slot for the engine's per-frame uniform block ({@code CgFrameBlock}).
      * Set to {@code maxUniformBufferBindings - 1} by {@link #init(CgCapabilities)}.
      * Valid only after {@link #init(CgCapabilities)} has been called.
@@ -151,6 +166,11 @@ public final class CgBindingPoints {
         // ── SSBO/TBO Path bindings ───────────────────────────────────────────────────────────────
         OBJECT_DATA = new Binding(--maxSsboBindings, --maxTextureUnits);
         QUAD_RENDERER = new Binding(--maxSsboBindings, --maxTextureUnits);
+        // Note: this consumes one more texture unit from the same countdown DEPTH_TEXTURE_UNIT
+        // draws from below, so adding it shifts DEPTH_TEXTURE_UNIT down by one. That is fine —
+        // the slot is resolved dynamically and never hardcoded — but it is a deliberate change,
+        // not an accident: anything that caches the depth unit across an init() would be wrong.
+        CURVE_RENDERER = new Binding(--maxSsboBindings, --maxTextureUnits);
 
         // ── UBO bindings ───────────────────────────────────────────────────────────────
         FRAME_DATA_UBO          = --maxUboBindings;

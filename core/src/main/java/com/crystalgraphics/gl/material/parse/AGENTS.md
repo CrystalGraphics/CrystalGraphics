@@ -130,9 +130,14 @@ fragment sources. `#pragma cg_feature` lines are never forwarded to GLSL output.
 **Where it lives:** `CgStructureParser.parseUsePragmas(String source, String resourcePath)`, with
 cross-checking in `CgShaderParser.validateEngineBufferUsage(...)`.
 
-Declares that a shader reads an engine-provided shader buffer — currently only `quad`
-(`CgQuadRenderer`'s per-instance buffer, unlocking `QUAD_DATA` and the `CG_QUAD_*` macros). Tokens
-land in `CgParsedShader.engineBuffers()`.
+Declares that a shader reads an engine-provided shader buffer — `quad` (`CgQuadRenderer`'s
+per-instance buffer, unlocking `QUAD_DATA` and the `CG_QUAD_*` macros) or `curve`
+(`CgCurveRenderer`'s, unlocking `CURVE_DATA` and `CG_CURVE_*`). Tokens land in
+`CgParsedShader.engineBuffers()`.
+
+The reverse check needs no per-token maintenance: the convenience-macro family is derived textually
+from the macro name (`CURVE_DATA` → `CG_CURVE_`), so a new engine buffer is policed the moment it is
+registered.
 
 **Same preamble region and stop conditions as `cg_feature`** — never collected from inside a `Pass`
 body, and stripped from `parsePreambleDirectives` output so the line never reaches GLSL.

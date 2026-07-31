@@ -465,6 +465,14 @@ essentially every shader wants them. Buffers that only a minority of shaders nee
 | Token | Provides | Needed by |
 |---|---|---|
 | `quad` | `QUAD_DATA(n)` + `CG_QUAD_WORLD_POS` / `CG_QUAD_UV` / `CG_QUAD_COLOR` / `CG_QUAD_NORMAL` / `CG_QUAD_ATLAS_LAYER` | Any shader drawn through `CgQuadRenderer` — UI quads, text glyphs, SDF rects |
+| `curve` | `CURVE_DATA(n)` + `CG_CURVE_WORLD_POS` / `CG_CURVE_P0`–`P2` / `CG_CURVE_COLOR0`–`1` / `CG_CURVE_WIDTHS` / `CG_CURVE_FEATHER` / `CG_CURVE_FLAGS` | Any shader drawn through `CgCurveRenderer` — Bézier strokes, graph wires, connectors |
+
+> **`curve` is the one engine buffer read from the fragment stage as well as the vertex stage.** A
+> stroke is an analytic SDF evaluated per pixel, so the fragment needs the control points themselves;
+> it re-reads `CURVE_DATA(CG_INSTANCE_ID)` rather than receiving them as varyings, because the
+> `.shader` v2f DSL has no `flat` qualifier to offer (`cg_InstanceId` is the only compiler-generated
+> flat varying). This needs no compiler change — `appendAttachedBuffers` already runs for the fragment
+> source too — but it does mean the TBO fallback occupies that texture unit in both stages.
 
 The buffer's GLSL declaration is injected **during parsing, before anything can compile**, so the
 symbols exist no matter what triggers the first compile. Register a new token with
@@ -645,6 +653,15 @@ Located at `src/main/resources/assets/crystalgraphics/shaders/lib/`. All files u
 | `color.glsl` | `luminance` (BT.709), `srgb_to_linear`/`linear_to_srgb`, `fast_*` variants (Chilliant), `rgb_to_hsv`/`hsv_to_rgb` (branchless), `rotate_hue`, `desaturate` |
 | `uv.glsl` | `rotate_uv`, `scale_uv`, `tile_uv`, `pan_uv`, `flip_uv_x/y`, `cartesian_to_polar_uv` |
 | `noise.glsl` | `hash12`/`hash22`/`hash13` (sin-free), `value_noise`, `fbm4`/`fbm6`, `fbm(p, octaves)`, `fbm_ridged` |
+| `sdf.glsl` | `sdf_rounded_box` (uniform / per-corner / elliptical), `sdf_segment`, `sdf_bezier` (exact quadratic, with a straight-line fallback), `sdf_coverage` (**fragment-only, guarded**) |
+| `stroke.glsl` | `stroke_coverage(p, p0,p1,p2, widths, feather, cap, out t)` — the whole shared body of every `CgCurveRenderer` consumer: taper, caps, feathered edge |
+
+> **`stroke.glsl` exists so there is exactly one copy of the cap logic.** `curve.shader` and
+> CrystalGUI's `gui_curve.shader` must differ in render state (`LEQUAL` vs `ALWAYS`) and in one
+> `_LayerOpacity` multiply, and a Pass's `RenderState` cannot vary per keyword variant — so they are
+> genuinely two materials. They are not two implementations. The cap handling was wrong three times in
+> a row and every version rendered something plausible rather than failing, which is precisely the
+> situation where a duplicated body gets fixed in one file only.
 
 Use with `#include "crystalgraphics:shaders/lib/color.glsl"` etc. (`#pragma once` prevents double-expansion when multiple files include `math.glsl`.)
 

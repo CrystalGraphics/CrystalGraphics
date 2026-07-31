@@ -1,5 +1,6 @@
 package com.crystalgraphics.gl.buffer.shader;
 
+import com.crystalgraphics.gl.render.CgCurveRenderer;
 import com.crystalgraphics.gl.render.CgQuadRenderer;
 
 import java.util.Collections;
@@ -51,6 +52,7 @@ public final class CgEngineBufferRegistry {
 
     static {
         register("quad", CgQuadRenderer::instanceBuffer, CgQuadRenderer.MACRO_NAME);
+        register("curve", CgCurveRenderer::instanceBuffer, CgCurveRenderer.MACRO_NAME);
     }
 
     private CgEngineBufferRegistry() {}
