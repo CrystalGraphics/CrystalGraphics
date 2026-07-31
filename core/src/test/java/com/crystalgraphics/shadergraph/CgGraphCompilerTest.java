@@ -1,0 +1,357 @@
+package com.crystalgraphics.shadergraph;
+
+import org.junit.Test;
+
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.Assert.*;
+
+/**
+ * P6.3.2 / 6.3.3 — node types and the emitter.
+ *
+ * <h3>What is actually being asserted</h3>
+ * <p>The emitted string. That is the whole point of making text the seam: the compiler needs no GL
+ * context, no driver and no window, so every rule it enforces is checkable here rather than in a
+ * harness. A compile that <em>links</em> is a separate question and belongs to the driver.</p>
+ */
+public class CgGraphCompilerTest {
+
+    // ── Fixtures ────────────────────────────────────────────────────────────
+
+    /** A dynamic-width multiply — the node that exists because declarative-only would need four. */
+    private static CgShaderNode multiply() {
+        return CgTemplateShaderNode.of("cg:math/multiply").label("Multiply")
+                .in("A", CgShaderType.DYNAMIC, "1.0")
+                .in("B", CgShaderType.DYNAMIC, "1.0")
+                .out("Out", CgShaderType.DYNAMIC)
+                .body("{Out} = {A} * {B};")
+                .build();
+    }
+
+    private static CgShaderNode constantVec3() {
+        return CgTemplateShaderNode.of("cg:input/vec3")
+                .in("Value", CgShaderType.VEC3, "vec3(0.0)")
+                .out("Out", CgShaderType.VEC3)
+                .body("{Out} = {Value};")
+                .build();
+    }
+
+    private static CgShaderNode constantFloat() {
+        return CgTemplateShaderNode.of("cg:input/float")
+                .in("Value", CgShaderType.FLOAT, "0.0")
+                .out("Out", CgShaderType.FLOAT)
+                .body("{Out} = {Value};")
+                .build();
+    }
+
+    // ── The basics ──────────────────────────────────────────────────────────
+
+    /**
+     * <b>Namespacing cannot collide, because the node never chooses it.</b>
+     *
+     * <p>The node is handed the finished variable names and returns a snippet — Godot's inversion. Two
+     * instances of one type therefore cannot clash however the template is written.</p>
+     */
+    @Test
+    public void twoInstancesOfOneTypeDoNotCollide() {
+        CgShaderGraph graph = new CgShaderGraph()
+                .add(CgShaderGraph.Instance.of("a", constantFloat()))
+                .add(CgShaderGraph.Instance.of("b", constantFloat()))
+                .add(CgShaderGraph.Instance.of("m", multiply()))
+                .link("a", "Out", "m", "A")
+                .link("b", "Out", "m", "B")
+                .output("m");
+
+        CgGraphCompiler.Result result = CgGraphCompiler.compile(graph);
+
+        assertTrue(String.join("\n", result.errors()), result.ok());
+        assertTrue(result.code().contains("node_a_Out"));
+        assertTrue(result.code().contains("node_b_Out"));
+        assertTrue("the multiply reads both", result.code().contains("node_m_Out = node_a_Out * node_b_Out;"));
+    }
+
+    /** Dependencies are emitted before the nodes that read them, or the GLSL does not compile. */
+    @Test
+    public void nodesAreEmittedInDependencyOrder() {
+        CgShaderGraph graph = new CgShaderGraph()
+                .add(CgShaderGraph.Instance.of("m", multiply()))
+                .add(CgShaderGraph.Instance.of("a", constantFloat()))
+                .link("a", "Out", "m", "A")
+                .output("m");
+
+        String code = CgGraphCompiler.compile(graph).code();
+
+        assertTrue("upstream must be declared first",
+                code.indexOf("node_a_Out") < code.indexOf("node_m_Out = "));
+    }
+
+    // ── Type resolution ─────────────────────────────────────────────────────
+
+    /**
+     * <b>A dynamic node takes the widest type reaching it, and the narrow side is cast.</b>
+     *
+     * <p>{@code Multiply(float, vec3)} is a vec3 throughout. Resolving each port independently would
+     * make the output a float whenever the first input happened to be one — a bug that depends on wiring
+     * order and is therefore unreproducible.</p>
+     */
+    @Test
+    public void aDynamicNodeWidensAndTheCompilerEmitsTheCast() {
+        CgShaderGraph graph = new CgShaderGraph()
+                .add(CgShaderGraph.Instance.of("f", constantFloat()))
+                .add(CgShaderGraph.Instance.of("v", constantVec3()))
+                .add(CgShaderGraph.Instance.of("m", multiply()))
+                .link("f", "Out", "m", "A")
+                .link("v", "Out", "m", "B")
+                .output("m");
+
+        CgGraphCompiler.Result result = CgGraphCompiler.compile(graph);
+
+        assertTrue(String.join("\n", result.errors()), result.ok());
+        assertTrue("the dynamic node resolved to vec3", result.code().contains("vec3 node_m_Out;"));
+        assertTrue("and the float side was promoted, which is the compiler's job not the user's",
+                result.code().contains("vec3(node_f_Out)"));
+    }
+
+    /** The same graph wired the other way round must produce the same types. */
+    @Test
+    public void wideningDoesNotDependOnWiringOrder() {
+        CgShaderGraph first = new CgShaderGraph()
+                .add(CgShaderGraph.Instance.of("f", constantFloat()))
+                .add(CgShaderGraph.Instance.of("v", constantVec3()))
+                .add(CgShaderGraph.Instance.of("m", multiply()))
+                .link("f", "Out", "m", "A").link("v", "Out", "m", "B").output("m");
+        CgShaderGraph swapped = new CgShaderGraph()
+                .add(CgShaderGraph.Instance.of("f", constantFloat()))
+                .add(CgShaderGraph.Instance.of("v", constantVec3()))
+                .add(CgShaderGraph.Instance.of("m", multiply()))
+                .link("v", "Out", "m", "A").link("f", "Out", "m", "B").output("m");
+
+        assertTrue(CgGraphCompiler.compile(first).code().contains("vec3 node_m_Out;"));
+        assertTrue(CgGraphCompiler.compile(swapped).code().contains("vec3 node_m_Out;"));
+    }
+
+    // ── Unconnected inputs ──────────────────────────────────────────────────
+
+    /**
+     * <b>An unconnected input emits its value, and the node cannot tell the difference.</b>
+     *
+     * <p>This is what the editor's inline field on {@code nodeport:blank} has been collecting all along.
+     * A node never branches on connectedness, because it is handed an expression either way.</p>
+     */
+    @Test
+    public void anUnconnectedInputBecomesItsLiteral() {
+        CgShaderGraph graph = new CgShaderGraph()
+                .add(new CgShaderGraph.Instance("m", multiply(), Map.of("A", "2.0")))
+                .output("m");
+
+        CgGraphCompiler.Result result = CgGraphCompiler.compile(graph);
+
+        assertTrue(String.join("\n", result.errors()), result.ok());
+        assertTrue("the explicit value", result.code().contains("2.0"));
+        assertTrue("and the port's declared default for the other side",
+                result.code().contains("node_m_Out = 2.0 * 1.0;"));
+    }
+
+    /** An input with neither a connection nor a default is an error, not a silent zero. */
+    @Test
+    public void anInputWithNoConnectionAndNoDefaultIsReported() {
+        CgShaderNode needsInput = CgTemplateShaderNode.of("cg:test/needs")
+                .in("In", CgShaderType.FLOAT, null)
+                .out("Out", CgShaderType.FLOAT)
+                .body("{Out} = {In};")
+                .build();
+
+        CgGraphCompiler.Result result = CgGraphCompiler.compile(
+                new CgShaderGraph().add(CgShaderGraph.Instance.of("n", needsInput)).output("n"));
+
+        assertFalse(result.ok());
+        assertTrue(result.errors().get(0), result.errors().get(0).contains("no default"));
+    }
+
+    // ── Rooting, which is what makes previews free ──────────────────────────
+
+    /**
+     * <b>A preview is the same compile with a different root.</b>
+     *
+     * <p>Not a second emitter and not a second traversal — {@code compileFrom} takes the root as a
+     * parameter, so a preview of node X is the graph up to X. Godot's {@code p_for_preview} lands in the
+     * same place. Everything downstream of the root is simply not reachable and not emitted.</p>
+     */
+    @Test
+    public void compilingFromAnIntermediateNodeEmitsOnlyItsSubgraph() {
+        CgShaderGraph graph = new CgShaderGraph()
+                .add(CgShaderGraph.Instance.of("a", constantFloat()))
+                .add(CgShaderGraph.Instance.of("b", constantFloat()))
+                .add(CgShaderGraph.Instance.of("m", multiply()))
+                .link("a", "Out", "m", "A")
+                .link("b", "Out", "m", "B")
+                .output("m");
+
+        String preview = CgGraphCompiler.compileFrom(graph, "a", true).code();
+
+        assertTrue(preview.contains("node_a_Out"));
+        assertFalse("nothing downstream of the previewed node is emitted", preview.contains("node_m_Out"));
+        assertFalse(preview.contains("node_b_Out"));
+    }
+
+    /** Nodes reaching nothing are not emitted, so a half-built subgraph is not dead GLSL. */
+    @Test
+    public void unreachableNodesAreNotEmitted() {
+        CgShaderGraph graph = new CgShaderGraph()
+                .add(CgShaderGraph.Instance.of("used", constantFloat()))
+                .add(CgShaderGraph.Instance.of("orphan", constantVec3()))
+                .output("used");
+
+        String code = CgGraphCompiler.compile(graph).code();
+
+        assertTrue(code.contains("node_used_Out"));
+        assertFalse(code.contains("node_orphan_Out"));
+    }
+
+    // ── Includes ────────────────────────────────────────────────────────────
+
+    /**
+     * <b>Includes are the union of what the present nodes declare, once each.</b>
+     *
+     * <p>Declared rather than inferred, because inferring means parsing GLSL. Ten noise nodes include
+     * {@code noise.glsl} once; a graph with none does not include it at all.</p>
+     */
+    @Test
+    public void includesAreDeclaredUnionedAndDeduplicated() {
+        CgShaderNode noisy = CgTemplateShaderNode.of("cg:procedural/noise")
+                .in("UV", CgShaderType.VEC2, "vec2(0.0)")
+                .out("Out", CgShaderType.FLOAT)
+                .body("{Out} = value_noise({UV});")
+                .include("crystalgraphics:shaders/lib/noise.glsl")
+                .build();
+
+        CgGraphCompiler.Result result = CgGraphCompiler.compile(new CgShaderGraph()
+                .add(CgShaderGraph.Instance.of("n1", noisy))
+                .add(CgShaderGraph.Instance.of("n2", noisy))
+                .add(CgShaderGraph.Instance.of("m", multiply()))
+                .link("n1", "Out", "m", "A")
+                .link("n2", "Out", "m", "B")
+                .output("m"));
+
+        assertEquals(List.of("crystalgraphics:shaders/lib/noise.glsl"), result.includes());
+    }
+
+    // ── Errors that must point at a node ────────────────────────────────────
+
+    /**
+     * <b>Every emitted line knows which node emitted it.</b>
+     *
+     * <p>The property that decides whether the editor is usable. A driver reports a failure at a line of
+     * generated source the user never wrote; without this map the editor can only repeat the message.
+     * Built while emitting, which is nearly free — and impossible to reconstruct afterwards.</p>
+     */
+    @Test
+    public void everyLineMapsBackToTheNodeThatEmittedIt() {
+        CgShaderGraph graph = new CgShaderGraph()
+                .add(CgShaderGraph.Instance.of("a", constantFloat()))
+                .add(CgShaderGraph.Instance.of("m", multiply()))
+                .link("a", "Out", "m", "A")
+                .output("m");
+
+        CgGraphCompiler.Result result = CgGraphCompiler.compile(graph);
+
+        assertEquals("a", result.ownerOfLine(1));
+        int lastLine = result.code().split("\n", -1).length - 1;
+        assertEquals("m", result.ownerOfLine(lastLine));
+    }
+
+    /** A cycle is reported against a named node rather than hanging or emitting non-terminating GLSL. */
+    @Test
+    public void aCycleIsReportedRatherThanEmitted() {
+        CgShaderGraph graph = new CgShaderGraph()
+                .add(CgShaderGraph.Instance.of("x", multiply()))
+                .add(CgShaderGraph.Instance.of("y", multiply()))
+                .link("x", "Out", "y", "A")
+                .link("y", "Out", "x", "A")
+                .output("y");
+
+        CgGraphCompiler.Result result = CgGraphCompiler.compile(graph);
+
+        assertFalse(result.ok());
+        assertTrue(result.errors().get(0), result.errors().get(0).contains("Cycle"));
+    }
+
+    /** A graph with no output compiles to nothing and says so. */
+    @Test
+    public void aGraphWithNoOutputIsReported() {
+        CgGraphCompiler.Result result = CgGraphCompiler.compile(new CgShaderGraph());
+
+        assertFalse(result.ok());
+        assertTrue(result.errors().get(0).contains("no output node"));
+    }
+
+    // ── Determinism, which content-hash keying depends on ───────────────────
+
+    /**
+     * <b>The same graph emits byte-identical source.</b>
+     *
+     * <p>Not cosmetic: {@code CgMaterialShaderRegistry.getOrCreateGenerated} keys on the content hash of
+     * this string. Non-deterministic output would mean a fresh compile on every reopen and a new GL
+     * program each time.</p>
+     */
+    @Test
+    public void theSameGraphEmitsIdenticalSource() {
+        java.util.function.Supplier<CgShaderGraph> build = () -> new CgShaderGraph()
+                .add(CgShaderGraph.Instance.of("a", constantFloat()))
+                .add(CgShaderGraph.Instance.of("v", constantVec3()))
+                .add(CgShaderGraph.Instance.of("m", multiply()))
+                .link("a", "Out", "m", "A")
+                .link("v", "Out", "m", "B")
+                .output("m");
+
+        assertEquals(CgGraphCompiler.compile(build.get()).code(),
+                CgGraphCompiler.compile(build.get()).code());
+    }
+
+    // ── The template language ───────────────────────────────────────────────
+
+    /** {@code {type:Port}} is what lets one template serve every width of a dynamic node. */
+    @Test
+    public void aTemplateCanNameItsOwnResolvedType() {
+        CgShaderNode splat = CgTemplateShaderNode.of("cg:test/splat")
+                .in("In", CgShaderType.DYNAMIC, "0.0")
+                .out("Out", CgShaderType.DYNAMIC)
+                .body("{Out} = {type:Out}({In});")
+                .build();
+
+        CgShaderGraph graph = new CgShaderGraph()
+                .add(CgShaderGraph.Instance.of("v", constantVec3()))
+                .add(CgShaderGraph.Instance.of("s", splat))
+                .link("v", "Out", "s", "In")
+                .output("s");
+
+        assertTrue(CgGraphCompiler.compile(graph).code().contains("node_s_Out = vec3(node_v_Out);"));
+    }
+
+    /** A template naming a port that does not exist fails against the node, not the driver. */
+    @Test
+    public void aTemplateReferencingAnUnknownPortNamesTheNode() {
+        CgShaderNode broken = CgTemplateShaderNode.of("cg:test/broken")
+                .out("Out", CgShaderType.FLOAT)
+                .body("{Out} = {Nope};")
+                .build();
+
+        CgGraphCompiler.Result result = CgGraphCompiler.compile(
+                new CgShaderGraph().add(CgShaderGraph.Instance.of("b", broken)).output("b"));
+
+        assertFalse(result.ok());
+        assertTrue(result.errors().get(0), result.errors().get(0).contains("cg:test/broken"));
+    }
+
+    /** A node with no output could never be reached from the master node. */
+    @Test
+    public void aNodeWithNoOutputIsRefusedAtDefinitionTime() {
+        try {
+            CgTemplateShaderNode.of("cg:test/sink").in("In", CgShaderType.FLOAT, "0.0").build();
+            fail("expected a node with no output to be refused");
+        } catch (IllegalArgumentException expected) {
+            assertTrue(expected.getMessage().contains("no output"));
+        }
+    }
+}

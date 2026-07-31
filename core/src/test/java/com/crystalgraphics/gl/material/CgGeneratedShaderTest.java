@@ -104,6 +104,36 @@ public class CgGeneratedShaderTest {
         assertFalse("a generated shader has no file to re-read", generated.isDirty());
     }
 
+    /**
+     * <b>What a shader graph emits, the material layer accepts.</b>
+     *
+     * <p>6.3.1 and 6.3.5 meeting: a graph compiles to text, and that text becomes a shader asset with no
+     * file anywhere. It is not compiled here — that needs a driver — but it is parsed, keyed and cached,
+     * which is everything up to the GL call.</p>
+     */
+    @Test
+    public void aGraphEmittedShaderBecomesAnAsset() {
+        var master = new com.crystalgraphics.shadergraph.CgMasterNode();
+        var colour = com.crystalgraphics.shadergraph.CgTemplateShaderNode.of("cg:input/colour")
+                .out("Out", com.crystalgraphics.shadergraph.CgShaderType.VEC4)
+                .body("{Out} = vec4(0.2, 0.4, 0.8, 1.0);")
+                .build();
+        var graph = new com.crystalgraphics.shadergraph.CgShaderGraph()
+                .add(com.crystalgraphics.shadergraph.CgShaderGraph.Instance.of("c", colour))
+                .add(com.crystalgraphics.shadergraph.CgShaderGraph.Instance.of("out", master))
+                .link("c", "Out", "out",
+                        com.crystalgraphics.shadergraph.CgMasterNode.BASE_COLOR)
+                .output("out");
+
+        String emitted = com.crystalgraphics.shadergraph.CgShaderEmitter.emit(graph, master).source();
+        CgMaterialShaderRegistry registry = CgMaterialShaderRegistry.get();
+
+        CgMaterialShader asset = registry.getOrCreateGenerated(emitted);
+        assertTrue(asset.isGenerated());
+        assertSame("identical output is one asset, which is what keeps a preview grid cheap",
+                asset, registry.getOrCreateGenerated(emitted));
+    }
+
     /** Empty source is refused rather than producing a shader that fails later, somewhere else. */
     @Test
     public void emptySourceIsRefusedUpFront() {
