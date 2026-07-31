@@ -1,7 +1,5 @@
 ## CrystalGUI TODO
 - Fix checkbox group (its buggy)
-- Move new CgCursor back to Cursor maybe? idk
-
 
 
 ## CrystalGraphics TODO

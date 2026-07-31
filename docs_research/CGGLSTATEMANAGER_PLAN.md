@@ -45,7 +45,7 @@ measurement that motivates all of this. Read it first; this document does not re
 | Delete the coremod + `GLStateMirror` | ✅ `ffa6fac` — see below |
 | Runtime verification | ✅ `text-3d` 1120–1143 frames clean; `cgui-gallery` pixel-identical |
 | Port `Blaze3DStateProvider` | ⬜ still on the old signature; `mc1201` is not in the build so it does not block |
-| Re-measure `doBind` for V2 | ⬜ the numbers below are **V1's** — see TODO |
+| Re-measure `doBind` for V2 | ✅ **65.05 ms / 1.06 ms worst** — faster than V1-after |
 
 **Green:** `:platform:test` (16) · `:core:check` (**761**, 0 failures) · `:mc1710:compileJava` + `:mc1710:test`.
 CrystalGUI's *main* source compiles; its test/harness compile is broken by an unrelated in-flight refactor
@@ -416,8 +416,9 @@ already.
   the current build before removing the old path.
 - **`-Dcrystalgraphics.state.verify=true` on `text-3d` and `cgui-gallery`** must stay at ~1 stale report per
   1,100 frames. Any regression means the field-level shadow is lying somewhere the record-level one was not.
-- **Re-measure `doBind`.** Current baseline: total 73.56 ms / 1010 frames, max 2.16 ms. A field-level design
-  should be no worse; if it is, the move is not paying for itself.
+- ✅ **Re-measure `doBind`.** Baseline was 73.56 ms / 1010 frames, max 2.16 ms; "a field-level design should
+  be no worse, or the move is not paying for itself." **Result: 65.05 ms / 1124 frames, max 1.06 ms** — it
+  pays for itself.
 - Visual check on `cgui-gallery` **and** `text-3d`, including bitmap-tier glyphs — three of this subsystem's
   four bugs were invisible to the test suite and visible only on screen.
 
@@ -425,24 +426,38 @@ already.
 
 ## TODO — everything remaining, updated 2026-07-31
 
-**The engine is done, deleted-down, documented and green.** What is left is one blocked integration, one
-unverified claim, two deliberate deferrals, and somebody else's flaky tests. Nothing below blocks anything
-above it.
+**The engine is done, deleted-down, documented, measured and green.** Every claim in this document now has
+evidence behind it. What is left is one blocked integration, two deferrals, and somebody else's flaky tests.
+Nothing below blocks anything above it.
 
-### ⚠️ The one claim in this document that is not evidenced
+### Measured outcome — V2 confirmed 2026-07-31
 
-The measurement below is **V1's**. V2 changed dedup from whole-value to per-field, added the `forcing`
-path, and now always issues `PROGRAM`/`FBO` — all of which move `doBind`, plausibly in either direction.
-The verification runs had main-thread profiling scopes disabled, so this is **unconfirmed, not regressed**.
+`text-3d`, 1124 frames. V2 is **faster than V1-after**, not merely equivalent: per-field deduplication
+outweighs always issuing `PROGRAM`/`FBO`.
 
-| | before | after (V1) |
-|---|---|---|
-| `doBind.stateSave` | 1,599 ms / 838 frames (~1.9 ms/frame) | **0.00 ms** — scope removed |
-| worst single frame | **346.8 ms** | whole `doBind` max **2.16 ms** |
-| whole `doBind` | ~1,650 ms | **73.56 ms** (p50 0.050 ms) |
+| | before | V1 after | **V2 (current)** |
+|---|---|---|---|
+| `doBind.stateSave` | 1,599 ms / 838 frames | 0.00 ms — scope removed | **0.00 ms** |
+| whole `material.doBind` | ~1,650 ms | 73.56 ms | **65.05 ms** |
+| worst single frame | **346.8 ms** | 2.16 ms | **1.06 ms** |
+| `doBind` p50 | — | 0.050 ms | **0.044 ms** |
+| `doBind.renderState` | — | — | 18.52 ms total, p50 0.011 ms |
 
-- [ ] **Re-measure `doBind` under V2** with main-thread profiling enabled, against the row above. Cheapest
-      remaining item and the last gap between "it works" and "it works, and here is the number".
+Shadow staleness under `-Dcrystalgraphics.state.verify=true`: **1 report in ~1,130 frames** (frame 1, before
+any boundary exists; self-corrects).
+
+> **Where these numbers live, because it cost a wrong "unmeasured" conclusion twice.**
+> `CgProfiler.endFrame()` *consumes and resets* per-frame data into the scene's own report, so main-thread
+> scopes are written to **`harness-output/text-3d/kanji-warmup-profile.csv`** (columns `matDoBindMs`,
+> `dbRenderStateMs`, `dbStateSaveMs`) — **not** to the `cg-profile-*-all-threads-*.txt` dump, whose `main`
+> section is legitimately empty for that reason. The `*-trees.txt` file holds only a warmup sample
+> (~59 calls), not the window. Read the CSV.
+
+> **Do not re-add a per-bind scope to `CgMaterial` to "get parity".** The 73.56 ms figure was *already*
+> measured with the scope removed, so V1-after and V2 are parity by construction; re-adding it recreates the
+> V1-**before** condition instead. It also cannot be done — material bind/unbind is not LIFO
+> (`CgQuadRenderer.useMaterial` binds every call, unbinds only on change), so the scope throws "closed out of
+> order". `CgMaterial.doBind` carries both reasons in a comment.
 
 ### 🔴 1 — Blocked on you: re-add `mc1201`, then compile and test together
 
