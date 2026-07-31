@@ -103,8 +103,26 @@ public final class CgMaterialShader {
 
     // ── Fields ────────────────────────────────────────────────────────────────
 
-    /** Resource path to the {@code .shader} file. */
+    /** Resource path to the {@code .shader} file. For a generated shader this is a synthetic label
+     * ({@code "generated:<hash>"}) rather than anything {@code CgIO} can load — it exists so log lines
+     * and parse errors still name something a human can find. */
     private final String resourcePath;
+
+    /**
+     * The {@code .shader} source held in memory, for a shader that was <b>generated rather than
+     * loaded</b> — a node graph compiles to text, and there is no file behind it.
+     *
+     * <p>Null for the ordinary resource-backed case, which is the discriminator {@link #isGenerated()}
+     * reads. Holding the source rather than a supplier is deliberate: {@link #recompile()} runs again on
+     * every hot reload and every keyword variant, and a supplier would let the source change underneath
+     * a shader whose identity is supposed to BE that source.</p>
+     */
+    private final String generatedSource;
+
+    /** Whether this shader's source came from memory rather than from a resource. */
+    public boolean isGenerated() {
+        return generatedSource != null;
+    }
 
     /** Parse result from the last successful compile; {@code null} until first successful compile. 
      * -- GETTER --
@@ -193,8 +211,9 @@ public final class CgMaterialShader {
 
     // ── Constructor (package-private — use CgMaterialShaderRegistry) ─────────
 
-    private CgMaterialShader(String resourcePath) {
+    private CgMaterialShader(String resourcePath, String generatedSource) {
         this.resourcePath = resourcePath;
+        this.generatedSource = generatedSource;
     }
 
     /**
@@ -203,7 +222,21 @@ public final class CgMaterialShader {
      * Called exclusively by {@link CgMaterialShaderRegistry#getOrCreate(String)}.
      */
     static CgMaterialShader create(String resourcePath) {
-        CgMaterialShader s = new CgMaterialShader(resourcePath);
+        CgMaterialShader s = new CgMaterialShader(resourcePath, null);
+        s.markDirty();
+        return s;
+    }
+
+    /**
+     * Creates a shader from source held in memory — what a node graph compiles to.
+     *
+     * <p>{@code label} is only ever a name: it appears in log lines and is handed to the parser so a
+     * syntax error has something to point at. It is not a path and nothing tries to load it.</p>
+     *
+     * <p>Called exclusively by {@link CgMaterialShaderRegistry#getOrCreateGenerated(String)}.</p>
+     */
+    static CgMaterialShader createGenerated(String label, String source) {
+        CgMaterialShader s = new CgMaterialShader(label, source);
         s.markDirty();
         return s;
     }
@@ -250,8 +283,14 @@ public final class CgMaterialShader {
         boolean isFirst = programCache.isEmpty();
 
         // ── Step 1: Load source ────────────────────────────────────────────────
+        // A generated shader IS its source, so there is nothing to load and nothing that can fail here.
+        // Everything downstream — parse, compile, cache, keyword variants, shadow and depth auto-gen —
+        // is identical either way, which is the point: a graph-compiled shader is not a second kind of
+        // material, it is the same kind that arrived by a different route.
         String source;
-        try {
+        if (isGenerated()) {
+            source = generatedSource;
+        } else try {
             source = CgIO.loadSource(resourcePath);
         } catch (Exception e) {
             if (isFirst) throw new IllegalArgumentException("Could not load shader source from: " + resourcePath, e);

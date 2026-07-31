@@ -1,6 +1,7 @@
 package com.crystalgraphics.gl.material;
 
 import com.crystalgraphics.api.material.CgMaterial;
+import com.crystalgraphics.util.CgContentHash;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -49,13 +50,48 @@ public final class CgMaterialShaderRegistry {
         return asset;
     }
 
+    /** Marks the synthetic key of a generated shader — see {@link #getOrCreateGenerated}. */
+    private static final String GENERATED_PREFIX = "generated:";
+    
     /**
-     * Marks all cached shader assets dirty so they recompile on the next {@code bind()}.
+     * Returns the shader asset for a {@code .shader} source held in memory, compiling it at most once
+     * however many callers ask — what a node graph produces.
+     *
+     * <p><b>Keyed on the content hash of the source, not on a name.</b> Two graphs that compile to
+     * identical GLSL are the same shader and must share one GL program: that is not a nicety, it is the
+     * case a grid of node previews produces constantly, where a dozen nodes computing the same thing
+     * would otherwise each get their own compile. It also makes an edit that changes the graph without
+     * changing its output — moving a node — recompile nothing, for free.</p>
+     *
+     * @param source complete {@code .shader} text
+     * @return the shader asset, never {@code null}
+     */
+    public CgMaterialShader getOrCreateGenerated(String source) {
+        checkNotDeleted();
+        if (source == null || source.isEmpty())
+            throw new IllegalArgumentException("Generated shader source must not be empty");
+
+        String key = GENERATED_PREFIX + CgContentHash.of(source);
+        CgMaterialShader existing = cache.get(key);
+        if (existing != null) return existing;
+        CgMaterialShader asset = CgMaterialShader.createGenerated(key, source);
+        cache.put(key, asset);
+        return asset;
+    }
+
+    /**
+     * Marks all <b>resource-backed</b> shader assets dirty so they recompile on the next {@code bind()}.
      * Called by {@code CgMaterialRegistry.reloadAll()} during hot-reload (F3+T).
+     *
+     * <p><b>Generated shaders are skipped, and must be.</b> Hot reload means "re-read the file", and a
+     * generated shader has no file — marking it dirty would make it recompile from the source it
+     * already holds, which is pure waste at best. Its source cannot have changed without its owner
+     * compiling a new one, which produces a different content hash and therefore a different asset.
+     * Invalidation for these flows from the graph, never from the resource manager.</p>
      */
     public void reloadAll() {
         for (CgMaterialShader asset : cache.values())
-            asset.markDirty();
+            if (!asset.isGenerated()) asset.markDirty();
     }
 
     /**

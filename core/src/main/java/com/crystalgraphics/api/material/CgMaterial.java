@@ -307,6 +307,35 @@ public final class CgMaterial {
     }
 
     /**
+     * Creates a material from {@code .shader} source held in memory rather than loaded from a file —
+     * what a node graph compiles to.
+     *
+     * <pre>{@code
+     * CgMaterial mat = CgMaterial.fromSource(graphCompiler.emit(graph));
+     * }</pre>
+     *
+     * <p>The source is parsed, compiled, cached and drawn by exactly the same path a file takes: a
+     * generated shader is not a second kind of material, it is the same kind that arrived by a different
+     * route. Keywords, passes, properties, shadow and depth auto-generation all behave identically.</p>
+     *
+     * <p><b>Shared by content, not by call.</b> Two identical sources return materials backed by one
+     * asset and therefore one GL program — which is what keeps a grid of node previews from compiling
+     * the same thing a dozen times. It also means an edit that does not change the emitted GLSL costs
+     * nothing.</p>
+     *
+     * <p><b>Not touched by hot reload</b>, because there is no file to re-read. A generated shader is
+     * invalidated by its owner emitting different source, which is a different content hash and so a
+     * different asset.</p>
+     *
+     * @param source complete {@code .shader} text
+     * @return a fresh {@code CgMaterial} over the shared generated asset
+     * @throws IllegalArgumentException if {@code source} is null or empty
+     */
+    public static CgMaterial fromSource(String source) {
+        return new CgMaterial(CgMaterialShaderRegistry.get().getOrCreateGenerated(source));
+    }
+
+    /**
      * Creates a new {@code CgMaterial} from a {@code .shader} file.
      * Called only by {@link CgMaterialRegistry}; external callers use {@link #load}.
      */
