@@ -453,18 +453,13 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
                 ux = scratchUp.x(); uy = scratchUp.y(); uz = scratchUp.z();
             }
 
-            float a = ((argb >>> 24) & 0xFF) / 255f;
-            float r = ((argb >>> 16) & 0xFF) / 255f;
-            float g = ((argb >>> 8) & 0xFF) / 255f;
-            float b = (argb & 0xFF) / 255f;
-
             accumWriter.beginRecord()
                     .vec3("origin", ox, oy, oz)
                     .vec3("right", rx, ry, rz)
                     .vec3("up", ux, uy, uz)
                     .vec2("uv0", u0, v0)
                     .vec2("uv1", u1, v1)
-                    .vec4("color", r, g, b, a)
+                    .color("color", argb)
                     .float_("atlasLayer", atlasLayer)
                     .endRecord();
 

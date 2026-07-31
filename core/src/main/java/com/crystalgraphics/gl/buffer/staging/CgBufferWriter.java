@@ -168,6 +168,38 @@ public final class CgBufferWriter {
     }
 
     /**
+     * Named write — unpacks a packed ARGB int into a {@code vec4} field as normalized
+     * {@code (r, g, b, a)} floats.
+     *
+     * <p>Every instanced renderer here takes colour from callers as a packed ARGB int and stores it
+     * as a {@code vec4}, so without this each one grows its own private set of four shift-and-divide
+     * helpers — which is where a silent red/blue swap or a dropped alpha lives. One implementation,
+     * one channel order.</p>
+     *
+     * <p><b>Alpha is the top byte</b> ({@code 0xAARRGGBB}), matching {@code CgQuadRenderer.Quad#color}
+     * and {@code CgCurveRenderer.Curve#color}. The GLSL side receives {@code (r, g, b, a)} — the
+     * packing order and the vector order deliberately differ, which is exactly why this is worth
+     * writing once.</p>
+     *
+     * @param fieldName name of the VEC4 field
+     * @param argb      packed colour, alpha in the high byte
+     * @return {@code this} for chaining
+     * @throws IllegalStateException if the field does not exist or is not of type VEC4
+     */
+    public CgBufferWriter color(String fieldName, int argb) {
+        int base = resolveField(fieldName, CgGpuType.VEC4);
+        // Division rather than a reciprocal multiply, deliberately: this replaced hand-rolled
+        // "/ 255f" unpacking in CgQuadRenderer, which is the path every glyph in the engine draws
+        // through. 1f/255f is not exactly representable, so a reciprocal multiply would shift some
+        // channels by an ULP — a real, if invisible, change to already-shipped text output.
+        staging.setFloatAt(base + 0, ((argb >>> 16) & 0xFF) / 255f);
+        staging.setFloatAt(base + 1, ((argb >>> 8) & 0xFF) / 255f);
+        staging.setFloatAt(base + 2, (argb & 0xFF) / 255f);
+        staging.setFloatAt(base + 3, ((argb >>> 24) & 0xFF) / 255f);
+        return this;
+    }
+
+    /**
      * Named write — writes a {@code vec3} (3 floats + 1 padding zero for 16-byte alignment)
      * to the field with the given name.
      *

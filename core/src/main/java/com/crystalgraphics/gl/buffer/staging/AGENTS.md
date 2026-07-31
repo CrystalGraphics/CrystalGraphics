@@ -18,7 +18,7 @@ awareness of shaders, textures, or render state.
 | Type | Role |
 |------|------|
 | `CgStagingBuffer` | Growable `float[]` with write cursor. Pure data — no GL, no semantics. Growth factor: 1.5×. Implements `CgVertexOutput`. Also supports random-access write: `reserveAndZero(int floatCount)` pre-zeros a slot range and returns the start index; `setFloatAt(int absIndex, float v)` writes a float at an absolute index without advancing the cursor; `setIntBitsAt(int absIndex, int bits)` writes raw int bits (reinterpreted as float via `Float.intBitsToFloat`) at an absolute index — used by integer field writes in `CgBufferWriter`. Used by `CgBufferWriter` in format-aware mode. |
-| `CgBufferWriter` | General-purpose staged float writer for UBOs/SSBOs/TBOs (non-vertex payloads). **Always format-aware** — requires a `CgBufferFormat` at construction (no positional/null-format mode). Named writes: `mat4("field", m)`, `vec4("field", ...)`, `mat3("field", m)` (48 bytes, vec4-padded), `vec3("field", ...)`, `vec2("field", ...)`, `float_("field", v)`, `int_("field", int)`, `uint("field", int)`, `bool_("field", bool)`, `ivec2("field", int, int)`, `ivec3("field", int, int, int)`, `ivec4("field", int, int, int, int)`, `uvec2("field", int, int)`, `uvec3("field", int, int, int)`, `uvec4("field", int, int, int, int)`, `uint64("field", long)`, `int64("field", long)`. `reset()` returns `this`. `beginRecord()` calls `reserveAndZero(format.getFloatCount())` and records `recordStartIdx`. `endRecord()` is a no-op (record pre-zeroed). |
+| `CgBufferWriter` | General-purpose staged float writer for UBOs/SSBOs/TBOs (non-vertex payloads). **Always format-aware** — requires a `CgBufferFormat` at construction (no positional/null-format mode). Named writes: `mat4("field", m)`, `vec4("field", ...)`, `mat3("field", m)` (48 bytes, vec4-padded), `vec3("field", ...)`, `vec2("field", ...)`, `float_("field", v)`, `int_("field", int)`, `uint("field", int)`, `bool_("field", bool)`, `ivec2("field", int, int)`, `ivec3("field", int, int, int)`, `ivec4("field", int, int, int, int)`, `uvec2("field", int, int)`, `uvec3("field", int, int, int)`, `uvec4("field", int, int, int, int)`, `uint64("field", long)`, `int64("field", long)`, `color("field", argb)`. `reset()` returns `this`. `beginRecord()` calls `reserveAndZero(format.getFloatCount())` and records `recordStartIdx`. `endRecord()` is a no-op (record pre-zeroed). |
 | `CgVertexWriter` | V1 format-aware `CgVertexConsumer` implementation. Routes fluent calls (vertex/uv/color/normal) to a `CgVertexOutput` based on format attribute semantics. Static factory `forBuffer(ByteBuffer, CgVertexFormat)` enables direct ByteBuffer writes for mesh builders. |
 | `CgInstanceWriter` | Per-instance data writer backed by `CgStagingBuffer`. Fluent API: `mat4(...).color(...).putVec4(...).endInstance()`. `beginInstance()`/`endInstance()` validate stride in DEBUG mode. `mat3()` here is tight 9-float (vertex attribute packing — not std140). |
 | `CgColorPacking` | Utility for packing RGBA components into ABGR int. `packAbgr(r,g,b,a)` is endian-aware. |
@@ -30,6 +30,15 @@ awareness of shaders, textures, or render state.
 | Method | Bytes | Use case |
 |--------|-------|----------|
 | `CgBufferWriter.mat3(String, Matrix3f)` | 48 bytes (3 × vec4-aligned cols) | std140/std430 UBO/SSBO named field — correct |
+| `CgBufferWriter.color(String, int)` | one `vec4` | packed ARGB in (**alpha is the high byte**), normalized `(r, g, b, a)` out |
+
+> **`color()` is the only place packed ARGB becomes a `vec4`.** Every instanced renderer takes colour
+> from callers as an ARGB int and stores it as a `vec4`, so before this each grew its own four
+> shift-and-divide helpers — which is where a red/blue swap or a dropped alpha lives, silently and
+> everywhere at once. Note the packing order and the vector order deliberately differ (`ARGB` in,
+> `rgba` out); that mismatch is the reason it is worth writing exactly once. Channel order is pinned
+> by `CgBufferWriterColorTest`, including a bit-identical check against the hand-rolled `/ 255f` it
+> replaced in `CgQuadRenderer` — the path every glyph in the engine draws through.
 | `CgInstanceWriter.mat3(Matrix3f)` | 36 bytes (tight col-major) | Vertex attribute instance data — correct for that use |
 
 ## Data Flow

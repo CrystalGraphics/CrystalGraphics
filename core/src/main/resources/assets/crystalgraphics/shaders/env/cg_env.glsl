@@ -139,4 +139,64 @@ uniform sampler2D cg_DepthBuffer;
 #define CG_QUAD_NORMAL (normalize(cross(QUAD_DATA(CG_INSTANCE_ID).right, QUAD_DATA(CG_INSTANCE_ID).up)))
 #define CG_QUAD_ATLAS_LAYER (QUAD_DATA(CG_INSTANCE_ID).atlasLayer)
 
+// -- CgCurveRenderer convenience macros --------------------------------------
+// CgCurveRenderer (gl/render/CgCurveRenderer.java) is an SSBO/TBO-backed instanced renderer for
+// quadratic Bezier strokes: vec3 p0/p1/p2 (control points, pose baked in CPU-side), vec4
+// color0/color1 (gradient along the curve), vec2 widths (start/end HALF-width, tapered), float
+// feather (edge softness), float flags (cap style). Same hardcoded-macro-name arrangement as the
+// CG_QUAD_* block above: CURVE_DATA = CgCurveRenderer.MACRO_NAME.
+//
+// These are DEFINED unconditionally but only RESOLVE in a shader that declares:
+//
+//     #pragma cg_use curve
+//
+// Using one without the pragma is rejected at parse time naming the missing line -- and needs no
+// parser change to do it, because CgShaderParser derives the "CG_CURVE_" family textually from
+// "CURVE_DATA".
+//
+// ── STAGE AVAILABILITY — THE ONE REAL DIFFERENCE FROM CG_QUAD_* ──────────────
+// Every macro here EXCEPT CG_CURVE_WORLD_POS resolves in BOTH the vertex and fragment stages.
+// That is deliberate and load-bearing: a curve's stroke is an analytic SDF that must be evaluated
+// per pixel, so the fragment stage needs the control points themselves. It re-reads them straight
+// out of CURVE_DATA(CG_INSTANCE_ID) rather than receiving them as varyings, because the .shader
+// v2f struct DSL has no flat qualifier to offer (cg_InstanceId is the only compiler-generated flat
+// varying) and interpolating control points would be both wasteful and wrong to reason about.
+// This works on both buffer paths with no compiler change -- CgMaterialShaderCompiler's
+// appendAttachedBuffers runs for the fragment source as well as the vertex source.
+//
+// CG_CURVE_WORLD_POS is vertex-only: it consumes cg_Position, and it does NOT read a quad the way
+// CG_QUAD_WORLD_POS does. There is no per-instance origin/right/up for a curve -- the bounding box
+// is DERIVED here from the convex hull of the three control points (a Bezier is contained by its
+// control hull), expanded by max(widths) + feather so the antialiased edge is never clipped. That
+// is why the CPU writes no bounds: they cannot desync from the control points if they are computed
+// from them. Planar by construction -- see CgCurveRenderer's class doc on why v1 curves are 2D.
+//
+//   Vertex:    gl_Position = cg_ProjMatrix * vec4(CG_CURVE_WORLD_POS, 1.0);
+//   Fragment:  float t; float d = sdf_bezier(i.posXy, CG_CURVE_P0.xy, CG_CURVE_P1.xy, CG_CURVE_P2.xy, t);
+//              float halfW = mix(CG_CURVE_WIDTHS.x, CG_CURVE_WIDTHS.y, t);
+//              vec4 col = mix(CG_CURVE_COLOR0, CG_CURVE_COLOR1, t);
+#define CG_CURVE_P0 (CURVE_DATA(CG_INSTANCE_ID).p0)
+#define CG_CURVE_P1 (CURVE_DATA(CG_INSTANCE_ID).p1)
+#define CG_CURVE_P2 (CURVE_DATA(CG_INSTANCE_ID).p2)
+#define CG_CURVE_COLOR0 (CURVE_DATA(CG_INSTANCE_ID).color0)
+#define CG_CURVE_COLOR1 (CURVE_DATA(CG_INSTANCE_ID).color1)
+#define CG_CURVE_WIDTHS (CURVE_DATA(CG_INSTANCE_ID).widths)
+#define CG_CURVE_FEATHER (CURVE_DATA(CG_INSTANCE_ID).feather)
+#define CG_CURVE_FLAGS (CURVE_DATA(CG_INSTANCE_ID).flags)
+
+// Half-extent the stroke adds beyond the control hull: the widest the stroke ever gets, plus the
+// feather ramp, plus one unit of slack.
+//
+// THE sqrt(2) IS LOAD-BEARING, and a plain halfWidth is NOT enough. A square cap's corner sits at
+// halfWidth along the tangent PLUS halfWidth along the normal, so on a 45-degree stroke it reaches
+// halfWidth*sqrt(2) along a single axis -- and this box is axis-aligned. Padding by halfWidth alone
+// clips the far corners of every diagonal square cap, at a rate that grows with stroke width and is
+// exactly zero for axis-aligned strokes, which is precisely the case a test row is most likely to
+// use. Round and butt caps only need halfWidth; paying sqrt(2) for all three costs a slightly larger
+// quad and removes a whole class of orientation-dependent bug.
+#define CG_CURVE_PAD (max(CG_CURVE_WIDTHS.x, CG_CURVE_WIDTHS.y) * 1.41422 + CG_CURVE_FEATHER + 1.0)
+#define CG_CURVE_HULL_MIN (min(min(CG_CURVE_P0, CG_CURVE_P1), CG_CURVE_P2) - vec3(CG_CURVE_PAD, CG_CURVE_PAD, 0.0))
+#define CG_CURVE_HULL_MAX (max(max(CG_CURVE_P0, CG_CURVE_P1), CG_CURVE_P2) + vec3(CG_CURVE_PAD, CG_CURVE_PAD, 0.0))
+#define CG_CURVE_WORLD_POS (CG_CURVE_HULL_MIN + vec3(cg_Position.xy, 0.0) * (CG_CURVE_HULL_MAX - CG_CURVE_HULL_MIN))
+
 
