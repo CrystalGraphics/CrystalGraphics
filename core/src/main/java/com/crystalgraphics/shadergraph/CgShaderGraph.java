@@ -27,15 +27,37 @@ import java.util.Set;
 public final class CgShaderGraph {
 
     /** One placed node: an instance id, its type, and the literal values on its unconnected inputs. */
-    public record Instance(String id, CgShaderNode type, Map<String, String> inputValues) {
+    public record Instance(String id, CgShaderNode type, Map<String, String> inputValues,
+                           Map<String, String> propertyValues) {
         public Instance {
             if (id == null || id.isEmpty()) throw new IllegalArgumentException("Instance id must not be empty");
             if (type == null) throw new IllegalArgumentException("Instance " + id + " has no type");
             inputValues = Map.copyOf(inputValues == null ? Map.of() : inputValues);
+            propertyValues = Map.copyOf(propertyValues == null ? Map.of() : propertyValues);
+        }
+
+        /** An instance with no property choices — every node that declares none, which is most. */
+        public Instance(String id, CgShaderNode type, Map<String, String> inputValues) {
+            this(id, type, inputValues, Map.of());
         }
 
         public static Instance of(String id, CgShaderNode type) {
-            return new Instance(id, type, Map.of());
+            
+            
+            return new Instance(id, type, Map.of(), Map.of());
+        }
+
+        /**
+         * The chosen option for a property, or its default.
+         *
+         * <p>Always a legal option: a stored document can name one that no longer exists — a node's
+         * option list is code and the document is data, so the two drift across versions — and falling
+         * back beats emitting a variant that does not exist.</p>
+         */
+        public String propertyOr(String propertyId) {
+            CgShaderNodeProperty property = type.property(propertyId);
+            if (property == null) return propertyValues.get(propertyId);
+            return property.resolve(propertyValues.get(propertyId));
         }
 
         /** The literal on an unconnected input, falling back to the port's declared default. */

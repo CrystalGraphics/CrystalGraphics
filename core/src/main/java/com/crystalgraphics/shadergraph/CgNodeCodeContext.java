@@ -21,7 +21,23 @@ import java.util.Map;
 public record CgNodeCodeContext(Map<String, String> inputs,
                                 Map<String, String> outputs,
                                 Map<String, CgShaderType> types,
-                                boolean forPreview) {
+                                boolean forPreview,
+                                Map<String, String> properties) {
+
+    /** A context with no property choices, for a node that declares none. */
+    public CgNodeCodeContext(Map<String, String> inputs, Map<String, String> outputs,
+                             Map<String, CgShaderType> types, boolean forPreview) {
+        this(inputs, outputs, types, forPreview, Map.of());
+    }
+
+    /**
+     * The chosen option for one of this node's properties — already resolved to a legal value.
+     *
+     * @see CgShaderNodeProperty
+     */
+    public String property(String propertyId) {
+        return properties.get(propertyId);
+    }
 
     /** The expression for an input port. */
     public String in(String portId) {
