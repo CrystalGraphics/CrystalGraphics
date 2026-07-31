@@ -145,8 +145,13 @@ public class CgCurveRendererSplitTest {
 
             worst = Math.max(worst, (float) Math.hypot(cx - qx, cy - qy));
         }
+        // 0.15px, not 1.0px. The original 1.0 was chosen to catch a "structurally wrong" split and
+        // was far looser than the splitter's own 0.1px target — so it passed at 0.44px of error,
+        // which is exactly the defect that later showed up as notches in the gallery's node wires.
+        // A tolerance test must assert the tolerance, not merely that the shape is roughly right.
         assertTrue("piecewise quadratic deviates from the cubic by " + worst
-                + " units over " + n + " segments — the split is structurally wrong", worst < 1.0f);
+                + " units over " + n + " segments — beyond the splitter's sub-pixel target, which is"
+                + " visible as a notch in a thin stroke", worst < 0.15f);
     }
 
     // ── Gradient interpolation ────────────────────────────────────────────────
