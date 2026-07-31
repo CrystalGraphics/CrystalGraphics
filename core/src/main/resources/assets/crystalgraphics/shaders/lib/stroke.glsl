@@ -41,7 +41,16 @@ float stroke_coverage(vec2 p, vec2 a, vec2 b, vec2 c,
     // three styles render as round.
     float signedDist = dist - halfWidth;
 
-    if (cap != CG_STROKE_CAP_ROUND) {
+    // Start and end caps are INDEPENDENT, packed two bits each. A cubic is drawn as abutting
+    // quadratics, and if every segment round-caps both its own ends then each interior joint stacks
+    // two identical discs at one point. Alpha compositing blends the antialiased rim twice —
+    // 1-(1-a)^2 rather than a — and the joint hardens into a visible disc outline on the stroke.
+    // Butting the interior ends flush is the only way to avoid it; the caller's cap survives on the
+    // curve's two real ends.
+    int capStart = cap & 3;
+    int capEnd = (cap >> 2) & 3;
+
+    if (capStart != CG_STROKE_CAP_ROUND || capEnd != CG_STROKE_CAP_ROUND) {
         // A ROUND cap is what the clamped SDF already produces: past an endpoint, clamping t to
         // [0,1] makes the distance radial to that endpoint, which IS a half-disc. So round is the
         // zero-work case and it is butt/square that need doing — the opposite of what the enum
@@ -69,17 +78,29 @@ float stroke_coverage(vec2 p, vec2 a, vec2 b, vec2 c,
         // its own tangent point, removing nothing — which makes CAP_SQUARE necessarily identical to
         // CAP_ROUND, not approximately so. Replacing the radial term with (v across, u along) makes
         // the cap a rectangle, which is what both non-round caps actually are.
-        float extend = (cap == CG_STROKE_CAP_SQUARE) ? halfWidth : 0.0;
-        if (uStart > 0.0 || uEnd > 0.0) {
+        // Each end is capped by its OWN style. A round end keeps the radial result already in
+        // signedDist; only butt and square replace it with the box metric.
+        float extendStart = (capStart == CG_STROKE_CAP_SQUARE) ? halfWidth : 0.0;
+        float extendEnd   = (capEnd   == CG_STROKE_CAP_SQUARE) ? halfWidth : 0.0;
+
+        bool cutStart = (uStart > 0.0) && (capStart != CG_STROKE_CAP_ROUND);
+        bool cutEnd   = (uEnd   > 0.0) && (capEnd   != CG_STROKE_CAP_ROUND);
+
+        if (cutStart || cutEnd) {
             float capped = -3.4e38;
-            if (uStart > 0.0) capped = max(capped, max(vStart - halfWidth, uStart - extend));
-            if (uEnd   > 0.0) capped = max(capped, max(vEnd   - halfWidth, uEnd   - extend));
+            if (cutStart) capped = max(capped, max(vStart - halfWidth, uStart - extendStart));
+            if (cutEnd)   capped = max(capped, max(vEnd   - halfWidth, uEnd   - extendEnd));
             signedDist = capped;
         }
     }
 
     // Deliberately NOT sdf_coverage(): that derives its own ~1px ramp from fwidth, whereas a
     // stroke's softness is an authored per-instance property in the same units as the widths.
-    // Using fwidth here would silently ignore `feather` entirely.
+    //
+    // Flooring this ramp with fwidth(signedDist) was tried and MEASURED TO DO NOTHING: worst local
+    // deviation was 73.0/52.6/33.2% at feather 1/3/6 with the floor against 72.6/50.6/34.7% without,
+    // i.e. identical. fwidth is already below feather here, so the max() never binds. Do not re-add
+    // it on the theory that near-horizontal strokes are antialiasing-limited - they are not, and the
+    // measurement is the reason.
     return 1.0 - smoothstep(-ramp * 0.5, ramp * 0.5, signedDist);
 }

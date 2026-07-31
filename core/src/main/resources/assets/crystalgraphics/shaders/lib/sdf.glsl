@@ -107,20 +107,41 @@ float sdf_bezier(vec2 p, vec2 A, vec2 B, vec2 C, out float t) {
         return sdf_segment(p, A, C, t);
     }
 
-    // A unit-frame normalisation was tried here and REMOVED. The theory was catastrophic
-    // cancellation in `h = q*q + 4*p*p*p` (both terms ~3e4, sum ~1e2, in a 24-bit mantissa) flipping
-    // the branch selector on shallow curves. It is a real effect and the theory was plausible, but
-    // SdfBezierConditioningTest measured it in float precision against a double-sampled oracle and
-    // the un-normalised solve was NOT measurably less accurate on the geometry that actually
-    // misbehaves. Do not re-add it on the strength of the argument alone — the measurement is in
-    // that test, and it says the argument does not apply at these magnitudes.
-    vec2 a = B - A;
-    vec2 c = a * 2.0;
-    vec2 d = A - p;
+    // ── SOLVE IN THE CURVE'S OWN FRAME. This is not a micro-optimisation; it is the difference
+    // between a correct distance and a wildly wrong one. ────────────────────────────────────────
+    //
+    // In screen coordinates a long, shallow segment drives the intermediates below far apart in
+    // magnitude while the answer stays a few pixels. In float32 the cubic solve then loses most of
+    // its significant bits. Measured on a real segment the splitter emits —
+    // A=(186.95,173.378) B=(218.96,174.03) C=(250.0,174.0), 63px long, 0.30px of bow — for a point
+    // lying ON the curve (true distance 0.011):
+    //
+    //     as-written in screen space : 3.9910   <- reports the pixel as far outside the stroke
+    //     translated + scaled here   : 0.0018
+    //
+    // A distance of 3.99 against a 2.5 half-width means the fragment is discarded, so the stroke
+    // develops a hole. Because the error depends on the segment's exact shape, the hole appears on
+    // some wires and not others and travels as the geometry animates, which is why this survived
+    // seven wrong diagnoses (SDF branches, NaN guards, bounding quad, cap double-blending, split
+    // tolerance, antialiasing bandwidth) before being caught by BisectHoleProbeTest.
+    //
+    // Splitting a cubic produces exactly these long, nearly-flat segments BY CONSTRUCTION, so every
+    // cubic() caller depends on this. `t` is dimensionless; only the distance needs scaling back.
+    //
+    // NOTE: an earlier attempt at this was reverted after a test showed no benefit — that test used
+    // a well-conditioned synthetic quadratic, not the near-flat segments that actually fail. If you
+    // are about to remove this, check which geometry your measurement used.
+    float scale = max(max(length(B - A), length(C - B)), 1.0e-6);
+    float inv = 1.0 / scale;
 
-    float kk = 1.0 / bb;
-    float kx = kk * dot(a, b);
-    float ky = kk * (2.0 * dot(a, a) + dot(d, b)) / 3.0;
+    vec2 a = (B - A) * inv;
+    vec2 bs = (A - 2.0 * B + C) * inv;
+    vec2 c = a * 2.0;
+    vec2 d = (A - p) * inv;
+
+    float kk = 1.0 / dot(bs, bs);
+    float kx = kk * dot(a, bs);
+    float ky = kk * (2.0 * dot(a, a) + dot(d, bs)) / 3.0;
     float kz = kk * dot(d, a);
 
     float res;
@@ -132,9 +153,32 @@ float sdf_bezier(vec2 p, vec2 A, vec2 B, vec2 C, out float t) {
     if (h >= 0.0) {
         h = sqrt(h);
         vec2 x = (vec2(h, -h) - q) / 2.0;
-        vec2 uv = sign(x) * pow(abs(x), vec2(1.0 / 3.0));
+
+        // THE max() IS THE FIX FOR THE TRAVELLING-DROPOUT BUG. Do not simplify it back to
+        // pow(abs(x), 1/3).
+        //
+        // GLSL implements pow(x,y) as exp2(y * log2(x)), so x == 0 evaluates log2(0) = -inf and then
+        // y * -inf = -inf. Drivers disagree on what comes back; on the NaN path, sign(0) == 0 turns
+        // it into 0 * NaN, which is NaN. That NaN reaches `t`, and from there both the coverage and
+        // the caller's gradient mix, so the fragment is dropped rather than misplaced.
+        //
+        // x is exactly zero where p == 0, which is a CODIMENSION-1 LOCUS — a thin curve through the
+        // pixel plane, not a region. So the symptom is a narrow band of missing stroke that SWEEPS
+        // along a curve as it animates, rather than a static hole: "one empty tiny quad running
+        // through the wire left to right".
+        //
+        // Whether that locus crosses the painted band depends on the individual curve's shape, which
+        // is why it hit two of the gallery's three node wires and not the third. That looked like
+        // evidence against a numerical cause and was the opposite — SdfBezierDegenerateRootTest
+        // measures it: the two shallow wires drive |x| below 1e-3 inside the band, the steep one
+        // stays more than 10x further away.
+        //
+        // max() rather than a branch because the answer is already correct at zero: sign(0) == 0
+        // makes the product 0, which IS the cube root of 0. Only the NaN needs preventing.
+        vec2 uv = sign(x) * pow(max(abs(x), 1.0e-30), vec2(1.0 / 3.0));
+
         t = clamp(uv.x + uv.y - kx, 0.0, 1.0);
-        res = _sdf_dot2(d + (c + b * t) * t);
+        res = _sdf_dot2(d + (c + bs * t) * t);
     } else {
         float z = sqrt(-pp);
         // CLAMP REQUIRED. Analytically this argument is inside [-1,1] whenever h < 0, but floating
@@ -150,9 +194,9 @@ float sdf_bezier(vec2 p, vec2 A, vec2 B, vec2 C, out float t) {
         // three critical points here and any of them can be the nearest; Quilez's version drops the
         // third as an optimisation, which silently returns a too-large distance whenever that root
         // wins. On a stroke that reads as a bite taken out of the edge.
-        float d1 = _sdf_dot2(d + (c + b * tt.x) * tt.x);
-        float d2 = _sdf_dot2(d + (c + b * tt.y) * tt.y);
-        float d3 = _sdf_dot2(d + (c + b * tt.z) * tt.z);
+        float d1 = _sdf_dot2(d + (c + bs * tt.x) * tt.x);
+        float d2 = _sdf_dot2(d + (c + bs * tt.y) * tt.y);
+        float d3 = _sdf_dot2(d + (c + bs * tt.z) * tt.z);
 
         // `t` must track whichever root actually won — returning the minimum distance while
         // reporting a different root's parameter desyncs the gradient from the geometry.
@@ -161,7 +205,7 @@ float sdf_bezier(vec2 p, vec2 A, vec2 B, vec2 C, out float t) {
         if (d2 < res) { res = d2; t = tt.y; }
         if (d3 < res) { res = d3; t = tt.z; }
     }
-    return sqrt(res);
+    return sqrt(res) * scale;
 }
 
 float sdf_bezier(vec2 p, vec2 A, vec2 B, vec2 C) {

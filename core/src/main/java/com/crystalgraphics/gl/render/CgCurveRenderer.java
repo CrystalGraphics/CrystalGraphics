@@ -130,6 +130,24 @@ public final class CgCurveRenderer extends CgAbstractRenderer {
      */
     public static final String MACRO_NAME = "CURVE_DATA";
 
+    /**
+     * Packs a start and end cap into the single {@code flags} float.
+     *
+     * <p><b>Why the two ends are independent.</b> A cubic is drawn as several abutting quadratics, and
+     * if every segment caps both of its own ends then each interior joint gets <em>two</em> round caps
+     * at the same point with the same radius. Alpha compositing does not merge them: the antialiased
+     * rim is blended twice, giving {@code 1-(1-a)^2} instead of {@code a}, and the joint hardens into
+     * a visible disc outline sitting on the stroke.</p>
+     *
+     * <p>That artefact reads as a rendering fault anywhere but here — it was chased through the SDF,
+     * the bounding quad, two NaN guards, floating-point conditioning and the split tolerance first.
+     * Worth remembering that a coverage test taking {@code max()} over segments cannot see it at all,
+     * because {@code max} is not how the GPU composites overlapping instances.</p>
+     */
+    static int packCaps(int startCap, int endCap) {
+        return (startCap & 3) | ((endCap & 3) << 2);
+    }
+
     /** Butt cap — the stroke ends exactly at {@code p0}/{@code p2}. The default. */
     public static final int CAP_BUTT = 0;
     /** Round cap — a half-disc of the local half-width is added at each end. */
@@ -286,6 +304,9 @@ public final class CgCurveRenderer extends CgAbstractRenderer {
         private float feather;
         private int cap;
         private Matrix4f pose;
+
+        /** Start/end caps for the record currently being written, packed by {@link #packCaps}. */
+        private int packedCaps;
 
         /** Set by {@link #cubic}; when non-zero, submit() emits this many quadratics instead of one. */
         private int cubicSegments;
@@ -450,6 +471,12 @@ public final class CgCurveRenderer extends CgAbstractRenderer {
             if (cubicSegments > 0) {
                 for (int i = 0; i < cubicSegments; i++) {
                     int o = i * 9;
+                    // Only the curve's true ends carry the caller's cap; every interior joint butts
+                    // flush against its neighbour. Two round caps stacked at one point double-blend
+                    // their antialiased rims into a visible disc — see packCaps.
+                    int startCap = (i == 0) ? cap : CAP_BUTT;
+                    int endCap = (i == cubicSegments - 1) ? cap : CAP_BUTT;
+                    packedCaps = packCaps(startCap, endCap);
                     // Taper across the whole cubic, not per segment: each split piece gets the
                     // slice of the [start,end] width ramp that its own t-range covers, so a tapered
                     // cubic tapers smoothly instead of restarting at every segment boundary.
@@ -466,6 +493,7 @@ public final class CgCurveRenderer extends CgAbstractRenderer {
                             feather * widthScale);
                 }
             } else {
+                packedCaps = packCaps(cap, cap);
                 writeRecord(p0x, p0y, p0z, p1x, p1y, p1z, p2x, p2y, p2z,
                         widthStart * widthScale, widthEnd * widthScale,
                         argb0, argb1, feather * widthScale);
@@ -511,7 +539,7 @@ public final class CgCurveRenderer extends CgAbstractRenderer {
                     .color("color1", colorEnd)
                     .vec2("widths", wStart, wEnd)
                     .float_("feather", feath)
-                    .float_("flags", cap)
+                    .float_("flags", packedCaps)
                     .endRecord();
         }
     }
