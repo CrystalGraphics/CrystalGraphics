@@ -13,8 +13,49 @@ public class CgIO {
     private static final String ASSETS_PREFIX = "/assets/";
     private static final String DEFAULT_DOMAIN = "crystalgraphics";
 
-    /** For resolving paths outside of MC environment (essential for hot swapping resources)*/
-    private static final String RESOURCE_OVERRIDE_DIR = System.getProperty("crystalgraphics.shader.resourceOverrideDir");
+    /**
+     * Source roots searched before the classpath — how an asset is hot-swapped outside Minecraft.
+     *
+     * <p><b>Several roots, not one</b>, because one is not enough to develop against. Every project in a
+     * composite build keeps its own {@code src/main/resources}, so a single root can serve
+     * {@code assets/crystalgui/**} or {@code assets/crystalgraphics/**} but never both — and the one it
+     * cannot serve falls back to the classpath, which for a Gradle run is a <em>copy</em> that
+     * {@code processResources} made at build time. Editing that project's sources then changes nothing
+     * the running process can see, and a reload faithfully re-reads the stale copy and looks broken.</p>
+     *
+     * <p>Set either property to a {@link File#pathSeparator}-separated list; the roots are tried in order.
+     * A single path is still a valid list, so the original spelling keeps working unchanged.</p>
+     *
+     * <ul>
+     *   <li>{@code crystalgraphics.resourceOverrideDirs} — the generic name, preferred</li>
+     *   <li>{@code crystalgraphics.shader.resourceOverrideDir} — the original, kept for compatibility.
+     *       Never shader-specific despite the name; it has always been consulted for every resource.</li>
+     * </ul>
+     */
+    private static final java.util.List<File> RESOURCE_OVERRIDE_DIRS = parseOverrideDirs();
+
+    private static java.util.List<File> parseOverrideDirs() {
+        String raw = System.getProperty("crystalgraphics.resourceOverrideDirs");
+        if (raw == null || raw.trim().isEmpty()) {
+            raw = System.getProperty("crystalgraphics.shader.resourceOverrideDir");
+        }
+        if (raw == null || raw.trim().isEmpty()) return java.util.Collections.emptyList();
+
+        java.util.List<File> roots = new java.util.ArrayList<>();
+        // File.pathSeparator, so a Windows "C:\a;C:\b" splits on ';' and leaves the drive colons alone.
+        for (String part : raw.split(java.util.regex.Pattern.quote(File.pathSeparator))) {
+            String trimmed = part.trim();
+            if (trimmed.isEmpty()) continue;
+            try {
+                File dir = new File(trimmed);
+                // Dropped rather than kept and probed per lookup: a root that does not exist is a typo or
+                // a stale path, and silently missing every file is the confusing version of that.
+                if (dir.isDirectory()) roots.add(dir);
+                else System.err.println("[CgIO] resource override root is not a directory, ignoring: " + dir);
+            } catch (Throwable ignored) {}
+        }
+        return roots;
+    }
 
     /** For instant hotswap from filesystem in harness*/
     private static final String ASSETS_HARNESS = "assets/harness/";
@@ -55,8 +96,9 @@ public class CgIO {
     /**
      * Opens an InputStream for the given path using the same waterfall as
      * {@link #loadSource}: absolute path → harness shortcut → filesystem
-     * override → MC resource manager → classpath. Returns {@code null} if
-     * all resolution strategies fail.
+     * override roots (in order, see {@link #RESOURCE_OVERRIDE_DIRS}) → MC
+     * resource manager → classpath. Returns {@code null} if all resolution
+     * strategies fail.
      *
      * @param path any supported path format (see {@link #normalizePath})
      * @return an open InputStream, or {@code null} on failure
@@ -77,13 +119,15 @@ public class CgIO {
 
         String normalized = normalizePath(path);
 
-        // 1. Filesystem override
-        if (RESOURCE_OVERRIDE_DIR != null) {
-            try {
-                String fsPath = normalized.startsWith("/") ? normalized.substring(1) : normalized;
-                File file = new File(RESOURCE_OVERRIDE_DIR, fsPath);
-                if (file.isFile()) return new FileInputStream(file);
-            } catch (Throwable ignored) {}
+        // 1. Filesystem override — every configured source root, in order.
+        if (!RESOURCE_OVERRIDE_DIRS.isEmpty()) {
+            String fsPath = normalized.startsWith("/") ? normalized.substring(1) : normalized;
+            for (File root : RESOURCE_OVERRIDE_DIRS) {
+                try {
+                    File file = new File(root, fsPath);
+                    if (file.isFile()) return new FileInputStream(file);
+                } catch (Throwable ignored) {}
+            }
         }
 
         // 2. Platform resource service (returns null before CgPlatform.register() — falls through to classpath)
