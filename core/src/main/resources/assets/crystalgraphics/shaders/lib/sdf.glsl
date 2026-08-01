@@ -213,6 +213,31 @@ float sdf_bezier(vec2 p, vec2 A, vec2 B, vec2 C) {
     return sdf_bezier(p, A, B, C, t);
 }
 
+// Signed distance to a 2D triangle p0->p1->p2, either winding order. Negative inside, positive
+// outside — standard SDF convention, matching sdf_rounded_box above.
+//
+// Built from sdf_segment rather than re-deriving the per-edge point-segment projection inline
+// (Quilez's reference "2D distance functions" triangle SDF does the projection by hand three
+// times; reusing sdf_segment says the same thing once). Reference: Inigo Quilez, "2D distance
+// functions" (triangle).
+//
+// Pure maths — legal in a vertex shader, no CG_VERTEX_STAGE guard, same as sdf_bezier.
+float sdf_triangle(vec2 p, vec2 p0, vec2 p1, vec2 p2) {
+    float d = min(min(sdf_segment(p, p0, p1), sdf_segment(p, p1, p2)), sdf_segment(p, p2, p0));
+
+    // Inside/outside via the signed area (cross product) of each edge against p, tested against
+    // the triangle's own overall winding `s` — works for EITHER winding order because the
+    // reference area and each per-edge cross product flip sign together.
+    float area = (p1.x - p0.x) * (p2.y - p0.y) - (p1.y - p0.y) * (p2.x - p0.x);
+    float s = sign(area);
+    bool inside =
+            s * ((p1.x - p0.x) * (p.y - p0.y) - (p1.y - p0.y) * (p.x - p0.x)) >= 0.0 &&
+            s * ((p2.x - p1.x) * (p.y - p1.y) - (p2.y - p1.y) * (p.x - p1.x)) >= 0.0 &&
+            s * ((p0.x - p2.x) * (p.y - p2.y) - (p0.y - p2.y) * (p.x - p2.x)) >= 0.0;
+
+    return inside ? -d : d;
+}
+
 // 1.0 inside the shape, 0.0 outside, antialiased across ~1px at the edge using screen-space
 // derivatives. `dist` is an `sdf_*` distance (negative inside, per the convention above).
 //

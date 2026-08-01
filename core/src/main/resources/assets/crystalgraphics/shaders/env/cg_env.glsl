@@ -194,7 +194,35 @@ uniform sampler2D cg_DepthBuffer;
 // exactly zero for axis-aligned strokes, which is precisely the case a test row is most likely to
 // use. Round and butt caps only need halfWidth; paying sqrt(2) for all three costs a slightly larger
 // quad and removes a whole class of orientation-dependent bug.
-#define CG_CURVE_PAD (max(CG_CURVE_WIDTHS.x, CG_CURVE_WIDTHS.y) * 1.41422 + CG_CURVE_FEATHER + 1.0)
+//
+// CAP_ARROW REACHES FAR FURTHER THAN sqrt(2), AND MUST BE CHECKED FOR EXPLICITLY. The wedge in
+// stroke.glsl's _stroke_cap_dist extends CG_STROKE_ARROW_LENGTH (6) half-widths past the endpoint,
+// not ~1.4. Padding by sqrt(2) when an arrow cap is in use derives a bounding quad that ends well
+// short of the wedge's actual tip -- the vertex stage clips geometry the fragment stage would
+// otherwise draw correctly, so an arrowhead's point is silently cut flat. This is exactly the kind
+// of bug that renders something plausible (a stroke that LOOKS like an arrow, just a slightly short
+// one) rather than failing, which is why it is worth this comment rather than a passing "6.0 covers
+// every cap" bump: paying 6x padding unconditionally on every ordinary stroke this engine draws --
+// the overwhelming majority, none of which use CAP_ARROW -- would be real wasted overdraw for a
+// cap style most curves never touch, so this checks the packed flags instead of assuming the worst.
+//
+// The 6.0 below is a literal, not a shared macro with stroke.glsl's CG_STROKE_ARROW_LENGTH:
+// cg_env.glsl is auto-included before any material's own #include lines (see the class doc on
+// CgUiPaintContext... no, on CgQuadRenderer/CgCurveRenderer), so it must stay meaningful even for a
+// shader that never includes stroke.glsl. If CG_STROKE_ARROW_LENGTH ever changes, this must change
+// with it -- there is deliberately no single source of truth to keep this file self-contained.
+//
+// Packing reminder: CAP_ARROW = 3, packed 2 bits per end (start in bits 0-1, end in bits 2-3, see
+// CgCurveSplitter#packCaps) -- so "either end is an arrow" is `(flags & 3) == 3 || ((flags >> 2) &
+// 3) == 3`. This also correctly evaluates false for a FILL instance (bit 4 set, low 4 bits 0),
+// which is why the check does not need to test the FILL flag separately.
+float cg_curve_pad(vec2 widths, float feather, float flags) {
+    int f = int(flags + 0.5);
+    bool hasArrowCap = (f & 3) == 3 || ((f >> 2) & 3) == 3;
+    float reach = hasArrowCap ? 6.0 : 1.41422;
+    return max(widths.x, widths.y) * reach + feather + 1.0;
+}
+#define CG_CURVE_PAD cg_curve_pad(CG_CURVE_WIDTHS, CG_CURVE_FEATHER, CG_CURVE_FLAGS)
 #define CG_CURVE_HULL_MIN (min(min(CG_CURVE_P0, CG_CURVE_P1), CG_CURVE_P2) - vec3(CG_CURVE_PAD, CG_CURVE_PAD, 0.0))
 #define CG_CURVE_HULL_MAX (max(max(CG_CURVE_P0, CG_CURVE_P1), CG_CURVE_P2) + vec3(CG_CURVE_PAD, CG_CURVE_PAD, 0.0))
 #define CG_CURVE_WORLD_POS (CG_CURVE_HULL_MIN + vec3(cg_Position.xy, 0.0) * (CG_CURVE_HULL_MAX - CG_CURVE_HULL_MIN))
