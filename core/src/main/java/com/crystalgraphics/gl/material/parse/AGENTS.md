@@ -132,7 +132,7 @@ cross-checking in `CgShaderParser.validateEngineBufferUsage(...)`.
 
 Declares that a shader reads an engine-provided shader buffer — `quad` (`CgQuadRenderer`'s
 per-instance buffer, unlocking `QUAD_DATA` and the `CG_QUAD_*` macros) or `curve`
-(`CgCurveRenderer`'s, unlocking `CURVE_DATA` and `CG_CURVE_*`). Tokens land in
+(`CgVectorRenderer`'s, unlocking `CURVE_DATA` and `CG_CURVE_*`). Tokens land in
 `CgParsedShader.engineBuffers()`.
 
 The reverse check needs no per-token maintenance: the convenience-macro family is derived textually

@@ -139,12 +139,27 @@ uniform sampler2D cg_DepthBuffer;
 #define CG_QUAD_NORMAL (normalize(cross(QUAD_DATA(CG_INSTANCE_ID).right, QUAD_DATA(CG_INSTANCE_ID).up)))
 #define CG_QUAD_ATLAS_LAYER (QUAD_DATA(CG_INSTANCE_ID).atlasLayer)
 
-// -- CgCurveRenderer convenience macros --------------------------------------
-// CgCurveRenderer (gl/render/CgCurveRenderer.java) is an SSBO/TBO-backed instanced renderer for
-// quadratic Bezier strokes: vec3 p0/p1/p2 (control points, pose baked in CPU-side), vec4
-// color0/color1 (gradient along the curve), vec2 widths (start/end HALF-width, tapered), float
-// feather (edge softness), float flags (cap style). Same hardcoded-macro-name arrangement as the
-// CG_QUAD_* block above: CURVE_DATA = CgCurveRenderer.MACRO_NAME.
+// -- CgVectorRenderer convenience macros --------------------------------------
+// CgVectorRenderer (gl/render/CgVectorRenderer.java) is an SSBO/TBO-backed instanced renderer for
+// small 2D vector primitives -- not "curves" specifically, though that is still most of what draws
+// through it today. The buffer's schema is generic on purpose: vec3 p0/p1/p2 (a handful of points,
+// pose baked in CPU-side), vec4 color0/color1, vec2 widths, float feather, float flags. Same
+// hardcoded-macro-name arrangement as the CG_QUAD_* block above: CURVE_DATA = MACRO_NAME. The
+// macro family keeps the CG_CURVE_ prefix from when this buffer was curve-only; renaming it is a
+// bigger, riskier change than renaming the Java class was, and the macros still say exactly what
+// they resolve to regardless of the C-style prefix's history.
+//
+// TWO READINGS OF ONE RECORD, CHOSEN BY THE PACKED flags FIELD -- see CgVectorRenderer's own class
+// doc for the "why one renderer, not two" reasoning, and cg_curve_pad below for where the fill
+// reading is actually branched on:
+//   * STROKE (the default): p0/p1/p2 are quadratic Bezier control points, color0/color1 are the
+//     gradient endpoints, widths is (start,end) HALF-width, flags packs a cap style per end.
+//   * FILL (CG_STROKE_FLAG_FILL set, see stroke.glsl): p0/p1/p2 are a triangle's vertices, color0
+//     is the flat fill colour, widths.x is corner radius. color1 and widths.y are UNUSED in this
+//     reading -- not a waste, spare capacity a future third reading (a gradient fill, say) can
+//     claim for free, the same way the fill reading itself claimed one bit and one repurposed
+//     field rather than needing a new buffer. Whatever consumes that capacity next belongs as
+//     another macro in this same block, not as a CG_SOMETHING_ELSE_* block beside it.
 //
 // These are DEFINED unconditionally but only RESOLVE in a shader that declares:
 //
@@ -166,15 +181,26 @@ uniform sampler2D cg_DepthBuffer;
 //
 // CG_CURVE_WORLD_POS is vertex-only: it consumes cg_Position, and it does NOT read a quad the way
 // CG_QUAD_WORLD_POS does. There is no per-instance origin/right/up for a curve -- the bounding box
-// is DERIVED here from the convex hull of the three control points (a Bezier is contained by its
-// control hull), expanded by max(widths) + feather so the antialiased edge is never clipped. That
-// is why the CPU writes no bounds: they cannot desync from the control points if they are computed
-// from them. Planar by construction -- see CgCurveRenderer's class doc on why v1 curves are 2D.
+// is DERIVED here from the convex hull of the three points, expanded by cg_curve_pad's reach for
+// the current cap/fill mode (see that function) so the antialiased edge is never clipped. A
+// quadratic Bezier is contained by its own control hull and a triangle IS its own hull trivially,
+// so the identical derivation is exactly right for both readings with no branch here -- only the
+// PADDING amount differs by mode, which is why that logic lives in cg_curve_pad and not here. That
+// is also why the CPU writes no bounds: they cannot desync from the points if they are computed
+// from them. Planar by construction -- see CgVectorRenderer's class doc on why v1 is 2D.
 //
 //   Vertex:    gl_Position = cg_ProjMatrix * vec4(CG_CURVE_WORLD_POS, 1.0);
-//   Fragment:  float t; float d = sdf_bezier(i.posXy, CG_CURVE_P0.xy, CG_CURVE_P1.xy, CG_CURVE_P2.xy, t);
+//
+//   Fragment, stroke reading (the common case -- see curve_instance_coverage in stroke.glsl,
+//   which is the one place both curve.shader and gui_curve.shader should actually call this from):
+//              float t; float d = sdf_bezier(i.posXy, CG_CURVE_P0.xy, CG_CURVE_P1.xy, CG_CURVE_P2.xy, t);
 //              float halfW = mix(CG_CURVE_WIDTHS.x, CG_CURVE_WIDTHS.y, t);
 //              vec4 col = mix(CG_CURVE_COLOR0, CG_CURVE_COLOR1, t);
+//
+//   Fragment, fill reading (see fill_coverage in stroke.glsl):
+//              float d = sdf_triangle(i.posXy, CG_CURVE_P0.xy, CG_CURVE_P1.xy, CG_CURVE_P2.xy);
+//              d -= CG_CURVE_WIDTHS.x;                 // corner radius, not a stroke width here
+//              vec4 col = CG_CURVE_COLOR0;              // color1 unused in this reading
 #define CG_CURVE_P0 (CURVE_DATA(CG_INSTANCE_ID).p0)
 #define CG_CURVE_P1 (CURVE_DATA(CG_INSTANCE_ID).p1)
 #define CG_CURVE_P2 (CURVE_DATA(CG_INSTANCE_ID).p2)
@@ -208,7 +234,7 @@ uniform sampler2D cg_DepthBuffer;
 //
 // The 6.0 below is a literal, not a shared macro with stroke.glsl's CG_STROKE_ARROW_LENGTH:
 // cg_env.glsl is auto-included before any material's own #include lines (see the class doc on
-// CgUiPaintContext... no, on CgQuadRenderer/CgCurveRenderer), so it must stay meaningful even for a
+// CgUiPaintContext... no, on CgQuadRenderer/CgVectorRenderer), so it must stay meaningful even for a
 // shader that never includes stroke.glsl. If CG_STROKE_ARROW_LENGTH ever changes, this must change
 // with it -- there is deliberately no single source of truth to keep this file self-contained.
 //

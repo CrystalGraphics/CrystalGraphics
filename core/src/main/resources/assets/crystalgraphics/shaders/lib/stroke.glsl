@@ -2,7 +2,7 @@
 
 #include "crystalgraphics:shaders/lib/sdf.glsl"
 
-// Stroke AND fill coverage for CgCurveRenderer's shared p0/p1/p2 instance schema — the whole body
+// Stroke AND fill coverage for CgVectorRenderer's shared p0/p1/p2 instance schema — the whole body
 // of every consumer of that schema, whether the instance is a stroked quadratic or a filled
 // triangle (see curve_instance_coverage, the one dispatch point between the two).
 //
@@ -17,8 +17,8 @@
 // surviving the previous one, and every one of them rendered something confident and plausible
 // rather than failing. Two copies means the fourth fix lands in one file and the other keeps the bug.
 
-// Cap styles — must match CgCurveRenderer.CAP_*. Packed 2 bits per end (start in bits 0-1, end in
-// bits 2-3 — see CgCurveRenderer.packCaps), so 4 values is exactly the room available; ARROW is
+// Cap styles — must match CgVectorRenderer.CAP_*. Packed 2 bits per end (start in bits 0-1, end in
+// bits 2-3 — see CgVectorRenderer.packCaps), so 4 values is exactly the room available; ARROW is
 // the last one that fits without widening the packing.
 #define CG_STROKE_CAP_BUTT   0
 #define CG_STROKE_CAP_ROUND  1
@@ -34,7 +34,7 @@
 #define CG_STROKE_ARROW_LENGTH 6.0
 
 // Bit 4 of the packed flags — set for a FILLED triangle instance, unset for a stroke. See
-// CgCurveRenderer.packFill(). Lives above the cap constants because both stroke_coverage's cap
+// CgVectorRenderer.packFill(). Lives above the cap constants because both stroke_coverage's cap
 // dispatch and curve_instance_coverage's fill/stroke dispatch read from the same packed int.
 #define CG_STROKE_FLAG_FILL 16
 
@@ -156,7 +156,7 @@ float stroke_coverage(vec2 p, vec2 a, vec2 b, vec2 c,
 // Antialiased coverage of a FILLED triangle p0->p1->p2 at point `p`, in [0,1]. `cornerRadius`
 // softens the corners; `feather` is the edge ramp, same convention as stroke_coverage's.
 //
-// The instance schema is shared with strokes (see CgCurveRenderer's class doc), so this reads the
+// The instance schema is shared with strokes (see CgVectorRenderer's class doc), so this reads the
 // SAME three points a quadratic stroke would use as control points — a filled triangle is not a
 // different kind of data, only a different thing to do with three points. That is also why this
 // lives in stroke.glsl rather than a separate file: both coverage functions are consumed by
@@ -182,13 +182,13 @@ float fill_coverage(vec2 p, vec2 p0, vec2 p1, vec2 p2, float cornerRadius, float
 
 // The one place stroke-vs-fill is decided, so curve.shader and gui_curve.shader can never disagree
 // about it — same reasoning as everything else in this file. Dispatches on CG_STROKE_FLAG_FILL in
-// `flags` (see CgCurveRenderer.packFill/packCaps).
+// `flags` (see CgVectorRenderer.packFill/packCaps).
 //
 // `t` is meaningless for a fill (there is no "closest point along a path" for a filled region), so
 // it is set to 0 — which, fed into the caller's existing `mix(color0, color1, t)`, resolves to
 // exactly `color0`. That is why a fill instance's colour is always `color0`: not a special case in
 // the fragment shader, just what mix() does at t=0. `widths.x` doubles as cornerRadius in fill mode
-// (see CgCurveRenderer.Triangle) — `widths` has no other meaning once a triangle has no taper.
+// (see CgVectorRenderer.Triangle) — `widths` has no other meaning once a triangle has no taper.
 float curve_instance_coverage(vec2 p, vec2 p0, vec2 p1, vec2 p2,
                               vec2 widths, float feather, int flags, out float t) {
     if ((flags & CG_STROKE_FLAG_FILL) != 0) {

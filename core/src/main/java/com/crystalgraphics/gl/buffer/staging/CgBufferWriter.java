@@ -177,7 +177,7 @@ public final class CgBufferWriter {
      * one channel order.</p>
      *
      * <p><b>Alpha is the top byte</b> ({@code 0xAARRGGBB}), matching {@code CgQuadRenderer.Quad#color}
-     * and {@code CgCurveRenderer.Curve#color}. The GLSL side receives {@code (r, g, b, a)} — the
+     * and {@code CgVectorRenderer.Curve#color}. The GLSL side receives {@code (r, g, b, a)} — the
      * packing order and the vector order deliberately differ, which is exactly why this is worth
      * writing once.</p>
      *

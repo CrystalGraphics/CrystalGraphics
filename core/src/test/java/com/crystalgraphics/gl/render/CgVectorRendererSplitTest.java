@@ -5,7 +5,7 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 /**
- * GL-free tests for {@link CgCurveRenderer}'s CPU-side cubic → quadratic splitting.
+ * GL-free tests for {@link CgVectorRenderer}'s CPU-side cubic → quadratic splitting.
  *
  * <p>This is the half of the renderer that can be wrong without a driver's help, and it is where
  * the design's central claim lives: that taking a <em>quadratic</em> as the primitive costs nothing
@@ -13,7 +13,7 @@ import static org.junit.Assert.*;
  * sloppy, every cubic drawn through this renderer is subtly wrong in a way no GL test would name —
  * it would just look slightly off.</p>
  */
-public class CgCurveRendererSplitTest {
+public class CgVectorRendererSplitTest {
 
     private static final float EPS = 1.0e-4f;
 

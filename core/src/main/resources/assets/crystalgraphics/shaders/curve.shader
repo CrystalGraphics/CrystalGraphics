@@ -1,6 +1,6 @@
 // ═════════════════════════════════════════════════════════════════════════════
 // CrystalShader — curve.shader
-// Reference material for CgCurveRenderer (gl/render/CgCurveRenderer.java), in the
+// Reference material for CgVectorRenderer (gl/render/CgVectorRenderer.java), in the
 // same way text.shader is CgQuadRenderer's. Draws an antialiased, optionally
 // tapered and gradient-filled quadratic Bézier stroke, one instance per curve.
 //
