@@ -67,7 +67,7 @@ public final class CgBindingPoints {
     public static Binding QUAD_RENDERER;
 
     /**
-     * Reserved binding pair for {@code CgCurveRenderer}'s shared {@code "CgCurveRendererInstances"}
+     * Reserved binding pair for {@code CgVectorRenderer}'s shared {@code "CgVectorRendererInstances"}
      * buffer — one below {@link #QUAD_RENDERER}'s on both paths, continuing the same top-of-range
      * countdown. Engine-reserved, must not be used by user-attached SSBOs/TBOs — see
      * {@code CgShaderBufferRegistry.getOrCreateInternal}. {@code null} until

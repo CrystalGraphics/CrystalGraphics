@@ -46,7 +46,7 @@ float sdf_rounded_box(vec2 p, vec2 halfSize, vec4 radiiX, vec4 radiiY) {
 }
 
 // ── Quadratic Bézier ─────────────────────────────────────────────────────────────────────────
-// Everything below is pure maths and MUST stay above the CG_VERTEX_STAGE guard: CgCurveRenderer's
+// Everything below is pure maths and MUST stay above the CG_VERTEX_STAGE guard: CgVectorRenderer's
 // vertex stage derives its bounding quad from the control hull and the fragment stage evaluates
 // the stroke, so both stages need these. No derivative builtins are used here — that is what makes
 // it legal in a vertex shader, and it is not an accident.
@@ -73,12 +73,12 @@ float sdf_segment(vec2 p, vec2 a, vec2 b) {
 // out-parameter rather than something the caller re-derives.
 //
 // Exact, via one closed-form cubic solve (Inigo Quilez, "quadratic bezier distance"). This exactness
-// is the entire reason CgCurveRenderer's primitive is quadratic and not cubic: a cubic's distance is
+// is the entire reason CgVectorRenderer's primitive is quadratic and not cubic: a cubic's distance is
 // a quintic with no closed form, so a cubic primitive would mean approximating per pixel forever.
 //
 // DEGENERATE CASE — READ BEFORE EDITING. The solve divides by dot(b,b) where b = A - 2B + C, which
 // is exactly zero whenever the control point is the midpoint of the endpoints — i.e. for every
-// straight line. CgCurveRenderer.Curve#line() constructs precisely that, so this is the common path,
+// straight line. CgVectorRenderer.Curve#line() constructs precisely that, so this is the common path,
 // not an edge case: without the guard below, every straight stroke divides by zero and renders as
 // NaN (which on most drivers means an invisible or full-screen-garbage quad, with nothing in the
 // log). The threshold is relative to the curve's own extent so it holds at any scale.
@@ -89,7 +89,7 @@ float sdf_bezier(vec2 p, vec2 A, vec2 B, vec2 C, out float t) {
     // Two ways to be "straight enough", and both are load-bearing.
     //
     // (1) RELATIVE — a genuine degenerate, where the control point IS the midpoint of the endpoints.
-    //     CgCurveRenderer.Curve#line() constructs exactly that, so this is the COMMON path, not an
+    //     CgVectorRenderer.Curve#line() constructs exactly that, so this is the COMMON path, not an
     //     edge case, and the solve below divides by bb.
     //
     // (2) ABSOLUTE — a curve whose greatest deviation from its own chord, |b|/4, is under a twentieth

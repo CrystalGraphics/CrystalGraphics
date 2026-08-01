@@ -16,11 +16,12 @@ import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
 /**
- * Instanced curve/stroke renderer — the line-and-curve counterpart to {@link CgQuadRenderer},
- * built on the same SSBO/TBO-backed instancing foundation and deliberately mirroring its API
- * shape method-for-method.
+ * Instanced 2D vector-primitive renderer — CrystalGraphics' general "hand me a few points and a
+ * colour, and say whether to stroke or fill them" engine seam, and the vector-graphics counterpart
+ * to {@link CgQuadRenderer}'s box-model one. Built on the same SSBO/TBO-backed instancing
+ * foundation and deliberately mirroring its API shape method-for-method.
  *
- * <h3>The primitive is three points — a stroked quadratic Bézier, or a filled triangle</h3>
+ * <h3>What it draws today is a list; what it IS is a shared record</h3>
  * <p>{@link #curve()} strokes a quadratic Bézier:</p>
  * <ul>
  *   <li>A <b>straight line</b> is a quadratic whose control point is the midpoint.</li>
@@ -31,7 +32,22 @@ import org.joml.Vector3f;
  * <p>{@link #triangle()} fills the same three points instead of stroking a path through them —
  * see {@link Triangle}'s own doc for why that is a second thing this renderer does rather than a
  * second renderer. This is the ordinary SVG/Canvas2D/Skia model: one path, filled or stroked at
- * draw time, not two unrelated primitive types.</p>
+ * draw time, not a zoo of unrelated primitive classes each with their own buffer.</p>
+ *
+ * <p>That is the actual reason for the name, and the thing worth internalising before adding a
+ * third capability: this class is not "the curve-and-triangle renderer" any more than {@link
+ * CgQuadRenderer} is "the UI-box-and-text-glyph-and-rounded-rect renderer" — it is named for its
+ * <b>instance record</b> (a handful of points, a colour pair, a width pair, a feather, a flags
+ * field), not for the enumerable set of things that happen to be drawn with it today. A stroke and
+ * a fill are two <em>readings</em> of one schema; the next vector primitive this engine needs is
+ * very likely a third reading of the same schema rather than a reason to write a new renderer.
+ * Concretely: {@code color1} and {@code widths.y} both sit unused in fill mode, and only 5 of the
+ * available {@code flags} bits are claimed (see the schema table below) — that headroom is not an
+ * oversight, it is what makes the next addition cheap. Plausible candidates that would fit here
+ * exactly the way {@link #triangle()} did: a dashed-stroke flag once arc-length parameterisation is
+ * worth the fragment cost, a gradient or per-vertex-coloured fill, a richer join/cap vocabulary
+ * alongside {@code CAP_ARROW}, or a fourth point for a filled quad. None of that is built — this
+ * paragraph is a map of where it would go, not a promise of what is coming.</p>
  *
  * <p>The reason to stop a stroke at quadratic rather than take cubic as the primitive is that a
  * quadratic has an <em>exact analytic</em> signed distance function — {@code sdf_bezier} in
@@ -39,11 +55,16 @@ import org.joml.Vector3f;
  * no closed form, so making cubic the primitive would mean approximating per pixel forever.
  * Splitting once on the CPU is both cheaper and exact.</p>
  *
- * <p>That is also why the class is {@code CgCurveRenderer} and not {@code CgLineRenderer}:
- * {@code curve().line(...)} is a natural convenience, whereas {@code line().curve(...)} would read
- * as a contradiction.</p>
+ * <p>The class itself has already been renamed once, from {@code CgCurveRenderer} — an accurate
+ * name right up until {@link #triangle()} made it not one. {@code CgVectorRenderer} was chosen over
+ * alternatives like {@code CgPathRenderer} or {@code CgShapeRenderer} specifically to name the
+ * general capability rather than any one visual result: "vector" commits to nothing about whether
+ * the output is stroked or filled, curved or straight, which is the property that let this survive
+ * its first extension without a second rename and should let it survive its next one too. If a
+ * future addition makes the name feel wrong again, that itself is a signal the addition belongs in
+ * a genuinely different renderer instead.</p>
  *
- * <h3>Fixed instance schema — one field set, two readings</h3>
+ * <h3>Fixed instance schema — one field set, several readings</h3>
  * <pre>
  * vec3 p0, p1, p2       // STROKE: quadratic control points, pose baked in (see Curve#pose)
  *                       // FILL:   triangle vertices, pose baked in (see Triangle#pose)
@@ -115,12 +136,12 @@ import org.joml.Vector3f;
  * <p>The shipped {@code crystalgraphics:shaders/curve.shader} is the reference consumer, in the
  * same way {@code text.shader} is {@code CgQuadRenderer}'s.</p>
  */
-public final class CgCurveRenderer extends CgAbstractRenderer {
+public final class CgVectorRenderer extends CgAbstractRenderer {
 
     /** Same shared unit-quad vertex format as {@link CgQuadRenderer} — the mesh is a bounding box carrier. */
     private static final CgVertexFormat CURVE_MESH_FORMAT = CgVertexFormat.POS2_UV2_COL4UB;
 
-    /** Fixed per-instance record format shared by every {@code CgCurveRenderer} instance. */
+    /** Fixed per-instance record format shared by every {@code CgVectorRenderer} instance. */
     private static final CgBufferFormat INSTANCE_FORMAT = CgBufferFormat
             .builder("CurveInstance", CgBufferFormat.MemoryLayout.STD430)
             .vec3("p0").vec3("p1").vec3("p2")
@@ -130,10 +151,10 @@ public final class CgCurveRenderer extends CgAbstractRenderer {
             .float_("flags")
             .build();
 
-    private static final String GPU_BUFFER_NAME = "CgCurveRendererInstances";
+    private static final String GPU_BUFFER_NAME = "CgVectorRendererInstances";
 
     /**
-     * Fixed {@code attach()} macro name every {@code CgCurveRenderer} consumer uses. Shaders declare
+     * Fixed {@code attach()} macro name every {@code CgVectorRenderer} consumer uses. Shaders declare
      * {@code #pragma cg_use curve} rather than naming this string, so it never appears at a call
      * site. {@code CgShaderParser}'s reverse check derives the convenience-macro family
      * ({@code CG_CURVE_}) from this name automatically, so no parser change is needed to police it.
@@ -183,7 +204,7 @@ public final class CgCurveRenderer extends CgAbstractRenderer {
             () -> CgMesh.upload(CgMeshBuilder.quad2D(CURVE_MESH_FORMAT, 0f, 0f, 1f, 1f)));
 
     /**
-     * Shared static shader buffer — one SSBO/TBO backs every {@code CgCurveRenderer} instance,
+     * Shared static shader buffer — one SSBO/TBO backs every {@code CgVectorRenderer} instance,
      * at the engine-reserved {@link CgBindingPoints#CURVE_RENDERER} pair.
      *
      * <p>Same lazy-class-init contract as {@code CgQuadRenderer.GPU_BUFFER}:
@@ -205,16 +226,16 @@ public final class CgCurveRenderer extends CgAbstractRenderer {
     private CgMaterial currentMaterial;
 
     /**
-     * Creates a new {@code CgCurveRenderer}. Each instance owns its own CPU accumulation buffer but
+     * Creates a new {@code CgVectorRenderer}. Each instance owns its own CPU accumulation buffer but
      * shares the static mesh, format and GPU buffer with every other instance.
      */
-    public static CgCurveRenderer create() {
+    public static CgVectorRenderer create() {
         CgStagingBuffer staging = new CgStagingBuffer(INSTANCE_FORMAT.getFloatCount(),
                 Math.max(1, INITIAL_CAPACITY_INSTANCES / 4));
-        return new CgCurveRenderer(staging, new CgBufferWriter(staging, INSTANCE_FORMAT));
+        return new CgVectorRenderer(staging, new CgBufferWriter(staging, INSTANCE_FORMAT));
     }
 
-    private CgCurveRenderer(CgStagingBuffer accumStaging, CgBufferWriter accumWriter) {
+    private CgVectorRenderer(CgStagingBuffer accumStaging, CgBufferWriter accumWriter) {
         this.accumStaging = accumStaging;
         this.accumWriter = accumWriter;
     }
@@ -241,7 +262,7 @@ public final class CgCurveRenderer extends CgAbstractRenderer {
      * and an unconditional rebind on <em>every</em> call, because other rendering code sharing this
      * GL context can bind a different program between two frames of your own.</p>
      */
-    public CgCurveRenderer useMaterial(CgMaterial material) {
+    public CgVectorRenderer useMaterial(CgMaterial material) {
         if (material != currentMaterial) {
             flush();
             if (currentMaterial != null) currentMaterial.unbind();
@@ -479,17 +500,17 @@ public final class CgCurveRenderer extends CgAbstractRenderer {
          * Writes this curve as one instance record — or, after {@link #cubic}, as one record per
          * split segment — into the owning renderer's CPU accumulation buffer.
          *
-         * <p>Queues only. Call {@link CgCurveRenderer#flush()} to upload and draw.</p>
+         * <p>Queues only. Call {@link CgVectorRenderer#flush()} to upload and draw.</p>
          *
          * @throws IllegalStateException if {@link #begin()} was not called, if no geometry was set,
          *                               or if {@link #useMaterial(CgMaterial)} was never called
          */
-        public CgCurveRenderer submit() {
-            if (!begun) throw new IllegalStateException("CgCurveRenderer not begun");
+        public CgVectorRenderer submit() {
+            if (!begun) throw new IllegalStateException("CgVectorRenderer not begun");
             if (!geometrySet) throw new IllegalStateException(
-                    "CgCurveRenderer.Curve requires geometry — call line(...), to(...) or cubic(...) before submit()");
+                    "CgVectorRenderer.Curve requires geometry — call line(...), to(...) or cubic(...) before submit()");
             if (currentMaterial == null) throw new IllegalStateException(
-                    "CgCurveRenderer.Curve requires useMaterial(material) before submit() — "
+                    "CgVectorRenderer.Curve requires useMaterial(material) before submit() — "
                             + "without it, this renderer's buffer may not be attached to whatever material is bound");
 
             float widthScale = poseScale();
@@ -525,7 +546,7 @@ public final class CgCurveRenderer extends CgAbstractRenderer {
                         argb0, argb1, feather * widthScale);
             }
 
-            return CgCurveRenderer.this;
+            return CgVectorRenderer.this;
         }
 
         /**
@@ -595,7 +616,7 @@ public final class CgCurveRenderer extends CgAbstractRenderer {
      * Fluent, mutable filled-triangle submission request — the second thing this renderer's shared
      * {@code p0/p1/p2} instance schema can mean, alongside {@link Curve}'s stroked quadratic.
      *
-     * <h3>Why a triangle shares {@code CgCurveRenderer} rather than getting its own renderer</h3>
+     * <h3>Why a triangle shares {@code CgVectorRenderer} rather than getting its own renderer</h3>
      * <p>This is the standard 2D vector-graphics model — SVG, Canvas2D, Skia and NanoVG all let one
      * path be either filled or stroked at draw time, not two unrelated primitive types. It also
      * costs nothing here specifically: three points, a colour and a feather already exist in the
@@ -710,15 +731,15 @@ public final class CgCurveRenderer extends CgAbstractRenderer {
 
         /**
          * Writes this triangle as one instance record into the owning renderer's CPU accumulation
-         * buffer. Queues only — call {@link CgCurveRenderer#flush()} to upload and draw.
+         * buffer. Queues only — call {@link CgVectorRenderer#flush()} to upload and draw.
          *
          * @throws IllegalStateException if {@link #begin()} was not called, or if {@link
          *                               #useMaterial(CgMaterial)} was never called
          */
-        public CgCurveRenderer submit() {
-            if (!begun) throw new IllegalStateException("CgCurveRenderer not begun");
+        public CgVectorRenderer submit() {
+            if (!begun) throw new IllegalStateException("CgVectorRenderer not begun");
             if (currentMaterial == null) throw new IllegalStateException(
-                    "CgCurveRenderer.Triangle requires useMaterial(material) before submit() — "
+                    "CgVectorRenderer.Triangle requires useMaterial(material) before submit() — "
                             + "without it, this renderer's buffer may not be attached to whatever material is bound");
 
             float ax = p0x, ay = p0y, az = p0z;
@@ -759,7 +780,7 @@ public final class CgCurveRenderer extends CgAbstractRenderer {
                     .float_("flags", FLAG_FILL)
                     .endRecord();
 
-            return CgCurveRenderer.this;
+            return CgVectorRenderer.this;
         }
     }
 
