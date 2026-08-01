@@ -42,6 +42,29 @@ final class CgCurveSplitter {
     static final int MAX_CUBIC_SEGMENTS = 16;
 
     /**
+     * Packs a start and end cap into the single {@code flags} float.
+     *
+     * <p><b>Why the two ends are independent.</b> A cubic is drawn as several abutting quadratics, and
+     * if every segment caps both of its own ends then each interior joint gets <em>two</em> round caps
+     * at the same point with the same radius. Alpha compositing does not merge them: the antialiased
+     * rim is blended twice, giving {@code 1-(1-a)^2} instead of {@code a}, and the joint hardens into
+     * a visible disc outline sitting on the stroke.</p>
+     *
+     * <p>That artefact reads as a rendering fault anywhere but here — it was chased through the SDF,
+     * the bounding quad, two NaN guards, floating-point conditioning and the split tolerance first.
+     * Worth remembering that a coverage test taking {@code max()} over segments cannot see it at all,
+     * because {@code max} is not how the GPU composites overlapping instances.</p>
+     *
+     * <p>Lives here rather than on {@code CgCurveRenderer} for the exact reason this whole class
+     * does: it is pure integer arithmetic, but calling ANY static method on {@code CgCurveRenderer}
+     * forces its class-init, which allocates its static {@code CgShaderBuffer}. A GL-free test
+     * calling {@code packCaps} directly hit exactly that {@code ExceptionInInitializerError}.</p>
+     */
+    static int packCaps(int startCap, int endCap) {
+        return (startCap & 3) | ((endCap & 3) << 2);
+    }
+
+    /**
      * Flatness tolerance driving the segment count, in post-pose units.
      *
      * <p><b>This is calibrated, not derived, and the difference matters.</b> The formula below uses

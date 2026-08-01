@@ -61,13 +61,15 @@ Pass {
 
     void fragment(in v2f i, out vec4 fragColor) {
         // t is the curve parameter of the closest point — everything that varies ALONG the stroke
-        // (taper, gradient) is driven by it, which is why stroke_coverage hands it back rather than
-        // making every caller re-derive it.
+        // (taper, gradient) is driven by it, which is why the coverage functions hand it back
+        // rather than making every caller re-derive it. curve_instance_coverage is the one place
+        // stroke vs. filled-triangle is decided (see lib/stroke.glsl) — never call stroke_coverage
+        // directly here, or a filled instance submitted through this material draws as a stroke.
         float t;
-        float alpha = stroke_coverage(i.posXy,
-                                      CG_CURVE_P0.xy, CG_CURVE_P1.xy, CG_CURVE_P2.xy,
-                                      CG_CURVE_WIDTHS, CG_CURVE_FEATHER,
-                                      int(CG_CURVE_FLAGS + 0.5), t);
+        float alpha = curve_instance_coverage(i.posXy,
+                                              CG_CURVE_P0.xy, CG_CURVE_P1.xy, CG_CURVE_P2.xy,
+                                              CG_CURVE_WIDTHS, CG_CURVE_FEATHER,
+                                              int(CG_CURVE_FLAGS + 0.5), t);
 
         vec4 color = mix(CG_CURVE_COLOR0, CG_CURVE_COLOR1, t);
         alpha *= color.a;

@@ -20,17 +20,21 @@ import org.joml.Vector3f;
  * built on the same SSBO/TBO-backed instancing foundation and deliberately mirroring its API
  * shape method-for-method.
  *
- * <h3>The primitive is a quadratic Bézier, and that is the whole design</h3>
- * <p>Everything this renderer draws is one quadratic Bézier stroke:</p>
+ * <h3>The primitive is three points — a stroked quadratic Bézier, or a filled triangle</h3>
+ * <p>{@link #curve()} strokes a quadratic Bézier:</p>
  * <ul>
  *   <li>A <b>straight line</b> is a quadratic whose control point is the midpoint.</li>
  *   <li>A <b>cubic</b> splits into 1–{@value #MAX_CUBIC_SEGMENTS} quadratics on the CPU
  *       ({@link Curve#cubic}), exactly as font rasterizers do.</li>
  *   <li><b>Arcs, polylines and rounded elbows</b> are sequences of quadratics.</li>
  * </ul>
+ * <p>{@link #triangle()} fills the same three points instead of stroking a path through them —
+ * see {@link Triangle}'s own doc for why that is a second thing this renderer does rather than a
+ * second renderer. This is the ordinary SVG/Canvas2D/Skia model: one path, filled or stroked at
+ * draw time, not two unrelated primitive types.</p>
  *
- * <p>The reason to stop at quadratic rather than take cubic as the primitive is that a quadratic
- * has an <em>exact analytic</em> signed distance function — {@code sdf_bezier} in
+ * <p>The reason to stop a stroke at quadratic rather than take cubic as the primitive is that a
+ * quadratic has an <em>exact analytic</em> signed distance function — {@code sdf_bezier} in
  * {@code shaders/lib/sdf.glsl}, one closed-form cubic solve. A cubic's distance is a quintic with
  * no closed form, so making cubic the primitive would mean approximating per pixel forever.
  * Splitting once on the CPU is both cheaper and exact.</p>
@@ -39,18 +43,24 @@ import org.joml.Vector3f;
  * {@code curve().line(...)} is a natural convenience, whereas {@code line().curve(...)} would read
  * as a contradiction.</p>
  *
- * <h3>Fixed instance schema</h3>
+ * <h3>Fixed instance schema — one field set, two readings</h3>
  * <pre>
- * vec3 p0, p1, p2       // quadratic control points, pose baked in (see Curve#pose)
- * vec4 color0, color1   // gradient along the curve, p0 -&gt; p2
- * vec2 widths           // start/end HALF-width — tapered strokes
- * float feather         // edge softness, in the same units as widths
- * float flags           // cap style, packed (see CAP_*)
+ * vec3 p0, p1, p2       // STROKE: quadratic control points, pose baked in (see Curve#pose)
+ *                       // FILL:   triangle vertices, pose baked in (see Triangle#pose)
+ * vec4 color0, color1   // STROKE: gradient along the curve, p0 -&gt; p2
+ *                       // FILL:   color0 is the flat fill colour; color1 unused
+ * vec2 widths           // STROKE: start/end HALF-width — tapered strokes
+ *                       // FILL:   widths.x is corner radius; widths.y unused
+ * float feather         // edge softness, in the same units as widths — same meaning either way
+ * float flags           // cap style (see CAP_*), packed; bit 4 (FLAG_FILL) selects fill over stroke
  * </pre>
  * <p>Under STD430 each {@code vec3} pads to 16 bytes, so this record occupies exactly 96 bytes —
  * the same stride as {@link CgQuadRenderer}'s, with no trailing waste. The three padding floats
  * are the price of keeping the control points {@code vec3}; see the planar note below for why
  * they are {@code vec3} at all.</p>
+ * <p>The fill reading exists because it costs nothing once the stroke reading does: three points, a
+ * colour and a feather were already here for {@link Curve}'s sake, so a filled {@link Triangle}
+ * needs one bit and one repurposed field, not a second buffer. See {@link Triangle}'s own doc.</p>
  *
  * <p>Deliberately <b>no dash field.</b> Dashing needs arc length along the curve, which is a
  * materially larger fragment shader than everything else here, and nothing consumes it yet.
@@ -130,30 +140,28 @@ public final class CgCurveRenderer extends CgAbstractRenderer {
      */
     public static final String MACRO_NAME = "CURVE_DATA";
 
-    /**
-     * Packs a start and end cap into the single {@code flags} float.
-     *
-     * <p><b>Why the two ends are independent.</b> A cubic is drawn as several abutting quadratics, and
-     * if every segment caps both of its own ends then each interior joint gets <em>two</em> round caps
-     * at the same point with the same radius. Alpha compositing does not merge them: the antialiased
-     * rim is blended twice, giving {@code 1-(1-a)^2} instead of {@code a}, and the joint hardens into
-     * a visible disc outline sitting on the stroke.</p>
-     *
-     * <p>That artefact reads as a rendering fault anywhere but here — it was chased through the SDF,
-     * the bounding quad, two NaN guards, floating-point conditioning and the split tolerance first.
-     * Worth remembering that a coverage test taking {@code max()} over segments cannot see it at all,
-     * because {@code max} is not how the GPU composites overlapping instances.</p>
-     */
-    static int packCaps(int startCap, int endCap) {
-        return (startCap & 3) | ((endCap & 3) << 2);
-    }
-
     /** Butt cap — the stroke ends exactly at {@code p0}/{@code p2}. The default. */
     public static final int CAP_BUTT = 0;
     /** Round cap — a half-disc of the local half-width is added at each end. */
     public static final int CAP_ROUND = 1;
     /** Square cap — the stroke is extended by its local half-width past each end. */
     public static final int CAP_SQUARE = 2;
+    /**
+     * Arrowhead cap — a filled wedge past the endpoint, wider than the stroke at its base and
+     * tapering to a point. The one cap style with its own shape rather than an axis-aligned box;
+     * see {@code stroke.glsl}'s {@code _stroke_cap_dist} for the wedge SDF. Fits the same 2-bit
+     * packing as the other three ({@link #packCaps}) — 4 values is exactly what 2 bits hold.
+     */
+    public static final int CAP_ARROW = 3;
+
+    /**
+     * Bit flag in the packed {@code flags} field marking a {@link Triangle} instance rather than a
+     * {@link Curve} one — must match {@code CG_STROKE_FLAG_FILL} in {@code stroke.glsl}, the one
+     * place both curve materials decide whether to stroke or fill an instance. Sits one bit above
+     * the cap packing's 4 used bits (0-3), so a fill instance's cap bits are simply left at 0/unused
+     * rather than needing their own reserved "no cap" value.
+     */
+    static final int FLAG_FILL = 16;
 
     /**
      * Upper bound on how many quadratics one {@link Curve#cubic} call may split into — so a caller
@@ -302,7 +310,7 @@ public final class CgCurveRenderer extends CgAbstractRenderer {
         private float widthStart, widthEnd;
         private int argb0, argb1;
         private float feather;
-        private int cap;
+        private int capStart, capEnd;
         private Matrix4f pose;
 
         /** Start/end caps for the record currently being written, packed by {@link #packCaps}. */
@@ -332,7 +340,8 @@ public final class CgCurveRenderer extends CgAbstractRenderer {
             argb0 = 0xFFFFFFFF;
             argb1 = 0xFFFFFFFF;
             feather = 1f;
-            cap = CAP_BUTT;
+            capStart = CAP_BUTT;
+            capEnd = CAP_BUTT;
             pose = null;
             cubicSegments = 0;
             return this;
@@ -432,9 +441,26 @@ public final class CgCurveRenderer extends CgAbstractRenderer {
             return this;
         }
 
-        /** Cap style — one of {@link #CAP_BUTT}, {@link #CAP_ROUND}, {@link #CAP_SQUARE}. */
+        /** Cap style at both ends — one of {@link #CAP_BUTT}, {@link #CAP_ROUND}, {@link #CAP_SQUARE},
+         * {@link #CAP_ARROW}. */
         public Curve cap(int cap) {
-            this.cap = cap;
+            return cap(cap, cap);
+        }
+
+        /**
+         * Independent cap style per end — the natural case is a directional curve: {@code cap(
+         * CAP_ROUND, CAP_ARROW)} for a node-graph wire that should read as "points at its
+         * destination" without an arrowhead sprouting from the source too.
+         *
+         * <p>For a {@link #cubic} split into several instances, only the curve's two true ends carry
+         * these — every interior joint still butts flush regardless of what is asked for here, since
+         * two caps of any style stacked at one point double-blend their antialiased rims (see
+         * {@link #packCaps}). {@code capEnd} therefore means "the far end of the whole cubic," not
+         * "the end of whichever segment happens to be last."</p>
+         */
+        public Curve cap(int capStart, int capEnd) {
+            this.capStart = capStart;
+            this.capEnd = capEnd;
             return this;
         }
 
@@ -474,9 +500,9 @@ public final class CgCurveRenderer extends CgAbstractRenderer {
                     // Only the curve's true ends carry the caller's cap; every interior joint butts
                     // flush against its neighbour. Two round caps stacked at one point double-blend
                     // their antialiased rims into a visible disc — see packCaps.
-                    int startCap = (i == 0) ? cap : CAP_BUTT;
-                    int endCap = (i == cubicSegments - 1) ? cap : CAP_BUTT;
-                    packedCaps = packCaps(startCap, endCap);
+                    int segStartCap = (i == 0) ? capStart : CAP_BUTT;
+                    int segEndCap = (i == cubicSegments - 1) ? capEnd : CAP_BUTT;
+                    packedCaps = CgCurveSplitter.packCaps(segStartCap, segEndCap);
                     // Taper across the whole cubic, not per segment: each split piece gets the
                     // slice of the [start,end] width ramp that its own t-range covers, so a tapered
                     // cubic tapers smoothly instead of restarting at every segment boundary.
@@ -493,7 +519,7 @@ public final class CgCurveRenderer extends CgAbstractRenderer {
                             feather * widthScale);
                 }
             } else {
-                packedCaps = packCaps(cap, cap);
+                packedCaps = CgCurveSplitter.packCaps(capStart, capEnd);
                 writeRecord(p0x, p0y, p0z, p1x, p1y, p1z, p2x, p2y, p2z,
                         widthStart * widthScale, widthEnd * widthScale,
                         argb0, argb1, feather * widthScale);
@@ -541,6 +567,199 @@ public final class CgCurveRenderer extends CgAbstractRenderer {
                     .float_("feather", feath)
                     .float_("flags", packedCaps)
                     .endRecord();
+        }
+    }
+
+    /** Reused scratch {@link Triangle} instance returned by {@link #triangle()}. */
+    private final Triangle scratchTriangle = new Triangle();
+
+    /**
+     * Starts a fluent filled-triangle submission using this renderer's single reused scratch
+     * instance — same allocation-free contract as {@link #curve()}. Build and {@link
+     * Triangle#submit()} in the same expression.
+     *
+     * <p>Shares this renderer's instance buffer, material and per-frame lifecycle with {@link
+     * #curve()} entirely — a triangle is not a second renderer, only a second thing to do with the
+     * same three-point instance schema. See the class doc's "Filled triangles" section.</p>
+     */
+    public Triangle triangle() {
+        return scratchTriangle.reset();
+    }
+
+    /** Retained-mode twin of {@link #triangle()}, mirroring {@link #retainedCurve()}. */
+    public Triangle retainedTriangle() {
+        return new Triangle();
+    }
+
+    /**
+     * Fluent, mutable filled-triangle submission request — the second thing this renderer's shared
+     * {@code p0/p1/p2} instance schema can mean, alongside {@link Curve}'s stroked quadratic.
+     *
+     * <h3>Why a triangle shares {@code CgCurveRenderer} rather than getting its own renderer</h3>
+     * <p>This is the standard 2D vector-graphics model — SVG, Canvas2D, Skia and NanoVG all let one
+     * path be either filled or stroked at draw time, not two unrelated primitive types. It also
+     * costs nothing here specifically: three points, a colour and a feather already exist in the
+     * instance record for {@link Curve}'s sake, so a filled triangle needs exactly one new bit
+     * ({@link #FLAG_FILL}) and one repurposed field ({@code widths.x} becomes corner radius, since a
+     * filled shape has no taper to store there). A second renderer would mean a second engine-
+     * reserved buffer visible from the fragment stage — the same scarce-texture-unit cost {@code
+     * CgBindingPoints} already documents for {@link #CURVE_RENDERER}'s TBO fallback path — to
+     * duplicate fields that already exist.</p>
+     *
+     * <h3>Defaults</h3>
+     * <p>Points default to the origin; {@link #color(int)} defaults to opaque white; {@link
+     * #cornerRadius(float)} defaults to {@code 0} (sharp corners); {@link #feather} defaults to
+     * {@code 1}, same as {@link Curve}'s.</p>
+     */
+    public final class Triangle {
+
+        private float p0x, p0y, p0z;
+        private float p1x, p1y, p1z;
+        private float p2x, p2y, p2z;
+        private int argb;
+        private float cornerRadius;
+        private float feather;
+        private Matrix4f pose;
+
+        // Reused across every submit() call — never reallocated, mirroring Curve's own scratch trio.
+        private final Vector3f scratchP0 = new Vector3f();
+        private final Vector3f scratchP1 = new Vector3f();
+        private final Vector3f scratchP2 = new Vector3f();
+
+        private Triangle() {
+            reset();
+        }
+
+        Triangle reset() {
+            p0x = p0y = p0z = 0f;
+            p1x = p1y = p1z = 0f;
+            p2x = p2y = p2z = 0f;
+            argb = 0xFFFFFFFF;
+            cornerRadius = 0f;
+            feather = 1f;
+            pose = null;
+            return this;
+        }
+
+        /** First vertex. Z defaults to {@code 0}; see {@link Curve}'s planar note — the same applies. */
+        public Triangle p0(float x, float y) {
+            return p0(x, y, 0f);
+        }
+
+        public Triangle p0(float x, float y, float z) {
+            p0x = x; p0y = y; p0z = z;
+            return this;
+        }
+
+        /** Second vertex. */
+        public Triangle p1(float x, float y) {
+            return p1(x, y, 0f);
+        }
+
+        public Triangle p1(float x, float y, float z) {
+            p1x = x; p1y = y; p1z = z;
+            return this;
+        }
+
+        /** Third vertex. Either winding order is fine — {@code sdf_triangle} handles both. */
+        public Triangle p2(float x, float y) {
+            return p2(x, y, 0f);
+        }
+
+        public Triangle p2(float x, float y, float z) {
+            p2x = x; p2y = y; p2z = z;
+            return this;
+        }
+
+        /** All three vertices in one call. */
+        public Triangle points(float x0, float y0, float x1, float y1, float x2, float y2) {
+            return p0(x0, y0).p1(x1, y1).p2(x2, y2);
+        }
+
+        /** Flat fill colour. Defaults to opaque white. */
+        public Triangle color(int argb) {
+            this.argb = argb;
+            return this;
+        }
+
+        /**
+         * Softens the corners by dilating the sharp triangle outward — see {@code fill_coverage} in
+         * {@code stroke.glsl} for why this grows the shape slightly rather than rounding it in place
+         * the way {@code border-radius} does for a box. Defaults to {@code 0} (sharp corners).
+         */
+        public Triangle cornerRadius(float radius) {
+            this.cornerRadius = radius;
+            return this;
+        }
+
+        /** Edge softness. Defaults to {@code 1}, same convention as {@link Curve#feather}. */
+        public Triangle feather(float feather) {
+            this.feather = feather;
+            return this;
+        }
+
+        /**
+         * Optional transform, baked on the CPU at {@link #submit()} time — identical contract to
+         * {@link Curve#pose}, including corner radius and feather scaling by the pose's uniform
+         * scale (both are distances in the same space as the points, exactly like a stroke width).
+         */
+        public Triangle pose(Matrix4f pose) {
+            this.pose = pose;
+            return this;
+        }
+
+        /**
+         * Writes this triangle as one instance record into the owning renderer's CPU accumulation
+         * buffer. Queues only — call {@link CgCurveRenderer#flush()} to upload and draw.
+         *
+         * @throws IllegalStateException if {@link #begin()} was not called, or if {@link
+         *                               #useMaterial(CgMaterial)} was never called
+         */
+        public CgCurveRenderer submit() {
+            if (!begun) throw new IllegalStateException("CgCurveRenderer not begun");
+            if (currentMaterial == null) throw new IllegalStateException(
+                    "CgCurveRenderer.Triangle requires useMaterial(material) before submit() — "
+                            + "without it, this renderer's buffer may not be attached to whatever material is bound");
+
+            float ax = p0x, ay = p0y, az = p0z;
+            float bx = p1x, by = p1y, bz = p1z;
+            float cx = p2x, cy = p2y, cz = p2z;
+            float radius = cornerRadius;
+            float feath = feather;
+
+            if (pose != null) {
+                scratchP0.set(ax, ay, az);
+                scratchP1.set(bx, by, bz);
+                scratchP2.set(cx, cy, cz);
+                pose.transformPosition(scratchP0);
+                pose.transformPosition(scratchP1);
+                pose.transformPosition(scratchP2);
+                ax = scratchP0.x(); ay = scratchP0.y(); az = scratchP0.z();
+                bx = scratchP1.x(); by = scratchP1.y(); bz = scratchP1.z();
+                cx = scratchP2.x(); cy = scratchP2.y(); cz = scratchP2.z();
+
+                // Corner radius and feather are distances in the same space as the points — a
+                // scaled pose must scale them too, or a zoomed-in triangle keeps a fixed-pixel
+                // radius that reads as sharper (relatively) the further the pose scales it up.
+                float sx = (float) Math.sqrt(pose.m00() * pose.m00() + pose.m01() * pose.m01() + pose.m02() * pose.m02());
+                float sy = (float) Math.sqrt(pose.m10() * pose.m10() + pose.m11() * pose.m11() + pose.m12() * pose.m12());
+                float scale = Math.max(sx, sy);
+                radius *= scale;
+                feath *= scale;
+            }
+
+            accumWriter.beginRecord()
+                    .vec3("p0", ax, ay, az)
+                    .vec3("p1", bx, by, bz)
+                    .vec3("p2", cx, cy, cz)
+                    .color("color0", argb)
+                    .color("color1", argb)
+                    .vec2("widths", radius, radius)
+                    .float_("feather", feath)
+                    .float_("flags", FLAG_FILL)
+                    .endRecord();
+
+            return CgCurveRenderer.this;
         }
     }
 
