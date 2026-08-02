@@ -21,6 +21,7 @@ package com.crystalgraphics.shadergraph;
  *       and therefore obviously running rather than a static picture</li>
  *   <li>{@link #UV}, {@link #POSITION}, {@link #NORMAL} — vertex-domain nodes with a {@code forPreview}
  *       form, a {@code Space} property selecting a code variant, and the sphere preview geometry</li>
+ *   <li>{@link #SPLIT} — the first node with more than one output, proving 6.3's multi-output path</li>
  * </ul>
  *
  * <p>Every one is a {@link CgTemplateShaderNode}, which is the point: the declarative path covers the
@@ -64,7 +65,7 @@ public final class CgBuiltinShaderNodes {
     public static final CgShaderNode COLOR = CgTemplateShaderNode.of("cg:input/basic/color")
             .label("Color")
             .out("Out", CgShaderType.VEC4)
-            .property(CgShaderNodeProperty.value("Value", "", CgShaderType.VEC4, "vec4(1.0, 1.0, 1.0, 1.0)"))
+            .property(CgShaderNodeProperty.value("Value", "", CgShaderType.VEC4, "vec4(0.0, 0.0, 0.0, 1.0)"))
             .noPreview()
             .body("{Out} = {@Value};")
             .build();
@@ -126,15 +127,33 @@ public final class CgBuiltinShaderNodes {
             .build();
 
     /**
-     * Seconds since start, from {@code cg_env.glsl}'s frame block.
+     * Seconds since start, from {@code cg_env.glsl}'s frame block — Unity's {@code Time} node, minus
+     * the two outputs this engine has no data for.
      *
      * <p>{@code CG_TIME} is a macro over {@code cg_Time.y}, injected into every stage automatically —
-     * so this node needs no include and works in both domains.</p>
+     * so this node needs no include and works in both domains. {@code Sine Time}/{@code Cosine Time}
+     * are honest derivations of it.</p>
+     *
+     * <p><b>{@code Delta Time}/{@code Smooth Delta} are deliberately absent</b> rather than wired to
+     * something that looks plausible: {@code cg_Time} is {@code (t/20, t, t*2, t*3)} — four functions
+     * of elapsed time, none of them a per-frame delta — and nothing in {@code cg_env.glsl}'s frame
+     * block carries one. Faking it (e.g. a derivative of {@code CG_TIME}) would be a value with no
+     * relationship to the real frame time, which is worse than a node not offering it at all.</p>
+     *
+     * <p>No preview, matching Unity: five numbers reading themselves above a swatch that just shows
+     * "the current brightness" is the constant's own problem repeated, not a picture worth drawing.</p>
      */
     public static final CgShaderNode TIME = CgTemplateShaderNode.of("cg:input/basic/time")
             .label("Time")
-            .out("Out", CgShaderType.FLOAT)
-            .body("{Out} = CG_TIME;")
+            // Unity spells these "Sine Time"/"Cosine Time" — a space CgShaderPort's id cannot carry,
+            // since it is substituted straight into a GLSL variable name (see variableName()). No
+            // separate port label exists to spell it differently on screen either; camelCase is the
+            // honest compromise until CgShaderPort grows one.
+            .out("Time", CgShaderType.FLOAT)
+            .out("SineTime", CgShaderType.FLOAT)
+            .out("CosineTime", CgShaderType.FLOAT)
+            .noPreview()
+            .body("{Time} = CG_TIME;\n{SineTime} = sin(CG_TIME);\n{CosineTime} = cos(CG_TIME);")
             .build();
 
     /**
@@ -159,6 +178,36 @@ public final class CgBuiltinShaderNodes {
             .in("B", CgShaderType.DYNAMIC, "1.0")
             .out("Out", CgShaderType.DYNAMIC)
             .body("{Out} = {A} * {B};")
+            .build();
+
+    /**
+     * Breaks a vec4 into its four channels — Unity's {@code Split}, and the first node in this library
+     * with more than one output.
+     *
+     * <p>The input stays a fixed {@code vec4} rather than {@code DYNAMIC}: swizzling {@code .r}/{@code .g}
+     * on a {@code float} or {@code vec2} is either meaningless or GLSL refuses it, and a node whose
+     * legality depends on what happens to be wired in is worse than one that asks for the widest type and
+     * lets a narrower value promote up to it — the same promotion every dynamic node already relies on,
+     * just resolved by the compiler's cast rather than by this node branching on width.</p>
+     *
+     * <p>Four independently-typed, fixed-{@code float} outputs is the reason this node exists as the
+     * proof for 6.3's multi-output work: nothing before it ever exercised {@link CgShaderNode#outputs()}
+     * returning more than one port, so this is what proved the compiler, the preview emitter and the
+     * editor's port list all generalise past one — none of them needed to change.</p>
+     */
+    public static final CgShaderNode SPLIT = CgTemplateShaderNode.of("cg:channel/split")
+            .label("Split")
+            // NOT a colour, despite being a vec4 — see inNoInlineEditor's own doc. Unity's Split shows
+            // a plain unconnected-input box, not a colour wheel popup, and rightly so: R/G/B/A here are
+            // four unrelated channels, not a value anyone picks off a hue ring.
+            .inNoInlineEditor("In", CgShaderType.VEC4, "vec4(0.0, 0.0, 0.0, 0.0)")
+            .out("R", CgShaderType.FLOAT)
+            .out("G", CgShaderType.FLOAT)
+            .out("B", CgShaderType.FLOAT)
+            .out("A", CgShaderType.FLOAT)
+            // No single picture represents four independent scalars — Unity's own Split has none either.
+            .noPreview()
+            .body("{R} = {In}.r;\n{G} = {In}.g;\n{B} = {In}.b;\n{A} = {In}.a;")
             .build();
 
     /**
@@ -257,6 +306,7 @@ public final class CgBuiltinShaderNodes {
                 .register(POSITION)
                 .register(NORMAL)
                 .register(ADD)
-                .register(MULTIPLY);
+                .register(MULTIPLY)
+                .register(SPLIT);
     }
 }
