@@ -45,6 +45,14 @@ public class CgGraphCompilerTest {
                 .build();
     }
 
+    private static CgShaderNode constantVec4() {
+        return CgTemplateShaderNode.of("cg:input/vec4")
+                .in("Value", CgShaderType.VEC4, "vec4(0.0)")
+                .out("Out", CgShaderType.VEC4)
+                .body("{Out} = {Value};")
+                .build();
+    }
+
     // ── The basics ──────────────────────────────────────────────────────────
 
     /**
@@ -353,5 +361,96 @@ public class CgGraphCompilerTest {
         } catch (IllegalArgumentException expected) {
             assertTrue(expected.getMessage().contains("no output"));
         }
+    }
+
+    // ── Multiple outputs (6.3's real remaining blocker, per the node-library research) ──────────
+
+    /**
+     * <b>Four outputs, four independent downstream consumers.</b>
+     *
+     * <p>Nothing before {@link CgBuiltinShaderNodes#SPLIT} ever exercised
+     * {@link CgShaderNode#outputs()} returning more than one port — every prior fixture in this file
+     * has exactly one. This is the proof: each channel gets its own declared variable and its own
+     * consumer, and none of them collide or starve each other of a line.</p>
+     */
+    @Test
+    public void aNodeWithFourOutputsFeedsFourIndependentConsumers() {
+        // R and G each reach their OWN multiply, and both multiplies feed a final combiner — so both
+        // are genuine ancestors of the root and both survive the walk `compileFrom` actually performs
+        // (only what the root depends on is emitted; a sibling with no path to the root never would be,
+        // which is what made the first version of this test compile everything away silently).
+        CgShaderGraph graph = new CgShaderGraph()
+                .add(CgShaderGraph.Instance.of("v", constantVec4()))
+                .add(CgShaderGraph.Instance.of("s", CgBuiltinShaderNodes.SPLIT))
+                .add(CgShaderGraph.Instance.of("addR", multiply()))
+                .add(CgShaderGraph.Instance.of("addG", multiply()))
+                .add(CgShaderGraph.Instance.of("combine", multiply()))
+                .link("v", "Out", "s", "In")
+                .link("s", "R", "addR", "A")
+                .link("s", "G", "addG", "A")
+                .link("addR", "Out", "combine", "A")
+                .link("addG", "Out", "combine", "B")
+                .output("combine");
+
+        CgGraphCompiler.Result result = CgGraphCompiler.compile(graph);
+
+        assertTrue(String.join("\n", result.errors()), result.ok());
+        assertTrue("R is declared", result.code().contains("float node_s_R;"));
+        assertTrue("G is declared", result.code().contains("float node_s_G;"));
+        assertTrue("B is declared even though nothing downstream reads it — a node emits every "
+                + "output it declares, not only the ones currently wired", result.code().contains("float node_s_B;"));
+        assertTrue("A is declared for the same reason", result.code().contains("float node_s_A;"));
+        assertTrue("each channel is assigned from its own swizzle",
+                result.code().contains("node_s_R = node_v_Out.r;"));
+        assertTrue(result.code().contains("node_s_G = node_v_Out.g;"));
+        assertTrue(result.code().contains("node_s_B = node_v_Out.b;"));
+        // B is left unconnected on both multiplies, so it stays its literal default ("1.0") — the
+        // point being tested is which VARIABLE feeds A, not B.
+        assertTrue("R reached its own, independent consumer",
+                result.code().contains("node_addR_Out = node_s_R * 1.0;"));
+        assertTrue("G reached a DIFFERENT consumer, not R's",
+                result.code().contains("node_addG_Out = node_s_G * 1.0;"));
+        assertTrue("and both consumers converge on the final combiner",
+                result.code().contains("node_combine_Out = node_addR_Out * node_addG_Out;"));
+    }
+
+    /**
+     * A fixed-type input (not {@code DYNAMIC}) still promotes a narrower value fed into it — the same
+     * compiler-owned cast every dynamic node relies on, just triggered by a plain type mismatch instead
+     * of resolution. {@code SPLIT.In} is a fixed {@code vec4}, so a bare float wired into it must widen
+     * exactly as {@code Multiply}'s dynamic ports do.
+     */
+    @Test
+    public void splitPromotesAFloatFedIntoItsFixedVec4Input() {
+        CgShaderGraph graph = new CgShaderGraph()
+                .add(CgShaderGraph.Instance.of("f", constantFloat()))
+                .add(CgShaderGraph.Instance.of("s", CgBuiltinShaderNodes.SPLIT))
+                .link("f", "Out", "s", "In")
+                .output("s");
+
+        CgGraphCompiler.Result result = CgGraphCompiler.compile(graph);
+
+        assertTrue(String.join("\n", result.errors()), result.ok());
+        assertTrue("a float feeding a vec4 port must be promoted, the same rule dynamic nodes use",
+                result.code().contains("node_s_R = vec4(node_f_Out).r;"));
+    }
+
+    /** Each output's TYPE is independently recorded, not just its name — {@link CgGraphCompiler.Result}
+     * is what a preview thumbnail reads to know what a specific port resolved to. */
+    @Test
+    public void eachOutputsTypeIsIndividuallyRecorded() {
+        CgShaderGraph graph = new CgShaderGraph()
+                .add(CgShaderGraph.Instance.of("v", constantVec4()))
+                .add(CgShaderGraph.Instance.of("s", CgBuiltinShaderNodes.SPLIT))
+                .link("v", "Out", "s", "In")
+                .output("s");
+
+        CgGraphCompiler.Result result = CgGraphCompiler.compile(graph);
+
+        assertTrue(String.join("\n", result.errors()), result.ok());
+        assertEquals(CgShaderType.FLOAT, result.typeOf("node_s_R"));
+        assertEquals(CgShaderType.FLOAT, result.typeOf("node_s_G"));
+        assertEquals(CgShaderType.FLOAT, result.typeOf("node_s_B"));
+        assertEquals(CgShaderType.FLOAT, result.typeOf("node_s_A"));
     }
 }

@@ -199,6 +199,21 @@ public final class CgTemplateShaderNode implements CgShaderNode {
             return this;
         }
 
+        /**
+         * As {@link #in(String, CgShaderType, String)}, but the editor offers no inline field for it.
+         *
+         * <p>Distinct from {@link CgShaderPort#engineDefault}: that is for a default that is not a value
+         * the user owns at all ({@code cg_Position}). This is still an ordinary literal the compiler is
+         * free to substitute — it is only the WIDGET that is wrong for it, because {@code CgShaderType}
+         * alone cannot say "this vec4 is a colour" vs "this vec4 is four unrelated channels": {@code
+         * Split.In} is the latter, and the colour swatch {@code widgetKindFor(VEC4)} gives every other
+         * vec4 port implies a meaning this one does not have.</p>
+         */
+        public Builder inNoInlineEditor(String portId, CgShaderType type, String defaultExpression) {
+            ports.add(new CgShaderPort(portId, type, CgShaderPort.Direction.INPUT, defaultExpression, false));
+            return this;
+        }
+
         public Builder out(String portId, CgShaderType type) {
             ports.add(CgShaderPort.output(portId, type));
             return this;
