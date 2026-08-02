@@ -153,6 +153,10 @@ public final class CgBuiltinShaderNodes {
             .out("SineTime", CgShaderType.FLOAT)
             .out("CosineTime", CgShaderType.FLOAT)
             .noPreview()
+            // The one node in the library that reads a value with nothing in the graph having changed —
+            // see CgShaderNode.isAnimated() for what this makes CgPreviewEmitter/CgPreviewRenderer do
+            // with it downstream. Never set this on a node other than the actual source of the variance.
+            .animated()
             .body("{Time} = CG_TIME;\n{SineTime} = sin(CG_TIME);\n{CosineTime} = cos(CG_TIME);")
             .build();
 
@@ -171,10 +175,24 @@ public final class CgBuiltinShaderNodes {
             .body("{Out} = {A} + {B};")
             .build();
 
-    /** Multiplies two values of any matching width. @see #ADD */
+    /**
+     * Multiplies two values of any matching width. @see #ADD
+     *
+     * <p><b>{@code A} defaults to {@code 0.0}, {@code B} to {@code 1.0} — Unity's own asymmetric pair,
+     * not two copies of the same "safe" number.</b> Both were tried first: {@code 0.0}/{@code 0.0}
+     * previews black when nothing is wired but zeroes the whole result the instant only one side gets
+     * wired, since the OTHER side is still 0. {@code 1.0}/{@code 1.0} fixes that (an unwired side is a
+     * true no-op) but then a completely untouched node previews white — a value that reads as "set"
+     * when nothing has been touched at all. The asymmetric pair gets both right at once, with no
+     * preview-only special case anywhere: nothing wired is {@code 0 * 1 = 0} (black); wiring only
+     * {@code A} is {@code A * 1 = A} (A's own value, untouched); wiring only {@code B} is
+     * {@code 0 * B = 0} (still black, which is the deliberate nudge to also set {@code A} — Unity's
+     * Multiply wants BOTH sides given a real value, not one wired input silently standing in for the
+     * whole node).</p>
+     */
     public static final CgShaderNode MULTIPLY = CgTemplateShaderNode.of("cg:math/multiply")
             .label("Multiply")
-            .in("A", CgShaderType.DYNAMIC, "1.0")
+            .in("A", CgShaderType.DYNAMIC, "0.0")
             .in("B", CgShaderType.DYNAMIC, "1.0")
             .out("Out", CgShaderType.DYNAMIC)
             .body("{Out} = {A} * {B};")

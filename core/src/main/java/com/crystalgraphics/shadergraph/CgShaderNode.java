@@ -98,6 +98,30 @@ public interface CgShaderNode {
     }
 
     /**
+     * Whether this node reads a value that changes on its own, frame to frame, with nothing in the
+     * graph having to change for it to be different — {@link CgBuiltinShaderNodes#TIME} and nothing
+     * else today.
+     *
+     * <p>This is the ONLY place "does this preview need to keep redrawing" is ever decided. It is
+     * declared on the SOURCE of the variance, never on a node downstream of it: {@code Multiply} does
+     * not know or care that one of its inputs happens to be time-driven this graph and might not be in
+     * the next one, so it stays {@code false} — a node fed BY an animated one is discovered to be live
+     * by walking the graph (see {@link CgPreviewEmitter}), not by asking every node in the library to
+     * predict what might eventually feed it.</p>
+     *
+     * <p>Why this matters for previews specifically: {@link CgPreviewRenderer} skips a redraw when the
+     * emitted GLSL is byte-identical to what it last drew, which is correct and is what makes an idle,
+     * static graph cost nothing. But a subgraph reading {@code CG_TIME} compiles to the SAME source on
+     * every frame — the source names the uniform, it never bakes in a value — so that check alone
+     * cannot tell "genuinely unchanged" apart from "changes on its own without the source changing",
+     * and would freeze the thumbnail at whatever instant it first drew. This flag is what lets the
+     * renderer tell the two apart without guessing from the text.</p>
+     */
+    default boolean isAnimated() {
+        return false;
+    }
+
+    /**
      * Whether {@link #generateCode} emits something different, and fragment-safe, when
      * {@code ctx.forPreview()}.
      *
