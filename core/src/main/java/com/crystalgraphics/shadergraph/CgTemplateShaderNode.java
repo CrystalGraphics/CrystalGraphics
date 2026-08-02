@@ -52,11 +52,13 @@ public final class CgTemplateShaderNode implements CgShaderNode {
     private final CgShaderDomain domain;
     private final CgPreviewGeometry previewGeometry;
     private final boolean showsPreview;
+    private final boolean animated;
 
     private CgTemplateShaderNode(String id, String label, List<CgShaderPort> ports,
                                  String body, String previewBody, Set<String> includes,
                                  CgShaderDomain domain, CgPreviewGeometry previewGeometry,
-                                 boolean showsPreview, List<CgShaderNodeProperty> properties,
+                                 boolean showsPreview, boolean animated,
+                                 List<CgShaderNodeProperty> properties,
                                  Map<String, String> variantBodies) {
         this.properties = List.copyOf(properties);
         this.variantBodies = Map.copyOf(variantBodies);
@@ -69,6 +71,7 @@ public final class CgTemplateShaderNode implements CgShaderNode {
         this.domain = domain;
         this.previewGeometry = previewGeometry;
         this.showsPreview = showsPreview;
+        this.animated = animated;
     }
 
     @Override public String id() { return id; }
@@ -78,6 +81,7 @@ public final class CgTemplateShaderNode implements CgShaderNode {
     @Override public CgShaderDomain domain() { return domain; }
     @Override public CgPreviewGeometry previewGeometry() { return previewGeometry; }
     @Override public boolean showsPreview() { return showsPreview; }
+    @Override public boolean isAnimated() { return animated; }
     @Override public boolean hasPreviewForm() { return previewBody != null; }
     @Override public List<CgShaderNodeProperty> properties() { return properties; }
 
@@ -182,6 +186,7 @@ public final class CgTemplateShaderNode implements CgShaderNode {
         private CgShaderDomain domain = CgShaderDomain.ANY;
         private CgPreviewGeometry previewGeometry = CgPreviewGeometry.INHERIT;
         private boolean showsPreview = true;
+        private boolean animated = false;
 
         private Builder(String id) {
             if (id == null || id.isEmpty()) throw new IllegalArgumentException("Node id must not be empty");
@@ -299,6 +304,12 @@ public final class CgTemplateShaderNode implements CgShaderNode {
             return this;
         }
 
+        /** @see CgShaderNode#isAnimated() */
+        public Builder animated() {
+            this.animated = true;
+            return this;
+        }
+
         public CgTemplateShaderNode build() {
             if (ports.stream().noneMatch(CgShaderPort::isOutput)) {
                 // A node with no output can never be reached from the master node, so it would emit
@@ -306,7 +317,7 @@ public final class CgTemplateShaderNode implements CgShaderNode {
                 throw new IllegalArgumentException("Node " + id + " declares no output port");
             }
             return new CgTemplateShaderNode(id, label, ports, body, previewBody, includes, domain,
-                    previewGeometry, showsPreview, properties, variantBodies);
+                    previewGeometry, showsPreview, animated, properties, variantBodies);
         }
     }
 }

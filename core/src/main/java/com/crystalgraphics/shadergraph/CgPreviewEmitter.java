@@ -42,8 +42,15 @@ public final class CgPreviewEmitter {
             };
             """;
 
-    /** A preview's source, the shape to draw it on, and anything that stopped it. */
-    public record Result(String source, CgPreviewGeometry geometry, List<String> errors) {
+    /**
+     * A preview's source, the shape to draw it on, whether it needs to keep redrawing on its own, and
+     * anything that stopped it.
+     *
+     * @param animated whether the previewed node, or anything feeding it, is {@link
+     *                 CgShaderNode#isAnimated()} — see that method for why {@link CgPreviewRenderer}
+     *                 needs this instead of diffing {@link #source()} against the last draw
+     */
+    public record Result(String source, CgPreviewGeometry geometry, List<String> errors, boolean animated) {
         public boolean ok() {
             return errors.isEmpty();
         }
@@ -61,14 +68,14 @@ public final class CgPreviewEmitter {
         CgShaderGraph.Instance instance = graph.instance(nodeId);
         if (instance == null) {
             return new Result("", CgPreviewGeometry.QUAD,
-                    List.of("No node with id '" + nodeId + "' to preview"));
+                    List.of("No node with id '" + nodeId + "' to preview"), false);
         }
         List<CgShaderPort> outputs = instance.type().outputs();
         if (outputs.isEmpty()) {
             // Not an error worth shouting about: an output node legitimately has nothing to show, and
             // the editor's answer is to draw no thumbnail rather than to report a failure.
             return new Result("", CgPreviewGeometry.QUAD,
-                    List.of("Node '" + nodeId + "' has no output to preview"));
+                    List.of("Node '" + nodeId + "' has no output to preview"), false);
         }
         return emit(graph, nodeId, outputs.get(0).id());
     }
@@ -87,7 +94,7 @@ public final class CgPreviewEmitter {
         CgShaderGraph.Instance instance = graph.instance(nodeId);
         if (instance == null) {
             return new Result("", CgPreviewGeometry.QUAD,
-                    List.of("No node with id '" + nodeId + "' to preview"));
+                    List.of("No node with id '" + nodeId + "' to preview"), false);
         }
 
         CgGraphCompiler.Result compiled = CgGraphCompiler.compileFrom(graph, nodeId, true);
@@ -104,18 +111,24 @@ public final class CgPreviewEmitter {
         if (type == null) {
             errors.add("Cannot preview '" + nodeId + "." + portId
                     + "': nothing connected to it says what type it is");
-            return new Result("", CgPreviewGeometry.QUAD, errors);
+            return new Result("", CgPreviewGeometry.QUAD, errors, false);
         }
         if (!isPreviewable(type)) {
             errors.add("Cannot preview '" + nodeId + "." + portId + "': a " + type.glsl()
                     + " has no meaningful thumbnail");
-            return new Result("", CgPreviewGeometry.QUAD, errors);
+            return new Result("", CgPreviewGeometry.QUAD, errors, false);
         }
 
         // A vertex-only node cannot run in the fragment stage, which is where a preview evaluates
         // everything. Reported rather than emitted, because the alternative is GLSL that names a vertex
         // attribute in a fragment body and fails in the driver with a message about generated code.
+        //
+        // Also where "does this preview need to keep redrawing on its own" is decided — see
+        // CgShaderNode.isAnimated(). Folded into this same walk rather than a second pass over the
+        // graph: both questions are "is any dependency of this preview a certain kind of node."
+        boolean animated = false;
         for (CgShaderGraph.Instance dependency : graph.orderedFrom(nodeId)) {
+            if (dependency.type().isAnimated()) animated = true;
             if (dependency.type().domain() != CgShaderDomain.VERTEX) continue;
             // A node that declares a forPreview form reads the preview's own varying instead of the
             // vertex attribute, so it is fragment-safe after all. This is the whole reason Position, UV
@@ -128,7 +141,7 @@ public final class CgPreviewEmitter {
 
         CgPreviewGeometry geometry = CgPreviewGeometry.resolve(graph, nodeId);
         String source = write(compiled, variable, type, geometry);
-        return new Result(source, geometry, errors);
+        return new Result(source, geometry, errors, animated);
     }
 
     private static String write(CgGraphCompiler.Result compiled, String variable, CgShaderType type,

@@ -87,6 +87,24 @@ public final class CgPreviewRenderer {
     private final Set<String> dirty = new LinkedHashSet<>();
 
     /**
+     * Nodes whose last-emitted source reads the live frame clock (a {@code Time} node feeding them,
+     * directly or through the graph) — see {@link #render}.
+     *
+     * <p><b>The source-equality cache and a live uniform are fundamentally incompatible.</b> Two frames
+     * of a {@code Time}-driven subgraph compile to the SAME GLSL text — the source reads {@code CG_TIME},
+     * it never bakes in a value — so an unchanged-source check correctly says "nothing to redraw" every
+     * single time, and the thumbnail freezes at whatever instant it last happened to draw. Rewiring the
+     * node gave it a genuinely different source once (a real cache miss, so it drew once), which is why
+     * the symptom looked like "a new static colour per rewire" rather than "never animates" — it never
+     * animates, rewiring just forces the one redraw that made that visible.</p>
+     *
+     * <p>Re-added to {@code dirty} on every {@link #renderPending} call, and its redraw in {@link #render}
+     * bypasses the source-equality check outright rather than trying to diff two draws of a moving
+     * target.</p>
+     */
+    private final Set<String> animated = new LinkedHashSet<>();
+
+    /**
      * Nodes that could not be drawn, and must therefore not be retried every frame.
      *
      * <p><b>This is the difference between a preview system and a hang.</b> A node that fails is never
@@ -154,6 +172,7 @@ public final class CgPreviewRenderer {
         renderedSource.keySet().retainAll(visibleNodeIds);
         renderedTarget.keySet().retainAll(visibleNodeIds);
         dirty.retainAll(visibleNodeIds);
+        animated.retainAll(visibleNodeIds);
 
         // A visible node that has never been drawn needs a first pass, and THIS is the only place that
         // can notice. invalidateAll() re-marks what has already been rendered, so on a cold start it
@@ -169,7 +188,7 @@ public final class CgPreviewRenderer {
 
     /** Whether anything is waiting to be drawn — lets a caller skip the GL scope entirely. */
     public boolean hasPending() {
-        return !dirty.isEmpty();
+        return !dirty.isEmpty() || !animated.isEmpty();
     }
 
     // ── Drawing ─────────────────────────────────────────────────────────────
@@ -180,11 +199,19 @@ public final class CgPreviewRenderer {
      * <p><b>GL thread, inside a live context.</b> Returns how many were actually drawn, which is 0 in the
      * common steady state where nothing changed.</p>
      *
+     * <p>{@link #animated} is folded into {@code dirty} here, every call, rather than being drawn
+     * separately — a Time-fed node needs exactly the same draw {@link #render} already knows how to do,
+     * just unconditionally instead of behind the source-equality check. Re-adding it here rather than
+     * leaving it added once is what makes it redraw every frame instead of only its first: {@code dirty}
+     * is drained by this same loop, so without this it would draw once (when discovered) and then sit
+     * empty again exactly like any other node whose source stopped changing.</p>
+     *
      * @param graph the graph the dirty node ids refer to
      * @return the number of previews rendered this call
      */
     public int renderPending(CgShaderGraph graph) {
         checkUsable();
+        dirty.addAll(animated);
         if (dirty.isEmpty()) return 0;
 
         int drawn = 0;
@@ -208,12 +235,23 @@ public final class CgPreviewRenderer {
         CgPreviewEmitter.Result emitted = CgPreviewEmitter.emit(graph, nodeId);
         if (!emitted.ok()) {
             failed.add(nodeId);
+            animated.remove(nodeId);
             return null;
         }
 
+        // Tracked from the compiler's own answer, not guessed here — see CgShaderNode.isAnimated() and
+        // the field doc on `animated` above. Kept up to date on every draw, in either direction: a node
+        // rewired to no longer depend on Time goes back to costing nothing, the same as it would if it
+        // had never been animated at all.
+        if (emitted.animated()) animated.add(nodeId);
+        else animated.remove(nodeId);
+
         CgPreviewTarget target = targets.acquire(nodeId);
 
-        // Two conditions, and BOTH are needed.
+        // Two conditions, and BOTH are needed — UNLESS the node is animated, in which case its picture
+        // changes every frame with the source staying byte-identical (it names a uniform, it never bakes
+        // in a value), so the equality check would forever say "nothing changed" about something that
+        // never stops changing. See the `animated` field doc.
         //
         // Identical source means an identical picture, which is what makes a graph that is merely being
         // panned around cost nothing. But the target must also be the same object we last drew into:
@@ -222,7 +260,7 @@ public final class CgPreviewRenderer {
         // output — plausible, silent, and impossible to attribute to pooling by looking at it.
         boolean sameSource = emitted.source().equals(renderedSource.get(nodeId));
         boolean sameTarget = target == renderedTarget.get(nodeId);
-        if (sameSource && sameTarget) return target.texture();
+        if (sameSource && sameTarget && !emitted.animated()) return target.texture();
 
         try {
             CgMaterial material = CgMaterial.fromSource(emitted.source());
@@ -363,6 +401,7 @@ public final class CgPreviewRenderer {
         renderedSource.clear();
         renderedTarget.clear();
         dirty.clear();
+        animated.clear();
         deleted = true;
     }
 
