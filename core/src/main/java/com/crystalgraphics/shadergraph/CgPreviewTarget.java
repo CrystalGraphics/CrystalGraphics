@@ -4,6 +4,7 @@ import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
+import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
 
 /**
@@ -34,7 +35,7 @@ public final class CgPreviewTarget {
     public CgPreviewTarget(String name, int size, int samples) {
         // Clamped against the live context. GL would clamp silently anyway, but asking here means a
         // machine offering 2x is not quietly assumed to be giving 4x.
-        int wanted = Math.max(1, Math.min(samples, CgGL.maxSamples()));
+        int wanted = Math.max(1, Math.min(samples, CgCapabilities.detect().getMaxSamples()));
 
         CgFrameBufferFormat resolveFormat = CgFrameBufferFormat.builder("cg_node_preview")
                 .color(0, CgTextureType.RGBA8)
@@ -54,7 +55,7 @@ public final class CgPreviewTarget {
         CgFrameBufferFormat msFormat = CgFrameBufferFormat.builder("cg_node_preview_ms")
                 .colorRenderbuffer(0, CgTextureType.RGBA8)
                 .depthRenderbuffer(CgTextureType.DEPTH24_STENCIL8)
-                .samples(wanted)
+                .maxSamples()
                 .build();
         this.multisampled = CgFrameBuffer.createOwned(name + "_ms", size, size, msFormat);
     }
