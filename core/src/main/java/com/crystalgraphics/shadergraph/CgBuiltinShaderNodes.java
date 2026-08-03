@@ -916,6 +916,282 @@ public final class CgBuiltinShaderNodes {
             .body("{Out} = (fract({In}) - 0.5) * 2.0;")
             .build();
 
+    // ── Channel ▸ Combine, Flip (Swizzle deferred — see below) ────────────────
+
+    /** Assembles four scalars into a {@code vec4} — the exact inverse of {@link #SPLIT}. {@code A}
+     * defaults to {@code 1.0}, not {@code 0.0}: an untouched Combine should preview an opaque colour,
+     * the same reasoning {@code Color}'s own default carries. */
+    public static final CgShaderNode COMBINE = CgTemplateShaderNode.of("cg:channel/combine")
+            .label("Combine")
+            .in("R", CgShaderType.FLOAT, "0.0")
+            .in("G", CgShaderType.FLOAT, "0.0")
+            .in("B", CgShaderType.FLOAT, "0.0")
+            .in("A", CgShaderType.FLOAT, "1.0")
+            .out("Out", CgShaderType.VEC4)
+            .body("{Out} = vec4({R}, {G}, {B}, {A});")
+            .build();
+
+    /** Inverts whichever channels their own toggle selects — {@code channel' = toggle ? 1-channel :
+     * channel}, one ternary per component. Fixed {@code VEC4}/{@code BOOL}, not {@code DYNAMIC}: a
+     * per-channel toggle is meaningless without knowing which four channels there are. */
+    public static final CgShaderNode FLIP = CgTemplateShaderNode.of("cg:channel/flip")
+            .label("Flip")
+            .in("In", CgShaderType.VEC4, "vec4(0.0, 0.0, 0.0, 0.0)")
+            .in("RFlip", CgShaderType.BOOL, "false")
+            .in("GFlip", CgShaderType.BOOL, "false")
+            .in("BFlip", CgShaderType.BOOL, "false")
+            .in("AFlip", CgShaderType.BOOL, "false")
+            .out("Out", CgShaderType.VEC4)
+            .noPreview()
+            .body("{Out} = vec4({RFlip} ? 1.0 - {In}.r : {In}.r, {GFlip} ? 1.0 - {In}.g : {In}.g, "
+                    + "{BFlip} ? 1.0 - {In}.b : {In}.b, {AFlip} ? 1.0 - {In}.a : {In}.a);")
+            .build();
+
+    // ── UV ▸ direct stdlib calls (Rotate, Tiling and Offset, Polar Coordinates) ───────────────────
+
+    /** {@code uv.glsl}'s own {@code rotate_uv} — {@code Rotation} is radians, same simplification
+     * {@link #ROTATE_ABOUT_AXIS} already documents (Unity's own Unit dropdown not reproduced). */
+    public static final CgShaderNode UV_ROTATE = CgTemplateShaderNode.of("cg:uv/rotate")
+            .label("Rotate")
+            .inWithImplicitDefault("UV", CgShaderType.VEC2, () -> CgBuiltinShaderNodes.UV, "Out")
+            .in("Center", CgShaderType.VEC2, "vec2(0.5, 0.5)")
+            .in("Rotation", CgShaderType.FLOAT, "0.0")
+            .out("Out", CgShaderType.VEC2)
+            .include("crystalgraphics:shaders/lib/uv.glsl")
+            .body("{Out} = rotate_uv({UV}, {Rotation}, {Center});")
+            .build();
+
+    /** {@code uv.glsl}'s {@code tile_uv}. */
+    public static final CgShaderNode TILING_AND_OFFSET = CgTemplateShaderNode.of("cg:uv/tiling-and-offset")
+            .label("Tiling and Offset")
+            .inWithImplicitDefault("UV", CgShaderType.VEC2, () -> CgBuiltinShaderNodes.UV, "Out")
+            .in("Tiling", CgShaderType.VEC2, "vec2(1.0, 1.0)")
+            .in("Offset", CgShaderType.VEC2, "vec2(0.0, 0.0)")
+            .out("Out", CgShaderType.VEC2)
+            .include("crystalgraphics:shaders/lib/uv.glsl")
+            .body("{Out} = tile_uv({UV}, {Tiling}, {Offset});")
+            .build();
+
+    /**
+     * {@code uv.glsl}'s {@code polar_coordinates_uv} — Unity's own node formula, not the generic
+     * {@code cartesian_to_polar_uv} helper beside it.
+     *
+     * <p>It went through that helper first, and the preview said so: the helper wraps theta into
+     * {@code [0,1]} (right for re-tiling a UV into polar space, wrong here), which made the green
+     * channel positive everywhere and produced a uniformly green/yellow thumbnail with the seam on the
+     * wrong axis. Unity's angle is <b>signed</b>, so half the field clamps green to zero and reads red —
+     * the red/green split down the middle is the node's whole visual signature. See that function's own
+     * note for both differences.</p>
+     */
+    public static final CgShaderNode POLAR_COORDINATES = CgTemplateShaderNode.of("cg:uv/polar-coordinates")
+            .label("Polar Coordinates")
+            .inWithImplicitDefault("UV", CgShaderType.VEC2, () -> CgBuiltinShaderNodes.UV, "Out")
+            .in("Center", CgShaderType.VEC2, "vec2(0.5, 0.5)")
+            .in("RadialScale", CgShaderType.FLOAT, "1.0")
+            .in("LengthScale", CgShaderType.FLOAT, "1.0")
+            .out("Out", CgShaderType.VEC2)
+            .include("crystalgraphics:shaders/lib/uv.glsl")
+            .body("{Out} = polar_coordinates_uv({UV}, {Center}, {RadialScale}, {LengthScale});")
+            .build();
+
+    // ── UV ▸ standard distortion formulas (new to uv.glsl this batch) ────────────────────────────
+
+    public static final CgShaderNode TWIRL = CgTemplateShaderNode.of("cg:uv/twirl")
+            .label("Twirl")
+            .inWithImplicitDefault("UV", CgShaderType.VEC2, () -> CgBuiltinShaderNodes.UV, "Out")
+            .in("Center", CgShaderType.VEC2, "vec2(0.5, 0.5)")
+            .in("Strength", CgShaderType.FLOAT, "1.0")
+            .in("Offset", CgShaderType.VEC2, "vec2(0.0, 0.0)")
+            .out("Out", CgShaderType.VEC2)
+            .include("crystalgraphics:shaders/lib/uv.glsl")
+            .body("{Out} = twirl_uv({UV}, {Center}, {Strength}, {Offset});")
+            .build();
+
+    public static final CgShaderNode RADIAL_SHEAR = CgTemplateShaderNode.of("cg:uv/radial-shear")
+            .label("Radial Shear")
+            .inWithImplicitDefault("UV", CgShaderType.VEC2, () -> CgBuiltinShaderNodes.UV, "Out")
+            .in("Center", CgShaderType.VEC2, "vec2(0.5, 0.5)")
+            .in("Strength", CgShaderType.VEC2, "vec2(1.0, 1.0)")
+            .in("Offset", CgShaderType.VEC2, "vec2(0.0, 0.0)")
+            .out("Out", CgShaderType.VEC2)
+            .include("crystalgraphics:shaders/lib/uv.glsl")
+            .body("{Out} = radial_shear_uv({UV}, {Center}, {Strength}, {Offset});")
+            .build();
+
+    public static final CgShaderNode SPHERIZE = CgTemplateShaderNode.of("cg:uv/spherize")
+            .label("Spherize")
+            .inWithImplicitDefault("UV", CgShaderType.VEC2, () -> CgBuiltinShaderNodes.UV, "Out")
+            .in("Center", CgShaderType.VEC2, "vec2(0.5, 0.5)")
+            .in("Strength", CgShaderType.FLOAT, "1.0")
+            .in("Offset", CgShaderType.VEC2, "vec2(0.0, 0.0)")
+            .out("Out", CgShaderType.VEC2)
+            .include("crystalgraphics:shaders/lib/uv.glsl")
+            .body("{Out} = spherize_uv({UV}, {Center}, {Strength}, {Offset});")
+            .build();
+
+    // ── Utility ▸ Logic (And, Or, Not, Nand, Comparison, Branch) ──────────────────────────────────
+    //
+    // All fixed BOOL/FLOAT, not DYNAMIC: GLSL's &&/||/comparison operators are scalar-bool-only (no
+    // bvecN short-circuit form), and generalising Comparison to a vector would need lessThan()/any()/
+    // all() reducing a bvec back to one bool — a real mechanism this batch does not add. noPreview()
+    // on all four boolean-output nodes: a bool has no color-swatch reading the way a vec4 does.
+
+    public static final CgShaderNode AND = CgTemplateShaderNode.of("cg:utility/logic/and")
+            .label("And")
+            .in("A", CgShaderType.BOOL, "true")
+            .in("B", CgShaderType.BOOL, "true")
+            .out("Out", CgShaderType.BOOL)
+            .noPreview()
+            .body("{Out} = {A} && {B};")
+            .build();
+
+    public static final CgShaderNode OR = CgTemplateShaderNode.of("cg:utility/logic/or")
+            .label("Or")
+            .in("A", CgShaderType.BOOL, "false")
+            .in("B", CgShaderType.BOOL, "false")
+            .out("Out", CgShaderType.BOOL)
+            .noPreview()
+            .body("{Out} = {A} || {B};")
+            .build();
+
+    public static final CgShaderNode NOT = CgTemplateShaderNode.of("cg:utility/logic/not")
+            .label("Not")
+            .in("In", CgShaderType.BOOL, "false")
+            .out("Out", CgShaderType.BOOL)
+            .noPreview()
+            .body("{Out} = !{In};")
+            .build();
+
+    /** {@code !(A && B)} — the one Logic node this batch adds beyond Unity's own And/Or/Not/Comparison
+     * quartet, since it costs nothing once {@link #AND} exists. */
+    public static final CgShaderNode NAND = CgTemplateShaderNode.of("cg:utility/logic/nand")
+            .label("Nand")
+            .in("A", CgShaderType.BOOL, "true")
+            .in("B", CgShaderType.BOOL, "true")
+            .out("Out", CgShaderType.BOOL)
+            .noPreview()
+            .body("{Out} = !({A} && {B});")
+            .build();
+
+    /** {@code A} {@code op} {@code B}, {@code op} chosen by the {@code Condition} property — fixed
+     * {@code FLOAT} ports, not {@code DYNAMIC}, per the class-scope note above. */
+    public static final CgShaderNode COMPARISON = CgTemplateShaderNode.of("cg:utility/logic/comparison")
+            .label("Comparison")
+            .in("A", CgShaderType.FLOAT, "0.0")
+            .in("B", CgShaderType.FLOAT, "0.0")
+            .out("Out", CgShaderType.BOOL)
+            .noPreview()
+            .property(CgShaderNodeProperty.of("Condition", "Condition",
+                    "Equal", "NotEqual", "Less", "LessOrEqual", "Greater", "GreaterOrEqual"))
+            .body("{Out} = {A} == {B};")
+            .bodyFor("Condition", "NotEqual", "{Out} = {A} != {B};")
+            .bodyFor("Condition", "Less", "{Out} = {A} < {B};")
+            .bodyFor("Condition", "LessOrEqual", "{Out} = {A} <= {B};")
+            .bodyFor("Condition", "Greater", "{Out} = {A} > {B};")
+            .bodyFor("Condition", "GreaterOrEqual", "{Out} = {A} >= {B};")
+            .build();
+
+    /** {@code Predicate ? True : False} — GLSL's ternary already handles any matching {@code DYNAMIC}
+     * width on both branches, so this needed no per-width special casing. */
+    public static final CgShaderNode BRANCH = CgTemplateShaderNode.of("cg:utility/branch")
+            .label("Branch")
+            .in("Predicate", CgShaderType.BOOL, "true")
+            .in("True", CgShaderType.DYNAMIC, "1.0")
+            .in("False", CgShaderType.DYNAMIC, "0.0")
+            .out("Out", CgShaderType.DYNAMIC)
+            .body("{Out} = {Predicate} ? {True} : {False};")
+            .build();
+
+    // ── Procedural ▸ Pattern, Noise, Shape (six of nine — Voronoi and the two Polygon shapes need a
+    // genuinely new stdlib function each, deferred rather than approximated) ────────────────────────
+
+    /** {@code mix} between two colours by a two-frequency checkerboard parity test — {@code mod(...,
+     * 2.0)} rather than a bitwise parity check, since GLSL's {@code int}/bitwise ops on a value derived
+     * from {@code floor()} of a float coordinate are the less portable choice of the two. */
+    public static final CgShaderNode CHECKERBOARD = CgTemplateShaderNode.of("cg:procedural/pattern/checkerboard")
+            .label("Checkerboard")
+            .inWithImplicitDefault("UV", CgShaderType.VEC2, () -> CgBuiltinShaderNodes.UV, "Out")
+            .in("ColorA", CgShaderType.VEC4, "vec4(1.0, 1.0, 1.0, 1.0)")
+            .in("ColorB", CgShaderType.VEC4, "vec4(0.0, 0.0, 0.0, 1.0)")
+            .in("Frequency", CgShaderType.VEC2, "vec2(2.0, 2.0)")
+            .out("Out", CgShaderType.VEC4)
+            .body("{Out} = mix({ColorA}, {ColorB}, "
+                    + "mod(floor({UV}.x * {Frequency}.x) + floor({UV}.y * {Frequency}.y), 2.0));")
+            .build();
+
+    /** {@code noise.glsl}'s single-octave {@code value_noise}. */
+    public static final CgShaderNode SIMPLE_NOISE = CgTemplateShaderNode.of("cg:procedural/noise/simple-noise")
+            .label("Simple Noise")
+            .inWithImplicitDefault("UV", CgShaderType.VEC2, () -> CgBuiltinShaderNodes.UV, "Out")
+            .in("Scale", CgShaderType.FLOAT, "10.0")
+            .out("Out", CgShaderType.FLOAT)
+            .include("crystalgraphics:shaders/lib/noise.glsl")
+            .body("{Out} = value_noise({UV} * {Scale});")
+            .build();
+
+    /**
+     * {@code noise.glsl}'s {@code fbm4} — four-octave value noise, <b>not</b> true Perlin/gradient
+     * noise. Unity's own Gradient Noise is a real gradient-vector implementation; this library has no
+     * such function yet, and {@code fbm4} is the closest existing stand-in rather than a new one built
+     * to match. Visually similar (both are smooth, band-limited noise), mathematically different —
+     * documented rather than presented as the genuine article, the same honesty this batch's other
+     * simplifications ({@link #EXPONENTIAL}, {@link #TRANSFORM}) already carry.
+     */
+    public static final CgShaderNode GRADIENT_NOISE = CgTemplateShaderNode.of("cg:procedural/noise/gradient-noise")
+            .label("Gradient Noise")
+            .inWithImplicitDefault("UV", CgShaderType.VEC2, () -> CgBuiltinShaderNodes.UV, "Out")
+            .in("Scale", CgShaderType.FLOAT, "10.0")
+            .out("Out", CgShaderType.FLOAT)
+            .include("crystalgraphics:shaders/lib/noise.glsl")
+            .body("{Out} = fbm4({UV} * {Scale});")
+            .build();
+
+    /**
+     * An antialiased ellipse mask — {@code FRAGMENT}-only, like every shape in this batch, since {@code
+     * sdf_coverage} is {@code fwidth}-based. Not {@code sdf.glsl}'s own {@code sdf_rounded_box} (that
+     * is a true rounded-RECTANGLE distance field): {@code length(p/radius) - 1} is the standard cheap
+     * ellipse approximation — its gradient is not unit magnitude off-axis, so the antialiasing band
+     * is not perfectly uniform around the rim, a real but minor cost of not adding a true elliptical
+     * SDF function for this one shape.
+     */
+    public static final CgShaderNode ELLIPSE = CgTemplateShaderNode.of("cg:procedural/shape/ellipse")
+            .label("Ellipse")
+            .inWithImplicitDefault("UV", CgShaderType.VEC2, () -> CgBuiltinShaderNodes.UV, "Out")
+            .in("Center", CgShaderType.VEC2, "vec2(0.5, 0.5)")
+            .in("Radius", CgShaderType.VEC2, "vec2(0.25, 0.25)")
+            .out("Out", CgShaderType.FLOAT)
+            .domain(CgShaderDomain.FRAGMENT)
+            .include("crystalgraphics:shaders/lib/sdf.glsl")
+            .body("{Out} = sdf_coverage(length(({UV} - {Center}) / {Radius}) - 1.0);")
+            .build();
+
+    /** An antialiased rectangle mask — {@code sdf.glsl}'s {@code sdf_rounded_box} at radius {@code 0}.
+     * {@code Size} is the box's HALF-extent, the same convention {@code sdf_rounded_box} itself uses. */
+    public static final CgShaderNode RECTANGLE = CgTemplateShaderNode.of("cg:procedural/shape/rectangle")
+            .label("Rectangle")
+            .inWithImplicitDefault("UV", CgShaderType.VEC2, () -> CgBuiltinShaderNodes.UV, "Out")
+            .in("Center", CgShaderType.VEC2, "vec2(0.5, 0.5)")
+            .in("Size", CgShaderType.VEC2, "vec2(0.25, 0.25)")
+            .out("Out", CgShaderType.FLOAT)
+            .domain(CgShaderDomain.FRAGMENT)
+            .include("crystalgraphics:shaders/lib/sdf.glsl")
+            .body("{Out} = sdf_coverage(sdf_rounded_box({UV} - {Center}, {Size}, 0.0));")
+            .build();
+
+    /** @see #RECTANGLE — same shape, plus {@code sdf_rounded_box}'s own uniform corner radius. */
+    public static final CgShaderNode ROUNDED_RECTANGLE =
+            CgTemplateShaderNode.of("cg:procedural/shape/rounded-rectangle")
+                    .label("Rounded Rectangle")
+                    .inWithImplicitDefault("UV", CgShaderType.VEC2, () -> CgBuiltinShaderNodes.UV, "Out")
+                    .in("Center", CgShaderType.VEC2, "vec2(0.5, 0.5)")
+                    .in("Size", CgShaderType.VEC2, "vec2(0.25, 0.25)")
+                    .in("Radius", CgShaderType.FLOAT, "0.1")
+                    .out("Out", CgShaderType.FLOAT)
+                    .domain(CgShaderDomain.FRAGMENT)
+                    .include("crystalgraphics:shaders/lib/sdf.glsl")
+                    .body("{Out} = sdf_coverage(sdf_rounded_box({UV} - {Center}, {Size}, {Radius}));")
+                    .build();
+
     /**
      * Breaks a vec4 into its four channels — Unity's {@code Split}, and the first node in this library
      * with more than one output.
@@ -1050,6 +1326,11 @@ public final class CgBuiltinShaderNodes {
                 .register(DOT_PRODUCT, CROSS_PRODUCT, DISTANCE, REFLECTION, FRESNEL_EFFECT,
                         PROJECTION, REJECTION, ROTATE_ABOUT_AXIS, SPHERE_MASK, TRANSFORM)     // math/vector
                 .register(SAWTOOTH_WAVE)                                                     // math/wave
-                .register(SPLIT);                                                            // channel
+                .register(SPLIT, COMBINE, FLIP)                                              // channel
+                .register(UV_ROTATE, TILING_AND_OFFSET, POLAR_COORDINATES, TWIRL, RADIAL_SHEAR,
+                        SPHERIZE)                                                             // uv
+                .register(AND, OR, NOT, NAND, COMPARISON, BRANCH)                            // utility/logic
+                .register(CHECKERBOARD, SIMPLE_NOISE, GRADIENT_NOISE, ELLIPSE, RECTANGLE,
+                        ROUNDED_RECTANGLE);                                                   // procedural
     }
 }
