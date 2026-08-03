@@ -596,12 +596,6 @@ public final class CgGL {
                 fixedSampleLocations);
     }
 
-    /** The driver's maximum sample count, or 1 when multisampling is unavailable. */
-    public static int maxSamples() {
-        int max = glGetInteger(GL_MAX_SAMPLES);
-        return max < 1 ? 1 : max;
-    }
-
     public static void glRenderbufferStorage(int target, int internalFormat, int width, int height) {
         backend.glRenderbufferStorage(target, internalFormat, width, height);
     }

@@ -40,7 +40,7 @@ public final class CgCapabilities {
     private static String cachedParsedVersionKey   = null;
     private static int[]  cachedParsedVersionValue = null;
     private static volatile CgCapabilities cachedCaps = null;
-    
+
     // ─────────────────────────────────────────────────────────────────────────
     //  Enums
     // ─────────────────────────────────────────────────────────────────────────
@@ -170,6 +170,8 @@ public final class CgCapabilities {
     /** Whether {@code GL_ARB_gpu_shader_int64} (OpenGL 4.0+) is supported. */
     boolean gpuShaderInt64;
 
+    /** Max MSAA samples available for driver*/
+    @Getter int maxSamples;
     // ── Sampler objects ───────────────────────────────────────────────────────
     /** Whether {@code GL_ARB_sampler_objects} is supported (core in GL 3.3). */
     boolean hasSamplerObjects;
@@ -289,6 +291,7 @@ public final class CgCapabilities {
         caps.maxSsboBindings           = (caps.shaderStorageBufferCore || caps.shaderStorageBufferArb) ? CgGL.glGetInteger(CgGL.GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS) : 0;
         caps.maxUniformBufferBindings  = caps.coreShaders ? CgGL.glGetInteger(CgGL.GL_MAX_UNIFORM_BUFFER_BINDINGS) : 0;
         caps.gpuShaderInt64            = gl.OpenGL40();
+        caps.maxSamples                = CgGL.glGetInteger(CgGL.GL_MAX_SAMPLES);
 
         caps.hasSamplerObjects = gl.OpenGL33() || gl.GL_ARB_sampler_objects();
         

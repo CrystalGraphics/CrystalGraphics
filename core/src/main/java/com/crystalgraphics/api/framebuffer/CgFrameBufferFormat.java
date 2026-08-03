@@ -1,6 +1,7 @@
 package com.crystalgraphics.api.framebuffer;
 
 import com.crystalgraphics.api.texture.CgTextureType;
+import com.crystalgraphics.platform.gl.CgCapabilities;
 import lombok.Getter;
 
 import java.util.Arrays;
@@ -137,8 +138,12 @@ public final class CgFrameBufferFormat {
      * its cache on the format. Leaving it out would let a registry lookup hand back a single-sampled FBO
      * to a caller that asked for MSAA, which fails as "antialiasing silently does nothing".</p>
      */
+    @Getter
     private final int samples;
-
+    
+    @Getter
+    private final boolean maxSamples;
+    
     /** Pre-computed sorted array of slot indices that have a non-null color type. 
      * -- GETTER --
      *  Returns a pre-computed sorted array of active color slot indices.
@@ -154,13 +159,14 @@ public final class CgFrameBufferFormat {
                                  boolean[] colorRenderbuffer,
                                  CgTextureType depthType,
                                  boolean depthRenderbuffer,
-                                 int samples) {
+                                 int samples, boolean maxSamples) {
         this.name              = name;
         this.colorSlots        = colorSlots.clone();
         this.colorRenderbuffer = colorRenderbuffer.clone();
         this.depthType         = depthType;
         this.depthRenderbuffer = depthRenderbuffer;
         this.samples           = samples;
+        this.maxSamples        = maxSamples;
 
         // Pre-compute active slot ids
         int count = 0;
@@ -208,10 +214,10 @@ public final class CgFrameBufferFormat {
     public int colorSlotCount() { return activeColorSlotIds.length; }
 
     /** Samples per pixel; 1 when this format is not multisampled. */
-    public int getSamples() { return samples; }
+    public int getSamples() { return  maxSamples ? CgCapabilities.detect().getMaxSamples() : samples; }
 
     /** Whether this format requests multisampling. */
-    public boolean isMultisampled() { return samples > 1; }
+    public boolean isMultisampled() { return samples > 1 || maxSamples; }
 
     // ── equals / hashCode / toString ──────────────────────────────────────────
 
@@ -272,6 +278,7 @@ public final class CgFrameBufferFormat {
         private final CgTextureType[] colorSlots        = new CgTextureType[MAX_COLOR_SLOTS];
         private final boolean[]       colorRenderbuffer = new boolean[MAX_COLOR_SLOTS];
         private int                   samples           = 1;
+        private boolean               maxSamples        = false;
         private CgTextureType depthType        = null;
         private boolean       depthRenderbuffer = false;
 
@@ -307,6 +314,23 @@ public final class CgFrameBufferFormat {
                         "CgFrameBufferFormat '" + name + "': samples must be >= 1, got " + samples);
             }
             this.samples = samples;
+            return this;
+        }
+
+        /**
+         * Requests multisampling at the DRIVER'S maximum supported sample count instead of a specific
+         * one — {@code true} means "as much MSAA as this machine actually has, or none at all if it has
+         * none," resolved once a live GL context exists to ask ({@code CgGL.maxSamples()}), rather than a
+         * count the caller has to pick and clamp themselves. {@code false} is equivalent to {@link
+         * #samples(int) samples(1)} — no multisampling.
+         *
+         * <p>The point of this overload: a caller that just wants "the best antialiasing this hardware
+         * offers, or a plain single-sampled attachment where it offers none" should not need its own
+         * {@code CgCapabilities}/{@code CgGL.maxSamples()} probe and its own zero-or-one-sample special
+         * case — that logic already has to exist once, here, for every format that wants it.</p>
+         */
+        public Builder maxSamples() {
+            this.maxSamples = true;
             return this;
         }
 
@@ -388,7 +412,7 @@ public final class CgFrameBufferFormat {
                         + "(color or depth) must be defined");
             }
             return new CgFrameBufferFormat(name, colorSlots, colorRenderbuffer, depthType,
-                    depthRenderbuffer, samples);
+                    depthRenderbuffer, samples, maxSamples);
         }
 
         // ── Validation helpers ─────────────────────────────────────────────────
