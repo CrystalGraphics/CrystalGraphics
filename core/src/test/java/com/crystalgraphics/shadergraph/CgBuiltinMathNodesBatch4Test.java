@@ -25,7 +25,7 @@ public class CgBuiltinMathNodesBatch4Test {
      * evaluated the same input. {@code .xy} because {@code UV.Out} is a vec4 (matching Unity's
      * {@code UV Out(4)}) and these ports want a vec2.</p>
      */
-    private static final String UV = "node_implicit_cg_input_geometry_uv_Out.xy";
+    private static final String UV = "node_implicit_cg_Input_Geometry_uv_Out.xy";
 
     private static CgGraphCompiler.Result compileResult(CgShaderNode node) {
         CgShaderGraph graph = new CgShaderGraph()

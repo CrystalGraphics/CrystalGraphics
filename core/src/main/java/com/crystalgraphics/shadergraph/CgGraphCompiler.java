@@ -247,7 +247,7 @@ public final class CgGraphCompiler {
     }
 
     /** Deterministic and GLSL-legal — this ends up inside {@code node_<id>_<port>} variable names, so it
-     * cannot carry the {@code :} / {@code /} a node type id like {@code cg:input/geometry/uv} does. Also
+     * cannot carry the {@code :} / {@code /} a node type id like {@code cg:Input/Geometry/uv} does. Also
      * what {@link #implicitNarrowingSwizzle} recognizes an implicitly-synthesized link by. */
     private static String implicitInstanceId(CgShaderNode source) {
         return IMPLICIT_INSTANCE_PREFIX + source.id().replaceAll("[^A-Za-z0-9_]", "_");
