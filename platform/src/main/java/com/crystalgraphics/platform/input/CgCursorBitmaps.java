@@ -87,6 +87,27 @@ public final class CgCursorBitmaps {
         return outline(body);
     }
 
+    /**
+     * ◄ ► — two opposed triangles with a clear gap between them. {@link CgCursor#SLIDE_ARROW}: this
+     * value can be dragged sideways to change it.
+     *
+     * <h3>Deliberately no shaft, and that is the whole distinction</h3>
+     * <p>{@link #horizontalDoubleArrow()} is the same two heads joined by a bar, and it means "this edge
+     * moves" — a divider, a resize handle. Bare heads with a gap mean "this <em>value</em> moves". The two
+     * gestures land on adjacent pixels in a node editor (a resizable panel containing scrubbable numbers),
+     * so they have to be tellable apart at a glance, which a shared shape would not be.</p>
+     *
+     * <p>Kept off-centre from the middle by a wider gap than the arrow heads alone would give: the pointer
+     * sits at the hotspot, in that gap, and a triangle drawn under the cursor tip reads as one wide blob
+     * rather than as two directions.</p>
+     */
+    public static int[] slideArrow() {
+        boolean[] body = new boolean[SIZE * SIZE];
+        arrowHead(body, 7, HOTSPOT, +1, true);
+        arrowHead(body, SIZE - 8, HOTSPOT, -1, true);
+        return outline(body);
+    }
+
     /** An I-beam. {@code text} — what {@code cursor: auto} resolves to over an editable element. */
     public static int[] textBeam() {
         boolean[] body = new boolean[SIZE * SIZE];
