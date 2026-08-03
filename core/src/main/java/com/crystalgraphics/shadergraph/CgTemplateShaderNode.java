@@ -219,6 +219,19 @@ public final class CgTemplateShaderNode implements CgShaderNode {
             return this;
         }
 
+        /**
+         * An input whose default, when unconnected, is another node's output rather than a literal —
+         * see {@link CgShaderPort#implicitDefault} for why this exists and what it changes about
+         * compilation.
+         *
+         * @param sourceNode deferred on purpose — see {@link CgShaderPort#implicitSource}'s own doc
+         */
+        public Builder inWithImplicitDefault(String portId, CgShaderType type,
+                java.util.function.Supplier<CgShaderNode> sourceNode, String sourceOutputPort) {
+            ports.add(CgShaderPort.implicitDefault(portId, type, sourceNode, sourceOutputPort));
+            return this;
+        }
+
         public Builder out(String portId, CgShaderType type) {
             ports.add(CgShaderPort.output(portId, type));
             return this;
