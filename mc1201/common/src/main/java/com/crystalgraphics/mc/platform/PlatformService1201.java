@@ -2,6 +2,7 @@ package com.crystalgraphics.mc.platform;
 
 import com.crystalgraphics.mc.platform.gl.GL1201Backend;
 import com.crystalgraphics.mc.platform.gl.GL1201Context;
+import com.crystalgraphics.mc.platform.service.CursorService1201;
 import com.crystalgraphics.mc.platform.service.LifecycleService1201;
 import com.crystalgraphics.mc.platform.service.ReloadService1201;
 import com.crystalgraphics.mc.platform.service.RenderingService1201;
@@ -9,7 +10,6 @@ import com.crystalgraphics.mc.platform.service.ResourceService1201;
 import com.crystalgraphics.platform.CgPlatformService;
 import com.crystalgraphics.platform.gl.CgGLBackend;
 import com.crystalgraphics.platform.gl.CgGLContext;
-import com.crystalgraphics.platform.input.CgCursor;
 import com.crystalgraphics.platform.service.CgCursorService;
 import com.crystalgraphics.platform.service.CgInputService;
 import com.crystalgraphics.platform.service.CgLifecycleService;
@@ -25,15 +25,16 @@ import com.crystalgraphics.platform.service.CgSoundService;
  * <p>No GL calls are made in the constructor or static initializer — all GL work is deferred
  * to {@link CgClientLifecycleBridge#onRenderFrame} / {@code onContextInit}.</p>
  *
- * <h3>⚠️ The three UI services below are unimplemented stubs</h3>
- * <p>{@link #input()}, {@link #sound()} and {@link #cursor()} exist and answer, but do nothing. They are
- * written out rather than inherited because {@link CgPlatformService} has no defaults — a platform must
- * state its answer, and "not yet" is a legitimate one as long as it is <em>visible</em>, which a stub in
- * this file is and an inherited no-op would not be.</p>
+ * <h3>⚠️ Two of the three UI services below are unimplemented stubs</h3>
+ * <p>{@link #input()} and {@link #sound()} exist and answer, but do nothing. They are written out rather
+ * than inherited because {@link CgPlatformService} has no defaults — a platform must state its answer,
+ * and "not yet" is a legitimate one as long as it is <em>visible</em>, which a stub in this file is and
+ * an inherited no-op would not be. {@link #cursor()} is now real; see {@link CursorService1201}.</p>
  *
  * <p>This module is commented out of {@code settings.gradle.kts} and does not compile from this build, so
- * none of it is verified. Each stub records what a real implementation needs; all three are LWJGL3/GLFW
- * jobs and materially easier than the LWJGL2 equivalents in {@code mc1710}.</p>
+ * <b>none of it is verified</b> — including the cursor service. Each stub records what a real
+ * implementation needs; both remaining ones are LWJGL3/GLFW jobs and materially easier than the LWJGL2
+ * equivalents in {@code mc1710}.</p>
  */
 public final class PlatformService1201 implements CgPlatformService {
 
@@ -57,7 +58,7 @@ public final class PlatformService1201 implements CgPlatformService {
     @Override public CgResourceService   resources()    { return resources; }
     @Override public CgRenderingService  rendering()    { return rendering; }
 
-    // ── UI services — stubs, see the class javadoc ────────────────────────────────────────────────
+    // ── UI services — see the class javadoc ───────────────────────────────────────────────────────
 
     /**
      * <b>Stub.</b> A real one needs a GLFW keycode table: {@code CgKeyCodes} is LWJGL2-shaped, so unlike
@@ -86,11 +87,18 @@ public final class PlatformService1201 implements CgPlatformService {
     private final CgSoundService sound = soundId -> {};
 
     /**
-     * <b>Stub.</b> The easy one: GLFW ships standard cursors covering the whole resize set, so
-     * {@code glfwCreateStandardCursor} plus a {@code CgCursor} -> {@code GLFW_*_CURSOR} table is the entire
-     * implementation — no bitmaps, unlike {@code CursorService1710}.
+     * <b>Implemented</b> — see {@link CursorService1201}. Still unverified, like everything in this
+     * module, because it does not compile from this build.
+     *
+     * <p>The note that used to sit here said this was the easy one, "no bitmaps, unlike
+     * {@code CursorService1710}". Mostly right, and worth correcting rather than deleting: GLFW's standard
+     * set does cover almost everything, but <b>not {@code slide-arrow}</b> — no toolkit has it, which is
+     * why the {@code CgCursor} value exists at all — so that one is drawn from {@code CgCursorBitmaps},
+     * the same artwork mc1710 uses. The diagonals and the four-way keep a bitmap fallback for a subtler
+     * reason spelled out in {@link CursorService1201}: their standard shapes are GLFW 3.4, and a native
+     * that does not know one returns {@code NULL} rather than complaining.</p>
      */
-    private final CgCursorService cursor = (CgCursor c) -> {};
+    private final CgCursorService cursor = new CursorService1201();
 
     @Override public CgInputService      input()        { return input; }
     @Override public CgSoundService      sound()        { return sound; }
