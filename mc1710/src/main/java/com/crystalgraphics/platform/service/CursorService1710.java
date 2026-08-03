@@ -38,8 +38,8 @@ import java.util.function.Supplier;
  *       throws.</li>
  * </ol>
  *
- * <p>Cursors are created lazily and cached <b>by shape</b> (see {@link Shape}), so the eighteen mapped
- * keywords share six native objects rather than allocating one each. Anything without artwork maps
+ * <p>Cursors are created lazily and cached <b>by shape</b> (see {@link Shape}), so the mapped keywords
+ * share far fewer native objects than there are of them. Anything without artwork maps
  * to {@code null}, which is LWJGL2's way of restoring the system arrow — a better answer than a wrong
  * picture, and the right one for most of the keyword set.</p>
  */
@@ -48,10 +48,11 @@ public final class CursorService1710 implements CgCursorService {
     /**
      * The distinct pictures, as opposed to the CSS keywords that ask for them.
      *
-     * <p><b>Caching by shape rather than by keyword is the point.</b> Eighteen keywords map onto these
-     * six — {@code ew-resize}, {@code col-resize}, {@code e-resize} and {@code w-resize} all want the
-     * same horizontal arrow. Keying the cache on {@link CgCursor} instead allocated a separate native
-     * cursor object per keyword: seventeen natives for six images, each one a real OS handle.</p>
+     * <p><b>Caching by shape rather than by keyword is the point.</b> Eighteen keywords map onto the
+     * handful below — {@code ew-resize}, {@code col-resize}, {@code e-resize} and {@code w-resize} all
+     * want the same horizontal arrow. Keying the cache on {@link CgCursor} instead allocated a separate
+     * native cursor object per keyword: seventeen natives for a handful of images, each one a real OS
+     * handle. (Deliberately not a count — it was already one out of date.)</p>
      */
     private enum Shape {
         HORIZONTAL_ARROW(CgCursorBitmaps::horizontalDoubleArrow),
@@ -60,6 +61,7 @@ public final class CursorService1710 implements CgCursorService {
         DIAGONAL_NESW(CgCursorBitmaps::diagonalNeswArrow),
         FOUR_WAY(CgCursorBitmaps::fourWayArrow),
         TEXT_BEAM(CgCursorBitmaps::textBeam),
+        SLIDE_ARROW(CgCursorBitmaps::slideArrow),
         // The one shape whose hotspot is not its centre: a hand points, and the click must land on the
         // fingertip rather than half a cursor below it.
         POINTING_HAND(CgCursorBitmaps::pointingHand,
@@ -136,6 +138,11 @@ public final class CursorService1710 implements CgCursorService {
                 return Shape.FOUR_WAY;
             case TEXT:
                 return Shape.TEXT_BEAM;
+            // Bare opposed triangles, NOT the horizontal arrow above. A node editor puts a scrubbable
+            // number inside a resizable panel, so "this value slides" and "this edge moves" appear pixels
+            // apart and have to be distinguishable — see CgCursor.SLIDE_ARROW.
+            case SLIDE_ARROW:
+                return Shape.SLIDE_ARROW;
             // `pointer` is the most common cursor in any UI — every button, link and menu row asks for it —
             // so it is the one keyword worth artwork beyond the resize set.
             case POINTER: case GRAB:

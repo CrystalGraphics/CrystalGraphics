@@ -9,6 +9,10 @@ package com.crystalgraphics.platform.input;
  * enumerating every cursor a UI wants. Nothing here is CSS-specific though: the enum is a list of pointer
  * shapes, and a caller that has never parsed a stylesheet can use it exactly as well.</p>
  *
+ * <p>Exactly one value goes beyond that set — {@link #SLIDE_ARROW}, for a gesture the web does not have
+ * and therefore never named. Its javadoc gives the reasoning; the point of restating the rule here is that
+ * a second exception should have to argue for itself just as hard.</p>
+ *
  * <p>The full set is present even though no platform can present all of it. A curated subset makes the
  * omissions invisible until someone hits one; the whole list makes a gap explicit at the mapping table,
  * where it belongs.</p>
@@ -78,7 +82,29 @@ public enum CgCursor {
 
     // ── Zooming ─────────────────────────────────────────────────────────────
     ZOOM_IN("zoom-in"),
-    ZOOM_OUT("zoom-out");
+    ZOOM_OUT("zoom-out"),
+
+    // ── Beyond CSS ──────────────────────────────────────────────────────────
+    /**
+     * A pair of opposed triangles: <b>this value can be dragged sideways to change it.</b>
+     *
+     * <p><b>The one value with no CSS keyword behind it</b>, and a deliberate divergence from the rule
+     * stated above rather than an oversight. The gesture it advertises — press a number's label and slide
+     * to scrub it — has no web equivalent at all, so CSS never had a reason to name a cursor for it, while
+     * every desktop tool that has the gesture ships the shape: Unity as {@code MouseCursor.SlideArrow},
+     * Blender, Photoshop and Figma each with their own.</p>
+     *
+     * <p>It is <b>not</b> {@link #EW_RESIZE}. Web scrubbers borrow that one because it is the closest
+     * thing available to them, but it means "this edge can be dragged" and is already spoken for here by
+     * {@code splitview} dividers and resize handles — giving it a second meaning would leave no way to
+     * tell a resizable panel from a scrubbable number.</p>
+     *
+     * <p>Adding it here is what the enum's own contract asks for: the full set lives in one place so that
+     * a platform which cannot present something says so at its mapping table. A platform with no artwork
+     * for this falls back to {@code ew-resize} — a cosmetic gap, which is the documented outcome for any
+     * unimplemented cursor.</p>
+     */
+    SLIDE_ARROW("slide-arrow");
 
     /** The CSS keyword. Kept because the enum name cannot spell it — {@code EW_RESIZE} is
      * {@code ew-resize}, and a platform mapping table is far easier to read against the real names. */
