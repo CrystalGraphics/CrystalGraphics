@@ -30,7 +30,7 @@ import static org.junit.Assert.*;
 public class CgImplicitPortDefaultTest {
 
     /** The variable {@link CgGraphCompiler}'s synthesized {@code UV} instance declares. */
-    private static final String UV_OUT = "node_implicit_cg_input_geometry_uv_Out";
+    private static final String UV_OUT = "node_implicit_cg_Input_Geometry_uv_Out";
 
     private static CgShaderGraph oneNode(CgShaderNode type) {
         return new CgShaderGraph().add(CgShaderGraph.Instance.of("n", type)).output("n");

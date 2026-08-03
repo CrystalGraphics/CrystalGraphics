@@ -70,7 +70,7 @@ public final class CgBuiltinShaderNodes {
      * editor sitting on a port that would vanish the moment anything was wired to it — and a text box
      * reading {@code vec4(1.0, 1.0, 1.0, 1.0)} as the way to choose a colour.</p>
      */
-    public static final CgShaderNode COLOR = CgTemplateShaderNode.of("cg:input/basic/color")
+    public static final CgShaderNode COLOR = CgTemplateShaderNode.of("cg:Input/Basic/color")
             .label("Color")
             .out("Out", CgShaderType.VEC4)
             .property(CgShaderNodeProperty.value("Value", "", CgShaderType.VEC4, "vec4(0.0, 0.0, 0.0, 1.0)"))
@@ -85,7 +85,7 @@ public final class CgBuiltinShaderNodes {
      * components: type a number, or wire something in and the knob steps aside. A property here would
      * have made the one-component case the odd one out for no reason.</p>
      */
-    public static final CgShaderNode FLOAT = CgTemplateShaderNode.of("cg:input/basic/float")
+    public static final CgShaderNode FLOAT = CgTemplateShaderNode.of("cg:Input/Basic/float")
             .label("Float")
             .in("X", CgShaderType.FLOAT, "0.0")
             .out("Out", CgShaderType.FLOAT)
@@ -102,7 +102,7 @@ public final class CgBuiltinShaderNodes {
      * unhooking that connection puts the knob back rather than losing what was there. The knobs are
      * ordinary unconnected-input editors, so none of this needs special support.</p>
      */
-    public static final CgShaderNode VECTOR4 = CgTemplateShaderNode.of("cg:input/basic/vector4")
+    public static final CgShaderNode VECTOR4 = CgTemplateShaderNode.of("cg:Input/Basic/vector4")
             .label("Vector 4")
             .in("X", CgShaderType.FLOAT, "0.0")
             .in("Y", CgShaderType.FLOAT, "0.0")
@@ -114,7 +114,7 @@ public final class CgBuiltinShaderNodes {
             .build();
 
     /** @see #VECTOR4 */
-    public static final CgShaderNode VECTOR3 = CgTemplateShaderNode.of("cg:input/basic/vector3")
+    public static final CgShaderNode VECTOR3 = CgTemplateShaderNode.of("cg:Input/Basic/vector3")
             .label("Vector 3")
             .in("X", CgShaderType.FLOAT, "0.0")
             .in("Y", CgShaderType.FLOAT, "0.0")
@@ -125,7 +125,7 @@ public final class CgBuiltinShaderNodes {
             .build();
 
     /** @see #VECTOR4 */
-    public static final CgShaderNode VECTOR2 = CgTemplateShaderNode.of("cg:input/basic/vector2")
+    public static final CgShaderNode VECTOR2 = CgTemplateShaderNode.of("cg:Input/Basic/vector2")
             .label("Vector 2")
             .in("X", CgShaderType.FLOAT, "0.0")
             .in("Y", CgShaderType.FLOAT, "0.0")
@@ -151,7 +151,7 @@ public final class CgBuiltinShaderNodes {
      * <p>No preview, matching Unity: five numbers reading themselves above a swatch that just shows
      * "the current brightness" is the constant's own problem repeated, not a picture worth drawing.</p>
      */
-    public static final CgShaderNode TIME = CgTemplateShaderNode.of("cg:input/basic/time")
+    public static final CgShaderNode TIME = CgTemplateShaderNode.of("cg:Input/Basic/time")
             .label("Time")
             // Unity spells these "Sine Time"/"Cosine Time" — a space CgShaderPort's id cannot carry,
             // since it is substituted straight into a GLSL variable name (see variableName()). No
@@ -175,7 +175,7 @@ public final class CgBuiltinShaderNodes {
      * {@code vec3(...)} around the scalar. That is one node instead of four, and it is the reason
      * {@link CgShaderNode} is an interface rather than only data.</p>
      */
-    public static final CgShaderNode ADD = CgTemplateShaderNode.of("cg:math/basic/add")
+    public static final CgShaderNode ADD = CgTemplateShaderNode.of("cg:Math/Basic/add")
             .label("Add")
             .in("A", CgShaderType.DYNAMIC, "0.0")
             .in("B", CgShaderType.DYNAMIC, "0.0")
@@ -198,7 +198,7 @@ public final class CgBuiltinShaderNodes {
      * Multiply wants BOTH sides given a real value, not one wired input silently standing in for the
      * whole node).</p>
      */
-    public static final CgShaderNode MULTIPLY = CgTemplateShaderNode.of("cg:math/basic/multiply")
+    public static final CgShaderNode MULTIPLY = CgTemplateShaderNode.of("cg:Math/Basic/multiply")
             .label("Multiply")
             .in("A", CgShaderType.DYNAMIC, "0.0")
             .in("B", CgShaderType.DYNAMIC, "1.0")
@@ -214,7 +214,7 @@ public final class CgBuiltinShaderNodes {
      * wired is {@code 0 - 0 = 0} and wiring only one side passes that side through untouched either
      * way ({@code A - 0} or {@code 0 - B}), both honest.</p>
      */
-    public static final CgShaderNode SUBTRACT = CgTemplateShaderNode.of("cg:math/basic/subtract")
+    public static final CgShaderNode SUBTRACT = CgTemplateShaderNode.of("cg:Math/Basic/subtract")
             .label("Subtract")
             .in("A", CgShaderType.DYNAMIC, "0.0")
             .in("B", CgShaderType.DYNAMIC, "0.0")
@@ -230,7 +230,7 @@ public final class CgBuiltinShaderNodes {
      * rather than a value that poisons everything computed from it. {@code A} stays {@code 0.0} for the
      * same reason {@link #ADD}'s does: an unwired numerator is nothing to divide.</p>
      */
-    public static final CgShaderNode DIVIDE = CgTemplateShaderNode.of("cg:math/basic/divide")
+    public static final CgShaderNode DIVIDE = CgTemplateShaderNode.of("cg:Math/Basic/divide")
             .label("Divide")
             .in("A", CgShaderType.DYNAMIC, "0.0")
             .in("B", CgShaderType.DYNAMIC, "1.0")
@@ -246,7 +246,7 @@ public final class CgBuiltinShaderNodes {
      * {@code NaN} behaviour, and silently substituting a "safer" function would make this node compute
      * something Unity's own graph does not for the same inputs.</p>
      */
-    public static final CgShaderNode POWER = CgTemplateShaderNode.of("cg:math/basic/power")
+    public static final CgShaderNode POWER = CgTemplateShaderNode.of("cg:Math/Basic/power")
             .label("Power")
             .in("A", CgShaderType.DYNAMIC, "1.0")
             .in("B", CgShaderType.DYNAMIC, "2.0")
@@ -258,7 +258,7 @@ public final class CgBuiltinShaderNodes {
      * The square root of a value of any width — GLSL's {@code sqrt} is already {@code genType}, so one
      * template covers float through vec4 with no {@code {type:}} cast needed anywhere.
      */
-    public static final CgShaderNode SQUARE_ROOT = CgTemplateShaderNode.of("cg:math/basic/square-root")
+    public static final CgShaderNode SQUARE_ROOT = CgTemplateShaderNode.of("cg:Math/Basic/square-root")
             .label("Square Root")
             .in("A", CgShaderType.DYNAMIC, "0.0")
             .out("Out", CgShaderType.DYNAMIC)
@@ -266,7 +266,7 @@ public final class CgBuiltinShaderNodes {
             .build();
 
     /** The absolute value of a value of any width. */
-    public static final CgShaderNode ABSOLUTE = CgTemplateShaderNode.of("cg:math/advanced/absolute")
+    public static final CgShaderNode ABSOLUTE = CgTemplateShaderNode.of("cg:Math/Advanced/absolute")
             .label("Absolute")
             .in("A", CgShaderType.DYNAMIC, "0.0")
             .out("Out", CgShaderType.DYNAMIC)
@@ -277,7 +277,7 @@ public final class CgBuiltinShaderNodes {
      * Flips the sign of a value of any width — Unity's {@code Negate} is {@code Out = -1 * In}, which
      * is exactly what unary minus already does component-wise in GLSL.
      */
-    public static final CgShaderNode NEGATE = CgTemplateShaderNode.of("cg:math/advanced/negate")
+    public static final CgShaderNode NEGATE = CgTemplateShaderNode.of("cg:Math/Advanced/negate")
             .label("Negate")
             .in("A", CgShaderType.DYNAMIC, "0.0")
             .out("Out", CgShaderType.DYNAMIC)
@@ -292,7 +292,7 @@ public final class CgBuiltinShaderNodes {
      * (its own honest identity, {@code 1 - 1 = 0}) instead of {@code 1}, which would read as "this node
      * does nothing" the instant nothing is wired to it.</p>
      */
-    public static final CgShaderNode ONE_MINUS = CgTemplateShaderNode.of("cg:math/range/one-minus")
+    public static final CgShaderNode ONE_MINUS = CgTemplateShaderNode.of("cg:Math/Range/one-minus")
             .label("One Minus")
             .in("A", CgShaderType.DYNAMIC, "1.0")
             .out("Out", CgShaderType.DYNAMIC)
@@ -300,7 +300,7 @@ public final class CgBuiltinShaderNodes {
             .build();
 
     /** The component-wise minimum of two values of any matching width. */
-    public static final CgShaderNode MINIMUM = CgTemplateShaderNode.of("cg:math/range/minimum")
+    public static final CgShaderNode MINIMUM = CgTemplateShaderNode.of("cg:Math/Range/minimum")
             .label("Minimum")
             .in("A", CgShaderType.DYNAMIC, "0.0")
             .in("B", CgShaderType.DYNAMIC, "0.0")
@@ -309,7 +309,7 @@ public final class CgBuiltinShaderNodes {
             .build();
 
     /** The component-wise maximum of two values of any matching width. */
-    public static final CgShaderNode MAXIMUM = CgTemplateShaderNode.of("cg:math/range/maximum")
+    public static final CgShaderNode MAXIMUM = CgTemplateShaderNode.of("cg:Math/Range/maximum")
             .label("Maximum")
             .in("A", CgShaderType.DYNAMIC, "0.0")
             .in("B", CgShaderType.DYNAMIC, "0.0")
@@ -326,7 +326,7 @@ public final class CgBuiltinShaderNodes {
      * overload set includes {@code clamp(vecN, float, float)}, broadcasting the scalar bound across
      * every component, so {@code clamp(node_x_Out, 0.0, 1.0)} on a {@code vec3} is legal as written.</p>
      */
-    public static final CgShaderNode CLAMP = CgTemplateShaderNode.of("cg:math/range/clamp")
+    public static final CgShaderNode CLAMP = CgTemplateShaderNode.of("cg:Math/Range/clamp")
             .label("Clamp")
             .in("In", CgShaderType.DYNAMIC, "0.0")
             .in("Min", CgShaderType.DYNAMIC, "0.0")
@@ -340,7 +340,7 @@ public final class CgBuiltinShaderNodes {
      * what every other consumer of that helper already calls, rather than a second, node-local
      * {@code clamp(x, 0.0, 1.0)} spelling of the identical operation.
      */
-    public static final CgShaderNode SATURATE = CgTemplateShaderNode.of("cg:math/range/saturate")
+    public static final CgShaderNode SATURATE = CgTemplateShaderNode.of("cg:Math/Range/saturate")
             .label("Saturate")
             .in("A", CgShaderType.DYNAMIC, "0.0")
             .out("Out", CgShaderType.DYNAMIC)
@@ -349,7 +349,7 @@ public final class CgBuiltinShaderNodes {
             .build();
 
     /** Rounds down to the nearest integer, component-wise, for a value of any width. */
-    public static final CgShaderNode FLOOR = CgTemplateShaderNode.of("cg:math/round/floor")
+    public static final CgShaderNode FLOOR = CgTemplateShaderNode.of("cg:Math/Round/floor")
             .label("Floor")
             .in("A", CgShaderType.DYNAMIC, "0.0")
             .out("Out", CgShaderType.DYNAMIC)
@@ -357,7 +357,7 @@ public final class CgBuiltinShaderNodes {
             .build();
 
     /** Rounds up to the nearest integer, component-wise, for a value of any width. */
-    public static final CgShaderNode CEILING = CgTemplateShaderNode.of("cg:math/round/ceiling")
+    public static final CgShaderNode CEILING = CgTemplateShaderNode.of("cg:Math/Round/ceiling")
             .label("Ceiling")
             .in("A", CgShaderType.DYNAMIC, "0.0")
             .out("Out", CgShaderType.DYNAMIC)
@@ -365,7 +365,7 @@ public final class CgBuiltinShaderNodes {
             .build();
 
     /** Rounds to the nearest integer, component-wise, for a value of any width. */
-    public static final CgShaderNode ROUND = CgTemplateShaderNode.of("cg:math/round/round")
+    public static final CgShaderNode ROUND = CgTemplateShaderNode.of("cg:Math/Round/round")
             .label("Round")
             .in("A", CgShaderType.DYNAMIC, "0.0")
             .out("Out", CgShaderType.DYNAMIC)
@@ -373,7 +373,7 @@ public final class CgBuiltinShaderNodes {
             .build();
 
     /** {@code -1}, {@code 0} or {@code 1} per component, matching the sign of the input. */
-    public static final CgShaderNode SIGN = CgTemplateShaderNode.of("cg:math/round/sign")
+    public static final CgShaderNode SIGN = CgTemplateShaderNode.of("cg:Math/Round/sign")
             .label("Sign")
             .in("A", CgShaderType.DYNAMIC, "0.0")
             .out("Out", CgShaderType.DYNAMIC)
@@ -384,7 +384,7 @@ public final class CgBuiltinShaderNodes {
 
     /** {@code e^A} — Unity's Exponential minus its Base dropdown (Base 2 / Base e): this is always the
      * natural-log form, the same simplification {@link #LOG} makes for the same reason. */
-    public static final CgShaderNode EXPONENTIAL = CgTemplateShaderNode.of("cg:math/advanced/exponential")
+    public static final CgShaderNode EXPONENTIAL = CgTemplateShaderNode.of("cg:Math/Advanced/exponential")
             .label("Exponential")
             .in("A", CgShaderType.DYNAMIC, "0.0")
             .out("Out", CgShaderType.DYNAMIC)
@@ -394,7 +394,7 @@ public final class CgBuiltinShaderNodes {
     /** The magnitude of a vector of any width — {@code DYNAMIC} in, fixed {@code FLOAT} out, the same
      * shape {@link #DOT_PRODUCT} uses: the input's width is resolved from context, but a length is
      * always one number regardless of it. */
-    public static final CgShaderNode LENGTH = CgTemplateShaderNode.of("cg:math/advanced/length")
+    public static final CgShaderNode LENGTH = CgTemplateShaderNode.of("cg:Math/Advanced/length")
             .label("Length")
             .in("A", CgShaderType.DYNAMIC, "0.0")
             .out("Out", CgShaderType.FLOAT)
@@ -403,7 +403,7 @@ public final class CgBuiltinShaderNodes {
 
     /** Natural log — Unity's Log minus its Base dropdown (Base 2 / Base 10 / Base e), same
      * simplification as {@link #EXPONENTIAL}. Defaults to {@code 1.0}: {@code log(0)} is {@code -inf}. */
-    public static final CgShaderNode LOG = CgTemplateShaderNode.of("cg:math/advanced/log")
+    public static final CgShaderNode LOG = CgTemplateShaderNode.of("cg:Math/Advanced/log")
             .label("Log")
             .in("A", CgShaderType.DYNAMIC, "1.0")
             .out("Out", CgShaderType.DYNAMIC)
@@ -411,7 +411,7 @@ public final class CgBuiltinShaderNodes {
             .build();
 
     /** {@code A} wrapped into {@code [0, B)} — GLSL's {@code mod}, component-wise for any width. */
-    public static final CgShaderNode MODULO = CgTemplateShaderNode.of("cg:math/advanced/modulo")
+    public static final CgShaderNode MODULO = CgTemplateShaderNode.of("cg:Math/Advanced/modulo")
             .label("Modulo")
             .in("A", CgShaderType.DYNAMIC, "0.5")
             .in("B", CgShaderType.DYNAMIC, "1.0")
@@ -422,7 +422,7 @@ public final class CgBuiltinShaderNodes {
     /** Scales a vector to unit length, direction unchanged. Defaults to {@code 1.0} rather than
      * {@code 0.0} — {@code normalize} of a zero-length vector is undefined (a {@code 0/0} per
      * component), so the one default that cannot silently produce {@code NaN} is a non-zero one. */
-    public static final CgShaderNode NORMALIZE = CgTemplateShaderNode.of("cg:math/advanced/normalize")
+    public static final CgShaderNode NORMALIZE = CgTemplateShaderNode.of("cg:Math/Advanced/normalize")
             .label("Normalize")
             .in("A", CgShaderType.DYNAMIC, "1.0")
             .out("Out", CgShaderType.DYNAMIC)
@@ -432,7 +432,7 @@ public final class CgBuiltinShaderNodes {
     /** Quantises {@code In} to {@code Steps} discrete levels — Unity's formula, {@code floor(In *
      * Steps) / Steps}, kept as one expression rather than an intermediate variable since the template
      * language has nowhere to put one. */
-    public static final CgShaderNode POSTERIZE = CgTemplateShaderNode.of("cg:math/advanced/posterize")
+    public static final CgShaderNode POSTERIZE = CgTemplateShaderNode.of("cg:Math/Advanced/posterize")
             .label("Posterize")
             .in("In", CgShaderType.DYNAMIC, "1.0")
             .in("Steps", CgShaderType.DYNAMIC, "4.0")
@@ -442,7 +442,7 @@ public final class CgBuiltinShaderNodes {
 
     /** {@code 1 / A}. Defaults to {@code 1.0}, not {@code 0.0} — same reasoning as {@link #DIVIDE}'s
      * {@code B}: an untouched node should preview a real number, not {@code inf}. */
-    public static final CgShaderNode RECIPROCAL = CgTemplateShaderNode.of("cg:math/advanced/reciprocal")
+    public static final CgShaderNode RECIPROCAL = CgTemplateShaderNode.of("cg:Math/Advanced/reciprocal")
             .label("Reciprocal")
             .in("A", CgShaderType.DYNAMIC, "1.0")
             .out("Out", CgShaderType.DYNAMIC)
@@ -452,7 +452,7 @@ public final class CgBuiltinShaderNodes {
     /** {@code 1 / sqrt(A)} — GLSL's {@code inversesqrt}, one call rather than two. Same {@code 1.0}
      * default as {@link #RECIPROCAL} and for the same reason. */
     public static final CgShaderNode RECIPROCAL_SQUARE_ROOT =
-            CgTemplateShaderNode.of("cg:math/advanced/reciprocal-square-root")
+            CgTemplateShaderNode.of("cg:Math/Advanced/reciprocal-square-root")
                     .label("Reciprocal Square Root")
                     .in("A", CgShaderType.DYNAMIC, "1.0")
                     .out("Out", CgShaderType.DYNAMIC)
@@ -467,7 +467,7 @@ public final class CgBuiltinShaderNodes {
      * {@code [A,B]} range extrapolates to a fraction outside {@code [0,1]} rather than saturating,
      * matching Unity's own Inverse Lerp; a caller that wants it clamped chains {@link #SATURATE}.
      */
-    public static final CgShaderNode INVERSE_LERP = CgTemplateShaderNode.of("cg:math/interpolation/inverse-lerp")
+    public static final CgShaderNode INVERSE_LERP = CgTemplateShaderNode.of("cg:Math/Interpolation/inverse-lerp")
             .label("Inverse Lerp")
             .in("A", CgShaderType.DYNAMIC, "0.0")
             .in("B", CgShaderType.DYNAMIC, "1.0")
@@ -483,7 +483,7 @@ public final class CgBuiltinShaderNodes {
      * exactly like {@link #CLAMP}'s {@code Min}/{@code Max} do, and still compiles once {@code A}/
      * {@code B} widen.
      */
-    public static final CgShaderNode LERP = CgTemplateShaderNode.of("cg:math/interpolation/lerp")
+    public static final CgShaderNode LERP = CgTemplateShaderNode.of("cg:Math/Interpolation/lerp")
             .label("Lerp")
             .in("A", CgShaderType.DYNAMIC, "0.0")
             .in("B", CgShaderType.DYNAMIC, "1.0")
@@ -494,7 +494,7 @@ public final class CgBuiltinShaderNodes {
 
     /** GLSL's own {@code smoothstep} — a Hermite-smoothed {@link #INVERSE_LERP}, clamped to
      * {@code [0,1]} and eased at both ends rather than linear. */
-    public static final CgShaderNode SMOOTHSTEP = CgTemplateShaderNode.of("cg:math/interpolation/smoothstep")
+    public static final CgShaderNode SMOOTHSTEP = CgTemplateShaderNode.of("cg:Math/Interpolation/smoothstep")
             .label("Smoothstep")
             .in("Edge1", CgShaderType.DYNAMIC, "0.0")
             .in("Edge2", CgShaderType.DYNAMIC, "1.0")
@@ -506,7 +506,7 @@ public final class CgBuiltinShaderNodes {
     // ── Math ▸ Range (completing the subcategory) ─────────────────────────────
 
     /** The fractional part of {@code In} — GLSL's {@code fract}. */
-    public static final CgShaderNode FRACTION = CgTemplateShaderNode.of("cg:math/range/fraction")
+    public static final CgShaderNode FRACTION = CgTemplateShaderNode.of("cg:Math/Range/fraction")
             .label("Fraction")
             .in("In", CgShaderType.DYNAMIC, "0.5")
             .out("Out", CgShaderType.DYNAMIC)
@@ -522,7 +522,7 @@ public final class CgBuiltinShaderNodes {
      * remap(vec3, float, float, float, float)} matches no overload at all and the shader fails to
      * compile the instant {@code In} widens past a float.
      */
-    public static final CgShaderNode REMAP = CgTemplateShaderNode.of("cg:math/range/remap")
+    public static final CgShaderNode REMAP = CgTemplateShaderNode.of("cg:Math/Range/remap")
             .label("Remap")
             .in("In", CgShaderType.DYNAMIC, "0.5")
             .in("InMin", CgShaderType.DYNAMIC, "0.0")
@@ -541,7 +541,7 @@ public final class CgBuiltinShaderNodes {
      * concrete {@code vec2} to hash and the result is always one float, so there is no width to
      * resolve from context the way every other node in this batch has one.
      */
-    public static final CgShaderNode RANDOM_RANGE = CgTemplateShaderNode.of("cg:math/range/random-range")
+    public static final CgShaderNode RANDOM_RANGE = CgTemplateShaderNode.of("cg:Math/Range/random-range")
             .label("Random Range")
             .in("Seed", CgShaderType.VEC2, "vec2(0.0, 0.0)")
             .in("Min", CgShaderType.FLOAT, "0.0")
@@ -554,7 +554,7 @@ public final class CgBuiltinShaderNodes {
     // ── Math ▸ Round (completing the subcategory) ─────────────────────────────
 
     /** {@code 0} where {@code In < Edge}, {@code 1} where {@code In >= Edge} — GLSL's {@code step}. */
-    public static final CgShaderNode STEP = CgTemplateShaderNode.of("cg:math/round/step")
+    public static final CgShaderNode STEP = CgTemplateShaderNode.of("cg:Math/Round/step")
             .label("Step")
             .in("Edge", CgShaderType.DYNAMIC, "0.5")
             .in("In", CgShaderType.DYNAMIC, "1.0")
@@ -564,7 +564,7 @@ public final class CgBuiltinShaderNodes {
 
     /** Discards the fractional part, toward zero — GLSL's {@code trunc}, distinct from {@link #FLOOR}
      * only for a negative input ({@code trunc(-1.5) = -1.0}, {@code floor(-1.5) = -2.0}). */
-    public static final CgShaderNode TRUNCATE = CgTemplateShaderNode.of("cg:math/round/truncate")
+    public static final CgShaderNode TRUNCATE = CgTemplateShaderNode.of("cg:Math/Round/truncate")
             .label("Truncate")
             .in("A", CgShaderType.DYNAMIC, "0.0")
             .out("Out", CgShaderType.DYNAMIC)
@@ -573,21 +573,21 @@ public final class CgBuiltinShaderNodes {
 
     // ── Math ▸ Trigonometry (all twelve, completing the subcategory) ─────────
 
-    public static final CgShaderNode SINE = CgTemplateShaderNode.of("cg:math/trigonometry/sine")
+    public static final CgShaderNode SINE = CgTemplateShaderNode.of("cg:Math/Trigonometry/sine")
             .label("Sine")
             .in("In", CgShaderType.DYNAMIC, "0.0")
             .out("Out", CgShaderType.DYNAMIC)
             .body("{Out} = sin({In});")
             .build();
 
-    public static final CgShaderNode COSINE = CgTemplateShaderNode.of("cg:math/trigonometry/cosine")
+    public static final CgShaderNode COSINE = CgTemplateShaderNode.of("cg:Math/Trigonometry/cosine")
             .label("Cosine")
             .in("In", CgShaderType.DYNAMIC, "0.0")
             .out("Out", CgShaderType.DYNAMIC)
             .body("{Out} = cos({In});")
             .build();
 
-    public static final CgShaderNode TANGENT = CgTemplateShaderNode.of("cg:math/trigonometry/tangent")
+    public static final CgShaderNode TANGENT = CgTemplateShaderNode.of("cg:Math/Trigonometry/tangent")
             .label("Tangent")
             .in("In", CgShaderType.DYNAMIC, "0.0")
             .out("Out", CgShaderType.DYNAMIC)
@@ -596,7 +596,7 @@ public final class CgBuiltinShaderNodes {
 
     /** Inverse sine, in radians. {@code In} outside {@code [-1,1]} is out of domain (GLSL yields
      * undefined results, not an error) — the same contract GLSL's own {@code asin} carries. */
-    public static final CgShaderNode ARCSINE = CgTemplateShaderNode.of("cg:math/trigonometry/arcsine")
+    public static final CgShaderNode ARCSINE = CgTemplateShaderNode.of("cg:Math/Trigonometry/arcsine")
             .label("Arcsine")
             .in("In", CgShaderType.DYNAMIC, "0.0")
             .out("Out", CgShaderType.DYNAMIC)
@@ -604,7 +604,7 @@ public final class CgBuiltinShaderNodes {
             .build();
 
     /** Inverse cosine, in radians. Same domain note as {@link #ARCSINE}. */
-    public static final CgShaderNode ARCCOSINE = CgTemplateShaderNode.of("cg:math/trigonometry/arccosine")
+    public static final CgShaderNode ARCCOSINE = CgTemplateShaderNode.of("cg:Math/Trigonometry/arccosine")
             .label("Arccosine")
             .in("In", CgShaderType.DYNAMIC, "0.0")
             .out("Out", CgShaderType.DYNAMIC)
@@ -613,7 +613,7 @@ public final class CgBuiltinShaderNodes {
 
     /** Inverse tangent, in radians, in {@code (-pi/2, pi/2)} — the one-argument form. See {@link
      * #ARCTANGENT2} for the two-argument, full-circle version. */
-    public static final CgShaderNode ARCTANGENT = CgTemplateShaderNode.of("cg:math/trigonometry/arctangent")
+    public static final CgShaderNode ARCTANGENT = CgTemplateShaderNode.of("cg:Math/Trigonometry/arctangent")
             .label("Arctangent")
             .in("In", CgShaderType.DYNAMIC, "0.0")
             .out("Out", CgShaderType.DYNAMIC)
@@ -622,7 +622,7 @@ public final class CgBuiltinShaderNodes {
 
     /** Two-argument {@code atan(A, B)} — the full {@code (-pi, pi]} range {@link #ARCTANGENT} cannot
      * reach, since it alone cannot tell which quadrant the original {@code (x,y)} came from. */
-    public static final CgShaderNode ARCTANGENT2 = CgTemplateShaderNode.of("cg:math/trigonometry/arctangent2")
+    public static final CgShaderNode ARCTANGENT2 = CgTemplateShaderNode.of("cg:Math/Trigonometry/arctangent2")
             .label("Arctangent2")
             .in("A", CgShaderType.DYNAMIC, "0.0")
             .in("B", CgShaderType.DYNAMIC, "1.0")
@@ -631,7 +631,7 @@ public final class CgBuiltinShaderNodes {
             .build();
 
     public static final CgShaderNode HYPERBOLIC_SINE =
-            CgTemplateShaderNode.of("cg:math/trigonometry/hyperbolic-sine")
+            CgTemplateShaderNode.of("cg:Math/Trigonometry/hyperbolic-sine")
                     .label("Hyperbolic Sine")
                     .in("In", CgShaderType.DYNAMIC, "0.0")
                     .out("Out", CgShaderType.DYNAMIC)
@@ -639,7 +639,7 @@ public final class CgBuiltinShaderNodes {
                     .build();
 
     public static final CgShaderNode HYPERBOLIC_COSINE =
-            CgTemplateShaderNode.of("cg:math/trigonometry/hyperbolic-cosine")
+            CgTemplateShaderNode.of("cg:Math/Trigonometry/hyperbolic-cosine")
                     .label("Hyperbolic Cosine")
                     .in("In", CgShaderType.DYNAMIC, "0.0")
                     .out("Out", CgShaderType.DYNAMIC)
@@ -647,7 +647,7 @@ public final class CgBuiltinShaderNodes {
                     .build();
 
     public static final CgShaderNode HYPERBOLIC_TANGENT =
-            CgTemplateShaderNode.of("cg:math/trigonometry/hyperbolic-tangent")
+            CgTemplateShaderNode.of("cg:Math/Trigonometry/hyperbolic-tangent")
                     .label("Hyperbolic Tangent")
                     .in("In", CgShaderType.DYNAMIC, "0.0")
                     .out("Out", CgShaderType.DYNAMIC)
@@ -657,7 +657,7 @@ public final class CgBuiltinShaderNodes {
     /** GLSL's {@code radians()} builtin is already {@code genType} — no need for {@code math.glsl}'s
      * float-only {@code deg_to_rad}, and no {@code {type:}} cast either. */
     public static final CgShaderNode DEGREES_TO_RADIANS =
-            CgTemplateShaderNode.of("cg:math/trigonometry/degrees-to-radians")
+            CgTemplateShaderNode.of("cg:Math/Trigonometry/degrees-to-radians")
                     .label("Degrees to Radians")
                     .in("In", CgShaderType.DYNAMIC, "0.0")
                     .out("Out", CgShaderType.DYNAMIC)
@@ -666,7 +666,7 @@ public final class CgBuiltinShaderNodes {
 
     /** @see #DEGREES_TO_RADIANS — same reasoning, GLSL's {@code degrees()} builtin. */
     public static final CgShaderNode RADIANS_TO_DEGREES =
-            CgTemplateShaderNode.of("cg:math/trigonometry/radians-to-degrees")
+            CgTemplateShaderNode.of("cg:Math/Trigonometry/radians-to-degrees")
                     .label("Radians to Degrees")
                     .in("In", CgShaderType.DYNAMIC, "0.0")
                     .out("Out", CgShaderType.DYNAMIC)
@@ -678,7 +678,7 @@ public final class CgBuiltinShaderNodes {
     /** The scalar dot product of two vectors of any matching width — fixed {@code FLOAT} output, same
      * shape as {@link #LENGTH}. GLSL's {@code dot} is defined for {@code float} too ({@code dot(x,y) =
      * x*y}), so one template covers the whole width range with no separate scalar case. */
-    public static final CgShaderNode DOT_PRODUCT = CgTemplateShaderNode.of("cg:math/vector/dot-product")
+    public static final CgShaderNode DOT_PRODUCT = CgTemplateShaderNode.of("cg:Math/Vector/dot-product")
             .label("Dot Product")
             .in("A", CgShaderType.DYNAMIC, "0.0")
             .in("B", CgShaderType.DYNAMIC, "0.0")
@@ -691,7 +691,7 @@ public final class CgBuiltinShaderNodes {
      * #DOT_PRODUCT} has. Defaults to the X and Y basis vectors, so an untouched node previews a
      * genuine, non-degenerate result ({@code X × Y = Z}) rather than the zero vector two unwired
      * defaults would otherwise both collapse to. */
-    public static final CgShaderNode CROSS_PRODUCT = CgTemplateShaderNode.of("cg:math/vector/cross-product")
+    public static final CgShaderNode CROSS_PRODUCT = CgTemplateShaderNode.of("cg:Math/Vector/cross-product")
             .label("Cross Product")
             .in("A", CgShaderType.VEC3, "vec3(1.0, 0.0, 0.0)")
             .in("B", CgShaderType.VEC3, "vec3(0.0, 1.0, 0.0)")
@@ -706,7 +706,7 @@ public final class CgBuiltinShaderNodes {
     // reproducing that failure by construction: CgGraphCompiler refuses to place one in the vertex
     // stage rather than emitting GLSL a vertex shader will not compile.
 
-    public static final CgShaderNode DDX = CgTemplateShaderNode.of("cg:math/derivative/ddx")
+    public static final CgShaderNode DDX = CgTemplateShaderNode.of("cg:Math/Derivative/ddx")
             .label("DDX")
             .in("In", CgShaderType.DYNAMIC, "0.0")
             .out("Out", CgShaderType.DYNAMIC)
@@ -714,7 +714,7 @@ public final class CgBuiltinShaderNodes {
             .body("{Out} = dFdx({In});")
             .build();
 
-    public static final CgShaderNode DDY = CgTemplateShaderNode.of("cg:math/derivative/ddy")
+    public static final CgShaderNode DDY = CgTemplateShaderNode.of("cg:Math/Derivative/ddy")
             .label("DDY")
             .in("In", CgShaderType.DYNAMIC, "0.0")
             .out("Out", CgShaderType.DYNAMIC)
@@ -723,7 +723,7 @@ public final class CgBuiltinShaderNodes {
             .build();
 
     /** {@code |dFdx| + |dFdy|} — Unity's combined screen-space derivative magnitude. */
-    public static final CgShaderNode DDXY = CgTemplateShaderNode.of("cg:math/derivative/ddxy")
+    public static final CgShaderNode DDXY = CgTemplateShaderNode.of("cg:Math/Derivative/ddxy")
             .label("DDXY")
             .in("In", CgShaderType.DYNAMIC, "0.0")
             .out("Out", CgShaderType.DYNAMIC)
@@ -749,7 +749,7 @@ public final class CgBuiltinShaderNodes {
     /** GLSL's own column-major {@code m[i]} indexing, not Unity's row-based Matrix Split — see the
      * class-level note above. Naming the ports {@code Col0}..{@code Col3} states plainly which
      * convention this is, rather than a {@code Row0} that would be quietly wrong. */
-    public static final CgShaderNode MATRIX_SPLIT = CgTemplateShaderNode.of("cg:math/matrix/split")
+    public static final CgShaderNode MATRIX_SPLIT = CgTemplateShaderNode.of("cg:Math/Matrix/split")
             .label("Matrix Split")
             .in("In", CgShaderType.MAT4, "mat4(1.0)")
             .out("Col0", CgShaderType.VEC4)
@@ -762,7 +762,7 @@ public final class CgBuiltinShaderNodes {
 
     /** The inverse of {@link #MATRIX_SPLIT} — GLSL's {@code mat4(c0,c1,c2,c3)} constructor already
      * takes four column vectors directly, so this needed no Java implementation either. */
-    public static final CgShaderNode MATRIX_CONSTRUCTION = CgTemplateShaderNode.of("cg:math/matrix/construction")
+    public static final CgShaderNode MATRIX_CONSTRUCTION = CgTemplateShaderNode.of("cg:Math/Matrix/construction")
             .label("Matrix Construction")
             .in("Col0", CgShaderType.VEC4, "vec4(1.0, 0.0, 0.0, 0.0)")
             .in("Col1", CgShaderType.VEC4, "vec4(0.0, 1.0, 0.0, 0.0)")
@@ -773,7 +773,7 @@ public final class CgBuiltinShaderNodes {
             .body("{Out} = mat4({Col0}, {Col1}, {Col2}, {Col3});")
             .build();
 
-    public static final CgShaderNode MATRIX_TRANSPOSE = CgTemplateShaderNode.of("cg:math/matrix/transpose")
+    public static final CgShaderNode MATRIX_TRANSPOSE = CgTemplateShaderNode.of("cg:Math/Matrix/transpose")
             .label("Matrix Transpose")
             .in("In", CgShaderType.MAT4, "mat4(1.0)")
             .out("Out", CgShaderType.MAT4)
@@ -781,7 +781,7 @@ public final class CgBuiltinShaderNodes {
             .body("{Out} = transpose({In});")
             .build();
 
-    public static final CgShaderNode MATRIX_DETERMINANT = CgTemplateShaderNode.of("cg:math/matrix/determinant")
+    public static final CgShaderNode MATRIX_DETERMINANT = CgTemplateShaderNode.of("cg:Math/Matrix/determinant")
             .label("Matrix Determinant")
             .in("In", CgShaderType.MAT4, "mat4(1.0)")
             .out("Out", CgShaderType.FLOAT)
@@ -793,7 +793,7 @@ public final class CgBuiltinShaderNodes {
 
     /** The scalar distance between two vectors of any matching width — fixed {@code FLOAT} out, same
      * shape as {@link #LENGTH}/{@link #DOT_PRODUCT}. */
-    public static final CgShaderNode DISTANCE = CgTemplateShaderNode.of("cg:math/vector/distance")
+    public static final CgShaderNode DISTANCE = CgTemplateShaderNode.of("cg:Math/Vector/distance")
             .label("Distance")
             .in("A", CgShaderType.DYNAMIC, "0.0")
             .in("B", CgShaderType.DYNAMIC, "0.0")
@@ -803,7 +803,7 @@ public final class CgBuiltinShaderNodes {
 
     /** {@code I} reflected about {@code N} — GLSL's {@code reflect}, {@code DYNAMIC} on both ports
      * since it is defined component-wise for any matching width. */
-    public static final CgShaderNode REFLECTION = CgTemplateShaderNode.of("cg:math/vector/reflection")
+    public static final CgShaderNode REFLECTION = CgTemplateShaderNode.of("cg:Math/Vector/reflection")
             .label("Reflection")
             .in("I", CgShaderType.DYNAMIC, "0.0")
             .in("N", CgShaderType.DYNAMIC, "1.0")
@@ -814,7 +814,7 @@ public final class CgBuiltinShaderNodes {
     /** Schlick's approximation — {@code vector.glsl}'s own {@code fresnel}, the exact function this
      * node exists to expose. Fixed {@code VEC3} ports, not {@code DYNAMIC}: a Fresnel term is only
      * meaningful for a real surface normal and view direction, both inherently three-component. */
-    public static final CgShaderNode FRESNEL_EFFECT = CgTemplateShaderNode.of("cg:math/vector/fresnel-effect")
+    public static final CgShaderNode FRESNEL_EFFECT = CgTemplateShaderNode.of("cg:Math/Vector/fresnel-effect")
             .label("Fresnel Effect")
             .in("Normal", CgShaderType.VEC3, "vec3(0.0, 0.0, 1.0)")
             .in("ViewDir", CgShaderType.VEC3, "vec3(0.0, 0.0, 1.0)")
@@ -827,7 +827,7 @@ public final class CgBuiltinShaderNodes {
     /** The component of {@code A} lying along {@code B} — {@code vector.glsl}'s {@code project_onto}.
      * Fixed {@code VEC3}: the function itself is, and a projection is meaningless without a genuine
      * direction to project onto. */
-    public static final CgShaderNode PROJECTION = CgTemplateShaderNode.of("cg:math/vector/projection")
+    public static final CgShaderNode PROJECTION = CgTemplateShaderNode.of("cg:Math/Vector/projection")
             .label("Projection")
             .in("A", CgShaderType.VEC3, "vec3(1.0, 0.0, 0.0)")
             .in("B", CgShaderType.VEC3, "vec3(0.0, 1.0, 0.0)")
@@ -838,7 +838,7 @@ public final class CgBuiltinShaderNodes {
 
     /** {@code A} minus {@link #PROJECTION} — the component of {@code A} perpendicular to {@code B},
      * {@code vector.glsl}'s {@code reject_from}. Same fixed {@code VEC3} reasoning as Projection. */
-    public static final CgShaderNode REJECTION = CgTemplateShaderNode.of("cg:math/vector/rejection")
+    public static final CgShaderNode REJECTION = CgTemplateShaderNode.of("cg:Math/Vector/rejection")
             .label("Rejection")
             .in("A", CgShaderType.VEC3, "vec3(1.0, 0.0, 0.0)")
             .in("B", CgShaderType.VEC3, "vec3(0.0, 1.0, 0.0)")
@@ -857,7 +857,7 @@ public final class CgBuiltinShaderNodes {
      * states plainly what {@code rotate_axis} itself takes. A caller wanting degrees chains {@link
      * #DEGREES_TO_RADIANS} first.</p>
      */
-    public static final CgShaderNode ROTATE_ABOUT_AXIS = CgTemplateShaderNode.of("cg:math/vector/rotate-about-axis")
+    public static final CgShaderNode ROTATE_ABOUT_AXIS = CgTemplateShaderNode.of("cg:Math/Vector/rotate-about-axis")
             .label("Rotate About Axis")
             .in("In", CgShaderType.VEC3, "vec3(1.0, 0.0, 0.0)")
             .in("Axis", CgShaderType.VEC3, "vec3(0.0, 1.0, 0.0)")
@@ -875,7 +875,7 @@ public final class CgBuiltinShaderNodes {
      * {@code math.glsl} helper this is the only caller of. {@code max(..., 1e-4)} guards the divide when
      * {@code Hardness} is authored at exactly {@code 1.0}.</p>
      */
-    public static final CgShaderNode SPHERE_MASK = CgTemplateShaderNode.of("cg:math/vector/sphere-mask")
+    public static final CgShaderNode SPHERE_MASK = CgTemplateShaderNode.of("cg:Math/Vector/sphere-mask")
             .label("Sphere Mask")
             .in("Coords", CgShaderType.VEC3, "vec3(0.0, 0.0, 0.0)")
             .in("Center", CgShaderType.VEC3, "vec3(0.0, 0.0, 0.0)")
@@ -895,7 +895,7 @@ public final class CgBuiltinShaderNodes {
      * #POSITION}'s own {@code SPACE} property already does; only {@code To} is offered, via the same
      * shared property, rather than introducing a second one.
      */
-    public static final CgShaderNode TRANSFORM = CgTemplateShaderNode.of("cg:math/vector/transform")
+    public static final CgShaderNode TRANSFORM = CgTemplateShaderNode.of("cg:Math/Vector/transform")
             .label("Transform")
             .in("In", CgShaderType.VEC3, "vec3(0.0, 0.0, 0.0)")
             .out("Out", CgShaderType.VEC3)
@@ -909,7 +909,7 @@ public final class CgBuiltinShaderNodes {
 
     /** A rising ramp from {@code -1} to {@code 1} with period {@code 1}, resetting at each integer —
      * the standard sawtooth. */
-    public static final CgShaderNode SAWTOOTH_WAVE = CgTemplateShaderNode.of("cg:math/wave/sawtooth-wave")
+    public static final CgShaderNode SAWTOOTH_WAVE = CgTemplateShaderNode.of("cg:Math/Wave/sawtooth-wave")
             .label("Sawtooth Wave")
             .in("In", CgShaderType.DYNAMIC, "0.0")
             .out("Out", CgShaderType.DYNAMIC)
@@ -921,7 +921,7 @@ public final class CgBuiltinShaderNodes {
     /** Assembles four scalars into a {@code vec4} — the exact inverse of {@link #SPLIT}. {@code A}
      * defaults to {@code 1.0}, not {@code 0.0}: an untouched Combine should preview an opaque colour,
      * the same reasoning {@code Color}'s own default carries. */
-    public static final CgShaderNode COMBINE = CgTemplateShaderNode.of("cg:channel/combine")
+    public static final CgShaderNode COMBINE = CgTemplateShaderNode.of("cg:Channel/combine")
             .label("Combine")
             .in("R", CgShaderType.FLOAT, "0.0")
             .in("G", CgShaderType.FLOAT, "0.0")
@@ -934,7 +934,7 @@ public final class CgBuiltinShaderNodes {
     /** Inverts whichever channels their own toggle selects — {@code channel' = toggle ? 1-channel :
      * channel}, one ternary per component. Fixed {@code VEC4}/{@code BOOL}, not {@code DYNAMIC}: a
      * per-channel toggle is meaningless without knowing which four channels there are. */
-    public static final CgShaderNode FLIP = CgTemplateShaderNode.of("cg:channel/flip")
+    public static final CgShaderNode FLIP = CgTemplateShaderNode.of("cg:Channel/flip")
             .label("Flip")
             .in("In", CgShaderType.VEC4, "vec4(0.0, 0.0, 0.0, 0.0)")
             .in("RFlip", CgShaderType.BOOL, "false")
@@ -951,7 +951,7 @@ public final class CgBuiltinShaderNodes {
 
     /** {@code uv.glsl}'s own {@code rotate_uv} — {@code Rotation} is radians, same simplification
      * {@link #ROTATE_ABOUT_AXIS} already documents (Unity's own Unit dropdown not reproduced). */
-    public static final CgShaderNode UV_ROTATE = CgTemplateShaderNode.of("cg:uv/rotate")
+    public static final CgShaderNode UV_ROTATE = CgTemplateShaderNode.of("cg:UV/rotate")
             .label("Rotate")
             .inWithImplicitDefault("UV", CgShaderType.VEC2, () -> CgBuiltinShaderNodes.UV, "Out")
             .in("Center", CgShaderType.VEC2, "vec2(0.5, 0.5)")
@@ -962,7 +962,7 @@ public final class CgBuiltinShaderNodes {
             .build();
 
     /** {@code uv.glsl}'s {@code tile_uv}. */
-    public static final CgShaderNode TILING_AND_OFFSET = CgTemplateShaderNode.of("cg:uv/tiling-and-offset")
+    public static final CgShaderNode TILING_AND_OFFSET = CgTemplateShaderNode.of("cg:UV/tiling-and-offset")
             .label("Tiling and Offset")
             .inWithImplicitDefault("UV", CgShaderType.VEC2, () -> CgBuiltinShaderNodes.UV, "Out")
             .in("Tiling", CgShaderType.VEC2, "vec2(1.0, 1.0)")
@@ -983,7 +983,7 @@ public final class CgBuiltinShaderNodes {
      * the red/green split down the middle is the node's whole visual signature. See that function's own
      * note for both differences.</p>
      */
-    public static final CgShaderNode POLAR_COORDINATES = CgTemplateShaderNode.of("cg:uv/polar-coordinates")
+    public static final CgShaderNode POLAR_COORDINATES = CgTemplateShaderNode.of("cg:UV/polar-coordinates")
             .label("Polar Coordinates")
             .inWithImplicitDefault("UV", CgShaderType.VEC2, () -> CgBuiltinShaderNodes.UV, "Out")
             .in("Center", CgShaderType.VEC2, "vec2(0.5, 0.5)")
@@ -996,7 +996,7 @@ public final class CgBuiltinShaderNodes {
 
     // ── UV ▸ standard distortion formulas (new to uv.glsl this batch) ────────────────────────────
 
-    public static final CgShaderNode TWIRL = CgTemplateShaderNode.of("cg:uv/twirl")
+    public static final CgShaderNode TWIRL = CgTemplateShaderNode.of("cg:UV/twirl")
             .label("Twirl")
             .inWithImplicitDefault("UV", CgShaderType.VEC2, () -> CgBuiltinShaderNodes.UV, "Out")
             .in("Center", CgShaderType.VEC2, "vec2(0.5, 0.5)")
@@ -1007,7 +1007,7 @@ public final class CgBuiltinShaderNodes {
             .body("{Out} = twirl_uv({UV}, {Center}, {Strength}, {Offset});")
             .build();
 
-    public static final CgShaderNode RADIAL_SHEAR = CgTemplateShaderNode.of("cg:uv/radial-shear")
+    public static final CgShaderNode RADIAL_SHEAR = CgTemplateShaderNode.of("cg:UV/radial-shear")
             .label("Radial Shear")
             .inWithImplicitDefault("UV", CgShaderType.VEC2, () -> CgBuiltinShaderNodes.UV, "Out")
             .in("Center", CgShaderType.VEC2, "vec2(0.5, 0.5)")
@@ -1018,7 +1018,7 @@ public final class CgBuiltinShaderNodes {
             .body("{Out} = radial_shear_uv({UV}, {Center}, {Strength}, {Offset});")
             .build();
 
-    public static final CgShaderNode SPHERIZE = CgTemplateShaderNode.of("cg:uv/spherize")
+    public static final CgShaderNode SPHERIZE = CgTemplateShaderNode.of("cg:UV/spherize")
             .label("Spherize")
             .inWithImplicitDefault("UV", CgShaderType.VEC2, () -> CgBuiltinShaderNodes.UV, "Out")
             .in("Center", CgShaderType.VEC2, "vec2(0.5, 0.5)")
@@ -1036,7 +1036,7 @@ public final class CgBuiltinShaderNodes {
     // all() reducing a bvec back to one bool — a real mechanism this batch does not add. noPreview()
     // on all four boolean-output nodes: a bool has no color-swatch reading the way a vec4 does.
 
-    public static final CgShaderNode AND = CgTemplateShaderNode.of("cg:utility/logic/and")
+    public static final CgShaderNode AND = CgTemplateShaderNode.of("cg:Utility/Logic/and")
             .label("And")
             .in("A", CgShaderType.BOOL, "true")
             .in("B", CgShaderType.BOOL, "true")
@@ -1045,7 +1045,7 @@ public final class CgBuiltinShaderNodes {
             .body("{Out} = {A} && {B};")
             .build();
 
-    public static final CgShaderNode OR = CgTemplateShaderNode.of("cg:utility/logic/or")
+    public static final CgShaderNode OR = CgTemplateShaderNode.of("cg:Utility/Logic/or")
             .label("Or")
             .in("A", CgShaderType.BOOL, "false")
             .in("B", CgShaderType.BOOL, "false")
@@ -1054,7 +1054,7 @@ public final class CgBuiltinShaderNodes {
             .body("{Out} = {A} || {B};")
             .build();
 
-    public static final CgShaderNode NOT = CgTemplateShaderNode.of("cg:utility/logic/not")
+    public static final CgShaderNode NOT = CgTemplateShaderNode.of("cg:Utility/Logic/not")
             .label("Not")
             .in("In", CgShaderType.BOOL, "false")
             .out("Out", CgShaderType.BOOL)
@@ -1064,7 +1064,7 @@ public final class CgBuiltinShaderNodes {
 
     /** {@code !(A && B)} — the one Logic node this batch adds beyond Unity's own And/Or/Not/Comparison
      * quartet, since it costs nothing once {@link #AND} exists. */
-    public static final CgShaderNode NAND = CgTemplateShaderNode.of("cg:utility/logic/nand")
+    public static final CgShaderNode NAND = CgTemplateShaderNode.of("cg:Utility/Logic/nand")
             .label("Nand")
             .in("A", CgShaderType.BOOL, "true")
             .in("B", CgShaderType.BOOL, "true")
@@ -1075,7 +1075,7 @@ public final class CgBuiltinShaderNodes {
 
     /** {@code A} {@code op} {@code B}, {@code op} chosen by the {@code Condition} property — fixed
      * {@code FLOAT} ports, not {@code DYNAMIC}, per the class-scope note above. */
-    public static final CgShaderNode COMPARISON = CgTemplateShaderNode.of("cg:utility/logic/comparison")
+    public static final CgShaderNode COMPARISON = CgTemplateShaderNode.of("cg:Utility/Logic/comparison")
             .label("Comparison")
             .in("A", CgShaderType.FLOAT, "0.0")
             .in("B", CgShaderType.FLOAT, "0.0")
@@ -1093,7 +1093,7 @@ public final class CgBuiltinShaderNodes {
 
     /** {@code Predicate ? True : False} — GLSL's ternary already handles any matching {@code DYNAMIC}
      * width on both branches, so this needed no per-width special casing. */
-    public static final CgShaderNode BRANCH = CgTemplateShaderNode.of("cg:utility/branch")
+    public static final CgShaderNode BRANCH = CgTemplateShaderNode.of("cg:Utility/branch")
             .label("Branch")
             .in("Predicate", CgShaderType.BOOL, "true")
             .in("True", CgShaderType.DYNAMIC, "1.0")
@@ -1108,7 +1108,7 @@ public final class CgBuiltinShaderNodes {
     /** {@code mix} between two colours by a two-frequency checkerboard parity test — {@code mod(...,
      * 2.0)} rather than a bitwise parity check, since GLSL's {@code int}/bitwise ops on a value derived
      * from {@code floor()} of a float coordinate are the less portable choice of the two. */
-    public static final CgShaderNode CHECKERBOARD = CgTemplateShaderNode.of("cg:procedural/pattern/checkerboard")
+    public static final CgShaderNode CHECKERBOARD = CgTemplateShaderNode.of("cg:Procedural/Pattern/checkerboard")
             .label("Checkerboard")
             .inWithImplicitDefault("UV", CgShaderType.VEC2, () -> CgBuiltinShaderNodes.UV, "Out")
             .in("ColorA", CgShaderType.VEC4, "vec4(1.0, 1.0, 1.0, 1.0)")
@@ -1120,7 +1120,7 @@ public final class CgBuiltinShaderNodes {
             .build();
 
     /** {@code noise.glsl}'s single-octave {@code value_noise}. */
-    public static final CgShaderNode SIMPLE_NOISE = CgTemplateShaderNode.of("cg:procedural/noise/simple-noise")
+    public static final CgShaderNode SIMPLE_NOISE = CgTemplateShaderNode.of("cg:Procedural/Noise/simple-noise")
             .label("Simple Noise")
             .inWithImplicitDefault("UV", CgShaderType.VEC2, () -> CgBuiltinShaderNodes.UV, "Out")
             .in("Scale", CgShaderType.FLOAT, "10.0")
@@ -1137,7 +1137,7 @@ public final class CgBuiltinShaderNodes {
      * documented rather than presented as the genuine article, the same honesty this batch's other
      * simplifications ({@link #EXPONENTIAL}, {@link #TRANSFORM}) already carry.
      */
-    public static final CgShaderNode GRADIENT_NOISE = CgTemplateShaderNode.of("cg:procedural/noise/gradient-noise")
+    public static final CgShaderNode GRADIENT_NOISE = CgTemplateShaderNode.of("cg:Procedural/Noise/gradient-noise")
             .label("Gradient Noise")
             .inWithImplicitDefault("UV", CgShaderType.VEC2, () -> CgBuiltinShaderNodes.UV, "Out")
             .in("Scale", CgShaderType.FLOAT, "10.0")
@@ -1154,7 +1154,7 @@ public final class CgBuiltinShaderNodes {
      * is not perfectly uniform around the rim, a real but minor cost of not adding a true elliptical
      * SDF function for this one shape.
      */
-    public static final CgShaderNode ELLIPSE = CgTemplateShaderNode.of("cg:procedural/shape/ellipse")
+    public static final CgShaderNode ELLIPSE = CgTemplateShaderNode.of("cg:Procedural/Shape/ellipse")
             .label("Ellipse")
             .inWithImplicitDefault("UV", CgShaderType.VEC2, () -> CgBuiltinShaderNodes.UV, "Out")
             .in("Center", CgShaderType.VEC2, "vec2(0.5, 0.5)")
@@ -1167,7 +1167,7 @@ public final class CgBuiltinShaderNodes {
 
     /** An antialiased rectangle mask — {@code sdf.glsl}'s {@code sdf_rounded_box} at radius {@code 0}.
      * {@code Size} is the box's HALF-extent, the same convention {@code sdf_rounded_box} itself uses. */
-    public static final CgShaderNode RECTANGLE = CgTemplateShaderNode.of("cg:procedural/shape/rectangle")
+    public static final CgShaderNode RECTANGLE = CgTemplateShaderNode.of("cg:Procedural/Shape/rectangle")
             .label("Rectangle")
             .inWithImplicitDefault("UV", CgShaderType.VEC2, () -> CgBuiltinShaderNodes.UV, "Out")
             .in("Center", CgShaderType.VEC2, "vec2(0.5, 0.5)")
@@ -1180,7 +1180,7 @@ public final class CgBuiltinShaderNodes {
 
     /** @see #RECTANGLE — same shape, plus {@code sdf_rounded_box}'s own uniform corner radius. */
     public static final CgShaderNode ROUNDED_RECTANGLE =
-            CgTemplateShaderNode.of("cg:procedural/shape/rounded-rectangle")
+            CgTemplateShaderNode.of("cg:Procedural/Shape/rounded-rectangle")
                     .label("Rounded Rectangle")
                     .inWithImplicitDefault("UV", CgShaderType.VEC2, () -> CgBuiltinShaderNodes.UV, "Out")
                     .in("Center", CgShaderType.VEC2, "vec2(0.5, 0.5)")
@@ -1207,7 +1207,7 @@ public final class CgBuiltinShaderNodes {
      * returning more than one port, so this is what proved the compiler, the preview emitter and the
      * editor's port list all generalise past one — none of them needed to change.</p>
      */
-    public static final CgShaderNode SPLIT = CgTemplateShaderNode.of("cg:channel/split")
+    public static final CgShaderNode SPLIT = CgTemplateShaderNode.of("cg:Channel/split")
             .label("Split")
             // NOT a colour, despite being a vec4 — see inNoInlineEditor's own doc. Unity's Split shows
             // a plain unconnected-input box, not a colour wheel popup, and rightly so: R/G/B/A here are
@@ -1232,7 +1232,7 @@ public final class CgBuiltinShaderNodes {
      * <p>Four components to match Unity's {@code UV Out(4)} — the third and fourth are zero, and exist so
      * the node drops straight into anything expecting a vec4.</p>
      */
-    public static final CgShaderNode UV = CgTemplateShaderNode.of("cg:input/geometry/uv")
+    public static final CgShaderNode UV = CgTemplateShaderNode.of("cg:Input/Geometry/uv")
             .label("UV")
             .out("Out", CgShaderType.VEC4)
             .domain(CgShaderDomain.VERTEX)
@@ -1247,7 +1247,7 @@ public final class CgBuiltinShaderNodes {
      * mechanism earn its place: on a flat quad a position is one uniform colour, and every node
      * downstream of this one inherits the sphere so a chain of maths on a position stays readable.</p>
      */
-    public static final CgShaderNode POSITION = CgTemplateShaderNode.of("cg:input/geometry/position")
+    public static final CgShaderNode POSITION = CgTemplateShaderNode.of("cg:Input/Geometry/position")
             .label("Position")
             .out("Out", CgShaderType.VEC3)
             .domain(CgShaderDomain.VERTEX)
@@ -1274,7 +1274,7 @@ public final class CgBuiltinShaderNodes {
      * scale does not survive the model matrix, which is exactly what that matrix exists to correct. The
      * preview form reads the varying the preview's own vertex stage already normalised.</p>
      */
-    public static final CgShaderNode NORMAL = CgTemplateShaderNode.of("cg:input/geometry/normal")
+    public static final CgShaderNode NORMAL = CgTemplateShaderNode.of("cg:Input/Geometry/normal")
             .label("Normal Vector")
             .out("Out", CgShaderType.VEC3)
             .domain(CgShaderDomain.VERTEX)
