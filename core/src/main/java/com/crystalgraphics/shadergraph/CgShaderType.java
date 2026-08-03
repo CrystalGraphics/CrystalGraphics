@@ -150,30 +150,50 @@ public enum CgShaderType {
     }
 
     /**
-     * The type a {@code DYNAMIC} port takes given everything connected to it — the widest of them.
+     * The type a node's {@code DYNAMIC} ports take given everything connected to them — the
+     * <b>narrowest</b> non-scalar of them, and every dynamic port on the node takes that one answer.
      *
-     * <p>Widest rather than first-seen, because {@code Add(float, vec3)} must be a vec3: the narrow
-     * side promotes and the wide side is untouched. First-seen would make the result depend on the
-     * order the user happened to wire things, which is the kind of bug nobody can reproduce.</p>
+     * <h4>Narrowest, which is Unity's rule and is not the obvious one</h4>
+     * <p>{@code Add(vec4, vec2)} resolves to <b>vec2</b>: the vec4 is truncated to {@code .xy} and the
+     * output is a vec2. Widest would instead have to widen a vec2 into a vec4, and there is no honest
+     * value for the two channels that do not exist — zero and one are both inventions, and whichever
+     * was chosen would silently change what the graph computes. Truncation at least only ever discards
+     * data the user can see they wired in. Unity's own implementation says it in one line — "find the
+     * minimum channel width excluding 1 as it can promote" — and this is a port of it.</p>
      *
-     * @return the resolved type, or {@code null} if there was nothing concrete to resolve from
+     * <p>Getting it backwards is not a subtle failure: {@code Add(vec4, vec2)} simply refused to compile,
+     * because resolving to vec4 then asked a vec2 to feed a vec4, which {@link #canFeed} correctly
+     * forbids. The node previewed black with the error buried in a log.</p>
+     *
+     * <p>Resolved per NODE rather than per port — every dynamic port shares the answer — because
+     * resolving each independently would make {@code Add}'s output a float whenever its first input
+     * happened to be one, a result that depends on wiring order and is therefore unreproducible.</p>
+     *
+     * @return the resolved type; {@link #FLOAT} when nothing non-scalar decides it, or {@code null}
+     *         when two genuinely incompatible concrete types meet (a matrix and a vector)
      */
     @Nullable
-    public static CgShaderType widest(Iterable<CgShaderType> candidates) {
+    public static CgShaderType resolveDynamic(Iterable<CgShaderType> candidates) {
         CgShaderType best = null;
         for (CgShaderType candidate : candidates) {
-            if (candidate == null || candidate == DYNAMIC) continue;
+            // A scalar never decides the width: it promotes into whatever the others settle on, which is
+            // what makes Add(float, vec3) a vec3 rather than a float. Skipping it here is the whole of
+            // that rule — Unity spells it "excluding 1 as it can promote".
+            if (candidate == null || candidate == DYNAMIC || candidate == FLOAT) continue;
             if (best == null) {
                 best = candidate;
             } else if (candidate.isNumericVector() && best.isNumericVector()) {
-                if (candidate.components > best.components) best = candidate;
+                if (candidate.components < best.components) best = candidate;
             } else if (candidate != best) {
-                // Two incompatible concrete types on one dynamic port — a matrix and a vector, say.
+                // Two incompatible concrete types on one dynamic node — a matrix and a vector, say.
                 // Not resolvable, and the caller reports it against the node rather than picking.
                 return null;
             }
         }
-        return best;
+        // Nothing non-scalar to go on — float, which is the identity of the promotion order and what an
+        // entirely unconnected dynamic node emits. Never null here: null is reserved for a real conflict,
+        // so the caller can tell "nothing decided it" from "the graph contradicts itself".
+        return best == null ? FLOAT : best;
     }
 
     @Override

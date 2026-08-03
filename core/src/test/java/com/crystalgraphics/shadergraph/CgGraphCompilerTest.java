@@ -53,6 +53,14 @@ public class CgGraphCompilerTest {
                 .build();
     }
 
+    private static CgShaderNode constantVec2() {
+        return CgTemplateShaderNode.of("cg:input/vec2")
+                .in("Value", CgShaderType.VEC2, "vec2(0.0)")
+                .out("Out", CgShaderType.VEC2)
+                .body("{Out} = {Value};")
+                .build();
+    }
+
     // ── The basics ──────────────────────────────────────────────────────────
 
     /**
@@ -119,6 +127,33 @@ public class CgGraphCompilerTest {
         assertTrue("the dynamic node resolved to vec3", result.code().contains("vec3 node_m_Out;"));
         assertTrue("and the float side was promoted, which is the compiler's job not the user's",
                 result.code().contains("vec3(node_f_Out)"));
+    }
+
+    /**
+     * <b>{@code Add(vec4, vec2)} compiles, resolves to vec2, and truncates the wide side.</b>
+     *
+     * <p>The case that made this rule wrong the first time. Resolving to the WIDEST asked a vec2 to feed
+     * a vec4 — which {@link CgShaderType#canFeed} forbids, correctly, since there is no honest value for
+     * the missing channels — so the node reported an error and its preview rendered black. Unity resolves
+     * to the narrowest non-scalar and swizzles the wide side down, which is what this pins.</p>
+     */
+    @Test
+    public void aDynamicNodeResolvesToTheNarrowerInputAndTruncatesTheWider() {
+        CgShaderGraph graph = new CgShaderGraph()
+                .add(CgShaderGraph.Instance.of("wide", constantVec4()))
+                .add(CgShaderGraph.Instance.of("narrow", constantVec2()))
+                .add(CgShaderGraph.Instance.of("m", multiply()))
+                .link("wide", "Out", "m", "A")
+                .link("narrow", "Out", "m", "B")
+                .output("m");
+
+        CgGraphCompiler.Result result = CgGraphCompiler.compile(graph);
+
+        assertTrue(String.join("\n", result.errors()), result.ok());
+        assertTrue("the node resolved to the NARROWER side",
+                result.code().contains("vec2 node_m_Out;"));
+        assertTrue("and the wide side was truncated rather than refused",
+                result.code().contains("node_wide_Out.xy"));
     }
 
     /** The same graph wired the other way round must produce the same types. */

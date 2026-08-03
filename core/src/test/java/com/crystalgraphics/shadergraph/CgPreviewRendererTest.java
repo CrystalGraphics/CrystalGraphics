@@ -71,4 +71,20 @@ public class CgPreviewRendererTest {
 
         assertTrue(renderer.hasPending());
     }
+
+    /**
+     * <b>{@link CgPreviewRenderer#geometryOf} is null until something has actually drawn — never a
+     * guessed default.</b>
+     *
+     * <p>A consumer (CrystalGUI's {@code ShaderNodePreview}) uses this to decide whether to letterbox a
+     * sphere or stretch-fill a flat quad. If this ever defaulted to {@link CgPreviewGeometry#QUAD}
+     * instead of {@code null} for an unrendered node, a sphere preview would flash unletterboxed —
+     * distorted into an ellipse — for exactly as many frames as it takes the render budget to catch up,
+     * which is invisible in a screenshot taken after the fact and easy to ship unnoticed.</p>
+     */
+    @Test
+    public void geometryOfIsNullBeforeAnythingHasRendered() {
+        CgPreviewRenderer renderer = new CgPreviewRenderer();
+        assertNull(renderer.geometryOf("a"));
+    }
 }

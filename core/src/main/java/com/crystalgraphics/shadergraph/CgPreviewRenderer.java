@@ -83,6 +83,9 @@ public final class CgPreviewRenderer {
     private final Map<String, String> renderedSource = new LinkedHashMap<>();
     /** nodeId → the target that source was drawn INTO, so a recycled target forces a redraw. */
     private final Map<String, CgPreviewTarget> renderedTarget = new LinkedHashMap<>();
+    /** nodeId → the RESOLVED (never {@code INHERIT}) geometry its texture was last drawn on — see
+     * {@link #geometryOf}. */
+    private final Map<String, CgPreviewGeometry> renderedGeometry = new LinkedHashMap<>();
     /** Insertion-ordered, so the round-robin is fair rather than dependent on hashing. */
     private final Set<String> dirty = new LinkedHashSet<>();
 
@@ -171,6 +174,7 @@ public final class CgPreviewRenderer {
         targets.retainOnly(visibleNodeIds);
         renderedSource.keySet().retainAll(visibleNodeIds);
         renderedTarget.keySet().retainAll(visibleNodeIds);
+        renderedGeometry.keySet().retainAll(visibleNodeIds);
         dirty.retainAll(visibleNodeIds);
         animated.retainAll(visibleNodeIds);
 
@@ -274,6 +278,7 @@ public final class CgPreviewRenderer {
         }
         renderedSource.put(nodeId, emitted.source());
         renderedTarget.put(nodeId, target);
+        renderedGeometry.put(nodeId, emitted.geometry());
         return target.texture();
     }
 
@@ -282,6 +287,22 @@ public final class CgPreviewRenderer {
     public CgTexture textureOf(String nodeId) {
         CgPreviewTarget target = targets.peek(nodeId);
         return target == null ? null : target.texture();
+    }
+
+    /**
+     * The RESOLVED geometry — never {@link CgPreviewGeometry#INHERIT} — the node's current texture was
+     * drawn on, or {@code null} before it has ever been rendered.
+     *
+     * <p>Exists so a consumer painting the texture into a UI slot can match the fit to the shape: a
+     * sphere needs a square, aspect-preserving letterbox or it reads as an ellipse, while a flat quad
+     * has no such constraint and should simply fill whatever rectangle it is given. Reading it back here
+     * — the same "already resolved once, don't resolve it twice" reasoning {@link #render} itself
+     * applies to the source string — is cheaper and less error-prone than a caller re-running
+     * {@link CgPreviewGeometry#resolve} against its own copy of the graph.</p>
+     */
+    @Nullable
+    public CgPreviewGeometry geometryOf(String nodeId) {
+        return renderedGeometry.get(nodeId);
     }
 
     private void drawInto(CgPreviewTarget target, CgMaterial material, CgPreviewGeometry geometry) {
@@ -400,6 +421,7 @@ public final class CgPreviewRenderer {
         sphereMesh = null;
         renderedSource.clear();
         renderedTarget.clear();
+        renderedGeometry.clear();
         dirty.clear();
         animated.clear();
         deleted = true;

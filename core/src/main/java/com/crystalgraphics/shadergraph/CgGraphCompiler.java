@@ -117,6 +117,8 @@ public final class CgGraphCompiler {
             return new Result("", List.of(), Map.of(), errors);
         }
 
+        wireImplicitDefaults(graph);
+
         List<CgShaderGraph.Instance> ordered;
         try {
             ordered = graph.orderedFrom(rootId);
@@ -197,6 +199,64 @@ public final class CgGraphCompiler {
     }
 
     /**
+     * Turns every unconnected, untouched port with an {@link CgShaderPort#implicitSource} into a real
+     * connection — a genuine instance and a genuine {@link CgShaderGraph.Link}, mutated straight onto
+     * {@code graph} — so every other stage of this compiler (type resolution, ordering, vertex/fragment
+     * promotion) treats it exactly like a wire the user drew, because it now IS one.
+     *
+     * <h3>"Untouched" means no explicit literal was ever stored, not merely "no wire"</h3>
+     * <p>{@link CgShaderGraph.Instance#inputValues} holds only what a user actually typed —
+     * {@code ShaderGraphBridge.inputValuesOf} never pre-populates a field's default into the document, so
+     * an untouched port has no entry there at all. That is the signal this reads directly, rather than
+     * comparing against the port's own {@link CgShaderPort#defaultExpression} (which for an implicit port
+     * is null anyway): a user is free to type a literal vec2 into a UV slot to pin it, and that must win
+     * over the implicit source exactly the way a real connection would if one existed instead.</p>
+     *
+     * <h3>One shared instance per source, not one per consumer</h3>
+     * <p>Matches the concept being ported: Unity's implicit UV is not five separate UV0 reads, it is the
+     * same one. Sharing also means the second, third, ... consumer in a graph costs nothing extra — the
+     * instance and its single output are emitted once regardless of how many ports read it.</p>
+     *
+     * <h3>Safe to call every time, on the same graph object</h3>
+     * <p>Idempotent by construction: once a port is linked, {@link CgShaderGraph#linkInto} finds that
+     * link on the next call and the whole branch is skipped, so repeated compiles of one graph — which is
+     * the normal case, since {@code CgPreviewRenderer} compiles from many roots against one
+     * {@code CgShaderGraph} — neither re-add the shared instance nor duplicate the link.</p>
+     */
+    private static void wireImplicitDefaults(CgShaderGraph graph) {
+        // Snapshotted, not walked live: graph.instances() is an unmodifiable VIEW over the same map
+        // graph.add() writes into below, and a fail-fast LinkedHashMap iterator throws
+        // ConcurrentModificationException the moment that write lands mid-iteration — uncaught, since
+        // CgPreviewEmitter.emit calls this (via compileFrom) with no try/catch around it, so it took the
+        // whole render pipeline down rather than failing just the one preview.
+        List<CgShaderGraph.Instance> instances = List.copyOf(graph.instances());
+        for (CgShaderGraph.Instance instance : instances) {
+            for (CgShaderPort port : instance.type().inputs()) {
+                if (!port.hasImplicitSource()) continue;
+                if (graph.linkInto(instance.id(), port.id()) != null) continue;
+                if (instance.inputValues().get(port.id()) != null) continue;
+
+                CgShaderNode source = port.implicitSource().get();
+                String sourceId = implicitInstanceId(source);
+                if (graph.instance(sourceId) == null) {
+                    graph.add(new CgShaderGraph.Instance(sourceId, source, Map.of(), Map.of()));
+                }
+                graph.link(sourceId, port.implicitSourcePort(), instance.id(), port.id());
+            }
+        }
+    }
+
+    /** Deterministic and GLSL-legal — this ends up inside {@code node_<id>_<port>} variable names, so it
+     * cannot carry the {@code :} / {@code /} a node type id like {@code cg:input/geometry/uv} does. Also
+     * what {@link #implicitNarrowingSwizzle} recognizes an implicitly-synthesized link by. */
+    private static String implicitInstanceId(CgShaderNode source) {
+        return IMPLICIT_INSTANCE_PREFIX + source.id().replaceAll("[^A-Za-z0-9_]", "_");
+    }
+
+    /** Prefix every {@link #wireImplicitDefaults}-synthesized instance id carries. */
+    private static final String IMPLICIT_INSTANCE_PREFIX = "implicit_";
+
+    /**
      * The GLSL expression an input port reads.
      *
      * <p>Three cases, and the point is that the node sees no difference between them: a connected input
@@ -232,6 +292,17 @@ public final class CgGraphCompiler {
         CgShaderType have = emittedTypes.getOrDefault(link.fromNode(), Map.of()).get(link.fromPort());
         if (have == null || want == CgShaderType.DYNAMIC || have == want) return variable;
         if (!have.canFeed(want)) {
+            // The one narrowing this compiler allows, and only here: a link wireImplicitDefaults
+            // synthesized, never one the user drew. UV's own Out is vec4 — matching Unity's UV Out(4) —
+            // but every consumer that implicitly reads it wants vec2, and "nothing demotes" (see
+            // CgShaderType.canFeed) is a real, tested rule for user-drawn edges: picking components
+            // silently is how a graph starts lying about what it computes, and that belongs in an
+            // explicit Split node the user can see. An implicit link has no Split node to point at and
+            // no user who drew it to be lying to — it is this compiler's own synthesis of exactly what
+            // Unity's implicit UV0 already means, so the narrowing is correct here in a way it would not
+            // be for a real wire.
+            String narrowed = mayNarrow(port, link) ? narrowingSwizzle(variable, have, want) : null;
+            if (narrowed != null) return narrowed;
             errors.add("Node '" + instance.id() + "' input '" + port.id() + "' wants " + want
                     + " but is fed " + have + " — connect-time validation should have refused this");
             return zeroOf(want);
@@ -239,6 +310,39 @@ public final class CgGraphCompiler {
         // The cast is the COMPILER's job. The editor permits float -> vec3, so without this the graph
         // looks legal and fails in the driver, with an error the user cannot act on.
         return have.promote(variable, want);
+    }
+
+    /**
+     * {@code variable.xy} / {@code .x} — narrowing a wider implicit source down to what a consumer
+     * wants, or {@code null} when {@code link} is not one {@link #wireImplicitDefaults} created, or the
+     * conversion is not a plain truncation (narrowing a matrix or a sampler is nonsense either way).
+     */
+    /**
+     * Whether truncating a wider value into this port is legitimate, which is true in exactly two places
+     * and nowhere else.
+     *
+     * <p><b>A DYNAMIC port</b>, because its width was resolved from the graph rather than declared by
+     * anyone: {@code CgShaderType.resolveDynamic} takes the narrowest non-scalar input, so
+     * {@code Add(vec4, vec2)} is a vec2 node and the vec4 side must lose its z and w. Unity adapts the
+     * same way, and refusing it here is what made that graph fail to compile at all.</p>
+     *
+     * <p><b>A link this compiler synthesized</b> — see {@link #wireImplicitDefaults}. The implicit UV
+     * node's output is a vec4 (matching Unity's {@code UV Out(4)}) feeding ports that want a vec2.</p>
+     *
+     * <p>Everything else still refuses, which is the documented rule and worth keeping: a user-drawn edge
+     * into a port whose type someone WROTE DOWN should not silently drop components. That belongs in an
+     * explicit Split node the reader can see.</p>
+     */
+    private static boolean mayNarrow(CgShaderPort port, CgShaderGraph.Link link) {
+        return port.isDynamic() || link.fromNode().startsWith(IMPLICIT_INSTANCE_PREFIX);
+    }
+
+    @Nullable
+    private static String narrowingSwizzle(String variable, CgShaderType have, CgShaderType want) {
+        if (!have.isNumericVector() || !want.isNumericVector()) return null;
+        if (have.components() <= want.components()) return null;
+        String swizzle = "xyzw".substring(0, want.components());
+        return variable + "." + swizzle;
     }
 
     /**
@@ -264,14 +368,15 @@ public final class CgGraphCompiler {
             if (upstream != null) evidence.add(upstream);
         }
 
-        CgShaderType dynamic = CgShaderType.widest(evidence);
-        if (dynamic == null && !evidence.isEmpty()) {
+        CgShaderType dynamic = CgShaderType.resolveDynamic(evidence);
+        if (dynamic == null) {
             errors.add("Node '" + instance.id() + "' has dynamic ports fed by incompatible types "
                     + evidence + ", which cannot be reconciled");
+            // Still has to emit something rather than failing: float is the identity of the promotion
+            // order and is what an unconnected literal will be. resolveDynamic already returns it for
+            // "nothing decided the width", so reaching here means a genuine conflict, reported above.
+            dynamic = CgShaderType.FLOAT;
         }
-        // A dynamic node with nothing connected still has to emit something rather than failing: a
-        // float is the identity of the promotion order and is what an unconnected literal will be.
-        if (dynamic == null) dynamic = CgShaderType.FLOAT;
 
         for (CgShaderPort port : instance.type().ports()) {
             resolved.put(port.id(), port.isDynamic() ? dynamic : port.type());
