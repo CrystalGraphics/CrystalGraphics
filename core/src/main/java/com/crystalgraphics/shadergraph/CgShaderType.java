@@ -93,6 +93,27 @@ public enum CgShaderType {
     }
 
     /**
+     * The width this type contributes to a dynamic node — its component count, and for a MATRIX its
+     * dimension.
+     *
+     * <p>Distinct from {@link #components()}, which is 0 for a matrix because a matrix has no place in
+     * the scalar/vector promotion order. It does still have a size a dynamic node reads: Unity's
+     * {@code Matrix2x2} feeding a {@code Multiply} gives {@code A(2) B(2x2) Out(2)} — the matrix keeps
+     * its own shape while the vector ports around it take the width 2. Kept as its own accessor so the
+     * promotion arithmetic ({@link #canFeed}, {@link #promote}) stays untouched by it.</p>
+     *
+     * @return the width, or 0 for a type with no meaningful one (a sampler, a bool)
+     */
+    public int dynamicWidth() {
+        return switch (this) {
+            case MAT2 -> 2;
+            case MAT3 -> 3;
+            case MAT4 -> 4;
+            default -> isNumericVector() ? components : 0;
+        };
+    }
+
+    /**
      * Parses a GLSL type name, case-insensitively.
      *
      * @return the type, or {@code null} when the name is not one this compiler can emit — which the
@@ -172,6 +193,18 @@ public enum CgShaderType {
      * @return the resolved type; {@link #FLOAT} when nothing non-scalar decides it, or {@code null}
      *         when two genuinely incompatible concrete types meet (a matrix and a vector)
      */
+    /** The scalar/vector type of a given component count, or null when there is none. */
+    @Nullable
+    public static CgShaderType ofWidth(int width) {
+        return switch (width) {
+            case 1 -> FLOAT;
+            case 2 -> VEC2;
+            case 3 -> VEC3;
+            case 4 -> VEC4;
+            default -> null;
+        };
+    }
+
     @Nullable
     public static CgShaderType resolveDynamic(Iterable<CgShaderType> candidates) {
         CgShaderType best = null;
@@ -180,6 +213,12 @@ public enum CgShaderType {
             // what makes Add(float, vec3) a vec3 rather than a float. Skipping it here is the whole of
             // that rule — Unity spells it "excluding 1 as it can promote".
             if (candidate == null || candidate == DYNAMIC || candidate == FLOAT) continue;
+            // A matrix contributes its DIMENSION as a width and resolves the node to the vector of that
+            // width — Unity's Matrix2x2 -> Multiply gives A(2)/Out(2). It is deliberately not carried
+            // through as a matrix: the node's other ports are vectors, and mat2 * vec2 is what the
+            // emitted GLSL wants anyway.
+            if (candidate.isMatrix()) candidate = ofWidth(candidate.dynamicWidth());
+            if (candidate == null) continue;
             if (best == null) {
                 best = candidate;
             } else if (candidate.isNumericVector() && best.isNumericVector()) {
