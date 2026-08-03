@@ -22,13 +22,20 @@ public final class CgShaderNodeRegistry {
     private final Map<String, CgShaderNode> nodes = new LinkedHashMap<>();
 
     /**
+     * Registers one or more nodes, in order — varargs so a whole subcategory can go on one call
+     * ({@code register(ADD, MULTIPLY, SUBTRACT, DIVIDE) // math/basic}) instead of one chained
+     * {@code .register(...)} per node, which is what {@link CgBuiltinShaderNodes#registerAll} does for
+     * every subcategory it declares.
+     *
      * @throws IllegalArgumentException on a duplicate id — a silent overwrite hides two consumers
      *         fighting over one name far more often than it is deliberate
      */
-    public CgShaderNodeRegistry register(CgShaderNode node) {
-        CgShaderNode previous = nodes.putIfAbsent(node.id(), node);
-        if (previous != null && previous != node) {
-            throw new IllegalArgumentException("Shader node id already registered: " + node.id());
+    public CgShaderNodeRegistry register(CgShaderNode... nodesToAdd) {
+        for (CgShaderNode node : nodesToAdd) {
+            CgShaderNode previous = nodes.putIfAbsent(node.id(), node);
+            if (previous != null && previous != node) {
+                throw new IllegalArgumentException("Shader node id already registered: " + node.id());
+            }
         }
         return this;
     }
