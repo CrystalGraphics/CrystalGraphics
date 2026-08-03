@@ -190,7 +190,14 @@ public final class CgGraphCompiler {
             }
 
             String chunk = header + declarations + indent(body);
-            for (String ignored : chunk.split("\n", -1)) lineOwners.put(line++, instance.id());
+            // split("\n", -1) on a chunk ending in a newline yields a trailing EMPTY element, and mapping
+            // it claimed one line too many — the line immediately AFTER this node's code, which belongs to
+            // whatever comes next. It stayed invisible for as long as the next line always happened to
+            // mention this node's own variable (`fragColor = node_c_Out;` did), and surfaced the moment
+            // the emitter began writing a line of its own between the last node and the output.
+            String[] chunkLines = chunk.split("\n", -1);
+            int emittedLines = chunk.endsWith("\n") ? chunkLines.length - 1 : chunkLines.length;
+            for (int i = 0; i < emittedLines; i++) lineOwners.put(line++, instance.id());
             code.append(chunk);
         }
 
@@ -334,7 +341,20 @@ public final class CgGraphCompiler {
      * explicit Split node the reader can see.</p>
      */
     private static boolean mayNarrow(CgShaderPort port, CgShaderGraph.Link link) {
-        return port.isDynamic() || link.fromNode().startsWith(IMPLICIT_INSTANCE_PREFIX);
+        // Now true for ANY link, and the two cases above are kept in the doc because they are why the
+        // machinery exists rather than why it fires.
+        //
+        // <b>This reverses the "everything else still refuses" rule stated above.</b> That rule held that
+        // an edge into a port whose type someone wrote down should never silently drop components, and
+        // that a Split node is where a truncation belongs. It is a defensible position; it is not Unity's,
+        // and it is not what a graph author expects. There, a Vector4 dropped onto a Vector3 slot connects
+        // and loses its w — `UV` into `Base Color` is the obvious case, and refusing it does not teach the
+        // rule, it reads as the editor being broken.
+        //
+        // The editor agrees at connect time (`ShaderGraphBridge.GLSL_PROMOTION`), and the two MUST stay
+        // in step: a wire the editor permits and the compiler then rejects is an error message about a
+        // graph the user was invited to draw.
+        return true;
     }
 
     @Nullable

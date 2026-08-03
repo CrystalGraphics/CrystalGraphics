@@ -81,51 +81,73 @@ public final class CgShaderEmitter {
             return new Result("", List.of(), errors);
         }
 
-        String positionRoot = rootFeeding(graph, masterId, CgMasterNode.POSITION);
-        String colourRoot = rootFeeding(graph, masterId, CgMasterNode.BASE_COLOR);
+        // Each block contributes its own roots. Declared as data on the master rather than as a hard-coded
+        // pair here, so a port added when a lighting model lands needs no change in this file.
+        List<String> vertexRoots = rootsFeeding(graph, masterId, CgMasterNode.VERTEX_PORTS);
+        List<String> fragmentRoots = rootsFeeding(graph, masterId, CgMasterNode.FRAGMENT_PORTS);
 
-        // Stage assignment. A node feeding BaseColor that declares VERTEX has to be hoisted, together
-        // with everything it depends on, or it would emit a vertex-only builtin into the fragment stage.
-        Set<String> vertexSet = new LinkedHashSet<>(idsOf(graph, positionRoot));
-        List<CgShaderGraph.Instance> colourChain = graph.orderedFrom(colourRoot);
-        for (CgShaderGraph.Instance instance : colourChain) {
+        // Stage assignment. A node feeding a FRAGMENT block port that declares VERTEX has to be hoisted,
+        // together with everything it depends on, or it would emit a vertex-only builtin into the
+        // fragment stage.
+        Set<String> vertexSet = idsOfAll(graph, vertexRoots);
+        List<CgShaderGraph.Instance> fragmentChain = orderedFromAll(graph, fragmentRoots);
+        for (CgShaderGraph.Instance instance : fragmentChain) {
             if (instance.type().domain() == CgShaderDomain.VERTEX) {
                 vertexSet.addAll(idsOf(graph, instance.id()));
             }
         }
 
-        checkDomains(graph, colourChain, vertexSet, errors);
+        checkDomains(graph, fragmentChain, vertexSet, errors);
 
-        // The vertex stage is rooted at Position, but must also emit everything hoisted out of the
-        // colour chain — so it is rooted at whichever of the two actually has nodes, with the other
-        // supplied as extra roots below.
-        CgGraphCompiler.Result vertexCode = compileStage(graph, positionRoot, Set.of(), errors);
-        List<CgGraphCompiler.Result> hoisted = new ArrayList<>();
-        Set<String> emittedInVertex = new LinkedHashSet<>(idsOf(graph, positionRoot));
-        for (CgShaderGraph.Instance instance : colourChain) {
-            if (instance.type().domain() != CgShaderDomain.VERTEX) continue;
-            if (emittedInVertex.contains(instance.id())) continue;
-            CgGraphCompiler.Result part = CgGraphCompiler.compileFrom(
-                    graph, instance.id(), false, Set.copyOf(emittedInVertex));
-            errors.addAll(part.errors());
-            hoisted.add(part);
-            emittedInVertex.addAll(idsOf(graph, instance.id()));
+        // The vertex stage emits its own roots first, then everything hoisted out of the fragment chain.
+        // Both are just extra roots, which is why one helper covers them.
+        List<String> allVertexRoots = new ArrayList<>(vertexRoots);
+        for (CgShaderGraph.Instance instance : fragmentChain) {
+            if (instance.type().domain() == CgShaderDomain.VERTEX) allVertexRoots.add(instance.id());
         }
+        CgGraphCompiler.Result vertexCode = compileRoots(graph, allVertexRoots, Set.of(), errors);
 
         Set<String> fragmentSet = new LinkedHashSet<>();
-        for (CgShaderGraph.Instance instance : colourChain) {
+        for (CgShaderGraph.Instance instance : fragmentChain) {
             if (!vertexSet.contains(instance.id())) fragmentSet.add(instance.id());
         }
         // The vertex-stage nodes are SKIPPED rather than absent: the fragment stage still needs their
         // variable names in order to read them, and substituteVaryings then rewrites those reads.
-        CgGraphCompiler.Result fragmentCode = compileStage(graph, colourRoot, vertexSet, errors);
-        vertexCode = merge(vertexCode, hoisted);
+        CgGraphCompiler.Result fragmentCode = compileRoots(graph, fragmentRoots, vertexSet, errors);
 
-        List<Varying> varyings = findVaryings(graph, vertexSet, fragmentSet);
+        List<Varying> varyings = findVaryings(graph, masterId, vertexSet, fragmentSet);
         Map<Integer, String> lineOwners = new LinkedHashMap<>();
-        String source = write(graph, master, masterId, lineOwners, vertexCode, fragmentCode, varyings,
-                positionRoot, colourRoot);
+        String source = write(graph, master, masterId, lineOwners, vertexCode, fragmentCode, varyings);
         return new Result(source, varyings, errors, Map.copyOf(lineOwners));
+    }
+
+    /** The upstream node for each of {@code ports} that is actually wired, in declaration order. */
+    private static List<String> rootsFeeding(CgShaderGraph graph, String masterId,
+                                             List<CgShaderPort> ports) {
+        List<String> roots = new ArrayList<>();
+        for (CgShaderPort port : ports) {
+            String root = rootFeeding(graph, masterId, port.id());
+            // Distinct: two master ports fed by the same node must not compile it twice.
+            if (root != null && !roots.contains(root)) roots.add(root);
+        }
+        return roots;
+    }
+
+    private static Set<String> idsOfAll(CgShaderGraph graph, List<String> roots) {
+        Set<String> ids = new LinkedHashSet<>();
+        for (String root : roots) ids.addAll(idsOf(graph, root));
+        return ids;
+    }
+
+    /** Dependency-ordered union of every chain, with each node appearing once. */
+    private static List<CgShaderGraph.Instance> orderedFromAll(CgShaderGraph graph, List<String> roots) {
+        Map<String, CgShaderGraph.Instance> ordered = new LinkedHashMap<>();
+        for (String root : roots) {
+            for (CgShaderGraph.Instance instance : graph.orderedFrom(root)) {
+                ordered.putIfAbsent(instance.id(), instance);
+            }
+        }
+        return List.copyOf(ordered.values());
     }
 
     /** The node feeding one of the master's inputs, or null when it is left at its default. */
@@ -148,24 +170,44 @@ public final class CgShaderEmitter {
      * <p>Reusing {@link CgGraphCompiler} rather than writing a second walk is the point: a stage is a
      * subgraph, and a subgraph is what {@code compileFrom} already emits.</p>
      */
-    private static CgGraphCompiler.Result compileStage(CgShaderGraph graph, @Nullable String root,
-                                                       Set<String> skip, List<String> errors) {
-        if (root == null) {
-            return new CgGraphCompiler.Result("", List.of(), Map.of(), List.of());
+    private static CgGraphCompiler.Result compileRoots(CgShaderGraph graph, List<String> roots,
+                                                       Set<String> initialSkip, List<String> errors) {
+        // Each root skips whatever the previous ones already emitted, or a node feeding two master ports
+        // would be declared twice and the GLSL would not compile.
+        Set<String> skip = new LinkedHashSet<>(initialSkip);
+        List<CgGraphCompiler.Result> parts = new ArrayList<>();
+        for (String root : roots) {
+            if (root == null) continue;
+            CgGraphCompiler.Result part = CgGraphCompiler.compileFrom(graph, root, false, Set.copyOf(skip));
+            errors.addAll(part.errors());
+            parts.add(part);
+            skip.addAll(idsOf(graph, root));
         }
-        CgGraphCompiler.Result result = CgGraphCompiler.compileFrom(graph, root, false, skip);
-        errors.addAll(result.errors());
-        return result;
+        if (parts.isEmpty()) return new CgGraphCompiler.Result("", List.of(), Map.of(), List.of());
+        return merge(parts);
     }
 
-    /** Joins the vertex root's code with each hoisted chain, in order. */
-    private static CgGraphCompiler.Result merge(CgGraphCompiler.Result first,
-                                                List<CgGraphCompiler.Result> rest) {
-        if (rest.isEmpty()) return first;
-        StringBuilder code = new StringBuilder(first.code());
-        Set<String> includes = new LinkedHashSet<>(first.includes());
-        Map<String, CgShaderType> outputTypes = new LinkedHashMap<>(first.outputTypes());
-        for (CgGraphCompiler.Result part : rest) {
+    /**
+     * Joins several compiled chains into one stage body.
+     *
+     * <p><b>Line owners are shifted, not dropped.</b> Each part numbers its own lines from 1, so the
+     * second chain's map would otherwise overwrite the first's entries with completely unrelated nodes —
+     * and the symptom is a compile error pointing confidently at a plausible neighbour. That was already
+     * latent when only hoisted nodes could produce a second part; multiple master ports make it routine.</p>
+     */
+    private static CgGraphCompiler.Result merge(List<CgGraphCompiler.Result> parts) {
+        if (parts.size() == 1) return parts.get(0);
+
+        StringBuilder code = new StringBuilder();
+        Set<String> includes = new LinkedHashSet<>();
+        Map<String, CgShaderType> outputTypes = new LinkedHashMap<>();
+        Map<Integer, String> lineOwners = new LinkedHashMap<>();
+        int lineOffset = 0;
+        for (CgGraphCompiler.Result part : parts) {
+            for (Map.Entry<Integer, String> owned : part.lineOwners().entrySet()) {
+                lineOwners.put(lineOffset + owned.getKey(), owned.getValue());
+            }
+            lineOffset += countLines(part.code());
             code.append(part.code());
             includes.addAll(part.includes());
             // Carried through, not dropped: a hoisted chain declares variables the merged result is the
@@ -174,7 +216,17 @@ public final class CgShaderEmitter {
             outputTypes.putAll(part.outputTypes());
         }
         return new CgGraphCompiler.Result(code.toString(), List.copyOf(includes),
-                first.lineOwners(), List.of(), Map.copyOf(outputTypes));
+                Map.copyOf(lineOwners), List.of(), Map.copyOf(outputTypes));
+    }
+
+    /** Lines a code fragment occupies. A trailing newline ends the last line rather than starting one. */
+    private static int countLines(String code) {
+        if (code.isEmpty()) return 0;
+        int lines = 0;
+        for (int i = 0; i < code.length(); i++) {
+            if (code.charAt(i) == '\n') lines++;
+        }
+        return code.endsWith("\n") ? lines : lines + 1;
     }
 
     /** A fragment-domain node feeding the vertex stage is impossible, not merely awkward. */
@@ -196,11 +248,25 @@ public final class CgShaderEmitter {
      * <p>One {@code v2f} field each, named after the variable that produced it so the generated struct
      * is readable rather than {@code v0, v1, v2}.</p>
      */
-    private static List<Varying> findVaryings(CgShaderGraph graph, Set<String> vertexSet,
+    private static List<Varying> findVaryings(CgShaderGraph graph, String masterId, Set<String> vertexSet,
                                               Set<String> fragmentSet) {
         Map<String, Varying> found = new LinkedHashMap<>();
         for (CgShaderGraph.Link link : graph.links()) {
-            if (!vertexSet.contains(link.fromNode()) || !fragmentSet.contains(link.toNode())) continue;
+            if (!vertexSet.contains(link.fromNode())) continue;
+            // The MASTER is a fragment-side consumer too, and missing that is what made `UV` wired
+            // straight into `Base Color` render as a flat white surface.
+            //
+            // The master is in neither set — it is the thing the sets are computed toward — so a link
+            // ending on it matched nothing here, no varying was created, and the fragment body was left
+            // referencing `node_uv_Out`, a local declared in the VERTEX function. That is an undefined
+            // identifier, so the whole material failed to compile and fell back.
+            //
+            // Only its FRAGMENT-block ports count: a vertex node feeding `Position` is already in the
+            // right stage and needs no crossing.
+            boolean intoFragmentStage = fragmentSet.contains(link.toNode())
+                    || (link.toNode().equals(masterId)
+                        && CgMasterNode.blockOf(link.toPort()) == CgShaderDomain.FRAGMENT);
+            if (!intoFragmentStage) continue;
             CgShaderGraph.Instance source = graph.instance(link.fromNode());
             if (source == null) continue;
             CgShaderPort port = source.type().port(link.fromPort());
@@ -219,8 +285,7 @@ public final class CgShaderEmitter {
     private static String write(CgShaderGraph graph, CgMasterNode master, String masterId,
                                 Map<Integer, String> lineOwners,
                                 CgGraphCompiler.Result vertex, CgGraphCompiler.Result fragment,
-                                List<Varying> varyings,
-                                @Nullable String positionRoot, @Nullable String colourRoot) {
+                                List<Varying> varyings) {
         StringBuilder out = new StringBuilder(1024);
         out.append("// Generated from a shader graph. Edits here are lost on the next compile.\n");
         out.append("#type ").append(master.vertexFormat()).append("\n\n");
@@ -253,6 +318,20 @@ public final class CgShaderEmitter {
             out.append("    ").append(varying.type().glsl()).append(' ')
                     .append(varying.field()).append(";\n");
         }
+        if (varyings.isEmpty()) {
+            // GLSL has no empty struct — `struct v2f { };` is a COMPILE ERROR, not an empty type.
+            //
+            // This shipped with 6.3.5 and was invisible for as long as nothing fed the emitter's output
+            // to a driver: `CgShaderParser` accepts it happily (it is structurally a fine `.shader`), so
+            // every test passed, and the source pane displayed it looking entirely correct. The first
+            // thing to actually compile one was the main preview, which drew a white sphere — the
+            // material's fallback — for a graph whose GLSL was right in every other respect.
+            //
+            // A single padding member is the whole fix. The alternative, omitting the struct when empty,
+            // means the vertex/fragment signatures have to vary too, which is a second shape of generated
+            // file for no gain.
+            out.append("    float unused;\n");
+        }
         out.append("};\n\n");
 
         out.append("Pass {\n");
@@ -261,8 +340,10 @@ public final class CgShaderEmitter {
         out.append("    void vertex(out v2f o) {\n");
         mapOwners(lineOwners, vertex.lineOwners(), nextLine(out));
         out.append(reindent(vertex.code()));
+        // Adapted like the fragment ports: a vec4 wired into Position would otherwise become
+        // vec4(someVec4, 1.0). No varying substitution — this IS the vertex stage.
         out.append("        gl_Position = CG_MATRIX_MVP * vec4(")
-                .append(expressionFor(graph, masterId, CgMasterNode.POSITION, positionRoot))
+                .append(adapted(graph, masterId, CgMasterNode.POSITION, vertex, null))
                 .append(", 1.0);\n");
         for (Varying varying : varyings) {
             out.append("        o.").append(varying.field()).append(" = ")
@@ -273,25 +354,123 @@ public final class CgShaderEmitter {
         out.append("    void fragment(in v2f i, out vec4 fragColor) {\n");
         mapOwners(lineOwners, fragment.lineOwners(), nextLine(out));
         out.append(reindent(substituteVaryings(fragment.code(), varyings)));
-        out.append("        fragColor = ")
-                .append(substituteVaryings(
-                        expressionFor(graph, masterId, CgMasterNode.BASE_COLOR, colourRoot), varyings))
-                .append(";\n");
+
+        String baseColor = fragmentExpression(graph, masterId, CgMasterNode.BASE_COLOR, varyings,
+                fragment, vertex);
+        String alpha = fragmentExpression(graph, masterId, CgMasterNode.ALPHA, varyings, fragment, vertex);
+        String clip = fragmentExpression(graph, masterId, CgMasterNode.ALPHA_CLIP_THRESHOLD, varyings,
+                fragment, vertex);
+
+        // Alpha is resolved into a local before the clip test so the expression is evaluated once — it may
+        // be an arbitrary node chain, and writing it twice would duplicate whatever work produced it.
+        out.append("        float cg_alpha = ").append(alpha).append(";\n");
+
+        // Emitted only when the threshold is genuinely wired or non-zero. A constant `< 0.0` is dead code
+        // every driver would strip, but it is also a `discard` sitting in the source of every shader in
+        // the project, and `discard` is the single most misread instruction in a fragment body — someone
+        // will eventually conclude their opaque shader is doing alpha testing.
+        if (isClippingEnabled(graph, masterId, clip)) {
+            out.append("        if (cg_alpha < ").append(clip).append(") discard;\n");
+        }
+
+        out.append("        fragColor = vec4(").append(baseColor).append(", cg_alpha);\n");
         out.append("    }\n");
         out.append("}\n");
         return out.toString();
     }
 
-    /** The expression the master reads for one of its inputs: an upstream variable, or its default. */
-    private static String expressionFor(CgShaderGraph graph, String masterId, String port,
-                                        @Nullable String root) {
+    /** A master input as the fragment stage should read it — adapted to the port's type, then varyings
+     * substituted. */
+    private static String fragmentExpression(CgShaderGraph graph, String masterId, String port,
+                                             List<Varying> varyings, CgGraphCompiler.Result stage,
+                                             CgGraphCompiler.Result vertex) {
+        return substituteVaryings(adapted(graph, masterId, port, stage, vertex), varyings);
+    }
+
+    /**
+     * The master's input expression, converted to the type the master port declares.
+     *
+     * <p><b>The master narrows where an ordinary node would refuse to.</b> {@code CgGraphCompiler} allows
+     * a truncating swizzle only into a {@code DYNAMIC} port or a link it synthesised itself, precisely so
+     * that a user-drawn edge cannot silently drop components — but the master never goes through that
+     * path at all, because it emits no code and so has no inputs for the compiler to resolve. Without
+     * this, wiring a {@code vec4} into {@code BaseColor} (a {@code vec3} since the block gained a real
+     * {@code Alpha}) produces {@code vec4(someVec4, cg_alpha)}, which fails in the driver rather than in
+     * the editor.</p>
+     *
+     * <p>Allowing it here is the same carve-out the implicit-UV links already have, and rests on the same
+     * reasoning: this is the compiler's own conversion at a boundary it defines, not a user's edge being
+     * quietly reinterpreted. A graph that wired an RGBA colour into Base Color plainly meant its RGB.</p>
+     */
+    private static String adapted(CgShaderGraph graph, String masterId, String port,
+                                  CgGraphCompiler.Result stage, @Nullable CgGraphCompiler.Result other) {
+        String expression = expressionFor(graph, masterId, port);
         CgShaderGraph.Link link = graph.linkInto(masterId, port);
-        if (link == null || root == null) {
-            CgShaderGraph.Instance master = graph.instance(masterId);
-            String value = master == null ? null : master.valueFor(port);
-            return value == null ? "vec4(1.0)" : value;
+        if (link == null) return expression;   // a literal already written in the right type
+
+        CgShaderType want = declaredTypeOf(port);
+        // BOTH stages, and the fallback is the whole point. A vertex-domain node feeding a fragment port
+        // — `UV` wired straight into `Base Color` is the everyday case — is hoisted into the vertex stage
+        // and crosses as a varying, so its variable was declared over THERE and the fragment stage's own
+        // type map knows nothing about it. Looking in one stage silently produced `have == null`, which
+        // this method reads as "nothing to convert": the vec4 was written into `vec4(..., cg_alpha)` whole,
+        // which is a GLSL error, and the material fell back to white.
+        //
+        // The tell was that inserting any fragment-stage node in between — a Fraction, say — fixed it,
+        // because then the variable really was declared in the stage being asked.
+        CgShaderType have = stage.typeOf(expression);
+        if (have == null && other != null) have = other.typeOf(expression);
+        if (want == null || have == null || have == want) return expression;
+        if (!have.isNumericVector() || !want.isNumericVector()) return expression;
+
+        if (have.components() > want.components()) {
+            return expression + "." + "xyzw".substring(0, want.components());
         }
-        return "node_" + link.fromNode() + "_" + link.fromPort();
+        return have.promote(expression, want);
+    }
+
+    @Nullable
+    private static CgShaderType declaredTypeOf(String portId) {
+        for (CgShaderPort port : CgMasterNode.FRAGMENT_PORTS) {
+            if (port.id().equals(portId)) return port.type();
+        }
+        for (CgShaderPort port : CgMasterNode.VERTEX_PORTS) {
+            if (port.id().equals(portId)) return port.type();
+        }
+        return null;
+    }
+
+    /**
+     * Whether the alpha-clip branch is worth writing at all.
+     *
+     * <p>Wired means yes, whatever it resolves to. Unwired means it is a literal, and only a non-zero one
+     * can ever discard anything.</p>
+     */
+    private static boolean isClippingEnabled(CgShaderGraph graph, String masterId, String threshold) {
+        if (graph.linkInto(masterId, CgMasterNode.ALPHA_CLIP_THRESHOLD) != null) return true;
+        try {
+            return Float.parseFloat(threshold.trim()) > 0f;
+        } catch (NumberFormatException notALiteral) {
+            // An engine expression or something we cannot evaluate here — assume it matters. Emitting a
+            // branch that turns out to be dead is free; skipping one that was not is a silent behaviour
+            // change with nothing to search for.
+            return true;
+        }
+    }
+
+    /** The expression the master reads for one of its inputs: an upstream variable, or its default. */
+    private static String expressionFor(CgShaderGraph graph, String masterId, String port) {
+        CgShaderGraph.Link link = graph.linkInto(masterId, port);
+        if (link != null) return "node_" + link.fromNode() + "_" + link.fromPort();
+
+        CgShaderGraph.Instance master = graph.instance(masterId);
+        String authored = master == null ? null : master.valueFor(port);
+        if (authored != null) return authored;
+
+        // The port's own declared default, rather than a constant written here. There used to be a
+        // hard-coded `vec4(1.0)`, which was right for exactly as long as every master port was a vec4.
+        String declared = CgMasterNode.defaultExpressionFor(port);
+        return declared == null ? "0.0" : declared;
     }
 
     /**

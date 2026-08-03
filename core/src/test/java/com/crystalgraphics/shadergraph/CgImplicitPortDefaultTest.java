@@ -212,12 +212,24 @@ public class CgImplicitPortDefaultTest {
     }
 
     /**
-     * Narrowing is allowed ONLY on a link this compiler synthesized. A user-drawn vec4 → vec2 edge is
-     * still refused, because picking components silently is how a graph starts lying about what it
-     * computes — that belongs in an explicit Split node the user can see.
+     * <b>A user-drawn wider-to-narrower edge truncates, exactly as Unity's does.</b>
+     *
+     * <p>This test previously asserted the opposite — that a hand-drawn {@code vec4 -> vec2} was an error,
+     * on the grounds that picking components silently is how a graph starts lying about what it computes,
+     * and that a truncation belongs in a Split node the reader can see. That is a defensible position and
+     * it is not the one this editor takes: in Unity a Vector4 dropped onto a Vector3 slot connects and
+     * loses its w, and {@code UV} into {@code Base Color} is the case every author hits first. Refusing it
+     * did not teach the rule; it read as the editor being broken.</p>
+     *
+     * <p>Nothing is concealed by allowing it — a port label carries its own arity, so {@code Out(4)} into
+     * {@code Center(2)} states the truncation at both ends before the wire is drawn.</p>
+     *
+     * <p>The editor's connect-time rule ({@code ShaderGraphBridge.GLSL_PROMOTION}) agrees, and the two
+     * must stay in step: a wire the editor permits and the compiler then rejects is an error message
+     * about a graph the user was invited to draw.</p>
      */
     @Test
-    public void narrowingStaysRefusedForAUserDrawnEdge() {
+    public void aUserDrawnEdgeMayNarrow() {
         CgShaderGraph graph = new CgShaderGraph()
                 .add(CgShaderGraph.Instance.of("uv", CgBuiltinShaderNodes.UV))
                 .add(CgShaderGraph.Instance.of("n", CgBuiltinShaderNodes.POLAR_COORDINATES))
@@ -226,9 +238,9 @@ public class CgImplicitPortDefaultTest {
 
         CgGraphCompiler.Result result = CgGraphCompiler.compile(graph);
 
-        assertFalse("a hand-drawn vec4 -> vec2 edge must still be reported", result.ok());
-        assertTrue(String.join("\n", result.errors()),
-                result.errors().stream().anyMatch(e -> e.contains("Center")));
+        assertTrue(String.join("\n", result.errors()), result.ok());
+        assertTrue("the wider value must be swizzled down rather than passed whole",
+                result.code().contains("node_uv_Out.xy"));
     }
 
     private static int countOf(String haystack, String needle) {

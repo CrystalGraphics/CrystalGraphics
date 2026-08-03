@@ -343,6 +343,148 @@ public final class CgMeshBuilder {
     }
 
     /**
+     * One latitude ring of a surface of revolution — see {@link #revolve}.
+     *
+     * @param y       height of the ring on the Y axis
+     * @param radius  distance from the axis; zero collapses the ring to a point on it
+     * @param normalY the axial component of the surface normal
+     * @param normalR the radial component; {@code (normalY, normalR)} should be unit length
+     * @param v       texture coordinate down the profile
+     */
+    private record Ring(float y, float radius, float normalY, float normalR, float v) {
+    }
+
+    /**
+     * Sweeps a profile of {@link Ring}s around the Y axis and stitches consecutive rings into quads.
+     *
+     * <p>Shared by {@link #cylinder} and {@link #capsule} because they differ only in their profile —
+     * writing two grid-stitching loops would be two places for the winding order to be wrong, and a
+     * back-face-culled mesh with inverted winding is invisible rather than obviously broken.</p>
+     *
+     * <p>A zero-radius ring is a legal degenerate: it collapses to a point on the axis and produces
+     * degenerate triangles at the seam, which is exactly what {@link #uvSphere}'s poles already do.
+     * That is what lets a flat end cap be expressed as an ordinary ring pair rather than a special case.</p>
+     */
+    private static CgMeshData revolve(CgVertexFormat format, java.util.List<Ring> rings, int sectors) {
+        CgMeshFormatFlags flags = new CgMeshFormatFlags(format);
+        boolean hasUv = flags.wantsUv, hasColor = flags.wantsColor, hasNormal = flags.wantsNormal;
+
+        int vertsPerRow = sectors + 1;
+        int vertexCount = rings.size() * vertsPerRow;
+
+        ByteBuffer vbo = CgBufferUtils.createByteBuffer(vertexCount * format.getStride());
+        CgVertexWriter writer = CgVertexWriter.forBuffer(vbo, format);
+
+        for (Ring ring : rings) {
+            for (int sector = 0; sector <= sectors; sector++) {
+                float u = (float) sector / sectors;
+                float theta = (float) (2.0 * Math.PI * u);
+                float cosTheta = (float) Math.cos(theta);
+                float sinTheta = (float) Math.sin(theta);
+
+                writeVertex(writer,
+                        ring.radius() * cosTheta, ring.y(), ring.radius() * sinTheta,
+                        u, ring.v(), 255, 255, 255, 255,
+                        ring.normalR() * cosTheta, ring.normalY(), ring.normalR() * sinTheta,
+                        hasUv, hasColor, hasNormal, true);
+            }
+        }
+        vbo.flip();
+
+        int bands = rings.size() - 1;
+        int[] indices = new int[bands * sectors * 6];
+        int idx = 0;
+        for (int band = 0; band < bands; band++) {
+            for (int sector = 0; sector < sectors; sector++) {
+                int tl = band * vertsPerRow + sector;
+                int tr = tl + 1;
+                int bl = tl + vertsPerRow;
+                int br = bl + 1;
+                // Same winding as uvSphere's, which is what makes the two agree under back-face culling.
+                indices[idx++] = tl;
+                indices[idx++] = bl;
+                indices[idx++] = tr;
+                indices[idx++] = tr;
+                indices[idx++] = bl;
+                indices[idx++] = br;
+            }
+        }
+
+        ByteBuffer ibo = buildIbo(indices, vertexCount);
+        return new CgMeshData(format, CgMeshTopology.TRIANGLES, vbo, ibo, indices.length);
+    }
+
+    /**
+     * Builds a capped cylinder centred on the origin, standing on the Y axis.
+     *
+     * <p>The rim appears <b>twice</b>, once with a radial normal for the side wall and once with an axial
+     * normal for the cap. Sharing a single rim vertex would average the two into a 45° normal all the way
+     * round, which lights the silhouette as if the edge were bevelled — the standard reason a hard edge
+     * needs split vertices.</p>
+     *
+     * @param format  vertex format for the output mesh
+     * @param sectors divisions around the axis
+     * @param radius  cylinder radius
+     * @param height  total height, so the ends sit at ±{@code height/2}
+     */
+    public static CgMeshData cylinder(CgVertexFormat format, int sectors, float radius, float height) {
+        if (sectors < 3) throw new IllegalArgumentException("sectors must be >= 3, got " + sectors);
+        float halfHeight = height * 0.5f;
+
+        java.util.List<Ring> profile = java.util.List.of(
+                new Ring(-halfHeight, 0f, -1f, 0f, 0f),          // bottom cap centre
+                new Ring(-halfHeight, radius, -1f, 0f, 0f),      // bottom cap rim
+                new Ring(-halfHeight, radius, 0f, 1f, 0f),       // side, bottom
+                new Ring(halfHeight, radius, 0f, 1f, 1f),        // side, top
+                new Ring(halfHeight, radius, 1f, 0f, 1f),        // top cap rim
+                new Ring(halfHeight, 0f, 1f, 0f, 1f));           // top cap centre
+        return revolve(format, profile, sectors);
+    }
+
+    /**
+     * Builds a capsule — a cylinder with hemispherical ends — centred on the origin, on the Y axis.
+     *
+     * <p>Total height is {@code height + 2 * radius}: {@code height} is the <b>cylindrical section</b>,
+     * which is the unambiguous parameterisation. Unity's inspector instead exposes total height and
+     * silently clamps it against the radius, which is friendlier in an inspector and a trap in an API.</p>
+     *
+     * <p>No split vertices anywhere: a capsule has no hard edge, and the hemisphere meets the wall at a
+     * shared tangent, so one normal per rim is the correct one.</p>
+     *
+     * @param format   vertex format for the output mesh
+     * @param sectors  divisions around the axis
+     * @param capRings latitude bands in <em>each</em> hemisphere
+     * @param radius   cap radius, which is also the cylinder radius
+     * @param height   height of the cylindrical section between the caps
+     */
+    public static CgMeshData capsule(CgVertexFormat format, int sectors, int capRings,
+                                     float radius, float height) {
+        if (sectors < 3) throw new IllegalArgumentException("sectors must be >= 3, got " + sectors);
+        if (capRings < 1) throw new IllegalArgumentException("capRings must be >= 1, got " + capRings);
+        float halfHeight = height * 0.5f;
+
+        java.util.List<Ring> profile = new java.util.ArrayList<>();
+        // Bottom hemisphere: phi from PI (south pole) up to PI/2 (equator).
+        for (int i = 0; i <= capRings; i++) {
+            double phi = Math.PI - (Math.PI * 0.5) * i / capRings;
+            float ny = (float) Math.cos(phi);
+            float nr = (float) Math.sin(phi);
+            profile.add(new Ring(-halfHeight + ny * radius, nr * radius, ny, nr, (float) i / (capRings * 2)));
+        }
+        // Top hemisphere: PI/2 down to 0. The equator ring is emitted by BOTH loops — once at the bottom
+        // cap's top and once at the top cap's bottom — which is what forms the cylindrical wall between
+        // them. Dropping the duplicate would weld the two hemispheres into a sphere with no body.
+        for (int i = 0; i <= capRings; i++) {
+            double phi = (Math.PI * 0.5) - (Math.PI * 0.5) * i / capRings;
+            float ny = (float) Math.cos(phi);
+            float nr = (float) Math.sin(phi);
+            profile.add(new Ring(halfHeight + ny * radius, nr * radius, ny, nr,
+                    0.5f + (float) i / (capRings * 2)));
+        }
+        return revolve(format, profile, sectors);
+    }
+
+    /**
      * Builds an icosphere with the given number of subdivision levels.
      *
      * <p>Base: 12 vertices, 20 faces (icosahedron). Each subdivision splits each triangle
