@@ -330,11 +330,11 @@ public final class CgMeshBuilder {
                 int bl = tl + vertsPerRow;
                 int br = bl + 1;
                 indices[idx++] = tl;
-                indices[idx++] = bl;
-                indices[idx++] = tr;
                 indices[idx++] = tr;
                 indices[idx++] = bl;
+                indices[idx++] = tr;
                 indices[idx++] = br;
+                indices[idx++] = bl;
             }
         }
 
