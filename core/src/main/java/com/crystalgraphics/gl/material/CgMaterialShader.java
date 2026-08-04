@@ -7,6 +7,7 @@ import com.crystalgraphics.api.material.CgAttachedBuffer;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.render.CgRenderPipeline;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
+import com.crystalgraphics.api.render.CgFrameData;
 import com.crystalgraphics.api.material.CgRenderQueue;
 import com.crystalgraphics.api.shader.CgPreprocessorException;
 import com.crystalgraphics.api.shader.CgShader;
@@ -751,6 +752,17 @@ public final class CgMaterialShader {
     private boolean attemptShadowAutoGen(CgParsedShader parsed, CgUniformBuffer newMatPropsUbo,
                                          Map<ProgramKey, CgShader> newCache, List<CgShader> newShaders,
                                          boolean isFirst) {
+        // Nothing to generate while the engine has no shadow system. The GLSL below references
+        // cg_ShadowViewProjMatrix and cg_ShadowParams, which CgFrameBlock has never declared — so this
+        // pass has never compiled for any material, and every opaque one logged two driver errors on
+        // load before being swallowed as "continuing without shadow pass". Harmless-looking at one
+        // material per session; a shader graph recompiling on every edit turned it into a stream.
+        //
+        // Skipped silently rather than warned about: a capability the engine does not have yet is not a
+        // fault of the material being compiled, and a warning per material would be the same noise in a
+        // politer font. @see CgFrameData#SHADOWS_SUPPORTED
+        if (!CgFrameData.SHADOWS_SUPPORTED) return true;
+
         boolean hasExplicitShadow = parsed.getPassByLightMode(CgRenderPassVariant.SHADOW.lightModeName()) != null;
         boolean isOpaque = parsed.renderQueue() < CgRenderQueue.TRANSPARENT_THRESHOLD;
 

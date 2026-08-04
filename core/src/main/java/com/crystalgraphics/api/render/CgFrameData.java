@@ -120,10 +120,33 @@ public final class CgFrameData {
     }
 
     /**
+     * Whether this engine has a shadow system at all — <b>the single switch for it</b>.
+     *
+     * <h3>Why a constant rather than a per-instance answer</h3>
+     * <p>Shadows are absent by construction, not by configuration: {@code CgFrameBlock} carries no light
+     * direction, no shadow matrix and no shadow params, so nothing downstream of it can work. That is a
+     * <em>compile-time</em> fact, and the material compiler needs it as one — see
+     * {@code CgMaterialShader.attemptShadowAutoGen}, which was auto-generating a shadow-caster pass whose
+     * GLSL referenced {@code cg_ShadowViewProjMatrix} and {@code cg_ShadowParams}. Neither identifier has
+     * ever existed, so that pass has never compiled for <b>any</b> material in the project's history: two
+     * driver errors logged on every material load, swallowed as "continuing without shadow pass".</p>
+     *
+     * <p>It went unnoticed because materials are normally loaded once and the log line reads like a
+     * capability notice. A shader graph recompiles on every edit, which turned it into a stream.</p>
+     *
+     * <p><b>Flipping this to true is not enough on its own.</b> {@code CgFrameBlock} must declare the
+     * three shadow uniforms in the same change, and {@code CgShadowUniformContractTest} fails if one
+     * happens without the other.</p>
+     */
+    public static final boolean SHADOWS_SUPPORTED = false;
+
+    /**
      * MVP: directional light deferred to v2. Always returns {@code false}.
      * Shadow pass is not executed in Phase 1.
+     *
+     * @see #SHADOWS_SUPPORTED
      */
     public boolean hasDirectionalLight() {
-        return false;
+        return SHADOWS_SUPPORTED;
     }
 }
