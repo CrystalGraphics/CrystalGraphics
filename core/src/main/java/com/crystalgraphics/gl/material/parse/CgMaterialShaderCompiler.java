@@ -214,11 +214,21 @@ public final class CgMaterialShaderCompiler {
      * <p>The fragment shader is depth-only (empty body; depth written automatically
      * by the rasterizer).</p>
      *
-     * <p><strong>UBO contract</strong>: {@code cg_ShadowViewProjMatrix},
-     * {@code cg_LightDirection}, and {@code cg_ShadowParams} are declared in the
-     * {@code CgFrameBlock} UBO (injected via {@code cg_env.glsl}). The generated GLSL
-     * references them as plain identifiers — never as standalone {@code uniform}
-     * declarations, which would cause GLSL redeclaration conflicts.</p>
+     * <p><strong>⚠ UBO contract — NOT YET SATISFIED.</strong> The generated GLSL references
+     * {@code cg_ShadowViewProjMatrix}, {@code cg_LightDirection} and {@code cg_ShadowParams} as plain
+     * identifiers, on the assumption that {@code CgFrameBlock} declares them (injected via
+     * {@code cg_env.glsl}). <b>It does not, and never has</b> — that block carries view, projection, time
+     * and resolution and nothing else, so everything produced here fails to compile with
+     * {@code undefined variable}. This javadoc asserted the contract rather than the code establishing it,
+     * which is why it went unnoticed for so long.</p>
+     *
+     * <p>Nothing calls this today: {@code CgMaterialShader.attemptShadowAutoGen} skips shadow generation
+     * entirely while {@code CgFrameData.SHADOWS_SUPPORTED} is false. Declaring the three uniforms in
+     * {@code cg_env.glsl} and flipping that flag are one change, enforced by
+     * {@code CgShadowUniformContractTest}.</p>
+     *
+     * <p>The identifier style is right and worth keeping: plain references, never standalone
+     * {@code uniform} declarations, which would collide with the block once it exists.</p>
      *
      * @param shader          material-level parse result (properties, featureNames)
      * @param forwardPass     the Forward pass to derive the shadow vertex from; must not be null
