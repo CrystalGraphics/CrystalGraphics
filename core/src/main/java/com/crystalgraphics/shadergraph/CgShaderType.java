@@ -262,4 +262,36 @@ public enum CgShaderType {
         if (this == DYNAMIC || isMatrix()) return null;
         return this == BOOL ? "boolean" : glsl;
     }
+
+    /**
+     * The token to <b>write</b> in a {@code Properties} block — which is not always
+     * {@link #propertyTypeName()}.
+     *
+     * <h3>vec3 cannot be a material property, and this is where that is absorbed</h3>
+     * <p>{@code CgPropertiesParser} hard-bans it: STD140 pads a {@code vec3} to 16 bytes but the GLSL
+     * compiler places the next field 12 bytes later, so a block containing one is silently mis-aligned.
+     * A graph exposing a Vector 3 is an entirely reasonable thing to build, though, so refusing it in
+     * the editor would push an alignment rule up into the user's face for no reason they could act on.</p>
+     *
+     * <p>So a {@code VEC3} property is <b>declared as {@code vec4}</b> and read back through
+     * {@link #propertyAccessSuffix()}. The pair belongs here, beside the constraint it exists for,
+     * rather than in whatever happens to be generating the block: a second generator would re-derive it,
+     * get it wrong, and emit a shader that fails to parse for a graph that is perfectly valid.</p>
+     */
+    @Nullable
+    public String propertyDeclarationType() {
+        String name = propertyTypeName();
+        if (name == null) return null;
+        return this == VEC3 ? VEC4.glsl : name;
+    }
+
+    /**
+     * What to append when READING this type's uniform, so the value has the type the graph expects.
+     *
+     * <p>Empty for everything but {@link #VEC3}, which is declared wider than it is — see
+     * {@link #propertyDeclarationType()}.</p>
+     */
+    public String propertyAccessSuffix() {
+        return this == VEC3 ? ".xyz" : "";
+    }
 }
