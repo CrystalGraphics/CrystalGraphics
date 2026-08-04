@@ -128,14 +128,29 @@ public final class CgMainPreviewRenderer {
     /**
      * As above, choosing whether the preview lights its own output.
      *
+     * @param graph the IR to draw, or {@code null} when the document has no master node to compile
+     *              toward — see below
      * @param lit viewport shading, <b>not</b> a lighting model — see {@link CgShaderEmitter.Shading}.
      *            Unlit is what the material actually draws in game, and is the mode to check against when
      *            the colour matters more than the form.
      */
     @Nullable
-    public CgTexture render(CgShaderGraph graph, CgMasterNode master, CgPreviewMesh mesh,
+    public CgTexture render(@Nullable CgShaderGraph graph, CgMasterNode master, CgPreviewMesh mesh,
                             float yaw, float pitch, float zoom, boolean lit) {
         if (deleted) throw new IllegalStateException("This CgMainPreviewRenderer has been deleted");
+
+        // A NULL graph is an ordinary editing state, not a caller error: `ShaderGraphBridge.toShaderGraph`
+        // returns null when the document has no master node, and deleting the Output node is a perfectly
+        // normal thing to do halfway through rewiring a graph. Treated exactly like a graph that will not
+        // compile — the panel keeps its last good picture rather than blanking.
+        //
+        // Guarded here rather than at the call site so the method is total: this ran straight into
+        // CgShaderEmitter.emit, which dereferences the graph on its first line, and took the whole harness
+        // down from inside a frame ticker.
+        if (graph == null) {
+            failed = true;
+            return currentTexture();
+        }
 
         CgShaderEmitter.Result emitted = CgShaderEmitter.emit(graph, master,
                 lit ? CgShaderEmitter.Shading.PREVIEW_LIT : CgShaderEmitter.Shading.UNLIT);
