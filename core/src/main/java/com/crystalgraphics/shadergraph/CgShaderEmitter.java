@@ -32,6 +32,57 @@ import java.util.Set;
  */
 public final class CgShaderEmitter {
 
+    /**
+     * Whether the emitted shader lights its own output.
+     *
+     * <h3>{@link #PREVIEW_LIT} is viewport shading, not a lighting model</h3>
+     * <p>This engine has no lighting — {@code CgFrameBlock} carries no light term and
+     * {@code CgFrameData.hasDirectionalLight()} returns false. What {@code PREVIEW_LIT} adds is a fixed
+     * key light baked into the generated source as constants, exactly the way a modelling tool's
+     * "material preview" viewport differs from its final render. <b>No engine state is involved</b>, so
+     * nothing here pre-empts what a real lighting model will eventually look like.</p>
+     *
+     * <p>It exists because an unlit sphere is a filled circle. Orientation, curvature and the whole point
+     * of the shape menu are carried by shading, and mostly by the <em>specular</em> term — a view-dependent
+     * highlight survives even a black base colour, which is why Unity's default preview still reads as a
+     * sphere with its albedo set to black.</p>
+     *
+     * <p><b>The shading is never parameterised by the graph.</b> Roughness, light colour and intensity are
+     * constants below and are deliberately not master ports. A port that visibly changes the preview and
+     * does nothing in game is worse than an absent one: it looks like a working feature. That is the same
+     * rule that keeps Metallic and Smoothness off {@link CgMasterNode#FRAGMENT_PORTS}.</p>
+     */
+    public enum Shading {
+        /** What ships. The fragment output is the graph's, untouched. */
+        UNLIT,
+        /** Preview only — a fixed world-space key light over the graph's output. */
+        PREVIEW_LIT
+    }
+
+    // ── Preview lighting constants, all tunable in one place ────────────────
+
+    /**
+     * Key light direction, in <b>world</b> space.
+     *
+     * <p>World-fixed rather than attached to the camera, and that is the whole reason this is legible: a
+     * headlight rotates with you, so the shading barely changes as the mesh turns and rotation stays
+     * invisible — which was the complaint. A world-fixed light sweeps its highlight across the surface as
+     * you orbit, which is what actually reads as motion.</p>
+     */
+    private static final String PREVIEW_LIGHT_DIR = "normalize(vec3(-0.45, 0.72, 0.55))";
+
+    /** Floor, so nothing faces fully into black. Also what keeps a dark base colour from vanishing. */
+    private static final String PREVIEW_AMBIENT = "0.28";
+    private static final String PREVIEW_KEY = "0.80";
+
+    /** The term doing most of the work — see {@link Shading#PREVIEW_LIT}. */
+    private static final String PREVIEW_SPECULAR = "0.30";
+    private static final String PREVIEW_SHININESS = "48.0";
+
+    /** Carries the world normal across for the preview's lighting. Prefixed so it cannot collide with a
+     * graph-generated {@code v_<node>_<port>}. */
+    private static final String PREVIEW_NORMAL_FIELD = "v_cg_preview_normal";
+
     /** A value crossing from the vertex stage to the fragment stage. */
     public record Varying(String field, CgShaderType type, String vertexVariable) {
     }
@@ -74,6 +125,11 @@ public final class CgShaderEmitter {
      * Emits the complete {@code .shader} for {@code graph}, whose output node must be {@code master}.
      */
     public static Result emit(CgShaderGraph graph, CgMasterNode master) {
+        return emit(graph, master, Shading.UNLIT);
+    }
+
+    /** As above, in a given shading mode. @see Shading */
+    public static Result emit(CgShaderGraph graph, CgMasterNode master, Shading shading) {
         List<String> errors = new ArrayList<>();
         String masterId = graph.outputId();
         if (masterId == null || graph.instance(masterId) == null) {
@@ -117,7 +173,8 @@ public final class CgShaderEmitter {
 
         List<Varying> varyings = findVaryings(graph, masterId, vertexSet, fragmentSet);
         Map<Integer, String> lineOwners = new LinkedHashMap<>();
-        String source = write(graph, master, masterId, lineOwners, vertexCode, fragmentCode, varyings);
+        String source = write(graph, master, masterId, lineOwners, vertexCode, fragmentCode,
+                varyings, shading);
         return new Result(source, varyings, errors, Map.copyOf(lineOwners));
     }
 
@@ -285,7 +342,8 @@ public final class CgShaderEmitter {
     private static String write(CgShaderGraph graph, CgMasterNode master, String masterId,
                                 Map<Integer, String> lineOwners,
                                 CgGraphCompiler.Result vertex, CgGraphCompiler.Result fragment,
-                                List<Varying> varyings) {
+                                List<Varying> varyings, Shading shading) {
+        boolean lit = shading == Shading.PREVIEW_LIT;
         StringBuilder out = new StringBuilder(1024);
         out.append("// Generated from a shader graph. Edits here are lost on the next compile.\n");
         out.append("#type ").append(master.vertexFormat()).append("\n\n");
@@ -318,7 +376,10 @@ public final class CgShaderEmitter {
             out.append("    ").append(varying.type().glsl()).append(' ')
                     .append(varying.field()).append(";\n");
         }
-        if (varyings.isEmpty()) {
+        // The preview's own normal, always present in lit mode — which also means the empty-struct guard
+        // below can never fire while lit.
+        if (lit) out.append("    vec3 ").append(PREVIEW_NORMAL_FIELD).append(";\n");
+        if (varyings.isEmpty() && !lit) {
             // GLSL has no empty struct — `struct v2f { };` is a COMPILE ERROR, not an empty type.
             //
             // This shipped with 6.3.5 and was invisible for as long as nothing fed the emitter's output
@@ -349,6 +410,13 @@ public final class CgShaderEmitter {
             out.append("        o.").append(varying.field()).append(" = ")
                     .append(varying.vertexVariable()).append(";\n");
         }
+        if (lit) {
+            // The mesh's own normal, in world space. Deliberately NOT the master's Vertex block: there is
+            // no Normal port, and giving one a consumer that exists only in the preview is exactly the
+            // trap Shading's own doc warns about.
+            out.append("        o.").append(PREVIEW_NORMAL_FIELD)
+                    .append(" = CG_NORMAL_MATRIX * cg_Normal;\n");
+        }
         out.append("    }\n\n");
 
         out.append("    void fragment(in v2f i, out vec4 fragColor) {\n");
@@ -373,10 +441,52 @@ public final class CgShaderEmitter {
             out.append("        if (cg_alpha < ").append(clip).append(") discard;\n");
         }
 
-        out.append("        fragColor = vec4(").append(baseColor).append(", cg_alpha);\n");
+        if (lit) {
+            appendPreviewLighting(out, baseColor);
+        } else {
+            out.append("        fragColor = vec4(").append(baseColor).append(", cg_alpha);\n");
+        }
         out.append("    }\n");
         out.append("}\n");
         return out.toString();
+    }
+
+    /**
+     * Blinn-Phong over the graph's colour, in <b>view space</b>.
+     *
+     * <h3>Why view space, when the light is world-fixed</h3>
+     * <p>Both the normal and the world light direction are rotated into view space, which leaves the view
+     * vector as a literal {@code (0,0,1)} — the camera is orthographic, so every pixel shares it. That
+     * saves reconstructing a camera position out of the inverse view matrix, which {@code cg_env.glsl}
+     * does not expose.</p>
+     *
+     * <p>The light stays world-fixed regardless: it is a world-space constant transformed by the view
+     * matrix, so orbiting changes its direction <em>relative to the camera</em> and the highlight sweeps
+     * across the surface. Baking the direction in view space instead would give a headlight, and the
+     * shading would barely change as the mesh turned.</p>
+     *
+     * <p>Specular is added rather than multiplied into the base colour, which is what lets a black surface
+     * still read as a curved one.</p>
+     */
+    private static void appendPreviewLighting(StringBuilder out, String baseColor) {
+        out.append("        // Preview-only shading. Not a lighting model — see CgShaderEmitter.Shading.\n");
+        out.append("        vec3 cg_n = normalize(mat3(cg_ViewMatrix) * i.")
+                .append(PREVIEW_NORMAL_FIELD).append(");\n");
+        out.append("        vec3 cg_l = normalize(mat3(cg_ViewMatrix) * ")
+                .append(PREVIEW_LIGHT_DIR).append(");\n");
+        // Orthographic: one view vector for every pixel.
+        out.append("        vec3 cg_v = vec3(0.0, 0.0, 1.0);\n");
+        out.append("        vec3 cg_h = normalize(cg_l + cg_v);\n");
+        // Two-sided: a back-facing normal would otherwise leave a cap or a quad's reverse pitch black.
+        out.append("        if (cg_n.z < 0.0) cg_n = -cg_n;\n");
+        out.append("        float cg_ndl = max(dot(cg_n, cg_l), 0.0);\n");
+        out.append("        float cg_ndh = max(dot(cg_n, cg_h), 0.0);\n");
+        out.append("        vec3 cg_base = ").append(baseColor).append(";\n");
+        out.append("        vec3 cg_lit = cg_base * (").append(PREVIEW_AMBIENT)
+                .append(" + ").append(PREVIEW_KEY).append(" * cg_ndl)\n");
+        out.append("                + vec3(").append(PREVIEW_SPECULAR).append(") * pow(cg_ndh, ")
+                .append(PREVIEW_SHININESS).append(");\n");
+        out.append("        fragColor = vec4(cg_lit, cg_alpha);\n");
     }
 
     /** A master input as the fragment stage should read it — adapted to the port's type, then varyings
