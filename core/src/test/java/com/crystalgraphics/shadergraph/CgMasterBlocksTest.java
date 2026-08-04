@@ -112,6 +112,89 @@ public class CgMasterBlocksTest {
                 result.source().replace(" ", "").replace("\n", "").contains("structv2f{}"));
     }
 
+    // ── Preview shading ─────────────────────────────────────────────────────
+
+    /**
+     * <b>The shipped shader is never lit.</b>
+     *
+     * <p>The whole safety of preview shading rests on this: the mode is a preview convenience, and the
+     * moment it leaked into what {@code CgMaterial} loads in game, a graph would depend on lighting the
+     * pipeline does not have. Asserted on the default overload, since that is what every non-preview
+     * caller reaches for.</p>
+     */
+    @Test
+    public void theDefaultEmitIsUnlit() {
+        String source = emit(litFixture(), new CgMasterNode()).source();
+        assertFalse(source, source.contains("cg_lit"));
+        assertFalse(source, source.contains("v_cg_preview_normal"));
+    }
+
+    /** The lit variant still has to be a legal {@code .shader} — the same bar every other test here sets. */
+    @Test
+    public void thePreviewLitVariantParsesAndShades() {
+        CgMasterNode master = new CgMasterNode();
+        CgShaderEmitter.Result result = CgShaderEmitter.emit(litFixture(), master,
+                CgShaderEmitter.Shading.PREVIEW_LIT);
+
+        assertTrue(String.join("\n", result.errors()), result.ok());
+        assertNotNull("the lit variant must parse", CgShaderParser.parse(result.source()));
+
+        String source = result.source();
+        assertTrue("it needs a normal to shade with", source.contains("v_cg_preview_normal"));
+        assertTrue("the vertex stage must write it",
+                source.contains("CG_NORMAL_MATRIX * cg_Normal"));
+        assertTrue("and the output goes through the lit colour", source.contains("fragColor = vec4(cg_lit"));
+    }
+
+    /**
+     * The key light is <b>world-fixed</b>, which is the entire reason rotation reads.
+     *
+     * <p>A light baked in view space is a headlight: it turns with the camera, the shading barely changes
+     * as the mesh orbits, and the preview goes back to being as uninformative as the unlit one it
+     * replaced. The tell is the view matrix appearing on the light direction.</p>
+     */
+    @Test
+    public void theKeyLightIsWorldFixedRatherThanAHeadlight() {
+        String source = CgShaderEmitter.emit(litFixture(), new CgMasterNode(),
+                CgShaderEmitter.Shading.PREVIEW_LIT).source();
+        assertTrue("the world light must be rotated into view space, not written in it",
+                source.contains("cg_l = normalize(mat3(cg_ViewMatrix) * normalize(vec3("));
+    }
+
+    /**
+     * A specular term is present, and it is <b>added</b> rather than folded into the base colour.
+     *
+     * <p>That is what lets a black surface still read as curved — the case Unity's own default preview
+     * demonstrates, with its albedo set to black and the sphere still perfectly legible. Diffuse alone on
+     * a dark base is barely better than unlit.</p>
+     */
+    @Test
+    public void specularIsAddedSoADarkSurfaceStillReadsAsCurved() {
+        String source = CgShaderEmitter.emit(litFixture(), new CgMasterNode(),
+                CgShaderEmitter.Shading.PREVIEW_LIT).source();
+        assertTrue(source, source.contains("pow(cg_ndh"));
+        assertTrue("specular must be added on top of the diffuse product, not multiplied into it",
+                source.contains("cg_ndl)\n                + vec3("));
+    }
+
+    /** Lit mode always contributes a varying, so the empty-struct guard cannot also fire. */
+    @Test
+    public void theLitStructIsNeverPaddedAsWellAsFilled() {
+        String source = CgShaderEmitter.emit(litFixture(), new CgMasterNode(),
+                CgShaderEmitter.Shading.PREVIEW_LIT).source();
+        assertFalse("a struct with a real field must not also get the empty-struct padding",
+                source.contains("float unused;"));
+    }
+
+    private static CgShaderGraph litFixture() {
+        CgMasterNode master = new CgMasterNode();
+        return new CgShaderGraph()
+                .add(CgShaderGraph.Instance.of("c", colour3()))
+                .add(CgShaderGraph.Instance.of("out", master))
+                .link("c", "Out", "out", CgMasterNode.BASE_COLOR)
+                .output("out");
+    }
+
     // ── Alpha ───────────────────────────────────────────────────────────────
 
     /** Base Color is a vec3 and Alpha is its own port; the two are composed at the very end. */
