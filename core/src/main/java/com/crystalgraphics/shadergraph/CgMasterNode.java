@@ -187,4 +187,17 @@ public final class CgMasterNode implements CgShaderNode {
     public Collection<Property> shaderProperties() {
         return properties.values();
     }
+
+    /**
+     * Forgets every declared property.
+     *
+     * <p>For a caller that re-declares the whole set before each emit, which is what a graph editor
+     * does: the master is the <b>compiler's</b> object rather than storage, so without this, two
+     * documents compiled through one master would leave each other's uniforms behind and a shader would
+     * declare properties its graph never asked for.</p>
+     */
+    public CgMasterNode clearShaderProperties() {
+        properties.clear();
+        return this;
+    }
 }
