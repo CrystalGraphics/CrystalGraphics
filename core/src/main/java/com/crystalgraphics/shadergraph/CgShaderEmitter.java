@@ -361,9 +361,12 @@ public final class CgShaderEmitter {
         if (!master.shaderProperties().isEmpty()) {
             out.append("Properties {\n");
             for (CgMasterNode.Property property : master.shaderProperties()) {
+                // propertyDeclarationType, never propertyTypeName: a VEC3 property is DECLARED as vec4
+                // because the parser bans vec3 over STD140 alignment, and is read back with a .xyz
+                // suffix. See CgShaderType.propertyDeclarationType for why the pair lives there.
                 out.append("    ").append(property.name())
                         .append(" (\"").append(property.name()).append("\", ")
-                        .append(property.type().propertyTypeName()).append(") = ")
+                        .append(property.type().propertyDeclarationType()).append(") = ")
                         .append(property.defaultValue()).append('\n');
             }
             out.append("}\n\n");
