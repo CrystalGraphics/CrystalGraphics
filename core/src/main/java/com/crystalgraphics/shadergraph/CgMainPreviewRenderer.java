@@ -122,9 +122,23 @@ public final class CgMainPreviewRenderer {
     @Nullable
     public CgTexture render(CgShaderGraph graph, CgMasterNode master, CgPreviewMesh mesh,
                             float yaw, float pitch, float zoom) {
+        return render(graph, master, mesh, yaw, pitch, zoom, true);
+    }
+
+    /**
+     * As above, choosing whether the preview lights its own output.
+     *
+     * @param lit viewport shading, <b>not</b> a lighting model — see {@link CgShaderEmitter.Shading}.
+     *            Unlit is what the material actually draws in game, and is the mode to check against when
+     *            the colour matters more than the form.
+     */
+    @Nullable
+    public CgTexture render(CgShaderGraph graph, CgMasterNode master, CgPreviewMesh mesh,
+                            float yaw, float pitch, float zoom, boolean lit) {
         if (deleted) throw new IllegalStateException("This CgMainPreviewRenderer has been deleted");
 
-        CgShaderEmitter.Result emitted = CgShaderEmitter.emit(graph, master);
+        CgShaderEmitter.Result emitted = CgShaderEmitter.emit(graph, master,
+                lit ? CgShaderEmitter.Shading.PREVIEW_LIT : CgShaderEmitter.Shading.UNLIT);
         if (!emitted.ok()) {
             failed = true;
             return currentTexture();
