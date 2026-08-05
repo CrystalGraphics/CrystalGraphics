@@ -229,6 +229,19 @@ float sdf_triangle(vec2 p, vec2 p0, vec2 p1, vec2 p2) {
     // the triangle's own overall winding `s` — works for EITHER winding order because the
     // reference area and each per-edge cross product flip sign together.
     float area = (p1.x - p0.x) * (p2.y - p0.y) - (p1.y - p0.y) * (p2.x - p0.x);
+
+    // A ZERO-AREA TRIANGLE IS OUTSIDE EVERYWHERE, AND SAYING SO EXPLICITLY IS LOAD-BEARING.
+    // sign(0.0) is 0.0, so without this the three tests below all read `0.0 >= 0.0` — true at every
+    // point in the plane. The function then returns -d for the whole screen, fill_coverage sees a
+    // large negative distance, and the instance paints its ENTIRE axis-aligned bounding quad solid.
+    //
+    // Degenerate triangles are not exotic: any fan or trapezoid strip produces one wherever the shape
+    // comes to a point, so a mesh emits them at every tip. The failure looks like rectangular blocks of
+    // the wrong colour scattered over the artwork, and no CPU rasterisation of the same mesh reproduces
+    // it — an ordinary point-in-triangle test yields nothing at all for a triangle with no area, which
+    // is exactly the answer this line now gives.
+    if (abs(area) < 1e-9) return d;
+
     float s = sign(area);
     bool inside =
             s * ((p1.x - p0.x) * (p.y - p0.y) - (p1.y - p0.y) * (p.x - p0.x)) >= 0.0 &&
