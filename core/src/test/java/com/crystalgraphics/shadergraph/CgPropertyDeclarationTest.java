@@ -93,6 +93,48 @@ public class CgPropertyDeclarationTest {
         }
     }
 
+    // ── Vector adaptation ───────────────────────────────────────────────────
+
+    /**
+     * <b>Any numeric vector feeds any other, and the compiler writes the adaptation.</b>
+     *
+     * <p>Unity connects all of these and adapts; refusing does not teach a rule, it reads as the editor
+     * being broken. A crash found the gap: a Vector 2 reaching a dynamic port widened it, and the
+     * already-drawn edge downstream became vec2 -> vec3 and was refused mid-recompile.</p>
+     *
+     * <p>Padding is ZERO, and it is a real choice. One is defensible for a colour's alpha and wrong for
+     * a direction, a UV or an offset; zero is the additive and positional identity, so a padded channel
+     * contributes nothing wherever it lands. The type cannot tell the difference -- vec4 does not know it
+     * is a colour -- so the rule is the one that is inert more often.</p>
+     */
+    @Test
+    public void vectorsAdaptInBothDirections() {
+        assertEquals("a scalar splats", "vec3(v)", CgShaderType.FLOAT.promote("v", CgShaderType.VEC3));
+        assertEquals("wider truncates", "v.xy", CgShaderType.VEC4.promote("v", CgShaderType.VEC2));
+        assertEquals("narrower pads with zero",
+                "vec3(v, 0.0)", CgShaderType.VEC2.promote("v", CgShaderType.VEC3));
+        assertEquals("and pads as many channels as it is short",
+                "vec4(v, 0.0, 0.0)", CgShaderType.VEC2.promote("v", CgShaderType.VEC4));
+        assertEquals("an identical type is left alone",
+                "v", CgShaderType.VEC3.promote("v", CgShaderType.VEC3));
+
+        for (CgShaderType from : new CgShaderType[]{CgShaderType.FLOAT, CgShaderType.VEC2,
+                CgShaderType.VEC3, CgShaderType.VEC4}) {
+            for (CgShaderType to : new CgShaderType[]{CgShaderType.FLOAT, CgShaderType.VEC2,
+                    CgShaderType.VEC3, CgShaderType.VEC4}) {
+                assertTrue(from + " must feed " + to, from.canFeed(to));
+            }
+        }
+    }
+
+    /** A sampler and a matrix are still not vectors, and neither converts into one. */
+    @Test
+    public void nonVectorsStillRefuse() {
+        assertFalse(CgShaderType.SAMPLER2D.canFeed(CgShaderType.VEC4));
+        assertFalse(CgShaderType.VEC4.canFeed(CgShaderType.SAMPLER2D));
+        assertFalse(CgShaderType.MAT4.canFeed(CgShaderType.VEC4));
+    }
+
     // ── Every shipped type, through the real parser ─────────────────────────
 
     /**
