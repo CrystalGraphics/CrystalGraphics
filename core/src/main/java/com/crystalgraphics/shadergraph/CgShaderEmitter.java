@@ -171,6 +171,9 @@ public final class CgShaderEmitter {
         // variable names in order to read them, and substituteVaryings then rewrites those reads.
         CgGraphCompiler.Result fragmentCode = compileRoots(graph, fragmentRoots, vertexSet, errors);
 
+        // AFTER both stages compile, because only then is a fed variable's type known. @see #checkMasterPorts
+        checkMasterPorts(graph, masterId, vertexCode, fragmentCode, errors);
+
         List<Varying> varyings = findVaryings(graph, masterId, vertexSet, fragmentSet);
         Map<Integer, String> lineOwners = new LinkedHashMap<>();
         String source = write(graph, master, masterId, lineOwners, vertexCode, fragmentCode,
@@ -517,29 +520,101 @@ public final class CgShaderEmitter {
      */
     private static String adapted(CgShaderGraph graph, String masterId, String port,
                                   CgGraphCompiler.Result stage, @Nullable CgGraphCompiler.Result other) {
+        MasterFeed feed = feedInto(graph, masterId, port, stage, other);
+        if (feed == null) return expressionFor(graph, masterId, port);
+        if (!feed.needsConversion() || !feed.isConvertible()) return feed.expression();
+
+        if (feed.have().components() > feed.want().components()) {
+            return feed.expression() + "." + "xyzw".substring(0, feed.want().components());
+        }
+        return feed.have().promote(feed.expression(), feed.want());
+    }
+
+    /**
+     * What a master port is being fed and what it wants — the shared half of adapting and checking.
+     *
+     * <p>{@code null} when there is nothing to do: an unwired port (its literal is already written in the
+     * right type), or a type this emitter cannot name on one side or the other.</p>
+     *
+     * @param expression the GLSL the port reads
+     * @param have       the type that expression actually is
+     * @param want       the type the port declares
+     */
+    private record MasterFeed(String expression, CgShaderType have, CgShaderType want) {
+
+        boolean needsConversion() {
+            return have != want;
+        }
+
+        /**
+         * Whether the difference is one the emitter can write.
+         *
+         * <p>Numeric vectors adapt in both directions — the master narrows where an ordinary node would
+         * refuse to, which the method above explains. Nothing else does: a sampler is not a colour and
+         * there is no arithmetic that would make it one.</p>
+         */
+        boolean isConvertible() {
+            return have.isNumericVector() && want.isNumericVector();
+        }
+    }
+
+    /** @see MasterFeed */
+    @Nullable
+    private static MasterFeed feedInto(CgShaderGraph graph, String masterId, String port,
+                                       CgGraphCompiler.Result stage,
+                                       @Nullable CgGraphCompiler.Result other) {
+        if (graph.linkInto(masterId, port) == null) return null;
         String expression = expressionFor(graph, masterId, port);
-        CgShaderGraph.Link link = graph.linkInto(masterId, port);
-        if (link == null) return expression;   // a literal already written in the right type
 
         CgShaderType want = declaredTypeOf(port);
         // BOTH stages, and the fallback is the whole point. A vertex-domain node feeding a fragment port
         // — `UV` wired straight into `Base Color` is the everyday case — is hoisted into the vertex stage
         // and crosses as a varying, so its variable was declared over THERE and the fragment stage's own
         // type map knows nothing about it. Looking in one stage silently produced `have == null`, which
-        // this method reads as "nothing to convert": the vec4 was written into `vec4(..., cg_alpha)` whole,
+        // adapted() reads as "nothing to convert": the vec4 was written into `vec4(..., cg_alpha)` whole,
         // which is a GLSL error, and the material fell back to white.
         //
         // The tell was that inserting any fragment-stage node in between — a Fraction, say — fixed it,
         // because then the variable really was declared in the stage being asked.
         CgShaderType have = stage.typeOf(expression);
         if (have == null && other != null) have = other.typeOf(expression);
-        if (want == null || have == null || have == want) return expression;
-        if (!have.isNumericVector() || !want.isNumericVector()) return expression;
+        if (want == null || have == null) return null;
+        return new MasterFeed(expression, have, want);
+    }
 
-        if (have.components() > want.components()) {
-            return expression + "." + "xyzw".substring(0, want.components());
+    /**
+     * Reports every master port fed something it cannot be adapted from.
+     *
+     * <p><b>The master is the one place with no type checking at all</b>, and that is structural rather
+     * than an oversight: {@code CgGraphCompiler} validates a link when it resolves the consuming node's
+     * inputs, and the master emits no code, so it has no inputs to resolve and never reaches that path.
+     * Ordinary edges have been checked since 6.3.3; this is the hole left beside them.</p>
+     *
+     * <p>What it cost: wiring a texture into {@code Base Color} emitted
+     * {@code vec4(someSampler2D, cg_alpha)}. That is not a graph the editor refuses — it is a
+     * {@code .shader} that <b>parses</b>, fails in the driver, and shows up as a white material with the
+     * real complaint buried in a GL log. Reporting it here puts the message where the mistake is.</p>
+     *
+     * <p>Checked <b>after</b> both stages compile, because that is when a variable's type is known — and
+     * across both, since a vertex-domain node feeding a fragment port declares its variable in the other
+     * stage. @see #feedInto</p>
+     */
+    private static void checkMasterPorts(CgShaderGraph graph, String masterId,
+                                         CgGraphCompiler.Result vertex, CgGraphCompiler.Result fragment,
+                                         List<String> errors) {
+        checkMasterPorts(graph, masterId, CgMasterNode.VERTEX_PORTS, vertex, null, errors);
+        checkMasterPorts(graph, masterId, CgMasterNode.FRAGMENT_PORTS, fragment, vertex, errors);
+    }
+
+    private static void checkMasterPorts(CgShaderGraph graph, String masterId,
+                                         List<CgShaderPort> ports, CgGraphCompiler.Result stage,
+                                         @Nullable CgGraphCompiler.Result other, List<String> errors) {
+        for (CgShaderPort port : ports) {
+            MasterFeed feed = feedInto(graph, masterId, port.id(), stage, other);
+            if (feed == null || !feed.needsConversion() || feed.isConvertible()) continue;
+            errors.add("Cannot feed " + feed.have().glsl() + " into " + port.id()
+                    + ", which is " + feed.want().glsl());
         }
-        return have.promote(expression, want);
     }
 
     @Nullable

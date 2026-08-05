@@ -379,4 +379,60 @@ public class CgMasterBlocksTest {
         for (int at = haystack.indexOf(needle); at >= 0; at = haystack.indexOf(needle, at + 1)) count++;
         return count;
     }
+
+    // ── The master's own type checking ──────────────────────────────────────
+
+    private static CgShaderNode texture() {
+        return CgTemplateShaderNode.of("t:texture")
+                .out("Out", CgShaderType.SAMPLER2D)
+                .body("{Out} = _MainTex;")
+                .build();
+    }
+
+    /**
+     * <b>The master is the one place edges were never type-checked, and it emitted garbage instead.</b>
+     *
+     * <p>Structural rather than an oversight: {@code CgGraphCompiler} validates a link while resolving
+     * the consuming node's inputs, and the master emits no code — so it has no inputs to resolve and
+     * never reaches that path. Every ordinary edge has been checked since 6.3.3; this was the hole
+     * beside them.</p>
+     *
+     * <p>What made it worth fixing is <em>where</em> it failed. A texture wired into Base Color emitted
+     * {@code vec4(node_t_Out, cg_alpha)} — a {@code .shader} that <b>parses</b> and then fails in the
+     * driver, surfacing as a white material with the real complaint in a GL log the editor never shows.
+     * The assertion is therefore on the error, not on the source: emitting nothing useful is fine, and
+     * saying nothing is not.</p>
+     */
+    @Test
+    public void aTextureIntoBaseColorIsReportedRatherThanEmitted() {
+        CgMasterNode master = new CgMasterNode();
+        CgShaderGraph graph = new CgShaderGraph()
+                .add(CgShaderGraph.Instance.of("t", texture()))
+                .add(CgShaderGraph.Instance.of("out", master))
+                .link("t", "Out", "out", CgMasterNode.BASE_COLOR)
+                .output("out");
+
+        CgShaderEmitter.Result result = CgShaderEmitter.emit(graph, master);
+        assertFalse("a sampler is not a colour", result.ok());
+        assertTrue("and the message must name both sides: " + result.errors(),
+                result.errors().stream().anyMatch(e ->
+                        e.contains("sampler2D") && e.contains(CgMasterNode.BASE_COLOR)
+                                && e.contains("vec3")));
+    }
+
+    /** Vectors still adapt in both directions — the check must not have narrowed what already worked. */
+    @Test
+    public void vectorsStillReachEveryPort() {
+        CgMasterNode master = new CgMasterNode();
+        CgShaderGraph graph = new CgShaderGraph()
+                .add(CgShaderGraph.Instance.of("c", colour4()))
+                .add(CgShaderGraph.Instance.of("s", scalar()))
+                .add(CgShaderGraph.Instance.of("out", master))
+                // vec4 NARROWS into a vec3 port, and a float SPLATS into one.
+                .link("c", "Out", "out", CgMasterNode.BASE_COLOR)
+                .link("s", "Out", "out", CgMasterNode.ALPHA)
+                .output("out");
+
+        emit(graph, master);   // asserts ok() and that the source parses
+    }
 }
