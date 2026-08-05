@@ -138,15 +138,30 @@ public enum CgShaderType {
     /**
      * Whether a value of {@code this} type can feed a port of {@code target} type.
      *
-     * <p>GLSL's own rule, narrowed: <b>a scalar promotes into any vector, and nothing demotes.</b> A
-     * float feeding a vec3 is {@code vec3(x)} and is what makes a shader graph usable; a vec3 feeding a
-     * float would have to pick a component, and picking silently is how a graph starts lying about what
-     * it computes. That belongs in an explicit Split node.</p>
+     * <p><b>Any numeric vector feeds any other</b>, and the compiler emits the adaptation: a scalar
+     * splats ({@code vec3(x)}), a wider value truncates ({@code v.xy}), a narrower one pads with zero
+     * ({@code vec3(v, 0.0)}). Unity connects all of these and adapts, and matching it is the point.</p>
+     *
+     * <p>This once read "a scalar promotes into any vector, and nothing demotes", on the argument that
+     * picking components silently is how a graph starts lying about what it computes and that truncation
+     * belongs in an explicit Split node. That is a defensible position and it is not Unity's — a Vector 4
+     * dropped on a Vector 3 slot connects there and loses its w. Refusing does not teach the rule; it
+     * reads as the editor being broken. The same reasoning then extends to the other direction.</p>
      */
     public boolean canFeed(CgShaderType target) {
         if (this == target) return true;
         if (this == DYNAMIC || target == DYNAMIC) return true;
-        return this == FLOAT && target.isNumericVector();
+        // ANY numeric vector feeds any other, in both directions: a scalar splats, a wider value
+        // truncates, a narrower one pads with zero. Unity connects all of these and adapts.
+        //
+        // THIS IS NOT THE SAME QUESTION AS resolveDynamic, whose javadoc argues AGAINST widening -- and
+        // both are right, because they are asked in different places. There, widening would decide what a
+        // node COMPUTES for everyone: making Add(vec4, vec2) a vec4 invents two channels nobody wired,
+        // so the narrowest wins and the vec4 loses what the user can see it had. Here the target's width
+        // is DECLARED -- someone wrote vec3 on that port -- and the user has visibly dropped a vec2 onto
+        // it. There is nothing to resolve, only a value to adapt, and refusing teaches nothing: it reads
+        // as the editor being broken, which is the same argument that already made narrowing general.
+        return isNumericVector() && target.isNumericVector();
     }
 
     /**
@@ -167,7 +182,23 @@ public enum CgShaderType {
         }
         // float -> vecN. GLSL's single-argument vector constructor splats, which is exactly the
         // intended meaning of wiring a scalar into a vector slot.
-        return target.glsl + "(" + expression + ")";
+        if (this == FLOAT) return target.glsl + "(" + expression + ")";
+
+        // Wider -> narrower: truncate. The components dropped are ones the user can see they wired.
+        if (components > target.components) {
+            return expression + "." + "xyzw".substring(0, target.components);
+        }
+
+        // Narrower -> wider: pad with zero.
+        //
+        // ZERO rather than one, and it is a real choice. One is defensible for a colour's alpha and wrong
+        // for a direction, a UV or an offset; zero is the additive and positional identity, so a padded
+        // channel contributes nothing wherever it lands. Neither is derivable from the type -- vec4 does
+        // not know it is a colour -- so the rule is the one that is inert more often, and a graph that
+        // needs alpha 1 says so with an explicit Combine.
+        StringBuilder out = new StringBuilder(target.glsl).append('(').append(expression);
+        for (int i = components; i < target.components; i++) out.append(", 0.0");
+        return out.append(')').toString();
     }
 
     /**
