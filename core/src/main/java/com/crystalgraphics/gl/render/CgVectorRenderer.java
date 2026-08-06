@@ -12,6 +12,7 @@ import com.crystalgraphics.gl.mesh.CgMesh;
 import com.crystalgraphics.gl.mesh.CgMeshBuilder;
 import com.crystalgraphics.gl.mesh.CgMeshRegistry;
 import com.crystalgraphics.util.profiling.CgProfiler;
+import com.crystalgraphics.api.buffer.CgGpuType;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
@@ -75,10 +76,17 @@ import org.joml.Vector3f;
  * float feather         // edge softness, in the same units as widths — same meaning either way
  * float flags           // cap style (see CAP_*), packed; bit 4 (FLAG_FILL) selects fill over stroke
  * </pre>
- * <p>Under STD430 each {@code vec3} pads to 16 bytes, so this record occupies exactly 96 bytes —
- * the same stride as {@link CgQuadRenderer}'s, with no trailing waste. The three padding floats
- * are the price of keeping the control points {@code vec3}; see the planar note below for why
- * they are {@code vec3} at all.</p>
+ * <p>Under STD430 each {@code vec3} pads to 16 bytes, so the record occupies <b>112 bytes</b>: 96 for
+ * everything a stroke needs, plus 16 for the {@code gradient} axis a filled triangle reads. The three
+ * padding floats are the price of keeping the control points {@code vec3}; see the planar note below for
+ * why they are {@code vec3} at all.</p>
+ *
+ * <p><b>The stride must stay a multiple of 16, and every field must stay float-typed.</b> Both are TBO
+ * constraints, not style: {@code CgGlslEmitter} refuses to generate the fallback getter otherwise, and the
+ * fallback is the GL 3.3 baseline path — so a field packed as {@code uint} to save bandwidth would compile
+ * on SSBO hardware and throw on the machines that need the saving most. That is also why the obvious
+ * shrink — colours as packed ARGB ints — is not available here without bit-reinterpreting them through
+ * floats.</p>
  * <p>The fill reading exists because it costs nothing once the stroke reading does: three points, a
  * colour and a feather were already here for {@link Curve}'s sake, so a filled {@link Triangle}
  * needs one bit and one repurposed field, not a second buffer. See {@link Triangle}'s own doc.</p>
@@ -274,9 +282,37 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
         return new CgVectorRenderer(staging, new CgBufferWriter(staging, INSTANCE_FORMAT));
     }
 
+    /**
+     * Field offsets into {@link #INSTANCE_FORMAT}, resolved once — see {@link CgBufferWriter#offsetOf}.
+     * Nine named lookups per instance measured as the bulk of this renderer's per-instance cost.
+     */
+    private final int offP0, offP1, offP2, offColor0, offColor1, offWidths, offFeather, offFlags,
+            offGradient;
+
+    /**
+     * Last pose seen and the uniform scale derived from it.
+     *
+     * <p>The scale costs two {@code sqrt}s and is identical for every instance in a draw, so it was being
+     * recomputed tens of thousands of times per frame for one answer. Keyed on the six matrix components
+     * that feed it rather than on the Matrix4f reference, because {@code PoseStack} hands out a matrix it
+     * MUTATES IN PLACE — a reference check would happily return a stale scale after a push.</p>
+     */
+    private float poseKeyA, poseKeyB, poseKeyC, poseKeyD, poseKeyE, poseKeyF;
+    private float cachedPoseScale = 1f;
+    private boolean poseScaleValid;
+
     private CgVectorRenderer(CgStagingBuffer accumStaging, CgBufferWriter accumWriter) {
         this.accumStaging = accumStaging;
         this.accumWriter = accumWriter;
+        this.offP0 = accumWriter.offsetOf("p0", CgGpuType.VEC3);
+        this.offP1 = accumWriter.offsetOf("p1", CgGpuType.VEC3);
+        this.offP2 = accumWriter.offsetOf("p2", CgGpuType.VEC3);
+        this.offColor0 = accumWriter.offsetOf("color0", CgGpuType.VEC4);
+        this.offColor1 = accumWriter.offsetOf("color1", CgGpuType.VEC4);
+        this.offWidths = accumWriter.offsetOf("widths", CgGpuType.VEC2);
+        this.offFeather = accumWriter.offsetOf("feather", CgGpuType.FLOAT);
+        this.offFlags = accumWriter.offsetOf("flags", CgGpuType.FLOAT);
+        this.offGradient = accumWriter.offsetOf("gradient", CgGpuType.VEC4);
     }
 
     /**
@@ -606,15 +642,26 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
                                  float wStart, float wEnd,
                                  int colorStart, int colorEnd, float feath) {
             if (pose != null) {
-                scratchP0.set(ax, ay, az);
-                scratchP1.set(bx, by, bz);
-                scratchP2.set(cx, cy, cz);
-                pose.transformPosition(scratchP0);
-                pose.transformPosition(scratchP1);
-                pose.transformPosition(scratchP2);
-                ax = scratchP0.x(); ay = scratchP0.y(); az = scratchP0.z();
-                bx = scratchP1.x(); by = scratchP1.y(); bz = scratchP1.z();
-                cx = scratchP2.x(); cy = scratchP2.y(); cz = scratchP2.z();
+                // INLINED rather than three Matrix4f.transformPosition calls through a Vector3f scratch.
+                // Identical arithmetic -- this is exactly what JOML's transformPosition computes -- but the
+                // matrix components are hoisted into locals once instead of being re-read per point, and
+                // the three set/get round trips through the scratch vector disappear. Worth it only
+                // because this runs per TRIANGLE: a tessellated icon is hundreds of them.
+                float m00 = pose.m00(), m10 = pose.m10(), m20 = pose.m20(), m30 = pose.m30();
+                float m01 = pose.m01(), m11 = pose.m11(), m21 = pose.m21(), m31 = pose.m31();
+                float m02 = pose.m02(), m12 = pose.m12(), m22 = pose.m22(), m32 = pose.m32();
+                float nax = m00 * ax + m10 * ay + m20 * az + m30;
+                float nay = m01 * ax + m11 * ay + m21 * az + m31;
+                float naz = m02 * ax + m12 * ay + m22 * az + m32;
+                float nbx = m00 * bx + m10 * by + m20 * bz + m30;
+                float nby = m01 * bx + m11 * by + m21 * bz + m31;
+                float nbz = m02 * bx + m12 * by + m22 * bz + m32;
+                float ncx = m00 * cx + m10 * cy + m20 * cz + m30;
+                float ncy = m01 * cx + m11 * cy + m21 * cz + m31;
+                float ncz = m02 * cx + m12 * cy + m22 * cz + m32;
+                ax = nax; ay = nay; az = naz;
+                bx = nbx; by = nby; bz = nbz;
+                cx = ncx; cy = ncy; cz = ncz;
             }
 
             accumWriter.beginRecord()
@@ -852,9 +899,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
                 // Corner radius and feather are distances in the same space as the points — a
                 // scaled pose must scale them too, or a zoomed-in triangle keeps a fixed-pixel
                 // radius that reads as sharper (relatively) the further the pose scales it up.
-                float sx = (float) Math.sqrt(pose.m00() * pose.m00() + pose.m01() * pose.m01() + pose.m02() * pose.m02());
-                float sy = (float) Math.sqrt(pose.m10() * pose.m10() + pose.m11() * pose.m11() + pose.m12() * pose.m12());
-                float scale = Math.max(sx, sy);
+                float scale = poseScaleOf(pose);
                 radius *= scale;
                 feath *= scale;
             }
@@ -882,20 +927,35 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
             }
 
             accumWriter.beginRecord()
-                    .vec3("p0", ax, ay, az)
-                    .vec3("p1", bx, by, bz)
-                    .vec3("p2", cx, cy, cz)
-                    .color("color0", argb)
-                    .color("color1", argbEnd)
-                    .vec2("widths", radius, radius)
-                    .float_("feather", feath)
-                    .float_("flags", (gradient ? (FLAG_FILL | FLAG_GRADIENT) : FLAG_FILL)
+                    .vec3At(offP0, ax, ay, az)
+                    .vec3At(offP1, bx, by, bz)
+                    .vec3At(offP2, cx, cy, cz)
+                    .colorAt(offColor0, argb)
+                    .colorAt(offColor1, argbEnd)
+                    .vec2At(offWidths, radius, radius)
+                    .floatAt(offFeather, feath)
+                    .floatAt(offFlags, (gradient ? (FLAG_FILL | FLAG_GRADIENT) : FLAG_FILL)
                             | (silhouetteEdge << FILL_EDGE_SHIFT))
-                    .vec4("gradient", ox, oy, dxg, dyg)
+                    .vec4At(offGradient, ox, oy, dxg, dyg)
                     .endRecord();
 
             return CgVectorRenderer.this;
         }
+    }
+
+    /** The pose's uniform scale, recomputed only when the matrix actually changes. */
+    private float poseScaleOf(Matrix4f pose) {
+        if (poseScaleValid && pose.m00() == poseKeyA && pose.m01() == poseKeyB && pose.m02() == poseKeyC
+                && pose.m10() == poseKeyD && pose.m11() == poseKeyE && pose.m12() == poseKeyF) {
+            return cachedPoseScale;
+        }
+        poseKeyA = pose.m00(); poseKeyB = pose.m01(); poseKeyC = pose.m02();
+        poseKeyD = pose.m10(); poseKeyE = pose.m11(); poseKeyF = pose.m12();
+        float sx = (float) Math.sqrt(poseKeyA * poseKeyA + poseKeyB * poseKeyB + poseKeyC * poseKeyC);
+        float sy = (float) Math.sqrt(poseKeyD * poseKeyD + poseKeyE * poseKeyE + poseKeyF * poseKeyF);
+        cachedPoseScale = Math.max(sx, sy);
+        poseScaleValid = true;
+        return cachedPoseScale;
     }
 
     /**
