@@ -38,6 +38,11 @@
 // dispatch and curve_instance_coverage's fill/stroke dispatch read from the same packed int.
 #define CG_STROKE_FLAG_FILL 16
 
+// Bit 5 — set alongside FLAG_FILL when the instance's `gradient` field carries a real axis, so the
+// fill interpolates color0 -> color1 across the triangle instead of taking color0 flat. See
+// CgVectorRenderer.FLAG_GRADIENT and Triangle.gradient(...).
+#define CG_STROKE_FLAG_GRADIENT 32
+
 // Signed distance contribution from ONE capped end, given this fragment's local (u, v): u along
 // the tangent (positive = past the endpoint, into cap territory), v = perpendicular distance from
 // the centerline (already abs()'d by the caller — see the note on that below).
@@ -175,13 +180,47 @@ float stroke_coverage(vec2 p, vec2 a, vec2 b, vec2 c,
 //
 // Pure maths: legal in a vertex shader, no CG_VERTEX_STAGE guard, same as sdf_bezier.
 float fill_coverage(vec2 p, vec2 p0, vec2 p1, vec2 p2, float cornerRadius, float feather) {
-    // SIGNED, deliberately: a negative radius ERODES. The clamp that used to be here read as defensive
-    // and cost a real capability -- a tessellated fill needs to nudge the two sides of every shared edge
-    // in OPPOSITE directions so exactly one of them claims a pixel centre sitting on it. Without erosion
-    // the only available choices are "both claim it" (a double blend, wrong for any translucent fill) and
-    // "both half-claim it" (a 25%% coverage dip). See CrystalGUI SvgDocument.FILL_OFFSET.
-    float d = sdf_triangle(p, p0, p1, p2) - cornerRadius;
-    float ramp = max(feather, 1.0e-4);
+    // RELATIVE TO p0, AND THAT IS ABOUT PRECISION, NOT TIDINESS.
+    //
+    // sdf_triangle projects the point onto each edge, which squares the coordinates: at a few hundred
+    // pixels the dot products reach ~1e5 and then cancel back down to a distance near zero. That is
+    // textbook catastrophic cancellation -- the result keeps the absolute error of the large intermediate
+    // and loses most of its significant digits, so a distance that should be 1e-4 carries an error of
+    // similar size or worse.
+    //
+    // It matters because a tessellated fill decides seam ownership on the SIGN of that distance. Two
+    // triangles sharing an edge derive it from different vertex triples, so the error moves them
+    // independently and a sliver of pixels near the seam is claimed fully by neither. On a translucent
+    // fill that reads as sparse dark dashes along the boundary, which at a distance blur into a line --
+    // and it scales with the coordinates, so it appears as a viewer zooms in.
+    //
+    // Subtracting p0 first is exact-or-nearly (Sterbenz: subtracting nearby floats loses nothing), and
+    // everything after it runs at the triangle's own scale rather than the canvas's.
+    vec2 q  = p  - p0;
+    vec2 e1 = p1 - p0;
+    vec2 e2 = p2 - p0;
+
+    // SIGNED, deliberately: a negative radius ERODES. A tessellated fill needs to nudge the two sides of
+    // a shared edge in opposite directions when it cannot afford to overlap them -- which is the case for
+    // any translucent fill, where an overlap composites twice. See CrystalGUI SvgDocument.FILL_OFFSET.
+    float d = sdf_triangle(q, vec2(0.0), e1, e2) - cornerRadius;
+
+    // A HARD EDGE BY DEFAULT, and the floor is deliberately far below a stroke's.
+    //
+    // A tessellated fill hands its seams to two triangles that decide ownership on this distance, so the
+    // ramp should be far below the offset those two are separated by (CrystalGUI SvgDocument.FILL_OFFSET,
+    // 1e-3): inside the ramp both sides return something strictly between 0 and 1 and a translucent fill
+    // blends twice at partial strength.
+    //
+    // HONEST PROVENANCE, because the obvious reading of this line is wrong. It was lowered from 1e-4 to
+    // 1e-6 to fix exactly that artefact and MEASURED NOT TO -- the reported lines and dashes were
+    // unchanged. The cause was the consumer reconstructing its sample point from an interpolated varying;
+    // see gui_curve.shader. Keep the low floor anyway, since a fill genuinely wants a step and the ramp
+    // has no business being the widest term, but do not credit it with more than that.
+    //
+    // Nothing is lost by it: a fill wants a step, and a caller that wants a soft edge passes a real
+    // feather. The floor exists only so the smoothstep never divides by zero.
+    float ramp = max(feather, 1.0e-6);
     return 1.0 - smoothstep(-ramp * 0.5, ramp * 0.5, d);
 }
 
@@ -195,10 +234,23 @@ float fill_coverage(vec2 p, vec2 p0, vec2 p1, vec2 p2, float cornerRadius, float
 // the fragment shader, just what mix() does at t=0. `widths.x` doubles as cornerRadius in fill mode
 // (see CgVectorRenderer.Triangle) — `widths` has no other meaning once a triangle has no taper.
 float curve_instance_coverage(vec2 p, vec2 p0, vec2 p1, vec2 p2,
-                              vec2 widths, float feather, int flags, out float t) {
+                              vec2 widths, float feather, int flags, vec4 gradient, out float t) {
     if ((flags & CG_STROKE_FLAG_FILL) != 0) {
-        t = 0.0;
+        // A GRADIENT FILL IS THE SAME COVERAGE WITH A REAL t. The caller already does
+        // mix(color0, color1, t), so a per-pixel ramp costs one dot product and no second material --
+        // and it removes the reason a mesh would subdivide for colour at all. Without it the only way to
+        // draw a ramp is to cut the shape into cells small enough that each flat one passes for part of
+        // one, which is quadratic in quality for a diagonal ramp and still seams wherever the cut lines
+        // are not the ramp's own iso-lines.
+        //
+        // `gradient` is (originX, originY, dirX, dirY) with the reciprocal length folded into dir, so
+        // this is a dot product and a clamp rather than a normalise. Clamped, not wrapped: a triangle
+        // that overhangs its own colour span is legal and should hold the end colour.
+        t = ((flags & CG_STROKE_FLAG_GRADIENT) != 0)
+                ? clamp(dot(p - gradient.xy, gradient.zw), 0.0, 1.0)
+                : 0.0;
         return fill_coverage(p, p0, p1, p2, widths.x, feather);
     }
     return stroke_coverage(p, p0, p1, p2, widths, feather, flags, t);
 }
+

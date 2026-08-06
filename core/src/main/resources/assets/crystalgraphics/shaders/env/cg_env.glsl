@@ -209,6 +209,11 @@ uniform sampler2D cg_DepthBuffer;
 #define CG_CURVE_WIDTHS (CURVE_DATA(CG_INSTANCE_ID).widths)
 #define CG_CURVE_FEATHER (CURVE_DATA(CG_INSTANCE_ID).feather)
 #define CG_CURVE_FLAGS (CURVE_DATA(CG_INSTANCE_ID).flags)
+// (originX, originY, dirX, dirY) of a linear gradient, in the same space as p0/p1/p2 and scaled so
+// t = dot(p - origin, dir) runs 0..1 from color0 to color1. Read only when CG_STROKE_FLAG_GRADIENT is
+// set alongside the fill bit -- this is the "spare capacity a future third reading can claim" the note
+// above anticipated, and it claims color1 back with it.
+#define CG_CURVE_GRADIENT (CURVE_DATA(CG_INSTANCE_ID).gradient)
 
 // Half-extent the stroke adds beyond the control hull: the widest the stroke ever gets, plus the
 // feather ramp, plus one unit of slack.
