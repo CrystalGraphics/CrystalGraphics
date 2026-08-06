@@ -175,7 +175,12 @@ float stroke_coverage(vec2 p, vec2 a, vec2 b, vec2 c,
 //
 // Pure maths: legal in a vertex shader, no CG_VERTEX_STAGE guard, same as sdf_bezier.
 float fill_coverage(vec2 p, vec2 p0, vec2 p1, vec2 p2, float cornerRadius, float feather) {
-    float d = sdf_triangle(p, p0, p1, p2) - max(cornerRadius, 0.0);
+    // SIGNED, deliberately: a negative radius ERODES. The clamp that used to be here read as defensive
+    // and cost a real capability -- a tessellated fill needs to nudge the two sides of every shared edge
+    // in OPPOSITE directions so exactly one of them claims a pixel centre sitting on it. Without erosion
+    // the only available choices are "both claim it" (a double blend, wrong for any translucent fill) and
+    // "both half-claim it" (a 25%% coverage dip). See CrystalGUI SvgDocument.FILL_OFFSET.
+    float d = sdf_triangle(p, p0, p1, p2) - cornerRadius;
     float ramp = max(feather, 1.0e-4);
     return 1.0 - smoothstep(-ramp * 0.5, ramp * 0.5, d);
 }
