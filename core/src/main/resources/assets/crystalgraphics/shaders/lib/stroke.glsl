@@ -43,6 +43,25 @@
 // CgVectorRenderer.FLAG_GRADIENT and Triangle.gradient(...).
 #define CG_STROKE_FLAG_GRADIENT 32
 
+// Bits 6-7 -- which edge of a filled triangle is on the shape's real outline, and therefore the only one
+// that may be antialiased. See CgVectorRenderer.FILL_EDGE_SHIFT for why a tessellated fill cannot just be
+// given a feather: most of its edges are seams shared with a neighbour, and softening those fades every
+// one of them into a visible line from both sides.
+#define CG_STROKE_FILL_EDGE_SHIFT 6
+#define CG_STROKE_FILL_EDGE_NONE  0
+#define CG_STROKE_FILL_EDGE_P1_P2 1
+#define CG_STROKE_FILL_EDGE_P2_P0 2
+
+// Signed distance to the line through a->b, positive on the outside of a counter-clockwise triangle.
+// A LINE, not a segment: the silhouette continues into the neighbouring triangle, so clamping to this
+// triangle's own span would cut the antialiased band off at every seam and leave a notch at each one.
+float _fill_edge_dist(vec2 p, vec2 a, vec2 b, float winding) {
+    vec2 e = b - a;
+    float len = length(e);
+    if (len < 1.0e-12) return -3.4e38;
+    return winding * (e.x * (p.y - a.y) - e.y * (p.x - a.x)) / len;
+}
+
 // Signed distance contribution from ONE capped end, given this fragment's local (u, v): u along
 // the tangent (positive = past the endpoint, into cap territory), v = perpendicular distance from
 // the centerline (already abs()'d by the caller — see the note on that below).
@@ -179,7 +198,9 @@ float stroke_coverage(vec2 p, vec2 a, vec2 b, vec2 c,
 // the box's same-size behaviour can shrink its own input points by cornerRadius to compensate.
 //
 // Pure maths: legal in a vertex shader, no CG_VERTEX_STAGE guard, same as sdf_bezier.
-float fill_coverage(vec2 p, vec2 p0, vec2 p1, vec2 p2, float cornerRadius, float feather) {
+
+float fill_coverage(vec2 p, vec2 p0, vec2 p1, vec2 p2, float cornerRadius, float feather,
+                    int silhouetteEdge) {
     // RELATIVE TO p0, AND THAT IS ABOUT PRECISION, NOT TIDINESS.
     //
     // sdf_triangle projects the point onto each edge, which squares the coordinates: at a few hundred
@@ -203,7 +224,7 @@ float fill_coverage(vec2 p, vec2 p0, vec2 p1, vec2 p2, float cornerRadius, float
     // SIGNED, deliberately: a negative radius ERODES. A tessellated fill needs to nudge the two sides of
     // a shared edge in opposite directions when it cannot afford to overlap them -- which is the case for
     // any translucent fill, where an overlap composites twice. See CrystalGUI SvgDocument.FILL_OFFSET.
-    float d = sdf_triangle(q, vec2(0.0), e1, e2) - cornerRadius;
+    float area = e1.x * e2.y - e1.y * e2.x;
 
     // A HARD EDGE BY DEFAULT, and the floor is deliberately far below a stroke's.
     //
@@ -221,7 +242,50 @@ float fill_coverage(vec2 p, vec2 p0, vec2 p1, vec2 p2, float cornerRadius, float
     // Nothing is lost by it: a fill wants a step, and a caller that wants a soft edge passes a real
     // feather. The floor exists only so the smoothstep never divides by zero.
     float ramp = max(feather, 1.0e-6);
-    return 1.0 - smoothstep(-ramp * 0.5, ramp * 0.5, d);
+    if (silhouetteEdge == CG_STROKE_FILL_EDGE_NONE || feather <= 0.0) {
+        float d = sdf_triangle(q, vec2(0.0), e1, e2) - cornerRadius;
+        return 1.0 - smoothstep(-ramp * 0.5, ramp * 0.5, d);
+    }
+
+    // A ZERO-AREA TRIANGLE IS OUTSIDE EVERYWHERE, AND THIS BRANCH HAS TO SAY SO ITSELF.
+    //
+    // sdf_triangle carries exactly this guard and explains why; the trap is that the path below does not
+    // go through it. With no area every edge distance collapses to zero and sign() returns zero with
+    // them, so the membership test passes at every point in the plane and the ramp lands on its own
+    // midpoint -- the instance paints its whole bounding quad at HALF coverage. Solid blocks would at
+    // least look like a bug; translucent ones read as a shading artefact in the artwork.
+    //
+    // Degenerate triangles are not exotic here: a trapezoid strip emits one wherever the shape comes to a
+    // point, so every tip in every icon produces one.
+    if (abs(area) < 1.0e-9) return 0.0;
+
+    // ONE EDGE SOFT, THE OTHER TWO HARD.
+    //
+    // The two internal edges are seams shared with a neighbouring triangle, and they must stay a step:
+    // fading them would leave each seam half-covered from both sides, which on a translucent fill is a
+    // visible line -- the artefact class this whole path exists to avoid.
+    //
+    // A TRIANGLE IS THE INTERSECTION OF THREE HALF-PLANES, so testing the two internal ones with a max()
+    // is not an approximation of membership: outside a corner the value understates the true distance,
+    // but its SIGN is exact, and a hard step needs nothing else. That is what lets the silhouette be
+    // dropped from the membership test entirely -- and it has to be, or the step would clamp the soft
+    // band to the inside half of the edge and produce a 1 -> 0.5 fade ending in a cliff rather than an
+    // antialiased edge.
+    float winding = -sign(area);
+    float dE0 = _fill_edge_dist(q, vec2(0.0), e1, winding);
+    float dE1 = _fill_edge_dist(q, e1, e2, winding);
+    float dE2 = _fill_edge_dist(q, e2, vec2(0.0), winding);
+
+    float inside = (silhouetteEdge == CG_STROKE_FILL_EDGE_P1_P2) ? max(dE0, dE2) : max(dE0, dE1);
+    if (inside - cornerRadius > 0.0) return 0.0;
+
+    float edge = (silhouetteEdge == CG_STROKE_FILL_EDGE_P1_P2) ? dE1 : dE2;
+    return 1.0 - smoothstep(-feather * 0.5, feather * 0.5, edge);
+}
+
+/** The common case: a lone triangle, whose every edge is its own outline and none of them a seam. */
+float fill_coverage(vec2 p, vec2 p0, vec2 p1, vec2 p2, float cornerRadius, float feather) {
+    return fill_coverage(p, p0, p1, p2, cornerRadius, feather, CG_STROKE_FILL_EDGE_NONE);
 }
 
 // The one place stroke-vs-fill is decided, so curve.shader and gui_curve.shader can never disagree
@@ -249,7 +313,8 @@ float curve_instance_coverage(vec2 p, vec2 p0, vec2 p1, vec2 p2,
         t = ((flags & CG_STROKE_FLAG_GRADIENT) != 0)
                 ? clamp(dot(p - gradient.xy, gradient.zw), 0.0, 1.0)
                 : 0.0;
-        return fill_coverage(p, p0, p1, p2, widths.x, feather);
+        return fill_coverage(p, p0, p1, p2, widths.x, feather,
+                (flags >> CG_STROKE_FILL_EDGE_SHIFT) & 3);
     }
     return stroke_coverage(p, p0, p1, p2, widths, feather, flags, t);
 }

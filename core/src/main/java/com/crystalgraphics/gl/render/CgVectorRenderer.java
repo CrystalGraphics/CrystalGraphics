@@ -199,6 +199,31 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
     static final int FLAG_GRADIENT = 32;
 
     /**
+     * Bits 6-7 — which of a filled triangle's three edges lies on the shape's real silhouette, so that
+     * ONLY that edge is antialiased. {@code 0} means none.
+     *
+     * <h3>Why a tessellated fill cannot simply be feathered</h3>
+     *
+     * <p>A feather softens every edge of the triangle it is set on. Most of a tessellated fill's edges are
+     * not the shape's outline at all — they are band cuts and diagonal splits shared with the neighbouring
+     * triangle — so a blanket feather fades each seam out from both sides and turns every one of them into
+     * a visible soft line. That is the same artefact class a hard step was chosen to avoid.</p>
+     *
+     * <p>The caller knows which edge is real: a trapezoid's slanted walls come from the contour, its
+     * horizontal edges are scanline cuts, and the diagonal is an artefact of splitting a quad in two. So
+     * the decision is made once, where the mesh is built, and travels with the instance. Must match
+     * {@code CG_STROKE_FILL_EDGE_SHIFT} in {@code stroke.glsl}.
+     */
+    static final int FILL_EDGE_SHIFT = 6;
+
+    /** No edge of this triangle is on the silhouette — every edge is an internal seam. */
+    public static final int EDGE_NONE = 0;
+    /** {@code p1 -> p2} is the silhouette. */
+    public static final int EDGE_P1_P2 = 1;
+    /** {@code p2 -> p0} is the silhouette. */
+    public static final int EDGE_P2_P0 = 2;
+
+    /**
      * Upper bound on how many quadratics one {@link Curve#cubic} call may split into — so a caller
      * sizing its own batch knows the worst case. See {@link CgCurveSplitter} for the maths and for
      * why it lives in a separate class.
@@ -657,6 +682,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
         private boolean gradient;
         private float gradOx, gradOy, gradDx, gradDy;
         private float cornerRadius;
+        private int silhouetteEdge;
         private float feather;
         private Matrix4f pose;
 
@@ -678,6 +704,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
             gradient = false;
             gradOx = gradOy = gradDx = gradDy = 0f;
             cornerRadius = 0f;
+            silhouetteEdge = EDGE_NONE;
             feather = 1f;
             pose = null;
             return this;
@@ -756,6 +783,21 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
          * {@code stroke.glsl} for why this grows the shape slightly rather than rounding it in place
          * the way {@code border-radius} does for a box. Defaults to {@code 0} (sharp corners).
          */
+        /**
+         * Marks the one edge of this triangle that lies on the shape's real outline, so the fragment
+         * stage antialiases it and leaves the other two a hard step.
+         *
+         * <p>Defaults to {@link #EDGE_NONE}, which is right for a lone triangle: with nothing adjoining
+         * it, softening any edge would just make it blurry. It is a tessellated MESH that needs this,
+         * because there most edges are seams — see {@link CgVectorRenderer#FILL_EDGE_SHIFT}.</p>
+         *
+         * @param edge {@link #EDGE_NONE}, {@link #EDGE_P1_P2} or {@link #EDGE_P2_P0}
+         */
+        public Triangle silhouetteEdge(int edge) {
+            this.silhouetteEdge = edge;
+            return this;
+        }
+
         public Triangle cornerRadius(float radius) {
             this.cornerRadius = radius;
             return this;
@@ -847,7 +889,8 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
                     .color("color1", argbEnd)
                     .vec2("widths", radius, radius)
                     .float_("feather", feath)
-                    .float_("flags", gradient ? (FLAG_FILL | FLAG_GRADIENT) : FLAG_FILL)
+                    .float_("flags", (gradient ? (FLAG_FILL | FLAG_GRADIENT) : FLAG_FILL)
+                            | (silhouetteEdge << FILL_EDGE_SHIFT))
                     .vec4("gradient", ox, oy, dxg, dyg)
                     .endRecord();
 
