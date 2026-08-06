@@ -447,6 +447,83 @@ public final class CgBufferWriter {
      * ({@code recordStartIdx + field.floatOffset}) for scatter writes via
      * {@link CgStagingBuffer#setFloatAt(int, float)}.
      */
+    /**
+     * Resolves a field's float offset ONCE, for a caller that writes the same field every record.
+     *
+     * <h3>Why this exists</h3>
+     *
+     * <p>Every named write costs a {@code getField(String)} lookup plus a type check. That is the right
+     * default — it is checked, self-describing, and costs nothing against a handful of records. It stops
+     * being the right default in an instance loop: {@code CgVectorRenderer} writes nine fields per
+     * triangle, so a 25,576-triangle frame paid <b>230,000 string-keyed lookups</b>, which measured as the
+     * bulk of its per-instance cost.</p>
+     *
+     * <p>The offset is a property of the FORMAT, which is a compile-time constant for every renderer here,
+     * so resolving it per record was always redundant work. Resolve once into a field, then use the
+     * {@code *At} writers below.</p>
+     *
+     * <p>The type check happens here, at resolve time, so the fast path loses no safety — it moves the
+     * check from per-write to per-renderer rather than dropping it.</p>
+     */
+    public int offsetOf(String fieldName, CgGpuType expectedType) {
+        CgBufferField field = format.getField(fieldName);
+        if (field.getType() != expectedType) {
+            throw new IllegalStateException(
+                    "Type mismatch for field '" + fieldName + "' in format '"
+                            + format.getGlslName() + "': expected " + expectedType
+                            + " but field is " + field.getType() + ".");
+        }
+        return field.getFloatOffset();
+    }
+
+    /** Offset write — see {@link #offsetOf}. {@code offset} is a field offset, not an absolute index. */
+    public CgBufferWriter vec3At(int offset, float x, float y, float z) {
+        int base = recordStartIdx + offset;
+        staging.setFloatAt(base, x);
+        staging.setFloatAt(base + 1, y);
+        staging.setFloatAt(base + 2, z);
+        return this;
+    }
+
+    /** Offset write — see {@link #offsetOf}. */
+    public CgBufferWriter vec4At(int offset, float x, float y, float z, float w) {
+        int base = recordStartIdx + offset;
+        staging.setFloatAt(base, x);
+        staging.setFloatAt(base + 1, y);
+        staging.setFloatAt(base + 2, z);
+        staging.setFloatAt(base + 3, w);
+        return this;
+    }
+
+    /** Offset write — see {@link #offsetOf}. */
+    public CgBufferWriter vec2At(int offset, float x, float y) {
+        int base = recordStartIdx + offset;
+        staging.setFloatAt(base, x);
+        staging.setFloatAt(base + 1, y);
+        return this;
+    }
+
+    /** Offset write — see {@link #offsetOf}. */
+    public CgBufferWriter floatAt(int offset, float v) {
+        staging.setFloatAt(recordStartIdx + offset, v);
+        return this;
+    }
+
+    /**
+     * Offset write — see {@link #offsetOf}. Unpacks ARGB exactly as {@link #color(String, int)} does,
+     * <b>including the division rather than a reciprocal multiply</b>: {@code 1f/255f} is not exactly
+     * representable, so the two would disagree by an ULP on some channels and this is the path every
+     * glyph in the engine draws through.
+     */
+    public CgBufferWriter colorAt(int offset, int argb) {
+        int base = recordStartIdx + offset;
+        staging.setFloatAt(base, ((argb >>> 16) & 0xFF) / 255f);
+        staging.setFloatAt(base + 1, ((argb >>> 8) & 0xFF) / 255f);
+        staging.setFloatAt(base + 2, (argb & 0xFF) / 255f);
+        staging.setFloatAt(base + 3, ((argb >>> 24) & 0xFF) / 255f);
+        return this;
+    }
+
     private int resolveField(String fieldName, CgGpuType expectedType) {
         CgBufferField field = format.getField(fieldName); // throws if not found
         if (field.getType() != expectedType) {

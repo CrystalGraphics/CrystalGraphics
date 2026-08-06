@@ -8,6 +8,7 @@ import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gl.buffer.shader.CgEngineBufferRegistry;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
+import com.crystalgraphics.api.buffer.CgGpuType;
 import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
 import com.crystalgraphics.gl.buffer.staging.CgStagingBuffer;
 import com.crystalgraphics.gl.mesh.CgMesh;
@@ -186,9 +187,26 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
         return new CgQuadRenderer(staging, new CgBufferWriter(staging, INSTANCE_FORMAT));
     }
 
+    /**
+     * Field offsets into {@link #INSTANCE_FORMAT}, resolved once — see {@link CgBufferWriter#offsetOf}.
+     *
+     * <p>A named write costs a string-keyed {@code getField} lookup plus a type check, and this record has
+     * seven fields. That is nothing for a handful of quads and everything for <b>the path every glyph in
+     * the engine draws through</b>: a page of text is thousands of quads a frame, each paying seven map
+     * lookups for offsets that are a property of a compile-time-constant format.</p>
+     */
+    private final int offOrigin, offRight, offUp, offUv0, offUv1, offColor, offAtlasLayer;
+
     private CgQuadRenderer(CgStagingBuffer accumStaging, CgBufferWriter accumWriter) {
         this.accumStaging = accumStaging;
         this.accumWriter = accumWriter;
+        this.offOrigin = accumWriter.offsetOf("origin", CgGpuType.VEC3);
+        this.offRight = accumWriter.offsetOf("right", CgGpuType.VEC3);
+        this.offUp = accumWriter.offsetOf("up", CgGpuType.VEC3);
+        this.offUv0 = accumWriter.offsetOf("uv0", CgGpuType.VEC2);
+        this.offUv1 = accumWriter.offsetOf("uv1", CgGpuType.VEC2);
+        this.offColor = accumWriter.offsetOf("color", CgGpuType.VEC4);
+        this.offAtlasLayer = accumWriter.offsetOf("atlasLayer", CgGpuType.FLOAT);
     }
 
     /**
@@ -454,13 +472,13 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
             }
 
             accumWriter.beginRecord()
-                    .vec3("origin", ox, oy, oz)
-                    .vec3("right", rx, ry, rz)
-                    .vec3("up", ux, uy, uz)
-                    .vec2("uv0", u0, v0)
-                    .vec2("uv1", u1, v1)
-                    .color("color", argb)
-                    .float_("atlasLayer", atlasLayer)
+                    .vec3At(offOrigin, ox, oy, oz)
+                    .vec3At(offRight, rx, ry, rz)
+                    .vec3At(offUp, ux, uy, uz)
+                    .vec2At(offUv0, u0, v0)
+                    .vec2At(offUv1, u1, v1)
+                    .colorAt(offColor, argb)
+                    .floatAt(offAtlasLayer, atlasLayer)
                     .endRecord();
 
             return CgQuadRenderer.this;
