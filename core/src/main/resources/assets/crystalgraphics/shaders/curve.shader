@@ -69,7 +69,7 @@ Pass {
         float alpha = curve_instance_coverage(i.posXy,
                                               CG_CURVE_P0.xy, CG_CURVE_P1.xy, CG_CURVE_P2.xy,
                                               CG_CURVE_WIDTHS, CG_CURVE_FEATHER,
-                                              int(CG_CURVE_FLAGS + 0.5), t);
+                                              int(CG_CURVE_FLAGS + 0.5), CG_CURVE_GRADIENT, t);
 
         vec4 color = mix(CG_CURVE_COLOR0, CG_CURVE_COLOR1, t);
         alpha *= color.a;

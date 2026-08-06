@@ -149,6 +149,10 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
             .vec2("widths")
             .float_("feather")
             .float_("flags")
+            // Linear-gradient axis for a FILL reading: (originX, originY, dirX, dirY), in the same space
+            // as p0/p1/p2 and scaled so t = dot(p - origin, dir) runs 0..1 across color0 -> color1.
+            // Zero for every stroke and for any flat fill; FLAG_GRADIENT is what says to read it.
+            .vec4("gradient")
             .build();
 
     private static final String GPU_BUFFER_NAME = "CgVectorRendererInstances";
@@ -183,6 +187,16 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
      * rather than needing their own reserved "no cap" value.
      */
     static final int FLAG_FILL = 16;
+
+    /**
+     * Set alongside {@link #FLAG_FILL} when {@code gradient} carries a real axis, so the fragment stage
+     * interpolates {@code color0}→{@code color1} across the triangle instead of taking {@code color0}
+     * flat. Must match {@code CG_STROKE_FLAG_GRADIENT} in {@code stroke.glsl}.
+     *
+     * <p>A flag rather than "the axis is non-zero": a zero-length axis is a legitimate degenerate
+     * gradient, and a branch on a bit is what the stroke reading already does.</p>
+     */
+    static final int FLAG_GRADIENT = 32;
 
     /**
      * Upper bound on how many quadratics one {@link Curve#cubic} call may split into — so a caller
@@ -587,6 +601,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
                     .vec2("widths", wStart, wEnd)
                     .float_("feather", feath)
                     .float_("flags", packedCaps)
+                    .vec4("gradient", 0f, 0f, 0f, 0f)
                     .endRecord();
         }
     }
@@ -638,6 +653,9 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
         private float p1x, p1y, p1z;
         private float p2x, p2y, p2z;
         private int argb;
+        private int argbEnd;
+        private boolean gradient;
+        private float gradOx, gradOy, gradDx, gradDy;
         private float cornerRadius;
         private float feather;
         private Matrix4f pose;
@@ -656,6 +674,9 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
             p1x = p1y = p1z = 0f;
             p2x = p2y = p2z = 0f;
             argb = 0xFFFFFFFF;
+            argbEnd = 0xFFFFFFFF;
+            gradient = false;
+            gradOx = gradOy = gradDx = gradDy = 0f;
             cornerRadius = 0f;
             feather = 1f;
             pose = null;
@@ -700,6 +721,33 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
         /** Flat fill colour. Defaults to opaque white. */
         public Triangle color(int argb) {
             this.argb = argb;
+            this.argbEnd = argb;
+            return this;
+        }
+
+        /**
+         * Fills with a linear gradient evaluated <b>per pixel</b> — {@code start} at {@code t = 0},
+         * {@code end} at {@code t = 1}, where {@code t = dot(p - origin, dir)}.
+         *
+         * <p>{@code dir} carries the scale as well as the direction: it is the axis direction divided by
+         * the axis length, so a caller states the ramp once rather than normalising at every vertex.
+         * Outside {@code [0, 1]} the ramp clamps, which makes a triangle that overhangs its own colour
+         * span safe to submit.</p>
+         *
+         * <p><b>This is what a tessellated gradient is for.</b> Without it a mesh has to approximate a
+         * ramp by subdividing until each flat cell is small enough to pass for one, which costs triangles
+         * quadratically for a diagonal ramp and still shows seams wherever the cut lines are not the
+         * ramp's own iso-lines.</p>
+         */
+        public Triangle gradient(int start, int end, float originX, float originY,
+                                 float dirX, float dirY) {
+            this.argb = start;
+            this.argbEnd = end;
+            this.gradient = true;
+            this.gradOx = originX;
+            this.gradOy = originY;
+            this.gradDx = dirX;
+            this.gradDy = dirY;
             return this;
         }
 
@@ -769,15 +817,38 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
                 feath *= scale;
             }
 
+            float ox = gradOx, oy = gradOy, dxg = gradDx, dyg = gradDy;
+            if (gradient && pose != null) {
+                // The axis lives in the same space as the points, so a baked pose has to reach it too --
+                // the origin as a position, the direction as a vector. Missing the second is the classic
+                // version of this bug: the ramp stays put while the shape moves under it.
+                scratchP0.set(ox, oy, 0f);
+                pose.transformPosition(scratchP0);
+                ox = scratchP0.x();
+                oy = scratchP0.y();
+                scratchP1.set(dxg, dyg, 0f);
+                pose.transformDirection(scratchP1);
+                // transformDirection scales the direction by the pose; t must stay in 0..1, and the
+                // direction already encodes 1/length, so it has to be scaled the OTHER way.
+                float scale = scratchP1.length();
+                float unitX = scale > 1e-9f ? scratchP1.x() / scale : 0f;
+                float unitY = scale > 1e-9f ? scratchP1.y() / scale : 0f;
+                float magnitude = (float) Math.sqrt(dxg * dxg + dyg * dyg);
+                float poseScale = magnitude > 1e-9f ? scale / magnitude : 1f;
+                dxg = poseScale > 1e-9f ? unitX * magnitude / poseScale : 0f;
+                dyg = poseScale > 1e-9f ? unitY * magnitude / poseScale : 0f;
+            }
+
             accumWriter.beginRecord()
                     .vec3("p0", ax, ay, az)
                     .vec3("p1", bx, by, bz)
                     .vec3("p2", cx, cy, cz)
                     .color("color0", argb)
-                    .color("color1", argb)
+                    .color("color1", argbEnd)
                     .vec2("widths", radius, radius)
                     .float_("feather", feath)
-                    .float_("flags", FLAG_FILL)
+                    .float_("flags", gradient ? (FLAG_FILL | FLAG_GRADIENT) : FLAG_FILL)
+                    .vec4("gradient", ox, oy, dxg, dyg)
                     .endRecord();
 
             return CgVectorRenderer.this;
