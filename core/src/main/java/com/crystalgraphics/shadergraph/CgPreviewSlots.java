@@ -83,6 +83,51 @@ public final class CgPreviewSlots<T> {
         });
     }
 
+    /**
+     * {@link #retainOnly}, confined to keys under {@code prefix}.
+     *
+     * <h3>Why a prefix rather than a pool each</h3>
+     *
+     * <p>One pool now serves every {@link CgPreviewRenderer} in the context, so a renderer culling its
+     * own invisible nodes must not evict another's. Keys are namespaced by their renderer and every
+     * scoped operation says which namespace it means.</p>
+     *
+     * <p>A pool per renderer was the alternative and is what this replaced: with one visible graph and
+     * five open, it held five capacities' worth of framebuffers to draw one graph — and closing a graph
+     * <em>deleted</em> a pool, so a close/reopen cycle paid a full allocate on driver-serialised work.</p>
+     */
+    public void retainOnlyWithin(String prefix, Set<String> keep) {
+        live.entrySet().removeIf(entry -> {
+            if (!entry.getKey().startsWith(prefix)) return false;
+            if (keep.contains(entry.getKey())) return false;
+            free.addLast(entry.getValue());
+            return true;
+        });
+    }
+
+    /**
+     * Returns every slot under {@code prefix} to the free list — what a renderer does when it closes.
+     *
+     * <p><b>Releases, never deletes.</b> That is the whole point: the targets stay in the pool for
+     * whatever asks next, so closing a graph is bookkeeping and reopening it allocates nothing.</p>
+     */
+    public void releaseAllWithin(String prefix) {
+        live.entrySet().removeIf(entry -> {
+            if (!entry.getKey().startsWith(prefix)) return false;
+            free.addLast(entry.getValue());
+            return true;
+        });
+    }
+
+    /** How many live keys sit under {@code prefix}. For tests and diagnostics. */
+    public int liveCountWithin(String prefix) {
+        int found = 0;
+        for (String key : live.keySet()) {
+            if (key.startsWith(prefix)) found++;
+        }
+        return found;
+    }
+
     @Nullable
     private T evictEldest() {
         var iterator = live.entrySet().iterator();

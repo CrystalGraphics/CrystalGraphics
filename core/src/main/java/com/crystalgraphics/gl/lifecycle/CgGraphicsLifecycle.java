@@ -28,6 +28,7 @@ import com.crystalgraphics.text.render.CgTextRendererRegistry;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import lombok.Getter;
+import com.crystalgraphics.shadergraph.CgPreviewPool;
 
 /**
  * Coordinates teardown of all CrystalGraphics GL resources in the correct order.
@@ -366,6 +367,16 @@ public final class CgGraphicsLifecycle {
         // CgRenderPipeline owns both the GPU pipeline buffers (formerly CgMaterialPipeline)
         // and the render command queue; one destroy call handles all of it.
         CgRenderPipeline.destroy();
+
+        // Step 8b: Shader-graph preview targets.
+        //
+        // Owned by the CONTEXT rather than by any renderer, which is the point of CgPreviewPool: the
+        // targets are createOwned, so no registry below sweeps them, and release previously depended on
+        // every CgPreviewRenderer's owner remembering to call delete(). Now the context frees them
+        // because the context owns them.
+        //
+        // Before the framebuffer registry, since a target holds framebuffers of its own.
+        CgPreviewPool.deleteAll();
 
         // Step 9: All owned framebuffers — must be first.
         CgFrameBufferRegistry.get().deleteAll();

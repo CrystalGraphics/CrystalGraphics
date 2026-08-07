@@ -75,8 +75,18 @@ public final class CgPreviewRenderer {
     public static final int DEFAULT_CAPACITY = 24;
 
     private final int previewSize;
-    /** Keep/reuse/evict, held separately so the policy is testable without a GL context. */
+    /**
+     * Keep/reuse/evict — <b>shared with every other renderer in this context</b>, see {@link CgPreviewPool}.
+     *
+     * <p>Held separately from the GL so the policy stays testable without a context, which is why it was
+     * a separate class to begin with. What changed is who owns it: a pool per renderer meant memory
+     * scaled with how many graphs were <em>open</em> rather than with how many were <em>visible</em>, and
+     * closing one deleted framebuffers that reopening it immediately re-created.</p>
+     */
     private final CgPreviewSlots<CgPreviewTarget> targets;
+
+    /** This renderer's key namespace in the shared pool. Every key below is {@code scope + nodeId}. */
+    private final String scope = CgPreviewPool.newScope();
     private int budget = DEFAULT_BUDGET;
 
     /** nodeId → the source its target was last drawn with, so an unchanged graph re-renders nothing. */
@@ -135,7 +145,7 @@ public final class CgPreviewRenderer {
     public CgPreviewRenderer(int size, int capacity, int samples) {
         if (size <= 0) throw new IllegalArgumentException("Preview size must be > 0, got " + size);
         this.previewSize = size;
-        this.targets = new CgPreviewSlots<>(capacity, () -> new CgPreviewTarget("cg_preview", size, samples));
+        this.targets = CgPreviewPool.forGeometry(size, samples, capacity);
     }
 
     /** How many previews may be drawn per {@link #renderPending}. */
@@ -171,7 +181,12 @@ public final class CgPreviewRenderer {
      * anything at all rather than merely being drawn where nobody looks.</p>
      */
     public void setVisible(Set<String> visibleNodeIds) {
-        targets.retainOnly(visibleNodeIds);
+        Set<String> keep = new LinkedHashSet<>();
+        for (String visible : visibleNodeIds) keep.add(scope + visible);
+        // WITHIN this renderer's namespace. The pool is shared, so an unscoped cull would release the
+        // targets of every other open graph -- which would look like thumbnails going blank in a tab
+        // nobody had touched.
+        targets.retainOnlyWithin(scope, keep);
         renderedSource.keySet().retainAll(visibleNodeIds);
         renderedTarget.keySet().retainAll(visibleNodeIds);
         renderedGeometry.keySet().retainAll(visibleNodeIds);
@@ -250,7 +265,7 @@ public final class CgPreviewRenderer {
         if (emitted.animated()) animated.add(nodeId);
         else animated.remove(nodeId);
 
-        CgPreviewTarget target = targets.acquire(nodeId);
+        CgPreviewTarget target = targets.acquire(scope + nodeId);
 
         // Two conditions, and BOTH are needed — UNLESS the node is animated, in which case its picture
         // changes every frame with the source staying byte-identical (it names a uniform, it never bakes
@@ -285,7 +300,7 @@ public final class CgPreviewRenderer {
     /** The texture already rendered for a node, or null. Never draws. */
     @Nullable
     public CgTexture textureOf(String nodeId) {
-        CgPreviewTarget target = targets.peek(nodeId);
+        CgPreviewTarget target = targets.peek(scope + nodeId);
         return target == null ? null : target.texture();
     }
 
@@ -406,15 +421,20 @@ public final class CgPreviewRenderer {
     }
 
     /**
-     * Frees the pool and both meshes.
+     * Gives this renderer's targets back to the pool and frees its own meshes.
      *
-     * <p>Must be called on context destruction — the pool's targets are {@code createOwned}, so no
-     * registry sweep reaches them.</p>
+     * <h3>Releases; does not delete</h3>
+     *
+     * <p>It used to delete every target it held, which made closing a shader graph a GPU teardown and
+     * reopening it a GPU allocate — driver-serialised work, on a gesture people repeat constantly. The
+     * targets are owned by the <b>context</b> now ({@link CgPreviewPool}), so this hands back keys and
+     * the framebuffers stay for whatever asks next.</p>
+     *
+     * <p>The meshes are genuinely this renderer's own and are still deleted. They are the small half.</p>
      */
     public void delete() {
         if (deleted) return;
-        for (CgPreviewTarget target : targets.all()) target.delete();
-        targets.clear();
+        targets.releaseAllWithin(scope);
         if (quadMesh != null) quadMesh.delete();
         if (sphereMesh != null) sphereMesh.delete();
         quadMesh = null;

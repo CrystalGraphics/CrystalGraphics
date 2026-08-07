@@ -965,6 +965,7 @@ CgGraphicsLifecycle.destroyContext();
 | 6 | `CgMaterialRegistry.get().deleteAll()` | Material instances + GL shader programs |
 | 7 | `CgShaderBufferRegistry.get().deleteAll()` | User SSBO/TBO/UBO resources |
 | 8 | `CgRenderPipeline.destroy()` | Frame UBO + object SSBO + command queue; nulls depth snapshot FBO reference (GL object freed by step 9) |
+| 8b | `CgPreviewPool.deleteAll()` | Shader-graph preview targets. **Context-owned, not renderer-owned** — they are `createOwned`, so no registry below reaches them, and release used to depend on every `CgPreviewRenderer`'s owner remembering to call `delete()`. Before step 9, since a target holds framebuffers |
 | 9 | `CgFrameBufferRegistry.get().deleteAll()` | All owned FBOs |
 | 10 | `CgDebugBlit.dispose()` | Debug blit utility (no-op if never used) |
 
