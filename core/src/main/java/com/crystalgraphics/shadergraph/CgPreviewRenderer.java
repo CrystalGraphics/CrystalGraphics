@@ -361,17 +361,47 @@ public final class CgPreviewRenderer {
     }
 
     /**
+     * How far back the sphere preview's camera sits.
+     *
+     * <p>Nothing to do with framing — the projection is orthographic, so moving the camera along its own
+     * axis changes the picture not at all. It exists so that <b>view space is a different space from
+     * object space</b>, which is the only thing that lets a {@code Space} dropdown mean anything in a
+     * thumbnail. With the camera at the origin the two are literally the same transform, and the previous
+     * answer to that was for each node to fake a difference by negating Z — which is how Position's two
+     * options ended up drawing each other's picture.</p>
+     *
+     * <p>Comfortably inside the ±4 depth range with a unit sphere in front of it.</p>
+     */
+    private static final float CAMERA_DISTANCE = 2.5f;
+
+    /**
      * The preview camera.
      *
      * <p>A quad is drawn in clip space directly — identity view and projection, with the mesh spanning
      * -1..1 — so it exactly fills the target with no fitting maths to get wrong. A sphere gets a slightly
      * wider orthographic box so the silhouette is not clipped at the edges.</p>
+     *
+     * <h3>It looks down -Z, and it used not to</h3>
+     * <p>The near and far arguments were {@code (-4, 4)}, which makes JOML's {@code z_ndc = -0.25 * z_eye}
+     * — so the <b>nearest</b> fragment is the one with the LARGEST eye z, and the hemisphere you are
+     * looking at is the one at object z in {@code (0, 1]}. That is the opposite handedness from every
+     * other camera in the engine and from Unity, where toward-the-viewer is negative Z.</p>
+     *
+     * <p>Every thumbnail that shows a coordinate therefore had its Z channel inverted, and the two nodes
+     * that noticed — Position and Normal Vector — each papered over it locally by negating Z in one of
+     * their own variants. Fixing it here is what lets both of those go back to emitting the plain thing,
+     * and it fixes every node downstream of them at the same time: anything reading Position or Normal
+     * inherited the flipped Z silently, with nothing to compare against.</p>
      */
     private void applyCamera(CgFrameData frame, CgPreviewGeometry geometry) {
-        frame.viewMatrix.identity();
         if (geometry == CgPreviewGeometry.SPHERE) {
-            frame.projMatrix.setOrtho(-1.15f, 1.15f, -1.15f, 1.15f, -4f, 4f);
+            // Pulled back along +Z, looking down -Z. @see CAMERA_DISTANCE
+            frame.viewMatrix.translation(0f, 0f, -CAMERA_DISTANCE);
+            frame.projMatrix.setOrtho(-1.15f, 1.15f, -1.15f, 1.15f, 4f, -4f);
         } else {
+            // A clip-space quad has no camera to speak of: it is already in the space it is drawn in, so
+            // any view or projection at all would move it off the target it is meant to fill exactly.
+            frame.viewMatrix.identity();
             frame.projMatrix.identity();
         }
         frame.viewportW = previewSize;
