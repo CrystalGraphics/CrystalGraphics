@@ -1296,27 +1296,35 @@ public final class CgBuiltinShaderNodes {
             // Object space is the DEFAULT, matching Unity — and this node previously emitted the world
             // form unconditionally, so its thumbnail was a world normal labelled as nothing at all.
             .body("{Out} = cg_Normal;")
-            .previewBody("{Out} = i.normal;")
+            // NEGATED Z on the OBJECT form, exactly as Position does it one node up, and for exactly the
+            // same reason — see the long note there. This node had it on the View form instead, so its
+            // two thumbnails were inverted: Object drew the bright blue ball and View drew the
+            // red/green/yellow one.
+            //
+            // THE TWO NODES MUST AGREE, and that is the check worth keeping: the preview mesh is a UNIT
+            // sphere centred on the origin, so its normal at any point IS its object position. Position
+            // and Normal Vector therefore have to draw the same picture in object space, and a
+            // side-by-side where they do not is a bug in one of them by construction. They were mirror
+            // images of each other.
+            .previewBody("{Out} = vec3(i.normal.xy, -i.normal.z);")
             .bodyFor(SPACE_ID, SPACE_WORLD, "{Out} = CG_NORMAL_MATRIX * cg_Normal;")
             // mat3 of the view matrix, so only the ROTATION applies. A normal is a direction: translating
             // it is meaningless, and using the full mat4 would drag the camera's position into a unit
             // vector and denormalise it by however far the camera happens to be from the origin.
             .bodyFor(SPACE_ID, SPACE_VIEW, "{Out} = mat3(cg_ViewMatrix) * (CG_NORMAL_MATRIX * cg_Normal);")
-            .previewBodyFor(SPACE_ID, SPACE_WORLD, "{Out} = i.normal;")
-            // NOT mat3(cg_ViewMatrix) here, and the reason is worth stating.
+            .previewBodyFor(SPACE_ID, SPACE_WORLD, "{Out} = vec3(i.normal.xy, -i.normal.z);")
+            // ...and View is the RAW attribute, which is the blue ball with cyan and magenta quadrants.
             //
-            // A preview is rendered by a camera sitting at the identity, so the literal view transform is
-            // a no-op and View drew pixel-for-pixel the same picture as Object -- a dropdown that
-            // visibly did nothing. Rotating the preview camera to make it differ is not available
-            // either: the same matrix drives the geometry, so it would spin the sphere and change the
-            // Object thumbnail too.
+            // NOT mat3(cg_ViewMatrix). A preview is rendered by a camera at the identity, so the literal
+            // view transform is a no-op and View would draw pixel-for-pixel the same picture as Object —
+            // a dropdown that visibly does nothing. Rotating the preview camera to force a difference is
+            // not available either: the same matrix drives the geometry, so it would spin the sphere and
+            // change the Object thumbnail too.
             //
-            // What actually distinguishes the two is the Z convention: object Z points away from the
-            // viewer, view Z toward it. Negating Z expresses exactly that relationship, and reproduces
-            // Unity's view-space ball (blue everywhere, cyan and magenta quadrants) on the same geometry.
-            // The REAL shader above still emits the true transform -- this is the thumbnail's camera
-            // being a stand-in, not the semantics being faked.
-            .previewBodyFor(SPACE_ID, SPACE_VIEW, "{Out} = vec3(i.normal.xy, -i.normal.z);")
+            // What distinguishes the two is the Z convention, and it is the thumbnail's stand-in camera
+            // being expressed rather than the semantics being faked — the REAL shader above emits the
+            // true transform and is untouched.
+            .previewBodyFor(SPACE_ID, SPACE_VIEW, "{Out} = i.normal;")
             .build();
 
     /** Adds every built-in to {@code registry}, in menu order. */
