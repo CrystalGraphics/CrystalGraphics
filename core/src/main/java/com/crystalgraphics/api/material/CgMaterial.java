@@ -31,6 +31,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
+import javax.annotation.Nullable;
 
 /**
  * User-facing material handle backed by a shared {@link CgMaterialShader} asset.
@@ -258,6 +259,18 @@ public final class CgMaterial {
      *                     e.g. {@code "mymod:shaders/terrain.shader"}
      * @return a ready-to-use {@code CgMaterial}; the same instance is returned on repeated calls
      */
+    /**
+     * What the driver said about this material's last failed compile, or null.
+     *
+     * <p>Forwarded from the shader so a <b>generated</b> material's owner can act on it: a graph-emitted
+     * shader that the driver refuses is a message the user needs, and the line number in it maps back to
+     * the node that wrote the line. For a shipped asset this is still just the log.</p>
+     */
+    @Nullable
+    public String lastCompileError() {
+        return cgMaterialShader == null ? null : cgMaterialShader.lastCompileError();
+    }
+
     public static CgMaterial load(String resourcePath) {
         return CgMaterialRegistry.get().getOrCreate(resourcePath);
     }

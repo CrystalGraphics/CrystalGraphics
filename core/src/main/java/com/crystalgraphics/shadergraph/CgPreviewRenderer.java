@@ -20,6 +20,7 @@ import org.joml.Matrix4f;
 
 import javax.annotation.Nullable;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
@@ -130,6 +131,20 @@ public final class CgPreviewRenderer {
      */
     private final Set<String> failed = new LinkedHashSet<>();
 
+    /** Why each failed node failed — the emitter's problems, kept beside the ids. */
+    private final Map<String, List<CgShaderProblem>> failureReasons = new LinkedHashMap<>();
+
+    /**
+     * The nodes whose thumbnail could not be produced, and why.
+     *
+     * <p>This class already knew both — {@code failed} is what stops it retrying forever, and the emitter
+     * handed over the problems on the way in — and told nobody. A node whose preview cannot compile simply
+     * showed nothing, permanently, with the explanation discarded one line after it arrived.</p>
+     */
+    public Map<String, List<CgShaderProblem>> failures() {
+        return Map.copyOf(failureReasons);
+    }
+
     private CgMesh quadMesh;
     private CgMesh sphereMesh;
     private boolean deleted;
@@ -163,6 +178,7 @@ public final class CgPreviewRenderer {
      */
     public void invalidate(String nodeId) {
         failed.remove(nodeId);
+        failureReasons.remove(nodeId);
         dirty.add(nodeId);
     }
 
@@ -170,6 +186,7 @@ public final class CgPreviewRenderer {
     public void invalidateAll() {
         // Failures are cleared too: whatever was wrong may be exactly what just changed.
         failed.clear();
+        failureReasons.clear();
         dirty.addAll(renderedSource.keySet());
     }
 
@@ -254,6 +271,7 @@ public final class CgPreviewRenderer {
         CgPreviewEmitter.Result emitted = CgPreviewEmitter.emit(graph, nodeId);
         if (!emitted.ok()) {
             failed.add(nodeId);
+            failureReasons.put(nodeId, List.copyOf(emitted.problems()));
             animated.remove(nodeId);
             return null;
         }
@@ -284,11 +302,21 @@ public final class CgPreviewRenderer {
         try {
             CgMaterial material = CgMaterial.fromSource(emitted.source());
             drawInto(target, material, emitted.geometry());
+            // The DRIVER's refusal, which the emitter cannot predict: a compile is lazy, so this is only
+            // answerable after the draw that forced it.
+            String driver = material.lastCompileError();
+            if (driver != null) {
+                failed.add(nodeId);
+                failureReasons.put(nodeId, List.of(CgShaderProblem.node(nodeId, driver)));
+                return null;
+            }
         } catch (RuntimeException broken) {
             // Recorded as failed rather than rethrown: a preview is a convenience, and one node whose
             // material will not compile must not take the editor down — nor be retried, which would mean
             // a shader compile every frame.
             failed.add(nodeId);
+            failureReasons.put(nodeId, List.of(CgShaderProblem.node(nodeId,
+                    broken.getMessage() == null ? broken.toString() : broken.getMessage())));
             return null;
         }
         renderedSource.put(nodeId, emitted.source());

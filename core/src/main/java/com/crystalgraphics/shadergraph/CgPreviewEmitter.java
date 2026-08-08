@@ -50,9 +50,18 @@ public final class CgPreviewEmitter {
      *                 CgShaderNode#isAnimated()} — see that method for why {@link CgPreviewRenderer}
      *                 needs this instead of diffing {@link #source()} against the last draw
      */
-    public record Result(String source, CgPreviewGeometry geometry, List<String> errors, boolean animated) {
+    public record Result(String source, CgPreviewGeometry geometry, List<CgShaderProblem> problems,
+                         boolean animated) {
+
+        /** The messages alone — derived, so it cannot drift from {@link #problems()}. */
+        public List<String> errors() {
+            List<String> messages = new ArrayList<>(problems.size());
+            for (CgShaderProblem problem : problems) messages.add(problem.message());
+            return messages;
+        }
+
         public boolean ok() {
-            return errors.isEmpty();
+            return problems.isEmpty();
         }
     }
 
@@ -68,14 +77,16 @@ public final class CgPreviewEmitter {
         CgShaderGraph.Instance instance = graph.instance(nodeId);
         if (instance == null) {
             return new Result("", CgPreviewGeometry.QUAD,
-                    List.of("No node with id '" + nodeId + "' to preview"), false);
+                    List.of(CgShaderProblem.node(nodeId, "No node with id '" + nodeId + "' to preview")),
+                    false);
         }
         List<CgShaderPort> outputs = instance.type().outputs();
         if (outputs.isEmpty()) {
             // Not an error worth shouting about: an output node legitimately has nothing to show, and
             // the editor's answer is to draw no thumbnail rather than to report a failure.
             return new Result("", CgPreviewGeometry.QUAD,
-                    List.of("Node '" + nodeId + "' has no output to preview"), false);
+                    List.of(CgShaderProblem.node(nodeId, "Node '" + nodeId + "' has no output to preview")),
+                    false);
         }
         return emit(graph, nodeId, outputs.get(0).id());
     }
@@ -89,16 +100,19 @@ public final class CgPreviewEmitter {
      * the same thing produce byte-identical source and therefore share one compiled program.</p>
      */
     public static Result emit(CgShaderGraph graph, String nodeId, String portId) {
-        List<String> errors = new ArrayList<>();
+        List<CgShaderProblem> errors = new ArrayList<>();
 
         CgShaderGraph.Instance instance = graph.instance(nodeId);
         if (instance == null) {
             return new Result("", CgPreviewGeometry.QUAD,
-                    List.of("No node with id '" + nodeId + "' to preview"), false);
+                    List.of(CgShaderProblem.node(nodeId, "No node with id '" + nodeId + "' to preview")),
+                    false);
         }
 
         CgGraphCompiler.Result compiled = CgGraphCompiler.compileFrom(graph, nodeId, true);
-        errors.addAll(compiled.errors());
+        // The PROBLEMS, not the messages: the attribution is the whole point of carrying them, and
+        // flattening here would lose the node id one layer below where it is needed.
+        errors.addAll(compiled.problems());
 
         String variable = "node_" + nodeId + "_" + portId;
         CgShaderType type = compiled.typeOf(variable);
@@ -109,13 +123,14 @@ public final class CgPreviewEmitter {
             type = port == null || port.type() == CgShaderType.DYNAMIC ? null : port.type();
         }
         if (type == null) {
-            errors.add("Cannot preview '" + nodeId + "." + portId
-                    + "': nothing connected to it says what type it is");
+            errors.add(CgShaderProblem.port(nodeId, portId, "Cannot preview '" + nodeId + "." + portId
+                    + "': nothing connected to it says what type it is"));
             return new Result("", CgPreviewGeometry.QUAD, errors, false);
         }
         if (!isPreviewable(type)) {
-            errors.add("Cannot preview '" + nodeId + "." + portId + "': a " + type.glsl()
-                    + " has no meaningful thumbnail");
+            errors.add(CgShaderProblem.port(nodeId, portId,
+                    "Cannot preview '" + nodeId + "." + portId + "': a " + type.glsl()
+                    + " has no meaningful thumbnail"));
             return new Result("", CgPreviewGeometry.QUAD, errors, false);
         }
 
@@ -134,9 +149,10 @@ public final class CgPreviewEmitter {
             // vertex attribute, so it is fragment-safe after all. This is the whole reason Position, UV
             // and Normal can be previewed at all — and they are the nodes previews exist to show.
             if (dependency.type().hasPreviewForm()) continue;
-            errors.add("Node '" + dependency.id() + "' (" + dependency.type().id()
+            errors.add(CgShaderProblem.node(dependency.id(),
+                    "Node '" + dependency.id() + "' (" + dependency.type().id()
                     + ") is vertex-only, and a preview evaluates in the fragment stage — it needs a"
-                    + " forPreview form that reads the varying instead");
+                    + " forPreview form that reads the varying instead"));
         }
 
         CgPreviewGeometry geometry = CgPreviewGeometry.resolve(graph, nodeId);
