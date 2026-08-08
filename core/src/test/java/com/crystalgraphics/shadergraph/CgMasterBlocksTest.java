@@ -143,7 +143,11 @@ public class CgMasterBlocksTest {
         assertTrue("it needs a normal to shade with", source.contains("v_cg_preview_normal"));
         assertTrue("the vertex stage must write it",
                 source.contains("CG_NORMAL_MATRIX * cg_Normal"));
-        assertTrue("and the output goes through the lit colour", source.contains("fragColor = vec4(cg_lit"));
+        // ...and through the sRGB encode every PREVIEW mode applies. A shader's values are linear and a
+        // display is not, so a panel that is looked at writes what a display expects -- which is what
+        // stopped the Main Preview coming out darker than the same graph's own node thumbnail.
+        assertTrue("and the output goes through the lit colour, encoded for display",
+                source.contains("fragColor = vec4(linear_to_srgb(cg_lit)"));
     }
 
     /**

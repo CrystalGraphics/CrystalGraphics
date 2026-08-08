@@ -1282,19 +1282,18 @@ public final class CgBuiltinShaderNodes {
             .previewGeometry(CgPreviewGeometry.SPHERE)
             .property(SPACE)
             .body("{Out} = cg_Position;")
-            // NEGATED Z, and it is the OBJECT form that carries it rather than the View one.
+            // NEGATED Z, and it is a HANDEDNESS conversion rather than a fudge.
             //
-            // The preview camera is an identity view with `setOrtho(..., -4, 4)`, which puts the near
-            // plane at POSITIVE eye z -- so the hemisphere you are looking at has object z in (0, 1] and
-            // raw `i.objectPos` previews as a bright blue ball with cyan and magenta quadrants. That is
-            // Unity's VIEW-space picture. Its object-space one is the red/green/yellow ball with a black
-            // lower-left, which is what this expression produces.
+            // Unity's object-space ball shows the hemisphere at z < 0, because Unity is left-handed and
+            // its +Z points away from the viewer. This engine is right-handed, so the camera sees the
+            // z > 0 hemisphere and a raw coordinate previews blue. The difference between the two
+            // conventions is a MIRROR, and there is no camera placement that expresses one: swapping the
+            // projection's near/far flips winding along with depth and cancels itself, and a 180 degree
+            // rotation turns the mesh around so +X points left. Both were tried; the arithmetic is
+            // recorded in CgPreviewRenderer.applyCamera.
             //
-            // It was the other way round, on the stated premise that "object Z points away from the
-            // viewer, view Z toward it" -- true of a conventional camera looking down -Z, and false of
-            // this one. So the two thumbnails came out swapped: picking Object drew Unity's View ball and
-            // picking View drew Unity's Object ball. The real shader forms below are untouched; this is
-            // the thumbnail's stand-in camera being corrected, not the semantics.
+            // So the mirror is applied to the VALUE, which is the one place it costs nothing. The real
+            // shader bodies below are untouched and emit the true transforms.
             .previewBody("{Out} = vec3(i.objectPos.xy, -i.objectPos.z);")
             .bodyFor(SPACE_ID, SPACE_WORLD, "{Out} = (CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0)).xyz;")
             .bodyFor(SPACE_ID, SPACE_VIEW,
@@ -1304,7 +1303,8 @@ public final class CgBuiltinShaderNodes {
             // by whatever model matrix the preview pass happened to leave in the object buffer, which is
             // identity today and would silently stop being so the moment that changes.
             .previewBodyFor(SPACE_ID, SPACE_WORLD, "{Out} = vec3(i.objectPos.xy, -i.objectPos.z);")
-            // ...and View is the RAW attribute, for the camera reason above.
+            // ...and View is the RAW attribute, which under the mirror above IS the other convention --
+            // the blue ball with cyan and magenta quadrants, exactly Unity's view-space thumbnail.
             .previewBodyFor(SPACE_ID, SPACE_VIEW, "{Out} = i.objectPos;")
             .build();
 
@@ -1324,16 +1324,13 @@ public final class CgBuiltinShaderNodes {
             // Object space is the DEFAULT, matching Unity — and this node previously emitted the world
             // form unconditionally, so its thumbnail was a world normal labelled as nothing at all.
             .body("{Out} = cg_Normal;")
-            // NEGATED Z on the OBJECT form, exactly as Position does it one node up, and for exactly the
-            // same reason — see the long note there. This node had it on the View form instead, so its
-            // two thumbnails were inverted: Object drew the bright blue ball and View drew the
-            // red/green/yellow one.
+            // THE SAME HANDEDNESS CONVERSION Position carries one node up -- see the long note there.
             //
             // THE TWO NODES MUST AGREE, and that is the check worth keeping: the preview mesh is a UNIT
             // sphere centred on the origin, so its normal at any point IS its object position. Position
             // and Normal Vector therefore have to draw the same picture in object space, and a
-            // side-by-side where they do not is a bug in one of them by construction. They were mirror
-            // images of each other.
+            // side-by-side where they do not is a bug in one of them by construction. They have been
+            // mirror images of each other twice, in both directions.
             .previewBody("{Out} = vec3(i.normal.xy, -i.normal.z);")
             .bodyFor(SPACE_ID, SPACE_WORLD, "{Out} = CG_NORMAL_MATRIX * cg_Normal;")
             // mat3 of the view matrix, so only the ROTATION applies. A normal is a direction: translating
@@ -1352,6 +1349,7 @@ public final class CgBuiltinShaderNodes {
             // What distinguishes the two is the Z convention, and it is the thumbnail's stand-in camera
             // being expressed rather than the semantics being faked — the REAL shader above emits the
             // true transform and is untouched.
+            // ...and View is the RAW attribute, the blue ball, for the same reason Position's is.
             .previewBodyFor(SPACE_ID, SPACE_VIEW, "{Out} = i.normal;")
             .build();
 

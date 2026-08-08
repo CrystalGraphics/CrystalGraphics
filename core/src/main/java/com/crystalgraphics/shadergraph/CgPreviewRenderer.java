@@ -366,6 +366,28 @@ public final class CgPreviewRenderer {
      * <p>A quad is drawn in clip space directly — identity view and projection, with the mesh spanning
      * -1..1 — so it exactly fills the target with no fitting maths to get wrong. A sphere gets a slightly
      * wider orthographic box so the silhouette is not clipped at the edges.</p>
+     *
+     * <h3>Why the camera is NOT moved to the other side of the mesh, though it looks like it should be</h3>
+     * <p>Unity's object-space thumbnails show the hemisphere at z &lt; 0, because Unity is <b>left-handed</b>
+     * — its +Z points away from the viewer. This engine is right-handed, and the difference between the
+     * two is a <b>mirror</b>, not a rotation.</p>
+     *
+     * <p>That is not a detail, it is the whole reason the nodes compensate in their preview bodies rather
+     * than the camera compensating here. Two attempts were made to fix it at the camera and the arithmetic
+     * refuses both:</p>
+     * <ul>
+     *   <li>Swapping the near/far arguments flips the depth mapping AND the sign of the projection's
+     *       determinant — so it flips triangle winding too, back-face culling keeps the opposite set, and
+     *       the two cancel. The visible hemisphere does not move at all. Measured: {@code det} goes
+     *       {@code -0.0945} to {@code +0.0945} with the same picture on screen.</li>
+     *   <li>A 180° rotation shows the far hemisphere with culling and depth in agreement — but it also
+     *       turns the mesh around, so +X now points left. Unity's ball has red on the right.</li>
+     * </ul>
+     *
+     * <p>There is no rotation that shows the other hemisphere while keeping +X right and +Y up. Only a
+     * mirror does, and a mirror inverts winding, which is exactly why a left-handed API winds its front
+     * faces the other way. So the compensation belongs where a handedness difference can be expressed
+     * without touching geometry: in the value, in the preview body. See {@code CgBuiltinShaderNodes}.</p>
      */
     private void applyCamera(CgFrameData frame, CgPreviewGeometry geometry) {
         frame.viewMatrix.identity();

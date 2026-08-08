@@ -229,8 +229,29 @@ public final class CgGraphCompiler {
      * link on the next call and the whole branch is skipped, so repeated compiles of one graph — which is
      * the normal case, since {@code CgPreviewRenderer} compiles from many roots against one
      * {@code CgShaderGraph} — neither re-add the shared instance nor duplicate the link.</p>
+     *
+     * <h3>{@link CgShaderEmitter} has to call this BEFORE it assigns stages, and that is why it is not
+     * private</h3>
+     * <p>The claim above — that every later stage treats an implicit link exactly like a drawn one —
+     * was false for the one stage that does not live in this class. <b>Vertex/fragment promotion is the
+     * emitter's</b>, and it ran first: roots, the fragment chain and the vertex set were all computed
+     * from the graph as handed in, which at that moment still had none of these instances in it. So a
+     * synthesized node declaring {@link CgShaderDomain#VERTEX} was never hoisted, and got compiled into
+     * whichever stage first reached it — the fragment one.</p>
+     *
+     * <p>What that emitted is invalid GLSL rather than merely wrong output: {@code cg_TexCoord0},
+     * {@code cg_Normal} and {@code cg_Position} are <b>vertex attribute aliases</b>, so
+     * {@code node_implicit_..._Out = cg_Normal;} inside {@code void fragment(...)} does not compile at
+     * all. Every node with an implicit UV — twelve of them — was in this state whenever it was used
+     * unwired in a real material, and it was invisible because the PREVIEW path does not go through here:
+     * {@code CgPreviewEmitter} evaluates everything in the fragment stage against varyings it writes
+     * itself, which is why the thumbnails were right the whole time and only the material was broken.</p>
+     *
+     * <p>Wiring first makes the instances ordinary graph members before any of that runs, so the existing
+     * {@code domain() == VERTEX} hoist and {@code findVaryings} pick them up with no special case —
+     * finally making the sentence at the top of this doc true.</p>
      */
-    private static void wireImplicitDefaults(CgShaderGraph graph) {
+    static void wireImplicitDefaults(CgShaderGraph graph) {
         // Snapshotted, not walked live: graph.instances() is an unmodifiable VIEW over the same map
         // graph.add() writes into below, and a fail-fast LinkedHashMap iterator throws
         // ConcurrentModificationException the moment that write lands mid-iteration — uncaught, since

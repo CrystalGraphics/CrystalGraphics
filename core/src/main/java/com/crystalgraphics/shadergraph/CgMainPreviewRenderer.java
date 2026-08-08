@@ -53,6 +53,36 @@ public final class CgMainPreviewRenderer {
     /** Matches {@code CgPreviewRenderer}: a silhouette at this size stair-steps badly without it. */
     public static final int DEFAULT_SAMPLES = 4;
 
+    /**
+     * How far back the camera sits from the origin.
+     *
+     * <p>Nothing to do with framing — the projection is orthographic, so sliding the camera along its own
+     * axis changes the picture not at all. It exists because the camera's <b>position</b> is a real input
+     * to a shader, and this one was sitting at {@code (0, 0, 0)}: the exact centre of the mesh it was
+     * looking at.</p>
+     *
+     * <p>Which made {@code CG_CAMERA_WORLD_POS} the origin, so a {@code View Direction} node computed
+     * {@code normalize(cameraPos - worldPos)} as {@code -normal} — pointing <em>into</em> the surface.
+     * {@code dot(N, V)} came out at {@code -1} everywhere and a Fresnel term
+     * {@code (1 - dot(N, V))^p} saturated to 1 across the whole mesh: a flat white sphere from a graph
+     * whose own node thumbnail showed the rim gradient correctly, because a thumbnail evaluates
+     * {@code previewBody} and never touches the camera.</p>
+     *
+     * <h3>Far, not merely outside the mesh</h3>
+     * <p>Being outside is enough to make the view direction point the right WAY. It is not enough to make
+     * it point the right way <em>consistently</em>, and this projection is orthographic: an ortho camera's
+     * rays are parallel, so its true view vector is a constant, while {@code normalize(cameraPos - P)} is
+     * radial from a point. At a distance of 4 those disagree by about 14 degrees at the silhouette of a
+     * unit sphere — enough that a Fresnel term saturates well before the rim and its bright band spreads
+     * visibly inward, against the same node's own thumbnail where the vector is the constant it should
+     * be.</p>
+     *
+     * <p>At 64 the disagreement is under a degree, which is the point: the number is not a framing choice
+     * (orthographic — the picture is identical at any distance) but the distance at which a point camera
+     * and a parallel one stop being distinguishable.</p>
+     */
+    private static final float CAMERA_DISTANCE = 64f;
+
     private final int size;
     private final int samples;
 
@@ -180,7 +210,10 @@ public final class CgMainPreviewRenderer {
         }
 
         CgShaderEmitter.Result emitted = CgShaderEmitter.emit(graph, master,
-                lit ? CgShaderEmitter.Shading.PREVIEW_LIT : CgShaderEmitter.Shading.UNLIT);
+                // PREVIEW_UNLIT, never UNLIT: this panel is looked at, so it wants the sRGB-encoded
+                // output a node thumbnail already produces. UNLIT is what SHIPS, and using it here is
+                // what made the two panels disagree about the same value.
+                lit ? CgShaderEmitter.Shading.PREVIEW_LIT : CgShaderEmitter.Shading.PREVIEW_UNLIT);
         if (!emitted.ok()) {
             failed = true;
             return currentTexture();
@@ -286,7 +319,14 @@ public final class CgMainPreviewRenderer {
      */
     private void applyCamera(CgFrameData frame, CgPreviewMesh mesh, float yaw, float pitch,
                              float zoom, float aspect) {
-        frame.viewMatrix.identity().rotateX(pitch).rotateY(yaw);
+        // PULLED BACK, then oriented. The translation is applied first so the camera orbits AROUND the
+        // mesh rather than the mesh being pushed away along the rotated axis.
+        //
+        // A CONVENTIONAL camera: at +Z, looking down -Z, like every other one in the engine. Moving it to
+        // the far side to match Unity's object-space thumbnails was tried and cannot work -- the two
+        // conventions differ by a mirror, not a rotation. See CgPreviewRenderer.applyCamera for the
+        // measurements. @see CAMERA_DISTANCE
+        frame.viewMatrix.translation(0f, 0f, -CAMERA_DISTANCE).rotateX(pitch).rotateY(yaw);
         // Clamped rather than trusted: a zero or negative zoom collapses the ortho box and the driver
         // draws nothing at all, which reads as "the shader broke" rather than "the gesture went wrong".
         float r = mesh.viewRadius() / Math.max(0.05f, zoom);
@@ -297,7 +337,14 @@ public final class CgMainPreviewRenderer {
         float ry = aspect >= 1f ? r : r / aspect;
         // Depth range spans well past the shape in both directions: the view rotation moves geometry
         // through Z, and a box fitted to the un-rotated extent would clip a corner into view as it turned.
-        frame.projMatrix.setOrtho(-rx, rx, -ry, ry, -4f, 4f);
+        // Deep enough to hold CAMERA_DISTANCE plus the largest mesh's own extent, now that the camera is
+        // no longer sitting inside the mesh. The near/far ORDER is unchanged and deliberately so —
+        // reversing it flips which hemisphere the depth test keeps, which is a separate change that was
+        // tried, made every coordinate thumbnail worse, and was reverted.
+        // NEAR AND FAR IN THIS ORDER. Swapping them flips the projection's determinant, which flips
+        // triangle winding, which makes back-face culling keep the opposite set -- so it cancels its own
+        // effect on the depth test and changes nothing on screen. See CgPreviewRenderer.applyCamera.
+        frame.projMatrix.setOrtho(-rx, rx, -ry, ry, -128f, 128f);
         frame.viewportW = size;
         frame.viewportH = size;
         frame.deriveFromViewMatrix();
