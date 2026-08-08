@@ -1,12 +1,15 @@
 #pragma once
 // Naming: cg_PascalCase = GLSL identifiers; CG_UPPER_SNAKE = macros
 
-// Per-frame uniforms (view + proj + time + resolution). Block index wired post-link via glUniformBlockBinding.
+// Per-frame uniforms (view + proj + time + resolution + camera). Block index wired post-link via
+// glUniformBlockBinding. FIELD ORDER MUST MATCH CgRenderPipeline.FRAME_FORMAT -- std140 offsets are
+// positional, so a field added to one and not the other silently reads its neighbour.
 layout(std140) uniform CgFrameBlock {
     mat4 cg_ViewMatrix;
     mat4 cg_ProjMatrix;
     vec4 cg_Time;        // (t/20, t, t*2, t*3) - seconds, scaled like Unity _Time
     vec2 cg_Resolution;  // viewport size in pixels
+    vec4 cg_CameraPos;   // world-space camera position in .xyz; .w unused, see CG_CAMERA_WORLD_POS
 };
 
 // -- Per-Instance Object Data (SSBO path: GL 4.3+/ARB) ----------------------
@@ -90,13 +93,16 @@ uniform sampler2D cg_DepthBuffer;
 // -- Convenience Macros ------------------------------------------------------
 #define CG_MATRIX_MVP (cg_ProjMatrix * cg_ViewMatrix * CG_OBJECT_TO_WORLD)
 
-// Where the camera is, in world space. Derived rather than uniform: a view matrix is rigid (rotation
-// plus translation), so its inverse translation is -Rt * t and no full inverse() is needed. Identical
-// to what CgFrameData.deriveFromViewMatrix computes on the CPU, deliberately -- the two must agree.
+// Where the camera is, in world space.
 //
-// A macro rather than a CgFrameBlock field so that adding it changes no buffer layout and no writer.
-// If it ever shows up in a profile it can be promoted to a real uniform without touching a shader.
-#define CG_CAMERA_WORLD_POS (-(transpose(mat3(cg_ViewMatrix)) * cg_ViewMatrix[3].xyz))
+// A UNIFORM, not derived. It was briefly `-(transpose(mat3(cg_ViewMatrix)) * cg_ViewMatrix[3].xyz)`,
+// which is correct -- a view matrix is rigid, so its inverse translation is -Rt * t -- and which costs a
+// 3x3 transpose and a matrix-vector multiply IN EVERY FRAGMENT THAT READS IT. The CPU already has the
+// answer: CgFrameData.deriveFromViewMatrix computes cameraPos once per frame, and it was being thrown
+// away. Uploading four floats a frame beats recomputing them a few million times.
+//
+// Still a macro at the call site, so shader code never touches the .xyz swizzle or the padding.
+#define CG_CAMERA_WORLD_POS (cg_CameraPos.xyz)
 
 // -- CgQuadRenderer convenience macros ---------------------------------------
 // CgQuadRenderer (gl/render/CgQuadRenderer.java) is a general SSBO/TBO-backed instanced
