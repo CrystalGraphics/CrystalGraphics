@@ -63,26 +63,6 @@ public final class CgBuiltinShaderNodes {
             CgShaderNodeProperty.of(SPACE_ID, "Space", SPACE_OBJECT, SPACE_WORLD, SPACE_VIEW);
 
     /**
-     * A normal, in the {@code n * 0.5 + 0.5} encoding <b>every</b> normal visualiser uses — and the
-     * reason Unity's normal ball is blue where its position ball is not.
-     *
-     * <p>The two nodes draw the same numbers on the same sphere: on a unit sphere the normal <em>is</em>
-     * the object position. What differs is how each is displayed. A position is a coordinate and is shown
-     * raw, so its negative half clamps to black and you get quadrants. A normal is a direction, its
-     * negative half is as meaningful as its positive half, and clamping throws away exactly half the
-     * information — so it is mapped into 0..1 first. That is what a tangent-space normal map stores, and
-     * why "mostly blue" reads as "pointing at you".</p>
-     *
-     * <p><b>Thumbnails only.</b> The emitted shader hands over the real vector; encoding there would be a
-     * silent halve-and-offset on anything wired downstream.</p>
-     */
-    private static final String ENCODED_NORMAL = encodedNormal("i.normal");
-
-    private static String encodedNormal(String expression) {
-        return "(" + expression + ") * 0.5 + 0.5";
-    }
-
-    /**
      * A constant colour, held as a <b>property</b> rather than an input port.
      *
      * <p>Unity's Color node has no input, and that is the right shape: a colour you pick is not a value
@@ -1274,16 +1254,20 @@ public final class CgBuiltinShaderNodes {
             .previewGeometry(CgPreviewGeometry.SPHERE)
             .property(SPACE)
             .body("{Out} = cg_Position;")
-            // THE PLAIN ATTRIBUTE, with no Z fixup at all -- the preview camera looks down -Z now, so the
-            // hemisphere you are looking at has object z in [-1, 0) and this is Unity's object-space ball
-            // without anything being arranged: red/green/yellow quadrants, black where x and y are both
-            // negative, and no blue, because a negative Z channel clamps away.
+            // NEGATED Z, and it is the OBJECT form that carries it rather than the View one.
             //
-            // It used to be `vec3(i.objectPos.xy, -i.objectPos.z)` on ONE of the three variants, to
-            // compensate for a preview camera that looked down +Z. That put the compensation on whichever
-            // option someone happened to be looking at when they wrote it, and Position's Object and View
-            // thumbnails each drew the other's picture as a result. The camera is fixed at source now.
-            .previewBody("{Out} = i.objectPos;")
+            // The preview camera is an identity view with `setOrtho(..., -4, 4)`, which puts the near
+            // plane at POSITIVE eye z -- so the hemisphere you are looking at has object z in (0, 1] and
+            // raw `i.objectPos` previews as a bright blue ball with cyan and magenta quadrants. That is
+            // Unity's VIEW-space picture. Its object-space one is the red/green/yellow ball with a black
+            // lower-left, which is what this expression produces.
+            //
+            // It was the other way round, on the stated premise that "object Z points away from the
+            // viewer, view Z toward it" -- true of a conventional camera looking down -Z, and false of
+            // this one. So the two thumbnails came out swapped: picking Object drew Unity's View ball and
+            // picking View drew Unity's Object ball. The real shader forms below are untouched; this is
+            // the thumbnail's stand-in camera being corrected, not the semantics.
+            .previewBody("{Out} = vec3(i.objectPos.xy, -i.objectPos.z);")
             .bodyFor(SPACE_ID, SPACE_WORLD, "{Out} = (CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0)).xyz;")
             .bodyFor(SPACE_ID, SPACE_VIEW,
                     "{Out} = (cg_ViewMatrix * CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0)).xyz;")
@@ -1291,13 +1275,9 @@ public final class CgBuiltinShaderNodes {
             // its world position IS its object position. Emitting the world form anyway would multiply
             // by whatever model matrix the preview pass happened to leave in the object buffer, which is
             // identity today and would silently stop being so the moment that changes.
-            .previewBodyFor(SPACE_ID, SPACE_WORLD, "{Out} = i.objectPos;")
-            // View is the REAL transform, not a stand-in. The preview camera is pulled back along +Z
-            // (CgPreviewRenderer.CAMERA_DISTANCE), so a view-space position genuinely differs from an
-            // object-space one -- it carries the camera's distance in Z, which clamps the blue channel
-            // away and darkens the ball. Unity's own View thumbnail, arrived at rather than drawn.
-            .previewBodyFor(SPACE_ID, SPACE_VIEW,
-                    "{Out} = (cg_ViewMatrix * vec4(i.objectPos, 1.0)).xyz;")
+            .previewBodyFor(SPACE_ID, SPACE_WORLD, "{Out} = vec3(i.objectPos.xy, -i.objectPos.z);")
+            // ...and View is the RAW attribute, for the camera reason above.
+            .previewBodyFor(SPACE_ID, SPACE_VIEW, "{Out} = i.objectPos;")
             .build();
 
     /**
@@ -1316,24 +1296,27 @@ public final class CgBuiltinShaderNodes {
             // Object space is the DEFAULT, matching Unity — and this node previously emitted the world
             // form unconditionally, so its thumbnail was a world normal labelled as nothing at all.
             .body("{Out} = cg_Normal;")
-            .previewBody("{Out} = " + ENCODED_NORMAL + ";")
+            .previewBody("{Out} = i.normal;")
             .bodyFor(SPACE_ID, SPACE_WORLD, "{Out} = CG_NORMAL_MATRIX * cg_Normal;")
             // mat3 of the view matrix, so only the ROTATION applies. A normal is a direction: translating
             // it is meaningless, and using the full mat4 would drag the camera's position into a unit
             // vector and denormalise it by however far the camera happens to be from the origin.
             .bodyFor(SPACE_ID, SPACE_VIEW, "{Out} = mat3(cg_ViewMatrix) * (CG_NORMAL_MATRIX * cg_Normal);")
-            .previewBodyFor(SPACE_ID, SPACE_WORLD, "{Out} = " + ENCODED_NORMAL + ";")
-            // The REAL view transform, exactly as the shader above emits it. mat3, because a normal is a
-            // direction and translating one is meaningless -- which is also why this is the one node
-            // whose View thumbnail legitimately matches its Object one: the preview camera is pulled back
-            // but not rotated, so the rotation part of its view matrix is the identity.
+            .previewBodyFor(SPACE_ID, SPACE_WORLD, "{Out} = i.normal;")
+            // NOT mat3(cg_ViewMatrix) here, and the reason is worth stating.
             //
-            // It used to negate Z instead, to force a visible difference out of a dropdown that would
-            // otherwise appear to do nothing. That is a picture of something the shader does not compute.
-            // Two options agreeing because they genuinely agree is the honest answer, and Position beside
-            // it does show a real difference, so the dropdown is plainly live.
-            .previewBodyFor(SPACE_ID, SPACE_VIEW,
-                    "{Out} = " + encodedNormal("mat3(cg_ViewMatrix) * i.normal") + ";")
+            // A preview is rendered by a camera sitting at the identity, so the literal view transform is
+            // a no-op and View drew pixel-for-pixel the same picture as Object -- a dropdown that
+            // visibly did nothing. Rotating the preview camera to make it differ is not available
+            // either: the same matrix drives the geometry, so it would spin the sphere and change the
+            // Object thumbnail too.
+            //
+            // What actually distinguishes the two is the Z convention: object Z points away from the
+            // viewer, view Z toward it. Negating Z expresses exactly that relationship, and reproduces
+            // Unity's view-space ball (blue everywhere, cyan and magenta quadrants) on the same geometry.
+            // The REAL shader above still emits the true transform -- this is the thumbnail's camera
+            // being a stand-in, not the semantics being faked.
+            .previewBodyFor(SPACE_ID, SPACE_VIEW, "{Out} = vec3(i.normal.xy, -i.normal.z);")
             .build();
 
     /** Adds every built-in to {@code registry}, in menu order. */
