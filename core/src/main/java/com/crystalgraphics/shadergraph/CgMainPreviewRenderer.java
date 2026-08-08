@@ -53,9 +53,6 @@ public final class CgMainPreviewRenderer {
     /** Matches {@code CgPreviewRenderer}: a silhouette at this size stair-steps badly without it. */
     public static final int DEFAULT_SAMPLES = 4;
 
-    /** How far back the camera sits. @see CgPreviewRenderer#CAMERA_DISTANCE for why it is not zero. */
-    private static final float CAMERA_DISTANCE = 2.5f;
-
     private final int size;
     private final int samples;
 
@@ -289,11 +286,7 @@ public final class CgMainPreviewRenderer {
      */
     private void applyCamera(CgFrameData frame, CgPreviewMesh mesh, float yaw, float pitch,
                              float zoom, float aspect) {
-        // PULLED BACK along +Z and looking down -Z, matching CgPreviewRenderer and every other camera in
-        // the engine. Orthographic, so the distance changes nothing about the picture -- it is there so
-        // view space is genuinely a different space from object space, which is what a Space dropdown
-        // needs in order to mean anything.
-        frame.viewMatrix.translation(0f, 0f, -CAMERA_DISTANCE).rotateX(pitch).rotateY(yaw);
+        frame.viewMatrix.identity().rotateX(pitch).rotateY(yaw);
         // Clamped rather than trusted: a zero or negative zoom collapses the ortho box and the driver
         // draws nothing at all, which reads as "the shader broke" rather than "the gesture went wrong".
         float r = mesh.viewRadius() / Math.max(0.05f, zoom);
@@ -304,13 +297,7 @@ public final class CgMainPreviewRenderer {
         float ry = aspect >= 1f ? r : r / aspect;
         // Depth range spans well past the shape in both directions: the view rotation moves geometry
         // through Z, and a box fitted to the un-rotated extent would clip a corner into view as it turned.
-        // Wide enough to hold CAMERA_DISTANCE plus the largest mesh's own extent as well.
-        //
-        // NEAR AND FAR IN THIS ORDER, which is what makes the camera look down -Z. Reversed, JOML's
-        // z_ndc comes out negated, the nearest fragment is the one with the LARGEST eye z, and every
-        // thumbnail showing a coordinate has its blue channel inverted -- see CgPreviewRenderer's own
-        // note for what that cost.
-        frame.projMatrix.setOrtho(-rx, rx, -ry, ry, 8f, -8f);
+        frame.projMatrix.setOrtho(-rx, rx, -ry, ry, -4f, 4f);
         frame.viewportW = size;
         frame.viewportH = size;
         frame.deriveFromViewMatrix();
