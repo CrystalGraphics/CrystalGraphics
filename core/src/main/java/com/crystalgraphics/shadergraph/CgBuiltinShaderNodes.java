@@ -816,8 +816,18 @@ public final class CgBuiltinShaderNodes {
      * meaningful for a real surface normal and view direction, both inherently three-component. */
     public static final CgShaderNode FRESNEL_EFFECT = CgTemplateShaderNode.of("cg:Math/Vector/fresnel-effect")
             .label("Fresnel Effect")
-            .in("Normal", CgShaderType.VEC3, "vec3(0.0, 0.0, 1.0)")
-            .in("ViewDir", CgShaderType.VEC3, "vec3(0.0, 0.0, 1.0)")
+            // BOUND TO REAL GEOMETRY, not to a literal — the same mechanism every UV-consuming node
+            // already uses, and the same failure it was introduced to kill.
+            //
+            // Both were `vec3(0.0, 0.0, 1.0)`. A Fresnel term is `(1 - dot(N, V))^p`, so with N and V
+            // both fixed at the same constant it evaluates to zero at EVERY pixel: the node previewed
+            // as a solid black square, and a graph that used it without wiring anything got a constant.
+            // Unity binds these two slots to the surface normal and the view direction and shows a space
+            // chooser rather than a value field, for exactly this reason.
+            .inWithImplicitDefault("Normal", CgShaderType.VEC3,
+                    () -> CgBuiltinShaderNodes.NORMAL, "Out")
+            .inWithImplicitDefault("ViewDir", CgShaderType.VEC3,
+                    () -> CgBuiltinShaderNodes.VIEW_DIRECTION, "Out")
             .in("Power", CgShaderType.FLOAT, "1.0")
             .out("Out", CgShaderType.FLOAT)
             .include("crystalgraphics:shaders/lib/vector.glsl")
@@ -1345,10 +1355,54 @@ public final class CgBuiltinShaderNodes {
             .previewBodyFor(SPACE_ID, SPACE_VIEW, "{Out} = i.normal;")
             .build();
 
+    /**
+     * The direction from the surface to the camera — Unity's {@code View Direction}, and the second half
+     * of what a Fresnel term needs.
+     *
+     * <p>Added because {@link #FRESNEL_EFFECT} had nothing to bind its {@code ViewDir} slot to and was
+     * making do with a constant. It is a perfectly ordinary node in its own right, and the last of
+     * Unity's Input ▸ Geometry set that this engine can express — Tangent and Bitangent need a per-vertex
+     * basis the vertex formats do not carry, which is the same reason {@link #SPACE} offers no tangent
+     * option.</p>
+     *
+     * <h3>Normalised, and pointing AT the camera</h3>
+     * <p>Both are Unity's convention and both matter: {@code dot(N, V)} is only a cosine if V is unit, and
+     * a Fresnel term is {@code 1 - dot(N, V)} rather than {@code 1 + dot(N, V)} because V points the same
+     * way N does when you are looking straight at a surface. The opposite sign is the single most common
+     * way to get a rim light inside-out.</p>
+     */
+    public static final CgShaderNode VIEW_DIRECTION =
+            CgTemplateShaderNode.of("cg:Input/Geometry/view-direction")
+            .label("View Direction")
+            .out("Out", CgShaderType.VEC3)
+            .domain(CgShaderDomain.VERTEX)
+            .previewGeometry(CgPreviewGeometry.SPHERE)
+            .property(SPACE)
+            // Object space needs the camera brought INTO object space, which is the one direction that
+            // costs an inverse. Correct rather than cheap: the alternative is to compute in world space
+            // and lie about the label.
+            .body("{Out} = normalize((inverse(CG_OBJECT_TO_WORLD) "
+                    + "* vec4(CG_CAMERA_WORLD_POS, 1.0)).xyz - cg_Position);")
+            .bodyFor(SPACE_ID, SPACE_WORLD, "{Out} = normalize(CG_CAMERA_WORLD_POS "
+                    + "- (CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0)).xyz);")
+            // In view space the camera IS the origin, so the direction to it is just the negated position
+            // — no camera term at all, and no inverse.
+            .bodyFor(SPACE_ID, SPACE_VIEW,
+                    "{Out} = normalize(-(cg_ViewMatrix * CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0)).xyz);")
+            // A CONSTANT in every preview, because the preview camera is ORTHOGRAPHIC: every ray through
+            // it is parallel, so the view direction genuinely does not vary across the thumbnail. Deriving
+            // it per pixel would be a picture of a perspective camera that is not there.
+            //
+            // Negative Z, which is the same flipped convention the Position and Normal preview bodies
+            // carry — and it has to be, because this is the vector those get dotted against. Get it
+            // backwards and a Fresnel preview comes out inside-out: bright in the middle, dark at the rim.
+            .previewBody("{Out} = vec3(0.0, 0.0, -1.0);")
+            .build();
+
     /** Adds every built-in to {@code registry}, in menu order. */
     public static void registerAll(CgShaderNodeRegistry registry) {
         registry.register(COLOR, FLOAT, VECTOR2, VECTOR3, VECTOR4) // input/basic
-                .register(TIME, UV, POSITION, NORMAL)              // input/time + input/geometry
+                .register(TIME, UV, POSITION, NORMAL, VIEW_DIRECTION) // input/time + input/geometry
                 .register(ADD, MULTIPLY, SUBTRACT, DIVIDE, POWER, SQUARE_ROOT)               // math/basic
                 .register(ABSOLUTE, NEGATE, EXPONENTIAL, LENGTH, LOG, MODULO, NORMALIZE,
                         POSTERIZE, RECIPROCAL, RECIPROCAL_SQUARE_ROOT)                        // math/advanced

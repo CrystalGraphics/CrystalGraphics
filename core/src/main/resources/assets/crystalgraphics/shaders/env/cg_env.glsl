@@ -90,6 +90,14 @@ uniform sampler2D cg_DepthBuffer;
 // -- Convenience Macros ------------------------------------------------------
 #define CG_MATRIX_MVP (cg_ProjMatrix * cg_ViewMatrix * CG_OBJECT_TO_WORLD)
 
+// Where the camera is, in world space. Derived rather than uniform: a view matrix is rigid (rotation
+// plus translation), so its inverse translation is -Rt * t and no full inverse() is needed. Identical
+// to what CgFrameData.deriveFromViewMatrix computes on the CPU, deliberately -- the two must agree.
+//
+// A macro rather than a CgFrameBlock field so that adding it changes no buffer layout and no writer.
+// If it ever shows up in a profile it can be promoted to a real uniform without touching a shader.
+#define CG_CAMERA_WORLD_POS (-(transpose(mat3(cg_ViewMatrix)) * cg_ViewMatrix[3].xyz))
+
 // -- CgQuadRenderer convenience macros ---------------------------------------
 // CgQuadRenderer (gl/render/CgQuadRenderer.java) is a general SSBO/TBO-backed instanced
 // quad renderer with a fixed per-instance schema: vec3 origin/right/up (world-space quad
