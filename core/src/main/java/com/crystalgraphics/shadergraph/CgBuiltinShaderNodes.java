@@ -1254,7 +1254,20 @@ public final class CgBuiltinShaderNodes {
             .previewGeometry(CgPreviewGeometry.SPHERE)
             .property(SPACE)
             .body("{Out} = cg_Position;")
-            .previewBody("{Out} = i.objectPos;")
+            // NEGATED Z, and it is the OBJECT form that carries it rather than the View one.
+            //
+            // The preview camera is an identity view with `setOrtho(..., -4, 4)`, which puts the near
+            // plane at POSITIVE eye z -- so the hemisphere you are looking at has object z in (0, 1] and
+            // raw `i.objectPos` previews as a bright blue ball with cyan and magenta quadrants. That is
+            // Unity's VIEW-space picture. Its object-space one is the red/green/yellow ball with a black
+            // lower-left, which is what this expression produces.
+            //
+            // It was the other way round, on the stated premise that "object Z points away from the
+            // viewer, view Z toward it" -- true of a conventional camera looking down -Z, and false of
+            // this one. So the two thumbnails came out swapped: picking Object drew Unity's View ball and
+            // picking View drew Unity's Object ball. The real shader forms below are untouched; this is
+            // the thumbnail's stand-in camera being corrected, not the semantics.
+            .previewBody("{Out} = vec3(i.objectPos.xy, -i.objectPos.z);")
             .bodyFor(SPACE_ID, SPACE_WORLD, "{Out} = (CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0)).xyz;")
             .bodyFor(SPACE_ID, SPACE_VIEW,
                     "{Out} = (cg_ViewMatrix * CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0)).xyz;")
@@ -1262,9 +1275,9 @@ public final class CgBuiltinShaderNodes {
             // its world position IS its object position. Emitting the world form anyway would multiply
             // by whatever model matrix the preview pass happened to leave in the object buffer, which is
             // identity today and would silently stop being so the moment that changes.
-            .previewBodyFor(SPACE_ID, SPACE_WORLD, "{Out} = i.objectPos;")
-            // Same Z convention as the Normal node's preview — see the long note there.
-            .previewBodyFor(SPACE_ID, SPACE_VIEW, "{Out} = vec3(i.objectPos.xy, -i.objectPos.z);")
+            .previewBodyFor(SPACE_ID, SPACE_WORLD, "{Out} = vec3(i.objectPos.xy, -i.objectPos.z);")
+            // ...and View is the RAW attribute, for the camera reason above.
+            .previewBodyFor(SPACE_ID, SPACE_VIEW, "{Out} = i.objectPos;")
             .build();
 
     /**
