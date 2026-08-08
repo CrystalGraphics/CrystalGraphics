@@ -71,6 +71,7 @@ public final class CgMainPreviewRenderer {
     private float renderedYaw = Float.NaN;
     private float renderedPitch = Float.NaN;
     private float renderedZoom = Float.NaN;
+    private float renderedAspect = Float.NaN;
     private boolean renderedAnimated;
 
     private boolean failed;
@@ -137,7 +138,33 @@ public final class CgMainPreviewRenderer {
     @Nullable
     public CgTexture render(@Nullable CgShaderGraph graph, CgMasterNode master, CgPreviewMesh mesh,
                             float yaw, float pitch, float zoom, boolean lit) {
+        return render(graph, master, mesh, yaw, pitch, zoom, lit, 1f);
+    }
+
+    /**
+     * As above, framed for a panel of a given <b>aspect ratio</b> rather than for a square.
+     *
+     * <h3>The target stays square; the CAMERA is what widens</h3>
+     * <p>A caller drawing this into a wide panel has two bad options and one good one. Letterboxing to the
+     * short edge is what shipped: the picture is correct and most of the panel is empty backdrop, and
+     * zooming in reveals the target's own square boundary — a sphere becomes a rounded square, which reads
+     * as a rendering bug rather than as a frame. Stretching the square texture to fill turns that sphere
+     * into an ellipse, which is worse.</p>
+     *
+     * <p>So the orthographic box grows on the long axis by exactly this ratio, the square viewport squashes
+     * the result by the same factor, and drawing the square texture <em>stretched across the whole panel</em>
+     * undoes it. The mesh fills the panel, keeps its shape, and there is no boundary to zoom into. The
+     * texture is not reallocated as the panel is dragged, which is the point of doing it in the projection:
+     * this is an MSAA target built with {@code createOwned}, so a resize per frame of a drag is real work.</p>
+     *
+     * @param aspect the panel's width divided by its height. Values at or below zero are treated as square,
+     *               since a panel with no area has no aspect to honour
+     */
+    @Nullable
+    public CgTexture render(@Nullable CgShaderGraph graph, CgMasterNode master, CgPreviewMesh mesh,
+                            float yaw, float pitch, float zoom, boolean lit, float aspect) {
         if (deleted) throw new IllegalStateException("This CgMainPreviewRenderer has been deleted");
+        if (!(aspect > 0f) || !Float.isFinite(aspect)) aspect = 1f;
 
         // A NULL graph is an ordinary editing state, not a caller error: `ShaderGraphBridge.toShaderGraph`
         // returns null when the document has no master node, and deleting the Output node is a perfectly
@@ -165,6 +192,10 @@ public final class CgMainPreviewRenderer {
                 && yaw == renderedYaw
                 && pitch == renderedPitch
                 && zoom == renderedZoom
+                // The aspect is part of the picture, not of how it is drawn -- it is baked into the
+                // projection. Leaving it out of the memo means resizing the panel keeps redrawing the old
+                // framing until something else happens to invalidate.
+                && aspect == renderedAspect
                 && target != null;
         // An animated graph names a uniform rather than baking a value, so its source is byte-identical
         // frame to frame while its picture is not. Same carve-out CgPreviewRenderer documents.
@@ -174,7 +205,7 @@ public final class CgMainPreviewRenderer {
 
         try {
             CgMaterial material = CgMaterial.fromSource(emitted.source());
-            drawInto(material, mesh, yaw, pitch, zoom);
+            drawInto(material, mesh, yaw, pitch, zoom, aspect);
         } catch (RuntimeException broken) {
             // A preview is a convenience. One material that will not compile must not take the editor
             // down, nor be retried every frame — which is what rethrowing here would amount to.
@@ -187,6 +218,7 @@ public final class CgMainPreviewRenderer {
         renderedYaw = yaw;
         renderedPitch = pitch;
         renderedZoom = zoom;
+        renderedAspect = aspect;
         renderedAnimated = isAnimated(graph);
         return target.texture();
     }
@@ -206,7 +238,7 @@ public final class CgMainPreviewRenderer {
     }
 
     private void drawInto(CgMaterial material, CgPreviewMesh mesh, float yaw, float pitch,
-                          float zoom) {
+                          float zoom, float aspect) {
         CgRenderPipeline pipeline = CgRenderPipeline.getInstance();
         CgFrameData frame = pipeline.getFrameData();
         copyCamera(frame, saved);
@@ -215,7 +247,7 @@ public final class CgMainPreviewRenderer {
                 CgGlSlot.DEPTH, CgGlSlot.BLEND, CgGlSlot.CULL, CgGlSlot.VERTEX_INPUT,
                 CgGlSlot.TEXTURES)) {
 
-            applyCamera(frame, mesh, yaw, pitch, zoom);
+            applyCamera(frame, mesh, yaw, pitch, zoom, aspect);
             pipeline.prepareFrame();
             writeObjectRecord(pipeline.objectBuffer());
 
@@ -253,14 +285,19 @@ public final class CgMainPreviewRenderer {
      * distance any meaning.</p>
      */
     private void applyCamera(CgFrameData frame, CgPreviewMesh mesh, float yaw, float pitch,
-                             float zoom) {
+                             float zoom, float aspect) {
         frame.viewMatrix.identity().rotateX(pitch).rotateY(yaw);
         // Clamped rather than trusted: a zero or negative zoom collapses the ortho box and the driver
         // draws nothing at all, which reads as "the shader broke" rather than "the gesture went wrong".
         float r = mesh.viewRadius() / Math.max(0.05f, zoom);
+        // THE SHORT AXIS IS THE ONE THAT FITS, and the long axis simply shows more. Scaling the short one
+        // down instead would fit the mesh to the panel's diagonal and shrink it every time the panel was
+        // widened, which is the opposite of what widening a preview is for.
+        float rx = aspect >= 1f ? r * aspect : r;
+        float ry = aspect >= 1f ? r : r / aspect;
         // Depth range spans well past the shape in both directions: the view rotation moves geometry
         // through Z, and a box fitted to the un-rotated extent would clip a corner into view as it turned.
-        frame.projMatrix.setOrtho(-r, r, -r, r, -4f, 4f);
+        frame.projMatrix.setOrtho(-rx, rx, -ry, ry, -4f, 4f);
         frame.viewportW = size;
         frame.viewportH = size;
         frame.deriveFromViewMatrix();
