@@ -55,8 +55,29 @@ public final class CgShaderEmitter {
     public enum Shading {
         /** What ships. The fragment output is the graph's, untouched. */
         UNLIT,
-        /** Preview only — a fixed world-space key light over the graph's output. */
-        PREVIEW_LIT
+        /**
+         * A preview with no key light — the graph's own output, sRGB-encoded on the way out.
+         *
+         * <h3>Why this is not just {@link #UNLIT}</h3>
+         * <p>It was, and the two are not the same thing: {@code UNLIT} is <b>what ships</b>, and a shipped
+         * material must write the linear values the graph computed. A preview is looked at, so it has to
+         * write what a display expects — and writing linear numbers into an RGBA8 the compositor then
+         * treats as sRGB crushes the mid-tones.</p>
+         *
+         * <p>The visible cost was the Main Preview and a node's own thumbnail disagreeing about the same
+         * value: {@code CgPreviewEmitter} encodes and this did not, so a Fresnel ramp came out with a
+         * noticeably darker middle and a tighter rim in one panel than the other, on one graph, at the
+         * same instant. Linear 0.5 displays at 0.5 unencoded and at 0.735 encoded, which is most of the
+         * midtone range.</p>
+         */
+        PREVIEW_UNLIT,
+        /** Preview only — a fixed world-space key light over the graph's output, encoded as above. */
+        PREVIEW_LIT;
+
+        /** Whether this mode is drawn into an editor panel rather than into the world. */
+        boolean isPreview() {
+            return this != UNLIT;
+        }
     }
 
     // ── Preview lighting constants, all tunable in one place ────────────────
@@ -136,6 +157,23 @@ public final class CgShaderEmitter {
             errors.add("The graph's output node is not present, so there is nothing to emit toward");
             return new Result("", List.of(), errors);
         }
+
+        // IMPLICIT DEFAULTS FIRST, before a single line below looks at the graph's shape.
+        //
+        // These are the instances CgGraphCompiler synthesizes for an unconnected port that binds to a
+        // node rather than to a literal — every UV-consuming node's UV slot, and Fresnel's Normal and
+        // ViewDir. The compiler used to be the only caller, which meant they did not exist yet when the
+        // stage assignment below ran: a synthesized node declaring VERTEX was never hoisted, and its
+        // vertex-attribute reads (cg_TexCoord0, cg_Normal, cg_Position) were emitted into the FRAGMENT
+        // stage, where they are not declared and the shader does not compile.
+        //
+        // Invisible from the editor, because previews take a different path entirely — CgPreviewEmitter
+        // evaluates everything in the fragment stage against varyings it writes itself. So every affected
+        // node previewed perfectly and produced a material that would not build, which is the worst
+        // arrangement of the two.
+        //
+        // Idempotent, so the compiler calling it again per stage costs nothing. See its own doc.
+        CgGraphCompiler.wireImplicitDefaults(graph);
 
         // Each block contributes its own roots. Declared as data on the master rather than as a hard-coded
         // pair here, so a port added when a lighting model lands needs no change in this file.
@@ -347,12 +385,16 @@ public final class CgShaderEmitter {
                                 CgGraphCompiler.Result vertex, CgGraphCompiler.Result fragment,
                                 List<Varying> varyings, Shading shading) {
         boolean lit = shading == Shading.PREVIEW_LIT;
+        boolean preview = shading.isPreview();
         StringBuilder out = new StringBuilder(1024);
         out.append("// Generated from a shader graph. Edits here are lost on the next compile.\n");
         out.append("#type ").append(master.vertexFormat()).append("\n\n");
 
         Set<String> includes = new LinkedHashSet<>(vertex.includes());
         includes.addAll(fragment.includes());
+        // For the encode below. Only in a preview — a shipped material must not carry an include it has
+        // no call to, and the whole point of UNLIT is that its output is the graph's, untouched.
+        if (preview) includes.add("crystalgraphics:shaders/lib/color.glsl");
         for (String include : includes) {
             out.append("#include \"").append(include).append("\"\n");
         }
@@ -450,7 +492,8 @@ public final class CgShaderEmitter {
         if (lit) {
             appendPreviewLighting(out, baseColor);
         } else {
-            out.append("        fragColor = vec4(").append(baseColor).append(", cg_alpha);\n");
+            out.append("        fragColor = vec4(").append(displayed(baseColor, preview))
+                    .append(", cg_alpha);\n");
         }
         out.append("    }\n");
         out.append("}\n");
@@ -492,7 +535,24 @@ public final class CgShaderEmitter {
                 .append(" + ").append(PREVIEW_KEY).append(" * cg_ndl)\n");
         out.append("                + vec3(").append(PREVIEW_SPECULAR).append(") * pow(cg_ndh, ")
                 .append(PREVIEW_SHININESS).append(");\n");
-        out.append("        fragColor = vec4(cg_lit, cg_alpha);\n");
+        out.append("        fragColor = vec4(").append(displayed("cg_lit", true))
+                .append(", cg_alpha);\n");
+    }
+
+    /**
+     * An RGB expression as it should be WRITTEN, which is not the same as what the graph computed.
+     *
+     * <p>A shader's values are linear; a display is not. In a preview the result is looked at directly, so
+     * it is encoded — the same call {@code CgPreviewEmitter} makes for a node thumbnail, and the reason
+     * the two panels now agree about a value instead of the Main Preview coming out darker with a tighter
+     * falloff. Alpha is deliberately untouched by the encode: it is a blend weight, not a colour.</p>
+     *
+     * <p>In a shipped material this is the identity. That is not an optimisation, it is the contract —
+     * {@code UNLIT} means the fragment output is the graph's, and a material that silently applied a
+     * transfer function would be lying about what it computes to everything downstream of it.</p>
+     */
+    private static String displayed(String rgb, boolean preview) {
+        return preview ? "linear_to_srgb(" + rgb + ")" : rgb;
     }
 
     /** A master input as the fragment stage should read it — adapted to the port's type, then varyings
