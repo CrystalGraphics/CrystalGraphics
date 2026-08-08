@@ -23,6 +23,8 @@ import com.crystalgraphics.gl.material.parse.CgShaderParseException;
 import com.crystalgraphics.gl.material.parse.CgShaderParser;
 import com.crystalgraphics.gl.shader.CgShaderFactory;
 import com.crystalgraphics.util.io.CgIO;
+
+import javax.annotation.Nullable;
 import lombok.Getter;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -395,13 +397,11 @@ public final class CgMaterialShader {
                 // Abort entire recompile — clean up shaders compiled so far
                 for (CgShader s : newShaders) s.delete();
                 if (newMatPropsUbo != null) newMatPropsUbo.delete();
-                if (isFirst) {
-                    LOGGER.error("CgMaterialShader.recompile() failed for '{}' pass '{}': {}",
-                            resourcePath, pass.name(), err);
-                } else {
-                    LOGGER.error("Reload failed for '{}' pass '{}': compile error — {}",
-                            resourcePath, pass.name(), err);
-                }
+                // THE ONE FAILURE A GENERATED SHADER CAN ACTUALLY REACH, and the reason lastCompileError
+                // exists: `err` is the driver's own text, carrying the line number that maps back through
+                // lineOwners to the node that emitted it.
+                failed((isFirst ? "Compile failed for '" : "Reload failed for '") + resourcePath
+                        + "' pass '" + pass.name() + "': " + err);
                 return;
             }
 
@@ -430,6 +430,7 @@ public final class CgMaterialShader {
         // not compile products, and must survive a GLSL failure.
 
         compileFailed = false;
+        lastCompileError = null;
 
         // ── Step 9: Wire all newly compiled programs ───────────────────────────
         for (Map.Entry<ProgramKey, CgShader> entry : newCache.entrySet())
@@ -565,6 +566,12 @@ public final class CgMaterialShader {
             dirty = true;
             // Clear the failure latch — a hot-reload is exactly the event that might fix it, and a
             // latch that survived one would make a broken shader unrecoverable without a restart.
+            //
+            // THE REASON IS NOT CLEARED WITH IT. Marking dirty says "try again", not "the last attempt
+            // succeeded", and until a new attempt supersedes it the previous verdict is still the truth.
+            // Clearing it here lost the message while the shader was still broken: the graph editor reads
+            // it only after a compile, so once it went null it stayed null and the Problems panel dropped
+            // an error that was still live. Only recompile() clears it, on the path where it is earned.
             compileFailed = false;
         }
     }
@@ -576,6 +583,36 @@ public final class CgMaterialShader {
      * <p>Callers that lazily trigger a compile must consult this, or they re-attempt a known-failing
      * compile on every call. See {@link #compileFailed}.</p>
      */
+    /**
+     * What the last failed compile said, or null when the last attempt succeeded.
+     *
+     * <h3>A boolean was not enough, and the graph is why</h3>
+     *
+     * <p>{@link #hasCompileFailed()} tells a caller to stop retrying, which is all the engine needed: a
+     * shader that will not compile is a bug in a shipped asset, and the log line is for whoever fixes it.
+     * A <b>generated</b> shader is different. Its source was produced from a node graph by a user who
+     * never typed a line of it, and the driver's message — with a line number that maps back through
+     * {@code lineOwners} to the node that emitted it — is the only thing that turns "the preview is blank"
+     * into somewhere to go and look.</p>
+     *
+     * <p>Recorded rather than only logged for that reason. It is one string on a failure path, and the
+     * alternative is that the one consumer who can act on it has to read the log.</p>
+     */
+    @Nullable
+    public String lastCompileError() {
+        return lastCompileError;
+    }
+
+    @Nullable
+    private String lastCompileError;
+
+    /** Latches a failure and its reason together, so the two cannot disagree. @see #lastCompileError() */
+    private void failed(String reason) {
+        compileFailed = true;
+        lastCompileError = reason;
+        LOGGER.error(reason);
+    }
+
     public boolean hasCompileFailed() {
         return compileFailed;
     }

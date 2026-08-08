@@ -28,16 +28,28 @@ public final class CgGraphCompiler {
 
     /** Everything a compile produced, plus what went wrong. */
     public record Result(String code, List<String> includes, Map<Integer, String> lineOwners,
-                         List<String> errors, Map<String, CgShaderType> outputTypes) {
+                         List<CgShaderProblem> problems, Map<String, CgShaderType> outputTypes) {
 
         /** Backwards-compatible shape for callers with no interest in resolved types. */
         public Result(String code, List<String> includes, Map<Integer, String> lineOwners,
-                      List<String> errors) {
-            this(code, includes, lineOwners, errors, Map.of());
+                      List<CgShaderProblem> problems) {
+            this(code, includes, lineOwners, problems, Map.of());
         }
 
         public boolean ok() {
-            return errors.isEmpty();
+            return problems.isEmpty();
+        }
+
+        /**
+         * The messages alone — derived, so it cannot drift from {@link #problems()}.
+         *
+         * <p>What a log line or a joined assertion wants. Everything that needs to point at the node uses
+         * {@code problems()}.</p>
+         */
+        public List<String> errors() {
+            List<String> messages = new ArrayList<>(problems.size());
+            for (CgShaderProblem problem : problems) messages.add(problem.message());
+            return messages;
         }
 
         /**
@@ -107,13 +119,13 @@ public final class CgGraphCompiler {
      */
     public static Result compileFrom(CgShaderGraph graph, @Nullable String rootId, boolean forPreview,
                                      Set<String> alreadyEmitted) {
-        List<String> errors = new ArrayList<>();
+        List<CgShaderProblem> errors = new ArrayList<>();
         Set<String> includes = new LinkedHashSet<>();
         Map<Integer, String> lineOwners = new LinkedHashMap<>();
         StringBuilder code = new StringBuilder();
 
         if (rootId == null) {
-            errors.add("The graph has no output node, so there is nothing to compile toward");
+            errors.add(CgShaderProblem.graph("The graph has no output node, so there is nothing to compile toward"));
             return new Result("", List.of(), Map.of(), errors);
         }
 
@@ -123,11 +135,11 @@ public final class CgGraphCompiler {
         try {
             ordered = graph.orderedFrom(rootId);
         } catch (IllegalStateException cycle) {
-            errors.add(cycle.getMessage());
+            errors.add(CgShaderProblem.graph(cycle.getMessage()));
             return new Result("", List.of(), Map.of(), errors);
         }
         if (ordered.isEmpty()) {
-            errors.add("No node with id '" + rootId + "' — nothing to compile");
+            errors.add(CgShaderProblem.node(rootId, "No node with id '" + rootId + "' — nothing to compile"));
             return new Result("", List.of(), Map.of(), errors);
         }
 
@@ -156,8 +168,9 @@ public final class CgGraphCompiler {
                 String name = variableName(instance.id(), port.id());
                 CgShaderType type = resolved.get(port.id());
                 if (type == null || type == CgShaderType.DYNAMIC) {
-                    errors.add("Node '" + instance.id() + "' output '" + port.id()
-                            + "' is dynamic and nothing connected to it says what type it should be");
+                    errors.add(CgShaderProblem.port(instance.id(), port.id(),
+                            "Node '" + instance.id() + "' output '" + port.id()
+                            + "' is dynamic and nothing connected to it says what type it should be"));
                     type = CgShaderType.FLOAT;
                 }
                 declarations.append("    ").append(type.glsl()).append(' ').append(name).append(";\n");
@@ -184,8 +197,9 @@ public final class CgGraphCompiler {
             } catch (RuntimeException broken) {
                 // A broken node definition must name itself. Left to the driver this surfaces as a
                 // syntax error in generated code the user never wrote.
-                errors.add("Node '" + instance.id() + "' (" + instance.type().id()
-                        + ") failed to emit: " + broken.getMessage());
+                errors.add(CgShaderProblem.node(instance.id(),
+                        "Node '" + instance.id() + "' (" + instance.type().id()
+                        + ") failed to emit: " + broken.getMessage()));
                 continue;
             }
 
@@ -295,15 +309,16 @@ public final class CgGraphCompiler {
                                           CgShaderPort port, Map<String, CgShaderType> resolved,
                                           Map<String, Map<String, String>> emittedOutputs,
                                           Map<String, Map<String, CgShaderType>> emittedTypes,
-                                          List<String> errors) {
+                                          List<CgShaderProblem> errors) {
         CgShaderType want = resolved.getOrDefault(port.id(), port.type());
         CgShaderGraph.Link link = graph.linkInto(instance.id(), port.id());
 
         if (link == null) {
             String literal = instance.valueFor(port.id());
             if (literal == null) {
-                errors.add("Node '" + instance.id() + "' input '" + port.id()
-                        + "' is unconnected and has no default value");
+                errors.add(CgShaderProblem.port(instance.id(), port.id(),
+                        "Node '" + instance.id() + "' input '" + port.id()
+                        + "' is unconnected and has no default value"));
                 return zeroOf(want);
             }
             return literal;
@@ -312,8 +327,9 @@ public final class CgGraphCompiler {
         Map<String, String> upstream = emittedOutputs.get(link.fromNode());
         String variable = upstream == null ? null : upstream.get(link.fromPort());
         if (variable == null) {
-            errors.add("Node '" + instance.id() + "' input '" + port.id() + "' is fed by '"
-                    + link.fromNode() + "." + link.fromPort() + "', which emitted nothing");
+            errors.add(CgShaderProblem.port(instance.id(), port.id(),
+                    "Node '" + instance.id() + "' input '" + port.id() + "' is fed by '"
+                    + link.fromNode() + "." + link.fromPort() + "', which emitted nothing"));
             return zeroOf(want);
         }
 
@@ -331,8 +347,9 @@ public final class CgGraphCompiler {
             // be for a real wire.
             String narrowed = mayNarrow(port, link) ? narrowingSwizzle(variable, have, want) : null;
             if (narrowed != null) return narrowed;
-            errors.add("Node '" + instance.id() + "' input '" + port.id() + "' wants " + want
-                    + " but is fed " + have + " — connect-time validation should have refused this");
+            errors.add(CgShaderProblem.port(instance.id(), port.id(),
+                    "Node '" + instance.id() + "' input '" + port.id() + "' wants " + want
+                    + " but is fed " + have + " — connect-time validation should have refused this"));
             return zeroOf(want);
         }
         // The cast is the COMPILER's job. The editor permits float -> vec3, so without this the graph
@@ -397,7 +414,7 @@ public final class CgGraphCompiler {
     private static Map<String, CgShaderType> resolveTypes(CgShaderGraph graph,
                                                           CgShaderGraph.Instance instance,
                                                           Map<String, Map<String, CgShaderType>> emittedTypes,
-                                                          List<String> errors) {
+                                                          List<CgShaderProblem> errors) {
         Map<String, CgShaderType> resolved = new LinkedHashMap<>();
         List<CgShaderType> evidence = new ArrayList<>();
 
@@ -411,8 +428,9 @@ public final class CgGraphCompiler {
 
         CgShaderType dynamic = CgShaderType.resolveDynamic(evidence);
         if (dynamic == null) {
-            errors.add("Node '" + instance.id() + "' has dynamic ports fed by incompatible types "
-                    + evidence + ", which cannot be reconciled");
+            errors.add(CgShaderProblem.node(instance.id(),
+                    "Node '" + instance.id() + "' has dynamic ports fed by incompatible types "
+                    + evidence + ", which cannot be reconciled"));
             // Still has to emit something rather than failing: float is the identity of the promotion
             // order and is what an unconnected literal will be. resolveDynamic already returns it for
             // "nothing decided the width", so reaching here means a genuine conflict, reported above.

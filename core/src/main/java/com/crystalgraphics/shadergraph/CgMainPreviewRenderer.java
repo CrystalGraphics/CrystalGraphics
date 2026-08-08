@@ -98,6 +98,9 @@ public final class CgMainPreviewRenderer {
     private String renderedSource;
     @Nullable
     private CgPreviewMesh renderedMesh;
+    /** The flat-white stand-in, built on first failure and kept. @see #drawFallback */
+    @Nullable
+    private CgMaterial fallback;
     private float renderedYaw = Float.NaN;
     private float renderedPitch = Float.NaN;
     private float renderedZoom = Float.NaN;
@@ -206,7 +209,7 @@ public final class CgMainPreviewRenderer {
         // down from inside a frame ticker.
         if (graph == null) {
             failed = true;
-            return currentTexture();
+            return drawFallback(mesh, yaw, pitch, zoom, aspect);
         }
 
         CgShaderEmitter.Result emitted = CgShaderEmitter.emit(graph, master,
@@ -216,9 +219,27 @@ public final class CgMainPreviewRenderer {
                 lit ? CgShaderEmitter.Shading.PREVIEW_LIT : CgShaderEmitter.Shading.PREVIEW_UNLIT);
         if (!emitted.ok()) {
             failed = true;
-            return currentTexture();
+            return drawFallback(mesh, yaw, pitch, zoom, aspect);
         }
         failed = false;
+
+        // ALREADY REFUSED, so do not compile it again -- and RE-ASSERT WHY.
+        //
+        // The verdict has to be restored here, not merely remembered elsewhere: a successful compile of a
+        // different source sets lastDriverError to null, so a graph that is broken, fixed, and broken again
+        // the same way arrives back here with the reason gone. The panel then had a preview that would not
+        // draw and nothing to say about it, and only for whichever format happened to be memoised -- which
+        // is what "pos2 errors but pos3 does not" was.
+        if (emitted.source().equals(failedSource)) {
+            failed = true;
+            lastDriverError = failedSourceError;
+            return drawFallback(mesh, yaw, pitch, zoom, aspect);
+        }
+
+        // A DIFFERENT SOURCE IS A NEW ATTEMPT. Without this the first source that ever failed is refused
+        // for the rest of the session, whatever the graph is edited into afterwards.
+        failedSource = null;
+        failedSourceError = null;
 
         boolean unchanged = emitted.source().equals(renderedSource)
                 && mesh == renderedMesh
@@ -236,15 +257,45 @@ public final class CgMainPreviewRenderer {
 
         if (target == null) target = new CgPreviewTarget("cg_main_preview", size, samples);
 
+        CgMaterial material;
         try {
-            CgMaterial material = CgMaterial.fromSource(emitted.source());
+            material = CgMaterial.fromSource(emitted.source());
             drawInto(material, mesh, yaw, pitch, zoom, aspect);
+            // AFTER the draw, because that is what forces the compile: a material is compiled lazily on
+            // first bind, so asking before drawing always answers null.
+            lastDriverError = material.lastCompileError();
         } catch (RuntimeException broken) {
             // A preview is a convenience. One material that will not compile must not take the editor
             // down, nor be retried every frame — which is what rethrowing here would amount to.
             failed = true;
-            return currentTexture();
+            lastDriverError = broken.getMessage() == null ? broken.toString() : broken.getMessage();
+            failedSource = emitted.source();
+            failedSourceError = lastDriverError;
+            return drawFallback(mesh, yaw, pitch, zoom, aspect);
         }
+
+        // A DRIVER ERROR DOES NOT THROW, and that is the case this whole branch exists for.
+        //
+        // The emitter is perfectly happy -- emitted.ok() is true, the file parses, and CgMaterial.load
+        // returns an object. The failure is GLSL the DRIVER rejects, and a failed compile LATCHES rather
+        // than raising (see CgMaterial.hasCompileFailed; without the latch every draw retries the compile
+        // and logs thousands of lines a second). So control arrives here normally, having just cleared the
+        // target and drawn nothing into it with a dead program.
+        //
+        // That is why the earlier attempt at keeping the camera alive did nothing: it guarded the two
+        // paths that RETURN early -- a null graph and a refused emit -- and the common failure is neither
+        // of them. `undefined variable "cg_Normal"` reported against a vertex stage is an ordinary,
+        // successful-looking render as far as every line above can tell.
+        if (lastDriverError != null) {
+            failed = true;
+            failedSource = emitted.source();
+            failedSourceError = lastDriverError;
+            // `true`, because the target was just clobbered: drawInto cleared it before binding the
+            // material that then refused to compile, so what is in it now is nothing at all. The redraw
+            // cannot be skipped on the grounds that the camera has not moved.
+            return drawFallback(mesh, yaw, pitch, zoom, aspect);
+        }
+        failed = false;
 
         renderedSource = emitted.source();
         renderedMesh = mesh;
@@ -254,6 +305,89 @@ public final class CgMainPreviewRenderer {
         renderedAspect = aspect;
         renderedAnimated = isAnimated(graph);
         return target.texture();
+    }
+
+    /**
+     * Draws the mesh in flat unlit white, at the camera as it is now — what a graph that will not compile
+     * looks like.
+     *
+     * <h3>Why NOT the last shader that worked</h3>
+     * <p>That was the first answer and it is a lie. The panel would carry on showing a material the graph
+     * no longer describes, so a broken graph looks like a working one — and the moment the user believes
+     * that, every subsequent edit is being judged against a picture that stopped tracking it. A preview's
+     * whole job is to be a truthful answer to "what does this graph do", and "the previous one" is not an
+     * answer to that question.</p>
+     *
+     * <p>Flat white is: it is visibly not anybody's shader, it is what a driver-rejected material already
+     * degrades to on screen, and it needs no explanation to read as "nothing came out of this".</p>
+     *
+     * <h3>What it is really for: the camera stays live</h3>
+     * <p>The failure paths used to return {@link #currentTexture()} — the picture exactly as it was. That
+     * keeps the panel from blanking and freezes the <b>camera</b> along with it, because orbit, zoom and
+     * the mesh menu all feed this same method. A shader you cannot turn around is hardest to inspect
+     * precisely when it has just broken. Drawing something — anything — every frame is what puts those
+     * gestures back.</p>
+     */
+    @Nullable
+    private CgTexture drawFallback(CgPreviewMesh mesh, float yaw, float pitch, float zoom, float aspect) {
+        try {
+            // INSIDE the guard, which it was not. Creating the target probes GL capabilities, so this line
+            // throws on any path with no context — and every failure route in this class now comes through
+            // here, which turned "the preview cannot draw" into an exception escaping a frame ticker. The
+            // catch's own reasoning covers it: this is already the failure path.
+            if (target == null) target = new CgPreviewTarget("cg_main_preview", size, samples);
+            drawInto(fallbackMaterial(), mesh, yaw, pitch, zoom, aspect);
+        } catch (RuntimeException broken) {
+            // The last thing a preview may do is take the editor down from inside a frame ticker, and this
+            // is already the failure path -- there is nowhere further to fall.
+            return currentTexture();
+        }
+        // NULLED, not updated. Nothing valid is on screen, so the next compile that succeeds must redraw
+        // whatever it produces -- and no real source is ever equal to null, which is what guarantees it.
+        renderedSource = null;
+        renderedMesh = mesh;
+        renderedYaw = yaw;
+        renderedPitch = pitch;
+        renderedZoom = zoom;
+        renderedAspect = aspect;
+        renderedAnimated = false;
+        return target.texture();
+    }
+
+    /**
+     * The flat-white stand-in, built once.
+     *
+     * <p>Written out rather than assembled through {@link CgShaderEmitter}: it must compile when the thing
+     * the emitter produced did not, so it cannot share a code path with it. Deliberately the plainest file
+     * the format allows — one pass, no properties, no includes, no keywords.</p>
+     */
+    static final String FALLBACK_SOURCE = String.join("\n",
+            "// The main preview's stand-in for a graph that will not compile.",
+            "#type spatial",
+            "",
+            "Tags { \"RenderType\" = \"Opaque\" }",
+            "Queue = \"Geometry\"",
+            "",
+            "struct v2f {",
+            "    float unused;",
+            "};",
+            "",
+            "Pass {",
+            "    Tags { \"LightMode\" = \"Forward\" }",
+            "",
+            "    void vertex(out v2f o) {",
+            "        gl_Position = CG_MATRIX_MVP * vec4(cg_Position, 1.0);",
+            "    }",
+            "",
+            "    void fragment(in v2f i, out vec4 fragColor) {",
+            "        fragColor = vec4(1.0, 1.0, 1.0, 1.0);",
+            "    }",
+            "}",
+            "");
+
+    private CgMaterial fallbackMaterial() {
+        if (fallback == null) fallback = CgMaterial.fromSource(FALLBACK_SOURCE);
+        return fallback;
     }
 
     /** The last picture drawn, without drawing. Null before the first successful render. */
@@ -269,6 +403,42 @@ public final class CgMainPreviewRenderer {
         }
         return false;
     }
+
+    /**
+     * What the driver said about the last generated source, or null.
+     *
+     * <p>The graph can emit GLSL it believes in and have the driver refuse it — a builtin that does not
+     * exist on this profile, a swizzle the emitter got wrong. Until this was exposed that produced a blank
+     * panel and a log line: the editor reported "compiled 12n/9e" while nothing rendered.</p>
+     */
+    @Nullable
+    public String lastDriverError() {
+        return lastDriverError;
+    }
+
+    @Nullable
+    private String lastDriverError;
+
+    /**
+     * The source the driver last refused, so it is not compiled again every frame.
+     *
+     * <h3>The latch on the material is not enough here</h3>
+     *
+     * <p>{@code CgMaterial.hasCompileFailed} stops <em>that material</em> retrying — but this method builds
+     * a <b>new</b> material from the source on every call, so each frame got a fresh object with a fresh
+     * latch and compiled the same doomed GLSL again. The log filled at frame rate, and the message was not
+     * even stable: the pass reported one line and its keyword variant another, so consumers watching the
+     * error saw it alternate. A Problems panel rebuilt its rows on every frame because of it.</p>
+     *
+     * <p>Kept beside {@code lastDriverError} rather than folded into {@code renderedSource}: that one means
+     * "what is currently drawn", and a source that never drew anything must not claim to be it.</p>
+     */
+    @Nullable
+    private String failedSource;
+
+    /** Why {@link #failedSource} was refused, kept with it so the short-circuit can restate it. */
+    @Nullable
+    private String failedSourceError;
 
     private void drawInto(CgMaterial material, CgPreviewMesh mesh, float yaw, float pitch,
                           float zoom, float aspect) {
@@ -393,6 +563,9 @@ public final class CgMainPreviewRenderer {
         meshes.clear();
         renderedSource = null;
         renderedMesh = null;
+        // Borrowed from CgMaterialRegistry, never owned here -- dropping the reference is the whole of it,
+        // and deleting it would be a double free when the registry sweeps at context teardown.
+        fallback = null;
         deleted = true;
     }
 }

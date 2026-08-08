@@ -109,16 +109,28 @@ public final class CgShaderEmitter {
     }
 
     /** The emitted source, plus what it took to produce and what went wrong. */
-    public record Result(String source, List<Varying> varyings, List<String> errors,
+    public record Result(String source, List<Varying> varyings, List<CgShaderProblem> problems,
                          Map<Integer, String> lineOwners) {
 
         /** The shape for callers with no interest in which node wrote which line. */
-        public Result(String source, List<Varying> varyings, List<String> errors) {
-            this(source, varyings, errors, Map.of());
+        public Result(String source, List<Varying> varyings, List<CgShaderProblem> problems) {
+            this(source, varyings, problems, Map.of());
         }
 
         public boolean ok() {
-            return errors.isEmpty();
+            return problems.isEmpty();
+        }
+
+        /**
+         * The messages alone, for a display that has no use for the attribution.
+         *
+         * <p>Derived rather than stored: the problems are the truth and this is a projection of them, so
+         * the two cannot drift. It is what the status line and the logs want.</p>
+         */
+        public List<String> errors() {
+            List<String> messages = new ArrayList<>(problems.size());
+            for (CgShaderProblem problem : problems) messages.add(problem.message());
+            return messages;
         }
 
         /**
@@ -151,10 +163,10 @@ public final class CgShaderEmitter {
 
     /** As above, in a given shading mode. @see Shading */
     public static Result emit(CgShaderGraph graph, CgMasterNode master, Shading shading) {
-        List<String> errors = new ArrayList<>();
+        List<CgShaderProblem> errors = new ArrayList<>();
         String masterId = graph.outputId();
         if (masterId == null || graph.instance(masterId) == null) {
-            errors.add("The graph's output node is not present, so there is nothing to emit toward");
+            errors.add(CgShaderProblem.graph("The graph's output node is not present, so there is nothing to emit toward"));
             return new Result("", List.of(), errors);
         }
 
@@ -269,7 +281,8 @@ public final class CgShaderEmitter {
      * subgraph, and a subgraph is what {@code compileFrom} already emits.</p>
      */
     private static CgGraphCompiler.Result compileRoots(CgShaderGraph graph, List<String> roots,
-                                                       Set<String> initialSkip, List<String> errors) {
+                                                       Set<String> initialSkip,
+                                                       List<CgShaderProblem> errors) {
         // Each root skips whatever the previous ones already emitted, or a node feeding two master ports
         // would be declared twice and the GLSL would not compile.
         Set<String> skip = new LinkedHashSet<>(initialSkip);
@@ -277,7 +290,7 @@ public final class CgShaderEmitter {
         for (String root : roots) {
             if (root == null) continue;
             CgGraphCompiler.Result part = CgGraphCompiler.compileFrom(graph, root, false, Set.copyOf(skip));
-            errors.addAll(part.errors());
+            errors.addAll(part.problems());
             parts.add(part);
             skip.addAll(idsOf(graph, root));
         }
@@ -329,13 +342,14 @@ public final class CgShaderEmitter {
 
     /** A fragment-domain node feeding the vertex stage is impossible, not merely awkward. */
     private static void checkDomains(CgShaderGraph graph, List<CgShaderGraph.Instance> colourChain,
-                                     Set<String> vertexSet, List<String> errors) {
+                                     Set<String> vertexSet, List<CgShaderProblem> errors) {
         for (CgShaderGraph.Instance instance : colourChain) {
             if (!vertexSet.contains(instance.id())) continue;
             if (instance.type().domain() == CgShaderDomain.FRAGMENT) {
-                errors.add("Node '" + instance.id() + "' (" + instance.type().id()
+                errors.add(CgShaderProblem.node(instance.id(),
+                        "Node '" + instance.id() + "' (" + instance.type().id()
                         + ") is fragment-only but something in the vertex stage depends on it — the "
-                        + "vertex shader has already run by the time a fragment value exists");
+                        + "vertex shader has already run by the time a fragment value exists"));
             }
         }
     }
@@ -661,19 +675,21 @@ public final class CgShaderEmitter {
      */
     private static void checkMasterPorts(CgShaderGraph graph, String masterId,
                                          CgGraphCompiler.Result vertex, CgGraphCompiler.Result fragment,
-                                         List<String> errors) {
+                                         List<CgShaderProblem> errors) {
         checkMasterPorts(graph, masterId, CgMasterNode.VERTEX_PORTS, vertex, null, errors);
         checkMasterPorts(graph, masterId, CgMasterNode.FRAGMENT_PORTS, fragment, vertex, errors);
     }
 
     private static void checkMasterPorts(CgShaderGraph graph, String masterId,
                                          List<CgShaderPort> ports, CgGraphCompiler.Result stage,
-                                         @Nullable CgGraphCompiler.Result other, List<String> errors) {
+                                         @Nullable CgGraphCompiler.Result other,
+                                         List<CgShaderProblem> errors) {
         for (CgShaderPort port : ports) {
             MasterFeed feed = feedInto(graph, masterId, port.id(), stage, other);
             if (feed == null || !feed.needsConversion() || feed.isConvertible()) continue;
-            errors.add("Cannot feed " + feed.have().glsl() + " into " + port.id()
-                    + ", which is " + feed.want().glsl());
+            errors.add(CgShaderProblem.port(masterId, port.id(),
+                    "Cannot feed " + feed.have().glsl() + " into " + port.id()
+                    + ", which is " + feed.want().glsl()));
         }
     }
 
