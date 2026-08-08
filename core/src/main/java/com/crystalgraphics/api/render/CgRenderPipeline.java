@@ -75,14 +75,23 @@ public final class CgRenderPipeline {
     public static final String FRAME_BLOCK_NAME = "CgFrameBlock";
 
     /**
-     * Per-frame UBO format (std140, 38 floats = 152 bytes).
+     * Per-frame UBO format (std140, 44 floats = 176 bytes).
      *
      * <pre>
      *   mat4  cg_ViewMatrix   — floats  0–15
      *   mat4  cg_ProjMatrix   — floats 16–31
      *   vec4  cg_Time         — floats 32–35: t/20, t, t×2, t×3 (seconds)
      *   vec2  cg_Resolution   — floats 36–37: viewport width, height (pixels)
+     *   vec4  cg_CameraPos    — floats 40–43: world-space camera position in xyz (38–39 are std140 pad)
      * </pre>
+     *
+     * <p><b>This order is duplicated in {@code cg_env.glsl} and the two must not drift.</b> std140 offsets
+     * are positional, so a field added to one and not the other does not fail — every member after it
+     * silently reads its neighbour's bytes.</p>
+     *
+     * <p>{@code cg_CameraPos} is a {@code vec4} rather than a {@code vec3} on purpose: std140 aligns a
+     * vec3 to 16 bytes and sizes it at 12, so the padding exists either way and declaring it is what
+     * makes the two declarations obviously identical.</p>
      */
     public static final CgBufferFormat FRAME_FORMAT = CgBufferFormat
             .builder("CgFrameBlock", CgBufferFormat.MemoryLayout.STD140)
@@ -90,6 +99,7 @@ public final class CgRenderPipeline {
             .mat4("cg_ProjMatrix")
             .vec4("cg_Time")
             .vec2("cg_Resolution")
+            .vec4("cg_CameraPos")
             .build();
 
     /** Default GLSL SSBO/TBO buffer name used by {@code cg_env.glsl}. */
@@ -239,6 +249,15 @@ public final class CgRenderPipeline {
                         fd.timeSecs / 20f, fd.timeSecs,
                         fd.timeSecs * 2f, fd.timeSecs * 3f)
                 .vec2("cg_Resolution", (float) fd.viewportW, (float) fd.viewportH)
+                // Already computed -- deriveFromViewMatrix fills it every frame and nothing was reading
+                // it. Shaders needing the camera were inverting the view matrix per FRAGMENT instead.
+                //
+                // WHICH MAKES deriveFromViewMatrix() PART OF THE CONTRACT rather than a convenience: a
+                // caller that writes viewMatrix and skips it now ships a stale camera to every shader
+                // reading CG_CAMERA_WORLD_POS, where before the macro re-derived it from the matrix and
+                // could not be wrong. Not defended by deriving here, because the field is documented as
+                // settable directly and doing so would silently overwrite a caller who meant it.
+                .vec4("cg_CameraPos", fd.cameraPos.x, fd.cameraPos.y, fd.cameraPos.z, 1f)
                 .endRecord();
         fd.timeSecs = savedTime;
         frameUbo.upload();
