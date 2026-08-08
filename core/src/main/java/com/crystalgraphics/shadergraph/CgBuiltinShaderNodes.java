@@ -903,6 +903,24 @@ public final class CgBuiltinShaderNodes {
             .body("{Out} = {In};")
             .bodyFor(SPACE_ID, SPACE_WORLD, "{Out} = (CG_OBJECT_TO_WORLD * vec4({In}, 1.0)).xyz;")
             .bodyFor(SPACE_ID, SPACE_VIEW, "{Out} = (cg_ViewMatrix * CG_OBJECT_TO_WORLD * vec4({In}, 1.0)).xyz;")
+            // THE PREVIEW FORMS, which this node had none of — so its thumbnail fell through to the real
+            // bodies above and every option drew the same picture.
+            //
+            // Not a wrong picture, which is what made it quieter than the inversion Position and Normal
+            // Vector each carried, but wrong in a way that reads as the node being broken: pick World,
+            // nothing changes; pick View, nothing changes. And it was true by ACCIDENT rather than by
+            // design — the preview pass leaves an identity model matrix and an identity view matrix, so
+            // both transforms above happen to be no-ops there. Position's own note says not to depend on
+            // that, and this was depending on it.
+            //
+            // World is the same value, stated rather than inherited from a coincidence.
+            .previewBodyFor(SPACE_ID, SPACE_WORLD, "{Out} = {In};")
+            // ...and View flips Z, which is the SAME stand-in Position and Normal Vector use, for the same
+            // reason: a preview camera sits at the identity, so nothing else distinguishes the two spaces
+            // and the Z convention is what the option actually means. All three nodes share this property,
+            // so all three have to express it identically — a Transform whose View disagreed with the
+            // Position wired into it would be the more confusing of the two answers.
+            .previewBodyFor(SPACE_ID, SPACE_VIEW, "{Out} = vec3(({In}).xy, -({In}).z);")
             .build();
 
     // ── Math ▸ Wave (one of two — see the class doc for why Noise Sine Wave is deferred) ─────────────
