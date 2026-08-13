@@ -16,7 +16,7 @@ public class CgStyleSpanTest {
     public void testConstructor_storesFields() {
         CgStyleSpan span = new CgStyleSpan(0, 5, true, false,
                 Set.of(CgTextDecoration.UNDERLINE), 0xFFFF0000,
-                List.of(CgFontFeature.enable("smcp")), 2.0f);
+                List.of(CgFontFeature.enable("smcp")), 2.0f, 0);
 
         assertEquals(0, span.start());
         assertEquals(5, span.end());
@@ -30,24 +30,24 @@ public class CgStyleSpanTest {
 
     @Test
     public void testConstructor_nullDecorations_defaultsToEmpty() {
-        CgStyleSpan span = new CgStyleSpan(0, 5, false, false, null, 0, null, 0);
+        CgStyleSpan span = new CgStyleSpan(0, 5, false, false, null, 0, null, 0, 0);
         assertTrue(span.decorations().isEmpty());
     }
 
     @Test
     public void testConstructor_nullLists_defaultToEmpty() {
-        CgStyleSpan span = new CgStyleSpan(0, 5, false, false, null, 0, null, 0);
+        CgStyleSpan span = new CgStyleSpan(0, 5, false, false, null, 0, null, 0, 0);
         assertTrue(span.fontFeatures().isEmpty());
     }
 
     @Test(expected = IllegalArgumentException.class)
     public void testConstructor_rejectsNegativeStart() {
-        new CgStyleSpan(-1, 5, false, false, null, 0, null, 0);
+        new CgStyleSpan(-1, 5, false, false, null, 0, null, 0, 0);
     }
 
     @Test(expected = IllegalArgumentException.class)
     public void testConstructor_rejectsEndNotAfterStart() {
-        new CgStyleSpan(5, 5, false, false, null, 0, null, 0);
+        new CgStyleSpan(5, 5, false, false, null, 0, null, 0, 0);
     }
 
     @Test

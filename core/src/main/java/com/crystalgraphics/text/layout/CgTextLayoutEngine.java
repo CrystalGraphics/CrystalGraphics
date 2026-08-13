@@ -475,7 +475,7 @@ public final class CgTextLayoutEngine {
                 .advancesX(r.advancesX()).offsetsX(r.offsetsX()).offsetsY(r.offsetsY())
                 .totalAdvance(r.totalAdvance())
                 .sourceStart(r.sourceStart() + offset).sourceEnd(r.sourceEnd() + offset)
-                .argbColor(r.argbColor()).decorations(r.decorations())
+                .argbColor(r.argbColor()).decorations(r.decorations()).decorationArgb(r.decorationArgb())
                 .fontFeatures(r.fontFeatures()).baselineShift(r.baselineShift())
                 .safeToBreakBefore(r.safeToBreakBefore())
                 .syntheticBold(r.syntheticBold()).syntheticItalic(r.syntheticItalic());
@@ -563,7 +563,7 @@ public final class CgTextLayoutEngine {
                 .glyphIds(run.glyphIds()).clusterIds(run.clusterIds()).advancesX(run.advancesX())
                 .offsetsX(run.offsetsX()).offsetsY(run.offsetsY()).totalAdvance(run.totalAdvance())
                 .sourceStart(run.sourceStart()).sourceEnd(run.sourceEnd())
-                .argbColor(span.argbColor()).decorations(span.decorations())
+                .argbColor(span.argbColor()).decorations(span.decorations()).decorationArgb(span.decorationArgb())
                 .fontFeatures(span.fontFeatures()).baselineShift(span.baselineShift())
                 .safeToBreakBefore(run.safeToBreakBefore())
                 .syntheticBold(syntheticBold).syntheticItalic(syntheticItalic);
@@ -586,6 +586,7 @@ public final class CgTextLayoutEngine {
                         .bold(span.bold())
                         .italic(span.italic())
                         .decorations(span.decorations())
+                        .decorationArgb(span.decorationArgb())
                         .argbColor(span.argbColor())
                         .fontFeatures(span.fontFeatures())
                         .baselineShift(span.baselineShift())
@@ -666,6 +667,7 @@ public final class CgTextLayoutEngine {
             return fragment
                     .argbColor(run.argbColor())
                     .decorations(run.decorations())
+                    .decorationArgb(run.decorationArgb())
                     .fontFeatures(run.fontFeatures())
                     .baselineShift(run.baselineShift())
                     .syntheticBold(run.syntheticBold())
@@ -804,7 +806,11 @@ public final class CgTextLayoutEngine {
                 y = baseline + gap;
             }
         }
-        return new CgTextDecorationRect(x0, x1, y, thickness, run.argbColor(), fontKey);
+        // THE DECORATION'S OWN COLOUR WHERE IT HAS ONE, and the glyphs' otherwise -- CSS's
+        // `text-decoration-color: currentColor` default, in the one line that can express it. The rect
+        // has carried its own colour since it was written; nothing upstream could ever say what it was.
+        int argb = run.decorationArgb() != 0 ? run.decorationArgb() : run.argbColor();
+        return new CgTextDecorationRect(x0, x1, y, thickness, argb, fontKey);
     }
 
     /**

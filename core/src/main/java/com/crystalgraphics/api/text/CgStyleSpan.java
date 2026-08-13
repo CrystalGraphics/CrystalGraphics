@@ -52,7 +52,8 @@ public record CgStyleSpan(
         Set<CgTextDecoration> decorations,
         int argbColor,
         List<CgFontFeature> fontFeatures,
-        float baselineShift
+        float baselineShift,
+        int decorationArgb
 ) {
 
     public CgStyleSpan {
