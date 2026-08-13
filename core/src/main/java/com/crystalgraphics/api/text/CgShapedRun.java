@@ -141,6 +141,9 @@ public final class CgShapedRun {
     /** See {@link CgStyleSpan#decorations()}. */
     private Set<CgTextDecoration> decorations = Set.of();
 
+    /** See {@link CgStyleSpan#decorationArgb()} — {@code 0} means "draw it in the text's own colour". */
+    private int decorationArgb;
+
     /** OpenType features to enable for this run's shaping. See {@link CgStyleSpan#fontFeatures()}. */
     private List<CgFontFeature> fontFeatures = List.of();
 
