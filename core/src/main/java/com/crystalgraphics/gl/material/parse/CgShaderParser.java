@@ -95,6 +95,40 @@ public final class CgShaderParser {
      * @throws CgShaderParseException on any format violation
      */
     public static CgParsedShader parse(String source, String resourcePath) {
+        try {
+            return parseLocating(source, resourcePath);
+        } catch (CgShaderParseException failed) {
+            // PLACED ON THE WAY OUT, once, rather than at sixty-odd throw sites. Nearly every message
+            // quotes the token it choked on, so the message itself is the anchor -- and a parser that has
+            // already failed has no cursor to offer instead. An unplaced exception is what every caller
+            // got before this existed, so this can only add.
+            throw locate(failed, source);
+        }
+    }
+
+    /**
+     * The first quoted token in a parser message, used to find the offending line.
+     *
+     * <p>Every message in this package that names a construct quotes it — {@code 'void fragment('},
+     * {@code '#type'}, {@code 'Blend'} — which makes one pattern enough for all of them and means no
+     * throw site had to change.</p>
+     */
+    private static final java.util.regex.Pattern QUOTED =
+            java.util.regex.Pattern.compile("'([^']{1,80})'");
+
+    private static CgShaderParseException locate(CgShaderParseException failed, String source) {
+        if (failed.hasPosition() || source == null) return failed;
+        String message = failed.getMessage();
+        if (message == null) return failed;
+        java.util.regex.Matcher quoted = QUOTED.matcher(message);
+        while (quoted.find()) {
+            CgShaderParseException placed = failed.locate(source, quoted.group(1));
+            if (placed.hasPosition()) return placed;
+        }
+        return failed;
+    }
+
+    private static CgParsedShader parseLocating(String source, String resourcePath) {
         if (source == null || source.isEmpty()) {
             throw new CgShaderParseException("[" + resourcePath + "] #type declaration missing: source is empty");
         }
