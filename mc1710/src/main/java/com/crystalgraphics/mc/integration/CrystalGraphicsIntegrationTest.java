@@ -53,6 +53,25 @@ public class CrystalGraphicsIntegrationTest {
     private static final boolean RUN_SELF_CHECKS =
             Boolean.getBoolean("crystalgraphics.integration.runSelfChecks");
 
+    /**
+     * Whether to draw the font demo. <b>Off by default, and it used to be unconditional.</b>
+     *
+     * <p>{@link CrystalGraphicsFontDemo} draws a full-screen demo from
+     * {@code RenderGameOverlayEvent.Text} on <em>every</em> frame the player is in a world. That was
+     * harmless while this mod was the only thing in the client and actively useful while the text stack
+     * was being built. It stopped being either the moment a second consumer of the GL context existed:
+     * the demo paints over the world (a white screen with the sky band still showing at the top) and
+     * emits {@code GL_INVALID_OPERATION} once per frame at "Post render", from the first frame after
+     * login — which reads as the render pipeline being broken rather than as a demo being on.</p>
+     *
+     * <p>The self-checks beside it were already opt-in and this is now the same shape, which is the
+     * property this class should have had from the start: it is documented as "development and CI
+     * testing only", and a diagnostic that is on by default is not a diagnostic, it is the behaviour.
+     * Turn it back on with {@code -Dcrystalgraphics.integration.fontDemo=true}.</p>
+     */
+    private static final boolean RUN_FONT_DEMO =
+            Boolean.getBoolean("crystalgraphics.integration.fontDemo");
+
     private boolean testRan = false;
     private int passCount = 0;
     private int failCount = 0;
@@ -62,8 +81,8 @@ public class CrystalGraphicsIntegrationTest {
     @Mod.EventHandler
     public void postInit(FMLPostInitializationEvent event) {
         LOGGER.info("CrystalGraphicsIntegrationTest: Registered. "
-                + "Font demo enabled. Self-checks opt-in=" + RUN_SELF_CHECKS);
-        fontDemo.register();
+                + "Font demo opt-in=" + RUN_FONT_DEMO + ", self-checks opt-in=" + RUN_SELF_CHECKS);
+        if (RUN_FONT_DEMO) fontDemo.register();
     }
 
     @SubscribeEvent
