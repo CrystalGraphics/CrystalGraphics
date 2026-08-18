@@ -9,6 +9,22 @@ version = providers.gradleProperty("modVersion").orElse("1.0.0").get()
 apply(from = "repositories.gradle")
 apply(from = "dependencies.gradle")
 
+// NO MULTI-RELEASE OUTPUT. jvmDowngrader defaults to writing the original modern classes into
+// META-INF/versions/<n>/ beside the downgraded ones, so a newer JVM picks the fast path. That is a fine
+// default everywhere except here: FML's ModDiscoverer opens every classpath jar with
+// asm-debug-all-5.0.3, which reads Java 8 class files and nothing later, and it walks EVERY entry --
+// META-INF/versions/17/** included, even though the Java 8 run JVM would never load them. The result is
+// a hard launch failure that names an innocent class:
+//
+//     There was a problem reading the entry META-INF/versions/17/com/crystalgraphics/api/
+//     CgBindingPoints$Binding.class in the jar crystalgraphics-1.0.0-dev.jar - probably a corrupt zip
+//
+// GTNH's convention forces these on for 25 and 21 even when the property is set empty, which is why it
+// has to be overridden on the extension rather than in gradle.properties. CrystalGUI's mc1710 has
+// carried the same two lines (and the same discovery) since before this module needed them.
+jvmdg.multiReleaseVersions.set(emptySet<JavaVersion>())
+jvmdg.multiReleaseOriginal.set(false)
+
 
 //// Remove Kotlin and a Java 9 file from JOML when shadowing.
 //// Gradle pulls in a transitive dependency (Kotlin) and packages it for some reason.
