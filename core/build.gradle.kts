@@ -221,3 +221,22 @@ dependencies {
 //        builtBy(compileJava)
 //    }
 //}
+
+// ── Sources, for CrystalGUI's Quick Documentation popup (CrystalGUI M13 §25.4) ───────────────────
+//
+// Hovering `CgMaterial` in the in-game script editor quotes the declaration its author wrote, with its
+// javadoc, instead of a form reassembled from the binding. `SourceArchives.ResourceArchive` reads them
+// straight off the classloader -- one `getResourceAsStream`, because the JVM already indexed this jar's
+// central directory when it opened it.
+//
+// OUR OWN NAMESPACE, not CrystalGUI's. This library is used by mods that have no CrystalGUI in the pack
+// at all, and a jar shipping an `assets/crystalgui/` directory to such a game is claiming a namespace it
+// does not own. CrystalGUI DISCOVERS these by scanning the classpath -- nothing registers a namespace,
+// so any mod can do this -- and the paths beneath are package paths, so two of them cannot collide.
+//
+// Loose entries rather than a nested zip: `ZipFile` cannot open an archive inside another and
+// `ZipInputStream` is sequential, so a nested one would mean decompressing entries until the wanted file
+// turned up, on every hover.
+tasks.jar {
+    from(sourceSets.main.get().allJava) { into("assets/crystalgraphics/sources") }
+}
