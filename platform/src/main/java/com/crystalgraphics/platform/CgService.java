@@ -30,12 +30,12 @@ import java.util.concurrent.CopyOnWriteArrayList;
  *
  * <pre>{@code
  * // declared once, by the module that owns the contract
- * public static final CgService<ScriptPlatform> SERVICE =
- *         CgService.of("crystalgui:script-platform", ScriptPlatform.NONE);
+ * public static final CgService<ScriptService> SERVICE =
+ *         CgService.of("crystalgui:script-platform", ScriptService.NONE);
  *
  * // filled by a loader, and read by anyone -- both through the one registry
- * CgPlatform.provide(ScriptPlatforms.SERVICE, new Mc1710ScriptPlatform());
- * CgPlatform.get(ScriptPlatforms.SERVICE).liveBytes();
+ * CgPlatform.provide(ScriptServices.SERVICE, new Mc1710ScriptService());
+ * CgPlatform.get(ScriptServices.SERVICE).liveBytes();
  * }</pre>
  *
  * <p>Three things then collapse into one object. <b>Declaring a slot is expecting it</b>, so there is no
