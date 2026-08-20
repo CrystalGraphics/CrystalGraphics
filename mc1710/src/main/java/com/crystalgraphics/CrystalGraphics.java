@@ -1,10 +1,13 @@
 package com.crystalgraphics;
 
+import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.platform.PlatformService1710;
 import cpw.mods.fml.common.Mod;
+import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.event.FMLInitializationEvent;
 import cpw.mods.fml.common.event.FMLPostInitializationEvent;
 import cpw.mods.fml.common.event.FMLPreInitializationEvent;
+import net.minecraft.client.Minecraft;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -62,6 +65,11 @@ public final class CrystalGraphics{
     public void onInit(FMLInitializationEvent event) {
         LOGGER.info("{}: init", NAME);
         PlatformService1710.onInit();
+
+        if (!FMLCommonHandler.instance().getSide().isClient()) return;
+
+        Minecraft mc = Minecraft.getMinecraft();
+        CgGraphicsLifecycle.initContext(Math.max(1, mc.displayWidth), Math.max(1, mc.displayHeight));
         
         // Aggregate validation of all mod OpenGL requirements registered during pre-init.
         // On dedicated server this is a no-op (returns immediately).
