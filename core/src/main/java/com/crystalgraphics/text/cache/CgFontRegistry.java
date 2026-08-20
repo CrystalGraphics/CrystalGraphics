@@ -15,6 +15,7 @@ import com.crystalgraphics.text.atlas.CgGlyphAtlas;
 import com.crystalgraphics.text.msdf.CgMsdfAtlasConfig;
 import com.crystalgraphics.text.msdf.CgMsdfGenerator;
 import com.crystalgraphics.text.render.CgTextRenderer;
+import com.crystalgraphics.text.render.context.CgTextScaleResolver;
 import com.crystalgraphics.util.profiling.CgProfiler;
 
 import java.util.*;
@@ -541,6 +542,84 @@ public class CgFontRegistry {
         CgGlyphAtlas atlas = getBitmapAtlas();
         if (atlas.get(atlasKey, currentFrame) == null) {
             submitBitmapGlyphJob(font, atlasKey, rasterFontKey, effectiveTargetPx, subPixelBucket);
+        }
+    }
+
+    /** Printable ASCII, the set every Latin UI draws before it draws anything else. */
+    private static final int ASCII_FIRST = 0x20;
+
+    private static final int ASCII_LAST  = 0x7E;
+
+    /**
+     * Generates printable ASCII for one face ahead of the frame that first draws it.
+     *
+     * <p>The first frame of a UI has to produce every distinct glyph on it, and it produces them
+     * <em>synchronously</em>: {@link #queueGlyph} is asynchronous precisely because "a glyph generated
+     * asynchronously is not available to draw on the frame that asked for it", so a drawing frame falls
+     * back to {@link #ensureGlyph}. That objection is exactly what a warm-up sidesteps — nobody has
+     * asked yet, so there is no frame to be late for.</p>
+     *
+     * <h3>Both tiers, and they are warmed differently on purpose</h3>
+     *
+     * <p><b>MSDF once per face, regardless of size.</b> {@link #toMsdfAtlasGlyphKey} rewrites the font
+     * key with {@code withTargetPx(config.atlasScalePx())} and forces bucket 0, so every size collapses
+     * to one atlas entry — that is the whole point of a distance field. It is also by far the more
+     * expensive tier (msdfgen, against FreeType's rasteriser) and the one a warm is most worth doing
+     * for. It is warmed even when every requested size is a bitmap size, because the renderer reaches
+     * for it anyway: the async bitmap→MSDF upgrade during convergence, any rotated or sheared draw
+     * (which forces the tier at any size), and any zoom that crosses
+     * {@link com.crystalgraphics.text.render.context.CgTextScaleResolver#MSDF_ENTER_THRESHOLD}.</p>
+     *
+     * <p><b>Bitmap once per size</b>, since a raster glyph is keyed by the size it was rasterised at —
+     * and only for sizes below that threshold, because at or above it the renderer draws MSDF and a
+     * bitmap entry would never be looked up.</p>
+     *
+     * <p>Sub-pixel bucket 0 only, of the four a bitmap glyph is keyed by below
+     * {@link CgGlyphKey#SUB_PIXEL_BUCKET_MAX_PX}. {@code CgResolvedGlyphs.selectSubPixelBucket} returns
+     * 0 for any fractional x-offset under 0.125 or at/above 0.875, so it is both the widest band and the
+     * one every run starting on an integer x lands in.</p>
+     *
+     * <p><b>Pass EFFECTIVE sizes, not the font's own.</b> The renderer rasterises at
+     * {@code resolveEffectiveTargetPx(...)} — the CSS size scaled by the pose — so warming
+     * {@code font.getTargetPx()} on a host with a UI scale of 2 fills entries nothing ever looks up.
+     * That failure is completely silent: the work happens, the cache fills, the frame still stalls.</p>
+     *
+     * <p>Fire-and-forget and best-effort. Anything that has not landed when something draws it simply
+     * generates on the render thread exactly as it does today.</p>
+     *
+     * @param font              the face to warm; ignored if null or disposed
+     * @param currentFrame      the engine frame, as every other cache entry point here takes
+     * @param effectiveTargetPx the sizes glyphs will actually be rasterised at; may be empty, which
+     *                          warms the distance-field tier alone
+     */
+    public void warmAscii(CgFont font, long currentFrame, int... effectiveTargetPx) {
+        if (font == null || font.isDisposed()) return;
+
+        for (int codePoint = ASCII_FIRST; codePoint <= ASCII_LAST; codePoint++) {
+            int glyphId = font.getGlyphIndex(codePoint);
+            // 0 is .notdef -- the font has no drawing for this codepoint, so there is nothing to warm.
+            if (glyphId <= 0) continue;
+            try {
+                // Size-independent, so one submission covers every size asked for below. Queued through
+                // the font's own key: submitMsdfGlyphJob carries font.getKey(), so warming this from
+                // three differently-sized instances of one face would build three jobs that are not
+                // equal, defeat the executor's pendingJobs dedup, and generate the same atlas entry
+                // three times.
+                queueGlyph(font, new CgGlyphKey(font.getKey(), glyphId, true, 0),
+                        font.getTargetPx(), 0, currentFrame);
+
+                for (int px : effectiveTargetPx) {
+                    if (px <= 0 || px >= CgTextScaleResolver.MSDF_ENTER_THRESHOLD) continue;
+                    queueGlyph(font, new CgGlyphKey(font.getKey(), glyphId, false, 0),
+                            px, 0, currentFrame);
+                }
+            } catch (RuntimeException broken) {
+                // An optimisation must never be the thing that fails a context, and one unwarmable
+                // glyph says the rest of this face will not warm either. Everything still generates
+                // lazily exactly as before.
+                LOGGER.log(Level.FINE, "ASCII warm stopped early for " + font.getKey(), broken);
+                return;
+            }
         }
     }
 
