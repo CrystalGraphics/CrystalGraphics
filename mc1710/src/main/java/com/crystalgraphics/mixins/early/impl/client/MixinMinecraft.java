@@ -32,6 +32,30 @@ public class MixinMinecraft {
     }
 
     /**
+     * <b>Frees the GL context's resources at game exit.</b>
+     *
+     * <p>{@code onContextDestroy} was implemented on every loader's lifecycle service and <b>called by
+     * none of them</b>, so {@code CgGraphicsLifecycle.destroyContext()} never ran on 1.7.10 — every
+     * registry's {@code deleteAll}, every glyph atlas, every framebuffer, and CrystalGUI's own
+     * {@code CgUiPaintContext.destroy()} with its {@code createOwned} FBO pool that no registry sweep can
+     * reach. The process was exiting anyway, which is why nobody noticed; that is a reason it did not
+     * hurt, not a reason it was right.</p>
+     *
+     * <p><b>HEAD, not TAIL.</b> The one window in which a listener can release its own GL objects is
+     * while the context is still whole — {@code onDestroy}'s own contract says so — and by the tail of
+     * this method Minecraft has torn the display down. A free after that is undefined rather than
+     * merely late.</p>
+     *
+     * <p>{@code shutdownMinecraftApplet} rather than {@code shutdown}, because it is the one every exit
+     * path reaches: {@code Minecraft.run}'s {@code finally} calls it, which covers the ordinary quit,
+     * the crash path, and the silent {@code MinecraftError} exit that leaves no report at all.</p>
+     */
+    @Inject(method = "shutdownMinecraftApplet", at = @At("HEAD"))
+    private void onShutdown(CallbackInfo ci) {
+        CgPlatform.lifecycle().onContextDestroy();
+    }
+
+    /**
      * <b>A PUBLIC member of {@code Minecraft} that no class file on disk declares.</b>
      *
      * <p>Every other member this mixin contributes is an {@code @Inject} handler, and Mixin merges those
