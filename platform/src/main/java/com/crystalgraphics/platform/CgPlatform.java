@@ -44,8 +44,28 @@ public final class CgPlatform {
     public static void register(CgPlatformService platform) {
         service = Objects.requireNonNull(platform, "CgPlatformService must not be null");
 
-        CgGL.init(platform.gl());
-        CgCapabilities.init(platform.capabilities());
+        // GL IS OPTIONAL AT REGISTRATION, because a DEDICATED SERVER has no LWJGL on its classpath.
+        //
+        // These two calls used to run unconditionally, and they are the reason CrystalGraphics could not
+        // load on a server at all: asking the platform for its GL backend constructs a class that names
+        // org.lwjgl.LWJGLException, so preInit died with NoClassDefFoundError and every mod depending on
+        // CrystalGraphics was marked errored alongside it. Nothing had noticed, because nothing had ever
+        // run a dedicated server.
+        //
+        // Asked by TRYING, because this module may import neither FML nor LWJGL and so has no other way
+        // to know which side it is on -- and "can this classpath produce a GL backend" is exactly the
+        // question, rather than a proxy for it. A client that genuinely fails here is not silenced: the
+        // absence is reported, and every later CgGL call fails on a null backend as it always would.
+        try {
+            CgGL.init(platform.gl());
+            CgCapabilities.init(platform.capabilities());
+        } catch (NoClassDefFoundError | UnsatisfiedLinkError noGraphics) {
+            // Said out loud rather than swallowed. "Live" and "inert" look identical otherwise, and a
+            // client that lost its GL backend to a packaging mistake would look exactly like a server.
+            System.err.println("[CrystalGraphics] no GL backend on this classpath (" + noGraphics
+                    + ") — registering the platform without one. This is expected on a dedicated server "
+                    + "and is a packaging fault anywhere else; rendering is unavailable either way.");
+        }
     }
 
     /** Returns the GL dispatch. @throws IllegalStateException if called before {@link #register}. */
