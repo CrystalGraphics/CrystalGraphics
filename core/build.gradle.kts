@@ -1,3 +1,5 @@
+import java.io.File as JFile
+
 plugins {
     `java-library`
 }
@@ -107,6 +109,45 @@ dependencies {
     testImplementation("org.joml:joml-jdk8:$jomlVer")
     testImplementation(project(":freetype-msdfgen-harfbuzz-bindings"))
     testImplementation(project(":platform"))
+}
+
+// ── Import guard ─────────────────────────────────────────────────────────────
+//
+// ENABLED 2026-08-21. Its own AGENTS.md warned that the guard below was commented out and that
+// CrystalGUI's equivalent being active must not be assumed by analogy -- "silently claiming enforcement
+// that does not exist is worse than having none". Both core/ and platform/ are clean today, so turning
+// it on costs nothing and only prevents a regression.
+//
+// WHAT IT DOES NOT CATCH, said plainly because it was briefly written down as if it did: it would not
+// have found any of the three failures that stopped CrystalGraphics loading on a dedicated server. All
+// three were in mc1710/, where org.lwjgl is a LEGAL import, or in CgPlatform, which imports nothing
+// offending and simply CALLED platform.gl(). That class of bug is "a client-only class is constructed
+// on a server", which is a runtime property no import scan can see. The dedicated-server boot is what
+// catches it, and it did -- all three in one run.
+//
+// org.lwjgl is included here and was missing from the commented-out original.
+tasks.named<JavaCompile>("compileJava") {
+    val srcRoot: String = layout.projectDirectory.dir("src/main/java").asFile.absolutePath
+    doLast {
+        val violations = JFile(srcRoot).walkTopDown()
+            .filter { it.isFile && it.extension == "java" }
+            .filter { f ->
+                f.readLines().any { line ->
+                    val trimmed = line.trimStart()
+                    trimmed.startsWith("import ") && (
+                        trimmed.contains("net.minecraft") ||
+                            trimmed.contains("cpw.mods.fml") ||
+                            trimmed.contains("net.minecraftforge") ||
+                            trimmed.contains("org.lwjgl")
+                        )
+                }
+            }
+            .toList()
+        if (violations.isNotEmpty()) {
+            error("MC/Forge/LWJGL imports found in core/ (this layer is loader-blind): " +
+                violations.joinToString(", ") { it.relativeTo(JFile(srcRoot)).toString() })
+        }
+    }
 }
 
 //// 5. PIPELINE A: PURE JAVA 17 COMPILATION
