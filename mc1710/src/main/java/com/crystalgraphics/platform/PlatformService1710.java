@@ -1,5 +1,6 @@
 package com.crystalgraphics.platform;
 
+import cpw.mods.fml.common.FMLCommonHandler;
 import com.crystalgraphics.CrystalGraphicsVersion;
 import com.crystalgraphics.platform.gl.Lwjgl2GLContext;
 import com.crystalgraphics.platform.gl.Lwjgl2GLBackend;
@@ -29,25 +30,75 @@ public final class PlatformService1710 implements CgPlatformService {
     
     // ── Services ─────────────────────────────────────────────────────────────
 
-    public final RenderingService1710 renderingImpl = new RenderingService1710();
-    public final LifecycleService1710 lifecycleImpl = new LifecycleService1710();
-    public final ResourceService1710 resourceImpl = new ResourceService1710();
-    public final ReloadService1710 reloadImpl = new ReloadService1710();
-    public final Lwjgl2GLBackend glDispatchImpl = new Lwjgl2GLBackend();
-    public final Lwjgl2GLContext glContextImpl = new Lwjgl2GLContext();
-    public final InputService1710 inputImpl = new InputService1710();
-    public final SoundService1710 soundImpl = new SoundService1710();
-    public final CursorService1710 cursorImpl = new CursorService1710();
+    // BUILT ON DEMAND, and typed as the SPI interfaces rather than the implementations.
+    //
+    // These used to be eager `public final` fields, which meant registering the platform at preInit
+    // constructed all nine -- and on a DEDICATED SERVER that dies at the first one:
+    // NoClassDefFoundError: org/lwjgl/LWJGLException, from Lwjgl2GLBackend. Every service here imports
+    // either org.lwjgl or net.minecraft.client, neither of which exists server-side, so CrystalGraphics
+    // could not load on a server at all -- and every mod depending on it was marked errored with it.
+    //
+    // Two halves to the fix and both are needed. LAZY, so a server that asks for no rendering
+    // constructs none; and the fields are declared as the INTERFACE, so the LWJGL-touching class is
+    // named only inside a method body. A field descriptor is resolved eagerly enough to matter, which
+    // is the same rule that keeps JOML and Taffy on CrystalGUI's headless classpath -- a method-body
+    // reference is not, which is why `input()` on a server is fine right up until somebody calls it.
+    //
+    // Nothing outside this class referenced the fields, so the public API is unchanged.
+    private CgRenderingService renderingImpl;
+    private CgLifecycleService lifecycleImpl;
+    private CgResourceService  resourceImpl;
+    private CgReloadService    reloadImpl;
+    private CgGLBackend        glDispatchImpl;
+    private CgGLContext        glContextImpl;
+    private CgInputService     inputImpl;
+    private CgSoundService     soundImpl;
+    private CgCursorService    cursorImpl;
 
-    @Override public CgGLBackend       gl()           { return glDispatchImpl; }
-    @Override public CgGLContext         capabilities() { return glContextImpl; }
-    @Override public CgResourceService  resources()    { return resourceImpl; }
-    @Override public CgRenderingService rendering()    { return renderingImpl; }
-    @Override public CgLifecycleService lifecycle()    { return lifecycleImpl; }
-    @Override public CgReloadService    reload()       { return reloadImpl; }
-    @Override public CgInputService     input()        { return inputImpl; }
-    @Override public CgSoundService     sound()        { return soundImpl; }
-    @Override public CgCursorService    cursor()       { return cursorImpl; }
+    @Override public CgGLBackend gl() {
+        if (glDispatchImpl == null) glDispatchImpl = new Lwjgl2GLBackend();
+        return glDispatchImpl;
+    }
+
+    @Override public CgGLContext capabilities() {
+        if (glContextImpl == null) glContextImpl = new Lwjgl2GLContext();
+        return glContextImpl;
+    }
+
+    @Override public CgResourceService resources() {
+        if (resourceImpl == null) resourceImpl = new ResourceService1710();
+        return resourceImpl;
+    }
+
+    @Override public CgRenderingService rendering() {
+        if (renderingImpl == null) renderingImpl = new RenderingService1710();
+        return renderingImpl;
+    }
+
+    @Override public CgLifecycleService lifecycle() {
+        if (lifecycleImpl == null) lifecycleImpl = new LifecycleService1710();
+        return lifecycleImpl;
+    }
+
+    @Override public CgReloadService reload() {
+        if (reloadImpl == null) reloadImpl = new ReloadService1710();
+        return reloadImpl;
+    }
+
+    @Override public CgInputService input() {
+        if (inputImpl == null) inputImpl = new InputService1710();
+        return inputImpl;
+    }
+
+    @Override public CgSoundService sound() {
+        if (soundImpl == null) soundImpl = new SoundService1710();
+        return soundImpl;
+    }
+
+    @Override public CgCursorService cursor() {
+        if (cursorImpl == null) cursorImpl = new CursorService1710();
+        return cursorImpl;
+    }
     
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -78,6 +129,19 @@ public final class PlatformService1710 implements CgPlatformService {
      * startup (resource manager available, version requirements processable).
      */
     public static void onInit() {
+        // CLIENT ONLY, and the guard belongs here rather than at the caller.
+        //
+        // Both of these are client concepts: a GL version requirement is meaningless without a driver,
+        // and IResourceManager is a client type. CrystalGraphics.onInit already returns early on a
+        // server -- but it does so AFTER calling this, so the guard protected the two lines below it and
+        // not the two inside it. On a dedicated server that was NoClassDefFoundError:
+        // OpenGLVersionMismatchException, which extends FML's client-only
+        // CustomModLoadingErrorDisplayException and so cannot even be loaded there.
+        //
+        // Note processAllRequirements() is itself documented as "a no-op on dedicated server" -- true of
+        // what it DOES and irrelevant to whether its class can be loaded, which is the trap.
+        if (!FMLCommonHandler.instance().getSide().isClient()) return;
+
         CrystalGraphicsVersion.processAllRequirements();
         ReloadService1710.attachToResourceManager();
     }
