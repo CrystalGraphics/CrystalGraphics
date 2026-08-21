@@ -22,8 +22,10 @@ import com.crystalgraphics.platform.service.CgSoundService;
  * Complete MC 1.20.x platform bundle. Implements {@link CgPlatformService} by composing
  * the mc1201 service adapters. Register via {@code CgPlatform.register(PlatformService1201.getInstance())}.
  *
- * <p>No GL calls are made in the constructor or static initializer — all GL work is deferred
- * to {@link CgClientLifecycleBridge#onRenderFrame} / {@code onContextInit}.</p>
+ * <p><b>Every service is built on demand and every field is typed as its SPI interface.</b> This used
+ * to read "no GL calls are made in the constructor or static initializer" — true about what the code
+ * <em>does</em>, and irrelevant to whether a class can be <em>loaded</em>, which is the trap that stopped
+ * CrystalGraphics loading on a 1.7.10 dedicated server at all. See the note on the fields below.</p>
  *
  * <h3>⚠️ Two of the three UI services below are unimplemented stubs</h3>
  * <p>{@link #input()} and {@link #sound()} exist and answer, but do nothing. They are written out rather
@@ -38,25 +40,80 @@ import com.crystalgraphics.platform.service.CgSoundService;
  */
 public final class PlatformService1201 implements CgPlatformService {
 
-    private static final PlatformService1201 INSTANCE = new PlatformService1201();
+    private static PlatformService1201 instance;
 
-    public static PlatformService1201 getInstance() {
-        return INSTANCE;
+    public static synchronized PlatformService1201 getInstance() {
+        if (instance == null) instance = new PlatformService1201();
+        return instance;
     }
 
-    private final GL1201Context      glContext  = new GL1201Context();
-    private final GL1201Backend      glBackend  = new GL1201Backend();
-    private final LifecycleService1201 lifecycle  = new LifecycleService1201();
-    private final ReloadService1201    reload     = new ReloadService1201();
-    private final ResourceService1201  resources  = new ResourceService1201();
-    private final RenderingService1201 rendering  = new RenderingService1201();
+    // BUILT ON DEMAND, and typed as the SPI interfaces rather than the implementations.
+    //
+    // This is the mc1710 fix, applied ahead of the failure rather than after it. There it was
+    // `public final` fields built at preInit, and a DEDICATED SERVER died at the first one:
+    // NoClassDefFoundError: org/lwjgl/LWJGLException. Here it was worse -- the fields sat inside a
+    // `static final INSTANCE`, so all eight were built at CLASS INIT, one step earlier in the
+    // lifecycle than 1710's, and the `@Mod` constructor that calls getInstance() runs on BOTH SIDES.
+    // (Fabric is exempt by construction: CrystalGraphics1201Fabric is a ClientModInitializer.)
+    //
+    // GL1201Context is the concrete hazard -- it holds `private volatile GLCapabilities caps`, an
+    // org.lwjgl.opengl FIELD DESCRIPTOR, and a dedicated 1.20.x server has no LWJGL on its classpath.
+    // CursorService1201, ResourceService1201 and RenderingService1201 name net.minecraft.client types,
+    // which a server distribution does not ship either; those are method-body references today and so
+    // survive loading, but only by luck, and nothing stops the next edit adding a field.
+    //
+    // Two halves and both are needed. LAZY, so a server that asks for no rendering constructs none; and
+    // the fields are declared as the INTERFACE, so the LWJGL-touching class is named only inside a
+    // method body. A field descriptor is resolved eagerly enough to matter -- the same rule that keeps
+    // JOML and Taffy on CrystalGUI's headless classpath -- while a method-body reference is not, which
+    // is why gl() on a server is fine right up until somebody calls it.
+    //
+    // NOTE THIS CANNOT BE TESTED FROM ANY BUILD WE HAVE. mc1201 is commented out of settings.gradle.kts
+    // in both repos, so nothing compiles it, let alone runs a server with it.
+    //
+    // And whether a Forge/NeoForge dev runServer would even show the fault is UNKNOWN. It uses the joined
+    // artifact, so Minecraft's client classes are present; whether LWJGL is, is a ModDevGradle question
+    // nobody here has measured. (The equivalent WAS measured on 1.7.10, where the guess turned out wrong
+    // in the reassuring direction: RFG's server run has no LWJGL, so a dev server there fails exactly as
+    // production does. A guess that was wrong once is not a basis for the other loader family.)
+    //
+    // So the shape is made unable to fail rather than argued about.
+    private CgGLBackend        glBackend;
+    private CgGLContext        glContext;
+    private CgLifecycleService lifecycle;
+    private CgReloadService    reload;
+    private CgResourceService  resources;
+    private CgRenderingService rendering;
 
-    @Override public CgGLBackend        gl()           { return glBackend; }
-    @Override public CgGLContext         capabilities() { return glContext; }
-    @Override public CgLifecycleService  lifecycle()    { return lifecycle; }
-    @Override public CgReloadService     reload()       { return reload; }
-    @Override public CgResourceService   resources()    { return resources; }
-    @Override public CgRenderingService  rendering()    { return rendering; }
+    @Override public CgGLBackend gl() {
+        if (glBackend == null) glBackend = new GL1201Backend();
+        return glBackend;
+    }
+
+    @Override public CgGLContext capabilities() {
+        if (glContext == null) glContext = new GL1201Context();
+        return glContext;
+    }
+
+    @Override public CgLifecycleService lifecycle() {
+        if (lifecycle == null) lifecycle = new LifecycleService1201();
+        return lifecycle;
+    }
+
+    @Override public CgReloadService reload() {
+        if (reload == null) reload = new ReloadService1201();
+        return reload;
+    }
+
+    @Override public CgResourceService resources() {
+        if (resources == null) resources = new ResourceService1201();
+        return resources;
+    }
+
+    @Override public CgRenderingService rendering() {
+        if (rendering == null) rendering = new RenderingService1201();
+        return rendering;
+    }
 
     // ── UI services — see the class javadoc ───────────────────────────────────────────────────────
 
@@ -68,7 +125,9 @@ public final class PlatformService1201 implements CgPlatformService {
      * {@code GLFW_MOUSE_BUTTON_LAST + 1}. The clipboard is {@code Minecraft.keyboardHandler}'s
      * {@code getClipboard()} / {@code setClipboard(String)}.
      */
-    private final CgInputService input = new CgInputService() {
+    private CgInputService input;
+
+    private static CgInputService newInput() { return new CgInputService() {
         @Override public int getCurrentModifiers() { return 0; }
         @Override public int translateKeyboardCodes(int platformCode) { return platformCode; }
         @Override public boolean isKeyDown(int localKeyCode) { return false; }
@@ -77,14 +136,14 @@ public final class PlatformService1201 implements CgPlatformService {
         @Override public int howManyMouseButtons() { return 0; }
         @Override public String getClipboard() { return ""; }
         @Override public void setClipboard(String text) { }
-    };
+    }; }
 
     /**
      * <b>Stub.</b> A real one is
      * {@code Minecraft.getInstance().getSoundManager().play(SimpleSoundInstance.forUI(...))}, resolving
      * {@code soundId} through a {@code ResourceLocation} as {@code SoundService1710} does.
      */
-    private final CgSoundService sound = soundId -> {};
+    private CgSoundService sound;
 
     /**
      * <b>Implemented</b> — see {@link CursorService1201}. Still unverified, like everything in this
@@ -98,9 +157,20 @@ public final class PlatformService1201 implements CgPlatformService {
      * reason spelled out in {@link CursorService1201}: their standard shapes are GLFW 3.4, and a native
      * that does not know one returns {@code NULL} rather than complaining.</p>
      */
-    private final CgCursorService cursor = new CursorService1201();
+    private CgCursorService cursor;
 
-    @Override public CgInputService      input()        { return input; }
-    @Override public CgSoundService      sound()        { return sound; }
-    @Override public CgCursorService     cursor()       { return cursor; }
+    @Override public CgInputService input() {
+        if (input == null) input = newInput();
+        return input;
+    }
+
+    @Override public CgSoundService sound() {
+        if (sound == null) sound = soundId -> {};
+        return sound;
+    }
+
+    @Override public CgCursorService cursor() {
+        if (cursor == null) cursor = new CursorService1201();
+        return cursor;
+    }
 }
