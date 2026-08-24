@@ -169,15 +169,35 @@ public final class CgGlStateManager {
 
     public void invalidateAll() { unknownMask = ALL_UNKNOWN; }
 
+    /**
+     * Adopts the calling thread, <b>dropping the shadow</b> if the context has changed hands.
+     *
+     * <h3>Why this no longer throws</h3>
+     *
+     * <p>A GL context is single-threaded, but the thread that owns it is not fixed for the life of a
+     * process — a context can be released on one thread and made current on another, and hosts do this.
+     * <b>FML's {@code SplashProgress} on 1.7.10 is exactly that case</b>: it takes the context onto its
+     * own thread to draw the loading screen and hands it back to the Client thread afterwards. Latching
+     * the first thread to arrive and throwing for the second turned that ordinary hand-off into
+     * {@code "Splash thread Exception"} and a client that never reached the main menu, which is a far
+     * worse outcome than the one the check was written to prevent.</p>
+     *
+     * <p>Dropping the shadow is both safe and exactly right. Everything it believes was recorded by a
+     * different thread against a context that has since moved, so none of it can be trusted — and an
+     * invalidated shadow costs redundant GL calls and nothing else, where a throw costs the process.
+     * It is the same response every other foreign boundary already makes ({@code invalidateAllIfPresent}
+     * around Minecraft's own rendering), which is what makes this consistent rather than a concession.</p>
+     *
+     * <p>The cost is that a genuine off-thread RACE — two threads writing at once rather than handing
+     * over — is now silently absorbed instead of named. The two are indistinguishable from in here, and
+     * a race would in any case corrupt the shadow rather than fail, which is what the old message said
+     * about the case it was refusing.</p>
+     */
     private void assertOwner() {
         Thread t = Thread.currentThread();
-        if (owner == null) { owner = t; return; }
-        if (owner != t) {
-            throw new IllegalStateException(
-                    "CgGlStateManager touched from " + t.getName() + " but owned by " + owner.getName()
-                  + ". A GL context is single-threaded, and an off-thread write corrupts the shadow "
-                  + "rather than failing outright.");
-        }
+        if (owner == t) return;
+        if (owner != null) invalidateAll();
+        owner = t;
     }
 
     // ── Per-call deduplication ────────────────────────────────────────────────
