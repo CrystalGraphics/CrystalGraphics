@@ -212,7 +212,7 @@ public final class CgGraphicsLifecycle {
         if (!initialized) initContext(w, h);
         else if (w != currentWidth || h != currentHeight) onResize(w, h);
  
-        CgRenderDemo.INSTANCE.renderOpaque(partialTick, w, h, sourceFboId);
+       // CgRenderDemo.INSTANCE.renderOpaque(partialTick, w, h, sourceFboId);
     }
 
     /**
