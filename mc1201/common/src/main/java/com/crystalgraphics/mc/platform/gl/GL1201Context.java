@@ -72,4 +72,5 @@ public final class GL1201Context implements CgGLContext {
     // glShaderStorageBlockBinding (used on the ARB path) are promoted from that extension.
     @Override public boolean GL_ARB_shader_storage_buffer_object() { return caps().GL_ARB_shader_storage_buffer_object && caps().GL_ARB_program_interface_query; }
     @Override public boolean GL_ARB_sampler_objects()              { return caps().GL_ARB_sampler_objects; }
+    @Override public boolean GL_ARB_timer_query()                  { return caps().GL_ARB_timer_query; }
 }

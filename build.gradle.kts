@@ -1,14 +1,22 @@
 
 plugins {
     idea
+    // One idea-ext for the whole build. gtnhgradle and ModDevGradle request it under different Maven
+    // coordinates, so Gradle loads both classes and moddev's `hasPlugin(IdeaExtPlugin.class)` guard
+    // misses, applying a second copy until the `settings` extension collides. Applying it at the root
+    // puts one copy in the parent buildscript scope. IDE sync only. CrystalGUI's plan_mc1201.md L0.
+    id("org.jetbrains.gradle.plugin.idea-ext")
 }
 
-// IntelliJ IDEA triggers 'processIdeaSettings' on the root project during Gradle sync.
-// gtnhconvention only registers this task on subprojects that apply it, so register a
-// no-op here to prevent "task not found" errors during IDEA sync.
-tasks.register("processIdeaSettings") {
-    group = "ide"
-    description = "No-op task for IntelliJ IDEA Gradle sync compatibility"
+// IDEA triggers 'processIdeaSettings' on the root project during sync and gtnhconvention only
+// registers it on subprojects, so this is the fallback. Guarded because idea-ext (applied above) now
+// supplies the real one, and registering twice is a configuration failure. findByName is safe here:
+// the plugins block has already run.
+if (tasks.findByName("processIdeaSettings") == null) {
+    tasks.register("processIdeaSettings") {
+        group = "ide"
+        description = "No-op fallback for IntelliJ IDEA Gradle sync when idea-ext is absent"
+    }
 }
 
 //

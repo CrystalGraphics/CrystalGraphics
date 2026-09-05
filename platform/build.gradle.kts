@@ -58,7 +58,11 @@ dependencies {
     // :core. No annotationProcessor(jabel) here either — the dual pipeline is not wired up there.
     compileOnly("com.github.bsideup.jabel:jabel-javac-plugin:$jabelVer")
 
-    implementation("org.apache.logging.log4j:log4j-api:$log4jVer")
+    // compileOnly, like :core. dep.log4j is 2.0-beta9 (Minecraft 1.7.10's), so exporting it at runtime
+    // puts a 1.7.10 version on every consumer -- and NeoForge requires log4j-api {strictly 2.19.0},
+    // which fails its whole runtime graph. Every host supplies its own log4j; the harness declares
+    // 2.26.1 explicitly.
+    compileOnly("org.apache.logging.log4j:log4j-api:$log4jVer")
 }
 
 tasks.withType<JavaCompile> {
