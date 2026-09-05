@@ -1,6 +1,7 @@
 package com.crystalgraphics.mc.fabric;
 
 import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
+import com.crystalgraphics.mc.platform.FrameHooks1201;
 import com.crystalgraphics.platform.CgPlatform;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
@@ -58,6 +59,7 @@ final class CgEngineFabricEvents {
             // Note: CG geometry renders into main FBO outside Iris's GBuffer chain.
             // See CgIrisCompat for detection API if Iris-specific behaviour is needed.
             CgGraphicsLifecycle.onTransparentPass();
+            FrameHooks1201.endFrame();
         });
     }
 

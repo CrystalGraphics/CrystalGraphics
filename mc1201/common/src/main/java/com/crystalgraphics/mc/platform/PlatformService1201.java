@@ -3,10 +3,12 @@ package com.crystalgraphics.mc.platform;
 import com.crystalgraphics.mc.platform.gl.GL1201Backend;
 import com.crystalgraphics.mc.platform.gl.GL1201Context;
 import com.crystalgraphics.mc.platform.service.CursorService1201;
+import com.crystalgraphics.mc.platform.service.InputService1201;
 import com.crystalgraphics.mc.platform.service.LifecycleService1201;
 import com.crystalgraphics.mc.platform.service.ReloadService1201;
 import com.crystalgraphics.mc.platform.service.RenderingService1201;
 import com.crystalgraphics.mc.platform.service.ResourceService1201;
+import com.crystalgraphics.mc.platform.service.SoundService1201;
 import com.crystalgraphics.platform.CgPlatformService;
 import com.crystalgraphics.platform.gl.CgGLBackend;
 import com.crystalgraphics.platform.gl.CgGLContext;
@@ -117,32 +119,10 @@ public final class PlatformService1201 implements CgPlatformService {
 
     // ── UI services — see the class javadoc ───────────────────────────────────────────────────────
 
-    /**
-     * <b>Stub.</b> A real one needs a GLFW keycode table: {@code CgKeyCodes} is LWJGL2-shaped, so unlike
-     * mc1710 the translation methods here cannot be the identity. Key and button state come from
-     * {@code GLFW.glfwGetKey} / {@code glfwGetMouseButton} against
-     * {@code Minecraft.getInstance().getWindow().getWindow()}, and {@code howManyMouseButtons()} is
-     * {@code GLFW_MOUSE_BUTTON_LAST + 1}. The clipboard is {@code Minecraft.keyboardHandler}'s
-     * {@code getClipboard()} / {@code setClipboard(String)}.
-     */
+    /** @see InputService1201 */
     private CgInputService input;
 
-    private static CgInputService newInput() { return new CgInputService() {
-        @Override public int getCurrentModifiers() { return 0; }
-        @Override public int translateKeyboardCodes(int platformCode) { return platformCode; }
-        @Override public boolean isKeyDown(int localKeyCode) { return false; }
-        @Override public int translateMouseCodes(int platformCode) { return platformCode; }
-        @Override public boolean isMouseDown(int localMouseCode) { return false; }
-        @Override public int howManyMouseButtons() { return 0; }
-        @Override public String getClipboard() { return ""; }
-        @Override public void setClipboard(String text) { }
-    }; }
-
-    /**
-     * <b>Stub.</b> A real one is
-     * {@code Minecraft.getInstance().getSoundManager().play(SimpleSoundInstance.forUI(...))}, resolving
-     * {@code soundId} through a {@code ResourceLocation} as {@code SoundService1710} does.
-     */
+    /** @see SoundService1201 */
     private CgSoundService sound;
 
     /**
@@ -160,12 +140,12 @@ public final class PlatformService1201 implements CgPlatformService {
     private CgCursorService cursor;
 
     @Override public CgInputService input() {
-        if (input == null) input = newInput();
+        if (input == null) input = new InputService1201();
         return input;
     }
 
     @Override public CgSoundService sound() {
-        if (sound == null) sound = soundId -> {};
+        if (sound == null) sound = new SoundService1201();
         return sound;
     }
 
