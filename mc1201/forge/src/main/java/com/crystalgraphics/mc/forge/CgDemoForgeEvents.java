@@ -20,14 +20,7 @@ public final class CgDemoForgeEvents {
     private CgDemoForgeEvents() {}
 
     @SubscribeEvent
-    public static void onRenderGuiOverlay(RenderGuiOverlayEvent.Post event) {
-        Minecraft mc = Minecraft.getInstance();
-        CgFontDemo.INSTANCE.render(mc.getWindow().getWidth(), mc.getWindow().getHeight());
-    }
-
-    @SubscribeEvent
     public static void onMouseScroll(InputEvent.MouseScrollingEvent event) {
-        CgFontDemo.INSTANCE.onMouseWheel((int) (event.getScrollDelta() * 120));
         CgRenderDemo.INSTANCE.onMouseWheel((int) (event.getScrollDelta() * 120));
     }
 }
