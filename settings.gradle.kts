@@ -112,9 +112,13 @@ if (loadersWanted) include("mc1710")
 // substitution naming a missing project fails configuration for every task in both builds.
 //
 // Gated like :mc1710: @see loadersWanted.
+// MC 1.20.1 Forge is included unconditionally: a 1.20.1 Forge mod consuming CrystalGraphics needs it
+// on its run classpath to see CrystalGraphics in the mod list. Fabric (fabric-loom, Java 21 daemon)
+// and NeoForge (MC 1.20.4) are not a 1.20.1 consumer's business.
+include(":mc1201:common")
+include(":mc1201:forge")
+
 if (loadersWanted) {
-    include(":mc1201:common")
     include(":mc1201:neoforge")
     include(":mc1201:fabric")
-    include(":mc1201:forge")
 }
