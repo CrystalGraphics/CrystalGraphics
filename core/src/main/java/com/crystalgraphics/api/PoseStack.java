@@ -263,6 +263,7 @@ public class PoseStack {
      * The matrix is written in column-major order as required by OpenGL.</p>
      */
     private void syncToGL() {
+        if (CgGL.CORE) return;
         FloatBuffer buf = MATRIX_BUFFER.get();
         buf.clear();
         this.poseStack.getLast().pose.get(buf);
