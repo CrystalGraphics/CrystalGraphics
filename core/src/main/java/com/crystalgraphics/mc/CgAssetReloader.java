@@ -40,11 +40,58 @@ public final class CgAssetReloader {
 
     private CgAssetReloader() {}
 
+    /**
+     * Consumers outside CrystalGraphics that cache assets of their own. @see CgReloadListener
+     *
+     * <p>An identity set, so registering the same listener twice is a no-op — a consumer's
+     * registration usually rides a lazily-initialised class and may be reached more than once.</p>
+     */
+    private static final Set<CgReloadListener> listeners = Collections.newSetFromMap(new IdentityHashMap<>());
+
+    /** Registers a consumer's cache with the reload. Idempotent. */
+    public static void addListener(CgReloadListener listener) {
+        if (listener == null) return;
+        synchronized (listeners) {
+            listeners.add(listener);
+        }
+    }
+
+    public static boolean removeListener(CgReloadListener listener) {
+        synchronized (listeners) {
+            return listeners.remove(listener);
+        }
+    }
+
     public static void reload() {
         reloadTextures();
         reloadShaders();
         reloadMaterials();
         invalidateTextCaches();
+        // LAST, so a listener that re-reads a texture or a material gets the reloaded one.
+        notifyListeners();
+    }
+
+    /**
+     * Drops every registered consumer's cache, each isolated like the steps above.
+     *
+     * <p>Snapshotted under the lock and then called outside it: a listener may register or remove
+     * one while it runs, and doing that inside the lock is a deadlock waiting for a consumer to
+     * write it.</p>
+     */
+    private static void notifyListeners() {
+        Set<CgReloadListener> snapshot;
+        synchronized (listeners) {
+            if (listeners.isEmpty()) return;
+            snapshot = Collections.newSetFromMap(new IdentityHashMap<>());
+            snapshot.addAll(listeners);
+        }
+        for (CgReloadListener listener : snapshot) {
+            try {
+                listener.onReload();
+            } catch (Exception e) {
+                LOGGER.error("Reload listener {} failed", listener.getClass().getName(), e);
+            }
+        }
     }
 
     /**
