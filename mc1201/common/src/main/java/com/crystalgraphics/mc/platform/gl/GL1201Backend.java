@@ -932,4 +932,39 @@ public final class GL1201Backend extends CgGLBackend {
     public void glUniformMatrix4(int location, boolean transpose, FloatBuffer value) {
         GL20C.glUniformMatrix4fv(location, transpose, value);
     }
+
+    // -------------------------------------------------------------------------
+    // Timer queries
+    // -------------------------------------------------------------------------
+    // Raw GL rather than the RenderSystem > GlStateManager ladder: Blaze3D has no query API.
+
+    @Override
+    public int glGenQuery() {
+        return GL15C.glGenQueries();
+    }
+
+    @Override
+    public void glBeginTimeElapsedQuery(int query) {
+        GL15C.glBeginQuery(GL33C.GL_TIME_ELAPSED, query);
+    }
+
+    @Override
+    public void glEndTimeElapsedQuery() {
+        GL15C.glEndQuery(GL33C.GL_TIME_ELAPSED);
+    }
+
+    @Override
+    public boolean glIsQueryResultAvailable(int query) {
+        return GL15C.glGetQueryObjecti(query, GL15C.GL_QUERY_RESULT_AVAILABLE) != 0;
+    }
+
+    @Override
+    public long glGetQueryResultNanos(int query) {
+        return GL33C.glGetQueryObjectui64(query, GL15C.GL_QUERY_RESULT);
+    }
+
+    @Override
+    public void glDeleteQuery(int query) {
+        GL15C.glDeleteQueries(query);
+    }
 }
