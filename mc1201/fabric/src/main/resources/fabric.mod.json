@@ -5,8 +5,11 @@
   "name": "CrystalGraphics",
   "description": "Rendering engine library for Minecraft mods.",
   "license": "LGPL-3.0-or-later",
-  "environment": "client",
+  "environment": "*",
   "entrypoints": {
+    "main": [
+      "com.crystalgraphics.mc.fabric.CrystalGraphics1201FabricCommon"
+    ],
     "client": [
       "com.crystalgraphics.mc.fabric.CrystalGraphics1201Fabric"
     ]
