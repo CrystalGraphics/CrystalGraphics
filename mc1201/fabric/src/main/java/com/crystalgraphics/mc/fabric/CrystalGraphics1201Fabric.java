@@ -1,21 +1,16 @@
 package com.crystalgraphics.mc.fabric;
 
-import com.crystalgraphics.mc.platform.PlatformService1201;
-import com.crystalgraphics.platform.CgPlatform;
 import net.fabricmc.api.ClientModInitializer;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
-import static com.crystalgraphics.mc.platform.CrystalGraphics1201.NAME;
-
+/**
+ * Client only. The platform bundle is registered by {@link CrystalGraphics1201FabricCommon}, which runs
+ * on both sides and runs first -- Fabric drains {@code main} entrypoints before {@code client} ones.
+ */
 public final class CrystalGraphics1201Fabric implements ClientModInitializer {
-    private static final Logger LOGGER = LogManager.getLogger(NAME);
 
     @Override
     public void onInitializeClient() {
-        CgPlatform.register(PlatformService1201.getInstance());
         CgEngineFabricEvents.register();
         CgDemoFabricEvents.register();
-        LOGGER.info("[CrystalGraphics] Fabric 1.20.1 platform registered");
     }
 }
