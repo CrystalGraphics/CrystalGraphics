@@ -215,6 +215,8 @@ public final class CgCapabilities {
             if (context == null) context = CgPlatform.capabilities();
             local = detectUncached();
             cachedCaps = local;
+            // Published so the fixed-function guards in CgGL cost a field load. @see CgGL#CORE
+            CgGL.CORE = local.coreProfile;
         }
         return local;
     }

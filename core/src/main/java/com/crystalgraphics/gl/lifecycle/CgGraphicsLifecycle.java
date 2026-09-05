@@ -124,6 +124,12 @@ public final class CgGraphicsLifecycle {
      */
     public static void initContext(int width, int height) {
         CgPlatform.gl().initContext();
+
+        // Probe capabilities here, on the render thread with a live context, so CgGL.CORE is set
+        // before anything can paint. Its guards read the field rather than calling detect() per GL
+        // call, and a fixed-function call that beat the first probe would see false and reach a
+        // backend that refuses it. Cached, so this costs one probe.
+        CgCapabilities.detect();
         onResize(width, height);
         CgRenderPipeline.init();
         CgFallbackTextures.init();

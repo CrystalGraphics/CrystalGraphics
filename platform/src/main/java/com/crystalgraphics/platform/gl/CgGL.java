@@ -26,6 +26,22 @@ public final class CgGL {
     
     public static void init(CgGLBackend dispatch){ backend = dispatch; }
 
+    /**
+     * Whether this context is a core profile. Set by {@link CgCapabilities#detect()}.
+     *
+     * <p>A field rather than {@code CgCapabilities.detect().isCoreProfile()} because every
+     * fixed-function entry point below tests it, so it sits on a hot path and should cost a load
+     * rather than a cached lookup, a null check and a getter across two classes.</p>
+     *
+     * <p><b>False until the first {@code detect()}</b>, which is the whole of the contract. That is
+     * safe because capability probing happens during context init, long before anything paints -- and
+     * it is why this is not assigned in {@link #init}, which runs from {@code CgPlatform.register()};
+     * on MC 1.20+ that is mod construction on a modloading worker, with no GL context on the thread
+     * and no way to probe.</p>
+     */
+    public static boolean CORE;
+
+
     // ── State tracking ────────────────────────────────────────────────────────
     //
     // Each state setter below asks the manager whether the value actually changed, and skips the driver
@@ -960,12 +976,12 @@ public final class CgGL {
      * @see #glPushMatrix</p>
      */
     public static void glEnable(int cap) {
-        if (cap == GL_ALPHA_TEST && CgCapabilities.detect().isCoreProfile()) return;
+        if (cap == GL_ALPHA_TEST && CORE) return;
         if (state().capabilityChanged(cap, true)) backend.glEnable(cap);
     }
 
     public static void glDisable(int cap) {
-        if (cap == GL_ALPHA_TEST && CgCapabilities.detect().isCoreProfile()) return;
+        if (cap == GL_ALPHA_TEST && CORE) return;
         if (state().capabilityChanged(cap, false)) backend.glDisable(cap);
     }
 
@@ -1017,7 +1033,7 @@ public final class CgGL {
      * <b>A no-op on a core profile</b>, where there is no alpha test to configure. @see #glPushMatrix
      */
     public static void glAlphaFunc(int func, float ref) {
-        if (CgCapabilities.detect().isCoreProfile()) return;
+        if (CORE) return;
         if (state().alphaFuncChanged(func, ref)) backend.glAlphaFunc(func, ref);
     }
 
@@ -1267,17 +1283,17 @@ public final class CgGL {
      * whether or not the load lands.</p>
      */
     public static void glPushMatrix() {
-        if (CgCapabilities.detect().isCoreProfile()) return;
+        if (CORE) return;
         backend.glPushMatrix();
     }
 
     public static void glPopMatrix() {
-        if (CgCapabilities.detect().isCoreProfile()) return;
+        if (CORE) return;
         backend.glPopMatrix();
     }
 
     public static void glLoadMatrix(FloatBuffer m) {
-        if (CgCapabilities.detect().isCoreProfile()) return;
+        if (CORE) return;
         backend.glLoadMatrix(m);
     }
 }
