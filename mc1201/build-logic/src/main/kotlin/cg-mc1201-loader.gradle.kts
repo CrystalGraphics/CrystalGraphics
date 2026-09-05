@@ -1,5 +1,25 @@
 plugins { id("cg-java17") }
 
+// LWJGL 3.3.1 -- what MC 1.20.1 ships -- predates Java 21 and does not recognise its JNI version. It
+// patches the JNIEnv function table on a guessed layout anyway; under a debugger's JVMTI agent that
+// table is instrumented, so the write lands past it and the process dies with a native fail-fast
+// (0xC0000409 on Windows) before the window opens.
+//
+// A dev run here is ALWAYS on Java 21: cg-java17 raises the toolchain to 21 so javac can read :core's
+// v65 classes, and ModDevGradle takes the run JVM from the toolchain. So the client runs fine and
+// cannot be debugged -- which reads as an IDE fault rather than a library one.
+//
+// 3.3.3 knows the version and uses the right layout. Dev runs only; nothing shipped resolves LWJGL.
+configurations.all {
+    resolutionStrategy.eachDependency {
+        if (requested.group == "org.lwjgl") {
+            useVersion("3.3.3")
+            because("LWJGL 3.3.1 corrupts the JNIEnv table on Java 21 under a debugger")
+        }
+    }
+}
+
+
 repositories {
     mavenCentral()
     maven("https://maven.neoforged.net/releases") { name = "NeoForge" }
