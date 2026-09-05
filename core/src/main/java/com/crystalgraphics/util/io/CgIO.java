@@ -152,8 +152,38 @@ public class CgIO {
             }
         } catch (Throwable ignored) {}
 
-        // 3. Classpath fallback
-        return CgIO.class.getResourceAsStream(normalized);
+        // 3. Classpath fallback — THROUGH SEVERAL LOADERS, because ours is not the only module.
+        //
+        // `CgIO.class` lives in CrystalGraphics and nearly every asset it is asked for lives in a
+        // CONSUMER (assets/crystalgui/**) -- and the two are not loaded by the same thing. Measured on a
+        // Forge 1.20.1 client: graphicsCore.jar is on the legacy classpath, while the consumer's classes
+        // and resources reach the game only through `-Dfml.modFolders`, which is the mod's own loader.
+        // So CgIO's loader cannot see them at all, and the context loader is the one that can.
+        //
+        // Invisible for as long as step 2 covers the consumer's assets. Minecraft 1.20 is where it stops
+        // covering them: ResourceLocation refuses any path character outside [a-z0-9_.-/], so every asset
+        // with a CAPITAL in its name throws up there, is swallowed, and arrives here -- to be missed
+        // again. Measured over one client run, the correlation was exact and had no exceptions:
+        // JetBrainsMono-Regular.ttf, statusError.svg and dropdownGutter.svg all failed while show.svg,
+        // markdown.svg and folder.svg all loaded. The editor's font is one of the casualties, so the
+        // whole editor draws no text and no gutter -- which reads as a rendering fault rather than a
+        // missing file.
+        //
+        // 1.7.10 never validated the case and the harness registers no resource service at all, so on
+        // both of those every asset is found at this step and neither can see the gap.
+        InputStream fromModule = CgIO.class.getResourceAsStream(normalized);
+        if (fromModule != null) return fromModule;
+
+        String relative = normalized.startsWith("/") ? normalized.substring(1) : normalized;
+        for (ClassLoader loader : new ClassLoader[] {
+                Thread.currentThread().getContextClassLoader(), CgIO.class.getClassLoader() }) {
+            if (loader == null) continue;
+            try {
+                InputStream stream = loader.getResourceAsStream(relative);
+                if (stream != null) return stream;
+            } catch (Throwable ignored) {}
+        }
+        return null;
     }
 
     public static String loadSource(String path) {
