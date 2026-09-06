@@ -15,7 +15,6 @@ public final class CrystalGraphics1201NeoForge {
     public CrystalGraphics1201NeoForge() {
         CgPlatform.register(PlatformService1201.getInstance());
         CgEngineNeoForgeEvents.register();
-        CgDemoNeoForgeEvents.register();
         LOGGER.info("[CrystalGraphics] NeoForge 1.20.4 platform registered");
     }
 }

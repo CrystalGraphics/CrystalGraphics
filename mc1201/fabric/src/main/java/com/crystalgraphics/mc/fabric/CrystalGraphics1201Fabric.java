@@ -11,6 +11,5 @@ public final class CrystalGraphics1201Fabric implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         CgEngineFabricEvents.register();
-        CgDemoFabricEvents.register();
     }
 }
