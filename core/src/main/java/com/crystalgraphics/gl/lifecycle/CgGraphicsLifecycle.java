@@ -328,6 +328,22 @@ public final class CgGraphicsLifecycle {
     }
 
     /**
+     * Stops the engine without freeing anything — for a host that is <b>still rendering</b>.
+     *
+     * <p>Every entry point below becomes a no-op, and nothing is released: at process exit the OS
+     * reclaims it regardless, and releasing early is what leaves the engine half-dead while frames are
+     * still arriving. Minecraft dispatches render stages after its shutdown signal, which is that
+     * case exactly.</p>
+     *
+     * <p>Prefer {@link #destroyContext()} where rendering has definitively stopped and the resources
+     * should be released. Both are terminal: neither supports a later {@link #initContext}.</p>
+     */
+    public static void shutdown() {
+        destroyed = true;
+        initialized = false;
+    }
+
+    /**
      * Destroys all CrystalGraphics GL resources in canonical dependency order,
      * then resets all backend-capability caches.
      *
@@ -351,38 +367,7 @@ public final class CgGraphicsLifecycle {
      * correction here rather than a quiet deletion. Supporting genuine context recreation means
      * giving every latching singleton a real reset path first; until then, treat this as terminal.</p>
      */
-    /**
-     * <b>Stops the engine without dismantling it</b> — what a host calls when the <em>process</em> is
-     * ending, rather than the context.
-     *
-     * <p>Every entry point here becomes a no-op, so nothing of ours renders again. Nothing is freed,
-     * and that is the point: at process exit the OS reclaims every GL object anyway, while freeing them
-     * early opens a window in which the engine is half-dead and frames are still arriving.</p>
-     *
-     * <p>That window is not hypothetical. Minecraft dispatches render stages for a frame or two after
-     * its shutdown event, so a teardown wired there deleted every registry and the next frame threw
-     * {@code "CgMaterialRegistry has been deleted"} out of a render event — a crash on quitting the
-     * game. Defending each registry against it is the wrong shape: there are eight of them, every
-     * consumer holding a material or a mesh is another caller to audit, and the one that is forgotten
-     * fails only on shutdown, where nobody looks.</p>
-     *
-     * <p>{@link #destroyContext()} remains the right call for a host that genuinely destroys a context
-     * and keeps running — the harness between scenes, a test. It frees, because there is a next
-     * context to protect. This does not, because there is no next anything.</p>
-     */
-    public static void shutdown() {
-        destroyed = true;
-        initialized = false;
-    }
-
     public static void destroyContext() {
-        // FIRST, not last: the flag answers "is there a context to use", and that becomes false when
-        // teardown starts, not twenty sweeps later. A host keeps rendering across this -- Forge fires
-        // GameShuttingDownEvent from Minecraft.close(), which then saves the world behind a progress
-        // screen -- and those frames were told the context was live.
-        initialized = false;
-        destroyed = true;
-
         // Step 0: External listeners, BEFORE the engine frees anything.
         //
         // This ordering is the whole contract. A listener (CrystalGUI's CgUiLifecycle, a mod's
@@ -475,5 +460,7 @@ public final class CgGraphicsLifecycle {
         currentWidth = -1;
         currentHeight = -1;
         frameCounter = 0;
+        
+        shutdown();
     }
 }
