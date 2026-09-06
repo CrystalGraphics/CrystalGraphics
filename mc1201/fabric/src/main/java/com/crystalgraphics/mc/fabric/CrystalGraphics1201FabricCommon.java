@@ -21,12 +21,9 @@ import static com.crystalgraphics.mc.platform.CrystalGraphics1201.NAME;
  * dedicated-server smoke check.</p>
  */
 public final class CrystalGraphics1201FabricCommon implements ModInitializer {
-
-    private static final Logger LOGGER = LogManager.getLogger(NAME);
-
+    
     @Override
     public void onInitialize() {
         CgPlatform.register(PlatformService1201.getInstance());
-        LOGGER.info("[CrystalGraphics] Fabric 1.20.1 platform registered");
     }
 }
