@@ -2,7 +2,7 @@
 // CrystalShader — text.shader
 // Consolidated bitmap/MSDF/MTSDF text material, replacing the three raw shaders
 // (bitmap_text/msdf_text/mtsdf_text .vert/.frag) previously hand-maintained by
-// CgTextRenderer. See CrystalGraphics/docs_research/CGTEXTRENDERER_MATERIAL_OVERHAUL_PLAN.md.
+// CgTextRenderer. See CrystalGraphics/docs_research/plan/text-material.md.
 // ═════════════════════════════════════════════════════════════════════════════
 
 #type pos2_uv2_col4ub

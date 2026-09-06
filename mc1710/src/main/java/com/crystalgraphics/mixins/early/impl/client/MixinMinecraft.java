@@ -68,7 +68,7 @@ public class MixinMinecraft {
      * given a file-based classpath cannot do, because the method is in no jar, in no source tree, and in
      * nothing a resource lookup can return. Only bytecode read back out of the running loader carries it.
      * That is the whole claim of CrystalGUI's live name environment, and until this existed the claim had
-     * no callable witness. See {@code plan_m12.md} §26.4 and exit criterion 3.</p>
+     * no callable witness. See {@code plan/platform-mc1710.md} §26.4 and exit criterion 3.</p>
      *
      * <p>It reports live state rather than a constant, so a script that prints it demonstrates the method
      * really ran inside the game rather than resolving against something stubbed.</p>

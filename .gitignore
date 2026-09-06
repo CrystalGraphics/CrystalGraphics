@@ -44,3 +44,7 @@ addon.late.local.gradle.kts
 layout.json
 mc1201/*/build/mc-src/
 
+
+# The plans, cloned by hand from a private remote (or reached at ../plan/ when nested
+# inside CrystalGUI). Absent is normal.
+/plan/
