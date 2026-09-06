@@ -187,4 +187,10 @@ public final class RecordingGlBackend extends CgGLBackend {
     @Override public void glUniform1(int location, IntBuffer values) { record("glUniform1"); }
     @Override public void glUniformMatrix3(int location, boolean transpose, FloatBuffer value) { record("glUniformMatrix3"); }
     @Override public void glUniformMatrix4(int location, boolean transpose, FloatBuffer value) { record("glUniformMatrix4"); }
+
+    @Override
+    public void glReadPixels(int x, int y, int width, int height,
+                             int format, int type, java.nio.ByteBuffer pixels) {
+        record("glReadPixels", x, y, width, height, format, type);
+    }
 }
