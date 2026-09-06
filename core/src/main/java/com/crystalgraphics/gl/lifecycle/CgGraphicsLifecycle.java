@@ -53,6 +53,15 @@ public final class CgGraphicsLifecycle {
     private static final Logger LOGGER = Logger.getLogger(CgGraphicsLifecycle.class.getName());
 
     private static volatile boolean initialized = false;
+
+    /**
+     * Set by {@link #destroyContext()}, cleared only by an EXPLICIT {@link #initContext}.
+     *
+     * <p>The lazy re-init in {@link #onOpaquePass} exists for a host that never announced its context.
+     * After a teardown it is harmful: every registry is gone and stays gone, so re-initialising only
+     * flips this back to true and invites the next frame to bind a deleted material.</p>
+     */
+    private static volatile boolean destroyed = false;
     /**
      * -- GETTER --
      * Current window width in pixels, as last reported to 
@@ -136,6 +145,7 @@ public final class CgGraphicsLifecycle {
         warmUpDeferredStartupCosts();
 
         initialized = true;
+        destroyed = false;   // an explicit init is what makes a context live again
 
         // Last, and after `initialized` is set: a listener may legitimately touch anything the
         // engine just brought up (pipeline, fallback textures, capability probes), and may call back
@@ -215,7 +225,7 @@ public final class CgGraphicsLifecycle {
         // do not, which would otherwise stay trusted-but-stale until the next frame boundary.
         CgGlState.invalidateAllIfPresent();
 
-        if (!initialized) initContext(w, h);
+        if (!initialized && !destroyed) initContext(w, h);
         else if (w != currentWidth || h != currentHeight) onResize(w, h);
  
         CgRenderDemo.INSTANCE.renderOpaque(partialTick, w, h, sourceFboId);
@@ -313,6 +323,13 @@ public final class CgGraphicsLifecycle {
      * giving every latching singleton a real reset path first; until then, treat this as terminal.</p>
      */
     public static void destroyContext() {
+        // FIRST, not last: the flag answers "is there a context to use", and that becomes false when
+        // teardown starts, not twenty sweeps later. A host keeps rendering across this -- Forge fires
+        // GameShuttingDownEvent from Minecraft.close(), which then saves the world behind a progress
+        // screen -- and those frames were told the context was live.
+        initialized = false;
+        destroyed = true;
+
         // Step 0: External listeners, BEFORE the engine frees anything.
         //
         // This ordering is the whole contract. A listener (CrystalGUI's CgUiLifecycle, a mod's
@@ -401,7 +418,7 @@ public final class CgGraphicsLifecycle {
         CgInstanceVertexArrayBinding.resetCoreCache();
         CgInstanceRenderer.resetCoreCache();
 
-        initialized = false;
+        // (initialized was cleared at the top of this method.)
         currentWidth = -1;
         currentHeight = -1;
         frameCounter = 0;
