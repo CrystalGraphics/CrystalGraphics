@@ -66,8 +66,11 @@ final class CgEngineFabricEvents {
     // ── Shutdown ───────────────────────────────────────────────────────────────
 
     private static void registerShutdown() {
-        // CLIENT_STOPPING fires from Minecraft.stop() before the GL context is torn down.
-        ClientLifecycleEvents.CLIENT_STOPPING.register(client ->
-                CgPlatform.lifecycle().onContextDestroy());
+        // CLIENT_STOPPING fires from Minecraft.stop(), and rendering has NOT finished by then.
+        // STOP, DO NOT DISMANTLE. Minecraft dispatches render stages for a frame or two after
+        // this fires, so tearing the engine down here deleted every registry and the next frame
+        // threw out of a render event -- a crash on quitting. Nothing is freed because the process
+        // is ending and the OS reclaims it anyway. @see CgGraphicsLifecycle#shutdown
+        ClientLifecycleEvents.CLIENT_STOPPING.register(client -> CgGraphicsLifecycle.shutdown());
     }
 }

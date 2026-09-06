@@ -70,6 +70,10 @@ public final class CgEngineNeoForgeEvents {
     }
 
     private static void onGameShuttingDown(GameShuttingDownEvent event) {
-        CgPlatform.lifecycle().onContextDestroy();
+        // STOP, DO NOT DISMANTLE. Minecraft dispatches render stages for a frame or two after
+        // this fires, so tearing the engine down here deleted every registry and the next frame
+        // threw out of a render event -- a crash on quitting. Nothing is freed because the process
+        // is ending and the OS reclaims it anyway. @see CgGraphicsLifecycle#shutdown
+        CgGraphicsLifecycle.shutdown();
     }
 }
