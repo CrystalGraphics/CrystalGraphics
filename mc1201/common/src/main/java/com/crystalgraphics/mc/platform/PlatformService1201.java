@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.platform;
 
+import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.mc.platform.gl.GL1201Backend;
 import com.crystalgraphics.mc.platform.gl.GL1201Context;
 import com.crystalgraphics.mc.platform.service.CursorService1201;
@@ -88,7 +89,15 @@ public final class PlatformService1201 implements CgPlatformService {
     private CgRenderingService rendering;
 
     @Override public CgGLBackend gl() {
-        if (glBackend == null) glBackend = new GL1201Backend();
+        if (glBackend == null) {
+            // THE CEILING, DECLARED BEFORE ANY GL WORK -- CgBindingPoints allocates by counting DOWN
+            // from the limit, so it has to be known first. Here because building the GL backend is a
+            // client event by construction, so naming Blaze3D cannot reach a server. NOT in
+            // onContextInit, which this loader never calls: the context initialises lazily from
+            // onOpaquePass on the first world render, so a hook there looks right and never fires.
+            CgCapabilities.setHostTextureUnitCeiling(Blaze3dTextureUnits.count());
+            glBackend = new GL1201Backend();
+        }
         return glBackend;
     }
 
