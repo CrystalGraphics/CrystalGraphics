@@ -1102,7 +1102,17 @@ public final class CgGL {
         return backend.glGetInteger(pname);
     }
 
-    /** Reads a rectangle of the bound READ framebuffer. Synchronous: a full pipeline stall. */
+    /**
+     * Reads a rectangle of the bound read framebuffer into {@code pixels}.
+     *
+     * <pre>{@code
+     * ByteBuffer px = ByteBuffer.allocateDirect(w * h * 4).order(ByteOrder.nativeOrder());
+     * CgGL.glReadPixels(x, y, w, h, CgGL.GL_RGBA, CgGL.GL_UNSIGNED_BYTE, px);
+     * }</pre>
+     *
+     * <p>Synchronous, so it stalls the pipeline: diagnostics only. The buffer must be direct and large
+     * enough for {@code width * height} pixels in the given format.</p>
+     */
     public static void glReadPixels(int x, int y, int width, int height,
                                     int format, int type, ByteBuffer pixels) {
         backend.glReadPixels(x, y, width, height, format, type, pixels);

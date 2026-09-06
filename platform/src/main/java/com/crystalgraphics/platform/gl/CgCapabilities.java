@@ -104,12 +104,10 @@ public final class CgCapabilities {
     @Getter(AccessLevel.NONE) int maxTextureUnits;
 
     /**
-     * A ceiling the HOST imposes on usable texture units, independent of what GL reports.
+     * A ceiling the host imposes on usable texture units, independent of what GL reports.
      *
-     * <p>A host with its own GL state tracker models a fixed number of units and caches each one's
-     * binding; binding above that leaves the driver in a state its shadow cannot represent, and the
-     * damage lands on whoever samples unit 0 next. Declared by the LOADER, because it is a fact about
-     * the process rather than the driver — unset, nothing is clamped.</p>
+     * <p>A host with its own GL state tracker models a fixed number of units; binding above that
+     * corrupts sampling for whoever draws next. Declared by the loader — unset, nothing is clamped.</p>
      */
     @Getter(AccessLevel.NONE) private static volatile int hostTextureUnitCeiling = Integer.MAX_VALUE;
 
@@ -119,8 +117,8 @@ public final class CgCapabilities {
     }
 
     /**
-     * What GL reports, clamped by whatever the host declared. Clamped on READ so a loader registering
-     * its ceiling after the capability probe has run still gets it.
+     * What GL reports, clamped by whatever the host declared via
+     * {@link #setHostTextureUnitCeiling(int)}. Clamped on read, so registration order does not matter.
      */
     public int getMaxTextureUnits() {
         return Math.min(maxTextureUnits, hostTextureUnitCeiling);
