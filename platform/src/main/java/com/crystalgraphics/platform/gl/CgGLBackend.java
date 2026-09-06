@@ -297,6 +297,8 @@ public abstract class CgGLBackend {
     // -------------------------------------------------------------------------
 
     public abstract int glGetInteger(int pname);
+    public abstract void glReadPixels(int x, int y, int width, int height,
+                                      int format, int type, ByteBuffer pixels);
     public abstract void glGetInteger(int pname, IntBuffer params);
     public abstract boolean glGetBoolean(int pname);
     public abstract void glGetBoolean(int pname, ByteBuffer params);

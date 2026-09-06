@@ -967,4 +967,10 @@ public final class GL1201Backend extends CgGLBackend {
     public void glDeleteQuery(int query) {
         GL15C.glDeleteQueries(query);
     }
+
+    @Override
+    public void glReadPixels(int x, int y, int width, int height,
+                             int format, int type, java.nio.ByteBuffer pixels) {
+        org.lwjgl.opengl.GL11C.glReadPixels(x, y, width, height, format, type, pixels);
+    }
 }

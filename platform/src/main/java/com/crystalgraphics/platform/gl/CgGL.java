@@ -1102,6 +1102,12 @@ public final class CgGL {
         return backend.glGetInteger(pname);
     }
 
+    /** Reads a rectangle of the bound READ framebuffer. Synchronous: a full pipeline stall. */
+    public static void glReadPixels(int x, int y, int width, int height,
+                                    int format, int type, ByteBuffer pixels) {
+        backend.glReadPixels(x, y, width, height, format, type, pixels);
+    }
+
     public static void glGetInteger(int pname, IntBuffer params) {
         backend.glGetInteger(pname, params);
     }

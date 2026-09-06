@@ -993,4 +993,10 @@ public final class Lwjgl2GLBackend extends CgGLBackend {
     public void glLoadMatrix(FloatBuffer m) {
         GL11.glLoadMatrix(m);
     }
+
+    @Override
+    public void glReadPixels(int x, int y, int width, int height,
+                             int format, int type, java.nio.ByteBuffer pixels) {
+        org.lwjgl.opengl.GL11.glReadPixels(x, y, width, height, format, type, pixels);
+    }
 }
