@@ -6,6 +6,17 @@
 
 Uses `fabric-loom 1.16.2`. See `build.gradle.kts` for version pins under `mc1201.*` keys.
 
+## The loader is registration only
+
+**Two entry points, and both are needed.** `CrystalGraphics1201FabricCommon` is the `main` one and
+registers the platform bundle, because a dedicated server runs no `client` entrypoint — registering it
+there would leave `CgPlatform` unset for the whole server process. `CrystalGraphics1201Fabric` is the
+`client` one and carries the `Events` inner class, which is all render hooks.
+
+Which event, and which stage of it. What the engine then does — bind the main render target, run the
+opaque or transparent pass, forward a reload, stop at shutdown — is `:mc1201:common`'s `Lifecycle1201`,
+shared by all three.
+
 ## Minecraft Source Location
 
 Decompiled, Parchment-mapped Fabric MC 1.20.1 sources are extracted into two subdirectories:
