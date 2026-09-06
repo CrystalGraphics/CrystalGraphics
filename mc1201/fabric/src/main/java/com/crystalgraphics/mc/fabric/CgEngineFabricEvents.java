@@ -1,13 +1,10 @@
 package com.crystalgraphics.mc.fabric;
 
-import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
-import com.crystalgraphics.mc.platform.FrameHooks1201;
-import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.mc.platform.Lifecycle1201;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
 import net.fabricmc.fabric.api.resource.SimpleSynchronousResourceReloadListener;
-import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.PackType;
 import net.minecraft.server.packs.resources.ResourceManager;
@@ -15,8 +12,10 @@ import net.minecraft.server.packs.resources.ResourceManager;
 import static com.crystalgraphics.mc.platform.CrystalGraphics1201.MODID;
 
 /**
- * Core engine event registrations for the Fabric loader.
- * Covers the three engine lifecycle concerns: asset reload, render pipeline, and shutdown.
+ * Fabric's engine event registrations — <b>registration only</b>.
+ *
+ * <p>Which callback to hook. Everything the engine then does is {@link Lifecycle1201}'s, shared with
+ * Forge and NeoForge.</p>
  */
 final class CgEngineFabricEvents {
     private CgEngineFabricEvents() {}
@@ -27,7 +26,7 @@ final class CgEngineFabricEvents {
         registerShutdown();
     }
 
-    // ── Asset reload ───────────────────────────────────────────────────────────
+    // -- Asset reload -----------------------------------------------------------
 
     private static void registerReload() {
         ResourceManagerHelper.get(PackType.CLIENT_RESOURCES).registerReloadListener(
@@ -36,38 +35,24 @@ final class CgEngineFabricEvents {
                         return new ResourceLocation(MODID, "asset_reload");
                     }
                     @Override public void onResourceManagerReload(ResourceManager manager) {
-                        CgPlatform.reload().onReload();
+                        Lifecycle1201.reload();
                     }
                 });
     }
 
-    // ── Render pipeline ────────────────────────────────────────────────────────
+    // -- Render pipeline --------------------------------------------------------
 
     private static void registerRenderFrame() {
-        WorldRenderEvents.AFTER_ENTITIES.register(context -> {
-            Minecraft mc = Minecraft.getInstance();
-            mc.getMainRenderTarget().bindWrite(false);
-            CgGraphicsLifecycle.onOpaquePass(
-                    context.tickDelta(),
-                    mc.getWindow().getWidth(),
-                    mc.getWindow().getHeight(),
-                    mc.getMainRenderTarget().frameBufferId);
-        });
-        WorldRenderEvents.AFTER_TRANSLUCENT.register(context -> {
-            Minecraft mc = Minecraft.getInstance();
-            mc.getMainRenderTarget().bindWrite(false);
-            // Note: CG geometry renders into main FBO outside Iris's GBuffer chain.
-            // See CgIrisCompat for detection API if Iris-specific behaviour is needed.
-            CgGraphicsLifecycle.onTransparentPass();
-            FrameHooks1201.endFrame();
-        });
+        // AFTER_ENTITIES and AFTER_TRANSLUCENT are Fabric's names for the two moments Forge calls
+        // AFTER_BLOCK_ENTITIES and AFTER_PARTICLES.
+        WorldRenderEvents.AFTER_ENTITIES.register(context -> Lifecycle1201.opaquePass(context.tickDelta()));
+        WorldRenderEvents.AFTER_TRANSLUCENT.register(context -> Lifecycle1201.transparentPass());
     }
 
-    // ── Shutdown ───────────────────────────────────────────────────────────────
+    // -- Shutdown ---------------------------------------------------------------
 
     private static void registerShutdown() {
         // CLIENT_STOPPING fires from Minecraft.stop(), and rendering has NOT finished by then.
-        // STOP, DO NOT DISMANTLE: MC still renders after this fires. @see CgGraphicsLifecycle#shutdown
-        ClientLifecycleEvents.CLIENT_STOPPING.register(client -> CgGraphicsLifecycle.shutdown());
+        ClientLifecycleEvents.CLIENT_STOPPING.register(client -> Lifecycle1201.shutdown());
     }
 }

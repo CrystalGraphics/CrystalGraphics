@@ -1,9 +1,6 @@
 package com.crystalgraphics.mc.neoforge;
 
-import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
-import com.crystalgraphics.mc.platform.FrameHooks1201;
-import com.crystalgraphics.platform.CgPlatform;
-import net.minecraft.client.Minecraft;
+import com.crystalgraphics.mc.platform.Lifecycle1201;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.Mod;
@@ -15,8 +12,10 @@ import net.neoforged.neoforge.event.GameShuttingDownEvent;
 import static com.crystalgraphics.mc.platform.CrystalGraphics1201.MODID;
 
 /**
- * Core engine event subscriptions for the NeoForge loader.
- * Covers the three engine lifecycle concerns: asset reload, render pipeline, and shutdown.
+ * NeoForge's engine event subscriptions — <b>registration only</b>.
+ *
+ * <p>Which event, and which stage of it. Everything the engine then does is
+ * {@link Lifecycle1201}'s, shared with Forge and Fabric.</p>
  */
 public final class CgEngineNeoForgeEvents {
     private CgEngineNeoForgeEvents() {}
@@ -28,7 +27,7 @@ public final class CgEngineNeoForgeEvents {
         NeoForge.EVENT_BUS.addListener(CgEngineNeoForgeEvents::onGameShuttingDown);
     }
 
-    // ── MOD bus ────────────────────────────────────────────────────────────────
+    // -- MOD bus ----------------------------------------------------------------
 
     @Mod.EventBusSubscriber(modid = MODID, bus = Mod.EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
     public static final class ModBus {
@@ -38,39 +37,27 @@ public final class CgEngineNeoForgeEvents {
         public static void onRegisterReloadListeners(RegisterClientReloadListenersEvent event) {
             event.registerReloadListener(
                     (stage, manager, prepProfiler, applyProfiler, backgroundExecutor, gameExecutor) ->
-                            stage.wait(null).thenRunAsync(() -> CgPlatform.reload().onReload(), gameExecutor));
+                            stage.wait(null).thenRunAsync(Lifecycle1201::reload, gameExecutor));
         }
     }
 
-    // ── NEOFORGE bus ───────────────────────────────────────────────────────────
+    // -- NEOFORGE bus -----------------------------------------------------------
 
     private static void onRenderLevelOpaque(RenderLevelStageEvent event) {
         // Validated: AFTER_BLOCK_ENTITIES fires at LevelRenderer.java line ~1140 (MC 1.20.4),
         // after block entities, before renderSectionLayer(translucent).
         if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES) return;
-        Minecraft mc = Minecraft.getInstance();
-        mc.getMainRenderTarget().bindWrite(false);
-        CgGraphicsLifecycle.onOpaquePass(
-                event.getPartialTick(),
-                mc.getWindow().getWidth(),
-                mc.getWindow().getHeight(),
-                mc.getMainRenderTarget().frameBufferId);
+        Lifecycle1201.opaquePass(event.getPartialTick());
     }
 
     private static void onRenderLevelTransparent(RenderLevelStageEvent event) {
         // Validated: AFTER_PARTICLES fires at LevelRenderer.java line ~1215/1230 (MC 1.20.4),
         // after translucent terrain + tripwire + particles (both Fabulous and non-Fabulous).
         if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_PARTICLES) return;
-        Minecraft mc = Minecraft.getInstance();
-        mc.getMainRenderTarget().bindWrite(false);
-        // Note: CG geometry renders into main FBO outside Iris's GBuffer chain.
-        // See CgIrisCompat for detection API if Iris-specific behaviour is needed.
-        CgGraphicsLifecycle.onTransparentPass();
-        FrameHooks1201.endFrame();
+        Lifecycle1201.transparentPass();
     }
 
     private static void onGameShuttingDown(GameShuttingDownEvent event) {
-        // STOP, DO NOT DISMANTLE: MC still renders after this fires. @see CgGraphicsLifecycle#shutdown
-        CgGraphicsLifecycle.shutdown();
+        Lifecycle1201.shutdown();
     }
 }
