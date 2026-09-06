@@ -328,22 +328,6 @@ public final class CgGraphicsLifecycle {
     }
 
     /**
-     * Stops the engine without freeing anything — for a host that is <b>still rendering</b>.
-     *
-     * <p>Every entry point below becomes a no-op, and nothing is released: at process exit the OS
-     * reclaims it regardless, and releasing early is what leaves the engine half-dead while frames are
-     * still arriving. Minecraft dispatches render stages after its shutdown signal, which is that
-     * case exactly.</p>
-     *
-     * <p>Prefer {@link #destroyContext()} where rendering has definitively stopped and the resources
-     * should be released. Both are terminal: neither supports a later {@link #initContext}.</p>
-     */
-    public static void shutdown() {
-        destroyed = true;
-        initialized = false;
-    }
-
-    /**
      * Destroys all CrystalGraphics GL resources in canonical dependency order,
      * then resets all backend-capability caches.
      *
@@ -463,4 +447,21 @@ public final class CgGraphicsLifecycle {
         
         shutdown();
     }
+
+    /**
+     * Stops the engine without freeing anything — for a host that is <b>still rendering</b>.
+     *
+     * <p>Every entry point below becomes a no-op, and nothing is released: at process exit the OS
+     * reclaims it regardless, and releasing early is what leaves the engine half-dead while frames are
+     * still arriving. Minecraft dispatches render stages after its shutdown signal, which is that
+     * case exactly.</p>
+     *
+     * <p>Prefer {@link #destroyContext()} where rendering has definitively stopped and the resources
+     * should be released. Both are terminal: neither supports a later {@link #initContext}.</p>
+     */
+    public static void shutdown() {
+        destroyed = true;
+        initialized = false;
+    }
+
 }
