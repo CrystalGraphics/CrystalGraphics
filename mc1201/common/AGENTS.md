@@ -16,8 +16,11 @@ No loader-specific types (Forge/NeoForge/Fabric APIs) appear in this module.
 
 | Package | AGENTS.md | What it contains |
 |---|---|---|
-| `com.crystalgraphics.mc.platform` | [platform/AGENTS.md](src/main/java/com/crystalgraphics/mc/platform/AGENTS.md) | GL backend, services, lifecycle bridge, `PlatformService1201` |
-| `com.crystalgraphics.mc.mixin` | ↑ same file | `MixinGameRenderer`, `MixinMinecraftShutdown` |
+| `com.crystalgraphics.mc.platform` | [platform/AGENTS.md](src/main/java/com/crystalgraphics/mc/platform/AGENTS.md) | The GL backend, the platform services, `PlatformService1201`, and `Lifecycle1201` — the one class a loader talks to |
+
+Each loader declares a mixin config naming `com.crystalgraphics.mc.mixin`, and all three are empty:
+the 1.20.x hooks are native loader events, and a mixin here would be the last resort the project's
+mixin policy describes.
 
 ## Key Design Points
 
@@ -26,44 +29,25 @@ No loader-specific types (Forge/NeoForge/Fabric APIs) appear in this module.
 - **`legacyForge` not `neoForge`**: NeoForm 1.20.1 was never published; `legacyForge{version="1.20.1-47.2.0"}` is the only ModDevGradle path
 
 
-**⚠️ TODO — `onFrameRendered()` native wiring not yet done for this loader family.**
-`LifecycleService1201.onFrameRendered()` is implemented (delegates to
-`CgGraphicsLifecycle.tickFrame()`), but nothing in forge/neoforge/fabric calls it yet.
-mc1710 wires it via a dedicated mixin injection at `@At("TAIL")` of
-`EntityRenderer.updateCameraAndRender` — a single per-call hook, verified to have no early
-returns, that fires exactly once whether or not a world is loaded and whether or not a GUI
-screen is open (see `CrystalGraphics/mc1710/.../CgRenderHook.java`'s class javadoc for the
-full verification). This is deliberately a *different* injection point from the existing
-`AFTER_BLOCK_ENTITIES`/`AFTER_PARTICLES` world-render-stage events that already call
-`onOpaquePass(...)`/`onTransparentPass()` — those, and the demo-only `RenderGuiEvent.Post`
-(Forge/NeoForge) / `HudRenderCallback` (Fabric) hooks used by `CgDemo*Events`, all live
-**inside** `GameRenderer.render(...)`'s `if (renderLevel && this.minecraft.level != null)`
-branch (verified against decompiled `GameRenderer.java` for both Forge and NeoForge) — none
-of them fire on GUI-only/no-world screens (main menu, etc.), which instead take the sibling
-`else if (this.minecraft.screen != null)` branch that calls
-`ForgeHooksClient.drawScreen(...)` directly, bypassing `gui.render()` entirely. So wiring
-`onFrameRendered()` to any of those would reproduce the exact gap mc1710 just closed.
+## Open: `onFrameRendered()` is not wired on 1201
 
-**Confirmed correct hook for Forge and NeoForge** (verified against decompiled
-`Minecraft.java`, both loaders): `TickEvent.RenderTickEvent` with `Phase.END`
-(`net.minecraftforge.event.TickEvent.RenderTickEvent` / `net.neoforged.neoforge.event.TickEvent.RenderTickEvent`),
-posted via `ForgeEventFactory.onRenderTickEnd(...)` / `EventHooks.onRenderTickEnd(...)`
-immediately after `this.gameRenderer.render(partialTick, nanoTime, renderLevel)` returns in
-`Minecraft.runTick(boolean)`, itself gated by `if (!this.noRender)`. This wraps the *entire*
-`GameRenderer.render` call — both the world+GUI branch and the no-world+screen branch — so
-it is the true per-loader equivalent of `updateCameraAndRender`'s `@At("TAIL")`, fires
-natively (no mixin needed), and closes the known gap. Not yet wired — add a
-`@SubscribeEvent`/`addListener` handler in `CgEngineForgeEvents`/`CgEngineNeoForgeEvents`
-filtering to `Phase.END`, calling `CgPlatform.lifecycle().onFrameRendered()`.
+`LifecycleService1201.onFrameRendered()` delegates to `CgGraphicsLifecycle.tickFrame()`, and no loader
+calls it. Until it is wired, `onOpaquePass` calls `tickFrame()` itself as a stand-in — which only
+covers frames that render a world.
 
-**Fabric equivalent still unresearched.** Fabric API's per-game-tick events
-(`ClientTickEvents.END_CLIENT_TICK`) run at the fixed 20/sec tick rate, decoupled from the
-render frame rate, so they are not equivalent. Whether Fabric API exposes a native
-once-per-render-frame event wrapping the same `GameRenderer.render` call (Forge/NeoForge's
-`RenderTickEvent.END` equivalent) has not yet been confirmed — if none exists, a mixin
-targeting the same `Minecraft.runTick`/`GameRenderer.render` tail may be unavoidable for
-Fabric specifically (would still be the last-resort case per the project's mixin policy).
+**The world-render-stage events are not the hook.** `AFTER_BLOCK_ENTITIES` and `AFTER_PARTICLES` sit
+inside `GameRenderer.render`'s `if (renderLevel && minecraft.level != null)` branch, so they never fire
+on a GUI-only frame — the main menu takes the sibling `else if (minecraft.screen != null)` branch
+instead. Wiring the per-frame tick to them would leave exactly the gap mc1710 closed with a
+`@At("TAIL")` injection on `EntityRenderer.updateCameraAndRender`.
 
-Until any of this lands, `CgGraphicsLifecycle.onOpaquePass()` still calls `tickFrame()`
-directly as a temporary safety net (see its own code comment) — remove that once this is
-wired, since it only covers the in-world case.
+**Forge and NeoForge have a native equivalent**, verified against decompiled `Minecraft.java` for both:
+`TickEvent.RenderTickEvent` at `Phase.END`, posted immediately after
+`gameRenderer.render(partialTick, nanoTime, renderLevel)` returns in `Minecraft.runTick(boolean)`. It
+wraps the whole call — world branch and screen branch alike — so it needs no mixin. Add a handler in
+`CrystalGraphics1201Forge.Events` / `CrystalGraphics1201NeoForge.Events` filtering on `Phase.END`.
+
+**Fabric has no confirmed equivalent.** Its `ClientTickEvents.END_CLIENT_TICK` runs at the fixed 20 Hz
+tick, decoupled from the frame rate. Whether Fabric API exposes a once-per-render-frame event over the
+same call is unresearched; if none exists, a mixin on the same tail may be unavoidable there, and
+would be the last-resort case the project's mixin policy describes.

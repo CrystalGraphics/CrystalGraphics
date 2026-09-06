@@ -8,6 +8,16 @@ Uses ModDevGradle legacyForge (`net.neoforged.moddev.legacyforge`), which suppor
 MinecraftForge 1.17–1.20.1 and is Gradle 9 + JDK 25 compatible. See `build.gradle.kts`
 for version pins under `mc1201.forge` / `mc1201.parchment.*` keys.
 
+## The loader is registration only
+
+One `@Mod` class, `CrystalGraphics1201Forge`. Its `Events` inner class holds the two
+`@Mod.EventBusSubscriber` buses: MOD for the reload listener, FORGE+CLIENT for the two render stages
+and the shutdown signal.
+
+Which event, and which stage of it. What the engine then does — bind the main render target, run the
+opaque or transparent pass, forward a reload, stop at shutdown — is `:mc1201:common`'s `Lifecycle1201`,
+shared by all three.
+
 ## Minecraft Source Location
 
 Decompiled, Parchment-mapped MinecraftForge + MC 1.20.1 sources are extracted into two subdirectories:
