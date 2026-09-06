@@ -131,6 +131,18 @@ public final class CgGraphicsLifecycle {
      * Must be called once on the GL thread after context creation,
      * before any material or fallback-texture usage.
      */
+    /**
+     * Whether the GL context has been torn down and not explicitly re-initialised.
+     *
+     * <p>What tells a <em>dead</em> resource from a <em>misused</em> one. Every registry is emptied by
+     * {@link #destroyContext()}, and a host keeps dispatching render events until the process actually
+     * exits — so a material bound after this point is a shutdown race, not a caller bug, and the
+     * resource layer answers it by doing nothing rather than by throwing.</p>
+     */
+    public static boolean isContextDestroyed() {
+        return destroyed;
+    }
+
     public static void initContext(int width, int height) {
         CgPlatform.gl().initContext();
 
@@ -200,6 +212,10 @@ public final class CgGraphicsLifecycle {
      * @param height new viewport height in pixels
      */
     public static void onResize(int width, int height) {
+        // Every registry below is gone after a teardown, and a host forwards its window events until
+        // the process actually exits. @see #onOpaquePass
+        if (destroyed) return;
+
         CgFrameBufferRegistry.get().onResize(width, height);
         CgTextRendererRegistry.get().onResize(width, height);
         CgRenderPipeline.onSceneResize();
@@ -223,11 +239,21 @@ public final class CgGraphicsLifecycle {
         // transparent passes MC draws translucent terrain and particles, and every mod hooking the same
         // render stages runs too. The scopes below adopt the slots they name; this covers the ones they
         // do not, which would otherwise stay trusted-but-stale until the next frame boundary.
+        //
+        // NOTHING RUNS AFTER A TEARDOWN. Minecraft keeps dispatching render stages for a frame or two
+        // after GameShuttingDownEvent, and by then every registry is deleted -- so this pass reached
+        // CgMaterial.load and threw "CgMaterialRegistry has been deleted" out of a render event, which
+        // surfaces as a crash on quitting the game.
+        //
+        // BEFORE the resize branch too: `destroyed` used to gate only the lazy re-init below, so the
+        // else-if could still call onResize on a context that is gone.
+        if (destroyed) return;
+
         CgGlState.invalidateAllIfPresent();
 
-        if (!initialized && !destroyed) initContext(w, h);
+        if (!initialized) initContext(w, h);
         else if (w != currentWidth || h != currentHeight) onResize(w, h);
- 
+
         CgRenderDemo.INSTANCE.renderOpaque(partialTick, w, h, sourceFboId);
     }
 
@@ -256,6 +282,9 @@ public final class CgGraphicsLifecycle {
      * its own synthetic frame numbers instead.</p>
      */
     public static void tickFrame() {
+        // As onResize: a host keeps calling this until the process exits. @see #onOpaquePass
+        if (destroyed) return;
+
         frameCounter++;
 
         // Frame boundary: trust nothing about GL state. Control was outside CrystalGraphics between
@@ -322,6 +351,30 @@ public final class CgGraphicsLifecycle {
      * correction here rather than a quiet deletion. Supporting genuine context recreation means
      * giving every latching singleton a real reset path first; until then, treat this as terminal.</p>
      */
+    /**
+     * <b>Stops the engine without dismantling it</b> — what a host calls when the <em>process</em> is
+     * ending, rather than the context.
+     *
+     * <p>Every entry point here becomes a no-op, so nothing of ours renders again. Nothing is freed,
+     * and that is the point: at process exit the OS reclaims every GL object anyway, while freeing them
+     * early opens a window in which the engine is half-dead and frames are still arriving.</p>
+     *
+     * <p>That window is not hypothetical. Minecraft dispatches render stages for a frame or two after
+     * its shutdown event, so a teardown wired there deleted every registry and the next frame threw
+     * {@code "CgMaterialRegistry has been deleted"} out of a render event — a crash on quitting the
+     * game. Defending each registry against it is the wrong shape: there are eight of them, every
+     * consumer holding a material or a mesh is another caller to audit, and the one that is forgotten
+     * fails only on shutdown, where nobody looks.</p>
+     *
+     * <p>{@link #destroyContext()} remains the right call for a host that genuinely destroys a context
+     * and keeps running — the harness between scenes, a test. It frees, because there is a next
+     * context to protect. This does not, because there is no next anything.</p>
+     */
+    public static void shutdown() {
+        destroyed = true;
+        initialized = false;
+    }
+
     public static void destroyContext() {
         // FIRST, not last: the flag answers "is there a context to use", and that becomes false when
         // teardown starts, not twenty sweeps later. A host keeps rendering across this -- Forge fires
