@@ -267,7 +267,12 @@ public final class CgRenderPipeline {
         frameUbo.bind();
         objectBuffer.bind();
         CgTexture depthSnap = getDepthSnapshot();
-        if (depthSnap != null) depthSnap.bind(CgBindingPoints.DEPTH_TEXTURE_UNIT);
+        if (depthSnap != null) {
+            depthSnap.bind(CgBindingPoints.DEPTH_TEXTURE_UNIT);
+            // AND HAND UNIT 0 BACK: binding moves the ACTIVE unit as a side effect, and this one binds
+            // to the top of the range, so without it the rest of the frame runs with the depth unit active.
+            CgGL.glActiveTexture(CgGL.GL_TEXTURE0);
+        }
     }
 
     /**
