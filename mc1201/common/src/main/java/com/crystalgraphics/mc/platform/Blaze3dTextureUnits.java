@@ -8,19 +8,19 @@ import com.mojang.blaze3d.platform.GlStateManager;
 import org.apache.logging.log4j.LogManager;
 
 /**
- * How many texture units Minecraft's own GL state tracker models — <b>asked, not assumed</b>.
+ * How many texture units Minecraft's own GL state tracker models, read from Blaze3D.
  *
- * <p>{@code GlStateManager} caches the active unit and each unit's binding in a fixed table. Binding
- * above it leaves the driver in a state that shadow cannot represent, and the damage lands on whoever
- * samples <b>unit 0</b> next — which in an embedded renderer is nearly every draw. A sampler that misses
- * its texture draws its declared default, so a premultiplied composite floods or erases rather than
- * simply missing an image.</p>
+ * <p>Declare it as the engine's ceiling before anything reserves a binding point:</p>
+ * <pre>{@code
+ * CgCapabilities.setHostTextureUnitCeiling(Blaze3dTextureUnits.count());
+ * CgGraphicsLifecycle.initContext(width, height);
+ * }</pre>
  *
- * <p>Read from Blaze3D rather than written down, so a later Minecraft is correct for free. A refusal is
- * a supported outcome, not an error — hence the fallback, and hence logging which one was used: a
- * derived ceiling and a guessed one render identically until the guess is wrong.</p>
+ * <p>Binding above the table Blaze3D models corrupts sampling of unit 0, which in an embedded renderer
+ * is nearly every draw. Read rather than hardcoded, so a later Minecraft is correct without an edit;
+ * a refusal falls back and logs which value was used.</p>
  *
- * <p><b>CLIENT ONLY</b> — naming {@link GlStateManager} loads a client class.</p>
+ * <p><b>Client only</b> — naming {@link GlStateManager} loads a client class.</p>
  */
 public final class Blaze3dTextureUnits {
 

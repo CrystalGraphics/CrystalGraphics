@@ -90,11 +90,10 @@ public final class PlatformService1201 implements CgPlatformService {
 
     @Override public CgGLBackend gl() {
         if (glBackend == null) {
-            // THE CEILING, DECLARED BEFORE ANY GL WORK -- CgBindingPoints allocates by counting DOWN
-            // from the limit, so it has to be known first. Here because building the GL backend is a
-            // client event by construction, so naming Blaze3D cannot reach a server. NOT in
-            // onContextInit, which this loader never calls: the context initialises lazily from
-            // onOpaquePass on the first world render, so a hook there looks right and never fires.
+            // Declared before any GL work: CgBindingPoints allocates by counting down from the limit.
+            // Here rather than onContextInit, which this loader never calls -- the context initialises
+            // lazily from onOpaquePass on the first world render. Building the GL backend is a client
+            // event by construction, so naming Blaze3D cannot reach a server.
             CgCapabilities.setHostTextureUnitCeiling(Blaze3dTextureUnits.count());
             glBackend = new GL1201Backend();
         }
