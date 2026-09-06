@@ -104,8 +104,8 @@ if (loadersWanted) include("mc1710")
 //    include(":gl-debug-harness")
 
 // mc1201 subprojects. `common` holds the platform bundle, the three loaders are registration only.
-// :mc1201:neoforge targets MC 1.20.4 -- NeoForge published no 20.1.x series (CrystalGUI's
-// plan/platform-mc1201.md 3.8.6).
+// :mc1201:neoforge targets MC 1.20.4 -- NeoForge published no 20.1.x series at all, so `common`
+// is compiled against 1.20.1 and consumed by a 1.20.4 module.
 //
 // CrystalGUI resolves :mc1201:common through a dependencySubstitution in its
 // composite.settings.gradle.kts, which must name it in the same commit as these lines -- a
