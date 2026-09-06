@@ -104,6 +104,16 @@ dependencies {
     compileOnly(project(":platform"))
     compileOnly("org.apache.logging.log4j:log4j-api:$log4jVer")
 
+    // A LOGGING PROVIDER FOR THE TEST RUNTIME. Main compiles against log4j-api 2.0-beta9 because
+    // 1.7.10 ships it and the binary signatures have to match; nothing provides it under `test`, so
+    // every test that touched a class holding a `LogManager.getLogger` field died in its static
+    // initialiser with NoClassDefFoundError -- which is most of the material pipeline.
+    //
+    // MODERN here, not beta9: compiling against beta9 binds the parameterised calls to the varargs
+    // overload every later log4j still has, and beta9's own ThrowableProxy is a hazard the invariants
+    // record. log4j-core brings a matching api transitively.
+    testImplementation("org.apache.logging.log4j:log4j-core:2.26.1")
+
     testImplementation("junit:junit:$junitVer")
     testImplementation("org.lwjgl.lwjgl:lwjgl:$lwjglVer")
     testImplementation("org.joml:joml-jdk8:$jomlVer")
