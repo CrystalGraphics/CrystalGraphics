@@ -67,8 +67,9 @@ public class MixinMinecraft {
      * {@code Minecraft.getMinecraft().cgMixinProbe()} and have that <b>compile</b> — which a compiler
      * given a file-based classpath cannot do, because the method is in no jar, in no source tree, and in
      * nothing a resource lookup can return. Only bytecode read back out of the running loader carries it.
-     * That is the whole claim of CrystalGUI's live name environment, and until this existed the claim had
-     * no callable witness. See {@code plan/platform-mc1710.md} §26.4 and exit criterion 3.</p>
+     * That is the whole claim of CrystalGUI's live name environment -- a compiler that resolves against
+     * bytecode read back out of the running class loader rather than against files -- and until this
+     * existed the claim had no callable witness.</p>
      *
      * <p>It reports live state rather than a constant, so a script that prints it demonstrates the method
      * really ran inside the game rather than resolving against something stubbed.</p>
