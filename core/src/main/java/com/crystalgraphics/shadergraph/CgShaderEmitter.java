@@ -532,7 +532,7 @@ public final class CgShaderEmitter {
      * still read as a curved one.</p>
      */
     private static void appendPreviewLighting(StringBuilder out, String baseColor) {
-        out.append("        // Preview-only shading. Not a lighting model — see CgShaderEmitter.Shading.\n");
+        out.append("        // Preview-only shading. Not a lighting model -- see CgShaderEmitter.Shading.\n");
         out.append("        vec3 cg_n = normalize(mat3(cg_ViewMatrix) * i.")
                 .append(PREVIEW_NORMAL_FIELD).append(");\n");
         out.append("        vec3 cg_l = normalize(mat3(cg_ViewMatrix) * ")

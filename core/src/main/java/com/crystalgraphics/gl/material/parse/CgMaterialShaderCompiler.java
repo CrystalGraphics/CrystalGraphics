@@ -247,7 +247,7 @@ public final class CgMaterialShaderCompiler {
         if (isSimpleVertex(forwardPass)) {
             // Simple path: minimal position-only transform using the frame UBO shadow matrix
             shadowVertexBody =
-                    "    // Auto-generated shadow caster — minimal position transform\n"
+                    "    // Auto-generated shadow caster -- minimal position transform\n"
                     + "    gl_Position = cg_ShadowViewProjMatrix * CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0);\n"
                     + "    // Depth bias to prevent shadow acne (cg_ShadowParams.z)\n"
                     + "    gl_Position.z += cg_ShadowParams.z * gl_Position.w;\n"
@@ -256,7 +256,7 @@ public final class CgMaterialShaderCompiler {
         } else {
             // Complex path: run forward vertex body, then override gl_Position with shadow transform
             shadowVertexBody =
-                    "    // Auto-generated shadow caster — complex vertex (has animation or custom attributes)\n"
+                    "    // Auto-generated shadow caster -- complex vertex (has animation or custom attributes)\n"
                     + forwardPass.vertexBody() + "\n"
                     + "    // Override gl_Position with light-space transform\n"
                     + "    gl_Position = cg_ShadowViewProjMatrix * CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0);\n"
@@ -267,7 +267,7 @@ public final class CgMaterialShaderCompiler {
 
         // Fragment: depth-only — empty body, rasterizer writes depth automatically
         final String shadowFragmentBody =
-                "    // Depth-only shadow pass — rasterizer writes depth automatically.\n";
+                "    // Depth-only shadow pass -- rasterizer writes depth automatically.\n";
 
         // Build synthetic shadow pass reusing forward pass's v2f for interface block consistency
         CgFragOutputParser.FragOutput shadowFragOutput =
@@ -321,11 +321,11 @@ public final class CgMaterialShaderCompiler {
         final String depthVertexBody;
         if (isSimpleVertex(forwardPass)) {
             depthVertexBody =
-                    "    // Auto-generated depth prepass — minimal position transform\n"
+                    "    // Auto-generated depth prepass -- minimal position transform\n"
                     + "    gl_Position = CG_MATRIX_MVP * vec4(cg_Position, 1.0);\n";
         } else {
             depthVertexBody =
-                    "    // Auto-generated depth prepass — preserves vertex animation\n"
+                    "    // Auto-generated depth prepass -- preserves vertex animation\n"
                     + forwardPass.vertexBody() + "\n";
         }
 
@@ -333,7 +333,7 @@ public final class CgMaterialShaderCompiler {
         if (forwardPass.fragmentBody().contains("discard")) {
             depthFragmentBody = forwardPass.fragmentBody();
         } else {
-            depthFragmentBody = "    // Depth-only prepass — rasterizer writes depth automatically.\n";
+            depthFragmentBody = "    // Depth-only prepass -- rasterizer writes depth automatically.\n";
         }
 
         CgFragOutputParser.FragOutput depthFragOutput = CgFragOutputParser.FragOutput.singleOutput("fragColor");

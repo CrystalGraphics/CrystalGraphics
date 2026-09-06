@@ -47,7 +47,7 @@ vec2   cb(vec2   x) { return x * x * x; }
 vec3   cb(vec3   x) { return x * x * x; }
 vec4   cb(vec4   x) { return x * x * x; }
 
-// pow(|base|, power) — avoids NaN on negative base. Matches Unity URP PositivePow.
+// pow(|base|, power) -- avoids NaN on negative base. Matches Unity URP PositivePow.
 float  positive_pow(float  b, float  p) { return pow(abs(b), p); }
 vec2   positive_pow(vec2   b, vec2   p) { return pow(abs(b), p); }
 vec3   positive_pow(vec3   b, vec3   p) { return pow(abs(b), p); }
@@ -65,7 +65,7 @@ vec2   sign_pow(vec2   x, float p) { return sign(x) * pow(abs(x), vec2(p)); }
 vec3   sign_pow(vec3   x, float p) { return sign(x) * pow(abs(x), vec3(p)); }
 vec4   sign_pow(vec4   x, float p) { return sign(x) * pow(abs(x), vec4(p)); }
 
-// Perlin quintic (C² continuous). No derivative discontinuity vs smoothstep.
+// Perlin quintic (C^2 continuous). No derivative discontinuity vs smoothstep.
 float smootherstep(float a, float b, float x) {
     float t = saturate((x - a) / (b - a));
     return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);

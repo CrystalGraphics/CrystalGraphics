@@ -39,15 +39,15 @@ vec2 cartesian_to_polar_uv(vec2 uv) {
 //
 // Unity's node keeps the angle SIGNED, and that is the whole visual character of its preview: with the
 // output displayed as (r, theta, 0), every texel whose angle is negative clamps its green channel to
-// zero and reads pure RED, so the thumbnail splits down the middle — red on one side, green/yellow on
+// zero and reads pure RED, so the thumbnail splits down the middle -- red on one side, green/yellow on
 // the other, dark at the centre where the radius vanishes. Routing the node through the [0,1] helper
 // made theta positive everywhere, which flooded the whole preview green/yellow with no red at all and
 // put the branch cut on the wrong axis.
 //
 // Two differences from the helper, and both matter:
-//   * atan(delta.x, delta.y), NOT atan(y, x) — Unity passes x first, which rotates the discontinuity
+//   * atan(delta.x, delta.y), NOT atan(y, x) -- Unity passes x first, which rotates the discontinuity
 //     from the -x axis onto the -y axis (a seam pointing DOWN rather than LEFT).
-//   * no +0.5 offset — see above.
+//   * no +0.5 offset -- see above.
 // CG_TWO_PI rather than Unity's own literal 6.28: the same constant to more digits, imperceptible here
 // and consistent with the rest of this file.
 vec2 polar_coordinates_uv(vec2 uv, vec2 center, float radialScale, float lengthScale) {
@@ -57,12 +57,12 @@ vec2 polar_coordinates_uv(vec2 uv, vec2 center, float radialScale, float lengthS
     return vec2(radius, angle);
 }
 
-// Standard node-graph UV distortions — the same shape every node-based shader editor (Unity, Unreal,
+// Standard node-graph UV distortions -- the same shape every node-based shader editor (Unity, Unreal,
 // Godot) ships, not independently verified against Unity's own page (none of the three were among the
 // fifteen nodes this project verified in detail). Added for CgBuiltinShaderNodes' Twirl/Radial
 // Shear/Spherize, same reasoning rotate_uv/tile_uv already existed for Rotate/Tiling and Offset.
 
-// Rotates uv around center by an angle proportional to distance from center — a swirl distortion.
+// Rotates uv around center by an angle proportional to distance from center -- a swirl distortion.
 // `strength` is radians of rotation per unit distance.
 vec2 twirl_uv(vec2 uv, vec2 center, float strength, vec2 offset) {
     vec2 delta = uv - center;
@@ -72,7 +72,7 @@ vec2 twirl_uv(vec2 uv, vec2 center, float strength, vec2 offset) {
     return vec2(c * delta.x - s * delta.y, s * delta.x + c * delta.y) + center + offset;
 }
 
-// Shears uv tangentially around center, proportional to squared distance — a pinwheel-like distortion.
+// Shears uv tangentially around center, proportional to squared distance -- a pinwheel-like distortion.
 vec2 radial_shear_uv(vec2 uv, vec2 center, vec2 strength, vec2 offset) {
     vec2 delta = uv - center;
     float d2 = dot(delta, delta);

@@ -1,20 +1,20 @@
-// ═════════════════════════════════════════════════════════════════════════════
-// CrystalShader — curve.shader
+// =============================================================================
+// CrystalShader -- curve.shader
 // Reference material for CgVectorRenderer (gl/render/CgVectorRenderer.java), in the
 // same way text.shader is CgQuadRenderer's. Draws an antialiased, optionally
-// tapered and gradient-filled quadratic Bézier stroke, one instance per curve.
+// tapered and gradient-filled quadratic Bezier stroke, one instance per curve.
 //
 // Everything this file needs per instance comes from the CG_CURVE_* macros in
 // cg_env.glsl; the only geometry input is the shared unit quad, which the vertex
 // stage reinterprets as the curve's derived control-hull bounding box.
-// ═════════════════════════════════════════════════════════════════════════════
+// =============================================================================
 
 #type pos2_uv2_col4ub
 #pragma cg_use curve
 
 // The stroke maths itself lives in lib/stroke.glsl and is shared with crystalgui:shaders/
 // gui_curve.shader. The two materials differ only in render state and in what they do with the final
-// alpha — they must NOT differ in how a stroke is shaped, and the cap logic in particular was wrong
+// alpha -- they must NOT differ in how a stroke is shaped, and the cap logic in particular was wrong
 // three times over, so there is exactly one copy of it.
 #include "crystalgraphics:shaders/lib/stroke.glsl"
 
@@ -29,7 +29,7 @@ Tags {
 Queue = "Transparent"
 
 struct v2f {
-    // Position of this fragment in the same space the control points live in — i.e. AFTER
+    // Position of this fragment in the same space the control points live in -- i.e. AFTER
     // Curve#pose was baked in CPU-side, and before the projection matrix. This is the one
     // genuine varying: it is a true per-vertex quantity (it differs across the bounding quad),
     // unlike the control points themselves, which the fragment stage re-reads per instance.
@@ -60,10 +60,10 @@ Pass {
     }
 
     void fragment(in v2f i, out vec4 fragColor) {
-        // t is the curve parameter of the closest point — everything that varies ALONG the stroke
+        // t is the curve parameter of the closest point -- everything that varies ALONG the stroke
         // (taper, gradient) is driven by it, which is why the coverage functions hand it back
         // rather than making every caller re-derive it. curve_instance_coverage is the one place
-        // stroke vs. filled-triangle is decided (see lib/stroke.glsl) — never call stroke_coverage
+        // stroke vs. filled-triangle is decided (see lib/stroke.glsl) -- never call stroke_coverage
         // directly here, or a filled instance submitted through this material draws as a stroke.
         float t;
         float alpha = curve_instance_coverage(i.posXy,
