@@ -304,7 +304,20 @@ public abstract class CgFrameBuffer {
      * <p>Uses abstract dispatch methods so each backend routes through its
      * own LWJGL entry points.</p>
      */
+    /**
+     * Builds the attachments, leaving the framebuffer binding exactly as it was found.
+     *
+     * <p>It used to end bound to 0. Building a target mid-frame then redirected everything drawn after
+     * it to the default framebuffer, so the caller's own target came out empty -- on screen, the whole
+     * surface missing for the one frame a target was first created on.</p>
+     */
     private void initGl(int w, int h, CgFrameBufferFormat fmt) {
+        try (CgGlScope ignored = CgGlState.save(FBO)) {
+            initGlAttachments(w, h, fmt);
+        }
+    }
+
+    private void initGlAttachments(int w, int h, CgFrameBufferFormat fmt) {
         if(fboId == 0) fboId = doGenFramebuffer();
         doBindFbo(CgGL.GL_FRAMEBUFFER, fboId);
 
@@ -386,13 +399,10 @@ public abstract class CgFrameBuffer {
                 throw new IllegalStateException("FBO '" + name + "' incomplete: 0x" + Integer.toHexString(status));
 
         } catch (RuntimeException e) {
-            // Cleanup on failure
+            // Cleanup on failure. The binding is the enclosing scope's to restore, not ours to zero.
             freeGlResources();
-            doBindFbo(CgGL.GL_FRAMEBUFFER, 0);
             throw e;
         }
-
-        doBindFbo(CgGL.GL_FRAMEBUFFER, 0);
     }
 
     // ── Core API ───────────────────────────────────────────────────────────────
