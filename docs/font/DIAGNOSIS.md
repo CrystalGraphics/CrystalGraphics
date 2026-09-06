@@ -223,7 +223,7 @@ fixed ~2-valued dimension (bitmap array vs. distance-field array), independent o
 Full investigation — GL storage model, growth strategy, format unification, `CgGlyphPlacement`/
 `CgQuadRenderer`/shader changes, ownership inversion in `CgGlyphAtlasPage`/`CgGlyphAtlas`, harness
 impact, and an ordered implementation sequence — is written up in
-`docs_research/CGTEXTRENDERER_INSTANCING_FOUNDATIONS.md`, under **"Atlas texture array — investigated,
+`docs_research/plan/text-instancing.md`, under **"Atlas texture array — investigated,
 not started."** Key takeaways that bear directly on the remediation list above:
 
 - **This makes fix #2 (give the paged atlas an eviction/budget policy) a hard prerequisite, not a
@@ -260,7 +260,7 @@ IR, a `CgFontFamilyGroup` type to resolve style→font-face (the one genuinely n
 surface this needs), exactly where BiDi-run splitting needs to intersect with style-span boundaries
 in `CgTextLayoutEngine`, the `CgLineBreaker` per-line-metrics fix mixed-weight lines need, and the
 render-side color plumbing — is written up in full in
-`docs_research/CGTEXT_INLINE_RICHTEXT_FOUNDATIONS.md`. Key takeaways:
+`docs_research/plan/text-rich-spans.md`. Key takeaways:
 
 - **Explicitly scoped to inline formatting only.** Block-level markup (`<h1>`–`<h6>` margins, `<p>`
   spacing, `<li>` bullets/indentation) is deliberately out of scope — those are box-layout concerns

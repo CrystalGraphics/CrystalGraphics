@@ -29,7 +29,7 @@ and was observed being redirected *into* Angelica's. `AngelicaStateProvider` rea
 instead, which is strictly more complete and costs nothing to maintain.
 
 Design record, including the V2 rationale and every correction made along the way:
-`docs_research/CGGLSTATEMANAGER_PLAN.md`
+`docs_research/plan/gl-state-manager.md`
 
 ---
 

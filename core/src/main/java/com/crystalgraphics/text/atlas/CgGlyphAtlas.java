@@ -33,7 +33,7 @@ import java.util.logging.Logger;
  * array's layers turns the renderer's batch-break "which texture" dimension
  * from an unbounded per-page count into one fixed id per family, so a
  * multi-page HUD/paragraph's draw-call count stops scaling with page count.
- * See {@code docs_research/CGTEXTRENDERER_INSTANCING_FOUNDATIONS.md}, "Atlas
+ * See {@code docs_research/plan/text-instancing.md}, "Atlas
  * texture array."</p>
  *
  * <h3>Format</h3>

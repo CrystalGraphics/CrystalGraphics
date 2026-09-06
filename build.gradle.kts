@@ -4,7 +4,7 @@ plugins {
     // One idea-ext for the whole build. gtnhgradle and ModDevGradle request it under different Maven
     // coordinates, so Gradle loads both classes and moddev's `hasPlugin(IdeaExtPlugin.class)` guard
     // misses, applying a second copy until the `settings` extension collides. Applying it at the root
-    // puts one copy in the parent buildscript scope. IDE sync only. CrystalGUI's plan_mc1201.md L0.
+    // puts one copy in the parent buildscript scope. IDE sync only. CrystalGUI's plan/platform-mc1201.md L0.
     id("org.jetbrains.gradle.plugin.idea-ext")
 }
 

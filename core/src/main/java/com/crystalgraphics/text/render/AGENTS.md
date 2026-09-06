@@ -40,7 +40,7 @@ Main responsibilities:
   flushing whatever was pending under the previous combination first
 
 **Owned batch lifecycle (current architecture, post batch-ownership migration —
-see `CrystalGraphics/docs/CGTEXTRENDERER_MATERIAL_OVERHAUL_PLAN.md` §2.6/§2.7).**
+see `CrystalGraphics/docs/plan/text-material.md` §2.6/§2.7).**
 `CgTextRenderer` owns a private `CgBatchRenderer` (format
 `CgVertexFormat.POS2_UV2_COL4UB`), created in `create(caps, registry)`. There is no
 caller-provided layer or `CgBufferSource` in the draw path anymore — the renderer is

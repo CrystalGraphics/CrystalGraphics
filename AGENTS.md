@@ -1149,7 +1149,7 @@ Measured on the `text-3d` harness scene: `doBind.stateSave` went from **1,599 ms
 **0.00 ms**, and the worst single frame from **346.8 ms** to a whole-`doBind` max of **2.16 ms**.
 
 Package guide: `core/src/main/java/com/crystalgraphics/gl/state/AGENTS.md`.
-Design record and eight implementation corrections: `docs_research/CGGLSTATEMANAGER_PLAN.md`.
+Design record and eight implementation corrections: `docs_research/plan/gl-state-manager.md`.
 
 **Four rules worth knowing before touching rendering code:**
 

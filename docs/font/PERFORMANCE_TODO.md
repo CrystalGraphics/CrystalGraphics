@@ -32,7 +32,7 @@ Benchmarks referenced throughout:
 > | Measured and declined | `sliceRun` quadratic (~1.3 ms, adversarial only), `graphemeFind` cluster scan, unattributed shaping gaps (mostly profiler overhead), `hbShape` (native floor), `bufFill` UTF-16 migration |
 > | Built, measured, reverted | glyph upload batching (~5 µs/frame), adaptive drain budget (cost 2x convergence) |
 > | Deleted | `fontFamilyOverride` |
-> | Handed off | `doBind.stateSave` → `docs_research/GL_STATE_SYNC_STALL_FINDINGS.md` — GL-state infrastructure, not text |
+> | Handed off | `doBind.stateSave` → `docs_research/plan/gl-state-sync-findings.md` — GL-state infrastructure, not text |
 > | Deferred | CrystalGUI text path and `TextField` → CrystalGUI's own profiling phase; in-game measurement |
 >
 > **Final state, `text-3d`:** 2.45 ms of real work per frame, median 7.5 ms (134 fps), whole-frame
@@ -133,7 +133,7 @@ is worse than no section.
 
 ### ~~1. `doBind.stateSave`~~ — HANDED OFF, not a text item
 
-**Closed here 2026-07-29; owned by `docs_research/GL_STATE_SYNC_STALL_FINDINGS.md`.**
+**Closed here 2026-07-29; owned by `docs_research/plan/gl-state-sync-findings.md`.**
 
 `CgGlState.save*()` is engine-wide infrastructure. It surfaced in text profiling only because text
 binds a material like everything else does, and fixing it means rewriting `CgGlScope`/
@@ -154,7 +154,7 @@ under "Startup hitches") understates by treating it as one-time:
 `CgGlState.save*()` issues `glGet*` queries which force a pipeline sync — the driver must drain
 everything queued before answering. Confirmed from three directions now. The detailed investigation,
 including two disproved hypotheses (harness artifact / `GLStateMirror`), is under "Startup hitches"
-below; see also `docs_research/GL_STATE_SYNC_STALL_FINDINGS.md`.
+below; see also `docs_research/plan/gl-state-sync-findings.md`.
 
 ### ~~2. `wrap.breakLines` unattributed time~~ — ATTRIBUTED AND FIXED
 

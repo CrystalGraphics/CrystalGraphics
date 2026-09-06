@@ -108,7 +108,7 @@ uniform sampler2D cg_DepthBuffer;
 // CgQuadRenderer (gl/render/CgQuadRenderer.java) is a general SSBO/TBO-backed instanced
 // quad renderer with a fixed per-instance schema: vec3 origin/right/up (world-space quad
 // origin + two edge vectors, CPU-baked per instance via Quad.pose(...) — see
-// CGTEXTRENDERER_INSTANCING_FOUNDATIONS.md Decision 2), vec2 uv0/uv1, vec4 color. These
+// plan/text-instancing.md Decision 2), vec2 uv0/uv1, vec4 color. These
 // macros hardcode both the attach() macro name (QUAD_DATA, = CgQuadRenderer.MACRO_NAME —
 // fixed, not caller-chosen) and CG_INSTANCE_ID, so no `QuadInstance inst = QUAD_DATA(...)`
 // declaration is needed in the shader at all. Zero-argument, so QUAD_DATA(CG_INSTANCE_ID)
