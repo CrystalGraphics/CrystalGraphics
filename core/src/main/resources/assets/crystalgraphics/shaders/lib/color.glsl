@@ -52,14 +52,14 @@ vec3 hsv_to_rgb(vec3 c) {
     return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
 }
 
-// shift in [0,1] — 1.0 = full 360° rotation
+// shift in [0,1] -- 1.0 = full 360deg rotation
 vec3 rotate_hue(vec3 rgb, float shift) {
     vec3 hsv = rgb_to_hsv(rgb);
     hsv.x = fract(hsv.x + shift);
     return hsv_to_rgb(hsv);
 }
 
-// t=0 → full gray, t=1 → original color
+// t=0 -> full gray, t=1 -> original color
 vec3 desaturate(vec3 rgb, float t) {
     return mix(vec3(luminance(rgb)), rgb, t);
 }

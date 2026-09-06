@@ -5,7 +5,7 @@
 // Signed distance to the edge of an axis-aligned rounded box, centered at the origin.
 // `halfSize` is the box's half-extent (outer radius corners included). `radius` is the
 // (uniform) outer corner radius, in the same units as `p`/`halfSize`. Negative inside the
-// box, positive outside, zero exactly on the edge — standard SDF convention.
+// box, positive outside, zero exactly on the edge -- standard SDF convention.
 //
 // Reference: Inigo Quilez, "2D distance functions" (rounded box).
 float sdf_rounded_box(vec2 p, vec2 halfSize, float radius) {
@@ -15,8 +15,8 @@ float sdf_rounded_box(vec2 p, vec2 halfSize, float radius) {
 }
 
 // Same as above but with an independent radius per corner. `radii` is
-// (top-left, top-right, bottom-right, bottom-left) — CSS border-radius order. Local space is
-// Y-down (matches UV: v=0 at top), so "top" is negative-y here — opposite of Inigo Quilez's
+// (top-left, top-right, bottom-right, bottom-left) -- CSS border-radius order. Local space is
+// Y-down (matches UV: v=0 at top), so "top" is negative-y here -- opposite of Inigo Quilez's
 // original Y-up reference this is adapted from.
 float sdf_rounded_box(vec2 p, vec2 halfSize, vec4 radii) {
     vec2 topBottom = (p.x > 0.0) ? radii.yz : radii.xw; // right: (TR,BR); left: (TL,BL)
@@ -45,10 +45,10 @@ float sdf_rounded_box(vec2 p, vec2 halfSize, vec4 radiiX, vec4 radiiY) {
     return (length(n) - 1.0) * min(rx, ry) + min(max(q.x, q.y), 0.0);
 }
 
-// ── Quadratic Bézier ─────────────────────────────────────────────────────────────────────────
+// -- Quadratic Bezier -------------------------------------------------------------------------
 // Everything below is pure maths and MUST stay above the CG_VERTEX_STAGE guard: CgVectorRenderer's
 // vertex stage derives its bounding quad from the control hull and the fragment stage evaluates
-// the stroke, so both stages need these. No derivative builtins are used here — that is what makes
+// the stroke, so both stages need these. No derivative builtins are used here -- that is what makes
 // it legal in a vertex shader, and it is not an accident.
 
 float _sdf_dot2(vec2 v) { return dot(v, v); }
@@ -68,16 +68,16 @@ float sdf_segment(vec2 p, vec2 a, vec2 b) {
     return sdf_segment(p, a, b, t);
 }
 
-// Unsigned distance from `p` to the quadratic Bézier A->B->C, plus the parameter `t` in [0,1] of
-// the closest point — `t` is what drives per-pixel taper and gradient along the stroke, so it is an
+// Unsigned distance from `p` to the quadratic Bezier A->B->C, plus the parameter `t` in [0,1] of
+// the closest point -- `t` is what drives per-pixel taper and gradient along the stroke, so it is an
 // out-parameter rather than something the caller re-derives.
 //
 // Exact, via one closed-form cubic solve (Inigo Quilez, "quadratic bezier distance"). This exactness
 // is the entire reason CgVectorRenderer's primitive is quadratic and not cubic: a cubic's distance is
 // a quintic with no closed form, so a cubic primitive would mean approximating per pixel forever.
 //
-// DEGENERATE CASE — READ BEFORE EDITING. The solve divides by dot(b,b) where b = A - 2B + C, which
-// is exactly zero whenever the control point is the midpoint of the endpoints — i.e. for every
+// DEGENERATE CASE -- READ BEFORE EDITING. The solve divides by dot(b,b) where b = A - 2B + C, which
+// is exactly zero whenever the control point is the midpoint of the endpoints -- i.e. for every
 // straight line. CgVectorRenderer.Curve#line() constructs precisely that, so this is the common path,
 // not an edge case: without the guard below, every straight stroke divides by zero and renders as
 // NaN (which on most drivers means an invisible or full-screen-garbage quad, with nothing in the
@@ -88,11 +88,11 @@ float sdf_bezier(vec2 p, vec2 A, vec2 B, vec2 C, out float t) {
 
     // Two ways to be "straight enough", and both are load-bearing.
     //
-    // (1) RELATIVE — a genuine degenerate, where the control point IS the midpoint of the endpoints.
+    // (1) RELATIVE -- a genuine degenerate, where the control point IS the midpoint of the endpoints.
     //     CgVectorRenderer.Curve#line() constructs exactly that, so this is the COMMON path, not an
     //     edge case, and the solve below divides by bb.
     //
-    // (2) ABSOLUTE — a curve whose greatest deviation from its own chord, |b|/4, is under a twentieth
+    // (2) ABSOLUTE -- a curve whose greatest deviation from its own chord, |b|/4, is under a twentieth
     //     of a pixel. Test (1) cannot see this one: bb is small in absolute terms but not relative to
     //     a short chord, so a barely-curved segment still takes the full solve for a result that is
     //     visually a straight line. Cheaper and exact to route it to the segment distance.
@@ -100,20 +100,20 @@ float sdf_bezier(vec2 p, vec2 A, vec2 B, vec2 C, out float t) {
     // Nearly-flat is not a rare shape: splitting a cubic into quadratics produces flat segments BY
     // CONSTRUCTION, so anything drawn with cubic() lives here.
     //
-    // Note this is a cheap shortcut, NOT a fix for anything — it was added while chasing a dropout on
+    // Note this is a cheap shortcut, NOT a fix for anything -- it was added while chasing a dropout on
     // shallow animated curves that it did not turn out to explain. It earns its place on cost alone.
     float extent = max(_sdf_dot2(C - A), 1.0e-12);
     if (bb < 1.0e-6 * extent || bb < 4.0e-2) {
         return sdf_segment(p, A, C, t);
     }
 
-    // ── SOLVE IN THE CURVE'S OWN FRAME. This is not a micro-optimisation; it is the difference
-    // between a correct distance and a wildly wrong one. ────────────────────────────────────────
+    // -- SOLVE IN THE CURVE'S OWN FRAME. This is not a micro-optimisation; it is the difference
+    // between a correct distance and a wildly wrong one. ----------------------------------------
     //
     // In screen coordinates a long, shallow segment drives the intermediates below far apart in
     // magnitude while the answer stays a few pixels. In float32 the cubic solve then loses most of
-    // its significant bits. Measured on a real segment the splitter emits —
-    // A=(186.95,173.378) B=(218.96,174.03) C=(250.0,174.0), 63px long, 0.30px of bow — for a point
+    // its significant bits. Measured on a real segment the splitter emits --
+    // A=(186.95,173.378) B=(218.96,174.03) C=(250.0,174.0), 63px long, 0.30px of bow -- for a point
     // lying ON the curve (true distance 0.011):
     //
     //     as-written in screen space : 3.9910   <- reports the pixel as far outside the stroke
@@ -128,7 +128,7 @@ float sdf_bezier(vec2 p, vec2 A, vec2 B, vec2 C, out float t) {
     // Splitting a cubic produces exactly these long, nearly-flat segments BY CONSTRUCTION, so every
     // cubic() caller depends on this. `t` is dimensionless; only the distance needs scaling back.
     //
-    // NOTE: an earlier attempt at this was reverted after a test showed no benefit — that test used
+    // NOTE: an earlier attempt at this was reverted after a test showed no benefit -- that test used
     // a well-conditioned synthetic quadratic, not the near-flat segments that actually fail. If you
     // are about to remove this, check which geometry your measurement used.
     float scale = max(max(length(B - A), length(C - B)), 1.0e-6);
@@ -162,14 +162,14 @@ float sdf_bezier(vec2 p, vec2 A, vec2 B, vec2 C, out float t) {
         // it into 0 * NaN, which is NaN. That NaN reaches `t`, and from there both the coverage and
         // the caller's gradient mix, so the fragment is dropped rather than misplaced.
         //
-        // x is exactly zero where p == 0, which is a CODIMENSION-1 LOCUS — a thin curve through the
+        // x is exactly zero where p == 0, which is a CODIMENSION-1 LOCUS -- a thin curve through the
         // pixel plane, not a region. So the symptom is a narrow band of missing stroke that SWEEPS
         // along a curve as it animates, rather than a static hole: "one empty tiny quad running
         // through the wire left to right".
         //
         // Whether that locus crosses the painted band depends on the individual curve's shape, which
         // is why it hit two of the gallery's three node wires and not the third. That looked like
-        // evidence against a numerical cause and was the opposite — SdfBezierDegenerateRootTest
+        // evidence against a numerical cause and was the opposite -- SdfBezierDegenerateRootTest
         // measures it: the two shallow wires drive |x| below 1e-3 inside the band, the steep one
         // stays more than 10x further away.
         //
@@ -182,7 +182,7 @@ float sdf_bezier(vec2 p, vec2 A, vec2 B, vec2 C, out float t) {
     } else {
         float z = sqrt(-pp);
         // CLAMP REQUIRED. Analytically this argument is inside [-1,1] whenever h < 0, but floating
-        // point lands marginally outside near the branch boundary, and acos() of that is NaN — which
+        // point lands marginally outside near the branch boundary, and acos() of that is NaN -- which
         // reaches `t`, then the coverage AND the caller's gradient, dropping the fragment entirely
         // rather than merely misplacing it. Cheap insurance against a whole class of dropout.
         float v = acos(clamp(q / (pp * z * 2.0), -1.0, 1.0)) / 3.0;
@@ -198,7 +198,7 @@ float sdf_bezier(vec2 p, vec2 A, vec2 B, vec2 C, out float t) {
         float d2 = _sdf_dot2(d + (c + bs * tt.y) * tt.y);
         float d3 = _sdf_dot2(d + (c + bs * tt.z) * tt.z);
 
-        // `t` must track whichever root actually won — returning the minimum distance while
+        // `t` must track whichever root actually won -- returning the minimum distance while
         // reporting a different root's parameter desyncs the gradient from the geometry.
         res = d1;
         t = tt.x;
@@ -214,31 +214,31 @@ float sdf_bezier(vec2 p, vec2 A, vec2 B, vec2 C) {
 }
 
 // Signed distance to a 2D triangle p0->p1->p2, either winding order. Negative inside, positive
-// outside — standard SDF convention, matching sdf_rounded_box above.
+// outside -- standard SDF convention, matching sdf_rounded_box above.
 //
 // Built from sdf_segment rather than re-deriving the per-edge point-segment projection inline
 // (Quilez's reference "2D distance functions" triangle SDF does the projection by hand three
 // times; reusing sdf_segment says the same thing once). Reference: Inigo Quilez, "2D distance
 // functions" (triangle).
 //
-// Pure maths — legal in a vertex shader, no CG_VERTEX_STAGE guard, same as sdf_bezier.
+// Pure maths -- legal in a vertex shader, no CG_VERTEX_STAGE guard, same as sdf_bezier.
 float sdf_triangle(vec2 p, vec2 p0, vec2 p1, vec2 p2) {
     float d = min(min(sdf_segment(p, p0, p1), sdf_segment(p, p1, p2)), sdf_segment(p, p2, p0));
 
     // Inside/outside via the signed area (cross product) of each edge against p, tested against
-    // the triangle's own overall winding `s` — works for EITHER winding order because the
+    // the triangle's own overall winding `s` -- works for EITHER winding order because the
     // reference area and each per-edge cross product flip sign together.
     float area = (p1.x - p0.x) * (p2.y - p0.y) - (p1.y - p0.y) * (p2.x - p0.x);
 
     // A ZERO-AREA TRIANGLE IS OUTSIDE EVERYWHERE, AND SAYING SO EXPLICITLY IS LOAD-BEARING.
-    // sign(0.0) is 0.0, so without this the three tests below all read `0.0 >= 0.0` — true at every
+    // sign(0.0) is 0.0, so without this the three tests below all read `0.0 >= 0.0` -- true at every
     // point in the plane. The function then returns -d for the whole screen, fill_coverage sees a
     // large negative distance, and the instance paints its ENTIRE axis-aligned bounding quad solid.
     //
     // Degenerate triangles are not exotic: any fan or trapezoid strip produces one wherever the shape
     // comes to a point, so a mesh emits them at every tip. The failure looks like rectangular blocks of
     // the wrong colour scattered over the artwork, and no CPU rasterisation of the same mesh reproduces
-    // it — an ordinary point-in-triangle test yields nothing at all for a triangle with no area, which
+    // it -- an ordinary point-in-triangle test yields nothing at all for a triangle with no area, which
     // is exactly the answer this line now gives.
     if (abs(area) < 1e-9) return d;
 
@@ -256,7 +256,7 @@ float sdf_triangle(vec2 p, vec2 p0, vec2 p1, vec2 p2) {
 //
 // FRAGMENT-ONLY. `fwidth` is a derivative builtin and does not exist in the vertex stage. This lib
 // gets included at material scope, and the compiler hoists every material-scope `#` line into BOTH
-// generated stages — so without this guard the function lands in the vertex shader. NVIDIA compiles
+// generated stages -- so without this guard the function lands in the vertex shader. NVIDIA compiles
 // it anyway; AMD correctly refuses, and the whole material fails with
 // "ERROR: 'fwidth' : no matching overloaded function found".
 //

@@ -107,9 +107,9 @@ uniform sampler2D cg_DepthBuffer;
 // -- CgQuadRenderer convenience macros ---------------------------------------
 // CgQuadRenderer (gl/render/CgQuadRenderer.java) is a general SSBO/TBO-backed instanced
 // quad renderer with a fixed per-instance schema: vec3 origin/right/up (world-space quad
-// origin + two edge vectors, CPU-baked per instance via Quad.pose(...) — see
+// origin + two edge vectors, CPU-baked per instance via Quad.pose(...) -- see
 // plan/text-instancing.md Decision 2), vec2 uv0/uv1, vec4 color. These
-// macros hardcode both the attach() macro name (QUAD_DATA, = CgQuadRenderer.MACRO_NAME —
+// macros hardcode both the attach() macro name (QUAD_DATA, = CgQuadRenderer.MACRO_NAME --
 // fixed, not caller-chosen) and CG_INSTANCE_ID, so no `QuadInstance inst = QUAD_DATA(...)`
 // declaration is needed in the shader at all. Zero-argument, so QUAD_DATA(CG_INSTANCE_ID)
 // is textually repeated per use; this is the same repeated-texelFetch-on-the-same-index
@@ -123,23 +123,23 @@ uniform sampler2D cg_DepthBuffer;
 //     #pragma cg_use quad
 //
 // which is what attaches the buffer QUAD_DATA refers to. Defining them unconditionally costs
-// nothing — an unexpanded macro is not a declaration, so it burns no binding point and no
+// nothing -- an unexpanded macro is not a declaration, so it burns no binding point and no
 // texture unit, unlike the buffer itself (which is exactly why the buffer is opt-in and these
 // are not). Using one without the pragma is rejected at parse time with a message naming the
 // missing line, so the half-state never reaches the GLSL compiler.
 //
-// CG_QUAD_NORMAL — every quad instance is flat (a plane spanned by right/up), so its face
+// CG_QUAD_NORMAL -- every quad instance is flat (a plane spanned by right/up), so its face
 // normal is fully derivable from data already present; no per-instance normal field is stored
 // (nothing to desync from the actual right/up if only one were ever updated).
 //
-// CG_QUAD_ATLAS_LAYER — sampler2DArray layer index for atlas-backed quad consumers (e.g.
+// CG_QUAD_ATLAS_LAYER -- sampler2DArray layer index for atlas-backed quad consumers (e.g.
 // text.shader). 0 for ordinary sampler2D consumers, which never reference this macro at
 // all. Not bridged as a `flat` fragment-stage varying the way CG_INSTANCE_ID is: every
 // vertex of one quad instance writes the textually identical QUAD_DATA(...).atlasLayer
 // value (a true per-instance constant, not a per-vertex quantity), so interpolating
-// across the quad's two triangles reproduces that same value everywhere — there is no
+// across the quad's two triangles reproduces that same value everywhere -- there is no
 // per-vertex data to lose by not marking it flat. (The .shader v2f struct DSL has no
-// flat-qualifier syntax to ask for regardless — see CgMaterialShaderCompiler, which only
+// flat-qualifier syntax to ask for regardless -- see CgMaterialShaderCompiler, which only
 // wires one compiler-generated flat varying, cg_InstanceId itself.)
 //
 //   gl_Position = cg_ProjMatrix * vec4(CG_QUAD_WORLD_POS, 1.0);
@@ -183,7 +183,7 @@ uniform sampler2D cg_DepthBuffer;
 // parser change to do it, because CgShaderParser derives the "CG_CURVE_" family textually from
 // "CURVE_DATA".
 //
-// ── STAGE AVAILABILITY — THE ONE REAL DIFFERENCE FROM CG_QUAD_* ──────────────
+// -- STAGE AVAILABILITY -- THE ONE REAL DIFFERENCE FROM CG_QUAD_* --------------
 // Every macro here EXCEPT CG_CURVE_WORLD_POS resolves in BOTH the vertex and fragment stages.
 // That is deliberate and load-bearing: a curve's stroke is an analytic SDF that must be evaluated
 // per pixel, so the fragment stage needs the control points themselves. It re-reads them straight

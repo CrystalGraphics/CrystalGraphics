@@ -1,10 +1,10 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// demo_render.shader — minimal lit shader used by CgRenderDemo.
+// -----------------------------------------------------------------------------
+// demo_render.shader -- minimal lit shader used by CgRenderDemo.
 //
 // Per-cube colour is read from CG_OBJECT_CUSTOM0.rgb (set via cmd.custom0 on
-// each CgRenderCommand). No Properties block needed — all appearance data
+// each CgRenderCommand). No Properties block needed -- all appearance data
 // comes through the per-instance buffer.
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 #type spatial
 
 Tags  { "RenderType" = "Opaque" }

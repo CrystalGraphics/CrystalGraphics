@@ -1,7 +1,7 @@
 #pragma once
 
 // Hash functions (Dave Hoskins, shadertoy.com/view/4djSRW).
-// Sin-free — cross-platform bit-stable, no GPU sin() precision issues.
+// Sin-free -- cross-platform bit-stable, no GPU sin() precision issues.
 
 float hash12(vec2 p) {
     vec3 p3 = fract(vec3(p.xyx) * 0.1031);
@@ -21,7 +21,7 @@ float hash13(vec3 p) {
     return fract((p3.x + p3.y) * p3.z);
 }
 
-// Value noise — Hermite-smooth bilinear interpolation of hashed corners
+// Value noise -- Hermite-smooth bilinear interpolation of hashed corners
 float value_noise(vec2 p) {
     vec2 i = floor(p);
     vec2 f = fract(p);
@@ -34,8 +34,8 @@ float value_noise(vec2 p) {
     );
 }
 
-// FBM — Fractal Brownian Motion (Inigo Quilez, iquilezles.org/articles/fbm).
-// Rotation matrix encodes ~36.87° rotation + x2 scale to break axis-aligned artifacts.
+// FBM -- Fractal Brownian Motion (Inigo Quilez, iquilezles.org/articles/fbm).
+// Rotation matrix encodes ~36.87deg rotation + x2 scale to break axis-aligned artifacts.
 
 // 4-octave unrolled. Output normalized to [0, 1].
 float fbm4(vec2 p) {
@@ -74,7 +74,7 @@ float fbm(vec2 p, int octaves) {
     return f / total;
 }
 
-// Ridged FBM — sharp ridges (terrain edges, lightning, veins)
+// Ridged FBM -- sharp ridges (terrain edges, lightning, veins)
 float fbm_ridged(vec2 p, int octaves) {
     const mat2 m = mat2(1.6, 1.2, -1.2, 1.6);
     float f = 0.0, amp = 0.5, total = 0.0;
