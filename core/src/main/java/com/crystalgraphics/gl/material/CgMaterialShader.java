@@ -663,7 +663,15 @@ public final class CgMaterialShader {
         for (CgAttachedBuffer existing : attachedBuffers) {
             if (existing.isUbo()) continue;
             if (existing.getMacroName().equals(macroName)) {
-                LOGGER.warn("attach() skipped: macro name \"{}\" is already attached to this shader.", macroName);
+                // THE SAME BUFFER UNDER THE SAME MACRO IS A NO-OP, not a mistake. Engine buffers are
+                // re-attached from `#pragma cg_use` on EVERY compile (step 2b) while this list
+                // survives recompiles, so warning here fired on the ordinary path -- once per macro
+                // per recompile -- for something nobody did wrong. A DIFFERENT buffer claiming a
+                // macro that is taken is still the collision this check exists to catch.
+                if (existing.getBuffer() != buffer) {
+                    LOGGER.warn("attach() skipped: macro name \"{}\" is already attached to this "
+                            + "shader by a different buffer.", macroName);
+                }
                 return this;
             }
             if (existing.getStructName().equals(ab.getStructName())) {
