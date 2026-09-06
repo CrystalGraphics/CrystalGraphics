@@ -101,7 +101,30 @@ public final class CgCapabilities {
     /** Maximum number of simultaneous draw buffer outputs (MRT); at least 1. */
     int maxDrawBuffers;
     /** Maximum texture image units (shader) or fixed-function texture units. */
-    int maxTextureUnits;
+    @Getter(AccessLevel.NONE) int maxTextureUnits;
+
+    /**
+     * A ceiling the HOST imposes on usable texture units, independent of what GL reports.
+     *
+     * <p>A host with its own GL state tracker models a fixed number of units and caches each one's
+     * binding; binding above that leaves the driver in a state its shadow cannot represent, and the
+     * damage lands on whoever samples unit 0 next. Declared by the LOADER, because it is a fact about
+     * the process rather than the driver — unset, nothing is clamped.</p>
+     */
+    @Getter(AccessLevel.NONE) private static volatile int hostTextureUnitCeiling = Integer.MAX_VALUE;
+
+    /** @see #hostTextureUnitCeiling */
+    public static void setHostTextureUnitCeiling(int units) {
+        hostTextureUnitCeiling = Math.max(1, units);
+    }
+
+    /**
+     * What GL reports, clamped by whatever the host declared. Clamped on READ so a loader registering
+     * its ceiling after the capability probe has run still gets it.
+     */
+    public int getMaxTextureUnits() {
+        return Math.min(maxTextureUnits, hostTextureUnitCeiling);
+    }
     /** Maximum 2D texture dimension (width/height). */
     int maxTextureSize;
     /** Maximum renderbuffer dimension; falls back to {@link #maxTextureSize} on EXT-only. */
