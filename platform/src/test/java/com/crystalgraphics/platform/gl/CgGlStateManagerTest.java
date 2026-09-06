@@ -373,4 +373,32 @@ public class CgGlStateManagerTest {
         // An off-thread write corrupts the shadow rather than failing, so it must be rejected outright.
         if (caught[0] != null) throw caught[0];
     }
+
+    // -- Deletion --------------------------------------------------------------
+
+    /**
+     * The bug this whole group exists for: {@code CgFrameBuffer.resize} deletes an attachment and creates
+     * its replacement in the same breath, and GL hands the freed id straight back.
+     */
+    @Test
+    public void aRecycledTextureIdIsBoundAgainRatherThanElided() {
+        mgr.activeTextureChanged(CgGL.GL_TEXTURE0);
+        assertTrue(mgr.textureChanged(CgGL.GL_TEXTURE_2D, 7));
+        assertFalse("still the same texture", mgr.textureChanged(CgGL.GL_TEXTURE_2D, 7));
+
+        mgr.textureDeleted(7);
+        assertTrue("a recycled id names a different object",
+                mgr.textureChanged(CgGL.GL_TEXTURE_2D, 7));
+    }
+
+    @Test
+    public void deletingSomeOtherTextureDoesNotCostARebind() {
+        mgr.activeTextureChanged(CgGL.GL_TEXTURE0);
+        assertTrue(mgr.textureChanged(CgGL.GL_TEXTURE_2D, 7));
+
+        mgr.textureDeleted(9);
+        assertFalse("7 is untouched, so its bind is still redundant",
+                mgr.textureChanged(CgGL.GL_TEXTURE_2D, 7));
+    }
+
 }

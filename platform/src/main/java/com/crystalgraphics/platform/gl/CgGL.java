@@ -558,6 +558,7 @@ public final class CgGL {
 
     public static void glDeleteFramebuffers(int fbo) {
         backend.deleteFramebuffers(fbo);
+        state().framebufferDeleted(fbo);
     }
 
     public static void glFramebufferTexture2D(int target, int attachment, int texTarget, int texture, int level) {
@@ -675,6 +676,7 @@ public final class CgGL {
 
     public static void glDeleteProgram(int program) {
         backend.glDeleteProgram(program);
+        state().programDeleted(program);
     }
 
     /** ARBShaderObjects unified path: delete a shader or program handle without knowing which type. */
@@ -807,6 +809,7 @@ public final class CgGL {
 
     public static void glDeleteBuffers(int buffer) {
         backend.glDeleteBuffers(buffer);
+        state().bufferDeleted(buffer);
     }
 
     public static void glBindBufferBase(int target, int index, int buffer) {
@@ -835,6 +838,7 @@ public final class CgGL {
 
     public static void glDeleteVertexArrays(int array) {
         backend.glDeleteVertexArrays(array);
+        state().vertexArrayDeleted(array);
     }
 
     public static void glEnableVertexAttribArray(int index) {
@@ -863,6 +867,8 @@ public final class CgGL {
 
     public static void glDeleteTextures(int texture) {
         backend.glDeleteTextures(texture);
+        // The shadow must forget it or the next bind of a recycled id is elided. @see CgGlStateManager
+        state().textureDeleted(texture);
     }
 
     public static void glTexImage2D(int target, int level, int internalFormat,

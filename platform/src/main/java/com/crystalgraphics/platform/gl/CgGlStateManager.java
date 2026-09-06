@@ -413,6 +413,59 @@ public final class CgGlStateManager {
         return issue(CgGlSlot.FBO);
     }
 
+    // -- Deletions ----------------------------------------------------------------------------------
+
+    /**
+     * Forgets a deleted texture, so the next bind of a recycled id is issued rather than elided.
+     *
+     * <pre>{@code
+     * CgGL.glDeleteTextures(id);   // calls this for you
+     * }</pre>
+     *
+     * <p>GL unbinds a deleted object and may hand the same id straight back from the next {@code glGen},
+     * so an id left in the shadow makes the next bind of a DIFFERENT object look redundant. The unit is
+     * then left bound to nothing, which samples as opaque black -- and under premultiplied {@code over}
+     * that erases what is behind it rather than drawing nothing. Zero is what GL itself reverts the
+     * binding to, so the shadow stays true rather than merely cautious.</p>
+     *
+     * <p>Same rule as {@link #vertexArrayChanged}: what can no longer be trusted is dropped.</p>
+     */
+    public void textureDeleted(int texture) {
+        if (texture == 0) return;
+        for (int unit = 0; unit < CgGlStateShadow.MAX_TEXTURE_UNITS; unit++) {
+            if (current.boundTexture2D[unit] == texture) current.boundTexture2D[unit] = 0;
+        }
+    }
+
+    /** @see #textureDeleted */
+    public void framebufferDeleted(int fbo) {
+        if (fbo == 0) return;
+        if (current.drawFbo == fbo) current.drawFbo = 0;
+        if (current.readFbo == fbo) current.readFbo = 0;
+    }
+
+    /** @see #textureDeleted */
+    public void bufferDeleted(int buffer) {
+        if (buffer == 0) return;
+        if (current.arrayBuffer == buffer) current.arrayBuffer = 0;
+        if (current.elementArrayBuffer == buffer) current.elementArrayBuffer = 0;
+    }
+
+    /** @see #textureDeleted */
+    public void vertexArrayDeleted(int array) {
+        if (array == 0) return;
+        if (current.vertexArray != array) return;
+        current.vertexArray = 0;
+        // The element binding belonged to the deleted VAO; VAO 0 carries its own and we never saw it.
+        current.elementArrayBuffer = CgGlStateShadow.UNKNOWN_BINDING;
+    }
+
+    /** @see #textureDeleted */
+    public void programDeleted(int program) {
+        if (program == 0) return;
+        if (current.programId == program) current.programId = 0;
+    }
+
     public boolean activeTextureChanged(int texture) {
         assertOwner();
         int unit = texture - CgGL.GL_TEXTURE0;
