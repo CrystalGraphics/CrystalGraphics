@@ -182,6 +182,12 @@ public final class CgMaterialShader {
     private boolean dirty;
 
     /**
+     * The source of the last SUCCESSFUL compile, {@code #include} expanded — what an unchanged
+     * reload is recognised by. Null until one has succeeded. @see #recompile()
+     */
+    private String lastCompiledSource;
+
+    /**
      * Set when the last {@link #recompile()} attempt failed; cleared by {@link #markDirty()} and by
      * a successful recompile.
      *
@@ -278,6 +284,10 @@ public final class CgMaterialShader {
         dirty = false;
         if (resourcePath == null) return;
 
+        // Read BEFORE the latch below overwrites it: the unchanged-source skip may only stand on a
+        // compile that actually succeeded.
+        boolean previousCompileFailed = compileFailed;
+
         // Pessimistic latch: every early return below this line is a failure path. Set here and
         // cleared once at the end rather than at each return, so a new failure branch cannot
         // silently forget to latch and reopen the retry storm. See #compileFailed.
@@ -303,6 +313,21 @@ public final class CgMaterialShader {
         if (source == null || source.isEmpty()) {
             if (isFirst) throw new IllegalArgumentException("Could not load shader source from: " + resourcePath);
             LOGGER.error("Reload failed for '{}': empty source", resourcePath);
+            return;
+        }
+
+        // ── Step 1b: An unchanged source is not a recompile ────────────────────
+        // A resource reload marks EVERY material dirty, and Minecraft reloads once at startup as a
+        // matter of course -- so every UI shader rebuilt every keyword variant against the driver for
+        // a file that had not moved, and said "Reloaded" about each one.
+        //
+        // Compared with #include EXPANDED, or editing a lib would stop reloading the shaders that
+        // include it -- and catching that is what the reload is for. The expanded text is kept rather
+        // than a hash of it: a few KB per shader, against a hash collision presenting as "F3+T stopped
+        // working on this file", which is not a bug anybody would find twice.
+        String expanded = expandedForComparison(source);
+        if (!isFirst && !previousCompileFailed && expanded != null && expanded.equals(lastCompiledSource)) {
+            compileFailed = false;
             return;
         }
 
@@ -431,6 +456,7 @@ public final class CgMaterialShader {
 
         compileFailed = false;
         lastCompileError = null;
+        lastCompiledSource = expanded;
 
         // ── Step 9: Wire all newly compiled programs ───────────────────────────
         for (Map.Entry<ProgramKey, CgShader> entry : newCache.entrySet())
@@ -441,6 +467,21 @@ public final class CgMaterialShader {
 
         if (!isFirst) {
             LOGGER.info("Reloaded '{}'", resourcePath);
+        }
+    }
+
+    /**
+     * This source with every {@code #include} pulled in, or null when it cannot be expanded.
+     *
+     * <p>Null is not a failure here — it means "compare nothing", so the compile runs and reports the
+     * unresolvable include itself, with a message and a path this method has no business duplicating.</p>
+     */
+    private String expandedForComparison(String source) {
+        if (isGenerated()) return source;
+        try {
+            return new CgShaderPreprocessor().process(source, resourcePath);
+        } catch (RuntimeException cannotExpand) {
+            return null;
         }
     }
 
