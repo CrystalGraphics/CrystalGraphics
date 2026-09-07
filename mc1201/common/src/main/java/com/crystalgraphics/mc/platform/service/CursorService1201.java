@@ -83,7 +83,11 @@ public final class CursorService1201 implements CgCursorService {
         FOUR_WAY(GLFW.GLFW_RESIZE_ALL_CURSOR, CgCursorBitmaps::fourWayArrow),
 
         // No standard cursor exists for this one, in any GLFW version.
-        SLIDE_ARROW(NO_STANDARD, CgCursorBitmaps::slideArrow);
+        SLIDE_ARROW(NO_STANDARD, CgCursorBitmaps::slideArrow),
+        // No GLFW standard shape for any of the three; they are our own artwork or nothing.
+        ROTATE(NO_STANDARD, CgCursorBitmaps::rotate),
+        SKEW(NO_STANDARD, CgCursorBitmaps::skew),
+        PIVOT(NO_STANDARD, CgCursorBitmaps::pivot);
 
         /** A {@code GLFW_*_CURSOR} constant, or {@link #NO_STANDARD}. */
         private final int standard;
@@ -189,6 +193,12 @@ public final class CursorService1201 implements CgCursorService {
                 return Shape.FOUR_WAY;
             case TEXT:
                 return Shape.TEXT_BEAM;
+            case ROTATE:
+                return Shape.ROTATE;
+            case SKEW:
+                return Shape.SKEW;
+            case PIVOT:
+                return Shape.PIVOT;
             case CROSSHAIR:
                 return Shape.CROSSHAIR;
             case POINTER: case GRAB:

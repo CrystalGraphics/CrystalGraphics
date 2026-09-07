@@ -364,4 +364,259 @@ public final class CgCursorBitmaps {
         }
         return false;
     }
+
+    // ── Anti-aliased shapes ─────────────────────────────────────────────────
+    //
+    // The arrows above are 1-bit masks: a boolean body, an outline generated from it, every edge hard.
+    // That is right for an arrow, whose edges are axis-aligned or exactly diagonal and so alias into
+    // clean stair-steps. It is wrong for a curve -- an arc drawn as a mask reads as a chain of blocks,
+    // which is the one dated thing about Photoshop's own rotate cursor. So the three below are
+    // rasterised from signed distance fields, with the outline dilated from the same field. Same
+    // white-body-black-outline convention, same 32x32, smooth edges.
+
+    /**
+     * A curved double-headed arrow: <b>drag around this point to rotate.</b>
+     *
+     * <p>Presented just outside a corner of the Free Transform box, which is where every editor puts the
+     * rotate zone and the only affordance it has: nothing is drawn there, so the cursor IS the
+     * advertisement.</p>
+     */
+    public static int[] rotate() {
+        // EXACTLY A QUARTER, and that is what buys the heads their definition. The tangent is horizontal
+        // at the top of a circle and vertical at its right, so this one sweep is the only one whose ends
+        // are both on an axis -- which means the heads can be the SAME artwork the resize arrows use,
+        // plotted on the pixel grid, instead of arbitrary-angle triangles that rasterise soft on all four
+        // edges and read as mush at 32 pixels.
+        //
+        // So this shape is drawn two ways at once: the arc from a distance field, because a curve has no
+        // orientation that aliases cleanly, and the heads from a boolean mask, because an axis-aligned
+        // arrowhead has nothing but orientations that do. Neither half looks right drawn the other way.
+        final float cx = 11f;
+        final float cy = 20f;
+        // BIGGER THAN A HEAD IS WIDE. Two ten-pixel heads set on a small arc simply meet, and the mark
+        // comes out a solid wedge with no turn visible in it.
+        final float radius = 11f;
+        final float half = 1.8f;
+
+        boolean[] heads = new boolean[SIZE * SIZE];
+        // Each head's BASE row lands on the arc's end, which is what makes the join a clean step rather
+        // than something needing a fillet to hide it. The lower head is set two pixels IN from the arc's
+        // end rather than centred on it: the arc arrives from the left there, so a centred head leaves
+        // the outer half of its base hanging off the curve with nothing behind it.
+        arrowHead(heads, 6, 9, 1, true);
+        arrowHead(heads, 22, 25, -1, false);
+
+        return rasterise((x, y) -> sdArc(x, y, cx, cy, radius, half, 260f, 370f), heads, 1f);
+    }
+
+    /**
+     * Two opposed arrows on parallel rails: <b>drag to lean this edge.</b>
+     *
+     * <p>Deliberately not {@link #horizontalDoubleArrow()}: a skew slides one edge PAST the other, and
+     * one shaft with two heads says the whole thing travels. Two offset rails going opposite ways is the
+     * shear itself, drawn.</p>
+     */
+    public static int[] skew() {
+        float[] upper = head(23f, 11f, 1f, 0f, 5f, 3.4f, 1.2f);
+        float[] lower = head(9f, 21f, -1f, 0f, 5f, 3.4f, 1.2f);
+        return rasterise((x, y) -> min(
+                sdSegment(x, y, 9f, 11f, 23f, 11f, 1.3f),
+                sdSegment(x, y, 9f, 21f, 23f, 21f, 1.3f),
+                sdTriangle(x, y, upper),
+                sdTriangle(x, y, lower)), 1.15f);
+    }
+
+    /**
+     * A ring inside a crosshair: <b>this is the point everything else turns about.</b>
+     *
+     * <p>After Effects' anchor-point tool, and the same mark the transform box draws for its pivot, so
+     * the cursor and the thing under it agree.</p>
+     */
+    public static int[] pivot() {
+        return rasterise((x, y) -> min(
+                sdRing(x, y, 16f, 16f, 5.5f, 1.2f),
+                sdSegment(x, y, 16f, 3.5f, 16f, 9f, 1.1f),
+                sdSegment(x, y, 16f, 23f, 16f, 28.5f, 1.1f),
+                sdSegment(x, y, 3.5f, 16f, 9f, 16f, 1.1f),
+                sdSegment(x, y, 23f, 16f, 28.5f, 16f, 1.1f),
+                sdDisc(x, y, 16f, 16f, 1.3f)), 1.1f);
+    }
+
+    /** A signed distance in pixels, negative inside the shape. */
+    private interface Sdf {
+        float at(float x, float y);
+    }
+
+    /**
+     * Paints a field into ARGB, black outline under white body.
+     *
+     * <p>Composited rather than thresholded twice: the outline is the same field dilated, so the two can
+     * no more disagree than the mask-based pair above can. White over black gives
+     * {@code alpha = body + outline*(1-body)} and a grey level of {@code body/alpha}, which is the only
+     * arithmetic here and is what keeps a curve smooth instead of stepped.</p>
+     */
+    /**
+     * As {@link #rasterise(Sdf, float)}, plus a 1-bit mask unioned in at full coverage.
+     *
+     * <p>For a shape that is part curve and part axis-aligned arrow: the field half is anti-aliased
+     * because a curve has no orientation that aliases cleanly, the mask half is not because an
+     * arrowhead has nothing but orientations that do. The mask brings its own outline from its own
+     * neighbours, so its stair-steps keep a crisp one-pixel edge instead of the field's soft ramp.</p>
+     */
+    private static int[] rasterise(Sdf shape, boolean[] mask, float outlineWidth) {
+        int[] pixels = new int[SIZE * SIZE];
+        for (int y = 0; y < SIZE; y++) {
+            for (int x = 0; x < SIZE; x++) {
+                int i = y * SIZE + x;
+                float distance = shape.at(x + 0.5f, y + 0.5f);
+                float body = mask[i] ? 1f : coverage(distance);
+                float outline = mask[i] || adjacentToBody(mask, x, y)
+                        ? 1f : Math.max(coverage(distance - outlineWidth), body);
+                float alpha = body + outline * (1f - body);
+                if (alpha <= 0.004f) {
+                    pixels[i] = TRANSPARENT;
+                    continue;
+                }
+                int level = Math.round(255f * clamp(body / alpha));
+                pixels[i] = (Math.round(255f * clamp(alpha)) << 24) | (level << 16) | (level << 8) | level;
+            }
+        }
+        return pixels;
+    }
+
+    private static int[] rasterise(Sdf shape, float outlineWidth) {
+        int[] pixels = new int[SIZE * SIZE];
+        for (int y = 0; y < SIZE; y++) {
+            for (int x = 0; x < SIZE; x++) {
+                float distance = shape.at(x + 0.5f, y + 0.5f);
+                float body = coverage(distance);
+                float outline = coverage(distance - outlineWidth);
+                float alpha = body + outline * (1f - body);
+                if (alpha <= 0.004f) {
+                    pixels[y * SIZE + x] = TRANSPARENT;
+                    continue;
+                }
+                int level = Math.round(255f * clamp(body / alpha));
+                pixels[y * SIZE + x] = (Math.round(255f * clamp(alpha)) << 24)
+                        | (level << 16) | (level << 8) | level;
+            }
+        }
+        return pixels;
+    }
+
+    /** One pixel of linear ramp across the edge, which is as sharp as a curve gets without stepping. */
+    private static float coverage(float distance) {
+        return clamp(0.5f - distance);
+    }
+
+    private static float clamp(float value) {
+        return value < 0f ? 0f : (value > 1f ? 1f : value);
+    }
+
+    private static float min(float... values) {
+        float best = values[0];
+        for (float value : values) best = Math.min(best, value);
+        return best;
+    }
+
+    private static float[] onCircle(float cx, float cy, float radius, float degrees) {
+        double radians = Math.toRadians(degrees);
+        return new float[]{cx + radius * (float) Math.cos(radians),
+                cy + radius * (float) Math.sin(radians)};
+    }
+
+    /** The unit tangent at an angle, with {@code sign} choosing which way round. */
+    private static float[] tangent(float degrees, float sign) {
+        double radians = Math.toRadians(degrees);
+        return new float[]{sign * -(float) Math.sin(radians), sign * (float) Math.cos(radians)};
+    }
+
+    /**
+     * An arrowhead at a point aimed along a direction, as {tipX, tipY, ax, ay, bx, by}.
+     *
+     * <p>{@code backset} pulls the base BACK along whatever the head caps, and it has to be enough to
+     * bury the join: on a curve the stroke falls away from the base line on both sides, leaving a pixel
+     * that is inside neither shape but inside both outlines — a black notch in the middle of the mark.
+     * Sized against the thing being capped, not against the head.</p>
+     */
+    private static float[] head(float x, float y, float dx, float dy,
+                                float length, float width, float backset) {
+        float baseX = x - dx * backset;
+        float baseY = y - dy * backset;
+        return new float[]{x + dx * length, y + dy * length,
+                baseX - dy * width, baseY + dx * width,
+                baseX + dy * width, baseY - dx * width};
+    }
+
+    private static float sdDisc(float x, float y, float cx, float cy, float radius) {
+        return length(x - cx, y - cy) - radius;
+    }
+
+    private static float sdRing(float x, float y, float cx, float cy, float radius, float half) {
+        return Math.abs(length(x - cx, y - cy) - radius) - half;
+    }
+
+    /** A capsule: the distance to a segment, less its half-width. */
+    private static float sdSegment(float x, float y, float x0, float y0, float x1, float y1, float half) {
+        float ex = x1 - x0;
+        float ey = y1 - y0;
+        float t = ((x - x0) * ex + (y - y0) * ey) / Math.max(1e-6f, ex * ex + ey * ey);
+        t = clamp(t);
+        return length(x - (x0 + ex * t), y - (y0 + ey * t)) - half;
+    }
+
+    /**
+     * An arc of a ring, capped at both ends.
+     *
+     * <p>Outside the sweep it falls back to the nearer cap, which is what makes the join with an
+     * arrowhead continuous: a bare angular test leaves the ends square, and a head planted on a square
+     * end shows the corner.</p>
+     */
+    private static float sdArc(float x, float y, float cx, float cy, float radius, float half,
+                               float fromDegrees, float toDegrees) {
+        float angle = (float) Math.toDegrees(Math.atan2(y - cy, x - cx));
+        if (angle < 0f) angle += 360f;
+        // A SWEEP MAY CROSS THE SEAM: `to` is allowed past 360, so a quarter turn either side of the
+        // right-hand extreme can be written as one range instead of two arcs meeting at a join.
+        if (angle < fromDegrees) angle += 360f;
+        if (angle >= fromDegrees && angle <= toDegrees) {
+            return Math.abs(length(x - cx, y - cy) - radius) - half;
+        }
+        float[] from = onCircle(cx, cy, radius, fromDegrees);
+        float[] to = onCircle(cx, cy, radius, toDegrees);
+        return Math.min(length(x - from[0], y - from[1]), length(x - to[0], y - to[1])) - half;
+    }
+
+    /**
+     * A triangle, as the farthest of its three edge half-planes.
+     *
+     * <p>Exact in sign and close enough in magnitude near an edge, which is all a one-pixel coverage ramp
+     * reads. Outward normals are taken from the centroid, so the winding never has to be stated.</p>
+     */
+    private static float sdTriangle(float x, float y, float[] triangle) {
+        float gx = (triangle[0] + triangle[2] + triangle[4]) / 3f;
+        float gy = (triangle[1] + triangle[3] + triangle[5]) / 3f;
+        return Math.max(edge(x, y, triangle, 0, 2, gx, gy),
+                Math.max(edge(x, y, triangle, 2, 4, gx, gy), edge(x, y, triangle, 4, 0, gx, gy)));
+    }
+
+    private static float edge(float x, float y, float[] t, int a, int b, float gx, float gy) {
+        float x0 = t[a];
+        float y0 = t[a + 1];
+        float nx = -(t[b + 1] - y0);
+        float ny = t[b] - x0;
+        float len = length(nx, ny);
+        if (len < 1e-6f) return -1e9f;
+        nx /= len;
+        ny /= len;
+        if ((gx - x0) * nx + (gy - y0) * ny > 0f) {
+            nx = -nx;
+            ny = -ny;
+        }
+        return (x - x0) * nx + (y - y0) * ny;
+    }
+
+    private static float length(float x, float y) {
+        return (float) Math.sqrt(x * x + y * y);
+    }
 }
