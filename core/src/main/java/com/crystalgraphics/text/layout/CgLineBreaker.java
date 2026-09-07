@@ -224,7 +224,11 @@ public class CgLineBreaker {
 
         int[] boundaries;
         try (CgProfiler.Scope ignored = CgProfiler.scope("lineBreak.collectBoundaries")) {
-            boundaries = collectBoundaries(LINE_ITERATOR.get(), segment);
+            // CORRECTED, because the JDK's line iterator is a legacy ruleset rather than the
+            // annex it is named after -- it breaks `a.b` and `a:b` and never breaks `a/b`.
+            // @see CgBreakOpportunities
+            boundaries = CgBreakOpportunities.correct(
+                    segment, collectBoundaries(LINE_ITERATOR.get(), segment));
         }
         CgProfiler.count("lineBreak.splitCalls");
         CgProfiler.count("lineBreak.segmentChars", segment.length());
