@@ -107,16 +107,29 @@ public enum CgCursor {
     SLIDE_ARROW("slide-arrow"),
 
     /**
-     * A curved double-headed arrow: <b>drag around this point to rotate.</b>
+     * A curved double-headed arrow bending around a corner: <b>drag around this point to rotate.</b>
      *
      * <p>The rotate zone of a transform box is the band just OUTSIDE its corners, where nothing is drawn
      * at all — so unlike a resize handle, which is a visible dot, the cursor is the entire affordance.
      * Photoshop, Figma, Illustrator and After Effects all ship it for that reason.</p>
      *
-     * <p>Falls back to {@link #GRAB} where a platform has no artwork: wrong in detail, right in kind, and
-     * a cosmetic gap is the documented outcome for any unimplemented cursor.</p>
+     * <p><b>One per corner</b>, like the four diagonal resize cursors above and for the same reason: a
+     * bend that curls away from the corner it is offered at points at nothing. The artwork is one shape
+     * mirrored, not four drawings.</p>
+     *
+     * <p>All four fall back to {@link #GRAB} where a platform has no artwork: wrong in detail, right in
+     * kind, and a cosmetic gap is the documented outcome for any unimplemented cursor.</p>
      */
-    ROTATE("rotate"),
+    ROTATE_NE("rotate-ne"),
+
+    /** @see #ROTATE_NE */
+    ROTATE_NW("rotate-nw"),
+
+    /** @see #ROTATE_NE */
+    ROTATE_SE("rotate-se"),
+
+    /** @see #ROTATE_NE */
+    ROTATE_SW("rotate-sw"),
 
     /**
      * Two opposed arrows on parallel rails: <b>drag to lean this edge.</b>

@@ -62,7 +62,10 @@ public final class CursorService1710 implements CgCursorService {
         FOUR_WAY(CgCursorBitmaps::fourWayArrow),
         TEXT_BEAM(CgCursorBitmaps::textBeam),
         SLIDE_ARROW(CgCursorBitmaps::slideArrow),
-        ROTATE(CgCursorBitmaps::rotate),
+        ROTATE_NE(CgCursorBitmaps::rotateNe),
+        ROTATE_NW(CgCursorBitmaps::rotateNw),
+        ROTATE_SE(CgCursorBitmaps::rotateSe),
+        ROTATE_SW(CgCursorBitmaps::rotateSw),
         SKEW(CgCursorBitmaps::skew),
         PIVOT(CgCursorBitmaps::pivot),
         // The one shape whose hotspot is not its centre: a hand points, and the click must land on the
@@ -148,8 +151,14 @@ public final class CursorService1710 implements CgCursorService {
                 return Shape.SLIDE_ARROW;
             // The transform box's three. Rotate especially: its zone is the band OUTSIDE a corner, where
             // nothing is drawn, so the cursor is the whole affordance rather than a hint about a dot.
-            case ROTATE:
-                return Shape.ROTATE;
+            case ROTATE_NE:
+                return Shape.ROTATE_NE;
+            case ROTATE_NW:
+                return Shape.ROTATE_NW;
+            case ROTATE_SE:
+                return Shape.ROTATE_SE;
+            case ROTATE_SW:
+                return Shape.ROTATE_SW;
             case SKEW:
                 return Shape.SKEW;
             case PIVOT:

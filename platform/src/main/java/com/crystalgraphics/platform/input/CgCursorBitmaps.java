@@ -375,13 +375,15 @@ public final class CgCursorBitmaps {
     // white-body-black-outline convention, same 32x32, smooth edges.
 
     /**
-     * A curved double-headed arrow: <b>drag around this point to rotate.</b>
+     * A curved double-headed arrow bending around the <b>top-right</b> corner: drag to rotate.
      *
      * <p>Presented just outside a corner of the Free Transform box, which is where every editor puts the
      * rotate zone and the only affordance it has: nothing is drawn there, so the cursor IS the
-     * advertisement.</p>
+     * advertisement. Each corner gets the bend that hugs it — see {@link #rotateNw()} and the other two,
+     * which are this one MIRRORED rather than redrawn, so all four are the same artwork by construction
+     * and tuning one tunes them all.</p>
      */
-    public static int[] rotate() {
+    public static int[] rotateNe() {
         // EXACTLY A QUARTER, and that is what buys the heads their definition. The tangent is horizontal
         // at the top of a circle and vertical at its right, so this one sweep is the only one whose ends
         // are both on an axis -- which means the heads can be the SAME artwork the resize arrows use,
@@ -407,6 +409,40 @@ public final class CgCursorBitmaps {
         arrowHead(heads, 22, 25, -1, false);
 
         return rasterise((x, y) -> sdArc(x, y, cx, cy, radius, half, 260f, 370f), heads, 1f);
+    }
+
+    /** {@link #rotateNe()} mirrored across the vertical: the bend hugs the top-LEFT corner. */
+    public static int[] rotateNw() {
+        return mirror(rotateNe(), true, false);
+    }
+
+    /** {@link #rotateNe()} mirrored across the horizontal: the bend hugs the bottom-RIGHT corner. */
+    public static int[] rotateSe() {
+        return mirror(rotateNe(), false, true);
+    }
+
+    /** {@link #rotateNe()} mirrored both ways: the bend hugs the bottom-LEFT corner. */
+    public static int[] rotateSw() {
+        return mirror(rotateNe(), true, true);
+    }
+
+    /**
+     * A copy flipped about the canvas centre on either axis.
+     *
+     * <p>Pixels, not geometry. Re-deriving each corner from its own angles would give four shapes that
+     * drift apart the moment one is tuned, and a mirror of a symmetric-by-eye arrowhead is exactly the
+     * same arrowhead — there is nothing in this mark whose handedness carries meaning.</p>
+     */
+    private static int[] mirror(int[] art, boolean flipX, boolean flipY) {
+        int[] out = new int[SIZE * SIZE];
+        for (int y = 0; y < SIZE; y++) {
+            for (int x = 0; x < SIZE; x++) {
+                int sourceX = flipX ? SIZE - 1 - x : x;
+                int sourceY = flipY ? SIZE - 1 - y : y;
+                out[y * SIZE + x] = art[sourceY * SIZE + sourceX];
+            }
+        }
+        return out;
     }
 
     /**
