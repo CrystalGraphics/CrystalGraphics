@@ -104,7 +104,36 @@ public enum CgCursor {
      * for this falls back to {@code ew-resize} — a cosmetic gap, which is the documented outcome for any
      * unimplemented cursor.</p>
      */
-    SLIDE_ARROW("slide-arrow");
+    SLIDE_ARROW("slide-arrow"),
+
+    /**
+     * A curved double-headed arrow: <b>drag around this point to rotate.</b>
+     *
+     * <p>The rotate zone of a transform box is the band just OUTSIDE its corners, where nothing is drawn
+     * at all — so unlike a resize handle, which is a visible dot, the cursor is the entire affordance.
+     * Photoshop, Figma, Illustrator and After Effects all ship it for that reason.</p>
+     *
+     * <p>Falls back to {@link #GRAB} where a platform has no artwork: wrong in detail, right in kind, and
+     * a cosmetic gap is the documented outcome for any unimplemented cursor.</p>
+     */
+    ROTATE("rotate"),
+
+    /**
+     * Two opposed arrows on parallel rails: <b>drag to lean this edge.</b>
+     *
+     * <p>Not {@link #EW_RESIZE} and not {@link #MOVE}: a skew slides one edge PAST the other, which is
+     * neither resizing the box nor moving it. Falls back to {@code ew-resize}, the closest thing a
+     * platform without it has.</p>
+     */
+    SKEW("skew"),
+
+    /**
+     * A ring inside a crosshair: <b>this is the point everything else turns about.</b>
+     *
+     * <p>After Effects' anchor-point tool. Falls back to {@link #CROSSHAIR}, which is the same idea
+     * without the ring.</p>
+     */
+    PIVOT("pivot");
 
     /** The CSS keyword. Kept because the enum name cannot spell it — {@code EW_RESIZE} is
      * {@code ew-resize}, and a platform mapping table is far easier to read against the real names. */

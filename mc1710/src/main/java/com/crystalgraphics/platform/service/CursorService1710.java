@@ -62,6 +62,9 @@ public final class CursorService1710 implements CgCursorService {
         FOUR_WAY(CgCursorBitmaps::fourWayArrow),
         TEXT_BEAM(CgCursorBitmaps::textBeam),
         SLIDE_ARROW(CgCursorBitmaps::slideArrow),
+        ROTATE(CgCursorBitmaps::rotate),
+        SKEW(CgCursorBitmaps::skew),
+        PIVOT(CgCursorBitmaps::pivot),
         // The one shape whose hotspot is not its centre: a hand points, and the click must land on the
         // fingertip rather than half a cursor below it.
         POINTING_HAND(CgCursorBitmaps::pointingHand,
@@ -143,6 +146,14 @@ public final class CursorService1710 implements CgCursorService {
             // apart and have to be distinguishable — see CgCursor.SLIDE_ARROW.
             case SLIDE_ARROW:
                 return Shape.SLIDE_ARROW;
+            // The transform box's three. Rotate especially: its zone is the band OUTSIDE a corner, where
+            // nothing is drawn, so the cursor is the whole affordance rather than a hint about a dot.
+            case ROTATE:
+                return Shape.ROTATE;
+            case SKEW:
+                return Shape.SKEW;
+            case PIVOT:
+                return Shape.PIVOT;
             // `pointer` is the most common cursor in any UI — every button, link and menu row asks for it —
             // so it is the one keyword worth artwork beyond the resize set.
             case POINTER: case GRAB:
