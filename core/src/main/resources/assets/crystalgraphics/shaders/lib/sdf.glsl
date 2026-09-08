@@ -271,4 +271,11 @@ float sdf_coverage(float dist) {
     float aa = fwidth(dist) * 0.5;
     return 1.0 - smoothstep(-aa, aa, dist);
 }
+// The same ramp, `rampPx` pixels wide instead of one -- a rotated shape's thin border ropes with a
+// one-pixel filter, and a slightly wider one reads smoother. See CG_QUAD_EDGE_FILTER in cg_env.glsl.
+// (`filter` is a reserved word in GLSL, hence the name.)
+float sdf_coverage(float dist, float rampPx) {
+    float aa = fwidth(dist) * 0.5 * rampPx;
+    return 1.0 - smoothstep(-aa, aa, dist);
+}
 #endif

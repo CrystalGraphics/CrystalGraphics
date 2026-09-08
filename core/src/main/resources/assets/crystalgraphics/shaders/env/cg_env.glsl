@@ -152,6 +152,142 @@ uniform sampler2D cg_DepthBuffer;
 #define CG_QUAD_COLOR (QUAD_DATA(CG_INSTANCE_ID).color)
 #define CG_QUAD_NORMAL (normalize(cross(QUAD_DATA(CG_INSTANCE_ID).right, QUAD_DATA(CG_INSTANCE_ID).up)))
 #define CG_QUAD_ATLAS_LAYER (QUAD_DATA(CG_INSTANCE_ID).atlasLayer)
+#define CG_QUAD_FLAGS (QUAD_DATA(CG_INSTANCE_ID).flags)
+
+// -- CG_QUAD_EDGE_* -- analytic edge antialiasing for SCREEN-SPACE quads ----------------------------
+//
+// A quad's edges are decided by the rasteriser: a pixel is in or out. Axis-aligned that is right --
+// the edge snaps to a pixel, and two quads meeting on a fractional boundary snap to the SAME pixel, so
+// a scrolling list has no seams. Rotated or sheared it is a staircase. These helpers do for a quad
+// what a Cell does for a tessellated fill: grow it by half a pixel in the vertex stage so the edge
+// pixels are shaded at all, then compute in the fragment stage the exact area a straight edge leaves
+// of each pixel, from the interpolated parameter and the quad's own extents. Axis-aligned quads are
+// left exactly alone -- the decision is made per instance from right/up -- and an edge that ABUTS
+// another quad (CG_QUAD_FLAGS bits 0-3: top, right, bottom, left) stays hard whatever the orientation,
+// because two softened edges meeting compose to three quarters and read as a hairline. A hard edge is
+// not padded either: it has to end exactly where the rasteriser cuts it.
+//
+// SCREEN SPACE ONLY: "half a pixel" is half a unit of the space right/up are in, which is a window
+// pixel under an ortho projection and nothing in particular under a perspective one. A 3D quad
+// material has no business calling these. Text does not either: a glyph's edge is the atlas's, and
+// the quad around it is transparent margin.
+//
+//   Vertex:    vec2 param = CG_QUAD_EDGE_PARAM;                 // grown when soft, else cg_Position
+//              gl_Position = cg_ProjMatrix * vec4(CG_QUAD_EDGE_WORLD_POS(param), 1.0);
+//              o.param = param;                                 // carry it, not uv
+//   Fragment:  vec2 uv = CG_QUAD_EDGE_UV(i.param);              // clamped: the pad never samples past the rect
+//              alpha *= CG_QUAD_EDGE_COVERAGE(i.param);
+//
+// The parameter is interpolated and the uv derived from it in the fragment, not the other way round:
+// clamping at the vertices would compress the texture across the grown quad by the pad.
+bool cg_quad_edge_rotated(vec3 right, vec3 up) {
+    return abs(right.y) > 1.0e-4 || abs(up.x) > 1.0e-4;
+}
+// Which edges are soft, as (left, right, top, bottom) in {0, 1}: the rotated ones that abut nothing.
+vec4 cg_quad_edge_soft(vec3 right, vec3 up, float flags) {
+    if (!cg_quad_edge_rotated(right, up)) return vec4(0.0);
+    int f = int(flags + 0.5);
+    return vec4((f & 8) == 0 ? 1.0 : 0.0, (f & 2) == 0 ? 1.0 : 0.0,
+                (f & 1) == 0 ? 1.0 : 0.0, (f & 4) == 0 ? 1.0 : 0.0);
+}
+// Perpendicular extent of the quad across its u and across its v, in the units of right/up: the
+// distance from the left edge to the right edge measured along their normal, and top to bottom.
+vec2 cg_quad_edge_extent(vec3 right, vec3 up) {
+    float area = abs(right.x * up.y - right.y * up.x);
+    return vec2(area / max(length(up.xy), 1.0e-6), area / max(length(right.xy), 1.0e-6));
+}
+// Width of the reconstruction filter, in pixels. One is the box filter -- the exact area a straight
+// edge covers -- and it is also the roping every thin rotated line shows, its brightness beading as
+// it drifts across rows. Slightly wider trades a little sharpness for a smoother line, on rotated
+// content only. The half-pixel pad grows with it.
+#define CG_QUAD_EDGE_FILTER 1.5
+vec2 cg_quad_edge_param(vec2 local, vec3 right, vec3 up, float flags) {
+    vec4 soft = cg_quad_edge_soft(right, up, flags);
+    if (dot(soft, vec4(1.0)) == 0.0) return local;
+    vec2 e = (0.5 * CG_QUAD_EDGE_FILTER) / max(cg_quad_edge_extent(right, up), vec2(1.0e-6));
+    vec2 lo = e * soft.xz, hi = e * soft.yw;      // pad each side only where that edge is soft
+    return local * (1.0 + lo + hi) - lo;
+}
+float cg_quad_edge_coverage(vec2 param, vec3 right, vec3 up, float flags) {
+    vec4 soft = cg_quad_edge_soft(right, up, flags);
+    if (dot(soft, vec4(1.0)) == 0.0) return 1.0;
+    vec2 h = cg_quad_edge_extent(right, up);
+    // Per pair of opposite edges: the area inside each, summed, less the whole pixel -- exact for a
+    // straight edge through a pixel, and for the two together when they are further apart than one.
+    // A hard edge contributes a whole pixel: the rasteriser already cut it.
+    vec2 near = mix(vec2(1.0), clamp(0.5 + param * h / CG_QUAD_EDGE_FILTER, 0.0, 1.0), soft.xz);
+    vec2 far = mix(vec2(1.0), clamp(0.5 + (1.0 - param) * h / CG_QUAD_EDGE_FILTER, 0.0, 1.0), soft.yw);
+    vec2 c = near + far - 1.0;
+    return clamp(c.x, 0.0, 1.0) * clamp(c.y, 0.0, 1.0);
+}
+#define CG_QUAD_EDGE_PARAM cg_quad_edge_param(cg_Position.xy, QUAD_DATA(CG_INSTANCE_ID).right, QUAD_DATA(CG_INSTANCE_ID).up, CG_QUAD_FLAGS)
+#define CG_QUAD_EDGE_WORLD_POS(param) (QUAD_DATA(CG_INSTANCE_ID).origin + (param).x * QUAD_DATA(CG_INSTANCE_ID).right + (param).y * QUAD_DATA(CG_INSTANCE_ID).up)
+#define CG_QUAD_EDGE_UV(param) (mix(QUAD_DATA(CG_INSTANCE_ID).uv0, QUAD_DATA(CG_INSTANCE_ID).uv1, clamp(param, 0.0, 1.0)))
+#define CG_QUAD_EDGE_COVERAGE(param) cg_quad_edge_coverage(param, QUAD_DATA(CG_INSTANCE_ID).right, QUAD_DATA(CG_INSTANCE_ID).up, CG_QUAD_FLAGS)
+#define CG_QUAD_EDGE_ROTATED cg_quad_edge_rotated(QUAD_DATA(CG_INSTANCE_ID).right, QUAD_DATA(CG_INSTANCE_ID).up)
+
+// -- CG_TEXEL_AA -- texel antialiasing for rotated pixel art -----------------------------------------
+//
+// The edge helpers above soften a quad's OUTLINE. Its texels are another matter: a nearest-sampled
+// sprite rotated eight degrees is a staircase along every line inside it, because each screen pixel
+// snaps to one texel. Linear filtering trades that for blur everywhere. This is the pixel-art
+// compromise -- nearest everywhere except within one screen pixel of a texel boundary, where the two
+// texels blend linearly. Blocks stay flat and crisp; their boundaries get exactly the antialiasing a
+// geometric edge gets. Axis-aligned at an integer scale it reproduces nearest bit for bit, and a
+// consumer gates it on CG_QUAD_EDGE_ROTATED regardless, so nothing at rest changes.
+//
+// Four taps, because the atlases this is for are nearest-filtered and hardware linear is not there
+// to do the blend. `rect` is the quad's texel rectangle (uv0, uv1 in texels): the taps are held inside
+// it, so a sprite in an atlas never reads its neighbour.
+//
+// fwidth is fragment-only, hence the stage guard -- cg_env is compiled into both stages.
+#ifndef CG_VERTEX_STAGE
+vec2 cg_texel_aa_position(vec2 texel, vec4 rect) {
+    vec2 width = max(fwidth(texel), vec2(1.0e-6));
+    // Pivot on the nearest texel BOUNDARY: further than half a screen pixel from it the sample sits on
+    // the texel centre of its own side (flat), and within that band it slides linearly across to the
+    // other side's centre (the blend). Pivoting on the centre instead puts the blend in the middle of
+    // every texel and leaves the boundaries hard, which is precisely backwards.
+    vec2 boundary = floor(texel + 0.5);
+    vec2 p = boundary + clamp((texel - boundary) / (width * CG_QUAD_EDGE_FILTER), -0.5, 0.5);
+    return clamp(p, rect.xy, rect.zw);
+}
+// The two texel columns (or rows) a bilinear tap at `p` reads, and the weight of the second -- with
+// both held inside the texels the rect covers, whether the rect is stated on texel boundaries or,
+// as a sprite sheet usually is, inset to texel centres. Either way a sprite never reads its neighbour.
+void cg_texel_aa_taps(float p, float lo, float hi, out float i0, out float i1, out float f) {
+    float base = floor(p - 0.5);
+    f = p - 0.5 - base;
+    float first = floor(lo), last = max(first, ceil(hi) - 1.0);
+    i0 = clamp(base, first, last);
+    i1 = clamp(base + 1.0, first, last);
+}
+vec4 cg_texel_aa_sample(sampler2D tex, vec2 uv, vec4 uvRect) {
+    vec2 size = vec2(textureSize(tex, 0));
+    vec4 rect = uvRect * size.xyxy;
+    vec2 p = cg_texel_aa_position(uv * size, rect);
+    vec2 i0, i1, f;
+    cg_texel_aa_taps(p.x, rect.x, rect.z, i0.x, i1.x, f.x);
+    cg_texel_aa_taps(p.y, rect.y, rect.w, i0.y, i1.y, f.y);
+    vec4 a = texture(tex, (vec2(i0.x, i0.y) + 0.5) / size), b = texture(tex, (vec2(i1.x, i0.y) + 0.5) / size);
+    vec4 c = texture(tex, (vec2(i0.x, i1.y) + 0.5) / size), d = texture(tex, (vec2(i1.x, i1.y) + 0.5) / size);
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+vec4 cg_texel_aa_sample(sampler2DArray tex, vec3 uvw, vec4 uvRect) {
+    vec2 size = vec2(textureSize(tex, 0).xy);
+    vec4 rect = uvRect * size.xyxy;
+    vec2 p = cg_texel_aa_position(uvw.xy * size, rect);
+    vec2 i0, i1, f;
+    cg_texel_aa_taps(p.x, rect.x, rect.z, i0.x, i1.x, f.x);
+    cg_texel_aa_taps(p.y, rect.y, rect.w, i0.y, i1.y, f.y);
+    vec4 a = texture(tex, vec3((vec2(i0.x, i0.y) + 0.5) / size, uvw.z));
+    vec4 b = texture(tex, vec3((vec2(i1.x, i0.y) + 0.5) / size, uvw.z));
+    vec4 c = texture(tex, vec3((vec2(i0.x, i1.y) + 0.5) / size, uvw.z));
+    vec4 d = texture(tex, vec3((vec2(i1.x, i1.y) + 0.5) / size, uvw.z));
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+#endif
+#define CG_QUAD_UV_RECT vec4(min(QUAD_DATA(CG_INSTANCE_ID).uv0, QUAD_DATA(CG_INSTANCE_ID).uv1), max(QUAD_DATA(CG_INSTANCE_ID).uv0, QUAD_DATA(CG_INSTANCE_ID).uv1))
 
 // -- CgVectorRenderer convenience macros --------------------------------------
 // CgVectorRenderer (gl/render/CgVectorRenderer.java) is an SSBO/TBO-backed instanced renderer for
