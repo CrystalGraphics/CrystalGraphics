@@ -52,6 +52,12 @@
 #define CG_STROKE_FILL_EDGE_P1_P2 1
 #define CG_STROKE_FILL_EDGE_P2_P0 2
 
+// Bit 8 -- a filled QUAD: p0, p1, p2 and `widths` are its four corners in order. Bits 9-12 say which of
+// its four edges (p0p1, p1p2, p2p3, p3p0) are on the shape's outline. See CgVectorRenderer.Quad and
+// quad_coverage below.
+#define CG_STROKE_FLAG_QUAD 256
+#define CG_STROKE_QUAD_EDGE_SHIFT 9
+
 // Signed distance to the line through a->b, positive on the outside of a counter-clockwise triangle.
 // A LINE, not a segment: the silhouette continues into the neighbouring triangle, so clamping to this
 // triangle's own span would cut the antialiased band off at every seam and leave a notch at each one.
@@ -221,26 +227,13 @@ float fill_coverage(vec2 p, vec2 p0, vec2 p1, vec2 p2, float cornerRadius, float
     vec2 e1 = p1 - p0;
     vec2 e2 = p2 - p0;
 
-    // SIGNED, deliberately: a negative radius ERODES. A tessellated fill needs to nudge the two sides of
-    // a shared edge in opposite directions when it cannot afford to overlap them -- which is the case for
-    // any translucent fill, where an overlap composites twice. See CrystalGUI SvgDocument.FILL_OFFSET.
+    // SIGNED, deliberately: a negative radius ERODES, so two abutting triangles can be nudged apart
+    // when an overlap would composite twice.
     float area = e1.x * e2.y - e1.y * e2.x;
 
-    // A HARD EDGE BY DEFAULT, and the floor is deliberately far below a stroke's.
-    //
-    // A tessellated fill hands its seams to two triangles that decide ownership on this distance, so the
-    // ramp should be far below the offset those two are separated by (CrystalGUI SvgDocument.FILL_OFFSET,
-    // 1e-3): inside the ramp both sides return something strictly between 0 and 1 and a translucent fill
-    // blends twice at partial strength.
-    //
-    // HONEST PROVENANCE, because the obvious reading of this line is wrong. It was lowered from 1e-4 to
-    // 1e-6 to fix exactly that artefact and MEASURED NOT TO -- the reported lines and dashes were
-    // unchanged. The cause was the consumer reconstructing its sample point from an interpolated varying;
-    // see gui_curve.shader. Keep the low floor anyway, since a fill genuinely wants a step and the ramp
-    // has no business being the widest term, but do not credit it with more than that.
-    //
-    // Nothing is lost by it: a fill wants a step, and a caller that wants a soft edge passes a real
-    // feather. The floor exists only so the smoothstep never divides by zero.
+    // A HARD EDGE BY DEFAULT: a fill wants a step, and a caller that wants a soft edge passes a real
+    // feather. The floor exists only so the smoothstep never divides by zero. (Tessellated fills no
+    // longer come through here at all -- see quad_coverage.)
     float ramp = max(feather, 1.0e-6);
     if (silhouetteEdge == CG_STROKE_FILL_EDGE_NONE || feather <= 0.0) {
         float d = sdf_triangle(q, vec2(0.0), e1, e2) - cornerRadius;
@@ -280,12 +273,135 @@ float fill_coverage(vec2 p, vec2 p0, vec2 p1, vec2 p2, float cornerRadius, float
     if (inside - cornerRadius > 0.0) return 0.0;
 
     float edge = (silhouetteEdge == CG_STROKE_FILL_EDGE_P1_P2) ? dE1 : dE2;
-    return 1.0 - smoothstep(-feather * 0.5, feather * 0.5, edge);
+    // LINEAR, not smoothstep: with a one-pixel feather this is the exact area a straight edge covers
+    // of the pixel it crosses, i.e. what an area-coverage rasteriser computes. smoothstep under-covers
+    // everything within half a pixel of an edge, which on a 16px icon is most of it -- measured against
+    // IntelliJ's own raster of the same file, the linear ramp halves the per-pixel error.
+    return clamp(0.5 - edge / feather, 0.0, 1.0);
 }
 
 /** The common case: a lone triangle, whose every edge is its own outline and none of them a seam. */
 float fill_coverage(vec2 p, vec2 p0, vec2 p1, vec2 p2, float cornerRadius, float feather) {
     return fill_coverage(p, p0, p1, p2, cornerRadius, feather, CG_STROKE_FILL_EDGE_NONE);
+}
+
+// ---- Filled quads -------------------------------------------------------------------------------
+//
+// The reading a tessellated fill wants. A scanline decomposition cuts a shape into bands, and every
+// band cell is a quad whose two walls are contour edges and whose top and bottom are cuts shared with
+// the neighbouring bands. Drawn as a pair of triangles, a triangle only ever knew ONE wall: any pixel
+// on a cut and within reach of the other wall was claimed at full coverage by the half owning the far
+// one, which showed as a bright row across every seam. One instance that knows all four edges has no
+// such gap.
+//
+// COVERAGE IS AN AREA, NOT A RAMP. A soft edge contributes the exact area of the unit pixel on its
+// inside -- what an area-coverage rasteriser computes, and the reason the output matches a CPU raster
+// of the same file. Opposite edges combine by the sum rule (exact for two parallel walls through one
+// pixel), the two pairs multiply (exact for a rectangle, the separable approximation at a corner).
+// The pixel is ONE UNIT of p's space, so this reading belongs to a material whose points are window
+// pixels: gui_curve.shader.
+//
+// A HARD EDGE IS A SEAM AND IS DECIDED AT THE PIXEL CENTRE, HALF-OPEN. Two cells sharing a seam must
+// claim every pixel on it exactly once, or a translucent fill blends twice and an opaque one drops a
+// row. The distance to the line is computed from its lexicographically smaller endpoint whichever way
+// the edge runs, so both cells compute the SAME number with opposite signs -- and then the top and
+// left edges take `<= 0`, the right and bottom `< 0`. A seam is always one cell's top against another's
+// bottom, or a right against a left, so exactly one of them owns the boundary line.
+
+// Area of the unit pixel centred on the origin that lies on the inside of a line at signed distance
+// `d` (positive outside) with unit normal `n`. Exact: the line cuts the square into a trapezoid while it
+// crosses two opposite sides, and a triangle off a corner otherwise.
+float _quad_edge_area(float d, vec2 n) {
+    float a = max(abs(n.x), abs(n.y));
+    float b = min(abs(n.x), abs(n.y));
+    float w = (a + b) * 0.5;
+    if (d >= w) return 0.0;
+    if (d <= -w) return 1.0;
+    float lo = (a - b) * 0.5;
+    if (abs(d) <= lo) return 0.5 - d / a;
+    // Only reachable with b > 0, since lo == w when b == 0.
+    float corner = (w - abs(d)) * (w - abs(d)) / (2.0 * a * b);
+    return d > 0.0 ? corner : 1.0 - corner;
+}
+
+// Coverage from ONE quad edge a->b: exact area if soft, half-open step at the centre if hard.
+// `winding` orients the distance so positive is outside for this quad's winding; `ownsLine` is whether
+// a hard edge claims the points exactly on it.
+float _quad_edge(vec2 p, vec2 a, vec2 b, float winding, bool soft, bool ownsLine) {
+    vec2 lo = a, hi = b;
+    float flip = 1.0;
+    if (a.x > b.x || (a.x == b.x && a.y > b.y)) { lo = b; hi = a; flip = -1.0; }
+    vec2 e = hi - lo;
+    float len = length(e);
+    if (len < 1.0e-12) return 1.0;     // a collapsed edge constrains nothing: the tip of a shape
+    float d = flip * winding * (e.x * (p.y - lo.y) - e.y * (p.x - lo.x)) / len;
+    if (soft) return _quad_edge_area(d, vec2(-e.y, e.x) / len);
+    return (ownsLine ? d <= 0.0 : d < 0.0) ? 1.0 : 0.0;
+}
+
+// The exact area of the unit pixel centred on `p` inside the quad: the pixel clipped against the four
+// half-planes (Sutherland-Hodgman), then the shoelace formula. Used when EVERY edge is soft -- a cell
+// being accumulated rather than composited, whose neighbours' areas it must sum with exactly. The
+// separable combination below is exact for a rectangle and close elsewhere; this is exact everywhere.
+float _quad_exact_area(vec2 p, vec2 p0, vec2 p1, vec2 p2, vec2 p3, float winding) {
+    vec2 poly[8];
+    vec2 clipped[8];
+    int n = 4;
+    poly[0] = p + vec2(-0.5, -0.5);
+    poly[1] = p + vec2( 0.5, -0.5);
+    poly[2] = p + vec2( 0.5,  0.5);
+    poly[3] = p + vec2(-0.5,  0.5);
+    vec2 corners[5] = vec2[5](p0, p1, p2, p3, p0);
+    for (int e = 0; e < 4; e++) {
+        vec2 a = corners[e];
+        vec2 ed = corners[e + 1] - a;
+        if (dot(ed, ed) < 1.0e-12) continue;      // a collapsed edge: the tip of a shape
+        int m = 0;
+        for (int i = 0; i < n; i++) {
+            vec2 cur = poly[i];
+            vec2 prev = poly[(i + n - 1) % n];
+            float dc = winding * (ed.x * (cur.y - a.y) - ed.y * (cur.x - a.x));
+            float dp = winding * (ed.x * (prev.y - a.y) - ed.y * (prev.x - a.x));
+            if (dc <= 0.0) {
+                if (dp > 0.0) clipped[m++] = mix(prev, cur, dp / (dp - dc));
+                clipped[m++] = cur;
+            } else if (dp <= 0.0) {
+                clipped[m++] = mix(prev, cur, dp / (dp - dc));
+            }
+        }
+        if (m == 0) return 0.0;
+        n = m;
+        for (int i = 0; i < n; i++) poly[i] = clipped[i];
+    }
+    float area = 0.0;
+    for (int i = 0; i < n; i++) {
+        vec2 c = poly[i];
+        vec2 d = poly[(i + 1) % n];
+        area += c.x * d.y - d.x * c.y;
+    }
+    return abs(area) * 0.5;
+}
+
+float quad_coverage(vec2 p, vec2 p0, vec2 p1, vec2 p2, vec2 p3, int flags) {
+    // ABSOLUTE COORDINATES, unlike fill_coverage: the half-open seam rule needs both cells to compute
+    // the same distance bit for bit, and each cell has a different p0 to be relative to. The
+    // cancellation fill_coverage guards against is sdf_triangle's dot products; a cross product of
+    // two cell-sized vectors has none of it.
+    vec2 e1 = p1 - p0;
+    vec2 e2 = p2 - p0;
+    vec2 e3 = p3 - p0;
+    float area = (e1.x * e2.y - e1.y * e2.x) + (e2.x * e3.y - e2.y * e3.x);
+    if (abs(area) < 1.0e-9) return 0.0;
+    float winding = -sign(area);
+    int soft = flags >> CG_STROKE_QUAD_EDGE_SHIFT;
+    if ((soft & 15) == 15) return _quad_exact_area(p, p0, p1, p2, p3, winding);
+
+    float top    = _quad_edge(p, p0, p1, winding, (soft & 1) != 0, true);
+    float right  = _quad_edge(p, p1, p2, winding, (soft & 2) != 0, false);
+    float bottom = _quad_edge(p, p2, p3, winding, (soft & 4) != 0, false);
+    float left   = _quad_edge(p, p3, p0, winding, (soft & 8) != 0, true);
+
+    return clamp(left + right - 1.0, 0.0, 1.0) * clamp(top + bottom - 1.0, 0.0, 1.0);
 }
 
 // The one place stroke-vs-fill is decided, so curve.shader and gui_curve.shader can never disagree
@@ -299,6 +415,12 @@ float fill_coverage(vec2 p, vec2 p0, vec2 p1, vec2 p2, float cornerRadius, float
 // (see CgVectorRenderer.Triangle) -- `widths` has no other meaning once a triangle has no taper.
 float curve_instance_coverage(vec2 p, vec2 p0, vec2 p1, vec2 p2,
                               vec2 widths, float feather, int flags, vec4 gradient, out float t) {
+    if ((flags & CG_STROKE_FLAG_QUAD) != 0) {
+        t = ((flags & CG_STROKE_FLAG_GRADIENT) != 0)
+                ? clamp(dot(p - gradient.xy, gradient.zw), 0.0, 1.0)
+                : 0.0;
+        return quad_coverage(p, p0, p1, p2, widths, flags);
+    }
     if ((flags & CG_STROKE_FLAG_FILL) != 0) {
         // A GRADIENT FILL IS THE SAME COVERAGE WITH A REAL t. The caller already does
         // mix(color0, color1, t), so a per-pixel ramp costs one dot product and no second material --
