@@ -52,11 +52,11 @@
 #define CG_STROKE_FILL_EDGE_P1_P2 1
 #define CG_STROKE_FILL_EDGE_P2_P0 2
 
-// Bit 8 -- a filled QUAD: p0, p1, p2 and `widths` are its four corners in order. Bits 9-12 say which of
-// its four edges (p0p1, p1p2, p2p3, p3p0) are on the shape's outline. See CgVectorRenderer.Quad and
-// quad_coverage below.
-#define CG_STROKE_FLAG_QUAD 256
-#define CG_STROKE_QUAD_EDGE_SHIFT 9
+// Bit 8 -- a CELL: p0, p1, p2 and `widths` are its four corners in order. Bits 9-12 say which of its
+// four edges (p0p1, p1p2, p2p3, p3p0) are on the shape's outline. See CgVectorRenderer.Cell and
+// cell_coverage below.
+#define CG_STROKE_FLAG_CELL 256
+#define CG_STROKE_CELL_EDGE_SHIFT 9
 
 // Signed distance to the line through a->b, positive on the outside of a counter-clockwise triangle.
 // A LINE, not a segment: the silhouette continues into the neighbouring triangle, so clamping to this
@@ -233,7 +233,7 @@ float fill_coverage(vec2 p, vec2 p0, vec2 p1, vec2 p2, float cornerRadius, float
 
     // A HARD EDGE BY DEFAULT: a fill wants a step, and a caller that wants a soft edge passes a real
     // feather. The floor exists only so the smoothstep never divides by zero. (Tessellated fills no
-    // longer come through here at all -- see quad_coverage.)
+    // longer come through here at all -- see cell_coverage.)
     float ramp = max(feather, 1.0e-6);
     if (silhouetteEdge == CG_STROKE_FILL_EDGE_NONE || feather <= 0.0) {
         float d = sdf_triangle(q, vec2(0.0), e1, e2) - cornerRadius;
@@ -285,10 +285,10 @@ float fill_coverage(vec2 p, vec2 p0, vec2 p1, vec2 p2, float cornerRadius, float
     return fill_coverage(p, p0, p1, p2, cornerRadius, feather, CG_STROKE_FILL_EDGE_NONE);
 }
 
-// ---- Filled quads -------------------------------------------------------------------------------
+// ---- Cells -------------------------------------------------------------------------------------
 //
 // The reading a tessellated fill wants. A scanline decomposition cuts a shape into bands, and every
-// band cell is a quad whose two walls are contour edges and whose top and bottom are cuts shared with
+// band cell is a convex quad whose two walls are contour edges and whose top and bottom are cuts shared with
 // the neighbouring bands. Drawn as a pair of triangles, a triangle only ever knew ONE wall: any pixel
 // on a cut and within reach of the other wall was claimed at full coverage by the half owning the far
 // one, which showed as a bright row across every seam. One instance that knows all four edges has no
@@ -311,7 +311,7 @@ float fill_coverage(vec2 p, vec2 p0, vec2 p1, vec2 p2, float cornerRadius, float
 // Area of the unit pixel centred on the origin that lies on the inside of a line at signed distance
 // `d` (positive outside) with unit normal `n`. Exact: the line cuts the square into a trapezoid while it
 // crosses two opposite sides, and a triangle off a corner otherwise.
-float _quad_edge_area(float d, vec2 n) {
+float _cell_edge_area(float d, vec2 n) {
     float a = max(abs(n.x), abs(n.y));
     float b = min(abs(n.x), abs(n.y));
     float w = (a + b) * 0.5;
@@ -324,10 +324,10 @@ float _quad_edge_area(float d, vec2 n) {
     return d > 0.0 ? corner : 1.0 - corner;
 }
 
-// Coverage from ONE quad edge a->b: exact area if soft, half-open step at the centre if hard.
+// Coverage from ONE cell edge a->b: exact area if soft, half-open step at the centre if hard.
 // `winding` orients the distance so positive is outside for this quad's winding; `ownsLine` is whether
 // a hard edge claims the points exactly on it.
-float _quad_edge(vec2 p, vec2 a, vec2 b, float winding, bool soft, bool ownsLine) {
+float _cell_edge(vec2 p, vec2 a, vec2 b, float winding, bool soft, bool ownsLine) {
     vec2 lo = a, hi = b;
     float flip = 1.0;
     if (a.x > b.x || (a.x == b.x && a.y > b.y)) { lo = b; hi = a; flip = -1.0; }
@@ -335,15 +335,15 @@ float _quad_edge(vec2 p, vec2 a, vec2 b, float winding, bool soft, bool ownsLine
     float len = length(e);
     if (len < 1.0e-12) return 1.0;     // a collapsed edge constrains nothing: the tip of a shape
     float d = flip * winding * (e.x * (p.y - lo.y) - e.y * (p.x - lo.x)) / len;
-    if (soft) return _quad_edge_area(d, vec2(-e.y, e.x) / len);
+    if (soft) return _cell_edge_area(d, vec2(-e.y, e.x) / len);
     return (ownsLine ? d <= 0.0 : d < 0.0) ? 1.0 : 0.0;
 }
 
-// The exact area of the unit pixel centred on `p` inside the quad: the pixel clipped against the four
+// The exact area of the unit pixel centred on `p` inside the cell: the pixel clipped against the four
 // half-planes (Sutherland-Hodgman), then the shoelace formula. Used when EVERY edge is soft -- a cell
 // being accumulated rather than composited, whose neighbours' areas it must sum with exactly. The
 // separable combination below is exact for a rectangle and close elsewhere; this is exact everywhere.
-float _quad_exact_area(vec2 p, vec2 p0, vec2 p1, vec2 p2, vec2 p3, float winding) {
+float _cell_exact_area(vec2 p, vec2 p0, vec2 p1, vec2 p2, vec2 p3, float winding) {
     vec2 poly[8];
     vec2 clipped[8];
     int n = 4;
@@ -382,7 +382,7 @@ float _quad_exact_area(vec2 p, vec2 p0, vec2 p1, vec2 p2, vec2 p3, float winding
     return abs(area) * 0.5;
 }
 
-float quad_coverage(vec2 p, vec2 p0, vec2 p1, vec2 p2, vec2 p3, int flags) {
+float cell_coverage(vec2 p, vec2 p0, vec2 p1, vec2 p2, vec2 p3, int flags) {
     // ABSOLUTE COORDINATES, unlike fill_coverage: the half-open seam rule needs both cells to compute
     // the same distance bit for bit, and each cell has a different p0 to be relative to. The
     // cancellation fill_coverage guards against is sdf_triangle's dot products; a cross product of
@@ -393,13 +393,13 @@ float quad_coverage(vec2 p, vec2 p0, vec2 p1, vec2 p2, vec2 p3, int flags) {
     float area = (e1.x * e2.y - e1.y * e2.x) + (e2.x * e3.y - e2.y * e3.x);
     if (abs(area) < 1.0e-9) return 0.0;
     float winding = -sign(area);
-    int soft = flags >> CG_STROKE_QUAD_EDGE_SHIFT;
-    if ((soft & 15) == 15) return _quad_exact_area(p, p0, p1, p2, p3, winding);
+    int soft = flags >> CG_STROKE_CELL_EDGE_SHIFT;
+    if ((soft & 15) == 15) return _cell_exact_area(p, p0, p1, p2, p3, winding);
 
-    float top    = _quad_edge(p, p0, p1, winding, (soft & 1) != 0, true);
-    float right  = _quad_edge(p, p1, p2, winding, (soft & 2) != 0, false);
-    float bottom = _quad_edge(p, p2, p3, winding, (soft & 4) != 0, false);
-    float left   = _quad_edge(p, p3, p0, winding, (soft & 8) != 0, true);
+    float top    = _cell_edge(p, p0, p1, winding, (soft & 1) != 0, true);
+    float right  = _cell_edge(p, p1, p2, winding, (soft & 2) != 0, false);
+    float bottom = _cell_edge(p, p2, p3, winding, (soft & 4) != 0, false);
+    float left   = _cell_edge(p, p3, p0, winding, (soft & 8) != 0, true);
 
     return clamp(left + right - 1.0, 0.0, 1.0) * clamp(top + bottom - 1.0, 0.0, 1.0);
 }
@@ -415,11 +415,11 @@ float quad_coverage(vec2 p, vec2 p0, vec2 p1, vec2 p2, vec2 p3, int flags) {
 // (see CgVectorRenderer.Triangle) -- `widths` has no other meaning once a triangle has no taper.
 float curve_instance_coverage(vec2 p, vec2 p0, vec2 p1, vec2 p2,
                               vec2 widths, float feather, int flags, vec4 gradient, out float t) {
-    if ((flags & CG_STROKE_FLAG_QUAD) != 0) {
+    if ((flags & CG_STROKE_FLAG_CELL) != 0) {
         t = ((flags & CG_STROKE_FLAG_GRADIENT) != 0)
                 ? clamp(dot(p - gradient.xy, gradient.zw), 0.0, 1.0)
                 : 0.0;
-        return quad_coverage(p, p0, p1, p2, widths, flags);
+        return cell_coverage(p, p0, p1, p2, widths, flags);
     }
     if ((flags & CG_STROKE_FLAG_FILL) != 0) {
         // A GRADIENT FILL IS THE SAME COVERAGE WITH A REAL t. The caller already does
