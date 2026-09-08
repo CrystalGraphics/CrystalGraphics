@@ -115,6 +115,10 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
             .vec2("uv0").vec2("uv1")
             .vec4("color")
             .float_("atlasLayer")
+            // Bits 0-3: which of the quad's edges ABUT another quad (top, right, bottom, left) and must not
+            // be antialiased. Read by cg_env.glsl's CG_QUAD_EDGE_* helpers; every other bit is free. Costs
+            // nothing: the record was 84 bytes in a 96-byte std430 stride.
+            .float_("flags")
             .build();
 
     private static final String GPU_BUFFER_NAME = "CgQuadRendererInstances";
@@ -195,7 +199,15 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
      * the engine draws through</b>: a page of text is thousands of quads a frame, each paying seven map
      * lookups for offsets that are a property of a compile-time-constant format.</p>
      */
-    private final int offOrigin, offRight, offUp, offUv0, offUv1, offColor, offAtlasLayer;
+    private final int offOrigin, offRight, offUp, offUv0, offUv1, offColor, offAtlasLayer, offFlags;
+
+    /**
+     * {@code flags} bits 0-3 — the quad's top ({@code v = 0}), right ({@code u = 1}), bottom and left
+     * edges meet another quad, so a screen-space material draws them as the rasteriser does rather than
+     * antialiasing them. See {@link Quad#abutting(int)}.
+     */
+    public static final int ABUTS_TOP = 1, ABUTS_RIGHT = 2, ABUTS_BOTTOM = 4, ABUTS_LEFT = 8;
+    public static final int ABUTS_ALL = ABUTS_TOP | ABUTS_RIGHT | ABUTS_BOTTOM | ABUTS_LEFT;
 
     private CgQuadRenderer(CgStagingBuffer accumStaging, CgBufferWriter accumWriter) {
         this.accumStaging = accumStaging;
@@ -207,6 +219,7 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
         this.offUv1 = accumWriter.offsetOf("uv1", CgGpuType.VEC2);
         this.offColor = accumWriter.offsetOf("color", CgGpuType.VEC4);
         this.offAtlasLayer = accumWriter.offsetOf("atlasLayer", CgGpuType.FLOAT);
+        this.offFlags = accumWriter.offsetOf("flags", CgGpuType.FLOAT);
     }
 
     /**
@@ -330,6 +343,7 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
         private float u0, v0, u1, v1;
         private int argb;
         private float atlasLayer;
+        private int flags;
         private Matrix4f pose;
 
         // Reused across every submit() call on this Quad instance — never reallocated.
@@ -354,6 +368,7 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
             v1 = 1f;
             argb = 0xFFFFFFFF;
             atlasLayer = 0f;
+            flags = 0;
             pose = null;
             return this;
         }
@@ -416,6 +431,24 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
          * {@code 0} — harmless for ordinary {@code sampler2D} consumers, which
          * never read {@code CG_QUAD_ATLAS_LAYER} at all.
          */
+        /**
+         * Marks which of this quad's edges meet another quad — a 9-slice's corner piece abuts on two
+         * sides, a tile on up to four.
+         *
+         * <p>A screen-space material antialiases a rotated quad's edges analytically (see
+         * {@code CG_QUAD_EDGE_COVERAGE} in {@code cg_env.glsl}). Two abutting quads each softened along
+         * their shared edge composite to three quarters there, a hairline down every seam; the rasteriser
+         * snaps both to the same pixels and leaves none. So a piece says which edges abut, keeps those
+         * hard, and its outer edges are antialiased like any lone quad's.</p>
+         *
+         * @param edges any of {@link #ABUTS_TOP}, {@link #ABUTS_RIGHT}, {@link #ABUTS_BOTTOM},
+         *              {@link #ABUTS_LEFT}, or {@link #ABUTS_ALL}
+         */
+        public Quad abutting(int edges) {
+            this.flags |= edges & ABUTS_ALL;
+            return this;
+        }
+
         public Quad atlasLayer(int layer) {
             this.atlasLayer = layer;
             return this;
@@ -479,6 +512,7 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
                     .vec2At(offUv1, u1, v1)
                     .colorAt(offColor, argb)
                     .floatAt(offAtlasLayer, atlasLayer)
+                    .floatAt(offFlags, flags)
                     .endRecord();
 
             return CgQuadRenderer.this;

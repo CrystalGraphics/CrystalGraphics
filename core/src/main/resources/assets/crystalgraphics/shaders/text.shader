@@ -119,7 +119,13 @@ Pass {
 
         fragColor = vec4(i.color.rgb, alpha);
 #else
-        float alpha = texture(_MainTex, uvw).r * i.color.a;
+        // A bitmap glyph is nearest-sampled pixel art; rotated, its texels get the antialiasing a
+        // geometric edge gets rather than a staircase. See CG_TEXEL_AA in cg_env.glsl. At rest --
+        // axis-aligned, which is every glyph in a document -- this is the plain fetch it always was.
+        float coverage = CG_QUAD_EDGE_ROTATED
+                ? cg_texel_aa_sample(_MainTex, uvw, CG_QUAD_UV_RECT).r
+                : texture(_MainTex, uvw).r;
+        float alpha = coverage * i.color.a;
         fragColor = vec4(i.color.rgb, alpha);
 #endif
     }

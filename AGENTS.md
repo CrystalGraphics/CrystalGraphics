@@ -464,8 +464,22 @@ essentially every shader wants them. Buffers that only a minority of shaders nee
 
 | Token | Provides | Needed by |
 |---|---|---|
-| `quad` | `QUAD_DATA(n)` + `CG_QUAD_WORLD_POS` / `CG_QUAD_UV` / `CG_QUAD_COLOR` / `CG_QUAD_NORMAL` / `CG_QUAD_ATLAS_LAYER` | Any shader drawn through `CgQuadRenderer` — UI quads, text glyphs, SDF rects |
+| `quad` | `QUAD_DATA(n)` + `CG_QUAD_WORLD_POS` / `CG_QUAD_UV` / `CG_QUAD_COLOR` / `CG_QUAD_NORMAL` / `CG_QUAD_ATLAS_LAYER` / `CG_QUAD_FLAGS`, and for screen-space materials the edge and texel antialiasing below | Any shader drawn through `CgQuadRenderer` — UI quads, text glyphs, SDF rects |
 | `curve` | `CURVE_DATA(n)` + `CG_CURVE_WORLD_POS` / `CG_CURVE_P0`–`P2` / `CG_CURVE_COLOR0`–`1` / `CG_CURVE_WIDTHS` / `CG_CURVE_FEATHER` / `CG_CURVE_FLAGS` | Any shader drawn through `CgVectorRenderer` — Bézier strokes, graph wires, connectors |
+
+> **A screen-space quad material antialiases its own edges — without MSAA.** `cg_env.glsl` provides
+> `CG_QUAD_EDGE_PARAM` (the vertex's parameter, grown by half a pixel when the instance is rotated or
+> sheared in device space), `CG_QUAD_EDGE_WORLD_POS(param)`, `CG_QUAD_EDGE_UV(param)` (clamped, so the pad
+> never samples past the rect) and `CG_QUAD_EDGE_COVERAGE(param)` — the exact area a straight edge leaves of
+> the pixel, per edge, combined per opposite pair. Axis-aligned instances are left exactly alone: the
+> rasteriser snaps those, and two abutting quads softened on a fractional boundary would seam. An edge that
+> abuts another quad — a nine-slice piece, a tile — is marked with `Quad.abutting(int)` (`CG_QUAD_FLAGS`
+> bits 0-3) and stays hard. `CG_QUAD_EDGE_ROTATED` gates anything else a material wants to do only when
+> rotated: `cg_texel_aa_sample` (the pixel-art filter: nearest everywhere, one screen pixel of blend at a
+> texel boundary, four taps held inside `CG_QUAD_UV_RECT`) and `sdf_coverage(dist, rampPx)` with
+> `CG_QUAD_EDGE_FILTER` — the reconstruction width, 1.5 px, the one knob. Adoption is three lines per
+> material; every CrystalGUI quad material has it, `text.shader`'s bitmap path has the texel filter, and a
+> 3D quad material must not use any of it (half a pixel means nothing under a perspective projection).
 
 > **`curve` is the one engine buffer read from the fragment stage as well as the vertex stage.** A
 > stroke is an analytic SDF evaluated per pixel, so the fragment needs the control points themselves;
