@@ -53,7 +53,6 @@ public final class PlatformService1710 implements CgPlatformService {
     private CgGLContext        glContextImpl;
     private CgInputService     inputImpl;
     private CgSoundService     soundImpl;
-    private CgCursorService    cursorImpl;
 
     @Override public CgGLBackend gl() {
         if (glDispatchImpl == null) glDispatchImpl = new Lwjgl2GLBackend();
@@ -93,11 +92,6 @@ public final class PlatformService1710 implements CgPlatformService {
     @Override public CgSoundService sound() {
         if (soundImpl == null) soundImpl = new SoundService1710();
         return soundImpl;
-    }
-
-    @Override public CgCursorService cursor() {
-        if (cursorImpl == null) cursorImpl = new CursorService1710();
-        return cursorImpl;
     }
     
     // ── Lifecycle ─────────────────────────────────────────────────────────────

@@ -3,7 +3,6 @@ package com.crystalgraphics.mc.platform;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.mc.platform.gl.GL1201Backend;
 import com.crystalgraphics.mc.platform.gl.GL1201Context;
-import com.crystalgraphics.mc.platform.service.CursorService1201;
 import com.crystalgraphics.mc.platform.service.InputService1201;
 import com.crystalgraphics.mc.platform.service.LifecycleService1201;
 import com.crystalgraphics.mc.platform.service.ReloadService1201;
@@ -13,7 +12,6 @@ import com.crystalgraphics.mc.platform.service.SoundService1201;
 import com.crystalgraphics.platform.CgPlatformService;
 import com.crystalgraphics.platform.gl.CgGLBackend;
 import com.crystalgraphics.platform.gl.CgGLContext;
-import com.crystalgraphics.platform.service.CgCursorService;
 import com.crystalgraphics.platform.service.CgInputService;
 import com.crystalgraphics.platform.service.CgLifecycleService;
 import com.crystalgraphics.platform.service.CgReloadService;
@@ -30,16 +28,14 @@ import com.crystalgraphics.platform.service.CgSoundService;
  * <em>does</em>, and irrelevant to whether a class can be <em>loaded</em>, which is the trap that stopped
  * CrystalGraphics loading on a 1.7.10 dedicated server at all. See the note on the fields below.</p>
  *
- * <h3>⚠️ Two of the three UI services below are unimplemented stubs</h3>
+ * <h3>⚠️ Both UI services below are unimplemented stubs</h3>
  * <p>{@link #input()} and {@link #sound()} exist and answer, but do nothing. They are written out rather
  * than inherited because {@link CgPlatformService} has no defaults — a platform must state its answer,
  * and "not yet" is a legitimate one as long as it is <em>visible</em>, which a stub in this file is and
- * an inherited no-op would not be. {@link #cursor()} is now real; see {@link CursorService1201}.</p>
+ * an inherited no-op would not be.</p>
  *
- * <p>This module is commented out of {@code settings.gradle.kts} and does not compile from this build, so
- * <b>none of it is verified</b> — including the cursor service. Each stub records what a real
- * implementation needs; both remaining ones are LWJGL3/GLFW jobs and materially easier than the LWJGL2
- * equivalents in {@code mc1710}.</p>
+ * <p>Each stub records what a real implementation needs; both are LWJGL3/GLFW jobs and materially easier
+ * than the LWJGL2 equivalents in {@code mc1710}.</p>
  */
 public final class PlatformService1201 implements CgPlatformService {
 
@@ -61,7 +57,7 @@ public final class PlatformService1201 implements CgPlatformService {
     //
     // GL1201Context is the concrete hazard -- it holds `private volatile GLCapabilities caps`, an
     // org.lwjgl.opengl FIELD DESCRIPTOR, and a dedicated 1.20.x server has no LWJGL on its classpath.
-    // CursorService1201, ResourceService1201 and RenderingService1201 name net.minecraft.client types,
+    // ResourceService1201 and RenderingService1201 name net.minecraft.client types,
     // which a server distribution does not ship either; those are method-body references today and so
     // survive loading, but only by luck, and nothing stops the next edit adding a field.
     //
@@ -133,19 +129,6 @@ public final class PlatformService1201 implements CgPlatformService {
     /** @see SoundService1201 */
     private CgSoundService sound;
 
-    /**
-     * <b>Implemented</b> — see {@link CursorService1201}. Still unverified, like everything in this
-     * module, because it does not compile from this build.
-     *
-     * <p>The note that used to sit here said this was the easy one, "no bitmaps, unlike
-     * {@code CursorService1710}". Mostly right, and worth correcting rather than deleting: GLFW's standard
-     * set does cover almost everything, but <b>not {@code slide-arrow}</b> — no toolkit has it, which is
-     * why the {@code CgCursor} value exists at all — so that one is drawn from {@code CgCursorBitmaps},
-     * the same artwork mc1710 uses. The diagonals and the four-way keep a bitmap fallback for a subtler
-     * reason spelled out in {@link CursorService1201}: their standard shapes are GLFW 3.4, and a native
-     * that does not know one returns {@code NULL} rather than complaining.</p>
-     */
-    private CgCursorService cursor;
 
     @Override public CgInputService input() {
         if (input == null) input = new InputService1201();
@@ -155,10 +138,5 @@ public final class PlatformService1201 implements CgPlatformService {
     @Override public CgSoundService sound() {
         if (sound == null) sound = new SoundService1201();
         return sound;
-    }
-
-    @Override public CgCursorService cursor() {
-        if (cursor == null) cursor = new CursorService1201();
-        return cursor;
     }
 }
