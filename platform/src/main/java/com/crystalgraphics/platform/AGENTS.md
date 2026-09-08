@@ -25,11 +25,8 @@ below — see [UI-facing services](#ui-facing-services).
 | `CgPlatformService.java` | Interface | Bundle contract; groups every service into one object |
 | `service/CgInputService.java` | Interface | Key/mouse code translation, modifier and button state, **and the clipboard** |
 | `service/CgSoundService.java` | Interface | UI sounds |
-| `service/CgCursorService.java` | Interface | Presenting a mouse cursor |
 | `input/CgSystemInput.java` | Interface | Raw mouse/keyboard event sink + the two event types |
 | `input/CgKeyCodes.java`, `CgMouseCodes.java`, `CgModifiers.java` | Constants | LWJGL2-shaped, with no LWJGL import |
-| `input/CgCursor.java` | Enum | The cursor keyword set (CSS UI 4's, because it is the complete one) |
-| `input/CgCursorBitmaps.java` | Utility | Procedural 32×32 ARGB cursor artwork, for platforms with no system cursors |
 
 ---
 
@@ -152,7 +149,6 @@ the other, coming up with a working GL backend and a dead keyboard, with nothing
 |---|---|
 | `CgPlatform.input()` | `translateKeyboardCodes`, `translateMouseCodes`, `getCurrentModifiers`, `isKeyDown`, `isMouseDown`, `howManyMouseButtons`, `getClipboard`, `setClipboard` |
 | `CgPlatform.sound()` | `play(String soundId)` |
-| `CgPlatform.cursor()` | `setCursor(CgCursor)` |
 
 **The clipboard is on `CgInputService`, not a service of its own.** It is not conceptually input, but it
 is reached the same way — one loader-owned handle, needed by exactly the code that handles keys — and
@@ -161,22 +157,29 @@ a registration slot. Both default to a no-op pair.
 
 ### No defaults, anywhere in this SPI
 
-**Every method on `CgPlatformService` and `CgInputService` is abstract, and neither `CgSoundService` nor
-`CgCursorService` ships a `NOOP` constant.** This is a deliberate rule, not an oversight:
+**Every method on `CgPlatformService` and `CgInputService` is abstract, and `CgSoundService` ships no
+`NOOP` constant.** This is a deliberate rule, not an oversight:
 
 > A default is an answer chosen on behalf of someone who never saw the question. A new platform compiles
-> cleanly while silently inheriting "no sound, no cursor, no clipboard", and nothing reports it — inheriting
-> a no-op is indistinguishable from deciding on one. The same applies when a service is *added* here later:
-> with defaults, every existing bundle keeps compiling and quietly does without the new capability.
+> cleanly while silently inheriting "no sound, no clipboard", and nothing reports it — inheriting a no-op
+> is indistinguishable from deciding on one. The same applies when a service is *added* here later: with
+> defaults, every existing bundle keeps compiling and quietly does without the new capability.
 
 Abstract methods make the compiler the reminder. **A platform with nothing to offer is still free to say
-so** — an empty `play`, an empty `setCursor`, a `getClipboard` returning `""` are all correct answers. They
-just have to be written in that platform's own source, where a reader can see the decision was made.
+so** — an empty `play`, a `getClipboard` returning `""` are both correct answers. They just have to be
+written in that platform's own source, where a reader can see the decision was made.
 
-`mc1201`'s three UI services are exactly this case today: written out as visible stubs with a note on what
-a real implementation needs, rather than inherited silently. `translateMouseCodes` is the subtlest one —
-the identity mapping is right on every platform seen so far, which is precisely why inheriting it without
+`mc1201`'s two UI services are exactly this case today: written out as visible stubs with a note on what a
+real implementation needs, rather than inherited silently. `translateMouseCodes` is the subtlest one — the
+identity mapping is right on every platform seen so far, which is precisely why inheriting it without
 looking would be a mistake on the first platform where it isn't.
+
+**A `CgService` slot is the deliberate opposite, and that is the whole point of having two halves.** Its
+absent-value is mandatory rather than forbidden, because a slot exists for a capability whose absence is a
+*legitimate configuration* rather than an oversight — CrystalGUI's cursor is the worked example: an
+unpresented cursor is cosmetic, and a dedicated server, a headless test and a windowless fixture must not
+have to register a stub to stay quiet. `CgService.get()` still announces the absence once, on first read,
+so "nobody provided it" and "somebody chose the no-op" stay distinguishable in a log.
 
 ### Java level
 

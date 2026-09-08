@@ -14,12 +14,12 @@ import com.crystalgraphics.platform.service.*;
  * per call or cached singletons; either is correct.</p>
  *
  * <h3>Every method is abstract, deliberately — there are no defaults here</h3>
- * <p>The last three services ({@link #input()}, {@link #sound()}, {@link #cursor()}) serve the UI layer
+ * <p>The last two services ({@link #input()}, {@link #sound()}) serve the UI layer
  * built on top of CrystalGraphics rather than CrystalGraphics itself, and it is tempting to give them
  * inert defaults so a bundle that does not care can stay silent. <b>They do not get one.</b></p>
  *
  * <p>A default is an answer chosen on behalf of someone who never saw the question. The failure mode is
- * that a new platform compiles cleanly while silently inheriting "no sound, no cursor" — and nothing ever
+ * that a new platform compiles cleanly while silently inheriting "no sound, no clipboard" — and nothing ever
  * reports it, because inheriting a no-op is indistinguishable from deciding on one. Adding a service to
  * this interface later has the same shape: with defaults, every existing bundle keeps compiling and
  * quietly does without the new capability.</p>
@@ -46,6 +46,4 @@ public interface CgPlatformService {
     CgInputService input();
     /** @return the UI sound service; must not be {@code null} — a platform with no audio returns one whose {@code play} is empty */
     CgSoundService sound();
-    /** @return the cursor presentation service; must not be {@code null} — a platform that cannot show cursors returns one whose {@code setCursor} is empty */
-    CgCursorService cursor();
 }

@@ -4,7 +4,6 @@ import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.CgGLContext;
 import com.crystalgraphics.platform.gl.CgGLBackend;
-import com.crystalgraphics.platform.service.CgCursorService;
 import com.crystalgraphics.platform.service.CgInputService;
 import com.crystalgraphics.platform.service.CgLifecycleService;
 import com.crystalgraphics.platform.service.CgReloadService;
@@ -118,12 +117,6 @@ public final class CgPlatform {
     public static CgSoundService sound() {
         ensureCreated();
         return service.sound();
-    }
-
-    /** Returns the cursor presentation service. @throws IllegalStateException if called before {@link #register}. */
-    public static CgCursorService cursor() {
-        ensureCreated();
-        return service.cursor();
     }
 
     public static void ensureCreated() {
