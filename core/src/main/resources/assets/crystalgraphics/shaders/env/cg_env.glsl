@@ -261,15 +261,33 @@ uniform sampler2D cg_DepthBuffer;
 // CgCurveSplitter#packCaps) -- so "either end is an arrow" is `(flags & 3) == 3 || ((flags >> 2) &
 // 3) == 3`. This also correctly evaluates false for a FILL instance (bit 4 set, low 4 bits 0),
 // which is why the check does not need to test the FILL flag separately.
+//
+// A QUAD (bit 8, CgVectorRenderer.FLAG_QUAD -- a literal here for the same reason as the 6.0) keeps its
+// fourth corner in `widths`, so `widths` is a position rather than a reach: the hull takes it as a
+// point and pads by the one pixel an exact-area edge can extend to.
+bool cg_curve_is_quad(float flags) {
+    return (int(flags + 0.5) & 256) != 0;
+}
 float cg_curve_pad(vec2 widths, float feather, float flags) {
     int f = int(flags + 0.5);
+    if ((f & 256) != 0) return 1.0;
     bool hasArrowCap = (f & 3) == 3 || ((f >> 2) & 3) == 3;
     float reach = hasArrowCap ? 6.0 : 1.41422;
     return max(widths.x, widths.y) * reach + feather + 1.0;
 }
+vec3 cg_curve_hull_min(vec3 p0, vec3 p1, vec3 p2, vec2 widths, float flags) {
+    vec3 m = min(min(p0, p1), p2);
+    if (cg_curve_is_quad(flags)) m = min(m, vec3(widths, p0.z));
+    return m;
+}
+vec3 cg_curve_hull_max(vec3 p0, vec3 p1, vec3 p2, vec2 widths, float flags) {
+    vec3 m = max(max(p0, p1), p2);
+    if (cg_curve_is_quad(flags)) m = max(m, vec3(widths, p0.z));
+    return m;
+}
 #define CG_CURVE_PAD cg_curve_pad(CG_CURVE_WIDTHS, CG_CURVE_FEATHER, CG_CURVE_FLAGS)
-#define CG_CURVE_HULL_MIN (min(min(CG_CURVE_P0, CG_CURVE_P1), CG_CURVE_P2) - vec3(CG_CURVE_PAD, CG_CURVE_PAD, 0.0))
-#define CG_CURVE_HULL_MAX (max(max(CG_CURVE_P0, CG_CURVE_P1), CG_CURVE_P2) + vec3(CG_CURVE_PAD, CG_CURVE_PAD, 0.0))
+#define CG_CURVE_HULL_MIN (cg_curve_hull_min(CG_CURVE_P0, CG_CURVE_P1, CG_CURVE_P2, CG_CURVE_WIDTHS, CG_CURVE_FLAGS) - vec3(CG_CURVE_PAD, CG_CURVE_PAD, 0.0))
+#define CG_CURVE_HULL_MAX (cg_curve_hull_max(CG_CURVE_P0, CG_CURVE_P1, CG_CURVE_P2, CG_CURVE_WIDTHS, CG_CURVE_FLAGS) + vec3(CG_CURVE_PAD, CG_CURVE_PAD, 0.0))
 #define CG_CURVE_WORLD_POS (CG_CURVE_HULL_MIN + vec3(cg_Position.xy, 0.0) * (CG_CURVE_HULL_MAX - CG_CURVE_HULL_MIN))
 
 

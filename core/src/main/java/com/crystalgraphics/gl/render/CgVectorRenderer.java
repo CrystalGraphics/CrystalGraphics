@@ -47,8 +47,9 @@ import org.joml.Vector3f;
  * oversight, it is what makes the next addition cheap. Plausible candidates that would fit here
  * exactly the way {@link #triangle()} did: a dashed-stroke flag once arc-length parameterisation is
  * worth the fragment cost, a gradient or per-vertex-coloured fill, a richer join/cap vocabulary
- * alongside {@code CAP_ARROW}, or a fourth point for a filled quad. None of that is built — this
- * paragraph is a map of where it would go, not a promise of what is coming.</p>
+ * alongside {@code CAP_ARROW}. The fourth point for a filled quad has since been claimed by
+ * {@link Quad}, exactly that way; the rest is a map of where it would go, not a promise of what is
+ * coming.</p>
  *
  * <p>The reason to stop a stroke at quadratic rather than take cubic as the primitive is that a
  * quadratic has an <em>exact analytic</em> signed distance function — {@code sdf_bezier} in
@@ -69,12 +70,15 @@ import org.joml.Vector3f;
  * <pre>
  * vec3 p0, p1, p2       // STROKE: quadratic control points, pose baked in (see Curve#pose)
  *                       // FILL:   triangle vertices, pose baked in (see Triangle#pose)
+ *                       // QUAD:   three of the four corners, in order (see Quad)
  * vec4 color0, color1   // STROKE: gradient along the curve, p0 -&gt; p2
- *                       // FILL:   color0 is the flat fill colour; color1 unused
+ *                       // FILL/QUAD: color0 is the flat colour; color1 the far end of a gradient
  * vec2 widths           // STROKE: start/end HALF-width — tapered strokes
  *                       // FILL:   widths.x is corner radius; widths.y unused
- * float feather         // edge softness, in the same units as widths — same meaning either way
- * float flags           // cap style (see CAP_*), packed; bit 4 (FLAG_FILL) selects fill over stroke
+ *                       // QUAD:   the fourth corner
+ * float feather         // edge softness, in the same units as widths; a QUAD ignores it
+ * float flags           // cap style (see CAP_*), packed; bit 4 (FLAG_FILL) selects fill over stroke;
+ *                       // bit 8 (FLAG_QUAD) selects a quad, bits 9-12 say which of its edges are soft
  * </pre>
  * <p>Under STD430 each {@code vec3} pads to 16 bytes, so the record occupies <b>112 bytes</b>: 96 for
  * everything a stroke needs, plus 16 for the {@code gradient} axis a filled triangle reads. The three
@@ -232,6 +236,25 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
     public static final int EDGE_P2_P0 = 2;
 
     /**
+     * Bit 8 — a {@link Quad} instance: four corners with exact-area coverage on whichever edges are
+     * marked soft. Must match {@code CG_STROKE_FLAG_QUAD} in {@code stroke.glsl} and the literal
+     * {@code cg_env.glsl}'s hull derivation tests for. Independent of {@link #FLAG_FILL}.
+     */
+    static final int FLAG_QUAD = 256;
+
+    /** Bits 9-12 — one per quad edge, set when that edge is on the shape's outline. See {@link Quad#softEdges}. */
+    static final int QUAD_EDGE_SHIFT = 9;
+
+    /** Quad edge {@code p0 -> p1}. */
+    public static final int QUAD_TOP = 1;
+    /** Quad edge {@code p1 -> p2}. */
+    public static final int QUAD_RIGHT = 2;
+    /** Quad edge {@code p2 -> p3}. */
+    public static final int QUAD_BOTTOM = 4;
+    /** Quad edge {@code p3 -> p0}. */
+    public static final int QUAD_LEFT = 8;
+
+    /**
      * Upper bound on how many quadratics one {@link Curve#cubic} call may split into — so a caller
      * sizing its own batch knows the worst case. See {@link CgCurveSplitter} for the maths and for
      * why it lives in a separate class.
@@ -268,6 +291,9 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
 
     /** Reused scratch {@link Curve} instance returned by {@link #curve()}. */
     private final Curve scratchCurve = new Curve();
+
+    /** Reused scratch {@link Quad} instance returned by {@link #quad()}. */
+    private final Quad scratchQuad = new Quad();
 
     /** The material {@link #useMaterial(CgMaterial)} last switched to, or {@code null} if never called. */
     private CgMaterial currentMaterial;
@@ -906,24 +932,8 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
 
             float ox = gradOx, oy = gradOy, dxg = gradDx, dyg = gradDy;
             if (gradient && pose != null) {
-                // The axis lives in the same space as the points, so a baked pose has to reach it too --
-                // the origin as a position, the direction as a vector. Missing the second is the classic
-                // version of this bug: the ramp stays put while the shape moves under it.
-                scratchP0.set(ox, oy, 0f);
-                pose.transformPosition(scratchP0);
-                ox = scratchP0.x();
-                oy = scratchP0.y();
-                scratchP1.set(dxg, dyg, 0f);
-                pose.transformDirection(scratchP1);
-                // transformDirection scales the direction by the pose; t must stay in 0..1, and the
-                // direction already encodes 1/length, so it has to be scaled the OTHER way.
-                float scale = scratchP1.length();
-                float unitX = scale > 1e-9f ? scratchP1.x() / scale : 0f;
-                float unitY = scale > 1e-9f ? scratchP1.y() / scale : 0f;
-                float magnitude = (float) Math.sqrt(dxg * dxg + dyg * dyg);
-                float poseScale = magnitude > 1e-9f ? scale / magnitude : 1f;
-                dxg = poseScale > 1e-9f ? unitX * magnitude / poseScale : 0f;
-                dyg = poseScale > 1e-9f ? unitY * magnitude / poseScale : 0f;
+                float[] axis = poseGradient(pose, ox, oy, dxg, dyg);
+                ox = axis[0]; oy = axis[1]; dxg = axis[2]; dyg = axis[3];
             }
 
             accumWriter.beginRecord()
@@ -941,6 +951,183 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
 
             return CgVectorRenderer.this;
         }
+    }
+
+    /**
+     * Starts a filled convex quad — the fourth reading of the instance record, and the one a
+     * tessellated fill wants.
+     *
+     * <p>A band of a scanline decomposition is a quad, and its two walls are contour edges while its
+     * top and bottom are cuts shared with the bands beside it. Drawn as two triangles, no triangle knows
+     * both walls, so a pixel on a cut within reach of one wall is claimed at full coverage by the half
+     * that owns the other — every seam row shows it. One instance that knows all four edges has no such
+     * gap, and computes the exact area each soft edge leaves of the pixel rather than a ramp.</p>
+     *
+     * <pre>{@code
+     * renderer.quad().points(x0, y0, x1, y1, x2, y2, x3, y3)
+     *         .softEdges(CgVectorRenderer.QUAD_LEFT | CgVectorRenderer.QUAD_RIGHT)
+     *         .color(argb).submit();
+     * }</pre>
+     */
+    public Quad quad() {
+        return scratchQuad.reset();
+    }
+
+    /** Retained-mode twin of {@link #quad()}, mirroring {@link #retainedCurve()}. */
+    public Quad retainedQuad() {
+        return new Quad();
+    }
+
+    /**
+     * Fluent, mutable filled-quad submission request. See {@link #quad()}.
+     *
+     * <p>Corners go in order round the shape, either winding. Coverage is the exact area of the device
+     * pixel on the inside of each {@linkplain #softEdges soft} edge; a hard edge is a seam shared with a
+     * neighbour and is decided at the pixel centre, half-open so exactly one of the two neighbours claims
+     * every pixel. The pixel is one unit of the post-pose space, so this reading is for a 2D material
+     * whose points are in window pixels — {@code gui_curve.shader}, not the engine's own.</p>
+     */
+    public final class Quad {
+
+        private float x0, y0, x1, y1, x2, y2, x3, y3;
+        private int argb;
+        private int argbEnd;
+        private boolean gradient;
+        private float gradOx, gradOy, gradDx, gradDy;
+        private int softEdges;
+        private Matrix4f pose;
+
+        private final Vector3f scratch = new Vector3f();
+
+        private Quad() {
+            reset();
+        }
+
+        Quad reset() {
+            x0 = y0 = x1 = y1 = x2 = y2 = x3 = y3 = 0f;
+            argb = 0xFFFFFFFF;
+            argbEnd = 0xFFFFFFFF;
+            gradient = false;
+            gradOx = gradOy = gradDx = gradDy = 0f;
+            softEdges = 0;
+            pose = null;
+            return this;
+        }
+
+        /** The four corners, in order round the shape. */
+        public Quad points(float x0, float y0, float x1, float y1,
+                           float x2, float y2, float x3, float y3) {
+            this.x0 = x0; this.y0 = y0;
+            this.x1 = x1; this.y1 = y1;
+            this.x2 = x2; this.y2 = y2;
+            this.x3 = x3; this.y3 = y3;
+            return this;
+        }
+
+        /** Flat fill colour. Defaults to opaque white. */
+        public Quad color(int argb) {
+            this.argb = argb;
+            this.argbEnd = argb;
+            return this;
+        }
+
+        /** Per-pixel linear gradient; same contract as {@link Triangle#gradient}. */
+        public Quad gradient(int start, int end, float originX, float originY,
+                             float dirX, float dirY) {
+            this.argb = start;
+            this.argbEnd = end;
+            this.gradient = true;
+            this.gradOx = originX;
+            this.gradOy = originY;
+            this.gradDx = dirX;
+            this.gradDy = dirY;
+            return this;
+        }
+
+        /**
+         * Which edges are on the shape's outline and get antialiased — any combination of
+         * {@link #QUAD_TOP}, {@link #QUAD_RIGHT}, {@link #QUAD_BOTTOM}, {@link #QUAD_LEFT}. The rest are
+         * seams and stay a hard step. Defaults to none.
+         */
+        public Quad softEdges(int mask) {
+            this.softEdges = mask & 15;
+            return this;
+        }
+
+        /** Optional transform, baked on the CPU at {@link #submit()} time; same contract as {@link Curve#pose}. */
+        public Quad pose(Matrix4f pose) {
+            this.pose = pose;
+            return this;
+        }
+
+        /**
+         * Writes this quad as one instance record. Queues only — {@link CgVectorRenderer#flush()} draws.
+         *
+         * @throws IllegalStateException if {@link #begin()} or {@link #useMaterial(CgMaterial)} was not called
+         */
+        public CgVectorRenderer submit() {
+            if (!begun) throw new IllegalStateException("CgVectorRenderer not begun");
+            if (currentMaterial == null) throw new IllegalStateException(
+                    "CgVectorRenderer.Quad requires useMaterial(material) before submit()");
+
+            float ax = x0, ay = y0, bx = x1, by = y1, cx = x2, cy = y2, dx = x3, dy = y3;
+            float z = 0f;
+            if (pose != null) {
+                scratch.set(ax, ay, 0f); pose.transformPosition(scratch); ax = scratch.x(); ay = scratch.y(); z = scratch.z();
+                scratch.set(bx, by, 0f); pose.transformPosition(scratch); bx = scratch.x(); by = scratch.y();
+                scratch.set(cx, cy, 0f); pose.transformPosition(scratch); cx = scratch.x(); cy = scratch.y();
+                scratch.set(dx, dy, 0f); pose.transformPosition(scratch); dx = scratch.x(); dy = scratch.y();
+            }
+
+            float ox = gradOx, oy = gradOy, dxg = gradDx, dyg = gradDy;
+            if (gradient && pose != null) {
+                float[] axis = poseGradient(pose, ox, oy, dxg, dyg);
+                ox = axis[0]; oy = axis[1]; dxg = axis[2]; dyg = axis[3];
+            }
+
+            accumWriter.beginRecord()
+                    .vec3At(offP0, ax, ay, z)
+                    .vec3At(offP1, bx, by, z)
+                    .vec3At(offP2, cx, cy, z)
+                    .colorAt(offColor0, argb)
+                    .colorAt(offColor1, argbEnd)
+                    .vec2At(offWidths, dx, dy)
+                    .floatAt(offFeather, 0f)
+                    .floatAt(offFlags, (gradient ? (FLAG_QUAD | FLAG_GRADIENT) : FLAG_QUAD)
+                            | (softEdges << QUAD_EDGE_SHIFT))
+                    .vec4At(offGradient, ox, oy, dxg, dyg)
+                    .endRecord();
+
+            return CgVectorRenderer.this;
+        }
+    }
+
+    private final float[] gradientScratch = new float[4];
+    private final Vector3f gradientOrigin = new Vector3f();
+    private final Vector3f gradientDirection = new Vector3f();
+
+    /**
+     * A gradient axis carried through a pose: the origin as a position, the direction as a vector.
+     *
+     * <p>{@code transformDirection} scales the direction by the pose; {@code t} must stay in 0..1 and the
+     * direction already encodes 1/length, so it has to be scaled the OTHER way. Missing the direction
+     * entirely is the classic version of this bug — the ramp stays put while the shape moves under it.</p>
+     */
+    private float[] poseGradient(Matrix4f pose, float ox, float oy, float dxg, float dyg) {
+        gradientOrigin.set(ox, oy, 0f);
+        pose.transformPosition(gradientOrigin);
+        gradientDirection.set(dxg, dyg, 0f);
+        pose.transformDirection(gradientDirection);
+        float scale = gradientDirection.length();
+        float unitX = scale > 1e-9f ? gradientDirection.x() / scale : 0f;
+        float unitY = scale > 1e-9f ? gradientDirection.y() / scale : 0f;
+        float magnitude = (float) Math.sqrt(dxg * dxg + dyg * dyg);
+        float poseScale = magnitude > 1e-9f ? scale / magnitude : 1f;
+        gradientScratch[0] = gradientOrigin.x();
+        gradientScratch[1] = gradientOrigin.y();
+        gradientScratch[2] = poseScale > 1e-9f ? unitX * magnitude / poseScale : 0f;
+        gradientScratch[3] = poseScale > 1e-9f ? unitY * magnitude / poseScale : 0f;
+        return gradientScratch;
     }
 
     /** The pose's uniform scale, recomputed only when the matrix actually changes. */
