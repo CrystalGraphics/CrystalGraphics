@@ -48,7 +48,7 @@ import org.joml.Vector3f;
  * exactly the way {@link #triangle()} did: a dashed-stroke flag once arc-length parameterisation is
  * worth the fragment cost, a gradient or per-vertex-coloured fill, a richer join/cap vocabulary
  * alongside {@code CAP_ARROW}. The fourth point for a filled quad has since been claimed by
- * {@link Quad}, exactly that way; the rest is a map of where it would go, not a promise of what is
+ * {@link Cell}, exactly that way; the rest is a map of where it would go, not a promise of what is
  * coming.</p>
  *
  * <p>The reason to stop a stroke at quadratic rather than take cubic as the primitive is that a
@@ -70,15 +70,15 @@ import org.joml.Vector3f;
  * <pre>
  * vec3 p0, p1, p2       // STROKE: quadratic control points, pose baked in (see Curve#pose)
  *                       // FILL:   triangle vertices, pose baked in (see Triangle#pose)
- *                       // QUAD:   three of the four corners, in order (see Quad)
+ *                       // CELL:   three of the four corners, in order (see Cell)
  * vec4 color0, color1   // STROKE: gradient along the curve, p0 -&gt; p2
- *                       // FILL/QUAD: color0 is the flat colour; color1 the far end of a gradient
+ *                       // FILL/CELL: color0 is the flat colour; color1 the far end of a gradient
  * vec2 widths           // STROKE: start/end HALF-width — tapered strokes
  *                       // FILL:   widths.x is corner radius; widths.y unused
- *                       // QUAD:   the fourth corner
- * float feather         // edge softness, in the same units as widths; a QUAD ignores it
+ *                       // CELL:   the fourth corner
+ * float feather         // edge softness, in the same units as widths; a CELL ignores it
  * float flags           // cap style (see CAP_*), packed; bit 4 (FLAG_FILL) selects fill over stroke;
- *                       // bit 8 (FLAG_QUAD) selects a quad, bits 9-12 say which of its edges are soft
+ *                       // bit 8 (FLAG_CELL) selects a cell, bits 9-12 say which of its edges are soft
  * </pre>
  * <p>Under STD430 each {@code vec3} pads to 16 bytes, so the record occupies <b>112 bytes</b>: 96 for
  * everything a stroke needs, plus 16 for the {@code gradient} axis a filled triangle reads. The three
@@ -236,23 +236,23 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
     public static final int EDGE_P2_P0 = 2;
 
     /**
-     * Bit 8 — a {@link Quad} instance: four corners with exact-area coverage on whichever edges are
-     * marked soft. Must match {@code CG_STROKE_FLAG_QUAD} in {@code stroke.glsl} and the literal
+     * Bit 8 — a {@link Cell} instance: four corners with exact-area coverage on whichever edges are
+     * marked soft. Must match {@code CG_STROKE_FLAG_CELL} in {@code stroke.glsl} and the literal
      * {@code cg_env.glsl}'s hull derivation tests for. Independent of {@link #FLAG_FILL}.
      */
-    static final int FLAG_QUAD = 256;
+    static final int FLAG_CELL = 256;
 
-    /** Bits 9-12 — one per quad edge, set when that edge is on the shape's outline. See {@link Quad#softEdges}. */
-    static final int QUAD_EDGE_SHIFT = 9;
+    /** Bits 9-12 — one per cell edge, set when that edge is on the shape's outline. See {@link Cell#softEdges}. */
+    static final int CELL_EDGE_SHIFT = 9;
 
-    /** Quad edge {@code p0 -> p1}. */
-    public static final int QUAD_TOP = 1;
-    /** Quad edge {@code p1 -> p2}. */
-    public static final int QUAD_RIGHT = 2;
-    /** Quad edge {@code p2 -> p3}. */
-    public static final int QUAD_BOTTOM = 4;
-    /** Quad edge {@code p3 -> p0}. */
-    public static final int QUAD_LEFT = 8;
+    /** Cell edge {@code p0 -> p1}. */
+    public static final int CELL_TOP = 1;
+    /** Cell edge {@code p1 -> p2}. */
+    public static final int CELL_RIGHT = 2;
+    /** Cell edge {@code p2 -> p3}. */
+    public static final int CELL_BOTTOM = 4;
+    /** Cell edge {@code p3 -> p0}. */
+    public static final int CELL_LEFT = 8;
 
     /**
      * Upper bound on how many quadratics one {@link Curve#cubic} call may split into — so a caller
@@ -292,8 +292,8 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
     /** Reused scratch {@link Curve} instance returned by {@link #curve()}. */
     private final Curve scratchCurve = new Curve();
 
-    /** Reused scratch {@link Quad} instance returned by {@link #quad()}. */
-    private final Quad scratchQuad = new Quad();
+    /** Reused scratch {@link Cell} instance returned by {@link #cell()}. */
+    private final Cell scratchCell = new Cell();
 
     /** The material {@link #useMaterial(CgMaterial)} last switched to, or {@code null} if never called. */
     private CgMaterial currentMaterial;
@@ -954,40 +954,75 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
     }
 
     /**
-     * Starts a filled convex quad — the fourth reading of the instance record, and the one a
-     * tessellated fill wants.
-     *
-     * <p>A band of a scanline decomposition is a quad, and its two walls are contour edges while its
-     * top and bottom are cuts shared with the bands beside it. Drawn as two triangles, no triangle knows
-     * both walls, so a pixel on a cut within reach of one wall is claimed at full coverage by the half
-     * that owns the other — every seam row shows it. One instance that knows all four edges has no such
-     * gap, and computes the exact area each soft edge leaves of the pixel rather than a ramp.</p>
+     * Starts a cell — the fourth reading of the instance record, and the one a tessellated fill wants.
+     * See {@link Cell} for what one is.
      *
      * <pre>{@code
-     * renderer.quad().points(x0, y0, x1, y1, x2, y2, x3, y3)
-     *         .softEdges(CgVectorRenderer.QUAD_LEFT | CgVectorRenderer.QUAD_RIGHT)
+     * renderer.cell().points(x0, y0, x1, y1, x2, y2, x3, y3)
+     *         .softEdges(CgVectorRenderer.CELL_LEFT | CgVectorRenderer.CELL_RIGHT)
      *         .color(argb).submit();
      * }</pre>
      */
-    public Quad quad() {
-        return scratchQuad.reset();
+    public Cell cell() {
+        return scratchCell.reset();
     }
 
-    /** Retained-mode twin of {@link #quad()}, mirroring {@link #retainedCurve()}. */
-    public Quad retainedQuad() {
-        return new Quad();
+    /** Retained-mode twin of {@link #cell()}, mirroring {@link #retainedCurve()}. */
+    public Cell retainedCell() {
+        return new Cell();
     }
 
     /**
-     * Fluent, mutable filled-quad submission request. See {@link #quad()}.
+     * One cell of a filled shape: a convex quad whose edges each know whether they are the shape's
+     * outline or a seam against the next cell.
      *
-     * <p>Corners go in order round the shape, either winding. Coverage is the exact area of the device
-     * pixel on the inside of each {@linkplain #softEdges soft} edge; a hard edge is a seam shared with a
-     * neighbour and is decided at the pixel centre, half-open so exactly one of the two neighbours claims
-     * every pixel. The pixel is one unit of the post-pose space, so this reading is for a 2D material
-     * whose points are in window pixels — {@code gui_curve.shader}, not the engine's own.</p>
+     * <h3>What a cell looks like</h3>
+     *
+     * <p>A scanline tessellation slices a shape into horizontal bands at every vertex and, within a band,
+     * into the spans that the fill rule says are inside. One span is one cell: a trapezoid whose top and
+     * bottom are the band's two cuts and whose left and right walls are the contour edges the span runs
+     * between. At icon size most of them are slivers — a rounded corner flattened to eight chords is
+     * eight cells in two pixel rows.</p>
+     *
+     * <pre>
+     *      p0 ────────── p1        top: a cut, shared with the band above   (seam)
+     *      /              \        right: the contour                      (outline)
+     *     /                \       bottom: a cut, shared with the band below (seam)
+     *    p3 ──────────────── p2    left: the contour                        (outline)
+     * </pre>
+     *
+     * <p>Corners go in order round the shape, either winding. After a gradient's rotation or a pose the
+     * cell is no longer a trapezoid in screen space, only a convex quad, and nothing here assumes
+     * more.</p>
+     *
+     * <h3>How it differs from its siblings</h3>
+     *
+     * <ul>
+     *   <li><b>{@code CgQuadRenderer.Quad}</b> is a parallelogram — an origin and two edge vectors, so
+     *       the fourth corner is implied — carrying a texture and UVs, and its edges are whatever the
+     *       rasteriser makes of them. A cell has four independent corners, no texture, and its edges are
+     *       computed per pixel in the fragment shader: the two are different renderers for a reason.</li>
+     *   <li><b>{@link Triangle}</b> shares this renderer and the same fill reading, but knows three
+     *       points. Split a cell into two triangles and each half knows one wall; a pixel on a cut
+     *       within reach of the other wall is then claimed at full coverage by the half that owns the far
+     *       one, which shows as a bright row on every seam at every fractional scale. A cell knows both
+     *       walls, so there is no such half.</li>
+     *   <li><b>{@link Curve}</b> is a stroke: a quadratic Bézier evaluated as a signed distance with a
+     *       width. A cell has no width — it is an area — and its coverage is an area rather than a
+     *       distance ramp.</li>
+     * </ul>
+     *
+     * <h3>Coverage</h3>
+     *
+     * <p>A {@linkplain #softEdges soft} edge contributes the exact area of the device pixel on its inside.
+     * A hard edge is a seam shared with a neighbouring cell and is decided at the pixel centre, half-open
+     * and computed identically by both cells, so exactly one of them claims every pixel on it. With every
+     * edge soft the coverage is the pixel clipped against all four edges — the reading a cell being
+     * accumulated into a coverage target uses, where the cells' areas have to sum exactly. The pixel is
+     * one unit of the post-pose space, so this reading is for a 2D material whose points are window
+     * pixels — {@code gui_curve.shader}, not the engine's own.</p>
      */
-    public final class Quad {
+    public final class Cell {
 
         private float x0, y0, x1, y1, x2, y2, x3, y3;
         private int argb;
@@ -999,11 +1034,11 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
 
         private final Vector3f scratch = new Vector3f();
 
-        private Quad() {
+        private Cell() {
             reset();
         }
 
-        Quad reset() {
+        Cell reset() {
             x0 = y0 = x1 = y1 = x2 = y2 = x3 = y3 = 0f;
             argb = 0xFFFFFFFF;
             argbEnd = 0xFFFFFFFF;
@@ -1015,7 +1050,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
         }
 
         /** The four corners, in order round the shape. */
-        public Quad points(float x0, float y0, float x1, float y1,
+        public Cell points(float x0, float y0, float x1, float y1,
                            float x2, float y2, float x3, float y3) {
             this.x0 = x0; this.y0 = y0;
             this.x1 = x1; this.y1 = y1;
@@ -1025,14 +1060,14 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
         }
 
         /** Flat fill colour. Defaults to opaque white. */
-        public Quad color(int argb) {
+        public Cell color(int argb) {
             this.argb = argb;
             this.argbEnd = argb;
             return this;
         }
 
         /** Per-pixel linear gradient; same contract as {@link Triangle#gradient}. */
-        public Quad gradient(int start, int end, float originX, float originY,
+        public Cell gradient(int start, int end, float originX, float originY,
                              float dirX, float dirY) {
             this.argb = start;
             this.argbEnd = end;
@@ -1046,29 +1081,29 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
 
         /**
          * Which edges are on the shape's outline and get antialiased — any combination of
-         * {@link #QUAD_TOP}, {@link #QUAD_RIGHT}, {@link #QUAD_BOTTOM}, {@link #QUAD_LEFT}. The rest are
+         * {@link #CELL_TOP}, {@link #CELL_RIGHT}, {@link #CELL_BOTTOM}, {@link #CELL_LEFT}. The rest are
          * seams and stay a hard step. Defaults to none.
          */
-        public Quad softEdges(int mask) {
+        public Cell softEdges(int mask) {
             this.softEdges = mask & 15;
             return this;
         }
 
         /** Optional transform, baked on the CPU at {@link #submit()} time; same contract as {@link Curve#pose}. */
-        public Quad pose(Matrix4f pose) {
+        public Cell pose(Matrix4f pose) {
             this.pose = pose;
             return this;
         }
 
         /**
-         * Writes this quad as one instance record. Queues only — {@link CgVectorRenderer#flush()} draws.
+         * Writes this cell as one instance record. Queues only — {@link CgVectorRenderer#flush()} draws.
          *
          * @throws IllegalStateException if {@link #begin()} or {@link #useMaterial(CgMaterial)} was not called
          */
         public CgVectorRenderer submit() {
             if (!begun) throw new IllegalStateException("CgVectorRenderer not begun");
             if (currentMaterial == null) throw new IllegalStateException(
-                    "CgVectorRenderer.Quad requires useMaterial(material) before submit()");
+                    "CgVectorRenderer.Cell requires useMaterial(material) before submit()");
 
             float ax = x0, ay = y0, bx = x1, by = y1, cx = x2, cy = y2, dx = x3, dy = y3;
             float z = 0f;
@@ -1093,8 +1128,8 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
                     .colorAt(offColor1, argbEnd)
                     .vec2At(offWidths, dx, dy)
                     .floatAt(offFeather, 0f)
-                    .floatAt(offFlags, (gradient ? (FLAG_QUAD | FLAG_GRADIENT) : FLAG_QUAD)
-                            | (softEdges << QUAD_EDGE_SHIFT))
+                    .floatAt(offFlags, (gradient ? (FLAG_CELL | FLAG_GRADIENT) : FLAG_CELL)
+                            | (softEdges << CELL_EDGE_SHIFT))
                     .vec4At(offGradient, ox, oy, dxg, dyg)
                     .endRecord();
 

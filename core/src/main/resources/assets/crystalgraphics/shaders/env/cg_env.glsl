@@ -262,10 +262,10 @@ uniform sampler2D cg_DepthBuffer;
 // 3) == 3`. This also correctly evaluates false for a FILL instance (bit 4 set, low 4 bits 0),
 // which is why the check does not need to test the FILL flag separately.
 //
-// A QUAD (bit 8, CgVectorRenderer.FLAG_QUAD -- a literal here for the same reason as the 6.0) keeps its
+// A CELL (bit 8, CgVectorRenderer.FLAG_CELL -- a literal here for the same reason as the 6.0) keeps its
 // fourth corner in `widths`, so `widths` is a position rather than a reach: the hull takes it as a
 // point and pads by the one pixel an exact-area edge can extend to.
-bool cg_curve_is_quad(float flags) {
+bool cg_curve_is_cell(float flags) {
     return (int(flags + 0.5) & 256) != 0;
 }
 float cg_curve_pad(vec2 widths, float feather, float flags) {
@@ -277,12 +277,12 @@ float cg_curve_pad(vec2 widths, float feather, float flags) {
 }
 vec3 cg_curve_hull_min(vec3 p0, vec3 p1, vec3 p2, vec2 widths, float flags) {
     vec3 m = min(min(p0, p1), p2);
-    if (cg_curve_is_quad(flags)) m = min(m, vec3(widths, p0.z));
+    if (cg_curve_is_cell(flags)) m = min(m, vec3(widths, p0.z));
     return m;
 }
 vec3 cg_curve_hull_max(vec3 p0, vec3 p1, vec3 p2, vec2 widths, float flags) {
     vec3 m = max(max(p0, p1), p2);
-    if (cg_curve_is_quad(flags)) m = max(m, vec3(widths, p0.z));
+    if (cg_curve_is_cell(flags)) m = max(m, vec3(widths, p0.z));
     return m;
 }
 #define CG_CURVE_PAD cg_curve_pad(CG_CURVE_WIDTHS, CG_CURVE_FEATHER, CG_CURVE_FLAGS)
