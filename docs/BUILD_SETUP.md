@@ -6,7 +6,7 @@
 |---|---|
 | Gradle | 9.5.1 |
 | JDK (daemon) | 25 (pinned via `gradle-daemon-jvm.properties`) |
-| Java toolchain (compile) | 17 for mc1201, 8-bytecode (Jabel) for mc1710 |
+| Java toolchain (compile) | 17 for mc1201; 8-bytecode for mc1710 via **jvmDowngrader** (`enableModernJavaSyntax = jvmDowngrader` in `mc1710/gradle.properties` — Jabel is the unselected alternative there, and `core`/`platform` desugar with neither) |
 | Configuration cache | **disabled** — ModDevGradle does not support it |
 
 Gradle 8.x is not a viable downgrade path: Gradle 8.12.1 predates JDK 25 and has no support for it.
