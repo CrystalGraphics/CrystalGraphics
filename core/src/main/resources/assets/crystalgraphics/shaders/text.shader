@@ -43,6 +43,8 @@
 // channel before deciding -- it currently only does median-of-3.
 #pragma cg_feature MSDF_MODE
 
+#include "crystalgraphics:shaders/lib/texel.glsl"
+
 Tags {
     "RenderType" = "Transparent"
 }
@@ -123,7 +125,7 @@ Pass {
         // geometric edge gets rather than a staircase. See CG_TEXEL_AA in cg_env.glsl. At rest --
         // axis-aligned, which is every glyph in a document -- this is the plain fetch it always was.
         float coverage = CG_QUAD_EDGE_ROTATED
-                ? cg_texel_aa_sample(_MainTex, uvw, CG_QUAD_UV_RECT).r
+                ? cg_texel_aa_sample(_MainTex, uvw, CG_QUAD_UV_RECT, CG_QUAD_EDGE_FILTER).r
                 : texture(_MainTex, uvw).r;
         float alpha = coverage * i.color.a;
         fragColor = vec4(i.color.rgb, alpha);
