@@ -879,7 +879,17 @@ public class CgTextRenderer {
 
     public void delete() {
         if (deleted) return;
-        if (batchActive) endBatch();
+        // AN OPEN BATCH IS ABANDONED, NOT ENDED. endBatch() flushes and then runs postBatchRestore, and
+        // both BIND A MATERIAL -- TEXT_MATERIAL for the flush, the caller's own for the restore. During
+        // CgGraphicsLifecycle.destroyContext both are already gone, because materials are swept before
+        // this registry is. Deleting a renderer is not a request to draw with it, and a caller being
+        // torn down has no state worth restoring; doing either threw "CgMaterial has been deleted" out
+        // of teardown on every harness run that had text on screen.
+        if (batchActive) {
+            quadRenderer.end();
+            activeProjection = null;
+            batchActive = false;
+        }
         quadRenderer.delete();
         CgTextRendererRegistry.get().unregister(this);
         deleted = true;
