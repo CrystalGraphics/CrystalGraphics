@@ -7,6 +7,11 @@ plugins {
     // puts one copy in the parent buildscript scope. IDE sync only -- a CLI build constructs no
     // IDEA model, so nothing but a sync can see the collision.
     id("org.jetbrains.gradle.plugin.idea-ext")
+
+    // What this mod says about itself, declared once and printed into every format the merged jar
+    // needs. Applied to the ROOT because the merged descriptors describe every loader at once and
+    // belong to no one of them.
+    id("cg-descriptors")
 }
 
 // IDEA triggers 'processIdeaSettings' on the root project during sync and gtnhconvention only

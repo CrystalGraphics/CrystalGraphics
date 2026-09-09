@@ -6,7 +6,9 @@ plugins {
     // fabric-loom 1.16.x requires Gradle 9.4+ — that's where the runtimeClasspath
     // exclusive-lock fix lives (1.15.x still triggers it via the jvmArguments getter).
     id("fabric-loom") version "1.16.2"
-    id("com.gradleup.shadow") version "9.2.2"
+    // No version: settings.gradle.kts pins it, and repeating it here is refused once build-logic --
+    // which the root applies for the descriptors -- has put shadow on the root buildscript classpath.
+    id("com.gradleup.shadow")
 }
 
 group = rootProject.properties["modGroup"] as String
