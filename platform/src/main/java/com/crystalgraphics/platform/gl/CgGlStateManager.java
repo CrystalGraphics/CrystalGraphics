@@ -169,6 +169,21 @@ public final class CgGlStateManager {
 
     public void invalidateAll() { unknownMask = ALL_UNKNOWN; }
 
+    /**
+     * Whether this thread may touch GL state at all — true before anything has claimed it.
+     *
+     * <p>The question {@link #assertOwner} answers with an exception, asked in advance. A caller that
+     * is merely FORWARDED to from a foreign thread needs to decline rather than throw: on 1.7.10 FML's
+     * splash thread calls {@code Minecraft.resize} while the client thread already owns the shadow, and
+     * an exception there kills the splash thread mid-frame so it never releases the GL context —
+     * which surfaces, three layers away, as {@code SplashProgress.finish} failing to make the context
+     * current and taking the game down with it.</p>
+     */
+    public boolean ownedByCurrentThread() {
+        Thread claimed = owner;
+        return claimed == null || claimed == Thread.currentThread();
+    }
+
     private void assertOwner() {
         Thread t = Thread.currentThread();
         if (owner == null) { owner = t; return; }

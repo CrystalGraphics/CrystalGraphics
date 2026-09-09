@@ -215,6 +215,22 @@ These rules apply everywhere. All agents must internalize them.
 
 **GL-thread rule** — all GL object creation, upload, and deletion must happen on the GL thread within an active context. This includes: `CgFrameBuffer.create()`, `CgMesh.upload()`, `CgTexture2D.create()`, shader compilation. Violations produce silent garbage or driver crashes.
 
+> **The right thread is not the right CONTEXT, and on 1.7.10 that distinction is load-bearing.** FML's
+> splash screen runs mod loading with a second, *shared* context of its own — so `FMLInitializationEvent`
+> is on the client thread and still not on the renderer's context. Buffers and textures are shared
+> between GL contexts; **container objects (VAO, FBO) are not.** A VAO built during mod loading is
+> therefore named in a context nothing will ever draw with, while the VBO and IBO it points at stay
+> valid, so the object reads as healthy from Java. `glGenVertexArrays` hands the same id to the next
+> caller on the first real frame: one VAO, two owners, and the second one's attribute pointers replace
+> the first's. Nothing errors — a mesh drawing another mesh's attributes at the wrong stride is
+> degenerate geometry, which rasterises nothing.
+>
+> **So `mc1710`'s `@Mod` class creates no GL objects at all**; `CgGraphicsLifecycle.onOpaquePass`
+> initialises lazily on a frame that genuinely owns the render context. A dev run cannot show the
+> failure (no splash in the way), so it appears only in an installed client. `CgVertexArray.gen()`
+> warns when the driver returns a name this process still owns — the one cheap signal that two
+> contexts are in play. See `CrystalGUI/docs/CGUI_INVARIANTS.md` § *Rendering, GL and shaders*.
+
 **Vertex data via `CgVertexWriter`** — never write vertex bytes via raw `ByteBuffer.putFloat()`. All vertex packing goes through `CgVertexWriter.forBuffer()`. Index buffer `putShort()`/`putInt()` is the only exception.
 
 **Java version by module** — `core/` and `platform/` are **Java 17 source and target, toolchain 17**, and produce Java 17 bytecode. Modern syntax (`var`, records, sealed classes, pattern matching, streams) is fully permitted in both.

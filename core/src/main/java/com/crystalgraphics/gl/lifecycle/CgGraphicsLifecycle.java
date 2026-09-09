@@ -216,6 +216,17 @@ public final class CgGraphicsLifecycle {
         // the process actually exits. @see #onOpaquePass
         if (destroyed) return;
 
+        // A RESIZE FROM A FOREIGN THREAD IS DEFERRED, NOT REFUSED. A host hands this event on from
+        // whatever thread its window loop runs on, and on 1.7.10 that is FML's splash thread while the
+        // client thread already owns the GL shadow. Recreating framebuffers there is a cross-thread GL
+        // write; the state manager throws, the splash thread dies holding the context, and the game
+        // goes down in `SplashProgress.finish` with nothing naming the resize.
+        //
+        // Returning WITHOUT recording the size is what makes this a deferral: `onOpaquePass` compares
+        // the frame's dimensions against `currentWidth`/`currentHeight` and calls back here on the
+        // owning thread, so the next real frame applies it.
+        if (!CgGlState.manager().ownedByCurrentThread()) return;
+
         CgFrameBufferRegistry.get().onResize(width, height);
         CgTextRendererRegistry.get().onResize(width, height);
         CgRenderPipeline.onSceneResize();
