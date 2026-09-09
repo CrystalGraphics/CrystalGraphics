@@ -30,6 +30,18 @@ loom {
     }
 }
 
+// `${version}` in fabric.mod.json is a GRADLE placeholder and nothing at runtime expands it.
+//
+// Forge's `${file.jarVersion}` is read by FML from the jar manifest; Fabric has no such thing, so an
+// unexpanded fabric.mod.json ships the six literal characters. Fabric Loader does not reject it -- it
+// falls back to a StringVersion -- so the mod loads and the failure is confined to what reads the
+// version: the mod list shows `${version}`, and any dependency range another mod declares on this id
+// can never be satisfied.
+tasks.processResources {
+    inputs.property("modVersion", project.version)
+    filesMatching("fabric.mod.json") { expand("version" to project.version) }
+}
+
 // Merge platform, core, mc1201:common, and freetype-msdfgen-harfbuzz-bindings into BOTH
 // tasks.jar and tasks.shadowJar.
 //

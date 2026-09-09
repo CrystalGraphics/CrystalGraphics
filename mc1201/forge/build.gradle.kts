@@ -98,3 +98,19 @@ val extractMcSources by tasks.registering(Sync::class) {
 // extractMcSources is cheap (unzips an already-present jar — createMinecraftArtifacts ran first).
 // Wire it into classes so build/mc-src/ is always populated after a normal compile.
 tasks.named("classes") { dependsOn(extractMcSources) }
+
+// The SHIPPED jar has to be reobfuscated, and it is the SHADOW jar that ships.
+//
+// Forge 1.20.1 runs SRG member names; a mod is compiled against official ones. ModDevGradle
+// reobfuscates `jar` by default, which here is the loader stub -- so `assemble` produced a 5 KB jar
+// that was correctly mapped and had no engine in it, beside a 6.7 MB one that had everything and
+// called `Minecraft.getInstance()` under a name production does not have. A dev run cannot show it:
+// dev is deobfuscated, so official names are the right ones there.
+val reobfShadowJar = the<net.neoforged.moddevgradle.legacyforge.dsl.ObfuscationExtension>()
+    .reobfuscate(
+        tasks.named<org.gradle.api.tasks.bundling.AbstractArchiveTask>("shadowJar"),
+        sourceSets.main.get()) {
+        archiveClassifier.set("srg")
+    }
+
+tasks.named("assemble") { dependsOn(reobfShadowJar) }
