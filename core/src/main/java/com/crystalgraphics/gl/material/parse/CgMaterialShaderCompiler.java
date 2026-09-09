@@ -1,5 +1,6 @@
 package com.crystalgraphics.gl.material.parse;
 
+import com.crystalgraphics.gl.buffer.shader.CgEngineBufferRegistry;
 import com.crystalgraphics.api.shader.CgShaderPreprocessor;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gl.shader.CgShaderFactory;
@@ -452,6 +453,8 @@ public final class CgMaterialShaderCompiler {
 
         appendAttachedBuffers(sb, attachedBuffers, shaderBufferPath);
 
+        appendEngineBufferEnv(sb, shader.engineBuffers());
+
         // v2f struct
         appendV2fStruct(sb, pass.v2fStructBody());
 
@@ -523,6 +526,8 @@ public final class CgMaterialShaderCompiler {
 
         appendAttachedBuffers(sb, attachedBuffers, shaderBufferPath);
 
+        appendEngineBufferEnv(sb, shader.engineBuffers());
+
         // v2f struct
         appendV2fStruct(sb, pass.v2fStructBody());
 
@@ -579,6 +584,25 @@ public final class CgMaterialShaderCompiler {
             if (activeKeywords.contains(name)) {
                 sb.append("#define ").append(name).append(" 1\n");
             }
+        }
+    }
+
+    /**
+     * Includes each declared engine buffer's own GLSL environment, right after its declaration.
+     *
+     * <p>{@code CG_QUAD_*} is to {@code QUAD_DATA} what a header is to a struct, and it used to live in
+     * {@code cg_env.glsl} — where every shader paid for it, including the three quarters that draw
+     * through neither renderer. It lives beside the buffer now and arrives only with the pragma.</p>
+     *
+     * <p><b>After the declaration, not before</b>: the macros read the struct. And an {@code #include}
+     * rather than inlined text, so {@code #pragma once} still collapses a buffer named by both stages
+     * of the same shader.</p>
+     */
+    private static void appendEngineBufferEnv(StringBuilder sb, java.util.List<String> tokens) {
+        for (String token : tokens) {
+            CgEngineBufferRegistry.Provider provider = CgEngineBufferRegistry.get(token);
+            if (provider == null || provider.envPath() == null) continue;
+            sb.append("#include \"").append(provider.envPath()).append("\"").append("\n");
         }
     }
 

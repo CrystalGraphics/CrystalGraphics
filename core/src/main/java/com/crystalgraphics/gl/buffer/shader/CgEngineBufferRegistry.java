@@ -51,8 +51,10 @@ public final class CgEngineBufferRegistry {
     private static final Map<String, Provider> PROVIDERS = new LinkedHashMap<>();
 
     static {
-        register("quad", CgQuadRenderer::instanceBuffer, CgQuadRenderer.MACRO_NAME);
-        register("curve", CgVectorRenderer::instanceBuffer, CgVectorRenderer.MACRO_NAME);
+        register("quad", CgQuadRenderer::instanceBuffer, CgQuadRenderer.MACRO_NAME,
+                "crystalgraphics:shaders/env/buffer/quad.glsl");
+        register("curve", CgVectorRenderer::instanceBuffer, CgVectorRenderer.MACRO_NAME,
+                "crystalgraphics:shaders/env/buffer/curve.glsl");
     }
 
     private CgEngineBufferRegistry() {}
@@ -70,7 +72,24 @@ public final class CgEngineBufferRegistry {
      * @throws IllegalStateException if {@code token} is already registered
      */
     public static synchronized void register(String token, Supplier<CgShaderBuffer> buffer, String macroName) {
-        Provider existing = PROVIDERS.putIfAbsent(token, new Provider(token, buffer, macroName));
+        register(token, buffer, macroName, null);
+    }
+
+    /**
+     * As {@link #register(String, Supplier, String)}, with a GLSL file of macros written against the
+     * buffer — what {@code CG_QUAD_*} is to {@code QUAD_DATA}.
+     *
+     * <p>The compiler emits an {@code #include} of it immediately after the buffer's own declaration,
+     * so the macros always have the struct to read and a shader that never declares the token never
+     * pays for either. Convention is {@code shaders/env/buffer/<token>.glsl}; a mod's own buffer gets
+     * the same treatment by passing its own path.</p>
+     *
+     * @param envPath a {@code CgIO} resource path, or null for a buffer whose declaration is all there
+     *                is to say
+     */
+    public static synchronized void register(String token, Supplier<CgShaderBuffer> buffer, String macroName,
+                                             String envPath) {
+        Provider existing = PROVIDERS.putIfAbsent(token, new Provider(token, buffer, macroName, envPath));
         if (existing != null) {
             throw new IllegalStateException("cg_use token '" + token + "' is already registered");
         }
@@ -93,6 +112,10 @@ public final class CgEngineBufferRegistry {
      * @param buffer    resolved lazily — see the class doc for why this is not the buffer itself
      * @param macroName the {@code attach()} macro the shader's GLSL refers to (e.g. {@code QUAD_DATA})
      */
-    public record Provider(String token, Supplier<CgShaderBuffer> buffer, String macroName) {
+    /**
+     * @param envPath GLSL macros written against this buffer, included right after its declaration,
+     *                or null when the declaration is all there is
+     */
+    public record Provider(String token, Supplier<CgShaderBuffer> buffer, String macroName, String envPath) {
     }
 }

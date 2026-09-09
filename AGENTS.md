@@ -315,7 +315,7 @@ Pass {
 
 ## cg_env.glsl — The Backbone
 
-`src/main/resources/assets/crystalgraphics/shaders/env/cg_env.glsl` is the foundation every `.shader` file stands on. The material compiler **automatically `#include`s it** into every generated vertex and fragment stage — you never include it manually in `.shader` files. Raw `CgShader` users must `#include "crystalgraphics:shaders/env/cg_env.glsl"` explicitly if they need its symbols.
+`src/main/resources/assets/crystalgraphics/shaders/env/cg_env.glsl` is the foundation every `.shader` file stands on: the frame block, the per-instance object data with its SSBO/TBO dual path, the instance-id bridge, the scene samplers and the convenience macros over them. **A renderer's own macros are not in it** — `CG_QUAD_*` lives in `env/buffer/quad.glsl` and `CG_CURVE_*` in `env/buffer/curve.glsl`, injected only by `#pragma cg_use`; three quarters of this file used to be those two, paid for by every shader including the ones that draw neither. The material compiler **automatically `#include`s `cg_env.glsl`** into every generated vertex and fragment stage — you never include it manually in `.shader` files. Raw `CgShader` users must `#include "crystalgraphics:shaders/env/cg_env.glsl"` explicitly if they need its symbols.
 
 It provides two distinct layers: per-frame global data and per-instance object data.
 
@@ -483,7 +483,8 @@ essentially every shader wants them. Buffers that only a minority of shaders nee
 | `quad` | `QUAD_DATA(n)` + `CG_QUAD_WORLD_POS` / `CG_QUAD_UV` / `CG_QUAD_COLOR` / `CG_QUAD_NORMAL` / `CG_QUAD_ATLAS_LAYER` / `CG_QUAD_FLAGS`, and for screen-space materials the edge and texel antialiasing below | Any shader drawn through `CgQuadRenderer` — UI quads, text glyphs, SDF rects |
 | `curve` | `CURVE_DATA(n)` + `CG_CURVE_WORLD_POS` / `CG_CURVE_P0`–`P2` / `CG_CURVE_COLOR0`–`1` / `CG_CURVE_WIDTHS` / `CG_CURVE_FEATHER` / `CG_CURVE_FLAGS` | Any shader drawn through `CgVectorRenderer` — Bézier strokes, graph wires, connectors |
 
-> **A screen-space quad material antialiases its own edges — without MSAA.** `cg_env.glsl` provides
+> **A screen-space quad material antialiases its own edges — without MSAA.** `env/buffer/quad.glsl`
+> (injected by `#pragma cg_use quad`) provides
 > `CG_QUAD_EDGE_PARAM` (the vertex's parameter, grown by half a pixel when the instance is rotated or
 > sheared in device space), `CG_QUAD_EDGE_WORLD_POS(param)`, `CG_QUAD_EDGE_UV(param)` (clamped, so the pad
 > never samples past the rect) and `CG_QUAD_EDGE_COVERAGE(param)` — the exact area a straight edge leaves of
@@ -493,7 +494,7 @@ essentially every shader wants them. Buffers that only a minority of shaders nee
 > with separate quads any more — a nine-slice is one draw remapping its regions per pixel, so the seams are
 > inside a fragment shader rather than between quads. `CG_QUAD_EDGE_ROTATED` gates anything else a material wants to do only when
 > rotated: `cg_texel_aa_sample` (the pixel-art filter: nearest everywhere, one screen pixel of blend at a
-> texel boundary, four taps held inside `CG_QUAD_UV_RECT`) and `sdf_coverage(dist, rampPx)` with
+> texel boundary, four taps held inside `CG_QUAD_UV_RECT`) — which is not a quad thing at all and lives in `lib/texel.glsl`, `#include`d where wanted, since it reads no instance buffer and `sdf_coverage(dist, rampPx)` with
 > `CG_QUAD_EDGE_FILTER` — the reconstruction width, 1.5 px, the one knob. Adoption is three lines per
 > material; every CrystalGUI quad material has it, `text.shader`'s bitmap path has the texel filter, and a
 > 3D quad material must not use any of it (half a pixel means nothing under a perspective projection).
@@ -506,7 +507,11 @@ essentially every shader wants them. Buffers that only a minority of shaders nee
 > source too — but it does mean the TBO fallback occupies that texture unit in both stages.
 
 The buffer's GLSL declaration is injected **during parsing, before anything can compile**, so the
-symbols exist no matter what triggers the first compile. Register a new token with
+symbols exist no matter what triggers the first compile. **A token may also carry an env file** —
+GLSL macros written against the buffer, the way `CG_QUAD_*` is written against `QUAD_DATA` — which
+`CgMaterialShaderCompiler` includes immediately after the declaration, so the macros always have the
+struct to read. Convention is `shaders/env/buffer/<token>.glsl`; a mod's own buffer gets the same
+treatment by passing its own path. Register a new token with
 `CgEngineBufferRegistry.register(...)` — providers hold a `Supplier`, so registration never forces
 the provider class's static init (which would allocate against `CgBindingPoints` too early).
 
@@ -685,6 +690,7 @@ Located at `src/main/resources/assets/crystalgraphics/shaders/lib/`. All files u
 | `uv.glsl` | `rotate_uv`, `scale_uv`, `tile_uv`, `pan_uv`, `flip_uv_x/y`, `cartesian_to_polar_uv` |
 | `noise.glsl` | `hash12`/`hash22`/`hash13` (sin-free), `value_noise`, `fbm4`/`fbm6`, `fbm(p, octaves)`, `fbm_ridged` |
 | `sdf.glsl` | `sdf_rounded_box` (uniform / per-corner / elliptical), `sdf_segment`, `sdf_bezier` (exact quadratic, with a straight-line fallback), `sdf_coverage` (**fragment-only, guarded**) |
+| `texel.glsl` | `cg_texel_aa_sample(tex, uv, uvRect, filterPx)` — pixel-art filtering: nearest everywhere, one screen pixel of blend at a texel boundary. **Fragment-only, guarded.** Takes the reconstruction width as an argument rather than reading a constant, which is what keeps it free of any engine buffer |
 | `stroke.glsl` | `stroke_coverage(p, p0,p1,p2, widths, feather, cap, out t)` — the whole shared body of every `CgVectorRenderer` consumer: taper, caps, feathered edge |
 
 > **`stroke.glsl` exists so there is exactly one copy of the cap logic.** `curve.shader` and
