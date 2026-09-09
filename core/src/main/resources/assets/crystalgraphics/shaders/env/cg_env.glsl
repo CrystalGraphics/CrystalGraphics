@@ -152,7 +152,6 @@ uniform sampler2D cg_DepthBuffer;
 #define CG_QUAD_COLOR (QUAD_DATA(CG_INSTANCE_ID).color)
 #define CG_QUAD_NORMAL (normalize(cross(QUAD_DATA(CG_INSTANCE_ID).right, QUAD_DATA(CG_INSTANCE_ID).up)))
 #define CG_QUAD_ATLAS_LAYER (QUAD_DATA(CG_INSTANCE_ID).atlasLayer)
-#define CG_QUAD_FLAGS (QUAD_DATA(CG_INSTANCE_ID).flags)
 
 // -- CG_QUAD_EDGE_* -- analytic edge antialiasing for SCREEN-SPACE quads ----------------------------
 //
@@ -162,10 +161,12 @@ uniform sampler2D cg_DepthBuffer;
 // what a Cell does for a tessellated fill: grow it by half a pixel in the vertex stage so the edge
 // pixels are shaded at all, then compute in the fragment stage the exact area a straight edge leaves
 // of each pixel, from the interpolated parameter and the quad's own extents. Axis-aligned quads are
-// left exactly alone -- the decision is made per instance from right/up -- and an edge that ABUTS
-// another quad (CG_QUAD_FLAGS bits 0-3: top, right, bottom, left) stays hard whatever the orientation,
-// because two softened edges meeting compose to three quarters and read as a hairline. A hard edge is
-// not padded either: it has to end exactly where the rasteriser cuts it.
+// left exactly alone -- the decision is made per instance from right/up.
+//
+// EVERY EDGE OF A ROTATED QUAD IS SOFT. There was once a per-edge opt-out, for a quad that abuts
+// another and must keep their shared edge hard -- two softened edges meeting compose to three quarters
+// and read as a hairline. Nothing tiles with separate quads any more: a nine-slice is one draw that
+// remaps its regions per pixel, so the seams are inside a fragment shader rather than between quads.
 //
 // SCREEN SPACE ONLY: "half a pixel" is half a unit of the space right/up are in, which is a window
 // pixel under an ortho projection and nothing in particular under a perspective one. A 3D quad
@@ -183,13 +184,6 @@ uniform sampler2D cg_DepthBuffer;
 bool cg_quad_edge_rotated(vec3 right, vec3 up) {
     return abs(right.y) > 1.0e-4 || abs(up.x) > 1.0e-4;
 }
-// Which edges are soft, as (left, right, top, bottom) in {0, 1}: the rotated ones that abut nothing.
-vec4 cg_quad_edge_soft(vec3 right, vec3 up, float flags) {
-    if (!cg_quad_edge_rotated(right, up)) return vec4(0.0);
-    int f = int(flags + 0.5);
-    return vec4((f & 8) == 0 ? 1.0 : 0.0, (f & 2) == 0 ? 1.0 : 0.0,
-                (f & 1) == 0 ? 1.0 : 0.0, (f & 4) == 0 ? 1.0 : 0.0);
-}
 // Perpendicular extent of the quad across its u and across its v, in the units of right/up: the
 // distance from the left edge to the right edge measured along their normal, and top to bottom.
 vec2 cg_quad_edge_extent(vec3 right, vec3 up) {
@@ -201,29 +195,25 @@ vec2 cg_quad_edge_extent(vec3 right, vec3 up) {
 // it drifts across rows. Slightly wider trades a little sharpness for a smoother line, on rotated
 // content only. The half-pixel pad grows with it.
 #define CG_QUAD_EDGE_FILTER 1.5
-vec2 cg_quad_edge_param(vec2 local, vec3 right, vec3 up, float flags) {
-    vec4 soft = cg_quad_edge_soft(right, up, flags);
-    if (dot(soft, vec4(1.0)) == 0.0) return local;
+vec2 cg_quad_edge_param(vec2 local, vec3 right, vec3 up) {
+    if (!cg_quad_edge_rotated(right, up)) return local;
     vec2 e = (0.5 * CG_QUAD_EDGE_FILTER) / max(cg_quad_edge_extent(right, up), vec2(1.0e-6));
-    vec2 lo = e * soft.xz, hi = e * soft.yw;      // pad each side only where that edge is soft
-    return local * (1.0 + lo + hi) - lo;
+    return local * (1.0 + 2.0 * e) - e;
 }
-float cg_quad_edge_coverage(vec2 param, vec3 right, vec3 up, float flags) {
-    vec4 soft = cg_quad_edge_soft(right, up, flags);
-    if (dot(soft, vec4(1.0)) == 0.0) return 1.0;
+float cg_quad_edge_coverage(vec2 param, vec3 right, vec3 up) {
+    if (!cg_quad_edge_rotated(right, up)) return 1.0;
     vec2 h = cg_quad_edge_extent(right, up);
     // Per pair of opposite edges: the area inside each, summed, less the whole pixel -- exact for a
     // straight edge through a pixel, and for the two together when they are further apart than one.
-    // A hard edge contributes a whole pixel: the rasteriser already cut it.
-    vec2 near = mix(vec2(1.0), clamp(0.5 + param * h / CG_QUAD_EDGE_FILTER, 0.0, 1.0), soft.xz);
-    vec2 far = mix(vec2(1.0), clamp(0.5 + (1.0 - param) * h / CG_QUAD_EDGE_FILTER, 0.0, 1.0), soft.yw);
+    vec2 near = clamp(0.5 + param * h / CG_QUAD_EDGE_FILTER, 0.0, 1.0);
+    vec2 far = clamp(0.5 + (1.0 - param) * h / CG_QUAD_EDGE_FILTER, 0.0, 1.0);
     vec2 c = near + far - 1.0;
     return clamp(c.x, 0.0, 1.0) * clamp(c.y, 0.0, 1.0);
 }
-#define CG_QUAD_EDGE_PARAM cg_quad_edge_param(cg_Position.xy, QUAD_DATA(CG_INSTANCE_ID).right, QUAD_DATA(CG_INSTANCE_ID).up, CG_QUAD_FLAGS)
+#define CG_QUAD_EDGE_PARAM cg_quad_edge_param(cg_Position.xy, QUAD_DATA(CG_INSTANCE_ID).right, QUAD_DATA(CG_INSTANCE_ID).up)
 #define CG_QUAD_EDGE_WORLD_POS(param) (QUAD_DATA(CG_INSTANCE_ID).origin + (param).x * QUAD_DATA(CG_INSTANCE_ID).right + (param).y * QUAD_DATA(CG_INSTANCE_ID).up)
 #define CG_QUAD_EDGE_UV(param) (mix(QUAD_DATA(CG_INSTANCE_ID).uv0, QUAD_DATA(CG_INSTANCE_ID).uv1, clamp(param, 0.0, 1.0)))
-#define CG_QUAD_EDGE_COVERAGE(param) cg_quad_edge_coverage(param, QUAD_DATA(CG_INSTANCE_ID).right, QUAD_DATA(CG_INSTANCE_ID).up, CG_QUAD_FLAGS)
+#define CG_QUAD_EDGE_COVERAGE(param) cg_quad_edge_coverage(param, QUAD_DATA(CG_INSTANCE_ID).right, QUAD_DATA(CG_INSTANCE_ID).up)
 #define CG_QUAD_EDGE_ROTATED cg_quad_edge_rotated(QUAD_DATA(CG_INSTANCE_ID).right, QUAD_DATA(CG_INSTANCE_ID).up)
 
 // -- CG_TEXEL_AA -- texel antialiasing for rotated pixel art -----------------------------------------

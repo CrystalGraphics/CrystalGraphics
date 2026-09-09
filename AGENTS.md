@@ -488,9 +488,10 @@ essentially every shader wants them. Buffers that only a minority of shaders nee
 > sheared in device space), `CG_QUAD_EDGE_WORLD_POS(param)`, `CG_QUAD_EDGE_UV(param)` (clamped, so the pad
 > never samples past the rect) and `CG_QUAD_EDGE_COVERAGE(param)` — the exact area a straight edge leaves of
 > the pixel, per edge, combined per opposite pair. Axis-aligned instances are left exactly alone: the
-> rasteriser snaps those, and two abutting quads softened on a fractional boundary would seam. An edge that
-> abuts another quad — a nine-slice piece, a tile — is marked with `Quad.abutting(int)` (`CG_QUAD_FLAGS`
-> bits 0-3) and stays hard. `CG_QUAD_EDGE_ROTATED` gates anything else a material wants to do only when
+> rasteriser snaps those, and two abutting quads softened on a fractional boundary would seam. **Every edge
+> of a rotated quad is soft**: there was a per-edge opt-out for a quad abutting another, and nothing tiles
+> with separate quads any more — a nine-slice is one draw remapping its regions per pixel, so the seams are
+> inside a fragment shader rather than between quads. `CG_QUAD_EDGE_ROTATED` gates anything else a material wants to do only when
 > rotated: `cg_texel_aa_sample` (the pixel-art filter: nearest everywhere, one screen pixel of blend at a
 > texel boundary, four taps held inside `CG_QUAD_UV_RECT`) and `sdf_coverage(dist, rampPx)` with
 > `CG_QUAD_EDGE_FILTER` — the reconstruction width, 1.5 px, the one knob. Adoption is three lines per
