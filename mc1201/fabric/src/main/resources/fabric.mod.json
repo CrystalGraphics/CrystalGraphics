@@ -14,7 +14,6 @@
       "com.crystalgraphics.mc.fabric.CrystalGraphics1201Fabric"
     ]
   },
-  "mixins": ["crystalgraphics.fabric.mixins.json"],
   "depends": {
     "fabricloader": ">=0.15.0",
     "minecraft": "~1.20.1",
