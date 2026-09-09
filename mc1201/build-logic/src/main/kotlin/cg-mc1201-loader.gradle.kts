@@ -49,3 +49,62 @@ dependencies {
     "annotationProcessor"("org.spongepowered:mixin:${rootProject.properties["mc1201.mixin"]}:processor")
     "compileOnly"("io.github.llamalad7:mixinextras-common:${rootProject.properties["mc1201.mixinextras"]}")
 }
+
+// ── The thin jar (J1) ────────────────────────────────────────────────────────────────────────────
+//
+// One input to the single-jar merge: this loader's own classes and resources, plus :mc1201:common,
+// and NOTHING else. The renderer, its SPI, the font bindings and JOML enter the merge once at the
+// root; a copy here would ship three times over.
+//
+// `common` has to be relocated because the single jar carries THREE remapped copies of it -- SRG on
+// Forge, official on NeoForge, intermediary on Fabric -- and three classes cannot share a name.
+//
+// THE PACKAGE IS MOVED, NOT ITS PARENT: relocating `com.crystalgraphics.mc` would rewrite this
+// loader's own `com.crystalgraphics.mc.<loader>` too. `platform` keeps its leaf name under the new
+// root, so `mc.platform.Lifecycle1201` becomes `mc.forge.common.platform.Lifecycle1201`.
+val cgThinRoot = "com.crystalgraphics.mc.${project.name}.common"
+
+val thinShadowJar = tasks.register<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("thinShadowJar") {
+    group = "build"
+    description = "This loader plus :mc1201:common, relocated -- the merge's input, before remapping."
+    // DEV NAMES STILL. Forge reobfuscates this, Fabric remaps it, NeoForge ships it as it is.
+    archiveClassifier.set("thin-dev")
+    configurations = emptyList()
+    from(sourceSets["main"].output)
+    val commonJar = project(":mc1201:common").tasks.named<Jar>("jar")
+    dependsOn(commonJar)
+    from(commonJar.map { zipTree(it.archiveFile) })
+    relocate("com.crystalgraphics.mc.platform", "$cgThinRoot.platform")
+}
+
+// Nothing in :mc1201:common may be NAMED from a descriptor or a service file.
+//
+// The relocation rewrites class references inside the jar; it cannot rewrite a name sitting in
+// `mods.toml`, `fabric.mod.json` or `META-INF/services/...`, so such a name would point at a class
+// that no longer exists under that spelling -- on three loaders, silently, at the moment something
+// asks for it. The loader's OWN packages are fine: they are not relocated.
+val checkDescriptorsNameNoCommon = tasks.register("checkDescriptorsNameNoCommon") {
+    group = "verification"
+    description = "Fails if a descriptor or service file names a class that the thin jar relocates."
+    val resourceRoot = layout.projectDirectory.dir("src/main/resources").asFile
+    val forbidden = listOf("com.crystalgraphics.mc.platform")
+    inputs.dir(resourceRoot).optional(true).withPropertyName("resources")
+    outputs.upToDateWhen { true }
+    doLast {
+        if (!resourceRoot.isDirectory) return@doLast
+        val hits = resourceRoot.walkTopDown()
+            .filter { it.isFile }
+            .flatMap { file ->
+                val text = runCatching { file.readText() }.getOrDefault("")
+                forbidden.filter { text.contains(it) }.map { file.relativeTo(resourceRoot) to it }
+            }
+            .toList()
+        if (hits.isNotEmpty()) {
+            throw GradleException(
+                "A descriptor or service file names a package the thin jar relocates, so the name "
+                    + "will be wrong on every loader:\n"
+                    + hits.joinToString("\n") { (path, pkg) -> "  $path  names  $pkg" })
+        }
+    }
+}
+tasks.named("check") { dependsOn(checkDescriptorsNameNoCommon) }

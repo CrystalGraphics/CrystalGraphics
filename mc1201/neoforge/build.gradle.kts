@@ -103,3 +103,18 @@ val extractMcSources by tasks.registering(Sync::class) {
 // extractMcSources is cheap (unzips an already-present jar — createMinecraftArtifacts ran first).
 // Wire it into classes so build/mc-src/ is always populated after a normal compile.
 tasks.named("classes") { dependsOn(extractMcSources) }
+
+// -- The thin jar (J1) ----------------------------------------------------------------------------
+//
+// NO REMAPPING STEP, and that is the difference from forge rather than an omission: NeoForge runs
+// official Minecraft names, so `thinShadowJar` already IS the production artifact. It therefore
+// takes the `thin` classifier directly rather than the `thin-dev` the other two carry until mapped.
+tasks.named<AbstractArchiveTask>("thinShadowJar") { archiveClassifier.set("thin") }
+
+tasks.register<cgbuildlogic.CheckThinJar>("checkThinJar") {
+    jar.set(tasks.named<AbstractArchiveTask>("thinShadowJar").flatMap { it.archiveFile })
+    allowedPrefixes.set(listOf("com/crystalgraphics/mc/"))
+}
+
+tasks.named("check") { dependsOn("checkThinJar") }
+tasks.named("assemble") { dependsOn("thinShadowJar") }

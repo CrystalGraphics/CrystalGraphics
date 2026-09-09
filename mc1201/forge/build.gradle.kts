@@ -114,3 +114,23 @@ val reobfShadowJar = the<net.neoforged.moddevgradle.legacyforge.dsl.ObfuscationE
     }
 
 tasks.named("assemble") { dependsOn(reobfShadowJar) }
+
+// -- The thin jar, reobfuscated (J1) --------------------------------------------------------------
+//
+// The merge's input from this loader: its own classes plus the relocated :mc1201:common, at SRG
+// names. Reobfuscated for the same reason the shadow jar is -- production runs SRG members and a jar
+// built against official ones calls methods this Minecraft does not have.
+val reobfThinJar = the<net.neoforged.moddevgradle.legacyforge.dsl.ObfuscationExtension>()
+    .reobfuscate(
+        tasks.named<org.gradle.api.tasks.bundling.AbstractArchiveTask>("thinShadowJar"),
+        sourceSets.main.get()) {
+        archiveClassifier.set("thin")
+    }
+
+tasks.register<cgbuildlogic.CheckThinJar>("checkThinJar") {
+    jar.set(reobfThinJar.flatMap { it.archiveFile })
+    allowedPrefixes.set(listOf("com/crystalgraphics/mc/"))
+}
+
+tasks.named("check") { dependsOn("checkThinJar") }
+tasks.named("assemble") { dependsOn(reobfThinJar) }
