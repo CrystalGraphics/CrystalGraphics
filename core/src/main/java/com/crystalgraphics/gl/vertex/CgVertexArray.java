@@ -6,6 +6,12 @@ import com.crystalgraphics.api.vertex.CgVertexAttribute;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.platform.gl.CgGL;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import java.util.HashSet;
+import java.util.Set;
 import lombok.Getter;
 
 /**
@@ -120,8 +126,23 @@ public final class CgVertexArray {
      * Generates a raw VAO id
      */
     private static int gen() {
-        return CgGL.glGenVertexArrays();
+        int id = CgGL.glGenVertexArrays();
+        if (!LIVE.add(id)) {
+            // Being handed a name we still hold means the two calls ran against DIFFERENT contexts:
+            // buffers and textures are shared between GL contexts, container objects are not. The
+            // second owner then configures the first's VAO, and a mesh drawing another mesh's
+            // attributes rasterises nothing and raises no GL error. On 1.7.10 the second context is
+            // FML's splash screen, which is why no GL work may happen during mod loading.
+            LOGGER.warn("[cg-vao] glGenVertexArrays returned {}, which this process already owns. "
+                    + "Two contexts are in play and one VAO now has two owners.", id);
+        }
+        return id;
     }
+
+    /** @see #gen() */
+    private static final Set<Integer> LIVE = new HashSet<>();
+
+    private static final Logger LOGGER = LogManager.getLogger("CgVertexArray");
 
     /**
      * Generates and returns a raw VAO id without wrapping it in a {@link CgVertexArray} object.
@@ -171,6 +192,7 @@ public final class CgVertexArray {
      * @param vao VAO id to delete
      */
     public static void delete(int vao) {
+        LIVE.remove(vao);
         CgGL.glDeleteVertexArrays(vao);
     }
 
@@ -196,5 +218,6 @@ public final class CgVertexArray {
      */
     public static void resetCoreCache() {
         useCore = null;
+        LIVE.clear();
     }
 }

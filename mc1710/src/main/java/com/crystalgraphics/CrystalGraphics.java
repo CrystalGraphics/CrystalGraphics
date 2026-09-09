@@ -1,13 +1,11 @@
 package com.crystalgraphics;
 
-import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.platform.PlatformService1710;
 import cpw.mods.fml.common.Mod;
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.event.FMLInitializationEvent;
 import cpw.mods.fml.common.event.FMLPostInitializationEvent;
 import cpw.mods.fml.common.event.FMLPreInitializationEvent;
-import net.minecraft.client.Minecraft;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -68,9 +66,14 @@ public final class CrystalGraphics{
 
         if (!FMLCommonHandler.instance().getSide().isClient()) return;
 
-        Minecraft mc = Minecraft.getMinecraft();
-        CgGraphicsLifecycle.initContext(Math.max(1, mc.displayWidth), Math.max(1, mc.displayHeight));
-        
+        // NO GL CONTAINER OBJECTS HERE. FML's splash screen runs mod loading with a second,
+        // shared context of its own, and buffers and textures are shared between contexts while
+        // VAOs and FBOs are not -- so a VAO built now is named in a context the renderer never
+        // uses, and glGenVertexArrays hands the same id to the next caller on the first real
+        // frame. Two owners of one VAO, no GL error, and the second writer's layout silently
+        // replaces the first's. CgGraphicsLifecycle.onOpaquePass initialises lazily on a frame
+        // that genuinely owns the render context; that is the only correct moment.
+
         // Aggregate validation of all mod OpenGL requirements registered during pre-init.
         // On dedicated server this is a no-op (returns immediately).
         // On client, throws a CustomModLoadingErrorDisplayException if any mod's
