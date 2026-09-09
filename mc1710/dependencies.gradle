@@ -58,6 +58,16 @@ dependencies {
         }
     }
 
+    // :mc-shared, which mixins.crystalgraphics.json names as its plugin. Safe as a shadowed
+    // dependency here because this module does not relocate what it shadows
+    // (relocateShadowedDependencies = false); CrystalGUI's mc1710 does, so it unpacks the jar
+    // instead. Only until J4, when the root merge adds it once for every loader.
+    shadowImplementation(project(':mc-shared')) {
+        attributes {
+            attribute(Attribute.of("com.gtnewhorizons.retrofuturagradle.obfuscation", String.class), "none")
+            attribute(Attribute.of("rfgDeobfuscatorTransformed", Boolean.class), false)
+        }
+    }
     shadowImplementation(project(':freetype-msdfgen-harfbuzz-bindings')) {
         attributes {
             // Explicitly set the obfuscation to 'none' so Gradle knows it's a normal library

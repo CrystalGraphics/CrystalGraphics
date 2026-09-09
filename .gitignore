@@ -4,6 +4,9 @@
 /.vscode/
 /run/
 /build/
+# Every module's, not only the root's: /build/ is anchored, so a module added later (mc-shared) had
+# its outputs staged the first time anything ran `git add` over it.
+**/build/
 /eclipse/
 .classpath
 .project

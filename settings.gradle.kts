@@ -58,6 +58,11 @@ pluginManagement {
 // JNI bindings subproject (standalone Java library, not Minecraft mod)
 include("freetype-msdfgen-harfbuzz-bindings")
 
+// What every loader variant in the single jar shares: the mixin config plugin that decides whose
+// mixins may apply, and the loader probe under it. Java 8, one dependency (Mixin, compileOnly), and
+// no Minecraft type at all.
+include("mc-shared")
+
 // Platform split subprojects (plain java-library, no gtnhconvention)
 include(":core")
 include(":platform")
