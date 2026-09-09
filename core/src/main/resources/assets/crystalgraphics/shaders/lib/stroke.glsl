@@ -172,15 +172,21 @@ float stroke_coverage(vec2 p, vec2 a, vec2 b, vec2 c,
         if (capped > -3.4e38) signedDist = capped;   // both sentinel = neither end contributed
     }
 
-    // Deliberately NOT sdf_coverage(): that derives its own ~1px ramp from fwidth, whereas a
-    // stroke's softness is an authored per-instance property in the same units as the widths.
+    // LINEAR, not smoothstep, and over the SAME ramp a quad's edge gets -- see CG_QUAD_EDGE_FILTER
+    // in env/buffer/quad.glsl, which this must stay equal to. Both are the one reconstruction filter
+    // this engine antialiases with, so a stroke's edge and a rect's edge at one angle land on the
+    // same coverage; measured on cgui-shape-probe, they had differed by 26 levels of 255 at 11
+    // degrees, the stroke reading harder because its ramp was a third narrower.
     //
-    // Flooring this ramp with fwidth(signedDist) was tried and MEASURED TO DO NOTHING: worst local
-    // deviation was 73.0/52.6/33.2% at feather 1/3/6 with the floor against 72.6/50.6/34.7% without,
-    // i.e. identical. fwidth is already below feather here, so the max() never binds. Do not re-add
-    // it on the theory that near-horizontal strokes are antialiasing-limited - they are not, and the
-    // measurement is the reason.
-    return 1.0 - smoothstep(-ramp * 0.5, ramp * 0.5, signedDist);
+    // smoothstep is an S-curve about the same midpoint: it over-covers the band's inner half and
+    // under-covers its outer, and on a stroke a few pixels wide nearly every pixel is in that band.
+    //
+    // Deliberately NOT sdf_coverage(), which derives its own ramp from fwidth: the ramp is the
+    // caller's (CgVectorRenderer.FEATHER_ANTIALIAS). Flooring it with fwidth(signedDist) was tried
+    // and measured to change nothing -- fwidth never exceeded the feather -- and it would cost this
+    // function its freedom from derivative builtins, and the note above about needing no
+    // CG_VERTEX_STAGE guard with it.
+    return clamp(0.5 - signedDist / ramp, 0.0, 1.0);
 }
 
 // Antialiased coverage of a FILLED triangle p0->p1->p2 at point `p`, in [0,1]. `cornerRadius`
@@ -232,12 +238,14 @@ float fill_coverage(vec2 p, vec2 p0, vec2 p1, vec2 p2, float cornerRadius, float
     float area = e1.x * e2.y - e1.y * e2.x;
 
     // A HARD EDGE BY DEFAULT: a fill wants a step, and a caller that wants a soft edge passes a real
-    // feather. The floor exists only so the smoothstep never divides by zero. (Tessellated fills no
-    // longer come through here at all -- see cell_coverage.)
+    // feather. The floor exists only so the ramp never divides by zero. (Tessellated fills no longer
+    // come through here at all -- see cell_coverage.)
     float ramp = max(feather, 1.0e-6);
     if (silhouetteEdge == CG_STROKE_FILL_EDGE_NONE || feather <= 0.0) {
         float d = sdf_triangle(q, vec2(0.0), e1, e2) - cornerRadius;
-        return 1.0 - smoothstep(-ramp * 0.5, ramp * 0.5, d);
+        // LINEAR, like stroke_coverage and the silhouette branch below: one ramp shape for every
+        // reading of this buffer, so a triangle's edge and a stroke's edge at one angle agree.
+        return clamp(0.5 - d / ramp, 0.0, 1.0);
     }
 
     // A ZERO-AREA TRIANGLE IS OUTSIDE EVERYWHERE, AND THIS BRANCH HAS TO SAY SO ITSELF.
