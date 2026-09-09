@@ -12,6 +12,9 @@ plugins {
     // needs. Applied to the ROOT because the merged descriptors describe every loader at once and
     // belong to no one of them.
     id("cg-descriptors")
+
+    // The merge: four thin jars and one renderer into the artifact every loader installs.
+    id("cg-single-jar")
 }
 
 // IDEA triggers 'processIdeaSettings' on the root project during sync and gtnhconvention only
