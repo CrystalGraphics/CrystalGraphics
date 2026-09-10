@@ -1,0 +1,1 @@
+rootProject.name = "singlejar-logic"

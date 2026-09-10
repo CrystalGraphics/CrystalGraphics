@@ -128,10 +128,8 @@ val reobfThinJar = the<net.neoforged.moddevgradle.legacyforge.dsl.ObfuscationExt
         archiveClassifier.set("thin")
     }
 
-tasks.register<cgbuildlogic.CheckThinJar>("checkThinJar") {
+// Registered by cg-mc1201-loader with what a CrystalGraphics thin jar may contain; only the jar is ours.
+tasks.named<cgbuildlogic.CheckThinJar>("checkThinJar") {
     jar.set(reobfThinJar.flatMap { it.archiveFile })
-    allowedPrefixes.set(listOf("com/crystalgraphics/mc/"))
 }
-
-tasks.named("check") { dependsOn("checkThinJar") }
 tasks.named("assemble") { dependsOn(reobfThinJar) }
