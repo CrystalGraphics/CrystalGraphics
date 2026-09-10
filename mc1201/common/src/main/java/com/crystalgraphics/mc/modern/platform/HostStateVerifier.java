@@ -4,10 +4,12 @@ import com.mojang.blaze3d.platform.GlStateManager;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.opengl.GL11C;
-import org.lwjgl.opengl.GL13C;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -47,8 +49,17 @@ public final class HostStateVerifier {
 
     private static final String FLAG = "crystalgraphics.host.verify";
 
-    /** Set once, because a flag read per frame is a system-property lookup per frame. */
-    private static final boolean ENABLED = Boolean.getBoolean(FLAG);
+    /**
+     * Set once, because a flag read per frame is a lookup per frame.
+     *
+     * <p><b>Two channels, and the second is not redundant.</b> A launcher does not necessarily pass
+     * per-instance JVM arguments through to the game — PrismLauncher did not, measured — so a
+     * diagnostic that only reads a system property is unreachable by exactly the person most likely
+     * to need it: someone running an installed client who cannot edit a command line.
+     * {@code CRYSTALGRAPHICS_HOST_VERIFY=true} in the environment does the same job.
+     */
+    private static final boolean ENABLED =
+            Boolean.getBoolean(FLAG) || "true".equalsIgnoreCase(System.getenv("CRYSTALGRAPHICS_HOST_VERIFY"));
 
     /**
      * Through log4j, so it lands in the client's own {@code latest.log} beside everything else.
@@ -65,6 +76,9 @@ public final class HostStateVerifier {
     /** Announced once, so "no disagreements" is distinguishable from "never ran". */
     private static boolean announced;
 
+    /** Says once that a comparison actually happened, which is the half the announcement cannot. */
+    private static boolean verifiedOnce;
+
     private HostStateVerifier() { }
 
     /** Whether {@code -Dcrystalgraphics.host.verify=true} was passed. */
@@ -77,95 +91,106 @@ public final class HostStateVerifier {
      *
      * @param pass where this was called from, so a report says which of our passes left it wrong
      */
+    /**
+     * Says once, at platform setup, whether this is armed.
+     *
+     * <p>Called from where the backend is built rather than from {@link #verify}, and that is the
+     * point: if the announcement appears and no comparison ever does, the passes are not running —
+     * which is a different bug from the flag not arriving, and the two were indistinguishable while
+     * the only output came from {@code verify} itself.
+     */
+    public static void announceIfEnabled() {
+        if (!ENABLED || announced) return;
+        announced = true;
+        LOG.info("[cg-host-verify] ARMED -- the driver will be compared against GlStateManager after "
+                + "every pass. A line per disagreeing domain follows, or silence if they agree.");
+    }
+
     public static void verify(String pass) {
         if (!ENABLED) return;
-        if (!announced) {
-            announced = true;
-            LOG.info("[cg-host-verify] on -- comparing the driver against GlStateManager after every "
-                    + "pass. Silence from here means they agree.");
+        if (!verifiedOnce) {
+            verifiedOnce = true;
+            LOG.info("[cg-host-verify] first comparison ran after the {} pass", pass);
         }
         try {
-            checkCap(pass, "BLEND", GL11C.GL_BLEND, boolField("BLEND", "mode"));
-            checkCap(pass, "DEPTH_TEST", GL11C.GL_DEPTH_TEST, boolField("DEPTH", "mode"));
-            checkCap(pass, "CULL_FACE", GL11C.GL_CULL_FACE, boolField("CULL", "enable"));
-            checkCap(pass, "SCISSOR_TEST", GL11C.GL_SCISSOR_TEST, boolField("SCISSOR", "mode"));
-            checkCap(pass, "POLYGON_OFFSET_FILL", GL11C.GL_POLYGON_OFFSET_FILL,
-                    boolField("POLY_OFFSET", "mode"));
-
-            checkInt(pass, "activeTexture",
-                    GL11C.glGetInteger(GL13C.GL_ACTIVE_TEXTURE) - GL13C.GL_TEXTURE0,
-                    intStatic("activeTexture"));
-            checkInt(pass, "depthFunc", GL11C.glGetInteger(GL11C.GL_DEPTH_FUNC),
-                    intOf(state("DEPTH"), "func"));
-            checkBool(pass, "depthMask", GL11C.glGetBoolean(GL11C.GL_DEPTH_WRITEMASK),
-                    boolOf(state("DEPTH"), "mask"));
+            Map<Integer, Boolean> host = readBooleanStates();
+            if (host.isEmpty()) {
+                reportOnce("shape", "found no BooleanState in GlStateManager -- its shape has changed");
+                return;
+            }
+            for (Map.Entry<Integer, Boolean> e : host.entrySet()) {
+                int cap = e.getKey();
+                boolean driver = GL11C.glIsEnabled(cap);
+                if (driver != e.getValue()) {
+                    reportOnce("cap:" + cap, "after " + pass + ": GL cap 0x" + Integer.toHexString(cap)
+                            + " -- driver=" + driver + " host=" + e.getValue());
+                }
+            }
         } catch (Throwable t) {
-            // Reflection refused, or a field moved between versions. Say so once and stop trying:
-            // a diagnostic that spams or throws is worse than one that admits it cannot read.
             reportOnce("reflection", "could not read GlStateManager (" + t + ") -- verifier disabled");
         }
     }
 
-    // ── Comparisons ────────────────────────────────────────────────────────────────────────────────
+    /**
+     * Every {@code BooleanState} Minecraft holds, as {@code GL cap -> what it believes}.
+     *
+     * <p><b>Found by SHAPE, not by name.</b> The first version read {@code BLEND.mode.enabled} and
+     * friends, which worked on NeoForge and failed on Forge and Fabric with
+     * {@code NoSuchFieldException} — those ship SRG and intermediary member names, so a field called
+     * {@code mode} in the source is called something else in the jar. Names are a mapping artefact;
+     * the shape is not.
+     *
+     * <p>So: walk {@code GlStateManager}'s static fields, walk each one's instance fields, and treat
+     * any object whose class declares exactly one {@code int} and one {@code boolean} as a
+     * {@code BooleanState}. The int is the GL cap it guards — {@code GL_BLEND}, {@code GL_DEPTH_TEST}
+     * and the rest — which makes the reading self-describing: we do not need to know what Minecraft
+     * calls a field to know which cap it is about.
+     */
+    private static Map<Integer, Boolean> readBooleanStates() throws Exception {
+        Map<Integer, Boolean> found = new LinkedHashMap<>();
+        for (Field staticField : GlStateManager.class.getDeclaredFields()) {
+            if (!Modifier.isStatic(staticField.getModifiers())) continue;
+            staticField.setAccessible(true);
+            Object holder = staticField.get(null);
+            if (holder == null || holder.getClass().getName().startsWith("java.")) continue;
+            collectFrom(holder, found);
+        }
+        return found;
+    }
 
-    private static void checkCap(String pass, String domain, int cap, Boolean host) {
-        if (host == null) return;
-        boolean driver = GL11C.glIsEnabled(cap);
-        if (driver != host) {
-            reportOnce(domain, "after " + pass + ": " + domain + " -- driver=" + driver + " host=" + host);
+    private static void collectFrom(Object holder, Map<Integer, Boolean> found) throws Exception {
+        if (readBooleanState(holder, found)) return;
+        for (Field f : holder.getClass().getDeclaredFields()) {
+            if (Modifier.isStatic(f.getModifiers()) || f.getType().isPrimitive()) continue;
+            f.setAccessible(true);
+            Object child = f.get(holder);
+            if (child != null && !child.getClass().getName().startsWith("java.")) {
+                readBooleanState(child, found);
+            }
         }
     }
 
-    private static void checkInt(String pass, String domain, int driver, Integer host) {
-        if (host == null || driver == host) return;
-        reportOnce(domain, "after " + pass + ": " + domain + " -- driver=" + driver + " host=" + host);
-    }
-
-    private static void checkBool(String pass, String domain, boolean driver, Boolean host) {
-        if (host == null || driver == host) return;
-        reportOnce(domain, "after " + pass + ": " + domain + " -- driver=" + driver + " host=" + host);
+    /** @return whether {@code candidate} was a BooleanState, by shape: exactly one int and one boolean. */
+    private static boolean readBooleanState(Object candidate, Map<Integer, Boolean> found) throws Exception {
+        Field capField = null;
+        Field enabledField = null;
+        int others = 0;
+        for (Field f : candidate.getClass().getDeclaredFields()) {
+            if (Modifier.isStatic(f.getModifiers())) continue;
+            if (f.getType() == int.class && capField == null) capField = f;
+            else if (f.getType() == boolean.class && enabledField == null) enabledField = f;
+            else others++;
+        }
+        if (capField == null || enabledField == null || others != 0) return false;
+        capField.setAccessible(true);
+        enabledField.setAccessible(true);
+        found.put(capField.getInt(candidate), enabledField.getBoolean(candidate));
+        return true;
     }
 
     private static void reportOnce(String domain, String message) {
         if (REPORTED.add(domain)) {
             LOG.warn("[cg-host-verify] {}", message);
         }
-    }
-
-    // ── Reading the shadow ─────────────────────────────────────────────────────────────────────────
-
-    private static Object state(String name) throws Exception {
-        Field f = GlStateManager.class.getDeclaredField(name);
-        f.setAccessible(true);
-        return f.get(null);
-    }
-
-    private static Integer intStatic(String name) throws Exception {
-        Field f = GlStateManager.class.getDeclaredField(name);
-        f.setAccessible(true);
-        return f.getInt(null);
-    }
-
-    /** {@code STATE.field.enabled}, where the middle field is a {@code BooleanState}. */
-    private static Boolean boolField(String stateName, String booleanStateField) throws Exception {
-        Object holder = state(stateName);
-        Field bs = holder.getClass().getDeclaredField(booleanStateField);
-        bs.setAccessible(true);
-        Object booleanState = bs.get(holder);
-        Field enabled = booleanState.getClass().getDeclaredField("enabled");
-        enabled.setAccessible(true);
-        return enabled.getBoolean(booleanState);
-    }
-
-    private static Integer intOf(Object holder, String field) throws Exception {
-        Field f = holder.getClass().getDeclaredField(field);
-        f.setAccessible(true);
-        return f.getInt(holder);
-    }
-
-    private static Boolean boolOf(Object holder, String field) throws Exception {
-        Field f = holder.getClass().getDeclaredField(field);
-        f.setAccessible(true);
-        return f.getBoolean(holder);
     }
 }
