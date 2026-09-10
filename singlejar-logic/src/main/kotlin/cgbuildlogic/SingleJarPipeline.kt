@@ -41,6 +41,24 @@ import java.util.jar.JarFile
  * @property configureCheck   this project's expectations of the finished jar
  */
 data class SingleJarSpec(
+    /**
+     * Names this pipeline's tasks, its build directory and its libraries configuration — `single`
+     * gives `singleJar`, `singleShadowJar`, `checkSingleJar`, `singleJarLibs`.
+     *
+     * <p>A project can register MORE THAN ONE: CrystalGUI ships its language stack as a second mod
+     * from the same root build, and two pipelines under one name would collide on all seven tasks.
+     * Lowercase, and a legal task-name prefix.</p>
+     */
+    val name: String = "single",
+
+    /**
+     * The Gradle group every task here lands in — its own folder in an IDE's task tree.
+     *
+     * <p>Not `build`: eight pipeline tasks scattered through the forty a modded build already
+     * registers there is how `singleJar` becomes hard to find between `sourcesJar` and
+     * `stageDevResources`. A group of their own also reads as one thing, which is what they are.</p>
+     */
+    val taskGroup: String = "$name jar",
     val modId: String,
     val fileName: String,
     val shadePath: String,
@@ -82,11 +100,16 @@ data class SingleJarSpec(
  */
 fun Project.registerSingleJarPipeline(spec: SingleJarSpec) {
 
+    // Every task, directory and configuration below is named from spec.name, so a project can register
+    // this pipeline more than once. @see SingleJarSpec.name
+    val n = spec.name
+    val N = n.replaceFirstChar { it.uppercase() }
+
     /**
      * Third-party libraries the merged jar carries. Created here, filled by the caller: a project's
      * libraries are its own, and the exclusions some of them need are not expressible as a list.
      */
-    val singleJarLibs: Configuration = configurations.create("singleJarLibs") {
+    val singleJarLibs: Configuration = configurations.create("${n}JarLibs") {
         isCanBeConsumed = false
         isCanBeResolved = true
     }
@@ -96,11 +119,11 @@ fun Project.registerSingleJarPipeline(spec: SingleJarSpec) {
     // then carries some of its extensions and nothing reports the rest missing. Shadow's own
     // mergeServiceFiles does not help: these arrive through from(zipTree(...)) and the duplicate is
     // dropped before any transformer sees it.
-    val servicesDir = layout.buildDirectory.dir("single-jar/services").get().asFile
+    val servicesDir = layout.buildDirectory.dir("$n-jar/services").get().asFile
     val owners = spec.serviceOwners.map { project(it) }
 
-    val mergeServices = tasks.register("mergeSingleJarServices") {
-        group = "build"
+    val mergeServices = tasks.register("merge${N}Services") {
+        group = spec.taskGroup
         description = "Unions every bundled module's META-INF/services so none shadows another."
         val sources = owners.mapNotNull { owner ->
             owner.extensions.getByType(SourceSetContainer::class.java)["main"].output.resourcesDir
@@ -127,22 +150,22 @@ fun Project.registerSingleJarPipeline(spec: SingleJarSpec) {
             dir.listFiles().orEmpty().forEach { it.delete() }
             byService.forEach { (service, providers) ->
                 File(dir, service).writeText(buildString {
-                    appendLine("# Unioned by mergeSingleJarServices; see its declaration.")
+                    appendLine("# Unioned by merge${N}Services; see its declaration.")
                     providers.forEach { appendLine(it) }
                 })
             }
         }
     }
 
-    val singleShadowJar = tasks.register<ShadowJar>("singleShadowJar") {
-        group = "build"
+    val singleShadowJar = tasks.register<ShadowJar>("${n}ShadowJar") {
+        group = spec.taskGroup
         description = "Every loader and one engine in one jar, before downgrading."
         archiveClassifier.set("merged")
         // Nothing from a dependency configuration: every input is named explicitly below. `empty()`
         // rather than `= emptyList()`, because this is a lazy property and a plain Kotlin source file
         // has none of the assignment sugar a build script does.
         configurations.empty()
-        destinationDirectory.set(layout.buildDirectory.dir("single-jar"))
+        destinationDirectory.set(layout.buildDirectory.dir("$n-jar"))
 
         spec.thinJars.forEach { (path, task) ->
             val jar = project(path).tasks.named<AbstractArchiveTask>(task)
@@ -187,30 +210,30 @@ fun Project.registerSingleJarPipeline(spec: SingleJarSpec) {
         spec.extraContent(this)
     }
 
-    val downgradeSingleJar = tasks.register<DowngradeJar>("downgradeSingleJar") {
-        group = "build"
+    val downgradeSingleJar = tasks.register<DowngradeJar>("downgrade${N}Jar") {
+        group = spec.taskGroup
         description = "Rewrites every class in the merged jar to Java 8."
         dependsOn(singleShadowJar)
         inputFile.set(singleShadowJar.flatMap { it.archiveFile })
         downgradeTo.set(JavaVersion.VERSION_1_8)
         archiveClassifier.set("merged-java8")
-        destinationDirectory.set(layout.buildDirectory.dir("single-jar"))
+        destinationDirectory.set(layout.buildDirectory.dir("$n-jar"))
     }
 
-    val shadeSingleJar = tasks.register<ShadeJar>("shadeSingleJar") {
-        group = "build"
+    val shadeSingleJar = tasks.register<ShadeJar>("shade${N}Jar") {
+        group = spec.taskGroup
         description = "Bundles the jvmdg runtime stubs the downgrade now references."
         inputFile.set(downgradeSingleJar.flatMap { it.archiveFile })
         shadePath.set({ _: String -> spec.shadePath })
         archiveClassifier.set("merged-java8-shaded")
-        destinationDirectory.set(layout.buildDirectory.dir("single-jar"))
+        destinationDirectory.set(layout.buildDirectory.dir("$n-jar"))
     }
 
     // The artifact. Unclassified, because it is the product rather than a stage of one. A Copy rather
     // than another Jar: the bytes are finished, and re-zipping them would change the hash for no
     // reason -- which a reproducibility check would then report as non-determinism.
-    val singleJar = tasks.register<Copy>("singleJar") {
-        group = "build"
+    val singleJar = tasks.register<Copy>("${n}Jar") {
+        group = spec.taskGroup
         description = "The one jar every loader installs."
         dependsOn(shadeSingleJar)
         from(shadeSingleJar.map { it.archiveFile })
@@ -226,7 +249,10 @@ fun Project.registerSingleJarPipeline(spec: SingleJarSpec) {
         isReproducibleFileOrder = true
     }
 
-    val checkSingleJar = tasks.register<CheckSingleJar>("checkSingleJar") {
+    val checkSingleJar = tasks.register<CheckSingleJar>("check${N}Jar") {
+        // Overrides the `verification` its own init sets: it belongs beside the pipeline it checks,
+        // and a task type used by two pipelines cannot name either group itself.
+        group = spec.taskGroup
         dependsOn(singleJar)
         jar.set(layout.buildDirectory.file("libs/${spec.fileName}"))
         classMajorCeiling.set(52)
@@ -234,8 +260,8 @@ fun Project.registerSingleJarPipeline(spec: SingleJarSpec) {
     }
 
     tasks.named("assemble") { dependsOn(singleJar) }
-    tasks.register("checkSingle") {
-        group = "verification"
+    tasks.register("check$N") {
+        group = spec.taskGroup
         description = "Builds the single jar and asserts everything every loader needs of it."
         dependsOn(checkSingleJar)
     }
