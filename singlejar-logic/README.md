@@ -215,6 +215,50 @@ The second gives `languageJar`, `languageShadowJar`, `checkLanguageJar`, `langua
 `build/language-jar/` staging directory, so the two never touch. (A mod id with an underscore, not a
 hyphen: Forge's id grammar allows no hyphen; Fabric allows both.)
 
+**Its descriptors need a name too.** `registerDescriptorTasks` defaults to `merged`, which is what
+`SingleJarSpec.descriptorsTask` defaults to; a second mod passes its own, and `checkShipped = false`
+because it ships no per-loader descriptor to be checked against:
+
+```kotlin
+registerDescriptorTasks(langDescriptor, "myproject-lang", name = "language", checkShipped = false)
+registerSingleJarPipeline(SingleJarSpec(name = "language", descriptorsTask = "generateLanguageDescriptors", …))
+```
+
+**Where the second mod's classes come from is a SOURCE SET, not a module.** Each module that already
+faces a loader gains a `lang` (or whatever the second mod is) source set beside `main`, and the loader
+modules gain one entry class each. A module per loader per era doubles the module count with every era
+added, for twenty lines of registration apiece.
+
+The rule that makes the split hold is one line of Gradle: the optional half's library goes on **that
+source set's** `compileOnly` and not on `main`'s.
+
+```kotlin
+val lang: SourceSet by sourceSets.creating {
+    compileClasspath += sourceSets["main"].compileClasspath + sourceSets["main"].output
+    runtimeClasspath += sourceSets["main"].runtimeClasspath + sourceSets["main"].output
+}
+dependencies { "langCompileOnly"(project(":language")) }
+```
+
+`main` is on `lang`'s compile classpath and not the reverse, so a `main` class naming the optional half
+is a **compile error** rather than something an import guard notices afterwards. Give the source set its
+own package — the two halves end up in two jars, and two jars sharing a package is a split package that
+fails module resolution on Forge and NeoForge.
+
+**Registration inverts with the split.** The host must not call into the optional jar, so the optional
+jar's own entry point installs itself through seams the shared library owns, and the host only reports
+which tier it has. Where the host needs to run something the other jar provides — a test probe, say —
+it publishes a seam and the other jar registers into it:
+
+```java
+CgUiAutoTest.onFrame(5, MyProbe::runOnce);   // from the optional mod's entry, at init
+```
+
+**Cross-jar `ServiceLoader` works on all four loaders** — measured, not assumed. One `LaunchClassLoader`
+on 1.7.10 and one Knot on Fabric make it obvious; on Forge and NeoForge the two jars are two automatic
+modules in the game layer and the lookup still resolves. A `META-INF/services` file in the second jar
+reaches a `ServiceLoader` call in the first.
+
 `checkSingleJar` catches, specifically: any class above the major ceiling; a relocated class that
 appears once instead of once per variant; a required entry or manifest key missing; a `META-INF/services`
 file that lost a provider; a forbidden prefix shipping unrelocated.
@@ -241,6 +285,15 @@ Each of these was paid for once. None of them fails loudly on its own.
   a `NoSuchMethodError` naming a constructor that is present.
 - **`Multi-Release` must not reach the manifest.** It puts modern classes where FML 1.7.10's scanner
   reads them and calls the jar corrupt.
+- **ASM must be relocated, and unrelocated it fails in three different-looking ways.** ModLauncher runs
+  on ASM, so a game-layer jar exporting `org.objectweb.asm` is a split package against the boot layer:
+  Forge and NeoForge die straight after *"Initialized transformers"* with **nothing in any log**, Fabric
+  reports a Knot/app loader-constraint violation on `ClassNode`, and 1.7.10 works fine, having no
+  modules. Put the prefix in `forbiddenPrefixes` so the jar is refused instead.
+- **A library a fat jar declared as a shaded dependency reaches no merged jar.** The merge takes *thin*
+  jars, which carry no dependencies at all, so anything a per-loader chain pulled in that way has to be
+  declared into `<name>JarLibs` explicitly. Symptom: nothing, until the one code path that needs it runs
+  on an installed client.
 
 ---
 
