@@ -3,8 +3,9 @@ package com.crystalgraphics.mc.modern.platform;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.mc.modern.platform.gl.Blaze3dGLBackend;
 import com.crystalgraphics.mc.lwjgl3.GlfwCursorService;
+import com.crystalgraphics.mc.lwjgl3.GlfwInputService;
 import com.crystalgraphics.mc.lwjgl3.Lwjgl3GLContext;
-import com.crystalgraphics.mc.modern.platform.service.GlfwInputService;
+
 import com.crystalgraphics.mc.modern.platform.service.LifecycleService;
 import com.crystalgraphics.mc.modern.platform.service.ReloadService;
 import com.crystalgraphics.mc.modern.platform.service.RenderingService;
@@ -33,14 +34,17 @@ import net.minecraft.client.Minecraft;
  * <em>does</em>, and irrelevant to whether a class can be <em>loaded</em>, which is the trap that stopped
  * CrystalGraphics loading on a 1.7.10 dedicated server at all. See the note on the fields below.</p>
  *
- * <h3>⚠️ Both UI services below are unimplemented stubs</h3>
- * <p>{@link #input()} and {@link #sound()} exist and answer, but do nothing. They are written out rather
- * than inherited because {@link CgPlatformService} has no defaults — a platform must state its answer,
- * and "not yet" is a legitimate one as long as it is <em>visible</em>, which a stub in this file is and
- * an inherited no-op would not be.</p>
+ * <h3>An assembler, not an implementation</h3>
  *
- * <p>Each stub records what a real implementation needs; both are LWJGL3/GLFW jobs and materially easier
- * than the LWJGL2 equivalents in {@code mc1710}.</p>
+ * <p>Nothing here does GL or GLFW work of its own. Every service is either the era's own tier-2 class
+ * or a <b>tier-1</b> one from {@code mc-lwjgl3}, which knows nothing about Minecraft and is handed the
+ * one fact it needs — {@link #windowHandle()}, as a supplier. That is §12's rule in one file: a class
+ * lives in the lowest tier its dependencies allow, and a value from a higher tier is passed in rather
+ * than reached for.
+ *
+ * <p>{@link #gl()} is the exception worth naming: the backend it builds <em>is</em> tier 2, because
+ * telling Minecraft what state we changed is the one thing tier 1 must not know how to do. See
+ * {@code Blaze3dGLBackend}.</p>
  */
 public final class PlatformServiceModern implements CgPlatformService {
 
@@ -107,8 +111,8 @@ public final class PlatformServiceModern implements CgPlatformService {
             // is not open yet when the backend is first built, so a captured long would be stale
             // exactly when it mattered. That supplier is the only Minecraft fact the adapter needs,
             // which is what lets it sit in tier 1 knowing nothing about this era.
-            CgPlatform.provide(CgCursorService.SERVICE, new GlfwCursorService(
-                    () -> Minecraft.getInstance().getWindow().getWindow()));
+            CgPlatform.provide(CgCursorService.SERVICE,
+                    new GlfwCursorService(PlatformServiceModern::windowHandle));
         }
         return glBackend;
     }
@@ -148,8 +152,18 @@ public final class PlatformServiceModern implements CgPlatformService {
 
 
     @Override public CgInputService input() {
-        if (input == null) input = new GlfwInputService();
+        // The window is the one Minecraft fact tier 1 needs, and it takes it as a supplier -- see
+        // GlfwInputService. Built lazily and held as the SPI type, like every field here, so a
+        // dedicated server never loads a class that names GLFW.
+        if (input == null) input = new GlfwInputService(PlatformServiceModern::windowHandle);
         return input;
+    }
+
+    /** The GLFW window, or 0 before one exists. The value tier 1 is handed rather than reaching for. */
+    static long windowHandle() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null || mc.getWindow() == null) return 0L;
+        return mc.getWindow().getWindow();
     }
 
     @Override public CgSoundService sound() {

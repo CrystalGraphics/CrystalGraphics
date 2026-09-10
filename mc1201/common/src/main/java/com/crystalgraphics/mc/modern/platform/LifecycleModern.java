@@ -49,6 +49,8 @@ public final class LifecycleModern {
                 mc.getWindow().getWidth(),
                 mc.getWindow().getHeight(),
                 mc.getMainRenderTarget().frameBufferId);
+        // Off unless -Dcrystalgraphics.host.verify=true. @see HostStateVerifier
+        HostStateVerifier.verify("opaque");
     }
 
     /**
@@ -65,6 +67,7 @@ public final class LifecycleModern {
         Minecraft mc = Minecraft.getInstance();
         mc.getMainRenderTarget().bindWrite(false);
         CgGraphicsLifecycle.onTransparentPass();
+        HostStateVerifier.verify("transparent");
         FrameHooks.endFrame();
     }
 

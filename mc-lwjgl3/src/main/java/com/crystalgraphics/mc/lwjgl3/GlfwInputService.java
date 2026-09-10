@@ -1,12 +1,13 @@
-package com.crystalgraphics.mc.modern.platform.service;
+package com.crystalgraphics.mc.lwjgl3;
 
 import com.crystalgraphics.platform.input.CgGlfwKeyCodes;
 import com.crystalgraphics.platform.input.CgKeyCodes;
 import com.crystalgraphics.platform.input.CgModifiers;
 import com.crystalgraphics.platform.service.CgInputService;
 
-import com.mojang.blaze3d.platform.InputConstants;
-import net.minecraft.client.Minecraft;
+import org.lwjgl.glfw.GLFW;
+
+import java.util.function.LongSupplier;
 
 import org.lwjgl.glfw.GLFW;
 
@@ -24,15 +25,25 @@ public final class GlfwInputService implements CgInputService {
     /** GLFW_MOUSE_BUTTON_LAST is 7, so eight buttons. GLFW has no runtime query for this. */
     private static final int MOUSE_BUTTON_COUNT = 8;
 
-    private static long window() {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc == null || mc.getWindow() == null) return 0L;
-        return mc.getWindow().getWindow();
+    private final LongSupplier windowHandle;
+
+    /**
+     * @param windowHandle the GLFW window, asked for per call. A SUPPLIER rather than a handle: the
+     *                     window is created after this can be constructed and may be recreated under
+     *                     it, so a captured {@code long} would be stale exactly when it mattered.
+     */
+    public GlfwInputService(LongSupplier windowHandle) {
+        this.windowHandle = windowHandle;
+    }
+
+    private long window() {
+        return windowHandle == null ? 0L : windowHandle.getAsLong();
     }
 
     private static boolean glfwKeyDown(long window, int glfwKey) {
+        // InputConstants.isKeyDown is Minecraft's one-line wrapper over exactly this.
         return window != 0L && glfwKey != CgGlfwKeyCodes.GLFW_KEY_UNKNOWN
-                && InputConstants.isKeyDown(window, glfwKey);
+                && GLFW.glfwGetKey(window, glfwKey) == GLFW.GLFW_PRESS;
     }
 
     @Override
@@ -82,16 +93,18 @@ public final class GlfwInputService implements CgInputService {
 
     @Override
     public String getClipboard() {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc == null || mc.keyboardHandler == null) return "";
-        String contents = mc.keyboardHandler.getClipboard();
+        long window = window();
+        if (window == 0L) return "";
+        // GLFW answers null when the clipboard holds something that is not text. The contract here
+        // is "never null", and Minecraft's own keyboardHandler wraps this same call.
+        String contents = GLFW.glfwGetClipboardString(window);
         return contents != null ? contents : "";
     }
 
     @Override
     public void setClipboard(String text) {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc == null || mc.keyboardHandler == null || text == null) return;
-        mc.keyboardHandler.setClipboard(text);
+        long window = window();
+        if (window == 0L || text == null) return;
+        GLFW.glfwSetClipboardString(window, text);
     }
 }
