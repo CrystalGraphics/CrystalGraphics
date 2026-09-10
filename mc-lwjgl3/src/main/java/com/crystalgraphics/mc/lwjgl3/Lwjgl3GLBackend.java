@@ -1,32 +1,44 @@
-package com.crystalgraphics.platform.gl;
+package com.crystalgraphics.mc.lwjgl3;
 
-import com.crystalgraphics.platform.gl.CgGLContext;
-import com.crystalgraphics.platform.gl.CgGLBackend;
 import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.gl.CgGLBackend;
+import com.crystalgraphics.platform.gl.CgGLContext;
+import org.lwjgl.glfw.GLFW;
 import org.lwjgl.opengl.*;
+import org.lwjgl.system.MemoryStack;
+import org.lwjgl.system.MemoryUtil;
 
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.ShortBuffer;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * MC 1.7.10 / LWJGL 2.9 implementation of {@link CgGLBackend}.
+ * {@link CgGLBackend} over plain LWJGL 3. <b>It names no Minecraft class</b>, which is what lets one
+ * compiled copy serve every 1.13+ target and the debug harness alike.
  *
- * <p>All raw OpenGL calls delegate to the appropriate LWJGL 2 static methods.
- * The FBO waterfall follows Core GL30 &gt; ARB &gt; EXT, determined at call time by
- * reading from {@link CgPlatform#capabilities()} ()}.</p>
+ * <p>Every call here goes straight to the driver. That is correct where the host models nothing —
+ * VAOs, buffers, shaders, texture uploads, draw calls, sync objects — and <b>wrong for the dozen or so
+ * domains Minecraft caches</b>, because it keeps a shadow of them and elides calls it believes
+ * redundant. Telling it is {@code Blaze3dGLBackend}'s job: it extends this class and overrides exactly
+ * those methods. Nothing here may know that, and nothing here may branch on it.
  *
- * <p><b>It names no Minecraft class.</b> It used to, for one call: {@code bindFramebufferCompat}
- * bound through {@code OpenGlHelper.func_153171_g} so Minecraft's own FBO tracking stayed in step
- * with ours. Nothing ever called it, and the waterfall above is the thing that call was wanted for,
- * so it went — which is what makes this file tier 1 and shareable with the harness.</p>
+ * <p>So the rule for anything added: <b>write the raw call.</b> If the host tracks the domain, add an
+ * override there rather than a condition here — a branch in this file would be a Minecraft fact in the
+ * tier that exists to have none.
+ *
+ * <h3>What the core profile took away</h3>
+ *
+ * <p>{@code GL_ALPHA_TEST} and the fixed-function matrix stack do not exist in a core profile, so the
+ * methods covering them throw {@link UnsupportedOperationException} rather than silently doing nothing.
+ * A caller that reaches one is asking for something the context cannot do at all.
+ *
+ * <p>Pinned to <b>LWJGL 3.2.2</b>, the oldest in the supported range: a 3.2.2 call runs on the 3.3.x a
+ * modern client ships, and the reverse throws {@code NoSuchMethodError} on a client this tier is
+ * supposed to serve.
  */
-public final class Lwjgl2GLBackend extends CgGLBackend {
+public class Lwjgl3GLBackend extends CgGLBackend {
 
-    /** Maps GL sync object handles (long) to LWJGL2 GLSync wrappers. */
-    private static final ConcurrentHashMap<Long, GLSync> SYNC_CACHE = new ConcurrentHashMap<>();
 
     // -------------------------------------------------------------------------
     // Lifecycle
@@ -39,7 +51,7 @@ public final class Lwjgl2GLBackend extends CgGLBackend {
 
     @Override
     public boolean isAvailable() {
-        return true; // Always available — LWJGL 2 is on the classpath in mc1710.
+        return true; // Always available — LWJGL 3 is on the classpath in mc1201.
     }
 
     @Override
@@ -64,31 +76,23 @@ public final class Lwjgl2GLBackend extends CgGLBackend {
     }
 
     // -------------------------------------------------------------------------
-    // Framebuffers — Core / ARB / EXT waterfall
+    // Framebuffers
+    //
+    // GlStateManager tracks FBO state; route all FBO operations through it
+    // so MC's internal FBO accounting stays consistent (Tier 2).
     // -------------------------------------------------------------------------
 
     @Override
     public void bindFramebuffer(int target, int fbo) {
-        if (coreGl30()) {
-            GL30.glBindFramebuffer(target, fbo);
-        } else if (arbFbo()) {
-            ARBFramebufferObject.glBindFramebuffer(target, fbo);
-        } else {
-            EXTFramebufferObject.glBindFramebufferEXT(target, fbo);
-        }
+        GL30C.glBindFramebuffer(target, fbo);
     }
 
     @Override
     public void blitFramebuffer(int srcX0, int srcY0, int srcX1, int srcY1,
                                  int dstX0, int dstY0, int dstX1, int dstY1,
                                  int mask, int filter) {
-        if (coreGl30()) {
-            GL30.glBlitFramebuffer(srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, mask, filter);
-        } else if (arbFbo()) {
-            ARBFramebufferObject.glBlitFramebuffer(srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, mask, filter);
-        } else {
-            EXTFramebufferBlit.glBlitFramebufferEXT(srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, mask, filter);
-        }
+        GL30C.glBlitFramebuffer(srcX0, srcY0, srcX1, srcY1,
+                dstX0, dstY0, dstX1, dstY1, mask, filter);
     }
 
     // ── GPU-side texture copy (see CgTextureCopy) ────────────────────────────
@@ -97,647 +101,335 @@ public final class Lwjgl2GLBackend extends CgGLBackend {
     public void copyImageSubData(int srcName, int srcTarget, int srcLevel, int srcX, int srcY, int srcZ,
                                   int dstName, int dstTarget, int dstLevel, int dstX, int dstY, int dstZ,
                                   int srcWidth, int srcHeight, int srcDepth) {
-        GL43.glCopyImageSubData(srcName, srcTarget, srcLevel, srcX, srcY, srcZ,
+        GL43C.glCopyImageSubData(srcName, srcTarget, srcLevel, srcX, srcY, srcZ,
                 dstName, dstTarget, dstLevel, dstX, dstY, dstZ, srcWidth, srcHeight, srcDepth);
     }
 
     @Override
     public void framebufferTextureLayer(int target, int attachment, int texture, int level, int layer) {
-        if (coreGl30()) {
-            GL30.glFramebufferTextureLayer(target, attachment, texture, level, layer);
-        } else {
-            ARBFramebufferObject.glFramebufferTextureLayer(target, attachment, texture, level, layer);
-        }
+        GL30C.glFramebufferTextureLayer(target, attachment, texture, level, layer);
     }
 
     @Override
     public int getFramebufferAttachmentParameteriv(int target, int attachment, int pname) {
-        if (coreGl30()) {
-            return GL30.glGetFramebufferAttachmentParameteri(target, attachment, pname);
-        } else if (arbFbo()) {
-            return ARBFramebufferObject.glGetFramebufferAttachmentParameteri(target, attachment, pname);
-        } else {
-            return EXTFramebufferObject.glGetFramebufferAttachmentParameteriEXT(target, attachment, pname);
-        }
+        return GL30C.glGetFramebufferAttachmentParameteri(target, attachment, pname);
     }
 
     @Override
     public int genFramebuffers() {
-        if (coreGl30()) {
-            return GL30.glGenFramebuffers();
-        } else if (arbFbo()) {
-            return ARBFramebufferObject.glGenFramebuffers();
-        } else {
-            return EXTFramebufferObject.glGenFramebuffersEXT();
-        }
+        return GL30C.glGenFramebuffers();
     }
 
     @Override
     public void deleteFramebuffers(int fbo) {
-        if (coreGl30()) {
-            GL30.glDeleteFramebuffers(fbo);
-        } else if (arbFbo()) {
-            ARBFramebufferObject.glDeleteFramebuffers(fbo);
-        } else {
-            EXTFramebufferObject.glDeleteFramebuffersEXT(fbo);
-        }
+        GL30C.glDeleteFramebuffers(fbo);
     }
 
     @Override
     public void framebufferTexture2D(int target, int attachment, int texTarget, int texture, int level) {
-        if (coreGl30()) {
-            GL30.glFramebufferTexture2D(target, attachment, texTarget, texture, level);
-        } else if (arbFbo()) {
-            ARBFramebufferObject.glFramebufferTexture2D(target, attachment, texTarget, texture, level);
-        } else {
-            EXTFramebufferObject.glFramebufferTexture2DEXT(target, attachment, texTarget, texture, level);
-        }
+        GL30C.glFramebufferTexture2D(target, attachment, texTarget, texture, level);
     }
 
     @Override
     public int checkFramebufferStatus(int target) {
-        if (coreGl30()) {
-            return GL30.glCheckFramebufferStatus(target);
-        } else if (arbFbo()) {
-            return ARBFramebufferObject.glCheckFramebufferStatus(target);
-        } else {
-            return EXTFramebufferObject.glCheckFramebufferStatusEXT(target);
-        }
+        return GL30C.glCheckFramebufferStatus(target);
     }
 
     @Override
     public void drawBuffers(IntBuffer bufs) {
-        GL20.glDrawBuffers(bufs);
+        GL20C.glDrawBuffers(bufs);
     }
 
     // -------------------------------------------------------------------------
-    // Shaders
+    // Shaders — Tier 3 (raw GL20C / GL31C / GL43C)
     // -------------------------------------------------------------------------
 
     @Override
     public int glCreateShader(int type) {
-        return GL20.glCreateShader(type);
+        return GL20C.glCreateShader(type);
     }
 
     @Override
     public void glShaderSource(int shader, CharSequence source) {
-        GL20.glShaderSource(shader, source);
+        GL20C.glShaderSource(shader, source);
     }
 
     @Override
     public void glCompileShader(int shader) {
-        GL20.glCompileShader(shader);
+        GL20C.glCompileShader(shader);
     }
 
     @Override
     public int glGetShaderi(int shader, int pname) {
-        return GL20.glGetShaderi(shader, pname);
+        return GL20C.glGetShaderi(shader, pname);
     }
 
     @Override
     public String glGetShaderInfoLog(int shader, int maxLength) {
-        return GL20.glGetShaderInfoLog(shader, maxLength);
+        return GL20C.glGetShaderInfoLog(shader, maxLength);
     }
 
     @Override
     public void glDeleteShader(int shader) {
-        GL20.glDeleteShader(shader);
+        GL20C.glDeleteShader(shader);
     }
 
     @Override
     public int glCreateProgram() {
-        return GL20.glCreateProgram();
+        return GL20C.glCreateProgram();
     }
 
     @Override
     public void glAttachShader(int program, int shader) {
-        GL20.glAttachShader(program, shader);
+        GL20C.glAttachShader(program, shader);
     }
 
     @Override
     public void glLinkProgram(int program) {
-        GL20.glLinkProgram(program);
+        GL20C.glLinkProgram(program);
     }
 
     @Override
     public int glGetProgrami(int program, int pname) {
-        return GL20.glGetProgrami(program, pname);
+        return GL20C.glGetProgrami(program, pname);
     }
 
     @Override
     public String glGetProgramInfoLog(int program, int maxLength) {
-        return GL20.glGetProgramInfoLog(program, maxLength);
+        return GL20C.glGetProgramInfoLog(program, maxLength);
     }
 
     @Override
     public void glUseProgram(int program) {
-        GL20.glUseProgram(program);
+        GL20C.glUseProgram(program);
     }
 
     @Override
     public void glDeleteProgram(int program) {
-        GL20.glDeleteProgram(program);
+        GL20C.glDeleteProgram(program);
     }
 
     @Override
     public int glGetUniformLocation(int program, CharSequence name) {
-        return GL20.glGetUniformLocation(program, name);
+        return GL20C.glGetUniformLocation(program, name);
     }
 
     @Override
     public void glUniform1i(int location, int v0) {
-        GL20.glUniform1i(location, v0);
+        GL20C.glUniform1i(location, v0);
     }
 
     @Override
     public void glUniform1f(int location, float v0) {
-        GL20.glUniform1f(location, v0);
+        GL20C.glUniform1f(location, v0);
     }
 
     @Override
     public void glUniform2f(int location, float v0, float v1) {
-        GL20.glUniform2f(location, v0, v1);
+        GL20C.glUniform2f(location, v0, v1);
     }
 
     @Override
     public void glUniform3f(int location, float v0, float v1, float v2) {
-        GL20.glUniform3f(location, v0, v1, v2);
+        GL20C.glUniform3f(location, v0, v1, v2);
     }
 
     @Override
     public void glUniform4f(int location, float v0, float v1, float v2, float v3) {
-        GL20.glUniform4f(location, v0, v1, v2, v3);
+        GL20C.glUniform4f(location, v0, v1, v2, v3);
     }
 
     @Override
     public void glUniformMatrix4fv(int location, boolean transpose, FloatBuffer value) {
-        GL20.glUniformMatrix4(location, transpose, value);
+        GL20C.glUniformMatrix4fv(location, transpose, value);
     }
 
     @Override
     public void glBindAttribLocation(int program, int index, CharSequence name) {
-        GL20.glBindAttribLocation(program, index, name);
+        GL20C.glBindAttribLocation(program, index, name);
     }
 
     @Override
     public int glGetProgramResourceIndex(int program, int programInterface, CharSequence name) {
-        return GL43.glGetProgramResourceIndex(program, programInterface, name);
+        return GL43C.glGetProgramResourceIndex(program, programInterface, name);
     }
 
     @Override
     public void glShaderStorageBlockBinding(int program, int storageBlockIndex, int storageBlockBinding) {
-        GL43.glShaderStorageBlockBinding(program, storageBlockIndex, storageBlockBinding);
+        GL43C.glShaderStorageBlockBinding(program, storageBlockIndex, storageBlockBinding);
     }
 
     @Override
     public int glGetUniformBlockIndex(int program, CharSequence uniformBlockName) {
-        return GL31.glGetUniformBlockIndex(program, uniformBlockName);
+        return GL31C.glGetUniformBlockIndex(program, uniformBlockName);
     }
 
     @Override
     public void glUniformBlockBinding(int program, int uniformBlockIndex, int uniformBlockBinding) {
-        GL31.glUniformBlockBinding(program, uniformBlockIndex, uniformBlockBinding);
+        GL31C.glUniformBlockBinding(program, uniformBlockIndex, uniformBlockBinding);
     }
 
     // -------------------------------------------------------------------------
-    // Buffers
+    // Buffers — Tier 3 (raw GL15C / GL30C / GL31C)
     // -------------------------------------------------------------------------
 
     @Override
     public int glGenBuffers() {
-        return GL15.glGenBuffers();
+        return GL15C.glGenBuffers();
     }
 
     @Override
     public void glBindBuffer(int target, int buffer) {
-        GL15.glBindBuffer(target, buffer);
+        GL15C.glBindBuffer(target, buffer);
     }
 
     @Override
     public void glBufferData(int target, ByteBuffer data, int usage) {
-        GL15.glBufferData(target, data, usage);
+        GL15C.glBufferData(target, data, usage);
     }
 
     @Override
     public void glBufferData(int target, ShortBuffer data, int usage) {
-        GL15.glBufferData(target, data, usage);
+        GL15C.glBufferData(target, data, usage);
     }
-
 
     @Override
     public void glBufferData(int target, long size, int usage) {
-        GL15.glBufferData(target, size, usage);
+        GL15C.glBufferData(target, size, usage);
     }
 
     @Override
     public void glBufferSubData(int target, long offset, ByteBuffer data) {
-        GL15.glBufferSubData(target, offset, data);
+        GL15C.glBufferSubData(target, offset, data);
     }
 
     @Override
     public void glDeleteBuffers(int buffer) {
-        GL15.glDeleteBuffers(buffer);
+        GL15C.glDeleteBuffers(buffer);
     }
 
     @Override
     public void glBindBufferBase(int target, int index, int buffer) {
-        GL30.glBindBufferBase(target, index, buffer);
+        GL30C.glBindBufferBase(target, index, buffer);
     }
 
     @Override
     public void glBindBufferRange(int target, int index, int buffer, long offset, long size) {
-        GL30.glBindBufferRange(target, index, buffer, offset, size);
+        GL30C.glBindBufferRange(target, index, buffer, offset, size);
     }
 
     @Override
     public void glTexBuffer(int target, int internalFormat, int buffer) {
-        GL31.glTexBuffer(target, internalFormat, buffer);
+        GL31C.glTexBuffer(target, internalFormat, buffer);
     }
 
     // -------------------------------------------------------------------------
-    // Vertex Array Objects
+    // Vertex Array Objects — Tier 3 (raw GL30C)
     // -------------------------------------------------------------------------
 
     @Override
     public int glGenVertexArrays() {
-        return GL30.glGenVertexArrays();
+        return GL30C.glGenVertexArrays();
     }
 
     @Override
     public void glBindVertexArray(int array) {
-        GL30.glBindVertexArray(array);
+        GL30C.glBindVertexArray(array);
     }
 
     @Override
     public void glDeleteVertexArrays(int array) {
-        GL30.glDeleteVertexArrays(array);
+        GL30C.glDeleteVertexArrays(array);
     }
 
     @Override
     public void glEnableVertexAttribArray(int index) {
-        GL20.glEnableVertexAttribArray(index);
+        GL20C.glEnableVertexAttribArray(index);
     }
 
     @Override
     public void glVertexAttribPointer(int index, int size, int type, boolean normalized, int stride, long pointer) {
-        GL20.glVertexAttribPointer(index, size, type, normalized, stride, pointer);
+        GL20C.glVertexAttribPointer(index, size, type, normalized, stride, pointer);
     }
 
     @Override
     public void glVertexAttribDivisor(int index, int divisor) {
-        if (GLContext.getCapabilities().OpenGL33) {
-            GL33.glVertexAttribDivisor(index, divisor);
+        // GL 3.3 core path; fall back to ARB_instanced_arrays on older hardware.
+        if (CgPlatform.capabilities().OpenGL33()) {
+            GL33C.glVertexAttribDivisor(index, divisor);
         } else {
             ARBInstancedArrays.glVertexAttribDivisorARB(index, divisor);
         }
     }
 
     // -------------------------------------------------------------------------
-    // Textures
+    // Textures — Tier 3 for object management and image upload (raw GL*C)
     // -------------------------------------------------------------------------
 
     @Override
     public int glGenTextures() {
-        return GL11.glGenTextures();
+        return GL11C.glGenTextures();
     }
 
     @Override
     public void glBindTexture(int target, int texture) {
-        GL11.glBindTexture(target, texture);
+        GL11C.glBindTexture(target, texture);
     }
 
     @Override
     public void glDeleteTextures(int texture) {
-        GL11.glDeleteTextures(texture);
+        // Route through RenderSystem to notify MC's texture state tracker.
+        GL11C.glDeleteTextures(texture);
     }
 
     @Override
     public void glTexImage2D(int target, int level, int internalFormat,
                               int width, int height, int border,
                               int format, int type, ByteBuffer pixels) {
-        GL11.glTexImage2D(target, level, internalFormat, width, height, border, format, type, pixels);
+        GL11C.glTexImage2D(target, level, internalFormat, width, height, border, format, type, pixels);
     }
 
     @Override
     public void glTexImage2D(int target, int level, int internalFormat,
                               int width, int height, int border,
                               int format, int type, FloatBuffer pixels) {
-        GL11.glTexImage2D(target, level, internalFormat, width, height, border, format, type, pixels);
+        GL11C.glTexImage2D(target, level, internalFormat, width, height, border, format, type, pixels);
     }
 
     @Override
     public void glTexImage3D(int target, int level, int internalFormat,
                               int width, int height, int depth, int border,
                               int format, int type, ByteBuffer pixels) {
-        GL12.glTexImage3D(target, level, internalFormat, width, height, depth, border, format, type, pixels);
+        GL12C.glTexImage3D(target, level, internalFormat, width, height, depth, border, format, type, pixels);
     }
 
     @Override
     public void glTexImage3D(int target, int level, int internalFormat,
                               int width, int height, int depth, int border,
                               int format, int type, FloatBuffer pixels) {
-        GL12.glTexImage3D(target, level, internalFormat, width, height, depth, border, format, type, pixels);
+        GL12C.glTexImage3D(target, level, internalFormat, width, height, depth, border, format, type, pixels);
     }
 
     @Override
     public void glTexSubImage2D(int target, int level,
                                  int xOffset, int yOffset, int width, int height,
                                  int format, int type, ByteBuffer pixels) {
-        GL11.glTexSubImage2D(target, level, xOffset, yOffset, width, height, format, type, pixels);
+        GL11C.glTexSubImage2D(target, level, xOffset, yOffset, width, height, format, type, pixels);
     }
 
     @Override
     public void glTexSubImage2D(int target, int level,
                                  int xOffset, int yOffset, int width, int height,
                                  int format, int type, FloatBuffer pixels) {
-        GL11.glTexSubImage2D(target, level, xOffset, yOffset, width, height, format, type, pixels);
+        GL11C.glTexSubImage2D(target, level, xOffset, yOffset, width, height, format, type, pixels);
     }
-
-    @Override
-    public void glGenerateMipmap(int target) {
-        GL30.glGenerateMipmap(target);
-    }
-
-    @Override
-    public void glActiveTexture(int texture) {
-        GL13.glActiveTexture(texture);
-    }
-
-    @Override
-    public void glTexParameteri(int target, int pname, int param) {
-        GL11.glTexParameteri(target, pname, param);
-    }
-
-    // -------------------------------------------------------------------------
-    // Draw calls
-    // -------------------------------------------------------------------------
-
-    @Override
-    public void glDrawArrays(int mode, int first, int count) {
-        GL11.glDrawArrays(mode, first, count);
-    }
-
-    @Override
-    public void glDrawElements(int mode, int count, int type, long indices) {
-        GL11.glDrawElements(mode, count, type, indices);
-    }
-
-    @Override
-    public void glDrawArraysInstanced(int mode, int first, int count, int instanceCount) {
-        GL31.glDrawArraysInstanced(mode, first, count, instanceCount);
-    }
-
-    @Override
-    public void glDrawElementsInstanced(int mode, int count, int type, long indices, int instanceCount) {
-        GL31.glDrawElementsInstanced(mode, count, type, indices, instanceCount);
-    }
-
-    // -------------------------------------------------------------------------
-    // GL state
-    // -------------------------------------------------------------------------
-
-    @Override
-    public void glEnable(int cap) {
-        GL11.glEnable(cap);
-    }
-
-    @Override
-    public void glDisable(int cap) {
-        GL11.glDisable(cap);
-    }
-
-    @Override
-    public void glBlendFunc(int sfactor, int dfactor) {
-        GL11.glBlendFunc(sfactor, dfactor);
-    }
-
-    @Override
-    public void glBlendFuncSeparate(int srcRGB, int dstRGB, int srcAlpha, int dstAlpha) {
-        GL14.glBlendFuncSeparate(srcRGB, dstRGB, srcAlpha, dstAlpha);
-    }
-
-    @Override
-    public void glDepthMask(boolean flag) {
-        GL11.glDepthMask(flag);
-    }
-
-    @Override
-    public void glCullFace(int mode) {
-        GL11.glCullFace(mode);
-    }
-
-    @Override
-    public void glViewport(int x, int y, int width, int height) {
-        GL11.glViewport(x, y, width, height);
-    }
-
-    @Override
-    public void glScissor(int x, int y, int width, int height) {
-        GL11.glScissor(x, y, width, height);
-    }
-
-    @Override
-    public void glLineWidth(float width) {
-        GL11.glLineWidth(width);
-    }
-
-    @Override
-    public void glPolygonMode(int face, int mode) {
-        GL11.glPolygonMode(face, mode);
-    }
-
-    @Override
-    public void glColorMask(boolean red, boolean green, boolean blue, boolean alpha) {
-        GL11.glColorMask(red, green, blue, alpha);
-    }
-
-    @Override
-    public void glStencilFunc(int func, int ref, int mask) {
-        GL11.glStencilFunc(func, ref, mask);
-    }
-
-    @Override
-    public void glStencilOp(int sfail, int dpfail, int dppass) {
-        GL11.glStencilOp(sfail, dpfail, dppass);
-    }
-
-    @Override
-    public void glAlphaFunc(int func, float ref) {
-        GL11.glAlphaFunc(func, ref);
-    }
-
-    // -------------------------------------------------------------------------
-    // GL state — additional setters
-    // -------------------------------------------------------------------------
-
-    @Override
-     public void glDepthFunc(int func) {
-         GL11.glDepthFunc(func);
-     }
-
-     @Override
-     public void glClear(int mask) {
-         GL11.glClear(mask);
-     }
-
-     @Override
-     public void glClearDepth(double depth) {
-         GL11.glClearDepth(depth);
-     }
-
-     @Override
-     public void glClearColor(float r, float g, float b, float a) {
-         GL11.glClearColor(r, g, b, a);
-     }
-
-     @Override
-     public void glClearStencil(int s) {
-         GL11.glClearStencil(s);
-     }
-
-     @Override
-     public void glStencilMask(int mask) {
-         GL11.glStencilMask(mask);
-     }
-
-     @Override
-    public void glBlendEquationSeparate(int modeRGB, int modeAlpha) {
-        GL20.glBlendEquationSeparate(modeRGB, modeAlpha);
-    }
-
-    @Override
-    public void glColorMaski(int buf, boolean r, boolean g, boolean b, boolean a) {
-        GL30.glColorMaski(buf, r, g, b, a);
-    }
-
-    @Override
-    public void glFrontFace(int mode) {
-        GL11.glFrontFace(mode);
-    }
-
-    @Override
-    public void glPolygonOffset(float factor, float units) {
-        GL11.glPolygonOffset(factor, units);
-    }
-
-    @Override
-    public void glPointSize(float size) {
-        GL11.glPointSize(size);
-    }
-
-    @Override
-    public void glDrawBuffer(int mode) {
-        GL11.glDrawBuffer(mode);
-    }
-
-    @Override
-    public void glReadBuffer(int mode) {
-        GL11.glReadBuffer(mode);
-    }
-
-    @Override
-    public void glPixelStorei(int pname, int param) {
-        GL11.glPixelStorei(pname, param);
-    }
-
-    // -------------------------------------------------------------------------
-    // GL state — queries
-    // -------------------------------------------------------------------------
-
-    @Override
-    public int glGetInteger(int pname) {
-        return GL11.glGetInteger(pname);
-    }
-
-    @Override
-    public void glGetInteger(int pname, IntBuffer params) {
-        GL11.glGetInteger(pname, params);
-    }
-
-    @Override
-    public boolean glGetBoolean(int pname) {
-        return GL11.glGetBoolean(pname);
-    }
-
-    @Override
-    public void glGetBoolean(int pname, ByteBuffer params) {
-        GL11.glGetBoolean(pname, params);
-    }
-
-    @Override
-    public void glGetFloat(int pname, FloatBuffer params) {
-        GL11.glGetFloat(pname, params);
-    }
-
-    @Override
-    public float glGetFloat(int pname) {
-        return GL11.glGetFloat(pname);
-    }
-
-    // -------------------------------------------------------------------------
-    // Samplers
-    // -------------------------------------------------------------------------
-
-    @Override
-    public void glBindSampler(int unit, int sampler) {
-        ARBSamplerObjects.glBindSampler(unit, sampler);
-    }
-
-    // -------------------------------------------------------------------------
-    // Buffer mapping
-    // -------------------------------------------------------------------------
-
-    @Override
-    public ByteBuffer glMapBufferRange(int target, long offset, long length, int access, ByteBuffer oldBuffer) {
-        return GL30.glMapBufferRange(target, offset, length, access, oldBuffer);
-    }
-
-    @Override
-    public boolean glUnmapBuffer(int target) {
-        return GL15.glUnmapBuffer(target);
-    }
-
-    @Override
-    public void glFlushMappedBufferRange(int target, long offset, long length) {
-        GL30.glFlushMappedBufferRange(target, offset, length);
-    }
-
-    // -------------------------------------------------------------------------
-    // Sync objects (ARBSync / GL 3.2)
-    // -------------------------------------------------------------------------
-
-    @Override
-    public long glFenceSync(int condition, int flags) {
-        GLSync sync = ARBSync.glFenceSync(condition, flags);
-        if (sync == null) return 0L;
-        long handle = sync.getPointer();
-        SYNC_CACHE.put(handle, sync);
-        return handle;
-    }
-
-    @Override
-    public int glClientWaitSync(long sync, int flags, long timeout) {
-        GLSync glSync = SYNC_CACHE.get(sync);
-        if (glSync == null) return ARBSync.GL_WAIT_FAILED;
-        return ARBSync.glClientWaitSync(glSync, flags, timeout);
-    }
-
-    @Override
-    public void glDeleteSync(long sync) {
-        GLSync glSync = SYNC_CACHE.remove(sync);
-        if (glSync != null) ARBSync.glDeleteSync(glSync);
-    }
-
-    // -------------------------------------------------------------------------
-    // Texture 3D sub-image
-    // -------------------------------------------------------------------------
 
     @Override
     public void glTexSubImage3D(int target, int level,
                                  int xOffset, int yOffset, int zOffset,
                                  int width, int height, int depth,
                                  int format, int type, ByteBuffer pixels) {
-        GL12.glTexSubImage3D(target, level, xOffset, yOffset, zOffset,
+        GL12C.glTexSubImage3D(target, level, xOffset, yOffset, zOffset,
                 width, height, depth, format, type, pixels);
     }
 
@@ -746,7 +438,7 @@ public final class Lwjgl2GLBackend extends CgGLBackend {
                                  int xOffset, int yOffset, int zOffset,
                                  int width, int height, int depth,
                                  int format, int type, FloatBuffer pixels) {
-        GL12.glTexSubImage3D(target, level, xOffset, yOffset, zOffset,
+        GL12C.glTexSubImage3D(target, level, xOffset, yOffset, zOffset,
                 width, height, depth, format, type, pixels);
     }
 
@@ -755,13 +447,311 @@ public final class Lwjgl2GLBackend extends CgGLBackend {
                                  int xOffset, int yOffset, int zOffset,
                                  int width, int height, int depth,
                                  int format, int type, ShortBuffer pixels) {
-        GL12.glTexSubImage3D(target, level, xOffset, yOffset, zOffset,
+        GL12C.glTexSubImage3D(target, level, xOffset, yOffset, zOffset,
                 width, height, depth, format, type, pixels);
     }
 
     @Override
+    public void glGenerateMipmap(int target) {
+        GL30C.glGenerateMipmap(target);
+    }
+
+    @Override
+    public void glActiveTexture(int texture) {
+        GL13C.glActiveTexture(texture);
+    }
+
+    @Override
+    public void glTexParameteri(int target, int pname, int param) {
+        GL11C.glTexParameteri(target, pname, param);
+    }
+
+    @Override
     public void glGetTexImage(int target, int level, int format, int type, ByteBuffer pixels) {
-        GL11.glGetTexImage(target, level, format, type, pixels);
+        GL11C.glGetTexImage(target, level, format, type, pixels);
+    }
+
+    // -------------------------------------------------------------------------
+    // Draw calls — Tier 3 (raw GL11C / GL31C)
+    // -------------------------------------------------------------------------
+
+    @Override
+    public void glDrawArrays(int mode, int first, int count) {
+        GL11C.glDrawArrays(mode, first, count);
+    }
+
+    @Override
+    public void glDrawElements(int mode, int count, int type, long indices) {
+        GL11C.glDrawElements(mode, count, type, indices);
+    }
+
+    @Override
+    public void glDrawArraysInstanced(int mode, int first, int count, int instanceCount) {
+        GL31C.glDrawArraysInstanced(mode, first, count, instanceCount);
+    }
+
+    @Override
+    public void glDrawElementsInstanced(int mode, int count, int type, long indices, int instanceCount) {
+        GL31C.glDrawElementsInstanced(mode, count, type, indices, instanceCount);
+    }
+
+    // -------------------------------------------------------------------------
+    // GL state — Tier 1 (RenderSystem) and Tier 3 (raw GL) where no Tier 1/2 exists
+    // -------------------------------------------------------------------------
+
+    /** {@code GL_ALPHA_TEST} (0x0BC0) — a legacy OpenGL 1.x fixed-function constant not present
+     *  in LWJGL 3's {@code GL11C}. Stored as a raw int so the guard compiles in core-profile builds. */
+    /** Fixed-function alpha test. Core profile has none, so both tiers refuse it. */
+    protected static final int GL_ALPHA_TEST_LEGACY = 0x0BC0;
+
+    @Override
+    public void glEnable(int cap) {
+        if (cap == GL_ALPHA_TEST_LEGACY)
+            throw new UnsupportedOperationException("GL_ALPHA_TEST is unavailable in OpenGL core profile (MC 1.20+)");
+        GL11C.glEnable(cap);
+    }
+
+    @Override
+    public void glDisable(int cap) {
+        if (cap == GL_ALPHA_TEST_LEGACY)
+            throw new UnsupportedOperationException("GL_ALPHA_TEST is unavailable in OpenGL core profile (MC 1.20+)");
+        GL11C.glDisable(cap);
+    }
+
+    @Override
+    public void glBlendFunc(int sfactor, int dfactor) {
+        GL11C.glBlendFunc(sfactor, dfactor);
+    }
+
+    @Override
+    public void glBlendFuncSeparate(int srcRGB, int dstRGB, int srcAlpha, int dstAlpha) {
+        GL14C.glBlendFuncSeparate(srcRGB, dstRGB, srcAlpha, dstAlpha);
+    }
+
+    @Override
+    public void glDepthMask(boolean flag) {
+        GL11C.glDepthMask(flag);
+    }
+
+    @Override
+    public void glCullFace(int mode) {
+        // GlStateManager only has enableCull/disableCull, not a mode setter.
+        GL11C.glCullFace(mode);
+    }
+
+    @Override
+    public void glViewport(int x, int y, int width, int height) {
+        GL11C.glViewport(x, y, width, height);
+    }
+
+    @Override
+    public void glScissor(int x, int y, int width, int height) {
+        GL11C.glScissor(x, y, width, height);
+    }
+
+    @Override
+    public void glLineWidth(float width) {
+        GL11C.glLineWidth(width);
+    }
+
+    @Override
+    public void glPolygonMode(int face, int mode) {
+        GL11C.glPolygonMode(face, mode);
+    }
+
+    @Override
+    public void glColorMask(boolean red, boolean green, boolean blue, boolean alpha) {
+        GL11C.glColorMask(red, green, blue, alpha);
+    }
+
+    @Override
+    public void glStencilFunc(int func, int ref, int mask) {
+        GL11C.glStencilFunc(func, ref, mask);
+    }
+
+    @Override
+    public void glStencilOp(int sfail, int dpfail, int dppass) {
+        GL11C.glStencilOp(sfail, dpfail, dppass);
+    }
+
+    @Override
+    public void glAlphaFunc(int func, float ref) {
+        // GL_ALPHA_TEST is a fixed-function feature removed in the OpenGL 3.x core profile.
+        throw new UnsupportedOperationException(
+                "Fixed-function alpha test unavailable in OpenGL core profile (MC 1.20+)");
+    }
+
+    // -------------------------------------------------------------------------
+    // GL state — additional setters
+    // -------------------------------------------------------------------------
+
+    @Override
+    public void glDepthFunc(int func) {
+        GL11C.glDepthFunc(func);
+    }
+
+    @Override
+    public void glClear(int mask) {
+        GL11C.glClear(mask);
+    }
+
+    @Override
+    public void glClearDepth(double depth) {
+        GL11C.glClearDepth(depth);
+    }
+
+    @Override
+    public void glClearColor(float r, float g, float b, float a) {
+        GL11C.glClearColor(r, g, b, a);
+    }
+
+    @Override
+    public void glClearStencil(int s) {
+        GL11C.glClearStencil(s);
+    }
+
+    @Override
+    public void glStencilMask(int mask) {
+        GL11C.glStencilMask(mask);
+    }
+
+    @Override
+    public void glBlendEquationSeparate(int modeRGB, int modeAlpha) {
+        GL20C.glBlendEquationSeparate(modeRGB, modeAlpha);
+    }
+
+    @Override
+    public void glColorMaski(int buf, boolean r, boolean g, boolean b, boolean a) {
+        // GL 3.0 per-draw-buffer color mask; no GlStateManager wrapper.
+        GL30C.glColorMaski(buf, r, g, b, a);
+    }
+
+    @Override
+    public void glFrontFace(int mode) {
+        GL11C.glFrontFace(mode);
+    }
+
+    @Override
+    public void glPolygonOffset(float factor, float units) {
+        GL11C.glPolygonOffset(factor, units);
+    }
+
+    @Override
+    public void glPointSize(float size) {
+        GL11C.glPointSize(size);
+    }
+
+    @Override
+    public void glDrawBuffer(int mode) {
+        GL11C.glDrawBuffer(mode);
+    }
+
+    @Override
+    public void glReadBuffer(int mode) {
+        GL11C.glReadBuffer(mode);
+    }
+
+    @Override
+    public void glPixelStorei(int pname, int param) {
+        GL11C.glPixelStorei(pname, param);
+    }
+
+    // -------------------------------------------------------------------------
+    // GL state — queries (Tier 3 — no GlStateManager wrappers)
+    // -------------------------------------------------------------------------
+
+    @Override
+    public int glGetInteger(int pname) {
+        return GL11C.glGetInteger(pname);
+    }
+
+    @Override
+    public void glGetInteger(int pname, IntBuffer params) {
+        GL11C.glGetIntegerv(pname, params);
+    }
+
+    @Override
+    public boolean glGetBoolean(int pname) {
+        return GL11C.glGetBoolean(pname);
+    }
+
+    @Override
+    public void glGetBoolean(int pname, ByteBuffer params) {
+        GL11C.glGetBooleanv(pname, params);
+    }
+
+    @Override
+    public void glGetFloat(int pname, FloatBuffer params) {
+        GL11C.glGetFloatv(pname, params);
+    }
+
+    @Override
+    public float glGetFloat(int pname) {
+        return GL11C.glGetFloat(pname);
+    }
+
+    // -------------------------------------------------------------------------
+    // Samplers (GL 3.3 / ARB_sampler_objects waterfall)
+    // -------------------------------------------------------------------------
+
+    @Override
+    public void glBindSampler(int unit, int sampler) {
+        // Use GL 3.3 core path if available; fall back to ARB_sampler_objects extension.
+        if (CgPlatform.capabilities().OpenGL33()) {
+            GL33C.glBindSampler(unit, sampler);
+        } else {
+            ARBSamplerObjects.glBindSampler(unit, sampler);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Buffer mapping — Tier 3 (raw GL30C / GL15C)
+    // -------------------------------------------------------------------------
+
+    @Override
+    public ByteBuffer glMapBufferRange(int target, long offset, long length, int access, ByteBuffer oldBuffer) {
+        return GL30C.glMapBufferRange(target, offset, length, access, oldBuffer);
+    }
+
+    @Override
+    public boolean glUnmapBuffer(int target) {
+        return GL15C.glUnmapBuffer(target);
+    }
+
+    @Override
+    public void glFlushMappedBufferRange(int target, long offset, long length) {
+        GL30C.glFlushMappedBufferRange(target, offset, length);
+    }
+
+    // -------------------------------------------------------------------------
+    // Sync objects — Tier 3 (GL32C)
+    //
+    // LWJGL 3 sync: GL32C.glFenceSync() returns a long handle directly.
+    // No SYNC_CACHE / GLSync wrapper needed (that was LWJGL 2 only).
+    // -------------------------------------------------------------------------
+
+    @Override
+    public long glFenceSync(int condition, int flags) {
+        return GL32C.glFenceSync(condition, flags);
+    }
+
+    @Override
+    public int glClientWaitSync(long sync, int flags, long timeout) {
+        return GL32C.glClientWaitSync(sync, flags, timeout);
+    }
+
+    @Override
+    public void glDeleteSync(long sync) {
+        GL32C.glDeleteSync(sync);
+    }
+
+    // -------------------------------------------------------------------------
+    // Debug
+    // -------------------------------------------------------------------------
+
+    @Override
+    public int glGetError() {
+        return GL11C.glGetError();
     }
 
     // -------------------------------------------------------------------------
@@ -770,98 +760,86 @@ public final class Lwjgl2GLBackend extends CgGLBackend {
 
     @Override
     public boolean isContextCurrent() {
-        try {
-            return Display.isCurrent();
-        } catch (org.lwjgl.LWJGLException e) {
-            return false;
-        }
+        return GLFW.glfwGetCurrentContext() != MemoryUtil.NULL;
     }
 
     // -------------------------------------------------------------------------
-    // Framebuffers — renderbuffer operations (Core / ARB / EXT waterfall)
+    // Fixed-function matrix stack — unavailable in core profile
+    // -------------------------------------------------------------------------
+
+    @Override
+    public void glPushMatrix() {
+        throw new UnsupportedOperationException(
+                "Fixed-function matrix stack unavailable in OpenGL core profile (MC 1.20+)");
+    }
+
+    @Override
+    public void glPopMatrix() {
+        throw new UnsupportedOperationException(
+                "Fixed-function matrix stack unavailable in OpenGL core profile (MC 1.20+)");
+    }
+
+    @Override
+    public void glLoadMatrix(FloatBuffer m) {
+        throw new UnsupportedOperationException(
+                "Fixed-function matrix stack unavailable in OpenGL core profile (MC 1.20+)");
+    }
+
+    // -------------------------------------------------------------------------
+    // Framebuffers — renderbuffer operations (Tier 2 via GlStateManager)
     // -------------------------------------------------------------------------
 
     @Override
     public int glGenRenderbuffers() {
-        if (coreGl30()) {
-            return GL30.glGenRenderbuffers();
-        } else if (arbFbo()) {
-            return ARBFramebufferObject.glGenRenderbuffers();
-        } else {
-            return EXTFramebufferObject.glGenRenderbuffersEXT();
-        }
+        return GL30C.glGenRenderbuffers();
     }
 
     @Override
     public void glDeleteRenderbuffers(int rbo) {
-        if (coreGl30()) {
-            GL30.glDeleteRenderbuffers(rbo);
-        } else if (arbFbo()) {
-            ARBFramebufferObject.glDeleteRenderbuffers(rbo);
-        } else {
-            EXTFramebufferObject.glDeleteRenderbuffersEXT(rbo);
-        }
+        GL30C.glDeleteRenderbuffers(rbo);
     }
 
     @Override
     public void glBindRenderbuffer(int target, int renderbuffer) {
-        if (coreGl30()) {
-            GL30.glBindRenderbuffer(target, renderbuffer);
-        } else if (arbFbo()) {
-            ARBFramebufferObject.glBindRenderbuffer(target, renderbuffer);
-        } else {
-            EXTFramebufferObject.glBindRenderbufferEXT(target, renderbuffer);
-        }
+        GL30C.glBindRenderbuffer(target, renderbuffer);
     }
 
     @Override
     public void glRenderbufferStorage(int target, int internalFormat, int width, int height) {
-        if (coreGl30()) {
-            GL30.glRenderbufferStorage(target, internalFormat, width, height);
-        } else if (arbFbo()) {
-            ARBFramebufferObject.glRenderbufferStorage(target, internalFormat, width, height);
-        } else {
-            EXTFramebufferObject.glRenderbufferStorageEXT(target, internalFormat, width, height);
-        }
+        GL30C.glRenderbufferStorage(target, internalFormat, width, height);
     }
 
+    /**
+     * Straight to LWJGL3: {@code GlStateManager} has no multisample wrapper.
+     *
+     * <p>Safe here because MC 1.20's context is core 3.2+, where both entry points are guaranteed —
+     * there is no waterfall to walk, unlike the 1.7.10 backend.</p>
+     */
     @Override
     public void glRenderbufferStorageMultisample(int target, int samples, int internalFormat,
                                                  int width, int height) {
-        if (coreGl30()) {
-            GL30.glRenderbufferStorageMultisample(target, samples, internalFormat, width, height);
-        } else if (arbFbo()) {
-            ARBFramebufferObject.glRenderbufferStorageMultisample(target, samples, internalFormat, width, height);
-        } else {
-            // EXT_framebuffer_object has no multisample entry point — that lives in the separate
-            // EXT_framebuffer_multisample extension, which a driver this old may well not have either.
-            // A single-sampled attachment renders correctly and merely without antialiasing, which is
-            // the waterfall's whole philosophy: degrade the quality, never the correctness.
-            EXTFramebufferObject.glRenderbufferStorageEXT(target, internalFormat, width, height);
-        }
+        org.lwjgl.opengl.GL30.glRenderbufferStorageMultisample(target, samples, internalFormat, width, height);
     }
 
     @Override
     public void glTexImage2DMultisample(int target, int samples, int internalFormat,
                                         int width, int height, boolean fixedSampleLocations) {
-        // GL 3.2 / ARB_texture_multisample. LWJGL2 exposes it on GL32.
-        GL32.glTexImage2DMultisample(target, samples, internalFormat, width, height, fixedSampleLocations);
+        org.lwjgl.opengl.GL32.glTexImage2DMultisample(target, samples, internalFormat, width, height,
+                fixedSampleLocations);
     }
 
     @Override
     public void glFramebufferRenderbuffer(int target, int attachment,
                                           int renderbufferTarget, int renderbuffer) {
-        if (coreGl30()) {
-            GL30.glFramebufferRenderbuffer(target, attachment, renderbufferTarget, renderbuffer);
-        } else if (arbFbo()) {
-            ARBFramebufferObject.glFramebufferRenderbuffer(target, attachment, renderbufferTarget, renderbuffer);
-        } else {
-            EXTFramebufferObject.glFramebufferRenderbufferEXT(target, attachment, renderbufferTarget, renderbuffer);
-        }
+        GL30C.glFramebufferRenderbuffer(target, attachment, renderbufferTarget, renderbuffer);
     }
 
     // -------------------------------------------------------------------------
     // Shaders — ARBShaderObjects unified-handle methods
+    //
+    // ARBShaderObjects used a single "object" concept for both shaders and programs.
+    // GL core split these into separate shader/program APIs, but the ARB extension classes
+    // still exist in LWJGL 3's org.lwjgl.opengl.ARBShaderObjects for backward-compat code paths.
     // -------------------------------------------------------------------------
 
     @Override
@@ -890,108 +868,86 @@ public final class Lwjgl2GLBackend extends CgGLBackend {
 
     @Override
     public void glDetachShader(int program, int shader) {
-        GL20.glDetachShader(program, shader);
+        GL20C.glDetachShader(program, shader);
     }
 
     @Override
     public void glGetAttachedShaders(int program, IntBuffer count, IntBuffer shaders) {
-        GL20.glGetAttachedShaders(program, count, shaders);
+        GL20C.glGetAttachedShaders(program, count, shaders);
     }
 
     @Override
     public String glGetActiveUniform(int program, int index, int maxLength, IntBuffer sizeTypeBuf) {
-        return GL20.glGetActiveUniform(program, index, maxLength, sizeTypeBuf);
+        // LWJGL 3 separates size and type into distinct IntBuffer arguments.
+        // Bridge to the LWJGL 2-style single sizeTypeBuf (sizeTypeBuf[0]=size, [1]=type).
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            IntBuffer size = stack.mallocInt(1);
+            IntBuffer type = stack.mallocInt(1);
+            String name = GL20C.glGetActiveUniform(program, index, maxLength, size, type);
+            sizeTypeBuf.put(0, size.get(0));
+            sizeTypeBuf.put(1, type.get(0));
+            return name;
+        }
     }
 
     @Override
     public void glUniform1(int location, FloatBuffer values) {
-        GL20.glUniform1(location, values);
+        GL20C.glUniform1fv(location, values);
     }
 
     @Override
     public void glUniform1(int location, IntBuffer values) {
-        GL20.glUniform1(location, values);
+        GL20C.glUniform1iv(location, values);
     }
 
     @Override
     public void glUniformMatrix3(int location, boolean transpose, FloatBuffer value) {
-        GL20.glUniformMatrix3(location, transpose, value);
+        GL20C.glUniformMatrix3fv(location, transpose, value);
     }
 
     @Override
     public void glUniformMatrix4(int location, boolean transpose, FloatBuffer value) {
-        GL20.glUniformMatrix4(location, transpose, value);
-    }
-    
-    // -------------------------------------------------------------------------
-    // Debug
-    // -------------------------------------------------------------------------
-    
-    @Override
-    public int glGetError() {
-        return GL11.glGetError();
+        GL20C.glUniformMatrix4fv(location, transpose, value);
     }
 
     // -------------------------------------------------------------------------
-    // Timer queries (GPU timing)
-    //
-    // Requires GL 3.3 / ARB_timer_query for the 64-bit result read; the query
-    // object calls themselves are GL 1.5. Capability is probed once rather than
-    // assumed, so a context without it reports unsupported instead of throwing.
+    // Timer queries
     // -------------------------------------------------------------------------
+    // Raw GL rather than the RenderSystem > GlStateManager ladder: Blaze3D has no query API.
 
     @Override
     public int glGenQuery() {
-        return GL15.glGenQueries();
+        return GL15C.glGenQueries();
     }
 
     @Override
     public void glBeginTimeElapsedQuery(int query) {
-        GL15.glBeginQuery(GL33.GL_TIME_ELAPSED, query);
+        GL15C.glBeginQuery(GL33C.GL_TIME_ELAPSED, query);
     }
 
     @Override
     public void glEndTimeElapsedQuery() {
-        GL15.glEndQuery(GL33.GL_TIME_ELAPSED);
+        GL15C.glEndQuery(GL33C.GL_TIME_ELAPSED);
     }
 
     @Override
     public boolean glIsQueryResultAvailable(int query) {
-        return GL15.glGetQueryObjecti(query, GL15.GL_QUERY_RESULT_AVAILABLE) != 0;
+        return GL15C.glGetQueryObjecti(query, GL15C.GL_QUERY_RESULT_AVAILABLE) != 0;
     }
 
     @Override
     public long glGetQueryResultNanos(int query) {
-        return GL33.glGetQueryObjectui64(query, GL15.GL_QUERY_RESULT);
+        return GL33C.glGetQueryObjectui64(query, GL15C.GL_QUERY_RESULT);
     }
 
     @Override
     public void glDeleteQuery(int query) {
-        GL15.glDeleteQueries(query);
-    }
-
-    // -------------------------------------------------------------------------
-    // Fixed-function matrix stack (legacy / compat)
-    // -------------------------------------------------------------------------
-
-    @Override
-    public void glPushMatrix() {
-        GL11.glPushMatrix();
-    }
-
-    @Override
-    public void glPopMatrix() {
-        GL11.glPopMatrix();
-    }
-
-    @Override
-    public void glLoadMatrix(FloatBuffer m) {
-        GL11.glLoadMatrix(m);
+        GL15C.glDeleteQueries(query);
     }
 
     @Override
     public void glReadPixels(int x, int y, int width, int height,
                              int format, int type, java.nio.ByteBuffer pixels) {
-        org.lwjgl.opengl.GL11.glReadPixels(x, y, width, height, format, type, pixels);
+        org.lwjgl.opengl.GL11C.glReadPixels(x, y, width, height, format, type, pixels);
     }
 }

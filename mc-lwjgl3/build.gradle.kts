@@ -33,7 +33,8 @@ repositories {
     mavenCentral()
 }
 
-val lwjgl3Version = "3.2.2"
+// See dep.lwjgl3.tier1 in gradle.properties for why this is not the newest, before raising it.
+val lwjgl3Version = providers.gradleProperty("dep.lwjgl3.tier1").getOrElse("3.2.2")
 
 dependencies {
     compileOnly(project(":platform"))

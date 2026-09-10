@@ -99,8 +99,10 @@ The repository is a Gradle multi-project build. Every subproject has a distinct 
 | `core/` | 25 → 8 | none | All rendering logic — `CgMaterial`, `CgMesh`, `CgRenderPipeline`, font, text, atlas. Calls `CgPlatform.*()` for every GL or lifecycle operation. Never imports MC or LWJGL types. |
 | `freetype-msdfgen-harfbuzz-bindings/` | 25 → 8 | none | JNI bindings for FreeType/HarfBuzz text shaping. Bundled in every loader JAR. |
 | `gl-debug-harness/` | 17 | LWJGL3 | Standalone GL test harness — no Minecraft, boots in seconds. Use for all rendering work. |
-| `mc1710/` | 25 → 8 | LWJGL2 | MC 1.7.10 / Forge. Registers `PlatformRegistry1710` which implements all SPI interfaces against LWJGL2. |
-| `mc1201/common/` | 17 | LWJGL3 | Shared MC 1.20.x platform service implementation (`PlatformServiceModern`, `Mc120xGLBackend`) and mixins (`MixinGameRenderer`, `MixinMinecraftShutdown`). No loader-specific types. |
+| `mc-lwjgl2/` | 17 | LWJGL2 (2.9.4, `compileOnly`) | **TIER 1** — `Lwjgl2GLBackend`, `Lwjgl2GLContext`, `Lwjgl2InputService`, `Lwjgl2CursorService`. **Names no Minecraft class**, enforced by an import guard, so one compiled copy serves 1.7.10, 1.12.2 and the debug harness alike. |
+| `mc-lwjgl3/` | 17 | LWJGL3 (**pinned 3.2.2**, `compileOnly`) | **TIER 1** — `Lwjgl3GLBackend`, `Lwjgl3GLContext`, `GlfwInputService`, `GlfwCursorService`. Same rule. Pinned to the oldest LWJGL3 in the supported range (MC 1.13–1.16) so a symbol a 1.16 client lacks is a compile error; see `dep.lwjgl3.tier1`. |
+| `mc1710/` | 25 → 8 | LWJGL2 | MC 1.7.10 / Forge. Registers `PlatformRegistry1710` which implements all SPI interfaces against LWJGL2. Its GL backend and input service are `mc-lwjgl2`'s now; what stays here is what names Minecraft. |
+| `mc1201/common/` | 17 | LWJGL3 | **TIER 2** — the MC 1.20.x half: `PlatformServiceModern` (an assembler over tier 1), `Blaze3dGLBackend` (tier 1 plus the host state mirror, contracts C5), `HostStateVerifier`, and the mixins. No loader-specific types. |
 | `mc1201/forge/` | 17 | LWJGL3 | MC 1.20.1 / MinecraftForge 47.x. Thin bootstrap: registers events on the Forge bus, calls `CgPlatform.register()`. |
 | `mc1201/neoforge/` | 17 | LWJGL3 | MC 1.20.4 / NeoForge. Same pattern as forge. Despite living under `mc1201/`, targets MC 1.20.4. |
 | `mc1201/fabric/` | 17 | LWJGL3 | MC 1.20.1 / Fabric. Same pattern, uses Fabric API callbacks + GLFW for inputs with no Fabric API equivalent. |

@@ -37,6 +37,10 @@ dependencies {
     // causes duplicate-AP obfuscation-mapping errors for all @Inject targets.
     "compileOnly"("io.github.llamalad7:mixinextras-common:${rootProject.properties["mc1201.mixinextras"]}")
     "annotationProcessor"("io.github.llamalad7:mixinextras-common:${rootProject.properties["mc1201.mixinextras"]}")
+
+    // For the tier-2 override check (F5). Reflection only -- no GL context and no game, which is the
+    // whole point: the thing being asserted is which methods EXIST, and that is answerable statically.
+    "testImplementation"("junit:junit:${rootProject.properties["dep.junit"]}")
 }
 
 // Export compiled JAR so loader subprojects can depend on it as a binary
