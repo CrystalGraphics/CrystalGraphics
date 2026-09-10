@@ -417,17 +417,6 @@ public final class CgGlStateManager {
         return issue(CgGlSlot.FBO);
     }
 
-    /** Minecraft's {@code OpenGlHelper} wrapper picks the API itself, so it is its own family. */
-    public boolean fboCompatChanged(int fbo) {
-        assertOwner();
-        boolean crossFamily = current.fboFamily != CgGlStateShadow.FboFamily.MC_WRAPPER;
-        if (!crossFamily && !stale(CgGlSlot.FBO)
-                && current.drawFbo == fbo && current.readFbo == fbo) return skip();
-        current.drawFbo = fbo; current.readFbo = fbo;
-        current.fboFamily = CgGlStateShadow.FboFamily.MC_WRAPPER;
-        return issue(CgGlSlot.FBO);
-    }
-
     // -- Deletions ----------------------------------------------------------------------------------
 
     /**
@@ -743,9 +732,7 @@ public final class CgGlStateManager {
             case POINT_SIZE: CgGL.glPointSize(s.pointSize); break;
             case PROGRAM:    CgGL.glUseProgram(s.programId); break;
             case FBO:
-                if (s.fboFamily == CgGlStateShadow.FboFamily.MC_WRAPPER) {
-                    CgGL.glBindFramebufferCompat(s.drawFbo);
-                } else if (s.fboFamily == CgGlStateShadow.FboFamily.EXT || s.drawFbo == s.readFbo) {
+                if (s.fboFamily == CgGlStateShadow.FboFamily.EXT || s.drawFbo == s.readFbo) {
                     // EXT has no draw/read split; and a matching pair needs only one bind.
                     CgGL.glBindFramebuffer(
                             s.fboFamily == CgGlStateShadow.FboFamily.EXT

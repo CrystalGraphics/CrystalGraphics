@@ -2,6 +2,7 @@ package com.crystalgraphics.platform;
 
 import cpw.mods.fml.common.FMLCommonHandler;
 import com.crystalgraphics.CrystalGraphicsVersion;
+import com.crystalgraphics.mc.lwjgl2.Lwjgl2CursorService;
 import com.crystalgraphics.mc.lwjgl2.Lwjgl2GLContext;
 import com.crystalgraphics.platform.service.Lwjgl2InputService;
 import com.crystalgraphics.platform.gl.Lwjgl2GLBackend;
@@ -103,6 +104,13 @@ public final class PlatformService1710 implements CgPlatformService {
      */
     public static void onPreInit() {
         CgPlatform.register(PlatformService1710.getInstance());
+
+        // The cursor, filled here so no consumer has to. It is a CgService SLOT rather than a bundle
+        // method because an unpresented cursor is cosmetic and this engine runs where there is nothing
+        // to present to; whoever owns a cursor VOCABULARY resolves its keyword to a picture and hands
+        // the picture over, so this side names none. LWJGL2 needs no window handle -- Mouse is bound
+        // to the single display it owns.
+        CgPlatform.provide(CgCursorService.SERVICE, new Lwjgl2CursorService());
 
         // Prefer Angelica's mirror over the driver for GL state reads.
         //

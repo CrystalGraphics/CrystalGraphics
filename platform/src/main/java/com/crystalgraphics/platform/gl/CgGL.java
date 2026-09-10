@@ -573,11 +573,6 @@ public final class CgGL {
         backend.drawBuffers(bufs);
     }
 
-    /** Platform-neutral FBO bind that routes through MC's compat helper on mc1710. */
-    public static void glBindFramebufferCompat(int fbo) {
-        if (state().fboCompatChanged(fbo)) backend.bindFramebufferCompat(fbo);
-    }
-
     // --- Renderbuffer methods (same no-prefix pattern in CgGLBackend) -------
 
     public static int glGenRenderbuffers() {

@@ -2,6 +2,7 @@ package com.crystalgraphics.mc.modern.platform;
 
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.mc.modern.platform.gl.Blaze3dGLBackend;
+import com.crystalgraphics.mc.lwjgl3.GlfwCursorService;
 import com.crystalgraphics.mc.lwjgl3.Lwjgl3GLContext;
 import com.crystalgraphics.mc.modern.platform.service.GlfwInputService;
 import com.crystalgraphics.mc.modern.platform.service.LifecycleService;
@@ -9,7 +10,9 @@ import com.crystalgraphics.mc.modern.platform.service.ReloadService;
 import com.crystalgraphics.mc.modern.platform.service.RenderingService;
 import com.crystalgraphics.mc.modern.platform.service.ResourceService;
 import com.crystalgraphics.mc.modern.platform.service.SoundService;
+import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.CgPlatformService;
+import com.crystalgraphics.platform.service.CgCursorService;
 import com.crystalgraphics.platform.gl.CgGLBackend;
 import com.crystalgraphics.platform.gl.CgGLContext;
 import com.crystalgraphics.platform.service.CgInputService;
@@ -18,6 +21,8 @@ import com.crystalgraphics.platform.service.CgReloadService;
 import com.crystalgraphics.platform.service.CgRenderingService;
 import com.crystalgraphics.platform.service.CgResourceService;
 import com.crystalgraphics.platform.service.CgSoundService;
+
+import net.minecraft.client.Minecraft;
 
 /**
  * Complete MC 1.20.x platform bundle. Implements {@link CgPlatformService} by composing
@@ -92,6 +97,18 @@ public final class PlatformServiceModern implements CgPlatformService {
             // event by construction, so naming Blaze3D cannot reach a server.
             CgCapabilities.setHostTextureUnitCeiling(Blaze3dTextureUnits.count());
             glBackend = new Blaze3dGLBackend();
+
+            // The cursor slot, filled here so no consumer has to -- and HERE rather than in
+            // getInstance() for the reason the note above gives: getInstance() runs on both sides, and
+            // GlfwCursorService names org.lwjgl.glfw, which a dedicated server does not ship. This
+            // method is a client event by construction, which is the same protection Blaze3D gets.
+            //
+            // The window arrives as a SUPPLIER, not a handle: GLFW's window outlives no recreation and
+            // is not open yet when the backend is first built, so a captured long would be stale
+            // exactly when it mattered. That supplier is the only Minecraft fact the adapter needs,
+            // which is what lets it sit in tier 1 knowing nothing about this era.
+            CgPlatform.provide(CgCursorService.SERVICE, new GlfwCursorService(
+                    () -> Minecraft.getInstance().getWindow().getWindow()));
         }
         return glBackend;
     }
