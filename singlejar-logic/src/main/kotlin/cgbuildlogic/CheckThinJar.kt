@@ -14,15 +14,18 @@ import java.util.zip.ZipFile
  * Fails unless a thin jar contains this loader and nothing else.
  *
  * <p>A thin jar is one input to the single-jar merge: the loader's own classes plus the shared
- * vanilla host, relocated. Everything else — the renderer, its SPI, the font bindings, JOML —
- * enters the merge <b>once, at the root</b>, so a copy here would be shipped four times and would
- * defeat the whole exercise. Nothing at runtime would notice, which is why this is a build failure
- * rather than a review note.</p>
+ * vanilla host, relocated. Everything a project ships beside those — its engine, its libraries, its
+ * bundled resources — enters the merge <b>once, at the root</b>, so a copy here would be shipped once
+ * per loader and would defeat the whole exercise. Nothing at runtime would notice, which is why this
+ * is a build failure rather than a review note.</p>
  *
  * <pre>
  * tasks.register&lt;CheckThinJar&gt;("checkThinJar") {
  *     jar.set(reobfThinJar.flatMap { it.archiveFile })
- *     allowedPrefixes.set(listOf("com/crystalgraphics/mc/"))
+ *     allowedPrefixes.set(listOf("com/myproject/mc/"))
+ *     // What must NOT be here. Project-specific by nature: it names what THIS project merges at the
+ *     // root, so there is no useful default and an empty list only checks the class prefixes above.
+ *     forbiddenPrefixes.set(listOf("com/myproject/engine/", "org/joml/", "assets/myproject/big/"))
  * }
  * </pre>
  *
@@ -40,9 +43,19 @@ abstract class CheckThinJar : DefaultTask() {
     @get:Input
     abstract val allowedPrefixes: ListProperty<String>
 
-    /** Entry prefixes that must not appear at all. Defaulted; add to it rather than replacing it. */
+    /**
+     * Entry prefixes that must not appear at all — what this project merges at the root.
+     *
+     * <p>No default, because a useful one cannot exist here: it would have to name another project's
+     * libraries. Empty means only {@link #allowedPrefixes} is enforced, which catches stray CLASSES
+     * and not stray resources.</p>
+     */
     @get:Input
     abstract val forbiddenPrefixes: ListProperty<String>
+
+    /** Prefix for this task's own log line, e.g. `cgui`. */
+    @get:Input
+    abstract val logTag: Property<String>
 
     /** Highest class-file major version permitted. 52 is Java 8, 61 is Java 17. */
     @get:Input
@@ -51,13 +64,8 @@ abstract class CheckThinJar : DefaultTask() {
     init {
         group = "verification"
         description = "Fails unless the thin jar holds this loader and the relocated host, and nothing else."
-        forbiddenPrefixes.convention(
-            listOf(
-                "com/crystalgraphics/core/", "com/crystalgraphics/api/", "com/crystalgraphics/gl/",
-                "com/crystalgraphics/text/", "com/crystalgraphics/platform/", "org/joml/",
-                "com/fasterxml/", "de/javagl/", "natives/",
-            )
-        )
+        forbiddenPrefixes.convention(emptyList())
+        logTag.convention("singlejar")
         maxClassMajor.convention(61)
     }
 
@@ -107,6 +115,6 @@ abstract class CheckThinJar : DefaultTask() {
                 }
             )
         }
-        logger.lifecycle("[cg] {}: {} classes, all under {}", file.name, classes, allowed)
+        logger.lifecycle("[{}] {}: {} classes, all under {}", logTag.get(), file.name, classes, allowed)
     }
 }

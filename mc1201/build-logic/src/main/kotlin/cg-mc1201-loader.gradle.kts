@@ -112,3 +112,21 @@ val checkDescriptorsNameNoCommon = tasks.register("checkDescriptorsNameNoCommon"
     }
 }
 tasks.named("check") { dependsOn(checkDescriptorsNameNoCommon) }
+
+// ── The thin-jar check, registered once for every 1.20.x loader ──────────────────────────────────
+//
+// WHAT A THIN JAR MAY CONTAIN IS THE PROJECT'S ANSWER, not each loader's, so it is stated here rather
+// than in all three. A loader supplies only its own jar. The task is shared with every project on
+// this build — ../../singlejar-logic.
+tasks.register<cgbuildlogic.CheckThinJar>("checkThinJar") {
+    allowedPrefixes.set(listOf("com/crystalgraphics/mc/"))
+    // What CrystalGraphics merges at the ROOT, and so must not be here.
+    forbiddenPrefixes.set(listOf(
+        "com/crystalgraphics/core/", "com/crystalgraphics/api/", "com/crystalgraphics/gl/",
+        "com/crystalgraphics/text/", "com/crystalgraphics/platform/", "org/joml/",
+        "com/fasterxml/", "de/javagl/", "natives/",
+    ))
+    logTag.set("cg")
+}
+
+tasks.named("check") { dependsOn("checkThinJar") }

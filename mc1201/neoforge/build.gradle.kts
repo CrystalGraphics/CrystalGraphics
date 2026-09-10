@@ -112,10 +112,8 @@ tasks.named("classes") { dependsOn(extractMcSources) }
 // takes the `thin` classifier directly rather than the `thin-dev` the other two carry until mapped.
 tasks.named<AbstractArchiveTask>("thinShadowJar") { archiveClassifier.set("thin") }
 
-tasks.register<cgbuildlogic.CheckThinJar>("checkThinJar") {
+// Registered by cg-mc1201-loader with what a CrystalGraphics thin jar may contain; only the jar is ours.
+tasks.named<cgbuildlogic.CheckThinJar>("checkThinJar") {
     jar.set(tasks.named<AbstractArchiveTask>("thinShadowJar").flatMap { it.archiveFile })
-    allowedPrefixes.set(listOf("com/crystalgraphics/mc/"))
 }
-
-tasks.named("check") { dependsOn("checkThinJar") }
 tasks.named("assemble") { dependsOn("thinShadowJar") }

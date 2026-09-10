@@ -12,6 +12,9 @@ dependencies {
 
     // Shadow, so ShadowJar is a type these scripts can name. The version matches the pin in
     // settings.gradle.kts that every loader applies.
+    // The shared single-jar tasks: CheckSingleJar and ModDescriptor. @see CrystalGraphics/singlejar-logic
+    implementation("com.crystalgraphics.build:singlejar-logic")
+
     implementation("com.gradleup.shadow:shadow-gradle-plugin:9.2.2")
 
     // jvmDowngrader, for the single jar: core and platform are Java 17 bytecode and FML 1.7.10's
