@@ -49,6 +49,20 @@ public class CgGlyphKey {
      */
     public static final int SUB_PIXEL_BUCKET_MAX_PX = 32;
 
+    /**
+     * Sub-pixel raster variants per pixel: a bucket shifts the outline by {@code bucket/4} of a
+     * device pixel ({@code CgWorkerFontContext} translates by {@code bucket * 16} in FreeType 26.6
+     * fixed point, 64 units to the pixel).
+     *
+     * <p>THE QUAD'S SNAP AND THE BUCKET ARE ONE DECISION, not two. Both must round the glyph's
+     * device position to this same grid and then split it — whole pixels into the quad position,
+     * the remainder into the bucket. Deciding them separately puts the ink up to {@code 0.75} of a
+     * pixel out whenever floating point lands the position a hair below an integer, since the quad
+     * floors down while the bucket rounds up. See {@code CgResolvedGlyphs.selectSubPixelBucket} and
+     * {@code CgTextRenderer.pixelSnapDelta}, which are the two halves.</p>
+     */
+    public static final int SUB_PIXEL_BUCKETS = 4;
+
     /** Font this glyph belongs to. */
     CgFontKey fontKey;
 

@@ -26,8 +26,15 @@ public class CgGlyphPlacementCacheTest {
     public void testKey_sameFieldsIncludingRgba_areEqual() {
         CgTextLayout layout = new CgTextLayout(List.of(), 0, 0, METRICS);
 
-        CgGlyphPlacementCache.Key a = CgGlyphPlacementCache.key(layout, 1f, 2f, false, FONT_KEY, 0xFFFFFFFF);
-        CgGlyphPlacementCache.Key b = CgGlyphPlacementCache.key(layout, 1f, 2f, false, FONT_KEY, 0xFFFFFFFF);
+        CgGlyphPlacementCache.Key a = CgGlyphPlacementCache.key(layout, 1f, 2f, false, FONT_KEY, 0xFFFFFFFF, 0);
+        CgGlyphPlacementCache.Key b = CgGlyphPlacementCache.key(layout, 1f, 2f, false, FONT_KEY, 0xFFFFFFFF, 0);
+
+        // The pose's sub-pixel phase is part of identity now: a translated element reaches the
+        // same layout at the same x/y, and sharing its placements is what kept a fractional
+        // transform from ever moving the glyphs.
+        CgGlyphPlacementCache.Key shifted =
+                CgGlyphPlacementCache.key(layout, 1f, 2f, false, FONT_KEY, 0xFFFFFFFF, 7);
+        assertNotEquals(a, shifted);
 
         assertEquals(a, b);
         assertEquals(a.hashCode(), b.hashCode());
@@ -37,8 +44,8 @@ public class CgGlyphPlacementCacheTest {
     public void testKey_differentRgba_areNotEqual() {
         CgTextLayout layout = new CgTextLayout(List.of(), 0, 0, METRICS);
 
-        CgGlyphPlacementCache.Key white = CgGlyphPlacementCache.key(layout, 1f, 2f, false, FONT_KEY, 0xFFFFFFFF);
-        CgGlyphPlacementCache.Key red = CgGlyphPlacementCache.key(layout, 1f, 2f, false, FONT_KEY, 0xFFFF0000);
+        CgGlyphPlacementCache.Key white = CgGlyphPlacementCache.key(layout, 1f, 2f, false, FONT_KEY, 0xFFFFFFFF, 0);
+        CgGlyphPlacementCache.Key red = CgGlyphPlacementCache.key(layout, 1f, 2f, false, FONT_KEY, 0xFFFF0000, 0);
 
         assertNotEquals("Two draws of the same layout/position with different default "
                 + "colors must not share a cache key", white, red);
@@ -48,7 +55,7 @@ public class CgGlyphPlacementCacheTest {
     public void testCacheHit_differentDefaultColorAtSamePosition_isATrueMiss() {
         CgTextLayout layout = new CgTextLayout(List.of(), 0, 0, METRICS);
 
-        CgGlyphPlacementCache.Key whiteKey = CgGlyphPlacementCache.key(layout, 5f, 5f, false, FONT_KEY, 0xFFFFFFFF);
+        CgGlyphPlacementCache.Key whiteKey = CgGlyphPlacementCache.key(layout, 5f, 5f, false, FONT_KEY, 0xFFFFFFFF, 0);
         CgGlyphPlacementCache.Entry whiteEntry = new CgGlyphPlacementCache.Entry(
                 false, 16, 1L, 0L, 0L, 1,
                 new float[]{0f}, new float[]{0f}, new int[]{0xFFFFFFFF},
@@ -57,7 +64,7 @@ public class CgGlyphPlacementCacheTest {
 
         assertNotNull("Same key should hit", CgGlyphPlacementCache.get(whiteKey, 16, 1L, 0L, 0L));
 
-        CgGlyphPlacementCache.Key redKey = CgGlyphPlacementCache.key(layout, 5f, 5f, false, FONT_KEY, 0xFFFF0000);
+        CgGlyphPlacementCache.Key redKey = CgGlyphPlacementCache.key(layout, 5f, 5f, false, FONT_KEY, 0xFFFF0000, 0);
         assertNull("A different default color at the same layout/position must be a cache "
                         + "miss, not incorrectly reuse the white entry's resolved colors",
                 CgGlyphPlacementCache.get(redKey, 16, 1L, 0L, 0L));

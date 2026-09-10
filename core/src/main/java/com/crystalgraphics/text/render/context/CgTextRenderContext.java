@@ -221,10 +221,6 @@ public class CgTextRenderContext {
         history.clear();
     }
 
-    public boolean isScaledUiRaster(CgFontKey fontKey, int effectiveTargetPx) {
-        return !isWorldText() && effectiveTargetPx != fontKey.getTargetPx();
-    }
-
     /**
      * Returns whether this context is configured for world-space text.
      *

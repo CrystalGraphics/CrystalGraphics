@@ -113,17 +113,35 @@ final class CgResolvedGlyphs {
 
     int resolve(CgTextLayout layout, float x, float y, long frame,
                 CgTextRenderContext context, int effectiveTargetPx, boolean wantMsdf,
-                CgFontKey fontKey, int rgba) {
+                CgFontKey fontKey, int rgba, float posedOriginX) {
         hasDeferredGlyphs = false;
         long contentGeneration = registry.getAtlasContentGeneration();
         long evictionGeneration = registry.getAtlasEvictionGeneration();
 
         // Scoped because it runs on every draw whether or not it hits, so it is the one part of
         // resolve() that a perfectly-cached frame still pays in full.
+        // ONLY WHERE BUCKETS CAN ACTUALLY APPLY, which is bitmap ortho text: the quad snap is
+        // gated on !isWorldText() && !isDistanceField, and toMsdfAtlasGlyphKey rewrites a
+        // distance-field glyph's bucket to 0 regardless.
+        //
+        // Keying on the phase everywhere would bust the cache once per frame for WORLD text, whose
+        // posed origin moves with the camera -- the exact failure CgGlyphPlacementCache.Entry#matches
+        // has its distance-field early-return to prevent, reintroduced one level up where matches()
+        // cannot see it. Costs nothing to exclude: the bitmap/MSDF handoff is the same 32px as
+        // CgGlyphKey.SUB_PIXEL_BUCKET_MAX_PX, so anything taking the MSDF path has no buckets anyway.
+        boolean subPixelApplies = !context.isWorldText() && !wantMsdf;
+
+        // The RAW phase drives the buckets and a coarser one keys the entry -- see posePhaseKey.
+        // Keying on the raw fraction would mint a fresh entry for every sub-pixel step of a moving
+        // element; keying on nothing (what it did before) hands a translated element the placements
+        // built for its old position, which is why a transform's offset never reached the glyphs.
+        float posePhase = subPixelApplies ? rawPosePhase(posedOriginX) : 0f;
+
         CgGlyphPlacementCache.Key key;
         CgGlyphPlacementCache.Entry hit;
         try (CgProfiler.Scope ignored = CgProfiler.scope("placementCache.lookup")) {
-            key = CgGlyphPlacementCache.key(layout, x, y, wantMsdf, fontKey, rgba);
+            key = CgGlyphPlacementCache.key(layout, x, y, wantMsdf, fontKey, rgba,
+                    subPixelApplies ? posePhaseKey(posedOriginX) : 0);
             hit = CgGlyphPlacementCache.get(key, effectiveTargetPx, contentGeneration, evictionGeneration, frame);
         }
         if (hit != null) {
@@ -145,7 +163,7 @@ final class CgResolvedGlyphs {
 
         int glyphCount;
         try (CgProfiler.Scope ignored = CgProfiler.scope("flatten")) {
-            glyphCount = flatten(layout, x, y, context, effectiveTargetPx, wantMsdf, rgba);
+            glyphCount = flatten(layout, x, y, context, effectiveTargetPx, wantMsdf, rgba, posePhase);
         }
         // Salvage already-converged placements from the stale entry we're replacing, so a
         // refresh only re-queries the glyphs that can actually still improve. See
@@ -210,7 +228,8 @@ final class CgResolvedGlyphs {
      * @return the number of glyphs flattened (may be 0 for an all-whitespace layout)
      */
     private int flatten(CgTextLayout layout, float x, float y,
-                        CgTextRenderContext context, int effectiveTargetPx, boolean wantMsdf, int rgba) {
+                        CgTextRenderContext context, int effectiveTargetPx, boolean wantMsdf, int rgba,
+                        float posePhase) {
         CgBakedGlyphs baked = layout.baked();
         int glyphCount = baked.glyphCount();
         ensureCapacity(glyphCount);
@@ -218,7 +237,8 @@ final class CgResolvedGlyphs {
         for (int i = 0; i < glyphCount; i++) {
             CgFontKey fontKey = baked.fontKeys()[i];
             int glyphId = baked.glyphIds()[i];
-            int subPixel = resolveSubPixelBucket(context, fontKey, effectiveTargetPx, baked.offsetX()[i]);
+            int subPixel = resolveSubPixelBucket(context, fontKey, effectiveTargetPx,
+                    posePhase, baked.penX()[i]);
             int overrideColor = baked.argbColor()[i];
             scratchFontKeys[i] = fontKey;
             scratchFonts[i] = baked.fonts()[i];
@@ -338,27 +358,91 @@ final class CgResolvedGlyphs {
     }
 
     /**
-     * Selects the sub-pixel bucket based on the effective target pixel size.
-     * Uses the effective size (not base targetPx) because the effective size
-     * determines whether sub-pixel positioning is perceptible.
+     * Cache-key resolution for the pose's sub-pixel phase.
+     *
+     * <p>Finer than {@link #SUB_PIXEL_BUCKETS} on purpose. The key only decides which draws SHARE a
+     * placement entry; the buckets inside it were computed from whichever raw phase built it, so a
+     * coarse key hands a neighbouring phase stale buckets. At sixteenths that staleness is bounded
+     * at {@code 1/16} of a pixel, for at most sixteen entries per layout — and the four raster
+     * variants are unaffected either way, since they are keyed separately.</p>
      */
-    private static int selectSubPixelBucket(int effectiveTargetPx, float xOffset) {
-        if (effectiveTargetPx >= CgGlyphKey.SUB_PIXEL_BUCKET_MAX_PX) return 0;
+    private static final int POSE_PHASE_STEPS = 16;
 
-        float fractional = xOffset - (float) Math.floor(xOffset);
-        if (fractional < 0.125f) return 0;
-        if (fractional < 0.375f) return 1;
-        if (fractional < 0.625f) return 2;
-        if (fractional < 0.875f) return 3;
-
-        return 0;
+    /** The pose's own sub-pixel phase, as the integer the cache key carries. */
+    private static int posePhaseKey(float posedOriginX) {
+        float fraction = posedOriginX - (float) Math.floor(posedOriginX);
+        return (int) Math.floor(fraction * POSE_PHASE_STEPS);
     }
 
-    private static int resolveSubPixelBucket(CgTextRenderContext context, CgFontKey fontKey, int effectiveTargetPx, float xOffset) {
-        if (context.isWorldText()) return 0;
-        if (context.isScaledUiRaster(fontKey, effectiveTargetPx)) return 0;
+    /** The pose's raw sub-pixel phase, which is what the buckets themselves are chosen from. */
+    private static float rawPosePhase(float posedOriginX) {
+        return posedOriginX - (float) Math.floor(posedOriginX);
+    }
 
-        return selectSubPixelBucket(effectiveTargetPx, xOffset);
+    /**
+     * Selects the sub-pixel bucket for a pen offset given IN DEVICE PIXELS.
+     *
+     * <p>Thresholds on the effective size rather than the base {@code targetPx}, because the
+     * effective size is what decides whether a quarter-pixel shift is perceptible at all.</p>
+     *
+     * <p>The offset must already be in device space — see {@link #resolveSubPixelBucket}. A bucket is
+     * a quarter of a PHYSICAL pixel of outline translation, so a fraction measured in any other
+     * unit selects a shift for the wrong quantity.</p>
+     */
+    private static int selectSubPixelBucket(int effectiveTargetPx, float deviceXOffset) {
+        if (effectiveTargetPx >= CgGlyphKey.SUB_PIXEL_BUCKET_MAX_PX) return 0;
+
+        // THE REMAINDER OF THE SAME ROUNDING THE QUAD USES -- see CgGlyphKey.SUB_PIXEL_BUCKETS and
+        // CgTextRenderer.pixelSnapDelta. A threshold table decided this independently of the quad's
+        // floor, so a position landing a hair under an integer (7.9999997, which float arithmetic
+        // produces constantly) took the top bucket while the quad floored down, putting the ink
+        // 0.75 device px out. Rounding both to the quarter grid and splitting it makes that
+        // impossible. Measured over a swept fractional translate: worst placement error 0.990 device
+        // px before, 0.120 after, against a theoretical floor of 0.125 for four buckets.
+        int quarters = Math.round(deviceXOffset * CgGlyphKey.SUB_PIXEL_BUCKETS);
+        return Math.floorMod(quarters, CgGlyphKey.SUB_PIXEL_BUCKETS);
+    }
+
+    /**
+     * The sub-pixel bucket for one glyph, converting the pen offset into device space on the way.
+     *
+     * <p>THE OFFSET ARRIVES IN LOGICAL UNITS AND THE BUCKET IS A DEVICE-SPACE SHIFT. A bucket
+     * translates the outline by {@code bucket * 16} in FreeType 26.6 fixed point — 64 units to the
+     * pixel, so a quarter of a PHYSICAL pixel (see {@code CgWorkerFontContext}). Text is shaped and
+     * advanced in logical units, and the two only coincide at {@code uiScale} 1: at 2, a logical
+     * fraction of 0.5 is a whole device pixel and needs no shift at all, while 0.25 needs half of
+     * one. Bucketing the logical fraction therefore picks a shift for the wrong quantity.</p>
+     *
+     * <p>That mismatch used to be handled by bailing out whenever the raster size differed from the
+     * font key's — which is EVERY ui scale except 1, so bitmap UI text on a scaled display had no
+     * sub-pixel positioning at all and could only move in whole device pixels. Since bitmap glyphs
+     * are also pixel-snapped ({@code CgTextRenderer.pixelSnapDelta}, because {@code GL_NEAREST} is
+     * not invariant under sub-pixel translation), the result was text that visibly jumped a pixel at
+     * a time while a window resized. Converting the offset instead keeps the buckets.</p>
+     */
+    private static int resolveSubPixelBucket(CgTextRenderContext context, CgFontKey fontKey,
+                                             int effectiveTargetPx, float rawPosePhase, float penX) {
+        if (context.isWorldText()) return 0;
+
+        // WHERE THE GLYPH ACTUALLY LANDS, in device pixels, is the only thing that decides its
+        // bucket -- and that is the ACCUMULATED pen plus whatever sub-pixel phase the pose carries.
+        //
+        // It used to be handed baked.offsetX(), the glyph's own HarfBuzz x_offset, on the reasoning
+        // that the bucket wants "the glyph's local offset in isolation". That offset is ZERO for
+        // essentially every Latin glyph, so the bucket was always 0 and the whole sub-pixel
+        // mechanism never engaged for ordinary text -- while pixelSnapDelta went on flooring every
+        // glyph to a whole device pixel. The fractional part lives in the accumulated advances
+        // (penX) and in the pose, never in that offset.
+        //
+        // Device space, because a bucket is a quarter of a PHYSICAL pixel of outline translation
+        // (CgWorkerFontContext: outlineTranslate(bucket * 16) in 26.6 fixed point, 64 to the pixel),
+        // while text is shaped and advanced in logical units. The two only coincide at uiScale 1.
+        int baseTargetPx = fontKey.getTargetPx();
+        float toDevice = baseTargetPx > 0 ? effectiveTargetPx / (float) baseTargetPx : 1f;
+        // RAW, not the key's quantised phase. Bucketing the quantised value stacks the key's
+        // rounding on top of the bucket's own and lands 0.750 device px out at worst, against 0.200
+        // from the raw one -- barely better than not bucketing at all.
+        return selectSubPixelBucket(effectiveTargetPx, rawPosePhase + penX * toDevice);
     }
 
     /**
