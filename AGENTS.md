@@ -986,7 +986,20 @@ CgGraphicsLifecycle.onResize(newWidth, newHeight);
 // On GL context destruction (GL thread):
 CgGraphicsLifecycle.destroyContext();
 // Runs the canonical teardown sequence (see below)
+
+// About to draw OUTSIDE a world pass — a menu, a title screen, any GUI (GL thread):
+CgGraphicsLifecycle.ensureContext(width, height);
+// Initialises once, resizes if the viewport moved, no-ops after destroyContext()
 ```
+
+> **`ensureContext` exists because the engine initialises on the first WORLD render**, which is right
+> for anything drawn in a world and wrong for everything else. On a title screen no world pass ever
+> runs, so `isInitialized()` stayed false for the life of the process and a UI that politely checked
+> before painting drew nothing at all — and because Minecraft only clears the colour buffer when it
+> renders a level, the frame still held the previous screen. A screenshot then came back showing the
+> main menu, which is indistinguishable from a working UI that was simply not asked to draw. Any
+> `Screen` that paints through this engine calls it first; `onOpaquePass` calls the same method, so
+> there is one definition rather than two.
 
 **Canonical teardown order** (enforced inside `destroyContext()`):
 
