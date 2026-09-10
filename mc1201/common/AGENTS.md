@@ -16,7 +16,7 @@ No loader-specific types (Forge/NeoForge/Fabric APIs) appear in this module.
 
 | Package | AGENTS.md | What it contains |
 |---|---|---|
-| `com.crystalgraphics.mc.platform` | [platform/AGENTS.md](src/main/java/com/crystalgraphics/mc/platform/AGENTS.md) | The GL backend, the platform services, `PlatformService1201`, and `Lifecycle1201` — the one class a loader talks to |
+| `com.crystalgraphics.mc.modern.platform` | [platform/AGENTS.md](src/main/java/com/crystalgraphics/mc/modern/platform/AGENTS.md) | The GL backend, the platform services, `PlatformServiceModern`, and `LifecycleModern` — the one class a loader talks to |
 
 Each loader declares a mixin config naming `com.crystalgraphics.mc.mixin`, and all three are empty:
 the 1.20.x hooks are native loader events, and a mixin here would be the last resort the project's
@@ -31,7 +31,7 @@ mixin policy describes.
 
 ## Open: `onFrameRendered()` is not wired on 1201
 
-`LifecycleService1201.onFrameRendered()` delegates to `CgGraphicsLifecycle.tickFrame()`, and no loader
+`LifecycleService.onFrameRendered()` delegates to `CgGraphicsLifecycle.tickFrame()`, and no loader
 calls it. Until it is wired, `onOpaquePass` calls `tickFrame()` itself as a stand-in — which only
 covers frames that render a world.
 
@@ -45,7 +45,7 @@ instead. Wiring the per-frame tick to them would leave exactly the gap mc1710 cl
 `TickEvent.RenderTickEvent` at `Phase.END`, posted immediately after
 `gameRenderer.render(partialTick, nanoTime, renderLevel)` returns in `Minecraft.runTick(boolean)`. It
 wraps the whole call — world branch and screen branch alike — so it needs no mixin. Add a handler in
-`CrystalGraphics1201Forge.Events` / `CrystalGraphics1201NeoForge.Events` filtering on `Phase.END`.
+`CrystalGraphicsForge.Events` / `CrystalGraphicsNeoForge.Events` filtering on `Phase.END`.
 
 **Fabric has no confirmed equivalent.** Its `ClientTickEvents.END_CLIENT_TICK` runs at the fixed 20 Hz
 tick, decoupled from the frame rate. Whether Fabric API exposes a once-per-render-frame event over the

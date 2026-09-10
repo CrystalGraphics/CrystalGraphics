@@ -63,6 +63,13 @@ include("freetype-msdfgen-harfbuzz-bindings")
 // no Minecraft type at all.
 include("mc-shared")
 
+// Tier 1 (CrystalGUI plan/crystalgui/platform-single-jar.md §12): the GL backend, the context and the
+// input service per LWJGL family, with no Minecraft type in either. Compiled once, never remapped,
+// one copy in the merged jar however many targets ship. What Minecraft caches and we must therefore
+// tell it about is a T2 subclass in the target's own module, never a branch in here.
+include("mc-lwjgl2")
+include("mc-lwjgl3")
+
 // Platform split subprojects (plain java-library, no gtnhconvention)
 include(":core")
 include(":platform")

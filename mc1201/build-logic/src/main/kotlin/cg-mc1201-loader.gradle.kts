@@ -65,7 +65,7 @@ dependencies {
 //
 // THE PACKAGE IS MOVED, NOT ITS PARENT: relocating `com.crystalgraphics.mc` would rewrite this
 // loader's own `com.crystalgraphics.mc.<loader>` too. `platform` keeps its leaf name under the new
-// root, so `mc.platform.Lifecycle1201` becomes `mc.forge.common.platform.Lifecycle1201`.
+// root, so `mc.platform.LifecycleModern` becomes `mc.forge.common.platform.LifecycleModern`.
 val cgThinRoot = "com.crystalgraphics.mc.${project.name}.common"
 
 val thinShadowJar = tasks.register<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("thinShadowJar") {
@@ -78,7 +78,7 @@ val thinShadowJar = tasks.register<com.github.jengelman.gradle.plugins.shadow.ta
     val commonJar = project(":mc1201:common").tasks.named<Jar>("jar")
     dependsOn(commonJar)
     from(commonJar.map { zipTree(it.archiveFile) })
-    relocate("com.crystalgraphics.mc.platform", "$cgThinRoot.platform")
+    relocate("com.crystalgraphics.mc.modern.platform", "$cgThinRoot.platform")
 }
 
 // Nothing in :mc1201:common may be NAMED from a descriptor or a service file.
@@ -91,7 +91,7 @@ val checkDescriptorsNameNoCommon = tasks.register("checkDescriptorsNameNoCommon"
     group = "verification"
     description = "Fails if a descriptor or service file names a class that the thin jar relocates."
     val resourceRoot = layout.projectDirectory.dir("src/main/resources").asFile
-    val forbidden = listOf("com.crystalgraphics.mc.platform")
+    val forbidden = listOf("com.crystalgraphics.mc.modern.platform")
     inputs.dir(resourceRoot).optional(true).withPropertyName("resources")
     outputs.upToDateWhen { true }
     doLast {

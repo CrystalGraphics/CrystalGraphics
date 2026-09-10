@@ -21,9 +21,9 @@ per overlay frame and `CgFontDemo.INSTANCE.onMouseWheel(delta)` on scroll input.
 | Platform | Location |
 |----------|----------|
 | MC 1.7.10 / Forge | `mc1710/.../integration/CrystalGraphicsFontDemo.java` |
-| MC 1.20.1 / Fabric | `mc1201/fabric/.../CrystalGraphics1201Fabric.java` (`HudRenderCallback`) |
-| MC 1.20.1 / Forge  | `mc1201/forge/.../CrystalGraphics1201Forge.java` (`RenderGuiOverlayEvent.Post`) |
-| MC 1.20.4 / NeoForge | `mc1201/neoforge/.../CrystalGraphics1201NeoForge.java` (`RenderGuiEvent.Post`) |
+| MC 1.20.1 / Fabric | `mc1201/fabric/.../CrystalGraphicsFabric.java` (`HudRenderCallback`) |
+| MC 1.20.1 / Forge  | `mc1201/forge/.../CrystalGraphicsForge.java` (`RenderGuiOverlayEvent.Post`) |
+| MC 1.20.4 / NeoForge | `mc1201/neoforge/.../CrystalGraphicsNeoForge.java` (`RenderGuiEvent.Post`) |
 
 ## Platform Wiring — CgRenderDemo
 

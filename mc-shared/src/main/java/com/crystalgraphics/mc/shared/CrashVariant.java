@@ -6,7 +6,7 @@ import java.security.CodeSource;
  * What a crash report has to say about WHICH variant of the merged jar was running.
  *
  * <p>One artifact carries a copy of the host for every loader, each relocated under its own prefix, so
- * a stack trace reads {@code com.crystalgraphics.mc.forge.common.PlatformService1201} — and "which variant is
+ * a stack trace reads {@code com.crystalgraphics.mc.forge.common.PlatformServiceModern} — and "which variant is
  * that, on which loader, out of which jar" becomes the first question asked of every bug report. This
  * answers it in the crash report itself, where the reporter has already pasted it.</p>
  *

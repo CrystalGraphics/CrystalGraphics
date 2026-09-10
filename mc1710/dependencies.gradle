@@ -58,6 +58,16 @@ dependencies {
         }
     }
 
+    // Tier 1 for this LWJGL family (§12): LWJGL2 and the platform SPI, no Minecraft type in it.
+    // Same neutralisation as the rest -- RFG must not try to deobfuscate a module that names no
+    // Minecraft class. One compiled copy serves every LWJGL2 target; the root merge adds it once.
+    shadowImplementation(project(':mc-lwjgl2')) {
+        attributes {
+            attribute(Attribute.of("com.gtnewhorizons.retrofuturagradle.obfuscation", String.class), "none")
+            attribute(Attribute.of("rfgDeobfuscatorTransformed", Boolean.class), false)
+        }
+    }
+
     // :mc-shared, which mixins.crystalgraphics.json names as its plugin. Safe as a shadowed
     // dependency here because this module does not relocate what it shadows
     // (relocateShadowedDependencies = false); CrystalGUI's mc1710 does, so it unpacks the jar

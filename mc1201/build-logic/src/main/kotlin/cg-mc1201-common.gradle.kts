@@ -25,6 +25,11 @@ dependencies {
     "api"(project(":platform"))
     // implementation — core is an internal dependency consumed by common.
     "implementation"(project(":core"))
+    // api — tier 1 for this LWJGL family (§12). `api` rather than `implementation` because
+    // `PlatformServiceModern` hands a `Lwjgl3GLContext` back through a public getter, so a loader
+    // module reading it needs the type. One compiled copy serves every 1.13+ target; the merge adds
+    // it once, which is why it is a `libraryProject` in cg-single-jar and not bundled per loader.
+    "api"(project(":mc-lwjgl3"))
     // Mixin compileOnly — both loaders bundle it at runtime; never shade it.
     "compileOnly"("org.spongepowered:mixin:${rootProject.properties["mc1201.mixin"]}")
     // NOTE: mixin annotationProcessor is intentionally omitted here — legacyForge configures

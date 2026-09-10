@@ -29,18 +29,18 @@ val cgDescriptor = ModDescriptor(
         ),
         Variant(
             loader = "forge", minecraft = "[1.20.1,1.21)", era = "modern",
-            commonEntry = "com.crystalgraphics.mc.forge.CrystalGraphics1201Forge",
+            commonEntry = "com.crystalgraphics.mc.forge.CrystalGraphicsForge",
             packFormat = 15,
         ),
         Variant(
             loader = "neoforge", minecraft = "[1.20.4,1.21)", era = "modern",
-            commonEntry = "com.crystalgraphics.mc.neoforge.CrystalGraphics1201NeoForge",
+            commonEntry = "com.crystalgraphics.mc.neoforge.CrystalGraphicsNeoForge",
             packFormat = 22,
         ),
         Variant(
             loader = "fabric", minecraft = "[1.20.1,1.21)", era = "modern",
-            commonEntry = "com.crystalgraphics.mc.fabric.CrystalGraphics1201FabricCommon",
-            clientEntry = "com.crystalgraphics.mc.fabric.CrystalGraphics1201Fabric",
+            commonEntry = "com.crystalgraphics.mc.fabric.CrystalGraphicsFabricCommon",
+            clientEntry = "com.crystalgraphics.mc.fabric.CrystalGraphicsFabric",
             fabricDepends = linkedMapOf(
                 "fabricloader" to ">=0.15.0",
                 "minecraft" to "~1.20.1",
