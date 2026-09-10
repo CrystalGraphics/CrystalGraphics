@@ -6,32 +6,47 @@ import org.gradle.kotlin.dsl.register
 import java.io.File
 
 /**
- * Registers `generateMergedDescriptors`, `checkDescriptorsAgree` and `checkDescriptors`.
+ * Registers `generate<Name>Descriptors`, and — for a mod that also ships per-loader descriptors —
+ * `checkDescriptorsAgree` and `checkDescriptors`.
  *
  * <p>The merged jar carries one `fabric.mod.json`, one `mods.toml` and one `mcmod.info` between them
  * describing every loader. Hand-writing files that have to agree is how a version gets bumped in three
  * of them; they are printed from one {@link ModDescriptor} instead.</p>
  *
+ * <pre>{@code
+ * registerDescriptorTasks(hostDescriptor, "cgui")                             // generateMergedDescriptors
+ * registerDescriptorTasks(langDescriptor, "cgui-lang", name = "language",     // generateLanguageDescriptors
+ *         checkShipped = false)
+ * }</pre>
+ *
  * <p>The per-loader descriptors under each module's `src/main/resources` are still what those modules
- * ship, and `checkDescriptorsAgree` is what stops them drifting from the declaration.</p>
+ * ship, and `checkDescriptorsAgree` is what stops them drifting from the declaration. A second mod
+ * built from the same source tree ships none — its descriptors exist only in its merged jar — so it
+ * passes {@code checkShipped = false} and gets the generator alone.</p>
  *
- * <p><b>It assumes the module layout</b> this build shares — `mc1710/`, `mc1201/{forge,neoforge,
- * fabric}/` — because that is what makes the check a fixed list rather than another thing to declare.
- * A project laid out differently wants its own copy of this function, not a parameter.</p>
+ * <p><b>The check assumes the module layout</b> this build shares — `mc1710/`, `mc1201/{forge,neoforge,
+ * fabric}/` — because that is what makes it a fixed list rather than another thing to declare. A
+ * project laid out differently wants its own copy of this function, not a parameter.</p>
  *
- * @param descriptor what this mod says about itself, in every format
- * @param logTag     prefix for the two log lines, e.g. `cgui`
- * @param taskGroup  the group these land in — the same folder as the pipeline that consumes them
+ * @param descriptor   what this mod says about itself, in every format
+ * @param logTag       prefix for the two log lines, e.g. `cgui`
+ * @param name         names the generator and its output directory; `merged` gives
+ *                     `generateMergedDescriptors`, which is what {@link SingleJarSpec} defaults to
+ * @param checkShipped whether this mod also ships per-loader descriptors to be checked against
+ * @param taskGroup    the group these land in — the same folder as the pipeline that consumes them
  */
 fun Project.registerDescriptorTasks(
     descriptor: ModDescriptor,
     logTag: String,
+    name: String = "merged",
+    checkShipped: Boolean = true,
     taskGroup: String = "single jar",
 ) {
 
-    val descriptorDir = layout.buildDirectory.dir("descriptors/merged")
+    val titled = name.replaceFirstChar { it.uppercase() }
+    val descriptorDir = layout.buildDirectory.dir("descriptors/$name")
 
-    val generate = tasks.register("generateMergedDescriptors") {
+    val generate = tasks.register("generate${titled}Descriptors") {
         group = taskGroup
         description = "Writes the descriptors the merged jar carries, one per format, from one declaration."
         val out = descriptorDir
@@ -48,6 +63,8 @@ fun Project.registerDescriptorTasks(
                     logTag, descriptor.variants.size, root)
         }
     }
+
+    if (!checkShipped) return
 
     // What it does NOT compare is as deliberate as what it does: the merged mods.toml says
     // loaderVersion="[1,)" where a per-loader one names its own, carries both `mandatory` and `type`
