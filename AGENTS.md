@@ -77,6 +77,18 @@ For any work that touches rendering, shaders, FBOs, text, or atlas generation �
 
 ---
 
+## Shipping — one jar for every loader
+
+CrystalGraphics ships **one artifact that installs on MC 1.7.10 Forge, 1.20.1 Forge, 1.20.4 NeoForge
+and 1.20.1 Fabric**, built by `./gradlew singleJar` and asserted by `checkSingleJar`.
+
+📄 **[singlejar-logic/README.md](singlejar-logic/README.md)** — the build, and **the guide any other
+project follows to ship this way**. It lives here because CrystalGraphics is the parent of everything
+that uses it; nothing in it is CrystalGraphics-specific. Read it before touching `singlejar-logic/`,
+either `cg-single-jar.gradle.kts`, or anything about relocation, remapping or the class-major ceiling.
+
+---
+
 ## Multi-Loader Project Structure
 
 The repository is a Gradle multi-project build. Every subproject has a distinct role — put code in the wrong one and it will either fail to compile or silently break a loader.
