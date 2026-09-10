@@ -100,6 +100,7 @@ public final class PlatformServiceModern implements CgPlatformService {
             // lazily from onOpaquePass on the first world render. Building the GL backend is a client
             // event by construction, so naming Blaze3D cannot reach a server.
             CgCapabilities.setHostTextureUnitCeiling(Blaze3dTextureUnits.count());
+            HostStateVerifier.announceIfEnabled();
             glBackend = new Blaze3dGLBackend();
 
             // The cursor slot, filled here so no consumer has to -- and HERE rather than in

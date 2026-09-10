@@ -40,6 +40,13 @@ neoForge {
     runs {
         create("client") {
             client()
+            // Forward every -Dcrystalgraphics.* from the Gradle invocation into the game's JVM, the
+            // way the debug harness does. Without it the diagnostic flags this project ships --
+            // host.verify, state.verify, state.noDedup -- are unreachable from a dev run, which is
+            // the one place a developer would reach for them.
+            System.getProperties().stringPropertyNames()
+                    .filter { it.startsWith("crystalgraphics.") }
+                    .forEach { systemProperty(it, System.getProperty(it)) }
         }
     }
 
