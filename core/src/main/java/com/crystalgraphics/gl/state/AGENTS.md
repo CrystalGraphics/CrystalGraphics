@@ -167,9 +167,9 @@ the right one in a single run.
 
 | Platform | Source | `glGet` per adopt |
 |---|---|---|
-| 1.7.10 + Angelica | `AngelicaStateProvider` (mc1710), reads Angelica's mirror by reflection | near zero |
+| 1.7.10 + Angelica | `AngelicaStateProvider` (1.7.10), reads Angelica's mirror by reflection | near zero |
 | 1.7.10 vanilla · harness | `CgGlGetProvider` | full sweep |
-| 1.20.x | `Blaze3DStateProvider` exists but is **not compiled** — `mc1201` is absent from `settings.gradle.kts` | — |
+| 1.20.x | `Blaze3DStateProvider` exists but is **not compiled** — `runtime/mc/modern` is absent from `settings.gradle.kts` | — |
 
 > **Trap, found by reading Angelica's source rather than assuming:** its `DepthState.enabled` is the depth
 > **write mask**, not the depth test — `glDepthMask` stores into it, and the test is a separate `depthTest`

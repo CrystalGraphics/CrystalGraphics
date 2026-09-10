@@ -20,10 +20,10 @@ per overlay frame and `CgFontDemo.INSTANCE.onMouseWheel(delta)` on scroll input.
 
 | Platform | Location |
 |----------|----------|
-| MC 1.7.10 / Forge | `mc1710/.../integration/CrystalGraphicsFontDemo.java` |
-| MC 1.20.1 / Fabric | `mc1201/fabric/.../CrystalGraphicsFabric.java` (`HudRenderCallback`) |
-| MC 1.20.1 / Forge  | `mc1201/forge/.../CrystalGraphicsForge.java` (`RenderGuiOverlayEvent.Post`) |
-| MC 1.20.4 / NeoForge | `mc1201/neoforge/.../CrystalGraphicsNeoForge.java` (`RenderGuiEvent.Post`) |
+| MC 1.7.10 / Forge | `runtime/mc/1710/.../integration/CrystalGraphicsFontDemo.java` |
+| MC 1.20.1 / Fabric | `runtime/mc/modern/fabric/.../CrystalGraphicsFabric.java` (`HudRenderCallback`) |
+| MC 1.20.1 / Forge  | `runtime/mc/modern/forge/.../CrystalGraphicsForge.java` (`RenderGuiOverlayEvent.Post`) |
+| MC 1.20.4 / NeoForge | `runtime/mc/modern/neoforge/.../CrystalGraphicsNeoForge.java` (`RenderGuiEvent.Post`) |
 
 ## Platform Wiring — CgRenderDemo
 
@@ -32,8 +32,8 @@ platform's direct `executeOpaquePass` / `executeTransparentPass` / `endFrame` ca
 
 | Hook | Call | When |
 |------|------|------|
-| Pre-translucent | `CgRenderDemo.INSTANCE.renderOpaque(partialTick, w, h, sourceFboId)` | `AFTER_BLOCK_ENTITIES` / mc1710 `onBeforeTranslucentBlocks` |
-| Post-translucent | `CgRenderDemo.INSTANCE.renderTransparent()` | `AFTER_PARTICLES` / mc1710 `onAfterTranslucentContent` |
+| Pre-translucent | `CgRenderDemo.INSTANCE.renderOpaque(partialTick, w, h, sourceFboId)` | `AFTER_BLOCK_ENTITIES` / 1.7.10 `onBeforeTranslucentBlocks` |
+| Post-translucent | `CgRenderDemo.INSTANCE.renderTransparent()` | `AFTER_PARTICLES` / 1.7.10 `onAfterTranslucentContent` |
 | Mouse scroll | `CgRenderDemo.INSTANCE.onMouseWheel(delta)` | same scroll hook as `CgFontDemo` |
 | Context destroy | `CgRenderDemo.INSTANCE.dispose()` | same destroy hook as `CgFontDemo` |
 

@@ -169,7 +169,7 @@ Abstract methods make the compiler the reminder. **A platform with nothing to of
 so** — an empty `play`, a `getClipboard` returning `""` are both correct answers. They just have to be
 written in that platform's own source, where a reader can see the decision was made.
 
-`mc1201`'s two UI services are exactly this case today: written out as visible stubs with a note on what a
+`runtime/mc/modern`'s two UI services are exactly this case today: written out as visible stubs with a note on what a
 real implementation needs, rather than inherited silently. `translateMouseCodes` is the subtlest one — the
 identity mapping is right on every platform seen so far, which is precisely why inheriting it without
 looking would be a mistake on the first platform where it isn't.

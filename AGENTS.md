@@ -27,20 +27,20 @@
 ./gradlew :core:compileJava
 
 # MC 1.7.10
-./gradlew :mc1710:runClient
-./gradlew :mc1710:compileJava
+./gradlew :runtime:mc:1710:runClient
+./gradlew :runtime:mc:1710:compileJava
 
 # MC 1.20.1 Forge
-./gradlew :mc1201:forge:runClient
-./gradlew :mc1201:forge:compileJava
+./gradlew :runtime:mc:modern:forge:runClient
+./gradlew :runtime:mc:modern:forge:compileJava
 
 # MC 1.20.4 NeoForge
-./gradlew :mc1201:neoforge:runClient
-./gradlew :mc1201:neoforge:compileJava
+./gradlew :runtime:mc:modern:neoforge:runClient
+./gradlew :runtime:mc:modern:neoforge:compileJava
 
 # MC 1.20.1 Fabric
-./gradlew :mc1201:fabric:runClient
-./gradlew :mc1201:fabric:compileJava
+./gradlew :runtime:mc:modern:fabric:runClient
+./gradlew :runtime:mc:modern:fabric:compileJava
 ```
 
 ## Render Testing (GL Debug Harness)
@@ -99,13 +99,13 @@ The repository is a Gradle multi-project build. Every subproject has a distinct 
 | `core/` | 25 → 8 | none | All rendering logic — `CgMaterial`, `CgMesh`, `CgRenderPipeline`, font, text, atlas. Calls `CgPlatform.*()` for every GL or lifecycle operation. Never imports MC or LWJGL types. |
 | `freetype-msdfgen-harfbuzz-bindings/` | 25 → 8 | none | JNI bindings for FreeType/HarfBuzz text shaping. Bundled in every loader JAR. |
 | `gl-debug-harness/` | 17 | LWJGL3 | Standalone GL test harness — no Minecraft, boots in seconds. Use for all rendering work. |
-| `mc-lwjgl2/` | 17 | LWJGL2 (2.9.4, `compileOnly`) | **TIER 1** — `Lwjgl2GLBackend`, `Lwjgl2GLContext`, `Lwjgl2InputService`, `Lwjgl2CursorService`. **Names no Minecraft class**, enforced by an import guard, so one compiled copy serves 1.7.10, 1.12.2 and the debug harness alike. |
-| `mc-lwjgl3/` | 17 | LWJGL3 (**pinned 3.2.2**, `compileOnly`) | **TIER 1** — `Lwjgl3GLBackend`, `Lwjgl3GLContext`, `GlfwInputService`, `GlfwCursorService`. Same rule. Pinned to the oldest LWJGL3 in the supported range (MC 1.13–1.16) so a symbol a 1.16 client lacks is a compile error; see `dep.lwjgl3.tier1`. |
-| `mc1710/` | 25 → 8 | LWJGL2 | MC 1.7.10 / Forge. Registers `PlatformRegistry1710` which implements all SPI interfaces against LWJGL2. Its GL backend and input service are `mc-lwjgl2`'s now; what stays here is what names Minecraft. |
-| `mc1201/common/` | 17 | LWJGL3 | **TIER 2** — the MC 1.20.x half: `PlatformServiceModern` (an assembler over tier 1), `Blaze3dGLBackend` (tier 1 plus the host state mirror, contracts C5), `HostStateVerifier`, and the mixins. No loader-specific types. |
-| `mc1201/forge/` | 17 | LWJGL3 | MC 1.20.1 / MinecraftForge 47.x. Thin bootstrap: registers events on the Forge bus, calls `CgPlatform.register()`. |
-| `mc1201/neoforge/` | 17 | LWJGL3 | MC 1.20.4 / NeoForge. Same pattern as forge. Despite living under `mc1201/`, targets MC 1.20.4. |
-| `mc1201/fabric/` | 17 | LWJGL3 | MC 1.20.1 / Fabric. Same pattern, uses Fabric API callbacks + GLFW for inputs with no Fabric API equivalent. |
+| `runtime/lwjgl/2/` | 17 | LWJGL2 (2.9.4, `compileOnly`) | **TIER 1** — `Lwjgl2GLBackend`, `Lwjgl2GLContext`, `Lwjgl2InputService`, `Lwjgl2CursorService`. **Names no Minecraft class**, enforced by an import guard, so one compiled copy serves 1.7.10, 1.12.2 and the debug harness alike. |
+| `runtime/lwjgl/3/` | 17 | LWJGL3 (**pinned 3.2.2**, `compileOnly`) | **TIER 1** — `Lwjgl3GLBackend`, `Lwjgl3GLContext`, `GlfwInputService`, `GlfwCursorService`. Same rule. Pinned to the oldest LWJGL3 in the supported range (MC 1.13–1.16) so a symbol a 1.16 client lacks is a compile error; see `dep.lwjgl3.tier1`. |
+| `runtime/mc/1710/` | 25 → 8 | LWJGL2 | MC 1.7.10 / Forge. Registers `PlatformRegistry1710` which implements all SPI interfaces against LWJGL2. Its GL backend and input service are `runtime/lwjgl/2`'s now; what stays here is what names Minecraft. |
+| `runtime/mc/modern/common/` | 17 | LWJGL3 | **TIER 2** — the MC 1.20.x half: `PlatformServiceModern` (an assembler over tier 1), `Blaze3dGLBackend` (tier 1 plus the host state mirror, contracts C5), `HostStateVerifier`, and the mixins. No loader-specific types. |
+| `runtime/mc/modern/forge/` | 17 | LWJGL3 | MC 1.20.1 / MinecraftForge 47.x. Thin bootstrap: registers events on the Forge bus, calls `CgPlatform.register()`. |
+| `runtime/mc/modern/neoforge/` | 17 | LWJGL3 | MC 1.20.4 / NeoForge. Same pattern as forge. Despite living under `runtime/mc/modern/`, targets MC 1.20.4. |
+| `runtime/mc/modern/fabric/` | 17 | LWJGL3 | MC 1.20.1 / Fabric. Same pattern, uses Fabric API callbacks + GLFW for inputs with no Fabric API equivalent. |
 
 **Rule**: `core/` and `platform/` have zero compile dependency on LWJGL, MC, or any loader.
 
@@ -142,10 +142,10 @@ CgPlatform.reload().onReload();
 Each loader bootstraps by registering its implementation:
 
 ```java
-// mc1710 — in PlatformRegistry1710.onPreInit():
+// MC 1.7.10 — in PlatformRegistry1710.onPreInit():
 CgPlatform.register(new PlatformService1710(...));
 
-// mc1201 — in CrystalGraphicsForge / Fabric / NeoForge constructor:
+// MC 1.20.x — in CrystalGraphicsForge / Fabric / NeoForge constructor:
 CgPlatform.register(PlatformServiceModern.getInstance());
 ```
 
@@ -160,23 +160,23 @@ Use this when adding anything that touches GL, lifecycle, or loader-specific eve
 **Adding a new abstraction to the platform layer:**
 
 1. Define the method or interface in `platform/` SPI (`CgGlDispatch`, `CgLifecycleService`, etc.)
-2. Implement in `mc1710/`'s `Lwjgl2GlDispatch` / `LifecycleService1710` (LWJGL2 path)
-3. Implement in `mc1201/common/`'s `Mc120xGLBackend` / `LifecycleService` (LWJGL3 path)
+2. Implement in `runtime/mc/1710/`'s `Lwjgl2GlDispatch` / `LifecycleService1710` (LWJGL2 path)
+3. Implement in `runtime/mc/modern/common/`'s `Mc120xGLBackend` / `LifecycleService` (LWJGL3 path)
 4. Call via `CgPlatform.*()` in `core/` — never call the implementation directly
 
-**Adding a new render hook or input event to mc1201 loaders:**
+**Adding a new render hook or input event to the 1.20.x loaders:**
 
-5. Implement the logic in `core/` or `mc1201/common/` (loader-blind)
-6. Wire in `mc1201/forge/`: subscribe on the **Forge** event bus (`Mod.EventBusSubscriber.Bus.FORGE`)
-7. Wire in `mc1201/neoforge/`: subscribe on the **NeoForge** event bus (`NeoForge.EVENT_BUS.addListener`)
-8. Wire in `mc1201/fabric/`: use Fabric API callbacks (`HudRenderCallback`, `ClientLifecycleEvents`) — if no Fabric API event exists, chain a GLFW callback; **mixins are last resort**
+5. Implement the logic in `core/` or `runtime/mc/modern/common/` (loader-blind)
+6. Wire in `runtime/mc/modern/forge/`: subscribe on the **Forge** event bus (`Mod.EventBusSubscriber.Bus.FORGE`)
+7. Wire in `runtime/mc/modern/neoforge/`: subscribe on the **NeoForge** event bus (`NeoForge.EVENT_BUS.addListener`)
+8. Wire in `runtime/mc/modern/fabric/`: use Fabric API callbacks (`HudRenderCallback`, `ClientLifecycleEvents`) — if no Fabric API event exists, chain a GLFW callback; **mixins are last resort**
 
-**Whenever you add a new subproject dependency to mc1201 loaders:**
+**Whenever you add a new subproject dependency to the 1.20.x loaders:**
 
-> ⚠️ **mc1201 Forge/NeoForge classpath rule**
+> ⚠️ **MC 1.20.x Forge/NeoForge classpath rule**
 >
 > `runtimeOnly` Gradle deps are **invisible** to ModDevGradle dev runs. The `mods{}` block is the only source ModDevGradle reads for the Forge/NeoForge run classpath.
-> Every module bundled in the JAR (`platform/`, `core/`, `mc1201:common`, `freetype-msdfgen-harfbuzz-bindings`) must appear in **two places** in each Forge/NeoForge loader's `build.gradle.kts`:
+> Every module bundled in the JAR (`platform/`, `core/`, `runtime:mc:modern:common`, `freetype-msdfgen-harfbuzz-bindings`) must appear in **two places** in each Forge/NeoForge loader's `build.gradle.kts`:
 > 1. As `sourceSet(project(":foo").extensions.getByType<SourceSetContainer>()["main"])` inside the `mods { create("crystalgraphics") { ... } }` block
 > 2. As `from(zipTree(...jar...))` inside the `shadowJar` task
 >
@@ -185,10 +185,10 @@ Use this when adding anything that touches GL, lifecycle, or loader-specific eve
 > sub-project classes into `tasks.jar` (same as Forge/NeoForge) AND add `from(zipTree(...))` inside
 > `tasks.jar` and `shadowJar`. Do NOT use `loom.mods { sourceSet(crossProject) }` — Loom 1.16.2
 > tries to apply `fabric-loom-companion` to the cross-project, which fails for non-Loom projects.
-> See `mc1201/fabric/AGENTS.md` for full details.
+> See `runtime/mc/modern/fabric/AGENTS.md` for full details.
 
 9. Add `compileOnly` + `runtimeOnly` in `cg-mc1201-loader.gradle.kts`
-10. Add `sourceSet(project(":foo")...)` to `mods{}` in `mc1201/forge/build.gradle.kts` and `mc1201/neoforge/build.gradle.kts`
+10. Add `sourceSet(project(":foo")...)` to `mods{}` in `runtime/mc/modern/forge/build.gradle.kts` and `runtime/mc/modern/neoforge/build.gradle.kts`
 11. Add `from(zipTree(...))` to **both** `tasks.jar` and `shadowJar` in **all three** loader `build.gradle.kts` files (including Fabric — see note above)
 
 ---
@@ -239,7 +239,7 @@ These rules apply everywhere. All agents must internalize them.
 > the first's. Nothing errors — a mesh drawing another mesh's attributes at the wrong stride is
 > degenerate geometry, which rasterises nothing.
 >
-> **So `mc1710`'s `@Mod` class creates no GL objects at all**; `CgGraphicsLifecycle.onOpaquePass`
+> **So `runtime/mc/1710`'s `@Mod` class creates no GL objects at all**; `CgGraphicsLifecycle.onOpaquePass`
 > initialises lazily on a frame that genuinely owns the render context. A dev run cannot show the
 > failure (no splash in the way), so it appears only in an installed client. `CgVertexArray.gen()`
 > warns when the driver returns a name this process still owns — the one cheap signal that two
@@ -251,22 +251,22 @@ These rules apply everywhere. All agents must internalize them.
 
 > ⚠️ **The Jabel + jvmDowngrader dual pipeline is written but commented out.** `core/build.gradle.kts` still carries it — `compileJabel`, `downgradeClasses`, the java8/java17 variants — behind comments, and both modules keep `jabel-javac-plugin` and `jvmdowngrader-java-api` as `compileOnly` so an `import ...Desugar` still compiles. Neither has an `annotationProcessor(jabel)`, so **nothing is desugaring or downgrading today**. Earlier revisions of this file described the Java 25 → Java 8 pipeline as live; it is not. Do not rely on Java 8 bytecode being produced, and do not add a Java 8-only constraint on the belief that it is.
 
-`platform/` was genuinely Java 8 source until 2026-07-30, which is a different thing from the pipeline above and was simply out of step with `core/`. The two are consumed together and shadowed into the same loader jar, so they now match. `mc1710/` gets modern Java through the GTNH convention plugin (`enableModernJavaSyntax = jvmDowngrader` in `mc1710/gradle.properties`), which is a separate mechanism from the commented-out one here. `mc1201/` modules target Java 17 with no downgrade.
+`platform/` was genuinely Java 8 source until 2026-07-30, which is a different thing from the pipeline above and was simply out of step with `core/`. The two are consumed together and shadowed into the same loader jar, so they now match. `runtime/mc/1710/` gets modern Java through the GTNH convention plugin (`enableModernJavaSyntax = jvmDowngrader` in `runtime/mc/1710/gradle.properties`), which is a separate mechanism from the commented-out one here. `runtime/mc/modern/` modules target Java 17 with no downgrade.
 
 | Module | Authored in | Compiled to | Notes |
 |---|---|---|---|
 | `core/`, `platform/` | Java 17 | Java 17 bytecode | Toolchain 17. Modern syntax OK. Jabel/jvmDowngrader present but inactive — see the warning above |
 | `freetype-msdfgen-harfbuzz-bindings/` | Java 8 | Java 8 bytecode | Genuinely Java 8 source; JNI bindings, deliberately minimal |
-| `mc1710/` | Modern (GTNH convention) | Java 8 bytecode | `enableModernJavaSyntax = jvmDowngrader` in `mc1710/gradle.properties` — the convention plugin's mechanism, not this repo's |
-| `mc1201/common/`, `mc1201/forge/`, `mc1201/neoforge/`, `mc1201/fabric/` | Java 17 | Java 17 | Full Java 17 API available |
+| `runtime/mc/1710/` | Modern (GTNH convention) | Java 8 bytecode | `enableModernJavaSyntax = jvmDowngrader` in `runtime/mc/1710/gradle.properties` — the convention plugin's mechanism, not this repo's |
+| `runtime/mc/modern/common/`, `runtime/mc/modern/forge/`, `runtime/mc/modern/neoforge/`, `runtime/mc/modern/fabric/` | Java 17 | Java 17 | Full Java 17 API available |
 
 **Forbidden cross-module imports:**
 
 | In module | Forbidden | Reason |
 |---|---|---|
 | `core/`, `platform/` | `net.minecraft.*`, `net.minecraftforge.*`, `org.lwjgl.*` | Loader-blind — **guard currently disabled**, see the warning above |
-| `mc1201/*` | `org.lwjgl.input.Mouse`, LWJGL2 input types | LWJGL3 environment |
-| `mc1710/*` | LWJGL3 GL calls, `com.mojang.*` | LWJGL2 environment |
+| `runtime/mc/modern/*` | `org.lwjgl.input.Mouse`, LWJGL2 input types | LWJGL3 environment |
+| `runtime/mc/1710/*` | LWJGL3 GL calls, `com.mojang.*` | LWJGL2 environment |
 
 ### Lombok (use in all new code)
 
@@ -1146,7 +1146,7 @@ All 35 package guides under `src/main/java/com/crystalgraphics/`. Relative paths
 ### Platform SPI (platform subproject)
 | Path | What it covers |
 |---|---|
-| `platform/src/main/java/com/crystalgraphics/platform/AGENTS.md` | `CgGlDispatch`, `CgCapabilityProbe`, `CgResourceService`, `CgRenderingService`, `CgLifecycleService`, `CgReloadService`, `CgFrameCallback`, `CgPlatform` — the SPI contract between `core/` and all four loaders (`mc1710/`, `mc1201/forge`, `mc1201/neoforge`, `mc1201/fabric`) |
+| `platform/src/main/java/com/crystalgraphics/platform/AGENTS.md` | `CgGlDispatch`, `CgCapabilityProbe`, `CgResourceService`, `CgRenderingService`, `CgLifecycleService`, `CgReloadService`, `CgFrameCallback`, `CgPlatform` — the SPI contract between `core/` and all four loaders (`runtime/mc/1710/`, `runtime/mc/modern/forge`, `runtime/mc/modern/neoforge`, `runtime/mc/modern/fabric`) |
 
 ---
 
@@ -1179,9 +1179,9 @@ Failures in each step are isolated and logged — a broken shader does not preve
 
 ## Platform Service Adapters — `mc/platform/`
 
-`mc1710/src/main/java/com/crystalgraphics/mc/modern/platform/` contains the MC 1.7.10 concrete implementations of all six platform SPI interfaces. These are the **only classes** that may reference MC/Forge types. Bootstrap is owned by `PlatformRegistry1710`, called from `CrystalGraphics` event handlers — not from `CrystalGraphics` directly.
+`runtime/mc/1710/src/main/java/com/crystalgraphics/platform/` contains the MC 1.7.10 concrete implementations of all six platform SPI interfaces. These are the **only classes** that may reference MC/Forge types. Bootstrap is owned by `PlatformRegistry1710`, called from `CrystalGraphics` event handlers — not from `CrystalGraphics` directly.
 
-**Package guide**: `mc1710/src/main/java/com/crystalgraphics/mc/modern/platform/AGENTS.md`
+**Package guide**: `runtime/mc/1710/src/main/java/com/crystalgraphics/platform/AGENTS.md`
 
 | Class | Implements | Key role |
 |---|---|---|
@@ -1233,13 +1233,13 @@ Design record and eight implementation corrections: `docs_research/plan/gl-state
 
 ---
 
-## mc1201 Integration Glue (Forge · NeoForge · Fabric)
+## MC 1.20.x Integration Glue (Forge · NeoForge · Fabric)
 
-mc1201 uses a different integration model from mc1710. There is no ASM coremod, no GL state redirect, and no LWJGL2 polling. The shared implementation lives in `mc1201/common/`; each loader subproject (`forge/`, `neoforge/`, `fabric/`) is a thin bootstrap that only registers events and calls `CgPlatform.register()`.
+The MC 1.20.x loaders use a different integration model from 1.7.10. There is no ASM coremod, no GL state redirect, and no LWJGL2 polling. The shared implementation lives in `runtime/mc/modern/common/`; each loader subproject (`forge/`, `neoforge/`, `fabric/`) is a thin bootstrap that only registers events and calls `CgPlatform.register()`.
 
-### `mc1201/common/` — Where Shared Code Lives
+### `runtime/mc/modern/common/` — Where Shared Code Lives
 
-All platform service logic and mixins that apply to all three mc1201 loaders live here. When adding a new mc1201 platform feature, implement it in `mc1201/common/` first, then wire the event in each loader.
+All platform service logic and mixins that apply to all three 1.20.x loaders live here. When adding a new 1.20.x platform feature, implement it in `runtime/mc/modern/common/` first, then wire the event in each loader.
 
 | Class | Role |
 |---|---|
@@ -1268,9 +1268,9 @@ HudRenderCallback.EVENT.register(...);
 ClientLifecycleEvents.CLIENT_STARTED.register(...);
 ```
 
-### mc1201 Render Stage Events
+### MC 1.20.x Render Stage Events
 
-The pipeline is driven by two per-frame events across all three mc1201 loaders:
+The pipeline is driven by two per-frame events across all three 1.20.x loaders:
 
 | Stage | Forge | NeoForge | Fabric | When |
 |---|---|---|---|---|
@@ -1281,9 +1281,9 @@ Each handler calls `mc.getMainRenderTarget().bindWrite(false)` before the CG lif
 
 **Iris/Oculus**: when a shader pack is active, CG geometry renders into the main FBO **outside** Iris's deferred GBuffer chain and will appear unlit under deferred pipelines. `cg_DepthBuffer` remains valid — the depth texture is shared. Use `CgRenderPipeline.isIrisActive()` (delegates to `CgIrisCompat` in `core/mc/compat/`) for detection.
 
-### mc1201 Input Event Patterns
+### MC 1.20.x Input Event Patterns
 
-mc1710 uses LWJGL2 polling (`Mouse.getDWheel()`). mc1201 is event-driven:
+MC 1.7.10 uses LWJGL2 polling (`Mouse.getDWheel()`). The 1.20.x loaders are event-driven:
 
 | Input | Forge | NeoForge | Fabric |
 |---|---|---|---|
@@ -1305,11 +1305,11 @@ ClientLifecycleEvents.CLIENT_STARTED.register(client -> {
 
 **Mixin policy**: Mixins are last resort. Always prefer native loader events or GLFW callbacks. A Mixin is justified only when no event exists and the GLFW callback approach is also unavailable.
 
-### ⚠️ mc1201 Forge/NeoForge Dev-Run Classpath Rule
+### ⚠️ MC 1.20.x Forge/NeoForge Dev-Run Classpath Rule
 
 > `runtimeOnly` Gradle deps are **invisible** to ModDevGradle dev runs. The `mods{}` block is the only source ModDevGradle reads for the Forge/NeoForge run classpath.
 >
-> Every module bundled in the final JAR (`platform/`, `core/`, `mc1201:common`, `freetype-msdfgen-harfbuzz-bindings`) must appear in **two places** in each Forge/NeoForge loader's `build.gradle.kts`:
+> Every module bundled in the final JAR (`platform/`, `core/`, `runtime:mc:modern:common`, `freetype-msdfgen-harfbuzz-bindings`) must appear in **two places** in each Forge/NeoForge loader's `build.gradle.kts`:
 > 1. `sourceSet(project(":foo").extensions.getByType<SourceSetContainer>()["main"])` inside `mods { create("crystalgraphics") { ... } }`
 > 2. `from(zipTree(...jar...))` inside the `shadowJar` task
 >
@@ -1318,7 +1318,7 @@ ClientLifecycleEvents.CLIENT_STARTED.register(client -> {
 > bundling — add `from(zipTree(...jar...))` inside `tasks.jar` AND `shadowJar`.
 > Do NOT use `loom.mods { sourceSet(crossProject) }` — Loom 1.16.2 tries to apply
 > `fabric-loom-companion` to the cross-project, which fails for non-Loom projects.
-> See `mc1201/fabric/AGENTS.md` for full details.
+> See `runtime/mc/modern/fabric/AGENTS.md` for full details.
 
 ---
 
@@ -1342,9 +1342,9 @@ ClientLifecycleEvents.CLIENT_STARTED.register(client -> {
 
 ---
 
-# Minecraft Source Code Location (mc1201)
+# Minecraft Source Code Location (MC 1.20.x)
 
-Decompiled, Parchment-mapped sources for each mc1201 loader module.
+Decompiled, Parchment-mapped sources for each 1.20.x loader module.
 Run once after checkout (or when toolchain versions change):
 
 ```bash
@@ -1355,13 +1355,13 @@ Sources and resources land at `build/mc-src/` within each loader subproject:
 
 | Module | Java sources | Resources | Notes |
 |---|---|---|---|
-| `mc1201/neoforge/` | `build/mc-src/java/` | `build/mc-src/resources/` | Targets MC **1.20.4** / NeoForge 20.4.x — NeoForge never published a stable 1.20.1 series |
-| `mc1201/forge/` | `build/mc-src/java/` | `build/mc-src/resources/` | MC 1.20.1 / MinecraftForge 47.x |
-| `mc1201/fabric/` | `build/mc-src/java/` | `build/mc-src/resources/` | MC 1.20.1 / Fabric — sources generated by Loom's Vineflower decompiler |
+| `runtime/mc/modern/neoforge/` | `build/mc-src/java/` | `build/mc-src/resources/` | Targets MC **1.20.4** / NeoForge 20.4.x — NeoForge never published a stable 1.20.1 series |
+| `runtime/mc/modern/forge/` | `build/mc-src/java/` | `build/mc-src/resources/` | MC 1.20.1 / MinecraftForge 47.x |
+| `runtime/mc/modern/fabric/` | `build/mc-src/java/` | `build/mc-src/resources/` | MC 1.20.1 / Fabric — sources generated by Loom's Vineflower decompiler |
 
-Per-module details: [`mc1201/neoforge/AGENTS.md`](mc1201/neoforge/AGENTS.md) ·
-[`mc1201/forge/AGENTS.md`](mc1201/forge/AGENTS.md) ·
-[`mc1201/fabric/AGENTS.md`](mc1201/fabric/AGENTS.md)
+Per-module details: [`runtime/mc/modern/neoforge/AGENTS.md`](runtime/mc/modern/neoforge/AGENTS.md) ·
+[`runtime/mc/modern/forge/AGENTS.md`](runtime/mc/modern/forge/AGENTS.md) ·
+[`runtime/mc/modern/fabric/AGENTS.md`](runtime/mc/modern/fabric/AGENTS.md)
 
 ---
 

@@ -130,7 +130,7 @@ dependencies {
 //
 // WHAT IT DOES NOT CATCH, said plainly because it was briefly written down as if it did: it would not
 // have found any of the three failures that stopped CrystalGraphics loading on a dedicated server. All
-// three were in mc1710/, where org.lwjgl is a LEGAL import, or in CgPlatform, which imports nothing
+// three were in runtime/mc/1710/, where org.lwjgl is a LEGAL import, or in CgPlatform, which imports nothing
 // offending and simply CALLED platform.gl(). That class of bug is "a client-only class is constructed
 // on a server", which is a runtime property no import scan can see. The dedicated-server boot is what
 // catches it, and it did -- all three in one run.

@@ -92,7 +92,7 @@ public abstract class CgGLBackend {
     public abstract int getFramebufferAttachmentParameteriv(int target, int attachment, int pname);
 
     // There is deliberately no host-delegating bind beside `bindFramebuffer`. `bindFramebufferCompat`
-    // existed so mc1710 could route through `OpenGlHelper.func_153171_g` and keep Minecraft's own FBO
+    // existed so 1.7.10 could route through `OpenGlHelper.func_153171_g` and keep Minecraft's own FBO
     // tracking in step; it was removed because nothing ever called it, this class already carries the
     // Core > ARB > EXT waterfall the helper was wanted for, and on 1.20.x the two paths had converged
     // on the same `GlStateManager._glBindFramebuffer` call with the target hardcoded.

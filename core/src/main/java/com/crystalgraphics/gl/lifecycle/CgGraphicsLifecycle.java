@@ -300,8 +300,8 @@ public final class CgGraphicsLifecycle {
      *
      * <p><strong>Already wired — do not call this yourself.</strong> Each platform's
      * {@code CgLifecycleService.onFrameRendered()} implementation calls this exactly
-     * once per real rendered frame (world frame or GUI-only frame alike): mc1710's
-     * {@code LifecycleService1710}, mc1201's {@code LifecycleService}, and the
+     * once per real rendered frame (world frame or GUI-only frame alike): 1.7.10's
+     * {@code LifecycleService1710}, 1.20.x's {@code LifecycleService}, and the
      * harness's {@code LifecycleServiceHarness} each delegate their {@code
      * onFrameRendered()} straight here. That is the only place this method should be
      * invoked from — see {@link CgLifecycleService#onFrameRendered()}'s contract.

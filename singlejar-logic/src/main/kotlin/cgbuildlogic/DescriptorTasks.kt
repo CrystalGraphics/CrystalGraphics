@@ -24,7 +24,7 @@ import java.io.File
  * built from the same source tree ships none — its descriptors exist only in its merged jar — so it
  * passes {@code checkShipped = false} and gets the generator alone.</p>
  *
- * <p><b>The check assumes the module layout</b> this build shares — `mc1710/`, `mc1201/{forge,neoforge,
+ * <p><b>The check assumes the module layout</b> this build shares — `runtime/mc/1710/`, `runtime/mc/modern/{forge,neoforge,
  * fabric}/` — because that is what makes it a fixed list rather than another thing to declare. A
  * project laid out differently wants its own copy of this function, not a parameter.</p>
  *
@@ -74,10 +74,10 @@ fun Project.registerDescriptorTasks(
     val checkAgree = tasks.register("checkDescriptorsAgree") {
         group = taskGroup
         description = "Fails if a per-loader descriptor disagrees with the one declaration."
-        val fabricJson = layout.projectDirectory.file("mc1201/fabric/src/main/resources/fabric.mod.json").asFile
-        val forgeToml = layout.projectDirectory.file("mc1201/forge/src/main/resources/META-INF/mods.toml").asFile
-        val neoToml = layout.projectDirectory.file("mc1201/neoforge/src/main/resources/META-INF/mods.toml").asFile
-        val mcmod = layout.projectDirectory.file("mc1710/src/main/resources/mcmod.info").asFile
+        val fabricJson = layout.projectDirectory.file("runtime/mc/modern/fabric/src/main/resources/fabric.mod.json").asFile
+        val forgeToml = layout.projectDirectory.file("runtime/mc/modern/forge/src/main/resources/META-INF/mods.toml").asFile
+        val neoToml = layout.projectDirectory.file("runtime/mc/modern/neoforge/src/main/resources/META-INF/mods.toml").asFile
+        val mcmod = layout.projectDirectory.file("runtime/mc/1710/src/main/resources/mcmod.info").asFile
         inputs.files(fabricJson, forgeToml, neoToml, mcmod).withPropertyName("shippedDescriptors")
         inputs.property("descriptor", descriptor.toString())
         outputs.upToDateWhen { true }

@@ -1,0 +1,60 @@
+# runtime/mc/modern/forge — Agent Knowledge Base
+
+## Target Versions
+
+**MC 1.20.1 / MinecraftForge 47.x**
+
+Uses ModDevGradle legacyForge (`net.neoforged.moddev.legacyforge`), which supports
+MinecraftForge 1.17–1.20.1 and is Gradle 9 + JDK 25 compatible. See `build.gradle.kts`
+for version pins under `mc1201.forge` / `mc1201.parchment.*` keys.
+
+## The loader is registration only
+
+One `@Mod` class, `CrystalGraphicsForge`. Its `Events` inner class holds the two
+`@Mod.EventBusSubscriber` buses: MOD for the reload listener, FORGE+CLIENT for the two render stages
+and the shutdown signal.
+
+Which event, and which stage of it. What the engine then does — bind the main render target, run the
+opaque or transparent pass, forward a reload, stop at shutdown — is `:runtime:mc:modern:common`'s `LifecycleModern`,
+shared by all three.
+
+## Minecraft Source Location
+
+Decompiled, Parchment-mapped MinecraftForge + MC 1.20.1 sources are extracted into two subdirectories:
+
+| Path | Contents |
+|---|---|
+| `build/mc-src/java/` | MinecraftForge + Mojang Java sources, Parchment-mapped |
+| `build/mc-src/resources/` | MC client assets (assets/, data/, *.json, *.mcmeta) from `client-extra-*.jar` |
+
+These paths are gitignored and not committed. Generate them with:
+
+```bash
+./gradlew :runtime:mc:modern:forge:extractMcSources
+# or regenerate all three 1.20.x loader modules at once:
+./gradlew extractAllMcSources
+```
+
+Running `extractMcSources` will trigger `createMinecraftArtifacts` (the ModDevGradle task that
+downloads and decompiles sources) if it has not run yet. Expect several minutes on first run.
+
+## Key Source Files
+
+After extraction, commonly referenced locations under `build/mc-src/java/`:
+
+- `net/minecraft/client/Minecraft.java` — main game class
+- `net/minecraft/client/renderer/` — rendering pipeline
+- `net/minecraftforge/client/` — Forge client hooks and extensions
+- `net/minecraft/resources/` — resource location / pack system
+
+## Build
+
+```bash
+./gradlew :runtime:mc:modern:forge:compileJava
+./gradlew :runtime:mc:modern:forge:shadowJar
+```
+
+## Plugin
+
+Uses `net.neoforged.moddev.legacyforge` (ModDevGradle legacyForge). See `build.gradle.kts`
+for version configuration.
