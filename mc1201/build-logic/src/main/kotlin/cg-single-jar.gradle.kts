@@ -55,31 +55,25 @@ registerSingleJarPipeline(SingleJarSpec(
                              ":mc-shared", ":mc-lwjgl2", ":mc-lwjgl3"),
     serviceOwners = listOf(":core", ":platform"),
 
-    // JOML is the one that matters: a jar containing `org/joml` is a split package against
-    // Minecraft's own module on Forge and NeoForge, and 1.7.10 has no JOML at all -- so the union
-    // ships, relocated, and CrystalGUI applies the identical rewrite over no classes of its own so
-    // the two mods keep naming one type. The OBJ and glTF loaders ship for a plainer reason: the
-    // 1.20.x jars have never carried them, so `CgMeshLoader.load("*.gltf")` cannot work there today.
+    // JOML IS NOT RELOCATED AND IS NOT IN THIS JAR. Both halves of that are D2, decided the hard way.
     //
-    // THE JOML ROW IS A KNOWN DEFECT, not a settled choice. `com.crystalgraphics.api` takes JOML
-    // types in seven public signatures, and this rewrites those signatures -- so a consumer holding
-    // Minecraft's own org.joml.Matrix4f (MC 1.19.3+ ships JOML) cannot pass it to us without a
-    // conversion. Vendoring, which this comment used to promise for J9, keeps the breakage and only
-    // respells it. The API must be plain `org.joml`; what is unresolved is whether the jar may also
-    // CARRY org/joml, which is what the split-package claim above decides and E-J9-JOML measures.
-    // plan/crystalgui/platform-single-jar/j9-handoff.md, "The JOML position".
+    // `com.crystalgraphics.api` takes JOML types in seven public signatures -- PoseStack,
+    // CgRenderCommand, CgFrameData, CgViewFrustum, CgShaderBindings, CgShaderProgram,
+    // CgVertexConsumer -- so a relocation rewrites OUR OWN API, and a consumer holding the
+    // org.joml.Matrix4f Minecraft just handed them cannot pass it to us. Vendoring under our own
+    // package respells that breakage rather than fixing it.
+    //
+    // And carrying `org/joml` unrelocated is not an option either. MEASURED 2026-09-10 (E-J9-JOML):
+    // Forge 1.20.1 dies in module resolution before any log line is written --
+    //     java.lang.module.ResolutionException:
+    //         Modules org.joml and crystalgraphics export package org.joml to module minecraft
+    // -- because MC 1.19.3+ has a real named org.joml module. ModLauncher reads the package list off
+    // the archive, so F1's "a class is inert until defined" does not reach it.
+    //
+    // So the jar ships NONE, and each target gets JOML from where it already lives: the game supplies
+    // it on 1.19.3+, and 1.7.10 -- which has no JOML and no module system -- takes the companion
+    // `jomlJar` below. The forbidden prefix keeps a transitive from putting it back.
     relocations = listOf(
-        // MEASURED 2026-09-10 (E-J9-JOML), so nobody lifts this again to find out. Built without it,
-        // the jar carries 113 plain `org/joml/` entries and Forge 1.20.1 dies in the module layer
-        // before any log line is written:
-        //
-        //     java.lang.module.ResolutionException:
-        //         Modules org.joml and crystalgraphics export package org.joml to module minecraft
-        //
-        // Not a precaution and not about class loading: ModLauncher reads the package list off the
-        // archive, so F1's "a class is inert until defined" buys nothing here. NeoForge dies the same
-        // way. What it does NOT settle is where the API should stand -- see the note above.
-        "org.joml" to "com.crystalgraphics.shadow.org.joml",
         "de.javagl" to "com.crystalgraphics.shadow.de.javagl",
         "com.fasterxml.jackson" to "com.crystalgraphics.shadow.com.fasterxml.jackson",
     ),
@@ -123,8 +117,41 @@ registerSingleJarPipeline(SingleJarSpec(
     },
 ))
 
+// The companion's contents, and deliberately NOT `singleJarLibs`: nothing here reaches the merged jar.
+val jomlCompanion: Configuration by configurations.creating
+
 dependencies {
-    "singleJarLibs"("org.joml:joml-jdk8:1.10.1") { exclude(group = "org.jetbrains.kotlin") }
+    jomlCompanion("org.joml:joml-jdk8:1.10.1") { exclude(group = "org.jetbrains.kotlin") }
     "singleJarLibs"("de.javagl:obj:0.4.0")
     "singleJarLibs"("de.javagl:jgltf-model:2.0.4")
 }
+
+// ── The JOML companion, for LWJGL2 targets only (D2) ────────────────────────────────────────────
+//
+// A plain library jar: `org/joml/**` at its real names and nothing else. FML 1.7.10 puts every jar in
+// `mods/` on the LaunchWrapper classpath whether or not it declares a mod, which is what makes this
+// work with no descriptor and no entry point.
+//
+// INSTALL IT ON 1.7.10 AND 1.12.2 ONLY. On 1.19.3+ the game already has JOML as a named module, and a
+// second one in `mods/` reproduces exactly the ResolutionException the note above records -- so this
+// is the one artefact here that is NOT "install everywhere". `deploySingleJars` knows that.
+val jomlJar by tasks.registering(Jar::class) {
+    group = "single jar"
+    description = "JOML for the LWJGL2 targets, whose Minecraft does not ship it. NOT for 1.19.3+."
+    archiveFileName.set("crystalgraphics-joml-${project.version}.jar")
+    from(jomlCompanion.map { zipTree(it) }) {
+        // Its own module descriptor would make it a named module and defeat the point on any loader
+        // that reads one; the licence travels, because MIT asks it to.
+        exclude("module-info.class", "META-INF/maven/**")
+    }
+    manifest {
+        attributes(
+            "Implementation-Title" to "JOML, for CrystalGraphics on LWJGL2 targets",
+            "Implementation-Version" to project.version.toString(),
+        )
+    }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+// It is part of building the artefacts, not an extra step somebody has to remember.
+tasks.named("singleJar") { dependsOn(jomlJar) }
