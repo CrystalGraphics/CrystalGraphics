@@ -36,6 +36,10 @@ dependencies {
     // mods{} sourceSet declarations in each loader's build.gradle.kts.
     "compileOnly"(project(":mc1201:common"))
     "compileOnly"(project(":platform"))
+
+    // compileOnly and NOT bundled: the merge adds :mc-shared once, under a package no variant
+    // relocates, so all four hosts share the one copy.
+    "compileOnly"(project(":mc-shared"))
     "compileOnly"(project(":core"))
     "compileOnly"(project(":freetype-msdfgen-harfbuzz-bindings"))
     "runtimeOnly"(project(":mc1201:common"))

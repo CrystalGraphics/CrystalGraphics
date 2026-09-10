@@ -1,8 +1,10 @@
 package com.crystalgraphics;
 
+import com.crystalgraphics.mc.shared.CrashVariant;
 import com.crystalgraphics.platform.PlatformService1710;
 import cpw.mods.fml.common.Mod;
 import cpw.mods.fml.common.FMLCommonHandler;
+import cpw.mods.fml.common.ICrashCallable;
 import cpw.mods.fml.common.event.FMLInitializationEvent;
 import cpw.mods.fml.common.event.FMLPostInitializationEvent;
 import cpw.mods.fml.common.event.FMLPreInitializationEvent;
@@ -51,6 +53,20 @@ public final class CrystalGraphics{
     @Mod.EventHandler
     public void onPreInit(FMLPreInitializationEvent event) {
         LOGGER.info("{}: preInit (mixins should already be active)", NAME);
+        // WHICH VARIANT, in the crash report itself. One jar carries a host per loader, each relocated
+        // under its own prefix, so a trace naming com.crystalgraphics.mc.fml1710.common.* is the only
+        // thing that says which one ran. @see CrashVariant
+        FMLCommonHandler.instance().registerCrashCallable(new ICrashCallable() {
+            @Override
+            public String getLabel() {
+                return CrashVariant.LABEL;
+            }
+
+            @Override
+            public String call() {
+                return CrashVariant.report(CrystalGraphics.class);
+            }
+        });
         PlatformService1710.onPreInit();
     }
 
