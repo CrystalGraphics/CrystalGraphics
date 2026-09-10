@@ -3,7 +3,6 @@ package com.crystalgraphics.platform.gl;
 import com.crystalgraphics.platform.gl.CgGLContext;
 import com.crystalgraphics.platform.gl.CgGLBackend;
 import com.crystalgraphics.platform.CgPlatform;
-import net.minecraft.client.renderer.OpenGlHelper;
 import org.lwjgl.opengl.*;
 
 import java.nio.ByteBuffer;
@@ -19,9 +18,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * The FBO waterfall follows Core GL30 &gt; ARB &gt; EXT, determined at call time by
  * reading from {@link CgPlatform#capabilities()} ()}.</p>
  *
- * <p>{@link #bindFramebufferCompat(int)} routes through
- * {@code OpenGlHelper.func_153171_g} so that Minecraft's own FBO tracking
- * remains consistent with CrystalGraphics-issued binds.</p>
+ * <p><b>It names no Minecraft class.</b> It used to, for one call: {@code bindFramebufferCompat}
+ * bound through {@code OpenGlHelper.func_153171_g} so Minecraft's own FBO tracking stayed in step
+ * with ours. Nothing ever called it, and the waterfall above is the thing that call was wanted for,
+ * so it went — which is what makes this file tier 1 and shareable with the harness.</p>
  */
 public final class Lwjgl2GLBackend extends CgGLBackend {
 
@@ -168,11 +168,6 @@ public final class Lwjgl2GLBackend extends CgGLBackend {
     @Override
     public void drawBuffers(IntBuffer bufs) {
         GL20.glDrawBuffers(bufs);
-    }
-
-    @Override
-    public void bindFramebufferCompat(int fbo) {
-        OpenGlHelper.func_153171_g(GL30.GL_FRAMEBUFFER, fbo);
     }
 
     // -------------------------------------------------------------------------

@@ -140,12 +140,6 @@ public final class Blaze3dGLBackend extends CgGLBackend {
         GL20C.glDrawBuffers(bufs);
     }
 
-    @Override
-    public void bindFramebufferCompat(int fbo) {
-        // This is the MC 1.20 equivalent of OpenGlHelper.func_153171_g used in mc1710.
-        GlStateManager._glBindFramebuffer(GL30C.GL_FRAMEBUFFER, fbo);
-    }
-
     // -------------------------------------------------------------------------
     // Shaders — Tier 3 (raw GL20C / GL31C / GL43C)
     // -------------------------------------------------------------------------

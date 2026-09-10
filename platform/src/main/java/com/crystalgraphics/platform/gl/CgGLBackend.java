@@ -22,11 +22,9 @@ import java.nio.*;
  * {@code CgGLBackend.get().bindFramebuffer}).
  *
  * <h3>FBO waterfall</h3>
- * The {@link #bindFramebufferCompat(int)} method is the platform-neutral substitute for
- * {@code OpenGlHelper.func_153171_g} — mc1710 routes through the Minecraft compat helper,
- * standalone impls call {@code glBindFramebuffer} directly. (This replaced a
- * {@code CallFamily.OPENGLHELPER_WRAPPER} routing enum in core/, since deleted — the choice is the
- * backend's, which is why it is a method here rather than a tag a caller has to carry.)
+ * {@link #bindFramebuffer(int, int)} carries it: Core GL30 &gt; ARB &gt; EXT, chosen per call from
+ * {@link CgPlatform#capabilities()}. There is no second, host-delegating bind — see the note on
+ * that method.
  */
 public abstract class CgGLBackend {
     
@@ -93,19 +91,11 @@ public abstract class CgGLBackend {
     public abstract void drawBuffers(IntBuffer bufs);
     public abstract int getFramebufferAttachmentParameteriv(int target, int attachment, int pname);
 
-    /**
-     * Bind the given FBO using the platform's compatibility path.
-     *
-     * <p>MC 1.7.10 implementation calls {@code OpenGlHelper.func_153171_g(GL_FRAMEBUFFER, fbo)}
-     * so that Minecraft's own FBO tracking remains consistent. Standalone / harness implementations
-     * call {@code glBindFramebuffer(GL_FRAMEBUFFER, fbo)} directly.</p>
-     *
-     * <p>This is the replacement for {@code OpenGlHelper.func_153171_g} in core/, and for the
-     * {@code CallFamily.OPENGLHELPER_WRAPPER} tag that used to select it.</p>
-     *
-     * @param fbo the framebuffer object name to bind, or 0 to unbind
-     */
-    public abstract void bindFramebufferCompat(int fbo);
+    // There is deliberately no host-delegating bind beside `bindFramebuffer`. `bindFramebufferCompat`
+    // existed so mc1710 could route through `OpenGlHelper.func_153171_g` and keep Minecraft's own FBO
+    // tracking in step; it was removed because nothing ever called it, this class already carries the
+    // Core > ARB > EXT waterfall the helper was wanted for, and on 1.20.x the two paths had converged
+    // on the same `GlStateManager._glBindFramebuffer` call with the target hardcoded.
 
     // -------------------------------------------------------------------------
     // Shaders

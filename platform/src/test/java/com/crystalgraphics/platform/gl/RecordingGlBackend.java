@@ -55,7 +55,6 @@ public final class RecordingGlBackend extends CgGLBackend {
     @Override public int checkFramebufferStatus(int target) { record("checkFramebufferStatus"); return 0; }
     @Override public void drawBuffers(IntBuffer bufs) { record("drawBuffers"); }
     @Override public int getFramebufferAttachmentParameteriv(int target, int attachment, int pname) { record("getFramebufferAttachmentParameteriv"); return 0; }
-    @Override public void bindFramebufferCompat(int fbo) { record("bindFramebufferCompat"); }
     @Override public int glCreateShader(int type) { record("glCreateShader"); return 0; }
     @Override public void glShaderSource(int shader, CharSequence source) { record("glShaderSource"); }
     @Override public void glCompileShader(int shader) { record("glCompileShader"); }

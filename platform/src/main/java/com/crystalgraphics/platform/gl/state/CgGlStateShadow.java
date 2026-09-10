@@ -133,8 +133,6 @@ public final class CgGlStateShadow {
         CORE_OR_ARB,
         /** {@code EXT_framebuffer_object} — a separate namespace with no draw/read split. */
         EXT,
-        /** Minecraft's {@code OpenGlHelper} wrapper, which picks the API itself. */
-        MC_WRAPPER,
         /** Nothing has been bound through this manager yet. */
         UNKNOWN
     }
