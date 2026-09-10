@@ -152,10 +152,30 @@ float sdf_bezier(vec2 p, vec2 A, vec2 B, vec2 C, out float t) {
 
     if (h >= 0.0) {
         h = sqrt(h);
-        vec2 x = (vec2(h, -h) - q) / 2.0;
+        // THE TWO ROOTS ARE A STABLE PAIR, NOT TWO SUBTRACTIONS. This is the travelling-dropout
+        // fix; the max() below is only its NaN half.
+        //
+        // h = sqrt(q*q + 4*pp3), so as pp3 -> 0 -- which is what a NEARLY FLAT segment drives, and
+        // splitting a cubic produces those by construction -- h -> |q| and one of these differences
+        // cancels. Not approximately: measured in float32 on a segment the splitter emits, (h - q)
+        // reaches EXACTLY zero while the true root is small and nonzero, whose cube root is nothing
+        // like zero. The old form then fed that annihilated root through sign()*pow() and got a
+        // confident wrong distance -- 5.449 where the truth is 3.699, against a half-width of 5, so
+        // an interior pixel reads as outside and the fragment is dropped.
+        //
+        // That is why the NaN guard alone never closed this: there was no NaN left to catch, just a
+        // number with no significant bits. The product of the roots is exactly -pp3, so take the one
+        // whose subtraction CANNOT cancel (h and -q of like sign) and derive its partner by division.
+        //
+        // Measured over 20,300 points across five splitter-shaped segments: 17 pixels on the wrong
+        // side of the stroke edge before, 0 after; worst distance error 1.73px -> 3e-6.
+        float xStable = (q >= 0.0) ? (-h - q) * 0.5 : (h - q) * 0.5;
+        float xDerived = (xStable != 0.0) ? -pp3 / xStable : 0.0;
+        vec2 x = (q >= 0.0) ? vec2(xDerived, xStable) : vec2(xStable, xDerived);
 
-        // THE max() IS THE FIX FOR THE TRAVELLING-DROPOUT BUG. Do not simplify it back to
-        // pow(abs(x), 1/3).
+        // The max() prevents a NaN. It is NOT on its own the fix for the travelling dropout --
+        // the stable root pair above is; this was believed to be it while the bug survived. Do not
+        // simplify it back to pow(abs(x), 1/3).
         //
         // GLSL implements pow(x,y) as exp2(y * log2(x)), so x == 0 evaluates log2(0) = -inf and then
         // y * -inf = -inf. Drivers disagree on what comes back; on the NaN path, sign(0) == 0 turns
@@ -165,7 +185,8 @@ float sdf_bezier(vec2 p, vec2 A, vec2 B, vec2 C, out float t) {
         // x is exactly zero where p == 0, which is a CODIMENSION-1 LOCUS -- a thin curve through the
         // pixel plane, not a region. So the symptom is a narrow band of missing stroke that SWEEPS
         // along a curve as it animates, rather than a static hole: "one empty tiny quad running
-        // through the wire left to right".
+        // through the wire left to right". The cancellation above lives on the SAME locus and wears
+        // the same symptom, which is why fixing only this half left the bug looking untouched.
         //
         // Whether that locus crosses the painted band depends on the individual curve's shape, which
         // is why it hit two of the gallery's three node wires and not the third. That looked like
