@@ -41,7 +41,7 @@ public class CgGlyphPlacementCacheBudgetTest {
             new CgFontKey("test:font.ttf", com.crystalgraphics.api.font.CgFontStyle.REGULAR, 16);
 
     private static CgGlyphPlacementCache.Key key(int i) {
-        return new CgGlyphPlacementCache.Key(null, i, 0f, true, FONT_KEY, 0xFFFFFFFF);
+        return new CgGlyphPlacementCache.Key(null, i, 0f, true, FONT_KEY, 0xFFFFFFFF, 0);
     }
 
     @Before
