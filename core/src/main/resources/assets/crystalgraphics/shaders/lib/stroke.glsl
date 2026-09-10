@@ -20,6 +20,10 @@
 // Cap styles -- must match CgVectorRenderer.CAP_*. Packed 2 bits per end (start in bits 0-1, end in
 // bits 2-3 -- see CgVectorRenderer.packCaps), so 4 values is exactly the room available; ARROW is
 // the last one that fits without widening the packing.
+// The reconstruction filter every coverage function here antialiases with, in pixels. Keep equal
+// to CG_QUAD_EDGE_FILTER in env/buffer/quad.glsl and CgVectorRenderer.AA_FILTER_PX.
+#define CG_STROKE_AA_FILTER 1.5
+
 #define CG_STROKE_CAP_BUTT   0
 #define CG_STROKE_CAP_ROUND  1
 #define CG_STROKE_CAP_SQUARE 2
@@ -32,6 +36,12 @@
 // Cosmetic constants, not load-bearing -- safe to retune.
 #define CG_STROKE_ARROW_SPREAD 3.0
 #define CG_STROKE_ARROW_LENGTH 6.0
+
+// Bits 13-14 -- this end is an INTERIOR JOINT of a split cubic rather than a real end of the stroke.
+// See CgVectorRenderer.FLAG_JOINT_START: a joint is a seam and must partition, so it takes a hard
+// half-open cut rather than the antialiased butt cap a caller-requested CAP_BUTT gets.
+#define CG_STROKE_FLAG_JOINT_START 8192
+#define CG_STROKE_FLAG_JOINT_END   16384
 
 // Bit 4 of the packed flags -- set for a FILLED triangle instance, unset for a stroke. See
 // CgVectorRenderer.packFill(). Lives above the cap constants because both stroke_coverage's cap
@@ -121,6 +131,22 @@ float stroke_coverage(vec2 p, vec2 a, vec2 b, vec2 c,
     float halfWidth = mix(widths.x, widths.y, t);
     float ramp = max(feather, 1.0e-4);
 
+    // A HAIRLINE'S PEAK CANNOT BE HELD, SO STOP TRYING TO HOLD IT. Below the filter's own half-width
+    // a stroke's peak is clipped, and the clipped value swings with the sub-pixel phase: 0.83 where
+    // the line sits on a row of pixel centres, 0.50 where it straddles two. That reads as bright and
+    // dim spots drifting along a curve -- the roping CG_QUAD_EDGE_FILTER's own note describes.
+    //
+    // The 0.50 is fixed by ink conservation and no filter can raise it, so the only way to flatten
+    // the swing is to bring the bright case DOWN: widen the ramp as the stroke goes sub-filter, and
+    // the peak decays smoothly toward 0.50 rather than being clipped at a value that oscillates.
+    // Continuous at the boundary on purpose -- a threshold would pop as a wire crosses it on zoom.
+    //
+    // Only when the caller took the default filter. A wider authored feather is a glow, and a glow
+    // is already too soft to bead.
+    if (ramp <= CG_STROKE_AA_FILTER) {
+        ramp *= max(1.0, (CG_STROKE_AA_FILTER * 0.5) / max(halfWidth, 1.0e-4));
+    }
+
     // SIGNED FIRST. Intersecting the cap half-plane against the raw unsigned distance compares two
     // quantities on different scales, so the cut only bites more than halfWidth past the endpoint --
     // where the radial term has already hidden the pixel. CAP_BUTT becomes an exact no-op and all
@@ -166,21 +192,49 @@ float stroke_coverage(vec2 p, vec2 a, vec2 b, vec2 c,
         // its OWN style -- see _stroke_cap_dist, which is also why an asymmetric curve (e.g. a
         // node-graph wire: round at the source, ARROW at the destination) is one `.cap(start, end)`
         // call rather than two draws.
-        float capStartDist = _stroke_cap_dist(uStart, vStart, halfWidth, capStart);
-        float capEndDist   = _stroke_cap_dist(uEnd,   vEnd,   halfWidth, capEnd);
+        // AN INTERIOR JOINT IS A SEAM, NOT AN END. Both segments meeting at one carry CAP_BUTT, and
+        // a butt cap is antialiased, so both ramp across the same cut and the overlap composites
+        // brighter than either alone -- 0.808 measured on a hairline whose analytic peak is 0.722,
+        // against 0.720 for the same geometry drawn as a single unsplit instance. Widening the ramp
+        // for hairlines made it worse, each ramp then reaching further past the cut.
+        //
+        // So a joint partitions instead, exactly as a cell's seam does: a hard half-open cut, one
+        // segment owning each pixel, and NO ramp from that end -- leaving the ramp in while killing
+        // the neighbour would only trade the bright spot for a dark one. Measured after: 0.720, i.e.
+        // a split cubic and a single instance become indistinguishable.
+        //
+        // KNOWN LIMIT, not yet hit in practice: each segment cuts on its OWN end tangent, so the two
+        // planes coincide only while consecutive tangents agree. Measured at exactly zero mismatch on
+        // the splitter's output for a gentle wire -- it is G1-continuous -- but a tight turn packs a
+        // real angle into one joint, and the wedge between the two planes would then be owned by
+        // neither. The complete form is a cut plane BOTH neighbours agree on: their tangent bisector,
+        // which the splitter can compute and pass per joint, since `gradient` is unused by strokes.
+        bool jointStart = (cap & CG_STROKE_FLAG_JOINT_START) != 0;
+        bool jointEnd   = (cap & CG_STROKE_FLAG_JOINT_END) != 0;
+        if (jointStart && uStart >  0.0) return 0.0;   // the previous segment owns this pixel
+        if (jointEnd   && uEnd   >= 0.0) return 0.0;   // the next one does -- half-open, so the
+                                                       // shared point is claimed exactly once
+        float capStartDist = jointStart ? -3.4e38 : _stroke_cap_dist(uStart, vStart, halfWidth, capStart);
+        float capEndDist   = jointEnd   ? -3.4e38 : _stroke_cap_dist(uEnd,   vEnd,   halfWidth, capEnd);
         float capped = max(capStartDist, capEndDist);
         if (capped > -3.4e38) signedDist = capped;   // both sentinel = neither end contributed
     }
 
-    // Deliberately NOT sdf_coverage(): that derives its own ~1px ramp from fwidth, whereas a
-    // stroke's softness is an authored per-instance property in the same units as the widths.
+    // LINEAR, not smoothstep, and over the SAME ramp a quad's edge gets -- see CG_QUAD_EDGE_FILTER
+    // in env/buffer/quad.glsl, which this must stay equal to. Both are the one reconstruction filter
+    // this engine antialiases with, so a stroke's edge and a rect's edge at one angle land on the
+    // same coverage; measured on cgui-shape-probe, they had differed by 26 levels of 255 at 11
+    // degrees, the stroke reading harder because its ramp was a third narrower.
     //
-    // Flooring this ramp with fwidth(signedDist) was tried and MEASURED TO DO NOTHING: worst local
-    // deviation was 73.0/52.6/33.2% at feather 1/3/6 with the floor against 72.6/50.6/34.7% without,
-    // i.e. identical. fwidth is already below feather here, so the max() never binds. Do not re-add
-    // it on the theory that near-horizontal strokes are antialiasing-limited - they are not, and the
-    // measurement is the reason.
-    return 1.0 - smoothstep(-ramp * 0.5, ramp * 0.5, signedDist);
+    // smoothstep is an S-curve about the same midpoint: it over-covers the band's inner half and
+    // under-covers its outer, and on a stroke a few pixels wide nearly every pixel is in that band.
+    //
+    // Deliberately NOT sdf_coverage(), which derives its own ramp from fwidth: the ramp is the
+    // caller's (CgVectorRenderer.FEATHER_ANTIALIAS). Flooring it with fwidth(signedDist) was tried
+    // and measured to change nothing -- fwidth never exceeded the feather -- and it would cost this
+    // function its freedom from derivative builtins, and the note above about needing no
+    // CG_VERTEX_STAGE guard with it.
+    return clamp(0.5 - signedDist / ramp, 0.0, 1.0);
 }
 
 // Antialiased coverage of a FILLED triangle p0->p1->p2 at point `p`, in [0,1]. `cornerRadius`
@@ -232,12 +286,14 @@ float fill_coverage(vec2 p, vec2 p0, vec2 p1, vec2 p2, float cornerRadius, float
     float area = e1.x * e2.y - e1.y * e2.x;
 
     // A HARD EDGE BY DEFAULT: a fill wants a step, and a caller that wants a soft edge passes a real
-    // feather. The floor exists only so the smoothstep never divides by zero. (Tessellated fills no
-    // longer come through here at all -- see cell_coverage.)
+    // feather. The floor exists only so the ramp never divides by zero. (Tessellated fills no longer
+    // come through here at all -- see cell_coverage.)
     float ramp = max(feather, 1.0e-6);
     if (silhouetteEdge == CG_STROKE_FILL_EDGE_NONE || feather <= 0.0) {
         float d = sdf_triangle(q, vec2(0.0), e1, e2) - cornerRadius;
-        return 1.0 - smoothstep(-ramp * 0.5, ramp * 0.5, d);
+        // LINEAR, like stroke_coverage and the silhouette branch below: one ramp shape for every
+        // reading of this buffer, so a triangle's edge and a stroke's edge at one angle agree.
+        return clamp(0.5 - d / ramp, 0.0, 1.0);
     }
 
     // A ZERO-AREA TRIANGLE IS OUTSIDE EVERYWHERE, AND THIS BRANCH HAS TO SAY SO ITSELF.

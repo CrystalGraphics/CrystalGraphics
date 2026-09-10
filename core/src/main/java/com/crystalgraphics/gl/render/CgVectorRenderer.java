@@ -116,6 +116,8 @@ import org.joml.Vector3f;
  * wrong-thickness stroke. {@link Curve#submit()} therefore scales {@code widths} and
  * {@code feather} by the pose's uniform scale factor. Widths are consequently expressed in
  * <em>post-pose</em> units — the same space the baked control points end up in.</p>
+ * <p>{@link #FEATHER_ANTIALIAS}, the default feather, is the exception and is never scaled: it is
+ * the antialiasing ramp rather than a distance in the artwork.</p>
  * <p>For a non-uniform scale there is no single right answer, and inventing one silently is worse
  * than picking one loudly: the larger of the X/Y scales is used, which keeps a stroke from
  * disappearing under an anisotropic zoom.</p>
@@ -178,6 +180,31 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
     public static final String MACRO_NAME = "CURVE_DATA";
 
     /** Butt cap — the stroke ends exactly at {@code p0}/{@code p2}. The default. */
+    /**
+     * The default {@link Curve#feather(float)} / {@link Triangle#feather(float)}: the renderer's own
+     * antialiasing ramp rather than an authored softness: {@value #AA_FILTER_PX} device pixels of
+     * reconstruction filter, whatever the pose scales by.
+     *
+     * <p>The width matches {@code CG_QUAD_EDGE_FILTER} in {@code env/buffer/quad.glsl}, and must stay
+     * equal to it — it is the one filter this engine antialiases with, so a stroke's edge and a
+     * rect's edge at the same angle land on the same coverage. A box filter (1 px) is the exact area
+     * a straight edge covers and is also the roping a thin rotated line shows; the extra half pixel
+     * buys a smoother line for a little sharpness.</p>
+     *
+     * <p>A feather a caller states is a SOFTNESS and scales with the pose exactly as a width does.
+     * This is a RECONSTRUCTION FILTER and must not: scaled, a UI at {@code uiScale} 2 antialiases
+     * over two device pixels and every stroke reads blurred.</p>
+     *
+     * <pre>{@code
+     * ctx.curve().line(x0, y0, x1, y1).width(1f).color(argb).submit();    // one device px of AA
+     * ctx.curve().line(x0, y0, x1, y1).feather(4f).color(argb).submit();  // a deliberate glow
+     * }</pre>
+     */
+    public static final float FEATHER_ANTIALIAS = -1f;
+
+    /** What {@link #FEATHER_ANTIALIAS} resolves to. Keep equal to {@code CG_QUAD_EDGE_FILTER}. */
+    private static final float AA_FILTER_PX = 1.5f;
+
     public static final int CAP_BUTT = 0;
     /** Round cap — a half-disc of the local half-width is added at each end. */
     public static final int CAP_ROUND = 1;
@@ -244,6 +271,27 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
 
     /** Bits 9-12 — one per cell edge, set when that edge is on the shape's outline. See {@link Cell#softEdges}. */
     static final int CELL_EDGE_SHIFT = 9;
+
+    /**
+     * Bits 13 and 14: this end of the segment is an INTERIOR JOINT of a split cubic, not a real end
+     * of the stroke.
+     *
+     * <p>A joint is a SEAM and has to partition, exactly as a cell's is. Both segments meeting there
+     * carry {@link #CAP_BUTT}, and a butt cap is antialiased — so both ramp across the same cut and
+     * the overlap composites into a bright spot: 0.808 measured on a hairline whose analytic peak is
+     * 0.722, against 0.720 for the same geometry as one unsplit instance. Marking the end lets the
+     * fragment stage give it a hard, half-open cut instead, and the split cubic then measures 0.720 —
+     * indistinguishable from the unsplit one.</p>
+     *
+     * <p>Distinct from {@link #CAP_BUTT} on purpose: a butt cap a CALLER asked for is a real end and
+     * must keep its antialiased edge. Must match {@code CG_STROKE_FLAG_JOINT_*} in {@code stroke.glsl},
+     * whose note records the one case this form does not cover.</p>
+     */
+    static final int FLAG_JOINT_START = 1 << 13;
+
+    /** @see #FLAG_JOINT_START */
+    static final int FLAG_JOINT_END = 1 << 14;
+
 
     /** Cell edge {@code p0 -> p1}. */
     public static final int CELL_TOP = 1;
@@ -406,14 +454,20 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
         return new Curve();
     }
 
+    /** {@link #FEATHER_ANTIALIAS} becomes the filter width in post-pose units, i.e. device pixels;
+     * a stated feather is artwork and scales like a width. */
+    private static float resolveFeather(float feather, float poseScale) {
+        return feather < 0f ? AA_FILTER_PX : feather * poseScale;
+    }
+
     /**
      * Fluent, mutable curve submission request.
      *
      * <h3>Defaults</h3>
      * <p>Control points default to the origin; {@link #width(float)} defaults to a half-width of
      * {@code 1}; {@link #colors(int, int)} defaults to opaque white at both ends; {@link #feather}
-     * defaults to {@code 1} (roughly one pixel of edge softness at UI scale); {@link #cap} defaults
-     * to {@link #CAP_BUTT}; {@link #pose(Matrix4f)} defaults to {@code null}.</p>
+     * defaults to {@link #FEATHER_ANTIALIAS} (the engine's own AA filter, at any scale); {@link #cap}
+     * defaults to {@link #CAP_BUTT}; {@link #pose(Matrix4f)} defaults to {@code null}.</p>
      *
      * <p>Geometry has no default — {@link #submit()} throws {@link IllegalStateException} if none of
      * {@link #line}, {@link #via}/{@link #to}, or {@link #cubic} was called.</p>
@@ -442,6 +496,10 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
         private int cubicSegments;
         /** Flattened (p0,p1,p2) triples for the split cubic — reused, never reallocated per call. */
         private final float[] cubicScratch = new float[MAX_CUBIC_SEGMENTS * 9];
+        /** The cubic's own eight control floats, held until {@link #submit()} can split them. */
+        private final float[] cubicRaw = new float[8];
+        /** Whether {@link #cubic} was called and {@link #cubicRaw} still needs splitting. */
+        private boolean cubicPending;
 
         // Reused across every submit() call on this Curve instance — never reallocated.
         private final Vector3f scratchP0 = new Vector3f();
@@ -461,11 +519,12 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
             widthEnd = 1f;
             argb0 = 0xFFFFFFFF;
             argb1 = 0xFFFFFFFF;
-            feather = 1f;
+            feather = FEATHER_ANTIALIAS;
             capStart = CAP_BUTT;
             capEnd = CAP_BUTT;
             pose = null;
             cubicSegments = 0;
+            cubicPending = false;
             return this;
         }
 
@@ -524,7 +583,15 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
                            float c1x, float c1y,
                            float c2x, float c2y,
                            float x1, float y1) {
-            cubicSegments = CgCurveSplitter.splitCubic(x0, y0, c1x, c1y, c2x, c2y, x1, y1, cubicScratch);
+            // SPLIT AT SUBMIT, NOT HERE. The segment count depends on the pose's scale (the
+            // tolerance is a distance on screen), and a caller is free to set the pose after the
+            // geometry -- splitting now would silently make the result depend on call order.
+            cubicRaw[0] = x0; cubicRaw[1] = y0;
+            cubicRaw[2] = c1x; cubicRaw[3] = c1y;
+            cubicRaw[4] = c2x; cubicRaw[5] = c2y;
+            cubicRaw[6] = x1; cubicRaw[7] = y1;
+            cubicPending = true;
+            cubicSegments = 0;
             // Keep p0/p2 meaningful for anything inspecting the descriptor; the emitted records
             // come from cubicScratch, not from these.
             p0x = x0; p0y = y0;
@@ -557,7 +624,8 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
             return this;
         }
 
-        /** Edge softness, in the same post-pose units as the widths. Defaults to {@code 1}. */
+        /** Authored edge softness, in the same post-pose units as the widths. Defaults to
+         * {@link #FEATHER_ANTIALIAS}, which is antialiasing rather than a look. */
         public Curve feather(float feather) {
             this.feather = feather;
             return this;
@@ -615,6 +683,13 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
                             + "without it, this renderer's buffer may not be attached to whatever material is bound");
 
             float widthScale = poseScale();
+            float feath = resolveFeather(feather, widthScale);
+            if (cubicPending) {
+                cubicSegments = CgCurveSplitter.splitCubic(
+                        cubicRaw[0], cubicRaw[1], cubicRaw[2], cubicRaw[3],
+                        cubicRaw[4], cubicRaw[5], cubicRaw[6], cubicRaw[7],
+                        cubicScratch, widthScale);
+            }
 
             if (cubicSegments > 0) {
                 for (int i = 0; i < cubicSegments; i++) {
@@ -625,6 +700,9 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
                     int segStartCap = (i == 0) ? capStart : CAP_BUTT;
                     int segEndCap = (i == cubicSegments - 1) ? capEnd : CAP_BUTT;
                     packedCaps = CgCurveSplitter.packCaps(segStartCap, segEndCap);
+                    // Every end that is not the whole cubic's own end is a seam -- see FLAG_JOINT_START.
+                    if (i > 0) packedCaps |= FLAG_JOINT_START;
+                    if (i < cubicSegments - 1) packedCaps |= FLAG_JOINT_END;
                     // Taper across the whole cubic, not per segment: each split piece gets the
                     // slice of the [start,end] width ramp that its own t-range covers, so a tapered
                     // cubic tapers smoothly instead of restarting at every segment boundary.
@@ -638,13 +716,13 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
                             CgCurveSplitter.lerp(widthStart, widthEnd, t1) * widthScale,
                             CgCurveSplitter.lerpArgb(argb0, argb1, t0),
                             CgCurveSplitter.lerpArgb(argb0, argb1, t1),
-                            feather * widthScale);
+                            feath);
                 }
             } else {
                 packedCaps = CgCurveSplitter.packCaps(capStart, capEnd);
                 writeRecord(p0x, p0y, p0z, p1x, p1y, p1z, p2x, p2y, p2z,
                         widthStart * widthScale, widthEnd * widthScale,
-                        argb0, argb1, feather * widthScale);
+                        argb0, argb1, feath);
             }
 
             return CgVectorRenderer.this;
@@ -743,7 +821,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
      * <h3>Defaults</h3>
      * <p>Points default to the origin; {@link #color(int)} defaults to opaque white; {@link
      * #cornerRadius(float)} defaults to {@code 0} (sharp corners); {@link #feather} defaults to
-     * {@code 1}, same as {@link Curve}'s.</p>
+     * {@link #FEATHER_ANTIALIAS}, same as {@link Curve}'s.</p>
      */
     public final class Triangle {
 
@@ -778,7 +856,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
             gradOx = gradOy = gradDx = gradDy = 0f;
             cornerRadius = 0f;
             silhouetteEdge = EDGE_NONE;
-            feather = 1f;
+            feather = FEATHER_ANTIALIAS;
             pose = null;
             return this;
         }
@@ -876,7 +954,8 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
             return this;
         }
 
-        /** Edge softness. Defaults to {@code 1}, same convention as {@link Curve#feather}. */
+        /** Authored edge softness. Defaults to {@link #FEATHER_ANTIALIAS}, same convention as
+         * {@link Curve#feather}. */
         public Triangle feather(float feather) {
             this.feather = feather;
             return this;
@@ -909,7 +988,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
             float bx = p1x, by = p1y, bz = p1z;
             float cx = p2x, cy = p2y, cz = p2z;
             float radius = cornerRadius;
-            float feath = feather;
+            float poseScale = 1f;
 
             if (pose != null) {
                 scratchP0.set(ax, ay, az);
@@ -925,10 +1004,10 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
                 // Corner radius and feather are distances in the same space as the points — a
                 // scaled pose must scale them too, or a zoomed-in triangle keeps a fixed-pixel
                 // radius that reads as sharper (relatively) the further the pose scales it up.
-                float scale = poseScaleOf(pose);
-                radius *= scale;
-                feath *= scale;
+                poseScale = poseScaleOf(pose);
+                radius *= poseScale;
             }
+            float feath = resolveFeather(feather, poseScale);
 
             float ox = gradOx, oy = gradOy, dxg = gradDx, dyg = gradDy;
             if (gradient && pose != null) {

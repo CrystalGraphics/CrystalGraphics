@@ -306,6 +306,8 @@ public class CgTextRenderer {
      */
     private final Matrix4f scratchInverseModelView = new Matrix4f();
     private final Vector3f scratchLocalDelta = new Vector3f();
+    /** Reused by the pose-phase probe in drawInternal; never escapes the frame thread. */
+    private final Vector3f scratchPosePhase = new Vector3f();
 
     private void ensureSortScratchCapacity(int count) {
         if (count <= scratchSortKeys.length) return;
@@ -1065,7 +1067,13 @@ public class CgTextRenderer {
         long frame = CgGraphicsLifecycle.getCurrentFrame();
         int glyphCount;
         try (CgProfiler.Scope ignored = CgProfiler.scope("resolveGlyphs")) {
-            glyphCount = resolvedGlyphs.resolve(resolvedLayout, draw.x, draw.y, frame, context, effectiveTargetPx, wantMsdf, fontKey, draw.rgba);
+            // The pose's own sub-pixel phase. A CSS transform moves text through the POSE, not
+            // through draw.x/draw.y, so without this the placement cache returns the same glyphs
+            // for every sub-pixel position of a translated element and the offset never lands.
+            scratchPosePhase.set(draw.x, draw.y, 0f);
+            pose.pose().transformPosition(scratchPosePhase);
+            glyphCount = resolvedGlyphs.resolve(resolvedLayout, draw.x, draw.y, frame, context,
+                    effectiveTargetPx, wantMsdf, fontKey, draw.rgba, scratchPosePhase.x);
         }
         CgProfiler.sample("draw.glyphCount", glyphCount);
         CgTextDecorationRect[] decorations = resolvedLayout.baked().decorations();
@@ -1327,7 +1335,15 @@ public class CgTextRenderer {
                                         float qx, float qy, Vector3f outLocalDelta) {
         outLocalDelta.set(qx, qy, 0f);
         modelView.transformPosition(outLocalDelta);
-        float screenDeltaX = (float) Math.floor(outLocalDelta.x) - outLocalDelta.x;
+        // X ROUNDS TO THE SUB-PIXEL GRID FIRST, then takes the whole-pixel part; the quarter left
+        // over is what the glyph's own raster variant already carries (CgGlyphKey.SUB_PIXEL_BUCKETS,
+        // and CgResolvedGlyphs.selectSubPixelBucket which takes the remainder of this same
+        // rounding). Flooring the raw value instead decides the two halves independently, and a
+        // position a hair below an integer then floors down while the bucket rounds up -- 0.75
+        // device px of error. Y has no buckets, so it stays a whole-pixel floor.
+        int quartersX = Math.round(outLocalDelta.x * CgGlyphKey.SUB_PIXEL_BUCKETS);
+        float snappedX = (float) Math.floor(quartersX / (double) CgGlyphKey.SUB_PIXEL_BUCKETS);
+        float screenDeltaX = snappedX - outLocalDelta.x;
         float screenDeltaY = (float) Math.floor(outLocalDelta.y) - outLocalDelta.y;
         outLocalDelta.set(screenDeltaX, screenDeltaY, 0f);
         invModelView.transformDirection(outLocalDelta);
