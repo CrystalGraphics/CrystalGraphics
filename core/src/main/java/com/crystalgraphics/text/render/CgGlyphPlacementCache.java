@@ -76,8 +76,9 @@ public final class CgGlyphPlacementCache {
      * Builds the lookup key for one draw. Callers should build this once and pass the same
      * instance to both {@link #get} and {@link #put} rather than rebuilding it twice.
      */
-    public static Key key(CgTextLayout layout, float x, float y, boolean wantMsdf, CgFontKey fontKey, int rgba) {
-        return new Key(layout, x, y, wantMsdf, fontKey, rgba);
+    public static Key key(CgTextLayout layout, float x, float y, boolean wantMsdf, CgFontKey fontKey,
+                          int rgba, int posePhase) {
+        return new Key(layout, x, y, wantMsdf, fontKey, rgba, posePhase);
     }
 
     /**
@@ -208,7 +209,8 @@ public final class CgGlyphPlacementCache {
      * per-glyph effective color (override color if the glyph's span had one, else this
      * {@code rgba}), so an entry built for one {@code rgba} is simply wrong for another.</p>
      */
-    public record Key(CgTextLayout layout, float x, float y, boolean wantMsdf, CgFontKey fontKey, int rgba) {
+    public record Key(CgTextLayout layout, float x, float y, boolean wantMsdf, CgFontKey fontKey,
+                      int rgba, int posePhase) {
         @Override
         public int hashCode() {
             int h = System.identityHashCode(layout);
@@ -217,6 +219,7 @@ public final class CgGlyphPlacementCache {
             h = 31 * h + (wantMsdf ? 1 : 0);
             h = 31 * h + fontKey.hashCode();
             h = 31 * h + rgba;
+            h = 31 * h + posePhase;
             return h;
         }
 
@@ -226,7 +229,8 @@ public final class CgGlyphPlacementCache {
             if (!(o instanceof Key)) return false;
             Key k = (Key) o;
             return layout == k.layout && x == k.x && y == k.y
-                    && wantMsdf == k.wantMsdf && fontKey.equals(k.fontKey) && rgba == k.rgba;
+                    && wantMsdf == k.wantMsdf && fontKey.equals(k.fontKey) && rgba == k.rgba
+                    && posePhase == k.posePhase;
         }
     }
 

@@ -30,12 +30,24 @@ import static org.junit.Assert.*;
  * <p>Both the failing wires and the clean one are measured, because the whole question is why two of
  * three misbehave.</p>
  *
- * <h3>Outcome: confirmed</h3>
+ * <h3>Outcome: the locus is confirmed, the NaN was only half of what lives on it</h3>
  * <p>The two shallow wires drive {@code |x|} below {@code 1e-3} inside the painted band; the steep
- * wire stays more than an order of magnitude further away. That is the discriminator, and it is the
- * reason the guard in {@code sdf_bezier}'s one-root branch exists. These tests stay as the pin: if
- * someone removes the {@code max()} as redundant, the mechanism is still described here and the
- * geometry that reaches it is still measured.</p>
+ * wire stays more than an order of magnitude further away. That discriminator is real and is what
+ * this test measures.</p>
+ *
+ * <p><b>The NaN was not the whole defect, and the {@code max()} guard did not end the dropout.</b>
+ * On the same locus {@code h -> |q|}, so one of {@code (±h - q)} CANCELS: measured in float32 it
+ * reaches exactly zero while the true root is small and nonzero, and its cube root is nothing like
+ * zero. The guard removed the NaN and left a confident wrong distance behind — 5.449 where the truth
+ * is 3.699, against a half-width of 5, so an interior pixel read as outside. The dropout survived
+ * this test passing, for exactly that reason. Fixed by deriving the ill-conditioned root from the
+ * exact root product instead; see {@code lib/sdf.glsl}.</p>
+ *
+ * <p>SO READ THIS TEST FOR WHAT IT IS: it pins the GEOMETRY that reaches the degenerate locus, not
+ * the solver's handling of it. It passes whether or not the cancellation is fixed, and cannot gate
+ * that fix. Nothing headless can — the maths ships as GLSL, and a hand-ported copy drifts silently
+ * (the repro test that carried one was deleted for going stale three times in a day). The real gate
+ * is rendering the wires and reading pixels back.</p>
  */
 public class SdfBezierDegenerateRootTest {
 
