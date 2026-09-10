@@ -80,7 +80,8 @@ tasks.shadowJar {
     from(zipTree(freetypeJar))
 }
 
-tasks.assemble { dependsOn(tasks.shadowJar) }
+// Not on `assemble` (J7): the merged single jar is the shipping artifact, and the fat per-loader jar
+// nothing installs was the most expensive thing in this build. `./gradlew shadowJar` still builds one.
 
 // Extracts Fabric MC 1.20.1 sources and resources into build/mc-src for local navigation.
 // Sync (not Copy) removes stale files when jars change between toolchain version bumps.

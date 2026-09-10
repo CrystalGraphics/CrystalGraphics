@@ -2,12 +2,14 @@ package com.crystalgraphics.mc.forge;
 
 import com.crystalgraphics.mc.platform.Lifecycle1201;
 import com.crystalgraphics.mc.platform.PlatformService1201;
+import com.crystalgraphics.mc.shared.CrashVariant;
 import com.crystalgraphics.platform.CgPlatform;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.RegisterClientReloadListenersEvent;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
 import net.minecraftforge.event.GameShuttingDownEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.CrashReportCallables;
 import net.minecraftforge.fml.common.Mod;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -23,6 +25,11 @@ import static com.crystalgraphics.mc.platform.CrystalGraphics1201.MODID;
 public final class CrystalGraphics1201Forge {
     
     public CrystalGraphics1201Forge() {
+        // WHICH VARIANT, in the crash report itself. One jar carries a host per loader, each relocated
+        // under its own prefix, so a trace naming com.crystalgraphics.mc.forge.common.* is the only
+        // thing that says which one ran. @see CrashVariant
+        CrashReportCallables.registerCrashCallable(CrashVariant.LABEL,
+                () -> CrashVariant.report(CrystalGraphics1201Forge.class));
         CgPlatform.register(PlatformService1201.getInstance());
     }
 

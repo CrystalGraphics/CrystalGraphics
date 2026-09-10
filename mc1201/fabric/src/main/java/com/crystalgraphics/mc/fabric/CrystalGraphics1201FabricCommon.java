@@ -1,6 +1,7 @@
 package com.crystalgraphics.mc.fabric;
 
 import com.crystalgraphics.mc.platform.PlatformService1201;
+import com.crystalgraphics.mc.shared.CrashVariant;
 import com.crystalgraphics.platform.CgPlatform;
 
 import net.fabricmc.api.ModInitializer;
@@ -24,6 +25,10 @@ public final class CrystalGraphics1201FabricCommon implements ModInitializer {
     
     @Override
     public void onInitialize() {
+        // WHICH VARIANT, in the log rather than the crash report: Fabric Loader exposes no crash
+        // callable, so unlike Forge and 1.7.10 there is nothing to register with. @see CrashVariant
+        LogManager.getLogger("CrystalGraphics").info("[cg] {}: {}", CrashVariant.LABEL,
+                CrashVariant.report(CrystalGraphics1201FabricCommon.class));
         CgPlatform.register(PlatformService1201.getInstance());
     }
 }

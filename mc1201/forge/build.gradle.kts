@@ -71,7 +71,8 @@ tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJ
     from(zipTree(commonJar))
     from(zipTree(freetypeJar))
 }
-tasks.assemble { dependsOn(tasks.named("shadowJar")) }
+// Not on `assemble` (J7): the merged single jar is the shipping artifact. `./gradlew shadowJar` still
+// builds the fat one on request.
 
 // Extracts MinecraftForge 1.20.1 sources and resources into build/mc-src for local navigation.
 // Sync (not Copy) removes stale files when the source jar changes between toolchain version bumps.
@@ -113,7 +114,7 @@ val reobfShadowJar = the<net.neoforged.moddevgradle.legacyforge.dsl.ObfuscationE
         archiveClassifier.set("srg")
     }
 
-tasks.named("assemble") { dependsOn(reobfShadowJar) }
+// Not on `assemble` (J7): reobfuscating a fat jar nothing installs was pure cost.
 
 // -- The thin jar, reobfuscated (J1) --------------------------------------------------------------
 //

@@ -2,6 +2,7 @@ package com.crystalgraphics.mc.neoforge;
 
 import com.crystalgraphics.mc.platform.Lifecycle1201;
 import com.crystalgraphics.mc.platform.PlatformService1201;
+import com.crystalgraphics.mc.shared.CrashVariant;
 import com.crystalgraphics.platform.CgPlatform;
 import com.mojang.logging.LogUtils;
 import net.neoforged.api.distmarker.Dist;
@@ -24,6 +25,11 @@ import static com.crystalgraphics.mc.platform.CrystalGraphics1201.MODID;
 public final class CrystalGraphics1201NeoForge {
 
     public CrystalGraphics1201NeoForge() {
+        // WHICH VARIANT, in the log rather than the crash report: NeoForge 20.4 exposes no crash
+        // callable — CrashReportExtender is its own — so unlike Forge and 1.7.10 there is nothing to
+        // register with, and `latest.log` is the file a report is attached with anyway. @see CrashVariant
+        LogUtils.getLogger().info("[cg] {}: {}", CrashVariant.LABEL,
+                CrashVariant.report(CrystalGraphics1201NeoForge.class));
         CgPlatform.register(PlatformService1201.getInstance());
         Events.register();
     }
