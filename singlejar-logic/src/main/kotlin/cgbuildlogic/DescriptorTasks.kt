@@ -21,13 +21,18 @@ import java.io.File
  *
  * @param descriptor what this mod says about itself, in every format
  * @param logTag     prefix for the two log lines, e.g. `cgui`
+ * @param taskGroup  the group these land in — the same folder as the pipeline that consumes them
  */
-fun Project.registerDescriptorTasks(descriptor: ModDescriptor, logTag: String) {
+fun Project.registerDescriptorTasks(
+    descriptor: ModDescriptor,
+    logTag: String,
+    taskGroup: String = "single jar",
+) {
 
     val descriptorDir = layout.buildDirectory.dir("descriptors/merged")
 
     val generate = tasks.register("generateMergedDescriptors") {
-        group = "build"
+        group = taskGroup
         description = "Writes the descriptors the merged jar carries, one per format, from one declaration."
         val out = descriptorDir
         outputs.dir(out)
@@ -50,7 +55,7 @@ fun Project.registerDescriptorTasks(descriptor: ModDescriptor, logTag: String) {
     // entirely -- a required dependency on a mod the other loader does not have is a refusal to load.
     // Those three are the whole reason one file can serve both loaders.
     val checkAgree = tasks.register("checkDescriptorsAgree") {
-        group = "verification"
+        group = taskGroup
         description = "Fails if a per-loader descriptor disagrees with the one declaration."
         val fabricJson = layout.projectDirectory.file("mc1201/fabric/src/main/resources/fabric.mod.json").asFile
         val forgeToml = layout.projectDirectory.file("mc1201/forge/src/main/resources/META-INF/mods.toml").asFile
@@ -100,7 +105,7 @@ fun Project.registerDescriptorTasks(descriptor: ModDescriptor, logTag: String) {
     }
 
     tasks.register("checkDescriptors") {
-        group = "verification"
+        group = taskGroup
         description = "Generates the merged descriptors and checks the shipped ones against them."
         dependsOn(generate, checkAgree)
     }

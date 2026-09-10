@@ -200,6 +200,21 @@ tasks.named<cgbuildlogic.CheckThinJar>("checkThinJar") { jar.set(reobfThinJar.fl
 | `checkDescriptorsAgree` | Fails if a shipped per-loader descriptor has drifted from that declaration |
 | `checkThinJar` | Per loader: this loader and nothing the root merges |
 
+### More than one jar from one project
+
+Every name above is derived from `SingleJarSpec.name`, which defaults to `single`. Register the
+pipeline twice to ship a second mod from the same build — an optional half nobody should have to
+download, say:
+
+```kotlin
+registerSingleJarPipeline(SingleJarSpec(name = "single",   modId = "myproject",      …))
+registerSingleJarPipeline(SingleJarSpec(name = "language", modId = "myproject_lang", …))
+```
+
+The second gives `languageJar`, `languageShadowJar`, `checkLanguageJar`, `languageJarLibs` and its own
+`build/language-jar/` staging directory, so the two never touch. (A mod id with an underscore, not a
+hyphen: Forge's id grammar allows no hyphen; Fabric allows both.)
+
 `checkSingleJar` catches, specifically: any class above the major ceiling; a relocated class that
 appears once instead of once per variant; a required entry or manifest key missing; a `META-INF/services`
 file that lost a provider; a forbidden prefix shipping unrelocated.
