@@ -272,6 +272,27 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
     /** Bits 9-12 — one per cell edge, set when that edge is on the shape's outline. See {@link Cell#softEdges}. */
     static final int CELL_EDGE_SHIFT = 9;
 
+    /**
+     * Bits 13 and 14: this end of the segment is an INTERIOR JOINT of a split cubic, not a real end
+     * of the stroke.
+     *
+     * <p>A joint is a SEAM and has to partition, exactly as a cell's is. Both segments meeting there
+     * carry {@link #CAP_BUTT}, and a butt cap is antialiased — so both ramp across the same cut and
+     * the overlap composites into a bright spot: 0.808 measured on a hairline whose analytic peak is
+     * 0.722, against 0.720 for the same geometry as one unsplit instance. Marking the end lets the
+     * fragment stage give it a hard, half-open cut instead, and the split cubic then measures 0.720 —
+     * indistinguishable from the unsplit one.</p>
+     *
+     * <p>Distinct from {@link #CAP_BUTT} on purpose: a butt cap a CALLER asked for is a real end and
+     * must keep its antialiased edge. Must match {@code CG_STROKE_FLAG_JOINT_*} in {@code stroke.glsl},
+     * whose note records the one case this form does not cover.</p>
+     */
+    static final int FLAG_JOINT_START = 1 << 13;
+
+    /** @see #FLAG_JOINT_START */
+    static final int FLAG_JOINT_END = 1 << 14;
+
+
     /** Cell edge {@code p0 -> p1}. */
     public static final int CELL_TOP = 1;
     /** Cell edge {@code p1 -> p2}. */
@@ -475,6 +496,10 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
         private int cubicSegments;
         /** Flattened (p0,p1,p2) triples for the split cubic — reused, never reallocated per call. */
         private final float[] cubicScratch = new float[MAX_CUBIC_SEGMENTS * 9];
+        /** The cubic's own eight control floats, held until {@link #submit()} can split them. */
+        private final float[] cubicRaw = new float[8];
+        /** Whether {@link #cubic} was called and {@link #cubicRaw} still needs splitting. */
+        private boolean cubicPending;
 
         // Reused across every submit() call on this Curve instance — never reallocated.
         private final Vector3f scratchP0 = new Vector3f();
@@ -499,6 +524,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
             capEnd = CAP_BUTT;
             pose = null;
             cubicSegments = 0;
+            cubicPending = false;
             return this;
         }
 
@@ -557,7 +583,15 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
                            float c1x, float c1y,
                            float c2x, float c2y,
                            float x1, float y1) {
-            cubicSegments = CgCurveSplitter.splitCubic(x0, y0, c1x, c1y, c2x, c2y, x1, y1, cubicScratch);
+            // SPLIT AT SUBMIT, NOT HERE. The segment count depends on the pose's scale (the
+            // tolerance is a distance on screen), and a caller is free to set the pose after the
+            // geometry -- splitting now would silently make the result depend on call order.
+            cubicRaw[0] = x0; cubicRaw[1] = y0;
+            cubicRaw[2] = c1x; cubicRaw[3] = c1y;
+            cubicRaw[4] = c2x; cubicRaw[5] = c2y;
+            cubicRaw[6] = x1; cubicRaw[7] = y1;
+            cubicPending = true;
+            cubicSegments = 0;
             // Keep p0/p2 meaningful for anything inspecting the descriptor; the emitted records
             // come from cubicScratch, not from these.
             p0x = x0; p0y = y0;
@@ -650,6 +684,12 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
 
             float widthScale = poseScale();
             float feath = resolveFeather(feather, widthScale);
+            if (cubicPending) {
+                cubicSegments = CgCurveSplitter.splitCubic(
+                        cubicRaw[0], cubicRaw[1], cubicRaw[2], cubicRaw[3],
+                        cubicRaw[4], cubicRaw[5], cubicRaw[6], cubicRaw[7],
+                        cubicScratch, widthScale);
+            }
 
             if (cubicSegments > 0) {
                 for (int i = 0; i < cubicSegments; i++) {
@@ -660,6 +700,9 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
                     int segStartCap = (i == 0) ? capStart : CAP_BUTT;
                     int segEndCap = (i == cubicSegments - 1) ? capEnd : CAP_BUTT;
                     packedCaps = CgCurveSplitter.packCaps(segStartCap, segEndCap);
+                    // Every end that is not the whole cubic's own end is a seam -- see FLAG_JOINT_START.
+                    if (i > 0) packedCaps |= FLAG_JOINT_START;
+                    if (i < cubicSegments - 1) packedCaps |= FLAG_JOINT_END;
                     // Taper across the whole cubic, not per segment: each split piece gets the
                     // slice of the [start,end] width ramp that its own t-range covers, so a tapered
                     // cubic tapers smoothly instead of restarting at every segment boundary.
