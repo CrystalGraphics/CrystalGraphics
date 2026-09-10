@@ -236,6 +236,31 @@ public final class CgGraphicsLifecycle {
     }
 
     /**
+     * Makes sure there is a context to draw into, for a caller about to draw OUTSIDE the world pass.
+     *
+     * <p>The engine initialises lazily on the first world render, which is the right moment for
+     * anything drawn in a world and the wrong one for everything else: on a title screen or a menu
+     * there is no world pass, so nothing here ever ran and {@link #isInitialized()} stayed false. A UI
+     * that politely checks before painting then drew NOTHING, and since Minecraft only clears the
+     * colour buffer when it renders a level, the frame still held the previous screen — so a
+     * screenshot came back showing the main menu and read as a working UI that had simply not been
+     * asked to draw.</p>
+     *
+     * <pre>{@code
+     * // in a Screen's render(), before painting:
+     * CgGraphicsLifecycle.ensureContext(window.getWidth(), window.getHeight());
+     * }</pre>
+     *
+     * <p>Safe to call every frame: it initialises once, resizes when the viewport changed, and does
+     * nothing at all after {@link #destroyContext()}. GL thread only, like everything else here.</p>
+     */
+    public static void ensureContext(int w, int h) {
+        if (destroyed) return;
+        if (!initialized) initContext(w, h);
+        else if (w != currentWidth || h != currentHeight) onResize(w, h);
+    }
+
+    /**
      * Called before MC's translucent terrain pass. Lazy-initialises the engine on the
      * first call. Performs the per-frame depth snapshot blit, then executes CG's opaque
      * passes (depth prepass + opaque forward).
@@ -262,8 +287,7 @@ public final class CgGraphicsLifecycle {
 
         CgGlState.invalidateAllIfPresent();
 
-        if (!initialized) initContext(w, h);
-        else if (w != currentWidth || h != currentHeight) onResize(w, h);
+        ensureContext(w, h);
 
         CgRenderDemo.INSTANCE.renderOpaque(partialTick, w, h, sourceFboId);
     }
