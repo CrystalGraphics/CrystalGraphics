@@ -111,9 +111,32 @@ final class CgCurveSplitter {
                           float c2x, float c2y,
                           float x1, float y1,
                           float[] out) {
+        return splitCubic(x0, y0, c1x, c1y, c2x, c2y, x1, y1, out, 1f);
+    }
+
+    /**
+     * As above, with the scale the POSE will apply to these points before they are drawn.
+     *
+     * <p>{@link #CUBIC_TOLERANCE} is a distance, and the caller's units are not the screen's: a graph
+     * canvas hands in canvas units that the pose then multiplies by {@code uiScale * zoom}. Splitting
+     * against the raw numbers pins the segment count no matter how far the view is zoomed in, so the
+     * on-screen flatness error grows with the zoom — measured on a short shader-graph wire, 5 segments
+     * at every zoom and a chord deviation of 0.05px at scale 2 rising to 1.08px at scale 40, which
+     * reads as a step in the stroke at a bend. Feeding the scale in keeps the error at ~0.04px
+     * throughout, at 6 to 14 segments.</p>
+     *
+     * @param deviceScale the pose's uniform scale; 1 when the points are already in device units
+     */
+    static int splitCubic(float x0, float y0,
+                          float c1x, float c1y,
+                          float c2x, float c2y,
+                          float x1, float y1,
+                          float[] out,
+                          float deviceScale) {
         float dx = x1 - 3f * c2x + 3f * c1x - x0;
         float dy = y1 - 3f * c2y + 3f * c1y - y0;
-        double dLen = Math.sqrt(dx * dx + dy * dy);
+        // Scaled, because the tolerance is a DISTANCE ON SCREEN -- see the overload's note.
+        double dLen = Math.sqrt(dx * dx + dy * dy) * Math.max(deviceScale, 1.0e-6f);
 
         int n = 1;
         if (dLen > 0d) {
