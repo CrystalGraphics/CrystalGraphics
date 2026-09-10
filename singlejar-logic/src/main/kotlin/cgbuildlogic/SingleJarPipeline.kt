@@ -90,7 +90,7 @@ data class SingleJarSpec(
  *     modId = "myproject",
  *     fileName = "myproject-1.0.0.jar",
  *     shadePath = "com/myproject/shadow",
- *     thinJars = listOf(":mc1710" to "reobfThinJar", ":mc1201:forge" to "reobfThinShadowJar"),
+ *     thinJars = listOf(":runtime:mc:1710" to "reobfThinJar", ":runtime:mc:modern:forge" to "reobfThinShadowJar"),
  *     libraryProjects = listOf(":core"),
  *     serviceOwners = listOf(":core"),
  * ))

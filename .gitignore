@@ -4,7 +4,7 @@
 /.vscode/
 /run/
 /build/
-# Every module's, not only the root's: /build/ is anchored, so a module added later (mc-shared) had
+# Every module's, not only the root's: /build/ is anchored, so a module added later (runtime/mc/shared) had
 # its outputs staged the first time anything ran `git add` over it.
 **/build/
 /eclipse/
@@ -45,7 +45,7 @@ addon.local.gradle.kts
 addon.late.local.gradle
 addon.late.local.gradle.kts
 layout.json
-mc1201/*/build/mc-src/
+runtime/mc/modern/*/build/mc-src/
 
 
 # The plans, cloned by hand from a private remote (or reached at ../plan/ when nested

@@ -13,7 +13,7 @@ import java.util.List;
  * colors ({@code §0}-{@code §9}, {@code §a}-{@code §f}), styles ({@code §k} obfuscated,
  * {@code §l} bold, {@code §m} strikethrough, {@code §n} underline, {@code §o} italic), and
  * {@code §r} reset. Palette and code table extracted from vanilla 1.7.10's
- * {@code FontRenderer} ({@code mc1710/build/rfg/minecraft-src/.../FontRenderer.java}).
+ * {@code FontRenderer} ({@code runtime/mc/1710/build/rfg/minecraft-src/.../FontRenderer.java}).
  *
  * <h3>Adding a code</h3>
  * <p>Add one constant to {@link Code}: its char and how it mutates a {@link Style}. Nothing

@@ -28,12 +28,12 @@ is one variant per loader.
 ## The shape of a build
 
 ```
-:mc1710      thin jar ─┐
-:mc1201:forge     ─────┤
-:mc1201:neoforge  ─────┼─→ singleShadowJar ─→ downgradeSingleJar ─→ shadeSingleJar ─→ singleJar
-:mc1201:fabric    ─────┘         ↑                   (to Java 8)      (jvmdg stubs)      ↓
-                                 │                                                 checkSingleJar
-   :core, :language, … ──────────┘
+:runtime:mc:1710             ──┐
+:runtime:mc:modern:forge     ──┤
+:runtime:mc:modern:neoforge  ──┼─→ singleShadowJar ─→ downgradeSingleJar ─→ shadeSingleJar ─→ singleJar
+:runtime:mc:modern:fabric    ──┤          ↑              (to Java 8)         (jvmdg stubs)        ↓
+                               │                                                              checkSingleJar
+   :core, :language, … ────────┘
    libraries, descriptors, services
 ```
 
@@ -101,12 +101,12 @@ registerSingleJarPipeline(SingleJarSpec(
     shadePath = "com/myproject/shadow",     // see "Traps" — never let this default
 
     thinJars = listOf(
-        ":mc1710" to "reobfThinJar",
-        ":mc1201:forge" to "reobfThinShadowJar",
-        ":mc1201:neoforge" to "thinShadowJar",
-        ":mc1201:fabric" to "remapThinJar",
+        ":runtime:mc:1710" to "reobfThinJar",
+        ":runtime:mc:modern:forge" to "reobfThinShadowJar",
+        ":runtime:mc:modern:neoforge" to "thinShadowJar",
+        ":runtime:mc:modern:fabric" to "remapThinJar",
     ),
-    libraryProjects = listOf(":core", ":mc-shared"),
+    libraryProjects = listOf(":core", ":runtime:mc:shared"),
     serviceOwners = listOf(":core"),
 
     relocations = listOf("org.joml" to "com.myproject.shadow.org.joml"),
@@ -119,7 +119,7 @@ registerSingleJarPipeline(SingleJarSpec(
         "Implementation-Version" to project.version.toString(),
         "Automatic-Module-Name" to modId,
     ),
-    fabricThinJar = ":mc1201:fabric" to "remapThinJar",
+    fabricThinJar = ":runtime:mc:modern:fabric" to "remapThinJar",
 
     extraContent = {                        // anything else this project bundles
         exclude("module-info.class", "kotlin/**")
@@ -326,7 +326,7 @@ game state whether it painted, and fail on the answer.
 | The `plugins { }` block, group, version, jvmdg conventions | A shared function cannot supply a `plugins` block; ~20 lines stay in each consumer |
 | The mixin config plugin | 69% of its lines differ; each names its own configs and owner map |
 | `ProdSmoke` | Drives clients carrying *every* mod — one copy in the top consumer, not one per project |
-| **`mc-shared`** (`LoaderProbe`, `CrashVariant`) | **Deliberately duplicated.** Runtime code shipped *inside* a jar, answering "which jar am I?". Sharing it would make one mod's entry-point constructor throw `NoClassDefFoundError` beside an older copy of the other, turning benign version skew into a hard crash — and `LoaderProbe` runs at mixin bootstrap on 1.7.10, before mods load |
+| **`runtime/mc/shared`** (`LoaderProbe`, `CrashVariant`) | **Deliberately duplicated.** Runtime code shipped *inside* a jar, answering "which jar am I?". Sharing it would make one mod's entry-point constructor throw `NoClassDefFoundError` beside an older copy of the other, turning benign version skew into a hard crash — and `LoaderProbe` runs at mixin bootstrap on 1.7.10, before mods load |
 
 The rule behind that table: **share the mechanism, never the constants.** Anything that differs
 between two projects belongs to those projects. It is why the merge is shared and the merge *script*

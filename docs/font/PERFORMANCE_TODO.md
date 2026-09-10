@@ -110,8 +110,8 @@ the harness measures that. `CgProfilerDump` exists for when it matters.
 ### The largest caveat: everything is harness-only
 
 Every number in this document comes from `gl-debug-harness` — LWJGL3, no Minecraft, no other mods.
-**Nothing has been measured in-game**, on either mc1710 (LWJGL2 + ASM coremod + a modpack's worth of
-foreign GL state) or mc1201. The coremod's redirect layer, `GLStateMirror`'s effect on state saves,
+**Nothing has been measured in-game**, on either 1.7.10 (LWJGL2 + ASM coremod + a modpack's worth of
+foreign GL state) or 1.20.x. The coremod's redirect layer, `GLStateMirror`'s effect on state saves,
 driver behaviour under a real mod stack, and contention with the game's own render work are all
 unmeasured. The harness is the right place to iterate, but it is not evidence about production.
 
@@ -470,7 +470,7 @@ converged, since it needs a live GL context and cannot be a unit test.
 
 The reason in-game profiling never happened was not that the profiler does not work there — it does
 — but that a loader had no way to get results out. The harness writes files at scene end; nothing
-equivalent existed for mc1710/mc1201.
+equivalent existed for 1.7.10 or 1.20.x.
 
 `CgProfilerDump` (in `core`, platform-agnostic) fixes that:
 
@@ -483,8 +483,8 @@ Use `dumpAllThreads` — glyph generation runs on background workers, and a rend
 shows none of it, which is exactly how MSDF generation stayed invisible for so long. Output is
 timestamped rather than overwritten, so two sessions can be compared. Never throws.
 
-**Still outstanding, and it needs a human:** wiring that call to a keybind or command in `mc1710`
-(and `mc1201`), then playing a real session. Specifically worth checking in-game:
+**Still outstanding, and it needs a human:** wiring that call to a keybind or command in `runtime/mc/1710`
+(and `runtime/mc/modern`), then playing a real session. Specifically worth checking in-game:
 
 - `doBind.stateSave` with the ASM coremod live — the harness says all 6 slots `glGet`
   unconditionally because they are not mirror-backed; confirm that holds in production
@@ -605,7 +605,7 @@ Everything else here is startup or niche. This one runs during normal play, once
 Every number in this document is `gl-debug-harness`: LWJGL3, no Minecraft, no other mods.
 
 - **Instrument**: nothing new. `CgProfiler` already works in-game; it needs a dump path. Wire a
-  keybind or command in `mc1710` (and mc1201) that calls `CgProfiler.reportAllThreads()` and writes
+  keybind or command in `runtime/mc/1710` (and 1.20.x) that calls `CgProfiler.reportAllThreads()` and writes
   the same CSV/tree the harness does.
 - **Measure specifically**: `doBind.stateSave` with the ASM coremod live (harness says 6 non-mirror
   slots always `glGet` — confirm that in-game), `freetype.rasterize` under real CPU contention, and
@@ -968,13 +968,13 @@ moving the wait earlier just moves the stall.
 **Investigated 2026-07-29; both of my proposed avenues turned out not to apply.**
 
 1. **"It may be a harness artifact because `GLStateMirror` is unpopulated there."** Wrong, twice
-   over. `GLStateMirror` is indeed only populated by `CrystalGLRedirects`, the **mc1710 ASM
-   coremod** — mc1201 (Forge/NeoForge/Fabric) has no redirect either, so the harness is
+   over. `GLStateMirror` is indeed only populated by `CrystalGLRedirects`, the **1.7.10 ASM
+   coremod** — 1.20.x (Forge/NeoForge/Fabric) has no redirect either, so the harness is
    representative of MC 1.20.x, not unrepresentative. But more decisively: the mirror is irrelevant
    *at this call site*. `CgGlState.save` passes `useGlGet` only to `FboState` and `ProgramState` —
    the only two slots that can consult the mirror — and this save requests **BLEND, DEPTH, CULL,
    STENCIL, ALPHA_TEST, COLOR_MASK**, none of which are mirror-backed. They `glGet` unconditionally
-   on every platform, mc1710 included.
+   on every platform, 1.7.10 included.
 2. **"Save fewer slots."** Already done — it saves 6, not `saveAll()`'s 16.
 
 So the remaining cost is 6 unavoidable `glGet` calls per material bind. The frame-2 spike is those

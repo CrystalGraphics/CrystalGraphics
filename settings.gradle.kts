@@ -13,7 +13,7 @@ pluginManagement {
         id("com.gradleup.shadow") version("9.2.2")
 
         // The mc1201 loader scripts request these with no version, so the pins live here; moddev
-        // matches mc1201/build-logic's net.neoforged:moddev-gradle:2.0.141. (docs/BUILD_SETUP.md says a
+        // matches runtime/mc/modern/build-logic's net.neoforged:moddev-gradle:2.0.141. (docs/BUILD_SETUP.md says a
         // net.neoforged.moddev.repositories settings plugin pins them; nothing applies it here or in
         // CrystalGUI.)
         id("net.neoforged.moddev") version("2.0.141")
@@ -26,7 +26,7 @@ pluginManagement {
 
     // Supplies the mc1201 convention plugins; without it every mc1201 subproject fails at
     // id("cg-mc1201-loader").
-    includeBuild("mc1201/build-logic")
+    includeBuild("runtime/mc/modern/build-logic")
 
     repositories {
         maven {
@@ -61,14 +61,14 @@ include("freetype-msdfgen-harfbuzz-bindings")
 // What every loader variant in the single jar shares: the mixin config plugin that decides whose
 // mixins may apply, and the loader probe under it. Java 8, one dependency (Mixin, compileOnly), and
 // no Minecraft type at all.
-include("mc-shared")
+include("runtime:mc:shared")
 
 // Tier 1 (CrystalGUI plan/crystalgui/platform-single-jar.md §12): the GL backend, the context and the
 // input service per LWJGL family, with no Minecraft type in either. Compiled once, never remapped,
 // one copy in the merged jar however many targets ship. What Minecraft caches and we must therefore
 // tell it about is a T2 subclass in the target's own module, never a branch in here.
-include("mc-lwjgl2")
-include("mc-lwjgl3")
+include("runtime:lwjgl:2")
+include("runtime:lwjgl:3")
 
 // Platform split subprojects (plain java-library, no gtnhconvention)
 include(":core")
@@ -92,8 +92,8 @@ include(":platform")
 //
 // Containment, not equality: currentDir is where Gradle was invoked, and IntelliJ runs a task from the
 // SUBPROJECT directory. Under equality, :gl-debug-harness:runHarness dropped the loaders here while
-// CrystalGUI still substituted com.crystalgraphics:crystalgraphics to :mc1710, failing every task with
-// "Project with path ':mc1710' not found". Repro: cd gl-debug-harness && ../gradlew :gl-debug-harness:tasks
+// CrystalGUI still substituted com.crystalgraphics:crystalgraphics to :runtime:mc:1710, failing every task with
+// "Project with path ':runtime:mc:1710' not found". Repro: cd gl-debug-harness && ../gradlew :gl-debug-harness:tasks
 //
 // So: anywhere inside this checkout, or inside the project containing it. The settings.gradle.kts probe
 // accepts the parent only when the parent is itself a Gradle build.
@@ -109,28 +109,28 @@ val loadersWanted = invokedUnder(ourCheckout) ||
         java.io.File(superProject, "settings.gradle.kts").isFile &&
         invokedUnder(superProject))
 
-if (loadersWanted) include("mc1710")
+if (loadersWanted) include("runtime:mc:1710")
 
 //// Standalone GL debug harness (no Minecraft/Forge)
 //if (file("gl-debug-harness").exists())
 //    include(":gl-debug-harness")
 
 // mc1201 subprojects. `common` holds the platform bundle, the three loaders are registration only.
-// :mc1201:neoforge targets MC 1.20.4 -- NeoForge published no 20.1.x series at all, so `common`
+// :runtime:mc:modern:neoforge targets MC 1.20.4 -- NeoForge published no 20.1.x series at all, so `common`
 // is compiled against 1.20.1 and consumed by a 1.20.4 module.
 //
-// CrystalGUI resolves :mc1201:common through a dependencySubstitution in its
+// CrystalGUI resolves :runtime:mc:modern:common through a dependencySubstitution in its
 // composite.settings.gradle.kts, which must name it in the same commit as these lines -- a
 // substitution naming a missing project fails configuration for every task in both builds.
 //
-// Gated like :mc1710: @see loadersWanted.
+// Gated like :runtime:mc:1710: @see loadersWanted.
 // MC 1.20.1 Forge is included unconditionally: a 1.20.1 Forge mod consuming CrystalGraphics needs it
 // on its run classpath to see CrystalGraphics in the mod list. Fabric (fabric-loom, Java 21 daemon)
 // and NeoForge (MC 1.20.4) are not a 1.20.1 consumer's business.
-include(":mc1201:common")
-include(":mc1201:forge")
+include(":runtime:mc:modern:common")
+include(":runtime:mc:modern:forge")
 
 if (loadersWanted) {
-    include(":mc1201:neoforge")
-    include(":mc1201:fabric")
+    include(":runtime:mc:modern:neoforge")
+    include(":runtime:mc:modern:fabric")
 }

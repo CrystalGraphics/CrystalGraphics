@@ -18,7 +18,7 @@ import java.util.Objects;
  * Central registry for all platform service implementations.
  *
  * <p>Call {@link #register(CgPlatformService)} once during platform initialisation
- * (e.g. from {@code PlatformRegistry1710.onPreInit()} in the mc1710 module).
+ * (e.g. from {@code PlatformRegistry1710.onPreInit()} in the 1.7.10 module).
  * All getters except {@link #resources()} throw {@link IllegalStateException} if
  * invoked before registration. {@link #resources()} returns {@code null} before
  * registration so that {@code CgIO.openStream} can fall back to classpath loading
