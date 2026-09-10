@@ -1,6 +1,5 @@
 package com.crystalgraphics.mc.lwjgl2;
 
-import com.crystalgraphics.platform.service.CgCursorImage;
 import com.crystalgraphics.platform.service.CgCursorService;
 
 import org.lwjgl.BufferUtils;
@@ -26,7 +25,7 @@ import java.util.Map;
  *
  * <p>Two things this has to get right and the GLFW side does not:
  * <ul>
- *   <li><b>Rows go bottom-up.</b> {@link CgCursorImage} states top-down, which is what every other
+ *   <li><b>Rows go bottom-up.</b> {@link Image} states top-down, which is what every other
  *       toolkit wants; LWJGL 2 wants the opposite, so the image is flipped here and the hotspot's Y
  *       with it. Getting only one of the two right leaves a cursor that looks correct and clicks in
  *       the wrong place.</li>
@@ -44,7 +43,7 @@ public final class Lwjgl2CursorService implements CgCursorService {
     private Boolean cursorsAvailable;
 
     @Override
-    public void show(CgCursorImage image) {
+    public void show(Image image) {
         if (!supported) return;
         try {
             Mouse.setNativeCursor(resolve(image));
@@ -53,7 +52,7 @@ public final class Lwjgl2CursorService implements CgCursorService {
         }
     }
 
-    private org.lwjgl.input.Cursor resolve(CgCursorImage image) {
+    private org.lwjgl.input.Cursor resolve(Image image) {
         // No picture, or one only a native could present: the system arrow beats a wrong shape.
         if (image == null || !image.hasPixels()) return null;
         if (cache.containsKey(image.name())) return cache.get(image.name());
@@ -70,7 +69,7 @@ public final class Lwjgl2CursorService implements CgCursorService {
         return created;
     }
 
-    private boolean canCreateCursors(CgCursorImage image) {
+    private boolean canCreateCursors(Image image) {
         if (cursorsAvailable == null) {
             cursorsAvailable = (org.lwjgl.input.Cursor.getCapabilities()
                     & org.lwjgl.input.Cursor.CURSOR_ONE_BIT_TRANSPARENCY) != 0;
@@ -80,7 +79,7 @@ public final class Lwjgl2CursorService implements CgCursorService {
                 && image.width() <= org.lwjgl.input.Cursor.getMaxCursorSize();
     }
 
-    private static org.lwjgl.input.Cursor toCursor(CgCursorImage image) throws LWJGLException {
+    private static org.lwjgl.input.Cursor toCursor(Image image) throws LWJGLException {
         final int w = image.width();
         final int h = image.height();
         int[] topDown = image.argb();
