@@ -1,6 +1,5 @@
 package com.crystalgraphics.mc.lwjgl3;
 
-import com.crystalgraphics.platform.service.CgCursorImage;
 import com.crystalgraphics.platform.service.CgCursorService;
 
 import org.lwjgl.BufferUtils;
@@ -27,7 +26,7 @@ import java.util.function.LongSupplier;
  * would be stale exactly when it mattered. Asking per call costs a field read.
  *
  * <p><b>It enumerates no cursor keywords.</b> {@link #STANDARD} maps
- * {@link CgCursorImage#name() names} to the shapes <i>GLFW itself ships</i> and nothing more; every
+ * {@link Image#name() names} to the shapes <i>GLFW itself ships</i> and nothing more; every
  * other name is drawn from the pixels the caller supplied. That split is the whole seam — the
  * vocabulary lives with whoever owns the UI, and this class only answers "can I draw that natively".
  *
@@ -67,7 +66,7 @@ public final class GlfwCursorService implements CgCursorService {
     }
 
     @Override
-    public void show(CgCursorImage image) {
+    public void show(Image image) {
         if (!supported) return;
         try {
             long handle = window.getAsLong();
@@ -80,7 +79,7 @@ public final class GlfwCursorService implements CgCursorService {
         }
     }
 
-    private long resolve(CgCursorImage image) {
+    private long resolve(Image image) {
         if (image == null) return MemoryUtil.NULL;
         Long cached = cache.get(image.name());
         if (cached != null) return cached;
@@ -90,7 +89,7 @@ public final class GlfwCursorService implements CgCursorService {
     }
 
     /** GLFW's own cursor if it knows this name, the caller's artwork if not. */
-    private static long create(CgCursorImage image) {
+    private static long create(Image image) {
         Integer standard = STANDARD.get(image.name());
         if (standard != null) {
             long handle = GLFW.glfwCreateStandardCursor(standard);
@@ -100,10 +99,10 @@ public final class GlfwCursorService implements CgCursorService {
     }
 
     /**
-     * GLFW wants RGBA bytes in top-down rows, which is the order {@link CgCursorImage} states — so
+     * GLFW wants RGBA bytes in top-down rows, which is the order {@link Image} states — so
      * the only work is unpacking each {@code 0xAARRGGBB} int into four bytes.
      */
-    private static long createFromPixels(CgCursorImage image) {
+    private static long createFromPixels(Image image) {
         if (!image.hasPixels()) return MemoryUtil.NULL;
 
         ByteBuffer pixels = BufferUtils.createByteBuffer(image.width() * image.height() * 4);
