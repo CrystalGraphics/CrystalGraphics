@@ -8,7 +8,6 @@ import org.gradle.api.tasks.SourceSetContainer
 import org.gradle.api.tasks.bundling.AbstractArchiveTask
 import org.gradle.api.tasks.bundling.Jar
 import org.gradle.api.JavaVersion
-import org.gradle.api.tasks.Copy
 import org.gradle.kotlin.dsl.get
 import org.gradle.kotlin.dsl.named
 import org.gradle.kotlin.dsl.register
@@ -229,17 +228,28 @@ fun Project.registerSingleJarPipeline(spec: SingleJarSpec) {
         destinationDirectory.set(layout.buildDirectory.dir("$n-jar"))
     }
 
-    // The artifact. Unclassified, because it is the product rather than a stage of one. A Copy rather
-    // than another Jar: the bytes are finished, and re-zipping them would change the hash for no
-    // reason -- which a reproducibility check would then report as non-determinism.
-    val singleJar = tasks.register<Copy>("${n}Jar") {
+    // The artifact. Unclassified, because it is the product rather than a stage of one. A byte copy
+    // rather than another Jar: the bytes are finished, and re-zipping them would change the hash for
+    // no reason -- which a reproducibility check would then report as non-determinism.
+    //
+    // ONE OUTPUT FILE, not a Copy into `libs`. A Copy declares the whole DIRECTORY as its output, so
+    // with this pipeline registered twice Gradle sees each check reading a file inside a directory the
+    // other pipeline's Copy produces and refuses the build for an undeclared dependency -- naming two
+    // tasks that have nothing to do with each other. Declaring the file is what makes the pipeline
+    // registrable more than once.
+    val artifactFile = layout.buildDirectory.file("libs/${spec.fileName}")
+    val singleJar = tasks.register("${n}Jar") {
         group = spec.taskGroup
         description = "The one jar every loader installs."
         dependsOn(shadeSingleJar)
-        from(shadeSingleJar.map { it.archiveFile })
-        into(layout.buildDirectory.dir("libs"))
-        val name = spec.fileName
-        rename { name }
+        val source = shadeSingleJar.flatMap { it.archiveFile }
+        inputs.file(source).withPropertyName("shadedJar")
+        outputs.file(artifactFile)
+        doLast {
+            val target = artifactFile.get().asFile
+            target.parentFile.mkdirs()
+            source.get().asFile.copyTo(target, overwrite = true)
+        }
     }
 
     tasks.withType<AbstractArchiveTask>().configureEach {
@@ -254,7 +264,7 @@ fun Project.registerSingleJarPipeline(spec: SingleJarSpec) {
         // and a task type used by two pipelines cannot name either group itself.
         group = spec.taskGroup
         dependsOn(singleJar)
-        jar.set(layout.buildDirectory.file("libs/${spec.fileName}"))
+        jar.set(artifactFile)
         classMajorCeiling.set(52)
         spec.configureCheck(this)
     }
