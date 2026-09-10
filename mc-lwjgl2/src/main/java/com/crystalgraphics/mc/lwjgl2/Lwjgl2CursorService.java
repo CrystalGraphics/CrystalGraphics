@@ -4,6 +4,7 @@ import com.crystalgraphics.platform.service.CgCursorService;
 
 import org.lwjgl.BufferUtils;
 import org.lwjgl.LWJGLException;
+import org.lwjgl.input.Cursor;
 import org.lwjgl.input.Mouse;
 
 import java.nio.IntBuffer;
@@ -38,7 +39,7 @@ import java.util.Map;
  */
 public final class Lwjgl2CursorService implements CgCursorService {
 
-    private final Map<String, org.lwjgl.input.Cursor> cache = new HashMap<>();
+    private final Map<String, Cursor> cache = new HashMap<>();
     private boolean supported = true;
     private Boolean cursorsAvailable;
 
@@ -52,12 +53,12 @@ public final class Lwjgl2CursorService implements CgCursorService {
         }
     }
 
-    private org.lwjgl.input.Cursor resolve(Image image) {
+    private Cursor resolve(Image image) {
         // No picture, or one only a native could present: the system arrow beats a wrong shape.
         if (image == null || !image.hasPixels()) return null;
         if (cache.containsKey(image.name())) return cache.get(image.name());
 
-        org.lwjgl.input.Cursor created = null;
+        Cursor created = null;
         if (canCreateCursors(image)) {
             try {
                 created = toCursor(image);
@@ -71,15 +72,15 @@ public final class Lwjgl2CursorService implements CgCursorService {
 
     private boolean canCreateCursors(Image image) {
         if (cursorsAvailable == null) {
-            cursorsAvailable = (org.lwjgl.input.Cursor.getCapabilities()
-                    & org.lwjgl.input.Cursor.CURSOR_ONE_BIT_TRANSPARENCY) != 0;
+            cursorsAvailable = (Cursor.getCapabilities()
+                    & Cursor.CURSOR_ONE_BIT_TRANSPARENCY) != 0;
         }
         return cursorsAvailable
-                && image.width() >= org.lwjgl.input.Cursor.getMinCursorSize()
-                && image.width() <= org.lwjgl.input.Cursor.getMaxCursorSize();
+                && image.width() >= Cursor.getMinCursorSize()
+                && image.width() <= Cursor.getMaxCursorSize();
     }
 
-    private static org.lwjgl.input.Cursor toCursor(Image image) throws LWJGLException {
+    private static Cursor toCursor(Image image) throws LWJGLException {
         final int w = image.width();
         final int h = image.height();
         int[] topDown = image.argb();
@@ -94,6 +95,6 @@ public final class Lwjgl2CursorService implements CgCursorService {
 
         // Y from the bottom, since that is the space the image is now in.
         int flippedHotspotY = h - 1 - image.hotspotY();
-        return new org.lwjgl.input.Cursor(w, h, image.hotspotX(), flippedHotspotY, 1, pixels, null);
+        return new Cursor(w, h, image.hotspotX(), flippedHotspotY, 1, pixels, null);
     }
 }
