@@ -48,8 +48,11 @@ registerSingleJarPipeline(SingleJarSpec(
         ":mc1201:neoforge" to "thinShadowJar",
         ":mc1201:fabric" to "remapThinJar",
     ),
-    libraryProjects =
-        listOf(":core", ":platform", ":freetype-msdfgen-harfbuzz-bindings", ":mc-shared"),
+    // Tier 1 (§12) joins the library list rather than any loader's thin jar: one compiled copy of
+    // each LWJGL family, added once for every variant, never remapped -- which is the whole reason
+    // the tier exists. A loader bundling its own would put four copies in the merge to reject.
+    libraryProjects = listOf(":core", ":platform", ":freetype-msdfgen-harfbuzz-bindings",
+                             ":mc-shared", ":mc-lwjgl2", ":mc-lwjgl3"),
     serviceOwners = listOf(":core", ":platform"),
 
     // JOML is the one that matters: a jar containing `org/joml` is a split package against
@@ -57,8 +60,25 @@ registerSingleJarPipeline(SingleJarSpec(
     // ships, relocated, and CrystalGUI applies the identical rewrite over no classes of its own so
     // the two mods keep naming one type. The OBJ and glTF loaders ship for a plainer reason: the
     // 1.20.x jars have never carried them, so `CgMeshLoader.load("*.gltf")` cannot work there today.
-    // J9 replaces JOML with a vendored `com.crystalgraphics.math` and its entry goes.
+    //
+    // THE JOML ROW IS A KNOWN DEFECT, not a settled choice. `com.crystalgraphics.api` takes JOML
+    // types in seven public signatures, and this rewrites those signatures -- so a consumer holding
+    // Minecraft's own org.joml.Matrix4f (MC 1.19.3+ ships JOML) cannot pass it to us without a
+    // conversion. Vendoring, which this comment used to promise for J9, keeps the breakage and only
+    // respells it. The API must be plain `org.joml`; what is unresolved is whether the jar may also
+    // CARRY org/joml, which is what the split-package claim above decides and E-J9-JOML measures.
+    // plan/crystalgui/platform-single-jar/j9-handoff.md, "The JOML position".
     relocations = listOf(
+        // MEASURED 2026-09-10 (E-J9-JOML), so nobody lifts this again to find out. Built without it,
+        // the jar carries 113 plain `org/joml/` entries and Forge 1.20.1 dies in the module layer
+        // before any log line is written:
+        //
+        //     java.lang.module.ResolutionException:
+        //         Modules org.joml and crystalgraphics export package org.joml to module minecraft
+        //
+        // Not a precaution and not about class loading: ModLauncher reads the package list off the
+        // archive, so F1's "a class is inert until defined" buys nothing here. NeoForge dies the same
+        // way. What it does NOT settle is where the API should stand -- see the note above.
         "org.joml" to "com.crystalgraphics.shadow.org.joml",
         "de.javagl" to "com.crystalgraphics.shadow.de.javagl",
         "com.fasterxml.jackson" to "com.crystalgraphics.shadow.com.fasterxml.jackson",
@@ -86,7 +106,7 @@ registerSingleJarPipeline(SingleJarSpec(
         // the implementation, text the font stack.
         expectSingle.set(listOf("com/crystalgraphics/api/", "com/crystalgraphics/gl/",
                                 "com/crystalgraphics/text/"))
-        relocatedClasses.set(mapOf("com/crystalgraphics/mc/platform/Lifecycle1201.class" to 3))
+        relocatedClasses.set(mapOf("com/crystalgraphics/mc/modern/platform/LifecycleModern.class" to 3))
         requiredEntries.set(listOf(
             "META-INF/mods.toml", "fabric.mod.json", "mcmod.info", "pack.mcmeta",
             "mixins.crystalgraphics.json",

@@ -2,7 +2,8 @@ package com.crystalgraphics.platform;
 
 import cpw.mods.fml.common.FMLCommonHandler;
 import com.crystalgraphics.CrystalGraphicsVersion;
-import com.crystalgraphics.platform.gl.Lwjgl2GLContext;
+import com.crystalgraphics.mc.lwjgl2.Lwjgl2GLContext;
+import com.crystalgraphics.platform.service.Lwjgl2InputService;
 import com.crystalgraphics.platform.gl.Lwjgl2GLBackend;
 import com.crystalgraphics.platform.service.LifecycleService1710;
 import com.crystalgraphics.platform.service.ReloadService1710;
@@ -85,7 +86,7 @@ public final class PlatformService1710 implements CgPlatformService {
     }
 
     @Override public CgInputService input() {
-        if (inputImpl == null) inputImpl = new InputService1710();
+        if (inputImpl == null) inputImpl = new Lwjgl2InputService();
         return inputImpl;
     }
 

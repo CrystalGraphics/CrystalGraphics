@@ -10,12 +10,12 @@ for version pins under `mc1201.forge` / `mc1201.parchment.*` keys.
 
 ## The loader is registration only
 
-One `@Mod` class, `CrystalGraphics1201Forge`. Its `Events` inner class holds the two
+One `@Mod` class, `CrystalGraphicsForge`. Its `Events` inner class holds the two
 `@Mod.EventBusSubscriber` buses: MOD for the reload listener, FORGE+CLIENT for the two render stages
 and the shutdown signal.
 
 Which event, and which stage of it. What the engine then does — bind the main render target, run the
-opaque or transparent pass, forward a reload, stop at shutdown — is `:mc1201:common`'s `Lifecycle1201`,
+opaque or transparent pass, forward a reload, stop at shutdown — is `:mc1201:common`'s `LifecycleModern`,
 shared by all three.
 
 ## Minecraft Source Location

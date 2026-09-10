@@ -9,12 +9,12 @@ under `mc1204.*` keys.
 
 ## The loader is registration only
 
-One `@Mod` class, `CrystalGraphics1201NeoForge`. Its `Events` inner class registers the render
+One `@Mod` class, `CrystalGraphicsNeoForge`. Its `Events` inner class registers the render
 stages and the shutdown signal on `NeoForge.EVENT_BUS` from the constructor, and holds the MOD-bus
 reload listener.
 
 Which event, and which stage of it. What the engine then does — bind the main render target, run the
-opaque or transparent pass, forward a reload, stop at shutdown — is `:mc1201:common`'s `Lifecycle1201`,
+opaque or transparent pass, forward a reload, stop at shutdown — is `:mc1201:common`'s `LifecycleModern`,
 shared by all three.
 
 ## Minecraft Source Location

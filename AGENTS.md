@@ -100,7 +100,7 @@ The repository is a Gradle multi-project build. Every subproject has a distinct 
 | `freetype-msdfgen-harfbuzz-bindings/` | 25 → 8 | none | JNI bindings for FreeType/HarfBuzz text shaping. Bundled in every loader JAR. |
 | `gl-debug-harness/` | 17 | LWJGL3 | Standalone GL test harness — no Minecraft, boots in seconds. Use for all rendering work. |
 | `mc1710/` | 25 → 8 | LWJGL2 | MC 1.7.10 / Forge. Registers `PlatformRegistry1710` which implements all SPI interfaces against LWJGL2. |
-| `mc1201/common/` | 17 | LWJGL3 | Shared MC 1.20.x platform service implementation (`PlatformService1201`, `Mc120xGLBackend`) and mixins (`MixinGameRenderer`, `MixinMinecraftShutdown`). No loader-specific types. |
+| `mc1201/common/` | 17 | LWJGL3 | Shared MC 1.20.x platform service implementation (`PlatformServiceModern`, `Mc120xGLBackend`) and mixins (`MixinGameRenderer`, `MixinMinecraftShutdown`). No loader-specific types. |
 | `mc1201/forge/` | 17 | LWJGL3 | MC 1.20.1 / MinecraftForge 47.x. Thin bootstrap: registers events on the Forge bus, calls `CgPlatform.register()`. |
 | `mc1201/neoforge/` | 17 | LWJGL3 | MC 1.20.4 / NeoForge. Same pattern as forge. Despite living under `mc1201/`, targets MC 1.20.4. |
 | `mc1201/fabric/` | 17 | LWJGL3 | MC 1.20.1 / Fabric. Same pattern, uses Fabric API callbacks + GLFW for inputs with no Fabric API equivalent. |
@@ -143,8 +143,8 @@ Each loader bootstraps by registering its implementation:
 // mc1710 — in PlatformRegistry1710.onPreInit():
 CgPlatform.register(new PlatformService1710(...));
 
-// mc1201 — in CrystalGraphics1201Forge / Fabric / NeoForge constructor:
-CgPlatform.register(PlatformService1201.getInstance());
+// mc1201 — in CrystalGraphicsForge / Fabric / NeoForge constructor:
+CgPlatform.register(PlatformServiceModern.getInstance());
 ```
 
 **If you find yourself calling raw GL inside `core/` or importing a loader type, you are in the wrong module.** Add a method to the appropriate SPI interface in `platform/`, implement it in each loader's platform service, then call it via `CgPlatform`.
@@ -159,7 +159,7 @@ Use this when adding anything that touches GL, lifecycle, or loader-specific eve
 
 1. Define the method or interface in `platform/` SPI (`CgGlDispatch`, `CgLifecycleService`, etc.)
 2. Implement in `mc1710/`'s `Lwjgl2GlDispatch` / `LifecycleService1710` (LWJGL2 path)
-3. Implement in `mc1201/common/`'s `Mc120xGLBackend` / `LifecycleService1201` (LWJGL3 path)
+3. Implement in `mc1201/common/`'s `Mc120xGLBackend` / `LifecycleService` (LWJGL3 path)
 4. Call via `CgPlatform.*()` in `core/` — never call the implementation directly
 
 **Adding a new render hook or input event to mc1201 loaders:**
@@ -1177,9 +1177,9 @@ Failures in each step are isolated and logged — a broken shader does not preve
 
 ## Platform Service Adapters — `mc/platform/`
 
-`mc1710/src/main/java/com/crystalgraphics/mc/platform/` contains the MC 1.7.10 concrete implementations of all six platform SPI interfaces. These are the **only classes** that may reference MC/Forge types. Bootstrap is owned by `PlatformRegistry1710`, called from `CrystalGraphics` event handlers — not from `CrystalGraphics` directly.
+`mc1710/src/main/java/com/crystalgraphics/mc/modern/platform/` contains the MC 1.7.10 concrete implementations of all six platform SPI interfaces. These are the **only classes** that may reference MC/Forge types. Bootstrap is owned by `PlatformRegistry1710`, called from `CrystalGraphics` event handlers — not from `CrystalGraphics` directly.
 
-**Package guide**: `mc1710/src/main/java/com/crystalgraphics/mc/platform/AGENTS.md`
+**Package guide**: `mc1710/src/main/java/com/crystalgraphics/mc/modern/platform/AGENTS.md`
 
 | Class | Implements | Key role |
 |---|---|---|
@@ -1241,7 +1241,7 @@ All platform service logic and mixins that apply to all three mc1201 loaders liv
 
 | Class | Role |
 |---|---|
-| `PlatformService1201` | Compositor — implements all SPI interfaces, registers as the single `CgPlatformService` |
+| `PlatformServiceModern` | Compositor — implements all SPI interfaces, registers as the single `CgPlatformService` |
 | `Mc120xGLBackend` | GL dispatch — routes to `RenderSystem` → `GlStateManager` → raw LWJGL3 GL in that order |
 | `MixinGameRenderer` | Injects after `renderLevel()` to drive `CgGraphicsLifecycle.onOpaquePass` + `onTransparentPass` split; also owns first-frame lazy init via `onRenderFrame` |
 | `MixinMinecraftShutdown` | Injects into MC shutdown to call `CgGraphicsLifecycle.destroyContext()` |
@@ -1251,17 +1251,17 @@ All platform service logic and mixins that apply to all three mc1201 loaders liv
 Each loader's mod entrypoint does exactly two things: register the platform service and subscribe events. No GL work in constructors.
 
 ```java
-// Forge — CrystalGraphics1201Forge constructor
-CgPlatform.register(PlatformService1201.getInstance());
+// Forge — CrystalGraphicsForge constructor
+CgPlatform.register(PlatformServiceModern.getInstance());
 // events via @Mod.EventBusSubscriber(bus = Bus.FORGE)
 
-// NeoForge — CrystalGraphics1201NeoForge constructor
-CgPlatform.register(PlatformService1201.getInstance());
-NeoForge.EVENT_BUS.addListener(CrystalGraphics1201NeoForge::onRenderGui);
-NeoForge.EVENT_BUS.addListener(CrystalGraphics1201NeoForge::onMouseScroll);
+// NeoForge — CrystalGraphicsNeoForge constructor
+CgPlatform.register(PlatformServiceModern.getInstance());
+NeoForge.EVENT_BUS.addListener(CrystalGraphicsNeoForge::onRenderGui);
+NeoForge.EVENT_BUS.addListener(CrystalGraphicsNeoForge::onMouseScroll);
 
-// Fabric — CrystalGraphics1201Fabric.onInitializeClient()
-CgPlatform.register(PlatformService1201.getInstance());
+// Fabric — CrystalGraphicsFabric.onInitializeClient()
+CgPlatform.register(PlatformServiceModern.getInstance());
 HudRenderCallback.EVENT.register(...);
 ClientLifecycleEvents.CLIENT_STARTED.register(...);
 ```
