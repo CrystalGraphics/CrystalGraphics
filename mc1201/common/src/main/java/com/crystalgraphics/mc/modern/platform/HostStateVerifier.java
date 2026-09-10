@@ -1,6 +1,8 @@
 package com.crystalgraphics.mc.modern.platform;
 
 import com.mojang.blaze3d.platform.GlStateManager;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.lwjgl.opengl.GL11C;
 import org.lwjgl.opengl.GL13C;
 
@@ -48,8 +50,20 @@ public final class HostStateVerifier {
     /** Set once, because a flag read per frame is a system-property lookup per frame. */
     private static final boolean ENABLED = Boolean.getBoolean(FLAG);
 
+    /**
+     * Through log4j, so it lands in the client's own {@code latest.log} beside everything else.
+     *
+     * <p>Not {@code System.err}: that goes to the launcher console and not to the file anyone reads
+     * afterwards, which made the first version of this class unfalsifiable — a run that found nothing
+     * and a run that never happened looked identical.
+     */
+    private static final Logger LOG = LogManager.getLogger("CrystalGraphics");
+
     /** Domains already reported. @see HostStateVerifier */
     private static final Set<String> REPORTED = new LinkedHashSet<>();
+
+    /** Announced once, so "no disagreements" is distinguishable from "never ran". */
+    private static boolean announced;
 
     private HostStateVerifier() { }
 
@@ -65,6 +79,11 @@ public final class HostStateVerifier {
      */
     public static void verify(String pass) {
         if (!ENABLED) return;
+        if (!announced) {
+            announced = true;
+            LOG.info("[cg-host-verify] on -- comparing the driver against GlStateManager after every "
+                    + "pass. Silence from here means they agree.");
+        }
         try {
             checkCap(pass, "BLEND", GL11C.GL_BLEND, boolField("BLEND", "mode"));
             checkCap(pass, "DEPTH_TEST", GL11C.GL_DEPTH_TEST, boolField("DEPTH", "mode"));
@@ -109,7 +128,7 @@ public final class HostStateVerifier {
 
     private static void reportOnce(String domain, String message) {
         if (REPORTED.add(domain)) {
-            System.err.println("[cg-host-verify] " + message);
+            LOG.warn("[cg-host-verify] {}", message);
         }
     }
 
