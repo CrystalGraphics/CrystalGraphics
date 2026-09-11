@@ -901,7 +901,7 @@ public class CgFontRegistry {
         // immediately and lets the worker's result replace it a few frames later.
         if (msdfFont != null && allowSyncGeneration
                 && glyphGenerationExecutor.isPending(
-                        CgGlyphGenerationJob.msdf(font.getKey(), font.getFontBytes(),
+                        CgGlyphGenerationJob.msdf(font.getKey(), font.getData(),
                                 atlasKey, msdfAtlasKey, msdfAtlasKey.getConfig()))) {
             CgProfiler.count("glyph.msdf.syncSkippedAlreadyPending");
             allowSyncGeneration = false;
@@ -961,7 +961,7 @@ public class CgFontRegistry {
         // cache a placement array containing one, so the glyph is re-requested next frame instead of
         // being permanently invisible.
         CgGlyphGenerationJob job = CgGlyphGenerationJob.bitmap(
-                font.getKey(), font.getFontBytes(), bitmapAtlasKey, bitmapRasterKey,
+                font.getKey(), font.getData(), bitmapAtlasKey, bitmapRasterKey,
                 effectiveTargetPx, subPixelBucket);
 
         // Fall back to synchronous generation whenever the async route cannot be relied on:
@@ -993,7 +993,7 @@ public class CgFontRegistry {
                                       int subPixelBucket) {
         CgGlyphGenerationJob job = CgGlyphGenerationJob.bitmap(
                 font.getKey(),
-                font.getFontBytes(),
+                font.getData(),
                 atlasKey,
                 rasterFontKey,
                 effectiveTargetPx,
@@ -1006,7 +1006,7 @@ public class CgFontRegistry {
                                     CgMsdfAtlasKey msdfAtlasKey) {
         CgGlyphGenerationJob job = CgGlyphGenerationJob.msdf(
                 font.getKey(),
-                font.getFontBytes(),
+                font.getData(),
                 atlasKey,
                 msdfAtlasKey,
                 msdfAtlasKey.getConfig());

@@ -13,6 +13,7 @@ Older investigation notes, one-off experiments, and pre-refactor writeups have b
 - `text/atlas` owns **atlas storage**: single-page atlases, paged atlases, pages, packing.
 - `text/msdf` owns **distance-field generation logic**.
 - `text/render` owns the **draw side**: batching, VBOs, contexts, raster-tier policy, final GL submission.
+- `text/font` owns **font files and fallback tables**: `.ttc` faces, names and coverage read without natives, and which installed family to try per script (`api/font/CgSystemFonts` is the public side).
 
 If you only want one sentence:
 

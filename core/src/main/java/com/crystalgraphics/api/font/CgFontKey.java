@@ -11,9 +11,9 @@ import java.util.List;
  * Immutable key identifying a specific font registration.
  *
  * <p>A {@code CgFontKey} uniquely identifies a font by its path (absolute filesystem
- * path or resource ID), style variant, target pixel size, and optional variable-font
- * axis coordinates. Two keys with identical fields are considered equal, making this
- * type safe for use as a {@link java.util.Map} key or {@link java.util.Set} element.</p>
+ * path or resource ID), the face within that file, style variant, target pixel size, and
+ * optional variable-font axis coordinates. Two keys with identical fields are considered equal,
+ * making this type safe for use as a {@link java.util.Map} key or {@link java.util.Set} element.</p>
  *
  * <p>The {@code targetPx} field specifies the render size in pixels (e.g., 12, 32, 48).
  * Different pixel sizes produce separate atlas buckets since glyph bitmaps are
@@ -24,6 +24,11 @@ import java.util.List;
  * CgFontKey key = new CgFontKey("/fonts/NotoSans-Regular.ttf", CgFontStyle.REGULAR, 12);
  * CgFontKey same = new CgFontKey("/fonts/NotoSans-Regular.ttf", CgFontStyle.REGULAR, 12);
  * assert key.equals(same);  // true — value equality
+ *
+ * // two faces of one collection are two fonts, and must never share an atlas bucket
+ * CgFontKey gothic   = new CgFontKey("C:/Windows/Fonts/msgothic.ttc", 0, CgFontStyle.REGULAR, 12, List.of());
+ * CgFontKey uiGothic = new CgFontKey("C:/Windows/Fonts/msgothic.ttc", 1, CgFontStyle.REGULAR, 12, List.of());
+ * assert !gothic.equals(uiGothic);
  * </pre>
  *
  * @see CgFontStyle
@@ -35,6 +40,9 @@ public class CgFontKey {
     /** Absolute path or resource ID of the font file. */
     String fontPath;
 
+    /** Which face of a font collection ({@code .ttc}/{@code .otc}) the path names; 0 for a single-face file. */
+    int faceIndex;
+
     /** Style variant (regular, bold, italic, bold-italic). */
     CgFontStyle style;
 
@@ -44,15 +52,26 @@ public class CgFontKey {
     List<CgFontVariation> variations;
 
     public CgFontKey(String fontPath, CgFontStyle style, int targetPx) {
-        this(fontPath, style, targetPx, Collections.<CgFontVariation>emptyList());
+        this(fontPath, 0, style, targetPx, Collections.<CgFontVariation>emptyList());
     }
 
     public CgFontKey(String fontPath,
                      CgFontStyle style,
                      int targetPx,
                      List<CgFontVariation> variations) {
+        this(fontPath, 0, style, targetPx, variations);
+    }
+
+    public CgFontKey(String fontPath,
+                     int faceIndex,
+                     CgFontStyle style,
+                     int targetPx,
+                     List<CgFontVariation> variations) {
         if (fontPath == null) {
             throw new IllegalArgumentException("fontPath must not be null");
+        }
+        if (faceIndex < 0) {
+            throw new IllegalArgumentException("faceIndex must be >= 0, got: " + faceIndex);
         }
         if (style == null) {
             throw new IllegalArgumentException("style must not be null");
@@ -61,6 +80,7 @@ public class CgFontKey {
             throw new IllegalArgumentException("targetPx must be > 0, got: " + targetPx);
         }
         this.fontPath = fontPath;
+        this.faceIndex = faceIndex;
         this.style = style;
         this.targetPx = targetPx;
         this.variations = canonicalizeVariations(variations);
@@ -71,7 +91,7 @@ public class CgFontKey {
     }
 
     public CgFontKey withTargetPx(int newTargetPx) {
-        return new CgFontKey(fontPath, style, newTargetPx, variations);
+        return new CgFontKey(fontPath, faceIndex, style, newTargetPx, variations);
     }
 
     static List<CgFontVariation> canonicalizeVariations(List<CgFontVariation> variations) {

@@ -1,23 +1,22 @@
 package com.crystalgraphics.text.cache;
 
+import com.crystalgraphics.api.font.CgFontData;
 import com.crystalgraphics.api.font.CgFontKey;
 import com.crystalgraphics.api.font.CgGlyphKey;
 import com.crystalgraphics.text.atlas.CgGlyphAtlas;
 import com.crystalgraphics.text.msdf.CgMsdfAtlasConfig;
 
-import java.util.Arrays;
-
 /**
  * Immutable descriptor for one async glyph-generation unit of work.
  *
- * <p>Carries the font bytes, glyph key, raster key, MSDF config, and
+ * <p>Carries the font's data, glyph key, raster key, MSDF config, and
  * sub-pixel bucket needed by {@link CgWorkerFontContext} to produce a
  * {@link CgGlyphGenerationResult} off the render thread.</p>
  */
 final class CgGlyphGenerationJob {
 
     private final CgFontKey sourceFontKey;
-    private final byte[] fontBytes;
+    private final CgFontData fontData;
     private final CgGlyphKey atlasKey;
     private final CgRasterFontKey bitmapRasterKey;
     private final CgMsdfAtlasKey msdfAtlasKey;
@@ -26,7 +25,7 @@ final class CgGlyphGenerationJob {
     private final int subPixelBucket;
 
     private CgGlyphGenerationJob(CgFontKey sourceFontKey,
-                                 byte[] fontBytes,
+                                 CgFontData fontData,
                                  CgGlyphKey atlasKey,
                                  CgRasterFontKey bitmapRasterKey,
                                  CgMsdfAtlasKey msdfAtlasKey,
@@ -36,14 +35,14 @@ final class CgGlyphGenerationJob {
         if (sourceFontKey == null) {
             throw new IllegalArgumentException("sourceFontKey must not be null");
         }
-        if (fontBytes == null || fontBytes.length == 0) {
-            throw new IllegalArgumentException("fontBytes must not be null or empty");
+        if (fontData == null) {
+            throw new IllegalArgumentException("fontData must not be null");
         }
         if (atlasKey == null) {
             throw new IllegalArgumentException("atlasKey must not be null");
         }
         this.sourceFontKey = sourceFontKey;
-        this.fontBytes = fontBytes;
+        this.fontData = fontData;
         this.atlasKey = atlasKey;
         this.bitmapRasterKey = bitmapRasterKey;
         this.msdfAtlasKey = msdfAtlasKey;
@@ -53,14 +52,14 @@ final class CgGlyphGenerationJob {
     }
 
     static CgGlyphGenerationJob bitmap(CgFontKey sourceFontKey,
-                                       byte[] fontBytes,
+                                       CgFontData fontData,
                                        CgGlyphKey atlasKey,
                                        CgRasterFontKey bitmapRasterKey,
                                        int effectiveTargetPx,
                                        int subPixelBucket) {
         return new CgGlyphGenerationJob(
                 sourceFontKey,
-                fontBytes,
+                fontData,
                 atlasKey,
                 bitmapRasterKey,
                 null,
@@ -70,13 +69,13 @@ final class CgGlyphGenerationJob {
     }
 
     static CgGlyphGenerationJob msdf(CgFontKey sourceFontKey,
-                                     byte[] fontBytes,
+                                     CgFontData fontData,
                                      CgGlyphKey atlasKey,
                                      CgMsdfAtlasKey msdfAtlasKey,
                                      CgMsdfAtlasConfig msdfConfig) {
         return new CgGlyphGenerationJob(
                 sourceFontKey,
-                fontBytes,
+                fontData,
                 atlasKey,
                 null,
                 msdfAtlasKey,
@@ -89,8 +88,8 @@ final class CgGlyphGenerationJob {
         return sourceFontKey;
     }
 
-    byte[] getFontBytes() {
-        return fontBytes;
+    CgFontData getFontData() {
+        return fontData;
     }
 
     CgGlyphKey getAtlasKey() {
@@ -171,7 +170,7 @@ final class CgGlyphGenerationJob {
                 ", msdfAtlasKey=" + msdfAtlasKey +
                 ", effectiveTargetPx=" + effectiveTargetPx +
                 ", subPixelBucket=" + subPixelBucket +
-                ", fontBytes=" + Arrays.hashCode(fontBytes) +
+                ", fontData=" + fontData +
                 '}';
     }
 

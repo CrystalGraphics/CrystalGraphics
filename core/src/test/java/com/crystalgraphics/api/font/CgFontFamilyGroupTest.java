@@ -7,6 +7,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,8 +20,7 @@ import static org.junit.Assert.*;
  * mock, matching {@link CgFontKeyTest}'s established pattern for this test module.
  *
  * <p>Every {@link CgFont} created via {@link #familyOf} is tracked and disposed in
- * {@link #disposeCreatedFonts} — relying on the native finalizer instead crashed the JVM
- * (an access violation in {@code FTFace.finalize()}) under a full test-suite run.</p>
+ * {@link #disposeCreatedFonts}, so native memory is released here rather than left to finalizers.</p>
  */
 public class CgFontFamilyGroupTest {
 
@@ -89,6 +89,26 @@ public class CgFontFamilyGroupTest {
 
         assertSame("Later mutation of the caller's map must not affect the group",
                 regular, group.resolve(CgFontStyle.BOLD));
+    }
+
+    /** A lazy group loads a style's face only when a span asks for it, and asks once either way. */
+    @Test
+    public void testLazy_buildsEachStyleOnceOnFirstResolve() {
+        CgFontFamily regular = familyOf(CgFontStyle.REGULAR);
+        CgFontFamily bold = familyOf(CgFontStyle.BOLD);
+        Map<CgFontStyle, Integer> asked = new EnumMap<>(CgFontStyle.class);
+        CgFontFamilyGroup group = CgFontFamilyGroup.lazy(regular, style -> {
+            asked.merge(style, 1, Integer::sum);
+            return style == CgFontStyle.BOLD ? bold : null;
+        });
+
+        assertTrue("nothing is built up front", asked.isEmpty());
+        assertSame(bold, group.resolve(CgFontStyle.BOLD));
+        assertSame(bold, group.resolve(CgFontStyle.BOLD));
+        assertSame("no italic face: regular answers", regular, group.resolve(CgFontStyle.ITALIC));
+        assertSame(regular, group.resolve(CgFontStyle.ITALIC));
+        assertEquals(Integer.valueOf(1), asked.get(CgFontStyle.BOLD));
+        assertEquals("a missing face is remembered too", Integer.valueOf(1), asked.get(CgFontStyle.ITALIC));
     }
 
     // ---------------------------------------------------------------

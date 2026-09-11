@@ -75,6 +75,11 @@ Important invariants:
 
 - all sources in one family must share the same target pixel size
 - cluster resolution must respect continuation marks / sticky continuation behavior
+- a `CgFontFallback` is asked only on a miss, once per code point (a `null` is remembered); what it
+  supplies joins `getDiscoveredSources()` and `resolveLoadedFont` finds it by key, while
+  `layoutMetrics` stay the declared sources'
+- `atSize(px)` keeps the fallback — re-size a family through it, never by rebuilding from
+  `getFallbackSources()`, which silently drops every installed-font glyph at the new size
 
 If you are debugging “why was this substring shaped with that font?”, this is the class to read.
 
@@ -90,6 +95,30 @@ Provides:
 - coverage checks for code points
 
 This is the granularity at which fallback resolution reasons about “one candidate font”.
+
+### `CgSystemFonts` · `CgSystemFontFace` · `CgGenericFamily` · `CgFontFallback`
+
+The installed fonts: found by name with CSS weight/italic matching, CSS's generic families per
+platform, and the per-character fallback an application uses — `fallback(Locale)` is a
+`CgFontFallback` for `CgFontFamily.withFallback`.
+
+The index is built without natives by `text/font/Sfnt`, which reads names, weights and cmap
+coverage straight from the files. A face is found by any family name its font gives, in every
+language — `find("メイリオ")` is Meiryo — as DirectWrite and fontconfig match; the one it is listed
+under is FreeType's choice (`tt_face_get_name`). Checked against FreeType on every installed face of
+a Windows 10 machine: family and style names identical on all 571 (124 of which answer to more than
+one name), BMP coverage on 569. The whole scan takes 100–200 ms. The per-script tables are
+`text/font/ScriptFallbacks`; Windows' is ported from Chromium (BSD-3, attributed in that file).
+
+- `load` caches by (face, weight) and returns the same `CgFont`; never dispose one
+- an installed face is opened from its **file** (`CgFontData`) at its face index, by FreeType and
+  msdfgen alike, and the file stays deletable while open — on Windows through the bindings' own
+  `ftsystem.c`. A font loaded from bytes extracts a collection face up front, which is why `CgFontKey`
+  carries `faceIndex`, and goes into native memory once (`FTFontData`) for every size, worker and
+  msdfgen font to share
+- glyph workers keep one native face per font, not per size (`CgWorkerFontContext.perFont`)
+- a Han character follows the language its own text shows before the locale
+  (`ScriptFallbacks.languageShownBy`): 日 in 日本語です is Japanese
 
 ### Layout bridge — no bridge class, just public seam members
 

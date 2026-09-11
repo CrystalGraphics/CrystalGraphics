@@ -940,7 +940,8 @@ For UI, 2D overlays, and non-material draw paths (not the CrystalShader material
 
 - **Canonical docs**: `docs/font/README.md` (entry point) · `docs/font/api-guide.md` (usage) · `docs/font/architecture.md` (package boundaries)
 - **Public entry points**: `api/font/` · `api/text/`
-- **Internal**: `text/layout/` · `text/cache/` · `text/atlas/` · `text/msdf/` · `text/render/`
+- **Internal**: `text/layout/` · `text/cache/` · `text/atlas/` · `text/msdf/` · `text/render/` · `text/font/` (font files without natives: `.ttc` faces, names, coverage; the per-script fallback tables)
+- **This jar ships no fonts.** Text a caller's own fonts cannot draw falls back to the installed ones through `CgSystemFonts` / `CgFontFamily.withFallback`; tests read `core/src/test/resources/fonts/`.
 
 Do not rely on older font/text notes outside the `docs/font/` set — that is the current source of truth.
 

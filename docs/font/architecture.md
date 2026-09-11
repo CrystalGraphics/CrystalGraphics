@@ -6,7 +6,7 @@ CrystalGraphics now separates the text system into three broad categories:
 
 1. **public font API** (`api/font`)
 2. **public text API** (`api/text`)
-3. **internal implementation packages** (`text/layout`, `text/cache`, `text/atlas`, `text/msdf`, `text/render`)
+3. **internal implementation packages** (`text/layout`, `text/cache`, `text/atlas`, `text/msdf`, `text/render`, `text/font`)
 
 That split is the main architectural story.
 
@@ -124,6 +124,25 @@ Main classes:
 This package answers:
 
 > once layout and atlas placements already exist, how do we turn them into draw calls?
+
+### `text/font`
+
+Owns font **files**, read without natives, and the fallback tables.
+
+Main classes:
+
+- `Sfnt` — the faces a file holds, each face's names (every localized family name among them),
+  weight and cmap coverage; one face of a `.ttc` extracted as a standalone font, which is what a
+  collection loaded from bytes becomes
+- `CodePointCoverage` — a face's coverage as merged ranges
+- `ScriptFallbacks` — which installed families to try for a character, per platform; Windows'
+  table is ported from Chromium
+
+This package answers:
+
+> which installed font can draw this character, without opening every font natively?
+
+`api/font/CgSystemFonts` is its public face.
 
 ---
 
