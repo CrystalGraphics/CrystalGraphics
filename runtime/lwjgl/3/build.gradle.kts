@@ -1,7 +1,7 @@
 import java.io.File as JFile
 
-// mc-lwjgl3 — §12 tier 1 for LWJGL3: the GL backend, the context, the input service and the
-// clipboard, written against LWJGL 3 and nothing else.
+// runtime/lwjgl/3 — §12 tier 1 for LWJGL3: the GL backend, the context, the input service and
+// the clipboard, written against LWJGL 3 and nothing else.
 //
 // One copy in the merged jar, compiled once, never remapped, shared by every 1.13+ target. What
 // Minecraft caches and we must therefore tell it about is `Blaze3dGLBackend extends
@@ -22,7 +22,7 @@ plugins {
 
 group = providers.gradleProperty("modGroup").orElse("com.crystalgraphics").get()
 version = providers.gradleProperty("modVersion").orElse("1.0.0").get()
-base { archivesName.set("crystalgraphics-mc-lwjgl3") }
+base { archivesName.set("crystalgraphics-lwjgl3") }
 
 java {
     sourceCompatibility = JavaVersion.VERSION_17
@@ -70,7 +70,8 @@ tasks.named<JavaCompile>("compileJava") {
             }
             .toList()
         if (violations.isNotEmpty()) {
-            error("Minecraft or loader imports found in runtime/lwjgl/3/ - tier 1 is LWJGL and the JDK only:\n" +
+            error("Minecraft or loader imports found in runtime/lwjgl/3/ - tier 1 is LWJGL and " +
+                "the JDK only:\n" +
                 violations.joinToString("\n") { "  ${it.relativeTo(JFile(srcRoot))}" })
         }
     }

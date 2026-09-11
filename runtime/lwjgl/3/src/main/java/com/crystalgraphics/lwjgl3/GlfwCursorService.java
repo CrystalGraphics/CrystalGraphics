@@ -1,4 +1,4 @@
-package com.crystalgraphics.mc.lwjgl3;
+package com.crystalgraphics.lwjgl3;
 
 import com.crystalgraphics.platform.service.CgCursorService;
 

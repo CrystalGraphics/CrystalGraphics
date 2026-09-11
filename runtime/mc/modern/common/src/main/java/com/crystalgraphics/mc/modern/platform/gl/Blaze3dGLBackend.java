@@ -1,6 +1,6 @@
 package com.crystalgraphics.mc.modern.platform.gl;
 
-import com.crystalgraphics.mc.lwjgl3.Lwjgl3GLBackend;
+import com.crystalgraphics.lwjgl3.Lwjgl3GLBackend;
 
 import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
