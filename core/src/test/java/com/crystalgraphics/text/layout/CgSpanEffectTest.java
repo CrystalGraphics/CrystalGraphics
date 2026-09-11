@@ -30,7 +30,7 @@ import static org.junit.Assert.assertTrue;
 public class CgSpanEffectTest {
 
     /** A real, shipped font with genuine kerning data — the kern test needs both to mean anything. */
-    private static final String FONT_RESOURCE = "/assets/crystalgraphics/IBMPlexSans-Regular.ttf";
+    private static final String FONT_RESOURCE = "/fonts/IBMPlexSans-Regular.ttf";
     private static final int SIZE_PX = 32;
 
     private static CgFontFamilyGroup group;

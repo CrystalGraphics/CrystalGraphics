@@ -501,7 +501,7 @@ public class CgFontKeyTest {
     }
 
     private static byte[] loadTestFontBytes() {
-        java.io.InputStream in = CgFontKeyTest.class.getResourceAsStream("/assets/crystalgraphics/test-font.ttf");
+        java.io.InputStream in = CgFontKeyTest.class.getResourceAsStream("/fonts/test-font.ttf");
         assertNotNull("test font resource must exist", in);
         try {
             java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();

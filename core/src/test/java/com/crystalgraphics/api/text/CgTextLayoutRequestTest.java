@@ -221,7 +221,7 @@ public class CgTextLayoutRequestTest {
     }
 
     private static byte[] loadTestFontBytes() {
-        InputStream in = CgTextLayoutRequestTest.class.getResourceAsStream("/assets/crystalgraphics/test-font.ttf");
+        InputStream in = CgTextLayoutRequestTest.class.getResourceAsStream("/fonts/test-font.ttf");
         assertNotNull("test font resource must exist", in);
         try {
             ByteArrayOutputStream bos = new ByteArrayOutputStream();

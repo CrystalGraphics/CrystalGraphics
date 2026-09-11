@@ -29,7 +29,7 @@ import static org.junit.Assert.assertTrue;
  */
 public class CgMsdfSyncBudgetTest {
 
-    private static final String CJK_FONT = "src/main/resources/assets/crystalgraphics/MPLUS1p-Regular.ttf";
+    private static final String CJK_FONT = "src/test/resources/fonts/MPLUS1p-Regular.ttf";
 
     /**
      * The budget is 2 ms, but one glyph is always allowed to start, so a frame can overshoot by at

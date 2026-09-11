@@ -103,7 +103,7 @@ public class CgFontFamilyGroupTest {
     }
 
     private static byte[] loadTestFontBytes() {
-        InputStream in = CgFontFamilyGroupTest.class.getResourceAsStream("/assets/crystalgraphics/test-font.ttf");
+        InputStream in = CgFontFamilyGroupTest.class.getResourceAsStream("/fonts/test-font.ttf");
         assertNotNull("test font resource must exist", in);
         try {
             ByteArrayOutputStream bos = new ByteArrayOutputStream();

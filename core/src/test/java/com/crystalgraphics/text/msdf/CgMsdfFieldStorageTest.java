@@ -37,7 +37,7 @@ import static org.junit.Assert.assertTrue;
  */
 public class CgMsdfFieldStorageTest {
 
-    private static final String CJK_FONT = "src/main/resources/assets/crystalgraphics/MPLUS1p-Regular.ttf";
+    private static final String CJK_FONT = "src/test/resources/fonts/MPLUS1p-Regular.ttf";
 
     /** Scales spanning well below and above the shipping 80, all dividing the 240px eval grid. */
     private static final int[] SCALES = {30, 40, 48, 60, 80, 120};

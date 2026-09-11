@@ -28,7 +28,7 @@ import static org.junit.Assert.assertTrue;
  */
 public class CgMsdfGenerationDirectCostTest {
 
-    private static final String CJK_FONT = "src/main/resources/assets/crystalgraphics/MPLUS1p-Regular.ttf";
+    private static final String CJK_FONT = "src/test/resources/fonts/MPLUS1p-Regular.ttf";
     private static final int SAMPLE_GLYPHS = 150;
 
     /** {@code overlap == null} means "let {@link CgMsdfGenerator#needsOverlapSupport} decide". */
