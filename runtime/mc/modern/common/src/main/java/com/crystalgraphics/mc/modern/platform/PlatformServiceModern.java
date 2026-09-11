@@ -2,9 +2,9 @@ package com.crystalgraphics.mc.modern.platform;
 
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.mc.modern.platform.gl.Blaze3dGLBackend;
-import com.crystalgraphics.mc.lwjgl3.GlfwCursorService;
-import com.crystalgraphics.mc.lwjgl3.GlfwInputService;
-import com.crystalgraphics.mc.lwjgl3.Lwjgl3GLContext;
+import com.crystalgraphics.lwjgl3.GlfwCursorService;
+import com.crystalgraphics.lwjgl3.GlfwInputService;
+import com.crystalgraphics.lwjgl3.Lwjgl3GLContext;
 
 import com.crystalgraphics.mc.modern.platform.service.LifecycleService;
 import com.crystalgraphics.mc.modern.platform.service.ReloadService;
@@ -37,10 +37,10 @@ import net.minecraft.client.Minecraft;
  * <h3>An assembler, not an implementation</h3>
  *
  * <p>Nothing here does GL or GLFW work of its own. Every service is either the era's own tier-2 class
- * or a <b>tier-1</b> one from {@code mc-lwjgl3}, which knows nothing about Minecraft and is handed the
- * one fact it needs — {@link #windowHandle()}, as a supplier. That is §12's rule in one file: a class
- * lives in the lowest tier its dependencies allow, and a value from a higher tier is passed in rather
- * than reached for.
+ * or a <b>tier-1</b> one from {@code runtime/lwjgl/3}, which knows nothing about Minecraft and is
+ * handed the one fact it needs — {@link #windowHandle()}, as a supplier. That is §12's rule in one
+ * file: a class lives in the lowest tier its dependencies allow, and a value from a higher tier is
+ * passed in rather than reached for.
  *
  * <p>{@link #gl()} is the exception worth naming: the backend it builds <em>is</em> tier 2, because
  * telling Minecraft what state we changed is the one thing tier 1 must not know how to do. See

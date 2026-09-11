@@ -20,4 +20,4 @@
  * <p>The build enforces the boundary: importing {@code net.minecraft}, {@code com.mojang} or any
  * loader package fails {@code compileJava} with the offending files named.
  */
-package com.crystalgraphics.mc.lwjgl3;
+package com.crystalgraphics.lwjgl3;

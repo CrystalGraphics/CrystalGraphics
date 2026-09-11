@@ -2,10 +2,10 @@ package com.crystalgraphics.platform;
 
 import cpw.mods.fml.common.FMLCommonHandler;
 import com.crystalgraphics.CrystalGraphicsVersion;
-import com.crystalgraphics.mc.lwjgl2.Lwjgl2CursorService;
-import com.crystalgraphics.mc.lwjgl2.Lwjgl2GLBackend;
-import com.crystalgraphics.mc.lwjgl2.Lwjgl2InputService;
-import com.crystalgraphics.mc.lwjgl2.Lwjgl2GLContext;
+import com.crystalgraphics.lwjgl2.Lwjgl2CursorService;
+import com.crystalgraphics.lwjgl2.Lwjgl2GLBackend;
+import com.crystalgraphics.lwjgl2.Lwjgl2InputService;
+import com.crystalgraphics.lwjgl2.Lwjgl2GLContext;
 
 
 import com.crystalgraphics.platform.service.LifecycleService1710;

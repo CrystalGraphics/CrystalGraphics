@@ -1,7 +1,7 @@
 import java.io.File as JFile
 
-// mc-lwjgl2 — §12 tier 1 for LWJGL2: the GL backend, the context and the input service, written
-// against LWJGL 2.9.4 and nothing else.
+// runtime/lwjgl/2 — §12 tier 1 for LWJGL2: the GL backend, the context and the input service,
+// written against LWJGL 2.9.4 and nothing else.
 //
 // One copy in the merged jar, compiled once, never remapped, shared by every LWJGL2 target (1.7.10
 // and 1.12.2) and by the debug harness. A class that needs one value from a Minecraft-facing tier
@@ -21,7 +21,7 @@ plugins {
 
 group = providers.gradleProperty("modGroup").orElse("com.crystalgraphics").get()
 version = providers.gradleProperty("modVersion").orElse("1.0.0").get()
-base { archivesName.set("crystalgraphics-mc-lwjgl2") }
+base { archivesName.set("crystalgraphics-lwjgl2") }
 
 java {
     sourceCompatibility = JavaVersion.VERSION_17
@@ -70,7 +70,8 @@ tasks.named<JavaCompile>("compileJava") {
             }
             .toList()
         if (violations.isNotEmpty()) {
-            error("Minecraft or loader imports found in runtime/lwjgl/2/ - tier 1 is LWJGL and the JDK only:\n" +
+            error("Minecraft or loader imports found in runtime/lwjgl/2/ - tier 1 is LWJGL and " +
+                "the JDK only:\n" +
                 violations.joinToString("\n") { "  ${it.relativeTo(JFile(srcRoot))}" })
         }
     }
