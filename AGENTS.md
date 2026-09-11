@@ -1305,6 +1305,19 @@ ClientLifecycleEvents.CLIENT_STARTED.register(client -> {
 
 **Mixin policy**: Mixins are last resort. Always prefer native loader events or GLFW callbacks. A Mixin is justified only when no event exists and the GLFW callback approach is also unavailable.
 
+> ⚠️ **This rests on loader events being the STABLE surface, and that was measured false for the render
+> hook on 2026-09-11.** Across MC 1.17.1 / 1.18.2 / 1.19.2 / 1.20.x / 1.21.4, Forge's event API moved
+> four ways — a package renamed (1.17), classes that did not exist yet (1.18), a constant added late
+> (`AFTER_BLOCK_ENTITIES`, 1.20.1), and `RenderLevelStageEvent` gone from `net.minecraftforge.client.event`
+> by 1.21.4 — while `LevelRenderer.renderLevel` underneath never moved and every SRG member resolved on
+> every version. On 1.19.2 the hook set cannot express our point at all: no constant means "after block
+> entities, before translucent", so the nearest is a degradation rather than a rename.
+>
+> **The policy is not repealed** — it is right for input, lifecycle and anything with a real event. For
+> the opaque/transparent render hook specifically, a mixin on the Minecraft method is the more stable
+> choice and is what `mc1710` has always done. Unanswered before acting: whether one refmap links across
+> versions. Full record in CrystalGUI `plan/crystalgui/platform-single-jar/experiments.md` E-B1.
+
 ### ⚠️ MC 1.20.x Forge/NeoForge Dev-Run Classpath Rule
 
 > `runtimeOnly` Gradle deps are **invisible** to ModDevGradle dev runs. The `mods{}` block is the only source ModDevGradle reads for the Forge/NeoForge run classpath.
