@@ -27,7 +27,6 @@ import lombok.experimental.Accessors;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.logging.Logger;
@@ -1404,11 +1403,6 @@ public class CgTextRenderer {
         if (family == null) throw new IllegalArgumentException("family must not be null");
         if (targetPx <= 0) throw new IllegalArgumentException("targetPx must be > 0, got: " + targetPx);
 
-        CgFont primary = family.getPrimarySource().requireFont().atSize(targetPx);
-        List<CgFontSource> fallbackSources = new ArrayList<>();
-        for (CgFontSource fallback : family.getFallbackSources()) 
-            fallbackSources.add(new CgFontSource(fallback.requireFont().atSize(targetPx), fallback.getSourceLabel()));
-        
-        return new CgFontFamily(family.getFamilyId(), new CgFontSource(primary, family.getPrimarySource().getSourceLabel()), fallbackSources);
+        return family.atSize(targetPx);
     }
 }

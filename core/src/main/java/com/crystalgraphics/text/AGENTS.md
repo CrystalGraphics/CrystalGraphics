@@ -16,6 +16,7 @@ Use this file as the first stop when you need to orient yourself across the inte
 - `text/atlas/packing` — rectangle packing algorithms used by atlas pages
 - `text/msdf` — distance-field generation logic and config
 - `text/render` — draw-time orchestration, batching, VBO submission, render contexts
+- `text/font` — font files without natives (`.ttc` faces, names, coverage) and the per-script fallback tables behind `api/font/CgSystemFonts`
 
 ## End-to-end responsibility chain
 

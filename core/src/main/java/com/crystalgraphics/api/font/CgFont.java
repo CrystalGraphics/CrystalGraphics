@@ -8,12 +8,11 @@ import com.crystalgraphics.freetype.FreeTypeLibrary;
 import com.crystalgraphics.harfbuzz.HBFont;
 import com.crystalgraphics.util.profiling.CgProfiler;
 import com.crystalgraphics.text.FreeTypeHarfBuzzIntegration;
+import com.crystalgraphics.text.font.Sfnt;
 import com.crystalgraphics.msdfgen.FreeTypeMSDFIntegration;
 
-import java.io.ByteArrayOutputStream;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStream;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -38,15 +37,28 @@ import java.util.logging.Logger;
  * <p>This preserves the existing atlas/shaping architecture, which still requires a
  * concrete pixel size internally, while letting callers treat the uploaded font data
  * as a reusable logical font asset.</p>
+ *
+ * <pre>{@code
+ * CgFont inter = CgFont.load("assets/fonts/Inter-Regular.ttf", CgFontStyle.REGULAR).atSize(16);
+ *
+ * // one face of a collection: MS Gothic is face 0 of msgothic.ttc, MS UI Gothic face 1
+ * CgFont uiGothic = CgFont.load("C:/Windows/Fonts/msgothic.ttc", 1, CgFontStyle.REGULAR, 16);
+ * }</pre>
+ *
+ * <p>A font loaded from a path is opened from its file by every native that reads it. One loaded
+ * from bytes goes into native memory once, a collection face copied out first, so
+ * {@link #getFontBytes()} is always one font; {@link #getFaceIndex()} and the key remember which
+ * face it was. See {@link #getData()}.</p>
  */
 public class CgFont {
 
     private static final Logger LOGGER = Logger.getLogger(CgFont.class.getName());
 
     private final String logicalName;
+    private final int faceIndex;
     private final CgFontStyle style;
     private final List<CgFontVariation> variations;
-    private final byte[] fontBytes;
+    private final CgFontData data;
     private final boolean sizeBound;
     private final CgFontKey key;
     private final CgFontMetrics metrics;
@@ -65,8 +77,9 @@ public class CgFont {
     private Runnable disposeListener;
 
     private CgFont(String logicalName,
+                   int faceIndex,
                    CgFontStyle style,
-                   byte[] fontBytes,
+                   CgFontData data,
                    List<CgFontVariation> variations,
                    boolean sizeBound,
                    Integer targetPx,
@@ -77,11 +90,12 @@ public class CgFont {
                    HBFont hbFont,
                    CgFont baseFont) {
         this.logicalName = logicalName;
+        this.faceIndex = faceIndex;
         this.style = style;
-        this.fontBytes = fontBytes;
+        this.data = data;
         this.variations = variations;
         this.sizeBound = sizeBound;
-        this.key = sizeBound ? new CgFontKey(logicalName, style, targetPx.intValue(), variations) : null;
+        this.key = sizeBound ? new CgFontKey(logicalName, faceIndex, style, targetPx.intValue(), variations) : null;
         this.metrics = metrics;
         this.variationAxes = variationAxes;
         this.ftLibrary = ftLibrary;
@@ -99,16 +113,7 @@ public class CgFont {
     public static CgFont load(String fontPath,
                               CgFontStyle style,
                               List<CgFontVariation> variations) {
-        if (fontPath == null) {
-            throw new IllegalArgumentException("fontPath must not be null");
-        }
-        byte[] data;
-        try {
-            data = readFileBytes(fontPath);
-        } catch (IOException e) {
-            throw new FreeTypeException(0, "Failed to read font file: " + fontPath + " — " + e.getMessage());
-        }
-        return loadUnsizedFromBytes(data, fontPath, style, variations);
+        return loadUnsized(fileOf(fontPath, 0), fontPath, 0, style, variations);
     }
 
     public static CgFont load(String fontPath, CgFontStyle style, int targetPx) {
@@ -119,16 +124,22 @@ public class CgFont {
                               CgFontStyle style,
                               int targetPx,
                               List<CgFontVariation> variations) {
-        if (fontPath == null) {
-            throw new IllegalArgumentException("fontPath must not be null");
-        }
-        byte[] data;
-        try {
-            data = readFileBytes(fontPath);
-        } catch (IOException e) {
-            throw new FreeTypeException(0, "Failed to read font file: " + fontPath + " — " + e.getMessage());
-        }
-        return loadSizedFromBytes(data, fontPath, style, targetPx, variations, null);
+        return loadSized(fileOf(fontPath, 0), fontPath, 0, style, targetPx, variations, null);
+    }
+
+    /**
+     * Face {@code faceIndex} of a font file on disk, size-bound.
+     *
+     * <pre>{@code
+     * CgFont uiGothic = CgFont.load("C:/Windows/Fonts/msgothic.ttc", 1, CgFontStyle.REGULAR, 16);
+     * }</pre>
+     *
+     * @throws IllegalArgumentException if the file is not a collection and {@code faceIndex != 0},
+     *                                  or the collection has no such face
+     */
+    public static CgFont load(String fontPath, int faceIndex, CgFontStyle style, int targetPx) {
+        return loadSized(fileOf(fontPath, faceIndex), fontPath, faceIndex, style, targetPx,
+                Collections.<CgFontVariation>emptyList(), null);
     }
 
     public static CgFont load(byte[] fontData, String logicalName, CgFontStyle style) {
@@ -139,8 +150,7 @@ public class CgFont {
                               String logicalName,
                               CgFontStyle style,
                               List<CgFontVariation> variations) {
-        validateFontBytes(fontData, logicalName, style);
-        return loadUnsizedFromBytes(fontData, logicalName, style, variations);
+        return load(fontData, logicalName, 0, style, variations);
     }
 
     public static CgFont load(byte[] fontData, String logicalName,
@@ -151,35 +161,75 @@ public class CgFont {
     public static CgFont load(byte[] fontData, String logicalName,
                               CgFontStyle style, int targetPx,
                               List<CgFontVariation> variations) {
-        validateFontBytes(fontData, logicalName, style);
-        return loadSizedFromBytes(fontData, logicalName, style, targetPx, variations, null);
+        return load(fontData, logicalName, 0, style, targetPx, variations);
     }
 
-    private static CgFont loadUnsizedFromBytes(byte[] data,
-                                               String logicalName,
-                                               CgFontStyle style,
-                                               List<CgFontVariation> variations) {
-        validateFontBytes(data, logicalName, style);
+    /**
+     * Face {@code faceIndex} of {@code fontData}, unsized. {@code fontData} is the whole file — a
+     * collection or a single font — and the key records {@code (logicalName, faceIndex)}.
+     */
+    public static CgFont load(byte[] fontData, String logicalName, int faceIndex,
+                              CgFontStyle style, List<CgFontVariation> variations) {
+        return loadUnsized(faceOf(fontData, logicalName, faceIndex, style),
+                logicalName, faceIndex, style, variations);
+    }
+
+    public static CgFont load(byte[] fontData, String logicalName, int faceIndex,
+                              CgFontStyle style, int targetPx) {
+        return load(fontData, logicalName, faceIndex, style, targetPx, Collections.<CgFontVariation>emptyList());
+    }
+
+    public static CgFont load(byte[] fontData, String logicalName, int faceIndex,
+                              CgFontStyle style, int targetPx, List<CgFontVariation> variations) {
+        return loadSized(faceOf(fontData, logicalName, faceIndex, style),
+                logicalName, faceIndex, style, targetPx, variations, null);
+    }
+
+    /** Face {@code faceIndex} of an installed font file, unsized, at {@code variations}. For {@link CgSystemFonts}. */
+    static CgFont loadInstalledFace(Path file, int faceIndex, String logicalName,
+                                    CgFontStyle style, List<CgFontVariation> variations) {
+        return loadUnsized(CgFontData.ofFile(file, faceIndex), logicalName, faceIndex, style, variations);
+    }
+
+    private static CgFontData faceOf(byte[] fontData, String logicalName, int faceIndex, CgFontStyle style) {
+        validateFontBytes(fontData, logicalName, style);
+        return CgFontData.ofBytes(Sfnt.extractFace(fontData, faceIndex));
+    }
+
+    private static CgFontData fileOf(String fontPath, int faceIndex) {
+        if (fontPath == null) {
+            throw new IllegalArgumentException("fontPath must not be null");
+        }
+        return CgFontData.ofFile(Paths.get(fontPath).toAbsolutePath(), faceIndex);
+    }
+
+    private static CgFont loadUnsized(CgFontData data,
+                                      String logicalName,
+                                      int faceIndex,
+                                      CgFontStyle style,
+                                      List<CgFontVariation> variations) {
+        validate(data, logicalName, style);
         List<CgFontVariation> canonicalVariations = CgFontKey.canonicalizeVariations(variations);
         LoadedNativeState state = loadNativeState(data, canonicalVariations, null, false);
-        return new CgFont(logicalName, style, data, canonicalVariations,
+        return new CgFont(logicalName, faceIndex, style, data, canonicalVariations,
                 false, null, null, state.variationAxes,
                 state.ftLibrary, state.ftFace, null, null);
     }
 
-    private static CgFont loadSizedFromBytes(byte[] data,
-                                             String logicalName,
-                                             CgFontStyle style,
-                                             int targetPx,
-                                             List<CgFontVariation> variations,
-                                             CgFont baseFont) {
-        validateFontBytes(data, logicalName, style);
+    private static CgFont loadSized(CgFontData data,
+                                    String logicalName,
+                                    int faceIndex,
+                                    CgFontStyle style,
+                                    int targetPx,
+                                    List<CgFontVariation> variations,
+                                    CgFont baseFont) {
+        validate(data, logicalName, style);
         if (targetPx <= 0) {
             throw new IllegalArgumentException("targetPx must be > 0, got: " + targetPx);
         }
         List<CgFontVariation> canonicalVariations = CgFontKey.canonicalizeVariations(variations);
         LoadedNativeState state = loadNativeState(data, canonicalVariations, Integer.valueOf(targetPx), true);
-        return new CgFont(logicalName, style, data, canonicalVariations,
+        return new CgFont(logicalName, faceIndex, style, data, canonicalVariations,
                 true, Integer.valueOf(targetPx), state.metrics, state.variationAxes,
                 state.ftLibrary, state.ftFace, state.hbFont, baseFont);
     }
@@ -192,18 +242,20 @@ public class CgFont {
      * library and face, optionally an HarfBuzz font, and parses the whole font file. Cheap per call
      * but called once per font per size, and entirely on whichever thread asked.
      */
-    private static LoadedNativeState loadNativeState(byte[] data,
+    private static LoadedNativeState loadNativeState(CgFontData data,
                                                      List<CgFontVariation> variations,
                                                      Integer targetPx,
                                                      boolean createHbFont) {
         try (CgProfiler.Scope ignored = CgProfiler.scope("font.loadNative")) {
             CgProfiler.count("font.loadNative.count");
-            CgProfiler.sample("font.loadNative.bytes", data.length);
+            if (data.file() == null) {
+                CgProfiler.sample("font.loadNative.bytes", data.bytes().length);
+            }
             return loadNativeStateInternal(data, variations, targetPx, createHbFont);
         }
     }
 
-    private static LoadedNativeState loadNativeStateInternal(byte[] data,
+    private static LoadedNativeState loadNativeStateInternal(CgFontData data,
                                                              List<CgFontVariation> variations,
                                                              Integer targetPx,
                                                              boolean createHbFont) {
@@ -211,7 +263,7 @@ public class CgFont {
         FTFace face = null;
         HBFont hbFont = null;
         try {
-            face = ftLib.newFaceFromMemory(data, 0);
+            face = data.openFace(ftLib);
             applyVariationsToFace(face, variations);
             if (targetPx != null) {
                 face.setPixelSizes(0, targetPx.intValue());
@@ -242,6 +294,11 @@ public class CgFont {
         return logicalName;
     }
 
+    /** Which face of the file this is; 0 unless it was loaded out of a collection. */
+    public int getFaceIndex() {
+        return faceIndex;
+    }
+
     public CgFontStyle getStyle() {
         return style;
     }
@@ -263,15 +320,17 @@ public class CgFont {
             return baseFont.atSize(targetPx);
         }
 
-        Integer cacheKey = Integer.valueOf(targetPx);
-        CgFont cached = sizedVariants.get(cacheKey);
-        if (cached != null && !cached.isDisposed()) {
-            return cached;
+        // Locked: one base font backs families on every thread that shapes text.
+        synchronized (sizedVariants) {
+            Integer cacheKey = Integer.valueOf(targetPx);
+            CgFont cached = sizedVariants.get(cacheKey);
+            if (cached != null && !cached.isDisposed()) {
+                return cached;
+            }
+            CgFont sized = loadSized(data, logicalName, faceIndex, style, targetPx, variations, this);
+            sizedVariants.put(cacheKey, sized);
+            return sized;
         }
-
-        CgFont sized = loadSizedFromBytes(fontBytes, logicalName, style, targetPx, variations, this);
-        sizedVariants.put(cacheKey, sized);
-        return sized;
     }
 
     public CgFontKey getKey() {
@@ -345,9 +404,19 @@ public class CgFont {
         return index;
     }
 
+    /**
+     * The font as standalone bytes. An installed font is opened from its file and holds none until
+     * asked; the first call reads the file.
+     */
     public byte[] getFontBytes() {
         checkNotDisposed();
-        return fontBytes;
+        return data.bytes();
+    }
+
+    /** Where this font's data lives — one object shared by every size of it. @see CgFontData */
+    public CgFontData getData() {
+        checkNotDisposed();
+        return data;
     }
 
     public boolean isDisposed() {
@@ -364,9 +433,12 @@ public class CgFont {
         }
         disposed = true;
 
-        if (sizedVariants != null && !sizedVariants.isEmpty()) {
-            List<CgFont> variants = new ArrayList<CgFont>(sizedVariants.values());
-            sizedVariants.clear();
+        if (sizedVariants != null) {
+            List<CgFont> variants;
+            synchronized (sizedVariants) {
+                variants = new ArrayList<CgFont>(sizedVariants.values());
+                sizedVariants.clear();
+            }
             for (CgFont variant : variants) {
                 if (variant != null) {
                     variant.dispose();
@@ -469,7 +541,7 @@ public class CgFont {
 
         try {
             msdfFtInstance = FreeTypeMSDFIntegration.create();
-            msdfFtFont = msdfFtInstance.loadFontData(fontBytes);
+            msdfFtFont = data.openMsdfFont(msdfFtInstance);
             applyVariationsToMsdfFont(msdfFtFont, variations);
             return msdfFtFont;
         } catch (Exception e) {
@@ -496,15 +568,29 @@ public class CgFont {
         if (sizedVariants == null || variant == null || !variant.sizeBound) {
             return;
         }
-        CgFont cached = sizedVariants.get(Integer.valueOf(variant.key.getTargetPx()));
-        if (cached == variant) {
-            sizedVariants.remove(Integer.valueOf(variant.key.getTargetPx()));
+        synchronized (sizedVariants) {
+            CgFont cached = sizedVariants.get(Integer.valueOf(variant.key.getTargetPx()));
+            if (cached == variant) {
+                sizedVariants.remove(Integer.valueOf(variant.key.getTargetPx()));
+            }
         }
     }
 
     private static void validateFontBytes(byte[] fontData, String logicalName, CgFontStyle style) {
         if (fontData == null || fontData.length == 0) {
             throw new IllegalArgumentException("fontData must not be null or empty");
+        }
+        if (logicalName == null) {
+            throw new IllegalArgumentException("logicalName must not be null");
+        }
+        if (style == null) {
+            throw new IllegalArgumentException("style must not be null");
+        }
+    }
+
+    private static void validate(CgFontData data, String logicalName, CgFontStyle style) {
+        if (data == null) {
+            throw new IllegalArgumentException("font data must not be null");
         }
         if (logicalName == null) {
             throw new IllegalArgumentException("logicalName must not be null");
@@ -532,21 +618,6 @@ public class CgFont {
                 library.destroy();
             } catch (Exception ignored) {
             }
-        }
-    }
-
-    private static byte[] readFileBytes(String path) throws IOException {
-        InputStream in = new FileInputStream(path);
-        try {
-            ByteArrayOutputStream bos = new ByteArrayOutputStream();
-            byte[] buf = new byte[8192];
-            int n;
-            while ((n = in.read(buf)) != -1) {
-                bos.write(buf, 0, n);
-            }
-            return bos.toByteArray();
-        } finally {
-            in.close();
         }
     }
 
@@ -658,6 +729,7 @@ public class CgFont {
     @Override
     public String toString() {
         return "CgFont{logicalName=" + logicalName
+                + (faceIndex != 0 ? ", faceIndex=" + faceIndex : "")
                 + ", style=" + style
                 + ", sizeBound=" + sizeBound
                 + ", targetPx=" + (sizeBound ? key.getTargetPx() : "unsized")

@@ -12,6 +12,8 @@ marked as such.
 | **LWJGL 2 / LWJGL 3** | not redistributed | BSD-3-Clause | `compileOnly` everywhere. The game supplies it; a bundled copy would be a second `org.lwjgl` on a classpath that already has the one the loader booted with |
 | **Mixin** | not redistributed | MIT | `compileOnly`. Every loader supplies it, and a second copy would be a second `MixinService` for the one already running |
 | **FreeType · HarfBuzz · msdfgen** | `freetype-msdfgen-harfbuzz-bindings/` | FreeType (BSD-style) · MIT · MIT | JNI bindings and their natives, shipped in every loader jar. See that module for per-library provenance |
+| **Chromium (Blink) font fallback** | `core/src/main/java/com/crystalgraphics/text/font/ScriptFallbacks.java` | **BSD-3-Clause** | © 2006–2012 Google Inc. **Ported source, modified**: the Windows script-to-font table and the rules choosing a row, from `platform/fonts/win/font_fallback_win.cc`, `platform/text/character.cc` and `platform/text/layout_locale.cc`. The licence text is the file's header comment, which ships in the jar with the sources (`assets/crystalgraphics/sources/`). The macOS and Linux tables are this project's |
+| Test fonts | `core/src/test/resources/fonts/` | SIL OFL 1.1 | IBM Plex Sans, IBM Plex Sans Arabic, M PLUS 1p, M PLUS Rounded 1c, Noto Sans Arabic, `test-font.ttf`. **Not redistributed** — they left `src/main` on 2026-09-11, taking 11.6 MB out of the jar. Text a consumer's fonts cannot draw falls back to installed fonts through `CgSystemFonts` |
 | Minecraft sources | `*/build/mc-src/` | Proprietary | Decompiled reference, generated locally. Not in the repository, not redistributed, not built |
 
 ## The notice that ships — a known gap

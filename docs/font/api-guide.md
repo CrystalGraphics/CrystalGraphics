@@ -52,6 +52,43 @@ Rules:
 - primary source is always consulted first
 - fallback sources are checked in order
 
+### Fonts installed on the machine
+
+`CgSystemFonts` indexes the installed fonts once, on a background thread, and answers three
+questions: a family by name, a CSS generic family, and a fallback for a character a family's own
+fonts lack.
+
+```java
+CgSystemFonts fonts = CgSystemFonts.get();
+
+CgFont segoe = fonts.load(fonts.find("Segoe UI", CgFontStyle.BOLD), CgFontStyle.BOLD, 16);
+CgSystemFontFace mono = fonts.generic(CgGenericFamily.MONOSPACE, CgFontStyle.REGULAR);
+
+// anything the bundled font lacks — 日本語, 한국어, العربية — from whatever is installed
+CgFontFamily family = CgFontFamily.of(bundled).withFallback(fonts.fallback(Locale.getDefault()));
+```
+
+The fallback is chosen per character as a browser chooses it: the platform's table row for the
+character's script, then any installed face that covers it. A Han character is drawn in the
+convention its own text shows — Japanese beside kana, Korean beside Hangul — and in the locale's
+(Japanese, Simplified, Traditional, Korean) when the text shows none. The Windows table is Chromium's
+(`text/font/ScriptFallbacks`).
+
+A font collection (`.ttc`) holds several faces; load one by index:
+
+```java
+CgFont uiGothic = CgFont.load("C:/Windows/Fonts/msgothic.ttc", 1, CgFontStyle.REGULAR, 16);
+```
+
+- `find` takes the family in any language its font is named in: `"メイリオ"` finds Meiryo
+- a fallback font joins `getDiscoveredSources()`; `getLayoutMetrics()` stays the declared sources'
+- re-size a family with `family.atSize(px)`, which keeps the fallback
+- `CgSystemFonts.load` caches what it loads — never dispose those fonts
+- a font loaded from a path — an installed one included — is opened from its file, and one loaded from
+  bytes from a single native copy (`font.getData()`), so no size of it and no glyph worker copies it again
+- an installed font's file stays deletable while it is open: it can be uninstalled while the game runs
+- CrystalGraphics ships no fonts; its tests read `core/src/test/resources/fonts/`
+
 ---
 
 ## 3. Building layouts explicitly

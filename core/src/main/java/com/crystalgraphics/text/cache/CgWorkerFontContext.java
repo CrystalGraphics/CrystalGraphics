@@ -28,8 +28,10 @@ import java.util.Map;
 final class CgWorkerFontContext {
 
     private final FreeTypeLibrary ftLibrary;
+    /** One face per FONT, keyed by {@link #perFont}: a job sets the size it rasterises at. */
     private final Map<CgFontKey, FTFace> bitmapFaces = new HashMap<CgFontKey, FTFace>();
     private FreeTypeMSDFIntegration msdfIntegration;
+    /** Likewise per font: MSDF outlines are loaded in em units and have no size. */
     private final Map<CgFontKey, FreeTypeMSDFIntegration.Font> msdfFonts = new HashMap<CgFontKey, FreeTypeMSDFIntegration.Font>();
 
     CgWorkerFontContext() {
@@ -49,7 +51,7 @@ final class CgWorkerFontContext {
     }
 
     private CgGlyphGenerationResult generateBitmapInternal(CgGlyphGenerationJob job) {
-        FTFace face = getBitmapFace(job.getSourceFontKey(), job.getFontBytes());
+        FTFace face = getBitmapFace(job);
         face.setPixelSizes(0, job.getEffectiveTargetPx());
 
         int loadFlags = FTLoadFlags.FT_LOAD_DEFAULT;
@@ -104,7 +106,7 @@ final class CgWorkerFontContext {
     }
 
     CgGlyphGenerationResult generateMsdf(CgGlyphGenerationJob job) {
-        FreeTypeMSDFIntegration.Font msdfFont = getMsdfFont(job.getSourceFontKey(), job.getFontBytes());
+        FreeTypeMSDFIntegration.Font msdfFont = getMsdfFont(job);
         return CgMsdfGenerator.prepareGlyph(
                 job.getAtlasKey(),
                 job.getSourceFontKey(),
@@ -144,18 +146,20 @@ final class CgWorkerFontContext {
         }
     }
 
-    private FTFace getBitmapFace(CgFontKey key, byte[] fontBytes) {
+    private FTFace getBitmapFace(CgGlyphGenerationJob job) {
+        CgFontKey key = perFont(job.getSourceFontKey());
         FTFace cached = bitmapFaces.get(key);
         if (cached != null && !cached.isDestroyed()) {
             return cached;
         }
-        FTFace created = ftLibrary.newFaceFromMemory(fontBytes, 0);
+        FTFace created = job.getFontData().openFace(ftLibrary);
         applyVariations(created, key.getVariations());
         bitmapFaces.put(key, created);
         return created;
     }
 
-    private FreeTypeMSDFIntegration.Font getMsdfFont(CgFontKey key, byte[] fontBytes) {
+    private FreeTypeMSDFIntegration.Font getMsdfFont(CgGlyphGenerationJob job) {
+        CgFontKey key = perFont(job.getSourceFontKey());
         FreeTypeMSDFIntegration.Font cached = msdfFonts.get(key);
         if (cached != null && !cached.isDestroyed()) {
             return cached;
@@ -163,10 +167,18 @@ final class CgWorkerFontContext {
         if (msdfIntegration == null) {
             msdfIntegration = FreeTypeMSDFIntegration.create();
         }
-        FreeTypeMSDFIntegration.Font created = msdfIntegration.loadFontData(fontBytes);
+        FreeTypeMSDFIntegration.Font created = job.getFontData().openMsdfFont(msdfIntegration);
         applyVariations(created, key.getVariations());
         msdfFonts.put(key, created);
         return created;
+    }
+
+    /**
+     * The font without its size. Keying by the sized key made a native copy of the font per size per
+     * worker, for faces whose size every job sets anyway.
+     */
+    private static CgFontKey perFont(CgFontKey key) {
+        return key.getTargetPx() == 1 ? key : key.withTargetPx(1);
     }
 
     private static void applyVariations(FTFace face, List<CgFontVariation> variations) {
