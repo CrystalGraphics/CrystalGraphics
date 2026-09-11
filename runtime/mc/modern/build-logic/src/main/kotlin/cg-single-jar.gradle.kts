@@ -91,6 +91,18 @@ registerSingleJarPipeline(SingleJarSpec(
     extraContent = {
         // Kotlin rides in on a JOML transitive and is never used.
         exclude("module-info.class", "kotlin/**", "org/jetbrains/kotlin/**", "*.xcf")
+
+        // JACKSON'S OWN SERVICE FILES, WHICH RELOCATION DOES NOT REWRITE -- the entry is named for the
+        // service and its body names the provider, both left at the original coordinates. An automatic
+        // module takes `provides` from META-INF/services, so the module ends up claiming
+        // `com.fasterxml.jackson.databind`, and against the Jackson module MC 1.21.x ships that is a
+        // split package: measured on 1.21.4, Forge dies in module resolution --
+        //     Modules com.fasterxml.jackson.databind and crystalgraphics
+        //         export package com.fasterxml.jackson.databind to module mixin.synthetic
+        // They are dead entries either way, naming classes this jar no longer has under those names.
+        // `forbiddenPrefixes` cannot catch it: that check reads entry PATHS, and nothing reads inside
+        // a service file.
+        exclude("META-INF/services/com.fasterxml.jackson.*", "META-INF/maven/**")
     },
 
     configureCheck = {
@@ -135,15 +147,65 @@ dependencies {
 // INSTALL IT ON 1.7.10 AND 1.12.2 ONLY. On 1.19.3+ the game already has JOML as a named module, and a
 // second one in `mods/` reproduces exactly the ResolutionException the note above records -- so this
 // is the one artefact here that is NOT "install everywhere". `deploySingleJars` knows that.
+// ── The companion's own descriptor, so MODERN Forge loads it too ────────────────────────────────
+//
+// FML 1.7.10 puts every jar in `mods/` on the LaunchWrapper classpath whether or not it declares a
+// mod. ModLauncher does not. MEASURED on MC 1.19.2: the companion sat in `mods/` with
+// `org/joml/Matrix4fc.class` inside it and CrystalGUI still died with
+// `NoClassDefFoundError: org/joml/Matrix4fc` -- a jar reaches the transforming classloader by being
+// a MOD, and `mods.toml` is what makes it one.
+//
+// `lowcodefml`, NOT `javafml`: javafml resolves every declared modId to an @Mod class and this jar has
+// none, which Forge reports as "has mods that were not found" -- measured on 1.19.2. lowcodefml is the
+// loader for a mod that ships no code of its own.
+//
+// THE RANGE STOPS AT 1.19.3, which is where Minecraft adopted JOML and where a second copy becomes
+// the split package E-J9-JOML measured. Being refused by range names the reason; a ResolutionException
+// does not. 1.7.10 reads `mcmod.info` and never looks at this file.
+val jomlDescriptor by tasks.registering {
+    group = "single jar"
+    description = "The JOML companion's mods.toml, so ModLauncher loads it below 1.19.3."
+    val outDir = layout.buildDirectory.dir("generated/joml-companion")
+    val modVersion = project.version.toString()
+    outputs.dir(outDir)
+    doLast {
+        val root = outDir.get().asFile
+        File(root, "META-INF").mkdirs()
+        File(root, "META-INF/mods.toml").writeText("""
+            modLoader = "lowcodefml"
+            loaderVersion = "[1,)"
+            license = "MIT"
+
+            [[mods]]
+                modId = "crystalgraphics_joml"
+                version = "$modVersion"
+                displayName = "JOML (for CrystalGraphics)"
+                description = "JOML, for Minecraft versions that ship none. Install below 1.19.3 only."
+
+            [[dependencies.crystalgraphics_joml]]
+                modId = "minecraft"
+                mandatory = true
+                versionRange = "[1.13,1.19.3)"
+                ordering = "NONE"
+                side = "BOTH"
+        """.trimIndent() + "\n")
+        // Pack format is cosmetic here -- the jar carries no assets -- but its ABSENCE is a warning
+        // on every boot from 1.18 on.
+        File(root, "pack.mcmeta").writeText(
+                "{\"pack\":{\"description\":\"JOML for CrystalGraphics\",\"pack_format\":9}}\n")
+    }
+}
+
 val jomlJar by tasks.registering(Jar::class) {
     group = "single jar"
-    description = "JOML for the LWJGL2 targets, whose Minecraft does not ship it. NOT for 1.19.3+."
+    description = "JOML for the targets whose Minecraft ships none (below 1.19.3)."
     archiveFileName.set("crystalgraphics-joml-${project.version}.jar")
     from(jomlCompanion.map { zipTree(it) }) {
         // Its own module descriptor would make it a named module and defeat the point on any loader
         // that reads one; the licence travels, because MIT asks it to.
         exclude("module-info.class", "META-INF/maven/**")
     }
+    from(jomlDescriptor)
     manifest {
         attributes(
             "Implementation-Title" to "JOML, for CrystalGraphics on LWJGL2 targets",
