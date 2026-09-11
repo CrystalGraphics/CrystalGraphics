@@ -14,12 +14,12 @@ import java.security.CodeSource;
  *
  * <pre>{@code
  * // Forge 1.20.1 / NeoForge
- * CrashReportCallables.registerCrashCallable(CrashVariant.LABEL,
+ * CrashReportCallables.registerCrashCallable(CrashVariant.label("MyMod"),
  *         () -> CrashVariant.report(MyModClass.class));
  *
  * // 1.7.10
  * FMLCommonHandler.instance().registerCrashCallable(new ICrashCallable() {
- *     public String getLabel() { return CrashVariant.LABEL; }
+ *     public String getLabel() { return CrashVariant.label("MyMod"); }
  *     public String call() { return CrashVariant.report(MyModClass.class); }
  * });
  * }</pre>
@@ -30,10 +30,25 @@ import java.security.CodeSource;
  */
 public final class CrashVariant {
 
-    /** The section heading a crash report shows this under. */
-    public static final String LABEL = "CrystalGraphics variant";
+    /** CrystalGraphics' own heading. Any other mod passes its own name to {@link #label}. */
+    public static final String LABEL = label("CrystalGraphics");
 
     private CrashVariant() {
+    }
+
+    /**
+     * The heading a crash report shows one mod's variant under.
+     *
+     * <pre>{@code
+     * CrashReportCallables.registerCrashCallable(CrashVariant.label("MyMod"),
+     *         () -> CrashVariant.report(MyModClass.class));
+     * }</pre>
+     *
+     * <p>One heading per mod: two mods registering under the same label print two sections a reader
+     * cannot tell apart.</p>
+     */
+    public static String label(String modName) {
+        return modName + " variant";
     }
 
     /**
