@@ -212,7 +212,7 @@ public class CgTextLayoutEngineStyledTest {
 
     private static byte[] loadTestFontBytes() {
         InputStream in = CgTextLayoutEngineStyledTest.class
-                .getResourceAsStream("/assets/crystalgraphics/test-font.ttf");
+                .getResourceAsStream("/fonts/test-font.ttf");
         assertNotNull("test font resource must exist", in);
         try {
             ByteArrayOutputStream bos = new ByteArrayOutputStream();

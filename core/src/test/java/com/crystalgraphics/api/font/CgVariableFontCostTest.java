@@ -29,11 +29,11 @@ import java.util.Locale;
 public class CgVariableFontCostTest {
 
     private static final String[] FONTS = {
-            "src/main/resources/assets/crystalgraphics/IBMPlexSans-Regular.ttf",
-            "src/main/resources/assets/crystalgraphics/MPLUS1p-Regular.ttf",
-            "src/main/resources/assets/crystalgraphics/NotoSansArabic-Regular.ttf",
-            "src/main/resources/assets/crystalgraphics/MPLUSRounded1c-Regular.ttf",
-            "src/main/resources/assets/crystalgraphics/IBMPlexSansArabic-Regular.ttf",
+            "src/test/resources/fonts/IBMPlexSans-Regular.ttf",
+            "src/test/resources/fonts/MPLUS1p-Regular.ttf",
+            "src/test/resources/fonts/NotoSansArabic-Regular.ttf",
+            "src/test/resources/fonts/MPLUSRounded1c-Regular.ttf",
+            "src/test/resources/fonts/IBMPlexSansArabic-Regular.ttf",
     };
 
     @Test

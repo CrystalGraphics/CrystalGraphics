@@ -32,8 +32,8 @@ import static org.junit.Assert.assertTrue;
 public class CgLineBreakerSliceEquivalenceTest {
 
     private static final String[] FONT_CANDIDATES = {
-            "src/main/resources/assets/crystalgraphics/IBMPlexSans-Regular.ttf",
-            "src/main/resources/assets/crystalgraphics/MPLUS1p-Regular.ttf",
+            "src/test/resources/fonts/IBMPlexSans-Regular.ttf",
+            "src/test/resources/fonts/MPLUS1p-Regular.ttf",
     };
 
     /** Widths chosen to force breaks at many different boundaries, including very tight ones. */
@@ -147,8 +147,8 @@ public class CgLineBreakerSliceEquivalenceTest {
     private static CgFontFamily rtlFamily() {
         if (arabicFont == null) {
             for (String path : new String[]{
-                    "src/main/resources/assets/crystalgraphics/NotoSansArabic-Regular.ttf",
-                    "src/main/resources/assets/crystalgraphics/IBMPlexSansArabic-Regular.ttf"}) {
+                    "src/test/resources/fonts/NotoSansArabic-Regular.ttf",
+                    "src/test/resources/fonts/IBMPlexSansArabic-Regular.ttf"}) {
                 File f = new File(path);
                 if (f.isFile()) {
                     arabicFont = CgFont.load(f.getPath(), CgFontStyle.REGULAR, 16);

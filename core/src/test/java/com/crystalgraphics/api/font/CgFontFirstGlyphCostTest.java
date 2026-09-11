@@ -27,9 +27,9 @@ import java.util.Locale;
 public class CgFontFirstGlyphCostTest {
 
     private static final String[] FONTS = {
-            "src/main/resources/assets/crystalgraphics/IBMPlexSans-Regular.ttf",
-            "src/main/resources/assets/crystalgraphics/MPLUS1p-Regular.ttf",
-            "src/main/resources/assets/crystalgraphics/NotoSansArabic-Regular.ttf",
+            "src/test/resources/fonts/IBMPlexSans-Regular.ttf",
+            "src/test/resources/fonts/MPLUS1p-Regular.ttf",
+            "src/test/resources/fonts/NotoSansArabic-Regular.ttf",
     };
 
     @Test

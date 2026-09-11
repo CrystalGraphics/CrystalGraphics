@@ -31,8 +31,8 @@ import static org.junit.Assert.assertTrue;
 public class CgMsdfCostModelTest {
 
     private static final String[] FONTS = {
-            "src/main/resources/assets/crystalgraphics/MPLUS1p-Regular.ttf",
-            "src/main/resources/assets/crystalgraphics/IBMPlexSans-Regular.ttf",
+            "src/test/resources/fonts/MPLUS1p-Regular.ttf",
+            "src/test/resources/fonts/IBMPlexSans-Regular.ttf",
     };
 
     private static final int SAMPLE_GLYPHS = 120;
