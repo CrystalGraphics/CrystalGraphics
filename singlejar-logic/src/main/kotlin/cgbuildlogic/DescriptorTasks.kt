@@ -92,21 +92,39 @@ fun Project.registerDescriptorTasks(
                 }
             }
 
-            require(fabricJson, "\"id\": \"${descriptor.id}\"", "declare the mod id")
-            descriptor.variants.single { it.loader == "fabric" }.let { fabric ->
-                require(fabricJson, fabric.commonEntry!!, "name the common entrypoint")
-                require(fabricJson, fabric.clientEntry!!, "name the client entrypoint")
-                fabric.fabricDepends.forEach { (id, range) ->
-                    require(fabricJson, "\"$id\": \"$range\"", "declare its $id dependency")
+            // A SHIPPED descriptor belongs to ONE variant -- whichever its module's source tree
+            // builds -- so once a loader has several it must match one of them rather than the only
+            // one. `single` threw "collection contains more than one matching element", naming
+            // neither the loader nor the file.
+            fun requireSomeVariant(
+                file: File,
+                loader: String,
+                what: String,
+                needles: (Variant) -> List<String>,
+            ) {
+                val variants = descriptor.variantsOf(loader)
+                if (variants.isEmpty()) return
+                if (!file.isFile) {
+                    problems += "${file.name} is missing"
+                    return
                 }
+                val text = file.readText()
+                if (variants.none { v -> needles(v).all(text::contains) }) {
+                    problems += "${file.name} matches no declared $loader variant's $what (tried " +
+                        variants.joinToString(", ") { it.minecraft } + ")"
+                }
+            }
+
+            require(fabricJson, "\"id\": \"${descriptor.id}\"", "declare the mod id")
+            requireSomeVariant(fabricJson, "fabric", "entry points and depends") { v ->
+                listOfNotNull(v.commonEntry, v.clientEntry) +
+                    v.fabricDepends.map { (id, range) -> "\"$id\": \"$range\"" }
             }
 
             require(forgeToml, "modId = \"${descriptor.id}\"", "declare the mod id")
             require(neoToml, "modId = \"${descriptor.id}\"", "declare the mod id")
-            require(forgeToml, descriptor.variants.single { it.loader == "forge" }.minecraft,
-                    "declare its own Minecraft range")
-            require(neoToml, descriptor.variants.single { it.loader == "neoforge" }.minecraft,
-                    "declare its own Minecraft range")
+            requireSomeVariant(forgeToml, "forge", "Minecraft range") { listOf(it.minecraft) }
+            requireSomeVariant(neoToml, "neoforge", "Minecraft range") { listOf(it.minecraft) }
 
             // mcmod.info is a GTNH template: ${modId} is expanded by processResources, so the literal
             // is what a source file legitimately holds.

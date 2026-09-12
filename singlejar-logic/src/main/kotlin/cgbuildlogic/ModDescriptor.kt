@@ -21,7 +21,8 @@ package cgbuildlogic
  *
  * <p>Easy to get wrong: a {@link Variant}'s {@code minecraft} range is what the merged descriptor
  * unions and what the bootstrapper matches on, so two variants of one loader with overlapping ranges
- * make the choice arbitrary. {@code DescriptorModelTest} refuses that rather than letting it ship.</p>
+ * make the choice depend on declaration order. <b>The constructor refuses that</b> — a malformed
+ * declaration fails at configuration time rather than shipping; {@code DescriptorModelTest} pins it.</p>
  */
 data class ModDescriptor(
     val id: String,
@@ -38,9 +39,47 @@ data class ModDescriptor(
     val dependencies: List<Dependency> = emptyList(),
     val variants: List<Variant> = emptyList(),
 ) {
+    init {
+        val problems = validateVariants(variants)
+        require(problems.isEmpty()) {
+            "$id cannot ship as one jar:\n" + problems.joinToString("\n") { "  - $it" }
+        }
+    }
+
     /** The variants of one loader family, in declaration order. */
     fun variantsOf(vararg loaders: String): List<Variant> =
         variants.filter { loaders.contains(it.loader) }
+}
+
+/**
+ * What stops a variant list being shippable, one sentence each — empty when nothing does.
+ *
+ * <p>Apart from the constructor so a test can read the reasons instead of parsing a thrown message.</p>
+ */
+internal fun validateVariants(variants: List<Variant>): List<String> {
+    val problems = mutableListOf<String>()
+    // A LIST, not a map keyed by Variant: `Variant` is a data class, so two identical declarations
+    // would collapse into one key and the overlap they are would go unreported.
+    val parsed = mutableListOf<Pair<Variant, McRange>>()
+    for (v in variants) {
+        try {
+            parsed += v to McRange.parse(v.minecraft)
+        } catch (e: IllegalArgumentException) {
+            problems += "${v.loader} declares `${v.minecraft}`, which is not a version range: ${e.message}"
+        }
+    }
+    parsed.groupBy { it.first.loader }.forEach { (loader, group) ->
+        for (i in group.indices) {
+            for (j in i + 1 until group.size) {
+                if (group[i].second.overlaps(group[j].second)) {
+                    problems += "$loader declares two variants over the same versions, " +
+                        "${group[i].second} and ${group[j].second} — the bootstrapper takes the " +
+                        "first match, so which one runs would depend on declaration order"
+                }
+            }
+        }
+    }
+    return problems
 }
 
 enum class Side { CLIENT, SERVER, BOTH }
@@ -90,8 +129,16 @@ object FabricModJson {
         val main = fabric.mapNotNull { it.commonEntry }
         val client = fabric.mapNotNull { it.clientEntry }
         val mixins = fabric.flatMap { it.mixinConfigs }.distinct()
-        val depends = LinkedHashMap<String, String>()
-        fabric.forEach { depends.putAll(it.fabricDepends) }
+        // ONE ENTRY PER ID, and several variants' constraints are OR-ed rather than overwritten.
+        // `putAll` kept whichever variant was declared last, so a second Fabric row silently narrowed
+        // the whole jar to one Minecraft version -- the loader would then refuse to load it on the
+        // other, with a message about a dependency the descriptor does declare.
+        val depends = LinkedHashMap<String, MutableList<String>>()
+        fabric.forEach { variant ->
+            variant.fabricDepends.forEach { (id, range) ->
+                depends.getOrPut(id) { mutableListOf() }.let { if (range !in it) it += range }
+            }
+        }
 
         val entries = StringBuilder()
         entries.append("{\n")
@@ -112,8 +159,12 @@ object FabricModJson {
                 .append(mixins.joinToString(", ") { quote(it) }).append("],\n")
         }
         entries.append("  \"depends\": {\n")
-        entries.append(depends.entries.joinToString(",\n") {
-            "    " + quote(it.key) + ": " + quote(it.value)
+        // An ARRAY is Fabric's spelling of OR for a dependency; one constraint stays a plain string
+        // so the common case reads as it always has.
+        entries.append(depends.entries.joinToString(",\n") { (id, ranges) ->
+            val value = if (ranges.size == 1) quote(ranges[0])
+            else ranges.joinToString(", ", "[", "]") { quote(it) }
+            "    " + quote(id) + ": " + value
         })
         entries.append("\n  }\n}\n")
         return entries.toString()
@@ -184,24 +235,7 @@ object ForgeModsToml {
      */
     fun minecraftUnion(variants: List<Variant>): String {
         if (variants.isEmpty()) return "[1.20.1,)"
-        val lows = variants.map { it.minecraft.substringAfter('[').substringAfter('(').substringBefore(',') }
-        val highs = variants.map { it.minecraft.substringAfterLast(',').substringBefore(']').substringBefore(')') }
-        val openEnded = variants.any { it.minecraft.trimEnd().endsWith(")") && it.minecraft.substringAfterLast(',').substringBefore(')').isBlank() }
-        val low = lows.minWithOrNull(::compareVersions) ?: "1.20.1"
-        val high = if (openEnded) "" else highs.maxWithOrNull(::compareVersions).orEmpty()
-        return "[" + low + "," + high + ")"
-    }
-
-    /** 1.20.1 before 1.20.4 before 1.21 — numeric per segment, so "1.9" does not beat "1.20". */
-    private fun compareVersions(a: String, b: String): Int {
-        val left = a.split('.')
-        val right = b.split('.')
-        for (i in 0 until maxOf(left.size, right.size)) {
-            val l = left.getOrNull(i)?.toIntOrNull() ?: 0
-            val r = right.getOrNull(i)?.toIntOrNull() ?: 0
-            if (l != r) return l - r
-        }
-        return 0
+        return McRange.hull(variants.map { McRange.parse(it.minecraft) }).toString()
     }
 }
 
