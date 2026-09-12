@@ -6,7 +6,9 @@ import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.font.*;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.text.CgShapedParagraph;
+import com.crystalgraphics.api.text.CgStrokeAlign;
 import com.crystalgraphics.api.text.CgTextDecorationRect;
+import com.crystalgraphics.api.text.CgTextStroke;
 import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
@@ -580,8 +582,31 @@ public class CgTextRenderer {
     // ══════════════════════════════════════════════════════════════════════════════════════════
     //  FLUENT DRAW REQUEST
     // ══════════════════════════════════════════════════════════════════════════════════════════
+    
+    /** What {@code quad.glsl} reads for a {@link CgStrokeAlign}: on the contour, outside it, inside it. */
+    private static final float ALIGN_CENTER = 0f, ALIGN_OUTSET = 1f, ALIGN_INSET = 2f;
+    
+    /**
+     * Whether the most recent draw resolved any glyph below the tier it requested.
+     *
+     * <p>True when a distance-field draw had to take bitmap glyphs because generation was refused by
+     * the per-frame budget. The picture is then provisional, and a caller that only paints on damage
+     * must ask for another frame or keep the degraded one indefinitely — which for a stroked draw
+     * means losing the stroke entirely, since a bitmap glyph has no field for the shader to read.</p>
+     *
+     * <pre>{@code
+     * long before = renderer.degradedDrawCount();
+     * ...submit();
+     * if (renderer.degradedDrawCount() != before) repaint();   // ask again next frame
+     * }</pre>
+     *
+     * <p><b>A COUNT rather than a flag about the last draw</b>, so a caller brackets whatever it
+     * likes — one draw, a widget's whole paint, a frame — instead of having to read it between a
+     * submit and the next one. It only ever rises.</p>
+     */
+    @Getter
+    private long degradedDrawCount;
 
-    /** Reused scratch {@link Draw} instance returned by {@link #draw()}. */
     private final Draw scratchDraw = new Draw();
 
     /**
@@ -708,6 +733,12 @@ public class CgTextRenderer {
         private float y;
         private int rgba = 0xFFFFFFFF;
         private PoseStack pose;
+        // The stroke, already in the shape the quad wants: em (the pose decides the pixels) and the
+        // align/over codes quad.glsl reads, mapped once in the setter that takes the enum.
+        private float strokeWidthEm;
+        private int strokeArgb;
+        private float strokeAlign = ALIGN_OUTSET;
+        private float strokeOver;
 
         private Draw() {}
 
@@ -724,6 +755,10 @@ public class CgTextRenderer {
             y = 0f;
             rgba = 0xFFFFFFFF;
             pose = null;
+            strokeWidthEm = 0f;
+            strokeArgb = 0;
+            strokeAlign = ALIGN_OUTSET;
+            strokeOver = 0f;
             return this;
         }
 
@@ -806,6 +841,71 @@ public class CgTextRenderer {
         public Draw pose(PoseStack pose) {
             this.pose = pose;
             return this;
+        }
+
+        /**
+         * Outlines this draw's glyphs, {@code widthEm} wide in {@code argb}. A width of 0 or a
+         * transparent colour — the default — draws none.
+         *
+         * <pre>{@code
+         * .stroke(0.06f, 0xFF101418)                                // 6% of em, outside the contour
+         * .stroke(0.06f, argb).strokeAlign(CgStrokeAlign.CENTER)    // webkit's behaviour
+         * .stroke(0.06f, argb).strokeOverFill(true)                 // painted on top of the fill
+         * }</pre>
+         *
+         * <p><b>Width is in em</b>: the same draw is rasterised at whatever size the pose resolves
+         * to, so pixels would mean a different fraction of the letterform each frame. The stored
+         * distance field bounds it at {@link CgTextStroke#MAX_FIELD_WIDTH_EM}, and asking for more
+         * clamps rather than throwing — that type carries the full account of the bound.</p>
+         *
+         * <p>DISTANCE-FIELD TIER ONLY. A bitmap glyph carries coverage rather than distance, so
+         * there is nothing to offset a second threshold from and the stroke is silently skipped —
+         * deliberately, rather than promoting the draw to MSDF behind the caller's back: below
+         * about 8px MSDF reads worse than bitmap, which is exactly the size an outline is most
+         * wanted at, so the promotion would trade away the legibility the outline was for.</p>
+         */
+        public Draw stroke(float widthEm, int argb) {
+            this.strokeWidthEm = widthEm;
+            this.strokeArgb = argb;
+            return this;
+        }
+
+        /** The outline's width alone, in em. @see #stroke(float, int) */
+        public Draw strokeWidth(float widthEm) {
+            this.strokeWidthEm = widthEm;
+            return this;
+        }
+
+        /** The outline's colour alone; alpha 0 draws nothing. @see #stroke(float, int) */
+        public Draw strokeColor(int argb) {
+            this.strokeArgb = argb;
+            return this;
+        }
+
+        /** Where the outline sits relative to the contour. {@link CgStrokeAlign#OUTSET} by default. */
+        public Draw strokeAlign(CgStrokeAlign align) {
+            this.strokeAlign = align == CgStrokeAlign.CENTER ? ALIGN_CENTER
+                    : align == CgStrokeAlign.INSET ? ALIGN_INSET : ALIGN_OUTSET;
+            return this;
+        }
+
+        /** {@code true} paints the outline over the fill; {@code false}, the default, behind it. */
+        public Draw strokeOverFill(boolean strokeOverFill) {
+            this.strokeOver = strokeOverFill ? 1f : 0f;
+            return this;
+        }
+
+        /**
+         * The same four values from a {@link CgTextStroke}, for a caller that already holds one.
+         *
+         * <p><b>Not the main path</b> — the setters above take the values themselves, so a painter
+         * resolving a stroke every frame builds no record to carry them.</p>
+         */
+        public Draw stroke(CgTextStroke stroke) {
+            CgTextStroke s = stroke == null ? CgTextStroke.NONE : stroke;
+            return stroke(s.widthEm(), s.argb())
+                    .strokeAlign(s.align())
+                    .strokeOverFill(s.strokeOverFill());
         }
 
         /**
@@ -1075,11 +1175,58 @@ public class CgTextRenderer {
                     effectiveTargetPx, wantMsdf, fontKey, draw.rgba, scratchPosePhase.x);
         }
         CgProfiler.sample("draw.glyphCount", glyphCount);
+
+        // DID THIS DRAW GET THE TIER IT ASKED FOR? Glyph generation is budgeted per frame, and a
+        // glyph refused by the budget falls back to bitmap FOR THE FRAME -- deliberately, so a large
+        // paragraph costs a few frames at lower fidelity instead of a hitch. That trade assumes
+        // somebody paints again. A retained, damage-driven UI does not: nothing about the tree
+        // changed, so the degraded picture is kept forever, and since a bitmap glyph carries no
+        // distance field, any stroke on it silently disappears with it.
+        //
+        // So the caller is told, and can ask for another frame. Self-limiting by construction: the
+        // count stops rising the moment draws get what they want. @see #degradedDrawCount
+        for (int i = 0; i < glyphCount; i++) {
+            CgGlyphPlacement placement = resolvedGlyphs.placements[i];
+            // NO PLACEMENT AT ALL is the most degraded answer there is, not a neutral one: the glyph
+            // is not in the atlas yet and nothing was drawn for it. Counting only the LOWER-TIER case
+            // left the window right after a font change -- where nothing has resolved at any tier --
+            // reporting a healthy draw, so nobody asked again and the label stayed blank.
+            if (placement == null) {
+                degradedDrawCount++;
+                break;
+            }
+            if (wantMsdf && placement.hasGeometry() && !placement.isDistanceField()) {
+                degradedDrawCount++;
+                break;
+            }
+        }
+
+        // A stroke the tier cannot express resolves to none here rather than at the call site, so
+        // a caller may set one unconditionally and let the glyph tier decide -- which is what a CSS
+        // cascade does, having no idea which tier it will land on.
+        //
+        // It rides on the QUADS from here, not on the material: it used to be uploaded as material
+        // properties, which every draw with a different stroke then had to flush and re-apply for.
+        boolean stroked = wantMsdf && draw.strokeWidthEm > 0f && (draw.strokeArgb >>> 24) != 0;
+        // EM AGAINST THE DRAWN SIZE, never the raster size. effectiveTargetPx is clamped to
+        // MAX_EFFECTIVE_PX to cap atlas cell size, so past that clamp it under-reports the scale --
+        // measuring the stroke against it leaves the outline a fixed number of screen pixels while the
+        // glyph keeps growing, so it thins away as a canvas zooms in. Same trap, same fix as the wrap
+        // width in resolveDraw: read the pose, which is never clamped.
+        //
+        // World text keeps the raster size: a perspective quad has no single screen-space scale, and
+        // its effectiveTargetPx is constant by design. @see PerspectiveScaleResolver
+        float emScreenPx = context.isWorldText()
+                ? effectiveTargetPx
+                : fontKey.getTargetPx() * OrthographicScaleResolver.extractMaxScale(pose.pose());
+        float strokeWidthPx = stroked ? draw.strokeWidthEm * emScreenPx : 0f;
+
         CgTextDecorationRect[] decorations = resolvedLayout.baked().decorations();
         if (glyphCount > 0 || decorations.length > 0) {
             try (CgProfiler.Scope ignored = CgProfiler.scope("submitSortedQuads")) {
                 submitBatchedQuads(glyphCount, decorations, fontKey.getTargetPx(), effectiveTargetPx, wantMsdf,
-                        draw.x, draw.y, draw.rgba, pose.pose());
+                        draw.x, draw.y, draw.rgba, pose.pose(), stroked ? draw.strokeArgb : 0,
+                        strokeWidthPx, draw.strokeAlign, draw.strokeOver);
             }
         }
     }
@@ -1156,7 +1303,9 @@ public class CgTextRenderer {
      */
     private void submitBatchedQuads(int glyphCount, CgTextDecorationRect[] decorations,
                                     int baseTargetPx, int effectiveTargetPx, boolean wantMsdf,
-                                    float drawX, float drawY, int drawRgba, Matrix4f modelView) {
+                                    float drawX, float drawY, int drawRgba, Matrix4f modelView,
+                                    int strokeArgb, float strokeWidthPx,
+                                    float strokeAlign, float strokeOver) {
         CgGlyphPlacement[] placements = resolvedGlyphs.placements;
 
         int visibleGlyphCount = 0;
@@ -1287,6 +1436,12 @@ public class CgTextRenderer {
                     .uv(u0, v0, u1, v1)
                     .color(rgba)
                     .atlasLayer(atlasLayer)
+                        // The outline, in the layout text.shader's own header states: custom0 the
+                        // colour, custom1 (widthPx, align, over). Glyphs only — a decoration is a solid
+                        // rect with no distance field to offset a second threshold from, and the customs
+                        // default to zero, so underlines never ask rather than needing to opt out.
+                        .custom0(strokeArgb)
+                        .custom1(strokeWidthPx, strokeAlign, strokeOver, 0f)
                     .pose(modelView)
                     .submit();
 
