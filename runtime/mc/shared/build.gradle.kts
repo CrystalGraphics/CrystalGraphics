@@ -40,6 +40,14 @@ dependencies {
     // does not bring it. compileOnly for the same reason Mixin is: every loader has one, and the
     // version it has is the one that must be used.
     compileOnly("org.ow2.asm:asm-tree:9.10")
+
+    // The one line a bootstrapper prints, and nothing else. 1.7.10's own log4j, so a class compiled
+    // here cannot reach an API a newer runtime supplies.
+    compileOnly("org.apache.logging.log4j:log4j-api:2.0-beta9")
+
+    // The variant table decides which entry class every loader constructs, on every boot of every mod
+    // that ships this way -- so it is worth a test that needs no loader.
+    testImplementation("junit:junit:4.13.2")
 }
 
 tasks.withType<JavaCompile>().configureEach {

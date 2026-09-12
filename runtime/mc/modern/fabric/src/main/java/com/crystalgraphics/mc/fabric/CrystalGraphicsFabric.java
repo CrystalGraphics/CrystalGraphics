@@ -1,7 +1,7 @@
 package com.crystalgraphics.mc.fabric;
 
 import com.crystalgraphics.mc.modern.platform.LifecycleModern;
-import net.fabricmc.api.ClientModInitializer;
+import com.crystalgraphics.mc.shared.VariantEntry;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
@@ -19,10 +19,11 @@ import static com.crystalgraphics.mc.modern.platform.CrystalGraphics.MODID;
  * sides and runs first: Fabric drains {@code main} entrypoints before {@code client} ones, and a
  * dedicated server runs no {@code client} entrypoint at all.</p>
  */
-public final class CrystalGraphicsFabric implements ClientModInitializer {
+public final class CrystalGraphicsFabric implements VariantEntry {
 
+    /** @param context null — Fabric hands an entry point nothing. */
     @Override
-    public void onInitializeClient() {
+    public void start(Object context) {
         Events.register();
     }
 

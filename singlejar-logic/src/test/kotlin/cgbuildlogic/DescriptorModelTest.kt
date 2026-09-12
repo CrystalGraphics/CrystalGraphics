@@ -155,6 +155,36 @@ class DescriptorModelTest {
         assertTrue(json, json.contains("\"b.Client\""))
     }
 
+    /**
+     * A client-only mod gets no `main` entrypoint, even with a bootstrapper declared.
+     *
+     * A bootstrapper named under `main` must implement `ModInitializer`; the language stack's only
+     * implements `ClientModInitializer`, so naming it there failed the main entrypoint stage and took
+     * the whole client down — measured on an installed 1.20.1 Fabric client, 2026-09-12.
+     */
+    @Test
+    fun `a bootstrapper is named only for the halves its variants actually have`() {
+        val clientOnly = ModDescriptor(
+            id = "crystalgui_language", name = "L", version = "1", description = "d", license = "l",
+            variants = listOf(variant("fabric", "[1.20.1,1.21)", client = "a.Client")),
+            bootstrappers = mapOf("fabric" to "a.Boot"),
+        )
+        val json = FabricModJson.merged(clientOnly)
+        assertTrue(json, json.contains("\"client\": [\"a.Boot\"]"))
+        assertTrue(json, json.contains("\"main\": []"))
+    }
+
+    @Test
+    fun `a mod with both halves names the bootstrapper for both`() {
+        val json = FabricModJson.merged(ModDescriptor(
+            id = "crystalgui", name = "C", version = "1", description = "d", license = "l",
+            variants = listOf(variant("fabric", "[1.20.1,1.21)", common = "a.Common", client = "a.Client")),
+            bootstrappers = mapOf("fabric" to "a.Boot"),
+        ))
+        assertTrue(json, json.contains("\"main\": [\"a.Boot\"]"))
+        assertTrue(json, json.contains("\"client\": [\"a.Boot\"]"))
+    }
+
     @Test
     fun `differing constraints on one dependency are OR-ed, not overwritten`() {
         val json = FabricModJson.merged(descriptor(
