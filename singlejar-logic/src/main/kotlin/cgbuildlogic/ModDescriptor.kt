@@ -139,9 +139,21 @@ object FabricModJson {
         // ONE ENTRY POINT WHERE THERE IS A BOOTSTRAPPER. Fabric constructs every element of these
         // lists, so naming several variants' entries here would construct them all -- including the
         // ones compiled against a Minecraft that is not running. The bootstrapper is what picks.
+        //
+        // AND ONLY THE HALVES THAT EXIST. A bootstrapper named under `main` must implement
+        // ModInitializer, so declaring one for a client-only mod -- the language stack has no common
+        // entry at all -- fails the main entrypoint stage and takes the client down with it.
         val bootstrapper = d.bootstrappers["fabric"]
-        val main = if (bootstrapper != null) listOf(bootstrapper) else fabric.mapNotNull { it.commonEntry }
-        val client = if (bootstrapper != null) listOf(bootstrapper) else fabric.mapNotNull { it.clientEntry }
+        val main = when {
+            bootstrapper == null -> fabric.mapNotNull { it.commonEntry }
+            fabric.any { it.commonEntry != null } -> listOf(bootstrapper)
+            else -> emptyList()
+        }
+        val client = when {
+            bootstrapper == null -> fabric.mapNotNull { it.clientEntry }
+            fabric.any { it.clientEntry != null } -> listOf(bootstrapper)
+            else -> emptyList()
+        }
         val mixins = fabric.flatMap { it.mixinConfigs }.distinct()
         // ONE ENTRY PER ID, and several variants' constraints are OR-ed rather than overwritten.
         // `putAll` kept whichever variant was declared last, so a second Fabric row silently narrowed

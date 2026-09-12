@@ -118,6 +118,13 @@ registerSingleJarPipeline(SingleJarSpec(
             "mixins.crystalgraphics.json",
             "com/crystalgraphics/mc/shared/LoaderProbe.class",
             "com/crystalgraphics/mixins/early/CrystalGraphicsMixins.class",
+            // J11.0. The table decides which variant runs, and the three bootstrappers are what the
+            // loaders actually construct -- the entry classes carry no annotation any more, so a jar
+            // missing one of these loads nothing at all on that loader and says nothing about why.
+            "META-INF/crystalgraphics/variants.json",
+            "com/crystalgraphics/mc/fabric/FabricBootstrap.class",
+            "com/crystalgraphics/mc/forge/ForgeBootstrap.class",
+            "com/crystalgraphics/mc/neoforge/NeoForgeBootstrap.class",
         ))
         requiredManifest.set(mapOf(
             "FMLCorePluginContainsFMLMod" to "true",

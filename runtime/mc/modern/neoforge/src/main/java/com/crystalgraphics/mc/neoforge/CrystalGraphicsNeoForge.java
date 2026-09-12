@@ -5,9 +5,9 @@ import com.crystalgraphics.mc.modern.platform.PlatformServiceModern;
 import com.crystalgraphics.mc.shared.CrashVariant;
 import com.crystalgraphics.platform.CgPlatform;
 import com.mojang.logging.LogUtils;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.common.Mod;
+import com.crystalgraphics.mc.shared.VariantEntry;
+import net.neoforged.bus.api.IEventBus;
+import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import net.neoforged.neoforge.common.NeoForge;
@@ -21,17 +21,18 @@ import static com.crystalgraphics.mc.modern.platform.CrystalGraphics.MODID;
  * <p>Registration only: which event, and which stage of it. What the engine then does is
  * {@code LifecycleModern}'s, shared with Forge and Fabric.</p>
  */
-@Mod(MODID)
-public final class CrystalGraphicsNeoForge {
+public final class CrystalGraphicsNeoForge implements VariantEntry {
 
-    public CrystalGraphicsNeoForge() {
+    /** @param context the {@code IEventBus} NeoForge handed {@link NeoForgeBootstrap}. */
+    @Override
+    public void start(Object context) {
         // WHICH VARIANT, in the log rather than the crash report: NeoForge 20.4 exposes no crash
         // callable — CrashReportExtender is its own — so unlike Forge and 1.7.10 there is nothing to
         // register with, and `latest.log` is the file a report is attached with anyway. @see CrashVariant
         LogUtils.getLogger().info("[cg] {}: {}", CrashVariant.LABEL,
                 CrashVariant.report(CrystalGraphicsNeoForge.class));
         CgPlatform.register(PlatformServiceModern.getInstance());
-        Events.register();
+        Events.register((IEventBus) context);
     }
 
     // -- Events -----------------------------------------------------------------
@@ -41,21 +42,28 @@ public final class CrystalGraphicsNeoForge {
 
         private Events() {}
 
-        /** Called once from the mod constructor. */
-        static void register() {
+        /** Called once from the entry point. */
+        static void register(IEventBus modBus) {
             NeoForge.EVENT_BUS.addListener(Events::onRenderLevelOpaque);
             NeoForge.EVENT_BUS.addListener(Events::onRenderLevelTransparent);
             NeoForge.EVENT_BUS.addListener(Events::onGameShuttingDown);
+
+            // A SEPARATE CLASS, not a branch here: naming a client-only event type in a method of
+            // Events would resolve it when a dedicated server links this class.
+            if (FMLEnvironment.dist.isClient()) ModBus.register(modBus);
         }
 
         // -- MOD bus ----------------------------------------------------------------
 
-        @Mod.EventBusSubscriber(modid = MODID, bus = Mod.EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
+        /** Client-only, and a class of its own so a dedicated server never links one of these types. */
         public static final class ModBus {
             private ModBus() {}
 
-            @SubscribeEvent
-            public static void onRegisterReloadListeners(RegisterClientReloadListenersEvent event) {
+            static void register(IEventBus modBus) {
+                modBus.addListener(ModBus::onRegisterReloadListeners);
+            }
+
+            private static void onRegisterReloadListeners(RegisterClientReloadListenersEvent event) {
                 event.registerReloadListener(
                         (stage, manager, prepProfiler, applyProfiler, backgroundExecutor, gameExecutor) ->
                                 stage.wait(null).thenRunAsync(LifecycleModern::reload, gameExecutor));

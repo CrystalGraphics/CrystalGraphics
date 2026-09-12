@@ -40,6 +40,10 @@ dependencies {
     // compileOnly and NOT bundled: the merge adds :runtime:mc:shared once, under a package no variant
     // relocates, so all four hosts share the one copy.
     "compileOnly"(project(":runtime:mc:shared"))
+    // AND ON THE RUNTIME CLASSPATH since J11.0: it carries the variant selector a bootstrapper calls,
+    // so a dev run that cannot see it dies in the entry point. Loom takes this from runtimeClasspath;
+    // ModDevGradle ignores that and needs `additionalRuntimeClasspath`, at the foot of this file.
+    "runtimeOnly"(project(":runtime:mc:shared"))
     "compileOnly"(project(":core"))
     "compileOnly"(project(":freetype-msdfgen-harfbuzz-bindings"))
     "runtimeOnly"(project(":runtime:mc:modern:common"))
@@ -130,3 +134,29 @@ tasks.register<cgbuildlogic.CheckThinJar>("checkThinJar") {
 }
 
 tasks.named("check") { dependsOn("checkThinJar") }
+
+// A DEV RUN HAS TO SEE THE VARIANT TABLE (J11.0), because the bootstrapper its descriptor names reads
+// one -- so without this every dev client dies in the entry point rather than at prodSmoke time. Only
+// the table: the per-loader descriptors under this module's own resources are what a dev run uses, and
+// the merged ones are the shipped jar's.
+tasks.named<ProcessResources>("processResources") {
+    val descriptors = rootProject.tasks.named("generateMergedDescriptors")
+    dependsOn(descriptors)
+    from(descriptors) { include("META-INF/*/variants.json") }
+}
+
+// :runtime:mc:shared IS A LIBRARY ON A DEV RUN, NOT A MOD (J11.0).
+//
+// It carries the variant selector the bootstrapper calls, and nothing in it is annotated, so it has to
+// be on the run's classpath without being scanned as a mod. `additionalRuntimeClasspath` is
+// ModDevGradle's own channel for exactly that.
+//
+// afterEvaluate, and not `plugins.withId`: ModDevGradle creates this configuration while the
+// legacyForge/neoForge EXTENSION is configured, not when its plugin is applied, so a hook at apply
+// time fails with "Configuration with name 'additionalRuntimeClasspath' not found". Loom never has
+// one, which is what `findByName` answers for.
+afterEvaluate {
+    configurations.findByName("additionalRuntimeClasspath")?.let { runtime ->
+        dependencies.add(runtime.name, project(":runtime:mc:shared"))
+    }
+}

@@ -4,7 +4,7 @@ import com.crystalgraphics.mc.modern.platform.PlatformServiceModern;
 import com.crystalgraphics.mc.shared.CrashVariant;
 import com.crystalgraphics.platform.CgPlatform;
 
-import net.fabricmc.api.ModInitializer;
+import com.crystalgraphics.mc.shared.VariantEntry;
 
 import org.apache.logging.log4j.LogManager;
 
@@ -18,10 +18,11 @@ import org.apache.logging.log4j.LogManager;
  * accessor threw {@code IllegalStateException: CgPlatform not yet registered}. Found by CrystalGUI's
  * dedicated-server smoke check.</p>
  */
-public final class CrystalGraphicsFabricCommon implements ModInitializer {
+public final class CrystalGraphicsFabricCommon implements VariantEntry {
     
+    /** @param context null — Fabric hands an entry point nothing. */
     @Override
-    public void onInitialize() {
+    public void start(Object context) {
         // WHICH VARIANT, in the log rather than the crash report: Fabric Loader exposes no crash
         // callable, so unlike Forge and 1.7.10 there is nothing to register with. @see CrashVariant
         LogManager.getLogger("CrystalGraphics").info("[cg] {}: {}", CrashVariant.LABEL,

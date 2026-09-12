@@ -106,6 +106,7 @@ The repository is a Gradle multi-project build. Every subproject has a distinct 
 | `runtime/mc/modern/forge/` | 17 | LWJGL3 | MC 1.20.1 / MinecraftForge 47.x. Thin bootstrap: registers events on the Forge bus, calls `CgPlatform.register()`. |
 | `runtime/mc/modern/neoforge/` | 17 | LWJGL3 | MC 1.20.4 / NeoForge. Same pattern as forge. Despite living under `runtime/mc/modern/`, targets MC 1.20.4. |
 | `runtime/mc/modern/fabric/` | 17 | LWJGL3 | MC 1.20.1 / Fabric. Same pattern, uses Fabric API callbacks + GLFW for inputs with no Fabric API equivalent. |
+| `runtime/mc/shared/` | 8 | none | **THE VARIANT SELECTOR, and every mod built from these two repositories reads this one copy** (J11.0). `Variants` (the table a merged jar declares itself with, at `META-INF/<modid>/variants.json`), `VersionRange`, `VariantEntry`, `VariantBootstrap`, plus `LoaderProbe` and `CrashVariant`. One jar carries every loader's entry class and, above one Minecraft version per loader, several of each — so a loader constructs a **bootstrapper** that picks by loader and running version. The annotated bootstrapper is NOT here: it must be part of the mod for a scanner to find it, while this module reaches a dev run as a *library* on `additionalRuntimeClasspath` and is never scanned. Each loader module carries its own ~20 lines. Java 8 because FML 1.7.10 reads every class in the jar and refuses anything above major 52. |
 
 **Rule**: `core/` and `platform/` have zero compile dependency on LWJGL, MC, or any loader.
 
