@@ -59,6 +59,11 @@ fun Project.registerDescriptorTasks(
             root.resolve("mcmod.info").writeText(McmodInfo.merged(descriptor))
             root.resolve("META-INF/mods.toml").writeText(ForgeModsToml.merged(descriptor))
             root.resolve("pack.mcmeta").writeText(PackMcmeta.merged(descriptor))
+            // Per mod, not per jar: the host and the language stack each carry their own table, and a
+            // bootstrapper reads the one under its own id.
+            val variantsDir = root.resolve("META-INF/${descriptor.id}")
+            variantsDir.mkdirs()
+            variantsDir.resolve("variants.json").writeText(VariantsJson.merged(descriptor))
             logger.lifecycle("[{}] merged descriptors for {} variants -> {}",
                     logTag, descriptor.variants.size, root)
         }
@@ -116,9 +121,19 @@ fun Project.registerDescriptorTasks(
             }
 
             require(fabricJson, "\"id\": \"${descriptor.id}\"", "declare the mod id")
-            requireSomeVariant(fabricJson, "fabric", "entry points and depends") { v ->
-                listOfNotNull(v.commonEntry, v.clientEntry) +
-                    v.fabricDepends.map { (id, range) -> "\"$id\": \"$range\"" }
+            // WHERE THERE IS A BOOTSTRAPPER, that is what the descriptor names -- the variants' own
+            // entries are named by variants.json instead, and Fabric never sees them. A shipped
+            // descriptor still naming an entry directly would construct it on every version.
+            val fabricBootstrapper = descriptor.bootstrappers["fabric"]
+            if (fabricBootstrapper != null) {
+                require(fabricJson, fabricBootstrapper, "name the bootstrapper its entry points go through")
+            } else {
+                requireSomeVariant(fabricJson, "fabric", "entry points") { v ->
+                    listOfNotNull(v.commonEntry, v.clientEntry)
+                }
+            }
+            requireSomeVariant(fabricJson, "fabric", "depends") { v ->
+                v.fabricDepends.map { (id, range) -> "\"$id\": \"$range\"" }
             }
 
             require(forgeToml, "modId = \"${descriptor.id}\"", "declare the mod id")

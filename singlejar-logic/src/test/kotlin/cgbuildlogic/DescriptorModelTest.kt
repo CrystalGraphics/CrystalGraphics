@@ -183,6 +183,39 @@ class DescriptorModelTest {
         assertFalse(json, json.contains("\"fabricloader\": ["))
     }
 
+    // ── the variant table the bootstrapper reads ────────────────────────────────────────────────
+
+    @Test
+    fun `the variant table carries every row with the fields the reader requires`() {
+        val json = VariantsJson.merged(descriptor(
+            variant("fabric", "[1.20.1,1.20.2)", common = "a.Common", client = "a.Client"),
+            variant("forge", "[1.20.1,1.21)", common = "b.Common"),
+        ))
+        assertTrue(json, json.contains("\"format\": 1"))
+        assertTrue(json, json.contains("\"mod\": \"crystalgui\""))
+        assertTrue(json, json.contains("\"loader\": \"fabric\""))
+        assertTrue(json, json.contains("\"minecraft\": \"[1.20.1,1.20.2)\""))
+        assertTrue(json, json.contains("\"common\": \"a.Common\""))
+        assertTrue(json, json.contains("\"client\": \"a.Client\""))
+        assertTrue(json, json.contains("\"loader\": \"forge\""))
+    }
+
+    /** An absent client entry is omitted, so the reader sees null rather than an empty class name. */
+    @Test
+    fun `a variant with no client entry omits the key`() {
+        val json = VariantsJson.merged(descriptor(variant("forge", "[1.20.1,1.21)", common = "b.Common")))
+        assertFalse(json, json.contains("\"client\""))
+    }
+
+    @Test
+    fun `variants keep declaration order, which is the order the bootstrapper reads`() {
+        val json = VariantsJson.merged(descriptor(
+            variant("fabric", "[1.20.1,1.20.2)", common = "first.Entry"),
+            variant("fabric", "[1.20.2,1.21)", common = "second.Entry"),
+        ))
+        assertTrue(json, json.indexOf("first.Entry") < json.indexOf("second.Entry"))
+    }
+
     @Test
     fun `the forge family's Minecraft range is the hull of its variants`() {
         val d = descriptor(
