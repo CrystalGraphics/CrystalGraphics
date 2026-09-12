@@ -57,6 +57,19 @@ Queue = "Overlay"
 Properties {
     _MainTex ("Atlas Texture", sampler2DArray) = "white"
     _PxRange ("MSDF/MTSDF Pixel Range",  float) = 0.0
+
+    // THE STROKE IS NOT HERE. It is per INSTANCE, in the quad's two custom slots, because a
+    // material property is shared by every quad in a batch -- a stroke that changed per draw forced a
+    // flush, a keyword toggle and a property re-apply between draws that were otherwise identical.
+    // Carried on the instance, a stroked glyph and an unstroked one go out in one call.
+    //
+    //   CG_QUAD_CUSTOM0 = the outline's colour, rgba
+    //   CG_QUAD_CUSTOM1 = (width in screen px, align, over, unused)
+    //       align:  0 centred on the contour, 1 outside it, 2 inside it   @see CgStrokeAlign
+    //       over:   non-zero to paint the stroke over the fill            @see paint-order
+    //
+    // Width is screen px rather than em because CgTextRenderer is the only one that knows the
+    // effective raster size a draw resolved to. @see CgTextStroke#widthEm, quad.glsl
 }
 
 struct v2f {
@@ -117,9 +130,117 @@ Pass {
         float opacity = clamp(screenPxDist + 0.5, 0.0, 1.0);
         float alpha = i.color.a * opacity;
 
-        if (alpha <= (1.0 / 255.0)) discard;
+        // A RUNTIME BRANCH, deliberately not a keyword. A compile-time variant would be another
+        // dimension the batch has to break on, which is the cost this whole per-instance move
+        // exists to remove -- and the two sides differ by a handful of ALU ops on a fragment that
+        // has already paid for a texture fetch.
+        vec4 strokeColor = CG_QUAD_CUSTOM0;
+        vec4 strokeParams = CG_QUAD_CUSTOM1;
+        float strokeWidthPx = strokeParams.x;
+        float strokeAlign = strokeParams.y;
+        float strokeOver = strokeParams.z;
+        if (strokeWidthPx > 0.0 && strokeColor.a > 0.0) {
+            // THE RING IS A DIFFERENCE OF TWO COVERAGES, not a band test. Thresholding |distance| picks
+            // up the field's own antialiasing twice -- once at each side of the ring -- and a
+            // sub-pixel-wide stroke then flickers between fully present and absent as it crosses the
+            // grid. Two clamped coverages subtracted stay exact at every width, including widths under
+            // one pixel, where the ring correctly comes out partly transparent instead of dropping out.
+            //
+            // THE SAME FIELD THE FILL READS, deliberately, so the ring's inner edge lands exactly on
+            // the fill's own edge rather than a hair off it.
+            //
+            // THE MEDIAN, NOT MTSDF's TRUE DISTANCE, and the difference between them is a JOIN STYLE.
+            // msdf-atlas-gen's feature table lists "rounded outlines" among the soft effects the fourth
+            // channel is for and the sharp MSDF is not; Godot regressed font outlines moving MTSDF to
+            // MSDF (godotengine/godot#109757). Measured here on the reconstructed band rather than
+            // texel-by-texel, which is what an earlier reading got wrong: the two disagree over 0.5% of
+            // an A's band, 0.7% of an E's, and EXACTLY 0% of an o's -- they part company at corners and
+            // nowhere else. The median mitres a corner, a true distance rounds it.
+            //
+            // Mitred is the default this API owes: -webkit-text-stroke is a path stroke and Skia's
+            // default join is mitre. It also keeps the ring's inner edge exactly on the fill's own edge,
+            // since both thresholds read one reconstruction -- reading alpha for the ring and the median
+            // for the fill would open a hairline at every corner, which is the seam this whole composite
+            // exists to close. A round join is therefore a FEATURE THAT EXISTS TO BE BUILT, reading
+            // alpha for both edges, not a difference that cannot be seen.
+            // @see CgStrokeFieldRangeTest#medianAndTrueDistanceDisagreeAtCorners
+            float strokeDist = screenPxDist;
 
-        fragColor = vec4(i.color.rgb, alpha);
+            // CLAMPED TO WHAT THE FIELD CAN DESCRIBE, and this is not a nicety -- it is the difference
+            // between degrading and failing. Outside the stored range the field SATURATES: signedDistance
+            // pins to 0 and screenPxDist to -screenPxRange/2, everywhere, however far out the fragment
+            // really is. So the outer threshold `strokeDist + outward + 0.5` stops reaching zero as soon
+            // as outward passes screenPxRange/2 - 0.5, and every fragment of the padded cell reads as
+            // inside the ring: the glyph comes out as a solid rectangle of stroke colour, not a thick
+            // outline. Measured at font-size 44 against the pxRange 6 / 80px pairing this shipped with
+            // first, that boundary was about 1.15 screen px -- 1px drew correctly and 2px filled the cell.
+            //
+            // Clamping here rather than in Java because the bound is a SCREEN-SPACE quantity: it falls out
+            // of screenPxRange, which depends on fwidth and is therefore only known per fragment.
+            //
+            // HEADROOM IS A TEXEL, NOT A PIXEL, because the shoulder it keeps clear of belongs to the
+            // texel grid: a bilinear tap reads half a texel either side, so a threshold closer than that
+            // to the end of the range averages a clipped texel with a live one however many screen
+            // pixels away it looks. Past the shoulder the field is flat, and a flat field turns eight-bit
+            // value error into a level set that follows the grid -- the outer edge comes out scalloped
+            // while the fill beside it, thresholding where the field still has slope, stays smooth.
+            //
+            // Measured at font-size 64 on the shipping pxRange 12: an 8px request resolves 5.7% of its
+            // outer contour from footprints holding a clipped texel, against 84% with a screen pixel of
+            // headroom. It costs maximum width -- the clean reach is 4.5 texels of the 5.5 the field
+            // carries, 0.056em -- and a wider stroke than that stops getting wider instead of going
+            // ragged, which is what CgTextStroke has always promised. Skia keeps two texels back for the
+            // same reason, in the geometry rather than the threshold: SK_DistanceFieldInset, "the rect we
+            // render with is inset from the distance field glyph size to allow for bilerp".
+            //
+            // One SCREEN pixel remains the floor: minified text has several texels per pixel, where the
+            // grid is no longer what limits the edge. @see CgStrokeFieldRangeTest
+            float screenPxPerTexel = screenPxRange / max(_PxRange, 1.0e-6);
+            float fieldReach = max(screenPxRange * 0.5 - max(1.0, screenPxPerTexel), 0.0);
+            float wantOutward = strokeAlign < 0.5 ? strokeWidthPx * 0.5   // CENTER
+                              : strokeAlign < 1.5 ? strokeWidthPx         // OUTSET
+                                                   : 0.0;                   // INSET
+            float outward = min(wantOutward, fieldReach);
+            float inward  = min(strokeWidthPx - wantOutward, fieldReach);
+
+            float ringOuter = clamp(strokeDist + outward + 0.5, 0.0, 1.0);
+            float ringInner = clamp(strokeDist - inward  + 0.5, 0.0, 1.0);
+            float strokeCoverage = max(ringOuter - ringInner, 0.0);
+
+            // NOT SOURCE-OVER. An outset ring and the fill are DISJOINT REGIONS OF ONE SHAPE, not two
+            // layers: they meet along the glyph's own edge, where each carries partial coverage from its
+            // own antialiasing. Composited as layers that gives a + b(1-a) where disjoint areas owe
+            // a + b -- at the edge, where both are near a half, 0.75 against 1.0. A quarter-coverage
+            // hairline then traces every outline, visible even when stroke and fill are the SAME colour.
+            // CgUiSprite's note on the old nine-quad seams is the same arithmetic; there neither quad
+            // could know what its neighbour drew, and here both are in one fragment.
+            //
+            // So the silhouette's coverage is the union, and the two colours divide it by how much of it
+            // each occupies. Where they genuinely overlap -- a centred or inset ring does lie over the
+            // fill -- paint order decides which is measured first and which takes the remainder.
+            float unionCoverage = max(ringOuter, opacity);
+            float strokeWeight = strokeOver > 0.5 ? strokeCoverage : unionCoverage - opacity;
+            float fillWeight   = strokeOver > 0.5 ? unionCoverage - strokeCoverage : opacity;
+            strokeWeight = clamp(strokeWeight, 0.0, 1.0);
+            fillWeight   = clamp(fillWeight,   0.0, 1.0);
+
+            // Each region's own colour alpha still applies, which is what keeps a transparent
+            // text-fill-color hollow rather than merely unpainted: the weight survives, the alpha is 0.
+            float strokeA = strokeWeight * strokeColor.a;
+            float fillA   = fillWeight * i.color.a;
+
+            float outA = strokeA + fillA;
+            if (outA <= (1.0 / 255.0)) discard;
+            // Straight alpha out, matching this pass's SRC_ALPHA blend -- so the weighted sum is divided
+            // back out rather than left premultiplied, which would darken every stroked glyph.
+            vec3 outRgb = (strokeColor.rgb * strokeA + i.color.rgb * fillA) / outA;
+
+            fragColor = vec4(outRgb, min(outA, 1.0));
+        } else {
+            if (alpha <= (1.0 / 255.0)) discard;
+
+            fragColor = vec4(i.color.rgb, alpha);
+        }
 #else
         // A bitmap glyph is nearest-sampled pixel art; rotated, its texels get the antialiasing a
         // geometric edge gets rather than a staircase. See CG_TEXEL_AA in cg_env.glsl. At rest --

@@ -47,11 +47,22 @@ public record CgMsdfAtlasConfig(int atlasScalePx, float pxRange, int pageSize, i
      * Distance range in <strong>atlas texels</strong>, so its effect scales inversely with
      * {@link #DEFAULT_ATLAS_SCALE_PX} — the two must always be considered together.
      *
-     * <p>Held at 6, the value dense CJK was actually validated against at
-     * {@link #DEFAULT_ATLAS_SCALE_PX} = 80. A tighter 4.8 was tried, but only ever at scale 64,
-     * where it was compensating for that scale's much worse range-to-em ratio; it was never shown
-     * to beat 6 at 80, so 6 stands as the tested pairing. msdf-atlas-gen's own default is 2, so
-     * this remains generous either way.
+     * <p><strong>12 since the stroke reach was measured.</strong> The range is what a text stroke
+     * has to fit inside: an outline can only be as wide as the field carries real distance, which is
+     * {@code (pxRange - 1) / 2} texels less one for the bilinear footprint. At 6 that ceiling was
+     * 1.5 of 80 texels, 0.019 em -- 1.2px on 64px text, so an authored 2px outline and an authored
+     * 8px one drew identically. At 12 it is 4.5 texels, 0.056 em, 3.6px on 64px text.
+     *
+     * <p>The bill is cell AREA, paid by every glyph whether or not anything strokes it: a {@code g}
+     * goes 43x71 to 52x83 texels, 1.41x, so a page holds proportionally fewer glyphs and each costs
+     * proportionally more to generate against the per-frame budget.
+     *
+     * <p>Interference was the risk and it was measured, not assumed: across nine dense kanji in M+ 1p
+     * -- the font the 64px regressions were confirmed on -- ranges up to 16 close no counter and move
+     * ink by at most 2.7% against a 240px reference, which is the same 2.7% pxRange 6 shows, i.e. the
+     * 80px raster rather than the range. @see CgMsdfRangeInterferenceTest
+     *
+     * <p>msdf-atlas-gen's own default is 2, so this remains generous either way.
      *
      * <p>Range interference is nonetheless a real, visible failure mode and the reason this knob
      * cannot be raised freely: when the range exceeds the gap between two edges their fields
@@ -65,7 +76,7 @@ public record CgMsdfAtlasConfig(int atlasScalePx, float pxRange, int pageSize, i
      * validated as a pair; moving one without re-checking the other against dense CJK is how the
      * 64px regressions happened.
      */
-    public static final float DEFAULT_PX_RANGE = 6f;
+    public static final float DEFAULT_PX_RANGE = 12f;
     public static final int DEFAULT_PAGE_SIZE = 1024;
     public static final int DEFAULT_SPACING_PX = 1;
     public static final float DEFAULT_MITER_LIMIT = 2.0f;
