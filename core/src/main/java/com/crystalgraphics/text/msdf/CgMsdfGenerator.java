@@ -333,10 +333,19 @@ public class CgMsdfGenerator {
                 float metricsWidth = (float) ((shapeR - shapeL) * scale);
                 float metricsHeight = (float) ((shapeT - shapeB) * scale);
 
+                // THE RANGE THE FIELD ACTUALLY CARRIES, which is not the configured pxRange. The
+                // layout reserves one texel -- (pxRange - 1) / 2 per side -- so the field stops short
+                // of the cell edge and cannot bleed under bilinear sampling, and it hands msdfgen that
+                // same half-range. The shader scales every distance by what it is told, so passing the
+                // nominal range over-scales by pxRange/(pxRange-1) -- 9% at the shipping 12, 20% at the 6
+                // this was found on -- and turns the shader's one-pixel coverage clamp into a sub-pixel
+                // ramp: every glyph edge crisper than the antialiasing intends.
+                float storedPxRange = (float) (2.0 * rangeInShapeUnits * scale);
+
                 return CgGlyphGenerationResult.msdf(sourceFontKey, key, atlasKey, pixelData, boxWidth, boxHeight,
                         bearingX, bearingY,
                         planeLeft, planeBottom, planeRight, planeTop,
-                        metricsWidth, metricsHeight, effectivePxRange);
+                        metricsWidth, metricsHeight, storedPxRange);
             } finally {
                 bitmap.free();
             }
