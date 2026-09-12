@@ -38,6 +38,16 @@ data class ModDescriptor(
     val environment: Side = Side.BOTH,
     val dependencies: List<Dependency> = emptyList(),
     val variants: List<Variant> = emptyList(),
+    /**
+     * Loader family → the class that loader constructs, when that is a bootstrapper rather than the
+     * variant's own entry.
+     *
+     * <p>Only Fabric needs this: its descriptor names entry points, while Forge, NeoForge and FML
+     * all find theirs by scanning for an annotation, so moving the annotation is the whole of the
+     * change there. A family absent from this map names its variants' own entries, which is what a
+     * mod with one variant per loader still wants.</p>
+     */
+    val bootstrappers: Map<String, String> = emptyMap(),
 ) {
     init {
         val problems = validateVariants(variants)
@@ -126,8 +136,12 @@ object FabricModJson {
     /** The one descriptor a merged jar carries for Fabric: every Fabric variant's entrypoints. */
     fun merged(d: ModDescriptor): String {
         val fabric = d.variantsOf("fabric")
-        val main = fabric.mapNotNull { it.commonEntry }
-        val client = fabric.mapNotNull { it.clientEntry }
+        // ONE ENTRY POINT WHERE THERE IS A BOOTSTRAPPER. Fabric constructs every element of these
+        // lists, so naming several variants' entries here would construct them all -- including the
+        // ones compiled against a Minecraft that is not running. The bootstrapper is what picks.
+        val bootstrapper = d.bootstrappers["fabric"]
+        val main = if (bootstrapper != null) listOf(bootstrapper) else fabric.mapNotNull { it.commonEntry }
+        val client = if (bootstrapper != null) listOf(bootstrapper) else fabric.mapNotNull { it.clientEntry }
         val mixins = fabric.flatMap { it.mixinConfigs }.distinct()
         // ONE ENTRY PER ID, and several variants' constraints are OR-ed rather than overwritten.
         // `putAll` kept whichever variant was declared last, so a second Fabric row silently narrowed
