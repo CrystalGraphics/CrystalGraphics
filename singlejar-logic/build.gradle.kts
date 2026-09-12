@@ -18,4 +18,8 @@ dependencies {
     // Shadow and jvmDowngrader are the merge's own tools, and the shared tasks name their types.
     implementation("com.gradleup.shadow:shadow-gradle-plugin:9.2.2")
     implementation("xyz.wagyourtail.jvmdowngrader:gradle-plugin:1.3.5")
+
+    // Named rather than read from `dep.junit`: this is a standalone included build with its own
+    // settings, so it has no root project to read a property from. Same version as everywhere else.
+    testImplementation("junit:junit:4.13.2")
 }
