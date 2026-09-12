@@ -144,6 +144,28 @@ public record CgMsdfAtlasConfig(int atlasScalePx, float pxRange, int pageSize, i
         }
     }
 
+    /**
+     * The smallest raster size, in px/em, at which this pairing can still antialias.
+     *
+     * <p>msdfgen states the rule about the quantity its own shader computes: "screenPxRange() must
+     * never be lower than 1. If it is lower than 2, there is a high probability that the
+     * anti-aliasing will fail." That quantity is {@code storedRange * effectivePx / atlasScalePx},
+     * and the field carries {@code pxRange - 1} after the layout reserves its texel — so the rule
+     * inverts to a size:</p>
+     *
+     * <pre>{@code
+     * effectivePx >= 2 * atlasScalePx / (pxRange - 1)     // 15px at the shipping 80 / 12
+     * }</pre>
+     *
+     * <p>Which is why a glyph smaller than this is drawn from the bitmap tier: not because a
+     * distance field is unavailable, but because below here it cannot resolve its own edge. Anything
+     * that wants to reach for the field tier early — a stroke, which the bitmap tier cannot draw at
+     * all — stops here.</p>
+     */
+    public int minAntialiasablePx() {
+        return (int) Math.ceil(2.0 * atlasScalePx / Math.max(pxRange - 1.0, 1.0));
+    }
+
     public static CgMsdfAtlasConfig defaultConfig() {
         return new CgMsdfAtlasConfig(
                 DEFAULT_ATLAS_SCALE_PX,

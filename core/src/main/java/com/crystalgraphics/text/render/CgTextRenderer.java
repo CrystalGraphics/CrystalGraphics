@@ -858,11 +858,16 @@ public class CgTextRenderer {
          * distance field bounds it at {@link CgTextStroke#MAX_FIELD_WIDTH_EM}, and asking for more
          * clamps rather than throwing — that type carries the full account of the bound.</p>
          *
-         * <p>DISTANCE-FIELD TIER ONLY. A bitmap glyph carries coverage rather than distance, so
-         * there is nothing to offset a second threshold from and the stroke is silently skipped —
-         * deliberately, rather than promoting the draw to MSDF behind the caller's back: below
-         * about 8px MSDF reads worse than bitmap, which is exactly the size an outline is most
-         * wanted at, so the promotion would trade away the legibility the outline was for.</p>
+         * <p><b>A stroke pulls the draw onto the distance-field tier.</b> A bitmap glyph carries
+         * coverage rather than distance, so there is nothing to offset a second threshold from and an
+         * outline is not degraded there but absent. The size thresholds decide which tier draws a
+         * FILL better and at 20px they answer bitmap, which stays the right answer for the fill and
+         * the wrong one for the label.</p>
+         *
+         * <p>It stops at {@code CgMsdfAtlasConfig.minAntialiasablePx()} — 15px at the shipping
+         * pairing — because below there the field cannot resolve its own edge, which is msdfgen's
+         * rule rather than a preference. Under that size the stroke is dropped and the glyph keeps the
+         * bitmap tier: there is no outline worth the fill it would cost.</p>
          */
         public Draw stroke(float widthEm, int argb) {
             this.strokeWidthEm = widthEm;
@@ -1019,6 +1024,12 @@ public class CgTextRenderer {
     private record ResolvedDraw(CgFontKey fontKey, int effectiveTargetPx, boolean wantMsdf, CgTextLayout layout) {
     }
 
+    /** A width and a colour that would draw something. The tier decision needs it before the stroke is resolved. */
+    private static boolean strokeRequested(Draw draw) {
+        return draw.strokeWidthEm > 0f && (draw.strokeArgb >>> 24) != 0;
+    }
+
+
     /**
      * Resolves font/family, raster tier (via {@link CgTextScaleResolver}), and the final
      * {@link CgTextLayout} for {@code draw} — the family/font/layout precedence rules
@@ -1093,6 +1104,23 @@ public class CgTextRenderer {
         if (!wantMsdf && !OrthographicScaleResolver.isAxisAligned(pose.pose())) {
             wantMsdf = true;
             CgProfiler.count("text.msdfForcedByTransform");
+        }
+
+        // A VISIBLE STROKE FORCES IT TOO, for the same kind of reason: a bitmap glyph is coverage with
+        // no distance to offset a second threshold from, so on that tier an outline is not degraded --
+        // it is absent. The size thresholds are about which tier draws a FILL better, and at 20px they
+        // answer bitmap; that answer is still right for the fill and wrong for the label as a whole,
+        // because the alternative on offer is no outline at all.
+        //
+        // It stops where the field stops being able to resolve its own edge, which is msdfgen's own
+        // rule rather than a taste: @see CgMsdfAtlasConfig#minAntialiasablePx. Below that a promoted
+        // draw would trade a crisp unstroked label for a soft stroked one, which is the trade this
+        // deliberately refused when the tier was first written -- the correction is that the refusal
+        // was applied at 33px, where the field antialiases perfectly well, rather than at 15.
+        if (!wantMsdf && strokeRequested(draw)
+                && effectiveTargetPx >= registry.getResolvedMsdfConfig(fontKey).minAntialiasablePx()) {
+            wantMsdf = true;
+            CgProfiler.count("text.msdfForcedByStroke");
         }
 
         CgTextLayout resolvedLayout;
@@ -1207,7 +1235,7 @@ public class CgTextRenderer {
         //
         // It rides on the QUADS from here, not on the material: it used to be uploaded as material
         // properties, which every draw with a different stroke then had to flush and re-apply for.
-        boolean stroked = wantMsdf && draw.strokeWidthEm > 0f && (draw.strokeArgb >>> 24) != 0;
+        boolean stroked = wantMsdf && strokeRequested(draw);
         // EM AGAINST THE DRAWN SIZE, never the raster size. effectiveTargetPx is clamped to
         // MAX_EFFECTIVE_PX to cap atlas cell size, so past that clamp it under-reports the scale --
         // measuring the stroke against it leaves the outline a fixed number of screen pixels while the
@@ -1436,12 +1464,13 @@ public class CgTextRenderer {
                     .uv(u0, v0, u1, v1)
                     .color(rgba)
                     .atlasLayer(atlasLayer)
-                        // The outline, in the layout text.shader's own header states: custom0 the
-                        // colour, custom1 (widthPx, align, over). Glyphs only — a decoration is a solid
-                        // rect with no distance field to offset a second threshold from, and the customs
-                        // default to zero, so underlines never ask rather than needing to opt out.
-                        .custom0(strokeArgb)
-                        .custom1(strokeWidthPx, strokeAlign, strokeOver, 0f)
+                    // The outline, in the layout text.shader's own header states: custom0 the
+                    // colour, custom1 (widthPx, align, over). Glyphs only -- a
+                    // decoration is a solid rect with no distance field to offset a second threshold
+                    // from, and the customs default to zero, so underlines never ask rather than
+                    // needing to opt out.
+                    .custom0(strokeArgb)
+                    .custom1(strokeWidthPx, strokeAlign, strokeOver, 0f)
                     .pose(modelView)
                     .submit();
 

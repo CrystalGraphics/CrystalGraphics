@@ -57,7 +57,18 @@ package com.crystalgraphics.api.text;
  * It would have to read alpha for BOTH of the ring's edges, since mixing channels across the two
  * would open a hairline where the ring meets the fill at every corner.
  * @see CgStrokeFieldRangeTest#medianAndTrueDistanceDisagreeAtCorners</p>
- * <p>A bitmap-tier glyph has no field at all and takes no stroke from this path.</p>
+ * <p><b>Every size that can carry one gets one.</b> A stroke pulls its draw onto the
+ * distance-field tier, down to the size where the field can still antialias — 15px at the
+ * shipping pairing, {@code CgMsdfAtlasConfig.minAntialiasablePx()}. Below that the glyph is a bitmap,
+ * which carries coverage rather than distance, and the stroke is dropped: the outline would be drawn
+ * on a fill that the field cannot resolve. That floor is msdfgen's own rule about its shader
+ * (screenPxRange under 2 and the antialiasing fails), not a taste.</p>
+ *
+ * <p><b>Weight and slant cost it nothing.</b> Synthetic oblique is sheared on the shape before the
+ * field is generated, so the field is the slanted letter's own and the outline is uniform rather than
+ * elliptical. Synthetic bold is a bias on the field, which moves its contour and both of its
+ * saturation ends together — measured, the reach is the same 5.50 texels with the bias and
+ * without. @see CgSyntheticBoldReachTest</p>
  */
 public record CgTextStroke(float widthEm, int argb, CgStrokeAlign align, boolean strokeOverFill) {
 
