@@ -195,6 +195,10 @@ Pass {
             //
             // One SCREEN pixel remains the floor: minified text has several texels per pixel, where the
             // grid is no longer what limits the edge. @see CgStrokeFieldRangeTest
+            // ONE REACH FOR BOTH DIRECTIONS, including on synthetic bold, which looks like it should
+            // need two and does not. Bold is a bias added to the whole field, which moves the contour
+            // and both saturation ends together -- measured on a real bold field, the outward reach is
+            // 5.50 texels either way. @see CgSyntheticBoldReachTest
             float screenPxPerTexel = screenPxRange / max(_PxRange, 1.0e-6);
             float fieldReach = max(screenPxRange * 0.5 - max(1.0, screenPxPerTexel), 0.0);
             float wantOutward = strokeAlign < 0.5 ? strokeWidthPx * 0.5   // CENTER
