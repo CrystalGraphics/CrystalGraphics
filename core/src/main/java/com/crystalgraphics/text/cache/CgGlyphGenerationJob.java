@@ -131,6 +131,28 @@ final class CgGlyphGenerationJob {
         return CgGlyphAtlas.Type.BITMAP;
     }
 
+    /**
+     * <b>Two jobs are the same job when they would write the same atlas entry</b>, which is what the
+     * executor's {@code pendingJobs} map is actually asking: is this already being generated.
+     *
+     * <p><b>A distance-field job therefore ignores who asked for it.</b> {@code atlasKey} and
+     * {@code msdfAtlasKey} are both rewritten to {@code CgMsdfAtlasConfig.atlasScalePx} before a job
+     * is built, because every size of a face collapses onto one distance field — that is the whole
+     * point of one. So {@code sourceFontKey} and {@code effectiveTargetPx} say only which INSTANCE
+     * happened to ask first, and including them made two sizes of one face two unequal jobs producing
+     * one identical entry: the dedup missed, and msdfgen ran twice at ~30ms a glyph.
+     *
+     * <p>That is not hypothetical and it is not rare. {@code FontFamilyCache} caches by
+     * {@code (stack, targetPx)}, so every new font size in a stylesheet mints a fresh {@code CgFont},
+     * whose {@code warmAscii} re-queues all 95 printable ASCII glyphs to regenerate distance fields
+     * that already exist or are already in flight — about three seconds of pointless work, once per
+     * size, and visible as text that renders unstyled until it lands. {@code warmAscii}'s own javadoc
+     * described this before anything fixed it.
+     *
+     * <p><b>A bitmap job keeps both</b>, because a raster glyph genuinely is per size: its output
+     * differs with {@code effectiveTargetPx} and its sub-pixel bucket, and {@code bitmapRasterKey}
+     * carries the pairing that says so.</p>
+     */
     @Override
     public boolean equals(Object o) {
         if (this == o) {
@@ -140,22 +162,29 @@ final class CgGlyphGenerationJob {
             return false;
         }
         CgGlyphGenerationJob that = (CgGlyphGenerationJob) o;
+        if (!atlasKey.equals(that.atlasKey) || isDistanceField() != that.isDistanceField()) {
+            return false;
+        }
+        if (isDistanceField()) {
+            return equalsNullable(msdfAtlasKey, that.msdfAtlasKey)
+                    && equalsNullable(msdfConfig, that.msdfConfig);
+        }
         return effectiveTargetPx == that.effectiveTargetPx
                 && subPixelBucket == that.subPixelBucket
                 && sourceFontKey.equals(that.sourceFontKey)
-                && atlasKey.equals(that.atlasKey)
-                && equalsNullable(bitmapRasterKey, that.bitmapRasterKey)
-                && equalsNullable(msdfAtlasKey, that.msdfAtlasKey)
-                && equalsNullable(msdfConfig, that.msdfConfig);
+                && equalsNullable(bitmapRasterKey, that.bitmapRasterKey);
     }
 
     @Override
     public int hashCode() {
-        int result = sourceFontKey.hashCode();
-        result = 31 * result + atlasKey.hashCode();
+        int result = atlasKey.hashCode();
+        if (isDistanceField()) {
+            result = 31 * result + (msdfAtlasKey != null ? msdfAtlasKey.hashCode() : 0);
+            result = 31 * result + (msdfConfig != null ? msdfConfig.hashCode() : 0);
+            return result;
+        }
+        result = 31 * result + sourceFontKey.hashCode();
         result = 31 * result + (bitmapRasterKey != null ? bitmapRasterKey.hashCode() : 0);
-        result = 31 * result + (msdfAtlasKey != null ? msdfAtlasKey.hashCode() : 0);
-        result = 31 * result + (msdfConfig != null ? msdfConfig.hashCode() : 0);
         result = 31 * result + effectiveTargetPx;
         result = 31 * result + subPixelBucket;
         return result;
