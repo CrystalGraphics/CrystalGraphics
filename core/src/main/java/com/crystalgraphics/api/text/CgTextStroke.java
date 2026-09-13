@@ -26,12 +26,14 @@ package com.crystalgraphics.api.text;
  * <p>The stroke is read out of the stored distance field, which carries real distance for
  * {@code (pxRange - 1) / 2} atlas texels either side of the outline and SATURATES past that. A
  * bilinear tap reads half a texel either side, so the usable reach stops a further texel short of
- * saturation — at the shipping pairing of {@code pxRange 12} and an 80px atlas scale,
- * <b>4.5 texels, 0.05625 em</b>, which is 3.6px on 64px text and 1.8px on 32px text. Godot allows
- * 0.083 em for the same technique at its own defaults; ours stops lower because the shared atlas is
- * eight bits and holds dense CJK, which a wider range quantises into merged strokes. Latin measures
- * clean to 0.131 em, which is what a range per font would be worth.
- * @see CgLatinRangeHeadroomTest
+ * saturation. <b>The range is per FACE</b>, so the reach is too: a face carrying a dense script
+ * keeps {@code pxRange 12} — 4.5 of 80 texels, 0.056 em, 3.6px on 64px text — because eight bits
+ * cannot quantise a wider one without merging strokes a kanji keeps apart. Every other face is
+ * banded at 24: <b>0.131 em, 8.4px on 64px text</b>, past the 0.083 em Godot allows for the same
+ * technique.
+ *
+ * <p>Ask {@code CgFontRegistry.maxStrokeWidthEm(family)} for the one that applies.
+ * @see CgLatinRangeHeadroomTest, CgFontBandingTest
  * {@link #MAX_FIELD_WIDTH_EM} is that number, and a wider outline clamps to it rather than
  * getting wider.</p>
  *
@@ -80,11 +82,10 @@ public record CgTextStroke(float widthEm, int argb, CgStrokeAlign align, boolean
     public static final CgTextStroke NONE = new CgTextStroke(0f, 0, CgStrokeAlign.OUTSET, false);
 
     /**
-    /**
-     * The widest stroke the shipping distance field can describe CLEANLY, in em: half of
+     * The widest stroke the NARROW band's distance field can describe CLEANLY, in em: half of
      * {@code CgMsdfAtlasConfig.DEFAULT_PX_RANGE}, less one texel the generator keeps back so the
      * field cannot bleed past its cell, less one more for the bilinear footprint — 4.5 of 80
-     * texels.
+     * texels. This is the band EVERY face has; most have more.
      *
      * <p><b>The last texel is not a rounding allowance.</b> A tap that straddles the saturation
      * shoulder averages a clipped texel with a live one, and a flat field turns eight-bit value
