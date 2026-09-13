@@ -1235,25 +1235,27 @@ public class CgTextRenderer {
         // It rides on the QUADS from here, not on the material: it used to be uploaded as material
         // properties, which every draw with a different stroke then had to flush and re-apply for.
         boolean stroked = wantMsdf && strokeRequested(draw);
-        // EM AGAINST THE DRAWN SIZE, never the raster size. effectiveTargetPx is clamped to
-        // MAX_EFFECTIVE_PX to cap atlas cell size, so past that clamp it under-reports the scale --
-        // measuring the stroke against it leaves the outline a fixed number of screen pixels while the
-        // glyph keeps growing, so it thins away as a canvas zooms in. Same trap, same fix as the wrap
-        // width in resolveDraw: read the pose, which is never clamped.
+        // TEXELS, not screen pixels: a fraction of the em in the GLYPH's own space, which the
+        // transform then stretches like everything else. That is what CSS does -- a stroke is painted
+        // in local space and transformed with the element -- and it is the only form an anisotropic
+        // transform can carry, since converting a screen-pixel width needs ONE scale factor and
+        // scale(2,1) does not have one.
         //
-        // World text keeps the raster size: a perspective quad has no single screen-space scale, and
-        // its effectiveTargetPx is constant by design. @see PerspectiveScaleResolver
-        float emScreenPx = context.isWorldText()
-                ? effectiveTargetPx
-                : fontKey.getTargetPx() * OrthographicScaleResolver.extractMaxScale(pose.pose());
-        float strokeWidthPx = stroked ? draw.strokeWidthEm * emScreenPx : 0f;
+        // Algebraically identical to the screen-space form this replaces wherever that one worked:
+        // it sent width * targetPx * scale, and the shader divided by a screenPxRange of
+        // pxRange * targetPx * scale / atlasScalePx, so the scale cancelled and left exactly this.
+        // Zoom and world text are unaffected for the same reason, which is why neither needs a case
+        // here any more.
+        float strokeWidthTexels = stroked
+                ? draw.strokeWidthEm * registry.getResolvedMsdfConfig(fontKey).atlasScalePx()
+                : 0f;
 
         CgTextDecorationRect[] decorations = resolvedLayout.baked().decorations();
         if (glyphCount > 0 || decorations.length > 0) {
             try (CgProfiler.Scope ignored = CgProfiler.scope("submitSortedQuads")) {
                 submitBatchedQuads(glyphCount, decorations, fontKey.getTargetPx(), effectiveTargetPx, wantMsdf,
                         draw.x, draw.y, draw.rgba, pose.pose(), stroked ? draw.strokeArgb : 0,
-                        strokeWidthPx, draw.strokeAlign, draw.strokeOver);
+                        strokeWidthTexels, draw.strokeAlign, draw.strokeOver);
             }
         }
     }
@@ -1331,7 +1333,7 @@ public class CgTextRenderer {
     private void submitBatchedQuads(int glyphCount, CgTextDecorationRect[] decorations,
                                     int baseTargetPx, int effectiveTargetPx, boolean wantMsdf,
                                     float drawX, float drawY, int drawRgba, Matrix4f modelView,
-                                    int strokeArgb, float strokeWidthPx,
+                                    int strokeArgb, float strokeWidthTexels,
                                     float strokeAlign, float strokeOver) {
         CgGlyphPlacement[] placements = resolvedGlyphs.placements;
 
@@ -1471,7 +1473,7 @@ public class CgTextRenderer {
                     // banded atlas and carries that band's range, so it batches with the glyphs
                     // around it instead of splitting them.
                     .custom0(strokeArgb)
-                    .custom1(strokeWidthPx, strokeAlign, strokeOver, pxRange)
+                    .custom1(strokeWidthTexels, strokeAlign, strokeOver, pxRange)
                     .pose(modelView)
                     .submit();
 

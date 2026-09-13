@@ -63,15 +63,16 @@ Properties {
     // Carried on the instance, a stroked glyph and an unstroked one go out in one call.
     //
     //   CG_QUAD_CUSTOM0 = the outline's colour, rgba
-    //   CG_QUAD_CUSTOM1 = (width in screen px, align, over, pxRange)
+    //   CG_QUAD_CUSTOM1 = (width in atlas TEXELS, align, over, pxRange)
     //       align:   0 centred on the contour, 1 outside it, 2 inside it  @see CgStrokeAlign
     //       over:    non-zero to paint the stroke over the fill           @see paint-order
     //       pxRange: the range the GLYPH's own atlas band was generated at. Per instance because a
     //                face carrying a dense script is banded narrower than the rest, and two bands
     //                have to go out in one draw. @see CgMsdfAtlasConfig#WIDE_PX_RANGE
     //
-    // Width is screen px rather than em because CgTextRenderer is the only one that knows the
-    // effective raster size a draw resolved to. @see CgTextStroke#widthEm, quad.glsl
+    // Width is texels rather than screen px because a screen-space width needs one scale factor to
+    // convert and an anisotropic transform has none; in texels it is local, and the transform
+    // stretches the ring with the glyph. @see CgTextStroke#widthEm, quad.glsl
 }
 
 struct v2f {
@@ -160,10 +161,10 @@ Pass {
         // exists to remove -- and the two sides differ by a handful of ALU ops on a fragment that
         // has already paid for a texture fetch.
         vec4 strokeColor = CG_QUAD_CUSTOM0;
-        float strokeWidthPx = strokeParams.x;
+        float strokeWidthTexels = strokeParams.x;
         float strokeAlign = strokeParams.y;
         float strokeOver = strokeParams.z;
-        if (strokeWidthPx > 0.0 && strokeColor.a > 0.0) {
+        if (strokeWidthTexels > 0.0 && strokeColor.a > 0.0) {
             // THE RING IS A DIFFERENCE OF TWO COVERAGES, not a band test. Thresholding |distance| picks
             // up the field's own antialiasing twice -- once at each side of the ring -- and a
             // sub-pixel-wide stroke then flickers between fully present and absent as it crosses the
@@ -224,16 +225,25 @@ Pass {
             // need two and does not. Bold is a bias added to the whole field, which moves the contour
             // and both saturation ends together -- measured on a real bold field, the outward reach is
             // 5.50 texels either way. @see CgSyntheticBoldReachTest
-            float screenPxPerTexel = screenPxRange / max(pxRange, 1.0e-6);
-            float fieldReach = max(screenPxRange * 0.5 - max(1.0, screenPxPerTexel), 0.0);
-            float wantOutward = strokeAlign < 0.5 ? strokeWidthPx * 0.5   // CENTER
-                              : strokeAlign < 1.5 ? strokeWidthPx         // OUTSET
-                                                   : 0.0;                   // INSET
-            float outward = min(wantOutward, fieldReach);
-            float inward  = min(strokeWidthPx - wantOutward, fieldReach);
+            // BOTH SIDES IN FIELD UNITS. The reach is the same two floors as before divided
+            // through by screenPxRange -- a TEXEL of headroom where the grid is what limits the edge,
+            // one SCREEN pixel where minification means it is not -- so only the floor is screen
+            // dependent now. That is what stops an anisotropic transform pushing the request past the
+            // reach: the width no longer grows with one axis while the reach grows with the other,
+            // which landed the outer edge on the saturation shoulder and drew it following the texel
+            // grid. @see CgAnisotropicFieldRangeTest
+            float strokeWidthField = strokeWidthTexels / max(pxRange, 1.0e-6);
+            float reachField = max(0.5 - max(1.0 / max(screenPxRange, 1.0e-6),
+                                             1.0 / max(pxRange, 1.0e-6)), 0.0);
 
-            float ringOuter = clamp(strokeDist + outward + 0.5, 0.0, 1.0);
-            float ringInner = clamp(strokeDist - inward  + 0.5, 0.0, 1.0);
+            float wantOutward = strokeAlign < 0.5 ? strokeWidthField * 0.5   // CENTER
+                              : strokeAlign < 1.5 ? strokeWidthField         // OUTSET
+                                                   : 0.0;                     // INSET
+            float outward = min(wantOutward, reachField);
+            float inward  = min(strokeWidthField - wantOutward, reachField);
+
+            float ringOuter = clamp(strokeDist + outward * screenPxRange + 0.5, 0.0, 1.0);
+            float ringInner = clamp(strokeDist - inward  * screenPxRange + 0.5, 0.0, 1.0);
             float strokeCoverage = max(ringOuter - ringInner, 0.0);
 
             // NOT SOURCE-OVER. An outset ring and the fill are DISJOINT REGIONS OF ONE SHAPE, not two
