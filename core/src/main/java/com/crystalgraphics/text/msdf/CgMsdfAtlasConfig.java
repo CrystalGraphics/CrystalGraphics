@@ -197,7 +197,7 @@ public record CgMsdfAtlasConfig(int atlasScalePx, float pxRange, int pageSize, i
      * inverts to a size:</p>
      *
      * <pre>{@code
-     * effectivePx >= 2 * atlasScalePx / (pxRange - 1)     // 15px at the shipping 80 / 12
+     * effectivePx >= 2 * atlasScalePx / (pxRange - 1)     // 15px at 80/12, 7px at 80/24
      * }</pre>
      *
      * <p>Which is why a glyph smaller than this is drawn from the bitmap tier: not because a

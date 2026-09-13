@@ -863,8 +863,9 @@ public class CgTextRenderer {
          * FILL better and at 20px they answer bitmap, which stays the right answer for the fill and
          * the wrong one for the label.</p>
          *
-         * <p>It stops at {@code CgMsdfAtlasConfig.minAntialiasablePx()} — 15px at the shipping
-         * pairing — because below there the field cannot resolve its own edge, which is msdfgen's
+         * <p>It stops at {@code CgMsdfAtlasConfig.minAntialiasablePx()}, which is per BAND — 7px for
+         * a face banded wide, 15px for one carrying a dense script — because below there the field
+         * cannot resolve its own edge, which is msdfgen's
          * rule rather than a preference. Under that size the stroke is dropped and the glyph keeps the
          * bitmap tier: there is no outline worth the fill it would cost.</p>
          */

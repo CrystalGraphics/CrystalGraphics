@@ -213,7 +213,7 @@ Pass {
             // Measured at font-size 64: an 8px request resolves 5.7% of its outer contour from
             // footprints holding a clipped texel, against 84% with a screen pixel of headroom. It costs
             // maximum width -- the clean reach is one texel short of the range the field carries,
-            // 0.056em at the shipping pairing -- and a wider stroke than that stops getting wider
+            // 0.056em on the narrow band and 0.131em on the wide one -- and a wider stroke stops widening
             // instead of going ragged, which is what CgTextStroke has always promised. Skia keeps two
             // texels back for the same reason, in the geometry rather than the threshold:
             // SK_DistanceFieldInset, "the rect we render with is inset from the distance field glyph
