@@ -57,6 +57,58 @@ public final class CgGlyphPlacementCache {
      */
     private static final long MIN_REFRESH_FRAMES_WHILE_UNCONVERGED = 120;
 
+    /**
+     * Wall-clock a frame may spend re-resolving SMALL unconverged entries as soon as the atlas
+     * gains content, ahead of {@link #MIN_REFRESH_FRAMES_WHILE_UNCONVERGED}.
+     *
+     * <p><b>The frame limit charged every layout the same second.</b> It was measured against
+     * large layouts, where a refresh is 100-128 ms for 1757 glyphs, and applied unchanged to a
+     * ten-glyph label whose refresh costs microseconds. On a font switch that label resolves once
+     * with most glyphs on the bitmap fallback, its fields land two frames later, and the cached
+     * fallback was served for the remaining 118 -- a second of text with no outline, on a page doing
+     * nothing else. Measured on the gallery's text lab: fields available on frame 2, outline on
+     * screen at about frame 120 before this budget and within four to six frames after it.</p>
+     *
+     * <p>A TIME budget, checked before each refresh and charged after it, is the same shape the
+     * glyph drain settled on for the same reason: counts bound how much, not how long. Many labels
+     * converging together share it, so the warmup collapse the frame limit exists to prevent
+     * cannot come back through a page of small layouts.</p>
+     */
+    private static final long REFRESH_NANOS_PER_FRAME = 2_000_000L;
+
+    /**
+     * Largest entry the refresh budget will admit. Above it a single refresh could overshoot the
+     * budget by tens of milliseconds, so those keep the frame limit they were measured against.
+     */
+    private static final int MAX_BUDGETED_REFRESH_GLYPHS = 128;
+
+    // Render-thread only, like every lookup against MAP.
+    private static long refreshBudgetFrame = Long.MIN_VALUE;
+    private static long refreshNanosThisFrame;
+
+    /** Whether an unconverged entry of this size may refresh this frame rather than wait out the limit. */
+    private static boolean refreshWithinBudget(int glyphCount, long frame) {
+        if (glyphCount > MAX_BUDGETED_REFRESH_GLYPHS) return false;
+        rollRefreshBudget(frame);
+        return refreshNanosThisFrame < REFRESH_NANOS_PER_FRAME;
+    }
+
+    /**
+     * Charges a refresh of a stale unconverged entry against this frame's budget. Call after the
+     * refresh, so the next lookup in the same frame sees what it cost.
+     */
+    public static void chargeRefresh(long frame, long nanos) {
+        rollRefreshBudget(frame);
+        refreshNanosThisFrame += nanos;
+    }
+
+    private static void rollRefreshBudget(long frame) {
+        if (frame != refreshBudgetFrame) {
+            refreshBudgetFrame = frame;
+            refreshNanosThisFrame = 0L;
+        }
+    }
+
     private static final Map<Key, Entry> MAP = new LinkedHashMap<>(CAPACITY * 4 / 3, 0.75f, true) {
         protected boolean removeEldestEntry(Map.Entry<Key, Entry> eldest) {
             boolean evict = size() > CAPACITY;
@@ -151,6 +203,8 @@ public final class CgGlyphPlacementCache {
     public static void clearForTest() {
         MAP.clear();
         cachedBytes = 0L;
+        refreshBudgetFrame = Long.MIN_VALUE;
+        refreshNanosThisFrame = 0L;
     }
 
     /** Current estimated footprint, for diagnostics and tests. */
@@ -297,7 +351,8 @@ public final class CgGlyphPlacementCache {
          *
          * <p>The content-generation check is additionally rate-limited by
          * {@link #MIN_REFRESH_FRAMES_WHILE_UNCONVERGED} — see that constant for why a purely
-         * generation-driven policy collapses warmup framerate. The rate limit applies only to
+         * generation-driven policy collapses warmup framerate -- and an entry small enough for
+         * {@link #REFRESH_NANOS_PER_FRAME} may refresh before that limit while the frame can afford it. The rate limit applies only to
          * the unconverged branch; a distance-field entry returns above it and is never
          * re-resolved on a timer at all.</p>
          */
@@ -306,9 +361,10 @@ public final class CgGlyphPlacementCache {
             if (distanceField) return true;
             if (this.effectiveTargetPx != effectiveTargetPx) return false;
             if (contentGeneration == builtContentGeneration) return true;
-            // Atlas content changed, so an upgrade may be available -- but honour the rate
-            // limit before paying for a full re-resolve of the whole layout.
-            return (frame - builtFrame) < MIN_REFRESH_FRAMES_WHILE_UNCONVERGED;
+            // Atlas content changed, so an upgrade may be available. The frame limit guarantees a
+            // refresh eventually; a small entry may take one sooner while the frame can afford it.
+            if (frame - builtFrame >= MIN_REFRESH_FRAMES_WHILE_UNCONVERGED) return false;
+            return !refreshWithinBudget(glyphCount, frame);
         }
     }
 }
