@@ -110,6 +110,10 @@ Completed async payload ready for render-thread atlas commit.
 
 Per-worker font state holder used so async glyph generation does not trample render-thread font objects.
 
+Also builds text-shadow cells: it answers `CgShadowCell.GlyphSource` with an unhinted FreeType raster
+(synthetic style through `CgFontRegistry.applySyntheticStyle`, the bitmap tier's own) and
+`CgMsdfGenerator.trueDistance`, and hands the key's recipe the result.
+
 ### `package-info.java`
 
 Package-level summary of cache/generation ownership.

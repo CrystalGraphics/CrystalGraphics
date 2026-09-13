@@ -9,7 +9,6 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -109,6 +108,26 @@ final class CgGlyphGenerationExecutor {
 
     private volatile boolean shutdown;
 
+    /**
+     * A text-shadow cell nobody has asked for in this many frames is not built. @see #lastWanted
+     */
+    private static final long SHADOW_CELL_ABANDONED_FRAMES = 2;
+
+    /** The render thread's frame, as {@link #noteFrame} last saw it. */
+    private volatile long frame;
+
+    /**
+     * The frame each queued text-shadow cell was last asked for.
+     *
+     * <p>A slider moves a shadow's blur, growth or size every frame, and every step is a new cell. Built in
+     * the order asked, the workers spend the whole drag on looks already slid past while the current one
+     * waits behind them: measured on the text lab, dragging the stroke queued 115 cells and left the shadow
+     * missing for 20 frames. A draw still waiting on a cell asks for it again every frame (the degraded
+     * count makes it repaint), so a cell unasked for two frames is one nobody will draw, and a worker that
+     * reaches it drops it instead.</p>
+     */
+    private final Map<CgGlyphGenerationJob, Long> lastWanted = new ConcurrentHashMap<>();
+
     CgGlyphGenerationExecutor() {
         final AtomicInteger threadId = new AtomicInteger(1);
         this.msdfExecutor = new ThreadPoolExecutor(
@@ -160,13 +179,24 @@ final class CgGlyphGenerationExecutor {
         this.bitmapExecutor.allowCoreThreadTimeOut(true);
     }
 
+    /** Called once a frame by the registry, before that frame's glyph requests. */
+    void noteFrame(long frame) {
+        this.frame = frame;
+    }
+
     boolean submit(final CgGlyphGenerationJob job) {
         if (shutdown || failedJobs.containsKey(job)) return false;
+        if (job.isShadowCell()) lastWanted.put(job, frame);
         if (pendingJobs.putIfAbsent(job, Boolean.TRUE) != null) return true;
-        
+
         ThreadPoolExecutor target = job.isDistanceField() ? msdfExecutor : bitmapExecutor;
         try {
             target.execute(() -> {
+                if (job.isShadowCell() && isAbandoned(job)) {
+                    lastWanted.remove(job);
+                    pendingJobs.remove(job);
+                    return;
+                }
                 CgGlyphGenerationResult result = null;
                 try {
                     result = generate(job);
@@ -182,14 +212,23 @@ final class CgGlyphGenerationExecutor {
                     LOGGER.log(Level.WARNING, "Glyph generation failed for " + job, throwable);
                 } finally {
                     // A generated-but-unpolled job stays pending; only failures release here.
-                    if (result == null) pendingJobs.remove(job);
+                    if (result == null) {
+                        pendingJobs.remove(job);
+                        lastWanted.remove(job);
+                    }
                 }
             });
             return true;
         } catch (RejectedExecutionException e) {
             pendingJobs.remove(job);
+            lastWanted.remove(job);
             return false;
         }
+    }
+
+    private boolean isAbandoned(CgGlyphGenerationJob job) {
+        Long wanted = lastWanted.get(job);
+        return wanted != null && frame - wanted > SHADOW_CELL_ABANDONED_FRAMES;
     }
 
     /**
@@ -268,7 +307,10 @@ final class CgGlyphGenerationExecutor {
             // window in which a re-submission could slip through is microseconds instead of the
             // many frames a budget-limited drain can take.
             CgGlyphGenerationJob job = completedJobs.remove(result);
-            if (job != null) pendingJobs.remove(job);
+            if (job != null) {
+                pendingJobs.remove(job);
+                lastWanted.remove(job);
+            }
         }
         return result;
     }
@@ -328,6 +370,7 @@ final class CgGlyphGenerationExecutor {
         
         workerContexts.clear();
         pendingJobs.clear();
+        lastWanted.clear();
         // Results generated but never polled would otherwise keep their jobs pending forever.
         completedJobs.clear();
         failedJobs.clear();
@@ -336,7 +379,8 @@ final class CgGlyphGenerationExecutor {
 
     private CgGlyphGenerationResult generate(CgGlyphGenerationJob job) {
         CgWorkerFontContext context = threadLocalContext.get();
-        return job.isDistanceField() ? context.generateMsdf(job) : context.generateBitmap(job);
+        if (job.isDistanceField()) return context.generateMsdf(job);
+        return job.isShadowCell() ? context.generateShadowCell(job) : context.generateBitmap(job);
     }
 
     private void clearMatchingJobs(Map<CgGlyphGenerationJob, Boolean> jobs, CgFontKey fontKey) {

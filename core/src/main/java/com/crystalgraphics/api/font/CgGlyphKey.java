@@ -1,6 +1,7 @@
 package com.crystalgraphics.api.font;
 
 import com.crystalgraphics.text.msdf.CgMsdfGenerator;
+import com.crystalgraphics.text.shadow.CgShadowCell;
 import lombok.Value;
 
 /**
@@ -86,6 +87,12 @@ public class CgGlyphKey {
     /** {@code true} if this glyph slot needs a rasterizer-side synthetic italic (shear). */
     boolean syntheticItalic;
 
+    /**
+     * Null for the glyph itself; set for a text-shadow cell of it, which lives in the bitmap atlas beside
+     * the glyph and is keyed apart from it. @see CgShadowCell
+     */
+    CgShadowCell shadowCell;
+
     public CgGlyphKey(CgFontKey fontKey, int glyphId, boolean msdf) {
         this(fontKey, glyphId, msdf, 0);
     }
@@ -96,6 +103,14 @@ public class CgGlyphKey {
 
     public CgGlyphKey(CgFontKey fontKey, int glyphId, boolean msdf, int subPixelBucket,
                        boolean syntheticBold, boolean syntheticItalic) {
+        this(fontKey, glyphId, msdf, subPixelBucket, syntheticBold, syntheticItalic, null);
+    }
+
+    public CgGlyphKey(CgFontKey fontKey, int glyphId, boolean msdf, int subPixelBucket,
+                       boolean syntheticBold, boolean syntheticItalic, CgShadowCell shadowCell) {
+        if (shadowCell != null && msdf) {
+            throw new IllegalArgumentException("a shadow cell is coverage, never a distance field");
+        }
         if (fontKey == null) {
             throw new IllegalArgumentException("fontKey must not be null");
         }
@@ -116,5 +131,11 @@ public class CgGlyphKey {
         this.msdf = msdf;
         this.syntheticBold = syntheticBold;
         this.syntheticItalic = syntheticItalic;
+        this.shadowCell = shadowCell;
+    }
+
+    /** This glyph's shadow cell key, or the glyph itself again for {@code null}. */
+    public CgGlyphKey withShadowCell(CgShadowCell cell) {
+        return new CgGlyphKey(fontKey, glyphId, msdf, subPixelBucket, syntheticBold, syntheticItalic, cell);
     }
 }

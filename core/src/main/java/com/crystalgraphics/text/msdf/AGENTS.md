@@ -39,6 +39,8 @@ Main responsibilities:
 - frame-budget limiting
 - shape preparation and edge coloring
 - fallback gating when distance fields are not worth using
+- `trueDistance`: one glyph's single-channel true distance on a device-pixel raster, for text-shadow
+  cells that spread or inset past what an atlas band stores
 
 This class is the operational center of the package.
 

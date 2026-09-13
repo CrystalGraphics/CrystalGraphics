@@ -284,6 +284,7 @@ public class CgTextRenderer {
 
     /** Per-renderer, since two renderers can be mid-draw under different projections. */
     private final CgTextCuller culler = new CgTextCuller();
+    private final CgTextShadowPlan shadowPlan = new CgTextShadowPlan(registry);
 
     /**
      * Grow-only per-glyph sort-key scratch for {@link #submitBatchedQuads} — see its javadoc
@@ -583,7 +584,7 @@ public class CgTextRenderer {
     // ══════════════════════════════════════════════════════════════════════════════════════════
     
     /** What {@code quad.glsl} reads for a {@link CgStrokeAlign}: on the contour, outside it, inside it. */
-    private static final float ALIGN_CENTER = 0f, ALIGN_OUTSET = 1f, ALIGN_INSET = 2f;
+    static final float ALIGN_CENTER = 0f, ALIGN_OUTSET = 1f, ALIGN_INSET = 2f;
     
     /**
      * Whether the most recent draw resolved any glyph below the tier it requested.
@@ -738,6 +739,7 @@ public class CgTextRenderer {
         private int strokeArgb;
         private float strokeAlign = ALIGN_OUTSET;
         private float strokeOver;
+        private final CgTextShadowList shadows = new CgTextShadowList();
 
         private Draw() {}
 
@@ -758,6 +760,7 @@ public class CgTextRenderer {
             strokeArgb = 0;
             strokeAlign = ALIGN_OUTSET;
             strokeOver = 0f;
+            shadows.clear();
             return this;
         }
 
@@ -911,6 +914,80 @@ public class CgTextRenderer {
             return stroke(s.widthEm(), s.argb())
                     .strokeAlign(s.align())
                     .strokeOverFill(s.strokeOverFill());
+        }
+
+        /**
+         * How many text shadows this draw casts; set each with {@link #shadow}. {@code 0}, the default,
+         * casts none.
+         *
+         * <pre>{@code
+         * draw.shadowCount(2)
+         *     .shadow(0, 0f, 0f, 4f, 0f, 0xFF44CCFF, false)   // a glow, painted on top
+         *     .shadow(1, 1f, 1f, 0f, 0f, 0x80000000, false);  // a sharp drop shadow beneath it
+         * }</pre>
+         *
+         * <p>Painted as Chrome paints {@code text-shadow}: every glyph casts its own shadow, blurred in
+         * local space so it scales and skews with the pose. The first shadow is painted on top and every
+         * shadow beneath the text, whichever atlas each lives in.</p>
+         *
+         * <p>Growing the count keeps the shadows already set, so a second source of shadows can append:
+         * {@code draw.shadowCount(draw.shadowCount() + extra)}.</p>
+         */
+        public Draw shadowCount(int count) {
+            shadows.count(count);
+            return this;
+        }
+
+        /** How many shadows this draw casts. */
+        public int shadowCount() {
+            return shadows.count();
+        }
+
+        /**
+         * Scopes glyphs for {@link #shadowScope}: {@code scopeByGlyph[i]} is the scope of the layout's glyph
+         * {@code i}, in {@code CgBakedGlyphs} order. The array is read at submit, not copied.
+         *
+         * <pre>{@code
+         * // The highlighted word's glyphs are scope 0, and its ::highlight shadow applies to them alone.
+         * draw.shadowScopes(scopes).shadowCount(2)
+         *     .shadow(0, 1f, 1f, 1f, 0f, black, false)                         // the element's, every glyph
+         *     .shadow(1, 0f, 0f, 3f, 0f, gold, false).shadowScope(1, 0);        // the highlight's
+         * }</pre>
+         *
+         * <p>A scoped shadow casts nothing for decorations, which carry no glyph index.</p>
+         */
+        public Draw shadowScopes(int[] scopeByGlyph) {
+            shadows.glyphScopes(scopeByGlyph);
+            return this;
+        }
+
+        /** Restricts shadow {@code index} to the glyphs whose scope is {@code scope}; -1 is every glyph. */
+        public Draw shadowScope(int index, int scope) {
+            shadows.scope(index, scope);
+            return this;
+        }
+
+        /**
+         * Shadow {@code index} of this draw.
+         *
+         * <ul>
+         *   <li>{@code offsetX}, {@code offsetY}: local pixels, positive right and down.</li>
+         *   <li>{@code sigma}: the Gaussian's standard deviation in local pixels. A CSS blur radius is twice
+         *       it. Negative reads as 0.</li>
+         *   <li>{@code spread}: grows the glyph outline by a true distance before blurring, so corners
+         *       round. Negative reads as 0, as CSS Text Decoration 4 forbids it for text.</li>
+         *   <li>{@code argb}: straight ARGB, already resolved; its alpha is the shadow's whole opacity,
+         *       whatever the text's own colour is. Fully transparent casts nothing.</li>
+         *   <li>{@code inset}: shadows the canvas into the glyph, over the text, inside the stroke.</li>
+         * </ul>
+         *
+         * <p>A stroke set on this draw is part of the shadow's shape. A shadow a worker has not built yet
+         * is left out of this frame and counted in {@link CgTextRenderer#getDegradedDrawCount()}.</p>
+         */
+        public Draw shadow(int index, float offsetX, float offsetY, float sigma, float spread, int argb,
+                           boolean inset) {
+            shadows.set(index, offsetX, offsetY, sigma, spread, argb, inset);
+            return this;
         }
 
         /**
@@ -1186,7 +1263,7 @@ public class CgTextRenderer {
 
         // Before resolveGlyphs, not inside the quad loop: an off-screen layout otherwise pays for
         // full glyph resolution and quad building before anything notices. See CgTextCuller.
-        if (culler.isCulled(resolvedLayout, draw.x, draw.y, context.projection(), pose.pose())) {
+        if (culler.isCulled(resolvedLayout, draw.x, draw.y, context.projection(), pose.pose(), draw.shadows.reach())) {
             CgProfiler.count("text.drawsCulled");
             return;
         }
@@ -1251,15 +1328,32 @@ public class CgTextRenderer {
                 ? draw.strokeWidthEm * registry.getResolvedMsdfConfig(fontKey).atlasScalePx()
                 : 0f;
 
+        if (draw.shadows.count() > 0 && glyphCount > 0) {
+            try (CgProfiler.Scope ignored = CgProfiler.scope("planShadows")) {
+                if (shadowPlan.plan(draw.shadows, resolvedGlyphs.placements, resolvedLayout.baked(), glyphCount,
+                        fontKey, effectiveTargetPx, strokeWidthTexels, draw.strokeAlign, context.isWorldText(), frame)) {
+                    degradedDrawCount++;
+                }
+            }
+        }
+
         CgTextDecorationRect[] decorations = resolvedLayout.baked().decorations();
         if (glyphCount > 0 || decorations.length > 0) {
             try (CgProfiler.Scope ignored = CgProfiler.scope("submitSortedQuads")) {
                 submitBatchedQuads(glyphCount, decorations, fontKey.getTargetPx(), effectiveTargetPx, wantMsdf,
-                        draw.x, draw.y, draw.rgba, pose.pose(), stroked ? draw.strokeArgb : 0,
+                        draw, pose.pose(), stroked ? draw.strokeArgb : 0,
                         strokeWidthTexels, draw.strokeAlign, draw.strokeOver);
             }
         }
     }
+
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+    //  TEXT SHADOWS: planned by CgTextShadowPlan, emitted by submitSorted
+    // ══════════════════════════════════════════════════════════════════════════════════════════
+
+    /** text.shader's instance kinds, carried as a negative custom0.w. @see text.shader Properties */
+    private static final float KIND_FIELD_OUTER = -1f, KIND_FIELD_INSET = -2f, KIND_CELL = -3f,
+            KIND_RECT_OUTER = -4f, KIND_RECT_INSET = -5f;
 
     // ══════════════════════════════════════════════════════════════════════════════════════════
     //  BATCH + SUBMIT
@@ -1322,6 +1416,11 @@ public class CgTextRenderer {
      * whole sort with no per-entry allocation and no hand-rolled fast path. Note it sorts
      * <em>signed</em>, which is why {@link CgTextSortKey} keeps bit 63 clear.
      *
+     * <h4>Shadows sort with the text, one paint step each</h4>
+     * <p>Every shadow's instances are keyed at their own stage, ahead of the batch fields, so painter's
+     * order holds across atlases while a shadow and its text in one atlas stay one run. The kinds each
+     * glyph paints in each shadow were decided by {@link CgTextShadowPlan}.</p>
+     *
      * @param glyphCount        number of entries in {@link CgResolvedGlyphs#placements} to consider;
      *                          null or geometry-less placements are skipped
      * @param decorations       baked decoration rects for this draw, resolved here rather than by
@@ -1329,50 +1428,27 @@ public class CgTextRenderer {
      * @param baseTargetPx      the font's declared size, the denominator for metric normalisation
      * @param effectiveTargetPx the size glyphs were actually rasterised at this frame
      * @param wantMsdf          whether this draw prefers distance-field glyphs
+     * @param draw              the request, read for its position, colour and shadows
      * @param modelView         transform baked into each emitted quad
      */
     private void submitBatchedQuads(int glyphCount, CgTextDecorationRect[] decorations,
                                     int baseTargetPx, int effectiveTargetPx, boolean wantMsdf,
-                                    float drawX, float drawY, int drawRgba, Matrix4f modelView,
-                                    int strokeArgb, float strokeWidthTexels,
+                                    Draw draw, Matrix4f modelView, int strokeArgb, float strokeWidthTexels,
                                     float strokeAlign, float strokeOver) {
         CgGlyphPlacement[] placements = resolvedGlyphs.placements;
-
-        int visibleGlyphCount = 0;
-        try (CgProfiler.Scope ignored = CgProfiler.scope("visibilityScan")) {
-            for (int i = 0; i < glyphCount; i++)
-                if (placements[i] != null && placements[i].hasGeometry()) visibleGlyphCount++;
-        }
+        CgTextShadowList shadowList = draw.shadows;
+        int shadows = shadowList.count();
 
         List<CgResolvedGlyphs.ResolvedDecoration> resolvedDecorations;
         try (CgProfiler.Scope ignored = CgProfiler.scope("resolveDecorations")) {
-            resolvedDecorations = resolvedGlyphs.resolveDecorations(decorations, drawX, drawY, drawRgba, effectiveTargetPx, wantMsdf);
+            resolvedDecorations = resolvedGlyphs.resolveDecorations(decorations, draw.x, draw.y, draw.rgba,
+                    effectiveTargetPx, wantMsdf);
         }
 
-        int totalCount = visibleGlyphCount + resolvedDecorations.size();
-        if (totalCount == 0) return;
-
-        // A COUNTER, summed over every draw in the frame -- unlike draw.glyphCount, which is a
-        // SAMPLE and therefore reports only the last draw's count. Mistaking the sample for a
-        // per-frame total makes quadLoop look ~150x more expensive per glyph than it is (45 vs
-        // ~6771 in text-3d), which is exactly how a perfectly healthy loop gets "optimised".
-        //
-        // Note "visible" here means hasGeometry(), NOT on-screen: there is no viewport cull at
-        // this level, so a layout positioned off-screen still emits every one of its quads.
-        CgProfiler.count("draw.quadsEmitted", totalCount);
-
-        try (CgProfiler.Scope ignored = CgProfiler.scope("sortKeys")) {
-            ensureSortScratchCapacity(totalCount);
-            int si = 0;
-            for (int i = 0; i < glyphCount; i++) {
-                CgGlyphPlacement p = placements[i];
-                if (p != null && p.hasGeometry()) scratchSortKeys[si++] = CgTextSortKey.forGlyph(p, i);
-            }
-            for (int i = 0; i < resolvedDecorations.size(); i++) 
-                scratchSortKeys[si++] = CgTextSortKey.forDecoration(resolvedDecorations.get(i), i);
-            
-            Arrays.sort(scratchSortKeys, 0, totalCount);
-        }
+        // An upper bound: the text, then every shadow's glyphs and decorations again.
+        int perStage = glyphCount + resolvedDecorations.size();
+        if (perStage == 0) return;
+        ensureSortScratchCapacity(perStage * (1 + shadows));
 
         // Projection is constant for this whole draw() call. Flushes first if it differs from
         // what's already queued under a different projection — see syncProjection().
@@ -1387,7 +1463,76 @@ public class CgTextRenderer {
         // inverse-transform back to local space then multiplies that error by 1/worldScale.
         boolean pixelSnap = !context.isWorldText();
         if (pixelSnap) scratchInverseModelView.set(modelView).invert();
+        float devicePerLocal = effectiveTargetPx / (float) Math.max(1, baseTargetPx);
 
+        // PAINT ORDER: outer shadows at 0..n-1 with the LAST shadow first, the text at n, inset shadows at
+        // n+1..2n. It is the key's outermost field, so one sort gives painter's order across batches, and
+        // a list longer than the field holds is submitted as successive sorts in the same order.
+        int lastPaint = 2 * shadows;
+        long emitted = 0;
+        for (int window = 0; window <= lastPaint; window += CgTextSortKey.MAX_STAGE + 1) {
+            int windowEnd = Math.min(lastPaint, window + CgTextSortKey.MAX_STAGE);
+            int count = 0;
+            try (CgProfiler.Scope ignored = CgProfiler.scope("sortKeys")) {
+                for (int paint = window; paint <= windowEnd; paint++) {
+                    int stage = paint - window;
+                    if (paint == shadows) {
+                        for (int i = 0; i < glyphCount; i++) {
+                            CgGlyphPlacement p = placements[i];
+                            if (p != null && p.hasGeometry()) scratchSortKeys[count++] = CgTextSortKey.forGlyph(p, i, stage);
+                        }
+                        for (int i = 0; i < resolvedDecorations.size(); i++) {
+                            scratchSortKeys[count++] = CgTextSortKey.forDecoration(resolvedDecorations.get(i), i, stage);
+                        }
+                        continue;
+                    }
+                    int shadow = shadowAt(paint, shadows);
+                    if (shadowList.inset(shadow) != (paint > shadows) || !shadowList.casts(shadow)) {
+                        continue;
+                    }
+                    for (int i = 0; i < glyphCount; i++) {
+                        if (shadowPlan.kind(shadow, i) != CgTextShadowPlan.NONE) {
+                            scratchSortKeys[count++] = CgTextSortKey.forGlyph(shadowPlan.placement(shadow, i), i, stage);
+                        }
+                    }
+                    if (shadowList.scoped(shadow)) continue;
+                    for (int i = 0; i < resolvedDecorations.size(); i++) {
+                        scratchSortKeys[count++] = CgTextSortKey.forDecoration(resolvedDecorations.get(i), i, stage);
+                    }
+                }
+                Arrays.sort(scratchSortKeys, 0, count);
+            }
+            emitted += count;
+            submitSorted(count, window, shadowList, glyphCount, resolvedDecorations, placements, draw,
+                    baseTargetPx, effectiveTargetPx, devicePerLocal, pixelSnap, modelView,
+                    strokeArgb, strokeWidthTexels, strokeAlign, strokeOver);
+        }
+
+        // A COUNTER, summed over every draw in the frame -- unlike draw.glyphCount, which is a
+        // SAMPLE and therefore reports only the last draw's count. Mistaking the sample for a
+        // per-frame total makes quadLoop look ~150x more expensive per glyph than it is (45 vs
+        // ~6771 in text-3d), which is exactly how a perfectly healthy loop gets "optimised".
+        //
+        // Note "visible" here means hasGeometry(), NOT on-screen: there is no viewport cull at
+        // this level, so a layout positioned off-screen still emits every one of its quads.
+        CgProfiler.count("draw.quadsEmitted", emitted);
+    }
+
+    /** Which shadow a paint step belongs to; see the paint order in {@link #submitBatchedQuads}. */
+    private static int shadowAt(int paint, int shadows) {
+        return paint < shadows ? shadows - 1 - paint : 2 * shadows - paint;
+    }
+
+    // Per-entry scratch for submitSorted, so a quad's geometry is written once and read by the submit.
+    private float quadX, quadY, quadW, quadH;
+
+    private void submitSorted(int count, int window, CgTextShadowList shadowList, int glyphCount,
+                              List<CgResolvedGlyphs.ResolvedDecoration> resolvedDecorations,
+                              CgGlyphPlacement[] placements, Draw draw,
+                              int baseTargetPx, int effectiveTargetPx, float devicePerLocal,
+                              boolean pixelSnap, Matrix4f modelView,
+                              int strokeArgb, float strokeWidthTexels, float strokeAlign, float strokeOver) {
+        int shadows = shadowList.count();
         try (CgProfiler.Scope ignored = CgProfiler.scope("quadLoop")) {
         // Per-iteration timing, off unless -Dcrystalgraphics.text.traceQuadLoop=true.
         //
@@ -1400,61 +1545,132 @@ public class CgTextRenderer {
         // means preemption and there is nothing here to fix.
         long traceMaxNanos = 0, traceMaxIndex = -1, traceSlowIters = 0, traceIterStart = 0;
         if (traceQuadLoop) traceIterStart = System.nanoTime();
-        for (int s = 0; s < totalCount; s++) {
+        for (int s = 0; s < count; s++) {
             long key = scratchSortKeys[s];
             long batchBits = CgTextSortKey.batchOf(key);
             boolean isDecoration = CgTextSortKey.isDecoration(key);
             int localIndex = CgTextSortKey.localIndexOf(key);
+            int paint = window + CgTextSortKey.stageOf(key);
+            int shadow = paint == shadows ? -1 : shadowAt(paint, shadows);
 
-            // Both branches only compute this entry's batch identity + quad geometry — the
-            // actual transition check and quad() submission below are shared, so a decoration
-            // and a glyph in the same batch (the common case — see CgTextSortKey.forDecoration)
-            // never duplicate either.
             CgGlyphPlacement p = null;
             boolean isDistanceField;
             int textureId;
             float pxRange;
-            float qx, qy, w, h, u0, v0, u1, v1;
+            float u0, v0, u1, v1;
             int rgba, atlasLayer;
+            // The instance's two custom slots, as text.shader's Properties comment lays them out.
+            float c0x = 0f, c0y = 0f, c0z = 0f, c0w = 0f, c1x = 0f, c1y = 0f, c1z = 0f, c1w = 0f;
 
             if (isDecoration) {
                 CgResolvedGlyphs.ResolvedDecoration d = resolvedDecorations.get(localIndex);
                 isDistanceField = d.isDistanceField();
                 textureId = d.atlasTextureId();
                 pxRange = d.pxRange();
-                qx = d.qx(); qy = d.qy(); w = d.w(); h = d.h();
+                quadX = d.qx(); quadY = d.qy(); quadW = d.w(); quadH = d.h();
                 u0 = d.u0(); v0 = d.v0(); u1 = d.u1(); v1 = d.v1();
                 rgba = d.rgba();
                 atlasLayer = d.atlasPageIndex();
-            } else {
+                if (shadow < 0) {
+                    c0x = ((strokeArgb >> 16) & 0xFF) / 255f; c0y = ((strokeArgb >> 8) & 0xFF) / 255f;
+                    c0z = (strokeArgb & 0xFF) / 255f; c0w = ((strokeArgb >>> 24) & 0xFF) / 255f;
+                    c1x = strokeWidthTexels; c1y = strokeAlign; c1z = strokeOver; c1w = pxRange;
+                } else {
+                    rgba = shadowList.argb(shadow);
+                    float sigma = shadowList.sigma(shadow);
+                    boolean blurred = CgTextShadowPlan.blurs(sigma, devicePerLocal);
+                    float spread = shadowList.spread(shadow);
+                    c1w = pxRange;
+                    if (!shadowList.inset(shadow)) {
+                        quadX += shadowList.x(shadow) - spread;
+                        quadY += shadowList.y(shadow) - spread;
+                        quadW += 2f * spread;
+                        quadH += 2f * spread;
+                        if (blurred) {
+                            // Graphite's AnalyticBlurMask::MakeRect, in the quad's unit parameter: the quad
+                            // reaches three sigma past the rect, and the shader's rect is the rect inset by
+                            // three sigma, so its edge is where the integral's t is 0.
+                            float threeSigma = 3f * sigma;
+                            float outW = quadW + 2f * threeSigma;
+                            float outH = quadH + 2f * threeSigma;
+                            c0x = outW / (6f * sigma);
+                            c0y = outH / (6f * sigma);
+                            c0w = KIND_RECT_OUTER;
+                            c1x = 2f * threeSigma / outW;
+                            c1y = 2f * threeSigma / outH;
+                            c1z = quadW / outW;
+                            c1w = quadH / outH;
+                            quadX -= threeSigma;
+                            quadY -= threeSigma;
+                            quadW = outW;
+                            quadH = outH;
+                        }
+                    } else {
+                        c0x = shadowList.x(shadow) / quadW;
+                        c0y = shadowList.y(shadow) / quadH;
+                        c0z = blurred ? quadW / (6f * sigma) : 0f;
+                        c0w = KIND_RECT_INSET;
+                        c1x = blurred ? quadH / (6f * sigma) : 0f;
+                        c1y = spread / quadW;
+                        c1z = spread / quadH;
+                        c1w = 0f;
+                    }
+                }
+            } else if (shadow < 0) {
                 p = placements[localIndex];
                 isDistanceField = p.isDistanceField();
                 textureId = p.atlasTextureId();
                 pxRange = p.pxRange();
-
-                int placementTargetPx = p.key().getFontKey().getTargetPx();
-                float scaleFactor = CgResolvedGlyphs.logicalMetricScale(baseTargetPx, isDistanceField ? placementTargetPx : effectiveTargetPx);
-
-                // Plane bounds are in physical raster space; normalize to logical. planeLeft/planeTop
-                // are bearing offsets from the pen (Y-down screen space, bearingY positive = above baseline).
-                float logicalBearingX = p.planeLeft() * scaleFactor, logicalBearingY = p.planeTop() * scaleFactor;
-                w = p.getPlaneWidth() * scaleFactor; h = p.getPlaneHeight() * scaleFactor;
-                qx = resolvedGlyphs.glyphX[localIndex] + logicalBearingX;
-                qy = resolvedGlyphs.glyphY[localIndex] - logicalBearingY;
-
-                // Bitmap-only, and ortho-only (see pixelSnapDelta's javadoc and the pixelSnap
-                // computation above); snaps from the shared line baseline rather than qy so every
-                // glyph on a line gets the same correction, since qy already has this glyph's own
-                // bearingY baked in.
-                if (pixelSnap && !isDistanceField) {
-                    pixelSnapDelta(modelView, scratchInverseModelView, qx, resolvedGlyphs.glyphY[localIndex], scratchLocalDelta);
-                    qx += scratchLocalDelta.x;
-                    qy += scratchLocalDelta.y;
-                }
-
+                placeGlyph(p, localIndex, baseTargetPx, effectiveTargetPx, pixelSnap && !p.isDistanceField(),
+                        modelView, 0f, 0f);
                 u0 = p.u0(); v0 = p.v0(); u1 = p.u1(); v1 = p.v1();
                 rgba = resolvedGlyphs.argbColor[localIndex];
                 atlasLayer = p.atlasPageIndex();
+                // text.shader's own header states the layout: custom0 the colour, custom1
+                // (widthPx, align, over, pxRange). The STROKE fields are glyphs only -- a
+                // decoration is a solid rect with no distance field to offset a second threshold
+                // from, and they default to zero, so underlines never ask rather than needing to
+                // opt out. pxRange is not: a decoration's white texel is reserved in the same
+                // banded atlas and carries that band's range, so it batches with the glyphs
+                // around it instead of splitting them.
+                c0x = ((strokeArgb >> 16) & 0xFF) / 255f; c0y = ((strokeArgb >> 8) & 0xFF) / 255f;
+                c0z = (strokeArgb & 0xFF) / 255f; c0w = ((strokeArgb >>> 24) & 0xFF) / 255f;
+                c1x = strokeWidthTexels; c1y = strokeAlign; c1z = strokeOver; c1w = pxRange;
+            } else {
+                byte kind = shadowPlan.kind(shadow, localIndex);
+                p = shadowPlan.placement(shadow, localIndex);
+                isDistanceField = p.isDistanceField();
+                textureId = p.atlasTextureId();
+                pxRange = p.pxRange();
+                u0 = p.u0(); v0 = p.v0(); u1 = p.u1(); v1 = p.v1();
+                rgba = shadowList.argb(shadow);
+                atlasLayer = p.atlasPageIndex();
+                boolean inset = shadowList.inset(shadow);
+                float ox = inset ? 0f : shadowList.x(shadow);
+                float oy = inset ? 0f : shadowList.y(shadow);
+                // A shadow snaps exactly when its text does, so the two stay on one grid: a cell is a bitmap
+                // placement, and snapping it under distance-field text would part it from its glyph.
+                // A cell's plane bounds are device pixels of the glyph's raster, so the bitmap metric scale
+                // places it, and a downsampled cell stretches back over its true extent.
+                placeGlyph(p, localIndex, baseTargetPx, effectiveTargetPx,
+                        pixelSnap && !placements[localIndex].isDistanceField(), modelView, ox, oy);
+                if (kind == CgTextShadowPlan.CELL) {
+                    c0w = KIND_CELL;
+                } else {
+                    c1w = pxRange;
+                    if (kind == CgTextShadowPlan.FIELD_OUTER || kind == CgTextShadowPlan.FIELD_INSET) {
+                        c1x = strokeWidthTexels;
+                        c1y = strokeAlign;
+                        c1z = shadowPlan.spreadTexels(shadow);
+                        c0w = kind == CgTextShadowPlan.FIELD_OUTER ? KIND_FIELD_OUTER : KIND_FIELD_INSET;
+                        if (kind == CgTextShadowPlan.FIELD_INSET) {
+                            // The hole is sampled at uv minus the offset, in the atlas's own uv units.
+                            c0x = shadowList.x(shadow) * (u1 - u0) / quadW;
+                            c0y = shadowList.y(shadow) * (v1 - v0) / quadH;
+                            c0z = shadowPlan.insetSigmaTexels(shadow, localIndex);
+                        }
+                    }
+                }
             }
 
             if (batchBits != activeBatchBits) {
@@ -1462,19 +1678,12 @@ public class CgTextRenderer {
             }
 
             quadRenderer.quad()
-                    .at(qx, qy).size(w, h)
+                    .at(quadX, quadY).size(quadW, quadH)
                     .uv(u0, v0, u1, v1)
                     .color(rgba)
                     .atlasLayer(atlasLayer)
-                    // text.shader's own header states the layout: custom0 the colour, custom1
-                    // (widthPx, align, over, pxRange). The STROKE fields are glyphs only -- a
-                    // decoration is a solid rect with no distance field to offset a second threshold
-                    // from, and they default to zero, so underlines never ask rather than needing to
-                    // opt out. pxRange is not: a decoration's white texel is reserved in the same
-                    // banded atlas and carries that band's range, so it batches with the glyphs
-                    // around it instead of splitting them.
-                    .custom0(strokeArgb)
-                    .custom1(strokeWidthTexels, strokeAlign, strokeOver, pxRange)
+                    .custom0(c0x, c0y, c0z, c0w)
+                    .custom1(c1x, c1y, c1z, c1w)
                     .pose(modelView)
                     .submit();
 
@@ -1493,7 +1702,8 @@ public class CgTextRenderer {
                         + ", atlasPageIndex/layer=" + p.atlasPageIndex()
                         + ", pxRange=" + p.pxRange()
                         + ", uv=[" + p.u0() + "," + p.v0() + "," + p.u1() + "," + p.v1() + "]"
-                        + ", pos=[" + qx + "," + qy + "], size=[" + w + "," + h + "]");
+                        + ", pos=[" + quadX + "," + quadY + "], size=[" + quadW + "," + quadH + "]"
+                        + ", paint=" + paint);
             }
         }
         if (traceQuadLoop) {
@@ -1501,6 +1711,39 @@ public class CgTextRenderer {
             CgProfiler.sample("quadLoop.maxIterIndex", traceMaxIndex);
             CgProfiler.sample("quadLoop.slowIters", traceSlowIters);
         }
+        }
+    }
+
+    /**
+     * A glyph's quad from its placement, moved by {@code (dx, dy)} local pixels, into {@link #quadX} and
+     * friends, and snapped to whole device pixels after the move when {@code snap} is set.
+     */
+    private void placeGlyph(CgGlyphPlacement p, int localIndex, int baseTargetPx, int effectiveTargetPx,
+                            boolean snap, Matrix4f modelView, float dx, float dy) {
+        boolean isDistanceField = p.isDistanceField();
+        int placementTargetPx = p.key().getFontKey().getTargetPx();
+        // A shadow cell keeps the raster size it was built at, which a cell standing in for one still being
+        // built at a new size does not share with this draw.
+        boolean ownRaster = isDistanceField || p.key().getShadowCell() != null;
+        float scaleFactor = CgResolvedGlyphs.logicalMetricScale(baseTargetPx, ownRaster ? placementTargetPx : effectiveTargetPx);
+
+        // Plane bounds are in physical raster space; normalize to logical. planeLeft/planeTop
+        // are bearing offsets from the pen (Y-down screen space, bearingY positive = above baseline).
+        float logicalBearingX = p.planeLeft() * scaleFactor, logicalBearingY = p.planeTop() * scaleFactor;
+        quadW = p.getPlaneWidth() * scaleFactor;
+        quadH = p.getPlaneHeight() * scaleFactor;
+        float baseline = resolvedGlyphs.glyphY[localIndex] + dy;
+        quadX = resolvedGlyphs.glyphX[localIndex] + logicalBearingX + dx;
+        quadY = baseline - logicalBearingY;
+
+        // Bitmap text only, and ortho-only (see pixelSnapDelta's javadoc and the pixelSnap
+        // computation in submitBatchedQuads); snaps from the shared line baseline rather than quadY so
+        // every glyph on a line gets the same correction, since quadY already has this glyph's own
+        // bearingY baked in.
+        if (snap) {
+            pixelSnapDelta(modelView, scratchInverseModelView, quadX, baseline, scratchLocalDelta);
+            quadX += scratchLocalDelta.x;
+            quadY += scratchLocalDelta.y;
         }
     }
 

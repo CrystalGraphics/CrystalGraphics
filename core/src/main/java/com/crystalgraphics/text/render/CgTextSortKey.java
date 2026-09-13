@@ -16,12 +16,23 @@ import com.crystalgraphics.api.font.CgGlyphPlacement;
  * <h3>Layout, MSB to LSB</h3>
  * <pre>
  *   [63]     unused, always zero   see "Why bit 63 stays clear"
- *   [62]     mode                  0 = bitmap, 1 = distance field
- *   [61:38]  textureId             GL atlas array-texture id (24 bits)
- *   [37:17]  pxRange               high bits of the SDF range's float bits (21 bits)
+ *   [62:57]  stage                 paint step within one draw (6 bits) -- see "Stage"
+ *   [56]     mode                  0 = bitmap, 1 = distance field
+ *   [55:32]  textureId             GL atlas array-texture id (24 bits)
+ *   [31:17]  pxRange               high bits of the SDF range's float bits (15 bits)
  *   [16]     kind                  0 = glyph, 1 = decoration
  *   [15:0]   localIndex            index into whichever source array {@code kind} selects
  * </pre>
+ *
+ * <h3>Stage</h3>
+ * <p><b>Painter's order, and so outermost.</b> One draw paints its text-shadow instances, then its
+ * text, then its inset shadows, and a shadow list paints its LAST shadow first. Those steps span
+ * batches: a blurred shadow lives in the bitmap atlas while field text does not, and a draw mixes tiers
+ * whenever a glyph is still on its bitmap fallback. Sorting a step inside each batch would paint one
+ * batch's shadows over another batch's text.</p>
+ *
+ * <p>It costs nothing where nothing needs it: {@link #batchOf} ignores the stage, so shadow instances
+ * and the text they belong to in one atlas stay one contiguous run and one call.</p>
  *
  * <h3>Why the field order is what it is</h3>
  * <p>Coarsest-to-finest, so one numeric sort produces the batching order directly:
@@ -59,8 +70,9 @@ final class CgTextSortKey {
      * Top bits of {@code pxRange}'s raw float bits.
      *
      * <p>Valid as an ordering only because pxRange is always {@code >= 0}, which makes IEEE-754
-     * bit patterns monotonic in value. Dropping the low mantissa bits coarsens ties between ranges
-     * differing by well under 0.1%, far finer than two real atlas configs ever differ.
+     * bit patterns monotonic in value. Fifteen bits keep the sign, the exponent and six mantissa bits,
+     * so ranges within about 1.6% of each other tie -- still far finer than two real atlas bands
+     * differ (12 and 24 differ in the exponent alone).
      *
      * <p>It is NO LONGER a batch dimension: pxRange rides the instance (CG_QUAD_CUSTOM1.w), so two
      * atlas bands draw in one call, and it stays in the SORT key only to group like glyphs, which
@@ -71,11 +83,13 @@ final class CgTextSortKey {
      * pxRange to a per-instance value is a live option; see
      * {@code docs_research/plan/text-instancing.md}.
      */
-    private static final int PX_RANGE_BITS = 21;
+    private static final int PX_RANGE_BITS = 15;
     /** GL texture id. Real ids are small; {@link #MAX_TEXTURE_ID} is checked, not assumed. */
     private static final int TEXTURE_BITS = 24;
     /** Bitmap vs distance field. MSDF and MTSDF share one shader keyword, so they share a mode. */
     private static final int MODE_BITS = 1;
+    /** Paint step within one draw. @see #MAX_STAGE */
+    private static final int STAGE_BITS = 6;
     /** Bit 63, deliberately unused so the signed sort matches the intended unsigned order. */
     private static final int SIGN_RESERVED_BITS = 1;
 
@@ -94,6 +108,7 @@ final class CgTextSortKey {
     private static final int PX_RANGE_SHIFT = KIND_SHIFT + KIND_BITS;
     private static final int TEXTURE_SHIFT = PX_RANGE_SHIFT + PX_RANGE_BITS;
     private static final int MODE_SHIFT = TEXTURE_SHIFT + TEXTURE_BITS;
+    private static final int STAGE_SHIFT = MODE_SHIFT + MODE_BITS;
 
     private static final long INDEX_MASK = (1L << INDEX_BITS) - 1L;
     private static final long KIND_DECORATION = 1L << KIND_SHIFT;
@@ -101,7 +116,8 @@ final class CgTextSortKey {
     /**
      * Isolates mode + textureId: everything a material transition depends on, and
      * nothing else. Excludes {@code kind} so a decoration and a glyph in the same atlas compare
-     * equal and do not force a transition between them.
+     * equal and do not force a transition between them, and {@code stage} so a shadow and its text in
+     * the same atlas do not either.
      */
     private static final long BATCH_MASK =
             (((1L << MODE_BITS) - 1L) << MODE_SHIFT)
@@ -111,12 +127,20 @@ final class CgTextSortKey {
     static final int MAX_LOCAL_INDEX = (int) INDEX_MASK;
     /** Largest GL texture id representable. */
     static final int MAX_TEXTURE_ID = (1 << TEXTURE_BITS) - 1;
+    /** Largest paint step; a draw with more is submitted as successive sorts. */
+    static final int MAX_STAGE = (1 << STAGE_BITS) - 1;
 
     private CgTextSortKey() {}
 
     /** Key for a glyph at {@code localIndex} in the resolved placements array. */
     static long forGlyph(CgGlyphPlacement placement, int localIndex) {
-        return of(placement.isDistanceField(), placement.atlasTextureId(), placement.pxRange(), false, localIndex);
+        return forGlyph(placement, localIndex, 0);
+    }
+
+    /** Key for a glyph instance painted at {@code stage}: the text itself, or one of its shadows. */
+    static long forGlyph(CgGlyphPlacement placement, int localIndex, int stage) {
+        return of(stage, placement.isDistanceField(), placement.atlasTextureId(), placement.pxRange(), false,
+                localIndex);
     }
 
     /**
@@ -127,7 +151,13 @@ final class CgTextSortKey {
      * of its own.
      */
     static long forDecoration(CgResolvedGlyphs.ResolvedDecoration decoration, int localIndex) {
-        return of(decoration.isDistanceField(), decoration.atlasTextureId(), decoration.pxRange(), true, localIndex);
+        return forDecoration(decoration, localIndex, 0);
+    }
+
+    /** Key for a decoration instance painted at {@code stage}. */
+    static long forDecoration(CgResolvedGlyphs.ResolvedDecoration decoration, int localIndex, int stage) {
+        return of(stage, decoration.isDistanceField(), decoration.atlasTextureId(), decoration.pxRange(), true,
+                localIndex);
     }
 
     /** The bits a material transition depends on. Equal values mean no transition is needed. */
@@ -148,9 +178,15 @@ final class CgTextSortKey {
         return ((key >>> MODE_SHIFT) & 1L) != 0L;
     }
 
+    /** The paint step this entry was keyed at. */
+    static int stageOf(long key) {
+        return (int) ((key >>> STAGE_SHIFT) & ((1L << STAGE_BITS) - 1L));
+    }
+
     /** Human-readable breakdown, for assertion messages and debugging. */
     static String describe(long key) {
-        return "SortKey[mode=" + (isDistanceField(key) ? "df" : "bitmap")
+        return "SortKey[stage=" + stageOf(key)
+                + ", mode=" + (isDistanceField(key) ? "df" : "bitmap")
                 + ", texture=" + (int) ((key >>> TEXTURE_SHIFT) & ((1L << TEXTURE_BITS) - 1L))
                 + ", pxRangeBits=" + ((key >>> PX_RANGE_SHIFT) & ((1L << PX_RANGE_BITS) - 1L))
                 + ", kind=" + (isDecoration(key) ? "decoration" : "glyph")
@@ -167,6 +203,13 @@ final class CgTextSortKey {
      * applies squarely.
      */
     static long of(boolean distanceField, int textureId, float pxRange, boolean decoration, int localIndex) {
+        return of(0, distanceField, textureId, pxRange, decoration, localIndex);
+    }
+
+    static long of(int stage, boolean distanceField, int textureId, float pxRange, boolean decoration,
+                   int localIndex) {
+        if (stage < 0 || stage > MAX_STAGE)
+            throw new IllegalArgumentException("stage out of range: " + stage + " (max " + MAX_STAGE + ")");
         if (localIndex < 0 || localIndex > MAX_LOCAL_INDEX)
             throw new IllegalArgumentException(
                     "localIndex out of range for a single draw: " + localIndex + " (max " + MAX_LOCAL_INDEX + ")");
@@ -180,7 +223,8 @@ final class CgTextSortKey {
         long mode = distanceField ? 1L : 0L;
         long pxRangeBits = (Float.floatToRawIntBits(pxRange) & 0xFFFFFFFFL) >>> (Integer.SIZE - PX_RANGE_BITS);
 
-        return (mode << MODE_SHIFT)
+        return ((long) stage << STAGE_SHIFT)
+                | (mode << MODE_SHIFT)
                 | ((long) textureId << TEXTURE_SHIFT)
                 | (pxRangeBits << PX_RANGE_SHIFT)
                 | (decoration ? KIND_DECORATION : 0L)
