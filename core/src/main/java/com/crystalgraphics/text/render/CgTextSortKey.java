@@ -26,7 +26,7 @@ import com.crystalgraphics.api.font.CgGlyphPlacement;
  * <h3>Why the field order is what it is</h3>
  * <p>Coarsest-to-finest, so one numeric sort produces the batching order directly:
  * <ul>
- *   <li><b>mode, textureId, pxRange</b> are the batch identity — see {@link #batchOf}. These sort
+ *   <li><b>mode, textureId</b> are the batch identity — see {@link #batchOf}. These sort
  *       outermost because a change in any of them is what costs a transition.</li>
  *   <li><b>kind</b> sits <em>below</em> the batch fields on purpose. A decoration reports the same
  *       atlas and mode as a glyph of its font would, so it belongs <em>inside</em> that font's
@@ -62,6 +62,10 @@ final class CgTextSortKey {
      * bit patterns monotonic in value. Dropping the low mantissa bits coarsens ties between ranges
      * differing by well under 0.1%, far finer than two real atlas configs ever differ.
      *
+     * <p>It is NO LONGER a batch dimension: pxRange rides the instance (CG_QUAD_CUSTOM1.w), so two
+     * atlas bands draw in one call, and it stays in the SORT key only to group like glyphs, which
+     * costs nothing. @see CgMsdfAtlasConfig#WIDE_PX_RANGE
+     *
      * <p>In practice this is constant within a texture id — one atlas is one config, one pxRange —
      * so it adds no batch granularity beyond {@code textureId} today. Kept because promoting
      * pxRange to a per-instance value is a live option; see
@@ -95,14 +99,13 @@ final class CgTextSortKey {
     private static final long KIND_DECORATION = 1L << KIND_SHIFT;
 
     /**
-     * Isolates mode + textureId + pxRange: everything a material transition depends on, and
+     * Isolates mode + textureId: everything a material transition depends on, and
      * nothing else. Excludes {@code kind} so a decoration and a glyph in the same atlas compare
      * equal and do not force a transition between them.
      */
     private static final long BATCH_MASK =
             (((1L << MODE_BITS) - 1L) << MODE_SHIFT)
-                    | (((1L << TEXTURE_BITS) - 1L) << TEXTURE_SHIFT)
-                    | (((1L << PX_RANGE_BITS) - 1L) << PX_RANGE_SHIFT);
+                    | (((1L << TEXTURE_BITS) - 1L) << TEXTURE_SHIFT);
 
     /** Largest index a single draw call can address. */
     static final int MAX_LOCAL_INDEX = (int) INDEX_MASK;

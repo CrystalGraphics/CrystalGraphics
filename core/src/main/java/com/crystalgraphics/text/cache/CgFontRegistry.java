@@ -7,6 +7,7 @@ import com.crystalgraphics.freetype.FTRenderMode;
 import com.crystalgraphics.freetype.FreeTypeException;
 import com.crystalgraphics.msdfgen.FreeTypeMSDFIntegration;
 import com.crystalgraphics.api.font.CgFont;
+import com.crystalgraphics.api.font.CgFontFamily;
 import com.crystalgraphics.api.font.CgFontKey;
 import com.crystalgraphics.api.font.CgGlyphKey;
 import com.crystalgraphics.api.font.CgGlyphPlacement;
@@ -121,12 +122,21 @@ public class CgFontRegistry {
     // Glyph identity still carries the font -- CgGlyphKey holds the full CgFontKey -- so glyphs
     // from different faces cannot collide inside a shared page.
     //
-    // Deliberate consequence: MSDF config is now necessarily registry-wide. One atlas cannot hold
-    // two atlas scales, so resolveMsdfAtlasConfig is a registry-level setting and no longer a
-    // per-font extension point.
+    // A face gets one of two BANDS, decided once in registerFont. Both share this config's atlas
+    // scale and page size and differ only in pxRange, so one atlas holds both -- pxRange rides the
+    // placement, not the material.
     private CgGlyphAtlas BITMAP_ATLAS, MSDF_ATLAS;
 
     private final Set<CgFontKey> registeredFonts = new HashSet<>();
+
+    /** Faces carrying a dense script, which keeps them on the narrow band. @see #resolveMsdfAtlasConfig */
+    private final Set<CgFontKey> denseFonts = new HashSet<>();
+
+    /**
+     * One ideograph per dense writing system. A face that can draw any of them keeps the narrow
+     * range, because eight bits cannot quantise a wider one without merging strokes that touch.
+     */
+    private static final char[] DENSE_SCRIPT_PROBES = {'鬱', '襲', '뵁'};
     
     private final CgMsdfGenerator msdfGenerator = new CgMsdfGenerator();
     // Not final — releaseAll() replaces this with a fresh instance so the shared
@@ -139,6 +149,9 @@ public class CgFontRegistry {
 
     private final int atlasSize;
     private final CgMsdfAtlasConfig msdfAtlasConfig;
+
+    /** The narrow config with the range widened: the band a non-dense face gets. */
+    private final CgMsdfAtlasConfig wideAtlasConfig;
 
     /**
      * Per-frame async-commit upload budget, in estimated pixel-data bytes rather
@@ -244,6 +257,9 @@ public class CgFontRegistry {
             throw new IllegalArgumentException("msdfAtlasConfig must not be null");
         }
         this.msdfAtlasConfig = msdfAtlasConfig;
+        this.wideAtlasConfig = msdfAtlasConfig.pxRange() >= CgMsdfAtlasConfig.WIDE_PX_RANGE
+                ? msdfAtlasConfig
+                : msdfAtlasConfig.withPxRange(CgMsdfAtlasConfig.WIDE_PX_RANGE);
     }
 
     // ────────────────────────────────────────────────────────────────────
@@ -693,11 +709,48 @@ public class CgFontRegistry {
     /**
      * Resolves the MSDF atlas configuration for a given base font key.
      *
-     * <p>Currently returns the registry-wide default config.  This hook exists
-     * so that per-font config overrides can be added without changing callers.</p>
+     * <p>One of two bands. A face carrying a dense script gets the narrow range this registry was
+     * built with; everything else gets {@link CgMsdfAtlasConfig#WIDE_PX_RANGE}, which is worth
+     * <b>2.3x the stroke ceiling</b> and costs 1.68x the cell area -- spent on the faces with a few
+     * hundred glyphs and withheld from the ones with thousands.</p>
+     *
+     * <p>An unregistered face answers the narrow band: never wrong, only narrower than it could be,
+     * and every real path calls {@link #registerFont} first.</p>
      */
     public CgMsdfAtlasConfig resolveMsdfAtlasConfig(CgFontKey baseFontKey) {
-        return msdfAtlasConfig;
+        return denseFonts.contains(baseFontKey) || !registeredFonts.contains(baseFontKey)
+                ? msdfAtlasConfig
+                : wideAtlasConfig;
+    }
+
+    /**
+     * The widest stroke a paragraph in this family can carry, in em.
+     *
+     * <pre>{@code
+     * float ceilingEm = CgFontRegistry.get().maxStrokeWidthEm(family);
+     * if (widthEm > ceilingEm) widthEm = ceilingEm;   // clamp and tell the author
+     * }</pre>
+     *
+     * <p>Answered for the PRIMARY font, which is the same rule Blink applies to the ellipsis
+     * character: a paragraph that falls back mid-run does not get a second ceiling, and a face
+     * narrower than the primary clamps again in the shader rather than drawing wrong.</p>
+     */
+    public float maxStrokeWidthEm(CgFontFamily family) {
+        return maxStrokeWidthEm(family == null ? null : family.getPrimaryFont());
+    }
+
+    /**
+     * The widest stroke this face can carry, in em. @see #maxStrokeWidthEm(CgFontFamily)
+     *
+     * <p>Registers the face if it is new, so the answer does not depend on whether a glyph of it has
+     * been drawn yet -- asking before the first paint and after it must not give two numbers.</p>
+     */
+    public float maxStrokeWidthEm(CgFont font) {
+        if (font == null) {
+            return msdfAtlasConfig.maxStrokeWidthEm();
+        }
+        registerFont(font);
+        return resolveMsdfAtlasConfig(font.getKey()).maxStrokeWidthEm();
     }
 
     /**
@@ -1387,11 +1440,25 @@ public class CgFontRegistry {
     private void registerFont(final CgFont font) {
         final CgFontKey fontKey = font.getKey();
         if (registeredFonts.add(fontKey)) {
+            if (carriesDenseScript(font)) {
+                denseFonts.add(fontKey);
+            }
             font.setDisposeListener(() -> {
                 releaseFontAtlases(fontKey);
                 registeredFonts.remove(fontKey);
+                denseFonts.remove(fontKey);
             });
         }
+    }
+
+    /** Once per face, before any glyph of it is generated. @see #DENSE_SCRIPT_PROBES */
+    private static boolean carriesDenseScript(CgFont font) {
+        for (char probe : DENSE_SCRIPT_PROBES) {
+            if (font.getGlyphIndex(probe) > 0) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -1430,6 +1497,7 @@ public class CgFontRegistry {
         MSDF_ATLAS = null;
 
         registeredFonts.clear();
+        denseFonts.clear();
         glyphGenerationExecutor.shutdown();
         glyphGenerationExecutor = new CgGlyphGenerationExecutor();
     }

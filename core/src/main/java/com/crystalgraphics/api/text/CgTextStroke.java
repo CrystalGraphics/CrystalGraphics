@@ -101,6 +101,13 @@ public record CgTextStroke(float widthEm, int argb, CgStrokeAlign align, boolean
      */
     public static final float MAX_FIELD_WIDTH_EM = 4.5f / 80f;
 
+    /*
+     * The number above is the NARROW band's, so it is the reach every face has. A face with no dense
+     * script in it is banded wider and carries 0.131em; ask for that with
+     * CgFontRegistry.maxStrokeWidthEm(family) rather than reading this, which gives away more than
+     * half the reach a Latin label actually has. @see CgMsdfAtlasConfig#WIDE_PX_RANGE
+     */
+
     public CgTextStroke {
         if (align == null) align = CgStrokeAlign.OUTSET;
         if (widthEm < 0f) widthEm = 0f;

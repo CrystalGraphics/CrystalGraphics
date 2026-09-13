@@ -251,8 +251,22 @@ public class CgStrokeFieldRangeTest {
                         + "allows — that is no longer the same order of outline", oursEm, godotEm),
                 oursEm >= godotEm * 0.6);
 
-        assertEquals("CgTextStroke.MAX_FIELD_WIDTH_EM has drifted from the atlas config it describes",
+        assertEquals("CgMsdfAtlasConfig.maxStrokeWidthEm has drifted from the formula it states",
+                oursEm, config.maxStrokeWidthEm(), 1e-6);
+
+        assertEquals("CgTextStroke.MAX_FIELD_WIDTH_EM has drifted from the NARROW band it describes",
                 oursEm, CgTextStroke.MAX_FIELD_WIDTH_EM, 1e-6);
+
+        // The band a face with no dense script gets, which is the one a Latin label is drawn in. It
+        // is the number the parity claim rests on, so it is pinned ABOVE the reference rather than
+        // merely near it.
+        double wideEm = config.withPxRange(CgMsdfAtlasConfig.WIDE_PX_RANGE).maxStrokeWidthEm();
+        System.out.printf("[ceiling] wide band %.4f em  |  narrow %.4f  |  Godot %.4f%n",
+                wideEm, oursEm, godotEm);
+
+        assertTrue(String.format("the wide band reaches %.4f em, under the %.4f a production field "
+                        + "engine allows -- the banding bought nothing", wideEm, godotEm),
+                wideEm > godotEm);
     }
 
     /**

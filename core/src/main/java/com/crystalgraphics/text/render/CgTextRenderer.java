@@ -564,7 +564,7 @@ public class CgTextRenderer {
      * — a stale keyword left on by a previous transition (this renderer's or another live
      * instance's) would otherwise silently persist into the next bind's compiled variant.</p>
      */
-    private void transitionToMaterial(long batchBits, boolean isDistanceField, int textureId, float pxRange) {
+    private void transitionToMaterial(long batchBits, boolean isDistanceField, int textureId) {
         flush();
 
         // Counted to expose batch fragmentation: each transition is a flush + keyword toggle +
@@ -574,7 +574,6 @@ public class CgTextRenderer {
         try (CgProfiler.Scope ignored = CgProfiler.scope("materialTransition")) {
             TEXT_MATERIAL.toggleKeyword("MSDF_MODE", isDistanceField);
             ATLAS_TEXTURE_REF.setId(textureId);
-            TEXT_MATERIAL.applyProperties(b -> b.set1f("_PxRange", pxRange));
             activeBatchBits = batchBits;
         }
     }
@@ -1456,7 +1455,7 @@ public class CgTextRenderer {
             }
 
             if (batchBits != activeBatchBits) {
-                transitionToMaterial(batchBits, isDistanceField, textureId, pxRange);
+                transitionToMaterial(batchBits, isDistanceField, textureId);
             }
 
             quadRenderer.quad()
@@ -1464,13 +1463,15 @@ public class CgTextRenderer {
                     .uv(u0, v0, u1, v1)
                     .color(rgba)
                     .atlasLayer(atlasLayer)
-                    // The outline, in the layout text.shader's own header states: custom0 the
-                    // colour, custom1 (widthPx, align, over). Glyphs only -- a
+                    // text.shader's own header states the layout: custom0 the colour, custom1
+                    // (widthPx, align, over, pxRange). The STROKE fields are glyphs only -- a
                     // decoration is a solid rect with no distance field to offset a second threshold
-                    // from, and the customs default to zero, so underlines never ask rather than
-                    // needing to opt out.
+                    // from, and they default to zero, so underlines never ask rather than needing to
+                    // opt out. pxRange is not: a decoration's white texel is reserved in the same
+                    // banded atlas and carries that band's range, so it batches with the glyphs
+                    // around it instead of splitting them.
                     .custom0(strokeArgb)
-                    .custom1(strokeWidthPx, strokeAlign, strokeOver, 0f)
+                    .custom1(strokeWidthPx, strokeAlign, strokeOver, pxRange)
                     .pose(modelView)
                     .submit();
 
