@@ -126,10 +126,30 @@ Pass {
         float pxRange = strokeParams.w;
 
         vec2 atlasSize = vec2(textureSize(_MainTex, 0).xy);
-        vec2 unitRange = vec2(pxRange) / atlasSize;
-        vec2 uvFwidth = max(fwidth(i.uv), vec2(1.0e-6));
-        vec2 screenTexSize = vec2(1.0) / uvFwidth;
-        float screenPxRange = max(0.5 * dot(unitRange, screenTexSize), 1.0);
+
+        // THE JACOBIAN, not fwidth. msdfgen's canonical screenPxRange averages the two uv derivatives
+        // into ONE number for both axes, which is only true of a similarity transform. Under
+        // scale(2,1) or a skew a screen pixel spans different amounts of the field along each axis,
+        // so a single number leaves the edge too soft one way and too hard the other -- and it is
+        // wrong under plain ROTATION too, where fwidth's abs-sum overestimates by up to sqrt(2) and
+        // blurs a rotated stem. Skia carries the matrix for the same reason, in
+        // GrDistanceFieldA8TextGeoProc's non-similarity path, which this follows.
+        //
+        // Direction from the field's own gradient, magnitude from the Jacobian. The gradient of a
+        // median-of-3 is discontinuous where the channels swap at a corner, so taking only its
+        // DIRECTION from there bounds what that costs while the uv derivatives stay smooth. Under an
+        // isotropic transform the direction cancels out of the length, so the common case is exactly
+        // as stable as the formula this replaces -- and measurably identical to it.
+        vec2 distGrad = vec2(dFdx(signedDistance), dFdy(signedDistance));
+        float gradLenSq = dot(distGrad, distGrad);
+        distGrad = gradLenSq < 1.0e-8 ? vec2(0.70710678) : distGrad * inversesqrt(gradLenSq);
+
+        vec2 jdx = dFdx(i.uv) * atlasSize;   // texels crossed per screen px in x
+        vec2 jdy = dFdy(i.uv) * atlasSize;
+        vec2 texelStep = vec2(distGrad.x * jdx.x + distGrad.y * jdy.x,
+                              distGrad.x * jdx.y + distGrad.y * jdy.y);
+
+        float screenPxRange = max(pxRange / max(length(texelStep), 1.0e-6), 1.0);
 
         float screenPxDist = screenPxRange * (signedDistance - 0.5);
         float opacity = clamp(screenPxDist + 0.5, 0.0, 1.0);
