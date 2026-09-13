@@ -255,6 +255,67 @@ public class CgStrokeFieldRangeTest {
                 oursEm, CgTextStroke.MAX_FIELD_WIDTH_EM, 1e-6);
     }
 
+    /**
+     * <b>How far the mitre spikes at a sharp apex, against the limit every path engine applies.</b>
+     *
+     * <p>SVG defines {@code stroke-miterlimit} as {@code miterLength / strokeWidth = 1 / sin(theta/2)}
+     * and defaults it to 4, converting the join to a bevel past that — so a 29° apex is the sharpest
+     * that still mitres. A median-of-3 field mitres by construction (each channel holds the distance
+     * to an edge's extension, which is what keeps corners sharp) and has no limit at all.</p>
+     *
+     * <p>The ratio is measurable per fragment, because the two channels are the two joins: on the
+     * mitre's level set the median reads the stroke width while the true distance reads the distance
+     * to the corner itself, so {@code trueDistance / medianDistance} IS the miter ratio.</p>
+     *
+     * <p><b>Measured, it stays inside the limit</b> — 2.14 at worst, on an {@code x}'s crossing — so
+     * there is nothing to clamp and no {@code stroke-miterlimit} to expose. A limiter was scoped
+     * before this ran. The control is {@code o}: no corners, ratio exactly 1.</p>
+     */
+    @Test
+    public void theMitreStaysInsideTheLimitTheSpecWouldApply() throws Exception {
+        CgFont font = CgFont.load(fontBytes(), "mitre-probe", CgFontStyle.REGULAR, 80);
+        try {
+            CgFontKey fontKey = font.getKey();
+            FreeTypeMSDFIntegration.Font msdfFont = font.getMsdfFont();
+            assertNotNull("the face must expose an msdfgen font", msdfFont);
+
+            for (char c : new char[]{'A', 'V', 'W', 'x', 'o'}) {
+                int glyphId = font.getGlyphIndex(c);
+                if (glyphId <= 0) continue;
+                Field field = generate(font, fontKey, msdfFont, glyphId, SHIPPING_PX_RANGE);
+
+                // Walk the band a 2px stroke reads and take the worst ratio of true distance to
+                // median distance -- the sharpest mitre the glyph produces.
+                float storedRange = field.pxRange;
+                double worst = 1.0;
+                for (int i = 0; i < field.rgba.length; i += 4) {
+                    float r = field.rgba[i], g = field.rgba[i + 1], b = field.rgba[i + 2];
+                    float median = Math.max(Math.min(r, g), Math.min(Math.max(r, g), b));
+                    float alpha = field.rgba[i + 3];
+                    if (median >= 0.5f || median <= 0.5f - 0.45f) continue;   // outside the contour, in range
+                    double mitreOut = (0.5f - median) * storedRange;          // texels out, mitred
+                    double trueOut = (0.5f - alpha) * storedRange;            // texels out, round
+                    if (mitreOut > 0.25) worst = Math.max(worst, trueOut / mitreOut);
+                }
+                System.out.printf("[mitre] '%c' worst miter ratio %.2f  (SVG's default limit is 4.00, "
+                        + "%s)%n", c, worst, worst > 4.0 ? "EXCEEDED" : "within");
+
+                // SVG converts a miter to a bevel past 4, which is the behaviour this would owe if it
+                // ever got there. A letterform's corners are not sharp enough to: the ratio is
+                // 1/sin(theta/2), so exceeding 4 needs an apex under 29 degrees.
+                assertTrue(String.format("'%c' mitres to %.2f x the stroke width, past the 4.0 every "
+                                + "path engine bevels at -- text.shader now owes a miter limit", c, worst),
+                        worst <= 4.0);
+                if (c == 'o') {
+                    assertEquals("a glyph with no corners must read the same distance either way, or "
+                            + "the two channels disagree about more than joins", 1.0, worst, 0.05);
+                }
+            }
+        } finally {
+            font.dispose();
+        }
+    }
+
     // ── the shader's own band, on the CPU ───────────────────────────────────────────────────
 
     /** One reconstructed stroke band, plus how much of its contour rests on clipped texels. */
