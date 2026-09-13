@@ -27,7 +27,11 @@ package com.crystalgraphics.api.text;
  * {@code (pxRange - 1) / 2} atlas texels either side of the outline and SATURATES past that. A
  * bilinear tap reads half a texel either side, so the usable reach stops a further texel short of
  * saturation — at the shipping pairing of {@code pxRange 12} and an 80px atlas scale,
- * <b>4.5 texels, 0.05625 em</b>, which is 3.6px on 64px text and 1.8px on 32px text.
+ * <b>4.5 texels, 0.05625 em</b>, which is 3.6px on 64px text and 1.8px on 32px text. Godot allows
+ * 0.083 em for the same technique at its own defaults; ours stops lower because the shared atlas is
+ * eight bits and holds dense CJK, which a wider range quantises into merged strokes. Latin measures
+ * clean to 0.131 em, which is what a range per font would be worth.
+ * @see CgLatinRangeHeadroomTest
  * {@link #MAX_FIELD_WIDTH_EM} is that number, and a wider outline clamps to it rather than
  * getting wider.</p>
  *
