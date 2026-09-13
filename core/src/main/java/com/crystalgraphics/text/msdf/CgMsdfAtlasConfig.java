@@ -47,20 +47,32 @@ public record CgMsdfAtlasConfig(int atlasScalePx, float pxRange, int pageSize, i
      * Distance range in <strong>atlas texels</strong>, so its effect scales inversely with
      * {@link #DEFAULT_ATLAS_SCALE_PX} — the two must always be considered together.
      *
-     * <p><strong>12 since the stroke reach was measured.</strong> The range is what a text stroke
-     * has to fit inside: an outline can only be as wide as the field carries real distance, which is
-     * {@code (pxRange - 1) / 2} texels less one for the bilinear footprint. At 6 that ceiling was
-     * 1.5 of 80 texels, 0.019 em -- 1.2px on 64px text, so an authored 2px outline and an authored
-     * 8px one drew identically. At 12 it is 4.5 texels, 0.056 em, 3.6px on 64px text.
+     * <p><strong>12, which is the most EIGHT BITS can hold in a shared atlas.</strong> The range is
+     * what a text stroke has to fit inside: an outline can only be as wide as the field carries real
+     * distance, {@code (pxRange - 1) / 2} texels less one for the bilinear footprint -- 4.5 of 80,
+     * <b>0.056 em</b>. At 6 that ceiling was 0.019 em and an authored 2px outline drew the same as an
+     * 8px one.
      *
-     * <p>The bill is cell AREA, paid by every glyph whether or not anything strokes it: a {@code g}
-     * goes 43x71 to 52x83 texels, 1.41x, so a page holds proportionally fewer glyphs and each costs
-     * proportionally more to generate against the per-frame budget.
+     * <p><b>It does not go higher here, and the wall is the STORAGE rather than the geometry.</b> One
+     * 8-bit level is {@code storedRange / 255} of distance, so a wider range quantises coarser; at 13
+     * that is enough to merge strokes a dense kanji keeps apart, which {@link CgMsdfFieldStorageTest}
+     * fails on. Interference -- the risk this javadoc used to name -- is fine to 20: nine dense kanji
+     * lose no counter and move no ink. It is the quantiser that stops first.
+     *
+     * <p><b>So this number belongs to the densest script in the atlas, not to the technique.</b> The
+     * same measurement on Latin holds structure at 24, a ceiling of 0.131 em
+     * (@see CgLatinRangeHeadroomTest) -- past Godot's 0.083 and TextMeshPro's usual 0.10. Reaching it
+     * means a range per font rather than one shared number, which is the banding plan; raising the
+     * shared one instead would buy a wider outline by breaking CJK.
+     *
+     * <p>The bill for 6 to 12 was cell AREA, paid by every glyph whether or not anything strokes it: a
+     * {@code g} goes 43x71 to 52x83 texels, 1.41x, so a page holds proportionally fewer glyphs and
+     * each costs proportionally more to generate against the per-frame budget.
      *
      * <p>Interference was the risk and it was measured, not assumed: across nine dense kanji in M+ 1p
-     * -- the font the 64px regressions were confirmed on -- ranges up to 16 close no counter and move
-     * ink by at most 2.7% against a 240px reference, which is the same 2.7% pxRange 6 shows, i.e. the
-     * 80px raster rather than the range. @see CgMsdfRangeInterferenceTest
+     * -- the font the 64px regressions were confirmed on -- this range closes no counter and moves ink
+     * by at most 2.7% against a 240px reference, which is the same 2.7% pxRange 6 shows, i.e. the 80px
+     * raster rather than the range. @see CgMsdfRangeInterferenceTest
      *
      * <p>msdf-atlas-gen's own default is 2, so this remains generous either way.
      *

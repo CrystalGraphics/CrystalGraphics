@@ -4,6 +4,7 @@ import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgFontKey;
 import com.crystalgraphics.api.font.CgFontStyle;
 import com.crystalgraphics.api.font.CgGlyphKey;
+import com.crystalgraphics.api.text.CgTextStroke;
 import com.crystalgraphics.msdfgen.FreeTypeMSDFIntegration;
 import com.crystalgraphics.text.cache.CgGlyphGenerationResult;
 import com.crystalgraphics.text.cache.CgMsdfAtlasKey;
@@ -15,6 +16,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.InputStream;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
@@ -213,6 +215,44 @@ public class CgStrokeFieldRangeTest {
         } finally {
             font.dispose();
         }
+    }
+
+    /**
+     * <b>The ceiling is no tighter than a production field-based engine's, and the two places it is
+     * written agree.</b>
+     *
+     * <p>Godot documents the rule for the same technique: an outline may be half the pixel range, and
+     * its defaults pair a range of 8 with an {@code msdf_size} of 48 — 0.083 em. Ours is lower, and
+     * the gap is not slack to be taken up: two texels go to reserves Godot does not keep (the
+     * layout's, so the field cannot bleed past its cell; the shader's, so a bilinear tap never
+     * straddles the shoulder — Godot's tracker carries the symptom of not keeping them, "outlines are
+     * limited to 2 pixels and look worse at 2 pixels than 1"), and the range itself stops at 12
+     * because the atlas is eight bits and shared with dense CJK, which a coarser quantisation merges.
+     * Latin alone holds to 24. @see CgMsdfFieldStorageTest, CgLatinRangeHeadroomTest</p>
+     *
+     * <p>So this asserts the two things that must stay true rather than a number to chase: the ceiling
+     * is within reach of the industry's, and the hand-written constant still equals the config it
+     * describes.</p>
+     */
+    @Test
+    public void theCeilingIsWithinReachOfTheIndustrysAndMatchesItsOwnConfig() {
+        CgMsdfAtlasConfig config = CgMsdfAtlasConfig.defaultConfig();
+        double usableTexels = (config.pxRange() - 1) / 2.0 - 1.0;
+        double oursEm = usableTexels / config.atlasScalePx();
+
+        double godotEm = (8.0 / 2.0) / 48.0;   // msdf_pixel_range 8, msdf_size 48
+
+        System.out.printf("[ceiling] ours %.4f em (%.1f of %d texels)  |  Godot's default %.4f em%n",
+                oursEm, usableTexels, config.atlasScalePx(), godotEm);
+
+        // Within a factor, not equal: the two reserves and the 8-bit limit are paid for knowingly.
+        // A regression to the 0.019 em this shipped with first would fail here.
+        assertTrue(String.format("the ceiling is %.4f em against the %.4f a production field engine "
+                        + "allows — that is no longer the same order of outline", oursEm, godotEm),
+                oursEm >= godotEm * 0.6);
+
+        assertEquals("CgTextStroke.MAX_FIELD_WIDTH_EM has drifted from the atlas config it describes",
+                oursEm, CgTextStroke.MAX_FIELD_WIDTH_EM, 1e-6);
     }
 
     // ── the shader's own band, on the CPU ───────────────────────────────────────────────────

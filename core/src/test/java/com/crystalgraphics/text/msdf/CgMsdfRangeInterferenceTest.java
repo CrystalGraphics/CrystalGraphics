@@ -36,7 +36,7 @@ public class CgMsdfRangeInterferenceTest {
     /** Dense by construction: many strokes inside one em, which is where gaps get small. */
     private static final String DENSE = "鬱驚籠鷹麗顔曜識議護";
 
-    private static final float[] RANGES = {6f, 8f, 12f, 16f};
+    private static final float[] RANGES = {6f, 8f, 12f, 16f, 20f};
 
     @Test
     public void aWiderRangeDoesNotCloseDenseCounters() throws Exception {

@@ -185,13 +185,14 @@ Pass {
             // value error into a level set that follows the grid -- the outer edge comes out scalloped
             // while the fill beside it, thresholding where the field still has slope, stays smooth.
             //
-            // Measured at font-size 64 on the shipping pxRange 12: an 8px request resolves 5.7% of its
-            // outer contour from footprints holding a clipped texel, against 84% with a screen pixel of
-            // headroom. It costs maximum width -- the clean reach is 4.5 texels of the 5.5 the field
-            // carries, 0.056em -- and a wider stroke than that stops getting wider instead of going
-            // ragged, which is what CgTextStroke has always promised. Skia keeps two texels back for the
-            // same reason, in the geometry rather than the threshold: SK_DistanceFieldInset, "the rect we
-            // render with is inset from the distance field glyph size to allow for bilerp".
+            // Measured at font-size 64: an 8px request resolves 5.7% of its outer contour from
+            // footprints holding a clipped texel, against 84% with a screen pixel of headroom. It costs
+            // maximum width -- the clean reach is one texel short of the range the field carries,
+            // 0.056em at the shipping pairing -- and a wider stroke than that stops getting wider
+            // instead of going ragged, which is what CgTextStroke has always promised. Skia keeps two
+            // texels back for the same reason, in the geometry rather than the threshold:
+            // SK_DistanceFieldInset, "the rect we render with is inset from the distance field glyph
+            // size to allow for bilerp".
             //
             // One SCREEN pixel remains the floor: minified text has several texels per pixel, where the
             // grid is no longer what limits the edge. @see CgStrokeFieldRangeTest
