@@ -281,6 +281,19 @@ final class CgGlyphGenerationExecutor {
         return pendingJobs.size();
     }
 
+    /**
+     * Work waiting for a DISTANCE-FIELD worker, which is not what {@link #getPendingJobCount} counts.
+     *
+     * <p>{@code pendingJobs} spans both pools, and a cold page puts thousands of bitmap fallbacks in
+     * it -- so anything throttled on that count is really throttled on bitmap work it does not share
+     * a thread with. Gated on it, the ASCII warm did not run at all until a cold page's bitmap
+     * fallbacks had drained. The pools were split for this reason once already; this is the same rule
+     * for a counter.</p>
+     */
+    int msdfQueueDepth() {
+        return msdfExecutor.getQueue().size();
+    }
+
     void clearFont(CgFontKey fontKey) {
         clearMatchingJobs(failedJobs, fontKey);
         clearCompletedResults(fontKey);
