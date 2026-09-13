@@ -16,6 +16,7 @@ import com.crystalgraphics.text.atlas.CgGlyphAtlas;
 import com.crystalgraphics.text.msdf.CgMsdfAtlasConfig;
 import com.crystalgraphics.text.msdf.CgMsdfGenerator;
 import com.crystalgraphics.text.render.CgTextRenderer;
+import com.crystalgraphics.text.shadow.CgShadowCell;
 import com.crystalgraphics.util.profiling.CgProfiler;
 
 import java.util.*;
@@ -286,6 +287,7 @@ public class CgFontRegistry {
         // their profiler frame from InteractiveSceneLifecycle#onFrameEnd (as TextScene3D does) get
         // these scopes attributed to the correct frame. A scene that instead ends its frame inside
         // render() will see them one frame late, since render() runs earlier in the loop.
+        glyphGenerationExecutor.noteFrame(frame);
         try (CgProfiler.Scope ignored = CgProfiler.scope("registry.tickFrame")) {
             // 1. Drain completed async results first so they are available
             //    to ensureGlyph* calls later in the same frame.
@@ -510,6 +512,54 @@ public class CgFontRegistry {
         }
         submitBitmapGlyphJob(font, atlasKey, rasterFontKey, effectiveTargetPx, subPixelBucket);
         return ensureBitmapGlyph(font, atlasKey, rasterFontKey, effectiveTargetPx, subPixelBucket, currentFrame);
+    }
+
+    /**
+     * A text-shadow cell of a glyph: its coverage blurred, grown or clipped as {@code cell} says, from the
+     * bitmap atlas, or null while a worker builds it.
+     *
+     * <pre>{@code
+     * CgGlyphPlacement cell = registry.resolveShadowCell(font, fontKey, glyphId, bold, italic, effectivePx,
+     *         shadowCell, frame);
+     * if (cell == null) degraded++;             // asked for; draw again next frame
+     * else if (cell.hasGeometry()) draw(cell);  // an empty glyph resolves to no geometry
+     * }</pre>
+     *
+     * <p><b>Never generated on the render thread.</b> A cell costs a raster plus a blur, and for a grown or
+     * inset shadow an msdfgen distance field on top. The bitmap tier's fallback moved to the workers for
+     * the same reason: a shadow a frame late is invisible, a stalled frame is not. What is visible is a
+     * shadow with a gap in it, so meanwhile draw the cell that glyph's shadow last had, from
+     * {@link #peekShadowCell}, and keep asking: a cell nobody asks for for two frames is dropped unbuilt.</p>
+     *
+     * <p>A cell whose job has failed stays null forever and is not retried, like any failed glyph job.</p>
+     *
+     * @param fontKey           the glyph's own font key, at its base size
+     * @param effectiveTargetPx the raster size the glyph is drawn at, which the cell's lengths are pixels of
+     */
+    public CgGlyphPlacement resolveShadowCell(CgFont font, CgFontKey fontKey, int glyphId,
+                                              boolean syntheticBold, boolean syntheticItalic,
+                                              int effectiveTargetPx, CgShadowCell cell, long currentFrame) {
+        if (font.isDisposed()) {
+            throw new IllegalStateException("Cannot resolve a shadow cell on disposed font: " + font.getKey());
+        }
+        registerFont(font);
+        CgRasterFontKey rasterFontKey = new CgRasterFontKey(fontKey, effectiveTargetPx);
+        CgGlyphKey atlasKey = toBitmapAtlasGlyphKey(
+                new CgRasterGlyphKey(rasterFontKey, glyphId, false, 0, syntheticBold, syntheticItalic))
+                .withShadowCell(cell);
+        CgGlyphPlacement cached = getBitmapAtlas().get(atlasKey, currentFrame);
+        if (cached != null) {
+            CgProfiler.count("glyph.shadowCell.atlasHit");
+            return cached;
+        }
+        CgGlyphGenerationJob job = CgGlyphGenerationJob.shadowCell(font.getKey(), font.getData(), atlasKey,
+                rasterFontKey, effectiveTargetPx);
+        if (!glyphGenerationExecutor.hasFailed(job) && glyphGenerationExecutor.submit(job)) {
+            CgProfiler.count("glyph.shadowCell.deferredToWorker");
+        } else {
+            CgProfiler.count("glyph.shadowCell.refused");
+        }
+        return null;
     }
 
     /**
@@ -790,7 +840,7 @@ public class CgFontRegistry {
                     loadGlyphOrFallback(face, atlasKey.getGlyphId(), loadFlags);
                 }
                 try (CgProfiler.Scope ignoredSynth = CgProfiler.scope("ftRaster.synthetic")) {
-                    applySyntheticStyle(face, atlasKey, effectiveTargetPx);
+                    applySyntheticStyle(face, atlasKey.isSyntheticBold(), atlasKey.isSyntheticItalic(), effectiveTargetPx);
                 }
 
                 if (subBucket) face.outlineTranslate(subPixelBucket * 16L, 0L);
@@ -859,30 +909,32 @@ public class CgFontRegistry {
     private static final double SYNTHETIC_ITALIC_SKEW = 0.25;
 
     /**
-     * Applies {@code atlasKey}'s synthetic bold/italic flags (see {@link CgGlyphKey#isSyntheticBold()}/
+     * Applies synthetic bold and italic (see {@link CgGlyphKey#isSyntheticBold()}/
      * {@link CgGlyphKey#isSyntheticItalic()}) to the glyph currently loaded on {@code face}, at
      * {@code pixelSizePx}. Must be called after {@code loadGlyphOrFallback} (with
      * {@code FT_LOAD_NO_BITMAP}) and before {@code renderGlyph}/reading metrics. A no-op for a
      * bitmap-only glyph (no outline to transform) — matches how real browsers silently skip
      * synthesis for color/bitmap-strike glyphs rather than failing the whole draw.
      *
+     * <p>Shared with the workers' text-shadow cells, so a shadow is cast by the glyph this tier draws.</p>
+     *
      * @param pixelSizePx the pixel size {@code face} was just set to — embolden strength is
      *                    derived from this, per Skia's {@code strength = pixelSize26_6 / 24}
      */
-    private void applySyntheticStyle(FTFace face, CgGlyphKey atlasKey, int pixelSizePx) {
-        if (!atlasKey.isSyntheticBold() && !atlasKey.isSyntheticItalic()) {
+    static void applySyntheticStyle(FTFace face, boolean bold, boolean italic, int pixelSizePx) {
+        if (!bold && !italic) {
             return;
         }
         try {
-            if (atlasKey.isSyntheticBold()) {
+            if (bold) {
                 long strength = Math.round(pixelSizePx * 64.0 / 24.0);
                 face.outlineEmbolden(strength);
             }
-            if (atlasKey.isSyntheticItalic()) {
+            if (italic) {
                 face.outlineShear(SYNTHETIC_ITALIC_SKEW);
             }
         } catch (IllegalStateException e) {
-            LOGGER.log(Level.FINE, "Skipping synthetic bold/italic for glyph with no outline: " + atlasKey, e);
+            LOGGER.log(Level.FINE, "Skipping synthetic bold/italic for a glyph with no outline", e);
         }
     }
 
@@ -1250,6 +1302,23 @@ public class CgFontRegistry {
         // Bitmap CgGlyphPlacements always carry pxRange=0f (unused for that tier) — matching
         // that here is what lets a decoration's batch key equal a bitmap glyph's exactly.
         return getBitmapAtlas().reserveWhiteTexel(0f);
+    }
+
+    /**
+     * A shadow cell already in the bitmap atlas, or null: never asks for one to be built. For drawing the
+     * cell a glyph's shadow last had while its next one builds.
+     */
+    public CgGlyphPlacement peekShadowCell(CgGlyphKey cellKey, long currentFrame) {
+        if (cellKey.getShadowCell() == null) throw new IllegalArgumentException("not a shadow cell key: " + cellKey);
+        return BITMAP_ATLAS == null ? null : BITMAP_ATLAS.get(cellKey, currentFrame);
+    }
+
+    /**
+     * The widest text-shadow cell the bitmap atlas takes, in pixels: half a page, past which one glyph's
+     * cell crowds a page out. A wider cell is downsampled further instead. @see CgShadowCell#forOuterShadow
+     */
+    public int maxShadowCellPx() {
+        return atlasSize / 2;
     }
 
     /** The one bitmap atlas, shared by every font at every raster size. Created on first use. */

@@ -69,7 +69,10 @@ public class CgTextSortKeyTest {
         assertEquals("two atlases means two transitions, regardless of decorations", 2, transitions);
     }
 
-    /** Batch identity must ignore kind and index, and must not ignore mode/texture/pxRange. */
+    /**
+     * Batch identity must ignore kind, index and pxRange, and must not ignore mode/texture. pxRange
+     * rides the instance, so two atlas bands draw in one call.
+     */
     @Test
     public void batchIdentityCoversExactlyTheTransitionFields() {
         long base = key(true, 10, 6f, false, 5);
@@ -82,8 +85,8 @@ public class CgTextSortKeyTest {
                 CgTextSortKey.batchOf(base) != CgTextSortKey.batchOf(key(true, 11, 6f, false, 5)));
         assertTrue("mode must affect batch",
                 CgTextSortKey.batchOf(base) != CgTextSortKey.batchOf(key(false, 10, 6f, false, 5)));
-        assertTrue("pxRange must affect batch",
-                CgTextSortKey.batchOf(base) != CgTextSortKey.batchOf(key(true, 10, 2f, false, 5)));
+        assertEquals("pxRange must not affect batch", CgTextSortKey.batchOf(base),
+                CgTextSortKey.batchOf(key(true, 10, 2f, false, 5)));
     }
 
     /** Sorting must group by mode first, then texture — the coarsest-to-finest contract. */
@@ -95,6 +98,29 @@ public class CgTextSortKeyTest {
         Arrays.sort(sorted);
         assertTrue("bitmap sorts before distance field regardless of texture id",
                 sorted[0] == bitmapHighTexture);
+    }
+
+    /**
+     * A shadow paints under the text whatever atlas either is in: a draw mixing tiers must not paint
+     * the second batch's shadows over the first batch's glyphs.
+     */
+    @Test
+    public void stageOrdersAheadOfModeAndTexture() {
+        long textBitmap = CgTextSortKey.of(1, false, 3, 0f, false, 0);
+        long shadowField = CgTextSortKey.of(0, true, 999, 12f, false, 0);
+        long insetBitmap = CgTextSortKey.of(2, false, 1, 0f, false, 0);
+        long[] sorted = {insetBitmap, textBitmap, shadowField};
+        Arrays.sort(sorted);
+        assertEquals(shadowField, sorted[0]);
+        assertEquals(textBitmap, sorted[1]);
+        assertEquals(insetBitmap, sorted[2]);
+    }
+
+    /** Stage must not split a batch: a shadow and its text in one atlas are one run, one call. */
+    @Test
+    public void batchIdentityIgnoresStage() {
+        assertEquals(CgTextSortKey.batchOf(CgTextSortKey.of(0, true, 10, 12f, false, 4)),
+                CgTextSortKey.batchOf(CgTextSortKey.of(CgTextSortKey.MAX_STAGE, true, 10, 12f, false, 4)));
     }
 
     @Test
@@ -176,12 +202,19 @@ public class CgTextSortKeyTest {
         assertEquals("kind must not bleed into index", 0, CgTextSortKey.localIndexOf(decoration));
         assertEquals("kind must not bleed into the batch fields", 0L, CgTextSortKey.batchOf(decoration));
 
-        long everythingAtMax = key(true, CgTextSortKey.MAX_TEXTURE_ID, Float.MAX_VALUE, true,
-                CgTextSortKey.MAX_LOCAL_INDEX);
+        long maxStage = CgTextSortKey.of(CgTextSortKey.MAX_STAGE, false, 0, 0f, false, 0);
+        assertEquals("stage round-trips at max", CgTextSortKey.MAX_STAGE, CgTextSortKey.stageOf(maxStage));
+        assertFalse("stage must not bleed into mode", CgTextSortKey.isDistanceField(maxStage));
+        assertEquals("stage must not bleed into the batch fields", 0L, CgTextSortKey.batchOf(maxStage));
+        assertTrue("stage must not reach the sign bit", maxStage >= 0);
+
+        long everythingAtMax = CgTextSortKey.of(CgTextSortKey.MAX_STAGE, true, CgTextSortKey.MAX_TEXTURE_ID,
+                Float.MAX_VALUE, true, CgTextSortKey.MAX_LOCAL_INDEX);
         assertTrue("every field at max must still leave bit 63 clear: "
                 + CgTextSortKey.describe(everythingAtMax), everythingAtMax >= 0);
         assertEquals(CgTextSortKey.MAX_LOCAL_INDEX, CgTextSortKey.localIndexOf(everythingAtMax));
         assertTrue(CgTextSortKey.isDecoration(everythingAtMax));
         assertTrue(CgTextSortKey.isDistanceField(everythingAtMax));
+        assertEquals(CgTextSortKey.MAX_STAGE, CgTextSortKey.stageOf(everythingAtMax));
     }
 }

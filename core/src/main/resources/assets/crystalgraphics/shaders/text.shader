@@ -44,6 +44,7 @@
 #pragma cg_feature MSDF_MODE
 
 #include "crystalgraphics:shaders/lib/texel.glsl"
+#include "crystalgraphics:shaders/lib/rect_blur.glsl"
 
 Tags {
     "RenderType" = "Transparent"
@@ -73,12 +74,28 @@ Properties {
     // Width is texels rather than screen px because a screen-space width needs one scale factor to
     // convert and an anisotropic transform has none; in texels it is local, and the transform
     // stretches the ring with the glyph. @see CgTextStroke#widthEm, quad.glsl
+    //
+    // A TEXT-SHADOW INSTANCE says so with a NEGATIVE custom0.w, which no stroke colour's alpha can be.
+    // Its colour is CG_QUAD_COLOR, whose alpha alone is the shadow's opacity. -kind names what it is:
+    //
+    //   kind  mode    custom0                            custom1                                     quad
+    //   -1    field   (unused)                           (strokeTexels, align, spreadTexels, pxRange) glyph, offset
+    //   -2    field   (offsetU, offsetV, sigmaTexels)    (strokeTexels, align, spreadTexels, pxRange) glyph
+    //   -3    bitmap  (unused)                           (unused)                                    the cell
+    //   -4    either  (invSixSigmaU, invSixSigmaV, 0)    inset rect (L, T, R, B)                     rect + 3 sigma
+    //   -5    either  (offsetU, offsetV, invSixSigmaU)   (invSixSigmaV, spreadU, spreadV, 0)         the rect
+    //
+    // -4 and -5 are in the quad's unit parameter and sample nothing, so they are tested first, in either
+    // mode. A sharp shadow of unstroked, unspread text is not an instance kind at all: it is an ordinary
+    // glyph in the shadow's colour. @see CgTextRenderer#planShadows
 }
 
 struct v2f {
     vec2 uv;
     vec4 color;
     float atlasLayer;
+    // The unit quad's own parameter, for the analytic rect shadow kinds.
+    vec2 param;
 };
 
 Pass {
@@ -115,10 +132,22 @@ Pass {
         o.uv         = CG_QUAD_UV;
         o.color      = CG_QUAD_COLOR;
         o.atlasLayer = CG_QUAD_ATLAS_LAYER;
+        o.param      = cg_Position.xy;
     }
 
     void fragment(in v2f i, out vec4 fragColor) {
         vec3 uvw = vec3(i.uv, i.atlasLayer);
+        float shadowKind = CG_QUAD_CUSTOM0.w;
+        if (shadowKind < -3.5) {
+            float rectCoverage = shadowKind > -4.5
+                    ? rect_shadow_outer(i.param, CG_QUAD_CUSTOM0.xy, CG_QUAD_CUSTOM1)
+                    : rect_shadow_inset(i.param, CG_QUAD_CUSTOM0.xy, vec2(CG_QUAD_CUSTOM0.z, CG_QUAD_CUSTOM1.x),
+                                        CG_QUAD_CUSTOM1.yz);
+            float rectAlpha = i.color.a * rectCoverage;
+            if (rectAlpha <= (1.0 / 255.0)) discard;
+            fragColor = vec4(i.color.rgb, rectAlpha);
+            return;
+        }
 #ifdef MSDF_MODE
         vec3 field = texture(_MainTex, uvw).rgb;
         float signedDistance = max(min(field.r, field.g), min(max(field.r, field.g), field.b));
@@ -155,6 +184,60 @@ Pass {
         float screenPxDist = screenPxRange * (signedDistance - 0.5);
         float opacity = clamp(screenPxDist + 0.5, 0.0, 1.0);
         float alpha = i.color.a * opacity;
+
+        if (shadowKind < -0.5) {
+            // A SHADOW OF THE STROKED, SPREAD SHAPE, thresholded on the glyph's own field. The reach clamp is
+            // the stroke's own, so a shadow never asks the field for a distance it stopped storing.
+            float shadowWidthField = strokeParams.x / max(pxRange, 1.0e-6);
+            float shadowSpreadField = strokeParams.z / max(pxRange, 1.0e-6);
+            float shadowReach = max(0.5 - max(1.0 / max(screenPxRange, 1.0e-6), 1.0 / max(pxRange, 1.0e-6)), 0.0);
+            float shadowAlign = strokeParams.y;
+            float shadowOutward = shadowAlign < 0.5 ? shadowWidthField * 0.5
+                                : shadowAlign < 1.5 ? shadowWidthField : 0.0;
+            float shadowInward = shadowWidthField - shadowOutward;
+            float shadowCoverage;
+            if (shadowKind > -1.5) {
+                // Outer: the fill united with the ring's outer edge -- the median, so a stroke's mitred corner is
+                // shadowed as it is drawn -- then grown by the spread along the TRUE distance, which rounds.
+                shadowCoverage = clamp(screenPxDist + min(shadowOutward, shadowReach) * screenPxRange + 0.5, 0.0, 1.0);
+                if (shadowSpreadField > 0.0) {
+                    float trueDistance = texture(_MainTex, uvw).a;
+                    float grown = min(shadowOutward + shadowSpreadField, shadowReach);
+                    shadowCoverage = max(shadowCoverage,
+                            clamp(screenPxRange * (trueDistance - 0.5) + grown * screenPxRange + 0.5, 0.0, 1.0));
+                }
+            } else {
+                // Inset: inside the ring's inner edge, the canvas outside a hole the size of the glyph shrunk by the
+                // stroke and the spread, seen through the offset. Outside the glyph's own cell the hole is empty.
+                float clipCoverage = clamp(screenPxDist - min(shadowInward, shadowReach) * screenPxRange + 0.5, 0.0, 1.0);
+                vec2 holeUv = i.uv - CG_QUAD_CUSTOM0.xy;
+                vec4 cellRect = CG_QUAD_UV_RECT;
+                float holeCoverage = 0.0;
+                if (all(greaterThanEqual(holeUv, cellRect.xy)) && all(lessThanEqual(holeUv, cellRect.zw))) {
+                    vec4 holeField = texture(_MainTex, vec3(holeUv, i.atlasLayer));
+                    float shrink = min(shadowInward + shadowSpreadField, shadowReach);
+                    float holeSigmaTexels = CG_QUAD_CUSTOM0.z;
+                    if (holeSigmaTexels > 0.0) {
+                        // A BLURRED HOLE from the true distance: a Gaussian falloff past the shrunk edge,
+                        // exact along a straight edge. Half a screen pixel of antialiasing is added in
+                        // quadrature, so the edge stays smooth however small the blur is on screen.
+                        float holeTexels = (holeField.a - 0.5 - shrink) * pxRange;
+                        float aaTexels = 0.5 * pxRange / max(screenPxRange, 1.0e-6);
+                        float holeSigma = sqrt(holeSigmaTexels * holeSigmaTexels + aaTexels * aaTexels);
+                        holeCoverage = 0.5 * (1.0 + rect_blur_erf(holeTexels / (holeSigma * 1.41421356)));
+                    } else {
+                        float holeDistance = shadowSpreadField > 0.0 ? holeField.a
+                                : max(min(holeField.r, holeField.g), min(max(holeField.r, holeField.g), holeField.b));
+                        holeCoverage = clamp(screenPxRange * (holeDistance - 0.5) - shrink * screenPxRange + 0.5, 0.0, 1.0);
+                    }
+                }
+                shadowCoverage = clipCoverage * (1.0 - holeCoverage);
+            }
+            float shadowAlpha = i.color.a * shadowCoverage;
+            if (shadowAlpha <= (1.0 / 255.0)) discard;
+            fragColor = vec4(i.color.rgb, shadowAlpha);
+            return;
+        }
 
         // A RUNTIME BRANCH, deliberately not a keyword. A compile-time variant would be another
         // dimension the batch has to break on, which is the cost this whole per-instance move
@@ -281,6 +364,25 @@ Pass {
             fragColor = vec4(i.color.rgb, alpha);
         }
 #else
+        if (shadowKind < -2.5) {
+            // A SHADOW CELL, bilinear by hand and held half a texel inside its own rect: it may be drawn at a
+            // fractional offset or stretched back from a downsampled blur, and the atlas samples nearest.
+            vec2 cellSize = vec2(textureSize(_MainTex, 0).xy);
+            vec4 cellRect = CG_QUAD_UV_RECT;
+            vec2 halfTexel = 0.5 / cellSize;
+            vec2 st = clamp(i.uv, cellRect.xy + halfTexel, cellRect.zw - halfTexel) * cellSize - 0.5;
+            vec2 base = floor(st);
+            vec2 weight = st - base;
+            float c00 = texture(_MainTex, vec3((base + vec2(0.5, 0.5)) / cellSize, i.atlasLayer)).r;
+            float c10 = texture(_MainTex, vec3((base + vec2(1.5, 0.5)) / cellSize, i.atlasLayer)).r;
+            float c01 = texture(_MainTex, vec3((base + vec2(0.5, 1.5)) / cellSize, i.atlasLayer)).r;
+            float c11 = texture(_MainTex, vec3((base + vec2(1.5, 1.5)) / cellSize, i.atlasLayer)).r;
+            float cellCoverage = mix(mix(c00, c10, weight.x), mix(c01, c11, weight.x), weight.y);
+            float cellAlpha = i.color.a * cellCoverage;
+            if (cellAlpha <= (1.0 / 255.0)) discard;
+            fragColor = vec4(i.color.rgb, cellAlpha);
+            return;
+        }
         // A bitmap glyph is nearest-sampled pixel art; rotated, its texels get the antialiasing a
         // geometric edge gets rather than a staircase. See CG_TEXEL_AA in cg_env.glsl. At rest --
         // axis-aligned, which is every glyph in a document -- this is the plain fetch it always was.

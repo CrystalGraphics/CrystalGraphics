@@ -68,6 +68,21 @@ final class CgGlyphGenerationJob {
                 subPixelBucket);
     }
 
+    /**
+     * A text-shadow cell of a glyph: coverage for the bitmap atlas, described by
+     * {@code atlasKey.getShadowCell()}. Equal to another job exactly when it writes the same entry, which
+     * the bitmap branch of {@link #equals} already holds, since the cell is part of the atlas key.
+     */
+    static CgGlyphGenerationJob shadowCell(CgFontKey sourceFontKey,
+                                           CgFontData fontData,
+                                           CgGlyphKey atlasKey,
+                                           CgRasterFontKey rasterKey,
+                                           int effectiveTargetPx) {
+        if (atlasKey.getShadowCell() == null) throw new IllegalArgumentException("not a shadow cell key: " + atlasKey);
+        return new CgGlyphGenerationJob(sourceFontKey, fontData, atlasKey, rasterKey, null, null,
+                effectiveTargetPx, 0);
+    }
+
     static CgGlyphGenerationJob msdf(CgFontKey sourceFontKey,
                                      CgFontData fontData,
                                      CgGlyphKey atlasKey,
@@ -114,6 +129,10 @@ final class CgGlyphGenerationJob {
 
     int getSubPixelBucket() {
         return subPixelBucket;
+    }
+
+    boolean isShadowCell() {
+        return atlasKey.getShadowCell() != null;
     }
 
     boolean isMsdf() {

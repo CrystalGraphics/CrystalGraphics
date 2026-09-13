@@ -12,6 +12,8 @@ import com.crystalgraphics.api.font.CgFontKey;
 import com.crystalgraphics.api.font.CgFontVariation;
 import com.crystalgraphics.api.font.CgGlyphKey;
 import com.crystalgraphics.text.msdf.CgMsdfGenerator;
+import com.crystalgraphics.text.shadow.CgShadowCell;
+import com.crystalgraphics.text.shadow.CgShadowCoverage;
 
 import java.util.HashMap;
 import java.util.List;
@@ -103,6 +105,43 @@ final class CgWorkerFontContext {
                 bearingY,
                 metricsWidth,
                 metricsHeight);
+    }
+
+    /**
+     * A text-shadow cell, built by its {@link CgShadowCell#build recipe} from this thread's FreeType face
+     * and msdfgen font. Its plane bounds are device pixels, so a downsampled cell's texels are stretched
+     * back over the glyph's true extent by the same metric scale a glyph uses.
+     */
+    CgGlyphGenerationResult generateShadowCell(CgGlyphGenerationJob job) {
+        try (CgProfiler.Scope ignored = CgProfiler.scope("worker.shadowCell")) {
+            CgGlyphKey key = job.getAtlasKey();
+            int glyphId = key.getGlyphId();
+            int px = job.getEffectiveTargetPx();
+            boolean bold = key.isSyntheticBold();
+            boolean italic = key.isSyntheticItalic();
+            CgShadowCoverage coverage = key.getShadowCell().build(new CgShadowCell.GlyphSource() {
+                @Override
+                public CgShadowCoverage coverage() {
+                    return unhintedCoverage(getBitmapFace(job), glyphId, px, bold, italic);
+                }
+
+                @Override
+                public CgShadowCoverage grown(float growPx) {
+                    CgMsdfGenerator.TrueDistance d = CgMsdfGenerator.trueDistance(getMsdfFont(job), glyphId, px,
+                            growPx, bold, italic);
+                    return d == null ? null
+                            : CgShadowCoverage.fromDistance(d.distancePx(), d.width(), d.height(), d.left(), d.top(),
+                                    growPx);
+                }
+            });
+            if (coverage == null) {
+                return CgGlyphGenerationResult.emptyBitmap(job.getSourceFontKey(), key, job.getBitmapRasterKey());
+            }
+            return CgGlyphGenerationResult.bitmap(job.getSourceFontKey(), key, job.getBitmapRasterKey(),
+                    coverage.data(), coverage.width(), coverage.height(),
+                    coverage.left(), coverage.top(),
+                    coverage.width() * (float) coverage.texel(), coverage.height() * (float) coverage.texel());
+        }
     }
 
     CgGlyphGenerationResult generateMsdf(CgGlyphGenerationJob job) {
@@ -209,6 +248,29 @@ final class CgWorkerFontContext {
             values[i] = variations.get(i).getValue();
         }
         return values;
+    }
+
+    /**
+     * FreeType's coverage raster at {@code px}, unhinted, synthetic style applied as the bitmap tier applies
+     * it: the raster Skia blurs for a glyph's shadow. Unhinted so a shadow matches the distance-field text
+     * it most often sits under.
+     */
+    private static CgShadowCoverage unhintedCoverage(FTFace face, int glyphId, int px, boolean bold, boolean italic) {
+        try {
+            face.setPixelSizes(0, px);
+            int flags = FTLoadFlags.FT_LOAD_NO_HINTING;
+            if (bold || italic) flags |= FTLoadFlags.FT_LOAD_NO_BITMAP;
+            face.loadGlyph(glyphId, flags);
+            CgFontRegistry.applySyntheticStyle(face, bold, italic, px);
+            face.renderGlyph(FTRenderMode.FT_RENDER_MODE_NORMAL);
+        } catch (FreeTypeException e) {
+            return null;
+        }
+        FTBitmap bitmap = face.getGlyphBitmap();
+        int width = bitmap.getWidth();
+        int height = bitmap.getHeight();
+        if (width == 0 || height == 0) return null;
+        return new CgShadowCoverage(normalizeBitmapBuffer(bitmap), width, height, bitmap.getLeft(), bitmap.getTop(), 1);
     }
 
     private static void loadGlyphOrFallback(FTFace face, int glyphIndex, int loadFlags) {
