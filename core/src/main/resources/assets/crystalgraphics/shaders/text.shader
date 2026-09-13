@@ -56,17 +56,19 @@ Queue = "Overlay"
 
 Properties {
     _MainTex ("Atlas Texture", sampler2DArray) = "white"
-    _PxRange ("MSDF/MTSDF Pixel Range",  float) = 0.0
 
-    // THE STROKE IS NOT HERE. It is per INSTANCE, in the quad's two custom slots, because a
+    // NEITHER THE STROKE NOR THE RANGE IS HERE. It is per INSTANCE, in the quad's two custom slots, because a
     // material property is shared by every quad in a batch -- a stroke that changed per draw forced a
     // flush, a keyword toggle and a property re-apply between draws that were otherwise identical.
     // Carried on the instance, a stroked glyph and an unstroked one go out in one call.
     //
     //   CG_QUAD_CUSTOM0 = the outline's colour, rgba
-    //   CG_QUAD_CUSTOM1 = (width in screen px, align, over, unused)
-    //       align:  0 centred on the contour, 1 outside it, 2 inside it   @see CgStrokeAlign
-    //       over:   non-zero to paint the stroke over the fill            @see paint-order
+    //   CG_QUAD_CUSTOM1 = (width in screen px, align, over, pxRange)
+    //       align:   0 centred on the contour, 1 outside it, 2 inside it  @see CgStrokeAlign
+    //       over:    non-zero to paint the stroke over the fill           @see paint-order
+    //       pxRange: the range the GLYPH's own atlas band was generated at. Per instance because a
+    //                face carrying a dense script is banded narrower than the rest, and two bands
+    //                have to go out in one draw. @see CgMsdfAtlasConfig#WIDE_PX_RANGE
     //
     // Width is screen px rather than em because CgTextRenderer is the only one that knows the
     // effective raster size a draw resolved to. @see CgTextStroke#widthEm, quad.glsl
@@ -120,8 +122,11 @@ Pass {
         vec3 field = texture(_MainTex, uvw).rgb;
         float signedDistance = max(min(field.r, field.g), min(max(field.r, field.g), field.b));
 
+        vec4 strokeParams = CG_QUAD_CUSTOM1;
+        float pxRange = strokeParams.w;
+
         vec2 atlasSize = vec2(textureSize(_MainTex, 0).xy);
-        vec2 unitRange = vec2(_PxRange) / atlasSize;
+        vec2 unitRange = vec2(pxRange) / atlasSize;
         vec2 uvFwidth = max(fwidth(i.uv), vec2(1.0e-6));
         vec2 screenTexSize = vec2(1.0) / uvFwidth;
         float screenPxRange = max(0.5 * dot(unitRange, screenTexSize), 1.0);
@@ -135,7 +140,6 @@ Pass {
         // exists to remove -- and the two sides differ by a handful of ALU ops on a fragment that
         // has already paid for a texture fetch.
         vec4 strokeColor = CG_QUAD_CUSTOM0;
-        vec4 strokeParams = CG_QUAD_CUSTOM1;
         float strokeWidthPx = strokeParams.x;
         float strokeAlign = strokeParams.y;
         float strokeOver = strokeParams.z;
@@ -200,7 +204,7 @@ Pass {
             // need two and does not. Bold is a bias added to the whole field, which moves the contour
             // and both saturation ends together -- measured on a real bold field, the outward reach is
             // 5.50 texels either way. @see CgSyntheticBoldReachTest
-            float screenPxPerTexel = screenPxRange / max(_PxRange, 1.0e-6);
+            float screenPxPerTexel = screenPxRange / max(pxRange, 1.0e-6);
             float fieldReach = max(screenPxRange * 0.5 - max(1.0, screenPxPerTexel), 0.0);
             float wantOutward = strokeAlign < 0.5 ? strokeWidthPx * 0.5   // CENTER
                               : strokeAlign < 1.5 ? strokeWidthPx         // OUTSET
