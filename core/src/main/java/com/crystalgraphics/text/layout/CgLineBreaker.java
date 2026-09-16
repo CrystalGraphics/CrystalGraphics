@@ -495,9 +495,13 @@ public class CgLineBreaker {
      * that run's own start, which is what a re-shaped fragment produces. Slicing without
      * subtracting the split point's offset would leave the tail's clusters relative to the original
      * run instead, and everything downstream that maps glyphs back to source text would be wrong.
+     *
+     * <p>Package-private because {@code CgTextLayoutEngine} slices for the other reason: a style span
+     * that changes nothing the shaper produces. The counters below still say {@code lineBreak} and are
+     * the sum of both callers.
      */
-    private static CgShapedRun sliceRun(CgShapedRun run, int glyphFrom, int glyphTo,
-                                        int sourceStart, int sourceEnd) {
+    static CgShapedRun sliceRun(CgShapedRun run, int glyphFrom, int glyphTo,
+                                int sourceStart, int sourceEnd) {
         int count = glyphTo - glyphFrom;
         // Counted because the recursive head/tail split makes total copied glyphs quadratic in run
         // length if the tail is re-sliced on every line: comparing this against the run's actual

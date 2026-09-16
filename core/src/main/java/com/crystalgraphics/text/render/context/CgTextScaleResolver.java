@@ -59,6 +59,26 @@ public interface CgTextScaleResolver {
      * Effective size threshold: enter MSDF rendering at or above this stabilized size.
      * Combined with {@link #MSDF_EXIT_THRESHOLD}, this creates a hysteresis band
      * around the bitmap/MSDF boundary.
+     *
+     * <p><b>33 is inherited from a pairing that no longer exists, and it is NOT
+     * {@code CgMsdfAtlasConfig.minAntialiasablePx()}.</b> The two answer different questions and are
+     * easy to conflate: that one is the size below which the field cannot resolve its own edge at
+     * all, this one is where the field starts looking BETTER than a bitmap rasterised at the target
+     * size. They happened to coincide when the range was 6, whose floor is 32 — which is where
+     * 33/31 came from. The range is 12 and 24 now, with floors of 15 and 7, so the two have come
+     * apart by a factor of nearly five.
+     *
+     * <p>Deliberately not lowered to follow them. Below here a bitmap is rasterised AT the target
+     * size while the field is one 80px raster minified, and which of those looks better at 14px is a
+     * question about sharpness rather than about capability — it wants a measurement against a
+     * reference raster, and an atlas-bytes count, since the bitmap tier stores one entry per
+     * (glyph, size, sub-pixel bucket) where the field stores one per glyph. If it ever moves it
+     * should become per BAND like the floor it is no longer tied to, since the field's capability is
+     * a property of the face now.
+     *
+     * <p>What must stay true is only that {@link #MSDF_EXIT_THRESHOLD} never falls below a band's
+     * floor: the engine would then hold the field tier at a size the field cannot antialias, which
+     * degrades silently. @see CgFontBandingTest
      */
     int MSDF_ENTER_THRESHOLD = 33;
 

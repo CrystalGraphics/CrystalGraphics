@@ -60,6 +60,25 @@
 #define CG_QUAD_NORMAL (normalize(cross(QUAD_DATA(CG_INSTANCE_ID).right, QUAD_DATA(CG_INSTANCE_ID).up)))
 #define CG_QUAD_ATLAS_LAYER (QUAD_DATA(CG_INSTANCE_ID).atlasLayer)
 
+// -- CG_QUAD_CUSTOM0 / CG_QUAD_CUSTOM1 -- whatever the material needs, per instance ------------------
+// Two free vec4s, the same contract CG_OBJECT_CUSTOM0..3 gives the render pipeline: the buffer does
+// not know what is in them and neither does any other consumer. Written with Quad.custom0/custom1,
+// zero on every quad that does not.
+//
+// Use one INSTEAD OF A PROPERTY for anything that varies per quad. A property is shared by the whole
+// batch, so a value that changes per draw costs a flush and a re-apply between draws that are
+// otherwise identical -- text's outline was exactly that, and moving it here is what let a stroked
+// glyph and an unstroked one go out in one call. For the same reason, branch on a custom's value
+// rather than adding a keyword: a compile-time variant is another dimension the batch breaks on.
+//
+// Readable from the FRAGMENT stage as well as the vertex stage, like CG_CURVE_*: the fragment
+// re-reads QUAD_DATA(CG_INSTANCE_ID) rather than receiving varyings, which the .shader v2f DSL could
+// not mark `flat` anyway (cg_InstanceId is the one compiler-generated flat varying).
+//
+// What a material packs in them belongs in ITS OWN header -- text.shader states its outline layout.
+#define CG_QUAD_CUSTOM0 (QUAD_DATA(CG_INSTANCE_ID).custom0)
+#define CG_QUAD_CUSTOM1 (QUAD_DATA(CG_INSTANCE_ID).custom1)
+
 // -- CG_QUAD_EDGE_* -- analytic edge antialiasing for SCREEN-SPACE quads ----------------------------
 //
 // A quad's edges are decided by the rasteriser: a pixel is in or out. Axis-aligned that is right --

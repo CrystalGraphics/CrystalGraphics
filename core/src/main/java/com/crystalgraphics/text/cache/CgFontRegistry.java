@@ -7,6 +7,7 @@ import com.crystalgraphics.freetype.FTRenderMode;
 import com.crystalgraphics.freetype.FreeTypeException;
 import com.crystalgraphics.msdfgen.FreeTypeMSDFIntegration;
 import com.crystalgraphics.api.font.CgFont;
+import com.crystalgraphics.api.font.CgFontFamily;
 import com.crystalgraphics.api.font.CgFontKey;
 import com.crystalgraphics.api.font.CgGlyphKey;
 import com.crystalgraphics.api.font.CgGlyphPlacement;
@@ -15,7 +16,7 @@ import com.crystalgraphics.text.atlas.CgGlyphAtlas;
 import com.crystalgraphics.text.msdf.CgMsdfAtlasConfig;
 import com.crystalgraphics.text.msdf.CgMsdfGenerator;
 import com.crystalgraphics.text.render.CgTextRenderer;
-import com.crystalgraphics.text.render.context.CgTextScaleResolver;
+import com.crystalgraphics.text.shadow.CgShadowCell;
 import com.crystalgraphics.util.profiling.CgProfiler;
 
 import java.util.*;
@@ -121,12 +122,21 @@ public class CgFontRegistry {
     // Glyph identity still carries the font -- CgGlyphKey holds the full CgFontKey -- so glyphs
     // from different faces cannot collide inside a shared page.
     //
-    // Deliberate consequence: MSDF config is now necessarily registry-wide. One atlas cannot hold
-    // two atlas scales, so resolveMsdfAtlasConfig is a registry-level setting and no longer a
-    // per-font extension point.
+    // A face gets one of two BANDS, decided once in registerFont. Both share this config's atlas
+    // scale and page size and differ only in pxRange, so one atlas holds both -- pxRange rides the
+    // placement, not the material.
     private CgGlyphAtlas BITMAP_ATLAS, MSDF_ATLAS;
 
     private final Set<CgFontKey> registeredFonts = new HashSet<>();
+
+    /** Faces carrying a dense script, which keeps them on the narrow band. @see #resolveMsdfAtlasConfig */
+    private final Set<CgFontKey> denseFonts = new HashSet<>();
+
+    /**
+     * One ideograph per dense writing system. A face that can draw any of them keeps the narrow
+     * range, because eight bits cannot quantise a wider one without merging strokes that touch.
+     */
+    private static final char[] DENSE_SCRIPT_PROBES = {'鬱', '襲', '뵁'};
     
     private final CgMsdfGenerator msdfGenerator = new CgMsdfGenerator();
     // Not final — releaseAll() replaces this with a fresh instance so the shared
@@ -135,10 +145,16 @@ public class CgFontRegistry {
     // a fresh instance is the only way back to a submittable state.
     private CgGlyphGenerationExecutor glyphGenerationExecutor = new CgGlyphGenerationExecutor();
 
+    /** When speculation is allowed a worker, and in what order. @see CgFontWarmer */
+    private final CgFontWarmer warmer = new CgFontWarmer();
+
     // ────────────────────────────────────────────────────────────────────
 
     private final int atlasSize;
     private final CgMsdfAtlasConfig msdfAtlasConfig;
+
+    /** The narrow config with the range widened: the band a non-dense face gets. */
+    private final CgMsdfAtlasConfig wideAtlasConfig;
 
     /**
      * Per-frame async-commit upload budget, in estimated pixel-data bytes rather
@@ -244,6 +260,9 @@ public class CgFontRegistry {
             throw new IllegalArgumentException("msdfAtlasConfig must not be null");
         }
         this.msdfAtlasConfig = msdfAtlasConfig;
+        this.wideAtlasConfig = msdfAtlasConfig.pxRange() >= CgMsdfAtlasConfig.WIDE_PX_RANGE
+                ? msdfAtlasConfig
+                : msdfAtlasConfig.withPxRange(CgMsdfAtlasConfig.WIDE_PX_RANGE);
     }
 
     // ────────────────────────────────────────────────────────────────────
@@ -268,6 +287,7 @@ public class CgFontRegistry {
         // their profiler frame from InteractiveSceneLifecycle#onFrameEnd (as TextScene3D does) get
         // these scopes attributed to the correct frame. A scene that instead ends its frame inside
         // render() will see them one frame late, since render() runs earlier in the loop.
+        glyphGenerationExecutor.noteFrame(frame);
         try (CgProfiler.Scope ignored = CgProfiler.scope("registry.tickFrame")) {
             // 1. Drain completed async results first so they are available
             //    to ensureGlyph* calls later in the same frame.
@@ -284,6 +304,12 @@ public class CgFontRegistry {
 
             // 3. Reset the MSDF generator's per-frame budget counter.
             msdfGenerator.tickFrame();
+
+            // 4. Only now, with demand already drained above, top the pool up with speculation.
+            int msdfQueueDepth = glyphGenerationExecutor.msdfQueueDepth();
+            CgProfiler.sample("glyph.msdfQueueDepth", msdfQueueDepth);
+            CgProfiler.sample("glyph.warmPending", warmer.pendingCount());
+            warmer.feed(frame, msdfQueueDepth, this::queueGlyph);
         }
     }
 
@@ -489,6 +515,54 @@ public class CgFontRegistry {
     }
 
     /**
+     * A text-shadow cell of a glyph: its coverage blurred, grown or clipped as {@code cell} says, from the
+     * bitmap atlas, or null while a worker builds it.
+     *
+     * <pre>{@code
+     * CgGlyphPlacement cell = registry.resolveShadowCell(font, fontKey, glyphId, bold, italic, effectivePx,
+     *         shadowCell, frame);
+     * if (cell == null) degraded++;             // asked for; draw again next frame
+     * else if (cell.hasGeometry()) draw(cell);  // an empty glyph resolves to no geometry
+     * }</pre>
+     *
+     * <p><b>Never generated on the render thread.</b> A cell costs a raster plus a blur, and for a grown or
+     * inset shadow an msdfgen distance field on top. The bitmap tier's fallback moved to the workers for
+     * the same reason: a shadow a frame late is invisible, a stalled frame is not. What is visible is a
+     * shadow with a gap in it, so meanwhile draw the cell that glyph's shadow last had, from
+     * {@link #peekShadowCell}, and keep asking: a cell nobody asks for for two frames is dropped unbuilt.</p>
+     *
+     * <p>A cell whose job has failed stays null forever and is not retried, like any failed glyph job.</p>
+     *
+     * @param fontKey           the glyph's own font key, at its base size
+     * @param effectiveTargetPx the raster size the glyph is drawn at, which the cell's lengths are pixels of
+     */
+    public CgGlyphPlacement resolveShadowCell(CgFont font, CgFontKey fontKey, int glyphId,
+                                              boolean syntheticBold, boolean syntheticItalic,
+                                              int effectiveTargetPx, CgShadowCell cell, long currentFrame) {
+        if (font.isDisposed()) {
+            throw new IllegalStateException("Cannot resolve a shadow cell on disposed font: " + font.getKey());
+        }
+        registerFont(font);
+        CgRasterFontKey rasterFontKey = new CgRasterFontKey(fontKey, effectiveTargetPx);
+        CgGlyphKey atlasKey = toBitmapAtlasGlyphKey(
+                new CgRasterGlyphKey(rasterFontKey, glyphId, false, 0, syntheticBold, syntheticItalic))
+                .withShadowCell(cell);
+        CgGlyphPlacement cached = getBitmapAtlas().get(atlasKey, currentFrame);
+        if (cached != null) {
+            CgProfiler.count("glyph.shadowCell.atlasHit");
+            return cached;
+        }
+        CgGlyphGenerationJob job = CgGlyphGenerationJob.shadowCell(font.getKey(), font.getData(), atlasKey,
+                rasterFontKey, effectiveTargetPx);
+        if (!glyphGenerationExecutor.hasFailed(job) && glyphGenerationExecutor.submit(job)) {
+            CgProfiler.count("glyph.shadowCell.deferredToWorker");
+        } else {
+            CgProfiler.count("glyph.shadowCell.refused");
+        }
+        return null;
+    }
+
+    /**
      * Pre-queues a glyph for async generation if it is not already in the
      *  atlas.
      *
@@ -545,82 +619,36 @@ public class CgFontRegistry {
         }
     }
 
-    /** Printable ASCII, the set every Latin UI draws before it draws anything else. */
-    private static final int ASCII_FIRST = 0x20;
-
-    private static final int ASCII_LAST  = 0x7E;
-
     /**
      * Generates printable ASCII for one face ahead of the frame that first draws it.
      *
-     * <p>The first frame of a UI has to produce every distinct glyph on it, and it produces them
-     * <em>synchronously</em>: {@link #queueGlyph} is asynchronous precisely because "a glyph generated
-     * asynchronously is not available to draw on the frame that asked for it", so a drawing frame falls
-     * back to {@link #ensureGlyph}. That objection is exactly what a warm-up sidesteps — nobody has
-     * asked yet, so there is no frame to be late for.</p>
+     * <pre>{@code
+     * // when a font family is first resolved, at the sizes it will actually be DRAWN at
+     * CgFontRegistry.get().warmAscii(family.getPrimaryFont(), Math.round(cssPx * uiScale));
+     * }</pre>
      *
-     * <h3>Both tiers, and they are warmed differently on purpose</h3>
+     * <p>Returns having scheduled nothing: the work is offered to the glyph workers a few jobs at a
+     * time, and only on frames when nothing a draw asked for is waiting, so a warm never delays what
+     * is on screen. Best-effort throughout; a glyph it never reaches is generated on demand.</p>
      *
-     * <p><b>MSDF once per face, regardless of size.</b> {@link #toMsdfAtlasGlyphKey} rewrites the font
-     * key with {@code withTargetPx(config.atlasScalePx())} and forces bucket 0, so every size collapses
-     * to one atlas entry — that is the whole point of a distance field. It is also by far the more
-     * expensive tier (msdfgen, against FreeType's rasteriser) and the one a warm is most worth doing
-     * for. It is warmed even when every requested size is a bitmap size, because the renderer reaches
-     * for it anyway: the async bitmap→MSDF upgrade during convergence, any rotated or sheared draw
-     * (which forces the tier at any size), and any zoom that crosses
-     * {@link com.crystalgraphics.text.render.context.CgTextScaleResolver#MSDF_ENTER_THRESHOLD}.</p>
+     * <p><b>Distance field once per face, regardless of size.</b> Every size collapses to one atlas
+     * entry, and it is warmed even when every size passed is a bitmap size, because the renderer
+     * reaches for it anyway: the upgrade during convergence, any rotated or sheared draw, and any
+     * zoom past {@code CgTextScaleResolver.MSDF_ENTER_THRESHOLD}.</p>
      *
-     * <p><b>Bitmap once per size</b>, since a raster glyph is keyed by the size it was rasterised at —
-     * and only for sizes below that threshold, because at or above it the renderer draws MSDF and a
-     * bitmap entry would never be looked up.</p>
+     * <p><b>Bitmap once per size below that threshold</b>, at sub-pixel bucket 0 -- the bucket any
+     * run starting on a whole pixel lands in.</p>
      *
-     * <p>Sub-pixel bucket 0 only, of the four a bitmap glyph is keyed by below
-     * {@link CgGlyphKey#SUB_PIXEL_BUCKET_MAX_PX}. {@code CgResolvedGlyphs.selectSubPixelBucket} returns
-     * 0 for any fractional x-offset under 0.125 or at/above 0.875, so it is both the widest band and the
-     * one every run starting on an integer x lands in.</p>
-     *
-     * <p><b>Pass EFFECTIVE sizes, not the font's own.</b> The renderer rasterises at
-     * {@code resolveEffectiveTargetPx(...)} — the CSS size scaled by the pose — so warming
-     * {@code font.getTargetPx()} on a host with a UI scale of 2 fills entries nothing ever looks up.
-     * That failure is completely silent: the work happens, the cache fills, the frame still stalls.</p>
-     *
-     * <p>Fire-and-forget and best-effort. Anything that has not landed when something draws it simply
-     * generates on the render thread exactly as it does today.</p>
+     * <p><b>Pass EFFECTIVE sizes, not the font's own.</b> The renderer rasterises at the CSS size
+     * scaled by the pose, so warming {@code font.getTargetPx()} on a host with a UI scale of 2 fills
+     * entries nothing ever looks up -- silently: the work happens, and the frame still stalls.</p>
      *
      * @param font              the face to warm; ignored if null or disposed
-     * @param currentFrame      the engine frame, as every other cache entry point here takes
      * @param effectiveTargetPx the sizes glyphs will actually be rasterised at; may be empty, which
      *                          warms the distance-field tier alone
      */
-    public void warmAscii(CgFont font, long currentFrame, int... effectiveTargetPx) {
-        if (font == null || font.isDisposed()) return;
-
-        for (int codePoint = ASCII_FIRST; codePoint <= ASCII_LAST; codePoint++) {
-            int glyphId = font.getGlyphIndex(codePoint);
-            // 0 is .notdef -- the font has no drawing for this codepoint, so there is nothing to warm.
-            if (glyphId <= 0) continue;
-            try {
-                // Size-independent, so one submission covers every size asked for below. Queued through
-                // the font's own key: submitMsdfGlyphJob carries font.getKey(), so warming this from
-                // three differently-sized instances of one face would build three jobs that are not
-                // equal, defeat the executor's pendingJobs dedup, and generate the same atlas entry
-                // three times.
-                queueGlyph(font, new CgGlyphKey(font.getKey(), glyphId, true, 0),
-                        font.getTargetPx(), 0, currentFrame);
-
-                for (int px : effectiveTargetPx) {
-                    if (px <= 0 || px >= CgTextScaleResolver.MSDF_ENTER_THRESHOLD) continue;
-                    queueGlyph(font, new CgGlyphKey(font.getKey(), glyphId, false, 0),
-                            px, 0, currentFrame);
-                }
-            } catch (RuntimeException broken) {
-                // An optimisation must never be the thing that fails a context, and one unwarmable
-                // glyph says the rest of this face will not warm either. Everything still generates
-                // lazily exactly as before.
-                LOGGER.log(Level.FINE, "ASCII warm stopped early for " + font.getKey(), broken);
-                return;
-            }
-        }
+    public void warmAscii(CgFont font, int... effectiveTargetPx) {
+        warmer.enqueueAscii(font, effectiveTargetPx);
     }
 
     // ────────────────────────────────────────────────────────────────────
@@ -693,11 +721,48 @@ public class CgFontRegistry {
     /**
      * Resolves the MSDF atlas configuration for a given base font key.
      *
-     * <p>Currently returns the registry-wide default config.  This hook exists
-     * so that per-font config overrides can be added without changing callers.</p>
+     * <p>One of two bands. A face carrying a dense script gets the narrow range this registry was
+     * built with; everything else gets {@link CgMsdfAtlasConfig#WIDE_PX_RANGE}, which is worth
+     * <b>2.3x the stroke ceiling</b> and costs 1.68x the cell area -- spent on the faces with a few
+     * hundred glyphs and withheld from the ones with thousands.</p>
+     *
+     * <p>An unregistered face answers the narrow band: never wrong, only narrower than it could be,
+     * and every real path calls {@link #registerFont} first.</p>
      */
     public CgMsdfAtlasConfig resolveMsdfAtlasConfig(CgFontKey baseFontKey) {
-        return msdfAtlasConfig;
+        return denseFonts.contains(baseFontKey) || !registeredFonts.contains(baseFontKey)
+                ? msdfAtlasConfig
+                : wideAtlasConfig;
+    }
+
+    /**
+     * The widest stroke a paragraph in this family can carry, in em.
+     *
+     * <pre>{@code
+     * float ceilingEm = CgFontRegistry.get().maxStrokeWidthEm(family);
+     * if (widthEm > ceilingEm) widthEm = ceilingEm;   // clamp and tell the author
+     * }</pre>
+     *
+     * <p>Answered for the PRIMARY font, which is the same rule Blink applies to the ellipsis
+     * character: a paragraph that falls back mid-run does not get a second ceiling, and a face
+     * narrower than the primary clamps again in the shader rather than drawing wrong.</p>
+     */
+    public float maxStrokeWidthEm(CgFontFamily family) {
+        return maxStrokeWidthEm(family == null ? null : family.getPrimaryFont());
+    }
+
+    /**
+     * The widest stroke this face can carry, in em. @see #maxStrokeWidthEm(CgFontFamily)
+     *
+     * <p>Registers the face if it is new, so the answer does not depend on whether a glyph of it has
+     * been drawn yet -- asking before the first paint and after it must not give two numbers.</p>
+     */
+    public float maxStrokeWidthEm(CgFont font) {
+        if (font == null) {
+            return msdfAtlasConfig.maxStrokeWidthEm();
+        }
+        registerFont(font);
+        return resolveMsdfAtlasConfig(font.getKey()).maxStrokeWidthEm();
     }
 
     /**
@@ -775,7 +840,7 @@ public class CgFontRegistry {
                     loadGlyphOrFallback(face, atlasKey.getGlyphId(), loadFlags);
                 }
                 try (CgProfiler.Scope ignoredSynth = CgProfiler.scope("ftRaster.synthetic")) {
-                    applySyntheticStyle(face, atlasKey, effectiveTargetPx);
+                    applySyntheticStyle(face, atlasKey.isSyntheticBold(), atlasKey.isSyntheticItalic(), effectiveTargetPx);
                 }
 
                 if (subBucket) face.outlineTranslate(subPixelBucket * 16L, 0L);
@@ -844,30 +909,32 @@ public class CgFontRegistry {
     private static final double SYNTHETIC_ITALIC_SKEW = 0.25;
 
     /**
-     * Applies {@code atlasKey}'s synthetic bold/italic flags (see {@link CgGlyphKey#isSyntheticBold()}/
+     * Applies synthetic bold and italic (see {@link CgGlyphKey#isSyntheticBold()}/
      * {@link CgGlyphKey#isSyntheticItalic()}) to the glyph currently loaded on {@code face}, at
      * {@code pixelSizePx}. Must be called after {@code loadGlyphOrFallback} (with
      * {@code FT_LOAD_NO_BITMAP}) and before {@code renderGlyph}/reading metrics. A no-op for a
      * bitmap-only glyph (no outline to transform) — matches how real browsers silently skip
      * synthesis for color/bitmap-strike glyphs rather than failing the whole draw.
      *
+     * <p>Shared with the workers' text-shadow cells, so a shadow is cast by the glyph this tier draws.</p>
+     *
      * @param pixelSizePx the pixel size {@code face} was just set to — embolden strength is
      *                    derived from this, per Skia's {@code strength = pixelSize26_6 / 24}
      */
-    private void applySyntheticStyle(FTFace face, CgGlyphKey atlasKey, int pixelSizePx) {
-        if (!atlasKey.isSyntheticBold() && !atlasKey.isSyntheticItalic()) {
+    static void applySyntheticStyle(FTFace face, boolean bold, boolean italic, int pixelSizePx) {
+        if (!bold && !italic) {
             return;
         }
         try {
-            if (atlasKey.isSyntheticBold()) {
+            if (bold) {
                 long strength = Math.round(pixelSizePx * 64.0 / 24.0);
                 face.outlineEmbolden(strength);
             }
-            if (atlasKey.isSyntheticItalic()) {
+            if (italic) {
                 face.outlineShear(SYNTHETIC_ITALIC_SKEW);
             }
         } catch (IllegalStateException e) {
-            LOGGER.log(Level.FINE, "Skipping synthetic bold/italic for glyph with no outline: " + atlasKey, e);
+            LOGGER.log(Level.FINE, "Skipping synthetic bold/italic for a glyph with no outline", e);
         }
     }
 
@@ -1237,6 +1304,23 @@ public class CgFontRegistry {
         return getBitmapAtlas().reserveWhiteTexel(0f);
     }
 
+    /**
+     * A shadow cell already in the bitmap atlas, or null: never asks for one to be built. For drawing the
+     * cell a glyph's shadow last had while its next one builds.
+     */
+    public CgGlyphPlacement peekShadowCell(CgGlyphKey cellKey, long currentFrame) {
+        if (cellKey.getShadowCell() == null) throw new IllegalArgumentException("not a shadow cell key: " + cellKey);
+        return BITMAP_ATLAS == null ? null : BITMAP_ATLAS.get(cellKey, currentFrame);
+    }
+
+    /**
+     * The widest text-shadow cell the bitmap atlas takes, in pixels: half a page, past which one glyph's
+     * cell crowds a page out. A wider cell is downsampled further instead. @see CgShadowCell#forOuterShadow
+     */
+    public int maxShadowCellPx() {
+        return atlasSize / 2;
+    }
+
     /** The one bitmap atlas, shared by every font at every raster size. Created on first use. */
     CgGlyphAtlas getBitmapAtlas() {
         if (BITMAP_ATLAS == null) {
@@ -1387,11 +1471,25 @@ public class CgFontRegistry {
     private void registerFont(final CgFont font) {
         final CgFontKey fontKey = font.getKey();
         if (registeredFonts.add(fontKey)) {
+            if (carriesDenseScript(font)) {
+                denseFonts.add(fontKey);
+            }
             font.setDisposeListener(() -> {
                 releaseFontAtlases(fontKey);
                 registeredFonts.remove(fontKey);
+                denseFonts.remove(fontKey);
             });
         }
+    }
+
+    /** Once per face, before any glyph of it is generated. @see #DENSE_SCRIPT_PROBES */
+    private static boolean carriesDenseScript(CgFont font) {
+        for (char probe : DENSE_SCRIPT_PROBES) {
+            if (font.getGlyphIndex(probe) > 0) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -1430,6 +1528,8 @@ public class CgFontRegistry {
         MSDF_ATLAS = null;
 
         registeredFonts.clear();
+        denseFonts.clear();
+        warmer.clear();
         glyphGenerationExecutor.shutdown();
         glyphGenerationExecutor = new CgGlyphGenerationExecutor();
     }

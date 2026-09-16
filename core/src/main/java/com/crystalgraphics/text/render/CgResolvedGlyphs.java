@@ -146,6 +146,9 @@ final class CgResolvedGlyphs {
         }
         if (hit != null) {
             CgProfiler.count("placementCache.hit");
+            // Text drawn from a cached fallback. Nothing upstream can see this: no glyph is requested,
+            // so every queue and miss counter reads zero while the screen is still on the bitmap tier.
+            if (!hit.distanceField()) CgProfiler.count("placementCache.hitUnconverged");
             this.glyphX = hit.glyphX();
             this.glyphY = hit.glyphY();
             this.argbColor = hit.argbColor();
@@ -155,11 +158,13 @@ final class CgResolvedGlyphs {
         // A miss here means CgGlyphPlacementCache.Entry.matches() rejected the existing entry
         // (if any) -- either this is the first draw of this layout/position/mode, or the prior
         // entry's distanceField was false (so effectiveTargetPx must match exactly -- see that
-        // class's javadoc) and it drifted, or REFRESH_FRAMES elapsed. effectiveTargetPx is
+        // class's javadoc) and it drifted, or the atlas changed and the refresh limit or the
+        // per-frame refresh budget let it through. effectiveTargetPx is
         // sampled here specifically to see whether it's drifting frame-to-frame during MSDF
         // atlas warmup for world-space text (PerspectiveScaleResolver recomputes it every frame).
         CgProfiler.count("placementCache.miss");
         CgProfiler.sample("placementCache.miss.effectiveTargetPx", effectiveTargetPx);
+        long missStartNanos = System.nanoTime();
 
         int glyphCount;
         try (CgProfiler.Scope ignored = CgProfiler.scope("flatten")) {
@@ -198,6 +203,7 @@ final class CgResolvedGlyphs {
             // Do not cache a partially-resolved result. Re-resolving next frame is what lets the
             // deferred glyphs appear once their worker results land; caching would freeze them out.
             CgProfiler.count("placementCache.skippedDeferred");
+            chargeIfRefresh(upgradeFrom, frame, missStartNanos);
             return glyphCount;
         }
         try (CgProfiler.Scope ignored = CgProfiler.scope("placementCache.put")) {
@@ -211,7 +217,18 @@ final class CgResolvedGlyphs {
                     Arrays.copyOf(scratchPlacements, glyphCount)));
         }
 
+        chargeIfRefresh(upgradeFrom, frame, missStartNanos);
         return glyphCount;
+    }
+
+    /**
+     * A resolve that replaced a stale unconverged entry is a REFRESH, and refreshes share a per-frame
+     * budget. A first resolve is not charged: it has to happen whatever it costs.
+     */
+    private static void chargeIfRefresh(CgGlyphPlacementCache.Entry replaced, long frame, long startNanos) {
+        if (replaced != null) {
+            CgGlyphPlacementCache.chargeRefresh(frame, System.nanoTime() - startNanos);
+        }
     }
 
     /**

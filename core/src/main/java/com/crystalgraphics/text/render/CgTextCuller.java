@@ -58,6 +58,14 @@ final class CgTextCuller {
      *                   because the box below is in the layout's own local space
      */
     boolean isCulled(CgTextLayout layout, float x, float y, Matrix4f projection, Matrix4f modelView) {
+        return isCulled(layout, x, y, projection, modelView, 0f);
+    }
+
+    /**
+     * @param reach local pixels the draw paints past its layout, such as a text shadow's offset, blur and
+     *              spread, added to the slack on every side
+     */
+    boolean isCulled(CgTextLayout layout, float x, float y, Matrix4f projection, Matrix4f modelView, float reach) {
         if (projection == null || modelView == null) return false;
 
         float w = layout.totalWidth();
@@ -66,7 +74,7 @@ final class CgTextCuller {
 
         frustum.set(localToClip.set(projection).mul(modelView));
 
-        float margin = h * MARGIN_FACTOR;
+        float margin = h * MARGIN_FACTOR + Math.max(0f, reach);
         return !frustum.testRect(x - margin, y - margin, x + w + margin, y + h + margin);
     }
 }
