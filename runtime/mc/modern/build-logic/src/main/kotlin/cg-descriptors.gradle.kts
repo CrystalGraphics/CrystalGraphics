@@ -23,24 +23,24 @@ val cgDescriptor = ModDescriptor(
     variants = listOf(
         Variant(
             loader = "fml1710", minecraft = "[1.7.10]", era = "1710",
-            commonEntry = "com.crystalgraphics.CrystalGraphics",
+            commonEntry = "com.crystalgraphics.mc.v1710.CrystalGraphics",
             mixinConfigs = listOf("mixins.crystalgraphics.json"),
             packFormat = 1,
         ),
         Variant(
             loader = "forge", minecraft = "[1.20.1,1.21)", era = "modern",
-            commonEntry = "com.crystalgraphics.mc.forge.CrystalGraphicsForge",
+            commonEntry = "com.crystalgraphics.mc.modern.forge.CrystalGraphicsForge",
             packFormat = 15,
         ),
         Variant(
             loader = "neoforge", minecraft = "[1.20.4,1.21)", era = "modern",
-            commonEntry = "com.crystalgraphics.mc.neoforge.CrystalGraphicsNeoForge",
+            commonEntry = "com.crystalgraphics.mc.modern.neoforge.CrystalGraphicsNeoForge",
             packFormat = 22,
         ),
         Variant(
             loader = "fabric", minecraft = "[1.20.1,1.21)", era = "modern",
-            commonEntry = "com.crystalgraphics.mc.fabric.CrystalGraphicsFabricCommon",
-            clientEntry = "com.crystalgraphics.mc.fabric.CrystalGraphicsFabric",
+            commonEntry = "com.crystalgraphics.mc.modern.fabric.CrystalGraphicsFabricCommon",
+            clientEntry = "com.crystalgraphics.mc.modern.fabric.CrystalGraphicsFabric",
             fabricDepends = linkedMapOf(
                 "fabricloader" to ">=0.15.0",
                 "minecraft" to "~1.20.1",
@@ -54,7 +54,7 @@ val cgDescriptor = ModDescriptor(
     // including the one compiled against a Minecraft that is not running. Forge, NeoForge and FML need
     // no entry here: they find their entry by scanning for @Mod, so moving the annotation is the whole
     // of the change.
-    bootstrappers = mapOf("fabric" to "com.crystalgraphics.mc.fabric.FabricBootstrap"),
+    bootstrappers = mapOf("fabric" to "com.crystalgraphics.mc.modern.fabric.FabricBootstrap"),
 )
 
 registerDescriptorTasks(cgDescriptor, "cg")

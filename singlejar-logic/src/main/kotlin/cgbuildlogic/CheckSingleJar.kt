@@ -52,10 +52,10 @@ abstract class CheckSingleJar : DefaultTask() {
     /**
      * A host class by its SOURCE path → how many relocated copies the jar must hold.
      *
-     * <p>By exact class rather than by package prefix, because the 1.7.10 loader legitimately owns
-     * classes in the very packages the 1.20.x host is relocated out of — `com.crystalgui.mc.client`
-     * holds both `CgUiScreen` (1.7.10's own, and staying) and `CgUiScreen1201` (relocated three
-     * times). A prefix cannot tell those apart; a class name can.</p>
+     * <p>By exact class rather than by package prefix, because a prefix cannot carry a COUNT and the
+     * relocated tree differs per loader. It was also the only thing that worked while both eras owned
+     * classes in one package: `com.crystalgui.mc.client` held 1.7.10's own `CgUiScreen` and the
+     * relocated 1.20.x copies alike, until each era took a segment of its own.</p>
      */
     @get:Input
     abstract val relocatedClasses: MapProperty<String, Int>
