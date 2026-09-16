@@ -112,7 +112,15 @@ public final class PlatformService1710 implements CgPlatformService {
         // to present to; whoever owns a cursor VOCABULARY resolves its keyword to a picture and hands
         // the picture over, so this side names none. LWJGL2 needs no window handle -- Mouse is bound
         // to the single display it owns.
-        CgPlatform.provide(CgCursorService.SERVICE, new Lwjgl2CursorService());
+        //
+        // CLIENT ONLY. Lwjgl2CursorService names org.lwjgl.input.Mouse, so CONSTRUCTING it on a
+        // dedicated server is NoClassDefFoundError: org/lwjgl/LWJGLException -- thrown out of preInit,
+        // which errors every mod that depends on this one. CgPlatform.register catches that for the GL
+        // backend and this call is outside it. The slot's absent value is CursorService.NONE, so a
+        // server that never fills it is the supported case rather than a degraded one.
+        if (FMLCommonHandler.instance().getSide().isClient()) {
+            CgPlatform.provide(CgCursorService.SERVICE, new Lwjgl2CursorService());
+        }
 
         // Prefer Angelica's mirror over the driver for GL state reads.
         //
