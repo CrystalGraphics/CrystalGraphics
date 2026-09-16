@@ -8,10 +8,10 @@
   "environment": "*",
   "entrypoints": {
     "main": [
-      "com.crystalgraphics.mc.fabric.FabricBootstrap"
+      "com.crystalgraphics.mc.modern.fabric.FabricBootstrap"
     ],
     "client": [
-      "com.crystalgraphics.mc.fabric.FabricBootstrap"
+      "com.crystalgraphics.mc.modern.fabric.FabricBootstrap"
     ]
   },
   "depends": {

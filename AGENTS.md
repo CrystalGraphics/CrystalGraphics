@@ -1182,9 +1182,9 @@ Failures in each step are isolated and logged — a broken shader does not preve
 
 ## Platform Service Adapters — `mc/platform/`
 
-`runtime/mc/1710/src/main/java/com/crystalgraphics/platform/` contains the MC 1.7.10 concrete implementations of all six platform SPI interfaces. These are the **only classes** that may reference MC/Forge types. Bootstrap is owned by `PlatformRegistry1710`, called from `CrystalGraphics` event handlers — not from `CrystalGraphics` directly.
+`runtime/mc/1710/src/main/java/com/crystalgraphics/mc/v1710/platform/` contains the MC 1.7.10 concrete implementations of all six platform SPI interfaces. These are the **only classes** that may reference MC/Forge types. Bootstrap is owned by `PlatformRegistry1710`, called from `CrystalGraphics` event handlers — not from `CrystalGraphics` directly.
 
-**Package guide**: `runtime/mc/1710/src/main/java/com/crystalgraphics/platform/AGENTS.md`
+**Package guide**: `runtime/mc/1710/src/main/java/com/crystalgraphics/mc/v1710/platform/AGENTS.md`
 
 | Class | Implements | Key role |
 |---|---|---|

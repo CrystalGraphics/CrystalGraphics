@@ -1,8 +1,8 @@
 {
   "required": true,
   "minVersion": "0.7.11",
-  "package": "com.crystalgraphics.mixins.early.impl",
-  "plugin": "com.crystalgraphics.mixins.early.CrystalGraphicsMixins",
+  "package": "com.crystalgraphics.mc.v1710.mixins.early.impl",
+  "plugin": "com.crystalgraphics.mc.v1710.mixins.early.CrystalGraphicsMixins",
   "refmap": "mixins.crystalgraphics.refmap.json",
   "target": "@env(DEFAULT)",
   "compatibilityLevel": "JAVA_8",
