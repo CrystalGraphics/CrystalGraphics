@@ -47,11 +47,44 @@ public record CgMsdfAtlasConfig(int atlasScalePx, float pxRange, int pageSize, i
      * Distance range in <strong>atlas texels</strong>, so its effect scales inversely with
      * {@link #DEFAULT_ATLAS_SCALE_PX} — the two must always be considered together.
      *
-     * <p>Held at 6, the value dense CJK was actually validated against at
-     * {@link #DEFAULT_ATLAS_SCALE_PX} = 80. A tighter 4.8 was tried, but only ever at scale 64,
-     * where it was compensating for that scale's much worse range-to-em ratio; it was never shown
-     * to beat 6 at 80, so 6 stands as the tested pairing. msdf-atlas-gen's own default is 2, so
-     * this remains generous either way.
+     * <p><strong>12, which is the most EIGHT BITS can hold in a shared atlas.</strong> The range is
+     * what a text stroke has to fit inside: an outline can only be as wide as the field carries real
+     * distance, {@code (pxRange - 1) / 2} texels less one for the bilinear footprint -- 4.5 of 80,
+     * <b>0.056 em</b>. At 6 that ceiling was 0.019 em and an authored 2px outline drew the same as an
+     * 8px one.
+     *
+     * <p><b>It does not go higher here, and the wall is the STORAGE rather than the geometry.</b> One
+     * 8-bit level is {@code storedRange / 255} of distance, so a wider range quantises coarser; at 13
+     * that is enough to merge strokes a dense kanji keeps apart, which {@link CgMsdfFieldStorageTest}
+     * fails on. Interference -- the risk this javadoc used to name -- is fine to 20: nine dense kanji
+     * lose no counter and move no ink. It is the quantiser that stops first.
+     *
+     * <p><b>So this number belongs to the densest script in the atlas, not to the technique.</b> The
+     * same measurement on Latin holds structure at 24, a ceiling of 0.131 em
+     * (@see CgLatinRangeHeadroomTest) -- past Godot's 0.083 and TextMeshPro's usual 0.10. That is
+     * {@link #WIDE_PX_RANGE}, and a face with no dense script in it is banded to it: this number is
+     * the DENSE band now, not a shared ceiling. Raising the shared one instead would have bought a
+     * wider outline by breaking CJK.
+     *
+     * <p><b>It was 6, and 6 was right for what it was for.</b> The smallest range whose field can
+     * still antialias at the size the MSDF tier starts being used ({@code MSDF_ENTER_THRESHOLD}, 33px)
+     * is exactly 6: it resolves from 32px, where 5 needs 40px and would put the field at sizes it
+     * cannot resolve its own edge at. So the range was tuned for the FILL at its minimum size, and
+     * spent nothing on anything else -- correct, since every extra texel of range costs cell area on
+     * every glyph whether or not it is stroked. It became wrong when an outline had to live in the
+     * same field: 6 carries a 0.019 em ceiling, which drew an authored 2px outline the same as an
+     * 8px one.</p>
+     *
+     * <p>The bill for 6 to 12 was cell AREA, paid by every glyph whether or not anything strokes it: a
+     * {@code g} goes 43x71 to 52x83 texels, 1.41x, so a page holds proportionally fewer glyphs and
+     * each costs proportionally more to generate against the per-frame budget.
+     *
+     * <p>Interference was the risk and it was measured, not assumed: across nine dense kanji in M+ 1p
+     * -- the font the 64px regressions were confirmed on -- this range closes no counter and moves ink
+     * by at most 2.7% against a 240px reference, which is the same 2.7% pxRange 6 shows, i.e. the 80px
+     * raster rather than the range. @see CgMsdfRangeInterferenceTest
+     *
+     * <p>msdf-atlas-gen's own default is 2, so this remains generous either way.
      *
      * <p>Range interference is nonetheless a real, visible failure mode and the reason this knob
      * cannot be raised freely: when the range exceeds the gap between two edges their fields
@@ -65,7 +98,28 @@ public record CgMsdfAtlasConfig(int atlasScalePx, float pxRange, int pageSize, i
      * validated as a pair; moving one without re-checking the other against dense CJK is how the
      * 64px regressions happened.
      */
-    public static final float DEFAULT_PX_RANGE = 6f;
+    public static final float DEFAULT_PX_RANGE = 12f;
+
+    /**
+     * The range given a face with no dense script in it, which is most of them.
+     *
+     * <p>The stored range is what a stroke has to fit inside, so this is the stroke ceiling in
+     * disguise: <b>0.131 em against the dense band's 0.056</b>. A face is put in one band or the
+     * other once, in {@code CgFontRegistry.registerFont}; both bands share {@link
+     * #DEFAULT_ATLAS_SCALE_PX} and a page size, so one atlas holds both and {@code pxRange} travels
+     * per PLACEMENT rather than as a material property.</p>
+     *
+     * <p><b>Why the scale is held constant and only the range moves.</b> Reach and cell area pull
+     * against each other, and a lower scale looks like it wins both — 48/16 measured a wider ceiling
+     * at 0.69x the area. It loses shape instead: on Noto Sans Arabic, holding the scale at 80 and
+     * moving the range 12 to 24 changes nothing (7 of 12 glyphs defective either way), while
+     * dropping the scale to 48 costs four more glyphs at BOTH ranges. The defects track the raster
+     * scale, so the scale does not move. @see CgLatinRangeHeadroomTest</p>
+     *
+     * <p>Dense scripts stay at {@link #DEFAULT_PX_RANGE}: eight bits hold {@code storedRange / 255}
+     * per level, and past 12 that merges strokes a kanji keeps apart. @see CgMsdfFieldStorageTest</p>
+     */
+    public static final float WIDE_PX_RANGE = 24f;
     public static final int DEFAULT_PAGE_SIZE = 1024;
     public static final int DEFAULT_SPACING_PX = 1;
     public static final float DEFAULT_MITER_LIMIT = 2.0f;
@@ -131,6 +185,47 @@ public record CgMsdfAtlasConfig(int atlasScalePx, float pxRange, int pageSize, i
             throw new IllegalArgumentException(
                     "edgeColoringAngleThreshold must be > 0, got " + edgeColoringAngleThreshold);
         }
+    }
+
+    /**
+     * The smallest raster size, in px/em, at which this pairing can still antialias.
+     *
+     * <p>msdfgen states the rule about the quantity its own shader computes: "screenPxRange() must
+     * never be lower than 1. If it is lower than 2, there is a high probability that the
+     * anti-aliasing will fail." That quantity is {@code storedRange * effectivePx / atlasScalePx},
+     * and the field carries {@code pxRange - 1} after the layout reserves its texel — so the rule
+     * inverts to a size:</p>
+     *
+     * <pre>{@code
+     * effectivePx >= 2 * atlasScalePx / (pxRange - 1)     // 15px at 80/12, 7px at 80/24
+     * }</pre>
+     *
+     * <p>Which is why a glyph smaller than this is drawn from the bitmap tier: not because a
+     * distance field is unavailable, but because below here it cannot resolve its own edge. Anything
+     * that wants to reach for the field tier early — a stroke, which the bitmap tier cannot draw at
+     * all — stops here.</p>
+     */
+    public int minAntialiasablePx() {
+        return (int) Math.ceil(2.0 * atlasScalePx / Math.max(pxRange - 1.0, 1.0));
+    }
+
+    /**
+     * The widest stroke this pairing can carry, in em — what a caller clamps an outline to.
+     *
+     * <p>The field holds {@code (pxRange - 1) / 2} texels of real distance either side of the
+     * outline, less one more so a bilinear tap never straddles the saturation shoulder and scallops
+     * the outer edge. <b>0.056 em on the dense band, 0.131 on the wide one.</b></p>
+     *
+     * <pre>{@code
+     * float ceilingEm = registry.getResolvedMsdfConfig(fontKey).maxStrokeWidthEm();
+     * if (widthEm > ceilingEm) widthEm = ceilingEm;   // clamp; a wider ask is not an error
+     * }</pre>
+     *
+     * <p>Ask the config the FONT resolved to, never a constant: the answer is per band, and reading
+     * the dense one for a Latin label gives away more than half the reach it actually has.</p>
+     */
+    public float maxStrokeWidthEm() {
+        return (float) (((pxRange - 1.0) / 2.0 - 1.0) / atlasScalePx);
     }
 
     public static CgMsdfAtlasConfig defaultConfig() {

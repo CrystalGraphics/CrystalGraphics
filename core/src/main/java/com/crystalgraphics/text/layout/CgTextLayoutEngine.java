@@ -360,13 +360,21 @@ public final class CgTextLayoutEngine {
     }
 
     /**
-     * Like {@link #splitAndShapeRuns}, but further splits each BiDi run at any style-span
-     * boundary falling inside it (sorted-interval intersection between the BiDi run's
-     * {@code [start,end)} and {@code spans}), resolves {@code group.resolve(...)} for the
-     * sub-range's bold/italic combination to pick the family, then calls the same
-     * {@link #collectShapedRuns} helper — its signature is unchanged; the resulting runs are
-     * re-wrapped afterward with the covering span's rich fields (color/decoration/features/
-     * baseline-shift), if any.
+     * Like {@link #splitAndShapeRuns}, but carrying style spans — in two levels, and which boundary
+     * belongs to which level is the whole of it.
+     *
+     * <p><b>Only a boundary that changes what HarfBuzz PRODUCES gets its own shaping call</b>
+     * ({@link #changesShaping}: a bold/italic face, or font features). Everything else a span carries
+     * — colour, decoration, decoration colour, baseline shift — is applied to already-shaped glyphs by
+     * {@link #applyStyle}, so those boundaries only {@link #sliceForStyle slice} the shaped output.</p>
+     *
+     * <p>Shaping each side of a decoration boundary separately drops the KERN PAIR across it, because a
+     * kern is a GPOS adjustment between two glyphs in one buffer and there is no second glyph in the
+     * other buffer. The label moves, so anything laid out after it moves too. Measured on IBM Plex Sans
+     * at 10px logical: underlining the {@code E} of {@code Edit} — one character, no colour change —
+     * widened the word by 0.0098em, which pushed every later item of a menu bar off its pixel grid the
+     * moment Alt was pressed. A ligature spanning such a boundary now survives for the same reason, and
+     * takes the style of whichever slice holds its first character.</p>
      */
     private static List<CgShapedRun> splitAndShapeRunsStyled(String text, List<CgStyleSpan> spans, CgFontFamilyGroup group,
                                                        CgTextDirection direction) {
@@ -380,28 +388,91 @@ public final class CgTextLayoutEngine {
             int level = bidi.getRunLevel(i);
             boolean rtl = (level % 2) != 0;
 
-            for (int[] subRange : intersectWithSpans(bidiStart, bidiEnd, spans)) {
-                int subStart = subRange[0];
-                int subEnd = subRange[1];
-                CgStyleSpan span = spanAt(spans, subStart);
-                CgFontStyle requested = styleOf(span);
+            for (int[] shapeRange : shapingSegments(bidiStart, bidiEnd, spans)) {
+                CgStyleSpan shaping = spanAt(spans, shapeRange[0]);
+                CgFontStyle requested = styleOf(shaping);
                 CgFontFamily resolvedFamily = group.resolve(requested);
 
-                int before = runs.size();
                 // Features must reach the shaper, not just the run: they change which glyphs
                 // HarfBuzz produces (ligatures, small caps, tabular figures), so applying them
                 // after shaping the way argbColor/decorations are applied would do nothing at all.
-                collectShapedRuns(text, subStart, subEnd, rtl, resolvedFamily, runs,
-                        span == null ? null : span.fontFeatures());
-                if (span != null) {
-                    for (int idx = before; idx < runs.size(); idx++) {
-                        runs.set(idx, applyStyle(runs.get(idx), span, requested, resolvedFamily));
+                List<CgShapedRun> shaped = new ArrayList<>();
+                collectShapedRuns(text, shapeRange[0], shapeRange[1], rtl, resolvedFamily, shaped,
+                        shaping == null ? null : shaping.fontFeatures());
+
+                for (CgShapedRun run : shaped) {
+                    for (int[] styleRange : intersectWithSpans(run.sourceStart(), run.sourceEnd(), spans)) {
+                        CgShapedRun piece = sliceForStyle(text, run, styleRange[0], styleRange[1]);
+                        if (piece == null) continue;
+                        CgStyleSpan span = spanAt(spans, styleRange[0]);
+                        runs.add(span == null ? piece
+                                : applyStyle(piece, span, requested, resolvedFamily));
                     }
                 }
             }
         }
 
         return runs;
+    }
+
+    /**
+     * Whether a span changes what the shaper emits, and therefore has to be shaped on its own.
+     *
+     * <p>A face does: bold and italic resolve a different {@code CgFontFamily}. Features do: they
+     * select different glyphs outright. Nothing else a {@link CgStyleSpan} carries reaches HarfBuzz.</p>
+     */
+    private static boolean changesShaping(CgStyleSpan span) {
+        return span != null && (span.bold() || span.italic()
+                || (span.fontFeatures() != null && !span.fontFeatures().isEmpty()));
+    }
+
+    /** {@link #intersectWithSpans} over the spans that {@link #changesShaping}. */
+    private static List<int[]> shapingSegments(int start, int end, List<CgStyleSpan> spans) {
+        List<CgStyleSpan> shapingSpans = null;
+        for (CgStyleSpan span : spans) {
+            if (!changesShaping(span)) continue;
+            if (shapingSpans == null) shapingSpans = new ArrayList<>();
+            shapingSpans.add(span);
+        }
+        return shapingSpans == null ? List.of(new int[]{start, end})
+                : intersectWithSpans(start, end, shapingSpans);
+    }
+
+    /**
+     * {@code run} narrowed to the glyphs whose source characters fall in {@code [from, to)}, without
+     * re-shaping — so every advance, offset and kern stays exactly as HarfBuzz emitted it.
+     *
+     * <p>Answers {@code run} itself when the range covers it, and {@code null} when it covers no glyph
+     * (an empty slice, which a caller drops rather than adding a zero-glyph run).</p>
+     *
+     * <p>A glyph belongs to the slice holding the FIRST CHARACTER of its cluster, so a ligature or a
+     * mark sequence straddling the boundary stays whole and takes one side's style rather than being
+     * cut in half. Glyphs for a character range are contiguous in either direction — clusters ascend
+     * with glyph index for LTR and descend for RTL — so the first and last matching indices bound the
+     * slice both ways.</p>
+     */
+    private static CgShapedRun sliceForStyle(String text, CgShapedRun run, int from, int to) {
+        int runStart = run.sourceStart();
+        int runEnd = run.sourceEnd();
+        if (from <= runStart && to >= runEnd) return run;
+
+        int[] glyphIds = run.glyphIds();
+        if (glyphIds.length == 0) return null;
+        int[] clusters = run.clusterIds();
+        int[] byteToChar = Utf8ClusterMapper.byteOffsetToCharOffset(text.substring(runStart, runEnd));
+
+        int first = -1;
+        int last = -1;
+        for (int g = 0; g < glyphIds.length; g++) {
+            int cluster = Math.min(Math.max(clusters[g], 0), byteToChar.length - 1);
+            int ch = runStart + byteToChar[cluster];
+            if (ch < from || ch >= to) continue;
+            if (first < 0) first = g;
+            last = g;
+        }
+        if (first < 0) return null;
+        return CgLineBreaker.sliceRun(run, first, last + 1,
+                Math.max(from, runStart), Math.min(to, runEnd));
     }
 
     /**

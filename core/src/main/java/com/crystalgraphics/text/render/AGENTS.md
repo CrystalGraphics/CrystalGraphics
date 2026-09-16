@@ -21,6 +21,8 @@ The core question here is:
 7. `PerspectiveScaleResolver`
 8. `ProjectedSizeEstimator`
 9. `CgResolvedGlyphs`
+10. `CgTextShadowList`
+11. `CgTextShadowPlan`
 
 ## Class-by-class details
 
@@ -286,6 +288,22 @@ There is no separate grouping-key class anymore — `submitBatchedQuads` packs e
 (atlas mode, texture id, `pxRange`) directly into a `long` sort key (see its javadoc for the bit
 layout) and sorts with `Arrays.sort(long[], int, int)`. This is also the authoritative source of
 shader selection in the current renderer, via `transitionToMaterial`.
+
+### `CgTextShadowList`
+
+One draw's `text-shadow` list as `Draw.shadowCount`/`shadow`/`shadowScope` collect it: local pixels, a
+**sigma** (never a CSS blur radius -- the CSS side halves it), straight ARGB, and the per-glyph scopes a
+`::highlight` shadow uses. Grow-only, reset with the draw. Also answers the culler's `reach()`.
+
+### `CgTextShadowPlan`
+
+Per draw, decides what each glyph paints in each shadow -- the glyph itself, a threshold on its field, or
+a worker-built `CgShadowCell` from the bitmap atlas -- and resolves the cells. **A cell still building
+draws the cell that glyph's shadow last had** (kept per font, glyph and shadow index, whatever blur,
+growth or size), so a dragged slider never blinks the shadow off; the cell is scaled by its own raster
+size, which is why `placeGlyph` reads a shadow cell's size from its key. `submitBatchedQuads` keys
+every shadow instance at its own stage (`CgTextSortKey`) and `submitSorted` packs it for `text.shader`'s
+negative `custom0.w` kinds.
 
 ### `package-info.java`
 

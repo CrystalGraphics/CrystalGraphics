@@ -115,6 +115,22 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
             .vec2("uv0").vec2("uv1")
             .vec4("color")
             .float_("atlasLayer")
+            // -- per-instance CUSTOM slots, whatever a consumer needs them to mean --------------
+            // The same shape CgObjectData gives the render pipeline (custom0..custom3, read through
+            // CG_OBJECT_CUSTOM*), for the same reason: a material that needs per-instance parameters
+            // should not have to widen a shared record with fields only it understands. Text packs a
+            // stroke into these; anything else may pack anything else.
+            //
+            // What they buy is batching. A parameter carried as a MATERIAL property is shared by
+            // every quad in a batch, so changing it per draw forces a flush and a re-apply between
+            // draws that are otherwise identical. Carried per instance, quads that disagree about it
+            // still go out in one call.
+            //
+            // Two rather than four: a slot nothing writes is still uploaded for every quad in the
+            // engine. These take the record from 96 bytes to 128 in std430 and each further one is
+            // another 16 -- add a third when a feature needs it, not before.
+            .vec4("custom0")
+            .vec4("custom1")
             .build();
 
     private static final String GPU_BUFFER_NAME = "CgQuadRendererInstances";
@@ -196,6 +212,7 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
      * lookups for offsets that are a property of a compile-time-constant format.</p>
      */
     private final int offOrigin, offRight, offUp, offUv0, offUv1, offColor, offAtlasLayer;
+    private final int offCustom0, offCustom1;
 
 
     private CgQuadRenderer(CgStagingBuffer accumStaging, CgBufferWriter accumWriter) {
@@ -208,6 +225,8 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
         this.offUv1 = accumWriter.offsetOf("uv1", CgGpuType.VEC2);
         this.offColor = accumWriter.offsetOf("color", CgGpuType.VEC4);
         this.offAtlasLayer = accumWriter.offsetOf("atlasLayer", CgGpuType.FLOAT);
+        this.offCustom0 = accumWriter.offsetOf("custom0", CgGpuType.VEC4);
+        this.offCustom1 = accumWriter.offsetOf("custom1", CgGpuType.VEC4);
     }
 
     /**
@@ -331,6 +350,8 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
         private float u0, v0, u1, v1;
         private int argb;
         private float atlasLayer;
+        private float c0x, c0y, c0z, c0w;
+        private float c1x, c1y, c1z, c1w;
         private Matrix4f pose;
 
         // Reused across every submit() call on this Quad instance — never reallocated.
@@ -355,6 +376,8 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
             v1 = 1f;
             argb = 0xFFFFFFFF;
             atlasLayer = 0f;
+            c0x = c0y = c0z = c0w = 0f;
+            c1x = c1y = c1z = c1w = 0f;
             pose = null;
             return this;
         }
@@ -424,6 +447,49 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
         }
 
         /**
+         * Free per-instance parameters, read as {@code CG_QUAD_CUSTOM0}/{@code CG_QUAD_CUSTOM1}.
+         *
+         * <p>What they mean is entirely the material's business — the same contract
+         * {@code CG_OBJECT_CUSTOM0..3} gives the render pipeline. Both default to zero, so a
+         * material that reads one gets a defined value from every quad, including quads submitted
+         * by code that has never heard of it.</p>
+         *
+         * <p><b>Use these rather than a material property for anything that varies per quad.</b> A
+         * property is shared by the whole batch, so changing it per draw costs a flush and a
+         * re-apply; a custom slot costs nothing and the quads still batch. {@code text.shader} packs
+         * an outline into both — see its own header for that layout.</p>
+         *
+         * <pre>{@code
+         * quadRenderer.quad().at(x, y).size(w, h)
+         *         .custom0(strokeArgb)                  // a packed colour, unpacked to rgba
+         *         .custom1(widthPx, align, over, 0f)    // or four arbitrary floats
+         *         .submit();
+         * }</pre>
+         */
+        public Quad custom0(float x, float y, float z, float w) {
+            this.c0x = x; this.c0y = y; this.c0z = z; this.c0w = w;
+            return this;
+        }
+
+        /** @see #custom0(float, float, float, float) */
+        public Quad custom1(float x, float y, float z, float w) {
+            this.c1x = x; this.c1y = y; this.c1z = z; this.c1w = w;
+            return this;
+        }
+
+        /** {@code custom0} from a packed ARGB colour, unpacked to rgba in 0..1. */
+        public Quad custom0(int argb) {
+            return custom0(((argb >> 16) & 0xFF) / 255f, ((argb >> 8) & 0xFF) / 255f,
+                    (argb & 0xFF) / 255f, ((argb >>> 24) & 0xFF) / 255f);
+        }
+
+        /** {@code custom1} from a packed ARGB colour, unpacked to rgba in 0..1. */
+        public Quad custom1(int argb) {
+            return custom1(((argb >> 16) & 0xFF) / 255f, ((argb >> 8) & 0xFF) / 255f,
+                    (argb & 0xFF) / 255f, ((argb >>> 24) & 0xFF) / 255f);
+        }
+
+        /**
          * Optional per-quad transform, baked on the CPU at {@link #submit()} time into
          * {@code origin}/{@code right}/{@code up} (point + two edge vectors — see
          * {@code plan/text-instancing.md} Decision 2 for why 3 vectors
@@ -481,6 +547,8 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
                     .vec2At(offUv1, u1, v1)
                     .colorAt(offColor, argb)
                     .floatAt(offAtlasLayer, atlasLayer)
+                    .vec4At(offCustom0, c0x, c0y, c0z, c0w)
+                    .vec4At(offCustom1, c1x, c1y, c1z, c1w)
                     .endRecord();
 
             return CgQuadRenderer.this;

@@ -14,6 +14,7 @@ import com.crystalgraphics.text.cache.CgFontRegistry;
 import com.crystalgraphics.text.cache.CgGlyphGenerationResult;
 import com.crystalgraphics.text.cache.CgMsdfAtlasKey;
 
+import javax.annotation.Nullable;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import com.crystalgraphics.util.profiling.CgProfiler;
@@ -333,10 +334,19 @@ public class CgMsdfGenerator {
                 float metricsWidth = (float) ((shapeR - shapeL) * scale);
                 float metricsHeight = (float) ((shapeT - shapeB) * scale);
 
+                // THE RANGE THE FIELD ACTUALLY CARRIES, which is not the configured pxRange. The
+                // layout reserves one texel -- (pxRange - 1) / 2 per side -- so the field stops short
+                // of the cell edge and cannot bleed under bilinear sampling, and it hands msdfgen that
+                // same half-range. The shader scales every distance by what it is told, so passing the
+                // nominal range over-scales by pxRange/(pxRange-1) -- 9% at the shipping 12, 20% at the 6
+                // this was found on -- and turns the shader's one-pixel coverage clamp into a sub-pixel
+                // ramp: every glyph edge crisper than the antialiasing intends.
+                float storedPxRange = (float) (2.0 * rangeInShapeUnits * scale);
+
                 return CgGlyphGenerationResult.msdf(sourceFontKey, key, atlasKey, pixelData, boxWidth, boxHeight,
                         bearingX, bearingY,
                         planeLeft, planeBottom, planeRight, planeTop,
-                        metricsWidth, metricsHeight, effectivePxRange);
+                        metricsWidth, metricsHeight, storedPxRange);
             } finally {
                 bitmap.free();
             }
@@ -459,6 +469,20 @@ public class CgMsdfGenerator {
     }
 
     private static void orientAndColorShape(MSDFShape shape, int glyphId, CgMsdfAtlasConfig config) {
+        orientOutline(shape);
+        if (!shape.validate()) {
+            LOGGER.log(Level.WARNING,
+                    "MSDF shape validation failed for glyph {0}; continuing with normalized shape",
+                    Integer.valueOf(glyphId));
+        }
+        applyEdgeColoring(shape, config);
+    }
+
+    /**
+     * Reverses every contour when a point far outside the shape reads as inside, so distance is positive
+     * inside the glyph and negative outside -- what every field consumer here thresholds on.
+     */
+    private static void orientOutline(MSDFShape shape) {
         double[] bounds = shape.getBounds();
         double outerX = bounds[0] - (bounds[2] - bounds[0]) - 1.0;
         double outerY = bounds[1] - (bounds[3] - bounds[1]) - 1.0;
@@ -467,12 +491,82 @@ public class CgMsdfGenerator {
                 shape.getContour(i).reverse();
             }
         }
-        if (!shape.validate()) {
-            LOGGER.log(Level.WARNING,
-                    "MSDF shape validation failed for glyph {0}; continuing with normalized shape",
-                    Integer.valueOf(glyphId));
+    }
+
+    /**
+     * One glyph's true signed distance, in device pixels, positive inside, row 0 at the top. {@code left}
+     * and {@code top} place pixel (0, 0)'s corner against the pen, {@code top} above the baseline.
+     */
+    public record TrueDistance(double[] distancePx, int width, int height, int left, int top) {
+    }
+
+    /**
+     * A glyph's single-channel true distance at {@code px}, on a raster aligned to whole device pixels
+     * from the pen, for thresholding {@code thresholdPx} past the outline (inside it when negative): the
+     * raster reaches that far and the distance is exact that far.
+     *
+     * <pre>{@code
+     * TrueDistance d = CgMsdfGenerator.trueDistance(font, glyphId, 32, 3f, false, false);   // a 3px spread
+     * }</pre>
+     *
+     * <p>Synthetic style is the distance tier's: italic shears the outline, and bold moves it out by half
+     * the embolden strength, so the distance is to the glyph as that tier draws it. Unlike a glyph
+     * field it has no range to fit an atlas band, so a text shadow can spread past what the atlas stores.</p>
+     *
+     * @return null for a glyph with no outline
+     */
+    @Nullable
+    public static TrueDistance trueDistance(FreeTypeMSDFIntegration.Font font, int glyphId, int px,
+                                            float thresholdPx, boolean syntheticBold, boolean syntheticItalic) {
+        FreeTypeMSDFIntegration.GlyphData glyph;
+        try {
+            glyph = font.loadGlyphByIndex(glyphId, FreeTypeMSDFIntegration.FONT_SCALING_EM_NORMALIZED);
+        } catch (MSDFException e) {
+            return null;
         }
-        applyEdgeColoring(shape, config);
+        MSDFShape shape = glyph.getShape();
+        try {
+            if (shape.getEdgeCount() == 0) return null;
+            normalizeShape(shape);
+            if (syntheticItalic) MSDFShapeSynthesis.shear(shape, SYNTHETIC_ITALIC_SKEW);
+            orientOutline(shape);
+
+            float boldPx = syntheticBold ? (float) (SYNTHETIC_BOLD_STRENGTH_EM / 2.0 * px) : 0f;
+            float reachPx = thresholdPx + boldPx;
+            double[] bounds = shape.getBounds();
+            float margin = Math.max(0f, reachPx) + 1f;
+            int left = (int) Math.floor(bounds[0] * px - margin);
+            int bottom = (int) Math.floor(bounds[1] * px - margin);
+            int right = (int) Math.ceil(bounds[2] * px + margin);
+            int top = (int) Math.ceil(bounds[3] * px + margin);
+            int width = right - left;
+            int height = top - bottom;
+            if (width <= 0 || height <= 0) return null;
+
+            // msdfgen maps pixel centre (x + 0.5) to (x + 0.5) / scale - translate, so translating by
+            // -left / scale puts column x at device pixel left + x from the pen. Y is up, row 0 at the bottom.
+            double rangeEm = (Math.abs(reachPx) + 2.0) / px;
+            MSDFBitmap bitmap = MSDFBitmap.allocSdf(width, height);
+            try {
+                MSDFGenerator.generateSdf(bitmap, shape,
+                        new MSDFTransform().scale(px).translate(-left / (double) px, -bottom / (double) px)
+                                .range(-rangeEm, rangeEm));
+                float[] field = bitmap.getPixelData();
+                double[] distancePx = new double[width * height];
+                for (int y = 0; y < height; y++) {
+                    int src = (height - 1 - y) * width;
+                    int dst = y * width;
+                    for (int x = 0; x < width; x++) {
+                        distancePx[dst + x] = (field[src + x] * 2.0 - 1.0) * rangeEm * px + boldPx;
+                    }
+                }
+                return new TrueDistance(distancePx, width, height, left, top);
+            } finally {
+                bitmap.free();
+            }
+        } finally {
+            shape.free();
+        }
     }
 
     /**

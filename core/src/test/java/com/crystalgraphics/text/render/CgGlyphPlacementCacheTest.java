@@ -5,6 +5,7 @@ import com.crystalgraphics.api.font.CgFontMetrics;
 import com.crystalgraphics.api.font.CgFontStyle;
 import com.crystalgraphics.api.font.CgGlyphPlacement;
 import com.crystalgraphics.api.text.CgTextLayout;
+import org.junit.Before;
 import org.junit.Test;
 
 import java.util.List;
@@ -18,6 +19,12 @@ import static org.junit.Assert.*;
  * share a cache entry (and so its resolved colors).
  */
 public class CgGlyphPlacementCacheTest {
+
+    /** The refresh budget is static render-thread state; a test that charges it must not leak into the next. */
+    @Before
+    public void resetCache() {
+        CgGlyphPlacementCache.clearForTest();
+    }
 
     private static final CgFontKey FONT_KEY = new CgFontKey("test.ttf", CgFontStyle.REGULAR, 16);
     private static final CgFontMetrics METRICS = new CgFontMetrics(10, 2, 1, 13, 6, 8);
@@ -92,6 +99,12 @@ public class CgGlyphPlacementCacheTest {
                 new float[0], new float[0], new int[0], new CgGlyphPlacement[0]);
     }
 
+    /** An entry of a real size, for the rules that depend on how much a refresh would cost. */
+    private static CgGlyphPlacementCache.Entry sized(boolean distanceField, int glyphs, long builtFrame) {
+        return new CgGlyphPlacementCache.Entry(distanceField, 64, 10L, 0L, builtFrame, glyphs,
+                new float[glyphs], new float[glyphs], new int[glyphs], new CgGlyphPlacement[glyphs]);
+    }
+
     /** Comfortably beyond {@code MIN_REFRESH_FRAMES_WHILE_UNCONVERGED} for an entry built at frame 0. */
     private static final long PAST_RATE_LIMIT = 100_000L;
 
@@ -130,15 +143,40 @@ public class CgGlyphPlacementCacheTest {
     }
 
     @Test
-    public void testMatches_bitmapEntry_newContentIsRateLimited_notActedOnEveryFrame() {
-        // Without this rate limit the async drain bumps the content generation on nearly every
-        // frame during warmup, so every frame became a full re-resolve -- measured at 5-41 fps
-        // for ~11s. See MIN_REFRESH_FRAMES_WHILE_UNCONVERGED.
+    public void testMatches_bitmapEntry_refreshesShareAFrameBudget() {
+        // Without a limit the async drain bumps the content generation on nearly every frame during
+        // warmup, and every unconverged entry re-resolving every frame measured at 5-41 fps for
+        // ~11 s. The limit is a per-frame TIME budget for small entries now, not a flat 120 frames.
+        long frame = 1L;
+        CgGlyphPlacementCache.chargeRefresh(frame, 3_000_000L);
         CgGlyphPlacementCache.Entry e = entry(false, 48, 100L, 0L);
 
-        assertTrue("a generation change immediately after the entry was built must NOT force "
-                        + "an instant re-resolve",
-                e.matches(48, 101L, 0L, 1L));
+        assertTrue("with this frame's refresh budget spent, a generation change must NOT force a "
+                        + "re-resolve",
+                e.matches(48, 101L, 0L, frame));
+        assertFalse("and on the next frame the budget is back, so a small entry refreshes",
+                e.matches(48, 101L, 0L, frame + 1));
+    }
+
+    /**
+     * A font switch resolves a label while most glyphs are still on the bitmap fallback; their fields
+     * land two frames later. Served back for the full frame limit, that was a second of text with no
+     * outline on a page doing nothing else.
+     */
+    @Test
+    public void testMatches_smallBitmapEntry_refreshesTheFrameAfterItsFieldsLand() {
+        assertFalse("ten glyphs whose fields have landed must refresh, not wait out the frame limit",
+                sized(false, 10, 100L).matches(64, 11L, 0L, 102L));
+    }
+
+    @Test
+    public void testMatches_largeBitmapEntry_keepsTheFrameLimitItsCostWasMeasuredAgainst() {
+        CgGlyphPlacementCache.Entry document = sized(false, 1757, 100L);
+
+        assertTrue("a refresh this size is ~100 ms, which a 2 ms budget must not admit",
+                document.matches(64, 11L, 0L, 102L));
+        assertFalse("but the frame limit still guarantees it converges",
+                document.matches(64, 11L, 0L, 220L));
     }
 
     @Test
