@@ -1465,10 +1465,17 @@ public class CgTextRenderer {
         if (pixelSnap) scratchInverseModelView.set(modelView).invert();
         float devicePerLocal = effectiveTargetPx / (float) Math.max(1, baseTargetPx);
 
-        // PAINT ORDER: outer shadows at 0..n-1 with the LAST shadow first, the text at n, inset shadows at
-        // n+1..2n. It is the key's outermost field, so one sort gives painter's order across batches, and
-        // a list longer than the field holds is submitted as successive sorts in the same order.
-        int lastPaint = 2 * shadows;
+        // PAINT ORDER: outer shadows at 0..n-1 with the LAST shadow first, the underline and overline at n, the
+        // text at n+1, its line-through at n+2, inset shadows at n+3..2n+2. It is the key's outermost field, so
+        // one sort gives painter's order across batches, and a list longer than the field holds is submitted as
+        // successive sorts in the same order. The lines split around the text as CSS Text Decoration 3 paints
+        // them: under the glyphs and their stroke, and a line-through over both.
+        //
+        // EACH ITS OWN STEP, never "a decoration after a glyph in the same step": the key sorts by atlas before
+        // kind, and a decoration's white texel is often in the bitmap atlas while the glyphs are distance
+        // fields, so within one step every line painted under the text.
+        int textPaint = shadows + 1;
+        int lastPaint = 2 * shadows + 2;
         long emitted = 0;
         for (int window = 0; window <= lastPaint; window += CgTextSortKey.MAX_STAGE + 1) {
             int windowEnd = Math.min(lastPaint, window + CgTextSortKey.MAX_STAGE);
@@ -1477,17 +1484,30 @@ public class CgTextRenderer {
                 for (int paint = window; paint <= windowEnd; paint++) {
                     int stage = paint - window;
                     if (paint == shadows) {
+                        for (int i = 0; i < resolvedDecorations.size(); i++) {
+                            if (resolvedDecorations.get(i).underText()) {
+                                scratchSortKeys[count++] = CgTextSortKey.forDecoration(resolvedDecorations.get(i), i, stage);
+                            }
+                        }
+                        continue;
+                    }
+                    if (paint == textPaint) {
                         for (int i = 0; i < glyphCount; i++) {
                             CgGlyphPlacement p = placements[i];
                             if (p != null && p.hasGeometry()) scratchSortKeys[count++] = CgTextSortKey.forGlyph(p, i, stage);
                         }
+                        continue;
+                    }
+                    if (paint == textPaint + 1) {
                         for (int i = 0; i < resolvedDecorations.size(); i++) {
-                            scratchSortKeys[count++] = CgTextSortKey.forDecoration(resolvedDecorations.get(i), i, stage);
+                            if (!resolvedDecorations.get(i).underText()) {
+                                scratchSortKeys[count++] = CgTextSortKey.forDecoration(resolvedDecorations.get(i), i, stage);
+                            }
                         }
                         continue;
                     }
                     int shadow = shadowAt(paint, shadows);
-                    if (shadowList.inset(shadow) != (paint > shadows) || !shadowList.casts(shadow)) {
+                    if (shadowList.inset(shadow) != (paint > textPaint + 1) || !shadowList.casts(shadow)) {
                         continue;
                     }
                     for (int i = 0; i < glyphCount; i++) {
@@ -1519,8 +1539,9 @@ public class CgTextRenderer {
     }
 
     /** Which shadow a paint step belongs to; see the paint order in {@link #submitBatchedQuads}. */
+    /** The shadow a paint step belongs to: outer ones before the text's three steps, inset ones after them. */
     private static int shadowAt(int paint, int shadows) {
-        return paint < shadows ? shadows - 1 - paint : 2 * shadows - paint;
+        return paint < shadows ? shadows - 1 - paint : 2 * shadows + 2 - paint;
     }
 
     // Per-entry scratch for submitSorted, so a quad's geometry is written once and read by the submit.
@@ -1551,7 +1572,7 @@ public class CgTextRenderer {
             boolean isDecoration = CgTextSortKey.isDecoration(key);
             int localIndex = CgTextSortKey.localIndexOf(key);
             int paint = window + CgTextSortKey.stageOf(key);
-            int shadow = paint == shadows ? -1 : shadowAt(paint, shadows);
+            int shadow = paint >= shadows && paint <= shadows + 2 ? -1 : shadowAt(paint, shadows);
 
             CgGlyphPlacement p = null;
             boolean isDistanceField;

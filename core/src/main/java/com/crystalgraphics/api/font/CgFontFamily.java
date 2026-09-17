@@ -287,9 +287,11 @@ public final class CgFontFamily {
         float lineHeight = 0.0f;
         float xHeight = 0.0f;
         float capHeight = 0.0f;
+        CgFontMetrics first = null;
         boolean any = false;
         for (CgFontMetrics metrics : metricsList) {
             any = true;
+            if (first == null) first = metrics;
             ascender = Math.max(ascender, metrics.getAscender());
             descender = Math.max(descender, metrics.getDescender());
             lineGap = Math.max(lineGap, metrics.getLineGap());
@@ -300,7 +302,11 @@ public final class CgFontFamily {
         if (!any) {
             throw new IllegalArgumentException("metricsList must not be empty");
         }
-        return new CgFontMetrics(ascender, descender, lineGap, lineHeight, xHeight, capHeight);
+        // THE PRIMARY FACE'S LINES: a decoration is one line across the run, and the face named first is the one
+        // the text is set in.
+        return new CgFontMetrics(ascender, descender, lineGap, lineHeight, xHeight, capHeight,
+                first.getUnderlineOffset(), first.getUnderlineThickness(),
+                first.getStrikeoutOffset(), first.getStrikeoutThickness());
     }
 
     private CgFontSource resolveSourceForCluster(String text,
