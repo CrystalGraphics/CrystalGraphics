@@ -56,14 +56,21 @@ final class CgWorkerFontContext {
         FTFace face = getBitmapFace(job);
         face.setPixelSizes(0, job.getEffectiveTargetPx());
 
+        CgGlyphKey key = job.getAtlasKey();
+        boolean synthesize = key.isSyntheticBold() || key.isSyntheticItalic();
         int loadFlags = FTLoadFlags.FT_LOAD_DEFAULT;
         boolean useSubPixel = job.getSubPixelBucket() > 0
                 && job.getEffectiveTargetPx() < CgGlyphKey.SUB_PIXEL_BUCKET_MAX_PX;
-        if (useSubPixel) {
+        if (useSubPixel || synthesize) {
             loadFlags = FTLoadFlags.FT_LOAD_NO_BITMAP;
         }
+        // THE SAME RASTER AS CgFontRegistry#ensureBitmapGlyph: the atlas keeps whichever lands first under
+        // one key, so a worker skipping the synthesis stored a regular glyph as the bold one for good.
+        if (synthesize) loadFlags |= FTLoadFlags.FT_LOAD_NO_HINTING;
 
-        loadGlyphOrFallback(face, job.getAtlasKey().getGlyphId(), loadFlags);
+        loadGlyphOrFallback(face, key.getGlyphId(), loadFlags);
+        CgFontRegistry.applySyntheticStyle(face, key.isSyntheticBold(), key.isSyntheticItalic(),
+                job.getEffectiveTargetPx());
         if (useSubPixel) {
             face.outlineTranslate(job.getSubPixelBucket() * 16L, 0L);
         }
