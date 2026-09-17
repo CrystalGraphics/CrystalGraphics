@@ -46,6 +46,12 @@ public class CgBreakOpportunitiesTest {
         assertEquals("src/|main/|java", marked("src/main/java"));
     }
 
+    /** LB30, (AL | NU) x OP: a call does not break from its own bracket. */
+    @Test
+    public void aCallDoesNotBreakFromItsBracket() {
+        assertEquals("tint(#000) |glow(0.1)", marked("tint(#000) glow(0.1)"));
+    }
+
     /** LB29, IS x AL: an infix separator does not break from the letter after it. */
     @Test
     public void anInfixSeparatorDoesNotBreakFromWhatFollowsIt() {
