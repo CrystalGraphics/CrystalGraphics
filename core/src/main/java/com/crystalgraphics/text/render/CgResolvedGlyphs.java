@@ -475,7 +475,7 @@ final class CgResolvedGlyphs {
      */
     record ResolvedDecoration(int atlasTextureId, int atlasPageIndex, boolean isDistanceField, float pxRange,
                               float u0, float v0, float u1, float v1,
-                              float qx, float qy, float w, float h, int rgba) {
+                              float qx, float qy, float w, float h, int rgba, boolean underText) {
     }
 
     /**
@@ -508,7 +508,7 @@ final class CgResolvedGlyphs {
             resolved.add(new ResolvedDecoration(texel.atlasTextureId(), texel.atlasPageIndex(),
                     texel.isDistanceField(), texel.pxRange(),
                     texel.u0(), texel.v0(), texel.u1(), texel.v1(),
-                    qx, qy, seg.x1() - seg.x0(), seg.thickness(), rgba));
+                    qx, qy, seg.x1() - seg.x0(), seg.thickness(), rgba, seg.underText()));
         }
         return resolved;
     }

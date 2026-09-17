@@ -864,24 +864,39 @@ public final class CgTextLayoutEngine {
                                                                float x0, float x1, float baseline) {
         CgFontMetrics metrics = font != null ? font.getMetrics() : fallbackMetrics;
         float fontSizePx = fontKey != null ? fontKey.getTargetPx() : (metrics.getAscender() + metrics.getDescender());
-        float thickness = Math.max(1f, fontSizePx / 10f);
+        // THE FONT'S OWN LINES FIRST, as a browser takes them from `post` and `OS/2`; Blink's fallbacks only for a
+        // face that states none. An overline has no metric of its own anywhere, so it takes the underline's weight.
+        float fallback = Math.max(1f, fontSizePx / 10f);
+        float underlineThickness = metrics.hasUnderline() ? Math.max(1f, metrics.getUnderlineThickness()) : fallback;
+        float thickness;
         float y;
         switch (kind) {
-            // Centered on half of x-height — the visual middle of lowercase letters, not a
-            // fraction of the full ascent (which overshoots into cap-height/ascender territory
-            // for fonts with generous ascent headroom, confirmed visually too high in the demo).
-            case STRIKETHROUGH -> y = baseline - metrics.getXHeight() / 2f;
-            case OVERLINE -> y = baseline - metrics.getAscender() + thickness / 2f;
+            case STRIKETHROUGH -> {
+                thickness = metrics.hasStrikeout() ? Math.max(1f, metrics.getStrikeoutThickness()) : fallback;
+                // Centered on half of x-height — the visual middle of lowercase letters, not a
+                // fraction of the full ascent (which overshoots into cap-height/ascender territory
+                // for fonts with generous ascent headroom, confirmed visually too high in the demo).
+                y = metrics.hasStrikeout() ? baseline + metrics.getStrikeoutOffset() : baseline - metrics.getXHeight() / 2f;
+            }
+            case OVERLINE -> {
+                thickness = underlineThickness;
+                y = baseline - metrics.getAscender() + thickness / 2f;
+            }
             default -> {
-                float gap = Math.max(1f, (float) Math.ceil(thickness / 2f));
-                y = baseline + gap;
+                thickness = underlineThickness;
+                if (metrics.hasUnderline()) {
+                    y = baseline + metrics.getUnderlineOffset();
+                } else {
+                    float gap = Math.max(1f, (float) Math.ceil(thickness / 2f));
+                    y = baseline + gap;
+                }
             }
         }
         // THE DECORATION'S OWN COLOUR WHERE IT HAS ONE, and the glyphs' otherwise -- CSS's
         // `text-decoration-color: currentColor` default, in the one line that can express it. The rect
         // has carried its own colour since it was written; nothing upstream could ever say what it was.
         int argb = run.decorationArgb() != 0 ? run.decorationArgb() : run.argbColor();
-        return new CgTextDecorationRect(x0, x1, y, thickness, argb, fontKey);
+        return new CgTextDecorationRect(x0, x1, y, thickness, argb, fontKey, kind != CgTextDecoration.STRIKETHROUGH);
     }
 
     /**

@@ -44,6 +44,7 @@ public final class Sfnt {
 
     private static final int NAME = 0x6E616D65;
     private static final int OS2 = 0x4F532F32;
+    private static final int POST = 0x706F7374;
     private static final int HEAD = 0x68656164;
     private static final int FVAR = 0x66766172;
     private static final int CMAP = 0x636D6170;
@@ -167,6 +168,60 @@ public final class Sfnt {
             cursor += (int) align4(length);
         }
         return out;
+    }
+
+    /**
+     * The decoration lines a font asks for, in font units: {@code post}'s underline and {@code OS/2}'s strikeout.
+     *
+     * <pre>{@code
+     * Sfnt.Decorations lines = Sfnt.decorations(data.bytes());
+     * float scale = targetPx / (float) unitsPerEm;
+     * float underlineTop = -lines.underlinePosition() * scale;   // y-down, from the baseline
+     * }</pre>
+     *
+     * @param underlinePosition  the TOP of the underline, y-up from the baseline — negative, below it
+     * @param underlineThickness 0 when {@code post} is missing or states none
+     * @param strikeoutPosition  the TOP of the strikeout, y-up from the baseline
+     * @param strikeoutSize      0 when {@code OS/2} is missing or states none
+     */
+    public record Decorations(int underlinePosition, int underlineThickness, int strikeoutPosition, int strikeoutSize) {
+
+        public static final Decorations NONE = new Decorations(0, 0, 0, 0);
+    }
+
+    /**
+     * Reads {@link Decorations} from one standalone font's bytes, as {@code CgFontData.bytes()} holds it. Never
+     * throws: a malformed or truncated table answers {@link Decorations#NONE} for its half.
+     */
+    public static Decorations decorations(byte[] data) {
+        if (data == null || data.length < 12 || isCollection(data)) return Decorations.NONE;
+        try {
+            ByteBuffer in = ByteBuffer.wrap(data);
+            int numTables = u16(in, 4);
+            int underlinePosition = 0, underlineThickness = 0, strikeoutPosition = 0, strikeoutSize = 0;
+            for (int i = 0; i < numTables; i++) {
+                int record = 12 + 16 * i;
+                if (record + 16 > data.length) break;
+                int tag = in.getInt(record);
+                long offset = u32(in, record + 8);
+                long length = u32(in, record + 12);
+                if (offset < 0 || offset + length > data.length) continue;
+                // post: version(4) italicAngle(4) underlinePosition(2) underlineThickness(2)
+                if (tag == POST && length >= 12) {
+                    underlinePosition = in.getShort((int) offset + 8);
+                    underlineThickness = in.getShort((int) offset + 10);
+                }
+                // OS/2 v0+: ... yStrikeoutSize at 26, yStrikeoutPosition at 28
+                if (tag == OS2 && length >= 30) {
+                    strikeoutSize = in.getShort((int) offset + 26);
+                    strikeoutPosition = in.getShort((int) offset + 28);
+                }
+            }
+            return new Decorations(underlinePosition, Math.max(0, underlineThickness), strikeoutPosition,
+                    Math.max(0, strikeoutSize));
+        } catch (RuntimeException malformed) {
+            return Decorations.NONE;
+        }
     }
 
     /**

@@ -31,8 +31,16 @@ import com.crystalgraphics.api.font.CgFontKey;
  * @param argbColor resolved color for this segment (run override, or the draw's default)
  * @param fontKey   the run's font — lets the renderer sample this segment's flat fill from
  *                  the exact atlas/page this run's own glyphs are already resident on
+ * @param underText painted beneath the glyphs rather than over them: CSS Text Decoration 3 paints underline
+ *                  and overline under the text, stroke included, and line-through over it
  */
-public record CgTextDecorationRect(float x0, float x1, float y, float thickness, int argbColor, CgFontKey fontKey) {
+public record CgTextDecorationRect(float x0, float x1, float y, float thickness, int argbColor, CgFontKey fontKey,
+                                   boolean underText) {
+
+    /** A rect painted over the text, as a line-through is. */
+    public CgTextDecorationRect(float x0, float x1, float y, float thickness, int argbColor, CgFontKey fontKey) {
+        this(x0, x1, y, thickness, argbColor, fontKey, false);
+    }
 
     /** Shared empty array for layouts with no decorated runs. */
     public static final CgTextDecorationRect[] NONE = new CgTextDecorationRect[0];

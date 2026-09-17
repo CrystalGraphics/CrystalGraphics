@@ -274,7 +274,7 @@ public class CgFont {
             if (createHbFont) {
                 hbFont = FreeTypeHarfBuzzIntegration.createHBFontFromFTFace(face);
                 applyVariationsToHbFont(hbFont, variations);
-                metrics = extractMetrics(face, targetPx.intValue());
+                metrics = extractMetrics(face, targetPx.intValue(), data);
             }
             return new LoadedNativeState(ftLib, face, hbFont, availableAxes, metrics);
         } catch (RuntimeException e) {
@@ -659,7 +659,7 @@ public class CgFont {
         return values;
     }
 
-    private static CgFontMetrics extractMetrics(FTFace face, int targetPx) {
+    private static CgFontMetrics extractMetrics(FTFace face, int targetPx, CgFontData data) {
         int unitsPerEM = face.getUnitsPerEM();
         float scale = (float) targetPx / unitsPerEM;
 
@@ -681,7 +681,17 @@ public class CgFont {
             capHeight = ascender * 0.7f;
         }
 
-        return new CgFontMetrics(ascender, descender, lineGap, lineHeight, xHeight, capHeight);
+        // THE FONT'S OWN DECORATION LINES, which FreeType's face record carries only half of and the bindings not
+        // at all. Both tables store the TOP of the line y-up; the metrics hold its CENTRE y-down, which is what
+        // the layout positions a rect by.
+        Sfnt.Decorations lines = Sfnt.decorations(data.bytes());
+        float underlineThickness = lines.underlineThickness() * scale;
+        float underlineOffset = (lines.underlineThickness() / 2f - lines.underlinePosition()) * scale;
+        float strikeoutThickness = lines.strikeoutSize() * scale;
+        float strikeoutOffset = (lines.strikeoutSize() / 2f - lines.strikeoutPosition()) * scale;
+
+        return new CgFontMetrics(ascender, descender, lineGap, lineHeight, xHeight, capHeight,
+                underlineOffset, underlineThickness, strikeoutOffset, strikeoutThickness);
     }
 
     private static float measureGlyphHeight(FTFace face, int charCode, float scale) {
