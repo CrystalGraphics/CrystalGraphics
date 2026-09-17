@@ -28,6 +28,8 @@ import java.util.Arrays;
  *       before one. Both halves are needed and the order matters: the first offers a break between the
  *       two slashes of {@code https://}, and the second is what takes it away again. A wrapped path
  *       therefore keeps its slash on the upper line rather than starting the next with one.</li>
+ *   <li><b>LB30, {@code (AL | NU) x OP}</b> -- no break between a word and the bracket it opens, so a
+ *       wrapped {@code tint(#000) glow(0.1)} breaks between the calls and never inside one.</li>
  * </ul>
  *
  * <p>This agrees with CrystalGUI's editor, whose {@code BreakOpportunities} is ported from VS Code and
@@ -71,6 +73,9 @@ final class CgBreakOpportunities {
             // path's slash on the upper line, and what stops `https://` splitting between its two --
             // the rule above had just offered exactly that break.
             if (next == '/') allowed[i] = false;
+            // LB30, (AL | NU) x OP: never between a word and the bracket it opens. A call is one run, so a
+            // wrapped `tint(#000)` does not leave `tint` on one line and its argument on the next.
+            if (Character.isLetterOrDigit(previous) && isOpening(next)) allowed[i] = false;
             if (allowed[i]) count++;
         }
 
@@ -80,6 +85,11 @@ final class CgBreakOpportunities {
             if (allowed[i]) corrected[at++] = i;
         }
         return Arrays.equals(corrected, boundaries) ? boundaries : corrected;
+    }
+
+    /** UAX #14 class OP, its ASCII members. */
+    private static boolean isOpening(char c) {
+        return c == '(' || c == '[' || c == '{';
     }
 
     /** UAX #14 class IS, restricted to the ASCII members a source path or a sentence actually uses. */
