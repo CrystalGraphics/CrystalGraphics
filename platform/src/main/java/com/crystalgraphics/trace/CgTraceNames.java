@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -52,7 +54,7 @@ public final class CgTraceNames {
      * <p>By CLASS and not by package: a package prefix would also swallow a legitimate caller that
      * happens to live here, which is exactly what it did to this class's own test.</p>
      */
-    private static final java.util.Set<String> SELF = java.util.Set.of(
+    private static final Set<String> SELF = Set.of(
             "com.crystalgraphics.trace.CgTrace",
             "com.crystalgraphics.trace.CgTraceNames",
             "com.crystalgraphics.trace.CgTraceZones",
@@ -115,7 +117,7 @@ public final class CgTraceNames {
                 .walk(frames -> frames
                         .filter(f -> !SELF.contains(f.getClassName()))
                         .map(CgTraceNames::describe)
-                        .filter(java.util.Objects::nonNull)
+                        .filter(Objects::nonNull)
                         .findFirst());
         return found.orElse(null);
     }

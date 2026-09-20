@@ -128,16 +128,17 @@ public final class CgTraceSnapshot {
 
         CgTraceEvents events = CgTrace.events();
         List<CounterView> counters = new ArrayList<>();
+        List<MarkerView> markers = new ArrayList<>();
+        List<SpanView> spans = new ArrayList<>();
+        // ONE LOCK ACROSS ALL THREE. Taken separately, a counter could be read from before a write
+        // and a marker from after it, and the snapshot would describe a moment that never existed --
+        // which is the one thing a snapshot is for.
         synchronized (events) {
             for (long slot = events.oldestCounter(); slot < events.countersWritten; slot++) {
                 int at = events.counterAt(slot);
                 counters.add(new CounterView(CgTraceNames.nameOf(events.counterName[at]),
                         events.counterFrame[at], events.counterValue[at]));
             }
-        }
-
-        List<MarkerView> markers = new ArrayList<>();
-        synchronized (events) {
             for (long slot = events.oldestMarker(); slot < events.markersWritten; slot++) {
                 int at = events.markerAt(slot);
                 int detail = events.markerDetail[at];
@@ -145,10 +146,6 @@ public final class CgTraceSnapshot {
                         channelNames[events.markerChannel[at]], events.markerNanos[at],
                         detail < 0 ? null : CgTraceNames.nameOf(detail)));
             }
-        }
-
-        List<SpanView> spans = new ArrayList<>();
-        synchronized (events) {
             for (long slot = events.oldestSpan(); slot < events.spansWritten; slot++) {
                 int at = events.spanAt(slot);
                 int nameId = events.spanName[at];
@@ -156,7 +153,7 @@ public final class CgTraceSnapshot {
                         CgTraceNames.nameOf(nameId), CgTraceNames.sourceOf(nameId),
                         String.valueOf(events.spanThread[at]),
                         channelNames[events.spanChannel[at]],
-                        events.spanStart[at], events.spanEnd[at]));
+                        events.spanStartNanos[at], events.spanEndNanos[at]));
             }
         }
 

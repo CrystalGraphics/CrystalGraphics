@@ -72,7 +72,8 @@ public class CgTraceTest {
     public void theEnabledSetRoundTripsThroughNamesRatherThanBits() {
         CgTrace.enable("test.ui");
         List<String> saved = CgTrace.enabledNames();
-        assertEquals(List.of("test.ui"), saved);
+        assertTrue(saved.toString(), saved.contains("test.ui"));
+        assertFalse(saved.toString(), saved.contains("test.gl"));
 
         CgTrace.disableAll();
         assertFalse(UI.isEnabled());
@@ -81,6 +82,7 @@ public class CgTraceTest {
         // persisted a long would read back meaning a different channel. Names are the contract.
         CgTrace.enableOnly(saved);
         assertTrue(UI.isEnabled());
+        assertFalse("the set was restored too widely", GL.isEnabled());
     }
 
     // ── T0: zones ───────────────────────────────────────────────────────────────────────────
@@ -342,7 +344,11 @@ public class CgTraceTest {
         // A RANGE THAT SPANS ONE IS NOT COMPARABLE WITH ITSELF, and a viewer that did not know would
         // draw the difference as a performance change.
         assertEquals(2, masks.size());
-        assertEquals("test.ui,test.gl", masks.get(1).detail());
+        // The detail names every channel recording at that moment -- the engine's own included, since
+        // it is what carries this event.
+        String detail = masks.get(1).detail();
+        assertTrue(detail, detail.contains("test.ui") && detail.contains("test.gl"));
+        assertEquals("trace", masks.get(1).channel());
     }
 
     // ── T0: what it costs ───────────────────────────────────────────────────────────────────

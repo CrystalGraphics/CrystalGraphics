@@ -52,8 +52,8 @@ final class CgTraceEvents {
     private final int spanCapacity;
     private final int spanMask;
     final int[] spanName;
-    final long[] spanStart;
-    final long[] spanEnd;
+    final long[] spanStartNanos;
+    final long[] spanEndNanos;
     final long[] spanParent;
     final int[] spanChannel;
     final int[] spanThread;
@@ -78,8 +78,8 @@ final class CgTraceEvents {
         this.spanCapacity = spanCapacity;
         this.spanMask = spanCapacity - 1;
         this.spanName = new int[spanCapacity];
-        this.spanStart = new long[spanCapacity];
-        this.spanEnd = new long[spanCapacity];
+        this.spanStartNanos = new long[spanCapacity];
+        this.spanEndNanos = new long[spanCapacity];
         this.spanParent = new long[spanCapacity];
         this.spanChannel = new int[spanCapacity];
         this.spanThread = new int[spanCapacity];
@@ -115,8 +115,8 @@ final class CgTraceEvents {
         long id = spansWritten++;
         int at = (int) (id & spanMask);
         spanName[at] = name;
-        spanStart[at] = now;
-        spanEnd[at] = OPEN;
+        spanStartNanos[at] = now;
+        spanEndNanos[at] = OPEN;
         spanParent[at] = parent;
         spanChannel[at] = channelIndex;
         spanThread[at] = threadId;
@@ -129,14 +129,14 @@ final class CgTraceEvents {
             dropped++;
             return;
         }
-        spanEnd[(int) (id & spanMask)] = now;
+        spanEndNanos[(int) (id & spanMask)] = now;
     }
 
     /** A span whose start is already known — the shape {@code step(started, what)} has. */
     synchronized long spanDone(int name, int channelIndex, int threadId, long parent,
                                long startNanos, long endNanos) {
         long id = spanBegin(name, channelIndex, threadId, parent, startNanos);
-        spanEnd[(int) (id & spanMask)] = endNanos;
+        spanEndNanos[(int) (id & spanMask)] = endNanos;
         return id;
     }
 

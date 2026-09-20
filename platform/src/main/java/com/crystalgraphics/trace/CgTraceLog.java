@@ -1,6 +1,5 @@
 package com.crystalgraphics.trace;
 
-import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
@@ -15,6 +14,8 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.stream.Stream;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -160,7 +161,7 @@ public final class CgTraceLog {
             // the writer has already died.
             long deadline = System.nanoTime() + 2_000_000_000L;
             while (thread.isAlive() && System.nanoTime() < deadline) {
-                if (sink.offer(POISON, 50L, java.util.concurrent.TimeUnit.MILLISECONDS)) break;
+                if (sink.offer(POISON, 50L, TimeUnit.MILLISECONDS)) break;
             }
             thread.join(2000L);
         } catch (InterruptedException interrupted) {
@@ -214,7 +215,7 @@ public final class CgTraceLog {
     /** Deletes all but the newest {@link #KEEP_RUNS} rotated runs. */
     private static void prune(Path root) throws IOException {
         List<Path> runs = new ArrayList<>();
-        try (java.util.stream.Stream<Path> children = Files.list(root)) {
+        try (Stream<Path> children = Files.list(root)) {
             children.filter(Files::isDirectory)
                     .filter(each -> !LATEST.equals(each.getFileName().toString()))
                     .forEach(runs::add);
@@ -225,7 +226,7 @@ public final class CgTraceLog {
     }
 
     private static void deleteTree(Path dir) throws IOException {
-        try (java.util.stream.Stream<Path> walk = Files.walk(dir)) {
+        try (Stream<Path> walk = Files.walk(dir)) {
             List<Path> all = new ArrayList<>();
             walk.forEach(all::add);
             for (int i = all.size() - 1; i >= 0; i--) Files.deleteIfExists(all.get(i));
