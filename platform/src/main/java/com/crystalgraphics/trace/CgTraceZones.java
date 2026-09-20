@@ -127,6 +127,24 @@ final class CgTraceZones {
         stack[depth++] = (int) slot;
     }
 
+    /**
+     * Writes a zone that is already over, at the current depth, without touching the stack.
+     *
+     * <p>For an instrumentation shape that is an <em>additive bucket</em> rather than a stack — a
+     * start stamp taken here and a duration attributed there, which is what
+     * {@code FrameProfile.begin()/end(t, bucket)} has always been. Recording those as push/pop would
+     * impose a nesting discipline they never had; recording them at the current depth means they nest
+     * correctly the moment an enclosing bracket becomes a real zone, and read as siblings until then.</p>
+     */
+    void record(int name, int channelIndex, long startNanos, long endNanos) {
+        long slot = written++;
+        int at = (int) (slot & mask);
+        start[at] = startNanos;
+        end[at] = endNanos;
+        nameId[at] = name;
+        packed[at] = pack(channelIndex, depth, threadId);
+    }
+
     /** Closes the innermost open zone. */
     void pop(long now) {
         if (depth == 0) {

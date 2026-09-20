@@ -140,6 +140,21 @@ public final class CgTrace {
         setEnabled(prefix, false);
     }
 
+    /**
+     * Switches one channel, by the channel itself.
+     *
+     * <p><b>Prefer this over the string form when the caller holds the constant.</b> A prefix is
+     * matched against channels that have REGISTERED, and a channel registers when its declaring class
+     * first loads — so enabling {@code "crystalgui.frame"} before anything has touched the class that
+     * declares it matches nothing and silently does nothing. Passing the channel cannot fail that way,
+     * because holding one is proof it exists.</p>
+     */
+    public static synchronized void setEnabled(CgTraceChannel channel, boolean on) {
+        long was = enabledMask;
+        enabledMask = on ? (was | channel.bit()) : (was & ~channel.bit());
+        if (enabledMask != was) markMaskChange();
+    }
+
     public static synchronized void setEnabled(String prefix, boolean on) {
         long bits = 0L;
         for (CgTraceChannel channel : ORDER) {
@@ -299,6 +314,40 @@ public final class CgTrace {
         return begin(channel, CgTraceNames.intern(name));
     }
 
+    /**
+     * Records a zone that is already over, from a start stamp taken earlier.
+     *
+     * <pre>{@code
+     * long t = CgTrace.begin();           // or any earlier System.nanoTime()
+     * ...
+     * CgTrace.zoneDone(CH, "layer:clear", t);
+     * }</pre>
+     *
+     * <p>The faithful translation of an <em>additive bucket</em> — a shape that never had a nesting
+     * discipline, so imposing one on it would be inventing structure. It lands at whatever depth is
+     * currently open, so it nests properly inside a real zone and reads as a sibling otherwise.</p>
+     */
+    public static void zoneDone(CgTraceChannel channel, int nameId, long startNanos) {
+        if ((enabledMask & channel.bit()) == 0L || startNanos == 0L) return;
+        LOCAL_ZONE.get().owner.record(nameId, channel.index(), startNanos, System.nanoTime());
+    }
+
+    public static void zoneDone(CgTraceChannel channel, String name, long startNanos) {
+        if ((enabledMask & channel.bit()) == 0L || startNanos == 0L) return;
+        zoneDone(channel, CgTraceNames.intern(name), startNanos);
+    }
+
+    /** As {@link #zoneDone(CgTraceChannel, int, long)}, with both ends given — for a synthetic clock. */
+    public static void zoneDone(CgTraceChannel channel, String name, long startNanos, long endNanos) {
+        if ((enabledMask & channel.bit()) == 0L) return;
+        LOCAL_ZONE.get().owner.record(CgTraceNames.intern(name), channel.index(), startNanos, endNanos);
+    }
+
+    /** A start stamp for {@link #zoneDone}, or 0 when nothing is recording. */
+    public static long begin() {
+        return enabledMask == 0L ? 0L : System.nanoTime();
+    }
+
     /** Closes the innermost zone opened by {@link #begin}. A zero token is a no-op. */
     public static void end(long token) {
         if (token == 0L) return;
@@ -403,8 +452,15 @@ public final class CgTrace {
      * otherwise shift every zone after it, which reads as a wrong tree rather than as a failure.</p>
      */
     public static void frameBegin() {
+        frameBegin(System.nanoTime());
+    }
+
+    /**
+     * {@link #frameBegin()} at a stated time — for a host with its own clock, and for a test that must
+     * assert on a distribution rather than on whatever the machine happened to do.
+     */
+    public static void frameBegin(long now) {
         if (enabledMask == 0L) return;
-        long now = System.nanoTime();
         CgTraceZones local = LOCAL.get();
         frameThread = Thread.currentThread();
         if (openBegin >= 0L) {
@@ -426,8 +482,13 @@ public final class CgTrace {
      * what lets a host whose paint never runs still record frames.</p>
      */
     public static void frameEnd() {
+        frameEnd(System.nanoTime());
+    }
+
+    /** {@link #frameEnd()} at a stated time. @see #frameBegin(long) */
+    public static void frameEnd(long now) {
         if (enabledMask == 0L || openBegin < 0L) return;
-        openCpu = System.nanoTime() - openBegin;
+        openCpu = now - openBegin;
     }
 
     private static void commit(long now, CgTraceZones local) {
@@ -445,6 +506,21 @@ public final class CgTrace {
 
     static long framesWritten() {
         return framesWritten;
+    }
+
+    /**
+     * How many frames have ever been committed — a cheap validity stamp.
+     *
+     * <p>A readout that asks ten questions per refresh can build its window once and reuse it while
+     * this has not moved, instead of walking the ring per question.</p>
+     */
+    public static long frameCount() {
+        return framesWritten;
+    }
+
+    /** The counters recorded against {@code frame}. */
+    public static List<CgTraceSnapshot.CounterView> countersIn(CgFrameRecord frame) {
+        return CgTraceSnapshot.countersOf(frame.index());
     }
 
     static CgFrameRecord frameAt(long index) {
@@ -470,6 +546,34 @@ public final class CgTrace {
     /** An immutable view of everything held, safe to read off the frame thread. */
     public static CgTraceSnapshot snapshot() {
         return CgTraceSnapshot.of();
+    }
+
+    /**
+     * Just the frames, oldest first — the cheap read.
+     *
+     * <p>A readout refreshed ten times a second wants frame times and nothing else, and a full
+     * {@link #snapshot()} copies every zone to deliver them. Six hundred record references cost
+     * nothing; the zones are fetched only for the frame somebody actually looked at.</p>
+     */
+    public static List<CgFrameRecord> frames() {
+        List<CgFrameRecord> out = new ArrayList<>(FRAME_CAPACITY);
+        long oldest = Math.max(0L, framesWritten - FRAME_CAPACITY);
+        for (long i = oldest; i < framesWritten; i++) {
+            CgFrameRecord record = frameAt(i);
+            if (record != null) out.add(record);
+        }
+        return out;
+    }
+
+    /**
+     * The zones whose start falls inside {@code frame}, across every thread, ordered by start.
+     *
+     * <p>Binary search per arena rather than a walk of the whole ring: zones are appended in start
+     * order, so the frame's window is a contiguous run and the cost is the run's length rather than the
+     * arena's.</p>
+     */
+    public static List<CgTraceSnapshot.ZoneView> zonesIn(CgFrameRecord frame) {
+        return CgTraceSnapshot.zonesOf(frame);
     }
 
     /** Drops everything recorded. The enabled mask is left alone. */
