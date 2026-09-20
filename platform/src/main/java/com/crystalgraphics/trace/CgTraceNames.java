@@ -62,6 +62,32 @@ public final class CgTraceNames {
             "com.crystalgraphics.trace.CgTrace$Zone");
 
     /**
+     * Classes that FORWARD to this engine rather than instrument themselves.
+     *
+     * <p>A facade breaks the source location, and silently: every name a forwarder interns is
+     * attributed to the forwarder, so 275 CrystalGUI call sites all pointed at one line of
+     * {@code FrameProfile} and the column that makes a report actionable said the same thing about
+     * every row. The same trap is waiting for `CgProfiler` when it becomes a facade.</p>
+     *
+     * <p>So a forwarder declares itself, once, and its frames are skipped like the engine's own.</p>
+     */
+    private static final Set<String> FORWARDERS = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /**
+     * Declares {@code className} a forwarder, so a name interned through it is attributed to ITS caller.
+     *
+     * <pre>{@code
+     * CgTraceNames.addForwarder("com.crystalgui.core.trace.FrameProfile");
+     * }</pre>
+     *
+     * <p>Call before the forwarder interns anything: a name's location is captured once, on first
+     * sight, and declaring a forwarder afterwards does not revisit what it already attributed.</p>
+     */
+    public static void addForwarder(String className) {
+        if (className != null && !className.isEmpty()) FORWARDERS.add(className);
+    }
+
+    /**
      * The id for {@code name}, assigning one and capturing its source location on first sight.
      *
      * <p>Thread-safe and idempotent. The common case — a name already seen — is one concurrent-map
@@ -115,7 +141,8 @@ public final class CgTraceNames {
     private static String callerOf() {
         Optional<String> found = StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE)
                 .walk(frames -> frames
-                        .filter(f -> !SELF.contains(f.getClassName()))
+                        .filter(f -> !SELF.contains(f.getClassName())
+                                && !FORWARDERS.contains(f.getClassName()))
                         .map(CgTraceNames::describe)
                         .filter(Objects::nonNull)
                         .findFirst());
