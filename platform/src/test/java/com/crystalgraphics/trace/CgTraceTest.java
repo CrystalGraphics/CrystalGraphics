@@ -358,20 +358,35 @@ public class CgTraceTest {
      */
     @Test
     public void aDisabledZoneIsFreeAndAnEnabledOneIsTwoClockReads() {
-        final int runs = 3;
+        final int runs = 5;
         final int iterations = 2_000_000;
 
-        CgTrace.disableAll();
         double off = Double.MAX_VALUE;
-        for (int r = 0; r < runs; r++) off = Math.min(off, timeZones(iterations));
-
-        CgTrace.enable("test.ui");
         double on = Double.MAX_VALUE;
-        for (int r = 0; r < runs; r++) on = Math.min(on, timeZones(iterations));
+        // INTERLEAVED AND BEST-OF, because the two numbers are measured on a machine that is also doing
+        // something else. Taking all the disabled runs first would charge one of them whatever the
+        // machine was busy with at the time, and the comparison below is between them.
+        for (int r = 0; r < runs; r++) {
+            CgTrace.disableAll();
+            off = Math.min(off, timeZones(iterations));
+            CgTrace.enable("test.ui");
+            on = Math.min(on, timeZones(iterations));
+        }
 
-        System.out.printf("[trace] zone cost: disabled %.2fns, enabled %.2fns%n", off, on);
-        assertTrue("a disabled zone cost " + off + "ns; it should be a bit test", off < 6.0d);
-        assertTrue("an enabled zone cost " + on + "ns; budget is two nanoTime() calls", on < 240.0d);
+        System.out.printf("[trace] zone cost: disabled %.2fns, enabled %.2fns (ratio %.1fx)%n",
+                off, on, on / off);
+
+        // THE GATE IS A RATIO, and that is the honest form of it. There is no JMH here, so an absolute
+        // nanosecond figure is a statement about this machine on this afternoon -- measured at 0.50ns
+        // on an idle one and 8.11ns on the same code while a build ran. What does not move is the
+        // SHAPE: a disabled zone is a mask test and an enabled one is two clock reads, so the second
+        // must cost several times the first. A regression that made the disabled path allocate, look
+        // up a thread-local or build a string would collapse that ratio on any machine.
+        assertTrue("disabled " + off + "ns vs enabled " + on + "ns: the disabled path is doing work",
+                off * 4.0d < on);
+        // And a loose absolute ceiling, to catch the case where BOTH got slow together.
+        assertTrue("a disabled zone cost " + off + "ns; it should be a bit test", off < 25.0d);
+        assertTrue("an enabled zone cost " + on + "ns; budget is two nanoTime() calls", on < 400.0d);
     }
 
     private static double timeZones(int iterations) {

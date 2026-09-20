@@ -163,6 +163,65 @@ public final class CgTraceSnapshot {
         return new CgTraceSnapshot(frames, zones, counters, markers, spans, dropped);
     }
 
+    /**
+     * The zones of one frame, without building a whole snapshot.
+     *
+     * <p>Zones are appended in start order within an arena, so a frame's window is a contiguous run —
+     * found by binary search and walked until it ends. That is what makes this affordable for a readout
+     * that asks ten times a second, where {@link #of()} copying every zone in the ring is not.</p>
+     */
+    static List<ZoneView> zonesOf(CgFrameRecord frame) {
+        String[] channelNames = channelNames();
+        List<ZoneView> out = new ArrayList<>();
+        for (CgTraceZones arena : CgTrace.arenas()) {
+            long high = arena.written;
+            long low = Math.max(0L, high - arena.capacity());
+            long at = firstAtOrAfter(arena, low, high, frame.beginNanos());
+            for (long slot = at; slot < high; slot++) {
+                long start = arena.at(slot, arena.start);
+                if (start >= frame.endNanos()) break;
+                if (start < frame.beginNanos()) continue;
+                int packed = arena.at(slot, arena.packed);
+                int nameId = arena.at(slot, arena.nameId);
+                out.add(new ZoneView(
+                        CgTraceNames.nameOf(nameId),
+                        CgTraceNames.sourceOf(nameId),
+                        arena.threadName,
+                        channelNames[CgTraceZones.channelOf(packed)],
+                        CgTraceZones.depthOf(packed),
+                        start,
+                        arena.at(slot, arena.end)));
+            }
+        }
+        out.sort(Comparator.comparingLong(ZoneView::startNanos));
+        return out;
+    }
+
+    /** The counters written against one frame index, without building a whole snapshot. */
+    static List<CounterView> countersOf(long frameIndex) {
+        CgTraceEvents events = CgTrace.events();
+        List<CounterView> out = new ArrayList<>();
+        synchronized (events) {
+            for (long slot = events.oldestCounter(); slot < events.countersWritten; slot++) {
+                int at = events.counterAt(slot);
+                if (events.counterFrame[at] != frameIndex) continue;
+                out.add(new CounterView(CgTraceNames.nameOf(events.counterName[at]),
+                        frameIndex, events.counterValue[at]));
+            }
+        }
+        return out;
+    }
+
+    /** The first slot in {@code [low, high)} whose start is at or after {@code nanos}. */
+    private static long firstAtOrAfter(CgTraceZones arena, long low, long high, long nanos) {
+        while (low < high) {
+            long mid = low + ((high - low) >>> 1);
+            if (arena.at(mid, arena.start) < nanos) low = mid + 1;
+            else high = mid;
+        }
+        return low;
+    }
+
     private static String[] channelNames() {
         String[] names = new String[CgTrace.MAX_CHANNELS];
         for (int i = 0; i < names.length; i++) names[i] = "?";
@@ -197,7 +256,7 @@ public final class CgTraceSnapshot {
         return droppedZones;
     }
 
-    /** The zones whose start falls inside {@code frame}, ordered by start then depth. */
+    /** The zones whose start falls inside {@code frame}, ordered by start. */
     public List<ZoneView> zonesIn(CgFrameRecord frame) {
         List<ZoneView> out = new ArrayList<>();
         for (ZoneView zone : zones) {
