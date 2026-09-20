@@ -386,8 +386,19 @@ public final class CgTrace {
      * a fix. {@code detail} is interned, so an attribution repeated every frame costs one lookup.</p>
      */
     public static void marker(CgTraceChannel channel, String name, String detail) {
+        markerAt(channel, name, detail, System.nanoTime());
+    }
+
+    /**
+     * {@link #marker(CgTraceChannel, String, String)} at a stated time.
+     *
+     * <p>For a host with its own clock, and for a test: an event recorded on the real clock while the
+     * frames around it are synthetic falls outside every window that would show it, which is a silent
+     * omission rather than a failure.</p>
+     */
+    public static void markerAt(CgTraceChannel channel, String name, String detail, long nanos) {
         if ((enabledMask & channel.bit()) == 0L) return;
-        events.marker(CgTraceNames.intern(name), channel.index(), System.nanoTime(),
+        events.marker(CgTraceNames.intern(name), channel.index(), nanos,
                 detail == null ? -1 : CgTraceNames.intern(detail));
     }
 
@@ -403,18 +414,28 @@ public final class CgTrace {
      * @return an id for {@link #spanEnd(long)}, or -1 when the channel is not recording
      */
     public static long spanBegin(CgTraceChannel channel, String name) {
+        return spanBeginAt(channel, name, System.nanoTime());
+    }
+
+    /** {@link #spanBegin} at a stated time. @see #markerAt */
+    public static long spanBeginAt(CgTraceChannel channel, String name, long nanos) {
         if ((enabledMask & channel.bit()) == 0L) return -1L;
         CgTraceZones local = LOCAL.get();
         long id = events.spanBegin(CgTraceNames.intern(name), channel.index(), local.threadId,
-                local.currentSpan(), System.nanoTime());
+                local.currentSpan(), nanos);
         local.pushSpan(id);
         return id;
     }
 
     public static void spanEnd(long id) {
+        spanEndAt(id, System.nanoTime());
+    }
+
+    /** {@link #spanEnd} at a stated time. @see #markerAt */
+    public static void spanEndAt(long id, long nanos) {
         if (id < 0L) return;
         LOCAL.get().popSpan();
-        events.spanEnd(id, System.nanoTime());
+        events.spanEnd(id, nanos);
     }
 
     /**
