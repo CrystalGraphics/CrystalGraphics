@@ -5,6 +5,7 @@ import java.io.Writer;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
 
 /**
  * Writes a snapshot as a Chrome JSON trace — the format {@code ui.perfetto.dev} opens directly.
@@ -79,7 +80,18 @@ public final class CgTraceExport {
         emit.metadata(PID, FRAME_TID, "thread_name", "Frames");
         emit.metadata(PID, SPAN_TID, "thread_name", "Chains");
 
+        // THREAD IDS FIRST, in one pass, so the emit below is a plain loop. Doing this inside a
+        // computeIfAbsent meant writing to the stream from a mapping function and wrapping the
+        // IOException to get it out -- which discards the `throws` this method already declares.
         Map<String, Integer> threadIds = new HashMap<>();
+        for (CgTraceSnapshot.ZoneView zone : snapshot.zones()) {
+            if (!threadIds.containsKey(zone.thread())) {
+                int id = threadIds.size() + 1;
+                threadIds.put(zone.thread(), id);
+                emit.metadata(PID, id, "thread_name", zone.thread());
+            }
+        }
+
         for (CgFrameRecord frame : frames) {
             emit.complete("Frame " + frame.index(), "frame", PID, FRAME_TID,
                     micros(frame.beginNanos() - first), micros(frame.wallNanos()),
@@ -92,15 +104,7 @@ public final class CgTraceExport {
         for (CgTraceSnapshot.ZoneView zone : snapshot.zones()) {
             if (zone.isOpen()) continue;
             if (zone.startNanos() < windowFrom || zone.startNanos() > windowTo) continue;
-            int tid = threadIds.computeIfAbsent(zone.thread(), name -> {
-                int id = threadIds.size() + 1;
-                try {
-                    emit.metadata(PID, id, "thread_name", name);
-                } catch (IOException failed) {
-                    throw new java.io.UncheckedIOException(failed);
-                }
-                return id;
-            });
+            int tid = threadIds.get(zone.thread());
             emit.complete(zone.name(), zone.channel(), PID, tid,
                     micros(zone.startNanos() - first), micros(zone.durationNanos()),
                     zone.source() == null ? null : "{\"src\":\"" + escape(zone.source()) + "\"}");
@@ -155,7 +159,7 @@ public final class CgTraceExport {
     }
 
     private static String round(double value) {
-        return String.format(java.util.Locale.ROOT, "%.3f", value);
+        return String.format(Locale.ROOT, "%.3f", value);
     }
 
     /** Writes the events, keeping track of whether a comma is owed. */

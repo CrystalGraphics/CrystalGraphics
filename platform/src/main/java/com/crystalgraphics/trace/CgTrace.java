@@ -73,6 +73,15 @@ public final class CgTrace {
     private static final List<CgTraceChannel> ORDER = new CopyOnWriteArrayList<>();
 
     /**
+     * The engine's own channel — what it records ABOUT a recording.
+     *
+     * <p>A mask change, and anything else this class has to say for itself. Registered here rather
+     * than borrowed from the overflow bucket, so these events carry a name a reader can filter on
+     * instead of appearing under {@code ?}.</p>
+     */
+    public static final CgTraceChannel TRACE = channel("trace");
+
+    /**
      * Which channels are recording.
      *
      * <p>Volatile because it is written from a UI thread and read on every hot path; a plain field
@@ -208,7 +217,12 @@ public final class CgTrace {
      */
     private static void markMaskChange() {
         if (enabledMask == 0L) return;
-        events.marker(CgTraceNames.intern("trace:mask"), MAX_CHANNELS - 1, System.nanoTime(),
+        // THE ENGINE'S OWN CHANNEL IS ON WHENEVER ANYTHING IS. It carries this very event, which is
+        // written unconditionally because a recording that changed shape must say so -- and a meta
+        // file listing `trace` as "not recording" beside a mask marker it had just recorded would be
+        // exactly the kind of quiet lie the self-describing header exists to prevent.
+        enabledMask |= TRACE.bit();
+        events.marker(CgTraceNames.intern("trace:mask"), TRACE.index(), System.nanoTime(),
                 CgTraceNames.intern(String.join(",", enabledNames())));
     }
 
@@ -225,13 +239,6 @@ public final class CgTrace {
     private static volatile CgTraceEvents events = new CgTraceEvents(1 << 14, 1 << 12, 1 << 12);
 
     private static final Map<Thread, CgTraceZones> ARENAS = new ConcurrentHashMap<>();
-
-    private static final ThreadLocal<CgTraceZones> LOCAL = ThreadLocal.withInitial(() -> {
-        Thread thread = Thread.currentThread();
-        CgTraceZones made = new CgTraceZones(thread.getName(), ARENAS.size(), ZONE_CAPACITY);
-        ARENAS.put(thread, made);
-        return made;
-    });
 
     /** Every thread that has recorded anything. Read by {@link #snapshot()}. */
     static List<CgTraceZones> arenas() {
@@ -272,11 +279,22 @@ public final class CgTrace {
     /**
      * This thread's handle, holding this thread's arena.
      *
-     * <p>The arena is reached THROUGH the handle rather than through a second thread-local, so an
-     * opened zone costs one lookup and not two.</p>
+     * <p><b>The only thread-local here.</b> The arena is reached through the handle
+     * ({@code LOCAL_ZONE.get().owner}) rather than through a second one, so an opened zone costs one
+     * lookup and not two — and spans, which are rare enough not to care, still go through the same
+     * door so there is one definition of "this thread's state".</p>
      */
-    private static final ThreadLocal<Zone> LOCAL_ZONE =
-            ThreadLocal.withInitial(() -> new Zone(LOCAL.get()));
+    private static final ThreadLocal<Zone> LOCAL_ZONE = ThreadLocal.withInitial(() -> {
+        Thread thread = Thread.currentThread();
+        CgTraceZones made = new CgTraceZones(thread.getName(), ARENAS.size(), ZONE_CAPACITY);
+        ARENAS.put(thread, made);
+        return new Zone(made);
+    });
+
+    /** This thread's arena. */
+    private static CgTraceZones local() {
+        return LOCAL_ZONE.get().owner;
+    }
 
     /** Interns {@code name} and returns its id — the form a hot call site should hold in a constant. */
     public static int name(String name) {
@@ -318,10 +336,13 @@ public final class CgTrace {
      * Records a zone that is already over, from a start stamp taken earlier.
      *
      * <pre>{@code
-     * long t = CgTrace.begin();           // or any earlier System.nanoTime()
+     * long t = System.nanoTime();
      * ...
      * CgTrace.zoneDone(CH, "layer:clear", t);
      * }</pre>
+     *
+     * <p><b>Not paired with {@link #end(long)}</b>, which closes a zone {@link #begin} opened. This
+     * takes a plain stamp and writes a whole zone; there is nothing on the stack to pop.</p>
      *
      * <p>The faithful translation of an <em>additive bucket</em> — a shape that never had a nesting
      * discipline, so imposing one on it would be inventing structure. It lands at whatever depth is
@@ -341,11 +362,6 @@ public final class CgTrace {
     public static void zoneDone(CgTraceChannel channel, String name, long startNanos, long endNanos) {
         if ((enabledMask & channel.bit()) == 0L) return;
         LOCAL_ZONE.get().owner.record(CgTraceNames.intern(name), channel.index(), startNanos, endNanos);
-    }
-
-    /** A start stamp for {@link #zoneDone}, or 0 when nothing is recording. */
-    public static long begin() {
-        return enabledMask == 0L ? 0L : System.nanoTime();
     }
 
     /** Closes the innermost zone opened by {@link #begin}. A zero token is a no-op. */
@@ -420,7 +436,7 @@ public final class CgTrace {
     /** {@link #spanBegin} at a stated time. @see #markerAt */
     public static long spanBeginAt(CgTraceChannel channel, String name, long nanos) {
         if ((enabledMask & channel.bit()) == 0L) return -1L;
-        CgTraceZones local = LOCAL.get();
+        CgTraceZones local = local();
         long id = events.spanBegin(CgTraceNames.intern(name), channel.index(), local.threadId,
                 local.currentSpan(), nanos);
         local.pushSpan(id);
@@ -434,7 +450,7 @@ public final class CgTrace {
     /** {@link #spanEnd} at a stated time. @see #markerAt */
     public static void spanEndAt(long id, long nanos) {
         if (id < 0L) return;
-        LOCAL.get().popSpan();
+        local().popSpan();
         events.spanEnd(id, nanos);
     }
 
@@ -446,7 +462,7 @@ public final class CgTrace {
      */
     public static void spanDone(CgTraceChannel channel, String name, long startNanos) {
         if ((enabledMask & channel.bit()) == 0L || startNanos == 0L) return;
-        CgTraceZones local = LOCAL.get();
+        CgTraceZones local = local();
         events.spanDone(CgTraceNames.intern(name), channel.index(), local.threadId,
                 local.currentSpan(), startNanos, System.nanoTime());
     }
@@ -457,7 +473,15 @@ public final class CgTrace {
     private static long framesWritten;
 
     private static long openBegin = -1L;
-    private static long openIndex = -1L;
+
+    /**
+     * The frame a counter is attributed to.
+     *
+     * <p>Volatile because {@link #counter} reads it from whatever thread recorded the count, while
+     * only the frame thread writes it. The rest of the open-frame state below is the frame thread's
+     * alone; this is the one field that crosses.</p>
+     */
+    private static volatile long openIndex = -1L;
     private static long openCpu = CgFrameRecord.ABSENT;
     private static long openGc;
     private static long openDropped;
@@ -482,7 +506,7 @@ public final class CgTrace {
      */
     public static void frameBegin(long now) {
         if (enabledMask == 0L) return;
-        CgTraceZones local = LOCAL.get();
+        CgTraceZones local = local();
         frameThread = Thread.currentThread();
         if (openBegin >= 0L) {
             openLeaked += local.closeOpen(now);
@@ -564,6 +588,19 @@ public final class CgTrace {
 
     // ── Reading ─────────────────────────────────────────────────────────────────────────────
 
+    /**
+     * Zones lost to a full arena, across every thread.
+     *
+     * <p>The cheap read. {@link CgTraceSnapshot#droppedZones()} answers the same number after copying
+     * every zone in the ring to get it, which is the wrong price for a figure that belongs in a
+     * one-line header.</p>
+     */
+    public static long droppedZones() {
+        long total = 0L;
+        for (CgTraceZones arena : ARENAS.values()) total += arena.dropped;
+        return total;
+    }
+
     /** An immutable view of everything held, safe to read off the frame thread. */
     public static CgTraceSnapshot snapshot() {
         return CgTraceSnapshot.of();
@@ -606,7 +643,6 @@ public final class CgTrace {
         openCpu = CgFrameRecord.ABSENT;
         openLeaked = 0;
         ARENAS.clear();
-        LOCAL.remove();
         LOCAL_ZONE.remove();
         events = new CgTraceEvents(1 << 14, 1 << 12, 1 << 12);
     }
