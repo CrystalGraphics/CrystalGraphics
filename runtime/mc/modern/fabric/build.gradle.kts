@@ -64,12 +64,26 @@ val platformJar     = project(":platform").tasks.named<Jar>("jar").flatMap { it.
 val coreJar         = project(":core").tasks.named<Jar>("jar").flatMap { it.archiveFile }
 val commonJar       = project(":runtime:mc:modern:common").tasks.named<Jar>("jar").flatMap { it.archiveFile }
 val freetypeJar     = project(":freetype-msdfgen-harfbuzz-bindings").tasks.named<Jar>("jar").flatMap { it.archiveFile }
+// THE VARIANT SELECTOR (J11.0). Every CrystalGUI host on every loader calls VariantBootstrap from its
+// own entry point, and on fabric CrystalGraphics arrives as a MOD JAR -- com.crystalgraphics is excluded
+// from the consumer's runtimeClasspath on purpose, so a module absent from this jar is absent full stop.
+// A dedicated server died at the crystalgui entrypoint with
+// NoClassDefFoundError: com/crystalgraphics/mc/shared/VariantBootstrap. Forge and neoforge take theirs
+// from additionalRuntimeClasspath instead, which is why this was fabric's alone.
+val mcSharedJar     = project(":runtime:mc:shared").tasks.named<Jar>("jar").flatMap { it.archiveFile }
+// TIER 1 FOR LWJGL3, which PlatformServiceModern assembles over. Same J9 move and the same hole as
+// mc-shared above: the backend left runtime/mc/modern/common -- which IS bundled -- for a module that
+// was bundled nowhere. CrystalGraphicsFabricCommon names Lwjgl3GLBackend at class-definition time, so
+// its absence is a NoClassDefFoundError out of defineClass rather than a late one at first use.
+val lwjgl3Jar       = project(":runtime:lwjgl:3").tasks.named<Jar>("jar").flatMap { it.archiveFile }
 
 tasks.jar {
     from(zipTree(platformJar))
     from(zipTree(coreJar))
     from(zipTree(commonJar))
     from(zipTree(freetypeJar))
+    from(zipTree(mcSharedJar))
+    from(zipTree(lwjgl3Jar))
 }
 
 tasks.shadowJar {
@@ -78,6 +92,8 @@ tasks.shadowJar {
     from(zipTree(coreJar))
     from(zipTree(commonJar))
     from(zipTree(freetypeJar))
+    from(zipTree(mcSharedJar))
+    from(zipTree(lwjgl3Jar))
 }
 
 // Not on `assemble` (J7): the merged single jar is the shipping artifact, and the fat per-loader jar
