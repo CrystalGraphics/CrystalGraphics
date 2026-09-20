@@ -34,7 +34,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  *         CgService.of("crystalgui:script-platform", ScriptService.NONE);
  *
  * // filled by a loader, and read by anyone -- both through the one registry
- * CgPlatform.provide(ScriptServices.SERVICE, new Mc1710ScriptService());
+ * CgPlatform.provide(ScriptServices.SERVICE, new ScriptService1710());
  * CgPlatform.get(ScriptServices.SERVICE).liveBytes();
  * }</pre>
  *
