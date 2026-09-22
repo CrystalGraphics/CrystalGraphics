@@ -33,6 +33,7 @@ public record CgFrameRecord(
         long cpuNanos,
         long gpuNanos,
         long gcMillis,
+        int gcCollections,
         int leakedZones,
         long droppedZones) {
 
@@ -62,6 +63,23 @@ public record CgFrameRecord(
 
     public double gpuMillis() {
         return gpuNanos / 1_000_000d;
+    }
+
+    /**
+     * Whether a collection ran inside this frame — asked of the COUNT, since a young pause under a
+     * millisecond adds nothing to {@link #gcMillis()} and still happened.
+     */
+    public boolean hadGc() {
+        return gcCollections > 0;
+    }
+
+    /**
+     * The collection time as a reader wants it — {@code "6 ms"}, {@code "<1 ms"} for a pause too short
+     * to reach a millisecond, and the count after it when there was more than one.
+     */
+    public String gcSummary() {
+        String time = gcMillis > 0L ? gcMillis + " ms" : "<1 ms";
+        return gcCollections > 1 ? time + " (" + gcCollections + " collections)" : time;
     }
 
     /** Whether this frame covers {@code nanos} — how zones are attributed to it. */
