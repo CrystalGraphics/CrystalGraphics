@@ -92,15 +92,18 @@ public final class CgTraceSnapshot {
     }
 
     static CgTraceSnapshot of() {
+        return of(true);
+    }
+
+    /**
+     * @param withZones false leaves {@link #zones()} empty — for a reader that fetches zones per frame
+     *                  through {@link CgTrace#zonesBetween}, where copying the whole ring would cost more
+     *                  than everything else in the snapshot put together
+     */
+    static CgTraceSnapshot of(boolean withZones) {
         String[] channelNames = channelNames();
 
-        List<CgFrameRecord> frames = new ArrayList<>();
-        long written = CgTrace.framesWritten();
-        long oldest = Math.max(0L, written - CgTrace.frameCapacity());
-        for (long i = oldest; i < written; i++) {
-            CgFrameRecord record = CgTrace.frameAt(i);
-            if (record != null) frames.add(record);
-        }
+        List<CgFrameRecord> frames = CgTrace.frames();
 
         List<ZoneView> zones = new ArrayList<>();
         long dropped = 0L;
@@ -108,20 +111,22 @@ public final class CgTraceSnapshot {
             // READ THE WATERMARK FIRST. Anything the owning thread writes after this point is simply
             // not in the snapshot, which is correct; reading it last would let the bound run ahead of
             // the data and hand back a half-written zone.
-            long high = arena.written;
+            CgTraceZones.Store held = arena.store;
+            long high = arena.highFor(held);
             dropped += arena.dropped;
-            long from = Math.max(0L, high - arena.capacity());
+            if (!withZones) continue;
+            long from = Math.max(0L, high - held.capacity);
             for (long slot = from; slot < high; slot++) {
-                int packed = arena.at(slot, arena.packed);
-                int nameId = arena.at(slot, arena.nameId);
+                int packed = held.packed(slot);
+                int nameId = held.nameId(slot);
                 zones.add(new ZoneView(
                         CgTraceNames.nameOf(nameId),
                         CgTraceNames.sourceOf(nameId),
                         arena.threadName,
                         channelNames[CgTraceZones.channelOf(packed)],
                         CgTraceZones.depthOf(packed),
-                        arena.at(slot, arena.start),
-                        arena.at(slot, arena.end)));
+                        held.start(slot),
+                        held.end(slot)));
             }
         }
         zones.sort(Comparator.comparingLong(ZoneView::startNanos));
@@ -130,6 +135,8 @@ public final class CgTraceSnapshot {
         List<CounterView> counters = new ArrayList<>();
         List<MarkerView> markers = new ArrayList<>();
         List<SpanView> spans = new ArrayList<>();
+        // THE FIRST FRAMES' COUNTERS, from their own store: the ring's would have overwritten them.
+        readCounters(CgTrace.headEvents(), counters, -1L);
         // ONE LOCK ACROSS ALL THREE. Taken separately, a counter could be read from before a write
         // and a marker from after it, and the snapshot would describe a moment that never existed --
         // which is the one thing a snapshot is for.
@@ -168,18 +175,24 @@ public final class CgTraceSnapshot {
      * that asks ten times a second, where {@link #of()} copying every zone in the ring is not.</p>
      */
     static List<ZoneView> zonesOf(CgFrameRecord frame) {
+        return zonesBetween(frame.beginNanos(), frame.endNanos());
+    }
+
+    /** Every zone starting in {@code [fromNanos, toNanos)}, across every thread, ordered by start. */
+    static List<ZoneView> zonesBetween(long fromNanos, long toNanos) {
         String[] channelNames = channelNames();
         List<ZoneView> out = new ArrayList<>();
         for (CgTraceZones arena : CgTrace.arenas()) {
-            long high = arena.written;
-            long low = Math.max(0L, high - arena.capacity());
-            long at = firstAtOrAfter(arena, low, high, frame.beginNanos());
+            CgTraceZones.Store held = arena.store;
+            long high = arena.highFor(held);
+            long low = Math.max(0L, high - held.capacity);
+            long at = firstAtOrAfter(held, low, high, fromNanos);
             for (long slot = at; slot < high; slot++) {
-                long start = arena.at(slot, arena.start);
-                if (start >= frame.endNanos()) break;
-                if (start < frame.beginNanos()) continue;
-                int packed = arena.at(slot, arena.packed);
-                int nameId = arena.at(slot, arena.nameId);
+                long start = held.start(slot);
+                if (start >= toNanos) break;
+                if (start < fromNanos) continue;
+                int packed = held.packed(slot);
+                int nameId = held.nameId(slot);
                 out.add(new ZoneView(
                         CgTraceNames.nameOf(nameId),
                         CgTraceNames.sourceOf(nameId),
@@ -187,7 +200,7 @@ public final class CgTraceSnapshot {
                         channelNames[CgTraceZones.channelOf(packed)],
                         CgTraceZones.depthOf(packed),
                         start,
-                        arena.at(slot, arena.end)));
+                        held.end(slot)));
             }
         }
         out.sort(Comparator.comparingLong(ZoneView::startNanos));
@@ -196,24 +209,28 @@ public final class CgTraceSnapshot {
 
     /** The counters written against one frame index, without building a whole snapshot. */
     static List<CounterView> countersOf(long frameIndex) {
-        CgTraceEvents events = CgTrace.events();
         List<CounterView> out = new ArrayList<>();
-        synchronized (events) {
-            for (long slot = events.oldestCounter(); slot < events.countersWritten; slot++) {
-                int at = events.counterAt(slot);
-                if (events.counterFrame[at] != frameIndex) continue;
-                out.add(new CounterView(CgTraceNames.nameOf(events.counterName[at]),
-                        frameIndex, events.counterValue[at]));
-            }
-        }
+        readCounters(frameIndex < CgTrace.firstFrames() ? CgTrace.headEvents() : CgTrace.events(), out, frameIndex);
         return out;
     }
 
+    /** Every counter in {@code events}, or only {@code frameIndex}'s when it is not -1. */
+    private static void readCounters(CgTraceEvents events, List<CounterView> out, long frameIndex) {
+        synchronized (events) {
+            for (long slot = events.oldestCounter(); slot < events.countersWritten; slot++) {
+                int at = events.counterAt(slot);
+                if (frameIndex >= 0L && events.counterFrame[at] != frameIndex) continue;
+                out.add(new CounterView(CgTraceNames.nameOf(events.counterName[at]),
+                        events.counterFrame[at], events.counterValue[at]));
+            }
+        }
+    }
+
     /** The first slot in {@code [low, high)} whose start is at or after {@code nanos}. */
-    private static long firstAtOrAfter(CgTraceZones arena, long low, long high, long nanos) {
+    private static long firstAtOrAfter(CgTraceZones.Store held, long low, long high, long nanos) {
         while (low < high) {
             long mid = low + ((high - low) >>> 1);
-            if (arena.at(mid, arena.start) < nanos) low = mid + 1;
+            if (held.start(mid) < nanos) low = mid + 1;
             else high = mid;
         }
         return low;
