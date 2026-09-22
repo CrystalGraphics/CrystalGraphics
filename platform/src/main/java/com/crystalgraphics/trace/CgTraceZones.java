@@ -33,16 +33,58 @@ final class CgTraceZones {
     /** A push that could not be recorded. Kept on the stack so the matching pop still balances. */
     private static final int DROPPED = -1;
 
-    private final int capacity;
-    private final int mask;
+    /**
+     * The arrays, replaced whole when the arena grows — and read through one reference, so a reader on
+     * another thread sees one consistent store however the owner is growing it.
+     */
+    static final class Store {
+        final int capacity;
+        final int mask;
+        final long[] start;
+        final long[] end;
+        final int[] nameId;
+        final int[] packed;
+
+        /**
+         * The absolute count at which a bigger store replaced this one. A reader holding this store
+         * clamps to it: slots written after it went only to the replacement.
+         */
+        volatile long retiredAt = Long.MAX_VALUE;
+
+        Store(int capacity) {
+            this.capacity = capacity;
+            this.mask = capacity - 1;
+            this.start = new long[capacity];
+            this.end = new long[capacity];
+            this.nameId = new int[capacity];
+            this.packed = new int[capacity];
+        }
+
+        long start(long slot) {
+            return start[(int) (slot & mask)];
+        }
+
+        long end(long slot) {
+            return end[(int) (slot & mask)];
+        }
+
+        int nameId(long slot) {
+            return nameId[(int) (slot & mask)];
+        }
+
+        int packed(long slot) {
+            return packed[(int) (slot & mask)];
+        }
+    }
+
+    /** Grown up to {@link #maxCapacity}, so a thread that records little never holds a large arena. */
+    volatile Store store;
+    private final int maxCapacity;
+    /** Keep the first zones and drop the rest once full, rather than overwriting the oldest. */
+    private final boolean keepFirst;
 
     final String threadName;
     final int threadId;
-
-    final long[] start;
-    final long[] end;
-    final int[] nameId;
-    final int[] packed;
 
     /** Absolute count of zones ever begun on this thread; the physical slot is this masked. */
     long written;
@@ -87,21 +129,58 @@ final class CgTraceZones {
     }
 
     CgTraceZones(String threadName, int threadId, int capacity) {
-        if (Integer.bitCount(capacity) != 1) {
-            throw new IllegalArgumentException("Zone arena capacity must be a power of two: " + capacity);
+        this(threadName, threadId, capacity, capacity, false);
+    }
+
+    /**
+     * @param initialCapacity what is allocated now; doubled as needed up to {@code maxCapacity}
+     * @param keepFirst       drop once {@code maxCapacity} is full instead of overwriting the oldest
+     */
+    CgTraceZones(String threadName, int threadId, int initialCapacity, int maxCapacity, boolean keepFirst) {
+        if (Integer.bitCount(initialCapacity) != 1 || Integer.bitCount(maxCapacity) != 1
+                || initialCapacity > maxCapacity) {
+            throw new IllegalArgumentException("Zone arena capacities must be powers of two, initial <= max: "
+                    + initialCapacity + ", " + maxCapacity);
         }
         this.threadName = threadName;
         this.threadId = threadId;
-        this.capacity = capacity;
-        this.mask = capacity - 1;
-        this.start = new long[capacity];
-        this.end = new long[capacity];
-        this.nameId = new int[capacity];
-        this.packed = new int[capacity];
+        this.maxCapacity = maxCapacity;
+        this.keepFirst = keepFirst;
+        this.store = new Store(initialCapacity);
     }
 
     int capacity() {
-        return capacity;
+        return store.capacity;
+    }
+
+    /**
+     * The store the next zone goes into — grown first if full and allowed to — or null when a
+     * keep-first arena is full and the zone must be dropped.
+     */
+    private Store room() {
+        Store current = store;
+        if (written < current.capacity) return current;
+        if (current.capacity < maxCapacity) {
+            Store grown = new Store(current.capacity << 1);
+            for (long slot = Math.max(0L, written - current.capacity); slot < written; slot++) {
+                int from = (int) (slot & current.mask);
+                int to = (int) (slot & grown.mask);
+                grown.start[to] = current.start[from];
+                grown.end[to] = current.end[from];
+                grown.nameId[to] = current.nameId[from];
+                grown.packed[to] = current.packed[from];
+            }
+            // RETIRED BEFORE IT IS REPLACED, so a reader that still holds it never reads past this point.
+            current.retiredAt = written;
+            store = grown;
+            return grown;
+        }
+        return keepFirst ? null : current;
+    }
+
+    /** The first absolute slot past what {@code held} can answer for. */
+    long highFor(Store held) {
+        return Math.min(written, held.retiredAt);
     }
 
     int depth() {
@@ -118,12 +197,19 @@ final class CgTraceZones {
             depth++;
             return;
         }
-        long slot = written++;
-        int at = (int) (slot & mask);
-        start[at] = now;
-        end[at] = OPEN;
-        nameId[at] = name;
-        packed[at] = pack(channelIndex, depth, threadId);
+        Store into = room();
+        if (into == null) {
+            dropped++;
+            stack[depth++] = DROPPED;
+            return;
+        }
+        long slot = written;
+        int at = (int) (slot & into.mask);
+        into.start[at] = now;
+        into.end[at] = OPEN;
+        into.nameId[at] = name;
+        into.packed[at] = pack(channelIndex, depth, threadId);
+        written = slot + 1;
         stack[depth++] = (int) slot;
     }
 
@@ -137,12 +223,18 @@ final class CgTraceZones {
      * correctly the moment an enclosing bracket becomes a real zone, and read as siblings until then.</p>
      */
     void record(int name, int channelIndex, long startNanos, long endNanos) {
-        long slot = written++;
-        int at = (int) (slot & mask);
-        start[at] = startNanos;
-        end[at] = endNanos;
-        nameId[at] = name;
-        packed[at] = pack(channelIndex, depth, threadId);
+        Store into = room();
+        if (into == null) {
+            dropped++;
+            return;
+        }
+        long slot = written;
+        int at = (int) (slot & into.mask);
+        into.start[at] = startNanos;
+        into.end[at] = endNanos;
+        into.nameId[at] = name;
+        into.packed[at] = pack(channelIndex, depth, threadId);
+        written = slot + 1;
     }
 
     /** Closes the innermost open zone. */
@@ -155,12 +247,13 @@ final class CgTraceZones {
         if (depth >= stack.length) return;
         int slot = stack[depth];
         if (slot == DROPPED) return;
+        Store held = store;
         // Recycled while it was open: writing an end now would land on somebody else's zone.
-        if (written - Integer.toUnsignedLong(slot) > capacity) {
+        if (written - Integer.toUnsignedLong(slot) > held.capacity) {
             dropped++;
             return;
         }
-        end[slot & mask] = now;
+        held.end[slot & held.mask] = now;
     }
 
     /**
@@ -178,18 +271,6 @@ final class CgTraceZones {
         return leaked;
     }
 
-    /** The oldest absolute slot still held. */
-    long oldest() {
-        return Math.max(0L, written - capacity);
-    }
-
-    long at(long slot, long[] values) {
-        return values[(int) (slot & mask)];
-    }
-
-    int at(long slot, int[] values) {
-        return values[(int) (slot & mask)];
-    }
 
     private static int pack(int channelIndex, int depth, int threadId) {
         return (channelIndex & 0x3F) | ((depth & 0xFF) << 6) | ((threadId & 0x3FF) << 14);

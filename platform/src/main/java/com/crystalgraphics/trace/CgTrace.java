@@ -3,8 +3,10 @@ package com.crystalgraphics.trace;
 import java.lang.management.GarbageCollectorMXBean;
 import java.lang.management.ManagementFactory;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -69,6 +71,12 @@ public final class CgTrace {
     /** A long is 64 channels, which is more than this build will declare. */
     public static final int MAX_CHANNELS = 64;
 
+    /**
+     * Prefixes enabled by name, applied to channels that register afterwards. Guarded by the class.
+     * ABOVE every channel declaration: {@link #channel} reads it, and {@link #TRACE} is one.
+     */
+    private static final Set<String> STANDING = new LinkedHashSet<>();
+
     private static final Map<String, CgTraceChannel> CHANNELS = new ConcurrentHashMap<>();
     private static final List<CgTraceChannel> ORDER = new CopyOnWriteArrayList<>();
 
@@ -88,6 +96,7 @@ public final class CgTrace {
      * would let the JIT hoist the test out of a frame loop and the switch-on would never be seen.</p>
      */
     private static volatile long enabledMask;
+
 
     /**
      * Registers a channel, or returns the one already registered under {@code name}.
@@ -116,6 +125,18 @@ public final class CgTrace {
             CgTraceChannel made = new CgTraceChannel(name, index);
             CHANNELS.put(name, made);
             ORDER.add(made);
+            // AN ENABLED PREFIX IS A STANDING RULE. A channel registers when its declaring class first
+            // loads, which is routinely after somebody asked for its owner at startup.
+            synchronized (CgTrace.class) {
+                for (String prefix : STANDING) {
+                    if (matches(name, prefix)) {
+                        long was = enabledMask;
+                        enabledMask = was | made.bit();
+                        if (enabledMask != was) markMaskChange();
+                        break;
+                    }
+                }
+            }
             return made;
         }
     }
@@ -135,11 +156,13 @@ public final class CgTrace {
     }
 
     /**
-     * Switches on every channel whose name is {@code prefix} or begins {@code prefix + '.'}.
+     * Switches on every channel whose name is {@code prefix} or begins {@code prefix + '.'} — now, and
+     * any that registers later.
      *
      * <p>So {@code enable("crystalgraphics")} takes the whole of it and
-     * {@code enable("crystalgraphics.text")} takes one subsystem. A prefix nothing matches is not an
-     * error: a channel registers when its declaring class first loads, which may be later.</p>
+     * {@code enable("crystalgraphics.text")} takes one subsystem. A channel registers when its declaring
+     * class first loads, which is often after startup; the prefix stands until disabled, so enabling at
+     * launch records channels that did not exist yet.</p>
      */
     public static void enable(String prefix) {
         setEnabled(prefix, true);
@@ -165,6 +188,11 @@ public final class CgTrace {
     }
 
     public static synchronized void setEnabled(String prefix, boolean on) {
+        if (on) {
+            STANDING.add(prefix);
+        } else {
+            STANDING.removeIf(held -> matches(held, prefix));
+        }
         long bits = 0L;
         for (CgTraceChannel channel : ORDER) {
             if (matches(channel.name(), prefix)) bits |= channel.bit();
@@ -191,12 +219,15 @@ public final class CgTrace {
             CgTraceChannel channel = CHANNELS.get(name);
             if (channel != null) bits |= channel.bit();
         }
+        STANDING.clear();
+        for (String name : names) STANDING.add(name);
         if (bits == enabledMask) return;
         enabledMask = bits;
         markMaskChange();
     }
 
     public static synchronized void disableAll() {
+        STANDING.clear();
         if (enabledMask == 0L) return;
         enabledMask = 0L;
         markMaskChange();
@@ -228,25 +259,112 @@ public final class CgTrace {
 
     // ── Storage ─────────────────────────────────────────────────────────────────────────────
 
-    /** Zones per thread. ~200 a frame means this holds around three hundred frames of one thread. */
-    private static final int ZONE_CAPACITY =
+    /**
+     * Frames kept from the START of a recording, never overwritten. 0 keeps none. Set by {@link #configure}.
+     *
+     * <p>A ring of the newest frames loses the first ones a few seconds in, and the first ones are often
+     * the ones worth having: startup, the first open of a window, the first time a cache is cold.</p>
+     */
+    private static volatile int firstFrames = Math.max(0, Integer.getInteger("crystalgraphics.trace.firstFrames", 0));
+
+    /** Newest frames kept after the first ones, overwriting the oldest. 0 stops once the first are full. */
+    private static volatile int newestFrames = Math.max(0, Integer.getInteger("crystalgraphics.trace.frames", 600));
+
+    /** Zones per thread at most, for the newest frames and for the first ones separately. */
+    private static volatile int zoneCapacity =
             roundUpPowerOfTwo(Integer.getInteger("crystalgraphics.trace.zones", 1 << 16));
+    private static volatile int headZoneCapacity = 1 << 12;
 
-    /** Frames held. 600 is five seconds at 120fps, ten at 60. */
-    private static final int FRAME_CAPACITY =
-            Math.max(2, Integer.getInteger("crystalgraphics.trace.frames", 600));
+    /** Where a new thread's arena starts; it doubles as the thread records, up to its ceiling. */
+    private static final int INITIAL_ZONES = 1 << 12;
 
-    private static volatile CgTraceEvents events = new CgTraceEvents(1 << 14, 1 << 12, 1 << 12);
+    /**
+     * Whether the first frames are all recorded. Until then every thread records into its HEAD arena,
+     * which is never overwritten; after, each moves to its ring arena at its next zone with nothing open.
+     */
+    private static volatile boolean headSealed = firstFrames == 0;
+
+    /**
+     * Bumped by {@link #clear()} and {@link #configure}. A thread whose handle carries an older one makes
+     * itself a new arena on its next zone — on its OWN thread, which is the only thread allowed to write
+     * one. Clearing used to drop every arena from the registry and hand a fresh one to the calling
+     * thread alone, so every other thread went on writing into an arena no snapshot could see.
+     */
+    private static volatile int generation;
+
+    private static volatile CgTraceEvents events = newEvents(newestFrames);
+    /** Counters of the first frames, kept apart so the ring cannot overwrite them. Markers and spans stay in {@link #events}. */
+    private static volatile CgTraceEvents headEvents = newEvents(firstFrames);
+
+    /** Counters are written per frame, so a ring is sized from its frames: 32 a frame. */
+    private static CgTraceEvents newEvents(int frames) {
+        int counters = roundUpPowerOfTwo(Math.max(1 << 12, frames * 32));
+        return new CgTraceEvents(counters, 1 << 12, 1 << 12);
+    }
+
+    /**
+     * Sizes what is kept: the first frames of a recording, the newest after them, and the zones per frame
+     * each may hold. <b>Clears what is recorded.</b>
+     *
+     * <pre>{@code
+     * CgTrace.configure(600, 600, 256);      // the first 600 frames for good, and the newest 600 after them
+     * CgTrace.configure(0, 600, 256);        // the newest 600 only
+     * CgTrace.configure(10_000, 0, 256);     // the first 10,000, then recording stops
+     * }</pre>
+     *
+     * <p>Between the first frames and the newest there is a gap once more than both have been recorded;
+     * {@link #frames()} simply skips it, and a frame's {@link CgFrameRecord#index()} says where it fell.
+     * The zone ceiling is not an allocation: an arena starts small and doubles as its thread records.</p>
+     */
+    public static synchronized void configure(int first, int newest, int zonesPerFrame) {
+        firstFrames = Math.max(0, first);
+        newestFrames = Math.max(0, newest);
+        if (firstFrames == 0 && newestFrames == 0) newestFrames = 2;
+        int perFrame = Math.max(16, zonesPerFrame);
+        zoneCapacity = zoneCeiling((long) newestFrames * perFrame);
+        headZoneCapacity = zoneCeiling((long) firstFrames * perFrame);
+        clear();
+    }
+
+    private static int zoneCeiling(long zones) {
+        return roundUpPowerOfTwo((int) Math.max(INITIAL_ZONES, Math.min(1L << 26, zones)));
+    }
+
+    /** The per-thread zone ceiling for the newest frames. */
+    public static int zoneCapacity() {
+        return zoneCapacity;
+    }
+
+    /** The per-thread zone ceiling for the first frames. */
+    public static int headZoneCapacity() {
+        return headZoneCapacity;
+    }
+
+    public static int firstFrames() {
+        return firstFrames;
+    }
+
+    public static int newestFrames() {
+        return newestFrames;
+    }
 
     private static final Map<Thread, CgTraceZones> ARENAS = new ConcurrentHashMap<>();
+    /** Each thread's arena for the first frames. Kept after they are sealed: it is what holds them. */
+    private static final Map<Thread, CgTraceZones> HEAD_ARENAS = new ConcurrentHashMap<>();
 
-    /** Every thread that has recorded anything. Read by {@link #snapshot()}. */
+    /** Every arena that holds anything, the first frames' among them. Read by {@link #snapshot()}. */
     static List<CgTraceZones> arenas() {
-        return List.copyOf(ARENAS.values());
+        List<CgTraceZones> all = new ArrayList<>(HEAD_ARENAS.values());
+        all.addAll(ARENAS.values());
+        return all;
     }
 
     static CgTraceEvents events() {
         return events;
+    }
+
+    static CgTraceEvents headEvents() {
+        return headEvents;
     }
 
     // ── Zones ───────────────────────────────────────────────────────────────────────────────
@@ -262,9 +380,14 @@ public final class CgTrace {
     public static final class Zone implements AutoCloseable {
 
         final CgTraceZones owner;
+        final int generation;
+        /** Whether {@link #owner} is this thread's arena for the first frames. */
+        final boolean head;
 
-        Zone(CgTraceZones owner) {
+        Zone(CgTraceZones owner, int generation, boolean head) {
             this.owner = owner;
+            this.generation = generation;
+            this.head = head;
         }
 
         @Override
@@ -274,7 +397,7 @@ public final class CgTrace {
     }
 
     /** What a zone on a channel nobody enabled hands back. */
-    private static final Zone NONE = new Zone(null);
+    private static final Zone NONE = new Zone(null, -1, false);
 
     /**
      * This thread's handle, holding this thread's arena.
@@ -284,16 +407,45 @@ public final class CgTrace {
      * lookup and not two — and spans, which are rare enough not to care, still go through the same
      * door so there is one definition of "this thread's state".</p>
      */
-    private static final ThreadLocal<Zone> LOCAL_ZONE = ThreadLocal.withInitial(() -> {
+    private static final ThreadLocal<Zone> LOCAL_ZONE = ThreadLocal.withInitial(CgTrace::newHandle);
+
+    private static Zone newHandle() {
         Thread thread = Thread.currentThread();
-        CgTraceZones made = new CgTraceZones(thread.getName(), ARENAS.size(), ZONE_CAPACITY);
+        CgTraceZones head = HEAD_ARENAS.get(thread);
+        // ONE THREAD, ONE ID, across its two arenas: a viewer groups by thread and must not see two.
+        int id = head != null ? head.threadId : ARENAS.size() + HEAD_ARENAS.size();
+        if (!headSealed) {
+            int max = headZoneCapacity;
+            CgTraceZones made = new CgTraceZones(thread.getName(), id, Math.min(INITIAL_ZONES, max), max, true);
+            HEAD_ARENAS.put(thread, made);
+            return new Zone(made, generation, true);
+        }
+        int max = zoneCapacity;
+        // WITH NO NEWEST FRAMES, nothing may wrap: recording stops once the first are full.
+        CgTraceZones made = new CgTraceZones(thread.getName(), id, Math.min(INITIAL_ZONES, max), max,
+                newestFrames == 0);
         ARENAS.put(thread, made);
-        return new Zone(made);
-    });
+        return new Zone(made, generation, false);
+    }
+
+    /**
+     * This thread's handle, replaced first if a clear or a resize has happened since it was made — or if
+     * the first frames are complete and this thread is between zones, when it moves to its ring arena.
+     * Only between zones: a zone opened in one arena must close in it.
+     */
+    private static Zone handle() {
+        Zone current = LOCAL_ZONE.get();
+        if (current.generation == generation && !(current.head && headSealed && current.owner.depth() == 0)) {
+            return current;
+        }
+        Zone fresh = newHandle();
+        LOCAL_ZONE.set(fresh);
+        return fresh;
+    }
 
     /** This thread's arena. */
     private static CgTraceZones local() {
-        return LOCAL_ZONE.get().owner;
+        return handle().owner;
     }
 
     /** Interns {@code name} and returns its id — the form a hot call site should hold in a constant. */
@@ -303,7 +455,7 @@ public final class CgTrace {
 
     public static Zone zone(CgTraceChannel channel, int nameId) {
         if ((enabledMask & channel.bit()) == 0L) return NONE;
-        Zone handle = LOCAL_ZONE.get();
+        Zone handle = handle();
         handle.owner.push(nameId, channel.index(), System.nanoTime());
         return handle;
     }
@@ -322,7 +474,7 @@ public final class CgTrace {
     public static long begin(CgTraceChannel channel, int nameId) {
         if ((enabledMask & channel.bit()) == 0L) return 0L;
         long now = System.nanoTime();
-        LOCAL_ZONE.get().owner.push(nameId, channel.index(), now);
+        handle().owner.push(nameId, channel.index(), now);
         // Never 0 — a zone genuinely opened at nanoTime()==0 would otherwise be dropped by end().
         return now == 0L ? 1L : now;
     }
@@ -350,7 +502,7 @@ public final class CgTrace {
      */
     public static void zoneDone(CgTraceChannel channel, int nameId, long startNanos) {
         if ((enabledMask & channel.bit()) == 0L || startNanos == 0L) return;
-        LOCAL_ZONE.get().owner.record(nameId, channel.index(), startNanos, System.nanoTime());
+        handle().owner.record(nameId, channel.index(), startNanos, System.nanoTime());
     }
 
     public static void zoneDone(CgTraceChannel channel, String name, long startNanos) {
@@ -361,13 +513,13 @@ public final class CgTrace {
     /** As {@link #zoneDone(CgTraceChannel, int, long)}, with both ends given — for a synthetic clock. */
     public static void zoneDone(CgTraceChannel channel, String name, long startNanos, long endNanos) {
         if ((enabledMask & channel.bit()) == 0L) return;
-        LOCAL_ZONE.get().owner.record(CgTraceNames.intern(name), channel.index(), startNanos, endNanos);
+        handle().owner.record(CgTraceNames.intern(name), channel.index(), startNanos, endNanos);
     }
 
     /** Closes the innermost zone opened by {@link #begin}. A zero token is a no-op. */
     public static void end(long token) {
         if (token == 0L) return;
-        LOCAL_ZONE.get().owner.pop(System.nanoTime());
+        handle().owner.pop(System.nanoTime());
     }
 
     // ── Counters and markers ────────────────────────────────────────────────────────────────
@@ -381,12 +533,13 @@ public final class CgTrace {
      */
     public static void counter(CgTraceChannel channel, int nameId, long value) {
         if ((enabledMask & channel.bit()) == 0L) return;
-        events.counter(nameId, openIndex, value);
+        long frame = openIndex;
+        (frame < firstFrames ? headEvents : events).counter(nameId, frame, value);
     }
 
     public static void counter(CgTraceChannel channel, String name, long value) {
         if ((enabledMask & channel.bit()) == 0L) return;
-        events.counter(CgTraceNames.intern(name), openIndex, value);
+        counter(channel, CgTraceNames.intern(name), value);
     }
 
     /** An instant: something happened, with no duration. */
@@ -469,8 +622,63 @@ public final class CgTrace {
 
     // ── Frames ──────────────────────────────────────────────────────────────────────────────
 
-    private static final CgFrameRecord[] FRAMES = new CgFrameRecord[FRAME_CAPACITY];
+    /** The newest frames, a ring. Replaced whole by {@link #configure}; readers index the array they hold. */
+    private static volatile CgFrameRecord[] FRAMES = new CgFrameRecord[Math.max(1, newestFrames)];
+    /** The first frames, in order, never overwritten. */
+    private static volatile CgFrameRecord[] HEAD = new CgFrameRecord[firstFrames];
     private static long framesWritten;
+
+    // ── Stopping by itself ──────────────────────────────────────────────────────────────────
+
+    /** Why recording last stopped by itself, or null. Cleared when anything re-enables a channel. */
+    private static volatile String stopReason;
+    /** The channels that were on when it stopped, so a viewer's Record can put exactly those back. */
+    private static volatile List<String> stoppedChannels = List.of();
+
+    private static volatile long hitchNanos;
+    private static volatile int framesAfterHitch;
+    /** Frames still to record after a hitch before stopping; -1 while nothing has tripped. */
+    private static int hitchCountdown = -1;
+    private static long hitchFrame = -1L;
+
+    /**
+     * Stops recording a set number of frames after the first frame slower than {@code thresholdNanos}.
+     *
+     * <pre>{@code
+     * CgTrace.stopAfterHitch(100_000_000L, 60);   // a 100 ms frame, then sixty more, then stop
+     * CgTrace.stopAfterHitch(0L, 0);               // off
+     * }</pre>
+     *
+     * <p>What keeps a hitch on screen: in a ring of the newest frames it is overwritten a few seconds
+     * after it happens, which is usually before anybody has opened a window to look at it.</p>
+     */
+    public static synchronized void stopAfterHitch(long thresholdNanos, int framesAfter) {
+        hitchNanos = Math.max(0L, thresholdNanos);
+        framesAfterHitch = Math.max(0, framesAfter);
+        hitchCountdown = -1;
+        hitchFrame = -1L;
+    }
+
+    /** Why recording stopped by itself — "kept the first 10000 frames" — or null if it did not. */
+    public static String stopReason() {
+        return stopReason;
+    }
+
+    /** What was recording when it stopped by itself; empty otherwise. */
+    public static List<String> stoppedChannels() {
+        return stoppedChannels;
+    }
+
+    /** The frame that tripped {@link #stopAfterHitch}, or -1. */
+    public static long hitchFrame() {
+        return hitchFrame;
+    }
+
+    private static synchronized void stopBecause(String reason) {
+        stoppedChannels = enabledNames();
+        stopReason = reason;
+        disableAll();
+    }
 
     private static long openBegin = -1L;
 
@@ -543,8 +751,44 @@ public final class CgTrace {
                 CgFrameRecord.ABSENT, Math.max(0L, gcMillis() - openGc),
                 (int) Math.max(0L, gcCount() - openGcCount), openLeaked,
                 Math.max(0L, local.dropped - openDropped));
-        FRAMES[(int) (framesWritten % FRAME_CAPACITY)] = record;
+        CgFrameRecord[] head = HEAD;
+        if (framesWritten < head.length) {
+            head[(int) framesWritten] = record;
+        } else {
+            // NOTHING AFTER THE FIRST FRAMES, whoever switched a channel back on: there is nowhere to
+            // put it that is not one of the frames kept. Only a clear starts again.
+            if (newestFrames == 0) {
+                stopBecause(keptFirst(head.length));
+                return;
+            }
+            CgFrameRecord[] ring = FRAMES;
+            ring[(int) ((framesWritten - head.length) % ring.length)] = record;
+        }
         framesWritten++;
+        if (!headSealed && framesWritten >= head.length) headSealed = true;
+
+        if (hitchCountdown >= 0) {
+            if (hitchCountdown-- == 0) {
+                stopBecause(String.format("stopped %d frames after a %.1f ms frame", framesAfterHitch,
+                        frameAt(hitchFrame) == null ? 0d : frameAt(hitchFrame).wallMillis()));
+            }
+        } else if (hitchNanos > 0L && record.wallNanos() > hitchNanos) {
+            hitchFrame = record.index();
+            hitchCountdown = framesAfterHitch - 1;
+            if (hitchCountdown < 0) {
+                stopBecause(String.format("stopped on a %.1f ms frame", record.wallMillis()));
+            }
+        }
+        if (isFull()) stopBecause(keptFirst(head.length));
+    }
+
+    private static String keptFirst(int frames) {
+        return "kept the first " + frames + " frames";
+    }
+
+    /** Whether the first frames are full and no newest are kept — recording starts again only after a {@link #clear()}. */
+    public static boolean isFull() {
+        return newestFrames == 0 && firstFrames > 0 && framesWritten >= firstFrames;
     }
 
     /** The thread that owns the frame loop — the one a viewer draws first. */
@@ -572,11 +816,21 @@ public final class CgTrace {
     }
 
     static CgFrameRecord frameAt(long index) {
-        return FRAMES[(int) (index % FRAME_CAPACITY)];
+        if (index < 0L) return null;
+        CgFrameRecord[] head = HEAD;
+        CgFrameRecord record;
+        if (index < head.length) {
+            record = head[(int) index];
+        } else {
+            CgFrameRecord[] ring = FRAMES;
+            record = ring[(int) ((index - head.length) % ring.length)];
+        }
+        return record != null && record.index() == index ? record : null;
     }
 
-    static int frameCapacity() {
-        return FRAME_CAPACITY;
+    /** How many frames are kept at most: the first ones and the newest together. */
+    public static int frameCapacity() {
+        return firstFrames + newestFrames;
     }
 
     /** Total collector time this JVM has spent, in millis. A pause is charged to whatever was running. */
@@ -610,7 +864,7 @@ public final class CgTrace {
      */
     public static long droppedZones() {
         long total = 0L;
-        for (CgTraceZones arena : ARENAS.values()) total += arena.dropped;
+        for (CgTraceZones arena : arenas()) total += arena.dropped;
         return total;
     }
 
@@ -627,11 +881,19 @@ public final class CgTrace {
      * nothing; the zones are fetched only for the frame somebody actually looked at.</p>
      */
     public static List<CgFrameRecord> frames() {
-        List<CgFrameRecord> out = new ArrayList<>(FRAME_CAPACITY);
-        long oldest = Math.max(0L, framesWritten - FRAME_CAPACITY);
-        for (long i = oldest; i < framesWritten; i++) {
+        long written = framesWritten;
+        int first = HEAD.length;
+        List<CgFrameRecord> out = new ArrayList<>(Math.min((int) Math.min(written, Integer.MAX_VALUE), frameCapacity()));
+        for (long i = 0L; i < Math.min(first, written); i++) {
             CgFrameRecord record = frameAt(i);
             if (record != null) out.add(record);
+        }
+        if (newestFrames > 0) {
+            // THE GAP is simply skipped: the next frame's index says how many fell between.
+            for (long i = Math.max(first, written - FRAMES.length); i < written; i++) {
+                CgFrameRecord record = frameAt(i);
+                if (record != null) out.add(record);
+            }
         }
         return out;
     }
@@ -647,17 +909,42 @@ public final class CgTrace {
         return CgTraceSnapshot.zonesOf(frame);
     }
 
+    /** Every zone starting in {@code [fromNanos, toNanos)} — a range of frames without a whole snapshot. */
+    public static List<CgTraceSnapshot.ZoneView> zonesBetween(long fromNanos, long toNanos) {
+        return CgTraceSnapshot.zonesBetween(fromNanos, toNanos);
+    }
+
+    /**
+     * Frames, counters, markers and spans, with {@link CgTraceSnapshot#zones()} left EMPTY.
+     *
+     * <p>What a viewer refreshing several times a second wants. A full {@link #snapshot()} copies every
+     * zone held, which at ten thousand frames is millions of objects per call — the viewer would become
+     * the lag it is measuring. Fetch a frame's zones with {@link #zonesIn} or {@link #zonesBetween}.</p>
+     */
+    public static CgTraceSnapshot frameSnapshot() {
+        return CgTraceSnapshot.of(false);
+    }
+
     /** Drops everything recorded. The enabled mask is left alone. */
     public static synchronized void clear() {
-        for (int i = 0; i < FRAMES.length; i++) FRAMES[i] = null;
+        FRAMES = new CgFrameRecord[Math.max(1, newestFrames)];
+        HEAD = new CgFrameRecord[firstFrames];
+        headSealed = firstFrames == 0;
         framesWritten = 0L;
+        stopReason = null;
+        stoppedChannels = List.of();
+        hitchCountdown = -1;
+        hitchFrame = -1L;
         openBegin = -1L;
         openIndex = -1L;
         openCpu = CgFrameRecord.ABSENT;
         openLeaked = 0;
         ARENAS.clear();
-        LOCAL_ZONE.remove();
-        events = new CgTraceEvents(1 << 14, 1 << 12, 1 << 12);
+        HEAD_ARENAS.clear();
+        // EVERY THREAD makes itself a new arena on its next zone. @see #generation
+        generation++;
+        events = newEvents(newestFrames);
+        headEvents = newEvents(firstFrames);
     }
 
     /** {@link #clear()} plus every channel off — what a test uses between cases. */
