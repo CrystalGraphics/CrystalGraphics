@@ -484,6 +484,7 @@ public final class CgTrace {
     private static volatile long openIndex = -1L;
     private static long openCpu = CgFrameRecord.ABSENT;
     private static long openGc;
+    private static long openGcCount;
     private static long openDropped;
     private static int openLeaked;
 
@@ -516,6 +517,7 @@ public final class CgTrace {
         openIndex = framesWritten;
         openCpu = CgFrameRecord.ABSENT;
         openGc = gcMillis();
+        openGcCount = gcCount();
         openDropped = local.dropped;
         openLeaked = 0;
     }
@@ -538,7 +540,8 @@ public final class CgTrace {
 
     private static void commit(long now, CgTraceZones local) {
         CgFrameRecord record = new CgFrameRecord(openIndex, openBegin, now, openCpu,
-                CgFrameRecord.ABSENT, Math.max(0L, gcMillis() - openGc), openLeaked,
+                CgFrameRecord.ABSENT, Math.max(0L, gcMillis() - openGc),
+                (int) Math.max(0L, gcCount() - openGcCount), openLeaked,
                 Math.max(0L, local.dropped - openDropped));
         FRAMES[(int) (framesWritten % FRAME_CAPACITY)] = record;
         framesWritten++;
@@ -582,6 +585,16 @@ public final class CgTrace {
         for (GarbageCollectorMXBean collector : ManagementFactory.getGarbageCollectorMXBeans()) {
             long spent = collector.getCollectionTime();
             if (spent > 0L) total += spent;
+        }
+        return total;
+    }
+
+    /** Collections this JVM has run, across every collector. */
+    static long gcCount() {
+        long total = 0L;
+        for (GarbageCollectorMXBean collector : ManagementFactory.getGarbageCollectorMXBeans()) {
+            long count = collector.getCollectionCount();
+            if (count > 0L) total += count;
         }
         return total;
     }

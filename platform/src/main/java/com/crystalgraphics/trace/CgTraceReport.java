@@ -279,7 +279,7 @@ public final class CgTraceReport {
         out.append(String.format(Locale.ROOT, "%nframe %-8d %7.2fms wall  %s cpu%s%n",
                 frame.index(), frame.wallMillis(),
                 frame.hasCpu() ? String.format(Locale.ROOT, "%.2fms", frame.cpuMillis()) : "absent",
-                frame.gcMillis() > 0 ? "   GC " + frame.gcMillis() + "ms" : ""));
+                frame.hadGc() ? "   GC " + frame.gcSummary() : ""));
         if (frame.leakedZones() > 0) {
             out.append("  NOTE    ").append(frame.leakedZones())
                     .append(" zone(s) were still open at the boundary and were force-closed\n");
