@@ -88,6 +88,13 @@ public final class CgTraceAggregate {
      * <p>One tree per thread, concatenated: a worker's zones are nobody's children, and nesting them
      * under whatever the frame thread happened to have open would invent a call relationship across
      * threads that does not exist.</p>
+     *
+     * <p><b>Nested by time containment, not by recorded depth.</b> A zone handed its own start and end
+     * through {@code zoneDone} is stored at whatever depth the thread had open, which is almost always
+     * zero, so trusting the number flattened every such zone into a root: a call tree with nothing to
+     * expand, and a report with nothing indented. A zone wholly inside another on the same thread IS its
+     * child — the rule Chrome's trace viewer applies to complete events, and the rule a viewer drawing
+     * these as a flame chart has to apply as well, or its two views disagree about what called what.</p>
      */
     public static List<Node> tree(List<CgTraceSnapshot.ZoneView> zones) {
         Map<String, List<CgTraceSnapshot.ZoneView>> byThread = new LinkedHashMap<>();
@@ -97,7 +104,10 @@ public final class CgTraceAggregate {
         }
         List<Node> roots = new ArrayList<>();
         for (List<CgTraceSnapshot.ZoneView> ofThread : byThread.values()) {
-            ofThread.sort(Comparator.comparingLong(CgTraceSnapshot.ZoneView::startNanos));
+            // START ORDER, and on a tie the LONGER first: a parent that begins on the same tick as its
+            // first child must be placed before it or it could never be its parent.
+            ofThread.sort(Comparator.comparingLong(CgTraceSnapshot.ZoneView::startNanos)
+                    .thenComparing(Comparator.comparingLong(CgTraceSnapshot.ZoneView::endNanos).reversed()));
             buildThread(ofThread, roots);
         }
         roots.sort(Comparator.comparingLong(Node::startNanos));
@@ -107,18 +117,19 @@ public final class CgTraceAggregate {
     private static void buildThread(List<CgTraceSnapshot.ZoneView> ofThread, List<Node> roots) {
         List<Node> open = new ArrayList<>();
         for (CgTraceSnapshot.ZoneView zone : ofThread) {
-            // Pop anything that cannot be this zone's ancestor: a sibling or deeper, or one that has
-            // already ended. The second is what protects the tree from a force-closed leak.
+            // Pop anything that does not CONTAIN this zone: one that ended before it began is a
+            // finished sibling, and one that ends before it does only overlaps it -- two things
+            // running, not a call.
             while (!open.isEmpty()) {
                 Node top = open.get(open.size() - 1);
-                if (top.depth() >= zone.depth() || top.endNanos() <= zone.startNanos()) {
+                if (top.endNanos() <= zone.startNanos() || top.endNanos() < zone.endNanos()) {
                     open.remove(open.size() - 1);
                 } else {
                     break;
                 }
             }
             Node made = new Node(zone.name(), zone.source(), zone.thread(), zone.channel(),
-                    zone.startNanos(), zone.endNanos(), zone.depth(), new ArrayList<>());
+                    zone.startNanos(), zone.endNanos(), open.size(), new ArrayList<>());
             if (open.isEmpty()) roots.add(made);
             else open.get(open.size() - 1).children().add(made);
             open.add(made);
