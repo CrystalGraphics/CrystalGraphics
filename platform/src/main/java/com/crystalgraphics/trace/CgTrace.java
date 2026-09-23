@@ -568,6 +568,26 @@ public final class CgTrace {
         counter(channel, CgTraceNames.intern(name), value);
     }
 
+    /**
+     * A counter written against {@code frameIndex} rather than the frame open now — for a caller that
+     * tallies a frame's worth of increments and flushes the total once the frame has moved on.
+     *
+     * <pre>{@code
+     * long frame = CgTrace.currentFrameIndex();
+     * // ... many increments tallied locally ...
+     * if (CgTrace.currentFrameIndex() != frame) CgTrace.counterAt(CHANNEL, HITS, frame, tally);
+     * }</pre>
+     */
+    public static void counterAt(CgTraceChannel channel, int nameId, long frameIndex, long value) {
+        if ((enabledMask & channel.bit()) == 0L || frameIndex < 0L) return;
+        (frameIndex < firstFrames ? headEvents : events).counter(nameId, frameIndex, value);
+    }
+
+    /** The frame being recorded, or -1 before the first {@link #frameBegin}. */
+    public static long currentFrameIndex() {
+        return openIndex;
+    }
+
     /** An instant: something happened, with no duration. */
     public static void marker(CgTraceChannel channel, String name) {
         if ((enabledMask & channel.bit()) == 0L) return;
@@ -938,6 +958,19 @@ public final class CgTrace {
     /** The markers recorded during {@code frame} — what a hint reads a blamed call site from. */
     public static List<CgTraceSnapshot.MarkerView> markersIn(CgFrameRecord frame) {
         return CgTraceSnapshot.markersBetween(frame.beginNanos(), frame.endNanos());
+    }
+
+    /**
+     * {@code thread}'s closed zones that started at or after {@code fromNanos}, oldest first — what a
+     * per-thread report is rebuilt from.
+     */
+    public static List<CgTraceSnapshot.ZoneView> zonesOfThread(Thread thread, long fromNanos) {
+        List<CgTraceZones> arenas = new ArrayList<>(2);
+        CgTraceZones head = HEAD_ARENAS.get(thread);
+        if (head != null) arenas.add(head);
+        CgTraceZones ring = ARENAS.get(thread);
+        if (ring != null) arenas.add(ring);
+        return CgTraceSnapshot.closedZonesSince(arenas, fromNanos);
     }
 
     /** Every zone starting in {@code [fromNanos, toNanos)} — a range of frames without a whole snapshot. */
