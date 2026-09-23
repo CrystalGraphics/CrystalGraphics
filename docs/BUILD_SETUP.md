@@ -30,7 +30,7 @@ Gradle 8.x is not a viable downgrade path: Gradle 8.12.1 predates JDK 25 and has
 
 ## runtime/mc/modern (Minecraft 1.20.x multiloader)
 
-Three loader subprojects share a `runtime/mc/modern/common` source set and a `runtime/mc/modern/build-logic` composite build that provides the `cg-mc1201-loader` convention plugin (shared repos + Java toolchain).
+Three loader subprojects share a `runtime/mc/modern/common` source set and a `runtime/mc/modern/build-logic` composite build that provides the `cg-modern-loader` convention plugin (shared repos + Java toolchain).
 
 ### Fabric (`runtime/mc/modern/fabric`)
 
@@ -54,7 +54,7 @@ IntelliJ injects a Kotlin coroutine debug init script (`ijKotlinCoroutineJvmDebu
 
 **Plugin**: `net.neoforged.moddev` 2.0.141. **Targets MC 1.20.4** (NeoForge 20.4.x) — NeoForge 20.1.x was never published to the NeoForge Maven. Version pins use `mc1204.*` keys in root `gradle.properties`. The directory name `runtime/mc/modern/neoforge/` is kept for structural consistency.
 
-- Requires two extra Maven repos declared at project level (`mojang-meta`, `minecraft libraries`) because the settings-level repos added by `net.neoforged.moddev.repositories` are overridden by the `cg-mc1201-loader` convention plugin's project-level repo block.
+- Requires two extra Maven repos declared at project level (`mojang-meta`, `minecraft libraries`) because the settings-level repos added by `net.neoforged.moddev.repositories` are overridden by the `cg-modern-loader` convention plugin's project-level repo block.
 
 **Common 1.20.x issues**:
 - *Configuration cache errors* — `org.gradle.configuration-cache=false` in root `gradle.properties` is mandatory; ModDevGradle does not support it.
@@ -92,9 +92,9 @@ Both paths are gitignored. Regenerate them after `./gradlew clean` or a fresh ch
 ./gradlew extractAllMcSources
 
 # Per module:
-./gradlew :runtime:mc:modern:neoforge:extractMcSources
-./gradlew :runtime:mc:modern:forge:extractMcSources
-./gradlew :runtime:mc:modern:fabric:extractMcSources
+./gradlew :runtime:mc:modern:neoforge:1.20.4:extractMcSources
+./gradlew :runtime:mc:modern:forge:1.20.1:extractMcSources
+./gradlew :runtime:mc:modern:fabric:1.20.1:extractMcSources
 ```
 
 ### First-run timing

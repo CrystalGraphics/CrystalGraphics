@@ -12,12 +12,18 @@ version = "1.0.0"
 
 repositories {
     gradlePluginPortal()
+    maven("https://maven.neoforged.net/releases") { name = "NeoForge" }
 }
 
 dependencies {
     // Shadow and jvmDowngrader are the merge's own tools, and the shared tasks name their types.
     implementation("com.gradleup.shadow:shadow-gradle-plugin:9.2.2")
     implementation("xyz.wagyourtail.jvmdowngrader:gradle-plugin:1.3.5")
+
+    // compileOnly: `useModernMinecraft` names ModDevGradle's extensions, and every build that calls it
+    // already has ModDevGradle on its build-logic classpath. Carrying it here as well would be two
+    // versions of one plugin for Gradle to pick between.
+    compileOnly("net.neoforged:moddev-gradle:2.0.141")
 
     // Named rather than read from `dep.junit`: this is a standalone included build with its own
     // settings, so it has no root project to read a property from. Same version as everywhere else.

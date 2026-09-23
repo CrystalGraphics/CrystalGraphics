@@ -312,6 +312,60 @@ game state whether it painted, and fail on the answer.
 
 ---
 
+## Many Minecraft versions: the modern tree
+
+A loader is built once per Minecraft version it targets, from ONE source tree, with
+[Stonecutter](https://stonecutter.kikugie.dev/)'s comment directives. The tree is **branched**:
+
+```
+runtime/mc/modern/
+  stonecutter.gradle.kts                  the controller: which node is ACTIVE, and nothing else
+  common/  forge/  neoforge/  fabric/     a BRANCH each: the shared src/ and one build script
+    <branch>/versions/<version>/          a NODE: gradle.properties (its pins), and its build/ and runs/
+```
+
+```kotlin
+// settings.gradle.kts -- the only place a node is declared
+plugins { id("dev.kikugie.stonecutter") version "0.9.8" }
+stonecutter {
+    create("runtime:mc:modern") {
+        branch("common") { versions("1.20.1", "1.20.4") }
+        branch("forge") { versions("1.20.1") }
+    }
+}
+```
+
+A node is the project `:runtime:mc:modern:<branch>:<version>`, so **on a node `project.name` is the
+version**. `ModernTree` answers everything else and is the only thing that should: `modernLoader`,
+`commonNode` (the common node of the same version — a loader never borrows another's), `modernNodes`,
+`modernLoaderNodes`, and, for a project built on another, `sameVersionNodePath` / `sameVersionNodeDir` /
+`sameVersionNodeCoordinate`. `ModernConventions` holds what every such build does alike:
+`useNodeCoordinates`, `useModernMinecraft` (NeoForm where it exists, 1.20.2 onward; Forge's userdev
+through legacyForge below that — chosen by the node's own pins), `guardLoaderImports`,
+`registerCheckDescriptorsNameNoCommon` and `registerCheckAllTargets`.
+
+**Adding a version** is a version on the loader's branch **and on `common`**, a
+`versions/<version>/gradle.properties` for each, `//? if` directives where the API differs, and the
+descriptor `Variant` with the neighbouring range narrowed. A project built on another adds the version
+to the parent first: its common node compiles against the parent's common node of the same version.
+
+What bites:
+
+1. **A node's group is its branch's** (`useNodeCoordinates`). Nodes of one version share a project
+   name, so one group for the whole tree makes `forge:1.20.1` and `common:1.20.1` one coordinate and
+   the loader's dependency on common resolves to itself: `compileJava` depending on `compileJava`.
+2. **Switching the active node rewrites the branches' `src/` in place.** Switch back to the controller's
+   version before committing, or the diff carries directive noise rather than the change.
+3. **Directives live in the branch `src/`**, never under a node's `build/generated/stonecutter/`. The
+   active node compiles `src/` directly; every other node compiles the generated copy.
+4. **Nothing may read `src/` relative to the project directory.** On a node that is
+   `versions/<version>/src`, which does not exist, so a check reading it passes having read nothing.
+5. **The settings plugin needs a Java 21+ Gradle daemon** in every build that includes one of these.
+6. **Two nodes of one loader** need a version-keyed thin-jar relocation root, or both thin jars carry
+   one relocated name and the merge keeps whichever arrived first.
+
+---
+
 ## What is shared, and what is not
 
 | Shared | Why |
@@ -320,6 +374,7 @@ game state whether it painted, and fail on the answer.
 | `registerDescriptorTasks` | Four descriptor formats from one declaration, plus the drift check |
 | `CheckSingleJar`, `CheckThinJar` | What a finished jar and a thin jar must be |
 | `ModDescriptor` | The model the formats are printed from |
+| `ModernTree`, `ModernConventions` | Finding a node, its coordinates, its toolchain, its checks — the modern tree above |
 
 | Not shared | Why |
 |---|---|

@@ -1,4 +1,6 @@
 import cgbuildlogic.SingleJarSpec
+import cgbuildlogic.modernLoaderNodes
+import cgbuildlogic.modernNodes
 import cgbuildlogic.registerSingleJarPipeline
 
 // ── One jar for every loader (J4) ────────────────────────────────────────────────────────────────
@@ -36,18 +38,24 @@ repositories {
 // TASK, not the project.
 val singleJarModId = providers.gradleProperty("modId").orElse("crystalgraphics").get()
 
+// ── The 1.20.x thin jars, one per NODE, read off the tree ────────────────────────────────────────
+//
+// Every node of :runtime:mc:modern ships a thin jar, so nothing here names one: a version added in
+// settings.gradle.kts is merged, counted and checked with no edit to this file. Named per LOADER
+// because each toolchain names its own production step.
+val modernThinTask = mapOf("forge" to "reobfThinShadowJar", "neoforge" to "thinShadowJar", "fabric" to "remapThinJar")
+
+/** One relocated copy of each common class per loader node: each thin jar carries its own common. */
+val modernCopies = modernLoaderNodes(project).size
+
 registerSingleJarPipeline(SingleJarSpec(
     modId = singleJarModId,
     fileName = "$singleJarModId-${project.version}.jar",
     shadePath = "com/crystalgraphics/shadow",
 
-    // Named per loader because each toolchain names its own production step.
-    thinJars = listOf(
-        ":runtime:mc:1710" to "reobfThinJar",
-        ":runtime:mc:modern:forge" to "reobfThinShadowJar",
-        ":runtime:mc:modern:neoforge" to "thinShadowJar",
-        ":runtime:mc:modern:fabric" to "remapThinJar",
-    ),
+    // 1.7.10's production step is its own; every 1.20.x node's is read off the tree.
+    thinJars = listOf(":runtime:mc:1710" to "reobfThinJar") +
+        modernLoaderNodes(project).map { it.path to modernThinTask.getValue(it.parent!!.name) },
     // Tier 1 (§12) joins the library list rather than any loader's thin jar: one compiled copy of
     // each LWJGL family, added once for every variant, never remapped -- which is the whole reason
     // the tier exists. A loader bundling its own would put four copies in the merge to reject.
@@ -86,7 +94,8 @@ registerSingleJarPipeline(SingleJarSpec(
         "Implementation-Version" to project.version.toString(),
         "Automatic-Module-Name" to singleJarModId,
     ),
-    fabricThinJar = ":runtime:mc:modern:fabric" to "remapThinJar",
+    // Any Fabric node's manifest will do; none in a build that has no Fabric node, which builds no jar.
+    fabricThinJar = modernNodes(project, "fabric").firstOrNull()?.let { it.path to "remapThinJar" },
 
     extraContent = {
         // Kotlin rides in on a JOML transitive and is never used.
@@ -112,7 +121,7 @@ registerSingleJarPipeline(SingleJarSpec(
         // the implementation, text the font stack.
         expectSingle.set(listOf("com/crystalgraphics/api/", "com/crystalgraphics/gl/",
                                 "com/crystalgraphics/text/"))
-        relocatedClasses.set(mapOf("com/crystalgraphics/mc/modern/platform/LifecycleModern.class" to 3))
+        relocatedClasses.set(mapOf("com/crystalgraphics/mc/modern/platform/LifecycleModern.class" to modernCopies))
         requiredEntries.set(listOf(
             "META-INF/mods.toml", "fabric.mod.json", "mcmod.info", "pack.mcmeta",
             "mixins.crystalgraphics.json",
