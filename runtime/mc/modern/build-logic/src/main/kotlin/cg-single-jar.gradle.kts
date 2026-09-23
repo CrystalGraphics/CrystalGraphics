@@ -51,6 +51,9 @@ val singleJarModId = providers.gradleProperty("modId").orElse("crystalgraphics")
 @Suppress("UNCHECKED_CAST")
 val modDescriptors = extra["cgModDescriptors"] as Map<String, ModDescriptor>
 
+/** The manifest's mixin configs. @see cgbuildlogic.ModDescriptor.manifestMixinConfigs */
+val mixinConfigs = modDescriptors.getValue("main").manifestMixinConfigs()
+
 /** One relocated copy of each common class per loader node: each thin jar carries its own common. */
 val modernCopies = modernLoaderNodes(project).size
 
@@ -96,7 +99,8 @@ registerSingleJarPipeline(SingleJarSpec(
         "FMLCorePluginContainsFMLMod" to true,
         "ForceLoadAsMod" to true,
         "TweakClass" to "org.spongepowered.asm.launch.MixinTweaker",
-        "MixinConfigs" to "mixins.crystalgraphics.json",
+        // 1.7.10's config and every Forge node's: both loaders find mixin configs here.
+        "MixinConfigs" to mixinConfigs,
         "Implementation-Version" to project.version.toString(),
         "Automatic-Module-Name" to singleJarModId,
     ),
@@ -130,7 +134,6 @@ registerSingleJarPipeline(SingleJarSpec(
         relocatedClasses.set(mapOf("com/crystalgraphics/mc/modern/platform/LifecycleModern.class" to modernCopies))
         requiredEntries.set(listOf(
             "META-INF/mods.toml", "META-INF/neoforge.mods.toml", "fabric.mod.json", "mcmod.info", "pack.mcmeta",
-            "mixins.crystalgraphics.json",
             "com/crystalgraphics/mc/shared/LoaderProbe.class",
             "com/crystalgraphics/mc/v1710/mixins/early/CrystalGraphicsMixins.class",
             // J11.0. The table decides which variant runs, and the three bootstrappers are what the
@@ -143,12 +146,13 @@ registerSingleJarPipeline(SingleJarSpec(
         // EVERY ENTRY POINT THE TABLE NAMES, at its shipped name: one per node, relocated into that
         // node's package (cgbuildlogic.ModernVariants). A table naming a class absent from the jar is a
         // crash at mod construction on that version alone.
-        ) + modDescriptors.getValue("main").shippedEntryPaths())
+        ) + modDescriptors.getValue("main").shippedEntryPaths()
+          + modDescriptors.getValue("main").variants.flatMap { it.mixinConfigs }.distinct())
         requiredManifest.set(mapOf(
             "FMLCorePluginContainsFMLMod" to "true",
             "ForceLoadAsMod" to "true",
             "TweakClass" to "org.spongepowered.asm.launch.MixinTweaker",
-            "MixinConfigs" to "mixins.crystalgraphics.json",
+            "MixinConfigs" to mixinConfigs,
             "Fabric-Loom-Mixin-Remap-Type" to "",
         ))
     },

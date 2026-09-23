@@ -400,6 +400,22 @@ run Mojang's names, so `useNeoForgeApi` puts the jars on compileOnly and nothing
 them non-transitively (`neoforge.fml`, `neoforge.bus`), because NeoForge's POM also names Minecraft's
 libraries at versions NeoForm pins strictly.
 
+**A node may ship mixins** when its loader has no event for what it needs — Forge 53 (1.21.3) dropped
+the world-render event with 1.21.2's frame graph. It pins the plugin that gates them, and the mixins
+live in the branch's `mixin` package:
+
+```properties
+# forge/versions/1.21.3
+variant.mixinPlugin = com.crystalgraphics.mc.shared.CrystalGraphicsForgeMixins
+```
+
+`registerNodeMixins` writes the node's config into its thin jar at the shipped package, and the
+variant table and descriptors carry it: the manifest's `MixinConfigs` for FML 1.7.10 and Forge,
+`[[mixins]]` for NeoForge, `fabric.mod.json` for Fabric. Every loader that reads a list reads all of
+it, so the plugin — a `VariantMixins` in the unrelocated shared module — applies a config only on the
+variant whose package holds it, and names the mixins itself: the config's lists stay empty, because
+Mixin parses a listed class before its plugin can refuse it, and 1.7.10's ASM cannot read Java 21.
+
 What bites:
 
 1. **A node's group is its branch's** (`useNodeCoordinates`). Nodes of one version share a project
@@ -418,6 +434,10 @@ What bites:
    parent mod yet; the build says so, and the next run finds it. A CHANGED parent lags the same way.
 8. **An old NeoForm can be unusable.** ModDevGradle needs the `neoform-dependencies` capability, which
    NeoForm builds from 2023 lack; 1.20.2 resolves only through its December 2024 republish.
+9. **A node mixin's target may not be on its compile classpath.** A Forge node compiles against
+   vanilla Minecraft, so a method Forge's patches add — `ParticleEngine.render(..., Frustum)` — is a
+   Mixin processor warning at build time and resolves only in the game. prodSmoke is what proves the
+   injection bound; each injector says `require = 1` so a miss is a crash, not a silent no-op.
 
 ---
 

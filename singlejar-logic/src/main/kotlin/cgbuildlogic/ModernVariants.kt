@@ -2,6 +2,7 @@ package cgbuildlogic
 
 import org.gradle.api.GradleException
 import org.gradle.api.Project
+import org.gradle.api.tasks.AbstractCopyTask
 import org.gradle.api.tasks.SourceSetContainer
 import org.gradle.language.jvm.tasks.ProcessResources
 
@@ -56,17 +57,69 @@ fun modernVariants(project: Project, entries: Map<String, LoaderEntries>): List<
                     "node declares the Minecraft range it claims (variant.minecraft) and its pack format " +
                     "(variant.packFormat)")
             val range = pin("variant.minecraft")
+            val shipped = nodePackage(e.loaderPackage, node.name)
             Variant(
                 loader = loader, minecraft = range, era = "modern",
                 commonEntry = e.common, clientEntry = e.client,
+                mixinConfigs = if (node.hasProperty(MIXIN_PLUGIN)) listOf(nodeMixinConfig(shipped)) else emptyList(),
                 packFormat = pin("variant.packFormat").toInt(),
                 fabricDepends = if (loader != "fabric") emptyMap()
                     else LinkedHashMap(e.fabricDepends).apply { put("minecraft", McRange.parse(range).toFabricPredicate()) },
                 node = node.path,
-                relocation = e.loaderPackage to nodePackage(e.loaderPackage, node.name),
+                relocation = e.loaderPackage to shipped,
             )
         }
     }
+
+/**
+ * The pin that gives a node mixins: the plugin gating its config, a Java 8 class the merge adds once.
+ *
+ * ```properties
+ * # Forge 53 has no world-render event; its hook is a mixin
+ * variant.mixinPlugin = com.crystalgraphics.mc.shared.CrystalGraphicsForgeMixins
+ * ```
+ *
+ * The mixins themselves live in the branch's `mixin` package and are named by that plugin, never by
+ * the config. @see registerNodeMixins
+ */
+const val MIXIN_PLUGIN = "variant.mixinPlugin"
+
+/** The config a node ships its mixins under, named for its shipped package so no two nodes collide. */
+fun nodeMixinConfig(shippedPackage: String): String = "mixins.$shippedPackage.json"
+
+/**
+ * Writes this node's mixin config into [jarTask] when its variant has one: the SHIPPED `mixin` package,
+ * the pinned plugin, and empty lists.
+ *
+ * - Empty because Mixin parses every listed class before its plugin can refuse one, and the config is
+ *   read on every loader the merged jar boots on. The plugin names the mixins. @see VariantMixins
+ * - Into the shipped jar only: a node that needs a mixin has no dev run of its own.
+ */
+fun Project.registerNodeMixins(descriptor: ModDescriptor, jarTask: String) {
+    val variant = descriptor.variants.single { it.node == path }
+    val config = variant.mixinConfigs.singleOrNull() ?: return
+    val json = """
+        |{
+        |  "required": true,
+        |  "minVersion": "0.8",
+        |  "package": "${variant.relocation!!.second}.mixin",
+        |  "plugin": "${property(MIXIN_PLUGIN)}",
+        |  "compatibilityLevel": "JAVA_${findProperty("java.version") ?: 17}",
+        |  "mixins": [],
+        |  "client": [],
+        |  "server": []
+        |}
+        |""".trimMargin()
+    val out = layout.buildDirectory.dir("node-mixins")
+    val generate = tasks.register("generateNodeMixins") {
+        group = "build"
+        description = "This node's mixin config, at its shipped package."
+        inputs.property("json", json)
+        outputs.dir(out)
+        doLast { out.get().file(config).asFile.apply { parentFile.mkdirs() }.writeText(json) }
+    }
+    tasks.named(jarTask, AbstractCopyTask::class.java).configure { from(generate) }
+}
 
 /** Every entry class [this] ships, as jar paths at their shipped names — for `requiredEntries`. */
 fun ModDescriptor.shippedEntryPaths(): List<String> =
