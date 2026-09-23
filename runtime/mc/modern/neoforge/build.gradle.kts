@@ -1,8 +1,13 @@
 // The `neoforge` branch — NeoForge through ModDevGradle, one node per Minecraft version
 // (`versions/<version>/`, whose gradle.properties pins mc.version, neoforge.version and Parchment).
-// Its first node is 1.20.4: NeoForge published no 20.1.x series.
+// Its first node is 1.20.2: NeoForge published no 20.1.x series.
+//
+// A node that also pins `neoform.version` (1.20.2, 1.20.3 -- NeoForge 20.2/20.3, which ModDevGradle does
+// not set up) is built from parts: NeoForm's Minecraft, NeoForge's jars compileOnly, and no dev run.
+// @see cgbuildlogic.useNeoForgeApi
 
 import cgbuildlogic.commonNode
+import cgbuildlogic.useNeoForgeApi
 
 plugins {
     id("cg-modern-loader")
@@ -26,15 +31,19 @@ repositories {
     }
 }
 
+val fromParts = findProperty("neoform.version") != null
+if (fromParts) useNeoForgeApi()
+
 neoForge {
-    version = property("neoforge.version").toString()
+    if (fromParts) neoFormVersion = property("neoform.version").toString()
+    else version = property("neoforge.version").toString()
 
     parchment {
         minecraftVersion = property("parchment.mc").toString()
         mappingsVersion = property("parchment.version").toString()
     }
 
-    runs {
+    if (!fromParts) runs {
         create("client") {
             client()
             // Forward every -Dcrystalgraphics.* from the Gradle invocation into the game's JVM, the
@@ -47,7 +56,7 @@ neoForge {
         }
     }
 
-    mods {
+    if (!fromParts) mods {
         create("crystalgraphics") {
             sourceSet(sourceSets.main.get())
             // Dev-run classpath: platform, core, and the common node are compileOnly for production

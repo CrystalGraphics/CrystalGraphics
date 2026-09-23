@@ -1,11 +1,15 @@
 package cgbuildlogic
 
 import org.gradle.api.Project
+import org.gradle.api.artifacts.ModuleDependency
 import org.gradle.api.file.FileCollection
 import org.gradle.api.tasks.TaskProvider
 import org.gradle.api.tasks.bundling.AbstractArchiveTask
 
 /**
+ * Loader nodes no ModDevGradle mode sets up, built from parts: MinecraftForge from 1.20.2, and NeoForge
+ * 20.2-20.3 ([useNeoForgeApi]).
+ *
  * MinecraftForge from 1.20.2, where ModDevGradle's legacy mode stops. A Forge node there compiles like
  * a `common` node -- vanilla Minecraft at official names through NeoForm -- with Forge's own jars on
  * compileOnly, and pins both:
@@ -43,6 +47,36 @@ fun Project.useForgeApi() {
     for (configuration in listOf("compileOnly", "langCompileOnly")) {
         if (configurations.findByName(configuration) == null) continue
         api.forEach { dependencies.add(configuration, it) }
+    }
+}
+
+/**
+ * NeoForge's own jars compileOnly, for a NeoForge node ModDevGradle cannot set up (20.2, 20.3): its
+ * `universal` jar, FancyModLoader and the event bus, at the versions its POM names. Such a node pins
+ * them beside `neoform.version`, and runs Mojang's names, so nothing is reobfuscated.
+ *
+ * ```properties
+ * neoforge.version = 20.2.93
+ * neoforge.fml = 1.0.16
+ * neoforge.bus = 7.2.0
+ * ```
+ *
+ * - Non-transitive: the POM also lists Minecraft's libraries at versions NeoForm pins strictly (slf4j
+ *   2.0.9 against 2.0.7), which one classpath cannot hold.
+ */
+fun Project.useNeoForgeApi() {
+    val fml = property("neoforge.fml")
+    val api = listOf(
+        "net.neoforged:neoforge:${property("neoforge.version")}:universal@jar",
+        "net.neoforged.fancymodloader:loader:$fml",
+        "net.neoforged.fancymodloader:core:$fml",
+        "net.neoforged.fancymodloader:language-java:$fml",
+        "net.neoforged.fancymodloader:events:$fml",
+        "net.neoforged:bus:${property("neoforge.bus")}",
+    )
+    for (configuration in listOf("compileOnly", "langCompileOnly")) {
+        if (configurations.findByName(configuration) == null) continue
+        api.forEach { (dependencies.add(configuration, it) as ModuleDependency).isTransitive = false }
     }
 }
 

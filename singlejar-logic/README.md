@@ -395,6 +395,11 @@ forge.version = 52.1.16
 `registerSrgReobf` does the reobfuscation with the renamer legacy mode uses, over Mojang's names
 chained with MCPConfig's SRG table; `thinJarTask` names each node's production step for the merge.
 
+**NeoForge 20.2 and 20.3 are the same case** — ModDevGradle does not set them up — and simpler: they
+run Mojang's names, so `useNeoForgeApi` puts the jars on compileOnly and nothing is renamed. It lists
+them non-transitively (`neoforge.fml`, `neoforge.bus`), because NeoForge's POM also names Minecraft's
+libraries at versions NeoForm pins strictly.
+
 What bites:
 
 1. **A node's group is its branch's** (`useNodeCoordinates`). Nodes of one version share a project
