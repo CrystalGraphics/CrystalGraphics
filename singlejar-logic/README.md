@@ -444,6 +444,14 @@ What bites:
     that version (`replacements.string(current.parsed >= "1.21.11")`), and `src/` keeps the old name.
 11. **ModDevGradle refuses `additionalRuntimeClasspath` from 1.21.10.** A dev-run library goes on
     `runtimeOnly` there; `devRunLibraries` names the configuration for a node.
+12. **ModDevGradle runs its decompile tools on the Minecraft's own Java**, which for 1.17 is 16 and
+    usually not installed. `useModernMinecraft` points them at 17 there. A node's `java.version` never
+    needs to drop below 17: the merged jar is downgraded to Java 8 whatever the nodes emit.
+13. **Fabric API was mod id `fabric` through its 1.19.1 builds** and `fabric-api` after, still
+    providing `fabric`. Depend on `fabric`, or a 1.17-1.19.1 client refuses the jar.
+14. **Minecraft ships no JOML below 1.19.3.** A shipped jar may not carry it (1.19.3+ has it as a named
+    module, and a second copy is a split package), so those instances take a companion jar and a dev
+    run takes JOML as a library.
 
 ---
 

@@ -2,8 +2,14 @@
 
 ## Target Versions
 
-**MC 1.20.1–1.21.11 / MinecraftForge 47–61** (a node each for 1.20.1, 1.20.2, 1.20.4, 1.20.6, 1.21.1,
-1.21.3, 1.21.4, 1.21.5, 1.21.6 (also 1.21.7), 1.21.8, 1.21.10 (also 1.21.9), 1.21.11; Forge 1.21 is refused: Forge 51 has no HUD event)
+**MC 1.17.1–1.21.11 / MinecraftForge 37–61** (a node each for 1.17.1, 1.18.2 (also 1.18, 1.18.1), 1.19.2
+(also 1.19, 1.19.1), 1.19.3, 1.19.4, 1.20.1, 1.20.2, 1.20.4, 1.20.6, 1.21.1, 1.21.3, 1.21.4, 1.21.5, 1.21.6
+(also 1.21.7), 1.21.8, 1.21.10 (also 1.21.9), 1.21.11; Forge 1.21 is refused: Forge 51 has no HUD event)
+
+**Below 1.19.3 the world passes land where Forge can reach.** Forge 44 (1.19.3) added
+`AFTER_BLOCK_ENTITIES`; Forge 40-43 stop at `AFTER_CUTOUT_BLOCKS`, ahead of entities; Forge 38-39 and 37
+have no stage event, so both passes run at the end of the level (`RenderLevelLastEvent`,
+`RenderWorldLastEvent`). Forge 38-39 share the 1.18.2 node, which picks at runtime.
 
 **From 1.21.3 the world-render hook is a mixin** (`mixin/`, gated by `CrystalGraphicsForgeMixins`):
 Forge 53 removed `RenderLevelStageEvent` and nothing replaced it. **From 1.21.6 Forge is EventBus 7**:
