@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.modern.fabric;
 
+import com.crystalgraphics.mc.modern.platform.ResourceIds;
 import com.crystalgraphics.mc.modern.platform.LifecycleModern;
 import com.crystalgraphics.mc.shared.VariantEntry;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
@@ -46,7 +47,7 @@ public final class CrystalGraphicsFabric implements VariantEntry {
             ResourceManagerHelper.get(PackType.CLIENT_RESOURCES).registerReloadListener(
                     new SimpleSynchronousResourceReloadListener() {
                         @Override public ResourceLocation getFabricId() {
-                            return new ResourceLocation(MODID, "asset_reload");
+                            return ResourceIds.of(MODID, "asset_reload");
                         }
                         @Override public void onResourceManagerReload(ResourceManager manager) {
                             LifecycleModern.reload();
@@ -59,7 +60,13 @@ public final class CrystalGraphicsFabric implements VariantEntry {
         private static void registerRenderFrame() {
             // AFTER_ENTITIES and AFTER_TRANSLUCENT are Fabric's names for the two moments Forge calls
             // AFTER_BLOCK_ENTITIES and AFTER_PARTICLES.
+            // 1.21 hands a DeltaTracker; `true` is the pause-aware residual 1.20's float already was.
+            //? if >=1.21 {
+            /*WorldRenderEvents.AFTER_ENTITIES.register(context ->
+                    LifecycleModern.opaquePass(context.tickCounter().getGameTimeDeltaPartialTick(true)));
+            *///?} else {
             WorldRenderEvents.AFTER_ENTITIES.register(context -> LifecycleModern.opaquePass(context.tickDelta()));
+            //?}
             WorldRenderEvents.AFTER_TRANSLUCENT.register(context -> LifecycleModern.transparentPass());
         }
 

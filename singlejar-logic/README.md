@@ -359,11 +359,19 @@ the parent's node of the same version:
 1. the version on the loader's branch in `settings.gradle.kts`, **and on `common`** if it is absent;
 2. `versions/<version>/gradle.properties` for each: the toolchain pins, plus `variant.minecraft` (the
    range the node claims, narrowing a neighbour's if they would overlap — `ModDescriptor` refuses the
-   overlap) and `variant.packFormat`;
+   overlap), `variant.packFormat`, and `java.version = 21` from 1.20.5 on (`nodeJava`: what the node
+   emits, and the ceiling its thin jar is checked against; 17 when unpinned);
 3. `//? if` directives where the API differs — `checkAllTargets` finds every one.
 
-The thin-jar lists, the relocation counts, the descriptors, the variant tables and `requiredEntries`
-all follow the tree, so none of them is edited.
+The thin-jar lists, the relocation counts, the descriptors (including `neoforge.mods.toml`, the only
+file NeoForge 1.20.5+ reads), the variant tables and `requiredEntries` all follow the tree, so none of
+them is edited.
+
+**A project built on another may call into the parent's common node** — CrystalGUI uses
+CrystalGraphics' `ResourceIds` rather than a copy. The parent ships that common relocated per node, so
+the child's thin jar relocates its REFERENCES the same way: `relocate(<parent common package>,
+nodePackage(<parent loader package>, version) + ".common…")`. Nothing of the parent's is bundled; only
+the names in the child's bytecode move. Dev runs need nothing, since both load at source names.
 
 What bites:
 

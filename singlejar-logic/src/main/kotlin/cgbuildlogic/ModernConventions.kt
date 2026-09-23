@@ -54,6 +54,18 @@ fun Project.useModernMinecraft() {
     }
 }
 
+/**
+ * The Java this node builds for: its Minecraft's -- 17 up to 1.20.4, 21 from 1.20.5 -- pinned as
+ * `java.version` in the node's gradle.properties, 17 when unpinned.
+ *
+ * ```kotlin
+ * options.release.set(nodeJava)                   // what javac emits
+ * maxClassMajor.set(nodeJava + 44)                // the class-file major a thin jar may carry
+ * ```
+ */
+val Project.nodeJava: Int
+    get() = findProperty("java.version")?.toString()?.toInt() ?: 17
+
 /** Loader packages, none of which a `common` node may import. */
 val LOADER_PACKAGES = listOf("net.minecraftforge.", "net.neoforged.", "net.fabricmc.", "cpw.mods.fml.")
 

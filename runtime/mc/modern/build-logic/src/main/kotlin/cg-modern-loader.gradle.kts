@@ -1,12 +1,13 @@
 import cgbuildlogic.ModDescriptor
 import cgbuildlogic.commonNode
 import cgbuildlogic.modernLoader
+import cgbuildlogic.nodeJava
 import cgbuildlogic.nodePackage
 import cgbuildlogic.registerNodeVariants
 import cgbuildlogic.registerCheckDescriptorsNameNoCommon
 import cgbuildlogic.useNodeCoordinates
 
-plugins { id("cg-java17") }
+plugins { id("cg-java") }
 
 // ── A loader node: `:runtime:mc:modern:<loader>:<version>` ───────────────────────────────────────
 //
@@ -26,7 +27,7 @@ evaluationDependsOn(common.path)
 // table is instrumented, so the write lands past it and the process dies with a native fail-fast
 // (0xC0000409 on Windows) before the window opens.
 //
-// A dev run here is ALWAYS on Java 21: cg-java17 raises the toolchain to 21 so javac can read :core's
+// A dev run here is ALWAYS on Java 21: cg-java raises the toolchain to 21 so javac can read :core's
 // v65 classes, and ModDevGradle takes the run JVM from the toolchain. So the client runs fine and
 // cannot be debugged -- which reads as an IDE fault rather than a library one.
 //
@@ -135,6 +136,9 @@ registerCheckDescriptorsNameNoCommon(listOf("com.crystalgraphics.mc.modern.platf
 // this build — ../../singlejar-logic.
 tasks.register<cgbuildlogic.CheckThinJar>("checkThinJar") {
     allowedPrefixes.set(listOf("com/crystalgraphics/mc/"))
+    // The node's own Java, never above it: a thin jar is this node's Minecraft's bytecode until the merge
+    // downgrades everything to 52. Java N is class-file major N + 44.
+    maxClassMajor.set(nodeJava + 44)
     // What CrystalGraphics merges at the ROOT, and so must not be here.
     forbiddenPrefixes.set(listOf(
         "com/crystalgraphics/core/", "com/crystalgraphics/api/", "com/crystalgraphics/gl/",
@@ -151,11 +155,16 @@ tasks.named("check") { dependsOn("checkThinJar") }
 // node's classes unrelocated) would not resolve the merged table's names. On Fabric it also takes the
 // merged fabric.mod.json, which names only the bootstrapper and ORs every node's range.
 registerNodeVariants(modDescriptors.getValue("main"))
-if (modernLoader == "fabric") {
+// NeoForge the same way: its merged mods.toml AND neoforge.mods.toml, the only file NeoForge 20.5+ reads.
+val mergedDevDescriptors = mapOf(
+    "fabric" to listOf("fabric.mod.json"),
+    "neoforge" to listOf("META-INF/mods.toml", "META-INF/neoforge.mods.toml"),
+)[modernLoader]
+if (mergedDevDescriptors != null) {
     tasks.named<ProcessResources>("processResources") {
         val descriptors = rootProject.tasks.named("generateMergedDescriptors")
         dependsOn(descriptors)
-        from(descriptors) { include("fabric.mod.json") }
+        from(descriptors) { include(mergedDevDescriptors) }
     }
 }
 

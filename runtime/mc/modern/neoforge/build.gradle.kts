@@ -97,7 +97,8 @@ val extractMcSources by tasks.registering(Sync::class) {
         dir.asFileTree.matching { include("*-sources.jar") }.singleFile
     }
     val resourcesJar = layout.buildDirectory.dir("moddev/artifacts").map { dir ->
-        dir.asFileTree.matching { include("client-extra-*.jar") }.singleFile
+        // `client-extra-<v>.jar` on 1.20.x, `<loader>-<v>-client-extra-aka-minecraft-resources.jar` on 1.21.
+        dir.asFileTree.matching { include("*client-extra*.jar") }.singleFile
     }
 
     from(zipTree(sourcesJar)) { into("java") }

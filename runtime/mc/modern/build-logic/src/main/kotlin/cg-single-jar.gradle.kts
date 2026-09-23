@@ -129,7 +129,7 @@ registerSingleJarPipeline(SingleJarSpec(
                                 "com/crystalgraphics/text/"))
         relocatedClasses.set(mapOf("com/crystalgraphics/mc/modern/platform/LifecycleModern.class" to modernCopies))
         requiredEntries.set(listOf(
-            "META-INF/mods.toml", "fabric.mod.json", "mcmod.info", "pack.mcmeta",
+            "META-INF/mods.toml", "META-INF/neoforge.mods.toml", "fabric.mod.json", "mcmod.info", "pack.mcmeta",
             "mixins.crystalgraphics.json",
             "com/crystalgraphics/mc/shared/LoaderProbe.class",
             "com/crystalgraphics/mc/v1710/mixins/early/CrystalGraphicsMixins.class",

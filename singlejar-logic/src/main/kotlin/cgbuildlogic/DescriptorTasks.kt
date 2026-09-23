@@ -58,6 +58,7 @@ fun Project.registerDescriptorTasks(
             root.resolve("fabric.mod.json").writeText(FabricModJson.merged(descriptor))
             root.resolve("mcmod.info").writeText(McmodInfo.merged(descriptor))
             root.resolve("META-INF/mods.toml").writeText(ForgeModsToml.merged(descriptor))
+            root.resolve("META-INF/neoforge.mods.toml").writeText(ForgeModsToml.neoForge(descriptor))
             root.resolve("pack.mcmeta").writeText(PackMcmeta.merged(descriptor))
             // Per mod, not per jar: the host and the language stack each carry their own table, and a
             // bootstrapper reads the one under its own id.
@@ -79,12 +80,11 @@ fun Project.registerDescriptorTasks(
     val checkAgree = tasks.register("checkDescriptorsAgree") {
         group = taskGroup
         description = "Fails if a per-loader descriptor disagrees with the one declaration."
-        // NO FABRIC FILE: a Fabric node's dev run takes the MERGED fabric.mod.json -- it names only the
-        // bootstrapper and ORs every node's range, so it is right for every node, and cannot drift.
+        // NO FABRIC OR NEOFORGE FILE: those nodes' dev runs take the MERGED descriptors -- they name only
+        // the bootstrapper and span every node's range, so they are right for every node and cannot drift.
         val forgeToml = layout.projectDirectory.file("runtime/mc/modern/forge/src/main/resources/META-INF/mods.toml").asFile
-        val neoToml = layout.projectDirectory.file("runtime/mc/modern/neoforge/src/main/resources/META-INF/mods.toml").asFile
         val mcmod = layout.projectDirectory.file("runtime/mc/1710/src/main/resources/mcmod.info").asFile
-        inputs.files(forgeToml, neoToml, mcmod).withPropertyName("shippedDescriptors")
+        inputs.files(forgeToml, mcmod).withPropertyName("shippedDescriptors")
         inputs.property("descriptor", descriptor.toString())
         outputs.upToDateWhen { true }
         doLast {
@@ -122,9 +122,7 @@ fun Project.registerDescriptorTasks(
             }
 
             require(forgeToml, "modId = \"${descriptor.id}\"", "declare the mod id")
-            require(neoToml, "modId = \"${descriptor.id}\"", "declare the mod id")
             requireSomeVariant(forgeToml, "forge", "Minecraft range") { listOf(it.minecraft) }
-            requireSomeVariant(neoToml, "neoforge", "Minecraft range") { listOf(it.minecraft) }
 
             // mcmod.info is a GTNH template: ${modId} is expanded by processResources, so the literal
             // is what a source file legitimately holds.

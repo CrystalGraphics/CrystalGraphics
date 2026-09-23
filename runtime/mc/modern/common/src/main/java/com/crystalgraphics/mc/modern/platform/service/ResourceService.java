@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.modern.platform.service;
 
+import com.crystalgraphics.mc.modern.platform.ResourceIds;
 import com.crystalgraphics.platform.service.CgResourceService;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
@@ -22,7 +23,7 @@ public final class ResourceService implements CgResourceService {
         try {
             Optional<Resource> opt = Minecraft.getInstance()
                     .getResourceManager()
-                    .getResource(new ResourceLocation(domain, path));
+                    .getResource(ResourceIds.of(domain, path));
             return opt.isPresent() ? opt.get().open() : null;
         } catch (Throwable ignored) {
             return null;
