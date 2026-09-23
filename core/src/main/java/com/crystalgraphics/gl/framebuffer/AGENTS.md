@@ -159,6 +159,22 @@ replaces the internal FBO on every resize.
 
 ---
 
+## Reading a framebuffer back without a stall — `CgPixelReadback`
+
+```java
+CgPixelReadback readback = new CgPixelReadback(3);
+readback.request(fbo.getId(), fbo.getWidth(), fbo.getHeight(), 256, tag);   // shrink, queue the read
+readback.poll(pixels -> use(pixels.tag(), pixels.rgb()));                     // every frame; never waits
+```
+
+A synchronous `glReadPixels` waits for the GPU to finish everything before it. This copies to a
+pixel-pack buffer behind a fence and hands the pixels over a frame or two later. It **unbinds
+`GL_PIXEL_PACK_BUFFER` at once** — a pack buffer left bound takes every later `glReadPixels` in the
+process, a host's screenshot included. Copy the mapped bytes out in ONE bulk `get`: a get per byte from
+the mapped buffer measured 2-3 ms for a 256x144 picture.
+
+---
+
 ## Adding a New Backend
 
 1. Extend `CgFrameBuffer` (package-private — no `public`).
