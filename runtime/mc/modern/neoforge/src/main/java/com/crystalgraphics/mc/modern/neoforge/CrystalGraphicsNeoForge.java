@@ -76,7 +76,12 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
             // Validated: AFTER_BLOCK_ENTITIES fires at LevelRenderer.java line ~1140 (MC 1.20.4),
             // after block entities, before renderSectionLayer(translucent).
             if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES) return;
+            // 1.21 hands a DeltaTracker; `true` is the pause-aware residual 1.20's float already was.
+            //? if >=1.21 {
+            /*LifecycleModern.opaquePass(event.getPartialTick().getGameTimeDeltaPartialTick(true));
+            *///?} else {
             LifecycleModern.opaquePass(event.getPartialTick());
+            //?}
         }
 
         private static void onRenderLevelTransparent(RenderLevelStageEvent event) {

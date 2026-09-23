@@ -9,7 +9,7 @@ import cgbuildlogic.useNodeCoordinates
 // out this way -- @see ../../../../../singlejar-logic, ModernTree and ModernConventions.
 
 plugins {
-    id("cg-java17")
+    id("cg-java")
     `maven-publish`
 }
 

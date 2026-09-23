@@ -232,7 +232,16 @@ object ForgeModsToml {
      * reads while ignoring the other; and there is **no** `forge` or `neoforge` row, because a
      * required dependency on a mod the other loader does not have is a refusal to load.</p>
      */
-    fun merged(d: ModDescriptor): String {
+    fun merged(d: ModDescriptor): String = print(d, neoForgeOnly = false)
+
+    /**
+     * `META-INF/neoforge.mods.toml`, the one file NeoForge 20.5+ reads — it ignores `mods.toml` there.
+     * The same declaration in NeoForge's spelling alone: `type`, never Forge's `mandatory`, which
+     * NeoForge stopped accepting when it renamed the file.
+     */
+    fun neoForge(d: ModDescriptor): String = print(d, neoForgeOnly = true)
+
+    private fun print(d: ModDescriptor, neoForgeOnly: Boolean): String {
         val forgeFamily = d.variantsOf("forge", "neoforge")
         val mixins = forgeFamily.flatMap { it.mixinConfigs }.distinct()
         val out = StringBuilder()
@@ -252,7 +261,7 @@ object ForgeModsToml {
         out.append("\n")
         out.append("[[dependencies.").append(d.id).append("]]\n")
         out.append("    modId = \"minecraft\"\n")
-        out.append("    mandatory = true\n")
+        if (!neoForgeOnly) out.append("    mandatory = true\n")
         out.append("    type = \"required\"\n")
         out.append("    versionRange = ").append(quote(minecraftUnion(forgeFamily))).append("\n")
         out.append("    ordering = \"NONE\"\n")
@@ -260,7 +269,7 @@ object ForgeModsToml {
         d.dependencies.forEach { dep ->
             out.append("\n[[dependencies.").append(d.id).append("]]\n")
             out.append("    modId = ").append(quote(dep.id)).append("\n")
-            out.append("    mandatory = ").append(dep.required).append("\n")
+            if (!neoForgeOnly) out.append("    mandatory = ").append(dep.required).append("\n")
             out.append("    type = ").append(quote(if (dep.required) "required" else "optional")).append("\n")
             out.append("    versionRange = ").append(quote(dep.range)).append("\n")
             out.append("    ordering = ").append(quote(dep.ordering.name)).append("\n")

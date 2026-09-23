@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.modern.platform.service;
 
+import com.crystalgraphics.mc.modern.platform.ResourceIds;
 import com.crystalgraphics.platform.service.CgSoundService;
 
 import net.minecraft.client.Minecraft;
@@ -18,7 +19,7 @@ public final class SoundService implements CgSoundService {
             Minecraft mc = Minecraft.getInstance();
             if (mc == null || mc.getSoundManager() == null) return;
 
-            SoundEvent event = BuiltInRegistries.SOUND_EVENT.get(new ResourceLocation(soundId));
+            SoundEvent event = BuiltInRegistries.SOUND_EVENT.get(ResourceIds.parse(soundId));
             if (event == null) return;
 
             mc.getSoundManager().play(SimpleSoundInstance.forUI(event, 1.0F));
