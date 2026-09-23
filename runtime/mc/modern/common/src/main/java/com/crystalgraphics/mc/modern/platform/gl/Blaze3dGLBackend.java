@@ -9,6 +9,9 @@ import com.mojang.blaze3d.platform.GlStateManager;
 //?}
 import org.lwjgl.opengl.GL11C;
 import org.lwjgl.opengl.GL13C;
+//? if >=1.21.11 {
+/*import org.lwjgl.opengl.GL33C;
+*///?}
 
 /**
  * {@link Lwjgl3GLBackend} plus the one thing tier 1 cannot do: <b>telling Minecraft what we changed.</b>
@@ -78,6 +81,11 @@ public final class Blaze3dGLBackend extends Lwjgl3GLBackend {
     public void glBindTexture(int target, int texture) {
         if (target == GL11C.GL_TEXTURE_2D && activeTextureUnit < MC_TRACKED_TEXTURE_UNITS) {
             GlStateManager._bindTexture(texture);
+            // 1.21.11 samples through sampler objects it leaves bound, always with a mipmapped min filter;
+            // over our mip-less textures that is incomplete and reads black. It rebinds its own per draw.
+            //? if >=1.21.11 {
+            /*GL33C.glBindSampler(activeTextureUnit, 0);
+            *///?}
             return;
         }
         // Minecraft tracks GL_TEXTURE_2D only; CG binds multiple targets.
