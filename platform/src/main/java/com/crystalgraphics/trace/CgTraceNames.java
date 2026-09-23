@@ -180,11 +180,17 @@ public final class CgTraceNames {
         Optional<String> found = StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE)
                 .walk(frames -> frames
                         .filter(f -> !SELF.contains(f.getClassName())
-                                && !FORWARDERS.contains(f.getClassName()))
+                                && !FORWARDERS.contains(outermost(f.getClassName())))
                         .map(CgTraceNames::describe)
                         .filter(Objects::nonNull)
                         .findFirst());
         return found.orElse(null);
+    }
+
+    /** A forwarder's nested classes forward too: {@code Outer$Inner} is {@code Outer}'s. */
+    private static String outermost(String className) {
+        int nested = className.indexOf('$');
+        return nested < 0 ? className : className.substring(0, nested);
     }
 
     private static String describe(StackWalker.StackFrame frame) {
