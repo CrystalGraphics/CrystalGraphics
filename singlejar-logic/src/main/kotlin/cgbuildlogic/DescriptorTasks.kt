@@ -79,11 +79,12 @@ fun Project.registerDescriptorTasks(
     val checkAgree = tasks.register("checkDescriptorsAgree") {
         group = taskGroup
         description = "Fails if a per-loader descriptor disagrees with the one declaration."
-        val fabricJson = layout.projectDirectory.file("runtime/mc/modern/fabric/src/main/resources/fabric.mod.json").asFile
+        // NO FABRIC FILE: a Fabric node's dev run takes the MERGED fabric.mod.json -- it names only the
+        // bootstrapper and ORs every node's range, so it is right for every node, and cannot drift.
         val forgeToml = layout.projectDirectory.file("runtime/mc/modern/forge/src/main/resources/META-INF/mods.toml").asFile
         val neoToml = layout.projectDirectory.file("runtime/mc/modern/neoforge/src/main/resources/META-INF/mods.toml").asFile
         val mcmod = layout.projectDirectory.file("runtime/mc/1710/src/main/resources/mcmod.info").asFile
-        inputs.files(fabricJson, forgeToml, neoToml, mcmod).withPropertyName("shippedDescriptors")
+        inputs.files(forgeToml, neoToml, mcmod).withPropertyName("shippedDescriptors")
         inputs.property("descriptor", descriptor.toString())
         outputs.upToDateWhen { true }
         doLast {
@@ -118,22 +119,6 @@ fun Project.registerDescriptorTasks(
                     problems += "${file.name} matches no declared $loader variant's $what (tried " +
                         variants.joinToString(", ") { it.minecraft } + ")"
                 }
-            }
-
-            require(fabricJson, "\"id\": \"${descriptor.id}\"", "declare the mod id")
-            // WHERE THERE IS A BOOTSTRAPPER, that is what the descriptor names -- the variants' own
-            // entries are named by variants.json instead, and Fabric never sees them. A shipped
-            // descriptor still naming an entry directly would construct it on every version.
-            val fabricBootstrapper = descriptor.bootstrappers["fabric"]
-            if (fabricBootstrapper != null) {
-                require(fabricJson, fabricBootstrapper, "name the bootstrapper its entry points go through")
-            } else {
-                requireSomeVariant(fabricJson, "fabric", "entry points") { v ->
-                    listOfNotNull(v.commonEntry, v.clientEntry)
-                }
-            }
-            requireSomeVariant(fabricJson, "fabric", "depends") { v ->
-                v.fabricDepends.map { (id, range) -> "\"$id\": \"$range\"" }
             }
 
             require(forgeToml, "modId = \"${descriptor.id}\"", "declare the mod id")
