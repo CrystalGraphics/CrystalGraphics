@@ -9,9 +9,10 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraft.server.packs.resources.PreparableReloadListener.PreparationBarrier;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraftforge.client.event.RegisterClientReloadListenersEvent;
-import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.GameShuttingDownEvent;
-import net.minecraftforge.eventbus.api.IEventBus;
+//? if <1.21.6 {
+import net.minecraftforge.common.MinecraftForge;
+//?}
 import net.minecraftforge.fml.CrashReportCallables;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.minecraftforge.fml.loading.FMLEnvironment;
@@ -51,7 +52,7 @@ public final class CrystalGraphicsForge implements VariantEntry {
         // EVERY subscription here is a render hook, so the whole of Events is client-only -- guarded
         // at the call site rather than inside, so a dedicated server never links one of those types.
         if (FMLEnvironment.dist == Dist.CLIENT) {
-            Events.register(((FMLJavaModLoadingContext) context).getModEventBus());
+            Events.register((FMLJavaModLoadingContext) context);
         }
     }
 
@@ -63,15 +64,23 @@ public final class CrystalGraphicsForge implements VariantEntry {
         private Events() {}
 
         /** From the entry point rather than from an annotation; see the class note. */
-        static void register(IEventBus modBus) {
-            modBus.addListener(Events::onRegisterReloadListeners);
+        static void register(FMLJavaModLoadingContext context) {
+            // Forge 56's EventBus 7: every event carries its own bus, and a mod-bus event hands out one
+            // per mod's bus group.
+            //? if >=1.21.6 {
+            /*RegisterClientReloadListenersEvent.getBus(context.getModBusGroup())
+                    .addListener(Events::onRegisterReloadListeners);
+            GameShuttingDownEvent.BUS.addListener(Events::onGameShuttingDown);
+            *///?} else {
+            context.getModEventBus().addListener(Events::onRegisterReloadListeners);
+            MinecraftForge.EVENT_BUS.addListener(Events::onGameShuttingDown);
+            //?}
             // Forge 53 (1.21.3) removed the render-stage event; from there the passes are a mixin's.
-            // @see com.crystalgraphics.mc.modern.forge.mixin.LevelRendererHook
+            // @see com.crystalgraphics.mc.modern.forge.mixin.OpaquePassHook
             //? if <1.21.3 {
             MinecraftForge.EVENT_BUS.addListener(Events::onRenderLevelOpaque);
             MinecraftForge.EVENT_BUS.addListener(Events::onRenderLevelTransparent);
             //?}
-            MinecraftForge.EVENT_BUS.addListener(Events::onGameShuttingDown);
         }
 
         private static void onRegisterReloadListeners(RegisterClientReloadListenersEvent event) {

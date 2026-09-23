@@ -35,9 +35,17 @@ import org.gradle.api.tasks.bundling.AbstractArchiveTask
 const val AUTO_RENAMING_TOOL = "net.neoforged:AutoRenamingTool:2.0.17:all"
 
 /**
- * Forge's own jars, compileOnly on `main` and on `lang` when the node has one.
- *
- * - Without ASM: Forge 53+ asks for a newer one than NeoForm pins strictly, and Minecraft brings its own.
+ * Minecraft's own libraries, which NeoForm pins strictly: Forge's jars ask for newer ones (ASM from 53,
+ * log4j from 58), and the one classpath holds Minecraft's.
+ */
+private val MINECRAFT_LIBRARY_GROUPS = listOf(
+    "org.ow2.asm", "org.apache.logging.log4j", "org.slf4j", "com.google.guava", "com.google.code.gson",
+    "org.apache.commons", "commons-io", "net.sf.jopt-simple", "it.unimi.dsi", "net.java.dev.jna",
+)
+
+/**
+ * Forge's own jars, compileOnly on `main` and on `lang` when the node has one — without Minecraft's
+ * libraries ([MINECRAFT_LIBRARY_GROUPS]).
  */
 fun Project.useForgeApi() {
     repositories.maven { name = "Forge"; setUrl("https://maven.minecraftforge.net/") }
@@ -50,7 +58,10 @@ fun Project.useForgeApi() {
     )
     for (configuration in listOf("compileOnly", "langCompileOnly")) {
         if (configurations.findByName(configuration) == null) continue
-        api.forEach { (dependencies.add(configuration, it) as ModuleDependency).exclude(mapOf("group" to "org.ow2.asm")) }
+        api.forEach { notation ->
+            val dependency = dependencies.add(configuration, notation) as ModuleDependency
+            MINECRAFT_LIBRARY_GROUPS.forEach { dependency.exclude(mapOf("group" to it)) }
+        }
     }
 }
 

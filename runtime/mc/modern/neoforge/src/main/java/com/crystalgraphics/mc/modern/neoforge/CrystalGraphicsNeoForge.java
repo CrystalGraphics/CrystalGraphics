@@ -104,16 +104,21 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
 
         // -- NEOFORGE bus -----------------------------------------------------------
 
+        // NeoForge 21.6 made each stage an event class of its own.
+        //? if >=1.21.6 {
+        /*private static void onRenderLevelOpaque(RenderLevelStageEvent.AfterBlockEntities event) {
+            LifecycleModern.opaquePass(partialTick(event));
+        }
+
+        private static void onRenderLevelTransparent(RenderLevelStageEvent.AfterParticles event) {
+            LifecycleModern.transparentPass();
+        }
+        *///?} else {
         private static void onRenderLevelOpaque(RenderLevelStageEvent event) {
             // Validated: AFTER_BLOCK_ENTITIES fires at LevelRenderer.java line ~1140 (MC 1.20.4),
             // after block entities, before renderSectionLayer(translucent).
             if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES) return;
-            // 1.21 hands a DeltaTracker; `true` is the pause-aware residual 1.20's float already was.
-            //? if >=1.21 {
-            /*LifecycleModern.opaquePass(event.getPartialTick().getGameTimeDeltaPartialTick(true));
-            *///?} else {
-            LifecycleModern.opaquePass(event.getPartialTick());
-            //?}
+            LifecycleModern.opaquePass(partialTick(event));
         }
 
         private static void onRenderLevelTransparent(RenderLevelStageEvent event) {
@@ -122,6 +127,18 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
             if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_PARTICLES) return;
             LifecycleModern.transparentPass();
         }
+        //?}
+
+        // 1.21 hands a DeltaTracker; `true` is the pause-aware residual 1.20's float already was.
+        //? if >=1.21 {
+        /*private static float partialTick(RenderLevelStageEvent event) {
+            return event.getPartialTick().getGameTimeDeltaPartialTick(true);
+        }
+        *///?} else {
+        private static float partialTick(RenderLevelStageEvent event) {
+            return event.getPartialTick();
+        }
+        //?}
 
         private static void onGameShuttingDown(GameShuttingDownEvent event) {
             LifecycleModern.shutdown();

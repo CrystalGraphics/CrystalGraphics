@@ -13,7 +13,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 // runs once a frame. Its other parameters moved in 1.21.4; one selector per shape, and one must bind.
 // @see com.crystalgraphics.mc.shared.CrystalGraphicsForgeMixins
 @Mixin(value = ParticleEngine.class, remap = false)
-public abstract class ParticleEngineHook {
+public abstract class TransparentPassHook {
 
     @Inject(method = {
             "render(Lnet/minecraft/client/Camera;FLnet/minecraft/client/renderer/MultiBufferSource$BufferSource;Lnet/minecraft/client/renderer/culling/Frustum;)V",
