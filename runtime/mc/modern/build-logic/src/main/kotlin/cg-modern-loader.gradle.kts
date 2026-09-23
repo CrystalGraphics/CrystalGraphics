@@ -1,4 +1,22 @@
+import cgbuildlogic.commonNode
+import cgbuildlogic.modernLoader
+import cgbuildlogic.registerCheckDescriptorsNameNoCommon
+import cgbuildlogic.useNodeCoordinates
+
 plugins { id("cg-java17") }
+
+// ── A loader node: `:runtime:mc:modern:<loader>:<version>` ───────────────────────────────────────
+//
+// `project.name` is the VERSION here and the loader is the branch, so neither is spelled out below:
+// `modernLoader` and `commonNode` say which is which. @see cgbuildlogic.ModernTree
+useNodeCoordinates()
+base { archivesName.set("crystalgraphics-$modernLoader-${project.name}") }
+
+/** The common node of THIS node's Minecraft -- never another version's. */
+val common: Project = project.commonNode
+
+// Its jar task is read below at configuration time, which needs the project configured first.
+evaluationDependsOn(common.path)
 
 // LWJGL 3.3.1 -- what MC 1.20.1 ships -- predates Java 21 and does not recognise its JNI version. It
 // patches the JNIEnv function table on a guessed layout anyway; under a debugger's JVMTI agent that
@@ -34,7 +52,7 @@ dependencies {
     // runtimeOnly: picked up by Fabric/Loom dev runs via Gradle's standard runtimeClasspath.
     // ModDevGradle (Forge/NeoForge) dev runs ignore runtimeClasspath and instead use the
     // mods{} sourceSet declarations in each loader's build.gradle.kts.
-    "compileOnly"(project(":runtime:mc:modern:common"))
+    "compileOnly"(project(common.path))
     "compileOnly"(project(":platform"))
 
     // compileOnly and NOT bundled: the merge adds :runtime:mc:shared once, under a package no variant
@@ -46,21 +64,21 @@ dependencies {
     "runtimeOnly"(project(":runtime:mc:shared"))
     "compileOnly"(project(":core"))
     "compileOnly"(project(":freetype-msdfgen-harfbuzz-bindings"))
-    "runtimeOnly"(project(":runtime:mc:modern:common"))
+    "runtimeOnly"(project(common.path))
     "runtimeOnly"(project(":platform"))
     "runtimeOnly"(project(":core"))
     // Fabric/Loom dev runs pick this up from runtimeClasspath.
     // ModDevGradle (Forge/NeoForge) dev runs need it in the mods{} sourceSet block instead.
     "runtimeOnly"(project(":freetype-msdfgen-harfbuzz-bindings"))
     // Mixin compileOnly — loaders bundle it at runtime
-    "compileOnly"("org.spongepowered:mixin:${rootProject.properties["mc1201.mixin"]}")
-    "annotationProcessor"("org.spongepowered:mixin:${rootProject.properties["mc1201.mixin"]}:processor")
-    "compileOnly"("io.github.llamalad7:mixinextras-common:${rootProject.properties["mc1201.mixinextras"]}")
+    "compileOnly"("org.spongepowered:mixin:${property("modern.mixin")}")
+    "annotationProcessor"("org.spongepowered:mixin:${property("modern.mixin")}:processor")
+    "compileOnly"("io.github.llamalad7:mixinextras-common:${property("modern.mixinextras")}")
 }
 
 // ── The thin jar (J1) ────────────────────────────────────────────────────────────────────────────
 //
-// One input to the single-jar merge: this loader's own classes and resources, plus :runtime:mc:modern:common,
+// One input to the single-jar merge: this loader's own classes and resources, plus its common node,
 // and NOTHING else. The renderer, its SPI, the font bindings and JOML enter the merge once at the
 // root; a copy here would ship three times over.
 //
@@ -70,52 +88,28 @@ dependencies {
 // THE PACKAGE IS MOVED, NOT ITS PARENT: relocating `com.crystalgraphics.mc` would rewrite this
 // loader's own `com.crystalgraphics.mc.<loader>` too. `platform` keeps its leaf name under the new
 // root, so `mc.platform.LifecycleModern` becomes `mc.forge.common.platform.LifecycleModern`.
-val cgThinRoot = "com.crystalgraphics.mc.${project.name}.common"
+//
+// Keyed on the LOADER, which is one node per loader today. A second node of one loader needs the
+// version in here too, or two thin jars carry one relocated name and the merge keeps whichever arrived
+// first.
+val cgThinRoot = "com.crystalgraphics.mc.$modernLoader.common"
 
 val thinShadowJar = tasks.register<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("thinShadowJar") {
     group = "build"
-    description = "This loader plus :runtime:mc:modern:common, relocated -- the merge's input, before remapping."
+    description = "This loader plus its common node, relocated -- the merge's input, before remapping."
     // DEV NAMES STILL. Forge reobfuscates this, Fabric remaps it, NeoForge ships it as it is.
     archiveClassifier.set("thin-dev")
     configurations = emptyList()
     from(sourceSets["main"].output)
-    val commonJar = project(":runtime:mc:modern:common").tasks.named<Jar>("jar")
+    val commonJar = common.tasks.named<Jar>("jar")
     dependsOn(commonJar)
     from(commonJar.map { zipTree(it.archiveFile) })
     relocate("com.crystalgraphics.mc.modern.platform", "$cgThinRoot.platform")
 }
 
-// Nothing in :runtime:mc:modern:common may be NAMED from a descriptor or a service file.
-//
-// The relocation rewrites class references inside the jar; it cannot rewrite a name sitting in
-// `mods.toml`, `fabric.mod.json` or `META-INF/services/...`, so such a name would point at a class
-// that no longer exists under that spelling -- on three loaders, silently, at the moment something
-// asks for it. The loader's OWN packages are fine: they are not relocated.
-val checkDescriptorsNameNoCommon = tasks.register("checkDescriptorsNameNoCommon") {
-    group = "verification"
-    description = "Fails if a descriptor or service file names a class that the thin jar relocates."
-    val resourceRoot = layout.projectDirectory.dir("src/main/resources").asFile
-    val forbidden = listOf("com.crystalgraphics.mc.modern.platform")
-    inputs.dir(resourceRoot).optional(true).withPropertyName("resources")
-    outputs.upToDateWhen { true }
-    doLast {
-        if (!resourceRoot.isDirectory) return@doLast
-        val hits = resourceRoot.walkTopDown()
-            .filter { it.isFile }
-            .flatMap { file ->
-                val text = runCatching { file.readText() }.getOrDefault("")
-                forbidden.filter { text.contains(it) }.map { file.relativeTo(resourceRoot) to it }
-            }
-            .toList()
-        if (hits.isNotEmpty()) {
-            throw GradleException(
-                "A descriptor or service file names a package the thin jar relocates, so the name "
-                    + "will be wrong on every loader:\n"
-                    + hits.joinToString("\n") { (path, pkg) -> "  $path  names  $pkg" })
-        }
-    }
-}
-tasks.named("check") { dependsOn(checkDescriptorsNameNoCommon) }
+// Nothing in the common node may be NAMED from a descriptor or a service file: the relocation above
+// rewrites class references, never a name in mods.toml, fabric.mod.json or META-INF/services.
+registerCheckDescriptorsNameNoCommon(listOf("com.crystalgraphics.mc.modern.platform"))
 
 // ── The thin-jar check, registered once for every 1.20.x loader ──────────────────────────────────
 //

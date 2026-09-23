@@ -1,7 +1,7 @@
 # runtime/mc/modern/common — Platform Package
 
 `com.crystalgraphics.mc.modern.platform` — MC 1.20.x shared platform implementation.
-All files compile against MC 1.20.1 via `legacyForge` in `cg-mc1201-common.gradle.kts`.
+All files compile against MC 1.20.1 via `legacyForge` in `cg-modern-common.gradle.kts` (one node per Minecraft version).
 No loader-specific types (Forge/NeoForge/Fabric) appear anywhere in this package.
 
 ## Entry Point

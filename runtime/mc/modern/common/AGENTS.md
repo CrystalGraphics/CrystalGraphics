@@ -1,13 +1,13 @@
 # runtime/mc/modern/common — Agent Knowledge Base
 
 Shared MC 1.20.x platform implementation. Compiles against MC 1.20.1 + MinecraftForge 47.2.0
-via `legacyForge` in `cg-mc1201-common.gradle.kts`. The compiled JAR is consumed by all three
+per node by `cg-modern-common.gradle.kts` — NeoForm from 1.20.2, `legacyForge` below. The compiled JAR is consumed by all three
 loader subprojects (`forge`, `neoforge`, `fabric`) via the `commonOutput` configuration.
 
 ## Build
 
 ```bash
-./gradlew :runtime:mc:modern:common:compileJava   # compiles shared sources only
+./gradlew :runtime:mc:modern:common:1.20.1:compileJava   # compiles shared sources only
 ```
 
 No loader-specific types (Forge/NeoForge/Fabric APIs) appear in this module.

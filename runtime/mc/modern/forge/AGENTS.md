@@ -6,7 +6,7 @@
 
 Uses ModDevGradle legacyForge (`net.neoforged.moddev.legacyforge`), which supports
 MinecraftForge 1.17–1.20.1 and is Gradle 9 + JDK 25 compatible. See `build.gradle.kts`
-for version pins under `mc1201.forge` / `mc1201.parchment.*` keys.
+for version pins, which are per node in `versions/<version>/gradle.properties`.
 
 ## The loader is registration only
 
@@ -15,7 +15,7 @@ One `@Mod` class, `CrystalGraphicsForge`. Its `Events` inner class holds the two
 and the shutdown signal.
 
 Which event, and which stage of it. What the engine then does — bind the main render target, run the
-opaque or transparent pass, forward a reload, stop at shutdown — is `:runtime:mc:modern:common`'s `LifecycleModern`,
+opaque or transparent pass, forward a reload, stop at shutdown — is the common branch's `LifecycleModern`,
 shared by all three.
 
 ## Minecraft Source Location
@@ -24,13 +24,13 @@ Decompiled, Parchment-mapped MinecraftForge + MC 1.20.1 sources are extracted in
 
 | Path | Contents |
 |---|---|
-| `build/mc-src/java/` | MinecraftForge + Mojang Java sources, Parchment-mapped |
-| `build/mc-src/resources/` | MC client assets (assets/, data/, *.json, *.mcmeta) from `client-extra-*.jar` |
+| `versions/1.20.1/build/mc-src/java/` | MinecraftForge + Mojang Java sources, Parchment-mapped |
+| `versions/1.20.1/build/mc-src/resources/` | MC client assets (assets/, data/, *.json, *.mcmeta) from `client-extra-*.jar` |
 
 These paths are gitignored and not committed. Generate them with:
 
 ```bash
-./gradlew :runtime:mc:modern:forge:extractMcSources
+./gradlew :runtime:mc:modern:forge:1.20.1:extractMcSources
 # or regenerate all three 1.20.x loader modules at once:
 ./gradlew extractAllMcSources
 ```
@@ -40,7 +40,7 @@ downloads and decompiles sources) if it has not run yet. Expect several minutes 
 
 ## Key Source Files
 
-After extraction, commonly referenced locations under `build/mc-src/java/`:
+After extraction, commonly referenced locations under `versions/1.20.1/build/mc-src/java/`:
 
 - `net/minecraft/client/Minecraft.java` — main game class
 - `net/minecraft/client/renderer/` — rendering pipeline
@@ -50,8 +50,8 @@ After extraction, commonly referenced locations under `build/mc-src/java/`:
 ## Build
 
 ```bash
-./gradlew :runtime:mc:modern:forge:compileJava
-./gradlew :runtime:mc:modern:forge:shadowJar
+./gradlew :runtime:mc:modern:forge:1.20.1:compileJava
+./gradlew :runtime:mc:modern:forge:1.20.1:shadowJar
 ```
 
 ## Plugin

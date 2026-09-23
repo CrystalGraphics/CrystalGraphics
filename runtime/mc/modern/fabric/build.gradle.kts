@@ -1,5 +1,10 @@
+// The `fabric` branch — Fabric through Loom, one node per Minecraft version (`versions/<version>/`,
+// whose gradle.properties pins mc.version, the loader, fabric-api and Parchment).
+
+import cgbuildlogic.commonNode
+
 plugins {
-    id("cg-mc1201-loader")
+    id("cg-modern-loader")
     // Upstream fabric-loom 1.15.x supports Gradle 9.x (1.16 requires 9.4+, 1.15 works on 9.0+).
     // Architectury-loom 1.14.473 was replaced because its Forge mode uses detachedConfiguration
     // resolution without an exclusive lock — a Gradle 9 hard error (not fixable via properties).
@@ -11,20 +16,17 @@ plugins {
     id("com.gradleup.shadow")
 }
 
-group = rootProject.properties["modGroup"] as String
-version = rootProject.properties["modVersion"] as String
-base { archivesName.set("crystalgraphics-mc1201-fabric") }
-
 dependencies {
-    minecraft("com.mojang:minecraft:${rootProject.properties["mc1201.minecraft"]}")
+    minecraft("com.mojang:minecraft:${property("mc.version")}")
     mappings(loom.layered {
         officialMojangMappings()
-        parchment("org.parchmentmc.data:parchment-${rootProject.properties["mc1201.parchment.mc"]}:${rootProject.properties["mc1201.parchment"]}@zip")
+        parchment("org.parchmentmc.data:parchment-${property("parchment.mc")}:${property("parchment.version")}@zip")
     })
-    modImplementation("net.fabricmc:fabric-loader:${rootProject.properties["mc1201.fabric.loader"]}")
-    modImplementation("net.fabricmc.fabric-api:fabric-api:${rootProject.properties["mc1201.fabric.api"]}")
+    modImplementation("net.fabricmc:fabric-loader:${property("fabric.loader")}")
+    modImplementation("net.fabricmc.fabric-api:fabric-api:${property("fabric.api")}")
 }
 
+// Per NODE: relative to versions/<version>/, so two versions never share a world.
 loom {
     runs {
         named("client") { runDir("runs/client") }
@@ -44,7 +46,7 @@ tasks.processResources {
     filesMatching("fabric.mod.json") { expand("version" to project.version) }
 }
 
-// Merge platform, core, mc1201:common, and freetype-msdfgen-harfbuzz-bindings into BOTH
+// Merge platform, core, the common node, and freetype-msdfgen-harfbuzz-bindings into BOTH
 // tasks.jar and tasks.shadowJar.
 //
 // tasks.jar must include bundled content because Loom uses the REMAPPED JAR (produced from
@@ -62,7 +64,7 @@ tasks.processResources {
 // both declare an implicit dependsOn on the upstream :jar tasks; no explicit dependsOn needed.
 val platformJar     = project(":platform").tasks.named<Jar>("jar").flatMap { it.archiveFile }
 val coreJar         = project(":core").tasks.named<Jar>("jar").flatMap { it.archiveFile }
-val commonJar       = project(":runtime:mc:modern:common").tasks.named<Jar>("jar").flatMap { it.archiveFile }
+val commonJar       = project.commonNode.tasks.named<Jar>("jar").flatMap { it.archiveFile }
 val freetypeJar     = project(":freetype-msdfgen-harfbuzz-bindings").tasks.named<Jar>("jar").flatMap { it.archiveFile }
 // THE VARIANT SELECTOR (J11.0). Every CrystalGUI host on every loader calls VariantBootstrap from its
 // own entry point, and on fabric CrystalGraphics arrives as a MOD JAR -- com.crystalgraphics is excluded
@@ -99,10 +101,10 @@ tasks.shadowJar {
 // Not on `assemble` (J7): the merged single jar is the shipping artifact, and the fat per-loader jar
 // nothing installs was the most expensive thing in this build. `./gradlew shadowJar` still builds one.
 
-// Extracts Fabric MC 1.20.1 sources and resources into build/mc-src for local navigation.
+// Extracts this node's Minecraft sources and resources into build/mc-src for local navigation.
 // Sync (not Copy) removes stale files when jars change between toolchain version bumps.
 val extractMcSources by tasks.registering(Sync::class) {
-    description = "Extracts Fabric MC 1.20.1 sources and resources into build/mc-src for local navigation."
+    description = "Extracts this node's Minecraft sources and resources into build/mc-src for local navigation."
     group = "crystalgraphics"
 
     // genSourcesWithVineflower is Loom's decompile task. dependsOn ensures it runs before extraction.
@@ -145,7 +147,7 @@ val extractMcSources by tasks.registering(Sync::class) {
 // genSourcesWithVineflower (which extractMcSources depends on) is an optional dev task; forcing
 // it on classes would add 2-5 minutes of Vineflower decompilation to every fresh-clone build.
 // ideaSyncTask is Loom's dedicated IDE sync hook — the right moment for one-time source gen.
-// CLI users who want sources without IDE sync: ./gradlew :runtime:mc:modern:fabric:extractMcSources
+// CLI users who want sources without IDE sync: ./gradlew :runtime:mc:modern:fabric:1.20.1:extractMcSources
 tasks.named("ideaSyncTask") { dependsOn(extractMcSources) }
 
 // -- The thin jar, remapped (J1) -------------------------------------------------------------------
@@ -161,7 +163,7 @@ val remapThinJar = tasks.register<net.fabricmc.loom.task.RemapJarTask>("remapThi
     archiveClassifier.set("thin")
 }
 
-// Registered by cg-mc1201-loader with what a CrystalGraphics thin jar may contain; only the jar is ours.
+// Registered by cg-modern-loader with what a CrystalGraphics thin jar may contain; only the jar is ours.
 tasks.named<cgbuildlogic.CheckThinJar>("checkThinJar") {
     jar.set(remapThinJar.flatMap { it.archiveFile })
 }
