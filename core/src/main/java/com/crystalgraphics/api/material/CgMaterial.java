@@ -1,6 +1,7 @@
 package com.crystalgraphics.api.material;
 
-import com.crystalgraphics.util.profiling.CgProfiler;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.buffer.CgGpuType;
@@ -636,7 +637,7 @@ public final class CgMaterial {
 
         if (cgMaterialShader != null) {
             if (cgMaterialShader.isDirty()) {
-                try (CgProfiler.Scope ignored = CgProfiler.scope("material.recompile")) {
+                try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.recompile")) {
                     cgMaterialShader.recompile();
                 }
                 wiredPrograms.clear();
@@ -652,12 +653,12 @@ public final class CgMaterial {
             // that cost is otherwise invisible: it surfaces inside whatever draw happened to
             // trigger the toggle, not at any obvious "compiling now" call site.
             CgShader shader;
-            try (CgProfiler.Scope ignored = CgProfiler.scope("material.getOrCompileVariant")) {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.getOrCompileVariant")) {
                 shader = cgMaterialShader.getOrCompileForwardPass(keywords);
             }
             if (shader == null) return;
             lastBoundShader = shader;
-            try (CgProfiler.Scope ignored = CgProfiler.scope("material.doBind")) {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.doBind")) {
                 doBind(shader, CgRenderPassVariant.FORWARD);
             }
         }
@@ -758,7 +759,7 @@ public final class CgMaterial {
     }
 
     private void doBind(CgShader shader, CgRenderPassVariant variant) {
-        try (CgProfiler.Scope ignored = CgProfiler.scope("doBind.wire")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "doBind.wire")) {
             if (!wiredPrograms.contains(shader)) {
                 wirePerInstance(shader);
                 wiredPrograms.add(shader);
@@ -787,7 +788,7 @@ public final class CgMaterial {
         // What this removes is ~25 glGet* driver synchronisation points per bind; one observed frame
         // spent 346.8 ms in them.
 
-        try (CgProfiler.Scope ignored = CgProfiler.scope("doBind.propsUpload")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "doBind.propsUpload")) {
             if (materialPropsDirty && matPropsUbo != null) {
                 propStore.writeUboProps(matPropsUbo.writer());
                 matPropsUbo.endRecord();
@@ -796,20 +797,20 @@ public final class CgMaterial {
             }
         }
 
-        try (CgProfiler.Scope ignored = CgProfiler.scope("doBind.uboBind")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "doBind.uboBind")) {
             if (matPropsUbo != null) matPropsUbo.bind();
         }
 
-        try (CgProfiler.Scope ignored = CgProfiler.scope("doBind.samplers")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "doBind.samplers")) {
             if (propStore != null && propStore.hasSamplerProps())
                 propStore.bindSamplerTextures();
         }
 
-        try (CgProfiler.Scope ignored = CgProfiler.scope("doBind.renderState")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "doBind.renderState")) {
             getPassRenderState(variant).apply();
         }
 
-        try (CgProfiler.Scope ignored = CgProfiler.scope("doBind.shaderBind")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "doBind.shaderBind")) {
             shader.bind();
         }
     }

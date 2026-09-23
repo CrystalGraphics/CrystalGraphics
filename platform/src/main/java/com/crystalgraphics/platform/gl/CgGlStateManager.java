@@ -89,8 +89,8 @@ public final class CgGlStateManager {
     private int depth;
 
     /**
-     * Diagnostics. Plain fields because {@code CgProfiler} lives in {@code core}, which {@code platform}
-     * must not depend on — read them from there rather than adding a callback for four counters.
+     * Diagnostics, read by {@code core} and recorded there — plain fields rather than a callback for
+     * four counters.
      */
     public long callsIssued, callsSkipped, adopted;
 
