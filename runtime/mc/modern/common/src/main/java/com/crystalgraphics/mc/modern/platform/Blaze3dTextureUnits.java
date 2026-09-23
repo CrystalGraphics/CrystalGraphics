@@ -3,7 +3,11 @@ package com.crystalgraphics.mc.modern.platform;
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 
+//? if >=1.21.5 {
+/*import com.mojang.blaze3d.opengl.GlStateManager;
+*///?} else {
 import com.mojang.blaze3d.platform.GlStateManager;
+//?}
 
 import org.apache.logging.log4j.LogManager;
 
