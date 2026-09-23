@@ -26,7 +26,7 @@ import java.util.Set;
  *  "plugin": "com.crystalgraphics.mc.shared.CrystalGraphicsForgeMixins", "mixins": [], "client": []}
  *
  * public final class CrystalGraphicsForgeMixins extends VariantMixins {
- *     public CrystalGraphicsForgeMixins() { super("crystalgraphics", "LevelRendererHook"); }
+ *     public CrystalGraphicsForgeMixins() { super("crystalgraphics", "OpaquePassHook"); }
  * }
  * </pre>
  *

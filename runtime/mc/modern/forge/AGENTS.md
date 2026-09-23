@@ -2,11 +2,13 @@
 
 ## Target Versions
 
-**MC 1.20.1–1.21.4 / MinecraftForge 47–54** (a node each for 1.20.1, 1.20.2, 1.20.4, 1.20.6, 1.21.1,
-1.21.3, 1.21.4; Forge 1.21 is refused: Forge 51 has no HUD event)
+**MC 1.20.1–1.21.8 / MinecraftForge 47–58** (a node each for 1.20.1, 1.20.2, 1.20.4, 1.20.6, 1.21.1,
+1.21.3, 1.21.4, 1.21.5, 1.21.6 (also 1.21.7), 1.21.8; Forge 1.21 is refused: Forge 51 has no HUD event)
 
 **From 1.21.3 the world-render hook is a mixin** (`mixin/`, gated by `CrystalGraphicsForgeMixins`):
-Forge 53 removed `RenderLevelStageEvent` and nothing replaced it.
+Forge 53 removed `RenderLevelStageEvent` and nothing replaced it. **From 1.21.6 Forge is EventBus 7**:
+an event carries its own `BUS`, a mod-bus event hands out one per `getModBusGroup()`, and a cancelling
+listener is a `Predicate`.
 
 The 1.20.1 node uses ModDevGradle legacyForge (`net.neoforged.moddev.legacyforge`), which supports
 MinecraftForge 1.17–1.20.1 and is Gradle 9 + JDK 25 compatible. From 1.20.2 legacyForge sets up nothing, so those nodes pin `neoform.version` too and are built
