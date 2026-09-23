@@ -32,6 +32,7 @@ import org.gradle.api.tasks.compile.JavaCompile
  *   from 1.20.2; NeoForm published no 1.20.1 artifact.
  * - `forge.version`: legacyForge, Forge's userdev — the one ModDevGradle route to 1.17–1.20.1. It puts
  *   Forge on compileOnly, which is what [guardLoaderImports] is for.
+ * - both, on a Forge node from 1.20.2: NeoForm wins, and [useForgeApi] adds Forge's jars.
  *
  * Throws when the node pins neither, naming it.
  */

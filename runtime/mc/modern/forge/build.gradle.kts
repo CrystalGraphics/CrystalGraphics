@@ -1,30 +1,46 @@
 // The `forge` branch — MinecraftForge, one node per Minecraft version (`versions/<version>/`, whose
-// gradle.properties pins mc.version, forge.version and Parchment). Built with ModDevGradle's legacyForge
-// plugin (net.neoforged.moddev.legacyforge), which supports MinecraftForge 1.17–1.20.1 and is
-// Gradle 9 + JDK 25 compatible.
+// gradle.properties pins the toolchain and Parchment). Two toolchains, chosen by those pins
+// (cgbuildlogic.useModernMinecraft):
+//
+//   - 1.20.1 pins `forge.version` alone: ModDevGradle's legacyForge, Forge's userdev, dev runs included.
+//     legacyForge stops at 1.20.1.
+//   - 1.20.2+ pins `neoform.version` too: vanilla Minecraft through NeoForm with Forge's own jars
+//     compileOnly, and no dev run. @see cgbuildlogic.useForgeApi
 //
 // Previously used dev.architectury.loom:1.14.473, replaced because:
 //   - Architectury-loom's Forge mode eagerly resolves a detachedConfiguration inside the
 //     jvmArguments property getter, which is a Gradle 9 hard error.
 //   - No fix exists upstream (1.14.473 is the last published build, March 2026).
 //   - There is no Gradle 9 property to suppress the exclusive-lock requirement.
-//
-// The legacyForge plugin version is inherited from settings.gradle.kts where
-// net.neoforged.moddev.repositories:2.0.141 is applied — that settings plugin pins
-// all three net.neoforged.moddev.* plugins to the same version automatically.
 
 import cgbuildlogic.commonNode
+import cgbuildlogic.forgeRunsSrg
+import cgbuildlogic.registerSrgReobf
+import cgbuildlogic.useForgeApi
+import cgbuildlogic.useModernMinecraft
+import net.neoforged.moddevgradle.dsl.NeoForgeExtension
+import net.neoforged.moddevgradle.legacyforge.dsl.LegacyForgeExtension
+import net.neoforged.moddevgradle.legacyforge.dsl.ObfuscationExtension
 
 plugins {
     id("cg-modern-loader")
-    id("net.neoforged.moddev.legacyforge")
     id("com.gradleup.shadow")
 }
 
-legacyForge {
-    // MinecraftForge artifact ID format: "<mcVersion>-<forgeVersion>"
-    version = "${property("mc.version")}-${property("forge.version")}"
+useModernMinecraft()
+val legacyForge = extensions.findByType<LegacyForgeExtension>()
 
+if (legacyForge == null) {
+    useForgeApi()
+    configure<NeoForgeExtension> {
+        parchment {
+            minecraftVersion = property("parchment.mc").toString()
+            mappingsVersion = property("parchment.version").toString()
+        }
+    }
+}
+
+legacyForge?.apply {
     parchment {
         minecraftVersion = property("parchment.mc").toString()
         mappingsVersion = property("parchment.version").toString()
@@ -101,36 +117,32 @@ val extractMcSources by tasks.registering(Sync::class) {
 // Wire it into classes so build/mc-src/ is always populated after a normal compile.
 tasks.named("classes") { dependsOn(extractMcSources) }
 
-// The SHIPPED jar has to be reobfuscated, and it is the SHADOW jar that ships.
+// The SHIPPED jar is reobfuscated where Forge runs SRG, and it is the SHADOW jar that ships.
 //
-// Forge 1.17–1.20.1 runs SRG member names; a mod is compiled against official ones. ModDevGradle
+// Forge 1.17–1.20.4 runs SRG member names; a mod is compiled against official ones. ModDevGradle
 // reobfuscates `jar` by default, which here is the loader stub -- so `assemble` produced a 5 KB jar
 // that was correctly mapped and had no engine in it, beside a 6.7 MB one that had everything and
 // called `Minecraft.getInstance()` under a name production does not have. A dev run cannot show it:
-// dev is deobfuscated, so official names are the right ones there.
-val reobfShadowJar = the<net.neoforged.moddevgradle.legacyforge.dsl.ObfuscationExtension>()
-    .reobfuscate(
-        tasks.named<org.gradle.api.tasks.bundling.AbstractArchiveTask>("shadowJar"),
-        sourceSets.main.get()) {
+// dev is deobfuscated, so official names are the right ones there. From 1.20.6 Forge runs official
+// names too, and the jar ships as compiled. @see cgbuildlogic.forgeRunsSrg
+val thinJar: TaskProvider<out AbstractArchiveTask> = if (!forgeRunsSrg(project.name)) {
+    tasks.named<AbstractArchiveTask>("thinShadowJar")
+} else if (legacyForge == null) {
+    registerSrgReobf("thinShadowJar", "thin", configurations["compileClasspath"])
+} else {
+    val obfuscation = the<ObfuscationExtension>()
+    // Not on `assemble` (J7): reobfuscating a fat jar nothing installs was pure cost.
+    obfuscation.reobfuscate(tasks.named<AbstractArchiveTask>("shadowJar"), sourceSets.main.get()) {
         archiveClassifier.set("srg")
     }
-
-// Not on `assemble` (J7): reobfuscating a fat jar nothing installs was pure cost.
-
-// -- The thin jar, reobfuscated (J1) --------------------------------------------------------------
-//
-// The merge's input from this node: its own classes plus its relocated common node, at SRG
-// names. Reobfuscated for the same reason the shadow jar is -- production runs SRG members and a jar
-// built against official ones calls methods this Minecraft does not have.
-val reobfThinJar = the<net.neoforged.moddevgradle.legacyforge.dsl.ObfuscationExtension>()
-    .reobfuscate(
-        tasks.named<org.gradle.api.tasks.bundling.AbstractArchiveTask>("thinShadowJar"),
-        sourceSets.main.get()) {
+    // The merge's input from this node: its own classes plus its relocated common node, at SRG names.
+    obfuscation.reobfuscate(tasks.named<AbstractArchiveTask>("thinShadowJar"), sourceSets.main.get()) {
         archiveClassifier.set("thin")
     }
+}
 
 // Registered by cg-modern-loader with what a CrystalGraphics thin jar may contain; only the jar is ours.
 tasks.named<cgbuildlogic.CheckThinJar>("checkThinJar") {
-    jar.set(reobfThinJar.flatMap { it.archiveFile })
+    jar.set(thinJar.flatMap { it.archiveFile })
 }
-tasks.named("assemble") { dependsOn(reobfThinJar) }
+tasks.named("assemble") { dependsOn(thinJar) }

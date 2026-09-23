@@ -156,8 +156,10 @@ tasks.named("check") { dependsOn("checkThinJar") }
 // merged fabric.mod.json, which names only the bootstrapper and ORs every node's range.
 registerNodeVariants(modDescriptors.getValue("main"))
 // NeoForge the same way: its merged mods.toml AND neoforge.mods.toml, the only file NeoForge 20.5+ reads.
+// Forge takes the merged mods.toml too, whose hull covers every Forge node.
 val mergedDevDescriptors = mapOf(
     "fabric" to listOf("fabric.mod.json"),
+    "forge" to listOf("META-INF/mods.toml"),
     "neoforge" to listOf("META-INF/mods.toml", "META-INF/neoforge.mods.toml"),
 )[modernLoader]
 if (mergedDevDescriptors != null) {
