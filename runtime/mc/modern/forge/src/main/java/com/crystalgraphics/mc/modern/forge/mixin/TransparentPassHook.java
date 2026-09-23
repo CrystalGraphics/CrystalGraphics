@@ -1,6 +1,25 @@
 package com.crystalgraphics.mc.modern.forge.mixin;
 
-//? if >=1.21.3 {
+//? if >=1.21.9 {
+/*import com.crystalgraphics.mc.modern.platform.LifecycleModern;
+import net.minecraft.client.renderer.state.ParticlesRenderState;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+
+// The transparent pass on Forge 1.21.3+: after particles, where RenderLevelStageEvent's AFTER_PARTICLES
+// fired. 1.21.9 draws particles by submitting a render state, and the particles pass resets it the
+// moment they are drawn -- once a frame. @see com.crystalgraphics.mc.shared.CrystalGraphicsForgeMixins
+@Mixin(value = ParticlesRenderState.class, remap = false)
+public abstract class TransparentPassHook {
+
+    @Inject(method = "reset", at = @At("HEAD"), require = 1)
+    private void crystalgraphics$transparentPass(CallbackInfo ci) {
+        LifecycleModern.transparentPass();
+    }
+}
+*///?} elif >=1.21.3 {
 /*import com.crystalgraphics.mc.modern.platform.LifecycleModern;
 import net.minecraft.client.particle.ParticleEngine;
 import org.spongepowered.asm.mixin.Mixin;

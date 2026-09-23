@@ -429,7 +429,8 @@ What bites:
    `versions/<version>/src`, which does not exist, so a check reading it passes having read nothing.
 5. **The settings plugin needs a Java 21+ Gradle daemon** in every build that includes one of these.
 6. **A bootstrapper may name no Minecraft class** — one copy serves every node of its loader, so the
-   merge keeps whichever node's arrived first.
+   merge keeps whichever node's arrived first. Loader API that moved between its versions is read
+   reflectively for the same reason (`FmlVersion`, `FmlSide`).
 7. **Loom reads a mod jar while the build is configured.** A node's first dev run on Fabric can have no
    parent mod yet; the build says so, and the next run finds it. A CHANGED parent lags the same way.
 8. **An old NeoForm can be unusable.** ModDevGradle needs the `neoform-dependencies` capability, which
@@ -438,6 +439,11 @@ What bites:
    vanilla Minecraft, so a method Forge's patches add — `ParticleEngine.render(..., Frustum)` — is a
    Mixin processor warning at build time and resolves only in the game. prodSmoke is what proves the
    injection bound; each injector says `require = 1` so a miss is a crash, not a silent no-op.
+10. **A rename is a controller replacement, not a directive.** `ResourceLocation` → `Identifier`
+    (1.21.11) touches every file that names one; `stonecutter.gradle.kts` swaps the string on nodes from
+    that version (`replacements.string(current.parsed >= "1.21.11")`), and `src/` keeps the old name.
+11. **ModDevGradle refuses `additionalRuntimeClasspath` from 1.21.10.** A dev-run library goes on
+    `runtimeOnly` there; `devRunLibraries` names the configuration for a node.
 
 ---
 

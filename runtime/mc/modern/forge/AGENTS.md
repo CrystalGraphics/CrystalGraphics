@@ -2,8 +2,8 @@
 
 ## Target Versions
 
-**MC 1.20.1–1.21.8 / MinecraftForge 47–58** (a node each for 1.20.1, 1.20.2, 1.20.4, 1.20.6, 1.21.1,
-1.21.3, 1.21.4, 1.21.5, 1.21.6 (also 1.21.7), 1.21.8; Forge 1.21 is refused: Forge 51 has no HUD event)
+**MC 1.20.1–1.21.11 / MinecraftForge 47–61** (a node each for 1.20.1, 1.20.2, 1.20.4, 1.20.6, 1.21.1,
+1.21.3, 1.21.4, 1.21.5, 1.21.6 (also 1.21.7), 1.21.8, 1.21.10 (also 1.21.9), 1.21.11; Forge 1.21 is refused: Forge 51 has no HUD event)
 
 **From 1.21.3 the world-render hook is a mixin** (`mixin/`, gated by `CrystalGraphicsForgeMixins`):
 Forge 53 removed `RenderLevelStageEvent` and nothing replaced it. **From 1.21.6 Forge is EventBus 7**:

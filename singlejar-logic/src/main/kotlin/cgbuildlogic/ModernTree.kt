@@ -109,6 +109,19 @@ fun thinJarTask(node: Project, shadowTask: String): String = when (node.modernLo
     else -> shadowTask
 }
 
+/**
+ * Where a ModDevGradle node puts a library its dev run needs but must not scan as a mod:
+ * `additionalRuntimeClasspath`, which ModDevGradle refuses from Minecraft 1.21.10 and replaces with
+ * `runtimeOnly`.
+ *
+ * ```kotlin
+ * dependencies.add(devRunLibraries, project(":runtime:mc:shared"))
+ * ```
+ */
+val Project.devRunLibraries: String
+    get() = if (MinecraftVersionOrder.compare(property("mc.version").toString(), "1.21.10") < 0)
+        "additionalRuntimeClasspath" else "runtimeOnly"
+
 /** `1.20.1` < `1.20.4` < `1.21`: numeric per component, a missing component counting as zero. */
 object MinecraftVersionOrder : Comparator<String> {
     override fun compare(a: String, b: String): Int {

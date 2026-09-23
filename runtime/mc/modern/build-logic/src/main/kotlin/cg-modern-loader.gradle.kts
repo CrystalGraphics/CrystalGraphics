@@ -1,5 +1,6 @@
 import cgbuildlogic.ModDescriptor
 import cgbuildlogic.commonNode
+import cgbuildlogic.devRunLibraries
 import cgbuildlogic.modernLoader
 import cgbuildlogic.nodeJava
 import cgbuildlogic.nodePackage
@@ -183,8 +184,11 @@ if (mergedDevDescriptors != null) {
 // legacyForge/neoForge EXTENSION is configured, not when its plugin is applied, so a hook at apply
 // time fails with "Configuration with name 'additionalRuntimeClasspath' not found". Loom never has
 // one, which is what `findByName` answers for.
+// From Minecraft 1.21.10 ModDevGradle refuses it, and the runtimeOnly above already covers the run.
 afterEvaluate {
-    configurations.findByName("additionalRuntimeClasspath")?.let { runtime ->
-        dependencies.add(runtime.name, project(":runtime:mc:shared"))
+    if (devRunLibraries == "additionalRuntimeClasspath") {
+        configurations.findByName("additionalRuntimeClasspath")?.let { runtime ->
+            dependencies.add(runtime.name, project(":runtime:mc:shared"))
+        }
     }
 }
