@@ -25,6 +25,10 @@ dependencies {
     // versions of one plugin for Gradle to pick between.
     compileOnly("net.neoforged:moddev-gradle:2.0.141")
 
+    // SrgReobfJar composes Mojang's names with MCPConfig's SRG table -- the renamer ModDevGradle's
+    // legacy mode uses, where that mode cannot reach (Forge 1.20.2-1.20.4).
+    implementation("net.neoforged:srgutils:1.0.11")
+
     // Named rather than read from `dep.junit`: this is a standalone included build with its own
     // settings, so it has no root project to read a property from. Same version as everywhere else.
     testImplementation("junit:junit:4.13.2")

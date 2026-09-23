@@ -87,6 +87,28 @@ fun Project.sameVersionNodeDir(buildRoot: File, branch: String): File =
 fun Project.sameVersionNodeCoordinate(groupRoot: String, branch: String): String =
     "$groupRoot.mc.modern.$branch:$name"
 
+/**
+ * Whether MinecraftForge runs [minecraft] on SRG member names. It does below 1.20.6 and runs Mojang's
+ * names from 1.20.6 on (read off Forge's own universal jars), so only an older node reobfuscates.
+ */
+fun forgeRunsSrg(minecraft: String): Boolean = MinecraftVersionOrder.compare(minecraft, "1.20.6") < 0
+
+/**
+ * The task that turns [node]'s [shadowTask] into what ships: its production step where the loader
+ * runs other names than the node compiles against, else the task itself.
+ *
+ * ```kotlin
+ * thinJarTask(forge1201, "thinShadowJar")       // "reobfThinShadowJar" -- SRG
+ * thinJarTask(forge1211, "thinShadowJar")       // "thinShadowJar" -- Mojang names, as compiled
+ * thinJarTask(fabric1201, "langThinShadowJar")  // "remapLangThinJar" -- intermediary
+ * ```
+ */
+fun thinJarTask(node: Project, shadowTask: String): String = when (node.modernLoader) {
+    "forge" -> if (forgeRunsSrg(node.name)) "reobf" + shadowTask.replaceFirstChar(Char::uppercaseChar) else shadowTask
+    "fabric" -> "remap" + shadowTask.removeSuffix("ShadowJar").replaceFirstChar(Char::uppercaseChar) + "Jar"
+    else -> shadowTask
+}
+
 /** `1.20.1` < `1.20.4` < `1.21`: numeric per component, a missing component counting as zero. */
 object MinecraftVersionOrder : Comparator<String> {
     override fun compare(a: String, b: String): Int {

@@ -72,19 +72,13 @@ fun Project.registerDescriptorTasks(
 
     if (!checkShipped) return
 
-    // What it does NOT compare is as deliberate as what it does: the merged mods.toml says
-    // loaderVersion="[1,)" where a per-loader one names its own, carries both `mandatory` and `type`
-    // where each loader writes only its own spelling, and drops the forge/neoforge dependency row
-    // entirely -- a required dependency on a mod the other loader does not have is a refusal to load.
-    // Those three are the whole reason one file can serve both loaders.
     val checkAgree = tasks.register("checkDescriptorsAgree") {
         group = taskGroup
         description = "Fails if a per-loader descriptor disagrees with the one declaration."
-        // NO FABRIC OR NEOFORGE FILE: those nodes' dev runs take the MERGED descriptors -- they name only
-        // the bootstrapper and span every node's range, so they are right for every node and cannot drift.
-        val forgeToml = layout.projectDirectory.file("runtime/mc/modern/forge/src/main/resources/META-INF/mods.toml").asFile
+        // NO 1.20.x FILE: every modern node's dev run takes the MERGED descriptors -- they name only the
+        // bootstrapper and span every node's range, so they are right for every node and cannot drift.
         val mcmod = layout.projectDirectory.file("runtime/mc/1710/src/main/resources/mcmod.info").asFile
-        inputs.files(forgeToml, mcmod).withPropertyName("shippedDescriptors")
+        inputs.files(mcmod).withPropertyName("shippedDescriptors")
         inputs.property("descriptor", descriptor.toString())
         outputs.upToDateWhen { true }
         doLast {
@@ -97,32 +91,6 @@ fun Project.registerDescriptorTasks(
                     problems += "${file.name} does not $why (looked for: $needle)"
                 }
             }
-
-            // A SHIPPED descriptor belongs to ONE variant -- whichever its module's source tree
-            // builds -- so once a loader has several it must match one of them rather than the only
-            // one. `single` threw "collection contains more than one matching element", naming
-            // neither the loader nor the file.
-            fun requireSomeVariant(
-                file: File,
-                loader: String,
-                what: String,
-                needles: (Variant) -> List<String>,
-            ) {
-                val variants = descriptor.variantsOf(loader)
-                if (variants.isEmpty()) return
-                if (!file.isFile) {
-                    problems += "${file.name} is missing"
-                    return
-                }
-                val text = file.readText()
-                if (variants.none { v -> needles(v).all(text::contains) }) {
-                    problems += "${file.name} matches no declared $loader variant's $what (tried " +
-                        variants.joinToString(", ") { it.minecraft } + ")"
-                }
-            }
-
-            require(forgeToml, "modId = \"${descriptor.id}\"", "declare the mod id")
-            requireSomeVariant(forgeToml, "forge", "Minecraft range") { listOf(it.minecraft) }
 
             // mcmod.info is a GTNH template: ${modId} is expanded by processResources, so the literal
             // is what a source file legitimately holds.

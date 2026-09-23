@@ -373,6 +373,28 @@ the child's thin jar relocates its REFERENCES the same way: `relocate(<parent co
 nodePackage(<parent loader package>, version) + ".common…")`. Nothing of the parent's is bundled; only
 the names in the child's bytecode move. Dev runs need nothing, since both load at source names.
 
+**MinecraftForge past 1.20.1 has no Gradle 9 toolchain** — ModDevGradle's legacy mode stops at 1.20.1
+and ForgeGradle is Gradle 8 — so a Forge node from 1.20.2 is built from parts (`ModernForge`). It pins
+`neoform.version` beside `forge.version`: Minecraft comes through NeoForm, `useForgeApi` puts Forge's
+own jars on compileOnly, and there is no dev run, so prodSmoke is its runtime check. What it ships
+depends on the names Forge runs, which `forgeRunsSrg` answers:
+
+```properties
+# forge/versions/1.20.4 -- Forge 49 runs SRG members: the thin jar is reobfuscated
+neoform.version = 1.20.4-20240627.114801
+forge.version = 49.2.9
+mcp.version = 1.20.4-20231207.112700   # the SRG table, as Forge's userdev names it
+```
+
+```properties
+# forge/versions/1.21.1 -- Forge 52 runs Mojang's names: the thin jar ships as compiled
+neoform.version = 1.21.1-20240808.144430
+forge.version = 52.1.16
+```
+
+`registerSrgReobf` does the reobfuscation with the renamer legacy mode uses, over Mojang's names
+chained with MCPConfig's SRG table; `thinJarTask` names each node's production step for the merge.
+
 What bites:
 
 1. **A node's group is its branch's** (`useNodeCoordinates`). Nodes of one version share a project
@@ -388,7 +410,9 @@ What bites:
 6. **A bootstrapper may name no Minecraft class** — one copy serves every node of its loader, so the
    merge keeps whichever node's arrived first.
 7. **Loom reads a mod jar while the build is configured.** A node's first dev run on Fabric can have no
-   parent mod yet; the build says so, and the next run finds it.
+   parent mod yet; the build says so, and the next run finds it. A CHANGED parent lags the same way.
+8. **An old NeoForm can be unusable.** ModDevGradle needs the `neoform-dependencies` capability, which
+   NeoForm builds from 2023 lack; 1.20.2 resolves only through its December 2024 republish.
 
 ---
 

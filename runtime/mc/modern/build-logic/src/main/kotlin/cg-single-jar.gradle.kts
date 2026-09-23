@@ -4,6 +4,7 @@ import cgbuildlogic.modernLoaderNodes
 import cgbuildlogic.modernNodes
 import cgbuildlogic.registerSingleJarPipeline
 import cgbuildlogic.shippedEntryPaths
+import cgbuildlogic.thinJarTask
 
 // ── One jar for every loader (J4) ────────────────────────────────────────────────────────────────
 //
@@ -43,9 +44,8 @@ val singleJarModId = providers.gradleProperty("modId").orElse("crystalgraphics")
 // ── The 1.20.x thin jars, one per NODE, read off the tree ────────────────────────────────────────
 //
 // Every node of :runtime:mc:modern ships a thin jar, so nothing here names one: a version added in
-// settings.gradle.kts is merged, counted and checked with no edit to this file. Named per LOADER
-// because each toolchain names its own production step.
-val modernThinTask = mapOf("forge" to "reobfThinShadowJar", "neoforge" to "thinShadowJar", "fabric" to "remapThinJar")
+// settings.gradle.kts is merged, counted and checked with no edit to this file. Each node's production
+// step is `thinJarTask`'s answer, which is per node rather than per loader: Forge changed names at 1.20.6.
 
 /** Declared once by cg-descriptors, which the root applies first. */
 @Suppress("UNCHECKED_CAST")
@@ -61,7 +61,7 @@ registerSingleJarPipeline(SingleJarSpec(
 
     // 1.7.10's production step is its own; every 1.20.x node's is read off the tree.
     thinJars = listOf(":runtime:mc:1710" to "reobfThinJar") +
-        modernLoaderNodes(project).map { it.path to modernThinTask.getValue(it.parent!!.name) },
+        modernLoaderNodes(project).map { it.path to thinJarTask(it, "thinShadowJar") },
     // Tier 1 (§12) joins the library list rather than any loader's thin jar: one compiled copy of
     // each LWJGL family, added once for every variant, never remapped -- which is the whole reason
     // the tier exists. A loader bundling its own would put four copies in the merge to reject.
