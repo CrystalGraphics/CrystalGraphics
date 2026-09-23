@@ -197,4 +197,9 @@ public final class RecordingGlBackend extends CgGLBackend {
                              int format, int type, java.nio.ByteBuffer pixels) {
         record("glReadPixels");
     }
+
+    @Override
+    public void glReadPixels(int x, int y, int width, int height, int format, int type, long packOffset) {
+        record("glReadPixels(pack)");
+    }
 }

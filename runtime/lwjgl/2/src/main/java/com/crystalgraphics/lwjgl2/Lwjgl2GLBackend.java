@@ -1002,4 +1002,9 @@ public final class Lwjgl2GLBackend extends CgGLBackend {
                              int format, int type, java.nio.ByteBuffer pixels) {
         org.lwjgl.opengl.GL11.glReadPixels(x, y, width, height, format, type, pixels);
     }
+
+    @Override
+    public void glReadPixels(int x, int y, int width, int height, int format, int type, long packOffset) {
+        org.lwjgl.opengl.GL11.glReadPixels(x, y, width, height, format, type, packOffset);
+    }
 }

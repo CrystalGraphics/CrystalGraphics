@@ -397,6 +397,7 @@ public final class CgGL {
     public static final int GL_CCW            = 0x0901;
 
     // --- Sync ----------------------------------------------------------------
+    public static final int GL_PIXEL_PACK_BUFFER = 0x88EB;
     public static final int GL_SYNC_GPU_COMMANDS_COMPLETE = 0x9117;
     public static final int GL_SYNC_FLUSH_COMMANDS_BIT    = 0x00000001;
     public static final int GL_ALREADY_SIGNALED           = 0x911A;
@@ -1117,6 +1118,23 @@ public final class CgGL {
     public static void glReadPixels(int x, int y, int width, int height,
                                     int format, int type, ByteBuffer pixels) {
         backend.glReadPixels(x, y, width, height, format, type, pixels);
+    }
+
+    /**
+     * Reads into the bound {@code GL_PIXEL_PACK_BUFFER} at {@code packOffset}, and returns without
+     * waiting — the asynchronous form. Fence it and map the buffer frames later.
+     *
+     * <pre>{@code
+     * CgGL.glBindBuffer(CgGL.GL_PIXEL_PACK_BUFFER, pbo);
+     * CgGL.glReadPixels(0, 0, w, h, CgGL.GL_RGBA, CgGL.GL_UNSIGNED_BYTE, 0L);
+     * CgGL.glBindBuffer(CgGL.GL_PIXEL_PACK_BUFFER, 0);   // or every later glReadPixels lands in it
+     * }</pre>
+     *
+     * <p>{@code CgPixelReadback}, in core, does all of that and hands the pixels over when they land.</p>
+     */
+    public static void glReadPixels(int x, int y, int width, int height,
+                                    int format, int type, long packOffset) {
+        backend.glReadPixels(x, y, width, height, format, type, packOffset);
     }
 
     public static void glGetInteger(int pname, IntBuffer params) {
