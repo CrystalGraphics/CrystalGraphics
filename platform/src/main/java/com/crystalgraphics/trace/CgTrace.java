@@ -761,6 +761,7 @@ public final class CgTrace {
      */
     public static void frameBegin(long now) {
         if (enabledMask == 0L) return;
+        CgGpuTrace.closeLeaked();
         CgTraceZones local = local();
         frameThread = Thread.currentThread();
         if (openBegin >= 0L) {
@@ -774,6 +775,8 @@ public final class CgTrace {
         openGcCount = gcCount();
         openDropped = local.dropped;
         openLeaked = 0;
+        // After the boundary moves, so the frame just committed counts as closed to the GPU track.
+        CgGpuTrace.collect();
     }
 
     /**
@@ -859,6 +862,33 @@ public final class CgTrace {
     /** The counters recorded against {@code frame}. */
     public static List<CgTraceSnapshot.CounterView> countersIn(CgFrameRecord frame) {
         return CgTraceSnapshot.countersOf(frame.index());
+    }
+
+    /**
+     * The ring's CURRENT record for frame {@code index}, or null once it has been overwritten — for a
+     * viewer holding an older snapshot, whose copy predates a GPU figure that has since landed.
+     */
+    public static CgFrameRecord frame(long index) {
+        return frameAt(index);
+    }
+
+    static int generation() {
+        return generation;
+    }
+
+    /** Fills in a committed frame's GPU time. A frame already overwritten is skipped. */
+    static synchronized void setGpu(long index, long gpuNanos) {
+        CgFrameRecord was = frameAt(index);
+        if (was == null) return;
+        CgFrameRecord now = new CgFrameRecord(was.index(), was.beginNanos(), was.endNanos(), was.cpuNanos(),
+                gpuNanos, was.gcMillis(), was.gcCollections(), was.leakedZones(), was.droppedZones());
+        CgFrameRecord[] head = HEAD;
+        if (index < head.length) {
+            head[(int) index] = now;
+        } else {
+            CgFrameRecord[] ring = FRAMES;
+            ring[(int) ((index - head.length) % ring.length)] = now;
+        }
     }
 
     static CgFrameRecord frameAt(long index) {

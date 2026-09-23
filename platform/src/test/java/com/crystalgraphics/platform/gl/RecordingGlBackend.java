@@ -37,6 +37,11 @@ public final class RecordingGlBackend extends CgGLBackend {
 
     public boolean sawCall(String name) { return countOf(name) > 0; }
 
+    /** What every timer query answers: whether it has finished, and with how many nanoseconds. */
+    public boolean queriesReady;
+    public long queryNanos;
+    private int lastQuery;
+
     /** Installs a fresh instance as {@link CgGL}'s backend and returns it. */
     public static RecordingGlBackend install() {
         RecordingGlBackend b = new RecordingGlBackend();
@@ -90,11 +95,11 @@ public final class RecordingGlBackend extends CgGLBackend {
     @Override public void glBindBufferBase(int target, int index, int buffer) { record("glBindBufferBase"); }
     @Override public void glBindBufferRange(int target, int index, int buffer, long offset, long size) { record("glBindBufferRange"); }
     @Override public void glTexBuffer(int target, int internalFormat, int buffer) { record("glTexBuffer"); }
-    @Override public int glGenQuery() { record("glGenQuery"); return 0; }
+    @Override public int glGenQuery() { record("glGenQuery"); return ++lastQuery; }
     @Override public void glBeginTimeElapsedQuery(int query) { record("glBeginTimeElapsedQuery"); }
     @Override public void glEndTimeElapsedQuery() { record("glEndTimeElapsedQuery"); }
-    @Override public boolean glIsQueryResultAvailable(int query) { record("glIsQueryResultAvailable"); return false; }
-    @Override public long glGetQueryResultNanos(int query) { record("glGetQueryResultNanos"); return 0L; }
+    @Override public boolean glIsQueryResultAvailable(int query) { record("glIsQueryResultAvailable"); return queriesReady; }
+    @Override public long glGetQueryResultNanos(int query) { record("glGetQueryResultNanos"); return queryNanos; }
     @Override public void glDeleteQuery(int query) { record("glDeleteQuery"); }
     @Override public int glGenVertexArrays() { record("glGenVertexArrays"); return 0; }
     @Override public void glBindVertexArray(int array) { record("glBindVertexArray"); }

@@ -25,6 +25,7 @@ import com.crystalgraphics.text.cache.CgFontRegistry;
 import com.crystalgraphics.NativeLoader;
 import com.crystalgraphics.text.render.CgTextRenderer;
 import com.crystalgraphics.text.render.CgTextRendererRegistry;
+import com.crystalgraphics.trace.CgGpuTrace;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import lombok.Getter;
@@ -62,6 +63,9 @@ public final class CgGraphicsLifecycle {
      * flips this back to true and invites the next frame to bind a deleted material.</p>
      */
     private static volatile boolean destroyed = false;
+
+    private static final int GPU_OPAQUE = CgGpuTrace.name("world.opaque");
+    private static final int GPU_TRANSPARENT = CgGpuTrace.name("world.transparent");
     /**
      * -- GETTER --
      * Current window width in pixels, as last reported to 
@@ -289,7 +293,12 @@ public final class CgGraphicsLifecycle {
 
         ensureContext(w, h);
 
-        CgRenderDemo.INSTANCE.renderOpaque(partialTick, w, h, sourceFboId);
+        CgGpuTrace.begin(GPU_OPAQUE);
+        try {
+            CgRenderDemo.INSTANCE.renderOpaque(partialTick, w, h, sourceFboId);
+        } finally {
+            CgGpuTrace.end();
+        }
     }
 
     /**
@@ -359,7 +368,12 @@ public final class CgGraphicsLifecycle {
         CgGlState.invalidateAllIfPresent();
 
         if (!initialized) return;
-        CgRenderDemo.INSTANCE.renderTransparent();
+        CgGpuTrace.begin(GPU_TRANSPARENT);
+        try {
+            CgRenderDemo.INSTANCE.renderTransparent();
+        } finally {
+            CgGpuTrace.end();
+        }
     }
 
     /**
