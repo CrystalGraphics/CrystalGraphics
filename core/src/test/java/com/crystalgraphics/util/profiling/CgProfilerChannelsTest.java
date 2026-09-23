@@ -2,6 +2,7 @@ package com.crystalgraphics.util.profiling;
 
 import com.crystalgraphics.trace.CgFrameRecord;
 import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.trace.CgTraceNames;
 import com.crystalgraphics.trace.CgTraceSnapshot;
 import org.junit.After;
 import org.junit.Before;
@@ -104,6 +105,18 @@ public class CgProfilerChannelsTest {
         assertEquals(Long.valueOf(3), first.get("glyph.atlasHit"));
         assertEquals(Long.valueOf(3), first.get("async.pendingGlyphs"));
         assertEquals(Long.valueOf(4), CgProfiler.report().counters().get("glyph.atlasHit"));
+    }
+
+    @Test
+    public void aScopesSourceIsItsCallerNotTheFacade() {
+        CgProfiler.setEnabled(true);
+        // A name never seen before: a source is captured once, on first sight.
+        try (CgProfiler.Scope ignored = CgProfiler.scope("shape.sourceProbe")) {
+            // empty
+        }
+        String source = CgTraceNames.sourceOf(CgTraceNames.intern("shape.sourceProbe"));
+        assertNotNull(source);
+        assertTrue(source, source.contains("CgProfilerChannelsTest.java"));
     }
 
     @Test
