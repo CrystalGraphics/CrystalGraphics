@@ -415,8 +415,13 @@ public final class CgGL {
     public static final int GL_CURRENT_PROGRAM                  = 0x8B8D;
 
     // --- Pixel pack/unpack ---------------------------------------------------
-    public static final int GL_UNPACK_ALIGNMENT = 0x0CF5;
-    public static final int GL_PACK_ALIGNMENT   = 0x0D05;
+    public static final int GL_UNPACK_ROW_LENGTH   = 0x0CF2;
+    public static final int GL_UNPACK_SKIP_ROWS    = 0x0CF3;
+    public static final int GL_UNPACK_SKIP_PIXELS  = 0x0CF4;
+    public static final int GL_UNPACK_ALIGNMENT    = 0x0CF5;
+    public static final int GL_UNPACK_SKIP_IMAGES  = 0x806D;
+    public static final int GL_UNPACK_IMAGE_HEIGHT = 0x806E;
+    public static final int GL_PACK_ALIGNMENT      = 0x0D05;
 
     // --- Error codes ---------------------------------------------------------
     public static final int GL_NO_ERROR                      = 0;

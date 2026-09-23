@@ -109,9 +109,11 @@ public final class CgTexture2D extends CgTextureAbstract {
         checkNotDeleted();
         CgGL.glBindTexture(GL_TEXTURE_2D, textureId);
         try {
-            CgGL.glTexImage2D(GL_TEXTURE_2D, 0,
-                    spec.getGlInternalFormat(), image.width(), image.height(), 0,
-                    pixelFormatForChannels(image.channels()), GL_UNSIGNED_BYTE, image.pixels());
+            try (CgTightUnpack ignored = CgTightUnpack.begin()) {
+                CgGL.glTexImage2D(GL_TEXTURE_2D, 0,
+                        spec.getGlInternalFormat(), image.width(), image.height(), 0,
+                        pixelFormatForChannels(image.channels()), GL_UNSIGNED_BYTE, image.pixels());
+            }
             spec.applyTo(GL_TEXTURE_2D);
          
             this.width = image.width();
@@ -136,9 +138,11 @@ public final class CgTexture2D extends CgTextureAbstract {
         checkNotDeleted();
         CgGL.glBindTexture(GL_TEXTURE_2D, textureId);
         try {
-            CgGL.glTexImage2D(GL_TEXTURE_2D, 0,
-                    spec.getGlInternalFormat(), width, height, 0,
-                    pixelFormat, pixelType, pixels);
+            try (CgTightUnpack ignored = CgTightUnpack.begin()) {
+                CgGL.glTexImage2D(GL_TEXTURE_2D, 0,
+                        spec.getGlInternalFormat(), width, height, 0,
+                        pixelFormat, pixelType, pixels);
+            }
             spec.applyTo(GL_TEXTURE_2D);
           
             this.width = width;

@@ -94,10 +94,12 @@ public final class CgTexture3D extends CgTextureAbstract {
             CgGL.glTexImage3D(GL_TEXTURE_3D, 0,
                     spec.getGlInternalFormat(), w, h, images.length, 0,
                     uploadPixelFormat, GL_UNSIGNED_BYTE, (ByteBuffer) null);
-            for (int i = 0; i < images.length; i++) {
-                CgGL.glTexSubImage3D(GL_TEXTURE_3D, 0,
-                        0, 0, i, w, h, 1,
-                        uploadPixelFormat, GL_UNSIGNED_BYTE, images[i].pixels());
+            try (CgTightUnpack ignored = CgTightUnpack.begin()) {
+                for (int i = 0; i < images.length; i++) {
+                    CgGL.glTexSubImage3D(GL_TEXTURE_3D, 0,
+                            0, 0, i, w, h, 1,
+                            uploadPixelFormat, GL_UNSIGNED_BYTE, images[i].pixels());
+                }
             }
             spec.applyTo(GL_TEXTURE_3D);
 

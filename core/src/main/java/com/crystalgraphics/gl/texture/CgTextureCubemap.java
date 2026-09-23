@@ -124,9 +124,11 @@ public final class CgTextureCubemap extends CgTextureAbstract {
         CgGL.glBindTexture(CgGL.GL_TEXTURE_CUBE_MAP, textureId);
         try {
             int internalFormat = spec.getGlInternalFormat();
-            for (int i = 0; i < 6; i++) {
-                CgGL.glTexImage2D(FACE_TARGETS[i], 0, internalFormat, size, size, 0,
-                        uploadPixelFormat, GL_UNSIGNED_BYTE, faces[i].pixels());
+            try (CgTightUnpack ignored = CgTightUnpack.begin()) {
+                for (int i = 0; i < 6; i++) {
+                    CgGL.glTexImage2D(FACE_TARGETS[i], 0, internalFormat, size, size, 0,
+                            uploadPixelFormat, GL_UNSIGNED_BYTE, faces[i].pixels());
+                }
             }
             
             spec.applyTo(CgGL.GL_TEXTURE_CUBE_MAP);
