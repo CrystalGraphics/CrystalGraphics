@@ -1,5 +1,8 @@
+import cgbuildlogic.ModDescriptor
 import cgbuildlogic.commonNode
 import cgbuildlogic.modernLoader
+import cgbuildlogic.nodePackage
+import cgbuildlogic.registerNodeVariants
 import cgbuildlogic.registerCheckDescriptorsNameNoCommon
 import cgbuildlogic.useNodeCoordinates
 
@@ -89,10 +92,21 @@ dependencies {
 // loader's own `com.crystalgraphics.mc.<loader>` too. `platform` keeps its leaf name under the new
 // root, so `mc.platform.LifecycleModern` becomes `mc.forge.common.platform.LifecycleModern`.
 //
-// Keyed on the LOADER, which is one node per loader today. A second node of one loader needs the
-// version in here too, or two thin jars carry one relocated name and the merge keeps whichever arrived
-// first.
-val cgThinRoot = "com.crystalgraphics.mc.$modernLoader.common"
+// EVERYTHING A NODE SHIPS LIVES UNDER ITS OWN PACKAGE, `...mc.modern.<loader>.v<version>` (J11.1b), so
+// two nodes of one loader can share the merged jar: common goes to `<node>.common`, the loader's own
+// classes to `<node>`. EXCEPT THE BOOTSTRAPPER, the one class its loader constructs whatever version is
+// running -- every node ships it at one name and the merge keeps a single copy. It names no Minecraft
+// class, which is what makes one copy right for every node. The variant table names the relocated
+// entries (cgbuildlogic.ModernVariants).
+val loaderPackage = "com.crystalgraphics.mc.modern.$modernLoader"
+val nodeRoot = nodePackage(loaderPackage, project.name)
+val cgThinRoot = "$nodeRoot.common"
+val loaderTitle = mapOf("forge" to "Forge", "neoforge" to "NeoForge", "fabric" to "Fabric").getValue(modernLoader)
+val bootstrapper = "$loaderPackage.${loaderTitle}Bootstrap"
+
+/** The descriptor the merged jar is printed from, and the variant this node's dev run reads. */
+@Suppress("UNCHECKED_CAST")
+val modDescriptors = rootProject.extra["cgModDescriptors"] as Map<String, ModDescriptor>
 
 val thinShadowJar = tasks.register<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("thinShadowJar") {
     group = "build"
@@ -101,10 +115,13 @@ val thinShadowJar = tasks.register<com.github.jengelman.gradle.plugins.shadow.ta
     archiveClassifier.set("thin-dev")
     configurations = emptyList()
     from(sourceSets["main"].output)
+    // The dev run's descriptors: the merge writes its own copy once.
+    exclude("META-INF/mods.toml", "fabric.mod.json", "mcmod.info", "pack.mcmeta", "META-INF/*/variants.json")
     val commonJar = common.tasks.named<Jar>("jar")
     dependsOn(commonJar)
     from(commonJar.map { zipTree(it.archiveFile) })
     relocate("com.crystalgraphics.mc.modern.platform", "$cgThinRoot.platform")
+    relocate(loaderPackage, nodeRoot) { exclude(bootstrapper) }
 }
 
 // Nothing in the common node may be NAMED from a descriptor or a service file: the relocation above
@@ -129,14 +146,17 @@ tasks.register<cgbuildlogic.CheckThinJar>("checkThinJar") {
 
 tasks.named("check") { dependsOn("checkThinJar") }
 
-// A DEV RUN HAS TO SEE THE VARIANT TABLE (J11.0), because the bootstrapper its descriptor names reads
-// one -- so without this every dev client dies in the entry point rather than at prodSmoke time. Only
-// the table: the per-loader descriptors under this module's own resources are what a dev run uses, and
-// the merged ones are the shipped jar's.
-tasks.named<ProcessResources>("processResources") {
-    val descriptors = rootProject.tasks.named("generateMergedDescriptors")
-    dependsOn(descriptors)
-    from(descriptors) { include("META-INF/*/variants.json") }
+// A DEV RUN HAS TO SEE A VARIANT TABLE (J11.0), because the bootstrapper its descriptor names reads one
+// -- and it must be THIS NODE'S, at source names: a dev run (and a consumer's dev run, which takes this
+// node's classes unrelocated) would not resolve the merged table's names. On Fabric it also takes the
+// merged fabric.mod.json, which names only the bootstrapper and ORs every node's range.
+registerNodeVariants(modDescriptors.getValue("main"))
+if (modernLoader == "fabric") {
+    tasks.named<ProcessResources>("processResources") {
+        val descriptors = rootProject.tasks.named("generateMergedDescriptors")
+        dependsOn(descriptors)
+        from(descriptors) { include("fabric.mod.json") }
+    }
 }
 
 // :runtime:mc:shared IS A LIBRARY ON A DEV RUN, NOT A MOD (J11.0).

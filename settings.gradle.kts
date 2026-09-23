@@ -143,7 +143,7 @@ val modernNodes: Map<String, List<String>> =
         "common" to listOf("1.20.1", "1.20.4"),
         "forge" to listOf("1.20.1"),
         "neoforge" to listOf("1.20.4"),
-        "fabric" to listOf("1.20.1"),
+        "fabric" to listOf("1.20.1", "1.20.4"),
     )
 
 stonecutter {

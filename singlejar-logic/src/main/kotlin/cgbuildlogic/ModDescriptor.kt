@@ -126,7 +126,25 @@ data class Variant(
     val loaderRange: String? = null,
     /** Fabric's `depends` block, whose grammar is not Maven's. */
     val fabricDepends: Map<String, String> = emptyMap(),
-)
+    /** The tree node that builds this variant, when one does (`:runtime:mc:modern:fabric:1.20.4`). */
+    val node: String? = null,
+    /**
+     * Source package → shipped package, when the thin jar relocates this variant's classes. The entries
+     * above are SOURCE names; [shipped] is what the merged jar calls them, and a dev run — which loads
+     * the unrelocated classes — keeps the source names.
+     */
+    val relocation: Pair<String, String>? = null,
+) {
+    /** [name] as the merged jar spells it. */
+    fun shipped(name: String): String {
+        val (from, to) = relocation ?: return name
+        return if (name.startsWith("$from.")) to + name.substring(from.length) else name
+    }
+
+    /** This variant with its entries at their shipped names. */
+    fun asShipped(): Variant = copy(
+        commonEntry = commonEntry?.let(::shipped), clientEntry = clientEntry?.let(::shipped), relocation = null)
+}
 
 /** Shared by the printers: a TOML/JSON string literal. */
 private fun quote(value: String): String = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
@@ -145,12 +163,12 @@ object FabricModJson {
         // entry at all -- fails the main entrypoint stage and takes the client down with it.
         val bootstrapper = d.bootstrappers["fabric"]
         val main = when {
-            bootstrapper == null -> fabric.mapNotNull { it.commonEntry }
+            bootstrapper == null -> fabric.mapNotNull { v -> v.commonEntry?.let(v::shipped) }
             fabric.any { it.commonEntry != null } -> listOf(bootstrapper)
             else -> emptyList()
         }
         val client = when {
-            bootstrapper == null -> fabric.mapNotNull { it.clientEntry }
+            bootstrapper == null -> fabric.mapNotNull { v -> v.clientEntry?.let(v::shipped) }
             fabric.any { it.clientEntry != null } -> listOf(bootstrapper)
             else -> emptyList()
         }

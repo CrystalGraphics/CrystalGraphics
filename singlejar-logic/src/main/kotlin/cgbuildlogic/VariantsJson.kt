@@ -22,15 +22,24 @@ object VariantsJson {
     /** The format number the reader checks. Bump only for a change a reader cannot skip past. */
     const val FORMAT = 1
 
-    fun merged(d: ModDescriptor): String {
+    /** The shipped table: every variant, entries at their relocated names. */
+    fun merged(d: ModDescriptor): String = table(d.id, d.variants.map { it.asShipped() })
+
+    /**
+     * One node's table for its DEV run, at source names: a dev run loads the classes from source-set
+     * directories, unrelocated, so the shipped names would not resolve there.
+     */
+    fun dev(d: ModDescriptor, variant: Variant): String = table(d.id, listOf(variant))
+
+    private fun table(modId: String, variants: List<Variant>): String {
         val out = StringBuilder()
         out.append("{\n")
         out.append("  \"format\": ").append(FORMAT).append(",\n")
-        out.append("  \"mod\": ").append(jsonQuote(d.id)).append(",\n")
+        out.append("  \"mod\": ").append(jsonQuote(modId)).append(",\n")
         out.append("  \"variants\": [\n")
         // ONE VARIANT PER LINE: the reader is a strict parser for this exact shape, and the file is
         // read on every boot of every loader, so it is written to be diffable rather than pretty.
-        out.append(d.variants.joinToString(",\n") { v ->
+        out.append(variants.joinToString(",\n") { v ->
             val fields = mutableListOf(
                 "\"loader\": " + jsonQuote(v.loader),
                 "\"minecraft\": " + jsonQuote(v.minecraft),

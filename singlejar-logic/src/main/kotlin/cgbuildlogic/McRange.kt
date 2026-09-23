@@ -40,6 +40,18 @@ data class McRange(
     /** Whether any version satisfies both. Adjacent ranges — one ending exactly where the next begins, exclusively — do not. */
     fun overlaps(other: McRange): Boolean = !endsBefore(this, other) && !endsBefore(other, this)
 
+    /**
+     * Fabric's spelling of this range for a `depends` entry — `>=1.20.4 <1.20.5`, a space meaning AND.
+     * An exact version stays bare, and an unbounded range is `*`.
+     */
+    fun toFabricPredicate(): String {
+        if (low != null && low == high && lowInclusive && highInclusive) return low
+        val parts = mutableListOf<String>()
+        low?.let { parts += (if (lowInclusive) ">=" else ">") + it }
+        high?.let { parts += (if (highInclusive) "<=" else "<") + it }
+        return parts.joinToString(" ").ifEmpty { "*" }
+    }
+
     override fun toString(): String {
         if (low != null && low == high && lowInclusive && highInclusive) return "[$low]"
         val open = if (lowInclusive && low != null) "[" else "("

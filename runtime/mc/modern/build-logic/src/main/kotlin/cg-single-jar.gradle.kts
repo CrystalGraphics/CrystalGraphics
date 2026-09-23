@@ -1,7 +1,9 @@
+import cgbuildlogic.ModDescriptor
 import cgbuildlogic.SingleJarSpec
 import cgbuildlogic.modernLoaderNodes
 import cgbuildlogic.modernNodes
 import cgbuildlogic.registerSingleJarPipeline
+import cgbuildlogic.shippedEntryPaths
 
 // ── One jar for every loader (J4) ────────────────────────────────────────────────────────────────
 //
@@ -44,6 +46,10 @@ val singleJarModId = providers.gradleProperty("modId").orElse("crystalgraphics")
 // settings.gradle.kts is merged, counted and checked with no edit to this file. Named per LOADER
 // because each toolchain names its own production step.
 val modernThinTask = mapOf("forge" to "reobfThinShadowJar", "neoforge" to "thinShadowJar", "fabric" to "remapThinJar")
+
+/** Declared once by cg-descriptors, which the root applies first. */
+@Suppress("UNCHECKED_CAST")
+val modDescriptors = extra["cgModDescriptors"] as Map<String, ModDescriptor>
 
 /** One relocated copy of each common class per loader node: each thin jar carries its own common. */
 val modernCopies = modernLoaderNodes(project).size
@@ -134,7 +140,10 @@ registerSingleJarPipeline(SingleJarSpec(
             "com/crystalgraphics/mc/modern/fabric/FabricBootstrap.class",
             "com/crystalgraphics/mc/modern/forge/ForgeBootstrap.class",
             "com/crystalgraphics/mc/modern/neoforge/NeoForgeBootstrap.class",
-        ))
+        // EVERY ENTRY POINT THE TABLE NAMES, at its shipped name: one per node, relocated into that
+        // node's package (cgbuildlogic.ModernVariants). A table naming a class absent from the jar is a
+        // crash at mod construction on that version alone.
+        ) + modDescriptors.getValue("main").shippedEntryPaths())
         requiredManifest.set(mapOf(
             "FMLCorePluginContainsFMLMod" to "true",
             "ForceLoadAsMod" to "true",

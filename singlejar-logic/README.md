@@ -344,10 +344,26 @@ version**. `ModernTree` answers everything else and is the only thing that shoul
 through legacyForge below that — chosen by the node's own pins), `guardLoaderImports`,
 `registerCheckDescriptorsNameNoCommon` and `registerCheckAllTargets`.
 
-**Adding a version** is a version on the loader's branch **and on `common`**, a
-`versions/<version>/gradle.properties` for each, `//? if` directives where the API differs, and the
-descriptor `Variant` with the neighbouring range narrowed. A project built on another adds the version
-to the parent first: its common node compiles against the parent's common node of the same version.
+**Two nodes of one loader share the merged jar** because every node ships its loader's classes under
+a package of its own — `nodePackage`: `<loader package>.v<version digits>`, with common beneath it as
+`.common` — and only the loader's **bootstrapper** stays at its source name, the one class that loader
+constructs whatever version runs. `modernVariants` reads each loader node's variant off the tree, so a
+descriptor declares its entry classes once, at SOURCE names, in `LoaderEntries`; the merged
+`variants.json` names them relocated, and `registerNodeVariants` gives each node's dev run a table of its
+own at source names, since a dev run loads the classes unrelocated. `shippedEntryPaths` is the list
+`requiredEntries` checks.
+
+**Adding a version** — the parent first, since a project built on another compiles each node against
+the parent's node of the same version:
+
+1. the version on the loader's branch in `settings.gradle.kts`, **and on `common`** if it is absent;
+2. `versions/<version>/gradle.properties` for each: the toolchain pins, plus `variant.minecraft` (the
+   range the node claims, narrowing a neighbour's if they would overlap — `ModDescriptor` refuses the
+   overlap) and `variant.packFormat`;
+3. `//? if` directives where the API differs — `checkAllTargets` finds every one.
+
+The thin-jar lists, the relocation counts, the descriptors, the variant tables and `requiredEntries`
+all follow the tree, so none of them is edited.
 
 What bites:
 
@@ -361,8 +377,10 @@ What bites:
 4. **Nothing may read `src/` relative to the project directory.** On a node that is
    `versions/<version>/src`, which does not exist, so a check reading it passes having read nothing.
 5. **The settings plugin needs a Java 21+ Gradle daemon** in every build that includes one of these.
-6. **Two nodes of one loader** need a version-keyed thin-jar relocation root, or both thin jars carry
-   one relocated name and the merge keeps whichever arrived first.
+6. **A bootstrapper may name no Minecraft class** — one copy serves every node of its loader, so the
+   merge keeps whichever node's arrived first.
+7. **Loom reads a mod jar while the build is configured.** A node's first dev run on Fabric can have no
+   parent mod yet; the build says so, and the next run finds it.
 
 ---
 
@@ -374,7 +392,7 @@ What bites:
 | `registerDescriptorTasks` | Four descriptor formats from one declaration, plus the drift check |
 | `CheckSingleJar`, `CheckThinJar` | What a finished jar and a thin jar must be |
 | `ModDescriptor` | The model the formats are printed from |
-| `ModernTree`, `ModernConventions` | Finding a node, its coordinates, its toolchain, its checks — the modern tree above |
+| `ModernTree`, `ModernConventions`, `ModernVariants` | Finding a node, its coordinates, its toolchain, its checks, its variant and its relocated names — the modern tree above |
 
 | Not shared | Why |
 |---|---|
