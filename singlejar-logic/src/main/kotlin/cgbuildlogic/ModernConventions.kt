@@ -2,10 +2,13 @@ package cgbuildlogic
 
 import net.neoforged.moddevgradle.dsl.NeoForgeExtension
 import net.neoforged.moddevgradle.legacyforge.dsl.LegacyForgeExtension
+import net.neoforged.nfrtgradle.CreateMinecraftArtifacts
 import org.gradle.api.GradleException
 import org.gradle.api.Project
 import org.gradle.api.tasks.SourceSetContainer
 import org.gradle.api.tasks.compile.JavaCompile
+import org.gradle.jvm.toolchain.JavaLanguageVersion
+import org.gradle.jvm.toolchain.JavaToolchainService
 
 /**
  * What every build laid out as [MODERN_TREE] does the same way, so no build decides it twice.
@@ -48,6 +51,16 @@ fun Project.useModernMinecraft() {
         forgePin != null -> {
             pluginManager.apply("net.neoforged.moddev.legacyforge")
             extensions.configure(LegacyForgeExtension::class.java) { setVersion("$mcVersion-$forgePin") }
+            // ModDevGradle runs its decompile tools on Minecraft's own Java, which for 1.17 is 16 and is
+            // not installed; 17 runs them the same.
+            if (MinecraftVersionOrder.compare(mcVersion, "1.18") < 0) {
+                val java17 = extensions.getByType(JavaToolchainService::class.java)
+                    .launcherFor { languageVersion.set(JavaLanguageVersion.of(17)) }
+                    .map { it.executablePath.asFile.absolutePath }
+                afterEvaluate {
+                    tasks.withType(CreateMinecraftArtifacts::class.java).configureEach { toolsJavaExecutable.set(java17) }
+                }
+            }
         }
         else -> throw GradleException(
             "$path pins neither neoform.version nor forge.version in its gradle.properties, so there is "

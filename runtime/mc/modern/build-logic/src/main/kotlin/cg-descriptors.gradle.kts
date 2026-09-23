@@ -38,7 +38,9 @@ val cgDescriptor = ModDescriptor(
         "fabric" to LoaderEntries("com.crystalgraphics.mc.modern.fabric",
             common = "com.crystalgraphics.mc.modern.fabric.CrystalGraphicsFabricCommon",
             client = "com.crystalgraphics.mc.modern.fabric.CrystalGraphicsFabric",
-            fabricDepends = linkedMapOf("fabricloader" to ">=0.15.0", "fabric-api" to "*")),
+            // `fabric`, not `fabric-api`: Fabric API's id was `fabric` through its 1.19.1 builds, and every
+            // later one still provides it.
+            fabricDepends = linkedMapOf("fabricloader" to ">=0.15.0", "fabric" to "*")),
     )),
     // WHAT THE LOADER CONSTRUCTS, where that is not the variant itself. Fabric constructs EVERY entry
     // point its descriptor names, so with more than one variant it would construct them all --

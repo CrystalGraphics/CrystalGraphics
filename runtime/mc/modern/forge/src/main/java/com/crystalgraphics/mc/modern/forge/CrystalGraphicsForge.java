@@ -10,16 +10,23 @@ import net.minecraft.server.packs.resources.PreparableReloadListener;
 import net.minecraft.server.packs.resources.PreparableReloadListener.PreparationBarrier;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraftforge.client.event.RegisterClientReloadListenersEvent;
+//? if >=1.19 {
 import net.minecraftforge.event.GameShuttingDownEvent;
+//?}
 //? if <1.21.6 {
 import net.minecraftforge.common.MinecraftForge;
 //?}
 import net.minecraftforge.fml.CrashReportCallables;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.minecraftforge.fml.loading.FMLEnvironment;
-//? if <1.21.3 {
+//? if >=1.18 <1.21.3 {
 import net.minecraftforge.client.event.RenderLevelStageEvent;
 //?}
+//? if >=1.18 <1.19 {
+/*import net.minecraftforge.client.event.RenderLevelLastEvent;
+*///?} elif <1.18 {
+/*import net.minecraftforge.client.event.RenderWorldLastEvent;
+*///?}
 //? if <1.21.2 {
 import net.minecraft.util.profiling.ProfilerFiller;
 //?}
@@ -74,15 +81,54 @@ public final class CrystalGraphicsForge implements VariantEntry {
             GameShuttingDownEvent.BUS.addListener(Events::onGameShuttingDown);
             *///?} else {
             context.getModEventBus().addListener(Events::onRegisterReloadListeners);
+            //?}
+            // Below 1.19 Forge has no shutdown event; process exit frees the context there.
+            //? if >=1.19 <1.21.6 {
             MinecraftForge.EVENT_BUS.addListener(Events::onGameShuttingDown);
             //?}
             // Forge 53 (1.21.3) removed the render-stage event; from there the passes are a mixin's.
             // @see com.crystalgraphics.mc.modern.forge.mixin.OpaquePassHook
-            //? if <1.21.3 {
+            //? if >=1.21.3 {
+            /*// (the mixins)
+            *///?} elif >=1.19 {
             MinecraftForge.EVENT_BUS.addListener(Events::onRenderLevelOpaque);
             MinecraftForge.EVENT_BUS.addListener(Events::onRenderLevelTransparent);
-            //?}
+            //?} elif >=1.18 {
+            /*// The stage event arrived in Forge 40 (1.18.2); 1.18 and 1.18.1 have only the end of the level.
+            if (hasStageEvent()) {
+                MinecraftForge.EVENT_BUS.addListener(Events::onRenderLevelOpaque);
+                MinecraftForge.EVENT_BUS.addListener(Events::onRenderLevelTransparent);
+            } else {
+                MinecraftForge.EVENT_BUS.addListener(Events::onRenderLevelLast);
+            }
+            *///?} else {
+            /*MinecraftForge.EVENT_BUS.addListener(Events::onRenderWorldLast);
+            *///?}
         }
+
+        //? if >=1.18 <1.19 {
+        /*private static boolean hasStageEvent() {
+            try {
+                Class.forName("net.minecraftforge.client.event.RenderLevelStageEvent", false,
+                        Events.class.getClassLoader());
+                return true;
+            } catch (ClassNotFoundException e) {
+                return false;
+            }
+        }
+
+        // Both passes at the end of the level: after translucent terrain, so the opaque pass is late.
+        private static void onRenderLevelLast(RenderLevelLastEvent event) {
+            LifecycleModern.opaquePass(event.getPartialTick());
+            LifecycleModern.transparentPass();
+        }
+        *///?} elif <1.18 {
+        /*// Forge 37 has no render stages at all: both passes at the end of the level.
+        private static void onRenderWorldLast(RenderWorldLastEvent event) {
+            LifecycleModern.opaquePass(event.getPartialTicks());
+            LifecycleModern.transparentPass();
+        }
+        *///?}
 
         private static void onRegisterReloadListeners(RegisterClientReloadListenersEvent event) {
             event.registerReloadListener(Events::reload);
@@ -107,24 +153,38 @@ public final class CrystalGraphicsForge implements VariantEntry {
         }
         //?}
 
-        //? if <1.21.3 {
+        // AFTER_BLOCK_ENTITIES fires after block entities, before renderChunkLayer(translucent); it
+        // arrived in Forge 44 (1.19.3). Before that the last stage ahead of translucent terrain is
+        // AFTER_CUTOUT_BLOCKS, which is also ahead of entities. AFTER_PARTICLES follows translucent
+        // terrain, tripwire and particles, Fabulous or not.
+        //? if >=1.21.3 {
+        /*// (the mixins)
+        *///?} elif >=1.19.3 {
         private static void onRenderLevelOpaque(RenderLevelStageEvent event) {
-            // Validated: AFTER_BLOCK_ENTITIES fires at LevelRenderer.java line ~1311,
-            // after block entities, before renderChunkLayer(translucent).
             if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES) return;
             LifecycleModern.opaquePass(event.getPartialTick());
         }
 
         private static void onRenderLevelTransparent(RenderLevelStageEvent event) {
-            // Validated: AFTER_PARTICLES fires at LevelRenderer.java line ~1379/1394,
-            // after translucent terrain + tripwire + particles (both Fabulous and non-Fabulous).
             if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_PARTICLES) return;
             LifecycleModern.transparentPass();
         }
-        //?}
+        //?} elif >=1.18 {
+        /*private static void onRenderLevelOpaque(RenderLevelStageEvent event) {
+            if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_CUTOUT_BLOCKS) return;
+            LifecycleModern.opaquePass(event.getPartialTick());
+        }
 
+        private static void onRenderLevelTransparent(RenderLevelStageEvent event) {
+            if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_PARTICLES) return;
+            LifecycleModern.transparentPass();
+        }
+        *///?}
+
+        //? if >=1.19 {
         private static void onGameShuttingDown(GameShuttingDownEvent event) {
             LifecycleModern.shutdown();
         }
+        //?}
     }
 }
