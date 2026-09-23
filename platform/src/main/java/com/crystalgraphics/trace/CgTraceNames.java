@@ -1,6 +1,7 @@
 package com.crystalgraphics.trace;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -102,6 +103,7 @@ public final class CgTraceNames {
             int id = NAMES.size();
             NAMES.add(name);
             SOURCES.add(callerOf());
+            if (id >= firstSeen.length) firstSeen = Arrays.copyOf(firstSeen, firstSeen.length * 2);
             IDS.put(name, id);
             return id;
         }
@@ -117,6 +119,42 @@ public final class CgTraceNames {
     public static String sourceOf(int id) {
         synchronized (NAMES) {
             return id >= 0 && id < SOURCES.size() ? SOURCES.get(id) : null;
+        }
+    }
+
+    /**
+     * When a zone of each name was first RECORDED, or 0 — what makes "this is the first time it ran" a
+     * question one lookup answers, rather than a scan of everything recorded before it.
+     *
+     * <p>Grown under the names' lock and published whole; the hot path reads whichever array it sees and
+     * skips an id past its end, which only a name interned on another thread this instant can be.</p>
+     */
+    private static volatile long[] firstSeen = new long[256];
+
+    /** Marks {@code id} seen at {@code nanos} unless it already was. The zone path; costs one array read. */
+    static void seen(int id, long nanos) {
+        long[] at = firstSeen;
+        if (id >= 0 && id < at.length && at[id] == 0L) at[id] = nanos == 0L ? 1L : nanos;
+    }
+
+    /**
+     * When a zone named {@code name} was first recorded in this process, or 0 if it never was.
+     *
+     * <pre>{@code
+     * long first = CgTraceNames.firstSeenNanos("font:atlas");
+     * boolean firstTimeHere = first >= frame.beginNanos() && first < frame.endNanos();
+     * }</pre>
+     */
+    public static long firstSeenNanos(String name) {
+        Integer id = IDS.get(name);
+        long[] at = firstSeen;
+        return id == null || id >= at.length ? 0L : at[id];
+    }
+
+    /** Forgets every first sighting. For a test, which reuses names across cases. */
+    static void resetFirstSeen() {
+        synchronized (NAMES) {
+            firstSeen = new long[firstSeen.length];
         }
     }
 

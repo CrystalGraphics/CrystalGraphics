@@ -125,6 +125,7 @@ public final class CgTrace {
             CgTraceChannel made = new CgTraceChannel(name, index);
             CHANNELS.put(name, made);
             ORDER.add(made);
+            if (isEngineOwn(name)) metaMask |= made.bit();
             // AN ENABLED PREFIX IS A STANDING RULE. A channel registers when its declaring class first
             // loads, which is routinely after somebody asked for its owner at startup.
             synchronized (CgTrace.class) {
@@ -247,15 +248,40 @@ public final class CgTrace {
      * mutation.</p>
      */
     private static void markMaskChange() {
-        if (enabledMask == 0L) return;
+        if (enabledMask == 0L) {
+            markedMask = 0L;
+            return;
+        }
         // THE ENGINE'S OWN CHANNEL IS ON WHENEVER ANYTHING IS. It carries this very event, which is
         // written unconditionally because a recording that changed shape must say so -- and a meta
         // file listing `trace` as "not recording" beside a mask marker it had just recorded would be
         // exactly the kind of quiet lie the self-describing header exists to prevent.
         enabledMask |= TRACE.bit();
+        // THE ENGINE'S OWN CHANNELS DO NOT CHANGE WHAT IS MEASURED. A viewer switching on the channel its
+        // own work is recorded on would otherwise mark every frame before it as incomparable -- opening
+        // the profiler would grey out the strip it opened on.
+        long measured = enabledMask & ~metaMask;
+        if (measured == markedMask) return;
+        markedMask = measured;
         events.marker(CgTraceNames.intern("trace:mask"), TRACE.index(), System.nanoTime(),
                 CgTraceNames.intern(String.join(",", enabledNames())));
     }
+
+    /**
+     * Whether {@code name} is one of the engine's own channels — {@code trace}, or beneath it, such as a
+     * viewer's {@code trace.viewer}. What they record is ABOUT a recording, so switching one does not
+     * change what the recording measures.
+     */
+    public static boolean isEngineOwn(String name) {
+        return matches(name, TRACE_NAME);
+    }
+
+    private static final String TRACE_NAME = "trace";
+
+    /** Bits of the engine's own channels. No initialiser: {@link #channel} fills it during class init. */
+    private static volatile long metaMask;
+    /** The measured channels the last mask marker recorded. Guarded by the class. */
+    private static long markedMask;
 
     // ── Storage ─────────────────────────────────────────────────────────────────────────────
 
@@ -909,6 +935,11 @@ public final class CgTrace {
         return CgTraceSnapshot.zonesOf(frame);
     }
 
+    /** The markers recorded during {@code frame} — what a hint reads a blamed call site from. */
+    public static List<CgTraceSnapshot.MarkerView> markersIn(CgFrameRecord frame) {
+        return CgTraceSnapshot.markersBetween(frame.beginNanos(), frame.endNanos());
+    }
+
     /** Every zone starting in {@code [fromNanos, toNanos)} — a range of frames without a whole snapshot. */
     public static List<CgTraceSnapshot.ZoneView> zonesBetween(long fromNanos, long toNanos) {
         return CgTraceSnapshot.zonesBetween(fromNanos, toNanos);
@@ -949,6 +980,7 @@ public final class CgTrace {
 
     /** {@link #clear()} plus every channel off — what a test uses between cases. */
     public static synchronized void resetForTesting() {
+        CgTraceNames.resetFirstSeen();
         disableAll();
         enabledMask = 0L;
         clear();

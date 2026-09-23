@@ -226,6 +226,25 @@ public final class CgTraceSnapshot {
         }
     }
 
+    /** Markers stamped in {@code [fromNanos, toNanos)}, oldest first. */
+    static List<MarkerView> markersBetween(long fromNanos, long toNanos) {
+        String[] channelNames = channelNames();
+        CgTraceEvents events = CgTrace.events();
+        List<MarkerView> out = new ArrayList<>();
+        synchronized (events) {
+            for (long slot = events.oldestMarker(); slot < events.markersWritten; slot++) {
+                int at = events.markerAt(slot);
+                long nanos = events.markerNanos[at];
+                if (nanos < fromNanos || nanos >= toNanos) continue;
+                int detail = events.markerDetail[at];
+                out.add(new MarkerView(CgTraceNames.nameOf(events.markerName[at]),
+                        channelNames[events.markerChannel[at]], nanos,
+                        detail < 0 ? null : CgTraceNames.nameOf(detail)));
+            }
+        }
+        return out;
+    }
+
     /** The first slot in {@code [low, high)} whose start is at or after {@code nanos}. */
     private static long firstAtOrAfter(CgTraceZones.Store held, long low, long high, long nanos) {
         while (low < high) {

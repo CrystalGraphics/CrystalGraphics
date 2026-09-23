@@ -211,6 +211,7 @@ final class CgTraceZones {
         into.packed[at] = pack(channelIndex, depth, threadId);
         written = slot + 1;
         stack[depth++] = (int) slot;
+        CgTraceNames.seen(name, now);
     }
 
     /**
@@ -235,6 +236,7 @@ final class CgTraceZones {
         into.nameId[at] = name;
         into.packed[at] = pack(channelIndex, depth, threadId);
         written = slot + 1;
+        CgTraceNames.seen(name, startNanos);
     }
 
     /** Closes the innermost open zone. */
