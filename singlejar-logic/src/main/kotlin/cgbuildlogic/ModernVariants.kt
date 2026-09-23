@@ -25,7 +25,7 @@ import org.gradle.language.jvm.tasks.ProcessResources
  * variants = listOf(Variant(loader = "fml1710", ...)) + modernVariants(project, mapOf(
  *     "forge" to LoaderEntries("com.example.mc.forge", common = "com.example.mc.forge.ExampleForge"),
  *     "fabric" to LoaderEntries("com.example.mc.fabric", common = "com.example.mc.fabric.ExampleCommon",
- *         fabricDepends = linkedMapOf("fabricloader" to ">=0.15.0", "fabric-api" to "*")),
+ *         fabricDepends = linkedMapOf("fabricloader" to ">=0.15.0", "fabric" to "*")),
  * ))
  *
  * // cg-modern-loader, for each source set whose classes a mod's entries live in
@@ -94,6 +94,9 @@ fun nodeMixinConfig(shippedPackage: String): String = "mixins.$shippedPackage.js
  * - Empty because Mixin parses every listed class before its plugin can refuse one, and the config is
  *   read on every loader the merged jar boots on. The plugin names the mixins. @see VariantMixins
  * - Into the shipped jar only: a node that needs a mixin has no dev run of its own.
+ * - `JAVA_8` whatever the node emits, because the merged jar is downgraded to 8 and every config in it
+ *   is read on every loader: Mixin 0.8.4-0.8.5 (Forge through 1.20.x) know no level above `JAVA_18`,
+ *   and a required config naming one stops the game before it writes an error.
  */
 fun Project.registerNodeMixins(descriptor: ModDescriptor, jarTask: String) {
     val variant = descriptor.variants.single { it.node == path }
@@ -104,7 +107,7 @@ fun Project.registerNodeMixins(descriptor: ModDescriptor, jarTask: String) {
         |  "minVersion": "0.8",
         |  "package": "${variant.relocation!!.second}.mixin",
         |  "plugin": "${property(MIXIN_PLUGIN)}",
-        |  "compatibilityLevel": "JAVA_${findProperty("java.version") ?: 17}",
+        |  "compatibilityLevel": "JAVA_8",
         |  "mixins": [],
         |  "client": [],
         |  "server": []
