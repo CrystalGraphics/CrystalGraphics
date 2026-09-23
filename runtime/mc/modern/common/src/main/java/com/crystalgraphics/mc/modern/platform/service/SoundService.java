@@ -19,7 +19,12 @@ public final class SoundService implements CgSoundService {
             Minecraft mc = Minecraft.getInstance();
             if (mc == null || mc.getSoundManager() == null) return;
 
+            // 1.21.2 made `get` answer an Optional holder; `getValue` is the nullable lookup.
+            //? if >=1.21.2 {
+            /*SoundEvent event = BuiltInRegistries.SOUND_EVENT.getValue(ResourceIds.parse(soundId));
+            *///?} else {
             SoundEvent event = BuiltInRegistries.SOUND_EVENT.get(ResourceIds.parse(soundId));
+            //?}
             if (event == null) return;
 
             mc.getSoundManager().play(SimpleSoundInstance.forUI(event, 1.0F));

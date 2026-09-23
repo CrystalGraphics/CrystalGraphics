@@ -34,7 +34,11 @@ import org.gradle.api.tasks.bundling.AbstractArchiveTask
 /** The renamer ModDevGradle's legacy reobfuscation runs, and [SrgReobfJar] runs the same one. */
 const val AUTO_RENAMING_TOOL = "net.neoforged:AutoRenamingTool:2.0.17:all"
 
-/** Forge's own jars, compileOnly on `main` and on `lang` when the node has one. */
+/**
+ * Forge's own jars, compileOnly on `main` and on `lang` when the node has one.
+ *
+ * - Without ASM: Forge 53+ asks for a newer one than NeoForm pins strictly, and Minecraft brings its own.
+ */
 fun Project.useForgeApi() {
     repositories.maven { name = "Forge"; setUrl("https://maven.minecraftforge.net/") }
     val forge = "${property("mc.version")}-${property("forge.version")}"
@@ -46,7 +50,7 @@ fun Project.useForgeApi() {
     )
     for (configuration in listOf("compileOnly", "langCompileOnly")) {
         if (configurations.findByName(configuration) == null) continue
-        api.forEach { dependencies.add(configuration, it) }
+        api.forEach { (dependencies.add(configuration, it) as ModuleDependency).exclude(mapOf("group" to "org.ow2.asm")) }
     }
 }
 

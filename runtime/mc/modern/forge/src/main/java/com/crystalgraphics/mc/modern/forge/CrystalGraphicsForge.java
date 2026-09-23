@@ -6,14 +6,24 @@ import com.crystalgraphics.mc.shared.CrashVariant;
 import com.crystalgraphics.mc.shared.VariantEntry;
 import com.crystalgraphics.platform.CgPlatform;
 import net.minecraftforge.api.distmarker.Dist;
+import net.minecraft.server.packs.resources.PreparableReloadListener.PreparationBarrier;
+import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraftforge.client.event.RegisterClientReloadListenersEvent;
-import net.minecraftforge.client.event.RenderLevelStageEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.GameShuttingDownEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.fml.CrashReportCallables;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.minecraftforge.fml.loading.FMLEnvironment;
+//? if <1.21.3 {
+import net.minecraftforge.client.event.RenderLevelStageEvent;
+//?}
+//? if <1.21.2 {
+import net.minecraft.util.profiling.ProfilerFiller;
+//?}
+
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 
 /**
  * Everything Forge — the mod entry point and its {@link Events} subscriptions.
@@ -55,17 +65,34 @@ public final class CrystalGraphicsForge implements VariantEntry {
         /** From the entry point rather than from an annotation; see the class note. */
         static void register(IEventBus modBus) {
             modBus.addListener(Events::onRegisterReloadListeners);
+            // Forge 53 (1.21.3) removed the render-stage event; from there the passes are a mixin's.
+            // @see com.crystalgraphics.mc.modern.forge.mixin.LevelRendererHook
+            //? if <1.21.3 {
             MinecraftForge.EVENT_BUS.addListener(Events::onRenderLevelOpaque);
             MinecraftForge.EVENT_BUS.addListener(Events::onRenderLevelTransparent);
+            //?}
             MinecraftForge.EVENT_BUS.addListener(Events::onGameShuttingDown);
         }
 
         private static void onRegisterReloadListeners(RegisterClientReloadListenersEvent event) {
-            event.registerReloadListener(
-                    (stage, manager, prepProfiler, applyProfiler, backgroundExecutor, gameExecutor) ->
-                            stage.wait(null).thenRunAsync(LifecycleModern::reload, gameExecutor));
+            event.registerReloadListener(Events::reload);
         }
 
+        // 1.21.2 dropped the two profilers.
+        //? if >=1.21.2 {
+        /*private static CompletableFuture<Void> reload(PreparationBarrier stage, ResourceManager manager,
+                                                      Executor background, Executor game) {
+            return stage.wait(null).thenRunAsync(LifecycleModern::reload, game);
+        }
+        *///?} else {
+        private static CompletableFuture<Void> reload(PreparationBarrier stage, ResourceManager manager,
+                                                      ProfilerFiller prepare, ProfilerFiller apply,
+                                                      Executor background, Executor game) {
+            return stage.wait(null).thenRunAsync(LifecycleModern::reload, game);
+        }
+        //?}
+
+        //? if <1.21.3 {
         private static void onRenderLevelOpaque(RenderLevelStageEvent event) {
             // Validated: AFTER_BLOCK_ENTITIES fires at LevelRenderer.java line ~1311,
             // after block entities, before renderChunkLayer(translucent).
@@ -79,6 +106,7 @@ public final class CrystalGraphicsForge implements VariantEntry {
             if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_PARTICLES) return;
             LifecycleModern.transparentPass();
         }
+        //?}
 
         private static void onGameShuttingDown(GameShuttingDownEvent event) {
             LifecycleModern.shutdown();
