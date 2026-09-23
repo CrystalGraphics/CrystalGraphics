@@ -1039,6 +1039,8 @@ public final class CgTrace {
         generation++;
         events = newEvents(newestFrames);
         headEvents = newEvents(firstFrames);
+        // Indices start again from 0, so an image kept would sit under a different frame.
+        CgFrameImages.clear();
     }
 
     /** {@link #clear()} plus every channel off — what a test uses between cases. */
