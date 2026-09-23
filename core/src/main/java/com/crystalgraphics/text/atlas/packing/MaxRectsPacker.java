@@ -1,6 +1,7 @@
 package com.crystalgraphics.text.atlas.packing;
 
-import com.crystalgraphics.util.profiling.CgProfiler;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 import lombok.Getter;
 
 import java.util.ArrayList;
@@ -106,7 +107,7 @@ public class MaxRectsPacker implements CgPackingStrategy {
 
     @Override
     public PackedRect insert(int width, int height, int spacing, Object id) {
-        try (CgProfiler.Scope ignored = CgProfiler.scope("packer.insert")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "packer.insert")) {
             return insertInternal(width, height, spacing, id);
         }
     }
@@ -160,8 +161,8 @@ public class MaxRectsPacker implements CgPackingStrategy {
         freeExtentsDirty = true;
         // n for the O(n^2) prune below — the number that decides whether MaxRects is affordable
         // here. Bounded by per-PAGE occupancy, not by total glyphs in the atlas.
-        CgProfiler.sample("packer.freeRectCount", freeRects.size());
-        CgProfiler.sample("packer.packedCount", packedRects.size());
+        CgTrace.counter(CgChannels.TEXT, "packer.freeRectCount", freeRects.size());
+        CgTrace.counter(CgChannels.TEXT, "packer.packedCount", packedRects.size());
         return packed;
     }
 
@@ -318,7 +319,7 @@ public class MaxRectsPacker implements CgPackingStrategy {
      * in measurement is the trap, not the fix.</p>
      */
     private void pruneContained() {
-        try (CgProfiler.Scope ignored = CgProfiler.scope("packer.pruneContained")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "packer.pruneContained")) {
             pruneContainedInternal();
         }
     }

@@ -5,7 +5,8 @@ import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.util.CgBufferUtils;
-import com.crystalgraphics.util.profiling.CgProfiler;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.util.io.CgTextureIO.CgImageData;
 import com.crystalgraphics.util.io.CgTextureIO;
 import java.nio.ByteBuffer;
@@ -190,10 +191,10 @@ public final class CgTexture2DArray extends CgTextureAbstract {
         // uploadLayerRegionAsUnorm8 and the half-float variant before it, which made the same
         // trade and measured ~2%.
         long bytes = (long) data.remaining() << 2;
-        try (CgProfiler.Scope ignored = CgProfiler.scope("texArray.upload.texSubImage")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "texArray.upload.texSubImage")) {
             rawUpload(layer, x, y, w, h, format, type, data);
         }
-        CgProfiler.count("texArray.upload.bytes", bytes);
+        CgTrace.add(CgChannels.GL, "texArray.upload.bytes", bytes);
     }
 
 
@@ -318,7 +319,7 @@ public final class CgTexture2DArray extends CgTextureAbstract {
         // negligible: two GPU-local copies versus a full CPU->GPU re-upload measured at
         // 3.8ms -> 65.7ms and climbing with atlas size. The realloc itself is 0.01ms.
         if (CgTextureCopy.isSupported()) {
-            try (CgProfiler.Scope ignored = CgProfiler.scope("texArray.growGpuCopy")) {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "texArray.growGpuCopy")) {
                 // Scratch goes through this class's own allocateEmpty rather than a raw
                 // glGenTextures/glTexImage3D pair: same format/filter/wrap setup as any other
                 // array texture (no chance of the two drifting apart), a real object with a
@@ -348,7 +349,7 @@ public final class CgTexture2DArray extends CgTextureAbstract {
                 if (copied) {
                     this.depth = newLayerCount;
                     ensurePageCapacity(newLayerCount);
-                    CgProfiler.count("texArray.growGpuCopy.count");
+                    CgTrace.add(CgChannels.GL, "texArray.growGpuCopy.count", 1);
                     return;
                 }
                 // Fall through. reallocateStorage may or may not have run; the code below is
@@ -361,13 +362,13 @@ public final class CgTexture2DArray extends CgTextureAbstract {
         // Split into two scopes deliberately -- "realloc" is the unavoidable glTexImage3D that
         // resizes GPU storage, while "replayLayers" is the CPU->GPU re-upload. Measuring them
         // separately is what established that the replay, not the realloc, is the real cost.
-        try (CgProfiler.Scope ignored = CgProfiler.scope("texArray.realloc")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "texArray.realloc")) {
             reallocateStorage(newLayerCount);
         }
         this.depth = newLayerCount;
         ensurePageCapacity(newLayerCount);
 
-        try (CgProfiler.Scope ignored = CgProfiler.scope("texArray.replayLayers")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "texArray.replayLayers")) {
             int replayed = 0;
             long replayedBytes = 0;
             for (int i = 0; i < oldDepth; i++) {
@@ -386,8 +387,8 @@ public final class CgTexture2DArray extends CgTextureAbstract {
                 }
                 replayed++;
             }
-            CgProfiler.sample("texArray.replayLayers.count", replayed);
-            CgProfiler.count("texArray.replayLayers.bytes", replayedBytes);
+            CgTrace.counter(CgChannels.GL, "texArray.replayLayers.count", replayed);
+            CgTrace.add(CgChannels.GL, "texArray.replayLayers.bytes", replayedBytes);
         }
     }
 

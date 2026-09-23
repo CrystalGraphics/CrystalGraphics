@@ -9,7 +9,8 @@ import com.crystalgraphics.gl.vertex.CgVertexArray;
 import com.crystalgraphics.gl.vertex.CgVertexArrayBinding;
 import com.crystalgraphics.gl.vertex.CgVertexArrayRegistry;
 import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.util.profiling.CgProfiler;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 import java.nio.ByteBuffer;
 
 /**
@@ -86,47 +87,47 @@ public final class CgBatchRenderer extends CgAbstractRenderer {
         // Instrumented per stage: this method was the single largest unmeasured block in the text
         // draw path -- roughly a third of draw time belonged to no scope at all, because quadLoop
         // covers submitting quads and nothing covered getting them to the GPU.
-        try (CgProfiler.Scope ignored = CgProfiler.scope("batch.flush")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "batch.flush")) {
             int quadCount = staging.quadCount();
             int floatCount = staging.rawCursor();
             int byteCount = floatCount * Float.BYTES;
 
-            CgProfiler.count("batch.flush.count");
-            CgProfiler.sample("batch.flush.quads", quadCount);
-            CgProfiler.sample("batch.flush.bytes", byteCount);
+            CgTrace.add(CgChannels.GL, "batch.flush.count", 1);
+            CgTrace.counter(CgChannels.GL, "batch.flush.quads", quadCount);
+            CgTrace.counter(CgChannels.GL, "batch.flush.bytes", byteCount);
 
             ByteBuffer mapped;
-            try (CgProfiler.Scope ignored2 = CgProfiler.scope("batch.map")) {
+            try (CgTrace.Zone ignored2 = CgTrace.zone(CgChannels.GL, "batch.map")) {
                 mapped = binding.getStreamBuffer().map(byteCount);
             }
-            try (CgProfiler.Scope ignored2 = CgProfiler.scope("batch.copyToMapped")) {
+            try (CgTrace.Zone ignored2 = CgTrace.zone(CgChannels.GL, "batch.copyToMapped")) {
                 mapped.asFloatBuffer().put(staging.rawData(), 0, floatCount);
             }
             int dataOffset;
-            try (CgProfiler.Scope ignored2 = CgProfiler.scope("batch.commit")) {
+            try (CgTrace.Zone ignored2 = CgTrace.zone(CgChannels.GL, "batch.commit")) {
                 dataOffset = binding.getStreamBuffer().commit(byteCount);
             }
 
             // VAO must be bound BEFORE rebindPointers — glVertexAttribPointer
             // writes into the currently bound VAO state.
-            try (CgProfiler.Scope ignored2 = CgProfiler.scope("batch.bindVao")) {
+            try (CgTrace.Zone ignored2 = CgTrace.zone(CgChannels.GL, "batch.bindVao")) {
                 binding.getVertexArray().bind();
             }
-            try (CgProfiler.Scope ignored2 = CgProfiler.scope("batch.rebindPointers")) {
+            try (CgTrace.Zone ignored2 = CgTrace.zone(CgChannels.GL, "batch.rebindPointers")) {
                 binding.rebindPointersIfNeeded(dataOffset);
             }
-            try (CgProfiler.Scope ignored2 = CgProfiler.scope("batch.indexBuffer")) {
+            try (CgTrace.Zone ignored2 = CgTrace.zone(CgChannels.GL, "batch.indexBuffer")) {
                 CgQuadIndexBuffer.get().bindAndEnsureCapacity(quadCount);
             }
 
-            try (CgProfiler.Scope ignored2 = CgProfiler.scope("batch.drawElements")) {
+            try (CgTrace.Zone ignored2 = CgTrace.zone(CgChannels.GL, "batch.drawElements")) {
                 CgGL.glDrawElements(CgGL.GL_TRIANGLES, quadCount * 6, CgGL.GL_UNSIGNED_SHORT, 0L);
             }
-            try (CgProfiler.Scope ignored2 = CgProfiler.scope("batch.afterSubmit")) {
+            try (CgTrace.Zone ignored2 = CgTrace.zone(CgChannels.GL, "batch.afterSubmit")) {
                 binding.getStreamBuffer().afterSubmit();
             }
 
-            try (CgProfiler.Scope ignored2 = CgProfiler.scope("batch.stagingReset")) {
+            try (CgTrace.Zone ignored2 = CgTrace.zone(CgChannels.GL, "batch.stagingReset")) {
                 staging.reset();
                 staging.ensureRoomForNextVertex();
             }

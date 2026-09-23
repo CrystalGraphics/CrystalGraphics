@@ -5,7 +5,8 @@ import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.api.buffer.CgObjectBuffer;
 import lombok.Getter;
 import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.util.profiling.CgProfiler;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 
 import java.nio.ByteBuffer;
 
@@ -108,26 +109,23 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
         this.capacityBytes = capacityBytes;
         this.writeOffset = 0;
 
-        // Built once here, never per upload. This matters: uploadFloats is the single hottest
-        // path in the engine (every vertex, instance, UBO, SSBO and TBO write goes through it),
-        // and building a scope name inline would concatenate strings on every call — the
-        // argument is evaluated before CgProfiler.scope() can check whether profiling is even
-        // enabled, so "zero cost when disabled" would silently become "allocates four strings
-        // per buffer upload, forever".
+        // Interned once here, never per upload: uploadFloats is the single hottest path in the
+        // engine (every vertex, instance, UBO, SSBO and TBO write goes through it), and a name built
+        // inline is concatenated before the channel can say it is off.
         String prefix = "streamBuffer." + targetLabel() + ".";
-        this.profileMapName = prefix + "map";
-        this.profileWriteName = prefix + "write";
-        this.profileCommitName = prefix + "commit";
-        this.profileBytesName = prefix + "bytes";
-        this.profileSmallUploadName = prefix + "smallUpload";
+        this.profileMapName = CgTrace.name(prefix + "map");
+        this.profileWriteName = CgTrace.name(prefix + "write");
+        this.profileCommitName = CgTrace.name(prefix + "commit");
+        this.profileBytesName = CgTrace.name(prefix + "bytes");
+        this.profileSmallUploadName = CgTrace.name(prefix + "smallUpload");
     }
 
     // Pre-built profiling names — see the constructor for why these are not built inline.
-    private final String profileMapName;
-    private final String profileWriteName;
-    private final String profileCommitName;
-    private final String profileBytesName;
-    private final String profileSmallUploadName;
+    private final int profileMapName;
+    private final int profileWriteName;
+    private final int profileCommitName;
+    private final int profileBytesName;
+    private final int profileSmallUploadName;
 
     /**
      * Reserves {@code sizeBytes} bytes for writing and returns a {@code ByteBuffer} pointing
@@ -177,7 +175,7 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
 
         // Small writes bypass map/unmap entirely — see SMALL_UPLOAD_THRESHOLD_BYTES.
         if (byteCount <= SMALL_UPLOAD_THRESHOLD_BYTES && uploadSmall(data, floatCount, byteCount)) {
-            CgProfiler.count(profileSmallUploadName);
+            CgTrace.add(CgChannels.GL, profileSmallUploadName, 1);
             return 0;
         }
 
@@ -187,14 +185,14 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
         // target: a cost that shows up only under one target is a usage-pattern issue, while
         // one spread across all of them is the shared machinery.
         java.nio.ByteBuffer mapped;
-        try (CgProfiler.Scope ignored = CgProfiler.scope(profileMapName)) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, profileMapName)) {
             mapped = map(byteCount);
         }
-        try (CgProfiler.Scope ignored = CgProfiler.scope(profileWriteName)) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, profileWriteName)) {
             mapped.asFloatBuffer().put(data, 0, floatCount);
         }
-        try (CgProfiler.Scope ignored = CgProfiler.scope(profileCommitName)) {
-            CgProfiler.count(profileBytesName, byteCount);
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, profileCommitName)) {
+            CgTrace.add(CgChannels.GL, profileBytesName, byteCount);
             return commit(byteCount);
         }
     }

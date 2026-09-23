@@ -10,7 +10,8 @@ import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgFontKey;
 import com.crystalgraphics.api.text.CgFontFeature;
 import com.crystalgraphics.api.text.CgShapedRun;
-import com.crystalgraphics.util.profiling.CgProfiler;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 
 import java.util.List;
 
@@ -161,17 +162,17 @@ public class CgTextShaper {
 
         Scratch scratch = SCRATCH.get();
         HBBuffer buf;
-        try (CgProfiler.Scope ignored = CgProfiler.scope("hb.bufferCreate")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "hb.bufferCreate")) {
             buf = scratch.buffer();
         }
 
-        try (CgProfiler.Scope ignored = CgProfiler.scope("hb.bufferFill")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "hb.bufferFill")) {
             buf.addUTF8(substring);
             buf.setDirection(rtl ? HBDirection.HB_DIRECTION_RTL : HBDirection.HB_DIRECTION_LTR);
             buf.guessSegmentProperties();
         }
 
-        try (CgProfiler.Scope ignored = CgProfiler.scope("hb.shape")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "hb.shape")) {
             HBShape.shape(hbFont, buf, toHarfBuzzFeatures(features));
         }
 
@@ -182,7 +183,7 @@ public class CgTextShaper {
         int glyphCount;
         int[] info;
         int[] pos;
-        try (CgProfiler.Scope ignored = CgProfiler.scope("hb.readBack")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "hb.readBack")) {
             glyphCount = buf.getGlyphData(scratch.info, scratch.pos);
             if (glyphCount < 0) {
                 // Negative means the arrays were too small and nothing was written; grow to

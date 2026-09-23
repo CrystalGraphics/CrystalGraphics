@@ -66,9 +66,8 @@ public final class CgTraceNames {
      * Classes that FORWARD to this engine rather than instrument themselves.
      *
      * <p>A facade breaks the source location, and silently: every name a forwarder interns is
-     * attributed to the forwarder, so 275 CrystalGUI call sites all pointed at one line of
-     * {@code FrameProfile} and the column that makes a report actionable said the same thing about
-     * every row. The same trap is waiting for `CgProfiler` when it becomes a facade.</p>
+     * attributed to the forwarder, so every call site of a timing helper points at one line of the
+     * helper and the column that makes a report actionable says the same thing about every row.</p>
      *
      * <p>So a forwarder declares itself, once, and its frames are skipped like the engine's own.</p>
      */
@@ -78,7 +77,7 @@ public final class CgTraceNames {
      * Declares {@code className} a forwarder, so a name interned through it is attributed to ITS caller.
      *
      * <pre>{@code
-     * CgTraceNames.addForwarder("com.crystalgui.core.trace.FrameProfile");
+     * CgTraceNames.addForwarder("com.example.mymod.Timings");   // its zone(...) calls CgTrace.zone
      * }</pre>
      *
      * <p>Call before the forwarder interns anything: a name's location is captured once, on first
