@@ -1,58 +1,74 @@
 package com.crystalgraphics.util.profiling;
 
-import lombok.Getter;
-import lombok.Setter;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.trace.CgTraceChannel;
+import com.crystalgraphics.trace.CgTraceNames;
+import com.crystalgraphics.trace.CgTraceSnapshot;
 
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * General-purpose, low-overhead profiler: hierarchical scoped timers (a call-tree, like
- * Minecraft's own {@code ProfilerFiller}), flat named event counters, and flat named numeric
- * samples (min/max/avg/last) — everything needed to answer "where did the time/calls go"
- * across an arbitrary call chain, without pulling in a sampling profiler or touching native
- * (JNI) frames that tools like async-profiler can't always resolve cleanly.
+ * CrystalGraphics' named scopes, counters and samples — recorded into {@link CgTrace}, so they show in
+ * the Frame Profiler beside everything else a frame did, and still readable here as a per-thread
+ * call tree.
  *
- * <h3>Zero-cost when disabled</h3>
- * <p>{@link #setEnabled(boolean)} defaults to {@code false}. Every public entry point checks
- * the single {@code volatile boolean enabled} flag first and returns immediately — a no-op
- * {@link Scope} for {@link #scope(String)}, a no-op for everything else — when disabled. This
- * makes it safe to leave instrumentation calls in permanently, not just during a profiling
- * session; re-enabling later needs no code changes.</p>
- *
- * <h3>Per-thread, not global</h3>
- * <p>Each thread accumulates its own independent scope stack/counters/samples — correct by
- * construction for profiling work that spans, say, a render thread and a background
- * thread-pool's workers at the same time without cross-thread interference on the hot path.
- * {@link #reportAllThreads()} aggregates every thread that has ever recorded anything, for the
- * cases where you do want the cross-thread view (e.g. comparing render-thread wait time against
- * background-worker generation time). Cross-thread reads are eventually-consistent, best-effort
- * — acceptable staleness for a diagnostic tool; see that method's javadoc.</p>
- *
- * <h3>Usage</h3>
- * <pre>
- * CgProfiler.setEnabled(true);
- * ...
- * try (CgProfiler.Scope ignored = CgProfiler.scope("resolvePlacements")) {
+ * <pre>{@code
+ * try (CgProfiler.Scope ignored = CgProfiler.scope("shape.run")) {
  *     CgProfiler.count("glyph.atlasHit");
  *     CgProfiler.sample("async.pendingGlyphs", registry.getPendingAsyncGlyphCount());
- *     ...
  * }
- * ...
- * CgProfilerReport report = CgProfiler.endFrame(); // snapshots + resets this thread's state
- * System.out.println(report.format());
- * </pre>
+ * }</pre>
  *
- * <h3>Scopes are paths, not stand-alone timers</h3>
- * <p>{@link #push(String)}/{@link #scope(String)} build a {@code "/"}-joined path from
- * whatever's currently open on this thread's stack — pushing {@code "flatten"} while
- * {@code "resolve"} is open records time under {@code "resolve/flatten"}, not a bare
- * {@code "flatten"} shared across every caller. {@link CgProfilerReport} reconstructs the tree
- * from these paths to report both inclusive ({@code total}) and exclusive ({@code self}) time
- * per node.</p>
+ * <h3>Turning it on</h3>
+ * <p>It records whenever a {@code crystalgraphics} channel records — from the Frame Profiler's channel
+ * menu, from {@code CgTrace.enable("crystalgraphics")}, or from {@link #setEnabled(boolean)}, which is
+ * that same call. With nothing recording, every entry point is one volatile read.</p>
+ *
+ * <h3>Which channel a name lands on</h3>
+ * <p>The text before a name's first {@code '.'} — the whole name when there is none — picks the
+ * channel, so one subsystem can be recorded without the rest:</p>
+ * <pre>{@code
+ * CgProfiler.scope("shape.run");        // crystalgraphics.text
+ * CgProfiler.scope("doBind.stateSave"); // crystalgraphics.gl
+ * CgProfiler.scope("worker.generate");  // crystalgraphics.async
+ * CgProfiler.scope("myThing");          // crystalgraphics.misc — any prefix not in the table
+ *
+ * CgTrace.enable("crystalgraphics.text"); // record text alone
+ * }</pre>
+ *
+ * <h3>Reading it back without the window</h3>
+ * <pre>{@code
+ * CgProfiler.setEnabled(true);
+ * CgProfiler.reset();                        // this thread's report starts now
+ * runTheWorkload();
+ * System.out.println(CgProfiler.report().format());
+ *
+ * CgProfilerReport frame = CgProfiler.endFrame(); // report, then reset — once per frame
+ * Map<String, CgProfilerReport> all = CgProfiler.reportAllThreads(); // workers too
+ * }</pre>
+ *
+ * <p>A report's scopes are paths: {@code "flatten"} opened inside {@code "resolve"} is reported as
+ * {@code "resolve/flatten"}, with inclusive and self time.</p>
+ *
+ * <h3>Easy to get wrong</h3>
+ * <ul>
+ *   <li>Every {@link #push(String)} needs one {@link #pop()} on the same thread; prefer
+ *       {@link #scope(String)} in try-with-resources. {@link #endFrame()} with a scope open throws.</li>
+ *   <li>{@link #endFrame()} ends this thread's REPORT, not the trace's frame — the host owns that.</li>
+ *   <li>A report holds only zones still in the trace's ring: on a long run, older ones have been
+ *       overwritten, and a report covers what is left.</li>
+ *   <li>In the trace a sample is a whole number ({@code 0.4} records 0), and a counter's frame total is
+ *       written when that name is next counted in a later frame. Reports keep the exact values.</li>
+ * </ul>
  *
  * @see CgProfilerReport
  */
@@ -60,226 +76,327 @@ public final class CgProfiler {
 
     private CgProfiler() {}
 
+    static {
+        CgTraceNames.addForwarder(CgProfiler.class.getName());
+    }
+
+    private static final CgTraceChannel TEXT = CgTrace.channel("crystalgraphics.text");
+    private static final CgTraceChannel GL = CgTrace.channel("crystalgraphics.gl");
+    private static final CgTraceChannel ASYNC = CgTrace.channel("crystalgraphics.async");
+    private static final CgTraceChannel MISC = CgTrace.channel("crystalgraphics.misc");
+
+    private static final Set<String> OWN_CHANNELS =
+            Set.of(TEXT.name(), GL.name(), ASYNC.name(), MISC.name());
+
+    /** First name segment to channel. Anything absent is {@link #MISC}. */
+    private static final Map<String, CgTraceChannel> PREFIXES = new HashMap<>();
+
+    static {
+        for (String prefix : new String[] {
+                "text", "draw", "shape", "hb", "lineBreak", "wrap", "paragraphLayout", "layoutCache",
+                "font", "freetype", "ftRaster", "msdfgen", "glyph", "atlas", "packer", "registry",
+                "placementCache", "asyncCommit", "resolvePlacements", "resolveGlyphs", "resolveDecorations",
+                "drainCompletedGlyphs", "atlasTick", "flatten", "quadLoop", "planShadows", "sortKeys",
+                "submitSortedQuads", "materialTransition", "syncProjection"}) {
+            PREFIXES.put(prefix, TEXT);
+        }
+        for (String prefix : new String[] {
+                "batch", "doBind", "material", "texArray", "quadRenderer", "curveRenderer",
+                "streamBuffer", "cull", "gpu", "glFlush"}) {
+            PREFIXES.put(prefix, GL);
+        }
+        PREFIXES.put("worker", ASYNC);
+        PREFIXES.put("async", ASYNC);
+    }
+
+    private record Resolved(int nameId, CgTraceChannel channel) {}
+
+    private static final Map<String, Resolved> RESOLVED = new ConcurrentHashMap<>();
+
+    private static final Map<Thread, ThreadState> REGISTRY = new ConcurrentHashMap<>();
+
+    private static final ThreadLocal<ThreadState> STATE = ThreadLocal.withInitial(ThreadState::new);
+
+    // ── Switching ───────────────────────────────────────────────────────────────────────────
+
+    /** Whether any of this profiler's channels is recording. */
+    public static boolean isEnabled() {
+        return CgTrace.isRecording() && (CgTrace.isEnabled(TEXT) || CgTrace.isEnabled(GL)
+                || CgTrace.isEnabled(ASYNC) || CgTrace.isEnabled(MISC));
+    }
+
+    /** {@code CgTrace.enable("crystalgraphics")} or {@code disable} — every CrystalGraphics channel. */
+    public static void setEnabled(boolean enabled) {
+        CgTrace.setEnabled("crystalgraphics", enabled);
+    }
+
+    // ── Scopes ──────────────────────────────────────────────────────────────────────────────
+
     /**
-     * -- SETTER --
-     * Enables/disables every {@code CgProfiler} entry point process-wide. Defaults to {@code false}.
-     */
-    @Getter
-    @Setter
-    private static volatile boolean enabled = false;
-
-    private static final Map<Thread, ThreadProfiler> REGISTRY = new ConcurrentHashMap<>();
-
-    private static final ThreadLocal<ThreadProfiler> STATE = ThreadLocal.withInitial(() -> {
-        ThreadProfiler profiler = new ThreadProfiler(Thread.currentThread().getName());
-        REGISTRY.put(Thread.currentThread(), profiler);
-        return profiler;
-    });
-
-    // ────────────────────────────────────────────────────────────────
-    //  Scoped hierarchical timing
-    // ────────────────────────────────────────────────────────────────
-
-    /**
-     * Opens a scope named {@code name}, nested under whatever scope (if any) is currently open
-     * on this thread. Returns a {@link Scope} handle whose {@link Scope#close()} pops it —
-     * intended for try-with-resources so a thrown exception inside the block still pops
-     * correctly. Returns a shared no-op instance when disabled.
+     * Opens a scope; close the handle to end it. Nests under whatever scope this thread has open.
+     *
+     * <p>The handle is shared per thread and closes the innermost scope, which try-with-resources
+     * guarantees is this one. Disabled, it is a no-op.</p>
      */
     public static Scope scope(String name) {
-        if (!enabled) return Scope.NOOP;
-        ThreadProfiler profiler = STATE.get();
-        profiler.push(name);
-        return new Scope(profiler);
+        if (!isEnabled()) return Scope.NOOP;
+        ThreadState state = STATE.get();
+        state.push(name);
+        return state.handle;
     }
 
-    /** Raw push — prefer {@link #scope(String)} unless the region genuinely can't be expressed
-     * as a single try-with-resources block. Every {@code push} must be matched by exactly one
-     * {@link #pop()} on the same thread, in LIFO order. */
+    /** Opens a scope without a handle. Pair it with exactly one {@link #pop()} on this thread. */
     public static void push(String name) {
-        if (enabled) STATE.get().push(name);
+        if (isEnabled()) STATE.get().push(name);
     }
 
-    /** Raw pop — see {@link #push(String)}. */
+    /**
+     * Closes the innermost scope {@link #push(String)} opened.
+     *
+     * @throws IllegalStateException when enabled and this thread has nothing open
+     */
     public static void pop() {
-        if (enabled) STATE.get().pop();
+        ThreadState state = STATE.get();
+        if (state.depth == 0) {
+            if (isEnabled()) {
+                throw new IllegalStateException(
+                        "CgProfiler.pop() called with no matching push() on thread " + state.threadName);
+            }
+            return;
+        }
+        state.pop();
     }
 
-    /** try-with-resources handle returned by {@link #scope(String)}. {@link #close()} pops the
-     * scope it was opened for — exception-safe by construction, since a thrown block body still
-     * runs {@code close()}. */
+    /** What {@link #scope(String)} returns; {@link #close()} ends the scope. */
     public static final class Scope implements AutoCloseable {
         static final Scope NOOP = new Scope(null);
 
-        private final ThreadProfiler owner;
+        private final ThreadState owner;
 
-        private Scope(ThreadProfiler owner) {
+        private Scope(ThreadState owner) {
             this.owner = owner;
         }
 
         @Override
         public void close() {
+            // Unconditional: a channel switched off mid-scope must still close the zone it opened.
             if (owner != null) owner.pop();
         }
     }
 
-    // ────────────────────────────────────────────────────────────────
-    //  Counters & samples
-    // ────────────────────────────────────────────────────────────────
+    // ── Counters and samples ────────────────────────────────────────────────────────────────
 
-    /** Increments named counter {@code name} by 1. */
     public static void count(String name) {
         count(name, 1L);
     }
 
-    /** Adds {@code delta} to named counter {@code name} (starting from 0). */
+    /** Adds {@code delta} to counter {@code name}. */
     public static void count(String name, long delta) {
-        if (enabled) STATE.get().count(name, delta);
+        if (isEnabled()) STATE.get().count(name, delta);
     }
 
-    /** Records one observation of {@code value} under named sample {@code name} — tracks
-     * count/sum/min/max/last; see {@link CgProfilerReport.SampleSummary}. */
+    /** Records one value of {@code name}; a report keeps count, sum, min, max and last. */
     public static void sample(String name, double value) {
-        if (enabled) STATE.get().sample(name, value);
+        if (isEnabled()) STATE.get().sample(name, value);
     }
 
-    // ────────────────────────────────────────────────────────────────
-    //  Frame lifecycle & reporting
-    // ────────────────────────────────────────────────────────────────
+    // ── Reports ─────────────────────────────────────────────────────────────────────────────
 
     /**
-     * Snapshots this thread's accumulated scopes/counters/samples into an immutable
-     * {@link CgProfilerReport}, then resets all three for the next frame — mirroring the
-     * per-frame reset pattern {@code CgFontRegistry.tickFrame()}/{@code CgMsdfGenerator.tickFrame()}
-     * already use elsewhere in this codebase.
+     * This thread's report since its last reset, then a reset. Does not end the trace's frame.
      *
-     * @return the report, or {@code null} when disabled
-     * @throws IllegalStateException if this thread has one or more scopes still open (a
-     *                                {@link #push(String)}/{@link #scope(String)} without a
-     *                                matching {@link #pop()} — almost always a bug, so this is
-     *                                surfaced loudly rather than silently corrupting every
-     *                                subsequent frame's totals)
+     * @return null when disabled
+     * @throws IllegalStateException if this thread still has a scope open
      */
     public static CgProfilerReport endFrame() {
-        return enabled ? STATE.get().snapshotAndReset() : null;
+        if (!isEnabled()) return null;
+        ThreadState state = STATE.get();
+        if (state.depth > 0) {
+            throw new IllegalStateException("CgProfiler.endFrame(): " + state.depth
+                    + " scope(s) still open on thread " + state.threadName + " (missing pop()?): "
+                    + Arrays.asList(state.names).subList(0, state.depth));
+        }
+        CgProfilerReport report = state.snapshot();
+        state.reset();
+        return report;
     }
 
     /**
-     * Snapshots this thread's current state without resetting it — for ad-hoc inspection at any
-     * point, including mid-frame while scopes are still open (any such open scopes simply don't
-     * contribute to this snapshot's totals yet; they will once popped).
+     * This thread's report since its last reset. A scope still open is left out.
      *
-     * @return the report, or {@code null} when disabled
+     * @return null when disabled
      */
     public static CgProfilerReport report() {
-        return enabled ? STATE.get().snapshot() : null;
+        return isEnabled() ? STATE.get().snapshot() : null;
     }
 
-    /** Clears this thread's accumulated scopes/counters/samples without producing a report.
-     * Does not touch the open-scope stack (an in-flight {@link #scope(String)} keeps working). */
+    /** Starts this thread's report afresh. Open scopes keep working; they are reported if they close later
+     * and began after this call. */
     public static void reset() {
-        if (enabled) STATE.get().reset();
+        if (isEnabled()) STATE.get().reset();
     }
 
     /**
-     * Snapshots every thread that has ever recorded {@code CgProfiler} data, without resetting
-     * any of them — the cross-thread view needed to see e.g. a background worker pool's
-     * generation time alongside the render thread's in one report.
-     *
-     * <p>Best-effort: a snapshot of a thread other than the caller reads that thread's
-     * in-progress counters without synchronization, so it may observe a slightly stale or
-     * torn-in-time view if that thread is actively recording concurrently. Acceptable for a
-     * diagnostic tool; do not use this for anything correctness-sensitive.</p>
+     * A report for every thread that has recorded anything, keyed by thread name — to see workers beside
+     * the render thread. Another thread's counters are read unsynchronised, so they may be a moment stale.
      */
     public static Map<String, CgProfilerReport> reportAllThreads() {
         Map<String, CgProfilerReport> result = new LinkedHashMap<>();
-        for (ThreadProfiler profiler : REGISTRY.values()) {
-            result.put(profiler.threadName, profiler.snapshot());
+        for (ThreadState state : REGISTRY.values()) {
+            result.put(state.threadName, state.snapshot());
         }
         return result;
     }
 
-    // ────────────────────────────────────────────────────────────────
-    //  Per-thread mutable state
-    // ────────────────────────────────────────────────────────────────
+    // ── Per-thread state ────────────────────────────────────────────────────────────────────
 
-    private static final class ThreadProfiler {
-        final String threadName;
+    private static Resolved resolve(String name) {
+        Resolved known = RESOLVED.get(name);
+        if (known != null) return known;
+        int dot = name.indexOf('.');
+        CgTraceChannel channel = PREFIXES.getOrDefault(dot < 0 ? name : name.substring(0, dot), MISC);
+        Resolved made = new Resolved(CgTraceNames.intern(name), channel);
+        Resolved raced = RESOLVED.putIfAbsent(name, made);
+        return raced != null ? raced : made;
+    }
 
-        // Only ever touched by this profiler's own thread (via the ThreadLocal) -- never read
-        // cross-thread, so a plain ArrayDeque (not thread-safe) is fine here.
-        private final Deque<OpenScope> stack = new ArrayDeque<>();
+    private static final class CounterStat {
+        final Resolved resolved;
+        /** Since the last reset, for reports. Written by the owner, read by anyone. */
+        long total;
+        /** The trace frame {@link #frameSum} belongs to, or -1. */
+        long frame = -1L;
+        long frameSum;
 
-        // ConcurrentHashMap, not LinkedHashMap: reportAllThreads() iterates another thread's
-        // maps without synchronization (see that method's javadoc) -- a plain HashMap/
-        // LinkedHashMap would risk ConcurrentModificationException or corrupted internal
-        // structure under a concurrent put() from the owning thread. ConcurrentHashMap's
-        // weakly-consistent iterators make that safe; CgProfilerReport.build sorts keys itself
-        // for deterministic output, so losing insertion order here costs nothing.
-        final Map<String, ScopeAccum> scopeStats = new ConcurrentHashMap<>();
-        final Map<String, Long> counters = new ConcurrentHashMap<>();
+        CounterStat(Resolved resolved) {
+            this.resolved = resolved;
+        }
+
+        void add(long delta) {
+            total += delta;
+            long now = CgTrace.currentFrameIndex();
+            if (now != frame) {
+                flush();
+                frame = now;
+            }
+            frameSum += delta;
+        }
+
+        void flush() {
+            if (frame >= 0L) CgTrace.counterAt(resolved.channel(), resolved.nameId(), frame, frameSum);
+            frameSum = 0L;
+        }
+    }
+
+    private static final class ThreadState {
+        final Thread thread = Thread.currentThread();
+        final String threadName = thread.getName();
+        final Scope handle = new Scope(this);
+
+        String[] names = new String[16];
+        boolean[] opened = new boolean[16];
+        int depth;
+
+        /** Report zones start strictly after this. */
+        volatile long cursor = Long.MIN_VALUE;
+
+        final Map<String, CounterStat> counters = new ConcurrentHashMap<>();
         final Map<String, SampleAccum> samples = new ConcurrentHashMap<>();
 
-        ThreadProfiler(String threadName) {
-            this.threadName = threadName;
+        private boolean registered;
+
+        private void register() {
+            if (registered) return;
+            registered = true;
+            REGISTRY.put(thread, this);
         }
 
         void push(String name) {
-            String parentPath = stack.isEmpty() ? "" : stack.peek().path;
-            String path = parentPath.isEmpty() ? name : parentPath + "/" + name;
-            stack.push(new OpenScope(path, System.nanoTime()));
+            register();
+            Resolved resolved = resolve(name);
+            boolean open = CgTrace.begin(resolved.channel(), resolved.nameId()) != 0L;
+            if (depth == names.length) {
+                names = Arrays.copyOf(names, depth * 2);
+                opened = Arrays.copyOf(opened, depth * 2);
+            }
+            names[depth] = name;
+            opened[depth] = open;
+            depth++;
         }
 
         void pop() {
-            if (stack.isEmpty()) {
+            if (depth == 0) {
                 throw new IllegalStateException(
-                        "CgProfiler.pop() called with no matching push() on thread " + threadName);
+                        "CgProfiler scope closed with none open on thread " + threadName);
             }
-            OpenScope open = stack.pop();
-            long elapsed = System.nanoTime() - open.startNanos;
-            ScopeAccum accum = scopeStats.computeIfAbsent(open.path, k -> new ScopeAccum());
-            accum.record(elapsed);
+            depth--;
+            names[depth] = null;
+            // Any non-zero token closes the innermost zone.
+            if (opened[depth]) CgTrace.end(1L);
         }
 
         void count(String name, long delta) {
-            counters.merge(name, delta, Long::sum);
+            register();
+            CounterStat stat = counters.get(name);
+            if (stat == null) {
+                stat = new CounterStat(resolve(name));
+                counters.put(name, stat);
+            }
+            stat.add(delta);
         }
 
         void sample(String name, double value) {
+            register();
             samples.computeIfAbsent(name, k -> new SampleAccum()).record(value);
-        }
-
-        CgProfilerReport snapshot() {
-            return CgProfilerReport.build(threadName, scopeStats, counters, samples);
-        }
-
-        CgProfilerReport snapshotAndReset() {
-            if (!stack.isEmpty()) {
-                throw new IllegalStateException("CgProfiler.endFrame(): " + stack.size()
-                        + " scope(s) still open on thread " + threadName + " (missing pop()?): " + stack);
-            }
-            CgProfilerReport report = snapshot();
-            reset();
-            return report;
+            Resolved resolved = resolve(name);
+            CgTrace.counterAt(resolved.channel(), resolved.nameId(), CgTrace.currentFrameIndex(),
+                    Math.round(value));
         }
 
         void reset() {
-            scopeStats.clear();
+            for (CounterStat stat : counters.values()) stat.flush();
             counters.clear();
             samples.clear();
+            cursor = System.nanoTime();
+        }
+
+        CgProfilerReport snapshot() {
+            Map<String, Long> totals = new HashMap<>();
+            for (Map.Entry<String, CounterStat> e : counters.entrySet()) totals.put(e.getKey(), e.getValue().total);
+            return CgProfilerReport.build(threadName, scopeStats(), totals, samples);
+        }
+
+        /** This thread's closed zones on our channels since the cursor, nested by containment into paths. */
+        private Map<String, ScopeAccum> scopeStats() {
+            long from = cursor + 1;
+            List<CgTraceSnapshot.ZoneView> zones = new ArrayList<>();
+            for (CgTraceSnapshot.ZoneView zone : CgTrace.zonesOfThread(thread, from)) {
+                if (OWN_CHANNELS.contains(zone.channel())) zones.add(zone);
+            }
+            // Parent before child: earliest start, then the longer of two starting together.
+            zones.sort((a, b) -> a.startNanos() != b.startNanos()
+                    ? Long.compare(a.startNanos(), b.startNanos())
+                    : Long.compare(b.endNanos(), a.endNanos()));
+
+            Map<String, ScopeAccum> stats = new HashMap<>();
+            Deque<CgTraceSnapshot.ZoneView> open = new ArrayDeque<>();
+            Deque<String> paths = new ArrayDeque<>();
+            for (CgTraceSnapshot.ZoneView zone : zones) {
+                // Sorted so every candidate parent started first; it contains this zone unless it ends earlier.
+                while (!open.isEmpty() && zone.endNanos() > open.peek().endNanos()) {
+                    open.pop();
+                    paths.pop();
+                }
+                String path = paths.isEmpty() ? zone.name() : paths.peek() + "/" + zone.name();
+                stats.computeIfAbsent(path, k -> new ScopeAccum()).record(zone.endNanos() - zone.startNanos());
+                open.push(zone);
+                paths.push(path);
+            }
+            return stats;
         }
     }
 
-    private record OpenScope(String path, long startNanos) {
-
-        @Override
-        public String toString() {
-            return path;
-        }
-    }
-
-    /** Mutable per-path timing accumulator. Package-private (not {@code private}) so
-     * {@link CgProfilerReport#build} can read it directly without a getter per field. */
+    /** Per-path timing, read by {@link CgProfilerReport#build}. */
     static final class ScopeAccum {
         long totalNanos;
         long callCount;
@@ -292,7 +409,7 @@ public final class CgProfiler {
         }
     }
 
-    /** Mutable per-name sample accumulator. Package-private for the same reason as {@link ScopeAccum}. */
+    /** Per-name sample summary, read by {@link CgProfilerReport#build}. */
     static final class SampleAccum {
         long count;
         double sum;

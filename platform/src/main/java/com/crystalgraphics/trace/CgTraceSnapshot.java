@@ -226,6 +226,28 @@ public final class CgTraceSnapshot {
         }
     }
 
+    /** The closed zones in {@code arenas} starting at or after {@code fromNanos}, ordered by start. */
+    static List<ZoneView> closedZonesSince(List<CgTraceZones> arenas, long fromNanos) {
+        String[] channelNames = channelNames();
+        List<ZoneView> out = new ArrayList<>();
+        for (CgTraceZones arena : arenas) {
+            CgTraceZones.Store held = arena.store;
+            long high = arena.highFor(held);
+            long low = Math.max(0L, high - held.capacity);
+            for (long slot = firstAtOrAfter(held, low, high, fromNanos); slot < high; slot++) {
+                long end = held.end(slot);
+                if (end == CgTraceZones.OPEN) continue;
+                int packed = held.packed(slot);
+                int nameId = held.nameId(slot);
+                out.add(new ZoneView(CgTraceNames.nameOf(nameId), CgTraceNames.sourceOf(nameId),
+                        arena.threadName, channelNames[CgTraceZones.channelOf(packed)],
+                        CgTraceZones.depthOf(packed), held.start(slot), end));
+            }
+        }
+        out.sort(Comparator.comparingLong(ZoneView::startNanos));
+        return out;
+    }
+
     /** Markers stamped in {@code [fromNanos, toNanos)}, oldest first. */
     static List<MarkerView> markersBetween(long fromNanos, long toNanos) {
         String[] channelNames = channelNames();
