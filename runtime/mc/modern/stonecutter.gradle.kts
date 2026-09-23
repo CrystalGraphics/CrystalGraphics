@@ -8,3 +8,16 @@ plugins {
     id("dev.kikugie.stonecutter")
 }
 stonecutter active "1.20.1"
+
+// Renames Minecraft made, applied to every node from the version that made them rather than as a
+// directive at every use. The sources stay at the active version's spelling.
+stonecutter parameters {
+    // 1.21.9: Window's GLFW handle.
+    replacements.string(current.parsed >= "1.21.9") {
+        replace("getWindow().getWindow()", "getWindow().handle()")
+    }
+    // 1.21.11: ResourceLocation became Identifier, package unchanged.
+    replacements.string(current.parsed >= "1.21.11") {
+        replace("ResourceLocation", "Identifier")
+    }
+}

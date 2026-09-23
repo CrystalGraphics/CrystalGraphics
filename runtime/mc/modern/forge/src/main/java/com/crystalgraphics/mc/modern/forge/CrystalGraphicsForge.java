@@ -6,6 +6,7 @@ import com.crystalgraphics.mc.shared.CrashVariant;
 import com.crystalgraphics.mc.shared.VariantEntry;
 import com.crystalgraphics.platform.CgPlatform;
 import net.minecraftforge.api.distmarker.Dist;
+import net.minecraft.server.packs.resources.PreparableReloadListener;
 import net.minecraft.server.packs.resources.PreparableReloadListener.PreparationBarrier;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraftforge.client.event.RegisterClientReloadListenersEvent;
@@ -87,8 +88,13 @@ public final class CrystalGraphicsForge implements VariantEntry {
             event.registerReloadListener(Events::reload);
         }
 
-        // 1.21.2 dropped the two profilers.
-        //? if >=1.21.2 {
+        // 1.21.2 dropped the two profilers; 1.21.9 hands a SharedState for the manager.
+        //? if >=1.21.9 {
+        /*private static CompletableFuture<Void> reload(PreparableReloadListener.SharedState state, Executor background,
+                                                      PreparationBarrier stage, Executor game) {
+            return stage.wait(null).thenRunAsync(LifecycleModern::reload, game);
+        }
+        *///?} elif >=1.21.2 {
         /*private static CompletableFuture<Void> reload(PreparationBarrier stage, ResourceManager manager,
                                                       Executor background, Executor game) {
             return stage.wait(null).thenRunAsync(LifecycleModern::reload, game);

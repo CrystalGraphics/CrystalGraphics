@@ -327,10 +327,25 @@ object McmodInfo {
 
 object PackMcmeta {
 
-    /** The newest era's format: an older number can be refused outright, a newer one only warns. */
+    /** The first format 1.21.9 reads as a range: from it a pack states `min_format` and `max_format`. */
+    private const val RANGED_FORMAT = 65
+
+    /**
+     * The newest era's format: an older number can be refused outright, a newer one only warns. Once
+     * that reaches [RANGED_FORMAT] the pack also states its whole range — `supported_formats` for
+     * clients before 1.21.9, `min_format`/`max_format` for 1.21.9 on.
+     */
     fun merged(d: ModDescriptor): String {
-        val format = d.variants.maxOfOrNull { it.packFormat } ?: 15
-        return "{\n  \"pack\": {\n    \"description\": " + quote(d.name) +
-            ",\n    \"pack_format\": " + format + "\n  }\n}\n"
+        val formats = d.variants.map { it.packFormat }
+        val max = formats.maxOrNull() ?: 15
+        val out = StringBuilder("{\n  \"pack\": {\n    \"description\": ").append(quote(d.name))
+            .append(",\n    \"pack_format\": ").append(max)
+        if (max >= RANGED_FORMAT) {
+            val min = formats.min()
+            out.append(",\n    \"supported_formats\": [").append(min).append(", ").append(max).append("]")
+                .append(",\n    \"min_format\": ").append(min)
+                .append(",\n    \"max_format\": ").append(max)
+        }
+        return out.append("\n  }\n}\n").toString()
     }
 }

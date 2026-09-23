@@ -10,8 +10,9 @@ import java.lang.reflect.Method;
  * </pre>
  *
  * <p><b>Reflection is the point, not a shortcut.</b> One compiled bootstrapper serves a whole loader
- * family, and inside that family the call moved: {@code FMLLoader.versionInfo().mcVersion()} from
- * 1.17, {@code FMLLoader.mcVersion()} on 1.13–1.16. A direct call picks one and fails on the other
+ * family, and inside that family the call moved: {@code FMLLoader.getCurrent().getVersionInfo()} from
+ * FML 10 (NeoForge 21.9), {@code FMLLoader.versionInfo().mcVersion()} from 1.17,
+ * {@code FMLLoader.mcVersion()} on 1.13–1.16. A direct call picks one and fails on the other
  * half of the range — and the newer one returns a <i>record</i>, which a class compiled to Java 8
  * cannot even name, since {@code java.lang.Record} is not in that API.</p>
  *
@@ -24,6 +25,13 @@ public final class FmlVersion {
 
     public static String of(Class<?> fmlLoader) {
         try {
+            // FML 10 (NeoForge 21.9) moved it onto the loader instance.
+            Method current = method(fmlLoader, "getCurrent");
+            if (current != null) {
+                Object loader = current.invoke(null);
+                Object info = loader.getClass().getMethod("getVersionInfo").invoke(loader);
+                return String.valueOf(info.getClass().getMethod("mcVersion").invoke(info));
+            }
             Method versionInfo = method(fmlLoader, "versionInfo");
             if (versionInfo != null) {
                 Object info = versionInfo.invoke(null);
