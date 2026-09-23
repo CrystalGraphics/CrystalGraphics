@@ -59,6 +59,13 @@ data class ModDescriptor(
     /** The variants of one loader family, in declaration order. */
     fun variantsOf(vararg loaders: String): List<Variant> =
         variants.filter { loaders.contains(it.loader) }
+
+    /**
+     * The manifest's `MixinConfigs`: every config of a loader that finds configs there — FML 1.7.10 and
+     * MinecraftForge. Fabric and NeoForge read theirs from their own descriptors.
+     */
+    fun manifestMixinConfigs(): String =
+        variantsOf("fml1710", "fml1122", "forge").flatMap { it.mixinConfigs }.distinct().joinToString(",")
 }
 
 /**
@@ -243,7 +250,8 @@ object ForgeModsToml {
 
     private fun print(d: ModDescriptor, neoForgeOnly: Boolean): String {
         val forgeFamily = d.variantsOf("forge", "neoforge")
-        val mixins = forgeFamily.flatMap { it.mixinConfigs }.distinct()
+        // NeoForge's alone: MinecraftForge takes its configs from the manifest. @see manifestMixinConfigs
+        val mixins = d.variantsOf("neoforge").flatMap { it.mixinConfigs }.distinct()
         val out = StringBuilder()
         out.append("modLoader = \"javafml\"\n")
         out.append("loaderVersion = \"[1,)\"\n")
