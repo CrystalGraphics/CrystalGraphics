@@ -32,7 +32,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
  *
  * <p>Which is what {@link Hint#link} is for. The difference between a finding and a complaint is
  * usually one reference — the zone it is about, the counter's own name, or the document that explains
- * the mechanism.</p>
+ * the mechanism. Link a zone or a counter with {@link Hint#zone} / {@link Hint#counter}, which a viewer
+ * can follow; anything else is shown as written.</p>
  */
 public final class CgTraceHints {
 
@@ -52,6 +53,29 @@ public final class CgTraceHints {
         public Hint(String code, String text) {
             this(code, text, null);
         }
+
+        /** A link a viewer can follow to a zone: {@code "zone:paint:tree"}. */
+        public static String zone(String name) {
+            return ZONE + name;
+        }
+
+        /** A link a viewer can follow to a counter's track: {@code "counter:drawcalls"}. */
+        public static String counter(String name) {
+            return COUNTER + name;
+        }
+
+        /** The zone this links to, or null when it links elsewhere. */
+        public String linkedZone() {
+            return link != null && link.startsWith(ZONE) ? link.substring(ZONE.length()) : null;
+        }
+
+        /** The counter this links to, or null when it links elsewhere. */
+        public String linkedCounter() {
+            return link != null && link.startsWith(COUNTER) ? link.substring(COUNTER.length()) : null;
+        }
+
+        private static final String ZONE = "zone:";
+        private static final String COUNTER = "counter:";
     }
 
     /** Examines one frame and adds what it finds. */
