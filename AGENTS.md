@@ -1324,6 +1324,11 @@ ClientLifecycleEvents.CLIENT_STARTED.register(client -> {
 > the opaque/transparent render hook specifically, a mixin on the Minecraft method is the more stable
 > choice and is what `mc1710` has always done. Unanswered before acting: whether one refmap links across
 > versions. Full record in CrystalGUI `plan/crystalgui/platform-single-jar/experiments.md` E-B1.
+>
+> **Forge 1.21.3+ is where it happened**: Forge 53 removed `RenderLevelStageEvent` and nothing replaced
+> it, so those nodes hook `LevelRenderer.renderSectionLayer` (translucent) and Forge's
+> `ParticleEngine.render` — Mojang names at runtime, no refmap, one config per node gated by
+> `CrystalGraphicsForgeMixins`. Every other node keeps its events. See `singlejar-logic/README.md`.
 
 ### ⚠️ MC 1.20.x Forge/NeoForge Dev-Run Classpath Rule
 

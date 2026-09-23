@@ -6,12 +6,25 @@ import com.crystalgraphics.mc.shared.CrashVariant;
 import com.crystalgraphics.platform.CgPlatform;
 import com.mojang.logging.LogUtils;
 import com.crystalgraphics.mc.shared.VariantEntry;
+import net.minecraft.server.packs.resources.PreparableReloadListener.PreparationBarrier;
+import net.minecraft.server.packs.resources.ResourceManager;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.loading.FMLEnvironment;
-import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.GameShuttingDownEvent;
+//? if >=1.21.4 {
+/*import com.crystalgraphics.mc.modern.platform.ResourceIds;
+import net.neoforged.neoforge.client.event.AddClientReloadListenersEvent;
+*///?} else {
+import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
+//?}
+//? if <1.21.2 {
+import net.minecraft.util.profiling.ProfilerFiller;
+//?}
+
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 
 import static com.crystalgraphics.mc.modern.platform.CrystalGraphics.MODID;
 
@@ -63,11 +76,30 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
                 modBus.addListener(ModBus::onRegisterReloadListeners);
             }
 
-            private static void onRegisterReloadListeners(RegisterClientReloadListenersEvent event) {
-                event.registerReloadListener(
-                        (stage, manager, prepProfiler, applyProfiler, backgroundExecutor, gameExecutor) ->
-                                stage.wait(null).thenRunAsync(LifecycleModern::reload, gameExecutor));
+            // NeoForge 21.4 keys every listener by id.
+            //? if >=1.21.4 {
+            /*private static void onRegisterReloadListeners(AddClientReloadListenersEvent event) {
+                event.addListener(ResourceIds.of(MODID, "asset_reload"), ModBus::reload);
             }
+            *///?} else {
+            private static void onRegisterReloadListeners(RegisterClientReloadListenersEvent event) {
+                event.registerReloadListener(ModBus::reload);
+            }
+            //?}
+
+            // 1.21.2 dropped the two profilers.
+            //? if >=1.21.2 {
+            /*private static CompletableFuture<Void> reload(PreparationBarrier stage, ResourceManager manager,
+                                                          Executor background, Executor game) {
+                return stage.wait(null).thenRunAsync(LifecycleModern::reload, game);
+            }
+            *///?} else {
+            private static CompletableFuture<Void> reload(PreparationBarrier stage, ResourceManager manager,
+                                                          ProfilerFiller prepare, ProfilerFiller apply,
+                                                          Executor background, Executor game) {
+                return stage.wait(null).thenRunAsync(LifecycleModern::reload, game);
+            }
+            //?}
         }
 
         // -- NEOFORGE bus -----------------------------------------------------------
