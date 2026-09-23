@@ -4,6 +4,14 @@ import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.platform.CgPlatform;
 
 import net.minecraft.client.Minecraft;
+//? if >=1.21.5 {
+/*import com.mojang.blaze3d.opengl.GlDevice;
+import com.mojang.blaze3d.opengl.GlStateManager;
+import com.mojang.blaze3d.opengl.GlTexture;
+import com.mojang.blaze3d.pipeline.RenderTarget;
+import com.mojang.blaze3d.systems.RenderSystem;
+import org.lwjgl.opengl.GL30C;
+*///?}
 
 /**
  * <b>The one class an mc1201 loader talks to</b> — everything the engine does per frame, per reload
@@ -43,12 +51,12 @@ public final class LifecycleModern {
         Minecraft mc = Minecraft.getInstance();
         // THE MAIN TARGET, RE-BOUND. Fabulous graphics leaves one of its OIT targets bound, and the
         // engine's passes would draw into whichever that was.
-        mc.getMainRenderTarget().bindWrite(false);
+        int mainFbo = bindMainTarget(mc);
         CgGraphicsLifecycle.onOpaquePass(
                 partialTick,
                 mc.getWindow().getWidth(),
                 mc.getWindow().getHeight(),
-                mc.getMainRenderTarget().frameBufferId);
+                mainFbo);
         // Off unless -Dcrystalgraphics.host.verify=true. @see HostStateVerifier
         HostStateVerifier.verify("opaque");
     }
@@ -64,11 +72,36 @@ public final class LifecycleModern {
      * the detection API if that ever needs handling.</p>
      */
     public static void transparentPass() {
-        Minecraft mc = Minecraft.getInstance();
-        mc.getMainRenderTarget().bindWrite(false);
+        bindMainTarget(Minecraft.getInstance());
         CgGraphicsLifecycle.onTransparentPass();
         HostStateVerifier.verify("transparent");
         FrameHooks.endFrame();
+    }
+
+    /**
+     * Binds Minecraft's main target for drawing and answers its GL framebuffer.
+     *
+     * <pre>{@code
+     * int fbo = LifecycleModern.bindMainTarget(Minecraft.getInstance());
+     * }</pre>
+     *
+     * <p>Call it before drawing outside a world pass from 1.21.5, where Minecraft binds a target only
+     * inside its own render passes and leaves whichever the last one used. A target there has no
+     * framebuffer of its own: its colour texture keeps one per depth attachment.</p>
+     */
+    public static int bindMainTarget(Minecraft mc) {
+        //? if >=1.21.5 {
+        /*RenderTarget main = mc.getMainRenderTarget();
+        int fbo = ((GlTexture) main.getColorTexture())
+                .getFbo(((GlDevice) RenderSystem.getDevice()).directStateAccess(), main.getDepthTexture());
+        GlStateManager._glBindFramebuffer(GL30C.GL_FRAMEBUFFER, fbo);
+        // The viewport is the last pass's too -- the lightmap's 16x16, as often as not.
+        GlStateManager._viewport(0, 0, main.width, main.height);
+        return fbo;
+        *///?} else {
+        mc.getMainRenderTarget().bindWrite(false);
+        return mc.getMainRenderTarget().frameBufferId;
+        //?}
     }
 
     /** A resource reload landed — drop every cache built from assets. */

@@ -140,10 +140,10 @@ if (loadersWanted) include("runtime:mc:1710")
 val modernNodes: Map<String, List<String>> =
     if (!loadersWanted) linkedMapOf("common" to listOf("1.20.1"), "forge" to listOf("1.20.1"))
     else linkedMapOf(
-        "common" to listOf("1.20.1", "1.20.2", "1.20.3", "1.20.4", "1.20.6", "1.21.1", "1.21.3", "1.21.4"),
+        "common" to listOf("1.20.1", "1.20.2", "1.20.3", "1.20.4", "1.20.6", "1.21.1", "1.21.3", "1.21.4", "1.21.5"),
         "forge" to listOf("1.20.1", "1.20.2", "1.20.4", "1.20.6", "1.21.1", "1.21.3", "1.21.4"),
         "neoforge" to listOf("1.20.2", "1.20.3", "1.20.4", "1.20.6", "1.21.1", "1.21.3", "1.21.4"),
-        "fabric" to listOf("1.20.1", "1.20.2", "1.20.4", "1.20.6", "1.21.1", "1.21.3", "1.21.4"),
+        "fabric" to listOf("1.20.1", "1.20.2", "1.20.4", "1.20.6", "1.21.1", "1.21.3", "1.21.4", "1.21.5"),
     )
 
 stonecutter {

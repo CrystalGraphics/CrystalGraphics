@@ -1,6 +1,10 @@
 package com.crystalgraphics.mc.modern.platform;
 
+//? if >=1.21.5 {
+/*import com.mojang.blaze3d.opengl.GlStateManager;
+*///?} else {
 import com.mojang.blaze3d.platform.GlStateManager;
+//?}
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.opengl.GL11C;
