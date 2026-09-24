@@ -2,6 +2,7 @@ package com.crystalgraphics.mc.modern.platform;
 
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 
 //? if >=1.21.5 {
 /*import com.mojang.blaze3d.opengl.GlStateManager;
@@ -30,11 +31,8 @@ public final class Blaze3dTextureUnits {
 
     private Blaze3dTextureUnits() {}
 
-    /**
-     * What this node's Minecraft declares, for a runtime whose names are not Mojang's (SRG, intermediary),
-     * where the field cannot be found by name.
-     */
-    //? if >=1.17 {
+    /** What this node's Minecraft declares, should neither the name nor the shape find the table. */
+    //? if >=1.16 {
     private static final int KNOWN = 12;
     //?} else {
     /*private static final int KNOWN = 8;
@@ -51,7 +49,7 @@ public final class Blaze3dTextureUnits {
 
     private static int derive() {
         try {
-            Field textures = GlStateManager.class.getDeclaredField("TEXTURES");
+            Field textures = textureTable();
             textures.setAccessible(true);
             int length = Array.getLength(textures.get(null));
             if (length > 0) {
@@ -67,5 +65,28 @@ public final class Blaze3dTextureUnits {
                     refused, KNOWN);
         }
         return KNOWN;
+    }
+
+    /**
+     * {@code TEXTURES} by name where the runtime is Mojang-named, else by shape: SRG and intermediary rename
+     * it. The table is the static array whose element holds an {@code int} binding and no {@code boolean},
+     * which is what sets it apart from the light table beside it.
+     */
+    private static Field textureTable() throws NoSuchFieldException {
+        try {
+            return GlStateManager.class.getDeclaredField("TEXTURES");
+        } catch (NoSuchFieldException renamed) {
+            for (Field field : GlStateManager.class.getDeclaredFields()) {
+                if (!Modifier.isStatic(field.getModifiers()) || !field.getType().isArray()) continue;
+                boolean binding = false, flag = false;
+                for (Field member : field.getType().getComponentType().getDeclaredFields()) {
+                    if (Modifier.isStatic(member.getModifiers())) continue;
+                    binding |= member.getType() == int.class;
+                    flag |= member.getType() == boolean.class;
+                }
+                if (binding && !flag) return field;
+            }
+            throw renamed;
+        }
     }
 }

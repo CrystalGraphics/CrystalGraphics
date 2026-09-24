@@ -42,7 +42,7 @@ import org.lwjgl.opengl.GL13C;
  * disagrees. The test is the compile-time half and only proves the list has not shrunk.
  *
  * <p>This class is per <b>era</b>: the {@code _} names are stable across 1.15–1.21.5. Below 1.17 the
- * table also covers the alpha test and 1.15's omits blits and the scissor. The LWJGL2 pair needs none
+ * table also covers the alpha test, and routes no scissor (1.16.1-1.16.3 have none). The LWJGL2 pair needs none
  * of this — its backend has no host wrapper to route through.
  */
 public final class Blaze3dGLBackend extends Lwjgl3GLBackend {
@@ -60,7 +60,8 @@ public final class Blaze3dGLBackend extends Lwjgl3GLBackend {
         GlStateManager._glBindFramebuffer(target, fbo);
     }
 
-    // 1.15 models neither blits nor the scissor, so those reach the driver from tier 1 there.
+    // Blaze3D models the blit from 1.16 and the scissor from 1.16.4, which shares a node with 1.16.1: below
+    // those, tier 1 reaches the driver.
     //? if >=1.16 {
     @Override
     public void blitFramebuffer(int srcX0, int srcY0, int srcX1, int srcY1,
@@ -125,7 +126,7 @@ public final class Blaze3dGLBackend extends Lwjgl3GLBackend {
         if (cap == GL11C.GL_BLEND)               { GlStateManager._enableBlend();             return; }
         if (cap == GL11C.GL_DEPTH_TEST)          { GlStateManager._enableDepthTest();         return; }
         if (cap == GL11C.GL_CULL_FACE)           { GlStateManager._enableCull();              return; }
-        //? if >=1.16 {
+        //? if >=1.17 {
         if (cap == GL11C.GL_SCISSOR_TEST)        { GlStateManager._enableScissorTest();       return; }
         //?}
         if (cap == GL11C.GL_POLYGON_OFFSET_FILL) { GlStateManager._enablePolygonOffset();     return; }
@@ -140,7 +141,7 @@ public final class Blaze3dGLBackend extends Lwjgl3GLBackend {
         if (cap == GL11C.GL_BLEND)               { GlStateManager._disableBlend();            return; }
         if (cap == GL11C.GL_DEPTH_TEST)          { GlStateManager._disableDepthTest();        return; }
         if (cap == GL11C.GL_CULL_FACE)           { GlStateManager._disableCull();             return; }
-        //? if >=1.16 {
+        //? if >=1.17 {
         if (cap == GL11C.GL_SCISSOR_TEST)        { GlStateManager._disableScissorTest();      return; }
         //?}
         if (cap == GL11C.GL_POLYGON_OFFSET_FILL) { GlStateManager._disablePolygonOffset();    return; }
@@ -175,7 +176,7 @@ public final class Blaze3dGLBackend extends Lwjgl3GLBackend {
         GlStateManager._viewport(x, y, width, height);
     }
 
-    //? if >=1.16 {
+    //? if >=1.17 {
     @Override
     public void glScissor(int x, int y, int width, int height) {
         GlStateManager._scissorBox(x, y, width, height);
@@ -238,7 +239,10 @@ public final class Blaze3dGLBackend extends Lwjgl3GLBackend {
     public void glStencilMask(int mask) {
         GlStateManager._stencilMask(mask);
     }
+    //?}
 
+    // 1.16 has no renderbuffer calls, and 1.15's cache nothing: tier 1 below 1.17.
+    //? if >=1.17 <1.21.5 {
     @Override
     public int glGenRenderbuffers() {
         return GlStateManager.glGenRenderbuffers();
