@@ -6,9 +6,13 @@ import com.crystalgraphics.mc.shared.CrashVariant;
 import com.crystalgraphics.mc.shared.VariantEntry;
 import com.crystalgraphics.platform.CgPlatform;
 import net.minecraftforge.api.distmarker.Dist;
+//? if >=1.14 {
 import net.minecraft.server.packs.resources.PreparableReloadListener;
 import net.minecraft.server.packs.resources.PreparableReloadListener.PreparationBarrier;
 import net.minecraft.server.packs.resources.ResourceManager;
+//?} else {
+/*import net.minecraft.server.packs.resources.ResourceManagerReloadListener;
+*///?}
 //? if >=1.17 {
 import net.minecraftforge.client.event.RegisterClientReloadListenersEvent;
 //?} else {
@@ -39,7 +43,7 @@ import net.minecraftforge.client.event.RenderLevelStageEvent;
 *///?} elif <1.18 {
 /*import net.minecraftforge.client.event.RenderWorldLastEvent;
 *///?}
-//? if <1.21.2 {
+//? if >=1.14 <1.21.2 {
 import net.minecraft.util.profiling.ProfilerFiller;
 //?}
 
@@ -110,10 +114,14 @@ public final class CrystalGraphicsForge implements VariantEntry {
             GameShuttingDownEvent.BUS.addListener(Events::onGameShuttingDown);
             *///?} elif >=1.17 {
             context.getModEventBus().addListener(Events::onRegisterReloadListeners);
-            //?} else {
-            /*// Forge 29-31 have no reload-listener event; the client's manager exists by mod construction.
+            //?} elif >=1.14 {
+            /*// Forge 28-31 have no reload-listener event; the client's manager exists by mod construction.
             ((ReloadableResourceManager) Minecraft.getInstance().getResourceManager())
                     .registerReloadListener(Events::reload);
+            *///?} else {
+            /*// 1.13 reloads synchronously, and has no preparation stage to wait on.
+            ((ReloadableResourceManager) Minecraft.getInstance().getResourceManager())
+                    .registerReloadListener((ResourceManagerReloadListener) manager -> LifecycleModern.reload());
             *///?}
             // Below 1.19 Forge has no shutdown event; process exit frees the context there.
             //? if >=1.19 <1.21.6 {
@@ -180,7 +188,7 @@ public final class CrystalGraphicsForge implements VariantEntry {
                                                       Executor background, Executor game) {
             return stage.wait(null).thenRunAsync(LifecycleModern::reload, game);
         }
-        *///?} else {
+        *///?} elif >=1.14 {
         private static CompletableFuture<Void> reload(PreparationBarrier stage, ResourceManager manager,
                                                       ProfilerFiller prepare, ProfilerFiller apply,
                                                       Executor background, Executor game) {

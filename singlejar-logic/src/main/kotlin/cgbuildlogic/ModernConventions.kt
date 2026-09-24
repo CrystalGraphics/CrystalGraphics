@@ -9,6 +9,7 @@ import org.gradle.api.tasks.SourceSetContainer
 import org.gradle.api.tasks.compile.JavaCompile
 import org.gradle.jvm.toolchain.JavaLanguageVersion
 import org.gradle.jvm.toolchain.JavaToolchainService
+import java.io.File
 
 /**
  * What every build laid out as [MODERN_TREE] does the same way, so no build decides it twice.
@@ -79,6 +80,19 @@ val Project.usesLoomMinecraft: Boolean
 /** Pinned `minecraft.unimined = true`: a Forge node below 1.17, through Unimined. */
 val Project.usesUniminedMinecraft: Boolean
     get() = findProperty("minecraft.unimined")?.toString() == "true"
+
+/**
+ * Mojang-shaped names for a Minecraft Mojang published none for (1.13.2), generated from 1.14.4's through
+ * SRG ids by `runtime/mc/modern/mappings/backport_mojmap.py`; null where Mojang's own exist.
+ *
+ * ```kotlin
+ * mappings { backportedMojmap()?.let { mapping(it, "mojmap") { requires("official"); provides("mojmap" to true) } } ?: mojmap() }
+ * ```
+ */
+fun Project.backportedMojmap(): File? {
+    val path = "runtime/mc/modern/mappings/mojmap-${property("mc.version")}.tsrg"
+    return listOf(rootDir.resolve(path), rootDir.resolve("CrystalGraphics/$path")).firstOrNull { it.isFile }
+}
 
 /**
  * The Java this node builds for: its Minecraft's -- 17 up to 1.20.4, 21 from 1.20.5 -- pinned as

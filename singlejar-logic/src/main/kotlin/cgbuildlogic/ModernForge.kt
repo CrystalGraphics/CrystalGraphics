@@ -114,6 +114,7 @@ fun Project.registerSrgReobf(shadowTask: String, classifier: String, libraries: 
         mcpConfig.from(mcp)
         this.libraries.from(libraries)
         this.renamer.from(renamer)
+        backportedMojmap()?.let { backportedMappings.set(it) }
         archiveClassifier.set(classifier)
     }
 }

@@ -485,8 +485,10 @@ What bites:
     production is intermediary. A dev run reads the merged descriptor, which names every node's config,
     so `registerNodeMixins` writes each into `processResources` at the source package -- the node's own
     with its plugin, a sibling's inert -- and the thin jar excludes them (`devNodeMixinConfigs`).
-18. **Forge below 1.17 needs Java 8.** An instance for it pins a Java 8 runtime; the merged jar is
-    downgraded to 8 already.
+18. **Forge below 1.17 needs Java 8, and has no dev run.** An instance for it pins a Java 8 runtime; the
+    merged jar is downgraded to 8 already. The dev classes are not -- major 61 with `NestHost`, which a
+    Java 8 JVM cannot define and Forge 25's ASM6 scanner cannot read -- so `serverSmoke` and `runClient`
+    do not run there, and prodSmoke is the check.
 19. **A node's mixin configs belong to one mod.** A second mod built from the same nodes (CrystalGUI's
     language stack) passes `LoaderEntries(mixins = false)`: one config name in two mods is a Fabric
     refusal at launch, and it shows as a client that stops right after the Mixin banner, logging nothing.
@@ -494,6 +496,20 @@ What bites:
     must therefore never occur in the sources: `GlStateManager.` for `GlStateManager._` would have turned
     every `GlStateManager.class` into `_class` on 1.15+. 1.14's un-prefixed names are a same-package shim
     instead.
+21. **Mojang published no names for 1.13.2**, so the tree compiles it against generated ones:
+    `runtime/mc/modern/mappings/mojmap-1.13.2.tsrg`, 1.14.4's Mojang names carried back through SRG ids
+    by `backport_mojmap.py`. `backportedMojmap()` finds the file for a node; Unimined reads it as the
+    `mojmap` namespace and `SrgReobfJar` reverses it where it would read Mojang's `client.txt`. Where an
+    id changed in 1.14 the generator needs telling (`HINTS`, `MEMBER_ALIASES`), and where Forge 25 adds a
+    member of the name it would give, it must give none (`MEMBER_SKIP`) or the remap refuses.
+22. **Loom and Unimined cannot share a plugin classloader**, and Gradle shares one between sibling
+    scripts only when their plugin requests match. Unimined carries its own copies of Loom's classes, so
+    a `common` requesting both breaks Loom in every fabric node; a Loom `common` beside a Loom `fabric`
+    works only because the two request the same set. The 1.13 `common` applies Unimined from a script
+    plugin (`unimined-vanilla.gradle.kts`), whose `buildscript {}` is a classloader of its own.
+23. **LWJGL 3.1 has no core-profile `GLxxC` classes**, and Minecraft 1.13 ships 3.1.6. Tier 1 keeps
+    them; `Lwjgl31GLBackend` is generated from it with the plain `GLxx` classes, and the 1.13 backend
+    extends that instead. Anything else a 1.13 node calls names `GLxx`.
 
 ---
 

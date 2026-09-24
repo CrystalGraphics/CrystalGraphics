@@ -82,16 +82,22 @@ final class GlStateManager {
         com.mojang.blaze3d.platform.GlStateManager.enablePolygonOffset();
     }
 
-    static void _pixelStore(int a0, int a1) {
-        com.mojang.blaze3d.platform.GlStateManager.pixelStore(a0, a1);
-    }
-
     static void _polygonMode(int a0, int a1) {
         com.mojang.blaze3d.platform.GlStateManager.polygonMode(a0, a1);
     }
 
     static void _polygonOffset(float a0, float a1) {
         com.mojang.blaze3d.platform.GlStateManager.polygonOffset(a0, a1);
+    }
+
+    static void _viewport(int a0, int a1, int a2, int a3) {
+        com.mojang.blaze3d.platform.GlStateManager.viewport(a0, a1, a2, a3);
+    }
+*///?}
+// 1.13's has none of these: the backend leaves them to tier 1 there.
+//? if >=1.14 <1.15 {
+    /*static void _pixelStore(int a0, int a1) {
+        com.mojang.blaze3d.platform.GlStateManager.pixelStore(a0, a1);
     }
 
     static void _stencilFunc(int a0, int a1, int a2) {
@@ -109,9 +115,7 @@ final class GlStateManager {
     static void _texParameter(int a0, int a1, float a2) {
         com.mojang.blaze3d.platform.GlStateManager.texParameter(a0, a1, a2);
     }
-
-    static void _viewport(int a0, int a1, int a2, int a3) {
-        com.mojang.blaze3d.platform.GlStateManager.viewport(a0, a1, a2, a3);
-    }
-}
+*///?}
+//? if <1.15 {
+/*}
 *///?}

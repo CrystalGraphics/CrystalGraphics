@@ -1,6 +1,11 @@
 package com.crystalgraphics.mc.modern.platform.gl;
 
+// 1.13 ships LWJGL 3.1, which has no core-profile GLxxC classes.
+//? if >=1.14 {
 import com.crystalgraphics.lwjgl3.Lwjgl3GLBackend;
+//?} else {
+/*import com.crystalgraphics.lwjgl3.Lwjgl31GLBackend;
+*///?}
 import com.crystalgraphics.mc.modern.platform.Blaze3dTextureUnits;
 
 //? if >=1.21.5 {
@@ -8,8 +13,8 @@ import com.crystalgraphics.mc.modern.platform.Blaze3dTextureUnits;
 *///?} elif >=1.15 {
 import com.mojang.blaze3d.platform.GlStateManager;
 //?}
-import org.lwjgl.opengl.GL11C;
-import org.lwjgl.opengl.GL13C;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL13;
 //? if >=1.21.11 {
 /*import org.lwjgl.opengl.GL33C;
 *///?}
@@ -46,7 +51,11 @@ import org.lwjgl.opengl.GL13C;
  * table also covers the alpha test, and routes no scissor (1.16.1-1.16.3 have none). The LWJGL2 pair needs none
  * of this — its backend has no host wrapper to route through.
  */
+//? if >=1.14 {
 public final class Blaze3dGLBackend extends Lwjgl3GLBackend {
+//?} else {
+/*public final class Blaze3dGLBackend extends Lwjgl31GLBackend {
+*///?}
 
     /**
      * How many texture units Minecraft's own table models. Binding above it leaves the driver in a
@@ -90,7 +99,7 @@ public final class Blaze3dGLBackend extends Lwjgl3GLBackend {
 
     @Override
     public void glBindTexture(int target, int texture) {
-        if (target == GL11C.GL_TEXTURE_2D && activeTextureUnit < trackedTextureUnits) {
+        if (target == GL11.GL_TEXTURE_2D && activeTextureUnit < trackedTextureUnits) {
             GlStateManager._bindTexture(texture);
             // 1.21.11 samples through sampler objects it leaves bound, always with a mipmapped min filter;
             // over our mip-less textures that is incomplete and reads black. It rebinds its own per draw.
@@ -100,7 +109,7 @@ public final class Blaze3dGLBackend extends Lwjgl3GLBackend {
             return;
         }
         // Minecraft tracks GL_TEXTURE_2D only; CG binds multiple targets.
-        GL11C.glBindTexture(target, texture);
+        super.glBindTexture(target, texture);
     }
 
     @Override
@@ -110,18 +119,21 @@ public final class Blaze3dGLBackend extends Lwjgl3GLBackend {
 
     @Override
     public void glActiveTexture(int texture) {
-        activeTextureUnit = texture - GL13C.GL_TEXTURE0;
+        activeTextureUnit = texture - GL13.GL_TEXTURE0;
         if (activeTextureUnit < trackedTextureUnits) {
             GlStateManager._activeTexture(texture);
             return;
         }
-        GL13C.glActiveTexture(texture);
+        super.glActiveTexture(texture);
     }
 
+    // 1.13's GlStateManager has no texParameter, pixelStore or stencil calls, and caches none of them.
+    //? if >=1.14 {
     @Override
     public void glTexParameteri(int target, int pname, int param) {
         GlStateManager._texParameter(target, pname, param);
     }
+    //?}
 
     @Override
     public void glEnable(int cap) {
@@ -129,14 +141,14 @@ public final class Blaze3dGLBackend extends Lwjgl3GLBackend {
         //? if <1.17 {
         /*if (cap == GL_ALPHA_TEST_LEGACY)         { GlStateManager._enableAlphaTest();      return; }
         *///?}
-        if (cap == GL11C.GL_BLEND)               { GlStateManager._enableBlend();             return; }
-        if (cap == GL11C.GL_DEPTH_TEST)          { GlStateManager._enableDepthTest();         return; }
-        if (cap == GL11C.GL_CULL_FACE)           { GlStateManager._enableCull();              return; }
+        if (cap == GL11.GL_BLEND)                { GlStateManager._enableBlend();             return; }
+        if (cap == GL11.GL_DEPTH_TEST)           { GlStateManager._enableDepthTest();         return; }
+        if (cap == GL11.GL_CULL_FACE)            { GlStateManager._enableCull();              return; }
         //? if >=1.17 {
-        if (cap == GL11C.GL_SCISSOR_TEST)        { GlStateManager._enableScissorTest();       return; }
+        if (cap == GL11.GL_SCISSOR_TEST)         { GlStateManager._enableScissorTest();       return; }
         //?}
-        if (cap == GL11C.GL_POLYGON_OFFSET_FILL) { GlStateManager._enablePolygonOffset();     return; }
-        GL11C.glEnable(cap);
+        if (cap == GL11.GL_POLYGON_OFFSET_FILL)  { GlStateManager._enablePolygonOffset();     return; }
+        super.glEnable(cap);
     }
 
     @Override
@@ -144,14 +156,14 @@ public final class Blaze3dGLBackend extends Lwjgl3GLBackend {
         //? if <1.17 {
         /*if (cap == GL_ALPHA_TEST_LEGACY)         { GlStateManager._disableAlphaTest();     return; }
         *///?}
-        if (cap == GL11C.GL_BLEND)               { GlStateManager._disableBlend();            return; }
-        if (cap == GL11C.GL_DEPTH_TEST)          { GlStateManager._disableDepthTest();        return; }
-        if (cap == GL11C.GL_CULL_FACE)           { GlStateManager._disableCull();             return; }
+        if (cap == GL11.GL_BLEND)                { GlStateManager._disableBlend();            return; }
+        if (cap == GL11.GL_DEPTH_TEST)           { GlStateManager._disableDepthTest();        return; }
+        if (cap == GL11.GL_CULL_FACE)            { GlStateManager._disableCull();             return; }
         //? if >=1.17 {
-        if (cap == GL11C.GL_SCISSOR_TEST)        { GlStateManager._disableScissorTest();      return; }
+        if (cap == GL11.GL_SCISSOR_TEST)         { GlStateManager._disableScissorTest();      return; }
         //?}
-        if (cap == GL11C.GL_POLYGON_OFFSET_FILL) { GlStateManager._disablePolygonOffset();    return; }
-        GL11C.glDisable(cap);
+        if (cap == GL11.GL_POLYGON_OFFSET_FILL)  { GlStateManager._disablePolygonOffset();    return; }
+        super.glDisable(cap);
     }
 
     //? if <1.17 {
@@ -209,10 +221,12 @@ public final class Blaze3dGLBackend extends Lwjgl3GLBackend {
         GlStateManager._polygonOffset(factor, units);
     }
 
+    //? if >=1.14 {
     @Override
     public void glPixelStorei(int pname, int param) {
         GlStateManager._pixelStore(pname, param);
     }
+    //?}
 
     // What 1.21.5 stopped modelling: tier 1's raw calls are the honest route there.
     //? if >=1.15 <1.21.5 {
@@ -227,8 +241,7 @@ public final class Blaze3dGLBackend extends Lwjgl3GLBackend {
     }
     //?}
 
-    //? if <1.21.5 {
-
+    //? if >=1.14 <1.21.5 {
     @Override
     public void glStencilFunc(int func, int ref, int mask) {
         GlStateManager._stencilFunc(func, ref, mask);
@@ -240,13 +253,15 @@ public final class Blaze3dGLBackend extends Lwjgl3GLBackend {
     }
 
     @Override
-    public void glClearColor(float r, float g, float b, float a) {
-        GlStateManager._clearColor(r, g, b, a);
-    }
-
-    @Override
     public void glStencilMask(int mask) {
         GlStateManager._stencilMask(mask);
+    }
+    //?}
+
+    //? if <1.21.5 {
+    @Override
+    public void glClearColor(float r, float g, float b, float a) {
+        GlStateManager._clearColor(r, g, b, a);
     }
     //?}
 

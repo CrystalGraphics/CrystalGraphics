@@ -4,11 +4,14 @@ import groovy.json.JsonSlurper
 import net.neoforged.srgutils.IMappingFile
 import net.neoforged.srgutils.IRenamer
 import org.gradle.api.file.ConfigurableFileCollection
+import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.CompileClasspath
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.InputFiles
+import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
@@ -55,6 +58,12 @@ abstract class SrgReobfJar @Inject constructor(private val exec: ExecOperations)
     @get:Classpath
     abstract val renamer: ConfigurableFileCollection
 
+    /** Official -> Mojang-shaped names, for a version Mojang published none for. @see backportedMojmap */
+    @get:Optional
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val backportedMappings: RegularFileProperty
+
     @TaskAction
     override fun copy() {
         super.copy()
@@ -79,9 +88,10 @@ abstract class SrgReobfJar @Inject constructor(private val exec: ExecOperations)
         }
     }
 
-    /** Official -> obfuscated (Mojang's client mappings) chained with obfuscated -> SRG (MCPConfig). */
+    /** Official -> obfuscated (Mojang's client mappings, or the backported ones) chained with obfuscated -> SRG (MCPConfig). */
     private fun officialToSrg(out: File) {
-        val officialToObf = IMappingFile.load(clientMappings())
+        val officialToObf = if (backportedMappings.isPresent) IMappingFile.load(backportedMappings.get().asFile).reverse()
+            else IMappingFile.load(clientMappings())
         val obfToSrg = ZipFile(mcpConfig.singleFile).use { zip ->
             zip.getInputStream(zip.getEntry("config/joined.tsrg")).use { IMappingFile.load(it) }
         }

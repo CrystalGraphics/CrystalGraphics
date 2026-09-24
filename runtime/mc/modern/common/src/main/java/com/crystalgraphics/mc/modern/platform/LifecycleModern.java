@@ -10,7 +10,7 @@ import com.mojang.blaze3d.opengl.GlStateManager;
 import com.mojang.blaze3d.opengl.GlTexture;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.systems.RenderSystem;
-import org.lwjgl.opengl.GL30C;
+import org.lwjgl.opengl.GL30;
 *///?}
 
 /**
@@ -94,7 +94,7 @@ public final class LifecycleModern {
         /*RenderTarget main = mc.getMainRenderTarget();
         int fbo = ((GlTexture) main.getColorTexture())
                 .getFbo(((GlDevice) RenderSystem.getDevice()).directStateAccess(), main.getDepthTexture());
-        GlStateManager._glBindFramebuffer(GL30C.GL_FRAMEBUFFER, fbo);
+        GlStateManager._glBindFramebuffer(GL30.GL_FRAMEBUFFER, fbo);
         // The viewport is the last pass's too -- the lightmap's 16x16, as often as not.
         GlStateManager._viewport(0, 0, main.width, main.height);
         return fbo;
