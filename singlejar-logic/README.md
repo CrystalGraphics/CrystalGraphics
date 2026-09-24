@@ -480,13 +480,20 @@ What bites:
 16. **Unimined puts Minecraft on the source set's classpath, not the `compileClasspath` configuration.**
     Hand `registerSrgReobf` `sourceSets.main.get().compileClasspath`, or the renamer sees no Minecraft
     and dies on the first inherited method.
-17. **Fabric API has no world-render event below 1.16**, so a 1.15 Fabric node hooks
-    `LevelRenderer.renderLevel` with a node mixin, naming the method both ways since the dev run is
-    Mojang-named and production is intermediary. A dev run reads the merged descriptor, which
-    names every node's config, so `registerNodeMixins` writes each into `jar` and `shadowJar` at the
-    source package: the node's own with its plugin, a sibling's inert.
+17. **Fabric API has no world-render event below 1.16**, so a 1.14-1.15 Fabric node hooks the level
+    render with a node mixin, naming the method both ways since the dev run is Mojang-named and
+    production is intermediary. A dev run reads the merged descriptor, which names every node's config,
+    so `registerNodeMixins` writes each into `processResources` at the source package -- the node's own
+    with its plugin, a sibling's inert -- and the thin jar excludes them (`devNodeMixinConfigs`).
 18. **Forge below 1.17 needs Java 8.** An instance for it pins a Java 8 runtime; the merged jar is
     downgraded to 8 already.
+19. **A node's mixin configs belong to one mod.** A second mod built from the same nodes (CrystalGUI's
+    language stack) passes `LoaderEntries(mixins = false)`: one config name in two mods is a Fabric
+    refusal at launch, and it shows as a client that stops right after the Mixin banner, logging nothing.
+20. **A `replacements.string` runs in reverse on every node its condition is false for.** Its target
+    must therefore never occur in the sources: `GlStateManager.` for `GlStateManager._` would have turned
+    every `GlStateManager.class` into `_class` on 1.15+. 1.14's un-prefixed names are a same-package shim
+    instead.
 
 ---
 

@@ -44,6 +44,11 @@ data class LoaderEntries(
     val common: String? = null,
     val client: String? = null,
     val fabricDepends: Map<String, String> = emptyMap(),
+    /**
+     * Whether this mod ships its nodes' `variant.mixinPlugin` configs. Off for a second mod built from the
+     * same nodes: one config name in two mods is a Fabric refusal at launch.
+     */
+    val mixins: Boolean = true,
 )
 
 /** Where a node's loader classes are shipped: the loader package plus `v<version digits>`. */
@@ -63,7 +68,7 @@ fun modernVariants(project: Project, entries: Map<String, LoaderEntries>): List<
             Variant(
                 loader = loader, minecraft = range, era = "modern",
                 commonEntry = e.common, clientEntry = e.client,
-                mixinConfigs = if (node.hasProperty(MIXIN_PLUGIN)) listOf(nodeMixinConfig(shipped)) else emptyList(),
+                mixinConfigs = if (e.mixins && node.hasProperty(MIXIN_PLUGIN)) listOf(nodeMixinConfig(shipped)) else emptyList(),
                 packFormat = pin("variant.packFormat").toInt(),
                 fabricDepends = if (loader != "fabric") emptyMap()
                     else LinkedHashMap(e.fabricDepends).apply { put("minecraft", McRange.parse(range).toFabricPredicate()) },
@@ -95,8 +100,9 @@ fun nodeMixinConfig(shippedPackage: String): String = "mixins.$shippedPackage.js
  *
  * - Empty because Mixin parses every listed class before its plugin can refuse one, and the config is
  *   read on every loader the merged jar boots on. The plugin names the mixins. @see VariantMixins
- * - Into the shipped jar; and into `jar` and `shadowJar` at the source package, with every sibling
- *   config of the loader beside it inert, since a dev run reads the merged descriptor.
+ * - Into the shipped jar; and into `processResources` at the source package, with every sibling config
+ *   of the loader beside it inert, since a dev run reads the merged descriptor. A thin jar copying the
+ *   source set must exclude those. @see devNodeMixinConfigs
  * - `JAVA_8` whatever the node emits, because the merged jar is downgraded to 8 and every config in it
  *   is read on every loader: Mixin 0.8.4-0.8.5 (Forge through 1.20.x) know no level above `JAVA_18`,
  *   and a required config naming one stops the game before it writes an error.
@@ -116,8 +122,12 @@ fun Project.registerNodeMixins(descriptor: ModDescriptor, jarTask: String) {
     }.toMap()
     if (siblings.isEmpty()) return
     val dev = registerNodeMixinConfigs("generateDevNodeMixins", "node-mixins-dev", siblings, sourcePackage)
-    tasks.matching { it.name == "jar" || it.name == "shadowJar" }.configureEach { (this as AbstractCopyTask).from(dev) }
+    tasks.named("processResources", ProcessResources::class.java).configure { from(dev) }
 }
+
+/** The mixin configs a node's dev run carries at source names, which its shipped thin jar must not. */
+fun ModDescriptor.devNodeMixinConfigs(loader: String): List<String> =
+    variants.filter { it.loader == loader }.flatMap { it.mixinConfigs }
 
 /** Writes each config at `<loaderPackage>.mixin`, with its plugin or, for a null one, none. */
 private fun Project.registerNodeMixinConfigs(task: String, dir: String, configs: Map<String, String?>,

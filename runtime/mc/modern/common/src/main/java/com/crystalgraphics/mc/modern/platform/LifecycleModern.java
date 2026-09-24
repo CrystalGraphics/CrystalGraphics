@@ -54,8 +54,8 @@ public final class LifecycleModern {
         int mainFbo = bindMainTarget(mc);
         CgGraphicsLifecycle.onOpaquePass(
                 partialTick,
-                mc.getWindow().getWidth(),
-                mc.getWindow().getHeight(),
+                Windows.of(mc).getWidth(),
+                Windows.of(mc).getHeight(),
                 mainFbo);
         // Off unless -Dcrystalgraphics.host.verify=true. @see HostStateVerifier
         HostStateVerifier.verify("opaque");

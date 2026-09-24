@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.modern.platform.service;
 
+import com.crystalgraphics.mc.modern.platform.Windows;
 import com.crystalgraphics.api.render.CgRenderPipeline;
 import com.crystalgraphics.platform.service.CgRenderingService;
 import net.minecraft.client.Minecraft;
@@ -9,7 +10,7 @@ import net.minecraft.client.Minecraft;
  *
  * <p>{@link #onFrameBegin} is called by {@code CgClientLifecycleBridge} each frame
  * after {@code GameRenderer.renderLevel()} returns.
- * Viewport dimensions are read from {@code Minecraft.getInstance().getWindow()}.</p>
+ * Viewport dimensions are read from {@code Windows.of(Minecraft.getInstance())}.</p>
  */
 public final class RenderingService implements CgRenderingService {
 
@@ -20,11 +21,11 @@ public final class RenderingService implements CgRenderingService {
 
     @Override
     public int getDisplayWidth() {
-        return Minecraft.getInstance().getWindow().getWidth();
+        return Windows.of(Minecraft.getInstance()).getWidth();
     }
 
     @Override
     public int getDisplayHeight() {
-        return Minecraft.getInstance().getWindow().getHeight();
+        return Windows.of(Minecraft.getInstance()).getHeight();
     }
 }

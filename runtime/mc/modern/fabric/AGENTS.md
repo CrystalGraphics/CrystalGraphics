@@ -2,8 +2,9 @@
 
 ## Target Versions
 
-**MC 1.15–1.21.11 / Fabric**, a node per `versions/<version>`. Below 1.16 Fabric API has no
-world-render event, so the 1.15.2 node hooks `LevelRenderer.renderLevel` with a node mixin
+**MC 1.14.4–1.21.11 / Fabric**, a node per `versions/<version>`. Below 1.16 Fabric API has no
+world-render event, so the 1.15.2 node hooks `LevelRenderer.renderLevel` and the 1.14.4 node
+`GameRenderer.renderLevel` with a node mixin
 (`mixin/WorldPassHook`, gated by `CrystalGraphicsFabricMixins`).
 
 Uses `fabric-loom 1.16.2`. Version pins are per node, in `versions/<version>/gradle.properties`.
