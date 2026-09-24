@@ -82,7 +82,7 @@ val Project.usesUniminedMinecraft: Boolean
     get() = findProperty("minecraft.unimined")?.toString() == "true"
 
 /**
- * Mojang-shaped names for a Minecraft Mojang published none for (1.13.2), generated from 1.14.4's through
+ * Mojang-shaped names for a Minecraft Mojang published none for (1.13.2, 1.14.3), generated from 1.14.4's through
  * SRG ids by `runtime/mc/modern/mappings/backport_mojmap.py`; null where Mojang's own exist.
  *
  * ```kotlin
