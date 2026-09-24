@@ -9,14 +9,26 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraft.server.packs.resources.PreparableReloadListener;
 import net.minecraft.server.packs.resources.PreparableReloadListener.PreparationBarrier;
 import net.minecraft.server.packs.resources.ResourceManager;
+//? if >=1.17 {
 import net.minecraftforge.client.event.RegisterClientReloadListenersEvent;
+//?} else {
+/*import net.minecraft.client.Minecraft;
+import net.minecraft.server.packs.resources.ReloadableResourceManager;
+*///?}
 //? if >=1.19 {
 import net.minecraftforge.event.GameShuttingDownEvent;
 //?}
 //? if <1.21.6 {
 import net.minecraftforge.common.MinecraftForge;
 //?}
+//? if >=1.17 {
 import net.minecraftforge.fml.CrashReportCallables;
+//?} else {
+/*import net.minecraftforge.fml.CrashReportExtender;
+import net.minecraftforge.fml.DeferredWorkQueue;
+import net.minecraftforge.fml.common.ICrashCallable;
+import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
+*///?}
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.minecraftforge.fml.loading.FMLEnvironment;
 //? if >=1.18 <1.21.3 {
@@ -53,8 +65,25 @@ public final class CrystalGraphicsForge implements VariantEntry {
         // WHICH VARIANT, in the crash report itself. One jar carries a host per loader, each relocated
         // under its own prefix, so a trace naming com.crystalgraphics.mc.forge.common.* is the only
         // thing that says which one ran. @see CrashVariant
+        //? if >=1.17 {
         CrashReportCallables.registerCrashCallable(CrashVariant.LABEL,
                 () -> CrashVariant.report(CrystalGraphicsForge.class));
+        //?} else {
+        /*// Forge 29-31 keep callables in a plain list that ForgeMod iterates while mods construct on
+        // parallel workers, so registering here races it: register on the main thread after setup.
+        ((FMLJavaModLoadingContext) context).getModEventBus().addListener((FMLCommonSetupEvent event) ->
+                DeferredWorkQueue.runLater(() -> CrashReportExtender.registerCrashCallable(new ICrashCallable() {
+                    @Override
+                    public String getLabel() {
+                        return CrashVariant.LABEL;
+                    }
+
+                    @Override
+                    public String call() {
+                        return CrashVariant.report(CrystalGraphicsForge.class);
+                    }
+                })));
+        *///?}
         CgPlatform.register(PlatformServiceModern.getInstance());
 
         // EVERY subscription here is a render hook, so the whole of Events is client-only -- guarded
@@ -79,9 +108,13 @@ public final class CrystalGraphicsForge implements VariantEntry {
             /*RegisterClientReloadListenersEvent.getBus(context.getModBusGroup())
                     .addListener(Events::onRegisterReloadListeners);
             GameShuttingDownEvent.BUS.addListener(Events::onGameShuttingDown);
-            *///?} else {
+            *///?} elif >=1.17 {
             context.getModEventBus().addListener(Events::onRegisterReloadListeners);
-            //?}
+            //?} else {
+            /*// Forge 29-31 have no reload-listener event; the client's manager exists by mod construction.
+            ((ReloadableResourceManager) Minecraft.getInstance().getResourceManager())
+                    .registerReloadListener(Events::reload);
+            *///?}
             // Below 1.19 Forge has no shutdown event; process exit frees the context there.
             //? if >=1.19 <1.21.6 {
             MinecraftForge.EVENT_BUS.addListener(Events::onGameShuttingDown);
@@ -130,9 +163,11 @@ public final class CrystalGraphicsForge implements VariantEntry {
         }
         *///?}
 
+        //? if >=1.17 {
         private static void onRegisterReloadListeners(RegisterClientReloadListenersEvent event) {
             event.registerReloadListener(Events::reload);
         }
+        //?}
 
         // 1.21.2 dropped the two profilers; 1.21.9 hands a SharedState for the manager.
         //? if >=1.21.9 {

@@ -20,7 +20,10 @@ dependencies {
     minecraft("com.mojang:minecraft:${property("mc.version")}")
     mappings(loom.layered {
         officialMojangMappings()
-        parchment("org.parchmentmc.data:parchment-${property("parchment.mc")}:${property("parchment.version")}@zip")
+        // Parchment starts at 1.16.5; a node below it pins none and gets Mojang's names alone.
+        findProperty("parchment.version")?.let {
+            parchment("org.parchmentmc.data:parchment-${property("parchment.mc")}:$it@zip")
+        }
     })
     modImplementation("net.fabricmc:fabric-loader:${property("fabric.loader")}")
     modImplementation("net.fabricmc.fabric-api:fabric-api:${property("fabric.api")}")

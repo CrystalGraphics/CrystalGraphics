@@ -22,7 +22,7 @@ import javax.inject.Inject
 
 /**
  * A jar compiled against official names, renamed to what MinecraftForge 1.20.2–1.20.4 runs: Mojang's
- * class names with SRG members. ModDevGradle's legacy mode does this up to 1.20.1 and cannot set up a
+ * class names with SRG members — and below 1.17, MCP's class names too. ModDevGradle's legacy mode does this up to 1.20.1 and cannot set up a
  * later Forge; this is the same renamer (AutoRenamingTool) over the same mapping, built here.
  *
  * ```kotlin
@@ -85,7 +85,10 @@ abstract class SrgReobfJar @Inject constructor(private val exec: ExecOperations)
         val obfToSrg = ZipFile(mcpConfig.singleFile).use { zip ->
             zip.getInputStream(zip.getEntry("config/joined.tsrg")).use { IMappingFile.load(it) }
         }
-        officialToObf.chain(obfToSrg).rename(KeepClassNames).write(out.toPath(), IMappingFile.Format.TSRG2, false)
+        val chained = officialToObf.chain(obfToSrg)
+        // Below 1.17 Forge runs MCPConfig's class names as well, so the chain's own are the right ones.
+        val names = if (MinecraftVersionOrder.compare(minecraft.get(), "1.17") < 0) chained else chained.rename(KeepClassNames)
+        names.write(out.toPath(), IMappingFile.Format.TSRG2, false)
     }
 
     /** Mojang's client mappings for [minecraft], fetched once and kept beside the task's scratch. */
@@ -104,7 +107,7 @@ abstract class SrgReobfJar @Inject constructor(private val exec: ExecOperations)
     private fun read(url: String): Map<*, *> =
         URI(url).toURL().openStream().use { JsonSlurper().parse(it) } as Map<*, *>
 
-    /** Forge runs Mojang's class names since 1.17; only members are SRG. */
+    /** From 1.17 Forge runs Mojang's class names; only members are SRG. */
     private object KeepClassNames : IRenamer {
         override fun rename(value: IMappingFile.IClass): String = value.original
     }

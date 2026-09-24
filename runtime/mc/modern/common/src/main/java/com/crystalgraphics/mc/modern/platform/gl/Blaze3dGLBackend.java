@@ -1,6 +1,7 @@
 package com.crystalgraphics.mc.modern.platform.gl;
 
 import com.crystalgraphics.lwjgl3.Lwjgl3GLBackend;
+import com.crystalgraphics.mc.modern.platform.Blaze3dTextureUnits;
 
 //? if >=1.21.5 {
 /*import com.mojang.blaze3d.opengl.GlStateManager;
@@ -40,9 +41,9 @@ import org.lwjgl.opengl.GL13C;
  * each of our passes and compares it against {@code GlStateManager}'s own fields, naming the domain that
  * disagrees. The test is the compile-time half and only proves the list has not shrunk.
  *
- * <p>This class is per <b>era</b>: the {@code _} names are stable across 1.17–1.21.5. 1.13–1.16 need a
- * sibling against the un-prefixed {@code GlStateManager}, and the LWJGL2 pair needs none at all — its
- * backend has no host wrapper to route through.
+ * <p>This class is per <b>era</b>: the {@code _} names are stable across 1.15–1.21.5. Below 1.17 the
+ * table also covers the alpha test and 1.15's omits blits and the scissor. The LWJGL2 pair needs none
+ * of this — its backend has no host wrapper to route through.
  */
 public final class Blaze3dGLBackend extends Lwjgl3GLBackend {
 
@@ -50,7 +51,7 @@ public final class Blaze3dGLBackend extends Lwjgl3GLBackend {
      * How many texture units Minecraft's own table models. Binding above it leaves the driver in a
      * state its shadow cannot represent, and the damage lands on whoever samples unit 0 next.
      */
-    private static final int MC_TRACKED_TEXTURE_UNITS = 12;
+    private final int trackedTextureUnits = Blaze3dTextureUnits.count();
 
     private int activeTextureUnit = 0;
 
@@ -59,6 +60,8 @@ public final class Blaze3dGLBackend extends Lwjgl3GLBackend {
         GlStateManager._glBindFramebuffer(target, fbo);
     }
 
+    // 1.15 models neither blits nor the scissor, so those reach the driver from tier 1 there.
+    //? if >=1.16 {
     @Override
     public void blitFramebuffer(int srcX0, int srcY0, int srcX1, int srcY1,
                                  int dstX0, int dstY0, int dstX1, int dstY1,
@@ -66,6 +69,7 @@ public final class Blaze3dGLBackend extends Lwjgl3GLBackend {
         GlStateManager._glBlitFrameBuffer(srcX0, srcY0, srcX1, srcY1,
                 dstX0, dstY0, dstX1, dstY1, mask, filter);
     }
+    //?}
 
     @Override
     public int genFramebuffers() {
@@ -79,7 +83,7 @@ public final class Blaze3dGLBackend extends Lwjgl3GLBackend {
 
     @Override
     public void glBindTexture(int target, int texture) {
-        if (target == GL11C.GL_TEXTURE_2D && activeTextureUnit < MC_TRACKED_TEXTURE_UNITS) {
+        if (target == GL11C.GL_TEXTURE_2D && activeTextureUnit < trackedTextureUnits) {
             GlStateManager._bindTexture(texture);
             // 1.21.11 samples through sampler objects it leaves bound, always with a mipmapped min filter;
             // over our mip-less textures that is incomplete and reads black. It rebinds its own per draw.
@@ -100,7 +104,7 @@ public final class Blaze3dGLBackend extends Lwjgl3GLBackend {
     @Override
     public void glActiveTexture(int texture) {
         activeTextureUnit = texture - GL13C.GL_TEXTURE0;
-        if (activeTextureUnit < MC_TRACKED_TEXTURE_UNITS) {
+        if (activeTextureUnit < trackedTextureUnits) {
             GlStateManager._activeTexture(texture);
             return;
         }
@@ -114,25 +118,41 @@ public final class Blaze3dGLBackend extends Lwjgl3GLBackend {
 
     @Override
     public void glEnable(int cap) {
-        if (cap == GL_ALPHA_TEST_LEGACY)         throw new UnsupportedOperationException("GL_ALPHA_TEST is unavailable in OpenGL core profile (MC 1.20+)");
+        // Before 1.17 the context is a compatibility profile and Blaze3D still tracks the alpha test.
+        //? if <1.17 {
+        /*if (cap == GL_ALPHA_TEST_LEGACY)         { GlStateManager._enableAlphaTest();      return; }
+        *///?}
         if (cap == GL11C.GL_BLEND)               { GlStateManager._enableBlend();             return; }
         if (cap == GL11C.GL_DEPTH_TEST)          { GlStateManager._enableDepthTest();         return; }
         if (cap == GL11C.GL_CULL_FACE)           { GlStateManager._enableCull();              return; }
+        //? if >=1.16 {
         if (cap == GL11C.GL_SCISSOR_TEST)        { GlStateManager._enableScissorTest();       return; }
+        //?}
         if (cap == GL11C.GL_POLYGON_OFFSET_FILL) { GlStateManager._enablePolygonOffset();     return; }
         GL11C.glEnable(cap);
     }
 
     @Override
     public void glDisable(int cap) {
-        if (cap == GL_ALPHA_TEST_LEGACY)         throw new UnsupportedOperationException("GL_ALPHA_TEST is unavailable in OpenGL core profile (MC 1.20+)");
+        //? if <1.17 {
+        /*if (cap == GL_ALPHA_TEST_LEGACY)         { GlStateManager._disableAlphaTest();     return; }
+        *///?}
         if (cap == GL11C.GL_BLEND)               { GlStateManager._disableBlend();            return; }
         if (cap == GL11C.GL_DEPTH_TEST)          { GlStateManager._disableDepthTest();        return; }
         if (cap == GL11C.GL_CULL_FACE)           { GlStateManager._disableCull();             return; }
+        //? if >=1.16 {
         if (cap == GL11C.GL_SCISSOR_TEST)        { GlStateManager._disableScissorTest();      return; }
+        //?}
         if (cap == GL11C.GL_POLYGON_OFFSET_FILL) { GlStateManager._disablePolygonOffset();    return; }
         GL11C.glDisable(cap);
     }
+
+    //? if <1.17 {
+    /*@Override
+    public void glAlphaFunc(int func, float ref) {
+        GlStateManager._alphaFunc(func, ref);
+    }
+    *///?}
 
     @Override
     public void glBlendFunc(int sfactor, int dfactor) {
@@ -155,10 +175,12 @@ public final class Blaze3dGLBackend extends Lwjgl3GLBackend {
         GlStateManager._viewport(x, y, width, height);
     }
 
+    //? if >=1.16 {
     @Override
     public void glScissor(int x, int y, int width, int height) {
         GlStateManager._scissorBox(x, y, width, height);
     }
+    //?}
 
     @Override
     public void glPolygonMode(int face, int mode) {

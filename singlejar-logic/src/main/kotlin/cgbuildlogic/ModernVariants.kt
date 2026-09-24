@@ -2,8 +2,10 @@ package cgbuildlogic
 
 import org.gradle.api.GradleException
 import org.gradle.api.Project
+import org.gradle.api.Task
 import org.gradle.api.tasks.AbstractCopyTask
 import org.gradle.api.tasks.SourceSetContainer
+import org.gradle.api.tasks.TaskProvider
 import org.gradle.language.jvm.tasks.ProcessResources
 
 /**
@@ -93,7 +95,7 @@ fun nodeMixinConfig(shippedPackage: String): String = "mixins.$shippedPackage.js
  *
  * - Empty because Mixin parses every listed class before its plugin can refuse one, and the config is
  *   read on every loader the merged jar boots on. The plugin names the mixins. @see VariantMixins
- * - Into the shipped jar only: a node that needs a mixin has no dev run of its own.
+ * - Into the shipped jar, and into `jar` and `shadowJar` at the source package for a node with a dev run.
  * - `JAVA_8` whatever the node emits, because the merged jar is downgraded to 8 and every config in it
  *   is read on every loader: Mixin 0.8.4-0.8.5 (Forge through 1.20.x) know no level above `JAVA_18`,
  *   and a required config naming one stops the game before it writes an error.
@@ -101,11 +103,21 @@ fun nodeMixinConfig(shippedPackage: String): String = "mixins.$shippedPackage.js
 fun Project.registerNodeMixins(descriptor: ModDescriptor, jarTask: String) {
     val variant = descriptor.variants.single { it.node == path }
     val config = variant.mixinConfigs.singleOrNull() ?: return
+    val (sourcePackage, shippedPackage) = variant.relocation!!
+    val shipped = registerNodeMixinConfig("generateNodeMixins", "node-mixins", config, shippedPackage)
+    tasks.named(jarTask, AbstractCopyTask::class.java).configure { from(shipped) }
+    // A Fabric node below 1.16 has a dev run, and the merged descriptor it reads names this config: the
+    // unshaded jars a dev run loads carry it too, at the SOURCE package their unrelocated classes have.
+    val dev = registerNodeMixinConfig("generateDevNodeMixins", "node-mixins-dev", config, sourcePackage)
+    tasks.matching { it.name == "jar" || it.name == "shadowJar" }.configureEach { (this as AbstractCopyTask).from(dev) }
+}
+
+private fun Project.registerNodeMixinConfig(task: String, dir: String, config: String, loaderPackage: String): TaskProvider<Task> {
     val json = """
         |{
         |  "required": true,
         |  "minVersion": "0.8",
-        |  "package": "${variant.relocation!!.second}.mixin",
+        |  "package": "$loaderPackage.mixin",
         |  "plugin": "${property(MIXIN_PLUGIN)}",
         |  "compatibilityLevel": "JAVA_8",
         |  "mixins": [],
@@ -113,15 +125,14 @@ fun Project.registerNodeMixins(descriptor: ModDescriptor, jarTask: String) {
         |  "server": []
         |}
         |""".trimMargin()
-    val out = layout.buildDirectory.dir("node-mixins")
-    val generate = tasks.register("generateNodeMixins") {
+    val out = layout.buildDirectory.dir(dir)
+    return tasks.register(task) {
         group = "build"
-        description = "This node's mixin config, at its shipped package."
+        description = "This node's mixin config, at package $loaderPackage.mixin."
         inputs.property("json", json)
         outputs.dir(out)
         doLast { out.get().file(config).asFile.apply { parentFile.mkdirs() }.writeText(json) }
     }
-    tasks.named(jarTask, AbstractCopyTask::class.java).configure { from(generate) }
 }
 
 /** Every entry class [this] ships, as jar paths at their shipped names — for `requiredEntries`. */
