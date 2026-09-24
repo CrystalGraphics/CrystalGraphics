@@ -496,11 +496,11 @@ What bites:
     must therefore never occur in the sources: `GlStateManager.` for `GlStateManager._` would have turned
     every `GlStateManager.class` into `_class` on 1.15+. 1.14's un-prefixed names are a same-package shim
     instead.
-21. **Mojang published no names for 1.13.2**, so the tree compiles it against generated ones:
-    `runtime/mc/modern/mappings/mojmap-1.13.2.tsrg`, 1.14.4's Mojang names carried back through SRG ids
-    by `backport_mojmap.py`. `backportedMojmap()` finds the file for a node; Unimined reads it as the
+21. **Mojang published no names before 1.14.4**, so the tree compiles 1.13.2 and 1.14.3 against
+    generated ones: `runtime/mc/modern/mappings/mojmap-<version>.tsrg`, 1.14.4's Mojang names carried back
+    through SRG ids by `backport_mojmap.py <version>`. `backportedMojmap()` finds the file for a node; Unimined reads it as the
     `mojmap` namespace and `SrgReobfJar` reverses it where it would read Mojang's `client.txt`. Where an
-    id changed in 1.14 the generator needs telling (`HINTS`, `MEMBER_ALIASES`), and where Forge 25 adds a
+    id changed in 1.14 the generator needs telling (`HINTS`, `MEMBER_ALIASES`), and where Forge adds a
     member of the name it would give, it must give none (`MEMBER_SKIP`) or the remap refuses.
 22. **Loom and Unimined cannot share a plugin classloader**, and Gradle shares one between sibling
     scripts only when their plugin requests match. Unimined carries its own copies of Loom's classes, so

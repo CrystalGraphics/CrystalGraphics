@@ -31121,7 +31121,6 @@ net/minecraft/server/MinecraftServer net/minecraft/server/MinecraftServer
 	ap averageTickTime
 	b profiler
 	c proxy
-	d tickTimes
 	g LOGGER
 	h storageSource
 	i snooper

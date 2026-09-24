@@ -1,5 +1,5 @@
-// Vanilla Minecraft through Unimined, for a common node Loom cannot serve: 1.13 has no intermediary and
-// no Mojang names, so it compiles against the backported ones. Applied from ./build.gradle.kts.
+// Vanilla Minecraft through Unimined, for a common node Loom cannot serve: Mojang published no names for
+// 1.13.2 or 1.14.3, so they compile against the backported ones. Applied from ./build.gradle.kts.
 //
 // A script plugin so that Unimined loads in a classloader of its own. Requested in common's `plugins {}`
 // it sits beside Loom, whose classes it carries copies of, and Loom then fails in every fabric node that

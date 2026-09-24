@@ -1,22 +1,29 @@
-"""Mojang-shaped names for Minecraft 1.13.2, which Mojang never published.
+"""Mojang-shaped names for a Minecraft Mojang published none for (1.13.2, 1.14.3), from 1.14.4's.
 
-Members are chained through SRG ids, which MCPConfig keeps stable between 1.13.2 and 1.14.4:
-  1.13.2 obf --(MCPConfig 1.13.2)--> srg id <--(MCPConfig 1.14.4)-- 1.14.4 obf <--(Mojang 1.14.4)-- name
+Members are chained through SRG ids, which MCPConfig keeps stable up to 1.14.4:
+  target obf --(MCPConfig target)--> srg id <--(MCPConfig 1.14.4)-- 1.14.4 obf <--(Mojang 1.14.4)-- name
 Classes are matched by HINTS first, then an identical MCP class name, then a vote of the member ids that
 have a single 1.14.4 owner. Members of classes 1.14.4 left unobfuscated are bridged by MCP name, and
 MEMBER_ALIASES names ids 1.14 retired. Unmatched classes and members keep their obfuscated names.
-Writes TSRG2 with namespaces `official` and `mojmap`.
+Writes TSRG2 with namespaces `official` and `mojmap`, to mojmap-<target>.tsrg.
 
-    python backport_mojmap.py mojmap-1.13.2.tsrg
+    python backport_mojmap.py 1.13.2
 
 Unimined caches what it remapped under a name that does not change with this file: after regenerating,
-delete ~/.gradle/caches/unimined/net/minecraft/minecraft/1.13.2/{mojmap,mappings} and the Forge
+delete ~/.gradle/caches/unimined/net/minecraft/minecraft/<target>/{mojmap,mappings} and the Forge
 `mojmap-searge-*` directory, or a dev build keeps the old names.
 """
 import collections, io, json, re, sys, urllib.request, zipfile
 
 UA = {"User-Agent": "crystalgui-build/1.0"}
-OUT = sys.argv[1] if len(sys.argv) > 1 else "mojmap-1.13.2.tsrg"
+# target -> (its MCPConfig, the MCP snapshot naming its SRG ids)
+TARGETS = {
+    "1.13.2": ("1.13.2-20190213.203750", "47-1.13.2"),
+    "1.14.3": ("1.14.3-20190624.152911", "56-1.14.3"),
+}
+TARGET = sys.argv[1]
+MCP_CONFIG, MCP_STABLE = TARGETS[TARGET]
+OUT = f"mojmap-{TARGET}.tsrg"
 
 
 def get(u):
@@ -92,7 +99,7 @@ m_cls, m_fields, m_methods = parse_mojang(moj)
 obf_to_named_1144 = {o: n for n, o in m_cls.items()}
 
 c14, f14, me14 = parse_tsrg(mcp_tsrg("1.14.4-20190829.143755"))
-c13, f13, me13 = parse_tsrg(mcp_tsrg("1.13.2-20190213.203750"))
+ct, ft, mt = parse_tsrg(mcp_tsrg(MCP_CONFIG))
 
 # srg id -> (mojang name, owning 1.14.4 class in Mojang names)
 srg_field, srg_method = {}, {}
@@ -114,15 +121,15 @@ for (c, o), s_ in f14.items():
 for (c, o, d), s_ in me14.items():
     owners[s_].add(obf_to_named_1144.get(c))
 class_named = {}
-for obf, srg in c13.items():
+for obf, srg in ct.items():
     if srg in srg_class_1144 and srg_class_1144[srg]:
         class_named[obf] = srg_class_1144[srg]
         continue
     votes = collections.Counter()
-    for (c, o), s_ in f13.items():
+    for (c, o), s_ in ft.items():
         if c == obf and len(owners.get(s_, ())) == 1:
             votes[next(iter(owners[s_]))] += 1
-    for (c, o, d), s_ in me13.items():
+    for (c, o, d), s_ in mt.items():
         if c == obf and len(owners.get(s_, ())) == 1:
             votes[next(iter(owners[s_]))] += 1
     votes.pop(None, None)
@@ -155,35 +162,35 @@ MEMBER_ALIASES = {
     "func_195120_Y_": "shouldCloseOnEsc",
     "func_195122_V_": "onClose",
 }
-# members left unnamed: Forge 25 adds a member of the same name (and descriptor, for a method) to the class
-MEMBER_SKIP = {"func_174898_m", "func_177523_a", "field_70180_af"}
-srg13_to_obf = {v: k for k, v in c13.items()}
+# members left unnamed: Forge adds a member of the same name (and descriptor, for a method) to the class
+MEMBER_SKIP = {"func_174898_m", "func_177523_a", "field_70180_af", "field_71311_j"}
+srgt_to_obf = {v: k for k, v in ct.items()}
 hinted = set()
 for mcp, named in HINTS.items():
-    if mcp in srg13_to_obf:
-        class_named[srg13_to_obf[mcp]] = named.replace("/", ".")
-        hinted.add(srg13_to_obf[mcp])
+    if mcp in srgt_to_obf:
+        class_named[srgt_to_obf[mcp]] = named.replace("/", ".")
+        hinted.add(srgt_to_obf[mcp])
     else:
-        print("hint names no 1.13.2 class:", mcp)
-# one 1.13.2 class per Mojang name: on a clash keep the hinted one, else the one whose MCP name agrees
+        pass  # a rename this target predates or postdates
+# one target class per Mojang name: on a clash keep the hinted one, else the one whose MCP name agrees
 seen = {}
 for obf, named in list(class_named.items()):
     if named in seen:
         other = seen[named]
-        keep = obf if obf in hinted or (other not in hinted and srg_class_1144.get(c13[obf]) == named) else other
+        keep = obf if obf in hinted or (other not in hinted and srg_class_1144.get(ct[obf]) == named) else other
         drop = other if keep == obf else obf
         class_named.pop(drop)
         seen[named] = keep
     else:
         seen[named] = obf
 # inner classes follow their outer class's rename when unmatched
-for obf in c13:
+for obf in ct:
     if obf not in class_named and "$" in obf:
         outer, inner = obf.split("$", 1)
         if outer in class_named:
             class_named[obf] = class_named[outer] + "$" + inner
 
-zcsv = zipfile.ZipFile(io.BytesIO(get("https://maven.minecraftforge.net/de/oceanlabs/mcp/mcp_stable/47-1.13.2/mcp_stable-47-1.13.2.zip")))
+zcsv = zipfile.ZipFile(io.BytesIO(get(f"https://maven.minecraftforge.net/de/oceanlabs/mcp/mcp_stable/{MCP_STABLE}/mcp_stable-{MCP_STABLE}.zip")))
 mcp_name = {}
 for f in ("methods.csv", "fields.csv"):
     for row in zcsv.read(f).decode().splitlines()[1:]:
@@ -191,7 +198,7 @@ for f in ("methods.csv", "fields.csv"):
         mcp_name[cols[0]] = cols[1]
 unobf_1144 = {n for n, o in m_cls.items() if n.replace(".", "/") == o}
 bridge_methods, bridge_fields = {}, {}
-for (c, o, d), srgid in me13.items():
+for (c, o, d), srgid in mt.items():
     named_cls = class_named.get(c)
     if not named_cls or named_cls not in unobf_1144 or srgid in srg_method:
         continue
@@ -199,7 +206,7 @@ for (c, o, d), srgid in me13.items():
     cls144 = named_cls.replace(".", "/")
     if n and (cls144, n, d) in m_methods:   # primitive-only descriptors compare directly
         bridge_methods[(c, o, d)] = n
-for (c, o), srgid in f13.items():
+for (c, o), srgid in ft.items():
     named_cls = class_named.get(c)
     if not named_cls or named_cls not in unobf_1144 or srgid in srg_field:
         continue
@@ -210,12 +217,12 @@ print("bridged", len(bridge_methods), "methods and", len(bridge_fields), "fields
 
 out = ["tsrg2 official mojmap"]
 stats = collections.Counter()
-for obf in sorted(c13):
+for obf in sorted(ct):
     named = class_named.get(obf, obf)
     out.append(f"{obf} {named.replace('.', '/')}")
     stats["class_mapped" if obf in class_named else "class_kept"] += 1
     used = set()
-    for (c, o), s in sorted(f13.items()):
+    for (c, o), s in sorted(ft.items()):
         if c != obf:
             continue
         if s in MEMBER_SKIP:
@@ -225,7 +232,7 @@ for obf in sorted(c13):
             used.add(("f", n))
             out.append(f"\t{o} {n}")
             stats["field"] += 1
-    for (c, o, d), s in sorted(me13.items()):
+    for (c, o, d), s in sorted(mt.items()):
         if c != obf:
             continue
         if s in MEMBER_SKIP:
@@ -241,4 +248,4 @@ for probe in ["net.minecraft.client.Minecraft", "net.minecraft.client.gui.screen
               "com.mojang.blaze3d.platform.GLX", "net.minecraft.client.gui.Gui", "net.minecraft.client.renderer.GameRenderer",
               "com.mojang.blaze3d.platform.Window", "net.minecraft.server.MinecraftServer", "net.minecraft.client.KeyMapping"]:
     hit = [o for o, n in class_named.items() if n == probe]
-    print(f"{probe:48} <- {hit} {c13.get(hit[0]) if hit else ''}")
+    print(f"{probe:48} <- {hit} {ct.get(hit[0]) if hit else ''}")
