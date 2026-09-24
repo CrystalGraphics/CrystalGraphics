@@ -482,8 +482,9 @@ What bites:
     and dies on the first inherited method.
 17. **Fabric API has no world-render event below 1.16**, so a 1.15 Fabric node hooks
     `LevelRenderer.renderLevel` with a node mixin, naming the method both ways since the dev run is
-    Mojang-named and production is intermediary. That node has a dev run, so `registerNodeMixins`
-    writes its config into `jar` and `shadowJar` at the source package as well.
+    Mojang-named and production is intermediary. A dev run reads the merged descriptor, which
+    names every node's config, so `registerNodeMixins` writes each into `jar` and `shadowJar` at the
+    source package: the node's own with its plugin, a sibling's inert.
 18. **Forge below 1.17 needs Java 8.** An instance for it pins a Java 8 runtime; the merged jar is
     downgraded to 8 already.
 
