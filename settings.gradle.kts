@@ -44,6 +44,7 @@ pluginManagement {
         // buildscript.repositories at configuration time, which Gradle 9 forbids when
         // exclusiveContent is active in pluginManagement.repositories.
         maven("https://maven.fabricmc.net/") { name = "Fabric" }
+        maven("https://maven.wagyourtail.xyz/releases") { name = "Unimined" }
         maven("https://repo.spongepowered.org/repository/maven-public/") { name = "Sponge" }
         maven("https://maven.minecraftforge.net/") { name = "Forge" }
         maven("https://maven.neoforged.net/releases") { name = "NeoForge" }
@@ -140,10 +141,10 @@ if (loadersWanted) include("runtime:mc:1710")
 val modernNodes: Map<String, List<String>> =
     if (!loadersWanted) linkedMapOf("common" to listOf("1.20.1"), "forge" to listOf("1.20.1"))
     else linkedMapOf(
-        "common" to listOf("1.17.1", "1.18.2", "1.19.2", "1.19.3", "1.19.4", "1.20.1", "1.20.2", "1.20.3", "1.20.4", "1.20.6", "1.21.1", "1.21.3", "1.21.4", "1.21.5", "1.21.6", "1.21.8", "1.21.10", "1.21.11"),
-        "forge" to listOf("1.17.1", "1.18.2", "1.19.2", "1.19.3", "1.19.4", "1.20.1", "1.20.2", "1.20.4", "1.20.6", "1.21.1", "1.21.3", "1.21.4", "1.21.5", "1.21.6", "1.21.8", "1.21.10", "1.21.11"),
+        "common" to listOf("1.15.2", "1.17.1", "1.18.2", "1.19.2", "1.19.3", "1.19.4", "1.20.1", "1.20.2", "1.20.3", "1.20.4", "1.20.6", "1.21.1", "1.21.3", "1.21.4", "1.21.5", "1.21.6", "1.21.8", "1.21.10", "1.21.11"),
+        "forge" to listOf("1.15.2", "1.17.1", "1.18.2", "1.19.2", "1.19.3", "1.19.4", "1.20.1", "1.20.2", "1.20.4", "1.20.6", "1.21.1", "1.21.3", "1.21.4", "1.21.5", "1.21.6", "1.21.8", "1.21.10", "1.21.11"),
         "neoforge" to listOf("1.20.2", "1.20.3", "1.20.4", "1.20.6", "1.21.1", "1.21.3", "1.21.4", "1.21.5", "1.21.6", "1.21.8", "1.21.10", "1.21.11"),
-        "fabric" to listOf("1.17.1", "1.18.2", "1.19.2", "1.19.3", "1.19.4", "1.20.1", "1.20.2", "1.20.4", "1.20.6", "1.21.1", "1.21.3", "1.21.4", "1.21.5", "1.21.6", "1.21.8", "1.21.10", "1.21.11"),
+        "fabric" to listOf("1.15.2", "1.17.1", "1.18.2", "1.19.2", "1.19.3", "1.19.4", "1.20.1", "1.20.2", "1.20.4", "1.20.6", "1.21.1", "1.21.3", "1.21.4", "1.21.5", "1.21.6", "1.21.8", "1.21.10", "1.21.11"),
     )
 
 stonecutter {

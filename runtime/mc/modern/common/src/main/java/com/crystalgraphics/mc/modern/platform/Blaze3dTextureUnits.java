@@ -30,8 +30,15 @@ public final class Blaze3dTextureUnits {
 
     private Blaze3dTextureUnits() {}
 
-    /** What 1.20.x declares. Used only when the real value cannot be read. */
-    private static final int KNOWN_1_20_X = 12;
+    /**
+     * What this node's Minecraft declares, for a runtime whose names are not Mojang's (SRG, intermediary),
+     * where the field cannot be found by name.
+     */
+    //? if >=1.17 {
+    private static final int KNOWN = 12;
+    //?} else {
+    /*private static final int KNOWN = 8;
+    *///?}
 
     private static int cached = -1;
 
@@ -57,8 +64,8 @@ public final class Blaze3dTextureUnits {
             // a guess about a version this build has never seen.
             LogManager.getLogger("CrystalGraphics").info(
                     "[cg] could not read GlStateManager's texture table ({}); assuming {} units",
-                    refused, KNOWN_1_20_X);
+                    refused, KNOWN);
         }
-        return KNOWN_1_20_X;
+        return KNOWN;
     }
 }

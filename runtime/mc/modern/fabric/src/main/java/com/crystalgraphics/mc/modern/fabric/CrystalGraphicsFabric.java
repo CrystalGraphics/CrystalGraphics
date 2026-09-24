@@ -7,7 +7,7 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 //? if >=1.21.9 {
 /*import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
 import net.minecraft.client.Minecraft;
-*///?} else {
+*///?} elif >=1.16 {
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 //?}
 import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
@@ -76,10 +76,13 @@ public final class CrystalGraphicsFabric implements VariantEntry {
             /*WorldRenderEvents.AFTER_ENTITIES.register(context ->
                     LifecycleModern.opaquePass(context.tickCounter().getGameTimeDeltaPartialTick(true)));
             WorldRenderEvents.AFTER_TRANSLUCENT.register(context -> LifecycleModern.transparentPass());
-            *///?} else {
+            *///?} elif >=1.16 {
             WorldRenderEvents.AFTER_ENTITIES.register(context -> LifecycleModern.opaquePass(context.tickDelta()));
             WorldRenderEvents.AFTER_TRANSLUCENT.register(context -> LifecycleModern.transparentPass());
-            //?}
+            //?} else {
+            /*// Fabric API for 1.15 has no WorldRenderEvents: a node mixin runs both passes.
+            // @see com.crystalgraphics.mc.modern.fabric.mixin.WorldPassHook
+            *///?}
         }
 
         // -- Shutdown ---------------------------------------------------------------

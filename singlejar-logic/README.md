@@ -259,6 +259,10 @@ on 1.7.10 and one Knot on Fabric make it obvious; on Forge and NeoForge the two 
 modules in the game layer and the lookup still resolves. A `META-INF/services` file in the second jar
 reaches a `ServiceLoader` call in the first.
 
+**Except under ModLauncher 5 (Forge 29-31)**, whose classloader never lists a resource inside a mod file,
+so `ServiceLoader` finds nothing in any of them. CrystalGUI discovers through `Providers.forEach`, and the
+Forge 1.15 host fills its `Providers.Copies` slot from FML's own mod list.
+
 `checkSingleJar` catches, specifically: any class above the major ceiling; a relocated class that
 appears once instead of once per variant; a required entry or manifest key missing; a `META-INF/services`
 file that lost a provider; a forbidden prefix shipping unrelocated.
@@ -341,7 +345,7 @@ version**. `ModernTree` answers everything else and is the only thing that shoul
 `modernLoaderNodes`, and, for a project built on another, `sameVersionNodePath` / `sameVersionNodeDir` /
 `sameVersionNodeCoordinate`. `ModernConventions` holds what every such build does alike:
 `useNodeCoordinates`, `useModernMinecraft` (NeoForm where it exists, 1.20.2 onward; Forge's userdev
-through legacyForge below that — chosen by the node's own pins), `guardLoaderImports`,
+through legacyForge from 1.17; Loom or Unimined below that — chosen by the node's own pins), `guardLoaderImports`,
 `registerCheckDescriptorsNameNoCommon` and `registerCheckAllTargets`.
 
 **Two nodes of one loader share the merged jar** because every node ships its loader's classes under
@@ -400,6 +404,24 @@ run Mojang's names, so `useNeoForgeApi` puts the jars on compileOnly and nothing
 them non-transitively (`neoforge.fml`, `neoforge.bus`), because NeoForge's POM also names Minecraft's
 libraries at versions NeoForm pins strictly.
 
+**Below 1.17 ModDevGradle reaches no Minecraft at all**, so a pin picks another toolchain: Loom on
+`common` (vanilla at Mojang's names) and Unimined on Forge (Forge 29-31's userdev). Fabric is Loom
+already. Neither has a dev run on Forge, so prodSmoke is its runtime check.
+
+```properties
+# common/versions/1.15.2
+minecraft.loom = true
+```
+
+```properties
+# forge/versions/1.15.2 -- Forge 31 runs MCP class names as well as SRG members
+minecraft.unimined = true
+forge.version = 31.2.62
+mcp.version = 1.15.2-20200515.085601
+```
+
+`registerSrgReobf` renames classes too below 1.17; from 1.17 Forge runs Mojang's class names.
+
 **A node may ship mixins** when its loader has no event for what it needs — Forge 53 (1.21.3) dropped
 the world-render event with 1.21.2's frame graph. It pins the plugin that gates them, and the mixins
 live in the branch's `mixin` package:
@@ -452,6 +474,18 @@ What bites:
 14. **Minecraft ships no JOML below 1.19.3.** A shipped jar may not carry it (1.19.3+ has it as a named
     module, and a second copy is a split package), so those instances take a companion jar and a dev
     run takes JOML as a library.
+15. **Loom's main artifact is the remapped jar.** A Loom `common` publishes its unremapped one instead
+    (`fabric.loom.disableRemappedVariants`): the loader node bundles common at Mojang's names and remaps
+    the two together. An intermediary common reaches a dev run as a `NoSuchMethodError`.
+16. **Unimined puts Minecraft on the source set's classpath, not the `compileClasspath` configuration.**
+    Hand `registerSrgReobf` `sourceSets.main.get().compileClasspath`, or the renamer sees no Minecraft
+    and dies on the first inherited method.
+17. **Fabric API has no world-render event below 1.16**, so a 1.15 Fabric node hooks
+    `LevelRenderer.renderLevel` with a node mixin, naming the method both ways since the dev run is
+    Mojang-named and production is intermediary. That node has a dev run, so `registerNodeMixins`
+    writes its config into `jar` and `shadowJar` at the source package as well.
+18. **Forge below 1.17 needs Java 8.** An instance for it pins a Java 8 runtime; the merged jar is
+    downgraded to 8 already.
 
 ---
 

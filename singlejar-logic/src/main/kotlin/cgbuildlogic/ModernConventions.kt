@@ -36,6 +36,7 @@ import org.gradle.jvm.toolchain.JavaToolchainService
  * - `forge.version`: legacyForge, Forge's userdev — the one ModDevGradle route to 1.17–1.20.1. It puts
  *   Forge on compileOnly, which is what [guardLoaderImports] is for.
  * - both, on a Forge node from 1.20.2: NeoForm wins, and [useForgeApi] adds Forge's jars.
+ * - `minecraft.loom` or `minecraft.unimined`, below 1.17: nothing here; the branch script owns it.
  *
  * Throws when the node pins neither, naming it.
  */
@@ -43,6 +44,9 @@ fun Project.useModernMinecraft() {
     val mcVersion = property("mc.version").toString()
     val neoFormPin = findProperty("neoform.version")?.toString()
     val forgePin = findProperty("forge.version")?.toString()
+    // Below 1.17 neither ModDevGradle mode reaches: the branch script applies Loom (a common node) or
+    // Unimined (a Forge node) itself, since only that branch's classloader may carry either.
+    if (usesLoomMinecraft || usesUniminedMinecraft) return
     when {
         neoFormPin != null -> {
             pluginManager.apply("net.neoforged.moddev")
@@ -67,6 +71,14 @@ fun Project.useModernMinecraft() {
                 + "no toolchain to put Minecraft $mcVersion on its classpath.")
     }
 }
+
+/** Pinned `minecraft.loom = true`: a common node below 1.17, vanilla through Loom. */
+val Project.usesLoomMinecraft: Boolean
+    get() = findProperty("minecraft.loom")?.toString() == "true"
+
+/** Pinned `minecraft.unimined = true`: a Forge node below 1.17, through Unimined. */
+val Project.usesUniminedMinecraft: Boolean
+    get() = findProperty("minecraft.unimined")?.toString() == "true"
 
 /**
  * The Java this node builds for: its Minecraft's -- 17 up to 1.20.4, 21 from 1.20.5 -- pinned as
