@@ -978,25 +978,6 @@ public final class Lwjgl2GLBackend extends CgGLBackend {
         GL15.glDeleteQueries(query);
     }
 
-    // -------------------------------------------------------------------------
-    // Fixed-function matrix stack (legacy / compat)
-    // -------------------------------------------------------------------------
-
-    @Override
-    public void glPushMatrix() {
-        GL11.glPushMatrix();
-    }
-
-    @Override
-    public void glPopMatrix() {
-        GL11.glPopMatrix();
-    }
-
-    @Override
-    public void glLoadMatrix(FloatBuffer m) {
-        GL11.glLoadMatrix(m);
-    }
-
     @Override
     public void glReadPixels(int x, int y, int width, int height,
                              int format, int type, java.nio.ByteBuffer pixels) {

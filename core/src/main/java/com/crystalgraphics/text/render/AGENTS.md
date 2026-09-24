@@ -124,8 +124,7 @@ reach `context().updateOrtho(...)`/`.updateProjection(...)`/`.clearHistory()`/
 true)`) hold a `PoseStack` that's `null` until a caller opts in. `Draw.submit()`/
 `Draw.measure()` use it only when `.pose(...)` was never called on that `Draw`; if
 both are unset, they fall through further to a shared, never-mutated identity
-`PoseStack` (`IDENTITY_POSE_STACK`, built with `syncsToGL = false` so it never
-touches the real GL matrix stack) rather than throwing — plain screen-space text
+`PoseStack` (`IDENTITY_POSE_STACK`) rather than throwing — plain screen-space text
 with no real transform can skip `.pose(...)` entirely. `CgUiPaintContext` wires
 its own pose stack in here in its constructor
 (`CgTextRenderer.createManualSized().poseStack(this.poseStack)`) so that any draw issued through

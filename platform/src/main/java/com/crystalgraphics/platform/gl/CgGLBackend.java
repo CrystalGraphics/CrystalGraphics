@@ -335,14 +335,6 @@ public abstract class CgGLBackend {
     public abstract boolean isContextCurrent();
 
     // -------------------------------------------------------------------------
-    // Fixed-function matrix stack (legacy / compat — used by PoseStack)
-    // -------------------------------------------------------------------------
-
-    public abstract void glPushMatrix();
-    public abstract void glPopMatrix();
-    public abstract void glLoadMatrix(FloatBuffer m);
-
-    // -------------------------------------------------------------------------
     // Framebuffers — renderbuffer operations (Core / ARB / EXT waterfall)
     // -------------------------------------------------------------------------
 

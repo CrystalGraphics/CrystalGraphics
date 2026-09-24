@@ -499,22 +499,19 @@ public class Lwjgl3GLBackend extends CgGLBackend {
     // GL state — Tier 1 (RenderSystem) and Tier 3 (raw GL) where no Tier 1/2 exists
     // -------------------------------------------------------------------------
 
-    /** {@code GL_ALPHA_TEST} (0x0BC0) — a legacy OpenGL 1.x fixed-function constant not present
-     *  in LWJGL 3's {@code GL11C}. Stored as a raw int so the guard compiles in core-profile builds. */
-    /** Fixed-function alpha test. Core profile has none, so both tiers refuse it. */
+    /** {@code GL_ALPHA_TEST} (0x0BC0), a fixed-function constant {@code GL11C} does not carry. */
     protected static final int GL_ALPHA_TEST_LEGACY = 0x0BC0;
+
+    // The fixed-function entry points below reach the driver only on a compatibility profile (MC 1.13-1.16):
+    // CgGL drops them on a core profile before they get here.
 
     @Override
     public void glEnable(int cap) {
-        if (cap == GL_ALPHA_TEST_LEGACY)
-            throw new UnsupportedOperationException("GL_ALPHA_TEST is unavailable in OpenGL core profile (MC 1.20+)");
         GL11C.glEnable(cap);
     }
 
     @Override
     public void glDisable(int cap) {
-        if (cap == GL_ALPHA_TEST_LEGACY)
-            throw new UnsupportedOperationException("GL_ALPHA_TEST is unavailable in OpenGL core profile (MC 1.20+)");
         GL11C.glDisable(cap);
     }
 
@@ -576,9 +573,7 @@ public class Lwjgl3GLBackend extends CgGLBackend {
 
     @Override
     public void glAlphaFunc(int func, float ref) {
-        // GL_ALPHA_TEST is a fixed-function feature removed in the OpenGL 3.x core profile.
-        throw new UnsupportedOperationException(
-                "Fixed-function alpha test unavailable in OpenGL core profile (MC 1.20+)");
+        GL11.glAlphaFunc(func, ref);
     }
 
     // -------------------------------------------------------------------------
@@ -761,28 +756,6 @@ public class Lwjgl3GLBackend extends CgGLBackend {
     @Override
     public boolean isContextCurrent() {
         return GLFW.glfwGetCurrentContext() != MemoryUtil.NULL;
-    }
-
-    // -------------------------------------------------------------------------
-    // Fixed-function matrix stack — unavailable in core profile
-    // -------------------------------------------------------------------------
-
-    @Override
-    public void glPushMatrix() {
-        throw new UnsupportedOperationException(
-                "Fixed-function matrix stack unavailable in OpenGL core profile (MC 1.20+)");
-    }
-
-    @Override
-    public void glPopMatrix() {
-        throw new UnsupportedOperationException(
-                "Fixed-function matrix stack unavailable in OpenGL core profile (MC 1.20+)");
-    }
-
-    @Override
-    public void glLoadMatrix(FloatBuffer m) {
-        throw new UnsupportedOperationException(
-                "Fixed-function matrix stack unavailable in OpenGL core profile (MC 1.20+)");
     }
 
     // -------------------------------------------------------------------------
