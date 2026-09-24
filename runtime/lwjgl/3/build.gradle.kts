@@ -49,6 +49,25 @@ tasks.withType<JavaCompile>().configureEach {
     options.release.set(17)
 }
 
+// Lwjgl31GLBackend: Lwjgl3GLBackend without the core-profile GLxxC classes, which LWJGL added in 3.2 --
+// Minecraft 1.13 ships 3.1.6. Generated rather than kept, so the two cannot drift; the plain GLxx classes
+// carry the same functions on every LWJGL 3.
+val lwjgl31Sources = layout.buildDirectory.dir("generated/sources/lwjgl31")
+val generateLwjgl31Backend = tasks.register("generateLwjgl31Backend") {
+    val source = layout.projectDirectory.file("src/main/java/com/crystalgraphics/lwjgl3/Lwjgl3GLBackend.java")
+    inputs.file(source)
+    outputs.dir(lwjgl31Sources)
+    doLast {
+        val text = source.asFile.readText()
+            .replace(Regex("\\bGL(\\d+)C\\b"), "GL$1")
+            .replace("class Lwjgl3GLBackend ", "class Lwjgl31GLBackend ")
+            .replaceFirst("\npublic class", "\n// GENERATED from Lwjgl3GLBackend by generateLwjgl31Backend -- edit that file.\npublic class")
+        lwjgl31Sources.get().file("com/crystalgraphics/lwjgl3/Lwjgl31GLBackend.java").asFile
+            .apply { parentFile.mkdirs() }.writeText(text)
+    }
+}
+sourceSets.main { java.srcDir(generateLwjgl31Backend) }
+
 // The tier boundary, enforced rather than described (F4).
 tasks.named<JavaCompile>("compileJava") {
     val srcRoot: String = layout.projectDirectory.dir("src/main/java").asFile.absolutePath

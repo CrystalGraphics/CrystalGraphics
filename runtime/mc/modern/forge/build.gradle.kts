@@ -20,6 +20,7 @@ import cgbuildlogic.forgeRunsSrg
 import cgbuildlogic.registerSrgReobf
 import cgbuildlogic.useForgeApi
 import cgbuildlogic.useModernMinecraft
+import cgbuildlogic.backportedMojmap
 import cgbuildlogic.usesUniminedMinecraft
 import net.neoforged.moddevgradle.dsl.NeoForgeExtension
 import net.neoforged.moddevgradle.legacyforge.dsl.LegacyForgeExtension
@@ -45,7 +46,10 @@ if (usesUniminedMinecraft) {
         version(property("mc.version").toString())
         mappings {
             searge()
-            mojmap()
+            // 1.13.2 has no Mojang names: the backported ones stand in, under the same namespace.
+            val backport = backportedMojmap()
+            if (backport != null) mapping(backport, "mojmap") { requires("official"); provides("mojmap" to true) }
+            else mojmap()
         }
         minecraftForge { loader(property("forge.version").toString()) }
         // The shipped jar is the thin shadow jar, renamed by SrgReobfJar like the NeoForm nodes'.

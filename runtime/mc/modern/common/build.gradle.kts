@@ -3,7 +3,9 @@
 // and every loader node compiles against the common node of its own version. The toolchain and every
 // pin come from the node (`versions/<version>/gradle.properties`, read by cg-modern-common).
 
+import cgbuildlogic.backportedMojmap
 import cgbuildlogic.usesLoomMinecraft
+import cgbuildlogic.usesUniminedMinecraft
 import net.fabricmc.loom.api.LoomGradleExtensionAPI
 
 plugins {
@@ -31,6 +33,11 @@ if (usesLoomMinecraft) {
         // @Nullable: ModDevGradle's Minecraft brings jsr305 with its libraries, and Loom's does not.
         "compileOnly"("com.google.code.findbugs:jsr305:3.0.2")
     }
+}
+
+if (usesUniminedMinecraft) {
+    extra["cg.backportedMojmap"] = backportedMojmap() ?: error("${project.path} pins minecraft.unimined with no backported names")
+    apply(from = buildscript.sourceFile!!.resolveSibling("unimined-vanilla.gradle.kts"))
 }
 
 base { archivesName.set("crystalgraphics-common-${project.name}") }

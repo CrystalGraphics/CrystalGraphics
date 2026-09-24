@@ -7,7 +7,7 @@ import com.mojang.blaze3d.platform.GlStateManager;
 //?}
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.lwjgl.opengl.GL11C;
+import org.lwjgl.opengl.GL11;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
@@ -124,7 +124,7 @@ public final class HostStateVerifier {
             }
             for (Map.Entry<Integer, Boolean> e : host.entrySet()) {
                 int cap = e.getKey();
-                boolean driver = GL11C.glIsEnabled(cap);
+                boolean driver = GL11.glIsEnabled(cap);
                 if (driver != e.getValue()) {
                     reportOnce("cap:" + cap, "after " + pass + ": GL cap 0x" + Integer.toHexString(cap)
                             + " -- driver=" + driver + " host=" + e.getValue());
