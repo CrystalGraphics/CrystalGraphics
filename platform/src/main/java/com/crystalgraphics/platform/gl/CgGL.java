@@ -978,8 +978,7 @@ public final class CgGL {
      * <p>Dropping the DISABLE is exact rather than lenient -- the state a caller asks for is already
      * what it gets, since there is no test to fail. Dropping the ENABLE is the lossy one, and it is
      * still the right answer here: a backend without a fixed-function pipeline refuses it outright, so
-     * the choice is between a no-op and a crash, and a caller written for 1.7.10 cannot act on either.
-     * @see #glPushMatrix</p>
+     * the choice is between a no-op and a crash, and a caller written for 1.7.10 cannot act on either.</p>
      */
     public static void glEnable(int cap) {
         if (cap == GL_ALPHA_TEST && CORE) return;
@@ -1036,7 +1035,7 @@ public final class CgGL {
     }
 
     /**
-     * <b>A no-op on a core profile</b>, where there is no alpha test to configure. @see #glPushMatrix
+     * <b>A no-op on a core profile</b>, where there is no alpha test to configure.
      */
     public static void glAlphaFunc(int func, float ref) {
         if (CORE) return;
@@ -1283,39 +1282,5 @@ public final class CgGL {
     /** @return {@code true} if an OpenGL context is current on this thread. */
     public static boolean isContextCurrent() {
         return backend.isContextCurrent();
-    }
-
-    // =========================================================================
-    // Fixed-function matrix stack
-    // =========================================================================
-
-    /**
-     * <b>Every fixed-function entry point below is a no-op on a core profile.</b>
-     *
-     * <p>There is no matrix stack to push, and asking for one is not an error a caller can act on: the
-     * state it wants is already what it would get. A backend that has no fixed-function pipeline
-     * therefore refuses these outright, and MC 1.20+ is such a backend -- so without this guard any
-     * consumer written for 1.7.10 dies on its first frame. CrystalGUI's paint context did:
-     * {@code PoseStack.pushPose} reached here from {@code beginFrame} and threw
-     * "Fixed-function matrix stack unavailable", so the desktop could not draw at all.</p>
-     *
-     * <p>Guarded here rather than at each call site because the profile is a property of the platform,
-     * not of any one caller, and a caller that forgets crashes rather than degrading. What a caller
-     * still owes is not doing the WORK behind the call -- building a matrix to load costs the same
-     * whether or not the load lands.</p>
-     */
-    public static void glPushMatrix() {
-        if (CORE) return;
-        backend.glPushMatrix();
-    }
-
-    public static void glPopMatrix() {
-        if (CORE) return;
-        backend.glPopMatrix();
-    }
-
-    public static void glLoadMatrix(FloatBuffer m) {
-        if (CORE) return;
-        backend.glLoadMatrix(m);
     }
 }
