@@ -95,43 +95,54 @@ fun nodeMixinConfig(shippedPackage: String): String = "mixins.$shippedPackage.js
  *
  * - Empty because Mixin parses every listed class before its plugin can refuse one, and the config is
  *   read on every loader the merged jar boots on. The plugin names the mixins. @see VariantMixins
- * - Into the shipped jar, and into `jar` and `shadowJar` at the source package for a node with a dev run.
+ * - Into the shipped jar; and into `jar` and `shadowJar` at the source package, with every sibling
+ *   config of the loader beside it inert, since a dev run reads the merged descriptor.
  * - `JAVA_8` whatever the node emits, because the merged jar is downgraded to 8 and every config in it
  *   is read on every loader: Mixin 0.8.4-0.8.5 (Forge through 1.20.x) know no level above `JAVA_18`,
  *   and a required config naming one stops the game before it writes an error.
  */
 fun Project.registerNodeMixins(descriptor: ModDescriptor, jarTask: String) {
     val variant = descriptor.variants.single { it.node == path }
-    val config = variant.mixinConfigs.singleOrNull() ?: return
     val (sourcePackage, shippedPackage) = variant.relocation!!
-    val shipped = registerNodeMixinConfig("generateNodeMixins", "node-mixins", config, shippedPackage)
-    tasks.named(jarTask, AbstractCopyTask::class.java).configure { from(shipped) }
-    // A Fabric node below 1.16 has a dev run, and the merged descriptor it reads names this config: the
-    // unshaded jars a dev run loads carry it too, at the SOURCE package their unrelocated classes have.
-    val dev = registerNodeMixinConfig("generateDevNodeMixins", "node-mixins-dev", config, sourcePackage)
+    variant.mixinConfigs.singleOrNull()?.let { config ->
+        val shipped = registerNodeMixinConfigs("generateNodeMixins", "node-mixins",
+                mapOf(config to property(MIXIN_PLUGIN).toString()), shippedPackage)
+        tasks.named(jarTask, AbstractCopyTask::class.java).configure { from(shipped) }
+    }
+    // A dev run reads the MERGED descriptor, which names every config of this loader: the unshaded jars
+    // carry each at the source package -- this node's with its plugin, a sibling's inert.
+    val siblings = descriptor.variants.filter { it.loader == variant.loader }.flatMap { v ->
+        v.mixinConfigs.map { it to (if (v === variant) property(MIXIN_PLUGIN).toString() else null) }
+    }.toMap()
+    if (siblings.isEmpty()) return
+    val dev = registerNodeMixinConfigs("generateDevNodeMixins", "node-mixins-dev", siblings, sourcePackage)
     tasks.matching { it.name == "jar" || it.name == "shadowJar" }.configureEach { (this as AbstractCopyTask).from(dev) }
 }
 
-private fun Project.registerNodeMixinConfig(task: String, dir: String, config: String, loaderPackage: String): TaskProvider<Task> {
-    val json = """
+/** Writes each config at `<loaderPackage>.mixin`, with its plugin or, for a null one, none. */
+private fun Project.registerNodeMixinConfigs(task: String, dir: String, configs: Map<String, String?>,
+                                             loaderPackage: String): TaskProvider<Task> {
+    val files = configs.mapValues { (_, plugin) ->
+        """
         |{
         |  "required": true,
         |  "minVersion": "0.8",
         |  "package": "$loaderPackage.mixin",
-        |  "plugin": "${property(MIXIN_PLUGIN)}",
+        |""".trimMargin() + (if (plugin == null) "" else "  \"plugin\": \"$plugin\",\n") + """
         |  "compatibilityLevel": "JAVA_8",
         |  "mixins": [],
         |  "client": [],
         |  "server": []
         |}
         |""".trimMargin()
+    }
     val out = layout.buildDirectory.dir(dir)
     return tasks.register(task) {
         group = "build"
-        description = "This node's mixin config, at package $loaderPackage.mixin."
-        inputs.property("json", json)
+        description = "This node's mixin configs, at package $loaderPackage.mixin."
+        inputs.property("files", files.toString())
         outputs.dir(out)
-        doLast { out.get().file(config).asFile.apply { parentFile.mkdirs() }.writeText(json) }
+        doLast { files.forEach { (name, json) -> out.get().file(name).asFile.apply { parentFile.mkdirs() }.writeText(json) } }
     }
 }
 
