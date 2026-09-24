@@ -1,6 +1,25 @@
 package com.crystalgraphics.mc.modern.fabric.mixin;
 
-//? if <1.16 {
+//? if <1.15 {
+/*import com.crystalgraphics.mc.modern.platform.LifecycleModern;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.GameRenderer;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+
+// 1.14 renders the level from GameRenderer; LevelRenderer.renderLevel arrived in 1.15.
+@Mixin(value = GameRenderer.class, remap = false)
+public abstract class WorldPassHook {
+
+    @Inject(method = {"renderLevel", "method_3188"}, at = @At("TAIL"), require = 1)
+    private void crystalgraphics$worldPasses(CallbackInfo ci) {
+        LifecycleModern.opaquePass(Minecraft.getInstance().getFrameTime());
+        LifecycleModern.transparentPass();
+    }
+}
+*///?} elif <1.16 {
 /*import com.crystalgraphics.mc.modern.platform.LifecycleModern;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LevelRenderer;

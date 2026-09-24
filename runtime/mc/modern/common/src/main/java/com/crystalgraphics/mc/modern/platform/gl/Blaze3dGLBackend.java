@@ -5,7 +5,7 @@ import com.crystalgraphics.mc.modern.platform.Blaze3dTextureUnits;
 
 //? if >=1.21.5 {
 /*import com.mojang.blaze3d.opengl.GlStateManager;
-*///?} else {
+*///?} elif >=1.15 {
 import com.mojang.blaze3d.platform.GlStateManager;
 //?}
 import org.lwjgl.opengl.GL11C;
@@ -41,7 +41,8 @@ import org.lwjgl.opengl.GL13C;
  * each of our passes and compares it against {@code GlStateManager}'s own fields, naming the domain that
  * disagrees. The test is the compile-time half and only proves the list has not shrunk.
  *
- * <p>This class is per <b>era</b>: the {@code _} names are stable across 1.15–1.21.5. Below 1.17 the
+ * <p>This class is per <b>era</b>: the {@code _} names are stable across 1.15–1.21.5; 1.14 has them
+ * without the prefix, and a same-package {@code GlStateManager} shim spells them the later way there. Below 1.17 the
  * table also covers the alpha test, and routes no scissor (1.16.1-1.16.3 have none). The LWJGL2 pair needs none
  * of this — its backend has no host wrapper to route through.
  */
@@ -55,10 +56,13 @@ public final class Blaze3dGLBackend extends Lwjgl3GLBackend {
 
     private int activeTextureUnit = 0;
 
+    // 1.14 keeps its framebuffer calls in GLX, which caches nothing: tier 1 below 1.15.
+    //? if >=1.15 {
     @Override
     public void bindFramebuffer(int target, int fbo) {
         GlStateManager._glBindFramebuffer(target, fbo);
     }
+    //?}
 
     // Blaze3D models the blit from 1.16 and the scissor from 1.16.4, which shares a node with 1.16.1: below
     // those, tier 1 reaches the driver.
@@ -72,6 +76,7 @@ public final class Blaze3dGLBackend extends Lwjgl3GLBackend {
     }
     //?}
 
+    //? if >=1.15 {
     @Override
     public int genFramebuffers() {
         return GlStateManager.glGenFramebuffers();
@@ -81,6 +86,7 @@ public final class Blaze3dGLBackend extends Lwjgl3GLBackend {
     public void deleteFramebuffers(int fbo) {
         GlStateManager._glDeleteFramebuffers(fbo);
     }
+    //?}
 
     @Override
     public void glBindTexture(int target, int texture) {
@@ -209,7 +215,7 @@ public final class Blaze3dGLBackend extends Lwjgl3GLBackend {
     }
 
     // What 1.21.5 stopped modelling: tier 1's raw calls are the honest route there.
-    //? if <1.21.5 {
+    //? if >=1.15 <1.21.5 {
     @Override
     public void framebufferTexture2D(int target, int attachment, int texTarget, int texture, int level) {
         GlStateManager._glFramebufferTexture2D(target, attachment, texTarget, texture, level);
@@ -219,6 +225,9 @@ public final class Blaze3dGLBackend extends Lwjgl3GLBackend {
     public int checkFramebufferStatus(int target) {
         return GlStateManager.glCheckFramebufferStatus(target);
     }
+    //?}
+
+    //? if <1.21.5 {
 
     @Override
     public void glStencilFunc(int func, int ref, int mask) {

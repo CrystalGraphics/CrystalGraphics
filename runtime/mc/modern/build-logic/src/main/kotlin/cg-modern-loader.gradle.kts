@@ -4,6 +4,7 @@ import cgbuildlogic.devRunLibraries
 import cgbuildlogic.modernLoader
 import cgbuildlogic.nodeJava
 import cgbuildlogic.nodePackage
+import cgbuildlogic.devNodeMixinConfigs
 import cgbuildlogic.registerNodeMixins
 import cgbuildlogic.registerNodeVariants
 import cgbuildlogic.registerCheckDescriptorsNameNoCommon
@@ -117,7 +118,7 @@ val thinShadowJar = tasks.register<com.github.jengelman.gradle.plugins.shadow.ta
     // DEV NAMES STILL. Forge reobfuscates this, Fabric remaps it, NeoForge ships it as it is.
     archiveClassifier.set("thin-dev")
     configurations = emptyList()
-    from(sourceSets["main"].output)
+    from(sourceSets["main"].output) { exclude(modDescriptors.getValue("main").devNodeMixinConfigs(modernLoader)) }
     // The dev run's descriptors: the merge writes its own copy once.
     exclude("META-INF/mods.toml", "fabric.mod.json", "mcmod.info", "pack.mcmeta", "META-INF/*/variants.json")
     val commonJar = common.tasks.named<Jar>("jar")
