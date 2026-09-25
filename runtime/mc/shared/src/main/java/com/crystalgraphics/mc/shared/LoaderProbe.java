@@ -28,6 +28,7 @@ public final class LoaderProbe {
     public static final String NEOFORGE = "neoforge";
     public static final String FORGE = "forge";
     public static final String FML1710 = "fml1710";
+    /** FML on LaunchWrapper, 1.8 through 1.12.2 — named for the newest of them. */
     public static final String FML1122 = "fml1122";
 
     private static final String LOADER;
@@ -52,8 +53,11 @@ public final class LoaderProbe {
             how = "classpath probe";
             if (has("net/fabricmc/loader/api/FabricLoader.class")) loader = FABRIC;
             else if (has("net/neoforged/fml/common/Mod.class")) loader = NEOFORGE;
-            else if (has("net/minecraftforge/fml/common/Mod.class")) loader = FORGE;
+            // LaunchWrapper BEFORE Forge: FML 1.8-1.12 has net.minecraftforge.fml.common.Mod too, and
+            // without a Mixin provider this fallback is the only thing that can tell the two apart.
             else if (has("cpw/mods/fml/common/Mod.class")) loader = FML1710;
+            else if (has("net/minecraft/launchwrapper/Launch.class")) loader = FML1122;
+            else if (has("net/minecraftforge/fml/common/Mod.class")) loader = FORGE;
         }
         LOADER = loader;
         HOW = loader == null ? "nothing recognised" : how;

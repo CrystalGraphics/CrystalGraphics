@@ -360,6 +360,28 @@ descriptor declares its entry classes once, at SOURCE names, in `LoaderEntries`;
 own at source names, since a dev run loads the classes unrelocated. `shippedEntryPaths` is the list
 `requiredEntries` checks.
 
+**Forge's bootstrapper serves every Forge, legacy included**, so it is a module of its own:
+`runtime/mc/forge-bootstrap`. Forge 1.13+ and FML 1.8–1.12.2 scan for the same
+`net.minecraftforge.fml.common.Mod` — one reads `value`, the other `modid` — and a second class carrying it
+would be a second mod of one id. It compiles against `runtime/mc/forge-stubs`, a union of the two
+annotations and legacy FML's lifecycle events that never ships, and is merged once. `ForgeStart` picks the
+era with `LoaderProbe`; legacy FML delivers its lifecycle to the `@Mod.EventHandler` methods of that one
+instance, which forward it to the variant through `FmlEvents`.
+
+```java
+@Mod(value = ForgeBootstrap.MODID, modid = ForgeBootstrap.MODID)
+public final class ForgeBootstrap {
+    public static final String MODID = "crystalgraphics";
+    private final FmlEvents legacy = ForgeStart.start(ForgeBootstrap.class, MODID); // null on 1.13+
+
+    @Mod.EventHandler
+    public void preInit(FMLPreInitializationEvent event) { ForgeStart.fire(legacy, event); }
+}
+```
+
+A legacy variant subscribes by event SIMPLE name — `events.on("FMLPreInitializationEvent", e -> ...)` —
+because `runtime/mc/shared` is compiled once for every loader and can name no FML type.
+
 **Adding a version** — the parent first, since a project built on another compiles each node against
 the parent's node of the same version:
 

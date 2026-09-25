@@ -70,6 +70,11 @@ include("freetype-msdfgen-harfbuzz-bindings")
 // no Minecraft type at all.
 include("runtime:mc:shared")
 
+// The one @Mod class every Forge constructs -- modern and legacy FML scan for the same annotation --
+// compiled once, against stand-ins for both eras' Forge types (forge-stubs, never shipped).
+include("runtime:mc:forge-stubs")
+include("runtime:mc:forge-bootstrap")
+
 // Tier 1 (CrystalGUI plan/crystalgui/platform-single-jar.md §12): the GL backend, the context and the
 // input service per LWJGL family, with no Minecraft type in either. Compiled once, never remapped,
 // one copy in the merged jar however many targets ship. What Minecraft caches and we must therefore
