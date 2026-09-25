@@ -66,7 +66,9 @@ abstract class TinyRemapJar @Inject constructor(private val exec: ExecOperations
                 standardOutput = log
                 classpath(remapper)
                 mainClass.set("net.fabricmc.tinyremapper.Main")
-                args(named.absolutePath, jar.absolutePath, mappings.absolutePath, "named", "intermediary")
+                // --mixin: Loom remaps a mixin's annotation strings too (`@Inject(method = "render")`), and
+                // so must this, or the class differs from Loom's where a node carries a mixin.
+                args("--mixin", named.absolutePath, jar.absolutePath, mappings.absolutePath, "named", "intermediary")
                 libraries.filter { it.exists() }.forEach { args(it.absolutePath) }
             }
         }

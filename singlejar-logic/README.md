@@ -8,7 +8,7 @@ It lives in CrystalGraphics because CrystalGraphics is the parent of everything 
 **nothing here is CrystalGraphics-specific**. No package, module, mod id or loader list is baked in.
 
 📄 **[STUBS.md](STUBS.md)** — how every Minecraft version builds from one 16 MB `stubs.zip` instead of
-its real toolchain (`-PcgStubs`), and what to regenerate when a node is added.
+its real toolchain (the default), and what to regenerate when a node is added.
 
 ---
 
@@ -33,9 +33,9 @@ is one variant per loader.
 ```
 :runtime:mc:1710             ──┐
 :runtime:mc:modern:forge     ──┤
-:runtime:mc:modern:neoforge  ──┼─→ singleShadowJar ─→ downgradeSingleJar ─→ shadeSingleJar ─→ singleJar
-:runtime:mc:modern:fabric    ──┤          ↑              (to Java 8)         (jvmdg stubs)        ↓
-                               │                                                              checkSingleJar
+:runtime:mc:modern:neoforge  ──┼─→ singleShadowJar ─→ singleJar ─→ checkSingleJar
+:runtime:mc:modern:fabric    ──┤          ↑              (downgrade to Java 8, then shade jvmdg's stubs:
+                               │                          one task, keeping only the finished jar)
    :core, :language, … ────────┘
    libraries, descriptors, services
 ```

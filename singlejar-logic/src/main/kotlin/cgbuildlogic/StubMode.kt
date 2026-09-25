@@ -1,6 +1,7 @@
 package cgbuildlogic
 
 import org.gradle.StartParameter
+import org.gradle.api.GradleException
 import org.gradle.api.Project
 import org.gradle.api.artifacts.Configuration
 import org.gradle.api.artifacts.component.ComponentIdentifier
@@ -23,14 +24,15 @@ import java.util.jar.JarFile
  * node. Real mode is today's build, and the one the database is generated from.
  *
  * ```
- * ./gradlew singleJar -PcgStubs                                   # every node in the database, stubbed
- * ./gradlew :runtime:mc:modern:forge:1.20.1:runClient -PcgStubs  # that node real: its task needs the game
+ * ./gradlew singleJar                                            # every node in the database, stubbed
+ * ./gradlew singleJar -PcgStubs=false                            # every node real, as before stubs
+ * ./gradlew :runtime:mc:modern:forge:1.20.1:runClient            # that node real: its task needs the game
  * ./gradlew :runtime:mc:modern:forge:1.20.1:checkStubEquivalence  # real vs stub, byte for byte
  * ./gradlew listStubInputs; ./gradlew -p CrystalGraphics listStubInputs
  * ./gradlew -p CrystalGraphics/singlejar-logic generateStubDatabase   # regenerate, after a node is added or re-pinned
  * ```
  *
- * A node is REAL, whatever `cgStubs` says, when:
+ * Stub mode is the default. A node is REAL, whatever `cgStubs` says, when:
  * - one of its own [REAL_TASKS] is requested, by path — in either build of the composite, so running
  *   CrystalGUI's node makes CrystalGraphics' node of the same loader and version real too — or
  *   `listStubInputs` is requested at all;
@@ -69,8 +71,9 @@ private const val STUB_MODE = "cg.stubMode"
 
 private val Project.hasStub: Boolean get() = stubDatabase?.let { stubKey in StubDatabase.nodes(it) } ?: false
 
+/** On unless `-PcgStubs=false`, which builds every node real. */
 private val Project.stubsRequested: Boolean
-    get() = (rootStartParameter.projectProperties["cgStubs"] ?: findProperty("cgStubs")?.toString())?.let { it != "false" } ?: false
+    get() = (rootStartParameter.projectProperties["cgStubs"] ?: findProperty("cgStubs")?.toString()) != "false"
 
 private val Project.isRealNode: Boolean
     get() = requested(REAL_TASKS) || stonecutterActive || listedReal
@@ -325,6 +328,11 @@ private fun Project.registerListStubInputs() {
                 ?.let { jar -> JarFile(file(jar.get())).use { it.manifest.mainAttributes.entries.toList() } }
                 ?.map { it.key.toString() to it.value.toString() }
                 ?.filter { (key, _) -> key.startsWith("Fabric-") && key != FABRIC_GRADLE_VERSION }
+                ?.onEach { (key, value) ->
+                    // Loom writes "unknown" when it has not resolved the loader or mixin yet, and the shipped
+                    // jar copies these attributes -- so the database must never learn one.
+                    if (value == "unknown") throw GradleException("$path: Loom wrote $key: unknown on its remapped thin jar; rebuild it with --rerun-tasks and list again")
+                }
                 ?.map { (key, value) -> "manifest $key $value" }.orEmpty()
             out.get().asFile.apply { parentFile.mkdirs() }.writeText(
                 (targets.files.map { "target $it" } + names + manifest).joinToString("\n", postfix = "\n"))
