@@ -102,6 +102,8 @@ legacyForge?.apply {
             sourceSet(project(":core").extensions.getByType<SourceSetContainer>()["main"])
             sourceSet(project.commonNode.extensions.getByType<SourceSetContainer>()["main"])
             sourceSet(project(":freetype-msdfgen-harfbuzz-bindings").extensions.getByType<SourceSetContainer>()["main"])
+            // The @Mod itself: one class for every Forge, compiled apart from any node.
+            sourceSet(project(":runtime:mc:forge-bootstrap").extensions.getByType<SourceSetContainer>()["main"])
         }
     }
 }
