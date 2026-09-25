@@ -8,27 +8,27 @@ class those nodes compile against — names, types and constants, no code.
 | | Real mode | Stub mode |
 |---|---|---|
 | What a node compiles against | Minecraft set up by ModDevGradle, Loom or Unimined | its slice of `stubs.zip` |
-| First jar build from a clean clone | ~38 GB on disk (17 GB project, 21 GB `~/.gradle`), ~3 hours | **1.6 GB** project + 101 MB shared store, **8 minutes** |
+| First jar build from a clean clone | ~38 GB on disk (17 GB project, 21 GB `~/.gradle`), ~3 hours | **937 MB** project + 101 MB shared store, **5 minutes** |
 | Output | the thin jars | **byte-identical** thin jars |
 
 `stubs.zip` is 16 MB, and it is the only thing committed. The first stub build on a machine unpacks it
 **once** into `~/.gradle/caches/cg-stubs/<zip digest>/` — 101 MB of class files, one copy of each
 distinct class, shared by every node, every clone and both repos. No node keeps a stub of its own.
 
-**Measured 2026-09-25**, a fresh clone running `./gradlew singleJar languageJar` with an empty
-store — 1.6 GB, of which the stubs are almost none:
+**Measured 2026-09-26**, a fresh clone running `./gradlew singleJar languageJar` — every node stubbed,
+none of them holding a stub:
 
 | Where | Size | What |
 |---|---|---|
-| the active 1.20.1 nodes | ~430 MB | real on purpose (Stonecutter's active version), for the IDE |
-| root `build/` | 398 MB | the single-jar pipeline's intermediates (`build-footprint.md` B3) |
-| `runtime/mc/1710`, both repos | 317 MB | 1.7.10's RetroFuturaGradle workspace, not stubbed yet (legacy L6) |
-| both `.git` | 153 MB | the history, `stubs.zip` included |
-| `.gradle/9.5.1` | 115 MB | Gradle's own per-build state |
-| every other node, 148 of them | ~70 MB | compiled classes only — no stub, no Minecraft |
+| `runtime/mc/1710`, both repos | 317 MB | 1.7.10's RetroFuturaGradle workspace, not stubbed yet (`legacy.md` L7) |
+| both `.git` | 169 MB | the history, `stubs.zip` included |
+| root `build/` | 153 MB | each shipped jar merged and finished — no stage copies (`build-footprint.md` B3) |
+| `.gradle/9.5.1` | 113 MB | Gradle's own per-build state |
+| all 154 nodes | 93 MB | compiled classes only — no stub, no Minecraft |
 | `~/.gradle/caches/cg-stubs` | 101 MB | outside the project, once per machine |
 
-Both jars came out byte-identical to the previous clean-clone build, which still wrote a stub per node.
+The first clean clone, 2026-09-25, was 1.6 GB in 8 minutes: the active 1.20.1 nodes were still real on
+the command line (~430 MB, now only during an IDE sync) and the pipeline kept six copies of each jar.
 
 ---
 
@@ -126,14 +126,14 @@ read or to diff two versions of it — the zip is binary, so git shows no diff o
 | `StubSignatures` | The text form of one class, and the class file (bodies `throw null`) made from it |
 | `StubMode.kt` | Decides stub or real per node; `configureStubs`, `registerThinRename`, `listStubInputs` |
 | `StubStore` | Unpacks `stubs.zip` once per machine into one jar per node set; hands a node the set jars that include it |
-| `SrgReobfJar` with `stubDatabase` set | The Forge rename in stub mode; the node's names are cut from the zip for that run and deleted |
+| `SrgReobfJar` with `stubDatabase` set | The Forge rename in stub mode; the node's names are cut from the zip for that run and deleted. With `mcpSrg`/`mcpMappings` set, the legacy real rename |
 | `TinyRemapJar` | The Fabric rename in stub mode — tiny-remapper, without Loom; names the same way |
 | `CompareOutputs` | The byte-for-byte check behind `checkStubEquivalence` |
 
 **Inside `stubs.zip`:**
 
 ```
-nodes.txt                 forge:1.20.1 ... one node per line; sets are numbered against this order
+nodes.txt                 forge:1.20.1 ... legacy/forge:1.12.2 -- one node per line; sets are numbered against this order
 sets.txt                  1 common:1.19.2-1.21.11,forge:1.19.2-1.21.11,neoforge:1.20.2-1.21.11
 manifests.txt             fabric:1.20.4 Fabric-Loom-Version 1.16.2
 api/net.minecraft.world.sig   classes, each block headed `in <set>`
@@ -161,6 +161,7 @@ arguments the real build uses, so the output is the same:
 | Forge 1.17–1.20.1 (legacyForge) | ModDevGradle: AutoRenamingTool 2.0.4, `--strip-sigs` | the same tool and arguments, `SrgReobfJar` |
 | Forge 1.13–1.16, 1.20.2–1.20.4 | `SrgReobfJar`: AutoRenamingTool 2.0.17 | the same, over the database's names |
 | Fabric | Loom's `remapJar` | `TinyRemapJar`: tiny-remapper 0.13.0 with `--mixin` (Loom remaps a mixin's annotation strings too), plus Loom's `Fabric-*` manifest |
+| Legacy Forge 1.8–1.12.2 | `SrgReobfJar` from MCP's `joined.srg` + CSVs (`registerMcpReobf`): AutoRenamingTool 2.0.17 | the same, over the database's names |
 | NeoForge, Forge 1.20.6+ | none — Mojang's names | none |
 
 **In a branch script**, the rule is: ask `stubMode` before touching a toolchain, and rename through
@@ -175,6 +176,12 @@ val thinJar = registerThinRename("thinShadowJar", "thin") {
     registerSrgReobf("thinShadowJar", "thin", sourceSets.main.get().compileClasspath)   // real mode only
 }
 ```
+
+**More than one tree.** A node is found wherever `runtime/mc/<tree>/<branch>/versions/<version>/`
+holds a `build/stubs/inputs.txt`, and keyed `<tree>/<branch>:<version>` — except on the modern tree,
+whose keys (`forge:1.20.1`) predate the others and stay unprefixed, so adding a tree changes no modern
+entry. A tree's node convention calls `configureStubs` last and renames through `registerThinRename`, as
+the modern ones do; legacy Forge's rename is MCP names -> SRG members (`registerMcpReobf`).
 
 ---
 
