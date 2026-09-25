@@ -8,12 +8,27 @@ class those nodes compile against — names, types and constants, no code.
 | | Real mode | Stub mode |
 |---|---|---|
 | What a node compiles against | Minecraft set up by ModDevGradle, Loom or Unimined | its slice of `stubs.zip` |
-| First jar build from a clean clone | ~38 GB on disk (17 GB project, 21 GB `~/.gradle`), ~3 hours | see the measurement below |
+| First jar build from a clean clone | ~38 GB on disk (17 GB project, 21 GB `~/.gradle`), ~3 hours | **1.6 GB** project + 101 MB shared store, **8 minutes** |
 | Output | the thin jars | **byte-identical** thin jars |
 
 `stubs.zip` is 16 MB, and it is the only thing committed. The first stub build on a machine unpacks it
 **once** into `~/.gradle/caches/cg-stubs/<zip digest>/` — 101 MB of class files, one copy of each
 distinct class, shared by every node, every clone and both repos. No node keeps a stub of its own.
+
+**Measured 2026-09-25**, a fresh clone running `./gradlew singleJar languageJar -PcgStubs` with an empty
+store — 1.6 GB, of which the stubs are almost none:
+
+| Where | Size | What |
+|---|---|---|
+| the active 1.20.1 nodes | ~430 MB | real on purpose (Stonecutter's active version), for the IDE |
+| root `build/` | 398 MB | the single-jar pipeline's intermediates (`build-footprint.md` B3) |
+| `runtime/mc/1710`, both repos | 317 MB | 1.7.10's RetroFuturaGradle workspace, not stubbed yet (legacy L6) |
+| both `.git` | 153 MB | the history, `stubs.zip` included |
+| `.gradle/9.5.1` | 115 MB | Gradle's own per-build state |
+| every other node, 148 of them | ~70 MB | compiled classes only — no stub, no Minecraft |
+| `~/.gradle/caches/cg-stubs` | 101 MB | outside the project, once per machine |
+
+Both jars came out byte-identical to the previous clean-clone build, which still wrote a stub per node.
 
 ---
 
