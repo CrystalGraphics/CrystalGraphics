@@ -14,7 +14,7 @@ import java.io.File as JFile
 //
 // JAVA 17, like `platform` and `core` here — a Java 8 consumer cannot resolve a Java 17 producer at
 // all, since Gradle matches a JVM-version attribute before any class is read. The merged jar's
-// major-52 ceiling is met by `downgradeSingleJar` rewriting the whole jar on the way in.
+// major-52 ceiling is met by `singleJar` rewriting the whole jar on the way in.
 
 plugins {
     `java-library`

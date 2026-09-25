@@ -12,8 +12,6 @@ import org.gradle.kotlin.dsl.get
 import org.gradle.kotlin.dsl.named
 import org.gradle.kotlin.dsl.register
 import org.gradle.kotlin.dsl.withType
-import xyz.wagyourtail.jvmdg.gradle.task.DowngradeJar
-import xyz.wagyourtail.jvmdg.gradle.task.ShadeJar
 import java.io.File
 import java.util.jar.JarFile
 
@@ -76,9 +74,9 @@ data class SingleJarSpec(
  * Registers the merge, the downgrade, the shade, the artifact and the check — the pipeline every
  * project on this build shares.
  *
- * <p>The order is <b>singleShadowJar → downgrade → shade → singleJar</b>, and it is not
- * interchangeable: jvmdg rewrites bytecode and adds references to its own stubs, so the stubs have to
- * be shaded in AFTER the rewrite. Remapping already happened per thin jar, which is the one inversion
+ * <p>The order is <b>singleShadowJar → singleJar</b>, which downgrades and then shades
+ * ([DowngradeShadeJar]), and it is not interchangeable: jvmdg rewrites bytecode and adds references to
+ * its own stubs, so the stubs have to be shaded in AFTER the rewrite. Remapping already happened per thin jar, which is the one inversion
  * from a fat chain and is safe because jvmdg does not read names.</p>
  *
  * <p>The caller keeps its own {@code plugins} block — a precompiled script plugin cannot receive one —
@@ -209,47 +207,19 @@ fun Project.registerSingleJarPipeline(spec: SingleJarSpec) {
         spec.extraContent(this)
     }
 
-    val downgradeSingleJar = tasks.register<DowngradeJar>("downgrade${N}Jar") {
-        group = spec.taskGroup
-        description = "Rewrites every class in the merged jar to Java 8."
-        dependsOn(singleShadowJar)
-        inputFile.set(singleShadowJar.flatMap { it.archiveFile })
-        downgradeTo.set(JavaVersion.VERSION_1_8)
-        archiveClassifier.set("merged-java8")
-        destinationDirectory.set(layout.buildDirectory.dir("$n-jar"))
-    }
-
-    val shadeSingleJar = tasks.register<ShadeJar>("shade${N}Jar") {
-        group = spec.taskGroup
-        description = "Bundles the jvmdg runtime stubs the downgrade now references."
-        inputFile.set(downgradeSingleJar.flatMap { it.archiveFile })
-        shadePath.set({ _: String -> spec.shadePath })
-        archiveClassifier.set("merged-java8-shaded")
-        destinationDirectory.set(layout.buildDirectory.dir("$n-jar"))
-    }
-
-    // The artifact. Unclassified, because it is the product rather than a stage of one. A byte copy
-    // rather than another Jar: the bytes are finished, and re-zipping them would change the hash for
-    // no reason -- which a reproducibility check would then report as non-determinism.
-    //
-    // ONE OUTPUT FILE, not a Copy into `libs`. A Copy declares the whole DIRECTORY as its output, so
-    // with this pipeline registered twice Gradle sees each check reading a file inside a directory the
-    // other pipeline's Copy produces and refuses the build for an undeclared dependency -- naming two
-    // tasks that have nothing to do with each other. Declaring the file is what makes the pipeline
-    // registrable more than once.
+    // The artifact: the merged jar downgraded to Java 8 with jvmdg's stubs shaded in, by ONE task that
+    // keeps neither stage's jar -- they were two more full copies of the product, and a third was the
+    // copy into libs. Unclassified, because it is the product rather than a stage of one.
     val artifactFile = layout.buildDirectory.file("libs/${spec.fileName}")
-    val singleJar = tasks.register("${n}Jar") {
+    val singleJar = tasks.register<DowngradeShadeJar>("${n}Jar") {
         group = spec.taskGroup
-        description = "The one jar every loader installs."
-        dependsOn(shadeSingleJar)
-        val source = shadeSingleJar.flatMap { it.archiveFile }
-        inputs.file(source).withPropertyName("shadedJar")
-        outputs.file(artifactFile)
-        doLast {
-            val target = artifactFile.get().asFile
-            target.parentFile.mkdirs()
-            source.get().asFile.copyTo(target, overwrite = true)
-        }
+        description = "The one jar every loader installs: merged, downgraded to Java 8, jvmdg's stubs shaded in."
+        inputFile.set(singleShadowJar.flatMap { it.archiveFile })
+        classpath.from(project.extensions.getByType(SourceSetContainer::class.java)["main"].compileClasspath)
+        downgradeTo.set(JavaVersion.VERSION_1_8)
+        shadePath.set { spec.shadePath }
+        destinationDirectory.set(layout.buildDirectory.dir("libs"))
+        archiveFileName.set(spec.fileName)
     }
 
     tasks.withType<AbstractArchiveTask>().configureEach {
