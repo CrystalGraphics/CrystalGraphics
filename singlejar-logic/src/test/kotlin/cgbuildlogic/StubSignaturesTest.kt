@@ -1,9 +1,7 @@
 package cgbuildlogic
 
 import org.junit.Assert.assertEquals
-import org.junit.Rule
 import org.junit.Test
-import org.junit.rules.TemporaryFolder
 import org.objectweb.asm.ClassReader
 import org.objectweb.asm.Opcodes
 import org.objectweb.asm.Type
@@ -15,30 +13,19 @@ import org.objectweb.asm.tree.MethodNode
 
 class StubSignaturesTest {
 
-    @get:Rule
-    val temp = TemporaryFolder()
-
     @Test
-    fun `text survives a read and a write unchanged`() {
-        val first = temp.newFile("a.sig")
-        StubSignatures.write(listOf(annotationType(), holder()), listOf("Fabric-Jar-Type" to "classes"), first)
-        val stub = StubSignatures.read(first)
-        val second = temp.newFile("b.sig")
-        StubSignatures.write(stub.classes, stub.manifest, second)
-
-        assertEquals(first.readText(), second.readText())
-        assertEquals(listOf("Fabric-Jar-Type" to "classes"), StubSignatures.manifest(first))
+    fun `text survives a parse and a format unchanged`() {
+        val first = text(listOf(annotationType(), holder()))
+        assertEquals(first, text(StubSignatures.parse(first.lines())))
     }
 
     @Test
     fun `synthesized classes carry what javac reads`() {
-        val file = temp.newFile("c.sig")
-        StubSignatures.write(listOf(annotationType(), holder()), emptyList(), file)
-        val read = StubSignatures.read(file).classes.associateBy { it.name }
+        val read = StubSignatures.parse(text(listOf(annotationType(), holder())).lines()).associateBy { it.name }
 
         val holder = ClassNode().also { ClassReader(StubSignatures.classBytes(read.getValue("p/Holder"))).accept(it, 0) }
         assertEquals(listOf("p/Holder\$Inner"), holder.innerClasses.map { it.name })
-        assertEquals(listOf(42, "tab\there \"q\" é", 1.5f, Long.MIN_VALUE), holder.fields.map { it.value })
+        assertEquals(listOf(42, "tab\there \"q\" \u00e9", 1.5f, Long.MIN_VALUE), holder.fields.map { it.value })
         assertEquals(listOf("java/io/IOException"), holder.methods.single { it.name == "run" }.exceptions)
 
         val annotation = ClassNode().also { ClassReader(StubSignatures.classBytes(read.getValue("p/Anno"))).accept(it, 0) }
@@ -47,6 +34,8 @@ class StubSignaturesTest {
         assertEquals(Type.getType("Lp/Holder;"), default[0])
         assertEquals((default[1] as AnnotationNode).values, listOf("value", listOf("x,y]", "")))
     }
+
+    private fun text(classes: List<ClassNode>) = StringBuilder().also { out -> classes.forEach { StubSignatures.format(it, out) } }.toString()
 
     private fun annotationType() = ClassNode().apply {
         version = Opcodes.V17; name = "p/Anno"; superName = "java/lang/Object"

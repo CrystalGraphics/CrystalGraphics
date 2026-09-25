@@ -10,23 +10,20 @@ import org.objectweb.asm.tree.InnerClassNode
 import org.objectweb.asm.tree.InsnList
 import org.objectweb.asm.tree.InsnNode
 import org.objectweb.asm.tree.MethodNode
-import java.io.File
 
 /**
- * A node's committed stub: every class and member it compiles against, as text, and the class files
- * javac and the renamers read, synthesized from it.
+ * The text a class's signature is stored as in the stub database ([StubDatabase]), and the class file a
+ * stub build compiles against, synthesized from it.
  *
  * ```kotlin
- * val stub = StubSignatures.read(file("stub.sig"))
- * stub.classes.forEach { jar.put(it.name + ".class", StubSignatures.classBytes(it)) }
- * StubSignatures.write(StubClosure(classpath, targets).keep(records), manifest, file("stub.sig"))
+ * val text = StringBuilder().also { StubSignatures.format(classNode, it) }       // one block
+ * val classes = StubSignatures.parse(blockLines)                                // back again
+ * jar.put(classes[0].name + ".class", StubSignatures.classBytes(classes[0]))
  * ```
  *
- * The format, one class per block, sorted by name; `-` is an absent value and lists are comma-separated:
+ * One block per class; `-` is an absent value and lists are comma-separated:
  *
  * ```
- * cg-stubs 1
- * manifest Fabric-Mapping-Namespace intermediary
  * class net/minecraft/client/gui/screens/Screen 61 public,super,abstract net/minecraft/client/gui/components/events/AbstractContainerEventHandler net/minecraft/client/gui/components/Renderable -
  *  inner net/minecraft/client/gui/screens/Screen$NarratableSearchResult net/minecraft/client/gui/screens/Screen NarratableSearchResult public,static
  *  field protected title Lnet/minecraft/network/chat/Component; -
@@ -41,63 +38,50 @@ import java.io.File
  * `@<desc>(name=..)`.
  *
  * - Bodies are `aconst_null; athrow`: nothing runs a stub, and javac reads no Code attribute.
- * - Only what [StubClosure] keeps is carried: no record components, nest members, source files or
- *   annotations other than an annotation type's own meta-annotations.
+ * - Only what javac reads is carried: no record components, nest members, source files or annotations
+ *   other than an annotation type's own meta-annotations.
  */
 object StubSignatures {
 
-    const val HEADER = "cg-stubs 1"
-
-    /** What a `.sig` holds: the classes, and the manifest attributes the node's renamer adds (Fabric). */
-    class Stub(val classes: List<ClassNode>, val manifest: List<Pair<String, String>>)
-
-    fun write(classes: Collection<ClassNode>, manifest: List<Pair<String, String>>, out: File) {
-        val text = StringBuilder(HEADER).append('\n')
-        manifest.forEach { (key, value) -> text.append("manifest ").append(key).append(' ').append(value).append('\n') }
-        for (c in classes.sortedBy { it.name }) {
-            text.append("class ").append(c.name).append(' ').append(c.version).append(' ')
-                .append(Access.CLASS.format(c.access)).append(' ').append(c.superName ?: "-").append(' ')
-                .append(list(c.interfaces)).append(' ').append(c.signature ?: "-").append('\n')
-            if (c.outerClass != null) {
-                text.append(" outer ").append(c.outerClass).append(' ').append(c.outerMethod ?: "-").append(' ')
-                    .append(c.outerMethodDesc ?: "-").append('\n')
-            }
-            for (i in c.innerClasses) {
-                text.append(" inner ").append(i.name).append(' ').append(i.outerName ?: "-").append(' ')
-                    .append(i.innerName ?: "-").append(' ').append(Access.INNER.format(i.access)).append('\n')
-            }
-            c.visibleAnnotations.orEmpty().forEach { text.append(" anno visible ").append(Values.write(it)).append('\n') }
-            c.invisibleAnnotations.orEmpty().forEach { text.append(" anno invisible ").append(Values.write(it)).append('\n') }
-            for (f in c.fields) {
-                text.append(" field ").append(Access.FIELD.format(f.access)).append(' ').append(f.name).append(' ')
-                    .append(f.desc).append(' ').append(f.signature ?: "-")
-                f.value?.let { text.append(' ').append(Values.write(it)) }
-                text.append('\n')
-            }
-            for (m in c.methods) {
-                text.append(" method ").append(Access.METHOD.format(m.access)).append(' ').append(m.name).append(' ')
-                    .append(m.desc).append(' ').append(m.signature ?: "-").append(' ').append(list(m.exceptions))
-                m.annotationDefault?.let { text.append(' ').append(Values.write(it)) }
-                text.append('\n')
-            }
+    /** One class's block. */
+    fun format(c: ClassNode, text: StringBuilder) {
+        text.append("class ").append(c.name).append(' ').append(c.version).append(' ')
+            .append(Access.CLASS.format(c.access)).append(' ').append(c.superName ?: "-").append(' ')
+            .append(list(c.interfaces)).append(' ').append(c.signature ?: "-").append('\n')
+        if (c.outerClass != null) {
+            text.append(" outer ").append(c.outerClass).append(' ').append(c.outerMethod ?: "-").append(' ')
+                .append(c.outerMethodDesc ?: "-").append('\n')
         }
-        out.parentFile.mkdirs()
-        out.writeText(text.toString())
+        for (i in c.innerClasses) {
+            text.append(" inner ").append(i.name).append(' ').append(i.outerName ?: "-").append(' ')
+                .append(i.innerName ?: "-").append(' ').append(Access.INNER.format(i.access)).append('\n')
+        }
+        c.visibleAnnotations.orEmpty().forEach { text.append(" anno visible ").append(Values.write(it)).append('\n') }
+        c.invisibleAnnotations.orEmpty().forEach { text.append(" anno invisible ").append(Values.write(it)).append('\n') }
+        for (f in c.fields) {
+            text.append(" field ").append(Access.FIELD.format(f.access)).append(' ').append(f.name).append(' ')
+                .append(f.desc).append(' ').append(f.signature ?: "-")
+            f.value?.let { text.append(' ').append(Values.write(it)) }
+            text.append('\n')
+        }
+        for (m in c.methods) {
+            text.append(" method ").append(Access.METHOD.format(m.access)).append(' ').append(m.name).append(' ')
+                .append(m.desc).append(' ').append(m.signature ?: "-").append(' ').append(list(m.exceptions))
+            m.annotationDefault?.let { text.append(' ').append(Values.write(it)) }
+            text.append('\n')
+        }
     }
 
-    fun read(file: File): Stub {
-        val lines = file.readLines()
-        require(lines.firstOrNull() == HEADER) { "$file is not a stub signature file: it does not start with '$HEADER'" }
+    /** The classes in [lines] — blocks as [format] writes them. */
+    fun parse(lines: List<String>): List<ClassNode> {
         val classes = mutableListOf<ClassNode>()
-        val manifest = mutableListOf<Pair<String, String>>()
         var current: ClassNode? = null
-        for ((index, line) in lines.withIndex().drop(1)) {
+        for ((index, line) in lines.withIndex()) {
             if (line.isBlank()) continue
             val tokens = Tokens(line)
-            fun owner() = current ?: throw IllegalArgumentException("$file:${index + 1}: a member before any class")
+            fun owner() = current ?: throw IllegalArgumentException("line ${index + 1}: a member before any class")
             try {
                 when (tokens.next()) {
-                    "manifest" -> manifest += tokens.next() to tokens.rest()
                     "class" -> current = ClassNode().apply {
                         name = tokens.next(); version = tokens.next().toInt(); access = Access.CLASS.parse(tokens.next())
                         superName = tokens.optional(); interfaces = tokens.list(); signature = tokens.optional()
@@ -130,16 +114,10 @@ object StubSignatures {
                     else -> throw IllegalArgumentException("unknown line")
                 }
             } catch (e: RuntimeException) {
-                throw IllegalArgumentException("$file:${index + 1}: ${e.message}: $line", e)
+                throw IllegalArgumentException("line ${index + 1}: ${e.message}: $line", e)
             }
         }
-        return Stub(classes, manifest)
-    }
-
-    /** The `manifest` lines alone, without parsing the classes. */
-    fun manifest(file: File): List<Pair<String, String>> = file.useLines { lines ->
-        lines.drop(1).takeWhile { it.startsWith("manifest ") }
-            .map { it.removePrefix("manifest ").split(' ', limit = 2).let { (key, value) -> key to value } }.toList()
+        return classes
     }
 
     /** [node] as a class file whose every body throws. */
