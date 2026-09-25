@@ -6,7 +6,7 @@ add a version and what will bite: [`singlejar-logic/README.md`](../../../singlej
 § *Many Minecraft versions*, beside the code that implements it (`ModernTree`, `ModernConventions`).
 
 Every node but the active one can compile from the committed stub database instead of its real
-toolchain (`-PcgStubs`); a node added or re-pinned needs it regenerated — [`STUBS.md`](../../../singlejar-logic/STUBS.md).
+toolchain (the default; `-PcgStubs=false` builds every node real); a node added or re-pinned needs it regenerated — [`STUBS.md`](../../../singlejar-logic/STUBS.md).
 
 ```bash
 ./gradlew checkAllTargets                                # every node, every source set

@@ -15,7 +15,7 @@ class those nodes compile against — names, types and constants, no code.
 **once** into `~/.gradle/caches/cg-stubs/<zip digest>/` — 101 MB of class files, one copy of each
 distinct class, shared by every node, every clone and both repos. No node keeps a stub of its own.
 
-**Measured 2026-09-25**, a fresh clone running `./gradlew singleJar languageJar -PcgStubs` with an empty
+**Measured 2026-09-25**, a fresh clone running `./gradlew singleJar languageJar` with an empty
 store — 1.6 GB, of which the stubs are almost none:
 
 | Where | Size | What |
@@ -57,16 +57,13 @@ just compiles; code that calls something a version lacks fails exactly as the re
 ## Using it
 
 ```bash
-./gradlew singleJar languageJar -PcgStubs        # every node in the database compiles from its stub
-./gradlew :runtime:mc:modern:forge:1.20.4:runClient -PcgStubs   # this node real; the rest stubbed
+./gradlew singleJar languageJar                  # every node in the database compiles from its stub
+./gradlew singleJar languageJar -PcgStubs=false  # every node real, as before stubs
+./gradlew :runtime:mc:modern:forge:1.20.4:runClient   # this node real; the rest stubbed
 ./gradlew :runtime:mc:modern:forge:1.20.4:checkStubEquivalence  # real vs stub, byte for byte
 ```
 
-> **`-PcgStubs` is opt-in today.** Making it the default is B2 in
-> `plan/crystalgui/platform-single-jar/build-footprint.md`, after every node passes
-> `checkStubEquivalence`.
-
-**A node is real, whatever `-PcgStubs` says, when:**
+**Stub mode is the default.** A node is real anyway when:
 
 | Condition | Why |
 |---|---|
@@ -115,7 +112,7 @@ read or to diff two versions of it — the zip is binary, so git shows no diff o
 ### Adding a new Minecraft version, start to finish
 
 1. Add the node as `README.md` § *Many Minecraft versions* says — CrystalGraphics first, then CrystalGUI.
-2. Build it real until it compiles (`-PcgRealNodes=<branch>:<version>`, or no `-PcgStubs`).
+2. Build it real until it compiles (`-PcgRealNodes=<branch>:<version>`, or `-PcgStubs=false`).
 3. Regenerate (above), then `checkStubEquivalence` on the new node in both repos.
 4. Commit the node and `stubs.zip` together.
 
@@ -163,7 +160,7 @@ arguments the real build uses, so the output is the same:
 |---|---|---|
 | Forge 1.17–1.20.1 (legacyForge) | ModDevGradle: AutoRenamingTool 2.0.4, `--strip-sigs` | the same tool and arguments, `SrgReobfJar` |
 | Forge 1.13–1.16, 1.20.2–1.20.4 | `SrgReobfJar`: AutoRenamingTool 2.0.17 | the same, over the database's names |
-| Fabric | Loom's `remapJar` | `TinyRemapJar`: tiny-remapper 0.13.0, plus Loom's `Fabric-*` manifest |
+| Fabric | Loom's `remapJar` | `TinyRemapJar`: tiny-remapper 0.13.0 with `--mixin` (Loom remaps a mixin's annotation strings too), plus Loom's `Fabric-*` manifest |
 | NeoForge, Forge 1.20.6+ | none — Mojang's names | none |
 
 **In a branch script**, the rule is: ask `stubMode` before touching a toolchain, and rename through
@@ -187,10 +184,9 @@ val thinJar = registerThinRename("thinShadowJar", "thin") {
 runs the stub build's rename over the real thin-dev jar, then compares both with the real output entry
 by entry — manifests by attribute. Any difference fails, naming the entries.
 
-Last run, 2026-09-25: 66 comparisons across every toolchain family (legacyForge 1.19.2, Unimined and
-Loom 1.16.5, backported names 1.13.2, NeoForm+Forge 1.20.4, NeoForge, Fabric, 1.21.11), both repos —
-all identical. `-PcgStubs singleJar languageJar` passes `checkSingle` and `checkLanguage`.
-
+Last run, 2026-09-26: every node of both repos, 330 comparisons, all identical; `singleJar` and
+`languageJar` built all-real (`-PcgStubs=false`) and stubbed agree on all 6,440 entries. Their manifests
+differ only where the all-real build wrote Loom's `unknown` (see Traps) — the stub build's is the right one.
 ---
 
 ## Traps
@@ -207,6 +203,9 @@ all identical. `-PcgStubs singleJar languageJar` passes `checkSingle` and `check
 - **An interface's `default` method implementing a super-interface's abstract one** is exactly what a
   pared-down stub drops, and javac then refuses a lambda for it ("not a functional interface"). The full
   API keeps it; anything that trims the API must keep it too.
+- **Loom writes `Fabric-Loader-Version: unknown`** (and the mixin pair) when it has not resolved them
+  yet, and the shipped jar copies those attributes from the first Fabric node. `listStubInputs` refuses
+  `unknown`; rebuild that node's `remapThinJar` with `--rerun-tasks` and list it again.
 - **An unqualified `listStubInputs` makes every node real**, which is what it is for — do not add it to
   a build you want stubbed.
 - **The names are Mojang's**, shipped in full. That is a decision taken knowingly, not an oversight.

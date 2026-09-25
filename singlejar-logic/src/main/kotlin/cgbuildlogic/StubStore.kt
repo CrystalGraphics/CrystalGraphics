@@ -21,7 +21,7 @@ import java.util.zip.ZipOutputStream
  * ```
  *
  * - Lives in `~/.gradle/caches/cg-stubs/<zip digest>/`, beside the libraries Gradle already caches. A new
- *   zip is a new directory; an old one can be deleted at any time and is rebuilt on the next build.
+ *   zip is a new directory, and building it removes the previous one; any can be deleted at any time.
  * - Built under a file lock and renamed into place, so two builds starting together build it once.
  */
 object StubStore {
@@ -53,6 +53,9 @@ object StubStore {
                 File(building, "complete").writeText("")
                 store.deleteRecursively()
                 Files.move(building.toPath(), store.toPath(), StandardCopyOption.ATOMIC_MOVE)
+                // A store for any other zip is a previous database: a checkout still on it rebuilds its own.
+                root.listFiles().orEmpty().filter { it.isDirectory && it.name != store.name && !it.name.endsWith(".building") }
+                    .forEach { it.deleteRecursively() }
             }
         }
         return store
