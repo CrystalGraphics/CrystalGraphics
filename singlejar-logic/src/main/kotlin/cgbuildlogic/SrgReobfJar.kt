@@ -5,12 +5,14 @@ import net.neoforged.srgutils.IMappingFile
 import net.neoforged.srgutils.IRenamer
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.CompileClasspath
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.InputFiles
+import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
@@ -39,6 +41,14 @@ import javax.inject.Inject
  * }
  * ```
  *
+ * A stub build hands it the committed table instead, and the renamer its real build runs
+ * (@see registerStubReobf):
+ *
+ * ```kotlin
+ *     names.set(file("stub.tsrg"))                          // no mcpConfig, no client mappings
+ *     renamer.from(legacyForgeRenamer); renamerArgs.set(listOf("--strip-sigs"))
+ * ```
+ *
  * - Everything the classes inherit from must be in [libraries], or an override keeps its official name
  *   and silently never overrides anything at runtime.
  * - Forge 1.20.6+ runs official names; its jars ship as compiled. @see forgeRunsSrg
@@ -47,6 +57,23 @@ abstract class SrgReobfJar @Inject constructor(private val exec: ExecOperations)
 
     @get:Input
     abstract val minecraft: Property<String>
+
+    /** The official -> SRG table, when it is already written; else built from [mcpConfig]. */
+    @get:Optional
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val names: RegularFileProperty
+
+    @get:Input
+    abstract val renamerArgs: ListProperty<String>
+
+    /** The table this task renamed with — what `generateStubs` cuts a node's `stub.tsrg` from. */
+    @get:Internal
+    val namesTable: File get() = names.orNull?.asFile ?: File(temporaryDir, "official-to-srg.tsrg")
+
+    init {
+        renamerArgs.convention(listOf("--disable-abstract-param", "--strip-sigs"))
+    }
 
     @get:InputFiles
     @get:PathSensitive(PathSensitivity.NONE)
@@ -70,10 +97,10 @@ abstract class SrgReobfJar @Inject constructor(private val exec: ExecOperations)
         val jar = archiveFile.get().asFile
         val official = File(temporaryDir, "official.jar")
         jar.copyTo(official, overwrite = true)
-        val names = File(temporaryDir, "official-to-srg.tsrg")
-        officialToSrg(names)
+        val table = namesTable
+        if (!names.isPresent) officialToSrg(table)
         File(temporaryDir, "renamer.log").outputStream().use { log ->
-            renameTo(official, jar, names, log)
+            renameTo(official, jar, table, log)
         }
     }
 
@@ -82,8 +109,8 @@ abstract class SrgReobfJar @Inject constructor(private val exec: ExecOperations)
             standardOutput = log
             classpath(renamer)
             mainClass.set("net.neoforged.art.Main")
-            args("--input", official.absolutePath, "--output", jar.absolutePath, "--names", names.absolutePath,
-                "--disable-abstract-param", "--strip-sigs")
+            args("--input", official.absolutePath, "--output", jar.absolutePath, "--names", names.absolutePath)
+            args(renamerArgs.get())
             libraries.forEach { args("--lib", it.absolutePath) }
         }
     }

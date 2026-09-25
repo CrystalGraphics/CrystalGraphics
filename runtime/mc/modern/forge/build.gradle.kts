@@ -16,8 +16,9 @@
 //   - There is no Gradle 9 property to suppress the exclusive-lock requirement.
 
 import cgbuildlogic.commonNode
-import cgbuildlogic.forgeRunsSrg
 import cgbuildlogic.registerSrgReobf
+import cgbuildlogic.registerThinRename
+import cgbuildlogic.stubMode
 import cgbuildlogic.useForgeApi
 import cgbuildlogic.useModernMinecraft
 import cgbuildlogic.backportedMojmap
@@ -40,7 +41,7 @@ val legacyForge = extensions.findByType<LegacyForgeExtension>()
 // Forge below 1.17 through Unimined, which neither ModDevGradle mode reaches: Forge's userdev at
 // Mojang's names to compile against. No dev run -- Forge 1.15 needs Java 8, and a dev run would load
 // classes built for 17 -- so prodSmoke is this node's runtime check, as for the NeoForm nodes.
-if (usesUniminedMinecraft) {
+if (!stubMode && usesUniminedMinecraft) {
     apply(plugin = "xyz.wagyourtail.unimined")
     the<UniminedExtension>().minecraft {
         version(property("mc.version").toString())
@@ -61,7 +62,7 @@ if (usesUniminedMinecraft) {
     }
 }
 
-if (legacyForge == null && !usesUniminedMinecraft) {
+if (!stubMode && legacyForge == null && !usesUniminedMinecraft) {
     useForgeApi()
     configure<NeoForgeExtension> {
         parchment {
@@ -123,30 +124,33 @@ tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJ
 
 // Extracts this node's Minecraft + Forge sources and resources into build/mc-src for local navigation.
 // Sync (not Copy) removes stale files when the source jar changes between toolchain version bumps.
-val extractMcSources by tasks.registering(Sync::class) {
-    description = "Extracts this node's Minecraft + Forge sources and resources into build/mc-src for local navigation."
-    group = "crystalgraphics"
+// A real node only: in stub mode there are no sources to extract.
+if (!stubMode) {
+    val extractMcSources = tasks.register<Sync>("extractMcSources") {
+        description = "Extracts this node's Minecraft + Forge sources and resources into build/mc-src for local navigation."
+        group = "crystalgraphics"
 
-    // dependsOn (not mustRunAfter) — mustRunAfter does not cause this task to run on a clean checkout.
-    dependsOn("createMinecraftArtifacts")
+        // dependsOn (not mustRunAfter) — mustRunAfter does not cause this task to run on a clean checkout.
+        dependsOn("createMinecraftArtifacts")
 
-    // Lazy providers resolved at execution time — never at configuration time (Gradle 9 rule).
-    val sourcesJar = layout.buildDirectory.dir("moddev/artifacts").map { dir ->
-        dir.asFileTree.matching { include("*-sources.jar") }.singleFile
+        // Lazy providers resolved at execution time — never at configuration time (Gradle 9 rule).
+        val sourcesJar = layout.buildDirectory.dir("moddev/artifacts").map { dir ->
+            dir.asFileTree.matching { include("*-sources.jar") }.singleFile
+        }
+        val resourcesJar = layout.buildDirectory.dir("moddev/artifacts").map { dir ->
+            // `client-extra-<v>.jar` on 1.20.x, `<loader>-<v>-client-extra-aka-minecraft-resources.jar` on 1.21.
+            dir.asFileTree.matching { include("*client-extra*.jar") }.singleFile
+        }
+
+        from(zipTree(sourcesJar)) { into("java") }
+        from(zipTree(resourcesJar)) { into("resources") }
+        into(layout.buildDirectory.dir("mc-src"))
     }
-    val resourcesJar = layout.buildDirectory.dir("moddev/artifacts").map { dir ->
-        // `client-extra-<v>.jar` on 1.20.x, `<loader>-<v>-client-extra-aka-minecraft-resources.jar` on 1.21.
-        dir.asFileTree.matching { include("*client-extra*.jar") }.singleFile
-    }
 
-    from(zipTree(sourcesJar)) { into("java") }
-    from(zipTree(resourcesJar)) { into("resources") }
-    into(layout.buildDirectory.dir("mc-src"))
+    // extractMcSources is cheap (unzips an already-present jar — createMinecraftArtifacts ran first).
+    // Wire it into classes so build/mc-src/ is always populated after a normal compile.
+    if (!usesUniminedMinecraft) tasks.named("classes") { dependsOn(extractMcSources) }
 }
-
-// extractMcSources is cheap (unzips an already-present jar — createMinecraftArtifacts ran first).
-// Wire it into classes so build/mc-src/ is always populated after a normal compile.
-if (!usesUniminedMinecraft) tasks.named("classes") { dependsOn(extractMcSources) }
 
 // The SHIPPED jar is reobfuscated where Forge runs SRG, and it is the SHADOW jar that ships.
 //
@@ -156,18 +160,19 @@ if (!usesUniminedMinecraft) tasks.named("classes") { dependsOn(extractMcSources)
 // called `Minecraft.getInstance()` under a name production does not have. A dev run cannot show it:
 // dev is deobfuscated, so official names are the right ones there. From 1.20.6 Forge runs official
 // names too, and the jar ships as compiled. @see cgbuildlogic.forgeRunsSrg
-val thinJar: TaskProvider<out AbstractArchiveTask> = if (!forgeRunsSrg(project.name)) {
-    tasks.named<AbstractArchiveTask>("thinShadowJar")
-} else if (legacyForge == null) {
-    registerSrgReobf("thinShadowJar", "thin", sourceSets.main.get().compileClasspath)
-} else {
-    val obfuscation = the<ObfuscationExtension>()
+//
+// Through registerThinRename, which runs the committed stub.tsrg instead on a node in stub mode.
+val main = sourceSets.main.get()
+if (legacyForge != null) {
     // Not on `assemble` (J7): reobfuscating a fat jar nothing installs was pure cost.
-    obfuscation.reobfuscate(tasks.named<AbstractArchiveTask>("shadowJar"), sourceSets.main.get()) {
+    the<ObfuscationExtension>().reobfuscate(tasks.named<AbstractArchiveTask>("shadowJar"), main) {
         archiveClassifier.set("srg")
     }
-    // The merge's input from this node: its own classes plus its relocated common node, at SRG names.
-    obfuscation.reobfuscate(tasks.named<AbstractArchiveTask>("thinShadowJar"), sourceSets.main.get()) {
+}
+// The merge's input from this node: its own classes plus its relocated common node, at SRG names.
+val thinJar = registerThinRename("thinShadowJar", "thin") {
+    if (legacyForge == null) registerSrgReobf("thinShadowJar", "thin", main.compileClasspath)
+    else the<ObfuscationExtension>().reobfuscate(tasks.named<AbstractArchiveTask>("thinShadowJar"), main) {
         archiveClassifier.set("thin")
     }
 }

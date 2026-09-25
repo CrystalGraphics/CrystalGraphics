@@ -38,6 +38,7 @@ import java.io.File
  *   Forge on compileOnly, which is what [guardLoaderImports] is for.
  * - both, on a Forge node from 1.20.2: NeoForm wins, and [useForgeApi] adds Forge's jars.
  * - `minecraft.loom` or `minecraft.unimined`, below 1.17: nothing here; the branch script owns it.
+ * - in [stubMode]: nothing at all; the stub is Minecraft (@see configureStubs).
  *
  * Throws when the node pins neither, naming it.
  */
@@ -47,7 +48,7 @@ fun Project.useModernMinecraft() {
     val forgePin = findProperty("forge.version")?.toString()
     // Below 1.17 neither ModDevGradle mode reaches: the branch script applies Loom (a common node) or
     // Unimined (a Forge node) itself, since only that branch's classloader may carry either.
-    if (usesLoomMinecraft || usesUniminedMinecraft) return
+    if (stubMode || usesLoomMinecraft || usesUniminedMinecraft) return
     when {
         neoFormPin != null -> {
             pluginManager.apply("net.neoforged.moddev")
@@ -72,6 +73,11 @@ fun Project.useModernMinecraft() {
                 + "no toolchain to put Minecraft $mcVersion on its classpath.")
     }
 }
+
+/** Pinned `forge.version` alone: ModDevGradle's legacyForge, Forge 1.17–1.20.1. */
+val Project.usesLegacyForge: Boolean
+    get() = findProperty("forge.version") != null && findProperty("neoform.version") == null
+        && !usesLoomMinecraft && !usesUniminedMinecraft
 
 /** Pinned `minecraft.loom = true`: a common node below 1.17, vanilla through Loom. */
 val Project.usesLoomMinecraft: Boolean

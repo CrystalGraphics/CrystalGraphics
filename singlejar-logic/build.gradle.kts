@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins { `kotlin-dsl` }
 
 // The coordinates a consumer substitutes against. A composite build matches an included build to a
@@ -29,7 +31,16 @@ dependencies {
     // legacy mode uses, where that mode cannot reach (Forge 1.20.2-1.20.4).
     implementation("net.neoforged:srgutils:1.0.11")
 
+    // The stub machinery reads and writes class files (StubClosure, StubSignatures).
+    implementation("org.ow2.asm:asm-tree:9.9")
+
     // Named rather than read from `dep.junit`: this is a standalone included build with its own
     // settings, so it has no root project to read a property from. Same version as everywhere else.
     testImplementation("junit:junit:4.13.2")
 }
+
+// SigRecorder runs inside a node's javac, the oldest of which is 17; Kotlin follows, as Gradle requires
+// both targets to agree.
+java { targetCompatibility = JavaVersion.VERSION_17 }
+tasks.withType<JavaCompile>().configureEach { options.release.set(17) }
+kotlin { compilerOptions { jvmTarget.set(JvmTarget.JVM_17) } }
