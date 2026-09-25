@@ -12,7 +12,7 @@ import java.io.File as JFile
 // is: Gradle matches a JVM-version attribute at resolution, so an 8 consumer cannot see a 17 producer
 // at all and the build fails on the classpath rather than on a class. `mc-shared` gets away with 8
 // because it depends on nothing of ours. The merged jar's major-52 ceiling — FML 1.7.10 reads every
-// entry with asm-debug-all-5.0.3 — is met by `downgradeSingleJar` rewriting the whole jar on the way
+// entry with asm-debug-all-5.0.3 — is met by `singleJar` rewriting the whole jar on the way
 // in, so paying it here as well buys nothing.
 
 plugins {
