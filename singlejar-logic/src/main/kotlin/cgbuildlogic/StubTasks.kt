@@ -5,14 +5,12 @@ import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
-import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.CompileClasspath
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
-import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
@@ -22,50 +20,7 @@ import java.io.File
 import java.util.jar.Manifest
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
-import java.util.zip.ZipOutputStream
 import javax.inject.Inject
-
-/**
- * One node's slice of the stub database: the class files it compiles against, and the names its thin
- * jar is renamed with (empty where its loader runs Mojang's).
- *
- * ```kotlin
- * val stubJar = tasks.register<StubJar>("stubJar") {
- *     database.set(file("singlejar-logic/stubs.zip")); node.set("forge:1.20.1")
- *     jar.set(layout.buildDirectory.file("stubs/stub.jar")); names.set(layout.buildDirectory.file("stubs/stub.names"))
- * }
- * dependencies { "compileOnly"(files(stubJar.flatMap { it.jar })) }
- * ```
- */
-@CacheableTask
-abstract class StubJar : DefaultTask() {
-
-    @get:InputFile
-    @get:PathSensitive(PathSensitivity.NONE)
-    abstract val database: RegularFileProperty
-
-    @get:Input
-    abstract val node: Property<String>
-
-    @get:OutputFile
-    abstract val jar: RegularFileProperty
-
-    @get:OutputFile
-    abstract val names: RegularFileProperty
-
-    @TaskAction
-    fun write() {
-        val slice = StubDatabase.slice(database.get().asFile, node.get())
-        ZipOutputStream(jar.get().asFile.outputStream().buffered()).use { out ->
-            for (c in slice.classes.sortedBy { it.name }) {
-                out.putNextEntry(ZipEntry(c.name + ".class").apply { time = StubDatabase.FIXED_TIME })
-                out.write(StubSignatures.classBytes(c))
-                out.closeEntry()
-            }
-        }
-        names.get().asFile.writeText(slice.names)
-    }
-}
 
 /**
  * A jar compiled against Mojang's names, renamed to intermediary by tiny-remapper — what Loom's
@@ -74,7 +29,7 @@ abstract class StubJar : DefaultTask() {
  * ```kotlin
  * tasks.register<TinyRemapJar>("remapThinJar") {
  *     from(thinShadowJar.map { zipTree(it.archiveFile) })
- *     mappings.set(stubJar.flatMap { it.names })
+ *     stubDatabase.set(file("singlejar-logic/stubs.zip")); stubNode.set("fabric:1.20.1")   // its names
  *     libraries.from(sourceSets.main.get().compileClasspath)
  *     remapper.from(configurations.detachedConfiguration(dependencies.create(TINY_REMAPPER)))
  *     manifest.attributes(StubDatabase.manifest(database, "fabric:1.20.1").toMap())
@@ -84,9 +39,13 @@ abstract class StubJar : DefaultTask() {
  */
 abstract class TinyRemapJar @Inject constructor(private val exec: ExecOperations) : Jar() {
 
+    /** The database the node's named -> intermediary table is cut from, for this run alone. */
     @get:InputFile
     @get:PathSensitive(PathSensitivity.NONE)
-    abstract val mappings: RegularFileProperty
+    abstract val stubDatabase: RegularFileProperty
+
+    @get:Input
+    abstract val stubNode: Property<String>
 
     @get:CompileClasspath
     abstract val libraries: ConfigurableFileCollection
@@ -101,15 +60,18 @@ abstract class TinyRemapJar @Inject constructor(private val exec: ExecOperations
         val named = File(temporaryDir, "named.jar")
         jar.copyTo(named, overwrite = true)
         jar.delete()
+        val mappings = File(temporaryDir, "names.tiny").apply { writeText(StubDatabase.names(stubDatabase.get().asFile, stubNode.get())) }
         File(temporaryDir, "remapper.log").outputStream().use { log ->
             exec.javaexec {
                 standardOutput = log
                 classpath(remapper)
                 mainClass.set("net.fabricmc.tinyremapper.Main")
-                args(named.absolutePath, jar.absolutePath, mappings.get().asFile.absolutePath, "named", "intermediary")
+                args(named.absolutePath, jar.absolutePath, mappings.absolutePath, "named", "intermediary")
                 libraries.filter { it.exists() }.forEach { args(it.absolutePath) }
             }
         }
+        mappings.delete()
+        named.delete()
     }
 }
 

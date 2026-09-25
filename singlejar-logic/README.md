@@ -7,6 +7,9 @@ is what they share, and what a third project wires itself into.
 It lives in CrystalGraphics because CrystalGraphics is the parent of everything that uses it — but
 **nothing here is CrystalGraphics-specific**. No package, module, mod id or loader list is baked in.
 
+📄 **[STUBS.md](STUBS.md)** — how every Minecraft version builds from one 16 MB `stubs.zip` instead of
+its real toolchain (`-PcgStubs`), and what to regenerate when a node is added.
+
 ---
 
 ## Why one jar is possible at all
@@ -366,6 +369,8 @@ the parent's node of the same version:
    overlap), `variant.packFormat`, and `java.version = 21` from 1.20.5 on (`nodeJava`: what the node
    emits, and the ceiling its thin jar is checked against; 17 when unpinned);
 3. `//? if` directives where the API differs — `checkAllTargets` finds every one.
+4. regenerate `stubs.zip` and commit it with the node — [STUBS.md](STUBS.md) § *Regenerating*.
+    Until then the new node builds real.
 
 The thin-jar lists, the relocation counts, the descriptors (including `neoforge.mods.toml`, the only
 file NeoForge 1.20.5+ reads), the variant tables and `requiredEntries` all follow the tree, so none of
