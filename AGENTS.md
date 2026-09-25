@@ -92,7 +92,7 @@ that uses it; nothing in it is CrystalGraphics-specific. Read it before touching
 either `cg-single-jar.gradle.kts`, or anything about relocation, remapping or the class-major ceiling.
 
 📄 **[singlejar-logic/STUBS.md](singlejar-logic/STUBS.md)** — **stub mode.** By default every
-1.20.x node except the active Stonecutter version compiles against `singlejar-logic/stubs.zip` (every
+1.20.x node compiles against `singlejar-logic/stubs.zip` (every
 node's Minecraft, loader and library API, 16 MB) instead of its real toolchain, and produces
 byte-identical jars. **Adding a node or changing its pins means regenerating `stubs.zip`**; changing code
 never does. A node missing from it builds real.

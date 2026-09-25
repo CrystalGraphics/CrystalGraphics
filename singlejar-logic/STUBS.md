@@ -69,7 +69,7 @@ just compiles; code that calls something a version lacks fails exactly as the re
 |---|---|
 | One of its run or maintenance tasks is requested by path: `runClient`, `runServer`, `prepareClientRun`, `prepareServerRun`, `serverSmoke`, `connectionProbe`, `extractMcSources`, `genSourcesWithVineflower`, `checkStubEquivalence` | Running the game needs the game. It holds in either build of the composite, so running CrystalGUI's node makes CrystalGraphics' node of the same loader and version real too |
 | `listStubInputs` is requested at all | It lists what the real toolchains supply |
-| It is Stonecutter's active version (`stonecutter.gradle.kts`) | The IDE gets the whole game, with sources, where code is written |
+| It is Stonecutter's active version (`stonecutter.gradle.kts`) **and an IDE is syncing** (`idea.sync.active`) | The IDE gets the whole game, with sources, where code is written; a command-line build stays stubbed |
 | It is listed in `-PcgRealNodes=forge:1.20.4,1.21.1` | A bare version names every branch of it |
 | `stubs.zip` has no entry for it | A new node builds real until the database is regenerated |
 
