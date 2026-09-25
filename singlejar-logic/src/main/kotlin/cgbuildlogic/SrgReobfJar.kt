@@ -41,11 +41,11 @@ import javax.inject.Inject
  * }
  * ```
  *
- * A stub build hands it the committed table instead, and the renamer its real build runs
+ * A stub build hands it the stub database instead, and the renamer its real build runs
  * (@see registerStubReobf):
  *
  * ```kotlin
- *     names.set(file("stub.tsrg"))                          // no mcpConfig, no client mappings
+ *     stubDatabase.set(file("singlejar-logic/stubs.zip")); stubNode.set("forge:1.20.1")   // no mcpConfig
  *     renamer.from(legacyForgeRenamer); renamerArgs.set(listOf("--strip-sigs"))
  * ```
  *
@@ -58,18 +58,22 @@ abstract class SrgReobfJar @Inject constructor(private val exec: ExecOperations)
     @get:Input
     abstract val minecraft: Property<String>
 
-    /** The official -> SRG table, when it is already written; else built from [mcpConfig]. */
+    /** The stub database to cut the node's official -> SRG table from, for this run alone; else built from [mcpConfig]. */
     @get:Optional
     @get:InputFile
     @get:PathSensitive(PathSensitivity.NONE)
-    abstract val names: RegularFileProperty
+    abstract val stubDatabase: RegularFileProperty
+
+    @get:Optional
+    @get:Input
+    abstract val stubNode: Property<String>
 
     @get:Input
     abstract val renamerArgs: ListProperty<String>
 
     /** The table this task renamed with — what `generateStubs` cuts a node's `stub.tsrg` from. */
     @get:Internal
-    val namesTable: File get() = names.orNull?.asFile ?: File(temporaryDir, "official-to-srg.tsrg")
+    val namesTable: File get() = File(temporaryDir, "official-to-srg.tsrg")
 
     init {
         renamerArgs.convention(listOf("--disable-abstract-param", "--strip-sigs"))
@@ -98,10 +102,14 @@ abstract class SrgReobfJar @Inject constructor(private val exec: ExecOperations)
         val official = File(temporaryDir, "official.jar")
         jar.copyTo(official, overwrite = true)
         val table = namesTable
-        if (!names.isPresent) officialToSrg(table)
+        if (stubDatabase.isPresent) table.writeText(StubDatabase.names(stubDatabase.get().asFile, stubNode.get()))
+        else officialToSrg(table)
         File(temporaryDir, "renamer.log").outputStream().use { log ->
             renameTo(official, jar, table, log)
         }
+        official.delete()
+        // A stub build's table is a cut of the committed database, and not worth keeping per node.
+        if (stubDatabase.isPresent) table.delete()
     }
 
     private fun renameTo(official: File, jar: File, names: File, log: OutputStream) {

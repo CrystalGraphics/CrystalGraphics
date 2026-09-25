@@ -26,7 +26,8 @@ import java.util.zip.ZipOutputStream
  * ```
  *
  * ```kotlin
- * val slice = StubDatabase.slice(zip, "forge:1.20.1")    // the node's classes, and its rename table
+ * StubStore.jarsFor(zip, "forge:1.20.1", gradleUserHome) // the node's classes, unpacked once per machine
+ * StubDatabase.names(zip, "forge:1.20.1")                // its rename table, for one rename task
  * StubDatabase.manifest(zip, "fabric:1.20.1")            // the Fabric-* attributes Loom would write
  * ```
  *
@@ -49,9 +50,6 @@ object StubDatabase {
 
     /** Which rename table a node's thin jar takes. */
     enum class Names { TSRG, TINY }
-
-    /** One node's slice: its classes, and its rename table as a file the renamer reads ("" when none). */
-    class Slice(val classes: List<ClassNode>, val names: String)
 
     /** One node's inputs: its toolchain's jars, first on the classpath first; its full rename table; Loom's manifest. */
     class Node(val key: String, val targets: List<File>, val names: Pair<Names, File>?, val manifest: List<Pair<String, String>>)
@@ -83,43 +81,37 @@ object StubDatabase {
         text(z, "manifests.txt").lines().map { it.split(' ', limit = 3) }.filter { it.size == 3 && it[0] == node }.map { it[1] to it[2] }
     }
 
-    fun slice(zip: File, node: String): Slice = ZipFile(zip).use { z ->
+    /** [node]'s rename table as the renamer reads it, or "" where its loader runs Mojang's names. */
+    fun names(zip: File, node: String): String = ZipFile(zip).use { z ->
         val nodes = text(z, "nodes.txt").lines().filter { it.isNotBlank() }
         val index = nodes.indexOf(node).also { require(it >= 0) { "$zip has no node $node" } }
         val sets = text(z, "sets.txt").lines().filter { it.isNotBlank() }.map { it.split(' ', limit = 2) }
             .filter { (_, runs) -> index in expand(runs, nodes) }.map { it[0] }.toSet()
-        val classes = mutableListOf<ClassNode>()
-        val srg = StringBuilder()
-        val tiny = StringBuilder()
-        for (entry in z.entries().toList().sortedBy { it.name }) {
-            val sink = when {
-                entry.name.startsWith("api/") -> StringBuilder()
-                entry.name == "names/srg.tsrg" -> srg
-                entry.name == "names/intermediary.tiny" -> tiny
-                else -> continue
-            }
+        fun cut(entry: String): String {
+            val out = StringBuilder()
             var keep = false
-            z.getInputStream(entry).bufferedReader().useLines { lines ->
+            z.getInputStream(z.getEntry(entry)).bufferedReader().useLines { lines ->
                 for (line in lines.drop(1)) {
                     if (line.startsWith("in ")) keep = line.substring(3) in sets
-                    else if (keep) sink.append(line).append('\n')
+                    else if (keep) out.append(line).append('\n')
                 }
             }
-            if (entry.name.startsWith("api/")) classes += StubSignatures.parse(sink.lines().filter { it.isNotEmpty() })
+            return out.toString()
         }
-        val names = when {
+        val srg = cut("names/srg.tsrg")
+        val tiny = if (srg.isEmpty()) cut("names/intermediary.tiny") else ""
+        when {
             srg.isNotEmpty() -> "tsrg2 left right\n$srg"
             tiny.isNotEmpty() -> "tiny\t2\t0\tnamed\tintermediary\n$tiny"
             else -> ""
         }
-        Slice(classes, names)
     }
 
     private fun text(zip: ZipFile, name: String): String =
         zip.getInputStream(zip.getEntry(name) ?: throw IllegalArgumentException("${zip.name} has no $name")).use { it.readBytes().decodeToString() }
 
     /** `forge:1.17.1-1.20.1,fabric:1.20.1` -> the node indices it names. */
-    private fun expand(runs: String, nodes: List<String>): Set<Int> = runs.split(',').flatMap { run ->
+    fun expand(runs: String, nodes: List<String>): Set<Int> = runs.split(',').flatMap { run ->
         val branch = run.substringBefore(':')
         val (from, to) = run.substringAfter(':').split('-').let { bounds -> bounds[0] to bounds.getOrElse(1) { bounds[0] } }
         (nodes.indexOf("$branch:$from")..nodes.indexOf("$branch:$to")).toList()

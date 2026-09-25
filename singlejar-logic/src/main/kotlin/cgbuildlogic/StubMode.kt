@@ -18,8 +18,8 @@ import java.io.File
 import java.util.jar.JarFile
 
 /**
- * Stub mode: a node compiles against its slice of the stub database (`singlejar-logic/stubs.zip`,
- * [StubDatabase]) and applies no Minecraft toolchain — nothing downloaded, decompiled or remapped per
+ * Stub mode: a node compiles against the stub database (`singlejar-logic/stubs.zip`, [StubDatabase]),
+ * unpacked once per machine into `~/.gradle/caches/cg-stubs` ([StubStore]), and applies no Minecraft toolchain — nothing downloaded, decompiled or remapped per
  * node. Real mode is today's build, and the one the database is generated from.
  *
  * ```
@@ -136,19 +136,18 @@ private fun broughtByProjects(configuration: Configuration): List<File> {
 }
 
 /**
- * Stub mode: the node's stub jar on `compileOnly`. Real mode: `listStubInputs`, and
+ * Stub mode: the node's classes from the shared store on `compileOnly`. Real mode: `listStubInputs`, and
  * `checkStubEquivalence` where the database has the node. Call LAST in a node convention, after every
  * source set exists.
  */
 fun Project.configureStubs() {
     if (stubMode) {
-        dependencies.add("compileOnly", files(stubJarTask().flatMap { it.jar }))
+        dependencies.add("compileOnly", stubClasses())
         return
     }
     registerListStubInputs()
     if (!hasStub) return
 
-    val stubJar = stubJarTask()
     tasks.register("checkStubEquivalence") {
         group = "stubs"
         description = "Fails unless this node's stub build is byte-identical to its real build."
@@ -160,7 +159,7 @@ fun Project.configureStubs() {
             val r = real.get()
             dependsOn(r)
             source = r.source
-            classpath = r.classpath.minus(stubTargets()) + files(stubJar.flatMap { it.jar })
+            classpath = r.classpath.minus(stubTargets()) + stubClasses()
             javaCompiler.set(r.javaCompiler)
             sourceCompatibility = r.sourceCompatibility
             targetCompatibility = r.targetCompatibility
@@ -227,14 +226,16 @@ fun Project.registerStubReobf(shadowTask: String, classifier: String, libraries:
     val (tool, args) = srgRenamer
     val source = tasks.named(shadowTask, AbstractArchiveTask::class.java)
     val minecraftVersion = property("mc.version").toString()
-    val stubJar = stubJarTask()
+    val database = stubDatabase
+    val node = stubKey
     return tasks.register(name, SrgReobfJar::class.java) {
         group = "build"
         description = "$shadowTask renamed to SRG through the stub database's names."
         from(source.map { zipTree(it.archiveFile) })
         exclude("META-INF/MANIFEST.MF")
         minecraft.set(minecraftVersion)
-        names.set(stubJar.flatMap { it.names })
+        stubDatabase.set(database)
+        stubNode.set(node)
         this.libraries.from(libraries)
         renamer.from(configurations.detachedConfiguration(dependencies.create(tool)))
         renamerArgs.set(args)
@@ -250,13 +251,15 @@ fun Project.registerStubRemap(shadowTask: String, classifier: String, libraries:
                               name: String = thinJarTask(this, shadowTask)): TaskProvider<TinyRemapJar> {
     val source = tasks.named(shadowTask, AbstractArchiveTask::class.java)
     val attributes = StubDatabase.manifest(stubDatabase!!, stubKey) + (FABRIC_GRADLE_VERSION to gradle.gradleVersion)
-    val stubJar = stubJarTask()
+    val database = stubDatabase
+    val node = stubKey
     return tasks.register(name, TinyRemapJar::class.java) {
         group = "build"
         description = "$shadowTask renamed to intermediary through the stub database's names."
         from(source.map { zipTree(it.archiveFile) })
         exclude("META-INF/MANIFEST.MF")
-        mappings.set(stubJar.flatMap { it.names })
+        stubDatabase.set(database)
+        stubNode.set(node)
         this.libraries.from(libraries)
         remapper.from(configurations.detachedConfiguration(dependencies.create(TINY_REMAPPER)))
         manifest.attributes(attributes.toMap())
@@ -274,7 +277,7 @@ const val FABRIC_GRADLE_VERSION = "Fabric-Gradle-Version"
 private fun Project.registerRenameEquivalence(shadowTask: String, real: TaskProvider<out AbstractArchiveTask>) {
     if (!hasStub) return
     val libraries = extensions.getByType(SourceSetContainer::class.java).getByName("main").compileClasspath
-        .minus(stubTargets()) + files(stubJarTask().flatMap { it.jar })
+        .minus(stubTargets()) + stubClasses()
     val checkName = "stubCheck" + real.name.replaceFirstChar(Char::uppercaseChar)
     val stub: TaskProvider<out AbstractArchiveTask> = if (modernLoader == "fabric") registerStubRemap(shadowTask, "", libraries, checkName)
         else registerStubReobf(shadowTask, "", libraries, checkName)
@@ -292,16 +295,13 @@ private fun Project.compareStubOutput(what: String, expected: Any, actual: Any) 
     tasks.named("checkStubEquivalence").configure { dependsOn(compare) }
 }
 
-private fun Project.stubJarTask(): TaskProvider<StubJar> =
-    if ("stubJar" in tasks.names) tasks.named("stubJar", StubJar::class.java)
-    else tasks.register("stubJar", StubJar::class.java) {
-        group = "stubs"
-        description = "This node's slice of the stub database: the class files it compiles against, and its names."
-        database.set(stubDatabase)
-        node.set(stubKey)
-        jar.set(layout.buildDirectory.file("stubs/stub.jar"))
-        names.set(layout.buildDirectory.file("stubs/stub.names"))
-    }
+/** The shared store's set jars this node compiles against, unpacked on first use (@see StubStore). */
+private fun Project.stubClasses(): FileCollection {
+    val database = stubDatabase!!
+    val node = stubKey
+    val home = gradle.gradleUserHomeDir
+    return files(provider { StubStore.jarsFor(database, node, home) })
+}
 
 /**
  * Real mode: writes `build/stubs/inputs.txt` for [StubDatabase] — `target <path>` per jar the stub

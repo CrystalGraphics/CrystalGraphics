@@ -5,6 +5,9 @@ version a branch targets is a node, `:runtime:mc:modern:<branch>:<version>`. How
 add a version and what will bite: [`singlejar-logic/README.md`](../../../singlejar-logic/README.md)
 § *Many Minecraft versions*, beside the code that implements it (`ModernTree`, `ModernConventions`).
 
+Every node but the active one can compile from the committed stub database instead of its real
+toolchain (`-PcgStubs`); a node added or re-pinned needs it regenerated — [`STUBS.md`](../../../singlejar-logic/STUBS.md).
+
 ```bash
 ./gradlew checkAllTargets                                # every node, every source set
 ./gradlew :runtime:mc:modern:forge:1.20.1:runClient
