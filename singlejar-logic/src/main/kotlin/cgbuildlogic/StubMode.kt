@@ -58,8 +58,16 @@ val Project.stubDatabase: File?
     get() = listOf("singlejar-logic/stubs.zip", "CrystalGraphics/singlejar-logic/stubs.zip")
         .map { rootDir.resolve(it) }.firstOrNull { it.isFile }
 
-/** This node's key in the database: `forge:1.20.1`. */
-val Project.stubKey: String get() = "$modernLoader:$name"
+/**
+ * This node's key in the database: `forge:1.20.1` on the modern tree, `legacy/forge:1.12.2` on another —
+ * `<tree>/<branch>:<version>`, the tree left out for modern so its keys predate the others unchanged.
+ */
+val Project.stubKey: String get() = StubDatabase.key(parent!!.parent!!.name, stubBranch, name)
+
+/** The branch this node belongs to — its loader, or `common` — on whichever tree. */
+val Project.stubBranch: String get() = parent!!.name
+
+private val Project.onModernTree: Boolean get() = parent?.parent?.path == MODERN_TREE
 
 /** Whether this node compiles against its stub. Decided once per build. */
 val Project.stubMode: Boolean
@@ -203,8 +211,9 @@ fun Project.configureStubs() {
 fun Project.registerThinRename(shadowTask: String, classifier: String, loomMappings: (() -> File)? = null,
                                realRename: () -> TaskProvider<out AbstractArchiveTask>): TaskProvider<out AbstractArchiveTask> {
     val format = when {
-        modernLoader == "fabric" -> StubDatabase.Names.TINY
-        modernLoader == "forge" && forgeRunsSrg(name) -> StubDatabase.Names.TSRG
+        stubBranch == "fabric" -> StubDatabase.Names.TINY
+        // Legacy Forge always runs SRG members; modern Forge until 1.20.6.
+        stubBranch == "forge" && (!onModernTree || forgeRunsSrg(name)) -> StubDatabase.Names.TSRG
         else -> return tasks.named(shadowTask, AbstractArchiveTask::class.java)
     }
     val libraries = extensions.getByType(SourceSetContainer::class.java).getByName("main").compileClasspath
@@ -289,7 +298,7 @@ private fun Project.registerRenameEquivalence(shadowTask: String, real: TaskProv
     val libraries = extensions.getByType(SourceSetContainer::class.java).getByName("main").compileClasspath
         .minus(stubTargets()) + stubClasses()
     val checkName = "stubCheck" + real.name.replaceFirstChar(Char::uppercaseChar)
-    val stub: TaskProvider<out AbstractArchiveTask> = if (modernLoader == "fabric") registerStubRemap(shadowTask, "", libraries, checkName)
+    val stub: TaskProvider<out AbstractArchiveTask> = if (stubBranch == "fabric") registerStubRemap(shadowTask, "", libraries, checkName)
         else registerStubReobf(shadowTask, "", libraries, checkName)
     stub.configure { destinationDirectory.set(layout.buildDirectory.dir("stubs/check/$shadowTask")) }
     compareStubOutput(real.name, real.flatMap { it.archiveFile }, stub.flatMap { it.archiveFile })

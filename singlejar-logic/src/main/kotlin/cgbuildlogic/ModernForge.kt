@@ -107,6 +107,37 @@ fun Project.useNeoForgeApi() {
 }
 
 /**
+ * Registers `reobf<ShadowTask>` for a LEGACY Forge node (1.8–1.12.2): [shadowTask]'s jar from MCP names to
+ * the SRG members FML runs, class names unchanged, from the node's MCP pins:
+ *
+ * ```properties
+ * mcp.version = 1.12.2               # de.oceanlabs.mcp:mcp:1.12.2:srg@zip -- joined.srg
+ * mcp.mappings = stable:39-1.12      # de.oceanlabs.mcp:mcp_stable:39-1.12@zip -- the MCP names
+ * ```
+ */
+fun Project.registerMcpReobf(shadowTask: String, classifier: String, libraries: FileCollection): TaskProvider<SrgReobfJar> {
+    repositories.maven { name = "Forge"; setUrl("https://maven.minecraftforge.net/") }
+    val (channel, mappingsVersion) = property("mcp.mappings").toString().split(':', limit = 2)
+    val srg = configurations.detachedConfiguration(dependencies.create("de.oceanlabs.mcp:mcp:${property("mcp.version")}:srg@zip"))
+    val mappings = configurations.detachedConfiguration(dependencies.create("de.oceanlabs.mcp:mcp_$channel:$mappingsVersion@zip"))
+    val renamer = configurations.detachedConfiguration(dependencies.create(AUTO_RENAMING_TOOL))
+    val source = tasks.named(shadowTask, AbstractArchiveTask::class.java)
+    val minecraftVersion = property("mc.version").toString()
+    return tasks.register("reobf" + shadowTask.replaceFirstChar(Char::uppercaseChar), SrgReobfJar::class.java) {
+        group = "build"
+        description = "$shadowTask renamed to the SRG members legacy Forge $minecraftVersion runs."
+        from(source.map { zipTree(it.archiveFile) })
+        exclude("META-INF/MANIFEST.MF")
+        minecraft.set(minecraftVersion)
+        mcpSrg.from(srg)
+        mcpMappings.from(mappings)
+        this.libraries.from(libraries)
+        this.renamer.from(renamer)
+        archiveClassifier.set(classifier)
+    }
+}
+
+/**
  * Registers `reobf<ShadowTask>`: [shadowTask]'s jar at SRG members. [libraries] is what its classes
  * extend -- the source set's compile classpath.
  */
