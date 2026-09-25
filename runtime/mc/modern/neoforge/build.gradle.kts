@@ -7,11 +7,14 @@
 // @see cgbuildlogic.useNeoForgeApi
 
 import cgbuildlogic.commonNode
+import cgbuildlogic.stubMode
 import cgbuildlogic.useNeoForgeApi
+import net.neoforged.moddevgradle.dsl.NeoForgeExtension
 
 plugins {
     id("cg-modern-loader")
-    id("net.neoforged.moddev")
+    // ModDevGradle is applied below, on a real node only (cgbuildlogic.StubMode); its classes are
+    // already on build-logic's classpath, which is how common nodes apply it too.
     id("com.gradleup.shadow")
 }
 
@@ -32,9 +35,12 @@ repositories {
 }
 
 val fromParts = findProperty("neoform.version") != null
-if (fromParts) useNeoForgeApi()
+if (!stubMode) {
+    pluginManager.apply("net.neoforged.moddev")
+    if (fromParts) useNeoForgeApi()
+}
 
-neoForge {
+if (!stubMode) configure<NeoForgeExtension> {
     if (fromParts) neoFormVersion = property("neoform.version").toString()
     else version = property("neoforge.version").toString()
 
@@ -91,33 +97,36 @@ tasks.shadowJar {
 
 // Extracts this node's NeoForge + Minecraft sources and resources into build/mc-src for local navigation.
 // Sync (not Copy) removes stale files when the source jar changes between toolchain version bumps.
-val extractMcSources by tasks.registering(Sync::class) {
-    description = "Extracts this node's NeoForge + Minecraft sources and resources into build/mc-src for local navigation."
-    group = "crystalgraphics"
+// A real node only: in stub mode there are no sources to extract.
+if (!stubMode) {
+    val extractMcSources = tasks.register<Sync>("extractMcSources") {
+        description = "Extracts this node's NeoForge + Minecraft sources and resources into build/mc-src for local navigation."
+        group = "crystalgraphics"
 
-    // dependsOn (not mustRunAfter) — mustRunAfter only orders tasks already scheduled; it does not
-    // cause createMinecraftArtifacts to run, so the jar would be absent on a clean checkout.
-    dependsOn("createMinecraftArtifacts")
+        // dependsOn (not mustRunAfter) — mustRunAfter only orders tasks already scheduled; it does not
+        // cause createMinecraftArtifacts to run, so the jar would be absent on a clean checkout.
+        dependsOn("createMinecraftArtifacts")
 
-    // Lazy providers resolved at execution time — never at configuration time (Gradle 9 rule).
-    // fileTree scan is the fallback because ModDevGradle does not expose a public typed output
-    // property for the sources or client-extra jars.
-    val sourcesJar = layout.buildDirectory.dir("moddev/artifacts").map { dir ->
-        dir.asFileTree.matching { include("*-sources.jar") }.singleFile
+        // Lazy providers resolved at execution time — never at configuration time (Gradle 9 rule).
+        // fileTree scan is the fallback because ModDevGradle does not expose a public typed output
+        // property for the sources or client-extra jars.
+        val sourcesJar = layout.buildDirectory.dir("moddev/artifacts").map { dir ->
+            dir.asFileTree.matching { include("*-sources.jar") }.singleFile
+        }
+        val resourcesJar = layout.buildDirectory.dir("moddev/artifacts").map { dir ->
+            // `client-extra-<v>.jar` on 1.20.x, `<loader>-<v>-client-extra-aka-minecraft-resources.jar` on 1.21.
+            dir.asFileTree.matching { include("*client-extra*.jar") }.singleFile
+        }
+
+        from(zipTree(sourcesJar)) { into("java") }
+        from(zipTree(resourcesJar)) { into("resources") }
+        into(layout.buildDirectory.dir("mc-src"))
     }
-    val resourcesJar = layout.buildDirectory.dir("moddev/artifacts").map { dir ->
-        // `client-extra-<v>.jar` on 1.20.x, `<loader>-<v>-client-extra-aka-minecraft-resources.jar` on 1.21.
-        dir.asFileTree.matching { include("*client-extra*.jar") }.singleFile
-    }
 
-    from(zipTree(sourcesJar)) { into("java") }
-    from(zipTree(resourcesJar)) { into("resources") }
-    into(layout.buildDirectory.dir("mc-src"))
+    // extractMcSources is cheap (unzips an already-present jar — createMinecraftArtifacts ran first).
+    // Wire it into classes so build/mc-src/ is always populated after a normal compile.
+    tasks.named("classes") { dependsOn(extractMcSources) }
 }
-
-// extractMcSources is cheap (unzips an already-present jar — createMinecraftArtifacts ran first).
-// Wire it into classes so build/mc-src/ is always populated after a normal compile.
-tasks.named("classes") { dependsOn(extractMcSources) }
 
 // -- The thin jar (J1) ----------------------------------------------------------------------------
 //

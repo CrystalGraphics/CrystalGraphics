@@ -1,5 +1,6 @@
 import cgbuildlogic.ModDescriptor
 import cgbuildlogic.commonNode
+import cgbuildlogic.configureStubs
 import cgbuildlogic.devRunLibraries
 import cgbuildlogic.modernLoader
 import cgbuildlogic.nodeJava
@@ -8,6 +9,7 @@ import cgbuildlogic.devNodeMixinConfigs
 import cgbuildlogic.registerNodeMixins
 import cgbuildlogic.registerNodeVariants
 import cgbuildlogic.registerCheckDescriptorsNameNoCommon
+import cgbuildlogic.stubMode
 import cgbuildlogic.useNodeCoordinates
 
 plugins { id("cg-java") }
@@ -77,10 +79,10 @@ dependencies {
     // Fabric/Loom dev runs pick this up from runtimeClasspath.
     // ModDevGradle (Forge/NeoForge) dev runs need it in the mods{} sourceSet block instead.
     "runtimeOnly"(project(":freetype-msdfgen-harfbuzz-bindings"))
-    // Mixin compileOnly — loaders bundle it at runtime
-    "compileOnly"("org.spongepowered:mixin:${property("modern.mixin")}")
+    // Mixin compileOnly — loaders bundle it at runtime. A stub build has its signatures in the stub.
+    if (!stubMode) "compileOnly"("org.spongepowered:mixin:${property("modern.mixin")}")
     "annotationProcessor"("org.spongepowered:mixin:${property("modern.mixin")}:processor")
-    "compileOnly"("io.github.llamalad7:mixinextras-common:${property("modern.mixinextras")}")
+    if (!stubMode) "compileOnly"("io.github.llamalad7:mixinextras-common:${property("modern.mixinextras")}")
 }
 
 // ── The thin jar (J1) ────────────────────────────────────────────────────────────────────────────
@@ -193,3 +195,6 @@ afterEvaluate {
         }
     }
 }
+
+// Last, once every source set exists: the stub on the classpath, or the tasks that write and check it.
+configureStubs()

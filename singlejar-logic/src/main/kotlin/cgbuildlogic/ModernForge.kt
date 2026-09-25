@@ -31,8 +31,19 @@ import org.gradle.api.tasks.bundling.AbstractArchiveTask
  *   past 1.20.1. prodSmoke is its runtime check.
  */
 
-/** The renamer ModDevGradle's legacy reobfuscation runs, and [SrgReobfJar] runs the same one. */
+/** The renamer [SrgReobfJar] runs. */
 const val AUTO_RENAMING_TOOL = "net.neoforged:AutoRenamingTool:2.0.17:all"
+
+/** The renamer ModDevGradle 2.0.141's legacyForge reobfuscation runs — an older build of the same tool. */
+const val LEGACY_FORGE_RENAMER = "net.neoforged:AutoRenamingTool:2.0.4:all"
+
+/**
+ * The renamer this Forge node's real build runs and its arguments, so a stub build runs the same:
+ * legacyForge's own, or [SrgReobfJar]'s.
+ */
+val Project.srgRenamer: Pair<String, List<String>>
+    get() = if (usesLegacyForge) LEGACY_FORGE_RENAMER to listOf("--strip-sigs")
+        else AUTO_RENAMING_TOOL to listOf("--disable-abstract-param", "--strip-sigs")
 
 /**
  * Minecraft's own libraries, which NeoForm pins strictly: Forge's jars ask for newer ones (ASM from 53,
