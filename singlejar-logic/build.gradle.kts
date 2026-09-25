@@ -1,5 +1,3 @@
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-
 plugins { `kotlin-dsl` }
 
 // The coordinates a consumer substitutes against. A composite build matches an included build to a
@@ -31,7 +29,7 @@ dependencies {
     // legacy mode uses, where that mode cannot reach (Forge 1.20.2-1.20.4).
     implementation("net.neoforged:srgutils:1.0.11")
 
-    // The stub machinery reads and writes class files (StubClosure, StubSignatures).
+    // The stub database reads class files and synthesizes them (StubDatabase, StubSignatures).
     implementation("org.ow2.asm:asm-tree:9.9")
 
     // Named rather than read from `dep.junit`: this is a standalone included build with its own
@@ -39,8 +37,17 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
 }
 
-// SigRecorder runs inside a node's javac, the oldest of which is 17; Kotlin follows, as Gradle requires
-// both targets to agree.
-java { targetCompatibility = JavaVersion.VERSION_17 }
-tasks.withType<JavaCompile>().configureEach { options.release.set(17) }
-kotlin { compilerOptions { jvmTarget.set(JvmTarget.JVM_17) } }
+// The stub database every node's stub build compiles against (StubDatabase), from the `listStubInputs`
+// each repo's real build wrote. Owned here; regenerated when a node is added or re-pinned.
+// -PcgStubText also writes stubs/ as plain text, to read or diff.
+tasks.register<JavaExec>("generateStubDatabase") {
+    group = "stubs"
+    description = "Writes stubs.zip: every node's platform API, deduplicated across nodes."
+    classpath = sourceSets["main"].runtimeClasspath + sourceSets["main"].compileClasspath
+    mainClass.set("cgbuildlogic.StubDatabase")
+    maxHeapSize = "6g"
+    val graphics = projectDir.parentFile
+    val roots = listOfNotNull(graphics, graphics.parentFile.takeIf { it.resolve("runtime/mc/modern").isDirectory })
+    val text = if (providers.gradleProperty("cgStubText").isPresent) projectDir.resolve("stubs").absolutePath else "-"
+    args(listOf(projectDir.resolve("stubs.zip").absolutePath, text) + roots.map { it.absolutePath })
+}

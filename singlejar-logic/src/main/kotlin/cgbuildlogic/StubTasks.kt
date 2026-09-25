@@ -4,7 +4,6 @@ import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.RegularFileProperty
-import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Classpath
@@ -13,7 +12,6 @@ import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.Internal
-import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
@@ -21,7 +19,6 @@ import org.gradle.api.tasks.TaskAction
 import org.gradle.jvm.tasks.Jar
 import org.gradle.process.ExecOperations
 import java.io.File
-import java.util.jar.JarFile
 import java.util.jar.Manifest
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
@@ -29,12 +26,13 @@ import java.util.zip.ZipOutputStream
 import javax.inject.Inject
 
 /**
- * The class files a stub build compiles against, synthesized from the node's committed `stub.sig`.
+ * One node's slice of the stub database: the class files it compiles against, and the names its thin
+ * jar is renamed with (empty where its loader runs Mojang's).
  *
  * ```kotlin
  * val stubJar = tasks.register<StubJar>("stubJar") {
- *     signatures.set(file("stub.sig"))
- *     jar.set(layout.buildDirectory.file("stubs/stub.jar"))
+ *     database.set(file("singlejar-logic/stubs.zip")); node.set("forge:1.20.1")
+ *     jar.set(layout.buildDirectory.file("stubs/stub.jar")); names.set(layout.buildDirectory.file("stubs/stub.names"))
  * }
  * dependencies { "compileOnly"(files(stubJar.flatMap { it.jar })) }
  * ```
@@ -44,99 +42,28 @@ abstract class StubJar : DefaultTask() {
 
     @get:InputFile
     @get:PathSensitive(PathSensitivity.NONE)
-    abstract val signatures: RegularFileProperty
+    abstract val database: RegularFileProperty
+
+    @get:Input
+    abstract val node: Property<String>
 
     @get:OutputFile
     abstract val jar: RegularFileProperty
 
-    @TaskAction
-    fun write() {
-        val stub = StubSignatures.read(signatures.get().asFile)
-        ZipOutputStream(jar.get().asFile.outputStream().buffered()).use { out ->
-            for (c in stub.classes.sortedBy { it.name }) {
-                out.putNextEntry(ZipEntry(c.name + ".class").apply { time = FIXED_TIME })
-                out.write(StubSignatures.classBytes(c))
-                out.closeEntry()
-            }
-        }
-    }
-
-    private companion object {
-        /** 1980-02-01: a reproducible entry time, as Gradle's own reproducible archives use. */
-        const val FIXED_TIME = 315_532_800_000L + 31L * 86_400_000L
-    }
-}
-
-/**
- * Writes a node's `stub.sig` — and, where the node's loader runs other names, `stub.tsrg`/`stub.tiny` —
- * from a REAL build: what [SigRecorder] saw javac resolve, closed over the real classpath.
- *
- * ```kotlin
- * tasks.register<GenerateStubs>("generateStubs") {
- *     records.from(file("build/stubs/records"))          // this node's, and its common node's for a loader
- *     classpath.from(compileJava.classpath)              // in javac's order
- *     targets.from(externalJars)                         // what the stub replaces
- *     fullMappings.set(namedToSrg); mappingFormat.set(StubMappings.Format.TSRG)
- *     signatures.set(file("stub.sig")); names.set(file("stub.tsrg"))
- * }
- * ```
- *
- * - Writes into the source tree: its outputs are committed, and a clone builds from them.
- * - [manifestFrom] is the real renamed thin jar on Fabric, whose `Fabric-*` attributes the merged jar
- *   copies; the stub rename writes them back from the `.sig` ([TinyRemapJar]). `Fabric-Gradle-Version`
- *   is left out, since a stub build knows it.
- */
-abstract class GenerateStubs : DefaultTask() {
-
-    @get:InputFiles
-    @get:PathSensitive(PathSensitivity.RELATIVE)
-    abstract val records: ConfigurableFileCollection
-
-    @get:Classpath
-    abstract val classpath: ConfigurableFileCollection
-
-    @get:Classpath
-    abstract val targets: ConfigurableFileCollection
-
-    @get:Optional
-    @get:InputFile
-    @get:PathSensitive(PathSensitivity.NONE)
-    abstract val fullMappings: RegularFileProperty
-
-    @get:Optional
-    @get:Input
-    abstract val mappingFormat: Property<StubMappings.Format>
-
-    @get:Optional
-    @get:InputFile
-    @get:PathSensitive(PathSensitivity.NONE)
-    abstract val manifestFrom: RegularFileProperty
-
-    @get:OutputFile
-    abstract val signatures: RegularFileProperty
-
-    @get:Optional
     @get:OutputFile
     abstract val names: RegularFileProperty
 
     @TaskAction
-    fun generate() {
-        val recordFiles = records.files.filter { it.isFile }
-        if (recordFiles.isEmpty()) throw GradleException("$path found no references recorded: the compile tasks did not run with the recorder.")
-        val classes = StubClosure(classpath.files.toList(), targets.files).use { it.keep(recordFiles) }
-        val manifest = if (manifestFrom.isPresent) JarFile(manifestFrom.get().asFile).use { jar ->
-            jar.manifest.mainAttributes.entries.map { it.key.toString() to it.value.toString() }
-                .filter { (key, _) -> key.startsWith("Fabric-") && key != FABRIC_GRADLE_VERSION }
-        } else emptyList()
-        StubSignatures.write(classes, manifest, signatures.get().asFile)
-        if (fullMappings.isPresent) {
-            StubMappings.subset(fullMappings.get().asFile, mappingFormat.get(), classes, names.get().asFile)
+    fun write() {
+        val slice = StubDatabase.slice(database.get().asFile, node.get())
+        ZipOutputStream(jar.get().asFile.outputStream().buffered()).use { out ->
+            for (c in slice.classes.sortedBy { it.name }) {
+                out.putNextEntry(ZipEntry(c.name + ".class").apply { time = StubDatabase.FIXED_TIME })
+                out.write(StubSignatures.classBytes(c))
+                out.closeEntry()
+            }
         }
-        logger.lifecycle("[stubs] {}: {} classes -> {}", path, classes.size, signatures.get().asFile)
-    }
-
-    companion object {
-        const val FABRIC_GRADLE_VERSION = "Fabric-Gradle-Version"
+        names.get().asFile.writeText(slice.names)
     }
 }
 
@@ -147,10 +74,10 @@ abstract class GenerateStubs : DefaultTask() {
  * ```kotlin
  * tasks.register<TinyRemapJar>("remapThinJar") {
  *     from(thinShadowJar.map { zipTree(it.archiveFile) })
- *     mappings.set(file("stub.tiny"))
+ *     mappings.set(stubJar.flatMap { it.names })
  *     libraries.from(sourceSets.main.get().compileClasspath)
  *     remapper.from(configurations.detachedConfiguration(dependencies.create(TINY_REMAPPER)))
- *     manifest.attributes(stub.manifest.toMap())
+ *     manifest.attributes(StubDatabase.manifest(database, "fabric:1.20.1").toMap())
  *     archiveClassifier.set("thin")
  * }
  * ```
