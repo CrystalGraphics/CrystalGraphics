@@ -95,6 +95,19 @@ abstract class SrgReobfJar @Inject constructor(private val exec: ExecOperations)
     @get:PathSensitive(PathSensitivity.NONE)
     abstract val backportedMappings: RegularFileProperty
 
+    /**
+     * Legacy Forge (1.8–1.12.2), instead of [mcpConfig]: MCP's `joined.srg` (`de.oceanlabs.mcp:mcp:<v>:srg@zip`)
+     * and the CSVs naming its SRG members (`de.oceanlabs.mcp:mcp_<channel>:<v>@zip`). The table is then MCP
+     * names -> SRG members, class names unchanged — what FML runs on those versions.
+     */
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val mcpSrg: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val mcpMappings: ConfigurableFileCollection
+
     @TaskAction
     override fun copy() {
         super.copy()
@@ -102,8 +115,11 @@ abstract class SrgReobfJar @Inject constructor(private val exec: ExecOperations)
         val official = File(temporaryDir, "official.jar")
         jar.copyTo(official, overwrite = true)
         val table = namesTable
-        if (stubDatabase.isPresent) table.writeText(StubDatabase.names(stubDatabase.get().asFile, stubNode.get()))
-        else officialToSrg(table)
+        when {
+            stubDatabase.isPresent -> table.writeText(StubDatabase.names(stubDatabase.get().asFile, stubNode.get()))
+            !mcpSrg.isEmpty -> mcpToSrg(table)
+            else -> officialToSrg(table)
+        }
         File(temporaryDir, "renamer.log").outputStream().use { log ->
             renameTo(official, jar, table, log)
         }
@@ -153,6 +169,24 @@ abstract class SrgReobfJar @Inject constructor(private val exec: ExecOperations)
         URI(url).toURL().openStream().use { JsonSlurper().parse(it) } as Map<*, *>
 
     /** From 1.17 Forge runs Mojang's class names; only members are SRG. */
+    /** MCP -> SRG: `joined.srg` is obfuscated -> SRG; renamed through the CSVs it is obfuscated -> MCP; one reversed and chained onto the other. */
+    private fun mcpToSrg(out: File) {
+        val obfToSrg = ZipFile(mcpSrg.singleFile).use { zip ->
+            zip.getInputStream(zip.getEntry("joined.srg")).use { IMappingFile.load(it) }
+        }
+        val (fields, methods) = ZipFile(mcpMappings.singleFile).use { zip -> csv(zip, "fields.csv") to csv(zip, "methods.csv") }
+        val obfToMcp = obfToSrg.rename(object : IRenamer {
+            override fun rename(value: IMappingFile.IField): String = fields[value.mapped] ?: value.mapped
+            override fun rename(value: IMappingFile.IMethod): String = methods[value.mapped] ?: value.mapped
+        })
+        obfToMcp.reverse().chain(obfToSrg).write(out.toPath(), IMappingFile.Format.TSRG2, false)
+    }
+
+    /** `searge,name,...` -> searge to name; the header skipped. */
+    private fun csv(zip: ZipFile, name: String): Map<String, String> =
+        zip.getInputStream(zip.getEntry(name)).bufferedReader().readLines().drop(1)
+            .map { it.split(',', limit = 3) }.filter { it.size >= 2 }.associate { it[0] to it[1] }
+
     private object KeepClassNames : IRenamer {
         override fun rename(value: IMappingFile.IClass): String = value.original
     }

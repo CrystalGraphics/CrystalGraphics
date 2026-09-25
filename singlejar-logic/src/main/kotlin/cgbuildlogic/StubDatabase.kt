@@ -60,6 +60,10 @@ object StubDatabase {
 
     private val BRANCHES = listOf("common") + MODERN_LOADERS
 
+    /** A node's key: `<tree>/<branch>:<version>`, with the modern tree's name left out. */
+    fun key(tree: String, branch: String, version: String): String =
+        (if (tree == "modern") "" else "$tree/") + "$branch:$version"
+
     @JvmStatic
     fun main(args: Array<String>) {
         val zip = File(args[0])
@@ -119,15 +123,18 @@ object StubDatabase {
 
     // ── Writing ───────────────────────────────────────────────────────────────────────────────────
 
-    /** Every `build/stubs/inputs.txt` under [roots]' 1.20.x trees, merged per node across roots. */
+    /**
+     * Every `build/stubs/inputs.txt` under [roots]' node trees — `runtime/mc/<tree>/<branch>/versions/<v>` —
+     * merged per node across roots.
+     */
     fun readNodes(roots: List<File>): List<Node> {
         val targets = LinkedHashMap<String, LinkedHashSet<File>>()
         val names = HashMap<String, Pair<Names, File>>()
         val manifests = HashMap<String, LinkedHashMap<String, String>>()
-        for (root in roots) for (branch in BRANCHES) {
-            for (version in File(root, "runtime/mc/modern/$branch/versions").listFiles().orEmpty()) {
+        for (root in roots) for (tree in File(root, "runtime/mc").listFiles().orEmpty()) for (branch in tree.listFiles().orEmpty()) {
+            for (version in File(branch, "versions").listFiles().orEmpty()) {
                 val inputs = File(version, "build/stubs/inputs.txt").takeIf { it.isFile } ?: continue
-                val key = "$branch:${version.name}"
+                val key = key(tree.name, branch.name, version.name)
                 for (line in inputs.readLines()) {
                     val parts = line.split(' ', limit = 3)
                     when (parts[0]) {
@@ -138,7 +145,11 @@ object StubDatabase {
                 }
             }
         }
-        return targets.keys.sortedWith(compareBy<String> { BRANCHES.indexOf(it.substringBefore(':')) }
+        // The modern tree first, its branches in their merge order: the node order sets are numbered
+        // against, so a tree added later changes no modern set.
+        fun tree(key: String) = if ('/' in key) key.substringBefore('/') else ""
+        fun branch(key: String) = key.substringAfter('/').substringBefore(':').let { b -> BRANCHES.indexOf(b).takeIf { it >= 0 } ?: BRANCHES.size }
+        return targets.keys.sortedWith(compareBy<String>({ tree(it) }, { branch(it) })
             .then(compareBy(MinecraftVersionOrder) { it.substringAfter(':') }))
             .map { Node(it, targets.getValue(it).toList(), names[it], manifests[it]?.toList().orEmpty()) }
     }
