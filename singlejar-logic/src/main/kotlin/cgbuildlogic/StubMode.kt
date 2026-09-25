@@ -36,7 +36,8 @@ import java.util.jar.JarFile
  * - one of its own [REAL_TASKS] is requested, by path — in either build of the composite, so running
  *   CrystalGUI's node makes CrystalGraphics' node of the same loader and version real too — or
  *   `listStubInputs` is requested at all;
- * - it is Stonecutter's active version, so the IDE has the whole game where code is written;
+ * - it is Stonecutter's active version AND an IDE is syncing, so the IDE has the whole game where code
+ *   is written while a command-line build stays stubbed;
  * - it is listed in `-PcgRealNodes=forge:1.20.1,1.21.1` (a bare version names every branch);
  * - the database has no entry for it.
  *
@@ -76,7 +77,13 @@ private val Project.stubsRequested: Boolean
     get() = (rootStartParameter.projectProperties["cgStubs"] ?: findProperty("cgStubs")?.toString()) != "false"
 
 private val Project.isRealNode: Boolean
-    get() = requested(REAL_TASKS) || stonecutterActive || listedReal
+    get() = requested(REAL_TASKS) || (ideSync && stonecutterActive) || listedReal
+
+/**
+ * An IntelliJ Gradle sync, which sets `idea.sync.active` on the daemon. The active node is real only
+ * then: the IDE gets the whole game where code is written, and a command-line build downloads nothing.
+ */
+private val ideSync: Boolean get() = System.getProperty("idea.sync.active") == "true"
 
 private val Project.rootStartParameter: StartParameter
     get() {
