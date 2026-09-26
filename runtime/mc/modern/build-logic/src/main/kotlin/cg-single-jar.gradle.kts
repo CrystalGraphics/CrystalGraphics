@@ -192,6 +192,9 @@ dependencies {
 // too. The class is compiled against a stand-in for Forge's annotation (`jomlStub`), so no Forge is on
 // this build's classpath; only the annotation's name and value reach the class file.
 //
+// BOTH `value` AND `modid`, as the Forge bootstrapper carries: FML 1.8-1.12.2 scans for the same annotation
+// and reads `modid`, and puts every jar in `mods/` on the classpath as 1.7.10 does.
+//
 // THE RANGE STOPS AT 1.19.3, which is where Minecraft adopted JOML and where a second copy becomes
 // the split package E-J9-JOML measured. Being refused by range names the reason; a ResolutionException
 // does not. 1.7.10 reads `mcmod.info` and never looks at this file.
@@ -252,12 +255,12 @@ val jomlStubSources by tasks.registering {
         File(root, "net/minecraftforge/fml/common/Mod.java").writeText(
             "package net.minecraftforge.fml.common;\n\n" +
             "@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n" +
-            "public @interface Mod { String value(); }\n")
+            "public @interface Mod { String value() default \"\"; String modid() default \"\"; }\n")
         File(root, "com/crystalgraphics/joml").mkdirs()
         File(root, "com/crystalgraphics/joml/JomlCompanion.java").writeText(
             "package com.crystalgraphics.joml;\n\n" +
             "/** The mod javafml constructs for the JOML companion; it does nothing else. */\n" +
-            "@net.minecraftforge.fml.common.Mod(\"crystalgraphics_joml\")\n" +
+            "@net.minecraftforge.fml.common.Mod(value = \"crystalgraphics_joml\", modid = \"crystalgraphics_joml\")\n" +
             "public final class JomlCompanion {\n    public JomlCompanion() {}\n}\n")
     }
 }
