@@ -229,10 +229,9 @@ fun Project.registerThinRename(shadowTask: String, classifier: String, loomMappi
         else -> rename.map { (it as SrgReobfJar).namesTable }
     }
     extensions.extraProperties.set(STUB_NAMES, format to names)
-    if (format == StubDatabase.Names.TINY) {
-        extensions.extraProperties.set(STUB_MANIFEST, rename.flatMap { it.archiveFile })
-        tasks.named("listStubInputs").configure { dependsOn(rename) }
-    }
+    // The table is the rename's own output, or appears once the toolchain has run: a listing needs it made.
+    tasks.named("listStubInputs").configure { dependsOn(rename) }
+    if (format == StubDatabase.Names.TINY) extensions.extraProperties.set(STUB_MANIFEST, rename.flatMap { it.archiveFile })
     return rename
 }
 
@@ -324,8 +323,9 @@ private fun Project.stubClasses(): FileCollection {
 
 /**
  * Real mode: writes `build/stubs/inputs.txt` for [StubDatabase] — `target <path>` per jar the stub
- * replaces, `names <format> <path>` for the full rename table, `manifest <key> <value>` per `Fabric-*`
- * attribute Loom writes. Resolves, and builds nothing but the Fabric rename it reads the manifest of.
+ * replaces, `names <format> <path>` for the full rename table (copied to `build/stubs/names.<format>`),
+ * `manifest <key> <value>` per `Fabric-*` attribute Loom writes. Runs the node's thin rename first, since
+ * that is what writes or reads the table.
  */
 private fun Project.registerListStubInputs() {
     val targets = stubTargets()
@@ -336,9 +336,15 @@ private fun Project.registerListStubInputs() {
         description = "Lists what this node's toolchain supplies, for the stub database."
         outputs.upToDateWhen { false }
         doLast {
+            val listing = out.get().asFile.apply { parentFile.mkdirs() }
+            // Kept beside the listing: SrgReobfJar writes its table into its temporary directory, which
+            // the next run of that task -- a stub build's included -- clears.
             @Suppress("UNCHECKED_CAST")
             val names = (if (extra.has(STUB_NAMES)) extra.get(STUB_NAMES) as Pair<StubDatabase.Names, Provider<File>> else null)
-                ?.let { (format, file) -> listOf("names $format ${file.get()}") }.orEmpty()
+                ?.let { (format, file) ->
+                    val kept = file.get().copyTo(listing.resolveSibling("names.${format.name.lowercase()}"), overwrite = true)
+                    listOf("names $format $kept")
+                }.orEmpty()
             @Suppress("UNCHECKED_CAST")
             val manifest = (if (extra.has(STUB_MANIFEST)) extra.get(STUB_MANIFEST) as Provider<*> else null)
                 ?.let { jar -> JarFile(file(jar.get())).use { it.manifest.mainAttributes.entries.toList() } }
@@ -350,7 +356,7 @@ private fun Project.registerListStubInputs() {
                     if (value == "unknown") throw GradleException("$path: Loom wrote $key: unknown on its remapped thin jar; rebuild it with --rerun-tasks and list again")
                 }
                 ?.map { (key, value) -> "manifest $key $value" }.orEmpty()
-            out.get().asFile.apply { parentFile.mkdirs() }.writeText(
+            listing.writeText(
                 (targets.files.map { "target $it" } + names + manifest).joinToString("\n", postfix = "\n"))
         }
     }
