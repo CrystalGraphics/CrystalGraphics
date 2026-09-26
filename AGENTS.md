@@ -25,6 +25,8 @@
 > **The 1.20.x loaders are a Stonecutter tree** — a node per (loader, Minecraft version),
 > `:runtime:mc:modern:<branch>:<version>`, each with its own `versions/<version>/gradle.properties`.
 > `./gradlew checkAllTargets` compiles every node; read `runtime/mc/modern/README.md` before touching one.
+> **Forge 1.8–1.12.2 is a second tree**, `:runtime:mc:legacy:forge:<version>` — see
+> `singlejar-logic/README.md` § *the legacy tree*.
 
 ```bash
 # Core
@@ -93,7 +95,7 @@ either `cg-single-jar.gradle.kts`, or anything about relocation, remapping or th
 
 📄 **[singlejar-logic/STUBS.md](singlejar-logic/STUBS.md)** — **stub mode.** By default every
 1.20.x node compiles against `singlejar-logic/stubs.zip` (every
-node's Minecraft, loader and library API, 16 MB) instead of its real toolchain, and produces
+node's Minecraft, loader and library API, 19 MB) instead of its real toolchain, and produces
 byte-identical jars. **Adding a node or changing its pins means regenerating `stubs.zip`**; changing code
 never does. A node missing from it builds real.
 
@@ -122,6 +124,7 @@ The repository is a Gradle multi-project build. Every subproject has a distinct 
 | `runtime/mc/modern/forge/` | 17 | LWJGL3 | MC 1.20.1 / MinecraftForge 47.x. Thin bootstrap: registers events on the Forge bus, calls `CgPlatform.register()`. |
 | `runtime/mc/modern/neoforge/` | 17 | LWJGL3 | MC 1.20.4 / NeoForge. Same pattern as forge. Despite living under `runtime/mc/modern/`, targets MC 1.20.4. |
 | `runtime/mc/modern/fabric/` | 17 | LWJGL3 | MC 1.20.1 / Fabric. Same pattern, uses Fabric API callbacks + GLFW for inputs with no Fabric API equivalent. |
+| `runtime/mc/legacy/forge/` | 17 → 8 | LWJGL2 | Forge 1.8–1.12.2, a Stonecutter node per SRG plateau (1.8.9, 1.10.2, 1.12.2), MCP names through Unimined. Ships in `com.crystalgraphics.mc.v<digits>`. A variant entry only so far; the platform services are L3 of the legacy plan. |
 | `runtime/mc/shared/` | 8 | none | **THE VARIANT SELECTOR, and every mod built from these two repositories reads this one copy** (J11.0). `Variants` (the table a merged jar declares itself with, at `META-INF/<modid>/variants.json`), `VersionRange`, `VariantEntry`, `VariantBootstrap`, plus `LoaderProbe` and `CrashVariant`. One jar carries every loader's entry class and, above one Minecraft version per loader, several of each — so a loader constructs a **bootstrapper** that picks by loader and running version. The annotated bootstrapper is NOT here: it must be part of the mod for a scanner to find it, while this module reaches a dev run as a *library* on `additionalRuntimeClasspath` and is never scanned. Each loader module carries its own ~20 lines, except Forge's: one class serves every Forge from 1.8 on, so it is its own module, `runtime/mc/forge-bootstrap`, compiled against the union annotation in `runtime/mc/forge-stubs` and started through `ForgeStart` — see `singlejar-logic/README.md`. Java 8 because FML 1.7.10 reads every class in the jar and refuses anything above major 52. |
 
 **Rule**: `core/` and `platform/` have zero compile dependency on LWJGL, MC, or any loader.

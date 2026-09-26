@@ -7,7 +7,7 @@ is what they share, and what a third project wires itself into.
 It lives in CrystalGraphics because CrystalGraphics is the parent of everything that uses it — but
 **nothing here is CrystalGraphics-specific**. No package, module, mod id or loader list is baked in.
 
-📄 **[STUBS.md](STUBS.md)** — how every Minecraft version builds from one 16 MB `stubs.zip` instead of
+📄 **[STUBS.md](STUBS.md)** — how every Minecraft version builds from one 19 MB `stubs.zip` instead of
 its real toolchain (the default), and what to regenerate when a node is added.
 
 ---
@@ -537,6 +537,44 @@ What bites:
 23. **LWJGL 3.1 has no core-profile `GLxxC` classes**, and Minecraft 1.13 ships 3.1.6. Tier 1 keeps
     them; `Lwjgl31GLBackend` is generated from it with the plain `GLxx` classes, and the 1.13 backend
     extends that instead. Anything else a 1.13 node calls names `GLxx`.
+
+---
+
+## Forge 1.8 to 1.12.2: the legacy tree
+
+`runtime/mc/legacy` is a second Stonecutter tree, because legacy Forge is MCP names on LWJGL2 and
+LaunchWrapper rather than Mojang names on LWJGL3. One branch, `forge`, and a node per SRG plateau — a
+jar built against a plateau's newest version runs on all of it, so three nodes claim nine versions:
+
+| Node | Claims | Forge | MCP names |
+|---|---|---|---|
+| `1.8.9` | `[1.8,1.9)` | `11.15.1.2318-1.8.9` | `stable:22-1.8.9` |
+| `1.10.2` | `[1.9,1.12)` | `12.18.3.2511` | `stable:29-1.10.2` |
+| `1.12.2` | `[1.12,1.13)` | `14.23.5.2859` | `stable:39-1.12` |
+
+What differs from the modern tree, and where it lives (`LegacyTree.kt`, `cg-legacy-loader`):
+
+- **Sources are in `<root>.mc.legacy` and ship in `<root>.mc.v<digits>`** — the package 1.7.10 already
+  takes at `.v1710` — so the three nodes share the merged jar. `legacyVariants` declares them to the
+  descriptors as loader `fml1122`; there is no common node to carry.
+- **Minecraft comes from Unimined's FG2 support**, applied in real mode only.
+- **The thin jar is renamed MCP -> SRG members, class names kept** (`registerMcpReobf`), from MCP's own
+  `joined.srg` and CSVs; in stub mode from the database's copy of the same table.
+- **The `@Mod` is Forge's shared bootstrapper**, which serves legacy FML too: a legacy variant gets
+  `FmlEvents` and subscribes to FML's lifecycle by event name.
+
+```java
+public final class ExampleLegacy implements VariantEntry {
+    @Override public void start(Object context) {
+        FmlEvents events = (FmlEvents) context;
+        events.on("FMLPreInitializationEvent", e -> ((FMLPreInitializationEvent) e).getModLog().info("up"));
+    }
+}
+```
+
+- The player needs **MixinBooter** on 1.8–1.12.2: the manifest's `TweakClass` is `MixinTweaker` for
+  every LaunchWrapper version, and without a provider LaunchWrapper dies before any mod loads.
+- 1.8.9's FML logs to `logs/fml-client-latest.log`, not `latest.log`.
 
 ---
 

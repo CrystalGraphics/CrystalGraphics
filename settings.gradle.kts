@@ -160,4 +160,12 @@ stonecutter {
             branch(branchName) { versions(*nodeVersions.toTypedArray()) }
         }
     }
+    // ── Forge 1.8 to 1.12.2: the legacy tree, a node per SRG plateau ─────────────────────────────
+    //
+    // MCP names on LWJGL2 and LaunchWrapper, so a tree of its own rather than more modern nodes. One
+    // branch; each node claims its whole plateau (`variant.minecraft`), since a jar built against a
+    // plateau's newest version runs on all of it. Gated like 1.7.10. @see cgbuildlogic.LegacyTree
+    if (loadersWanted) create("runtime:mc:legacy") {
+        branch("forge") { versions("1.8.9", "1.10.2", "1.12.2") }
+    }
 }

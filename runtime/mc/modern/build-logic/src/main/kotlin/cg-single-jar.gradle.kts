@@ -1,5 +1,6 @@
 import cgbuildlogic.ModDescriptor
 import cgbuildlogic.SingleJarSpec
+import cgbuildlogic.legacyNodes
 import cgbuildlogic.modernLoaderNodes
 import cgbuildlogic.modernNodes
 import cgbuildlogic.registerSingleJarPipeline
@@ -62,8 +63,9 @@ registerSingleJarPipeline(SingleJarSpec(
     fileName = "$singleJarModId-${project.version}.jar",
     shadePath = "com/crystalgraphics/shadow",
 
-    // 1.7.10's production step is its own; every 1.20.x node's is read off the tree.
+    // 1.7.10's production step is its own; every tree node's is read off its tree.
     thinJars = listOf(":runtime:mc:1710" to "reobfThinJar") +
+        legacyNodes(project).map { it.path to "reobfThinShadowJar" } +
         modernLoaderNodes(project).map { it.path to thinJarTask(it, "thinShadowJar") },
     // Tier 1 (§12) joins the library list rather than any loader's thin jar: one compiled copy of
     // each LWJGL family, added once for every variant, never remapped -- which is the whole reason
