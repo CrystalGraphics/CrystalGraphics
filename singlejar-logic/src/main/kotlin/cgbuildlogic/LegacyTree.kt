@@ -50,6 +50,8 @@ data class LegacyEntries(
     val sourcePackage: String,
     val common: String? = null,
     val client: String? = null,
+    /** Whether this mod ships its nodes' `variant.mixinPlugin` configs; off for a second mod of the same nodes. */
+    val mixins: Boolean = true,
 )
 
 /** One `fml1122` [Variant] per legacy node, oldest first, from each node's `variant.*` pins. */
@@ -59,11 +61,13 @@ fun legacyVariants(project: Project, entries: LegacyEntries): List<Variant> =
             ?: throw GradleException("${node.path} pins no `$key` in its gradle.properties -- every legacy " +
                 "node declares the Minecraft range it claims (variant.minecraft) and its pack format " +
                 "(variant.packFormat)")
+        val shipped = legacyNodePackage(entries.sourcePackage, node.name)
         Variant(
             loader = "fml1122", minecraft = pin("variant.minecraft"), era = "legacy",
             commonEntry = entries.common, clientEntry = entries.client,
+            mixinConfigs = if (entries.mixins && node.hasProperty(MIXIN_PLUGIN)) listOf(nodeMixinConfig(shipped)) else emptyList(),
             packFormat = pin("variant.packFormat").toInt(),
             node = node.path,
-            relocation = entries.sourcePackage to legacyNodePackage(entries.sourcePackage, node.name),
+            relocation = entries.sourcePackage to shipped,
         )
     }

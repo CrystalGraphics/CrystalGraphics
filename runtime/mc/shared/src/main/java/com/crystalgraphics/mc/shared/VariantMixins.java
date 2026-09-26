@@ -99,6 +99,9 @@ public abstract class VariantMixins implements IMixinConfigPlugin {
         if (LoaderProbe.FML1710.equals(loader)) {
             return "1.7.10";
         }
+        if (LoaderProbe.FML1122.equals(loader)) {
+            return FmlVersion.of(type("net.minecraftforge.common.ForgeVersion"));
+        }
         throw new UnsupportedVariant("no Minecraft version for loader " + loader);
     }
 

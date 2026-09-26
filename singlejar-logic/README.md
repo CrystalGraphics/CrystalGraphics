@@ -572,6 +572,23 @@ public final class ExampleLegacy implements VariantEntry {
 }
 ```
 
+- **Hooks are mixins at SRG names, with no refmap.** A node pins `variant.mixinPlugin` as a modern node
+  does; the plugin (`CrystalGraphicsLegacyMixins`) names the mixins and applies them on its own variant
+  only. Annotation strings are not renamed with the thin jar, so they are written as the game runs:
+
+```java
+@Mixin(value = EntityRenderer.class, remap = false)                  // class names are MCP = SRG
+public abstract class CgRenderHook {
+    @Inject(method = "func_181560_a", remap = false, require = 1, at = @At("TAIL"))   // updateCameraAndRender
+    private void cg$frameRendered(float partialTicks, long nanoTime, CallbackInfo ci) { ... }
+}
+```
+
+  The SRG names CrystalGraphics' hooks use are the same on all three plateaus; a node's
+  `build/stubs/names.tsrg` is where to look one up.
+- **`GlStateManager` is told about every state it caches** (`GlStateManagerGLBackend`), as Blaze3D is on
+  the modern tree. Its texture table has 8 units, which the host declares as the texture-unit ceiling.
+- The JOML companion loads here as a mod of its own: its `@Mod` carries `modid` as well as `value`.
 - The player needs **MixinBooter** on 1.8–1.12.2: the manifest's `TweakClass` is `MixinTweaker` for
   every LaunchWrapper version, and without a provider LaunchWrapper dies before any mod loads.
 - 1.8.9's FML logs to `logs/fml-client-latest.log`, not `latest.log`.
