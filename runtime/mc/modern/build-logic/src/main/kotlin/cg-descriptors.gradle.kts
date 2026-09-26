@@ -1,7 +1,9 @@
 import cgbuildlogic.Dependency
+import cgbuildlogic.LegacyEntries
 import cgbuildlogic.LoaderEntries
 import cgbuildlogic.ModDescriptor
 import cgbuildlogic.Variant
+import cgbuildlogic.legacyVariants
 import cgbuildlogic.modernVariants
 import cgbuildlogic.registerDescriptorTasks
 
@@ -21,7 +23,7 @@ val cgDescriptor = ModDescriptor(
     description = "Rendering engine library for Minecraft mods.",
     license = "LGPL-3.0-or-later",
     dependencies = emptyList(),
-    // 1.7.10 by hand; every 1.20.x variant is a NODE of the tree, whose range and pack format are its
+    // 1.7.10 by hand; every other variant is a NODE of a tree, whose range and pack format are its
     // own pins (`variant.minecraft`, `variant.packFormat`) -- so adding a version adds its variant.
     variants = listOf(
         Variant(
@@ -30,7 +32,10 @@ val cgDescriptor = ModDescriptor(
             mixinConfigs = listOf("mixins.crystalgraphics.json"),
             packFormat = 1,
         ),
-    ) + modernVariants(project, mapOf(
+    ) + legacyVariants(project, LegacyEntries("com.crystalgraphics.mc.legacy",
+        common = "com.crystalgraphics.mc.legacy.CrystalGraphicsLegacy",
+        client = "com.crystalgraphics.mc.legacy.CrystalGraphicsLegacyClient",
+    )) + modernVariants(project, mapOf(
         "forge" to LoaderEntries("com.crystalgraphics.mc.modern.forge",
             common = "com.crystalgraphics.mc.modern.forge.CrystalGraphicsForge"),
         "neoforge" to LoaderEntries("com.crystalgraphics.mc.modern.neoforge",

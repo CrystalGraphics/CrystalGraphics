@@ -1,7 +1,8 @@
 # Stubs — building every Minecraft version without installing every Minecraft
 
-The 1.20.x tree builds one node per (loader, Minecraft version): 77 kinds of node, each compiled in
-CrystalGraphics and again in CrystalGUI. **Stub mode compiles a node against `stubs.zip` instead of its
+Two Stonecutter trees build one node per (loader, Minecraft version) — `runtime/mc/modern`, 77 kinds of
+node for Forge 1.13+, NeoForge and Fabric, and `runtime/mc/legacy`, 3 for Forge 1.8–1.12.2 — each
+compiled in CrystalGraphics and again in CrystalGUI. **Stub mode compiles a node against `stubs.zip` instead of its
 real game**: one committed database holding the signatures of every Minecraft, loader and library
 class those nodes compile against — names, types and constants, no code.
 
@@ -11,7 +12,7 @@ class those nodes compile against — names, types and constants, no code.
 | First jar build from a clean clone | ~38 GB on disk (17 GB project, 21 GB `~/.gradle`), ~3 hours | **937 MB** project + 101 MB shared store, **5 minutes** |
 | Output | the thin jars | **byte-identical** thin jars |
 
-`stubs.zip` is 16 MB, and it is the only thing committed. The first stub build on a machine unpacks it
+`stubs.zip` is 19 MB, and it is the only thing committed. The first stub build on a machine unpacks it
 **once** into `~/.gradle/caches/cg-stubs/<zip digest>/` — 101 MB of class files, one copy of each
 distinct class, shared by every node, every clone and both repos. No node keeps a stub of its own.
 
@@ -45,7 +46,7 @@ without a Java 8 (11 MB for 18 releases). `stubs.zip` is `ct.sym` for Minecraft.
 
 **Why a database and not a file per node:** consecutive versions share almost every class. The full
 API of all 77 kinds of node is 3.25 GB of text as separate copies and 352 MB once each class is stored
-once and tagged with the nodes it applies to — 16 MB zipped.
+once and tagged with the nodes it applies to — 16 MB zipped. The legacy tree's three nodes added 2.7 MB.
 
 **Why the full API and not just what our code uses:** branch code is shared by every version of a
 branch. A stub of only what we use would break on all ~22 Forge versions the first time a Forge host
@@ -68,7 +69,7 @@ just compiles; code that calls something a version lacks fails exactly as the re
 | Condition | Why |
 |---|---|
 | One of its run or maintenance tasks is requested by path: `runClient`, `runServer`, `prepareClientRun`, `prepareServerRun`, `serverSmoke`, `connectionProbe`, `extractMcSources`, `genSourcesWithVineflower`, `checkStubEquivalence` | Running the game needs the game. It holds in either build of the composite, so running CrystalGUI's node makes CrystalGraphics' node of the same loader and version real too |
-| `listStubInputs` is requested at all | It lists what the real toolchains supply |
+| `listStubInputs` is requested without a path, or on this node by path | It lists what the real toolchains supply |
 | It is Stonecutter's active version (`stonecutter.gradle.kts`) **and an IDE is syncing** (`idea.sync.active`) | The IDE gets the whole game, with sources, where code is written; a command-line build stays stubbed |
 | It is listed in `-PcgRealNodes=forge:1.20.4,1.21.1` | A bare version names every branch of it |
 | `stubs.zip` has no entry for it | A new node builds real until the database is regenerated |
@@ -96,15 +97,17 @@ Regenerating is what makes it cheap again for everyone else.
 Everything runs real for this, so it needs the toolchains once, on the maintainer's machine:
 
 ```bash
-./gradlew listStubInputs                                  # CrystalGUI's nodes
-./gradlew -p CrystalGraphics listStubInputs               # CrystalGraphics' nodes
+./gradlew :runtime:mc:<tree>:<branch>:<version>:listStubInputs              # CrystalGUI's node
+./gradlew -p CrystalGraphics :runtime:mc:<tree>:<branch>:<version>:listStubInputs   # CrystalGraphics'
 ./gradlew -p CrystalGraphics/singlejar-logic generateStubDatabase   # writes stubs.zip, ~1 minute
-./gradlew :runtime:mc:modern:<branch>:<version>:checkStubEquivalence   # the new node, both repos
+./gradlew :runtime:mc:<tree>:<branch>:<version>:checkStubEquivalence   # the new node, both repos
 ```
 
-`listStubInputs` writes each node's `build/stubs/inputs.txt`: the jars its toolchain supplies, its full
-rename table and, on Fabric, the manifest attributes Loom writes. `generateStubDatabase` reads every
-such file in both repos. Commit `stubs.zip` with the node.
+`listStubInputs` runs the node's thin rename, then writes `build/stubs/inputs.txt` — the jars its
+toolchain supplies, the rename table (kept beside it as `build/stubs/names.<format>`) and, on Fabric, the
+manifest attributes Loom writes. `generateStubDatabase` reads every such file in both repos, so list only
+the nodes that changed: the others' listings stay on disk. Unqualified, `./gradlew listStubInputs` lists
+every node, all of them real. Commit `stubs.zip` with the node.
 
 `-PcgStubText` also writes the database as plain text under `singlejar-logic/stubs/` (gitignored), to
 read or to diff two versions of it — the zip is binary, so git shows no diff of its own.
@@ -180,7 +183,8 @@ val thinJar = registerThinRename("thinShadowJar", "thin") {
 **More than one tree.** A node is found wherever `runtime/mc/<tree>/<branch>/versions/<version>/`
 holds a `build/stubs/inputs.txt`, and keyed `<tree>/<branch>:<version>` — except on the modern tree,
 whose keys (`forge:1.20.1`) predate the others and stay unprefixed, so adding a tree changes no modern
-entry. A tree's node convention calls `configureStubs` last and renames through `registerThinRename`, as
+entry: adding `legacy/forge:1.8.9`, `:1.10.2` and `:1.12.2` left all 77 modern nodes' signatures
+identical. A tree's node convention calls `configureStubs` last and renames through `registerThinRename`, as
 the modern ones do; legacy Forge's rename is MCP names -> SRG members (`registerMcpReobf`).
 
 ---
@@ -194,6 +198,7 @@ by entry — manifests by attribute. Any difference fails, naming the entries.
 Last run, 2026-09-26: every node of both repos, 330 comparisons, all identical; `singleJar` and
 `languageJar` built all-real (`-PcgStubs=false`) and stubbed agree on all 6,440 entries. Their manifests
 differ only where the all-real build wrote Loom's `unknown` (see Traps) — the stub build's is the right one.
+The legacy tree's three nodes, both repos, `main` and `lang`: identical, the same day.
 ---
 
 ## Traps

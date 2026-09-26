@@ -61,7 +61,8 @@ fun modernNodes(project: Project, branch: String): List<Project> =
 fun modernLoaderNodes(project: Project): List<Project> = MODERN_LOADERS.flatMap { modernNodes(project, it) }
 
 /**
- * A node's Maven coordinates: group per BRANCH, name per version — `<modGroup>.mc.modern.<branch>`.
+ * A node's Maven coordinates: group per BRANCH, name per version — `<modGroup>.mc.<tree>.<branch>`,
+ * `com.crystalgraphics.mc.modern.forge` or `com.crystalgraphics.mc.legacy.forge`.
  *
  * Load-bearing, not tidy. Every node of a version shares a project name, so with one group for the
  * whole tree `forge:1.20.1` and `common:1.20.1` are one coordinate, Gradle resolves the loader's
@@ -69,7 +70,9 @@ fun modernLoaderNodes(project: Project): List<Project> = MODERN_LOADERS.flatMap 
  * `compileJava`.
  */
 fun Project.useNodeCoordinates() {
-    group = "${property("modGroup")}.mc.modern.$modernLoader"
+    val branch = parent ?: throw GradleException("$path is not a tree node")
+    val tree = branch.parent ?: throw GradleException("$path is not a tree node")
+    group = "${property("modGroup")}.mc.${tree.name}.${branch.name}"
     version = property("modVersion").toString()
 }
 

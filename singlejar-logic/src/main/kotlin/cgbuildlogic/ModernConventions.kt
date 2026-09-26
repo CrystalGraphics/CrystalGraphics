@@ -181,10 +181,10 @@ fun Project.registerCheckDescriptorsNameNoCommon(relocatedPackages: List<String>
  * until somebody else builds. Reads the tree, which configures no node.
  */
 fun Project.registerCheckAllTargets() {
-    val nodes = (listOf("common") + MODERN_LOADERS).flatMap { modernNodes(this, it) }
+    val nodes = (listOf("common") + MODERN_LOADERS).flatMap { modernNodes(this, it) } + legacyNodes(this)
     tasks.register("checkAllTargets") {
         group = "verification"
-        description = "Compiles every node of $MODERN_TREE -- every Minecraft version, every loader."
+        description = "Compiles every node of $MODERN_TREE and $LEGACY_TREE -- every Minecraft version, every loader."
         // Every compile task a node has, whichever source sets that build gives its nodes.
         dependsOn(nodes.map { node -> node.tasks.withType(JavaCompile::class.java) })
     }
