@@ -1,5 +1,7 @@
 # Third-party notices — CrystalGraphics
 
+CrystalGraphics itself is licensed **LGPL-3.0-or-later**: [`COPYING.LESSER`](COPYING.LESSER), with the GPL-3.0 it builds on in [`COPYING`](COPYING). Both ship in every jar under `META-INF/`.
+
 What this repository carries that somebody else wrote, where it lives, and under what terms. A row
 exists for anything **redistributed** in a built jar; something read for reference and not shipped is
 marked as such.

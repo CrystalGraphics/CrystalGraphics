@@ -6,7 +6,7 @@ than with the source repository. `checkSingleJar` asserts it is present. The rep
 with the reasoning behind each entry, is [`THIRD-PARTY.md`](../THIRD-PARTY.md).
 
 CrystalGraphics itself — `com/crystalgraphics/**` outside the rows below, and every shader and asset
-under `assets/crystalgraphics/` — is licensed LGPL-3.0-or-later.
+under `assets/crystalgraphics/` — is licensed LGPL-3.0-or-later. The licence texts are beside this file: `META-INF/COPYING.LESSER` (LGPL-3.0) and `META-INF/COPYING` (the GPL-3.0 it builds on).
 
 **`META-INF/LICENSE` and `META-INF/NOTICE` in this jar are Jackson's** (Apache 2.0), carried as that
 licence requires; they are not CrystalGraphics' licence.
