@@ -280,6 +280,10 @@ These rules apply everywhere. All agents must internalize them.
 | `runtime/mc/1710/` | Modern (GTNH convention) | Java 8 bytecode | `enableModernJavaSyntax = jvmDowngrader` in `runtime/mc/1710/gradle.properties` — the convention plugin's mechanism, not this repo's |
 | `runtime/mc/modern/common/`, `runtime/mc/modern/forge/`, `runtime/mc/modern/neoforge/`, `runtime/mc/modern/fabric/` | Java 17 | Java 17 | Full Java 17 API available |
 
+**One compiler**: every module compiles with JDK 25 (`dep.jdk.compiler`, a rule in the root build); the
+toolchains in the table below are launchers, and `--release`/source-target still decides each module's
+bytecode.
+
 **Forbidden cross-module imports:**
 
 | In module | Forbidden | Reason |

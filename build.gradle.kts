@@ -17,6 +17,22 @@ plugins {
     id("cg-single-jar")
 }
 
+// ── One compiler ─────────────────────────────────────────────────────────────────────────────────
+//
+// Every module compiles with ONE JDK, `dep.jdk.compiler`; its own --release or source/target still
+// decides its bytecode, and its toolchain stays for launchers only -- so building the jars provisions
+// no other JDK. :runtime:mc:1710 is left to GTNH's convention, which already compiles with 25.
+val compilerJdk = providers.gradleProperty("dep.jdk.compiler").get().toInt()
+subprojects {
+    if (path == ":runtime:mc:1710") return@subprojects
+    plugins.withType<JavaBasePlugin> {
+        val toolchains = extensions.getByType<JavaToolchainService>()
+        tasks.withType<JavaCompile>().configureEach {
+            javaCompiler.set(toolchains.compilerFor { languageVersion.set(JavaLanguageVersion.of(compilerJdk)) })
+        }
+    }
+}
+
 // IDEA triggers 'processIdeaSettings' on the root project during sync and gtnhconvention only
 // registers it on subprojects, so this is the fallback. Guarded because idea-ext (applied above) now
 // supplies the real one, and registering twice is a configuration failure. findByName is safe here:
