@@ -270,6 +270,45 @@ Forge 1.15 host fills its `Providers.Copies` slot from FML's own mod list.
 appears once instead of once per variant; a required entry or manifest key missing; a `META-INF/services`
 file that lost a provider; a forbidden prefix shipping unrelocated.
 
+### Publishing
+
+Two kinds of artifact, and a mod needs both: the **libraries** it compiles against, and the **shipped
+jar** its dev client runs. `./gradlew publishToMavenLocal` publishes every one declared.
+
+```kotlin
+// A library module, after abstractModule(...):
+publishedModule("MyProject Core", "What it is, in one line.")          // Licence.LGPL3 unless given
+dependencies {
+    consumerApi(project(":layout"))            // import cgbuildlogic.consumerApi
+    consumerApi("org.joml:joml:1.10.5")
+    compileOnly("org.projectlombok:lombok:1.18.44")
+}
+
+// The merged jar -- checkSingleJar runs before any publish of it:
+registerSingleJarPipeline(SingleJarSpec(…,
+    publication = ShippedJar("com.myproject", "myproject", "MyProject", "One jar for every loader.")))
+
+// Any other jar:
+publishShippedJar(tasks.named<Jar>("jomlJar"), ShippedJar("com.myproject", "myproject-joml", "JOML", "…", Licence.MIT))
+```
+
+A library publishes the jar, the Java 8 copy (Gradle hands it to any consumer below Java 25, by
+`TargetJvmVersion`), `-sources` and `-javadoc` — so an IDE shows the real declarations and their
+documentation — and a POM. A shipped jar publishes the jar and a POM with no dependencies.
+
+- **`consumerApi` is what a consumer compiles against**: every library a type in the public API comes
+  from. It is on the module's own `compileOnly` too, so it is declared once. Nothing else is published,
+  and the build's own projects never see it — they resolve `apiElements` as before, so publishing
+  changes no host's compile classpath and no bytecode.
+- **Name the oldest version any target ships** of a library Minecraft supplies (gson 2.2.4, log4j-api
+  2.0-beta9, JOML 1.10.5): a consumer's resolution raises it to what their Minecraft has, never lowers it.
+- **Declare what the source imports.** A package that compiles only because another dependency drags it
+  in transitively (JOML 1.10.8 brings `kotlin-stdlib` and with it `org.jetbrains.annotations`) is gone the
+  moment that dependency moves.
+- **A module a loader plugin publishes by itself is not an artifact**: RetroFuturaGradle's
+  `usesMavenPublishing` is off in the 1.7.10 modules. Check `publishToMavenLocal`'s task list for a
+  `publish…Publication` you did not declare.
+
 ---
 
 ## Traps this build exists to prevent

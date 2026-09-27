@@ -1,3 +1,5 @@
+import cgbuildlogic.Licence
+import cgbuildlogic.publishedModule
 import cgbuildlogic.registerCheckAllTargets
 plugins {
     idea
@@ -32,6 +34,14 @@ subprojects {
         tasks.withType<JavaCompile>().configureEach {
             javaCompiler.set(toolchains.compilerFor { languageVersion.set(JavaLanguageVersion.of(compilerJdk)) })
         }
+    }
+}
+
+// Published from here: the bindings also build standalone, where cgbuildlogic does not exist.
+project(":freetype-msdfgen-harfbuzz-bindings") {
+    pluginManager.withPlugin("java-library") {
+        publishedModule("FreeType-MSDFgen-HarfBuzz Java Bindings",
+            "JNI bindings for FreeType, msdfgen and HarfBuzz, with natives for Windows, Linux and macOS.", Licence.MIT)
     }
 }
 
