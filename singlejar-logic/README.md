@@ -544,11 +544,12 @@ What bites:
 
 `runtime/mc/legacy` is a second Stonecutter tree, because legacy Forge is MCP names on LWJGL2 and
 LaunchWrapper rather than Mojang names on LWJGL3. One branch, `forge`, and a node per SRG plateau — a
-jar built against a plateau's newest version runs on all of it, so three nodes claim nine versions:
+jar built against a plateau's newest version runs on all of it, so three nodes claim the eleven versions
+Forge built from 1.8.8 on:
 
 | Node | Claims | Forge | MCP names |
 |---|---|---|---|
-| `1.8.9` | `[1.8,1.9)` | `11.15.1.2318-1.8.9` | `stable:22-1.8.9` |
+| `1.8.9` | `[1.8.8,1.9)` | `11.15.1.2318-1.8.9` | `stable:22-1.8.9` |
 | `1.10.2` | `[1.9,1.12)` | `12.18.3.2511` | `stable:29-1.10.2` |
 | `1.12.2` | `[1.12,1.13)` | `14.23.5.2859` | `stable:39-1.12` |
 
@@ -593,8 +594,14 @@ public abstract class CgRenderHook {
   inside it — CrystalGUI's `Game` and `client.ClientGame` — so the rest of a host reads the same on all
   three. A client-side accessor stays in a class of its own: a dedicated server must not load one naming
   `Minecraft`.
-- The player needs **MixinBooter** on 1.8–1.12.2: the manifest's `TweakClass` is `MixinTweaker` for
-  every LaunchWrapper version, and without a provider LaunchWrapper dies before any mod loads.
+- The player needs **MixinBooter**: the manifest's `TweakClass` is `MixinTweaker` for every
+  LaunchWrapper version, and without a provider LaunchWrapper dies before any mod loads. **1.8 itself is
+  not claimed for that reason**: MixinBooter 8.9, 10.7 and 11.17 each fail on Forge 11.14 with no other
+  mod installed, on their own `CrashReport` mixin.
+- **Before a claim widens, `runtime/mc/legacy/claims.py <merged jars>`** checks every Minecraft and Forge
+  reference the shipped nodes make against each version they claim — SRG id and descriptor in MCP's
+  `joined.srg`, Forge members in its universal jar. It found `world.GameType` named on 1.9, where the
+  type is `WorldSettings.GameType`. Constructors are in neither table, so a boot per version still is.
 - 1.8.9's FML logs to `logs/fml-client-latest.log`, not `latest.log`.
 
 ---
