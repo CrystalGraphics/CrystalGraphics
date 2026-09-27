@@ -589,6 +589,10 @@ public abstract class CgRenderHook {
 - **`GlStateManager` is told about every state it caches** (`GlStateManagerGLBackend`), as Blaze3D is on
   the modern tree. Its texture table has 8 units, which the host declares as the texture-unit ceiling.
 - The JOML companion loads here as a mod of its own: its `@Mod` carries `modid` as well as `value`.
+- **Members Minecraft renamed between plateaus go through one accessor per side**, with the directives
+  inside it — CrystalGUI's `Game` and `client.ClientGame` — so the rest of a host reads the same on all
+  three. A client-side accessor stays in a class of its own: a dedicated server must not load one naming
+  `Minecraft`.
 - The player needs **MixinBooter** on 1.8–1.12.2: the manifest's `TweakClass` is `MixinTweaker` for
   every LaunchWrapper version, and without a provider LaunchWrapper dies before any mod loads.
 - 1.8.9's FML logs to `logs/fml-client-latest.log`, not `latest.log`.
