@@ -5,7 +5,7 @@
 **IMPORTANT**: Despite the `runtime/mc/modern/` directory name, this module targets **MC 1.20.4 / NeoForge 20.4.x**.
 NeoForge never published a stable 1.20.1 series — the earliest available stable series is 20.4.x (MC 1.20.4).
 The directory name `runtime/mc/modern/neoforge/` is retained for continuity. Version pins live in `gradle.properties`
-under `mc1204.*` keys.
+per node, in `versions/<version>/gradle.properties`.
 
 ## The loader is registration only
 
@@ -14,7 +14,7 @@ stages and the shutdown signal on `NeoForge.EVENT_BUS` from the constructor, and
 reload listener.
 
 Which event, and which stage of it. What the engine then does — bind the main render target, run the
-opaque or transparent pass, forward a reload, stop at shutdown — is `:runtime:mc:modern:common`'s `LifecycleModern`,
+opaque or transparent pass, forward a reload, stop at shutdown — is the common branch's `LifecycleModern`,
 shared by all three.
 
 ## Minecraft Source Location
@@ -23,13 +23,13 @@ Decompiled, Parchment-mapped NeoForge + MC 1.20.4 sources are extracted into two
 
 | Path | Contents |
 |---|---|
-| `build/mc-src/java/` | NeoForge + Mojang Java sources, Parchment-mapped |
-| `build/mc-src/resources/` | MC client assets (assets/, data/, *.json, *.mcmeta) from `client-extra-*.jar` |
+| `versions/1.20.4/build/mc-src/java/` | NeoForge + Mojang Java sources, Parchment-mapped |
+| `versions/1.20.4/build/mc-src/resources/` | MC client assets (assets/, data/, *.json, *.mcmeta) from `client-extra-*.jar` |
 
 These paths are gitignored and not committed. Generate them with:
 
 ```bash
-./gradlew :runtime:mc:modern:neoforge:extractMcSources
+./gradlew :runtime:mc:modern:neoforge:1.20.4:extractMcSources
 # or regenerate all three 1.20.x loader modules at once:
 ./gradlew extractAllMcSources
 ```
@@ -39,7 +39,7 @@ downloads and decompiles sources) if it has not run yet. Expect several minutes 
 
 ## Key Source Files
 
-After extraction, commonly referenced locations under `build/mc-src/java/`:
+After extraction, commonly referenced locations under `versions/1.20.4/build/mc-src/java/`:
 
 - `net/minecraft/client/Minecraft.java` — main game class
 - `net/minecraft/client/renderer/` — rendering pipeline
@@ -49,8 +49,8 @@ After extraction, commonly referenced locations under `build/mc-src/java/`:
 ## Build
 
 ```bash
-./gradlew :runtime:mc:modern:neoforge:compileJava
-./gradlew :runtime:mc:modern:neoforge:shadowJar
+./gradlew :runtime:mc:modern:neoforge:1.20.4:compileJava
+./gradlew :runtime:mc:modern:neoforge:1.20.4:shadowJar
 ```
 
 ## Plugin

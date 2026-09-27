@@ -2,9 +2,12 @@
 
 ## Target Versions
 
-**MC 1.20.1 / Fabric**
+**MC 1.14.4–1.21.11 / Fabric**, a node per `versions/<version>`. Below 1.16 Fabric API has no
+world-render event, so the 1.15.2 node hooks `LevelRenderer.renderLevel` and the 1.14.4 node
+`GameRenderer.renderLevel` with a node mixin
+(`mixin/WorldPassHook`, gated by `CrystalGraphicsFabricMixins`).
 
-Uses `fabric-loom 1.16.2`. See `build.gradle.kts` for version pins under `mc1201.*` keys.
+Uses `fabric-loom 1.16.2`. Version pins are per node, in `versions/<version>/gradle.properties`.
 
 ## The loader is registration only
 
@@ -14,7 +17,7 @@ there would leave `CgPlatform` unset for the whole server process. `CrystalGraph
 `client` one and carries the `Events` inner class, which is all render hooks.
 
 Which event, and which stage of it. What the engine then does — bind the main render target, run the
-opaque or transparent pass, forward a reload, stop at shutdown — is `:runtime:mc:modern:common`'s `LifecycleModern`,
+opaque or transparent pass, forward a reload, stop at shutdown — is the common branch's `LifecycleModern`,
 shared by all three.
 
 ## Minecraft Source Location
@@ -23,13 +26,13 @@ Decompiled, Parchment-mapped Fabric MC 1.20.1 sources are extracted into two sub
 
 | Path | Contents |
 |---|---|
-| `build/mc-src/java/` | MC 1.20.1 Java sources, decompiled by Loom via Vineflower, Parchment-mapped |
-| `build/mc-src/resources/` | MC client assets (assets/, data/, *.json, *.mcmeta) from the merged binary jar |
+| `versions/1.20.1/build/mc-src/java/` | MC 1.20.1 Java sources, decompiled by Loom via Vineflower, Parchment-mapped |
+| `versions/1.20.1/build/mc-src/resources/` | MC client assets (assets/, data/, *.json, *.mcmeta) from the merged binary jar |
 
 These paths are gitignored and not committed. Generate them with:
 
 ```bash
-./gradlew :runtime:mc:modern:fabric:extractMcSources
+./gradlew :runtime:mc:modern:fabric:1.20.1:extractMcSources
 # or regenerate all three 1.20.x loader modules at once:
 ./gradlew extractAllMcSources
 ```
@@ -40,7 +43,7 @@ Loom's task output cache and are fast.
 
 ## Key Source Files
 
-After extraction, commonly referenced locations under `build/mc-src/java/`:
+After extraction, commonly referenced locations under `versions/1.20.1/build/mc-src/java/`:
 
 - `net/minecraft/client/Minecraft.java` — main game class
 - `net/minecraft/client/renderer/` — rendering pipeline
@@ -50,8 +53,8 @@ After extraction, commonly referenced locations under `build/mc-src/java/`:
 ## Build
 
 ```bash
-./gradlew :runtime:mc:modern:fabric:compileJava
-./gradlew :runtime:mc:modern:fabric:shadowJar
+./gradlew :runtime:mc:modern:fabric:1.20.1:compileJava
+./gradlew :runtime:mc:modern:fabric:1.20.1:shadowJar
 ```
 
 ## Plugin

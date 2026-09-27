@@ -1,5 +1,4 @@
 
-rootProject.name = "CrystalGraphics"
 
 pluginManagement {
     // Default plugin version so submodules can use 'id' without specifying version.
@@ -8,14 +7,14 @@ pluginManagement {
     plugins {
         id("com.gtnewhorizons.gtnhconvention") version("2.0.20")
         id("com.gtnewhorizons.gtnhsettingsconvention") version("2.0.20")
-        // Single version pin for all mc1201 loader subprojects.
+        // Single version pin for every 1.20.x loader node.
         // com.gradleup.shadow is the maintained successor to com.github.johnrengelman.shadow.
         id("com.gradleup.shadow") version("9.2.2")
 
-        // The mc1201 loader scripts request these with no version, so the pins live here; moddev
-        // matches runtime/mc/modern/build-logic's net.neoforged:moddev-gradle:2.0.141. (docs/BUILD_SETUP.md says a
-        // net.neoforged.moddev.repositories settings plugin pins them; nothing applies it here or in
-        // CrystalGUI.)
+        // The 1.20.x loader scripts request these with no version, so the pins live here; moddev
+        // matches runtime/mc/modern/build-logic's net.neoforged:moddev-gradle:2.0.141. No
+        // net.neoforged.moddev.repositories settings plugin pins them: nothing applies it here or in
+        // CrystalGUI.
         id("net.neoforged.moddev") version("2.0.141")
         id("net.neoforged.moddev.legacyforge") version("2.0.141")
 
@@ -24,8 +23,7 @@ pluginManagement {
         id("org.jetbrains.gradle.plugin.idea-ext") version("1.3")
     }
 
-    // Supplies the mc1201 convention plugins; without it every mc1201 subproject fails at
-    // id("cg-mc1201-loader").
+    // Supplies the 1.20.x convention plugins; without it every node fails at id("cg-modern-loader").
     includeBuild("runtime/mc/modern/build-logic")
 
     repositories {
@@ -46,11 +44,20 @@ pluginManagement {
         // buildscript.repositories at configuration time, which Gradle 9 forbids when
         // exclusiveContent is active in pluginManagement.repositories.
         maven("https://maven.fabricmc.net/") { name = "Fabric" }
+        maven("https://maven.wagyourtail.xyz/releases") { name = "Unimined" }
         maven("https://repo.spongepowered.org/repository/maven-public/") { name = "Sponge" }
         maven("https://maven.minecraftforge.net/") { name = "Forge" }
         maven("https://maven.neoforged.net/releases") { name = "NeoForge" }
     }
 }
+
+// The multi-version preprocessor the 1.20.x loaders are built with (J11). A SETTINGS plugin, so it
+// needs a Java 21+ Gradle daemon in every build that includes this one -- Stonecutter's own floor.
+plugins {
+    id("dev.kikugie.stonecutter") version "0.9.8"
+}
+
+rootProject.name = "CrystalGraphics"
 
 
 
@@ -62,6 +69,11 @@ include("freetype-msdfgen-harfbuzz-bindings")
 // mixins may apply, and the loader probe under it. Java 8, one dependency (Mixin, compileOnly), and
 // no Minecraft type at all.
 include("runtime:mc:shared")
+
+// The one @Mod class every Forge constructs -- modern and legacy FML scan for the same annotation --
+// compiled once, against stand-ins for both eras' Forge types (forge-stubs, never shipped).
+include("runtime:mc:forge-stubs")
+include("runtime:mc:forge-bootstrap")
 
 // Tier 1 (CrystalGUI plan/crystalgui/platform-single-jar.md §12): the GL backend, the context and the
 // input service per LWJGL family, with no Minecraft type in either. Compiled once, never remapped,
@@ -115,22 +127,45 @@ if (loadersWanted) include("runtime:mc:1710")
 //if (file("gl-debug-harness").exists())
 //    include(":gl-debug-harness")
 
-// mc1201 subprojects. `common` holds the platform bundle, the three loaders are registration only.
-// :runtime:mc:modern:neoforge targets MC 1.20.4 -- NeoForge published no 20.1.x series at all, so `common`
-// is compiled against 1.20.1 and consumed by a 1.20.4 module.
+// ── The MC 1.20.x loaders: one source tree, a node per Minecraft version (J11) ───────────────────
 //
-// CrystalGUI resolves :runtime:mc:modern:common through a dependencySubstitution in its
-// composite.settings.gradle.kts, which must name it in the same commit as these lines -- a
-// substitution naming a missing project fails configuration for every task in both builds.
+// Stonecutter, BRANCHED. Each loader is a branch -- `runtime/mc/modern/<loader>/` holds the shared
+// `src/` and one build script -- and each Minecraft version it targets is a NODE,
+// `:runtime:mc:modern:<loader>:<version>`, in `<loader>/versions/<version>/` with its own pins. `common`
+// holds the platform bundle and is versioned too: every loader node compiles against the common node of
+// its own version, so NeoForge (1.20.4) has a 1.20.4 common rather than borrowing 1.20.1's.
 //
-// Gated like :runtime:mc:1710: @see loadersWanted.
-// MC 1.20.1 Forge is included unconditionally: a 1.20.1 Forge mod consuming CrystalGraphics needs it
-// on its run classpath to see CrystalGraphics in the mod list. Fabric (fabric-loom, Java 21 daemon)
-// and NeoForge (MC 1.20.4) are not a 1.20.1 consumer's business.
-include(":runtime:mc:modern:common")
-include(":runtime:mc:modern:forge")
+// Nothing else in the build names a node -- cgbuildlogic.ModernTree finds them, for this build and for
+// every build on top of it. CrystalGUI substitutes each of its common nodes to the one here of the same
+// version, so a version it has must exist here first (D1).
+//
+// Gated like :runtime:mc:1710 (@see loadersWanted), except that common and forge at 1.20.1 are always
+// present: a 1.20.1 Forge mod consuming CrystalGraphics needs the forge node on its run classpath to
+// see CrystalGraphics in the mod list. Fabric (fabric-loom, Java 21 daemon) and 1.20.4 are not a
+// 1.20.1 consumer's business.
+val modernNodes: Map<String, List<String>> =
+    if (!loadersWanted) linkedMapOf("common" to listOf("1.20.1"), "forge" to listOf("1.20.1"))
+    else linkedMapOf(
+        "common" to listOf("1.13.2", "1.14.3", "1.14.4", "1.15.2", "1.16.5", "1.17.1", "1.18.2", "1.19.2", "1.19.3", "1.19.4", "1.20.1", "1.20.2", "1.20.3", "1.20.4", "1.20.6", "1.21.1", "1.21.3", "1.21.4", "1.21.5", "1.21.6", "1.21.8", "1.21.10", "1.21.11"),
+        "forge" to listOf("1.13.2", "1.14.3", "1.14.4", "1.15.2", "1.16.5", "1.17.1", "1.18.2", "1.19.2", "1.19.3", "1.19.4", "1.20.1", "1.20.2", "1.20.4", "1.20.6", "1.21.1", "1.21.3", "1.21.4", "1.21.5", "1.21.6", "1.21.8", "1.21.10", "1.21.11"),
+        "neoforge" to listOf("1.20.2", "1.20.3", "1.20.4", "1.20.6", "1.21.1", "1.21.3", "1.21.4", "1.21.5", "1.21.6", "1.21.8", "1.21.10", "1.21.11"),
+        "fabric" to listOf("1.14.4", "1.15.2", "1.16.5", "1.17.1", "1.18.2", "1.19.2", "1.19.3", "1.19.4", "1.20.1", "1.20.2", "1.20.4", "1.20.6", "1.21.1", "1.21.3", "1.21.4", "1.21.5", "1.21.6", "1.21.8", "1.21.10", "1.21.11"),
+    )
 
-if (loadersWanted) {
-    include(":runtime:mc:modern:neoforge")
-    include(":runtime:mc:modern:fabric")
+stonecutter {
+    create("runtime:mc:modern") {
+        // EVERY branch declares its own versions and the tree declares none: a tree-level `versions`
+        // is inherited by a branch that names none, and also creates a node on the tree itself.
+        modernNodes.forEach { (branchName, nodeVersions) ->
+            branch(branchName) { versions(*nodeVersions.toTypedArray()) }
+        }
+    }
+    // ── Forge 1.8 to 1.12.2: the legacy tree, a node per SRG plateau ─────────────────────────────
+    //
+    // MCP names on LWJGL2 and LaunchWrapper, so a tree of its own rather than more modern nodes. One
+    // branch; each node claims its whole plateau (`variant.minecraft`), since a jar built against a
+    // plateau's newest version runs on all of it. Gated like 1.7.10. @see cgbuildlogic.LegacyTree
+    if (loadersWanted) create("runtime:mc:legacy") {
+        branch("forge") { versions("1.8.9", "1.10.2", "1.12.2") }
+    }
 }

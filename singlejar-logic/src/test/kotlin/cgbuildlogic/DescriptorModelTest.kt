@@ -10,9 +10,9 @@ import org.junit.Test
  * The refusal `ModDescriptor`'s own javadoc promises, and the merges a second variant per loader
  * depends on.
  *
- * Every case here is one a J11 row can actually produce: the shipping Fabric variant claims
- * `[1.20.1,1.21)`, which already covers 1.20.4, so adding a 1.20.4 row without narrowing it is the
- * overlap this refuses.
+ * Every case here is one a J11 row can actually produce: a Fabric node claiming `[1.20.1,1.21)` already
+ * covers 1.20.4, so adding a 1.20.4 node without narrowing it is the overlap this refuses -- and two
+ * nodes of one loader can only share a jar because each ships its classes under its own package.
  */
 class DescriptorModelTest {
 
@@ -262,5 +262,63 @@ class DescriptorModelTest {
             variant("neoforge", "[1.21,)"),
         )
         assertEquals("[1.20.1,)", ForgeModsToml.minecraftUnion(d.variantsOf("forge", "neoforge")))
+    }
+
+    // ── a node's relocated names (J11.1b) ───────────────────────────────────────────────────────
+
+    /** Two nodes of one loader, each shipping its classes under its own package. */
+    private fun twoFabricNodes() = descriptor(
+        variant("fabric", "[1.20.1,1.20.2)", common = "m.fabric.Common", client = "m.fabric.Client")
+            .copy(relocation = "m.fabric" to nodePackage("m.fabric", "1.20.1")),
+        variant("fabric", "[1.20.4,1.20.5)", common = "m.fabric.Common", client = "m.fabric.Client")
+            .copy(relocation = "m.fabric" to nodePackage("m.fabric", "1.20.4")),
+    )
+
+    @Test
+    fun `a node's package is the loader's plus its version digits`() {
+        assertEquals("m.fabric.v1204", nodePackage("m.fabric", "1.20.4"))
+        assertEquals("m.fabric.v121", nodePackage("m.fabric", "1.21"))
+    }
+
+    /** The shipped table is what the merged jar's classes are called, so two nodes never share a name. */
+    @Test
+    fun `the merged table names each node's entries at its own package`() {
+        val json = VariantsJson.merged(twoFabricNodes())
+        assertTrue(json, json.contains("\"common\": \"m.fabric.v1201.Common\""))
+        assertTrue(json, json.contains("\"common\": \"m.fabric.v1204.Common\""))
+        assertFalse(json, json.contains("\"m.fabric.Common\""))
+    }
+
+    /** A dev run loads the classes unrelocated, so its table must keep the source names. */
+    @Test
+    fun `a node's dev table keeps source names and holds that node alone`() {
+        val d = twoFabricNodes()
+        val json = VariantsJson.dev(d, d.variants[1])
+        assertTrue(json, json.contains("\"common\": \"m.fabric.Common\""))
+        assertTrue(json, json.contains("\"minecraft\": \"[1.20.4,1.20.5)\""))
+        assertFalse(json, json.contains("[1.20.1,1.20.2)"))
+    }
+
+    @Test
+    fun `required entries are the shipped names of every node`() {
+        assertEquals(
+            listOf("m/fabric/v1201/Common.class", "m/fabric/v1201/Client.class",
+                "m/fabric/v1204/Common.class", "m/fabric/v1204/Client.class"),
+            twoFabricNodes().shippedEntryPaths())
+    }
+
+    /** A name outside the relocated package is left alone -- a relocation is a prefix, not a rename. */
+    @Test
+    fun `only names under the relocated package are rewritten`() {
+        val v = variant("fabric", "[1.20.1,1.20.2)").copy(relocation = "m.fabric" to "m.fabric.v1201")
+        assertEquals("m.fabricated.X", v.shipped("m.fabricated.X"))
+        assertEquals("m.fabric.v1201.lang.X", v.shipped("m.fabric.lang.X"))
+    }
+
+    @Test
+    fun `a range becomes fabric's predicate`() {
+        assertEquals(">=1.20.4 <1.20.5", McRange.parse("[1.20.4,1.20.5)").toFabricPredicate())
+        assertEquals("1.7.10", McRange.parse("[1.7.10]").toFabricPredicate())
+        assertEquals(">=1.20.1", McRange.parse("[1.20.1,)").toFabricPredicate())
     }
 }

@@ -59,6 +59,13 @@ data class ModDescriptor(
     /** The variants of one loader family, in declaration order. */
     fun variantsOf(vararg loaders: String): List<Variant> =
         variants.filter { loaders.contains(it.loader) }
+
+    /**
+     * The manifest's `MixinConfigs`: every config of a loader that finds configs there — FML 1.7.10 and
+     * MinecraftForge. Fabric and NeoForge read theirs from their own descriptors.
+     */
+    fun manifestMixinConfigs(): String =
+        variantsOf("fml1710", "fml1122", "forge").flatMap { it.mixinConfigs }.distinct().joinToString(",")
 }
 
 /**
@@ -126,7 +133,25 @@ data class Variant(
     val loaderRange: String? = null,
     /** Fabric's `depends` block, whose grammar is not Maven's. */
     val fabricDepends: Map<String, String> = emptyMap(),
-)
+    /** The tree node that builds this variant, when one does (`:runtime:mc:modern:fabric:1.20.4`). */
+    val node: String? = null,
+    /**
+     * Source package → shipped package, when the thin jar relocates this variant's classes. The entries
+     * above are SOURCE names; [shipped] is what the merged jar calls them, and a dev run — which loads
+     * the unrelocated classes — keeps the source names.
+     */
+    val relocation: Pair<String, String>? = null,
+) {
+    /** [name] as the merged jar spells it. */
+    fun shipped(name: String): String {
+        val (from, to) = relocation ?: return name
+        return if (name.startsWith("$from.")) to + name.substring(from.length) else name
+    }
+
+    /** This variant with its entries at their shipped names. */
+    fun asShipped(): Variant = copy(
+        commonEntry = commonEntry?.let(::shipped), clientEntry = clientEntry?.let(::shipped), relocation = null)
+}
 
 /** Shared by the printers: a TOML/JSON string literal. */
 private fun quote(value: String): String = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
@@ -145,12 +170,12 @@ object FabricModJson {
         // entry at all -- fails the main entrypoint stage and takes the client down with it.
         val bootstrapper = d.bootstrappers["fabric"]
         val main = when {
-            bootstrapper == null -> fabric.mapNotNull { it.commonEntry }
+            bootstrapper == null -> fabric.mapNotNull { v -> v.commonEntry?.let(v::shipped) }
             fabric.any { it.commonEntry != null } -> listOf(bootstrapper)
             else -> emptyList()
         }
         val client = when {
-            bootstrapper == null -> fabric.mapNotNull { it.clientEntry }
+            bootstrapper == null -> fabric.mapNotNull { v -> v.clientEntry?.let(v::shipped) }
             fabric.any { it.clientEntry != null } -> listOf(bootstrapper)
             else -> emptyList()
         }
@@ -214,9 +239,19 @@ object ForgeModsToml {
      * reads while ignoring the other; and there is **no** `forge` or `neoforge` row, because a
      * required dependency on a mod the other loader does not have is a refusal to load.</p>
      */
-    fun merged(d: ModDescriptor): String {
+    fun merged(d: ModDescriptor): String = print(d, neoForgeOnly = false)
+
+    /**
+     * `META-INF/neoforge.mods.toml`, the one file NeoForge 20.5+ reads — it ignores `mods.toml` there.
+     * The same declaration in NeoForge's spelling alone: `type`, never Forge's `mandatory`, which
+     * NeoForge stopped accepting when it renamed the file.
+     */
+    fun neoForge(d: ModDescriptor): String = print(d, neoForgeOnly = true)
+
+    private fun print(d: ModDescriptor, neoForgeOnly: Boolean): String {
         val forgeFamily = d.variantsOf("forge", "neoforge")
-        val mixins = forgeFamily.flatMap { it.mixinConfigs }.distinct()
+        // NeoForge's alone: MinecraftForge takes its configs from the manifest. @see manifestMixinConfigs
+        val mixins = d.variantsOf("neoforge").flatMap { it.mixinConfigs }.distinct()
         val out = StringBuilder()
         out.append("modLoader = \"javafml\"\n")
         out.append("loaderVersion = \"[1,)\"\n")
@@ -234,7 +269,7 @@ object ForgeModsToml {
         out.append("\n")
         out.append("[[dependencies.").append(d.id).append("]]\n")
         out.append("    modId = \"minecraft\"\n")
-        out.append("    mandatory = true\n")
+        if (!neoForgeOnly) out.append("    mandatory = true\n")
         out.append("    type = \"required\"\n")
         out.append("    versionRange = ").append(quote(minecraftUnion(forgeFamily))).append("\n")
         out.append("    ordering = \"NONE\"\n")
@@ -242,7 +277,7 @@ object ForgeModsToml {
         d.dependencies.forEach { dep ->
             out.append("\n[[dependencies.").append(d.id).append("]]\n")
             out.append("    modId = ").append(quote(dep.id)).append("\n")
-            out.append("    mandatory = ").append(dep.required).append("\n")
+            if (!neoForgeOnly) out.append("    mandatory = ").append(dep.required).append("\n")
             out.append("    type = ").append(quote(if (dep.required) "required" else "optional")).append("\n")
             out.append("    versionRange = ").append(quote(dep.range)).append("\n")
             out.append("    ordering = ").append(quote(dep.ordering.name)).append("\n")
@@ -292,10 +327,25 @@ object McmodInfo {
 
 object PackMcmeta {
 
-    /** The newest era's format: an older number can be refused outright, a newer one only warns. */
+    /** The first format 1.21.9 reads as a range: from it a pack states `min_format` and `max_format`. */
+    private const val RANGED_FORMAT = 65
+
+    /**
+     * The newest era's format: an older number can be refused outright, a newer one only warns. Once
+     * that reaches [RANGED_FORMAT] the pack also states its whole range — `supported_formats` for
+     * clients before 1.21.9, `min_format`/`max_format` for 1.21.9 on.
+     */
     fun merged(d: ModDescriptor): String {
-        val format = d.variants.maxOfOrNull { it.packFormat } ?: 15
-        return "{\n  \"pack\": {\n    \"description\": " + quote(d.name) +
-            ",\n    \"pack_format\": " + format + "\n  }\n}\n"
+        val formats = d.variants.map { it.packFormat }
+        val max = formats.maxOrNull() ?: 15
+        val out = StringBuilder("{\n  \"pack\": {\n    \"description\": ").append(quote(d.name))
+            .append(",\n    \"pack_format\": ").append(max)
+        if (max >= RANGED_FORMAT) {
+            val min = formats.min()
+            out.append(",\n    \"supported_formats\": [").append(min).append(", ").append(max).append("]")
+                .append(",\n    \"min_format\": ").append(min)
+                .append(",\n    \"max_format\": ").append(max)
+        }
+        return out.append("\n  }\n}\n").toString()
     }
 }

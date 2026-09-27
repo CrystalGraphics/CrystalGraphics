@@ -5,7 +5,7 @@ import com.crystalgraphics.mc.shared.VariantBootstrap;
 
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
-import net.neoforged.fml.loading.FMLEnvironment;
+import com.crystalgraphics.mc.shared.FmlSide;
 import net.neoforged.fml.loading.FMLLoader;
 
 import static com.crystalgraphics.mc.modern.platform.CrystalGraphics.MODID;
@@ -23,7 +23,7 @@ public final class NeoForgeBootstrap {
     public NeoForgeBootstrap(IEventBus modBus) {
         String minecraft = FmlVersion.of(FMLLoader.class);
         VariantBootstrap.startCommon(NeoForgeBootstrap.class, MODID, "neoforge", minecraft, modBus);
-        if (FMLEnvironment.dist.isClient()) {
+        if (FmlSide.isClient(FMLLoader.class)) {
             VariantBootstrap.startClient(NeoForgeBootstrap.class, MODID, "neoforge", minecraft, modBus);
         }
     }

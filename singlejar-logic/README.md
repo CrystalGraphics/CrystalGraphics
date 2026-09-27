@@ -7,6 +7,9 @@ is what they share, and what a third project wires itself into.
 It lives in CrystalGraphics because CrystalGraphics is the parent of everything that uses it — but
 **nothing here is CrystalGraphics-specific**. No package, module, mod id or loader list is baked in.
 
+📄 **[STUBS.md](STUBS.md)** — how every Minecraft version builds from one 19 MB `stubs.zip` instead of
+its real toolchain (the default), and what to regenerate when a node is added.
+
 ---
 
 ## Why one jar is possible at all
@@ -30,9 +33,9 @@ is one variant per loader.
 ```
 :runtime:mc:1710             ──┐
 :runtime:mc:modern:forge     ──┤
-:runtime:mc:modern:neoforge  ──┼─→ singleShadowJar ─→ downgradeSingleJar ─→ shadeSingleJar ─→ singleJar
-:runtime:mc:modern:fabric    ──┤          ↑              (to Java 8)         (jvmdg stubs)        ↓
-                               │                                                              checkSingleJar
+:runtime:mc:modern:neoforge  ──┼─→ singleShadowJar ─→ singleJar ─→ checkSingleJar
+:runtime:mc:modern:fabric    ──┤          ↑              (downgrade to Java 8, then shade jvmdg's stubs:
+                               │                          one task, keeping only the finished jar)
    :core, :language, … ────────┘
    libraries, descriptors, services
 ```
@@ -259,6 +262,10 @@ on 1.7.10 and one Knot on Fabric make it obvious; on Forge and NeoForge the two 
 modules in the game layer and the lookup still resolves. A `META-INF/services` file in the second jar
 reaches a `ServiceLoader` call in the first.
 
+**Except under ModLauncher 5 (Forge 29-31)**, whose classloader never lists a resource inside a mod file,
+so `ServiceLoader` finds nothing in any of them. CrystalGUI discovers through `Providers.forEach`, and the
+Forge 1.15 host fills its `Providers.Copies` slot from FML's own mod list.
+
 `checkSingleJar` catches, specifically: any class above the major ceiling; a relocated class that
 appears once instead of once per variant; a required entry or manifest key missing; a `META-INF/services`
 file that lost a provider; a forbidden prefix shipping unrelocated.
@@ -312,6 +319,294 @@ game state whether it painted, and fail on the answer.
 
 ---
 
+## Many Minecraft versions: the modern tree
+
+A loader is built once per Minecraft version it targets, from ONE source tree, with
+[Stonecutter](https://stonecutter.kikugie.dev/)'s comment directives. The tree is **branched**:
+
+```
+runtime/mc/modern/
+  stonecutter.gradle.kts                  the controller: which node is ACTIVE, and nothing else
+  common/  forge/  neoforge/  fabric/     a BRANCH each: the shared src/ and one build script
+    <branch>/versions/<version>/          a NODE: gradle.properties (its pins), and its build/ and runs/
+```
+
+```kotlin
+// settings.gradle.kts -- the only place a node is declared
+plugins { id("dev.kikugie.stonecutter") version "0.9.8" }
+stonecutter {
+    create("runtime:mc:modern") {
+        branch("common") { versions("1.20.1", "1.20.4") }
+        branch("forge") { versions("1.20.1") }
+    }
+}
+```
+
+A node is the project `:runtime:mc:modern:<branch>:<version>`, so **on a node `project.name` is the
+version**. `ModernTree` answers everything else and is the only thing that should: `modernLoader`,
+`commonNode` (the common node of the same version — a loader never borrows another's), `modernNodes`,
+`modernLoaderNodes`, and, for a project built on another, `sameVersionNodePath` / `sameVersionNodeDir` /
+`sameVersionNodeCoordinate`. `ModernConventions` holds what every such build does alike:
+`useNodeCoordinates`, `useModernMinecraft` (NeoForm where it exists, 1.20.2 onward; Forge's userdev
+through legacyForge from 1.17; Loom or Unimined below that — chosen by the node's own pins), `guardLoaderImports`,
+`registerCheckDescriptorsNameNoCommon` and `registerCheckAllTargets`.
+
+**Two nodes of one loader share the merged jar** because every node ships its loader's classes under
+a package of its own — `nodePackage`: `<loader package>.v<version digits>`, with common beneath it as
+`.common` — and only the loader's **bootstrapper** stays at its source name, the one class that loader
+constructs whatever version runs. `modernVariants` reads each loader node's variant off the tree, so a
+descriptor declares its entry classes once, at SOURCE names, in `LoaderEntries`; the merged
+`variants.json` names them relocated, and `registerNodeVariants` gives each node's dev run a table of its
+own at source names, since a dev run loads the classes unrelocated. `shippedEntryPaths` is the list
+`requiredEntries` checks.
+
+**Forge's bootstrapper serves every Forge, legacy included**, so it is a module of its own:
+`runtime/mc/forge-bootstrap`. Forge 1.13+ and FML 1.8–1.12.2 scan for the same
+`net.minecraftforge.fml.common.Mod` — one reads `value`, the other `modid` — and a second class carrying it
+would be a second mod of one id. It compiles against `runtime/mc/forge-stubs`, a union of the two
+annotations and legacy FML's lifecycle events that never ships, and is merged once. `ForgeStart` picks the
+era with `LoaderProbe`; legacy FML delivers its lifecycle to the `@Mod.EventHandler` methods of that one
+instance, which forward it to the variant through `FmlEvents`.
+
+```java
+@Mod(value = ForgeBootstrap.MODID, modid = ForgeBootstrap.MODID)
+public final class ForgeBootstrap {
+    public static final String MODID = "crystalgraphics";
+    private final FmlEvents legacy = ForgeStart.start(ForgeBootstrap.class, MODID); // null on 1.13+
+
+    @Mod.EventHandler
+    public void preInit(FMLPreInitializationEvent event) { ForgeStart.fire(legacy, event); }
+}
+```
+
+A legacy variant subscribes by event SIMPLE name — `events.on("FMLPreInitializationEvent", e -> ...)` —
+because `runtime/mc/shared` is compiled once for every loader and can name no FML type.
+
+**Adding a version** — the parent first, since a project built on another compiles each node against
+the parent's node of the same version:
+
+1. the version on the loader's branch in `settings.gradle.kts`, **and on `common`** if it is absent;
+2. `versions/<version>/gradle.properties` for each: the toolchain pins, plus `variant.minecraft` (the
+   range the node claims, narrowing a neighbour's if they would overlap — `ModDescriptor` refuses the
+   overlap), `variant.packFormat`, and `java.version = 21` from 1.20.5 on (`nodeJava`: what the node
+   emits, and the ceiling its thin jar is checked against; 17 when unpinned);
+3. `//? if` directives where the API differs — `checkAllTargets` finds every one.
+4. regenerate `stubs.zip` and commit it with the node — [STUBS.md](STUBS.md) § *Regenerating*.
+    Until then the new node builds real.
+
+The thin-jar lists, the relocation counts, the descriptors (including `neoforge.mods.toml`, the only
+file NeoForge 1.20.5+ reads), the variant tables and `requiredEntries` all follow the tree, so none of
+them is edited.
+
+**A project built on another may call into the parent's common node** — CrystalGUI uses
+CrystalGraphics' `ResourceIds` rather than a copy. The parent ships that common relocated per node, so
+the child's thin jar relocates its REFERENCES the same way: `relocate(<parent common package>,
+nodePackage(<parent loader package>, version) + ".common…")`. Nothing of the parent's is bundled; only
+the names in the child's bytecode move. Dev runs need nothing, since both load at source names.
+
+**MinecraftForge past 1.20.1 has no Gradle 9 toolchain** — ModDevGradle's legacy mode stops at 1.20.1
+and ForgeGradle is Gradle 8 — so a Forge node from 1.20.2 is built from parts (`ModernForge`). It pins
+`neoform.version` beside `forge.version`: Minecraft comes through NeoForm, `useForgeApi` puts Forge's
+own jars on compileOnly, and there is no dev run, so prodSmoke is its runtime check. What it ships
+depends on the names Forge runs, which `forgeRunsSrg` answers:
+
+```properties
+# forge/versions/1.20.4 -- Forge 49 runs SRG members: the thin jar is reobfuscated
+neoform.version = 1.20.4-20240627.114801
+forge.version = 49.2.9
+mcp.version = 1.20.4-20231207.112700   # the SRG table, as Forge's userdev names it
+```
+
+```properties
+# forge/versions/1.21.1 -- Forge 52 runs Mojang's names: the thin jar ships as compiled
+neoform.version = 1.21.1-20240808.144430
+forge.version = 52.1.16
+```
+
+`registerSrgReobf` does the reobfuscation with the renamer legacy mode uses, over Mojang's names
+chained with MCPConfig's SRG table; `thinJarTask` names each node's production step for the merge.
+
+**NeoForge 20.2 and 20.3 are the same case** — ModDevGradle does not set them up — and simpler: they
+run Mojang's names, so `useNeoForgeApi` puts the jars on compileOnly and nothing is renamed. It lists
+them non-transitively (`neoforge.fml`, `neoforge.bus`), because NeoForge's POM also names Minecraft's
+libraries at versions NeoForm pins strictly.
+
+**Below 1.17 ModDevGradle reaches no Minecraft at all**, so a pin picks another toolchain: Loom on
+`common` (vanilla at Mojang's names) and Unimined on Forge (Forge 25-36's userdev). Fabric is Loom
+already. The Forge nodes' dev runs are on Java 8, through CrystalGUI's `uniminedDevRun`.
+
+```properties
+# common/versions/1.15.2
+minecraft.loom = true
+```
+
+```properties
+# forge/versions/1.15.2 -- Forge 31 runs MCP class names as well as SRG members
+minecraft.unimined = true
+forge.version = 31.2.62
+mcp.version = 1.15.2-20200515.085601
+```
+
+`registerSrgReobf` renames classes too below 1.17; from 1.17 Forge runs Mojang's class names.
+
+**A node may ship mixins** when its loader has no event for what it needs — Forge 53 (1.21.3) dropped
+the world-render event with 1.21.2's frame graph. It pins the plugin that gates them, and the mixins
+live in the branch's `mixin` package:
+
+```properties
+# forge/versions/1.21.3
+variant.mixinPlugin = com.crystalgraphics.mc.shared.CrystalGraphicsForgeMixins
+```
+
+`registerNodeMixins` writes the node's config into its thin jar at the shipped package, and the
+variant table and descriptors carry it: the manifest's `MixinConfigs` for FML 1.7.10 and Forge,
+`[[mixins]]` for NeoForge, `fabric.mod.json` for Fabric. Every loader that reads a list reads all of
+it, so the plugin — a `VariantMixins` in the unrelocated shared module — applies a config only on the
+variant whose package holds it, and names the mixins itself: the config's lists stay empty, because
+Mixin parses a listed class before its plugin can refuse it, and 1.7.10's ASM cannot read Java 21.
+
+What bites:
+
+1. **A node's group is its branch's** (`useNodeCoordinates`). Nodes of one version share a project
+   name, so one group for the whole tree makes `forge:1.20.1` and `common:1.20.1` one coordinate and
+   the loader's dependency on common resolves to itself: `compileJava` depending on `compileJava`.
+2. **Switching the active node rewrites the branches' `src/` in place.** Switch back to the controller's
+   version before committing, or the diff carries directive noise rather than the change.
+3. **Directives live in the branch `src/`**, never under a node's `build/generated/stonecutter/`. The
+   active node compiles `src/` directly; every other node compiles the generated copy.
+4. **Nothing may read `src/` relative to the project directory.** On a node that is
+   `versions/<version>/src`, which does not exist, so a check reading it passes having read nothing.
+5. **The settings plugin needs a Java 21+ Gradle daemon** in every build that includes one of these.
+6. **A bootstrapper may name no Minecraft class** — one copy serves every node of its loader, so the
+   merge keeps whichever node's arrived first. Loader API that moved between its versions is read
+   reflectively for the same reason (`FmlVersion`, `FmlSide`).
+7. **Loom reads a mod jar while the build is configured.** A node's first dev run on Fabric can have no
+   parent mod yet; the build says so, and the next run finds it. A CHANGED parent lags the same way.
+8. **An old NeoForm can be unusable.** ModDevGradle needs the `neoform-dependencies` capability, which
+   NeoForm builds from 2023 lack; 1.20.2 resolves only through its December 2024 republish.
+9. **A node mixin's target may not be on its compile classpath.** A Forge node compiles against
+   vanilla Minecraft, so a method Forge's patches add — `ParticleEngine.render(..., Frustum)` — is a
+   Mixin processor warning at build time and resolves only in the game. prodSmoke is what proves the
+   injection bound; each injector says `require = 1` so a miss is a crash, not a silent no-op.
+10. **A rename is a controller replacement, not a directive.** `ResourceLocation` → `Identifier`
+    (1.21.11) touches every file that names one; `stonecutter.gradle.kts` swaps the string on nodes from
+    that version (`replacements.string(current.parsed >= "1.21.11")`), and `src/` keeps the old name.
+11. **ModDevGradle refuses `additionalRuntimeClasspath` from 1.21.10.** A dev-run library goes on
+    `runtimeOnly` there; `devRunLibraries` names the configuration for a node.
+12. **ModDevGradle runs its decompile tools on the Minecraft's own Java**, which for 1.17 is 16 and
+    usually not installed. `useModernMinecraft` points them at 17 there. A node's `java.version` never
+    needs to drop below 17: the merged jar is downgraded to Java 8 whatever the nodes emit.
+13. **Fabric API was mod id `fabric` through its 1.19.1 builds** and `fabric-api` after, still
+    providing `fabric`. Depend on `fabric`, or a 1.17-1.19.1 client refuses the jar.
+14. **Minecraft ships no JOML below 1.19.3.** A shipped jar may not carry it (1.19.3+ has it as a named
+    module, and a second copy is a split package), so those instances take a companion jar and a dev
+    run takes JOML as a library.
+15. **Loom's main artifact is the remapped jar.** A Loom `common` publishes its unremapped one instead
+    (`fabric.loom.disableRemappedVariants`): the loader node bundles common at Mojang's names and remaps
+    the two together. An intermediary common reaches a dev run as a `NoSuchMethodError`.
+16. **Unimined puts Minecraft on the source set's classpath, not the `compileClasspath` configuration.**
+    Hand `registerSrgReobf` `sourceSets.main.get().compileClasspath`, or the renamer sees no Minecraft
+    and dies on the first inherited method.
+17. **Fabric API has no world-render event below 1.16**, so a 1.14-1.15 Fabric node hooks the level
+    render with a node mixin, naming the method both ways since the dev run is Mojang-named and
+    production is intermediary. A dev run reads the merged descriptor, which names every node's config,
+    so `registerNodeMixins` writes each into `processResources` at the source package -- the node's own
+    with its plugin, a sibling's inert -- and the thin jar excludes them (`devNodeMixinConfigs`).
+18. **Forge below 1.17 needs Java 8, dev runs included.** An instance for it pins a Java 8 runtime; the
+    merged jar is downgraded to 8 already. The dev classes are not -- major 61 with `NestHost`, which a
+    Java 8 JVM cannot define and Forge 25's ASM6 scanner cannot read -- so a dev run swaps every class
+    root of ours for a jvmdg copy (`DevRunDowngrade`), lists each mod's resources first in `MOD_CLASSES`,
+    and keeps every class that names Minecraft inside a mod (CrystalGUI's `uniminedDevRun`).
+19. **A node's mixin configs belong to one mod.** A second mod built from the same nodes (CrystalGUI's
+    language stack) passes `LoaderEntries(mixins = false)`: one config name in two mods is a Fabric
+    refusal at launch, and it shows as a client that stops right after the Mixin banner, logging nothing.
+20. **A `replacements.string` runs in reverse on every node its condition is false for.** Its target
+    must therefore never occur in the sources: `GlStateManager.` for `GlStateManager._` would have turned
+    every `GlStateManager.class` into `_class` on 1.15+. 1.14's un-prefixed names are a same-package shim
+    instead.
+21. **Mojang published no names before 1.14.4**, so the tree compiles 1.13.2 and 1.14.3 against
+    generated ones: `runtime/mc/modern/mappings/mojmap-<version>.tsrg`, 1.14.4's Mojang names carried back
+    through SRG ids by `backport_mojmap.py <version>`. `backportedMojmap()` finds the file for a node; Unimined reads it as the
+    `mojmap` namespace and `SrgReobfJar` reverses it where it would read Mojang's `client.txt`. Where an
+    id changed in 1.14 the generator needs telling (`HINTS`, `MEMBER_ALIASES`), and where Forge adds a
+    member of the name it would give, it must give none (`MEMBER_SKIP`) or the remap refuses.
+22. **Loom and Unimined cannot share a plugin classloader**, and Gradle shares one between sibling
+    scripts only when their plugin requests match. Unimined carries its own copies of Loom's classes, so
+    a `common` requesting both breaks Loom in every fabric node; a Loom `common` beside a Loom `fabric`
+    works only because the two request the same set. The 1.13 `common` applies Unimined from a script
+    plugin (`unimined-vanilla.gradle.kts`), whose `buildscript {}` is a classloader of its own.
+23. **LWJGL 3.1 has no core-profile `GLxxC` classes**, and Minecraft 1.13 ships 3.1.6. Tier 1 keeps
+    them; `Lwjgl31GLBackend` is generated from it with the plain `GLxx` classes, and the 1.13 backend
+    extends that instead. Anything else a 1.13 node calls names `GLxx`.
+
+---
+
+## Forge 1.8 to 1.12.2: the legacy tree
+
+`runtime/mc/legacy` is a second Stonecutter tree, because legacy Forge is MCP names on LWJGL2 and
+LaunchWrapper rather than Mojang names on LWJGL3. One branch, `forge`, and a node per SRG plateau — a
+jar built against a plateau's newest version runs on all of it, so three nodes claim the eleven versions
+Forge built from 1.8.8 on:
+
+| Node | Claims | Forge | MCP names |
+|---|---|---|---|
+| `1.8.9` | `[1.8.8,1.9)` | `11.15.1.2318-1.8.9` | `stable:22-1.8.9` |
+| `1.10.2` | `[1.9,1.12)` | `12.18.3.2511` | `stable:29-1.10.2` |
+| `1.12.2` | `[1.12,1.13)` | `14.23.5.2859` | `stable:39-1.12` |
+
+What differs from the modern tree, and where it lives (`LegacyTree.kt`, `cg-legacy-loader`):
+
+- **Sources are in `<root>.mc.legacy` and ship in `<root>.mc.v<digits>`** — the package 1.7.10 already
+  takes at `.v1710` — so the three nodes share the merged jar. `legacyVariants` declares them to the
+  descriptors as loader `fml1122`; there is no common node to carry.
+- **Minecraft comes from Unimined's FG2 support**, applied in real mode only.
+- **The thin jar is renamed MCP -> SRG members, class names kept** (`registerMcpReobf`), from MCP's own
+  `joined.srg` and CSVs; in stub mode from the database's copy of the same table.
+- **The `@Mod` is Forge's shared bootstrapper**, which serves legacy FML too: a legacy variant gets
+  `FmlEvents` and subscribes to FML's lifecycle by event name.
+
+```java
+public final class ExampleLegacy implements VariantEntry {
+    @Override public void start(Object context) {
+        FmlEvents events = (FmlEvents) context;
+        events.on("FMLPreInitializationEvent", e -> ((FMLPreInitializationEvent) e).getModLog().info("up"));
+    }
+}
+```
+
+- **Hooks are mixins at SRG names, with no refmap.** A node pins `variant.mixinPlugin` as a modern node
+  does; the plugin (`CrystalGraphicsLegacyMixins`) names the mixins and applies them on its own variant
+  only. Annotation strings are not renamed with the thin jar, so they are written as the game runs:
+
+```java
+@Mixin(value = EntityRenderer.class, remap = false)                  // class names are MCP = SRG
+public abstract class CgRenderHook {
+    @Inject(method = "func_181560_a", remap = false, require = 1, at = @At("TAIL"))   // updateCameraAndRender
+    private void cg$frameRendered(float partialTicks, long nanoTime, CallbackInfo ci) { ... }
+}
+```
+
+  The SRG names CrystalGraphics' hooks use are the same on all three plateaus; a node's
+  `build/stubs/names.tsrg` is where to look one up.
+- **`GlStateManager` is told about every state it caches** (`GlStateManagerGLBackend`), as Blaze3D is on
+  the modern tree. Its texture table has 8 units, which the host declares as the texture-unit ceiling.
+- The JOML companion loads here as a mod of its own: its `@Mod` carries `modid` as well as `value`.
+- **Members Minecraft renamed between plateaus go through one accessor per side**, with the directives
+  inside it — CrystalGUI's `Game` and `client.ClientGame` — so the rest of a host reads the same on all
+  three. A client-side accessor stays in a class of its own: a dedicated server must not load one naming
+  `Minecraft`.
+- The player needs **MixinBooter**: the manifest's `TweakClass` is `MixinTweaker` for every
+  LaunchWrapper version, and without a provider LaunchWrapper dies before any mod loads. **1.8 itself is
+  not claimed for that reason**: MixinBooter 8.9, 10.7 and 11.17 each fail on Forge 11.14 with no other
+  mod installed, on their own `CrashReport` mixin.
+- **Before a claim widens, `runtime/mc/legacy/claims.py <merged jars>`** checks every Minecraft and Forge
+  reference the shipped nodes make against each version they claim — SRG id and descriptor in MCP's
+  `joined.srg`, Forge members in its universal jar. It found `world.GameType` named on 1.9, where the
+  type is `WorldSettings.GameType`. Constructors are in neither table, so a boot per version still is.
+- 1.8.9's FML logs to `logs/fml-client-latest.log`, not `latest.log`.
+
+---
+
 ## What is shared, and what is not
 
 | Shared | Why |
@@ -320,6 +615,7 @@ game state whether it painted, and fail on the answer.
 | `registerDescriptorTasks` | Four descriptor formats from one declaration, plus the drift check |
 | `CheckSingleJar`, `CheckThinJar` | What a finished jar and a thin jar must be |
 | `ModDescriptor` | The model the formats are printed from |
+| `ModernTree`, `ModernConventions`, `ModernVariants` | Finding a node, its coordinates, its toolchain, its checks, its variant and its relocated names — the modern tree above |
 
 | Not shared | Why |
 |---|---|

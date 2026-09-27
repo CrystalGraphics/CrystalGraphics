@@ -1,3 +1,4 @@
+import cgbuildlogic.abstractModule
 import java.io.File as JFile
 
 // runtime/lwjgl/3 — §12 tier 1 for LWJGL3: the GL backend, the context, the input service and
@@ -12,9 +13,8 @@ import java.io.File as JFile
 // supported range is what stops a symbol added in 3.3 reaching a client that has no such method.
 // 1.20.x runs 3.3.x, and a 3.2.2 call is forward-compatible; the reverse is not.
 //
-// JAVA 17, like `platform` and `core` here — a Java 8 consumer cannot resolve a Java 17 producer at
-// all, since Gradle matches a JVM-version attribute before any class is read. The merged jar's
-// major-52 ceiling is met by `downgradeSingleJar` rewriting the whole jar on the way in.
+// An abstract module like `platform` and `core`: Java 25, and a consumer below that resolves the Java 8
+// copy. The merged jar's major-52 ceiling is met by `singleJar` rewriting the whole jar on the way in.
 
 plugins {
     `java-library`
@@ -24,10 +24,8 @@ group = providers.gradleProperty("modGroup").orElse("com.crystalgraphics").get()
 version = providers.gradleProperty("modVersion").orElse("1.0.0").get()
 base { archivesName.set("crystalgraphics-lwjgl3") }
 
-java {
-    sourceCompatibility = JavaVersion.VERSION_17
-    targetCompatibility = JavaVersion.VERSION_17
-}
+// An abstract module: Java 25, with a Java 8 copy for every consumer below it. @see cgbuildlogic.abstractModule
+abstractModule("com/crystalgraphics/jvmdg/lwjgl3")
 
 repositories {
     mavenCentral()
@@ -45,9 +43,24 @@ dependencies {
     compileOnly("org.lwjgl:lwjgl-opengl:$lwjgl3Version")
 }
 
-tasks.withType<JavaCompile>().configureEach {
-    options.release.set(17)
+// Lwjgl31GLBackend: Lwjgl3GLBackend without the core-profile GLxxC classes, which LWJGL added in 3.2 --
+// Minecraft 1.13 ships 3.1.6. Generated rather than kept, so the two cannot drift; the plain GLxx classes
+// carry the same functions on every LWJGL 3.
+val lwjgl31Sources = layout.buildDirectory.dir("generated/sources/lwjgl31")
+val generateLwjgl31Backend = tasks.register("generateLwjgl31Backend") {
+    val source = layout.projectDirectory.file("src/main/java/com/crystalgraphics/lwjgl3/Lwjgl3GLBackend.java")
+    inputs.file(source)
+    outputs.dir(lwjgl31Sources)
+    doLast {
+        val text = source.asFile.readText()
+            .replace(Regex("\\bGL(\\d+)C\\b"), "GL$1")
+            .replace("class Lwjgl3GLBackend ", "class Lwjgl31GLBackend ")
+            .replaceFirst("\npublic class", "\n// GENERATED from Lwjgl3GLBackend by generateLwjgl31Backend -- edit that file.\npublic class")
+        lwjgl31Sources.get().file("com/crystalgraphics/lwjgl3/Lwjgl31GLBackend.java").asFile
+            .apply { parentFile.mkdirs() }.writeText(text)
+    }
 }
+sourceSets.main { java.srcDir(generateLwjgl31Backend) }
 
 // The tier boundary, enforced rather than described (F4).
 tasks.named<JavaCompile>("compileJava") {
