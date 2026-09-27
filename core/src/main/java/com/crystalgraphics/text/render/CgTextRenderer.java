@@ -295,11 +295,10 @@ public class CgTextRenderer {
 
     /**
      * Last-resort identity pose used by {@link Draw#submit()}/{@link Draw#measure()} when
-     * neither {@link Draw#pose(PoseStack)} nor {@link #poseStack(PoseStack)} was set. Built with
-     * {@code syncsToGL = false} — it only ever backs a single never-pushed identity {@code Pose}
-     * entry, so it must never touch the real GL matrix stack. Shared, never mutated.
+     * neither {@link Draw#pose(PoseStack)} nor {@link #poseStack(PoseStack)} was set. Shared, never
+     * mutated.
      */
-    private static final PoseStack IDENTITY_POSE_STACK = new PoseStack(false);
+    private static final PoseStack IDENTITY_POSE_STACK = new PoseStack();
     
     /**
      * Reusable scratch for {@link #pixelSnapDelta} — the inverse of the current draw call's

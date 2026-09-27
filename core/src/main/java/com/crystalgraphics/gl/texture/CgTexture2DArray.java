@@ -204,25 +204,16 @@ public final class CgTexture2DArray extends CgTextureAbstract {
 
     private void rawUpload(int layer, int x, int y, int w, int h, int format, int type, ByteBuffer data) {
         CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, textureId);
-        // GL defaults GL_UNPACK_ALIGNMENT to 4 (rows padded to a 4-byte boundary in the
-        // client buffer). data here is tightly packed with no such padding, so any
-        // single-byte-per-pixel upload (e.g. R8 bitmap glyphs) whose row width isn't a
-        // multiple of 4 gets every row after the first misread — the driver skips/shifts
-        // bytes trying to find each row's "padded" start, corrupting the uploaded pixels.
-        // Must be set to 1 for the sub-image call itself, then restored.
-        int prevAlignment = CgGL.glGetInteger(CgGL.GL_UNPACK_ALIGNMENT);
-        CgGL.glPixelStorei(CgGL.GL_UNPACK_ALIGNMENT, 1);
-        try {
+        try (CgTightUnpack ignored = CgTightUnpack.begin()) {
             CgGL.glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, x, y, layer, w, h, 1, format, type, data);
         } finally {
-            CgGL.glPixelStorei(CgGL.GL_UNPACK_ALIGNMENT, prevAlignment);
             CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
         }
     }
 
     private void rawUpload(int layer, int x, int y, int w, int h, int format, int type, FloatBuffer data) {
         CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, textureId);
-        try {
+        try (CgTightUnpack ignored = CgTightUnpack.begin()) {
             CgGL.glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, x, y, layer, w, h, 1, format, type, data);
         } finally {
             CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
@@ -231,7 +222,7 @@ public final class CgTexture2DArray extends CgTextureAbstract {
 
     private void rawUpload(int layer, int x, int y, int w, int h, int format, int type, ShortBuffer data) {
         CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, textureId);
-        try {
+        try (CgTightUnpack ignored = CgTightUnpack.begin()) {
             CgGL.glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, x, y, layer, w, h, 1, format, type, data);
         } finally {
             CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
@@ -428,10 +419,12 @@ public final class CgTexture2DArray extends CgTextureAbstract {
             CgGL.glTexImage3D(GL_TEXTURE_2D_ARRAY, 0,
                     spec.getGlInternalFormat(), w, h, images.length, 0,
                     uploadPixelFormat, GL_UNSIGNED_BYTE, (ByteBuffer) null);
-            for (int i = 0; i < images.length; i++) {
-                CgGL.glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0,
-                        0, 0, i, w, h, 1,
-                        uploadPixelFormat, GL_UNSIGNED_BYTE, images[i].pixels());
+            try (CgTightUnpack ignored = CgTightUnpack.begin()) {
+                for (int i = 0; i < images.length; i++) {
+                    CgGL.glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0,
+                            0, 0, i, w, h, 1,
+                            uploadPixelFormat, GL_UNSIGNED_BYTE, images[i].pixels());
+                }
             }
             spec.applyTo(GL_TEXTURE_2D_ARRAY);
 

@@ -1,9 +1,15 @@
 package com.crystalgraphics.mc.modern.fabric;
 
+import com.crystalgraphics.mc.modern.platform.ResourceIds;
 import com.crystalgraphics.mc.modern.platform.LifecycleModern;
 import com.crystalgraphics.mc.shared.VariantEntry;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
+//? if >=1.21.9 {
+/*import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
+import net.minecraft.client.Minecraft;
+*///?} elif >=1.16 {
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
+//?}
 import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
 import net.fabricmc.fabric.api.resource.SimpleSynchronousResourceReloadListener;
 import net.minecraft.resources.ResourceLocation;
@@ -46,7 +52,7 @@ public final class CrystalGraphicsFabric implements VariantEntry {
             ResourceManagerHelper.get(PackType.CLIENT_RESOURCES).registerReloadListener(
                     new SimpleSynchronousResourceReloadListener() {
                         @Override public ResourceLocation getFabricId() {
-                            return new ResourceLocation(MODID, "asset_reload");
+                            return ResourceIds.of(MODID, "asset_reload");
                         }
                         @Override public void onResourceManagerReload(ResourceManager manager) {
                             LifecycleModern.reload();
@@ -59,8 +65,24 @@ public final class CrystalGraphicsFabric implements VariantEntry {
         private static void registerRenderFrame() {
             // AFTER_ENTITIES and AFTER_TRANSLUCENT are Fabric's names for the two moments Forge calls
             // AFTER_BLOCK_ENTITIES and AFTER_PARTICLES.
+            // 1.21 hands a DeltaTracker; `true` is the pause-aware residual 1.20's float already was.
+            // Fabric API for 1.21.9 rebuilt these events around the new renderer: BEFORE_TRANSLUCENT is the
+            // opaque point, END_MAIN the transparent one, and the context no longer carries the tick.
+            //? if >=1.21.9 {
+            /*WorldRenderEvents.BEFORE_TRANSLUCENT.register(context -> LifecycleModern.opaquePass(
+                    Minecraft.getInstance().getDeltaTracker().getGameTimeDeltaPartialTick(true)));
+            WorldRenderEvents.END_MAIN.register(context -> LifecycleModern.transparentPass());
+            *///?} elif >=1.21 {
+            /*WorldRenderEvents.AFTER_ENTITIES.register(context ->
+                    LifecycleModern.opaquePass(context.tickCounter().getGameTimeDeltaPartialTick(true)));
+            WorldRenderEvents.AFTER_TRANSLUCENT.register(context -> LifecycleModern.transparentPass());
+            *///?} elif >=1.16 {
             WorldRenderEvents.AFTER_ENTITIES.register(context -> LifecycleModern.opaquePass(context.tickDelta()));
             WorldRenderEvents.AFTER_TRANSLUCENT.register(context -> LifecycleModern.transparentPass());
+            //?} else {
+            /*// Fabric API for 1.15 has no WorldRenderEvents: a node mixin runs both passes.
+            // @see com.crystalgraphics.mc.modern.fabric.mixin.WorldPassHook
+            *///?}
         }
 
         // -- Shutdown ---------------------------------------------------------------

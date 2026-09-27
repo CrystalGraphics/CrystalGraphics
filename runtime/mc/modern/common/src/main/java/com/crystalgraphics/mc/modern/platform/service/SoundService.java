@@ -1,10 +1,15 @@
 package com.crystalgraphics.mc.modern.platform.service;
 
+import com.crystalgraphics.mc.modern.platform.ResourceIds;
 import com.crystalgraphics.platform.service.CgSoundService;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
+//? if >=1.19.3 {
 import net.minecraft.core.registries.BuiltInRegistries;
+//?} else {
+/*import net.minecraft.core.Registry;
+*///?}
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvent;
 
@@ -18,7 +23,15 @@ public final class SoundService implements CgSoundService {
             Minecraft mc = Minecraft.getInstance();
             if (mc == null || mc.getSoundManager() == null) return;
 
-            SoundEvent event = BuiltInRegistries.SOUND_EVENT.get(new ResourceLocation(soundId));
+            // 1.21.2 made `get` answer an Optional holder; `getValue` is the nullable lookup.
+            // 1.19.3 moved the static registries to BuiltInRegistries.
+            //? if >=1.21.2 {
+            /*SoundEvent event = BuiltInRegistries.SOUND_EVENT.getValue(ResourceIds.parse(soundId));
+            *///?} elif >=1.19.3 {
+            SoundEvent event = BuiltInRegistries.SOUND_EVENT.get(ResourceIds.parse(soundId));
+            //?} else {
+            /*SoundEvent event = Registry.SOUND_EVENT.get(ResourceIds.parse(soundId));
+            *///?}
             if (event == null) return;
 
             mc.getSoundManager().play(SimpleSoundInstance.forUI(event, 1.0F));

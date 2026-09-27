@@ -1,5 +1,11 @@
+import cgbuildlogic.ModDescriptor
 import cgbuildlogic.SingleJarSpec
+import cgbuildlogic.legacyNodes
+import cgbuildlogic.modernLoaderNodes
+import cgbuildlogic.modernNodes
 import cgbuildlogic.registerSingleJarPipeline
+import cgbuildlogic.shippedEntryPaths
+import cgbuildlogic.thinJarTask
 
 // ── One jar for every loader (J4) ────────────────────────────────────────────────────────────────
 //
@@ -36,23 +42,36 @@ repositories {
 // TASK, not the project.
 val singleJarModId = providers.gradleProperty("modId").orElse("crystalgraphics").get()
 
+// ── The 1.20.x thin jars, one per NODE, read off the tree ────────────────────────────────────────
+//
+// Every node of :runtime:mc:modern ships a thin jar, so nothing here names one: a version added in
+// settings.gradle.kts is merged, counted and checked with no edit to this file. Each node's production
+// step is `thinJarTask`'s answer, which is per node rather than per loader: Forge changed names at 1.20.6.
+
+/** Declared once by cg-descriptors, which the root applies first. */
+@Suppress("UNCHECKED_CAST")
+val modDescriptors = extra["cgModDescriptors"] as Map<String, ModDescriptor>
+
+/** The manifest's mixin configs. @see cgbuildlogic.ModDescriptor.manifestMixinConfigs */
+val mixinConfigs = modDescriptors.getValue("main").manifestMixinConfigs()
+
+/** One relocated copy of each common class per loader node: each thin jar carries its own common. */
+val modernCopies = modernLoaderNodes(project).size
+
 registerSingleJarPipeline(SingleJarSpec(
     modId = singleJarModId,
     fileName = "$singleJarModId-${project.version}.jar",
     shadePath = "com/crystalgraphics/shadow",
 
-    // Named per loader because each toolchain names its own production step.
-    thinJars = listOf(
-        ":runtime:mc:1710" to "reobfThinJar",
-        ":runtime:mc:modern:forge" to "reobfThinShadowJar",
-        ":runtime:mc:modern:neoforge" to "thinShadowJar",
-        ":runtime:mc:modern:fabric" to "remapThinJar",
-    ),
+    // 1.7.10's production step is its own; every tree node's is read off its tree.
+    thinJars = listOf(":runtime:mc:1710" to "reobfThinJar") +
+        legacyNodes(project).map { it.path to "reobfThinShadowJar" } +
+        modernLoaderNodes(project).map { it.path to thinJarTask(it, "thinShadowJar") },
     // Tier 1 (§12) joins the library list rather than any loader's thin jar: one compiled copy of
     // each LWJGL family, added once for every variant, never remapped -- which is the whole reason
     // the tier exists. A loader bundling its own would put four copies in the merge to reject.
     libraryProjects = listOf(":core", ":platform", ":freetype-msdfgen-harfbuzz-bindings",
-                             ":runtime:mc:shared", ":runtime:lwjgl:2", ":runtime:lwjgl:3"),
+                             ":runtime:mc:shared", ":runtime:mc:forge-bootstrap", ":runtime:lwjgl:2", ":runtime:lwjgl:3"),
     serviceOwners = listOf(":core", ":platform"),
 
     // JOML IS NOT RELOCATED AND IS NOT IN THIS JAR. Both halves of that are D2, decided the hard way.
@@ -82,11 +101,13 @@ registerSingleJarPipeline(SingleJarSpec(
         "FMLCorePluginContainsFMLMod" to true,
         "ForceLoadAsMod" to true,
         "TweakClass" to "org.spongepowered.asm.launch.MixinTweaker",
-        "MixinConfigs" to "mixins.crystalgraphics.json",
+        // 1.7.10's config and every Forge node's: both loaders find mixin configs here.
+        "MixinConfigs" to mixinConfigs,
         "Implementation-Version" to project.version.toString(),
         "Automatic-Module-Name" to singleJarModId,
     ),
-    fabricThinJar = ":runtime:mc:modern:fabric" to "remapThinJar",
+    // Any Fabric node's manifest will do; none in a build that has no Fabric node, which builds no jar.
+    fabricThinJar = modernNodes(project, "fabric").firstOrNull()?.let { it.path to "remapThinJar" },
 
     extraContent = {
         // Kotlin rides in on a JOML transitive and is never used.
@@ -112,10 +133,9 @@ registerSingleJarPipeline(SingleJarSpec(
         // the implementation, text the font stack.
         expectSingle.set(listOf("com/crystalgraphics/api/", "com/crystalgraphics/gl/",
                                 "com/crystalgraphics/text/"))
-        relocatedClasses.set(mapOf("com/crystalgraphics/mc/modern/platform/LifecycleModern.class" to 3))
+        relocatedClasses.set(mapOf("com/crystalgraphics/mc/modern/platform/LifecycleModern.class" to modernCopies))
         requiredEntries.set(listOf(
-            "META-INF/mods.toml", "fabric.mod.json", "mcmod.info", "pack.mcmeta",
-            "mixins.crystalgraphics.json",
+            "META-INF/mods.toml", "META-INF/neoforge.mods.toml", "fabric.mod.json", "mcmod.info", "pack.mcmeta",
             "com/crystalgraphics/mc/shared/LoaderProbe.class",
             "com/crystalgraphics/mc/v1710/mixins/early/CrystalGraphicsMixins.class",
             // J11.0. The table decides which variant runs, and the three bootstrappers are what the
@@ -123,14 +143,18 @@ registerSingleJarPipeline(SingleJarSpec(
             // missing one of these loads nothing at all on that loader and says nothing about why.
             "META-INF/crystalgraphics/variants.json",
             "com/crystalgraphics/mc/modern/fabric/FabricBootstrap.class",
-            "com/crystalgraphics/mc/modern/forge/ForgeBootstrap.class",
+            "com/crystalgraphics/mc/forge/ForgeBootstrap.class",
             "com/crystalgraphics/mc/modern/neoforge/NeoForgeBootstrap.class",
-        ))
+        // EVERY ENTRY POINT THE TABLE NAMES, at its shipped name: one per node, relocated into that
+        // node's package (cgbuildlogic.ModernVariants). A table naming a class absent from the jar is a
+        // crash at mod construction on that version alone.
+        ) + modDescriptors.getValue("main").shippedEntryPaths()
+          + modDescriptors.getValue("main").variants.flatMap { it.mixinConfigs }.distinct())
         requiredManifest.set(mapOf(
             "FMLCorePluginContainsFMLMod" to "true",
             "ForceLoadAsMod" to "true",
             "TweakClass" to "org.spongepowered.asm.launch.MixinTweaker",
-            "MixinConfigs" to "mixins.crystalgraphics.json",
+            "MixinConfigs" to mixinConfigs,
             "Fabric-Loom-Mixin-Remap-Type" to "",
         ))
     },
@@ -151,9 +175,9 @@ dependencies {
 // `mods/` on the LaunchWrapper classpath whether or not it declares a mod, which is what makes this
 // work with no descriptor and no entry point.
 //
-// INSTALL IT ON 1.7.10 AND 1.12.2 ONLY. On 1.19.3+ the game already has JOML as a named module, and a
-// second one in `mods/` reproduces exactly the ResolutionException the note above records -- so this
-// is the one artefact here that is NOT "install everywhere". `deploySingleJars` knows that.
+// INSTALL IT BELOW 1.19.3 ONLY. On 1.19.3+ the game already has JOML as a named module, and a second
+// one in `mods/` reproduces exactly the ResolutionException the note above records -- so this is the
+// one artefact here that is NOT "install everywhere". `deploySingleJars` knows that.
 // ── The companion's own descriptor, so MODERN Forge loads it too ────────────────────────────────
 //
 // FML 1.7.10 puts every jar in `mods/` on the LaunchWrapper classpath whether or not it declares a
@@ -162,16 +186,21 @@ dependencies {
 // `NoClassDefFoundError: org/joml/Matrix4fc` -- a jar reaches the transforming classloader by being
 // a MOD, and `mods.toml` is what makes it one.
 //
-// `lowcodefml`, NOT `javafml`: javafml resolves every declared modId to an @Mod class and this jar has
-// none, which Forge reports as "has mods that were not found" -- measured on 1.19.2. lowcodefml is the
-// loader for a mod that ships no code of its own.
+// `javafml`, with an EMPTY @Mod class: javafml resolves every declared modId to an @Mod class, and a
+// jar with none is "has mods that were not found" -- measured on 1.19.2. `lowcodefml`, the loader for a
+// mod with no code, would need no class but arrived only in Forge 40.1.41, and 1.17.1-1.18.1 need JOML
+// too. The class is compiled against a stand-in for Forge's annotation (`jomlStub`), so no Forge is on
+// this build's classpath; only the annotation's name and value reach the class file.
+//
+// BOTH `value` AND `modid`, as the Forge bootstrapper carries: FML 1.8-1.12.2 scans for the same annotation
+// and reads `modid`, and puts every jar in `mods/` on the classpath as 1.7.10 does.
 //
 // THE RANGE STOPS AT 1.19.3, which is where Minecraft adopted JOML and where a second copy becomes
 // the split package E-J9-JOML measured. Being refused by range names the reason; a ResolutionException
 // does not. 1.7.10 reads `mcmod.info` and never looks at this file.
 val jomlDescriptor by tasks.registering {
     group = "single jar"
-    description = "The JOML companion's mods.toml, so ModLauncher loads it below 1.19.3."
+    description = "The JOML companion's mods.toml and fabric.mod.json, so both loaders load it below 1.19.3."
     val outDir = layout.buildDirectory.dir("generated/joml-companion")
     val modVersion = project.version.toString()
     outputs.dir(outDir)
@@ -179,7 +208,7 @@ val jomlDescriptor by tasks.registering {
         val root = outDir.get().asFile
         File(root, "META-INF").mkdirs()
         File(root, "META-INF/mods.toml").writeText("""
-            modLoader = "lowcodefml"
+            modLoader = "javafml"
             loaderVersion = "[1,)"
             license = "MIT"
 
@@ -196,12 +225,51 @@ val jomlDescriptor by tasks.registering {
                 ordering = "NONE"
                 side = "BOTH"
         """.trimIndent() + "\n")
+        // Knot ignores a jar with no fabric.mod.json, which leaves org.joml off the game's classpath.
+        File(root, "fabric.mod.json").writeText("""
+            {
+              "schemaVersion": 1,
+              "id": "crystalgraphics_joml",
+              "version": "$modVersion",
+              "name": "JOML (for CrystalGraphics)",
+              "description": "JOML, for Minecraft versions that ship none. Install below 1.19.3 only.",
+              "license": "MIT",
+              "depends": { "minecraft": "<1.19.3" }
+            }
+        """.trimIndent() + "\n")
         // Pack format is cosmetic here -- the jar carries no assets -- but its ABSENCE is a warning
         // on every boot from 1.18 on.
         File(root, "pack.mcmeta").writeText(
                 "{\"pack\":{\"description\":\"JOML for CrystalGraphics\",\"pack_format\":9}}\n")
     }
 }
+
+// The companion's @Mod class, and a stand-in for the annotation it carries. Generated, not checked in:
+// it exists only so javafml has a class to construct.
+val jomlStubSources by tasks.registering {
+    val outDir = layout.buildDirectory.dir("generated/joml-stub")
+    outputs.dir(outDir)
+    doLast {
+        val root = outDir.get().asFile
+        File(root, "net/minecraftforge/fml/common").mkdirs()
+        File(root, "net/minecraftforge/fml/common/Mod.java").writeText(
+            "package net.minecraftforge.fml.common;\n\n" +
+            "@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)\n" +
+            "public @interface Mod { String value() default \"\"; String modid() default \"\"; }\n")
+        File(root, "com/crystalgraphics/joml").mkdirs()
+        File(root, "com/crystalgraphics/joml/JomlCompanion.java").writeText(
+            "package com.crystalgraphics.joml;\n\n" +
+            "/** The mod javafml constructs for the JOML companion; it does nothing else. */\n" +
+            "@net.minecraftforge.fml.common.Mod(value = \"crystalgraphics_joml\", modid = \"crystalgraphics_joml\")\n" +
+            "public final class JomlCompanion {\n    public JomlCompanion() {}\n}\n")
+    }
+}
+
+val jomlStub by sourceSets.creating {
+    java.srcDir(jomlStubSources)
+}
+
+tasks.named<JavaCompile>(jomlStub.compileJavaTaskName) { options.release.set(8) }
 
 val jomlJar by tasks.registering(Jar::class) {
     group = "single jar"
@@ -213,9 +281,11 @@ val jomlJar by tasks.registering(Jar::class) {
         exclude("module-info.class", "META-INF/maven/**")
     }
     from(jomlDescriptor)
+    // The mod class only: the annotation stand-in stays out, so the real one is what resolves.
+    from(jomlStub.output) { include("com/crystalgraphics/joml/**") }
     manifest {
         attributes(
-            "Implementation-Title" to "JOML, for CrystalGraphics on LWJGL2 targets",
+            "Implementation-Title" to "JOML, for CrystalGraphics below Minecraft 1.19.3",
             "Implementation-Version" to project.version.toString(),
         )
     }

@@ -1,3 +1,4 @@
+import cgbuildlogic.abstractModule
 import java.io.File as JFile
 
 plugins {
@@ -14,18 +15,11 @@ val lwjglVer      = rootProject.properties["dep.lwjgl"].toString()
 val log4jVer      = rootProject.properties["dep.log4j"].toString()
 val jabelVer      = rootProject.properties["dep.jabel"].toString()
 val junitVer      = rootProject.properties["dep.junit"].toString()
-val jdkVersion    = rootProject.properties["dep.jdk.toolchain"].toString().toInt()
 val downgraderVer = rootProject.properties["dep.jvmdowngrader"]?.toString() ?: "0.9.0"
 
 // 1. TOOLCHAIN SETUP
-java {
-    sourceCompatibility = JavaVersion.VERSION_17
-    targetCompatibility = JavaVersion.VERSION_17
-    toolchain {
-        // Jabel is stable on 17 and 21. It is not stable on 25.
-        languageVersion.set(JavaLanguageVersion.of(17))
-    }
-}
+// An abstract module: Java 25, with a Java 8 copy for every consumer below it. @see cgbuildlogic.abstractModule
+abstractModule("com/crystalgraphics/jvmdg/core")
 
 tasks.withType<Jar>().configureEach {
     archiveBaseName.set("graphicsCore")
@@ -97,7 +91,7 @@ dependencies {
     testCompileOnly("org.projectlombok:lombok:1.18.44")
     testAnnotationProcessor("org.projectlombok:lombok:1.18.44")
 
-    // Keep compileOnly so `import ...Desugar` doesn't crash the pure Java 17 compile
+    // Keep compileOnly so `import ...Desugar` doesn't crash the plain compile
     // Notice: We NO LONGER have annotationProcessor(jabel) here.
     compileOnly("com.github.bsideup.jabel:jabel-javac-plugin:$jabelVer")
 

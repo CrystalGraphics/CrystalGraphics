@@ -1,0 +1,193 @@
+package cgbuildlogic
+
+import groovy.json.JsonSlurper
+import net.neoforged.srgutils.IMappingFile
+import net.neoforged.srgutils.IRenamer
+import org.gradle.api.file.ConfigurableFileCollection
+import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.provider.ListProperty
+import org.gradle.api.provider.Property
+import org.gradle.api.tasks.Classpath
+import org.gradle.api.tasks.CompileClasspath
+import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.InputFiles
+import org.gradle.api.tasks.Internal
+import org.gradle.api.tasks.Optional
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
+import org.gradle.api.tasks.TaskAction
+import org.gradle.jvm.tasks.Jar
+import org.gradle.process.ExecOperations
+import java.io.File
+import java.io.OutputStream
+import java.net.URI
+import java.util.zip.ZipFile
+import javax.inject.Inject
+
+/**
+ * A jar compiled against official names, renamed to what MinecraftForge 1.20.2–1.20.4 runs: Mojang's
+ * class names with SRG members — and below 1.17, MCP's class names too. ModDevGradle's legacy mode does this up to 1.20.1 and cannot set up a
+ * later Forge; this is the same renamer (AutoRenamingTool) over the same mapping, built here.
+ *
+ * ```kotlin
+ * tasks.register<SrgReobfJar>("reobfThinShadowJar") {
+ *     from(thinShadowJar.map { zipTree(it.archiveFile) })   // what to rename, like any Jar
+ *     minecraft.set("1.20.4")                               // whose client mappings
+ *     mcpConfig.from(mcpConfigZip)                          // de.oceanlabs.mcp:mcp_config:<v>@zip
+ *     libraries.from(configurations["compileClasspath"])    // what the classes extend
+ *     renamer.from(autoRenamingTool)                        // net.neoforged:AutoRenamingTool:<v>:all
+ *     archiveClassifier.set("thin")
+ * }
+ * ```
+ *
+ * A stub build hands it the stub database instead, and the renamer its real build runs
+ * (@see registerStubReobf):
+ *
+ * ```kotlin
+ *     stubDatabase.set(file("singlejar-logic/stubs.zip")); stubNode.set("forge:1.20.1")   // no mcpConfig
+ *     renamer.from(legacyForgeRenamer); renamerArgs.set(listOf("--strip-sigs"))
+ * ```
+ *
+ * - Everything the classes inherit from must be in [libraries], or an override keeps its official name
+ *   and silently never overrides anything at runtime.
+ * - Forge 1.20.6+ runs official names; its jars ship as compiled. @see forgeRunsSrg
+ */
+abstract class SrgReobfJar @Inject constructor(private val exec: ExecOperations) : Jar() {
+
+    @get:Input
+    abstract val minecraft: Property<String>
+
+    /** The stub database to cut the node's official -> SRG table from, for this run alone; else built from [mcpConfig]. */
+    @get:Optional
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val stubDatabase: RegularFileProperty
+
+    @get:Optional
+    @get:Input
+    abstract val stubNode: Property<String>
+
+    @get:Input
+    abstract val renamerArgs: ListProperty<String>
+
+    /** The table this task renamed with — what `generateStubs` cuts a node's `stub.tsrg` from. */
+    @get:Internal
+    val namesTable: File get() = File(temporaryDir, "official-to-srg.tsrg")
+
+    init {
+        renamerArgs.convention(listOf("--disable-abstract-param", "--strip-sigs"))
+    }
+
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val mcpConfig: ConfigurableFileCollection
+
+    @get:CompileClasspath
+    abstract val libraries: ConfigurableFileCollection
+
+    @get:Classpath
+    abstract val renamer: ConfigurableFileCollection
+
+    /** Official -> Mojang-shaped names, for a version Mojang published none for. @see backportedMojmap */
+    @get:Optional
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val backportedMappings: RegularFileProperty
+
+    /**
+     * Legacy Forge (1.8–1.12.2), instead of [mcpConfig]: MCP's `joined.srg` (`de.oceanlabs.mcp:mcp:<v>:srg@zip`)
+     * and the CSVs naming its SRG members (`de.oceanlabs.mcp:mcp_<channel>:<v>@zip`). The table is then MCP
+     * names -> SRG members, class names unchanged — what FML runs on those versions.
+     */
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val mcpSrg: ConfigurableFileCollection
+
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val mcpMappings: ConfigurableFileCollection
+
+    @TaskAction
+    override fun copy() {
+        super.copy()
+        val jar = archiveFile.get().asFile
+        val official = File(temporaryDir, "official.jar")
+        jar.copyTo(official, overwrite = true)
+        val table = namesTable
+        when {
+            stubDatabase.isPresent -> table.writeText(StubDatabase.names(stubDatabase.get().asFile, stubNode.get()))
+            !mcpSrg.isEmpty -> mcpToSrg(table)
+            else -> officialToSrg(table)
+        }
+        File(temporaryDir, "renamer.log").outputStream().use { log ->
+            renameTo(official, jar, table, log)
+        }
+        official.delete()
+        // A stub build's table is a cut of the committed database, and not worth keeping per node.
+        if (stubDatabase.isPresent) table.delete()
+    }
+
+    private fun renameTo(official: File, jar: File, names: File, log: OutputStream) {
+        exec.javaexec {
+            standardOutput = log
+            classpath(renamer)
+            mainClass.set("net.neoforged.art.Main")
+            args("--input", official.absolutePath, "--output", jar.absolutePath, "--names", names.absolutePath)
+            args(renamerArgs.get())
+            libraries.forEach { args("--lib", it.absolutePath) }
+        }
+    }
+
+    /** Official -> obfuscated (Mojang's client mappings, or the backported ones) chained with obfuscated -> SRG (MCPConfig). */
+    private fun officialToSrg(out: File) {
+        val officialToObf = if (backportedMappings.isPresent) IMappingFile.load(backportedMappings.get().asFile).reverse()
+            else IMappingFile.load(clientMappings())
+        val obfToSrg = ZipFile(mcpConfig.singleFile).use { zip ->
+            zip.getInputStream(zip.getEntry("config/joined.tsrg")).use { IMappingFile.load(it) }
+        }
+        val chained = officialToObf.chain(obfToSrg)
+        // Below 1.17 Forge runs MCPConfig's class names as well, so the chain's own are the right ones.
+        val names = if (MinecraftVersionOrder.compare(minecraft.get(), "1.17") < 0) chained else chained.rename(KeepClassNames)
+        names.write(out.toPath(), IMappingFile.Format.TSRG2, false)
+    }
+
+    /** Mojang's client mappings for [minecraft], fetched once and kept beside the task's scratch. */
+    private fun clientMappings(): File {
+        val version = minecraft.get()
+        val cached = File(temporaryDir.parentFile, "client-mappings-$version.txt")
+        if (cached.isFile) return cached
+        val manifest = read("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json")
+        val entry = (manifest["versions"] as List<*>).map { it as Map<*, *> }.single { it["id"] == version }
+        val downloads = read(entry["url"].toString())["downloads"] as Map<*, *>
+        val url = (downloads["client_mappings"] as Map<*, *>)["url"].toString()
+        URI(url).toURL().openStream().use { input -> cached.outputStream().use { input.copyTo(it) } }
+        return cached
+    }
+
+    private fun read(url: String): Map<*, *> =
+        URI(url).toURL().openStream().use { JsonSlurper().parse(it) } as Map<*, *>
+
+    /** From 1.17 Forge runs Mojang's class names; only members are SRG. */
+    /** MCP -> SRG: `joined.srg` is obfuscated -> SRG; renamed through the CSVs it is obfuscated -> MCP; one reversed and chained onto the other. */
+    private fun mcpToSrg(out: File) {
+        val obfToSrg = ZipFile(mcpSrg.singleFile).use { zip ->
+            zip.getInputStream(zip.getEntry("joined.srg")).use { IMappingFile.load(it) }
+        }
+        val (fields, methods) = ZipFile(mcpMappings.singleFile).use { zip -> csv(zip, "fields.csv") to csv(zip, "methods.csv") }
+        val obfToMcp = obfToSrg.rename(object : IRenamer {
+            override fun rename(value: IMappingFile.IField): String = fields[value.mapped] ?: value.mapped
+            override fun rename(value: IMappingFile.IMethod): String = methods[value.mapped] ?: value.mapped
+        })
+        obfToMcp.reverse().chain(obfToSrg).write(out.toPath(), IMappingFile.Format.TSRG2, false)
+    }
+
+    /** `searge,name,...` -> searge to name; the header skipped. */
+    private fun csv(zip: ZipFile, name: String): Map<String, String> =
+        zip.getInputStream(zip.getEntry(name)).bufferedReader().readLines().drop(1)
+            .map { it.split(',', limit = 3) }.filter { it.size >= 2 }.associate { it[0] to it[1] }
+
+    private object KeepClassNames : IRenamer {
+        override fun rename(value: IMappingFile.IClass): String = value.original
+    }
+}
