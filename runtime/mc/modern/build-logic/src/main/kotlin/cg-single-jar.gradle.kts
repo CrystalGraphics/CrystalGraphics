@@ -131,6 +131,11 @@ registerSingleJarPipeline(SingleJarSpec(
             into("META-INF")
             rename { "NOTICE.md" }
         }
+        // The licence itself: LGPL-3.0 is a set of additions to the GPL-3.0, and both require every
+        // recipient of the object code to get a copy.
+        from(project.rootProject.files("COPYING.LESSER", "COPYING")) {
+            into("META-INF")
+        }
     },
 
     configureCheck = {
@@ -143,7 +148,7 @@ registerSingleJarPipeline(SingleJarSpec(
         relocatedClasses.set(mapOf("com/crystalgraphics/mc/modern/platform/LifecycleModern.class" to modernCopies))
         requiredEntries.set(listOf(
             "META-INF/mods.toml", "META-INF/neoforge.mods.toml", "fabric.mod.json", "mcmod.info", "pack.mcmeta",
-            "META-INF/NOTICE.md",
+            "META-INF/NOTICE.md", "META-INF/COPYING", "META-INF/COPYING.LESSER",
             "com/crystalgraphics/mc/shared/LoaderProbe.class",
             "com/crystalgraphics/mc/v1710/mixins/early/CrystalGraphicsMixins.class",
             // J11.0. The table decides which variant runs, and the three bootstrappers are what the
