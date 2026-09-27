@@ -33,4 +33,14 @@ public abstract class MixinMinecraft {
     private void cg$shutdown(CallbackInfo ci) {
         CgPlatform.lifecycle().onContextDestroy();
     }
+
+    /**
+     * A public member of {@code Minecraft} that no class file declares: what CrystalGUI's language probe
+     * compiles a script against, to prove the editor reads live bytes rather than files. Reports live state,
+     * so a script printing it shows it ran in the game.
+     */
+    public String cgMixinProbe() {
+        Minecraft mc = (Minecraft) (Object) this;
+        return "cg-mixin-live " + mc.displayWidth + "x" + mc.displayHeight;
+    }
 }
