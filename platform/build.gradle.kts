@@ -1,11 +1,7 @@
 import cgbuildlogic.abstractModule
+import cgbuildlogic.publishedModule
 
 plugins { `java-library` }
-
-val isStandalone = rootProject.name == project.name
-if (isStandalone) {
-    apply(plugin = "maven-publish")
-}
 
 group = "com.crystalgraphics"
 version = rootProject.version.toString()
@@ -18,13 +14,7 @@ val downgraderVer = rootProject.properties["dep.jvmdowngrader"]?.toString() ?: "
 
 // An abstract module: Java 25, with a Java 8 copy for every consumer below it. @see cgbuildlogic.abstractModule
 abstractModule("com/crystalgraphics/jvmdg/platform")
-
-java {
-    if (isStandalone) {
-        withSourcesJar()
-        withJavadocJar()
-    }
-}
+publishedModule("CrystalGraphics Platform", "The SPI a loader implements for CrystalGraphics: GL dispatch, input, lifecycle.")
 
 repositories {
     maven {
@@ -73,30 +63,6 @@ tasks.jar {
     // Native libraries in src/main/resources/natives/ are automatically included
     // by the standard processResources task — no explicit from() needed.
 }
-
-// Only configure publishing when building standalone
-if (isStandalone) {
-    configure<PublishingExtension> {
-        publications {
-            create<MavenPublication>("maven") {
-                from(components["java"])
-
-                pom {
-                    name.set("FreeType-MSDFgen-HarfBuzz Java Bindings")
-                    description.set("JNI bindings for FreeType, MSDFgen, and HarfBuzz, compatible with LWJGL 2.9.3 and Java 8")
-                    url.set("https://github.com/somehussar/freetype-msdfgen-harfbuzz-bindings")
-                    licenses {
-                        license {
-                            name.set("MIT License")
-                            url.set("https://opensource.org/licenses/MIT")
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
 
 tasks.named<Test>("test") {
     useJUnit()

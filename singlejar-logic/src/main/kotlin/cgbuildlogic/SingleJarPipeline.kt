@@ -36,6 +36,7 @@ import java.util.jar.JarFile
  * @property descriptorsTask  the task emitting the per-loader descriptors
  * @property extraContent     anything else this project bundles — engine bands, native jars
  * @property configureCheck   this project's expectations of the finished jar
+ * @property publication      the jar's Maven coordinates, or null to publish nothing
  */
 data class SingleJarSpec(
     /**
@@ -68,6 +69,7 @@ data class SingleJarSpec(
     val descriptorsTask: String = "generateMergedDescriptors",
     val extraContent: ShadowJar.() -> Unit = {},
     val configureCheck: CheckSingleJar.() -> Unit = {},
+    val publication: ShippedJar? = null,
 )
 
 /**
@@ -238,6 +240,8 @@ fun Project.registerSingleJarPipeline(spec: SingleJarSpec) {
         classMajorCeiling.set(52)
         spec.configureCheck(this)
     }
+
+    spec.publication?.let { publishShippedJar(singleJar, it, checkSingleJar) }
 
     tasks.named("assemble") { dependsOn(singleJar) }
     tasks.register("check$N") {

@@ -1,8 +1,11 @@
+import cgbuildlogic.Licence
 import cgbuildlogic.ModDescriptor
+import cgbuildlogic.ShippedJar
 import cgbuildlogic.SingleJarSpec
 import cgbuildlogic.legacyNodes
 import cgbuildlogic.modernLoaderNodes
 import cgbuildlogic.modernNodes
+import cgbuildlogic.publishShippedJar
 import cgbuildlogic.registerSingleJarPipeline
 import cgbuildlogic.shippedEntryPaths
 import cgbuildlogic.thinJarTask
@@ -171,6 +174,8 @@ registerSingleJarPipeline(SingleJarSpec(
             "Fabric-Loom-Mixin-Remap-Type" to "",
         ))
     },
+    publication = ShippedJar("com.crystalgraphics", "crystalgraphics", "CrystalGraphics",
+        "The CrystalGraphics mod: one jar for every loader and Minecraft version."),
 ))
 
 // The companion's contents, and deliberately NOT `singleJarLibs`: nothing here reaches the merged jar.
@@ -307,3 +312,6 @@ val jomlJar by tasks.registering(Jar::class) {
 
 // It is part of building the artefacts, not an extra step somebody has to remember.
 tasks.named("singleJar") { dependsOn(jomlJar) }
+
+publishShippedJar(jomlJar, ShippedJar("com.crystalgraphics", "crystalgraphics-joml", "JOML for CrystalGraphics",
+    "JOML as a mod, for Minecraft below 1.19.3, which ships none.", Licence.MIT))

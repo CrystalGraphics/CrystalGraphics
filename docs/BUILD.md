@@ -91,6 +91,22 @@ python singlejar-logic/mcapi.py <Class> [member]                       # any nod
 
 `serverSmoke`, `prodSmoke` and useful dev runs are driven from CrystalGUI: this mod alone draws nothing.
 
+## Publishing
+
+`./gradlew publishToMavenLocal`, at the root version (`modVersion`). The mechanism is the README's
+§ *Publishing*.
+
+| Coordinate | What | Consumer |
+|---|---|---|
+| `com.crystalgraphics:core` | the engine — jar, `java8` copy, sources, javadoc | compiles against it |
+| `com.crystalgraphics:platform` | the SPI | comes with `core` |
+| `com.crystalgraphics:freetype-msdfgen-harfbuzz-bindings` | JNI bindings and natives (MIT) | comes with `core` |
+| `com.crystalgraphics:crystalgraphics` | the shipped jar | runs it in a dev client |
+| `com.crystalgraphics:crystalgraphics-joml` | JOML as a mod (MIT) | runs it below Minecraft 1.19.3 |
+
+`core`'s API names the real `org.joml` (1.10.5 in its metadata). A library's `consumerApi` is the
+whole of what a consumer gets; a type in the public API from anything else is a compile error for them.
+
 ---
 
 ## Adding a Minecraft version
