@@ -1,3 +1,5 @@
+import cgbuildlogic.abstractModule
+
 plugins { `java-library` }
 
 val isStandalone = rootProject.name == project.name
@@ -14,20 +16,10 @@ val log4jVer      = rootProject.properties["dep.log4j"].toString()
 val jabelVer      = rootProject.properties["dep.jabel"].toString()
 val downgraderVer = rootProject.properties["dep.jvmdowngrader"]?.toString() ?: "0.9.0"
 
-// Mirrors :core exactly — same toolchain, same source/target, same Jabel and jvmDowngrader deps.
-// The two are consumed together by every loader and shadowed into the same jar, so a module that
-// compiled to a different bytecode level than its sibling would be a trap rather than a safety net.
-//
-// This used to be Java 8 source, which meant `platform` could not use records, `var`, switch
-// expressions or anything else `core` takes for granted — a real constraint on an SPI module that
-// carries value types (CgSystemInput's event records are the ones that hit it first).
+// An abstract module: Java 25, with a Java 8 copy for every consumer below it. @see cgbuildlogic.abstractModule
+abstractModule("com/crystalgraphics/jvmdg/platform")
+
 java {
-    sourceCompatibility = JavaVersion.VERSION_17
-    targetCompatibility = JavaVersion.VERSION_17
-    toolchain {
-        // Jabel is stable on 17 and 21. It is not stable on 25.
-        languageVersion.set(JavaLanguageVersion.of(17))
-    }
     if (isStandalone) {
         withSourcesJar()
         withJavadocJar()
@@ -54,7 +46,7 @@ dependencies {
     testCompileOnly("org.projectlombok:lombok:1.18.44")
     testAnnotationProcessor("org.projectlombok:lombok:1.18.44")
 
-    // compileOnly so an `import ...Desugar` compiles under the plain Java 17 pass, exactly as in
+    // compileOnly so an `import ...Desugar` compiles under the plain pass, exactly as in
     // :core. No annotationProcessor(jabel) here either — the dual pipeline is not wired up there.
     compileOnly("com.github.bsideup.jabel:jabel-javac-plugin:$jabelVer")
 

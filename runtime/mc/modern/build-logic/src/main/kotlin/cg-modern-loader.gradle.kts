@@ -1,6 +1,7 @@
 import cgbuildlogic.ModDescriptor
 import cgbuildlogic.commonNode
 import cgbuildlogic.configureStubs
+import cgbuildlogic.devRunClasses
 import cgbuildlogic.devRunLibraries
 import cgbuildlogic.modernLoader
 import cgbuildlogic.nodeJava
@@ -9,6 +10,7 @@ import cgbuildlogic.devNodeMixinConfigs
 import cgbuildlogic.registerNodeMixins
 import cgbuildlogic.registerNodeVariants
 import cgbuildlogic.registerCheckDescriptorsNameNoCommon
+import cgbuildlogic.requestJvm
 import cgbuildlogic.stubMode
 import cgbuildlogic.useNodeCoordinates
 
@@ -194,6 +196,16 @@ afterEvaluate {
             dependencies.add(runtime.name, project(":runtime:mc:shared"))
         }
     }
+}
+
+// ModDevGradle's library classpaths request no Java at all, and would take an abstract module's Java 25
+// classes. The per-run ones are what it resolves, and extending one passes on no attribute.
+configurations.matching { it.name == "additionalRuntimeClasspath" || it.name.endsWith("LegacyClasspath") }
+    .configureEach { requestJvm(this, nodeJava) }
+
+// mods{} names the abstract modules' Java 8 copies and builds nothing, so a launch builds them.
+tasks.matching { it.name.startsWith("run") || it.name.startsWith("prepare") }.configureEach {
+    dependsOn(devRunClasses(project(":platform")), devRunClasses(project(":core")))
 }
 
 // Last, once every source set exists: the stub on the classpath, or the tasks that write and check it.

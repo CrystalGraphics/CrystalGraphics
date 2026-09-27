@@ -21,7 +21,9 @@ plugins {
 //
 // Every module compiles with ONE JDK, `dep.jdk.compiler`; its own --release or source/target still
 // decides its bytecode, and its toolchain stays for launchers only -- so building the jars provisions
-// no other JDK. :runtime:mc:1710 is left to GTNH's convention, which already compiles with 25.
+// no other JDK. The abstract modules are authored at this Java, and every consumer below it resolves
+// their Java 8 copies (cgbuildlogic.abstractModule). :runtime:mc:1710 is left to GTNH's convention,
+// which already compiles with 25.
 val compilerJdk = providers.gradleProperty("dep.jdk.compiler").get().toInt()
 subprojects {
     if (path == ":runtime:mc:1710") return@subprojects
