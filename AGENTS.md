@@ -85,8 +85,12 @@ For any work that touches rendering, shaders, FBOs, text, or atlas generation �
 
 ## Shipping — one jar for every loader
 
-CrystalGraphics ships **one artifact that installs on MC 1.7.10 Forge, 1.20.1 Forge, 1.20.4 NeoForge
-and 1.20.1 Fabric**, built by `./gradlew singleJar` and asserted by `checkSingleJar`.
+CrystalGraphics ships **one artifact that installs on every supported loader and Minecraft version**,
+built by `./gradlew singleJar` and asserted by `checkSingleJar`.
+
+📄 **[docs/BUILD.md](docs/BUILD.md)** — **start here**: the layout, the node and toolchain table, the
+commands, and the checklist for adding a Minecraft version (this repo first, then CrystalGUI). Code that
+must run on every version: CrystalGUI's `docs/CGUI_CROSS_VERSION.md`.
 
 📄 **[singlejar-logic/README.md](singlejar-logic/README.md)** — the build, and **the guide any other
 project follows to ship this way**. It lives here because CrystalGraphics is the parent of everything
