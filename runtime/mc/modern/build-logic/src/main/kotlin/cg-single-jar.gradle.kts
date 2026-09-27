@@ -124,6 +124,13 @@ registerSingleJarPipeline(SingleJarSpec(
         // `forbiddenPrefixes` cannot catch it: that check reads entry PATHS, and nothing reads inside
         // a service file.
         exclude("META-INF/services/com.fasterxml.jackson.*", "META-INF/maven/**")
+
+        // The notice for what THIS jar carries, in the jar: MIT, BSD, Apache 2.0 and the FTL each
+        // require it to reach whoever receives the binary.
+        from(project.rootProject.file("notices/crystalgraphics.md")) {
+            into("META-INF")
+            rename { "NOTICE.md" }
+        }
     },
 
     configureCheck = {
@@ -136,6 +143,7 @@ registerSingleJarPipeline(SingleJarSpec(
         relocatedClasses.set(mapOf("com/crystalgraphics/mc/modern/platform/LifecycleModern.class" to modernCopies))
         requiredEntries.set(listOf(
             "META-INF/mods.toml", "META-INF/neoforge.mods.toml", "fabric.mod.json", "mcmod.info", "pack.mcmeta",
+            "META-INF/NOTICE.md",
             "com/crystalgraphics/mc/shared/LoaderProbe.class",
             "com/crystalgraphics/mc/v1710/mixins/early/CrystalGraphicsMixins.class",
             // J11.0. The table decides which variant runs, and the three bootstrappers are what the
