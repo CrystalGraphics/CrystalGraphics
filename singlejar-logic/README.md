@@ -432,8 +432,8 @@ them non-transitively (`neoforge.fml`, `neoforge.bus`), because NeoForge's POM a
 libraries at versions NeoForm pins strictly.
 
 **Below 1.17 ModDevGradle reaches no Minecraft at all**, so a pin picks another toolchain: Loom on
-`common` (vanilla at Mojang's names) and Unimined on Forge (Forge 29-31's userdev). Fabric is Loom
-already. Neither has a dev run on Forge, so prodSmoke is its runtime check.
+`common` (vanilla at Mojang's names) and Unimined on Forge (Forge 25-36's userdev). Fabric is Loom
+already. The Forge nodes' dev runs are on Java 8, through CrystalGUI's `uniminedDevRun`.
 
 ```properties
 # common/versions/1.15.2
@@ -512,10 +512,11 @@ What bites:
     production is intermediary. A dev run reads the merged descriptor, which names every node's config,
     so `registerNodeMixins` writes each into `processResources` at the source package -- the node's own
     with its plugin, a sibling's inert -- and the thin jar excludes them (`devNodeMixinConfigs`).
-18. **Forge below 1.17 needs Java 8, and has no dev run.** An instance for it pins a Java 8 runtime; the
+18. **Forge below 1.17 needs Java 8, dev runs included.** An instance for it pins a Java 8 runtime; the
     merged jar is downgraded to 8 already. The dev classes are not -- major 61 with `NestHost`, which a
-    Java 8 JVM cannot define and Forge 25's ASM6 scanner cannot read -- so `serverSmoke` and `runClient`
-    do not run there, and prodSmoke is the check.
+    Java 8 JVM cannot define and Forge 25's ASM6 scanner cannot read -- so a dev run swaps every class
+    root of ours for a jvmdg copy (`DevRunDowngrade`), lists each mod's resources first in `MOD_CLASSES`,
+    and keeps every class that names Minecraft inside a mod (CrystalGUI's `uniminedDevRun`).
 19. **A node's mixin configs belong to one mod.** A second mod built from the same nodes (CrystalGUI's
     language stack) passes `LoaderEntries(mixins = false)`: one config name in two mods is a Fabric
     refusal at launch, and it shows as a client that stops right after the Mixin banner, logging nothing.
