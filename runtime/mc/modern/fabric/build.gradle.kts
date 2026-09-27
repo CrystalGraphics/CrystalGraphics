@@ -69,8 +69,9 @@ val loomMappings = { LoomGradleExtension.get(project).mappingConfiguration.tinyM
 // Lazy providers — Gradle uses these to wire task-to-task dependencies automatically.
 // Using Provider<RegularFile> (not resolved RegularFile) ensures tasks.jar and tasks.shadowJar
 // both declare an implicit dependsOn on the upstream :jar tasks; no explicit dependsOn needed.
-val platformJar     = project(":platform").tasks.named<Jar>("jar").flatMap { it.archiveFile }
-val coreJar         = project(":core").tasks.named<Jar>("jar").flatMap { it.archiveFile }
+// The abstract modules' Java 8 copies (cgbuildlogic.abstractModule): this jar IS the dev run.
+val platformJar     = project(":platform").tasks.named<AbstractArchiveTask>("downgradedJar").flatMap { it.archiveFile }
+val coreJar         = project(":core").tasks.named<AbstractArchiveTask>("downgradedJar").flatMap { it.archiveFile }
 val commonJar       = project.commonNode.tasks.named<Jar>("jar").flatMap { it.archiveFile }
 val freetypeJar     = project(":freetype-msdfgen-harfbuzz-bindings").tasks.named<Jar>("jar").flatMap { it.archiveFile }
 // THE VARIANT SELECTOR (J11.0). Every CrystalGUI host on every loader calls VariantBootstrap from its
@@ -84,7 +85,7 @@ val mcSharedJar     = project(":runtime:mc:shared").tasks.named<Jar>("jar").flat
 // mc-shared above: the backend left runtime/mc/modern/common -- which IS bundled -- for a module that
 // was bundled nowhere. CrystalGraphicsFabricCommon names Lwjgl3GLBackend at class-definition time, so
 // its absence is a NoClassDefFoundError out of defineClass rather than a late one at first use.
-val lwjgl3Jar       = project(":runtime:lwjgl:3").tasks.named<Jar>("jar").flatMap { it.archiveFile }
+val lwjgl3Jar       = project(":runtime:lwjgl:3").tasks.named<AbstractArchiveTask>("downgradedJar").flatMap { it.archiveFile }
 
 tasks.jar {
     from(zipTree(platformJar))

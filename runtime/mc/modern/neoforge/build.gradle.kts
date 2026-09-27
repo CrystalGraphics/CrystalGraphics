@@ -7,6 +7,7 @@
 // @see cgbuildlogic.useNeoForgeApi
 
 import cgbuildlogic.commonNode
+import cgbuildlogic.devRunSourceSet
 import cgbuildlogic.stubMode
 import cgbuildlogic.useNeoForgeApi
 import net.neoforged.moddevgradle.dsl.NeoForgeExtension
@@ -70,8 +71,8 @@ if (!stubMode) configure<NeoForgeExtension> {
             // what's declared in this mods{} block. Adding their source sets here puts their
             // compiled classes in the mod's virtual JAR, making them visible to ModuleClassLoader
             // and resolving ClassNotFoundException: com/crystalgraphics/platform/CgPlatformService.
-            sourceSet(project(":platform").extensions.getByType<SourceSetContainer>()["main"])
-            sourceSet(project(":core").extensions.getByType<SourceSetContainer>()["main"])
+            sourceSet(devRunSourceSet(project(":platform")))
+            sourceSet(devRunSourceSet(project(":core")))
             sourceSet(project.commonNode.extensions.getByType<SourceSetContainer>()["main"])
             sourceSet(project(":freetype-msdfgen-harfbuzz-bindings").extensions.getByType<SourceSetContainer>()["main"])
         }
@@ -79,8 +80,9 @@ if (!stubMode) configure<NeoForgeExtension> {
 }
 
 // Merge platform, core, the common node into this loader JAR — mirrors mc1710 pattern exactly.
-val platformJar = project(":platform").tasks.named<Jar>("jar").flatMap { it.archiveFile }
-val coreJar     = project(":core").tasks.named<Jar>("jar").flatMap { it.archiveFile }
+// The Java 8 copies of the abstract modules: a fat jar runs on this node's JVM as it stands.
+val platformJar = project(":platform").tasks.named<AbstractArchiveTask>("downgradedJar").flatMap { it.archiveFile }
+val coreJar     = project(":core").tasks.named<AbstractArchiveTask>("downgradedJar").flatMap { it.archiveFile }
 val commonJar   = project.commonNode.tasks.named<Jar>("jar").flatMap { it.archiveFile }
 val freetypeJar = project(":freetype-msdfgen-harfbuzz-bindings").tasks.named<Jar>("jar").flatMap { it.archiveFile }
 

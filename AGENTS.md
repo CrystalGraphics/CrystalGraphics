@@ -12,7 +12,7 @@
 
 # CrystalGraphics — Agent Knowledge Base
 
-**Project type**: Multi-loader Minecraft graphics library | **Targets**: MC 1.7.10 (Forge/LWJGL2) · MC 1.20.1 (Forge, Fabric) · MC 1.20.4 (NeoForge/LWJGL3) | **Core authored in**: Java 17 (`core/` and `platform/`, toolchain 17) | **Build**: Gradle multi-project
+**Project type**: Multi-loader Minecraft graphics library | **Targets**: MC 1.7.10 (Forge/LWJGL2) · MC 1.20.1 (Forge, Fabric) · MC 1.20.4 (NeoForge/LWJGL3) | **Core authored in**: Java 25 (`core/`, `platform/`, `runtime/lwjgl/*`, each with a Java 8 copy) | **Build**: Gradle multi-project
 
 ## TO BUILD
 ```bash
@@ -117,8 +117,8 @@ The repository is a Gradle multi-project build. Every subproject has a distinct 
 | `core/` | 25 → 8 | none | All rendering logic — `CgMaterial`, `CgMesh`, `CgRenderPipeline`, font, text, atlas. Calls `CgPlatform.*()` for every GL or lifecycle operation. Never imports MC or LWJGL types. |
 | `freetype-msdfgen-harfbuzz-bindings/` | 25 → 8 | none | JNI bindings for FreeType/HarfBuzz text shaping. Bundled in every loader JAR. |
 | `gl-debug-harness/` | 17 | LWJGL3 | Standalone GL test harness — no Minecraft, boots in seconds. Use for all rendering work. |
-| `runtime/lwjgl/2/` | 17 | LWJGL2 (2.9.4, `compileOnly`) | **TIER 1** — `Lwjgl2GLBackend`, `Lwjgl2GLContext`, `Lwjgl2InputService`, `Lwjgl2CursorService`. **Names no Minecraft class**, enforced by an import guard, so one compiled copy serves 1.7.10, 1.12.2 and the debug harness alike. |
-| `runtime/lwjgl/3/` | 17 | LWJGL3 (**pinned 3.2.2**, `compileOnly`) | **TIER 1** — `Lwjgl3GLBackend`, `Lwjgl3GLContext`, `GlfwInputService`, `GlfwCursorService`. Same rule. Pinned to the oldest LWJGL3 in the supported range (MC 1.13–1.16) so a symbol a 1.16 client lacks is a compile error; see `dep.lwjgl3.tier1`. |
+| `runtime/lwjgl/2/` | 25 → 8 | LWJGL2 (2.9.4, `compileOnly`) | **TIER 1** — `Lwjgl2GLBackend`, `Lwjgl2GLContext`, `Lwjgl2InputService`, `Lwjgl2CursorService`. **Names no Minecraft class**, enforced by an import guard, so one compiled copy serves 1.7.10, 1.12.2 and the debug harness alike. |
+| `runtime/lwjgl/3/` | 25 → 8 | LWJGL3 (**pinned 3.2.2**, `compileOnly`) | **TIER 1** — `Lwjgl3GLBackend`, `Lwjgl3GLContext`, `GlfwInputService`, `GlfwCursorService`. Same rule. Pinned to the oldest LWJGL3 in the supported range (MC 1.13–1.16) so a symbol a 1.16 client lacks is a compile error; see `dep.lwjgl3.tier1`. |
 | `runtime/mc/1710/` | 25 → 8 | LWJGL2 | MC 1.7.10 / Forge. Registers `PlatformRegistry1710` which implements all SPI interfaces against LWJGL2. Its GL backend and input service are `runtime/lwjgl/2`'s now; what stays here is what names Minecraft. |
 | `runtime/mc/modern/common/` | 17 | LWJGL3 | **TIER 2** — the MC 1.20.x half: `PlatformServiceModern` (an assembler over tier 1), `Blaze3dGLBackend` (tier 1 plus the host state mirror, contracts C5), `HostStateVerifier`, and the mixins. No loader-specific types. |
 | `runtime/mc/modern/forge/` | 17 | LWJGL3 | MC 1.20.1 / MinecraftForge 47.x. Thin bootstrap: registers events on the Forge bus, calls `CgPlatform.register()`. |
@@ -267,22 +267,19 @@ These rules apply everywhere. All agents must internalize them.
 
 **Vertex data via `CgVertexWriter`** — never write vertex bytes via raw `ByteBuffer.putFloat()`. All vertex packing goes through `CgVertexWriter.forBuffer()`. Index buffer `putShort()`/`putInt()` is the only exception.
 
-**Java version by module** — `core/` and `platform/` are **Java 17 source and target, toolchain 17**, and produce Java 17 bytecode. Modern syntax (`var`, records, sealed classes, pattern matching, streams) is fully permitted in both.
+**Java version by module** — `core/`, `platform/` and `runtime/lwjgl/*` are **abstract modules**: authored and compiled at Java 25 (`dep.jdk.compiler`), and each also builds a Java 8 copy, `downgradedJar`, published as a second variant at `TargetJvmVersion` 8. Gradle hands that copy to every consumer below 25 — `cgbuildlogic.abstractModule` in `singlejar-logic`, whose javadoc has the usage and the two configurations that need telling. Modern syntax is permitted; **a newer API is not checked** — jvmdg stubs what it can, and a call it cannot stub fails on the player's JVM. That is a convention, policed in review. Never lower an abstract module's Java to suit a consumer.
 
-> ⚠️ **The Jabel + jvmDowngrader dual pipeline is written but commented out.** `core/build.gradle.kts` still carries it — `compileJabel`, `downgradeClasses`, the java8/java17 variants — behind comments, and both modules keep `jabel-javac-plugin` and `jvmdowngrader-java-api` as `compileOnly` so an `import ...Desugar` still compiles. Neither has an `annotationProcessor(jabel)`, so **nothing is desugaring or downgrading today**. Earlier revisions of this file described the Java 25 → Java 8 pipeline as live; it is not. Do not rely on Java 8 bytecode being produced, and do not add a Java 8-only constraint on the belief that it is.
-
-`platform/` was genuinely Java 8 source until 2026-07-30, which is a different thing from the pipeline above and was simply out of step with `core/`. The two are consumed together and shadowed into the same loader jar, so they now match. `runtime/mc/1710/` gets modern Java through the GTNH convention plugin (`enableModernJavaSyntax = jvmDowngrader` in `runtime/mc/1710/gradle.properties`), which is a separate mechanism from the commented-out one here. `runtime/mc/modern/` modules target Java 17 with no downgrade.
+> The Jabel dual pipeline commented out in `core/build.gradle.kts` is dead, and `jabel-javac-plugin` is `compileOnly` only so an `import ...Desugar` still compiles. jvmdg is what downgrades: once per merge for the shipped jars, and per module for the copies.
 
 | Module | Authored in | Compiled to | Notes |
 |---|---|---|---|
-| `core/`, `platform/` | Java 17 | Java 17 bytecode | Toolchain 17. Modern syntax OK. Jabel/jvmDowngrader present but inactive — see the warning above |
+| `core/`, `platform/`, `runtime/lwjgl/*` | Java 25 | Java 25, plus a Java 8 copy | Abstract modules; a consumer below 25 resolves the copy |
 | `freetype-msdfgen-harfbuzz-bindings/` | Java 8 | Java 8 bytecode | Genuinely Java 8 source; JNI bindings, deliberately minimal |
 | `runtime/mc/1710/` | Modern (GTNH convention) | Java 8 bytecode | `enableModernJavaSyntax = jvmDowngrader` in `runtime/mc/1710/gradle.properties` — the convention plugin's mechanism, not this repo's |
-| `runtime/mc/modern/common/`, `runtime/mc/modern/forge/`, `runtime/mc/modern/neoforge/`, `runtime/mc/modern/fabric/` | Java 17 | Java 17 | Full Java 17 API available |
+| `runtime/mc/modern/*`, `runtime/mc/legacy/*` nodes | their Minecraft's Java | the same | Compile and run against the abstract modules' Java 8 copies |
 
 **One compiler**: every module compiles with JDK 25 (`dep.jdk.compiler`, a rule in the root build); the
-toolchains in the table below are launchers, and `--release`/source-target still decides each module's
-bytecode.
+toolchains are launchers, and `--release`/source-target still decides each module's bytecode.
 
 **Forbidden cross-module imports:**
 

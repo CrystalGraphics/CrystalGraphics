@@ -16,6 +16,7 @@
 //   - There is no Gradle 9 property to suppress the exclusive-lock requirement.
 
 import cgbuildlogic.commonNode
+import cgbuildlogic.devRunSourceSet
 import cgbuildlogic.registerSrgReobf
 import cgbuildlogic.registerThinRename
 import cgbuildlogic.stubMode
@@ -98,8 +99,8 @@ legacyForge?.apply {
             // what's declared in this mods{} block. Adding their source sets here puts their
             // compiled classes in the mod's virtual JAR, making them visible to ModuleClassLoader
             // and resolving ClassNotFoundException: com/crystalgraphics/platform/CgPlatformService.
-            sourceSet(project(":platform").extensions.getByType<SourceSetContainer>()["main"])
-            sourceSet(project(":core").extensions.getByType<SourceSetContainer>()["main"])
+            sourceSet(devRunSourceSet(project(":platform")))
+            sourceSet(devRunSourceSet(project(":core")))
             sourceSet(project.commonNode.extensions.getByType<SourceSetContainer>()["main"])
             sourceSet(project(":freetype-msdfgen-harfbuzz-bindings").extensions.getByType<SourceSetContainer>()["main"])
             // The @Mod itself: one class for every Forge, compiled apart from any node.
@@ -109,8 +110,9 @@ legacyForge?.apply {
 }
 
 // Merge platform, core, the common node — same pattern as mc1710 and the neoforge branch.
-val platformJar = project(":platform").tasks.named<Jar>("jar").flatMap { it.archiveFile }
-val coreJar     = project(":core").tasks.named<Jar>("jar").flatMap { it.archiveFile }
+// The Java 8 copies of the abstract modules: a fat jar runs on this node's JVM as it stands.
+val platformJar = project(":platform").tasks.named<AbstractArchiveTask>("downgradedJar").flatMap { it.archiveFile }
+val coreJar     = project(":core").tasks.named<AbstractArchiveTask>("downgradedJar").flatMap { it.archiveFile }
 val commonJar   = project.commonNode.tasks.named<Jar>("jar").flatMap { it.archiveFile }
 val freetypeJar = project(":freetype-msdfgen-harfbuzz-bindings").tasks.named<Jar>("jar").flatMap { it.archiveFile }
 
