@@ -86,6 +86,7 @@ node real (hours and tens of GB on a clean machine).
 ./gradlew :runtime:mc:modern:common:1.20.1:test  # the Blaze3D mirror override check (F5)
 ./gradlew :runtime:mc:modern:<branch>:<version>:checkStubEquivalence   # real vs stub, byte for byte
 ./gradlew -p singlejar-logic generateStubDatabase                      # regenerate stubs.zip
+python singlejar-logic/mcapi.py <Class> [member]                       # any node's API, as version runs
 ```
 
 `serverSmoke`, `prodSmoke` and useful dev runs are driven from CrystalGUI: this mod alone draws nothing.
