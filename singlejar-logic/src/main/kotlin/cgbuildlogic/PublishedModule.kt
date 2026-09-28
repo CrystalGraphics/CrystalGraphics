@@ -32,6 +32,13 @@ import org.gradle.kotlin.dsl.withType
 /** What [publishedModule] names the bucket of dependencies a consumer compiles against. */
 const val CONSUMER_API = "consumerApi"
 
+/**
+ * Set on a build's `gradle` when a consumer included it as a checkout (`com.crystalgui.settings`): its
+ * projects then stand in for the published modules, and a consumer resolving one must get what the
+ * published one declares. Our own builds never set it, so their classpaths never change.
+ */
+const val CONSUMER_CHECKOUT = "cgConsumerCheckout"
+
 /** Declares [notation] in [CONSUMER_API]; `import cgbuildlogic.consumerApi`, as for any build-logic function. */
 fun DependencyHandler.consumerApi(notation: Any): Dependency? = add(CONSUMER_API, notation)
 
@@ -62,7 +69,7 @@ data class Licence(val name: String, val url: String) {
  *   on this module's `compileOnly` too, so declare it once.
  * - What is published is NOT what the build's own projects see: they keep resolving `apiElements`,
  *   which carries none of it. So a host's compile classpath -- and the overload javac picks against it
- *   -- is unchanged by publishing.
+ *   -- is unchanged by publishing. A consumer's checkout is the exception, [CONSUMER_CHECKOUT].
  * - Name the OLDEST version any target ships of a library Minecraft supplies; a consumer's resolution
  *   raises it, never lowers it.
  * - Call it after [abstractModule], or the Java 8 copy is not published.
@@ -89,6 +96,10 @@ fun Project.publishedModule(title: String, description: String, licence: Licence
         isCanBeResolved = false
     }
     configurations["compileOnly"].extendsFrom(consumerApi)
+    if (gradle.extensions.extraProperties.has(CONSUMER_CHECKOUT)) {
+        listOf("apiElements", "runtimeElements", "downgradedApiElements", "downgradedRuntimeElements")
+            .mapNotNull { configurations.findByName(it) }.forEach { it.extendsFrom(consumerApi) }
+    }
 
     val component = objects.newInstance(ComponentFactory::class.java).factory.adhoc("published")
     fun variant(name: String, like: String, jar: TaskProvider<*>, jvm: Int?) =
