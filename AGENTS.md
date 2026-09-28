@@ -735,6 +735,7 @@ Located at `src/main/resources/assets/crystalgraphics/shaders/lib/`. All files u
 | `texel.glsl` | `cg_texel_aa_sample(tex, uv, uvRect, filterPx)` — pixel-art filtering: nearest everywhere, one screen pixel of blend at a texel boundary. **Fragment-only, guarded.** Takes the reconstruction width as an argument rather than reading a constant, which is what keeps it free of any engine buffer |
 | `stroke.glsl` | `stroke_coverage(p, p0,p1,p2, widths, feather, cap, out t)` — the whole shared body of every `CgVectorRenderer` consumer: taper, caps, feathered edge |
 | `rect_blur.glsl` | `rect_shadow_outer`, `rect_shadow_inset`, `rect_blur_coverage` — Skia Graphite's analytic Gaussian rect blur with `erf` in place of its integral table; what a text decoration's shadow is. **Fragment-only, guarded** |
+| `text_gamma.glsl` | `text_gamma_terms`, `text_gamma_coverage` — Skia's text gamma and contrast (`SkMaskGamma`), per fragment rather than a table; what `CgTextGamma` drives in `text.shader` |
 
 > **`stroke.glsl` exists so there is exactly one copy of the cap logic.** `curve.shader` and
 > CrystalGUI's `gui_curve.shader` must differ in render state (`LEQUAL` vs `ALWAYS`) and in one
