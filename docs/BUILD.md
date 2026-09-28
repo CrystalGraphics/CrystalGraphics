@@ -108,12 +108,39 @@ python singlejar-logic/mcapi.py <Class> [member]                       # any nod
 
 ## Publishing
 
-**A release is one button: Actions → Release → Run workflow** (`.github/workflows/release.yml`). Pick
-`patch`, `minor`, `major` or `as-is`, or type a version. It sets `modVersion`, runs `apiCheck` and
-`checkSingleJar`, publishes to Cloudsmith, and only then commits, tags `v<version>`, pushes and makes the
-GitHub release with both jars. It needs the repository secrets `CLOUDSMITH_USERNAME` and
-`CLOUDSMITH_PASSWORD` (a Cloudsmith API key). CrystalGUI's Release button releases this repository first
-when its `master` is unreleased.
+### Releasing
+
+**One button: Actions → Release → Run workflow** (`.github/workflows/release.yml`). It runs from `master`
+on GitHub, never from a local checkout. From a terminal:
+
+```bash
+gh workflow run release.yml -R CrystalGraphics/CrystalGraphics --ref master -f bump=patch      # patch | minor | major | as-is
+gh workflow run release.yml -R CrystalGraphics/CrystalGraphics --ref master -f version=0.0.2   # exactly this
+gh run watch -R CrystalGraphics/CrystalGraphics                                                 # follow it
+```
+
+It sets `modVersion`, runs `apiCheck` and `checkSingleJar`, publishes to Cloudsmith, and only then commits,
+tags `v<version>`, pushes and makes the GitHub release with both jars. CrystalGUI's Release button releases
+this repository first whenever its `master` is unreleased, so a CrystalGraphics-only release is rarely needed.
+
+| Secret | Set on | Holds |
+|---|---|---|
+| `CLOUDSMITH_USERNAME` | the organization, shared with CrystalGUI and CrystalGraphics | the Cloudsmith service account's **slug**, not its display name |
+| `CLOUDSMITH_PASSWORD` | the same | that service account's API key |
+
+Which account owns what, and how to rotate each: `operations/release.md` in CrystalPlans (maintainers).
+
+| A run fails at | What it left | Then |
+|---|---|---|
+| any step before *Build, check and publish* | nothing | fix on `master`, run again |
+| *Build, check and publish*, in the build or a check | nothing | fix on `master`, run again |
+| the same step, `401 Unauthorized` on a `PUT` | nothing: the first upload was refused | the two Cloudsmith secrets are wrong — a stray space in either is enough |
+| the same step, after some uploads | part of the version on Cloudsmith | delete that version's packages on Cloudsmith, or release the next version |
+| *Commit, tag and push* or *GitHub release* | the version published, untagged | tag the release commit `v<version>` by hand and push it |
+
+What a Linux runner needs that a Windows checkout hides: `gradlew` committed executable
+(`git update-index --chmod=+x gradlew`); Zulu JDKs, since RetroFuturaGradle (1.7.10) asks for Azul's by
+vendor; and the JDKs handed to Gradle through `org.gradle.java.installations.fromEnv`.
 
 | Command | Publishes to |
 |---|---|
@@ -122,6 +149,8 @@ when its `master` is unreleased.
 
 Consumers read `https://dl.cloudsmith.io/public/crystalgraphics/crystalgraphics/maven/`
 ([`SETUP.md`](SETUP.md)). The mechanism is the README's § *Publishing*.
+
+### What is published
 
 | Coordinate | What | Consumer |
 |---|---|---|
