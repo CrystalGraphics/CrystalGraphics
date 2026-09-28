@@ -61,14 +61,16 @@ abstract class DowngradeShadeJar @Inject constructor(private val archive: Archiv
     // which would then re-read the stage jars this deletes.
     @TaskAction
     override fun copy() {
-        val downgraded = File(temporaryDir, "downgraded.jar").apply { delete() }
-        val shaded = File(temporaryDir, "shaded.jar").apply { delete() }
+        // NAMED PER EXECUTION. An IDE sync runs this task in its own daemon beside a command-line build,
+        // and with fixed names each deleted the other's intermediates: NoSuchFileException on downgraded.jar.
+        val downgraded = File.createTempFile("downgraded", ".jar", temporaryDir).apply { delete() }
+        val shaded = File.createTempFile("shaded", ".jar", temporaryDir).apply { delete() }
         ClassDowngrader.downgradeTo(toFlags()).use {
             ZipDowngrader.downgradeZip(it, inputFile.get().asFile.toPath(), classpath.files.map { f -> f.toURI().toURL() }.toSet(), downgraded.toPath())
         }
         ApiShader.shadeApis(toFlags(), shadePath.get().invoke(archiveFileName.get()), downgraded, shaded, downgradedApis())
 
-        val manifestFile = File(temporaryDir, "input-manifest.MF")
+        val manifestFile = File.createTempFile("input-manifest", ".MF", temporaryDir).apply { delete() }
         // The DOWNGRADED jar's manifest, as jvmdg's own tasks take it: the downgrade adds JvmDowngrader-Version.
         ZipFile(downgraded).use { zip ->
             zip.getEntry("META-INF/MANIFEST.MF")?.let { entry -> zip.getInputStream(entry).use { manifestFile.writeBytes(it.readBytes()) } }
@@ -78,6 +80,7 @@ abstract class DowngradeShadeJar @Inject constructor(private val archive: Archiv
         super.copy()
         downgraded.delete()
         shaded.delete()
+        manifestFile.delete()
     }
 
     /** jvmdg's API jars, downgraded once beside themselves in Gradle's cache, as its ShadeJar keeps them. */

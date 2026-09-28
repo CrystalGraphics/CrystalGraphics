@@ -1436,6 +1436,10 @@ Per-module details: [`runtime/mc/modern/neoforge/AGENTS.md`](runtime/mc/modern/n
 -Dcrystalgraphics.state.noDedup=true                 # never eliminate a call; distinguishes "the shadow
                                                      # is lying" from a semantic regression in one run
 
+# GL errors (LWJGL3 hosts, needs a debug context -- every dev client has one)
+-Dcrystalgraphics.gl.debugStacks=true                # log the Java stack of the first 5 GL errors, so a
+                                                     # debug message names the call; .limit=N for more
+
 # Shader
 -Dcrystalgraphics.shader.devmode=true                # emit #line directives in preprocessed output
 -Dcrystalgraphics.shader.resourceOverrideDir=path    # filesystem override dir for shader sources

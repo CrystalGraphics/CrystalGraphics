@@ -190,6 +190,11 @@ object FabricModJson {
                 depends.getOrPut(id) { mutableListOf() }.let { if (range !in it) it += range }
             }
         }
+        // Minecraft's as the fewest ranges. @see McRange.coalesce
+        if ("minecraft" in depends) {
+            depends["minecraft"] = McRange.coalesce(fabric.filter { "minecraft" in it.fabricDepends }
+                .map { McRange.parse(it.minecraft) }).mapTo(mutableListOf()) { it.toFabricPredicate() }
+        }
 
         val entries = StringBuilder()
         entries.append("{\n")
