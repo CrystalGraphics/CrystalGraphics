@@ -264,13 +264,20 @@ com/crystalgraphics/api/font/CgFontMetrics
   access public,final
   extends java/lang/Object
   method public <init> (FFFFFF)V
+  method public <init> (FFFFFFFFFF)V
   method public equals (Ljava/lang/Object;)Z
   method public getAscender ()F
   method public getCapHeight ()F
   method public getDescender ()F
   method public getLineGap ()F
   method public getLineHeight ()F
+  method public getStrikeoutOffset ()F
+  method public getStrikeoutThickness ()F
+  method public getUnderlineOffset ()F
+  method public getUnderlineThickness ()F
   method public getXHeight ()F
+  method public hasStrikeout ()Z
+  method public hasUnderline ()Z
   method public hashCode ()I
   method public toString ()Ljava/lang/String;
 com/crystalgraphics/api/font/CgFontSource
@@ -1164,9 +1171,11 @@ com/crystalgraphics/api/text/CgTextDecorationRect
   extends java/lang/Record
   field public,static,final NONE [Lcom/crystalgraphics/api/text/CgTextDecorationRect;
   method public <init> (FFFFILcom/crystalgraphics/api/font/CgFontKey;)V
+  method public <init> (FFFFILcom/crystalgraphics/api/font/CgFontKey;Z)V
   method public argbColor ()I
   method public fontKey ()Lcom/crystalgraphics/api/font/CgFontKey;
   method public thickness ()F
+  method public underText ()Z
   method public x0 ()F
   method public x1 ()F
   method public y ()F
@@ -1814,6 +1823,25 @@ com/crystalgraphics/gl/framebuffer/CgFrameBufferRegistry
   method public getOrCreate (Ljava/lang/String;IILcom/crystalgraphics/api/framebuffer/CgFrameBufferFormat;)Lcom/crystalgraphics/gl/framebuffer/CgFrameBuffer;
   method public onResize (II)V
   method public,static get ()Lcom/crystalgraphics/gl/framebuffer/CgFrameBufferRegistry;
+com/crystalgraphics/gl/framebuffer/CgPixelReadback
+  access public,final
+  extends java/lang/Object
+  method public <init> (I)V
+  method public delete ()V
+  method public isPending ()Z
+  method public poll (Ljava/util/function/Consumer;)V
+  method public request (IIIIJ)Z
+com/crystalgraphics/gl/framebuffer/CgPixelReadback$Pixels
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (JII[B)V
+  method public height ()I
+  method public rgb ()[B
+  method public tag ()J
+  method public width ()I
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
 com/crystalgraphics/gl/lifecycle/CgGraphicsLifecycle
   access public,final
   extends java/lang/Object
@@ -3406,10 +3434,23 @@ com/crystalgraphics/text/font/ScriptFallbacks$Platform
 com/crystalgraphics/text/font/Sfnt
   access public,final
   extends java/lang/Object
+  method public,static decorations ([B)Lcom/crystalgraphics/text/font/Sfnt$Decorations;
   method public,static extractFace ([BI)[B
   method public,static faceCount ([B)I
   method public,static isCollection ([B)Z
   method public,static readFaces (Ljava/nio/file/Path;)Ljava/util/List;
+com/crystalgraphics/text/font/Sfnt$Decorations
+  access public,final,record
+  extends java/lang/Record
+  field public,static,final NONE Lcom/crystalgraphics/text/font/Sfnt$Decorations;
+  method public <init> (IIII)V
+  method public strikeoutPosition ()I
+  method public strikeoutSize ()I
+  method public underlinePosition ()I
+  method public underlineThickness ()I
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
 com/crystalgraphics/text/font/Sfnt$Face
   access public,final,record
   extends java/lang/Record
@@ -3981,7 +4022,6 @@ com/crystalgraphics/util/profiling/CgGpuProfiler
 com/crystalgraphics/util/profiling/CgGpuProfiler$Accum
   access public,final
   extends java/lang/Object
-  method public <init> ()V
   method public avgMillis ()D
   method public samples ()J
   method public totalNanos ()J
