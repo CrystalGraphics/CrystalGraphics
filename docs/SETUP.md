@@ -21,6 +21,8 @@ The player installs CrystalGraphics as a mod of its own; yours depends on it and
   (below). An unreleased build: `./gradlew publishToMavenLocal` in a clone of
   [CrystalGraphics](https://github.com/CrystalGraphics/CrystalGraphics) (`git clone --recursive`), and
   `mavenLocal()` ahead of it.
+- The current release is **0.0.1**, the version every snippet here names; the badge on the README shows
+  the latest.
 - For many versions: JDK 25, and Gradle running on it (`toolchainVersion=25` in
   `gradle/gradle-daemon-jvm.properties`).
 
@@ -35,7 +37,9 @@ The player installs CrystalGraphics as a mod of its own; yours depends on it and
 
 ## One version
 
-The API on `compileOnly`, the mod on the dev run through your toolchain's own remapping:
+The API on `compileOnly`, the mod on the dev run through your toolchain's own remapping. In
+`build.gradle.kts` — or, if your settings set `FAIL_ON_PROJECT_REPOS`, the same `exclusiveContent` in
+`dependencyResolutionManagement.repositories`:
 
 ```kotlin
 repositories {
@@ -50,15 +54,15 @@ repositories {
     }
 }
 dependencies {
-    compileOnly("com.crystalgraphics:core:1.0.0")
+    compileOnly("com.crystalgraphics:core:0.0.1")
 }
 ```
 
 | Toolchain | The dev-run line |
 |---|---|
-| ModDevGradle `neoForge` | `runtimeOnly("com.crystalgraphics:crystalgraphics:1.0.0") { isTransitive = false }` |
+| ModDevGradle `neoForge` | `runtimeOnly("com.crystalgraphics:crystalgraphics:0.0.1") { isTransitive = false }` |
 | ModDevGradle `legacyForge` | `obfuscation.createRemappingConfiguration(configurations.runtimeOnly.get())`, then `"modRuntimeOnly"(…)` as above |
-| Loom | `modLocalRuntime("com.crystalgraphics:crystalgraphics:1.0.0") { isTransitive = false }` |
+| Loom | `modLocalRuntime("com.crystalgraphics:crystalgraphics:0.0.1") { isTransitive = false }` |
 
 These are the routes CrystalGUI's plugin takes, verified on Forge 1.20.1, NeoForge 1.21.1 and Fabric
 1.20.1 dev clients. Below 1.19.3 add `crystalgraphics-joml` the same way. On Fabric, CrystalGraphics
@@ -71,13 +75,13 @@ Your descriptor declares the dependency:
 [[dependencies.yourmod]]
 modId = "crystalgraphics"
 mandatory = true
-versionRange = "[1.0.0,)"
+versionRange = "[0.0.1,)"
 ordering = "AFTER"
 side = "BOTH"
 ```
 
 ```json
-"depends": { "crystalgraphics": ">=1.0.0" }
+"depends": { "crystalgraphics": ">=0.0.1" }
 ```
 
 - Name nothing in `com.crystalgraphics.mc` but `com.crystalgraphics.mc.shared`: the rest is the per-loader
@@ -96,7 +100,15 @@ one-version line above.
 
 ```kotlin
 // settings.gradle.kts
-pluginManagement { includeBuild("<path>/CrystalGraphics/singlejar-logic") }
+pluginManagement {
+    includeBuild("<path>/CrystalGraphics/singlejar-logic")   // a clone: the build logic is not published
+    repositories {
+        gradlePluginPortal()
+        mavenCentral()
+        maven("https://maven.fabricmc.net/")
+        maven("https://maven.neoforged.net/releases")
+    }
+}
 plugins {
     id("dev.kikugie.stonecutter") version "0.9.8"
     id("com.crystalgraphics.singlejar")
