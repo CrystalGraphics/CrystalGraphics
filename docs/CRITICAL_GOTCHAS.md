@@ -27,7 +27,7 @@ Vanilla Minecraft's FBO/shader system has **numerous undocumented behaviors** th
 **MINECRAFT_FBO_ANALYSIS.md Claims**:
 > "`createBindFramebuffer` creates then binds + sets viewport"
 
-**Actual Behavior** (`build/rfg/minecraft-src/java/net/minecraft/client/shader/Framebuffer.java:40-59`):
+**Actual Behavior** (`runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraft/client/shader/Framebuffer.java:40-59`):
 ```java
 public void createBindFramebuffer(int width, int height) {
     if (!OpenGlHelper.isFramebufferEnabled()) {
@@ -105,7 +105,7 @@ public void setFramebufferFilter(int filter) {
 **MINECRAFT_SHADER_ANALYSIS.md Claims**:
 > "endShader doesn't unbind program"
 
-**Actual Code** (`build/rfg/minecraft-src/java/net/minecraft/client/shader/ShaderManager.java:184-200`):
+**Actual Code** (`runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraft/client/shader/ShaderManager.java:184-200`):
 ```java
 public void func_147993_b() {  // endShader
     OpenGlHelper.func_153161_d(0);  // DOES unbind: glUseProgram(0)
@@ -127,7 +127,7 @@ public void func_147993_b() {  // endShader
 **MINECRAFT_SHADER_ANALYSIS.md Lists**:
 > 22 effects with specific names
 
-**Actual Array** (`build/rfg/minecraft-src/java/net/minecraft/client/renderer/EntityRenderer.java:127-152`):
+**Actual Array** (`runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraft/client/renderer/EntityRenderer.java:127-152`):
 ```java
 private static final String[] shaderResourceLocations = new String[] {
     "shaders/post/notch.json",
@@ -146,7 +146,7 @@ private static final String[] shaderResourceLocations = new String[] {
 
 **Trigger**: Window resize or fullscreen toggle
 
-**Call Path** (`build/rfg/minecraft-src/java/net/minecraft/client/Minecraft.java:1645-1653`):
+**Call Path** (`runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraft/client/Minecraft.java:1645-1653`):
 ```java
 private void updateFramebufferSize() {
     this.framebufferMc.createBindFramebuffer(this.displayWidth, this.displayHeight);
@@ -171,7 +171,7 @@ this.createFramebuffer(width, height);  // Fresh GL objects
 
 ### Fullscreen Toggle Timing Race
 
-**Call Path** (`build/rfg/minecraft-src/java/net/minecraft/client/Minecraft.java:1567-1617`):
+**Call Path** (`runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraft/client/Minecraft.java:1567-1617`):
 ```java
 public void toggleFullscreen() {
     // 1. Update dimensions FIRST
@@ -199,7 +199,7 @@ public void toggleFullscreen() {
 
 ### World Unload/Dimension Change Does NOT Touch FBOs
 
-**Call Path** (`build/rfg/minecraft-src/java/net/minecraft/client/Minecraft.java:2249-2344`):
+**Call Path** (`runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraft/client/Minecraft.java:2249-2344`):
 ```java
 public void loadWorld(WorldClient world, String loadingMessage) {
     // Tears down world entities, unloads chunks
@@ -221,7 +221,7 @@ public void loadWorld(WorldClient world, String loadingMessage) {
 
 ### Vanilla Intentionally Leaks FBOs
 
-**Example** (`build/rfg/minecraft-src/java/net/minecraft/client/Minecraft.java:752-800`):
+**Example** (`runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraft/client/Minecraft.java:752-800`):
 ```java
 private void loadScreen() throws LWJGLException {
     // ...
@@ -274,7 +274,7 @@ public void createBindFramebuffer(...) {
 **Examples**:
 1. `Framebuffer.bindFramebuffer(true)` sets viewport to FBO dimensions (`Framebuffer.java:205`)
 2. `Framebuffer.framebufferClear()` binds with `setViewport=true`, clears, unbinds **without restoring viewport** (`Framebuffer.java:267, 278`)
-3. Shader passes set viewport repeatedly (`build/rfg/minecraft-src/java/net/minecraft/client/shader/Shader.java:70-73`)
+3. Shader passes set viewport repeatedly (`runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraft/client/shader/Shader.java:70-73`)
 
 **Impact**: Viewport state is volatile. Assume it's wrong after any vanilla FBO operation.
 
@@ -284,13 +284,13 @@ public void createBindFramebuffer(...) {
 
 **Examples**:
 1. `Framebuffer.framebufferRender(...)` uses `glColorMask(true, true, true, false)` and restores to all-true at end (`Framebuffer.java:230, 261`)
-2. `Shader.loadShader()` also disables alpha writes (`build/rfg/minecraft-src/java/net/minecraft/client/shader/Shader.java:90-102`)
+2. `Shader.loadShader()` also disables alpha writes (`runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraft/client/shader/Shader.java:90-102`)
 
 **Impact**: If CrystalGraphics assumes alpha channel is preserved through pipeline, it will break.
 
 ### Texture Matrix is Pushed/Overwritten for Shaders
 
-**Call** (`build/rfg/minecraft-src/java/net/minecraft/client/renderer/EntityRenderer.java:1098-1103`):
+**Call** (`runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraft/client/renderer/EntityRenderer.java:1098-1103`):
 ```java
 GL11.glMatrixMode(GL11.GL_TEXTURE);
 GL11.glPushMatrix();
@@ -309,7 +309,7 @@ GL11.glPopMatrix();
 
 ### Where Shader Post-Processing Happens
 
-**Frame Structure** (`build/rfg/minecraft-src/java/net/minecraft/client/Minecraft.java:1050-1101`):
+**Frame Structure** (`runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraft/client/Minecraft.java:1050-1101`):
 ```java
 // 1. Bind main FBO
 this.framebufferMc.bindFramebuffer(true);
@@ -334,7 +334,7 @@ this.framebufferMc.framebufferRender(this.displayWidth, this.displayHeight);
 
 ### Shader Passes Smash State Without Restoring
 
-**Example** (`build/rfg/minecraft-src/java/net/minecraft/client/shader/Shader.java:48-59`):
+**Example** (`runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraft/client/shader/Shader.java:48-59`):
 ```java
 private void preLoadShader() {
     GL11.glDisable(GL11.GL_BLEND);
@@ -353,7 +353,7 @@ private void preLoadShader() {
 
 ### ShaderManager Doesn't Restore Texture Unit
 
-**Call** (`build/rfg/minecraft-src/java/net/minecraft/client/shader/ShaderManager.java:184-200`):
+**Call** (`runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraft/client/shader/ShaderManager.java:184-200`):
 ```java
 public void func_147993_b() {  // endShader
     OpenGlHelper.func_153161_d(0);  // Unbind program
@@ -372,7 +372,7 @@ public void func_147993_b() {  // endShader
 
 ### Intermediate Shader Targets Always Request Depth
 
-**Call** (`build/rfg/minecraft-src/java/net/minecraft/client/shader/ShaderGroup.java:311-320`):
+**Call** (`runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraft/client/shader/ShaderGroup.java:311-320`):
 ```java
 public void addFramebuffer(String name, int width, int height) {
     Framebuffer framebuffer = new Framebuffer(width, height, true);  // depth=true!
@@ -384,7 +384,7 @@ public void addFramebuffer(String name, int width, int height) {
 
 ### Shader Link Failure is Log-Only
 
-**Call** (`build/rfg/minecraft-src/java/net/minecraft/client/shader/ShaderLinkHelper.java:53-60`):
+**Call** (`runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraft/client/shader/ShaderLinkHelper.java:53-60`):
 ```java
 if (OpenGlHelper.func_153175_a(program, OpenGlHelper.field_153207_o) == 0) {
     // Link failed
@@ -398,7 +398,7 @@ if (OpenGlHelper.func_153175_a(program, OpenGlHelper.field_153207_o) == 0) {
 
 ### Shader Uniform "Dirty Flag" is Ignored
 
-**Call** (`build/rfg/minecraft-src/java/net/minecraft/client/shader/ShaderUniform.java:231-258`):
+**Call** (`runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraft/client/shader/ShaderUniform.java:231-258`):
 ```java
 public void func_148093_b() {
     if (!this.field_148105_h) {
@@ -417,7 +417,7 @@ public void func_148093_b() {
 
 ### Single Main Thread for GL
 
-**Detection** (`build/rfg/minecraft-src/java/net/minecraft/client/Minecraft.java:286-287, 3012-3015`):
+**Detection** (`runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraft/client/Minecraft.java:286-287, 3012-3015`):
 ```java
 private Thread field_152352_aC;  // Main thread
 
@@ -446,7 +446,7 @@ public void runTick() {
 
 ### Resource Reload Can Be Called from Wrong Thread
 
-**Call** (`build/rfg/minecraft-src/java/net/minecraft/client/renderer/EntityRenderer.java:241-260`):
+**Call** (`runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraft/client/renderer/EntityRenderer.java:241-260`):
 ```java
 public void onResourceManagerReload(IResourceManager resourceManager) {
     // Deletes and rebuilds shader groups
@@ -469,7 +469,7 @@ public void onResourceManagerReload(IResourceManager resourceManager) {
 
 ### FBO Completeness Failure is Hard Exception
 
-**Call** (`build/rfg/minecraft-src/java/net/minecraft/client/shader/Framebuffer.java:152-179`):
+**Call** (`runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraft/client/shader/Framebuffer.java:152-179`):
 ```java
 public void checkFramebufferComplete() {
     int status = OpenGlHelper.func_153167_i(OpenGlHelper.field_153198_e);
@@ -496,7 +496,7 @@ private void updateFramebufferSize() {
 
 ### Shader Compilation Failure is Hard Exception
 
-**Call** (`build/rfg/minecraft-src/java/net/minecraft/client/shader/ShaderLoader.java:72-78`):
+**Call** (`runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraft/client/shader/ShaderLoader.java:72-78`):
 ```java
 if (OpenGlHelper.func_153157_c(shader, OpenGlHelper.field_153208_p) == 0) {
     String log = StringUtils.trim(OpenGlHelper.func_153158_d(shader, 32768));
@@ -521,7 +521,7 @@ private void activateNextShader() {
 
 ### GL Errors are Logged, Not Fatal
 
-**Call** (`build/rfg/minecraft-src/java/net/minecraft/client/Minecraft.java:878-893`):
+**Call** (`runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraft/client/Minecraft.java:878-893`):
 ```java
 public void checkGLError(String phase) {
     int error;
@@ -543,7 +543,7 @@ public void checkGLError(String phase) {
 
 ### Forge Intentionally Avoids Stencil
 
-**Call** (`build/rfg/minecraft-src/java/net/minecraftforge/client/ForgeHooksClient.java:318-341`):
+**Call** (`runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraftforge/client/ForgeHooksClient.java:318-341`):
 ```java
 public static void createDisplay() throws LWJGLException {
     PixelFormat format;
@@ -577,7 +577,7 @@ if (this.useDepth) {
 
 ### Framebuffer Support Requires Separate Blending
 
-**Call** (`build/rfg/minecraft-src/java/net/minecraft/client/renderer/OpenGlHelper.java:90-93`):
+**Call** (`runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraft/client/renderer/OpenGlHelper.java:90-93`):
 ```java
 openGL14 = contextcapabilities.OpenGL14 || contextcapabilities.GL_EXT_blend_func_separate;
 framebufferSupported = openGL14 && (contextcapabilities.GL_ARB_framebuffer_object || 
@@ -634,7 +634,7 @@ private void updateFramebufferSize() {
 }
 ```
 
-**Reason** (`build/rfg/minecraft-src/java/net/minecraft/client/shader/ShaderGroup.java:351-362`):
+**Reason** (`runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraft/client/shader/ShaderGroup.java:351-362`):
 ```java
 public void resetProjectionMatrix() {
     // Uses mainFramebuffer dimensions to set projection
@@ -676,7 +676,7 @@ OpenGlHelper.func_153186_a(OpenGlHelper.field_153199_f,
 
 ### ShaderManager Redundant Uniform Location Queries
 
-**Call** (`build/rfg/minecraft-src/java/net/minecraft/client/shader/ShaderManager.java:227-253`):
+**Call** (`runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraft/client/shader/ShaderManager.java:227-253`):
 ```java
 public void func_147995_c() {  // use
     // ...
@@ -738,7 +738,7 @@ public void deleteFramebuffer() {
 
 ### ShaderGroup Deletion Also Setting-Dependent
 
-**Call** (`build/rfg/minecraft-src/java/net/minecraft/client/shader/ShaderGroup.java:323-342`):
+**Call** (`runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraft/client/shader/ShaderGroup.java:323-342`):
 ```java
 public void deleteShaderGroup() {
     for (Framebuffer framebuffer : this.mapFramebuffers.values()) {

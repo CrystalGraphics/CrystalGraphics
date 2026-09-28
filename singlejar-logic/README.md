@@ -181,7 +181,7 @@ registerDescriptorTasks(descriptor, "myproject")
 
 ### 4. Guard each thin jar
 
-Register once for all your 1.20.x loaders — what a thin jar may contain is the *project's* answer:
+Register once for all your modern loaders — what a thin jar may contain is the *project's* answer:
 
 ```kotlin
 tasks.register<cgbuildlogic.CheckThinJar>("checkThinJar") {

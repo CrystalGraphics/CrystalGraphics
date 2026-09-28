@@ -14,7 +14,7 @@ import org.lwjgl.opengl.GL30;
 *///?}
 
 /**
- * <b>The one class an mc1201 loader talks to</b> — everything the engine does per frame, per reload
+ * <b>The one class a modern loader talks to</b> — everything the engine does per frame, per reload
  * and at shutdown, written once for Forge, NeoForge and Fabric.
  *
  * <p>A loader subscribes its own events and forwards; it holds no engine logic of its own. That is the

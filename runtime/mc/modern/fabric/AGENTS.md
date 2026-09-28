@@ -1,101 +1,40 @@
 # runtime/mc/modern/fabric — Agent Knowledge Base
 
-## Target Versions
+## Target versions
 
 **MC 1.14.4–1.21.11 / Fabric**, a node per `versions/<version>`. Below 1.16 Fabric API has no
 world-render event, so the 1.15.2 node hooks `LevelRenderer.renderLevel` and the 1.14.4 node
-`GameRenderer.renderLevel` with a node mixin
-(`mixin/WorldPassHook`, gated by `CrystalGraphicsFabricMixins`).
-
-Uses `fabric-loom 1.16.2`. Version pins are per node, in singlejar-logic's pin catalog (`catalog/modern/<branch>/<version>.properties`).
+`GameRenderer.renderLevel` with a node mixin (`mixin/WorldPassHook`, gated by
+`CrystalGraphicsFabricMixins`). Pins and toolchains: `docs/BUILD.md` § *Nodes and toolchains*.
 
 ## The loader is registration only
 
-**Two entry points, and both are needed.** `CrystalGraphicsFabricCommon` is the `main` one and
-registers the platform bundle, because a dedicated server runs no `client` entrypoint — registering it
-there would leave `CgPlatform` unset for the whole server process. `CrystalGraphicsFabric` is the
-`client` one and carries the `Events` inner class, which is all render hooks.
+`fabric.mod.json` names one class for both entry points, `FabricBootstrap`: Fabric constructs every
+entry point its descriptor names, so naming the variants directly would construct one compiled against a
+Minecraft that is not running. It hands off by the running version to this node's two entries:
 
-Which event, and which stage of it. What the engine then does — bind the main render target, run the
-opaque or transparent pass, forward a reload, stop at shutdown — is the common branch's `LifecycleModern`,
-shared by all three.
+- `CrystalGraphicsFabricCommon` (`main`) registers the platform bundle — a dedicated server runs no
+  `client` entry point, so registering there would leave `CgPlatform` unset for the whole server.
+- `CrystalGraphicsFabric` (`client`) carries the `Events` inner class, which is all render hooks.
 
-## Minecraft Source Location
+What the engine then does is the common branch's `LifecycleModern`.
 
-Decompiled, Parchment-mapped Fabric MC 1.20.1 sources are extracted into two subdirectories:
+## The dev run loads our classes from the mod jar
 
-| Path | Contents |
-|---|---|
-| `versions/1.20.1/build/mc-src/java/` | MC 1.20.1 Java sources, decompiled by Loom via Vineflower, Parchment-mapped |
-| `versions/1.20.1/build/mc-src/resources/` | MC client assets (assets/, data/, *.json, *.mcmeta) from the merged binary jar |
+Knot does not load `com.crystalgraphics.*` from the JVM classpath, only from the mod jar it finds through
+`fabric.mod.json`. So `tasks.jar` bundles every module the dev client needs — the Java 8 copies of
+`platform`, `core` and `runtime/lwjgl/3` (`downgradedJar`), the common node, the bindings and
+`runtime/mc/shared` — and Loom's `remapJar` of it is the dev mod.
 
-These paths are gitignored and not committed. Generate them with:
+**Never `loom.mods { sourceSet(crossProject) }`**: Loom tries to apply `fabric-loom-companion` to that
+project, and a project without Loom fails with *"Plugin with id 'net.fabricmc.fabric-loom-companion' not
+found"*.
 
-```bash
-./gradlew :runtime:mc:modern:fabric:1.20.1:extractMcSources
-# or regenerate all three 1.20.x loader modules at once:
-./gradlew extractAllMcSources
-```
-
-**Note**: Generating sources triggers Loom's `genSourcesWithVineflower` task, which runs
-Vineflower decompilation and may take **several minutes on first run**. Subsequent runs use
-Loom's task output cache and are fast.
-
-## Key Source Files
-
-After extraction, commonly referenced locations under `versions/1.20.1/build/mc-src/java/`:
-
-- `net/minecraft/client/Minecraft.java` — main game class
-- `net/minecraft/client/renderer/` — rendering pipeline
-- `net/minecraft/resources/` — resource location / pack system
-- `net/minecraft/world/` — world/level logic
-
-## Build
+## Minecraft sources
 
 ```bash
-./gradlew :runtime:mc:modern:fabric:1.20.1:compileJava
-./gradlew :runtime:mc:modern:fabric:1.20.1:shadowJar
+./gradlew :runtime:mc:modern:fabric:<version>:extractMcSources   # into versions/<version>/build/mc-src/{java,resources}
 ```
 
-## Plugin
-
-Uses `fabric-loom 1.16.2`. The `genSourcesWithVineflower` task is provided by Loom and
-is what `extractMcSources` depends on to produce the sources jar.
-
-## Multi-Project Dev Run Classpath (CRITICAL — do not repeat this mistake)
-
-Fabric Loom uses the **remapped JAR** (`build/libs/*.jar`, produced by `remapJar` from `tasks.jar`)
-as the mod's classpath when Knot classloader loads mod code in dev runs.
-
-### Why `tasks.jar` bundling is the correct approach
-
-Knot does NOT load `com.crystalgraphics.*` classes from the JVM system classpath (i.e., plain
-`runtimeOnly` dependencies). It only loads them from the mod JAR it finds via `fabric.mod.json`.
-Therefore every sub-project whose classes need to be accessible at runtime — `platform`, `core`,
-`runtime:mc:modern:common`, `freetype-msdfgen-harfbuzz-bindings` — must be bundled directly into `tasks.jar`:
-
-```kotlin
-tasks.jar {
-    from(zipTree(platformJar))
-    from(zipTree(coreJar))
-    from(zipTree(commonJar))
-    from(zipTree(freetypeJar))
-}
-```
-
-Loom's `remapJar` picks up this bundled JAR and remaps it → `build/libs/*.jar`. That remapped
-JAR is what lands on Knot's classpath.
-
-### Why `loom.mods { sourceSet(crossProject) }` does NOT work
-
-When you call `sourceSet(project(":some-subproject")...)` in `loom.mods {}`, Loom 1.16.2 tries
-to apply the `net.fabricmc.fabric-loom-companion` plugin to that cross-project. Sub-projects that
-don't apply Loom (`platform`, `core`, `freetype-msdfgen-harfbuzz-bindings`) will fail with:
-
-```
-Plugin with id 'net.fabricmc.fabric-loom-companion' not found.
-```
-
-**Do not add cross-project source sets to `loom.mods {}`**. Only `sourceSet(sourceSets.main.get())`
-(this project's own main source set) is safe if you need the block at all. For multi-project mods,
-use JAR bundling instead.
+Gitignored; Loom decompiles with Vineflower (`genSourcesWithVineflower`). The task makes that node real,
+so the first run sets up its toolchain (several minutes).

@@ -1,66 +1,65 @@
----
-
-# THE GRAND GOAL — READ THIS FIRST
-> **Every line of code in this repository exists to serve one end goal:**
-> A **node-based shader graph for Minecraft (cross-version: 1.7.10 and 1.20.1)** — like Unity's Shader Graph, but staying true to GLSL, running on a modern GL 3.x+ pipeline, with instancing as the default draw path from day one.
->
-> The full architecture, principles, file format, instancing strategy, compilation pipeline, and ordered roadmap are defined in the manifesto. **Read it before making any rendering or shader-related decision.**
->
-> 📄 **[CrystalShader Manifesto](docs/CRYSTALSHADER_MANIFESTO.md)**
-
----
-
 # CrystalGraphics — Agent Knowledge Base
 
-**Project type**: Multi-loader Minecraft graphics library | **Targets**: MC 1.7.10 (Forge/LWJGL2) · MC 1.20.1 (Forge, Fabric) · MC 1.20.4 (NeoForge/LWJGL3) | **Core authored in**: Java 25 (`core/`, `platform/`, `runtime/lwjgl/*`, each with a Java 8 copy) | **Build**: Gradle multi-project
+**What**: a modern OpenGL rendering engine for Minecraft mods — materials, meshes, framebuffers,
+instancing and text — shipped as **one jar** for Forge 1.7.10–1.21.11, NeoForge 1.20.2–1.21.11 and
+Fabric 1.14.4–1.21.11. **Authored in** Java 25, with a Java 8 copy of every engine module. **The parent
+of** CrystalGUI, which builds every node against this repository's node of the same version.
 
-## TO BUILD
-```bash
-./gradlew.bat compileJava   # ~60 seconds — DO NOT kill early, DO NOT run in parallel
-./gradlew.bat test          # pure-logic unit tests (no GL context required)
-```
+> **The goal every line serves**: a node-based shader graph for Minecraft on every version the jar
+> supports — Unity's Shader Graph, true to GLSL, on a modern GL 3.x+ pipeline with instancing as the
+> default draw path. It shipped in CrystalGUI (`com.crystalgui.app.shadergraph`). **Read
+> [the manifesto](docs/CRYSTALSHADER_MANIFESTO.md) before any rendering or shader decision.**
 
-## Dev Runs
+---
 
-> **The 1.20.x loaders are a Stonecutter tree** — a node per (loader, Minecraft version),
-> `:runtime:mc:modern:<branch>:<version>`, created by `singlejar { targets { } }` in settings from singlejar-logic's pin catalog.
-> `./gradlew checkAllTargets` compiles every node; read `runtime/mc/modern/README.md` before touching one.
-> **Forge 1.8–1.12.2 is a second tree**, `:runtime:mc:legacy:forge:<version>` — see
-> `singlejar-logic/README.md` § *the legacy tree*.
+## Build and run
 
 ```bash
-# Core
 ./gradlew :core:compileJava
-
-# MC 1.7.10
-./gradlew :runtime:mc:1710:runClient
-./gradlew :runtime:mc:1710:compileJava
-
-# MC 1.20.1 Forge
-./gradlew :runtime:mc:modern:forge:1.20.1:runClient
-./gradlew :runtime:mc:modern:forge:1.20.1:compileJava
-
-# MC 1.20.4 NeoForge
-./gradlew :runtime:mc:modern:neoforge:1.20.4:runClient
-./gradlew :runtime:mc:modern:neoforge:1.20.4:compileJava
-
-# MC 1.20.1 Fabric
-./gradlew :runtime:mc:modern:fabric:1.20.1:runClient
-./gradlew :runtime:mc:modern:fabric:1.20.1:compileJava
+./gradlew :core:test --tests "<Class>"          # NEVER unscoped: the full suite hangs
+./gradlew checkAllTargets                        # every Minecraft node compiles -- before every commit
+./gradlew singleJar checkSingleJar               # the shipped jar, build/libs/crystalgraphics-<v>.jar
+python singlejar-logic/mcapi.py <Class> [member] # any Minecraft or loader API, on every node's version
 ```
 
-## Render Testing (GL Debug Harness)
+**Running Minecraft is CrystalGUI's.** Dev clients, `serverSmoke`, `prodSmoke` and the GL debug harness
+are all driven from the CrystalGUI checkout this repository sits in — this mod alone draws nothing.
+Their commands are CrystalGUI's `AGENTS.md` § *Build and run*.
 
-For any work that touches rendering, shaders, FBOs, text, or atlas generation — **do not test via Minecraft**. Use the standalone GL debug harness instead. It boots in seconds, requires no Minecraft context, and produces PNG artifacts for visual verification.
+| Read | When |
+|---|---|
+| **[`docs/BUILD.md`](docs/BUILD.md)** | **First, for anything about the build**: layout, nodes and toolchains, stub mode, commands, releasing, and adding a Minecraft version |
+| [`docs/SETUP.md`](docs/SETUP.md) | Setting up a mod on CrystalGraphics — one version, or one jar across many |
+| [`singlejar-logic/README.md`](singlejar-logic/README.md) | How one jar serves every loader, and the guide another project follows. Before touching `singlejar-logic/`, `cg-single-jar`, relocation, remapping or the class-major ceiling |
+| [`singlejar-logic/STUBS.md`](singlejar-logic/STUBS.md) | Before adding a node, changing its pins, or touching a branch script's toolchain |
+| [`runtime/mc/modern/README.md`](runtime/mc/modern/README.md) | Before touching a modern node; each branch has its own `AGENTS.md` |
+| CrystalGUI's `docs/CGUI_CROSS_VERSION.md` | Code that must run on every version |
+| [`docs/NATIVE_BUILD_PROCESS.md`](docs/NATIVE_BUILD_PROCESS.md) | Rebuilding the FreeType/HarfBuzz/msdfgen natives |
+| [`docs/HOTSWAP_SETUP.md`](docs/HOTSWAP_SETUP.md) | Hotswapping into a running 1.7.10 client |
 
-**Location**: `gl-debug-harness/` (subproject of this repo, or sibling at `../gl-debug-harness/`)  
-**Full docs**: `gl-debug-harness/AGENTS.md`
+**Five rules the build will not tell you:**
+
+1. **A Minecraft version is added here first**, then in CrystalGUI (`docs/BUILD.md` § *Adding a Minecraft
+   version*).
+2. **Nodes compile from `singlejar-logic/stubs.zip` by default.** Changing code never touches it; adding a
+   node or changing its pins means regenerating it. A run task makes its node real.
+3. **One compiler, JDK 25.** `core`, `platform` and `runtime/lwjgl/*` are Java 25 and publish a Java 8
+   copy every consumer below 25 resolves. Never lower their Java to suit a consumer — and javac does not
+   check the API: a Java 9+ call fails on a Java 8 instance unless jvmdg stubs it.
+4. **Switching the active Stonecutter node rewrites `src/` in place.** Switch back before committing.
+5. **Configuration cache stays off** (ModDevGradle).
+
+---
+
+## Render testing — the GL debug harness
+
+For anything that touches rendering, shaders, FBOs, text or atlases, **test in the harness, not
+Minecraft**: it boots in seconds, needs no Minecraft context, and writes PNGs. It is CrystalGUI's
+submodule (`gl-debug-harness/`, Java 21) and runs from CrystalGUI's root; authoring rules are its own
+`AGENTS.md`.
 
 ```bash
-# List all available scene modes
 ./gradlew :gl-debug-harness:runHarness --args="--list"
-
-# Most common scenes
 ./gradlew :gl-debug-harness:runHarness --args="--mode=forward-renderer"       # CgRenderPipeline end-to-end
 ./gradlew :gl-debug-harness:runHarness --args="--mode=material-dual-path"     # CgMaterial shader compilation
 ./gradlew :gl-debug-harness:runHarness --args="--mode=instancing-test"        # Instanced draw
@@ -69,154 +68,100 @@ For any work that touches rendering, shaders, FBOs, text, or atlas generation �
 ./gradlew :gl-debug-harness:runHarness --args="--mode=atlas-dump"             # Glyph atlas
 ./gradlew :gl-debug-harness:runHarness --args="--mode=text-3d"                # Full text pipeline
 ./gradlew :gl-debug-harness:runHarness --args="--mode=capability-report"      # GL capability probe
-./gradlew :gl-debug-harness:runHarness --args="--mode=shader-compile-audit"  # every shipped .shader + keyword variant, one report
-
+./gradlew :gl-debug-harness:runHarness --args="--mode=shader-compile-audit"   # every shipped .shader + keyword variant
 # Outputs land in gl-debug-harness/harness-output/{scene}/
 ```
 
-**Key rules when authoring harness scenes** (from `gl-debug-harness/AGENTS.md`):
 - Never call raw GL — use `CgVertexArray`, `CgStreamBuffer`, `CgTexture`, `CgFrameBuffer`, etc.
-- Implement `HarnessSceneLifecycle` (managed, single frame) or `InteractiveSceneLifecycle` (loop + camera).
-- Register the new scene in `SceneRegistry.createDefault()`.
-- Use `ArtifactService.requestCapture("suffix")` for interactive captures; `ScreenshotUtil` for managed ones.
-- GL state cleanup after `render()` is automatic — don't do it yourself.
+- Implement `HarnessSceneLifecycle` (managed, single frame) or `InteractiveSceneLifecycle` (loop + camera),
+  and register the scene in `SceneRegistry.createDefault()`.
+- `ArtifactService.requestCapture("suffix")` for interactive captures; `ScreenshotUtil` for managed ones.
+- GL state cleanup after `render()` is automatic.
 
 ---
 
-## Shipping — one jar for every loader
+## Module layout
 
-CrystalGraphics ships **one artifact that installs on every supported loader and Minecraft version**,
-built by `./gradlew singleJar` and asserted by `checkSingleJar`.
+Every module has one role — code in the wrong one either fails to compile or silently breaks a loader.
+The build view (Java levels, toolchains, what a consumer build includes) is `docs/BUILD.md` § *Layout*.
 
-📄 **[docs/SETUP.md](docs/SETUP.md)** — **for a mod using CrystalGraphics**: its dependencies on one Minecraft
-version, or `targets {}` for one jar across many. What a consumer reads first.
+| Module | Java | Role |
+|---|---|---|
+| `platform/` | 25 + 8 copy | The SPI only: `CgPlatform`, `CgPlatformService`, `CgService`, `CgGLBackend`, `CgGL`, the services. No implementation — [its guide](platform/src/main/java/com/crystalgraphics/platform/AGENTS.md) |
+| `core/` | 25 + 8 copy | All rendering: materials, meshes, the pipeline, fonts, text, atlases. Calls `CgPlatform`/`CgGL` for every GL or lifecycle operation; never imports Minecraft, a loader or LWJGL |
+| `freetype-msdfgen-harfbuzz-bindings/` | 8 | JNI text shaping, with its natives |
+| `runtime/lwjgl/2`, `runtime/lwjgl/3` | 25 + 8 copy | **Tier 1**: GL backend, context, input and cursor per LWJGL (`Lwjgl2*`, `Lwjgl3*`, `Glfw*`). **Name no Minecraft class** (import guard), so one copy serves every host of that LWJGL and the harness. LWJGL3 is pinned to 3.2.2, the oldest in range, so a symbol a 1.16 client lacks is a compile error |
+| `runtime/mc/1710/` | 25 → 8 | Forge 1.7.10 on RetroFuturaGradle: `PlatformService1710`, the `CgRenderHook`/`MixinMinecraft` mixins, Angelica's state provider |
+| `runtime/mc/legacy/` | 8 | Forge 1.8–1.12.2, a Stonecutter tree (nodes 1.8.9, 1.10.2, 1.12.2) on Unimined: `PlatformServiceLegacy`, `GlStateManagerGLBackend`, SRG-named mixins MixinBooter applies |
+| `runtime/mc/modern/` | each node's | Forge 1.13.2+, NeoForge 1.20.2+, Fabric 1.14.4+, a Stonecutter tree — branches `common` (**tier 2**: `PlatformServiceModern`, `Blaze3dGLBackend`, `HostStateVerifier`, `LifecycleModern`) and one per loader, which is registration only |
+| `runtime/mc/shared/` | 8 | **The variant selector** every mod built from these repositories reads (`com.crystalgraphics:mc-shared`): `Variants`, `VariantEntry`, `VariantBootstrap`, `LoaderProbe`, `CrashVariant`. Java 8 because FML 1.7.10 refuses any class above major 52 |
+| `runtime/mc/forge-bootstrap/`, `forge-stubs/` | 8 | The one `@Mod` class for every Forge from 1.8, compiled against a union annotation |
+| `singlejar-logic/` | — | The shared build logic (merge, tree, stubs, catalog) and `stubs.zip`; CrystalGUI uses it too |
+| `runtime/mc/modern/build-logic/` | — | This repository's convention plugins |
 
-📄 **[docs/BUILD.md](docs/BUILD.md)** — **start here**: the layout, the node and toolchain table, the
-commands, and the checklist for adding a Minecraft version (this repo first, then CrystalGUI). Code that
-must run on every version: CrystalGUI's `docs/CGUI_CROSS_VERSION.md`.
+**Rule**: `core/` and `platform/` have zero compile dependency on LWJGL, Minecraft or any loader.
 
-📄 **[singlejar-logic/README.md](singlejar-logic/README.md)** — the build, and **the guide any other
-project follows to ship this way**. It lives here because CrystalGraphics is the parent of everything
-that uses it; nothing in it is CrystalGraphics-specific. Read it before touching `singlejar-logic/`,
-either `cg-single-jar.gradle.kts`, or anything about relocation, remapping or the class-major ceiling.
-
-📄 **[singlejar-logic/STUBS.md](singlejar-logic/STUBS.md)** — **stub mode.** By default every
-1.20.x node compiles against `singlejar-logic/stubs.zip` (every
-node's Minecraft, loader and library API, 19 MB) instead of its real toolchain, and produces
-byte-identical jars. **Adding a node or changing its pins means regenerating `stubs.zip`**; changing code
-never does. A node missing from it builds real.
-
-```bash
-./gradlew singleJar                                        # no Minecraft toolchain for stubbed nodes
-./gradlew singleJar -PcgStubs=false                        # every node real, as before stubs
-./gradlew :runtime:mc:modern:<branch>:<version>:checkStubEquivalence   # real vs stub, byte for byte
-```
+> ⚠️ **Not enforced here.** The import-guard `doLast` in `core/build.gradle.kts` is commented out (inside a
+> disabled dual-pipeline experiment), so a stray `import net.minecraft.*` in `core/` would compile.
+> CrystalGUI's equivalent guard *is* active — do not assume this one is by analogy. Copy CrystalGUI's
+> guard to re-enable it, or keep this warning.
 
 ---
 
-## Multi-Loader Project Structure
+## Platform SPI architecture
 
-The repository is a Gradle multi-project build. Every subproject has a distinct role — put code in the wrong one and it will either fail to compile or silently break a loader.
-
-| Subproject | Java | GL library | Role |
-|---|---|---|---|
-| `platform/` | 25 → 8 | none | SPI interfaces only — `CgGlDispatch`, `CgPlatform`, `CgLifecycleService`, etc. No implementation. |
-| `core/` | 25 → 8 | none | All rendering logic — `CgMaterial`, `CgMesh`, `CgRenderPipeline`, font, text, atlas. Calls `CgPlatform.*()` for every GL or lifecycle operation. Never imports MC or LWJGL types. |
-| `freetype-msdfgen-harfbuzz-bindings/` | 25 → 8 | none | JNI bindings for FreeType/HarfBuzz text shaping. Bundled in every loader JAR. |
-| `gl-debug-harness/` | 17 | LWJGL3 | Standalone GL test harness — no Minecraft, boots in seconds. Use for all rendering work. |
-| `runtime/lwjgl/2/` | 25 → 8 | LWJGL2 (2.9.4, `compileOnly`) | **TIER 1** — `Lwjgl2GLBackend`, `Lwjgl2GLContext`, `Lwjgl2InputService`, `Lwjgl2CursorService`. **Names no Minecraft class**, enforced by an import guard, so one compiled copy serves 1.7.10, 1.12.2 and the debug harness alike. |
-| `runtime/lwjgl/3/` | 25 → 8 | LWJGL3 (**pinned 3.2.2**, `compileOnly`) | **TIER 1** — `Lwjgl3GLBackend`, `Lwjgl3GLContext`, `GlfwInputService`, `GlfwCursorService`. Same rule. Pinned to the oldest LWJGL3 in the supported range (MC 1.13–1.16) so a symbol a 1.16 client lacks is a compile error; see `dep.lwjgl3.tier1`. |
-| `runtime/mc/1710/` | 25 → 8 | LWJGL2 | MC 1.7.10 / Forge. Registers `PlatformRegistry1710` which implements all SPI interfaces against LWJGL2. Its GL backend and input service are `runtime/lwjgl/2`'s now; what stays here is what names Minecraft. |
-| `runtime/mc/modern/common/` | 17 | LWJGL3 | **TIER 2** — the MC 1.20.x half: `PlatformServiceModern` (an assembler over tier 1), `Blaze3dGLBackend` (tier 1 plus the host state mirror, contracts C5), `HostStateVerifier`, and the mixins. No loader-specific types. |
-| `runtime/mc/modern/forge/` | 17 | LWJGL3 | MC 1.20.1 / MinecraftForge 47.x. Thin bootstrap: registers events on the Forge bus, calls `CgPlatform.register()`. |
-| `runtime/mc/modern/neoforge/` | 17 | LWJGL3 | MC 1.20.4 / NeoForge. Same pattern as forge. Despite living under `runtime/mc/modern/`, targets MC 1.20.4. |
-| `runtime/mc/modern/fabric/` | 17 | LWJGL3 | MC 1.20.1 / Fabric. Same pattern, uses Fabric API callbacks + GLFW for inputs with no Fabric API equivalent. |
-| `runtime/mc/legacy/forge/` | 17 → 8 | LWJGL2 | Forge 1.8–1.12.2, a Stonecutter node per SRG plateau (1.8.9, 1.10.2, 1.12.2), MCP names through Unimined. Ships in `com.crystalgraphics.mc.v<digits>`. `PlatformServiceLegacy` over tier 1, `GlStateManagerGLBackend` (Minecraft's state cache kept in step, 8 texture units), and the render, frame, resize and shutdown hooks as SRG-named mixins MixinBooter applies. |
-| `runtime/mc/shared/` | 8 | none | **THE VARIANT SELECTOR, and every mod built from these two repositories reads this one copy** (J11.0) — published as `com.crystalgraphics:mc-shared`, which a mod's bootstrappers compile against. `Variants` (the table a merged jar declares itself with, at `META-INF/<modid>/variants.json`), `VersionRange`, `VariantEntry`, `VariantBootstrap`, plus `LoaderProbe` and `CrashVariant`. One jar carries every loader's entry class and, above one Minecraft version per loader, several of each — so a loader constructs a **bootstrapper** that picks by loader and running version. The annotated bootstrapper is NOT here: it must be part of the mod for a scanner to find it, while this module reaches a dev run as a *library* on `additionalRuntimeClasspath` and is never scanned. Each loader module carries its own ~20 lines, except Forge's: one class serves every Forge from 1.8 on, so it is its own module, `runtime/mc/forge-bootstrap`, compiled against the union annotation in `runtime/mc/forge-stubs` and started through `ForgeStart` — see `singlejar-logic/README.md`. Java 8 because FML 1.7.10 reads every class in the jar and refuses anything above major 52. |
-
-**Rule**: `core/` and `platform/` have zero compile dependency on LWJGL, MC, or any loader.
-
-> ⚠️ **Not currently enforced here.** The import-guard `doLast` in `core/build.gradle.kts` is commented
-> out (inside a disabled dual-pipeline experiment), so a stray `import net.minecraft.*` in `core/` would
-> compile. CrystalGUI's equivalent guard *is* active — do not assume this one is by analogy. Either
-> re-enable it or keep this warning; silently claiming enforcement that does not exist is worse than
-> having none. (The `cgStateWriteGuard` task once cited here as the working pattern no longer exists — the
-> V2 state rewrite made the rule it enforced unnecessary. Copy CrystalGUI's guard instead.)
-
----
-
-## Platform SPI Architecture
-
-This is the load-bearing architectural law. Read it before writing any code that touches GL or MC lifecycle.
+This is the load-bearing architectural law. Read it before writing code that touches GL or a host.
 
 ```
-platform/       ← SPI interfaces (CgGlDispatch, CgLifecycleService, CgReloadService, ...)
+platform/        ← the SPI: CgGLBackend, CgGLContext, the services, CgService slots
     ↑
-core/           ← rendering logic — calls CgPlatform.gl(), CgPlatform.lifecycle(), etc.
+core/            ← rendering logic — calls CgGL and CgPlatform.lifecycle() etc.
     ↑
-mc*/loader      ← registers a concrete implementation via CgPlatform.register(service)
+runtime/lwjgl/*  ← tier 1: the GL backend, context and input per LWJGL
+    ↑
+runtime/mc/*     ← a host: registers a bundle over tier 1, adds what names Minecraft
 ```
-
-`CgPlatform` is the runtime dispatch singleton. All GL calls flow through it:
 
 ```java
 // In core/ — never a raw GL call, never an LWJGL import:
-CgPlatform.gl().bindFramebuffer(target, id);
-CgPlatform.lifecycle().onContextCreated(w, h);
+CgGL.glBindFramebuffer(target, id);
 CgPlatform.reload().onReload();
+
+// A host, once, from an entry point that runs on both sides:
+CgPlatform.register(PlatformServiceModern.getInstance());   // or PlatformService1710, PlatformServiceLegacy
 ```
 
-Each loader bootstraps by registering its implementation:
+**Registration must not demand a GL backend**: a dedicated server has none. Each bundle builds its services
+lazily, and a client-only service (the cursor) is filled only on a client.
 
-```java
-// MC 1.7.10 — in PlatformRegistry1710.onPreInit():
-CgPlatform.register(new PlatformService1710(...));
-
-// MC 1.20.x — in CrystalGraphicsForge / Fabric / NeoForge constructor:
-CgPlatform.register(PlatformServiceModern.getInstance());
-```
-
-**If you find yourself calling raw GL inside `core/` or importing a loader type, you are in the wrong module.** Add a method to the appropriate SPI interface in `platform/`, implement it in each loader's platform service, then call it via `CgPlatform`.
+**If you find yourself calling raw GL inside `core/` or importing a loader type, you are in the wrong
+module.**
 
 ---
 
-## Cross-Platform Feature Checklist
+## Cross-platform feature checklist
 
-Use this when adding anything that touches GL, lifecycle, or loader-specific events across all targets.
+**A new platform capability:**
 
-**Adding a new abstraction to the platform layer:**
+1. Declare it in `platform/`: a `CgGLBackend` method, a service method, or — when its absence is a
+   legitimate configuration, as for a cursor — a `CgService` slot with an absent-value.
+2. Implement it in tier 1 (`runtime/lwjgl/2`, `runtime/lwjgl/3`) when it is toolkit-level.
+3. The compiler then names every bundle that must answer: `PlatformService1710`, `PlatformServiceLegacy`,
+   `PlatformServiceModern`, the harness's `PlatformServiceHarness`, core's `TestPlatformService`.
+4. Call it through `CgPlatform` / `CgGL` from `core/`.
 
-1. Define the method or interface in `platform/` SPI (`CgGlDispatch`, `CgLifecycleService`, etc.)
-2. Implement in `runtime/mc/1710/`'s `Lwjgl2GlDispatch` / `LifecycleService1710` (LWJGL2 path)
-3. Implement in `runtime/mc/modern/common/`'s `Mc120xGLBackend` / `LifecycleService` (LWJGL3 path)
-4. Call via `CgPlatform.*()` in `core/` — never call the implementation directly
+**A new render or lifecycle hook:**
 
-**Adding a new render hook or input event to the 1.20.x loaders:**
+1. The logic goes in `core/` or the modern `common` branch (`LifecycleModern`) — loader-blind.
+2. Each loader node only decides *what reaches it*: a loader event where one exists, a node mixin where
+   none does (Forge 1.21.3+ world passes, Fabric 1.14.4–1.15.2). 1.7.10 and legacy Forge are mixins.
+3. `python singlejar-logic/mcapi.py <EventClass>` says which versions have an event before you choose it.
 
-5. Implement the logic in `core/` or `runtime/mc/modern/common/` (loader-blind)
-6. Wire in `runtime/mc/modern/forge/`: subscribe on the **Forge** event bus (`Mod.EventBusSubscriber.Bus.FORGE`)
-7. Wire in `runtime/mc/modern/neoforge/`: subscribe on the **NeoForge** event bus (`NeoForge.EVENT_BUS.addListener`)
-8. Wire in `runtime/mc/modern/fabric/`: use Fabric API callbacks (`HudRenderCallback`, `ClientLifecycleEvents`) — if no Fabric API event exists, chain a GLFW callback; **mixins are last resort**
-
-**Whenever you add a new subproject dependency to the 1.20.x loaders:**
-
-> ⚠️ **MC 1.20.x Forge/NeoForge classpath rule**
->
-> `runtimeOnly` Gradle deps are **invisible** to ModDevGradle dev runs. The `mods{}` block is the only source ModDevGradle reads for the Forge/NeoForge run classpath.
-> Every module bundled in the JAR (`platform/`, `core/`, `runtime:mc:modern:common`, `freetype-msdfgen-harfbuzz-bindings`) must appear in **two places** in each Forge/NeoForge loader's `build.gradle.kts`:
-> 1. As `sourceSet(project(":foo").extensions.getByType<SourceSetContainer>()["main"])` inside the `mods { create("crystalgraphics") { ... } }` block
-> 2. As `from(zipTree(...jar...))` inside the `shadowJar` task
->
-> **Fabric is NOT exempt** — `runtimeOnly` deps are on the JVM system classpath but Knot classloader
-> does NOT delegate `com.crystalgraphics.*` to the system classloader. Fabric must bundle all
-> sub-project classes into `tasks.jar` (same as Forge/NeoForge) AND add `from(zipTree(...))` inside
-> `tasks.jar` and `shadowJar`. Do NOT use `loom.mods { sourceSet(crossProject) }` — Loom 1.16.2
-> tries to apply `fabric-loom-companion` to the cross-project, which fails for non-Loom projects.
-> See `runtime/mc/modern/fabric/AGENTS.md` for full details.
-
-9. Add `compileOnly` + `runtimeOnly` in `cg-modern-loader.gradle.kts`
-10. Add `sourceSet(project(":foo")...)` to `mods{}` in `runtime/mc/modern/forge/build.gradle.kts` and `runtime/mc/modern/neoforge/build.gradle.kts`
-11. Add `from(zipTree(...))` to **both** `tasks.jar` and `shadowJar` in **all three** loader `build.gradle.kts` files (including Fabric — see note above)
+**A module the shipped jar or a dev run must carry:** the merge takes each loader's thin jar plus modules
+named once in `cg-single-jar.gradle.kts` (`singlejar-logic/README.md` § *The shape of a build*). A dev run is
+separate: ModDevGradle reads only `mods {}` (`devRunSourceSet`, in `cgbuildlogic.AbstractModule`), and
+Fabric's dev mod is `tasks.jar` bundling each module's `downgradedJar` —
+`runtime/mc/modern/fabric/AGENTS.md`.
 
 ---
 
@@ -225,7 +170,7 @@ Use this when adding anything that touches GL, lifecycle, or loader-specific eve
 | I need to… | Jump to section | Primary package guide |
 |---|---|---|
 | Write or load a `.shader` material | [CrystalShader Pipeline](#crystalshader-material-pipeline) | `api/material/AGENTS.md` |
-| Submit geometry to the render pipeline | [CgRenderPipeline Usage](#cgrenderPipeline-per-frame-usage) | `api/render/AGENTS.md` |
+| Submit geometry to the render pipeline | [CgRenderPipeline Usage](#cgrenderpipeline--per-frame-usage) | `api/render/AGENTS.md` |
 | Create a framebuffer (FBO) for post-processing | [Framebuffers](#framebuffers) | `api/framebuffer/AGENTS.md` |
 | Load or build a 3D mesh | [Meshes](#meshes) | `gl/mesh/AGENTS.md` |
 | Create or load a texture | [Textures](#textures) | `api/texture/AGENTS.md` |
@@ -234,7 +179,8 @@ Use this when adding anything that touches GL, lifecycle, or loader-specific eve
 | Render text on screen | [Font/Text System](#fonttext-system) | `docs/font/README.md` |
 | Work on batch/UI/2D layer rendering | [Batch Render Layer](#batch-render-layer-system) | `gl/render/AGENTS.md` |
 | Load a resource file (shader source, config, image) | [Resource I/O](#resource-io--cgio-and-cgtextureio) | `util/io/CgIO` |
-| Test rendering without Minecraft | [Render Testing](#render-testing-gl-debug-harness) | `gl-debug-harness/AGENTS.md` |
+| Test rendering without Minecraft | [Render testing](#render-testing--the-gl-debug-harness) | `gl-debug-harness/AGENTS.md` |
+| Build, ship, or add a Minecraft version | [Build and run](#build-and-run) | `docs/BUILD.md` |
 
 ---
 
@@ -244,7 +190,7 @@ Use this when adding anything that touches GL, lifecycle, or loader-specific eve
 - **Multi-Mod First**: other mods will mutate GL state; design for cooperation, not control
 - **Hardware Fragmentation**: three incompatible GL families exist on real hardware — Core GL30, ARB, EXT; each requires a different method signature (see `gl/framebuffer/AGENTS.md`)
 - **Waterfall Fallback**: capability selection always follows Core GL30 > ARB > EXT
-- **Angelica Coexistence**: when Angelica shader mod is present, CrystalGraphics runs in gap-only redirect mode
+- **Angelica Coexistence**: on 1.7.10 with Angelica present, the GL state shadow reads Angelica's mirror instead of the driver (`AngelicaStateProvider`)
 
 ---
 
@@ -1174,55 +1120,100 @@ All 35 package guides under `src/main/java/com/crystalgraphics/`. Relative paths
 |---|---|
 | `gl/debug/AGENTS.md` | `CgDebugBlit` — fullscreen texture blit, covering-triangle, no VBO |
 
-### Platform SPI (platform subproject)
+### Platform SPI and hosts (outside `core/`)
 | Path | What it covers |
 |---|---|
-| `platform/src/main/java/com/crystalgraphics/platform/AGENTS.md` | `CgGlDispatch`, `CgCapabilityProbe`, `CgResourceService`, `CgRenderingService`, `CgLifecycleService`, `CgReloadService`, `CgFrameCallback`, `CgPlatform` — the SPI contract between `core/` and all four loaders (`runtime/mc/1710/`, `runtime/mc/modern/forge`, `runtime/mc/modern/neoforge`, `runtime/mc/modern/fabric`) |
+| `platform/src/main/java/com/crystalgraphics/platform/AGENTS.md` | `CgPlatform`, `CgPlatformService`, `CgService`, `CgGLBackend`/`CgGL`, the services — the contract between `core/` and every host |
+| `runtime/mc/1710/src/main/java/com/crystalgraphics/mc/v1710/platform/AGENTS.md` | The 1.7.10 bundle and its registration |
+| `runtime/mc/modern/common/AGENTS.md`, `…/common/src/main/java/com/crystalgraphics/mc/modern/platform/AGENTS.md` | The modern tier 2: `PlatformServiceModern`, `Blaze3dGLBackend`, `LifecycleModern`, and the open GUI-frame tick |
+| `runtime/mc/modern/{forge,neoforge,fabric}/AGENTS.md` | Each loader's versions, entry classes and render hooks |
+| `freetype-msdfgen-harfbuzz-bindings/AGENTS.md` | The JNI bindings and the Zig native build |
 
 ---
 
 # Minecraft Integration Glue
 
-This section covers the layer that wires CrystalGraphics into the Minecraft/Forge runtime. Understanding it matters when debugging frame-timing issues, hot-reload failures, or GL state conflicts between CG and other mods.
+The layer that wires CrystalGraphics into each Minecraft. Read it when debugging frame timing, hot
+reload, or GL state shared with Minecraft and other mods. Each host's classes: its own `AGENTS.md`.
 
-## `CrystalGraphics.java` — Forge Mod Container
+## 1.7.10 — `runtime/mc/1710`
 
-The root `@Mod` class (`modid = "crystalgraphics"`). Intentionally performs **no GL work** — it is purely a Forge dependency anchor and lifecycle logger. All rendering logic lives in `mixins/`. **There is no coremod** — `mc/coremod/` and its GL-redirect layer were deleted on 2026-07-31; see [GL state](#gl-state--cgglstatemanager). Other mods declare `required-after:crystalgraphics` in their `mcmod.info` to depend on this mod.
+`CrystalGraphics` is the `@Mod` class (`modid = "crystalgraphics"`) and does **no GL work**: mod loading
+runs on the splash screen's shared context (see the GL-thread rule). It registers the platform
+(`PlatformService1710.onPreInit`/`onInit`) and the crash-report variant line. Other mods declare
+`required-after:crystalgraphics`. **There is no coremod** — the GL-redirect layer was deleted on
+2026-07-31; see [GL state](#gl-state--cgglstatemanager).
 
-## Render Loop Hook — `CgRenderHook`
+`CgRenderHook` is a Mixin on `EntityRenderer` with three injections:
 
-`mixins/early/impl/client/CgRenderHook` is a SpongePowered Mixin on `EntityRenderer.renderWorld` with two `@Inject` methods:
+- **Before `sortAndRender(pass=1)`** in `renderWorld` — `CgGraphicsLifecycle.onOpaquePass(partialTicks, w, h,
+  mc.framebufferMc.framebufferObject)`: the depth snapshot from Minecraft's main FBO, then the depth
+  prepass and the opaque forward pass, with the opaque world already in the depth buffer.
+- **Before `ForgeHooksClient.dispatchRenderLast`** — `onTransparentPass()`, back to front; Minecraft's own
+  translucent terrain then interleaves by depth.
+- **`updateCameraAndRender` TAIL** — the frame tick, on every frame including a GUI with no world.
 
-- **`onBeforeTranslucentBlocks`** — fires immediately before `sortAndRender(pass=1)` (MC line ~1367). Calls `CgGraphicsLifecycle.onOpaquePass(partialTicks, w, h, mc.framebufferMc.framebufferObject)`: blits the depth snapshot from MC's main FBO, then runs depth prepass + opaque forward pass. At this point MC has finished opaque world geometry so the depth buffer is fully populated.
-- **`onAfterTranslucentContent`** — fires immediately before `ForgeHooksClient.dispatchRenderLast` (MC line ~1430). Calls `CgGraphicsLifecycle.onTransparentPass()`: transparent back-to-front pass. MC then continues with its own translucent terrain, naturally depth-interleaving with CG geometry.
+`MixinMinecraft` covers resize, fullscreen, resource reload and shutdown. Package guide:
+`runtime/mc/1710/src/main/java/com/crystalgraphics/mc/v1710/platform/AGENTS.md`.
 
-This hook is why you never call `pipe.executeOpaquePass/executeTransparentPass` manually in game code — they are called once per frame at the correct moments.
+**Never call `executeOpaquePass`/`executeTransparentPass` from game code** on any host — each host's hooks
+call them once per frame at the right moment.
 
-## Hot-Reload Hook — `CgAssetReloader`
+## Forge 1.8–1.12.2 — `runtime/mc/legacy`
 
-`core/mc/CgAssetReloader` (now in `core/`) wires reload callbacks via the platform SPI (`CgReloadService`). It fires on **F3+T** and on resource pack changes via `ReloadService1710`. On reload it calls, in order:
+1.7.10's shape, ported: `PlatformServiceLegacy` over tier 1, `GlStateManagerGLBackend` (Minecraft's GL
+state cache kept in step, eight texture units), and the render, frame, resize and shutdown hooks as
+SRG-named mixins that MixinBooter applies. `singlejar-logic/README.md` § *Forge 1.8 to 1.12.2*.
 
-1. `CgTextureManager.get().reloadAll()` — re-uploads all textures
-2. `CgShaderManager.reloadAll()` — marks all raw `CgShader` instances dirty (recompile on next `bind()`)
-3. `CgMaterialRegistry.get().reloadAll()` + `CgMaterialShaderRegistry.get().reloadAll()` — marks all materials dirty
+## Modern — `runtime/mc/modern` (Forge 1.13.2+, NeoForge 1.20.2+, Fabric 1.14.4+)
 
-Failures in each step are isolated and logged — a broken shader does not prevent textures from reloading.
+The `common` branch holds everything a loader does not decide: `PlatformServiceModern` (over tier 1),
+`Blaze3dGLBackend` (tier 1 plus routing what Minecraft's `GlStateManager` caches through it),
+`HostStateVerifier`, and `LifecycleModern` — the one class a loader talks to. Each loader node is
+registration only, reached through one bootstrapper per loader (`ForgeBootstrap`, `NeoForgeBootstrap`,
+`FabricBootstrap`) that picks the node by the running version.
 
-## Platform Service Adapters — `mc/platform/`
+**The world passes**, by era — each handler rebinds `mc.getMainRenderTarget()` first, since Fabulous
+leaves a non-main FBO bound:
 
-`runtime/mc/1710/src/main/java/com/crystalgraphics/mc/v1710/platform/` contains the MC 1.7.10 concrete implementations of all six platform SPI interfaces. These are the **only classes** that may reference MC/Forge types. Bootstrap is owned by `PlatformRegistry1710`, called from `CrystalGraphics` event handlers — not from `CrystalGraphics` directly.
-
-**Package guide**: `runtime/mc/1710/src/main/java/com/crystalgraphics/mc/v1710/platform/AGENTS.md`
-
-| Class | Implements | Key role |
+| Loader | Opaque | Transparent |
 |---|---|---|
-| `PlatformRegistry1710` | — | Two-phase bootstrap: `onPreInit` registers services, `onInit` attaches reload listener |
-| `Lwjgl2GlDispatch` | `CgGlDispatch` | All raw LWJGL2 GL calls; FBO waterfall; `bindFramebufferCompat` → `OpenGlHelper` |
-| `Lwjgl2CapabilityProbe` | `CgCapabilityProbe` | Reads `ContextCapabilities` from LWJGL2 |
-| `ResourceService1710` | `CgResourceService` | Delegates to `IResourceManager` — single `openStream` method |
-| `RenderingService1710` | `CgRenderingService` | Legacy `onFrameBegin` path — superseded by `CgRenderHook`'s two-inject split for the opaque/transparent pass separation |
-| `LifecycleService1710` | `CgLifecycleService` | Delegates `CgGraphicsLifecycle` init/destroy/resize directly |
-| `ReloadService1710` | bridge utility | `attachToResourceManager()` wires `IReloadableResourceManager` → `CgPlatform.reload().onReload()` |
+| Forge 1.13.2–1.17.1 | `RenderWorldLastEvent` — both passes at the end of the level | the same |
+| Forge 1.18–1.19.2 | `RenderLevelStageEvent` `AFTER_CUTOUT_BLOCKS` (ahead of entities); 1.18–1.18.1 fall back to `RenderLevelLastEvent` at runtime | `AFTER_PARTICLES` |
+| Forge 1.19.3–1.21.1 | `AFTER_BLOCK_ENTITIES` | `AFTER_PARTICLES` |
+| Forge 1.21.3+ | node mixin `OpaquePassHook` | node mixin `TransparentPassHook` |
+| NeoForge 1.20.2–1.21.3 | `RenderLevelStageEvent` `AFTER_BLOCK_ENTITIES` | `AFTER_PARTICLES` |
+| NeoForge 1.21.4–1.21.8 · 1.21.9+ | `RenderLevelStageEvent.AfterBlockEntities` · `.AfterEntities` | `.AfterParticles` |
+| Fabric 1.14.4–1.15.2 | node mixin `WorldPassHook` | the same |
+| Fabric 1.16.5–1.21.8 · 1.21.9+ | `WorldRenderEvents.AFTER_ENTITIES` · `BEFORE_TRANSLUCENT` | `AFTER_TRANSLUCENT` · `END_MAIN` |
+
+The exact version splits are in each loader branch's `AGENTS.md`. **A GUI-only frame never ticks on the
+modern tree** — `runtime/mc/modern/common/AGENTS.md` § *Open*.
+
+**Iris/Oculus**: with a shader pack active, CrystalGraphics geometry renders into the main FBO **outside**
+Iris's deferred GBuffer chain and appears unlit under deferred pipelines; `cg_DepthBuffer` stays valid.
+`CgIrisCompat.isShaderPackActive()` detects it, and `CgRenderPipeline` warns once.
+
+**Mixin policy**: prefer a native loader event, or a GLFW callback for input; a mixin only where neither
+exists.
+
+> ⚠️ **Loader events are not the stable surface for the render hook** — measured 2026-09-11. Across MC
+> 1.17.1 / 1.18.2 / 1.19.2 / 1.20.x / 1.21.4, Forge's event API moved four ways — a package renamed
+> (1.17), classes that did not exist yet (1.18), a constant added late (`AFTER_BLOCK_ENTITIES`, 1.20.1),
+> and `RenderLevelStageEvent` gone by 1.21.3 — while `LevelRenderer.renderLevel` underneath never moved.
+> The policy stands for input, lifecycle and anything with a real event; for the world passes a mixin on
+> the Minecraft method is the more stable choice, and is what 1.7.10 and legacy Forge have always done.
+> Forge 1.21.3+ is where it had to happen: those node mixins run Mojang names, so they need no refmap.
+
+## Hot reload — `CgAssetReloader`
+
+`core/src/main/java/com/crystalgraphics/mc/CgAssetReloader`, reached through each host's
+`CgReloadService` on **F3+T** and on resource-pack changes. In order, each step isolated so one failure
+does not stop the next:
+
+1. `CgTextureManager.get().reloadAll()` — re-uploads every texture
+2. `CgShaderManager.reloadAll()` — marks every raw `CgShader` dirty (recompiled on next `bind()`)
+3. `CgMaterialRegistry.get().reloadAll()` + `CgMaterialShaderRegistry.get().reloadAll()` — marks every material dirty
 
 ## GL state — `CgGlStateManager`
 
@@ -1264,116 +1255,15 @@ Design record and eight implementation corrections: `docs_research/plan/gl-state
 
 ---
 
-## MC 1.20.x Integration Glue (Forge · NeoForge · Fabric)
-
-The MC 1.20.x loaders use a different integration model from 1.7.10. There is no ASM coremod, no GL state redirect, and no LWJGL2 polling. The shared implementation lives in `runtime/mc/modern/common/`; each loader subproject (`forge/`, `neoforge/`, `fabric/`) is a thin bootstrap that only registers events and calls `CgPlatform.register()`.
-
-### `runtime/mc/modern/common/` — Where Shared Code Lives
-
-All platform service logic and mixins that apply to all three 1.20.x loaders live here. When adding a new 1.20.x platform feature, implement it in `runtime/mc/modern/common/` first, then wire the event in each loader.
-
-| Class | Role |
-|---|---|
-| `PlatformServiceModern` | Compositor — implements all SPI interfaces, registers as the single `CgPlatformService` |
-| `Mc120xGLBackend` | GL dispatch — routes to `RenderSystem` → `GlStateManager` → raw LWJGL3 GL in that order |
-| `MixinGameRenderer` | Injects after `renderLevel()` to drive `CgGraphicsLifecycle.onOpaquePass` + `onTransparentPass` split; also owns first-frame lazy init via `onRenderFrame` |
-| `MixinMinecraftShutdown` | Injects into MC shutdown to call `CgGraphicsLifecycle.destroyContext()` |
-
-### Loader Bootstrap Pattern
-
-Each loader's mod entrypoint does exactly two things: register the platform service and subscribe events. No GL work in constructors.
-
-```java
-// Forge — CrystalGraphicsForge constructor
-CgPlatform.register(PlatformServiceModern.getInstance());
-// events via @Mod.EventBusSubscriber(bus = Bus.FORGE)
-
-// NeoForge — CrystalGraphicsNeoForge constructor
-CgPlatform.register(PlatformServiceModern.getInstance());
-NeoForge.EVENT_BUS.addListener(CrystalGraphicsNeoForge::onRenderGui);
-NeoForge.EVENT_BUS.addListener(CrystalGraphicsNeoForge::onMouseScroll);
-
-// Fabric — CrystalGraphicsFabric.onInitializeClient()
-CgPlatform.register(PlatformServiceModern.getInstance());
-HudRenderCallback.EVENT.register(...);
-ClientLifecycleEvents.CLIENT_STARTED.register(...);
-```
-
-### MC 1.20.x Render Stage Events
-
-The pipeline is driven by two per-frame events across all three 1.20.x loaders:
-
-| Stage | Forge | NeoForge | Fabric | When |
-|---|---|---|---|---|
-| Opaque | `RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES` | same | `WorldRenderEvents.AFTER_ENTITIES` | After block entities, before `renderChunkLayer(translucent)` |
-| Transparent | `RenderLevelStageEvent.Stage.AFTER_PARTICLES` | same | `WorldRenderEvents.AFTER_TRANSLUCENT` | After translucent terrain + tripwire + particles |
-
-Each handler calls `mc.getMainRenderTarget().bindWrite(false)` before the CG lifecycle call to guard against Fabulous OIT leaving a non-main FBO bound.
-
-**Iris/Oculus**: when a shader pack is active, CG geometry renders into the main FBO **outside** Iris's deferred GBuffer chain and will appear unlit under deferred pipelines. `cg_DepthBuffer` remains valid — the depth texture is shared. Use `CgRenderPipeline.isIrisActive()` (delegates to `CgIrisCompat` in `core/mc/compat/`) for detection.
-
-### MC 1.20.x Input Event Patterns
-
-MC 1.7.10 uses LWJGL2 polling (`Mouse.getDWheel()`). The 1.20.x loaders are event-driven:
-
-| Input | Forge | NeoForge | Fabric |
-|---|---|---|---|
-| Mouse scroll | `InputEvent.MouseScrollingEvent` (Forge bus) | `InputEvent.MouseScrollingEvent` (NeoForge bus) | GLFW callback chain via `glfwSetScrollCallback` |
-| Keyboard | `InputEvent.Key` (Forge bus) | `InputEvent.Key` (NeoForge bus) | Fabric API keyboard events |
-
-Fabric API has **no global mouse scroll event**. The pattern for GLFW callback chaining that preserves MC's own handler:
-
-```java
-ClientLifecycleEvents.CLIENT_STARTED.register(client -> {
-    long window = client.getWindow().getWindow();
-    final GLFWScrollCallback[] prev = { GLFW.glfwSetScrollCallback(window, null) };
-    GLFW.glfwSetScrollCallback(window, (win, dx, dy) -> {
-        // your handler
-        if (prev[0] != null) prev[0].invoke(win, dx, dy);  // preserve MC's handler
-    });
-});
-```
-
-**Mixin policy**: Mixins are last resort. Always prefer native loader events or GLFW callbacks. A Mixin is justified only when no event exists and the GLFW callback approach is also unavailable.
-
-> ⚠️ **This rests on loader events being the STABLE surface, and that was measured false for the render
-> hook on 2026-09-11.** Across MC 1.17.1 / 1.18.2 / 1.19.2 / 1.20.x / 1.21.4, Forge's event API moved
-> four ways — a package renamed (1.17), classes that did not exist yet (1.18), a constant added late
-> (`AFTER_BLOCK_ENTITIES`, 1.20.1), and `RenderLevelStageEvent` gone from `net.minecraftforge.client.event`
-> by 1.21.4 — while `LevelRenderer.renderLevel` underneath never moved and every SRG member resolved on
-> every version. On 1.19.2 the hook set cannot express our point at all: no constant means "after block
-> entities, before translucent", so the nearest is a degradation rather than a rename.
->
-> **The policy is not repealed** — it is right for input, lifecycle and anything with a real event. For
-> the opaque/transparent render hook specifically, a mixin on the Minecraft method is the more stable
-> choice and is what `mc1710` has always done. Unanswered before acting: whether one refmap links across
-> versions. Full record in CrystalGUI `plan/crystalgui/platform-single-jar/experiments.md` E-B1.
->
-> **Forge 1.21.3+ is where it happened**: Forge 53 removed `RenderLevelStageEvent` and nothing replaced
-> it, so those nodes hook `LevelRenderer.renderSectionLayer` (translucent) and Forge's
-> `ParticleEngine.render` — Mojang names at runtime, no refmap, one config per node gated by
-> `CrystalGraphicsForgeMixins`. Every other node keeps its events. See `singlejar-logic/README.md`.
-
-### ⚠️ MC 1.20.x Forge/NeoForge Dev-Run Classpath Rule
-
-> `runtimeOnly` Gradle deps are **invisible** to ModDevGradle dev runs. The `mods{}` block is the only source ModDevGradle reads for the Forge/NeoForge run classpath.
->
-> Every module bundled in the final JAR (`platform/`, `core/`, `runtime:mc:modern:common`, `freetype-msdfgen-harfbuzz-bindings`) must appear in **two places** in each Forge/NeoForge loader's `build.gradle.kts`:
-> 1. `sourceSet(project(":foo").extensions.getByType<SourceSetContainer>()["main"])` inside `mods { create("crystalgraphics") { ... } }`
-> 2. `from(zipTree(...jar...))` inside the `shadowJar` task
->
-> **Fabric is NOT exempt** — `runtimeOnly` deps are on the JVM system classpath but Knot classloader
-> does NOT delegate `com.crystalgraphics.*` to the system classloader. Fabric must also use JAR
-> bundling — add `from(zipTree(...jar...))` inside `tasks.jar` AND `shadowJar`.
-> Do NOT use `loom.mods { sourceSet(crossProject) }` — Loom 1.16.2 tries to apply
-> `fabric-loom-companion` to the cross-project, which fails for non-Loom projects.
-> See `runtime/mc/modern/fabric/AGENTS.md` for full details.
-
----
-
 # Minecraft Source Code Location
 
-**CRITICAL**: Minecraft 1.7.10 and Forge source is decompiled and deobfuscated at `build/rfg/minecraft-src/java/`. Key files:
+| Want | Where |
+|---|---|
+| **Any node's API, with no setup** | `python singlejar-logic/mcapi.py <Class> [member]` — which versions have it, and its signature on each |
+| A modern node's decompiled sources | `./gradlew :runtime:mc:modern:<branch>:<version>:extractMcSources` → `runtime/mc/modern/<branch>/versions/<version>/build/mc-src/{java,resources}` (makes that node real; minutes the first time) |
+| 1.7.10's | `runtime/mc/1710/build/rfg/minecraft-src/java/`, after a build of that module |
+
+1.7.10 files worth knowing:
 
 - `net/minecraft/client/Minecraft.java` — main game class, owns `framebufferMc`
 - `net/minecraft/client/renderer/EntityRenderer.java` — render pipeline, shader integration
@@ -1383,34 +1273,11 @@ ClientLifecycleEvents.CLIENT_STARTED.register(client -> {
 - `net/minecraft/client/shader/ShaderManager.java` — GLSL program management
 - `cpw/mods/fml/client/FMLClientHandler.java` · `cpw/mods/fml/common/gameevent/TickEvent.java`
 
-**Analysis documents**:
+**Analysis documents** (1.7.10):
 - `docs/MINECRAFT_FBO_ANALYSIS.md` — complete trace of vanilla FBO system
 - `docs/MINECRAFT_SHADER_ANALYSIS.md` — vanilla shader architecture
 - `docs/CRITICAL_GOTCHAS.md` — hidden vanilla behaviors
 - `docs/INTEGRATION_STRATEGY.md` — integration patterns
-
----
-
-# Minecraft Source Code Location (MC 1.20.x)
-
-Decompiled, Parchment-mapped sources for each 1.20.x loader module.
-Run once after checkout (or when toolchain versions change):
-
-```bash
-./gradlew extractAllMcSources
-```
-
-Sources and resources land at `build/mc-src/` within each loader NODE, `<branch>/versions/<version>/`:
-
-| Module | Java sources | Resources | Notes |
-|---|---|---|---|
-| `runtime/mc/modern/neoforge/versions/1.20.4/` | `build/mc-src/java/` | `build/mc-src/resources/` | Targets MC **1.20.4** / NeoForge 20.4.x — NeoForge never published a stable 1.20.1 series |
-| `runtime/mc/modern/forge/versions/1.20.1/` | `build/mc-src/java/` | `build/mc-src/resources/` | MC 1.20.1 / MinecraftForge 47.x |
-| `runtime/mc/modern/fabric/versions/1.20.1/` | `build/mc-src/java/` | `build/mc-src/resources/` | MC 1.20.1 / Fabric — sources generated by Loom's Vineflower decompiler |
-
-Per-module details: [`runtime/mc/modern/neoforge/AGENTS.md`](runtime/mc/modern/neoforge/AGENTS.md) ·
-[`runtime/mc/modern/forge/AGENTS.md`](runtime/mc/modern/forge/AGENTS.md) ·
-[`runtime/mc/modern/fabric/AGENTS.md`](runtime/mc/modern/fabric/AGENTS.md)
 
 ---
 
@@ -1435,6 +1302,10 @@ Per-module details: [`runtime/mc/modern/neoforge/AGENTS.md`](runtime/mc/modern/n
                                                      # with tracked-vs-actual. Very slow — diagnosis only.
 -Dcrystalgraphics.state.noDedup=true                 # never eliminate a call; distinguishes "the shadow
                                                      # is lying" from a semantic regression in one run
+
+# Minecraft's own GL state cache (modern nodes)
+-Dcrystalgraphics.host.verify=true                   # after each pass, compare the driver against the host's
+                                                     # GlStateManager and name the domain that disagrees
 
 # GL errors (LWJGL3 hosts, needs a debug context -- every dev client has one)
 -Dcrystalgraphics.gl.debugStacks=true                # log the Java stack of the first 5 GL errors, so a

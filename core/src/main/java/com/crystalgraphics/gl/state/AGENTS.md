@@ -137,7 +137,7 @@ try (CgGlScope s = CgGlState.hostForeign(CgGlSlot.BLEND, CgGlSlot.DEPTH, CgGlSlo
 Entry is free — no `glGet`, because our shadow is still truthful going in. The whole cost is one re-assert
 of what you named, on the way out. Declaring nothing is valid: it invalidates without restoring.
 
-> **This fixes our half only.** Minecraft keeps its own shadow (`GlStateManager` on 1.20.x, Angelica's on
+> **This fixes our half only.** Minecraft keeps its own shadow (`GlStateManager` from 1.8 on, Angelica's on
 > 1.7.10) and every write we make through `CgGL` is equally invisible to *it*. Before calling in, set the
 > state MC cares about through **MC's** API so its mirror is truthful too. Two shadows, each blind to the
 > other; this scope stands on only one side of that boundary. On 1.7.10 with Angelica the problem largely
@@ -169,7 +169,7 @@ the right one in a single run.
 |---|---|---|
 | 1.7.10 + Angelica | `AngelicaStateProvider` (1.7.10), reads Angelica's mirror by reflection | near zero |
 | 1.7.10 vanilla · harness | `CgGlGetProvider` | full sweep |
-| 1.20.x | `Blaze3DStateProvider` exists but is **not compiled** — `runtime/mc/modern` is absent from `settings.gradle.kts` | — |
+| Forge 1.8–1.12.2, 1.13+ (every modern node) | `CgGlGetProvider` — none of their own. What keeps *Minecraft's* shadow true there is the backend routing through it (`Blaze3dGLBackend`, `GlStateManagerGLBackend`); on modern nodes `-Dcrystalgraphics.host.verify=true` checks it | full sweep |
 
 > **Trap, found by reading Angelica's source rather than assuming:** its `DepthState.enabled` is the depth
 > **write mask**, not the depth test — `glDepthMask` stores into it, and the test is a separate `depthTest`

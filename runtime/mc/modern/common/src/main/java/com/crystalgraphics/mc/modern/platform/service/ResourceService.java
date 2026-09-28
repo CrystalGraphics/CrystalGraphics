@@ -12,7 +12,7 @@ import java.util.Optional;
 //?}
 
 /**
- * MC 1.20.x implementation of {@link CgResourceService}.
+ * Modern implementation of {@link CgResourceService}.
  * Delegates asset loading to Minecraft's {@code ResourceManager}.
  *
  * <p>Returns {@code null} on not-found — never throws. Used by {@code CgIO.openStream()}
