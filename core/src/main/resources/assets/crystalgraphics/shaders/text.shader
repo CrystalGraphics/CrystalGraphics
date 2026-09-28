@@ -45,6 +45,7 @@
 
 #include "crystalgraphics:shaders/lib/texel.glsl"
 #include "crystalgraphics:shaders/lib/rect_blur.glsl"
+#include "crystalgraphics:shaders/lib/text_gamma.glsl"
 
 Tags {
     "RenderType" = "Transparent"
@@ -96,6 +97,8 @@ struct v2f {
     float atlasLayer;
     // The unit quad's own parameter, for the analytic rect shadow kinds.
     vec2 param;
+    // text_gamma_terms of this glyph's colour; constant across the quad.
+    vec4 gammaTerms;
 };
 
 Pass {
@@ -121,6 +124,9 @@ Pass {
     // called by CgTextRenderer#addQuadFromPlacement) and delivered per-instance via the
     // CG_QUAD_* macros below (cg_env.glsl) -- no per-draw uniform transform.
     //
+    // u_TextGamma, beside it, is the renderer's CgTextGamma: (gamma, contrast, 1 / gamma, enabled). It corrects
+    // the FILL's coverage only -- shadows are blurred masks and a stroke's ring has a colour of its own.
+    //
     // u_Projection reaches this shader via CgTextRenderer's attached, shared static "TextData"
     // CgUniformBuffer (flat STD140 scope -- referenced directly, no block prefix). Deliberately
     // NOT the engine's shared cg_ProjMatrix (CgFrameBlock): that's frame-owner state (the actual
@@ -133,6 +139,7 @@ Pass {
         o.color      = CG_QUAD_COLOR;
         o.atlasLayer = CG_QUAD_ATLAS_LAYER;
         o.param      = cg_Position.xy;
+        o.gammaTerms = text_gamma_terms(CG_QUAD_COLOR.rgb, u_TextGamma);
     }
 
     void fragment(in v2f i, out vec4 fragColor) {
@@ -359,6 +366,7 @@ Pass {
 
             fragColor = vec4(outRgb, min(outA, 1.0));
         } else {
+            alpha = i.color.a * text_gamma_coverage(opacity, i.gammaTerms, u_TextGamma);
             if (alpha <= (1.0 / 255.0)) discard;
 
             fragColor = vec4(i.color.rgb, alpha);
@@ -389,7 +397,7 @@ Pass {
         float coverage = CG_QUAD_EDGE_ROTATED
                 ? cg_texel_aa_sample(_MainTex, uvw, CG_QUAD_UV_RECT, CG_QUAD_EDGE_FILTER).r
                 : texture(_MainTex, uvw).r;
-        float alpha = coverage * i.color.a;
+        float alpha = text_gamma_coverage(coverage, i.gammaTerms, u_TextGamma) * i.color.a;
         fragColor = vec4(i.color.rgb, alpha);
 #endif
     }
