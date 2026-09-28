@@ -2,6 +2,7 @@ import cgbuildlogic.Licence
 import cgbuildlogic.ModDescriptor
 import cgbuildlogic.ShippedJar
 import cgbuildlogic.SingleJarSpec
+import cgbuildlogic.has1710
 import cgbuildlogic.legacyNodes
 import cgbuildlogic.modernLoaderNodes
 import cgbuildlogic.modernNodes
@@ -67,7 +68,7 @@ registerSingleJarPipeline(SingleJarSpec(
     shadePath = "com/crystalgraphics/shadow",
 
     // 1.7.10's production step is its own; every tree node's is read off its tree.
-    thinJars = listOf(":runtime:mc:1710" to "reobfThinJar") +
+    thinJars = listOfNotNull((":runtime:mc:1710" to "reobfThinJar").takeIf { has1710(project) }) +
         legacyNodes(project).map { it.path to "reobfThinShadowJar" } +
         modernLoaderNodes(project).map { it.path to thinJarTask(it, "thinShadowJar") },
     // Tier 1 (§12) joins the library list rather than any loader's thin jar: one compiled copy of

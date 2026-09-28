@@ -6,6 +6,10 @@ import org.gradle.api.artifacts.Configuration
 import org.gradle.api.artifacts.Dependency
 import org.gradle.api.artifacts.dsl.DependencyHandler
 import org.gradle.api.attributes.Attribute
+import org.gradle.api.attributes.Bundling
+import org.gradle.api.attributes.Category
+import org.gradle.api.attributes.LibraryElements
+import org.gradle.api.attributes.Usage
 import org.gradle.api.attributes.java.TargetJvmVersion
 import org.gradle.api.component.AdhocComponentWithVariants
 import org.gradle.api.component.SoftwareComponentFactory
@@ -143,6 +147,22 @@ fun Project.publishShippedJar(
     if (checkedBy != null) {
         tasks.matching { it.name.startsWith("publish${name}PublicationTo") }.configureEach { dependsOn(checkedBy) }
     }
+
+    // The same jar to a build that includes this one, which substitutes the coordinate with it:
+    // `com.crystalgui.settings`' checkout. The capability tells two jars of one project apart.
+    configurations.create(name.replaceFirstChar(Char::lowercase) + "Elements") {
+        isCanBeConsumed = true
+        isCanBeResolved = false
+        attributes {
+            attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage::class.java, Usage.JAVA_RUNTIME))
+            attribute(Category.CATEGORY_ATTRIBUTE, objects.named(Category::class.java, Category.LIBRARY))
+            attribute(LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE, objects.named(LibraryElements::class.java, LibraryElements.JAR))
+            attribute(Bundling.BUNDLING_ATTRIBUTE, objects.named(Bundling::class.java, Bundling.EXTERNAL))
+            attribute(TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE, DOWNGRADED_JAVA)
+        }
+        outgoing.capability("${shipped.group}:${shipped.artifactId}:${project.version}")
+        outgoing.artifact(jar)
+    }
 }
 
 /** The fields every POM of ours carries. */
@@ -168,9 +188,10 @@ private fun Project.publishedVariant(
     isCanBeResolved = true
     extendsFrom(deps)
     attributes {
+        // Read when resolved: a script configures its Java after whatever applied this.
         like.attributes.keySet().forEach { key ->
             @Suppress("UNCHECKED_CAST")
-            attribute(key as Attribute<Any>, like.attributes.getAttribute(key)!!)
+            attributeProvider(key as Attribute<Any>, provider { like.attributes.getAttribute(key)!! })
         }
         if (jvm != null) attribute(TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE, jvm)
     }

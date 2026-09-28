@@ -3,6 +3,7 @@ import cgbuildlogic.LegacyEntries
 import cgbuildlogic.LoaderEntries
 import cgbuildlogic.ModDescriptor
 import cgbuildlogic.Variant
+import cgbuildlogic.has1710
 import cgbuildlogic.legacyVariants
 import cgbuildlogic.modernVariants
 import cgbuildlogic.registerDescriptorTasks
@@ -25,13 +26,13 @@ val cgDescriptor = ModDescriptor(
     dependencies = emptyList(),
     // 1.7.10 by hand; every other variant is a NODE of a tree, whose range and pack format are its
     // own pins (`variant.minecraft`, `variant.packFormat`) -- so adding a version adds its variant.
-    variants = listOf(
+    variants = listOfNotNull(
         Variant(
             loader = "fml1710", minecraft = "[1.7.10]", era = "1710",
             commonEntry = "com.crystalgraphics.mc.v1710.CrystalGraphics",
             mixinConfigs = listOf("mixins.crystalgraphics.json"),
             packFormat = 1,
-        ),
+        ).takeIf { has1710(project) },
     ) + legacyVariants(project, LegacyEntries("com.crystalgraphics.mc.legacy",
         common = "com.crystalgraphics.mc.legacy.CrystalGraphicsLegacy",
         client = "com.crystalgraphics.mc.legacy.CrystalGraphicsLegacyClient",

@@ -143,8 +143,17 @@ if (loadersWanted) include("runtime:mc:1710")
 // present: a 1.20.1 Forge mod consuming CrystalGraphics needs the forge node on its run classpath to
 // see CrystalGraphics in the mod list. Fabric (fabric-loom, Java 21 daemon) and 1.20.4 are not a
 // 1.20.1 consumer's business.
+//
+// A consumer building CrystalGUI from a checkout names its nodes in a system property, which CrystalGUI
+// read first: the same versions here, and it is cleared so the daemon's next build does not inherit it.
+fun checkoutNodes(list: String): Map<String, List<String>> =
+    list.split(',').map { it.substringBefore(':') to it.substringAfter(':') }
+        .groupBy({ it.first }, { it.second })
+val checkoutList: String? = System.getProperty("crystalgui.checkout.nodes")
+    ?.also { System.clearProperty("crystalgui.checkout.nodes") }
 val modernNodes: Map<String, List<String>> =
-    if (!loadersWanted) linkedMapOf("common" to listOf("1.20.1"), "forge" to listOf("1.20.1"))
+    if (!loadersWanted) checkoutList?.let(::checkoutNodes)
+        ?: linkedMapOf("common" to listOf("1.20.1"), "forge" to listOf("1.20.1"))
     else linkedMapOf(
         "common" to listOf("1.13.2", "1.14.3", "1.14.4", "1.15.2", "1.16.5", "1.17.1", "1.18.2", "1.19.2", "1.19.3", "1.19.4", "1.20.1", "1.20.2", "1.20.3", "1.20.4", "1.20.6", "1.21.1", "1.21.3", "1.21.4", "1.21.5", "1.21.6", "1.21.8", "1.21.10", "1.21.11"),
         "forge" to listOf("1.13.2", "1.14.3", "1.14.4", "1.15.2", "1.16.5", "1.17.1", "1.18.2", "1.19.2", "1.19.3", "1.19.4", "1.20.1", "1.20.2", "1.20.4", "1.20.6", "1.21.1", "1.21.3", "1.21.4", "1.21.5", "1.21.6", "1.21.8", "1.21.10", "1.21.11"),
