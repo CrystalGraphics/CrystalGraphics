@@ -10,21 +10,21 @@
 // Applied to light text only, faded in across mid-grey: on dark text the gamma term thins more than the contrast
 // term restores.
 //
-// params = (gamma, contrast, 1 / gamma, enabled). gamma 1 and contrast 0 is the identity.
+// level = (gamma, contrast, 1 / gamma, unused). gamma 1 and contrast 0 is the identity.
 
 // Per text colour: (src, linSrc, linDst, contrast). Computed once per instance, in the vertex stage.
-vec4 text_gamma_terms(vec3 color, vec4 params) {
-    float gamma = params.x;
+vec4 text_gamma_terms(vec3 color, vec4 level) {
+    float gamma = level.x;
     // SkColorSpaceLuminance::computeLuminance: Rec. 709 weights in the gamma space.
     float linSrc = dot(pow(max(color, vec3(0.0)), vec3(gamma)), vec3(0.2126, 0.7152, 0.0722));
-    float src = pow(linSrc, params.z);
+    float src = pow(linSrc, level.z);
     float linDst = pow(1.0 - src, gamma);
-    return vec4(src, linSrc, linDst, params.y * linDst);
+    return vec4(src, linSrc, linDst, level.y * linDst);
 }
 
-float text_gamma_coverage(float coverage, vec4 terms, vec4 params) {
+float text_gamma_coverage(float coverage, vec4 terms, vec4 level) {
     float src = terms.x;
-    float weight = params.w * smoothstep(0.4, 0.6, src);
+    float weight = smoothstep(0.4, 0.6, src);
     if (weight <= 0.0) return coverage;
     float dst = 1.0 - src;
     float srca = coverage + (1.0 - coverage) * terms.w * coverage;
@@ -32,9 +32,20 @@ float text_gamma_coverage(float coverage, vec4 terms, vec4 params) {
     // Text as bright as the background it is guessed against: only the contrast applies.
     if (abs(src - dst) >= (1.0 / 256.0)) {
         float linOut = terms.y * srca + (1.0 - srca) * terms.z;
-        float outEncoded = pow(linOut, params.z);
+        float outEncoded = pow(linOut, level.z);
         // Undo what the blend will do.
         corrected = clamp((outEncoded - dst) / (src - dst), 0.0, 1.0);
     }
     return mix(coverage, corrected, weight);
+}
+
+// Coverage under CgTextGamma for an em of emPx screen pixels: the small level, faded into the large one across
+// ramp = (smallPx, largePx, enabled). Terms are text_gamma_terms of the glyph's colour under each level.
+float text_gamma_fill(float coverage, float emPx, vec4 termsSmall, vec4 termsLarge, vec4 small, vec4 large,
+                      vec4 ramp) {
+    if (ramp.z < 0.5) return coverage;
+    float t = ramp.y > ramp.x ? smoothstep(ramp.x, ramp.y, emPx) : step(ramp.x, emPx);
+    float smallCoverage = text_gamma_coverage(coverage, termsSmall, small);
+    if (t <= 0.0) return smallCoverage;
+    return mix(smallCoverage, text_gamma_coverage(coverage, termsLarge, large), t);
 }
