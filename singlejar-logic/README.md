@@ -305,6 +305,11 @@ documentation — and a POM. A shipped jar publishes the jar and a POM with no d
 - **Declare what the source imports.** A package that compiles only because another dependency drags it
   in transitively (JOML 1.10.8 brings `kotlin-stdlib` and with it `org.jetbrains.annotations`) is gone the
   moment that dependency moves.
+- **A shipped jar is also a variant of its project**, carrying its coordinate as a capability, so a build
+  that includes this one can substitute `com.example:myproject` with the jar built here. The DEPENDENCY
+  must ask for that capability: a substitution rule's own capability request is dropped. Such a build
+  may hold only some nodes — the 1.7.10 entries are conditional on `has1710` — and its jar then carries
+  those variants alone; `checkSingleJar` refuses it, so it is never published.
 - **A module a loader plugin publishes by itself is not an artifact**: RetroFuturaGradle's
   `usesMavenPublishing` is off in the 1.7.10 modules. Check `publishToMavenLocal`'s task list for a
   `publish…Publication` you did not declare.

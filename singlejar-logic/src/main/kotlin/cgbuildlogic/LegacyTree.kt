@@ -40,6 +40,15 @@ fun legacyNodes(project: Project): List<Project> =
         ?.sortedWith(compareBy(MinecraftVersionOrder) { it.name })
         .orEmpty()
 
+/** The 1.7.10 host, a module of its own rather than a node of either tree. */
+const val HOST_1710 = ":runtime:mc:1710"
+
+/**
+ * Whether this build has the 1.7.10 host. It has not when a consumer includes the build for one modern
+ * target, and the merged jar then carries that target's variants alone.
+ */
+fun has1710(project: Project): Boolean = project.rootProject.findProject(HOST_1710) != null
+
 /** Where a legacy node's classes ship: [sourcePackage]'s parent plus `v<version digits>`. */
 fun legacyNodePackage(sourcePackage: String, version: String): String =
     nodePackage(sourcePackage.substringBeforeLast('.'), version)
