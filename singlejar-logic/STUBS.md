@@ -62,6 +62,7 @@ just compiles; code that calls something a version lacks fails exactly as the re
 ./gradlew singleJar languageJar -PcgStubs=false  # every node real, as before stubs
 ./gradlew :runtime:mc:modern:forge:1.20.4:runClient   # this node real; the rest stubbed
 ./gradlew :runtime:mc:modern:forge:1.20.4:checkStubEquivalence  # real vs stub, byte for byte
+python mcapi.py PlayerList isOp                  # read the database: each spelling and the nodes it holds on
 ```
 
 **Stub mode is the default.** A node is real anyway when:

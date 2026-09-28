@@ -1,8 +1,12 @@
+import cgbuildlogic.Licence
 import cgbuildlogic.ModDescriptor
+import cgbuildlogic.ShippedJar
 import cgbuildlogic.SingleJarSpec
+import cgbuildlogic.has1710
 import cgbuildlogic.legacyNodes
 import cgbuildlogic.modernLoaderNodes
 import cgbuildlogic.modernNodes
+import cgbuildlogic.publishShippedJar
 import cgbuildlogic.registerSingleJarPipeline
 import cgbuildlogic.shippedEntryPaths
 import cgbuildlogic.thinJarTask
@@ -64,7 +68,7 @@ registerSingleJarPipeline(SingleJarSpec(
     shadePath = "com/crystalgraphics/shadow",
 
     // 1.7.10's production step is its own; every tree node's is read off its tree.
-    thinJars = listOf(":runtime:mc:1710" to "reobfThinJar") +
+    thinJars = listOfNotNull((":runtime:mc:1710" to "reobfThinJar").takeIf { has1710(project) }) +
         legacyNodes(project).map { it.path to "reobfThinShadowJar" } +
         modernLoaderNodes(project).map { it.path to thinJarTask(it, "thinShadowJar") },
     // Tier 1 (§12) joins the library list rather than any loader's thin jar: one compiled copy of
@@ -124,6 +128,18 @@ registerSingleJarPipeline(SingleJarSpec(
         // `forbiddenPrefixes` cannot catch it: that check reads entry PATHS, and nothing reads inside
         // a service file.
         exclude("META-INF/services/com.fasterxml.jackson.*", "META-INF/maven/**")
+
+        // The notice for what THIS jar carries, in the jar: MIT, BSD, Apache 2.0 and the FTL each
+        // require it to reach whoever receives the binary.
+        from(project.rootProject.file("notices/crystalgraphics.md")) {
+            into("META-INF")
+            rename { "NOTICE.md" }
+        }
+        // The licence itself: LGPL-3.0 is a set of additions to the GPL-3.0, and both require every
+        // recipient of the object code to get a copy.
+        from(project.rootProject.files("COPYING.LESSER", "COPYING")) {
+            into("META-INF")
+        }
     },
 
     configureCheck = {
@@ -136,6 +152,7 @@ registerSingleJarPipeline(SingleJarSpec(
         relocatedClasses.set(mapOf("com/crystalgraphics/mc/modern/platform/LifecycleModern.class" to modernCopies))
         requiredEntries.set(listOf(
             "META-INF/mods.toml", "META-INF/neoforge.mods.toml", "fabric.mod.json", "mcmod.info", "pack.mcmeta",
+            "META-INF/NOTICE.md", "META-INF/COPYING", "META-INF/COPYING.LESSER",
             "com/crystalgraphics/mc/shared/LoaderProbe.class",
             "com/crystalgraphics/mc/v1710/mixins/early/CrystalGraphicsMixins.class",
             // J11.0. The table decides which variant runs, and the three bootstrappers are what the
@@ -158,6 +175,8 @@ registerSingleJarPipeline(SingleJarSpec(
             "Fabric-Loom-Mixin-Remap-Type" to "",
         ))
     },
+    publication = ShippedJar("com.crystalgraphics", "crystalgraphics", "CrystalGraphics",
+        "The CrystalGraphics mod: one jar for every loader and Minecraft version."),
 ))
 
 // The companion's contents, and deliberately NOT `singleJarLibs`: nothing here reaches the merged jar.
@@ -294,3 +313,6 @@ val jomlJar by tasks.registering(Jar::class) {
 
 // It is part of building the artefacts, not an extra step somebody has to remember.
 tasks.named("singleJar") { dependsOn(jomlJar) }
+
+publishShippedJar(jomlJar, ShippedJar("com.crystalgraphics", "crystalgraphics-joml", "JOML for CrystalGraphics",
+    "JOML as a mod, for Minecraft below 1.19.3, which ships none.", Licence.MIT))

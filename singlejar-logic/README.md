@@ -1,8 +1,12 @@
 # singlejar-logic — one jar for every Minecraft loader
 
-Build logic for shipping **a single artifact that installs unchanged on MC 1.7.10 Forge, 1.20.1 Forge,
-1.20.4 NeoForge and 1.20.1 Fabric**. CrystalGUI and CrystalGraphics both ship this way; this directory
-is what they share, and what a third project wires itself into.
+Build logic for shipping **a single artifact that installs unchanged on every loader and Minecraft version
+it targets** — Forge 1.7.10 through 1.21.11, NeoForge and Fabric. CrystalGUI and CrystalGraphics both ship
+this way; this directory is what they share, and what a third project builds on.
+
+**Setting a project up on it:** CrystalGraphics' [`docs/SETUP.md`](../docs/SETUP.md), or CrystalGUI's
+[`docs/CGUI_SETUP.md`](../../docs/CGUI_SETUP.md) for a mod using CrystalGUI. This README is the reference
+for the mechanism underneath.
 
 It lives in CrystalGraphics because CrystalGraphics is the parent of everything that uses it — but
 **nothing here is CrystalGraphics-specific**. No package, module, mod id or loader list is baked in.
@@ -51,6 +55,10 @@ inversion from a fat chain and is safe because jvmdg does not read names.
 ---
 
 ## Wiring a project in
+
+**A complete project built this way** — a Minecraft-free core, a node tree over three loaders, one jar,
+driven on real clients — is CrystalGUI's [`samples/fieldnotes`](../../samples/fieldnotes/README.md).
+What follows is each piece on its own.
 
 ### 1. Include the build
 
@@ -270,6 +278,63 @@ Forge 1.15 host fills its `Providers.Copies` slot from FML's own mod list.
 appears once instead of once per variant; a required entry or manifest key missing; a `META-INF/services`
 file that lost a provider; a forbidden prefix shipping unrelocated.
 
+### Publishing
+
+Two kinds of artifact, and a mod needs both: the **libraries** it compiles against, and the **shipped
+jar** its dev client runs. `./gradlew publish` uploads every one declared to Cloudsmith, as GeckoLib
+does, when `CLOUDSMITH_USERNAME` and `CLOUDSMITH_PASSWORD` (an API key) are set — to the
+`cloudsmith.repository` property's `<owner>/<repository>` — and to Maven local otherwise
+(`publishingRepository`).
+
+```kotlin
+// A library module, after abstractModule(...):
+publishedModule("MyProject Core", "What it is, in one line.")          // Licence.LGPL3 unless given
+dependencies {
+    consumerApi(project(":layout"))            // import cgbuildlogic.consumerApi
+    consumerApi("org.joml:joml:1.10.5")
+    compileOnly("org.projectlombok:lombok:1.18.44")
+}
+
+// The merged jar -- checkSingleJar runs before any publish of it:
+registerSingleJarPipeline(SingleJarSpec(…,
+    publication = ShippedJar("com.myproject", "myproject", "MyProject", "One jar for every loader.")))
+
+// Any other jar:
+publishShippedJar(tasks.named<Jar>("jomlJar"), ShippedJar("com.myproject", "myproject-joml", "JOML", "…", Licence.MIT))
+```
+
+A library publishes the jar, the Java 8 copy (Gradle hands it to any consumer below Java 25, by
+`TargetJvmVersion`), `-sources` and `-javadoc` — so an IDE shows the real declarations and their
+documentation — and a POM. A shipped jar publishes the jar and a POM with no dependencies.
+
+- **`consumerApi` is what a consumer compiles against**: every library a type in the public API comes
+  from. It is on the module's own `compileOnly` too, so it is declared once. Nothing else is published,
+  and the build's own projects never see it — they resolve `apiElements` as before, so publishing
+  changes no host's compile classpath and no bytecode.
+- **Every library's public API is a committed baseline**, `api/<artifact>.api`: `apiCheck` (in `check`)
+  fails on a removed or changed declaration until the major version moves; `apiDump` rewrites it at a
+  release. `com.crystalgui.mc` and `com.crystalgraphics.mc` are not API and are left out.
+- **Name the oldest version any target ships** of a library Minecraft supplies (gson 2.2.4, log4j-api
+  2.0-beta9, JOML 1.10.5): a consumer's resolution raises it to what their Minecraft has, never lowers it.
+- **Declare what the source imports.** A package that compiles only because another dependency drags it
+  in transitively (JOML 1.10.8 brings `kotlin-stdlib` and with it `org.jetbrains.annotations`) is gone the
+  moment that dependency moves.
+- **A shipped jar is also a variant of its project**, carrying its coordinate as a capability, so a build
+  that includes this one can substitute `com.example:myproject` with the jar built here. The DEPENDENCY
+  must ask for that capability: a substitution rule's own capability request is dropped. Such a build
+  may hold only some nodes — the 1.7.10 entries are conditional on `has1710` — and its jar then carries
+  those variants alone; `checkSingleJar` refuses it, so it is never published. And its library projects
+  stand in for the published modules, so they offer `consumerApi` like the published metadata does
+  (`CONSUMER_CHECKOUT`) — without it a consumer's test would find `core` and not the renderer under it.
+- **A bootstrapper compiles against `com.crystalgraphics:mc-shared`** — `VariantBootstrap`, `ForgeStart`,
+  `VariantEntry` — and runs against the copy in CrystalGraphics' jar, which every mod shipped this way
+  shares. A node declares it with `nodeLibrary("com.crystalgraphics:mc-shared:<version>")`, which marks a
+  Maven library as the node's own rather than the toolchain's, so the stub check keeps it.
+  `publishedModule(…, artifactId = "mc-shared")` is how a module's artifact differs from its name.
+- **A module a loader plugin publishes by itself is not an artifact**: RetroFuturaGradle's
+  `usesMavenPublishing` is off in the 1.7.10 modules. Check `publishToMavenLocal`'s task list for a
+  `publish…Publication` you did not declare.
+
 ---
 
 ## Traps this build exists to prevent
@@ -328,19 +393,45 @@ A loader is built once per Minecraft version it targets, from ONE source tree, w
 runtime/mc/modern/
   stonecutter.gradle.kts                  the controller: which node is ACTIVE, and nothing else
   common/  forge/  neoforge/  fabric/     a BRANCH each: the shared src/ and one build script
-    <branch>/versions/<version>/          a NODE: gradle.properties (its pins), and its build/ and runs/
+    <branch>/versions/<version>/          a NODE: its build/ and runs/, and what differs per project
 ```
+
+**A build declares the versions it ships, and the nodes follow**: the settings plugin
+`com.crystalgraphics.singlejar` resolves them against the **pin catalog** that ships inside this build
+logic — every node it has built, booted and tested, with its toolchain pins — and creates the trees.
 
 ```kotlin
 // settings.gradle.kts -- the only place a node is declared
-plugins { id("dev.kikugie.stonecutter") version "0.9.8" }
-stonecutter {
-    create("runtime:mc:modern") {
-        branch("common") { versions("1.20.1", "1.20.4") }
-        branch("forge") { versions("1.20.1") }
+pluginManagement { includeBuild("<path>/CrystalGraphics/singlejar-logic") }
+plugins {
+    id("dev.kikugie.stonecutter") version "0.9.8"
+    id("com.crystalgraphics.singlejar")
+}
+singlejar {
+    targets {
+        forge("1.7.10".."1.21.11")      // the 1.7.10 host, the legacy tree, the modern forge branch
+        neoforge("1.20.2".."1.21.11")
+        fabric("1.20.1", "1.21.11")     // single versions: the node claiming each
     }
 }
 ```
+
+- A range takes every node whose claimed range (`variant.minecraft`) touches it; a single version the
+  node claiming it. `common` follows the loaders. Groovy spells a range `forge(between('1.16.5', '1.21.11'))`.
+- The catalog is `src/main/resources/cgbuildlogic/catalog/<tree>/<branch>/<version>.properties`. A node's
+  own `versions/<version>/gradle.properties` is optional and holds only what differs per project — its
+  mixin plugin class — never a pin. Node directories are created when missing.
+- **Included by another build, a build keeps only what that build can configure**: the node claiming the
+  target in the system property `singlejar.checkout.target` (`forge:1.20.1`), else the modern Forge node
+  claiming 1.20.1. The whole declaration applies when the build is invoked from inside itself or from
+  inside a build that contains it; nesting depth cannot tell, since Gradle flattens a composite.
+- `singlejar.modernNodes` is the resolved modern tree, for a settings script that needs it after the block.
+- **The nodes compile against the stub database beside this build logic**, found by the plugin whatever
+  build includes it — so a project holding no copy of singlejar-logic still builds its jar with no
+  Minecraft toolchain. `-PcgStubs=false` builds every node real.
+- **ModDevGradle comes with this build logic** (2.0.141). The plugin puts these classes in the settings
+  classloader, every project's parent, so what they name must be there too; a project's own build logic
+  declares none, and a node applies it by id.
 
 A node is the project `:runtime:mc:modern:<branch>:<version>`, so **on a node `project.name` is the
 version**. `ModernTree` answers everything else and is the only thing that should: `modernLoader`,
@@ -385,11 +476,12 @@ because `runtime/mc/shared` is compiled once for every loader and can name no FM
 **Adding a version** — the parent first, since a project built on another compiles each node against
 the parent's node of the same version:
 
-1. the version on the loader's branch in `settings.gradle.kts`, **and on `common`** if it is absent;
-2. `versions/<version>/gradle.properties` for each: the toolchain pins, plus `variant.minecraft` (the
-   range the node claims, narrowing a neighbour's if they would overlap — `ModDescriptor` refuses the
-   overlap), `variant.packFormat`, and `java.version = 21` from 1.20.5 on (`nodeJava`: what the node
-   emits, and the ceiling its thin jar is checked against; 17 when unpinned);
+1. a catalog entry, `catalog/modern/<branch>/<version>.properties`, **and `modern/common/<version>`** if it
+   is absent: the toolchain pins, plus `variant.minecraft` (the range the node claims, narrowing a
+   neighbour's if they would overlap — `ModDescriptor` refuses the overlap), `variant.packFormat`, and
+   `java.version = 21` from 1.20.5 on (`nodeJava`: what the node emits, and the ceiling its thin jar is
+   checked against; 17 when unpinned);
+2. a `targets {}` range that reaches it, in every build that should ship it;
 3. `//? if` directives where the API differs — `checkAllTargets` finds every one.
 4. regenerate `stubs.zip` and commit it with the node — [STUBS.md](STUBS.md) § *Regenerating*.
     Until then the new node builds real.
