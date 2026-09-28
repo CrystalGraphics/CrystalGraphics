@@ -1,55 +1,41 @@
 # runtime/mc/modern/common — Platform Package
 
-`com.crystalgraphics.mc.modern.platform` — MC 1.20.x shared platform implementation.
-All files compile against MC 1.20.1 via `legacyForge` in `cg-modern-common.gradle.kts` (one node per Minecraft version).
-No loader-specific types (Forge/NeoForge/Fabric) appear anywhere in this package.
+`com.crystalgraphics.mc.modern.platform` — the modern-era platform, one source per Minecraft version
+through Stonecutter directives. No Forge, NeoForge or Fabric type appears here.
 
-## Entry Point
+## Entry points
 
-**`PlatformServiceModern`** — implements `CgPlatformService`; composes all six services.
-Register it once at loader init: `CgPlatform.register(PlatformServiceModern.getInstance())`.
+**`PlatformServiceModern`** implements `CgPlatformService` over tier 1 (`runtime/lwjgl/3`). A loader
+registers it once, from an entry point that runs on both sides:
 
-## Subpackages
+```java
+CgPlatform.register(PlatformServiceModern.getInstance());
+```
 
-### `gl/`
+**`LifecycleModern`** is everything a loader forwards to: the opaque and transparent passes, the reload,
+the shutdown. A loader decides only which event (or node mixin) reaches it.
 
-| Class | Implements | What it does |
-|---|---|---|
-| `Mc120xGLContext` | `CgGLContext` | Reads `GLCapabilities` from LWJGL 3's `GL.getCapabilities()`; call `probe()` once on the GL thread after context creation |
-| `Mc120xGLBackend` | `CgGLBackend` | 3-tier routing: `RenderSystem` → `GlStateManager` → raw `GL*C`; throws on fixed-function paths (`GL_ALPHA_TEST`, matrix stack) removed from the core profile |
+## Classes
 
-**3-Tier Routing Rule** (in `Mc120xGLBackend`):
-- **Tier 1 — `RenderSystem`**: blend, depth test/mask/func, color mask, viewport, stencil, `activeTexture`, `texParameter`, `deleteTexture`
-- **Tier 2 — `GlStateManager`**: FBO bind/gen/delete/blit, renderbuffer ops, `scissorBox`, `polygonMode`, `pixelStore`, `polygonOffset`
-- **Tier 3 — raw `GL*C`**: VAOs, VBOs, shaders, texture upload, draw calls, sync, SSBO/TBO/UBO, anything MC doesn't track
+| Class | What it does |
+|---|---|
+| `gl/Blaze3dGLBackend` | Tier 1's `Lwjgl3GLBackend`, plus routing every call whose state Minecraft's `GlStateManager` caches through `GlStateManager`'s own `_` methods, so its cache stays true. Everything else reaches the driver from tier 1 |
+| `gl/GlStateManager` | A shim that spells 1.14's un-prefixed methods the later way |
+| `HostStateVerifier` | `-Dcrystalgraphics.host.verify=true`: after each pass, compares the driver against `GlStateManager`'s fields and names the domain that disagrees |
+| `Blaze3dTextureUnits` | how many texture units Blaze3D models — binding above it corrupts unit 0 for the next sampler |
+| `FrameHooks` | the end-of-frame resize check and `CgGraphicsLifecycle.tickFrame()` |
+| `ResourceIds`, `Windows` | a `ResourceLocation` and the game window, in whichever spelling the running version has |
+| `service/*` | `CgLifecycleService`, `CgReloadService`, `CgResourceService`, `CgRenderingService`, `CgSoundService` over Minecraft |
 
-Never use `GL11` / `GL20` (non-C suffix) — always `GL11C`, `GL20C`, etc. ARB extension classes (`ARBShaderObjects`, `ARBInstancedArrays`, `ARBSamplerObjects`) are allowed for their waterfall paths.
+**A missing `Blaze3dGLBackend` override is a missing GL call, not an exception** — wrong rendering with
+nothing in any log. `Blaze3dMirrorTest` pins the list; `HostStateVerifier` is the runtime check.
 
-### `service/`
+## Lifecycle
 
-| Class | Implements | Delegates to |
-|---|---|---|
-| `LifecycleService` | `CgLifecycleService` | `CgGraphicsLifecycle.initContext/destroyContext/onResize/tickFrame` |
-| `ReloadService` | `CgReloadService` | `CgAssetReloader.reload()` |
-| `ResourceService` | `CgResourceService` | `Minecraft.getResourceManager()` — returns `null` on not-found, never throws |
-| `RenderingService` | `CgRenderingService` | `CgRenderPipeline.execute(partialTick)` — legacy single-call path; superseded by the per-loader event handlers for the opaque/transparent split |
+Initialisation is lazy, on the first frame that owns the render context. `onOpaquePass` and
+`onTransparentPass` come from the loader's world-render hooks. At shutdown the loaders call
+`CgGraphicsLifecycle.shutdown()`, which stops the engine and frees nothing: Minecraft dispatches render
+stages for a frame or two after its shutdown signal. `destroyContext()` is for a host where rendering
+has definitively stopped.
 
-## Lifecycle Ownership
-
-First-frame lazy-init and resize detection live in `CgGraphicsLifecycle` (`core/`), not in this
-package. `CgGraphicsLifecycle.onRenderFrame(partialTick, w, h)` handles first-frame init only:
-- First call: `CgPlatform.gl().initContext()`, `CgPlatform.capabilities().probe()`,
-  `initContext(w, h)`, then pipeline execute
-- Resize: `onResize(w, h)`, then pipeline execute
-
-The actual per-frame render passes are driven by loader-specific stage events:
-- `onOpaquePass(partialTick, w, h, sourceFboId)` — called at `AFTER_BLOCK_ENTITIES` / `AFTER_ENTITIES`
-- `onTransparentPass()` — called at `AFTER_PARTICLES` / `AFTER_TRANSLUCENT`
-
-At game shutdown the loaders call `CgGraphicsLifecycle.shutdown()`, which stops the engine and frees
-nothing: Minecraft dispatches render stages for a frame or two after its shutdown signal, and freeing
-early leaves the engine half-dead while frames are still arriving. `destroyContext()` is the other
-call, for a host where rendering has definitively stopped.
-
-**`onFrameRendered()` is not wired on 1201.** The hook to use, why the world-render-stage
-events are not it, and where Fabric stands: see `runtime/mc/modern/common/AGENTS.md`.
+A GUI-only frame ends no CrystalGraphics frame today — `runtime/mc/modern/common/AGENTS.md` § *Open*.

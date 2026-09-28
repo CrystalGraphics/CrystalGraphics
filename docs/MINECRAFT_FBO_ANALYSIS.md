@@ -1,7 +1,7 @@
 # Minecraft 1.7.10 Framebuffer (FBO) Analysis
 
 **Analysis Date**: 2026-02-18
-**Source Location**: `build/rfg/minecraft-src/java/net/minecraft/`
+**Source Location**: `runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraft/`
 **Purpose**: Understand vanilla Minecraft 1.7.10 FBO implementation for CrystalGraphics integration
 
 ---
@@ -474,9 +474,9 @@ CrystalGraphics can use the proper constants since it uses the waterfall pattern
 5. **Subscribe to Forge events** for resize and lifecycle management
 
 ### Files to Reference
-- `build/rfg/minecraft-src/java/net/minecraft/client/Minecraft.java` - FBO lifecycle
-- `build/rfg/minecraft-src/java/net/minecraft/client/shader/Framebuffer.java` - FBO implementation
-- `build/rfg/minecraft-src/java/net/minecraft/client/renderer/OpenGlHelper.java` - Extension detection
-- `build/rfg/minecraft-src/java/net/minecraft/client/renderer/EntityRenderer.java` - Render pipeline
-- `build/rfg/minecraft-src/java/net/minecraft/client/shader/ShaderGroup.java` - Post-processing
-- `build/rfg/minecraft-src/java/net/minecraftforge/client/event/` - Forge events
+- `runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraft/client/Minecraft.java` - FBO lifecycle
+- `runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraft/client/shader/Framebuffer.java` - FBO implementation
+- `runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraft/client/renderer/OpenGlHelper.java` - Extension detection
+- `runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraft/client/renderer/EntityRenderer.java` - Render pipeline
+- `runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraft/client/shader/ShaderGroup.java` - Post-processing
+- `runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraftforge/client/event/` - Forge events

@@ -26,8 +26,8 @@ import com.crystalgraphics.platform.service.CgSoundService;
 import net.minecraft.client.Minecraft;
 
 /**
- * Complete MC 1.20.x platform bundle. Implements {@link CgPlatformService} by composing
- * the mc1201 service adapters. Register via {@code CgPlatform.register(PlatformServiceModern.getInstance())}.
+ * The modern platform bundle. Implements {@link CgPlatformService} by composing
+ * the modern service adapters. Register via {@code CgPlatform.register(PlatformServiceModern.getInstance())}.
  *
  * <p><b>Every service is built on demand and every field is typed as its SPI interface.</b> This used
  * to read "no GL calls are made in the constructor or static initializer" — true about what the code
@@ -57,15 +57,14 @@ public final class PlatformServiceModern implements CgPlatformService {
 
     // BUILT ON DEMAND, and typed as the SPI interfaces rather than the implementations.
     //
-    // This is the mc1710 fix, applied ahead of the failure rather than after it. There it was
+    // This is the 1.7.10 fix, applied ahead of the failure rather than after it. There it was
     // `public final` fields built at preInit, and a DEDICATED SERVER died at the first one:
     // NoClassDefFoundError: org/lwjgl/LWJGLException. Here it was worse -- the fields sat inside a
     // `static final INSTANCE`, so all eight were built at CLASS INIT, one step earlier in the
     // lifecycle than 1710's, and the `@Mod` constructor that calls getInstance() runs on BOTH SIDES.
-    // (Fabric is exempt by construction: CrystalGraphicsFabric is a ClientModInitializer.)
     //
     // Lwjgl3GLContext is the concrete hazard -- it holds `private volatile GLCapabilities caps`, an
-    // org.lwjgl.opengl FIELD DESCRIPTOR, and a dedicated 1.20.x server has no LWJGL on its classpath.
+    // org.lwjgl.opengl FIELD DESCRIPTOR, and a dedicated server has no LWJGL on its classpath.
     // ResourceService and RenderingService name net.minecraft.client types,
     // which a server distribution does not ship either; those are method-body references today and so
     // survive loading, but only by luck, and nothing stops the next edit adding a field.
@@ -76,16 +75,7 @@ public final class PlatformServiceModern implements CgPlatformService {
     // JOML and Taffy on CrystalGUI's headless classpath -- while a method-body reference is not, which
     // is why gl() on a server is fine right up until somebody calls it.
     //
-    // NOTE THIS CANNOT BE TESTED FROM ANY BUILD WE HAVE. mc1201 is commented out of settings.gradle.kts
-    // in both repos, so nothing compiles it, let alone runs a server with it.
-    //
-    // And whether a Forge/NeoForge dev runServer would even show the fault is UNKNOWN. It uses the joined
-    // artifact, so Minecraft's client classes are present; whether LWJGL is, is a ModDevGradle question
-    // nobody here has measured. (The equivalent WAS measured on 1.7.10, where the guess turned out wrong
-    // in the reassuring direction: RFG's server run has no LWJGL, so a dev server there fails exactly as
-    // production does. A guess that was wrong once is not a basis for the other loader family.)
-    //
-    // So the shape is made unable to fail rather than argued about.
+    // `serverSmoke` checks it on every node with a dev run: it asserts no client-only class was loaded.
     private CgGLBackend        glBackend;
     private CgGLContext        glContext;
     private CgLifecycleService lifecycle;

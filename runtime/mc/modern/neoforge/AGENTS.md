@@ -1,58 +1,23 @@
 # runtime/mc/modern/neoforge — Agent Knowledge Base
 
-## Target Versions
+## Target versions
 
-**IMPORTANT**: Despite the `runtime/mc/modern/` directory name, this module targets **MC 1.20.4 / NeoForge 20.4.x**.
-NeoForge never published a stable 1.20.1 series — the earliest available stable series is 20.4.x (MC 1.20.4).
-The directory name `runtime/mc/modern/neoforge/` is retained for continuity. Version pins live in `gradle.properties`
-per node, in singlejar-logic's pin catalog (`catalog/modern/<branch>/<version>.properties`).
+**MC 1.20.2–1.21.11 / NeoForge**, a node per `versions/<version>`: 1.20.2, 1.20.3, 1.20.4, 1.20.6 (also
+1.20.5), 1.21.1 (also 1.21), 1.21.3 (also 1.21.2), 1.21.4, 1.21.5, 1.21.6, 1.21.8 (also 1.21.7), 1.21.10
+(also 1.21.9) and 1.21.11. NeoForge published nothing for 1.20.1. NeoForge 20.2/20.3 are built from parts through NeoForm and have no dev run; from 1.20.4 it
+is ModDevGradle. Pins and toolchains: `docs/BUILD.md` § *Nodes and toolchains*.
 
 ## The loader is registration only
 
-One `@Mod` class, `CrystalGraphicsNeoForge`. Its `Events` inner class registers the render
-stages and the shutdown signal on `NeoForge.EVENT_BUS` from the constructor, and holds the MOD-bus
-reload listener.
+`NeoForgeBootstrap` is the one `@Mod` class for every NeoForge node, and hands off to this node's
+`CrystalGraphicsNeoForge` (a `VariantEntry`) by the running version. Its `Events` inner class registers
+the render stages and the shutdown signal on `NeoForge.EVENT_BUS`, and the mod-bus reload listener. What the engine then does is the common branch's
+`LifecycleModern`.
 
-Which event, and which stage of it. What the engine then does — bind the main render target, run the
-opaque or transparent pass, forward a reload, stop at shutdown — is the common branch's `LifecycleModern`,
-shared by all three.
-
-## Minecraft Source Location
-
-Decompiled, Parchment-mapped NeoForge + MC 1.20.4 sources are extracted into two subdirectories:
-
-| Path | Contents |
-|---|---|
-| `versions/1.20.4/build/mc-src/java/` | NeoForge + Mojang Java sources, Parchment-mapped |
-| `versions/1.20.4/build/mc-src/resources/` | MC client assets (assets/, data/, *.json, *.mcmeta) from `client-extra-*.jar` |
-
-These paths are gitignored and not committed. Generate them with:
+## Minecraft sources
 
 ```bash
-./gradlew :runtime:mc:modern:neoforge:1.20.4:extractMcSources
-# or regenerate all three 1.20.x loader modules at once:
-./gradlew extractAllMcSources
+./gradlew :runtime:mc:modern:neoforge:<version>:extractMcSources   # into versions/<version>/build/mc-src/{java,resources}
 ```
 
-Running `extractMcSources` will trigger `createMinecraftArtifacts` (the ModDevGradle task that
-downloads and decompiles sources) if it has not run yet. Expect several minutes on first run.
-
-## Key Source Files
-
-After extraction, commonly referenced locations under `versions/1.20.4/build/mc-src/java/`:
-
-- `net/minecraft/client/Minecraft.java` — main game class
-- `net/minecraft/client/renderer/` — rendering pipeline
-- `net/minecraft/resources/` — resource location / pack system
-- `net/minecraft/world/` — world/level logic
-
-## Build
-
-```bash
-./gradlew :runtime:mc:modern:neoforge:1.20.4:compileJava
-./gradlew :runtime:mc:modern:neoforge:1.20.4:shadowJar
-```
-
-## Plugin
-
-Uses `net.neoforged.moddev` (ModDevGradle). See `build.gradle.kts` for version pins.
+Gitignored. The task makes that node real, so the first run sets up its toolchain (several minutes).

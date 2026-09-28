@@ -11,7 +11,7 @@ import org.apache.logging.log4j.Logger;
 
 /**
  * MC 1.7.10 implementation of {@link CgReloadService}. This is the sole implementor
- * of that interface in the mc1710 platform layer.
+ * of that interface in the 1.7.10 platform layer.
  *
  * <p>{@link #onReload()} delegates to {@link CgAssetReloader#reload()}, which triggers
  * texture, shader, and material reloads in order with per-type failure isolation.</p>

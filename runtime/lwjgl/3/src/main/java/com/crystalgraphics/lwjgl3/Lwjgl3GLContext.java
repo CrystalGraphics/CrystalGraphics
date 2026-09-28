@@ -5,7 +5,7 @@ import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GLCapabilities;
 
 /**
- * MC 1.20.x / LWJGL 3 implementation of {@link CgGLContext}.
+ * LWJGL 3 implementation of {@link CgGLContext}.
  *
  * <p>Reads capability flags from LWJGL 3's {@link GLCapabilities}. {@link #probe()} must be
  * called once on the GL thread after context creation before any query method is invoked.

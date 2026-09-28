@@ -1,140 +1,96 @@
 # Platform SPI — `com.crystalgraphics.platform`
 
-This package defines the Service Provider Interface (SPI) that isolates the CrystalGraphics `core/`
-module from any platform-specific runtime (Minecraft 1.7.10, standalone GL harness, future ports). The
-`core/` module only imports from this package — never from `net.minecraft.*`, `org.lwjgl.*`, or
-`cpw.mods.*`.
+The seam between CrystalGraphics' `core/` and whatever runs it — a Minecraft loader, the harness, an
+application. `core/` imports only this package, never `net.minecraft.*`, `org.lwjgl.*` or a loader.
 
-**It also serves CrystalGUI**, which is a separate project built on top of CrystalGraphics and has no
-platform registry of its own. Its input, sound, clipboard and cursor seams are the last three services
-below — see [UI-facing services](#ui-facing-services).
+**It also serves CrystalGUI**, which has no platform registry of its own: its input, sound, clipboard
+and cursor seams are here too — see [UI-facing services](#ui-facing-services).
 
 ---
 
-## File Index
+## File index
 
 | File | Kind | What it owns |
 |---|---|---|
-| `CgResourceService.java` | Interface | Asset loading — single `openStream` method |
-| `CgRenderingService.java` | Interface | Viewport dimensions + direct-call frame hook (`onFrameBegin`) |
-| `CgLifecycleService.java` | Interface | GL context init / destroy / resize — direct call contract |
-| `CgReloadService.java` | Interface | Hot-reload (F3+T) — direct call contract (`onReload`) |
-| `CgCapabilityProbe.java` | Interface | GL capability detection |
-| `CgGlDispatch.java` | Abstract class (singleton) | All raw GL calls |
-| `CgPlatform.java` | Final utility class | Central registry; wires every service |
-| `CgPlatformService.java` | Interface | Bundle contract; groups every service into one object |
-| `service/CgInputService.java` | Interface | Key/mouse code translation, modifier and button state, **and the clipboard** |
-| `service/CgSoundService.java` | Interface | UI sounds |
-| `input/CgSystemInput.java` | Interface | Raw mouse/keyboard event sink + the two event types |
-| `input/CgKeyCodes.java`, `CgMouseCodes.java`, `CgModifiers.java` | Constants | LWJGL2-shaped, with no LWJGL import |
+| `CgPlatform` | Final class | The registry, both halves: `register(CgPlatformService)` and the `CgService` slots |
+| `CgPlatformService` | Interface | The CLOSED bundle a platform registers — eight methods, no defaults |
+| `CgService` | Class | An OPEN slot: a consumer declares it, a platform fills it, it carries its own absent-value |
+| `gl/CgGLBackend` | Abstract class | Every raw GL call — the seam an implementation answers |
+| `gl/CgGL` | Final class | The static facade `core/` calls; normalises names and forwards to the backend |
+| `gl/CgGLContext` | Interface | Capability detection, probed once on the GL thread |
+| `gl/CgCapabilities` | Class | The immutable capability snapshot built from the context |
+| `gl/CgGlStateManager`, `gl/state/*` | — | The GL state shadow, scopes and providers (`core/.../gl/state/AGENTS.md`) |
+| `service/CgResourceService` | Interface | `openStream(domain, path)` — `null` on not-found |
+| `service/CgRenderingService` | Interface | Viewport size and the legacy single-call frame |
+| `service/CgLifecycleService` | Interface | Context init, destroy, resize, and the frame tick |
+| `service/CgReloadService` | Interface | `onReload()` — F3+T and resource-pack changes |
+| `service/CgInputService` | Interface | Key and mouse codes, modifier and button state, **and the clipboard** |
+| `service/CgSoundService` | Interface | UI sounds |
+| `service/CgCursorService` | Interface + slot | Presenting a cursor image; `CgCursorService.SERVICE` |
+| `input/CgSystemInput` | Interface | The raw event sink and its two event types |
+| `input/CgKeyCodes`, `CgGlfwKeyCodes`, `CgMouseCodes`, `CgModifiers` | Constants | Code tables with no LWJGL import |
+
+**Who implements the bundle**: `PlatformService1710`, `PlatformServiceLegacy`, `PlatformServiceModern`,
+the harness's `PlatformServiceHarness` and core's `TestPlatformService`. Their GL backend, context and
+input come from tier 1 (`runtime/lwjgl/2`, `runtime/lwjgl/3`); a Minecraft host adds only what names
+Minecraft.
 
 ---
 
-## `CgGlDispatch` — The GL call abstraction layer
+## `CgGLBackend` and `CgGL`
 
-`CgGlDispatch` is an **abstract class** (not an interface) for two reasons:
-1. Future utility methods can be added without breaking existing implementations.
-2. The static singleton pattern (`get()` / `setInstance()`) cannot live on an interface cleanly.
+`core/` calls `CgGL`; `CgGL` calls `CgGLBackend.get()`. The backend's FBO methods carry no `gl` prefix
+(`bindFramebuffer`), and `CgGL` spells everything `glXxx`. `bindFramebuffer` carries the Core GL30 > ARB >
+EXT waterfall, chosen per call from `CgPlatform.capabilities()` — there is no second, host-delegating
+bind.
 
-**Singleton access**:
+A host backend overrides only what its host caches: `Blaze3dGLBackend` routes through Minecraft's
+`GlStateManager`, `GlStateManagerGLBackend` through legacy Forge's. Everything else reaches the driver
+from tier 1. **A missing override is a missing GL call, not an exception.**
+
+---
+
+## `CgPlatform` — the registry
+
+`register(bundle)` is called **exactly once**, before any `core/` code runs. `resources()` answers `null`
+before registration, so `CgIO` can fall back to the classpath during early boot; every other getter
+throws. **Registration must not demand a GL backend**: a dedicated server has none, and constructing
+one there is `NoClassDefFoundError` on LWJGL — every bundle builds its services lazily.
+
 ```java
-CgGlDispatch.get().glUseProgram(programId);
+CgPlatform.register(PlatformServiceModern.getInstance());                            // the bundle
+CgPlatform.provide(CgCursorService.SERVICE, new GlfwCursorService(windowHandle));    // a slot, client only
 ```
 
-**`bindFramebufferCompat(int fbo)`** is the key FBO compatibility method:
-- MC 1.7.10 implementation delegates to `OpenGlHelper.func_153171_g(GL_FRAMEBUFFER, fbo)` so
-  that Minecraft's internal FBO tracking remains consistent.
-- Standalone / harness implementations call `glBindFramebuffer(GL_FRAMEBUFFER, fbo)` directly.
-- This replaces the former `CallFamily.OPENGLHELPER_WRAPPER` routing (that enum is deleted) in the FBO
-  code once those classes are migrated to `core/`.
-
-**Coverage**: Framebuffers, shaders (create/compile/link/uniforms/UBO/SSBO bindings), buffers
-(gen/bind/data/sub-data/range bindings), VAOs, textures (2D/3D/arrays/cubemaps), draw calls
-(direct + instanced), and the full GL state surface (blend, depth, cull, viewport, scissor,
-stencil, alpha, polygon mode, color mask).
-
 ---
 
-## `CgPlatform` — Central registry
+## `CgLifecycleService` — the frame tick
 
-All services are registered atomically via `register(CgPlatformService)`. The registry must be
-called **exactly once** during platform init before any `core/` code runs.
+`onContextInit(w, h)`, `onContextDestroy()`, `onResize(w, h)`, `onFrameRendered()`, all on the GL
+thread. **`onFrameRendered()` is the only sanctioned per-frame tick** for engine singletons
+(`CgGraphicsLifecycle.tickFrame()` → `CgFontRegistry.tickFrame()`); feature code never calls
+`tickFrame()` itself. It must fire once per rendered frame, GUI-only frames included:
 
-The preferred registration path is `CgPlatform.register(new PlatformService1710())` — one
-object, compiler-enforced completeness. The old 6-arg `register(gl, caps, res, rendering,
-lifecycle, reload)` overload still exists but is `@Deprecated`; it delegates to the bundle path.
+| Host | Where it fires |
+|---|---|
+| 1.7.10, Forge 1.8–1.12.2 | `updateCameraAndRender` TAIL — no early return, covers the world, a GUI with no world, and skip-render-world alike |
+| Modern (1.13+) | `FrameHooks.endFrame()`, at the end of the transparent pass — **world frames only**; see `runtime/mc/modern/common/AGENTS.md` § *Open* |
 
-### Getter variants
-
-`resources()` returns `null` pre-registration (safe for `CgIO.openStream` classpath fallback).
-All other getters (`gl()`, `capabilities()`, `rendering()`, `lifecycle()`, `reload()`) throw
-`IllegalStateException` before registration.
-
----
-
-## `CgCapabilityProbe`
-
-Replaces the LWJGL2-coupled `CgCapabilities.detect()` in `core/`. The probe is called once via
-`probe()` after context creation, then `core/` queries it through `CgPlatform.capabilities()`.
-
-Capability surface mirrors the existing `CgCapabilities` query surface:
-`isCoreFboSupported()`, `isArbFboSupported()`, `isExtFboSupported()`, `isVaoSupported()`,
-`isSSBOSupported()`, `isTBOSupported()`, `isOpenGL40()`, `isOpenGL43()`, `isARBSync()`.
-
----
-
-## `CgResourceService`
-
-Single method: `openStream(String domain, String path)`. Returns `null` on not-found — never
-throws. Replaces `IResourceManager` coupling in `CgIO`. The null-returning `resources()` path
-allows `CgIO.openStream` to fall back to classpath loading during early boot (e.g., before
-Minecraft's resource manager is initialised).
-
----
-
-## `CgLifecycleService` and `CgRenderingService`
-
-Both use a **direct call contract** — the platform implementation calls the methods directly,
-no `register*Callback` indirection.
-
-- **`CgLifecycleService`** — `onContextInit(w, h)`, `onContextDestroy()`, `onResize(w, h)`,
-  `onFrameRendered()`. All methods fire on the GL thread.
-  `onFrameRendered()` is the canonical, and *only sanctioned*, per-frame tick point for
-  engine-owned singletons that need per-frame bookkeeping (currently
-  `CgFontRegistry.tickFrame()`, called via `CgGraphicsLifecycle.tickFrame()`). Feature-level
-  code (`CgUiPaintContext`, demo overlays, etc.) must never call
-  `CgGraphicsLifecycle.tickFrame()` directly — only `CgLifecycleService` implementations
-  should, wired to whatever native hook reliably fires exactly when a frame is actually
-  rendered. For MC 1.7.10 this is `CgRenderHook`'s dedicated mixin on
-  `EntityRenderer.updateCameraAndRender` at `@At("TAIL")` — **not**
-  `Minecraft.runGameLoop()` (the general tick-and-maybe-render dispatch that can complete
-  an iteration with zero actual rendering) and **not** `renderWorld` alone (never fires
-  without a loaded world). `updateCameraAndRender`'s body was verified to have no early
-  returns: it is one straight-line sequence gated by a single outer
-  `if (!this.mc.skipRenderWorld)` that wraps both the world-render branch and the
-  no-world overlay-setup branch, followed by the unconditional GUI screen draw — so TAIL
-  fires exactly once per call and covers the in-world case, the no-world-with-GUI case
-  (main menu, etc.), and the skip-render-world case uniformly. No known gap remains.
-- **`CgRenderingService`** — `onFrameBegin(partialTick)` called each frame; `getViewportWidth()`
-  and `getViewportHeight()` for viewport dimensions.
+`CgRenderingService.onFrameBegin(partialTick)` is the legacy single-call path; the hosts drive the
+opaque and transparent passes from their own hooks instead.
 
 ## `CgReloadService`
 
-Direct call contract — single method `onReload()`. No callback registration. The platform
-bridge (`ReloadService1710.attachToResourceManager()`) wires MC's reload event to call
-`CgPlatform.reload().onReload()` directly.
+One method, `onReload()`, called directly — no callback registration. Each host bridges its own reload
+event to it (`ReloadService1710.attachToResourceManager()` on 1.7.10, a reload listener on the others).
 
 ---
 
-## Dependency and No-Forbidden-Import Rule
+## Dependencies
 
-`platform/` has **zero** LWJGL, Minecraft, or Forge imports. The only runtime dependencies are:
-- `org.apache.logging.log4j:log4j-api` (logging — used by implementations, available to all)
-- Lombok `compileOnly` (annotation processor for future concrete helper classes)
-
-`core/` depends on `platform/` but NOT on the root project's `gtnhconvention` classpath.
-`platform/` is designed to be compilable standalone on a Java 17 JDK without Minecraft.
-
+`platform/` imports no LWJGL, Minecraft or loader type. log4j-api is `compileOnly` at 1.7.10's version:
+exporting it would put that version on every consumer, and NeoForge requires `log4j-api` strictly 2.19.0.
+Every host supplies its own.
 
 ---
 
@@ -149,13 +105,14 @@ the other, coming up with a working GL backend and a dead keyboard, with nothing
 |---|---|
 | `CgPlatform.input()` | `translateKeyboardCodes`, `translateMouseCodes`, `getCurrentModifiers`, `isKeyDown`, `isMouseDown`, `howManyMouseButtons`, `getClipboard`, `setClipboard` |
 | `CgPlatform.sound()` | `play(String soundId)` |
+| `CgPlatform.get(CgCursorService.SERVICE)` | presenting a cursor picture; CrystalGUI decides which |
 
 **The clipboard is on `CgInputService`, not a service of its own.** It is not conceptually input, but it
 is reached the same way — one loader-owned handle, needed by exactly the code that handles keys — and
 every implementation that provides one already provides the rest of the interface. Two methods do not earn
-a registration slot. Both default to a no-op pair.
+a registration slot.
 
-### No defaults, anywhere in this SPI
+### No defaults in the bundle
 
 **Every method on `CgPlatformService` and `CgInputService` is abstract, and `CgSoundService` ships no
 `NOOP` constant.** This is a deliberate rule, not an oversight:
@@ -168,27 +125,19 @@ a registration slot. Both default to a no-op pair.
 Abstract methods make the compiler the reminder. **A platform with nothing to offer is still free to say
 so** — an empty `play`, a `getClipboard` returning `""` are both correct answers. They just have to be
 written in that platform's own source, where a reader can see the decision was made.
-
-`runtime/mc/modern`'s two UI services are exactly this case today: written out as visible stubs with a note on what a
-real implementation needs, rather than inherited silently. `translateMouseCodes` is the subtlest one — the
-identity mapping is right on every platform seen so far, which is precisely why inheriting it without
-looking would be a mistake on the first platform where it isn't.
+`translateMouseCodes` is the subtlest: the identity mapping is right on every platform seen so far, which
+is precisely why inheriting it without looking would be a mistake on the first platform where it isn't.
 
 **A `CgService` slot is the deliberate opposite, and that is the whole point of having two halves.** Its
 absent-value is mandatory rather than forbidden, because a slot exists for a capability whose absence is a
-*legitimate configuration* rather than an oversight — CrystalGUI's cursor is the worked example: an
-unpresented cursor is cosmetic, and a dedicated server, a headless test and a windowless fixture must not
-have to register a stub to stay quiet. `CgService.get()` still announces the absence once, on first read,
-so "nobody provided it" and "somebody chose the no-op" stay distinguishable in a log.
+*legitimate configuration* rather than an oversight — the cursor is the worked example: an unpresented
+cursor is cosmetic, and a dedicated server, a headless test and a windowless fixture must not have to
+register a stub to stay quiet. `CgService.get()` still announces the absence once, on first read, so
+"nobody provided it" and "somebody chose the no-op" stay distinguishable in a log.
 
 ### Java level
 
-This module mirrors `:core` exactly — toolchain 17, source/target 17, with Jabel and the jvmDowngrader
-API as `compileOnly` (so an `import ...Desugar` compiles) and no annotation processor, because the dual
-compile pipeline in `core/build.gradle.kts` is commented out in both. Records, `var`, switch expressions
-and pattern matching are all available.
-
-> It was Java 8 source until 2026-07-30, which meant this module could not use records while `core/`
-> could — `CgSystemInput`'s two event types had to be hand-written classes with record-shaped accessors.
-> The two modules are consumed together and shadowed into the same loader jar, so there was never a
-> reason for them to disagree.
+An abstract module, like `:core`: Java 25 source, plus a Java 8 copy (`downgradedJar`) that every
+consumer below 25 resolves (`cgbuildlogic.abstractModule`). Modern syntax is free; **a newer API is not
+checked** — jvmdg stubs what it can, and a call it cannot stub fails on a Java 8 instance. The shipped
+jar is downgraded whole, once.

@@ -5,7 +5,7 @@ import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 import net.minecraft.client.Minecraft;
 
 /**
- * End-of-frame lifecycle for MC 1.20.x: the resize check and {@link CgGraphicsLifecycle#tickFrame()}.
+ * End-of-frame lifecycle for the modern tree: the resize check and {@link CgGraphicsLifecycle#tickFrame()}.
  *
  * <p>Each loader calls {@link #endFrame()} once per frame from its own render event. Without it the
  * screen-sized FBO registry never learns the window changed, so the UI keeps rendering at the previous

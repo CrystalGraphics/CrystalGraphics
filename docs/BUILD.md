@@ -50,9 +50,10 @@ emits its Minecraft's Java (`nodeJava`: 17, or 21 from 1.20.5 via `java.version 
 downgraded to 8 in one pass. **javac does not check the API**: a Java 9+ method is compiled happily and
 fails on a Java 8 instance unless jvmdg stubs it — Forge ≤1.16, legacy Forge and 1.7.10 run Java 8.
 
-**Which loaders a build includes.** From this checkout or from inside CrystalGUI: all of them. Included
-by any other build (a consumer mod): only `common` and `forge` at 1.20.1 (`loadersWanted` in
-`settings.gradle.kts`).
+**Which nodes a build includes.** From this checkout or from inside CrystalGUI: all of them. Included
+by any other build (a consumer mod): one loader node and its `common` — the node claiming the
+`loader:minecraft` in the `singlejar.checkout.target` system property (which `com.crystalgui.settings`
+sets), else `forge` 1.20.1 (`SingleJarSettings.select`).
 
 ## Nodes and toolchains
 
