@@ -377,19 +377,39 @@ A loader is built once per Minecraft version it targets, from ONE source tree, w
 runtime/mc/modern/
   stonecutter.gradle.kts                  the controller: which node is ACTIVE, and nothing else
   common/  forge/  neoforge/  fabric/     a BRANCH each: the shared src/ and one build script
-    <branch>/versions/<version>/          a NODE: gradle.properties (its pins), and its build/ and runs/
+    <branch>/versions/<version>/          a NODE: its build/ and runs/, and what differs per project
 ```
+
+**A build declares the versions it ships, and the nodes follow**: the settings plugin
+`com.crystalgraphics.singlejar` resolves them against the **pin catalog** that ships inside this build
+logic — every node it has built, booted and tested, with its toolchain pins — and creates the trees.
 
 ```kotlin
 // settings.gradle.kts -- the only place a node is declared
-plugins { id("dev.kikugie.stonecutter") version "0.9.8" }
-stonecutter {
-    create("runtime:mc:modern") {
-        branch("common") { versions("1.20.1", "1.20.4") }
-        branch("forge") { versions("1.20.1") }
+pluginManagement { includeBuild("<path>/CrystalGraphics/singlejar-logic") }
+plugins {
+    id("dev.kikugie.stonecutter") version "0.9.8"
+    id("com.crystalgraphics.singlejar")
+}
+singlejar {
+    targets {
+        forge("1.7.10".."1.21.11")      // the 1.7.10 host, the legacy tree, the modern forge branch
+        neoforge("1.20.2".."1.21.11")
+        fabric("1.20.1", "1.21.11")     // single versions: the node claiming each
     }
 }
 ```
+
+- A range takes every node whose claimed range (`variant.minecraft`) touches it; a single version the
+  node claiming it. `common` follows the loaders. Groovy spells a range `forge(between('1.16.5', '1.21.11'))`.
+- The catalog is `src/main/resources/cgbuildlogic/catalog/<tree>/<branch>/<version>.properties`. A node's
+  own `versions/<version>/gradle.properties` is optional and holds only what differs per project — its
+  mixin plugin class — never a pin. Node directories are created when missing.
+- **Included by another build, a build keeps only what that build can configure**: the node claiming the
+  target in the system property `singlejar.checkout.target` (`forge:1.20.1`), else the modern Forge node
+  claiming 1.20.1. The whole declaration applies when the build is invoked from inside itself or from
+  inside a build that contains it; nesting depth cannot tell, since Gradle flattens a composite.
+- `singlejar.modernNodes` is the resolved modern tree, for a settings script that needs it after the block.
 
 A node is the project `:runtime:mc:modern:<branch>:<version>`, so **on a node `project.name` is the
 version**. `ModernTree` answers everything else and is the only thing that should: `modernLoader`,
@@ -434,11 +454,12 @@ because `runtime/mc/shared` is compiled once for every loader and can name no FM
 **Adding a version** — the parent first, since a project built on another compiles each node against
 the parent's node of the same version:
 
-1. the version on the loader's branch in `settings.gradle.kts`, **and on `common`** if it is absent;
-2. `versions/<version>/gradle.properties` for each: the toolchain pins, plus `variant.minecraft` (the
-   range the node claims, narrowing a neighbour's if they would overlap — `ModDescriptor` refuses the
-   overlap), `variant.packFormat`, and `java.version = 21` from 1.20.5 on (`nodeJava`: what the node
-   emits, and the ceiling its thin jar is checked against; 17 when unpinned);
+1. a catalog entry, `catalog/modern/<branch>/<version>.properties`, **and `modern/common/<version>`** if it
+   is absent: the toolchain pins, plus `variant.minecraft` (the range the node claims, narrowing a
+   neighbour's if they would overlap — `ModDescriptor` refuses the overlap), `variant.packFormat`, and
+   `java.version = 21` from 1.20.5 on (`nodeJava`: what the node emits, and the ceiling its thin jar is
+   checked against; 17 when unpinned);
+2. a `targets {}` range that reaches it, in every build that should ship it;
 3. `//? if` directives where the API differs — `checkAllTargets` finds every one.
 4. regenerate `stubs.zip` and commit it with the node — [STUBS.md](STUBS.md) § *Regenerating*.
     Until then the new node builds real.

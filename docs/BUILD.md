@@ -56,9 +56,24 @@ by any other build (a consumer mod): only `common` and `forge` at 1.20.1 (`loade
 
 ## Nodes and toolchains
 
-A node is `:runtime:mc:<tree>:<branch>:<version>`, declared in `settings.gradle.kts` (`modernNodes`, the
-legacy `branch("forge")`), pinned in `<branch>/versions/<version>/gradle.properties`. **On a node,
-`project.name` is the version.** The toolchain is chosen by the pins:
+A node is `:runtime:mc:<tree>:<branch>:<version>`. `settings.gradle.kts` names the versions the build
+ships, and `singlejar-logic`'s settings plugin turns them into nodes:
+
+```kotlin
+singlejar {
+    targets {
+        forge("1.7.10".."1.21.11")      // the 1.7.10 host, the legacy tree, the modern forge branch
+        neoforge("1.20.2".."1.21.11")
+        fabric("1.14.4".."1.21.11")
+    }
+}
+```
+
+A range takes every node whose claimed range touches it; `common` follows the loaders. Every node's pins
+come from the **pin catalog**, `singlejar-logic/src/main/resources/cgbuildlogic/catalog/<tree>/<branch>/<version>.properties`,
+shared by both repos; a node's own `versions/<version>/gradle.properties` holds only what differs per
+project (`variant.mixinPlugin`). **On a node, `project.name` is the version.** The toolchain is chosen by
+the pins:
 
 | Nodes | Pins that select it | Toolchain | Dev run |
 |---|---|---|---|
@@ -116,16 +131,18 @@ whole of what a consumer gets; a type in the public API from anything else is a 
 
 ## Adding a Minecraft version
 
-A version is a **node**. Four edits here, then the same four in CrystalGUI.
+A version is a **node**: a catalog entry here, and each repo's sources made to build it.
 
 **0. Survey first.** Diff the new version's API against its neighbour before touching the build (javap
 over the new jars, or its `build/mc-src` once real). Every break found up front is one `prodSmoke` cycle
 saved; fix every family of break in one pass.
 
-**1. `settings.gradle.kts`** — the version on the loader's branch in `modernNodes`, **and on `common`** if
-absent (a loader node compiles against the common node of its own version, never a neighbour's).
+**1. `targets {}` in both repos' `settings.gradle.kts`** — a range that reaches the version; widening the
+upper bound is usually the whole edit. The `common` node follows.
 
-**2. `<branch>/versions/<version>/gradle.properties`** — copy the nearest node's and change:
+**2. The catalog entry**, `singlejar-logic/src/main/resources/cgbuildlogic/catalog/modern/<branch>/<version>.properties`,
+**and `modern/common/<version>.properties`** if absent (a loader node compiles against the common node of
+its own version, never a neighbour's). Copy the nearest node's and change:
 
 | Key | Meaning |
 |---|---|
@@ -139,7 +156,7 @@ absent (a loader node compiles against the common node of its own version, never
 | `asm` | NeoForge's ASM version (a dev run must not upgrade the loader's ASM) |
 | `variant.minecraft` | the range this node claims, e.g. `[1.21.11,1.21.12)` — **narrow the neighbour**; overlapping ranges fail configuration |
 | `variant.packFormat` | resource pack format of that version |
-| `variant.mixinPlugin` | only if the node ships mixins (no loader event for a hook) |
+| `variant.mixinPlugin` | **not here**: per project, in that repo's `versions/<version>/gradle.properties`, only if its node ships mixins (no loader event for a hook) |
 
 **3. `//? if` directives** in the branch's `src/` where the API differs. `checkAllTargets` finds every one.
 Build the new node real until it compiles: `-PcgRealNodes=<branch>:<version>`.
@@ -159,7 +176,7 @@ List a `common` node too when it is new. `unknown` in a Fabric listing means Loo
 manifest: rerun that node's `remapThinJar --rerun-tasks` and list again.
 
 **Not edited**: thin-jar lists, relocation counts, descriptors (including `neoforge.mods.toml`), variant
-tables, `requiredEntries` — all follow the tree.
+tables, `requiredEntries`, node directories (created when missing) — all follow the tree.
 
 **Then CrystalGUI** (its `docs/CGUI_BUILD.md` § *Adding a Minecraft version*): the same node, a Prism
 instance, `serverSmoke` where the node has a dev run, one `prodSmoke` of the new target, and read the
