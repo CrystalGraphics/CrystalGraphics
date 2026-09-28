@@ -281,7 +281,10 @@ file that lost a provider; a forbidden prefix shipping unrelocated.
 ### Publishing
 
 Two kinds of artifact, and a mod needs both: the **libraries** it compiles against, and the **shipped
-jar** its dev client runs. `./gradlew publishToMavenLocal` publishes every one declared.
+jar** its dev client runs. `./gradlew publish` uploads every one declared to Cloudsmith, as GeckoLib
+does, when `CLOUDSMITH_USERNAME` and `CLOUDSMITH_PASSWORD` (an API key) are set — to the
+`cloudsmith.repository` property's `<owner>/<repository>` — and to Maven local otherwise
+(`publishingRepository`).
 
 ```kotlin
 // A library module, after abstractModule(...):

@@ -17,9 +17,10 @@ The player installs CrystalGraphics as a mod of its own; yours depends on it and
 
 ## Requirements
 
-- The artifacts are on no Maven repository yet: publish them locally, once per update, from a clone of
-  [CrystalGraphics](https://github.com/CrystalGraphics/CrystalGraphics) (`git clone --recursive`):
-  `./gradlew publishToMavenLocal`.
+- Everything is published to `https://dl.cloudsmith.io/public/crystalgraphics/crystalgraphics/maven/`
+  (below). An unreleased build: `./gradlew publishToMavenLocal` in a clone of
+  [CrystalGraphics](https://github.com/CrystalGraphics/CrystalGraphics) (`git clone --recursive`), and
+  `mavenLocal()` ahead of it.
 - For many versions: JDK 25, and Gradle running on it (`toolchainVersion=25` in
   `gradle/gradle-daemon-jvm.properties`).
 
@@ -37,7 +38,17 @@ The player installs CrystalGraphics as a mod of its own; yours depends on it and
 The API on `compileOnly`, the mod on the dev run through your toolchain's own remapping:
 
 ```kotlin
-repositories { mavenLocal() }
+repositories {
+    exclusiveContent {
+        forRepository {
+            maven {
+                name = "CrystalGraphics"
+                url = uri("https://dl.cloudsmith.io/public/crystalgraphics/crystalgraphics/maven/")
+            }
+        }
+        filter { includeGroup("com.crystalgraphics") }
+    }
+}
 dependencies {
     compileOnly("com.crystalgraphics:core:1.0.0")
 }

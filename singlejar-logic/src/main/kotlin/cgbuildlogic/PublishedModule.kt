@@ -79,6 +79,7 @@ data class Licence(val name: String, val url: String) {
 fun Project.publishedModule(title: String, description: String, licence: Licence = Licence.LGPL3,
                             artifactId: String = name) {
     pluginManager.apply("maven-publish")
+    publishingRepository()
     val java = extensions.getByType<JavaPluginExtension>()
     java.withSourcesJar()
     java.withJavadocJar()
@@ -152,6 +153,7 @@ fun Project.publishShippedJar(
     jar: TaskProvider<out AbstractArchiveTask>, shipped: ShippedJar, checkedBy: TaskProvider<*>? = null,
 ) {
     pluginManager.apply("maven-publish")
+    publishingRepository()
     val name = shipped.artifactId.split('-', '_').joinToString("") { it.replaceFirstChar(Char::uppercase) }
     extensions.getByType<PublishingExtension>().publications.create<MavenPublication>(name.replaceFirstChar(Char::lowercase)) {
         groupId = shipped.group
@@ -180,6 +182,42 @@ fun Project.publishShippedJar(
         outgoing.artifact(jar)
     }
 }
+
+/**
+ * Where `./gradlew publish` uploads: Cloudsmith, as GeckoLib does, when `CLOUDSMITH_USERNAME` and
+ * `CLOUDSMITH_PASSWORD` (an API key) are in the environment, else Maven local.
+ *
+ * ```bash
+ * CLOUDSMITH_USERNAME=<user> CLOUDSMITH_PASSWORD=<api key> ./gradlew publish
+ * ```
+ *
+ * The repository is the `cloudsmith.repository` property, `<owner>/<repository>`; consumers read it at
+ * `https://dl.cloudsmith.io/public/<owner>/<repository>/maven/`. Called by [publishedModule] and
+ * [publishShippedJar]; a second call adds nothing.
+ */
+fun Project.publishingRepository() {
+    val repositories = extensions.getByType<PublishingExtension>().repositories
+    if (repositories.findByName(CLOUDSMITH) != null || repositories.findByName("MavenLocal") != null) return
+    val username = providers.environmentVariable("CLOUDSMITH_USERNAME")
+    val password = providers.environmentVariable("CLOUDSMITH_PASSWORD")
+    if (!username.isPresent || !password.isPresent) {
+        repositories.mavenLocal()
+        return
+    }
+    repositories.maven {
+        name = CLOUDSMITH
+        url = uri("https://maven.cloudsmith.io/${cloudsmithRepository}/")
+        credentials {
+            this.username = username.get()
+            this.password = password.get()
+        }
+    }
+}
+
+private val Project.cloudsmithRepository: String
+    get() = findProperty("cloudsmith.repository")?.toString() ?: "crystalgraphics/crystalgraphics"
+
+private const val CLOUDSMITH = "Cloudsmith"
 
 /** The fields every POM of ours carries. */
 fun MavenPom.describe(title: String, description: String, licence: Licence) {

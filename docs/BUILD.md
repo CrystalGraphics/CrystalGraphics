@@ -108,8 +108,20 @@ python singlejar-logic/mcapi.py <Class> [member]                       # any nod
 
 ## Publishing
 
-`./gradlew publishToMavenLocal`, at the root version (`modVersion`). The mechanism is the README's
-§ *Publishing*.
+**A release is one button: Actions → Release → Run workflow** (`.github/workflows/release.yml`). Pick
+`patch`, `minor`, `major` or `as-is`, or type a version. It sets `modVersion`, runs `apiCheck` and
+`checkSingleJar`, publishes to Cloudsmith, and only then commits, tags `v<version>`, pushes and makes the
+GitHub release with both jars. It needs the repository secrets `CLOUDSMITH_USERNAME` and
+`CLOUDSMITH_PASSWORD` (a Cloudsmith API key). CrystalGUI's Release button releases this repository first
+when its `master` is unreleased.
+
+| Command | Publishes to |
+|---|---|
+| `./gradlew publish` with `CLOUDSMITH_USERNAME`/`CLOUDSMITH_PASSWORD` set | Cloudsmith, `cloudsmith.repository` in `gradle.properties` |
+| `./gradlew publish` without them, or `publishToMavenLocal` | Maven local, for a consumer testing an unreleased build |
+
+Consumers read `https://dl.cloudsmith.io/public/crystalgraphics/crystalgraphics/maven/`
+([`SETUP.md`](SETUP.md)). The mechanism is the README's § *Publishing*.
 
 | Coordinate | What | Consumer |
 |---|---|---|
@@ -118,6 +130,7 @@ python singlejar-logic/mcapi.py <Class> [member]                       # any nod
 | `com.crystalgraphics:freetype-msdfgen-harfbuzz-bindings` | JNI bindings and natives (MIT) | comes with `core` |
 | `com.crystalgraphics:crystalgraphics` | the shipped jar | runs it in a dev client |
 | `com.crystalgraphics:crystalgraphics-joml` | JOML as a mod (MIT) | runs it below Minecraft 1.19.3 |
+| `com.crystalgraphics:mc-shared` | the variant selector | a single-jar mod's bootstrappers compile against it |
 
 **The API is checked on every build.** Each library's public declarations are committed as
 `api/<artifact>.api`; `apiCheck`, part of `check`, fails when one is gone or changed and the major
