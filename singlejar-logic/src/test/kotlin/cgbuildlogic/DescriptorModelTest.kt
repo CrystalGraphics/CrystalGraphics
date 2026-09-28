@@ -188,10 +188,26 @@ class DescriptorModelTest {
     @Test
     fun `differing constraints on one dependency are OR-ed, not overwritten`() {
         val json = FabricModJson.merged(descriptor(
-            variant("fabric", "[1.20.1,1.20.2)", depends = mapOf("minecraft" to "~1.20.1")),
-            variant("fabric", "[1.20.2,1.21)", depends = mapOf("minecraft" to "~1.20.4")),
+            variant("fabric", "[1.20.1,1.20.2)", depends = mapOf("fabric-api" to "~0.92")),
+            variant("fabric", "[1.20.2,1.21)", depends = mapOf("fabric-api" to "~0.97")),
         ))
-        assertTrue(json, json.contains("[\"~1.20.1\", \"~1.20.4\"]"))
+        assertTrue(json, json.contains("[\"~0.92\", \"~0.97\"]"))
+    }
+
+    @Test
+    fun `minecraft is declared as the fewest ranges, gaps kept`() {
+        fun mc(range: String) = variant("fabric", range, depends = mapOf("minecraft" to "*"))
+        val json = FabricModJson.merged(descriptor(
+            mc("[1.20,1.20.2)"), mc("[1.20.2,1.20.3)"), mc("[1.20.3,1.21)"), mc("[1.21.10,1.21.11)"),
+        ))
+        assertTrue(json, json.contains("\"minecraft\": [\">=1.20 <1.21\", \">=1.21.10 <1.21.11\"]"))
+    }
+
+    @Test
+    fun `coalescing joins overlapping and adjacent ranges in any order`() {
+        val joined = McRange.coalesce(listOf("[1.19,1.20)", "[1.16,1.17)", "[1.17,1.18]", "[1.18,1.18.2)")
+            .map(McRange::parse))
+        assertEquals("[[1.16,1.18.2), [1.19,1.20)]", joined.toString())
     }
 
     @Test
