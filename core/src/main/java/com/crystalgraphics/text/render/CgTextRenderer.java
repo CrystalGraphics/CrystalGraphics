@@ -167,6 +167,7 @@ public class CgTextRenderer {
     private static final CgBufferFormat TEXT_DATA_FORMAT = CgBufferFormat
             .builder("TextData", CgBufferFormat.MemoryLayout.STD140)
             .mat4("u_Projection")
+            .vec4("u_TextGamma")
             .build();
 
     /**
@@ -235,6 +236,9 @@ public class CgTextRenderer {
      * owned by the context.
      */
     private Matrix4f activeProjection;
+
+    /** Uploaded beside the projection, so two renderers can draw with different corrections in one frame. */
+    private CgTextGamma gamma = CgTextGamma.initial();
     /**
      * Optional caller-supplied hook invoked at the end of every {@link #endBatch()} (manual
      * or {@link Draw#submit()}'s standalone auto-batch alike) — see {@link #restoreStateWith}.
@@ -330,6 +334,23 @@ public class CgTextRenderer {
         return this;
     }
 
+
+    public CgTextGamma gamma() {
+        return gamma;
+    }
+
+    /**
+     * The coverage correction this renderer's text is drawn with; {@link CgTextGamma#DEFAULT} unless the JVM says
+     * otherwise. Safe mid-batch: glyphs already queued keep the correction they were queued under.
+     */
+    public CgTextRenderer gamma(@NonNull CgTextGamma gamma) {
+        if (gamma.equals(this.gamma)) return this;
+        flush();
+        this.gamma = gamma;
+        // Forces the next draw to upload, since the projection alone may not have changed.
+        activeProjection = null;
+        return this;
+    }
 
     // ── Owned render context ────────────────────────────────────────────────
     /**
@@ -541,7 +562,9 @@ public class CgTextRenderer {
             activeProjection.set(projection);
         } else activeProjection = new Matrix4f(projection);
 
-        TEXT_DATA_UBO.writer().reset().beginRecord().mat4("u_Projection", projection);
+        TEXT_DATA_UBO.writer().reset().beginRecord().mat4("u_Projection", projection)
+                .vec4("u_TextGamma", gamma.exponent(), gamma.contrast(), 1f / gamma.exponent(),
+                        gamma.isIdentity() ? 0f : 1f);
         TEXT_DATA_UBO.endRecord();
         TEXT_DATA_UBO.upload();
     }
