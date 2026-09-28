@@ -32,7 +32,7 @@ jobs:
       # Gradle finds setup-java's JDKs only when told where.
       JDKS: -Porg.gradle.java.installations.fromEnv=JAVA_HOME_8_X64,JAVA_HOME_17_X64,JAVA_HOME_21_X64,JAVA_HOME_25_X64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: recursive
           fetch-depth: 0
@@ -44,9 +44,10 @@ jobs:
             echo "::error::Set the CLOUDSMITH_USERNAME and CLOUDSMITH_PASSWORD repository secrets"; exit 1
           fi
 
-      - uses: actions/setup-java@v4
+      # Zulu: RetroFuturaGradle (1.7.10) asks for Azul's JDKs by vendor.
+      - uses: actions/setup-java@v5
         with:
-          distribution: temurin
+          distribution: zulu
           java-version: |
             8
             17
