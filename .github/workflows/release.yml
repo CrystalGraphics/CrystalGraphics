@@ -76,7 +76,12 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git diff --quiet || git commit -am "Release $VERSION"
           git tag "v$VERSION"
-          git push origin "HEAD:${{ github.ref_name }}" "v$VERSION"
+          # The tag names what was built and published. Master may have moved meanwhile: the release commit
+          # changes gradle.properties alone, so it goes on top of whatever master is now.
+          git push origin "v$VERSION"
+          git fetch origin "${{ github.ref_name }}"
+          git rebase "origin/${{ github.ref_name }}"
+          git push origin "HEAD:${{ github.ref_name }}"
 
       - name: GitHub release
         env:
