@@ -312,7 +312,9 @@ documentation — and a POM. A shipped jar publishes the jar and a POM with no d
   that includes this one can substitute `com.example:myproject` with the jar built here. The DEPENDENCY
   must ask for that capability: a substitution rule's own capability request is dropped. Such a build
   may hold only some nodes — the 1.7.10 entries are conditional on `has1710` — and its jar then carries
-  those variants alone; `checkSingleJar` refuses it, so it is never published.
+  those variants alone; `checkSingleJar` refuses it, so it is never published. And its library projects
+  stand in for the published modules, so they offer `consumerApi` like the published metadata does
+  (`CONSUMER_CHECKOUT`) — without it a consumer's test would find `core` and not the renderer under it.
 - **A module a loader plugin publishes by itself is not an artifact**: RetroFuturaGradle's
   `usesMavenPublishing` is off in the 1.7.10 modules. Check `publishToMavenLocal`'s task list for a
   `publish…Publication` you did not declare.

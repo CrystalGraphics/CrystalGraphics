@@ -151,6 +151,9 @@ fun checkoutNodes(list: String): Map<String, List<String>> =
         .groupBy({ it.first }, { it.second })
 val checkoutList: String? = System.getProperty("crystalgui.checkout.nodes")
     ?.also { System.clearProperty("crystalgui.checkout.nodes") }
+// A consumer's checkout: its projects stand in for the published modules, so publishedModule has them
+// offer what those publish (cgbuildlogic.CONSUMER_CHECKOUT).
+if (!loadersWanted && checkoutList != null) gradle.extra["cgConsumerCheckout"] = true
 val modernNodes: Map<String, List<String>> =
     if (!loadersWanted) checkoutList?.let(::checkoutNodes)
         ?: linkedMapOf("common" to listOf("1.20.1"), "forge" to listOf("1.20.1"))
