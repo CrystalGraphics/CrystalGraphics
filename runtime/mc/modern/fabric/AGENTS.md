@@ -7,7 +7,7 @@ world-render event, so the 1.15.2 node hooks `LevelRenderer.renderLevel` and the
 `GameRenderer.renderLevel` with a node mixin
 (`mixin/WorldPassHook`, gated by `CrystalGraphicsFabricMixins`).
 
-Uses `fabric-loom 1.16.2`. Version pins are per node, in `versions/<version>/gradle.properties`.
+Uses `fabric-loom 1.16.2`. Version pins are per node, in singlejar-logic's pin catalog (`catalog/modern/<branch>/<version>.properties`).
 
 ## The loader is registration only
 

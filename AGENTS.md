@@ -23,7 +23,7 @@
 ## Dev Runs
 
 > **The 1.20.x loaders are a Stonecutter tree** — a node per (loader, Minecraft version),
-> `:runtime:mc:modern:<branch>:<version>`, each with its own `versions/<version>/gradle.properties`.
+> `:runtime:mc:modern:<branch>:<version>`, created by `singlejar { targets { } }` in settings from singlejar-logic's pin catalog.
 > `./gradlew checkAllTargets` compiles every node; read `runtime/mc/modern/README.md` before touching one.
 > **Forge 1.8–1.12.2 is a second tree**, `:runtime:mc:legacy:forge:<version>` — see
 > `singlejar-logic/README.md` § *the legacy tree*.

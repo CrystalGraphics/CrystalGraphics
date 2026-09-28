@@ -32,6 +32,10 @@ dependencies {
     // The stub database reads class files and synthesizes them (StubDatabase, StubSignatures).
     implementation("org.ow2.asm:asm-tree:9.9")
 
+    // compileOnly: the settings plugin builds Stonecutter trees, and every settings script that applies
+    // it applies Stonecutter beside it, so the classes are on that classpath already.
+    compileOnly("dev.kikugie:stonecutter:0.9.8")
+
     // Named rather than read from `dep.junit`: this is a standalone included build with its own
     // settings, so it has no root project to read a property from. Same version as everywhere else.
     testImplementation("junit:junit:4.13.2")
@@ -51,3 +55,28 @@ tasks.register<JavaExec>("generateStubDatabase") {
     val text = if (providers.gradleProperty("cgStubText").isPresent) projectDir.resolve("stubs").absolutePath else "-"
     args(listOf(projectDir.resolve("stubs.zip").absolutePath, text) + roots.map { it.absolutePath })
 }
+
+// The settings plugin: a build's Minecraft nodes from the versions it targets. @see SingleJarSettings
+gradlePlugin {
+    plugins {
+        create("singlejar") {
+            id = "com.crystalgraphics.singlejar"
+            implementationClass = "cgbuildlogic.SingleJarSettingsPlugin"
+        }
+    }
+}
+
+// The pin catalog's index, which Catalog reads: a jar cannot list its own resources.
+val catalogIndex by tasks.registering {
+    val catalog = layout.projectDirectory.dir("src/main/resources/cgbuildlogic/catalog")
+    val out = layout.buildDirectory.dir("generated/catalog")
+    inputs.dir(catalog).withPathSensitivity(PathSensitivity.RELATIVE)
+    outputs.dir(out)
+    doLast {
+        val root = catalog.asFile
+        val index = root.walkTopDown().filter { it.isFile && it.name.endsWith(".properties") }
+            .map { it.relativeTo(root).invariantSeparatorsPath }.sorted().joinToString("\n", postfix = "\n")
+        out.get().file("cgbuildlogic/catalog/index.txt").asFile.apply { parentFile.mkdirs() }.writeText(index)
+    }
+}
+sourceSets["main"].resources.srcDir(catalogIndex.map { it.outputs.files.singleFile })
