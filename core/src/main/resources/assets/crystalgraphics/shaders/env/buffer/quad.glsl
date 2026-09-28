@@ -78,6 +78,8 @@
 // What a material packs in them belongs in ITS OWN header -- text.shader states its outline layout.
 #define CG_QUAD_CUSTOM0 (QUAD_DATA(CG_INSTANCE_ID).custom0)
 #define CG_QUAD_CUSTOM1 (QUAD_DATA(CG_INSTANCE_ID).custom1)
+// A third, scalar, in the padding std430 leaves after atlasLayer: free, and zero unless written.
+#define CG_QUAD_CUSTOM2 (QUAD_DATA(CG_INSTANCE_ID).custom2)
 
 // -- CG_QUAD_EDGE_* -- analytic edge antialiasing for SCREEN-SPACE quads ----------------------------
 //
