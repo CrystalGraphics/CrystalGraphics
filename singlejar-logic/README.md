@@ -159,7 +159,7 @@ val descriptor = ModDescriptor(
     id = "myproject", name = "MyProject",
     version = property("modVersion").toString(),
     description = "…", license = "LGPL-3.0-or-later",
-    dependencies = listOf(Dependency("crystalgraphics", "[1.0.0,)", ordering = Ordering.AFTER)),
+    dependencies = listOf(Dependency("crystalgraphics", "[0.0.1,)", ordering = Ordering.AFTER)),
     variants = listOf(
         Variant(loader = "fml1710", minecraft = "[1.7.10]", era = "1710",
                 commonEntry = "com.myproject.MyProject",
