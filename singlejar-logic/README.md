@@ -1,8 +1,12 @@
 # singlejar-logic — one jar for every Minecraft loader
 
-Build logic for shipping **a single artifact that installs unchanged on MC 1.7.10 Forge, 1.20.1 Forge,
-1.20.4 NeoForge and 1.20.1 Fabric**. CrystalGUI and CrystalGraphics both ship this way; this directory
-is what they share, and what a third project wires itself into.
+Build logic for shipping **a single artifact that installs unchanged on every loader and Minecraft version
+it targets** — Forge 1.7.10 through 1.21.11, NeoForge and Fabric. CrystalGUI and CrystalGraphics both ship
+this way; this directory is what they share, and what a third project builds on.
+
+**Setting a project up on it:** CrystalGraphics' [`docs/SETUP.md`](../docs/SETUP.md), or CrystalGUI's
+[`docs/CGUI_SETUP.md`](../../docs/CGUI_SETUP.md) for a mod using CrystalGUI. This README is the reference
+for the mechanism underneath.
 
 It lives in CrystalGraphics because CrystalGraphics is the parent of everything that uses it — but
 **nothing here is CrystalGraphics-specific**. No package, module, mod id or loader list is baked in.
