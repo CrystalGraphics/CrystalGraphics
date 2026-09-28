@@ -8,6 +8,9 @@
 // of every jar with asm-debug-all-5.0.3 and refuses anything above major 52 -- and unlike `core`,
 // nothing downgrades this module on the way in.
 
+import cgbuildlogic.Licence
+import cgbuildlogic.publishedModule
+
 plugins {
     `java-library`
 }
@@ -53,3 +56,9 @@ dependencies {
 tasks.withType<JavaCompile>().configureEach {
     options.release.set(8)
 }
+
+// Every mod shipped as one jar calls this from its bootstrappers (VariantBootstrap, ForgeStart), so a
+// consumer compiles against it; at run time the copy in CrystalGraphics' jar serves them all.
+publishedModule("CrystalGraphics Variant Selector",
+    "Picks and starts a single-jar mod's variant for the running loader and Minecraft version.",
+    Licence.LGPL3, artifactId = "mc-shared")

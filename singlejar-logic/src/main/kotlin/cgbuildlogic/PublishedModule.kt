@@ -73,8 +73,11 @@ data class Licence(val name: String, val url: String) {
  * - Name the OLDEST version any target ships of a library Minecraft supplies; a consumer's resolution
  *   raises it, never lowers it.
  * - Call it after [abstractModule], or the Java 8 copy is not published.
+ * - The artifact is the project's name unless [artifactId] says otherwise:
+ *   `publishedModule("…", "…", artifactId = "mc-shared")` on `:runtime:mc:shared`.
  */
-fun Project.publishedModule(title: String, description: String, licence: Licence = Licence.LGPL3) {
+fun Project.publishedModule(title: String, description: String, licence: Licence = Licence.LGPL3,
+                            artifactId: String = name) {
     pluginManager.apply("maven-publish")
     val java = extensions.getByType<JavaPluginExtension>()
     java.withSourcesJar()
@@ -118,9 +121,10 @@ fun Project.publishedModule(title: String, description: String, licence: Licence
 
     extensions.getByType<PublishingExtension>().publications.create<MavenPublication>("maven") {
         from(component)
+        this.artifactId = artifactId
         pom { describe(title, description, licence) }
     }
-    apiCompatibility(name)
+    apiCompatibility(artifactId)
 }
 
 /**

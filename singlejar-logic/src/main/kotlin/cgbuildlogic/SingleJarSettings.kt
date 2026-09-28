@@ -16,6 +16,8 @@ const val CHECKOUT_TARGET = "singlejar.checkout.target"
 class SingleJarSettingsPlugin : Plugin<Settings> {
     override fun apply(settings: Settings) {
         settings.extensions.create("singlejar", SingleJarSettings::class.java, settings)
+        // A build that does not hold singlejar-logic still compiles its nodes against these stubs.
+        stubDatabaseBeside()?.let { settings.gradle.extensions.extraProperties.set(STUB_DATABASE, it) }
     }
 }
 
@@ -49,6 +51,8 @@ class SingleJarSettingsPlugin : Plugin<Settings> {
  * - When another build includes this one, only what it can configure is selected: the node claiming the
  *   target it names in [CHECKOUT_TARGET], else the modern forge node claiming 1.20.1.
  * - Declared once, before anything reads the nodes -- [modernNodes] is empty until then.
+ * - Nodes compile against the stub database shipped beside this build logic (@see stubMode), so a build
+ *   holding no copy of singlejar-logic still needs no Minecraft toolchain to build its jar.
  */
 abstract class SingleJarSettings @Inject constructor(private val settings: Settings) {
 
