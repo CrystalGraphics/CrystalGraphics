@@ -52,6 +52,10 @@ inversion from a fat chain and is safe because jvmdg does not read names.
 
 ## Wiring a project in
 
+**A complete project built this way** — a Minecraft-free core, a node tree over three loaders, one jar,
+driven on real clients — is CrystalGUI's [`samples/fieldnotes`](../../samples/fieldnotes/README.md).
+What follows is each piece on its own.
+
 ### 1. Include the build
 
 ```kotlin
@@ -315,6 +319,11 @@ documentation — and a POM. A shipped jar publishes the jar and a POM with no d
   those variants alone; `checkSingleJar` refuses it, so it is never published. And its library projects
   stand in for the published modules, so they offer `consumerApi` like the published metadata does
   (`CONSUMER_CHECKOUT`) — without it a consumer's test would find `core` and not the renderer under it.
+- **A bootstrapper compiles against `com.crystalgraphics:mc-shared`** — `VariantBootstrap`, `ForgeStart`,
+  `VariantEntry` — and runs against the copy in CrystalGraphics' jar, which every mod shipped this way
+  shares. A node declares it with `nodeLibrary("com.crystalgraphics:mc-shared:<version>")`, which marks a
+  Maven library as the node's own rather than the toolchain's, so the stub check keeps it.
+  `publishedModule(…, artifactId = "mc-shared")` is how a module's artifact differs from its name.
 - **A module a loader plugin publishes by itself is not an artifact**: RetroFuturaGradle's
   `usesMavenPublishing` is off in the 1.7.10 modules. Check `publishToMavenLocal`'s task list for a
   `publish…Publication` you did not declare.
@@ -410,6 +419,12 @@ singlejar {
   claiming 1.20.1. The whole declaration applies when the build is invoked from inside itself or from
   inside a build that contains it; nesting depth cannot tell, since Gradle flattens a composite.
 - `singlejar.modernNodes` is the resolved modern tree, for a settings script that needs it after the block.
+- **The nodes compile against the stub database beside this build logic**, found by the plugin whatever
+  build includes it — so a project holding no copy of singlejar-logic still builds its jar with no
+  Minecraft toolchain. `-PcgStubs=false` builds every node real.
+- **ModDevGradle comes with this build logic** (2.0.141). The plugin puts these classes in the settings
+  classloader, every project's parent, so what they name must be there too; a project's own build logic
+  declares none, and a node applies it by id.
 
 A node is the project `:runtime:mc:modern:<branch>:<version>`, so **on a node `project.name` is the
 version**. `ModernTree` answers everything else and is the only thing that should: `modernLoader`,

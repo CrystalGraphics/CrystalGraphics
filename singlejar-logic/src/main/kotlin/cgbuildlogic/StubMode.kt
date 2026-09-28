@@ -5,6 +5,7 @@ import org.gradle.api.GradleException
 import org.gradle.api.Project
 import org.gradle.api.artifacts.Configuration
 import org.gradle.api.artifacts.component.ComponentIdentifier
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
 import org.gradle.api.artifacts.component.ProjectComponentIdentifier
 import org.gradle.api.artifacts.result.ResolvedComponentResult
 import org.gradle.api.artifacts.result.ResolvedDependencyResult
@@ -53,10 +54,25 @@ val REAL_TASKS = setOf(
 /** The compile tasks a stub serves, where the node has them. */
 private val STUB_COMPILES = listOf("compileJava", "compileLangJava")
 
-/** The stub database this build ships, in whichever repository holds `singlejar-logic`. */
+/**
+ * The stub database: the one beside the build logic the settings plugin was loaded from, else one in
+ * whichever repository of this build holds `singlejar-logic`.
+ */
 val Project.stubDatabase: File?
-    get() = listOf("singlejar-logic/stubs.zip", "CrystalGraphics/singlejar-logic/stubs.zip")
-        .map { rootDir.resolve(it) }.firstOrNull { it.isFile }
+    get() = gradle.extensions.extraProperties.let { if (it.has(STUB_DATABASE)) it.get(STUB_DATABASE) as File else null }
+        ?: listOf("singlejar-logic/stubs.zip", "CrystalGraphics/singlejar-logic/stubs.zip")
+            .map { rootDir.resolve(it) }.firstOrNull { it.isFile }
+
+/** Set on `gradle` by the settings plugin: the `stubs.zip` shipped with the build logic it runs. */
+internal const val STUB_DATABASE = "cg.stubDatabase"
+
+/**
+ * `stubs.zip` in the singlejar-logic build these classes were built from, which records its directory as
+ * `home.txt`: Gradle runs a build-logic jar from its own cache, so the classes' location says nothing.
+ */
+internal fun stubDatabaseBeside(): File? =
+    StubDatabase::class.java.getResourceAsStream("home.txt")?.use { File(it.readBytes().toString(Charsets.UTF_8).trim(), "stubs.zip") }
+        ?.takeIf { it.isFile }
 
 /**
  * This node's key in the database: `forge:1.20.1` on the modern tree, `legacy/forge:1.12.2` on another —
@@ -117,15 +133,45 @@ private val Project.stonecutterActive: Boolean
     }
 
 /**
+ * A library this node compiles against in either mode, on `compileOnly`: never the stub's to replace.
+ *
+ * ```kotlin
+ * nodeLibrary("com.crystalgraphics:mc-shared:1.0.0")   // a bootstrapper's VariantBootstrap
+ * ```
+ *
+ * A Maven library looks exactly like the toolchain's own to [stubTargets], so without this the stub
+ * equivalence check compiles without it. A project dependency needs no declaration.
+ */
+fun Project.nodeLibrary(notation: Any) {
+    val dependency = dependencies.add("compileOnly", notation) ?: return
+    nodeLibraries += "${dependency.group}:${dependency.name}"
+}
+
+@Suppress("UNCHECKED_CAST")
+private val Project.nodeLibraries: MutableSet<String>
+    get() = extensions.extraProperties.let { extra ->
+        if (!extra.has(NODE_LIBRARIES)) extra.set(NODE_LIBRARIES, LinkedHashSet<String>())
+        extra.get(NODE_LIBRARIES) as MutableSet<String>
+    }
+
+private const val NODE_LIBRARIES = "cg.nodeLibraries"
+
+/**
  * The jars a stub replaces: everything on this node's compile classpaths that no project builds or
- * brings — Minecraft, the loader and their libraries. Read off the compile tasks rather than the
- * configurations, since Unimined adds Minecraft to the source set's classpath directly.
+ * brings and that is no [nodeLibrary] — Minecraft, the loader and their libraries. Read off the compile
+ * tasks rather than the configurations, since Unimined adds Minecraft to the source set's classpath directly.
  */
 fun Project.stubTargets(): FileCollection {
     val configurations = listOf("compileClasspath", "langCompileClasspath").mapNotNull { configurations.findByName(it) }
+    val libraries = nodeLibraries
     val ours = files(
         configurations.map { configuration ->
             configuration.incoming.artifactView { componentFilter { it is ProjectComponentIdentifier } }.files
+        },
+        configurations.map { configuration ->
+            configuration.incoming.artifactView {
+                componentFilter { it is ModuleComponentIdentifier && "${it.group}:${it.module}" in libraries }
+            }.files
         },
         extensions.getByType(SourceSetContainer::class.java).map { it.output },
         // What our own projects bring resolves in stub mode too, so it is not the stub's to replace.

@@ -81,3 +81,14 @@ val catalogIndex by tasks.registering {
     }
 }
 sourceSets["main"].resources.srcDir(catalogIndex.map { it.outputs.files.singleFile })
+
+// Where this build logic lives, so a build including it finds stubs.zip here (StubMode.stubDatabase):
+// Gradle runs a build-logic jar from its own cache, so the classes cannot tell.
+val buildLogicHome by tasks.registering {
+    val home = projectDir.absolutePath
+    val out = layout.buildDirectory.dir("generated/home")
+    inputs.property("home", home)
+    outputs.dir(out)
+    doLast { out.get().file("cgbuildlogic/home.txt").asFile.apply { parentFile.mkdirs() }.writeText(home) }
+}
+sourceSets["main"].resources.srcDir(buildLogicHome.map { it.outputs.files.singleFile })
