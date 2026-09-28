@@ -109,6 +109,7 @@ fun Project.publishedModule(title: String, description: String, licence: Licence
         from(component)
         pom { describe(title, description, licence) }
     }
+    apiCompatibility(name)
 }
 
 /**

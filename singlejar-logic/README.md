@@ -300,6 +300,9 @@ documentation — and a POM. A shipped jar publishes the jar and a POM with no d
   from. It is on the module's own `compileOnly` too, so it is declared once. Nothing else is published,
   and the build's own projects never see it — they resolve `apiElements` as before, so publishing
   changes no host's compile classpath and no bytecode.
+- **Every library's public API is a committed baseline**, `api/<artifact>.api`: `apiCheck` (in `check`)
+  fails on a removed or changed declaration until the major version moves; `apiDump` rewrites it at a
+  release. `com.crystalgui.mc` and `com.crystalgraphics.mc` are not API and are left out.
 - **Name the oldest version any target ships** of a library Minecraft supplies (gson 2.2.4, log4j-api
   2.0-beta9, JOML 1.10.5): a consumer's resolution raises it to what their Minecraft has, never lowers it.
 - **Declare what the source imports.** A package that compiles only because another dependency drags it

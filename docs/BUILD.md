@@ -104,6 +104,11 @@ python singlejar-logic/mcapi.py <Class> [member]                       # any nod
 | `com.crystalgraphics:crystalgraphics` | the shipped jar | runs it in a dev client |
 | `com.crystalgraphics:crystalgraphics-joml` | JOML as a mod (MIT) | runs it below Minecraft 1.19.3 |
 
+**The API is checked on every build.** Each library's public declarations are committed as
+`api/<artifact>.api`; `apiCheck`, part of `check`, fails when one is gone or changed and the major
+version has not moved. The file is the API as last RELEASED, so additions never fail. At a release, or
+after a deliberate major break, `./gradlew apiDump` rewrites it — commit the diff with the change.
+
 `core`'s API names the real `org.joml` (1.10.5 in its metadata). A library's `consumerApi` is the
 whole of what a consumer gets; a type in the public API from anything else is a compile error for them.
 
