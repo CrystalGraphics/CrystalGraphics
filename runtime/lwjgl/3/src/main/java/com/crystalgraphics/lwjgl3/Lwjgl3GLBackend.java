@@ -46,7 +46,8 @@ public class Lwjgl3GLBackend extends CgGLBackend {
 
     @Override
     public void initContext() {
-        // No additional setup required; capabilities are probed via CgPlatform.
+        // Capabilities are probed via CgPlatform; this only arms the opt-in GL error stacks.
+        GlDebugStacks.installIfAsked();
     }
 
     @Override
