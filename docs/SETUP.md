@@ -17,8 +17,9 @@ The player installs CrystalGraphics as a mod of its own; yours depends on it and
 
 ## Requirements
 
-- Until CrystalGraphics is on a public repository, publish it locally, once per update, from a clone
-  (`git clone --recursive`): `./gradlew publishToMavenLocal`.
+- The artifacts are on no Maven repository yet: publish them locally, once per update, from a clone of
+  [CrystalGraphics](https://github.com/CrystalGraphics/CrystalGraphics) (`git clone --recursive`):
+  `./gradlew publishToMavenLocal`.
 - For many versions: JDK 25, and Gradle running on it (`toolchainVersion=25` in
   `gradle/gradle-daemon-jvm.properties`).
 
