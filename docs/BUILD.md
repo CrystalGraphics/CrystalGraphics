@@ -56,9 +56,24 @@ by any other build (a consumer mod): only `common` and `forge` at 1.20.1 (`loade
 
 ## Nodes and toolchains
 
-A node is `:runtime:mc:<tree>:<branch>:<version>`, declared in `settings.gradle.kts` (`modernNodes`, the
-legacy `branch("forge")`), pinned in `<branch>/versions/<version>/gradle.properties`. **On a node,
-`project.name` is the version.** The toolchain is chosen by the pins:
+A node is `:runtime:mc:<tree>:<branch>:<version>`. `settings.gradle.kts` names the versions the build
+ships, and `singlejar-logic`'s settings plugin turns them into nodes:
+
+```kotlin
+singlejar {
+    targets {
+        forge("1.7.10".."1.21.11")      // the 1.7.10 host, the legacy tree, the modern forge branch
+        neoforge("1.20.2".."1.21.11")
+        fabric("1.14.4".."1.21.11")
+    }
+}
+```
+
+A range takes every node whose claimed range touches it; `common` follows the loaders. Every node's pins
+come from the **pin catalog**, `singlejar-logic/src/main/resources/cgbuildlogic/catalog/<tree>/<branch>/<version>.properties`,
+shared by both repos; a node's own `versions/<version>/gradle.properties` holds only what differs per
+project (`variant.mixinPlugin`). **On a node, `project.name` is the version.** The toolchain is chosen by
+the pins:
 
 | Nodes | Pins that select it | Toolchain | Dev run |
 |---|---|---|---|
@@ -86,24 +101,61 @@ node real (hours and tens of GB on a clean machine).
 ./gradlew :runtime:mc:modern:common:1.20.1:test  # the Blaze3D mirror override check (F5)
 ./gradlew :runtime:mc:modern:<branch>:<version>:checkStubEquivalence   # real vs stub, byte for byte
 ./gradlew -p singlejar-logic generateStubDatabase                      # regenerate stubs.zip
+python singlejar-logic/mcapi.py <Class> [member]                       # any node's API, as version runs
 ```
 
 `serverSmoke`, `prodSmoke` and useful dev runs are driven from CrystalGUI: this mod alone draws nothing.
+
+## Publishing
+
+**A release is one button: Actions → Release → Run workflow** (`.github/workflows/release.yml`). Pick
+`patch`, `minor`, `major` or `as-is`, or type a version. It sets `modVersion`, runs `apiCheck` and
+`checkSingleJar`, publishes to Cloudsmith, and only then commits, tags `v<version>`, pushes and makes the
+GitHub release with both jars. It needs the repository secrets `CLOUDSMITH_USERNAME` and
+`CLOUDSMITH_PASSWORD` (a Cloudsmith API key). CrystalGUI's Release button releases this repository first
+when its `master` is unreleased.
+
+| Command | Publishes to |
+|---|---|
+| `./gradlew publish` with `CLOUDSMITH_USERNAME`/`CLOUDSMITH_PASSWORD` set | Cloudsmith, `cloudsmith.repository` in `gradle.properties` |
+| `./gradlew publish` without them, or `publishToMavenLocal` | Maven local, for a consumer testing an unreleased build |
+
+Consumers read `https://dl.cloudsmith.io/public/crystalgraphics/crystalgraphics/maven/`
+([`SETUP.md`](SETUP.md)). The mechanism is the README's § *Publishing*.
+
+| Coordinate | What | Consumer |
+|---|---|---|
+| `com.crystalgraphics:core` | the engine — jar, `java8` copy, sources, javadoc | compiles against it |
+| `com.crystalgraphics:platform` | the SPI | comes with `core` |
+| `com.crystalgraphics:freetype-msdfgen-harfbuzz-bindings` | JNI bindings and natives (MIT) | comes with `core` |
+| `com.crystalgraphics:crystalgraphics` | the shipped jar | runs it in a dev client |
+| `com.crystalgraphics:crystalgraphics-joml` | JOML as a mod (MIT) | runs it below Minecraft 1.19.3 |
+| `com.crystalgraphics:mc-shared` | the variant selector | a single-jar mod's bootstrappers compile against it |
+
+**The API is checked on every build.** Each library's public declarations are committed as
+`api/<artifact>.api`; `apiCheck`, part of `check`, fails when one is gone or changed and the major
+version has not moved. The file is the API as last RELEASED, so additions never fail. At a release, or
+after a deliberate major break, `./gradlew apiDump` rewrites it — commit the diff with the change.
+
+`core`'s API names the real `org.joml` (1.10.5 in its metadata). A library's `consumerApi` is the
+whole of what a consumer gets; a type in the public API from anything else is a compile error for them.
 
 ---
 
 ## Adding a Minecraft version
 
-A version is a **node**. Four edits here, then the same four in CrystalGUI.
+A version is a **node**: a catalog entry here, and each repo's sources made to build it.
 
 **0. Survey first.** Diff the new version's API against its neighbour before touching the build (javap
 over the new jars, or its `build/mc-src` once real). Every break found up front is one `prodSmoke` cycle
 saved; fix every family of break in one pass.
 
-**1. `settings.gradle.kts`** — the version on the loader's branch in `modernNodes`, **and on `common`** if
-absent (a loader node compiles against the common node of its own version, never a neighbour's).
+**1. `targets {}` in both repos' `settings.gradle.kts`** — a range that reaches the version; widening the
+upper bound is usually the whole edit. The `common` node follows.
 
-**2. `<branch>/versions/<version>/gradle.properties`** — copy the nearest node's and change:
+**2. The catalog entry**, `singlejar-logic/src/main/resources/cgbuildlogic/catalog/modern/<branch>/<version>.properties`,
+**and `modern/common/<version>.properties`** if absent (a loader node compiles against the common node of
+its own version, never a neighbour's). Copy the nearest node's and change:
 
 | Key | Meaning |
 |---|---|
@@ -117,7 +169,7 @@ absent (a loader node compiles against the common node of its own version, never
 | `asm` | NeoForge's ASM version (a dev run must not upgrade the loader's ASM) |
 | `variant.minecraft` | the range this node claims, e.g. `[1.21.11,1.21.12)` — **narrow the neighbour**; overlapping ranges fail configuration |
 | `variant.packFormat` | resource pack format of that version |
-| `variant.mixinPlugin` | only if the node ships mixins (no loader event for a hook) |
+| `variant.mixinPlugin` | **not here**: per project, in that repo's `versions/<version>/gradle.properties`, only if its node ships mixins (no loader event for a hook) |
 
 **3. `//? if` directives** in the branch's `src/` where the API differs. `checkAllTargets` finds every one.
 Build the new node real until it compiles: `-PcgRealNodes=<branch>:<version>`.
@@ -137,7 +189,7 @@ List a `common` node too when it is new. `unknown` in a Fabric listing means Loo
 manifest: rerun that node's `remapThinJar --rerun-tasks` and list again.
 
 **Not edited**: thin-jar lists, relocation counts, descriptors (including `neoforge.mods.toml`), variant
-tables, `requiredEntries` — all follow the tree.
+tables, `requiredEntries`, node directories (created when missing) — all follow the tree.
 
 **Then CrystalGUI** (its `docs/CGUI_BUILD.md` § *Adding a Minecraft version*): the same node, a Prism
 instance, `serverSmoke` where the node has a dev run, one `prodSmoke` of the new target, and read the

@@ -26,7 +26,7 @@ The 1.20.1 node uses ModDevGradle legacyForge (`net.neoforged.moddev.legacyforge
 MinecraftForge 1.17–1.20.1 and is Gradle 9 + JDK 25 compatible. From 1.20.2 legacyForge sets up nothing, so those nodes pin `neoform.version` too and are built
 from parts: NeoForm's Minecraft, Forge's jars compileOnly, no dev run, and `SrgReobfJar` below 1.20.6.
 See CrystalGraphics' `singlejar-logic/README.md` § Many Minecraft versions. Version pins are per
-node in `versions/<version>/gradle.properties`.
+node in singlejar-logic's pin catalog (`catalog/modern/<branch>/<version>.properties`).
 
 ## The loader is registration only
 

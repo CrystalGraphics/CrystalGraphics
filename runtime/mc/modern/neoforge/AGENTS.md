@@ -5,7 +5,7 @@
 **IMPORTANT**: Despite the `runtime/mc/modern/` directory name, this module targets **MC 1.20.4 / NeoForge 20.4.x**.
 NeoForge never published a stable 1.20.1 series — the earliest available stable series is 20.4.x (MC 1.20.4).
 The directory name `runtime/mc/modern/neoforge/` is retained for continuity. Version pins live in `gradle.properties`
-per node, in `versions/<version>/gradle.properties`.
+per node, in singlejar-logic's pin catalog (`catalog/modern/<branch>/<version>.properties`).
 
 ## The loader is registration only
 

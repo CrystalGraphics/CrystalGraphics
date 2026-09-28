@@ -6,10 +6,6 @@ repositories {
 }
 
 dependencies {
-    // ModDevGradle: Minecraft on each node's classpath -- NeoForm or legacyForge per node, chosen by
-    // the shared useModernMinecraft, which takes it compileOnly and relies on this line.
-    implementation("net.neoforged:moddev-gradle:2.0.141")
-
     // Shadow, so ShadowJar is a type these scripts can name. The version matches the pin in
     // settings.gradle.kts that every loader applies.
     // The shared single-jar tasks: CheckSingleJar and ModDescriptor. @see CrystalGraphics/singlejar-logic
