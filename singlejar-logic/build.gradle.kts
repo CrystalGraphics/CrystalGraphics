@@ -20,10 +20,11 @@ dependencies {
     implementation("com.gradleup.shadow:shadow-gradle-plugin:9.2.2")
     implementation("xyz.wagyourtail.jvmdowngrader:gradle-plugin:1.3.5")
 
-    // compileOnly: `useModernMinecraft` names ModDevGradle's extensions, and every build that calls it
-    // already has ModDevGradle on its build-logic classpath. Carrying it here as well would be two
-    // versions of one plugin for Gradle to pick between.
-    compileOnly("net.neoforged:moddev-gradle:2.0.141")
+    // ModDevGradle, which `useModernMinecraft` names -- and the one pin of it for every build using this
+    // logic. The settings plugin loads these classes in the SETTINGS classloader, every project's
+    // parent, so what they name must be visible there: compileOnly left real nodes unable to load
+    // LegacyForgeExtension. A build-logic declaring its own copy gets this one anyway.
+    implementation("net.neoforged:moddev-gradle:2.0.141")
 
     // SrgReobfJar composes Mojang's names with MCPConfig's SRG table -- the renamer ModDevGradle's
     // legacy mode uses, where that mode cannot reach (Forge 1.20.2-1.20.4).
