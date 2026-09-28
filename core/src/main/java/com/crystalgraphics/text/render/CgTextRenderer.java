@@ -167,7 +167,9 @@ public class CgTextRenderer {
     private static final CgBufferFormat TEXT_DATA_FORMAT = CgBufferFormat
             .builder("TextData", CgBufferFormat.MemoryLayout.STD140)
             .mat4("u_Projection")
-            .vec4("u_TextGamma")
+            .vec4("u_TextGammaSmall")
+            .vec4("u_TextGammaLarge")
+            .vec4("u_TextGammaRamp")
             .build();
 
     /**
@@ -562,9 +564,11 @@ public class CgTextRenderer {
             activeProjection.set(projection);
         } else activeProjection = new Matrix4f(projection);
 
+        CgTextGamma.Level small = gamma.small(), large = gamma.large();
         TEXT_DATA_UBO.writer().reset().beginRecord().mat4("u_Projection", projection)
-                .vec4("u_TextGamma", gamma.exponent(), gamma.contrast(), 1f / gamma.exponent(),
-                        gamma.isIdentity() ? 0f : 1f);
+                .vec4("u_TextGammaSmall", small.exponent(), small.contrast(), 1f / small.exponent(), 0f)
+                .vec4("u_TextGammaLarge", large.exponent(), large.contrast(), 1f / large.exponent(), 0f)
+                .vec4("u_TextGammaRamp", gamma.smallPx(), gamma.largePx(), gamma.isIdentity() ? 0f : 1f, 0f);
         TEXT_DATA_UBO.endRecord();
         TEXT_DATA_UBO.upload();
     }
@@ -1602,8 +1606,8 @@ public class CgTextRenderer {
             float pxRange;
             float u0, v0, u1, v1;
             int rgba, atlasLayer;
-            // The instance's two custom slots, as text.shader's Properties comment lays them out.
-            float c0x = 0f, c0y = 0f, c0z = 0f, c0w = 0f, c1x = 0f, c1y = 0f, c1z = 0f, c1w = 0f;
+            // The instance's custom slots, as text.shader's Properties comment lays them out.
+            float c0x = 0f, c0y = 0f, c0z = 0f, c0w = 0f, c1x = 0f, c1y = 0f, c1z = 0f, c1w = 0f, c2 = 0f;
 
             if (isDecoration) {
                 CgResolvedGlyphs.ResolvedDecoration d = resolvedDecorations.get(localIndex);
@@ -1679,6 +1683,7 @@ public class CgTextRenderer {
                 c0x = ((strokeArgb >> 16) & 0xFF) / 255f; c0y = ((strokeArgb >> 8) & 0xFF) / 255f;
                 c0z = (strokeArgb & 0xFF) / 255f; c0w = ((strokeArgb >>> 24) & 0xFF) / 255f;
                 c1x = strokeWidthTexels; c1y = strokeAlign; c1z = strokeOver; c1w = pxRange;
+                c2 = p.key().getFontKey().getTargetPx();
             } else {
                 byte kind = shadowPlan.kind(shadow, localIndex);
                 p = shadowPlan.placement(shadow, localIndex);
@@ -1727,6 +1732,7 @@ public class CgTextRenderer {
                     .atlasLayer(atlasLayer)
                     .custom0(c0x, c0y, c0z, c0w)
                     .custom1(c1x, c1y, c1z, c1w)
+                    .custom2(c2)
                     .pose(modelView)
                     .submit();
 
