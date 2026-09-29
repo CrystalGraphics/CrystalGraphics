@@ -173,9 +173,13 @@ shape. To shadow only some glyphs — a highlighted word — give each glyph a s
 
 Every glyph is one instance of a shared quad. A single `draw()` renders all of its glyphs in **one
 instanced draw call**, whatever fonts and sizes it mixes: every glyph lives in one shared atlas, its
-pages the layers of one array texture. The one split is bitmap against distance-field glyphs, which
-draw with different shader variants from separate atlases — a draw mixes them while a glyph is still on its bitmap fallback, or when
-blurred shadows sit under distance-field text.
+pages the layers of one array texture.
+
+The one split is bitmap against distance-field glyphs, which draw with different shader variants from
+separate atlases. A draw mixes them while a glyph is still on its bitmap fallback, or when blurred
+shadows sit under distance-field text. Glyphs are sorted by variant before drawing, so a draw that
+mixes both costs at most two calls. Shadows paint as their own step, before the text, so a shadow on
+the other variant from its text can add one more.
 
 `beginBatch()` and `endBatch()` extend that across draws. Every `draw()` in between goes into the same
 instanced calls, so a screen of labels costs what one label does:
