@@ -436,6 +436,19 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
         check(vkGetPhysicalDeviceSurfacePresentModesKHR(physical, surface, n, modes), "present modes");
         Set<Integer> offered = new HashSet<>();
         for (int i = 0; i < modes.limit(); i++) offered.add(modes.get(i));
+        // -Dcrystalgraphics.vulkan.presentMode=immediate|mailbox|fifo forces one the surface offers.
+        String forced = System.getProperty("crystalgraphics.vulkan.presentMode");
+        if (forced != null) {
+            int m = switch (forced) {
+                case "immediate" -> VK_PRESENT_MODE_IMMEDIATE_KHR;
+                case "mailbox" -> VK_PRESENT_MODE_MAILBOX_KHR;
+                case "fifo" -> VK_PRESENT_MODE_FIFO_KHR;
+                default -> throw new IllegalArgumentException("crystalgraphics.vulkan.presentMode=" + forced
+                        + ": immediate, mailbox or fifo");
+            };
+            if (!offered.contains(m)) throw new IllegalStateException("The surface does not offer present mode " + forced);
+            return m;
+        }
         for (int m : new int[] {VK_PRESENT_MODE_IMMEDIATE_KHR, VK_PRESENT_MODE_MAILBOX_KHR}) {
             if (offered.contains(m)) return m;
         }
