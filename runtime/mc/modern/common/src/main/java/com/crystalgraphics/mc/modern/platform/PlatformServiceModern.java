@@ -163,8 +163,8 @@ public final class PlatformServiceModern implements CgPlatformService {
     /** The GLFW window, or 0 before one exists. The value tier 1 is handed rather than reaching for. */
     static long windowHandle() {
         Minecraft mc = Minecraft.getInstance();
-        if (mc == null || mc.getWindow() == null) return 0L;
-        return mc.getWindow().getWindow();
+        if (mc == null || Windows.of(mc) == null) return 0L;
+        return Windows.handle(mc);
     }
 
     @Override public CgSoundService sound() {

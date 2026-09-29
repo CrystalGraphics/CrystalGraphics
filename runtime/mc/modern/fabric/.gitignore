@@ -2,7 +2,7 @@
 .settings
 /.idea/
 /.vscode/
-/runs/
+/versions/*/runs/
 /logs/
 /build/
 /eclipse/

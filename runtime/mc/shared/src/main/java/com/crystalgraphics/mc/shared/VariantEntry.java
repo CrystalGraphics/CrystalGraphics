@@ -25,6 +25,7 @@ package com.crystalgraphics.mc.shared;
  *   <tr><td>Fabric</td><td>{@code null} — Fabric hands an entry point nothing</td></tr>
  *   <tr><td>Forge</td><td>{@code FMLJavaModLoadingContext}; the mod event bus is {@code getModEventBus()}</td></tr>
  *   <tr><td>NeoForge</td><td>the {@code IEventBus} the {@code @Mod} constructor received</td></tr>
+ *   <tr><td>FML 1.8–1.12.2</td><td>{@link FmlEvents}, which the {@code @Mod}'s lifecycle events are forwarded to</td></tr>
  * </table>
  *
  * <p>Easy to get wrong: an implementation needs a <b>public no-argument constructor</b>, because the

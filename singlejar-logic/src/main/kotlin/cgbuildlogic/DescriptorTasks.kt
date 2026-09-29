@@ -58,6 +58,7 @@ fun Project.registerDescriptorTasks(
             root.resolve("fabric.mod.json").writeText(FabricModJson.merged(descriptor))
             root.resolve("mcmod.info").writeText(McmodInfo.merged(descriptor))
             root.resolve("META-INF/mods.toml").writeText(ForgeModsToml.merged(descriptor))
+            root.resolve("META-INF/neoforge.mods.toml").writeText(ForgeModsToml.neoForge(descriptor))
             root.resolve("pack.mcmeta").writeText(PackMcmeta.merged(descriptor))
             // Per mod, not per jar: the host and the language stack each carry their own table, and a
             // bootstrapper reads the one under its own id.
@@ -71,19 +72,13 @@ fun Project.registerDescriptorTasks(
 
     if (!checkShipped) return
 
-    // What it does NOT compare is as deliberate as what it does: the merged mods.toml says
-    // loaderVersion="[1,)" where a per-loader one names its own, carries both `mandatory` and `type`
-    // where each loader writes only its own spelling, and drops the forge/neoforge dependency row
-    // entirely -- a required dependency on a mod the other loader does not have is a refusal to load.
-    // Those three are the whole reason one file can serve both loaders.
     val checkAgree = tasks.register("checkDescriptorsAgree") {
         group = taskGroup
         description = "Fails if a per-loader descriptor disagrees with the one declaration."
-        val fabricJson = layout.projectDirectory.file("runtime/mc/modern/fabric/src/main/resources/fabric.mod.json").asFile
-        val forgeToml = layout.projectDirectory.file("runtime/mc/modern/forge/src/main/resources/META-INF/mods.toml").asFile
-        val neoToml = layout.projectDirectory.file("runtime/mc/modern/neoforge/src/main/resources/META-INF/mods.toml").asFile
+        // NO 1.20.x FILE: every modern node's dev run takes the MERGED descriptors -- they name only the
+        // bootstrapper and span every node's range, so they are right for every node and cannot drift.
         val mcmod = layout.projectDirectory.file("runtime/mc/1710/src/main/resources/mcmod.info").asFile
-        inputs.files(fabricJson, forgeToml, neoToml, mcmod).withPropertyName("shippedDescriptors")
+        inputs.files(mcmod).withPropertyName("shippedDescriptors")
         inputs.property("descriptor", descriptor.toString())
         outputs.upToDateWhen { true }
         doLast {
@@ -96,50 +91,6 @@ fun Project.registerDescriptorTasks(
                     problems += "${file.name} does not $why (looked for: $needle)"
                 }
             }
-
-            // A SHIPPED descriptor belongs to ONE variant -- whichever its module's source tree
-            // builds -- so once a loader has several it must match one of them rather than the only
-            // one. `single` threw "collection contains more than one matching element", naming
-            // neither the loader nor the file.
-            fun requireSomeVariant(
-                file: File,
-                loader: String,
-                what: String,
-                needles: (Variant) -> List<String>,
-            ) {
-                val variants = descriptor.variantsOf(loader)
-                if (variants.isEmpty()) return
-                if (!file.isFile) {
-                    problems += "${file.name} is missing"
-                    return
-                }
-                val text = file.readText()
-                if (variants.none { v -> needles(v).all(text::contains) }) {
-                    problems += "${file.name} matches no declared $loader variant's $what (tried " +
-                        variants.joinToString(", ") { it.minecraft } + ")"
-                }
-            }
-
-            require(fabricJson, "\"id\": \"${descriptor.id}\"", "declare the mod id")
-            // WHERE THERE IS A BOOTSTRAPPER, that is what the descriptor names -- the variants' own
-            // entries are named by variants.json instead, and Fabric never sees them. A shipped
-            // descriptor still naming an entry directly would construct it on every version.
-            val fabricBootstrapper = descriptor.bootstrappers["fabric"]
-            if (fabricBootstrapper != null) {
-                require(fabricJson, fabricBootstrapper, "name the bootstrapper its entry points go through")
-            } else {
-                requireSomeVariant(fabricJson, "fabric", "entry points") { v ->
-                    listOfNotNull(v.commonEntry, v.clientEntry)
-                }
-            }
-            requireSomeVariant(fabricJson, "fabric", "depends") { v ->
-                v.fabricDepends.map { (id, range) -> "\"$id\": \"$range\"" }
-            }
-
-            require(forgeToml, "modId = \"${descriptor.id}\"", "declare the mod id")
-            require(neoToml, "modId = \"${descriptor.id}\"", "declare the mod id")
-            requireSomeVariant(forgeToml, "forge", "Minecraft range") { listOf(it.minecraft) }
-            requireSomeVariant(neoToml, "neoforge", "Minecraft range") { listOf(it.minecraft) }
 
             // mcmod.info is a GTNH template: ${modId} is expanded by processResources, so the literal
             // is what a source file legitimately holds.

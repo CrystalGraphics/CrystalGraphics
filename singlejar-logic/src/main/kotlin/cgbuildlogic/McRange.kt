@@ -40,6 +40,18 @@ data class McRange(
     /** Whether any version satisfies both. Adjacent ranges — one ending exactly where the next begins, exclusively — do not. */
     fun overlaps(other: McRange): Boolean = !endsBefore(this, other) && !endsBefore(other, this)
 
+    /**
+     * Fabric's spelling of this range for a `depends` entry — `>=1.20.4 <1.20.5`, a space meaning AND.
+     * An exact version stays bare, and an unbounded range is `*`.
+     */
+    fun toFabricPredicate(): String {
+        if (low != null && low == high && lowInclusive && highInclusive) return low
+        val parts = mutableListOf<String>()
+        low?.let { parts += (if (lowInclusive) ">=" else ">") + it }
+        high?.let { parts += (if (highInclusive) "<=" else "<") + it }
+        return parts.joinToString(" ").ifEmpty { "*" }
+    }
+
     override fun toString(): String {
         if (low != null && low == high && lowInclusive && highInclusive) return "[$low]"
         val open = if (lowInclusive && low != null) "[" else "("
@@ -120,6 +132,36 @@ data class McRange(
             }
             return McRange(low, lowInclusive, high, highInclusive)
         }
+
+        /**
+         * The same versions in the fewest ranges: overlapping and adjacent ones joined, gaps kept.
+         *
+         * ```
+         * coalesce([1.20,1.20.2) [1.20.2,1.21) [1.21.10,))   // [1.20,1.21) [1.21.10,)
+         * ```
+         *
+         * What a Fabric `depends` array should carry: Quilt Loader 0.30 drops some members of a run of
+         * adjacent alternatives, and refused 1.20.1 from twenty of them.
+         */
+        fun coalesce(ranges: List<McRange>): List<McRange> {
+            val out = mutableListOf<McRange>()
+            for (r in ranges.sortedWith(::compareLows)) {
+                val last = out.lastOrNull()
+                if (last != null && (!endsBefore(last, r) || touches(last, r))) out[out.lastIndex] = hull(listOf(last, r))
+                else out += r
+            }
+            return out
+        }
+
+        private fun compareLows(a: McRange, b: McRange): Int = when {
+            a.low == null || b.low == null -> (if (a.low == null) 0 else 1) - (if (b.low == null) 0 else 1)
+            else -> compareVersions(a.low, b.low).takeIf { it != 0 }
+                ?: ((if (a.lowInclusive) 0 else 1) - (if (b.lowInclusive) 0 else 1))
+        }
+
+        /** `a` ends exactly where `b` begins, with the shared version in one of them. */
+        private fun touches(a: McRange, b: McRange): Boolean =
+            a.high != null && b.low != null && compareVersions(a.high, b.low) == 0 && (a.highInclusive || b.lowInclusive)
 
         private fun endsBefore(a: McRange, b: McRange): Boolean {
             if (a.high == null || b.low == null) return false

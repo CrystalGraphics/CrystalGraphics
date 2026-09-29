@@ -47,6 +47,9 @@ import org.joml.Vector3f;
  * vec4 color       // unpacked float rgba
  * float atlasLayer // sampler2DArray layer index, as a float (0 for non-array-texture
  *                   // consumers — ignored by ordinary sampler2D shaders)
+ * float custom2    // a free scalar, in the padding std430 leaves after atlasLayer
+ * vec4 custom0     // free
+ * vec4 custom1     // free
  * </pre>
  * <p>Not caller-extensible for now — a normal additive schema change to
  * {@link #INSTANCE_FORMAT} if a real consumer ever needs more fields, not a
@@ -116,6 +119,8 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
             .vec2("uv0").vec2("uv1")
             .vec4("color")
             .float_("atlasLayer")
+            // A free scalar in the twelve bytes std430 pads after atlasLayer, so it costs no size.
+            .float_("custom2")
             // -- per-instance CUSTOM slots, whatever a consumer needs them to mean --------------
             // The same shape CgObjectData gives the render pipeline (custom0..custom3, read through
             // CG_OBJECT_CUSTOM*), for the same reason: a material that needs per-instance parameters
@@ -213,7 +218,7 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
      * lookups for offsets that are a property of a compile-time-constant format.</p>
      */
     private final int offOrigin, offRight, offUp, offUv0, offUv1, offColor, offAtlasLayer;
-    private final int offCustom0, offCustom1;
+    private final int offCustom0, offCustom1, offCustom2;
 
 
     private CgQuadRenderer(CgStagingBuffer accumStaging, CgBufferWriter accumWriter) {
@@ -228,6 +233,7 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
         this.offAtlasLayer = accumWriter.offsetOf("atlasLayer", CgGpuType.FLOAT);
         this.offCustom0 = accumWriter.offsetOf("custom0", CgGpuType.VEC4);
         this.offCustom1 = accumWriter.offsetOf("custom1", CgGpuType.VEC4);
+        this.offCustom2 = accumWriter.offsetOf("custom2", CgGpuType.FLOAT);
     }
 
     /**
@@ -353,6 +359,7 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
         private float atlasLayer;
         private float c0x, c0y, c0z, c0w;
         private float c1x, c1y, c1z, c1w;
+        private float c2;
         private Matrix4f pose;
 
         // Reused across every submit() call on this Quad instance — never reallocated.
@@ -379,6 +386,7 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
             atlasLayer = 0f;
             c0x = c0y = c0z = c0w = 0f;
             c1x = c1y = c1z = c1w = 0f;
+            c2 = 0f;
             pose = null;
             return this;
         }
@@ -478,6 +486,12 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
             return this;
         }
 
+        /** A free scalar, read as {@code CG_QUAD_CUSTOM2}; zero unless set. @see #custom0(float, float, float, float) */
+        public Quad custom2(float value) {
+            this.c2 = value;
+            return this;
+        }
+
         /** {@code custom0} from a packed ARGB colour, unpacked to rgba in 0..1. */
         public Quad custom0(int argb) {
             return custom0(((argb >> 16) & 0xFF) / 255f, ((argb >> 8) & 0xFF) / 255f,
@@ -548,6 +562,7 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
                     .vec2At(offUv1, u1, v1)
                     .colorAt(offColor, argb)
                     .floatAt(offAtlasLayer, atlasLayer)
+                    .floatAt(offCustom2, c2)
                     .vec4At(offCustom0, c0x, c0y, c0z, c0w)
                     .vec4At(offCustom1, c1x, c1y, c1z, c1w)
                     .endRecord();

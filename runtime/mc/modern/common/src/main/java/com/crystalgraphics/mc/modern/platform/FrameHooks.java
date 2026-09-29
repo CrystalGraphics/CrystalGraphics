@@ -24,9 +24,9 @@ public final class FrameHooks {
 
     public static void endFrame() {
         Minecraft mc = Minecraft.getInstance();
-        if (mc != null && mc.getWindow() != null) {
-            int width = mc.getWindow().getWidth();
-            int height = mc.getWindow().getHeight();
+        if (mc != null && Windows.of(mc) != null) {
+            int width = Windows.of(mc).getWidth();
+            int height = Windows.of(mc).getHeight();
             if (width > 0 && height > 0 && (width != lastWidth || height != lastHeight)) {
                 lastWidth = width;
                 lastHeight = height;

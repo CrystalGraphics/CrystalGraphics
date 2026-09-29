@@ -22,8 +22,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * bound through {@code OpenGlHelper.func_153171_g} so Minecraft's own FBO tracking stayed in step
  * with ours. Nothing ever called it, and the waterfall above is the thing that call was wanted for,
  * so it went — which is what makes this file tier 1 and shareable with the harness.</p>
+ *
+ * <p>Open for a host with a GL state cache of its own to keep in step: {@code GlStateManagerGLBackend}
+ * on Forge 1.8–1.12.2.</p>
  */
-public final class Lwjgl2GLBackend extends CgGLBackend {
+public class Lwjgl2GLBackend extends CgGLBackend {
 
     /** Maps GL sync object handles (long) to LWJGL2 GLSync wrappers. */
     private static final ConcurrentHashMap<Long, GLSync> SYNC_CACHE = new ConcurrentHashMap<>();
@@ -976,25 +979,6 @@ public final class Lwjgl2GLBackend extends CgGLBackend {
     @Override
     public void glDeleteQuery(int query) {
         GL15.glDeleteQueries(query);
-    }
-
-    // -------------------------------------------------------------------------
-    // Fixed-function matrix stack (legacy / compat)
-    // -------------------------------------------------------------------------
-
-    @Override
-    public void glPushMatrix() {
-        GL11.glPushMatrix();
-    }
-
-    @Override
-    public void glPopMatrix() {
-        GL11.glPopMatrix();
-    }
-
-    @Override
-    public void glLoadMatrix(FloatBuffer m) {
-        GL11.glLoadMatrix(m);
     }
 
     @Override
