@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.IntFunction;
 
 /**
  * Turns GL's immediate model into passes, pipelines and per-draw bindings on a {@link CgDevice} (spec §5.1).
@@ -55,7 +56,7 @@ public final class CgTracker {
     private final Map<CgPipelineDesc, CgPipeline> pipelines = new HashMap<>();
     private boolean zeroToOneClip;
     private boolean warnedMaskedClear;
-    private CgTrackedProgram clearProgram;
+    private IntFunction<CgTrackedProgram> clearPrograms;
 
     /** What a masked clear draws: a position and the clear colour per vertex, three vertices over the target. */
     private static final List<CgPipelineDesc.VertexBuffer> CLEAR_LAYOUT = List.of(new CgPipelineDesc.VertexBuffer(0,
@@ -117,10 +118,11 @@ public final class CgTracker {
     public CgTarget target() { return target; }
 
     /**
-     * The program a colour clear under a partial write mask is drawn with: position at location 0, colour at 1,
-     * the colour written to every output. Without one, such a clear writes every channel, with one warning.
+     * The programs a colour clear under a partial write mask is drawn with, by the target's attachment count:
+     * position at location 0, colour at 1, the colour written to each output. Without them, such a clear writes
+     * every channel, with one warning.
      */
-    public void setClearProgram(CgTrackedProgram program) { clearProgram = program; }
+    public void setClearPrograms(IntFunction<CgTrackedProgram> programFor) { clearPrograms = programFor; }
 
     /**
      * {@code glClear} on the bound target, honouring the write masks and scissor in {@link #state} as GL does.
@@ -133,7 +135,7 @@ public final class CgTracker {
             for (int i = 0; i < target.colors().size(); i++) {
                 int mask = (state.colorMasks >>> (4 * i)) & 0xF;
                 if (mask == 0) continue;
-                if (mask != 0xF && clearProgram != null) {
+                if (mask != 0xF && clearPrograms != null) {
                     masked |= 1 << i;
                     continue;
                 }
@@ -172,6 +174,7 @@ public final class CgTracker {
 
     /** A colour clear through a partial write mask: a triangle over the target, scissored to the cleared rect. */
     private void clearByDraw(int attachment, int mask, float r, float g, float b, float a, int x, int y, int w, int h) {
+        CgTrackedProgram clearProgram = clearPrograms.apply(passTarget.colors().size());
         List<CgPipelineDesc.ColorTarget> targets = new ArrayList<>(passTarget.colors().size());
         for (int i = 0; i < passTarget.colors().size(); i++) {
             targets.add(new CgPipelineDesc.ColorTarget(passTarget.colors().get(i).texture().desc().format(), null,
@@ -398,6 +401,9 @@ public final class CgTracker {
         passTarget = target;
         passPipeline = null;
         passFresh = true;
+        // Nothing is set in a new pass: the first draw needing a reference or a bias sets it, whatever its value.
+        stencilRef = Integer.MIN_VALUE;
+        biasConstant = biasSlope = Float.NaN;
         stats.passes++;
     }
 

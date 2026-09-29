@@ -55,6 +55,8 @@ public final class CgTrackedGLBackend extends CgGLBackend {
     private final TrackedTextures textures;
     private final TrackedFramebuffers framebuffers;
     private final boolean debug;
+    private final CgGlslCompiler compiler;
+    private final CgTrackedProgram[] clearPrograms = new CgTrackedProgram[8];
     private final double[] q = new double[16];
     private final Map<Long, Long> syncs = new HashMap<>();
     private final GlNames<CgTimerQuery> queries = new GlNames<>("Query");
@@ -69,7 +71,8 @@ public final class CgTrackedGLBackend extends CgGLBackend {
         this.device = device;
         this.debug = debug;
         this.tracker = new CgTracker(device, debug);
-        tracker.setClearProgram(clearProgram(device, compiler));
+        this.compiler = compiler;
+        tracker.setClearPrograms(this::clearProgram);
         CgTarget surface = CgTarget.surface(device);
         this.state = new TrackedRenderState(tracker, errors, surface.width(), surface.height());
         this.vaos = new TrackedVertexArrays(errors);
@@ -91,23 +94,23 @@ public final class CgTrackedGLBackend extends CgGLBackend {
             void main() { gl_Position = vec4(cg_ClearPosition, 0.0, 1.0); v_color = cg_ClearColor; }
             """;
 
-    /** Every attachment an output: the pipeline's write masks choose which one the clear reaches. */
-    private static final String CLEAR_FRAGMENT = """
-            #version 330 core
-            in vec4 v_color;
-            layout(location = 0) out vec4 o0; layout(location = 1) out vec4 o1;
-            layout(location = 2) out vec4 o2; layout(location = 3) out vec4 o3;
-            layout(location = 4) out vec4 o4; layout(location = 5) out vec4 o5;
-            layout(location = 6) out vec4 o6; layout(location = 7) out vec4 o7;
-            void main() { o0 = o1 = o2 = o3 = o4 = o5 = o6 = o7 = v_color; }
-            """;
+    /** One output per attachment: the pipeline's write masks choose which one the clear reaches. */
+    private static String clearFragment(int colors) {
+        StringBuilder s = new StringBuilder("#version 330 core\nin vec4 v_color;\n");
+        for (int i = 0; i < colors; i++) s.append("layout(location = ").append(i).append(") out vec4 o").append(i).append(";\n");
+        s.append("void main() {\n");
+        for (int i = 0; i < colors; i++) s.append("    o").append(i).append(" = v_color;\n");
+        return s.append("}\n").toString();
+    }
 
-    /** What a colour clear under a partial write mask is drawn with (see {@link CgTracker#setClearProgram}). */
-    private static CgTrackedProgram clearProgram(CgDevice device, CgGlslCompiler compiler) {
-        String label = "masked clear";
-        CgGlslCompiler.Program p = compiler.compile(CLEAR_VERTEX, CLEAR_FRAGMENT,
+    /** What a colour clear under a partial write mask draws with, for a target of {@code colors} attachments. */
+    private CgTrackedProgram clearProgram(int colors) {
+        CgTrackedProgram cached = clearPrograms[colors - 1];
+        if (cached != null) return cached;
+        String label = "masked clear " + colors;
+        CgGlslCompiler.Program p = compiler.compile(CLEAR_VERTEX, clearFragment(colors),
                 Map.of("cg_ClearPosition", 0, "cg_ClearColor", 1), label);
-        return new CgTrackedProgram(label, device.createBindingLayout(label, p.slots()),
+        return clearPrograms[colors - 1] = new CgTrackedProgram(label, device.createBindingLayout(label, p.slots()),
                 device.createShaderModule(CgShaderModule.Stage.VERTEX, p.vertexGlDepth(), label),
                 device.createShaderModule(CgShaderModule.Stage.VERTEX, p.vertexZeroToOne(), label),
                 device.createShaderModule(CgShaderModule.Stage.FRAGMENT, p.fragment(), label));
