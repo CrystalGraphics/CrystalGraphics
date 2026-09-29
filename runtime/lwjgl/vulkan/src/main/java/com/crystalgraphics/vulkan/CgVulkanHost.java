@@ -84,4 +84,10 @@ public interface CgVulkanHost {
 
     /** How many validation messages at error severity the host has seen; 0 without validation. */
     int validationErrors();
+
+    /**
+     * Whether the device enabled {@code VK_EXT_line_rasterization}'s {@code bresenhamLines}: GL's rule for which
+     * pixels a line covers. Without it a line on an exact pixel boundary can vanish where GL draws it.
+     */
+    boolean bresenhamLines();
 }

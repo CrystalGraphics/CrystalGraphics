@@ -50,6 +50,7 @@ import org.lwjgl.vulkan.VkPipelineDynamicStateCreateInfo;
 import org.lwjgl.vulkan.VkPipelineInputAssemblyStateCreateInfo;
 import org.lwjgl.vulkan.VkPipelineLayoutCreateInfo;
 import org.lwjgl.vulkan.VkPipelineMultisampleStateCreateInfo;
+import org.lwjgl.vulkan.VkPipelineRasterizationLineStateCreateInfoEXT;
 import org.lwjgl.vulkan.VkPipelineRasterizationStateCreateInfo;
 import org.lwjgl.vulkan.VkPipelineRenderingCreateInfoKHR;
 import org.lwjgl.vulkan.VkPipelineShaderStageCreateInfo;
@@ -79,6 +80,7 @@ import static com.crystalgraphics.vulkan.format.VulkanCheck.check;
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.system.MemoryUtil.memByteBuffer;
 import static org.lwjgl.util.vma.Vma.*;
+import static org.lwjgl.vulkan.EXTLineRasterization.VK_LINE_RASTERIZATION_MODE_BRESENHAM_EXT;
 import static org.lwjgl.vulkan.KHRPushDescriptor.VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR;
 import static org.lwjgl.vulkan.VK10.*;
 import static org.lwjgl.vulkan.VK11.VK_FORMAT_FEATURE_TRANSFER_DST_BIT;
@@ -406,6 +408,12 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
                     .frontFace(r.frontFace() == CgPipelineDesc.FrontFace.CCW ? VK_FRONT_FACE_CLOCKWISE
                             : VK_FRONT_FACE_COUNTER_CLOCKWISE)
                     .depthBiasEnable(r.depthBias()).lineWidth(1f);
+            boolean lines = d.topology() == CgPipelineDesc.Topology.LINES || d.topology() == CgPipelineDesc.Topology.LINE_STRIP
+                    || r.polygonMode() == CgPipelineDesc.PolygonMode.LINE;
+            if (lines && host.bresenhamLines()) {
+                raster.pNext(VkPipelineRasterizationLineStateCreateInfoEXT.calloc(stack).sType$Default()
+                        .lineRasterizationMode(VK_LINE_RASTERIZATION_MODE_BRESENHAM_EXT).address());
+            }
             VkPipelineMultisampleStateCreateInfo multisample = VkPipelineMultisampleStateCreateInfo.calloc(stack)
                     .sType$Default().rasterizationSamples(d.samples());
 
