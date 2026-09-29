@@ -10,6 +10,7 @@ layout(std140) uniform CgFrameBlock {
     vec4 cg_Time;        // (t/20, t, t*2, t*3) - seconds, scaled like Unity _Time
     vec2 cg_Resolution;  // viewport size in pixels
     vec4 cg_CameraPos;   // world-space camera position in .xyz; .w unused, see CG_CAMERA_WORLD_POS
+    vec4 cg_DepthParams; // x: 1 when depth is reversed (nearer is greater); y: 1 when clip depth runs 0..1
 };
 
 // -- Per-Instance Object Data (SSBO path: GL 4.3+/ARB) ----------------------
@@ -80,10 +81,25 @@ flat in int cg_InstanceId;
 #define CG_OBJECT_CUSTOM3 (CG_OBJECT_DATA.custom3)
 
 // -- Scene samplers (auto-bound by the engine; do not redeclare or bind manually) -----------
-// cg_DepthBuffer: scene depth snapshot (DEPTH24_STENCIL8) captured just before the opaque pass.
+// cg_DepthBuffer: scene depth snapshot, in the host's depth format, captured just before the opaque pass.
 // Bound to CgBindingPoints.DEPTH_TEXTURE_UNIT in both vertex and fragment stages of every pass.
 // Do NOT use that texture unit in material Properties.
 uniform sampler2D cg_DepthBuffer;
+
+// Raw depth is the host's convention -- Minecraft 26.2 is reversed-Z with a 0..1 clip range, earlier
+// versions are not -- so compare depths as eye distances, never as raw values:
+//
+//     float scene = CG_SCENE_EYE_DEPTH(screenUv);
+//     float self  = cg_LinearEyeDepth(gl_FragCoord.z);
+//     float fade  = saturate((scene - self) / _FadeDistance);   // soft particles, water edges
+//
+// Exact for any perspective cg_ProjMatrix built for the pass's convention, reversed or not.
+float cg_LinearEyeDepth(float windowDepth) {
+    float ndc = cg_DepthParams.y > 0.5 ? windowDepth : windowDepth * 2.0 - 1.0;
+    return cg_ProjMatrix[3][2] / (ndc + cg_ProjMatrix[2][2]);
+}
+#define CG_SCENE_EYE_DEPTH(uv) cg_LinearEyeDepth(texture(cg_DepthBuffer, (uv)).r)
+#define CG_DEPTH_REVERSED      (cg_DepthParams.x > 0.5)
 
 // -- Time and Resolution Macros ---------------------------------------------
 #define CG_TIME           (cg_Time.y)   // most useful: raw seconds
