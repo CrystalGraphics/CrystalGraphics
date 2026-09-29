@@ -23,11 +23,15 @@ public final class RecordingGlBackend extends CgGLBackend {
 
     private final List<String> calls = new ArrayList<>();
 
+    /** The arguments of every glDepthFunc and glClearDepth, in order. */
+    public final List<Integer> depthFuncs = new ArrayList<>();
+    public final List<Double> clearDepths = new ArrayList<>();
+
     private void record(String name) { calls.add(name); }
 
     public List<String> calls() { return calls; }
 
-    public void clear() { calls.clear(); }
+    public void clear() { calls.clear(); depthFuncs.clear(); clearDepths.clear(); }
 
     public int countOf(String name) {
         int n = 0;
@@ -142,10 +146,10 @@ public final class RecordingGlBackend extends CgGLBackend {
     @Override public void glStencilOp(int sfail, int dpfail, int dppass) { record("glStencilOp"); }
     @Override public void glAlphaFunc(int func, float ref) { record("glAlphaFunc"); }
     @Override public void glClear(int mask) { record("glClear"); }
-    @Override public void glClearDepth(double depth) { record("glClearDepth"); }
+    @Override public void glClearDepth(double depth) { record("glClearDepth"); clearDepths.add(depth); }
     @Override public void glClearColor(float r, float g, float b, float a) { record("glClearColor"); }
     @Override public void glClearStencil(int s) { record("glClearStencil"); }
-    @Override public void glDepthFunc(int func) { record("glDepthFunc"); }
+    @Override public void glDepthFunc(int func) { record("glDepthFunc"); depthFuncs.add(func); }
     @Override public void glStencilMask(int mask) { record("glStencilMask"); }
     @Override public void glBlendEquationSeparate(int modeRGB, int modeAlpha) { record("glBlendEquationSeparate"); }
     @Override public void glColorMaski(int buf, boolean r, boolean g, boolean b, boolean a) { record("glColorMaski"); }

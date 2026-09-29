@@ -1044,7 +1044,8 @@ public final class CgGL {
     }
 
     public static void glDepthFunc(int func) {
-        if (state().depthFuncChanged(func)) backend.glDepthFunc(func);
+        int issued = depthReversed && !state().restoring() ? mirroredDepthFunc(func) : func;
+        if (state().depthFuncChanged(issued)) backend.glDepthFunc(issued);
     }
 
     public static void glClear(int mask) {
@@ -1052,7 +1053,53 @@ public final class CgGL {
     }
 
     public static void glClearDepth(double depth) {
-        backend.glClearDepth(depth);
+        backend.glClearDepth(depthReversed ? 1.0 - depth : depth);
+    }
+
+    // --- Reversed depth --------------------------------------------------------
+
+    private static boolean depthReversed;
+
+    /**
+     * Draws what follows against a REVERSED depth buffer -- nearer is greater, cleared to 0 -- with every
+     * caller still writing standard compare functions and clear values. For a host whose world is reversed-Z
+     * (Minecraft 26.2); off for anything drawn into our own targets.
+     *
+     * <pre>{@code
+     * CgGL.setDepthReversed(true);
+     * try {
+     *     CgGraphicsLifecycle.onOpaquePass(partialTick, width, height, mainFbo);
+     * } finally {
+     *     CgGL.setDepthReversed(false);
+     * }
+     * }</pre>
+     *
+     * <ul>
+     *   <li>{@link #glDepthFunc} issues the mirror of a caller's function ({@code LEQUAL} becomes
+     *       {@code GEQUAL}), and {@link #glClearDepth} clears to {@code 1 - depth}. A scope's restore is
+     *       exempt: it re-issues what GL really held.</li>
+     *   <li>Not mirrored: {@code glPolygonOffset}, whose offset therefore pulls the other way, and
+     *       {@code cg_DepthBuffer}, which holds reversed values -- a shader comparing against it (a depth
+     *       fade, soft particles) is wrong while this is on.</li>
+     * </ul>
+     */
+    public static void setDepthReversed(boolean reversed) {
+        depthReversed = reversed;
+    }
+
+    public static boolean isDepthReversed() {
+        return depthReversed;
+    }
+
+    /** The same comparison made against a reversed depth buffer. */
+    static int mirroredDepthFunc(int func) {
+        switch (func) {
+            case GL_LESS:    return GL_GREATER;
+            case GL_LEQUAL:  return GL_GEQUAL;
+            case GL_GREATER: return GL_LESS;
+            case GL_GEQUAL:  return GL_LEQUAL;
+            default:         return func;
+        }
     }
 
     public static void glClearColor(float r, float g, float b, float a) {

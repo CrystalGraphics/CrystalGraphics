@@ -45,6 +45,14 @@ its desktop and HUD from there on those nodes.
   as Minecraft's `FrameBufferCache` attaches it (colour and depth, level 0), keyed on the two texture
   ids and deleted on teardown. The main target is `mc.getMainRenderTarget()` on 26.1 and
   `mc.gameRenderer.mainRenderTarget()` on 26.2.
+- **Reversed-Z on 26.2, on OpenGL too.** Minecraft 26.2 sets clip control to `ZERO_TO_ONE` once at
+  device init, swaps near and far in its projection, clears depth to 0 and tests `GREATER_THAN_OR_EQUAL`.
+  The world passes run with `CgGL.setDepthReversed(true)`, which mirrors every compare function and clear
+  value a caller writes (`LifecycleModern.worldDepth`), so no material changes. Our own drawing -- the
+  CrystalGUI desktop and shader-graph previews -- runs between `OwnDepthConvention.enter()` and `leave()`,
+  which put GL's default clip range and a clear depth of 1.0 back for its duration. `cg_DepthBuffer` holds
+  reversed values there, so a shader comparing against it is wrong on 26.2; polygon offset pulls the other
+  way. Every piece is a no-op below 26.2.
 - **Vulkan.** 26.2 can run Blaze3D on Vulkan. `LifecycleModern.glAvailable()` asks once whether a GL
   context is current (`glfwGetCurrentContext`) and, when none is, calls
   `CgGraphicsLifecycle.standDown(reason)`: CrystalGraphics logs once and does nothing for the rest of

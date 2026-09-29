@@ -158,6 +158,11 @@ public final class CgGlStateManager {
      */
     private boolean forcing;
 
+    /** Set while a scope restores: its values are what GL held, which {@link CgGL} must issue as they are. */
+    private boolean restoring;
+
+    boolean restoring() { return restoring; }
+
     private boolean issue(CgGlSlot slot) { unknownMask &= ~(1 << slot.ordinal()); callsIssued++; return true; }
 
     private boolean skip() { callsSkipped++; return false; }
@@ -644,17 +649,22 @@ public final class CgGlStateManager {
             // without it every restore would be deduplicated away against exactly the stale values that are
             // wrong, which is the silent-elision failure this scope exists to prevent.
             if (foreign) invalidateAll();
-            for (CgGlSlot slot : SLOTS) {
-                if ((mask & (1 << slot.ordinal())) == 0) continue;
-                // A stale domain must be re-established in full, not just up to its first field — see
-                // `forcing`. A trusted one takes the normal deduplicated path and usually emits nothing.
-                boolean force = stale(slot);
-                forcing = force;
-                try {
-                    reissue(slot, saved);
-                } finally {
-                    forcing = false;
+            restoring = true;
+            try {
+                for (CgGlSlot slot : SLOTS) {
+                    if ((mask & (1 << slot.ordinal())) == 0) continue;
+                    // A stale domain must be re-established in full, not just up to its first field — see
+                    // `forcing`. A trusted one takes the normal deduplicated path and usually emits nothing.
+                    boolean force = stale(slot);
+                    forcing = force;
+                    try {
+                        reissue(slot, saved);
+                    } finally {
+                        forcing = false;
+                    }
                 }
+            } finally {
+                restoring = false;
             }
             depth--;
         }
