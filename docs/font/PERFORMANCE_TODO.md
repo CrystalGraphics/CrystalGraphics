@@ -13,7 +13,7 @@ Benchmarks referenced throughout:
   frame. Modes: `STATIC`, `SAME_LENGTH`, `VARYING_LENGTH`.
 - **text-3d** — `gl-debug-harness --mode=text-3d`. CJK warmup, 3 fonts, ~2100 glyphs generated.
 
-> ⚠️ **The harness caps at `Display.sync(120)` = 8.33 ms/frame** (`InteractiveSceneRunner.TARGET_FPS`).
+> ⚠️ **The harness caps at `HarnessWindow.sync(120)` = 8.33 ms/frame** (`InteractiveSceneRunner.TARGET_FPS`).
 > Any measurement at or near 8.33 ms is the cap, not the cost. `STATIC` mode sits exactly there and
 > its frame number is meaningless — use its `drawMs` (3.87 ms) instead. `SAME_LENGTH` (13.92 ms) and
 > `VARYING_LENGTH` (14.46 ms) are above the cap and therefore real.
@@ -379,7 +379,7 @@ Every one of these produced a wrong conclusion at least once, and each cost a di
 4. **A scope total cannot distinguish a blocking call from preemption.** Identical aggregate,
    opposite fixes. `-Dcrystalgraphics.text.traceQuadLoop=true` times each iteration and reports the
    slowest; that is what exonerated `quadLoop`.
-5. **Frame time is capped by `Display.sync(120)`.** Since the resolve-path fixes, savings land in
+5. **Frame time is capped by `HarnessWindow.sync(120)`.** Since the resolve-path fixes, savings land in
    `frame.sync` (2.17 → 4.02 → 5.35 ms idle) and `frameDt` barely moves. Judge work by
    **`frameDt − sync`**, not by fps.
 6. **Run-to-run contention is real and large.** One `text-3d` run measured 30 fps and 23% of frames
