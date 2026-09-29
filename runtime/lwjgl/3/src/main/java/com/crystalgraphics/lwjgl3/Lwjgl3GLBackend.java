@@ -1,8 +1,6 @@
 package com.crystalgraphics.lwjgl3;
 
-import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.gl.CgGLBackend;
-import com.crystalgraphics.platform.gl.CgGLContext;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.opengl.*;
 import org.lwjgl.system.MemoryStack;
@@ -58,22 +56,6 @@ public class Lwjgl3GLBackend extends CgGLBackend {
     @Override
     public int getPriority() {
         return 50;
-    }
-
-    // -------------------------------------------------------------------------
-    // FBO helpers
-    // -------------------------------------------------------------------------
-
-    /** @return {@code true} if Core GL 3.0 FBO is supported */
-    private boolean coreGl30() {
-        CgGLContext p = CgPlatform.capabilities();
-        return p != null && p.OpenGL30();
-    }
-
-    /** @return {@code true} if ARB_framebuffer_object is supported */
-    private boolean arbFbo() {
-        CgGLContext p = CgPlatform.capabilities();
-        return p != null && p.GL_ARB_framebuffer_object();
     }
 
     // -------------------------------------------------------------------------
@@ -355,12 +337,7 @@ public class Lwjgl3GLBackend extends CgGLBackend {
 
     @Override
     public void glVertexAttribDivisor(int index, int divisor) {
-        // GL 3.3 core path; fall back to ARB_instanced_arrays on older hardware.
-        if (CgPlatform.capabilities().OpenGL33()) {
-            GL33C.glVertexAttribDivisor(index, divisor);
-        } else {
-            ARBInstancedArrays.glVertexAttribDivisorARB(index, divisor);
-        }
+        GL33C.glVertexAttribDivisor(index, divisor);
     }
 
     // -------------------------------------------------------------------------
@@ -687,17 +664,12 @@ public class Lwjgl3GLBackend extends CgGLBackend {
     }
 
     // -------------------------------------------------------------------------
-    // Samplers (GL 3.3 / ARB_sampler_objects waterfall)
+    // Samplers
     // -------------------------------------------------------------------------
 
     @Override
     public void glBindSampler(int unit, int sampler) {
-        // Use GL 3.3 core path if available; fall back to ARB_sampler_objects extension.
-        if (CgPlatform.capabilities().OpenGL33()) {
-            GL33C.glBindSampler(unit, sampler);
-        } else {
-            ARBSamplerObjects.glBindSampler(unit, sampler);
-        }
+        GL33C.glBindSampler(unit, sampler);
     }
 
     // -------------------------------------------------------------------------
@@ -717,6 +689,11 @@ public class Lwjgl3GLBackend extends CgGLBackend {
     @Override
     public void glFlushMappedBufferRange(int target, long offset, long length) {
         GL30C.glFlushMappedBufferRange(target, offset, length);
+    }
+
+    @Override
+    public void glBufferStorage(int target, long size, int flags) {
+        GL44C.glBufferStorage(target, size, flags);
     }
 
     // -------------------------------------------------------------------------
@@ -806,34 +783,6 @@ public class Lwjgl3GLBackend extends CgGLBackend {
     public void glFramebufferRenderbuffer(int target, int attachment,
                                           int renderbufferTarget, int renderbuffer) {
         GL30C.glFramebufferRenderbuffer(target, attachment, renderbufferTarget, renderbuffer);
-    }
-
-    // -------------------------------------------------------------------------
-    // Shaders — ARBShaderObjects unified-handle methods
-    //
-    // ARBShaderObjects used a single "object" concept for both shaders and programs.
-    // GL core split these into separate shader/program APIs, but the ARB extension classes
-    // still exist in LWJGL 3's org.lwjgl.opengl.ARBShaderObjects for backward-compat code paths.
-    // -------------------------------------------------------------------------
-
-    @Override
-    public void glDeleteObject(int handle) {
-        ARBShaderObjects.glDeleteObjectARB(handle);
-    }
-
-    @Override
-    public int glGetObjectParameteri(int obj, int pname) {
-        return ARBShaderObjects.glGetObjectParameteriARB(obj, pname);
-    }
-
-    @Override
-    public String glGetObjectInfoLog(int obj, int maxLength) {
-        return ARBShaderObjects.glGetInfoLogARB(obj, maxLength);
-    }
-
-    @Override
-    public int glGetHandle(int pname) {
-        return ARBShaderObjects.glGetHandleARB(pname);
     }
 
     // -------------------------------------------------------------------------

@@ -6,8 +6,8 @@ import com.crystalgraphics.util.CgBufferUtils;
 import java.nio.ByteBuffer;
 
 /**
- * Orphan-based streaming VBO using {@code glMapBufferRange} with
- * {@code GL_MAP_INVALIDATE_BUFFER_BIT}. This is Dolphin's Tier B strategy.
+ * Shader-buffer storage: every upload orphans, via {@code glMapBufferRange} with
+ * {@code GL_MAP_INVALIDATE_BUFFER_BIT}, and lands at offset 0.
  *
  * <p>On each {@link #map} call, the entire buffer is orphaned (driver allocates
  * new backing store). This avoids CPU-GPU sync stalls at the cost of one

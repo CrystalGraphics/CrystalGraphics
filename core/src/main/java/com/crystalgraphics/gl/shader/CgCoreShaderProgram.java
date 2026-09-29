@@ -40,7 +40,6 @@ import static com.crystalgraphics.gl.shader.CgShaderFactory.JOML_BUFFER;
  * called on the thread that owns the OpenGL context.</p>
  *
  * @see CgAbstractShaderProgram
- * @see CgArbShaderProgram
  */
 public class CgCoreShaderProgram extends CgAbstractShaderProgram {
 

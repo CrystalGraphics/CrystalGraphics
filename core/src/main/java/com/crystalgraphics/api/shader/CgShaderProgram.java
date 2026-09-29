@@ -2,7 +2,6 @@ package com.crystalgraphics.api.shader;
 
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
-import com.crystalgraphics.gl.shader.CgArbShaderProgram;
 import com.crystalgraphics.gl.shader.CgCoreShaderProgram;
 import org.joml.*;
 
@@ -341,8 +340,7 @@ public interface CgShaderProgram {
      * a subsequent successful {@code relink()} call can recover it.</p>
      *
      * <p>The default implementation throws {@link UnsupportedOperationException};
-     * only owned programs backed by {@code CgCoreShaderProgram} or
-     * {@code CgArbShaderProgram} support relinking.</p>
+     * only owned programs backed by {@code CgCoreShaderProgram} support relinking.</p>
      *
      * @param vertexSource   new GLSL vertex shader source
      * @param fragmentSource new GLSL fragment shader source
@@ -363,9 +361,7 @@ public interface CgShaderProgram {
      * {@code gl_*} uniforms are excluded.  Returns an empty list if
      * the program has no active uniforms or this default is not overridden.</p>
      *
-     * <p>Implementations in {@link CgCoreShaderProgram}
-     * and {@link CgArbShaderProgram} override
-     * this with a real GL query.  The default returns an empty list for
+     * <p>{@link CgCoreShaderProgram} overrides this with a real GL query.  The default returns an empty list for
      * wrapped / external programs.</p>
      *
      * @return an unmodifiable list of active uniforms; never {@code null}

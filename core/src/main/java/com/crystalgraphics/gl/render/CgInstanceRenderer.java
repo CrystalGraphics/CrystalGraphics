@@ -146,15 +146,6 @@ public final class CgInstanceRenderer extends CgAbstractRenderer {
 
     // ── Instancing draw helpers ───────────────────────────────────────────────
 
-    /**
-     * No-op retained for lifecycle compatibility — {@code CgGraphicsLifecycle} calls this.
-     * The dispatch is fully handled by {@link com.crystalgraphics.platform.gl.CgGLBackend}
-     * so no per-context cache is needed here.
-     */
-    public static void resetCoreCache() {
-        // intentionally empty — CgGLBackend owns dispatch routing
-    }
-
     public static void drawArraysInstanced(int mode, int first, int count, int instanceCount) {
         CgGL.glDrawArraysInstanced(mode, first, count, instanceCount);
     }

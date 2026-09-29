@@ -165,6 +165,7 @@ public final class RecordingGlBackend extends CgGLBackend {
     @Override public ByteBuffer glMapBufferRange(int target, long offset, long length, int access, ByteBuffer oldBuffer) { record("glMapBufferRange"); return null; }
     @Override public boolean glUnmapBuffer(int target) { record("glUnmapBuffer"); return false; }
     @Override public void glFlushMappedBufferRange(int target, long offset, long length) { record("glFlushMappedBufferRange"); }
+    @Override public void glBufferStorage(int target, long size, int flags) { record("glBufferStorage"); }
     @Override public long glFenceSync(int condition, int flags) { record("glFenceSync"); return 0L; }
     @Override public int glClientWaitSync(long sync, int flags, long timeout) { record("glClientWaitSync"); return 0; }
     @Override public void glDeleteSync(long sync) { record("glDeleteSync"); }
@@ -177,10 +178,6 @@ public final class RecordingGlBackend extends CgGLBackend {
     @Override public void glRenderbufferStorageMultisample(int target, int samples, int internalFormat, int width, int height) { record("glRenderbufferStorageMultisample"); }
     @Override public void glTexImage2DMultisample(int target, int samples, int internalFormat, int width, int height, boolean fixedSampleLocations) { record("glTexImage2DMultisample"); }
     @Override public void glFramebufferRenderbuffer(int target, int attachment, int renderbufferTarget, int renderbuffer) { record("glFramebufferRenderbuffer"); }
-    @Override public void glDeleteObject(int handle) { record("glDeleteObject"); }
-    @Override public int glGetObjectParameteri(int obj, int pname) { record("glGetObjectParameteri"); return 0; }
-    @Override public String glGetObjectInfoLog(int obj, int maxLength) { record("glGetObjectInfoLog"); return null; }
-    @Override public int glGetHandle(int pname) { record("glGetHandle"); return 0; }
     @Override public void glDetachShader(int program, int shader) { record("glDetachShader"); }
     @Override public void glGetAttachedShaders(int program, IntBuffer count, IntBuffer shaders) { record("glGetAttachedShaders"); }
     @Override public String glGetActiveUniform(int program, int index, int maxLength, IntBuffer sizeTypeBuf) { record("glGetActiveUniform"); return null; }

@@ -78,8 +78,8 @@ Replaces the LWJGL2-coupled `CgCapabilities.detect()` in `core/`. The probe is c
 `probe()` after context creation, then `core/` queries it through `CgPlatform.capabilities()`.
 
 Capability surface mirrors the existing `CgCapabilities` query surface:
-`isCoreFboSupported()`, `isArbFboSupported()`, `isExtFboSupported()`, `isVaoSupported()`,
-`isSSBOSupported()`, `isTBOSupported()`, `isOpenGL40()`, `isOpenGL43()`, `isARBSync()`.
+`OpenGL33()` (the floor — detection throws below it), `OpenGL40()`, `OpenGL43()`,
+`GL_ARB_shader_storage_buffer_object()`.
 
 ---
 

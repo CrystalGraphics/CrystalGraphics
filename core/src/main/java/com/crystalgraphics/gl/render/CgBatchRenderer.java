@@ -2,6 +2,7 @@ package com.crystalgraphics.gl.render;
 
 
 import com.crystalgraphics.api.vertex.CgVertexFormat;
+import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgQuadIndexBuffer;
 import com.crystalgraphics.gl.buffer.staging.CgStagingBuffer;
 import com.crystalgraphics.gl.buffer.staging.CgVertexWriter;
@@ -53,6 +54,8 @@ public final class CgBatchRenderer extends CgAbstractRenderer {
     private int uploadedDataOffset;
     /** Number of vertices uploaded (valid during replay). */
     private int uploadedVertexCount;
+    /** The frame the upload landed in: the stream reuses its bytes {@link CgFrameRing#FRAMES} frames later. */
+    private long uploadedFrame;
 
     public static CgBatchRenderer create(CgVertexFormat format, int initialMaxQuads) {
         CgStagingBuffer staging = new CgStagingBuffer(format.getFloatsPerVertex(), initialMaxQuads);
@@ -178,6 +181,7 @@ public final class CgBatchRenderer extends CgAbstractRenderer {
         ByteBuffer mapped = binding.getStreamBuffer().map(byteCount);
         mapped.asFloatBuffer().put(staging.rawData(), 0, uploadedFloatCount);
         uploadedDataOffset = binding.getStreamBuffer().commit(byteCount);
+        uploadedFrame = CgFrameRing.frame();
 
         // VAO must be bound BEFORE rebindPointers — glVertexAttribPointer
         // writes into the currently bound VAO state.
@@ -200,11 +204,15 @@ public final class CgBatchRenderer extends CgAbstractRenderer {
      *
      * @param vtxStart first vertex index in the uploaded data
      * @param vtxCount number of vertices to draw (must be a multiple of 4)
-     * @throws IllegalStateException if not in replay mode
+     * @throws IllegalStateException if not in replay mode, or in a later frame than the upload
      * @throws IllegalArgumentException if range is invalid or not quad-aligned
      */
     public void drawUploadedRange(int vtxStart, int vtxCount) {
         if (!uploadedForReplay) throw new IllegalStateException("Call uploadPendingVertices() before drawUploadedRange()");
+        if (uploadedFrame != CgFrameRing.frame()) {
+            throw new IllegalStateException("Vertices uploaded in frame " + uploadedFrame + " drawn in frame "
+                    + CgFrameRing.frame() + ": an upload is only valid in the frame that made it");
+        }
         if (vtxCount <= 0) return;
         if (vtxStart < 0 || vtxStart + vtxCount > uploadedVertexCount) {
             throw new IllegalArgumentException("Vertex range [" + vtxStart + ", " + (vtxStart + vtxCount)

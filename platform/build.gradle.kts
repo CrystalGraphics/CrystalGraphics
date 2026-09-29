@@ -1,5 +1,6 @@
 import cgbuildlogic.abstractModule
 import cgbuildlogic.publishedModule
+import java.io.File as JFile
 
 plugins { `java-library` }
 
@@ -49,6 +50,22 @@ dependencies {
 
 tasks.withType<JavaCompile> {
     options.encoding = "UTF-8"
+}
+
+// The same import guard as :core's: this SPI is what every host implements, so it names no host.
+tasks.named<JavaCompile>("compileJava") {
+    val srcRoot: String = layout.projectDirectory.dir("src/main/java").asFile.absolutePath
+    doLast {
+        val banned = listOf("net.minecraft", "cpw.mods.fml", "net.minecraftforge", "org.lwjgl")
+        val violations = JFile(srcRoot).walkTopDown()
+            .filter { it.isFile && it.extension == "java" }
+            .filter { f -> f.readLines().any { line -> line.trimStart().let { t -> t.startsWith("import ") && banned.any { t.contains(it) } } } }
+            .toList()
+        if (violations.isNotEmpty()) {
+            error("MC/Forge/LWJGL imports found in platform/ (this layer is loader-blind): " +
+                violations.joinToString(", ") { it.relativeTo(JFile(srcRoot)).toString() })
+        }
+    }
 }
 
 tasks.jar {

@@ -3,6 +3,11 @@ package com.crystalgraphics.platform.gl.state;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.CgGlStateManager;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.util.Arrays;
+import java.util.Objects;
+
 /**
  * Flat, mutable record of the GL state CrystalGraphics tracks.
  *
@@ -81,15 +86,6 @@ public final class CgGlStateShadow {
     public int programId;
     public int drawFbo, readFbo;
 
-    /**
-     * Which API bound the current framebuffer.
-     *
-     * <p>Part of the value, not incidental: an {@code EXT_framebuffer_object} name is not valid in a Core
-     * call, so releasing across families must go through the family that owns the name. Derived from the
-     * bind target rather than passed in — see {@code CgGlStateManager.fboBound}.</p>
-     */
-    public FboFamily fboFamily = FboFamily.UNKNOWN;
-
     public int activeTextureUnit;
     public final int[] boundTexture2D = new int[MAX_TEXTURE_UNITS];
 
@@ -120,22 +116,6 @@ public final class CgGlStateShadow {
      * <em>not</em> captured by a VAO.</p>
      */
     public int elementArrayBuffer;
-
-    /**
-     * Which framebuffer API owns the current binding.
-     *
-     * <p>Only three cases matter. {@code ARB_framebuffer_object} was specified to match GL 3.0 core
-     * semantics and <strong>shares its object namespace</strong>, so Core and ARB need no distinction —
-     * only the older, incompatible {@code EXT_framebuffer_object} does.</p>
-     */
-    public enum FboFamily {
-        /** Core GL 3.0 or {@code ARB_framebuffer_object} — one namespace, interchangeable. */
-        CORE_OR_ARB,
-        /** {@code EXT_framebuffer_object} — a separate namespace with no draw/read split. */
-        EXT,
-        /** Nothing has been bound through this manager yet. */
-        UNKNOWN
-    }
 
     /** Copies every field. Deliberately whole-struct; scopes restore only the domains they named. */
     public void copyFrom(CgGlStateShadow o) {
@@ -173,12 +153,46 @@ public final class CgGlStateShadow {
         lineWidth = o.lineWidth; pointSize = o.pointSize;
 
         programId = o.programId;
-        drawFbo = o.drawFbo; readFbo = o.readFbo; fboFamily = o.fboFamily;
+        drawFbo = o.drawFbo; readFbo = o.readFbo;
 
         activeTextureUnit = o.activeTextureUnit;
         System.arraycopy(o.boundTexture2D, 0, boundTexture2D, 0, MAX_TEXTURE_UNITS);
 
         vertexArray = o.vertexArray; arrayBuffer = o.arrayBuffer;
         elementArrayBuffer = o.elementArrayBuffer;
+    }
+
+    /**
+     * The fields where {@code actual} differs from this one, as {@code name tracked=… actual=…}, or
+     * {@code null} when they agree. For {@code -Dcrystalgraphics.state.verify}, so it may be slow.
+     *
+     * <pre>{@code
+     * String diff = tracked.differences(readFromDriver);   // "depthMask tracked=true actual=false"
+     * }</pre>
+     *
+     * <p>An {@link #UNKNOWN_BINDING} element buffer is not a disagreement: the shadow never claimed a name.</p>
+     */
+    public String differences(CgGlStateShadow actual) {
+        StringBuilder out = null;
+        for (Field f : CgGlStateShadow.class.getFields()) {
+            if (Modifier.isStatic(f.getModifiers())) continue;
+            try {
+                Object mine = f.get(this), theirs = f.get(actual);
+                boolean same = mine instanceof int[]
+                        ? Arrays.equals((int[]) mine, (int[]) theirs)
+                        : Objects.equals(mine, theirs);
+                if (same) continue;
+                if (f.getName().equals("elementArrayBuffer") && elementArrayBuffer == UNKNOWN_BINDING) continue;
+                out = out == null ? new StringBuilder() : out.append(", ");
+                out.append(f.getName()).append(" tracked=").append(show(mine)).append(" actual=").append(show(theirs));
+            } catch (IllegalAccessException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+        return out == null ? null : out.toString();
+    }
+
+    private static String show(Object v) {
+        return v instanceof int[] ? Arrays.toString((int[]) v) : String.valueOf(v);
     }
 }

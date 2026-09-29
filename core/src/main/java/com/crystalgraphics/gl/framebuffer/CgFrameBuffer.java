@@ -24,9 +24,8 @@ import static com.crystalgraphics.platform.gl.state.CgGlSlot.FBO;
  * <p>Every {@code CgFrameBuffer} has a {@link #name} (first argument to all
  * factory methods), a {@link CgFrameBufferFormat} descriptor, and a
  * {@link TreeMap} of {@link Attachment} objects sparse-keyed by color slot
- * index.  Backends ({@link CgCoreFrameBuffer}, {@link CgArbFrameBuffer},
- * {@link CgExtFrameBuffer}) extend this class and supply backend-specific GL
- * dispatch via a set of protected abstract methods.</p>
+ * index.  {@link CgCoreFrameBuffer} is the owned implementation and supplies the GL dispatch
+ * through a set of protected abstract methods; a wrapped framebuffer is the other.</p>
  *
  * <h3>Factories</h3>
  * <ul>
@@ -189,8 +188,7 @@ public abstract class CgFrameBuffer {
     }
 
     /**
-     * Allocates a new owned framebuffer using the best available GL backend
-     * (Core GL30 → ARB_framebuffer_object → EXT_framebuffer_object).
+     * Allocates a new owned framebuffer.
      * Called only by {@link CgFrameBufferRegistry}; external callers use {@link #create}.
      *
      * <p>Texture vs renderbuffer per slot is determined by the format's per-slot
@@ -210,8 +208,7 @@ public abstract class CgFrameBuffer {
      * @return a new owned {@code CgFrameBuffer}
      * @throws IllegalArgumentException      if dimensions are not positive
      * @throws IllegalStateException         if the FBO is not complete
-     * @throws UnsupportedOperationException if the hardware cannot satisfy the format
-     *                                       requirements (e.g. MRT on EXT-only)
+     * @throws UnsupportedOperationException if the format asks for more colour slots than the GPU has
      */
     static CgFrameBuffer createInternal(String name, int width, int height, CgFrameBufferFormat format) {
         if (width <= 0 || height <= 0) 
@@ -227,18 +224,7 @@ public abstract class CgFrameBuffer {
                 throw new UnsupportedOperationException("CgFrameBuffer '" + name + "': color slot " + slot + " exceeds GPU max draw buffers (" + maxSlots + ")");
             
 
-        // Select backend
-        CgCapabilities caps = CgCapabilities.detect();
-        CgFrameBuffer fbo;
-        if (caps.isCoreFbo())     fbo = new CgCoreFrameBuffer(name, format, width, height);
-        else if (caps.isArbFbo()) fbo = new CgArbFrameBuffer(name, format, width, height);
-        else if (caps.isExtFbo()) {
-            if (format.colorSlotCount() > 1) 
-                throw new UnsupportedOperationException("EXT_framebuffer_object does not support MRT. " + "Use Core GL30 or ARB_framebuffer_object.");
-            fbo = new CgExtFrameBuffer(name, format, width, height);
-        } else 
-            throw new UnsupportedOperationException("No framebuffer object extension available. " + "CrystalGraphics requires at least EXT_framebuffer_object.");
-
+        CgFrameBuffer fbo = new CgCoreFrameBuffer(name, format, width, height);
         fbo.initGl(width, height, format);
         return fbo;
     }
@@ -417,7 +403,6 @@ public abstract class CgFrameBuffer {
 
     /**
      * Binds this FBO as the draw framebuffer only ({@code GL_DRAW_FRAMEBUFFER}).
-     * EXT backends override this to use {@code GL_FRAMEBUFFER_EXT}.
      */
     public void bindDraw() {
         CgGL.glBindFramebuffer(CgGL.GL_DRAW_FRAMEBUFFER, fboId);
@@ -425,7 +410,6 @@ public abstract class CgFrameBuffer {
 
     /**
      * Binds this FBO as the read framebuffer only ({@code GL_READ_FRAMEBUFFER}).
-     * EXT backends override this to use {@code GL_FRAMEBUFFER_EXT}.
      */
     public void bindRead() {
         CgGL.glBindFramebuffer(CgGL.GL_READ_FRAMEBUFFER, fboId);
@@ -446,8 +430,7 @@ public abstract class CgFrameBuffer {
     public CgFrameBufferFormat getFormat() { return format; }
 
     /**
-     * Returns {@code true} if this FBO supports multiple render targets (MRT).
-     * EXT FBOs always return {@code false}.
+     * Returns {@code true} if this FBO has more than one colour slot.
      */
     public boolean supportsMrt() {
         return format != null && format.colorSlotCount() > 1;
@@ -457,9 +440,7 @@ public abstract class CgFrameBuffer {
      * Sets the active draw color buffers by slot index.
      * Each element is a color slot index (0, 1, 2, …); internally converted to
      * {@code GL_COLOR_ATTACHMENT0 + n}.
-     *
-     * <p>EXT backends override this to always throw
-     * {@link UnsupportedOperationException}.</p>
+
      *
      * @param slotIds color slot indices to activate as draw buffers
      * @throws IllegalArgumentException if {@code slotIds} is empty
@@ -800,10 +781,8 @@ public abstract class CgFrameBuffer {
     /**
      * Multisampled renderbuffer storage.
      *
-     * <p>Concrete rather than abstract, unlike its single-sampled twin: every backend that has
-     * multisampling at all reaches it through the same {@code GL_RENDERBUFFER} target, and the one that
-     * does not ({@link CgExtFrameBuffer}) overrides this to fall back. Making it abstract would force
-     * three identical overrides to say the same thing.</p>
+     * <p>Concrete rather than abstract, unlike its single-sampled twin: there is one spelling of it,
+     * through the same {@code GL_RENDERBUFFER} target.</p>
      */
     protected void doRenderbufferStorageMultisample(int samples, int internalFormat, int w, int h) {
         CgGL.glRenderbufferStorageMultisample(CgGL.GL_RENDERBUFFER, samples, internalFormat, w, h);

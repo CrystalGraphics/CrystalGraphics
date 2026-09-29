@@ -41,7 +41,6 @@ public final class CgGL {
      */
     public static boolean CORE;
 
-
     // ── State tracking ────────────────────────────────────────────────────────
     //
     // Each state setter below asks the manager whether the value actually changed, and skips the driver
@@ -263,7 +262,9 @@ public final class CgGL {
 		GL_MAP_INVALIDATE_RANGE_BIT = 0x4,
 		GL_MAP_INVALIDATE_BUFFER_BIT = 0x8,
 		GL_MAP_FLUSH_EXPLICIT_BIT = 0x10,
-		GL_MAP_UNSYNCHRONIZED_BIT = 0x20;
+		GL_MAP_UNSYNCHRONIZED_BIT = 0x20,
+		GL_MAP_PERSISTENT_BIT = 0x40,
+		GL_MAP_COHERENT_BIT = 0x80;
 
     // --- Buffer binding query params -----------------------------------------
     public static final int GL_UNIFORM_BUFFER_BINDING        = 0x8A28;
@@ -439,30 +440,8 @@ public final class CgGL {
     // --- VAO / instancing ----------------------------------------------------
     public static final int GL_VERTEX_ATTRIB_ARRAY_DIVISOR = 0x88FE;
 
-    // --- ARB constants that appear in core/ code -----------------------------
-    public static final int GL_OBJECT_COMPILE_STATUS_ARB           = 0x8B81;
-    public static final int GL_OBJECT_LINK_STATUS_ARB              = 0x8B82;
-    public static final int GL_OBJECT_INFO_LOG_LENGTH_ARB          = 0x8B84;
-    public static final int GL_OBJECT_ACTIVE_UNIFORMS_ARB          = 0x8B86;
-    public static final int GL_OBJECT_ACTIVE_UNIFORM_MAX_LENGTH_ARB = 0x8B87;
-    public static final int GL_PROGRAM_OBJECT_ARB                  = 0x8B40;
-    public static final int GL_FRAMEBUFFER_EXT            = 0x8D40;
-    public static final int GL_COLOR_ATTACHMENT0_EXT      = 0x8CE0;
-    public static final int GL_DEPTH_ATTACHMENT_EXT       = 0x8D00;
-    public static final int GL_STENCIL_ATTACHMENT_EXT     = 0x8D20;
-    public static final int GL_FRAMEBUFFER_COMPLETE_EXT   = 0x8CD5;
-    public static final int GL_RENDERBUFFER_EXT           = 0x8D41;
-
-    // --- ARB shader type aliases (same token values as core GL_VERTEX_SHADER / GL_FRAGMENT_SHADER) --
-    public static final int GL_VERTEX_SHADER_ARB   = 0x8B31;
-    public static final int GL_FRAGMENT_SHADER_ARB = 0x8B30;
-
-    // --- Multitexture (ARB legacy) -------------------------------------------
-    public static final int GL_TEXTURE0_ARB = 0x84C0;
-
     // --- Multitexture / active texture queries --------------------------------
     public static final int GL_ACTIVE_TEXTURE       = 0x84E0;
-    public static final int GL_ACTIVE_TEXTURE_ARB   = 0x84E0;
 
     // --- Texture binding query -----------------------------------------------
     public static final int GL_TEXTURE_BINDING_2D   = 0x8069;
@@ -472,10 +451,9 @@ public final class CgGL {
     public static final int GL_ARRAY_BUFFER_BINDING          = 0x8894;
     public static final int GL_ELEMENT_ARRAY_BUFFER_BINDING  = 0x8895;
 
-    // --- FBO binding queries (separate draw/read + EXT alias) ----------------
+    // --- FBO binding queries ------------------------------------------------
     public static final int GL_DRAW_FRAMEBUFFER_BINDING = 0x8CA6;
     public static final int GL_READ_FRAMEBUFFER_BINDING = 0x8CAA;
-    public static final int GL_FRAMEBUFFER_BINDING_EXT  = 0x8CA6;
 
     // --- Blend state queries -------------------------------------------------
     public static final int GL_BLEND_DST_RGB        = 0x80C8;
@@ -678,26 +656,6 @@ public final class CgGL {
     public static void glDeleteProgram(int program) {
         backend.glDeleteProgram(program);
         state().programDeleted(program);
-    }
-
-    /** ARBShaderObjects unified path: delete a shader or program handle without knowing which type. */
-    public static void glDeleteObject(int handle) {
-        backend.glDeleteObject(handle);
-    }
-
-    /** ARBShaderObjects unified path: query a compile/link parameter on any object handle. */
-    public static int glGetObjectParameteri(int obj, int pname) {
-        return backend.glGetObjectParameteri(obj, pname);
-    }
-
-    /** ARBShaderObjects unified path: get info log for any object handle (shader or program). */
-    public static String glGetObjectInfoLog(int obj, int maxLength) {
-        return backend.glGetObjectInfoLog(obj, maxLength);
-    }
-
-    /** ARBShaderObjects: get the currently bound object handle for the given target (e.g. {@link #GL_PROGRAM_OBJECT_ARB}). */
-    public static int glGetHandle(int pname) {
-        return backend.glGetHandle(pname);
     }
 
     public static int glGetUniformLocation(int program, CharSequence name) {
@@ -1186,7 +1144,23 @@ public final class CgGL {
     public static void glFlushMappedBufferRange(int target, long offset, long length) {
         backend.glFlushMappedBufferRange(target, offset, length);
     }
-    
+
+    /**
+     * Immutable storage for the bound buffer (GL 4.4 / {@code ARB_buffer_storage}) — what a persistently
+     * mapped stream is built on. Gate on {@code CgCapabilities.isBufferStorageSupported()}.
+     *
+     * <pre>{@code
+     * CgGL.glBufferStorage(GL_ARRAY_BUFFER, bytes, GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT);
+     * ByteBuffer mapped = CgGL.glMapBufferRange(GL_ARRAY_BUFFER, 0, bytes,
+     *         GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT, null);   // kept for the buffer's life
+     * }</pre>
+     *
+     * <p>Immutable means {@code glBufferData} on it afterwards is an error: growing takes a new buffer.</p>
+     */
+    public static void glBufferStorage(int target, long size, int flags) {
+        backend.glBufferStorage(target, size, flags);
+    }
+
     // =========================================================================
     // Sync objects (ARBSync / GL 3.2)
     // =========================================================================
@@ -1259,11 +1233,9 @@ public final class CgGL {
             throw new AssertionError("[GlErrorChecker] GL error(s) after " + context + ": " + errors);
     }
 
-
     // --- Timer queries (GPU timing) ------------------------------------------
     // See CgGLBackend for why these are optional and why results must be polled
     // on a later frame rather than read immediately.
-
 
     public static int glGenQuery() {
         return backend.glGenQuery();
