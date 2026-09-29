@@ -51,6 +51,7 @@ public final class CgRecordingDevice implements CgDevice {
     private int nextId = 1;
     private int live;
     private int draws;
+    private boolean logging = true;
     private Pass open;
     private Texture surfaceColor, surfaceDepth;
 
@@ -78,6 +79,21 @@ public final class CgRecordingDevice implements CgDevice {
     public List<CgPassDesc> passes() { return Collections.unmodifiableList(passes); }
 
     public int draws() { return draws; }
+
+    /**
+     * Stops keeping the log and the pass list, for a long run: every command is still validated. A harness
+     * scene on the tracked backend makes thousands a frame.
+     */
+    public CgRecordingDevice withoutLog() {
+        logging = false;
+        log.clear();
+        passes.clear();
+        return this;
+    }
+
+    private void record(String line) {
+        if (logging) log.add(line);
+    }
 
     /** Objects created and not yet destroyed. */
     public int liveObjects() { return live; }
@@ -111,7 +127,7 @@ public final class CgRecordingDevice implements CgDevice {
     @Override
     public CgGpuBuffer createBuffer(CgGpuBuffer.Desc desc) {
         Buffer b = new Buffer(desc);
-        log.add("createBuffer #" + b.id + " " + desc.label() + " " + desc.size() + (desc.hostVisible() ? " host" : ""));
+        record("createBuffer #" + b.id + " " + desc.label() + " " + desc.size() + (desc.hostVisible() ? " host" : ""));
         return b;
     }
 
@@ -120,7 +136,7 @@ public final class CgRecordingDevice implements CgDevice {
         if (desc.width() < 1 || desc.height() < 1 || desc.depthOrLayers() < 1 || desc.mips() < 1)
             throw new IllegalArgumentException("Empty texture " + desc);
         Texture t = new Texture(desc);
-        log.add("createTexture #" + t.id + " " + desc.label() + " " + desc.kind() + " " + desc.format() + " "
+        record("createTexture #" + t.id + " " + desc.label() + " " + desc.kind() + " " + desc.format() + " "
                 + desc.width() + "x" + desc.height() + "x" + desc.depthOrLayers() + " mips=" + desc.mips()
                 + (desc.samples() > 1 ? " samples=" + desc.samples() : ""));
         return t;
@@ -129,7 +145,7 @@ public final class CgRecordingDevice implements CgDevice {
     @Override
     public CgGpuSampler createSampler(CgGpuSampler.Desc desc) {
         Sampler s = new Sampler(desc);
-        log.add("createSampler #" + s.id);
+        record("createSampler #" + s.id);
         return s;
     }
 
@@ -139,14 +155,14 @@ public final class CgRecordingDevice implements CgDevice {
                 || spirv.duplicate().order(ByteOrder.LITTLE_ENDIAN).getInt(spirv.position()) != SPIRV_MAGIC)
             throw new IllegalArgumentException(label + ": not SPIR-V");
         Module m = new Module(stage, label);
-        log.add("createShaderModule #" + m.id + " " + label + " " + stage);
+        record("createShaderModule #" + m.id + " " + label + " " + stage);
         return m;
     }
 
     @Override
     public CgBindingLayout createBindingLayout(String label, List<CgBindingLayout.Slot> slots) {
         Layout l = new Layout(label, new ArrayList<>(slots));
-        log.add("createBindingLayout #" + l.id + " " + label + " " + slots.size());
+        record("createBindingLayout #" + l.id + " " + label + " " + slots.size());
         return l;
     }
 
@@ -154,14 +170,14 @@ public final class CgRecordingDevice implements CgDevice {
     public CgPipeline createPipeline(CgPipelineDesc desc) {
         use(desc.layout(), desc.vertex(), desc.fragment());
         Pipeline p = new Pipeline(desc);
-        log.add("createPipeline #" + p.id + " " + desc.label());
+        record("createPipeline #" + p.id + " " + desc.label());
         return p;
     }
 
     @Override
     public CgTimerQuery createTimerQuery(String label) {
         Timer t = new Timer(label);
-        log.add("createTimerQuery #" + t.id);
+        record("createTimerQuery #" + t.id);
         return t;
     }
 
@@ -170,11 +186,11 @@ public final class CgRecordingDevice implements CgDevice {
         Obj o = (Obj) object;
         if (o.released) throw new IllegalStateException("#" + o.id + " " + o.label + " released twice");
         o.released = true;
-        log.add("release #" + o.id);
+        record("release #" + o.id);
         whenRetired(frame, () -> {
             o.destroyed = true;
             live--;
-            log.add("destroy #" + o.id);
+            record("destroy #" + o.id);
         });
     }
 
@@ -197,7 +213,7 @@ public final class CgRecordingDevice implements CgDevice {
     @Override
     public void endFrame() {
         if (open != null) throw new IllegalStateException("endFrame with pass '" + open.desc.label() + "' open");
-        log.add("endFrame " + frame);
+        record("endFrame " + frame);
         frame++;
         retireThrough(frame - 1 - framesInFlight);
     }
@@ -214,7 +230,7 @@ public final class CgRecordingDevice implements CgDevice {
     private void retireThrough(long f) {
         while (retired < f) {
             retired++;
-            log.add("retire " + retired);
+            record("retire " + retired);
             List<Runnable> due = retirements.remove(retired);
             if (due != null) due.forEach(Runnable::run);
         }
@@ -254,8 +270,8 @@ public final class CgRecordingDevice implements CgDevice {
                 s.append(" depth=").append(ref(desc.depth().view().texture())).append(':')
                         .append(desc.depth().depthLoad()).append('/').append(desc.depth().stencilLoad());
             }
-            passes.add(desc);
-            log.add(s.toString());
+            if (logging) passes.add(desc);
+            record(s.toString());
             return open = new Pass(desc);
         }
 
@@ -267,7 +283,7 @@ public final class CgRecordingDevice implements CgDevice {
             ByteBuffer to = ((Buffer) dst).memory.duplicate();
             to.position((int) dstOffset);
             to.put(data.duplicate());
-            log.add("writeBuffer " + ref(dst) + "+" + dstOffset + " " + n);
+            record("writeBuffer " + ref(dst) + "+" + dstOffset + " " + n);
         }
 
         @Override
@@ -280,7 +296,7 @@ public final class CgRecordingDevice implements CgDevice {
             ByteBuffer to = ((Buffer) dst).memory.duplicate();
             to.position((int) dstOffset);
             to.put(from);
-            log.add("copyBuffer " + ref(src) + "+" + srcOffset + " " + ref(dst) + "+" + dstOffset + " " + size);
+            record("copyBuffer " + ref(src) + "+" + srcOffset + " " + ref(dst) + "+" + dstOffset + " " + size);
         }
 
         @Override
@@ -290,14 +306,14 @@ public final class CgRecordingDevice implements CgDevice {
             long need = r.texels() * dst.desc().format().bytes();
             if (data.remaining() < need)
                 throw new IllegalArgumentException("writeTexture needs " + need + " bytes, got " + data.remaining());
-            log.add("writeTexture " + ref(dst) + " " + region(r));
+            record("writeTexture " + ref(dst) + " " + region(r));
         }
 
         @Override
         public void copyTexture(CgGpuTexture src, CgTextureRegion sr, CgGpuTexture dst, CgTextureRegion dr) {
             outsidePass("copyTexture");
             use(src, dst);
-            log.add("copyTexture " + ref(src) + " " + region(sr) + " " + ref(dst) + " " + region(dr));
+            record("copyTexture " + ref(src) + " " + region(sr) + " " + ref(dst) + " " + region(dr));
         }
 
         @Override
@@ -305,7 +321,7 @@ public final class CgRecordingDevice implements CgDevice {
                          CgTextureView dst, int dx0, int dy0, int dx1, int dy1, CgGpuSampler.Filter filter) {
             outsidePass("blit");
             use(src.texture(), dst.texture());
-            log.add("blit " + ref(src.texture()) + " " + sx0 + "," + sy0 + "," + sx1 + "," + sy1 + " "
+            record("blit " + ref(src.texture()) + " " + sx0 + "," + sy0 + "," + sx1 + "," + sy1 + " "
                     + ref(dst.texture()) + " " + dx0 + "," + dy0 + "," + dx1 + "," + dy1 + " " + filter);
         }
 
@@ -313,14 +329,14 @@ public final class CgRecordingDevice implements CgDevice {
         public void resolve(CgTextureView src, CgTextureView dst) {
             outsidePass("resolve");
             use(src.texture(), dst.texture());
-            log.add("resolve " + ref(src.texture()) + " " + ref(dst.texture()));
+            record("resolve " + ref(src.texture()) + " " + ref(dst.texture()));
         }
 
         @Override
         public void generateMipmaps(CgGpuTexture texture) {
             outsidePass("generateMipmaps");
             use(texture);
-            log.add("generateMipmaps " + ref(texture));
+            record("generateMipmaps " + ref(texture));
         }
 
         @Override
@@ -329,27 +345,27 @@ public final class CgRecordingDevice implements CgDevice {
             use(src);
             ByteBuffer o = out.duplicate();
             while (o.hasRemaining()) o.put((byte) 0);
-            log.add("readTexture " + ref(src) + " " + region(r));
+            record("readTexture " + ref(src) + " " + region(r));
         }
 
         @Override
         public void copyTextureToBuffer(CgGpuTexture src, CgTextureRegion r, CgGpuBuffer dst, long dstOffset) {
             outsidePass("copyTextureToBuffer");
             use(src, dst);
-            log.add("copyTextureToBuffer " + ref(src) + " " + region(r) + " " + ref(dst) + "+" + dstOffset);
+            record("copyTextureToBuffer " + ref(src) + " " + region(r) + " " + ref(dst) + "+" + dstOffset);
         }
 
         @Override
         public void beginTimer(CgTimerQuery query) {
             use(query);
-            log.add("beginTimer " + ref(query));
+            record("beginTimer " + ref(query));
         }
 
         @Override
         public void endTimer(CgTimerQuery query) {
             use(query);
             ((Timer) query).frame = frame;
-            log.add("endTimer " + ref(query));
+            record("endTimer " + ref(query));
         }
 
         private String region(CgTextureRegion r) {
@@ -391,7 +407,7 @@ public final class CgRecordingDevice implements CgDevice {
             if (d.samples() != desc.samples())
                 throw new IllegalStateException(d.label() + " has " + d.samples() + " samples, the pass " + desc.samples());
             pipeline = (Pipeline) p;
-            log.add("setPipeline " + ref(p));
+            record("setPipeline " + ref(p));
         }
 
         @Override
@@ -419,7 +435,7 @@ public final class CgRecordingDevice implements CgDevice {
                     }
                 }
             }
-            log.add(s.toString());
+            record(s.toString());
         }
 
         @Override
@@ -427,7 +443,7 @@ public final class CgRecordingDevice implements CgDevice {
             live();
             use(buffer);
             vertexBuffers.put(binding, (Buffer) buffer);
-            log.add("setVertexBuffer " + binding + " " + ref(buffer) + "+" + offset);
+            record("setVertexBuffer " + binding + " " + ref(buffer) + "+" + offset);
         }
 
         @Override
@@ -435,31 +451,31 @@ public final class CgRecordingDevice implements CgDevice {
             live();
             use(buffer);
             indexBuffer = (Buffer) buffer;
-            log.add("setIndexBuffer " + ref(buffer) + "+" + offset + (wide ? " u32" : " u16"));
+            record("setIndexBuffer " + ref(buffer) + "+" + offset + (wide ? " u32" : " u16"));
         }
 
         @Override
         public void setViewport(float x, float y, float width, float height, float minDepth, float maxDepth) {
             live();
-            log.add("setViewport " + (int) x + "," + (int) y + " " + (int) width + "x" + (int) height);
+            record("setViewport " + (int) x + "," + (int) y + " " + (int) width + "x" + (int) height);
         }
 
         @Override
         public void setScissor(int x, int y, int width, int height) {
             live();
-            log.add("setScissor " + x + "," + y + " " + width + "x" + height);
+            record("setScissor " + x + "," + y + " " + width + "x" + height);
         }
 
         @Override
         public void setDepthBias(float constant, float slope) {
             live();
-            log.add("setDepthBias " + constant + " " + slope);
+            record("setDepthBias " + constant + " " + slope);
         }
 
         @Override
         public void setStencilReference(int reference) {
             live();
-            log.add("setStencilReference " + reference);
+            record("setStencilReference " + reference);
         }
 
         @Override
@@ -467,7 +483,7 @@ public final class CgRecordingDevice implements CgDevice {
             live();
             if (attachment >= desc.colors().size())
                 throw new IllegalStateException("No colour attachment " + attachment + " in '" + desc.label() + "'");
-            log.add("clearColor " + attachment + " " + x + "," + y + " " + width + "x" + height);
+            record("clearColor " + attachment + " " + x + "," + y + " " + width + "x" + height);
         }
 
         @Override
@@ -475,7 +491,7 @@ public final class CgRecordingDevice implements CgDevice {
                                       int x, int y, int width, int height) {
             live();
             if (desc.depth() == null) throw new IllegalStateException("No depth attachment in '" + desc.label() + "'");
-            log.add("clearDepthStencil" + (depth ? " depth" : "") + (stencil ? " stencil" : "") + " "
+            record("clearDepthStencil" + (depth ? " depth" : "") + (stencil ? " stencil" : "") + " "
                     + x + "," + y + " " + width + "x" + height);
         }
 
@@ -483,7 +499,7 @@ public final class CgRecordingDevice implements CgDevice {
         public void draw(int vertexCount, int instanceCount, int firstVertex, int firstInstance) {
             drawable();
             draws++;
-            log.add("draw " + vertexCount + " " + instanceCount + " " + firstVertex + " " + firstInstance);
+            record("draw " + vertexCount + " " + instanceCount + " " + firstVertex + " " + firstInstance);
         }
 
         @Override
@@ -492,7 +508,7 @@ public final class CgRecordingDevice implements CgDevice {
             if (indexBuffer == null) throw new IllegalStateException("drawIndexed with no index buffer");
             use(indexBuffer);
             draws++;
-            log.add("drawIndexed " + indexCount + " " + instanceCount + " " + firstIndex + " " + baseVertex + " " + firstInstance);
+            record("drawIndexed " + indexCount + " " + instanceCount + " " + firstIndex + " " + baseVertex + " " + firstInstance);
         }
 
         private void drawable() {
@@ -518,7 +534,7 @@ public final class CgRecordingDevice implements CgDevice {
             live();
             ended = true;
             open = null;
-            log.add("endPass");
+            record("endPass");
         }
     }
 
