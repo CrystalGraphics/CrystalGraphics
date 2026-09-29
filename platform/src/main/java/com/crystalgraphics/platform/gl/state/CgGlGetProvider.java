@@ -17,8 +17,8 @@ import java.nio.IntBuffer;
  * answer a {@code glGet}, so making this the base class means totality is structural rather than something
  * each provider has to remember.</p>
  *
- * <p>Platform providers override only the domains their host state manager can answer for free — Angelica's
- * mirror answers every one, Blaze3D's about half — and inherit the rest from here. Cost therefore degrades
+ * <p>A platform provider overrides only the domains its host state manager answers for free — Angelica's
+ * mirror, the one installed today, answers most — and inherits the rest from here. Cost therefore degrades
  * smoothly instead of being all-or-nothing.</p>
  *
  * <p>The critical difference from the capture code this replaces is <em>frequency</em>, not mechanism:
@@ -46,8 +46,8 @@ public class CgGlGetProvider implements CgGlStateProvider {
             case SCISSOR:        readScissor(t);       break;
             case POLYGON_OFFSET: readPolygonOffset(t); break;
             case POLYGON_MODE:   readPolygonMode(t);   break;
-            case LINE_WIDTH:     t.lineWidth = CgGL.glGetFloat(CgGL.GL_LINE_WIDTH); break;
-            case POINT_SIZE:     t.pointSize = CgGL.glGetFloat(CgGL.GL_POINT_SIZE); break;
+            case LINE_WIDTH:     t.lineWidth = real(CgGL.GL_LINE_WIDTH); break;
+            case POINT_SIZE:     t.pointSize = real(CgGL.GL_POINT_SIZE); break;
             case PROGRAM:        readProgram(t);       break;
             case FBO:            readFbo(t);           break;
             case TEXTURES:       readTextures(t);      break;
@@ -60,36 +60,36 @@ public class CgGlGetProvider implements CgGlStateProvider {
     }
 
     protected void readBlend(CgGlStateShadow t) {
-        t.blendEnabled  = CgGL.glGetBoolean(CgGL.GL_BLEND);
-        t.blendSrcRgb   = CgGL.glGetInteger(CgGL.GL_BLEND_SRC_RGB);
-        t.blendDstRgb   = CgGL.glGetInteger(CgGL.GL_BLEND_DST_RGB);
-        t.blendSrcAlpha = CgGL.glGetInteger(CgGL.GL_BLEND_SRC_ALPHA);
-        t.blendDstAlpha = CgGL.glGetInteger(CgGL.GL_BLEND_DST_ALPHA);
-        t.blendEqRgb    = CgGL.glGetInteger(CgGL.GL_BLEND_EQUATION_RGB);
-        t.blendEqAlpha  = CgGL.glGetInteger(CgGL.GL_BLEND_EQUATION_ALPHA);
+        t.blendEnabled  = bool(CgGL.GL_BLEND);
+        t.blendSrcRgb   = integer(CgGL.GL_BLEND_SRC_RGB);
+        t.blendDstRgb   = integer(CgGL.GL_BLEND_DST_RGB);
+        t.blendSrcAlpha = integer(CgGL.GL_BLEND_SRC_ALPHA);
+        t.blendDstAlpha = integer(CgGL.GL_BLEND_DST_ALPHA);
+        t.blendEqRgb    = integer(CgGL.GL_BLEND_EQUATION_RGB);
+        t.blendEqAlpha  = integer(CgGL.GL_BLEND_EQUATION_ALPHA);
     }
 
     protected void readDepth(CgGlStateShadow t) {
-        t.depthTest = CgGL.glGetBoolean(CgGL.GL_DEPTH_TEST);
-        t.depthMask = CgGL.glGetBoolean(CgGL.GL_DEPTH_WRITEMASK);
-        t.depthFunc = CgGL.glGetInteger(CgGL.GL_DEPTH_FUNC);
+        t.depthTest = bool(CgGL.GL_DEPTH_TEST);
+        t.depthMask = bool(CgGL.GL_DEPTH_WRITEMASK);
+        t.depthFunc = integer(CgGL.GL_DEPTH_FUNC);
     }
 
     protected void readCull(CgGlStateShadow t) {
-        t.cullEnabled = CgGL.glGetBoolean(CgGL.GL_CULL_FACE);
-        t.cullFace    = CgGL.glGetInteger(CgGL.GL_CULL_FACE_MODE);
-        t.frontFace   = CgGL.glGetInteger(CgGL.GL_FRONT_FACE);
+        t.cullEnabled = bool(CgGL.GL_CULL_FACE);
+        t.cullFace    = integer(CgGL.GL_CULL_FACE_MODE);
+        t.frontFace   = integer(CgGL.GL_FRONT_FACE);
     }
 
     protected void readStencil(CgGlStateShadow t) {
-        t.stencilTest      = CgGL.glGetBoolean(CgGL.GL_STENCIL_TEST);
-        t.stencilFunc      = CgGL.glGetInteger(CgGL.GL_STENCIL_FUNC);
-        t.stencilRef       = CgGL.glGetInteger(CgGL.GL_STENCIL_REF);
-        t.stencilValueMask = CgGL.glGetInteger(CgGL.GL_STENCIL_VALUE_MASK);
-        t.stencilWriteMask = CgGL.glGetInteger(CgGL.GL_STENCIL_WRITEMASK);
-        t.stencilFail      = CgGL.glGetInteger(CgGL.GL_STENCIL_FAIL);
-        t.stencilZFail     = CgGL.glGetInteger(CgGL.GL_STENCIL_PASS_DEPTH_FAIL);
-        t.stencilZPass     = CgGL.glGetInteger(CgGL.GL_STENCIL_PASS_DEPTH_PASS);
+        t.stencilTest      = bool(CgGL.GL_STENCIL_TEST);
+        t.stencilFunc      = integer(CgGL.GL_STENCIL_FUNC);
+        t.stencilRef       = integer(CgGL.GL_STENCIL_REF);
+        t.stencilValueMask = integer(CgGL.GL_STENCIL_VALUE_MASK);
+        t.stencilWriteMask = integer(CgGL.GL_STENCIL_WRITEMASK);
+        t.stencilFail      = integer(CgGL.GL_STENCIL_FAIL);
+        t.stencilZFail     = integer(CgGL.GL_STENCIL_PASS_DEPTH_FAIL);
+        t.stencilZPass     = integer(CgGL.GL_STENCIL_PASS_DEPTH_PASS);
     }
 
     /**
@@ -105,9 +105,9 @@ public class CgGlGetProvider implements CgGlStateProvider {
             t.alphaRef  = 0f;
             return;
         }
-        t.alphaTest = CgGL.glGetBoolean(CgGL.GL_ALPHA_TEST);
-        t.alphaFunc = CgGL.glGetInteger(CgGL.GL_ALPHA_TEST_FUNC);
-        t.alphaRef  = CgGL.glGetFloat(CgGL.GL_ALPHA_TEST_REF);
+        t.alphaTest = bool(CgGL.GL_ALPHA_TEST);
+        t.alphaFunc = integer(CgGL.GL_ALPHA_TEST_FUNC);
+        t.alphaRef  = real(CgGL.GL_ALPHA_TEST_REF);
     }
 
     /**
@@ -119,7 +119,7 @@ public class CgGlGetProvider implements CgGlStateProvider {
      */
     protected void readColorMask(CgGlStateShadow t) {
         BYTES.clear();
-        CgGL.glGetBoolean(CgGL.GL_COLOR_WRITEMASK, BYTES);
+        booleans(CgGL.GL_COLOR_WRITEMASK, BYTES);
         int nibble = (BYTES.get(0) != 0 ? 1 : 0) | (BYTES.get(1) != 0 ? 2 : 0)
                    | (BYTES.get(2) != 0 ? 4 : 0) | (BYTES.get(3) != 0 ? 8 : 0);
         int packed = 0;
@@ -129,41 +129,50 @@ public class CgGlGetProvider implements CgGlStateProvider {
 
     protected void readViewport(CgGlStateShadow t) {
         INTS.clear();
-        CgGL.glGetInteger(CgGL.GL_VIEWPORT, INTS);
+        integers(CgGL.GL_VIEWPORT, INTS);
         t.viewportX = INTS.get(0); t.viewportY = INTS.get(1);
         t.viewportW = INTS.get(2); t.viewportH = INTS.get(3);
     }
 
     protected void readScissor(CgGlStateShadow t) {
-        t.scissorTest = CgGL.glGetBoolean(CgGL.GL_SCISSOR_TEST);
+        t.scissorTest = bool(CgGL.GL_SCISSOR_TEST);
         INTS.clear();
-        CgGL.glGetInteger(CgGL.GL_SCISSOR_BOX, INTS);
+        integers(CgGL.GL_SCISSOR_BOX, INTS);
         t.scissorX = INTS.get(0); t.scissorY = INTS.get(1);
         t.scissorW = INTS.get(2); t.scissorH = INTS.get(3);
     }
 
     protected void readPolygonOffset(CgGlStateShadow t) {
-        t.polygonOffsetFill   = CgGL.glGetBoolean(CgGL.GL_POLYGON_OFFSET_FILL);
-        t.polygonOffsetLine   = CgGL.glGetBoolean(CgGL.GL_POLYGON_OFFSET_LINE);
-        t.polygonOffsetPoint  = CgGL.glGetBoolean(CgGL.GL_POLYGON_OFFSET_POINT);
-        t.polygonOffsetFactor = CgGL.glGetFloat(CgGL.GL_POLYGON_OFFSET_FACTOR);
-        t.polygonOffsetUnits  = CgGL.glGetFloat(CgGL.GL_POLYGON_OFFSET_UNITS);
+        t.polygonOffsetFill   = bool(CgGL.GL_POLYGON_OFFSET_FILL);
+        t.polygonOffsetLine   = bool(CgGL.GL_POLYGON_OFFSET_LINE);
+        t.polygonOffsetPoint  = bool(CgGL.GL_POLYGON_OFFSET_POINT);
+        t.polygonOffsetFactor = real(CgGL.GL_POLYGON_OFFSET_FACTOR);
+        t.polygonOffsetUnits  = real(CgGL.GL_POLYGON_OFFSET_UNITS);
     }
 
+    /**
+     * Front then back -- on a compatibility profile. A driver that answers one value, as a core profile
+     * does and NVIDIA's compatibility profile was measured to, leaves the second slot as it found it, so
+     * it is primed and a back that was never written reads as the front.
+     */
     protected void readPolygonMode(CgGlStateShadow t) {
         INTS.clear();
-        CgGL.glGetInteger(CgGL.GL_POLYGON_MODE, INTS);   // returns front then back
+        INTS.put(1, UNWRITTEN);
+        integers(CgGL.GL_POLYGON_MODE, INTS);
         t.polygonModeFront = INTS.get(0);
-        t.polygonModeBack  = INTS.get(1);
+        t.polygonModeBack  = INTS.get(1) == UNWRITTEN ? t.polygonModeFront : INTS.get(1);
     }
 
+    /** No GL enum; primes a slot a query may not write. */
+    private static final int UNWRITTEN = 0x7fffffff;
+
     protected void readProgram(CgGlStateShadow t) {
-        t.programId = CgGL.glGetInteger(CgGL.GL_CURRENT_PROGRAM);
+        t.programId = integer(CgGL.GL_CURRENT_PROGRAM);
     }
 
     protected void readFbo(CgGlStateShadow t) {
-        t.drawFbo = CgGL.glGetInteger(CgGL.GL_DRAW_FRAMEBUFFER_BINDING);
-        t.readFbo = CgGL.glGetInteger(CgGL.GL_READ_FRAMEBUFFER_BINDING);
+        t.drawFbo = integer(CgGL.GL_DRAW_FRAMEBUFFER_BINDING);
+        t.readFbo = integer(CgGL.GL_READ_FRAMEBUFFER_BINDING);
     }
 
     /**
@@ -174,19 +183,37 @@ public class CgGlGetProvider implements CgGlStateProvider {
      * a profile ever shows texture adoption mattering.</p>
      */
     protected void readTextures(CgGlStateShadow t) {
-        int active = CgGL.glGetInteger(CgGL.GL_ACTIVE_TEXTURE) - CgGL.GL_TEXTURE0;
+        int active = integer(CgGL.GL_ACTIVE_TEXTURE) - CgGL.GL_TEXTURE0;
         if (active < 0) active = 0;
         for (int unit = 0; unit < CgGlStateShadow.MAX_TEXTURE_UNITS; unit++) {
-            CgGL.glActiveTexture(CgGL.GL_TEXTURE0 + unit);
-            t.boundTexture2D[unit] = CgGL.glGetInteger(CgGL.GL_TEXTURE_BINDING_2D);
+            activeTexture(CgGL.GL_TEXTURE0 + unit);
+            t.boundTexture2D[unit] = integer(CgGL.GL_TEXTURE_BINDING_2D);
         }
-        CgGL.glActiveTexture(CgGL.GL_TEXTURE0 + active);   // the loop above moved it
+        activeTexture(CgGL.GL_TEXTURE0 + active);   // the loop above moved it
         t.activeTextureUnit = active;
     }
 
     protected void readVertexInput(CgGlStateShadow t) {
-        t.vertexArray        = CgGL.glGetInteger(CgGL.GL_VERTEX_ARRAY_BINDING);
-        t.arrayBuffer        = CgGL.glGetInteger(CgGL.GL_ARRAY_BUFFER_BINDING);
-        t.elementArrayBuffer = CgGL.glGetInteger(CgGL.GL_ELEMENT_ARRAY_BUFFER_BINDING);
+        t.vertexArray        = integer(CgGL.GL_VERTEX_ARRAY_BINDING);
+        t.arrayBuffer        = integer(CgGL.GL_ARRAY_BUFFER_BINDING);
+        t.elementArrayBuffer = integer(CgGL.GL_ELEMENT_ARRAY_BUFFER_BINDING);
     }
+
+    // -- Where the answers come from ------------------------------------------------------------------
+    //
+    // Every read above goes through these, so a provider that must reach the driver another way -- past
+    // a mod that rewrites GL call sites -- overrides six methods rather than the reader.
+
+    protected int integer(int pname) { return CgGL.glGetInteger(pname); }
+
+    protected boolean bool(int pname) { return CgGL.glGetBoolean(pname); }
+
+    protected float real(int pname) { return CgGL.glGetFloat(pname); }
+
+    protected void integers(int pname, IntBuffer into) { CgGL.glGetInteger(pname, into); }
+
+    protected void booleans(int pname, ByteBuffer into) { CgGL.glGetBoolean(pname, into); }
+
+    /** Moves the active unit, for {@link #readTextures}; the read puts it back. */
+    protected void activeTexture(int texture) { CgGL.glActiveTexture(texture); }
 }

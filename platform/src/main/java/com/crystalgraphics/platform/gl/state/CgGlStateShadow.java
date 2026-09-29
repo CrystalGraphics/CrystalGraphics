@@ -173,9 +173,21 @@ public final class CgGlStateShadow {
      * <p>An {@link #UNKNOWN_BINDING} element buffer is not a disagreement: the shadow never claimed a name.</p>
      */
     public String differences(CgGlStateShadow actual) {
+        return differences(actual, -1);
+    }
+
+    /**
+     * {@link #differences(CgGlStateShadow)} restricted to the fields of the domains in {@code slotMask},
+     * one bit per {@link CgGlSlot} ordinal.
+     *
+     * <pre>{@code
+     * before.differences(after, 1 << CgGlSlot.BLEND.ordinal());   // "blendDstRgb tracked=771 actual=1"
+     * }</pre>
+     */
+    public String differences(CgGlStateShadow actual, int slotMask) {
         StringBuilder out = null;
-        for (Field f : CgGlStateShadow.class.getFields()) {
-            if (Modifier.isStatic(f.getModifiers())) continue;
+        for (Field f : FIELDS) {
+            if ((slotMask & (1 << slotOf(f).ordinal())) == 0) continue;
             try {
                 Object mine = f.get(this), theirs = f.get(actual);
                 boolean same = mine instanceof int[]
@@ -194,5 +206,34 @@ public final class CgGlStateShadow {
 
     private static String show(Object v) {
         return v instanceof int[] ? Arrays.toString((int[]) v) : String.valueOf(v);
+    }
+
+    private static final Field[] FIELDS = Arrays.stream(CgGlStateShadow.class.getFields())
+            .filter(f -> !Modifier.isStatic(f.getModifiers())).toArray(Field[]::new);
+
+    static {
+        for (Field f : FIELDS) slotOf(f);   // a field added without a domain fails here, not in a diff
+    }
+
+    /** The domain a field belongs to, by name. */
+    private static CgGlSlot slotOf(Field f) {
+        String n = f.getName();
+        if (n.startsWith("blend")) return CgGlSlot.BLEND;
+        if (n.startsWith("depth")) return CgGlSlot.DEPTH;
+        if (n.equals("cullEnabled") || n.equals("cullFace") || n.equals("frontFace")) return CgGlSlot.CULL;
+        if (n.startsWith("stencil")) return CgGlSlot.STENCIL;
+        if (n.startsWith("alpha")) return CgGlSlot.ALPHA_TEST;
+        if (n.equals("colorMaskPacked")) return CgGlSlot.COLOR_MASK;
+        if (n.startsWith("viewport")) return CgGlSlot.VIEWPORT;
+        if (n.startsWith("scissor")) return CgGlSlot.SCISSOR;
+        if (n.startsWith("polygonOffset")) return CgGlSlot.POLYGON_OFFSET;
+        if (n.startsWith("polygonMode")) return CgGlSlot.POLYGON_MODE;
+        if (n.equals("lineWidth")) return CgGlSlot.LINE_WIDTH;
+        if (n.equals("pointSize")) return CgGlSlot.POINT_SIZE;
+        if (n.equals("programId")) return CgGlSlot.PROGRAM;
+        if (n.endsWith("Fbo")) return CgGlSlot.FBO;
+        if (n.equals("activeTextureUnit") || n.equals("boundTexture2D")) return CgGlSlot.TEXTURES;
+        if (n.equals("vertexArray") || n.equals("arrayBuffer") || n.equals("elementArrayBuffer")) return CgGlSlot.VERTEX_INPUT;
+        throw new IllegalStateException("CgGlStateShadow." + n + " belongs to no CgGlSlot; add it to slotOf");
     }
 }

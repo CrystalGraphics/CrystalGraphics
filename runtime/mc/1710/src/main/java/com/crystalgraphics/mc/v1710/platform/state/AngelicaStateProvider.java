@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.v1710.platform.state;
 
+import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlGetProvider;
 import com.crystalgraphics.platform.gl.state.CgGlStateShadow;
 
@@ -51,6 +52,12 @@ public final class AngelicaStateProvider extends CgGlGetProvider {
         return STATE_MANAGER != null;
     }
 
+    /** Free: every read here, and every {@code glGet} the base makes, is answered from Angelica's cache. */
+    @Override
+    public boolean isFree() {
+        return STATE_MANAGER != null;
+    }
+
     private static final Method BLEND_STATE = getter("getBlendState");
     private static final Method BLEND_MODE  = getter("getBlendMode");
     private static final Method DEPTH_STATE = getter("getDepthState");
@@ -86,10 +93,8 @@ public final class AngelicaStateProvider extends CgGlGetProvider {
             t.blendSrcAlpha = (Integer) invoke(state, "getSrcAlpha");
             t.blendDstAlpha = (Integer) invoke(state, "getDstAlpha");
             // Angelica does not track the equation; take just those two enums from the driver.
-            t.blendEqRgb   = com.crystalgraphics.platform.gl.CgGL.glGetInteger(
-                    com.crystalgraphics.platform.gl.CgGL.GL_BLEND_EQUATION_RGB);
-            t.blendEqAlpha = com.crystalgraphics.platform.gl.CgGL.glGetInteger(
-                    com.crystalgraphics.platform.gl.CgGL.GL_BLEND_EQUATION_ALPHA);
+            t.blendEqRgb   = integer(CgGL.GL_BLEND_EQUATION_RGB);
+            t.blendEqAlpha = integer(CgGL.GL_BLEND_EQUATION_ALPHA);
         } catch (Throwable mismatch) {
             super.readBlend(t);
         }
