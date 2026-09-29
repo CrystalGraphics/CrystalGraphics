@@ -32,19 +32,6 @@ dependencies {
     // unit-testable here. Whether CgGL calls them from the right places still needs a live context.
     testImplementation("junit:junit:${rootProject.properties["dep.junit"]}")
 
-    // The link-time GLSL rewrite's tests compile what it emits with Vulkan's own compiler: LWJGL's shaderc, the
-    // version Minecraft 26.2 ships. Nothing else on this test classpath is LWJGL, so 3 cannot meet 2 here.
-    val shadercNatives = System.getProperty("os.name").lowercase().let { os ->
-        when {
-            os.contains("win") -> "natives-windows"
-            os.contains("mac") -> if (System.getProperty("os.arch") == "aarch64") "natives-macos-arm64" else "natives-macos"
-            else -> "natives-linux"
-        }
-    }
-    testImplementation("org.lwjgl:lwjgl:3.4.1")
-    testImplementation("org.lwjgl:lwjgl-shaderc:3.4.1")
-    testRuntimeOnly("org.lwjgl:lwjgl:3.4.1:$shadercNatives")
-    testRuntimeOnly("org.lwjgl:lwjgl-shaderc:3.4.1:$shadercNatives")
 
     compileOnly("org.projectlombok:lombok:1.18.44")
     annotationProcessor("org.projectlombok:lombok:1.18.44")
@@ -65,9 +52,6 @@ dependencies {
 tasks.withType<JavaCompile> {
     options.encoding = "UTF-8"
 }
-
-// shaderc's natives load through System.load, which JDK 25 warns about unless native access is granted.
-tasks.test { jvmArgs("--enable-native-access=ALL-UNNAMED") }
 
 // The same import guard as :core's: this SPI is what every host implements, so it names no host.
 tasks.named<JavaCompile>("compileJava") {

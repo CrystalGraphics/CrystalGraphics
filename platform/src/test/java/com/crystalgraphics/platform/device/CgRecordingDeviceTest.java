@@ -22,8 +22,8 @@ public class CgRecordingDeviceTest {
     }
 
     private CgPipeline pipeline(CgBindingLayout layout) {
-        CgShaderModule vs = device.createShaderModule(CgShaderModule.Stage.VERTEX, "#version 450\n", "vs");
-        CgShaderModule fs = device.createShaderModule(CgShaderModule.Stage.FRAGMENT, "#version 450\n", "fs");
+        CgShaderModule vs = device.createShaderModule(CgShaderModule.Stage.VERTEX, CgRecordingDevice.emptySpirv(), "vs");
+        CgShaderModule fs = device.createShaderModule(CgShaderModule.Stage.FRAGMENT, CgRecordingDevice.emptySpirv(), "fs");
         return device.createPipeline(new CgPipelineDesc("p", layout, vs, fs, List.of(),
                 CgPipelineDesc.Topology.TRIANGLES, CgPipelineDesc.Raster.DEFAULT, CgPipelineDesc.DepthStencil.OFF,
                 List.of(new CgPipelineDesc.ColorTarget(CgFormat.RGBA8_UNORM, null, 0xF)), null, 1));

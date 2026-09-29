@@ -17,8 +17,8 @@ public class CgTrackerTest {
 
     private CgTrackedProgram program(CgBindingLayout.Slot... slots) {
         CgBindingLayout layout = device.createBindingLayout("p", List.of(slots));
-        CgShaderModule vs = device.createShaderModule(CgShaderModule.Stage.VERTEX, "#version 450\n", "vs");
-        CgShaderModule fs = device.createShaderModule(CgShaderModule.Stage.FRAGMENT, "#version 450\n", "fs");
+        CgShaderModule vs = device.createShaderModule(CgShaderModule.Stage.VERTEX, CgRecordingDevice.emptySpirv(), "vs");
+        CgShaderModule fs = device.createShaderModule(CgShaderModule.Stage.FRAGMENT, CgRecordingDevice.emptySpirv(), "fs");
         return new CgTrackedProgram("p", layout, vs, vs, fs);
     }
 

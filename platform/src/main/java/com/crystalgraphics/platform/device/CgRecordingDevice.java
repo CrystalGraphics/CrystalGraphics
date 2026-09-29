@@ -25,6 +25,15 @@ import java.util.TreeMap;
  */
 public final class CgRecordingDevice implements CgDevice {
 
+    private static final int SPIRV_MAGIC = 0x07230203;
+
+    /** The smallest module a test can hand {@link #createShaderModule}: a SPIR-V header and nothing else. */
+    public static ByteBuffer emptySpirv() {
+        ByteBuffer b = ByteBuffer.allocateDirect(20).order(ByteOrder.LITTLE_ENDIAN);
+        b.putInt(SPIRV_MAGIC).putInt(0x00010500).putInt(0).putInt(1).putInt(0).flip();
+        return b;
+    }
+
     private static final CgDeviceInfo INFO = new CgDeviceInfo("recording", "CrystalGraphics", "0",
             new CgDeviceInfo.Limits(16384, 2048, 2048, 8, 8, 16, 32, 65536, 24, 16, 1 << 26,
                     256, 256, 16, 16384, 16f), true, true, true);
@@ -125,9 +134,11 @@ public final class CgRecordingDevice implements CgDevice {
     }
 
     @Override
-    public CgShaderModule createShaderModule(CgShaderModule.Stage stage, String source, String label) {
-        if (!source.startsWith("#version 450")) throw new CgShaderModule.CompileException(label + ": not Vulkan GLSL");
-        Module m = new Module(stage, source, label);
+    public CgShaderModule createShaderModule(CgShaderModule.Stage stage, ByteBuffer spirv, String label) {
+        if (spirv.remaining() < 20 || spirv.remaining() % 4 != 0
+                || spirv.duplicate().order(ByteOrder.LITTLE_ENDIAN).getInt(spirv.position()) != SPIRV_MAGIC)
+            throw new IllegalArgumentException(label + ": not SPIR-V");
+        Module m = new Module(stage, label);
         log.add("createShaderModule #" + m.id + " " + label + " " + stage);
         return m;
     }
@@ -574,12 +585,10 @@ public final class CgRecordingDevice implements CgDevice {
 
     private final class Module extends Obj implements CgShaderModule {
         final Stage stage;
-        final String source;
 
-        Module(Stage stage, String source, String label) {
+        Module(Stage stage, String label) {
             super(label);
             this.stage = stage;
-            this.source = source;
         }
 
         @Override public Stage stage() { return stage; }
