@@ -128,17 +128,28 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
                 fragment.defaultBlockSize, slots);
     }
 
-    /** Bound inputs at their locations; the rest in the lowest locations left free, as GL's linker would. */
+    /**
+     * Bound inputs at their {@code glBindAttribLocation} locations; every other input where glslang placed it — its
+     * {@code layout(location)}, else declaration order, as GL drivers commonly do — unless a binding holds that
+     * location, when it takes the lowest one left free.
+     */
     private static List<Attribute> vertexInputs(SpirvModule glDepth, SpirvModule zeroToOne, Map<String, Integer> bound) {
         BitSet used = new BitSet();
         for (SpirvModule.Resource r : glDepth.inputs) {
             Integer loc = bound.get(r.name());
             if (loc != null) used.set(loc, loc + r.locations());
         }
+        Integer[] placed = new Integer[glDepth.inputs.size()];
+        for (int i = 0; i < placed.length; i++) {
+            SpirvModule.Resource r = glDepth.inputs.get(i);
+            if (bound.containsKey(r.name()) || !used.get(r.value(), r.value() + r.locations()).isEmpty()) continue;
+            placed[i] = r.value();
+            used.set(r.value(), r.value() + r.locations());
+        }
         List<Attribute> out = new ArrayList<>();
         for (int i = 0; i < glDepth.inputs.size(); i++) {
             SpirvModule.Resource r = glDepth.inputs.get(i);
-            Integer loc = bound.get(r.name());
+            Integer loc = bound.containsKey(r.name()) ? bound.get(r.name()) : placed[i];
             if (loc == null) {
                 loc = 0;
                 while (!used.get(loc, loc + r.locations()).isEmpty()) loc++;

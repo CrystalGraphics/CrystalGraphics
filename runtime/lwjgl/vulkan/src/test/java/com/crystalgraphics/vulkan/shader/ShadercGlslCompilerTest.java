@@ -84,6 +84,37 @@ public class ShadercGlslCompilerTest {
         }
     }
 
+    private static final String FRAGMENT = "#version 330 core\nout vec4 color;\nvoid main() { color = vec4(1.0); }";
+
+    private static List<CgGlslCompiler.Attribute> inputs(String declarations, String body, Map<String, Integer> bound) {
+        String vertex = "#version 330 core\n" + declarations + "\nvoid main() { " + body + " }";
+        return COMPILER.compile(vertex, FRAGMENT, bound, "inputs").attributes();
+    }
+
+    @Test
+    public void anExplicitLocationIsKept() {
+        // a_color is read before a_uv, which is what put it at 1 when locations were handed out by use.
+        List<CgGlslCompiler.Attribute> a = inputs(
+                "layout(location = 0) in vec2 a_pos; layout(location = 1) in vec2 a_uv; layout(location = 2) in vec4 a_color;",
+                "gl_Position = vec4(a_pos, 0.0, 1.0) + a_color;", Map.of());
+        assertEquals(List.of(new CgGlslCompiler.Attribute("a_pos", 0, 0x8B50), new CgGlslCompiler.Attribute("a_uv", 1, 0x8B50),
+                new CgGlslCompiler.Attribute("a_color", 2, 0x8B52)), a);
+    }
+
+    @Test
+    public void anUnplacedInputTakesItsDeclarationOrder() {
+        List<CgGlslCompiler.Attribute> a = inputs("in vec3 a_pos; in vec2 a_uv; in vec4 a_col;",
+                "gl_Position = vec4(a_uv, 0.0, 1.0) + a_col + vec4(a_pos, 0.0);", Map.of());
+        assertEquals(List.of(new CgGlslCompiler.Attribute("a_pos", 0, 0x8B51), new CgGlslCompiler.Attribute("a_uv", 1, 0x8B50),
+                new CgGlslCompiler.Attribute("a_col", 2, 0x8B52)), a);
+    }
+
+    @Test
+    public void aBoundLocationWinsAndMovesWhatItDisplaces() {
+        List<CgGlslCompiler.Attribute> a = inputs("in vec2 a; in vec2 b;", "gl_Position = vec4(a, b);", Map.of("b", 0));
+        assertEquals(List.of(new CgGlslCompiler.Attribute("b", 0, 0x8B50), new CgGlslCompiler.Attribute("a", 1, 0x8B50)), a);
+    }
+
     @Test
     public void looseUniformsLiveInAStd140BlockPerStage() {
         String vertex = String.join("\n",
