@@ -30,6 +30,7 @@ import org.lwjgl.vulkan.VkLayerProperties;
 import org.lwjgl.vulkan.VkPhysicalDevice;
 import org.lwjgl.vulkan.VkPhysicalDeviceDynamicRenderingFeaturesKHR;
 import org.lwjgl.vulkan.VkPhysicalDeviceFeatures2;
+import org.lwjgl.vulkan.VkPhysicalDeviceLineRasterizationFeaturesEXT;
 import org.lwjgl.vulkan.VkPhysicalDeviceFeatures;
 import org.lwjgl.vulkan.VkPhysicalDeviceProperties;
 import org.lwjgl.vulkan.VkPhysicalDeviceVulkan12Features;
@@ -53,6 +54,7 @@ import java.util.TreeMap;
 import static com.crystalgraphics.vulkan.format.VulkanCheck.check;
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.vulkan.EXTDebugUtils.*;
+import static org.lwjgl.vulkan.EXTLineRasterization.VK_EXT_LINE_RASTERIZATION_EXTENSION_NAME;
 import static org.lwjgl.vulkan.KHRDynamicRendering.VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME;
 import static org.lwjgl.vulkan.KHRPortabilityEnumeration.VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
 import static org.lwjgl.vulkan.KHRPortabilityEnumeration.VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME;
@@ -97,6 +99,7 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
     private final VkPhysicalDevice physical;
     private final VkDevice device;
     private final int family;
+    private boolean bresenhamLines;
     private final VkQueue queue;
 
     private final long[] pools = new long[FRAMES];
@@ -169,6 +172,8 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
     @Override public long retiredFrame() { return retired; }
     @Override public boolean ownsSubmission() { return true; }
     @Override public int validationErrors() { return errors; }
+
+    @Override public boolean bresenhamLines() { return bresenhamLines; }
 
     @Override
     public void whenFrameRetired(long f, Runnable action) {
@@ -559,16 +564,24 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
     private VkDevice createDevice(MemoryStack stack) {
         VkPhysicalDeviceFeatures has = VkPhysicalDeviceFeatures.malloc(stack);
         vkGetPhysicalDeviceFeatures(physical, has);
-        VkPhysicalDeviceVulkan12Features has12 = VkPhysicalDeviceVulkan12Features.calloc(stack).sType$Default();
+        boolean hasLines = extensions(stack, physical).contains(VK_EXT_LINE_RASTERIZATION_EXTENSION_NAME);
+        VkPhysicalDeviceLineRasterizationFeaturesEXT hasLineModes = VkPhysicalDeviceLineRasterizationFeaturesEXT.calloc(stack)
+                .sType$Default();
+        VkPhysicalDeviceVulkan12Features has12 = VkPhysicalDeviceVulkan12Features.calloc(stack).sType$Default()
+                .pNext(hasLines ? hasLineModes.address() : 0L);
         vkGetPhysicalDeviceFeatures2(physical, VkPhysicalDeviceFeatures2.calloc(stack).sType$Default().pNext(has12.address()));
+        bresenhamLines = hasLines && hasLineModes.bresenhamLines();
 
         VkPhysicalDeviceFeatures enable = VkPhysicalDeviceFeatures.calloc(stack)
                 .samplerAnisotropy(has.samplerAnisotropy()).fillModeNonSolid(has.fillModeNonSolid())
                 .independentBlend(has.independentBlend()).imageCubeArray(has.imageCubeArray())
                 // What GL 4.x gives a shader: doubles and 64-bit integers, where the hardware has them.
                 .shaderFloat64(has.shaderFloat64()).shaderInt64(has.shaderInt64());
+        // GL's line rule, where the device has it: without it a line on a pixel boundary can vanish.
+        VkPhysicalDeviceLineRasterizationFeaturesEXT lineModes = VkPhysicalDeviceLineRasterizationFeaturesEXT.calloc(stack)
+                .sType$Default().bresenhamLines(true);
         VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamic = VkPhysicalDeviceDynamicRenderingFeaturesKHR.calloc(stack)
-                .sType$Default().dynamicRendering(true);
+                .sType$Default().dynamicRendering(true).pNext(bresenhamLines ? lineModes.address() : 0L);
         VkPhysicalDeviceVulkan12Features v12 = VkPhysicalDeviceVulkan12Features.calloc(stack).sType$Default()
                 .hostQueryReset(has12.hostQueryReset()).pNext(dynamic.address());
 
@@ -576,6 +589,7 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
                 VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME, VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME));
         if (extensions(stack, physical).contains(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME))
             names.add(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME);
+        if (bresenhamLines) names.add(VK_EXT_LINE_RASTERIZATION_EXTENSION_NAME);
         PointerBuffer ext = stack.mallocPointer(names.size());
         for (String name : names) ext.put(stack.UTF8(name));
         ext.flip();
