@@ -22,6 +22,10 @@ final class TrackedGlErrors {
         raise(CgGL.GL_INVALID_OPERATION, what);
     }
 
+    void invalidFramebufferOperation(String what) {
+        raise(CgGL.GL_INVALID_FRAMEBUFFER_OPERATION, what);
+    }
+
     void invalidValue(String what) {
         raise(CgGL.GL_INVALID_VALUE, what);
     }
