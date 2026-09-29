@@ -1302,9 +1302,10 @@ archived in the private plan repository, `plan/crystalgraphics/archive/`.
 -Dcrystalgraphics.state.roundTrip=true               # read every scope's domains on open and after it
                                                      # restores, name any that differ; on 1.7.10 with
                                                      # Angelica also against the raw driver; and report
-                                                     # every write no open scope declares (a leak). Totals
-                                                     # every 1000 scopes, via log4j; "not restored" is a
-                                                     # bug. Slow: Forge 1.17-1.19 miss prodSmoke's 120 s
+                                                     # every write no open scope declares (a leak, with its
+                                                     # stack; CgGlState.handOver declares one meant to
+                                                     # stay). Totals every 1000 scopes, via log4j; any
+                                                     # count but 0 is a bug. Fits prodSmoke's 120 s
 
 # Minecraft's own GL state cache (modern nodes)
 -Dcrystalgraphics.host.verify=true                   # after each pass, compare the driver against the host's

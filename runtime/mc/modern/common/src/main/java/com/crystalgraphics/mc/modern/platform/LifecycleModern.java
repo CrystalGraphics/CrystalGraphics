@@ -4,6 +4,9 @@ import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.gl.lifecycle.CgLifecycleListener;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.gl.state.CgGlScope;
+import com.crystalgraphics.platform.gl.state.CgGlSlot;
+import com.crystalgraphics.platform.gl.state.CgGlState;
 
 import net.minecraft.client.Minecraft;
 import org.lwjgl.glfw.GLFW;
@@ -139,11 +142,14 @@ public final class LifecycleModern {
     public static int bindMainTarget(Minecraft mc) {
         //? if >=26.1 {
         /*RenderTarget main = mainTarget(mc);
-        int fbo = mainFbo(((GlTexture) main.getColorTexture()).glId(),
-                main.getDepthTexture() == null ? 0 : ((GlTexture) main.getDepthTexture()).glId());
-        CgGL.glBindFramebuffer(GL30.GL_FRAMEBUFFER, fbo);
-        CgGL.glViewport(0, 0, main.width, main.height);
-        return fbo;
+        // Meant to stay bound, for our passes and for Minecraft's next draw: handed over, not restored.
+        try (CgGlScope ignored = CgGlState.handOver(CgGlSlot.FBO, CgGlSlot.VIEWPORT)) {
+            int fbo = mainFbo(((GlTexture) main.getColorTexture()).glId(),
+                    main.getDepthTexture() == null ? 0 : ((GlTexture) main.getDepthTexture()).glId());
+            CgGL.glBindFramebuffer(GL30.GL_FRAMEBUFFER, fbo);
+            CgGL.glViewport(0, 0, main.width, main.height);
+            return fbo;
+        }
         *///?} elif >=1.21.5 {
         /*RenderTarget main = mc.getMainRenderTarget();
         int fbo = ((GlTexture) main.getColorTexture())
