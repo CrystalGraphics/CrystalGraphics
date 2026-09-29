@@ -1019,6 +1019,7 @@ public final class CgGL {
     // --- Reversed depth --------------------------------------------------------
 
     private static boolean depthReversed;
+    private static boolean depthZeroToOne;
 
     /** Set while a {@link CgGlRecording} replays: what it recorded was already mirrored. */
     static boolean replaying;
@@ -1044,14 +1045,35 @@ public final class CgGL {
      *   <li>Not mirrored: {@code glPolygonOffset}, whose offset therefore pulls the other way, and
      *       {@code cg_DepthBuffer}, which holds reversed values -- a shader comparing against it (a depth
      *       fade, soft particles) is wrong while this is on.</li>
+     *   <li>Nor a projection: the host's own matrices are already reversed. One built for the pass, rather
+     *       than taken from the host, is built reversed too:
+     *       <pre>{@code
+     * if (CgGL.isDepthReversed()) proj.setPerspective(fovy, aspect, far, near, CgGL.isDepthZeroToOne());
+     * else proj.setPerspective(fovy, aspect, near, far);
+     * }</pre></li>
      * </ul>
      */
     public static void setDepthReversed(boolean reversed) {
+        setDepthReversed(reversed, false);
+    }
+
+    /**
+     * {@link #setDepthReversed(boolean)}, for a host whose clip-space depth runs {@code 0..1}
+     * ({@code glClipControl(..., GL_ZERO_TO_ONE)}): what a projection built for the pass passes as JOML's
+     * {@code zZeroToOne}.
+     */
+    public static void setDepthReversed(boolean reversed, boolean zeroToOne) {
         depthReversed = reversed;
+        depthZeroToOne = reversed && zeroToOne;
     }
 
     public static boolean isDepthReversed() {
         return depthReversed;
+    }
+
+    /** Whether the reversed pass's clip-space depth runs {@code 0..1}; false outside one. */
+    public static boolean isDepthZeroToOne() {
+        return depthZeroToOne;
     }
 
     /** The same comparison made against a reversed depth buffer. */

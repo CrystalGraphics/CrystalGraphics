@@ -1,5 +1,6 @@
 package com.crystalgraphics.demo;
 
+import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.api.material.CgMaterial;
@@ -167,7 +168,10 @@ public final class CgRenderDemo {
         scratchView.identity().lookAt(eyeX, eyeY, eyeZ, 0f, 0f, 0f, 0f, 1f, 0f);
 
         float aspect = (w > 0 && h > 0) ? (float) w / h : 1f;
-        scratchProj.identity().perspective((float) Math.toRadians(60.0), aspect, 0.1f, 200f);
+        // The host's depth convention: 26.2's world is reversed-Z, and CgGL mirrors our depth tests to match.
+        float fovy = (float) Math.toRadians(60.0);
+        if (CgGL.isDepthReversed()) scratchProj.setPerspective(fovy, aspect, 200f, 0.1f, CgGL.isDepthZeroToOne());
+        else scratchProj.setPerspective(fovy, aspect, 0.1f, 200f);
 
         CgFrameData fd = CgRenderPipeline.getInstance().getFrameData();
         fd.viewMatrix.set(scratchView);
