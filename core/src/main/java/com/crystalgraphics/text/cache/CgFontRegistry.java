@@ -1,5 +1,7 @@
 package com.crystalgraphics.text.cache;
 
+import com.crystalgraphics.platform.gl.state.CgGlScope;
+import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.freetype.FTBitmap;
 import com.crystalgraphics.freetype.FTFace;
 import com.crystalgraphics.freetype.FTLoadFlags;
@@ -1160,20 +1162,28 @@ public class CgFontRegistry {
         long start = System.nanoTime();
         long bytesCommitted = 0;
         int committed = 0;
-        while (committed < maxCommits && bytesCommitted < maxBytes) {
-            // Time check before polling, so an already-dequeued result is never dropped and a
-            // fully drained queue costs one nanoTime() call, not a wasted poll.
-            if (System.nanoTime() - start >= maxNanos) {
-                CgTrace.add(CgChannels.TEXT, "asyncCommit.timeBudgetHit", 1);
-                break;
+        // Opened on the first commit, so an empty queue reads no GL: uploads bind textures, and an atlas
+        // growing binds read and draw framebuffers, all at the host's frame end.
+        CgGlScope scope = null;
+        try {
+            while (committed < maxCommits && bytesCommitted < maxBytes) {
+                // Time check before polling, so an already-dequeued result is never dropped and a
+                // fully drained queue costs one nanoTime() call, not a wasted poll.
+                if (System.nanoTime() - start >= maxNanos) {
+                    CgTrace.add(CgChannels.TEXT, "asyncCommit.timeBudgetHit", 1);
+                    break;
+                }
+                CgGlyphGenerationResult result = glyphGenerationExecutor.pollCompleted();
+                if (result == null) {
+                    break;
+                }
+                if (scope == null) scope = CgGlState.saveAll();
+                commitGeneratedGlyph(result, frame);
+                committed++;
+                bytesCommitted += estimateUploadBytes(result);
             }
-            CgGlyphGenerationResult result = glyphGenerationExecutor.pollCompleted();
-            if (result == null) {
-                break;
-            }
-            commitGeneratedGlyph(result, frame);
-            committed++;
-            bytesCommitted += estimateUploadBytes(result);
+        } finally {
+            if (scope != null) scope.close();
         }
         CgTrace.add(CgChannels.TEXT, "asyncCommit.glyphsUploaded", committed);
         CgTrace.add(CgChannels.TEXT, "asyncCommit.bytesUploaded", bytesCommitted);

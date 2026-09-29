@@ -148,6 +148,28 @@ where the try-with-resources form would have run the foreign code at record time
 > other; this scope stands on only one side of that boundary. On 1.7.10 with Angelica the problem largely
 > dissolves, because our provider reads Angelica's mirror, which observed both sides.
 
+## Leaving state for the host — `handOver`
+
+Some writes are meant to outlive us: 26.1+'s `LifecycleModern.bindMainTarget` binds Minecraft's main target
+and viewport for our passes and for Minecraft's next draw. A `save()` would undo it. `handOver` declares the
+domains and restores nothing:
+
+```java
+try (CgGlScope s = CgGlState.handOver(CgGlSlot.FBO, CgGlSlot.VIEWPORT)) {
+    CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, mainTarget);
+    CgGL.glViewport(0, 0, width, height);
+}   // nothing restored
+```
+
+It changes no behaviour and reads no GL. What it buys is the declaration: `-Dcrystalgraphics.state.roundTrip`
+reports every write outside an open scope as a leak, and a handed-over write is not one.
+
+**Every entry from the host is a scope.** The round trip found the gaps as lazy construction on first use —
+`initContext`, `onResize`, the paint context's constructor, the glyph drain at frame end, a listener's
+`onDestroy`. A resource built on first use binds what it builds, and nothing puts the host's binding back.
+Open the scope at the entry point, and where the entry runs every frame, only once there is work (the
+glyph drain opens it on the first commit).
+
 ### Trust is per field
 
 A **field** is what one setter writes — `glDepthMask`'s mask, `glBlendFuncSeparate`'s four factors, one

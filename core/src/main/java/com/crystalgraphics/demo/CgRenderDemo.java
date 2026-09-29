@@ -1,5 +1,7 @@
 package com.crystalgraphics.demo;
 
+import com.crystalgraphics.platform.gl.state.CgGlState;
+import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgRenderQueue;
 import com.crystalgraphics.api.render.CgFrameData;
@@ -86,7 +88,8 @@ public final class CgRenderDemo {
      */
     public void renderOpaque(float partialTick, int w, int h, int sourceFboId) {
         if (!enabled) return;
-        try {
+        // One scope over the first frame's uploads as well as the pass; the pipeline's own scope nests in it.
+        try (CgGlScope ignored = CgGlState.saveAll()) {
             ensureResources();
             advanceCamera();
             populateFrameData(w, h);
