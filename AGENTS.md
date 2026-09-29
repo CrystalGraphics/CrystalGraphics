@@ -1308,7 +1308,8 @@ archived in the private plan repository, `plan/crystalgraphics/archive/`.
                                                      # every write no open scope declares (a leak, with its
                                                      # stack; CgGlState.handOver declares one meant to
                                                      # stay). Totals every 1000 scopes, via log4j; any
-                                                     # count but 0 is a bug. Fits prodSmoke's 120 s
+                                                     # count but 0 is a bug. Fits prodSmoke's 120 s run
+                                                     # alone; four at a time, a client can miss it
 
 # Minecraft's own GL state cache (modern nodes)
 -Dcrystalgraphics.host.verify=true                   # after each pass, compare the driver against the host's
