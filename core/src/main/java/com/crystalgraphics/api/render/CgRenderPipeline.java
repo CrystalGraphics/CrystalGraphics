@@ -3,6 +3,7 @@ package com.crystalgraphics.api.render;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
+import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
@@ -139,6 +140,7 @@ public final class CgRenderPipeline {
     private final CgShaderBuffer  objectBuffer;
 
     private CgFrameBuffer depthSnapshotFbo;
+    private CgTextureType depthSnapshotType = CgTextureType.DEPTH24;
     private boolean isDepthBlitDone = false;
 
     // ── Pipeline components ───────────────────────────────────────────────────
@@ -161,7 +163,8 @@ public final class CgRenderPipeline {
     private boolean irisWarningLogged = false;
     private int lastSourceFboId = 0;
     private int depthBlitMask = CgGL.GL_DEPTH_BUFFER_BIT;
-    private boolean depthBlitMaskResolved = false;
+    /** The source the snapshot's format and blit mask were last matched to; -1 before the first blit. */
+    private int probedSourceFboId = -1;
 
     // ── Anaglyph guard ────────────────────────────────────────────────────────
 
@@ -183,7 +186,7 @@ public final class CgRenderPipeline {
         this.transparentRenderer = new CgTransparentRenderer();
         this.depthPrepass        = new CgDepthPrepassRenderer();
 
-        this.depthSnapshotFbo = CgFrameBuffer.createScreenSized("cg_depth_snapshot", CgFrameBufferFormat.DEPTH);
+        this.depthSnapshotFbo = CgFrameBuffer.createScreenSized("cg_depth_snapshot", snapshotFormat(depthSnapshotType));
         clearDepthSnapshot();
     }
 
@@ -406,20 +409,38 @@ public final class CgRenderPipeline {
      * Blits scene depth from {@code sourceFboId} into the depth snapshot FBO, then marks the
      * blit as done so subsequent calls within the same frame are no-ops.
      *
-     * <p>On the first call ever, probes the source FBO's stencil attachment once and caches the
-     * optimal blit mask for the context lifetime — see {@link CgFrameBuffer#optimalDepthBlitMask}.
+     * <p>When the source is a framebuffer it has not seen, matches the snapshot's depth format to the
+     * source's, since a depth blit between formats is {@code GL_INVALID_OPERATION} (26.2's main target is
+     * not the {@code DEPTH24} earlier versions had), and caches the blit mask — see
+     * {@link CgFrameBuffer#optimalDepthBlitMask}.
      *
      * @param sourceFboId GL framebuffer ID to read depth from; {@code 0} for the default FB (harness)
      */
     private void blitDepthSnapshot(int sourceFboId) {
         if (depthSnapshotFbo == null || isDepthBlitDone) return;
-        if (!depthBlitMaskResolved) {
+        if (sourceFboId != probedSourceFboId) {
+            matchSnapshotFormat(sourceFboId);
             depthBlitMask = CgFrameBuffer.optimalDepthBlitMask(sourceFboId);
-            depthBlitMaskResolved = true;
+            probedSourceFboId = sourceFboId;
         }
         depthSnapshotFbo.blitFrom(sourceFboId, depthBlitMask);
         isDepthBlitDone = true;
         lastSourceFboId = sourceFboId;
+    }
+
+    private void matchSnapshotFormat(int sourceFboId) {
+        CgTextureType type = CgFrameBuffer.depthTypeOf(sourceFboId);
+        if (type == null || type == depthSnapshotType) return;
+        depthSnapshotFbo.delete();
+        depthSnapshotType = type;
+        depthSnapshotFbo = CgFrameBuffer.createScreenSized("cg_depth_snapshot", snapshotFormat(type));
+        clearDepthSnapshot();
+    }
+
+    private static CgFrameBufferFormat snapshotFormat(CgTextureType depth) {
+        return depth == CgTextureType.DEPTH24
+                ? CgFrameBufferFormat.DEPTH
+                : CgFrameBufferFormat.builder("depth_" + depth.name()).depth(depth).build();
     }
 
     private void clearDepthSnapshot() {

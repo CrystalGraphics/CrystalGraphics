@@ -558,6 +558,38 @@ public abstract class CgFrameBuffer {
         }
     }
 
+    /**
+     * The depth format a framebuffer's depth attachment has, as the one type a depth blit from it may
+     * land in: {@code glBlitFramebuffer} refuses depth formats that differ.
+     *
+     * <pre>{@code
+     * CgTextureType type = CgFrameBuffer.depthTypeOf(mainTargetFbo);   // DEPTH32F on 26.2, DEPTH24 before
+     * }</pre>
+     *
+     * @return {@code null} when the framebuffer has no depth attachment
+     */
+    @Nullable
+    public static CgTextureType depthTypeOf(int sourceFboId) {
+        try (CgGlScope scope = CgGlState.save(FBO)) {
+            CgGL.glBindFramebuffer(CgGL.GL_READ_FRAMEBUFFER, sourceFboId);
+            int depth = sourceFboId == 0 ? CgGL.GL_DEPTH : CgGL.GL_DEPTH_ATTACHMENT;
+            int stencil = sourceFboId == 0 ? CgGL.GL_STENCIL : CgGL.GL_STENCIL_ATTACHMENT;
+            // Any parameter but the object type is an error on an empty attachment, so that is asked first.
+            if (attachmentParameter(depth, CgGL.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE) == CgGL.GL_NONE) return null;
+            boolean hasStencil = attachmentParameter(stencil, CgGL.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE) != CgGL.GL_NONE;
+            if (attachmentParameter(depth, CgGL.GL_FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE) == CgGL.GL_FLOAT) {
+                return hasStencil ? CgTextureType.DEPTH32F_STENCIL8 : CgTextureType.DEPTH32F;
+            }
+            if (hasStencil) return CgTextureType.DEPTH24_STENCIL8;
+            return attachmentParameter(depth, CgGL.GL_FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE) <= 16
+                    ? CgTextureType.DEPTH16 : CgTextureType.DEPTH24;
+        }
+    }
+
+    private static int attachmentParameter(int attachment, int parameter) {
+        return CgGL.glGetFramebufferAttachmentParameteriv(CgGL.GL_READ_FRAMEBUFFER, attachment, parameter);
+    }
+
     // ── Clear ──────────────────────────────────────────────────────────────────
 
     /**

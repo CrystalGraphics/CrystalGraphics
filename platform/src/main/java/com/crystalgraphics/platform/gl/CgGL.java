@@ -312,7 +312,9 @@ public final class CgGL {
     public static final int GL_STENCIL_BUFFER_BIT = 0x00000400;
 
     // --- Framebuffer attachment query ----------------------------------------
-    public static final int GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE = 0x8CD0;
+    public static final int GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE    = 0x8CD0;
+    public static final int GL_FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE = 0x8211;
+    public static final int GL_FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE     = 0x8216;
 
     // --- Shader types --------------------------------------------------------
     public static final int GL_VERTEX_SHADER   = 0x8B31;
