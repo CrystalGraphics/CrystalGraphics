@@ -16,7 +16,7 @@ import static org.junit.Assert.*;
 public class CgTrackedGLBackendStateTest {
 
     private final CgRecordingDevice device = new CgRecordingDevice(32, 16);
-    private final CgTrackedGLBackend gl = new CgTrackedGLBackend(device, true);
+    private final CgTrackedGLBackend gl = new CgTrackedGLBackend(device, FakeGlslCompiler.EMPTY, true);
 
     @Test
     public void stateReadsBackThroughGlGet() {

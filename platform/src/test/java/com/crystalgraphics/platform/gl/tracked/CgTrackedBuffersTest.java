@@ -15,7 +15,7 @@ import static org.junit.Assert.*;
 public class CgTrackedBuffersTest {
 
     private final CgRecordingDevice device = new CgRecordingDevice(16, 16);
-    private final CgTrackedGLBackend gl = new CgTrackedGLBackend(device, true);
+    private final CgTrackedGLBackend gl = new CgTrackedGLBackend(device, FakeGlslCompiler.EMPTY, true);
 
     private int buffer(int target, int bytes, int usage) {
         int b = gl.glGenBuffers();
