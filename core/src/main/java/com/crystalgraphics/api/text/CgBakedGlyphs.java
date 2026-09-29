@@ -32,7 +32,7 @@ import com.crystalgraphics.api.font.CgFontKey;
  * <p>{@code true} for a glyph immediately following a UAX#14 word/space boundary,
  * excluding the last such position on its line — a valid justification expansion
  * point. Nothing reads this array yet; it exists so a future justification pass
- * (see {@code docs/font/DIAGNOSIS.md} E3) doesn't need to re-run
+ * (see {@code plan/crystalgraphics/archive/DIAGNOSIS.md} E3) doesn't need to re-run
  * {@link java.text.BreakIterator} over already-baked text to reconstruct it.</p>
  *
  * <h3>{@code lineHeight} / {@code lineStart} — per-line indexing</h3>

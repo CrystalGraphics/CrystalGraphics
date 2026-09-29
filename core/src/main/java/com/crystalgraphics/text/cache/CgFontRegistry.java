@@ -578,7 +578,7 @@ public class CgFontRegistry {
      * <p>Kept rather than deleted because restoring a pre-queue pass is the single largest remaining
      * opportunity to take work off the render thread — but it is a behaviour change, not a
      * refactor: a glyph generated asynchronously is not available to draw on the frame that asked
-     * for it. See docs/font/PERFORMANCE_TODO.md.
+     * for it. See plan/crystalgraphics/archive/PERFORMANCE_TODO.md.
      *
      * <p>Historical note: it was called during the pre-queue pass to submit generation jobs to the
      * background executor <em>before</em> the synchronous {@code ensureGlyph}
