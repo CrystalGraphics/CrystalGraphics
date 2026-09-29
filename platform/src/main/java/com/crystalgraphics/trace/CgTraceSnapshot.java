@@ -96,6 +96,24 @@ public final class CgTraceSnapshot {
     }
 
     /**
+     * A snapshot of records that did not come from this process's ring — a trace file read back in.
+     *
+     * <pre>{@code
+     * CgTraceSnapshot loaded = CgTraceSnapshot.of(frames, zones, counters, markers, List.of());
+     * List<CgTraceSnapshot.ZoneView> first = loaded.zonesIn(loaded.frames().get(0));
+     * }</pre>
+     *
+     * <p>Pass frames oldest first and zones by start, as a live snapshot holds them: {@link #zonesIn} and
+     * every reader above it assume both orders. A zone's {@code depth} may be 0 throughout, since
+     * {@link CgTraceAggregate} nests by containment.</p>
+     */
+    public static CgTraceSnapshot of(List<CgFrameRecord> frames, List<ZoneView> zones,
+                                     List<CounterView> counters, List<MarkerView> markers,
+                                     List<SpanView> spans) {
+        return new CgTraceSnapshot(frames, zones, counters, markers, spans, 0L);
+    }
+
+    /**
      * @param withZones false leaves {@link #zones()} empty — for a reader that fetches zones per frame
      *                  through {@link CgTrace#zonesBetween}, where copying the whole ring would cost more
      *                  than everything else in the snapshot put together
