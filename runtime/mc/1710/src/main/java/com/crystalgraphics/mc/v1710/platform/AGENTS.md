@@ -1,14 +1,16 @@
 # `mc/v1710/platform` — the MC 1.7.10 platform
 
-The 1.7.10 answer to `platform/`'s SPI: what names Minecraft or Forge, and nothing else. The GL backend,
-the GL context and input are tier 1's (`runtime/lwjgl/2` — `Lwjgl2GLBackend`, `Lwjgl2GLContext`,
-`Lwjgl2InputService`, `Lwjgl2CursorService`), shared with legacy Forge and the harness.
+The 1.7.10 answer to `platform/`'s SPI: what names Minecraft or Forge, and nothing else. The GL context
+and input are tier 1's (`runtime/lwjgl/2` — `Lwjgl2GLContext`, `Lwjgl2InputService`,
+`Lwjgl2CursorService`), shared with legacy Forge; the GL backend is tier 1's `Lwjgl2GLBackend` extended
+by `GLBackend1710`, for Angelica.
 
 ## Classes
 
 | Class | Implements | What it does |
 |---|---|---|
 | `PlatformService1710` | `CgPlatformService` | The bundle: tier 1's backend, context and input, plus the services below, each built lazily. `onPreInit()` registers it and fills the cursor slot on a client; `onInit()` checks GL requirements and attaches the reload listener, client only |
+| `gl/GLBackend1710` | `CgGLBackend` | Tier 1's `Lwjgl2GLBackend`, with the six calls Angelica rewrites into methods its `GLStateManager` lacks routed through ones it has. Here and not in tier 1, because Angelica exists only on 1.7.10. Under lwjgl3ify it still runs, through lwjgl3ify's LWJGL 2 layer |
 | `service/ResourceService1710` | `CgResourceService` | `openStream(domain, path)` over `IResourceManager`; `null` on not-found, never throws |
 | `service/RenderingService1710` | `CgRenderingService` | The legacy single-call path; the frame is driven by `CgRenderHook` instead |
 | `service/LifecycleService1710` | `CgLifecycleService` | Straight to `CgGraphicsLifecycle`; called by `MixinMinecraft` (resize, fullscreen, shutdown) |
