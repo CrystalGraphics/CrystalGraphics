@@ -54,6 +54,8 @@ final class TrackedVertexArrays {
 
     Vao current() { return current; }
 
+    int currentName() { return currentName; }
+
     int gen() { return names.add(new Vao()); }
 
     void bind(int name) {

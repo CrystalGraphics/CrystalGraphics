@@ -68,6 +68,10 @@ final class TrackedTextures implements TrackedPrograms.Samplers {
         this.units = new int[tracker.device().info().limits().maxTextureUnits()][KINDS];
     }
 
+    int activeUnit() { return active; }
+
+    int bound2D(int unit) { return unit < units.length ? units[unit][KIND_2D] : 0; }
+
     int gen() {
         int name = names.next();
         return names.add(new GlTexture(name));
