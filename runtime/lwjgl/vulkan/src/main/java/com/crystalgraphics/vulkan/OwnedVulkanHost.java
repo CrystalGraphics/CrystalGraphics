@@ -559,7 +559,9 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
 
         VkPhysicalDeviceFeatures enable = VkPhysicalDeviceFeatures.calloc(stack)
                 .samplerAnisotropy(has.samplerAnisotropy()).fillModeNonSolid(has.fillModeNonSolid())
-                .independentBlend(has.independentBlend()).imageCubeArray(has.imageCubeArray());
+                .independentBlend(has.independentBlend()).imageCubeArray(has.imageCubeArray())
+                // What GL 4.x gives a shader: doubles and 64-bit integers, where the hardware has them.
+                .shaderFloat64(has.shaderFloat64()).shaderInt64(has.shaderInt64());
         VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamic = VkPhysicalDeviceDynamicRenderingFeaturesKHR.calloc(stack)
                 .sType$Default().dynamicRendering(true);
         VkPhysicalDeviceVulkan12Features v12 = VkPhysicalDeviceVulkan12Features.calloc(stack).sType$Default()

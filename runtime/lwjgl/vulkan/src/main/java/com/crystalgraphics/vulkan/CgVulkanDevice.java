@@ -108,6 +108,7 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
     private final VulkanStaging staging;
     private final VulkanEncoder encoder;
     private VulkanTexture surfaceColor, surfaceDepth;
+    private VulkanBuffer scratch;
     int barriers;
 
     public CgVulkanDevice(CgVulkanHost host, int width, int height) {
@@ -172,6 +173,16 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
     VulkanBuffer stagingBuffer(long size) {
         return (VulkanBuffer) createBuffer(new CgGpuBuffer.Desc("staging", size,
                 EnumSet.of(CgGpuBuffer.Usage.COPY_SRC, CgGpuBuffer.Usage.COPY_DST), true));
+    }
+
+    /** Device-local memory a copy between images passes through; grown, and the old one released. */
+    VulkanBuffer copyScratch(long size) {
+        if (scratch == null || scratch.size() < size) {
+            if (scratch != null) release(scratch);
+            scratch = (VulkanBuffer) createBuffer(new CgGpuBuffer.Desc("copy scratch", size,
+                    EnumSet.of(CgGpuBuffer.Usage.COPY_SRC, CgGpuBuffer.Usage.COPY_DST), false));
+        }
+        return scratch;
     }
 
     /** A {@code VkBufferView} over a range, kept until the buffer goes. */
@@ -412,9 +423,12 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
             }
             VkPipelineColorBlendStateCreateInfo blend = VkPipelineColorBlendStateCreateInfo.calloc(stack)
                     .sType$Default().pAttachments(blends);
+            // Only what the pipeline uses: a declared dynamic state must be set before every draw with it.
+            IntBuffer states = stack.mallocInt(4).put(VK_DYNAMIC_STATE_VIEWPORT).put(VK_DYNAMIC_STATE_SCISSOR);
+            if (r.depthBias()) states.put(VK_DYNAMIC_STATE_DEPTH_BIAS);
+            if (ds.stencilTest()) states.put(VK_DYNAMIC_STATE_STENCIL_REFERENCE);
             VkPipelineDynamicStateCreateInfo dynamic = VkPipelineDynamicStateCreateInfo.calloc(stack).sType$Default()
-                    .pDynamicStates(stack.ints(VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR,
-                            VK_DYNAMIC_STATE_DEPTH_BIAS, VK_DYNAMIC_STATE_STENCIL_REFERENCE));
+                    .pDynamicStates(states.flip());
 
             int depthFormat = d.depthFormat() == null ? VK_FORMAT_UNDEFINED : formats.vk(d.depthFormat());
             int aspect = d.depthFormat() == null ? 0 : formats.aspectOf(d.depthFormat());
