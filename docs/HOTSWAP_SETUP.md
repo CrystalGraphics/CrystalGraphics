@@ -1,186 +1,40 @@
-# CrystalGraphics Hotswap Redirect Preservation
+# Hotswap on 1.7.10
 
-**Purpose**: Preserve CrystalGraphics ASM redirect transforms across IntelliJ IDEA hotswap reloads  
-**Scope**: Development workflow for `runClient` sessions  
-**Requires**: HotSwapAgent + LWJGL 2.9.3 + LaunchClassLoader environment
+**Purpose**: keep a hot-swapped class's transforms — its Mixins above all — in a running 1.7.10 dev client.
+**Scope**: `runtime/mc/1710` dev runs, with HotSwapAgent attached.
 
----
+HotSwapAgent hands the JVM a redefined class's **untransformed** bytes, so without help a reloaded class
+loses every LaunchWrapper transform it had when it was first loaded — a mixin target silently stops
+being mixed. `CrystalGraphicsHotswapPlugin` (`com.crystalgraphics.mc.v1710.hotswap`) hooks HotSwapAgent's
+`REDEFINE` event and runs the **whole** LaunchWrapper transformer chain over the new bytes
+(`TransformHelper`). HotSwapAgent finds the plugin through `src/main/resources/hotswap-agent.properties`.
 
-## The Problem
+## Attaching it
 
-CrystalGraphics uses an ASM transformer (`CrystalGraphicsTransformer`) to rewrite callsites
-in other classes at load time. When IntelliJ hotswaps a class, the JVM redefines it from
-the **original** bytecode -- the ASM redirects are lost. Without intervention, hotswapped
-classes bypass the GL state mirror entirely, causing state desync.
-
-The `CrystalGraphicsHotswapPlugin` hooks into HotSwapAgent's `REDEFINE` event and re-runs
-the CrystalGraphics transformer on every hotswapped class, restoring the redirect layer.
-
----
-
-## Required JVM Arguments
-
-The `build.gradle.kts` `runClient` task already configures both agents:
-
-```kotlin
-tasks.named<JavaExec>("runClient") {
-    val agent = findJarBySubstring("unimixins")
-    jvmArgs("-javaagent:${agent.absolutePath}")
-
-    val hotswapAgent = findJarBySubstring("hotswap-agent")
-    jvmArgs("-javaagent:${hotswapAgent.absolutePath}")
-}
-```
-
-Both `-javaagent` entries are required:
-
-| Agent | Purpose |
-|-------|---------|
-| `unimixins` | Mixin bootstrap (standard GTNH moddev) |
-| `hotswap-agent-core` | HotSwapAgent framework; discovers `CrystalGraphicsHotswapPlugin` via `hotswap-agent.properties` |
-
-The plugin is registered through `src/main/resources/hotswap-agent.properties`:
-```
-pluginPackages=com.crystalgraphics.mc.v1710.hotswap
-```
-
-No additional IntelliJ run configuration changes are needed when launching via `runClient`.
-
----
-
-## IntelliJ Workflow
-
-1. Launch `runClient` from Gradle (or the generated IntelliJ run configuration).
-2. Edit Java source files.
-3. **Build > Recompile** the changed file(s), or use **Build > Build Project** (`Ctrl+F9`).
-4. IntelliJ hotswaps the changed classes into the running JVM.
-5. HotSwapAgent fires a `REDEFINE` event for each changed class.
-6. `CrystalGraphicsHotswapPlugin.reloadClass()` intercepts the event and re-applies
-   the CrystalGraphics transformer, restoring GL call redirects.
-
-The cycle is: edit -> recompile -> automatic retransform. No restart needed.
-
----
-
-## Configuration Flags
-
-All flags are JVM system properties (`-D...`). Add them to the `runClient` JVM args
-or IntelliJ run configuration as needed.
-
-### `crystalgraphics.hotswap.disable`
-
-Disables the hotswap plugin entirely. Hotswapped classes will **not** be retransformed.
+The Gradle `runClient` task does not add the agent. Attach it from the IDE run configuration:
 
 ```
--Dcrystalgraphics.hotswap.disable=true
+-javaagent:<path to hotswap-agent-core.jar>
 ```
 
-Default: `false`
+and hotswap the usual way — edit, **Build ▸ Recompile**, and the IDE redefines the changed classes.
 
-### `crystalgraphics.hotswap.verbose`
+## Flags
 
-Enables debug logging for every retransform event. Logs which classes are processed
-and which are skipped due to LaunchClassLoader exclusion prefixes.
+| Flag | Effect |
+|---|---|
+| `-Dcrystalgraphics.hotswap.disable=true` | redefined classes keep their raw bytes |
+| `-Dcrystalgraphics.hotswap.verbose=true` | log each class transformed, and each skipped by LaunchClassLoader's exclusion lists |
 
-```
--Dcrystalgraphics.hotswap.verbose=true
-```
-
-Default: `false`
-
-Output appears in both the HotSwapAgent log (via `AgentLogger`) and the game log
-(via Log4j `CrystalGraphics-Hotswap` logger).
-
-### `crystalgraphics.hotswap.fullChain`
-
-Controls which transformers run on hotswapped classes:
-
-| Value | Behavior |
-|-------|----------|
-| `false` (default) | Only `CrystalGraphicsTransformer` runs. Fast, minimal side effects. |
-| `true` | The **entire** LaunchClassLoader transformer chain runs. Required if other coremods also need to retransform, but slower and may cause issues with non-idempotent transformers. |
-
-```
--Dcrystalgraphics.hotswap.fullChain=true
-```
-
-Use `fullChain` only when debugging interactions with other coremods. The default
-single-transformer mode is correct for normal CrystalGraphics development.
-
----
+`-Dcrystalgraphics.hotswap.fullChain` is read and ignored: the full chain is unconditional since the GL
+redirect coremod it once narrowed to was deleted.
 
 ## Limitations
 
-### Standard Java 8 HotSwap
-
-The stock JDK 8 HotSwap implementation supports **method body changes only**:
-
-- Changing code inside an existing method: **works**
-- Adding/removing methods: **fails** (UnsupportedOperationException)
-- Adding/removing fields: **fails**
-- Changing method signatures: **fails**
-- Changing class hierarchy: **fails**
-
-For method-body-only edits (the most common case during iterative development),
-standard HotSwap is sufficient.
-
-### DCEVM for Structural Changes
-
-[DCEVM](https://dcevm.github.io/) is an alternative JVM that supports full structural
-class redefinition -- adding methods, fields, changing hierarchy, etc. If your workflow
-requires structural changes without restarting, install DCEVM as your JDK.
-
-CrystalGraphics' hotswap plugin is compatible with DCEVM. No configuration changes
-are needed; HotSwapAgent detects DCEVM automatically.
-
-### Classes Not Retransformed
-
-The plugin skips classes that match LaunchClassLoader's exclusion lists:
-
-- `classLoaderExceptions` -- classes loaded by the parent classloader (e.g., `java.`, `javax.`)
-- `transformerExceptions` -- classes exempt from transformation (e.g., `org.lwjgl.`)
-
-This matches the original load-time behavior. If a class was not transformed at
-startup, it will not be retransformed on hotswap.
-
----
-
-## Troubleshooting
-
-### Redirects Not Restored After Hotswap
-
-1. Verify HotSwapAgent is loaded: look for `HOTSWAP AGENT` banner in console output at startup.
-2. Check that `crystalgraphics.hotswap.disable` is not set to `true`.
-3. Enable verbose logging (`-Dcrystalgraphics.hotswap.verbose=true`) and confirm
-   `Retransforming <classname>` appears in the log.
-4. Ensure the class is loaded by `LaunchClassLoader`, not the system classloader.
-   Classes in exclusion lists are intentionally skipped.
-
-### "Hot Swap Failed" Dialog in IntelliJ
-
-This means the JVM rejected the redefinition -- typically a structural change
-(new method/field). Options:
-
-- Revert to a method-body-only change and retry.
-- Install DCEVM for structural hotswap support.
-- Restart `runClient`.
-
-### CrystalGraphicsTransformer Not Found in Chain
-
-If verbose logs show `CrystalGraphicsTransformer not found in chain, instantiating`,
-the transformer is being created on demand. This is normal when the transformer was
-registered after the classloader snapshot. The fallback instantiation produces
-identical results.
-
-### Full Chain Causes Errors
-
-If `fullChain=true` causes crashes or corrupted classes, switch back to the default
-(`fullChain=false`). Some transformers in the chain are not idempotent and produce
-incorrect bytecode when run twice on the same class.
-
-### Log Locations
-
-| Logger | Where |
-|--------|-------|
-| `AgentLogger` (HotSwapAgent) | Console / stdout |
-| `CrystalGraphics-Hotswap` (Log4j) | `logs/fml-client-latest.log` |
+- **A class LaunchClassLoader never transformed is not transformed on redefine** — its
+  `classLoaderExceptions` and `transformerExceptions` (`java.`, `org.lwjgl.` …) are skipped, as at load.
+- **Stock HotSwap changes method bodies only.** Adding a method or field, or changing a signature or the
+  hierarchy, needs a JDK with enhanced class redefinition (JetBrains Runtime with
+  `-XX:+AllowEnhancedClassRedefinition`, or DCEVM); otherwise restart the client.
+- **A transformer that is not idempotent can break on a second pass.** If a redefined class misbehaves
+  and the first load did not, `-Dcrystalgraphics.hotswap.disable=true` tells the two apart.

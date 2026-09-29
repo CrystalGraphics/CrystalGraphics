@@ -330,6 +330,11 @@ public final class CgGlStateManager {
      */
     private boolean forcing;
 
+    /** Set while a scope restores: its values are what GL held, which {@link CgGL} must issue as they are. */
+    private boolean restoring;
+
+    boolean restoring() { return restoring; }
+
     private boolean issue(long fields) { unknownFields &= ~fields; callsIssued++; return true; }
 
     private boolean skip() { callsSkipped++; return false; }
@@ -942,16 +947,21 @@ public final class CgGlStateManager {
             // without it every restore would be deduplicated away against exactly the stale values that are
             // wrong, which is the silent-elision failure this scope exists to prevent.
             if (foreign) invalidateAll();
-            for (CgGlSlot slot : SLOTS) {
-                if ((mask & (1 << slot.ordinal())) == 0) continue;
-                // A domain not wholly trusted is re-established in full — see `forcing`. A trusted one takes
-                // the normal deduplicated path and usually emits nothing.
-                forcing = mustIssue(slot) || !isTrusted(slot);
-                try {
-                    reissue(slot, saved);
-                } finally {
-                    forcing = false;
+            restoring = true;
+            try {
+                for (CgGlSlot slot : SLOTS) {
+                    if ((mask & (1 << slot.ordinal())) == 0) continue;
+                    // A domain not wholly trusted is re-established in full — see `forcing`. A trusted one takes
+                    // the normal deduplicated path and usually emits nothing.
+                    forcing = mustIssue(slot) || !isTrusted(slot);
+                    try {
+                        reissue(slot, saved);
+                    } finally {
+                        forcing = false;
+                    }
                 }
+            } finally {
+                restoring = false;
             }
             depth--;
         }

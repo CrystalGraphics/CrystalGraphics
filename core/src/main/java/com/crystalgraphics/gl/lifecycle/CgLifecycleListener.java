@@ -55,11 +55,21 @@ public interface CgLifecycleListener {
     }
 
     /**
-     * One real rendered frame has been ticked, via {@link CgGraphicsLifecycle#tickFrame()}.
+     * The host has drawn its frame, GUI included, and the engine is ending it via
+     * {@link CgGraphicsLifecycle#tickFrame()}: once per host frame, a world frame and a title-screen frame
+     * alike, and <b>the last point to draw over the host's picture</b>. The GL state shadow was just
+     * invalidated, so whatever the host left bound is not trusted.
      *
-     * <p>This is the engine's authoritative frame cadence — the same tick that advances the glyph
-     * atlas LRU — not a per-window or per-scene paint call. Do per-frame bookkeeping here, not work
-     * proportional to what is on screen.</p>
+     * <pre>{@code
+     * CgGraphicsLifecycle.addListener(new CgLifecycleListener() {
+     *     @Override public void onFrame(long frame) {
+     *         if (overlayUp) paintOverlay();   // lands over the host's GUI, inside this frame
+     *     }
+     * });
+     * }</pre>
+     *
+     * <p>It is also the engine's frame cadence — the same tick that advances the glyph atlas LRU. Never
+     * called after {@link CgGraphicsLifecycle#standDown}.</p>
      *
      * @param frame the current authoritative frame number
      */

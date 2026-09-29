@@ -143,6 +143,15 @@ final class CgGlRecordingBackend extends CgGLBackend {
 
     /** Decodes the tape through {@link CgGL}, so the live state manager sees every call. */
     void replay() {
+        CgGL.replaying = true;
+        try {
+            replayTape();
+        } finally {
+            CgGL.replaying = false;
+        }
+    }
+
+    private void replayTape() {
         read = 0;
         int depth = 0;
         byte[] a = tape.array();

@@ -16,6 +16,11 @@ import net.neoforged.bus.api.IEventBus;
 import com.crystalgraphics.mc.shared.FmlSide;
 import net.neoforged.fml.loading.FMLLoader;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
+//? if >=1.20.6 {
+/*import net.neoforged.neoforge.client.event.RenderFrameEvent;
+*///?} else {
+import net.neoforged.neoforge.event.TickEvent;
+//?}
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.GameShuttingDownEvent;
 //? if >=1.21.4 {
@@ -64,6 +69,7 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
         static void register(IEventBus modBus) {
             NeoForge.EVENT_BUS.addListener(Events::onRenderLevelOpaque);
             NeoForge.EVENT_BUS.addListener(Events::onRenderLevelTransparent);
+            NeoForge.EVENT_BUS.addListener(Events::onFrameEnd);
             NeoForge.EVENT_BUS.addListener(Events::onGameShuttingDown);
 
             // A SEPARATE CLASS, not a branch here: naming a client-only event type in a method of
@@ -115,8 +121,17 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
         // -- NEOFORGE bus -----------------------------------------------------------
 
         // NeoForge 21.6 made each stage an event class of its own; 21.9 draws block entities with the
-        // entities, so AfterEntities is the last opaque stage.
-        //? if >=1.21.9 {
+        // entities, so AfterEntities is the last opaque stage. 26.1 names them for what they draw:
+        // entities are features, and AfterTranslucentParticles follows the particles' reset.
+        //? if >=26.1 {
+        /*private static void onRenderLevelOpaque(RenderLevelStageEvent.AfterOpaqueFeatures event) {
+            LifecycleModern.opaquePass(partialTick(event));
+        }
+
+        private static void onRenderLevelTransparent(RenderLevelStageEvent.AfterTranslucentParticles event) {
+            LifecycleModern.transparentPass();
+        }
+        *///?} elif >=1.21.9 {
         /*private static void onRenderLevelOpaque(RenderLevelStageEvent.AfterEntities event) {
             LifecycleModern.opaquePass(partialTick(event));
         }
@@ -161,6 +176,18 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
         *///?} else {
         private static float partialTick(RenderLevelStageEvent event) {
             return event.getPartialTick();
+        }
+        //?}
+
+        // The frame end, once a frame after the GUI too: RenderTickEvent at END, RenderFrameEvent.Post from
+        // NeoForge 20.6.
+        //? if >=1.20.6 {
+        /*private static void onFrameEnd(RenderFrameEvent.Post event) {
+            LifecycleModern.frameEnd();
+        }
+        *///?} else {
+        private static void onFrameEnd(TickEvent.RenderTickEvent event) {
+            if (event.phase == TickEvent.Phase.END) LifecycleModern.frameEnd();
         }
         //?}
 

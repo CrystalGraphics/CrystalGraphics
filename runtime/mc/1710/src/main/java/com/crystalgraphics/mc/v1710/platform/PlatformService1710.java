@@ -18,7 +18,7 @@ import com.crystalgraphics.mc.v1710.platform.state.AngelicaStateProvider;
 
 /**
  * Complete MC 1.7.10 platform bundle. Implements {@link CgPlatformService} by composing
- * the mc1710 service adapters. Register via {@code CgPlatform.register(new PlatformService1710())}.
+ * the 1.7.10 service adapters. Register via {@code CgPlatform.register(new PlatformService1710())}.
  *
  * <p>{@link RenderingService1710} and {@link LifecycleService1710} instances are exposed
  * via package-visible accessors if needed.</p>

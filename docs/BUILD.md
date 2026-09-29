@@ -15,7 +15,7 @@ node against the CrystalGraphics node of the same version, so **a version is alw
 
 | Artifact | Task | Installs on |
 |---|---|---|
-| `build/libs/crystalgraphics-<v>.jar` | `singleJar` (+ `checkSingleJar`) | every supported loader and version: Forge 1.7.10, 1.8.8–1.21.11 · NeoForge 1.20.2–1.21.11 · Fabric 1.14.4–1.21.11 (exceptions in CrystalGUI's `AGENTS.md`) |
+| `build/libs/crystalgraphics-<v>.jar` | `singleJar` (+ `checkSingleJar`) | every supported loader and version: Forge 1.7.10, 1.8.8–26.2 · NeoForge 1.20.2–26.2 · Fabric 1.14.4–26.2 (exceptions in CrystalGUI's `AGENTS.md`) |
 | `build/libs/crystalgraphics-joml-<v>.jar` | built with it | **only** instances below Minecraft 1.19.3 (Minecraft ships JOML from 1.19.3; a second copy there is a split package) |
 
 One jar serves every loader because a class file is inert until something defines it; the whole jar is
@@ -50,9 +50,10 @@ emits its Minecraft's Java (`nodeJava`: 17, or 21 from 1.20.5 via `java.version 
 downgraded to 8 in one pass. **javac does not check the API**: a Java 9+ method is compiled happily and
 fails on a Java 8 instance unless jvmdg stubs it — Forge ≤1.16, legacy Forge and 1.7.10 run Java 8.
 
-**Which loaders a build includes.** From this checkout or from inside CrystalGUI: all of them. Included
-by any other build (a consumer mod): only `common` and `forge` at 1.20.1 (`loadersWanted` in
-`settings.gradle.kts`).
+**Which nodes a build includes.** From this checkout or from inside CrystalGUI: all of them. Included
+by any other build (a consumer mod): one loader node and its `common` — the node claiming the
+`loader:minecraft` in the `singlejar.checkout.target` system property (which `com.crystalgui.settings`
+sets), else `forge` 1.20.1 (`SingleJarSettings.select`).
 
 ## Nodes and toolchains
 

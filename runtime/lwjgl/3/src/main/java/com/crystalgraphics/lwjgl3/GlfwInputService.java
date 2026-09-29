@@ -12,7 +12,7 @@ import java.util.function.LongSupplier;
 import org.lwjgl.glfw.GLFW;
 
 /**
- * Key state, modifiers and the clipboard on MC 1.20.x.
+ * Key state, modifiers and the clipboard over GLFW.
  *
  * <p>Unlike {@code Lwjgl2InputService}, translation is a real table: {@link CgKeyCodes} is LWJGL2
  * scancode numbering and this host is GLFW. See {@link CgGlfwKeyCodes}.</p>

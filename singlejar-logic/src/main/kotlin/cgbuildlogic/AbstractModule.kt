@@ -97,6 +97,13 @@ fun Project.abstractModule(shadePackage: String) {
     }
     downgradedVariant("downgradedApiElements", "apiElements", Usage.JAVA_API)
     downgradedVariant("downgradedRuntimeElements", "runtimeElements", Usage.JAVA_RUNTIME)
+    // The originals say standard-jvm too. Without it the copy matched one more requested attribute, and
+    // Gradle chose it over the original even for a Java 25 consumer -- a test worker, which then saw a
+    // record rewritten as a class.
+    for (original in listOf("apiElements", "runtimeElements")) {
+        configurations[original].attributes.attribute(TargetJvmEnvironment.TARGET_JVM_ENVIRONMENT_ATTRIBUTE,
+            objects.named(TargetJvmEnvironment::class.java, TargetJvmEnvironment.STANDARD_JVM))
+    }
 
     // The copy's CLASSES as a directory, beside main's resources: a dev run stages resources from
     // `main`, and a second root offering the same paths is a collision there.

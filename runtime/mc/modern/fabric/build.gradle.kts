@@ -2,6 +2,8 @@
 // whose gradle.properties pins mc.version, the loader, fabric-api and Parchment).
 
 import cgbuildlogic.commonNode
+import cgbuildlogic.fabricRunsIntermediary
+import cgbuildlogic.loomPluginId
 import cgbuildlogic.registerThinRename
 import cgbuildlogic.stubMode
 import net.fabricmc.loom.LoomGradleExtension
@@ -11,32 +13,34 @@ import net.fabricmc.loom.task.RemapJarTask
 
 plugins {
     id("cg-modern-loader")
-    // Upstream fabric-loom 1.15.x supports Gradle 9.x (1.16 requires 9.4+, 1.15 works on 9.0+).
-    // Architectury-loom 1.14.473 was replaced because its Forge mode uses detachedConfiguration
-    // resolution without an exclusive lock — a Gradle 9 hard error (not fixable via properties).
-    // fabric-loom 1.16.x requires Gradle 9.4+ — that's where the runtimeClasspath
-    // exclusive-lock fix lives (1.15.x still triggers it via the jvmArguments getter).
+    // 1.17 is the last Loom on Gradle 9.5 (1.18 needs 9.7), and the first that builds 26.2. One
+    // artifact, two ids: `net.fabricmc.fabric-loom-remap` for an obfuscated Minecraft, and
+    // `net.fabricmc.fabric-loom` from 26.1, which ships unobfuscated (cgbuildlogic.loomPluginId).
     // Applied below, on a real node only (cgbuildlogic.StubMode).
-    id("fabric-loom") version "1.16.2" apply false
+    id("fabric-loom") version "1.17.21" apply false
     // No version: settings.gradle.kts pins it, and repeating it here is refused once build-logic --
     // which the root applies for the descriptors -- has put shadow on the root buildscript classpath.
     id("com.gradleup.shadow")
 }
 
+val remaps = fabricRunsIntermediary(project.name)
+
 if (!stubMode) {
-    apply(plugin = "fabric-loom")
+    apply(plugin = loomPluginId(project.name))
     val loom = the<LoomGradleExtensionAPI>()
     dependencies {
         "minecraft"("com.mojang:minecraft:${property("mc.version")}")
-        "mappings"(loom.layered {
+        if (remaps) "mappings"(loom.layered {
             officialMojangMappings()
             // Parchment starts at 1.16.5; a node below it pins none and gets Mojang's names alone.
             findProperty("parchment.version")?.let {
                 parchment("org.parchmentmc.data:parchment-${property("parchment.mc")}:$it@zip")
             }
         })
-        "modImplementation"("net.fabricmc:fabric-loader:${property("fabric.loader")}")
-        "modImplementation"("net.fabricmc.fabric-api:fabric-api:${property("fabric.api")}")
+        // Unobfuscated Minecraft has nothing to remap a mod dependency to: plain configurations.
+        val mod = if (remaps) "modImplementation" else "implementation"
+        mod("net.fabricmc:fabric-loader:${property("fabric.loader")}")
+        mod("net.fabricmc.fabric-api:fabric-api:${property("fabric.api")}")
     }
 
     // Per NODE: relative to versions/<version>/, so two versions never share a world.

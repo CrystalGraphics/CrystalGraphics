@@ -241,7 +241,7 @@ fun Project.configureStubs() {
 
 /**
  * The step that puts [shadowTask]'s jar at the names its loader runs, in either mode — or [shadowTask]
- * itself where the loader runs Mojang's names (NeoForge, Forge 1.20.6+).
+ * itself where the loader runs Mojang's names (NeoForge, Forge 1.20.6+, Fabric 26.1+).
  *
  * ```kotlin
  * val thinJar = registerThinRename("thinShadowJar", "thin") {
@@ -257,7 +257,7 @@ fun Project.configureStubs() {
 fun Project.registerThinRename(shadowTask: String, classifier: String, loomMappings: (() -> File)? = null,
                                realRename: () -> TaskProvider<out AbstractArchiveTask>): TaskProvider<out AbstractArchiveTask> {
     val format = when {
-        stubBranch == "fabric" -> StubDatabase.Names.TINY
+        stubBranch == "fabric" && fabricRunsIntermediary(name) -> StubDatabase.Names.TINY
         // Legacy Forge always runs SRG members; modern Forge until 1.20.6.
         stubBranch == "forge" && (!onModernTree || forgeRunsSrg(name)) -> StubDatabase.Names.TSRG
         else -> return tasks.named(shadowTask, AbstractArchiveTask::class.java)
@@ -314,7 +314,11 @@ fun Project.registerStubReobf(shadowTask: String, classifier: String, libraries:
 fun Project.registerStubRemap(shadowTask: String, classifier: String, libraries: FileCollection,
                               name: String = thinJarTask(this, shadowTask)): TaskProvider<TinyRemapJar> {
     val source = tasks.named(shadowTask, AbstractArchiveTask::class.java)
-    val attributes = StubDatabase.manifest(stubDatabase!!, stubKey) + (FABRIC_GRADLE_VERSION to gradle.gradleVersion)
+    // At the position Loom writes it (mid-manifest from Loom 1.17), with this build's Gradle.
+    val listed = StubDatabase.manifest(stubDatabase!!, stubKey)
+    val attributes = if (listed.any { it.first == FABRIC_GRADLE_VERSION })
+        listed.map { (key, value) -> key to if (key == FABRIC_GRADLE_VERSION) gradle.gradleVersion else value }
+        else listed + (FABRIC_GRADLE_VERSION to gradle.gradleVersion)
     val database = stubDatabase
     val node = stubKey
     return tasks.register(name, TinyRemapJar::class.java) {
@@ -331,7 +335,7 @@ fun Project.registerStubRemap(shadowTask: String, classifier: String, libraries:
     }
 }
 
-/** Loom writes it; a stub build knows it, so the database does not carry it. */
+/** Loom writes it; a stub build knows it, so the database carries only where it goes. */
 const val FABRIC_GRADLE_VERSION = "Fabric-Gradle-Version"
 
 /**
@@ -395,7 +399,9 @@ private fun Project.registerListStubInputs() {
             val manifest = (if (extra.has(STUB_MANIFEST)) extra.get(STUB_MANIFEST) as Provider<*> else null)
                 ?.let { jar -> JarFile(file(jar.get())).use { it.manifest.mainAttributes.entries.toList() } }
                 ?.map { it.key.toString() to it.value.toString() }
-                ?.filter { (key, _) -> key.startsWith("Fabric-") && key != FABRIC_GRADLE_VERSION }
+                ?.filter { (key, _) -> key.startsWith("Fabric-") }
+                // Kept for its position; the value is whichever Gradle builds the stub.
+                ?.map { (key, value) -> key to if (key == FABRIC_GRADLE_VERSION) "gradle" else value }
                 ?.onEach { (key, value) ->
                     // Loom writes "unknown" when it has not resolved the loader or mixin yet, and the shipped
                     // jar copies these attributes -- so the database must never learn one.

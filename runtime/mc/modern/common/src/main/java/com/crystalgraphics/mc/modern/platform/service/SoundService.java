@@ -13,7 +13,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvent;
 
-/** UI sounds on MC 1.20.x. {@code soundId} is a resource location, e.g. {@code minecraft:ui.button.click}. */
+/** UI sounds on the modern tree. {@code soundId} is a resource location, e.g. {@code minecraft:ui.button.click}. */
 public final class SoundService implements CgSoundService {
 
     @Override

@@ -141,7 +141,11 @@ public final class Blaze3dGLBackend extends Lwjgl3GLBackend {
         //? if <1.17 {
         /*if (cap == GL_ALPHA_TEST_LEGACY)         { GlStateManager._enableAlphaTest();      return; }
         *///?}
+        //? if >=26.2 {
+        /*if (cap == GL11.GL_BLEND)                { blend(true);                               return; }
+        *///?} else {
         if (cap == GL11.GL_BLEND)                { GlStateManager._enableBlend();             return; }
+        //?}
         if (cap == GL11.GL_DEPTH_TEST)           { GlStateManager._enableDepthTest();         return; }
         if (cap == GL11.GL_CULL_FACE)            { GlStateManager._enableCull();              return; }
         //? if >=1.17 {
@@ -156,7 +160,11 @@ public final class Blaze3dGLBackend extends Lwjgl3GLBackend {
         //? if <1.17 {
         /*if (cap == GL_ALPHA_TEST_LEGACY)         { GlStateManager._disableAlphaTest();     return; }
         *///?}
+        //? if >=26.2 {
+        /*if (cap == GL11.GL_BLEND)                { blend(false);                              return; }
+        *///?} else {
         if (cap == GL11.GL_BLEND)                { GlStateManager._disableBlend();            return; }
+        //?}
         if (cap == GL11.GL_DEPTH_TEST)           { GlStateManager._disableDepthTest();        return; }
         if (cap == GL11.GL_CULL_FACE)            { GlStateManager._disableCull();             return; }
         //? if >=1.17 {
@@ -208,8 +216,35 @@ public final class Blaze3dGLBackend extends Lwjgl3GLBackend {
 
     @Override
     public void glColorMask(boolean red, boolean green, boolean blue, boolean alpha) {
+        //? if >=26.1 {
+        /*GlStateManager._colorMask(writeMask(red, green, blue, alpha));
+        *///?} else {
         GlStateManager._colorMask(red, green, blue, alpha);
+        //?}
     }
+
+    //? if >=26.2 {
+    /*@Override
+    public void glColorMaski(int buf, boolean red, boolean green, boolean blue, boolean alpha) {
+        GlStateManager._colorMask(buf, writeMask(red, green, blue, alpha));
+    }
+
+    // 26.2 caches blend per draw buffer, and each of its eight switches issues a plain glEnable(GL_BLEND)
+    // -- which is what ours is -- so every one of them must learn it.
+    private static void blend(boolean on) {
+        for (int i = 0; i < 8; i++) {
+            if (on) GlStateManager._enableBlend(i);
+            else GlStateManager._disableBlend(i);
+        }
+    }
+    *///?}
+
+    //? if >=26.1 {
+    /*// ColorTargetState.WRITE_RED/GREEN/BLUE/ALPHA.
+    private static int writeMask(boolean red, boolean green, boolean blue, boolean alpha) {
+        return (red ? 1 : 0) | (green ? 2 : 0) | (blue ? 4 : 0) | (alpha ? 8 : 0);
+    }
+    *///?}
 
     @Override
     public void glDepthFunc(int func) {
