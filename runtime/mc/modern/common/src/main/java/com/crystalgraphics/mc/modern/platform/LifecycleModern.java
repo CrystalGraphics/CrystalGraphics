@@ -108,7 +108,7 @@ public final class LifecycleModern {
      */
     private static void worldDepth(boolean inWorld) {
         //? if >=26.2 {
-        /*CgGL.setDepthReversed(inWorld);
+        /*CgGL.setDepthReversed(inWorld, RenderSystem.getDevice().getDeviceInfo().isZZeroToOne());
         *///?}
     }
 
