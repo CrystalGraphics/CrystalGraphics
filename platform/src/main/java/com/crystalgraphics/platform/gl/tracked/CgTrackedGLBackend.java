@@ -651,6 +651,29 @@ public final class CgTrackedGLBackend extends CgGLBackend {
         draw(mode, 0, count, instanceCount, type, indices);
     }
 
+    /**
+     * Builds the pipeline a {@code mode} draw would bind with the current program, vertex array, framebuffer and
+     * state, without drawing: the device's own compiler takes the program then rather than at its first draw.
+     * What the program reads need not be bound.
+     *
+     * <pre>{@code
+     * CgGL.glUseProgram(program);
+     * backend.buildPipeline(CgGL.GL_TRIANGLES);   // with an empty vertex array, every input reads (0, 0, 0, 1)
+     * }</pre>
+     */
+    public void buildPipeline(int mode) {
+        CgDrawState s = tracker.state;
+        if (!framebuffers.applyDraw()) {
+            errors.invalidFramebufferOperation("A pipeline for a framebuffer with nothing attached");
+            return;
+        }
+        state.sync();
+        vaos.apply(s);
+        programs.applyProgram(s);
+        programs.feedDisabledInputs(s);
+        tracker.buildPipeline(GlEnums.topology(mode));
+    }
+
     /** @param type the index type, or -1 for a draw of arrays */
     private void draw(int mode, int first, int count, int instances, int type, long indices) {
         CgDrawState s = tracker.state;

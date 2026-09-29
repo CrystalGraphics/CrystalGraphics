@@ -108,6 +108,8 @@ public final class CgTracker {
     /** Programs draw with their zero-to-one vertex stage: a pass into a host depth that uses that range. */
     public void setZeroToOneClip(boolean zeroToOne) { zeroToOneClip = zeroToOne; }
 
+    public boolean zeroToOneClip() { return zeroToOneClip; }
+
     // ── targets and clears ─────────────────────────────────────────────────────
 
     /** {@code glBindFramebuffer} for drawing. The open pass continues until something needs another target. */
@@ -279,6 +281,16 @@ public final class CgTracker {
         passFresh = false;
     }
 
+    /**
+     * Builds the pipeline a draw of {@code topology} would bind with the current state and the bound target, without
+     * opening a pass or drawing: what puts a program through the device's own compiler ahead of its first draw.
+     */
+    public void buildPipeline(CgPipelineDesc.Topology topology) {
+        if (state.program == null) throw new IllegalStateException("A pipeline with no program");
+        if (target == null) throw new IllegalStateException("A pipeline with no framebuffer bound");
+        cachedPipeline(topology, target, state.program.vertex(zeroToOneClip));
+    }
+
     private CgPipeline pipeline(CgPipelineDesc.Topology topology) {
         CgDrawState s = state;
         CgShaderModule vertex = s.program.vertex(zeroToOneClip);
@@ -287,30 +299,7 @@ public final class CgTracker {
                 && s.vertexLayouts == keyLayouts && topology == keyTopology && passTarget == keyTarget) {
             return keyPipeline;
         }
-        List<CgPipelineDesc.ColorTarget> targets = new ArrayList<>(passTarget.colors().size());
-        for (int i = 0; i < passTarget.colors().size(); i++) {
-            CgFormat f = passTarget.colors().get(i).texture().desc().format();
-            CgPipelineDesc.Blend blend = f.numeric() == CgFormat.Numeric.INT ? null : s.blend;
-            targets.add(new CgPipelineDesc.ColorTarget(f, blend, (s.colorMasks >>> (4 * i)) & 0xF));
-        }
-        CgFormat depthFormat = passTarget.depth() == null ? null : passTarget.depth().texture().desc().format();
-        CgPipelineDesc.DepthStencil ds = s.depthStencil;
-        if (depthFormat == null) {
-            ds = CgPipelineDesc.DepthStencil.OFF;
-        } else if (!depthFormat.hasStencil() && ds.stencilTest() || !depthFormat.hasDepth() && ds.depthTest()) {
-            ds = new CgPipelineDesc.DepthStencil(ds.depthTest() && depthFormat.hasDepth(), ds.depthWrite(),
-                    ds.depthCompare(), ds.stencilTest() && depthFormat.hasStencil(), ds.front(), ds.back(),
-                    ds.readMask(), ds.writeMask());
-        }
-        CgTextureView any = passTarget.colors().isEmpty() ? passTarget.depth() : passTarget.colors().get(0);
-        CgPipelineDesc desc = new CgPipelineDesc(s.program.label, s.program.layout, vertex, s.program.fragment,
-                s.vertexLayouts, topology, s.raster, ds, targets, depthFormat, any.texture().desc().samples());
-        CgPipeline p = pipelines.get(desc);
-        if (p == null) {
-            p = device.createPipeline(desc);
-            pipelines.put(desc, p);
-            stats.pipelineMisses++;
-        }
+        CgPipeline p = cachedPipeline(topology, passTarget, vertex);
         keyProgram = s.program;
         keyVertex = vertex;
         keyRaster = s.raster;
@@ -321,6 +310,35 @@ public final class CgTracker {
         keyTopology = topology;
         keyTarget = passTarget;
         return keyPipeline = p;
+    }
+
+    private CgPipeline cachedPipeline(CgPipelineDesc.Topology topology, CgTarget on, CgShaderModule vertex) {
+        CgDrawState s = state;
+        List<CgPipelineDesc.ColorTarget> targets = new ArrayList<>(on.colors().size());
+        for (int i = 0; i < on.colors().size(); i++) {
+            CgFormat f = on.colors().get(i).texture().desc().format();
+            CgPipelineDesc.Blend blend = f.numeric() == CgFormat.Numeric.INT ? null : s.blend;
+            targets.add(new CgPipelineDesc.ColorTarget(f, blend, (s.colorMasks >>> (4 * i)) & 0xF));
+        }
+        CgFormat depthFormat = on.depth() == null ? null : on.depth().texture().desc().format();
+        CgPipelineDesc.DepthStencil ds = s.depthStencil;
+        if (depthFormat == null) {
+            ds = CgPipelineDesc.DepthStencil.OFF;
+        } else if (!depthFormat.hasStencil() && ds.stencilTest() || !depthFormat.hasDepth() && ds.depthTest()) {
+            ds = new CgPipelineDesc.DepthStencil(ds.depthTest() && depthFormat.hasDepth(), ds.depthWrite(),
+                    ds.depthCompare(), ds.stencilTest() && depthFormat.hasStencil(), ds.front(), ds.back(),
+                    ds.readMask(), ds.writeMask());
+        }
+        CgTextureView any = on.colors().isEmpty() ? on.depth() : on.colors().get(0);
+        CgPipelineDesc desc = new CgPipelineDesc(s.program.label, s.program.layout, vertex, s.program.fragment,
+                s.vertexLayouts, topology, s.raster, ds, targets, depthFormat, any.texture().desc().samples());
+        CgPipeline p = pipelines.get(desc);
+        if (p == null) {
+            p = device.createPipeline(desc);
+            pipelines.put(desc, p);
+            stats.pipelineMisses++;
+        }
+        return p;
     }
 
     /** Drops every pipeline built from {@code program}: it was relinked or deleted. */
