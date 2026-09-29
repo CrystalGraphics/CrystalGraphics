@@ -434,7 +434,13 @@ public final class TrackedPrograms {
         for (int i = 0; i < t.samplers().size(); i++) samplers.bind(state, t.samplers().get(i), p.samplerUnit[i]);
     }
 
-    /** Every input the program reads must come from the vertex array, which Vulkan requires and GL does not. */
+    /** The current program alone into {@code state}, with nothing it reads bound: enough to build its pipeline. */
+    public void applyProgram(CgDrawState state) {
+        Program p = current;
+        if (p == null || !p.linked) throw new IllegalStateException("No linked program in use");
+        state.program = p.tracked;
+    }
+
     /**
      * An input the vertex array leaves disabled reads GL's current attribute value, {@code (0, 0, 0, 1)}. A device has
      * no such thing, so those inputs read one constant at stride 0 from a binding of their own.

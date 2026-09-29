@@ -100,6 +100,24 @@ public class CgTrackedProgramsTest {
     }
 
     @Test
+    public void aPipelineBuiltAheadIsTheOneTheDrawBinds() {
+        int p = program("void main() {}");
+        gl.glUseProgram(p);
+        gl.glBindVertexArray(gl.glGenVertexArrays());
+        gl.buildPipeline(CgGL.GL_TRIANGLES);                 // CgFrameBlock unbound, a_pos from no array
+        gl.buildPipeline(CgGL.GL_TRIANGLES);
+        assertEquals(1, gl.tracker().stats().pipelineMisses);
+
+        gl.glUniformBlockBinding(p, gl.glGetUniformBlockIndex(p, "CgFrameBlock"), 2);
+        int frame = gl.glGenBuffers();
+        gl.glBindBuffer(CgGL.GL_UNIFORM_BUFFER, frame);
+        gl.glBufferData(CgGL.GL_UNIFORM_BUFFER, 256, UBO);
+        gl.glBindBufferBase(CgGL.GL_UNIFORM_BUFFER, 2, frame);
+        gl.glDrawArrays(CgGL.GL_TRIANGLES, 0, 3);
+        assertEquals("the draw found the pipeline already built", 1, gl.tracker().stats().pipelineMisses);
+    }
+
+    @Test
     public void aCompileErrorIsALinkFailureWithTheCompilersLog() {
         int p = program("BROKEN");
         assertEquals(CgGL.GL_FALSE, gl.glGetProgrami(p, CgGL.GL_LINK_STATUS));

@@ -95,8 +95,8 @@ where a scope left open at `end()` was opened.
 ## The tracked backend and the device (D3)
 
 `CgTrackedGLBackend` answers every `CgGLBackend` call on a `CgDevice` instead of a GL driver, so nothing above
-`CgGL` changes. Its devices today are `CgRecordingDevice` in tests; `CgVulkanDevice` comes with the harness on
-LWJGL 3 (`plan/device-vulkan.md`).
+`CgGL` changes. Its devices are `CgRecordingDevice` in tests and `CgVulkanDevice` (`runtime/lwjgl/vulkan`,
+`plan/device-vulkan.md`), which the harness runs with `--device=vulkan`.
 
 ```java
 CgTrackedGLBackend gl = new CgTrackedGLBackend(device, new ShadercGlslCompiler(), true);
@@ -138,6 +138,9 @@ What is easy to get wrong:
   indices, a draw buffer after `GL_NONE`.
 - **A fence is its frame**: a poll answers once that frame retires; a blocking wait on the current frame
   submits it, and a hosted device refuses the wait, since its host submits.
+- **A program's pipeline is built at its first draw**, where a Vulkan driver compiles it. `buildPipeline(mode)`
+  builds it ahead, for the current program and state with nothing it reads bound — what the shader audit
+  runs on a device, in both clip conventions.
 - **`debug`** refuses sampling a texture the open pass renders to, and a vertex input no attribute array
   feeds. GL errors are kept for `glGetError` and logged once each.
 
