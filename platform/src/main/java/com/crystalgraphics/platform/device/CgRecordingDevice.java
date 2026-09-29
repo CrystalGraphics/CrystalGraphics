@@ -86,7 +86,7 @@ public final class CgRecordingDevice implements CgDevice {
         if (surfaceColor != null) release(surfaceColor);
         if (surfaceDepth != null) release(surfaceDepth);
         surfaceColor = (Texture) createTexture(new CgGpuTexture.Desc("surface", CgGpuTexture.Kind.D2,
-                CgFormat.BGRA8_UNORM, width, height, 1, 1, 1, CgGpuTexture.Usage.ALL));
+                CgFormat.RGBA8_UNORM, width, height, 1, 1, 1, CgGpuTexture.Usage.ALL));
         surfaceDepth = (Texture) createTexture(new CgGpuTexture.Desc("surfaceDepth", CgGpuTexture.Kind.D2,
                 CgFormat.DEPTH24_PLUS_STENCIL8, width, height, 1, 1, 1, CgGpuTexture.Usage.ALL));
     }
