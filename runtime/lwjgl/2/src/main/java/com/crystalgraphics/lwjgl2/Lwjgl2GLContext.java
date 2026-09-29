@@ -51,4 +51,6 @@ public final class Lwjgl2GLContext implements CgGLContext {
     @Override public boolean GL_ARB_explicit_attrib_location() { return caps().GL_ARB_explicit_attrib_location; }
 
     @Override public boolean GL_ARB_timer_query() { return caps().GL_ARB_timer_query; }
+
+    @Override public boolean mappingIsFree() { return false; }
 }

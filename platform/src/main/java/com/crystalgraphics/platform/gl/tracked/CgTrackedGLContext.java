@@ -37,4 +37,6 @@ public final class CgTrackedGLContext implements CgGLContext {
     @Override public boolean GL_ARB_explicit_attrib_location() { return true; }
 
     @Override public boolean GL_ARB_timer_query() { return true; }
+
+    @Override public boolean mappingIsFree() { return true; }
 }

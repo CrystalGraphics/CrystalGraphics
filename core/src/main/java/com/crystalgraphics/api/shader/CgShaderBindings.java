@@ -18,6 +18,14 @@ import java.nio.IntBuffer;
  * {@link #apply(CgShader)}. This decouples uniform configuration from
  * the bind/unbind lifecycle of the shader program itself.</p>
  *
+ * <p><strong>One value per uniform:</strong> writing a name again replaces its value, so a persistent
+ * container may be written every frame and stays the size of its uniforms.</p>
+ *
+ * <pre>{@code
+ * shader.bindings().mat4("u_model", model);      // every draw: still one u_model
+ * shader.bind();
+ * }</pre>
+ *
  * <p>Missing uniforms are handled gracefully: a warn-once log message is emitted
  * per uniform name per program ID, preventing log spam while still surfacing
  * typos in uniform names that would otherwise go silent.</p>

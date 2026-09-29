@@ -20,6 +20,14 @@ and cursor seams are here too — see [UI-facing services](#ui-facing-services).
 | `gl/CgGLContext` | Interface | Capability detection, probed once on the GL thread |
 | `gl/CgCapabilities` | Class | The immutable capability snapshot built from the context |
 | `gl/CgGlStateManager`, `gl/state/*` | — | The GL state shadow, scopes and providers (`core/.../gl/state/AGENTS.md`) |
+| `gl/CENSUS.md` | Generated | Every `CgGLBackend` method and who reaches it; `python platform/tools/gl_census.py` |
+| `gl/tracked/CgTrackedGLBackend`, `CgTrackedGLContext`, `CgTrackedStateProvider` | Classes | `CgGLBackend` over a `CgDevice` — [the tracked backend](#the-tracked-backend-and-the-device-d3) — its capabilities, and the scopes' state provider on it |
+| `gl/tracked/tracker/` | Classes | `CgTracker`: passes, pipelines and bindings from GL's calls, with the draw state and target it compares |
+| `gl/tracked/gl/` | Classes | The GL objects the backend emulates — buffers, textures, programs, framebuffers, VAOs, render state, errors. Public for the backend only |
+| `gl/tracked/memory/` | Classes | Buffer storage: slab allocation and the renamed allocations behind one GL buffer |
+| `device/CgDevice`, `CgDeviceInfo`, `CgDeviceObject` | Interfaces, records | What a GPU device does: buffers, textures, SPIR-V modules, pipelines, passes, frames |
+| `device/format/`, `resource/`, `pipeline/`, `command/`, `shader/` | Interfaces, records | Its types, by what they describe: formats; buffers, textures, samplers, views, timers; pipelines and bindings; encoders and passes; modules and `CgGlslCompiler` |
+| `device/recording/CgRecordingDevice` | Class | A device that logs every command and throws on misuse — for tests |
 | `service/CgResourceService` | Interface | `openStream(domain, path)` — `null` on not-found |
 | `service/CgRenderingService` | Interface | Viewport size and the legacy single-call frame |
 | `service/CgLifecycleService` | Interface | Context init, destroy, resize, and the frame tick |
@@ -40,9 +48,8 @@ Minecraft.
 ## `CgGLBackend` and `CgGL`
 
 `core/` calls `CgGL`; `CgGL` calls `CgGLBackend.get()`. The backend's FBO methods carry no `gl` prefix
-(`bindFramebuffer`), and `CgGL` spells everything `glXxx`. `bindFramebuffer` carries the Core GL30 > ARB >
-EXT waterfall, chosen per call from `CgPlatform.capabilities()` — there is no second, host-delegating
-bind.
+(`bindFramebuffer`), and `CgGL` spells everything `glXxx`. Every backend is core GL 3.3 — the ARB and EXT
+fallbacks went with D1.
 
 A host backend overrides only what its host caches: `Blaze3dGLBackend` routes through Minecraft's
 `GlStateManager`, `GlStateManagerGLBackend` through legacy Forge's. Everything else reaches the driver
@@ -84,6 +91,61 @@ anything else from the live context. Creating objects, compiling and reading pix
 Foreign drawing survives a recording only through `CgGlState.hostForeign(Runnable, slots…)`, whose body is
 recorded and run on replay in order. Owner thread only; `-Dcrystalgraphics.recording.debugScopes=true` names
 where a scope left open at `end()` was opened.
+
+## The tracked backend and the device (D3)
+
+`CgTrackedGLBackend` answers every `CgGLBackend` call on a `CgDevice` instead of a GL driver, so nothing above
+`CgGL` changes. Its devices are `CgRecordingDevice` in tests and `CgVulkanDevice` (`runtime/lwjgl/vulkan`,
+`plan/device-vulkan.md`), which the harness runs with `--device=vulkan`.
+
+```java
+CgTrackedGLBackend gl = new CgTrackedGLBackend(device, new ShadercGlslCompiler(), true);
+CgGL.init(gl);
+CgCapabilities.init(new CgTrackedGLContext());
+CgGlState.setProvider(new CgTrackedStateProvider(gl));
+CgRenderPipeline.init();            // and anything else that creates objects: after the backend is in
+// ... the engine draws through CgGL, as on GL ...
+gl.endFrame();                      // once a frame: ends the open pass and the device's frame
+```
+
+A test that wants the device's view reads it back:
+
+```java
+CgRecordingDevice device = new CgRecordingDevice(64, 64);
+// ... draw ...
+gl.endFrame();
+device.draws();        // draws the device accepted -- it throws on a draw it cannot record
+device.passes();       // each pass's targets and load/store ops
+gl.stats();            // passes, pass breaks, clears folded into load ops, pipeline misses, renames
+```
+
+| Layer | Job |
+|---|---|
+| `CgDevice` | Buffers, textures, samplers, SPIR-V modules, pipelines by description, dynamic-rendering passes with load and store ops, one push-descriptor set per draw, frames in flight with release deferred to retirement |
+| `CgTracker` | GL's implicit passes made explicit: a clear before the first draw is the pass's `CLEAR` load op; a copy, blit, readback or texture upload ends the pass and the next draw resumes with `LOAD`; a pipeline per state key; buffer memory renamed when an unretired frame used it |
+| `CgTrackedGLBackend` | GL's objects and selector state over the tracker, one `Tracked*` class per domain in the census's order |
+| `CgGlslCompiler` | `ShadercGlslCompiler` (`runtime/lwjgl/vulkan`) compiles as Minecraft 26.2 does: shaderc on the source as written, then SPIRV-Cross reflection with the binding and location words patched so the stages agree by name |
+
+What is easy to get wrong:
+
+- **An object made before `CgGL.init(tracked)` does not exist on it.** Names are the backend's own.
+- **GL's semantics hold where core relies on them**: a VAO owns its element binding, an attribute pointer
+  captures the buffer bound at the call, `glBufferData` gives fresh storage, an incomplete texture samples
+  black, an FBO with nothing attached raises `GL_INVALID_FRAMEBUFFER_OPERATION` at the draw, a colour clear
+  under a partial write mask is drawn through the mask (a device's clear writes every channel), and a fence
+  waited on with `GL_SYNC_FLUSH_COMMANDS_BIT` submits its frame.
+- **What GL allows and a device cannot do throws** naming it — sampler objects, texture swizzles, 8-bit
+  indices, a draw buffer after `GL_NONE`.
+- **A fence is its frame**: a poll answers once that frame retires; a blocking wait on the current frame
+  submits it, and a hosted device refuses the wait, since its host submits.
+- **A program's pipeline is built at its first draw**, where a Vulkan driver compiles it. `buildPipeline(mode)`
+  builds it ahead, for the current program and state with nothing it reads bound — what the shader audit
+  runs on a device, in both clip conventions.
+- **`debug`** refuses sampling a texture the open pass renders to, and a vertex input no attribute array
+  feeds. GL errors are kept for `glGetError` and logged once each.
+
+`EngineOnTrackedBackendTest` (`runtime/lwjgl/vulkan`) is the whole stack headless: every shipped shader linked
+in every variant, and a frame through the pipeline, quad and vector renderers.
 
 ---
 
