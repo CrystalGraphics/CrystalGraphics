@@ -13,8 +13,10 @@ import com.crystalgraphics.platform.CgPlatformService;
 import com.crystalgraphics.platform.CgService;
 import com.crystalgraphics.platform.service.*;
 import com.crystalgraphics.platform.gl.*;
+import com.crystalgraphics.platform.gl.state.CgGlSlot;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.mc.v1710.platform.state.AngelicaStateProvider;
+import com.crystalgraphics.mc.v1710.platform.state.RawDriverProvider1710;
 
 /**
  * Complete MC 1.7.10 platform bundle. Implements {@link CgPlatformService} by composing
@@ -133,6 +135,13 @@ public final class PlatformService1710 implements CgPlatformService {
         // to the glGet base — so this can cost performance, never correctness.
         if (AngelicaStateProvider.isAvailable()) {
             CgGlState.setProvider(new AngelicaStateProvider());
+            // Angelica also answers glGet, so only a reader past it can check its cache against the driver.
+            // It binds programs of its own behind glUseProgram(0) (fixed-function emulation, shader packs),
+            // so the driver's program is not expected to match.
+            if (Boolean.getBoolean("crystalgraphics.state.roundTrip")) {
+                RawDriverProvider1710 raw = RawDriverProvider1710.create();
+                if (raw != null) CgGlState.setDriverReader(raw, CgGlSlot.PROGRAM);
+            }
         }
     }
 

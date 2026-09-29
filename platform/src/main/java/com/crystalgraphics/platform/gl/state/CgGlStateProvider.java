@@ -12,14 +12,14 @@ import com.crystalgraphics.platform.gl.CgGlStateManager;
  *
  * <table>
  *   <tr><th>Platform</th><th>Source</th><th>{@code glGet} cost</th></tr>
- *   <tr><td>1.7.10 + Angelica</td><td>Angelica's {@code GLStateManager} (public getters)</td><td>none</td></tr>
- *   <tr><td>1.20.x</td><td>Blaze3D {@code GlStateManager} — <em>partial</em>, cached reflection</td><td>residual</td></tr>
- *   <tr><td>vanilla, harness</td><td>batched {@code glGet}</td><td>full</td></tr>
+ *   <tr><td>1.7.10 + Angelica</td><td>Angelica's {@code GLStateManager} (public getters); its {@code glGet}
+ *       is answered from the same cache</td><td>none</td></tr>
+ *   <tr><td>every other host, and the harness</td><td>{@code glGet}</td><td>full</td></tr>
  * </table>
  *
  * <h3>Fills the shadow rather than returning a value</h3>
  * <p>{@link #read} writes into {@code target} instead of returning an object. With a flat shadow there is
- * no value type to return, and a platform that can answer only part of a domain — Blaze3D tracks blend
+ * no value type to return, and a platform that can answer only part of a domain — Angelica tracks blend
  * factors but not the equation — can fill what it knows and leave the rest to
  * {@link #readByGlGet}.</p>
  *
@@ -38,6 +38,17 @@ public interface CgGlStateProvider {
      * @param target the shadow to fill; only {@code slot}'s fields may be written
      */
     void read(CgGlSlot slot, CgGlStateShadow target);
+
+    /**
+     * Whether a read costs no driver round trip -- a host cache answers every one.
+     *
+     * <p>A nested scope then re-reads instead of trusting the shadow, which is free and catches a host
+     * that rebinds inside our scope through its own manager, where {@code CgGL} cannot see it. Angelica
+     * does: it binds framebuffers internally, and a nested scope that trusted the shadow restored ours.</p>
+     */
+    default boolean isFree() {
+        return false;
+    }
 
     /** The universal fallback: every domain read from the driver. */
     static CgGlStateProvider glGet() {

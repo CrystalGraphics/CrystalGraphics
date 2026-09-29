@@ -29,11 +29,19 @@ public final class CgGlState {
     /**
      * Installs a platform-specific provider, replacing the {@code glGet} default.
      *
-     * <p>Each platform has a cheaper authority than the driver: Angelica's {@code GLStateManager} answers
-     * every domain from public getters at no {@code glGet} cost, Blaze3D's answers roughly half.</p>
+     * <p>For a host with a cheaper authority than the driver. Only 1.7.10 installs one, over Angelica's
+     * {@code GLStateManager}, which answers most domains from public getters at no {@code glGet} cost.</p>
      */
     public static void setProvider(CgGlStateProvider provider) {
         manager.setProvider(provider);
+    }
+
+    /**
+     * A way to the driver past the host's cache, for {@code -Dcrystalgraphics.state.roundTrip}.
+     * Only a host whose {@code glGet} a cache answers needs one. @see CgGlStateManager#setDriverReader
+     */
+    public static void setDriverReader(CgGlStateProvider reader, CgGlSlot... virtualised) {
+        manager.setDriverReader(reader, virtualised);
     }
 
     /**

@@ -298,6 +298,28 @@ public class CgGlStateManagerTest {
                 provider.reads == afterOuter);
     }
 
+    /**
+     * A host that rebinds through its own manager inside our scope -- Angelica does -- leaves the shadow
+     * describing our last write. Where reading the host is free, a nested scope reads it instead of trusting.
+     */
+    @Test
+    public void aFreeProviderIsReadAtEveryDepth() {
+        int[] hostFbo = {23};
+        CgGlState.setProvider(new CgGlStateProvider() {
+            @Override public void read(CgGlSlot slot, CgGlStateShadow t) {
+                if (slot == CgGlSlot.FBO) { t.drawFbo = hostFbo[0]; t.readFbo = hostFbo[0]; }
+            }
+            @Override public boolean isFree() { return true; }
+        });
+        mgr.save(CgGlSlot.FBO);
+        mgr.fboChanged(CgGL.GL_FRAMEBUFFER, 261);
+        hostFbo[0] = 23;                                     // the host bound its own, past CgGL
+
+        mgr.save(CgGlSlot.FBO);
+        assertEquals("the nested scope restores what the host holds, not our last write",
+                23, mgr.baselineFor(CgGlSlot.FBO).drawFbo);
+    }
+
     @Test
     public void adoptedValuesBecomeTheBaselineForDeduplication() {
         mgr.save(CgGlSlot.DEPTH);

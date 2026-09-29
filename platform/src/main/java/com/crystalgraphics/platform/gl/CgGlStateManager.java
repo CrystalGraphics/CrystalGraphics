@@ -5,6 +5,12 @@ import com.crystalgraphics.platform.gl.state.CgGlSlot;
 import com.crystalgraphics.platform.gl.state.CgGlStateProvider;
 import com.crystalgraphics.platform.gl.state.CgGlStateShadow;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import java.util.HashSet;
+import java.util.Set;
+
 /**
  * CPU-side shadow of GL state, with per-call redundancy elimination and scoped save/restore.
  *
@@ -127,6 +133,9 @@ public final class CgGlStateManager {
      * of requiring a bisect. Also the support answer for a user with a broken modpack.</p>
      */
     private static final boolean NO_DEDUP = Boolean.getBoolean("crystalgraphics.state.noDedup");
+
+    /** {@code -Dcrystalgraphics.state.roundTrip=true}; null when off. @see RoundTrip */
+    private final RoundTrip roundTrip = Boolean.getBoolean("crystalgraphics.state.roundTrip") ? new RoundTrip() : null;
 
     /** Set by {@link #verifyAgainst}; null when verification is off, which is the normal case. */
     private CgGlStateProvider truth;
@@ -889,15 +898,17 @@ public final class CgGlStateManager {
 
         // Outermost: foreign code ran since we last knew anything, so re-read unconditionally. Nested: the
         // enclosing scope already established truth. Trusting the shadow at the outermost level is the bug
-        // that once left blending disabled and every glyph an opaque block.
-        boolean outermost = depth == 1;
+        // that once left blending disabled and every glyph an opaque block. A free provider is read at every
+        // depth: trust saves nothing there, and a host rebinding through its own manager defeats it.
+        boolean reread = depth == 1 || provider.isFree();
         for (CgGlSlot slot : slots) {
             int bit = 1 << slot.ordinal();
             if ((f.mask & bit) != 0) continue;
-            if (outermost || !isTrusted(slot)) adopt(slot);
+            if (reread || !isTrusted(slot)) adopt(slot);
             f.mask |= bit;
         }
         f.saved.copyFrom(current);
+        if (roundTrip != null) roundTrip.opened(f);
         return f;
     }
 
@@ -931,6 +942,10 @@ public final class CgGlStateManager {
         private int mask;
         private boolean closed;
         private boolean foreign;
+        /** What GL held when this opened, as the host and the driver answer, and who opened it: the round
+         *  trip's, allocated only when it is on. */
+        private CgGlStateShadow before, beforeDriver;
+        private Throwable openedAt;
 
         private Frame() {}
 
@@ -963,6 +978,7 @@ public final class CgGlStateManager {
             } finally {
                 restoring = false;
             }
+            if (roundTrip != null) roundTrip.closed(this);
             depth--;
         }
 
@@ -1032,8 +1048,13 @@ public final class CgGlStateManager {
                 CgGL.glPolygonOffset(s.polygonOffsetFactor, s.polygonOffsetUnits);
                 break;
             case POLYGON_MODE:
-                CgGL.glPolygonMode(CgGL.GL_FRONT, s.polygonModeFront);
-                CgGL.glPolygonMode(CgGL.GL_BACK,  s.polygonModeBack);
+                // One call when the faces agree: a core profile accepts only GL_FRONT_AND_BACK.
+                if (s.polygonModeFront == s.polygonModeBack) {
+                    CgGL.glPolygonMode(CgGL.GL_FRONT_AND_BACK, s.polygonModeFront);
+                } else {
+                    CgGL.glPolygonMode(CgGL.GL_FRONT, s.polygonModeFront);
+                    CgGL.glPolygonMode(CgGL.GL_BACK,  s.polygonModeBack);
+                }
                 break;
             case LINE_WIDTH: CgGL.glLineWidth(s.lineWidth); break;
             case POINT_SIZE: CgGL.glPointSize(s.pointSize); break;
@@ -1074,5 +1095,148 @@ public final class CgGlStateManager {
 
     private static void setCap(int cap, boolean enable) {
         if (enable) CgGL.glEnable(cap); else CgGL.glDisable(cap);
+    }
+
+    // ── Round trip ────────────────────────────────────────────────────────────
+
+    /** Reaches the driver past a host cache, for {@link RoundTrip}; null where {@code glGet} already does. */
+    private CgGlStateProvider driverReader;
+    /** Domains the host virtualises, so the driver is not expected to agree with its cache on them. */
+    private int virtualised;
+
+    /**
+     * Gives the round trip a way to the driver that a host's cache cannot answer for.
+     *
+     * <pre>{@code
+     * // Angelica answers glGet from its cache, and binds programs of its own behind glUseProgram(0)
+     * CgGlState.setDriverReader(RawDriverProvider1710.create(), CgGlSlot.PROGRAM);
+     * }</pre>
+     *
+     * @param virtualised domains the host deliberately holds differently from the driver; the driver
+     *                    comparisons skip them, while the host view still checks them
+     */
+    public void setDriverReader(CgGlStateProvider reader, CgGlSlot... virtualised) {
+        this.driverReader = reader;
+        this.virtualised = 0;
+        for (CgGlSlot s : virtualised) this.virtualised |= 1 << s.ordinal();
+    }
+
+    /**
+     * Proves a scope hands back what it found: {@code -Dcrystalgraphics.state.roundTrip=true}.
+     *
+     * <pre>{@code
+     * [crystalgraphics] state.roundTrip: not restored in the host view (depth 1) by the scope opened at CgUiPaintContext.beginFrame:620 -- viewportW before=2560 after=490
+     * }</pre>
+     *
+     * <p>On open, every declared domain is read; after the close restores, it is read again, and a field
+     * that differs is reported with the code that opened the scope. Every depth, not only the outermost: a
+     * nested scope that restores wrongly corrupts our own drawing rather than the host's.</p>
+     *
+     * <p>Two views, where a host has two. The <b>host view</b> is {@code glGet} -- what the host sees next,
+     * which under Angelica is Angelica's cache, since every GL call of ours and of Minecraft goes through
+     * it. The <b>driver</b> is a {@link #setDriverReader driver reader}, installed only where a cache
+     * answers {@code glGet}. With both, each close also compares the two, so a report names which one a
+     * scope failed: the driver, the host's cache, or the cache disagreeing with the driver -- which is the
+     * host's fault, not ours.</p>
+     *
+     * <p>Diagnosis only: two reads per scope, four with a driver reader. A run is judged by its lines, all
+     * through log4j into the client's own log: {@code ARMED} at start, totals after 100 scopes and every
+     * 1000 after, so a run that never checked cannot pass for one that found nothing.</p>
+     */
+    private final class RoundTrip {
+        private final Logger log = LogManager.getLogger("CrystalGraphics");
+        private final CgGlStateShadow after = new CgGlStateShadow();
+        private final CgGlStateShadow afterDriver = new CgGlStateShadow();
+        private final CgGlStateShadow keep = new CgGlStateShadow();
+        private final Set<String> reported = new HashSet<>();
+        private long checked, hostFailed, driverFailed, cacheFailed;
+
+        RoundTrip() {
+            log.info("[crystalgraphics] state.roundTrip: ARMED -- every scope's domains are read on open and "
+                    + "again after it restores");
+        }
+
+        void opened(Frame f) {
+            if (f.before == null) f.before = new CgGlStateShadow();
+            read(CgGlStateProvider.glGet(), f.mask, f.before);
+            if (driverReader != null) {
+                if (f.beforeDriver == null) f.beforeDriver = new CgGlStateShadow();
+                read(driverReader, f.mask, f.beforeDriver);
+            }
+            f.openedAt = new Throwable("scope opened here");
+        }
+
+        void closed(Frame f) {
+            read(CgGlStateProvider.glGet(), f.mask, after);
+            if (checked++ == 0) {
+                log.info("[crystalgraphics] state.roundTrip: first scope checked (depth " + depth
+                        + "), driver reader: " + (driverReader != null ? driverReader.getClass().getSimpleName() : "none needed"));
+            }
+            String where = " (depth " + depth + ")";
+            String diff = f.before.differences(after, f.mask);
+            if (diff != null) {
+                hostFailed++;
+                report("not restored in the host view" + where, f.openedAt, diff, "before=", "after=");
+            }
+            if (driverReader != null) {
+                read(driverReader, f.mask, afterDriver);
+                int real = f.mask & ~virtualised;
+                String driverDiff = f.beforeDriver.differences(afterDriver, real);
+                if (driverDiff != null) {
+                    driverFailed++;
+                    report("not restored in the driver" + where, f.openedAt, driverDiff, "before=", "after=");
+                }
+                String cacheDiff = after.differences(afterDriver, real);
+                if (cacheDiff != null) {
+                    cacheFailed++;
+                    report("host cache disagrees with the driver" + where, f.openedAt, cacheDiff, "host=", "driver=");
+                }
+            }
+            if (checked == 100 || checked % 1000 == 0) {
+                log.info("[crystalgraphics] state.roundTrip: " + checked + " scopes checked -- not restored: "
+                        + hostFailed + " in the host view, " + driverFailed + " in the driver; host cache "
+                        + "disagreed with the driver " + cacheFailed + " times; " + adopted + " domains adopted");
+            }
+        }
+
+        /** Reads {@code mask}'s domains without leaving a trace in the shadow or the trust masks. */
+        private void read(CgGlStateProvider from, int mask, CgGlStateShadow into) {
+            keep.copyFrom(current);
+            long fields = unknownFields;
+            int units = unknownUnits;
+            // The texture read moves the active unit through CgGL; those calls must reach the driver.
+            verifying = true;
+            try {
+                for (CgGlSlot s : SLOTS) {
+                    if ((mask & (1 << s.ordinal())) != 0) from.read(s, into);
+                }
+            } finally {
+                verifying = false;
+                current.copyFrom(keep);
+                unknownFields = fields;
+                unknownUnits = units;
+            }
+        }
+
+        /** Once per (what, site, fields): a scope that restores wrongly does so every frame. */
+        private void report(String what, Throwable openedAt, String diff, String was, String is) {
+            String site = site(openedAt);
+            StringBuilder fields = new StringBuilder();
+            for (String part : diff.split(", ")) fields.append(part, 0, part.indexOf(' ')).append(',');
+            if (reported.size() >= 100 || !reported.add(what + '|' + site + '|' + fields)) return;
+            String line = "[crystalgraphics] state.roundTrip: " + what + " by the scope opened at " + site
+                    + " -- " + diff.replace("tracked=", was).replace("actual=", is);
+            if (reported.size() <= 10) log.warn(line, openedAt); else log.warn(line);
+        }
+
+        /** The first frame outside this package: the code that asked for the scope. */
+        private String site(Throwable openedAt) {
+            for (StackTraceElement e : openedAt.getStackTrace()) {
+                String c = e.getClassName();
+                if (c.startsWith("com.crystalgraphics.platform.gl.")) continue;
+                return c.substring(c.lastIndexOf('.') + 1) + '.' + e.getMethodName() + ':' + e.getLineNumber();
+            }
+            return "?";
+        }
     }
 }
