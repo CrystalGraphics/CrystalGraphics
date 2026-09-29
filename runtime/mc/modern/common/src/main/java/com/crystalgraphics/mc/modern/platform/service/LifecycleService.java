@@ -26,9 +26,8 @@ public final class LifecycleService implements CgLifecycleService {
 
     /**
      * See {@link CgLifecycleService#onFrameRendered()}. Delegates to
-     * {@link CgGraphicsLifecycle#tickFrame()}. No loader calls it yet: the tick runs from
-     * {@code FrameHooks.endFrame()}, which a GUI-only frame never reaches —
-     * {@code runtime/mc/modern/common/AGENTS.md} § <i>Open</i>.
+     * {@link CgGraphicsLifecycle#tickFrame()}. No loader calls it: the tick runs from
+     * {@code LifecycleModern.frameEnd()}, at each loader's post-GUI point.
      */
     @Override
     public void onFrameRendered() {

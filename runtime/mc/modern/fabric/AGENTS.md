@@ -2,7 +2,9 @@
 
 ## Target versions
 
-**MC 1.14.4–1.21.11 / Fabric**, a node per `versions/<version>`. Below 1.16 Fabric API has no
+**MC 1.14.4–26.2 / Fabric**, a node per `versions/<version>` (26.1.2 also claims 26.1 and 26.1.1). From
+26.1 Minecraft is unobfuscated: those nodes apply `fabric-loom` rather than `fabric-loom-remap`, take no
+mappings, and ship their jar as compiled (`fabricRunsIntermediary` in `ModernTree.kt`). Below 1.16 Fabric API has no
 world-render event, so the 1.15.2 node hooks `LevelRenderer.renderLevel` and the 1.14.4 node
 `GameRenderer.renderLevel` with a node mixin (`mixin/WorldPassHook`, gated by
 `CrystalGraphicsFabricMixins`). Pins and toolchains: `docs/BUILD.md` § *Nodes and toolchains*.

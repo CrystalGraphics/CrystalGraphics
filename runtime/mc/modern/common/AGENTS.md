@@ -21,14 +21,31 @@ loader branches (Forge 1.21.3+, Fabric 1.14.4–1.15.2), never here.
 - **Mixin AP comes from the toolchain.** A second `annotationProcessor` for Mixin produces duplicate-AP
   SRG mapping errors.
 
-## Open: a GUI-only frame never ticks
+## The frame end
 
-`CgGraphicsLifecycle.tickFrame()` runs from `FrameHooks.endFrame()`, which `LifecycleModern` calls at the
-end of the transparent pass — inside `GameRenderer.render`'s world branch. A title-screen or GUI-only
-frame takes the sibling screen branch and never ends a CrystalGraphics frame. 1.7.10 and legacy Forge
-close this with a `TAIL` injection on `updateCameraAndRender`.
+Every loader calls `LifecycleModern.frameEnd()` once a frame, **after the GUI** — a title screen
+included — and that is where `FrameHooks.endFrame()` and so `CgLifecycleListener.onFrame` run. The
+transparent pass does not end the frame: a GUI-only frame takes `GameRenderer.render`'s screen branch and
+has no world pass at all.
 
-The modern equivalents, measured with `singlejar-logic/mcapi.py`: `GameRenderer.render` TAIL on every node
-(two signatures, split at 1.21.1); Forge's `TickEvent.RenderTickEvent` at `END` (1.13.2+); NeoForge's
-`TickEvent.RenderTickEvent` (1.20.2–1.20.4) and `RenderFrameEvent.Post` (1.20.6+). Fabric has no frame
-event, so it needs the mixin. Owned by device-seam milestone D1 (the frame ring's fence).
+| Loader | Frame end |
+|---|---|
+| Forge | `TickEvent.RenderTickEvent` at `END`; its `Post` from 1.20.4, on its own `BUS` from 1.21.6 |
+| NeoForge | `TickEvent.RenderTickEvent` at `END` (1.20.2–1.20.4), `RenderFrameEvent.Post` (1.20.6+) |
+| Fabric | node mixin `FrameEndHook`, `GameRenderer.render` TAIL — Fabric has no frame event |
+
+On 26.1+ `onFrame` is also **the last point to draw over the host's picture**: the GUI is extracted
+before the level renders, so anything painted from a GUI hook lands under the world. CrystalGUI paints
+its desktop and HUD from there on those nodes.
+
+## 26.1+: the main target and the stand-down
+
+- **Our own framebuffer over Minecraft's main target.** 26.1 made `GlDevice` package-private and 26.2
+  dropped `GlTexture.getFbo`, so `LifecycleModern.bindMainTarget` builds one FBO through `CgGL`, attached
+  as Minecraft's `FrameBufferCache` attaches it (colour and depth, level 0), keyed on the two texture
+  ids and deleted on teardown. The main target is `mc.getMainRenderTarget()` on 26.1 and
+  `mc.gameRenderer.mainRenderTarget()` on 26.2.
+- **Vulkan.** 26.2 can run Blaze3D on Vulkan. `LifecycleModern.glAvailable()` asks once whether a GL
+  context is current (`glfwGetCurrentContext`) and, when none is, calls
+  `CgGraphicsLifecycle.standDown(reason)`: CrystalGraphics logs once and does nothing for the rest of
+  the process.

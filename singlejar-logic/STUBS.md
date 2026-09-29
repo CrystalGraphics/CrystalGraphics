@@ -164,7 +164,7 @@ arguments the real build uses, so the output is the same:
 |---|---|---|
 | Forge 1.17–1.20.1 (legacyForge) | ModDevGradle: AutoRenamingTool 2.0.4, `--strip-sigs` | the same tool and arguments, `SrgReobfJar` |
 | Forge 1.13–1.16, 1.20.2–1.20.4 | `SrgReobfJar`: AutoRenamingTool 2.0.17 | the same, over the database's names |
-| Fabric | Loom's `remapJar` | `TinyRemapJar`: tiny-remapper 0.13.0 with `--mixin` (Loom remaps a mixin's annotation strings too), plus Loom's `Fabric-*` manifest |
+| Fabric | Loom's `remapJar` | `TinyRemapJar`: tiny-remapper 0.14.0 (Loom 1.17's) with `--mixin` (Loom remaps a mixin's annotation strings too), plus Loom's `Fabric-*` manifest |
 | Legacy Forge 1.8–1.12.2 | `SrgReobfJar` from MCP's `joined.srg` + CSVs (`registerMcpReobf`): AutoRenamingTool 2.0.17 | the same, over the database's names |
 | NeoForge, Forge 1.20.6+ | none — Mojang's names | none |
 

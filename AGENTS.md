@@ -1,8 +1,8 @@
 # CrystalGraphics — Agent Knowledge Base
 
 **What**: a modern OpenGL rendering engine for Minecraft mods — materials, meshes, framebuffers,
-instancing and text — shipped as **one jar** for Forge 1.7.10–1.21.11, NeoForge 1.20.2–1.21.11 and
-Fabric 1.14.4–1.21.11. **Authored in** Java 25, with a Java 8 copy of every engine module. **The parent
+instancing and text — shipped as **one jar** for Forge 1.7.10–26.2, NeoForge 1.20.2–26.2 and
+Fabric 1.14.4–26.2. **Authored in** Java 25, with a Java 8 copy of every engine module. **The parent
 of** CrystalGUI, which builds every node against this repository's node of the same version.
 
 > **The goal every line serves**: a node-based shader graph for Minecraft on every version the jar
@@ -1183,12 +1183,15 @@ leaves a non-main FBO bound:
 | Forge 1.19.3–1.21.1 | `AFTER_BLOCK_ENTITIES` | `AFTER_PARTICLES` |
 | Forge 1.21.3+ | node mixin `OpaquePassHook` | node mixin `TransparentPassHook` |
 | NeoForge 1.20.2–1.21.3 | `RenderLevelStageEvent` `AFTER_BLOCK_ENTITIES` | `AFTER_PARTICLES` |
-| NeoForge 1.21.4–1.21.8 · 1.21.9+ | `RenderLevelStageEvent.AfterBlockEntities` · `.AfterEntities` | `.AfterParticles` |
+| NeoForge 1.21.4–1.21.8 · 1.21.9–1.21.11 | `RenderLevelStageEvent.AfterBlockEntities` · `.AfterEntities` | `.AfterParticles` |
+| NeoForge 26.1+ | `RenderLevelStageEvent.AfterOpaqueFeatures` | `.AfterTranslucentParticles` |
 | Fabric 1.14.4–1.15.2 | node mixin `WorldPassHook` | the same |
-| Fabric 1.16.5–1.21.8 · 1.21.9+ | `WorldRenderEvents.AFTER_ENTITIES` · `BEFORE_TRANSLUCENT` | `AFTER_TRANSLUCENT` · `END_MAIN` |
+| Fabric 1.16.5–1.21.8 · 1.21.9–1.21.11 | `WorldRenderEvents.AFTER_ENTITIES` · `BEFORE_TRANSLUCENT` | `AFTER_TRANSLUCENT` · `END_MAIN` |
+| Fabric 26.1+ | `LevelRenderEvents.BEFORE_TRANSLUCENT_TERRAIN` | `END_MAIN` |
 
-The exact version splits are in each loader branch's `AGENTS.md`. **A GUI-only frame never ticks on the
-modern tree** — `runtime/mc/modern/common/AGENTS.md` § *Open*.
+The exact version splits are in each loader branch's `AGENTS.md`. **The frame ends after the GUI**, from
+a loader frame event or, on Fabric, a mixin — `runtime/mc/modern/common/AGENTS.md` § *The frame end*,
+which also covers 26.1's own main-target framebuffer and 26.2's stand-down under Vulkan.
 
 **Iris/Oculus**: with a shader pack active, CrystalGraphics geometry renders into the main FBO **outside**
 Iris's deferred GBuffer chain and appears unlit under deferred pipelines; `cg_DepthBuffer` stays valid.

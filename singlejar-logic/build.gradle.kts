@@ -24,7 +24,7 @@ dependencies {
     // logic. The settings plugin loads these classes in the SETTINGS classloader, every project's
     // parent, so what they name must be visible there: compileOnly left real nodes unable to load
     // LegacyForgeExtension. A build-logic declaring its own copy gets this one anyway.
-    implementation("net.neoforged:moddev-gradle:2.0.141")
+    implementation("net.neoforged:moddev-gradle:2.0.147")
 
     // SrgReobfJar composes Mojang's names with MCPConfig's SRG table -- the renamer ModDevGradle's
     // legacy mode uses, where that mode cannot reach (Forge 1.20.2-1.20.4).

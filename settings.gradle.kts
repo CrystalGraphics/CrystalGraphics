@@ -12,11 +12,11 @@ pluginManagement {
         id("com.gradleup.shadow") version("9.2.2")
 
         // The 1.20.x loader scripts request these with no version, so the pins live here; moddev
-        // matches runtime/mc/modern/build-logic's net.neoforged:moddev-gradle:2.0.141. No
+        // matches runtime/mc/modern/build-logic's net.neoforged:moddev-gradle:2.0.147. No
         // net.neoforged.moddev.repositories settings plugin pins them: nothing applies it here or in
         // CrystalGUI.
-        id("net.neoforged.moddev") version("2.0.141")
-        id("net.neoforged.moddev.legacyforge") version("2.0.141")
+        id("net.neoforged.moddev") version("2.0.147")
+        id("net.neoforged.moddev.legacyforge") version("2.0.147")
 
         // Applied once by the root build.gradle.kts; see there. Without it an IDE sync fails with
         // "Cannot add extension with name 'settings'".
@@ -97,8 +97,8 @@ include(":platform")
 // needs. @see cgbuildlogic.SingleJarSettings
 singlejar {
     targets {
-        forge("1.7.10".."1.21.11")
-        neoforge("1.20.2".."1.21.11")
-        fabric("1.14.4".."1.21.11")
+        forge("1.7.10".."26.2")
+        neoforge("1.20.2".."26.2")
+        fabric("1.14.4".."26.2")
     }
 }

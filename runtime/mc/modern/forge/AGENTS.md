@@ -2,11 +2,11 @@
 
 ## Target versions
 
-**MC 1.13.2–1.21.11 / MinecraftForge 25–61**: a node each for 1.13.2, 1.14.3 (also 1.14.2), 1.14.4,
+**MC 1.13.2–26.2 / MinecraftForge 25–65**: a node each for 1.13.2, 1.14.3 (also 1.14.2), 1.14.4,
 1.15.2 (also 1.15, 1.15.1), 1.16.5 (also 1.16.1–1.16.4), 1.17.1, 1.18.2 (also 1.18, 1.18.1), 1.19.2
 (also 1.19, 1.19.1), 1.19.3, 1.19.4, 1.20.1, 1.20.2, 1.20.4, 1.20.6, 1.21.1, 1.21.3, 1.21.4, 1.21.5,
-1.21.6 (also 1.21.7), 1.21.8, 1.21.10 (also 1.21.9) and 1.21.11. Forge 1.21 is refused: Forge 51 has no
-HUD event. Pins and toolchains: `docs/BUILD.md` § *Nodes and toolchains*.
+1.21.6 (also 1.21.7), 1.21.8, 1.21.10 (also 1.21.9), 1.21.11, 26.1.2 (also 26.1.1) and 26.2. Forge 1.21 is
+refused: Forge 51 has no HUD event; and 26.1: Forge 62 fails in Minecraft's own bootstrap. Pins and toolchains: `docs/BUILD.md` § *Nodes and toolchains*.
 
 **1.13.2–1.16.5 are built by Unimined**, since ModDevGradle reaches nothing below 1.17, and their thin
 jar is reobfuscated to MCP class names as well as SRG members. Forge 31 registers reload listeners on
