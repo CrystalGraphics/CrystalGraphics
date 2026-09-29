@@ -219,7 +219,7 @@ final class CgTraceZones {
      *
      * <p>For an instrumentation shape that is an <em>additive bucket</em> rather than a stack — a
      * start stamp taken here and a duration attributed there, which is what
-     * {@code FrameProfile.begin()/end(t, bucket)} has always been. Recording those as push/pop would
+     * {@code CgTrace.stamp()} then {@code zoneDone(channel, bucket, t)} is. Recording those as push/pop would
      * impose a nesting discipline they never had; recording them at the current depth means they nest
      * correctly the moment an enclosing bracket becomes a real zone, and read as siblings until then.</p>
      */

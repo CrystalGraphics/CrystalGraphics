@@ -568,6 +568,62 @@ public final class CgTrace {
         counter(channel, CgTraceNames.intern(name), value);
     }
 
+    /** As {@link #counter(CgTraceChannel, String, long)}, rounded: a counter holds whole numbers. */
+    public static void counter(CgTraceChannel channel, String name, double value) {
+        if ((enabledMask & channel.bit()) == 0L) return;
+        counter(channel, CgTraceNames.intern(name), Math.round(value));
+    }
+
+    /**
+     * Adds {@code delta} to a counter's total for the open frame — a count that fires many times a frame,
+     * written once as that frame's value.
+     *
+     * <pre>{@code
+     * CgTrace.add(CHANNEL, "drawcalls", 1);      // per draw; the frame records one total
+     * }</pre>
+     *
+     * <p>Where {@link #counter} records each value it is given, which is right for a reading (a queue's
+     * depth, sampled) and wrong for an event: a counter written once per draw is a hundred values of 1.
+     * A thread's total is written when it next adds in a later frame, and the frame thread's at every
+     * {@link #frameBegin} — so a worker that adds once and stops leaves its last frame unwritten.</p>
+     */
+    public static void add(CgTraceChannel channel, int nameId, long delta) {
+        if ((enabledMask & channel.bit()) == 0L) return;
+        long frame = openIndex;
+        if (frame < 0L) return;
+        TALLY.get().add(nameId, frame, delta, generation);
+    }
+
+    public static void add(CgTraceChannel channel, String name, long delta) {
+        if ((enabledMask & channel.bit()) == 0L) return;
+        add(channel, CgTraceNames.intern(name), delta);
+    }
+
+    /**
+     * A start stamp for {@link #zoneDone}, or 0 while {@code channel} is off — so an untimed stretch costs
+     * one mask test and no clock read.
+     *
+     * <pre>{@code
+     * long t = CgTrace.stamp(CHANNEL);
+     * doTheWork();
+     * CgTrace.zoneDone(CHANNEL, "work", t);      // a 0 stamp records nothing
+     * }</pre>
+     */
+    public static long stamp(CgTraceChannel channel) {
+        if ((enabledMask & channel.bit()) == 0L) return 0L;
+        long now = System.nanoTime();
+        return now == 0L ? 1L : now;
+    }
+
+    /** Each thread's {@link #add} totals. Its own thread-local: a thread's zone arena is swapped under it. */
+    private static final ThreadLocal<CgTraceTally> TALLY = ThreadLocal.withInitial(CgTraceTally::new);
+
+    /** A counter value against {@code frame}, the mask already checked by whoever tallied it. */
+    static void writeCounter(int nameId, long frame, long value) {
+        if (frame < 0L) return;
+        (frame < firstFrames ? headEvents : events).counter(nameId, frame, value);
+    }
+
     /**
      * A counter written against {@code frameIndex} rather than the frame open now — for a caller that
      * tallies a frame's worth of increments and flushes the total once the frame has moved on.
@@ -777,6 +833,8 @@ public final class CgTrace {
         openLeaked = 0;
         // After the boundary moves, so the frame just committed counts as closed to the GPU track.
         CgGpuTrace.collect();
+        // The frame thread's totals land with the frame they belong to, not at its next add.
+        TALLY.get().flushBefore(openIndex, generation);
     }
 
     /**

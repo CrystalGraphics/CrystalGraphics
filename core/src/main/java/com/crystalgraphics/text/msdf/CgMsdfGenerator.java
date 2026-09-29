@@ -17,7 +17,8 @@ import com.crystalgraphics.text.cache.CgMsdfAtlasKey;
 import javax.annotation.Nullable;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import com.crystalgraphics.util.profiling.CgProfiler;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 
 /**
  * Render-thread MSDF generator for glyph atlases.
@@ -135,7 +136,7 @@ public class CgMsdfGenerator {
                                                             FreeTypeMSDFIntegration.Font font,
                                                             CgMsdfAtlasKey atlasKey) {
         if (generatedThisFrame >= MAX_PER_FRAME || generationNanosThisFrame >= FRAME_BUDGET_NANOS) {
-            CgProfiler.count("msdfgen.syncBudgetRefused");
+            CgTrace.add(CgChannels.TEXT, "msdfgen.syncBudgetRefused", 1);
             return null;
         }
         long start = System.nanoTime();
@@ -159,7 +160,7 @@ public class CgMsdfGenerator {
                                                        FreeTypeMSDFIntegration.Font font,
                                                        CgMsdfAtlasKey atlasKey,
                                                        CgMsdfAtlasConfig config) {
-        try (CgProfiler.Scope ignored = CgProfiler.scope("msdfgen.prepareGlyph")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "msdfgen.prepareGlyph")) {
             return prepareGlyphInternal(key, sourceFontKey, font, atlasKey, config);
         }
     }
@@ -174,7 +175,7 @@ public class CgMsdfGenerator {
         }
 
         FreeTypeMSDFIntegration.GlyphData glyphData;
-        try (CgProfiler.Scope ignored = CgProfiler.scope("msdfgen.loadGlyph")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "msdfgen.loadGlyph")) {
             glyphData = font.loadGlyphByIndex(key.getGlyphId(), FreeTypeMSDFIntegration.FONT_SCALING_EM_NORMALIZED);
         } catch (MSDFException e) {
             // WARNING, matching the bitmap rasterization path's severity for the
@@ -196,7 +197,7 @@ public class CgMsdfGenerator {
             if (shape.getEdgeCount() == 0) {
                 return CgGlyphGenerationResult.emptyMsdf(sourceFontKey, key, atlasKey, config.pxRange());
             }
-            try (CgProfiler.Scope ignored = CgProfiler.scope("msdfgen.normalize")) {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "msdfgen.normalize")) {
                 normalizeShape(shape);
             }
             // Synthetic italic (shear) is a plain affine transform on the vector geometry —
@@ -211,7 +212,7 @@ public class CgMsdfGenerator {
             if (key.isSyntheticItalic()) {
                 MSDFShapeSynthesis.shear(shape, SYNTHETIC_ITALIC_SKEW);
             }
-            try (CgProfiler.Scope ignored = CgProfiler.scope("msdfgen.edgeColor")) {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "msdfgen.edgeColor")) {
                 orientAndColorShape(shape, key.getGlyphId(), config);
             }
 
@@ -230,7 +231,7 @@ public class CgMsdfGenerator {
             }
 
             double[] bounds;
-            try (CgProfiler.Scope ignored = CgProfiler.scope("msdfgen.bounds")) {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "msdfgen.bounds")) {
                 bounds = shape.getBounds();
                 if (config.miterLimit() > 0.0f) {
                     double border = (effectivePxRange * 0.5) / targetPx;
@@ -262,7 +263,7 @@ public class CgMsdfGenerator {
             double rangeInShapeUnits = layout.getRangeInShapeUnits();
 
             MSDFBitmap bitmap;
-            try (CgProfiler.Scope ignored = CgProfiler.scope("msdfgen.allocBitmap")) {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "msdfgen.allocBitmap")) {
                 bitmap = config.mtsdf()
                         ? MSDFBitmap.allocMtsdf(boxWidth, boxHeight)
                         : MSDFBitmap.allocMsdf(boxWidth, boxHeight);
@@ -274,12 +275,12 @@ public class CgMsdfGenerator {
             try {
                 // Only pay for overlap resolution on shapes whose contours can actually meet.
                 boolean overlapSupport;
-                try (CgProfiler.Scope ignored = CgProfiler.scope("msdfgen.overlapGate")) {
+                try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "msdfgen.overlapGate")) {
                     overlapSupport = config.overlapSupport() && needsOverlapSupport(shape);
                 }
-                CgProfiler.sample("msdfgen.overlapUsed", overlapSupport ? 1 : 0);
+                CgTrace.counter(CgChannels.TEXT, "msdfgen.overlapUsed", overlapSupport ? 1 : 0);
 
-                try (CgProfiler.Scope ignored = CgProfiler.scope("msdfgen.generate")) {
+                try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "msdfgen.generate")) {
                     if (config.mtsdf()) {
                         MSDFGenerator.generateMtsdf(bitmap, shape, transform,
                                 overlapSupport,
@@ -298,12 +299,12 @@ public class CgMsdfGenerator {
                 }
 
                 float[] pixelData;
-                try (CgProfiler.Scope ignored = CgProfiler.scope("msdfgen.readPixels")) {
+                try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "msdfgen.readPixels")) {
                     pixelData = bitmap.getPixelData();
                 }
-                CgProfiler.sample("msdfgen.pixelFloats", pixelData.length);
+                CgTrace.counter(CgChannels.TEXT, "msdfgen.pixelFloats", pixelData.length);
                 int channels = config.mtsdf() ? 4 : 3;
-                try (CgProfiler.Scope ignored = CgProfiler.scope("msdfgen.flipRows")) {
+                try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "msdfgen.flipRows")) {
                     flipRows(pixelData, boxWidth, boxHeight, channels);
                 }
 
@@ -356,7 +357,7 @@ public class CgMsdfGenerator {
     }
 
     public void tickFrame() {
-        CgProfiler.sample("msdfgen.syncFrameMicros", generationNanosThisFrame / 1000L);
+        CgTrace.counter(CgChannels.TEXT, "msdfgen.syncFrameMicros", generationNanosThisFrame / 1000L);
         generatedThisFrame = 0;
         generationNanosThisFrame = 0L;
     }

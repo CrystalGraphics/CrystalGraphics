@@ -1,6 +1,7 @@
 package com.crystalgraphics.api.render;
 
-import com.crystalgraphics.util.profiling.CgProfiler;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 import org.joml.FrustumIntersection;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
@@ -104,9 +105,9 @@ public final class CgViewFrustum {
      */
     public boolean testAabb(float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
         if (!initialised) return true;
-        CgProfiler.count("cull.tested");
+        CgTrace.add(CgChannels.GL, "cull.tested", 1);
         boolean visible = intersection.testAab(minX, minY, minZ, maxX, maxY, maxZ);
-        if (!visible) CgProfiler.count("cull.rejected");
+        if (!visible) CgTrace.add(CgChannels.GL, "cull.rejected", 1);
         return visible;
     }
 
@@ -127,9 +128,9 @@ public final class CgViewFrustum {
      */
     public boolean testSphere(float x, float y, float z, float radius) {
         if (!initialised) return true;
-        CgProfiler.count("cull.tested");
+        CgTrace.add(CgChannels.GL, "cull.tested", 1);
         boolean visible = intersection.testSphere(x, y, z, radius);
-        if (!visible) CgProfiler.count("cull.rejected");
+        if (!visible) CgTrace.add(CgChannels.GL, "cull.rejected", 1);
         return visible;
     }
 
