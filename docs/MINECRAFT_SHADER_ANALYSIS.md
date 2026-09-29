@@ -1,7 +1,7 @@
 # Minecraft 1.7.10 Shader Analysis
 
 **Analysis Date**: 2026-02-18  
-**Source Location**: `build/rfg/minecraft-src/java/net/minecraft/`  
+**Source Location**: `runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraft/`  
 **Purpose**: Understand vanilla Minecraft 1.7.10 shader implementation for CrystalGraphics integration
 
 ---
@@ -779,9 +779,9 @@ public class CoreShaderProgram extends AbstractShaderProgram {
 5. **Integration with FBO abstraction**: Seamless FBO ↔ Shader workflow
 
 ### Files to Reference
-- `build/rfg/minecraft-src/java/net/minecraft/client/shader/ShaderGroup.java`
-- `build/rfg/minecraft-src/java/net/minecraft/client/shader/Shader.java`
-- `build/rfg/minecraft-src/java/net/minecraft/client/shader/ShaderManager.java`
-- `build/rfg/minecraft-src/java/net/minecraft/client/shader/ShaderUniform.java`
-- `build/rfg/minecraft-src/java/net/minecraft/client/renderer/EntityRenderer.java`
-- `build/rfg/minecraft-src/java/net/minecraft/client/renderer/OpenGlHelper.java`
+- `runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraft/client/shader/ShaderGroup.java`
+- `runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraft/client/shader/Shader.java`
+- `runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraft/client/shader/ShaderManager.java`
+- `runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraft/client/shader/ShaderUniform.java`
+- `runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraft/client/renderer/EntityRenderer.java`
+- `runtime/mc/1710/build/rfg/minecraft-src/java/net/minecraft/client/renderer/OpenGlHelper.java`

@@ -1,9 +1,13 @@
 package com.crystalgraphics.platform.gl;
 
 import com.crystalgraphics.platform.gl.state.*;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.util.Arrays;
+
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -308,6 +312,47 @@ public class CgGlStateManagerTest {
         CgGlScope scope = mgr.save();
         scope.close();                       // NOOP_SCOPE: safe to close, restores nothing
         assertTrue(provider.reads == before);
+    }
+
+    @After
+    public void tearDown() {
+        CgGL.setDepthReversed(false);
+    }
+
+    // ── Reversed depth ────────────────────────────────────────────────────────
+
+    /**
+     * A caller's compare is mirrored, and a scope's restore is not: it re-issues what GL held. Mirroring the
+     * restore too would close every world pass by writing Minecraft 26.2's GEQUAL back as LEQUAL.
+     */
+    @Test
+    public void reversedDepthMirrorsCallersButRestoresTheSavedValueAsIs() {
+        CgGL.setDepthReversed(true);
+        // The host holds LEQUAL: what StubProvider reports, and so what the scope saves.
+        try (CgGlScope scope = CgGlState.save(CgGlSlot.DEPTH)) {
+            CgGL.glDepthFunc(CgGL.GL_LEQUAL);              // a material, written for standard depth
+        }
+
+        // A mirrored restore would ask for GEQUAL, match the shadow, and issue nothing.
+        assertEquals(Arrays.asList(CgGL.GL_GEQUAL, CgGL.GL_LEQUAL), gl.depthFuncs);
+    }
+
+    @Test
+    public void reversedDepthClearsToTheMirroredValue() {
+        CgGL.setDepthReversed(true);
+        CgGL.glClearDepth(1.0);
+        CgGL.glClearDepth(0.25);
+
+        assertEquals(Arrays.asList(0.0, 0.75), gl.clearDepths);
+    }
+
+    @Test
+    public void standardDepthPassesEverythingThrough() {
+        CgGL.glDepthFunc(CgGL.GL_LEQUAL);
+        CgGL.glClearDepth(1.0);
+
+        assertEquals(Arrays.asList(CgGL.GL_LEQUAL), gl.depthFuncs);
+        assertEquals(Arrays.asList(1.0), gl.clearDepths);
     }
 
     // ── Hosting foreign code ──────────────────────────────────────────────────

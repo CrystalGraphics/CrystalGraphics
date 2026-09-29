@@ -1,53 +1,59 @@
 # runtime/mc/modern/common — Agent Knowledge Base
 
-Shared MC 1.20.x platform implementation. Compiles against MC 1.20.1 + MinecraftForge 47.2.0
-per node by `cg-modern-common.gradle.kts` — NeoForm from 1.20.2, `legacyForge` below. The compiled JAR is consumed by all three
-loader subprojects (`forge`, `neoforge`, `fabric`) via the `commonOutput` configuration.
+The modern-era code that is no loader's: the `common` branch of the Stonecutter tree, built once per
+Minecraft version (`:runtime:mc:modern:common:<version>`). Each loader node compiles against the common
+node of its own version through the `commonOutput` configuration; `cg-modern-common.gradle.kts` picks
+the toolchain from the node's pins (`docs/BUILD.md` § *Nodes and toolchains*).
 
-## Build
-
-```bash
-./gradlew :runtime:mc:modern:common:1.20.1:compileJava   # compiles shared sources only
-```
-
-No loader-specific types (Forge/NeoForge/Fabric APIs) appear in this module.
-
-## Package Guide
+**No loader type appears here** — a Forge, NeoForge or Fabric import compiles against one loader and is
+used by three.
 
 | Package | AGENTS.md | What it contains |
 |---|---|---|
-| `com.crystalgraphics.mc.modern.platform` | [platform/AGENTS.md](src/main/java/com/crystalgraphics/mc/modern/platform/AGENTS.md) | The GL backend, the platform services, `PlatformServiceModern`, and `LifecycleModern` — the one class a loader talks to |
+| `com.crystalgraphics.mc.modern.platform` | [platform/AGENTS.md](src/main/java/com/crystalgraphics/mc/modern/platform/AGENTS.md) | `PlatformServiceModern`, `Blaze3dGLBackend`, `HostStateVerifier`, the services, and `LifecycleModern` — the one class a loader talks to |
 
-Each loader declares a mixin config naming `com.crystalgraphics.mc.mixin`, and all three are empty:
-the 1.20.x hooks are native loader events, and a mixin here would be the last resort the project's
-mixin policy describes.
+The world-render hooks are loader events wherever one exists; the exceptions are node mixins in the
+loader branches (Forge 1.21.3+, Fabric 1.14.4–1.15.2), never here.
 
-## Key Design Points
+## Key design points
 
-- **No GL calls in constructors** — all GL work deferred to first `CgGraphicsLifecycle.onOpaquePass` call (lazy init via `onRenderFrame`)
-- **Mixin AP**: provided by `legacyForge`; do NOT add a second `annotationProcessor` for Mixin in this module — it causes duplicate-AP SRG mapping errors
-- **`legacyForge` not `neoForge`**: NeoForm 1.20.1 was never published; `legacyForge{version="1.20.1-47.2.0"}` is the only ModDevGradle path
+- **No GL in constructors.** GL work waits for the first frame that owns the render context.
+- **Mixin AP comes from the toolchain.** A second `annotationProcessor` for Mixin produces duplicate-AP
+  SRG mapping errors.
 
+## The frame end
 
-## Open: `onFrameRendered()` is not wired on 1201
+Every loader calls `LifecycleModern.frameEnd()` once a frame, **after the GUI** — a title screen
+included — and that is where `FrameHooks.endFrame()` and so `CgLifecycleListener.onFrame` run. The
+transparent pass does not end the frame: a GUI-only frame takes `GameRenderer.render`'s screen branch and
+has no world pass at all.
 
-`LifecycleService.onFrameRendered()` delegates to `CgGraphicsLifecycle.tickFrame()`, and no loader
-calls it. Until it is wired, `onOpaquePass` calls `tickFrame()` itself as a stand-in — which only
-covers frames that render a world.
+| Loader | Frame end |
+|---|---|
+| Forge | `TickEvent.RenderTickEvent` at `END`; its `Post` from 1.20.4, on its own `BUS` from 1.21.6 |
+| NeoForge | `TickEvent.RenderTickEvent` at `END` (1.20.2–1.20.4), `RenderFrameEvent.Post` (1.20.6+) |
+| Fabric | node mixin `FrameEndHook`, `GameRenderer.render` TAIL — Fabric has no frame event |
 
-**The world-render-stage events are not the hook.** `AFTER_BLOCK_ENTITIES` and `AFTER_PARTICLES` sit
-inside `GameRenderer.render`'s `if (renderLevel && minecraft.level != null)` branch, so they never fire
-on a GUI-only frame — the main menu takes the sibling `else if (minecraft.screen != null)` branch
-instead. Wiring the per-frame tick to them would leave exactly the gap 1.7.10 closed with a
-`@At("TAIL")` injection on `EntityRenderer.updateCameraAndRender`.
+On 26.1+ `onFrame` is also **the last point to draw over the host's picture**: the GUI is extracted
+before the level renders, so anything painted from a GUI hook lands under the world. CrystalGUI paints
+its desktop and HUD from there on those nodes.
 
-**Forge and NeoForge have a native equivalent**, verified against decompiled `Minecraft.java` for both:
-`TickEvent.RenderTickEvent` at `Phase.END`, posted immediately after
-`gameRenderer.render(partialTick, nanoTime, renderLevel)` returns in `Minecraft.runTick(boolean)`. It
-wraps the whole call — world branch and screen branch alike — so it needs no mixin. Add a handler in
-`CrystalGraphicsForge.Events` / `CrystalGraphicsNeoForge.Events` filtering on `Phase.END`.
+## 26.1+: the main target and the stand-down
 
-**Fabric has no confirmed equivalent.** Its `ClientTickEvents.END_CLIENT_TICK` runs at the fixed 20 Hz
-tick, decoupled from the frame rate. Whether Fabric API exposes a once-per-render-frame event over the
-same call is unresearched; if none exists, a mixin on the same tail may be unavoidable there, and
-would be the last-resort case the project's mixin policy describes.
+- **Our own framebuffer over Minecraft's main target.** 26.1 made `GlDevice` package-private and 26.2
+  dropped `GlTexture.getFbo`, so `LifecycleModern.bindMainTarget` builds one FBO through `CgGL`, attached
+  as Minecraft's `FrameBufferCache` attaches it (colour and depth, level 0), keyed on the two texture
+  ids and deleted on teardown. The main target is `mc.getMainRenderTarget()` on 26.1 and
+  `mc.gameRenderer.mainRenderTarget()` on 26.2.
+- **Reversed-Z on 26.2, on OpenGL too.** Minecraft 26.2 sets clip control to `ZERO_TO_ONE` once at
+  device init, swaps near and far in its projection, clears depth to 0 and tests `GREATER_THAN_OR_EQUAL`.
+  The world passes run with `CgGL.setDepthReversed(true)`, which mirrors every compare function and clear
+  value a caller writes (`LifecycleModern.worldDepth`), so no material changes. Our own drawing -- the
+  CrystalGUI desktop and shader-graph previews -- runs between `OwnDepthConvention.enter()` and `leave()`,
+  which put GL's default clip range and a clear depth of 1.0 back for its duration. `cg_DepthBuffer` holds
+  reversed values there, so a shader comparing against it is wrong on 26.2; polygon offset pulls the other
+  way. Every piece is a no-op below 26.2.
+- **Vulkan.** 26.2 can run Blaze3D on Vulkan. `LifecycleModern.glAvailable()` asks once whether a GL
+  context is current (`glfwGetCurrentContext`) and, when none is, calls
+  `CgGraphicsLifecycle.standDown(reason)`: CrystalGraphics logs once and does nothing for the rest of
+  the process.

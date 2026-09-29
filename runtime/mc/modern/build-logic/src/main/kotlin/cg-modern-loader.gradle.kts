@@ -39,9 +39,12 @@ evaluationDependsOn(common.path)
 // cannot be debugged -- which reads as an IDE fault rather than a library one.
 //
 // 3.3.3 knows the version and uses the right layout. Dev runs only; nothing shipped resolves LWJGL.
+// Raised, never lowered: 26.x ships 3.4.1, whose `unsafe` artifact 3.3.3 does not have.
 configurations.all {
     resolutionStrategy.eachDependency {
-        if (requested.group == "org.lwjgl") {
+        // A `strictly` constraint (26.x's) leaves `requested.version` empty, which would read as below 3.3.3.
+        val version = requested.version
+        if (requested.group == "org.lwjgl" && !version.isNullOrEmpty() && cgbuildlogic.MinecraftVersionOrder.compare(version, "3.3.3") < 0) {
             useVersion("3.3.3")
             because("LWJGL 3.3.1 corrupts the JNIEnv table on Java 21 under a debugger")
         }

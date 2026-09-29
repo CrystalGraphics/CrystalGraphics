@@ -1,6 +1,23 @@
 package com.crystalgraphics.mc.modern.forge.mixin;
 
-//? if >=1.21.9 {
+//? if >=26.1 {
+/*import com.crystalgraphics.mc.modern.platform.LifecycleModern;
+import net.minecraft.client.renderer.state.level.ParticlesRenderState;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+
+// As 1.21.9's, with the state class moved to renderer.state.level.
+@Mixin(value = ParticlesRenderState.class, remap = false)
+public abstract class TransparentPassHook {
+
+    @Inject(method = "reset", at = @At("HEAD"), require = 1)
+    private void crystalgraphics$transparentPass(CallbackInfo ci) {
+        LifecycleModern.transparentPass();
+    }
+}
+*///?} elif >=1.21.9 {
 /*import com.crystalgraphics.mc.modern.platform.LifecycleModern;
 import net.minecraft.client.renderer.state.ParticlesRenderState;
 import org.spongepowered.asm.mixin.Mixin;

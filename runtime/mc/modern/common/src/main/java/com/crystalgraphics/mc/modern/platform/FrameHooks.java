@@ -5,9 +5,10 @@ import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 import net.minecraft.client.Minecraft;
 
 /**
- * End-of-frame lifecycle for MC 1.20.x: the resize check and {@link CgGraphicsLifecycle#tickFrame()}.
+ * End-of-frame lifecycle for the modern tree: the resize check and {@link CgGraphicsLifecycle#tickFrame()}.
  *
- * <p>Each loader calls {@link #endFrame()} once per frame from its own render event. Without it the
+ * <p>{@link LifecycleModern#frameEnd()} calls {@link #endFrame()} once per frame, from each loader's
+ * post-GUI point, so a title-screen frame ends here as well as a world frame. Without it the
  * screen-sized FBO registry never learns the window changed, so the UI keeps rendering at the previous
  * size after a resize.</p>
  *

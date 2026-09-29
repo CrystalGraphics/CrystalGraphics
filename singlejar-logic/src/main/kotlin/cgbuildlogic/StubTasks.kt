@@ -77,8 +77,8 @@ abstract class TinyRemapJar @Inject constructor(private val exec: ExecOperations
     }
 }
 
-/** What Loom 1.16 renames with, run from a detached configuration by [TinyRemapJar]. */
-const val TINY_REMAPPER = "net.fabricmc:tiny-remapper:0.13.0"
+/** What Loom 1.17 renames with, run from a detached configuration by [TinyRemapJar]. */
+const val TINY_REMAPPER = "net.fabricmc:tiny-remapper:0.14.0"
 
 /**
  * Fails when a stub build's output differs from the real one: [expected] against [actual], each a

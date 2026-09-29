@@ -63,6 +63,9 @@ public final class CgGraphicsLifecycle {
      */
     private static volatile boolean destroyed = false;
 
+    /** Set by {@link #standDown}: the host renders with no GL context, and the engine does nothing. */
+    private static volatile boolean stoodDown = false;
+
     private static final int GPU_OPAQUE = CgGpuTrace.name("world.opaque");
     private static final int GPU_TRANSPARENT = CgGpuTrace.name("world.transparent");
     /**
@@ -127,6 +130,32 @@ public final class CgGraphicsLifecycle {
         return initialized;
     }
 
+    /**
+     * Stands the engine down for the rest of the session: the host is rendering, but not through a GL
+     * context this engine can use — Minecraft 26.2 under its Vulkan backend. Logs {@code reason} once; every
+     * entry point then returns at once and {@link #isInitialized()} stays false, so a consumer that
+     * checks it before painting simply draws nothing.
+     *
+     * <pre>{@code
+     * if (GLFW.glfwGetCurrentContext() == 0L)
+     *     CgGraphicsLifecycle.standDown("no GL context on the render thread (backend: Vulkan)");
+     * }</pre>
+     *
+     * <p>Registration is untouched: a registered GL backend that nothing calls is harmless, and a
+     * dedicated server must never be asked for one.</p>
+     */
+    public static void standDown(String reason) {
+        if (stoodDown) return;
+        stoodDown = true;
+        initialized = false;
+        LOGGER.log(Level.WARNING, "CrystalGraphics stands down for this session: " + reason);
+    }
+
+    /** Whether {@link #standDown} was called. */
+    public static boolean isStoodDown() {
+        return stoodDown;
+    }
+
     private CgGraphicsLifecycle() {}
 
     /**
@@ -147,6 +176,7 @@ public final class CgGraphicsLifecycle {
     }
 
     public static void initContext(int width, int height) {
+        if (stoodDown) return;
         CgPlatform.gl().initContext();
 
         // Probe capabilities here, on the render thread with a live context, so CgGL.CORE is set
@@ -217,7 +247,7 @@ public final class CgGraphicsLifecycle {
     public static void onResize(int width, int height) {
         // Every registry below is gone after a teardown, and a host forwards its window events until
         // the process actually exits. @see #onOpaquePass
-        if (destroyed) return;
+        if (destroyed || stoodDown) return;
 
         // A RESIZE FROM A FOREIGN THREAD IS DEFERRED, NOT REFUSED. A host hands this event on from
         // whatever thread its window loop runs on, and on 1.7.10 that is FML's splash thread while the
@@ -258,7 +288,7 @@ public final class CgGraphicsLifecycle {
      * nothing at all after {@link #destroyContext()}. GL thread only, like everything else here.</p>
      */
     public static void ensureContext(int w, int h) {
-        if (destroyed) return;
+        if (destroyed || stoodDown) return;
         if (!initialized) initContext(w, h);
         else if (w != currentWidth || h != currentHeight) onResize(w, h);
     }
@@ -286,7 +316,7 @@ public final class CgGraphicsLifecycle {
         //
         // BEFORE the resize branch too: `destroyed` used to gate only the lazy re-init below, so the
         // else-if could still call onResize on a context that is gone.
-        if (destroyed) return;
+        if (destroyed || stoodDown) return;
 
         CgGlState.invalidateAllIfPresent();
 
@@ -326,7 +356,7 @@ public final class CgGraphicsLifecycle {
      */
     public static void tickFrame() {
         // As onResize: a host keeps calling this until the process exits. @see #onOpaquePass
-        if (destroyed) return;
+        if (destroyed || stoodDown) return;
 
         frameCounter++;
 
@@ -363,6 +393,7 @@ public final class CgGraphicsLifecycle {
      * <p>No-op if the engine context has not been initialised yet (e.g. GUI-only frames).</p>
      */
     public static void onTransparentPass() {
+        if (stoodDown) return;
         // Pass entry. Minecraft and other mods rendered immediately before this — between our opaque and
         // transparent passes MC draws translucent terrain and particles, and every mod hooking the same
         // render stages runs too. The scopes below adopt the slots they name; this covers the ones they
@@ -403,6 +434,12 @@ public final class CgGraphicsLifecycle {
      * giving every latching singleton a real reset path first; until then, treat this as terminal.</p>
      */
     public static void destroyContext() {
+        // Nothing was ever built, and with no GL context the sweeps below would call into nothing.
+        if (stoodDown) {
+            shutdown();
+            return;
+        }
+
         // Step 0: External listeners, BEFORE the engine frees anything.
         //
         // This ordering is the whole contract. A listener (CrystalGUI's CgUiLifecycle, a mod's

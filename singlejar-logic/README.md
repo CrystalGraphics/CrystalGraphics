@@ -1,7 +1,7 @@
 # singlejar-logic — one jar for every Minecraft loader
 
 Build logic for shipping **a single artifact that installs unchanged on every loader and Minecraft version
-it targets** — Forge 1.7.10 through 1.21.11, NeoForge and Fabric. CrystalGUI and CrystalGraphics both ship
+it targets** — Forge 1.7.10 through 26.2, NeoForge and Fabric. CrystalGUI and CrystalGraphics both ship
 this way; this directory is what they share, and what a third project builds on.
 
 **Setting a project up on it:** CrystalGraphics' [`docs/SETUP.md`](../docs/SETUP.md), or CrystalGUI's
@@ -181,7 +181,7 @@ registerDescriptorTasks(descriptor, "myproject")
 
 ### 4. Guard each thin jar
 
-Register once for all your 1.20.x loaders — what a thin jar may contain is the *project's* answer:
+Register once for all your modern loaders — what a thin jar may contain is the *project's* answer:
 
 ```kotlin
 tasks.register<cgbuildlogic.CheckThinJar>("checkThinJar") {
@@ -429,7 +429,7 @@ singlejar {
 - **The nodes compile against the stub database beside this build logic**, found by the plugin whatever
   build includes it — so a project holding no copy of singlejar-logic still builds its jar with no
   Minecraft toolchain. `-PcgStubs=false` builds every node real.
-- **ModDevGradle comes with this build logic** (2.0.141). The plugin puts these classes in the settings
+- **ModDevGradle comes with this build logic** (2.0.147). The plugin puts these classes in the settings
   classloader, every project's parent, so what they name must be there too; a project's own build logic
   declares none, and a node applies it by id.
 

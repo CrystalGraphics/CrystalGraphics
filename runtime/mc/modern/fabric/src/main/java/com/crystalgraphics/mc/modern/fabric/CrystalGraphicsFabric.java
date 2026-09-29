@@ -4,7 +4,10 @@ import com.crystalgraphics.mc.modern.platform.ResourceIds;
 import com.crystalgraphics.mc.modern.platform.LifecycleModern;
 import com.crystalgraphics.mc.shared.VariantEntry;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
-//? if >=1.21.9 {
+//? if >=26.1 {
+/*import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
+import net.minecraft.client.Minecraft;
+*///?} elif >=1.21.9 {
 /*import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
 import net.minecraft.client.Minecraft;
 *///?} elif >=1.16 {
@@ -68,7 +71,12 @@ public final class CrystalGraphicsFabric implements VariantEntry {
             // 1.21 hands a DeltaTracker; `true` is the pause-aware residual 1.20's float already was.
             // Fabric API for 1.21.9 rebuilt these events around the new renderer: BEFORE_TRANSLUCENT is the
             // opaque point, END_MAIN the transparent one, and the context no longer carries the tick.
-            //? if >=1.21.9 {
+            // 26.1 renamed them LevelRenderEvents, and the opaque point BEFORE_TRANSLUCENT_TERRAIN.
+            //? if >=26.1 {
+            /*LevelRenderEvents.BEFORE_TRANSLUCENT_TERRAIN.register(context -> LifecycleModern.opaquePass(
+                    Minecraft.getInstance().getDeltaTracker().getGameTimeDeltaPartialTick(true)));
+            LevelRenderEvents.END_MAIN.register(context -> LifecycleModern.transparentPass());
+            *///?} elif >=1.21.9 {
             /*WorldRenderEvents.BEFORE_TRANSLUCENT.register(context -> LifecycleModern.opaquePass(
                     Minecraft.getInstance().getDeltaTracker().getGameTimeDeltaPartialTick(true)));
             WorldRenderEvents.END_MAIN.register(context -> LifecycleModern.transparentPass());

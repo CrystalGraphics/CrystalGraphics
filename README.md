@@ -1,7 +1,7 @@
 # CrystalGraphics
 
 A modern OpenGL rendering engine for Minecraft mods — materials, meshes, framebuffers, instancing and text —
-shipped as one jar for Forge 1.7.10 through 1.21.11, NeoForge and Fabric.
+shipped as one jar for Forge 1.7.10 through 26.2, NeoForge and Fabric.
 
 **Using CrystalGraphics in your mod: [`docs/SETUP.md`](docs/SETUP.md)** — setting the project up, for one
 Minecraft version or many.

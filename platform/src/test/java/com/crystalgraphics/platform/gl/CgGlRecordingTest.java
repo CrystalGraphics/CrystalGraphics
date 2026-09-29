@@ -8,6 +8,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 import static org.junit.Assert.*;
@@ -103,6 +104,26 @@ public class CgGlRecordingTest {
         recording.replay();
         assertEquals(1, runs[0]);
         assertEquals(3, gl.countOf("glDrawArrays"));
+    }
+
+    /** What a recording holds was mirrored on the way in; replaying through CgGL must not mirror it back. */
+    @Test
+    public void aReplayUnderReversedDepthIsMirroredOnce() {
+        CgGL.setDepthReversed(true);
+        try {
+            recording.begin();
+            try {
+                CgGL.glDepthFunc(LEQUAL);
+                CgGL.glClearDepth(1.0);
+            } finally {
+                recording.end();
+            }
+            recording.replay();
+        } finally {
+            CgGL.setDepthReversed(false);
+        }
+        assertEquals(Collections.singletonList(CgGL.GL_GEQUAL), gl.depthFuncs);
+        assertEquals(Collections.singletonList(0.0), gl.clearDepths);
     }
 
     @Test

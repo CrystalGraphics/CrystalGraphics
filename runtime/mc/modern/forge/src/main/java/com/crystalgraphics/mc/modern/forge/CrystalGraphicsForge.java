@@ -34,6 +34,11 @@ import net.minecraftforge.fml.common.ICrashCallable;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 *///?}
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
+//? if >=1.14.4 {
+import net.minecraftforge.event.TickEvent;
+//?} else {
+/*import net.minecraftforge.fml.common.gameevent.TickEvent;
+*///?}
 import net.minecraftforge.fml.loading.FMLEnvironment;
 //? if >=1.18 <1.21.3 {
 import net.minecraftforge.client.event.RenderLevelStageEvent;
@@ -107,8 +112,11 @@ public final class CrystalGraphicsForge implements VariantEntry {
         /** From the entry point rather than from an annotation; see the class note. */
         static void register(FMLJavaModLoadingContext context) {
             // Forge 56's EventBus 7: every event carries its own bus, and a mod-bus event hands out one
-            // per mod's bus group.
-            //? if >=1.21.6 {
+            // per mod's bus group. Forge 64 (26.1) made the reload event a global one.
+            //? if >=26.1 {
+            /*RegisterClientReloadListenersEvent.BUS.addListener(Events::onRegisterReloadListeners);
+            GameShuttingDownEvent.BUS.addListener(Events::onGameShuttingDown);
+            *///?} elif >=1.21.6 {
             /*RegisterClientReloadListenersEvent.getBus(context.getModBusGroup())
                     .addListener(Events::onRegisterReloadListeners);
             GameShuttingDownEvent.BUS.addListener(Events::onGameShuttingDown);
@@ -126,6 +134,13 @@ public final class CrystalGraphicsForge implements VariantEntry {
             // Below 1.19 Forge has no shutdown event; process exit frees the context there.
             //? if >=1.19 <1.21.6 {
             MinecraftForge.EVENT_BUS.addListener(Events::onGameShuttingDown);
+            //?}
+            // The frame end, once a frame after the GUI too: RenderTickEvent at END, a Post of its own from
+            // Forge 49 (1.20.4), on its own bus from EventBus 7.
+            //? if >=1.21.6 {
+            /*TickEvent.RenderTickEvent.Post.BUS.addListener(Events::onFrameEnd);
+            *///?} else {
+            MinecraftForge.EVENT_BUS.addListener(Events::onFrameEnd);
             //?}
             // Forge 53 (1.21.3) removed the render-stage event; from there the passes are a mixin's.
             // @see com.crystalgraphics.mc.modern.forge.mixin.OpaquePassHook
@@ -223,6 +238,16 @@ public final class CrystalGraphicsForge implements VariantEntry {
             LifecycleModern.transparentPass();
         }
         *///?}
+
+        //? if >=1.20.4 {
+        /*private static void onFrameEnd(TickEvent.RenderTickEvent.Post event) {
+            LifecycleModern.frameEnd();
+        }
+        *///?} else {
+        private static void onFrameEnd(TickEvent.RenderTickEvent event) {
+            if (event.phase == TickEvent.Phase.END) LifecycleModern.frameEnd();
+        }
+        //?}
 
         //? if >=1.19 {
         private static void onGameShuttingDown(GameShuttingDownEvent event) {

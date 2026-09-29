@@ -6,7 +6,7 @@ import com.crystalgraphics.platform.service.CgRenderingService;
 import net.minecraft.client.Minecraft;
 
 /**
- * MC 1.20.x implementation of {@link CgRenderingService}.
+ * Modern implementation of {@link CgRenderingService}.
  *
  * <p>{@link #onFrameBegin} is called by {@code CgClientLifecycleBridge} each frame
  * after {@code GameRenderer.renderLevel()} returns.
