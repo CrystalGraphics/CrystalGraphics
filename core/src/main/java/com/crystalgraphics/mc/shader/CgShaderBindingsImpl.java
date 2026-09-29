@@ -14,8 +14,10 @@ import org.joml.*;
 import com.crystalgraphics.platform.gl.CgGL;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
@@ -37,11 +39,12 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
     private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
 
     /**
-     * Ordered list of deferred binding operations.
-     * Each operation (set1f, set2f, etc.) is appended here and executed
-     * in order when {@link #apply(CgShader)} is called.
+     * The deferred operations, one per uniform: a second write to a name replaces the first in place, as a GL
+     * uniform keeps only its last value. Appending instead grew a persistent set by every call, replayed on
+     * every bind. A UBO binding is keyed by its buffer.
      */
     private final List<BindingOp> ops = new ArrayList<>();
+    private final Map<Object, Integer> slotOf = new HashMap<>();
 
     /**
      * Tracks the program ID from the last {@link #apply(CgShader)} call.
@@ -59,49 +62,41 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
 
     @Override
     public CgShaderBindings set1i(String name, int value) {
-        this.ops.add(new Set1iOp(name, value));
-        return this;
+        return put(name, new Set1iOp(name, value));
     }
 
     @Override
     public CgShaderBindings set1f(String name, float value) {
-        this.ops.add(new Set1fOp(name, value));
-        return this;
+        return put(name, new Set1fOp(name, value));
     }
 
     @Override
     public CgShaderBindings vec2(String name, float x, float y) {
-        this.ops.add(new Vec2Op(name, x, y));
-        return this;
+        return put(name, new Vec2Op(name, x, y));
     }
 
     @Override
     public CgShaderBindings vec2(String name, Vector2f vec) {
-        this.ops.add(new JomlVec2Op(name, vec));
-        return this;
+        return put(name, new JomlVec2Op(name, vec));
     }
 
     @Override
     public CgShaderBindings vec3(String name, float x, float y, float z) {
-        this.ops.add(new Vec3Op(name, x, y, z));
-        return this;
+        return put(name, new Vec3Op(name, x, y, z));
     }
 
     @Override
     public CgShaderBindings vec3(String name, Vector3f vec) {
-        this.ops.add(new JomlVec3Op(name, vec));
-        return this;
+        return put(name, new JomlVec3Op(name, vec));
     }
     @Override
     public CgShaderBindings vec4(String name, float x, float y, float z, float w) {
-        this.ops.add(new Vec4Op(name, x, y, z, w));
-        return this;
+        return put(name, new Vec4Op(name, x, y, z, w));
     }
 
     @Override
     public CgShaderBindings vec4(String name, Vector4f vec) {
-        this.ops.add(new JomlVec4Op(name, vec));
-        return this;
+        return put(name, new JomlVec4Op(name, vec));
     }
     
     @Override
@@ -122,40 +117,34 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
 
     @Override
     public CgShaderBindings buffer(String name, IntBuffer buffer) {
-        this.ops.add(new IntBufferOp(name, ensureDirectInt(buffer)));
-        return this;
+        return put(name, new IntBufferOp(name, ensureDirectInt(buffer)));
     }
 
     @Override
     public CgShaderBindings buffer(String name, FloatBuffer buffer) {
-        this.ops.add(new FloatBufferOp(name, ensureDirectFloat(buffer)));
-        return this;
+        return put(name, new FloatBufferOp(name, ensureDirectFloat(buffer)));
     }
 
     @Override
     public CgShaderBindings mat3(String name, FloatBuffer buffer) {
-        this.ops.add(new Mat3Op(name, ensureDirectFloat(buffer)));
-        return this;
+        return put(name, new Mat3Op(name, ensureDirectFloat(buffer)));
     }
 
     @Override
     public CgShaderBindings mat4(String name, FloatBuffer buffer) {
-        this.ops.add(new Mat4Op(name, ensureDirectFloat(buffer)));
-        return this;
+        return put(name, new Mat4Op(name, ensureDirectFloat(buffer)));
     }
 
     @Override
     public CgShaderBindings mat3(String name, Matrix3f matrix) {
         // Defensive copy to freeze state at record-time, preventing cross-frame mutation
-        this.ops.add(new JomlMat3Op(name, new Matrix3f(matrix)));
-        return this;
+        return put(name, new JomlMat3Op(name, new Matrix3f(matrix)));
     }
 
     @Override
     public CgShaderBindings mat4(String name, Matrix4f matrix) {
         // Defensive copy to freeze state at record-time, preventing cross-frame mutation
-        this.ops.add(new JomlMat4Op(name, new Matrix4f(matrix)));
-        return this;
+        return put(name, new JomlMat4Op(name, new Matrix4f(matrix)));
     }
 
     @Override
@@ -164,8 +153,7 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
         float r = (float) ((argb >> 16) & 255) / 255.0f;
         float g = (float) ((argb >> 8) & 255) / 255.0f;
         float b = (float) (argb & 255) / 255.0f;
-        this.ops.add(new Vec4Op(name, r, g, b, a));
-        return this;
+        return put(name, new Vec4Op(name, r, g, b, a));
     }
 
     @Override
@@ -173,26 +161,22 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
         float r = ((rgb >> 16) & 255) / 255.0f;
         float g = ((rgb >> 8) & 255) / 255.0f;
         float b = (rgb & 255) / 255.0f;
-        this.ops.add(new Vec4Op(name, r, g, b, alpha));
-        return this;
+        return put(name, new Vec4Op(name, r, g, b, alpha));
     }
 
     @Override
     public CgShaderBindings sampler(String name, int unit, CgTexture texture) {
-        this.ops.add(new SamplerOp(name, unit, texture.getId(), texture.getTarget()));
-        return this;
+        return put(name, new SamplerOp(name, unit, texture.getId(), texture.getTarget()));
     }
 
     @Override
     public CgShaderBindings sampler(String name, int unit, int glTextureId, int glTarget) {
-        this.ops.add(new SamplerOp(name, unit, glTextureId, glTarget));
-        return this;
+        return put(name, new SamplerOp(name, unit, glTextureId, glTarget));
     }
 
     @Override
     public CgShaderBindings ubo(CgUniformBuffer buffer) {
-        this.ops.add(new UniformBufferBindingOp(buffer));
-        return this;
+        return put(buffer, new UniformBufferBindingOp(buffer));
     }
 
     /**
@@ -204,6 +188,19 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
     @Override
     public void clear() {
         this.ops.clear();
+        this.slotOf.clear();
+    }
+
+    private CgShaderBindings put(Object key, BindingOp op) {
+        Integer slot = slotOf.putIfAbsent(key, ops.size());
+        if (slot == null) ops.add(op);
+        else ops.set(slot, op);
+        return this;
+    }
+
+    /** How many operations are recorded: one per uniform name, however often each was written. */
+    int size() {
+        return ops.size();
     }
 
     /**
