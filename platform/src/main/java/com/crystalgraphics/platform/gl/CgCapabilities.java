@@ -143,6 +143,8 @@ public final class CgCapabilities {
     boolean arbSync;
     /** Whether {@code glMapBufferRange} is available (Core GL30 or {@code GL_ARB_map_buffer_range}). */
     @Getter(AccessLevel.NONE) boolean hasMapBufferRange;
+    /** @see CgGLContext#mappingIsFree() */
+    @Getter(AccessLevel.NONE) boolean mappingIsFree;
     /** Whether immutable, persistently mappable storage is available (Core GL44 or {@code GL_ARB_buffer_storage}). */
     @Getter(AccessLevel.NONE) boolean bufferStorage;
     /** Chosen from the three flags above and the override. @see StreamBufferTier */
@@ -262,6 +264,7 @@ public final class CgCapabilities {
         // ── Streaming ─────────────────────────────────────────────────────────
         caps.arbSync           = gl.OpenGL32() || gl.GL_ARB_sync();
         caps.hasMapBufferRange = gl.OpenGL30() || gl.GL_ARB_map_buffer_range();
+        caps.mappingIsFree     = gl.mappingIsFree();
         caps.bufferStorage     = gl.OpenGL44() || gl.GL_ARB_buffer_storage();
         caps.vertexStreamTier  = vertexStreamTier(caps);
         caps.shaderStreamTier  = caps.vertexStreamTier == StreamBufferTier.SUBDATA ? StreamBufferTier.SUBDATA : StreamBufferTier.ORPHAN;
@@ -316,6 +319,9 @@ public final class CgCapabilities {
 
     /** Whether {@code glMapBufferRange} is supported (Core GL30 or {@code GL_ARB_map_buffer_range}). */
     public boolean isMapBufferRangeSupported() { return hasMapBufferRange; }
+
+    /** @see CgGLContext#mappingIsFree() */
+    public boolean isMappingFree() { return mappingIsFree; }
 
     /** Whether {@code glBufferStorage} and persistent mapping are supported (Core GL44 or {@code GL_ARB_buffer_storage}). */
     public boolean isBufferStorageSupported() { return bufferStorage; }

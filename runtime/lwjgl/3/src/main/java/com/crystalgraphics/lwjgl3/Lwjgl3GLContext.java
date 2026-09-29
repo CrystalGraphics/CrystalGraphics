@@ -50,4 +50,5 @@ public final class Lwjgl3GLContext implements CgGLContext {
     // GL_ARB_program_interface_query is also required: glGetProgramResourceIndex and
     // glShaderStorageBlockBinding (used on the ARB path) are promoted from that extension.
     @Override public boolean GL_ARB_shader_storage_buffer_object() { return caps().GL_ARB_shader_storage_buffer_object && caps().GL_ARB_program_interface_query; }
+    @Override public boolean mappingIsFree() { return false; }
 }
