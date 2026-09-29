@@ -855,9 +855,9 @@ public class CgTextRenderer {
             return this;
         }
 
-        /** Packed RGBA color (0xRRGGBBAA). Defaults to opaque white if never called. */
-        public Draw color(int rgba) {
-            this.rgba = rgba;
+        /** The text's colour, {@code 0xAARRGGBB}; a styled span keeps its own. Defaults to opaque white. */
+        public Draw color(int argb) {
+            this.rgba = argb;
             return this;
         }
 
