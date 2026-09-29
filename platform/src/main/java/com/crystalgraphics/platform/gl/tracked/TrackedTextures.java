@@ -209,17 +209,6 @@ final class TrackedTextures implements TrackedPrograms.Samplers {
         }
     }
 
-    /** {@code glCopyImageSubData} between two textures. */
-    void copy(int src, int srcLevel, int sx, int sy, int sz, int dst, int dstLevel, int dx, int dy, int dz, int w, int h, int d) {
-        GlTexture s = get(src), t = get(dst);
-        if (s == null || t == null || s.image == null || t.image == null) {
-            errors.invalidValue("glCopyImageSubData between textures without images");
-            return;
-        }
-        tracker.transfer().copyTexture(s.image, new CgTextureRegion(srcLevel, sx, sy, sz, w, h, d),
-                t.image, new CgTextureRegion(dstLevel, dx, dy, dz, w, h, d));
-    }
-
     /** {@code glGetTexImage}: a whole level, every layer, as GL's (format, type). */
     void read(int target, int level, int format, int type, ByteBuffer out) {
         GlTexture t = boundFor(target, "glGetTexImage");

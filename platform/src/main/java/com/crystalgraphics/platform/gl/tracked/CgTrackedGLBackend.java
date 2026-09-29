@@ -5,6 +5,7 @@ import com.crystalgraphics.platform.device.CgDeviceInfo;
 import com.crystalgraphics.platform.device.CgGlslCompiler;
 import com.crystalgraphics.platform.device.CgGpuTexture;
 import com.crystalgraphics.platform.device.CgPipelineDesc;
+import com.crystalgraphics.platform.device.CgTextureRegion;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.CgGLBackend;
 
@@ -47,6 +48,7 @@ public final class CgTrackedGLBackend extends CgGLBackend {
     private final TrackedBuffers buffers;
     private final TrackedPrograms programs;
     private final TrackedTextures textures;
+    private final TrackedFramebuffers framebuffers;
     private final boolean debug;
     private final double[] q = new double[16];
 
@@ -66,6 +68,7 @@ public final class CgTrackedGLBackend extends CgGLBackend {
         vaos.buffers(buffers);
         this.programs = new TrackedPrograms(tracker, compiler, errors);
         this.textures = new TrackedTextures(tracker, errors, buffers);
+        this.framebuffers = new TrackedFramebuffers(tracker, errors, textures, buffers);
         tracker.bindTarget(surface);
     }
 
@@ -110,6 +113,7 @@ public final class CgTrackedGLBackend extends CgGLBackend {
         if (n < 0) n = vaos.query(pname, q);
         if (n < 0) n = programs.query(pname, q);
         if (n < 0) n = textures.query(pname, q);
+        if (n < 0) n = framebuffers.query(pname, q);
         if (n < 0) n = limits(pname);
         if (n < 0) {
             errors.invalidEnum("glGet", pname);
@@ -229,82 +233,97 @@ public final class CgTrackedGLBackend extends CgGLBackend {
 
     @Override public void glClearStencil(int s) { state.clearStencil = s; }
 
-    @Override public void glClear(int mask) { state.clear(mask); }
+    @Override
+    public void glClear(int mask) {
+        if (framebuffers.applyDraw()) state.clear(mask);
+        else errors.invalidFramebufferOperation("glClear with nothing attached to the framebuffer");
+    }
 
     // ── framebuffers ───────────────────────────────────────────────────────────
 
-    @Override public void bindFramebuffer(int target, int fbo) { throw notYet("glBindFramebuffer"); }
+    @Override public void bindFramebuffer(int target, int fbo) { framebuffers.bind(target, fbo); }
 
     @Override
     public void blitFramebuffer(int srcX0, int srcY0, int srcX1, int srcY1, int dstX0, int dstY0, int dstX1, int dstY1,
                                 int mask, int filter) {
-        throw notYet("glBlitFramebuffer");
+        framebuffers.blit(srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, mask, filter);
+    }
+
+    @Override
+    public void framebufferTextureLayer(int target, int attachment, int texture, int level, int layer) {
+        framebuffers.textureLayer(target, attachment, texture, level, layer);
+    }
+
+    @Override public int genFramebuffers() { return framebuffers.gen(); }
+
+    @Override public void deleteFramebuffers(int fbo) { framebuffers.delete(fbo); }
+
+    @Override
+    public void framebufferTexture2D(int target, int attachment, int texTarget, int texture, int level) {
+        framebuffers.texture(target, attachment, texTarget, texture, level);
+    }
+
+    @Override public int checkFramebufferStatus(int target) { return framebuffers.status(target); }
+
+    @Override public void drawBuffers(IntBuffer bufs) { framebuffers.drawBuffers(bufs); }
+
+    @Override
+    public int getFramebufferAttachmentParameteriv(int target, int attachment, int pname) {
+        return framebuffers.attachmentParameter(target, attachment, pname);
+    }
+
+    @Override public void glDrawBuffer(int mode) { framebuffers.drawBuffer(mode); }
+
+    @Override public void glReadBuffer(int mode) { framebuffers.readBuffer(mode); }
+
+    @Override public int glGenRenderbuffers() { return framebuffers.genRenderbuffer(); }
+
+    @Override public void glDeleteRenderbuffers(int rbo) { framebuffers.deleteRenderbuffer(rbo); }
+
+    @Override public void glBindRenderbuffer(int target, int renderbuffer) { framebuffers.bindRenderbuffer(renderbuffer); }
+
+    @Override
+    public void glRenderbufferStorage(int target, int internalFormat, int width, int height) {
+        framebuffers.renderbufferStorage(1, internalFormat, width, height);
+    }
+
+    @Override
+    public void glRenderbufferStorageMultisample(int target, int samples, int internalFormat, int width, int height) {
+        framebuffers.renderbufferStorage(samples, internalFormat, width, height);
+    }
+
+    @Override
+    public void glFramebufferRenderbuffer(int target, int attachment, int renderbufferTarget, int renderbuffer) {
+        framebuffers.renderbufferAttachment(target, attachment, renderbuffer);
+    }
+
+    @Override
+    public void glReadPixels(int x, int y, int width, int height, int format, int type, ByteBuffer pixels) {
+        framebuffers.readPixels(x, y, width, height, format, type, textures.pack, pixels);
+    }
+
+    @Override
+    public void glReadPixels(int x, int y, int width, int height, int format, int type, long packOffset) {
+        framebuffers.readPixels(x, y, width, height, format, type, packOffset);
     }
 
     @Override
     public void copyImageSubData(int srcName, int srcTarget, int srcLevel, int srcX, int srcY, int srcZ,
                                  int dstName, int dstTarget, int dstLevel, int dstX, int dstY, int dstZ,
                                  int srcWidth, int srcHeight, int srcDepth) {
-        if (srcTarget == CgGL.GL_RENDERBUFFER || dstTarget == CgGL.GL_RENDERBUFFER) throw notYet("glCopyImageSubData of a renderbuffer");
-        textures.copy(srcName, srcLevel, srcX, srcY, srcZ, dstName, dstLevel, dstX, dstY, dstZ, srcWidth, srcHeight, srcDepth);
+        CgGpuTexture src = image(srcName, srcTarget), dst = image(dstName, dstTarget);
+        if (src == null || dst == null) {
+            errors.invalidValue("glCopyImageSubData between images that do not exist");
+            return;
+        }
+        tracker.transfer().copyTexture(src, new CgTextureRegion(srcLevel, srcX, srcY, srcZ, srcWidth, srcHeight, srcDepth),
+                dst, new CgTextureRegion(dstLevel, dstX, dstY, dstZ, srcWidth, srcHeight, srcDepth));
     }
 
-    @Override
-    public void framebufferTextureLayer(int target, int attachment, int texture, int level, int layer) {
-        throw notYet("glFramebufferTextureLayer");
-    }
-
-    @Override public int genFramebuffers() { throw notYet("glGenFramebuffers"); }
-
-    @Override public void deleteFramebuffers(int fbo) { throw notYet("glDeleteFramebuffers"); }
-
-    @Override
-    public void framebufferTexture2D(int target, int attachment, int texTarget, int texture, int level) {
-        throw notYet("glFramebufferTexture2D");
-    }
-
-    @Override public int checkFramebufferStatus(int target) { throw notYet("glCheckFramebufferStatus"); }
-
-    @Override public void drawBuffers(IntBuffer bufs) { throw notYet("glDrawBuffers"); }
-
-    @Override
-    public int getFramebufferAttachmentParameteriv(int target, int attachment, int pname) {
-        throw notYet("glGetFramebufferAttachmentParameteriv");
-    }
-
-    @Override public void glDrawBuffer(int mode) { throw notYet("glDrawBuffer"); }
-
-    @Override public void glReadBuffer(int mode) { throw notYet("glReadBuffer"); }
-
-    @Override public int glGenRenderbuffers() { throw notYet("glGenRenderbuffers"); }
-
-    @Override public void glDeleteRenderbuffers(int rbo) { throw notYet("glDeleteRenderbuffers"); }
-
-    @Override public void glBindRenderbuffer(int target, int renderbuffer) { throw notYet("glBindRenderbuffer"); }
-
-    @Override
-    public void glRenderbufferStorage(int target, int internalFormat, int width, int height) {
-        throw notYet("glRenderbufferStorage");
-    }
-
-    @Override
-    public void glRenderbufferStorageMultisample(int target, int samples, int internalFormat, int width, int height) {
-        throw notYet("glRenderbufferStorageMultisample");
-    }
-
-    @Override
-    public void glFramebufferRenderbuffer(int target, int attachment, int renderbufferTarget, int renderbuffer) {
-        throw notYet("glFramebufferRenderbuffer");
-    }
-
-    @Override
-    public void glReadPixels(int x, int y, int width, int height, int format, int type, ByteBuffer pixels) {
-        throw notYet("glReadPixels");
-    }
-
-    @Override
-    public void glReadPixels(int x, int y, int width, int height, int format, int type, long packOffset) {
-        throw notYet("glReadPixels");
+    private CgGpuTexture image(int name, int target) {
+        if (target == CgGL.GL_RENDERBUFFER) return framebuffers.renderbufferImage(name);
+        TrackedTextures.GlTexture t = textures.get(name);
+        return t == null ? null : t.image;
     }
 
     // ── programs ───────────────────────────────────────────────────────────────
@@ -457,7 +476,11 @@ public final class CgTrackedGLBackend extends CgGLBackend {
 
     @Override public void glBindTexture(int target, int texture) { textures.bind(target, texture); }
 
-    @Override public void glDeleteTextures(int texture) { textures.delete(texture); }
+    @Override
+    public void glDeleteTextures(int texture) {
+        textures.delete(texture);
+        framebuffers.detach(false, texture);
+    }
 
     @Override public void glActiveTexture(int texture) { textures.active(texture); }
 
@@ -575,6 +598,10 @@ public final class CgTrackedGLBackend extends CgGLBackend {
     /** @param type the index type, or -1 for a draw of arrays */
     private void draw(int mode, int first, int count, int instances, int type, long indices) {
         CgDrawState s = tracker.state;
+        if (!framebuffers.applyDraw()) {
+            errors.invalidFramebufferOperation("A draw with nothing attached to the framebuffer");
+            return;
+        }
         state.sync();
         vaos.apply(s);
         programs.apply(s, buffers, textures);
