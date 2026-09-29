@@ -1273,11 +1273,8 @@ Design record and eight implementation corrections: `docs_research/plan/gl-state
 - `net/minecraft/client/shader/ShaderManager.java` — GLSL program management
 - `cpw/mods/fml/client/FMLClientHandler.java` · `cpw/mods/fml/common/gameevent/TickEvent.java`
 
-**Analysis documents** (1.7.10):
-- `docs/MINECRAFT_FBO_ANALYSIS.md` — complete trace of vanilla FBO system
-- `docs/MINECRAFT_SHADER_ANALYSIS.md` — vanilla shader architecture
-- `docs/CRITICAL_GOTCHAS.md` — hidden vanilla behaviors
-- `docs/INTEGRATION_STRATEGY.md` — integration patterns
+The early 1.7.10 research — the vanilla FBO and shader traces, the integration gotchas and strategy — is
+archived in the private plan repository, `plan/crystalgraphics/archive/`.
 
 ---
 
