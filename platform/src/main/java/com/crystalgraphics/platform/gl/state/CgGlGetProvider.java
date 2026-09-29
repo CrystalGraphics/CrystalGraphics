@@ -183,9 +183,20 @@ public class CgGlGetProvider implements CgGlStateProvider {
      * a profile ever shows texture adoption mattering.</p>
      */
     protected void readTextures(CgGlStateShadow t) {
+        readTextures(t, CgGlStateShadow.MAX_TEXTURE_UNITS);
+    }
+
+    /**
+     * The active unit and the first {@code units} units' bindings; the rest of {@code t} is left as it was.
+     *
+     * <pre>{@code
+     * provider.readTextures(shadow, highestUnitTouched + 1);   // the round trip's cheap read
+     * }</pre>
+     */
+    public void readTextures(CgGlStateShadow t, int units) {
         int active = integer(CgGL.GL_ACTIVE_TEXTURE) - CgGL.GL_TEXTURE0;
         if (active < 0) active = 0;
-        for (int unit = 0; unit < CgGlStateShadow.MAX_TEXTURE_UNITS; unit++) {
+        for (int unit = 0; unit < Math.min(units, CgGlStateShadow.MAX_TEXTURE_UNITS); unit++) {
             activeTexture(CgGL.GL_TEXTURE0 + unit);
             t.boundTexture2D[unit] = integer(CgGL.GL_TEXTURE_BINDING_2D);
         }

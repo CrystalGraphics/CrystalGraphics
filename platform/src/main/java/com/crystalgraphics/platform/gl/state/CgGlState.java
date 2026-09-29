@@ -90,6 +90,14 @@ public final class CgGlState {
         manager.hostForeign(body, slots);
     }
 
+    /**
+     * Declares writes meant to stay, for the host to draw with; closing restores nothing.
+     * @see CgGlStateManager#handOver
+     */
+    public static CgGlScope handOver(CgGlSlot... slots) {
+        return manager.handOver(slots);
+    }
+
     /** Saves only the shader program domain. */
     public static CgGlScope saveProgram() {
         return save(CgGlSlot.PROGRAM);

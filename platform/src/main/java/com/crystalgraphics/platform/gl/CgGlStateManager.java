@@ -1,5 +1,6 @@
 package com.crystalgraphics.platform.gl;
 
+import com.crystalgraphics.platform.gl.state.CgGlGetProvider;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlSlot;
 import com.crystalgraphics.platform.gl.state.CgGlStateProvider;
@@ -10,6 +11,8 @@ import org.apache.logging.log4j.Logger;
 
 import java.util.HashSet;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * CPU-side shadow of GL state, with per-call redundancy elimination and scoped save/restore.
@@ -349,6 +352,9 @@ public final class CgGlStateManager {
     /** Set while a scope adopts: the texture read moves the active unit, which is not a write of ours. */
     private boolean adopting;
 
+    /** The highest texture unit our own code has selected: a unit above it is one we cannot have disturbed. */
+    private int highestUnit;
+
     /** Tells the round trip what reached the driver, when it is on and the write is the code under test. */
     private void wrote(long fields) {
         if (roundTrip != null && !restoring && !verifying && !adopting && recording == null) roundTrip.wrote(fields);
@@ -669,6 +675,7 @@ public final class CgGlStateManager {
         assertOwner();
         int unit = texture - CgGL.GL_TEXTURE0;
         if (unit < 0 || unit >= CgGlStateShadow.MAX_TEXTURE_UNITS) return true;
+        if (unit > highestUnit && !verifying && !adopting) highestUnit = unit;
         if (!stale(CgGlSlot.TEXTURES, F_ACTIVE_TEXTURE) && current.activeTextureUnit == unit) return skip();
         current.activeTextureUnit = unit;
         return issue(F_ACTIVE_TEXTURE);
@@ -876,6 +883,24 @@ public final class CgGlStateManager {
     }
 
     /**
+     * Declares writes <strong>meant to stay</strong>: state set for the host, which a scope would undo.
+     *
+     * <pre>{@code
+     * try (CgGlScope s = CgGlState.handOver(CgGlSlot.FBO, CgGlSlot.VIEWPORT)) {
+     *     CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, minecraftMainTarget);   // what the host draws next into
+     *     CgGL.glViewport(0, 0, width, height);
+     * }   // nothing restored
+     * }</pre>
+     *
+     * <p>Closing restores nothing. What it buys is the declaration: the round trip's leak report treats
+     * these domains as intended rather than as a write nobody will undo, so a leak that is left is one
+     * nobody meant.</p>
+     */
+    public CgGlScope handOver(CgGlSlot... slots) {
+        return open(false, true, slots);
+    }
+
+    /**
      * Runs {@code body} — foreign drawing, GL written behind {@link CgGL}'s back — inside a {@link #hostForeign}
      * scope. While a {@link CgGlRecording} captures, the body is recorded and runs on replay instead, in order.
      */
@@ -892,6 +917,10 @@ public final class CgGlStateManager {
     }
 
     private CgGlScope open(boolean foreign, CgGlSlot... slots) {
+        return open(foreign, false, slots);
+    }
+
+    private CgGlScope open(boolean foreign, boolean handOver, CgGlSlot... slots) {
         assertOwner();
         // A foreign block with nothing declared still has to invalidate on exit, so it needs a real frame.
         if ((slots == null || slots.length == 0) && !foreign) return CgGlScope.NOOP_SCOPE;
@@ -906,6 +935,7 @@ public final class CgGlStateManager {
         f.mask = 0;
         f.closed = false;
         f.foreign = foreign;
+        f.handOver = handOver;
 
         // Outermost: foreign code ran since we last knew anything, so re-read unconditionally. Nested: the
         // enclosing scope already established truth. Trusting the shadow at the outermost level is the bug
@@ -915,7 +945,7 @@ public final class CgGlStateManager {
         for (CgGlSlot slot : slots) {
             int bit = 1 << slot.ordinal();
             if ((f.mask & bit) != 0) continue;
-            if (reread || !isTrusted(slot)) adopt(slot);
+            if (!handOver && (reread || !isTrusted(slot))) adopt(slot);   // a hand-over restores nothing
             f.mask |= bit;
         }
         f.saved.copyFrom(current);
@@ -958,10 +988,14 @@ public final class CgGlStateManager {
         private int mask;
         private boolean closed;
         private boolean foreign;
+        /** {@link #handOver}: closing restores nothing. */
+        private boolean handOver;
         /** What GL held when this opened, as the host and the driver answer, and who opened it: the round
          *  trip's, allocated only when it is on. */
         private CgGlStateShadow before, beforeDriver;
         private Throwable openedAt;
+        /** Texture units the open read covered: a unit first selected inside this scope has no "before". */
+        private int unitsAtOpen;
 
         private Frame() {}
 
@@ -981,6 +1015,7 @@ public final class CgGlStateManager {
             restoring = true;
             try {
                 for (CgGlSlot slot : SLOTS) {
+                    if (handOver) break;
                     if ((mask & (1 << slot.ordinal())) == 0) continue;
                     // A domain not wholly trusted is re-established in full — see `forcing`. A trusted one takes
                     // the normal deduplicated path and usually emits nothing.
@@ -1193,9 +1228,8 @@ public final class CgGlStateManager {
             String names = fieldNames(leaked);
             String site = site(at);
             if (!reported.add("leak|" + site + '|' + names)) return;
-            String line = "[crystalgraphics] state.roundTrip: leaked " + names + " at " + site + " (depth " + depth
-                    + ") -- no open scope declares its domain";
-            if (reported.size() <= 10) log.warn(line, at); else log.warn(line);
+            log.warn("[crystalgraphics] state.roundTrip: leaked " + names + " at " + site + " (depth " + depth
+                    + ") -- no open scope declares its domain", at);
         }
 
         RoundTrip() {
@@ -1204,8 +1238,12 @@ public final class CgGlStateManager {
         }
 
         void opened(Frame f) {
+            if (f.handOver) return;
+            f.unitsAtOpen = highestUnit + 1;
             if (f.before == null) f.before = new CgGlStateShadow();
-            read(CgGlStateProvider.glGet(), f.mask, f.before);
+            // An outermost scope on plain glGet has just adopted every declared domain from the driver.
+            if (depth == 1 && provider == CgGlStateProvider.glGet()) f.before.copyFrom(f.saved);
+            else read(CgGlStateProvider.glGet(), f.mask, f.before);
             if (driverReader != null) {
                 if (f.beforeDriver == null) f.beforeDriver = new CgGlStateShadow();
                 read(driverReader, f.mask, f.beforeDriver);
@@ -1214,12 +1252,14 @@ public final class CgGlStateManager {
         }
 
         void closed(Frame f) {
+            if (f.handOver) return;   // its writes are meant to stay
             read(CgGlStateProvider.glGet(), f.mask, after);
             if (checked++ == 0) {
                 log.info("[crystalgraphics] state.roundTrip: first scope checked (depth " + depth
                         + "), driver reader: " + (driverReader != null ? driverReader.getClass().getSimpleName() : "none needed"));
             }
             String where = " (depth " + depth + ")";
+            untouchedUnits(f.before, after, f.unitsAtOpen);
             String diff = f.before.differences(after, f.mask);
             if (diff != null) {
                 hostFailed++;
@@ -1227,6 +1267,8 @@ public final class CgGlStateManager {
             }
             if (driverReader != null) {
                 read(driverReader, f.mask, afterDriver);
+                untouchedUnits(f.beforeDriver, afterDriver, f.unitsAtOpen);
+                untouchedUnits(after, afterDriver, f.unitsAtOpen);
                 int real = f.mask & ~virtualised;
                 String driverDiff = f.beforeDriver.differences(afterDriver, real);
                 if (driverDiff != null) {
@@ -1256,7 +1298,14 @@ public final class CgGlStateManager {
             verifying = true;
             try {
                 for (CgGlSlot s : SLOTS) {
-                    if ((mask & (1 << s.ordinal())) != 0) from.read(s, into);
+                    if ((mask & (1 << s.ordinal())) == 0) continue;
+                    // Only the units our code has selected: reading all 32 twice per scope was most of the
+                    // probe's cost, and a unit we never select is one we cannot have failed to restore.
+                    if (s == CgGlSlot.TEXTURES && from instanceof CgGlGetProvider) {
+                        ((CgGlGetProvider) from).readTextures(into, highestUnit + 1);
+                    } else {
+                        from.read(s, into);
+                    }
                 }
             } finally {
                 verifying = false;
@@ -1266,11 +1315,23 @@ public final class CgGlStateManager {
             }
         }
 
+        /** A field name in a {@link CgGlStateShadow#differences} string: the word before " tracked=". */
+        private final Pattern FIELD_IN_DIFF = Pattern.compile("(\\w+) tracked=");
+
+        /** Units from {@code limit} up were not read at open; {@code to} takes {@code from}'s so they agree. */
+        private void untouchedUnits(CgGlStateShadow from, CgGlStateShadow to, int limit) {
+            for (int u = limit; u < CgGlStateShadow.MAX_TEXTURE_UNITS; u++) {
+                to.boundTexture2D[u] = from.boundTexture2D[u];
+            }
+        }
+
         /** Once per (what, site, fields): a scope that restores wrongly does so every frame. */
         private void report(String what, Throwable openedAt, String diff, String was, String is) {
             String site = site(openedAt);
+            // Names by pattern, not by splitting on ", ": a texture-unit array prints with those inside it.
             StringBuilder fields = new StringBuilder();
-            for (String part : diff.split(", ")) fields.append(part, 0, part.indexOf(' ')).append(',');
+            Matcher name = FIELD_IN_DIFF.matcher(diff);
+            while (name.find()) fields.append(name.group(1)).append(',');
             if (reported.size() >= 100 || !reported.add(what + '|' + site + '|' + fields)) return;
             String line = "[crystalgraphics] state.roundTrip: " + what + " by the scope opened at " + site
                     + " -- " + diff.replace("tracked=", was).replace("actual=", is);
