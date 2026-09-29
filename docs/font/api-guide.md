@@ -206,9 +206,8 @@ CgTextRenderContext screen = text.context();          // the default, kept to sw
 CgTextRenderContext world  = CgTextRenderContext.world(projection, viewportWidthPx, viewportHeightPx);
 
 // each frame
-world.updateProjectedSize(modelView, projection, 48); // 48: the font's size in px
 text.context(world);
-text.draw().layout(signText).at(0, 0).pose(pose).submit();
+text.draw().layout(signText).at(0, 0).pose(pose).submit();   // pose: the camera's view, then the text's placement
 text.context(screen);
 ```
 
@@ -216,8 +215,9 @@ text.context(screen);
 - `viewportWidthPx` and `viewportHeightPx` are the size in pixels of the viewport the scene is drawn
   into: the framebuffer area `glViewport` was given, not a GUI-scaled size. On a resize, pass the new
   ones with `world.updateProjection(projection, viewportWidthPx, viewportHeightPx)`.
-- `modelView` places the text in the world; `updateProjectedSize` uses it to judge how large the glyphs
-  appear, which picks their raster size.
+- Nothing needs updating as the camera moves: a distance field is generated once, at one atlas scale,
+  and stays sharp at any distance. (`updateProjectedSize` records an estimate that no longer drives
+  anything.)
 
 ---
 

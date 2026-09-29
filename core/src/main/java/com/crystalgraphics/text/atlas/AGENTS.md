@@ -32,9 +32,8 @@ This class is the main place to understand the current paged-storage model.
 > **Naming history.** There were once two classes: a paged one whose name carried the word
 > "Paged", and a legacy single-page LRU atlas holding the plain `CgGlyphAtlas` name. The
 > legacy one was retired and the paged one took the plain name, absorbing the `Type` enum.
-> So an older document referring to a "paged glyph atlas" class means *this* class, and the
-> retired implementation survives only as `CgOldGlyphAtlas`, with no callers — do not build
-> on it.
+> So an older document referring to a "paged glyph atlas" class means *this* class. The
+> retired single-page implementation, kept a while as `CgOldGlyphAtlas`, is deleted.
 >
 > (Deliberately phrased without the old identifier: a repo-wide find/replace for it would
 > otherwise rewrite this very paragraph into saying the class was renamed to itself.)
@@ -96,8 +95,6 @@ substantially slower.
 
 - Do not move generation policy here.
 - Do not mix renderer draw-batch logic into atlas classes.
-- Do not build on `CgOldGlyphAtlas` — it is the retired single-page model, kept for
-  reference only and with no callers.
 - Do not reintroduce per-font atlas keying. Glyph identity already carries the font via
   `CgGlyphKey`, so shared pages cannot collide, and per-font atlases were the source of
   the memory waste in the first place.

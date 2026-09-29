@@ -1,211 +1,146 @@
-# Font/Text Architecture
+# Text Architecture
 
-## TL;DR
+Which package owns what. For how a string moves through them, read
+[`pipeline-map-and-glossary.md`](pipeline-map-and-glossary.md); for how to call them,
+[`api-guide.md`](api-guide.md). Paths are under `core/src/main/java/com/crystalgraphics/`.
 
-CrystalGraphics now separates the text system into three broad categories:
-
-1. **public font API** (`api/font`)
-2. **public text API** (`api/text`)
-3. **internal implementation packages** (`text/layout`, `text/cache`, `text/atlas`, `text/msdf`, `text/render`, `text/font`)
-
-That split is the main architectural story.
-
-The rule is:
-
-> public packages define the values callers see; internal packages own the pipeline that creates, caches, and renders those values.
+> **Public packages hold what a caller sees; internal packages own the pipeline that makes and draws it.**
+> A caller never needs the registry, an atlas or a generation job.
 
 ---
 
-## Public boundary
+## Public
 
-### `api/font`
+### `api/font` — fonts
 
-This package owns font-domain concepts and the public layout bridge.
+| Class | Is |
+|---|---|
+| `CgFont` | One face at one pixel size; `atSize(px)` for another size. Loads from a path or bytes, a `.ttc` face by index |
+| `CgFontData` | Where a font's bytes live: memory, or a file the natives open themselves |
+| `CgFontFamily`, `CgFontSource` | A primary font and ordered fallbacks, resolved per character |
+| `CgFontFallback` | The last fallback step: a font for a character none of a family's own can draw |
+| `CgFontFamilyGroup` | A family per `CgFontStyle`, which a bold or italic span resolves against; a missing style is synthesised |
+| `CgSystemFonts`, `CgSystemFontFace`, `CgGenericFamily` | The installed fonts: by family name, by CSS generic family, and as per-script fallback |
+| `CgFontStyle`, `CgFontVariation`, `CgFontAxisInfo` | Style and variable-font axes |
+| `CgFontKey`, `CgGlyphKey` | Identity of a font registration, and of one glyph variant |
+| `CgFontMetrics`, `CgGlyphMetrics`, `CgGlyphPlacement` | Metrics, and where a glyph sits in the atlas |
 
-Main responsibilities:
+### `api/text` — layout values
 
-- loading and sizing fonts (`CgFont`)
-- grouping fonts into fallback families (`CgFontFamily`, `CgFontSource`)
-- describing font identity and variation (`CgFontKey`, `CgFontStyle`, `CgFontVariation`, `CgFontAxisInfo`)
-- describing glyph identity and placement payloads (`CgGlyphKey`, `CgGlyphMetrics`, `CgGlyphPlacement`)
-- exposing the public layout entrypoint (`CgTextLayoutBuilder`)
+| Class | Is |
+|---|---|
+| `CgTextLayout` | The finished layout: lines, total size, metrics, baked glyphs. `CgTextLayout.of(...)` starts a `Request` |
+| `CgShapedParagraph` | Shaped but not wrapped; `layout(width, height)` wraps it, memoising the last pair |
+| `CgParagraphKnobs` | What a request fixes at shape time: direction, alignment, max lines, ellipsis, line height, tab stops |
+| `CgShapedRun` | One directional run of shaped glyphs |
+| `CgBakedGlyphs`, `CgTextDecorationRect` | Flat per-glyph pen positions, ids and colours, and decoration rectangles, computed once per layout |
+| `CgStyledText`, `CgStyleSpan`, `CgFontFeature`, `CgTextDecoration` | Plain text plus styled ranges: bold, italic, colour, decorations, OpenType features, baseline shift |
+| `CgTextAlign`, `CgTextDirection` | Per-line alignment; paragraph direction for BiDi |
+| `CgTextStroke`, `CgStrokeAlign` | An outline: width in em, colour, alignment, over or under the fill |
 
-### `api/text`
+### `text/richtext` — markup
 
-This package owns public text-domain values.
+`CgMarkupParser` turns markup into `CgStyledText`. The built-ins are `CgMarkupParser.HTML`
+(`CgTagMarkupParser`: `<b>`, `<i>`, `<u>`, `<s>`, `<overline>`, `<color=#RRGGBB>`) and
+`CgMarkupParser.MINECRAFT` (`CgMinecraftColorCodeParser`: `§` codes). Both are also registered by name,
+`"html"` and `"minecraft"`, and a third party registers its own with `CgMarkupParser.register`.
 
-Main responsibilities:
+### `text/render` — the renderer's public face
 
-- describing layout constraints (`CgTextConstraints`)
-- describing the final layout output (`CgTextLayout`)
-- describing a shaped directional run (`CgShapedRun`)
-
-This package exists so callers can work with text values without needing to learn the atlas, cache, or renderer internals.
-
----
-
-## Internal implementation packages
-
-### `text/layout`
-
-Owns the internal layout algorithm.
-
-Main classes:
-
-- `CgTextLayoutEngine` — reusable algorithm skeleton
-- `CgTextShaper` — HarfBuzz shaping
-- `CgLineBreaker` — line breaking across shaped runs
-- `RunReshaper` — callback for re-shaping subranges during line breaks
-
-This package should stay free of atlas/cache/render ownership.
-
-### `text/cache`
-
-Owns glyph supply.
-
-Main classes:
-
-- `CgFontRegistry` — render-thread cache hub
-- `CgGlyphGenerationExecutor` / `CgGlyphGenerationJob` / `CgGlyphGenerationResult` — async glyph generation pipeline
-- `CgWorkerFontContext` — per-worker font state
-- `CgRasterFontKey`, `CgRasterGlyphKey`, `CgMsdfAtlasKey` — internal cache keys
-
-This package answers:
-
-> where does a glyph live, and how do we generate it if it is missing?
-
-### `text/atlas`
-
-Owns atlas storage.
-
-Main classes:
-
-- `CgGlyphAtlas` — the paged atlas: page list, allocation, and the `Type` enum
-  (`BITMAP`/`MSDF`/`MTSDF`)
-- `CgGlyphAtlasPage` — one page, backing one layer of a `CgTexture2DArray`
-- `CgOldGlyphAtlas` — the retired single-page LRU model, kept for reference, no callers
-- `text/atlas/packing/*` — packing strategies and packed-rect values
-
-This package owns page allocation and packing, not fallback resolution.
-
-**Two atlases exist process-wide and every font shares them:** one `R8` bitmap atlas
-(all fonts, all raster sizes) and one `RGBA8` distance-field atlas (all fonts, a single
-atlas scale). There are two rather than one only because a `CgTexture2DArray` carries a
-single internal format across its layers. Atlases were formerly keyed per font, which gave
-a small UI font an entire page to itself and cost a texture rebind per font in mixed-font
-text.
-
-### `text/msdf`
-
-Owns distance-field generation logic.
-
-Main classes:
-
-- `CgMsdfGenerator`
-- `CgMsdfGlyphLayout`
-- `CgMsdfAtlasConfig`
-- `CgMsdfEdgeColoringMode`
-- `CgMsdfVerificationConfig`
-
-This package is called by the cache layer, not by the renderer directly.
-
-### `text/render`
-
-Owns draw-time orchestration.
-
-Main classes:
-
-- `CgTextRenderer`
-- `CgTextRenderContext`
-- `CgWorldTextRenderContext`
-- `CgTextScaleResolver`, `OrthographicScaleResolver`, `PerspectiveScaleResolver`, `ProjectedSizeEstimator`
-- `CgDrawBatchKey`
-
-This package answers:
-
-> once layout and atlas placements already exist, how do we turn them into draw calls?
-
-### `text/font`
-
-Owns font **files**, read without natives, and the fallback tables.
-
-Main classes:
-
-- `Sfnt` — the faces a file holds, each face's names (every localized family name among them),
-  weight and cmap coverage; one face of a `.ttc` extracted as a standalone font, which is what a
-  collection loaded from bytes becomes
-- `CodePointCoverage` — a face's coverage as merged ranges
-- `ScriptFallbacks` — which installed families to try for a character, per platform; Windows'
-  table is ported from Chromium
-
-This package answers:
-
-> which installed font can draw this character, without opening every font natively?
-
-`api/font/CgSystemFonts` is its public face.
+| Class | Is |
+|---|---|
+| `CgTextRenderer`, `CgTextRenderer.Draw` | The renderer, and the fluent draw request |
+| `CgTextRenderContext` | Projection and viewport, orthographic or world, plus per-font raster history |
+| `CgTextGamma` | The coverage correction the renderer applies to light text |
+| `CgTextRendererRegistry` | Tracks every renderer so context teardown can free any left alive |
 
 ---
 
-## Ownership chain
+## Internal
 
-### 1. Font ownership
+### `text/layout` — shaping and line breaking
 
-- `CgFont` owns native font state
-- `CgFontFamily` resolves fallback/font-source ownership
+- `CgTextLayoutEngine` — the pipeline, split in two: `shape` (paragraphs, BiDi crossed with style spans,
+  fallback runs, HarfBuzz) builds a `CgShapedParagraph`; `wrap` (line breaking, alignment, truncation,
+  baking) is what `CgShapedParagraph.layout` re-runs.
+- `CgTextShaper` — HarfBuzz for one directional run; `Utf8ClusterMapper` maps its clusters back to UTF-16.
+- `CgLineBreaker`, `CgBreakOpportunities` — line breaking at UAX #14 break opportunities, which the
+  JDK's line iterator gets wrong in places.
+- `RunReshaper`, `CgReshapeContext` — re-shaping a run split at a line break, from the paragraph's source
+  text, which lives here rather than on every run.
+- `CgTextLayoutCache` — a bounded, content-keyed cache behind `draw().text(...)`.
 
-### 2. Layout ownership
+Knows nothing of atlases or GL.
 
-- `CgTextLayoutBuilder` is the public bridge
-- `CgTextLayoutEngine` owns the reusable algorithm
-- `CgTextShaper` and `CgLineBreaker` produce `CgTextLayout`
+### `text/cache` — glyph supply
 
-### 3. Cache ownership
+- `CgFontRegistry` — turns a `CgGlyphKey` into a `CgGlyphPlacement`: looks it up, or queues it for
+  generation, and uploads what workers finish within a per-frame budget.
+- `CgGlyphGenerationExecutor`, `CgGlyphGenerationJob`, `CgGlyphGenerationResult`, `CgWorkerFontContext` —
+  the worker pools and each worker's own FreeType/msdfgen state.
+- `CgFontWarmer` — speculative warming of a face's common characters, never ahead of a glyph on screen.
+- `CgRasterFontKey`, `CgRasterGlyphKey`, `CgMsdfAtlasKey` — the internal keys.
 
-- `CgTextRenderer` asks `CgFontRegistry` for glyph placements
-- `CgFontRegistry` transforms public glyph requests into internal cache keys
-- `CgMsdfGenerator` or FreeType rasterization fills misses
+### `text/atlas` — atlas storage
 
-### 4. Atlas ownership
+- `CgGlyphAtlas` — one atlas per format, each a `CgTexture2DArray`: an `R8` bitmap atlas and an `RGBA8`
+  distance-field atlas. **Every font and size shares them.**
+- `CgGlyphAtlasPage` — one layer of that array, with its packer.
+- `packing/` — `CgPackingStrategy`, `MaxRectsPacker`.
 
-- `CgGlyphAtlas` and `CgGlyphAtlasPage` allocate stable glyph locations
-- `CgGlyphPlacement` becomes the renderer-facing placement record
+### `text/msdf` — distance fields
 
-### 5. Render ownership
+- `CgMsdfGenerator`, `CgMsdfGlyphLayout` — generation, and the glyph box it is generated in.
+- `CgMsdfAtlasConfig` — the one atlas scale every distance field is generated at (80 px), and each face's
+  range.
+- `CgMsdfQualityProbe` — measures how faithfully a field at a given scale reproduces the outline.
+- `CgMsdfEdgeColoringMode`, `CgMsdfVerificationConfig`.
 
-- `CgTextRenderer` groups placements into batches and submits quads through `CgQuadBatcher`
-- the batch handles GPU buffer upload via `CgVertexArrayRegistry` / `CgStreamBuffer`
-- shaders sample atlas textures and draw
+Called by the cache layer, never by the renderer.
+
+### `text/render` — drawing
+
+- `CgResolvedGlyphs` — resolves a layout into per-glyph placements for one draw.
+- `CgGlyphPlacementCache` — those placements, cached per draw (layout, position, tier, font).
+- `CgTextCuller` — skips a draw whose whole layout is off-screen.
+- `CgTextShadowList`, `CgTextShadowPlan` — a draw's shadows, and what each glyph paints for each.
+- `CgTextSortKey` — packs each glyph and decoration into a sortable key; its batch bits are the tier and
+  the atlas texture.
+- `context/` — `CgTextScaleResolver` with `OrthographicScaleResolver` (UI) and `PerspectiveScaleResolver`
+  (world), which turn a pose into a raster size; `ProjectedSizeEstimator`.
+
+### `text/font` — font files without natives
+
+`Sfnt` reads a file's faces, names, weight and coverage; `CodePointCoverage` is that coverage as ranges;
+`ScriptFallbacks` is which installed families to try per script, Windows' ported from Chromium. Its
+public face is `api/font/CgSystemFonts`.
+
+### The material
+
+`assets/crystalgraphics/shaders/text.shader`: one material for bitmap, MSDF and MTSDF glyphs, with a single
+`MSDF_MODE` keyword. It also draws strokes, shadows and gamma, with the helpers in
+`shaders/lib/text_gamma.glsl`, `shaders/lib/rect_blur.glsl` (a decoration's shadow) and
+`shaders/lib/texel.glsl` (bitmap glyphs off-axis).
 
 ---
 
-## Intentional exceptions / remaining leaks
+## Boundaries
 
-### `CgTextLayoutBuilder` in `api/font`
-
-Semantically, layout logic belongs with `text/layout`.
-
-It stays in `api/font` because it is the narrow legal bridge into package-private font-family shaping details. The real algorithm already lives in `text/layout/CgTextLayoutEngine`; the builder remains only as the public bridge.
-
-### `CgTextLayout.resolvedFontsByKey`
-
-Still a public/internal leak because the renderer needs resolved `CgFont` handles at draw time.
-
-### `CgShapedRun.sourceText/sourceStart/sourceEnd`
-
-Still public because line-breaking still needs to re-shape subranges accurately.
+- **Layout never touches atlases or GL**, and the renderer never generates a glyph: it asks the registry.
+- **Font identity is not a batch key.** All fonts share the atlases, so a draw mixing fonts and sizes is
+  one call; only bitmap against distance-field glyphs splits one.
+- **Layout is in layout pixels and never changes with the pose.** The raster size is chosen per draw;
+  only a `paragraph` draw re-wraps, and only to keep its constraints in on-screen pixels.
 
 ---
 
-## Recommended reading order for contributors
+## Reading order
 
-1. `api/font/CgFont.java`
-2. `api/font/CgFontFamily.java`
-3. `api/font/CgTextLayoutBuilder.java`
-4. `text/layout/CgTextLayoutEngine.java`
-5. `api/text/CgTextLayout.java`
-6. `text/render/CgTextRenderer.java`
-7. `text/cache/CgFontRegistry.java`
-8. `text/atlas/CgGlyphAtlas.java`
-9. `text/msdf/CgMsdfGenerator.java`
-
-This order tells the cleanest top-down story.
+1. `api/text/CgTextLayout.java` — the request and the result
+2. `text/layout/CgTextLayoutEngine.java` — shape and wrap
+3. `api/font/CgFontFamily.java` — fallback
+4. `text/render/CgTextRenderer.java` — the draw request and the draw path
+5. `text/render/CgResolvedGlyphs.java` — glyphs to placements
+6. `text/cache/CgFontRegistry.java` — glyph supply
+7. `text/atlas/CgGlyphAtlas.java` — storage
+8. `text/render/CgTextShadowPlan.java` and `api/text/CgTextStroke.java` — effects

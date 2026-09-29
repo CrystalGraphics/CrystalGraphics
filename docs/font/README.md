@@ -1,56 +1,15 @@
-# CrystalGraphics Font/Text Documentation
+# Text and Fonts
 
-This directory is the **current canonical documentation set** for the CrystalGraphics font and text system.
+CrystalGraphics' text system: fonts with per-character fallback and the installed fonts behind them,
+HarfBuzz shaping with BiDi and UAX #14 line breaking, styled text and markup, and a batched, instanced
+renderer drawing bitmap and distance-field glyphs from two shared atlases — with outlines, shadows and
+text gamma.
 
-Older investigation notes, one-off experiments, and pre-refactor writeups have been intentionally removed. The files that remain here describe the architecture that exists in the codebase **today**.
+| Read | For |
+|---|---|
+| [`api-guide.md`](api-guide.md) | **Using it**: fonts, layouts, the draw request, world text |
+| [`architecture.md`](architecture.md) | Which package owns what, and the boundaries between them |
+| [`pipeline-map-and-glossary.md`](pipeline-map-and-glossary.md) | What happens to a string on its way to pixels, and the terms used for it |
 
-## TL;DR
-
-- `api/font` owns **font-domain public API**: loaded fonts, families, glyph keys, atlas regions/placements, and the public layout bridge.
-- `api/text` owns **public text-domain values**: `CgTextConstraints`, `CgTextLayout`, `CgShapedRun`.
-- `text/layout` owns the **internal layout algorithm**.
-- `text/cache` owns **glyph supply**: registry, generation jobs/results, cache keys.
-- `text/atlas` owns **atlas storage**: single-page atlases, paged atlases, pages, packing.
-- `text/msdf` owns **distance-field generation logic**.
-- `text/render` owns the **draw side**: batching, VBOs, contexts, raster-tier policy, final GL submission.
-- `text/font` owns **font files and fallback tables**: `.ttc` faces, names and coverage read without natives, and which installed family to try per script (`api/font/CgSystemFonts` is the public side).
-
-If you only want one sentence:
-
-> string → layout (`api/text`) → glyph supply (`text/cache`) → atlas placement (`text/atlas`) → batching/VBO (`text/render`) → draw
-
-## Read In This Order
-
-1. **`architecture.md`** — package ownership and structural boundaries
-2. **`pipeline-map-and-glossary.md`** — end-to-end runtime flow + shared terminology
-3. **`api-guide.md`** — practical usage patterns and API walkthrough
-
-## Important Current Exceptions
-
-- **`CgTextLayoutBuilder` still lives in `api/font`.**
-  This is intentional. It is the public bridge into the internal layout engine and still needs access to package-private font-family/HarfBuzz seams.
-
-- **`CgTextLayout.resolvedFontsByKey` is still a public/internal leak.**
-  The renderer still needs resolved `CgFont` handles at draw time.
-
-- **`CgShapedRun` still carries source text/range fields.**
-  Those fields are still needed for run re-shaping during line breaking.
-
-## Where To Look In Source
-
-If you want the implementation story in code form, start here:
-
-1. `api/font/CgTextLayoutBuilder.java`
-2. `text/layout/CgTextLayoutEngine.java`
-3. `api/font/CgFontFamily.java`
-4. `api/text/CgTextLayout.java`
-5. `text/render/CgTextRenderer.java`
-6. `text/cache/CgFontRegistry.java`
-7. `text/atlas/CgGlyphAtlas.java`
-8. `text/msdf/CgMsdfGenerator.java`
-
-## Package-local agent docs
-
-Each relevant source package also gets its own `AGENTS.md` file.
-
-Those files are intentionally more implementation-focused than the docs in this directory and are meant for future LLM/agent onboarding directly inside the source tree.
+Each package under `core/src/main/java/com/crystalgraphics/{api,text}` also has an `AGENTS.md` with its
+implementation detail.
