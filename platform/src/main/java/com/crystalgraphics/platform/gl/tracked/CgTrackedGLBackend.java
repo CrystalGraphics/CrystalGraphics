@@ -6,6 +6,7 @@ import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.CgGLBackend;
 
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.ShortBuffer;
@@ -39,6 +40,8 @@ public final class CgTrackedGLBackend extends CgGLBackend {
     private final CgTracker tracker;
     private final TrackedGlErrors errors = new TrackedGlErrors();
     private final TrackedRenderState state;
+    private final TrackedVertexArrays vaos;
+    private final TrackedBuffers buffers;
     private final double[] q = new double[16];
 
     /** @param debug refuse what GL leaves undefined and a device cannot survive: feedback loops (decision 21) */
@@ -47,6 +50,9 @@ public final class CgTrackedGLBackend extends CgGLBackend {
         this.tracker = new CgTracker(device, debug);
         CgTarget surface = CgTarget.surface(device);
         this.state = new TrackedRenderState(tracker, errors, surface.width(), surface.height());
+        this.vaos = new TrackedVertexArrays(errors);
+        this.buffers = new TrackedBuffers(tracker, errors, vaos);
+        vaos.buffers(buffers);
         tracker.bindTarget(surface);
     }
 
@@ -58,6 +64,10 @@ public final class CgTrackedGLBackend extends CgGLBackend {
     public void endFrame() { tracker.endFrame(); }
 
     TrackedRenderState renderState() { return state; }
+
+    TrackedVertexArrays vertexArrays() { return vaos; }
+
+    TrackedBuffers bufferObjects() { return buffers; }
 
     private static UnsupportedOperationException notYet(String call) {
         return new UnsupportedOperationException(call + " is not on the tracked backend yet (D3.4)");
@@ -81,6 +91,8 @@ public final class CgTrackedGLBackend extends CgGLBackend {
 
     private int query(int pname) {
         int n = state.query(pname, q);
+        if (n < 0) n = buffers.query(pname, q);
+        if (n < 0) n = vaos.query(pname, q);
         if (n < 0) n = limits(pname);
         if (n < 0) {
             errors.invalidEnum("glGet", pname);
@@ -360,54 +372,60 @@ public final class CgTrackedGLBackend extends CgGLBackend {
 
     // ── buffers and vertex arrays ──────────────────────────────────────────────
 
-    @Override public int glGenBuffers() { throw notYet("glGenBuffers"); }
+    @Override public int glGenBuffers() { return buffers.gen(); }
 
-    @Override public void glBindBuffer(int target, int buffer) { throw notYet("glBindBuffer"); }
+    @Override public void glBindBuffer(int target, int buffer) { buffers.bind(target, buffer); }
 
-    @Override public void glBufferData(int target, ByteBuffer data, int usage) { throw notYet("glBufferData"); }
+    @Override public void glBufferData(int target, ByteBuffer data, int usage) {
+        buffers.data(target, data.remaining(), data, usage);
+    }
 
-    @Override public void glBufferData(int target, ShortBuffer data, int usage) { throw notYet("glBufferData"); }
+    @Override public void glBufferData(int target, ShortBuffer data, int usage) {
+        ByteBuffer bytes = ByteBuffer.allocateDirect(data.remaining() * 2).order(ByteOrder.nativeOrder());
+        bytes.asShortBuffer().put(data.duplicate());
+        buffers.data(target, bytes.remaining(), bytes, usage);
+    }
 
-    @Override public void glBufferData(int target, long size, int usage) { throw notYet("glBufferData"); }
+    @Override public void glBufferData(int target, long size, int usage) { buffers.data(target, size, null, usage); }
 
-    @Override public void glBufferSubData(int target, long offset, ByteBuffer data) { throw notYet("glBufferSubData"); }
+    @Override public void glBufferSubData(int target, long offset, ByteBuffer data) { buffers.subData(target, offset, data); }
 
-    @Override public void glDeleteBuffers(int buffer) { throw notYet("glDeleteBuffers"); }
+    @Override public void glDeleteBuffers(int buffer) { buffers.delete(buffer); }
 
-    @Override public void glBindBufferBase(int target, int index, int buffer) { throw notYet("glBindBufferBase"); }
+    @Override public void glBindBufferBase(int target, int index, int buffer) { buffers.bindIndexed(target, index, buffer, 0, -1); }
 
     @Override
     public void glBindBufferRange(int target, int index, int buffer, long offset, long size) {
-        throw notYet("glBindBufferRange");
+        buffers.bindIndexed(target, index, buffer, offset, size);
     }
 
     @Override public void glTexBuffer(int target, int internalFormat, int buffer) { throw notYet("glTexBuffer"); }
 
     @Override
     public ByteBuffer glMapBufferRange(int target, long offset, long length, int access, ByteBuffer oldBuffer) {
-        throw notYet("glMapBufferRange");
+        return buffers.map(target, offset, length, access);
     }
 
-    @Override public boolean glUnmapBuffer(int target) { throw notYet("glUnmapBuffer"); }
+    @Override public boolean glUnmapBuffer(int target) { return buffers.unmap(target); }
 
-    @Override public void glFlushMappedBufferRange(int target, long offset, long length) { throw notYet("glFlushMappedBufferRange"); }
+    @Override public void glFlushMappedBufferRange(int target, long offset, long length) {}
 
-    @Override public void glBufferStorage(int target, long size, int flags) { throw notYet("glBufferStorage"); }
+    @Override public void glBufferStorage(int target, long size, int flags) { buffers.storage(target, size, flags); }
 
-    @Override public int glGenVertexArrays() { throw notYet("glGenVertexArrays"); }
+    @Override public int glGenVertexArrays() { return vaos.gen(); }
 
-    @Override public void glBindVertexArray(int array) { throw notYet("glBindVertexArray"); }
+    @Override public void glBindVertexArray(int array) { vaos.bind(array); }
 
-    @Override public void glDeleteVertexArrays(int array) { throw notYet("glDeleteVertexArrays"); }
+    @Override public void glDeleteVertexArrays(int array) { vaos.delete(array); }
 
-    @Override public void glEnableVertexAttribArray(int index) { throw notYet("glEnableVertexAttribArray"); }
+    @Override public void glEnableVertexAttribArray(int index) { vaos.enable(index); }
 
     @Override
     public void glVertexAttribPointer(int index, int size, int type, boolean normalized, int stride, long pointer) {
-        throw notYet("glVertexAttribPointer");
+        vaos.pointer(index, size, type, normalized, stride, pointer);
     }
 
-    @Override public void glVertexAttribDivisor(int index, int divisor) { throw notYet("glVertexAttribDivisor"); }
+    @Override public void glVertexAttribDivisor(int index, int divisor) { vaos.divisor(index, divisor); }
 
     // ── textures ───────────────────────────────────────────────────────────────
 

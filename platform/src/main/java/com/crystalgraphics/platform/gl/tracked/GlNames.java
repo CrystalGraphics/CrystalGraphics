@@ -14,6 +14,11 @@ final class GlNames<T> {
         objects.add(null);
     }
 
+    /** The name the next {@link #add} hands out, for an object that holds its own name. */
+    int next() {
+        return objects.size();
+    }
+
     int add(T object) {
         objects.add(object);
         return objects.size() - 1;
