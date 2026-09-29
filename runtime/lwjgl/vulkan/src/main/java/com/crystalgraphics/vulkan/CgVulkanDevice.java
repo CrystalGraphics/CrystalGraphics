@@ -1,18 +1,30 @@
 package com.crystalgraphics.vulkan;
 
-import com.crystalgraphics.platform.device.CgBindingLayout;
-import com.crystalgraphics.platform.device.CgCommandEncoder;
 import com.crystalgraphics.platform.device.CgDevice;
 import com.crystalgraphics.platform.device.CgDeviceInfo;
 import com.crystalgraphics.platform.device.CgDeviceObject;
-import com.crystalgraphics.platform.device.CgFormat;
-import com.crystalgraphics.platform.device.CgGpuBuffer;
-import com.crystalgraphics.platform.device.CgGpuSampler;
-import com.crystalgraphics.platform.device.CgGpuTexture;
-import com.crystalgraphics.platform.device.CgPipeline;
-import com.crystalgraphics.platform.device.CgPipelineDesc;
-import com.crystalgraphics.platform.device.CgShaderModule;
-import com.crystalgraphics.platform.device.CgTimerQuery;
+import com.crystalgraphics.platform.device.command.CgCommandEncoder;
+import com.crystalgraphics.platform.device.format.CgFormat;
+import com.crystalgraphics.platform.device.pipeline.CgBindingLayout;
+import com.crystalgraphics.platform.device.pipeline.CgPipeline;
+import com.crystalgraphics.platform.device.pipeline.CgPipelineDesc;
+import com.crystalgraphics.platform.device.resource.CgGpuBuffer;
+import com.crystalgraphics.platform.device.resource.CgGpuSampler;
+import com.crystalgraphics.platform.device.resource.CgGpuTexture;
+import com.crystalgraphics.platform.device.resource.CgTimerQuery;
+import com.crystalgraphics.platform.device.shader.CgShaderModule;
+import com.crystalgraphics.vulkan.command.VulkanEncoder;
+import com.crystalgraphics.vulkan.format.VulkanCheck;
+import com.crystalgraphics.vulkan.format.VulkanFormats;
+import com.crystalgraphics.vulkan.resource.VulkanBindingLayout;
+import com.crystalgraphics.vulkan.resource.VulkanBuffer;
+import com.crystalgraphics.vulkan.resource.VulkanPipeline;
+import com.crystalgraphics.vulkan.resource.VulkanSampler;
+import com.crystalgraphics.vulkan.resource.VulkanShaderModule;
+import com.crystalgraphics.vulkan.resource.VulkanStaging;
+import com.crystalgraphics.vulkan.resource.VulkanTexture;
+import com.crystalgraphics.vulkan.resource.VulkanTimerQuery;
+import com.crystalgraphics.vulkan.shader.ShadercGlslCompiler;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.util.vma.VmaAllocationCreateInfo;
@@ -27,9 +39,9 @@ import org.lwjgl.vulkan.VkDevice;
 import org.lwjgl.vulkan.VkGraphicsPipelineCreateInfo;
 import org.lwjgl.vulkan.VkImageCreateInfo;
 import org.lwjgl.vulkan.VkPhysicalDeviceLimits;
+import org.lwjgl.vulkan.VkPhysicalDeviceProperties2;
 import org.lwjgl.vulkan.VkPhysicalDeviceProperties;
 import org.lwjgl.vulkan.VkPhysicalDevicePushDescriptorPropertiesKHR;
-import org.lwjgl.vulkan.VkPhysicalDeviceProperties2;
 import org.lwjgl.vulkan.VkPipelineCacheCreateInfo;
 import org.lwjgl.vulkan.VkPipelineColorBlendAttachmentState;
 import org.lwjgl.vulkan.VkPipelineColorBlendStateCreateInfo;
@@ -63,7 +75,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import static com.crystalgraphics.vulkan.VulkanCheck.check;
+import static com.crystalgraphics.vulkan.format.VulkanCheck.check;
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.system.MemoryUtil.memByteBuffer;
 import static org.lwjgl.util.vma.Vma.*;
@@ -109,7 +121,7 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
     private final VulkanEncoder encoder;
     private VulkanTexture surfaceColor, surfaceDepth;
     private VulkanBuffer scratch;
-    int barriers;
+    public int barriers;
 
     public CgVulkanDevice(CgVulkanHost host, int width, int height) {
         this.host = host;
@@ -163,20 +175,20 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
 
     // ── what the encoder and pass reach ────────────────────────────────────────
 
-    VkDevice vk() { return device; }
-    CgVulkanHost host() { return host; }
+    public VkDevice vk() { return device; }
+    public CgVulkanHost host() { return host; }
     VulkanFormats formats() { return formats; }
-    VulkanStaging staging() { return staging; }
-    float timestampPeriod() { return timestampPeriod; }
+    public VulkanStaging staging() { return staging; }
+    public float timestampPeriod() { return timestampPeriod; }
 
     /** A host-visible buffer for {@link VulkanStaging}, outside the object count a caller sees. */
-    VulkanBuffer stagingBuffer(long size) {
+    public VulkanBuffer stagingBuffer(long size) {
         return (VulkanBuffer) createBuffer(new CgGpuBuffer.Desc("staging", size,
                 EnumSet.of(CgGpuBuffer.Usage.COPY_SRC, CgGpuBuffer.Usage.COPY_DST), true));
     }
 
     /** Device-local memory a copy between images passes through; grown, and the old one released. */
-    VulkanBuffer copyScratch(long size) {
+    public VulkanBuffer copyScratch(long size) {
         if (scratch == null || scratch.size() < size) {
             if (scratch != null) release(scratch);
             scratch = (VulkanBuffer) createBuffer(new CgGpuBuffer.Desc("copy scratch", size,
@@ -186,7 +198,7 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
     }
 
     /** A {@code VkBufferView} over a range, kept until the buffer goes. */
-    long texelView(VulkanBuffer buffer, long offset, long size, CgFormat format) {
+    public long texelView(VulkanBuffer buffer, long offset, long size, CgFormat format) {
         Map<Long, Long> views = texelViews.computeIfAbsent(buffer, b -> new HashMap<>());
         long key = offset * 31 + size * 7 + format.ordinal();
         Long view = views.get(key);
@@ -347,7 +359,7 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
         }
     }
 
-    static int descriptorType(CgBindingLayout.Type type) {
+    public static int descriptorType(CgBindingLayout.Type type) {
         switch (type) {
             case UNIFORM_BUFFER: return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
             case STORAGE_BUFFER: return VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
@@ -475,7 +487,7 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
     }
 
     /** Destroys at once: the object is known to be out of every frame in flight. Idempotent. */
-    void destroy(Object o) {
+    public void destroy(Object o) {
         if (!live.remove(o)) return;
         if (o instanceof VulkanBuffer b) {
             Map<Long, Long> views = texelViews.remove(b);

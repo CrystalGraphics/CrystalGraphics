@@ -1,5 +1,6 @@
 package com.crystalgraphics.vulkan;
 
+import com.crystalgraphics.vulkan.host.OwnedVulkanHost;
 import org.lwjgl.vulkan.VkCommandBuffer;
 import org.lwjgl.vulkan.VkDevice;
 import org.lwjgl.vulkan.VkInstance;

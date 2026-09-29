@@ -1,9 +1,10 @@
 package com.crystalgraphics.platform.gl.tracked;
 
-import com.crystalgraphics.platform.device.CgPassDesc;
-import com.crystalgraphics.platform.device.CgPipelineDesc;
-import com.crystalgraphics.platform.device.CgRecordingDevice;
+import com.crystalgraphics.platform.device.command.CgPassDesc;
+import com.crystalgraphics.platform.device.pipeline.CgPipelineDesc;
+import com.crystalgraphics.platform.device.recording.CgRecordingDevice;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.gl.tracked.gl.TrackedRenderState;
 import org.junit.Test;
 
 import java.nio.ByteBuffer;

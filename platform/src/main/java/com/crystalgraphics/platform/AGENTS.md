@@ -21,11 +21,13 @@ and cursor seams are here too — see [UI-facing services](#ui-facing-services).
 | `gl/CgCapabilities` | Class | The immutable capability snapshot built from the context |
 | `gl/CgGlStateManager`, `gl/state/*` | — | The GL state shadow, scopes and providers (`core/.../gl/state/AGENTS.md`) |
 | `gl/CENSUS.md` | Generated | Every `CgGLBackend` method and who reaches it; `python platform/tools/gl_census.py` |
-| `gl/tracked/CgTrackedGLBackend` | Class | `CgGLBackend` over a `CgDevice` — [the tracked backend](#the-tracked-backend-and-the-device-d3) |
-| `gl/tracked/CgTracker`, `CgTrackedStateProvider` | Classes | Passes, pipelines and bindings from GL's calls; the scopes' state provider on it |
-| `device/CgDevice` and its types | Interfaces, records | What a GPU device does: buffers, textures, SPIR-V modules, pipelines, passes, frames |
-| `device/CgGlslCompiler` | Interface | A GL program's GLSL to SPIR-V and its binding table |
-| `device/CgRecordingDevice` | Class | A device that logs every command and throws on misuse — for tests |
+| `gl/tracked/CgTrackedGLBackend`, `CgTrackedGLContext`, `CgTrackedStateProvider` | Classes | `CgGLBackend` over a `CgDevice` — [the tracked backend](#the-tracked-backend-and-the-device-d3) — its capabilities, and the scopes' state provider on it |
+| `gl/tracked/tracker/` | Classes | `CgTracker`: passes, pipelines and bindings from GL's calls, with the draw state and target it compares |
+| `gl/tracked/gl/` | Classes | The GL objects the backend emulates — buffers, textures, programs, framebuffers, VAOs, render state, errors. Public for the backend only |
+| `gl/tracked/memory/` | Classes | Buffer storage: slab allocation and the renamed allocations behind one GL buffer |
+| `device/CgDevice`, `CgDeviceInfo`, `CgDeviceObject` | Interfaces, records | What a GPU device does: buffers, textures, SPIR-V modules, pipelines, passes, frames |
+| `device/format/`, `resource/`, `pipeline/`, `command/`, `shader/` | Interfaces, records | Its types, by what they describe: formats; buffers, textures, samplers, views, timers; pipelines and bindings; encoders and passes; modules and `CgGlslCompiler` |
+| `device/recording/CgRecordingDevice` | Class | A device that logs every command and throws on misuse — for tests |
 | `service/CgResourceService` | Interface | `openStream(domain, path)` — `null` on not-found |
 | `service/CgRenderingService` | Interface | Viewport size and the legacy single-call frame |
 | `service/CgLifecycleService` | Interface | Context init, destroy, resize, and the frame tick |

@@ -1,6 +1,6 @@
 package com.crystalgraphics.platform.gl.tracked;
 
-import com.crystalgraphics.platform.device.CgRecordingDevice;
+import com.crystalgraphics.platform.device.recording.CgRecordingDevice;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlSlot;
