@@ -257,6 +257,10 @@ final class VulkanEncoder implements CgCommandEncoder {
         VulkanTexture s = (VulkanTexture) src.texture(), d = (VulkanTexture) dst.texture();
         boolean copy = s.format == d.format && sx1 - sx0 == dx1 - dx0 && sy1 - sy0 == dy1 - dy0
                 && sx1 > sx0 && sy1 > sy0;
+        if ((s.aspect & VK_IMAGE_ASPECT_COLOR_BIT) == 0 && s.format != d.format) {
+            depthCopy(src, sx0, sy0, sx1, sy1, dst, dx0, dy0, dx1, dy1);
+            return;
+        }
         VkCommandBuffer cmd = cmd();
         before(cmd);
         to(cmd, s, src.baseMip(), 1, src.baseLayer(), 1, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
@@ -285,6 +289,53 @@ final class VulkanEncoder implements CgCommandEncoder {
         rest(cmd, s, src.baseMip(), 1, src.baseLayer(), 1);
         rest(cmd, d, dst.baseMip(), 1, dst.baseLayer(), 1);
         after(cmd);
+    }
+
+    /**
+     * A depth blit between formats Vulkan will not blit or copy between, when their depth reads back the same way:
+     * D24 with and without stencil, D32F with and without. Through a buffer, depth aspect only: GL's
+     * {@code DEPTH24_STENCIL8} surface into a {@code DEPTH24} snapshot is the case.
+     */
+    private void depthCopy(CgTextureView src, int sx0, int sy0, int sx1, int sy1,
+                           CgTextureView dst, int dx0, int dy0, int dx1, int dy1) {
+        VulkanTexture s = (VulkanTexture) src.texture(), d = (VulkanTexture) dst.texture();
+        int w = sx1 - sx0, h = sy1 - sy0;
+        if (w != dx1 - dx0 || h != dy1 - dy0 || w <= 0 || h <= 0 || depthLayout(s.format) != depthLayout(d.format)
+                || depthLayout(s.format) == 0) {
+            throw new UnsupportedOperationException("A depth blit from format " + s.format + " to " + d.format
+                    + ", scaled or flipped or between depth layouts that differ");
+        }
+        VulkanBuffer scratch = device.copyScratch((long) w * h * 4);
+        VkCommandBuffer cmd = cmd();
+        before(cmd);
+        to(cmd, s, src.baseMip(), 1, src.baseLayer(), 1, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+        to(cmd, d, dst.baseMip(), 1, dst.baseLayer(), 1, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+        try (MemoryStack stack = stackPush()) {
+            VkBufferImageCopy.Buffer c = VkBufferImageCopy.calloc(1, stack);
+            c.imageSubresource().aspectMask(VK_IMAGE_ASPECT_DEPTH_BIT).mipLevel(src.baseMip())
+                    .baseArrayLayer(src.baseLayer()).layerCount(1);
+            c.imageOffset().set(sx0, sy0, 0);
+            c.imageExtent().set(w, h, 1);
+            vkCmdCopyImageToBuffer(cmd, s.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, scratch.buffer, c);
+            VulkanBarriers.global(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+                    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+            device.barriers++;
+            c.imageSubresource().mipLevel(dst.baseMip()).baseArrayLayer(dst.baseLayer());
+            c.imageOffset().set(dx0, dy0, 0);
+            vkCmdCopyBufferToImage(cmd, scratch.buffer, d.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, c);
+        }
+        rest(cmd, s, src.baseMip(), 1, src.baseLayer(), 1);
+        rest(cmd, d, dst.baseMip(), 1, dst.baseLayer(), 1);
+        after(cmd);
+    }
+
+    /** How a format's depth aspect lands in a buffer: 1 for 24 bits in 32, 2 for a float; 0 for anything else. */
+    private static int depthLayout(int format) {
+        switch (format) {
+            case VK_FORMAT_D24_UNORM_S8_UINT: case VK_FORMAT_X8_D24_UNORM_PACK32: return 1;
+            case VK_FORMAT_D32_SFLOAT: case VK_FORMAT_D32_SFLOAT_S8_UINT: return 2;
+            default: return 0;
+        }
     }
 
     @Override
