@@ -2,8 +2,8 @@ import cgbuildlogic.abstractModule
 import java.io.File as JFile
 
 // runtime/lwjgl/vulkan — tier 1 for Vulkan, beside runtime/lwjgl/2 and /3: what the tracked backend needs from
-// LWJGL's Vulkan bindings, with no Minecraft type. Today the GLSL compiler: shaderc and SPIRV-Cross, the way
-// Minecraft 26.2 compiles its own shaders.
+// LWJGL's Vulkan bindings, with no Minecraft type. The GLSL compiler (shaderc and SPIRV-Cross, the way Minecraft
+// 26.2 compiles its own shaders) and CgVulkanDevice with its hosts.
 //
 // PINNED TO dep.lwjgl3.vulkan (3.4.1), the oldest LWJGL a 26.2+ client ships, as runtime/lwjgl/3 is pinned to
 // the oldest its clients ship: compileOnly, since hosted it runs on Minecraft's copy.
@@ -37,6 +37,10 @@ dependencies {
     compileOnly("org.lwjgl:lwjgl:$lwjglVulkan")
     compileOnly("org.lwjgl:lwjgl-shaderc:$lwjglVulkan")
     compileOnly("org.lwjgl:lwjgl-spvc:$lwjglVulkan")
+    compileOnly("org.lwjgl:lwjgl-vulkan:$lwjglVulkan")
+    compileOnly("org.lwjgl:lwjgl-vma:$lwjglVulkan")
+    // OwnedVulkanHost's window surface; hosted, the host has made its own.
+    compileOnly("org.lwjgl:lwjgl-glfw:$lwjglVulkan")
 
     testImplementation(project(":platform"))
     // The engine itself, for EngineOnTrackedBackendTest. Its own tests carry LWJGL 2, which this cannot.
