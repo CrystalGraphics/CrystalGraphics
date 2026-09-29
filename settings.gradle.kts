@@ -84,6 +84,7 @@ include("runtime:mc:forge-bootstrap")
 // tell it about is a T2 subclass in the target's own module, never a branch in here.
 include("runtime:lwjgl:2")
 include("runtime:lwjgl:3")
+include("runtime:lwjgl:vulkan")
 
 // Platform split subprojects (plain java-library, no gtnhconvention)
 include(":core")

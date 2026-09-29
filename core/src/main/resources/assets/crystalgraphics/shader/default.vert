@@ -1,4 +1,4 @@
-#version 130
+#version 330 core
 in vec2 a_pos;
 in vec4 a_color;
 uniform mat4 u_projection;
