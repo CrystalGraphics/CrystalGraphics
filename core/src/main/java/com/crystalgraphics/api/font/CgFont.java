@@ -6,7 +6,8 @@ import com.crystalgraphics.freetype.FTVariationAxisInfo;
 import com.crystalgraphics.freetype.FreeTypeException;
 import com.crystalgraphics.freetype.FreeTypeLibrary;
 import com.crystalgraphics.harfbuzz.HBFont;
-import com.crystalgraphics.util.profiling.CgProfiler;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.text.FreeTypeHarfBuzzIntegration;
 import com.crystalgraphics.text.font.Sfnt;
 import com.crystalgraphics.msdfgen.FreeTypeMSDFIntegration;
@@ -246,10 +247,10 @@ public class CgFont {
                                                      List<CgFontVariation> variations,
                                                      Integer targetPx,
                                                      boolean createHbFont) {
-        try (CgProfiler.Scope ignored = CgProfiler.scope("font.loadNative")) {
-            CgProfiler.count("font.loadNative.count");
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "font.loadNative")) {
+            CgTrace.add(CgChannels.TEXT, "font.loadNative.count", 1);
             if (data.file() == null) {
-                CgProfiler.sample("font.loadNative.bytes", data.bytes().length);
+                CgTrace.counter(CgChannels.TEXT, "font.loadNative.bytes", data.bytes().length);
             }
             return loadNativeStateInternal(data, variations, targetPx, createHbFont);
         }

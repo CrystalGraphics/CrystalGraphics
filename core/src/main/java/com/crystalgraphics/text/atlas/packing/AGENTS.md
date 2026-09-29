@@ -71,8 +71,8 @@ confusion cost a full investigation once; the replay is the answer to it.
 - This package should stay generic and algorithmic.
 - It should not know about fonts, fallback, shaping, or GL draw state.
 - It should only know about fitting rectangles into a page-sized bin.
-- Profiling (`CgProfiler`) is allowed and present — it is a util, not a domain dependency, and the
-  scopes on `insert`/`pruneContained` are what caught the O(n²).
+- Tracing (`CgTrace` zones on `CgChannels.TEXT`) is allowed and present — it is a util, not a domain
+  dependency, and the zones on `insert`/`pruneContained` are what caught the O(n²).
 
 ## Common agent mistakes to avoid
 

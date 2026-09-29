@@ -21,7 +21,8 @@ import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.text.cache.CgFontRegistry;
 import com.crystalgraphics.text.layout.CgTextLayoutCache;
 import com.crystalgraphics.text.render.context.*;
-import com.crystalgraphics.util.profiling.CgProfiler;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 import lombok.Getter;
 import lombok.NonNull;
 import lombok.Setter;
@@ -528,8 +529,8 @@ public class CgTextRenderer {
     private void flush() {
         if (!quadRenderer.isDirty()) return;
 
-        try (CgProfiler.Scope ignored = CgProfiler.scope("glFlush")) {
-            CgProfiler.count("glFlush.count");
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "gl.flush")) {
+            CgTrace.add(CgChannels.GL, "gl.flush.count", 1);
             quadRenderer.useMaterial(TEXT_MATERIAL);
             TEXT_DATA_UBO.bind();
             (context.isWorldText() ? CgDepthState.TEST_ONLY : CgDepthState.NONE).apply();
@@ -597,8 +598,8 @@ public class CgTextRenderer {
         // Counted to expose batch fragmentation: each transition is a flush + keyword toggle +
         // property re-apply. A warmup frame mixing bitmap-fallback and MSDF glyphs across many
         // atlas pages can produce far more of these than a settled frame.
-        CgProfiler.count("materialTransition");
-        try (CgProfiler.Scope ignored = CgProfiler.scope("materialTransition")) {
+        CgTrace.add(CgChannels.TEXT, "draw.materialTransition", 1);
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "draw.materialTransition")) {
             TEXT_MATERIAL.toggleKeyword("MSDF_MODE", isDistanceField);
             ATLAS_TEXTURE_REF.setId(textureId);
             activeBatchBits = batchBits;
@@ -1206,7 +1207,7 @@ public class CgTextRenderer {
         boolean wantMsdf = sizeWantsMsdf;
         if (!wantMsdf && !OrthographicScaleResolver.isAxisAligned(pose.pose())) {
             wantMsdf = true;
-            CgProfiler.count("text.msdfForcedByTransform");
+            CgTrace.add(CgChannels.TEXT, "text.msdfForcedByTransform", 1);
         }
 
         // A VISIBLE STROKE FORCES IT TOO, for the same kind of reason: a bitmap glyph is coverage with
@@ -1223,7 +1224,7 @@ public class CgTextRenderer {
         if (!wantMsdf && strokeRequested(draw)
                 && effectiveTargetPx >= registry.getResolvedMsdfConfig(fontKey).minAntialiasablePx()) {
             wantMsdf = true;
-            CgProfiler.count("text.msdfForcedByStroke");
+            CgTrace.add(CgChannels.TEXT, "text.msdfForcedByStroke", 1);
         }
 
         CgTextLayout resolvedLayout;
@@ -1290,13 +1291,13 @@ public class CgTextRenderer {
         // Before resolveGlyphs, not inside the quad loop: an off-screen layout otherwise pays for
         // full glyph resolution and quad building before anything notices. See CgTextCuller.
         if (culler.isCulled(resolvedLayout, draw.x, draw.y, context.projection(), pose.pose(), draw.shadows.reach())) {
-            CgProfiler.count("text.drawsCulled");
+            CgTrace.add(CgChannels.TEXT, "text.drawsCulled", 1);
             return;
         }
 
         long frame = CgGraphicsLifecycle.getCurrentFrame();
         int glyphCount;
-        try (CgProfiler.Scope ignored = CgProfiler.scope("resolveGlyphs")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "glyph.resolveGlyphs")) {
             // The pose's own sub-pixel phase. A CSS transform moves text through the POSE, not
             // through draw.x/draw.y, so without this the placement cache returns the same glyphs
             // for every sub-pixel position of a translated element and the offset never lands.
@@ -1305,7 +1306,7 @@ public class CgTextRenderer {
             glyphCount = resolvedGlyphs.resolve(resolvedLayout, draw.x, draw.y, frame, context,
                     effectiveTargetPx, wantMsdf, fontKey, draw.rgba, scratchPosePhase.x);
         }
-        CgProfiler.sample("draw.glyphCount", glyphCount);
+        CgTrace.counter(CgChannels.TEXT, "draw.glyphCount", glyphCount);
 
         // DID THIS DRAW GET THE TIER IT ASKED FOR? Glyph generation is budgeted per frame, and a
         // glyph refused by the budget falls back to bitmap FOR THE FRAME -- deliberately, so a large
@@ -1355,7 +1356,7 @@ public class CgTextRenderer {
                 : 0f;
 
         if (draw.shadows.count() > 0 && glyphCount > 0) {
-            try (CgProfiler.Scope ignored = CgProfiler.scope("planShadows")) {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "draw.planShadows")) {
                 if (shadowPlan.plan(draw.shadows, resolvedGlyphs.placements, resolvedLayout.baked(), glyphCount,
                         fontKey, effectiveTargetPx, strokeWidthTexels, draw.strokeAlign, context.isWorldText(), frame)) {
                     degradedDrawCount++;
@@ -1365,7 +1366,7 @@ public class CgTextRenderer {
 
         CgTextDecorationRect[] decorations = resolvedLayout.baked().decorations();
         if (glyphCount > 0 || decorations.length > 0) {
-            try (CgProfiler.Scope ignored = CgProfiler.scope("submitSortedQuads")) {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "draw.submitSortedQuads")) {
                 submitBatchedQuads(glyphCount, decorations, fontKey.getTargetPx(), effectiveTargetPx, wantMsdf,
                         draw, pose.pose(), stroked ? draw.strokeArgb : 0,
                         strokeWidthTexels, draw.strokeAlign, draw.strokeOver);
@@ -1466,7 +1467,7 @@ public class CgTextRenderer {
         int shadows = shadowList.count();
 
         List<CgResolvedGlyphs.ResolvedDecoration> resolvedDecorations;
-        try (CgProfiler.Scope ignored = CgProfiler.scope("resolveDecorations")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "glyph.resolveDecorations")) {
             resolvedDecorations = resolvedGlyphs.resolveDecorations(decorations, draw.x, draw.y, draw.rgba,
                     effectiveTargetPx, wantMsdf);
         }
@@ -1478,7 +1479,7 @@ public class CgTextRenderer {
 
         // Projection is constant for this whole draw() call. Flushes first if it differs from
         // what's already queued under a different projection — see syncProjection().
-        try (CgProfiler.Scope ignored = CgProfiler.scope("syncProjection")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "draw.syncProjection")) {
             syncProjection(context.projection());
         }
 
@@ -1506,7 +1507,7 @@ public class CgTextRenderer {
         for (int window = 0; window <= lastPaint; window += CgTextSortKey.MAX_STAGE + 1) {
             int windowEnd = Math.min(lastPaint, window + CgTextSortKey.MAX_STAGE);
             int count = 0;
-            try (CgProfiler.Scope ignored = CgProfiler.scope("sortKeys")) {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "draw.sortKeys")) {
                 for (int paint = window; paint <= windowEnd; paint++) {
                     int stage = paint - window;
                     if (paint == shadows) {
@@ -1561,7 +1562,7 @@ public class CgTextRenderer {
         //
         // Note "visible" here means hasGeometry(), NOT on-screen: there is no viewport cull at
         // this level, so a layout positioned off-screen still emits every one of its quads.
-        CgProfiler.count("draw.quadsEmitted", emitted);
+        CgTrace.add(CgChannels.TEXT, "draw.quadsEmitted", emitted);
     }
 
     /** Which shadow a paint step belongs to; see the paint order in {@link #submitBatchedQuads}. */
@@ -1580,7 +1581,7 @@ public class CgTextRenderer {
                               boolean pixelSnap, Matrix4f modelView,
                               int strokeArgb, float strokeWidthTexels, float strokeAlign, float strokeOver) {
         int shadows = shadowList.count();
-        try (CgProfiler.Scope ignored = CgProfiler.scope("quadLoop")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "draw.quadLoop")) {
         // Per-iteration timing, off unless -Dcrystalgraphics.text.traceQuadLoop=true.
         //
         // Exists to answer one question that the scope total cannot: when quadLoop occasionally
@@ -1756,9 +1757,9 @@ public class CgTextRenderer {
             }
         }
         if (traceQuadLoop) {
-            CgProfiler.sample("quadLoop.maxIterUs", traceMaxNanos / 1000.0);
-            CgProfiler.sample("quadLoop.maxIterIndex", traceMaxIndex);
-            CgProfiler.sample("quadLoop.slowIters", traceSlowIters);
+            CgTrace.counter(CgChannels.TEXT, "draw.quadLoop.maxIterUs", traceMaxNanos / 1000.0);
+            CgTrace.counter(CgChannels.TEXT, "draw.quadLoop.maxIterIndex", traceMaxIndex);
+            CgTrace.counter(CgChannels.TEXT, "draw.quadLoop.slowIters", traceSlowIters);
         }
         }
     }

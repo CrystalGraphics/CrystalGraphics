@@ -17,7 +17,8 @@ import com.crystalgraphics.text.msdf.CgMsdfAtlasConfig;
 import com.crystalgraphics.text.msdf.CgMsdfGenerator;
 import com.crystalgraphics.text.render.CgTextRenderer;
 import com.crystalgraphics.text.shadow.CgShadowCell;
-import com.crystalgraphics.util.profiling.CgProfiler;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 
 import java.util.*;
 import java.util.logging.Level;
@@ -288,16 +289,16 @@ public class CgFontRegistry {
         // these scopes attributed to the correct frame. A scene that instead ends its frame inside
         // render() will see them one frame late, since render() runs earlier in the loop.
         glyphGenerationExecutor.noteFrame(frame);
-        try (CgProfiler.Scope ignored = CgProfiler.scope("registry.tickFrame")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "registry.tickFrame")) {
             // 1. Drain completed async results first so they are available
             //    to ensureGlyph* calls later in the same frame.
-            try (CgProfiler.Scope drain = CgProfiler.scope("drainCompletedGlyphs")) {
+            try (CgTrace.Zone drain = CgTrace.zone(CgChannels.TEXT, "registry.drainCompletedGlyphs")) {
                     drainCompletedGlyphs(frame, MAX_COMMIT_BYTES_PER_FRAME, MAX_COMMIT_COUNT_PER_FRAME,
                             commitNanosForBacklog(glyphGenerationExecutor.completedBacklog()));
             }
 
             // 2. Tick every  atlas family.
-            try (CgProfiler.Scope atlasTick = CgProfiler.scope("atlasTick")) {
+            try (CgTrace.Zone atlasTick = CgTrace.zone(CgChannels.TEXT, "atlas.tick")) {
                 for (CgGlyphAtlas atlas : liveAtlases())
                     atlas.tickFrame(frame);
             }
@@ -307,8 +308,8 @@ public class CgFontRegistry {
 
             // 4. Only now, with demand already drained above, top the pool up with speculation.
             int msdfQueueDepth = glyphGenerationExecutor.msdfQueueDepth();
-            CgProfiler.sample("glyph.msdfQueueDepth", msdfQueueDepth);
-            CgProfiler.sample("glyph.warmPending", warmer.pendingCount());
+            CgTrace.counter(CgChannels.TEXT, "glyph.msdfQueueDepth", msdfQueueDepth);
+            CgTrace.counter(CgChannels.TEXT, "glyph.warmPending", warmer.pendingCount());
             warmer.feed(frame, msdfQueueDepth, this::queueGlyph);
         }
     }
@@ -549,15 +550,15 @@ public class CgFontRegistry {
                 .withShadowCell(cell);
         CgGlyphPlacement cached = getBitmapAtlas().get(atlasKey, currentFrame);
         if (cached != null) {
-            CgProfiler.count("glyph.shadowCell.atlasHit");
+            CgTrace.add(CgChannels.TEXT, "glyph.shadowCell.atlasHit", 1);
             return cached;
         }
         CgGlyphGenerationJob job = CgGlyphGenerationJob.shadowCell(font.getKey(), font.getData(), atlasKey,
                 rasterFontKey, effectiveTargetPx);
         if (!glyphGenerationExecutor.hasFailed(job) && glyphGenerationExecutor.submit(job)) {
-            CgProfiler.count("glyph.shadowCell.deferredToWorker");
+            CgTrace.add(CgChannels.TEXT, "glyph.shadowCell.deferredToWorker", 1);
         } else {
-            CgProfiler.count("glyph.shadowCell.refused");
+            CgTrace.add(CgChannels.TEXT, "glyph.shadowCell.refused", 1);
         }
         return null;
     }
@@ -804,20 +805,20 @@ public class CgFontRegistry {
         CgGlyphAtlas atlas = getBitmapAtlas();
         CgGlyphPlacement cached = atlas.get(atlasKey, currentFrame);
         if (cached != null) {
-            CgProfiler.count("glyph.bitmap.atlasHit");
+            CgTrace.add(CgChannels.TEXT, "glyph.bitmap.atlasHit", 1);
             return cached;
         }
         // Deliberately uncapped, unlike the MSDF sync path's CgMsdfGenerator.MAX_PER_FRAME budget
-        // -- see the CgProfiler instrumentation added here specifically to quantify how much
+        // -- see the glyph.bitmap counters added here specifically to quantify how much
         // render-thread time this uncapped fallback costs during MSDF atlas warmup, when most
         // glyphs land here every frame until their real MSDF result completes asynchronously.
-        CgProfiler.count("glyph.bitmap.syncRasterized");
+        CgTrace.add(CgChannels.TEXT, "glyph.bitmap.syncRasterized", 1);
 
         FTFace face = font.getFtFace();
         boolean synthesize = atlasKey.isSyntheticBold() || atlasKey.isSyntheticItalic();
         try {
-            try (CgProfiler.Scope ignored = CgProfiler.scope("freetype.rasterize")) {
-                try (CgProfiler.Scope ignoredSize = CgProfiler.scope("ftRaster.setPixelSizes")) {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "freetype.rasterize")) {
+                try (CgTrace.Zone ignoredSize = CgTrace.zone(CgChannels.TEXT, "ftRaster.setPixelSizes")) {
                     face.setPixelSizes(0, effectiveTargetPx);
                 }
 
@@ -836,22 +837,22 @@ public class CgFontRegistry {
                 if (synthesize) loadFlags |= FTLoadFlags.FT_LOAD_NO_HINTING;
                 
 
-                try (CgProfiler.Scope ignoredLoad = CgProfiler.scope("ftRaster.loadGlyph")) {
+                try (CgTrace.Zone ignoredLoad = CgTrace.zone(CgChannels.TEXT, "ftRaster.loadGlyph")) {
                     loadGlyphOrFallback(face, atlasKey.getGlyphId(), loadFlags);
                 }
-                try (CgProfiler.Scope ignoredSynth = CgProfiler.scope("ftRaster.synthetic")) {
+                try (CgTrace.Zone ignoredSynth = CgTrace.zone(CgChannels.TEXT, "ftRaster.synthetic")) {
                     applySyntheticStyle(face, atlasKey.isSyntheticBold(), atlasKey.isSyntheticItalic(), effectiveTargetPx);
                 }
 
                 if (subBucket) face.outlineTranslate(subPixelBucket * 16L, 0L);
                 
 
-                try (CgProfiler.Scope ignoredRender = CgProfiler.scope("ftRaster.renderGlyph")) {
+                try (CgTrace.Zone ignoredRender = CgTrace.zone(CgChannels.TEXT, "ftRaster.renderGlyph")) {
                     face.renderGlyph(FTRenderMode.FT_RENDER_MODE_NORMAL);
                 }
 
                 FTBitmap bitmap;
-                try (CgProfiler.Scope ignoredGet = CgProfiler.scope("ftRaster.getBitmap")) {
+                try (CgTrace.Zone ignoredGet = CgTrace.zone(CgChannels.TEXT, "ftRaster.getBitmap")) {
                     bitmap = face.getGlyphBitmap();
                 }
                 int width = bitmap.getWidth();
@@ -861,12 +862,12 @@ public class CgFontRegistry {
                     // bare null: null is indistinguishable from "not generated yet", so every
                     // later resolve would re-run this whole MSDF-attempt + FreeType path to
                     // rediscover the same nothing. See CgGlyphAtlas#emptyGlyphs.
-                    CgProfiler.count("glyph.bitmap.markedEmpty");
+                    CgTrace.add(CgChannels.TEXT, "glyph.bitmap.markedEmpty", 1);
                     return atlas.markEmpty(atlasKey);
                 }
 
                 byte[] pixels;
-                try (CgProfiler.Scope ignoredNorm = CgProfiler.scope("ftRaster.normalizeBuffer")) {
+                try (CgTrace.Zone ignoredNorm = CgTrace.zone(CgChannels.TEXT, "ftRaster.normalizeBuffer")) {
                     pixels = normalizeBitmapBuffer(bitmap);
                 }
                 // Bearing/size MUST come from this bitmap's own left/top/width/height, NOT from
@@ -884,7 +885,7 @@ public class CgFontRegistry {
                 float bearingY = bitmap.getTop();
                 float metricsWidth = width;
                 float metricsHeight = height;
-                try (CgProfiler.Scope ignoredAlloc = CgProfiler.scope("ftRaster.atlasAllocate")) {
+                try (CgTrace.Zone ignoredAlloc = CgTrace.zone(CgChannels.TEXT, "ftRaster.atlasAllocate")) {
                     return atlas.allocateBitmap(atlasKey, pixels, width, height,
                             bearingX, bearingY, metricsWidth, metricsHeight, currentFrame);
                 }
@@ -956,7 +957,7 @@ public class CgFontRegistry {
         CgGlyphAtlas atlas = getMsdfAtlas(msdfAtlasKey.getConfig());
         CgGlyphPlacement cached = atlas.get(atlasKey, currentFrame);
         if (cached != null) {
-            CgProfiler.count("glyph.msdf.atlasHit");
+            CgTrace.add(CgChannels.TEXT, "glyph.msdf.atlasHit", 1);
             return cached;
         }
 
@@ -970,13 +971,13 @@ public class CgFontRegistry {
                 && glyphGenerationExecutor.isPending(
                         CgGlyphGenerationJob.msdf(font.getKey(), font.getData(),
                                 atlasKey, msdfAtlasKey, msdfAtlasKey.getConfig()))) {
-            CgProfiler.count("glyph.msdf.syncSkippedAlreadyPending");
+            CgTrace.add(CgChannels.TEXT, "glyph.msdf.syncSkippedAlreadyPending", 1);
             allowSyncGeneration = false;
         }
         if (msdfFont != null && allowSyncGeneration) {
             try {
                 CgGlyphGenerationResult generated;
-                try (CgProfiler.Scope ignored = CgProfiler.scope("msdfgen.generate")) {
+                try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "msdfgen.generate")) {
                     generated = msdfGenerator.prepareGlyphWithinBudget(
                             atlasKey,
                             font.getKey(),
@@ -987,7 +988,7 @@ public class CgFontRegistry {
                     commitGeneratedGlyph(generated, currentFrame);
                     CgGlyphPlacement placement = atlas.get(atlasKey, currentFrame);
                     if (placement != null) {
-                        CgProfiler.count("glyph.msdf.syncGenerated");
+                        CgTrace.add(CgChannels.TEXT, "glyph.msdf.syncGenerated", 1);
                         return placement;
                     }
                 } else {
@@ -995,14 +996,14 @@ public class CgFontRegistry {
                     // generation failure -- either way this glyph falls through to the
                     // uncapped bitmap path below, every frame, until its atlas-committed
                     // MSDF result (async or a future sync attempt) actually lands.
-                    CgProfiler.count("glyph.msdf.syncBudgetExhaustedOrFailed");
+                    CgTrace.add(CgChannels.TEXT, "glyph.msdf.syncBudgetExhaustedOrFailed", 1);
                 }
             } finally {
                 restoreFontShapingState(font);
             }
         }
 
-        CgProfiler.count("glyph.msdf.fellBackToBitmap");
+        CgTrace.add(CgChannels.TEXT, "glyph.msdf.fellBackToBitmap", 1);
         // Fall back to bitmap via  atlas
         CgRasterFontKey bitmapRasterKey = new CgRasterFontKey(font.getKey(), effectiveTargetPx);
         CgGlyphKey bitmapAtlasKey = toBitmapAtlasGlyphKey(
@@ -1013,7 +1014,7 @@ public class CgFontRegistry {
         CgGlyphAtlas bitmapAtlas = getBitmapAtlas();
         CgGlyphPlacement bitmapCached = bitmapAtlas.get(bitmapAtlasKey, currentFrame);
         if (bitmapCached != null) {
-            CgProfiler.count("glyph.bitmap.atlasHit");
+            CgTrace.add(CgChannels.TEXT, "glyph.bitmap.atlasHit", 1);
             return bitmapCached;
         }
 
@@ -1035,11 +1036,11 @@ public class CgFontRegistry {
         // a previously failed job is refused forever, and a rejected submission (queue full) means
         // nothing is coming. Both would otherwise leave this glyph invisible indefinitely.
         if (!glyphGenerationExecutor.hasFailed(job) && glyphGenerationExecutor.submit(job)) {
-            CgProfiler.count("glyph.bitmap.deferredToWorker");
+            CgTrace.add(CgChannels.TEXT, "glyph.bitmap.deferredToWorker", 1);
             return null;
         }
 
-        CgProfiler.count("glyph.bitmap.syncFallbackAfterAsyncRefused");
+        CgTrace.add(CgChannels.TEXT, "glyph.bitmap.syncFallbackAfterAsyncRefused", 1);
         return ensureBitmapGlyph(font, bitmapAtlasKey, bitmapRasterKey,
                 effectiveTargetPx, subPixelBucket, currentFrame);
     }
@@ -1163,7 +1164,7 @@ public class CgFontRegistry {
             // Time check before polling, so an already-dequeued result is never dropped and a
             // fully drained queue costs one nanoTime() call, not a wasted poll.
             if (System.nanoTime() - start >= maxNanos) {
-                CgProfiler.count("asyncCommit.timeBudgetHit");
+                CgTrace.add(CgChannels.TEXT, "asyncCommit.timeBudgetHit", 1);
                 break;
             }
             CgGlyphGenerationResult result = glyphGenerationExecutor.pollCompleted();
@@ -1174,8 +1175,8 @@ public class CgFontRegistry {
             committed++;
             bytesCommitted += estimateUploadBytes(result);
         }
-        CgProfiler.count("asyncCommit.glyphsUploaded", committed);
-        CgProfiler.count("asyncCommit.bytesUploaded", bytesCommitted);
+        CgTrace.add(CgChannels.TEXT, "asyncCommit.glyphsUploaded", committed);
+        CgTrace.add(CgChannels.TEXT, "asyncCommit.bytesUploaded", bytesCommitted);
     }
 
     /**
@@ -1257,7 +1258,7 @@ public class CgFontRegistry {
             // This is why it regressed: the synchronous path has always marked empty (with a
             // comment saying precisely this), but bitmap fallback became asynchronous and the
             // async commit did not, so the correct behaviour stopped being the one that runs.
-            CgProfiler.count("glyph.bitmap.markedEmptyAsync");
+            CgTrace.add(CgChannels.TEXT, "glyph.bitmap.markedEmptyAsync", 1);
             atlas.markEmpty(result.getAtlasKey());
             return;
         }

@@ -1,13 +1,17 @@
 package com.crystalgraphics.api.font;
 
-import com.crystalgraphics.util.profiling.CgProfiler;
-import com.crystalgraphics.util.profiling.CgProfilerReport;
+import com.crystalgraphics.trace.CgFrameRecord;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.trace.CgTraceSnapshot;
+import com.crystalgraphics.util.trace.CgChannels;
 import org.junit.Test;
 
 import java.io.File;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * Measures what changing a variable-font axis costs.
@@ -38,16 +42,16 @@ public class CgVariableFontCostTest {
 
     @Test
     public void reportsVariationAxisCost() {
-        CgProfiler.setEnabled(true);
-        CgProfiler.reset();
+        // The whole run is frame 0, closed by the second frameBegin so its counters are written.
+        CgTrace.resetForTesting();
+        CgTrace.enable(CgChannels.TEXT.name());
         try {
+            CgTrace.frameBegin();
             run();
+            CgTrace.frameBegin();
+            report();
         } finally {
-            // reset() BEFORE setEnabled(false): reset() is itself gated on `enabled`, so disabling
-            // first makes it a silent no-op and leaks this test's scopes into whatever test runs
-            // next on the same thread. That is exactly how CgProfilerTest started failing.
-            CgProfiler.reset();
-            CgProfiler.setEnabled(false);
+            CgTrace.resetForTesting();
         }
     }
 
@@ -121,13 +125,27 @@ public class CgVariableFontCostTest {
         System.out.println("  every on-screen glyph — so continuous animation is not viable; quantise to");
         System.out.println("  a few steps and let the glyph caches settle on each.");
 
-        CgProfilerReport report = CgProfiler.report();
-        for (CgProfilerReport.ScopeEntry e : report.scopes()) {
-            if (e.name().startsWith("font.")) {
-                System.out.printf(Locale.ROOT, "    %-24s %8.3f ms over %d calls%n",
-                        e.name(), e.totalNanos() / 1_000_000.0, e.callCount());
-            }
+    }
+
+    private void report() {
+        Map<String, long[]> byName = new TreeMap<>();
+        for (CgTraceSnapshot.ZoneView z : CgTrace.zonesIn(firstFrame())) {
+            if (!z.name().startsWith("font.")) continue;
+            long[] a = byName.computeIfAbsent(z.name(), k -> new long[2]);
+            a[0] += z.endNanos() - z.startNanos();
+            a[1]++;
         }
+        for (Map.Entry<String, long[]> e : byName.entrySet()) {
+            System.out.printf(Locale.ROOT, "    %-24s %8.3f ms over %d calls%n",
+                    e.getKey(), e.getValue()[0] / 1_000_000.0, e.getValue()[1]);
+        }
+    }
+
+    private static CgFrameRecord firstFrame() {
+        for (CgFrameRecord frame : CgTrace.frames()) {
+            if (frame.index() == 0L) return frame;
+        }
+        throw new AssertionError("frame 0 was not recorded");
     }
 
     private void measureAxisSteps(CgFont base, String axisTag) {

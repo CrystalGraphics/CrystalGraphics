@@ -3,7 +3,8 @@ package com.crystalgraphics.text.layout;
 import com.crystalgraphics.api.font.CgFontMetrics;
 import com.crystalgraphics.api.text.CgShapedRun;
 import com.crystalgraphics.api.text.CgTextLayout;
-import com.crystalgraphics.util.profiling.CgProfiler;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 
 import java.text.Bidi;
 import java.text.BreakIterator;
@@ -223,17 +224,17 @@ public class CgLineBreaker {
         }
 
         int[] boundaries;
-        try (CgProfiler.Scope ignored = CgProfiler.scope("lineBreak.collectBoundaries")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "lineBreak.collectBoundaries")) {
             // CORRECTED, because the JDK's line iterator is a legacy ruleset rather than the
             // annex it is named after -- it breaks `a.b` and `a:b` and never breaks `a/b`.
             // @see CgBreakOpportunities
             boundaries = CgBreakOpportunities.correct(
                     segment, collectBoundaries(LINE_ITERATOR.get(), segment));
         }
-        CgProfiler.count("lineBreak.splitCalls");
-        CgProfiler.count("lineBreak.segmentChars", segment.length());
+        CgTrace.add(CgChannels.TEXT, "lineBreak.splitCalls", 1);
+        CgTrace.add(CgChannels.TEXT, "lineBreak.segmentChars", segment.length());
         int best;
-        try (CgProfiler.Scope ignored = CgProfiler.scope("lineBreak.findBoundary")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "lineBreak.findBoundary")) {
             best = findBestFittingBoundary(context, boundaries, run, runStart, availableWidth, reshaper);
         }
 
@@ -254,7 +255,7 @@ public class CgLineBreaker {
             // line. A 3363-char string containing a single space measured 105 fallbacks across 133
             // splits and 30 ms of breakLines, while 1000 realistically-wrapped Latin labels
             // measured 0.748 ms total. Check this counter before concluding line breaking is slow.
-            CgProfiler.count("lineBreak.graphemeFallbacks");
+            CgTrace.add(CgChannels.TEXT, "lineBreak.graphemeFallbacks", 1);
             return splitAtGraphemeBreaks(context, run, availableWidth, maxLineWidth, reshaper);
         }
 
@@ -288,18 +289,18 @@ public class CgLineBreaker {
         // Slice of the paragraph-wide boundary set, not a fresh scan of this segment -- see
         // CgReshapeContext#graphemeBoundaries for why that is equivalent and why it matters.
         int[] all;
-        try (CgProfiler.Scope ignored = CgProfiler.scope("lineBreak.graphemeCollect")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "lineBreak.graphemeCollect")) {
             all = context.graphemeBoundaries();
         }
         int from = lowerBound(all, runStart + 1); // strictly after the segment start
         int to = lowerBound(all, runEnd);         // strictly before the segment end
-        CgProfiler.count("lineBreak.graphemeBoundaries", to - from);
+        CgTrace.add(CgChannels.TEXT, "lineBreak.graphemeBoundaries", to - from);
         if (to <= from) {
             return null;
         }
 
         int best;
-        try (CgProfiler.Scope ignored = CgProfiler.scope("lineBreak.graphemeFind")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "lineBreak.graphemeFind")) {
             best = findBestFittingBoundary(context, all, from, to, runStart, run, runStart, availableWidth, reshaper);
         }
         if (best <= 0) {
@@ -329,7 +330,7 @@ public class CgLineBreaker {
         // two HarfBuzz calls per split. Measured at 1000 wrapped labels, breakLines was 43% of a
         // reshape and larger than shaping itself.
         int splitGlyph;
-        try (CgProfiler.Scope ignored = CgProfiler.scope("lineBreak.safeGlyphBoundary")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "lineBreak.safeGlyphBoundary")) {
             splitGlyph = sliceFastPathDisabled ? -1 : safeGlyphBoundary(context, run, runStart, breakPos);
         }
 
@@ -340,7 +341,7 @@ public class CgLineBreaker {
         int glyphCount = run.glyphIds().length;
         CgShapedRun head;
         if (splitGlyph >= 0) {
-            try (CgProfiler.Scope ignored = CgProfiler.scope("lineBreak.sliceRun")) {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "lineBreak.sliceRun")) {
                 head = rtl ? sliceRun(run, splitGlyph, glyphCount, runStart, runStart + breakPos)
                            : sliceRun(run, 0, splitGlyph, runStart, runStart + breakPos);
             }
@@ -348,8 +349,8 @@ public class CgLineBreaker {
             // The slow half of the split, and previously unscoped -- which made it invisible and
             // let its cost be attributed to sliceRun by subtraction. A fragment reshape is a full
             // HarfBuzz call, so a handful of these outweighs thousands of array copies.
-            CgProfiler.count("lineBreak.fragmentReshapes");
-            try (CgProfiler.Scope ignored = CgProfiler.scope("lineBreak.fragmentReshape")) {
+            CgTrace.add(CgChannels.TEXT, "lineBreak.fragmentReshapes", 1);
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "lineBreak.fragmentReshape")) {
                 head = reshaper.reshape(context, run, runStart, runStart + breakPos);
             }
         }
@@ -361,13 +362,13 @@ public class CgLineBreaker {
         if (tailStart < runEnd) {
             CgShapedRun tail;
             if (splitGlyph >= 0) {
-                try (CgProfiler.Scope ignored = CgProfiler.scope("lineBreak.sliceRun")) {
+                try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "lineBreak.sliceRun")) {
                     tail = rtl ? sliceRun(run, 0, splitGlyph, tailStart, runEnd)
                                : sliceRun(run, splitGlyph, glyphCount, tailStart, runEnd);
                 }
             } else {
-                CgProfiler.count("lineBreak.fragmentReshapes");
-                try (CgProfiler.Scope ignored = CgProfiler.scope("lineBreak.fragmentReshape")) {
+                CgTrace.add(CgChannels.TEXT, "lineBreak.fragmentReshapes", 1);
+                try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "lineBreak.fragmentReshape")) {
                     tail = reshaper.reshape(context, run, tailStart, runEnd);
                 }
             }
@@ -507,8 +508,8 @@ public class CgLineBreaker {
         // length if the tail is re-sliced on every line: comparing this against the run's actual
         // glyph count is what distinguishes "slicing is inherently the cost" from "we are copying
         // the same tail over and over".
-        CgProfiler.count("lineBreak.slicedGlyphs", count);
-        CgProfiler.count("lineBreak.sliceCalls");
+        CgTrace.add(CgChannels.TEXT, "lineBreak.slicedGlyphs", count);
+        CgTrace.add(CgChannels.TEXT, "lineBreak.sliceCalls", 1);
 
         // Source arrays hoisted out of the copy loop. Five of the six are copied verbatim, so they
         // go through Arrays.copyOfRange (System.arraycopy, an intrinsic) rather than an
@@ -700,13 +701,13 @@ public class CgLineBreaker {
                 // (the whole run) — neither is a usable measurement, so fall through to a reshape.
                 if (glyphIndex > 0 && safeToBreakBefore[glyphIndex - 1]) {
                     // Suffix sum [glyphIndex, glyphCount) == total - prefix[glyphIndex].
-                    CgProfiler.count("lineBreak.measureFastPath");
+                    CgTrace.add(CgChannels.TEXT, "lineBreak.measureFastPath", 1);
                     return sumAdvances(advances, glyphIndex, glyphCount);
                 }
             } else {
                 int glyphIndex = glyphIndexAtCharOffset(run.clusterIds(), byteToChar, breakPos);
                 if (glyphIndex >= 0 && (glyphIndex == 0 || safeToBreakBefore[glyphIndex])) {
-                    CgProfiler.count("lineBreak.measureFastPath");
+                    CgTrace.add(CgChannels.TEXT, "lineBreak.measureFastPath", 1);
                     return sumAdvances(advances, 0, glyphIndex);
                 }
             }
@@ -716,8 +717,8 @@ public class CgLineBreaker {
         // binary-search step is the difference between line breaking costing microseconds and
         // costing more than shaping the text did. Which of these two counters dominates decides
         // where any further work belongs.
-        CgProfiler.count("lineBreak.measureReshape");
-        try (CgProfiler.Scope ignored = CgProfiler.scope("lineBreak.reshape")) {
+        CgTrace.add(CgChannels.TEXT, "lineBreak.measureReshape", 1);
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "lineBreak.reshape")) {
             CgShapedRun prefix = reshaper.reshape(context, run, runStart, runStart + breakPos);
             return prefix != null ? prefix.totalAdvance() : Float.MAX_VALUE;
         }

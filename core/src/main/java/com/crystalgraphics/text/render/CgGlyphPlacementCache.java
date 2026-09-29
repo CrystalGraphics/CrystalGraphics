@@ -3,7 +3,8 @@ package com.crystalgraphics.text.render;
 import com.crystalgraphics.api.font.CgFontKey;
 import com.crystalgraphics.api.font.CgGlyphPlacement;
 import com.crystalgraphics.api.text.CgTextLayout;
-import com.crystalgraphics.util.profiling.CgProfiler;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -195,7 +196,7 @@ public final class CgGlyphPlacementCache {
             Map.Entry<Key, Entry> eldest = it.next();
             cachedBytes -= eldest.getValue().estimatedBytes();
             it.remove();
-            CgProfiler.count("placementCache.evictedForBytes");
+            CgTrace.add(CgChannels.TEXT, "placementCache.evictedForBytes", 1);
         }
     }
 
