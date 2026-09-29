@@ -1,5 +1,6 @@
 package com.crystalgraphics.platform.device;
 
+import java.nio.ByteBuffer;
 import java.util.List;
 
 /**
@@ -41,8 +42,8 @@ public interface CgDevice {
 
     CgGpuSampler createSampler(CgGpuSampler.Desc desc);
 
-    /** @throws CgShaderModule.CompileException with the compiler's log */
-    CgShaderModule createShaderModule(CgShaderModule.Stage stage, String source, String label);
+    /** One stage's SPIR-V, from a {@link CgGlslCompiler}. */
+    CgShaderModule createShaderModule(CgShaderModule.Stage stage, ByteBuffer spirv, String label);
 
     CgBindingLayout createBindingLayout(String label, List<CgBindingLayout.Slot> slots);
 
