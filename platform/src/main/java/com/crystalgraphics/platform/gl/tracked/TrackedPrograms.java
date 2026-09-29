@@ -418,10 +418,7 @@ final class TrackedPrograms {
             long size = buffers.storageSize[point] < 0 ? a.size() - offset : buffers.storageSize[point];
             state.storage(t.storageBlocks().get(i).binding(), a, offset, size);
         }
-        for (int i = 0; i < t.samplers().size(); i++) {
-            if (samplers == null) throw new UnsupportedOperationException("Sampling a texture is not on the tracked backend yet (D3.4)");
-            samplers.bind(state, t.samplers().get(i), p.samplerUnit[i]);
-        }
+        for (int i = 0; i < t.samplers().size(); i++) samplers.bind(state, t.samplers().get(i), p.samplerUnit[i]);
     }
 
     /** Every input the program reads must come from the vertex array, which Vulkan requires and GL does not. */
