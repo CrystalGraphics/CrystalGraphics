@@ -97,7 +97,7 @@ thread. **`onFrameRendered()` is the only sanctioned per-frame tick** for engine
 | Host | Where it fires |
 |---|---|
 | 1.7.10, Forge 1.8–1.12.2 | `updateCameraAndRender` TAIL — no early return, covers the world, a GUI with no world, and skip-render-world alike |
-| Modern (1.13+) | `FrameHooks.endFrame()`, at the end of the transparent pass — **world frames only**; see `runtime/mc/modern/common/AGENTS.md` § *Open* |
+| Modern (1.13+) | `FrameHooks.endFrame()`, from `LifecycleModern.frameEnd()` after the GUI — a loader frame event, or on Fabric a node mixin; see `runtime/mc/modern/common/AGENTS.md` § *The frame end* |
 
 `CgRenderingService.onFrameBegin(partialTick)` is the legacy single-call path; the hosts drive the
 opaque and transparent passes from their own hooks instead.
