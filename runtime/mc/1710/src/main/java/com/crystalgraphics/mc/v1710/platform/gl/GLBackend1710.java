@@ -1,6 +1,10 @@
 package com.crystalgraphics.mc.v1710.platform.gl;
 
 import com.crystalgraphics.lwjgl2.Lwjgl2GLBackend;
+import com.crystalgraphics.mc.v1710.platform.state.AngelicaStateProvider;
+import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.gl.state.CgGlSlot;
+import com.crystalgraphics.platform.gl.state.CgGlState;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
@@ -33,6 +37,10 @@ import java.nio.charset.StandardCharsets;
  *       tracking misses nothing.</li>
  * </ul>
  *
+ * <p>And one thing its cache models differently: one binding per texture unit, whatever the target. A
+ * {@code TEXTURE_2D_ARRAY} bind overwrites what it believes is bound to {@code TEXTURE_2D} there, so after
+ * one the texture domain is not trusted, and the next restore rebinds 2D through Angelica.</p>
+ *
  * <p>Always used on 1.7.10, Angelica or not: the cost is a copy on a float upload.</p>
  */
 public final class GLBackend1710 extends Lwjgl2GLBackend {
@@ -41,6 +49,14 @@ public final class GLBackend1710 extends Lwjgl2GLBackend {
     private static ByteBuffer scratch = BufferUtils.createByteBuffer(4096);
 
     private static final MethodHandle READ_PIXELS_TO_PACK_BUFFER = readPixelsToPackBuffer();
+
+    private final boolean oneBindingPerUnit = AngelicaStateProvider.isAvailable();
+
+    @Override
+    public void glBindTexture(int target, int texture) {
+        super.glBindTexture(target, texture);
+        if (oneBindingPerUnit && target != CgGL.GL_TEXTURE_2D) CgGlState.manager().invalidate(CgGlSlot.TEXTURES);
+    }
 
     @Override
     public void glTexImage3D(int target, int level, int internalFormat,
