@@ -344,7 +344,15 @@ public final class CgGlStateManager {
 
     boolean restoring() { return restoring; }
 
-    private boolean issue(long fields) { unknownFields &= ~fields; callsIssued++; return true; }
+    private boolean issue(long fields) { unknownFields &= ~fields; callsIssued++; wrote(fields); return true; }
+
+    /** Set while a scope adopts: the texture read moves the active unit, which is not a write of ours. */
+    private boolean adopting;
+
+    /** Tells the round trip what reached the driver, when it is on and the write is the code under test. */
+    private void wrote(long fields) {
+        if (roundTrip != null && !restoring && !verifying && !adopting && recording == null) roundTrip.wrote(fields);
+    }
 
     private boolean skip() { callsSkipped++; return false; }
 
@@ -527,6 +535,7 @@ public final class CgGlStateManager {
         current.colorMaskPacked = packed;
         // One target of eight vouches for nothing about the other seven, so trust is left as it was.
         callsIssued++;
+        wrote(F_COLOR_MASK);
         return true;
     }
 
@@ -674,6 +683,7 @@ public final class CgGlStateManager {
             // now be wrong.
             unknownUnits = ALL_UNITS;
             callsIssued++;
+            wrote(F_ACTIVE_TEXTURE);
             return true;
         }
         int unit = current.activeTextureUnit;
@@ -682,6 +692,7 @@ public final class CgGlStateManager {
         current.boundTexture2D[unit] = texture;
         unknownUnits &= ~(1 << unit);
         callsIssued++;
+        wrote(F_ACTIVE_TEXTURE);   // the TEXTURES domain; a unit's binding has no field bit of its own
         return true;
     }
 
@@ -913,7 +924,12 @@ public final class CgGlStateManager {
     }
 
     private void adopt(CgGlSlot slot) {
-        provider.read(slot, current);
+        adopting = true;
+        try {
+            provider.read(slot, current);
+        } finally {
+            adopting = false;
+        }
         unknownFields &= ~SLOT_FIELDS[slot.ordinal()];
         if (slot == CgGlSlot.TEXTURES) unknownUnits = 0;
         adopted++;
@@ -1139,9 +1155,21 @@ public final class CgGlStateManager {
      * scope failed: the driver, the host's cache, or the cache disagreeing with the driver -- which is the
      * host's fault, not ours.</p>
      *
-     * <p>Diagnosis only: two reads per scope, four with a driver reader. A run is judged by its lines, all
-     * through log4j into the client's own log: {@code ARMED} at start, totals after 100 scopes and every
-     * 1000 after, so a run that never checked cannot pass for one that found nothing.</p>
+     * <p>And every write that reaches the driver is checked against the domains the open scopes declared.
+     * A write outside them is never restored -- a <b>leak</b>, reported with the code that wrote it:</p>
+     *
+     * <pre>{@code
+     * [crystalgraphics] state.roundTrip: leaked cullFace at CgRenderPipeline.executeOpaquePass:340 (depth 1) -- no open scope declares its domain
+     * }</pre>
+     *
+     * <p>This is what makes the host's own state manager safe to reason about: a domain every write of ours
+     * restores is one its cache ends where it started, whether the backend routes it through the cache or
+     * not.</p>
+     *
+     * <p>Diagnosis only: two reads per scope, four with a driver reader, a stack per leaked write. A run is
+     * judged by its lines, all through log4j into the client's own log: {@code ARMED} at start, totals
+     * after 100 scopes and every 1000 after, so a run that never checked cannot pass for one that found
+     * nothing.</p>
      */
     private final class RoundTrip {
         private final Logger log = LogManager.getLogger("CrystalGraphics");
@@ -1149,7 +1177,26 @@ public final class CgGlStateManager {
         private final CgGlStateShadow afterDriver = new CgGlStateShadow();
         private final CgGlStateShadow keep = new CgGlStateShadow();
         private final Set<String> reported = new HashSet<>();
-        private long checked, hostFailed, driverFailed, cacheFailed;
+        private long checked, hostFailed, driverFailed, cacheFailed, leaks;
+
+        void wrote(long fields) {
+            long declared = 0;
+            for (int d = 0; d < depth; d++) {
+                int mask = frames[d].mask;
+                for (CgGlSlot s : SLOTS) if ((mask & (1 << s.ordinal())) != 0) declared |= SLOT_FIELDS[s.ordinal()];
+            }
+            long leaked = fields & ~declared;
+            if (leaked == 0) return;
+            leaks++;
+            if (reported.size() >= 100) return;
+            Throwable at = new Throwable("written here");
+            String names = fieldNames(leaked);
+            String site = site(at);
+            if (!reported.add("leak|" + site + '|' + names)) return;
+            String line = "[crystalgraphics] state.roundTrip: leaked " + names + " at " + site + " (depth " + depth
+                    + ") -- no open scope declares its domain";
+            if (reported.size() <= 10) log.warn(line, at); else log.warn(line);
+        }
 
         RoundTrip() {
             log.info("[crystalgraphics] state.roundTrip: ARMED -- every scope's domains are read on open and "
@@ -1195,7 +1242,8 @@ public final class CgGlStateManager {
             if (checked == 100 || checked % 1000 == 0) {
                 log.info("[crystalgraphics] state.roundTrip: " + checked + " scopes checked -- not restored: "
                         + hostFailed + " in the host view, " + driverFailed + " in the driver; host cache "
-                        + "disagreed with the driver " + cacheFailed + " times; " + adopted + " domains adopted");
+                        + "disagreed with the driver " + cacheFailed + " times; " + leaks + " leaked writes; "
+                        + adopted + " domains adopted");
             }
         }
 
@@ -1227,6 +1275,23 @@ public final class CgGlStateManager {
             String line = "[crystalgraphics] state.roundTrip: " + what + " by the scope opened at " + site
                     + " -- " + diff.replace("tracked=", was).replace("actual=", is);
             if (reported.size() <= 10) log.warn(line, openedAt); else log.warn(line);
+        }
+
+        /** Names for the {@code F_*} bits, in bit order. */
+        private final String[] fieldName = {
+                "blendEnable", "blendFunc", "blendEquation", "depthTest", "depthMask", "depthFunc",
+                "cullEnable", "cullFace", "frontFace", "stencilTest", "stencilFunc", "stencilOp", "stencilMask",
+                "alphaTest", "alphaFunc", "colorMask", "viewport", "scissorTest", "scissorBox",
+                "polygonOffsetFill", "polygonOffsetLine", "polygonOffsetPoint", "polygonOffset",
+                "polygonModeFront", "polygonModeBack", "lineWidth", "pointSize", "program", "drawFbo", "readFbo",
+                "texture", "vertexArray", "arrayBuffer", "elementBuffer"};
+
+        private String fieldNames(long fields) {
+            StringBuilder out = new StringBuilder();
+            for (int bit = 0; bit < fieldName.length; bit++) {
+                if ((fields & (1L << bit)) != 0) out.append(out.length() == 0 ? "" : ",").append(fieldName[bit]);
+            }
+            return out.toString();
         }
 
         /** The first frame outside this package: the code that asked for the scope. */
