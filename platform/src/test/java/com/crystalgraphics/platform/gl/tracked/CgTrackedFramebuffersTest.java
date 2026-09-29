@@ -6,6 +6,7 @@ import com.crystalgraphics.platform.gl.CgGL;
 import org.junit.Test;
 
 import java.nio.ByteBuffer;
+import java.util.List;
 
 import static org.junit.Assert.*;
 
@@ -31,6 +32,20 @@ public class CgTrackedFramebuffersTest {
 
     private CgPassDesc lastPass() {
         return device.passes().get(device.passes().size() - 1);
+    }
+
+    @Test
+    public void aClearUnderAPartialColourMaskIsDrawnThroughIt() {
+        fboWith(texture(8));
+        gl.glColorMask(false, false, false, true);
+        gl.glClearColor(0, 0, 0, 1);
+        int mark = device.mark();
+        gl.glClear(CgGL.GL_COLOR_BUFFER_BIT);
+        gl.endFrame();
+        List<String> log = device.logSince(mark);
+        assertTrue(log.toString(), log.contains("draw 3 1 0 0"));
+        assertTrue("no attachment clear writes the masked channels", log.stream().noneMatch(l -> l.startsWith("clearColor")));
+        assertEquals("the pass keeps what the mask protects", CgPassDesc.LoadOp.LOAD, lastPass().colors().get(0).load());
     }
 
     @Test

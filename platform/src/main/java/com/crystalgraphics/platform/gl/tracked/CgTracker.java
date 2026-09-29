@@ -11,7 +11,9 @@ import com.crystalgraphics.platform.device.CgRenderPass;
 import com.crystalgraphics.platform.device.CgShaderModule;
 import com.crystalgraphics.platform.device.CgTextureView;
 import com.crystalgraphics.platform.device.CgBindingLayout;
+import com.crystalgraphics.platform.device.CgAttribFormat;
 
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -34,7 +36,8 @@ import java.util.Map;
  *   <li>A pass begins at the first draw after its target is bound, and ends at a draw into another target, a
  *       transfer ({@link #transfer()}), a host section or the end of the frame.</li>
  *   <li>A clear before a pass's first draw, over the whole target, is its load op; any other is an attachment
- *       clear inside the pass. A clear GL masks per channel clears the whole channel set, with one warning.</li>
+ *       clear inside the pass. A colour clear under a partial write mask is drawn, through the mask, since a
+ *       device's clear writes every channel; a partial stencil mask still clears every bit, with one warning.</li>
  *   <li>With {@code debug} on, sampling a texture the open pass renders to is refused (decision 21).</li>
  *   <li>Owner thread only.</li>
  * </ul>
@@ -52,6 +55,12 @@ public final class CgTracker {
     private final Map<CgPipelineDesc, CgPipeline> pipelines = new HashMap<>();
     private boolean zeroToOneClip;
     private boolean warnedMaskedClear;
+    private CgTrackedProgram clearProgram;
+
+    /** What a masked clear draws: a position and the clear colour per vertex, three vertices over the target. */
+    private static final List<CgPipelineDesc.VertexBuffer> CLEAR_LAYOUT = List.of(new CgPipelineDesc.VertexBuffer(0,
+            24, false, List.of(new CgPipelineDesc.VertexAttrib(0, CgAttribFormat.FLOAT32X2, 0),
+                    new CgPipelineDesc.VertexAttrib(1, CgAttribFormat.FLOAT32X4, 8))));
 
     private CgTarget target;
     private CgRenderPass pass;
@@ -108,16 +117,26 @@ public final class CgTracker {
     public CgTarget target() { return target; }
 
     /**
+     * The program a colour clear under a partial write mask is drawn with: position at location 0, colour at 1,
+     * the colour written to every output. Without one, such a clear writes every channel, with one warning.
+     */
+    public void setClearProgram(CgTrackedProgram program) { clearProgram = program; }
+
+    /**
      * {@code glClear} on the bound target, honouring the write masks and scissor in {@link #state} as GL does.
      */
     public void clear(boolean color, float r, float g, float b, float a,
                       boolean depth, float depthValue, boolean stencil, int stencilValue) {
         if (target == null) throw new IllegalStateException("glClear with no framebuffer bound");
-        int colors = 0;
+        int colors = 0, masked = 0;
         if (color) {
             for (int i = 0; i < target.colors().size(); i++) {
                 int mask = (state.colorMasks >>> (4 * i)) & 0xF;
                 if (mask == 0) continue;
+                if (mask != 0xF && clearProgram != null) {
+                    masked |= 1 << i;
+                    continue;
+                }
                 if (mask != 0xF) warnMasked("colour mask " + Integer.toBinaryString(mask));
                 colors |= 1 << i;
             }
@@ -127,12 +146,12 @@ public final class CgTracker {
         depth &= hasDepth && df.hasDepth() && state.depthStencil.depthWrite();
         stencil &= hasDepth && df.hasStencil() && (state.depthStencil.writeMask() & 0xFF) != 0;
         if (stencil && (state.depthStencil.writeMask() & 0xFF) != 0xFF) warnMasked("stencil mask");
-        if (colors == 0 && !depth && !stencil) return;
+        if (colors == 0 && masked == 0 && !depth && !stencil) return;
 
         boolean whole = !state.scissorTest || (state.scissorX <= 0 && state.scissorY <= 0
                 && state.scissorX + state.scissorWidth >= target.width() && state.scissorY + state.scissorHeight >= target.height());
         boolean inPass = pass != null && passTarget.equals(target);
-        if (!inPass && whole) {
+        if (!inPass && whole && masked == 0) {
             pendingColors |= colors;
             if (colors != 0) { clearR = r; clearG = g; clearB = b; clearA = a; }
             if (depth) { pendingDepth = true; clearDepthValue = depthValue; }
@@ -145,9 +164,44 @@ public final class CgTracker {
         int w = whole ? target.width() : state.scissorWidth, h = whole ? target.height() : state.scissorHeight;
         for (int i = 0; i < target.colors().size(); i++) {
             if ((colors & (1 << i)) != 0) pass.clearColor(i, r, g, b, a, x, y, w, h);
+            if ((masked & (1 << i)) != 0) clearByDraw(i, (state.colorMasks >>> (4 * i)) & 0xF, r, g, b, a, x, y, w, h);
         }
         if (depth || stencil) pass.clearDepthStencil(depth, depthValue, stencil, stencilValue, x, y, w, h);
         stats.clearsInPass++;
+    }
+
+    /** A colour clear through a partial write mask: a triangle over the target, scissored to the cleared rect. */
+    private void clearByDraw(int attachment, int mask, float r, float g, float b, float a, int x, int y, int w, int h) {
+        List<CgPipelineDesc.ColorTarget> targets = new ArrayList<>(passTarget.colors().size());
+        for (int i = 0; i < passTarget.colors().size(); i++) {
+            targets.add(new CgPipelineDesc.ColorTarget(passTarget.colors().get(i).texture().desc().format(), null,
+                    i == attachment ? mask : 0));
+        }
+        CgFormat depthFormat = passTarget.depth() == null ? null : passTarget.depth().texture().desc().format();
+        CgPipelineDesc desc = new CgPipelineDesc(clearProgram.label, clearProgram.layout, clearProgram.vertexGlDepth,
+                clearProgram.fragment, CLEAR_LAYOUT, CgPipelineDesc.Topology.TRIANGLES, CgPipelineDesc.Raster.DEFAULT,
+                CgPipelineDesc.DepthStencil.OFF, targets, depthFormat,
+                passTarget.colors().get(attachment).texture().desc().samples());
+        CgPipeline p = pipelines.get(desc);
+        if (p == null) {
+            p = device.createPipeline(desc);
+            pipelines.put(desc, p);
+            stats.pipelineMisses++;
+        }
+        pass.setPipeline(p);
+        passPipeline = p;
+
+        CgAllocation vertices = frameAllocate(3 * 24);
+        ByteBuffer m = vertices.memory();
+        float[] corners = {-1, -1, 3, -1, -1, 3};
+        for (int v = 0; v < 3; v++) {
+            m.putFloat(corners[2 * v]).putFloat(corners[2 * v + 1]).putFloat(r).putFloat(g).putFloat(b).putFloat(a);
+        }
+        pass.setVertexBuffer(0, vertices.buffer, vertices.offset);
+        pass.setViewport(0, 0, passTarget.width(), passTarget.height(), 0, 1);
+        pass.setScissor(x, y, w, h);
+        pass.draw(3, 1, 0, 0);
+        passFresh = true;                   // the next draw sets its own viewport and scissor again
     }
 
     // ── draws ──────────────────────────────────────────────────────────────────
