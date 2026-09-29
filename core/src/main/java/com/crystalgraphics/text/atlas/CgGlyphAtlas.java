@@ -6,7 +6,8 @@ import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.gl.texture.CgTexture2DArray;
 import com.crystalgraphics.text.atlas.packing.MaxRectsPacker;
 import com.crystalgraphics.text.atlas.packing.CgPackingStrategy;
-import com.crystalgraphics.util.profiling.CgProfiler;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 import lombok.Getter;
 
 import java.util.ArrayList;
@@ -720,10 +721,10 @@ public class CgGlyphAtlas {
         // single-glyph commit stalls: growLayers() reallocates the array and re-uploads every
         // existing layer from its CPU mirror, so its cost scales with current atlas size and
         // gets billed to whichever glyph happened to trigger it.
-        try (CgProfiler.Scope ignored = CgProfiler.scope("atlas.growCapacity")) {
-            CgProfiler.count("atlas.growCapacity.count");
-            CgProfiler.sample("atlas.growCapacity.fromLayers", capacity);
-            CgProfiler.sample("atlas.growCapacity.toLayers", newCapacity);
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "atlas.growCapacity")) {
+            CgTrace.add(CgChannels.TEXT, "atlas.growCapacity.count", 1);
+            CgTrace.counter(CgChannels.TEXT, "atlas.growCapacity.fromLayers", capacity);
+            CgTrace.counter(CgChannels.TEXT, "atlas.growCapacity.toLayers", newCapacity);
             arrayTexture.growLayers(newCapacity);
         }
         capacity = newCapacity;
@@ -754,7 +755,7 @@ public class CgGlyphAtlas {
         // old generation. Those re-resolve on their next draw, which can in turn pull glyphs back
         // into the atlas. glyphsDropped is the size of that downstream wave and is the number to
         // watch -- a cascade would show up as evictions clustering rather than as one slow frame.
-        try (CgProfiler.Scope ignored = CgProfiler.scope("atlas.evictPage")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "atlas.evictPage")) {
             return evictColdestPageAndFreeLayerInternal();
         }
     }
@@ -784,8 +785,8 @@ public class CgGlyphAtlas {
         // Must happen before evicted.delete(), which clears the page's own key set —
         // otherwise glyphIndex would keep stale entries pointing at a page whose layer
         // index is about to be handed to a brand-new page with completely different glyphs.
-        CgProfiler.count("atlas.evictPage.count");
-        CgProfiler.sample("atlas.evictPage.glyphsDropped", evicted.getGlyphKeys().size());
+        CgTrace.add(CgChannels.TEXT, "atlas.evictPage.count", 1);
+        CgTrace.counter(CgChannels.TEXT, "atlas.evictPage.glyphsDropped", evicted.getGlyphKeys().size());
         for (CgGlyphKey key : evicted.getGlyphKeys()) glyphIndex.remove(key);
         
         LOGGER.fine("[AtlasDiag] Evicting atlas page/layer " + evicted.getPageIndex()

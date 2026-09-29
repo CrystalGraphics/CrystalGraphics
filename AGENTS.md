@@ -55,7 +55,7 @@ Their commands are CrystalGUI's `AGENTS.md` § *Build and run*.
 
 For anything that touches rendering, shaders, FBOs, text or atlases, **test in the harness, not
 Minecraft**: it boots in seconds, needs no Minecraft context, and writes PNGs. It is CrystalGUI's
-submodule (`gl-debug-harness/`, Java 21) and runs from CrystalGUI's root; authoring rules are its own
+submodule (`gl-debug-harness/`, Java 25) and runs from CrystalGUI's root; authoring rules are its own
 `AGENTS.md`.
 
 ```bash
@@ -74,7 +74,8 @@ submodule (`gl-debug-harness/`, Java 21) and runs from CrystalGUI's root; author
 
 - Never call raw GL — use `CgVertexArray`, `CgStreamBuffer`, `CgTexture`, `CgFrameBuffer`, etc.
 - Implement `HarnessSceneLifecycle` (managed, single frame) or `InteractiveSceneLifecycle` (loop + camera),
-  and register the scene in `SceneRegistry.createDefault()`.
+  and register the scene in `SceneRegistry.createDefault()` — or, for a project on top of CrystalGraphics,
+  in its own `HarnessExtension`. The harness names no such project.
 - `ArtifactService.requestCapture("suffix")` for interactive captures; `ScreenshotUtil` for managed ones.
 - GL state cleanup after `render()` is automatic.
 
@@ -1244,9 +1245,8 @@ Design record and eight implementation corrections: `docs_research/plan/gl-state
    without the shadow seeing it. The typed records (`CgBlendState`, `CgDepthState`, …) are a convenience,
    not a safety requirement — the `cgStateWriteGuard` task that used to police this was deleted along with
    the problem it policed.
-2. Any code that resets GL state wholesale **with raw GL that bypasses `CgGL`** — the harness's
-   `GlStateResetHelper`, a foreign mod — must call `CgGlState.invalidateAllIfPresent()`. Only what goes
-   around `CgGL` is invisible.
+2. Any code that resets GL state wholesale **with raw GL that bypasses `CgGL`** — a foreign mod — must
+   call `CgGlState.invalidateAllIfPresent()`. Only what goes around `CgGL` is invisible.
 3. **Only genuinely global state may be deduplicated.** Anything an object binding implicitly swaps must be
    invalidated when that object changes — `GL_ELEMENT_ARRAY_BUFFER` is per-VAO state, and treating it as
    global elided a required bind and killed every indexed draw through the affected VAO.

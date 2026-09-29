@@ -94,8 +94,7 @@ public final class CgTraceExport {
 
         for (CgFrameRecord frame : frames) {
             emit.complete("Frame " + frame.index(), "frame", PID, FRAME_TID,
-                    micros(frame.beginNanos() - first), micros(frame.wallNanos()),
-                    frame.hasCpu() ? "{\"cpu_ms\":" + round(frame.cpuMillis()) + "}" : null);
+                    micros(frame.beginNanos() - first), micros(frame.wallNanos()), frameArgs(frame));
         }
 
         long windowFrom = frames.isEmpty() ? Long.MIN_VALUE : frames.get(0).beginNanos();
@@ -152,6 +151,18 @@ public final class CgTraceExport {
         for (CgTraceSnapshot.ZoneView zone : snapshot.zones()) first = Math.min(first, zone.startNanos());
         for (CgTraceSnapshot.SpanView span : snapshot.spans()) first = Math.min(first, span.startNanos());
         return first == Long.MAX_VALUE ? 0L : first;
+    }
+
+    /** A frame's CPU and GPU figures, each left out when absent — a reader must not see zero. */
+    private static String frameArgs(CgFrameRecord frame) {
+        if (!frame.hasCpu() && !frame.hasGpu()) return null;
+        StringBuilder args = new StringBuilder("{");
+        if (frame.hasCpu()) args.append("\"cpu_ms\":").append(round(frame.cpuMillis()));
+        if (frame.hasGpu()) {
+            if (frame.hasCpu()) args.append(',');
+            args.append("\"gpu_ms\":").append(round(frame.gpuNanos() / 1_000_000d));
+        }
+        return args.append('}').toString();
     }
 
     private static double micros(long nanos) {

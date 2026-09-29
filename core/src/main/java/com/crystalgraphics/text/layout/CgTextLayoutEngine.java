@@ -28,7 +28,8 @@ import com.crystalgraphics.api.text.CgFontFeature;
 import java.util.List;
 import java.util.Locale;
 import java.util.TreeSet;
-import com.crystalgraphics.util.profiling.CgProfiler;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 
 /**
  * Internal implementation of the text layout pipeline.
@@ -70,7 +71,7 @@ public final class CgTextLayoutEngine {
         if (knobs == null) knobs = CgParagraphKnobs.DEFAULT;
 
         List<CgShapedParagraph.Slice> slices = new ArrayList<>();
-        try (CgProfiler.Scope ignored = CgProfiler.scope("shape.runs")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "shape.runs")) {
             for (int[] range : paragraphRanges(text)) {
                 String paragraph = text.substring(range[0], range[1]);
                 List<CgShapedRun> runs = paragraph.isEmpty()
@@ -81,11 +82,11 @@ public final class CgTextLayoutEngine {
         }
 
         RunReshaper reshaper;
-        try (CgProfiler.Scope ignored = CgProfiler.scope("shape.reshaper")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "shape.reshaper")) {
             reshaper = createRunReshaper(CgFontFamilyGroup.ofRegular(family));
         }
         List<CgShapedRun> ellipsisRuns;
-        try (CgProfiler.Scope ignored = CgProfiler.scope("shape.ellipsis")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "shape.ellipsis")) {
             ellipsisRuns = shapeEllipsis(knobs.ellipsisMarker(), family, knobs.direction());
         }
 
@@ -166,16 +167,16 @@ public final class CgTextLayoutEngine {
 
             float remainingHeight = maxHeight > 0 ? maxHeight - totalHeight : 0;
             List<List<CgShapedRun>> paraLines;
-            try (CgProfiler.Scope ignored = CgProfiler.scope("wrap.breakLines")) {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "wrap.breakLines")) {
                 paraLines = LINE_BREAKER.breakLines(
                         slice.runs(), maxWidth, remainingHeight, metrics, slice.context(), reshaper);
             }
 
             BitSet lineBreakBoundaries;
-            try (CgProfiler.Scope ignored = CgProfiler.scope("wrap.breakBoundaries")) {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "wrap.breakBoundaries")) {
                 lineBreakBoundaries = collectLineBreakBoundaries(paragraph);
             }
-            try (CgProfiler.Scope ignored = CgProfiler.scope("wrap.justify")) {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "wrap.justify")) {
                 for (List<CgShapedRun> line : paraLines) {
                     allLines.add(line);
                     justifiableByLine.add(computeJustifiable(paragraph, lineBreakBoundaries, line));
@@ -208,7 +209,7 @@ public final class CgTextLayoutEngine {
         }
 
         CgBakedGlyphs baked;
-        try (CgProfiler.Scope ignored = CgProfiler.scope("wrap.bakeGlyphs")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "wrap.bakeGlyphs")) {
             baked = bakeGlyphs(allLines, justifiableByLine, metrics, knobs.lineHeightOverride());
         }
 
@@ -340,13 +341,13 @@ public final class CgTextLayoutEngine {
 
     private static List<CgShapedRun> splitAndShapeRuns(String text, CgFontFamily family, CgTextDirection direction) {
         Bidi bidi;
-        try (CgProfiler.Scope ignored = CgProfiler.scope("shape.bidi")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "shape.bidi")) {
             bidi = new Bidi(text, bidiFlagFor(direction));
         }
         int runCount = bidi.getRunCount();
         List<CgShapedRun> runs = new ArrayList<CgShapedRun>(runCount);
 
-        try (CgProfiler.Scope ignored = CgProfiler.scope("shape.collectRuns")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "shape.collectRuns")) {
             for (int i = 0; i < runCount; i++) {
                 int start = bidi.getRunStart(i);
                 int end = bidi.getRunLimit(i);
@@ -685,10 +686,10 @@ public final class CgTextLayoutEngine {
     private static void collectShapedRuns(String text, int start, int end, boolean rtl, CgFontFamily family,
                                           List<CgShapedRun> out, List<CgFontFeature> features) {
         List<CgFontFamily.ResolvedFontRun> resolvedRuns;
-        try (CgProfiler.Scope ignored = CgProfiler.scope("shape.resolveRuns")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "shape.resolveRuns")) {
             resolvedRuns = family.resolveRuns(text, start, end);
         }
-        try (CgProfiler.Scope ignored = CgProfiler.scope("shape.harfbuzz")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "shape.harfbuzz")) {
             for (CgFontFamily.ResolvedFontRun resolvedRun : resolvedRuns) {
                 HBFont hbFont = resolvedRun.requireHbFont();
                 CgFont resolvedFont = resolvedRun.getSource().requireFont();
