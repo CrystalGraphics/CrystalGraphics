@@ -1043,8 +1043,8 @@ public final class CgGL {
      *       {@code GEQUAL}), and {@link #glClearDepth} clears to {@code 1 - depth}. A scope's restore and a
      *       recording's replay are exempt: each re-issues values already as GL holds them.</li>
      *   <li>Not mirrored: {@code glPolygonOffset}, whose offset therefore pulls the other way, and
-     *       {@code cg_DepthBuffer}, which holds reversed values -- a shader comparing against it (a depth
-     *       fade, soft particles) is wrong while this is on.</li>
+     *       {@code cg_DepthBuffer}, which holds reversed values. The frame block carries this flag, so a
+     *       shader reading it through {@code cg_LinearEyeDepth} gets eye distances either way.</li>
      *   <li>Nor a projection: the host's own matrices are already reversed. One built for the pass, rather
      *       than taken from the host, is built reversed too:
      *       <pre>{@code

@@ -76,7 +76,7 @@ public final class CgRenderPipeline {
     public static final String FRAME_BLOCK_NAME = "CgFrameBlock";
 
     /**
-     * Per-frame UBO format (std140, 44 floats = 176 bytes).
+     * Per-frame UBO format (std140, 48 floats = 192 bytes).
      *
      * <pre>
      *   mat4  cg_ViewMatrix   — floats  0–15
@@ -84,6 +84,8 @@ public final class CgRenderPipeline {
      *   vec4  cg_Time         — floats 32–35: t/20, t, t×2, t×3 (seconds)
      *   vec2  cg_Resolution   — floats 36–37: viewport width, height (pixels)
      *   vec4  cg_CameraPos    — floats 40–43: world-space camera position in xyz (38–39 are std140 pad)
+     *   vec4  cg_DepthParams  — floats 44–47: x 1 when the pass's depth is reversed, y 1 when its clip
+     *                           depth runs 0..1 -- what {@code cg_LinearEyeDepth} reads
      * </pre>
      *
      * <p><b>This order is duplicated in {@code cg_env.glsl} and the two must not drift.</b> std140 offsets
@@ -101,6 +103,7 @@ public final class CgRenderPipeline {
             .vec4("cg_Time")
             .vec2("cg_Resolution")
             .vec4("cg_CameraPos")
+            .vec4("cg_DepthParams")
             .build();
 
     /** Default GLSL SSBO/TBO buffer name used by {@code cg_env.glsl}. */
@@ -261,6 +264,8 @@ public final class CgRenderPipeline {
                 // could not be wrong. Not defended by deriving here, because the field is documented as
                 // settable directly and doing so would silently overwrite a caller who meant it.
                 .vec4("cg_CameraPos", fd.cameraPos.x, fd.cameraPos.y, fd.cameraPos.z, 1f)
+                // The convention of the pass uploading this, which is the one cg_DepthBuffer was captured in.
+                .vec4("cg_DepthParams", CgGL.isDepthReversed() ? 1f : 0f, CgGL.isDepthZeroToOne() ? 1f : 0f, 0f, 0f)
                 .endRecord();
         fd.timeSecs = savedTime;
         frameUbo.upload();

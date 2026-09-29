@@ -317,12 +317,13 @@ A `layout(std140) uniform CgFrameBlock` wired post-link by the engine. Available
 | `cg_ProjMatrix` | `mat4` | Projection matrix |
 | `cg_Time` | `vec4` | `(t/20, t, t×2, t×3)` — seconds |
 | `cg_Resolution` | `vec2` | Viewport size in pixels |
+| `cg_DepthParams` | `vec4` | `x` 1 when the pass's depth is reversed (Minecraft 26.2's world), `y` 1 when its clip depth runs 0..1. Read through `cg_LinearEyeDepth`, not directly |
 
 **Scene samplers** — auto-bound by the engine before every material draw; do not declare or bind these yourself:
 
 | GLSL name | Type | Unit | Content |
 |---|---|---|---|
-| `cg_DepthBuffer` | `uniform sampler2D` | `CgBindingPoints.DEPTH_TEXTURE_UNIT` | Scene depth snapshot (DEPTH24_STENCIL8) captured just before the opaque pass via one `glBlitFramebuffer` from MC's main render target. Valid in both vertex and fragment stages of all passes. **Do not bind user Properties samplers to `CgBindingPoints.DEPTH_TEXTURE_UNIT`.** |
+| `cg_DepthBuffer` | `uniform sampler2D` | `CgBindingPoints.DEPTH_TEXTURE_UNIT` | Scene depth snapshot, in the main target's own depth format, captured just before the opaque pass via one `glBlitFramebuffer` from MC's main render target. **Raw values are the host's convention** — reversed-Z on 26.2 — so compare depths as eye distances: `CG_SCENE_EYE_DEPTH(uv)` against `cg_LinearEyeDepth(gl_FragCoord.z)`. Valid in both vertex and fragment stages of all passes. **Do not bind user Properties samplers to `CgBindingPoints.DEPTH_TEXTURE_UNIT`.** |
 
 Convenience macros over the frame block:
 
@@ -331,6 +332,7 @@ Convenience macros over the frame block:
 | `CG_TIME` | `cg_Time.y` | Raw seconds — the one you want 99% of the time |
 | `CG_TIME_VEC4` | `cg_Time` | Full 4-component time vector |
 | `CG_RESOLUTION` | `cg_Resolution` | Viewport dimensions in pixels |
+| `CG_SCENE_EYE_DEPTH(uv)` | `cg_LinearEyeDepth(texture(cg_DepthBuffer, uv).r)` | Scene distance from the camera at `uv`, in eye units, under any depth convention |
 | `CG_MATRIX_MVP` | `cg_ProjMatrix * cg_ViewMatrix * CG_OBJECT_TO_WORLD` | Standard MVP transform |
 
 ### Per-Instance Object Data — SSBO / TBO Dual Path
