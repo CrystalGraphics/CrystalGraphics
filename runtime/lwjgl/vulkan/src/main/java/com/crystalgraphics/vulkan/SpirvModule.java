@@ -18,6 +18,10 @@ import static org.lwjgl.util.spvc.Spvc.*;
  * One SPIR-V binary and what SPIRV-Cross reads from it: every resource and interface variable with the word
  * its binding or location decoration sits in, so that word can be set in place — as Minecraft 26.2's
  * {@code IntermediaryShaderModule} does.
+ *
+ * <p>Blocks and samplers are the <em>active</em> ones, as GL counts them: {@code cg_env.glsl} declares
+ * {@code CgFrameBlock} in every material, and one that never reads it must not need a buffer bound. Stage
+ * inputs and outputs are all of them, since varyings are matched by name across the stages.</p>
  */
 final class SpirvModule {
 
@@ -54,9 +58,13 @@ final class SpirvModule {
                 long compiler = p.get(0);
                 check(spvc_compiler_create_shader_resources(compiler, p), "resources");
                 long resources = p.get(0);
-                read(stack, compiler, resources, SPVC_RESOURCE_TYPE_UNIFORM_BUFFER, SpvDecorationBinding, uniformBuffers);
-                read(stack, compiler, resources, SPVC_RESOURCE_TYPE_STORAGE_BUFFER, SpvDecorationBinding, storageBuffers);
-                read(stack, compiler, resources, SPVC_RESOURCE_TYPE_SAMPLED_IMAGE, SpvDecorationBinding, samplers);
+                check(spvc_compiler_get_active_interface_variables(compiler, p), "active variables");
+                long activeSet = p.get(0);
+                check(spvc_compiler_create_shader_resources_for_active_variables(compiler, p, activeSet), "active resources");
+                long active = p.get(0);
+                read(stack, compiler, active, SPVC_RESOURCE_TYPE_UNIFORM_BUFFER, SpvDecorationBinding, uniformBuffers);
+                read(stack, compiler, active, SPVC_RESOURCE_TYPE_STORAGE_BUFFER, SpvDecorationBinding, storageBuffers);
+                read(stack, compiler, active, SPVC_RESOURCE_TYPE_SAMPLED_IMAGE, SpvDecorationBinding, samplers);
                 read(stack, compiler, resources, SPVC_RESOURCE_TYPE_STAGE_INPUT, SpvDecorationLocation, inputs);
                 read(stack, compiler, resources, SPVC_RESOURCE_TYPE_STAGE_OUTPUT, SpvDecorationLocation, outputs);
             } finally {
