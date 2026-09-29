@@ -66,7 +66,8 @@ if (!stubMode && usesUniminedMinecraft) {
 if (!stubMode && legacyForge == null && !usesUniminedMinecraft) {
     useForgeApi()
     configure<NeoForgeExtension> {
-        parchment {
+        // Parchment publishes nothing for 26.x: a node pinning none gets Mojang's names alone.
+        if (findProperty("parchment.version") != null) parchment {
             minecraftVersion = property("parchment.mc").toString()
             mappingsVersion = property("parchment.version").toString()
         }
@@ -74,7 +75,8 @@ if (!stubMode && legacyForge == null && !usesUniminedMinecraft) {
 }
 
 legacyForge?.apply {
-    parchment {
+    // Parchment publishes nothing for 26.x: a node pinning none gets Mojang's names alone.
+    if (findProperty("parchment.version") != null) parchment {
         minecraftVersion = property("parchment.mc").toString()
         mappingsVersion = property("parchment.version").toString()
     }
@@ -143,11 +145,13 @@ if (!stubMode) {
         }
         val resourcesJar = layout.buildDirectory.dir("moddev/artifacts").map { dir ->
             // `client-extra-<v>.jar` on 1.20.x, `<loader>-<v>-client-extra-aka-minecraft-resources.jar` on 1.21.
-            dir.asFileTree.matching { include("*client-extra*.jar") }.singleFile
+            // 26.x makes none: the resources ride in the merged jar, beside its classes.
+            dir.asFileTree.matching { include("*client-extra*.jar") }.files.singleOrNull()
+                ?: dir.asFileTree.matching { include("*-merged.jar") }.singleFile
         }
 
         from(zipTree(sourcesJar)) { into("java") }
-        from(zipTree(resourcesJar)) { into("resources") }
+        from(zipTree(resourcesJar)) { into("resources"); exclude("**/*.class", "META-INF/**") }
         into(layout.buildDirectory.dir("mc-src"))
     }
 

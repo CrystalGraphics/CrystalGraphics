@@ -15,7 +15,7 @@ node against the CrystalGraphics node of the same version, so **a version is alw
 
 | Artifact | Task | Installs on |
 |---|---|---|
-| `build/libs/crystalgraphics-<v>.jar` | `singleJar` (+ `checkSingleJar`) | every supported loader and version: Forge 1.7.10, 1.8.8–1.21.11 · NeoForge 1.20.2–1.21.11 · Fabric 1.14.4–1.21.11 (exceptions in CrystalGUI's `AGENTS.md`) |
+| `build/libs/crystalgraphics-<v>.jar` | `singleJar` (+ `checkSingleJar`) | every supported loader and version: Forge 1.7.10, 1.8.8–26.2 · NeoForge 1.20.2–26.2 · Fabric 1.14.4–26.2 (exceptions in CrystalGUI's `AGENTS.md`) |
 | `build/libs/crystalgraphics-joml-<v>.jar` | built with it | **only** instances below Minecraft 1.19.3 (Minecraft ships JOML from 1.19.3; a second copy there is a split package) |
 
 One jar serves every loader because a class file is inert until something defines it; the whole jar is

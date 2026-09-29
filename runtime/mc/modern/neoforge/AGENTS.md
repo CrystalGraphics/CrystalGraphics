@@ -2,9 +2,9 @@
 
 ## Target versions
 
-**MC 1.20.2–1.21.11 / NeoForge**, a node per `versions/<version>`: 1.20.2, 1.20.3, 1.20.4, 1.20.6 (also
+**MC 1.20.2–26.2 / NeoForge**, a node per `versions/<version>`: 1.20.2, 1.20.3, 1.20.4, 1.20.6 (also
 1.20.5), 1.21.1 (also 1.21), 1.21.3 (also 1.21.2), 1.21.4, 1.21.5, 1.21.6, 1.21.8 (also 1.21.7), 1.21.10
-(also 1.21.9) and 1.21.11. NeoForge published nothing for 1.20.1. NeoForge 20.2/20.3 are built from parts through NeoForm and have no dev run; from 1.20.4 it
+(also 1.21.9), 1.21.11, 26.1.2 (also 26.1, 26.1.1) and 26.2. NeoForge published nothing for 1.20.1. NeoForge 20.2/20.3 are built from parts through NeoForm and have no dev run; from 1.20.4 it
 is ModDevGradle. Pins and toolchains: `docs/BUILD.md` § *Nodes and toolchains*.
 
 ## The loader is registration only

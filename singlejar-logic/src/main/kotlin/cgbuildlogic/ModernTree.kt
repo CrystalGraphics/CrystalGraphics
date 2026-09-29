@@ -97,6 +97,13 @@ fun Project.sameVersionNodeCoordinate(groupRoot: String, branch: String): String
 fun forgeRunsSrg(minecraft: String): Boolean = MinecraftVersionOrder.compare(minecraft, "1.20.6") < 0
 
 /**
+ * Whether Fabric runs [minecraft] on intermediary names. Minecraft ships unobfuscated from 26.1, and
+ * Fabric runs Mojang's names there: no intermediary, no remap, and Loom's `net.fabricmc.fabric-loom`
+ * rather than `-remap`.
+ */
+fun fabricRunsIntermediary(minecraft: String): Boolean = MinecraftVersionOrder.compare(minecraft, "26.1") < 0
+
+/**
  * The task that turns [node]'s [shadowTask] into what ships: its production step where the loader
  * runs other names than the node compiles against, else the task itself.
  *
@@ -104,13 +111,19 @@ fun forgeRunsSrg(minecraft: String): Boolean = MinecraftVersionOrder.compare(min
  * thinJarTask(forge1201, "thinShadowJar")       // "reobfThinShadowJar" -- SRG
  * thinJarTask(forge1211, "thinShadowJar")       // "thinShadowJar" -- Mojang names, as compiled
  * thinJarTask(fabric1201, "langThinShadowJar")  // "remapLangThinJar" -- intermediary
+ * thinJarTask(fabric261, "thinShadowJar")       // "thinShadowJar" -- Mojang names, as compiled
  * ```
  */
 fun thinJarTask(node: Project, shadowTask: String): String = when (node.modernLoader) {
     "forge" -> if (forgeRunsSrg(node.name)) "reobf" + shadowTask.replaceFirstChar(Char::uppercaseChar) else shadowTask
-    "fabric" -> "remap" + shadowTask.removeSuffix("ShadowJar").replaceFirstChar(Char::uppercaseChar) + "Jar"
+    "fabric" -> if (fabricRunsIntermediary(node.name))
+        "remap" + shadowTask.removeSuffix("ShadowJar").replaceFirstChar(Char::uppercaseChar) + "Jar" else shadowTask
     else -> shadowTask
 }
+
+/** The Loom plugin id for a Fabric-toolchain [minecraft]: the remapping one while it is obfuscated. */
+fun loomPluginId(minecraft: String): String =
+    if (fabricRunsIntermediary(minecraft)) "net.fabricmc.fabric-loom-remap" else "net.fabricmc.fabric-loom"
 
 /**
  * Where a ModDevGradle node puts a library its dev run needs but must not scan as a mod:

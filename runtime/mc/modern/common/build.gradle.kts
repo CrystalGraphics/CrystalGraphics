@@ -14,14 +14,14 @@ plugins {
     // Below 1.17 no ModDevGradle mode reaches Minecraft, and Loom supplies it vanilla with Mojang's
     // names. Declared here, and only applied on such a node, so it loads in this branch alone. A node
     // in stub mode applies no toolchain at all (cgbuildlogic.StubMode).
-    id("fabric-loom") version "1.16.2" apply false
+    id("fabric-loom") version "1.17.21" apply false
 }
 
 if (!stubMode && usesLoomMinecraft) {
     // A loader bundles common at Mojang's names and remaps the two together, as on every later node:
     // keep the unremapped jar in the outgoing variants and drop Loom's intermediary one.
     extra["fabric.loom.disableRemappedVariants"] = "true"
-    apply(plugin = "fabric-loom")
+    apply(plugin = "net.fabricmc.fabric-loom-remap")
     afterEvaluate {
         val remapped = tasks.named<AbstractArchiveTask>("remapJar").get().archiveFile.get().asFile
         for (variant in listOf("apiElements", "runtimeElements")) {

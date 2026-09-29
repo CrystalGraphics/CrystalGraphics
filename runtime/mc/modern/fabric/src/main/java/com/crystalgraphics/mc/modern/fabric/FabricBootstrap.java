@@ -20,12 +20,24 @@ public final class FabricBootstrap implements ModInitializer, ClientModInitializ
 
     @Override
     public void onInitialize() {
+        requireFabricApi();
         VariantBootstrap.startCommon(FabricBootstrap.class, MODID, "fabric", minecraftVersion(), null);
     }
 
     @Override
     public void onInitializeClient() {
         VariantBootstrap.startClient(FabricBootstrap.class, MODID, "fabric", minecraftVersion(), null);
+    }
+
+    /**
+     * Fabric API, under whichever id this version's build uses: `fabric` through 1.17, `fabric-api` after.
+     * The merged descriptor cannot require it, since no one id holds on every version.
+     */
+    private static void requireFabricApi() {
+        FabricLoader loader = FabricLoader.getInstance();
+        if (!loader.isModLoaded("fabric-api") && !loader.isModLoaded("fabric")) {
+            throw new IllegalStateException(MODID + " requires Fabric API, and none is installed");
+        }
     }
 
     /** First-party, never a guess: the loader's own metadata for the `minecraft` container. */
