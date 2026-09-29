@@ -15,43 +15,12 @@ import java.util.Set;
 import lombok.Getter;
 
 /**
- * VAO wrapper that owns vertex array creation, attribute pointer setup,
- * bind/unbind, and deletion across core GL30 and ARB VAO paths.
+ * VAO wrapper that owns vertex array creation, attribute pointer setup, bind/unbind, and deletion.
  *
- * <h3>Core vs ARB path selection</h3>
- * <p>{@link #useCore} is a lazy one-shot cache: on the first VAO operation it
- * detects whether the current GL context supports Core GL 3.0 VAOs
- * ({@code OpenGL30 == true}). If so, the {@link GL30} entry points are used;
- * otherwise the {@link ARBVertexArrayObject} entry points are used. Both
- * entry-point sets produce identical VAO semantics — the selection is purely
- * an API routing decision.</p>
- *
- * <p>ARB-only hardware (e.g. some older Intel / AMD GPUs that expose
- * {@code GL_ARB_vertex_array_object} but do not report {@code OpenGL30})
- * is fully supported because {@link CgCapabilities#isVaoSupported()} checks
- * for either extension, while {@code isCore()} only returns {@code true} when
- * the full GL 3.0 core profile is present.</p>
- *
- * <h3>Resetting the cache on context recreation</h3>
- * <p>Call {@link #resetCoreCache()} when the GL context is destroyed and
- * recreated so the next VAO operation re-probes the new context's capabilities.
- * This is called automatically by {@link CgGraphicsLifecycle#destroyContext()}.</p>
+ * <p>Call {@link #onContextDestroyed()} when the GL context goes, so the duplicate-name check in
+ * {@code gen()} starts empty for the next one. {@link CgGraphicsLifecycle#destroyContext()} does.</p>
  */
 public final class CgVertexArray {
-
-    /**
-     * Lazy one-shot cache for the GL30-core VAO dispatch path.
-     *
-     * <ul>
-     *   <li>{@code null} — not yet detected; next call to {@link #isCore()} will probe the context.</li>
-     *   <li>{@code true} — GL 3.0 core profile VAOs available; use {@link GL30} entry points.</li>
-     *   <li>{@code false} — GL 3.0 not available; use {@link ARBVertexArrayObject} entry points.</li>
-     * </ul>
-     *
-     * <p>This field must be reset to {@code null} via {@link #resetCoreCache()} whenever
-     * the GL context is destroyed and recreated.</p>
-     */
-    private static Boolean useCore;
 
     @Getter
     private final int vaoId;
@@ -61,16 +30,11 @@ public final class CgVertexArray {
     }
 
     /**
-     * Creates a new {@link CgVertexArray}, using the core GL30 path if available or
-     * the ARB path as a fallback.
+     * Creates a new {@link CgVertexArray}.
      *
      * @return a new VAO wrapper
-     * @throws IllegalStateException if neither Core GL30 nor ARB VAO support is available
      */
     public static CgVertexArray create() {
-        if (!CgCapabilities.detect().isVaoSupported()) {
-            throw new IllegalStateException("VAO support is required for CgVertexArray (neither GL30 nor ARB_vertex_array_object is available)");
-        }
         return new CgVertexArray(gen());
     }
 
@@ -153,19 +117,14 @@ public final class CgVertexArray {
      * <p><strong>Must be called on the GL thread.</strong></p>
      *
      * @return the generated VAO id
-     * @throws IllegalStateException if neither GL30 nor ARB VAO support is available
      */
     public static int createRawVaoId() {
-        if (!CgCapabilities.detect().isVaoSupported()) {
-            throw new IllegalStateException("VAO support is required for CgVertexArray.createRawVaoId() (neither GL30 nor ARB_vertex_array_object is available)");
-        }
         return gen();
     }
 
     /**
      * Deletes a raw VAO id. Counterpart to {@link #createRawVaoId()}.
-     *
-     * <p>Routes to the same GL30 or ARB path that was used to create the VAO.</p>
+
      *
      * <p><strong>Must be called on the GL thread.</strong></p>
      *
@@ -176,7 +135,7 @@ public final class CgVertexArray {
     }
 
     /**
-     * Binds a VAO id using the appropriate GL30 or ARB entry point.
+     * Binds a VAO id.
      *
      * <p>Pass {@code 0} to unbind (restore default VAO state).</p>
      *
@@ -187,7 +146,7 @@ public final class CgVertexArray {
     }
 
     /**
-     * Deletes a VAO id using the appropriate GL30 or ARB entry point.
+     * Deletes a VAO id.
      *
      * @param vao VAO id to delete
      */
@@ -196,28 +155,8 @@ public final class CgVertexArray {
         CgGL.glDeleteVertexArrays(vao);
     }
 
-    /**
-     * Returns {@code true} if the Core GL 3.0 VAO path should be used.
-     *
-     * <p>When {@code true}, {@link GL30} entry points are used.
-     * When {@code false}, {@link ARBVertexArrayObject} entry points are used.
-     * The result is cached after the first call. Reset via {@link #resetCoreCache()}
-     * on context recreation.</p>
-     */
-    private static boolean isCore() {
-        if (useCore == null) useCore = CgCapabilities.detect().isCoreFbo();
-        return useCore;
-    }
-
-    /**
-     * Resets the cached core/ARB dispatch flag.
-     *
-     * <p>Must be called when the GL context is destroyed and recreated so that
-     * the next VAO operation re-probes the new context's capabilities.
-     * Called automatically by {@code CgGraphicsLifecycle.destroyContext()}.</p>
-     */
-    public static void resetCoreCache() {
-        useCore = null;
+    /** Forgets every VAO name this process holds; the context that owned them is gone. */
+    public static void onContextDestroyed() {
         LIVE.clear();
     }
 }

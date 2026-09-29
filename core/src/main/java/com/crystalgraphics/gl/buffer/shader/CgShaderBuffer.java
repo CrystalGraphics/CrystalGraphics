@@ -20,10 +20,9 @@ import java.util.Objects;
  * <p>Owns the shared infrastructure that every concrete backend needs:</p>
  * <ul>
  *   <li>A {@link CgStreamBuffer} ({@code dataBuffer}) created via
- *       {@link CgStreamBuffer#createForShaderBuffer} — capped at {@link
- *       MapAndOrphanStreamBuffer} (Tier B)
- *       to guarantee offset-0 writes, which is required by {@code glBindBufferBase} and
- *       {@code glTexBuffer}.</li>
+ *       {@link CgStreamBuffer#createForShaderBuffer}, which orphans on every upload and writes at
+ *       offset 0 -- what {@code glBindBufferBase} and {@code glTexBuffer} read, and what keeps a
+ *       buffer written once readable for as many frames as it is bound.</li>
  *   <li>A {@link CgBufferWriter} backed by a {@link CgStagingBuffer} — either record-mode
  *       (SSBO/TBO, fixed stride per record) or flat-mode (UBO, arbitrary float sequence).</li>
  *   <li>A write-session API ({@link #beginWrite}/{@link #endRecord}/{@link #endWrite})

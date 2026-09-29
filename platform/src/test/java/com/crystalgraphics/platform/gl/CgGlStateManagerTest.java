@@ -106,11 +106,67 @@ public class CgGlStateManagerTest {
         assertTrue("one differing factor must re-issue", mgr.blendFuncChanged(1, 2, 3, 9));
     }
 
+    /**
+     * The defect {@code state.verify} found on its first run: one field's write vouched for its whole domain,
+     * so the depth test being enabled made a never-read {@code depthMask} "known" at its default.
+     */
+    @Test
+    public void aWriteVouchesOnlyForTheFieldItWrote() {
+        assertTrue(mgr.capabilityChanged(CgGL.GL_DEPTH_TEST, true));
+        assertFalse(mgr.isTrusted(CgGlSlot.DEPTH));
+        assertTrue("the mask was never read or written, so matching its default proves nothing",
+                mgr.depthMaskChanged(false));
+        assertFalse("now it was written", mgr.depthMaskChanged(false));
+    }
+
+    @Test
+    public void aTextureBindOnAnUnknownUnitForgetsEveryUnit() {
+        mgr.save(CgGlSlot.TEXTURES);                  // every unit known
+        mgr.invalidate(CgGlSlot.TEXTURES);
+        assertTrue(mgr.textureChanged(CgGL.GL_TEXTURE_2D, 7));
+        assertTrue("the active unit was unknown, so no unit's binding may be trusted",
+                mgr.textureChanged(CgGL.GL_TEXTURE_2D, 7));
+    }
+
+    // ── Verification ──────────────────────────────────────────────────────────
+
+    @Test
+    public void verifyIssuesWhatAStaleShadowWouldHaveElided() {
+        assertTrue(mgr.depthMaskChanged(true));
+        // Something outside CgGL cleared the mask; the shadow still believes true.
+        mgr.verifyAgainst((slot, t) -> { if (slot == CgGlSlot.DEPTH) t.depthMask = false; });
+
+        assertTrue("the driver says false, so writing true is not redundant", mgr.depthMaskChanged(true));
+        assertTrue(mgr.disagreements == 1);
+        mgr.verifyAgainst(null);
+        assertFalse("the shadow took the write, so the repeat is redundant again", mgr.depthMaskChanged(true));
+    }
+
+    @Test
+    public void verifyStillElidesWhenTheDriverAgrees() {
+        assertTrue(mgr.depthMaskChanged(true));
+        mgr.verifyAgainst((slot, t) -> { if (slot == CgGlSlot.DEPTH) t.depthMask = true; });
+
+        assertFalse(mgr.depthMaskChanged(true));
+        assertTrue(mgr.disagreements == 0);
+    }
+
+    /** 1.7.10's lightmap sits on unit 1, bound behind CgGL; a shadow that never vouched for unit 1 is not wrong. */
+    @Test
+    public void verifyIgnoresAFieldTheShadowDoesNotVouchFor() {
+        mgr.activeTextureChanged(CgGL.GL_TEXTURE0);
+        mgr.verifyAgainst((slot, t) -> { if (slot == CgGlSlot.TEXTURES) t.boundTexture2D[1] = 7; });
+
+        assertFalse(mgr.activeTextureChanged(CgGL.GL_TEXTURE0));
+        assertTrue(mgr.disagreements == 0);
+    }
+
     /** The high-frequency binding domains dedupe — that is where the call volume justifies the risk. */
     @Test
     public void frequentBindingDomainsDedupe() {
         assertTrue(mgr.vertexArrayChanged(3));
         assertFalse(mgr.vertexArrayChanged(3));
+        mgr.activeTextureChanged(CgGL.GL_TEXTURE0);      // a bind is only attributable to a known unit
         assertTrue(mgr.textureChanged(CgGL.GL_TEXTURE_2D, 8));
         assertFalse(mgr.textureChanged(CgGL.GL_TEXTURE_2D, 8));
     }
@@ -216,7 +272,9 @@ public class CgGlStateManagerTest {
 
     @Test
     public void anOutermostSaveAdoptsEvenAnAlreadyTrustedDomain() {
-        mgr.depthMaskChanged(true);                 // establishes trust
+        mgr.capabilityChanged(CgGL.GL_DEPTH_TEST, true);   // every DEPTH field written: trusted
+        mgr.depthMaskChanged(true);
+        mgr.depthFuncChanged(0x0203);
         assertTrue(mgr.isTrusted(CgGlSlot.DEPTH));
         int before = provider.reads;
 

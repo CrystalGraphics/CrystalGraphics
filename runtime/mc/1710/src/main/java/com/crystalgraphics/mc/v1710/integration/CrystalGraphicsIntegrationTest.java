@@ -14,7 +14,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.opengl.ARBFramebufferObject;
 import org.lwjgl.opengl.ContextCapabilities;
-import org.lwjgl.opengl.EXTFramebufferObject;
 import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.GLContext;
 
@@ -29,7 +28,7 @@ import org.lwjgl.opengl.GLContext;
  * <h3>Tests Performed</h3>
  * <ol>
  *   <li>Single-attachment FBO creation — verifies basic framebuffer setup</li>
- *   <li>Multi-attachment FBO creation — verifies MRT framebuffers (skipped on EXT)</li>
+ *   <li>Multi-attachment FBO creation — verifies MRT framebuffers</li>
  *   <li>Packed depth-stencil path — verifies depth/stencil attachment</li>
  *   <li>Depth-only FBO — verifies depth-only shadow map style framebuffer</li>
  * </ol>
@@ -94,30 +93,17 @@ public class CrystalGraphicsIntegrationTest {
 
         System.out.println("[CrystalGraphics] Starting integration self-checks...");
 
-        final CgCapabilities caps = CgCapabilities.detect();
-        final CgCapabilities.FramebufferPath framebufferPath = caps.preferredFboBackend();
-        final boolean isExtOnly = (framebufferPath == CgCapabilities.FramebufferPath.EXT_FBO);
+        final CgCapabilities caps = CgCapabilities.detect();   // throws below the GL 3.3 floor
 
-        System.out.println("[CrystalGraphics] Detected backend: " + framebufferPath
-                + " (coreFbo=" + caps.isCoreFbo()
-                + ", arbFbo=" + caps.isArbFbo()
-                + ", extFbo=" + caps.isExtFbo()
-                + ", maxDrawBuffers=" + caps.getMaxDrawBuffers() + ")");
+        System.out.println("[CrystalGraphics] GL 3.3+ (maxDrawBuffers=" + caps.getMaxDrawBuffers() + ")");
 
         runTest("Single-attachment FBO", new Runnable() {
             @Override public void run() { testSingleAttachmentFbo(); }
         });
 
-        if (isExtOnly) {
-            runTest("Multi-attachment FBO (EXT expects UnsupportedOperationException)",
-                    new Runnable() {
-                @Override public void run() { testMultiAttachmentFboExt(); }
-            });
-        } else {
-            runTest("Multi-attachment FBO", new Runnable() {
-                @Override public void run() { testMultiAttachmentFbo(); }
-            });
-        }
+        runTest("Multi-attachment FBO", new Runnable() {
+            @Override public void run() { testMultiAttachmentFbo(); }
+        });
 
         runTest("Packed depth-stencil", new Runnable() {
             @Override public void run() { testPackedDepthStencil(); }
@@ -182,22 +168,6 @@ public class CrystalGraphicsIntegrationTest {
         }
     }
 
-    private void testMultiAttachmentFboExt() {
-        CgFrameBufferFormat fmt = CgFrameBufferFormat.builder("test_mrt_ext")
-                .color(0, CgTextureType.RGBA8)
-                .color(1, CgTextureType.RGBA8)
-                .depth(CgTextureType.DEPTH24_STENCIL8)
-                .build();
-        try {
-            CgFrameBuffer fbo = CgFrameBuffer.create("test_mrt_ext", 256, 256, fmt);
-            fbo.delete();
-            throw new AssertionError(
-                    "Expected UnsupportedOperationException for MRT on EXT backend");
-        } catch (UnsupportedOperationException e) {
-            System.out.println("[CrystalGraphics]     EXT correctly rejected MRT: "
-                    + e.getMessage());
-        }
-    }
 
     private void testPackedDepthStencil() {
         CgFrameBufferFormat fmt = CgFrameBufferFormat.builder("test_ds")

@@ -57,7 +57,6 @@ public final class CgGlStateManager {
     private static final CgGlSlot[] SLOTS = CgGlSlot.values();
     private static final CgGlSlot[] NO_SLOTS = new CgGlSlot[0];
     private static final int SLOT_COUNT = SLOTS.length;
-    private static final int ALL_UNKNOWN = (SLOT_COUNT == 32) ? -1 : (1 << SLOT_COUNT) - 1;
 
     /** Matches {@code ScissorStack}'s allowance; observed worst case is three. */
     private static final int MAX_DEPTH = 16;
@@ -65,8 +64,58 @@ public final class CgGlStateManager {
     static {
         if (SLOT_COUNT > 32) {
             throw new IllegalStateException(
-                    "CgGlSlot has " + SLOT_COUNT + " constants; the trust bitmask holds 32. "
-                  + "Widen unknownMask and Frame.mask to long before adding more.");
+                    "CgGlSlot has " + SLOT_COUNT + " constants; a scope's slot mask holds 32. "
+                  + "Widen Frame.mask to long before adding more.");
+        }
+    }
+
+    // ── Trust is per FIELD: the values one setter writes ──────────────────────
+    //
+    // Per domain it was wrong: glEnable(GL_DEPTH_TEST) vouched for depthMask and depthFunc at values nobody
+    // had read, and a later glDepthMask equal to that default was elided. A write vouches for what it wrote;
+    // a scope's read vouches for the whole domain.
+    private static final long
+            F_BLEND_ENABLE = 1L,       F_BLEND_FUNC = 1L << 1,    F_BLEND_EQUATION = 1L << 2,
+            F_DEPTH_TEST = 1L << 3,    F_DEPTH_MASK = 1L << 4,    F_DEPTH_FUNC = 1L << 5,
+            F_CULL_ENABLE = 1L << 6,   F_CULL_FACE = 1L << 7,     F_FRONT_FACE = 1L << 8,
+            F_STENCIL_TEST = 1L << 9,  F_STENCIL_FUNC = 1L << 10, F_STENCIL_OP = 1L << 11,
+            F_STENCIL_MASK = 1L << 12, F_ALPHA_TEST = 1L << 13,   F_ALPHA_FUNC = 1L << 14,
+            F_COLOR_MASK = 1L << 15,   F_VIEWPORT = 1L << 16,     F_SCISSOR_TEST = 1L << 17,
+            F_SCISSOR_BOX = 1L << 18,  F_OFFSET_FILL = 1L << 19,  F_OFFSET_LINE = 1L << 20,
+            F_OFFSET_POINT = 1L << 21, F_OFFSET_VALUES = 1L << 22, F_MODE_FRONT = 1L << 23,
+            F_MODE_BACK = 1L << 24,    F_LINE_WIDTH = 1L << 25,   F_POINT_SIZE = 1L << 26,
+            F_PROGRAM = 1L << 27,      F_DRAW_FBO = 1L << 28,     F_READ_FBO = 1L << 29,
+            F_ACTIVE_TEXTURE = 1L << 30, F_VERTEX_ARRAY = 1L << 31, F_ARRAY_BUFFER = 1L << 32,
+            F_ELEMENT_BUFFER = 1L << 33;
+    private static final long ALL_FIELDS = (1L << 34) - 1;
+    /** Each unit's {@code GL_TEXTURE_2D} binding is a field of its own, kept in a separate mask. */
+    private static final int ALL_UNITS = -1;
+
+    private static final long[] SLOT_FIELDS = new long[SLOT_COUNT];
+
+    static {
+        for (CgGlSlot s : SLOTS) SLOT_FIELDS[s.ordinal()] = fieldsOf(s);
+    }
+
+    private static long fieldsOf(CgGlSlot slot) {
+        switch (slot) {
+            case BLEND:          return F_BLEND_ENABLE | F_BLEND_FUNC | F_BLEND_EQUATION;
+            case DEPTH:          return F_DEPTH_TEST | F_DEPTH_MASK | F_DEPTH_FUNC;
+            case CULL:           return F_CULL_ENABLE | F_CULL_FACE | F_FRONT_FACE;
+            case STENCIL:        return F_STENCIL_TEST | F_STENCIL_FUNC | F_STENCIL_OP | F_STENCIL_MASK;
+            case ALPHA_TEST:     return F_ALPHA_TEST | F_ALPHA_FUNC;
+            case COLOR_MASK:     return F_COLOR_MASK;
+            case VIEWPORT:       return F_VIEWPORT;
+            case SCISSOR:        return F_SCISSOR_TEST | F_SCISSOR_BOX;
+            case POLYGON_OFFSET: return F_OFFSET_FILL | F_OFFSET_LINE | F_OFFSET_POINT | F_OFFSET_VALUES;
+            case POLYGON_MODE:   return F_MODE_FRONT | F_MODE_BACK;
+            case LINE_WIDTH:     return F_LINE_WIDTH;
+            case POINT_SIZE:     return F_POINT_SIZE;
+            case PROGRAM:        return F_PROGRAM;
+            case FBO:            return F_DRAW_FBO | F_READ_FBO;
+            case TEXTURES:       return F_ACTIVE_TEXTURE;
+            case VERTEX_INPUT:   return F_VERTEX_ARRAY | F_ARRAY_BUFFER | F_ELEMENT_BUFFER;
+            default: throw new IllegalStateException("No fields for slot " + slot);
         }
     }
 
@@ -79,8 +128,16 @@ public final class CgGlStateManager {
      */
     private static final boolean NO_DEDUP = Boolean.getBoolean("crystalgraphics.state.noDedup");
 
+    /** Set by {@link #verifyAgainst}; null when verification is off, which is the normal case. */
+    private CgGlStateProvider truth;
+    private boolean verifying;
+    private int verifyReported;
+    private final CgGlStateShadow verifyTracked = new CgGlStateShadow();
+    private final CgGlStateShadow verifyActual = new CgGlStateShadow();
+
     private final CgGlStateShadow current = new CgGlStateShadow();
-    private int unknownMask = ALL_UNKNOWN;
+    private long unknownFields = ALL_FIELDS;
+    private int unknownUnits = ALL_UNITS;
     private Thread owner;
 
     private CgGlStateProvider provider;
@@ -92,12 +149,32 @@ public final class CgGlStateManager {
      * Diagnostics. Plain fields because {@code CgProfiler} lives in {@code core}, which {@code platform}
      * must not depend on — read them from there rather than adding a callback for four counters.
      */
-    public long callsIssued, callsSkipped, adopted;
+    public long callsIssued, callsSkipped, adopted, disagreements;
 
     public CgGlStateManager(CgGlStateProvider provider) {
         if (provider == null) throw new IllegalArgumentException("provider must not be null");
         this.provider = provider;
         for (int i = 0; i < MAX_DEPTH; i++) frames[i] = new Frame();
+        if (Boolean.getBoolean("crystalgraphics.state.verify")) truth = CgGlStateProvider.glGet();
+    }
+
+    /**
+     * Checks the shadow against {@code truth} before trusting it for any decision. Diagnosis only: a
+     * {@code glGet} per decision.
+     *
+     * <pre>{@code
+     * -Dcrystalgraphics.state.verify=true          // against the driver, from the first frame
+     * manager.verifyAgainst(stubProvider);         // a test's own truth
+     * manager.verifyAgainst(null);                 // off
+     * }</pre>
+     *
+     * <p>A disagreement is logged once per domain, tracked beside actual, counted in {@link #disagreements},
+     * and the shadow takes the actual value — so the decision that follows is made against the truth, and a
+     * run with this on renders correctly while it reports. {@code FBO} and {@code PROGRAM} are never elided,
+     * so never checked.</p>
+     */
+    public void verifyAgainst(CgGlStateProvider truth) {
+        this.truth = truth;
     }
 
     public void setProvider(CgGlStateProvider p) {
@@ -109,7 +186,10 @@ public final class CgGlStateManager {
 
     // ── Trust ─────────────────────────────────────────────────────────────────
 
-    public boolean isTrusted(CgGlSlot slot) { return (unknownMask & (1 << slot.ordinal())) == 0; }
+    /** Whether every field of {@code slot} is known — which only a scope's read or a write of each one gives. */
+    public boolean isTrusted(CgGlSlot slot) {
+        return (unknownFields & SLOT_FIELDS[slot.ordinal()]) == 0 && (slot != CgGlSlot.TEXTURES || unknownUnits == 0);
+    }
 
     /**
      * Domains that are tracked but <strong>never deduplicated</strong> — every write is issued.
@@ -138,36 +218,128 @@ public final class CgGlStateManager {
     private static final int DEDUP_EXEMPT =
             (1 << CgGlSlot.FBO.ordinal()) | (1 << CgGlSlot.PROGRAM.ordinal());
 
-    private boolean stale(CgGlSlot slot) {
-        int bit = 1 << slot.ordinal();
-        if ((DEDUP_EXEMPT & bit) != 0) return true;
-        return NO_DEDUP || forcing || (unknownMask & bit) != 0;
+    /** Whether a write of {@code fields} must reach the driver regardless of what the shadow holds. */
+    private boolean stale(CgGlSlot slot, long fields) {
+        if (mustIssue(slot) || (unknownFields & fields) != 0) return true;
+        if (truth != null) verify(slot);
+        return false;
+    }
+
+    private boolean staleUnit(int unit) {
+        if (mustIssue(CgGlSlot.TEXTURES) || (unknownUnits & (1 << unit)) != 0) return true;
+        if (truth != null) verify(CgGlSlot.TEXTURES);
+        return false;
+    }
+
+    private boolean mustIssue(CgGlSlot slot) {
+        // `verifying`: the read in verify() steps the active texture unit through CgGL, and those calls must
+        // reach the driver rather than be judged against the shadow being checked.
+        return (DEDUP_EXEMPT & (1 << slot.ordinal())) != 0 || NO_DEDUP || forcing || verifying;
+    }
+
+    private void verify(CgGlSlot slot) {
+        verifying = true;
+        try {
+            verifyTracked.copyFrom(current);
+            verifyActual.copyFrom(current);
+            truth.read(slot, verifyActual);
+            // Also undoes what the read's own CgGL calls wrote into `current`.
+            current.copyFrom(verifyActual);
+            excuseUntrusted(verifyTracked, verifyActual);
+            String diff = verifyTracked.differences(verifyActual);
+            if (diff == null) return;
+            disagreements++;
+            int bit = 1 << slot.ordinal();
+            if ((verifyReported & bit) == 0) {
+                verifyReported |= bit;
+                System.err.println("[crystalgraphics] state.verify: " + slot + " disagrees with the driver: " + diff);
+                // Where it was noticed, not who wrote it -- the writer is whatever ran since this domain's
+                // last CgGL write, which is usually one frame of the stack below.
+                new Throwable("state.verify: " + slot).printStackTrace();
+            }
+        } finally {
+            verifying = false;
+        }
+    }
+
+    /** Copies every field the shadow does not vouch for from {@code actual}, so only a trusted field can disagree. */
+    private void excuseUntrusted(CgGlStateShadow t, CgGlStateShadow a) {
+        long u = unknownFields;
+        if ((u & F_BLEND_ENABLE) != 0) t.blendEnabled = a.blendEnabled;
+        if ((u & F_BLEND_FUNC) != 0) {
+            t.blendSrcRgb = a.blendSrcRgb; t.blendDstRgb = a.blendDstRgb;
+            t.blendSrcAlpha = a.blendSrcAlpha; t.blendDstAlpha = a.blendDstAlpha;
+        }
+        if ((u & F_BLEND_EQUATION) != 0) { t.blendEqRgb = a.blendEqRgb; t.blendEqAlpha = a.blendEqAlpha; }
+        if ((u & F_DEPTH_TEST) != 0) t.depthTest = a.depthTest;
+        if ((u & F_DEPTH_MASK) != 0) t.depthMask = a.depthMask;
+        if ((u & F_DEPTH_FUNC) != 0) t.depthFunc = a.depthFunc;
+        if ((u & F_CULL_ENABLE) != 0) t.cullEnabled = a.cullEnabled;
+        if ((u & F_CULL_FACE) != 0) t.cullFace = a.cullFace;
+        if ((u & F_FRONT_FACE) != 0) t.frontFace = a.frontFace;
+        if ((u & F_STENCIL_TEST) != 0) t.stencilTest = a.stencilTest;
+        if ((u & F_STENCIL_FUNC) != 0) {
+            t.stencilFunc = a.stencilFunc; t.stencilRef = a.stencilRef; t.stencilValueMask = a.stencilValueMask;
+        }
+        if ((u & F_STENCIL_OP) != 0) {
+            t.stencilFail = a.stencilFail; t.stencilZFail = a.stencilZFail; t.stencilZPass = a.stencilZPass;
+        }
+        if ((u & F_STENCIL_MASK) != 0) t.stencilWriteMask = a.stencilWriteMask;
+        if ((u & F_ALPHA_TEST) != 0) t.alphaTest = a.alphaTest;
+        if ((u & F_ALPHA_FUNC) != 0) { t.alphaFunc = a.alphaFunc; t.alphaRef = a.alphaRef; }
+        if ((u & F_COLOR_MASK) != 0) t.colorMaskPacked = a.colorMaskPacked;
+        if ((u & F_VIEWPORT) != 0) {
+            t.viewportX = a.viewportX; t.viewportY = a.viewportY; t.viewportW = a.viewportW; t.viewportH = a.viewportH;
+        }
+        if ((u & F_SCISSOR_TEST) != 0) t.scissorTest = a.scissorTest;
+        if ((u & F_SCISSOR_BOX) != 0) {
+            t.scissorX = a.scissorX; t.scissorY = a.scissorY; t.scissorW = a.scissorW; t.scissorH = a.scissorH;
+        }
+        if ((u & F_OFFSET_FILL) != 0) t.polygonOffsetFill = a.polygonOffsetFill;
+        if ((u & F_OFFSET_LINE) != 0) t.polygonOffsetLine = a.polygonOffsetLine;
+        if ((u & F_OFFSET_POINT) != 0) t.polygonOffsetPoint = a.polygonOffsetPoint;
+        if ((u & F_OFFSET_VALUES) != 0) {
+            t.polygonOffsetFactor = a.polygonOffsetFactor; t.polygonOffsetUnits = a.polygonOffsetUnits;
+        }
+        if ((u & F_MODE_FRONT) != 0) t.polygonModeFront = a.polygonModeFront;
+        if ((u & F_MODE_BACK) != 0) t.polygonModeBack = a.polygonModeBack;
+        if ((u & F_LINE_WIDTH) != 0) t.lineWidth = a.lineWidth;
+        if ((u & F_POINT_SIZE) != 0) t.pointSize = a.pointSize;
+        if ((u & F_PROGRAM) != 0) t.programId = a.programId;
+        if ((u & F_DRAW_FBO) != 0) t.drawFbo = a.drawFbo;
+        if ((u & F_READ_FBO) != 0) t.readFbo = a.readFbo;
+        if ((u & F_ACTIVE_TEXTURE) != 0) t.activeTextureUnit = a.activeTextureUnit;
+        if ((u & F_VERTEX_ARRAY) != 0) t.vertexArray = a.vertexArray;
+        if ((u & F_ARRAY_BUFFER) != 0) t.arrayBuffer = a.arrayBuffer;
+        if ((u & F_ELEMENT_BUFFER) != 0) t.elementArrayBuffer = a.elementArrayBuffer;
+        for (int unit = 0; unit < CgGlStateShadow.MAX_TEXTURE_UNITS; unit++) {
+            if ((unknownUnits & (1 << unit)) != 0) t.boundTexture2D[unit] = a.boundTexture2D[unit];
+        }
     }
 
     /**
-     * Suspends deduplication while a whole domain is being re-established.
-     *
-     * <p>Needed because trust is tracked per <em>domain</em> but a domain is written field by field. The
-     * first field to be re-issued calls {@code issue()}, which marks the domain trusted — and every
-     * remaining field of that same domain then compares equal to the stale shadow and is skipped. A restore
-     * that had to re-establish {@code DEPTH} would emit {@code glEnable(GL_DEPTH_TEST)} and silently drop
-     * {@code glDepthMask} and {@code glDepthFunc}.</p>
-     *
-     * <p>Scoped to exactly one {@code reissue} of one stale domain, so the ordinary case — restoring a
-     * domain nobody disturbed — still costs zero GL calls.</p>
+     * Suspends deduplication while a domain that is not wholly trusted is being restored, so every field of
+     * it reaches the driver. Scoped to one {@code reissue} of one domain; restoring a domain nobody disturbed
+     * still costs zero GL calls.
      */
     private boolean forcing;
 
-    private boolean issue(CgGlSlot slot) { unknownMask &= ~(1 << slot.ordinal()); callsIssued++; return true; }
+    private boolean issue(long fields) { unknownFields &= ~fields; callsIssued++; return true; }
 
     private boolean skip() { callsSkipped++; return false; }
 
     /** Marks domains untrustworthy without touching GL. For boundaries that are not scopes. */
     public void invalidate(CgGlSlot... slots) {
-        for (CgGlSlot s : slots) unknownMask |= 1 << s.ordinal();
+        for (CgGlSlot s : slots) {
+            unknownFields |= SLOT_FIELDS[s.ordinal()];
+            if (s == CgGlSlot.TEXTURES) unknownUnits = ALL_UNITS;
+        }
     }
 
-    public void invalidateAll() { unknownMask = ALL_UNKNOWN; }
+    public void invalidateAll() {
+        unknownFields = ALL_FIELDS;
+        unknownUnits = ALL_UNITS;
+    }
 
     /**
      * Whether this thread may touch GL state at all — true before anything has claimed it.
@@ -206,107 +378,107 @@ public final class CgGlStateManager {
 
     public boolean capabilityChanged(int cap, boolean enable) {
         assertOwner();
-        if (cap == CgGL.GL_BLEND)        return flagChanged(CgGlSlot.BLEND,   current.blendEnabled, enable) && set(() -> current.blendEnabled = enable, CgGlSlot.BLEND);
-        if (cap == CgGL.GL_DEPTH_TEST)   return flagChanged(CgGlSlot.DEPTH,   current.depthTest,    enable) && set(() -> current.depthTest    = enable, CgGlSlot.DEPTH);
-        if (cap == CgGL.GL_CULL_FACE)    return flagChanged(CgGlSlot.CULL,    current.cullEnabled,  enable) && set(() -> current.cullEnabled  = enable, CgGlSlot.CULL);
-        if (cap == CgGL.GL_STENCIL_TEST) return flagChanged(CgGlSlot.STENCIL, current.stencilTest,  enable) && set(() -> current.stencilTest  = enable, CgGlSlot.STENCIL);
-        if (cap == CgGL.GL_ALPHA_TEST)   return flagChanged(CgGlSlot.ALPHA_TEST, current.alphaTest, enable) && set(() -> current.alphaTest    = enable, CgGlSlot.ALPHA_TEST);
-        if (cap == CgGL.GL_SCISSOR_TEST) return flagChanged(CgGlSlot.SCISSOR, current.scissorTest,  enable) && set(() -> current.scissorTest  = enable, CgGlSlot.SCISSOR);
+        if (cap == CgGL.GL_BLEND)        return flagChanged(CgGlSlot.BLEND, F_BLEND_ENABLE, current.blendEnabled, enable) && set(() -> current.blendEnabled = enable, F_BLEND_ENABLE);
+        if (cap == CgGL.GL_DEPTH_TEST)   return flagChanged(CgGlSlot.DEPTH, F_DEPTH_TEST, current.depthTest, enable) && set(() -> current.depthTest = enable, F_DEPTH_TEST);
+        if (cap == CgGL.GL_CULL_FACE)    return flagChanged(CgGlSlot.CULL, F_CULL_ENABLE, current.cullEnabled, enable) && set(() -> current.cullEnabled = enable, F_CULL_ENABLE);
+        if (cap == CgGL.GL_STENCIL_TEST) return flagChanged(CgGlSlot.STENCIL, F_STENCIL_TEST, current.stencilTest, enable) && set(() -> current.stencilTest = enable, F_STENCIL_TEST);
+        if (cap == CgGL.GL_ALPHA_TEST)   return flagChanged(CgGlSlot.ALPHA_TEST, F_ALPHA_TEST, current.alphaTest, enable) && set(() -> current.alphaTest = enable, F_ALPHA_TEST);
+        if (cap == CgGL.GL_SCISSOR_TEST) return flagChanged(CgGlSlot.SCISSOR, F_SCISSOR_TEST, current.scissorTest, enable) && set(() -> current.scissorTest = enable, F_SCISSOR_TEST);
         if (cap == CgGL.GL_POLYGON_OFFSET_FILL)
-            return flagChanged(CgGlSlot.POLYGON_OFFSET, current.polygonOffsetFill, enable) && set(() -> current.polygonOffsetFill = enable, CgGlSlot.POLYGON_OFFSET);
+            return flagChanged(CgGlSlot.POLYGON_OFFSET, F_OFFSET_FILL, current.polygonOffsetFill, enable) && set(() -> current.polygonOffsetFill = enable, F_OFFSET_FILL);
         if (cap == CgGL.GL_POLYGON_OFFSET_LINE)
-            return flagChanged(CgGlSlot.POLYGON_OFFSET, current.polygonOffsetLine, enable) && set(() -> current.polygonOffsetLine = enable, CgGlSlot.POLYGON_OFFSET);
+            return flagChanged(CgGlSlot.POLYGON_OFFSET, F_OFFSET_LINE, current.polygonOffsetLine, enable) && set(() -> current.polygonOffsetLine = enable, F_OFFSET_LINE);
         if (cap == CgGL.GL_POLYGON_OFFSET_POINT)
-            return flagChanged(CgGlSlot.POLYGON_OFFSET, current.polygonOffsetPoint, enable) && set(() -> current.polygonOffsetPoint = enable, CgGlSlot.POLYGON_OFFSET);
+            return flagChanged(CgGlSlot.POLYGON_OFFSET, F_OFFSET_POINT, current.polygonOffsetPoint, enable) && set(() -> current.polygonOffsetPoint = enable, F_OFFSET_POINT);
         // An untracked capability. Always issue — we cannot say whether it is redundant, and guessing that
         // it is would drop a real call.
         return true;
     }
 
-    private boolean flagChanged(CgGlSlot slot, boolean held, boolean wanted) {
-        return stale(slot) || held != wanted;
+    private boolean flagChanged(CgGlSlot slot, long field, boolean held, boolean wanted) {
+        return stale(slot, field) || held != wanted;
     }
 
-    /** Applies the field write, marks the domain trusted and counts the call. Always returns true. */
-    private boolean set(Runnable write, CgGlSlot slot) {
+    /** Applies the field write, marks the field trusted and counts the call. Always returns true. */
+    private boolean set(Runnable write, long field) {
         write.run();
-        return issue(slot);
+        return issue(field);
     }
 
     public boolean blendFuncChanged(int srcRgb, int dstRgb, int srcAlpha, int dstAlpha) {
         assertOwner();
-        if (!stale(CgGlSlot.BLEND)
+        if (!stale(CgGlSlot.BLEND, F_BLEND_FUNC)
                 && current.blendSrcRgb == srcRgb && current.blendDstRgb == dstRgb
                 && current.blendSrcAlpha == srcAlpha && current.blendDstAlpha == dstAlpha) return skip();
         current.blendSrcRgb = srcRgb; current.blendDstRgb = dstRgb;
         current.blendSrcAlpha = srcAlpha; current.blendDstAlpha = dstAlpha;
-        return issue(CgGlSlot.BLEND);
+        return issue(F_BLEND_FUNC);
     }
 
     public boolean blendEquationChanged(int modeRgb, int modeAlpha) {
         assertOwner();
-        if (!stale(CgGlSlot.BLEND)
+        if (!stale(CgGlSlot.BLEND, F_BLEND_EQUATION)
                 && current.blendEqRgb == modeRgb && current.blendEqAlpha == modeAlpha) return skip();
         current.blendEqRgb = modeRgb; current.blendEqAlpha = modeAlpha;
-        return issue(CgGlSlot.BLEND);
+        return issue(F_BLEND_EQUATION);
     }
 
     public boolean depthMaskChanged(boolean flag) {
         assertOwner();
-        if (!stale(CgGlSlot.DEPTH) && current.depthMask == flag) return skip();
+        if (!stale(CgGlSlot.DEPTH, F_DEPTH_MASK) && current.depthMask == flag) return skip();
         current.depthMask = flag;
-        return issue(CgGlSlot.DEPTH);
+        return issue(F_DEPTH_MASK);
     }
 
     public boolean depthFuncChanged(int func) {
         assertOwner();
-        if (!stale(CgGlSlot.DEPTH) && current.depthFunc == func) return skip();
+        if (!stale(CgGlSlot.DEPTH, F_DEPTH_FUNC) && current.depthFunc == func) return skip();
         current.depthFunc = func;
-        return issue(CgGlSlot.DEPTH);
+        return issue(F_DEPTH_FUNC);
     }
 
     public boolean cullFaceChanged(int mode) {
         assertOwner();
-        if (!stale(CgGlSlot.CULL) && current.cullFace == mode) return skip();
+        if (!stale(CgGlSlot.CULL, F_CULL_FACE) && current.cullFace == mode) return skip();
         current.cullFace = mode;
-        return issue(CgGlSlot.CULL);
+        return issue(F_CULL_FACE);
     }
 
     public boolean frontFaceChanged(int mode) {
         assertOwner();
-        if (!stale(CgGlSlot.CULL) && current.frontFace == mode) return skip();
+        if (!stale(CgGlSlot.CULL, F_FRONT_FACE) && current.frontFace == mode) return skip();
         current.frontFace = mode;
-        return issue(CgGlSlot.CULL);
+        return issue(F_FRONT_FACE);
     }
 
     public boolean stencilFuncChanged(int func, int ref, int mask) {
         assertOwner();
-        if (!stale(CgGlSlot.STENCIL) && current.stencilFunc == func
+        if (!stale(CgGlSlot.STENCIL, F_STENCIL_FUNC) && current.stencilFunc == func
                 && current.stencilRef == ref && current.stencilValueMask == mask) return skip();
         current.stencilFunc = func; current.stencilRef = ref; current.stencilValueMask = mask;
-        return issue(CgGlSlot.STENCIL);
+        return issue(F_STENCIL_FUNC);
     }
 
     public boolean stencilOpChanged(int sfail, int dpfail, int dppass) {
         assertOwner();
-        if (!stale(CgGlSlot.STENCIL) && current.stencilFail == sfail
+        if (!stale(CgGlSlot.STENCIL, F_STENCIL_OP) && current.stencilFail == sfail
                 && current.stencilZFail == dpfail && current.stencilZPass == dppass) return skip();
         current.stencilFail = sfail; current.stencilZFail = dpfail; current.stencilZPass = dppass;
-        return issue(CgGlSlot.STENCIL);
+        return issue(F_STENCIL_OP);
     }
 
     public boolean stencilMaskChanged(int mask) {
         assertOwner();
-        if (!stale(CgGlSlot.STENCIL) && current.stencilWriteMask == mask) return skip();
+        if (!stale(CgGlSlot.STENCIL, F_STENCIL_MASK) && current.stencilWriteMask == mask) return skip();
         current.stencilWriteMask = mask;
-        return issue(CgGlSlot.STENCIL);
+        return issue(F_STENCIL_MASK);
     }
 
     public boolean alphaFuncChanged(int func, float ref) {
         assertOwner();
-        if (!stale(CgGlSlot.ALPHA_TEST) && current.alphaFunc == func && current.alphaRef == ref) return skip();
+        if (!stale(CgGlSlot.ALPHA_TEST, F_ALPHA_FUNC) && current.alphaFunc == func && current.alphaRef == ref) return skip();
         current.alphaFunc = func; current.alphaRef = ref;
-        return issue(CgGlSlot.ALPHA_TEST);
+        return issue(F_ALPHA_FUNC);
     }
 
     public boolean colorMaskChanged(boolean r, boolean g, boolean b, boolean a) {
@@ -314,9 +486,9 @@ public final class CgGlStateManager {
         int nibble = (r ? 1 : 0) | (g ? 2 : 0) | (b ? 4 : 0) | (a ? 8 : 0);
         int packed = 0;
         for (int t = 0; t < 8; t++) packed |= nibble << (t * 4);
-        if (!stale(CgGlSlot.COLOR_MASK) && current.colorMaskPacked == packed) return skip();
+        if (!stale(CgGlSlot.COLOR_MASK, F_COLOR_MASK) && current.colorMaskPacked == packed) return skip();
         current.colorMaskPacked = packed;
-        return issue(CgGlSlot.COLOR_MASK);
+        return issue(F_COLOR_MASK);
     }
 
     public boolean colorMaskiChanged(int buf, boolean r, boolean g, boolean b, boolean a) {
@@ -325,96 +497,84 @@ public final class CgGlStateManager {
         int shift = buf * 4;
         int nibble = (r ? 1 : 0) | (g ? 2 : 0) | (b ? 4 : 0) | (a ? 8 : 0);
         int packed = (current.colorMaskPacked & ~(0xF << shift)) | (nibble << shift);
-        if (!stale(CgGlSlot.COLOR_MASK) && current.colorMaskPacked == packed) return skip();
+        if (!stale(CgGlSlot.COLOR_MASK, F_COLOR_MASK) && current.colorMaskPacked == packed) return skip();
         current.colorMaskPacked = packed;
-        return issue(CgGlSlot.COLOR_MASK);
+        // One target of eight vouches for nothing about the other seven, so trust is left as it was.
+        callsIssued++;
+        return true;
     }
 
     public boolean viewportChanged(int x, int y, int w, int h) {
         assertOwner();
-        if (!stale(CgGlSlot.VIEWPORT) && current.viewportX == x && current.viewportY == y
+        if (!stale(CgGlSlot.VIEWPORT, F_VIEWPORT) && current.viewportX == x && current.viewportY == y
                 && current.viewportW == w && current.viewportH == h) return skip();
         current.viewportX = x; current.viewportY = y; current.viewportW = w; current.viewportH = h;
-        return issue(CgGlSlot.VIEWPORT);
+        return issue(F_VIEWPORT);
     }
 
     public boolean scissorChanged(int x, int y, int w, int h) {
         assertOwner();
-        if (!stale(CgGlSlot.SCISSOR) && current.scissorX == x && current.scissorY == y
+        if (!stale(CgGlSlot.SCISSOR, F_SCISSOR_BOX) && current.scissorX == x && current.scissorY == y
                 && current.scissorW == w && current.scissorH == h) return skip();
         current.scissorX = x; current.scissorY = y; current.scissorW = w; current.scissorH = h;
-        return issue(CgGlSlot.SCISSOR);
+        return issue(F_SCISSOR_BOX);
     }
 
     public boolean polygonOffsetChanged(float factor, float units) {
         assertOwner();
-        if (!stale(CgGlSlot.POLYGON_OFFSET)
+        if (!stale(CgGlSlot.POLYGON_OFFSET, F_OFFSET_VALUES)
                 && current.polygonOffsetFactor == factor && current.polygonOffsetUnits == units) return skip();
         current.polygonOffsetFactor = factor; current.polygonOffsetUnits = units;
-        return issue(CgGlSlot.POLYGON_OFFSET);
+        return issue(F_OFFSET_VALUES);
     }
 
     public boolean polygonModeChanged(int face, int mode) {
         assertOwner();
         boolean front = face == CgGL.GL_FRONT || face == CgGL.GL_FRONT_AND_BACK;
         boolean back  = face == CgGL.GL_BACK  || face == CgGL.GL_FRONT_AND_BACK;
-        boolean same = !stale(CgGlSlot.POLYGON_MODE)
+        long fields = (front ? F_MODE_FRONT : 0) | (back ? F_MODE_BACK : 0);
+        boolean same = !stale(CgGlSlot.POLYGON_MODE, fields)
                 && (!front || current.polygonModeFront == mode)
                 && (!back  || current.polygonModeBack  == mode);
         if (same) return skip();
         if (front) current.polygonModeFront = mode;
         if (back)  current.polygonModeBack  = mode;
-        return issue(CgGlSlot.POLYGON_MODE);
+        return issue(fields);
     }
 
     public boolean lineWidthChanged(float width) {
         assertOwner();
-        if (!stale(CgGlSlot.LINE_WIDTH) && current.lineWidth == width) return skip();
+        if (!stale(CgGlSlot.LINE_WIDTH, F_LINE_WIDTH) && current.lineWidth == width) return skip();
         current.lineWidth = width;
-        return issue(CgGlSlot.LINE_WIDTH);
+        return issue(F_LINE_WIDTH);
     }
 
     public boolean pointSizeChanged(float size) {
         assertOwner();
-        if (!stale(CgGlSlot.POINT_SIZE) && current.pointSize == size) return skip();
+        if (!stale(CgGlSlot.POINT_SIZE, F_POINT_SIZE) && current.pointSize == size) return skip();
         current.pointSize = size;
-        return issue(CgGlSlot.POINT_SIZE);
+        return issue(F_POINT_SIZE);
     }
 
     public boolean programChanged(int program) {
         assertOwner();
-        if (!stale(CgGlSlot.PROGRAM) && current.programId == program) return skip();
+        if (!stale(CgGlSlot.PROGRAM, F_PROGRAM) && current.programId == program) return skip();
         current.programId = program;
-        return issue(CgGlSlot.PROGRAM);
+        return issue(F_PROGRAM);
     }
 
-    /**
-     * Framebuffer binding, with the call family derived from the target rather than passed in.
-     *
-     * <p>An {@code EXT_framebuffer_object} name is not valid in a Core call, so switching families must
-     * release through the family that owns the name. {@code EXT} identifies itself by binding
-     * {@code GL_FRAMEBUFFER_EXT}; Core and {@code ARB_framebuffer_object} share one object namespace and
-     * need no distinction between them.</p>
-     */
     public boolean fboChanged(int target, int fbo) {
         assertOwner();
-        CgGlStateShadow.FboFamily family = target == CgGL.GL_FRAMEBUFFER_EXT
-                ? CgGlStateShadow.FboFamily.EXT
-                : CgGlStateShadow.FboFamily.CORE_OR_ARB;
-
-        boolean crossFamily = current.fboFamily != CgGlStateShadow.FboFamily.UNKNOWN
-                && current.fboFamily != family;
-
         boolean draw = target != CgGL.GL_READ_FRAMEBUFFER;
         boolean read = target != CgGL.GL_DRAW_FRAMEBUFFER;
+        long fields = (draw ? F_DRAW_FBO : 0) | (read ? F_READ_FBO : 0);
 
-        if (!crossFamily && !stale(CgGlSlot.FBO)
+        if (!stale(CgGlSlot.FBO, fields)
                 && (!draw || current.drawFbo == fbo) && (!read || current.readFbo == fbo)) return skip();
 
         if (draw) current.drawFbo = fbo;
         if (read) current.readFbo = fbo;
-        current.fboFamily = family;
-        return issue(CgGlSlot.FBO);
+        return issue(fields);
     }
 
     // -- Deletions ----------------------------------------------------------------------------------
@@ -474,20 +634,29 @@ public final class CgGlStateManager {
         assertOwner();
         int unit = texture - CgGL.GL_TEXTURE0;
         if (unit < 0 || unit >= CgGlStateShadow.MAX_TEXTURE_UNITS) return true;
-        if (!stale(CgGlSlot.TEXTURES) && current.activeTextureUnit == unit) return skip();
+        if (!stale(CgGlSlot.TEXTURES, F_ACTIVE_TEXTURE) && current.activeTextureUnit == unit) return skip();
         current.activeTextureUnit = unit;
-        return issue(CgGlSlot.TEXTURES);
+        return issue(F_ACTIVE_TEXTURE);
     }
 
     public boolean textureChanged(int target, int texture) {
         assertOwner();
         // Only GL_TEXTURE_2D is modelled; other targets are always issued rather than assumed redundant.
         if (target != CgGL.GL_TEXTURE_2D) return true;
+        if ((unknownFields & F_ACTIVE_TEXTURE) != 0) {
+            // Which unit this lands on is unknown, so whatever any unit's binding was believed to be may
+            // now be wrong.
+            unknownUnits = ALL_UNITS;
+            callsIssued++;
+            return true;
+        }
         int unit = current.activeTextureUnit;
         if (unit < 0 || unit >= CgGlStateShadow.MAX_TEXTURE_UNITS) return true;
-        if (!stale(CgGlSlot.TEXTURES) && current.boundTexture2D[unit] == texture) return skip();
+        if (!staleUnit(unit) && current.boundTexture2D[unit] == texture) return skip();
         current.boundTexture2D[unit] = texture;
-        return issue(CgGlSlot.TEXTURES);
+        unknownUnits &= ~(1 << unit);
+        callsIssued++;
+        return true;
     }
 
     /**
@@ -500,23 +669,24 @@ public final class CgGlStateManager {
      */
     public boolean vertexArrayChanged(int array) {
         assertOwner();
-        if (!stale(CgGlSlot.VERTEX_INPUT) && current.vertexArray == array) return skip();
+        if (!stale(CgGlSlot.VERTEX_INPUT, F_VERTEX_ARRAY) && current.vertexArray == array) return skip();
         current.vertexArray = array;
         current.elementArrayBuffer = CgGlStateShadow.UNKNOWN_BINDING;
-        return issue(CgGlSlot.VERTEX_INPUT);
+        unknownFields |= F_ELEMENT_BUFFER;
+        return issue(F_VERTEX_ARRAY);
     }
 
     public boolean bufferChanged(int target, int buffer) {
         assertOwner();
         if (target == CgGL.GL_ARRAY_BUFFER) {
-            if (!stale(CgGlSlot.VERTEX_INPUT) && current.arrayBuffer == buffer) return skip();
+            if (!stale(CgGlSlot.VERTEX_INPUT, F_ARRAY_BUFFER) && current.arrayBuffer == buffer) return skip();
             current.arrayBuffer = buffer;
-            return issue(CgGlSlot.VERTEX_INPUT);
+            return issue(F_ARRAY_BUFFER);
         }
         if (target == CgGL.GL_ELEMENT_ARRAY_BUFFER) {
-            if (!stale(CgGlSlot.VERTEX_INPUT) && current.elementArrayBuffer == buffer) return skip();
+            if (!stale(CgGlSlot.VERTEX_INPUT, F_ELEMENT_BUFFER) && current.elementArrayBuffer == buffer) return skip();
             current.elementArrayBuffer = buffer;
-            return issue(CgGlSlot.VERTEX_INPUT);
+            return issue(F_ELEMENT_BUFFER);
         }
         return true;    // uniform/shader-storage etc. — not modelled, always issued
     }
@@ -601,7 +771,8 @@ public final class CgGlStateManager {
 
     private void adopt(CgGlSlot slot) {
         provider.read(slot, current);
-        unknownMask &= ~(1 << slot.ordinal());
+        unknownFields &= ~SLOT_FIELDS[slot.ordinal()];
+        if (slot == CgGlSlot.TEXTURES) unknownUnits = 0;
         adopted++;
     }
 
@@ -646,10 +817,9 @@ public final class CgGlStateManager {
             if (foreign) invalidateAll();
             for (CgGlSlot slot : SLOTS) {
                 if ((mask & (1 << slot.ordinal())) == 0) continue;
-                // A stale domain must be re-established in full, not just up to its first field — see
-                // `forcing`. A trusted one takes the normal deduplicated path and usually emits nothing.
-                boolean force = stale(slot);
-                forcing = force;
+                // A domain not wholly trusted is re-established in full — see `forcing`. A trusted one takes
+                // the normal deduplicated path and usually emits nothing.
+                forcing = mustIssue(slot) || !isTrusted(slot);
                 try {
                     reissue(slot, saved);
                 } finally {
@@ -732,11 +902,8 @@ public final class CgGlStateManager {
             case POINT_SIZE: CgGL.glPointSize(s.pointSize); break;
             case PROGRAM:    CgGL.glUseProgram(s.programId); break;
             case FBO:
-                if (s.fboFamily == CgGlStateShadow.FboFamily.EXT || s.drawFbo == s.readFbo) {
-                    // EXT has no draw/read split; and a matching pair needs only one bind.
-                    CgGL.glBindFramebuffer(
-                            s.fboFamily == CgGlStateShadow.FboFamily.EXT
-                                    ? CgGL.GL_FRAMEBUFFER_EXT : CgGL.GL_FRAMEBUFFER, s.drawFbo);
+                if (s.drawFbo == s.readFbo) {
+                    CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, s.drawFbo);   // a matching pair needs one bind
                 } else {
                     CgGL.glBindFramebuffer(CgGL.GL_DRAW_FRAMEBUFFER, s.drawFbo);
                     CgGL.glBindFramebuffer(CgGL.GL_READ_FRAMEBUFFER, s.readFbo);
@@ -744,7 +911,8 @@ public final class CgGlStateManager {
                 break;
             case TEXTURES:
                 for (int unit = 0; unit < CgGlStateShadow.MAX_TEXTURE_UNITS; unit++) {
-                    if (current.boundTexture2D[unit] == s.boundTexture2D[unit]) continue;
+                    // A unit is skipped only when its binding is known to match; an unknown one is rebound.
+                    if ((unknownUnits & (1 << unit)) == 0 && current.boundTexture2D[unit] == s.boundTexture2D[unit]) continue;
                     CgGL.glActiveTexture(CgGL.GL_TEXTURE0 + unit);
                     CgGL.glBindTexture(CgGL.GL_TEXTURE_2D, s.boundTexture2D[unit]);
                 }

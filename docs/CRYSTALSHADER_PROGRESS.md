@@ -44,8 +44,8 @@ GLSL source strings (vertex + fragment). Handles version gating (`#version 430 c
 `v2f` struct → flat-packed `in/out` varying expansion, and the `main()` wrapper around the
 user's `vertex()`/`fragment()` functions. This is the engine's core compilation intelligence.
 
-**`CgShaderFactory` / `CgCoreShaderProgram` / `CgArbShaderProgram`** — The waterfall compile
-pipeline: attempt GL20 first, fall back to ARB. Uniforms queried and cached by name. The shader
+**`CgShaderFactory` / `CgCoreShaderProgram`** — The compile pipeline (the ARB fallback went with the
+GL 3.3 floor). Uniforms queried and cached by name. The shader
 preprocessor (`CgShaderPreprocessor`) handles `#include`, `#pragma once`, and cycle detection
 across all GLSL includes, including `cg_env.glsl`.
 

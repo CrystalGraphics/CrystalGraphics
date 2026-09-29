@@ -14,9 +14,9 @@ callers**; its only consumer, `CrossApiTransition`, had been deleted long before
 pointing at a class that no longer existed. `CgFrameBuffer.wrap()` took one as a parameter, validated it,
 stored it — and `wrap()` had no callers either.
 
-Where the concept genuinely belongs is `CgCapabilities.FramebufferPath` (`CORE_GL30`/`ARB_FBO`/`EXT_FBO`/
-`NONE`) in `platform`, which is where capability detection lives and where the waterfall is actually
-selected. `CallFamily` sat in a *state* package because the mirror once tagged bindings with it.
+The concept itself is gone too: at the GL 3.3 floor framebuffers are core, so there is no FBO family to
+select (`CgCapabilities.FramebufferPath` went with the ARB/EXT chains in D1). `CallFamily` sat in a *state*
+package because the mirror once tagged bindings with it.
 
 > **The lesson, since it has now cost two wrong claims in one session:** `grep -l` counts files that mention
 > a symbol. It does not distinguish a caller from an override, a javadoc link, or an import. Before calling
@@ -143,15 +143,22 @@ of what you named, on the way out. Declaring nothing is valid: it invalidates wi
 > other; this scope stands on only one side of that boundary. On 1.7.10 with Angelica the problem largely
 > dissolves, because our provider reads Angelica's mirror, which observed both sides.
 
-### Why re-establishing a domain suspends deduplication
+### Trust is per field
 
-Trust is tracked per **domain**, but a domain is written **field by field**. The first field re-issued marks
-the domain trusted, after which every remaining field of that domain compares equal to the stale shadow and
-is skipped. `DEPTH` emitted its enable and silently dropped both the write mask and the compare function —
-two thirds of the domain left on whatever the foreign code set.
+A **field** is what one setter writes — `glDepthMask`'s mask, `glBlendFuncSeparate`'s four factors, one
+texture unit's binding. A write vouches for its own field and nothing else; a scope's read (`adopt`) vouches
+for the whole domain. `isTrusted(slot)` is true only when every field of the domain is known.
 
-So `reissue` suspends deduplication for the duration of one stale domain (`forcing`). A domain nobody
-disturbed still takes the normal path and usually emits nothing, so the fast case is unaffected.
+It was per domain until 2026-09-29, and `state.verify` found the hole on its first run: `glEnable(GL_DEPTH_TEST)`
+made `depthMask` and `depthFunc` "known" at defaults nobody had read, so a later `glDepthMask(false)` matching
+that default was elided. Two consequences are easy to get wrong:
+
+- **A texture bind is only attributable to a known active unit.** With the unit unknown the bind is issued and
+  every unit's binding is forgotten, since any of them may now be the one that changed.
+- **`glColorMaski` vouches for nothing.** One target of eight says nothing about the other seven.
+
+`reissue` still suspends deduplication (`forcing`) for a domain that is not wholly trusted, so a restore
+re-establishes every field. A domain nobody disturbed takes the normal path and usually emits nothing.
 
 ## Diagnostics — reach for these before reasoning
 
@@ -160,7 +167,7 @@ the right one in a single run.
 
 | Flag | Effect |
 |---|---|
-| `-Dcrystalgraphics.state.verify=true` | Re-read the domain before eliminating a call and compare. Logs domain plus tracked-vs-actual on mismatch, then emits anyway. **Names the culprit.** Very slow — diagnosis only. |
+| `-Dcrystalgraphics.state.verify=true` | Before a trusted field decides anything, re-read its domain through `glGet` and compare the fields the shadow vouches for — a field it never read or wrote cannot be wrong, only unknown (1.7.10's lightmap on unit 1 is one). A mismatch is logged once per domain — tracked beside actual, with the Java stack where it was noticed — counted in `disagreements`, and the shadow takes the actual value, so the run renders correctly while it reports. `manager.verifyAgainst(provider)` does the same against any provider, which is how the tests drive it. Very slow — diagnosis only. The harness gallery reports nothing. |
 | `-Dcrystalgraphics.state.noDedup=true` | Never eliminate. Separates "the shadow is lying" from "a semantic regression", and is the support answer for a user with a broken modpack. |
 
 ## Platform providers

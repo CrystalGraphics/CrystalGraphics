@@ -2,8 +2,8 @@
 
 > Root guide: [`CrystalGraphics/AGENTS.md`](../../../../../../../../../AGENTS.md)
 
-Provides a unified FBO (Framebuffer Object) API across three OpenGL backends:
-**Core GL30**, **ARB_framebuffer_object**, and **EXT_framebuffer_object**.
+Provides the FBO (Framebuffer Object) API over core GL 3.0 framebuffers — the GL 3.3 floor has no ARB or
+EXT fallback, so there is one owned implementation, `CgCoreFrameBuffer`, and a wrapper for foreign FBOs.
 
 ## Delegation Pattern
 
@@ -15,15 +15,13 @@ This mirrors `CgMaterial.load` → `CgMaterialRegistry.getOrCreate` → `CgMater
 
 ## Architecture: Parent + Dispatch Pattern
 
-All shared logic lives in `CgFrameBuffer`. Each concrete backend contains
-only a constructor and nine one-line dispatch overrides that route calls to
-their respective LWJGL class.
+All shared logic lives in `CgFrameBuffer`. `CgCoreFrameBuffer` contains only a constructor and the
+one-line dispatch overrides, each a `CgGL` call.
 
 ```
 CgFrameBuffer (abstract base, gl/framebuffer/)
-    ├── CgCoreFrameBuffer   → routes via GL30.*
-    ├── CgArbFrameBuffer    → routes via ARBFramebufferObject.*
-    └── CgExtFrameBuffer    → routes via EXTFramebufferObject.*EXT()
+    ├── CgCoreFrameBuffer   → routes via CgGL (core GL 3.0)
+    └── WrappedFrameBuffer  → a foreign FBO, not owned
 
 CgFrameBufferRegistry       → single source of truth for all owned FBOs;
                               framebuffers LinkedHashMap; screen-sized auto-resize
@@ -52,41 +50,14 @@ CgFrameBufferRegistry       → single source of truth for all owned FBOs;
 | Method | Visibility | Role |
 |--------|-----------|------|
 | `CgFrameBuffer.create(name, w, h, format)` | `public static` | Thin delegator → `CgFrameBufferRegistry.get().getOrCreate(...)` |
-| `CgFrameBuffer.createInternal(name, w, h, format)` | `package-private static` | Real work — backend selection, `initGl`, validation; called only by registry |
+| `CgFrameBuffer.createInternal(name, w, h, format)` | `package-private static` | Real work — `initGl`, validation; called only by registry |
 
-## What Each Backend Owns
+## What CgCoreFrameBuffer Owns
 
-- One package-private constructor `(String name, CgFrameBufferFormat format, int width, int height)`
-  calling `super(name, format, width, height)`.
-- `callFamily()` — returns `CORE_GL30`, `ARB_FBO`, or `EXT_FBO`.
-- Nine dispatch overrides (one line each) — see table below.
-
----
-
-## Abstract GL Dispatch Methods
-
-These are the only things that differ between backends. Each is a single LWJGL call:
-
-| Abstract Method | Core | ARB | EXT |
-|----------------|------|-----|-----|
-| `doGenFramebuffer()` | `GL30.glGenFramebuffers()` | `ARBFramebufferObject.glGenFramebuffers()` | `EXTFramebufferObject.glGenFramebuffersEXT()` |
-| `deleteFramebuffer(id)` | `GL30.glDeleteFramebuffers` | `ARBFramebufferObject.glDeleteFramebuffers` | `EXTFramebufferObject.glDeleteFramebuffersEXT` |
-| `deleteRenderbuffer(id)` | `GL30.glDeleteRenderbuffers` | `ARBFramebufferObject.glDeleteRenderbuffers` | `EXTFramebufferObject.glDeleteRenderbuffersEXT` |
-| `doBindFbo(target, id)` | `GL30.glBindFramebuffer(target, id)` | `ARBFramebufferObject.glBindFramebuffer(target, id)` | `EXTFramebufferObject.glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, id)` |
-| `doFramebufferTexture2D(target, att, texTarget, texId)` | `GL30.glFramebufferTexture2D(...)` | `ARBFramebufferObject.glFramebufferTexture2D(...)` | `EXTFramebufferObject.glFramebufferTexture2DEXT(...)` |
-| `doFramebufferRenderbuffer(target, att, rboId)` | `GL30.glFramebufferRenderbuffer(...)` | `ARBFramebufferObject.glFramebufferRenderbuffer(...)` | `EXTFramebufferObject.glFramebufferRenderbufferEXT(...)` |
-| `doGenRenderbuffer()` | `GL30.glGenRenderbuffers()` | `ARBFramebufferObject.glGenRenderbuffers()` | `EXTFramebufferObject.glGenRenderbuffersEXT()` |
-| `doRenderbufferStorage(fmt,w,h)` | `GL30.glRenderbufferStorage(...)` | `ARBFramebufferObject.glRenderbufferStorage(...)` | `EXTFramebufferObject.glRenderbufferStorageEXT(...)` |
-| `doCheckFramebufferStatus()` | `GL30.glCheckFramebufferStatus(...)` | `ARBFramebufferObject.glCheckFramebufferStatus(...)` | `EXTFramebufferObject.glCheckFramebufferStatusEXT(...)` |
-
----
-
-## EXT-Specific Quirks
-
-- **No separate draw/read targets**: `bindDraw()` and `bindRead()` both bind to
-  `GL_FRAMEBUFFER_EXT`. Overridden in `CgExtFrameBuffer`.
-- **No MRT**: `drawBuffers()` always throws `UnsupportedOperationException`. Overridden.
-- **`doBindFbo` ignores the `target` argument**: EXT only exposes the combined target.
+A package-private constructor `(String name, CgFrameBufferFormat format, int width, int height)` and the
+dispatch overrides (`doGenFramebuffer`, `deleteFramebuffer`, `deleteRenderbuffer`, `doBindFbo`,
+`doFramebufferTexture2D`, `doFramebufferRenderbuffer`, `doGenRenderbuffer`, `doRenderbufferStorage`,
+`doCheckFramebufferStatus`), each one `CgGL` call.
 
 ---
 

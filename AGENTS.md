@@ -136,12 +136,10 @@ The repository is a Gradle multi-project build. Every subproject has a distinct 
 
 **Rule**: `core/` and `platform/` have zero compile dependency on LWJGL, MC, or any loader.
 
-> ⚠️ **Not currently enforced here.** The import-guard `doLast` in `core/build.gradle.kts` is commented
-> out (inside a disabled dual-pipeline experiment), so a stray `import net.minecraft.*` in `core/` would
-> compile. CrystalGUI's equivalent guard *is* active — do not assume this one is by analogy. Either
-> re-enable it or keep this warning; silently claiming enforcement that does not exist is worse than
-> having none. (The `cgStateWriteGuard` task once cited here as the working pattern no longer exists — the
-> V2 state rewrite made the rule it enforced unnecessary. Copy CrystalGUI's guard instead.)
+> **Enforced**: `compileJava` in both `core/build.gradle.kts` and `platform/build.gradle.kts` fails on an
+> import of `net.minecraft`, `cpw.mods.fml`, `net.minecraftforge` or `org.lwjgl`. What it cannot see is a
+> client-only class *constructed* on a server — that is a runtime property, and `serverSmoke` is what
+> catches it.
 
 ---
 
@@ -242,8 +240,7 @@ Use this when adding anything that touches GL, lifecycle, or loader-specific eve
 
 - **Fail Fast**: throw exceptions for unsupported capabilities; never silently degrade
 - **Multi-Mod First**: other mods will mutate GL state; design for cooperation, not control
-- **Hardware Fragmentation**: three incompatible GL families exist on real hardware — Core GL30, ARB, EXT; each requires a different method signature (see `gl/framebuffer/AGENTS.md`)
-- **Waterfall Fallback**: capability selection always follows Core GL30 > ARB > EXT
+- **A GL 3.3 floor, and gates above it**: `CgCapabilities.detect()` throws below OpenGL 3.3, so nothing core in 3.3 has an ARB or EXT fallback; what is above it (SSBO, `glCopyImageSubData`) keeps its gate and its fallback
 - **Angelica Coexistence**: when Angelica shader mod is present, CrystalGraphics runs in gap-only redirect mode
 
 ---
@@ -292,7 +289,7 @@ toolchains are launchers, and `--release`/source-target still decides each modul
 
 | In module | Forbidden | Reason |
 |---|---|---|
-| `core/`, `platform/` | `net.minecraft.*`, `net.minecraftforge.*`, `org.lwjgl.*` | Loader-blind — **guard currently disabled**, see the warning above |
+| `core/`, `platform/` | `net.minecraft.*`, `net.minecraftforge.*`, `cpw.mods.fml.*`, `org.lwjgl.*` | Loader-blind — enforced by each module's import guard |
 | `runtime/mc/modern/*` | `org.lwjgl.input.Mouse`, LWJGL2 input types | LWJGL3 environment |
 | `runtime/mc/1710/*` | LWJGL3 GL calls, `com.mojang.*` | LWJGL2 environment |
 
@@ -754,7 +751,7 @@ Use with `#include "crystalgraphics:shaders/lib/color.glsl"` etc. (`#pragma once
 
 ## Framebuffers
 
-`CgFrameBuffer` is the unified FBO abstraction. Create it via `CgFrameBufferFormat` builder — the format describes all attachments, the FBO handles Core/ARB/EXT dispatch internally.
+`CgFrameBuffer` is the unified FBO abstraction. Create it via `CgFrameBufferFormat` builder — the format describes all attachments, the FBO dispatches through `CgGL`.
 
 ```java
 CgFrameBufferFormat fmt = CgFrameBufferFormat.builder("my_fbo")
@@ -939,9 +936,7 @@ CgGlState.saveAll()       // → all 16 slots (used by CgRenderPipeline.execute(
 
 ## Capabilities
 
-`CgCapabilities.detect()` — queries LWJGL `ContextCapabilities`; result is cached per context. Key checks: `isCoreFbo()`, `isArbFbo()`, `isExtFbo()`, `isCore()`, `isArbSync()`, `isVaoSupported()`, `preferredShaderBufferPath()` (returns SSBO → TBO → NONE based on hardware).
-
-Waterfall: Core GL30 > ARB > EXT. Factory methods on `CgFrameBuffer`, `CgVertexArray`, and `CgStreamBuffer` all follow this order internally — callers do not need to check capabilities manually for normal API usage.
+`CgCapabilities.detect()` — cached per context; **throws below OpenGL 3.3**. Above the floor it answers `shaderBufferPath()` (SSBO → TBO), `vertexStreamTier()` / `shaderStreamTier()` (the stream-buffer waterfall, see `gl/buffer/AGENTS.md`), `isCopyImageSubDataSupported()`, the limits (`getMaxDrawBuffers()`, `getMaxTextureUnits()`, …) and `isCoreProfile()`.
 
 ## Render State
 
@@ -1110,14 +1105,14 @@ All 35 package guides under `src/main/java/com/crystalgraphics/`. Relative paths
 | Path | What it covers |
 |---|---|
 | `api/shader/AGENTS.md` | `CgShader` lifecycle, `CgShaderPreprocessor` (#include/pragma-once/cycle detection), `CgShaderBindings` fluent API, `CgActiveUniform` |
-| `gl/shader/AGENTS.md` | `CgShaderFactory` waterfall, `CgCoreShaderProgram` (GL20), `CgArbShaderProgram` (ARB), `StandaloneCgShader` |
+| `gl/shader/AGENTS.md` | `CgShaderFactory`, `CgCoreShaderProgram`, `StandaloneCgShader` |
 | `mc/shader/AGENTS.md` | `CgShaderImpl` hot-reload flow, `CgShaderManagerImpl` cache, `CgShaderReloadHook` (F3+T), `CgSystemUniformRegistry` |
 
 ### Framebuffers
 | Path | What it covers |
 |---|---|
 | `api/framebuffer/AGENTS.md` | `CgFrameBufferFormat` builder API, validation rules, equality |
-| `gl/framebuffer/AGENTS.md` | `CgFrameBuffer` dispatch architecture, `CgFrameBufferRegistry`, EXT quirks, ownership model |
+| `gl/framebuffer/AGENTS.md` | `CgFrameBuffer` dispatch architecture, `CgFrameBufferRegistry`, ownership model |
 
 ### Textures
 | Path | What it covers |
@@ -1141,7 +1136,7 @@ All 35 package guides under `src/main/java/com/crystalgraphics/`. Relative paths
 | Path | What it covers |
 |---|---|
 | `api/buffer/AGENTS.md` | `CgGpuType`, `CgBufferField`, `CgBufferFormat` builder, std140/std430 alignment rules |
-| `gl/buffer/AGENTS.md` | `CgStreamBuffer` waterfall (sync ring → orphan → subdata), `CgQuadIndexBuffer` |
+| `gl/buffer/AGENTS.md` | `CgStreamBuffer` tier waterfall (persistent ring → mapped ring → orphan → subdata), the frame clock `CgFrameRing`, `CgQuadIndexBuffer` |
 | `gl/buffer/shader/AGENTS.md` | `CgShaderBuffer` (SSBO/TBO), `CgUniformBuffer` (UBO), `CgShaderBufferRegistry`, binding point rules |
 | `gl/buffer/staging/AGENTS.md` | `CgStagingBuffer`, `CgVertexWriter` (all vertex packing goes here), `CgInstanceWriter` |
 

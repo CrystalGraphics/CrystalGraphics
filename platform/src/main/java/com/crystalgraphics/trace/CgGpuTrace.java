@@ -1,6 +1,5 @@
 package com.crystalgraphics.trace;
 
-import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
 
 import java.util.ArrayDeque;
@@ -214,7 +213,7 @@ public final class CgGpuTrace {
 
     private static boolean supported() {
         if (support == Support.UNKNOWN) {
-            support = CgCapabilities.detect().isTimerQueriesSupported() ? Support.SUPPORTED : Support.UNSUPPORTED;
+            support = Support.SUPPORTED;   // core in GL 3.3, the floor
         }
         return support == Support.SUPPORTED;
     }

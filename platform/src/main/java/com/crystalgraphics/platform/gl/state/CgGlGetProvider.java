@@ -162,19 +162,8 @@ public class CgGlGetProvider implements CgGlStateProvider {
     }
 
     protected void readFbo(CgGlStateShadow t) {
-        CgCapabilities caps = CgCapabilities.detect();
-        if (caps.isCoreFbo() || caps.isArbFbo()) {
-            t.drawFbo   = CgGL.glGetInteger(CgGL.GL_DRAW_FRAMEBUFFER_BINDING);
-            t.readFbo   = CgGL.glGetInteger(CgGL.GL_READ_FRAMEBUFFER_BINDING);
-            t.fboFamily = CgGlStateShadow.FboFamily.CORE_OR_ARB;
-        } else if (caps.isExtFbo()) {
-            // EXT has a single binding covering both targets.
-            t.drawFbo = t.readFbo = CgGL.glGetInteger(CgGL.GL_FRAMEBUFFER_BINDING_EXT);
-            t.fboFamily = CgGlStateShadow.FboFamily.EXT;
-        } else {
-            t.drawFbo = t.readFbo = 0;
-            t.fboFamily = CgGlStateShadow.FboFamily.UNKNOWN;
-        }
+        t.drawFbo = CgGL.glGetInteger(CgGL.GL_DRAW_FRAMEBUFFER_BINDING);
+        t.readFbo = CgGL.glGetInteger(CgGL.GL_READ_FRAMEBUFFER_BINDING);
     }
 
     /**
@@ -196,8 +185,7 @@ public class CgGlGetProvider implements CgGlStateProvider {
     }
 
     protected void readVertexInput(CgGlStateShadow t) {
-        t.vertexArray = CgCapabilities.detect().isVaoSupported()
-                ? CgGL.glGetInteger(CgGL.GL_VERTEX_ARRAY_BINDING) : 0;
+        t.vertexArray        = CgGL.glGetInteger(CgGL.GL_VERTEX_ARRAY_BINDING);
         t.arrayBuffer        = CgGL.glGetInteger(CgGL.GL_ARRAY_BUFFER_BINDING);
         t.elementArrayBuffer = CgGL.glGetInteger(CgGL.GL_ELEMENT_ARRAY_BUFFER_BINDING);
     }

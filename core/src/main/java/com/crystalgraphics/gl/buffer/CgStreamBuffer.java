@@ -1,54 +1,48 @@
 package com.crystalgraphics.gl.buffer;
 
-import com.crystalgraphics.platform.gl.CgCapabilities;
-
 import com.crystalgraphics.api.buffer.CgObjectBuffer;
 import lombok.Getter;
+import com.crystalgraphics.platform.gl.CgCapabilities;
+import com.crystalgraphics.platform.gl.CgCapabilities.StreamBufferTier;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.util.profiling.CgProfiler;
 
 import java.nio.ByteBuffer;
 
 /**
- * Abstract streaming buffer that manages per-frame dynamic GPU data upload.
+ * A GL buffer rewritten while the GPU may still be reading earlier contents -- vertex streams, and the
+ * storage under every shader buffer.
  *
- * <p>One {@code CgStreamBuffer} exists per {@code CgVertexFormat} in active use for vertex data,
- * or per shader buffer type for uniform/shader-storage/texture-buffer data.
- * All consumers sharing a format or buffer target share the same stream buffer instance.</p>
- *
- * <h3>Streaming strategies (waterfall)</h3>
- * <p>Three concrete implementations cover the full hardware range:</p>
- * <ol>
- *   <li>{@link MapAndSyncStreamBuffer} — Tier A (best): 3-slot ring buffer with {@code ARB_sync}
- *       fences. CPU writes slot N while GPU reads N-1 and N-2. Zero stalls in steady state.
- *       Requires {@link CgCapabilities#isArbSync()}.</li>
- *   <li>{@link MapAndOrphanStreamBuffer} — Tier B: full-buffer orphan via
- *       {@code glMapBufferRange(GL_MAP_INVALIDATE_BUFFER_BIT)}. Driver allocates new backing
- *       storage on each map; no CPU/GPU sync. Always writes at offset 0.
- *       Requires {@link CgCapabilities#isMapBufferRangeSupported()}.</li>
- *   <li>{@link SubDataStreamBuffer} — Tier C (baseline): CPU staging {@code ByteBuffer} +
- *       {@code glBufferSubData}. Works on all GL 1.5+ hardware.</li>
- * </ol>
- *
- * <h3>Factory methods</h3>
+ * <p>Two kinds, from two factories, each a waterfall of {@link StreamBufferTier}s that {@link CgCapabilities}
+ * picks once per context:</p>
  * <ul>
- *   <li>{@link #create(int)} — vertex data; full Tier A→B→C waterfall with {@code GL_ARRAY_BUFFER}.</li>
- *   <li>{@link #createForShaderBuffer(int, int)} — UBO/SSBO/TBO; capped at Tier B.
- *       Tier A is excluded because its non-zero slot offsets are incompatible with
- *       {@code glBindBufferBase} (always reads at offset 0) and {@code glTexBuffer}
- *       (whole-buffer attachment, no sub-range until GL 4.3).</li>
+ *   <li>{@link #create(int)} -- a <b>vertex stream</b>: {@link StreamBufferTier#PERSISTENT} &gt;
+ *       {@link StreamBufferTier#RING} &gt; {@link StreamBufferTier#ORPHAN} &gt; {@link StreamBufferTier#SUBDATA}.
+ *       On the two ring tiers each upload lands at a new offset, valid for the frame that wrote it;
+ *       {@code CgBatchRenderer} and {@code CgInstanceRenderer} draw from it the same frame.</li>
+ *   <li>{@link #createForShaderBuffer(int, int)} -- <b>shader-buffer storage</b>: {@link StreamBufferTier#ORPHAN}
+ *       &gt; {@link StreamBufferTier#SUBDATA}, always at offset 0 and readable until the next upload -- a material
+ *       block written once is bound for many frames, and {@code glBindBufferBase}/{@code glTexBuffer} cannot take
+ *       an offset.</li>
  * </ul>
  *
- * <h3>Per-frame upload contract</h3>
- * <ol>
- *   <li>Call {@link #map(int)} to obtain a writable {@code ByteBuffer}.</li>
- *   <li>Write data into it.</li>
- *   <li>Call {@link #commit(int)} with the number of bytes actually written.
- *       Returns the byte offset within the GL buffer where the data starts
- *       (non-zero on the Tier A ring path; always 0 on Tier B and C).</li>
- *   <li>Issue the draw call that consumes this data.</li>
- *   <li>Call {@link #afterSubmit()} so ring-buffer implementations can place their fence.</li>
- * </ol>
+ * <p>{@code -Dcrystalgraphics.stream.tier=persistent|ring|orphan|subdata} forces a tier -- for a driver that
+ * misbehaves on the one chosen, and for comparing them. A shader buffer takes {@code subdata} if forced and
+ * {@code orphan} otherwise.</p>
+ *
+ * <pre>{@code
+ * CgStreamBuffer stream = CgStreamBuffer.create(capacityBytes);
+ *
+ * ByteBuffer out = stream.map(bytes);
+ * // ... write `bytes` ...
+ * int offset = stream.commit(bytes);     // where the data starts: point the draw here
+ * // ... draw ...
+ * stream.afterSubmit();                  // a no-op today; kept for callers that already call it
+ * }</pre>
+ *
+ * <p>Easy to get wrong: a stream upload read in a later frame reads another frame's bytes -- a vertex
+ * stream is not somewhere to keep data. And {@link #commit} returns the offset; binding at 0 draws the
+ * wrong bytes.</p>
  */
 public abstract class CgStreamBuffer implements CgObjectBuffer {
 
@@ -68,9 +62,17 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
      */
     protected static final int SMALL_UPLOAD_THRESHOLD_BYTES = 256;
 
-    /** The GL buffer object name allocated at construction. Never changes for the lifetime of this instance. */
+    /**
+     * The GL buffer object. Stable, except that {@link StreamBufferTier#PERSISTENT} storage is immutable, so growing it
+     * takes a new buffer -- and bumps {@link #generation}, which is what a VAO binding watches.
+     */
     @Getter
-    protected final int glBuffer;
+    protected int glBuffer;
+
+    /** Bumped whenever {@link #glBuffer} is replaced. A binding re-points its attributes when this changes, as
+     * it does when the offset changes; comparing names instead would miss a name the driver hands back. */
+    @Getter
+    protected int generation;
 
     /** The GL buffer target this buffer was created for (e.g. {@code GL_ARRAY_BUFFER}, {@code GL_UNIFORM_BUFFER}). */
     @Getter
@@ -80,11 +82,7 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
     @Getter
     protected int capacityBytes;
 
-    /**
-     * Byte offset of the most recently committed upload within the GL buffer.
-     * Always {@code 0} on Tier B (orphan) and Tier C (subdata) paths.
-     * Non-zero on the Tier A ring path — equal to {@code currentSlot * slotSize}.
-     */
+    /** Byte offset of the most recently committed upload within the GL buffer; always 0 when orphaning. */
     @Getter
     protected int writeOffset;
 
@@ -142,21 +140,18 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
     /**
      * Finalises the CPU-side upload and returns the byte offset where the data starts in the GL buffer.
      *
-     * <p>This call only finalises the CPU write. Backends that track GPU consumption
-     * (e.g. the sync ring-buffer) place their fence in {@link #afterSubmit()}, which is called
-     * after the draw command has been submitted. Do not assume the GPU has consumed the data
-     * when {@code commit} returns.</p>
+     * <p>This call only finalises the CPU write; do not assume the GPU has consumed the data when it
+     * returns.</p>
      *
      * @param usedBytes number of bytes actually written since {@link #map(int)}
-     * @return byte offset in the GL buffer where this upload's data begins;
-     *         always {@code 0} on Tier B and C, {@code slot * slotSize} on Tier A
+     * @return byte offset in the GL buffer where this upload's data begins -- a new one per upload on a
+     *         vertex stream, always {@code 0} on shader-buffer storage
      */
     public abstract int commit(int usedBytes);
 
     /**
-     * Called after the draw command that consumes the most recently committed upload has been
-     * submitted to GL. The sync ring-buffer ({@link MapAndSyncStreamBuffer}) uses this to place
-     * its {@code ARB_sync} fence. Default implementation is a no-op.
+     * Called after the draw that consumes the most recent upload. A no-op: the frame ring fences once per
+     * frame ({@link CgFrameRing}), not per upload. Kept because callers already call it.
      */
     public void afterSubmit() {
     }
@@ -164,9 +159,7 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
     /**
      * Convenience method: maps, copies {@code floatCount} floats from {@code data[0..floatCount-1]},
      * commits, and returns the byte offset where the data starts.
-     *
-     * <p>The caller is responsible for calling {@link #afterSubmit()} after the draw call
-     * that consumes this upload.</p>
+
      *
      * @param data       source float array
      * @param floatCount number of floats to copy
@@ -203,11 +196,8 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
      * Fast path for tiny uploads, bypassing map/unmap. Default returns {@code false}, meaning
      * "not supported — use the normal path".
      *
-     * <p>Only meaningful for implementations that always write at offset 0 (Tier B orphan and
-     * Tier C subdata). The Tier A ring buffer deliberately does <em>not</em> override this: its
-     * whole design is writing successive slots at rotating offsets so the GPU can read older
-     * slots while the CPU writes newer ones, and a fixed offset-0 subdata write would clobber a
-     * slot still in flight — reintroducing exactly the stall the ring exists to avoid.</p>
+     * <p>Only for storage that always writes at offset 0 -- orphaning shader-buffer storage. The frame
+     * ring does not override it: an offset-0 write there would clobber a region still in flight.</p>
      *
      * @return {@code true} if the upload was performed; {@code false} to fall back to map/commit
      */
@@ -273,10 +263,9 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
     protected void deleteGlResources() {}
 
     /**
-     * Creates the best available stream buffer for vertex data using {@code GL_ARRAY_BUFFER}.
-     * Full Tier A→B→C waterfall. The Tier A path may return non-zero byte offsets from
-     * {@link #commit} — callers (e.g. {@code CgVertexArrayBinding}) handle this by rebinding
-     * VAO attribute pointers with the returned offset.
+     * A vertex stream on {@code GL_ARRAY_BUFFER}, on {@link CgCapabilities#vertexStreamTier()}. On a ring
+     * tier every {@link #commit} returns a new offset; {@code CgVertexArrayBinding} re-points its attributes
+     * to it.
      *
      * @param capacityBytes initial GL buffer capacity in bytes
      */
@@ -285,39 +274,33 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
     }
     
     /**
-     * Creates the best available stream buffer for vertex data using the given GL target.
-     * Full Tier A→B→C waterfall. The Tier A path may return non-zero byte offsets from
-     * {@link #commit} — callers (e.g. {@code CgVertexArrayBinding}) handle this by rebinding
-     * VAO attribute pointers with the returned offset.
+     * A stream on {@code target}, on {@link CgCapabilities#vertexStreamTier()}. On a ring tier every
+     * {@link #commit} returns a new offset, valid for the frame that wrote it.
      *
      * @param target GL target (e.g. {@code GL_ARRAY_BUFFER}, {@code GL_ELEMENT_ARRAY_BUFFER}, {@code GL_SHADER_STORAGE_BUFFER})
      * @param capacityBytes initial GL buffer capacity in bytes
      */
     public static CgStreamBuffer create(int target, int capacityBytes) {
-        CgCapabilities caps = CgCapabilities.detect();
-        if (caps.isArbSync()) return new MapAndSyncStreamBuffer(target, capacityBytes);
-        if (caps.isMapBufferRangeSupported()) return new MapAndOrphanStreamBuffer(target, capacityBytes);
-        return new SubDataStreamBuffer(target, capacityBytes);
+        switch (CgCapabilities.detect().vertexStreamTier()) {
+            case PERSISTENT: return new FrameRingStreamBuffer(target, capacityBytes, true);
+            case RING:       return new FrameRingStreamBuffer(target, capacityBytes, false);
+            case ORPHAN:     return new MapAndOrphanStreamBuffer(target, capacityBytes);
+            default:         return new SubDataStreamBuffer(target, capacityBytes);
+        }
     }
 
     /**
-     * Creates the best available stream buffer for shader data (UBO, SSBO, TBO) on the given GL target.
-     * Capped at Tier B ({@link MapAndOrphanStreamBuffer}) — the Tier A sync ring-buffer is excluded
-     * because it returns non-zero slot offsets from {@link #commit}, which are incompatible with:
-     * <ul>
-     *   <li>{@code glBindBufferBase} — always reads at offset 0</li>
-     *   <li>{@code glTexBuffer} — attaches the whole buffer object; {@code glTexBufferRange}
-     *       requires GL 4.3 which is beyond our minimum target</li>
-     * </ul>
-     * {@link MapAndOrphanStreamBuffer} always writes at offset 0, making it safe for all three
-     * shader buffer bind paths without requiring {@code glBindBufferRange} or {@code glTexBufferRange}.
+     * Storage for a shader buffer (UBO, SSBO, TBO): every upload orphans and lands at offset 0, and stays
+     * readable until the next one: {@link CgCapabilities#shaderStreamTier()}. Never a ring tier, on purpose: a
+     * material block is written once and bound for many frames, {@code glBindBufferBase} reads at offset 0,
+     * and the TBO path runs exactly where {@code glTexBufferRange} is missing.
      *
      * @param target        GL buffer target (e.g. {@code GL_UNIFORM_BUFFER}, {@code GL_SHADER_STORAGE_BUFFER})
      * @param capacityBytes initial GL buffer capacity in bytes
      */
     public static CgStreamBuffer createForShaderBuffer(int target, int capacityBytes) {
-        CgCapabilities caps = CgCapabilities.detect();
-        if (caps.isMapBufferRangeSupported()) return new MapAndOrphanStreamBuffer(target, capacityBytes);
-        return new SubDataStreamBuffer(target, capacityBytes);
+        return CgCapabilities.detect().shaderStreamTier() == StreamBufferTier.ORPHAN
+                ? new MapAndOrphanStreamBuffer(target, capacityBytes)
+                : new SubDataStreamBuffer(target, capacityBytes);
     }
 }

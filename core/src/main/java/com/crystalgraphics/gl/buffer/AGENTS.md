@@ -4,50 +4,66 @@
 
 ## What This Package Is
 
-VBO (Vertex Buffer Object) streaming backend and shared index buffer.
-Owns per-frame dynamic vertex data upload via multiple streaming strategies
-and the global quad index buffer shared by all quad renderers.
+The buffers the GPU may still be reading while the CPU writes the next contents — vertex streams, and the
+storage under every shader buffer — plus the global quad index buffer shared by all quad renderers.
 
-This package should never contain VAO logic or vertex format knowledge —
-that belongs in `gl/vertex`. The stream buffers here are format-agnostic
-byte pipes.
+This package should never contain VAO logic or vertex format knowledge — that belongs in `gl/vertex`. The
+stream buffers here are format-agnostic byte pipes.
 
-## Ownership Model
+## Two kinds of stream, each a waterfall of tiers
+
+| | Factory | Tiers, best first | Lives |
+|---|---|---|---|
+| **Vertex stream** | `CgStreamBuffer.create(capacity)` | `PERSISTENT` > `RING` > `ORPHAN` > `SUBDATA` | on a ring tier, one frame: each upload at a new offset in this frame's region |
+| **Shader-buffer storage** | `CgStreamBuffer.createForShaderBuffer(target, capacity)` | `ORPHAN` > `SUBDATA` | until the next upload, always at offset 0 |
+
+| Tier | Class | Needs | What it costs |
+|---|---|---|---|
+| `PERSISTENT` | `FrameRingStreamBuffer(persistent)` | GL 4.4 / `ARB_buffer_storage` | nothing per upload: the storage is mapped once, coherent |
+| `RING` | `FrameRingStreamBuffer` | GL 3.2 sync + `glMapBufferRange` | one unsynchronised map per upload |
+| `ORPHAN` | `MapAndOrphanStreamBuffer` | `glMapBufferRange` | a driver-side rename per upload |
+| `SUBDATA` | `SubDataStreamBuffer` | nothing | a CPU copy and `glBufferSubData` per upload — the path every driver gets right |
+
+**The waterfall is not only a GL-version fallback.** At the 3.3 floor every tier but `PERSISTENT` is always
+available, and the tiers still matter: drivers differ in which of them is fast or correct, which is why Dolphin
+— where these tiers come from — chooses among them. `CgCapabilities` decides both tiers once per context,
+`vertexStreamTier()` and `shaderStreamTier()`, and the factories only read them.
+`-Dcrystalgraphics.stream.tier=persistent|ring|orphan|subdata` forces one; a tier the context cannot do throws
+from `CgCapabilities.detect()`, and a shader buffer takes `subdata` if forced, else `orphan`. The harness's
+`capability-report` prints the tier chosen.
+
+Shader buffers stay off the ring because a material block is written once and bound for many frames,
+`glBindBufferBase` reads at offset 0, and the TBO path runs exactly where `glTexBufferRange` is missing
+(Mac 4.1, older Intel). On a backend that records rather than calls GL, an orphan is a fresh
+sub-allocation — the same meaning, no change here.
 
 ```
-CgStreamBuffer (abstract base)
-├── owns one GL VBO id (GL_ARRAY_BUFFER target)
-├── tracks: glBuffer, target, capacityBytes, writeOffset
-├── map(sizeBytes) → ByteBuffer for CPU writes
-├── commit(usedBytes) → byte offset where data starts in the GL buffer
-├── bind()/unbind() — raw GL_ARRAY_BUFFER bind
-├── waterfall factory: create() picks best strategy via CgCapabilities
-└── one instance per CgVertexFormat (lifecycle owned by CgVertexArrayBinding)
+CgFrameRing (static clock)
+├── FRAMES = 3 regions per ring; frame() advances at endFrame()
+├── endFrame() — one glFenceSync per frame; CgGraphicsLifecycle.tickFrame() calls it, nothing else
+├── awaitRetired(frame) — at a ring's first upload of a frame, for the frame FRAMES back
+│   (profiler scope frameRing.wait; almost always already signalled)
+└── reset() — context teardown
 
-MapAndSyncStreamBuffer (Tier A — preferred)
-├── 3-slot ring buffer (RING_FRAMES = 3), 256-byte aligned slots
-├── GL fence sync via ARB_sync: glFenceSync / glClientWaitSync
-├── CPU writes slot N while GPU reads N-1, N-2
-├── map() waits on the slot's fence, then maps with UNSYNCHRONIZED + FLUSH_EXPLICIT
-├── commit() flushes, places fence, advances to next slot
-├── oversize uploads (> slotSize) fall back to single-shot orphan path
-├── orphan path deletes all fences and resets ring state
-├── fence timeout: 5 seconds → throws IllegalStateException on GPU hang
-└── requires: ARB_sync + glMapBufferRange (CgCapabilities.isArbSync())
+FrameRingStreamBuffer (PERSISTENT and RING)
+├── one GL buffer = FRAMES regions; bump-allocated, 256-byte aligned
+├── RING: map() → glMapBufferRange(UNSYNCHRONIZED | INVALIDATE_RANGE | FLUSH_EXPLICIT) at the cursor
+├── PERSISTENT: glBufferStorage + one coherent persistent map; map() returns a slice, commit() flushes nothing
+├── commit() → the offset; the caller re-points its VAO (CgVertexArrayBinding)
+├── an offset is valid only in the frame that committed it: FRAMES later its bytes are overwritten.
+│   Every caller draws straight after commit(); CgBatchRenderer's replay API, the one path that holds
+│   an upload, throws when drawn in a later frame
+├── a frame that outgrows its region gets fresh storage and the next frame's region doubles, to 64 MB —
+│   counted as frameRing.overflow. RING orphans under the same name; PERSISTENT storage is immutable, so it
+│   takes a new buffer and bumps getGeneration(), which the bindings compare alongside the offset
+└── a host that never ends a frame fills one region and renews storage: correct, unpipelined
 
-MapAndOrphanStreamBuffer (Tier B)
-├── full-buffer orphan on every map() (GL_MAP_INVALIDATE_BUFFER_BIT)
-├── no sync fences — driver manages backing store internally
-├── commit() always returns offset 0
-├── auto-grows: if sizeBytes > capacityBytes, re-allocates via glBufferData
-└── requires: glMapBufferRange (CgCapabilities.isMapBufferRangeSupported())
+MapAndOrphanStreamBuffer (ORPHAN — vertex streams below the rings, and shader-buffer storage)
+├── orphans on every map() (GL_MAP_INVALIDATE_BUFFER_BIT), commit() returns 0
+└── uploadSmall(): glBufferSubData for writes ≤ 256 bytes, where the map call's fixed cost dominates
 
-SubDataStreamBuffer (Tier C — baseline fallback)
-├── CPU-side staging ByteBuffer (BufferUtils.createByteBuffer)
-├── map() returns the staging buffer (clears + limits to requested size)
-├── commit() calls glBufferSubData at offset 0, returns offset 0
-├── auto-grows: re-creates staging buffer + GL buffer if needed
-└── GL 1.5 only — works on all hardware
+SubDataStreamBuffer (SUBDATA)
+└── CPU staging ByteBuffer + glBufferSubData at offset 0
 
 CgQuadIndexBuffer (global singleton)
 ├── shared IBO: pattern [0,1,2, 2,3,0, 4,5,6, 6,7,4, …]
@@ -59,66 +75,41 @@ CgQuadIndexBuffer (global singleton)
 └── used by ALL quad renderers (text, UI, sprites)
 ```
 
-## Streaming Strategy Waterfall
-
-Selection happens in `CgStreamBuffer.create(capacityBytes)`:
-
-```
-CgCapabilities.detect()
-  isArbSync()               → MapAndSyncStreamBuffer  (best: no stalls, ring)
-  isMapBufferRangeSupported() → MapAndOrphanStreamBuffer (okay: driver orphan)
-  else                      → SubDataStreamBuffer      (safe: CPU staging)
-```
-
-The caller never picks a strategy — the factory always selects the best
-available path. All three strategies implement the same `map()/commit()`
-contract and are interchangeable from the consumer's perspective.
-
 ## Key Design Decisions
 
-- **Waterfall is automatic** — `CgStreamBuffer.create()` picks the best
-  strategy. No manual configuration needed.
-- **Sync ring avoids stalls** — triple-buffering with fences means the CPU
-  never waits for the GPU unless 3+ frames behind.
-- **Orphan fallback for oversize** — in the sync path, data exceeding one
-  ring slot triggers a single-shot orphan that deletes all fences and resets
-  ring state. This is a correctness requirement, not an optimization.
-- **commit() returns data offset** — the sync ring returns different offsets
-  per slot (slot * slotSize). Orphan and subdata always return 0. The caller
-  (`CgVertexArrayBinding`) uses this offset to rebind VAO attribute pointers.
-- **One quad IBO for everything** — `CgQuadIndexBuffer` is a global singleton;
-  all quad-based renderers share it. Max 16384 quads due to `GL_UNSIGNED_SHORT`.
-- **No buffer mapping state tracking** — the stream buffers do not participate
-  by the GL state shadow. They use direct `GL15.glBindBuffer` calls. (`GLStateMirror` itself is deleted;
-  buffer-target bindings are still not modelled — only `GL_ARRAY_BUFFER` and `GL_ELEMENT_ARRAY_BUFFER` are.)
+- **No wait inside a frame.** The ring fences once per frame, and the only wait is at a frame's first
+  upload, for the frame three back. The sync ring it replaced fenced every upload and waited mid-frame
+  when it lapped, which a backend that records and submits later cannot do at all.
+- **`commit()` returns the data offset** — new per upload on a vertex stream, 0 for shader-buffer storage.
+  `CgVertexArrayBinding` and `CgInstanceVertexArrayBinding` re-point attributes from it.
+- **A vertex stream is not storage.** An upload read in a later frame reads another frame's bytes.
+- **One quad IBO for everything** — `CgQuadIndexBuffer` is a global singleton; all quad-based renderers
+  share it. Max 16384 quads due to `GL_UNSIGNED_SHORT`.
 
 ## Lifecycle Rules
 
-1. **Creation**: Always through `CgStreamBuffer.create(capacityBytes)`.
-   The `gl/vertex` registry handles this — do not create stream buffers
-   directly unless building a non-vertex buffer use case.
-2. **Per-frame upload**: `map(size)` → write into returned `ByteBuffer` →
-   `commit(usedBytes)`. The buffer must be bound when `commit()` is called.
-3. **Cleanup**: Stream buffers are deleted by their owning `CgVertexArrayBinding`.
-   `CgQuadIndexBuffer.freeAll()` cleans up the shared IBO.
-4. **Auto-grow**: All strategies auto-grow when requested size exceeds capacity.
-   Growth re-allocates the GL buffer. The sync ring also re-computes slot sizes.
+1. **Creation**: through the two factories. The `gl/vertex` registry creates vertex streams; `CgShaderBuffer`
+   creates shader-buffer storage.
+2. **Per-frame upload**: `map(size)` → write into the returned `ByteBuffer` → `commit(usedBytes)` → draw at
+   the returned offset. `afterSubmit()` is a no-op kept for existing callers.
+3. **Cleanup**: stream buffers are deleted by their owners; `CgQuadIndexBuffer.freeAll()` and
+   `CgFrameRing.reset()` run in `CgGraphicsLifecycle.destroyContext()`.
 
 ## Relationship to Other Packages
 
 | Package | Relationship |
 |---------|-------------|
-| `gl/vertex/` | `CgVertexArrayBinding` owns one `CgStreamBuffer` per format |
-| `gl/pass/` | Render passes use the quad IBO for indexed quad draws |
-| `api/` | `CgCapabilities` drives the streaming strategy waterfall |
+| `gl/vertex/` | `CgVertexArrayBinding` owns one vertex stream per format |
+| `gl/buffer/shader/` | `CgShaderBuffer` owns one shader-buffer storage |
+| `gl/lifecycle/` | `CgGraphicsLifecycle.tickFrame()` ends the ring's frame |
 
 ## File Map
 
 | File | Role |
 |------|------|
-| `CgStreamBuffer.java` | Abstract streaming VBO base. Fields: `glBuffer`, `target`, `capacityBytes`, `writeOffset`. Factory: `create()`. |
-| `MapAndSyncStreamBuffer.java` | Tier A: 3-slot ring buffer, `ARB_sync` fences, 256-byte alignment, 5s fence timeout. |
-| `MapAndOrphanStreamBuffer.java` | Tier B: orphan-based streaming, `GL_MAP_INVALIDATE_BUFFER_BIT`, auto-grow. |
-| `SubDataStreamBuffer.java` | Tier C: CPU staging `ByteBuffer` + `glBufferSubData`. GL 1.5 baseline. |
+| `CgStreamBuffer.java` | Abstract base and both factories. Fields: `glBuffer`, `target`, `capacityBytes`, `writeOffset`. |
+| `CgFrameRing.java` | The frame clock: one fence per frame, `awaitRetired`. |
+| `FrameRingStreamBuffer.java` | The two ring tiers, persistent and mapped. |
+| `MapAndOrphanStreamBuffer.java` | The orphan tier: per upload, offset 0, small-write path. |
+| `SubDataStreamBuffer.java` | The subdata tier: CPU staging + `glBufferSubData`. |
 | `CgQuadIndexBuffer.java` | Global shared quad IBO. Pattern `[0,1,2,2,3,0,...]`. Max 16384 quads. Doubling growth. |
-

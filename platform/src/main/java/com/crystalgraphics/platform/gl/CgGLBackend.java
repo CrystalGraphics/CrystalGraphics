@@ -21,10 +21,7 @@ import java.nio.*;
  * internally (e.g. {@code CgGL.glBindFramebuffer} delegates to
  * {@code CgGLBackend.get().bindFramebuffer}).
  *
- * <h3>FBO waterfall</h3>
- * {@link #bindFramebuffer(int, int)} carries it: Core GL30 &gt; ARB &gt; EXT, chosen per call from
- * {@link CgPlatform#capabilities()}. There is no second, host-delegating bind — see the note on
- * that method.
+ * <p>Every backend meets a GL 3.3 floor, so there is one spelling per call and no ARB or EXT fallback.</p>
  */
 public abstract class CgGLBackend {
     
@@ -42,7 +39,7 @@ public abstract class CgGLBackend {
     public abstract int getPriority();
 
     // -------------------------------------------------------------------------
-    // Framebuffers — Core / ARB / EXT dispatch
+    // Framebuffers
     // -------------------------------------------------------------------------
 
     public abstract void bindFramebuffer(int target, int fbo);
@@ -58,7 +55,7 @@ public abstract class CgGLBackend {
     // loader backend to implement an optional path immediately.
     //
     // Whether the CONTEXT supports these is CgCapabilities' question
-    // (isCopyImageSubDataSupported / isFramebufferTextureLayerSupported), not the backend's —
+    // (isCopyImageSubDataSupported), not the backend's —
     // the backend only answers "have I wired this call up". CgTextureCopy checks the former and
     // treats UnsupportedOperationException from the latter as "fall through", so the two can
     // disagree safely.
@@ -91,11 +88,8 @@ public abstract class CgGLBackend {
     public abstract void drawBuffers(IntBuffer bufs);
     public abstract int getFramebufferAttachmentParameteriv(int target, int attachment, int pname);
 
-    // There is deliberately no host-delegating bind beside `bindFramebuffer`. `bindFramebufferCompat`
-    // existed so 1.7.10 could route through `OpenGlHelper.func_153171_g` and keep Minecraft's own FBO
-    // tracking in step; it was removed because nothing ever called it, this class already carries the
-    // Core > ARB > EXT waterfall the helper was wanted for, and on 1.20.x the two paths had converged
-    // on the same `GlStateManager._glBindFramebuffer` call with the target hardcoded.
+    // There is deliberately no host-delegating bind beside `bindFramebuffer`: a host that keeps its own
+    // framebuffer tracking overrides this one (Blaze3dGLBackend, GlStateManagerGLBackend).
 
     // -------------------------------------------------------------------------
     // Shaders
@@ -144,12 +138,6 @@ public abstract class CgGLBackend {
 
     // -------------------------------------------------------------------------
     // Timer queries (GPU timing)
-    //
-    // Concrete rather than abstract, defaulting to "unsupported", because these are
-    // optional: they need ARB_timer_query / GL 3.3, which is not guaranteed on the
-    // GL 2.1-era contexts MC 1.7.10 can run on. A backend opts in by overriding
-    // supportsTimerQueries() and the five methods below; everything else keeps
-    // compiling and callers degrade to reporting no GPU timing rather than crashing.
     //
     // GL_TIME_ELAPSED queries CANNOT be nested — only one may be active at a time.
     // Reading a result in the same frame it was issued stalls the pipeline and
@@ -303,7 +291,7 @@ public abstract class CgGLBackend {
     // Samplers
     // -------------------------------------------------------------------------
 
-    /** Binds a sampler object to a texture unit (ARB_sampler_objects / GL 3.3). */
+    /** Binds a sampler object to a texture unit (GL 3.3). */
     public abstract void glBindSampler(int unit, int sampler);
 
     // -------------------------------------------------------------------------
@@ -314,9 +302,11 @@ public abstract class CgGLBackend {
     public abstract ByteBuffer glMapBufferRange(int target, long offset, long length, int access, ByteBuffer oldBuffer);
     public abstract boolean glUnmapBuffer(int target);
     public abstract void glFlushMappedBufferRange(int target, long offset, long length);
+    /** Immutable buffer storage (GL 4.4 / {@code ARB_buffer_storage}). */
+    public abstract void glBufferStorage(int target, long size, int flags);
 
     // -------------------------------------------------------------------------
-    // Sync objects (ARBSync / GL 3.2)
+    // Sync objects (GL 3.2)
     // -------------------------------------------------------------------------
 
     public abstract long glFenceSync(int condition, int flags);
@@ -338,7 +328,7 @@ public abstract class CgGLBackend {
     public abstract boolean isContextCurrent();
 
     // -------------------------------------------------------------------------
-    // Framebuffers — renderbuffer operations (Core / ARB / EXT waterfall)
+    // Framebuffers — renderbuffer operations
     // -------------------------------------------------------------------------
 
     public abstract int glGenRenderbuffers();
@@ -351,10 +341,6 @@ public abstract class CgGLBackend {
      *
      * <p>{@code samples} is a request, not a guarantee: GL silently clamps to the implementation's
      * maximum, so a caller asking for 16 on hardware offering 4 gets 4 rather than an error.</p>
-     *
-     * <p>An implementation with no multisample entry point at all must fall back to
-     * {@link #glRenderbufferStorage}, which yields a working single-sampled attachment rather than a
-     * broken framebuffer — the same waterfall philosophy as the rest of this interface.</p>
      */
     public abstract void glRenderbufferStorageMultisample(int target, int samples, int internalFormat,
                                                           int width, int height);
@@ -374,39 +360,6 @@ public abstract class CgGLBackend {
      */
     public abstract void glTexImage2DMultisample(int target, int samples, int internalFormat,
                                                  int width, int height, boolean fixedSampleLocations);
-    // -------------------------------------------------------------------------
-    // Shaders — ARBShaderObjects unified-handle methods
-    //
-    // ARBShaderObjects used a single "object" concept that could be either a shader
-    // or a program handle.  The GL core split these into glDeleteShader/glDeleteProgram,
-    // glGetShaderi/glGetProgrami, etc.  These unified wrappers preserve the ARB
-    // handle-agnostic semantics so that CgArbShaderProgram and friends can migrate
-    // without requiring per-call type analysis.
-    // -------------------------------------------------------------------------
-
-    /** Delete a shader OR program object handle (ARBShaderObjects unified semantics). */
-    public abstract void glDeleteObject(int handle);
-
-    /**
-     * Query a parameter on a shader or program object handle.
-     * Equivalent to {@code ARBShaderObjects.glGetObjectParameteriARB}.
-     */
-    public abstract int glGetObjectParameteri(int obj, int pname);
-
-    /**
-     * Retrieve the info log for a shader or program object handle.
-     * Equivalent to {@code ARBShaderObjects.glGetInfoLogARB}.
-     */
-    public abstract String glGetObjectInfoLog(int obj, int maxLength);
-
-    /**
-     * Returns the handle of the currently active object for the given target.
-     * Typically called as {@code glGetHandle(GL_PROGRAM_OBJECT_ARB)} to obtain
-     * the currently bound program handle.
-     * Equivalent to {@code ARBShaderObjects.glGetHandleARB}.
-     */
-    public abstract int glGetHandle(int pname);
-
     // -------------------------------------------------------------------------
     // Shaders — additional methods
     // -------------------------------------------------------------------------

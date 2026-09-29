@@ -7,17 +7,16 @@ import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.platform.service.CgLifecycleService;
 import com.crystalgraphics.api.material.CgMaterialRegistry;
 import com.crystalgraphics.api.render.CgRenderPipeline;
+import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgQuadIndexBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
 //import com.crystalgraphics.gl.debug.CgDebugBlit;
 import com.crystalgraphics.gl.framebuffer.CgFrameBufferRegistry;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.gl.mesh.CgMeshRegistry;
-import com.crystalgraphics.gl.render.CgInstanceRenderer;
 import com.crystalgraphics.gl.texture.CgTextureCopy;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
 import com.crystalgraphics.gl.texture.CgTextureManager;
-import com.crystalgraphics.gl.vertex.CgInstanceVertexArrayBinding;
 import com.crystalgraphics.gl.vertex.CgVertexArray;
 import com.crystalgraphics.gl.vertex.CgVertexArrayRegistry;
 import com.crystalgraphics.gl.vertex.CgVertexBufferRegistry;
@@ -342,6 +341,9 @@ public final class CgGraphicsLifecycle {
         // wrote lands after the invalidation above — leaving the shadow stale for the rest of the frame.
         // Two integer writes per frame is not a cost worth reasoning about; a silently elided GL call is.
         CgGlState.invalidateAllIfPresent();
+
+        // Last: listeners may have streamed geometry, and it belongs to this frame's fence.
+        if (initialized) CgFrameRing.endFrame();
     }
 
     /**
@@ -483,11 +485,12 @@ public final class CgGraphicsLifecycle {
         // no-op if no texture ever grew). Safe to reuse after this; they are recreated on demand.
         CgTextureCopy.dispose();
 
-        // Reset all backend-capability caches so context recreation re-probes correctly.
+        // Its fences name the dying context.
+        CgFrameRing.reset();
+
+        // Capabilities are the dead context's; VAO names too.
         CgCapabilities.clearCache();
-        CgVertexArray.resetCoreCache();
-        CgInstanceVertexArrayBinding.resetCoreCache();
-        CgInstanceRenderer.resetCoreCache();
+        CgVertexArray.onContextDestroyed();
 
         // (initialized was cleared at the top of this method.)
         currentWidth = -1;

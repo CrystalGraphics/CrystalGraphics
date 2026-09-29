@@ -35,10 +35,8 @@ import lombok.Getter;
  * <p>{@link #delete()} removes only the owned VAO. It does NOT delete any VBOs.</p>
  *
  * <h3>Instancing support utilities</h3>
- * <p>This class also hosts static instancing capability helpers previously in
- * {@code CgInstancingSupport}: {@link #isSupported()}, {@link #requireSupported()},
- * {@link #validateAttributeSlots(CgVertexFormat, CgInstanceFormat)},
- * {@link #vertexAttribDivisor(int, int)}, and {@link #resetCoreCache()}.</p>
+ * <p>This class also hosts the static helpers {@link #validateAttributeSlots(CgVertexFormat, CgInstanceFormat)}
+ * and {@link #vertexAttribDivisor(int, int)}.</p>
  */
 public final class CgInstanceVertexArrayBinding {
 
@@ -84,6 +82,9 @@ public final class CgInstanceVertexArrayBinding {
      */
     private int currentInstanceOffset = -1;
 
+    /** Storage generations the pointers were last issued against; see {@code CgStreamBuffer.getGeneration()}. */
+    private int currentBaseGeneration, currentInstanceGeneration;
+
     private CgInstanceVertexArrayBinding(int glVao,
                                    CgVertexBuffer baseStream,
                                    CgAttributeFormat baseLayout,
@@ -108,8 +109,6 @@ public final class CgInstanceVertexArrayBinding {
      */
     public static CgInstanceVertexArrayBinding createStreaming(CgVertexBuffer base,
                                                          CgInstanceVertexBuffer instance) {
-        requireSupported();
-
         int vao = CgVertexArray.createRawVaoId();
         CgVertexArray.bind(vao);
 
@@ -142,8 +141,6 @@ public final class CgInstanceVertexArrayBinding {
      */
     public static CgInstanceVertexArrayBinding createMeshInstanced(CgMesh mesh,
                                                               CgInstanceVertexBuffer instance) {
-        requireSupported();
-
         int vao = CgVertexArray.createRawVaoId();
         CgVertexArray.bind(vao);
 
@@ -210,7 +207,9 @@ public final class CgInstanceVertexArrayBinding {
      * @param offset byte offset into the base stream VBO where vertex data starts
      */
     public void rebindBasePointersIfNeeded(int offset) {
-        if (meshBased || offset == currentBaseOffset) return;
+        if (meshBased) return;
+        int generation = baseStream.getStreamBuffer().getGeneration();
+        if (offset == currentBaseOffset && generation == currentBaseGeneration) return;
         baseStream.getStreamBuffer().bind();
         for (int i = 0; i < baseLayout.getAttributeCount(); i++) {
             CgVertexAttribute attr = baseLayout.getAttribute(i);
@@ -219,6 +218,7 @@ public final class CgInstanceVertexArrayBinding {
         }
         baseStream.getStreamBuffer().unbind();
         currentBaseOffset = offset;
+        currentBaseGeneration = generation;
     }
 
     /**
@@ -233,7 +233,8 @@ public final class CgInstanceVertexArrayBinding {
      * @param offset byte offset into the instance stream VBO where per-instance data starts
      */
     public void rebindInstancePointersIfNeeded(int offset) {
-        if (offset == currentInstanceOffset) return;
+        int generation = instanceStream.getStreamBuffer().getGeneration();
+        if (offset == currentInstanceOffset && generation == currentInstanceGeneration) return;
         CgAttributeFormat instLayout = instanceStream.getLayout();
         int baseCount = baseLayout.getAttributeCount();
         instanceStream.getStreamBuffer().bind();
@@ -245,6 +246,7 @@ public final class CgInstanceVertexArrayBinding {
         }
         instanceStream.getStreamBuffer().unbind();
         currentInstanceOffset = offset;
+        currentInstanceGeneration = generation;
     }
 
     /**
@@ -257,36 +259,6 @@ public final class CgInstanceVertexArrayBinding {
     }
 
     // ── Instancing support (absorbed from CgInstancingSupport) ────────────────
-
-    /**
-     * Lazy one-shot cache for the GL33 core divisor path.
-     * {@code null} = not yet detected; {@code true/false} = cached result.
-     */
-    private static Boolean useGL33 = null;    /** Returns true if both draw-instanced and vertex-attrib-divisor are available. */
-    public static boolean isSupported() {
-        return isSupported(CgCapabilities.detect());
-    }
-
-    /**
-     * Returns true if both draw-instanced and vertex-attrib-divisor are available
-     * in the given capabilities snapshot.
-     */
-    public static boolean isSupported(CgCapabilities caps) {
-        return caps.isDrawInstancedSupported() && caps.isVertexAttribDivisorSupported();
-    }
-
-    /**
-     * Throws {@link UnsupportedOperationException} if instancing is not fully supported,
-     * listing both missing capabilities in the message.
-     */
-    public static void requireSupported() {
-        CgCapabilities caps = CgCapabilities.detect();
-        if (!caps.isDrawInstancedSupported() || !caps.isVertexAttribDivisorSupported()) {
-            throw new UnsupportedOperationException(
-                "Instancing not fully supported: drawInstanced=" + caps.isDrawInstancedSupported()
-                + ", vertexAttribDivisor=" + caps.isVertexAttribDivisorSupported());
-        }
-    }
 
     /** Returns GL_MAX_VERTEX_ATTRIBS from the detected capabilities. */
     public static int getMaxVertexAttribs() {
@@ -320,17 +292,7 @@ public final class CgInstanceVertexArrayBinding {
     }
 
     /**
-     * No-op retained for lifecycle compatibility — {@code CgGraphicsLifecycle} calls this.
-     * Dispatch routing is handled by {@link com.crystalgraphics.platform.gl.CgGLBackend}.
-     */
-    public static void resetCoreCache() {
-        useGL33 = null; // reset retained so callers that cache this don't need changes
-    }
-
-    /**
-     * Issues {@code glVertexAttribDivisor}. The dispatch routes to GL 3.3 core or
-     * ARB_instanced_arrays as appropriate via {@link com.crystalgraphics.platform.gl.CgGLBackend}.
-     * Must be called while the target VAO is bound.
+     * Issues {@code glVertexAttribDivisor}. Must be called while the target VAO is bound.
      */
     public static void vertexAttribDivisor(int slot, int divisor) {
         CgGL.glVertexAttribDivisor(slot, divisor);

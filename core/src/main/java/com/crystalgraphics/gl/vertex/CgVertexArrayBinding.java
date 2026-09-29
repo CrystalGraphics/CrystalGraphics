@@ -17,6 +17,7 @@ public final class CgVertexArrayBinding {
     @Getter
     private final CgVertexArray vertexArray;
     private int currentDataOffset;
+    private int currentGeneration;
 
     CgVertexArrayBinding(CgVertexBuffer baseStream, CgVertexArray vertexArray) {
         this.baseStream = baseStream;
@@ -46,12 +47,14 @@ public final class CgVertexArrayBinding {
      * whenever the offset changes. Skipped when unchanged (common in orphan/subdata paths).
      */
     public void rebindPointersIfNeeded(int dataOffset) {
-        if (dataOffset == currentDataOffset) {
+        int generation = baseStream.getStreamBuffer().getGeneration();
+        if (dataOffset == currentDataOffset && generation == currentGeneration) {
             return;
         }
         baseStream.getStreamBuffer().bind();
         vertexArray.reconfigureWithOffset(baseStream.getFormat(), dataOffset);
         currentDataOffset = dataOffset;
+        currentGeneration = generation;
     }
 
     public void delete() {

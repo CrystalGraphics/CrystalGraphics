@@ -9,10 +9,9 @@ import java.util.concurrent.CopyOnWriteArraySet;
 /**
  * Abstract base class for all CrystalGraphics shader program implementations.
  *
- * <p>Provides the common lifecycle (bind, unbind, delete) and resource tracking
- * shared by the Core GL20 and ARB shader-objects backends.  Concrete subclasses
- * supply the actual OpenGL calls through {@link #freeGlResources()},
- * {@link #callFamily()}, and the uniform setter / location query methods.</p>
+ * <p>Provides the common lifecycle (bind, unbind, delete) and resource tracking. The concrete
+ * program, {@link CgCoreShaderProgram}, supplies the OpenGL calls through {@link #freeGlResources()}
+ * and the uniform setter / location query methods.</p>
  *
  * <h3>Ownership Model</h3>
  * <p>Shader programs created by CrystalGraphics are <em>owned</em>
@@ -29,7 +28,6 @@ import java.util.concurrent.CopyOnWriteArraySet;
  *
  * @see CgShaderProgram
  * @see CgCoreShaderProgram
- * @see CgArbShaderProgram
  */
 public abstract class CgAbstractShaderProgram implements CgShaderProgram {
 
@@ -180,9 +178,7 @@ public abstract class CgAbstractShaderProgram implements CgShaderProgram {
      * Releases the underlying OpenGL program object.
      *
      * <p>Called exactly once by {@link #delete()}.  Implementations must
-     * call the appropriate GL delete function (e.g.
-     * {@code GL20.glDeleteProgram} or
-     * {@code ARBShaderObjects.glDeleteObjectARB}).</p>
+     * delete the GL program ({@code CgGL.glDeleteProgram}).</p>
      */
     protected abstract void freeGlResources();
 

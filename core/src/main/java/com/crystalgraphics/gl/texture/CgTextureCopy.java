@@ -66,12 +66,11 @@ public final class CgTextureCopy {
     private CgTextureCopy() {}
 
     /**
-     * Returns whether any GPU-side copy path is available at all. When {@code false}, every
-     * {@code copy*} call will return {@code false} and the caller must use its own fallback.
+     * Whether a GPU-side copy path is available. Always true at the GL 3.3 floor: the layer blit needs
+     * only {@code glFramebufferTextureLayer}, core since 3.0.
      */
     public static boolean isSupported() {
-        CgCapabilities caps = CgCapabilities.detect();
-        return caps.isCopyImageSubDataSupported() || caps.isFramebufferTextureLayerSupported();
+        return true;
     }
 
     /**
@@ -113,10 +112,7 @@ public final class CgTextureCopy {
             }
         }
 
-        if (caps.isFramebufferTextureLayerSupported()) {
-            return blitArrayLayers(srcTextureId, dstTextureId, width, height, layerCount);
-        }
-        return false;
+        return blitArrayLayers(srcTextureId, dstTextureId, width, height, layerCount);
     }
 
     /**

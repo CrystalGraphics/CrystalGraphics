@@ -5,17 +5,11 @@ import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.platform.gl.CgGL;
 
 /**
- * Framebuffer backend that routes all GL dispatch through Core OpenGL 3.0
- * entry points ({@link GL30}).
- *
- * <p>This is the preferred backend on hardware that supports GL 3.0 or later.
- * All shared logic (attachment allocation, completeness check, reattach,
- * drawBuffers, etc.) lives in {@link CgFrameBuffer}.  This class supplies
- * only the nine one-line GL dispatch overrides and {@link #callFamily()}.</p>
+ * The owned framebuffer: GL dispatch through {@link CgGL}'s core GL 3.0 entry points. All shared logic
+ * (attachment allocation, completeness check, reattach, drawBuffers) lives in {@link CgFrameBuffer}; this
+ * class supplies only the one-line GL dispatch overrides.
  *
  * @see CgFrameBuffer
- * @see CgArbFrameBuffer
- * @see CgExtFrameBuffer
  */
 final class CgCoreFrameBuffer extends CgFrameBuffer {
 

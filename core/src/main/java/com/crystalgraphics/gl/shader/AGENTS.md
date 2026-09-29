@@ -30,16 +30,13 @@ CgShader s = CgShaderFactory.fromSource(vertSrc, fragSrc, format);
 CgShaderProgram prog = CgShaderFactory.compile(vertSrc, fragSrc);
 CgShaderProgram prog = CgShaderFactory.compile(vertSrc, fragSrc, format);
 ```
-Waterfall: `CgCapabilities.isCoreShaders()` → `CgCoreShaderProgram`; `isArbShaders()` → `CgArbShaderProgram`; else throws `UnsupportedOperationException`.
+`CgShaderFactory.compile` builds a `CgCoreShaderProgram`; the GL 3.3 floor has no ARB shader-object path.
 
 ### `CgAbstractShaderProgram`
 Base class with ownership model and deleted-state tracking. Subclasses provide `bind()`, `unbind()`, and `getUniformLocation()`. `delete()` is idempotent.
 
 ### `CgCoreShaderProgram`
-GL20 backend (`glCreateProgram`, `glUseProgram`, `glGetUniformLocation`, `glUniform*`). Used on all hardware that supports OpenGL 2.0 or later (which is essentially everything since 2007). Implements `getActiveUniforms()` via `GL20.glGetProgrami(GL_ACTIVE_UNIFORMS)` + `GL20.glGetActiveUniform`.
-
-### `CgArbShaderProgram`
-ARB_shader_objects backend. Same interface but uses `ARBShaderObjects.glCreateProgramObjectARB` etc. Fallback for pre-GL20 contexts. Rare in practice. Implements `getActiveUniforms()` via `glGetObjectParameteriARB(GL_OBJECT_ACTIVE_UNIFORMS_ARB)` + `glGetActiveUniformARB`.
+GL20 backend (`glCreateProgram`, `glUseProgram`, `glGetUniformLocation`, `glUniform*`). The only program class: every context meets the 3.3 floor. Implements `getActiveUniforms()` via `GL20.glGetProgrami(GL_ACTIVE_UNIFORMS)` + `GL20.glGetActiveUniform`.
 
 ---
 

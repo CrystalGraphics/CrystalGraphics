@@ -116,9 +116,10 @@ CgQuadIndexBuffer.freeAll();
   registry enforces this: `streamBuffer.bind()` → `vertexArray.configure()` →
   `streamBuffer.unbind()` → `vertexArray.unbind()`.
 - **Offset rebinding is lazy** — `rebindPointersIfNeeded()` tracks the
-  current data offset and skips re-issuing pointers when unchanged. This
-  matters for orphan/subdata paths where commit always returns offset 0.
-  The sync ring path returns varying offsets per slot.
+  current data offset and skips re-issuing pointers when unchanged. On the
+  frame ring every upload lands at a new offset, so pointers are re-issued per
+  upload; an overflow orphans under the same buffer name, so the VAO needs no
+  other change.
 - **Instanced VAOs deleted before non-instanced** — `CgVertexArrayRegistry.deleteAll()`
   deletes streaming/mesh instanced VAOs first (they reference both base and instance VBOs),
   then non-instanced VAOs (they reference only base VBOs). This ensures no VBO is deleted
@@ -143,19 +144,19 @@ CgQuadIndexBuffer.freeAll();
 | `api/vertex/` | Provides `CgVertexFormat`, `CgVertexAttribute`, `CgAttribType`, `CgInstanceFormat` — the format descriptors this package consumes |
 | `gl/buffer/` | Provides `CgStreamBuffer` — the VBO streaming layer that stream classes own |
 | `gl/mesh/` | `CgMesh` is a key for `CgVertexArrayRegistry.getOrCreateMeshInstanced()` |
-| `api/` | `CgCapabilities` drives the VAO core/ARB waterfall detection |
+| `api/` | `CgCapabilities` — attribute-slot limits |
 
 ## File Map
 
 | File | Role |
 |------|------|
-| `CgVertexArray.java` | VAO wrapper: create, bind, configure, delete. Core GL30 / ARB fallback. `create()` and `createRawVaoId()` guard on `isVaoSupported()` (not just GL30), so ARB-only hardware works correctly. Static `useCore` cache; `resetCoreCache()` called on context recreation. |
-| `CgVertexArrayBinding.java` | Non-instanced VAO binding per format. Borrows `CgVertexBuffer` (VBO not owned). Tracks `currentDataOffset` for lazy rebinding. `getStreamBuffer()` delegates to stream buffer for backward compat. |
+| `CgVertexArray.java` | VAO wrapper: create, bind, configure, delete. VAOs are core at the GL 3.3 floor. `onContextDestroyed()` forgets the live-name set `gen()` warns from. |
+| `CgVertexArrayBinding.java` | Non-instanced VAO binding per format. Borrows `CgVertexBuffer` (VBO not owned). Tracks the stream's (offset, generation) for lazy rebinding — a persistent ring that outgrows its storage takes a new buffer at the same offset, and only the generation tells them apart. `getStreamBuffer()` delegates to stream buffer for backward compat. |
 | `CgVertexArrayRegistry.java` | Singleton managing ALL VAOs. Non-instanced: `CgVertexFormat` → `CgVertexArrayBinding`. Streaming instanced: `InstancedStreamKey(CgVertexFormat, CgInstanceFormat)` → `CgInstanceVertexArrayBinding` (value-equal composite key). Mesh instanced: `InstancedMeshKey(CgMesh identity, CgInstanceFormat)` → `CgInstanceVertexArrayBinding`. `deleteAll()` deletes instanced VAOs first, then non-instanced. `invalidateMeshBindings(mesh)` removes stale VAOs on mesh delete. |
 | `CgVertexBuffer.java` | Owns the base stream VBO for one vertex format. No VAO. `create(format)` factory. `delete()` frees only the VBO. |
 | `CgVertexBufferRegistry.java` | Singleton managing ALL stream VBOs. `getOrCreate(format)` → `CgVertexBuffer`. `getOrCreateInstanced(layout)` → `CgInstanceVertexBuffer`. `deleteAll()` frees base + instance streams. |
 | `CgInstanceVertexBuffer.java` | Owns the instance stream VBO for one instance layout. No VAO. `create(layout)` factory. `delete()` frees only the VBO. |
-| `CgInstanceVertexArrayBinding.java` | Instanced VAO binding. Owns one VAO id. Borrows `CgVertexBuffer` (streaming path) or mesh VBO (mesh path) + `CgInstanceVertexBuffer`. Two factories: `createStreaming(CgVertexBuffer, CgInstanceVertexBuffer)` and `createMeshInstanced(CgMesh, CgInstanceVertexBuffer)`. Also hosts absorbed instancing support statics: `isSupported()`, `requireSupported()`, `validateAttributeSlots()`, `vertexAttribDivisor()`, `resetCoreCache()`. `delete()` frees VAO only. |
+| `CgInstanceVertexArrayBinding.java` | Instanced VAO binding. Owns one VAO id. Borrows `CgVertexBuffer` (streaming path) or mesh VBO (mesh path) + `CgInstanceVertexBuffer`. Two factories: `createStreaming(CgVertexBuffer, CgInstanceVertexBuffer)` and `createMeshInstanced(CgMesh, CgInstanceVertexBuffer)`. Also hosts `validateAttributeSlots()`, `getMaxVertexAttribs()` and `vertexAttribDivisor()` (core at 3.3, so there is no support check). `delete()` frees VAO only. |
 
 ## Instancing Architecture
 

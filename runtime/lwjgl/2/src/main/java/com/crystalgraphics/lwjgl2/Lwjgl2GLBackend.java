@@ -1,8 +1,6 @@
 package com.crystalgraphics.lwjgl2;
 
-import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.gl.CgGLBackend;
-import com.crystalgraphics.platform.gl.CgGLContext;
 import org.lwjgl.opengl.*;
 
 import java.nio.ByteBuffer;
@@ -14,14 +12,12 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * MC 1.7.10 / LWJGL 2.9 implementation of {@link CgGLBackend}.
  *
- * <p>All raw OpenGL calls delegate to the appropriate LWJGL 2 static methods.
- * The FBO waterfall follows Core GL30 &gt; ARB &gt; EXT, determined at call time by
- * reading from {@link CgPlatform#capabilities()} ()}.</p>
+ * <p>All raw OpenGL calls delegate to the appropriate LWJGL 2 static methods, at the GL 3.3 floor —
+ * no ARB or EXT fallback below it.</p>
  *
  * <p><b>It names no Minecraft class.</b> It used to, for one call: {@code bindFramebufferCompat}
  * bound through {@code OpenGlHelper.func_153171_g} so Minecraft's own FBO tracking stayed in step
- * with ours. Nothing ever called it, and the waterfall above is the thing that call was wanted for,
- * so it went — which is what makes this file tier 1 and shareable with the harness.</p>
+ * with ours. Nothing ever called it, so it went — which is what makes this file tier 1 and shareable with the harness.</p>
  *
  * <p>Open for a host with a GL state cache of its own to keep in step: {@code GlStateManagerGLBackend}
  * on Forge 1.8–1.12.2.</p>
@@ -51,47 +47,19 @@ public class Lwjgl2GLBackend extends CgGLBackend {
     }
 
     // -------------------------------------------------------------------------
-    // FBO helpers
-    // -------------------------------------------------------------------------
-
-    /** @return {@code true} if Core GL 3.0 FBO is supported */
-    private boolean coreGl30() {
-        CgGLContext p = CgPlatform.capabilities();
-        return p != null && p.OpenGL30();
-    }
-
-    /** @return {@code true} if ARB_framebuffer_object is supported */
-    private boolean arbFbo() {
-        CgGLContext p = CgPlatform.capabilities();
-        return p != null && p.GL_ARB_framebuffer_object();
-    }
-
-    // -------------------------------------------------------------------------
-    // Framebuffers — Core / ARB / EXT waterfall
+    // Framebuffers
     // -------------------------------------------------------------------------
 
     @Override
     public void bindFramebuffer(int target, int fbo) {
-        if (coreGl30()) {
-            GL30.glBindFramebuffer(target, fbo);
-        } else if (arbFbo()) {
-            ARBFramebufferObject.glBindFramebuffer(target, fbo);
-        } else {
-            EXTFramebufferObject.glBindFramebufferEXT(target, fbo);
-        }
+        GL30.glBindFramebuffer(target, fbo);
     }
 
     @Override
     public void blitFramebuffer(int srcX0, int srcY0, int srcX1, int srcY1,
                                  int dstX0, int dstY0, int dstX1, int dstY1,
                                  int mask, int filter) {
-        if (coreGl30()) {
-            GL30.glBlitFramebuffer(srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, mask, filter);
-        } else if (arbFbo()) {
-            ARBFramebufferObject.glBlitFramebuffer(srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, mask, filter);
-        } else {
-            EXTFramebufferBlit.glBlitFramebufferEXT(srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, mask, filter);
-        }
+        GL30.glBlitFramebuffer(srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, mask, filter);
     }
 
     // ── GPU-side texture copy (see CgTextureCopy) ────────────────────────────
@@ -100,9 +68,7 @@ public class Lwjgl2GLBackend extends CgGLBackend {
     public void copyImageSubData(int srcName, int srcTarget, int srcLevel, int srcX, int srcY, int srcZ,
                                   int dstName, int dstTarget, int dstLevel, int dstX, int dstY, int dstZ,
                                   int srcWidth, int srcHeight, int srcDepth) {
-        // Core GL 4.3 or ARB_copy_image, same waterfall philosophy as the FBO calls above. The 1.7.10
-        // copy of this file had only the GL43 path and the harness's had both; taking the wider one is
-        // the whole reason merging them was worth doing.
+        // Core GL 4.3 or ARB_copy_image: above the 3.3 floor, so both stay.
         if (GLContext.getCapabilities().OpenGL43) {
             GL43.glCopyImageSubData(srcName, srcTarget, srcLevel, srcX, srcY, srcZ,
                     dstName, dstTarget, dstLevel, dstX, dstY, dstZ, srcWidth, srcHeight, srcDepth);
@@ -114,66 +80,32 @@ public class Lwjgl2GLBackend extends CgGLBackend {
 
     @Override
     public void framebufferTextureLayer(int target, int attachment, int texture, int level, int layer) {
-        if (coreGl30()) {
-            GL30.glFramebufferTextureLayer(target, attachment, texture, level, layer);
-        } else {
-            ARBFramebufferObject.glFramebufferTextureLayer(target, attachment, texture, level, layer);
-        }
+        GL30.glFramebufferTextureLayer(target, attachment, texture, level, layer);
     }
 
     @Override
     public int getFramebufferAttachmentParameteriv(int target, int attachment, int pname) {
-        if (coreGl30()) {
-            return GL30.glGetFramebufferAttachmentParameteri(target, attachment, pname);
-        } else if (arbFbo()) {
-            return ARBFramebufferObject.glGetFramebufferAttachmentParameteri(target, attachment, pname);
-        } else {
-            return EXTFramebufferObject.glGetFramebufferAttachmentParameteriEXT(target, attachment, pname);
-        }
+        return GL30.glGetFramebufferAttachmentParameteri(target, attachment, pname);
     }
 
     @Override
     public int genFramebuffers() {
-        if (coreGl30()) {
-            return GL30.glGenFramebuffers();
-        } else if (arbFbo()) {
-            return ARBFramebufferObject.glGenFramebuffers();
-        } else {
-            return EXTFramebufferObject.glGenFramebuffersEXT();
-        }
+        return GL30.glGenFramebuffers();
     }
 
     @Override
     public void deleteFramebuffers(int fbo) {
-        if (coreGl30()) {
-            GL30.glDeleteFramebuffers(fbo);
-        } else if (arbFbo()) {
-            ARBFramebufferObject.glDeleteFramebuffers(fbo);
-        } else {
-            EXTFramebufferObject.glDeleteFramebuffersEXT(fbo);
-        }
+        GL30.glDeleteFramebuffers(fbo);
     }
 
     @Override
     public void framebufferTexture2D(int target, int attachment, int texTarget, int texture, int level) {
-        if (coreGl30()) {
-            GL30.glFramebufferTexture2D(target, attachment, texTarget, texture, level);
-        } else if (arbFbo()) {
-            ARBFramebufferObject.glFramebufferTexture2D(target, attachment, texTarget, texture, level);
-        } else {
-            EXTFramebufferObject.glFramebufferTexture2DEXT(target, attachment, texTarget, texture, level);
-        }
+        GL30.glFramebufferTexture2D(target, attachment, texTarget, texture, level);
     }
 
     @Override
     public int checkFramebufferStatus(int target) {
-        if (coreGl30()) {
-            return GL30.glCheckFramebufferStatus(target);
-        } else if (arbFbo()) {
-            return ARBFramebufferObject.glCheckFramebufferStatus(target);
-        } else {
-            return EXTFramebufferObject.glCheckFramebufferStatusEXT(target);
-        }
+        return GL30.glCheckFramebufferStatus(target);
     }
 
     @Override
@@ -396,11 +328,7 @@ public class Lwjgl2GLBackend extends CgGLBackend {
 
     @Override
     public void glVertexAttribDivisor(int index, int divisor) {
-        if (GLContext.getCapabilities().OpenGL33) {
-            GL33.glVertexAttribDivisor(index, divisor);
-        } else {
-            ARBInstancedArrays.glVertexAttribDivisorARB(index, divisor);
-        }
+        GL33.glVertexAttribDivisor(index, divisor);
     }
 
     // -------------------------------------------------------------------------
@@ -691,7 +619,7 @@ public class Lwjgl2GLBackend extends CgGLBackend {
 
     @Override
     public void glBindSampler(int unit, int sampler) {
-        ARBSamplerObjects.glBindSampler(unit, sampler);
+        GL33.glBindSampler(unit, sampler);
     }
 
     // -------------------------------------------------------------------------
@@ -713,13 +641,18 @@ public class Lwjgl2GLBackend extends CgGLBackend {
         GL30.glFlushMappedBufferRange(target, offset, length);
     }
 
+    @Override
+    public void glBufferStorage(int target, long size, int flags) {
+        GL44.glBufferStorage(target, size, flags);
+    }
+
     // -------------------------------------------------------------------------
-    // Sync objects (ARBSync / GL 3.2)
+    // Sync objects (GL 3.2)
     // -------------------------------------------------------------------------
 
     @Override
     public long glFenceSync(int condition, int flags) {
-        GLSync sync = ARBSync.glFenceSync(condition, flags);
+        GLSync sync = GL32.glFenceSync(condition, flags);
         if (sync == null) return 0L;
         long handle = sync.getPointer();
         SYNC_CACHE.put(handle, sync);
@@ -729,14 +662,14 @@ public class Lwjgl2GLBackend extends CgGLBackend {
     @Override
     public int glClientWaitSync(long sync, int flags, long timeout) {
         GLSync glSync = SYNC_CACHE.get(sync);
-        if (glSync == null) return ARBSync.GL_WAIT_FAILED;
-        return ARBSync.glClientWaitSync(glSync, flags, timeout);
+        if (glSync == null) return GL32.GL_WAIT_FAILED;
+        return GL32.glClientWaitSync(glSync, flags, timeout);
     }
 
     @Override
     public void glDeleteSync(long sync) {
         GLSync glSync = SYNC_CACHE.remove(sync);
-        if (glSync != null) ARBSync.glDeleteSync(glSync);
+        if (glSync != null) GL32.glDeleteSync(glSync);
     }
 
     // -------------------------------------------------------------------------
@@ -789,67 +722,33 @@ public class Lwjgl2GLBackend extends CgGLBackend {
     }
 
     // -------------------------------------------------------------------------
-    // Framebuffers — renderbuffer operations (Core / ARB / EXT waterfall)
+    // Framebuffers — renderbuffer operations
     // -------------------------------------------------------------------------
 
     @Override
     public int glGenRenderbuffers() {
-        if (coreGl30()) {
-            return GL30.glGenRenderbuffers();
-        } else if (arbFbo()) {
-            return ARBFramebufferObject.glGenRenderbuffers();
-        } else {
-            return EXTFramebufferObject.glGenRenderbuffersEXT();
-        }
+        return GL30.glGenRenderbuffers();
     }
 
     @Override
     public void glDeleteRenderbuffers(int rbo) {
-        if (coreGl30()) {
-            GL30.glDeleteRenderbuffers(rbo);
-        } else if (arbFbo()) {
-            ARBFramebufferObject.glDeleteRenderbuffers(rbo);
-        } else {
-            EXTFramebufferObject.glDeleteRenderbuffersEXT(rbo);
-        }
+        GL30.glDeleteRenderbuffers(rbo);
     }
 
     @Override
     public void glBindRenderbuffer(int target, int renderbuffer) {
-        if (coreGl30()) {
-            GL30.glBindRenderbuffer(target, renderbuffer);
-        } else if (arbFbo()) {
-            ARBFramebufferObject.glBindRenderbuffer(target, renderbuffer);
-        } else {
-            EXTFramebufferObject.glBindRenderbufferEXT(target, renderbuffer);
-        }
+        GL30.glBindRenderbuffer(target, renderbuffer);
     }
 
     @Override
     public void glRenderbufferStorage(int target, int internalFormat, int width, int height) {
-        if (coreGl30()) {
-            GL30.glRenderbufferStorage(target, internalFormat, width, height);
-        } else if (arbFbo()) {
-            ARBFramebufferObject.glRenderbufferStorage(target, internalFormat, width, height);
-        } else {
-            EXTFramebufferObject.glRenderbufferStorageEXT(target, internalFormat, width, height);
-        }
+        GL30.glRenderbufferStorage(target, internalFormat, width, height);
     }
 
     @Override
     public void glRenderbufferStorageMultisample(int target, int samples, int internalFormat,
                                                  int width, int height) {
-        if (coreGl30()) {
-            GL30.glRenderbufferStorageMultisample(target, samples, internalFormat, width, height);
-        } else if (arbFbo()) {
-            ARBFramebufferObject.glRenderbufferStorageMultisample(target, samples, internalFormat, width, height);
-        } else {
-            // EXT_framebuffer_object has no multisample entry point — that lives in the separate
-            // EXT_framebuffer_multisample extension, which a driver this old may well not have either.
-            // A single-sampled attachment renders correctly and merely without antialiasing, which is
-            // the waterfall's whole philosophy: degrade the quality, never the correctness.
-            EXTFramebufferObject.glRenderbufferStorageEXT(target, internalFormat, width, height);
-        }
+        GL30.glRenderbufferStorageMultisample(target, samples, internalFormat, width, height);
     }
 
     @Override
@@ -862,37 +761,7 @@ public class Lwjgl2GLBackend extends CgGLBackend {
     @Override
     public void glFramebufferRenderbuffer(int target, int attachment,
                                           int renderbufferTarget, int renderbuffer) {
-        if (coreGl30()) {
-            GL30.glFramebufferRenderbuffer(target, attachment, renderbufferTarget, renderbuffer);
-        } else if (arbFbo()) {
-            ARBFramebufferObject.glFramebufferRenderbuffer(target, attachment, renderbufferTarget, renderbuffer);
-        } else {
-            EXTFramebufferObject.glFramebufferRenderbufferEXT(target, attachment, renderbufferTarget, renderbuffer);
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // Shaders — ARBShaderObjects unified-handle methods
-    // -------------------------------------------------------------------------
-
-    @Override
-    public void glDeleteObject(int handle) {
-        ARBShaderObjects.glDeleteObjectARB(handle);
-    }
-
-    @Override
-    public int glGetObjectParameteri(int obj, int pname) {
-        return ARBShaderObjects.glGetObjectParameteriARB(obj, pname);
-    }
-
-    @Override
-    public String glGetObjectInfoLog(int obj, int maxLength) {
-        return ARBShaderObjects.glGetInfoLogARB(obj, maxLength);
-    }
-
-    @Override
-    public int glGetHandle(int pname) {
-        return ARBShaderObjects.glGetHandleARB(pname);
+        GL30.glFramebufferRenderbuffer(target, attachment, renderbufferTarget, renderbuffer);
     }
 
     // -------------------------------------------------------------------------
