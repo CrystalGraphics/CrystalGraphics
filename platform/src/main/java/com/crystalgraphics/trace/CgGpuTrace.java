@@ -1,6 +1,7 @@
 package com.crystalgraphics.trace;
 
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.gl.CgGlRecording;
 
 import java.util.ArrayDeque;
 import java.util.Arrays;
@@ -35,6 +36,8 @@ import java.util.Map;
  *   <li>One timer query can run at a time, so a zone opened inside another <b>pauses</b> it: the outer
  *       zone is timed in pieces around the inner one, the frame total stays right, and each pause counts
  *       under {@code gpu.nestedFlattened}.</li>
+ *   <li>A zone opened while a {@link CgGlRecording} captures is not timed, since nothing reaches the GPU
+ *       then; a zone around the replay times the work.</li>
  * </ul>
  */
 public final class CgGpuTrace {
@@ -98,9 +101,12 @@ public final class CgGpuTrace {
         support = answer;
     }
 
-    /** Whether a zone opened now would be timed: the channel is on and the context can. */
+    /**
+     * Whether a zone opened now would be timed: the channel is on, the context can, and no
+     * {@link CgGlRecording} is capturing — nothing recorded reaches the GPU until replay.
+     */
     public static boolean isMeasuring() {
-        return CgTrace.isEnabled(GPU) && support != Support.UNSUPPORTED;
+        return CgTrace.isEnabled(GPU) && support != Support.UNSUPPORTED && !CgGL.isRecording();
     }
 
     /** Interns a zone name, prefixed — the form a hot call site holds in a constant. */
@@ -114,7 +120,7 @@ public final class CgGpuTrace {
 
     /** Opens a GPU zone by an id from {@link #name(String)}. Pair with exactly one {@link #end()}. */
     public static void begin(int nameId) {
-        if (nameId != UNMEASURED && (!CgTrace.isEnabled(GPU) || !supported())) nameId = UNMEASURED;
+        if (nameId != UNMEASURED && (!CgTrace.isEnabled(GPU) || !supported() || CgGL.isRecording())) nameId = UNMEASURED;
         if (nameId != UNMEASURED && running) {
             stopQuery();
             count(NESTED_FLATTENED);

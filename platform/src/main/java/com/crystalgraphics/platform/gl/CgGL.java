@@ -1346,6 +1346,11 @@ public final class CgGL {
         return backend.ownedByCurrentThread();
     }
 
+    /** Whether a {@link CgGlRecording} is capturing on this backend: calls are taped for replay, not drawn. */
+    public static boolean isRecording() {
+        return backend instanceof CgGlRecordingBackend;
+    }
+
     /** The installed backend; {@link CgGlRecording} swaps it for the length of a recording. */
     static CgGLBackend backend() {
         return backend;
