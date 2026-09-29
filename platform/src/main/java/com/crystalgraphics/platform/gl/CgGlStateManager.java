@@ -142,6 +142,12 @@ public final class CgGlStateManager {
 
     private CgGlStateProvider provider;
 
+    /** Set while a {@link CgGlRecording} captures: every write issues, and scopes and invalidations are recorded. */
+    private CgGlRecording recording;
+    private final CgGlStateShadow liveCurrent = new CgGlStateShadow();
+    private long liveUnknownFields;
+    private int liveUnknownUnits;
+
     private final Frame[] frames = new Frame[MAX_DEPTH];
     private int depth;
 
@@ -234,7 +240,7 @@ public final class CgGlStateManager {
     private boolean mustIssue(CgGlSlot slot) {
         // `verifying`: the read in verify() steps the active texture unit through CgGL, and those calls must
         // reach the driver rather than be judged against the shadow being checked.
-        return (DEDUP_EXEMPT & (1 << slot.ordinal())) != 0 || NO_DEDUP || forcing || verifying;
+        return (DEDUP_EXEMPT & (1 << slot.ordinal())) != 0 || NO_DEDUP || forcing || verifying || recording != null;
     }
 
     private void verify(CgGlSlot slot) {
@@ -330,6 +336,11 @@ public final class CgGlStateManager {
 
     /** Marks domains untrustworthy without touching GL. For boundaries that are not scopes. */
     public void invalidate(CgGlSlot... slots) {
+        if (recording != null) recording.recordInvalidate(slots);
+        forget(slots);
+    }
+
+    private void forget(CgGlSlot... slots) {
         for (CgGlSlot s : slots) {
             unknownFields |= SLOT_FIELDS[s.ordinal()];
             if (s == CgGlSlot.TEXTURES) unknownUnits = ALL_UNITS;
@@ -337,6 +348,7 @@ public final class CgGlStateManager {
     }
 
     public void invalidateAll() {
+        if (recording != null) recording.recordInvalidateAll();
         unknownFields = ALL_FIELDS;
         unknownUnits = ALL_UNITS;
     }
@@ -691,6 +703,104 @@ public final class CgGlStateManager {
         return true;    // uniform/shader-storage etc. — not modelled, always issued
     }
 
+    // ── Recording ─────────────────────────────────────────────────────────────
+
+    /** Sets the live shadow aside; the recording starts knowing nothing, and no write is elided. */
+    void beginRecording(CgGlRecording r) {
+        assertOwner();
+        if (recording != null) throw new IllegalStateException("A CgGlRecording is already capturing");
+        liveCurrent.copyFrom(current);
+        liveUnknownFields = unknownFields;
+        liveUnknownUnits = unknownUnits;
+        unknownFields = ALL_FIELDS;
+        unknownUnits = ALL_UNITS;
+        recording = r;
+    }
+
+    /** Puts the live shadow back. It is still true: nothing a recording captures reaches the driver. */
+    void endRecording() {
+        recording = null;
+        current.copyFrom(liveCurrent);
+        unknownFields = liveUnknownFields;
+        unknownUnits = liveUnknownUnits;
+    }
+
+    /** A recorded scope closed: what it restores is known only on replay. */
+    void forgetRecorded(boolean foreign, CgGlSlot... slots) {
+        if (foreign) {
+            unknownFields = ALL_FIELDS;
+            unknownUnits = ALL_UNITS;
+        } else {
+            forget(slots);
+        }
+    }
+
+    /** Whether a query made while recording is about state the recording itself set. */
+    boolean recordedSets(int pname) {
+        switch (pname) {
+            case CgGL.GL_DRAW_FRAMEBUFFER_BINDING: return (unknownFields & F_DRAW_FBO) == 0;
+            case CgGL.GL_READ_FRAMEBUFFER_BINDING: return (unknownFields & F_READ_FBO) == 0;
+            case CgGL.GL_CURRENT_PROGRAM:          return (unknownFields & F_PROGRAM) == 0;
+            case CgGL.GL_VERTEX_ARRAY_BINDING:     return (unknownFields & F_VERTEX_ARRAY) == 0;
+            case CgGL.GL_ARRAY_BUFFER_BINDING:     return (unknownFields & F_ARRAY_BUFFER) == 0;
+            case CgGL.GL_ACTIVE_TEXTURE:           return (unknownFields & F_ACTIVE_TEXTURE) == 0;
+            case CgGL.GL_TEXTURE_BINDING_2D:
+                return (unknownFields & F_ACTIVE_TEXTURE) == 0 && (unknownUnits & (1 << current.activeTextureUnit)) == 0;
+            case CgGL.GL_BLEND:        return (unknownFields & F_BLEND_ENABLE) == 0;
+            case CgGL.GL_DEPTH_TEST:   return (unknownFields & F_DEPTH_TEST) == 0;
+            case CgGL.GL_CULL_FACE:    return (unknownFields & F_CULL_ENABLE) == 0;
+            case CgGL.GL_SCISSOR_TEST: return (unknownFields & F_SCISSOR_TEST) == 0;
+            case CgGL.GL_STENCIL_TEST: return (unknownFields & F_STENCIL_TEST) == 0;
+            default: return false;
+        }
+    }
+
+    /**
+     * A query made while recording, answered from what the recording itself set.
+     *
+     * @throws IllegalStateException unless {@link #recordedSets} answers true for it
+     */
+    int recordedInteger(int pname) {
+        switch (pname) {
+            case CgGL.GL_DRAW_FRAMEBUFFER_BINDING: return recorded(F_DRAW_FBO, pname, current.drawFbo);
+            case CgGL.GL_READ_FRAMEBUFFER_BINDING: return recorded(F_READ_FBO, pname, current.readFbo);
+            case CgGL.GL_CURRENT_PROGRAM:          return recorded(F_PROGRAM, pname, current.programId);
+            case CgGL.GL_VERTEX_ARRAY_BINDING:     return recorded(F_VERTEX_ARRAY, pname, current.vertexArray);
+            case CgGL.GL_ARRAY_BUFFER_BINDING:     return recorded(F_ARRAY_BUFFER, pname, current.arrayBuffer);
+            case CgGL.GL_ACTIVE_TEXTURE:
+                return CgGL.GL_TEXTURE0 + recorded(F_ACTIVE_TEXTURE, pname, current.activeTextureUnit);
+            case CgGL.GL_TEXTURE_BINDING_2D: {
+                int unit = recorded(F_ACTIVE_TEXTURE, pname, current.activeTextureUnit);
+                if ((unknownUnits & (1 << unit)) != 0) throw notRecorded(pname);
+                return current.boundTexture2D[unit];
+            }
+            default:
+                throw notRecorded(pname);
+        }
+    }
+
+    /** @see #recordedInteger */
+    boolean recordedBoolean(int pname) {
+        switch (pname) {
+            case CgGL.GL_BLEND:        return recorded(F_BLEND_ENABLE, pname, current.blendEnabled ? 1 : 0) != 0;
+            case CgGL.GL_DEPTH_TEST:   return recorded(F_DEPTH_TEST, pname, current.depthTest ? 1 : 0) != 0;
+            case CgGL.GL_CULL_FACE:    return recorded(F_CULL_ENABLE, pname, current.cullEnabled ? 1 : 0) != 0;
+            case CgGL.GL_SCISSOR_TEST: return recorded(F_SCISSOR_TEST, pname, current.scissorTest ? 1 : 0) != 0;
+            case CgGL.GL_STENCIL_TEST: return recorded(F_STENCIL_TEST, pname, current.stencilTest ? 1 : 0) != 0;
+            default:
+                throw notRecorded(pname);
+        }
+    }
+
+    private int recorded(long field, int pname, int value) {
+        if ((unknownFields & field) != 0) throw notRecorded(pname);
+        return value;
+    }
+
+    private static IllegalStateException notRecorded(int pname) {
+        return new IllegalStateException("0x" + Integer.toHexString(pname) + " was not set by this recording");
+    }
+
     // ── Scopes ────────────────────────────────────────────────────────────────
 
     /**
@@ -740,11 +850,28 @@ public final class CgGlStateManager {
         return open(true, slots);
     }
 
+    /**
+     * Runs {@code body} — foreign drawing, GL written behind {@link CgGL}'s back — inside a {@link #hostForeign}
+     * scope. While a {@link CgGlRecording} captures, the body is recorded and runs on replay instead, in order.
+     */
+    public void hostForeign(Runnable body, CgGlSlot... slots) {
+        if (recording != null) {
+            recording.recordForeign(body, slots);
+            unknownFields = ALL_FIELDS;
+            unknownUnits = ALL_UNITS;
+            return;
+        }
+        try (CgGlScope ignored = hostForeign(slots)) {
+            body.run();
+        }
+    }
+
     private CgGlScope open(boolean foreign, CgGlSlot... slots) {
         assertOwner();
         // A foreign block with nothing declared still has to invalidate on exit, so it needs a real frame.
         if ((slots == null || slots.length == 0) && !foreign) return CgGlScope.NOOP_SCOPE;
         if (slots == null) slots = NO_SLOTS;
+        if (recording != null) return recording.recordScope(foreign, slots);
         if (depth == MAX_DEPTH) {
             throw new IllegalStateException(
                     "GL state scope nesting exceeded " + MAX_DEPTH + "; unbalanced save() somewhere");

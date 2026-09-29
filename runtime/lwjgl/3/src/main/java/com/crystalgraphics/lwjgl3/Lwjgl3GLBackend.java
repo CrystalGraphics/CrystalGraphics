@@ -1,6 +1,7 @@
 package com.crystalgraphics.lwjgl3;
 
 import com.crystalgraphics.platform.gl.CgGLBackend;
+import com.crystalgraphics.platform.gl.state.CgGlState;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.opengl.*;
 import org.lwjgl.system.MemoryStack;
@@ -734,6 +735,23 @@ public class Lwjgl3GLBackend extends CgGLBackend {
     @Override
     public boolean isContextCurrent() {
         return GLFW.glfwGetCurrentContext() != MemoryUtil.NULL;
+    }
+
+    // -------------------------------------------------------------------------
+    // Host coexistence: a GL host's texture is already a GL name, and its own brackets do the section work
+    // -------------------------------------------------------------------------
+
+    @Override
+    public int importHostTexture(Object hostHandle) {
+        return (Integer) hostHandle;
+    }
+
+    @Override public void hostSectionBegin() {}
+    @Override public void hostSectionEnd() {}
+
+    @Override
+    public boolean ownedByCurrentThread() {
+        return CgGlState.manager().ownedByCurrentThread();
     }
 
     // -------------------------------------------------------------------------

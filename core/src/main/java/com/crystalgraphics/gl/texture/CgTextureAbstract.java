@@ -43,13 +43,20 @@ public abstract class CgTextureAbstract implements CgTexture {
     protected int height;
     /** Immutable spec: format, filter, wrap, and mipmap policy. */
     protected final CgTextureSpec spec;
+    /** False for a texture adopted from its owner: {@link #delete()} forgets it without deleting it. */
+    private final boolean owned;
     private boolean deleted;
 
     protected CgTextureAbstract(int textureId, int width, int height, CgTextureSpec spec) {
+        this(textureId, width, height, spec, true);
+    }
+
+    protected CgTextureAbstract(int textureId, int width, int height, CgTextureSpec spec, boolean owned) {
         this.textureId = textureId;
         this.width = width;
         this.height = height;
         this.spec = spec;
+        this.owned = owned;
     }
 
     // ── CgTexture — binding ─────────────────────────────────────────
@@ -80,7 +87,7 @@ public abstract class CgTextureAbstract implements CgTexture {
     @Override
     public void delete() {
         if (deleted) return;
-        CgGL.glDeleteTextures(textureId);
+        if (owned) CgGL.glDeleteTextures(textureId);
         textureId = 0;
         deleted = true;
     }
@@ -93,6 +100,11 @@ public abstract class CgTextureAbstract implements CgTexture {
      */
     protected void checkNotDeleted() {
         if (deleted) throw new IllegalStateException(getClass().getSimpleName() + " has been deleted");
+    }
+
+    /** Guards every write: an adopted texture's storage and parameters are its owner's. */
+    protected void checkOwned() {
+        if (!owned) throw new IllegalStateException("A wrapped " + getClass().getSimpleName() + " belongs to its host");
     }
 
     protected static int pixelFormatForChannels(int channels) {

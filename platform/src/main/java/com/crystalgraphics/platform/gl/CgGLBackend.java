@@ -328,6 +328,38 @@ public abstract class CgGLBackend {
     public abstract boolean isContextCurrent();
 
     // -------------------------------------------------------------------------
+    // Host coexistence
+    // -------------------------------------------------------------------------
+
+    /**
+     * A host's texture as a GL name the engine can adopt with {@code CgTexture2D.wrap}.
+     *
+     * <pre>{@code
+     * int name = CgGL.importHostTexture(minecraftTextureId);    // an Integer on every GL host
+     * CgTexture2D host = CgTexture2D.wrap(name, width, height);
+     * }</pre>
+     *
+     * <p>On a GL backend the handle already is a GL name and comes back unchanged; a backend over another
+     * API registers the host's image under a name of its own.</p>
+     */
+    public abstract int importHostTexture(Object hostHandle);
+
+    /**
+     * Control goes back to the host: whatever of ours is in flight is finished and the host's state is left
+     * as it expects. Nothing on a GL backend, where the hosts' own brackets do that work.
+     */
+    public abstract void hostSectionBegin();
+
+    /** Control comes back to us after {@link #hostSectionBegin}. Nothing on a GL backend. */
+    public abstract void hostSectionEnd();
+
+    /**
+     * Whether this thread may issue calls. On GL, the state manager's owner; on a device-backed backend, the
+     * device's. For a caller that must decline rather than throw, such as a callback forwarded from another thread.
+     */
+    public abstract boolean ownedByCurrentThread();
+
+    // -------------------------------------------------------------------------
     // Framebuffers — renderbuffer operations
     // -------------------------------------------------------------------------
 

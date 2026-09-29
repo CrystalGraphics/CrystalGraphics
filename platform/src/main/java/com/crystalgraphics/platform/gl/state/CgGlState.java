@@ -70,6 +70,18 @@ public final class CgGlState {
         return manager.hostForeign(slots);
     }
 
+    /**
+     * Runs foreign drawing inside a {@link #hostForeign(CgGlSlot...)} scope — the form that survives a
+     * {@code CgGlRecording}, which records {@code body} and runs it on replay in order.
+     *
+     * <pre>{@code
+     * CgGlState.hostForeign(() -> itemRenderer.render(stack), CgGlSlot.BLEND, CgGlSlot.DEPTH, CgGlSlot.PROGRAM);
+     * }</pre>
+     */
+    public static void hostForeign(Runnable body, CgGlSlot... slots) {
+        manager.hostForeign(body, slots);
+    }
+
     /** Saves only the shader program domain. */
     public static CgGlScope saveProgram() {
         return save(CgGlSlot.PROGRAM);
