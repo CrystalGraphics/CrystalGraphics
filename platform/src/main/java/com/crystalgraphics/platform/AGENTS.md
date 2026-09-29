@@ -53,6 +53,29 @@ CgGlDispatch.get().glUseProgram(programId);
 (direct + instanced), and the full GL state surface (blend, depth, cull, viewport, scissor,
 stencil, alpha, polygon mode, color mask).
 
+## Hosts and recording — the device seam's additions (D2)
+
+`CgGLBackend` has four methods for living inside a host, all trivial on GL and meaningful on the tracked
+backend to come: `importHostTexture` (a host texture as a GL name; `CgTexture2D.wrap` adopts it without
+owning it), `hostSectionBegin`/`hostSectionEnd` (control goes back to the host / comes back to us; nothing on
+GL), and `ownedByCurrentThread`. `CgGL` fronts each.
+
+**`CgGlRecording`** records a `CgGL` stream and replays it through `CgGL` later:
+
+```java
+recording.begin();
+try { paint(); } finally { recording.end(); }
+recording.replay();
+```
+
+While it records, `CgGL` runs against `CgGlRecordingBackend` and the live `CgGlStateManager` with
+deduplication off; scopes, `hostForeign` and invalidations become operations run on replay against the live
+manager, and the live shadow is set aside and put back untouched. A query answers what the recording set, and
+anything else from the live context. Creating objects, compiling and reading pixels are refused by name.
+Foreign drawing survives a recording only through `CgGlState.hostForeign(Runnable, slots…)`, whose body is
+recorded and run on replay in order. Owner thread only; `-Dcrystalgraphics.recording.debugScopes=true` names
+where a scope left open at `end()` was opened.
+
 ---
 
 ## `CgPlatform` — Central registry

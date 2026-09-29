@@ -137,6 +137,10 @@ try (CgGlScope s = CgGlState.hostForeign(CgGlSlot.BLEND, CgGlSlot.DEPTH, CgGlSlo
 Entry is free — no `glGet`, because our shadow is still truthful going in. The whole cost is one re-assert
 of what you named, on the way out. Declaring nothing is valid: it invalidates without restoring.
 
+**The `Runnable` form is the one a recording can keep**: `CgGlState.hostForeign(() -> render(), slots…)`. Drawn
+directly it is the scope above; under a `CgGlRecording` the body is recorded and runs on replay, in its place,
+where the try-with-resources form would have run the foreign code at record time, out of order.
+
 > **This fixes our half only.** Minecraft keeps its own shadow (`GlStateManager` on 1.20.x, Angelica's on
 > 1.7.10) and every write we make through `CgGL` is equally invisible to *it*. Before calling in, set the
 > state MC cares about through **MC's** API so its mirror is truthful too. Two shadows, each blind to the

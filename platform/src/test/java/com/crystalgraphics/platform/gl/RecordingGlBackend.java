@@ -171,6 +171,10 @@ public final class RecordingGlBackend extends CgGLBackend {
     @Override public void glDeleteSync(long sync) { record("glDeleteSync"); }
     @Override public int glGetError() { record("glGetError"); return 0; }
     @Override public boolean isContextCurrent() { record("isContextCurrent"); return false; }
+    @Override public int importHostTexture(Object hostHandle) { record("importHostTexture"); return (Integer) hostHandle; }
+    @Override public void hostSectionBegin() { record("hostSectionBegin"); }
+    @Override public void hostSectionEnd() { record("hostSectionEnd"); }
+    @Override public boolean ownedByCurrentThread() { return true; }
     @Override public int glGenRenderbuffers() { record("glGenRenderbuffers"); return 0; }
     @Override public void glDeleteRenderbuffers(int rbo) { record("glDeleteRenderbuffers"); }
     @Override public void glBindRenderbuffer(int target, int renderbuffer) { record("glBindRenderbuffer"); }

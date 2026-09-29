@@ -52,6 +52,11 @@ public final class CgTexture2D extends CgTextureAbstract {
         this.sourcePath = sourcePath;
     }
 
+    private CgTexture2D(int textureId, int width, int height) {
+        super(textureId, width, height, CgTextureSpec.RGBA8_LINEAR, false);
+        this.sourcePath = null;
+    }
+
     // ── Factories ────────────────────────────────────────────────────
 
     /** Loads a 2D texture from an asset path using {@link CgTextureSpec#RGBA8_LINEAR}, cached. */
@@ -81,6 +86,22 @@ public final class CgTexture2D extends CgTextureAbstract {
                 pixelFormatForChannels(data.channels()), GL_UNSIGNED_BYTE, spec, null);
     }
 
+    /**
+     * Adopts a texture someone else owns, so the engine can sample it: a host's, through
+     * {@link CgGL#importHostTexture}.
+     *
+     * <pre>{@code
+     * CgTexture2D scene = CgTexture2D.wrap(CgGL.importHostTexture(hostTextureId), width, height);
+     * scene.bind(unit);
+     * scene.delete();   // forgets it; the host's texture is untouched
+     * }</pre>
+     *
+     * <p>Uploads throw: its storage and parameters are its owner's. Not cached.</p>
+     */
+    public static CgTexture2D wrap(int textureId, int width, int height) {
+        return new CgTexture2D(textureId, width, height);
+    }
+
     /** Creates an empty 2D texture with no image data. Not cached; caller owns the lifecycle. */
     public static CgTexture2D createEmpty(int width, int height, CgTextureSpec spec) {
         return doCreate(width, height, null,
@@ -107,6 +128,7 @@ public final class CgTexture2D extends CgTextureAbstract {
      */
     public void upload(CgImageData image) {
         checkNotDeleted();
+        checkOwned();
         CgGL.glBindTexture(GL_TEXTURE_2D, textureId);
         try {
             try (CgTightUnpack ignored = CgTightUnpack.begin()) {
@@ -136,6 +158,7 @@ public final class CgTexture2D extends CgTextureAbstract {
      */
     public void upload(int width, int height, ByteBuffer pixels, int pixelFormat, int pixelType) {
         checkNotDeleted();
+        checkOwned();
         CgGL.glBindTexture(GL_TEXTURE_2D, textureId);
         try {
             try (CgTightUnpack ignored = CgTightUnpack.begin()) {

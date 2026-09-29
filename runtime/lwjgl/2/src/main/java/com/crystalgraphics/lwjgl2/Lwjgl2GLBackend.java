@@ -1,6 +1,7 @@
 package com.crystalgraphics.lwjgl2;
 
 import com.crystalgraphics.platform.gl.CgGLBackend;
+import com.crystalgraphics.platform.gl.state.CgGlState;
 import org.lwjgl.opengl.*;
 
 import java.nio.ByteBuffer;
@@ -719,6 +720,23 @@ public class Lwjgl2GLBackend extends CgGLBackend {
         } catch (org.lwjgl.LWJGLException e) {
             return false;
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Host coexistence: a GL host's texture is already a GL name, and its own brackets do the section work
+    // -------------------------------------------------------------------------
+
+    @Override
+    public int importHostTexture(Object hostHandle) {
+        return (Integer) hostHandle;
+    }
+
+    @Override public void hostSectionBegin() {}
+    @Override public void hostSectionEnd() {}
+
+    @Override
+    public boolean ownedByCurrentThread() {
+        return CgGlState.manager().ownedByCurrentThread();
     }
 
     // -------------------------------------------------------------------------

@@ -1273,4 +1273,31 @@ public final class CgGL {
     public static boolean isContextCurrent() {
         return backend.isContextCurrent();
     }
+
+    // ── Host coexistence ──────────────────────────────────────────────────────
+
+    /** @see CgGLBackend#importHostTexture */
+    public static int importHostTexture(Object hostHandle) {
+        return backend.importHostTexture(hostHandle);
+    }
+
+    /** @see CgGLBackend#hostSectionBegin */
+    public static void hostSectionBegin() {
+        backend.hostSectionBegin();
+    }
+
+    /** @see CgGLBackend#hostSectionEnd */
+    public static void hostSectionEnd() {
+        backend.hostSectionEnd();
+    }
+
+    /** @see CgGLBackend#ownedByCurrentThread */
+    public static boolean ownedByCurrentThread() {
+        return backend.ownedByCurrentThread();
+    }
+
+    /** The installed backend; {@link CgGlRecording} swaps it for the length of a recording. */
+    static CgGLBackend backend() {
+        return backend;
+    }
 }
