@@ -87,8 +87,9 @@ rendering, no exception, nowhere near the cause.
    several binds later. `GL_ARRAY_BUFFER` is genuinely global and needs no such treatment.
 
 2. **Code that resets GL state wholesale must call `CgGlState.invalidateAllIfPresent()`.** Raw GL outside
-   `CgGL` is invisible by construction. The harness's `GlStateResetHelper` is the canonical case; omitting
-   it left blending disabled and rendered every bitmap glyph as an opaque quad.
+   `CgGL` is invisible by construction. The harness's `GlStateResetHelper` was the case, while it reset in
+   raw LWJGL: omitting it left blending disabled and rendered every bitmap glyph as an opaque quad. It
+   goes through `CgGL` now and needs none.
 
 3. **Trust never survives leaving our control.** An *outermost* `save()` re-reads unconditionally; only a
    *nested* one may trust the shadow. Between two outermost scopes, Minecraft or another mod ran.

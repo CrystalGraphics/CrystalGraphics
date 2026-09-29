@@ -4,7 +4,8 @@ import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgFontFamily;
 import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.text.render.CgGlyphPlacementCache;
-import com.crystalgraphics.util.profiling.CgProfiler;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -84,9 +85,9 @@ public final class CgTextLayoutCache {
         // number there is no way to tell which regime a given scene is in.
         CgTextLayout layout = MAP.get(key);
         if (layout != null) {
-            CgProfiler.count("layoutCache.hit");
+            CgTrace.add(CgChannels.TEXT, "layoutCache.hit", 1);
         } else {
-            CgProfiler.count("layoutCache.miss");
+            CgTrace.add(CgChannels.TEXT, "layoutCache.miss", 1);
         }
         return layout;
     }
@@ -96,8 +97,8 @@ public final class CgTextLayoutCache {
         if (replaced != null) cachedBytes -= estimateBytes(replaced);
         cachedBytes += estimateBytes(layout);
         trimToByteBudget();
-        CgProfiler.sample("layoutCache.size", MAP.size());
-        CgProfiler.sample("layoutCache.bytes", cachedBytes);
+        CgTrace.counter(CgChannels.TEXT, "layoutCache.size", MAP.size());
+        CgTrace.counter(CgChannels.TEXT, "layoutCache.bytes", cachedBytes);
     }
 
     /** Running estimate of the bytes held by all cached layouts; maintained incrementally. */
@@ -147,7 +148,7 @@ public final class CgTextLayoutCache {
             Map.Entry<Key, CgTextLayout> eldest = it.next();
             cachedBytes -= estimateBytes(eldest.getValue());
             it.remove();
-            CgProfiler.count("layoutCache.evictedForBytes");
+            CgTrace.add(CgChannels.TEXT, "layoutCache.evictedForBytes", 1);
         }
     }
 
@@ -169,7 +170,7 @@ public final class CgTextLayoutCache {
         int dropped = MAP.size();
         MAP.clear();
         cachedBytes = 0L;
-        CgProfiler.count("layoutCache.cleared", dropped);
+        CgTrace.add(CgChannels.TEXT, "layoutCache.cleared", dropped);
     }
 
     /** Current estimated footprint, for diagnostics and tests. */

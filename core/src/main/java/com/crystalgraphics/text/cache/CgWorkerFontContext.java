@@ -1,6 +1,7 @@
 package com.crystalgraphics.text.cache;
 
-import com.crystalgraphics.util.profiling.CgProfiler;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.freetype.FTBitmap;
 import com.crystalgraphics.freetype.FTFace;
 import com.crystalgraphics.freetype.FTLoadFlags;
@@ -47,7 +48,7 @@ final class CgWorkerFontContext {
      * generation but nothing of the bitmap glyphs generated alongside it.
      */
     CgGlyphGenerationResult generateBitmap(CgGlyphGenerationJob job) {
-        try (CgProfiler.Scope ignored = CgProfiler.scope("worker.rasterizeBitmap")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.ASYNC, "worker.rasterizeBitmap")) {
             return generateBitmapInternal(job);
         }
     }
@@ -120,7 +121,7 @@ final class CgWorkerFontContext {
      * back over the glyph's true extent by the same metric scale a glyph uses.
      */
     CgGlyphGenerationResult generateShadowCell(CgGlyphGenerationJob job) {
-        try (CgProfiler.Scope ignored = CgProfiler.scope("worker.shadowCell")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.ASYNC, "worker.shadowCell")) {
             CgGlyphKey key = job.getAtlasKey();
             int glyphId = key.getGlyphId();
             int px = job.getEffectiveTargetPx();

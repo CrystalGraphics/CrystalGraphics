@@ -4,8 +4,10 @@ import com.crystalgraphics.api.font.CgFontKey;
 import com.crystalgraphics.api.font.CgFontStyle;
 import com.crystalgraphics.api.font.CgGlyphKey;
 import com.crystalgraphics.text.atlas.packing.CgPackingStrategy;
-import com.crystalgraphics.util.profiling.CgProfiler;
-import com.crystalgraphics.util.profiling.CgProfilerReport;
+import com.crystalgraphics.trace.CgFrameRecord;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.trace.CgTraceSnapshot;
+import com.crystalgraphics.util.trace.CgChannels;
 import org.junit.Test;
 
 import java.util.Collections;
@@ -50,21 +52,20 @@ public class CgGlyphAtlasEvictionCostTest {
 
     @Test
     public void reportsEvictionCost() {
-        // CgProfiler state is thread-local and JUnit shares one thread across tests, so anything
-        // left behind here surfaces inside an unrelated test's report(). Reset on the way out as
-        // well as in, via finally so a failed assertion cannot leak either.
-        CgProfiler.setEnabled(true);
-        CgProfiler.reset();
+        // The whole run is frame 0, closed by the second frameBegin so its counters are written.
+        CgTrace.resetForTesting();
+        CgTrace.enable(CgChannels.TEXT.name());
         try {
+            CgTrace.frameBegin();
             runEvictionMeasurement();
+            CgTrace.frameBegin();
+            report();
         } finally {
-            // reset() BEFORE setEnabled(false): reset() is itself gated on `enabled`, so disabling
-            // first makes it a silent no-op and leaks this test's scopes into whatever test runs
-            // next on the same thread. That is exactly how CgProfilerTest started failing.
-            CgProfiler.reset();
-            CgProfiler.setEnabled(false);
+            CgTrace.resetForTesting();
         }
     }
+
+    private double totalMs;
 
     private void runEvictionMeasurement() {
 
@@ -82,11 +83,26 @@ public class CgGlyphAtlasEvictionCostTest {
             atlas.allocateBitmap(key, pixels, GLYPH_W, GLYPH_H,
                     0f, GLYPH_H, GLYPH_W, GLYPH_H, i);
         }
-        double totalMs = (System.nanoTime() - start) / 1_000_000.0;
+        totalMs = (System.nanoTime() - start) / 1_000_000.0;
+    }
 
-        CgProfilerReport report = CgProfiler.report();
-        long evictions = counter(report, "atlas.evictPage.count");
-        double evictMs = scopeMs(report, "atlas.evictPage");
+    private void report() {
+        CgFrameRecord frame = firstFrame();
+        long evictions = 0L;
+        long droppedCount = 0L, droppedSum = 0L, droppedMin = Long.MAX_VALUE, droppedMax = Long.MIN_VALUE;
+        for (CgTraceSnapshot.CounterView c : CgTrace.countersIn(frame)) {
+            if (c.name().equals("atlas.evictPage.count")) evictions += c.value();
+            if (c.name().equals("atlas.evictPage.glyphsDropped")) {
+                droppedCount++;
+                droppedSum += c.value();
+                droppedMin = Math.min(droppedMin, c.value());
+                droppedMax = Math.max(droppedMax, c.value());
+            }
+        }
+        double evictMs = 0;
+        for (CgTraceSnapshot.ZoneView z : CgTrace.zonesIn(frame)) {
+            if (z.name().equals("atlas.evictPage")) evictMs += (z.endNanos() - z.startNanos()) / 1_000_000.0;
+        }
 
         System.out.println();
         System.out.printf(Locale.ROOT,
@@ -100,11 +116,14 @@ public class CgGlyphAtlasEvictionCostTest {
             System.out.printf(Locale.ROOT, "  eviction share      %8.1f%% of allocation time%n",
                     100.0 * evictMs / totalMs);
         }
-        var dropped = report.samples().get("atlas.evictPage.glyphsDropped");
-        if (dropped != null) {
+        if (droppedCount > 0) {
             System.out.printf(Locale.ROOT,
-                    "  glyphs dropped      avg %.1f, min %.0f, max %.0f  (placement-cache entries invalidated per eviction)%n",
-                    dropped.avg(), dropped.min(), dropped.max());
+                    "  glyphs dropped      avg %.1f, min %d, max %d  (placement-cache entries invalidated per eviction)%n",
+                    (double) droppedSum / droppedCount, droppedMin, droppedMax);
+        }
+        if (CgTrace.droppedZones() > 0) {
+            System.out.printf(Locale.ROOT, "  (%d zones did not fit the frame; eviction total is a floor)%n",
+                    CgTrace.droppedZones());
         }
 
         assertTrue("expected the page budget to force at least one eviction — if this fails the "
@@ -112,16 +131,10 @@ public class CgGlyphAtlasEvictionCostTest {
                 evictions > 0);
     }
 
-    private static long counter(CgProfilerReport report, String name) {
-        Long v = report.counters().get(name);
-        return v == null ? 0L : v;
-    }
-
-    private static double scopeMs(CgProfilerReport report, String name) {
-        double total = 0;
-        for (CgProfilerReport.ScopeEntry e : report.scopes()) {
-            if (e.name().equals(name)) total += e.totalNanos() / 1_000_000.0;
+    private static CgFrameRecord firstFrame() {
+        for (CgFrameRecord frame : CgTrace.frames()) {
+            if (frame.index() == 0L) return frame;
         }
-        return total;
+        throw new AssertionError("frame 0 was not recorded");
     }
 }

@@ -10,7 +10,8 @@ import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.text.atlas.CgGlyphAtlas;
 import com.crystalgraphics.text.cache.CgFontRegistry;
 import com.crystalgraphics.text.render.context.CgTextRenderContext;
-import com.crystalgraphics.util.profiling.CgProfiler;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -139,16 +140,16 @@ final class CgResolvedGlyphs {
 
         CgGlyphPlacementCache.Key key;
         CgGlyphPlacementCache.Entry hit;
-        try (CgProfiler.Scope ignored = CgProfiler.scope("placementCache.lookup")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "placementCache.lookup")) {
             key = CgGlyphPlacementCache.key(layout, x, y, wantMsdf, fontKey, rgba,
                     subPixelApplies ? posePhaseKey(posedOriginX) : 0);
             hit = CgGlyphPlacementCache.get(key, effectiveTargetPx, contentGeneration, evictionGeneration, frame);
         }
         if (hit != null) {
-            CgProfiler.count("placementCache.hit");
+            CgTrace.add(CgChannels.TEXT, "placementCache.hit", 1);
             // Text drawn from a cached fallback. Nothing upstream can see this: no glyph is requested,
             // so every queue and miss counter reads zero while the screen is still on the bitmap tier.
-            if (!hit.distanceField()) CgProfiler.count("placementCache.hitUnconverged");
+            if (!hit.distanceField()) CgTrace.add(CgChannels.TEXT, "placementCache.hitUnconverged", 1);
             this.glyphX = hit.glyphX();
             this.glyphY = hit.glyphY();
             this.argbColor = hit.argbColor();
@@ -162,12 +163,12 @@ final class CgResolvedGlyphs {
         // per-frame refresh budget let it through. effectiveTargetPx is
         // sampled here specifically to see whether it's drifting frame-to-frame during MSDF
         // atlas warmup for world-space text (PerspectiveScaleResolver recomputes it every frame).
-        CgProfiler.count("placementCache.miss");
-        CgProfiler.sample("placementCache.miss.effectiveTargetPx", effectiveTargetPx);
+        CgTrace.add(CgChannels.TEXT, "placementCache.miss", 1);
+        CgTrace.counter(CgChannels.TEXT, "placementCache.miss.effectiveTargetPx", effectiveTargetPx);
         long missStartNanos = System.nanoTime();
 
         int glyphCount;
-        try (CgProfiler.Scope ignored = CgProfiler.scope("flatten")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "glyph.flatten")) {
             glyphCount = flatten(layout, x, y, context, effectiveTargetPx, wantMsdf, rgba, posePhase);
         }
         // Salvage already-converged placements from the stale entry we're replacing, so a
@@ -179,13 +180,13 @@ final class CgResolvedGlyphs {
 
         boolean distanceField = false;
         if (glyphCount > 0) {
-            try (CgProfiler.Scope ignored = CgProfiler.scope("resolvePlacements")) {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "glyph.resolvePlacements")) {
                 distanceField = resolvePlacements(glyphCount, frame, effectiveTargetPx, wantMsdf, reusable);
             }
         }
         // Whether the resulting cache entry (about to be put() below) will require an exact
         // effectiveTargetPx match on its next lookup -- see CgGlyphPlacementCache.Entry.matches().
-        CgProfiler.sample("placementCache.miss.resultDistanceField", distanceField ? 1.0 : 0.0);
+        CgTrace.counter(CgChannels.TEXT, "placementCache.miss.resultDistanceField", distanceField ? 1.0 : 0.0);
 
         this.glyphX = scratchGlyphX;
         this.glyphY = scratchGlyphY;
@@ -202,11 +203,11 @@ final class CgResolvedGlyphs {
         if (hasDeferredGlyphs) {
             // Do not cache a partially-resolved result. Re-resolving next frame is what lets the
             // deferred glyphs appear once their worker results land; caching would freeze them out.
-            CgProfiler.count("placementCache.skippedDeferred");
+            CgTrace.add(CgChannels.TEXT, "placementCache.skippedDeferred", 1);
             chargeIfRefresh(upgradeFrom, frame, missStartNanos);
             return glyphCount;
         }
-        try (CgProfiler.Scope ignored = CgProfiler.scope("placementCache.put")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "placementCache.put")) {
             CgGlyphPlacementCache.put(key, new CgGlyphPlacementCache.Entry(
                     distanceField, effectiveTargetPx,
                     registry.getAtlasContentGeneration(), registry.getAtlasEvictionGeneration(),
@@ -354,8 +355,8 @@ final class CgResolvedGlyphs {
             if (wantMsdf && placement != null && placement.hasGeometry() && !placement.isDistanceField()) usedBitmapFallback = true;
             
         }
-        CgProfiler.count("resolvePlacements.reusedDistanceField", reused);
-        CgProfiler.count("resolvePlacements.queried", glyphCount - reused);
+        CgTrace.add(CgChannels.TEXT, "glyph.resolvePlacements.reusedDistanceField", reused);
+        CgTrace.add(CgChannels.TEXT, "glyph.resolvePlacements.queried", glyphCount - reused);
         return usedBitmapFallback;
     }
 

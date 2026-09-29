@@ -11,7 +11,8 @@ import com.crystalgraphics.gl.buffer.staging.CgStagingBuffer;
 import com.crystalgraphics.gl.mesh.CgMesh;
 import com.crystalgraphics.gl.mesh.CgMeshBuilder;
 import com.crystalgraphics.gl.mesh.CgMeshRegistry;
-import com.crystalgraphics.util.profiling.CgProfiler;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.api.buffer.CgGpuType;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -1271,18 +1272,18 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
             accumStaging.reset();
             return;
         }
-        try (CgProfiler.Scope ignored = CgProfiler.scope("curveRenderer.flush")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "curveRenderer.flush")) {
             int instanceCount = accumStaging.vertexCount();
-            CgProfiler.count("curveRenderer.flush.count");
-            CgProfiler.sample("curveRenderer.instances", instanceCount);
+            CgTrace.add(CgChannels.GL, "curveRenderer.flush.count", 1);
+            CgTrace.counter(CgChannels.GL, "curveRenderer.instances", instanceCount);
 
-            try (CgProfiler.Scope ignored2 = CgProfiler.scope("curveRenderer.upload")) {
+            try (CgTrace.Zone ignored2 = CgTrace.zone(CgChannels.GL, "curveRenderer.upload")) {
                 GPU_BUFFER.uploadRaw(accumStaging.rawData(), accumStaging.rawCursor());
             }
-            try (CgProfiler.Scope ignored2 = CgProfiler.scope("curveRenderer.bindBuffer")) {
+            try (CgTrace.Zone ignored2 = CgTrace.zone(CgChannels.GL, "curveRenderer.bindBuffer")) {
                 GPU_BUFFER.bind();
             }
-            try (CgProfiler.Scope ignored2 = CgProfiler.scope("curveRenderer.drawInstanced")) {
+            try (CgTrace.Zone ignored2 = CgTrace.zone(CgChannels.GL, "curveRenderer.drawInstanced")) {
                 CURVE_MESH.drawInstanced(instanceCount);
             }
             accumStaging.reset();
