@@ -2,7 +2,7 @@
 // CrystalShader -- text.shader
 // Consolidated bitmap/MSDF/MTSDF text material, replacing the three raw shaders
 // (bitmap_text/msdf_text/mtsdf_text .vert/.frag) previously hand-maintained by
-// CgTextRenderer. See CrystalGraphics/docs_research/plan/text-material.md.
+// CgTextRenderer. See plan/text-material.md.
 // =============================================================================
 
 #type pos2_uv2_col4ub
@@ -13,7 +13,7 @@
 // same texture().rgb read; MTSDF's extra alpha channel isn't exploited yet). Bitmap
 // mode is "not enabled". Reintroduce a separate MTSDF_MODE keyword only if/when MTSDF's
 // alpha channel actually needs different fragment logic (see
-// docs_research/font/MTSDF_SHADER_RECONSTRUCTION_RESEARCH.md).
+// plan/crystalgraphics/archive/docs_research/font/MTSDF_SHADER_RECONSTRUCTION_RESEARCH.md).
 //
 // -----------------------------------------------------------------------------
 // ATLAS STORAGE IS RGBA8, NOT RGBA16F -- READ THIS BEFORE USING THE 4TH CHANNEL

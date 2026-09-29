@@ -8,7 +8,7 @@ of** CrystalGUI, which builds every node against this repository's node of the s
 > **The goal every line serves**: a node-based shader graph for Minecraft on every version the jar
 > supports — Unity's Shader Graph, true to GLSL, on a modern GL 3.x+ pipeline with instancing as the
 > default draw path. It shipped in CrystalGUI (`com.crystalgui.app.shadergraph`). **Read
-> [the manifesto](docs/CRYSTALSHADER_MANIFESTO.md) before any rendering or shader decision.**
+> the manifesto (`plan/crystalgraphics/archive/CRYSTALSHADER_MANIFESTO.md`, private) before any rendering or shader decision.**
 
 ---
 
@@ -1236,7 +1236,7 @@ Measured on the `text-3d` harness scene: `doBind.stateSave` went from **1,599 ms
 **0.00 ms**, and the worst single frame from **346.8 ms** to a whole-`doBind` max of **2.16 ms**.
 
 Package guide: `core/src/main/java/com/crystalgraphics/gl/state/AGENTS.md`.
-Design record and eight implementation corrections: `docs_research/plan/gl-state-manager.md`.
+Design record and eight implementation corrections: `plan/gl-state-manager.md`.
 
 **Four rules worth knowing before touching rendering code:**
 
