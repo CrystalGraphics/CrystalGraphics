@@ -189,7 +189,7 @@ Fabric's dev mod is `tasks.jar` bundling each module's `downgradedJar` —
 
 - **Fail Fast**: throw exceptions for unsupported capabilities; never silently degrade
 - **Multi-Mod First**: other mods will mutate GL state; design for cooperation, not control
-- **A GL 3.3 floor, and gates above it**: `CgCapabilities.detect()` throws below OpenGL 3.3, so nothing core in 3.3 has an ARB or EXT fallback; what is above it (SSBO, `glCopyImageSubData`) keeps its gate and its fallback
+- **A GL 3.3 floor, and gates above it**: `CgCapabilities.detect()` throws below OpenGL 3.3, so nothing core in 3.3 has an ARB or EXT fallback; what is above it (SSBO, `glCopyImageSubData`) keeps its gate and its fallback. **A 3.2 context with 3.3's extensions passes**: vanilla 1.17–1.21.4 asks for 3.2 core and NVIDIA returns exactly that, so Fabric and pre-early-window Forge run on one. On it LWJGL 3 loads no 3.3 entry point, which is why `Lwjgl3GLBackend.glVertexAttribDivisor` falls back to the ARB name
 - **Angelica Coexistence**: on 1.7.10 with Angelica present, the GL state shadow reads Angelica's mirror instead of the driver (`AngelicaStateProvider`)
 
 ---
