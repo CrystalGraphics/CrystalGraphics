@@ -1,6 +1,7 @@
 package com.crystalgraphics.gl.buffer;
 
 
+import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.util.CgBufferUtils;
 import java.nio.ByteBuffer;
@@ -57,6 +58,8 @@ public class MapAndOrphanStreamBuffer extends CgStreamBuffer {
     @Override
     protected boolean uploadSmall(float[] data, int floatCount, int byteCount) {
         if (byteCount > capacityBytes) return false; // let the normal path handle the grow
+        // Where a map costs nothing, the orphan is the cheap path and a partial write is the dear one.
+        if (CgCapabilities.detect().isMappingFree()) return false;
 
         if (scratch == null || scratch.capacity() < byteCount) {
             scratch = CgBufferUtils.createByteBuffer(Math.max(byteCount, SMALL_UPLOAD_THRESHOLD_BYTES));

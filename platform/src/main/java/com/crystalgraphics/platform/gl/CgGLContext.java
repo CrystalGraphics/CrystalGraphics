@@ -73,4 +73,13 @@ public interface CgGLContext {
 
     /** @return {@code true} if {@code GL_ARB_timer_query} is supported */
     boolean GL_ARB_timer_query();
+
+    /**
+     * @return {@code true} where mapping a buffer is a pointer and nothing more: the tracked backend, whose memory is
+     *         mapped already. A GL driver's map is a round trip, which is why a small upload there goes through
+     *         {@code glBufferSubData} instead, and on the tracked backend that copies the whole buffer if a frame in
+     *         flight still reads it.
+     */
+    boolean mappingIsFree();
+
 }
