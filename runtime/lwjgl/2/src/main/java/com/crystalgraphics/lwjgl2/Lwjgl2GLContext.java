@@ -43,4 +43,5 @@ public final class Lwjgl2GLContext implements CgGLContext {
     // ── Shader buffer extensions ──────────────────────────────────────────────
 
     @Override public boolean GL_ARB_shader_storage_buffer_object() { return caps().GL_ARB_shader_storage_buffer_object; }
+    @Override public boolean mappingIsFree() { return false; }
 }

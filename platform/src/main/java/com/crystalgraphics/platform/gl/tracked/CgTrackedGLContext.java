@@ -29,4 +29,5 @@ public final class CgTrackedGLContext implements CgGLContext {
     @Override public boolean GL_ARB_buffer_storage() { return true; }
 
     @Override public boolean GL_ARB_shader_storage_buffer_object() { return true; }
+    @Override public boolean mappingIsFree() { return true; }
 }
