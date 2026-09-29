@@ -3,6 +3,7 @@ package com.crystalgraphics.gl.lifecycle;
 import com.crystalgraphics.demo.CgRenderDemo;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.platform.service.CgLifecycleService;
 import com.crystalgraphics.api.material.CgMaterialRegistry;
@@ -184,10 +185,14 @@ public final class CgGraphicsLifecycle {
         // call, and a fixed-function call that beat the first probe would see false and reach a
         // backend that refuses it. Cached, so this costs one probe.
         CgCapabilities.detect();
-        onResize(width, height);
-        CgRenderPipeline.init();
-        CgFallbackTextures.init();
-        warmUpDeferredStartupCosts();
+        // One scope for everything built below: pipeline targets, fallback textures, the text material's
+        // first bind. It runs inside the host's world pass, and left its bindings and render state behind.
+        try (CgGlScope ignored = CgGlState.saveAll()) {
+            resizeTargets(width, height);
+            CgRenderPipeline.init();
+            CgFallbackTextures.init();
+            warmUpDeferredStartupCosts();
+        }
 
         initialized = true;
         destroyed = false;   // an explicit init is what makes a context live again
@@ -248,6 +253,9 @@ public final class CgGraphicsLifecycle {
         // Every registry below is gone after a teardown, and a host forwards its window events until
         // the process actually exits. @see #onOpaquePass
         if (destroyed || stoodDown) return;
+        // Nothing is built yet, and initContext applies its own size. Returning also keeps a splash-thread
+        // resize from claiming the state manager before the client thread's first frame does.
+        if (!initialized) return;
 
         // A RESIZE FROM A FOREIGN THREAD IS DEFERRED, NOT REFUSED. A host hands this event on from
         // whatever thread its window loop runs on, and on 1.7.10 that is FML's splash thread while the
@@ -260,10 +268,16 @@ public final class CgGraphicsLifecycle {
         // owning thread, so the next real frame applies it.
         if (!CgGlState.manager().ownedByCurrentThread()) return;
 
+        // Rebuilds screen-sized targets, binding textures and framebuffers as it goes; the host's come back.
+        try (CgGlScope ignored = CgGlState.saveAll()) {
+            resizeTargets(width, height);
+        }
+    }
+
+    private static void resizeTargets(int width, int height) {
         CgFrameBufferRegistry.get().onResize(width, height);
         CgTextRendererRegistry.get().onResize(width, height);
         CgRenderPipeline.onSceneResize();
-
         currentWidth = width;
         currentHeight = height;
     }
@@ -447,7 +461,10 @@ public final class CgGraphicsLifecycle {
         // buffers — and can only release them while the context is still whole. Run this after any
         // of the sweeps below and those handles already refer to deleted objects, and any cache the
         // listener holds of engine-owned resources (fonts, textures, materials) is silently stale.
-        listeners.dispatchReverse("onDestroy", CgLifecycleListener::onDestroy);
+        // Scoped: a listener releasing its renderers unbinds their materials behind the host.
+        try (CgGlScope ignored = CgGlState.saveAll()) {
+            listeners.dispatchReverse("onDestroy", CgLifecycleListener::onDestroy);
+        }
 
         // Step 1: ALL VAOs — CgVertexArrayRegistry.deleteAll() deletes instanced VAOs first,
         //   then non-instanced VAOs, ensuring no VBO referenced by a VAO is deleted first.
