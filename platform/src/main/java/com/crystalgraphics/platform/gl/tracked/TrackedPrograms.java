@@ -1,5 +1,6 @@
 package com.crystalgraphics.platform.gl.tracked;
 
+import com.crystalgraphics.platform.device.CgAttribFormat;
 import com.crystalgraphics.platform.device.CgBindingLayout;
 import com.crystalgraphics.platform.device.CgDevice;
 import com.crystalgraphics.platform.device.CgDeviceObject;
@@ -26,6 +27,11 @@ final class TrackedPrograms {
 
     static final int GL_SHADER_TYPE = 0x8B4F, GL_DELETE_STATUS = 0x8B80, GL_VALIDATE_STATUS = 0x8B83;
     static final int GL_ATTACHED_SHADERS = 0x8B85, GL_SHADER_SOURCE_LENGTH = 0x8B88, GL_UNIFORM_BLOCK = 0x92E2;
+    static final int GL_INT = 0x1404, GL_INT_VEC2 = 0x8B53, GL_INT_VEC3 = 0x8B54, GL_INT_VEC4 = 0x8B55;
+    static final int GL_UNSIGNED_INT = 0x1405, GL_UNSIGNED_INT_VEC2 = 0x8DC6, GL_UNSIGNED_INT_VEC3 = 0x8DC7;
+    static final int GL_UNSIGNED_INT_VEC4 = 0x8DC8;
+    /** The vertex binding disabled inputs read their constant from: past any a vertex array uses. */
+    static final int CONSTANT_BINDING = 15;
 
     static final class Shader {
         final int type;
@@ -67,6 +73,9 @@ final class TrackedPrograms {
     private final TrackedGlErrors errors;
     private final GlNames<Object> names = new GlNames<>("Shader or program");
     private Program current;
+    private final Map<List<CgPipelineDesc.VertexBuffer>, Map<List<CgPipelineDesc.VertexAttrib>, List<CgPipelineDesc.VertexBuffer>>>
+            withConstants = new HashMap<>();
+    private CgAllocation constantValues;
 
     TrackedPrograms(CgTracker tracker, CgGlslCompiler compiler, TrackedGlErrors errors) {
         this.tracker = tracker;
@@ -422,15 +431,44 @@ final class TrackedPrograms {
     }
 
     /** Every input the program reads must come from the vertex array, which Vulkan requires and GL does not. */
-    void checkInputs(CgDrawState state) {
+    /**
+     * An input the vertex array leaves disabled reads GL's current attribute value, {@code (0, 0, 0, 1)}. A device has
+     * no such thing, so those inputs read one constant at stride 0 from a binding of their own.
+     */
+    void feedDisabledInputs(CgDrawState state) {
         boolean[] provided = new boolean[TrackedVertexArrays.ATTRIBS];
         for (CgPipelineDesc.VertexBuffer vb : state.vertexLayouts) {
             for (CgPipelineDesc.VertexAttrib a : vb.attribs()) provided[a.location()] = true;
         }
+        List<CgPipelineDesc.VertexAttrib> constants = null;
         for (CgGlslCompiler.Attribute a : current.table.attributes()) {
-            if (a.location() >= provided.length || !provided[a.location()])
-                throw new IllegalStateException(current.tracked.label() + " reads '" + a.name() + "' at location "
-                        + a.location() + ", which the vertex array does not enable");
+            if (a.location() < provided.length && provided[a.location()]) continue;
+            if (constants == null) constants = new ArrayList<>();
+            CgAttribFormat f = constantFormat(a.glType());
+            constants.add(new CgPipelineDesc.VertexAttrib(a.location(), f, f == CgAttribFormat.FLOAT32X4 ? 0 : 16));
+        }
+        if (constants == null) return;
+        List<CgPipelineDesc.VertexBuffer> base = state.vertexLayouts;
+        List<CgPipelineDesc.VertexAttrib> fed = constants;
+        // Cached by value, so a draw's layout list is the same object every frame and keeps its pipeline.
+        state.vertexLayouts = withConstants.computeIfAbsent(base, k -> new HashMap<>()).computeIfAbsent(fed, k -> {
+            List<CgPipelineDesc.VertexBuffer> layouts = new ArrayList<>(base);
+            layouts.add(new CgPipelineDesc.VertexBuffer(CONSTANT_BINDING, 0, false, fed));
+            return List.copyOf(layouts);
+        });
+        if (constantValues == null) {
+            constantValues = tracker.allocate(32, true, "disabled vertex inputs");
+            constantValues.memory().putFloat(0).putFloat(0).putFloat(0).putFloat(1).putInt(0).putInt(0).putInt(0).putInt(1);
+        }
+        state.vertexBuffer(CONSTANT_BINDING, constantValues, 0);
+    }
+
+    private static CgAttribFormat constantFormat(int glType) {
+        switch (glType) {
+            case GL_INT: case GL_INT_VEC2: case GL_INT_VEC3: case GL_INT_VEC4: return CgAttribFormat.SINT32X4;
+            case GL_UNSIGNED_INT: case GL_UNSIGNED_INT_VEC2: case GL_UNSIGNED_INT_VEC3: case GL_UNSIGNED_INT_VEC4:
+                return CgAttribFormat.UINT32X4;
+            default: return CgAttribFormat.FLOAT32X4;
         }
     }
 

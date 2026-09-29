@@ -129,7 +129,9 @@ What is easy to get wrong:
 - **An object made before `CgGL.init(tracked)` does not exist on it.** Names are the backend's own.
 - **GL's semantics hold where core relies on them**: a VAO owns its element binding, an attribute pointer
   captures the buffer bound at the call, `glBufferData` gives fresh storage, an incomplete texture samples
-  black, an FBO with nothing attached raises `GL_INVALID_FRAMEBUFFER_OPERATION` at the draw.
+  black, an FBO with nothing attached raises `GL_INVALID_FRAMEBUFFER_OPERATION` at the draw, a colour clear
+  under a partial write mask is drawn through the mask (a device's clear writes every channel), and a fence
+  waited on with `GL_SYNC_FLUSH_COMMANDS_BIT` submits its frame.
 - **What GL allows and a device cannot do throws** naming it — sampler objects, texture swizzles, 8-bit
   indices, a draw buffer after `GL_NONE`.
 - **A fence is its frame**: a poll answers once that frame retires; a blocking wait on the current frame

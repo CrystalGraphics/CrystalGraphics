@@ -5,6 +5,7 @@ import com.crystalgraphics.platform.device.CgDeviceInfo;
 import com.crystalgraphics.platform.device.CgGlslCompiler;
 import com.crystalgraphics.platform.device.CgGpuTexture;
 import com.crystalgraphics.platform.device.CgPipelineDesc;
+import com.crystalgraphics.platform.device.CgShaderModule;
 import com.crystalgraphics.platform.device.CgTextureRegion;
 import com.crystalgraphics.platform.device.CgTimerQuery;
 import com.crystalgraphics.platform.gl.CgGL;
@@ -62,13 +63,13 @@ public final class CgTrackedGLBackend extends CgGLBackend {
 
     /**
      * @param compiler what a program's link compiles its GLSL with
-     * @param debug    refuse what GL leaves undefined and a device cannot survive: feedback loops (decision 21), a
-     *                 vertex input no attribute array feeds
+     * @param debug    refuse what GL leaves undefined and a device cannot survive: feedback loops (decision 21)
      */
     public CgTrackedGLBackend(CgDevice device, CgGlslCompiler compiler, boolean debug) {
         this.device = device;
         this.debug = debug;
         this.tracker = new CgTracker(device, debug);
+        tracker.setClearProgram(clearProgram(device, compiler));
         CgTarget surface = CgTarget.surface(device);
         this.state = new TrackedRenderState(tracker, errors, surface.width(), surface.height());
         this.vaos = new TrackedVertexArrays(errors);
@@ -81,6 +82,36 @@ public final class CgTrackedGLBackend extends CgGLBackend {
     }
 
     public CgTracker tracker() { return tracker; }
+
+    private static final String CLEAR_VERTEX = """
+            #version 330 core
+            in vec2 cg_ClearPosition;
+            in vec4 cg_ClearColor;
+            out vec4 v_color;
+            void main() { gl_Position = vec4(cg_ClearPosition, 0.0, 1.0); v_color = cg_ClearColor; }
+            """;
+
+    /** Every attachment an output: the pipeline's write masks choose which one the clear reaches. */
+    private static final String CLEAR_FRAGMENT = """
+            #version 330 core
+            in vec4 v_color;
+            layout(location = 0) out vec4 o0; layout(location = 1) out vec4 o1;
+            layout(location = 2) out vec4 o2; layout(location = 3) out vec4 o3;
+            layout(location = 4) out vec4 o4; layout(location = 5) out vec4 o5;
+            layout(location = 6) out vec4 o6; layout(location = 7) out vec4 o7;
+            void main() { o0 = o1 = o2 = o3 = o4 = o5 = o6 = o7 = v_color; }
+            """;
+
+    /** What a colour clear under a partial write mask is drawn with (see {@link CgTracker#setClearProgram}). */
+    private static CgTrackedProgram clearProgram(CgDevice device, CgGlslCompiler compiler) {
+        String label = "masked clear";
+        CgGlslCompiler.Program p = compiler.compile(CLEAR_VERTEX, CLEAR_FRAGMENT,
+                Map.of("cg_ClearPosition", 0, "cg_ClearColor", 1), label);
+        return new CgTrackedProgram(label, device.createBindingLayout(label, p.slots()),
+                device.createShaderModule(CgShaderModule.Stage.VERTEX, p.vertexGlDepth(), label),
+                device.createShaderModule(CgShaderModule.Stage.VERTEX, p.vertexZeroToOne(), label),
+                device.createShaderModule(CgShaderModule.Stage.FRAGMENT, p.fragment(), label));
+    }
 
     public CgTrackerStats stats() { return tracker.stats(); }
 
@@ -613,7 +644,7 @@ public final class CgTrackedGLBackend extends CgGLBackend {
         state.sync();
         vaos.apply(s);
         programs.apply(s, buffers, textures);
-        if (debug) programs.checkInputs(s);
+        programs.feedDisabledInputs(s);
         CgPipelineDesc.Topology topology = GlEnums.topology(mode);
         if (type < 0) {
             tracker.draw(topology, count, instances, first, 0);
@@ -652,6 +683,9 @@ public final class CgTrackedGLBackend extends CgGLBackend {
             return CgGL.GL_WAIT_FAILED;
         }
         if (frame <= device.retiredFrame()) return CgGL.GL_ALREADY_SIGNALED;
+        // GL's flush bit, on a fence this frame recorded: submitting is what lets a spin on it ever end.
+        boolean flush = (flags & CgGL.GL_SYNC_FLUSH_COMMANDS_BIT) != 0;
+        if (flush && frame == device.frameIndex() && device.ownsSubmission()) tracker.endFrame();
         if (timeout == 0) return CgGL.GL_TIMEOUT_EXPIRED;
         if (!device.ownsSubmission()) throw new IllegalStateException("A blocking glClientWaitSync on a hosted device");
         if (frame == device.frameIndex()) tracker.endFrame();
