@@ -372,7 +372,14 @@ final class TrackedTextures implements TrackedPrograms.Samplers {
             case GL_SAMPLER_BINDING: return TrackedRenderState.one(out, 0);
             case CgGL.GL_UNPACK_ALIGNMENT: return TrackedRenderState.one(out, unpack.alignment);
             case CgGL.GL_UNPACK_ROW_LENGTH: return TrackedRenderState.one(out, unpack.rowLength);
+            case CgGL.GL_UNPACK_SKIP_ROWS: return TrackedRenderState.one(out, unpack.skipRows);
+            case CgGL.GL_UNPACK_SKIP_PIXELS: return TrackedRenderState.one(out, unpack.skipPixels);
+            case CgGL.GL_UNPACK_IMAGE_HEIGHT: return TrackedRenderState.one(out, unpack.imageHeight);
+            case CgGL.GL_UNPACK_SKIP_IMAGES: return TrackedRenderState.one(out, unpack.skipImages);
             case CgGL.GL_PACK_ALIGNMENT: return TrackedRenderState.one(out, pack.alignment);
+            case GlPixels.GL_PACK_ROW_LENGTH: return TrackedRenderState.one(out, pack.rowLength);
+            case GlPixels.GL_PACK_SKIP_ROWS: return TrackedRenderState.one(out, pack.skipRows);
+            case GlPixels.GL_PACK_SKIP_PIXELS: return TrackedRenderState.one(out, pack.skipPixels);
             default: return -1;
         }
     }

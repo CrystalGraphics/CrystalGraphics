@@ -4,6 +4,8 @@ import com.crystalgraphics.platform.device.CgBindingLayout;
 import com.crystalgraphics.platform.device.CgGlslCompiler;
 import com.crystalgraphics.platform.device.CgShaderModule;
 
+import org.lwjgl.system.MemoryStack;
+
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
@@ -16,6 +18,9 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static org.lwjgl.system.MemoryStack.stackPush;
+import static org.lwjgl.system.MemoryUtil.memFree;
+import static org.lwjgl.system.MemoryUtil.memUTF8;
 import static org.lwjgl.util.shaderc.Shaderc.*;
 
 /**
@@ -168,8 +173,16 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
     }
 
     private ByteBuffer spirv(String source, boolean vertex, String label) {
-        long result = shaderc_compile_into_spv(compiler, source,
-                vertex ? shaderc_glsl_vertex_shader : shaderc_glsl_fragment_shader, label, "main", options);
+        // The source on the native heap: an expanded material outgrows MemoryStack, which the String overload uses.
+        ByteBuffer text = memUTF8(source, false);
+        long result;
+        try (MemoryStack stack = stackPush()) {
+            result = shaderc_compile_into_spv(compiler, text,
+                    vertex ? shaderc_glsl_vertex_shader : shaderc_glsl_fragment_shader, stack.UTF8(label),
+                    stack.UTF8("main"), options);
+        } finally {
+            memFree(text);
+        }
         try {
             if (shaderc_result_get_compilation_status(result) != shaderc_compilation_status_success)
                 throw new CgShaderModule.CompileException(label + " (" + (vertex ? "vertex" : "fragment") + "): "
