@@ -6,6 +6,7 @@ import com.crystalgraphics.platform.device.CgGlslCompiler;
 import com.crystalgraphics.platform.device.CgGpuTexture;
 import com.crystalgraphics.platform.device.CgPipelineDesc;
 import com.crystalgraphics.platform.device.CgTextureRegion;
+import com.crystalgraphics.platform.device.CgTimerQuery;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.CgGLBackend;
 
@@ -14,6 +15,8 @@ import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.ShortBuffer;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * {@code CgGLBackend} over a {@link CgDevice}: the GL subset CrystalGraphics calls (spec §5.0), with GL's own
@@ -28,8 +31,9 @@ import java.nio.ShortBuffer;
  * gl.endFrame();          // once a frame, before the host presents
  * }</pre>
  *
- * <p>The census ({@code CENSUS.md} beside {@code CgGLBackend}) orders what is built: a domain not reached yet
- * throws naming the call.</p>
+ * <p>What GL allows and a device cannot do throws {@code UnsupportedOperationException} naming it: a sampler
+ * object, a texture swizzle, 8-bit indices, a draw buffer after {@code GL_NONE}. The census ({@code CENSUS.md} beside
+ * {@code CgGLBackend}) lists what core, CrystalGUI and the hosts reach.</p>
  */
 public final class CgTrackedGLBackend extends CgGLBackend {
 
@@ -51,6 +55,10 @@ public final class CgTrackedGLBackend extends CgGLBackend {
     private final TrackedFramebuffers framebuffers;
     private final boolean debug;
     private final double[] q = new double[16];
+    private final Map<Long, Long> syncs = new HashMap<>();
+    private final GlNames<CgTimerQuery> queries = new GlNames<>("Query");
+    private long nextSync = 1;
+    private CgTimerQuery timing;
 
     /**
      * @param compiler what a program's link compiles its GLSL with
@@ -86,10 +94,6 @@ public final class CgTrackedGLBackend extends CgGLBackend {
     TrackedBuffers bufferObjects() { return buffers; }
 
     TrackedTextures textureObjects() { return textures; }
-
-    private static UnsupportedOperationException notYet(String call) {
-        return new UnsupportedOperationException(call + " is not on the tracked backend yet (D3.4)");
-    }
 
     // ── lifecycle and context ──────────────────────────────────────────────────
 
@@ -624,23 +628,65 @@ public final class CgTrackedGLBackend extends CgGLBackend {
 
     // ── sync, timers, host sections ────────────────────────────────────────────
 
-    @Override public long glFenceSync(int condition, int flags) { throw notYet("glFenceSync"); }
+    /** A fence is the frame that placed it: signalled once that frame retires. */
+    @Override
+    public long glFenceSync(int condition, int flags) {
+        long id = nextSync++;
+        syncs.put(id, device.frameIndex());
+        return id;
+    }
 
-    @Override public int glClientWaitSync(long sync, int flags, long timeout) { throw notYet("glClientWaitSync"); }
+    /**
+     * A zero timeout polls. A wait on the frame being recorded submits it first — a device that owns submission
+     * can; a hosted one refuses, since its host submits and waiting would deadlock.
+     */
+    @Override
+    public int glClientWaitSync(long sync, int flags, long timeout) {
+        Long frame = syncs.get(sync);
+        if (frame == null) {
+            errors.invalidValue("glClientWaitSync on a fence that does not exist");
+            return CgGL.GL_WAIT_FAILED;
+        }
+        if (frame <= device.retiredFrame()) return CgGL.GL_ALREADY_SIGNALED;
+        if (timeout == 0) return CgGL.GL_TIMEOUT_EXPIRED;
+        if (!device.ownsSubmission()) throw new IllegalStateException("A blocking glClientWaitSync on a hosted device");
+        if (frame == device.frameIndex()) tracker.endFrame();
+        device.waitRetired(frame);
+        return CgGL.GL_CONDITION_SATISFIED;
+    }
 
-    @Override public void glDeleteSync(long sync) { throw notYet("glDeleteSync"); }
+    @Override public void glDeleteSync(long sync) { syncs.remove(sync); }
 
-    @Override public int glGenQuery() { throw notYet("glGenQuery"); }
+    @Override public int glGenQuery() { return queries.add(device.createTimerQuery("query")); }
 
-    @Override public void glBeginTimeElapsedQuery(int query) { throw notYet("glBeginTimeElapsedQuery"); }
+    /** Timers may run inside a pass: timing a zone breaks nothing. */
+    @Override
+    public void glBeginTimeElapsedQuery(int query) {
+        timing = queries.get(query);
+        device.encoder().beginTimer(timing);
+    }
 
-    @Override public void glEndTimeElapsedQuery() { throw notYet("glEndTimeElapsedQuery"); }
+    @Override
+    public void glEndTimeElapsedQuery() {
+        if (timing == null) { errors.invalidOperation("glEndQuery with no query running"); return; }
+        device.encoder().endTimer(timing);
+        timing = null;
+    }
 
-    @Override public boolean glIsQueryResultAvailable(int query) { throw notYet("glIsQueryResultAvailable"); }
+    @Override public boolean glIsQueryResultAvailable(int query) { return queries.get(query).resultNanos() >= 0; }
 
-    @Override public long glGetQueryResultNanos(int query) { throw notYet("glGetQueryResultNanos"); }
+    @Override
+    public long glGetQueryResultNanos(int query) {
+        long nanos = queries.get(query).resultNanos();
+        if (nanos < 0) errors.invalidOperation("A timer query read before its frame retired: poll glIsQueryResultAvailable");
+        return Math.max(0, nanos);
+    }
 
-    @Override public void glDeleteQuery(int query) { throw notYet("glDeleteQuery"); }
+    @Override
+    public void glDeleteQuery(int query) {
+        CgTimerQuery q = queries.remove(query);
+        if (q != null) tracker.release(q);
+    }
 
     @Override public void hostSectionBegin() { tracker.hostSectionBegin(); }
 
