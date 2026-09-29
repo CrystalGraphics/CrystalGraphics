@@ -17,7 +17,9 @@ import java.util.Locale;
  *
  * <h3>The GL 3.3 floor</h3>
  * <p>Detection throws below OpenGL 3.3, so everything core in 3.3 — framebuffers, VAOs, instancing,
- * samplers, timer queries — is simply there and has no flag. What is flagged is above the floor —
+ * samplers, timer queries — is simply there and has no flag. A 3.2 context with the four extensions 3.3
+ * absorbed from them passes too: vanilla Minecraft 1.17 to 1.21.4 asks for 3.2 core, and NVIDIA hands
+ * back exactly 3.2 on hardware that runs 4.6, which on Fabric is the context we get. What is flagged is above the floor —
  * SSBOs (4.3 or ARB), {@code glCopyImageSubData} (4.3), persistent mapping (4.4 or ARB), 64-bit shader
  * integers (4.0) — and what {@code CgStreamBuffer}'s waterfall chooses its tier from, fence sync and
  * {@code glMapBufferRange} included.</p>
@@ -239,8 +241,11 @@ public final class CgCapabilities {
     public static CgCapabilities detectUncached() {
         CgGLContext gl = context;
         if (gl == null) throw new IllegalStateException("CgGLContext not initialised — call CgCapabilities.init() before detect()");
-        if (!gl.OpenGL33()) {
-            throw new IllegalStateException("CrystalGraphics needs OpenGL 3.3 or later, and this context is older");
+        boolean threeThreeByExtension = gl.OpenGL32() && gl.GL_ARB_instanced_arrays() && gl.GL_ARB_sampler_objects()
+                && gl.GL_ARB_explicit_attrib_location() && gl.GL_ARB_timer_query();
+        if (!gl.OpenGL33() && !threeThreeByExtension) {
+            throw new IllegalStateException("CrystalGraphics needs OpenGL 3.3, or 3.2 with the extensions 3.3 "
+                    + "absorbed, and this context has neither");
         }
         CgCapabilities caps = new CgCapabilities();
 

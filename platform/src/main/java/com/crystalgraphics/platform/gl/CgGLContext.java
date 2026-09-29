@@ -58,4 +58,19 @@ public interface CgGLContext {
      */
     boolean GL_ARB_shader_storage_buffer_object();
 
+    // ── What GL 3.3 absorbed: a 3.2 context with all four runs everything the floor promises ────
+    //
+    // Vanilla Minecraft 1.17 to 1.21.4 asks for a 3.2 core context, and NVIDIA hands back exactly 3.2.
+
+    /** @return {@code true} if {@code GL_ARB_instanced_arrays} is supported */
+    boolean GL_ARB_instanced_arrays();
+
+    /** @return {@code true} if {@code GL_ARB_sampler_objects} is supported */
+    boolean GL_ARB_sampler_objects();
+
+    /** @return {@code true} if {@code GL_ARB_explicit_attrib_location} is supported */
+    boolean GL_ARB_explicit_attrib_location();
+
+    /** @return {@code true} if {@code GL_ARB_timer_query} is supported */
+    boolean GL_ARB_timer_query();
 }

@@ -29,4 +29,12 @@ public final class CgTrackedGLContext implements CgGLContext {
     @Override public boolean GL_ARB_buffer_storage() { return true; }
 
     @Override public boolean GL_ARB_shader_storage_buffer_object() { return true; }
+
+    @Override public boolean GL_ARB_instanced_arrays() { return true; }
+
+    @Override public boolean GL_ARB_sampler_objects() { return true; }
+
+    @Override public boolean GL_ARB_explicit_attrib_location() { return true; }
+
+    @Override public boolean GL_ARB_timer_query() { return true; }
 }

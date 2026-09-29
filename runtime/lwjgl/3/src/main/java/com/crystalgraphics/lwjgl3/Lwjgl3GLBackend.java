@@ -338,7 +338,13 @@ public class Lwjgl3GLBackend extends CgGLBackend {
 
     @Override
     public void glVertexAttribDivisor(int index, int divisor) {
-        GL33C.glVertexAttribDivisor(index, divisor);
+        // A 3.2 context loads no GL 3.3 entry point, and ARB_instanced_arrays names this one with a suffix.
+        // The other 3.3 calls here share their names with their extensions, so they need nothing.
+        if (GL.getCapabilities().glVertexAttribDivisor != 0L) {
+            GL33C.glVertexAttribDivisor(index, divisor);
+        } else {
+            ARBInstancedArrays.glVertexAttribDivisorARB(index, divisor);
+        }
     }
 
     // -------------------------------------------------------------------------
