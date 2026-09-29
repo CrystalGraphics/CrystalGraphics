@@ -1243,9 +1243,8 @@ Design record and eight implementation corrections: `docs_research/plan/gl-state
    without the shadow seeing it. The typed records (`CgBlendState`, `CgDepthState`, …) are a convenience,
    not a safety requirement — the `cgStateWriteGuard` task that used to police this was deleted along with
    the problem it policed.
-2. Any code that resets GL state wholesale **with raw GL that bypasses `CgGL`** — the harness's
-   `GlStateResetHelper`, a foreign mod — must call `CgGlState.invalidateAllIfPresent()`. Only what goes
-   around `CgGL` is invisible.
+2. Any code that resets GL state wholesale **with raw GL that bypasses `CgGL`** — a foreign mod — must
+   call `CgGlState.invalidateAllIfPresent()`. Only what goes around `CgGL` is invisible.
 3. **Only genuinely global state may be deduplicated.** Anything an object binding implicitly swaps must be
    invalidated when that object changes — `GL_ELEMENT_ARRAY_BUFFER` is per-VAO state, and treating it as
    global elided a required bind and killed every indexed draw through the affected VAO.
