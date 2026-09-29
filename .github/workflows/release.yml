@@ -1,0 +1,95 @@
+# The Release button (Actions -> Release -> Run workflow). Sets the version, builds and checks, publishes to
+# Cloudsmith, and only then commits, tags, pushes and makes the GitHub release with the jars -- so a failure
+# leaves nothing half-released.
+#
+# Secrets: CLOUDSMITH_USERNAME, and CLOUDSMITH_PASSWORD (a Cloudsmith API key).
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Next version
+        type: choice
+        options: [patch, minor, major, as-is]
+        default: patch
+      version:
+        description: Or exactly this version (x.y.z)
+        required: false
+
+permissions:
+  contents: write
+
+concurrency: release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      CLOUDSMITH_USERNAME: ${{ secrets.CLOUDSMITH_USERNAME }}
+      CLOUDSMITH_PASSWORD: ${{ secrets.CLOUDSMITH_PASSWORD }}
+      # Gradle finds setup-java's JDKs only when told where.
+      JDKS: -Porg.gradle.java.installations.fromEnv=JAVA_HOME_8_X64,JAVA_HOME_17_X64,JAVA_HOME_21_X64,JAVA_HOME_25_X64
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Refuse without Cloudsmith credentials
+        # Without them the build publishes to Maven local and would report success.
+        run: |
+          if [ -z "$CLOUDSMITH_USERNAME" ] || [ -z "$CLOUDSMITH_PASSWORD" ]; then
+            echo "::error::Set the CLOUDSMITH_USERNAME and CLOUDSMITH_PASSWORD repository secrets"; exit 1
+          fi
+
+      # Zulu: RetroFuturaGradle (1.7.10) asks for Azul's JDKs by vendor.
+      - uses: actions/setup-java@v5
+        with:
+          distribution: zulu
+          java-version: |
+            8
+            17
+            21
+            25
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Set the version
+        id: version
+        run: |
+          VERSION=$(python3 .github/scripts/set_version.py gradle.properties "${{ inputs.version || inputs.bump }}")
+          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+            echo "::error::v$VERSION is already released"; exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Build, check and publish
+        # Checks first, alone: in one invocation Gradle runs publish tasks beside a failing check.
+        run: |
+          ./gradlew apiCheck checkSingleJar $JDKS --stacktrace
+          ./gradlew publish $JDKS --stacktrace
+
+      - name: Commit, tag and push
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git diff --quiet || git commit -am "Release $VERSION"
+          git tag "v$VERSION"
+          # The tag names what was built and published. Master may have moved meanwhile: the release commit
+          # changes gradle.properties alone, so it goes on top of whatever master is now.
+          git push origin "v$VERSION"
+          git fetch origin "${{ github.ref_name }}"
+          git rebase "origin/${{ github.ref_name }}"
+          git push origin "HEAD:${{ github.ref_name }}"
+
+      - name: GitHub release
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v$VERSION" --title "CrystalGraphics $VERSION" --generate-notes \
+            "build/libs/crystalgraphics-$VERSION.jar" "build/libs/crystalgraphics-joml-$VERSION.jar"

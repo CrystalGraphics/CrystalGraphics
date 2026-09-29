@@ -6,12 +6,30 @@ import com.crystalgraphics.mc.shared.CrashVariant;
 import com.crystalgraphics.platform.CgPlatform;
 import com.mojang.logging.LogUtils;
 import com.crystalgraphics.mc.shared.VariantEntry;
+import net.minecraft.server.packs.resources.PreparableReloadListener;
+import net.minecraft.server.packs.resources.PreparableReloadListener.PreparationBarrier;
+import net.minecraft.server.packs.resources.ResourceManager;
+//? if >=1.21.9 {
+/*import net.minecraft.client.Minecraft;
+*///?}
 import net.neoforged.bus.api.IEventBus;
-import net.neoforged.fml.loading.FMLEnvironment;
-import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
+import com.crystalgraphics.mc.shared.FmlSide;
+import net.neoforged.fml.loading.FMLLoader;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.GameShuttingDownEvent;
+//? if >=1.21.4 {
+/*import com.crystalgraphics.mc.modern.platform.ResourceIds;
+import net.neoforged.neoforge.client.event.AddClientReloadListenersEvent;
+*///?} else {
+import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
+//?}
+//? if <1.21.2 {
+import net.minecraft.util.profiling.ProfilerFiller;
+//?}
+
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 
 import static com.crystalgraphics.mc.modern.platform.CrystalGraphics.MODID;
 
@@ -50,7 +68,7 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
 
             // A SEPARATE CLASS, not a branch here: naming a client-only event type in a method of
             // Events would resolve it when a dedicated server links this class.
-            if (FMLEnvironment.dist.isClient()) ModBus.register(modBus);
+            if (FmlSide.isClient(FMLLoader.class)) ModBus.register(modBus);
         }
 
         // -- MOD bus ----------------------------------------------------------------
@@ -63,20 +81,63 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
                 modBus.addListener(ModBus::onRegisterReloadListeners);
             }
 
-            private static void onRegisterReloadListeners(RegisterClientReloadListenersEvent event) {
-                event.registerReloadListener(
-                        (stage, manager, prepProfiler, applyProfiler, backgroundExecutor, gameExecutor) ->
-                                stage.wait(null).thenRunAsync(LifecycleModern::reload, gameExecutor));
+            // NeoForge 21.4 keys every listener by id.
+            //? if >=1.21.4 {
+            /*private static void onRegisterReloadListeners(AddClientReloadListenersEvent event) {
+                event.addListener(ResourceIds.of(MODID, "asset_reload"), ModBus::reload);
             }
+            *///?} else {
+            private static void onRegisterReloadListeners(RegisterClientReloadListenersEvent event) {
+                event.registerReloadListener(ModBus::reload);
+            }
+            //?}
+
+            // 1.21.2 dropped the two profilers; 1.21.9 hands a SharedState for the manager.
+            //? if >=1.21.9 {
+            /*private static CompletableFuture<Void> reload(PreparableReloadListener.SharedState state, Executor background,
+                                                          PreparationBarrier stage, Executor game) {
+                return stage.wait(null).thenRunAsync(LifecycleModern::reload, game);
+            }
+            *///?} elif >=1.21.2 {
+            /*private static CompletableFuture<Void> reload(PreparationBarrier stage, ResourceManager manager,
+                                                          Executor background, Executor game) {
+                return stage.wait(null).thenRunAsync(LifecycleModern::reload, game);
+            }
+            *///?} else {
+            private static CompletableFuture<Void> reload(PreparationBarrier stage, ResourceManager manager,
+                                                          ProfilerFiller prepare, ProfilerFiller apply,
+                                                          Executor background, Executor game) {
+                return stage.wait(null).thenRunAsync(LifecycleModern::reload, game);
+            }
+            //?}
         }
 
         // -- NEOFORGE bus -----------------------------------------------------------
 
+        // NeoForge 21.6 made each stage an event class of its own; 21.9 draws block entities with the
+        // entities, so AfterEntities is the last opaque stage.
+        //? if >=1.21.9 {
+        /*private static void onRenderLevelOpaque(RenderLevelStageEvent.AfterEntities event) {
+            LifecycleModern.opaquePass(partialTick(event));
+        }
+
+        private static void onRenderLevelTransparent(RenderLevelStageEvent.AfterParticles event) {
+            LifecycleModern.transparentPass();
+        }
+        *///?} elif >=1.21.6 {
+        /*private static void onRenderLevelOpaque(RenderLevelStageEvent.AfterBlockEntities event) {
+            LifecycleModern.opaquePass(partialTick(event));
+        }
+
+        private static void onRenderLevelTransparent(RenderLevelStageEvent.AfterParticles event) {
+            LifecycleModern.transparentPass();
+        }
+        *///?} else {
         private static void onRenderLevelOpaque(RenderLevelStageEvent event) {
             // Validated: AFTER_BLOCK_ENTITIES fires at LevelRenderer.java line ~1140 (MC 1.20.4),
             // after block entities, before renderSectionLayer(translucent).
             if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES) return;
-            LifecycleModern.opaquePass(event.getPartialTick());
+            LifecycleModern.opaquePass(partialTick(event));
         }
 
         private static void onRenderLevelTransparent(RenderLevelStageEvent event) {
@@ -85,6 +146,23 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
             if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_PARTICLES) return;
             LifecycleModern.transparentPass();
         }
+        //?}
+
+        // 1.21 hands a DeltaTracker; `true` is the pause-aware residual 1.20's float already was.
+        // NeoForge 21.9's event carries none, so the game's own tracker answers.
+        //? if >=1.21.9 {
+        /*private static float partialTick(RenderLevelStageEvent event) {
+            return Minecraft.getInstance().getDeltaTracker().getGameTimeDeltaPartialTick(true);
+        }
+        *///?} elif >=1.21 {
+        /*private static float partialTick(RenderLevelStageEvent event) {
+            return event.getPartialTick().getGameTimeDeltaPartialTick(true);
+        }
+        *///?} else {
+        private static float partialTick(RenderLevelStageEvent event) {
+            return event.getPartialTick();
+        }
+        //?}
 
         private static void onGameShuttingDown(GameShuttingDownEvent event) {
             LifecycleModern.shutdown();

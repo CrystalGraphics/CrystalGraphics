@@ -1,5 +1,4 @@
 
-rootProject.name = "CrystalGraphics"
 
 pluginManagement {
     // Default plugin version so submodules can use 'id' without specifying version.
@@ -8,14 +7,14 @@ pluginManagement {
     plugins {
         id("com.gtnewhorizons.gtnhconvention") version("2.0.20")
         id("com.gtnewhorizons.gtnhsettingsconvention") version("2.0.20")
-        // Single version pin for all mc1201 loader subprojects.
+        // Single version pin for every 1.20.x loader node.
         // com.gradleup.shadow is the maintained successor to com.github.johnrengelman.shadow.
         id("com.gradleup.shadow") version("9.2.2")
 
-        // The mc1201 loader scripts request these with no version, so the pins live here; moddev
-        // matches runtime/mc/modern/build-logic's net.neoforged:moddev-gradle:2.0.141. (docs/BUILD_SETUP.md says a
-        // net.neoforged.moddev.repositories settings plugin pins them; nothing applies it here or in
-        // CrystalGUI.)
+        // The 1.20.x loader scripts request these with no version, so the pins live here; moddev
+        // matches runtime/mc/modern/build-logic's net.neoforged:moddev-gradle:2.0.141. No
+        // net.neoforged.moddev.repositories settings plugin pins them: nothing applies it here or in
+        // CrystalGUI.
         id("net.neoforged.moddev") version("2.0.141")
         id("net.neoforged.moddev.legacyforge") version("2.0.141")
 
@@ -24,9 +23,10 @@ pluginManagement {
         id("org.jetbrains.gradle.plugin.idea-ext") version("1.3")
     }
 
-    // Supplies the mc1201 convention plugins; without it every mc1201 subproject fails at
-    // id("cg-mc1201-loader").
+    // Supplies the 1.20.x convention plugins; without it every node fails at id("cg-modern-loader").
     includeBuild("runtime/mc/modern/build-logic")
+    // The settings plugin below: the Minecraft nodes, from the versions targeted.
+    includeBuild("singlejar-logic")
 
     repositories {
         maven {
@@ -46,11 +46,21 @@ pluginManagement {
         // buildscript.repositories at configuration time, which Gradle 9 forbids when
         // exclusiveContent is active in pluginManagement.repositories.
         maven("https://maven.fabricmc.net/") { name = "Fabric" }
+        maven("https://maven.wagyourtail.xyz/releases") { name = "Unimined" }
         maven("https://repo.spongepowered.org/repository/maven-public/") { name = "Sponge" }
         maven("https://maven.minecraftforge.net/") { name = "Forge" }
         maven("https://maven.neoforged.net/releases") { name = "NeoForge" }
     }
 }
+
+// The multi-version preprocessor the 1.20.x loaders are built with (J11). A SETTINGS plugin, so it
+// needs a Java 21+ Gradle daemon in every build that includes this one -- Stonecutter's own floor.
+plugins {
+    id("dev.kikugie.stonecutter") version "0.9.8"
+    id("com.crystalgraphics.singlejar")
+}
+
+rootProject.name = "CrystalGraphics"
 
 
 
@@ -63,6 +73,11 @@ include("freetype-msdfgen-harfbuzz-bindings")
 // no Minecraft type at all.
 include("runtime:mc:shared")
 
+// The one @Mod class every Forge constructs -- modern and legacy FML scan for the same annotation --
+// compiled once, against stand-ins for both eras' Forge types (forge-stubs, never shipped).
+include("runtime:mc:forge-stubs")
+include("runtime:mc:forge-bootstrap")
+
 // Tier 1 (CrystalGUI plan/crystalgui/platform-single-jar.md §12): the GL backend, the context and the
 // input service per LWJGL family, with no Minecraft type in either. Compiled once, never remapped,
 // one copy in the merged jar however many targets ship. What Minecraft caches and we must therefore
@@ -73,64 +88,17 @@ include("runtime:lwjgl:3")
 // Platform split subprojects (plain java-library, no gtnhconvention)
 include(":core")
 include(":platform")
-//
-//// MC version subprojects (each applies gtnhconvention)
-// THE 1.7.10 LOADER, ONLY WHEN SOMEBODY IS PLAUSIBLY BUILDING IT.
-//
-// Its GTNH convention plugin requires a JAVA 25 GRADLE DAEMON and pulls RetroFuturaGradle with it, so
-// a third-party mod that merely consumes `:core` and `:platform` cannot configure this project at all:
-// "Dependency requires at least JVM runtime version 25. This build uses a Java 17 JVM."
-//
-// NESTING DEPTH CANNOT ANSWER THIS. Gradle FLATTENS a composite -- an included build of an included
-// build reports the root as its parent -- so `gradle.parent` is one level deep whether CrystalGUI
-// included us or a third-party mod did, and both `settingsDir` and this build's own
-// `startParameter.currentDir` are rewritten to our own directory. Measured, after both were tried.
-//
-// What does discriminate is WHICH BUILD WAS INVOKED: the root Gradle's currentDir is the directory the
-// user ran the build in. That is this project when CrystalGraphics is worked on directly, and its
-// parent when CrystalGUI is -- and anything else means somebody is consuming the libraries.
-//
-// Containment, not equality: currentDir is where Gradle was invoked, and IntelliJ runs a task from the
-// SUBPROJECT directory. Under equality, :gl-debug-harness:runHarness dropped the loaders here while
-// CrystalGUI still substituted com.crystalgraphics:crystalgraphics to :runtime:mc:1710, failing every task with
-// "Project with path ':runtime:mc:1710' not found". Repro: cd gl-debug-harness && ../gradlew :gl-debug-harness:tasks
-//
-// So: anywhere inside this checkout, or inside the project containing it. The settings.gradle.kts probe
-// accepts the parent only when the parent is itself a Gradle build.
-val rootBuildDirectory = generateSequence(gradle) { it.parent }.last().startParameter.currentDir.canonicalFile
-val ourCheckout = settingsDir.canonicalFile
-val superProject = ourCheckout.parentFile
 
-fun invokedUnder(dir: java.io.File?): Boolean =
-    dir != null && rootBuildDirectory.toPath().startsWith(dir.toPath())
-
-val loadersWanted = invokedUnder(ourCheckout) ||
-    (superProject != null &&
-        java.io.File(superProject, "settings.gradle.kts").isFile &&
-        invokedUnder(superProject))
-
-if (loadersWanted) include("runtime:mc:1710")
-
-//// Standalone GL debug harness (no Minecraft/Forge)
-//if (file("gl-debug-harness").exists())
-//    include(":gl-debug-harness")
-
-// mc1201 subprojects. `common` holds the platform bundle, the three loaders are registration only.
-// :runtime:mc:modern:neoforge targets MC 1.20.4 -- NeoForge published no 20.1.x series at all, so `common`
-// is compiled against 1.20.1 and consumed by a 1.20.4 module.
+// ── The Minecraft nodes ──────────────────────────────────────────────────────────────────────────
 //
-// CrystalGUI resolves :runtime:mc:modern:common through a dependencySubstitution in its
-// composite.settings.gradle.kts, which must name it in the same commit as these lines -- a
-// substitution naming a missing project fails configuration for every task in both builds.
-//
-// Gated like :runtime:mc:1710: @see loadersWanted.
-// MC 1.20.1 Forge is included unconditionally: a 1.20.1 Forge mod consuming CrystalGraphics needs it
-// on its run classpath to see CrystalGraphics in the mod list. Fabric (fabric-loom, Java 21 daemon)
-// and NeoForge (MC 1.20.4) are not a 1.20.1 consumer's business.
-include(":runtime:mc:modern:common")
-include(":runtime:mc:modern:forge")
-
-if (loadersWanted) {
-    include(":runtime:mc:modern:neoforge")
-    include(":runtime:mc:modern:fabric")
+// The versions this build ships, resolved against singlejar-logic's pin catalog into the 1.7.10 host,
+// the legacy tree and the modern tree. CrystalGUI builds a node of the same version on each (D1), so its
+// ranges are these. Included by another build, only what that build can configure: the node its target
+// needs. @see cgbuildlogic.SingleJarSettings
+singlejar {
+    targets {
+        forge("1.7.10".."1.21.11")
+        neoforge("1.20.2".."1.21.11")
+        fabric("1.14.4".."1.21.11")
+    }
 }

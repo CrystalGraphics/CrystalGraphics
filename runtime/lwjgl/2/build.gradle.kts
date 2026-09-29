@@ -1,3 +1,4 @@
+import cgbuildlogic.abstractModule
 import java.io.File as JFile
 
 // runtime/lwjgl/2 — §12 tier 1 for LWJGL2: the GL backend, the context and the input service,
@@ -8,12 +9,9 @@ import java.io.File as JFile
 // takes it as a constructor argument; a class that needs a Minecraft *call* is a T2 subclass in the
 // target's own module — `OpenGlHelperGLBackend` is the only one, and it overrides one method.
 //
-// JAVA 17, like `platform` and `core` here and `runtime/mc/modern/common` next door. NOT Java 8 as `mc-shared`
-// is: Gradle matches a JVM-version attribute at resolution, so an 8 consumer cannot see a 17 producer
-// at all and the build fails on the classpath rather than on a class. `mc-shared` gets away with 8
-// because it depends on nothing of ours. The merged jar's major-52 ceiling — FML 1.7.10 reads every
-// entry with asm-debug-all-5.0.3 — is met by `downgradeSingleJar` rewriting the whole jar on the way
-// in, so paying it here as well buys nothing.
+// An abstract module like `platform` and `core`: Java 25, and a consumer below that resolves the Java 8
+// copy. The merged jar's major-52 ceiling -- FML 1.7.10 reads every entry with asm-debug-all-5.0.3 --
+// is met by `singleJar` rewriting the whole jar on the way in.
 
 plugins {
     `java-library`
@@ -23,10 +21,8 @@ group = providers.gradleProperty("modGroup").orElse("com.crystalgraphics").get()
 version = providers.gradleProperty("modVersion").orElse("1.0.0").get()
 base { archivesName.set("crystalgraphics-lwjgl2") }
 
-java {
-    sourceCompatibility = JavaVersion.VERSION_17
-    targetCompatibility = JavaVersion.VERSION_17
-}
+// An abstract module: Java 25, with a Java 8 copy for every consumer below it. @see cgbuildlogic.abstractModule
+abstractModule("com/crystalgraphics/jvmdg/lwjgl2")
 
 repositories {
     // LWJGL 2.9.4-nightly is Mojang's own build of it and lives only in their library repo --
@@ -42,10 +38,6 @@ dependencies {
     // compileOnly because the game supplies LWJGL — bundling it would put a second copy of
     // org.lwjgl on a classpath that already has the one the loader booted with.
     compileOnly("org.lwjgl.lwjgl:lwjgl:${providers.gradleProperty("dep.lwjgl").getOrElse("2.9.4-nightly-20150209")}")
-}
-
-tasks.withType<JavaCompile>().configureEach {
-    options.release.set(17)
 }
 
 // The tier boundary, enforced rather than described (F4). Everything above LWJGL is what the

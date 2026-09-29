@@ -1,20 +1,26 @@
-// NOTE: Despite living under runtime/mc/modern/, this subproject targets MC 1.20.4 / NeoForge 20.4.x.
-// NeoForge 20.1.x (MC 1.20.1) was never published to the NeoForge Maven; the earliest
-// available stable series is 20.4.x (MC 1.20.4). Version pins live in gradle.properties
-// under mc1204.* keys. The directory name runtime/mc/modern/neoforge/ is retained for continuity.
+// The `neoforge` branch — NeoForge through ModDevGradle, one node per Minecraft version
+// (`versions/<version>/`, whose gradle.properties pins mc.version, neoforge.version and Parchment).
+// Its first node is 1.20.2: NeoForge published no 20.1.x series.
+//
+// A node that also pins `neoform.version` (1.20.2, 1.20.3 -- NeoForge 20.2/20.3, which ModDevGradle does
+// not set up) is built from parts: NeoForm's Minecraft, NeoForge's jars compileOnly, and no dev run.
+// @see cgbuildlogic.useNeoForgeApi
+
+import cgbuildlogic.commonNode
+import cgbuildlogic.devRunSourceSet
+import cgbuildlogic.stubMode
+import cgbuildlogic.useNeoForgeApi
+import net.neoforged.moddevgradle.dsl.NeoForgeExtension
 
 plugins {
-    id("cg-mc1201-loader")
-    id("net.neoforged.moddev")
+    id("cg-modern-loader")
+    // ModDevGradle is applied below, on a real node only (cgbuildlogic.StubMode); its classes are
+    // already on build-logic's classpath, which is how common nodes apply it too.
     id("com.gradleup.shadow")
 }
 
-group = rootProject.properties["modGroup"] as String
-version = rootProject.properties["modVersion"] as String
-base { archivesName.set("crystalgraphics-mc1201-neoforge") }
-
 // ADHOC: Re-declare two Maven repos that net.neoforged.moddev.repositories (settings plugin)
-// should provide at project level. The cg-mc1201-loader convention plugin's repositories block
+// should provide at project level. The cg-modern-loader convention plugin's repositories block
 // runs at project configuration time and takes precedence over settings-level repos in Gradle 9,
 // causing moddev's NeoForge/Mojang repos to go missing during dependency resolution.
 //
@@ -29,15 +35,22 @@ repositories {
     }
 }
 
-neoForge {
-    version = rootProject.properties["mc1204.neoforge"] as String
+val fromParts = findProperty("neoform.version") != null
+if (!stubMode) {
+    pluginManager.apply("net.neoforged.moddev")
+    if (fromParts) useNeoForgeApi()
+}
+
+if (!stubMode) configure<NeoForgeExtension> {
+    if (fromParts) neoFormVersion = property("neoform.version").toString()
+    else version = property("neoforge.version").toString()
 
     parchment {
-        minecraftVersion = rootProject.properties["mc1204.parchment.mc"] as String
-        mappingsVersion = rootProject.properties["mc1204.parchment"] as String
+        minecraftVersion = property("parchment.mc").toString()
+        mappingsVersion = property("parchment.version").toString()
     }
 
-    runs {
+    if (!fromParts) runs {
         create("client") {
             client()
             // Forward every -Dcrystalgraphics.* from the Gradle invocation into the game's JVM, the
@@ -50,26 +63,27 @@ neoForge {
         }
     }
 
-    mods {
+    if (!fromParts) mods {
         create("crystalgraphics") {
             sourceSet(sourceSets.main.get())
-            // Dev-run classpath: platform, core, and mc1201:common are compileOnly for production
+            // Dev-run classpath: platform, core, and the common node are compileOnly for production
             // (shadowJar bundles them via from(zipTree(...))), but ModDevGradle dev runs only see
             // what's declared in this mods{} block. Adding their source sets here puts their
             // compiled classes in the mod's virtual JAR, making them visible to ModuleClassLoader
             // and resolving ClassNotFoundException: com/crystalgraphics/platform/CgPlatformService.
-            sourceSet(project(":platform").extensions.getByType<SourceSetContainer>()["main"])
-            sourceSet(project(":core").extensions.getByType<SourceSetContainer>()["main"])
-            sourceSet(project(":runtime:mc:modern:common").extensions.getByType<SourceSetContainer>()["main"])
+            sourceSet(devRunSourceSet(project(":platform")))
+            sourceSet(devRunSourceSet(project(":core")))
+            sourceSet(project.commonNode.extensions.getByType<SourceSetContainer>()["main"])
             sourceSet(project(":freetype-msdfgen-harfbuzz-bindings").extensions.getByType<SourceSetContainer>()["main"])
         }
     }
 }
 
-// Merge platform, core, mc1201:common into this loader JAR — mirrors mc1710 pattern exactly.
-val platformJar = project(":platform").tasks.named<Jar>("jar").flatMap { it.archiveFile }
-val coreJar     = project(":core").tasks.named<Jar>("jar").flatMap { it.archiveFile }
-val commonJar   = project(":runtime:mc:modern:common").tasks.named<Jar>("jar").flatMap { it.archiveFile }
+// Merge platform, core, the common node into this loader JAR — mirrors mc1710 pattern exactly.
+// The Java 8 copies of the abstract modules: a fat jar runs on this node's JVM as it stands.
+val platformJar = project(":platform").tasks.named<AbstractArchiveTask>("downgradedJar").flatMap { it.archiveFile }
+val coreJar     = project(":core").tasks.named<AbstractArchiveTask>("downgradedJar").flatMap { it.archiveFile }
+val commonJar   = project.commonNode.tasks.named<Jar>("jar").flatMap { it.archiveFile }
 val freetypeJar = project(":freetype-msdfgen-harfbuzz-bindings").tasks.named<Jar>("jar").flatMap { it.archiveFile }
 
 tasks.shadowJar {
@@ -83,34 +97,38 @@ tasks.shadowJar {
 // Not on `assemble` (J7): the merged single jar is the shipping artifact, and the fat per-loader jar
 // nothing installs was the most expensive thing in this build. `./gradlew shadowJar` still builds one.
 
-// Extracts NeoForge + MC 1.20.4 sources and resources into build/mc-src for local navigation.
+// Extracts this node's NeoForge + Minecraft sources and resources into build/mc-src for local navigation.
 // Sync (not Copy) removes stale files when the source jar changes between toolchain version bumps.
-val extractMcSources by tasks.registering(Sync::class) {
-    description = "Extracts NeoForge + MC 1.20.4 sources and resources into build/mc-src for local navigation."
-    group = "crystalgraphics"
+// A real node only: in stub mode there are no sources to extract.
+if (!stubMode) {
+    val extractMcSources = tasks.register<Sync>("extractMcSources") {
+        description = "Extracts this node's NeoForge + Minecraft sources and resources into build/mc-src for local navigation."
+        group = "crystalgraphics"
 
-    // dependsOn (not mustRunAfter) — mustRunAfter only orders tasks already scheduled; it does not
-    // cause createMinecraftArtifacts to run, so the jar would be absent on a clean checkout.
-    dependsOn("createMinecraftArtifacts")
+        // dependsOn (not mustRunAfter) — mustRunAfter only orders tasks already scheduled; it does not
+        // cause createMinecraftArtifacts to run, so the jar would be absent on a clean checkout.
+        dependsOn("createMinecraftArtifacts")
 
-    // Lazy providers resolved at execution time — never at configuration time (Gradle 9 rule).
-    // fileTree scan is the fallback because ModDevGradle does not expose a public typed output
-    // property for the sources or client-extra jars.
-    val sourcesJar = layout.buildDirectory.dir("moddev/artifacts").map { dir ->
-        dir.asFileTree.matching { include("*-sources.jar") }.singleFile
+        // Lazy providers resolved at execution time — never at configuration time (Gradle 9 rule).
+        // fileTree scan is the fallback because ModDevGradle does not expose a public typed output
+        // property for the sources or client-extra jars.
+        val sourcesJar = layout.buildDirectory.dir("moddev/artifacts").map { dir ->
+            dir.asFileTree.matching { include("*-sources.jar") }.singleFile
+        }
+        val resourcesJar = layout.buildDirectory.dir("moddev/artifacts").map { dir ->
+            // `client-extra-<v>.jar` on 1.20.x, `<loader>-<v>-client-extra-aka-minecraft-resources.jar` on 1.21.
+            dir.asFileTree.matching { include("*client-extra*.jar") }.singleFile
+        }
+
+        from(zipTree(sourcesJar)) { into("java") }
+        from(zipTree(resourcesJar)) { into("resources") }
+        into(layout.buildDirectory.dir("mc-src"))
     }
-    val resourcesJar = layout.buildDirectory.dir("moddev/artifacts").map { dir ->
-        dir.asFileTree.matching { include("client-extra-*.jar") }.singleFile
-    }
 
-    from(zipTree(sourcesJar)) { into("java") }
-    from(zipTree(resourcesJar)) { into("resources") }
-    into(layout.buildDirectory.dir("mc-src"))
+    // extractMcSources is cheap (unzips an already-present jar — createMinecraftArtifacts ran first).
+    // Wire it into classes so build/mc-src/ is always populated after a normal compile.
+    tasks.named("classes") { dependsOn(extractMcSources) }
 }
-
-// extractMcSources is cheap (unzips an already-present jar — createMinecraftArtifacts ran first).
-// Wire it into classes so build/mc-src/ is always populated after a normal compile.
-tasks.named("classes") { dependsOn(extractMcSources) }
 
 // -- The thin jar (J1) ----------------------------------------------------------------------------
 //
@@ -119,7 +137,7 @@ tasks.named("classes") { dependsOn(extractMcSources) }
 // takes the `thin` classifier directly rather than the `thin-dev` the other two carry until mapped.
 tasks.named<AbstractArchiveTask>("thinShadowJar") { archiveClassifier.set("thin") }
 
-// Registered by cg-mc1201-loader with what a CrystalGraphics thin jar may contain; only the jar is ours.
+// Registered by cg-modern-loader with what a CrystalGraphics thin jar may contain; only the jar is ours.
 tasks.named<cgbuildlogic.CheckThinJar>("checkThinJar") {
     jar.set(tasks.named<AbstractArchiveTask>("thinShadowJar").flatMap { it.archiveFile })
 }

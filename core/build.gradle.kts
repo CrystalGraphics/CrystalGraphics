@@ -1,3 +1,6 @@
+import cgbuildlogic.abstractModule
+import cgbuildlogic.consumerApi
+import cgbuildlogic.publishedModule
 import java.io.File as JFile
 
 plugins {
@@ -14,18 +17,12 @@ val lwjglVer      = rootProject.properties["dep.lwjgl"].toString()
 val log4jVer      = rootProject.properties["dep.log4j"].toString()
 val jabelVer      = rootProject.properties["dep.jabel"].toString()
 val junitVer      = rootProject.properties["dep.junit"].toString()
-val jdkVersion    = rootProject.properties["dep.jdk.toolchain"].toString().toInt()
 val downgraderVer = rootProject.properties["dep.jvmdowngrader"]?.toString() ?: "0.9.0"
 
 // 1. TOOLCHAIN SETUP
-java {
-    sourceCompatibility = JavaVersion.VERSION_17
-    targetCompatibility = JavaVersion.VERSION_17
-    toolchain {
-        // Jabel is stable on 17 and 21. It is not stable on 25.
-        languageVersion.set(JavaLanguageVersion.of(17))
-    }
-}
+// An abstract module: Java 25, with a Java 8 copy for every consumer below it. @see cgbuildlogic.abstractModule
+abstractModule("com/crystalgraphics/jvmdg/core")
+publishedModule("CrystalGraphics Core", "A modern GL rendering engine for Minecraft: materials, meshes, framebuffers, text.")
 
 tasks.withType<Jar>().configureEach {
     archiveBaseName.set("graphicsCore")
@@ -82,7 +79,7 @@ dependencies {
     // --- STANDARD DEPENDENCIES ---
     compileOnly("xyz.wagyourtail.jvmdowngrader:jvmdowngrader-java-api:$downgraderVer:downgraded-8")
 
-    compileOnly(project(":freetype-msdfgen-harfbuzz-bindings"))
+    consumerApi(project(":freetype-msdfgen-harfbuzz-bindings"))
     compileOnly("com.google.code.findbugs:jsr305:3.0.2")
     compileOnly("de.javagl:obj:0.4.0")
     compileOnly("de.javagl:jgltf-model:2.0.4")
@@ -90,18 +87,19 @@ dependencies {
     compileOnly("org.hotswapagent:hotswap-agent-core:1.4.1")
 
     compileOnly("org.lwjgl.lwjgl:lwjgl:$lwjglVer")
-    compileOnly("org.joml:joml-jdk8:$jomlVer")
+    // The API names org.joml; the real artifact, which Minecraft ships from 1.19.3.
+    consumerApi("org.joml:joml:$jomlVer")
 
     compileOnly("org.projectlombok:lombok:1.18.44")
     annotationProcessor("org.projectlombok:lombok:1.18.44")
     testCompileOnly("org.projectlombok:lombok:1.18.44")
     testAnnotationProcessor("org.projectlombok:lombok:1.18.44")
 
-    // Keep compileOnly so `import ...Desugar` doesn't crash the pure Java 17 compile
+    // Keep compileOnly so `import ...Desugar` doesn't crash the plain compile
     // Notice: We NO LONGER have annotationProcessor(jabel) here.
     compileOnly("com.github.bsideup.jabel:jabel-javac-plugin:$jabelVer")
 
-    compileOnly(project(":platform"))
+    consumerApi(project(":platform"))
     compileOnly("org.apache.logging.log4j:log4j-api:$log4jVer")
 
     // A LOGGING PROVIDER FOR THE TEST RUNTIME. Main compiles against log4j-api 2.0-beta9 because

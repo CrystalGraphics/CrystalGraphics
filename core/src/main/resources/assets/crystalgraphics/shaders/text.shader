@@ -45,6 +45,7 @@
 
 #include "crystalgraphics:shaders/lib/texel.glsl"
 #include "crystalgraphics:shaders/lib/rect_blur.glsl"
+#include "crystalgraphics:shaders/lib/text_gamma.glsl"
 
 Tags {
     "RenderType" = "Transparent"
@@ -70,6 +71,8 @@ Properties {
     //       pxRange: the range the GLYPH's own atlas band was generated at. Per instance because a
     //                face carrying a dense script is banded narrower than the rest, and two bands
     //                have to go out in one draw. @see CgMsdfAtlasConfig#WIDE_PX_RANGE
+    //   CG_QUAD_CUSTOM2 = atlas texels per em of the glyph's raster, which the fragment turns into its on-screen
+    //                     em for CgTextGamma's size fade; 0 on anything but a glyph's own fill
     //
     // Width is texels rather than screen px because a screen-space width needs one scale factor to
     // convert and an anisotropic transform has none; in texels it is local, and the transform
@@ -96,6 +99,9 @@ struct v2f {
     float atlasLayer;
     // The unit quad's own parameter, for the analytic rect shadow kinds.
     vec2 param;
+    // text_gamma_terms of this glyph's colour under each CgTextGamma level; constant across the quad.
+    vec4 gammaSmall;
+    vec4 gammaLarge;
 };
 
 Pass {
@@ -121,6 +127,10 @@ Pass {
     // called by CgTextRenderer#addQuadFromPlacement) and delivered per-instance via the
     // CG_QUAD_* macros below (cg_env.glsl) -- no per-draw uniform transform.
     //
+    // u_TextGammaSmall/Large/Ramp, beside it, are the renderer's CgTextGamma: two levels of (gamma, contrast,
+    // 1 / gamma) and (smallPx, largePx, enabled). They correct the FILL's coverage only -- shadows are blurred
+    // masks and a stroke's ring has a colour of its own.
+    //
     // u_Projection reaches this shader via CgTextRenderer's attached, shared static "TextData"
     // CgUniformBuffer (flat STD140 scope -- referenced directly, no block prefix). Deliberately
     // NOT the engine's shared cg_ProjMatrix (CgFrameBlock): that's frame-owner state (the actual
@@ -133,6 +143,8 @@ Pass {
         o.color      = CG_QUAD_COLOR;
         o.atlasLayer = CG_QUAD_ATLAS_LAYER;
         o.param      = cg_Position.xy;
+        o.gammaSmall = text_gamma_terms(CG_QUAD_COLOR.rgb, u_TextGammaSmall);
+        o.gammaLarge = text_gamma_terms(CG_QUAD_COLOR.rgb, u_TextGammaLarge);
     }
 
     void fragment(in v2f i, out vec4 fragColor) {
@@ -359,6 +371,10 @@ Pass {
 
             fragColor = vec4(outRgb, min(outA, 1.0));
         } else {
+            // The em on screen: texels per em over texels per screen pixel, from the Jacobian's area.
+            float emPx = CG_QUAD_CUSTOM2 / sqrt(max(abs(jdx.x * jdy.y - jdx.y * jdy.x), 1.0e-8));
+            alpha = i.color.a * text_gamma_fill(opacity, emPx, i.gammaSmall, i.gammaLarge,
+                                                u_TextGammaSmall, u_TextGammaLarge, u_TextGammaRamp);
             if (alpha <= (1.0 / 255.0)) discard;
 
             fragColor = vec4(i.color.rgb, alpha);
@@ -389,7 +405,12 @@ Pass {
         float coverage = CG_QUAD_EDGE_ROTATED
                 ? cg_texel_aa_sample(_MainTex, uvw, CG_QUAD_UV_RECT, CG_QUAD_EDGE_FILTER).r
                 : texture(_MainTex, uvw).r;
-        float alpha = coverage * i.color.a;
+        vec2 bitmapSize = vec2(textureSize(_MainTex, 0).xy);
+        vec2 bdx = dFdx(i.uv) * bitmapSize;
+        vec2 bdy = dFdy(i.uv) * bitmapSize;
+        float emPx = CG_QUAD_CUSTOM2 / sqrt(max(abs(bdx.x * bdy.y - bdx.y * bdy.x), 1.0e-8));
+        float alpha = text_gamma_fill(coverage, emPx, i.gammaSmall, i.gammaLarge,
+                                      u_TextGammaSmall, u_TextGammaLarge, u_TextGammaRamp) * i.color.a;
         fragColor = vec4(i.color.rgb, alpha);
 #endif
     }

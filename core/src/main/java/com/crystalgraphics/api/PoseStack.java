@@ -3,73 +3,40 @@ package com.crystalgraphics.api;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
-import com.crystalgraphics.util.CgBufferUtils;
-import com.crystalgraphics.platform.gl.CgGL;
 
-import java.nio.FloatBuffer;
 import java.util.ArrayDeque;
 import java.util.Deque;
 
 /**
- * A matrix stack that mirrors the 1.20.1 Minecraft {@code PoseStack} API
- * while synchronizing with the OpenGL 1.x fixed-function {@code GL_MODELVIEW}
- * matrix stack.
+ * A matrix stack with Minecraft 1.20.1's {@code PoseStack} API, held entirely on the CPU: a draw reads
+ * the top {@link Pose} and bakes it into its own vertex or instance data.
  *
- * <p>Each entry on the stack holds a 4×4 pose (model-view) matrix and a 3×3
- * normal matrix.  All transform methods ({@link #translate}, {@link #scale},
- * {@link #mulPose}, {@link #rotateAround}, {@link #mulPoseMatrix}) modify
- * the <em>top</em> entry in place — exactly as the 1.20.1 implementation
- * does.</p>
+ * <pre>{@code
+ * PoseStack poses = new PoseStack();
+ * poses.pushPose();
+ * poses.translate(x, y, 0);
+ * poses.scale(2f, 2f, 1f);
+ * draw(poses.last().pose());
+ * poses.popPose();
+ * }</pre>
  *
- * <h3>Fixed-Function GL Integration</h3>
- * <p>This PoseStack manages the <b>MODELVIEW</b> matrix.  On every
- * {@link #pushPose()} call it pushes the GL matrix stack and loads the
- * current JOML pose matrix into GL via {@code glLoadMatrix}.  On every
- * {@link #popPose()} it pops the GL stack.  Callers must ensure that
- * {@code GL_MODELVIEW} is the active matrix mode before using this class
- * (which is the default during MC 1.7.10 world rendering).</p>
+ * <p>Transforms modify the <em>top</em> entry in place. Every {@link #pushPose()} needs its
+ * {@link #popPose()}; popping the base entry throws. Nothing here touches GL's fixed-function matrices.</p>
  *
- * <h3>Why MODELVIEW and not PROJECTION?</h3>
- * <ul>
- *   <li>The 1.20.1 PoseStack is used exclusively for model-view transforms
- *       (entity positioning, block rendering, GUI elements).  Projection is
- *       handled separately.</li>
- *   <li>The API surface (translate, scale, quaternion rotation, rotateAround)
- *       maps directly to model-view operations.  Projection setup uses
- *       {@code perspective}/{@code ortho} — operations this class does not
- *       expose.</li>
- *   <li>The GL {@code GL_MODELVIEW} stack is guaranteed ≥32 deep; the
- *       {@code GL_PROJECTION} stack is only guaranteed 2 deep.  PoseStack
- *       with nested push/pop requires the deeper stack.</li>
- * </ul>
- *
- * <h3>Thread Safety</h3>
- * <p>Not thread-safe.  Must only be used on the render thread.</p>
+ * <p>Not thread-safe; render thread only.</p>
  *
  * @see Pose
  */
 public class PoseStack {
 
-    /**
-     * Thread-local FloatBuffer for uploading 4×4 matrices to GL.
-     * Allocated once per thread, reused across all {@link #syncToGL()} calls.
-     */
-    private static final ThreadLocal<FloatBuffer> MATRIX_BUFFER = ThreadLocal.withInitial(() -> CgBufferUtils.createFloatBuffer(16));
-
     private final Deque<Pose> poseStack;
-    private final boolean syncsToGL;
 
     /**
      * Creates a new PoseStack with a single identity entry.
      */
     public PoseStack() {
-        this(true);
-    }
-
-    public PoseStack(boolean syncsToGL) {
         this.poseStack = new ArrayDeque<Pose>();
         this.poseStack.add(new Pose(new Matrix4f(), new Matrix3f()));
-        this.syncsToGL = syncsToGL;
     }
 
     /**
@@ -169,42 +136,22 @@ public class PoseStack {
         pose.normal.rotate(quaternion);
     }
 
-    /**
-     * Pushes a copy of the current top entry onto the stack, then
-     * synchronizes the JOML matrix to the GL fixed-function MODELVIEW stack.
-     *
-     * <p>This calls {@code CgGL.glPushMatrix()} to preserve the current GL
-     * state, then loads the JOML pose matrix into GL via
-     * {@code CgGL.glLoadMatrix()}.  The GL matrix mode must be
-     * {@code GL_MODELVIEW} when this is called.</p>
-     */
+    /** Pushes a copy of the current top entry onto the stack. */
     public void pushPose() {
         Pose current = this.poseStack.getLast();
         this.poseStack.addLast(new Pose(
             new Matrix4f(current.pose),
             new Matrix3f(current.normal)
         ));
-
-        // Sync to fixed-function GL
-        if (syncsToGL) {
-            CgGL.glPushMatrix();
-            syncToGL();
-        }
     }
 
     /**
-     * Pops the top entry from the stack and restores the previous GL
-     * MODELVIEW matrix.
-     *
-     * <p>Calls {@code CgGL.glPopMatrix()} to restore the GL state that was
-     * saved by the matching {@link #pushPose()} call.</p>
+     * Pops the top entry from the stack.
      *
      * @throws java.util.NoSuchElementException if the stack would become empty
      */
     public void popPose() {
         this.poseStack.removeLast();
-        if (syncsToGL)
-           CgGL.glPopMatrix();
     }
 
     /**
@@ -251,23 +198,6 @@ public class PoseStack {
      */
     public void mulPoseMatrix(Matrix4f matrix) {
         this.poseStack.getLast().pose.mul(matrix);
-    }
-
-    // ---- GL synchronization ----
-
-    /**
-     * Loads the current top pose matrix into the active GL matrix (expected
-     * to be {@code GL_MODELVIEW}).
-     *
-     * <p>Uses a thread-local {@link FloatBuffer} to avoid per-call allocation.
-     * The matrix is written in column-major order as required by OpenGL.</p>
-     */
-    private void syncToGL() {
-        if (CgGL.CORE) return;
-        FloatBuffer buf = MATRIX_BUFFER.get();
-        buf.clear();
-        this.poseStack.getLast().pose.get(buf);
-        CgGL.glLoadMatrix(buf);
     }
 
     // ---- Utility ----

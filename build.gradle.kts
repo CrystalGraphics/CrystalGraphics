@@ -1,4 +1,6 @@
-
+import cgbuildlogic.Licence
+import cgbuildlogic.publishedModule
+import cgbuildlogic.registerCheckAllTargets
 plugins {
     idea
     // One idea-ext for the whole build. gtnhgradle and ModDevGradle request it under different Maven
@@ -17,6 +19,32 @@ plugins {
     id("cg-single-jar")
 }
 
+// ── One compiler ─────────────────────────────────────────────────────────────────────────────────
+//
+// Every module compiles with ONE JDK, `dep.jdk.compiler`; its own --release or source/target still
+// decides its bytecode, and its toolchain stays for launchers only -- so building the jars provisions
+// no other JDK. The abstract modules are authored at this Java, and every consumer below it resolves
+// their Java 8 copies (cgbuildlogic.abstractModule). :runtime:mc:1710 is left to GTNH's convention,
+// which already compiles with 25.
+val compilerJdk = providers.gradleProperty("dep.jdk.compiler").get().toInt()
+subprojects {
+    if (path == ":runtime:mc:1710") return@subprojects
+    plugins.withType<JavaBasePlugin> {
+        val toolchains = extensions.getByType<JavaToolchainService>()
+        tasks.withType<JavaCompile>().configureEach {
+            javaCompiler.set(toolchains.compilerFor { languageVersion.set(JavaLanguageVersion.of(compilerJdk)) })
+        }
+    }
+}
+
+// Published from here: the bindings also build standalone, where cgbuildlogic does not exist.
+project(":freetype-msdfgen-harfbuzz-bindings") {
+    pluginManager.withPlugin("java-library") {
+        publishedModule("FreeType-MSDFgen-HarfBuzz Java Bindings",
+            "JNI bindings for FreeType, msdfgen and HarfBuzz, with natives for Windows, Linux and macOS.", Licence.MIT)
+    }
+}
+
 // IDEA triggers 'processIdeaSettings' on the root project during sync and gtnhconvention only
 // registers it on subprojects, so this is the fallback. Guarded because idea-ext (applied above) now
 // supplies the real one, and registering twice is a configuration failure. findByName is safe here:
@@ -28,17 +56,6 @@ if (tasks.findByName("processIdeaSettings") == null) {
     }
 }
 
-//
-//// Umbrella task that extracts MC sources and resources for all 1.20.x loader modules.
-//// Run once after checkout or after toolchain version bumps. Each subproject's extractMcSources
-//// task will trigger the appropriate toolchain download + decompile step as needed.
-//tasks.register("extractAllMcSources") {
-//    description = "Extracts MC sources and resources for all 1.20.x loader modules. Run once after checkout."
-//    group = "crystalgraphics"
-//    // neoforge targets MC 1.20.4 (not 1.20.1 — NeoForge never published a stable 1.20.1 series).
-//    dependsOn(
-//        ":runtime:mc:modern:neoforge:extractMcSources",
-//        ":runtime:mc:modern:forge:extractMcSources",
-//        ":runtime:mc:modern:fabric:extractMcSources"
-//    )
-//}
+// Every node of the 1.20.x tree compiled, every source set -- a change is compiled against every
+// Minecraft version before it is committed, not only the IDE's active node. @see ModernConventions
+registerCheckAllTargets()

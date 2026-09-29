@@ -168,6 +168,9 @@ public class CgTextRenderer {
     private static final CgBufferFormat TEXT_DATA_FORMAT = CgBufferFormat
             .builder("TextData", CgBufferFormat.MemoryLayout.STD140)
             .mat4("u_Projection")
+            .vec4("u_TextGammaSmall")
+            .vec4("u_TextGammaLarge")
+            .vec4("u_TextGammaRamp")
             .build();
 
     /**
@@ -236,6 +239,9 @@ public class CgTextRenderer {
      * owned by the context.
      */
     private Matrix4f activeProjection;
+
+    /** Uploaded beside the projection, so two renderers can draw with different corrections in one frame. */
+    private CgTextGamma gamma = CgTextGamma.initial();
     /**
      * Optional caller-supplied hook invoked at the end of every {@link #endBatch()} (manual
      * or {@link Draw#submit()}'s standalone auto-batch alike) — see {@link #restoreStateWith}.
@@ -296,11 +302,10 @@ public class CgTextRenderer {
 
     /**
      * Last-resort identity pose used by {@link Draw#submit()}/{@link Draw#measure()} when
-     * neither {@link Draw#pose(PoseStack)} nor {@link #poseStack(PoseStack)} was set. Built with
-     * {@code syncsToGL = false} — it only ever backs a single never-pushed identity {@code Pose}
-     * entry, so it must never touch the real GL matrix stack. Shared, never mutated.
+     * neither {@link Draw#pose(PoseStack)} nor {@link #poseStack(PoseStack)} was set. Shared, never
+     * mutated.
      */
-    private static final PoseStack IDENTITY_POSE_STACK = new PoseStack(false);
+    private static final PoseStack IDENTITY_POSE_STACK = new PoseStack();
     
     /**
      * Reusable scratch for {@link #pixelSnapDelta} — the inverse of the current draw call's
@@ -332,6 +337,23 @@ public class CgTextRenderer {
         return this;
     }
 
+
+    public CgTextGamma gamma() {
+        return gamma;
+    }
+
+    /**
+     * The coverage correction this renderer's text is drawn with; {@link CgTextGamma#DEFAULT} unless the JVM says
+     * otherwise. Safe mid-batch: glyphs already queued keep the correction they were queued under.
+     */
+    public CgTextRenderer gamma(@NonNull CgTextGamma gamma) {
+        if (gamma.equals(this.gamma)) return this;
+        flush();
+        this.gamma = gamma;
+        // Forces the next draw to upload, since the projection alone may not have changed.
+        activeProjection = null;
+        return this;
+    }
 
     // ── Owned render context ────────────────────────────────────────────────
     /**
@@ -543,7 +565,11 @@ public class CgTextRenderer {
             activeProjection.set(projection);
         } else activeProjection = new Matrix4f(projection);
 
-        TEXT_DATA_UBO.writer().reset().beginRecord().mat4("u_Projection", projection);
+        CgTextGamma.Level small = gamma.small(), large = gamma.large();
+        TEXT_DATA_UBO.writer().reset().beginRecord().mat4("u_Projection", projection)
+                .vec4("u_TextGammaSmall", small.exponent(), small.contrast(), 1f / small.exponent(), 0f)
+                .vec4("u_TextGammaLarge", large.exponent(), large.contrast(), 1f / large.exponent(), 0f)
+                .vec4("u_TextGammaRamp", gamma.smallPx(), gamma.largePx(), gamma.isIdentity() ? 0f : 1f, 0f);
         TEXT_DATA_UBO.endRecord();
         TEXT_DATA_UBO.upload();
     }
@@ -1581,8 +1607,8 @@ public class CgTextRenderer {
             float pxRange;
             float u0, v0, u1, v1;
             int rgba, atlasLayer;
-            // The instance's two custom slots, as text.shader's Properties comment lays them out.
-            float c0x = 0f, c0y = 0f, c0z = 0f, c0w = 0f, c1x = 0f, c1y = 0f, c1z = 0f, c1w = 0f;
+            // The instance's custom slots, as text.shader's Properties comment lays them out.
+            float c0x = 0f, c0y = 0f, c0z = 0f, c0w = 0f, c1x = 0f, c1y = 0f, c1z = 0f, c1w = 0f, c2 = 0f;
 
             if (isDecoration) {
                 CgResolvedGlyphs.ResolvedDecoration d = resolvedDecorations.get(localIndex);
@@ -1658,6 +1684,7 @@ public class CgTextRenderer {
                 c0x = ((strokeArgb >> 16) & 0xFF) / 255f; c0y = ((strokeArgb >> 8) & 0xFF) / 255f;
                 c0z = (strokeArgb & 0xFF) / 255f; c0w = ((strokeArgb >>> 24) & 0xFF) / 255f;
                 c1x = strokeWidthTexels; c1y = strokeAlign; c1z = strokeOver; c1w = pxRange;
+                c2 = p.key().getFontKey().getTargetPx();
             } else {
                 byte kind = shadowPlan.kind(shadow, localIndex);
                 p = shadowPlan.placement(shadow, localIndex);
@@ -1706,6 +1733,7 @@ public class CgTextRenderer {
                     .atlasLayer(atlasLayer)
                     .custom0(c0x, c0y, c0z, c0w)
                     .custom1(c1x, c1y, c1z, c1w)
+                    .custom2(c2)
                     .pose(modelView)
                     .submit();
 
