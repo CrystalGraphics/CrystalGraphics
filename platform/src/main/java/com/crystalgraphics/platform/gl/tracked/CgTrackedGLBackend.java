@@ -3,6 +3,7 @@ package com.crystalgraphics.platform.gl.tracked;
 import com.crystalgraphics.platform.device.CgDevice;
 import com.crystalgraphics.platform.device.CgDeviceInfo;
 import com.crystalgraphics.platform.device.CgGlslCompiler;
+import com.crystalgraphics.platform.device.CgGpuTexture;
 import com.crystalgraphics.platform.device.CgPipelineDesc;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.CgGLBackend;
@@ -45,6 +46,7 @@ public final class CgTrackedGLBackend extends CgGLBackend {
     private final TrackedVertexArrays vaos;
     private final TrackedBuffers buffers;
     private final TrackedPrograms programs;
+    private final TrackedTextures textures;
     private final boolean debug;
     private final double[] q = new double[16];
 
@@ -63,6 +65,7 @@ public final class CgTrackedGLBackend extends CgGLBackend {
         this.buffers = new TrackedBuffers(tracker, errors, vaos);
         vaos.buffers(buffers);
         this.programs = new TrackedPrograms(tracker, compiler, errors);
+        this.textures = new TrackedTextures(tracker, errors, buffers);
         tracker.bindTarget(surface);
     }
 
@@ -78,6 +81,8 @@ public final class CgTrackedGLBackend extends CgGLBackend {
     TrackedVertexArrays vertexArrays() { return vaos; }
 
     TrackedBuffers bufferObjects() { return buffers; }
+
+    TrackedTextures textureObjects() { return textures; }
 
     private static UnsupportedOperationException notYet(String call) {
         return new UnsupportedOperationException(call + " is not on the tracked backend yet (D3.4)");
@@ -104,6 +109,7 @@ public final class CgTrackedGLBackend extends CgGLBackend {
         if (n < 0) n = buffers.query(pname, q);
         if (n < 0) n = vaos.query(pname, q);
         if (n < 0) n = programs.query(pname, q);
+        if (n < 0) n = textures.query(pname, q);
         if (n < 0) n = limits(pname);
         if (n < 0) {
             errors.invalidEnum("glGet", pname);
@@ -239,7 +245,8 @@ public final class CgTrackedGLBackend extends CgGLBackend {
     public void copyImageSubData(int srcName, int srcTarget, int srcLevel, int srcX, int srcY, int srcZ,
                                  int dstName, int dstTarget, int dstLevel, int dstX, int dstY, int dstZ,
                                  int srcWidth, int srcHeight, int srcDepth) {
-        throw notYet("glCopyImageSubData");
+        if (srcTarget == CgGL.GL_RENDERBUFFER || dstTarget == CgGL.GL_RENDERBUFFER) throw notYet("glCopyImageSubData of a renderbuffer");
+        textures.copy(srcName, srcLevel, srcX, srcY, srcZ, dstName, dstLevel, dstX, dstY, dstZ, srcWidth, srcHeight, srcDepth);
     }
 
     @Override
@@ -416,7 +423,7 @@ public final class CgTrackedGLBackend extends CgGLBackend {
         buffers.bindIndexed(target, index, buffer, offset, size);
     }
 
-    @Override public void glTexBuffer(int target, int internalFormat, int buffer) { throw notYet("glTexBuffer"); }
+    @Override public void glTexBuffer(int target, int internalFormat, int buffer) { textures.textureBuffer(target, internalFormat, buffer); }
 
     @Override
     public ByteBuffer glMapBufferRange(int target, long offset, long length, int access, ByteBuffer oldBuffer) {
@@ -446,85 +453,108 @@ public final class CgTrackedGLBackend extends CgGLBackend {
 
     // ── textures ───────────────────────────────────────────────────────────────
 
-    @Override public int glGenTextures() { throw notYet("glGenTextures"); }
+    @Override public int glGenTextures() { return textures.gen(); }
 
-    @Override public void glBindTexture(int target, int texture) { throw notYet("glBindTexture"); }
+    @Override public void glBindTexture(int target, int texture) { textures.bind(target, texture); }
 
-    @Override public void glDeleteTextures(int texture) { throw notYet("glDeleteTextures"); }
+    @Override public void glDeleteTextures(int texture) { textures.delete(texture); }
 
-    @Override public void glActiveTexture(int texture) { throw notYet("glActiveTexture"); }
+    @Override public void glActiveTexture(int texture) { textures.active(texture); }
 
-    @Override public void glBindSampler(int unit, int sampler) { throw notYet("glBindSampler"); }
+    @Override public void glBindSampler(int unit, int sampler) { textures.bindSampler(unit, sampler); }
 
-    @Override public void glTexParameteri(int target, int pname, int param) { throw notYet("glTexParameteri"); }
+    @Override public void glTexParameteri(int target, int pname, int param) { textures.parameter(target, pname, param); }
 
-    @Override public void glGenerateMipmap(int target) { throw notYet("glGenerateMipmap"); }
+    @Override public void glGenerateMipmap(int target) { textures.generateMipmap(target); }
 
-    @Override public void glPixelStorei(int pname, int param) { throw notYet("glPixelStorei"); }
+    @Override public void glPixelStorei(int pname, int param) { textures.pixelStore(pname, param); }
 
     @Override
     public void glTexImage2D(int target, int level, int internalFormat, int width, int height, int border,
                              int format, int type, ByteBuffer pixels) {
-        throw notYet("glTexImage2D");
+        textures.image(target, level, internalFormat, width, height, 1, format, type, pixels);
     }
 
     @Override
     public void glTexImage2D(int target, int level, int internalFormat, int width, int height, int border,
                              int format, int type, FloatBuffer pixels) {
-        throw notYet("glTexImage2D");
+        textures.image(target, level, internalFormat, width, height, 1, format, type, bytes(pixels));
     }
 
     @Override
     public void glTexSubImage2D(int target, int level, int xOffset, int yOffset, int width, int height,
                                 int format, int type, ByteBuffer pixels) {
-        throw notYet("glTexSubImage2D");
+        textures.subImage(target, level, xOffset, yOffset, 0, width, height, 1, format, type, pixels);
     }
 
     @Override
     public void glTexSubImage2D(int target, int level, int xOffset, int yOffset, int width, int height,
                                 int format, int type, FloatBuffer pixels) {
-        throw notYet("glTexSubImage2D");
+        textures.subImage(target, level, xOffset, yOffset, 0, width, height, 1, format, type, bytes(pixels));
     }
 
     @Override
     public void glTexImage3D(int target, int level, int internalFormat, int width, int height, int depth, int border,
                              int format, int type, ByteBuffer pixels) {
-        throw notYet("glTexImage3D");
+        textures.image(target, level, internalFormat, width, height, depth, format, type, pixels);
     }
 
     @Override
     public void glTexImage3D(int target, int level, int internalFormat, int width, int height, int depth, int border,
                              int format, int type, FloatBuffer pixels) {
-        throw notYet("glTexImage3D");
+        textures.image(target, level, internalFormat, width, height, depth, format, type, bytes(pixels));
     }
 
     @Override
     public void glTexSubImage3D(int target, int level, int xOffset, int yOffset, int zOffset, int width, int height,
                                 int depth, int format, int type, ByteBuffer pixels) {
-        throw notYet("glTexSubImage3D");
+        textures.subImage(target, level, xOffset, yOffset, zOffset, width, height, depth, format, type, pixels);
     }
 
     @Override
     public void glTexSubImage3D(int target, int level, int xOffset, int yOffset, int zOffset, int width, int height,
                                 int depth, int format, int type, FloatBuffer pixels) {
-        throw notYet("glTexSubImage3D");
+        textures.subImage(target, level, xOffset, yOffset, zOffset, width, height, depth, format, type, bytes(pixels));
     }
 
     @Override
     public void glTexSubImage3D(int target, int level, int xOffset, int yOffset, int zOffset, int width, int height,
                                 int depth, int format, int type, ShortBuffer pixels) {
-        throw notYet("glTexSubImage3D");
+        textures.subImage(target, level, xOffset, yOffset, zOffset, width, height, depth, format, type, bytes(pixels));
     }
 
     @Override
     public void glTexImage2DMultisample(int target, int samples, int internalFormat, int width, int height,
                                         boolean fixedSampleLocations) {
-        throw notYet("glTexImage2DMultisample");
+        textures.multisample(target, samples, internalFormat, width, height);
     }
 
-    @Override public void glGetTexImage(int target, int level, int format, int type, ByteBuffer pixels) { throw notYet("glGetTexImage"); }
+    @Override
+    public void glGetTexImage(int target, int level, int format, int type, ByteBuffer pixels) {
+        textures.read(target, level, format, type, pixels);
+    }
 
-    @Override public int importHostTexture(Object hostHandle) { throw notYet("importHostTexture"); }
+    /** A device image — hosted, the host's — under a GL name {@code CgTexture2D.wrap} can adopt. */
+    @Override
+    public int importHostTexture(Object hostHandle) {
+        if (!(hostHandle instanceof CgGpuTexture image))
+            throw new IllegalArgumentException("The tracked backend imports a CgGpuTexture, not " + hostHandle);
+        return textures.adopt(image);
+    }
+
+    private static ByteBuffer bytes(FloatBuffer data) {
+        if (data == null) return null;
+        ByteBuffer b = ByteBuffer.allocateDirect(data.remaining() * 4).order(ByteOrder.nativeOrder());
+        b.asFloatBuffer().put(data.duplicate());
+        return b;
+    }
+
+    private static ByteBuffer bytes(ShortBuffer data) {
+        if (data == null) return null;
+        ByteBuffer b = ByteBuffer.allocateDirect(data.remaining() * 2).order(ByteOrder.nativeOrder());
+        b.asShortBuffer().put(data.duplicate());
+        return b;
+    }
 
     // ── draws ──────────────────────────────────────────────────────────────────
 
@@ -547,7 +577,7 @@ public final class CgTrackedGLBackend extends CgGLBackend {
         CgDrawState s = tracker.state;
         state.sync();
         vaos.apply(s);
-        programs.apply(s, buffers, null);
+        programs.apply(s, buffers, textures);
         if (debug) programs.checkInputs(s);
         CgPipelineDesc.Topology topology = GlEnums.topology(mode);
         if (type < 0) {
