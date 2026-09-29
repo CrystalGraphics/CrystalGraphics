@@ -71,7 +71,8 @@ public interface CgSystemInput {
          * @param button     {@link CgMouseCodes} button id, or {@link CgMouseCodes#NONE} for a
          *                   non-click event
          * @param state      true when the button is pressed
-         * @param wheelDelta wheel movement in <b>notches</b>
+         * @param wheelDelta wheel movement in <b>notches</b>, positive when the wheel rolls <b>down</b> (towards
+         *                   the user) -- the reverse of what GLFW, LWJGL2 and Windows report
          * @param millis     timestamp for click/release events; -1 for move events
          */
         record Event(int x, int y, int dx, int dy, int button, boolean state, float wheelDelta, long millis) {}
