@@ -172,8 +172,10 @@ shape. To shadow only some glyphs — a highlighted word — give each glyph a s
 ### Batching
 
 Every glyph is one instance of a shared quad. A single `draw()` renders all of its glyphs in **one
-instanced draw call**, and splits only where its glyphs change GL state: an atlas page, or bitmap versus
-distance-field glyphs.
+instanced draw call**, whatever fonts and sizes it mixes: every glyph lives in one shared atlas, its
+pages the layers of one array texture. The one split is bitmap against distance-field glyphs, which
+keep separate atlases — a draw mixes them while a glyph is still on its bitmap fallback, or when
+blurred shadows sit under distance-field text.
 
 `beginBatch()` and `endBatch()` extend that across draws. Every `draw()` in between goes into the same
 instanced calls, so a screen of labels costs what one label does:
