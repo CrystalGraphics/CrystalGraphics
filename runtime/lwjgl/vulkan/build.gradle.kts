@@ -39,6 +39,10 @@ dependencies {
     compileOnly("org.lwjgl:lwjgl-spvc:$lwjglVulkan")
 
     testImplementation(project(":platform"))
+    // The engine itself, for EngineOnTrackedBackendTest. Its own tests carry LWJGL 2, which this cannot.
+    testImplementation(project(":core"))
+    testImplementation("org.joml:joml:${rootProject.properties["dep.joml"]}")
+    testRuntimeOnly("org.apache.logging.log4j:log4j-core:2.26.1")
     testImplementation("junit:junit:${rootProject.properties["dep.junit"]}")
     for (module in listOf("lwjgl", "lwjgl-shaderc", "lwjgl-spvc")) {
         testImplementation("org.lwjgl:$module:$lwjglVulkan")
