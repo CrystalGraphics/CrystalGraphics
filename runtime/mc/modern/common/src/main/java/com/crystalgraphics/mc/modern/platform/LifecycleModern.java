@@ -62,11 +62,16 @@ public final class LifecycleModern {
         // THE MAIN TARGET, RE-BOUND. Fabulous graphics leaves one of its OIT targets bound, and the
         // engine's passes would draw into whichever that was.
         int mainFbo = bindMainTarget(mc);
-        CgGraphicsLifecycle.onOpaquePass(
-                partialTick,
-                Windows.of(mc).getWidth(),
-                Windows.of(mc).getHeight(),
-                mainFbo);
+        worldDepth(true);
+        try {
+            CgGraphicsLifecycle.onOpaquePass(
+                    partialTick,
+                    Windows.of(mc).getWidth(),
+                    Windows.of(mc).getHeight(),
+                    mainFbo);
+        } finally {
+            worldDepth(false);
+        }
         // Off unless -Dcrystalgraphics.host.verify=true. @see HostStateVerifier
         HostStateVerifier.verify("opaque");
     }
@@ -84,8 +89,24 @@ public final class LifecycleModern {
     public static void transparentPass() {
         if (!glAvailable()) return;
         bindMainTarget(Minecraft.getInstance());
-        CgGraphicsLifecycle.onTransparentPass();
+        worldDepth(true);
+        try {
+            CgGraphicsLifecycle.onTransparentPass();
+        } finally {
+            worldDepth(false);
+        }
         HostStateVerifier.verify("transparent");
+    }
+
+    /**
+     * Draws into Minecraft's world depth as that world does: 26.2 renders reversed-Z, nearer greater and
+     * cleared to 0, on OpenGL as on Vulkan. Earlier versions are standard, and this does nothing there.
+     * @see CgGL#setDepthReversed
+     */
+    private static void worldDepth(boolean inWorld) {
+        //? if >=26.2 {
+        /*CgGL.setDepthReversed(inWorld);
+        *///?}
     }
 
     /**
