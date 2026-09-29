@@ -55,7 +55,7 @@ Their commands are CrystalGUI's `AGENTS.md` § *Build and run*.
 
 For anything that touches rendering, shaders, FBOs, text or atlases, **test in the harness, not
 Minecraft**: it boots in seconds, needs no Minecraft context, and writes PNGs. It is CrystalGUI's
-submodule (`gl-debug-harness/`, Java 21) and runs from CrystalGUI's root; authoring rules are its own
+submodule (`gl-debug-harness/`, Java 25) and runs from CrystalGUI's root; authoring rules are its own
 `AGENTS.md`.
 
 ```bash
@@ -74,7 +74,8 @@ submodule (`gl-debug-harness/`, Java 21) and runs from CrystalGUI's root; author
 
 - Never call raw GL — use `CgVertexArray`, `CgStreamBuffer`, `CgTexture`, `CgFrameBuffer`, etc.
 - Implement `HarnessSceneLifecycle` (managed, single frame) or `InteractiveSceneLifecycle` (loop + camera),
-  and register the scene in `SceneRegistry.createDefault()`.
+  and register the scene in `SceneRegistry.createDefault()` — or, for a project on top of CrystalGraphics,
+  in its own `HarnessExtension`. The harness names no such project.
 - `ArtifactService.requestCapture("suffix")` for interactive captures; `ScreenshotUtil` for managed ones.
 - GL state cleanup after `render()` is automatic.
 
