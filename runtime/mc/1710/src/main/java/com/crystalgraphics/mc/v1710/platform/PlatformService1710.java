@@ -4,7 +4,7 @@ import com.crystalgraphics.mc.v1710.platform.service.*;
 import cpw.mods.fml.common.FMLCommonHandler;
 import com.crystalgraphics.mc.v1710.CrystalGraphicsVersion;
 import com.crystalgraphics.lwjgl2.Lwjgl2CursorService;
-import com.crystalgraphics.lwjgl2.Lwjgl2GLBackend;
+import com.crystalgraphics.mc.v1710.platform.gl.GLBackend1710;
 import com.crystalgraphics.lwjgl2.Lwjgl2InputService;
 import com.crystalgraphics.lwjgl2.Lwjgl2GLContext;
 
@@ -58,7 +58,7 @@ public final class PlatformService1710 implements CgPlatformService {
     private CgSoundService     soundImpl;
 
     @Override public CgGLBackend gl() {
-        if (glDispatchImpl == null) glDispatchImpl = new Lwjgl2GLBackend();
+        if (glDispatchImpl == null) glDispatchImpl = new GLBackend1710();
         return glDispatchImpl;
     }
 
