@@ -2,6 +2,8 @@ package com.crystalgraphics.platform.gl.tracked;
 
 import com.crystalgraphics.platform.device.CgDevice;
 import com.crystalgraphics.platform.device.CgDeviceInfo;
+import com.crystalgraphics.platform.device.CgGlslCompiler;
+import com.crystalgraphics.platform.device.CgPipelineDesc;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.CgGLBackend;
 
@@ -17,7 +19,7 @@ import java.nio.ShortBuffer;
  * {@code CgGL} changes; a process installs one backend.
  *
  * <pre>{@code
- * CgTrackedGLBackend gl = new CgTrackedGLBackend(device, debug);
+ * CgTrackedGLBackend gl = new CgTrackedGLBackend(device, new ShadercGlslCompiler(), debug);
  * CgGL.init(gl);
  * CgCapabilities.init(new CgTrackedGLContext());
  * ... draw through the engine as on GL ...
@@ -42,17 +44,25 @@ public final class CgTrackedGLBackend extends CgGLBackend {
     private final TrackedRenderState state;
     private final TrackedVertexArrays vaos;
     private final TrackedBuffers buffers;
+    private final TrackedPrograms programs;
+    private final boolean debug;
     private final double[] q = new double[16];
 
-    /** @param debug refuse what GL leaves undefined and a device cannot survive: feedback loops (decision 21) */
-    public CgTrackedGLBackend(CgDevice device, boolean debug) {
+    /**
+     * @param compiler what a program's link compiles its GLSL with
+     * @param debug    refuse what GL leaves undefined and a device cannot survive: feedback loops (decision 21), a
+     *                 vertex input no attribute array feeds
+     */
+    public CgTrackedGLBackend(CgDevice device, CgGlslCompiler compiler, boolean debug) {
         this.device = device;
+        this.debug = debug;
         this.tracker = new CgTracker(device, debug);
         CgTarget surface = CgTarget.surface(device);
         this.state = new TrackedRenderState(tracker, errors, surface.width(), surface.height());
         this.vaos = new TrackedVertexArrays(errors);
         this.buffers = new TrackedBuffers(tracker, errors, vaos);
         vaos.buffers(buffers);
+        this.programs = new TrackedPrograms(tracker, compiler, errors);
         tracker.bindTarget(surface);
     }
 
@@ -93,6 +103,7 @@ public final class CgTrackedGLBackend extends CgGLBackend {
         int n = state.query(pname, q);
         if (n < 0) n = buffers.query(pname, q);
         if (n < 0) n = vaos.query(pname, q);
+        if (n < 0) n = programs.query(pname, q);
         if (n < 0) n = limits(pname);
         if (n < 0) {
             errors.invalidEnum("glGet", pname);
@@ -291,84 +302,90 @@ public final class CgTrackedGLBackend extends CgGLBackend {
 
     // ── programs ───────────────────────────────────────────────────────────────
 
-    @Override public int glCreateShader(int type) { throw notYet("glCreateShader"); }
+    @Override public int glCreateShader(int type) { return programs.createShader(type); }
 
-    @Override public void glShaderSource(int shader, CharSequence source) { throw notYet("glShaderSource"); }
+    @Override public void glShaderSource(int shader, CharSequence source) { programs.source(shader, source); }
 
-    @Override public void glCompileShader(int shader) { throw notYet("glCompileShader"); }
+    @Override public void glCompileShader(int shader) {}
 
-    @Override public int glGetShaderi(int shader, int pname) { throw notYet("glGetShaderi"); }
+    @Override public int glGetShaderi(int shader, int pname) { return programs.shaderi(shader, pname); }
 
-    @Override public String glGetShaderInfoLog(int shader, int maxLength) { throw notYet("glGetShaderInfoLog"); }
+    @Override public String glGetShaderInfoLog(int shader, int maxLength) { return ""; }
 
-    @Override public void glDeleteShader(int shader) { throw notYet("glDeleteShader"); }
+    @Override public void glDeleteShader(int shader) { programs.deleteShader(shader); }
 
-    @Override public int glCreateProgram() { throw notYet("glCreateProgram"); }
+    @Override public int glCreateProgram() { return programs.createProgram(); }
 
-    @Override public void glAttachShader(int program, int shader) { throw notYet("glAttachShader"); }
+    @Override public void glAttachShader(int program, int shader) { programs.attach(program, shader); }
 
-    @Override public void glDetachShader(int program, int shader) { throw notYet("glDetachShader"); }
+    @Override public void glDetachShader(int program, int shader) { programs.detach(program, shader); }
 
     @Override
     public void glGetAttachedShaders(int program, IntBuffer count, IntBuffer shaders) {
-        throw notYet("glGetAttachedShaders");
+        programs.attachedShaders(program, count, shaders);
     }
 
-    @Override public void glLinkProgram(int program) { throw notYet("glLinkProgram"); }
+    @Override public void glLinkProgram(int program) { programs.link(program); }
 
-    @Override public int glGetProgrami(int program, int pname) { throw notYet("glGetProgrami"); }
+    @Override public int glGetProgrami(int program, int pname) { return programs.programi(program, pname); }
 
-    @Override public String glGetProgramInfoLog(int program, int maxLength) { throw notYet("glGetProgramInfoLog"); }
+    @Override public String glGetProgramInfoLog(int program, int maxLength) { return programs.log(program, maxLength); }
 
-    @Override public void glUseProgram(int program) { throw notYet("glUseProgram"); }
+    @Override public void glUseProgram(int program) { programs.use(program); }
 
-    @Override public void glDeleteProgram(int program) { throw notYet("glDeleteProgram"); }
+    @Override public void glDeleteProgram(int program) { programs.deleteProgram(program); }
 
-    @Override public int glGetUniformLocation(int program, CharSequence name) { throw notYet("glGetUniformLocation"); }
+    @Override public int glGetUniformLocation(int program, CharSequence name) { return programs.uniformLocation(program, name); }
 
     @Override
     public String glGetActiveUniform(int program, int index, int maxLength, IntBuffer sizeTypeBuf) {
-        throw notYet("glGetActiveUniform");
+        return programs.activeUniform(program, index, maxLength, sizeTypeBuf);
     }
 
-    @Override public void glBindAttribLocation(int program, int index, CharSequence name) { throw notYet("glBindAttribLocation"); }
+    @Override
+    public void glBindAttribLocation(int program, int index, CharSequence name) {
+        programs.bindAttribLocation(program, index, name);
+    }
 
     @Override
     public int glGetProgramResourceIndex(int program, int programInterface, CharSequence name) {
-        throw notYet("glGetProgramResourceIndex");
+        return programs.resourceIndex(program, programInterface, name);
     }
 
     @Override
     public void glShaderStorageBlockBinding(int program, int storageBlockIndex, int storageBlockBinding) {
-        throw notYet("glShaderStorageBlockBinding");
+        programs.storageBlockBinding(program, storageBlockIndex, storageBlockBinding);
     }
 
-    @Override public int glGetUniformBlockIndex(int program, CharSequence name) { throw notYet("glGetUniformBlockIndex"); }
+    @Override public int glGetUniformBlockIndex(int program, CharSequence name) { return programs.uniformBlockIndex(program, name); }
 
     @Override
     public void glUniformBlockBinding(int program, int uniformBlockIndex, int uniformBlockBinding) {
-        throw notYet("glUniformBlockBinding");
+        programs.uniformBlockBinding(program, uniformBlockIndex, uniformBlockBinding);
     }
 
-    @Override public void glUniform1i(int location, int v0) { throw notYet("glUniform1i"); }
+    @Override public void glUniform1i(int location, int v0) { programs.int1(location, v0); }
 
-    @Override public void glUniform1f(int location, float v0) { throw notYet("glUniform1f"); }
+    @Override public void glUniform1f(int location, float v0) { programs.floats(location, v0, 0, 0, 0, 1); }
 
-    @Override public void glUniform2f(int location, float v0, float v1) { throw notYet("glUniform2f"); }
+    @Override public void glUniform2f(int location, float v0, float v1) { programs.floats(location, v0, v1, 0, 0, 2); }
 
-    @Override public void glUniform3f(int location, float v0, float v1, float v2) { throw notYet("glUniform3f"); }
+    @Override public void glUniform3f(int location, float v0, float v1, float v2) { programs.floats(location, v0, v1, v2, 0, 3); }
 
-    @Override public void glUniform4f(int location, float v0, float v1, float v2, float v3) { throw notYet("glUniform4f"); }
+    @Override
+    public void glUniform4f(int location, float v0, float v1, float v2, float v3) {
+        programs.floats(location, v0, v1, v2, v3, 4);
+    }
 
-    @Override public void glUniform1(int location, FloatBuffer values) { throw notYet("glUniform1fv"); }
+    @Override public void glUniform1(int location, FloatBuffer values) { programs.floatArray(location, values); }
 
-    @Override public void glUniform1(int location, IntBuffer values) { throw notYet("glUniform1iv"); }
+    @Override public void glUniform1(int location, IntBuffer values) { programs.intArray(location, values); }
 
-    @Override public void glUniformMatrix3(int location, boolean transpose, FloatBuffer value) { throw notYet("glUniformMatrix3fv"); }
+    @Override public void glUniformMatrix3(int location, boolean transpose, FloatBuffer value) { programs.matrix(location, transpose, value, 3); }
 
-    @Override public void glUniformMatrix4(int location, boolean transpose, FloatBuffer value) { throw notYet("glUniformMatrix4fv"); }
+    @Override public void glUniformMatrix4(int location, boolean transpose, FloatBuffer value) { programs.matrix(location, transpose, value, 4); }
 
-    @Override public void glUniformMatrix4fv(int location, boolean transpose, FloatBuffer value) { throw notYet("glUniformMatrix4fv"); }
+    @Override public void glUniformMatrix4fv(int location, boolean transpose, FloatBuffer value) { programs.matrix(location, transpose, value, 4); }
 
     // ── buffers and vertex arrays ──────────────────────────────────────────────
 
@@ -511,18 +528,41 @@ public final class CgTrackedGLBackend extends CgGLBackend {
 
     // ── draws ──────────────────────────────────────────────────────────────────
 
-    @Override public void glDrawArrays(int mode, int first, int count) { throw notYet("glDrawArrays"); }
+    @Override public void glDrawArrays(int mode, int first, int count) { draw(mode, first, count, 1, -1, 0); }
 
-    @Override public void glDrawElements(int mode, int count, int type, long indices) { throw notYet("glDrawElements"); }
+    @Override public void glDrawElements(int mode, int count, int type, long indices) { draw(mode, 0, count, 1, type, indices); }
 
     @Override
     public void glDrawArraysInstanced(int mode, int first, int count, int instanceCount) {
-        throw notYet("glDrawArraysInstanced");
+        draw(mode, first, count, instanceCount, -1, 0);
     }
 
     @Override
     public void glDrawElementsInstanced(int mode, int count, int type, long indices, int instanceCount) {
-        throw notYet("glDrawElementsInstanced");
+        draw(mode, 0, count, instanceCount, type, indices);
+    }
+
+    /** @param type the index type, or -1 for a draw of arrays */
+    private void draw(int mode, int first, int count, int instances, int type, long indices) {
+        CgDrawState s = tracker.state;
+        state.sync();
+        vaos.apply(s);
+        programs.apply(s, buffers, null);
+        if (debug) programs.checkInputs(s);
+        CgPipelineDesc.Topology topology = GlEnums.topology(mode);
+        if (type < 0) {
+            tracker.draw(topology, count, instances, first, 0);
+            return;
+        }
+        TrackedBuffers.GlBuffer elements = buffers.get(vaos.current().elementBuffer);
+        if (elements == null) {
+            errors.invalidOperation("glDrawElements with no element buffer bound to the vertex array");
+            return;
+        }
+        if (type == CgGL.GL_UNSIGNED_BYTE) throw new UnsupportedOperationException("8-bit indices: a device takes 16 or 32");
+        boolean wide = type == CgGL.GL_UNSIGNED_INT;
+        s.indexBuffer(elements.storage.allocation(), 0, wide);
+        tracker.drawIndexed(topology, count, instances, (int) (indices / (wide ? 4 : 2)), 0, 0);
     }
 
     // ── sync, timers, host sections ────────────────────────────────────────────
