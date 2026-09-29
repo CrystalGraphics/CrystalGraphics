@@ -1,17 +1,17 @@
 package com.crystalgraphics.platform.gl.tracked;
 
-import com.crystalgraphics.platform.device.CgBindingLayout;
-import com.crystalgraphics.platform.device.CgGlslCompiler;
-import com.crystalgraphics.platform.device.CgRecordingDevice;
-import com.crystalgraphics.platform.device.CgShaderModule;
+import com.crystalgraphics.platform.device.pipeline.CgBindingLayout;
+import com.crystalgraphics.platform.device.recording.CgRecordingDevice;
+import com.crystalgraphics.platform.device.shader.CgGlslCompiler;
+import com.crystalgraphics.platform.device.shader.CgShaderModule;
 
 import java.util.List;
 import java.util.Map;
 
 /** A compiler that answers with a table the test wrote, and fails on a source containing {@code BROKEN}. */
-final class FakeGlslCompiler implements CgGlslCompiler {
+public final class FakeGlslCompiler implements CgGlslCompiler {
 
-    static final FakeGlslCompiler EMPTY = new FakeGlslCompiler(List.of(), List.of(), List.of(), List.of(), -1, 0, List.of());
+    public static final FakeGlslCompiler EMPTY = new FakeGlslCompiler(List.of(), List.of(), List.of(), List.of(), -1, 0, List.of());
 
     private final List<Attribute> attributes;
     private final List<Block> uniformBlocks;
@@ -20,7 +20,7 @@ final class FakeGlslCompiler implements CgGlslCompiler {
     private final int vertexUniformBinding, vertexUniformSize;
     private final List<CgBindingLayout.Slot> slots;
 
-    FakeGlslCompiler(List<Attribute> attributes, List<Block> uniformBlocks, List<Sampler> samplers,
+    public FakeGlslCompiler(List<Attribute> attributes, List<Block> uniformBlocks, List<Sampler> samplers,
                      List<Uniform> uniforms, int vertexUniformBinding, int vertexUniformSize,
                      List<CgBindingLayout.Slot> slots) {
         this.attributes = attributes;

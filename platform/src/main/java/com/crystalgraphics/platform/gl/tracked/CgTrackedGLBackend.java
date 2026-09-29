@@ -2,14 +2,28 @@ package com.crystalgraphics.platform.gl.tracked;
 
 import com.crystalgraphics.platform.device.CgDevice;
 import com.crystalgraphics.platform.device.CgDeviceInfo;
-import com.crystalgraphics.platform.device.CgGlslCompiler;
-import com.crystalgraphics.platform.device.CgGpuTexture;
-import com.crystalgraphics.platform.device.CgPipelineDesc;
-import com.crystalgraphics.platform.device.CgShaderModule;
-import com.crystalgraphics.platform.device.CgTextureRegion;
-import com.crystalgraphics.platform.device.CgTimerQuery;
+import com.crystalgraphics.platform.device.pipeline.CgPipelineDesc;
+import com.crystalgraphics.platform.device.resource.CgGpuTexture;
+import com.crystalgraphics.platform.device.resource.CgTextureRegion;
+import com.crystalgraphics.platform.device.resource.CgTimerQuery;
+import com.crystalgraphics.platform.device.shader.CgGlslCompiler;
+import com.crystalgraphics.platform.device.shader.CgShaderModule;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.CgGLBackend;
+import com.crystalgraphics.platform.gl.tracked.gl.GlEnums;
+import com.crystalgraphics.platform.gl.tracked.gl.GlNames;
+import com.crystalgraphics.platform.gl.tracked.gl.TrackedBuffers;
+import com.crystalgraphics.platform.gl.tracked.gl.TrackedFramebuffers;
+import com.crystalgraphics.platform.gl.tracked.gl.TrackedGlErrors;
+import com.crystalgraphics.platform.gl.tracked.gl.TrackedPrograms;
+import com.crystalgraphics.platform.gl.tracked.gl.TrackedRenderState;
+import com.crystalgraphics.platform.gl.tracked.gl.TrackedTextures;
+import com.crystalgraphics.platform.gl.tracked.gl.TrackedVertexArrays;
+import com.crystalgraphics.platform.gl.tracked.tracker.CgDrawState;
+import com.crystalgraphics.platform.gl.tracked.tracker.CgTarget;
+import com.crystalgraphics.platform.gl.tracked.tracker.CgTrackedProgram;
+import com.crystalgraphics.platform.gl.tracked.tracker.CgTracker;
+import com.crystalgraphics.platform.gl.tracked.tracker.CgTrackerStats;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -123,9 +137,9 @@ public final class CgTrackedGLBackend extends CgGLBackend {
 
     TrackedRenderState renderState() { return state; }
 
-    TrackedVertexArrays vertexArrays() { return vaos; }
+    public TrackedVertexArrays vertexArrays() { return vaos; }
 
-    TrackedBuffers bufferObjects() { return buffers; }
+    public TrackedBuffers bufferObjects() { return buffers; }
 
     TrackedTextures textureObjects() { return textures; }
 

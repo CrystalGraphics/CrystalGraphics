@@ -3,6 +3,8 @@ package com.crystalgraphics.platform.gl.tracked;
 import com.crystalgraphics.platform.gl.state.CgGlSlot;
 import com.crystalgraphics.platform.gl.state.CgGlStateProvider;
 import com.crystalgraphics.platform.gl.state.CgGlStateShadow;
+import com.crystalgraphics.platform.gl.tracked.gl.TrackedRenderState;
+import com.crystalgraphics.platform.gl.tracked.gl.TrackedTextures;
 
 /**
  * The tracked backend's answer to an outermost scope's adoption: every domain read from the backend's own
