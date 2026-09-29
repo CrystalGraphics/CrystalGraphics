@@ -1,337 +1,167 @@
 # Pipeline Map and Glossary
 
-## TL;DR
+What happens to a string between `CgTextLayout.of(...)` and the pixels. For which package owns each step,
+read [`architecture.md`](architecture.md).
 
-The current text pipeline is:
-
-1. **input text** enters through `CgTextRenderer.draw(String, ...)` or `CgTextLayoutBuilder`
-2. **layout** is built by `CgTextLayoutBuilder` + `CgTextLayoutEngine`
-3. **fallback runs** are resolved by `CgFontFamily`
-4. **shaping** happens in `CgTextShaper`
-5. **line breaking** happens in `CgLineBreaker`
-6. the result becomes a public **`CgTextLayout`**
-7. **render-time raster tier selection** happens in `CgTextRenderer`
-8. **glyph lookup / generation** happens in `CgFontRegistry`
-9. **atlas placement** comes from `CgGlyphAtlas` / `CgGlyphAtlasPage`
-10. **batching + quad submission** happen in `CgTextRenderer` + `CgQuadBatcher`
-11. shaders sample atlas textures and perform the final **draw**
-
-If you only remember one distinction, remember this:
-
-> layout decides what the text means spatially; cache/atlas decides where glyph pixels live; render decides how those pixels are drawn now.
+> **Layout decides where text is. Glyph supply decides where its pixels are stored. The draw decides how
+> they reach the screen now.** Only the draw ever depends on the pose.
 
 ---
 
-## Detailed end-to-end pipeline
+## The map
 
-### 0. Font and family setup
+**Layout** — once per content, and again per width:
 
-Before any text is laid out:
+1. **Request.** `CgTextLayout.of(text, family | group)` collects options. Markup, if any, is parsed at
+   `shape()` into a `CgStyledText`.
+2. **Shape.** `CgTextLayoutEngine.shape` splits paragraphs, runs BiDi crossed with the style spans, picks a
+   font per character through the family's fallback, and shapes each run with HarfBuzz. The result is a
+   `CgShapedParagraph`.
+3. **Wrap.** `CgShapedParagraph.layout(width, height)` breaks lines at UAX #14 opportunities, re-shaping a
+   run split mid-way, then aligns, truncates, and bakes every glyph's pen position into `CgBakedGlyphs`.
+   The result is a `CgTextLayout`.
 
-- `CgFont` owns loaded font bytes and native state
-- `CgFont.atSize(int)` produces the sized/shapable form
-- `CgFontFamily` combines a primary font and ordered fallbacks
+**Draw** — on every `submit()`:
 
-This stage decides what font resources are available to the layout engine.
+4. **Resolve.** The layout to draw is `layout`, else `paragraph` wrapped at the scaled constraints, else
+   `text` through the layout cache. The draw's raster size and tier are chosen here.
+5. **Cull.** A layout wholly off-screen is skipped before any glyph work.
+6. **Glyphs.** `CgResolvedGlyphs` finds each glyph's atlas placement: the whole draw's from the placement
+   cache, or glyph by glyph from `CgFontRegistry`, which queues any it lacks.
+7. **Shadows.** `CgTextShadowPlan` decides what each glyph paints for each shadow.
+8. **Submit.** Every glyph, decoration and shadow becomes a sort key and an instanced quad. Sorted, they go
+   through the renderer's `CgQuadRenderer` into `text.shader`.
 
-### 1. String input enters the layout boundary
+---
 
-There are two public entry styles:
+## Raster size and tier
 
-- `CgTextRenderer.draw(String, ...)`
-- `CgTextLayoutBuilder.layout(...)`
+The **effective size** is the font's pixel size times the pose's larger axis scale, rounded, clamped to
+1–256 px, and held within 0.75 px of the previous frame's so an animating scale does not thrash.
 
-If you call the renderer with a raw string, it still routes through the same layout path first.
+The **tier** is bitmap or distance field:
 
-Main output type of this stage:
-
-- `CgTextLayout`
-
-### 2. Paragraph splitting and BiDi segmentation
-
-Inside `CgTextLayoutEngine`:
-
-- input is split into paragraphs
-- each paragraph is segmented into directional runs using Java `Bidi`
-
-Nothing is shaped yet. The engine is still deciding directionality and fallback-run boundaries.
-
-### 3. Fallback run resolution
-
-`CgFontFamily.resolveRuns(...)` chooses concrete font sources for slices of text.
-
-This stage answers:
-
-> which exact font source should shape this cluster range?
-
-Internal representation here:
-
-- `CgFontFamily.ResolvedFontRun`
-
-### 4. Shaping
-
-`CgTextShaper` turns each resolved run into a `CgShapedRun`.
-
-This produces:
-
-- glyph IDs
-- cluster indices
-- per-glyph advances
-- per-glyph offsets
-- run direction
-- source text/range for re-shaping support
-
-### 5. Line breaking
-
-`CgLineBreaker` turns shaped runs into visual lines.
-
-If a line breaks inside a run, it does not slice glyph arrays blindly. Instead it calls `RunReshaper` to re-shape the exact text fragment so the result stays correct.
-
-This is why `CgShapedRun` still carries source text/range fields.
-
-### 6. Final layout result
-
-The engine assembles:
-
-- lines of shaped runs
-- total width
-- total height
-- metrics
-- resolved font handles
-
-into a public `CgTextLayout`.
-
-At this point the system knows what glyphs it needs and where text lives in logical space, but it does not yet know where those glyph pixels live in atlas textures.
-
-### 7. Render-time raster tier selection
-
-When `CgTextRenderer` consumes a `CgTextLayout`, it first decides the effective raster tier for this draw.
-
-That decision depends on:
-
-- the base target pixel size from the font key
-- the current render context
-- the selected scale resolver
-- previous frame state for hysteresis
-- **the geometry of the draw's pose matrix** (see below)
-
-This stage decides whether the draw uses bitmap, MSDF, or MTSDF glyphs.
-
-#### Transform override: rotated and sheared draws are never bitmap
-
-Size and hysteresis choose the tier only for draws whose transform keeps the text quad's XY
-plane mapped onto the screen axes. Any other transform overrides that choice and forces the
-distance-field tier at **any** size.
-
-Bitmap glyphs are pre-rasterized at one orientation, so they only survive resampling while the
-sampling grid stays parallel to the raster grid. Off-axis, a bilinear fetch smears each texel
-across neighbouring pixels and the glyph goes visibly soft and stair-stepped along its stems —
-precisely the artifact distance fields exist to avoid, since an MSDF reconstructs the outline
-analytically at whatever orientation it is sampled.
-
-| Transform | Tier |
+| Draw | Tier |
 |---|---|
-| Translate, scale (incl. non-uniform), axis flip | size-derived — bitmap allowed |
-| Rotation by an exact multiple of 90° | size-derived — bitmap allowed (texel-exact) |
-| Any other rotation | **forced distance-field** |
-| Shear | **forced distance-field** |
-| Out-of-plane tilt (X/Y rotation) | **forced distance-field** |
+| Effective size 33 px or more | distance field |
+| 31 px or less | bitmap |
+| Exactly 32 px | whichever this font had last frame |
+| Rotated (other than a quarter turn), sheared, or tilted out of plane | distance field, at any size |
+| Stroked | distance field, at any size |
+| World text | always distance field |
 
-The predicate is `OrthographicScaleResolver.isAxisAligned(Matrix4f)`; the override is applied in
-`CgTextRenderer.resolveDraw` and counted as `text.msdfForcedByTransform`. It is evaluated only
-when the size-derived answer was bitmap, so it costs nothing for world-space text (always MSDF)
-or for any draw already above the size threshold.
-
-Two consequences worth knowing:
-
-- The **size-derived** decision, not the forced one, is what gets written back as hysteresis
-  history. Otherwise a single rotated draw could pin a later unrotated draw of the same font to
-  MSDF while it sat in the hysteresis band.
-- `CgGlyphPlacementCache.Key` already includes `wantMsdf`, so rotated and unrotated draws of the
-  same layout occupy separate cache entries and cannot hand each other the wrong tier.
-
-The transient bitmap fallback *inside* MSDF warmup (`CgFontRegistry.ensureMsdfGlyph`) is a
-separate mechanism and still applies — a rotated draw may briefly show bitmap glyphs while its
-distance fields are still being generated on a worker, then upgrade. Suppressing that too would
-trade a couple of seconds of slightly soft text for a couple of seconds of *no* text.
-
-Harness coverage: `--mode=text-feature-stress`, modes `ROTATED`, `QUARTER_TURN`, `SHEARED`.
-
-Important distinction:
-
-- layout remains in **logical space**
-- raster tier selection is a **draw-time physical-space** decision
-
-### 8. Glyph supply: cache and generation
-
-`CgTextRenderer` calls into `CgFontRegistry` with glyph requests.
-
-`CgFontRegistry` then:
-
-1. converts public glyph identity into internal cache keys
-2. chooses bitmap vs MSDF/MTSDF atlas family
-3. checks for a cached placement
-4. rasterizes or generates a missing glyph
-5. commits it into atlas storage
-
-Relevant internal key types:
-
-- `CgRasterFontKey`
-- `CgRasterGlyphKey`
-- `CgMsdfAtlasKey`
-
-Relevant worker types:
-
-- `CgGlyphGenerationExecutor`
-- `CgGlyphGenerationJob`
-- `CgGlyphGenerationResult`
-- `CgWorkerFontContext`
-
-### 9. Atlas storage and placement
-
-Atlas ownership lives in `text/atlas`.
-
-Main classes:
-
-- `CgGlyphAtlas` — the paged, multi-page atlas manager; also owns the `Type` enum
-- `CgGlyphAtlasPage` — one page in a paged atlas (one array-texture layer)
-- `CgOldGlyphAtlas` — the retired single-page atlas, no callers
-- `text/atlas/packing/*` — packing strategies
-
-Two atlases exist process-wide, shared by every font: `R8` for bitmap glyphs and `RGBA8`
-for distance fields. Atlas identity is per texture format, never per font — glyph identity
-already carries the font via `CgGlyphKey`.
-
-The renderer-facing result of atlas allocation is:
-
-- `CgGlyphPlacement`
-
-That placement carries:
-
-- page texture identity
-- UV coordinates
-- plane bounds / bearings / metrics
-- atlas mode information
-
-### 10. Batch creation
-
-`CgTextRenderer` groups placements into draw batches.
-
-Main representations:
-
-- `CgDrawBatchKey`
-
-Grouping is driven by:
-
-- atlas type
-- texture ID
-- `pxRange` where relevant
-
-### 11. VBO population and draw
-
-`CgQuadBatcher` owns the CPU staging buffer and drives GPU upload through the shared
-`CgVertexArrayRegistry` / `CgStreamBuffer` / `CgSharedQuadIbo` infrastructure.
-
-`CgTextRenderer` sorts placements by `CgDrawBatchKey` and submits quads through the batch:
-
-- resolves the correct shader from `CgDrawBatchKey`
-- binds the shader when it changes
-- binds the page texture
-- uploads `u_pxRange` only for distance-field passes
-- submits `glDrawElements`
-
-That is the end of the runtime pipeline.
+A bitmap glyph is rasterised at one orientation and goes soft off-axis; a distance field reconstructs
+the outline at any orientation, which is why a transform can force it. The size-derived choice, not the
+forced one, is what the next frame's hysteresis reads.
 
 ---
 
-## 2D vs world-text branch
+## Glyph supply
 
-The pipeline is mostly shared until render-time raster selection.
+`CgFontRegistry` answers a glyph key with a placement in one of two atlases, both array textures shared
+by every font and size:
 
-### 2D text
+- **Bitmap** (`R8`) — rasterised by FreeType at the draw's effective size.
+- **Distance field** (`RGBA8`) — generated by msdfgen **once, at an 80 px atlas scale**, and drawn at any
+  size from there. There is no per-size or per-distance distance-field tier.
 
-- context: `CgTextRenderContext`
-- projection: orthographic `Matrix4f`
-- scale policy: orthographic/UI scale
+A glyph the atlas lacks is queued to a worker pool, and the upload of finished glyphs is budgeted per
+frame. Until a distance field arrives, the glyph draws from the bitmap atlas. The frame is then
+provisional, and `getDegradedDrawCount()` rises so a caller can ask for another. `CgFontWarmer` fills in
+a face's common characters while the pools are idle, never ahead of a glyph on screen.
 
-### World text
+---
 
-- context: `CgWorldTextRenderContext`
-- projection: caller-supplied `Matrix4f`
-- scale policy: `PerspectiveScaleResolver`
-- projected-size logic influences raster-tier selection
+## Effects
 
-The layout model is shared; only draw-time raster/transform policy differs.
+**Stroke.** An outline read from the glyph's distance field, `widthEm` wide. The field only carries real
+distance a few texels either side of the outline, so the width clamps. The range is per face: a face with
+a dense script (CJK) is banded narrower than the rest. `CgFontRegistry.maxStrokeWidthEm(family)` says what
+a family allows. A stroke puts the draw on the distance-field tier.
+
+**Shadows.** Each shadow of each glyph paints one of four ways:
+
+| Kind | When | Drawn from |
+|---|---|---|
+| Plain | sharp, no stroke, no spread | the glyph itself, in the shadow's colour |
+| Field | sharp, and the field reaches it | a threshold on the glyph's distance field |
+| Cell | blurred, or beyond the field's reach | coverage built on a worker, blurred with Skia's mask blur, stored in the bitmap atlas |
+| Inset field | an inset the field can hold | a Gaussian falloff of the field's distance, inside the glyph |
+
+A cell still building draws the cell that shadow had last, so a shadow never blinks off while it is
+being edited. A blurred shadow under distance-field text is the one extra call a shadow costs.
+
+**Gamma.** `CgTextGamma` is Skia's text gamma and contrast (`SkMaskGamma`), applied per fragment. It gives
+light text on a dark background the weight blending takes from it. Small and large text get separate
+levels, faded across a range of on-screen em sizes; the default is `STRONG` to 7 px and `HEAVY` from 10.
+Text darker than mid-grey, shadows and strokes are drawn as rasterised.
+`-Dcrystalgraphics.text.gamma=false` turns it off for comparison.
+
+---
+
+## Sorting and batching
+
+Each drawable packs into a `CgTextSortKey`, most significant first: **stage** (shadows, then text, then
+inset shadows — painter's order), **mode** (bitmap or distance field), **atlas texture**, distance range,
+and kind (glyph or decoration). One sort puts everything that shares GL state together, and a transition
+happens only where mode or texture changes. With one atlas per mode, that is at most one split, bitmap
+against distance field, per stage.
+
+`beginBatch()` / `endBatch()` keep the quads of many draws in one pass, so they share those calls.
+
+---
+
+## Screen and world
+
+| | Screen | World |
+|---|---|---|
+| Context | `CgTextRenderContext.orthographic(viewportWidthPx, viewportHeightPx)` | `CgTextRenderContext.world(cameraProjection, viewportWidthPx, viewportHeightPx)` |
+| Raster size | from the pose's scale | a fixed 2× the font's size |
+| Tier | size, transform or stroke | always distance field |
+| `paragraph` re-wrap | constraints divided by the pose's scale | never; the layout does not change with the camera |
+
+---
+
+## Caches
+
+| Cache | Keyed by | Saves |
+|---|---|---|
+| `CgTextLayoutCache` | text content, font or family, constraints | shaping and wrapping repeated `text(...)` draws |
+| `CgShapedParagraph` | the last `(width, height)` it was asked for | re-wrapping at the same width |
+| `CgGlyphPlacementCache` | layout, position, tier, font | resolving a static layout's glyphs every frame |
+| The atlases | glyph key | generating a glyph twice |
 
 ---
 
 ## Glossary
 
-### Base font
+**Layout pixels** — the text's own coordinates before the pose. One layout pixel is one pixel of a font
+at its loaded size.
 
-Unsized `CgFont` that acts like a reusable logical font asset.
+**Effective size** — the raster size a draw asks for: the font's size scaled by the pose, rounded and
+clamped.
 
-### Sized font
+**Tier** — bitmap or distance field, chosen per draw.
 
-`CgFont` bound to a concrete target pixel size. This is the form shaping and glyph generation actually use.
+**Atlas scale** — the one size every distance field is generated at, 80 px.
 
-### Font family
+**Distance range (`pxRange`)** — how many atlas texels either side of the outline a distance field
+carries real distance for. It bounds strokes and field shadows.
 
-Ordered primary + fallback chain represented by `CgFontFamily`.
+**Placement** (`CgGlyphPlacement`) — where a glyph sits in an atlas: layer, UVs, plane bounds, tier.
 
-### Glyph key
+**Shaped paragraph** (`CgShapedParagraph`) — text shaped once and wrappable at any width.
 
-Public glyph identity (`CgGlyphKey`) used as the renderer/cache request input.
+**Baked glyphs** (`CgBakedGlyphs`) — a layout's glyphs as flat arrays: pen position, font, glyph id,
+colour.
 
-### Raster font key
+**Style span** (`CgStyleSpan`) — a styled range of a `CgStyledText`.
 
-Internal cache key describing a base font plus an effective raster size.
+**Shadow cell** — a blurred shadow's coverage, built on a worker and stored in the bitmap atlas.
 
-### Raster glyph key
+**Stage** — a draw's painting step: shadows, text, inset shadows. The outermost part of the sort key.
 
-Internal cache key describing a glyph request at a concrete raster tier.
+**Degraded draw** — a draw that took a bitmap glyph or skipped a shadow while its distance field or cell
+was still being built.
 
-### MSDF atlas key
-
-Internal key describing a shared MSDF/MTSDF atlas family and its config.
-
-### Shaped run
-
-One directional run of shaped text (`CgShapedRun`) containing glyph IDs and spacing data.
-
-### Text layout
-
-Final public layout result (`CgTextLayout`) — lines of shaped runs plus dimensions.
-
-### Glyph placement
-
-Modern paged-atlas glyph location (`CgGlyphPlacement`) with page identity and plane bounds.
-
-### `pxRange`
-
-Distance-field generation range used by MSDF/MTSDF reconstruction in the fragment shaders.
-
-### Logical layout space
-
-Coordinate space used for line breaking, advances, spacing, and total layout metrics.
-
-### Physical raster space
-
-Concrete pixel size used to rasterize a glyph into a bitmap/MSDF/MTSDF atlas.
-
-### Composite space
-
-The final model-view-projection-transformed space used by the GPU when drawing quads.
-
----
-
-## Best source files to read after this document
-
-1. `api/font/CgTextLayoutBuilder.java`
-2. `text/layout/CgTextLayoutEngine.java`
-3. `api/font/CgFontFamily.java`
-4. `api/text/CgTextLayout.java`
-5. `text/render/CgTextRenderer.java`
-6. `text/cache/CgFontRegistry.java`
-7. `text/atlas/CgGlyphAtlas.java`
-8. `text/msdf/CgMsdfGenerator.java`
+**Batch identity** — the part of a sort key a GL transition depends on: tier and atlas texture.
