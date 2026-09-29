@@ -1,7 +1,8 @@
 package com.crystalgraphics.gl.buffer;
 
 import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.util.profiling.CgProfiler;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 
 /**
  * The frame clock every streaming ring shares: one fence per frame, and the answer to "has the GPU finished
@@ -73,7 +74,7 @@ public final class CgFrameRing {
             // flight to wait for from it.
             return;
         }
-        try (CgProfiler.Scope ignored = CgProfiler.scope("frameRing.wait")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "frameRing.wait")) {
             waitFor(fence, target);
         }
         CgGL.glDeleteSync(fence);

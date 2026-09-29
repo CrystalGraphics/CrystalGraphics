@@ -2,7 +2,8 @@ package com.crystalgraphics.gl.buffer;
 
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.util.profiling.CgProfiler;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -65,7 +66,7 @@ final class FrameRingStreamBuffer extends CgStreamBuffer {
             allocate();
         } else if (cursor + need > regionBytes) {
             overflowed = true;
-            CgProfiler.count("frameRing.overflow");
+            CgTrace.add(CgChannels.GL, "frameRing.overflow", 1);
             allocate();
         }
 
