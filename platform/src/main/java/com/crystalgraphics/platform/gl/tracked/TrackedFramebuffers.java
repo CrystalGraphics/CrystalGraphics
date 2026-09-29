@@ -88,6 +88,10 @@ final class TrackedFramebuffers {
         this.buffers = buffers;
     }
 
+    int drawName() { return draw; }
+
+    int readName() { return read; }
+
     // ── objects ────────────────────────────────────────────────────────────────
 
     int gen() {

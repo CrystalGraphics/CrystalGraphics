@@ -95,6 +95,10 @@ public final class CgTrackedGLBackend extends CgGLBackend {
 
     TrackedTextures textureObjects() { return textures; }
 
+    TrackedPrograms programObjects() { return programs; }
+
+    TrackedFramebuffers framebufferObjects() { return framebuffers; }
+
     // ── lifecycle and context ──────────────────────────────────────────────────
 
     @Override public void initContext() {}
