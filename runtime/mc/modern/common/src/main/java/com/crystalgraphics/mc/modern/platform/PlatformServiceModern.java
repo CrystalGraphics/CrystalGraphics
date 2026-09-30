@@ -2,8 +2,14 @@ package com.crystalgraphics.mc.modern.platform;
 
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.mc.modern.platform.gl.Blaze3dGLBackend;
+// 26.3 ships SDL3 and no GLFW, so a 26.3 node cannot even load the GLFW pair.
+//? if >=26.3 {
+/*import com.crystalgraphics.sdl.SdlCursorService;
+import com.crystalgraphics.sdl.SdlInputService;
+*///?} else {
 import com.crystalgraphics.lwjgl3.GlfwCursorService;
 import com.crystalgraphics.lwjgl3.GlfwInputService;
+//?}
 import com.crystalgraphics.lwjgl3.Lwjgl3GLContext;
 
 import com.crystalgraphics.mc.modern.platform.service.LifecycleService;
@@ -16,6 +22,7 @@ import com.crystalgraphics.platform.CgPlatformService;
 import com.crystalgraphics.platform.service.CgCursorService;
 import com.crystalgraphics.platform.gl.CgGLBackend;
 import com.crystalgraphics.platform.gl.CgGLContext;
+import com.crystalgraphics.platform.gl.tracked.CgTrackedGLContext;
 import com.crystalgraphics.platform.service.CgInputService;
 import com.crystalgraphics.platform.service.CgLifecycleService;
 import com.crystalgraphics.platform.service.CgReloadService;
@@ -24,6 +31,9 @@ import com.crystalgraphics.platform.service.CgResourceService;
 import com.crystalgraphics.platform.service.CgSoundService;
 
 import net.minecraft.client.Minecraft;
+//? if >=26.2 {
+/*import com.crystalgraphics.mc.modern.platform.vulkan.Blaze3dVulkanHost;
+*///?}
 
 /**
  * The modern platform bundle. Implements {@link CgPlatformService} by composing
@@ -85,13 +95,17 @@ public final class PlatformServiceModern implements CgPlatformService {
 
     @Override public CgGLBackend gl() {
         if (glBackend == null) {
-            // Declared before any GL work: CgBindingPoints allocates by counting down from the limit.
-            // Here rather than onContextInit, which this loader never calls -- the context initialises
-            // lazily from onOpaquePass on the first world render. Building the GL backend is a client
-            // event by construction, so naming Blaze3D cannot reach a server.
-            CgCapabilities.setHostTextureUnitCeiling(Blaze3dTextureUnits.count());
-            HostStateVerifier.announceIfEnabled();
-            glBackend = new Blaze3dGLBackend();
+            // Asked for at the first host section or capability probe, on the render thread, and never by
+            // registration, so naming Blaze3D cannot reach a server -- and Minecraft's device exists by then,
+            // which is what says which API this session renders through.
+            if (GraphicsApi.vulkan()) {
+                glBackend = vulkanBackend();
+            } else {
+                // Declared before any GL work: CgBindingPoints allocates by counting down from the limit.
+                CgCapabilities.setHostTextureUnitCeiling(Blaze3dTextureUnits.count());
+                HostStateVerifier.announceIfEnabled();
+                glBackend = new Blaze3dGLBackend();
+            }
 
             // The cursor slot, filled here so no consumer has to -- and HERE rather than in
             // getInstance() for the reason the note above gives: getInstance() runs on both sides, and
@@ -102,15 +116,29 @@ public final class PlatformServiceModern implements CgPlatformService {
             // is not open yet when the backend is first built, so a captured long would be stale
             // exactly when it mattered. That supplier is the only Minecraft fact the adapter needs,
             // which is what lets it sit in tier 1 knowing nothing about this era.
+            //? if >=26.3 {
+            /*CgPlatform.provide(CgCursorService.SERVICE, new SdlCursorService());
+            *///?} else {
             CgPlatform.provide(CgCursorService.SERVICE,
                     new GlfwCursorService(PlatformServiceModern::windowHandle));
+            //?}
         }
         return glBackend;
     }
 
     @Override public CgGLContext capabilities() {
-        if (glContext == null) glContext = new Lwjgl3GLContext();
+        if (glContext == null) glContext = GraphicsApi.vulkan() ? new CgTrackedGLContext() : new Lwjgl3GLContext();
         return glContext;
+    }
+
+    // GL's semantics over Minecraft's own Vulkan device, which hosts ours: 26.2 and later.
+    private static CgGLBackend vulkanBackend() {
+        //? if >=26.2 {
+        /*Minecraft mc = Minecraft.getInstance();
+        return Blaze3dVulkanHost.start(Windows.of(mc).getWidth(), Windows.of(mc).getHeight());
+        *///?} else {
+        throw new IllegalStateException("Minecraft renders through Vulkan only from 26.2");
+        //?}
     }
 
     @Override public CgLifecycleService lifecycle() {
@@ -146,7 +174,11 @@ public final class PlatformServiceModern implements CgPlatformService {
         // The window is the one Minecraft fact tier 1 needs, and it takes it as a supplier -- see
         // GlfwInputService. Built lazily and held as the SPI type, like every field here, so a
         // dedicated server never loads a class that names GLFW.
+        //? if >=26.3 {
+        /*if (input == null) input = new SdlInputService();
+        *///?} else {
         if (input == null) input = new GlfwInputService(PlatformServiceModern::windowHandle);
+        //?}
         return input;
     }
 

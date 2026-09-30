@@ -20,4 +20,15 @@ stonecutter parameters {
     replacements.string(current.parsed >= "1.21.11") {
         replace("ResourceLocation", "Identifier")
     }
+    // 26.3: Blaze3D's GPU layer became a library of its own, com.mojang.renderpearl.
+    replacements.string(current.parsed >= "26.3") {
+        replace("com.mojang.blaze3d.opengl.", "com.mojang.renderpearl.backend.opengl.")
+        replace("com.mojang.blaze3d.vulkan.", "com.mojang.renderpearl.backend.vulkan.")
+        replace("com.mojang.blaze3d.GpuFormat", "com.mojang.renderpearl.api.GpuFormat")
+        replace("com.mojang.blaze3d.textures.", "com.mojang.renderpearl.api.textures.")
+        // Before GpuDevice, which is a prefix of it.
+        replace("com.mojang.blaze3d.systems.GpuDeviceBackend", "com.mojang.renderpearl.backend.api.GpuDeviceBackend")
+        replace("com.mojang.blaze3d.systems.GpuDevice", "com.mojang.renderpearl.api.device.GpuDevice")
+        replace("com.mojang.blaze3d.systems.DeviceInfo", "com.mojang.renderpearl.api.device.DeviceInfo")
+    }
 }

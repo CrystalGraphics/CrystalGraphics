@@ -1,6 +1,7 @@
 // The `fabric` branch — Fabric through Loom, one node per Minecraft version (`versions/<version>/`,
 // whose gradle.properties pins mc.version, the loader, fabric-api and Parchment).
 
+import cgbuildlogic.MinecraftVersionOrder
 import cgbuildlogic.commonNode
 import cgbuildlogic.fabricRunsIntermediary
 import cgbuildlogic.loomPluginId
@@ -90,6 +91,12 @@ val mcSharedJar     = project(":runtime:mc:shared").tasks.named<Jar>("jar").flat
 // was bundled nowhere. CrystalGraphicsFabricCommon names Lwjgl3GLBackend at class-definition time, so
 // its absence is a NoClassDefFoundError out of defineClass rather than a late one at first use.
 val lwjgl3Jar       = project(":runtime:lwjgl:3").tasks.named<AbstractArchiveTask>("downgradedJar").flatMap { it.archiveFile }
+// TIER 1 FOR VULKAN, from 26.2: the device Blaze3dVulkanHost builds under Minecraft's Vulkan backend, bundled the
+// same way and for the same reason.
+val vulkanJar       = if (MinecraftVersionOrder.compare(property("mc.version").toString(), "26.2") < 0) null
+    else project(":runtime:lwjgl:vulkan").tasks.named<AbstractArchiveTask>("downgradedJar").flatMap { it.archiveFile }
+// Its SDL3 half, which a 26.3 node registers in place of the GLFW services.
+val sdlJar          = project(":runtime:lwjgl:sdl").tasks.named<AbstractArchiveTask>("downgradedJar").flatMap { it.archiveFile }
 
 tasks.jar {
     from(zipTree(platformJar))
@@ -98,6 +105,8 @@ tasks.jar {
     from(zipTree(freetypeJar))
     from(zipTree(mcSharedJar))
     from(zipTree(lwjgl3Jar))
+    vulkanJar?.let { from(zipTree(it)) }
+    from(zipTree(sdlJar))
 }
 
 tasks.shadowJar {
@@ -108,6 +117,8 @@ tasks.shadowJar {
     from(zipTree(freetypeJar))
     from(zipTree(mcSharedJar))
     from(zipTree(lwjgl3Jar))
+    vulkanJar?.let { from(zipTree(it)) }
+    from(zipTree(sdlJar))
 }
 
 // Not on `assemble` (J7): the merged single jar is the shipping artifact, and the fat per-loader jar

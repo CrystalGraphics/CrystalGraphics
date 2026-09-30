@@ -9,11 +9,15 @@ import com.crystalgraphics.platform.gl.state.CgGlSlot;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 
 import net.minecraft.client.Minecraft;
+import org.apache.logging.log4j.LogManager;
+//? if <26.3 {
 import org.lwjgl.glfw.GLFW;
+//?}
 //? if >=26.1 {
 /*import com.mojang.blaze3d.opengl.GlTexture;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.textures.GpuTexture;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
 *///?} elif >=1.21.5 {
@@ -23,6 +27,9 @@ import com.mojang.blaze3d.opengl.GlTexture;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.systems.RenderSystem;
 import org.lwjgl.opengl.GL30;
+*///?}
+//? if >=26.2 {
+/*import com.crystalgraphics.mc.modern.platform.vulkan.Blaze3dVulkanHost;
 *///?}
 
 /**
@@ -60,7 +67,7 @@ public final class LifecycleModern {
      * @param partialTick the loader's frame interpolation factor
      */
     public static void opaquePass(float partialTick) {
-        if (!glAvailable()) return;
+        if (!canRender()) return;
         Minecraft mc = Minecraft.getInstance();
         // The target and depth convention below are ours to set, so the bracket opens before them.
         CgGL.fromHost();
@@ -96,7 +103,7 @@ public final class LifecycleModern {
      * the detection API if that ever needs handling.</p>
      */
     public static void transparentPass() {
-        if (!glAvailable()) return;
+        if (!canRender()) return;
         CgGL.fromHost();
         try {
             bindMainTarget(Minecraft.getInstance());
@@ -135,7 +142,7 @@ public final class LifecycleModern {
      * }</pre>
      */
     public static void frameEnd() {
-        if (!glAvailable()) return;
+        if (!canRender()) return;
         FrameHooks.endFrame();
     }
 
@@ -155,8 +162,7 @@ public final class LifecycleModern {
         /*RenderTarget main = mainTarget(mc);
         // Meant to stay bound, for our passes and for Minecraft's next draw: handed over, not restored.
         try (CgGlScope ignored = CgGlState.handOver(CgGlSlot.FBO, CgGlSlot.VIEWPORT)) {
-            int fbo = mainFbo(((GlTexture) main.getColorTexture()).glId(),
-                    main.getDepthTexture() == null ? 0 : ((GlTexture) main.getDepthTexture()).glId(), hasStencil(main));
+            int fbo = mainFbo(main);
             CgGL.glBindFramebuffer(GL30.GL_FRAMEBUFFER, fbo);
             CgGL.glViewport(0, 0, main.width, main.height);
             return fbo;
@@ -198,24 +204,49 @@ public final class LifecycleModern {
     }
     *///?}
 
+    // The main target's framebuffer. Under Vulkan (26.2) its textures are Minecraft's images, attached under
+    // the tracked backend's names for them.
+    //? if >=26.2 {
+    /*private static int mainFbo(RenderTarget main) {
+        if (GraphicsApi.vulkan()) Blaze3dVulkanHost.current().matchSurface(main.width, main.height);
+        return mainFbo(main.getColorTexture(), main.getDepthTexture(), hasStencil(main));
+    }
+
+    private static int name(GpuTexture texture) {
+        if (texture == null) return 0;
+        return GraphicsApi.vulkan() ? Blaze3dVulkanHost.current().importTexture(texture) : ((GlTexture) texture).glId();
+    }
+    *///?} elif >=26.1 {
+    /*private static int mainFbo(RenderTarget main) {
+        return mainFbo(main.getColorTexture(), main.getDepthTexture(), hasStencil(main));
+    }
+
+    private static int name(GpuTexture texture) {
+        return texture == null ? 0 : ((GlTexture) texture).glId();
+    }
+    *///?}
+
     //? if >=26.1 {
     /*private static int mainFbo = -1;
-    private static int mainColor;
-    private static int mainDepth;
+    private static GpuTexture mainColor;
+    private static GpuTexture mainDepth;
 
     // OUR framebuffer over the main target's two textures: from 26.1 Minecraft's own is kept on a
     // package-private device (GlDevice). Attached as Minecraft's FrameBufferCache attaches them -- depth
     // alone, or depth and stencil when the texture has both (NeoForge's stencilled target), which is what
-    // the depth snapshot reads its format and blit mask from -- keyed on the two texture ids, and rebuilt
-    // when a resize replaces either. Through CgGL, so the shadow sees it.
-    private static int mainFbo(int color, int depth, boolean stencil) {
+    // the depth snapshot reads its format and blit mask from. Through CgGL, so the shadow sees it.
+    //
+    // Keyed on the TEXTURE OBJECTS, not their GL names: a resize deletes both while this framebuffer is
+    // bound, which detaches them, and the driver can hand the new ones the same names -- keyed on names,
+    // the empty framebuffer was kept and every draw after a maximise-then-restore failed as incomplete.
+    private static int mainFbo(GpuTexture color, GpuTexture depth, boolean stencil) {
         if (mainFbo != -1 && mainColor == color && mainDepth == depth) return mainFbo;
         deleteMainFbo();
         mainFbo = CgGL.glGenFramebuffers();
         CgGL.glBindFramebuffer(GL30.GL_FRAMEBUFFER, mainFbo);
-        CgGL.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL11.GL_TEXTURE_2D, color, 0);
+        CgGL.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL11.GL_TEXTURE_2D, name(color), 0);
         CgGL.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER,
-                stencil ? GL30.GL_DEPTH_STENCIL_ATTACHMENT : GL30.GL_DEPTH_ATTACHMENT, GL11.GL_TEXTURE_2D, depth, 0);
+                stencil ? GL30.GL_DEPTH_STENCIL_ATTACHMENT : GL30.GL_DEPTH_ATTACHMENT, GL11.GL_TEXTURE_2D, name(depth), 0);
         mainColor = color;
         mainDepth = depth;
         CgGraphicsLifecycle.addListener(MAIN_FBO_OWNER);
@@ -236,31 +267,50 @@ public final class LifecycleModern {
     };
     *///?}
 
-    private static Boolean glAvailable;
+    private static Boolean canRender;
 
     /**
-     * Whether this session renders through a GL context. Decided once, on the render thread, from the
-     * precondition itself: 26.2 under its Vulkan backend makes no GL context current, and every call
-     * here would then go nowhere. A {@code false} stands the engine down for the session
-     * ({@link CgGraphicsLifecycle#standDown}).
+     * Whether this session can render through {@code CgGL}: Minecraft's GL context, or from 26.2 its Vulkan
+     * device, which then hosts ours. Decided once, on the render thread. A {@code false} stands the engine down
+     * for the session ({@link CgGraphicsLifecycle#standDown}) and says why.
      *
      * <pre>{@code
-     * if (!LifecycleModern.glAvailable()) return;   // before painting outside a world pass
+     * if (!LifecycleModern.canRender()) return;   // before painting outside a world pass
      * }</pre>
      */
-    public static boolean glAvailable() {
-        if (glAvailable == null) {
-            glAvailable = GLFW.glfwGetCurrentContext() != 0L;
-            if (!glAvailable) {
-                //? if >=26.1 {
-                /*String backend = RenderSystem.getBackendDescription();
-                *///?} else {
-                String backend = "unknown";
-                //?}
-                CgGraphicsLifecycle.standDown("no GL context on the render thread (Minecraft's backend: " + backend + ")");
+    public static boolean canRender() {
+        // After the game's shutdown signal nothing of ours may record: under Vulkan the device is closing.
+        if (CgGraphicsLifecycle.isContextDestroyed()) return false;
+        if (canRender == null) {
+            String refused = refusal();
+            canRender = refused == null;
+            if (!canRender) CgGraphicsLifecycle.standDown(refused);
+        }
+        return canRender;
+    }
+
+    // Why this session cannot render, or null. Under Vulkan the hosted device is built here, so a failure to
+    // host stands the engine down with its cause rather than failing in the middle of a frame.
+    private static String refusal() {
+        //? if >=26.3 {
+        /*// Forge's world hooks run inside the render pass Minecraft opens for terrain, where Blaze3D refuses our
+        // submit; stood down until the 26.3 bring-up settles them (plan platform-transparent-pass).
+        if (GraphicsApi.vulkan()) return "26.3 under Vulkan is not supported yet";
+        *///?}
+        if (GraphicsApi.vulkan()) {
+            try {
+                CgPlatform.gl();
+                return null;
+            } catch (RuntimeException | LinkageError failed) {
+                LogManager.getLogger("CrystalGraphics").error("[cg] cannot host on Minecraft's Vulkan device", failed);
+                return "Minecraft's Vulkan device could not host CrystalGraphics (" + failed + ")";
             }
         }
-        return glAvailable;
+        //? if >=26.3 {
+        /*return null;   // no GLFW to ask: a device that is not Vulkan is GL
+        *///?} else {
+        return GLFW.glfwGetCurrentContext() != 0L ? null : "no GL context on the render thread";
+        //?}
     }
 
     /** A resource reload landed — drop every cache built from assets. */
@@ -272,9 +322,13 @@ public final class LifecycleModern {
      * The game is closing.
      *
      * <p>Stops the engine and frees nothing: Minecraft keeps dispatching render stages after its
-     * shutdown signal. @see CgGraphicsLifecycle#shutdown</p>
+     * shutdown signal. Under Vulkan our device then closes from Blaze3D's destroy queue, before Minecraft's
+     * own device goes. @see CgGraphicsLifecycle#shutdown</p>
      */
     public static void shutdown() {
         CgGraphicsLifecycle.shutdown();
+        //? if >=26.2 {
+        /*if (GraphicsApi.vulkan()) Blaze3dVulkanHost.shutdown();
+        *///?}
     }
 }

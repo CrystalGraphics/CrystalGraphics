@@ -51,6 +51,9 @@ public final class VulkanEncoder implements CgCommandEncoder {
 
     public VulkanPass openPass() { return open; }
 
+    /** Whether a pass is open: what a host checks before taking its command stream back. */
+    public boolean passOpen() { return open != null; }
+
     void passEnded() { open = null; }
 
     private VkCommandBuffer cmd() {

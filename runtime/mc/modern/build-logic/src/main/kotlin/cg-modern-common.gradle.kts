@@ -1,3 +1,4 @@
+import cgbuildlogic.MinecraftVersionOrder
 import cgbuildlogic.configureStubs
 import cgbuildlogic.guardLoaderImports
 import cgbuildlogic.stubMode
@@ -45,6 +46,14 @@ dependencies {
     // module reading it needs the type. One compiled copy serves every 1.13+ target; the merge adds
     // it once, which is why it is a `libraryProject` in cg-single-jar and not bundled per loader.
     "api"(project(":runtime:lwjgl:3"))
+    // Tier 1 for Vulkan, from 26.2: Blaze3dVulkanHost hosts CgVulkanDevice on Minecraft's own Vulkan device.
+    // Older Minecraft ships no LWJGL Vulkan binding for it to run on.
+    if (MinecraftVersionOrder.compare(property("mc.version").toString(), "26.2") >= 0) {
+        "api"(project(":runtime:lwjgl:vulkan"))
+    }
+    // Its SDL3 input and cursor, for a node whose Minecraft ships SDL instead of GLFW (26.3+). On every
+    // node's classpath, loaded only by the one that names it.
+    "api"(project(":runtime:lwjgl:sdl"))
     // Mixin compileOnly — both loaders bundle it at runtime; never shade it. A stub build has its
     // signatures in the stub, and downloads neither.
     if (!stubMode) "compileOnly"("org.spongepowered:mixin:${property("modern.mixin")}")
