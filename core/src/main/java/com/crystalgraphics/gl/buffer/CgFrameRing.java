@@ -30,6 +30,8 @@ public final class CgFrameRing {
     /** Frames in flight: how many regions a ring keeps, and how far behind the GPU may run. */
     public static final int FRAMES = 3;
 
+    /** Blocked on the GPU: a wait, so a report keeps it out of the cost tables. */
+    private static final int WAIT = CgTrace.waitName("frameRing.wait");
     private static final long WAIT_SLICE_NS = 1_000_000L;
     private static final long WAIT_LIMIT_NS = 5_000_000_000L;
 
@@ -74,7 +76,7 @@ public final class CgFrameRing {
             // flight to wait for from it.
             return;
         }
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "frameRing.wait")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, WAIT)) {
             waitFor(fence, target);
         }
         CgGL.glDeleteSync(fence);

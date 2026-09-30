@@ -299,7 +299,8 @@ public final class CgTrace {
     /** Zones per thread at most, for the newest frames and for the first ones separately. */
     private static volatile int zoneCapacity =
             roundUpPowerOfTwo(Integer.getInteger("crystalgraphics.trace.zones", 1 << 16));
-    private static volatile int headZoneCapacity = 1 << 12;
+    /** The first frames' ceiling follows the newest frames' when first frames are asked for at launch. */
+    private static volatile int headZoneCapacity = firstFrames == 0 ? 1 << 12 : zoneCapacity;
 
     /** Where a new thread's arena starts; it doubles as the thread records, up to its ceiling. */
     private static final int INITIAL_ZONES = 1 << 12;
@@ -322,9 +323,17 @@ public final class CgTrace {
     /** Counters of the first frames, kept apart so the ring cannot overwrite them. Markers and spans stay in {@link #events}. */
     private static volatile CgTraceEvents headEvents = newEvents(firstFrames);
 
-    /** Counters are written per frame, so a ring is sized from its frames: 32 a frame. */
+    /**
+     * Counter values a frame may hold ({@code -Dcrystalgraphics.trace.countersPerFrame}, 1024) — a ceiling,
+     * not an allocation: the store starts small and doubles as it is written. A busy UI frame writes
+     * several hundred.
+     */
+    private static final int COUNTERS_PER_FRAME =
+            Math.max(32, Integer.getInteger("crystalgraphics.trace.countersPerFrame", 1024));
+
+    /** Counters are written per frame, so a ring is sized from its frames. */
     private static CgTraceEvents newEvents(int frames) {
-        int counters = roundUpPowerOfTwo(Math.max(1 << 12, frames * 32));
+        int counters = roundUpPowerOfTwo((int) Math.max(1 << 12, Math.min(1 << 26, (long) frames * COUNTERS_PER_FRAME)));
         return new CgTraceEvents(counters, 1 << 12, 1 << 12);
     }
 
@@ -477,6 +486,28 @@ public final class CgTrace {
     /** Interns {@code name} and returns its id — the form a hot call site should hold in a constant. */
     public static int name(String name) {
         return CgTraceNames.intern(name);
+    }
+
+    private static final Set<String> WAITS = ConcurrentHashMap.newKeySet();
+
+    /**
+     * {@link #name}, for a zone that WAITS rather than works — a sleep holding a frame rate, a fence, a
+     * buffer swap. A report lists waits apart and keeps them out of every cost table, where a sleep would
+     * otherwise rank as the most expensive thing in the frame.
+     *
+     * <pre>{@code
+     * private static final int SYNC = CgTrace.waitName("frame.sync");
+     * try (CgTrace.Zone z = CgTrace.zone(CH, SYNC)) { sleepToHoldTheRate(); }
+     * }</pre>
+     */
+    public static int waitName(String name) {
+        WAITS.add(name);
+        return CgTraceNames.intern(name);
+    }
+
+    /** Whether {@code name} was declared through {@link #waitName}. */
+    public static boolean isWait(String name) {
+        return WAITS.contains(name);
     }
 
     public static Zone zone(CgTraceChannel channel, int nameId) {
@@ -1113,5 +1144,34 @@ public final class CgTrace {
         int at = 1;
         while (at < value && at < (1 << 30)) at <<= 1;
         return at;
+    }
+
+    // ── Recording from launch ───────────────────────────────────────────────────────────────
+
+    /**
+     * {@code -Dcrystalgraphics.trace.channels=<prefix>,<prefix>} — what records from the first frame, on
+     * any host and with no code: a dev client, an installed one, the harness, a test JVM.
+     *
+     * <pre>
+     * -Dcrystalgraphics.trace.channels=crystalgraphics,crystalgui,gpu
+     * </pre>
+     */
+    public static final String CHANNELS_PROPERTY = "crystalgraphics.trace.channels";
+
+    // LAST IN THE CLASS: it enables, and enabling reads the events and the mask declared above.
+    static {
+        enableAll(System.getProperty(CHANNELS_PROPERTY));
+    }
+
+    /**
+     * Enables every comma-separated prefix in {@code list}, each as {@link #enable} does — so a channel
+     * that registers later is taken too. Null or blank does nothing.
+     */
+    public static void enableAll(String list) {
+        if (list == null) return;
+        for (String prefix : list.split(",")) {
+            String trimmed = prefix.trim();
+            if (!trimmed.isEmpty()) enable(trimmed);
+        }
     }
 }
