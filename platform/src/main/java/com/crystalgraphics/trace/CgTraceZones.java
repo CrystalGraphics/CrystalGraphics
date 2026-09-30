@@ -1,5 +1,7 @@
 package com.crystalgraphics.trace;
 
+import java.util.concurrent.atomic.AtomicLongFieldUpdater;
+
 /**
  * One thread's zone arena: parallel primitive arrays, written only by the thread that owns them.
  *
@@ -81,13 +83,20 @@ final class CgTraceZones {
     volatile Store store;
     private final int maxCapacity;
     /** Keep the first zones and drop the rest once full, rather than overwriting the oldest. */
-    private final boolean keepFirst;
+    final boolean keepFirst;
 
     final String threadName;
     final int threadId;
 
-    /** Absolute count of zones ever begun on this thread; the physical slot is this masked. */
-    long written;
+    /**
+     * Absolute count of zones ever begun on this thread; the physical slot is this masked. Published with a
+     * release store after the slot is filled, so a reader on another thread never counts a slot whose
+     * contents are still the previous lap's.
+     */
+    volatile long written;
+
+    private static final AtomicLongFieldUpdater<CgTraceZones> WRITTEN =
+            AtomicLongFieldUpdater.newUpdater(CgTraceZones.class, "written");
 
     private final int[] stack = new int[MAX_DEPTH];
     private int depth;
@@ -209,7 +218,7 @@ final class CgTraceZones {
         into.end[at] = OPEN;
         into.nameId[at] = name;
         into.packed[at] = pack(channelIndex, depth, threadId);
-        written = slot + 1;
+        WRITTEN.lazySet(this, slot + 1);
         stack[depth++] = (int) slot;
         CgTraceNames.seen(name, now);
     }
@@ -235,7 +244,7 @@ final class CgTraceZones {
         into.end[at] = endNanos;
         into.nameId[at] = name;
         into.packed[at] = pack(channelIndex, depth, threadId);
-        written = slot + 1;
+        WRITTEN.lazySet(this, slot + 1);
         CgTraceNames.seen(name, startNanos);
     }
 

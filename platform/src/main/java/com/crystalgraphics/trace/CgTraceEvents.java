@@ -32,7 +32,7 @@ final class CgTraceEvents {
     // ── Counters: a named number, one or more times per frame ────────────────────────────────
 
     /** The ceiling. The arrays start smaller and double as they fill, so a quiet recording costs little. */
-    private final int counterCapacity;
+    final int counterCapacity;
     private int counterMask;
     int[] counterName;
     long[] counterFrame;
