@@ -368,6 +368,17 @@ public class CgGlStateManagerTest {
         assertEquals(Arrays.asList(0.0, 0.75), gl.clearDepths);
     }
 
+    /** A decal's offset pulls toward the camera either way; the host's own offset comes back unchanged. */
+    @Test
+    public void reversedDepthNegatesPolygonOffsetButNotItsRestore() {
+        CgGL.setDepthReversed(true);
+        try (CgGlScope scope = CgGlState.save(CgGlSlot.POLYGON_OFFSET)) {
+            CgGL.glPolygonOffset(-1f, -2f);
+        }
+
+        assertEquals(Arrays.asList(Arrays.asList(1f, 2f), Arrays.asList(0f, 0f)), gl.polygonOffsets);
+    }
+
     @Test
     public void standardDepthPassesEverythingThrough() {
         CgGL.glDepthFunc(CgGL.GL_LEQUAL);

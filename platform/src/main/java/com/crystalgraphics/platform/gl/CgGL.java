@@ -1040,11 +1040,11 @@ public final class CgGL {
      *
      * <ul>
      *   <li>{@link #glDepthFunc} issues the mirror of a caller's function ({@code LEQUAL} becomes
-     *       {@code GEQUAL}), and {@link #glClearDepth} clears to {@code 1 - depth}. A scope's restore and a
-     *       recording's replay are exempt: each re-issues values already as GL holds them.</li>
-     *   <li>Not mirrored: {@code glPolygonOffset}, whose offset therefore pulls the other way, and
-     *       {@code cg_DepthBuffer}, which holds reversed values. The frame block carries this flag, so a
-     *       shader reading it through {@code cg_LinearEyeDepth} gets eye distances either way.</li>
+     *       {@code GEQUAL}), {@link #glClearDepth} clears to {@code 1 - depth}, and {@link #glPolygonOffset}
+     *       negates both terms. A scope's restore and a recording's replay are exempt: each re-issues values
+     *       already as GL holds them.</li>
+     *   <li>Not mirrored: {@code cg_DepthBuffer}, which holds reversed values. The frame block carries this
+     *       flag, so a shader reading it through {@code cg_LinearEyeDepth} gets eye distances either way.</li>
      *   <li>Nor a projection: the host's own matrices are already reversed. One built for the pass, rather
      *       than taken from the host, is built reversed too:
      *       <pre>{@code
@@ -1113,7 +1113,11 @@ public final class CgGL {
     }
 
     public static void glPolygonOffset(float factor, float units) {
-        if (state().polygonOffsetChanged(factor, units)) backend.glPolygonOffset(factor, units);
+        // Mirrored like glDepthFunc: an offset that pushes away from the camera is a positive one only
+        // while nearer is smaller.
+        boolean mirror = depthReversed && !replaying && !state().restoring();
+        float f = mirror ? -factor : factor, u = mirror ? -units : units;
+        if (state().polygonOffsetChanged(f, u)) backend.glPolygonOffset(f, u);
     }
 
     public static void glPointSize(float size) {

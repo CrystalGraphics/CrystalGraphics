@@ -2,6 +2,7 @@ package com.crystalgraphics.platform.gl;
 
 import java.nio.*;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -26,12 +27,14 @@ public final class RecordingGlBackend extends CgGLBackend {
     /** The arguments of every glDepthFunc and glClearDepth, in order. */
     public final List<Integer> depthFuncs = new ArrayList<>();
     public final List<Double> clearDepths = new ArrayList<>();
+    /** Every glPolygonOffset as {factor, units}, in order. */
+    public final List<List<Float>> polygonOffsets = new ArrayList<>();
 
     private void record(String name) { calls.add(name); }
 
     public List<String> calls() { return calls; }
 
-    public void clear() { calls.clear(); depthFuncs.clear(); clearDepths.clear(); }
+    public void clear() { calls.clear(); depthFuncs.clear(); clearDepths.clear(); polygonOffsets.clear(); }
 
     public int countOf(String name) {
         int n = 0;
@@ -154,7 +157,10 @@ public final class RecordingGlBackend extends CgGLBackend {
     @Override public void glBlendEquationSeparate(int modeRGB, int modeAlpha) { record("glBlendEquationSeparate"); }
     @Override public void glColorMaski(int buf, boolean r, boolean g, boolean b, boolean a) { record("glColorMaski"); }
     @Override public void glFrontFace(int mode) { record("glFrontFace"); }
-    @Override public void glPolygonOffset(float factor, float units) { record("glPolygonOffset"); }
+    @Override public void glPolygonOffset(float factor, float units) {
+        record("glPolygonOffset");
+        polygonOffsets.add(Arrays.asList(factor, units));
+    }
     @Override public void glPointSize(float size) { record("glPointSize"); }
     @Override public void glDrawBuffer(int mode) { record("glDrawBuffer"); }
     @Override public void glReadBuffer(int mode) { record("glReadBuffer"); }
