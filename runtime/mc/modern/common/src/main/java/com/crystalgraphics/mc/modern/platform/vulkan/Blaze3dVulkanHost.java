@@ -154,17 +154,20 @@ public final class Blaze3dVulkanHost
         current.encoder.queueForDestroy(device::close);
     }
 
-    // The one private read: GpuDevice keeps its backend in a private field, found by type so a rename cannot
-    // hide it. Everything past it is Blaze3D's public API.
+    // The one private read: the device keeps its backend in a private field, found by type so a rename cannot
+    // hide it -- on GpuDevice itself, or from 26.3 on FrontendGpuDevice, GpuDevice being an interface there.
+    // Everything past it is Blaze3D's public API.
     public static Blaze3dVulkanHost fromMinecraft() {
         GpuDevice gpu = RenderSystem.getDevice();
-        for (Field f : GpuDevice.class.getDeclaredFields()) {
-            if (!GpuDeviceBackend.class.isAssignableFrom(f.getType())) continue;
-            try {
-                f.setAccessible(true);
-                if (f.get(gpu) instanceof VulkanDevice vulkan) return new Blaze3dVulkanHost(vulkan);
-            } catch (ReflectiveOperationException | RuntimeException refused) {
-                throw new IllegalStateException("Cannot reach Minecraft's Vulkan device", refused);
+        for (Class<?> c = gpu.getClass(); c != null; c = c.getSuperclass()) {
+            for (Field f : c.getDeclaredFields()) {
+                if (!GpuDeviceBackend.class.isAssignableFrom(f.getType())) continue;
+                try {
+                    f.setAccessible(true);
+                    if (f.get(gpu) instanceof VulkanDevice vulkan) return new Blaze3dVulkanHost(vulkan);
+                } catch (ReflectiveOperationException | RuntimeException refused) {
+                    throw new IllegalStateException("Cannot reach Minecraft's Vulkan device", refused);
+                }
             }
         }
         throw new IllegalStateException("Minecraft's GpuDevice holds no VulkanDevice");
