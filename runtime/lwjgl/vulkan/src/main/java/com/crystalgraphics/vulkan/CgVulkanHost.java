@@ -1,5 +1,6 @@
 package com.crystalgraphics.vulkan;
 
+import com.crystalgraphics.vulkan.host.HostedVulkanHost;
 import com.crystalgraphics.vulkan.host.OwnedVulkanHost;
 import org.lwjgl.vulkan.VkCommandBuffer;
 import org.lwjgl.vulkan.VkDevice;
@@ -10,7 +11,7 @@ import org.lwjgl.vulkan.VkQueue;
 /**
  * Everything {@link CgVulkanDevice} takes from outside: a device and queue, the command buffer the current frame
  * records into, and the frames in flight. {@link OwnedVulkanHost} creates all of it for a window of its own;
- * a host inside Minecraft hands over Minecraft's (plan/device-vulkan.md §0).
+ * a {@link HostedVulkanHost} hands over a game's, which also submits (plan/device-vulkan.md §0).
  *
  * <pre>{@code
  * try (OwnedVulkanHost host = new OwnedVulkanHost(window, true)) {
