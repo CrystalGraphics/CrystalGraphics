@@ -232,10 +232,135 @@ public class CgTraceReportTest {
         assertTrue(real, real.contains("count "));
     }
 
+    /** A wait is listed on its own and in no cost table: a sleep must never rank as the frame's cost. */
+    @Test
+    public void aWaitIsListedApartAndCostsNothing() {
+        long ms = 1_000_000L;
+        CgTrace.waitName("report:sleep");
+        CgTrace.frameBegin(clock);
+        CgTrace.zoneDone(UI, "report:work", clock, clock + 2 * ms);
+        CgTrace.zoneDone(UI, "report:sleep", clock + 3 * ms, clock + 13 * ms);
+        CgTrace.frameEnd(clock + 14 * ms);
+        CgTrace.frameBegin(clock + 16 * ms);
+        CgTrace.frameEnd(clock + 17 * ms);
+        CgTrace.frameBegin(clock + 20 * ms);
+
+        String breakdown = CgTraceReport.of(CgTrace.snapshot()).breakdown();
+        String costs = breakdown.substring(breakdown.indexOf("PHASES"), breakdown.indexOf("WAITS"));
+        assertFalse("a wait was ranked as a cost:\n" + breakdown, costs.contains("report:sleep"));
+        String selfTime = breakdown.substring(breakdown.indexOf("SELF TIME"));
+        assertFalse(selfTime, selfTime.substring(0, selfTime.indexOf("\n\n")).contains("report:sleep"));
+        assertTrue(breakdown, breakdown.contains("report:sleep  [wait]"));
+    }
+
+    /** Idle a wait zone covers is explained; the rest is reported as unexplained, not blamed on the wait. */
+    @Test
+    public void idleNoWaitCoversIsUnexplained() {
+        long ms = 1_000_000L;
+        CgTrace.waitName("report:sleep");
+        CgTrace.frameBegin(clock);
+        CgTrace.zoneDone(UI, "report:work", clock, clock + 2 * ms);
+        CgTrace.frameEnd(clock + 2 * ms);
+        CgTrace.zoneDone(UI, "report:sleep", clock + 3 * ms, clock + 13 * ms);
+        CgTrace.frameBegin(clock + 16 * ms);
+        CgTrace.frameEnd(clock + 17 * ms);
+        CgTrace.frameBegin(clock + 20 * ms);
+
+        String frame = CgTraceReport.of(CgTrace.snapshot()).frame(0);
+        assertTrue(frame, frame.contains("idle    14.00  unexplained     4.00"));
+        assertTrue(frame, frame.contains("longest stretch 3.00ms: after report:sleep, before the next frame's begin"));
+    }
+
+    /** A frame slow by wall and not by cpu is blamed, in the verdict, on what filled its idle. */
+    @Test
+    public void theVerdictNamesWhatFilledTheIdleOfAFrameSlowOnlyByWall() {
+        long ms = 1_000_000L;
+        CgTrace.frameBegin(clock);
+        CgTrace.zoneDone(UI, "report:work", clock, clock + 2 * ms);
+        CgTrace.frameEnd(clock + 2 * ms);
+        CgTrace.zoneDone(UI, "report:pump", clock + 3 * ms, clock + 30 * ms);
+        CgTrace.frameBegin(clock + 32 * ms);
+        CgTrace.frameEnd(clock + 33 * ms);
+        CgTrace.frameBegin(clock + 40 * ms);
+
+        String verdict = CgTraceReport.of(CgTrace.snapshot()).verdict();
+        assertTrue(verdict, verdict.contains(
+                "Over by wall alone: 1 frames. Their idle: report:pump (after the cpu mark, 90%, max 27.00ms)"));
+    }
+
+    /** Counters are summed per frame and never cut from a line, however many there are. */
+    @Test
+    public void everyCounterIsPrintedWhole() {
+        CgTrace.frameBegin(clock);
+        for (int i = 0; i < 40; i++) CgTrace.counter(UI, "report:counter-with-a-long-name-" + i, i);
+        CgTrace.frameEnd(clock + 1_000_000L);
+        CgTrace.frameBegin(clock + 2_000_000L);
+        CgTrace.frameEnd(clock + 3_000_000L);
+        CgTrace.frameBegin(clock + 4_000_000L);
+        CgTrace.frameEnd(clock + 5_000_000L);
+        CgTrace.frameBegin(clock + 6_000_000L);
+
+        // Written in one frame of three, so the frame block lists every one of them.
+        String frame = CgTraceReport.of(CgTrace.snapshot()).frame(0);
+        for (int i = 0; i < 40; i++) {
+            assertTrue(frame, frame.contains("report:counter-with-a-long-name-" + i + "=" + i));
+        }
+        assertFalse(frame, frame.contains("…"));
+    }
+
     private static void burn(long nanos) {
         long until = System.nanoTime() + nanos;
         while (System.nanoTime() < until) {
             // deliberate
         }
+    }
+
+    /**
+     * A frame older than every zone the frame thread holds is said to hold none — never reported as 100%
+     * unzoned, which read as a frame spent entirely outside the instrumentation.
+     */
+    @Test
+    public void aFrameWhoseZonesAreGoneSaysSoRatherThanUnzoned() {
+        long ms = 1_000_000L;
+        CgTrace.frameBegin(clock);
+        CgTrace.frameEnd(clock + 30 * ms);
+        CgTrace.frameBegin(clock + 32 * ms);
+        CgTrace.zoneDone(UI, "report:late", clock + 32 * ms, clock + 36 * ms);
+        CgTrace.frameEnd(clock + 38 * ms);
+        CgTrace.frameBegin(clock + 40 * ms);
+
+        CgTraceReport report = CgTraceReport.of(CgTrace.snapshot());
+        String early = report.frame(0);
+        assertTrue(early, early.contains("zones   none held"));
+        assertFalse(early, early.contains("  unzoned "));
+        assertFalse(early, early.contains("no zones recorded"));
+        String verdict = report.verdict();
+        assertTrue(verdict, verdict.contains("1 of 2 frames hold no zones"));
+        assertTrue("the verdict explained a frame it has nothing for: " + verdict, verdict.contains("report:late"));
+    }
+
+    /** Missing instrumentation shows in the run that lacks it: unzoned frame time, and a GAP inside a zone. */
+    @Test
+    public void aFrameSaysWhatItsZonesDoNotExplain() {
+        long ms = 1_000_000L;
+        CgTrace.frameBegin(clock);
+        CgTrace.zoneDone(UI, "report:work", clock, clock + 10 * ms);
+        CgTrace.zoneDone(UI, "report:named", clock + ms, clock + 3 * ms);
+        CgTrace.frameEnd(clock + 12 * ms);
+        CgTrace.frameBegin(clock + 16 * ms);
+        CgTrace.frameEnd(clock + 17 * ms);
+        CgTrace.frameBegin(clock + 20 * ms);
+
+        CgTraceReport report = CgTraceReport.of(CgTrace.snapshot());
+        String frame = report.frame(0);
+        assertTrue(frame, frame.contains("unzoned   2.00ms of 12.00ms cpu (17%)"));
+        assertTrue(frame, frame.contains("GAP       report:work: 8.00ms of 10.00ms is in none of its children"));
+
+        String breakdown = report.breakdown();
+        assertTrue(breakdown, breakdown.contains("SELF TIME"));
+        // Frame 1 is later than every held zone, so it is not "overwritten": no warning.
+        assertFalse(breakdown, breakdown.contains("hold no zones"));
+        // PER FRAME: 8ms of self in one of two frames is 4ms a frame; its p90 and max are the 8.
+        assertTrue(breakdown, breakdown.matches("(?s).*report:work\\s+4\\.000\\s+8\\.000\\s+8\\.000\\s+80%\\s+GAP.*"));
     }
 }

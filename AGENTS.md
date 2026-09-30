@@ -34,6 +34,7 @@ Their commands are CrystalGUI's `AGENTS.md` § *Build and run*.
 | [`singlejar-logic/STUBS.md`](singlejar-logic/STUBS.md) | Before adding a node, changing its pins, or touching a branch script's toolchain |
 | [`runtime/mc/modern/README.md`](runtime/mc/modern/README.md) | Before touching a modern node; each branch has its own `AGENTS.md` |
 | CrystalGUI's `docs/CGUI_CROSS_VERSION.md` | Code that must run on every version |
+| **[`docs/PROFILING.md`](docs/PROFILING.md)** | **Measuring anything**: the trace engine, the one-run rule, the harness and game runs, reading a report, what is instrumented. CrystalGUI adds `docs/CGUI_PROFILING.md`; the `profiling` skill is the checklist |
 | [`docs/NATIVE_BUILD_PROCESS.md`](docs/NATIVE_BUILD_PROCESS.md) | Rebuilding the FreeType/HarfBuzz/msdfgen natives |
 | [`docs/HOTSWAP_SETUP.md`](docs/HOTSWAP_SETUP.md) | Hotswapping into a running 1.7.10 client |
 | **[`docs/MINECRAFT_RENDERING_CONVENTIONS.md`](docs/MINECRAFT_RENDERING_CONVENTIONS.md)** | **Before drawing into Minecraft's frame, and with every new Minecraft version**: how each version changed that frame (26.2's reversed depth, float depth, blend and sampler state left behind) and what the engine does about each |
