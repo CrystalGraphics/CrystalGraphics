@@ -47,11 +47,12 @@ val Project.srgRenamer: Pair<String, List<String>>
 
 /**
  * Minecraft's own libraries, which NeoForm pins strictly: Forge's jars ask for newer ones (ASM from 53,
- * log4j from 58), and the one classpath holds Minecraft's.
+ * log4j from 58, jspecify from 66), and the one classpath holds Minecraft's.
  */
 private val MINECRAFT_LIBRARY_GROUPS = listOf(
     "org.ow2.asm", "org.apache.logging.log4j", "org.slf4j", "com.google.guava", "com.google.code.gson",
     "org.apache.commons", "commons-io", "net.sf.jopt-simple", "it.unimi.dsi", "net.java.dev.jna",
+    "org.jspecify",
 )
 
 /**

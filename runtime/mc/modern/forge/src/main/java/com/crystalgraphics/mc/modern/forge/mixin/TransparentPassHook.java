@@ -1,6 +1,25 @@
 package com.crystalgraphics.mc.modern.forge.mixin;
 
-//? if >=26.1 {
+//? if >=26.3 {
+/*import com.crystalgraphics.mc.modern.platform.LifecycleModern;
+import net.minecraft.client.renderer.LevelRenderer;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+
+// 26.3 resets the particles state while it EXTRACTS the frame, before anything is drawn, so reset is no
+// longer "after particles". The translucent world ends with executeOit (after its composite) or, with OIT
+// off, executeClassicTransparency. @see OpaquePassHook
+@Mixin(value = LevelRenderer.class, remap = false)
+public abstract class TransparentPassHook {
+
+    @Inject(method = {"executeOit", "executeClassicTransparency"}, at = @At("TAIL"), require = 2)
+    private void crystalgraphics$transparentPass(CallbackInfo ci) {
+        LifecycleModern.transparentPass();
+    }
+}
+*///?} elif >=26.1 {
 /*import com.crystalgraphics.mc.modern.platform.LifecycleModern;
 import net.minecraft.client.renderer.state.level.ParticlesRenderState;
 import org.spongepowered.asm.mixin.Mixin;

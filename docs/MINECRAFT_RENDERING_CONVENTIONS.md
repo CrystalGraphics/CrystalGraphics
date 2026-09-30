@@ -35,6 +35,24 @@ difference.
 
 ## 2. The register
 
+### Minecraft 26.3 (against 26.2)
+
+`mcrender.py` scans `com/mojang/renderpearl` and names types without their package from 26.3, so the move
+below is not reported as a thousand differences.
+
+| # | Convention | Before (26.2) | 26.3 | Where Minecraft says so | Ours | Status |
+|---|---|---|---|---|---|---|
+| 31 | **The window toolkit** | GLFW | **SDL3**; `lwjgl-glfw` is not shipped at all | `Window.handleEvent(SDL_Event)`, `RenderSystem.pollEvents(SDLEventHandler)`, LWJGL 3.4.3 with `lwjgl-sdl` | A 26.3 node registers `runtime/lwjgl/sdl` (`SdlInputService`, `SdlCursorService`) in place of the GLFW pair; no GLFW class may be named on it. Fabric's input chain is SDL's event filter | adapted |
+| 32 | **Key and mouse numbering** | GLFW key codes (`KEY_ESCAPE = 256`); buttons 0 left, 1 right, 2 middle | **SDL scancodes** (`KEY_A = 4`, `KEY_ESCAPE = 41`); buttons 1 left, 2 middle, 3 right | `InputConstants`; NeoForge's `ScreenEvent.KeyInput.getKey()` (scancode) beside `getKeycode()` (SDL keycode) | `CgSdlKeyCodes`; hosts translate buttons through `translateMouseCodes` and name keys through CrystalGUI's `CgUiInput.hostKey` | adapted |
+| 33 | **Blaze3D's GPU layer is its own library** | `com.mojang.blaze3d.{opengl,vulkan,textures}`, `systems.GpuDevice` | `com.mojang.renderpearl.{backend.opengl, backend.vulkan, api.textures, api.device}`; `GpuTexture`, `GpuSampler` and `GpuDevice` are interfaces; `GlDevice(GlBackend, GpuDebugOptions)` | the jar | A `replacements.string` for 26.3+ in both Stonecutter scripts; `GlStateManager`'s statics are unchanged but for an added `_glReadBuffer` | adapted |
+| 34 | Pipelines compile off the frame | synchronous | `GpuDevice.compilePipeline(…, Executor)` → a future; `RenderSystem` pipeline caches | `GpuDevice`, `RenderSystem` | Minecraft's own pipelines | recorded |
+| 35 | **Translucency** | back-to-front into the main target | **moment-based OIT**: `OitStage` DEPTH_BOUNDS, TRANSMITTANCE, ACCUMULATE; RGBA16F/RGBA32F transmittance targets beside the D32 depth; `executeDepthBoundsCull`, `executeOit`, `executeOitWaterMask` | `LevelRenderer` (`OIT_WAVELET_RANK = 2`) | Where our transparent pass lands against the OIT resolve is open (§3) | recorded |
+| 36 | First-person hands | the world's depth | **their own depth**, merged after (`render3dHud`, `integrate3DHudDepth`, `PROJECTION_3D_HUD_Z_FAR = 100`) | `GameRenderer` | Nothing of ours draws there | recorded |
+| 37 | Depth direction, clip range, projection order, main target format | rows 1–4 | **unchanged**: `GEQUAL`, clear 0, `ZERO_TO_ONE`, `zFar` before `zNear`, `D32_FLOAT` | `DepthStencilState`, `GlDevice.<init>`, `Projection`, `MainTarget.<init>` | Row 1–4's adaptations hold | recorded |
+| 38 | GL vertex arrays | one `VertexArrayCache` | built per pipeline (`VertexArray$Separate(GlProgram, CreateInfo)`) | `renderpearl.backend.opengl` | Its VAOs, not ours; the census confirms what is bound at entry | recorded |
+| 39 | **The frame is extracted, then drawn** | `GameRenderer.render(DeltaTracker, boolean)` | `extract(DeltaTracker, boolean)`, then `render()`; `LevelExtractor.extract` resets `LevelRenderState`, and with it `ParticlesRenderState` | `GameRenderer`, `LevelExtractor` | Fabric's `FrameEndHook` takes `render()V`'s tail. Forge's transparent pass hooked `ParticlesRenderState.reset` as "after particles"; on 26.3 that is extraction, before anything is drawn | adapted |
+| 40 | **Terrain passes are opened by the caller** | `ChunkSectionsToRender.renderGroup(group, sampler)` opened its own render pass | `renderGroup(group, RenderPass, GpuSampler, GpuTextureView, boolean)`: solid terrain and classic translucency share one pass `LevelRenderer`'s main-pass lambda opens; OIT runs after it closes | `LevelRenderer.executeSolid`, `executeClassicTransparency`, `executeOit` | Forge's world passes run at the head and tail of `executeOit` or `executeClassicTransparency`, whichever runs — outside any pass with OIT, inside the solid pass without it (§3) | adapted |
+
 ### Minecraft 26.2 (against 26.1.2)
 
 | # | Convention | Before (26.1.2) | 26.2 | Where Minecraft says so | Ours | Status |
@@ -103,6 +121,14 @@ GUI paint back at −1..1 and 1.0), and found what no code diff could:
 
 ## 3. Open
 
-Nothing. The census hooks are permanent: `opaque`, `transparent` and `frame` in `CgGraphicsLifecycle`, each after
+- **Row 35, 26.3's OIT against our transparent pass.** Translucent terrain, water and particles resolve
+  through moment-based OIT, so a pass hooked where 26.2's translucent world ended (NeoForge
+  `AfterTranslucentParticles`, Fabric `END_MAIN`) may now draw after the composite rather than inside it.
+  Answered on a 26.3 client with a transparent material over water.
+- **Row 40, Forge 26.3 with OIT off.** Both world passes then run inside Minecraft's open solid-terrain
+  pass, whose cached pipeline and bindings our scopes restore but whose framebuffer `bindMainTarget` hands
+  over. Needs a client with OIT switched off.
+
+The census hooks are permanent: `opaque`, `transparent` and `frame` in `CgGraphicsLifecycle`, each after
 its stood-down guard (a stood-down host has no GL context to read), and CrystalGUI's `gui` in
 `CgUiPaintContext.beginFrame`.
