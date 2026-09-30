@@ -16,6 +16,8 @@ import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.pipeline.CgDepthPrepassRenderer;
 import com.crystalgraphics.render.pipeline.CgForwardRenderer;
 import com.crystalgraphics.render.pipeline.CgTransparentRenderer;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 import lombok.Getter;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -314,7 +316,9 @@ public final class CgRenderPipeline {
                     "[CrystalGraphics] Iris/Oculus shader pack detected. CG geometry renders " + "into the main framebuffer outside Iris's deferred GBuffer chain — geometry " + "will appear unlit under shader packs with deferred pipelines. " + "cg_DepthBuffer remains valid.");
         }
 
-        blitDepthSnapshot(sourceFboId);
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "pipeline.depthSnapshot")) {
+            blitDepthSnapshot(sourceFboId);
+        }
 
         this.currentPartialTicks = partialTicks;
 
@@ -339,16 +343,24 @@ public final class CgRenderPipeline {
                 COLOR_MASK, TEXTURES)) {
 
             if (!replayOpaque) {
-                commandQueue.sort();
-                uploadFrameData(frameData);
+                try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "pipeline.sort")) {
+                    commandQueue.sort();
+                }
+                try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "pipeline.uploadFrame")) {
+                    uploadFrameData(frameData);
+                }
             }
             bindFrameResources();
+            CgTrace.counter(CgChannels.WORLD, "pipeline.opaqueCommands", commandQueue.getOpaqueCount());
 
-            depthPrepass.execute(
-                commandQueue.getSortedOpaque(), commandQueue.getOpaqueCount(), this);
-
-            forwardRenderer.execute(
-                commandQueue.getSortedOpaque(), commandQueue.getOpaqueCount(), this);
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "pipeline.depthPrepass")) {
+                depthPrepass.execute(
+                    commandQueue.getSortedOpaque(), commandQueue.getOpaqueCount(), this);
+            }
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "pipeline.forward")) {
+                forwardRenderer.execute(
+                    commandQueue.getSortedOpaque(), commandQueue.getOpaqueCount(), this);
+            }
         }
         return true;
     }
@@ -367,8 +379,11 @@ public final class CgRenderPipeline {
 
         try (CgGlScope scope = CgGlState.save(VERTEX_INPUT, PROGRAM, DEPTH, BLEND, CULL, TEXTURES)) {
             bindFrameResources();
-            transparentRenderer.execute(
-                    commandQueue.getSortedTransparent(), commandQueue.getTransparentCount(), this);
+            CgTrace.counter(CgChannels.WORLD, "pipeline.transparentCommands", commandQueue.getTransparentCount());
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "pipeline.transparent")) {
+                transparentRenderer.execute(
+                        commandQueue.getSortedTransparent(), commandQueue.getTransparentCount(), this);
+            }
         }
         
         return true;

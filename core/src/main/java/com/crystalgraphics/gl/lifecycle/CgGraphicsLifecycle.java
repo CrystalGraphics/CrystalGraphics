@@ -25,6 +25,8 @@ import com.crystalgraphics.NativeLoader;
 import com.crystalgraphics.text.render.CgTextRenderer;
 import com.crystalgraphics.text.render.CgTextRendererRegistry;
 import com.crystalgraphics.trace.CgGpuTrace;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import lombok.Getter;
@@ -323,7 +325,7 @@ public final class CgGraphicsLifecycle {
         ensureContext(w, h);
 
         CgGpuTrace.begin(GPU_OPAQUE);
-        try {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "world.opaque")) {
             CgRenderDemo.INSTANCE.renderOpaque(partialTick, w, h, sourceFboId);
         } finally {
             CgGpuTrace.end();
@@ -402,7 +404,7 @@ public final class CgGraphicsLifecycle {
 
         if (!initialized) return;
         CgGpuTrace.begin(GPU_TRANSPARENT);
-        try {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "world.transparent")) {
             CgRenderDemo.INSTANCE.renderTransparent();
         } finally {
             CgGpuTrace.end();
