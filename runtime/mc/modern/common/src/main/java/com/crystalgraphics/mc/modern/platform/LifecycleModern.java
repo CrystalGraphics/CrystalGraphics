@@ -10,7 +10,9 @@ import com.crystalgraphics.platform.gl.state.CgGlState;
 
 import net.minecraft.client.Minecraft;
 import org.apache.logging.log4j.LogManager;
+//? if <26.3 {
 import org.lwjgl.glfw.GLFW;
+//?}
 //? if >=26.1 {
 /*import com.mojang.blaze3d.opengl.GlTexture;
 import com.mojang.blaze3d.pipeline.RenderTarget;
@@ -202,48 +204,53 @@ public final class LifecycleModern {
     }
     *///?}
 
-    // The main target's framebuffer. Under Vulkan (26.2) its textures are Minecraft's images, imported under
-    // names of the tracked backend's own; the framebuffer over them is built the same way.
+    // The main target's framebuffer. Under Vulkan (26.2) its textures are Minecraft's images, attached under
+    // the tracked backend's names for them.
     //? if >=26.2 {
     /*private static int mainFbo(RenderTarget main) {
-        if (!GraphicsApi.vulkan()) return mainFbo(glId(main.getColorTexture()), glId(main.getDepthTexture()), hasStencil(main));
-        Blaze3dVulkanHost host = Blaze3dVulkanHost.current();
-        host.matchSurface(main.width, main.height);
-        return mainFbo(host.importTexture(main.getColorTexture()),
-                main.getDepthTexture() == null ? 0 : host.importTexture(main.getDepthTexture()), hasStencil(main));
+        if (GraphicsApi.vulkan()) Blaze3dVulkanHost.current().matchSurface(main.width, main.height);
+        return mainFbo(main.getColorTexture(), main.getDepthTexture(), hasStencil(main));
+    }
+
+    private static int name(GpuTexture texture) {
+        if (texture == null) return 0;
+        return GraphicsApi.vulkan() ? Blaze3dVulkanHost.current().importTexture(texture) : ((GlTexture) texture).glId();
     }
     *///?} elif >=26.1 {
     /*private static int mainFbo(RenderTarget main) {
-        return mainFbo(glId(main.getColorTexture()), glId(main.getDepthTexture()), hasStencil(main));
+        return mainFbo(main.getColorTexture(), main.getDepthTexture(), hasStencil(main));
+    }
+
+    private static int name(GpuTexture texture) {
+        return texture == null ? 0 : ((GlTexture) texture).glId();
     }
     *///?}
 
     //? if >=26.1 {
     /*private static int mainFbo = -1;
-    private static int mainColor;
-    private static int mainDepth;
+    private static GpuTexture mainColor;
+    private static GpuTexture mainDepth;
 
     // OUR framebuffer over the main target's two textures: from 26.1 Minecraft's own is kept on a
     // package-private device (GlDevice). Attached as Minecraft's FrameBufferCache attaches them -- depth
     // alone, or depth and stencil when the texture has both (NeoForge's stencilled target), which is what
-    // the depth snapshot reads its format and blit mask from -- keyed on the two texture ids, and rebuilt
-    // when a resize replaces either. Through CgGL, so the shadow sees it.
-    private static int mainFbo(int color, int depth, boolean stencil) {
+    // the depth snapshot reads its format and blit mask from. Through CgGL, so the shadow sees it.
+    //
+    // Keyed on the TEXTURE OBJECTS, not their GL names: a resize deletes both while this framebuffer is
+    // bound, which detaches them, and the driver can hand the new ones the same names -- keyed on names,
+    // the empty framebuffer was kept and every draw after a maximise-then-restore failed as incomplete.
+    private static int mainFbo(GpuTexture color, GpuTexture depth, boolean stencil) {
         if (mainFbo != -1 && mainColor == color && mainDepth == depth) return mainFbo;
         deleteMainFbo();
         mainFbo = CgGL.glGenFramebuffers();
         CgGL.glBindFramebuffer(GL30.GL_FRAMEBUFFER, mainFbo);
-        CgGL.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL11.GL_TEXTURE_2D, color, 0);
+        CgGL.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL11.GL_TEXTURE_2D, name(color), 0);
         CgGL.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER,
-                stencil ? GL30.GL_DEPTH_STENCIL_ATTACHMENT : GL30.GL_DEPTH_ATTACHMENT, GL11.GL_TEXTURE_2D, depth, 0);
+                stencil ? GL30.GL_DEPTH_STENCIL_ATTACHMENT : GL30.GL_DEPTH_ATTACHMENT, GL11.GL_TEXTURE_2D, name(depth), 0);
         mainColor = color;
         mainDepth = depth;
         CgGraphicsLifecycle.addListener(MAIN_FBO_OWNER);
         return mainFbo;
-    }
-
-    private static int glId(GpuTexture texture) {
-        return texture == null ? 0 : ((GlTexture) texture).glId();
     }
 
     private static void deleteMainFbo() {
@@ -294,7 +301,11 @@ public final class LifecycleModern {
                 return "Minecraft's Vulkan device could not host CrystalGraphics (" + failed + ")";
             }
         }
+        //? if >=26.3 {
+        /*return null;   // no GLFW to ask: a device that is not Vulkan is GL
+        *///?} else {
         return GLFW.glfwGetCurrentContext() != 0L ? null : "no GL context on the render thread";
+        //?}
     }
 
     /** A resource reload landed — drop every cache built from assets. */

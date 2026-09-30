@@ -12,7 +12,9 @@ signature: the depth test a pipeline defaults to, the clear value, the clip rang
 init, the order a projection receives its planes in, the GL enum a format maps to. mcapi.py answers
 "does this member exist"; this answers "does the frame still work the same way".
 
-Facts, per method, from `javap -c` over com/mojang/blaze3d and net/minecraft/client/renderer:
+Facts, per method, from `javap -c` over com/mojang/blaze3d, com/mojang/renderpearl (26.3's GPU layer)
+and net/minecraft/client/renderer. Classes are named without their package, so a move between those
+packages is not a difference:
 
   const   a static final constant                         RenderSystem.DEFAULT_DEPTH_CLEAR_VALUE = 0.0d
   enum    an enum's constants, in order                   CompareOp = [ALWAYS_PASS, LESS_THAN, ...]
@@ -33,7 +35,8 @@ import subprocess
 import sys
 import zipfile
 
-PACKAGES = ("com/mojang/blaze3d/", "net/minecraft/client/renderer/")
+GPU_PACKAGES = ("com/mojang/blaze3d/", "com/mojang/renderpearl/")
+PACKAGES = GPU_PACKAGES + ("net/minecraft/client/renderer/",)
 CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "build", "mcrender")
 DEFAULT_LIBRARIES = os.path.join(os.environ.get("APPDATA", ""), "PrismLauncher", "libraries")
 
@@ -133,7 +136,7 @@ def facts_of(cls, lines):
                 owner, field = g.group(2), g.group(3)
                 if field not in fields_read:
                     fields_read.append(field)
-                if owner and owner.startswith("com/mojang/blaze3d/") and g.group(1) == "static" \
+                if owner and owner.startswith(GPU_PACKAGES) and g.group(1) == "static" \
                         and g.group(4) == f"L{owner};" and field.isupper():
                     facts.add(f"uses   {name}.{method} -> {short(owner)}.{field}")
                 continue
@@ -182,6 +185,14 @@ def facts_of(cls, lines):
     return facts, api
 
 
+QUALIFIED = re.compile(r"\b(?:[a-z_][a-z0-9_]*\.)+(?=[A-Z])")
+
+
+def unqualified(fact):
+    """Types by simple name, as classes already are: 26.3 moved Blaze3D's GPU layer into renderpearl."""
+    return QUALIFIED.sub("", fact)
+
+
 def fingerprint(version_or_jar, libraries, only):
     jar = version_or_jar if version_or_jar.endswith(".jar") else jar_path(version_or_jar, libraries)
     root = extract(jar)
@@ -189,7 +200,7 @@ def fingerprint(version_or_jar, libraries, only):
     facts, api, present = set(), set(), set(names)
     for cls, lines in javap(root, names).items():
         f, a = facts_of(cls, lines)
-        facts |= f
+        facts |= {unqualified(x) for x in f}
         api |= a
     return facts, api, present
 

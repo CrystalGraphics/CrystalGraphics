@@ -85,6 +85,7 @@ include("runtime:mc:forge-bootstrap")
 include("runtime:lwjgl:2")
 include("runtime:lwjgl:3")
 include("runtime:lwjgl:vulkan")
+include("runtime:lwjgl:sdl")
 
 // Platform split subprojects (plain java-library, no gtnhconvention)
 include(":core")
@@ -98,8 +99,8 @@ include(":platform")
 // needs. @see cgbuildlogic.SingleJarSettings
 singlejar {
     targets {
-        forge("1.7.10".."26.2")
-        neoforge("1.20.2".."26.2")
-        fabric("1.14.4".."26.2")
+        forge("1.7.10".."26.3")
+        neoforge("1.20.2".."26.3")
+        fabric("1.14.4".."26.3")
     }
 }
