@@ -297,6 +297,27 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
         }
     }
 
+    /**
+     * A host's image as a texture this device renders into, samples and copies, and never frees: how a hosted
+     * device reaches the host's main target. The host keeps ownership and must outlive every frame using it.
+     *
+     * <pre>{@code
+     * CgGpuTexture main = device.wrap(vkImage, VK_FORMAT_R8G8B8A8_UNORM, new CgGpuTexture.Desc("main",
+     *         CgGpuTexture.Kind.D2, CgFormat.RGBA8_UNORM, width, height, 1, 1, 1, CgGpuTexture.Usage.ALL),
+     *         VK_IMAGE_LAYOUT_GENERAL);
+     * int name = CgGL.importHostTexture(main);   // a GL name a framebuffer can attach
+     * ...
+     * device.release(main);                      // when the host replaces the image: its views go
+     * }</pre>
+     *
+     * <p>Every pass and transfer leaves it back in {@code layout}, so the host finds it where it left it.</p>
+     */
+    public CgGpuTexture wrap(long image, int vkFormat, CgGpuTexture.Desc desc, int layout) {
+        VulkanTexture t = VulkanTexture.borrowed(desc, image, vkFormat, formats.aspectOf(desc.format()), layout);
+        live.add(t);
+        return t;
+    }
+
     @Override
     public CgGpuSampler createSampler(CgGpuSampler.Desc desc) {
         VulkanSampler cached = samplers.get(desc);
@@ -503,7 +524,7 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
             vmaDestroyBuffer(vma, b.buffer, b.allocation);
         } else if (o instanceof VulkanTexture t) {
             t.destroyViews(device);
-            vmaDestroyImage(vma, t.image, t.allocation);
+            if (!t.borrowed()) vmaDestroyImage(vma, t.image, t.allocation);
         } else if (o instanceof VulkanShaderModule m) {
             vkDestroyShaderModule(device, m.module, null);
         } else if (o instanceof VulkanBindingLayout l) {
@@ -525,15 +546,21 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
     @Override public long retiredFrame() { return host.retiredFrame(); }
     @Override public void whenRetired(long frame, Runnable action) { host.whenFrameRetired(frame, action); }
     @Override public boolean ownsSubmission() { return host.ownsSubmission(); }
+    @Override public void fromHost() { host.fromHost(); }
+    @Override public void toHost() { host.toHost(); }
 
     @Override
     public void endFrame() {
         if (encoder.openPass() != null) throw new IllegalStateException("endFrame with a pass open");
-        barriers += surfaceColor.transitionAll(host.commandBuffer(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
         long frame = host.frameIndex();
-        host.endFrame(new CgVulkanImage(surfaceColor.image, surfaceColor.format,
-                surfaceColor.desc.width(), surfaceColor.desc.height()));
+        if (host.ownsSubmission()) {
+            barriers += surfaceColor.transitionAll(host.commandBuffer(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+            host.endFrame(new CgVulkanImage(surfaceColor.image, surfaceColor.format,
+                    surfaceColor.desc.width(), surfaceColor.desc.height()));
+        } else {
+            host.endFrame(null);                    // the host presents its own picture
+        }
         staging.endFrame(frame);
     }
 

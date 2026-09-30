@@ -3,6 +3,9 @@ package com.crystalgraphics.mc.modern.platform;
 import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 
 import net.minecraft.client.Minecraft;
+//? if >=26.2 {
+/*import com.crystalgraphics.mc.modern.platform.vulkan.Blaze3dVulkanHost;
+*///?}
 
 /**
  * End-of-frame lifecycle for the modern tree: the resize check and {@link CgGraphicsLifecycle#tickFrame()}.
@@ -35,6 +38,10 @@ public final class FrameHooks {
             }
         }
         CgGraphicsLifecycle.tickFrame();
+        // Under Vulkan our frame closes here, after everything drawn in it and before Minecraft's submit.
+        //? if >=26.2 {
+        /*if (GraphicsApi.vulkan()) Blaze3dVulkanHost.endMinecraftFrame();
+        *///?}
     }
 
     /** Forgets the last known size, so the next {@link #endFrame()} resizes. For context teardown. */

@@ -374,10 +374,13 @@ public final class CgTracker {
     public void toHost() {
         flushPendingClears();
         if (pass != null) endPass();
+        device.toHost();
     }
 
     /** The host hands us its frame: the next draw begins a pass that loads what is there. */
-    public void fromHost() {}
+    public void fromHost() {
+        device.fromHost();
+    }
 
     public void endFrame() {
         flushPendingClears();

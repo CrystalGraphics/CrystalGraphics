@@ -75,7 +75,8 @@ registerSingleJarPipeline(SingleJarSpec(
     // each LWJGL family, added once for every variant, never remapped -- which is the whole reason
     // the tier exists. A loader bundling its own would put four copies in the merge to reject.
     libraryProjects = listOf(":core", ":platform", ":freetype-msdfgen-harfbuzz-bindings",
-                             ":runtime:mc:shared", ":runtime:mc:forge-bootstrap", ":runtime:lwjgl:2", ":runtime:lwjgl:3"),
+                             ":runtime:mc:shared", ":runtime:mc:forge-bootstrap", ":runtime:lwjgl:2", ":runtime:lwjgl:3",
+                             ":runtime:lwjgl:vulkan"),
     serviceOwners = listOf(":core", ":platform"),
 
     // JOML IS NOT RELOCATED AND IS NOT IN THIS JAR. Both halves of that are D2, decided the hard way.
@@ -162,6 +163,9 @@ registerSingleJarPipeline(SingleJarSpec(
             "com/crystalgraphics/mc/modern/fabric/FabricBootstrap.class",
             "com/crystalgraphics/mc/forge/ForgeBootstrap.class",
             "com/crystalgraphics/mc/modern/neoforge/NeoForgeBootstrap.class",
+            // The device a 26.2+ client hosts under Minecraft's Vulkan backend. Missing, that client stands
+            // the engine down, and nothing older notices.
+            "com/crystalgraphics/vulkan/CgVulkanDevice.class",
         // EVERY ENTRY POINT THE TABLE NAMES, at its shipped name: one per node, relocated into that
         // node's package (cgbuildlogic.ModernVariants). A table naming a class absent from the jar is a
         // crash at mod construction on that version alone.

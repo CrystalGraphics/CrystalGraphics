@@ -10,6 +10,7 @@ import org.lwjgl.vulkan.VkDevice;
 import org.lwjgl.vulkan.VkImageViewCreateInfo;
 
 import java.nio.LongBuffer;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -35,6 +36,10 @@ public final class VulkanTexture implements CgGpuTexture {
     private final Map<Long, Long> views = new HashMap<>();
 
     public VulkanTexture(Desc desc, long image, long allocation, int format, int aspect) {
+        this(desc, image, allocation, format, aspect, restingFor(desc, aspect), VK_IMAGE_LAYOUT_UNDEFINED);
+    }
+
+    private VulkanTexture(Desc desc, long image, long allocation, int format, int aspect, int resting, int layout) {
         this.desc = desc;
         this.image = image;
         this.allocation = allocation;
@@ -42,11 +47,35 @@ public final class VulkanTexture implements CgGpuTexture {
         this.aspect = aspect;
         this.layers = desc.kind() == Kind.D3 ? 1 : desc.depthOrLayers();
         this.layouts = new int[desc.mips() * layers];
+        Arrays.fill(layouts, layout);
+        this.resting = resting;
+    }
+
+    /**
+     * A host's image, in {@code layout} now and returned to it after every pass and transfer, which is what keeps
+     * the host's own record of it true. It has no allocation: destroying it destroys only its views.
+     */
+    public static VulkanTexture borrowed(Desc desc, long image, int format, int aspect, int layout) {
+        return new VulkanTexture(desc, image, 0L, format, aspect, layout, layout);
+    }
+
+    /** Whether the image belongs to a host rather than to this device. */
+    public boolean borrowed() {
+        return allocation == 0L;
+    }
+
+    private static int restingFor(Desc desc, int aspect) {
         boolean depth = (aspect & VK_IMAGE_ASPECT_COLOR_BIT) == 0;
-        this.resting = desc.usage().contains(Usage.SAMPLED) ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+        return desc.usage().contains(Usage.SAMPLED) ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
                 : desc.usage().contains(Usage.ATTACHMENT)
                 ? (depth ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL)
                 : VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    }
+
+    /** Whether every subresource is in {@code layout}. */
+    public boolean allIn(int layout) {
+        for (int l : layouts) if (l != layout) return false;
+        return true;
     }
 
     @Override public Desc desc() { return desc; }

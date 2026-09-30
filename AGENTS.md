@@ -1215,7 +1215,7 @@ leaves a non-main FBO bound:
 
 The exact version splits are in each loader branch's `AGENTS.md`. **The frame ends after the GUI**, from
 a loader frame event or, on Fabric, a mixin — `runtime/mc/modern/common/AGENTS.md` § *The frame end*,
-which also covers 26.1's own main-target framebuffer and 26.2's stand-down under Vulkan.
+which also covers 26.1's own main-target framebuffer and 26.2 under Vulkan.
 
 **Iris/Oculus**: with a shader pack active, CrystalGraphics geometry renders into the main FBO **outside**
 Iris's deferred GBuffer chain and appears unlit under deferred pipelines; `cg_DepthBuffer` stays valid.
