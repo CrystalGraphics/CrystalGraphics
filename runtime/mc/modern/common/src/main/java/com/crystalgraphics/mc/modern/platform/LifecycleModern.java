@@ -9,7 +9,9 @@ import com.crystalgraphics.platform.gl.state.CgGlSlot;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 
 import net.minecraft.client.Minecraft;
+//? if <26.3 {
 import org.lwjgl.glfw.GLFW;
+//?}
 //? if >=26.1 {
 /*import com.mojang.blaze3d.opengl.GlTexture;
 import com.mojang.blaze3d.pipeline.RenderTarget;
@@ -250,7 +252,13 @@ public final class LifecycleModern {
      */
     public static boolean glAvailable() {
         if (glAvailable == null) {
+            // 26.3 has no GLFW to ask. A stopgap until the device-seam's D5 asks Blaze3D which device it
+            // made, on every version.
+            //? if >=26.3 {
+            /*glAvailable = true;
+            *///?} else {
             glAvailable = GLFW.glfwGetCurrentContext() != 0L;
+            //?}
             if (!glAvailable) {
                 //? if >=26.1 {
                 /*String backend = RenderSystem.getBackendDescription();

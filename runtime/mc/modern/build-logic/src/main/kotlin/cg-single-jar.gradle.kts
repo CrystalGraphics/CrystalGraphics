@@ -75,7 +75,8 @@ registerSingleJarPipeline(SingleJarSpec(
     // each LWJGL family, added once for every variant, never remapped -- which is the whole reason
     // the tier exists. A loader bundling its own would put four copies in the merge to reject.
     libraryProjects = listOf(":core", ":platform", ":freetype-msdfgen-harfbuzz-bindings",
-                             ":runtime:mc:shared", ":runtime:mc:forge-bootstrap", ":runtime:lwjgl:2", ":runtime:lwjgl:3"),
+                             ":runtime:mc:shared", ":runtime:mc:forge-bootstrap", ":runtime:lwjgl:2", ":runtime:lwjgl:3",
+                             ":runtime:lwjgl:sdl"),
     serviceOwners = listOf(":core", ":platform"),
 
     // JOML IS NOT RELOCATED AND IS NOT IN THIS JAR. Both halves of that are D2, decided the hard way.
