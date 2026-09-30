@@ -140,7 +140,7 @@ final class CgResolvedGlyphs {
 
         CgGlyphPlacementCache.Key key;
         CgGlyphPlacementCache.Entry hit;
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "placementCache.lookup")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT_DETAIL, "placementCache.lookup")) {
             key = CgGlyphPlacementCache.key(layout, x, y, wantMsdf, fontKey, rgba,
                     subPixelApplies ? posePhaseKey(posedOriginX) : 0);
             hit = CgGlyphPlacementCache.get(key, effectiveTargetPx, contentGeneration, evictionGeneration, frame);
@@ -168,7 +168,7 @@ final class CgResolvedGlyphs {
         long missStartNanos = System.nanoTime();
 
         int glyphCount;
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "glyph.flatten")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT_DETAIL, "glyph.flatten")) {
             glyphCount = flatten(layout, x, y, context, effectiveTargetPx, wantMsdf, rgba, posePhase);
         }
         // Salvage already-converged placements from the stale entry we're replacing, so a
@@ -180,7 +180,7 @@ final class CgResolvedGlyphs {
 
         boolean distanceField = false;
         if (glyphCount > 0) {
-            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "glyph.resolvePlacements")) {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT_DETAIL, "glyph.resolvePlacements")) {
                 distanceField = resolvePlacements(glyphCount, frame, effectiveTargetPx, wantMsdf, reusable);
             }
         }
@@ -207,7 +207,7 @@ final class CgResolvedGlyphs {
             chargeIfRefresh(upgradeFrom, frame, missStartNanos);
             return glyphCount;
         }
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "placementCache.put")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT_DETAIL, "placementCache.put")) {
             CgGlyphPlacementCache.put(key, new CgGlyphPlacementCache.Entry(
                     distanceField, effectiveTargetPx,
                     registry.getAtlasContentGeneration(), registry.getAtlasEvictionGeneration(),

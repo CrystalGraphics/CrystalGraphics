@@ -69,6 +69,35 @@ public class CgTraceTest {
     }
 
     @Test
+    public void aDetailChannelIsTakenOnlyByItsFullName() {
+        CgTraceChannel detail = CgTrace.detailChannel("test.gl.detail");
+        CgTrace.enable("test");
+        CgTrace.enable("test.gl");
+        assertTrue(GL.isEnabled());
+        assertFalse("a prefix must not reach a detail channel", detail.isEnabled());
+
+        CgTrace.enable("test.gl.detail");
+        assertTrue(detail.isEnabled());
+        CgTrace.disable("test");
+        assertFalse("disabling a prefix still switches it off", detail.isEnabled());
+    }
+
+    @Test
+    public void aStandingRuleReachesALaterDetailChannelOnlyByItsName() {
+        CgTrace.enable("test");
+        CgTrace.enable("test.named.detail");
+        CgTraceChannel byPrefix = CgTrace.detailChannel("test.unnamed.detail");
+        CgTraceChannel byName = CgTrace.detailChannel("test.named.detail");
+        assertFalse(byPrefix.isEnabled());
+        assertTrue(byName.isEnabled());
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void aNameIsEitherAnOrdinaryOrADetailChannel() {
+        CgTrace.detailChannel("test.ui");
+    }
+
+    @Test
     public void theEnabledSetRoundTripsThroughNamesRatherThanBits() {
         CgTrace.enable("test.ui");
         List<String> saved = CgTrace.enabledNames();

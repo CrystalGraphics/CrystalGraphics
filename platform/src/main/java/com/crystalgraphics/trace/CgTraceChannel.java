@@ -25,6 +25,19 @@ package com.crystalgraphics.trace;
  * that prefix. So the coarse gesture — <em>CrystalGraphics | CrystalGUI</em> — is one call, while
  * switching off glyph shaping alone is still possible.</p>
  *
+ * <h3>A detail channel is switched on by its full name only</h3>
+ *
+ * <p>Instrumentation inside a per-call operation — the steps of every material bind, every flush, every
+ * buffer upload — runs thousands of times a frame, so it goes on a {@link CgTrace#detailChannel detail
+ * channel}. A prefix never reaches one: {@code enable("crystalgraphics")} leaves
+ * {@code crystalgraphics.gl.detail} off, and {@code enable("crystalgraphics.gl.detail")} is how it is
+ * asked for. Disabling a prefix still switches it off.</p>
+ *
+ * <pre>{@code
+ * CgTrace.enable("crystalgraphics");            // material.doBind, quadRenderer.flush: one zone per call
+ * CgTrace.enable("crystalgraphics.gl.detail");  // and the steps inside each
+ * }</pre>
+ *
  * <h3>A bit index is not stable across runs</h3>
  *
  * <p>Channels register from static initialisers, so bit assignment follows class-load order, which
@@ -44,10 +57,13 @@ public final class CgTraceChannel {
 
     private final int index;
 
-    CgTraceChannel(String name, int index) {
+    private final boolean detail;
+
+    CgTraceChannel(String name, int index, boolean detail) {
         this.name = name;
         this.index = index;
         this.bit = 1L << index;
+        this.detail = detail;
     }
 
     public String name() {
@@ -61,6 +77,11 @@ public final class CgTraceChannel {
 
     long bit() {
         return bit;
+    }
+
+    /** Whether only its full name switches this channel on. @see CgTrace#detailChannel */
+    public boolean isDetail() {
+        return detail;
     }
 
     /** Whether anything recorded on this channel is currently being kept. */

@@ -872,7 +872,7 @@ public final class CgMaterial {
     }
 
     private void doBind(CgShader shader, CgRenderPassVariant variant) {
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "doBind.wire")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL_DETAIL, "doBind.wire")) {
             if (!wiredPrograms.contains(shader)) {
                 wirePerInstance(shader);
                 wiredPrograms.add(shader);
@@ -901,27 +901,27 @@ public final class CgMaterial {
         // What this removes is ~25 glGet* driver synchronisation points per bind; one observed frame
         // spent 346.8 ms in them.
 
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "doBind.propsUpload")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL_DETAIL, "doBind.propsUpload")) {
             // Every draw that reads the frame block binds a material first, so this is where a frame's copy
             // of it is made -- see CgRenderPipeline.carryFrameBlock.
             CgRenderPipeline.carryFrameBlock();
             if (matPropsUbo != null) syncProps();
         }
 
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "doBind.uboBind")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL_DETAIL, "doBind.uboBind")) {
             if (matPropsUbo != null) matPropsUbo.bind();
         }
 
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "doBind.samplers")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL_DETAIL, "doBind.samplers")) {
             if (propStore != null && propStore.hasSamplerProps())
                 propStore.bindSamplerTextures();
         }
 
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "doBind.renderState")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL_DETAIL, "doBind.renderState")) {
             getPassRenderState(variant).apply();
         }
 
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "doBind.shaderBind")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL_DETAIL, "doBind.shaderBind")) {
             shader.bind();
         }
     }

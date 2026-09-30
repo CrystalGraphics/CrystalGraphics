@@ -4,15 +4,17 @@ import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.trace.CgTraceChannel;
 
 /**
- * CrystalGraphics' trace channels — six, so one subsystem can be recorded without the rest.
+ * CrystalGraphics' trace channels — six, so one subsystem can be recorded without the rest, and two
+ * detail channels for the steps inside a per-call operation.
  *
  * <pre>{@code
  * try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "shape.run")) {
  *     CgTrace.add(CgChannels.TEXT, "glyph.atlasHit", 1);
  * }
  *
- * CgTrace.enable("crystalgraphics");        // all six
- * CgTrace.enable("crystalgraphics.gl");     // one
+ * CgTrace.enable("crystalgraphics");            // all six, and neither detail channel
+ * CgTrace.enable("crystalgraphics.gl");         // one
+ * CgTrace.enable("crystalgraphics.gl.detail");  // the steps inside each bind, flush and upload
  * }</pre>
  *
  * <p>TEXT and GL are dense — thousands of zones a frame on a busy screen — so a viewer leaves them off
@@ -28,6 +30,15 @@ public final class CgChannels {
 
     /** Material binds, batches, stream buffers, the quad and curve renderers, culling. */
     public static final CgTraceChannel GL = CgTrace.channel("crystalgraphics.gl");
+
+    /**
+     * The steps inside every material bind, quad and curve flush and stream-buffer upload — about 9,000 zones
+     * a frame on the CrystalGUI desktop, so only its full name switches it on.
+     */
+    public static final CgTraceChannel GL_DETAIL = CgTrace.detailChannel("crystalgraphics.gl.detail");
+
+    /** The steps inside every text draw: placement, flattening, sorting, the quad loop. Full name only. */
+    public static final CgTraceChannel TEXT_DETAIL = CgTrace.detailChannel("crystalgraphics.text.detail");
 
     /**
      * The 3D world passes and their phases — a handful of zones a frame, so cheap enough to leave on

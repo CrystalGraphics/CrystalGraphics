@@ -184,13 +184,13 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
         // target: a cost that shows up only under one target is a usage-pattern issue, while
         // one spread across all of them is the shared machinery.
         FloatBuffer out;
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, profileMapName)) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL_DETAIL, profileMapName)) {
             out = mapFloats(byteCount);
         }
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, profileWriteName)) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL_DETAIL, profileWriteName)) {
             out.put(data, 0, floatCount);
         }
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, profileCommitName)) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL_DETAIL, profileCommitName)) {
             CgTrace.add(CgChannels.GL, profileBytesName, byteCount);
             committedBytes = byteCount;
             return commit(byteCount);

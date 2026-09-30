@@ -100,12 +100,14 @@ the other three. At the call site only when the question is about *that* caller.
 
 A channel is what somebody switches on; everything on a channel nobody enabled costs one mask test
 (~1 ns). Names are dotted and owner-first; `enable("x")` takes `x` and everything beneath it, including
-channels that register later.
+channels that register later — except a **detail channel**, which only its full name switches on.
 
 | Channel | What is on it | Density |
 |---|---|---|
-| `crystalgraphics.text` | shaping, line breaking, fonts, glyph generation and placement, the text renderer's draw | dense — thousands a frame on a busy screen |
-| `crystalgraphics.gl` | material binds, batches, stream buffers, the quad and curve renderers, the frame ring | dense |
+| `crystalgraphics.text` | shaping, line breaking, fonts, glyph generation and placement, one zone per text draw (`glyph.resolveGlyphs`) and per text batch | hundreds a frame on a busy screen |
+| `crystalgraphics.gl` | one zone per material bind (`material.doBind`) and per quad and curve flush, the frame ring | about 1,400 a frame on the CrystalGUI desktop |
+| `crystalgraphics.gl.detail` | **detail** — the steps inside each: `doBind.*`, `quadRenderer.upload/bindBuffer/drawInstanced`, `curveRenderer.*`, stream-buffer `map`/`write`/`commit` | about 9,000 a frame on the desktop |
+| `crystalgraphics.text.detail` | **detail** — the steps inside each text draw: `placementCache.*`, `glyph.flatten/resolvePlacements/resolveDecorations`, `draw.sortKeys/syncProjection/submitSortedQuads/quadLoop/planShadows` | about 1,400 a frame |
 | `crystalgraphics.world` | the 3D world passes and the pipeline's phases | a handful a frame |
 | `crystalgraphics.shadergraph` | the shader graph's emitters and preview renderers | a few dozen a frame with a graph open |
 | `crystalgraphics.async` | background workers | varies |
@@ -115,7 +117,10 @@ channels that register later.
 | `trace`, `trace.*` | the engine's own events; a viewer's own work | — |
 
 A mod declares its own (`CgTrace.channel("mymod.worldgen")`) — never borrow `misc` for a subsystem. 64
-channels at most; a 65th is inert rather than aliased.
+channels at most; a 65th is inert rather than aliased. Steps inside an operation that runs hundreds of
+times a frame go on a detail channel (`CgTrace.detailChannel("mymod.worldgen.detail")`), leaving one zone
+per operation on the ordinary one; a run that needs them names them, as
+`-Dcrystalgraphics.trace.channels=crystalgraphics,crystalgraphics.gl.detail`.
 
 ### Cost — why instrumentation stays in
 
@@ -347,10 +352,10 @@ CrystalGraphics' zones, by package — **before adding one, look here and in the
 |---|---|---|---|
 | Text layout | text | line breaking, shaping, layout cache | `text/layout/CgLineBreaker`, `CgTextShaper`, `CgTextLayoutEngine`, `CgTextLayoutCache` |
 | Glyph supply | text, async | `registry.*`, generation, atlas growth and eviction, packing | `text/cache/CgFontRegistry`, `CgWorkerFontContext`, `text/atlas/*`, `text/msdf/CgMsdfGenerator` |
-| Text draw | text, gl | `glyph.*`, `draw.*`, `placementCache.*`, `gl.flush` | `text/render/CgTextRenderer`, `CgResolvedGlyphs` |
-| Materials | gl | `material.*`, `doBind.*`; a compile split into `material.parse`, `.codegen`, `.preprocess`, `.glCompile` (or `.glSubmit` when deferred), `.depthAutoGen`, `.shadowAutoGen`; a deferred one under `material.submitRecompile`, then `.commit`/`.awaitPending`, and `.lateAutoGen` when a forward-only compile's depth or shadow pass is first asked for; `material.generated.hit/miss` counts | `api/material/CgMaterial`, `gl/material/CgMaterialShader`, `CgMaterialShaderRegistry` |
+| Text draw | text, gl; text.detail | `glyph.resolveGlyphs`, `draw.materialTransition`, `gl.flush`; on text.detail `placementCache.*`, `glyph.flatten/resolvePlacements/resolveDecorations`, `draw.sortKeys/syncProjection/submitSortedQuads/quadLoop/planShadows` | `text/render/CgTextRenderer`, `CgResolvedGlyphs` |
+| Materials | gl; gl.detail | `material.*`; `doBind.*` on gl.detail; a compile split into `material.parse`, `.codegen`, `.preprocess`, `.glCompile` (or `.glSubmit` when deferred), `.depthAutoGen`, `.shadowAutoGen`; a deferred one under `material.submitRecompile`, then `.commit`/`.awaitPending`, and `.lateAutoGen` when a forward-only compile's depth or shadow pass is first asked for; `material.generated.hit/miss` counts | `api/material/CgMaterial`, `gl/material/CgMaterialShader`, `CgMaterialShaderRegistry` |
 | Shader graph | shadergraph, gpu | `shadergraph.emit`, `.previewEmit`; `preview.renderPending/render/draw`, `mainPreview.render/draw`; counters for what drew, was unchanged, is animated or still compiling; `gpu:preview.draw`, `gpu:mainPreview.draw` | `shadergraph/CgShaderEmitter`, `CgPreviewEmitter`, `CgPreviewRenderer`, `CgMainPreviewRenderer` |
-| Batching | gl | `batch.*`, `quadRenderer.*`, `curveRenderer.*`, stream buffer map/write/commit, `frameRing.wait` | `gl/render/*`, `gl/buffer/*` |
+| Batching | gl; gl.detail | `batch.*`, `quadRenderer.flush`, `curveRenderer.flush`, `frameRing.wait`; on gl.detail their `upload`/`bindBuffer`/`drawInstanced` and stream buffer `map`/`write`/`commit` | `gl/render/*`, `gl/buffer/*` |
 | Texture arrays | gl | uploads, growth | `gl/texture/CgTexture2DArray` |
 | World | world, gpu | `world.opaque`, `world.transparent`, `pipeline.depthSnapshot/sort/uploadFrame/depthPrepass/forward/transparent`, command counts; `gpu:world.opaque/transparent` | `gl/lifecycle/CgGraphicsLifecycle`, `api/render/CgRenderPipeline` |
 | Culling | gl | frustum tests | `api/render/CgViewFrustum` |
@@ -371,7 +376,7 @@ finishing: in the shader graph, `gpu:mainPreview.draw` read 9 ms, and with that 
 
 | Flag | Does |
 |---|---|
-| `-Dcrystalgraphics.trace.channels=a,b` | records those channels (and everything beneath each) from launch, on any host |
+| `-Dcrystalgraphics.trace.channels=a,b` | records those channels (and everything beneath each, detail channels apart) from launch, on any host |
 | `-Dcrystalgraphics.trace.frames=<n>` | newest frames kept (600) |
 | `-Dcrystalgraphics.trace.firstFrames=<n>` | first frames kept for good (0) |
 | `-Dcrystalgraphics.trace.zones=<n>` | zones per thread at most (65,536) |

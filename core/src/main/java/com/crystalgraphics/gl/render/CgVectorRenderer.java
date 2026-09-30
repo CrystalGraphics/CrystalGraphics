@@ -1278,13 +1278,13 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
             CgTrace.add(CgChannels.GL, "curveRenderer.flush.count", 1);
             CgTrace.add(CgChannels.GL, "curveRenderer.instances", instanceCount);
 
-            try (CgTrace.Zone ignored2 = CgTrace.zone(CgChannels.GL, "curveRenderer.upload")) {
+            try (CgTrace.Zone ignored2 = CgTrace.zone(CgChannels.GL_DETAIL, "curveRenderer.upload")) {
                 GPU_BUFFER.uploadRaw(accumStaging.rawData(), accumStaging.rawCursor());
             }
-            try (CgTrace.Zone ignored2 = CgTrace.zone(CgChannels.GL, "curveRenderer.bindBuffer")) {
+            try (CgTrace.Zone ignored2 = CgTrace.zone(CgChannels.GL_DETAIL, "curveRenderer.bindBuffer")) {
                 GPU_BUFFER.bind();
             }
-            try (CgTrace.Zone ignored2 = CgTrace.zone(CgChannels.GL, "curveRenderer.drawInstanced")) {
+            try (CgTrace.Zone ignored2 = CgTrace.zone(CgChannels.GL_DETAIL, "curveRenderer.drawInstanced")) {
                 CURVE_MESH.drawInstanced(instanceCount);
             }
             accumStaging.reset();
