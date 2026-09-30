@@ -37,14 +37,21 @@ public final class CgShaderStorageBuffer extends CgShaderBuffer {
      * @param bindingLocation immutable GL binding point
      */
     CgShaderStorageBuffer(String name, CgBufferFormat format,
-                          CgCapabilities.ShaderBufferPath path, int bindingLocation) {
-        super(name, format, CgGL.GL_SHADER_STORAGE_BUFFER, bindingLocation);
+                          CgCapabilities.ShaderBufferPath path, int bindingLocation, boolean frameLocal) {
+        super(name, format, CgGL.GL_SHADER_STORAGE_BUFFER, bindingLocation, frameLocal);
         this.path = path;
     }
 
+    /** On the frame ring, by range at the latest upload -- and by the storage's CURRENT name, which growth replaces. */
     @Override
     protected void bindInternal() {
-        CgGL.glBindBufferBase(CgGL.GL_SHADER_STORAGE_BUFFER, bindingLocation, getGlBufferId());
+        int bytes = dataBuffer.getCommittedBytes();
+        if (dataBuffer.offsetMovesPerUpload() && bytes > 0) {
+            CgGL.glBindBufferRange(CgGL.GL_SHADER_STORAGE_BUFFER, bindingLocation, getGlBufferId(),
+                    dataBuffer.getWriteOffset(), bytes);
+        } else {
+            CgGL.glBindBufferBase(CgGL.GL_SHADER_STORAGE_BUFFER, bindingLocation, getGlBufferId());
+        }
     }
 
     @Override

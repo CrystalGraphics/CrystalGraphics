@@ -33,11 +33,17 @@ public class MapAndOrphanStreamBuffer extends CgStreamBuffer {
         }
         
         ByteBuffer mapped = CgGL.glMapBufferRange(target, 0, sizeBytes,
-                CgGL.GL_MAP_WRITE_BIT | CgGL.GL_MAP_INVALIDATE_BUFFER_BIT, null);
-        
+                CgGL.GL_MAP_WRITE_BIT | CgGL.GL_MAP_INVALIDATE_BUFFER_BIT, lastMapping);
+
         if (mapped == null) throw new IllegalStateException("glMapBufferRange (orphan) returned null (size=" + sizeBytes + ")");
+        // LWJGL returns the old wrapper for the same address and size, position and all.
+        mapped.clear();
+        lastMapping = mapped;
         return mapped;
     }
+
+    /** The last mapping, offered back to the driver so its wrapper can be reused. */
+    private ByteBuffer lastMapping;
 
     @Override
     public int commit(int usedBytes) {

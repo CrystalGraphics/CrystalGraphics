@@ -145,14 +145,22 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
      * @param bindingLocation GL binding point; immutable after construction
      */
     protected CgShaderBuffer(String name, CgBufferFormat format, int glTarget, int bindingLocation) {
+        this(name, format, glTarget, bindingLocation, false);
+    }
+
+    /** @param frameLocal storage from {@link CgStreamBuffer#createFrameLocal}: read only in the frame that wrote it */
+    protected CgShaderBuffer(String name, CgBufferFormat format, int glTarget, int bindingLocation, boolean frameLocal) {
         Objects.requireNonNull(name,   "name is required");
         Objects.requireNonNull(format, "CgBufferFormat is required");
         this.name             = name;
         this.bindingLocation  = bindingLocation;
         this.format           = format;
         int floatPerRecord    = format.getFloatCount();
+        int capacityBytes     = floatPerRecord * Float.BYTES;
         this.writer           = new CgBufferWriter(new CgStagingBuffer(floatPerRecord), format);
-        this.dataBuffer       = CgStreamBuffer.createForShaderBuffer(glTarget, floatPerRecord * Float.BYTES);
+        this.dataBuffer       = frameLocal
+                ? CgStreamBuffer.createFrameLocal(glTarget, capacityBytes)
+                : CgStreamBuffer.createForShaderBuffer(glTarget, capacityBytes);
         this.lastWrittenCount = 0;
     }
 
@@ -198,6 +206,16 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
      * @throws UnsupportedOperationException if the hardware does not support GL 3.3+
      */
     public static CgShaderBuffer createInternal(String name, CgBufferFormat format, int bindingPoint) {
+        return createInternal(name, format, bindingPoint, false);
+    }
+
+    /**
+     * As {@link #createInternal(String, CgBufferFormat, int)}; {@code frameLocal} puts an SSBO's storage on
+     * the frame ring ({@link CgStreamBuffer#createFrameLocal}). Only for data uploaded before every draw that
+     * reads it, in the same frame -- a buffer bound across frames would read another frame's bytes. A TBO
+     * ignores it.
+     */
+    public static CgShaderBuffer createInternal(String name, CgBufferFormat format, int bindingPoint, boolean frameLocal) {
         CgCapabilities.ShaderBufferPath path = CgCapabilities.detect().shaderBufferPath();
         if (path == CgCapabilities.ShaderBufferPath.NONE)
             throw new UnsupportedOperationException("GL 3.3+ required for CrystalShader object buffers");
@@ -205,7 +223,7 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
         if (path == CgCapabilities.ShaderBufferPath.TBO)
             return new CgTextureBuffer(name, format, bindingPoint);
 
-        return new CgShaderStorageBuffer(name, format, path, bindingPoint);
+        return new CgShaderStorageBuffer(name, format, path, bindingPoint, frameLocal);
     }
 
     /**

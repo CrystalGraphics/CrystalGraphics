@@ -100,11 +100,35 @@ public final class CgShaderBufferRegistry {
      * @return the cached or newly-created shader buffer
      */
     public CgShaderBuffer getOrCreateInternal(String name, CgBufferFormat format, CgBindingPoints.Binding binding) {
+        return getOrCreateInternal(name, format, binding, false);
+    }
+
+    /**
+     * As {@link #getOrCreateInternal(String, CgBufferFormat, CgBindingPoints.Binding)}, for a buffer uploaded
+     * before every draw that reads it: its storage is the frame ring ({@link CgShaderBuffer#createInternal(String,
+     * CgBufferFormat, int, boolean)}). What the quad and curve renderers' instance data use.
+     *
+     * <pre>{@code
+     * CgShaderBuffer instances = CgShaderBufferRegistry.get()
+     *         .getOrCreateFrameLocalInternal("QuadInstances", FORMAT, CgBindingPoints.QUAD_RENDERER);
+     * instances.uploadRaw(data, floats);
+     * instances.bind();                  // after every upload: the range moves
+     * mesh.drawInstanced(count);
+     * }</pre>
+     *
+     * <p>Bind after each upload, never once per frame: each upload lands at a new offset.</p>
+     */
+    public CgShaderBuffer getOrCreateFrameLocalInternal(String name, CgBufferFormat format, CgBindingPoints.Binding binding) {
+        return getOrCreateInternal(name, format, binding, true);
+    }
+
+    private CgShaderBuffer getOrCreateInternal(String name, CgBufferFormat format, CgBindingPoints.Binding binding,
+                                               boolean frameLocal) {
         int resolvedBinding = binding.resolve();
         ShaderBufferKey key = new ShaderBufferKey(name, format, resolvedBinding);
         CgShaderBuffer existing = shaderBufferCache.get(key);
         if (existing != null) return existing;
-        CgShaderBuffer buf = CgShaderBuffer.createInternal(name, format, resolvedBinding);
+        CgShaderBuffer buf = CgShaderBuffer.createInternal(name, format, resolvedBinding, frameLocal);
         shaderBufferCache.put(key, buf);
         return buf;
     }

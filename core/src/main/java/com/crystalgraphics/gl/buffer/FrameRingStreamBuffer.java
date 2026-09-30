@@ -7,13 +7,14 @@ import com.crystalgraphics.util.trace.CgChannels;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.FloatBuffer;
 
 /**
- * A vertex stream on the frame ring: one region per frame in flight, filled by bump allocation, each upload
+ * A vertex stream, or a frame-local SSBO ({@link CgStreamBuffer#createFrameLocal}), on the frame ring: one region per frame in flight, filled by bump allocation, each upload
  * at a fresh offset that nothing in flight reads. The {@link CgCapabilities.StreamBufferTier#PERSISTENT} and
  * {@link CgCapabilities.StreamBufferTier#RING} tiers; they differ only in how the bytes are reached.
  *
- * <p>Built by {@link CgStreamBuffer#create}; a caller sees only the {@code CgStreamBuffer} contract, and
+ * <p>Built by {@link CgStreamBuffer#create} and {@link CgStreamBuffer#createFrameLocal}; a caller sees only the {@code CgStreamBuffer} contract, and
  * must honour the offset {@link #commit} returns, which differs on every upload.</p>
  *
  * <pre>{@code
@@ -40,6 +41,10 @@ final class FrameRingStreamBuffer extends CgStreamBuffer {
     private final boolean persistent;
     /** The whole buffer, mapped once for the storage's life. Persistent tier only. */
     private ByteBuffer persistentMapping;
+    /** {@link #persistentMapping} as floats; rebuilt with it on every {@link #allocate}. */
+    private FloatBuffer persistentFloats;
+    /** The mapped tier's last mapping, offered back to the driver so its wrapper can be reused. */
+    private ByteBuffer lastMapping;
 
     private int regionBytes;
     private long frame = -1;
@@ -57,6 +62,42 @@ final class FrameRingStreamBuffer extends CgStreamBuffer {
 
     @Override
     public ByteBuffer map(int sizeBytes) {
+        reserve(sizeBytes);
+        if (persistent) {
+            ByteBuffer view = persistentMapping.duplicate();
+            view.limit(mappedAt + sizeBytes).position(mappedAt);
+            return view.slice().order(ByteOrder.nativeOrder());   // slice() resets the order
+        }
+        bind();
+        ByteBuffer mapped = CgGL.glMapBufferRange(target, mappedAt, sizeBytes,
+                CgGL.GL_MAP_WRITE_BIT | CgGL.GL_MAP_UNSYNCHRONIZED_BIT
+                        | CgGL.GL_MAP_INVALIDATE_RANGE_BIT | CgGL.GL_MAP_FLUSH_EXPLICIT_BIT, lastMapping);
+        if (mapped == null) {
+            throw new IllegalStateException("glMapBufferRange returned null (offset=" + mappedAt + ", size=" + sizeBytes + ")");
+        }
+        // LWJGL returns the old wrapper for the same address and size, position and all.
+        mapped.clear();
+        lastMapping = mapped;
+        return mapped;
+    }
+
+    /** The persistent tier writes through one view of the whole mapping, positioned per upload. */
+    @Override
+    protected FloatBuffer mapFloats(int sizeBytes) {
+        if (!persistent) return super.mapFloats(sizeBytes);
+        reserve(sizeBytes);   // may allocate(), which rebuilds the view
+        persistentFloats.clear();
+        persistentFloats.position(mappedAt >> 2);
+        return persistentFloats;
+    }
+
+    @Override
+    public boolean offsetMovesPerUpload() {
+        return true;
+    }
+
+    /** Sets {@link #mappedAt} to room for {@code sizeBytes} in this frame's region, growing or re-storing first. */
+    private void reserve(int sizeBytes) {
         long now = CgFrameRing.frame();
         if (now != frame) beginFrame(now);
 
@@ -71,19 +112,6 @@ final class FrameRingStreamBuffer extends CgStreamBuffer {
         }
 
         mappedAt = regionBase + cursor;
-        if (persistent) {
-            ByteBuffer view = persistentMapping.duplicate();
-            view.limit(mappedAt + sizeBytes).position(mappedAt);
-            return view.slice().order(ByteOrder.nativeOrder());   // slice() resets the order
-        }
-        bind();
-        ByteBuffer mapped = CgGL.glMapBufferRange(target, mappedAt, sizeBytes,
-                CgGL.GL_MAP_WRITE_BIT | CgGL.GL_MAP_UNSYNCHRONIZED_BIT
-                        | CgGL.GL_MAP_INVALIDATE_RANGE_BIT | CgGL.GL_MAP_FLUSH_EXPLICIT_BIT, null);
-        if (mapped == null) {
-            throw new IllegalStateException("glMapBufferRange returned null (offset=" + mappedAt + ", size=" + sizeBytes + ")");
-        }
-        return mapped;
     }
 
     @Override
@@ -129,6 +157,7 @@ final class FrameRingStreamBuffer extends CgStreamBuffer {
             if (persistentMapping == null) {
                 throw new IllegalStateException("persistent glMapBufferRange returned null (size=" + capacityBytes + ")");
             }
+            persistentFloats = persistentMapping.order(ByteOrder.nativeOrder()).asFloatBuffer();
         } else {
             bind();
             CgGL.glBufferData(target, capacityBytes, CgGL.GL_STREAM_DRAW);
