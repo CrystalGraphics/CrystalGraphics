@@ -184,7 +184,7 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
      * {@code TEXT_DATA_UBO}).</p>
      */
     private static final CgShaderBuffer GPU_BUFFER = CgShaderBufferRegistry.get()
-            .getOrCreateInternal(GPU_BUFFER_NAME, INSTANCE_FORMAT, CgBindingPoints.QUAD_RENDERER);
+            .getOrCreateFrameLocalInternal(GPU_BUFFER_NAME, INSTANCE_FORMAT, CgBindingPoints.QUAD_RENDERER);
 
     /** Standalone CPU accumulation pair — bypasses {@link #GPU_BUFFER}'s own count-declared write session. */
     private final CgStagingBuffer accumStaging;

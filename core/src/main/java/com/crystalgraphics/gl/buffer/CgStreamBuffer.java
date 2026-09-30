@@ -9,6 +9,7 @@ import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 
 import java.nio.ByteBuffer;
+import java.nio.FloatBuffer;
 
 /**
  * A GL buffer rewritten while the GPU may still be reading earlier contents -- vertex streams, and the
@@ -25,6 +26,8 @@ import java.nio.ByteBuffer;
  *       &gt; {@link StreamBufferTier#SUBDATA}, always at offset 0 and readable until the next upload -- a material
  *       block written once is bound for many frames, and {@code glBindBufferBase}/{@code glTexBuffer} cannot take
  *       an offset.</li>
+ *   <li>{@link #createFrameLocal(int, int)} -- a <b>frame-local SSBO</b>, rewritten before every draw that
+ *       reads it: the vertex stream's ring tiers, bound by range at each upload's offset.</li>
  * </ul>
  *
  * <p>{@code -Dcrystalgraphics.stream.tier=persistent|ring|orphan|subdata} forces a tier -- for a driver that
@@ -169,6 +172,7 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
         // Small writes bypass map/unmap entirely — see SMALL_UPLOAD_THRESHOLD_BYTES.
         if (byteCount <= SMALL_UPLOAD_THRESHOLD_BYTES && uploadSmall(data, floatCount, byteCount)) {
             CgTrace.add(CgChannels.GL, profileSmallUploadName, 1);
+            committedBytes = byteCount;
             return 0;
         }
 
@@ -177,17 +181,49 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
         // it is a pipeline-wide problem, not a per-feature one, so the scopes are named by GL
         // target: a cost that shows up only under one target is a usage-pattern issue, while
         // one spread across all of them is the shared machinery.
-        java.nio.ByteBuffer mapped;
+        FloatBuffer out;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, profileMapName)) {
-            mapped = map(byteCount);
+            out = mapFloats(byteCount);
         }
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, profileWriteName)) {
-            mapped.asFloatBuffer().put(data, 0, floatCount);
+            out.put(data, 0, floatCount);
         }
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, profileCommitName)) {
             CgTrace.add(CgChannels.GL, profileBytesName, byteCount);
+            committedBytes = byteCount;
             return commit(byteCount);
         }
+    }
+
+    /**
+     * {@link #map} as floats, positioned at the first float to write. The view is kept while {@link #map}
+     * hands back the same object -- LWJGL does, for a mapping at the same address and size -- since a view
+     * per upload was the largest allocation on the frame thread.
+     */
+    protected FloatBuffer mapFloats(int sizeBytes) {
+        ByteBuffer mapped = map(sizeBytes);
+        if (mapped != floatSource) {
+            floatSource = mapped;
+            floatView = mapped.asFloatBuffer();
+        }
+        floatView.clear();
+        return floatView;
+    }
+
+    /** The mapping {@link #floatView} was made over. Compared by identity, never written through. */
+    private ByteBuffer floatSource;
+    private FloatBuffer floatView;
+
+    /** Size of the latest {@link #uploadFloats}: with {@link #getWriteOffset()}, the range a draw reads. */
+    @Getter
+    protected int committedBytes;
+
+    /**
+     * Whether each upload lands at a new offset, so a binding must say where: {@code glBindBufferRange},
+     * not {@code glBindBufferBase}. True on the frame ring.
+     */
+    public boolean offsetMovesPerUpload() {
+        return false;
     }
 
     /**
@@ -291,7 +327,8 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
      * Storage for a shader buffer (UBO, SSBO, TBO): every upload orphans and lands at offset 0, and stays
      * readable until the next one: {@link CgCapabilities#shaderStreamTier()}. Never a ring tier, on purpose: a
      * material block is written once and bound for many frames, {@code glBindBufferBase} reads at offset 0,
-     * and the TBO path runs exactly where {@code glTexBufferRange} is missing.
+     * and the TBO path runs exactly where {@code glTexBufferRange} is missing. The one exception is an SSBO
+     * read only in the frame that wrote it: {@link #createFrameLocal}.
      *
      * @param target        GL buffer target (e.g. {@code GL_UNIFORM_BUFFER}, {@code GL_SHADER_STORAGE_BUFFER})
      * @param capacityBytes initial GL buffer capacity in bytes
@@ -301,4 +338,35 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
                 ? new MapAndOrphanStreamBuffer(target, capacityBytes)
                 : new SubDataStreamBuffer(target, capacityBytes);
     }
+
+    /**
+     * Storage for a <b>frame-local</b> SSBO -- rewritten before every draw that reads it, and read in the
+     * frame that wrote it. That is the exception to {@link #createForShaderBuffer}'s rule: such a buffer
+     * never outlives its frame, and is bound by range at each upload's offset.
+     *
+     * <pre>{@code
+     * CgStreamBuffer storage = CgStreamBuffer.createFrameLocal(CgGL.GL_SHADER_STORAGE_BUFFER, bytes);
+     * int offset = storage.uploadFloats(data, count);
+     * CgGL.glBindBufferRange(CgGL.GL_SHADER_STORAGE_BUFFER, binding, storage.getGlBuffer(),
+     *         offset, storage.getCommittedBytes());   // the name too: the persistent tier replaces it on growth
+     * }</pre>
+     *
+     * <p>The frame ring on {@link StreamBufferTier#PERSISTENT} and {@link StreamBufferTier#RING}; otherwise,
+     * and for any target but {@code GL_SHADER_STORAGE_BUFFER}, {@link #createForShaderBuffer} -- so forcing
+     * {@code orphan} or {@code subdata} turns it off too. A TBO cannot take it: {@code glTexBuffer} reads
+     * from 0.</p>
+     */
+    public static CgStreamBuffer createFrameLocal(int target, int capacityBytes) {
+        StreamBufferTier tier = CgCapabilities.detect().vertexStreamTier();
+        if (target != CgGL.GL_SHADER_STORAGE_BUFFER
+                || (tier != StreamBufferTier.PERSISTENT && tier != StreamBufferTier.RING)) {
+            return createForShaderBuffer(target, capacityBytes);
+        }
+        // Sized for a frame's flushes up front: the ring doubles only once per frame, and each overflow
+        // before then is fresh storage.
+        return new FrameRingStreamBuffer(target, Math.max(capacityBytes, FRAME_LOCAL_START_BYTES),
+                tier == StreamBufferTier.PERSISTENT);
+    }
+
+    private static final int FRAME_LOCAL_START_BYTES = 256 << 10;
 }

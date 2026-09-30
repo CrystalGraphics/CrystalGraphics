@@ -16,6 +16,7 @@ stream buffers here are format-agnostic byte pipes.
 |---|---|---|---|
 | **Vertex stream** | `CgStreamBuffer.create(capacity)` | `PERSISTENT` > `RING` > `ORPHAN` > `SUBDATA` | on a ring tier, one frame: each upload at a new offset in this frame's region |
 | **Shader-buffer storage** | `CgStreamBuffer.createForShaderBuffer(target, capacity)` | `ORPHAN` > `SUBDATA` | until the next upload, always at offset 0 |
+| **Frame-local SSBO** | `CgStreamBuffer.createFrameLocal(target, capacity)` | `PERSISTENT` > `RING`, else as shader-buffer storage | one frame, bound by range (`glBindBufferRange`) at each upload's offset. Only for data uploaded before every draw that reads it — the quad and curve renderers' instances. SSBO only: `glTexBuffer` reads from 0 |
 
 | Tier | Class | Needs | What it costs |
 |---|---|---|---|
@@ -48,7 +49,8 @@ CgFrameRing (static clock)
 FrameRingStreamBuffer (PERSISTENT and RING)
 ├── one GL buffer = FRAMES regions; bump-allocated, 256-byte aligned
 ├── RING: map() → glMapBufferRange(UNSYNCHRONIZED | INVALIDATE_RANGE | FLUSH_EXPLICIT) at the cursor
-├── PERSISTENT: glBufferStorage + one coherent persistent map; map() returns a slice, commit() flushes nothing
+├── PERSISTENT: glBufferStorage + one coherent persistent map; map() returns a slice, uploadFloats writes
+│   through one float view of the whole mapping (rebuilt with it), commit() flushes nothing
 ├── commit() → the offset; the caller re-points its VAO (CgVertexArrayBinding)
 ├── an offset is valid only in the frame that committed it: FRAMES later its bytes are overwritten.
 │   Every caller draws straight after commit(); CgBatchRenderer's replay API, the one path that holds
@@ -107,7 +109,7 @@ CgQuadIndexBuffer (global singleton)
 
 | File | Role |
 |------|------|
-| `CgStreamBuffer.java` | Abstract base and both factories. Fields: `glBuffer`, `target`, `capacityBytes`, `writeOffset`. |
+| `CgStreamBuffer.java` | Abstract base and the three factories. Fields: `glBuffer`, `target`, `capacityBytes`, `writeOffset`. |
 | `CgFrameRing.java` | The frame clock: one fence per frame, `awaitRetired`. |
 | `FrameRingStreamBuffer.java` | The two ring tiers, persistent and mapped. |
 | `MapAndOrphanStreamBuffer.java` | The orphan tier: per upload, offset 0, small-write path. |

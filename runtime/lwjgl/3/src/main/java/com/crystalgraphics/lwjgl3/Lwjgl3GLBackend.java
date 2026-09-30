@@ -645,13 +645,13 @@ public class Lwjgl3GLBackend extends CgGLBackend {
     public int glGetInteger(int pname) {
         // Into a held buffer: LWJGL's own overload wraps a fresh IntBuffer on its stack per call, which is heap
         // garbage per query, and some queries run per draw.
-        GL11C.nglGetIntegerv(pname, INTEGER_SCRATCH_ADDRESS);
-        return INTEGER_SCRATCH.get(0);
+        GL11C.nglGetIntegerv(pname, SCRATCH_ADDRESS);
+        return MemoryUtil.memGetInt(SCRATCH_ADDRESS);
     }
 
-    /** GL thread only, as every query is. @see #glGetInteger(int) */
-    private static final IntBuffer INTEGER_SCRATCH = BufferUtils.createIntBuffer(1);
-    private static final long INTEGER_SCRATCH_ADDRESS = MemoryUtil.memAddress(INTEGER_SCRATCH);
+    /** Eight bytes every single-value query writes into. GL thread only, as every query is. @see #glGetInteger(int) */
+    private static final ByteBuffer SCRATCH = BufferUtils.createByteBuffer(8);
+    private static final long SCRATCH_ADDRESS = MemoryUtil.memAddress(SCRATCH);
 
     @Override
     public void glGetInteger(int pname, IntBuffer params) {
@@ -675,7 +675,8 @@ public class Lwjgl3GLBackend extends CgGLBackend {
 
     @Override
     public float glGetFloat(int pname) {
-        return GL11C.glGetFloat(pname);
+        GL11C.nglGetFloatv(pname, SCRATCH_ADDRESS);
+        return MemoryUtil.memGetFloat(SCRATCH_ADDRESS);
     }
 
     // -------------------------------------------------------------------------
@@ -887,12 +888,14 @@ public class Lwjgl3GLBackend extends CgGLBackend {
 
     @Override
     public boolean glIsQueryResultAvailable(int query) {
-        return GL15C.glGetQueryObjecti(query, GL15C.GL_QUERY_RESULT_AVAILABLE) != 0;
+        GL15C.nglGetQueryObjectiv(query, GL15C.GL_QUERY_RESULT_AVAILABLE, SCRATCH_ADDRESS);
+        return MemoryUtil.memGetInt(SCRATCH_ADDRESS) != 0;
     }
 
     @Override
     public long glGetQueryResultNanos(int query) {
-        return GL33C.glGetQueryObjectui64(query, GL15C.GL_QUERY_RESULT);
+        GL33C.nglGetQueryObjectui64v(query, GL15C.GL_QUERY_RESULT, SCRATCH_ADDRESS);
+        return MemoryUtil.memGetLong(SCRATCH_ADDRESS);
     }
 
     @Override

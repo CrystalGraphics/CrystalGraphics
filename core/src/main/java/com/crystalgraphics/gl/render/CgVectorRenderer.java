@@ -332,7 +332,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
      * to {@link #instanceBuffer()} rather than a field read.</p>
      */
     private static final CgShaderBuffer GPU_BUFFER = CgShaderBufferRegistry.get()
-            .getOrCreateInternal(GPU_BUFFER_NAME, INSTANCE_FORMAT, CgBindingPoints.CURVE_RENDERER);
+            .getOrCreateFrameLocalInternal(GPU_BUFFER_NAME, INSTANCE_FORMAT, CgBindingPoints.CURVE_RENDERER);
 
     /** Standalone CPU accumulation pair — per renderer instance, so callers batch independently. */
     private final CgStagingBuffer accumStaging;
