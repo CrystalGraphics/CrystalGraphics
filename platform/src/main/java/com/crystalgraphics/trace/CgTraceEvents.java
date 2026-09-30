@@ -1,5 +1,7 @@
 package com.crystalgraphics.trace;
 
+import java.util.Arrays;
+
 /**
  * The three arenas that are not zones: counters, markers and spans.
  *
@@ -29,11 +31,12 @@ final class CgTraceEvents {
 
     // ── Counters: a named number, one or more times per frame ────────────────────────────────
 
+    /** The ceiling. The arrays start smaller and double as they fill, so a quiet recording costs little. */
     private final int counterCapacity;
-    private final int counterMask;
-    final int[] counterName;
-    final long[] counterFrame;
-    final long[] counterValue;
+    private int counterMask;
+    int[] counterName;
+    long[] counterFrame;
+    long[] counterValue;
     long countersWritten;
 
     // ── Markers: an instant, optionally attributed ───────────────────────────────────────────
@@ -63,10 +66,11 @@ final class CgTraceEvents {
 
     CgTraceEvents(int counterCapacity, int markerCapacity, int spanCapacity) {
         this.counterCapacity = counterCapacity;
-        this.counterMask = counterCapacity - 1;
-        this.counterName = new int[counterCapacity];
-        this.counterFrame = new long[counterCapacity];
-        this.counterValue = new long[counterCapacity];
+        int initial = Math.min(counterCapacity, 1 << 12);
+        this.counterMask = initial - 1;
+        this.counterName = new int[initial];
+        this.counterFrame = new long[initial];
+        this.counterValue = new long[initial];
 
         this.markerCapacity = markerCapacity;
         this.markerMask = markerCapacity - 1;
@@ -94,6 +98,14 @@ final class CgTraceEvents {
      * There is no second concept here; a "sample" is a counter written more than once.</p>
      */
     synchronized void counter(int name, long frameIndex, long value) {
+        // GROWS BEFORE IT WRAPS: below the ceiling a slot is its own index, so a copy keeps the order.
+        if (countersWritten == counterName.length && counterName.length < counterCapacity) {
+            int grown = counterName.length * 2;
+            counterName = Arrays.copyOf(counterName, grown);
+            counterFrame = Arrays.copyOf(counterFrame, grown);
+            counterValue = Arrays.copyOf(counterValue, grown);
+            counterMask = grown - 1;
+        }
         long slot = countersWritten++;
         int at = (int) (slot & counterMask);
         counterName[at] = name;
@@ -141,7 +153,7 @@ final class CgTraceEvents {
     }
 
     long oldestCounter() {
-        return Math.max(0L, countersWritten - counterCapacity);
+        return Math.max(0L, countersWritten - counterName.length);
     }
 
     long oldestMarker() {

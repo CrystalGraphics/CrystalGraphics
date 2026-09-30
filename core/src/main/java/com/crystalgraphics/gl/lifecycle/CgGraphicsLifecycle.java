@@ -2,9 +2,7 @@ package com.crystalgraphics.gl.lifecycle;
 
 import com.crystalgraphics.demo.CgRenderDemo;
 import com.crystalgraphics.platform.gl.CgCapabilities;
-import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.platform.service.CgLifecycleService;
 import com.crystalgraphics.api.material.CgMaterialRegistry;
@@ -27,8 +25,13 @@ import com.crystalgraphics.NativeLoader;
 import com.crystalgraphics.text.render.CgTextRenderer;
 import com.crystalgraphics.text.render.CgTextRendererRegistry;
 import com.crystalgraphics.trace.CgGpuTrace;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 import lombok.Getter;
 import com.crystalgraphics.shadergraph.CgPreviewPool;
 
@@ -160,6 +163,11 @@ public final class CgGraphicsLifecycle {
 
     private CgGraphicsLifecycle() {}
 
+    /**
+     * Initializes engine GL resources that require an active GL context.
+     * Must be called once on the GL thread after context creation,
+     * before any material or fallback-texture usage.
+     */
     /**
      * Whether the GL context has been torn down and not explicitly re-initialised.
      *
@@ -310,6 +318,7 @@ public final class CgGraphicsLifecycle {
         CgFrameBufferRegistry.get().onResize(width, height);
         CgTextRendererRegistry.get().onResize(width, height);
         CgRenderPipeline.onSceneResize();
+
         currentWidth = width;
         currentHeight = height;
     }
@@ -371,7 +380,7 @@ public final class CgGraphicsLifecycle {
             ensureContext(w, h);
 
             CgGpuTrace.begin(GPU_OPAQUE);
-            try {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "world.opaque")) {
                 CgRenderDemo.INSTANCE.renderOpaque(partialTick, w, h, sourceFboId);
             } finally {
                 CgGpuTrace.end();
@@ -460,7 +469,7 @@ public final class CgGraphicsLifecycle {
         CgGL.fromHost();
         try {
             CgGpuTrace.begin(GPU_TRANSPARENT);
-            try {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "world.transparent")) {
                 CgRenderDemo.INSTANCE.renderTransparent();
             } finally {
                 CgGpuTrace.end();
