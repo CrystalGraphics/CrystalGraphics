@@ -1394,14 +1394,16 @@ public final class CgGL {
      * <p><b>Why the pair exists.</b> On OpenGL there is nothing to hand over: Minecraft and CrystalGraphics
      * share one context, and what changes hands is GL state, which scopes, invalidations and each host's own
      * repair already handle. Both calls do nothing there. A host that owns a Vulkan device is different, and
-     * Minecraft 26.2 is the first. It records its frame into a command buffer it owns, as a series of render
-     * passes of its own, and keeps every image in the layout its own tracking says it is in. Our draws must go
-     * into that same command buffer, between its passes and never inside one, and its images must be where it
-     * left them when it resumes. These two calls mark those moments:</p>
+     * Minecraft 26.2 is the first. It records its frame as a series of render passes of its own, and keeps
+     * every image in the layout its own tracking says it is in. Our draws go into command buffers of our own,
+     * taken from the host's pool and run in its submit after everything it recorded before the section, and
+     * its images must be where it left them when it resumes. These two calls mark those moments:</p>
      * <ul>
-     *   <li>{@code fromHost}: a device-backed backend takes the host's command buffer and current target.</li>
-     *   <li>{@link #toHost()}: it ends the render pass it opened and leaves the host's images as the host
-     *       expects. On the tracked backend today, this is where our open pass ends.</li>
+     *   <li>{@code fromHost}: a device-backed backend starts recording into its own command buffers, against
+     *       the host's current target.</li>
+     *   <li>{@link #toHost()}: it ends the render pass it opened, leaves the host's images as the host expects,
+     *       and hands its command buffers to the host's submit. On the tracked backend today, this is where our
+     *       open pass ends.</li>
      * </ul>
      *
      * <p>What is easy to get wrong:</p>

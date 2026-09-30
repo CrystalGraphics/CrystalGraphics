@@ -81,7 +81,8 @@ CgGL.init(platform.gl());
 texture as a GL name; `CgTexture2D.wrap` adopts it without owning it), `fromHost`/`toHost`, and
 `ownedByCurrentThread`. `CgGL` fronts each.
 
-**Host sections.** The host has control between our work, and every place it hands us control is a bracket:
+**Host sections.** A host section is a stretch of our work inside the host's frame: the host has control
+between them, and each one is bracketed where the host hands control to us and takes it back:
 
 ```java
 CgGL.fromHost();       // the host hands us its frame
@@ -92,11 +93,13 @@ try {
 }
 ```
 
-They exist for a host that owns a Vulkan device, Minecraft 26.2 first. It records its frame into its own
-command buffer as a series of its own render passes, so our draws have to go into that command buffer between
-its passes, and its images have to be where its tracking left them. `fromHost` is where a device-backed backend
-takes the command buffer and target, and `toHost` is where it ends our pass and hands them back. `CgGL.fromHost`'s
-javadoc has the full account.
+They exist for a host that owns a Vulkan device, Minecraft 26.2 first. It records its frame as a series of its
+own render passes, and its images have to be where its tracking left them when it resumes. A section records
+into command buffers of our own, from the host's pool, which run in the host's submit after everything it
+recorded before the section — never into the command buffer the host records into. `fromHost` is where a
+device-backed backend starts recording against the host's current target, and `toHost` is where it ends our
+pass, leaves the host's images as it expects, and hands our command buffers to its submit
+(`HostedVulkanHost`). `CgGL.fromHost`'s javadoc has the full account.
 
 - **Every host entry brackets itself**: `CgGraphicsLifecycle`'s `initContext`, `onResize`, `onOpaquePass`,
   `onTransparentPass` and `tickFrame`; the modern tree's world passes in `LifecycleModern`, around the target
