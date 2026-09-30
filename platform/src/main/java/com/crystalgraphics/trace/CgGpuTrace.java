@@ -258,6 +258,6 @@ public final class CgGpuTrace {
     }
 
     private static void count(int nameId) {
-        CgTrace.counter(GPU, nameId, 1L);
+        CgTrace.add(GPU, nameId, 1L);
     }
 }
