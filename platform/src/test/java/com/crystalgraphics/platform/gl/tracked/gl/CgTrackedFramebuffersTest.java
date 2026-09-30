@@ -107,6 +107,18 @@ public class CgTrackedFramebuffersTest {
         assertEquals(24, gl.getFramebufferAttachmentParameteriv(CgGL.GL_FRAMEBUFFER, CgGL.GL_DEPTH_ATTACHMENT, 0x8216));
         assertEquals(CgGL.GL_RENDERBUFFER, gl.getFramebufferAttachmentParameteriv(CgGL.GL_FRAMEBUFFER,
                 CgGL.GL_STENCIL_ATTACHMENT, CgGL.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE));
+        assertEquals("unsigned normalized", 0x8C17, gl.getFramebufferAttachmentParameteriv(CgGL.GL_FRAMEBUFFER,
+                CgGL.GL_DEPTH_ATTACHMENT, CgGL.GL_FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE));
+
+        fboWith(texture(8));
+        int floatDepth = gl.glGenTextures();
+        gl.glBindTexture(CgGL.GL_TEXTURE_2D, floatDepth);
+        gl.glTexImage2D(CgGL.GL_TEXTURE_2D, 0, CgGL.GL_DEPTH_COMPONENT32F, 8, 8, 0, CgGL.GL_DEPTH_COMPONENT,
+                CgGL.GL_FLOAT, (ByteBuffer) null);
+        gl.framebufferTexture2D(CgGL.GL_FRAMEBUFFER, CgGL.GL_DEPTH_ATTACHMENT, CgGL.GL_TEXTURE_2D, floatDepth, 0);
+        assertEquals("Minecraft 26.2's depth, which a snapshot must match", CgGL.GL_FLOAT,
+                gl.getFramebufferAttachmentParameteriv(CgGL.GL_FRAMEBUFFER, CgGL.GL_DEPTH_ATTACHMENT,
+                        CgGL.GL_FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE));
     }
 
     @Test

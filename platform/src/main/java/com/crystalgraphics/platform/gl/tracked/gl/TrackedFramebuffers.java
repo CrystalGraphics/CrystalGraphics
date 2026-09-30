@@ -32,6 +32,7 @@ public final class TrackedFramebuffers {
     private static final int GL_INCOMPLETE_ATTACHMENT = 0x8CD6, GL_INCOMPLETE_MISSING_ATTACHMENT = 0x8CD7;
     private static final int GL_INCOMPLETE_DRAW_BUFFER = 0x8CDB, GL_INCOMPLETE_MULTISAMPLE = 0x8D56;
     private static final int GL_OBJECT_NAME = 0x8CD1, GL_TEXTURE_LEVEL = 0x8CD2, GL_CUBE_MAP_FACE = 0x8CD3;
+    private static final int GL_UNSIGNED_NORMALIZED = 0x8C17, GL_SIGNED_NORMALIZED = 0x8F9C;
     private static final int GL_TEXTURE_LAYER = 0x8CD4, GL_FRAMEBUFFER_DEFAULT = 0x8218, GL_TEXTURE = 0x1702;
     private static final int GL_RED_SIZE = 0x8212, GL_ALPHA_SIZE = 0x8215, GL_DEPTH_SIZE = 0x8216, GL_STENCIL_SIZE = 0x8217;
 
@@ -338,6 +339,8 @@ public final class TrackedFramebuffers {
             case GL_TEXTURE_LAYER: case GL_CUBE_MAP_FACE: return a == null ? 0 : a.layer;
             case GL_DEPTH_SIZE: return image == null ? 0 : depthBits(image.desc().format());
             case GL_STENCIL_SIZE: return image == null || !image.desc().format().hasStencil() ? 0 : 8;
+            // What a depth snapshot matches its format by: Minecraft 26.2's depth is a float.
+            case CgGL.GL_FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE: return image == null ? CgGL.GL_NONE : componentType(image.desc().format());
             default:
                 if (pname >= GL_RED_SIZE && pname <= GL_ALPHA_SIZE) return image == null ? 0 : colorBits(image.desc().format());
                 errors.invalidEnum("glGetFramebufferAttachmentParameteriv", pname);
@@ -352,6 +355,12 @@ public final class TrackedFramebuffers {
             case DEPTH32_FLOAT: case DEPTH32_FLOAT_STENCIL8: return 32;
             default: return 0;
         }
+    }
+
+    private static int componentType(CgFormat f) {
+        if (f.name().contains("FLOAT")) return CgGL.GL_FLOAT;
+        if (f.numeric() == CgFormat.Numeric.INT) return f.name().contains("UINT") ? CgGL.GL_UNSIGNED_INT : CgGL.GL_INT;
+        return f.name().contains("SNORM") ? GL_SIGNED_NORMALIZED : GL_UNSIGNED_NORMALIZED;
     }
 
     private static int colorBits(CgFormat f) {
