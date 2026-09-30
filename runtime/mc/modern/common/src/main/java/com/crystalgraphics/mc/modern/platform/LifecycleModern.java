@@ -62,18 +62,24 @@ public final class LifecycleModern {
     public static void opaquePass(float partialTick) {
         if (!glAvailable()) return;
         Minecraft mc = Minecraft.getInstance();
-        // THE MAIN TARGET, RE-BOUND. Fabulous graphics leaves one of its OIT targets bound, and the
-        // engine's passes would draw into whichever that was.
-        int mainFbo = bindMainTarget(mc);
-        worldDepth(true);
+        // The target and depth convention below are ours to set, so the bracket opens before them.
+        CgGL.fromHost();
         try {
-            CgGraphicsLifecycle.onOpaquePass(
-                    partialTick,
-                    Windows.of(mc).getWidth(),
-                    Windows.of(mc).getHeight(),
-                    mainFbo);
+            // THE MAIN TARGET, RE-BOUND. Fabulous graphics leaves one of its OIT targets bound, and the
+            // engine's passes would draw into whichever that was.
+            int mainFbo = bindMainTarget(mc);
+            worldDepth(true);
+            try {
+                CgGraphicsLifecycle.onOpaquePass(
+                        partialTick,
+                        Windows.of(mc).getWidth(),
+                        Windows.of(mc).getHeight(),
+                        mainFbo);
+            } finally {
+                worldDepth(false);
+            }
         } finally {
-            worldDepth(false);
+            CgGL.toHost();
         }
         // Off unless -Dcrystalgraphics.host.verify=true. @see HostStateVerifier
         HostStateVerifier.verify("opaque");
@@ -91,12 +97,17 @@ public final class LifecycleModern {
      */
     public static void transparentPass() {
         if (!glAvailable()) return;
-        bindMainTarget(Minecraft.getInstance());
-        worldDepth(true);
+        CgGL.fromHost();
         try {
-            CgGraphicsLifecycle.onTransparentPass();
+            bindMainTarget(Minecraft.getInstance());
+            worldDepth(true);
+            try {
+                CgGraphicsLifecycle.onTransparentPass();
+            } finally {
+                worldDepth(false);
+            }
         } finally {
-            worldDepth(false);
+            CgGL.toHost();
         }
         HostStateVerifier.verify("transparent");
     }

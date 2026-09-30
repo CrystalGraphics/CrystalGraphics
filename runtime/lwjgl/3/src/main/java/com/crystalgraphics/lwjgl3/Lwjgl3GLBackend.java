@@ -752,8 +752,8 @@ public class Lwjgl3GLBackend extends CgGLBackend {
         return (Integer) hostHandle;
     }
 
-    @Override public void hostSectionBegin() {}
-    @Override public void hostSectionEnd() {}
+    @Override public void toHost() {}
+    @Override public void fromHost() {}
 
     @Override
     public boolean ownedByCurrentThread() {

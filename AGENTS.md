@@ -70,9 +70,13 @@ submodule (`gl-debug-harness/`, Java 25) and runs from CrystalGUI's root; author
 ./gradlew :gl-debug-harness:runHarness --args="--mode=text-3d"                # Full text pipeline
 ./gradlew :gl-debug-harness:runHarness --args="--mode=capability-report"      # GL capability probe
 ./gradlew :gl-debug-harness:runHarness --args="--mode=shader-compile-audit"   # every shipped .shader + keyword variant
+./gradlew :gl-debug-harness:runHarness --args="--mode=cgui-desktop --device=vulkan"  # any scene on the Vulkan device
 # Outputs land in gl-debug-harness/harness-output/{scene}/
 ```
 
+- The harness is LWJGL 3 and GLFW. `--device=gl` (the default) is `Lwjgl3GLBackend`; `--device=tracked` the
+  tracked backend over a recording device; `--device=vulkan` over `CgVulkanDevice` and `OwnedVulkanHost`, with
+  validation on unless `-Dcrystalgraphics.harness.vulkanValidation=false`. Its `AGENTS.md` has the rest.
 - Never call raw GL — use `CgVertexArray`, `CgStreamBuffer`, `CgTexture`, `CgFrameBuffer`, etc.
 - Implement `HarnessSceneLifecycle` (managed, single frame) or `InteractiveSceneLifecycle` (loop + camera),
   and register the scene in `SceneRegistry.createDefault()` — or, for a project on top of CrystalGraphics,
@@ -116,14 +120,21 @@ The build view (Java levels, toolchains, what a consumer build includes) is `doc
 This is the load-bearing architectural law. Read it before writing code that touches GL or a host.
 
 ```
-platform/        ← the SPI: CgGLBackend, CgGLContext, the services, CgService slots
+platform/        ← the SPI: CgGLBackend, CgGLContext, the services, CgService slots;
+                   and CgTrackedGLBackend, GL's semantics over a CgDevice
     ↑
 core/            ← rendering logic — calls CgGL and CgPlatform.lifecycle() etc.
     ↑
-runtime/lwjgl/*  ← tier 1: the GL backend, context and input per LWJGL
+runtime/lwjgl/*  ← tier 1: the GL backend, context and input per LWJGL; CgVulkanDevice
     ↑
 runtime/mc/*     ← a host: registers a bundle over tier 1, adds what names Minecraft
 ```
+
+**`CgGLBackend` is the seam, and `CgGL`'s 132 methods keep GL's semantics on every backend.** A GL backend
+calls the driver; `CgTrackedGLBackend` answers the same calls on a `CgDevice` — `CgVulkanDevice` in the
+harness's `--device=vulkan`, a recording device in tests. Three additions live inside a host on either:
+`importHostTexture`, `fromHost`/`toHost` (the bracket around every host entry — nothing on GL), and
+`ownedByCurrentThread`. The platform guide has each, and the tracked backend's rules.
 
 ```java
 // In core/ — never a raw GL call, never an LWJGL import:
@@ -1015,6 +1026,11 @@ CgGraphicsLifecycle.ensureContext(width, height);
 > VAOs must be deleted **before** VBOs — this is why steps 1-3 are strictly ordered.  
 > Violating the order produces stale GPU state and silent corruption.
 
+> **The backend closes last, and not in `destroyContext()`.** Every deletion above goes through it, and a
+> device releases memory when its frames retire, so whoever built a device-backed backend closes it after:
+> the harness closes `CgVulkanDevice`, then its `OwnedVulkanHost` (`PlatformServiceHarness.shutdown`). A GL
+> context dies with its window.
+
 ## Registry Overview
 
 All registries are **singletons accessed via `.get()`**. You normally interact with them through the high-level API (e.g. `CgMaterial.load()`), not directly. Know they exist for debugging and teardown.
@@ -1137,6 +1153,10 @@ All 35 package guides under `src/main/java/com/crystalgraphics/`. Relative paths
 
 The layer that wires CrystalGraphics into each Minecraft. Read it when debugging frame timing, hot
 reload, or GL state shared with Minecraft and other mods. Each host's classes: its own `AGENTS.md`.
+
+**Every hook below is a host section's bracket**: `CgGraphicsLifecycle`'s entries open one with
+`CgGL.fromHost()` and close it with `toHost()`, and a host's own bracket around them nests.
+Nothing on GL; the platform guide's *Host sections* has the rules.
 
 ## 1.7.10 — `runtime/mc/1710`
 

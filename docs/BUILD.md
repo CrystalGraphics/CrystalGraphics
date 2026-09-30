@@ -35,6 +35,7 @@ downgraded to Java 8 because FML 1.7.10 reads every class in it with ASM 5. Deta
 | `platform/` | the SPI: `CgPlatform`, `CgPlatformService` (closed bundle), `CgService` (open slots) | 25, + Java 8 copy |
 | `core/` | all rendering; names no Minecraft, loader or LWJGL type | 25, + Java 8 copy |
 | `runtime/lwjgl/2`, `runtime/lwjgl/3` | tier 1: GL backend, context, input, cursor per LWJGL; no Minecraft | 25, + Java 8 copy |
+| `runtime/lwjgl/vulkan` | tier 1 for Vulkan: `CgVulkanDevice`, its hosts, the shaderc compiler; LWJGL 3.4.1, `compileOnly`. Used by the harness's `--device=vulkan`; not in the shipped jar and not published | 25, + Java 8 copy |
 | `freetype-msdfgen-harfbuzz-bindings/` | JNI text shaping | 8 |
 | `runtime/mc/shared/` | variant selector, `LoaderProbe`, `CrashVariant`, mixin-plugin base; merged once, never relocated | 8 |
 | `runtime/mc/forge-bootstrap/` + `forge-stubs/` | the one `@Mod` class for every Forge 1.8+ | 8 |
