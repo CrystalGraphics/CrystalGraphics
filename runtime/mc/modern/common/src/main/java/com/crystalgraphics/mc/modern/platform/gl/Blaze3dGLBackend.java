@@ -237,6 +237,12 @@ public final class Blaze3dGLBackend extends Lwjgl3GLBackend {
             else GlStateManager._disableBlend(i);
         }
     }
+
+    // 26.2 caches the equation beside the factors and skips a call its cache already matches.
+    @Override
+    public void glBlendEquationSeparate(int modeRGB, int modeAlpha) {
+        GlStateManager._blendEquationSeparate(modeRGB, modeAlpha);
+    }
     *///?}
 
     //? if >=26.1 {
