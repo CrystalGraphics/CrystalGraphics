@@ -8,9 +8,12 @@ import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.api.buffer.CgObjectBuffer;
 import com.crystalgraphics.api.shader.CgShader;
+import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgStreamBuffer;
 import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
 import com.crystalgraphics.gl.buffer.staging.CgStagingBuffer;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 import lombok.Getter;
 
 import java.util.Objects;
@@ -459,17 +462,66 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
     protected void deleteGlResources() {}
 
     /**
-     * Uploads {@code floatCount} floats from {@code data} to the GPU via the stream buffer.
-     * Called by {@link #endWrite()}, {@link #uploadRaw} and {@link CgUniformBuffer#upload()}.
+     * Uploads {@code floatCount} floats from {@code data} to the GPU via the stream buffer -- the one door every
+     * upload of every shader buffer passes: {@link #endWrite()}, {@link #uploadRaw} and
+     * {@link CgUniformBuffer#upload()}.
      *
-     * <p>A frame-local buffer is re-bound here, since its upload moved: a binding made before it -- as
-     * {@code CgRenderPipeline.prepareFrame()} binds the object buffer before a preview writes it -- still
-     * names the previous upload's bytes. Re-binding at every upload keeps the write-then-draw idiom correct
-     * with no bind at the caller.</p>
+     * <ul>
+     *   <li><b>Unchanged bytes are not sent again.</b> An upload of at most {@link #COMPARE_LIMIT_FLOATS} equal to
+     *       the last one is skipped -- the GPU already has it. A {@link CgBufferLifetime#FRAME} buffer is still
+     *       sent on its first upload of a frame, since its last copy sits in a region the ring reuses three frames
+     *       on. Larger uploads are streams, which change on nearly every upload and would pay a compare as long as
+     *       the copy it saves, so they are always sent.</li>
+     *   <li><b>A frame-local buffer is re-bound here</b>, skipped or not: a binding made before it -- as
+     *       {@code CgRenderPipeline.prepareFrame()} binds the object buffer before a preview writes it -- names
+     *       the previous upload's bytes. Re-binding keeps the write-then-draw idiom correct with no bind at the
+     *       caller.</li>
+     * </ul>
      */
     protected final void uploadData(float[] data, int floatCount) {
+        boolean ring = dataBuffer.offsetMovesPerUpload();
+        long frame = CgFrameRing.frame();
+        boolean small = floatCount <= COMPARE_LIMIT_FLOATS;
+        if (small && sameAsUploaded(data, floatCount) && (!ring || uploadedFrame == frame)) {
+            CgTrace.add(CgChannels.GL, UPLOAD_SKIPPED, 1);
+            if (ring) bindInternal();
+            return;
+        }
+        CgTrace.add(CgChannels.GL, UPLOAD_SENT, 1);
         dataBuffer.uploadFloats(data, floatCount);
-        if (dataBuffer.offsetMovesPerUpload()) bindInternal();
+        uploadedFrame = frame;
+        if (small) {
+            if (uploaded.length < floatCount) uploaded = new float[floatCount];
+            System.arraycopy(data, 0, uploaded, 0, floatCount);
+            uploadedCount = floatCount;
+        } else {
+            uploadedCount = -1;   // a later small upload compares against nothing stale
+        }
+        if (ring) bindInternal();
+    }
+
+    /**
+     * Uploads up to this many floats (4 KB) are compared with the last one: every uniform block, and a small SSBO.
+     * A compare costs about what the copy it saves does, so it only pays where uploads repeat -- blocks do, instance
+     * streams almost never.
+     */
+    public static final int COMPARE_LIMIT_FLOATS = 1024;
+
+    private static final int UPLOAD_SENT = CgTrace.name("shaderBuffer.upload");
+    private static final int UPLOAD_SKIPPED = CgTrace.name("shaderBuffer.uploadSkipped");
+
+    /** The last small upload and the frame of the last upload: what {@link #uploadData} compares against. */
+    private float[] uploaded = new float[0];
+    private int uploadedCount = -1;
+    private long uploadedFrame = -1;
+
+    // Bit for bit: -0 against 0, or a NaN payload, is a change a shader could see.
+    private boolean sameAsUploaded(float[] data, int count) {
+        if (count != uploadedCount) return false;
+        for (int i = 0; i < count; i++) {
+            if (Float.floatToRawIntBits(data[i]) != Float.floatToRawIntBits(uploaded[i])) return false;
+        }
+        return true;
     }
 
 

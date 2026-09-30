@@ -206,12 +206,23 @@ public final class CgMaterialProperty {
 
     // ── Value setters ─────────────────────────────────────────────────────────
 
-    public void set(float v)                             { floatValue[0] = (type == Type.RANGE) ? Math.max(rangeMin, Math.min(rangeMax, v)) : v; }
-    public void set(float x, float y)                    { floatValue[0] = x; floatValue[1] = y; }
-    public void set(float x, float y, float z)           { floatValue[0] = x; floatValue[1] = y; floatValue[2] = z; }
-    public void set(float x, float y, float z, float w)  { floatValue[0] = x; floatValue[1] = y; floatValue[2] = z; floatValue[3] = w; }
+    // Each setter answers whether the value moved, bit for bit, so a write of what is already there dirties nothing.
+    public boolean set(float v)                            { return put(0, (type == Type.RANGE) ? Math.max(rangeMin, Math.min(rangeMax, v)) : v); }
+    public boolean set(float x, float y)                   { return put(0, x) | put(1, y); }
+    public boolean set(float x, float y, float z)          { return put(0, x) | put(1, y) | put(2, z); }
+    public boolean set(float x, float y, float z, float w) { return put(0, x) | put(1, y) | put(2, z) | put(3, w); }
 
-    public void setInt(int v) {this.intValue = v;}
+    public boolean setInt(int v) {
+        if (intValue == v) return false;
+        intValue = v;
+        return true;
+    }
+
+    private boolean put(int i, float v) {
+        if (Float.floatToRawIntBits(floatValue[i]) == Float.floatToRawIntBits(v)) return false;
+        floatValue[i] = v;
+        return true;
+    }
     public void setTexture(int unit, CgTexture texture)  { this.samplerUnit = unit; this.samplerTexture = texture; }
 
     /** Sets the Range bounds. Use alongside {@link #set(float)} to set both bounds and current value. */

@@ -5,7 +5,6 @@ import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.shader.CgShader;
-import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
 import com.crystalgraphics.platform.gl.CgGL;
 
@@ -116,11 +115,10 @@ public final class CgUniformBuffer extends CgShaderBuffer {
     }
 
     /**
-     * Uploads what {@link #writer()} holds, unless the GPU already has it: bytes equal to the last upload are
-     * not sent again -- a property write marks a block dirty whether or not a value moved, and in the UI 79% of
-     * block uploads carried the bytes already there. A {@link CgBufferLifetime#FRAME} block is still sent on the
-     * first upload of each frame: its last copy sits in a region the ring reuses three frames on. A no-op if the
-     * writer cursor is 0.
+     * Uploads what {@link #writer()} holds, unless the GPU already has it: bytes equal to the last upload are not
+     * sent again, except a {@link CgBufferLifetime#FRAME} block's first upload of a frame -- see
+     * {@link CgShaderBuffer#uploadData}, which every shader buffer's uploads pass. A no-op if the writer cursor
+     * is 0.
      *
      * <p>Call {@link #endRecord()} first to finalize the record.</p>
      *
@@ -130,28 +128,7 @@ public final class CgUniformBuffer extends CgShaderBuffer {
         if (isDeleted()) throw new IllegalStateException("CgUniformBuffer has been deleted");
         int floatCount = writer().rawCursor();
         if (floatCount == 0) return;
-        float[] data = writer().rawData();
-        long frame = CgFrameRing.frame();
-        if (sameAsUploaded(data, floatCount) && (!isOnFrameRing() || uploadedFrame == frame)) return;
-        uploadData(data, floatCount);
-        if (uploaded.length < floatCount) uploaded = new float[floatCount];
-        System.arraycopy(data, 0, uploaded, 0, floatCount);
-        uploadedCount = floatCount;
-        uploadedFrame = frame;
-    }
-
-    /** The block as last sent, and the frame it was sent in: what {@link #upload()} compares against. */
-    private float[] uploaded = new float[0];
-    private int uploadedCount = -1;
-    private long uploadedFrame = -1;
-
-    // Bit for bit: -0 against 0, or a NaN payload, is a change a shader could see.
-    private boolean sameAsUploaded(float[] data, int count) {
-        if (count != uploadedCount) return false;
-        for (int i = 0; i < count; i++) {
-            if (Float.floatToRawIntBits(data[i]) != Float.floatToRawIntBits(uploaded[i])) return false;
-        }
-        return true;
+        uploadData(writer().rawData(), floatCount);
     }
 
     /**
