@@ -1,5 +1,8 @@
 package com.crystalgraphics.shadergraph;
 
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
+
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -100,6 +103,12 @@ public final class CgPreviewEmitter {
      * the same thing produce byte-identical source and therefore share one compiled program.</p>
      */
     public static Result emit(CgShaderGraph graph, String nodeId, String portId) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.SHADERGRAPH, "shadergraph.previewEmit")) {
+            return emitTraced(graph, nodeId, portId);
+        }
+    }
+
+    private static Result emitTraced(CgShaderGraph graph, String nodeId, String portId) {
         List<CgShaderProblem> errors = new ArrayList<>();
 
         CgShaderGraph.Instance instance = graph.instance(nodeId);

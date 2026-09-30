@@ -107,6 +107,7 @@ channels that register later.
 | `crystalgraphics.text` | shaping, line breaking, fonts, glyph generation and placement, the text renderer's draw | dense — thousands a frame on a busy screen |
 | `crystalgraphics.gl` | material binds, batches, stream buffers, the quad and curve renderers, the frame ring | dense |
 | `crystalgraphics.world` | the 3D world passes and the pipeline's phases | a handful a frame |
+| `crystalgraphics.shadergraph` | the shader graph's emitters and preview renderers | a few dozen a frame with a graph open |
 | `crystalgraphics.async` | background workers | varies |
 | `crystalgraphics.misc` | everything else; the harness's own frame phases | light |
 | `gpu` | `CgGpuTrace` timer queries | one per GPU zone |
@@ -347,7 +348,8 @@ CrystalGraphics' zones, by package — **before adding one, look here and in the
 | Text layout | text | line breaking, shaping, layout cache | `text/layout/CgLineBreaker`, `CgTextShaper`, `CgTextLayoutEngine`, `CgTextLayoutCache` |
 | Glyph supply | text, async | `registry.*`, generation, atlas growth and eviction, packing | `text/cache/CgFontRegistry`, `CgWorkerFontContext`, `text/atlas/*`, `text/msdf/CgMsdfGenerator` |
 | Text draw | text, gl | `glyph.*`, `draw.*`, `placementCache.*`, `gl.flush` | `text/render/CgTextRenderer`, `CgResolvedGlyphs` |
-| Materials | gl | `material.*`, `doBind.*` | `api/material/CgMaterial` |
+| Materials | gl | `material.*`, `doBind.*`; a compile split into `material.parse`, `.codegen`, `.preprocess`, `.glCompile` (or `.glSubmit` when deferred), `.depthAutoGen`, `.shadowAutoGen`; a deferred one under `material.submitRecompile`, then `.commit`/`.awaitPending`, and `.lateAutoGen` when a forward-only compile's depth or shadow pass is first asked for; `material.generated.hit/miss` counts | `api/material/CgMaterial`, `gl/material/CgMaterialShader`, `CgMaterialShaderRegistry` |
+| Shader graph | shadergraph, gpu | `shadergraph.emit`, `.previewEmit`; `preview.renderPending/render/draw`, `mainPreview.render/draw`; counters for what drew, was unchanged, is animated or still compiling; `gpu:preview.draw`, `gpu:mainPreview.draw` | `shadergraph/CgShaderEmitter`, `CgPreviewEmitter`, `CgPreviewRenderer`, `CgMainPreviewRenderer` |
 | Batching | gl | `batch.*`, `quadRenderer.*`, `curveRenderer.*`, stream buffer map/write/commit, `frameRing.wait` | `gl/render/*`, `gl/buffer/*` |
 | Texture arrays | gl | uploads, growth | `gl/texture/CgTexture2DArray` |
 | World | world, gpu | `world.opaque`, `world.transparent`, `pipeline.depthSnapshot/sort/uploadFrame/depthPrepass/forward/transparent`, command counts; `gpu:world.opaque/transparent` | `gl/lifecycle/CgGraphicsLifecycle`, `api/render/CgRenderPipeline` |
@@ -356,8 +358,12 @@ CrystalGraphics' zones, by package — **before adding one, look here and in the
 **Not instrumented** — zone these before any question that touches them: the three pass renderers'
 insides (`render/pipeline/CgForwardRenderer`, `CgTransparentRenderer`, `CgDepthPrepassRenderer` — per
 command bind and draw), mesh upload and loading (`gl/mesh/*`), framebuffer creation and blits beyond the
-depth snapshot, texture loading (`CgTextureManager`, `CgTextureIO`), shader compilation outside
-`material.recompile`, hot reload, and every host's own hooks (`runtime/mc/**`).
+depth snapshot, texture loading (`CgTextureManager`, `CgTextureIO`), raw `CgShader` compiles outside a
+material, hot reload, and every host's own hooks (`runtime/mc/**`).
+
+**A GPU zone's time is not always its own.** The first GPU zone of a frame absorbs whatever the GPU was still
+finishing: in the shader graph, `gpu:mainPreview.draw` read 9 ms, and with that draw switched off the same
+9 ms moved to `gpu:preview.draw`. Switch the suspect off and see where the time goes before believing it.
 
 ---
 

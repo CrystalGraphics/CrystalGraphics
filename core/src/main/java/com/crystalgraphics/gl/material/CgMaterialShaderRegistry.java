@@ -1,7 +1,9 @@
 package com.crystalgraphics.gl.material;
 
 import com.crystalgraphics.api.material.CgMaterial;
+import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.CgContentHash;
+import com.crystalgraphics.util.trace.CgChannels;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -71,9 +73,16 @@ public final class CgMaterialShaderRegistry {
         if (source == null || source.isEmpty())
             throw new IllegalArgumentException("Generated shader source must not be empty");
 
-        String key = GENERATED_PREFIX + CgContentHash.of(source);
+        String key;
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.generatedHash")) {
+            key = GENERATED_PREFIX + CgContentHash.of(source);
+        }
         CgMaterialShader existing = cache.get(key);
-        if (existing != null) return existing;
+        if (existing != null) {
+            CgTrace.add(CgChannels.GL, "material.generated.hit", 1);
+            return existing;
+        }
+        CgTrace.add(CgChannels.GL, "material.generated.miss", 1);
         CgMaterialShader asset = CgMaterialShader.createGenerated(key, source);
         cache.put(key, asset);
         return asset;

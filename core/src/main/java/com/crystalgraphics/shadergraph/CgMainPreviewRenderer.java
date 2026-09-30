@@ -14,6 +14,9 @@ import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlSlot;
 import com.crystalgraphics.platform.gl.state.CgGlState;
+import com.crystalgraphics.trace.CgGpuTrace;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 import org.joml.Matrix4f;
 
 import javax.annotation.Nullable;
@@ -81,6 +84,8 @@ public final class CgMainPreviewRenderer {
      * (orthographic — the picture is identical at any distance) but the distance at which a point camera
      * and a parallel one stop being distinguishable.</p>
      */
+    private static final int GPU_DRAW = CgGpuTrace.name("mainPreview.draw");
+
     private static final float CAMERA_DISTANCE = 64f;
 
     private final int size;
@@ -197,6 +202,14 @@ public final class CgMainPreviewRenderer {
     public CgTexture render(@Nullable CgShaderGraph graph, CgMasterNode master, CgPreviewMesh mesh,
                             float yaw, float pitch, float zoom, boolean lit, float aspect) {
         if (deleted) throw new IllegalStateException("This CgMainPreviewRenderer has been deleted");
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.SHADERGRAPH, "mainPreview.render")) {
+            return renderTraced(graph, master, mesh, yaw, pitch, zoom, lit, aspect);
+        }
+    }
+
+    @Nullable
+    private CgTexture renderTraced(@Nullable CgShaderGraph graph, CgMasterNode master, CgPreviewMesh mesh,
+                                   float yaw, float pitch, float zoom, boolean lit, float aspect) {
         if (!(aspect > 0f) || !Float.isFinite(aspect)) aspect = 1f;
 
         // A NULL graph is an ordinary editing state, not a caller error: `ShaderGraphBridge.toShaderGraph`
@@ -253,17 +266,30 @@ public final class CgMainPreviewRenderer {
                 && target != null;
         // An animated graph names a uniform rather than baking a value, so its source is byte-identical
         // frame to frame while its picture is not. Same carve-out CgPreviewRenderer documents.
-        if (unchanged && !renderedAnimated) return target.texture();
+        if (unchanged && !renderedAnimated) {
+            CgTrace.add(CgChannels.SHADERGRAPH, "mainPreview.unchanged", 1);
+            return target.texture();
+        }
+        CgTrace.add(CgChannels.SHADERGRAPH, unchanged ? "mainPreview.draw.animated" : "mainPreview.draw.changed", 1);
 
         if (target == null) target = new CgPreviewTarget("cg_main_preview", size, samples);
 
         CgMaterial material;
         try {
-            material = CgMaterial.fromSource(emitted.source());
-            drawInto(material, mesh, yaw, pitch, zoom, aspect);
-            // AFTER the draw, because that is what forces the compile: a material is compiled lazily on
-            // first bind, so asking before drawing always answers null.
+            material = readyMaterial(emitted.source());
+            if (material == null) {
+                // STILL COMPILING, and the frame does not wait: the last good material draws, at this camera.
+                CgTrace.add(CgChannels.SHADERGRAPH, "mainPreview.compiling", 1);
+                if (failed || heldMaterial == null) return failed ? drawFallback(mesh, yaw, pitch, zoom, aspect) : target.texture();
+                drawInto(heldMaterial, mesh, yaw, pitch, zoom, aspect);
+                return target.texture();
+            }
+            // Asked before the draw as well as after: a bind of a failed material compiles it again.
             lastDriverError = material.lastCompileError();
+            if (lastDriverError == null) {
+                drawInto(material, mesh, yaw, pitch, zoom, aspect);
+                lastDriverError = material.lastCompileError();
+            }
         } catch (RuntimeException broken) {
             // A preview is a convenience. One material that will not compile must not take the editor
             // down, nor be retried every frame — which is what rethrowing here would amount to.
@@ -446,7 +472,9 @@ public final class CgMainPreviewRenderer {
         CgFrameData frame = pipeline.getFrameData();
         copyCamera(frame, saved);
 
-        try (CgGlScope scope = CgGlState.save(CgGlSlot.FBO, CgGlSlot.PROGRAM, CgGlSlot.VIEWPORT,
+        CgGpuTrace.begin(GPU_DRAW);
+        try (CgTrace.Zone traced = CgTrace.zone(CgChannels.SHADERGRAPH, "mainPreview.draw");
+             CgGlScope scope = CgGlState.save(CgGlSlot.FBO, CgGlSlot.PROGRAM, CgGlSlot.VIEWPORT,
                 CgGlSlot.DEPTH, CgGlSlot.BLEND, CgGlSlot.CULL, CgGlSlot.VERTEX_INPUT,
                 CgGlSlot.TEXTURES)) {
 
@@ -474,6 +502,7 @@ public final class CgMainPreviewRenderer {
             // stays empty — the multisampled buffer holds the picture and nothing can sample it.
             target.resolve();
         } finally {
+            CgGpuTrace.end();
             // Unconditional: leaving the world pass on the preview camera is a failure with no exception
             // and no obvious cause.
             copyCamera(saved, frame);
@@ -542,6 +571,41 @@ public final class CgMainPreviewRenderer {
         objectBuffer.endWrite();
     }
 
+    /**
+     * The material for {@code source}, or null while the driver is still compiling it. The held one is kept while
+     * its source is -- it owns a property UBO, and an animated graph draws every frame -- and replaced only once
+     * the new one is ready.
+     */
+    @Nullable
+    private CgMaterial readyMaterial(String source) {
+        if (heldMaterial != null && source.equals(heldSource)) return heldMaterial;
+        if (compilingMaterial == null || !source.equals(compilingSource)) {
+            if (compilingMaterial != null) compilingMaterial.delete();
+            compilingMaterial = CgMaterial.fromSource(source);
+            compilingSource = source;
+        }
+        if (!compilingMaterial.prepare()) return null;
+        if (heldMaterial != null) heldMaterial.delete();
+        heldMaterial = compilingMaterial;
+        heldSource = compilingSource;
+        compilingMaterial = null;
+        compilingSource = null;
+        return heldMaterial;
+    }
+
+    @Nullable
+    private CgMaterial heldMaterial;
+
+    @Nullable
+    private String heldSource;
+
+    /** A newer source's material while the driver compiles it. @see #readyMaterial */
+    @Nullable
+    private CgMaterial compilingMaterial;
+
+    @Nullable
+    private String compilingSource;
+
     /** Built on first use and kept: switching back to a shape must not re-upload it. */
     private CgMesh meshFor(CgPreviewMesh mesh) {
         return meshes.computeIfAbsent(mesh, m -> CgMesh.upload(m.build(CgVertexFormat.SPATIAL)));
@@ -561,6 +625,12 @@ public final class CgMainPreviewRenderer {
         }
         for (CgMesh mesh : meshes.values()) mesh.delete();
         meshes.clear();
+        if (heldMaterial != null) heldMaterial.delete();
+        heldMaterial = null;
+        heldSource = null;
+        if (compilingMaterial != null) compilingMaterial.delete();
+        compilingMaterial = null;
+        compilingSource = null;
         renderedSource = null;
         renderedMesh = null;
         // Borrowed from CgMaterialRegistry, never owned here -- dropping the reference is the whole of it,

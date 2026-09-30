@@ -1,5 +1,8 @@
 package com.crystalgraphics.shadergraph;
 
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
+
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -163,6 +166,12 @@ public final class CgShaderEmitter {
 
     /** As above, in a given shading mode. @see Shading */
     public static Result emit(CgShaderGraph graph, CgMasterNode master, Shading shading) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.SHADERGRAPH, "shadergraph.emit")) {
+            return emitTraced(graph, master, shading);
+        }
+    }
+
+    private static Result emitTraced(CgShaderGraph graph, CgMasterNode master, Shading shading) {
         List<CgShaderProblem> errors = new ArrayList<>();
         String masterId = graph.outputId();
         if (masterId == null || graph.instance(masterId) == null) {
