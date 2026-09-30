@@ -2,6 +2,7 @@ package com.crystalgraphics.gl.lifecycle;
 
 import com.crystalgraphics.demo.CgRenderDemo;
 import com.crystalgraphics.platform.gl.CgCapabilities;
+import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlState;
@@ -160,11 +161,6 @@ public final class CgGraphicsLifecycle {
     private CgGraphicsLifecycle() {}
 
     /**
-     * Initializes engine GL resources that require an active GL context.
-     * Must be called once on the GL thread after context creation,
-     * before any material or fallback-texture usage.
-     */
-    /**
      * Whether the GL context has been torn down and not explicitly re-initialised.
      *
      * <p>What tells a <em>dead</em> resource from a <em>misused</em> one. Every registry is emptied by
@@ -176,6 +172,11 @@ public final class CgGraphicsLifecycle {
         return destroyed;
     }
 
+    /**
+     * Initializes engine GL resources that require an active GL context.
+     * Must be called once on the GL thread after context creation,
+     * before any material or fallback-texture usage.
+     */
     public static void initContext(int width, int height) {
         if (stoodDown) return;
         CgPlatform.gl().initContext();
@@ -185,22 +186,41 @@ public final class CgGraphicsLifecycle {
         // call, and a fixed-function call that beat the first probe would see false and reach a
         // backend that refuses it. Cached, so this costs one probe.
         CgCapabilities.detect();
-        // One scope for everything built below: pipeline targets, fallback textures, the text material's
-        // first bind. It runs inside the host's world pass, and left its bindings and render state behind.
-        try (CgGlScope ignored = CgGlState.saveAll()) {
-            resizeTargets(width, height);
-            CgRenderPipeline.init();
-            CgFallbackTextures.init();
-            warmUpDeferredStartupCosts();
+
+        inOwnDepthConvention(() -> {
+            // One scope for everything built below: pipeline targets, fallback textures, the text
+            // material's first bind. It runs inside the host's world pass, and left its bindings and
+            // render state behind.
+            try (CgGlScope ignored = CgGlState.saveAll()) {
+                resizeTargets(width, height);
+                CgRenderPipeline.init();
+                CgFallbackTextures.init();
+                warmUpDeferredStartupCosts();
+            }
+
+            initialized = true;
+            destroyed = false;   // an explicit init is what makes a context live again
+
+            // Last, and after `initialized` is set: a listener may legitimately touch anything the
+            // engine just brought up (pipeline, fallback textures, capability probes), and may call back
+            // into isInitialized().
+            listeners.dispatch("onInit", l -> l.onInit(width, height));
+        });
+    }
+
+    /**
+     * Runs {@code body} with depth unmirrored, for work on our own targets: init and resize usually arrive
+     * inside a world pass, which on 26.2 mirrors every depth function and clear for Minecraft's reversed-Z
+     * world. @see CgGL#setDepthReversed
+     */
+    private static void inOwnDepthConvention(Runnable body) {
+        boolean reversed = CgGL.isDepthReversed(), zeroToOne = CgGL.isDepthZeroToOne();
+        CgGL.setDepthReversed(false);
+        try {
+            body.run();
+        } finally {
+            CgGL.setDepthReversed(reversed, zeroToOne);
         }
-
-        initialized = true;
-        destroyed = false;   // an explicit init is what makes a context live again
-
-        // Last, and after `initialized` is set: a listener may legitimately touch anything the
-        // engine just brought up (pipeline, fallback textures, capability probes), and may call back
-        // into isInitialized().
-        listeners.dispatch("onInit", l -> l.onInit(width, height));
     }
 
     /**
@@ -269,9 +289,11 @@ public final class CgGraphicsLifecycle {
         if (!CgGlState.manager().ownedByCurrentThread()) return;
 
         // Rebuilds screen-sized targets, binding textures and framebuffers as it goes; the host's come back.
-        try (CgGlScope ignored = CgGlState.saveAll()) {
-            resizeTargets(width, height);
-        }
+        inOwnDepthConvention(() -> {
+            try (CgGlScope ignored = CgGlState.saveAll()) {
+                resizeTargets(width, height);
+            }
+        });
     }
 
     private static void resizeTargets(int width, int height) {
