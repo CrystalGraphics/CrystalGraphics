@@ -196,7 +196,7 @@ def fingerprint(version_or_jar, libraries, only):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("versions", nargs="+", help="one version (with --facts) or two to compare")
+    ap.add_argument("versions", nargs="*", help="one version (with --facts) or two to compare; or use --jar")
     ap.add_argument("--jar", action="append", help="explicit client jars instead of versions, in order")
     ap.add_argument("--libraries", default=DEFAULT_LIBRARIES, help="Prism's library cache")
     ap.add_argument("--only", help="regex over class paths")
