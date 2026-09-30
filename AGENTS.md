@@ -1353,6 +1353,10 @@ archived in the private plan repository, `plan/crystalgraphics/archive/`.
                                                      # with tracked-vs-actual. Very slow — diagnosis only.
 -Dcrystalgraphics.state.noDedup=true                 # never eliminate a call; distinguishes "the shadow
                                                      # is lying" from a semantic regression in one run
+-Dcrystalgraphics.state.rereadEachScope=true         # every outermost scope re-reads what it declares,
+                                                     # inside a host section too -- the rule before section
+                                                     # trust; glState.adopt (zone, crystalgraphics.gl) times
+                                                     # the reads either way
 -Dcrystalgraphics.state.roundTrip=true               # read every scope's domains on open and after it
                                                      # restores, name any that differ; on 1.7.10 with
                                                      # Angelica also against the raw driver; and report
