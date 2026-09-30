@@ -64,6 +64,17 @@ public class CgTraceAddTest {
         assertEquals(Long.valueOf(1), counters(0).get("draws"));
     }
 
+    /** The launch property's list: each entry a prefix, blanks ignored, later channels taken too. */
+    @Test
+    public void aListOfPrefixesEnablesEachAndChannelsThatRegisterLater() {
+        CgTrace.resetForTesting();
+        CgTrace.enableAll(" test.add , ,test.later");
+        CgTraceChannel later = CgTrace.channel("test.later.sub");
+        assertTrue(CgTrace.isEnabled(CHANNEL));
+        assertTrue("a channel registered after the list did not take it", CgTrace.isEnabled(later));
+        CgTrace.enableAll(null);
+    }
+
     private static Map<String, Long> counters(long index) {
         Map<String, Long> out = new HashMap<>();
         for (CgFrameRecord frame : CgTrace.frames()) {
