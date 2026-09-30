@@ -766,7 +766,7 @@ public final class CgTrackedGLBackend extends CgGLBackend {
         if (q != null) tracker.release(q);
     }
 
-    @Override public void hostSectionBegin() { tracker.hostSectionBegin(); }
+    @Override public void toHost() { tracker.toHost(); }
 
-    @Override public void hostSectionEnd() { tracker.hostSectionEnd(); }
+    @Override public void fromHost() { tracker.fromHost(); }
 }

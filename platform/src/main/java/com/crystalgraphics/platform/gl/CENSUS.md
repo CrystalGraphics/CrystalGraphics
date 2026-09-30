@@ -6,7 +6,7 @@ it -- statically, with every Stonecutter branch counted as live. `platform` is t
 restores, the providers and the trace; `harness` is the GL debug harness, listed apart since it is a
 test application.
 
-**132 methods** (144 declarations with overloads): **119 reached** by core, CrystalGUI, the hosts or `platform`; **1 by the harness only**; **12 by nothing** -- `isAvailable`, `getPriority`, `glUniformMatrix4fv`, `glBindBufferRange`, `glTexSubImage2D`, `glGetTexImage`, `isContextCurrent`, `importHostTexture`, `hostSectionBegin`, `hostSectionEnd`, `ownedByCurrentThread`, `glTexImage2DMultisample`.
+**132 methods** (144 declarations with overloads): **119 reached** by core, CrystalGUI, the hosts or `platform`; **1 by the harness only**; **12 by nothing** -- `isAvailable`, `getPriority`, `glUniformMatrix4fv`, `glBindBufferRange`, `glTexSubImage2D`, `glGetTexImage`, `isContextCurrent`, `importHostTexture`, `toHost`, `fromHost`, `ownedByCurrentThread`, `glTexImage2DMultisample`.
 
 **What it orders** (D3.4): the tracked backend is built domain by domain in the order below, reached
 methods first within each. An unreached method is still built -- `CgGL` is public API outside mods
@@ -209,8 +209,8 @@ End our pass and hand the host its state back (D4 wires the brackets).
 
 | Method | via `CgGL` | core | CrystalGUI | hosts | platform | harness |
 |---|---|---:|---:|---:|---:|---:|
-| `hostSectionBegin` | `hostSectionBegin` |  |  |  |  |  |
-| `hostSectionEnd` | `hostSectionEnd` |  |  |  |  |  |
+| `toHost` | `toHost` |  |  |  |  |  |
+| `fromHost` | `fromHost` |  |  |  |  |  |
 
 ## Backend selection
 

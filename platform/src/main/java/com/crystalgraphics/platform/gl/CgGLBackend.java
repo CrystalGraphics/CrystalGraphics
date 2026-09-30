@@ -345,13 +345,27 @@ public abstract class CgGLBackend {
     public abstract int importHostTexture(Object hostHandle);
 
     /**
-     * Control goes back to the host: whatever of ours is in flight is finished and the host's state is left
-     * as it expects. Nothing on a GL backend, where the hosts' own brackets do that work.
+     * The host hands us its frame. Reached through {@link CgGL#fromHost()}, once per outermost bracket, which
+     * explains why the pair exists.
+     *
+     * <ul>
+     *   <li>A GL backend does nothing: the host's own brackets manage the shared context.</li>
+     *   <li>A device-backed backend takes what the host owns and we draw into, such as the command buffer it is
+     *       recording and its current target.</li>
+     * </ul>
      */
-    public abstract void hostSectionBegin();
+    public abstract void fromHost();
 
-    /** Control comes back to us after {@link #hostSectionBegin}. Nothing on a GL backend. */
-    public abstract void hostSectionEnd();
+    /**
+     * We hand the frame back. Reached through {@link CgGL#toHost()}, once, when the outermost bracket closes.
+     *
+     * <ul>
+     *   <li>A GL backend does nothing.</li>
+     *   <li>A device-backed backend ends any render pass it has open, so the host never records into ours, and
+     *       leaves the host's command buffer and images in the state the host's own tracking expects.</li>
+     * </ul>
+     */
+    public abstract void toHost();
 
     /**
      * Whether this thread may issue calls. On GL, the state manager's owner; on a device-backed backend, the

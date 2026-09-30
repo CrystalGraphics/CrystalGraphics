@@ -71,10 +71,37 @@ CgPlatform.provide(CgCursorService.SERVICE, new GlfwCursorService(windowHandle))
 
 ## Hosts and recording — the device seam's additions (D2)
 
-`CgGLBackend` has four methods for living inside a host, all trivial on GL and meaningful on the tracked
-backend to come: `importHostTexture` (a host texture as a GL name; `CgTexture2D.wrap` adopts it without
-owning it), `hostSectionBegin`/`hostSectionEnd` (control goes back to the host / comes back to us; nothing on
-GL), and `ownedByCurrentThread`. `CgGL` fronts each.
+`CgGLBackend` has four methods for living inside a host, all trivial on GL: `importHostTexture` (a host
+texture as a GL name; `CgTexture2D.wrap` adopts it without owning it), `fromHost`/`toHost`, and
+`ownedByCurrentThread`. `CgGL` fronts each.
+
+**Host sections.** The host has control between our work, and every place it hands us control is a bracket:
+
+```java
+CgGL.fromHost();       // the host hands us its frame
+try {
+    paint();
+} finally {
+    CgGL.toHost();     // and gets it back
+}
+```
+
+They exist for a host that owns a Vulkan device, Minecraft 26.2 first. It records its frame into its own
+command buffer as a series of its own render passes, so our draws have to go into that command buffer between
+its passes, and its images have to be where its tracking left them. `fromHost` is where a device-backed backend
+takes the command buffer and target, and `toHost` is where it ends our pass and hands them back. `CgGL.fromHost`'s
+javadoc has the full account.
+
+- **Every host entry brackets itself**: `CgGraphicsLifecycle`'s `initContext`, `onResize`, `onOpaquePass`,
+  `onTransparentPass` and `tickFrame`; the modern tree's world passes in `LifecycleModern`, around the target
+  and depth convention they set; and CrystalGUI's `HostSession.PaintHost.enter`/`leave` on every loader.
+- **Brackets nest**, and only the outermost pair reaches the backend, so a host's bracket may wrap a lifecycle
+  entry. A close with none open throws.
+- **Nothing on GL**, where the host's own repairs (`CgUiHostGl.leave`, the invalidations) do the work. On the
+  tracked backend the close ends our pass; a hosted device hands the host its command buffer and images there.
+- **A host's repair of its own state goes after the close**: it is the host's work, not ours.
+- **Never inside a recording**: `CgGlRecordingBackend` refuses both, so a recording holds no bracket and is
+  replayed inside one.
 
 **`CgGlRecording`** records a `CgGL` stream and replays it through `CgGL` later:
 
