@@ -57,8 +57,11 @@ public final class CgGpuTrace {
         UNSUPPORTED
     }
 
-    /** Queries unread before new zones are skipped rather than waited for. */
-    private static final int MAX_IN_FLIGHT = 256;
+    /**
+     * Queries unread before new zones are skipped rather than waited for. A frame timing each UI layer
+     * issues a couple of hundred, and results land one to three frames late.
+     */
+    private static final int MAX_IN_FLIGHT = 2048;
 
     /** Pushed for a zone that issued no query, so its end has nothing to stop. */
     private static final int UNMEASURED = -1;
@@ -255,6 +258,6 @@ public final class CgGpuTrace {
     }
 
     private static void count(int nameId) {
-        CgTrace.counter(GPU, nameId, 1L);
+        CgTrace.add(GPU, nameId, 1L);
     }
 }

@@ -592,7 +592,7 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "quadRenderer.flush")) {
             int instanceCount = accumStaging.vertexCount();
             CgTrace.add(CgChannels.GL, "quadRenderer.flush.count", 1);
-            CgTrace.counter(CgChannels.GL, "quadRenderer.instances", instanceCount);
+            CgTrace.add(CgChannels.GL, "quadRenderer.instances", instanceCount);
 
             try (CgTrace.Zone ignored2 = CgTrace.zone(CgChannels.GL, "quadRenderer.upload")) {
                 GPU_BUFFER.uploadRaw(accumStaging.rawData(), accumStaging.rawCursor());
