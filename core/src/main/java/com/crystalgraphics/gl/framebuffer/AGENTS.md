@@ -81,7 +81,6 @@ fbo.drawBuffers(0, 1, 2);  // slot INDICES, not GL_COLOR_ATTACHMENT0+n constants
 ```
 
 `drawBuffers(int... slotIds)` converts internally to `GL_COLOR_ATTACHMENT0 + n`.
-EXT backend always throws `UnsupportedOperationException`.
 
 ---
 
@@ -148,9 +147,10 @@ the mapped buffer measured 2-3 ms for a 256x144 picture.
 
 ## Adding a New Backend
 
+`CgCoreFrameBuffer` is the only owned implementation at the GL 3.3 floor. Another would:
+
 1. Extend `CgFrameBuffer` (package-private — no `public`).
 2. Add one package-private constructor `(String name, CgFrameBufferFormat format, int w, int h)` calling `super(name, format, w, h)`.
-3. Implement `callFamily()`.
-4. Implement all nine abstract dispatch methods (one line each).
-5. Override `bindDraw()`, `bindRead()`, and `drawBuffers()` if needed (EXT pattern).
-6. No factory methods needed — `CgFrameBuffer.createInternal()` handles backend selection.
+3. Implement all nine abstract dispatch methods (one line each).
+4. Override `bindDraw()`, `bindRead()`, and `drawBuffers()` if needed.
+5. Be chosen in `CgFrameBuffer.createInternal()`, which builds `CgCoreFrameBuffer` today; no factory methods of its own.
