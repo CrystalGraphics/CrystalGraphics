@@ -4,6 +4,7 @@ import com.crystalgraphics.demo.CgRenderDemo;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.gl.state.CgGlCensus;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.platform.service.CgLifecycleService;
@@ -364,6 +365,9 @@ public final class CgGraphicsLifecycle {
         // else-if could still call onResize on a context that is gone.
         if (destroyed || stoodDown) return;
 
+        // What the host handed us, before anything of ours runs. Off unless -Dcrystalgraphics.host.census;
+        // after the guard, because a stood-down host has no GL context to read.
+        CgGlCensus.at("opaque");
         CgGL.fromHost();
         try {
             CgGlState.invalidateAllIfPresent();
@@ -411,6 +415,7 @@ public final class CgGraphicsLifecycle {
 
         frameCounter++;
 
+        CgGlCensus.at("frame");
         CgGL.fromHost();
         try {
             // Frame boundary: trust nothing about GL state. Control was outside CrystalGraphics between
@@ -457,6 +462,7 @@ public final class CgGraphicsLifecycle {
         CgGlState.invalidateAllIfPresent();
 
         if (!initialized) return;
+        CgGlCensus.at("transparent");
         CgGL.fromHost();
         try {
             CgGpuTrace.begin(GPU_TRANSPARENT);

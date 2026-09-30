@@ -156,7 +156,7 @@ public final class LifecycleModern {
         // Meant to stay bound, for our passes and for Minecraft's next draw: handed over, not restored.
         try (CgGlScope ignored = CgGlState.handOver(CgGlSlot.FBO, CgGlSlot.VIEWPORT)) {
             int fbo = mainFbo(((GlTexture) main.getColorTexture()).glId(),
-                    main.getDepthTexture() == null ? 0 : ((GlTexture) main.getDepthTexture()).glId());
+                    main.getDepthTexture() == null ? 0 : ((GlTexture) main.getDepthTexture()).glId(), hasStencil(main));
             CgGL.glBindFramebuffer(GL30.GL_FRAMEBUFFER, fbo);
             CgGL.glViewport(0, 0, main.width, main.height);
             return fbo;
@@ -186,22 +186,36 @@ public final class LifecycleModern {
     }
     *///?}
 
+    // Whether the main target's depth carries stencil: vanilla's never does, NeoForge's does when a mod asks.
+    //? if >=26.2 {
+    /*private static boolean hasStencil(RenderTarget main) {
+        return main.getDepthTexture() != null && main.getDepthTexture().getFormat().hasStencilAspect();
+    }
+    *///?} elif >=26.1 {
+    /*private static boolean hasStencil(RenderTarget main) {
+        // NeoForge's DEPTH24_STENCIL8 and DEPTH32_STENCIL8; vanilla 26.1 has no stencil format to name.
+        return main.getDepthTexture() != null && main.getDepthTexture().getFormat().name().contains("STENCIL");
+    }
+    *///?}
+
     //? if >=26.1 {
     /*private static int mainFbo = -1;
     private static int mainColor;
     private static int mainDepth;
 
     // OUR framebuffer over the main target's two textures: from 26.1 Minecraft's own is kept on a
-    // package-private device (GlDevice). Attached as 26.2's FrameBufferCache attaches them -- depth to
-    // DEPTH_ATTACHMENT, never DEPTH_STENCIL, which the depth-snapshot blit's mask reads -- keyed on the
-    // two texture ids, and rebuilt when a resize replaces either. Through CgGL, so the shadow sees it.
-    private static int mainFbo(int color, int depth) {
+    // package-private device (GlDevice). Attached as Minecraft's FrameBufferCache attaches them -- depth
+    // alone, or depth and stencil when the texture has both (NeoForge's stencilled target), which is what
+    // the depth snapshot reads its format and blit mask from -- keyed on the two texture ids, and rebuilt
+    // when a resize replaces either. Through CgGL, so the shadow sees it.
+    private static int mainFbo(int color, int depth, boolean stencil) {
         if (mainFbo != -1 && mainColor == color && mainDepth == depth) return mainFbo;
         deleteMainFbo();
         mainFbo = CgGL.glGenFramebuffers();
         CgGL.glBindFramebuffer(GL30.GL_FRAMEBUFFER, mainFbo);
         CgGL.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL11.GL_TEXTURE_2D, color, 0);
-        CgGL.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL11.GL_TEXTURE_2D, depth, 0);
+        CgGL.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER,
+                stencil ? GL30.GL_DEPTH_STENCIL_ATTACHMENT : GL30.GL_DEPTH_ATTACHMENT, GL11.GL_TEXTURE_2D, depth, 0);
         mainColor = color;
         mainDepth = depth;
         CgGraphicsLifecycle.addListener(MAIN_FBO_OWNER);

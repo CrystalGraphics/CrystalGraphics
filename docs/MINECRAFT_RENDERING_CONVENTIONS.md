@@ -78,7 +78,7 @@ It carries NeoForge's patches, so a difference is checked against a NeoForge-pat
 | # | Convention | Vanilla | NeoForge | Where | Ours | Status |
 |---|---|---|---|---|---|---|
 | 20 | **Stencil state cached** | not cached from 1.21.5 (stencil left Blaze3D) | **cached again** — `_stencilFunc/Front/Back`, `_stencilOp…`, `_stencilMask` | NeoForge's patched `GlStateManager` | `Blaze3dGLBackend` routes stencil only below 1.21.5, so on NeoForge ours goes past the cache. Latent: every scope restores the driver value, and the round trip reports no leaks on any client. Routing it would be NeoForge-only code in `common`; do it if a stencil leak ever appears | recorded |
-| 21 | **Main target with stencil** (26.2) | depth only, `D32_FLOAT` | `MainTarget(w, h, stencil)`: when a mod asks, **`D32_FLOAT_S8_UINT`**, attached as stencil too | NeoForge's `MainTarget`, `DirectStateAccess.bindFrameBufferTextures(…, boolean)` | `LifecycleModern.mainFbo` attaches Minecraft's depth texture to `DEPTH_ATTACHMENT` only; `CgFrameBuffer.depthTypeOf` then reads no stencil and picks `DEPTH32F`, and the snapshot blit from a `D32F_S8` texture fails the format match again. Fix: attach to `DEPTH_STENCIL_ATTACHMENT` when the texture's format has stencil | **open** |
+| 21 | **Main target with stencil** (26.2) | depth only, `D32_FLOAT` | `MainTarget(w, h, stencil)`: when a mod asks, **`D32_FLOAT_S8_UINT`**, attached as stencil too | NeoForge's `MainTarget`, `DirectStateAccess.bindFrameBufferTextures(…, boolean)` | `LifecycleModern.mainFbo` attaches it to `DEPTH_STENCIL_ATTACHMENT` when the format has stencil (`GpuFormat.hasStencilAspect` on 26.2, the format's name on NeoForge 26.1), so the depth snapshot matches it; before, a depth-only attachment made the snapshot pick `DEPTH32F` and the blit fail the format match. Not yet run on a stencilled target: no mod in the test instances asks for one | adapted |
 
 ### Run time: the GL census, 2026-09-30
 
@@ -103,7 +103,6 @@ GUI paint back at −1..1 and 1.0), and found what no code diff could:
 
 ## 3. Open
 
-- **The census's permanent hooks.** The 2026-09-30 run added `CgGlCensus.at("opaque")`, `"transparent"` and
-  `"frame"` to `CgGraphicsLifecycle` for the run only; they go in for good with the host-section work in that
-  file (device-seam D4). CrystalGUI's `gui` hook is in (`CgUiPaintContext.beginFrame`).
-- **Row 21**, NeoForge 26.2's stencilled main target: the fix is in `LifecycleModern`, after the same work.
+Nothing. The census hooks are permanent: `opaque`, `transparent` and `frame` in `CgGraphicsLifecycle`, each after
+its stood-down guard (a stood-down host has no GL context to read), and CrystalGUI's `gui` in
+`CgUiPaintContext.beginFrame`.
