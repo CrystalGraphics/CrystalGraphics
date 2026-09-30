@@ -91,8 +91,11 @@ rendering, no exception, nowhere near the cause.
    raw LWJGL: omitting it left blending disabled and rendered every bitmap glyph as an opaque quad. It
    goes through `CgGL` now and needs none.
 
-3. **Trust never survives leaving our control.** An *outermost* `save()` re-reads unconditionally; only a
-   *nested* one may trust the shadow. Between two outermost scopes, Minecraft or another mod ran.
+3. **Trust never survives leaving our control.** An *outermost* `save()` outside a host section re-reads
+   unconditionally; only a *nested* one may trust the shadow. Between two such scopes, Minecraft or another
+   mod ran. **Inside a host section** (`CgGL.fromHost()` to `toHost()`) only our code touches GL: the outermost
+   `fromHost` forgets the shadow and `hostForeign` forgets it after host code, so every scope trusts what it
+   knows. A host brackets its whole frame — Minecraft's paint host, and the harness's frame loop.
 
 4. **A null `CgRenderState` slot means "leave alone", not "revert to baseline".** Callers legitimately
    configure ambient state *inside* a scope.

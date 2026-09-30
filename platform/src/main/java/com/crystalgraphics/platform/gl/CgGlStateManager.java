@@ -1,6 +1,8 @@
 package com.crystalgraphics.platform.gl;
 
 import com.crystalgraphics.platform.gl.state.CgGlGetProvider;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.trace.CgTraceChannel;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlSlot;
 import com.crystalgraphics.platform.gl.state.CgGlStateProvider;
@@ -45,10 +47,15 @@ import java.util.regex.Pattern;
  * better authority than the driver.</p>
  *
  * <h2>Trust does not survive leaving our control</h2>
- * <p>An <strong>outermost</strong> {@link #save} re-reads the named domains unconditionally; a
- * <strong>nested</strong> one may trust the shadow. Between two outermost scopes, Minecraft or another mod
- * ran, and anything could have written state through an API we cannot see. Adopting lazily at the outermost
- * level is exactly the bug that once disabled blending and rendered every glyph as an opaque block.</p>
+ * <p>An <strong>outermost</strong> {@link #save} outside a host section re-reads the named domains
+ * unconditionally; a <strong>nested</strong> one may trust the shadow. Between two such scopes, Minecraft or
+ * another mod ran, and anything could have written state through an API we cannot see. Adopting lazily there
+ * is exactly the bug that once disabled blending and rendered every glyph as an opaque block.</p>
+ *
+ * <p>Inside a host section ({@link CgGL#fromHost()} to {@link CgGL#toHost()}) only our code touches GL: the
+ * outermost {@code fromHost} forgets the shadow, host code run inside goes through {@code hostForeign}, which
+ * forgets it again, so even an outermost scope reads only what is untrusted. A host brackets its whole
+ * frame, or each outermost scope in it pays a {@code glGet} per declared domain.</p>
  *
  * <h2>Restore is not a second write path</h2>
  * <p>{@link #restore} re-issues through {@link CgGL}, so it goes through the same deduplication as any other
@@ -136,6 +143,19 @@ public final class CgGlStateManager {
      * of requiring a bisect. Also the support answer for a user with a broken modpack.</p>
      */
     private static final boolean NO_DEDUP = Boolean.getBoolean("crystalgraphics.state.noDedup");
+
+    /**
+     * Diagnostic switch: every outermost scope re-reads what it declares, inside a host section too.
+     * {@code -Dcrystalgraphics.state.rereadEachScope=true}
+     *
+     * <p>Rules out the trust a section gives, for a host that runs foreign GL inside one without
+     * {@code hostForeign}, and measures what that trust saves.</p>
+     */
+    private static final boolean REREAD_EACH_SCOPE = Boolean.getBoolean("crystalgraphics.state.rereadEachScope");
+
+    private static final CgTraceChannel GL = CgTrace.channel("crystalgraphics.gl");
+    private static final int ADOPT = CgTrace.name("glState.adopt");
+    private static final int ADOPT_COUNT = CgTrace.name("glState.adopt.count");
 
     /** {@code -Dcrystalgraphics.state.roundTrip=true}; null when off. @see RoundTrip */
     private final RoundTrip roundTrip = Boolean.getBoolean("crystalgraphics.state.roundTrip") ? new RoundTrip() : null;
@@ -931,11 +951,13 @@ public final class CgGlStateManager {
         f.foreign = foreign;
         f.handOver = handOver;
 
-        // Outermost: foreign code ran since we last knew anything, so re-read unconditionally. Nested: the
-        // enclosing scope already established truth. Trusting the shadow at the outermost level is the bug
-        // that once left blending disabled and every glyph an opaque block. A free provider is read at every
-        // depth: trust saves nothing there, and a host rebinding through its own manager defeats it.
-        boolean reread = depth == 1 || provider.isFree();
+        // Outermost and outside a host section: the host may have run since we last knew anything, so re-read
+        // unconditionally -- trusting the shadow there is the bug that once left blending disabled and every
+        // glyph an opaque block. Inside a section only our code touches GL: its outermost fromHost forgot the
+        // shadow, and hostForeign forgets it again, so an untrusted slot is all that needs reading. A free
+        // provider is read at every depth: trust saves nothing there, and a host rebinding through its own
+        // manager defeats it.
+        boolean reread = provider.isFree() || (depth == 1 && (REREAD_EACH_SCOPE || !CgGL.inHostSection()));
         for (CgGlSlot slot : slots) {
             int bit = 1 << slot.ordinal();
             if ((f.mask & bit) != 0) continue;
@@ -949,10 +971,13 @@ public final class CgGlStateManager {
 
     private void adopt(CgGlSlot slot) {
         adopting = true;
+        long t = CgTrace.stamp(GL);
         try {
             provider.read(slot, current);
         } finally {
             adopting = false;
+            CgTrace.zoneDone(GL, ADOPT, t);
+            CgTrace.add(GL, ADOPT_COUNT, 1);
         }
         unknownFields &= ~SLOT_FIELDS[slot.ordinal()];
         if (slot == CgGlSlot.TEXTURES) unknownUnits = 0;
@@ -1235,8 +1260,9 @@ public final class CgGlStateManager {
             if (f.handOver) return;
             f.unitsAtOpen = highestUnit + 1;
             if (f.before == null) f.before = new CgGlStateShadow();
-            // An outermost scope on plain glGet has just adopted every declared domain from the driver.
-            if (depth == 1 && provider == CgGlStateProvider.glGet()) f.before.copyFrom(f.saved);
+            // An outermost scope on plain glGet outside a host section has just adopted every declared domain
+            // from the driver; inside one it trusted the shadow, which is what this check exists to question.
+            if (depth == 1 && !CgGL.inHostSection() && provider == CgGlStateProvider.glGet()) f.before.copyFrom(f.saved);
             else read(CgGlStateProvider.glGet(), f.mask, f.before);
             if (driverReader != null) {
                 if (f.beforeDriver == null) f.beforeDriver = new CgGlStateShadow();

@@ -1414,6 +1414,9 @@ public final class CgGL {
      *       {@link #toHost()}. That work is the host's, not ours.</li>
      *   <li>Never inside a {@link CgGlRecording}: its backend refuses both. Record, and replay, inside a
      *       bracket.</li>
+     *   <li>Inside a section only our code touches GL, so the state shadow is trusted across scopes there;
+     *       the outermost {@code fromHost} forgets it, since the host had the context. Host code run inside
+     *       one goes through {@link CgGlState#hostForeign}, which forgets it again.</li>
      *   <li>Render thread only.</li>
      *   <li>The first one on a client installs the platform's backend, so it is where a failure to build one
      *       surfaces. @see CgPlatform#register</li>
@@ -1425,8 +1428,14 @@ public final class CgGL {
         if (fromHostDepth == 0) {
             installIfAbsent();
             backend.fromHost();
+            CgGlState.invalidateAllIfPresent();
         }
         fromHostDepth++;
+    }
+
+    /** Whether a host section is open: between an outermost {@link #fromHost()} and its {@link #toHost()}. */
+    public static boolean inHostSection() {
+        return fromHostDepth > 0;
     }
 
     /**
