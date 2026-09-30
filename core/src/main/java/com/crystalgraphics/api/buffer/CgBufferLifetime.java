@@ -30,7 +30,8 @@ package com.crystalgraphics.api.buffer;
  * <ul>
  *   <li>A {@link #FRAME} buffer read in a frame that did not upload it reads another frame's bytes: the ring
  *       reuses a region three frames on, while a draw may still read it. Nothing reports it -- the values are
- *       simply wrong. Upload before the draw, every frame; a {@code CgUniformBuffer} makes that cheap.</li>
+ *       simply wrong. Upload before the draw, every frame: an upload of unchanged bytes, up to 4 KB, is a
+ *       compare, so it is cheap.</li>
  *   <li>{@link #FRAME} costs nothing extra to ask for where it cannot apply: a TBO (the path below GL 4.3, where
  *       {@code glTexBuffer} reads from offset 0) and a stream tier forced to {@code orphan} or {@code subdata}
  *       both fall back to {@link #RETAINED}'s storage, which is correct for every use.</li>

@@ -161,7 +161,7 @@ public final class CgMaterial {
      */
     private CgUniformBuffer matPropsUbo = null;
 
-    /** Whether a property was written since the block was last packed -- whether or not its value moved. */
+    /** Whether a block-backed property's value moved since the block was last packed. */
     private boolean materialPropsDirty = true;
 
     /**
@@ -511,19 +511,26 @@ public final class CgMaterial {
     // ── Property bindings ─────────────────────────────────────────────────────
 
     /**
-     * Brings the properties block up to date for a bind: packed again after any property write, then
-     * {@link CgUniformBuffer#upload()}, which sends it only if the bytes moved -- a write marks the block dirty
-     * whether or not a value did, and in the UI 79% of uploads carried the bytes already there -- or if this is
-     * the frame's first bind, since the block lives on the frame ring.
+     * Brings the properties block up to date for a bind, doing the least it can -- in the UI 79% of block
+     * uploads once carried the bytes already there:
+     * <ul>
+     *   <li>repacked only after a property's value actually moved ({@link #applyProperties}), not after a write
+     *       of the same value or of a sampler;</li>
+     *   <li>then {@link CgUniformBuffer#upload()}, which sends it only if the bytes differ from the last upload,
+     *       or on the frame's first bind, since the block lives on the frame ring.</li>
+     * </ul>
      */
     private void syncProps() {
         if (materialPropsDirty) {
+            CgTrace.add(CgChannels.GL, PROPS_PACK, 1);
             propStore.writeUboProps(matPropsUbo.writer());
             matPropsUbo.endRecord();
             materialPropsDirty = false;
         }
         matPropsUbo.upload();
     }
+
+    private static final int PROPS_PACK = CgTrace.name("material.propsPack");
 
     /**
      * Sets material property values by name. Only Properties block declarations are accepted.
@@ -560,7 +567,8 @@ public final class CgMaterial {
             return this;
         }
         consumer.accept(propStore);
-        materialPropsDirty = true;
+        // Only a value that moved: rewriting the same opacity, or only a sampler, leaves the block as it is.
+        if (propStore.consumeBlockChanged()) materialPropsDirty = true;
         if (propStore.consumeSamplerUnitChanged()) wiredPrograms.clear();
         return this;
     }

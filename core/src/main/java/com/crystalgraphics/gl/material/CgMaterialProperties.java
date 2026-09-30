@@ -56,6 +56,13 @@ public final class CgMaterialProperties implements CgShaderBindings {
 
     /** Set when a sampler property's texture unit changes. Consumed by {@code CgMaterial.applyProperties}. */
     private boolean samplerUnitChanged = false;
+
+    /**
+     * Set when a block-backed property's value actually moves -- not on a write of what is already there, and never
+     * by a sampler, whose value is bound per draw rather than packed. Consumed by {@code CgMaterial.applyProperties},
+     * which repacks and re-uploads the block only then.
+     */
+    private boolean blockChanged = false;
    
 
     public CgMaterialProperties(List<CgMaterialProperty> all) {
@@ -134,14 +141,28 @@ public final class CgMaterialProperties implements CgShaderBindings {
         return v;
     }
 
+    /**
+     * Returns {@code true} and resets the flag if a block-backed property's value changed since the last call.
+     *
+     * <pre>{@code
+     * consumer.accept(props);
+     * if (props.consumeBlockChanged()) blockDirty = true;   // repack on the next bind
+     * }</pre>
+     */
+    public boolean consumeBlockChanged() {
+        boolean v = blockChanged;
+        blockChanged = false;
+        return v;
+    }
+
     // ── CgShaderBindings — float / int scalars ────────────────────────────────
 
     @Override
     public CgShaderBindings set1f(String name, float value) {
         CgMaterialProperty p = propsByName.get(name);
         if (p != null) {
-            if (p.getType() == CgMaterialProperty.Type.INT) p.setInt((int) value);
-            else p.set(value);
+            if (p.getType() == CgMaterialProperty.Type.INT) blockChanged |= p.setInt((int) value);
+            else blockChanged |= p.set(value);
         }
         return this;
     }
@@ -149,7 +170,7 @@ public final class CgMaterialProperties implements CgShaderBindings {
     @Override
     public CgShaderBindings set1i(String name, int value) {
         CgMaterialProperty p = propsByName.get(name);
-        if (p != null) p.setInt(value);
+        if (p != null) blockChanged |= p.setInt(value);
         return this;
     }
 
@@ -158,7 +179,7 @@ public final class CgMaterialProperties implements CgShaderBindings {
     @Override
     public CgShaderBindings vec2(String name, float x, float y) {
         CgMaterialProperty p = propsByName.get(name);
-        if (p != null) p.set(x, y);
+        if (p != null) blockChanged |= p.set(x, y);
         return this;
     }
 
@@ -176,7 +197,7 @@ public final class CgMaterialProperties implements CgShaderBindings {
                         "Only x, y, z will be updated — w retains its current value. " +
                         "Use vec4() to set all components.", name);
             }
-            p.set(x, y, z);
+            blockChanged |= p.set(x, y, z);
         }
         return this;
     }
@@ -189,7 +210,7 @@ public final class CgMaterialProperties implements CgShaderBindings {
     @Override
     public CgShaderBindings vec4(String name, float x, float y, float z, float w) {
         CgMaterialProperty p = propsByName.get(name);
-        if (p != null) p.set(x, y, z, w);
+        if (p != null) blockChanged |= p.set(x, y, z, w);
         return this;
     }
 

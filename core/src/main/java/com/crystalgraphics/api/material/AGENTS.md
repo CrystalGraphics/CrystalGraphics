@@ -89,7 +89,10 @@ material.applyProperties(b -> {
 ```
 Routes writes through the material's `CgMaterialProperties` instance (which implements
 `CgShaderBindings`). Values are stored persistently on the property objects and survive
-across frames until overwritten. Returns `this` for chaining. Unknown names are silently
+across frames until overwritten. The properties block is repacked on the next `bind()` only if a
+value actually moved — writing the same value again, or only a sampler, costs a comparison — and then
+uploaded only if its bytes differ from the last upload or it is the frame's first bind (counter
+`material.propsPack`). Returns `this` for chaining. Unknown names are silently
 ignored. Non-property operations (`mat4`, `ubo`, etc.) throw `UnsupportedOperationException`.
 
 **Safe to call before first `bind()`**: if `applyProperties()` is called before the shader

@@ -808,7 +808,8 @@ material.detachUbo("SceneParams");
 
 **Lifetime, not type, decides where a shader buffer lives** (`CgBufferLifetime`, passed to every factory; the ones
 without it mean `RETAINED`). `FRAME`: uploaded in every frame that reads it — the frame ring, no orphan and no
-driver rename, and a `CgUniformBuffer.upload()` of unchanged bytes this frame is a compare. `RETAINED`: readable
+driver rename. Any shader buffer's upload of at most 4 KB equal to the last one is skipped — for a `FRAME`
+buffer, once this frame already has it. `RETAINED`: readable
 until the next upload however many frames later — orphaning storage at offset 0. A `FRAME` buffer read in a frame
 that did not upload it reads another frame's bytes, with no error. Every buffer the engine owns is `FRAME`: the
 quad and curve instances, the object buffer, the material blocks (uploaded at every bind), the frame block
