@@ -63,8 +63,9 @@ public record CgParsedShader(String shaderType, List<CgMaterialProperty> propert
      * @return matching {@link CgParsedPass}, or {@code null}
      */
     public CgParsedPass getPassByName(String name) {
-        for (CgParsedPass pass : passes) {
-            if (pass.name().equals(name)) return pass;
+        // Indexed: asked per bind, and the iterator of an immutable list was a measured allocation there.
+        for (int i = 0; i < passes.size(); i++) {
+            if (passes.get(i).name().equals(name)) return passes.get(i);
         }
         return null;
     }
@@ -81,8 +82,8 @@ public record CgParsedShader(String shaderType, List<CgMaterialProperty> propert
      * @return matching {@link CgParsedPass}, or {@code null}
      */
     public CgParsedPass getPassByLightMode(String lightMode) {
-        for (CgParsedPass pass : passes) {
-            if (pass.lightMode().equals(lightMode)) return pass;
+        for (int i = 0; i < passes.size(); i++) {
+            if (passes.get(i).lightMode().equals(lightMode)) return passes.get(i);
         }
         return null;
     }

@@ -22,6 +22,7 @@ import com.crystalgraphics.util.trace.CgChannels;
 import org.joml.Matrix4f;
 
 import javax.annotation.Nullable;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.LinkedHashSet;
@@ -104,6 +105,21 @@ public final class CgPreviewRenderer {
     private final Map<String, CgPreviewGeometry> renderedGeometry = new LinkedHashMap<>();
     /** Insertion-ordered, so the round-robin is fair rather than dependent on hashing. */
     private final Set<String> dirty = new LinkedHashSet<>();
+
+    /** The last {@link #setVisible}, held so a frame can ask of it without being sent it again. */
+    private final List<String> visibleIds = new ArrayList<>();
+
+    /** nodeId → its key in the shared pool, built once: a render and a paint each ask, per node per frame. */
+    private final Map<String, String> poolKeys = new LinkedHashMap<>();
+
+    private String poolKey(String nodeId) {
+        String key = poolKeys.get(nodeId);
+        if (key == null) {
+            key = scope + nodeId;
+            poolKeys.put(nodeId, key);
+        }
+        return key;
+    }
 
     /**
      * nodeId → the material drawing it, kept while its source is. A material owns a property UBO, and a
@@ -200,6 +216,7 @@ public final class CgPreviewRenderer {
     public void invalidate(String nodeId) {
         failed.remove(nodeId);
         failureReasons.remove(nodeId);
+        emittedPreviews.remove(nodeId);
         dirty.add(nodeId);
     }
 
@@ -208,6 +225,7 @@ public final class CgPreviewRenderer {
         // Failures are cleared too: whatever was wrong may be exactly what just changed.
         failed.clear();
         failureReasons.clear();
+        emittedPreviews.clear();
         dirty.addAll(renderedSource.keySet());
     }
 
@@ -219,8 +237,11 @@ public final class CgPreviewRenderer {
      * anything at all rather than merely being drawn where nobody looks.</p>
      */
     public void setVisible(Set<String> visibleNodeIds) {
+        visibleIds.clear();
+        visibleIds.addAll(visibleNodeIds);
         Set<String> keep = new LinkedHashSet<>();
-        for (String visible : visibleNodeIds) keep.add(scope + visible);
+        poolKeys.keySet().retainAll(visibleNodeIds);
+        for (String visible : visibleNodeIds) keep.add(poolKey(visible));
         // WITHIN this renderer's namespace. The pool is shared, so an unscoped cull would release the
         // targets of every other open graph -- which would look like thumbnails going blank in a tab
         // nobody had touched.
@@ -228,6 +249,7 @@ public final class CgPreviewRenderer {
         renderedSource.keySet().retainAll(visibleNodeIds);
         renderedTarget.keySet().retainAll(visibleNodeIds);
         renderedGeometry.keySet().retainAll(visibleNodeIds);
+        emittedPreviews.keySet().retainAll(visibleNodeIds);
         dropMaterialsOutside(materials, visibleNodeIds);
         dropMaterialsOutside(compilingMaterials, visibleNodeIds);
         compiling.retainAll(visibleNodeIds);
@@ -274,6 +296,12 @@ public final class CgPreviewRenderer {
         dirty.addAll(animated);
         dirty.addAll(compiling);
         compiling.clear();
+        // A visible node that has never been drawn needs a first pass, asked here rather than only in setVisible so
+        // a caller need not re-send an unchanged set to get it -- invalidateAll clears a failure without re-marking.
+        for (int i = 0; i < visibleIds.size(); i++) {
+            String nodeId = visibleIds.get(i);
+            if (!renderedSource.containsKey(nodeId) && !failed.contains(nodeId)) dirty.add(nodeId);
+        }
         CgTrace.counter(CgChannels.SHADERGRAPH, "preview.animated", animated.size());
         CgTrace.counter(CgChannels.SHADERGRAPH, "preview.dirty", dirty.size());
         if (dirty.isEmpty()) return 0;
@@ -305,7 +333,7 @@ public final class CgPreviewRenderer {
 
     @Nullable
     private CgTexture renderTraced(CgShaderGraph graph, String nodeId) {
-        CgPreviewEmitter.Result emitted = CgPreviewEmitter.emit(graph, nodeId);
+        CgPreviewEmitter.Result emitted = emitted(graph, nodeId);
         if (!emitted.ok()) {
             failed.add(nodeId);
             failureReasons.put(nodeId, List.copyOf(emitted.problems()));
@@ -320,7 +348,7 @@ public final class CgPreviewRenderer {
         if (emitted.animated()) animated.add(nodeId);
         else animated.remove(nodeId);
 
-        CgPreviewTarget target = targets.acquire(scope + nodeId);
+        CgPreviewTarget target = targets.acquire(poolKey(nodeId));
 
         // Two conditions, and BOTH are needed — UNLESS the node is animated, in which case its picture
         // changes every frame with the source staying byte-identical (it names a uniform, it never bakes
@@ -382,6 +410,24 @@ public final class CgPreviewRenderer {
     }
 
     /**
+     * The node's emitted preview, reused while it is asked of the same graph. The emit is a pure function of the
+     * graph, and a Time-fed node asks every frame of a graph that only changes on an edit: the whole compile, per
+     * node per frame, was most of what an idle graph allocated.
+     */
+    private CgPreviewEmitter.Result emitted(CgShaderGraph graph, String nodeId) {
+        EmittedPreview held = emittedPreviews.get(nodeId);
+        if (held != null && held.graph() == graph) return held.result();
+        CgPreviewEmitter.Result result = CgPreviewEmitter.emit(graph, nodeId);
+        emittedPreviews.put(nodeId, new EmittedPreview(graph, result));
+        return result;
+    }
+
+    private record EmittedPreview(CgShaderGraph graph, CgPreviewEmitter.Result result) {
+    }
+
+    private final Map<String, EmittedPreview> emittedPreviews = new LinkedHashMap<>();
+
+    /**
      * The node's material for {@code source}, or null while the driver is still compiling it. A new source starts
      * a compile the frame does not wait for; the held material is replaced only once that one is ready.
      */
@@ -420,7 +466,7 @@ public final class CgPreviewRenderer {
     /** The texture already rendered for a node, or null. Never draws. */
     @Nullable
     public CgTexture textureOf(String nodeId) {
-        CgPreviewTarget target = targets.peek(scope + nodeId);
+        CgPreviewTarget target = targets.peek(poolKey(nodeId));
         return target == null ? null : target.texture();
     }
 
@@ -587,6 +633,9 @@ public final class CgPreviewRenderer {
         renderedSource.clear();
         renderedTarget.clear();
         renderedGeometry.clear();
+        emittedPreviews.clear();
+        visibleIds.clear();
+        poolKeys.clear();
         for (HeldMaterial held : materials.values()) held.material().delete();
         materials.clear();
         for (HeldMaterial held : compilingMaterials.values()) held.material().delete();

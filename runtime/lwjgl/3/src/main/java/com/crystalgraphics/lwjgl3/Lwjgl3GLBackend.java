@@ -2,6 +2,7 @@ package com.crystalgraphics.lwjgl3;
 
 import com.crystalgraphics.platform.gl.CgGLBackend;
 import com.crystalgraphics.platform.gl.state.CgGlState;
+import org.lwjgl.BufferUtils;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.opengl.*;
 import org.lwjgl.system.MemoryStack;
@@ -642,8 +643,15 @@ public class Lwjgl3GLBackend extends CgGLBackend {
 
     @Override
     public int glGetInteger(int pname) {
-        return GL11C.glGetInteger(pname);
+        // Into a held buffer: LWJGL's own overload wraps a fresh IntBuffer on its stack per call, which is heap
+        // garbage per query, and some queries run per draw.
+        GL11C.nglGetIntegerv(pname, INTEGER_SCRATCH_ADDRESS);
+        return INTEGER_SCRATCH.get(0);
     }
+
+    /** GL thread only, as every query is. @see #glGetInteger(int) */
+    private static final IntBuffer INTEGER_SCRATCH = BufferUtils.createIntBuffer(1);
+    private static final long INTEGER_SCRATCH_ADDRESS = MemoryUtil.memAddress(INTEGER_SCRATCH);
 
     @Override
     public void glGetInteger(int pname, IntBuffer params) {

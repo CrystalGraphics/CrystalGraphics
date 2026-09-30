@@ -1001,8 +1001,8 @@ public final class CgTrace {
     /** Total collector time this JVM has spent, in millis. A pause is charged to whatever was running. */
     static long gcMillis() {
         long total = 0L;
-        for (GarbageCollectorMXBean collector : ManagementFactory.getGarbageCollectorMXBeans()) {
-            long spent = collector.getCollectionTime();
+        for (int i = 0; i < COLLECTORS.length; i++) {
+            long spent = COLLECTORS[i].getCollectionTime();
             if (spent > 0L) total += spent;
         }
         return total;
@@ -1011,12 +1011,19 @@ public final class CgTrace {
     /** Collections this JVM has run, across every collector. */
     static long gcCount() {
         long total = 0L;
-        for (GarbageCollectorMXBean collector : ManagementFactory.getGarbageCollectorMXBeans()) {
-            long count = collector.getCollectionCount();
+        for (int i = 0; i < COLLECTORS.length; i++) {
+            long count = COLLECTORS[i].getCollectionCount();
             if (count > 0L) total += count;
         }
         return total;
     }
+
+    /**
+     * Fetched once: a JVM's collectors are fixed at startup, and each fetch builds new bean proxies with their
+     * names. Asked per frame, that was the profiler making garbage to count the garbage collector.
+     */
+    private static final GarbageCollectorMXBean[] COLLECTORS =
+            ManagementFactory.getGarbageCollectorMXBeans().toArray(new GarbageCollectorMXBean[0]);
 
     // ── Reading ─────────────────────────────────────────────────────────────────────────────
 

@@ -109,9 +109,11 @@ public final class CgMaterialProperties implements CgShaderBindings {
     /** Writes all non-sampler property values into the UBO writer as a single record. */
     public void writeUboProps(CgBufferWriter w) {
         w.reset().beginRecord();
-        for (CgMaterialProperty p : uboProps) p.writeToUbo(w);
+        // Indexed, here and in bindSamplerTextures: both run per bind, and an unmodifiable list's iterator is two
+        // objects a call that the JIT was not eliminating.
+        for (int i = 0; i < uboProps.size(); i++) uboProps.get(i).writeToUbo(w);
     }
-    
+
     /** Wires each sampler's texture-unit uniform assignment into {@code shader}. Shader must be bound. */
     public void wireSamplerUnits(CgShader shader) {
         for (CgMaterialProperty p : samplerProps) p.wireSamplerUnit(shader);
@@ -119,7 +121,7 @@ public final class CgMaterialProperties implements CgShaderBindings {
 
     /** Binds each sampler property's texture to its assigned texture unit. Called per-draw. */
     public void bindSamplerTextures() {
-        for (CgMaterialProperty p : samplerProps) p.bindSamplerTexture();
+        for (int i = 0; i < samplerProps.size(); i++) samplerProps.get(i).bindSamplerTexture();
     }
 
     /**

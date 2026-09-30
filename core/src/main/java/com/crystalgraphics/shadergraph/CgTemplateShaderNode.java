@@ -42,6 +42,9 @@ public final class CgTemplateShaderNode implements CgShaderNode {
     private final String id;
     private final String label;
     private final List<CgShaderPort> ports;
+    /** Filtered once: the compiler and the previews ask for them per node per emit, which is per frame. */
+    private final List<CgShaderPort> inputs;
+    private final List<CgShaderPort> outputs;
     private final String body;
     /** The {@code forPreview} form, or null when the ordinary body works in both. */
     private final String previewBody;
@@ -65,6 +68,8 @@ public final class CgTemplateShaderNode implements CgShaderNode {
         this.id = id;
         this.label = label;
         this.ports = List.copyOf(ports);
+        this.inputs = this.ports.stream().filter(CgShaderPort::isInput).toList();
+        this.outputs = this.ports.stream().filter(CgShaderPort::isOutput).toList();
         this.body = body;
         this.previewBody = previewBody;
         this.includes = Set.copyOf(includes);
@@ -77,6 +82,8 @@ public final class CgTemplateShaderNode implements CgShaderNode {
     @Override public String id() { return id; }
     @Override public String label() { return label; }
     @Override public List<CgShaderPort> ports() { return ports; }
+    @Override public List<CgShaderPort> inputs() { return inputs; }
+    @Override public List<CgShaderPort> outputs() { return outputs; }
     @Override public Set<String> includes() { return includes; }
     @Override public CgShaderDomain domain() { return domain; }
     @Override public CgPreviewGeometry previewGeometry() { return previewGeometry; }
