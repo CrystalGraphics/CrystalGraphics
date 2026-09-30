@@ -1263,6 +1263,7 @@ Design record and eight implementation corrections: `plan/gl-state-manager.md`.
 | Want | Where |
 |---|---|
 | **Any node's API, with no setup** | `python singlejar-logic/mcapi.py <Class> [member]` — which versions have it, and its signature on each |
+| **What a new version changed about the frame** | `python singlejar-logic/mcrender.py <previous> <new>` — depth direction, clear values, formats, GL calls, projection plane order, pipeline defaults, from the client jars (26.1 on). The run-time half is `-Dcrystalgraphics.host.census`. Findings go in the plan's `platform-host-conventions` register |
 | A modern node's decompiled sources | `./gradlew :runtime:mc:modern:<branch>:<version>:extractMcSources` → `runtime/mc/modern/<branch>/versions/<version>/build/mc-src/{java,resources}` (makes that node real; minutes the first time) |
 | 1.7.10's | `runtime/mc/1710/build/rfg/minecraft-src/java/`, after a build of that module |
 
@@ -1310,6 +1311,11 @@ archived in the private plan repository, `plan/crystalgraphics/archive/`.
                                                      # stay). Totals every 1000 scopes, via log4j; any
                                                      # count but 0 is a bug. Fits prodSmoke's 120 s run
                                                      # alone; four at a time, a client can miss it
+
+# The GL state a host hands us, per entry point, once (every host)
+-Dcrystalgraphics.host.census=true                   # opaque, transparent, gui, frame: ~90 values each on
+                                                     # the 120th visit (.at=N); singlejar-logic/census_diff.py
+                                                     # lays two clients side by side where they differ
 
 # Minecraft's own GL state cache (modern nodes)
 -Dcrystalgraphics.host.verify=true                   # after each pass, compare the driver against the host's
