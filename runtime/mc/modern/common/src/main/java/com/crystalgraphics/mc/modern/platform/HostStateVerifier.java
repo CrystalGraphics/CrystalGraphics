@@ -111,7 +111,8 @@ public final class HostStateVerifier {
     }
 
     public static void verify(String pass) {
-        if (!ENABLED) return;
+        // Under Vulkan there is no GL to compare: Blaze3dVulkanHost checks its own hand-overs.
+        if (!ENABLED || GraphicsApi.vulkan()) return;
         if (!verifiedOnce) {
             verifiedOnce = true;
             LOG.info("[cg-host-verify] first comparison ran after the {} pass", pass);

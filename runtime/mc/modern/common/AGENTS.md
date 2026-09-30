@@ -38,7 +38,7 @@ On 26.1+ `onFrame` is also **the last point to draw over the host's picture**: t
 before the level renders, so anything painted from a GUI hook lands under the world. CrystalGUI paints
 its desktop and HUD from there on those nodes.
 
-## 26.1+: the main target and the stand-down
+## 26.1+: the main target, and 26.2 under Vulkan
 
 - **Our own framebuffer over Minecraft's main target.** 26.1 made `GlDevice` package-private and 26.2
   dropped `GlTexture.getFbo`, so `LifecycleModern.bindMainTarget` builds one FBO through `CgGL`, attached
@@ -53,7 +53,15 @@ its desktop and HUD from there on those nodes.
   which put GL's default clip range and a clear depth of 1.0 back for its duration. `cg_DepthBuffer` holds
   reversed values there, so a shader comparing against it is wrong on 26.2; polygon offset pulls the other
   way. Every piece is a no-op below 26.2.
-- **Vulkan.** 26.2 can run Blaze3D on Vulkan. `LifecycleModern.glAvailable()` asks once whether a GL
-  context is current (`glfwGetCurrentContext`) and, when none is, calls
-  `CgGraphicsLifecycle.standDown(reason)`: CrystalGraphics logs once and does nothing for the rest of
-  the process.
+- **Vulkan.** 26.2 can run Blaze3D on Vulkan, and then `CgGL` runs on the tracked backend over a
+  `CgVulkanDevice` hosted on Minecraft's own device (`vulkan.Blaze3dVulkanHost`, device-seam D5). Which
+  API is running is `GraphicsApi.vulkan()`, read off Minecraft's device at the first host section;
+  `PlatformServiceModern.gl()` builds the matching backend there. Each host section records into command
+  buffers of its own from Blaze3D's per-submit pool and hands them to Minecraft's submit at `toHost`;
+  `bindMainTarget` imports the main target's images, which our passes leave in `GENERAL`; the frame closes
+  in `FrameHooks.endFrame`, before Minecraft's submit. The GL-only repairs stand aside: Blaze3D's texture
+  units, `HostStateVerifier`, `OwnDepthConvention`'s clip control, CrystalGUI's `CgUiHostGl.leave`.
+  `LifecycleModern.canRender()` stands the engine down (`CgGraphicsLifecycle.standDown`) only when the
+  hosted device cannot be built, with the cause in the log. `-Dcrystalgraphics.host.verify=true` checks
+  every hand-over. At the shutdown signal our device's close is queued on Blaze3D's destroy queue, which
+  runs it once our last submit has completed or inside `VulkanDevice.close`, before the device goes.

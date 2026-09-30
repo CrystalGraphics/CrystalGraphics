@@ -61,11 +61,23 @@ public interface CgVulkanHost {
     /**
      * Ends the frame. {@code output} is the frame's picture in {@code TRANSFER_SRC_OPTIMAL}, row 0 at GL's bottom;
      * a host that presents shows it the right way up. Owned, this submits and begins the next frame's command
-     * buffer; hosted, the host does both.
+     * buffer; hosted, the host does both, and {@code output} is null: the host presents its own picture.
      */
     void endFrame(CgVulkanImage output);
 
     boolean ownsSubmission();
+
+    /**
+     * The host hands us its frame: commands recorded from here go to {@link #commandBuffer()}. Nothing to do for a
+     * host that owns its frames.
+     */
+    default void fromHost() {}
+
+    /**
+     * We hand the frame back with no pass of ours open: a host that submits takes what was recorded since
+     * {@link #fromHost()} into its own command stream, in order, and records its own after it.
+     */
+    default void toHost() {}
 
     /**
      * Submits what the current frame has recorded, waits for it, and carries on recording the same frame: a

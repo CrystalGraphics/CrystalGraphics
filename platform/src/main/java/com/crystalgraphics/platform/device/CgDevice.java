@@ -101,6 +101,18 @@ public interface CgDevice {
     boolean ownsSubmission();
 
     /**
+     * The host hands us its frame, at the outermost {@code CgGL.fromHost()}. Nothing to do for a device that owns
+     * its frames.
+     */
+    default void fromHost() {}
+
+    /**
+     * We hand the frame back, at the outermost {@code CgGL.toHost()}, with no pass open: a hosted device gives the
+     * host what it recorded since {@link #fromHost()}, in the order recorded.
+     */
+    default void toHost() {}
+
+    /**
      * Blocks until {@code frame} has retired, submitting it first if it is the current one.
      *
      * @throws IllegalStateException when the device does not own submission: the host submits, and waiting

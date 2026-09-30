@@ -16,6 +16,7 @@ import com.crystalgraphics.platform.CgPlatformService;
 import com.crystalgraphics.platform.service.CgCursorService;
 import com.crystalgraphics.platform.gl.CgGLBackend;
 import com.crystalgraphics.platform.gl.CgGLContext;
+import com.crystalgraphics.platform.gl.tracked.CgTrackedGLContext;
 import com.crystalgraphics.platform.service.CgInputService;
 import com.crystalgraphics.platform.service.CgLifecycleService;
 import com.crystalgraphics.platform.service.CgReloadService;
@@ -24,6 +25,9 @@ import com.crystalgraphics.platform.service.CgResourceService;
 import com.crystalgraphics.platform.service.CgSoundService;
 
 import net.minecraft.client.Minecraft;
+//? if >=26.2 {
+/*import com.crystalgraphics.mc.modern.platform.vulkan.Blaze3dVulkanHost;
+*///?}
 
 /**
  * The modern platform bundle. Implements {@link CgPlatformService} by composing
@@ -85,12 +89,17 @@ public final class PlatformServiceModern implements CgPlatformService {
 
     @Override public CgGLBackend gl() {
         if (glBackend == null) {
-            // Declared before any GL work: CgBindingPoints allocates by counting down from the limit.
-            // Asked for at the first host section or capability probe, on the render thread, and never
-            // by registration, so naming Blaze3D cannot reach a server.
-            CgCapabilities.setHostTextureUnitCeiling(Blaze3dTextureUnits.count());
-            HostStateVerifier.announceIfEnabled();
-            glBackend = new Blaze3dGLBackend();
+            // Asked for at the first host section or capability probe, on the render thread, and never by
+            // registration, so naming Blaze3D cannot reach a server -- and Minecraft's device exists by then,
+            // which is what says which API this session renders through.
+            if (GraphicsApi.vulkan()) {
+                glBackend = vulkanBackend();
+            } else {
+                // Declared before any GL work: CgBindingPoints allocates by counting down from the limit.
+                CgCapabilities.setHostTextureUnitCeiling(Blaze3dTextureUnits.count());
+                HostStateVerifier.announceIfEnabled();
+                glBackend = new Blaze3dGLBackend();
+            }
 
             // The cursor slot, filled here so no consumer has to -- and HERE rather than in
             // getInstance() for the reason the note above gives: getInstance() runs on both sides, and
@@ -108,8 +117,18 @@ public final class PlatformServiceModern implements CgPlatformService {
     }
 
     @Override public CgGLContext capabilities() {
-        if (glContext == null) glContext = new Lwjgl3GLContext();
+        if (glContext == null) glContext = GraphicsApi.vulkan() ? new CgTrackedGLContext() : new Lwjgl3GLContext();
         return glContext;
+    }
+
+    // GL's semantics over Minecraft's own Vulkan device, which hosts ours: 26.2 and later.
+    private static CgGLBackend vulkanBackend() {
+        //? if >=26.2 {
+        /*Minecraft mc = Minecraft.getInstance();
+        return Blaze3dVulkanHost.start(Windows.of(mc).getWidth(), Windows.of(mc).getHeight());
+        *///?} else {
+        throw new IllegalStateException("Minecraft renders through Vulkan only from 26.2");
+        //?}
     }
 
     @Override public CgLifecycleService lifecycle() {
