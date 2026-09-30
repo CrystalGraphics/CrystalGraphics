@@ -629,8 +629,10 @@ public final class CgGraphicsLifecycle {
      * should be released. Both are terminal: neither supports a later {@link #initContext}.</p>
      */
     public static void shutdown() {
+        boolean first = !destroyed;
         destroyed = true;
         initialized = false;
+        if (first) listeners.dispatch("onShutdown", CgLifecycleListener::onShutdown);
     }
 
 }
