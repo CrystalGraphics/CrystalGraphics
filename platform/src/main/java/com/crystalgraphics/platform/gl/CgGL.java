@@ -1,5 +1,6 @@
 package com.crystalgraphics.platform.gl;
 
+import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 
 import java.nio.ByteBuffer;
@@ -23,8 +24,23 @@ import java.util.List;
 public final class CgGL {
     
     private static CgGLBackend backend;
-    
+
+    /**
+     * Installs {@code dispatch}, or uninstalls with null. A host never calls this: the first {@link #fromHost()}
+     * or {@link CgCapabilities#detect()} takes the platform's. A harness or test that uses {@code CgGL} before
+     * either installs its own.
+     */
     public static void init(CgGLBackend dispatch){ backend = dispatch; }
+
+    /** Whether a backend is installed: never on a dedicated server, and on a client from its first host section. */
+    public static boolean isInstalled() {
+        return backend != null;
+    }
+
+    /** Takes the registered platform's backend if none is installed. */
+    static void installIfAbsent() {
+        if (backend == null) backend = CgPlatform.gl();
+    }
 
     /**
      * Whether this context is a core profile. Set by {@link CgCapabilities#detect()}.
@@ -35,9 +51,7 @@ public final class CgGL {
      *
      * <p><b>False until the first {@code detect()}</b>, which is the whole of the contract. That is
      * safe because capability probing happens during context init, long before anything paints -- and
-     * it is why this is not assigned in {@link #init}, which runs from {@code CgPlatform.register()};
-     * on MC 1.20+ that is mod construction on a modloading worker, with no GL context on the thread
-     * and no way to probe.</p>
+     * it is why this is not assigned in {@link #init}: installing a backend is not probing it.</p>
      */
     public static boolean CORE;
 
@@ -1397,12 +1411,18 @@ public final class CgGL {
      *   <li>Never inside a {@link CgGlRecording}: its backend refuses both. Record, and replay, inside a
      *       bracket.</li>
      *   <li>Render thread only.</li>
+     *   <li>The first one on a client installs the platform's backend, so it is where a failure to build one
+     *       surfaces. @see CgPlatform#register</li>
      * </ul>
      *
      * @see CgGLBackend#fromHost
      */
     public static void fromHost() {
-        if (fromHostDepth++ == 0) backend.fromHost();
+        if (fromHostDepth == 0) {
+            installIfAbsent();
+            backend.fromHost();
+        }
+        fromHostDepth++;
     }
 
     /**

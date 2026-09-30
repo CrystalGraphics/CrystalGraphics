@@ -146,8 +146,8 @@ public final class CgGraphicsLifecycle {
      *     CgGraphicsLifecycle.standDown("no GL context on the render thread (backend: Vulkan)");
      * }</pre>
      *
-     * <p>Registration is untouched: a registered GL backend that nothing calls is harmless, and a
-     * dedicated server must never be asked for one.</p>
+     * <p>Registration is untouched: it builds no GL backend, and a dedicated server must never be asked
+     * for one.</p>
      */
     public static void standDown(String reason) {
         if (stoodDown) return;
@@ -509,8 +509,10 @@ public final class CgGraphicsLifecycle {
      * giving every latching singleton a real reset path first; until then, treat this as terminal.</p>
      */
     public static void destroyContext() {
-        // Nothing was ever built, and with no GL context the sweeps below would call into nothing.
-        if (stoodDown) {
+        // Nothing was ever built, and the sweeps below would call into nothing: a stood-down host has no GL
+        // context, and with no backend installed no host section ever opened, as on a client quitting
+        // before its first frame.
+        if (stoodDown || !CgGL.isInstalled()) {
             shutdown();
             return;
         }
