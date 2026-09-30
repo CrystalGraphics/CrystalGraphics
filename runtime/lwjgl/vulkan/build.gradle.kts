@@ -34,6 +34,8 @@ val natives = System.getProperty("os.name").lowercase().let { os ->
 
 dependencies {
     compileOnly(project(":platform"))
+    // HostedVulkanHost's warnings. compileOnly, as in :platform: every host supplies its own log4j.
+    compileOnly("org.apache.logging.log4j:log4j-api:${rootProject.properties["dep.log4j"]}")
     compileOnly("org.lwjgl:lwjgl:$lwjglVulkan")
     compileOnly("org.lwjgl:lwjgl-shaderc:$lwjglVulkan")
     compileOnly("org.lwjgl:lwjgl-spvc:$lwjglVulkan")

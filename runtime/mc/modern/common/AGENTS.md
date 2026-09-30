@@ -54,7 +54,7 @@ its desktop and HUD from there on those nodes.
   reversed values there, so a shader comparing against it is wrong on 26.2; polygon offset pulls the other
   way. Every piece is a no-op below 26.2.
 - **Vulkan.** 26.2 can run Blaze3D on Vulkan, and then `CgGL` runs on the tracked backend over a
-  `CgVulkanDevice` hosted on Minecraft's own device (`vulkan.Blaze3dVulkanHost`, device-seam D5). Which
+  `CgVulkanDevice` hosted on Minecraft's own device (`vulkan.Blaze3dVulkanHost`, which answers tier 1's `HostedVulkanHost` for Minecraft; device-seam D5). Which
   API is running is `GraphicsApi.vulkan()`, read off Minecraft's device at the first host section;
   `PlatformServiceModern.gl()` builds the matching backend there. Each host section records into command
   buffers of its own from Blaze3D's per-submit pool and hands them to Minecraft's submit at `toHost`;
