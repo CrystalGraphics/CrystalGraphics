@@ -187,25 +187,30 @@ public final class CgGraphicsLifecycle {
         // backend that refuses it. Cached, so this costs one probe.
         CgCapabilities.detect();
 
-        inOwnDepthConvention(() -> {
-            // One scope for everything built below: pipeline targets, fallback textures, the text
-            // material's first bind. It runs inside the host's world pass, and left its bindings and
-            // render state behind.
-            try (CgGlScope ignored = CgGlState.saveAll()) {
-                resizeTargets(width, height);
-                CgRenderPipeline.init();
-                CgFallbackTextures.init();
-                warmUpDeferredStartupCosts();
-            }
+        CgGL.fromHost();
+        try {
+            inOwnDepthConvention(() -> {
+                // One scope for everything built below: pipeline targets, fallback textures, the text
+                // material's first bind. It runs inside the host's world pass, and left its bindings and
+                // render state behind.
+                try (CgGlScope ignored = CgGlState.saveAll()) {
+                    resizeTargets(width, height);
+                    CgRenderPipeline.init();
+                    CgFallbackTextures.init();
+                    warmUpDeferredStartupCosts();
+                }
 
-            initialized = true;
-            destroyed = false;   // an explicit init is what makes a context live again
+                initialized = true;
+                destroyed = false;   // an explicit init is what makes a context live again
 
-            // Last, and after `initialized` is set: a listener may legitimately touch anything the
-            // engine just brought up (pipeline, fallback textures, capability probes), and may call back
-            // into isInitialized().
-            listeners.dispatch("onInit", l -> l.onInit(width, height));
-        });
+                // Last, and after `initialized` is set: a listener may legitimately touch anything the
+                // engine just brought up (pipeline, fallback textures, capability probes), and may call back
+                // into isInitialized().
+                listeners.dispatch("onInit", l -> l.onInit(width, height));
+            });
+        } finally {
+            CgGL.toHost();
+        }
     }
 
     /**
@@ -289,11 +294,16 @@ public final class CgGraphicsLifecycle {
         if (!CgGlState.manager().ownedByCurrentThread()) return;
 
         // Rebuilds screen-sized targets, binding textures and framebuffers as it goes; the host's come back.
-        inOwnDepthConvention(() -> {
-            try (CgGlScope ignored = CgGlState.saveAll()) {
-                resizeTargets(width, height);
-            }
-        });
+        CgGL.fromHost();
+        try {
+            inOwnDepthConvention(() -> {
+                try (CgGlScope ignored = CgGlState.saveAll()) {
+                    resizeTargets(width, height);
+                }
+            });
+        } finally {
+            CgGL.toHost();
+        }
     }
 
     private static void resizeTargets(int width, int height) {
@@ -354,15 +364,20 @@ public final class CgGraphicsLifecycle {
         // else-if could still call onResize on a context that is gone.
         if (destroyed || stoodDown) return;
 
-        CgGlState.invalidateAllIfPresent();
-
-        ensureContext(w, h);
-
-        CgGpuTrace.begin(GPU_OPAQUE);
+        CgGL.fromHost();
         try {
-            CgRenderDemo.INSTANCE.renderOpaque(partialTick, w, h, sourceFboId);
+            CgGlState.invalidateAllIfPresent();
+
+            ensureContext(w, h);
+
+            CgGpuTrace.begin(GPU_OPAQUE);
+            try {
+                CgRenderDemo.INSTANCE.renderOpaque(partialTick, w, h, sourceFboId);
+            } finally {
+                CgGpuTrace.end();
+            }
         } finally {
-            CgGpuTrace.end();
+            CgGL.toHost();
         }
     }
 
@@ -396,20 +411,25 @@ public final class CgGraphicsLifecycle {
 
         frameCounter++;
 
-        // Frame boundary: trust nothing about GL state. Control was outside CrystalGraphics between
-        // frames, so anything could have written state through an API we cannot observe.
-        CgGlState.invalidateAllIfPresent();
+        CgGL.fromHost();
+        try {
+            // Frame boundary: trust nothing about GL state. Control was outside CrystalGraphics between
+            // frames, so anything could have written state through an API we cannot observe.
+            CgGlState.invalidateAllIfPresent();
 
-        CgFontRegistry.get().tickFrame(frameCounter);
-        listeners.dispatch("onFrame", l -> l.onFrame(frameCounter));
+            CgFontRegistry.get().tickFrame(frameCounter);
+            listeners.dispatch("onFrame", l -> l.onFrame(frameCounter));
 
-        // And again AFTER dispatch. Listeners are third-party code that may render, and anything they
-        // wrote lands after the invalidation above — leaving the shadow stale for the rest of the frame.
-        // Two integer writes per frame is not a cost worth reasoning about; a silently elided GL call is.
-        CgGlState.invalidateAllIfPresent();
+            // And again AFTER dispatch. Listeners are third-party code that may render, and anything they
+            // wrote lands after the invalidation above — leaving the shadow stale for the rest of the frame.
+            // Two integer writes per frame is not a cost worth reasoning about; a silently elided GL call is.
+            CgGlState.invalidateAllIfPresent();
 
-        // Last: listeners may have streamed geometry, and it belongs to this frame's fence.
-        if (initialized) CgFrameRing.endFrame();
+            // Last: listeners may have streamed geometry, and it belongs to this frame's fence.
+            if (initialized) CgFrameRing.endFrame();
+        } finally {
+            CgGL.toHost();
+        }
     }
 
     /**
@@ -437,11 +457,16 @@ public final class CgGraphicsLifecycle {
         CgGlState.invalidateAllIfPresent();
 
         if (!initialized) return;
-        CgGpuTrace.begin(GPU_TRANSPARENT);
+        CgGL.fromHost();
         try {
-            CgRenderDemo.INSTANCE.renderTransparent();
+            CgGpuTrace.begin(GPU_TRANSPARENT);
+            try {
+                CgRenderDemo.INSTANCE.renderTransparent();
+            } finally {
+                CgGpuTrace.end();
+            }
         } finally {
-            CgGpuTrace.end();
+            CgGL.toHost();
         }
     }
 

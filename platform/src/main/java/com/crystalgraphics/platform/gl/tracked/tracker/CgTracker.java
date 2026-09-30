@@ -367,14 +367,17 @@ public final class CgTracker {
         return device.encoder();
     }
 
-    /** Control goes back to the host: our pass ends. */
-    public void hostSectionBegin() {
+    /**
+     * The host takes its frame back: a clear still pending is written out and our open pass ends, so the host
+     * never records into a pass of ours.
+     */
+    public void toHost() {
         flushPendingClears();
         if (pass != null) endPass();
     }
 
-    /** Control comes back: the next draw begins a pass with {@code LOAD}. */
-    public void hostSectionEnd() {}
+    /** The host hands us its frame: the next draw begins a pass that loads what is there. */
+    public void fromHost() {}
 
     public void endFrame() {
         flushPendingClears();

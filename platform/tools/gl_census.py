@@ -65,7 +65,7 @@ DOMAINS = [
     ('Fixed function', 'accepted, ignored, one warning each -- a core profile has none of them either', [
         'glAlphaFunc', 'glLineWidth', 'glPointSize', 'glPolygonMode']),
     ('Host sections', 'end our pass and hand the host its state back (D4 wires the brackets)', [
-        'hostSectionBegin', 'hostSectionEnd']),
+        'toHost', 'fromHost']),
     ('Backend selection', 'not GL', ['isAvailable', 'getPriority']),
 ]
 

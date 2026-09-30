@@ -823,7 +823,7 @@ final class CgGlRecordingBackend extends CgGLBackend {
     // ── Host coexistence ──────────────────────────────────────────────────────
 
     @Override public int importHostTexture(Object hostHandle) { return live.importHostTexture(hostHandle); }
-    @Override public void hostSectionBegin() { throw refused("hostSectionBegin", "a recording is replayed inside a host section, never across one"); }
-    @Override public void hostSectionEnd() { throw refused("hostSectionEnd", "a recording is replayed inside a host section, never across one"); }
+    @Override public void toHost() { throw refused("toHost", "a recording is replayed inside a CgGL.fromHost bracket, never across one"); }
+    @Override public void fromHost() { throw refused("fromHost", "a recording is replayed inside a CgGL.fromHost bracket, never across one"); }
     @Override public boolean ownedByCurrentThread() { return live.ownedByCurrentThread(); }
 }
