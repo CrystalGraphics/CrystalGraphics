@@ -7,6 +7,7 @@
 
 #type pos2_uv2_col4ub
 #pragma cg_use quad
+#pragma cg_use clip
 
 // One keyword covers both distance-field atlas types (MSDF and MTSDF) -- the fragment
 // logic is byte-for-byte identical for both today (same median-based reconstruction,
@@ -148,6 +149,9 @@ Pass {
     }
 
     void fragment(in v2f i, out vec4 fragColor) {
+        // A rounded clip the text is drawn inside (CgClipTable), 1 outside any. Read before any discard: it
+        // takes derivatives.
+        float boxClip = CG_CLIP_QUAD_COVERAGE;
         vec3 uvw = vec3(i.uv, i.atlasLayer);
         float shadowKind = CG_QUAD_CUSTOM0.w;
         if (shadowKind < -3.5) {
@@ -157,7 +161,7 @@ Pass {
                                         CG_QUAD_CUSTOM1.yz);
             float rectAlpha = i.color.a * rectCoverage;
             if (rectAlpha <= (1.0 / 255.0)) discard;
-            fragColor = vec4(i.color.rgb, rectAlpha);
+            fragColor = vec4(i.color.rgb, rectAlpha * boxClip);
             return;
         }
 #ifdef MSDF_MODE
@@ -247,7 +251,7 @@ Pass {
             }
             float shadowAlpha = i.color.a * shadowCoverage;
             if (shadowAlpha <= (1.0 / 255.0)) discard;
-            fragColor = vec4(i.color.rgb, shadowAlpha);
+            fragColor = vec4(i.color.rgb, shadowAlpha * boxClip);
             return;
         }
 
@@ -369,7 +373,7 @@ Pass {
             // back out rather than left premultiplied, which would darken every stroked glyph.
             vec3 outRgb = (strokeColor.rgb * strokeA + i.color.rgb * fillA) / outA;
 
-            fragColor = vec4(outRgb, min(outA, 1.0));
+            fragColor = vec4(outRgb, min(outA, 1.0) * boxClip);
         } else {
             // The em on screen: texels per em over texels per screen pixel, from the Jacobian's area.
             float emPx = CG_QUAD_CUSTOM2 / sqrt(max(abs(jdx.x * jdy.y - jdx.y * jdy.x), 1.0e-8));
@@ -377,7 +381,7 @@ Pass {
                                                 u_TextGammaSmall, u_TextGammaLarge, u_TextGammaRamp);
             if (alpha <= (1.0 / 255.0)) discard;
 
-            fragColor = vec4(i.color.rgb, alpha);
+            fragColor = vec4(i.color.rgb, alpha * boxClip);
         }
 #else
         if (shadowKind < -2.5) {
@@ -396,7 +400,7 @@ Pass {
             float cellCoverage = mix(mix(c00, c10, weight.x), mix(c01, c11, weight.x), weight.y);
             float cellAlpha = i.color.a * cellCoverage;
             if (cellAlpha <= (1.0 / 255.0)) discard;
-            fragColor = vec4(i.color.rgb, cellAlpha);
+            fragColor = vec4(i.color.rgb, cellAlpha * boxClip);
             return;
         }
         // A bitmap glyph is nearest-sampled pixel art; rotated, its texels get the antialiasing a
@@ -411,7 +415,7 @@ Pass {
         float emPx = CG_QUAD_CUSTOM2 / sqrt(max(abs(bdx.x * bdy.y - bdx.y * bdy.x), 1.0e-8));
         float alpha = text_gamma_fill(coverage, emPx, i.gammaSmall, i.gammaLarge,
                                       u_TextGammaSmall, u_TextGammaLarge, u_TextGammaRamp) * i.color.a;
-        fragColor = vec4(i.color.rgb, alpha);
+        fragColor = vec4(i.color.rgb, alpha * boxClip);
 #endif
     }
 }
