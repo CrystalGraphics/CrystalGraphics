@@ -7,11 +7,11 @@ import org.apache.logging.log4j.Logger;
 import java.util.ArrayDeque;
 import java.util.Collections;
 import java.util.Deque;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -46,10 +46,10 @@ import java.util.regex.Pattern;
  * GLSL compiler error messages.</p>
  *
  * <h3>Source Cache</h3>
- * <p>Loaded source text is cached per preprocessor instance. The cache is
- * disabled when the {@code crystalgraphics.shader.resourceOverrideDir}
- * property is set (hotswap dev mode). Call {@link #invalidateCache()} to
- * clear it explicitly.</p>
+ * <p>Loaded source text is cached for the process, across instances. The cache
+ * is disabled when the {@code crystalgraphics.shader.resourceOverrideDir}
+ * property is set (hotswap dev mode). {@link #clearCache()} empties it, which a
+ * resource reload does.</p>
  *
  * <h3>Thread Safety</h3>
  * <p>Not thread-safe. Instances should be used on the render thread only.</p>
@@ -80,11 +80,12 @@ public final class CgShaderPreprocessor {
     private final boolean cachingEnabled;
 
     /**
-     * Source text cache: normalized path → raw GLSL source.
-     * Shared across all {@link #process} calls on this instance.
-     * Empty when {@link #cachingEnabled} is false.
+     * Source text cache: normalized path → raw GLSL source, shared by every instance. A cache per instance was
+     * a cache per stage, since each compile builds its own preprocessor: every program re-read {@code cg_env.glsl}
+     * and its libraries from the classpath, most of a shader graph edit's frame-thread cost. Cleared on a
+     * resource reload ({@link #clearCache}); empty when {@link #cachingEnabled} is false.
      */
-    private final Map<String, String> sourceCache = new HashMap<String, String>();
+    private static final Map<String, String> SOURCE_CACHE = new ConcurrentHashMap<>();
 
     // ── Constructors ───────────────────────────────────────────────────────────
 
@@ -131,7 +132,12 @@ public final class CgShaderPreprocessor {
      * that subsequent {@link #process} calls re-read files from disk.
      */
     public void invalidateCache() {
-        sourceCache.clear();
+        clearCache();
+    }
+
+    /** Forgets every include read so far, so the next compile reads files afresh: on a resource reload. */
+    public static void clearCache() {
+        SOURCE_CACHE.clear();
     }
 
     /**
@@ -270,11 +276,27 @@ public final class CgShaderPreprocessor {
             boolean hasPragmaOnce = false;
             int lineNo = 1;
 
-            // Split preserving empty trailing lines (-1 limit).
-            String[] lines = src.split("\\r?\\n", -1);
-
-            for (int i = 0; i < lines.length; i++) {
-                String raw = lines[i];
+            // Line by line as split("\\r?\\n", -1) cut them, without splitting: only a line whose first non-blank
+            // character is '#' can be a directive, and every other line is copied as a slice. Splitting, trimming
+            // and matching every line of cg_env.glsl and its libraries, once per stage of every compile, was most
+            // of what a shader graph edit cost the frame.
+            int start = 0;
+            while (true) {
+                int newline = src.indexOf('\n', start);
+                boolean last = newline < 0;
+                int end = last ? src.length() : newline;
+                if (!last && end > start && src.charAt(end - 1) == '\r') end--;
+                int first = start;
+                while (first < end && src.charAt(first) <= ' ') first++;
+                if (first == end || src.charAt(first) != '#') {
+                    out.append(src, start, end);
+                    if (!last) out.append('\n');
+                    lineNo++;
+                    if (last) break;
+                    start = newline + 1;
+                    continue;
+                }
+                String raw = src.substring(start, end);
                 String trimmed = raw.trim();
 
                 if (trimmed.equals("#pragma once")) {
@@ -300,12 +322,14 @@ public final class CgShaderPreprocessor {
                         out.append(raw);
                         // Re-add newline for every line except the very last when
                         // the original source had no trailing newline.
-                        if (i < lines.length - 1) {
+                        if (!last) {
                             out.append('\n');
                         }
                     }
                 }
                 lineNo++;
+                if (last) break;
+                start = newline + 1;
             }
 
             // Mark this file as pragma-once'd only after successful expansion.
@@ -355,7 +379,7 @@ public final class CgShaderPreprocessor {
      */
     private String loadSource(String normalizedPath) {
         if (cachingEnabled) {
-            String cached = sourceCache.get(normalizedPath);
+            String cached = SOURCE_CACHE.get(normalizedPath);
             if (cached != null) {
                 return cached;
             }
@@ -377,7 +401,7 @@ public final class CgShaderPreprocessor {
         }
 
         if (cachingEnabled) {
-            sourceCache.put(normalizedPath, src);
+            SOURCE_CACHE.put(normalizedPath, src);
         }
         return src;
     }

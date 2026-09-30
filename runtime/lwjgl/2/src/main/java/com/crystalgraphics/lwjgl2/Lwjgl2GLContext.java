@@ -53,4 +53,7 @@ public final class Lwjgl2GLContext implements CgGLContext {
     @Override public boolean GL_ARB_timer_query() { return caps().GL_ARB_timer_query; }
 
     @Override public boolean mappingIsFree() { return false; }
+
+    // LWJGL 2's capabilities predate the extension, so a compile here finishes a frame later rather than when polled.
+    @Override public boolean parallelShaderCompile() { return false; }
 }

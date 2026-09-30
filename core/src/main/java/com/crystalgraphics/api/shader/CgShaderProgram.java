@@ -354,6 +354,34 @@ public interface CgShaderProgram {
     }
 
     /**
+     * {@link #relink}, returning before the driver has finished: nothing here waits for the compile.
+     *
+     * <pre>{@code
+     * program.submitLink(vert, frag, format);
+     * ... later frames ...
+     * if (program.isLinkDone()) program.finishLink();   // throws as relink would
+     * }</pre>
+     *
+     * <p>Anything that queries the program before {@link #finishLink} waits for the driver there instead, so
+     * finish it before binding it. The default links synchronously.</p>
+     */
+    default void submitLink(String vertexSource, String fragmentSource, CgVertexFormat format) {
+        relink(vertexSource, fragmentSource, format);
+    }
+
+    /** Whether {@link #finishLink} would return without waiting. True wherever the driver cannot say. */
+    default boolean isLinkDone() {
+        return true;
+    }
+
+    /**
+     * Ends a {@link #submitLink}: waits if the driver has not finished, then throws as {@link #relink} would.
+     * A no-op when nothing is pending.
+     */
+    default void finishLink() {
+    }
+
+    /**
      * Returns an unmodifiable list of all active uniforms in this program.
      *
      * <p>Active uniforms are those reported by the GL driver via

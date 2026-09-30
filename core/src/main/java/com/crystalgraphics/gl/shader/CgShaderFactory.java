@@ -108,6 +108,25 @@ public final class CgShaderFactory {
         shader.recompile();
         return shader;
     }
+
+    /**
+     * {@link #fromSource}, returning before the driver has compiled it. The sources are used as given, with no
+     * preprocessing.
+     *
+     * <pre>{@code
+     * CgShader shader = CgShaderFactory.submit(vert, frag, format);
+     * ... later frames ...
+     * if (shader.isReady() && shader.isCompiled()) draw(shader);
+     * }</pre>
+     *
+     * <p>Anything asked of it before {@link CgShader#isReady} waits for the driver, as {@code fromSource} would
+     * have. Where the driver cannot report progress, it is ready at once and waits on first use.</p>
+     */
+    public static CgShader submit(String vertSrc, String fragSrc, CgVertexFormat format) {
+        CgShaderImpl shader = CgShaderImpl.fromSource(vertSrc, fragSrc, format);
+        shader.submit();
+        return shader;
+    }
     
     /**
      * Private constructor to prevent instantiation.

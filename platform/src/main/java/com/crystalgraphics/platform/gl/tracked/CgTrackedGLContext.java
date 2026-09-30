@@ -39,4 +39,7 @@ public final class CgTrackedGLContext implements CgGLContext {
     @Override public boolean GL_ARB_timer_query() { return true; }
 
     @Override public boolean mappingIsFree() { return true; }
+
+    /** A compile here is shaderc on the calling thread: finished when {@code glCompileShader} returns. */
+    @Override public boolean parallelShaderCompile() { return false; }
 }

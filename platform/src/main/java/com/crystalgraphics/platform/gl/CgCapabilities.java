@@ -175,6 +175,11 @@ public final class CgCapabilities {
 
     /** Max MSAA samples available for driver*/
     @Getter int maxSamples;
+    /**
+     * Whether a program's {@code GL_COMPLETION_STATUS_KHR} may be polled ({@code GL_KHR_parallel_shader_compile} or
+     * the ARB twin): a compile can then be submitted and drawn from only once the driver has finished it.
+     */
+    @Getter boolean parallelShaderCompile;
     /** Whether the current context is a core profile. Fixed-function state
      *  such as {@code GL_ALPHA_TEST} is unavailable in core profile contexts. */
     boolean coreProfile;
@@ -282,6 +287,7 @@ public final class CgCapabilities {
         caps.maxUniformBufferBindings  = CgGL.glGetInteger(CgGL.GL_MAX_UNIFORM_BUFFER_BINDINGS);
         caps.gpuShaderInt64            = gl.OpenGL40();
         caps.maxSamples                = CgGL.glGetInteger(CgGL.GL_MAX_SAMPLES);
+        caps.parallelShaderCompile     = gl.parallelShaderCompile();
 
         // GL_CONTEXT_PROFILE_MASK (0x9126); bit 0x1 = GL_CONTEXT_CORE_PROFILE_BIT.
         caps.coreProfile = (CgGL.glGetInteger(0x9126) & 0x1) != 0;

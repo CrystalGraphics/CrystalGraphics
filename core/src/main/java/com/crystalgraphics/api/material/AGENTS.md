@@ -204,6 +204,32 @@ Bind steps (in order):
 3. `shader.bind()` — activates GL program and flushes all bindings
 4. `objectBuffer.bind(shader)` — binds SSBO/TBO and wires it (TBO: sets samplerBuffer uniform)
 
+### CgMaterial.prepare() — compiling without stalling a frame
+
+The first `bind()` compiles and links on the spot, which is tens of milliseconds a program. A caller that
+swaps materials while drawing every frame (the shader graph's previews) polls instead, and keeps drawing the
+old material until the new one is ready:
+
+```java
+CgMaterial next = CgMaterial.fromSource(source);
+// each frame:
+if (next.prepare()) {          // compiled, or failed: next.lastCompileError() says which
+    current.delete();
+    current = next;
+}
+current.bind();
+```
+
+- `prepare()` submits every program of the material (`CgMaterialShader.submitRecompile`) and answers false
+  on that frame, always; after that it polls `GL_COMPLETION_STATUS_KHR` where the driver has
+  `KHR`/`ARB_parallel_shader_compile` (`CgCapabilities.isParallelShaderCompile()`), and answers true where it
+  does not — the driver has had one frame of its own threads.
+- A `bind()` before it answers true waits for the compile there, exactly as an unprepared material does.
+- It compiles the Forward pass only. The auto-generated shadow and depth programs are built, synchronously,
+  the first time `bindForPass(SHADOW/DEPTH)` or `hasCompiledDepthPass()` asks — a preview never does, and they
+  were half of what an edit compiled.
+- `-Dcrystalgraphics.shader.parallelCompile=false` makes it answer true at once: the escape hatch.
+
 ### CgMaterial.reload()
 Called by `CgMaterialRegistry.reloadAll()` during hot-reload (F3+T).
 Sets `dirty = true`; the full load→parse→compile→relink pipeline runs lazily on the next `bind()`.

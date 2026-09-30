@@ -3,6 +3,7 @@ package com.crystalgraphics.mc.shader;
 import com.crystalgraphics.api.shader.*;
 import com.crystalgraphics.platform.gl.state.CgGlSlot;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
+import com.crystalgraphics.gl.shader.CgCoreShaderProgram;
 import com.crystalgraphics.gl.shader.CgShaderFactory;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlState;
@@ -214,16 +215,24 @@ import java.util.function.Consumer;
 
     @Override
     public boolean isCompiled() {
+        finishPending();
         return compiled;
     }
 
     @Override
     public String getLastCompileError() {
+        finishPending();
         return lastCompileError;
     }
 
     @Override
+    public boolean isReady() {
+        return !pending || program.isLinkDone();
+    }
+
+    @Override
     public List<CgActiveUniform> getActiveUniforms() {
+        finishPending();
         if (!compiled || program == null) return Collections.emptyList();
         return program.getActiveUniforms();
     }
@@ -236,6 +245,7 @@ import java.util.function.Consumer;
     @Override
     public int getUniformLocation(String name) {
         if (name == null) throw new IllegalArgumentException("Uniform name must not be null");
+        finishPending();
         if (!compiled) return -1;
         
         Integer cached = uniformLocationCache.get(name);
@@ -260,7 +270,8 @@ import java.util.function.Consumer;
     @Override
     public void bind() {
         if (dirty) recompile();
-        
+        finishPending();
+
         if (compiled) {
             program.bind();
             applyAllBindings();
@@ -277,6 +288,7 @@ import java.util.function.Consumer;
     @Override
     public CgGlScope bindScoped() {
         if (dirty) recompile();
+        finishPending();
 
         if (!compiled) return CgGlScope.NOOP_SCOPE;
 
@@ -290,6 +302,7 @@ import java.util.function.Consumer;
     public CgGlScope bindScoped(CgGlSlot... slots) {
         if (slots == null || slots.length == 0) return bindScoped();
         if (dirty) recompile();
+        finishPending();
 
         if (!compiled) return CgGlScope.NOOP_SCOPE;
 
@@ -327,6 +340,7 @@ import java.util.function.Consumer;
         program = null;
         compiled = false;
         dirty = false;
+        pending = false;
         uniformLocationCache.clear();
     }
 
@@ -340,9 +354,55 @@ import java.util.function.Consumer;
         ephemeralBindings.clear();
     }
 
+    /**
+     * Starts a compile of the sources this shader already holds and returns before the driver has finished it.
+     * Poll {@link #isReady}; anything that reads the result earlier waits for it there.
+     */
+    public void submit() {
+        if (vertexSource == null) {
+            recompile();
+            return;
+        }
+        this.dirty = false;
+        pending = false;
+        CgShaderProgram next = program != null && !program.isDeleted() ? program : CgCoreShaderProgram.create();
+        try {
+            next.submitLink(vertexSource, fragmentSource, format);
+        } catch (RuntimeException failed) {
+            if (next != program) next.delete();
+            lastCompileError = failed.getMessage();
+            compiled = false;
+            return;
+        }
+        program = next;
+        pending = true;
+        compiled = false;
+        uniformLocationCache.clear();
+    }
+
+    /** Collects a {@link #submit}ted compile, waiting for the driver if it has not finished. */
+    private void finishPending() {
+        if (!pending) return;
+        pending = false;
+        try {
+            program.finishLink();
+        } catch (IllegalStateException e) {
+            LOGGER.error("Failed to compile inline shader: {}", e.getMessage());
+            lastCompileError = e.getMessage();
+            compiled = false;
+            return;
+        }
+        compiled = true;
+        lastCompileError = null;
+    }
+
+    /** A {@link #submit} the driver has not been asked about yet. */
+    private boolean pending;
+
     @Override
     public void recompile() {
         this.dirty = false;
+        pending = false;
 
         String vertex;
         String fragment;
