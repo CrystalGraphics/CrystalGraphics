@@ -1206,6 +1206,7 @@ leaves a non-main FBO bound:
 | Forge 1.18–1.19.2 | `RenderLevelStageEvent` `AFTER_CUTOUT_BLOCKS` (ahead of entities); 1.18–1.18.1 fall back to `RenderLevelLastEvent` at runtime | `AFTER_PARTICLES` |
 | Forge 1.19.3–1.21.1 | `AFTER_BLOCK_ENTITIES` | `AFTER_PARTICLES` |
 | Forge 1.21.3+ | node mixin `OpaquePassHook` | node mixin `TransparentPassHook` |
+| Forge 26.3 | head of `LevelRenderer.executeOit` / `executeClassicTransparency` | their tail |
 | NeoForge 1.20.2–1.21.3 | `RenderLevelStageEvent` `AFTER_BLOCK_ENTITIES` | `AFTER_PARTICLES` |
 | NeoForge 1.21.4–1.21.8 · 1.21.9–1.21.11 | `RenderLevelStageEvent.AfterBlockEntities` · `.AfterEntities` | `.AfterParticles` |
 | NeoForge 26.1+ | `RenderLevelStageEvent.AfterOpaqueFeatures` | `.AfterTranslucentParticles` |
@@ -1216,6 +1217,14 @@ leaves a non-main FBO bound:
 The exact version splits are in each loader branch's `AGENTS.md`. **The frame ends after the GUI**, from
 a loader frame event or, on Fabric, a mixin — `runtime/mc/modern/common/AGENTS.md` § *The frame end*,
 which also covers 26.1's own main-target framebuffer and 26.2's stand-down under Vulkan.
+
+> ⚠️ **The transparent pass may need a rewrite from 26.3.** 26.3's *Improved Transparency* option
+> (experimental, off by default) composites translucency with moment-based OIT instead of blending back to
+> front, and with it off, translucent terrain draws inside the render pass solid terrain opened — so on
+> default settings Forge's world passes run inside Minecraft's pass. Neither has been looked at with a
+> transparent material on screen. Before touching the transparent pass, read the private plan
+> `crystalgraphics/platform-transparent-pass` and `docs/MINECRAFT_RENDERING_CONVENTIONS.md` rows 35, 39,
+> 40 and §3.
 
 **Iris/Oculus**: with a shader pack active, CrystalGraphics geometry renders into the main FBO **outside**
 Iris's deferred GBuffer chain and appears unlit under deferred pipelines; `cg_DepthBuffer` stays valid.

@@ -46,7 +46,7 @@ below is not reported as a thousand differences.
 | 32 | **Key and mouse numbering** | GLFW key codes (`KEY_ESCAPE = 256`); buttons 0 left, 1 right, 2 middle | **SDL scancodes** (`KEY_A = 4`, `KEY_ESCAPE = 41`); buttons 1 left, 2 middle, 3 right | `InputConstants`; NeoForge's `ScreenEvent.KeyInput.getKey()` (scancode) beside `getKeycode()` (SDL keycode) | `CgSdlKeyCodes`; hosts translate buttons through `translateMouseCodes` and name keys through CrystalGUI's `CgUiInput.hostKey` | adapted |
 | 33 | **Blaze3D's GPU layer is its own library** | `com.mojang.blaze3d.{opengl,vulkan,textures}`, `systems.GpuDevice` | `com.mojang.renderpearl.{backend.opengl, backend.vulkan, api.textures, api.device}`; `GpuTexture`, `GpuSampler` and `GpuDevice` are interfaces; `GlDevice(GlBackend, GpuDebugOptions)` | the jar | A `replacements.string` for 26.3+ in both Stonecutter scripts; `GlStateManager`'s statics are unchanged but for an added `_glReadBuffer` | adapted |
 | 34 | Pipelines compile off the frame | synchronous | `GpuDevice.compilePipeline(…, Executor)` → a future; `RenderSystem` pipeline caches | `GpuDevice`, `RenderSystem` | Minecraft's own pipelines | recorded |
-| 35 | **Translucency** | back-to-front into the main target | **moment-based OIT**: `OitStage` DEPTH_BOUNDS, TRANSMITTANCE, ACCUMULATE; RGBA16F/RGBA32F transmittance targets beside the D32 depth; `executeDepthBoundsCull`, `executeOit`, `executeOitWaterMask` | `LevelRenderer` (`OIT_WAVELET_RANK = 2`) | Where our transparent pass lands against the OIT resolve is open (§3) | recorded |
+| 35 | **Translucency** | back-to-front into the main target | **moment-based OIT, behind the experimental Improved Transparency option** (off by default; classic back-to-front otherwise): `OitStage` DEPTH_BOUNDS, TRANSMITTANCE, ACCUMULATE; RGBA16F/RGBA32F transmittance targets beside the D32 depth; `executeDepthBoundsCull`, `executeOit`, `executeOitWaterMask` | `LevelRenderer` (`OIT_WAVELET_RANK = 2`) | Where our transparent pass lands against the OIT resolve is open (§3) | recorded |
 | 36 | First-person hands | the world's depth | **their own depth**, merged after (`render3dHud`, `integrate3DHudDepth`, `PROJECTION_3D_HUD_Z_FAR = 100`) | `GameRenderer` | Nothing of ours draws there | recorded |
 | 37 | Depth direction, clip range, projection order, main target format | rows 1–4 | **unchanged**: `GEQUAL`, clear 0, `ZERO_TO_ONE`, `zFar` before `zNear`, `D32_FLOAT` | `DepthStencilState`, `GlDevice.<init>`, `Projection`, `MainTarget.<init>` | Row 1–4's adaptations hold | recorded |
 | 38 | GL vertex arrays | one `VertexArrayCache` | built per pipeline (`VertexArray$Separate(GlProgram, CreateInfo)`) | `renderpearl.backend.opengl` | Its VAOs, not ours; the census confirms what is bound at entry | recorded |
@@ -135,13 +135,14 @@ fires on every loader, Forge's new `executeOit` hooks included.
 
 ## 3. Open
 
-- **Row 35, 26.3's OIT against our transparent pass.** Translucent terrain, water and particles resolve
+- **Row 40, Forge 26.3 on default settings.** Improved Transparency is off by default, so both world passes
+  run inside Minecraft's open solid-terrain pass, whose cached pipeline and bindings our scopes restore but
+  whose framebuffer `bindMainTarget` hands over. prodSmoke draws and the census sees both passes fire;
+  nobody has looked at a transparent material or depth-tested geometry there yet.
+- **Row 35, 26.3 with Improved Transparency on.** Translucent terrain, water and particles then resolve
   through moment-based OIT, so a pass hooked where 26.2's translucent world ended (NeoForge
-  `AfterTranslucentParticles`, Fabric `END_MAIN`) may now draw after the composite rather than inside it.
-  Answered on a 26.3 client with a transparent material over water.
-- **Row 40, Forge 26.3 with OIT off.** Both world passes then run inside Minecraft's open solid-terrain
-  pass, whose cached pipeline and bindings our scopes restore but whose framebuffer `bindMainTarget` hands
-  over. Needs a client with OIT switched off.
+  `AfterTranslucentParticles`, Fabric `END_MAIN`) may draw after the composite rather than inside it.
+  Answered on a 26.3 client with the option on and a transparent material over water.
 
 The census hooks are permanent: `opaque`, `transparent` and `frame` in `CgGraphicsLifecycle`, each after
 its stood-down guard (a stood-down host has no GL context to read), and CrystalGUI's `gui` in
