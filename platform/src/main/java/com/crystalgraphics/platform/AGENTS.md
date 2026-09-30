@@ -61,12 +61,18 @@ from tier 1. **A missing override is a missing GL call, not an exception.**
 
 `register(bundle)` is called **exactly once**, before any `core/` code runs. `resources()` answers `null`
 before registration, so `CgIO` can fall back to the classpath during early boot; every other getter
-throws. **Registration must not demand a GL backend**: a dedicated server has none, and constructing
-one there is `NoClassDefFoundError` on LWJGL — every bundle builds its services lazily.
+throws. **Registration builds no graphics**: a dedicated server has none, and constructing a backend
+there is `NoClassDefFoundError` on LWJGL. `CgGL` takes `gl()` at the first `CgGL.fromHost()` or
+`CgCapabilities.detect()`, and `CgCapabilities` takes `capabilities()` at its first probe; only a client
+reaches either, on its render thread. `serverSmoke` fails if a backend was installed.
 
 ```java
 CgPlatform.register(PlatformServiceModern.getInstance());                            // the bundle
 CgPlatform.provide(CgCursorService.SERVICE, new GlfwCursorService(windowHandle));    // a slot, client only
+
+// A harness or test using CgGL before any host section installs the backend itself:
+CgPlatform.register(platform);
+CgGL.init(platform.gl());
 ```
 
 ## Hosts and recording — the device seam's additions (D2)

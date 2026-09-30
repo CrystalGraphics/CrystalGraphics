@@ -10,8 +10,8 @@ import org.apache.logging.log4j.LogManager;
 
 /**
  * Both sides. The platform bundle is what every consumer reads through {@code CgPlatform}, and a
- * dedicated server needs it as much as a client does -- {@code register} asks for a GL backend by
- * trying, so the absence of LWJGL there is handled rather than fatal.
+ * dedicated server needs it as much as a client does -- {@code register} builds no GL backend, so the
+ * absence of LWJGL there costs nothing.
  *
  * <p>Separate from {@link CrystalGraphicsFabric} because Fabric runs no {@code client} entrypoint on
  * a server: registering there left {@code CgPlatform} unset for the whole server process, and every

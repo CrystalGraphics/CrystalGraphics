@@ -116,8 +116,8 @@ public final class PlatformService1710 implements CgPlatformService {
         //
         // CLIENT ONLY. Lwjgl2CursorService names org.lwjgl.input.Mouse, so CONSTRUCTING it on a
         // dedicated server is NoClassDefFoundError: org/lwjgl/LWJGLException -- thrown out of preInit,
-        // which errors every mod that depends on this one. CgPlatform.register catches that for the GL
-        // backend and this call is outside it. The slot's absent value is CursorService.NONE, so a
+        // which errors every mod that depends on this one. CgPlatform.register builds no GL backend for
+        // the same reason. The slot's absent value is CursorService.NONE, so a
         // server that never fills it is the supported case rather than a degraded one.
         if (FMLCommonHandler.instance().getSide().isClient()) {
             CgPlatform.provide(CgCursorService.SERVICE, new Lwjgl2CursorService());

@@ -86,9 +86,8 @@ public final class PlatformServiceModern implements CgPlatformService {
     @Override public CgGLBackend gl() {
         if (glBackend == null) {
             // Declared before any GL work: CgBindingPoints allocates by counting down from the limit.
-            // Here rather than onContextInit, which this loader never calls -- the context initialises
-            // lazily from onOpaquePass on the first world render. Building the GL backend is a client
-            // event by construction, so naming Blaze3D cannot reach a server.
+            // Asked for at the first host section or capability probe, on the render thread, and never
+            // by registration, so naming Blaze3D cannot reach a server.
             CgCapabilities.setHostTextureUnitCeiling(Blaze3dTextureUnits.count());
             HostStateVerifier.announceIfEnabled();
             glBackend = new Blaze3dGLBackend();

@@ -146,8 +146,9 @@ CgPlatform.reload().onReload();
 CgPlatform.register(PlatformServiceModern.getInstance());   // or PlatformService1710, PlatformServiceLegacy
 ```
 
-**Registration must not demand a GL backend**: a dedicated server has none. Each bundle builds its services
-lazily, and a client-only service (the cursor) is filled only on a client.
+**Registration builds no graphics**: a dedicated server has none. `CgGL` takes the bundle's backend at the
+first host section or capability probe, on a client's render thread; each bundle builds its services lazily,
+and a client-only service (the cursor) is filled only on a client.
 
 **If you find yourself calling raw GL inside `core/` or importing a loader type, you are in the wrong
 module.**
