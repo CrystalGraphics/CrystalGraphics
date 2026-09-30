@@ -21,7 +21,8 @@ import java.util.zip.ZipOutputStream
  * ```
  *
  * - Lives in `~/.gradle/caches/cg-stubs/<zip digest>/`, beside the libraries Gradle already caches. A new
- *   zip is a new directory, and building it removes the previous one; any can be deleted at any time.
+ *   zip is a new directory; building one removes any store unused for a week, and any can be deleted at any
+ *   time. Two checkouts on different databases -- a branch that added a node -- each keep their own.
  * - Built under a file lock and renamed into place, so two builds starting together build it once.
  */
 object StubStore {
@@ -37,14 +38,22 @@ object StubStore {
 
     private val stores = ConcurrentHashMap<String, File>()
 
-    /** The store for [zip], built if absent. */
-    fun ensure(zip: File, gradleUserHome: File): File =
-        stores.computeIfAbsent("${zip.absolutePath}@${zip.lastModified()}@$gradleUserHome") { build(zip, gradleUserHome) }
+    private const val UNUSED_MS = 7L * 24 * 60 * 60 * 1000
+
+    /** The store for [zip], built if absent -- or if something has removed it since this daemon last looked. */
+    fun ensure(zip: File, gradleUserHome: File): File {
+        val key = "${zip.absolutePath}@${zip.lastModified()}@$gradleUserHome"
+        val known = stores[key]
+        if (known != null && File(known, "complete").isFile) return known
+        return build(zip, gradleUserHome).also { stores[key] = it }
+    }
 
     private fun build(zip: File, gradleUserHome: File): File {
         val root = File(gradleUserHome, "caches/cg-stubs").apply { mkdirs() }
         val store = File(root, digest(zip))
-        if (File(store, "complete").isFile) return store
+        val complete = File(store, "complete")
+        // Marked as used, which is what keeps another checkout's build from pruning it.
+        if (complete.isFile) return store.also { complete.setLastModified(System.currentTimeMillis()) }
         RandomAccessFile(File(root, "${store.name}.lock"), "rw").use { lock ->
             lock.channel.lock().use {
                 if (File(store, "complete").isFile) return store
@@ -53,8 +62,11 @@ object StubStore {
                 File(building, "complete").writeText("")
                 store.deleteRecursively()
                 Files.move(building.toPath(), store.toPath(), StandardCopyOption.ATOMIC_MOVE)
-                // A store for any other zip is a previous database: a checkout still on it rebuilds its own.
-                root.listFiles().orEmpty().filter { it.isDirectory && it.name != store.name && !it.name.endsWith(".building") }
+                // A store unused for a week is a previous database's; one another checkout still builds on stays.
+                val unused = System.currentTimeMillis() - UNUSED_MS
+                root.listFiles().orEmpty()
+                    .filter { it.isDirectory && it.name != store.name && !it.name.endsWith(".building") }
+                    .filter { File(it, "complete").lastModified() < unused }
                     .forEach { it.deleteRecursively() }
             }
         }

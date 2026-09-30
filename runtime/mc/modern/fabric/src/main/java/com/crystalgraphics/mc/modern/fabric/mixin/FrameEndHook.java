@@ -14,7 +14,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(value = GameRenderer.class, remap = false)
 public abstract class FrameEndHook {
 
-    //? if >=26.1 {
+    // 26.3 splits the frame into extract(DeltaTracker, boolean) and render(), which draws it.
+    //? if >=26.3 {
+    /*@Inject(method = "render()V", at = @At("TAIL"), require = 1)
+    *///?} elif >=26.1 {
     /*@Inject(method = "render(Lnet/minecraft/client/DeltaTracker;Z)V", at = @At("TAIL"), require = 1)
     *///?} elif >=1.21 {
     /*@Inject(method = {"render(Lnet/minecraft/client/DeltaTracker;Z)V", "method_3192(Lnet/minecraft/class_9779;Z)V"},

@@ -213,6 +213,8 @@ public final class CgCapabilities {
         CgCapabilities local = cachedCaps;
         if (local == null) {
             if (context == null) context = CgPlatform.capabilities();
+            // The probe reads limits through CgGL, and may be the first GL anything asks for.
+            CgGL.installIfAbsent();
             local = detectUncached();
             cachedCaps = local;
             // Published so the fixed-function guards in CgGL cost a field load. @see CgGL#CORE

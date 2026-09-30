@@ -51,7 +51,12 @@ public final class OwnDepthConvention {
 
     public static void enter() {
         //? if >=26.2 {
-        /*if (!read) {
+        /*if (GraphicsApi.vulkan()) {
+            // The tracked backend applies GL's clip range to our own passes itself.
+            CgGL.glClearDepth(1.0);
+            return;
+        }
+        if (!read) {
             read = true;
             GLCapabilities caps = GL.getCapabilities();
             clipControl = caps.OpenGL45 || caps.GL_ARB_clip_control;
@@ -67,7 +72,7 @@ public final class OwnDepthConvention {
 
     public static void leave() {
         //? if >=26.2 {
-        /*if (clipControl) ARBClipControl.glClipControl(hostOrigin, hostDepthMode);
+        /*if (clipControl && !GraphicsApi.vulkan()) ARBClipControl.glClipControl(hostOrigin, hostDepthMode);
         *///?}
     }
 }

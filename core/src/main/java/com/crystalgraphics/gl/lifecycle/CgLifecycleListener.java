@@ -87,6 +87,16 @@ public interface CgLifecycleListener {
     }
 
     /**
+     * The engine has stopped for good: the game is closing. Once, on the thread that stopped it, and after
+     * {@link #onDestroy} when there was one.
+     *
+     * <p>For work a JVM shutdown hook cannot do: on a mod loader the class loader closes before those hooks
+     * run, so anything that loads a class then fails. Writing a report is the case. Nothing here may draw.</p>
+     */
+    default void onShutdown() {
+    }
+
+    /**
      * Storage and dispatch for a set of {@link CgLifecycleListener}s.
      *
      * <p>Owns the <em>mechanism</em> — holding listeners, iterating them in the right direction, and

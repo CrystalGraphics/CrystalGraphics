@@ -1,8 +1,8 @@
 # CrystalGraphics — Agent Knowledge Base
 
 **What**: a modern OpenGL rendering engine for Minecraft mods — materials, meshes, framebuffers,
-instancing and text — shipped as **one jar** for Forge 1.7.10–26.2, NeoForge 1.20.2–26.2 and
-Fabric 1.14.4–26.2. **Authored in** Java 25, with a Java 8 copy of every engine module. **The parent
+instancing and text — shipped as **one jar** for Forge 1.7.10–26.3, NeoForge 1.20.2–26.3 and
+Fabric 1.14.4–26.3. **Authored in** Java 25, with a Java 8 copy of every engine module. **The parent
 of** CrystalGUI, which builds every node against this repository's node of the same version.
 
 > **The goal every line serves**: a node-based shader graph for Minecraft on every version the jar
@@ -98,6 +98,7 @@ The build view (Java levels, toolchains, what a consumer build includes) is `doc
 | `core/` | 25 + 8 copy | All rendering: materials, meshes, the pipeline, fonts, text, atlases. Calls `CgPlatform`/`CgGL` for every GL or lifecycle operation; never imports Minecraft, a loader or LWJGL |
 | `freetype-msdfgen-harfbuzz-bindings/` | 8 | JNI text shaping, with its natives |
 | `runtime/lwjgl/2`, `runtime/lwjgl/3` | 25 + 8 copy | **Tier 1**: GL backend, context, input and cursor per LWJGL (`Lwjgl2*`, `Lwjgl3*`, `Glfw*`). **Name no Minecraft class** (import guard), so one copy serves every host of that LWJGL and the harness. LWJGL3 is pinned to 3.2.2, the oldest in range, so a symbol a 1.16 client lacks is a compile error |
+| `runtime/lwjgl/sdl` | 25 + 8 copy | **Tier 1 for a host windowed by SDL3** (Minecraft 26.3+, which ships no GLFW): `SdlInputService` (keys by scancode, modifiers, mouse buttons, the clipboard) and `SdlCursorService`, beside `platform`'s `CgSdlKeyCodes`. A 26.3 node's `PlatformServiceModern` registers these where an older one registers the `Glfw*` pair. Pinned to LWJGL 3.4.3, the oldest with SDL3 |
 | `runtime/lwjgl/vulkan` | 25 + 8 copy | **Tier 1 for Vulkan** (`plan/device-vulkan.md`): `CgVulkanDevice`, a `CgDevice` over a `CgVulkanHost` — `host.OwnedVulkanHost` when nothing else owns the device; `shader.ShadercGlslCompiler`, the tracked backend's GLSL to SPIR-V over shaderc and SPIRV-Cross, as Minecraft 26.2 compiles its own; and the device's parts in `resource`, `command` and `format`. Pinned to LWJGL 3.4.1, the oldest a 26.2+ client ships. Its tests run core on the tracked backend (`EngineOnTrackedBackendTest`), since core's own tests carry LWJGL 2 |
 | `runtime/mc/1710/` | 25 → 8 | Forge 1.7.10 on RetroFuturaGradle: `PlatformService1710`, the `CgRenderHook`/`MixinMinecraft` mixins, Angelica's state provider |
 | `runtime/mc/legacy/` | 8 | Forge 1.8–1.12.2, a Stonecutter tree (nodes 1.8.9, 1.10.2, 1.12.2) on Unimined: `PlatformServiceLegacy`, `GlStateManagerGLBackend`, SRG-named mixins MixinBooter applies |
@@ -146,8 +147,9 @@ CgPlatform.reload().onReload();
 CgPlatform.register(PlatformServiceModern.getInstance());   // or PlatformService1710, PlatformServiceLegacy
 ```
 
-**Registration must not demand a GL backend**: a dedicated server has none. Each bundle builds its services
-lazily, and a client-only service (the cursor) is filled only on a client.
+**Registration builds no graphics**: a dedicated server has none. `CgGL` takes the bundle's backend at the
+first host section or capability probe, on a client's render thread; each bundle builds its services lazily,
+and a client-only service (the cursor) is filled only on a client.
 
 **If you find yourself calling raw GL inside `core/` or importing a loader type, you are in the wrong
 module.**
@@ -1205,6 +1207,7 @@ leaves a non-main FBO bound:
 | Forge 1.18–1.19.2 | `RenderLevelStageEvent` `AFTER_CUTOUT_BLOCKS` (ahead of entities); 1.18–1.18.1 fall back to `RenderLevelLastEvent` at runtime | `AFTER_PARTICLES` |
 | Forge 1.19.3–1.21.1 | `AFTER_BLOCK_ENTITIES` | `AFTER_PARTICLES` |
 | Forge 1.21.3+ | node mixin `OpaquePassHook` | node mixin `TransparentPassHook` |
+| Forge 26.3 | head of `LevelRenderer.executeOit` / `executeClassicTransparency` | their tail |
 | NeoForge 1.20.2–1.21.3 | `RenderLevelStageEvent` `AFTER_BLOCK_ENTITIES` | `AFTER_PARTICLES` |
 | NeoForge 1.21.4–1.21.8 · 1.21.9–1.21.11 | `RenderLevelStageEvent.AfterBlockEntities` · `.AfterEntities` | `.AfterParticles` |
 | NeoForge 26.1+ | `RenderLevelStageEvent.AfterOpaqueFeatures` | `.AfterTranslucentParticles` |
@@ -1214,7 +1217,15 @@ leaves a non-main FBO bound:
 
 The exact version splits are in each loader branch's `AGENTS.md`. **The frame ends after the GUI**, from
 a loader frame event or, on Fabric, a mixin — `runtime/mc/modern/common/AGENTS.md` § *The frame end*,
-which also covers 26.1's own main-target framebuffer and 26.2's stand-down under Vulkan.
+which also covers 26.1's own main-target framebuffer and 26.2 under Vulkan.
+
+> ⚠️ **The transparent pass may need a rewrite from 26.3.** 26.3's *Improved Transparency* option
+> (experimental, off by default) composites translucency with moment-based OIT instead of blending back to
+> front, and with it off, translucent terrain draws inside the render pass solid terrain opened — so on
+> default settings Forge's world passes run inside Minecraft's pass. Neither has been looked at with a
+> transparent material on screen. Before touching the transparent pass, read the private plan
+> `crystalgraphics/platform-transparent-pass` and `docs/MINECRAFT_RENDERING_CONVENTIONS.md` rows 35, 39,
+> 40 and §3.
 
 **Iris/Oculus**: with a shader pack active, CrystalGraphics geometry renders into the main FBO **outside**
 Iris's deferred GBuffer chain and appears unlit under deferred pipelines; `cg_DepthBuffer` stays valid.
