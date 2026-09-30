@@ -117,6 +117,19 @@ GUI paint back at −1..1 and 1.0), and found what no code diff could:
 | 29 | Context | GL 4.6 on Forge 26.1.1 and 26.2; 3.3 on Fabric and NeoForge; 3.2 on 1.20.1 | Our floor covers all three | recorded |
 | 30 | Depth test off at a GUI paint | 1.21.11 → 26.2 (on in 1.20.1) | Our frame sets its own | recorded |
 
+### Run time: the GL census, 26.3 against 26.2
+
+The same census on the three 26.3 clients, diffed per loader with `census_diff.py`. Every entry point
+fires on every loader, Forge's new `executeOit` hooks included.
+
+| # | What a host hands us | Seen on | Ours | Status |
+|---|---|---|---|---|
+| 41 | **No stencil on the window's framebuffer** (`STENCIL_SIZE` absent; 26.2's had 8 bits) | 26.3, every loader (SDL creates the window) | Nothing of ours draws stencil to the default framebuffer; our own targets carry their own | recorded |
+| 42 | GL context 3.3 on Forge (4.6 on 26.2) | 26.3 Forge, like Fabric and NeoForge | Our floor | recorded |
+| 43 | **Depth test on at a GUI paint**, `GEQUAL`, depth clear 1.0 | 26.3 (off from 1.21.11 to 26.2) | `CgUiPaintContext.beginFrame` sets its own depth state | recorded |
+| 44 | Blend and scissor test on at the opaque pass | 26.3 NeoForge | Rows 22–23: the pass saves both, disables scissor, and a material applies its own blend | recorded |
+| 45 | `DRAW_INDIRECT_BUFFER` bound at every entry; pack and unpack alignment 1 (4 on 26.2) | 26.3, every loader | Harmless to our draws, none indirect; alignment 1 only removes row padding from readbacks | recorded |
+
 ---
 
 ## 3. Open
