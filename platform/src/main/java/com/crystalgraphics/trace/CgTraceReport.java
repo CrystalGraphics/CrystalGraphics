@@ -131,13 +131,29 @@ public final class CgTraceReport {
                 int at = byCpu.get(i);
                 if (at != slowWall && at != typical) frameBlock(out, a, at, "slow by cpu #" + (i + 1), 200);
             }
-            out.append("\nEVERY FRAME  wall / cpu ms\n");
-            for (CgFrameRecord frame : a.frames) {
-                out.append(String.format(Locale.ROOT, "  #%-7d %8.2f %8s%n", frame.index(), frame.wallMillis(),
-                        frame.hasCpu() ? String.format(Locale.ROOT, "%.2f", frame.cpuMillis()) : "absent"));
+            out.append("\nEVERY FRAME  wall / cpu / gpu ms, and the frame's largest GPU zone\n");
+            for (int i = 0; i < a.frames.size(); i++) {
+                CgFrameRecord frame = a.frames.get(i);
+                out.append(String.format(Locale.ROOT, "  #%-7d %8.2f %8s %8s  %s%n", frame.index(), frame.wallMillis(),
+                        frame.hasCpu() ? String.format(Locale.ROOT, "%.2f", frame.cpuMillis()) : "absent",
+                        a.gpu[i] < 0 ? "absent" : String.format(Locale.ROOT, "%.2f", a.gpu[i] / 1e6),
+                        largestGpuZone(a.countersByFrame.get(i))));
             }
         }
         return out.toString();
+    }
+
+    /** The frame's costliest {@code gpu:} counter as {@code name ms}, or empty when it has none. */
+    private static String largestGpuZone(Map<String, Long> counters) {
+        String name = null;
+        long most = -1L;
+        for (Map.Entry<String, Long> counter : counters.entrySet()) {
+            if (counter.getKey().startsWith(CgGpuTrace.PREFIX) && counter.getValue() > most) {
+                name = counter.getKey();
+                most = counter.getValue();
+            }
+        }
+        return name == null ? "" : String.format(Locale.ROOT, "%s %.2f", name, most / 1e6);
     }
 
     /** One frame in full — its tree, counters, markers and hints. */

@@ -249,9 +249,9 @@ public final class CgPreviewRenderer {
         renderedSource.keySet().retainAll(visibleNodeIds);
         renderedTarget.keySet().retainAll(visibleNodeIds);
         renderedGeometry.keySet().retainAll(visibleNodeIds);
-        emittedPreviews.keySet().retainAll(visibleNodeIds);
-        dropMaterialsOutside(materials, visibleNodeIds);
-        dropMaterialsOutside(compilingMaterials, visibleNodeIds);
+        // THE MATERIALS AND THE EMITTED SOURCE STAY. A culled node is still in the graph, and dropping its program
+        // made scrolling it back into view a recompile, whose link landed on the frame a couple of seconds later.
+        // Only a node that has left the graph gives them up. @see #retainNodes
         compiling.retainAll(visibleNodeIds);
         dirty.retainAll(visibleNodeIds);
         animated.retainAll(visibleNodeIds);
@@ -266,6 +266,21 @@ public final class CgPreviewRenderer {
             // never recorded as rendered, so without the check it comes back dirty on every single frame.
             if (!renderedSource.containsKey(nodeId) && !failed.contains(nodeId)) dirty.add(nodeId);
         }
+    }
+
+    /**
+     * Drops what is held for nodes no longer in the graph: their materials and emitted source, which
+     * {@link #setVisible} keeps for a node that is merely off screen.
+     *
+     * <pre>{@code
+     * renderer.retainNodes(allNodeIds);   // when nodes were added or removed
+     * renderer.setVisible(onScreenIds);   // when that, or what is on screen, changed
+     * }</pre>
+     */
+    public void retainNodes(Set<String> nodeIds) {
+        emittedPreviews.keySet().retainAll(nodeIds);
+        dropMaterialsOutside(materials, nodeIds);
+        dropMaterialsOutside(compilingMaterials, nodeIds);
     }
 
     /** Whether anything is waiting to be drawn — lets a caller skip the GL scope entirely. */
@@ -440,6 +455,7 @@ public final class CgPreviewRenderer {
             if (next != null) next.material().delete();
             next = new HeldMaterial(source, CgMaterial.fromSource(source));
             compilingMaterials.put(nodeId, next);
+            CgTrace.add(CgChannels.SHADERGRAPH, "preview.materials.created", 1);
         }
         if (!next.material().prepare()) return null;
         compilingMaterials.remove(nodeId);
@@ -459,6 +475,7 @@ public final class CgPreviewRenderer {
         held.entrySet().removeIf(entry -> {
             if (keep.contains(entry.getKey())) return false;
             entry.getValue().material().delete();
+            CgTrace.add(CgChannels.SHADERGRAPH, "preview.materials.dropped", 1);
             return true;
         });
     }
@@ -503,24 +520,31 @@ public final class CgPreviewRenderer {
             pipeline.prepareFrame();
             writeObjectRecord(pipeline.objectBuffer());
 
-            target.drawTarget().bind();
-            CgGL.glViewport(0, 0, previewSize, previewSize);
-            // Cleared to transparent, not to a colour: the thumbnail is composited into the node's
-            // rounded preview region, and any opaque clear would show as a square behind it.
-            CgGL.glClearColor(0f, 0f, 0f, 0f);
-            CgGL.glClear(CgGL.GL_COLOR_BUFFER_BIT | CgGL.GL_DEPTH_BUFFER_BIT);
+            try (CgTrace.Zone cleared = CgTrace.zone(CgChannels.SHADERGRAPH, "preview.clear")) {
+                target.drawTarget().bind();
+                CgGL.glViewport(0, 0, previewSize, previewSize);
+                // Cleared to transparent, not to a colour: the thumbnail is composited into the node's
+                // rounded preview region, and any opaque clear would show as a square behind it.
+                CgGL.glClearColor(0f, 0f, 0f, 0f);
+                CgGL.glClear(CgGL.GL_COLOR_BUFFER_BIT | CgGL.GL_DEPTH_BUFFER_BIT);
+            }
 
             CgDepthState.TEST_WRITE.apply();
             CgBlendState.DISABLED.apply();
 
-            CgMesh mesh = meshFor(geometry);
-            material.drawChain(() -> mesh.drawInstanced(1));
+            // Timed apart: a driver that links a program lazily blocks on its first draw here.
+            try (CgTrace.Zone drawn = CgTrace.zone(CgChannels.SHADERGRAPH, "preview.drawMesh")) {
+                CgMesh mesh = meshFor(geometry);
+                material.drawChain(() -> mesh.drawInstanced(1));
+            }
 
-            target.drawTarget().unbind();
-            // The multisample resolve. Without it the readable texture is never written and every
-            // thumbnail stays empty — the multisampled buffer holds the picture, and nothing can sample
-            // it directly.
-            target.resolve();
+            try (CgTrace.Zone resolved = CgTrace.zone(CgChannels.SHADERGRAPH, "preview.resolve")) {
+                target.drawTarget().unbind();
+                // The multisample resolve. Without it the readable texture is never written and every
+                // thumbnail stays empty — the multisampled buffer holds the picture, and nothing can sample
+                // it directly.
+                target.resolve();
+            }
         } finally {
             CgGpuTrace.end();
             // Unconditional: leaving the world pass on the preview camera is a failure with
