@@ -594,6 +594,33 @@ public final class CgMaterial {
     }
 
     /**
+     * The forward program per keyword set, indexed by {@link #keywordMask}, for the shader revision in
+     * {@link #variantsRevision}. A UI material is bound hundreds of times a frame with its keywords toggled between
+     * draws, and each resolve built a program key and copied the keyword set: most of what a busy frame allocated.
+     */
+    @Nullable
+    private CgShader[] variants;
+    private int variantsRevision = -1;
+    @Nullable
+    private List<String> variantsDeclared;
+
+    /** The enabled keywords as bits over the declared features, or -1 past the eight a shader may declare. */
+    private int keywordMask() {
+        List<String> declared = getDeclaredFeatureNames();
+        if (declared.size() > 8) return -1;
+        int mask = 0;
+        for (int i = 0; i < declared.size(); i++) {
+            if (enabledKeywords.contains(declared.get(i))) mask |= 1 << i;
+        }
+        return mask;
+    }
+
+    /** The forward pass's render state, and the shader revision it was read at. */
+    @Nullable
+    private CgRenderState forwardRenderState;
+    private int forwardRenderStateRevision = -1;
+
+    /**
      * Returns {@code true} if the given keyword is currently enabled on this material instance.
      *
      * @param name keyword name to query
@@ -687,16 +714,28 @@ public final class CgMaterial {
                 onShaderRecompiled();
             }
 
-            Set<String> keywords = Collections.unmodifiableSet(enabledKeywords);
-            // Compiles-and-caches the variant for this exact keyword set on first use, so the
-            // first bind after a keyword toggle pays a full GLSL compile+link. Scoped because
-            // that cost is otherwise invisible: it surfaces inside whatever draw happened to
-            // trigger the toggle, not at any obvious "compiling now" call site.
-            CgShader shader;
-            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.getOrCompileVariant")) {
-                shader = cgMaterialShader.getOrCompileForwardPass(keywords);
+            int revision = cgMaterialShader.getRevisionNumber();
+            int mask = keywordMask();
+            // The declared list too: a reload that parses and then fails to compile moves it without the revision,
+            // and a bit would then name another keyword than the one its variant was cached under.
+            List<String> declared = getDeclaredFeatureNames();
+            if (variantsRevision != revision || variantsDeclared != declared || variants == null) {
+                variants = mask < 0 ? null : new CgShader[1 << declared.size()];
+                variantsRevision = revision;
+                variantsDeclared = declared;
             }
-            if (shader == null) return;
+            CgShader shader = mask >= 0 && variants != null && mask < variants.length ? variants[mask] : null;
+            if (shader == null) {
+                // Compiles-and-caches the variant for this exact keyword set on first use, so the
+                // first bind after a keyword toggle pays a full GLSL compile+link. Scoped because
+                // that cost is otherwise invisible: it surfaces inside whatever draw happened to
+                // trigger the toggle, not at any obvious "compiling now" call site.
+                try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.getOrCompileVariant")) {
+                    shader = cgMaterialShader.getOrCompileForwardPass(Collections.unmodifiableSet(enabledKeywords));
+                }
+                if (shader == null) return;
+                if (mask >= 0 && variants != null && mask < variants.length) variants[mask] = shader;
+            }
             lastBoundShader = shader;
             try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.doBind")) {
                 doBind(shader, CgRenderPassVariant.FORWARD);
@@ -739,9 +778,13 @@ public final class CgMaterial {
         CgParsedShader parsed = cgMaterialShader.getLastParsed();
         if (parsed == null) return CgRenderState.DEFAULT;
         if (variant == CgRenderPassVariant.FORWARD) {
+            int revision = cgMaterialShader.getRevisionNumber();
+            if (forwardRenderState != null && forwardRenderStateRevision == revision) return forwardRenderState;
             CgParsedPass forwardPass = parsed.getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
-            if (forwardPass == null) return CgRenderState.DEFAULT;
-            return cgMaterialShader.getRenderState(forwardPass.name());
+            CgRenderState state = forwardPass == null ? CgRenderState.DEFAULT : cgMaterialShader.getRenderState(forwardPass.name());
+            forwardRenderState = state;
+            forwardRenderStateRevision = revision;
+            return state;
         }
         return cgMaterialShader.getRenderState(variant.lightModeName());
     }

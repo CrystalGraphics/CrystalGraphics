@@ -238,7 +238,10 @@ public class CgTextRenderer {
      * reference, since {@link CgTextRenderContext#getProjection()} is a live, mutable matrix
      * owned by the context.
      */
-    private Matrix4f activeProjection;
+    private final Matrix4f activeProjection = new Matrix4f();
+
+    /** Whether {@link #activeProjection} is what the shared UBO holds; false after anything that may have moved it. */
+    private boolean projectionValid;
 
     /** Uploaded beside the projection, so two renderers can draw with different corrections in one frame. */
     private CgTextGamma gamma = CgTextGamma.initial();
@@ -351,7 +354,7 @@ public class CgTextRenderer {
         flush();
         this.gamma = gamma;
         // Forces the next draw to upload, since the projection alone may not have changed.
-        activeProjection = null;
+        projectionValid = false;
         return this;
     }
 
@@ -483,7 +486,7 @@ public class CgTextRenderer {
         if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
         if (batchActive) throw new IllegalStateException("CgTextRenderer.beginBatch() called without a matching endBatch()");
 
-        activeProjection = null;
+        projectionValid = false;
         // Between batches the material binding was torn down and a restore hook may have run, so
         // whatever was recorded about the shared material can no longer be trusted.
         activeBatchBits = NO_ACTIVE_BATCH;
@@ -503,7 +506,7 @@ public class CgTextRenderer {
 
         flush();
         quadRenderer.end();
-        activeProjection = null;
+        projectionValid = false;
         batchActive = false;
 
         if (postBatchRestore != null) postBatchRestore.run();
@@ -559,11 +562,14 @@ public class CgTextRenderer {
      * </ol>
      */
     private void syncProjection(Matrix4f projection) {
-        if(activeProjection != null) {
+        if (projectionValid) {
             if (activeProjection.equals(projection)) return;
-            else flush();
-            activeProjection.set(projection);
-        } else activeProjection = new Matrix4f(projection);
+            flush();
+        }
+        // KEPT, and marked invalid rather than dropped: the resets run per batch, and a fresh matrix each time
+        // was a steady allocation per text draw.
+        activeProjection.set(projection);
+        projectionValid = true;
 
         CgTextGamma.Level small = gamma.small(), large = gamma.large();
         TEXT_DATA_UBO.writer().reset().beginRecord().mat4("u_Projection", projection)
@@ -1097,7 +1103,7 @@ public class CgTextRenderer {
         // of teardown on every harness run that had text on screen.
         if (batchActive) {
             quadRenderer.end();
-            activeProjection = null;
+            projectionValid = false;
             batchActive = false;
         }
         quadRenderer.delete();

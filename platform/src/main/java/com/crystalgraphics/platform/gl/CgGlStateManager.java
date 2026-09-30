@@ -418,18 +418,18 @@ public final class CgGlStateManager {
 
     public boolean capabilityChanged(int cap, boolean enable) {
         assertOwner();
-        if (cap == CgGL.GL_BLEND)        return flagChanged(CgGlSlot.BLEND, F_BLEND_ENABLE, current.blendEnabled, enable) && set(() -> current.blendEnabled = enable, F_BLEND_ENABLE);
-        if (cap == CgGL.GL_DEPTH_TEST)   return flagChanged(CgGlSlot.DEPTH, F_DEPTH_TEST, current.depthTest, enable) && set(() -> current.depthTest = enable, F_DEPTH_TEST);
-        if (cap == CgGL.GL_CULL_FACE)    return flagChanged(CgGlSlot.CULL, F_CULL_ENABLE, current.cullEnabled, enable) && set(() -> current.cullEnabled = enable, F_CULL_ENABLE);
-        if (cap == CgGL.GL_STENCIL_TEST) return flagChanged(CgGlSlot.STENCIL, F_STENCIL_TEST, current.stencilTest, enable) && set(() -> current.stencilTest = enable, F_STENCIL_TEST);
-        if (cap == CgGL.GL_ALPHA_TEST)   return flagChanged(CgGlSlot.ALPHA_TEST, F_ALPHA_TEST, current.alphaTest, enable) && set(() -> current.alphaTest = enable, F_ALPHA_TEST);
-        if (cap == CgGL.GL_SCISSOR_TEST) return flagChanged(CgGlSlot.SCISSOR, F_SCISSOR_TEST, current.scissorTest, enable) && set(() -> current.scissorTest = enable, F_SCISSOR_TEST);
+        if (cap == CgGL.GL_BLEND)        { if (!flagChanged(CgGlSlot.BLEND, F_BLEND_ENABLE, current.blendEnabled, enable)) return false; current.blendEnabled = enable; return issue(F_BLEND_ENABLE); }
+        if (cap == CgGL.GL_DEPTH_TEST)   { if (!flagChanged(CgGlSlot.DEPTH, F_DEPTH_TEST, current.depthTest, enable)) return false; current.depthTest = enable; return issue(F_DEPTH_TEST); }
+        if (cap == CgGL.GL_CULL_FACE)    { if (!flagChanged(CgGlSlot.CULL, F_CULL_ENABLE, current.cullEnabled, enable)) return false; current.cullEnabled = enable; return issue(F_CULL_ENABLE); }
+        if (cap == CgGL.GL_STENCIL_TEST) { if (!flagChanged(CgGlSlot.STENCIL, F_STENCIL_TEST, current.stencilTest, enable)) return false; current.stencilTest = enable; return issue(F_STENCIL_TEST); }
+        if (cap == CgGL.GL_ALPHA_TEST)   { if (!flagChanged(CgGlSlot.ALPHA_TEST, F_ALPHA_TEST, current.alphaTest, enable)) return false; current.alphaTest = enable; return issue(F_ALPHA_TEST); }
+        if (cap == CgGL.GL_SCISSOR_TEST) { if (!flagChanged(CgGlSlot.SCISSOR, F_SCISSOR_TEST, current.scissorTest, enable)) return false; current.scissorTest = enable; return issue(F_SCISSOR_TEST); }
         if (cap == CgGL.GL_POLYGON_OFFSET_FILL)
-            return flagChanged(CgGlSlot.POLYGON_OFFSET, F_OFFSET_FILL, current.polygonOffsetFill, enable) && set(() -> current.polygonOffsetFill = enable, F_OFFSET_FILL);
+            { if (!flagChanged(CgGlSlot.POLYGON_OFFSET, F_OFFSET_FILL, current.polygonOffsetFill, enable)) return false; current.polygonOffsetFill = enable; return issue(F_OFFSET_FILL); }
         if (cap == CgGL.GL_POLYGON_OFFSET_LINE)
-            return flagChanged(CgGlSlot.POLYGON_OFFSET, F_OFFSET_LINE, current.polygonOffsetLine, enable) && set(() -> current.polygonOffsetLine = enable, F_OFFSET_LINE);
+            { if (!flagChanged(CgGlSlot.POLYGON_OFFSET, F_OFFSET_LINE, current.polygonOffsetLine, enable)) return false; current.polygonOffsetLine = enable; return issue(F_OFFSET_LINE); }
         if (cap == CgGL.GL_POLYGON_OFFSET_POINT)
-            return flagChanged(CgGlSlot.POLYGON_OFFSET, F_OFFSET_POINT, current.polygonOffsetPoint, enable) && set(() -> current.polygonOffsetPoint = enable, F_OFFSET_POINT);
+            { if (!flagChanged(CgGlSlot.POLYGON_OFFSET, F_OFFSET_POINT, current.polygonOffsetPoint, enable)) return false; current.polygonOffsetPoint = enable; return issue(F_OFFSET_POINT); }
         // An untracked capability. Always issue — we cannot say whether it is redundant, and guessing that
         // it is would drop a real call.
         return true;
@@ -437,12 +437,6 @@ public final class CgGlStateManager {
 
     private boolean flagChanged(CgGlSlot slot, long field, boolean held, boolean wanted) {
         return stale(slot, field) || held != wanted;
-    }
-
-    /** Applies the field write, marks the field trusted and counts the call. Always returns true. */
-    private boolean set(Runnable write, long field) {
-        write.run();
-        return issue(field);
     }
 
     public boolean blendFuncChanged(int srcRgb, int dstRgb, int srcAlpha, int dstAlpha) {

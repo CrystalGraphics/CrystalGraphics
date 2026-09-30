@@ -225,11 +225,20 @@ public final class CgMainPreviewRenderer {
             return drawFallback(mesh, yaw, pitch, zoom, aspect);
         }
 
-        CgShaderEmitter.Result emitted = CgShaderEmitter.emit(graph, master,
-                // PREVIEW_UNLIT, never UNLIT: this panel is looked at, so it wants the sRGB-encoded
-                // output a node thumbnail already produces. UNLIT is what SHIPS, and using it here is
-                // what made the two panels disagree about the same value.
-                lit ? CgShaderEmitter.Shading.PREVIEW_LIT : CgShaderEmitter.Shading.PREVIEW_UNLIT);
+        // REUSED while nothing it depends on moved: an animated graph draws every frame, and the emit is a whole
+        // compile of the graph -- the same text each time, since it names the time uniform rather than a value.
+        CgShaderEmitter.Result emitted = emittedResult;
+        if (emitted == null || graph != emittedGraph || lit != emittedLit || master.revision() != emittedMasterRevision) {
+            emitted = CgShaderEmitter.emit(graph, master,
+                    // PREVIEW_UNLIT, never UNLIT: this panel is looked at, so it wants the sRGB-encoded
+                    // output a node thumbnail already produces. UNLIT is what SHIPS, and using it here is
+                    // what made the two panels disagree about the same value.
+                    lit ? CgShaderEmitter.Shading.PREVIEW_LIT : CgShaderEmitter.Shading.PREVIEW_UNLIT);
+            emittedResult = emitted;
+            emittedGraph = graph;
+            emittedLit = lit;
+            emittedMasterRevision = master.revision();
+        }
         if (!emitted.ok()) {
             failed = true;
             return drawFallback(mesh, yaw, pitch, zoom, aspect);
@@ -592,6 +601,14 @@ public final class CgMainPreviewRenderer {
         compilingSource = null;
         return heldMaterial;
     }
+
+    /** The last emit, and what it was emitted from. @see #renderTraced */
+    @Nullable
+    private CgShaderEmitter.Result emittedResult;
+    @Nullable
+    private CgShaderGraph emittedGraph;
+    private boolean emittedLit;
+    private int emittedMasterRevision;
 
     @Nullable
     private CgMaterial heldMaterial;

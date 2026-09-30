@@ -4,6 +4,7 @@ import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -85,6 +86,10 @@ public final class CgMasterNode implements CgShaderNode {
     private static final List<CgShaderPort> PORTS =
             Stream.concat(VERTEX_PORTS.stream(), FRAGMENT_PORTS.stream()).collect(Collectors.toList());
 
+    /** Filtered once: asked per emit, which is per frame while a preview animates. */
+    private static final List<CgShaderPort> INPUTS = PORTS.stream().filter(CgShaderPort::isInput).toList();
+    private static final List<CgShaderPort> OUTPUTS = PORTS.stream().filter(CgShaderPort::isOutput).toList();
+
     /**
      * Which stage a master port belongs to — the split the whole emitter turns on.
      *
@@ -123,6 +128,8 @@ public final class CgMasterNode implements CgShaderNode {
     @Override public String id() { return "cg:master"; }
     @Override public String label() { return "Output"; }
     @Override public List<CgShaderPort> ports() { return PORTS; }
+    @Override public List<CgShaderPort> inputs() { return INPUTS; }
+    @Override public List<CgShaderPort> outputs() { return OUTPUTS; }
 
     /**
      * Emits nothing.
@@ -140,21 +147,34 @@ public final class CgMasterNode implements CgShaderNode {
 
     /** The {@code #type} line — the vertex format the graph draws with. */
     public CgMasterNode vertexFormat(String value) {
+        if (!Objects.equals(vertexFormat, value)) revision++;
         this.vertexFormat = value;
         return this;
     }
 
     /** {@code Tags { "RenderType" = ... }}. Drives shadow auto-generation. */
     public CgMasterNode renderType(String value) {
+        if (!Objects.equals(renderType, value)) revision++;
         this.renderType = value;
         return this;
     }
 
     /** {@code Queue = "..."} — Background, Geometry, AlphaTest, Transparent, Overlay. */
     public CgMasterNode queue(String value) {
+        if (!Objects.equals(queue, value)) revision++;
         this.queue = value;
         return this;
     }
+
+    /**
+     * Changes whenever a setting or a declared property does: what emits from this master are the same while it
+     * is. For a caller that keeps an emit rather than redoing it every frame.
+     */
+    public int revision() {
+        return revision;
+    }
+
+    private int revision;
 
     /**
      * Declares a shader {@code Property} the graph exposes — a value the material sets at runtime rather
@@ -167,7 +187,8 @@ public final class CgMasterNode implements CgShaderNode {
         if (type.propertyTypeName() == null) {
             throw new IllegalArgumentException("Type " + type + " cannot be a shader property");
         }
-        properties.put(name, new Property(name, type, defaultValue));
+        Property next = new Property(name, type, defaultValue);
+        if (!next.equals(properties.put(name, next))) revision++;
         return this;
     }
 
@@ -197,6 +218,7 @@ public final class CgMasterNode implements CgShaderNode {
      * declare properties its graph never asked for.</p>
      */
     public CgMasterNode clearShaderProperties() {
+        if (!properties.isEmpty()) revision++;
         properties.clear();
         return this;
     }

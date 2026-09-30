@@ -4,8 +4,8 @@ import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 
-import java.util.ArrayDeque;
-import java.util.Deque;
+import java.util.Arrays;
+import java.util.NoSuchElementException;
 
 /**
  * A matrix stack with Minecraft 1.20.1's {@code PoseStack} API, held entirely on the CPU: a draw reads
@@ -23,20 +23,25 @@ import java.util.Deque;
  * <p>Transforms modify the <em>top</em> entry in place. Every {@link #pushPose()} needs its
  * {@link #popPose()}; popping the base entry throws. Nothing here touches GL's fixed-function matrices.</p>
  *
+ * <p><b>An entry is reused after it is popped</b>, as Minecraft's own stack does since 1.21.5: read
+ * {@link #last()} when drawing, and do not keep a {@link Pose} or its matrices past the {@link #popPose()}
+ * that ends it.</p>
+ *
  * <p>Not thread-safe; render thread only.</p>
  *
  * @see Pose
  */
 public class PoseStack {
 
-    private final Deque<Pose> poseStack;
+    /** Every entry ever pushed to this depth; {@code [0..top]} are live. A push copies into the next, or grows. */
+    private Pose[] entries = new Pose[16];
+    private int top;
 
     /**
      * Creates a new PoseStack with a single identity entry.
      */
     public PoseStack() {
-        this.poseStack = new ArrayDeque<Pose>();
-        this.poseStack.add(new Pose(new Matrix4f(), new Matrix3f()));
+        entries[0] = new Pose(new Matrix4f(), new Matrix3f());
     }
 
     /**
@@ -62,7 +67,7 @@ public class PoseStack {
      * @param z translation along the Z axis
      */
     public void translate(float x, float y, float z) {
-        Pose pose = this.poseStack.getLast();
+        Pose pose = entries[top];
         pose.pose.translate(x, y, z);
     }
 
@@ -83,7 +88,7 @@ public class PoseStack {
      * @param z scale factor along the Z axis
      */
     public void scale(float x, float y, float z) {
-        Pose pose = this.poseStack.getLast();
+        Pose pose = entries[top];
         pose.pose.scale(x, y, z);
 
         // Normal matrix handling — matches 1.20.1 exactly
@@ -112,7 +117,7 @@ public class PoseStack {
      * @param quaternion the rotation to apply
      */
     public void mulPose(Quaternionf quaternion) {
-        Pose pose = this.poseStack.getLast();
+        Pose pose = entries[top];
         pose.pose.rotate(quaternion);
         pose.normal.rotate(quaternion);
     }
@@ -131,18 +136,22 @@ public class PoseStack {
      * @param z          Z coordinate of the rotation center
      */
     public void rotateAround(Quaternionf quaternion, float x, float y, float z) {
-        Pose pose = this.poseStack.getLast();
+        Pose pose = entries[top];
         pose.pose.rotateAround(quaternion, x, y, z);
         pose.normal.rotate(quaternion);
     }
 
     /** Pushes a copy of the current top entry onto the stack. */
     public void pushPose() {
-        Pose current = this.poseStack.getLast();
-        this.poseStack.addLast(new Pose(
-            new Matrix4f(current.pose),
-            new Matrix3f(current.normal)
-        ));
+        Pose current = entries[top];
+        if (++top == entries.length) entries = Arrays.copyOf(entries, top * 2);
+        Pose next = entries[top];
+        if (next == null) {
+            entries[top] = new Pose(new Matrix4f(current.pose), new Matrix3f(current.normal));
+        } else {
+            next.pose.set(current.pose);
+            next.normal.set(current.normal);
+        }
     }
 
     /**
@@ -151,7 +160,8 @@ public class PoseStack {
      * @throws java.util.NoSuchElementException if the stack would become empty
      */
     public void popPose() {
-        this.poseStack.removeLast();
+        if (top == 0) throw new NoSuchElementException("popPose() on the base entry");
+        top--;
     }
 
     /**
@@ -161,7 +171,7 @@ public class PoseStack {
      * @throws java.util.NoSuchElementException if the stack is empty
      */
     public Pose last() {
-        return this.poseStack.getLast();
+        return entries[top];
     }
 
     /**
@@ -175,14 +185,14 @@ public class PoseStack {
      * @return {@code true} if the stack contains exactly one entry
      */
     public boolean clear() {
-        return this.poseStack.size() == 1;
+        return top == 0;
     }
 
     /**
      * Resets the top entry to identity matrices (both pose and normal).
      */
     public void setIdentity() {
-        Pose pose = this.poseStack.getLast();
+        Pose pose = entries[top];
         pose.pose.identity();
         pose.normal.identity();
     }
@@ -197,7 +207,7 @@ public class PoseStack {
      * @param matrix the matrix to multiply with
      */
     public void mulPoseMatrix(Matrix4f matrix) {
-        this.poseStack.getLast().pose.mul(matrix);
+        entries[top].pose.mul(matrix);
     }
 
     // ---- Utility ----
