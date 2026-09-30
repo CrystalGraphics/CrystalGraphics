@@ -62,6 +62,10 @@ its desktop and HUD from there on those nodes.
   in `FrameHooks.endFrame`, before Minecraft's submit. The GL-only repairs stand aside: Blaze3D's texture
   units, `HostStateVerifier`, `OwnDepthConvention`'s clip control, CrystalGUI's `CgUiHostGl.leave`.
   `LifecycleModern.canRender()` stands the engine down (`CgGraphicsLifecycle.standDown`) only when the
-  hosted device cannot be built, with the cause in the log. `-Dcrystalgraphics.host.verify=true` checks
-  every hand-over. At the shutdown signal our device's close is queued on Blaze3D's destroy queue, which
-  runs it once our last submit has completed or inside `VulkanDevice.close`, before the device goes.
+  hosted device cannot be built, with the cause in the log; on GL it asks GLFW for a current context, and
+  from 26.3, which has no GLFW, takes a device that is not Vulkan as GL. `-Dcrystalgraphics.host.verify=true`
+  checks every hand-over. At the shutdown signal our device's close is queued on Blaze3D's destroy queue,
+  which runs it once our last submit has completed or inside `VulkanDevice.close`, before the device goes.
+- **SDL3 from 26.3.** 26.3 ships no GLFW: `PlatformServiceModern` registers `runtime/lwjgl/sdl`'s
+  `SdlInputService` and `SdlCursorService` there, chosen per node with `//? if >=26.3`, since a 26.3 node
+  cannot load a GLFW class at all.

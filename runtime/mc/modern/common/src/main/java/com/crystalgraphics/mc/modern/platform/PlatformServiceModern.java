@@ -2,8 +2,14 @@ package com.crystalgraphics.mc.modern.platform;
 
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.mc.modern.platform.gl.Blaze3dGLBackend;
+// 26.3 ships SDL3 and no GLFW, so a 26.3 node cannot even load the GLFW pair.
+//? if >=26.3 {
+/*import com.crystalgraphics.sdl.SdlCursorService;
+import com.crystalgraphics.sdl.SdlInputService;
+*///?} else {
 import com.crystalgraphics.lwjgl3.GlfwCursorService;
 import com.crystalgraphics.lwjgl3.GlfwInputService;
+//?}
 import com.crystalgraphics.lwjgl3.Lwjgl3GLContext;
 
 import com.crystalgraphics.mc.modern.platform.service.LifecycleService;
@@ -110,8 +116,12 @@ public final class PlatformServiceModern implements CgPlatformService {
             // is not open yet when the backend is first built, so a captured long would be stale
             // exactly when it mattered. That supplier is the only Minecraft fact the adapter needs,
             // which is what lets it sit in tier 1 knowing nothing about this era.
+            //? if >=26.3 {
+            /*CgPlatform.provide(CgCursorService.SERVICE, new SdlCursorService());
+            *///?} else {
             CgPlatform.provide(CgCursorService.SERVICE,
                     new GlfwCursorService(PlatformServiceModern::windowHandle));
+            //?}
         }
         return glBackend;
     }
@@ -164,7 +174,11 @@ public final class PlatformServiceModern implements CgPlatformService {
         // The window is the one Minecraft fact tier 1 needs, and it takes it as a supplier -- see
         // GlfwInputService. Built lazily and held as the SPI type, like every field here, so a
         // dedicated server never loads a class that names GLFW.
+        //? if >=26.3 {
+        /*if (input == null) input = new SdlInputService();
+        *///?} else {
         if (input == null) input = new GlfwInputService(PlatformServiceModern::windowHandle);
+        //?}
         return input;
     }
 

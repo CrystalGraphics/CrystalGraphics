@@ -51,6 +51,9 @@ dependencies {
     if (MinecraftVersionOrder.compare(property("mc.version").toString(), "26.2") >= 0) {
         "api"(project(":runtime:lwjgl:vulkan"))
     }
+    // Its SDL3 input and cursor, for a node whose Minecraft ships SDL instead of GLFW (26.3+). On every
+    // node's classpath, loaded only by the one that names it.
+    "api"(project(":runtime:lwjgl:sdl"))
     // Mixin compileOnly — both loaders bundle it at runtime; never shade it. A stub build has its
     // signatures in the stub, and downloads neither.
     if (!stubMode) "compileOnly"("org.spongepowered:mixin:${property("modern.mixin")}")

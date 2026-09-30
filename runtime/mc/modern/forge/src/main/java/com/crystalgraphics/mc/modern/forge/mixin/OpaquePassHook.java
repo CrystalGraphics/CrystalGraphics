@@ -1,6 +1,26 @@
 package com.crystalgraphics.mc.modern.forge.mixin;
 
-//? if >=1.21.11 {
+//? if >=26.3 {
+/*import com.crystalgraphics.mc.modern.platform.LifecycleModern;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.LevelRenderer;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+
+// 26.3 hands renderGroup a render pass its caller opened, so its head is inside Minecraft's pass. Opaque
+// terrain is done when translucency starts: executeOit (OIT, passes of its own) or, with OIT off,
+// executeClassicTransparency, still inside the solid pass. One of the two runs a frame.
+@Mixin(value = LevelRenderer.class, remap = false)
+public abstract class OpaquePassHook {
+
+    @Inject(method = {"executeOit", "executeClassicTransparency"}, at = @At("HEAD"), require = 2)
+    private void crystalgraphics$opaquePass(CallbackInfo ci) {
+        LifecycleModern.opaquePass(Minecraft.getInstance().getDeltaTracker().getGameTimeDeltaPartialTick(true));
+    }
+}
+*///?} elif >=1.21.11 {
 /*import com.crystalgraphics.mc.modern.platform.LifecycleModern;
 import com.mojang.blaze3d.textures.GpuSampler;
 import net.minecraft.client.Minecraft;
