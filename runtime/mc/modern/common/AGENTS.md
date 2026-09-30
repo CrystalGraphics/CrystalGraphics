@@ -56,4 +56,8 @@ its desktop and HUD from there on those nodes.
 - **Vulkan.** 26.2 can run Blaze3D on Vulkan. `LifecycleModern.glAvailable()` asks once whether a GL
   context is current (`glfwGetCurrentContext`) and, when none is, calls
   `CgGraphicsLifecycle.standDown(reason)`: CrystalGraphics logs once and does nothing for the rest of
-  the process.
+  the process. 26.3 has no GLFW to ask, so there it answers true until device-seam D5 asks Blaze3D which
+  device it made, on every version.
+- **SDL3 from 26.3.** 26.3 ships no GLFW: `PlatformServiceModern` registers `runtime/lwjgl/sdl`'s
+  `SdlInputService` and `SdlCursorService` there, chosen per node with `//? if >=26.3`, since a 26.3 node
+  cannot load a GLFW class at all.
