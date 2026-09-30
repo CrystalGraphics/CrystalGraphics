@@ -36,6 +36,7 @@ Their commands are CrystalGUI's `AGENTS.md` § *Build and run*.
 | CrystalGUI's `docs/CGUI_CROSS_VERSION.md` | Code that must run on every version |
 | [`docs/NATIVE_BUILD_PROCESS.md`](docs/NATIVE_BUILD_PROCESS.md) | Rebuilding the FreeType/HarfBuzz/msdfgen natives |
 | [`docs/HOTSWAP_SETUP.md`](docs/HOTSWAP_SETUP.md) | Hotswapping into a running 1.7.10 client |
+| **[`docs/MINECRAFT_RENDERING_CONVENTIONS.md`](docs/MINECRAFT_RENDERING_CONVENTIONS.md)** | **Before drawing into Minecraft's frame, and with every new Minecraft version**: how each version changed that frame (26.2's reversed depth, float depth, blend and sampler state left behind) and what the engine does about each |
 
 **Five rules the build will not tell you:**
 
@@ -1263,7 +1264,7 @@ Design record and eight implementation corrections: `plan/gl-state-manager.md`.
 | Want | Where |
 |---|---|
 | **Any node's API, with no setup** | `python singlejar-logic/mcapi.py <Class> [member]` — which versions have it, and its signature on each |
-| **What a new version changed about the frame** | `python singlejar-logic/mcrender.py <previous> <new>` — depth direction, clear values, formats, GL calls, projection plane order, pipeline defaults, from the client jars (26.1 on). The run-time half is `-Dcrystalgraphics.host.census`. Findings go in the plan's `platform-host-conventions` register |
+| **What a new version changed about the frame** | `python singlejar-logic/mcrender.py <previous> <new>` — depth direction, clear values, formats, GL calls, projection plane order, pipeline defaults, from the client jars (26.1 on). The run-time half is `-Dcrystalgraphics.host.census`. Findings go in [`docs/MINECRAFT_RENDERING_CONVENTIONS.md`](docs/MINECRAFT_RENDERING_CONVENTIONS.md) |
 | A modern node's decompiled sources | `./gradlew :runtime:mc:modern:<branch>:<version>:extractMcSources` → `runtime/mc/modern/<branch>/versions/<version>/build/mc-src/{java,resources}` (makes that node real; minutes the first time) |
 | 1.7.10's | `runtime/mc/1710/build/rfg/minecraft-src/java/`, after a build of that module |
 

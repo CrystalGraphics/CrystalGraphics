@@ -186,7 +186,10 @@ A version is a **node**: a catalog entry here, and each repo's sources made to b
 
 **0. Survey first.** Diff the new version's API against its neighbour before touching the build (javap
 over the new jars, or its `build/mc-src` once real). Every break found up front is one `prodSmoke` cycle
-saved; fix every family of break in one pass.
+saved; fix every family of break in one pass. **Then its rendering conventions**, which compile either way:
+`singlejar-logic/mcrender.py <previous> <new>`, and each difference into
+[`MINECRAFT_RENDERING_CONVENTIONS.md`](MINECRAFT_RENDERING_CONVENTIONS.md) — reversed depth reached 26.2
+with every signature intact.
 
 **1. `targets {}` in both repos' `settings.gradle.kts`** — a range that reaches the version; widening the
 upper bound is usually the whole edit. The `common` node follows.
