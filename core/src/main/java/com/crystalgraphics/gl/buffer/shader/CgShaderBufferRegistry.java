@@ -4,6 +4,7 @@ import com.github.bsideup.jabel.Desugar;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 
 import java.util.HashMap;
@@ -18,9 +19,9 @@ import java.util.Map;
  * (SSBO path) or {@code userIndex + CgBindingPoints.USER_START_TBO} (TBO path).</p>
  *
  * <p><strong>Engine-internal buffers bypass this registry</strong>: the per-object SSBO/TBO and
- * per-frame UBO owned by {@code CgMaterialPipeline} occupy engine-reserved binding points 0 and 1
- * (below {@code USER_START}). They are managed directly by {@code CgMaterialPipeline} and are
- * never inserted into this registry.</p>
+ * frame UBO owned by {@code CgRenderPipeline} occupy engine-reserved binding points, resolved at
+ * runtime. They are managed directly by {@code CgRenderPipeline} and are never inserted into this
+ * registry.</p>
  *
  * <h3>Usage</h3>
  * <pre>{@code
@@ -30,7 +31,14 @@ import java.util.Map;
  *
  * CgUniformBuffer myUbo = CgShaderBufferRegistry.get()
  *     .getOrCreateUbo(MyFormats.LIGHT_FORMAT, "LightBlock", 1);
+ *
+ * // Rewritten every frame, before the draws that read it: the frame ring.
+ * CgShaderBuffer instances = CgShaderBufferRegistry.get()
+ *     .getOrCreate("myInstances", MyFormats.INSTANCE_FORMAT, 2, CgBufferLifetime.FRAME);
  * }</pre>
+ *
+ * <p>A name, format and binding asked for again returns the same buffer, and must ask for the same
+ * {@link CgBufferLifetime}: two lifetimes at one binding is a conflict, and throws.</p>
  *
  * <p>All registered buffers are deleted by {@link #deleteAll()}, which is called from
  * {@link CgGraphicsLifecycle#destroyContext()}.</p>
@@ -63,14 +71,30 @@ public final class CgShaderBufferRegistry {
      * @return the cached or newly-created shader buffer
      */
     public CgShaderBuffer getOrCreate(String name, CgBufferFormat format, int userIndex) {
+        return getOrCreate(name, format, userIndex, CgBufferLifetime.RETAINED);
+    }
+
+    /**
+     * As {@link #getOrCreate(String, CgBufferFormat, int)}, with the contents' {@link CgBufferLifetime}.
+     *
+     * <pre>{@code
+     * CgShaderBuffer particles = CgShaderBufferRegistry.get()
+     *         .getOrCreate("Particles", PARTICLE_FORMAT, 0, CgBufferLifetime.FRAME);
+     * particles.beginWrite(n);
+     * // ... n records ...
+     * particles.endWrite();          // this frame's region, re-bound there
+     * mesh.drawInstanced(n);
+     * }</pre>
+     */
+    public CgShaderBuffer getOrCreate(String name, CgBufferFormat format, int userIndex, CgBufferLifetime lifetime) {
         CgCapabilities.ShaderBufferPath path = CgCapabilities.detect().shaderBufferPath();
         int binding = (path == CgCapabilities.ShaderBufferPath.TBO)
                 ? CgBindingPoints.USER_START_TBO + userIndex
                 : CgBindingPoints.USER_START_SSBO + userIndex;
         ShaderBufferKey key = new ShaderBufferKey(name, format, binding);
         CgShaderBuffer existing = shaderBufferCache.get(key);
-        if (existing != null) return existing;
-        CgShaderBuffer buf = CgShaderBuffer.create(name, format, userIndex);
+        if (existing != null) return sameLifetime(existing, lifetime);
+        CgShaderBuffer buf = CgShaderBuffer.create(name, format, userIndex, lifetime);
         shaderBufferCache.put(key, buf);
         return buf;
     }
@@ -100,35 +124,27 @@ public final class CgShaderBufferRegistry {
      * @return the cached or newly-created shader buffer
      */
     public CgShaderBuffer getOrCreateInternal(String name, CgBufferFormat format, CgBindingPoints.Binding binding) {
-        return getOrCreateInternal(name, format, binding, false);
+        return getOrCreateInternal(name, format, binding, CgBufferLifetime.RETAINED);
     }
 
     /**
-     * As {@link #getOrCreateInternal(String, CgBufferFormat, CgBindingPoints.Binding)}, for a buffer uploaded
-     * before every draw that reads it: its storage is the frame ring ({@link CgShaderBuffer#createInternal(String,
-     * CgBufferFormat, int, boolean)}). What the quad and curve renderers' instance data use.
+     * As {@link #getOrCreateInternal(String, CgBufferFormat, CgBindingPoints.Binding)}, with the contents'
+     * {@link CgBufferLifetime}. What the quad and curve renderers' instance data use.
      *
      * <pre>{@code
      * CgShaderBuffer instances = CgShaderBufferRegistry.get()
-     *         .getOrCreateFrameLocalInternal("QuadInstances", FORMAT, CgBindingPoints.QUAD_RENDERER);
-     * instances.uploadRaw(data, floats);
-     * instances.bind();                  // after every upload: the range moves
+     *         .getOrCreateInternal("QuadInstances", FORMAT, CgBindingPoints.QUAD_RENDERER, CgBufferLifetime.FRAME);
+     * instances.uploadRaw(data, floats);   // re-binds at the new offset
      * mesh.drawInstanced(count);
      * }</pre>
-     *
-     * <p>Bind after each upload, never once per frame: each upload lands at a new offset.</p>
      */
-    public CgShaderBuffer getOrCreateFrameLocalInternal(String name, CgBufferFormat format, CgBindingPoints.Binding binding) {
-        return getOrCreateInternal(name, format, binding, true);
-    }
-
-    private CgShaderBuffer getOrCreateInternal(String name, CgBufferFormat format, CgBindingPoints.Binding binding,
-                                               boolean frameLocal) {
+    public CgShaderBuffer getOrCreateInternal(String name, CgBufferFormat format, CgBindingPoints.Binding binding,
+                                              CgBufferLifetime lifetime) {
         int resolvedBinding = binding.resolve();
         ShaderBufferKey key = new ShaderBufferKey(name, format, resolvedBinding);
         CgShaderBuffer existing = shaderBufferCache.get(key);
-        if (existing != null) return existing;
-        CgShaderBuffer buf = CgShaderBuffer.createInternal(name, format, resolvedBinding, frameLocal);
+        if (existing != null) return sameLifetime(existing, lifetime);
+        CgShaderBuffer buf = CgShaderBuffer.createInternal(name, format, resolvedBinding, lifetime);
         shaderBufferCache.put(key, buf);
         return buf;
     }
@@ -146,13 +162,49 @@ public final class CgShaderBufferRegistry {
      * @return the cached or newly-created UBO
      */
     public CgUniformBuffer getOrCreateUbo(CgBufferFormat format, String name, int userIndex) {
-        int binding = CgBindingPoints.USER_START_UBO + userIndex;
-        ShaderBufferKey key = new ShaderBufferKey(name, format, binding);
+        return getOrCreateUbo(format, name, userIndex, CgBufferLifetime.RETAINED);
+    }
+
+    /**
+     * As {@link #getOrCreateUbo(CgBufferFormat, String, int)}, with the contents' {@link CgBufferLifetime}.
+     *
+     * <pre>{@code
+     * CgUniformBuffer light = CgShaderBufferRegistry.get()
+     *         .getOrCreateUbo(LIGHT_FORMAT, "LightBlock", 0, CgBufferLifetime.FRAME);
+     * light.writer().reset().beginRecord().vec4("color", r, g, b, 1f);
+     * light.endRecord();
+     * light.upload();     // before every draw that reads it; a compare when nothing moved this frame
+     * }</pre>
+     */
+    public CgUniformBuffer getOrCreateUbo(CgBufferFormat format, String name, int userIndex, CgBufferLifetime lifetime) {
+        return ubo(format, name, CgBindingPoints.USER_START_UBO + userIndex, lifetime);
+    }
+
+    /**
+     * As {@link #getOrCreateUbo(CgBufferFormat, String, int, CgBufferLifetime)} at an <strong>engine-reserved</strong>
+     * slot -- a {@code CgBindingPoints} UBO constant used verbatim, as the text renderer's block is.
+     */
+    public CgUniformBuffer getOrCreateUboInternal(CgBufferFormat format, String name, int bindingPoint,
+                                                  CgBufferLifetime lifetime) {
+        return ubo(format, name, bindingPoint, lifetime);
+    }
+
+    private CgUniformBuffer ubo(CgBufferFormat format, String name, int bindingPoint, CgBufferLifetime lifetime) {
+        ShaderBufferKey key = new ShaderBufferKey(name, format, bindingPoint);
         CgUniformBuffer existing = uboCache.get(key);
-        if (existing != null) return existing;
-        CgUniformBuffer ubo = CgUniformBuffer.create(format, name, userIndex);
+        if (existing != null) return sameLifetime(existing, lifetime);
+        CgUniformBuffer ubo = new CgUniformBuffer(name, format, bindingPoint, lifetime);
         uboCache.put(key, ubo);
         return ubo;
+    }
+
+    // One binding, one lifetime: a second caller asking for the other would read the first's storage wrongly.
+    private static <B extends CgShaderBuffer> B sameLifetime(B existing, CgBufferLifetime asked) {
+        if (existing.getLifetime() != asked) {
+            throw new IllegalStateException("Shader buffer '" + existing.getName() + "' already exists as "
+                    + existing.getLifetime() + ", asked for " + asked);
+        }
+        return existing;
     }
 
     /**

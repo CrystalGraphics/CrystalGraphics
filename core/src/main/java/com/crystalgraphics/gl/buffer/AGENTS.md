@@ -15,8 +15,8 @@ stream buffers here are format-agnostic byte pipes.
 | | Factory | Tiers, best first | Lives |
 |---|---|---|---|
 | **Vertex stream** | `CgStreamBuffer.create(capacity)` | `PERSISTENT` > `RING` > `ORPHAN` > `SUBDATA` | on a ring tier, one frame: each upload at a new offset in this frame's region |
-| **Shader-buffer storage** | `CgStreamBuffer.createForShaderBuffer(target, capacity)` | `ORPHAN` > `SUBDATA` | until the next upload, always at offset 0 |
-| **Frame-local SSBO** | `CgStreamBuffer.createFrameLocal(target, capacity)` | `PERSISTENT` > `RING`, else as shader-buffer storage | one frame, bound by range (`glBindBufferRange`) at each upload's offset. Only for data uploaded before every draw that reads it — the quad and curve renderers' instances. SSBO only: `glTexBuffer` reads from 0 |
+| **Shader-buffer storage** (`CgBufferLifetime.RETAINED`, and every TBO) | `CgStreamBuffer.createForShaderBuffer(target, capacity)` | `ORPHAN` > `SUBDATA` | until the next upload, always at offset 0 |
+| **Frame-local SSBO or UBO** (a shader buffer with `CgBufferLifetime.FRAME`) | `CgStreamBuffer.createFrameLocal(target, capacity)` | `PERSISTENT` > `RING`, else as shader-buffer storage | one frame, bound by range (`glBindBufferRange`) at each upload's offset; `CgShaderBuffer.uploadData` re-binds after every upload. Only for data every reading frame uploads first — the quad, curve and object buffers, the material and frame blocks (copied in at a frame's first material bind) and the text UBO. A UBO starts at its block size and doubles on overflow. Not a TBO: `glTexBuffer` reads from 0 |
 
 | Tier | Class | Needs | What it costs |
 |---|---|---|---|
@@ -33,9 +33,15 @@ available, and the tiers still matter: drivers differ in which of them is fast o
 from `CgCapabilities.detect()`, and a shader buffer takes `subdata` if forced, else `orphan`. The harness's
 `capability-report` prints the tier chosen.
 
-Shader buffers stay off the ring because a material block is written once and bound for many frames,
-`glBindBufferBase` reads at offset 0, and the TBO path runs exactly where `glTexBufferRange` is missing
-(Mac 4.1, older Intel). On a backend that records rather than calls GL, an orphan is a fresh
+Which shader buffers go on the ring is a question of lifetime, not type: every frame that reads the buffer
+uploads it first. Instance data meets it by being written just before its draw. A block written once meets it
+when every reader passes a point that copies it into the frame: `CgMaterial.bind` does, for the material's
+properties (uploaded only when their bytes changed, or on its first bind of a frame) and for the frame block
+(`CgRenderPipeline.carryFrameBlock`); the text renderer re-uploads its block per frame. Orphaning stays for a
+TBO — `glTexBuffer` reads at 0, and the TBO path runs where `glTexBufferRange` is missing (Mac 4.1, older
+Intel) — and for a mod's own registry buffers, whose readers pass no such point. The copy is not made at a
+frame's first host section: on Minecraft's Vulkan host that is the frame end's, before Minecraft's submit,
+where a ring's wait for the frame three back is refused. On a backend that records rather than calls GL, an orphan is a fresh
 sub-allocation — the same meaning, no change here.
 
 ```
@@ -51,6 +57,8 @@ FrameRingStreamBuffer (PERSISTENT and RING)
 ├── RING: map() → glMapBufferRange(UNSYNCHRONIZED | INVALIDATE_RANGE | FLUSH_EXPLICIT) at the cursor
 ├── PERSISTENT: glBufferStorage + one coherent persistent map; map() returns a slice, uploadFloats writes
 │   through one float view of the whole mapping (rebuilt with it), commit() flushes nothing
+├── RING small writes (a frame-local UBO, ≤256 B): one glBufferSubData at the reserved offset, not a
+│   map/unmap pair
 ├── commit() → the offset; the caller re-points its VAO (CgVertexArrayBinding)
 ├── an offset is valid only in the frame that committed it: FRAMES later its bytes are overwritten.
 │   Every caller draws straight after commit(); CgBatchRenderer's replay API, the one path that holds

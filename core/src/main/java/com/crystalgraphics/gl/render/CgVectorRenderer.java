@@ -2,6 +2,7 @@ package com.crystalgraphics.gl.render;
 
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
@@ -332,7 +333,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
      * to {@link #instanceBuffer()} rather than a field read.</p>
      */
     private static final CgShaderBuffer GPU_BUFFER = CgShaderBufferRegistry.get()
-            .getOrCreateFrameLocalInternal(GPU_BUFFER_NAME, INSTANCE_FORMAT, CgBindingPoints.CURVE_RENDERER);
+            .getOrCreateInternal(GPU_BUFFER_NAME, INSTANCE_FORMAT, CgBindingPoints.CURVE_RENDERER, CgBufferLifetime.FRAME);
 
     /** Standalone CPU accumulation pair — per renderer instance, so callers batch independently. */
     private final CgStagingBuffer accumStaging;

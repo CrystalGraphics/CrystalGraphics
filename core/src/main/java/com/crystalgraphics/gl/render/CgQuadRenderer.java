@@ -4,6 +4,7 @@ import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gl.buffer.shader.CgEngineBufferRegistry;
@@ -184,7 +185,7 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
      * {@code TEXT_DATA_UBO}).</p>
      */
     private static final CgShaderBuffer GPU_BUFFER = CgShaderBufferRegistry.get()
-            .getOrCreateFrameLocalInternal(GPU_BUFFER_NAME, INSTANCE_FORMAT, CgBindingPoints.QUAD_RENDERER);
+            .getOrCreateInternal(GPU_BUFFER_NAME, INSTANCE_FORMAT, CgBindingPoints.QUAD_RENDERER, CgBufferLifetime.FRAME);
 
     /** Standalone CPU accumulation pair — bypasses {@link #GPU_BUFFER}'s own count-declared write session. */
     private final CgStagingBuffer accumStaging;

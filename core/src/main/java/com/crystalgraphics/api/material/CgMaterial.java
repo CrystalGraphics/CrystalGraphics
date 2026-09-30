@@ -4,6 +4,7 @@ import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.api.buffer.CgGpuType;
 import com.crystalgraphics.api.render.CgRenderPipeline;
 import com.crystalgraphics.api.shader.CgShader;
@@ -152,10 +153,15 @@ public final class CgMaterial {
      * Per-instance UBO backing the non-sampler properties (CgMaterialBlock).
      * Created on first {@link #onShaderRecompiled()} with UBO props, then reused
      * (via {@code resetFormat}) forever — never deleted or nulled on subsequent recompiles.
+     *
+     * <p>{@link CgBufferLifetime#FRAME}: every draw of this material binds it first, and {@link #syncProps}
+     * uploads it at every bind, which {@link CgUniformBuffer#upload()} turns into nothing unless the bytes moved or
+     * this is the frame's first bind. The UI rewrites its blocks on nearly every draw, and orphaning cost a driver
+     * rename per rewrite.</p>
      */
     private CgUniformBuffer matPropsUbo = null;
 
-    /** Whether property values have changed since the last GPU upload. */
+    /** Whether a property was written since the block was last packed -- whether or not its value moved. */
     private boolean materialPropsDirty = true;
 
     /**
@@ -503,6 +509,21 @@ public final class CgMaterial {
     }
 
     // ── Property bindings ─────────────────────────────────────────────────────
+
+    /**
+     * Brings the properties block up to date for a bind: packed again after any property write, then
+     * {@link CgUniformBuffer#upload()}, which sends it only if the bytes moved -- a write marks the block dirty
+     * whether or not a value did, and in the UI 79% of uploads carried the bytes already there -- or if this is
+     * the frame's first bind, since the block lives on the frame ring.
+     */
+    private void syncProps() {
+        if (materialPropsDirty) {
+            propStore.writeUboProps(matPropsUbo.writer());
+            matPropsUbo.endRecord();
+            materialPropsDirty = false;
+        }
+        matPropsUbo.upload();
+    }
 
     /**
      * Sets material property values by name. Only Properties block declarations are accepted.
@@ -873,12 +894,10 @@ public final class CgMaterial {
         // spent 346.8 ms in them.
 
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "doBind.propsUpload")) {
-            if (materialPropsDirty && matPropsUbo != null) {
-                propStore.writeUboProps(matPropsUbo.writer());
-                matPropsUbo.endRecord();
-                matPropsUbo.upload();
-                materialPropsDirty = false;
-            }
+            // Every draw that reads the frame block binds a material first, so this is where a frame's copy
+            // of it is made -- see CgRenderPipeline.carryFrameBlock.
+            CgRenderPipeline.carryFrameBlock();
+            if (matPropsUbo != null) syncProps();
         }
 
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "doBind.uboBind")) {
@@ -979,11 +998,14 @@ public final class CgMaterial {
      *      .vec4("custom0", r, g, b, a);   // custom1-3 auto-zeroed
      *     buf.endRecord();
      * }
-     * buf.endWrite();
+     * buf.endWrite();                     // uploads, and re-binds at the new offset
      * material.bind();
      * mesh.drawInstanced(N);
      * material.unbind();
      * }</pre>
+     *
+     * <p>Write the records in the frame that draws them. The buffer is on the frame ring, where a region is
+     * reused three frames on, so records kept from an earlier frame are not there to draw.</p>
      *
      * @return the pipeline's object buffer; never {@code null}
      * @throws IllegalStateException if {@link CgRenderPipeline} has not been initialized
@@ -1110,7 +1132,8 @@ public final class CgMaterial {
         if (propStore.hasUboProps()) {
             CgBufferFormat newFormat = propStore.buildUboFormat();
             if (matPropsUbo == null) {
-                matPropsUbo = new CgUniformBuffer(MATERIAL_PROPERTIES_BLOCK, newFormat, CgBindingPoints.MATERIAL_PROPERTIES_UBO);
+                matPropsUbo = new CgUniformBuffer(MATERIAL_PROPERTIES_BLOCK, newFormat, CgBindingPoints.MATERIAL_PROPERTIES_UBO,
+                        CgBufferLifetime.FRAME);
             } else {
                 matPropsUbo.resetFormat(newFormat);
             }
@@ -1122,11 +1145,9 @@ public final class CgMaterial {
             wiredPrograms.add(shader);
         }
 
-            // Upload property defaults immediately after successful compile/link (T7 behaviour)
-            propStore.writeUboProps(matPropsUbo.writer());
-            matPropsUbo.endRecord();
-            matPropsUbo.upload();
-            materialPropsDirty = false;
+            // Upload property defaults immediately after successful compile/link (T7 behaviour).
+            materialPropsDirty = true;
+            syncProps();
         } else {
             // Shader dropped all non-sampler properties on hot-reload — free the instance UBO.
             if (matPropsUbo != null) {

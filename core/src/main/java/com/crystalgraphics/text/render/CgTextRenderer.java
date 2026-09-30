@@ -3,6 +3,7 @@ package com.crystalgraphics.text.render;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.PoseStack;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.api.font.*;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.text.CgShapedParagraph;
@@ -11,6 +12,7 @@ import com.crystalgraphics.api.text.CgTextDecorationRect;
 import com.crystalgraphics.api.text.CgTextStroke;
 import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.api.texture.CgTexture;
+import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
@@ -177,9 +179,13 @@ public class CgTextRenderer {
      * Created via the registry (not a bare {@code CgUniformBuffer.create()}) so it's covered by
      * {@code CgShaderBufferRegistry.deleteAll()}'s teardown — no individual {@code CgTextRenderer}
      * instance owns or deletes it.
+     *
+     * <p>On the frame ring: {@link #syncProjection} uploads it in every frame a renderer draws before that
+     * frame's first flush, so no draw reads a copy an earlier frame wrote -- and an upload a draw is the only
+     * reader of is what the ring is for, where orphaning cost a driver rename per upload.</p>
      */
-    private static final CgUniformBuffer TEXT_DATA_UBO = CgShaderBufferRegistry.get().getOrCreateUbo(
-            TEXT_DATA_FORMAT, "TextData", CgBindingPoints.TEXT_DATA_UBO);
+    private static final CgUniformBuffer TEXT_DATA_UBO = CgShaderBufferRegistry.get().getOrCreateUboInternal(
+            TEXT_DATA_FORMAT, "TextData", CgBindingPoints.TEXT_DATA_UBO, CgBufferLifetime.FRAME);
 
     /**
      * Mutable adapter over whatever raw GL atlas-array texture id is currently active.
@@ -242,6 +248,9 @@ public class CgTextRenderer {
 
     /** Whether {@link #activeProjection} is what the shared UBO holds; false after anything that may have moved it. */
     private boolean projectionValid;
+
+    /** The frame {@link #syncProjection} last uploaded in: a copy from an earlier frame is not to be read. */
+    private long uploadedFrame = -1;
 
     /** Uploaded beside the projection, so two renderers can draw with different corrections in one frame. */
     private CgTextGamma gamma = CgTextGamma.initial();
@@ -555,16 +564,18 @@ public class CgTextRenderer {
      *       a {@link #context(CgTextRenderContext)} switch mid-batch would silently re-project
      *       already-queued glyphs onto the new projection instead of the one they were placed
      *       for.</li>
-     *   <li><b>Always (re)upload</b>, even if {@code projection} equals what this renderer last
-     *       uploaded — {@link #TEXT_DATA_UBO} is shared across every live {@code CgTextRenderer},
-     *       so another instance may have overwritten it since. Cheap: one small UBO write per
-     *       {@code draw()} call, not per glyph.</li>
+     *   <li><b>Upload</b>, unless this renderer already uploaded the same projection this frame and
+     *       nothing has invalidated it since ({@link #projectionValid}, cleared at every batch edge).
+     *       The frame matters because {@link #TEXT_DATA_UBO} is on the frame ring: a skip that
+     *       crossed frames would leave the next flush reading a copy the ring reuses three frames on.
+     *       Cheap: one small UBO write per {@code draw()} call, not per glyph.</li>
      * </ol>
      */
     private void syncProjection(Matrix4f projection) {
         if (projectionValid) {
-            if (activeProjection.equals(projection)) return;
-            flush();
+            boolean same = activeProjection.equals(projection);
+            if (same && uploadedFrame == CgFrameRing.frame()) return;
+            if (!same) flush();
         }
         // KEPT, and marked invalid rather than dropped: the resets run per batch, and a fresh matrix each time
         // was a steady allocation per text draw.
@@ -578,6 +589,7 @@ public class CgTextRenderer {
                 .vec4("u_TextGammaRamp", gamma.smallPx(), gamma.largePx(), gamma.isIdentity() ? 0f : 1f, 0f);
         TEXT_DATA_UBO.endRecord();
         TEXT_DATA_UBO.upload();
+        uploadedFrame = CgFrameRing.frame();
     }
 
     /**

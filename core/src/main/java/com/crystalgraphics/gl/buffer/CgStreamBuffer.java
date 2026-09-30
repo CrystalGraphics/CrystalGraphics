@@ -23,11 +23,13 @@ import java.nio.FloatBuffer;
  *       On the two ring tiers each upload lands at a new offset, valid for the frame that wrote it;
  *       {@code CgBatchRenderer} and {@code CgInstanceRenderer} draw from it the same frame.</li>
  *   <li>{@link #createForShaderBuffer(int, int)} -- <b>shader-buffer storage</b>: {@link StreamBufferTier#ORPHAN}
- *       &gt; {@link StreamBufferTier#SUBDATA}, always at offset 0 and readable until the next upload -- a material
- *       block written once is bound for many frames, and {@code glBindBufferBase}/{@code glTexBuffer} cannot take
- *       an offset.</li>
- *   <li>{@link #createFrameLocal(int, int)} -- a <b>frame-local SSBO</b>, rewritten before every draw that
- *       reads it: the vertex stream's ring tiers, bound by range at each upload's offset.</li>
+ *       &gt; {@link StreamBufferTier#SUBDATA}, always at offset 0 and readable until the next upload -- for a
+ *       buffer whose readers pass no point that could re-upload it (a TBO, a mod's own registry buffer), and
+ *       {@code glBindBufferBase}/{@code glTexBuffer} read from 0.</li>
+ *   <li>{@link #createFrameLocal(int, int)} -- a <b>frame-local SSBO or UBO</b>, what a shader buffer created with
+ *       {@code CgBufferLifetime.FRAME} stands on: uploaded in every frame that
+ *       reads it: the vertex stream's ring tiers, bound by range at each upload's offset. Every engine-owned
+ *       shader buffer but the TBO path.</li>
  * </ul>
  *
  * <p>{@code -Dcrystalgraphics.stream.tier=persistent|ring|orphan|subdata} forces a tier -- for a driver that
@@ -173,7 +175,7 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
         if (byteCount <= SMALL_UPLOAD_THRESHOLD_BYTES && uploadSmall(data, floatCount, byteCount)) {
             CgTrace.add(CgChannels.GL, profileSmallUploadName, 1);
             committedBytes = byteCount;
-            return 0;
+            return writeOffset;
         }
 
         // Split into three scopes because this is the single upload path shared by EVERY
@@ -230,8 +232,8 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
      * Fast path for tiny uploads, bypassing map/unmap. Default returns {@code false}, meaning
      * "not supported — use the normal path".
      *
-     * <p>Only for storage that always writes at offset 0 -- orphaning shader-buffer storage. The frame
-     * ring does not override it: an offset-0 write there would clobber a region still in flight.</p>
+     * <p>An override sets {@link #writeOffset} to where the bytes went: 0 on orphaning shader-buffer storage,
+     * the reserved offset on the mapped frame ring.</p>
      *
      * @return {@code true} if the upload was performed; {@code false} to fall back to map/commit
      */
@@ -325,10 +327,10 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
 
     /**
      * Storage for a shader buffer (UBO, SSBO, TBO): every upload orphans and lands at offset 0, and stays
-     * readable until the next one: {@link CgCapabilities#shaderStreamTier()}. Never a ring tier, on purpose: a
-     * material block is written once and bound for many frames, {@code glBindBufferBase} reads at offset 0,
-     * and the TBO path runs exactly where {@code glTexBufferRange} is missing. The one exception is an SSBO
-     * read only in the frame that wrote it: {@link #createFrameLocal}.
+     * readable until the next one: {@link CgCapabilities#shaderStreamTier()}. For a buffer read in frames that
+     * never upload it and whose readers pass no point that could -- a mod's own registry buffer -- and for a TBO,
+     * since {@code glTexBuffer} reads from 0 and the TBO path runs exactly where {@code glTexBufferRange} is
+     * missing. Everything else takes {@link #createFrameLocal}.
      *
      * @param target        GL buffer target (e.g. {@code GL_UNIFORM_BUFFER}, {@code GL_SHADER_STORAGE_BUFFER})
      * @param capacityBytes initial GL buffer capacity in bytes
@@ -340,9 +342,12 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
     }
 
     /**
-     * Storage for a <b>frame-local</b> SSBO -- rewritten before every draw that reads it, and read in the
-     * frame that wrote it. That is the exception to {@link #createForShaderBuffer}'s rule: such a buffer
-     * never outlives its frame, and is bound by range at each upload's offset.
+     * Storage for a <b>frame-local</b> SSBO or UBO: one whose every reading frame uploads it first, so no
+     * draw reads bytes an earlier frame wrote -- the ring reuses a region three frames on, while a draw of an
+     * earlier frame may still read it. That is the whole test, and it is about the data's lifetime, not the
+     * buffer type. Per-instance data meets it by being written right before the draw (the quad, curve and object
+     * buffers). A block written once meets it when every reader passes a point that copies it into the frame:
+     * {@code CgMaterial.bind} does for its properties and for the frame block, the text renderer for its own.
      *
      * <pre>{@code
      * CgStreamBuffer storage = CgStreamBuffer.createFrameLocal(CgGL.GL_SHADER_STORAGE_BUFFER, bytes);
@@ -351,21 +356,26 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
      *         offset, storage.getCommittedBytes());   // the name too: the persistent tier replaces it on growth
      * }</pre>
      *
-     * <p>The frame ring on {@link StreamBufferTier#PERSISTENT} and {@link StreamBufferTier#RING}; otherwise,
-     * and for any target but {@code GL_SHADER_STORAGE_BUFFER}, {@link #createForShaderBuffer} -- so forcing
-     * {@code orphan} or {@code subdata} turns it off too. A TBO cannot take it: {@code glTexBuffer} reads
-     * from 0.</p>
+     * <p>What it buys: every upload lands at a fresh offset with no orphan, no driver rename and, on the
+     * persistent tier, no GL call at all -- where a tracked device renamed every orphaning upload into a new
+     * allocation. Offsets are 256-aligned, the largest {@code GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT} and
+     * storage-buffer alignment GL or Vulkan allows.</p>
+     *
+     * <p>The frame ring on {@link StreamBufferTier#PERSISTENT} and {@link StreamBufferTier#RING}; otherwise
+     * {@link #createForShaderBuffer} -- so forcing {@code orphan} or {@code subdata} turns it off too. Any
+     * other target takes {@link #createForShaderBuffer}: a TBO cannot bind an offset, since {@code glTexBuffer}
+     * reads from 0 and {@code glTexBufferRange} is missing exactly where the TBO path runs.</p>
      */
     public static CgStreamBuffer createFrameLocal(int target, int capacityBytes) {
         StreamBufferTier tier = CgCapabilities.detect().vertexStreamTier();
-        if (target != CgGL.GL_SHADER_STORAGE_BUFFER
-                || (tier != StreamBufferTier.PERSISTENT && tier != StreamBufferTier.RING)) {
+        boolean rangeBindable = target == CgGL.GL_SHADER_STORAGE_BUFFER || target == CgGL.GL_UNIFORM_BUFFER;
+        if (!rangeBindable || (tier != StreamBufferTier.PERSISTENT && tier != StreamBufferTier.RING)) {
             return createForShaderBuffer(target, capacityBytes);
         }
-        // Sized for a frame's flushes up front: the ring doubles only once per frame, and each overflow
-        // before then is fresh storage.
-        return new FrameRingStreamBuffer(target, Math.max(capacityBytes, FRAME_LOCAL_START_BYTES),
-                tier == StreamBufferTier.PERSISTENT);
+        // Instance data starts sized for a frame's flushes. A UBO starts at its own block: there is one per
+        // material, and hundreds at 256 KB a region would be hundreds of megabytes; a busy one grows.
+        int start = target == CgGL.GL_UNIFORM_BUFFER ? capacityBytes : Math.max(capacityBytes, FRAME_LOCAL_START_BYTES);
+        return new FrameRingStreamBuffer(target, start, tier == StreamBufferTier.PERSISTENT);
     }
 
     private static final int FRAME_LOCAL_START_BYTES = 256 << 10;

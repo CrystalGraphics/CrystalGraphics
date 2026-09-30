@@ -5,6 +5,7 @@ import com.crystalgraphics.gl.buffer.MapAndOrphanStreamBuffer;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.api.buffer.CgObjectBuffer;
 import com.crystalgraphics.api.shader.CgShader;
 import com.crystalgraphics.gl.buffer.CgStreamBuffer;
@@ -22,7 +23,9 @@ import java.util.Objects;
  *   <li>A {@link CgStreamBuffer} ({@code dataBuffer}) created via
  *       {@link CgStreamBuffer#createForShaderBuffer}, which orphans on every upload and writes at
  *       offset 0 -- what {@code glBindBufferBase} and {@code glTexBuffer} read, and what keeps a
- *       buffer written once readable for as many frames as it is bound.</li>
+ *       buffer written once readable for as many frames as it is bound. A {@link CgBufferLifetime#FRAME}
+ *       buffer is uploaded in every frame that reads it instead, and sits on the frame ring at a new offset
+ *       per upload; its binding follows each upload ({@link #uploadData}).</li>
  *   <li>A {@link CgBufferWriter} backed by a {@link CgStagingBuffer} — either record-mode
  *       (SSBO/TBO, fixed stride per record) or flat-mode (UBO, arbitrary float sequence).</li>
  *   <li>A write-session API ({@link #beginWrite}/{@link #endRecord}/{@link #endWrite})
@@ -99,6 +102,13 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
     private CgBufferFormat format;
 
     /**
+     * How long an upload stays readable, as asked at creation. {@link #isOnFrameRing()} is what the storage
+     * became: a TBO or a forced stream tier falls back from {@link CgBufferLifetime#FRAME}.
+     */
+    @Getter
+    private final CgBufferLifetime lifetime;
+
+    /**
      * Updates the format descriptor of this buffer without recreating GL resources.
      * Called by {@link CgUniformBuffer#resetFormat(CgBufferFormat)} when a material
      * is recompiled with a changed properties layout.
@@ -145,20 +155,23 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
      * @param bindingLocation GL binding point; immutable after construction
      */
     protected CgShaderBuffer(String name, CgBufferFormat format, int glTarget, int bindingLocation) {
-        this(name, format, glTarget, bindingLocation, false);
+        this(name, format, glTarget, bindingLocation, CgBufferLifetime.RETAINED);
     }
 
-    /** @param frameLocal storage from {@link CgStreamBuffer#createFrameLocal}: read only in the frame that wrote it */
-    protected CgShaderBuffer(String name, CgBufferFormat format, int glTarget, int bindingLocation, boolean frameLocal) {
+    /** @param lifetime {@link CgBufferLifetime#FRAME} takes the frame ring ({@link CgStreamBuffer#createFrameLocal}) */
+    protected CgShaderBuffer(String name, CgBufferFormat format, int glTarget, int bindingLocation,
+                             CgBufferLifetime lifetime) {
         Objects.requireNonNull(name,   "name is required");
         Objects.requireNonNull(format, "CgBufferFormat is required");
+        Objects.requireNonNull(lifetime, "CgBufferLifetime is required");
         this.name             = name;
         this.bindingLocation  = bindingLocation;
         this.format           = format;
+        this.lifetime         = lifetime;
         int floatPerRecord    = format.getFloatCount();
         int capacityBytes     = floatPerRecord * Float.BYTES;
         this.writer           = new CgBufferWriter(new CgStagingBuffer(floatPerRecord), format);
-        this.dataBuffer       = frameLocal
+        this.dataBuffer       = lifetime == CgBufferLifetime.FRAME
                 ? CgStreamBuffer.createFrameLocal(glTarget, capacityBytes)
                 : CgStreamBuffer.createForShaderBuffer(glTarget, capacityBytes);
         this.lastWrittenCount = 0;
@@ -184,13 +197,28 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
      * @throws UnsupportedOperationException if the hardware does not support GL 3.3+
      */
     public static CgShaderBuffer create(String name, CgBufferFormat format, int userIndex) {
+        return create(name, format, userIndex, CgBufferLifetime.RETAINED);
+    }
+
+    /**
+     * As {@link #create(String, CgBufferFormat, int)}, with the contents' {@link CgBufferLifetime}.
+     *
+     * <pre>{@code
+     * CgShaderBuffer particles = CgShaderBuffer.create("Particles", PARTICLE_FORMAT, 0, CgBufferLifetime.FRAME);
+     * particles.beginWrite(n);
+     * // ... n records ...
+     * particles.endWrite();          // this frame's region, re-bound there
+     * mesh.drawInstanced(n);
+     * }</pre>
+     */
+    public static CgShaderBuffer create(String name, CgBufferFormat format, int userIndex, CgBufferLifetime lifetime) {
         CgCapabilities.ShaderBufferPath path = CgCapabilities.detect().shaderBufferPath();
 
         int binding = path == CgCapabilities.ShaderBufferPath.TBO
                 ? CgBindingPoints.USER_START_TBO + userIndex
                 : CgBindingPoints.USER_START_SSBO + userIndex;
-        
-        return createInternal(name, format, binding);
+
+        return createInternal(name, format, binding, lifetime);
     }
 
     /**
@@ -206,16 +234,15 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
      * @throws UnsupportedOperationException if the hardware does not support GL 3.3+
      */
     public static CgShaderBuffer createInternal(String name, CgBufferFormat format, int bindingPoint) {
-        return createInternal(name, format, bindingPoint, false);
+        return createInternal(name, format, bindingPoint, CgBufferLifetime.RETAINED);
     }
 
     /**
-     * As {@link #createInternal(String, CgBufferFormat, int)}; {@code frameLocal} puts an SSBO's storage on
-     * the frame ring ({@link CgStreamBuffer#createFrameLocal}). Only for data uploaded before every draw that
-     * reads it, in the same frame -- a buffer bound across frames would read another frame's bytes. A TBO
-     * ignores it.
+     * As {@link #createInternal(String, CgBufferFormat, int)}, with the contents' {@link CgBufferLifetime}. A TBO
+     * takes {@link CgBufferLifetime#RETAINED}'s storage whatever is asked: it cannot bind an offset.
      */
-    public static CgShaderBuffer createInternal(String name, CgBufferFormat format, int bindingPoint, boolean frameLocal) {
+    public static CgShaderBuffer createInternal(String name, CgBufferFormat format, int bindingPoint,
+                                                CgBufferLifetime lifetime) {
         CgCapabilities.ShaderBufferPath path = CgCapabilities.detect().shaderBufferPath();
         if (path == CgCapabilities.ShaderBufferPath.NONE)
             throw new UnsupportedOperationException("GL 3.3+ required for CrystalShader object buffers");
@@ -223,7 +250,7 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
         if (path == CgCapabilities.ShaderBufferPath.TBO)
             return new CgTextureBuffer(name, format, bindingPoint);
 
-        return new CgShaderStorageBuffer(name, format, path, bindingPoint, frameLocal);
+        return new CgShaderStorageBuffer(name, format, path, bindingPoint, lifetime);
     }
 
     /**
@@ -242,6 +269,12 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
      */
     public static CgShaderBuffer createInternal(String name, CgBufferFormat format, CgBindingPoints.Binding binding) {
         return createInternal(name, format, binding.resolve());
+    }
+
+    /** As {@link #createInternal(String, CgBufferFormat, CgBindingPoints.Binding)}, with a {@link CgBufferLifetime}. */
+    public static CgShaderBuffer createInternal(String name, CgBufferFormat format, CgBindingPoints.Binding binding,
+                                                CgBufferLifetime lifetime) {
+        return createInternal(name, format, binding.resolve(), lifetime);
     }
 
     // ── Write API ─────────────────────────────────────────────────────────────
@@ -310,7 +343,7 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
      */
     public void endWrite() {
         if (!inWrite) throw new IllegalStateException("Not in a write session");
-        dataBuffer.uploadFloats(writer.rawData(), writer.rawCursor());
+        uploadData(writer.rawData(), writer.rawCursor());
         lastWrittenCount = writeHead;
         inWrite = false;
     }
@@ -384,6 +417,20 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
     @Override public boolean isDeleted() { return deleted; }
 
     /**
+     * Whether this buffer is frame-local on a ring tier: each upload lands at a new offset in this frame's
+     * region, so a frame that reads it must upload it first. False on orphaning storage, which keeps its
+     * bytes until the next upload -- and on a frame-local buffer whose tier was forced below the rings.
+     *
+     * <pre>{@code
+     * if (block.isOnFrameRing() && uploadedFrame != CgFrameRing.frame()) block.upload();   // carry it forward
+     * block.bind();
+     * }</pre>
+     */
+    public boolean isOnFrameRing() {
+        return dataBuffer.offsetMovesPerUpload();
+    }
+
+    /**
      * Returns the GL buffer object ID of the underlying stream buffer.
      */
     @Override
@@ -413,10 +460,16 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
 
     /**
      * Uploads {@code floatCount} floats from {@code data} to the GPU via the stream buffer.
-     * Called by {@link #endWrite()} and by {@link CgUniformBuffer#upload()}.
+     * Called by {@link #endWrite()}, {@link #uploadRaw} and {@link CgUniformBuffer#upload()}.
+     *
+     * <p>A frame-local buffer is re-bound here, since its upload moved: a binding made before it -- as
+     * {@code CgRenderPipeline.prepareFrame()} binds the object buffer before a preview writes it -- still
+     * names the previous upload's bytes. Re-binding at every upload keeps the write-then-draw idiom correct
+     * with no bind at the caller.</p>
      */
     protected final void uploadData(float[] data, int floatCount) {
         dataBuffer.uploadFloats(data, floatCount);
+        if (dataBuffer.offsetMovesPerUpload()) bindInternal();
     }
 
 
@@ -439,8 +492,7 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
      * <p>Use this after each program link to set per-program block/sampler
      * associations. The per-context binding ({@code glBindBufferBase} /
      * {@code glActiveTexture+glBindTexture}) is handled separately in
-     * {@link #bind()} — typically called once per frame from
-     * {@code CgMaterialPipeline.beginFrame()}.</p>
+     * {@link #bind()}, and for a {@link CgBufferLifetime#FRAME} buffer by every upload.</p>
      *
      * <p>{@code shader} must not be null and must be the currently-bound program —
      * the GL program must be active via {@code shader.bind()} before this call,

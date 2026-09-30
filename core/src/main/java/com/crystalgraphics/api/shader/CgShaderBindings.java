@@ -295,7 +295,7 @@ public interface CgShaderBindings {
      * shader path (SSBO and TBO) to wire the block index to its binding slot.
      * Idempotent — writing the same integer to GL program state is effectively free.
      * Does NOT call {@code glBindBufferBase} — per-context binding is handled by
-     * {@code CgMaterialPipeline.beginFrame()}.
+     * {@code CgRenderPipeline.bindFrameResources()}.
      * This op lives in persistent {@link CgShader#bindings()}, not ephemeral bindings,
      * so it survives hot-reloads and automatically rewires the block after recompile.
      *

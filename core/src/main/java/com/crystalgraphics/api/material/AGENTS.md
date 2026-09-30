@@ -184,7 +184,7 @@ Internal `CgMaterial.create(resourcePath)` steps (package-private, only called b
 5. `new CgShaderPreprocessor().process(...)` — resolve `#include "cg_env.glsl"` (once)
 6. `CgShaderFactory.fromSource(vert, frag, CgVertexFormat.SPATIAL)` — compile + link
 7. `mat.setResourcePath(resourcePath)` — store path for hot-reload
-8. `CgMaterialPipeline.getInstance().frameBuffer().bind(shader)` — wire `CgFrameBlock` UBO block index
+8. `CgRenderPipeline.getInstance().frameBuffer().wireToShader(shader)` — wire `CgFrameBlock` UBO block index
 9. Apply property defaults from `Properties` block
 
 Throws `IllegalStateException` if compile/link fails — never returns a broken material.
@@ -267,7 +267,7 @@ texture unit is now derived from `bindingLocation` directly.
 ## Ownership Rules
 
 - `CgMaterialRegistry` owns all `CgMaterial` instances it creates. Call `CgMaterialRegistry.get().deleteAll()` to free them.
-- `CgGraphicsLifecycle.destroyContext()` calls `CgMaterialRegistry.get().deleteAll()` and `CgMaterialPipeline.destroy()` automatically.
+- `CgGraphicsLifecycle.destroyContext()` calls `CgMaterialRegistry.get().deleteAll()` and `CgRenderPipeline.destroy()` automatically.
 - Callers that hold a reference to a material must not call `delete()` on it directly — the registry owns teardown.
 
 ## User-Attached Buffer API
@@ -281,7 +281,7 @@ CgBufferFormat glyphFmt = CgBufferFormat.builder("GlyphMetrics", STD430)
     .vec2("uv0").vec2("uv1")
     .float_("advance").float_("bearing").float_("descent").float_("pad")
     .build();
-CgShaderBuffer glyphBuf = CgShaderBuffer.create("GlyphMetricsBuffer", glyphFmt, 0);
+CgShaderBuffer glyphBuf = CgShaderBuffer.create("GlyphMetricsBuffer", glyphFmt, 0);   // RETAINED: written once
 
 // Attach: GLSL struct + SSBO/TBO block auto-injected on next compile
 material.attach(glyphBuf, "GLYPH_DATA");
@@ -297,14 +297,14 @@ material.detach("GLYPH_DATA");
 - TBO-path constraints (field types, stride % 16) validated at compile time, not attach time.
 - `attach()` calls `markDirty()` — next `bind()` triggers recompile.
 - **Ownership warning**: `CgMaterial.load(path)` returns a shared cached instance. Only call `attach()` on materials you exclusively own.
-- **Runtime binding**: `buffer.bind()` is your responsibility before each draw call — `attach()` registers for GLSL injection and `wireShader()` wiring only.
+- **Runtime binding**: `buffer.bind()` is your responsibility before each draw call — `attach()` registers for GLSL injection and `wireShader()` wiring only. A `CgBufferLifetime.FRAME` buffer re-binds at every upload, and must be uploaded in every frame that reads it.
 
 ### UBO path — `attach(CgUniformBuffer)` / `detachUbo(blockName)`
 
 ```java
 CgBufferFormat sceneFmt = CgBufferFormat.builder("SceneParams", STD140)
     .vec4("ambientColor").float_("exposure").build();
-CgUniformBuffer sceneUbo = CgUniformBuffer.create(sceneFmt, "SceneParams", 0);
+CgUniformBuffer sceneUbo = CgUniformBuffer.create(sceneFmt, "SceneParams", 0, CgBufferLifetime.FRAME);
 
 material.attach(sceneUbo);  // emits: layout(std140) uniform SceneParams { vec4 ambientColor; float exposure; };
 // In shader: ambientColor  (direct scope — no block prefix, no macro)
@@ -318,7 +318,7 @@ material.detachUbo("SceneParams");
 
 ### What NOT to pass
 
-Do NOT pass engine pipeline buffers (`CgMaterialPipeline.objectBuffer()`, `frameBuffer()`) — those are declared in `cg_env.glsl` and wired automatically by the engine. Passing them here causes duplicate GLSL declarations that fail to compile.
+Do NOT pass engine pipeline buffers (`CgRenderPipeline.objectBuffer()`, `frameBuffer()`) — those are declared in `cg_env.glsl` and wired automatically by the engine. Passing them here causes duplicate GLSL declarations that fail to compile.
 
 ### GLSL symbol naming (SSBO/TBO)
 

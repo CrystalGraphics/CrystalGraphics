@@ -10,7 +10,7 @@ import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 
 /**
- * A vertex stream, or a frame-local SSBO ({@link CgStreamBuffer#createFrameLocal}), on the frame ring: one region per frame in flight, filled by bump allocation, each upload
+ * A vertex stream, or a {@code CgBufferLifetime.FRAME} SSBO or UBO ({@link CgStreamBuffer#createFrameLocal}), on the frame ring: one region per frame in flight, filled by bump allocation, each upload
  * at a fresh offset that nothing in flight reads. The {@link CgCapabilities.StreamBufferTier#PERSISTENT} and
  * {@link CgCapabilities.StreamBufferTier#RING} tiers; they differ only in how the bytes are reached.
  *
@@ -96,6 +96,34 @@ final class FrameRingStreamBuffer extends CgStreamBuffer {
         return true;
     }
 
+    /**
+     * A small block on the mapped tier (a frame-local UBO) as one {@code glBufferSubData} at its reserved offset,
+     * not a map and unmap: that pair costs about 0.19 ms a call whatever the size, as measured on the text UBO
+     * ({@code MapAndOrphanStreamBuffer.uploadSmall}). The bytes land where nothing in flight reads, as a mapped
+     * write would. The persistent tier declines: its write is already a plain copy into the mapping.
+     */
+    @Override
+    protected boolean uploadSmall(float[] data, int floatCount, int byteCount) {
+        if (persistent) return false;
+        reserve(byteCount);
+        if (scratch == null || scratch.capacity() < byteCount) {
+            scratch = ByteBuffer.allocateDirect(Math.max(byteCount, SMALL_UPLOAD_THRESHOLD_BYTES)).order(ByteOrder.nativeOrder());
+            scratchFloats = scratch.asFloatBuffer();
+        }
+        scratchFloats.clear();
+        scratchFloats.put(data, 0, floatCount);
+        scratch.position(0).limit(byteCount);
+        bind();
+        CgGL.glBufferSubData(target, mappedAt, scratch);
+        cursor += alignUp(byteCount);
+        writeOffset = mappedAt;
+        return true;
+    }
+
+    /** {@link #uploadSmall}'s staging, grow-only. */
+    private ByteBuffer scratch;
+    private FloatBuffer scratchFloats;
+
     /** Sets {@link #mappedAt} to room for {@code sizeBytes} in this frame's region, growing or re-storing first. */
     private void reserve(int sizeBytes) {
         long now = CgFrameRing.frame();
@@ -106,8 +134,11 @@ final class FrameRingStreamBuffer extends CgStreamBuffer {
             regionBytes = alignUp(Math.max(need, Math.min(regionBytes * 2, MAX_REGION_BYTES)));
             allocate();
         } else if (cursor + need > regionBytes) {
+            // Doubled now, not only at the next frame: a block uploaded per draw from a small start would
+            // otherwise take fresh storage at every upload that overflows, all frame long.
             overflowed = true;
             CgTrace.add(CgChannels.GL, "frameRing.overflow", 1);
+            regionBytes = alignUp(Math.min(regionBytes * 2, Math.max(regionBytes, MAX_REGION_BYTES)));
             allocate();
         }
 

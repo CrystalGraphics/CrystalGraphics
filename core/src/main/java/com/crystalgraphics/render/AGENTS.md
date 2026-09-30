@@ -22,7 +22,7 @@ execute(partialTicks):
   2. try { try (CgGlScope = CgGlState.saveAll()) {
        a. (non-replay): commandQueue.sort()
        b. updateFrameUniforms(partialTicks)
-       c. CgMaterialPipeline.getInstance().beginFrame()
+       c. uploadFrameData() + bindFrameResources() -- frame block and object buffer, both on the frame ring
        d. boolean prepassRan = depthPrepass.execute(...)
        e. int depthTestMode = prepassRan ? GL_EQUAL : GL_LEQUAL
        f. forwardRenderer.execute(..., depthTestMode, ...)
@@ -34,4 +34,4 @@ execute(partialTicks):
 ## Lifecycle
 
 `CgGraphicsLifecycle.destroyContext()` calls `CgRenderPipeline.destroy()` at step 7d
-(after `CgMaterialPipeline.destroy()`, before `CgFrameBufferRegistry.deleteAll()`).
+(before `CgFrameBufferRegistry.deleteAll()`).
