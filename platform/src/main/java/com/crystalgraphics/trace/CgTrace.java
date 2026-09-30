@@ -1115,6 +1115,31 @@ public final class CgTrace {
         return CgTraceSnapshot.of(false);
     }
 
+    /**
+     * {@link #frameSnapshot()} for a reader that refreshes on a clock: {@code previous}'s counter views are
+     * carried forward and only the counters written since are copied.
+     *
+     * <pre>{@code
+     * snapshot = CgTrace.frameSnapshot(snapshot);   // every refresh
+     * }</pre>
+     *
+     * <p>{@code previous} may be null or any snapshot; one this method did not make is not reused.</p>
+     *
+     * <p><b>One call at a time per chain.</b> Snapshots in a chain share the storage behind their counters, and each
+     * call appends past the last one's window without moving anything in it. Calls must not overlap, but may run on
+     * any thread, and a snapshot handed to another thread through a queue or a lock may be read there while the
+     * next call runs:</p>
+     *
+     * <pre>{@code
+     * // on a worker, one job at a time:
+     * CgTraceSnapshot next = CgTrace.frameSnapshot(last);
+     * // handed to the frame thread through a JobScheduler's onDone, and read there
+     * }</pre>
+     */
+    public static CgTraceSnapshot frameSnapshot(CgTraceSnapshot previous) {
+        return CgTraceSnapshot.incremental(previous);
+    }
+
     /** Drops everything recorded. The enabled mask is left alone. */
     public static synchronized void clear() {
         FRAMES = new CgFrameRecord[Math.max(1, newestFrames)];
