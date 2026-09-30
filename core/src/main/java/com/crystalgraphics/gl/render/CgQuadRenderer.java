@@ -594,13 +594,13 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
             CgTrace.add(CgChannels.GL, "quadRenderer.flush.count", 1);
             CgTrace.add(CgChannels.GL, "quadRenderer.instances", instanceCount);
 
-            try (CgTrace.Zone ignored2 = CgTrace.zone(CgChannels.GL, "quadRenderer.upload")) {
+            try (CgTrace.Zone ignored2 = CgTrace.zone(CgChannels.GL_DETAIL, "quadRenderer.upload")) {
                 GPU_BUFFER.uploadRaw(accumStaging.rawData(), accumStaging.rawCursor());
             }
-            try (CgTrace.Zone ignored2 = CgTrace.zone(CgChannels.GL, "quadRenderer.bindBuffer")) {
+            try (CgTrace.Zone ignored2 = CgTrace.zone(CgChannels.GL_DETAIL, "quadRenderer.bindBuffer")) {
                 GPU_BUFFER.bind();
             }
-            try (CgTrace.Zone ignored2 = CgTrace.zone(CgChannels.GL, "quadRenderer.drawInstanced")) {
+            try (CgTrace.Zone ignored2 = CgTrace.zone(CgChannels.GL_DETAIL, "quadRenderer.drawInstanced")) {
                 QUAD_MESH.drawInstanced(instanceCount);
             }
             accumStaging.reset();

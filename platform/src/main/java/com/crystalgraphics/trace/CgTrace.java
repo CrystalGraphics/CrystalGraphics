@@ -109,20 +109,40 @@ public final class CgTrace {
      * channel that can never be enabled, so its instrumentation is inert instead of wrong.</p>
      */
     public static CgTraceChannel channel(String name) {
+        return register(name, false);
+    }
+
+    /**
+     * Registers a channel that only its full name switches on — for instrumentation inside a per-call
+     * operation, which a prefix would otherwise turn on by the thousand every frame.
+     *
+     * <pre>{@code
+     * static final CgTraceChannel GL_DETAIL = CgTrace.detailChannel("crystalgraphics.gl.detail");
+     *
+     * try (CgTrace.Zone ignored = CgTrace.zone(GL_DETAIL, "doBind.renderState")) { ... }
+     * }</pre>
+     *
+     * @throws IllegalArgumentException if {@code name} is already an ordinary channel
+     */
+    public static CgTraceChannel detailChannel(String name) {
+        return register(name, true);
+    }
+
+    private static CgTraceChannel register(String name, boolean detail) {
         CgTraceChannel existing = CHANNELS.get(name);
-        if (existing != null) return existing;
+        if (existing != null) return checkKind(existing, detail);
         synchronized (CHANNELS) {
             existing = CHANNELS.get(name);
-            if (existing != null) return existing;
+            if (existing != null) return checkKind(existing, detail);
             int index = ORDER.size();
             if (index >= MAX_CHANNELS) {
                 // Index 63 is the overflow bucket: recording on it is impossible, which is the honest
                 // outcome. Aliasing onto a real bit would attribute somebody else's zones to it.
-                CgTraceChannel overflow = new CgTraceChannel(name, MAX_CHANNELS - 1);
+                CgTraceChannel overflow = new CgTraceChannel(name, MAX_CHANNELS - 1, detail);
                 CHANNELS.put(name, overflow);
                 return overflow;
             }
-            CgTraceChannel made = new CgTraceChannel(name, index);
+            CgTraceChannel made = new CgTraceChannel(name, index, detail);
             CHANNELS.put(name, made);
             ORDER.add(made);
             if (isEngineOwn(name)) metaMask |= made.bit();
@@ -130,7 +150,7 @@ public final class CgTrace {
             // loads, which is routinely after somebody asked for its owner at startup.
             synchronized (CgTrace.class) {
                 for (String prefix : STANDING) {
-                    if (matches(name, prefix)) {
+                    if (takes(made, prefix)) {
                         long was = enabledMask;
                         enabledMask = was | made.bit();
                         if (enabledMask != was) markMaskChange();
@@ -140,6 +160,14 @@ public final class CgTrace {
             }
             return made;
         }
+    }
+
+    private static CgTraceChannel checkKind(CgTraceChannel channel, boolean detail) {
+        if (channel.isDetail() != detail) {
+            throw new IllegalArgumentException("Trace channel '" + channel.name() + "' is already registered as "
+                    + (channel.isDetail() ? "a detail" : "an ordinary") + " channel");
+        }
+        return channel;
     }
 
     /** Every registered channel, in registration order — the option list a mask control binds to. */
@@ -164,6 +192,8 @@ public final class CgTrace {
      * {@code enable("crystalgraphics.text")} takes one subsystem. A channel registers when its declaring
      * class first loads, which is often after startup; the prefix stands until disabled, so enabling at
      * launch records channels that did not exist yet.</p>
+     *
+     * <p>A {@link #detailChannel detail channel} is not taken by a prefix, only by its own full name.</p>
      */
     public static void enable(String prefix) {
         setEnabled(prefix, true);
@@ -196,7 +226,7 @@ public final class CgTrace {
         }
         long bits = 0L;
         for (CgTraceChannel channel : ORDER) {
-            if (matches(channel.name(), prefix)) bits |= channel.bit();
+            if (on ? takes(channel, prefix) : matches(channel.name(), prefix)) bits |= channel.bit();
         }
         if (bits == 0L) return;
         long was = enabledMask;
@@ -232,6 +262,11 @@ public final class CgTrace {
         if (enabledMask == 0L) return;
         enabledMask = 0L;
         markMaskChange();
+    }
+
+    /** Whether enabling {@code prefix} switches {@code channel} on: a detail channel only by its full name. */
+    private static boolean takes(CgTraceChannel channel, String prefix) {
+        return channel.isDetail() ? channel.name().equals(prefix) : matches(channel.name(), prefix);
     }
 
     private static boolean matches(String name, String prefix) {

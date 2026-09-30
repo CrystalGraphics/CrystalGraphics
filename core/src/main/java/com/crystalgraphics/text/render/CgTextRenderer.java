@@ -1374,7 +1374,7 @@ public class CgTextRenderer {
                 : 0f;
 
         if (draw.shadows.count() > 0 && glyphCount > 0) {
-            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "draw.planShadows")) {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT_DETAIL, "draw.planShadows")) {
                 if (shadowPlan.plan(draw.shadows, resolvedGlyphs.placements, resolvedLayout.baked(), glyphCount,
                         fontKey, effectiveTargetPx, strokeWidthTexels, draw.strokeAlign, context.isWorldText(), frame)) {
                     degradedDrawCount++;
@@ -1384,7 +1384,7 @@ public class CgTextRenderer {
 
         CgTextDecorationRect[] decorations = resolvedLayout.baked().decorations();
         if (glyphCount > 0 || decorations.length > 0) {
-            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "draw.submitSortedQuads")) {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT_DETAIL, "draw.submitSortedQuads")) {
                 submitBatchedQuads(glyphCount, decorations, fontKey.getTargetPx(), effectiveTargetPx, wantMsdf,
                         draw, pose.pose(), stroked ? draw.strokeArgb : 0,
                         strokeWidthTexels, draw.strokeAlign, draw.strokeOver);
@@ -1485,7 +1485,7 @@ public class CgTextRenderer {
         int shadows = shadowList.count();
 
         List<CgResolvedGlyphs.ResolvedDecoration> resolvedDecorations;
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "glyph.resolveDecorations")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT_DETAIL, "glyph.resolveDecorations")) {
             resolvedDecorations = resolvedGlyphs.resolveDecorations(decorations, draw.x, draw.y, draw.rgba,
                     effectiveTargetPx, wantMsdf);
         }
@@ -1497,7 +1497,7 @@ public class CgTextRenderer {
 
         // Projection is constant for this whole draw() call. Flushes first if it differs from
         // what's already queued under a different projection — see syncProjection().
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "draw.syncProjection")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT_DETAIL, "draw.syncProjection")) {
             syncProjection(context.projection());
         }
 
@@ -1525,7 +1525,7 @@ public class CgTextRenderer {
         for (int window = 0; window <= lastPaint; window += CgTextSortKey.MAX_STAGE + 1) {
             int windowEnd = Math.min(lastPaint, window + CgTextSortKey.MAX_STAGE);
             int count = 0;
-            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "draw.sortKeys")) {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT_DETAIL, "draw.sortKeys")) {
                 for (int paint = window; paint <= windowEnd; paint++) {
                     int stage = paint - window;
                     if (paint == shadows) {
@@ -1599,7 +1599,7 @@ public class CgTextRenderer {
                               boolean pixelSnap, Matrix4f modelView,
                               int strokeArgb, float strokeWidthTexels, float strokeAlign, float strokeOver) {
         int shadows = shadowList.count();
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "draw.quadLoop")) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT_DETAIL, "draw.quadLoop")) {
         // Per-iteration timing, off unless -Dcrystalgraphics.text.traceQuadLoop=true.
         //
         // Exists to answer one question that the scope total cannot: when quadLoop occasionally
