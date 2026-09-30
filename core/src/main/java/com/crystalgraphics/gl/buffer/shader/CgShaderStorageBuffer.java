@@ -2,6 +2,7 @@ package com.crystalgraphics.gl.buffer.shader;
 
 
 import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.api.shader.CgShader;
 import com.crystalgraphics.platform.gl.CgGL;
@@ -35,10 +36,11 @@ public final class CgShaderStorageBuffer extends CgShaderBuffer {
      * @param format          typed format descriptor (mandatory)
      * @param path            SSBO hardware path (GL43 core or ARB)
      * @param bindingLocation immutable GL binding point
+     * @param lifetime        {@link CgBufferLifetime#FRAME} for the frame ring, bound by range
      */
     CgShaderStorageBuffer(String name, CgBufferFormat format,
-                          CgCapabilities.ShaderBufferPath path, int bindingLocation, boolean frameLocal) {
-        super(name, format, CgGL.GL_SHADER_STORAGE_BUFFER, bindingLocation, frameLocal);
+                          CgCapabilities.ShaderBufferPath path, int bindingLocation, CgBufferLifetime lifetime) {
+        super(name, format, CgGL.GL_SHADER_STORAGE_BUFFER, bindingLocation, lifetime);
         this.path = path;
     }
 

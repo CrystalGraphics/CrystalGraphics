@@ -2,17 +2,38 @@ package com.crystalgraphics.gl.buffer.shader;
 
 
 import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.shader.CgShader;
+import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
 import com.crystalgraphics.platform.gl.CgGL;
 
 /**
- * UBO-backed {@link CgShaderBuffer} for per-frame uniform data.
+ * UBO-backed {@link CgShaderBuffer} for a uniform block.
  *
  * <p>Operates in <em>flat mode</em> — there is no per-record multiplexing. The caller
  * writes uniform fields via named writes, then calls {@link #upload()} to push staged data
  * to the GPU.</p>
+ *
+ * <p><b>{@link #upload()} before every draw that reads the block, and it does the least it can.</b> An
+ * unchanged block is not uploaded again -- except, for a {@link CgBufferLifetime#FRAME} block, on the first
+ * upload of a new frame, which copies it into that frame's ring region. So the rule a {@code FRAME} block
+ * needs, that every frame reading it uploads it first, costs a compare wherever nothing changed. That is how
+ * every block the engine owns lives on the ring: material properties ({@code CgMaterial} uploads at every
+ * bind), the frame block ({@code CgRenderPipeline.carryFrameBlock}, at a frame's first material bind) and the
+ * text block. A {@link CgBufferLifetime#RETAINED} block orphans on upload and binds at 0, so it stays readable
+ * for draws that never upload it.</p>
+ *
+ * <pre>{@code
+ * CgUniformBuffer light = CgShaderBufferRegistry.get()
+ *         .getOrCreateUbo(LIGHT_FORMAT, "LightBlock", 0, CgBufferLifetime.FRAME);
+ * // before each draw that reads it:
+ * light.writer().reset().beginRecord().vec4("color", r, g, b, 1f);
+ * light.endRecord();
+ * light.upload();     // a compare when nothing moved and this frame already has it
+ * light.bind();
+ * }</pre>
  *
  * <h3>Write model (format-aware)</h3>
  * <pre>{@code
@@ -63,6 +84,18 @@ public final class CgUniformBuffer extends CgShaderBuffer {
     }
 
     /**
+     * Engine-internal: a UBO at a raw binding slot, with the contents' {@link CgBufferLifetime}. User code takes
+     * {@link #create(CgBufferFormat, String, int, CgBufferLifetime)}.
+     *
+     * <pre>{@code
+     * CgUniformBuffer props = new CgUniformBuffer("CgMaterialProperties", format, binding, CgBufferLifetime.FRAME);
+     * }</pre>
+     */
+    public CgUniformBuffer(String name, CgBufferFormat format, int bindingLocation, CgBufferLifetime lifetime) {
+        super(name, format, CgGL.GL_UNIFORM_BUFFER, bindingLocation, lifetime);
+    }
+
+    /**
      * Creates a user-defined format-aware UBO.
      *
      * <p>The {@code userIndex} is 0-based. {@link CgBindingPoints#USER_START_UBO} is added
@@ -74,31 +107,22 @@ public final class CgUniformBuffer extends CgShaderBuffer {
      * @return a new {@code CgUniformBuffer}
      */
     public static CgUniformBuffer create(CgBufferFormat format, String name, int userIndex) {
-        int binding = CgBindingPoints.USER_START_UBO + userIndex;
-        return new CgUniformBuffer(name, format, binding);
+        return create(format, name, userIndex, CgBufferLifetime.RETAINED);
+    }
+
+    /** As {@link #create(CgBufferFormat, String, int)}, with the contents' {@link CgBufferLifetime}. */
+    public static CgUniformBuffer create(CgBufferFormat format, String name, int userIndex, CgBufferLifetime lifetime) {
+        return new CgUniformBuffer(name, format, CgBindingPoints.USER_START_UBO + userIndex, lifetime);
     }
 
     /**
-     * Engine-internal factory. Accepts raw binding points (may be engine-reserved 0–4).
-     * No USER_START offset is added.
+     * Uploads what {@link #writer()} holds, unless the GPU already has it: bytes equal to the last upload are
+     * not sent again -- a property write marks a block dirty whether or not a value moved, and in the UI 79% of
+     * block uploads carried the bytes already there. A {@link CgBufferLifetime#FRAME} block is still sent on the
+     * first upload of each frame: its last copy sits in a region the ring reuses three frames on. A no-op if the
+     * writer cursor is 0.
      *
-     * <p><strong>Engine-internal. Do not use from user code.</strong></p>
-     *
-     * @param format       typed format descriptor (mandatory)
-     * @param name         the GLSL uniform block name
-     * @param bindingPoint binding slot (may be engine-reserved)
-     * @return a new {@code CgUniformBuffer}
-     */
-    static CgUniformBuffer createInternal(CgBufferFormat format, String name, int bindingPoint) {
-        return new CgUniformBuffer(name, format, bindingPoint);
-    }
-
-    /**
-     * Uploads all data written to {@link #writer()} since the last {@link CgBufferWriter#reset()}
-     * to the GPU. A no-op if the writer cursor is 0.
-     *
-     * <p>The caller must call {@link #endRecord()} before {@code upload()} to finalize the
-     * record.
+     * <p>Call {@link #endRecord()} first to finalize the record.</p>
      *
      * @throws IllegalStateException if this buffer has been deleted
      */
@@ -106,7 +130,28 @@ public final class CgUniformBuffer extends CgShaderBuffer {
         if (isDeleted()) throw new IllegalStateException("CgUniformBuffer has been deleted");
         int floatCount = writer().rawCursor();
         if (floatCount == 0) return;
-        uploadData(writer().rawData(), floatCount);
+        float[] data = writer().rawData();
+        long frame = CgFrameRing.frame();
+        if (sameAsUploaded(data, floatCount) && (!isOnFrameRing() || uploadedFrame == frame)) return;
+        uploadData(data, floatCount);
+        if (uploaded.length < floatCount) uploaded = new float[floatCount];
+        System.arraycopy(data, 0, uploaded, 0, floatCount);
+        uploadedCount = floatCount;
+        uploadedFrame = frame;
+    }
+
+    /** The block as last sent, and the frame it was sent in: what {@link #upload()} compares against. */
+    private float[] uploaded = new float[0];
+    private int uploadedCount = -1;
+    private long uploadedFrame = -1;
+
+    // Bit for bit: -0 against 0, or a NaN payload, is a change a shader could see.
+    private boolean sameAsUploaded(float[] data, int count) {
+        if (count != uploadedCount) return false;
+        for (int i = 0; i < count; i++) {
+            if (Float.floatToRawIntBits(data[i]) != Float.floatToRawIntBits(uploaded[i])) return false;
+        }
+        return true;
     }
 
     /**
@@ -121,9 +166,20 @@ public final class CgUniformBuffer extends CgShaderBuffer {
         writer.resetFormat(newFormat);
     }
 
+    /**
+     * On the frame ring, by range at the latest upload -- a whole block, since a record is written whole, rounded
+     * up to std140's 16 so the range is never shorter than the block's data size. The reservation is 256-aligned,
+     * so the rounding stays inside it.
+     */
     @Override
     protected void bindInternal() {
-        CgGL.glBindBufferBase(CgGL.GL_UNIFORM_BUFFER, bindingLocation, getGlBufferId());
+        int bytes = (dataBuffer.getCommittedBytes() + 15) & ~15;
+        if (dataBuffer.offsetMovesPerUpload() && bytes > 0) {
+            CgGL.glBindBufferRange(CgGL.GL_UNIFORM_BUFFER, bindingLocation, getGlBufferId(),
+                    dataBuffer.getWriteOffset(), bytes);
+        } else {
+            CgGL.glBindBufferBase(CgGL.GL_UNIFORM_BUFFER, bindingLocation, getGlBufferId());
+        }
     }
 
     @Override

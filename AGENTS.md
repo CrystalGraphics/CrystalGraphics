@@ -394,7 +394,7 @@ Available in the vertex stage only. Locations are bound by `CgShaderFactory` bef
 
 ### Why objectBuffer and frameBuffer Must NOT Be Attached
 
-`cg_env.glsl` already declares `CgObjectDataBuffer` and `CgFrameBlock`. The engine wires them automatically post-link. **Never call `material.attach()` with `CgMaterialPipeline.objectBuffer()` or `frameBuffer()`** — it produces duplicate GLSL declarations and a compile failure. Only user-owned buffers belong in `attach()`.
+`cg_env.glsl` already declares `CgObjectDataBuffer` and `CgFrameBlock`. The engine wires them automatically post-link. **Never call `material.attach()` with `CgRenderPipeline.objectBuffer()` or `frameBuffer()`** — it produces duplicate GLSL declarations and a compile failure. Only user-owned buffers belong in `attach()`.
 
 ### Stage defines — `CG_VERTEX_STAGE` / `CG_FRAGMENT_STAGE`
 
@@ -786,20 +786,36 @@ Attach user-owned SSBO/TBO or UBO blocks to a material. The engine injects GLSL 
 // SSBO/TBO — access via macro in shader: GLYPH_DATA(n).advance
 CgBufferFormat fmt = CgBufferFormat.builder("GlyphMetrics", STD430)
         .vec4("bbox").vec2("uv0").float_("advance").build();
-CgShaderBuffer buf = CgShaderBuffer.create("GlyphMetricsBuffer", fmt, 0);
+CgShaderBuffer buf = CgShaderBuffer.create("GlyphMetricsBuffer", fmt, 0);   // RETAINED: written once
 material.attach(buf, "GLYPH_DATA");     // macroName must be ^[A-Z][A-Z0-9_]*$
 buf.bind();                              // caller's responsibility before each draw
 material.detach("GLYPH_DATA");
 
+// Rewritten every frame before the draws that read it: the frame ring
+CgShaderBuffer particles = CgShaderBuffer.create("Particles", particleFmt, 1, CgBufferLifetime.FRAME);
+particles.beginWrite(n);
+// ... n records ...
+particles.endWrite();                   // this frame's region, re-bound there
+
 // UBO — flat scope, direct field name access in shader: ambientColor (no prefix)
 CgBufferFormat sceneFmt = CgBufferFormat.builder("SceneParams", STD140)
         .vec4("ambientColor").float_("exposure").build();
-CgUniformBuffer ubo = CgUniformBuffer.create(sceneFmt, "SceneParams", 0);
+CgUniformBuffer ubo = CgUniformBuffer.create(sceneFmt, "SceneParams", 0, CgBufferLifetime.FRAME);
 material.attach(ubo);                   // no macroName — UBO is a single instance
+ubo.upload();                           // before every draw that reads it; a compare when nothing moved
 material.detachUbo("SceneParams");
 ```
 
-Do NOT pass engine pipeline buffers (`CgMaterialPipeline.objectBuffer()`, `frameBuffer()`) — declared in `cg_env.glsl`, wired automatically. Duplicate declarations cause compile failure.
+**Lifetime, not type, decides where a shader buffer lives** (`CgBufferLifetime`, passed to every factory; the ones
+without it mean `RETAINED`). `FRAME`: uploaded in every frame that reads it — the frame ring, no orphan and no
+driver rename, and a `CgUniformBuffer.upload()` of unchanged bytes this frame is a compare. `RETAINED`: readable
+until the next upload however many frames later — orphaning storage at offset 0. A `FRAME` buffer read in a frame
+that did not upload it reads another frame's bytes, with no error. Every buffer the engine owns is `FRAME`: the
+quad and curve instances, the object buffer, the material blocks (uploaded at every bind), the frame block
+(copied in at a frame's first material bind) and the text block. A TBO takes `RETAINED`'s storage whatever is
+asked. `gl/buffer/AGENTS.md` has the tiers.
+
+Do NOT pass engine pipeline buffers (`CgRenderPipeline.objectBuffer()`, `frameBuffer()`) — declared in `cg_env.glsl`, wired automatically. Duplicate declarations cause compile failure.
 
 **Package guides**: `api/buffer/AGENTS.md` · `gl/buffer/shader/AGENTS.md`
 

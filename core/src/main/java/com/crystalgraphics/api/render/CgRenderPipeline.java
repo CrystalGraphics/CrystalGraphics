@@ -6,6 +6,7 @@ import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.texture.CgTexture;
+import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
@@ -142,7 +143,20 @@ public final class CgRenderPipeline {
 
     // ── GPU resources ─────────────────────────────────────────────────────────
 
+    /**
+     * The frame block ({@code CgFrameBlock}), on the frame ring. It stays bound across frames and every quad,
+     * curve and text shader reads {@code cg_ProjMatrix} from it, including in a frame that calls no
+     * {@link #prepareFrame()} -- so {@link #carryFrameBlock()} copies the last block into each frame's region at
+     * that frame's first material bind, before any such read. Orphaning renamed it at every
+     * {@code prepareFrame()}, which the UI calls around each layer.
+     */
     private final CgUniformBuffer frameUbo;
+    /**
+     * The per-object records, {@link CgBufferLifetime#FRAME}: every writer
+     * -- the three passes, the shader-graph previews, a caller of {@link CgMaterial#objectBuffer()} -- writes
+     * the records and draws them straight after, and the upload re-binds at its offset. Orphaning renamed the
+     * whole buffer once per instanced run. The TBO path keeps orphaning: a TBO cannot bind an offset.
+     */
     private final CgShaderBuffer  objectBuffer;
 
     private CgFrameBuffer depthSnapshotFbo;
@@ -181,8 +195,10 @@ public final class CgRenderPipeline {
     // ── Constructor ───────────────────────────────────────────────────────────
 
     private CgRenderPipeline() {
-        this.frameUbo      = new CgUniformBuffer(FRAME_BLOCK_NAME, FRAME_FORMAT, CgBindingPoints.FRAME_DATA_UBO);
-        this.objectBuffer  = CgShaderBuffer.createInternal(OBJECT_BLOCK_NAME, OBJECT_FORMAT, CgBindingPoints.OBJECT_DATA);
+        this.frameUbo      = new CgUniformBuffer(FRAME_BLOCK_NAME, FRAME_FORMAT, CgBindingPoints.FRAME_DATA_UBO,
+                CgBufferLifetime.FRAME);
+        this.objectBuffer  = CgShaderBuffer.createInternal(OBJECT_BLOCK_NAME, OBJECT_FORMAT, CgBindingPoints.OBJECT_DATA,
+                CgBufferLifetime.FRAME);
 
         this.pool             = new CgRenderCommandPool();
         this.frameData        = new CgFrameData();
@@ -230,7 +246,19 @@ public final class CgRenderPipeline {
 
     /**
      * Returns the shared per-object SSBO/TBO that backs every material draw.
-     * Write all per-object records before calling {@code material.bind()}.
+     * Write all per-object records before calling {@code material.bind()}, in the frame that draws them.
+     *
+     * <pre>{@code
+     * CgShaderBuffer objects = pipeline.objectBuffer();
+     * objects.beginWrite(n);
+     * // ... n records ...
+     * objects.endWrite();                 // uploads, and re-binds at the new offset
+     * material.bind();
+     * mesh.drawInstanced(n);
+     * }</pre>
+     *
+     * <p>It is on the frame ring: records written in one frame and drawn in a later one read bytes the ring
+     * has reused. Write them again each frame.</p>
      *
      * @return the engine-owned object buffer; never {@code null}
      */
@@ -272,6 +300,21 @@ public final class CgRenderPipeline {
                 .endRecord();
         fd.timeSecs = savedTime;
         frameUbo.upload();
+    }
+
+    /**
+     * Makes sure this frame has the frame block: {@code CgMaterial} calls it at every bind, and the first material
+     * bind of a frame copies the last block into this frame's ring region -- {@link CgUniformBuffer#upload()} does
+     * nothing when this frame already has it. Every draw that reads {@code CgFrameBlock} binds a material first;
+     * a raw {@code CgShader} reading it calls {@link #prepareFrame()} itself.
+     *
+     * <p>Not at the host frame's first section. On Minecraft's Vulkan host that section is the frame end's,
+     * which runs before Minecraft's submit, and a ring's first upload of a frame waits for the frame three back
+     * -- a wait a hosted device refuses there.</p>
+     */
+    public static void carryFrameBlock() {
+        CgRenderPipeline pipeline = INSTANCE;
+        if (pipeline != null && !pipeline.deleted) pipeline.frameUbo.upload();   // nothing before the first block
     }
 
     private void bindFrameResources() {

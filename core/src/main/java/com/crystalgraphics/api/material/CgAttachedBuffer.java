@@ -23,7 +23,7 @@ import lombok.Getter;
  *
  * <h3>What they are NOT</h3>
  * <p>Engine pipeline buffers — {@code CgObjectDataBuffer}, {@code CgFrameBlock} — are owned
- * by {@code CgMaterialPipeline} and declared in {@code cg_env.glsl}. Do NOT pass them here;
+ * by {@code CgRenderPipeline} and declared in {@code cg_env.glsl}. Do NOT pass them here;
  * doing so produces duplicate GLSL declarations that fail to compile.</p>
  *
  * <h3>TBO path limitations</h3>

@@ -20,6 +20,7 @@ operates at the GLSL compound-type level (mat4, vec4, mat3).
 | `CgBufferField` | Immutable value object for a single named field: `name`, `type (CgGpuType)`, `byteOffset`, `floatOffset` (derived). Package-private constructor — only `CgBufferFormat.Builder` creates these. Value equality on (name, type, byteOffset). |
 | `CgBufferFormat` | Immutable buffer layout descriptor. Tracks an ordered array of `CgBufferField`, total `stride`, and `MemoryLayout`. Builder auto-computes field byte offsets with correct inter-field alignment padding. Value-equal by (fields, stride, memoryLayout) — `glslName` excluded. `getFloatCount()` = stride/4. `getField(String)` throws `IllegalArgumentException` on miss. |
 | `CgObjectBuffer` | Marker/capability interface for all GPU-resident shader-accessible buffer objects (SSBO, TBO, UBO). `bind()`, `unbind()`, `delete()`, `isDeleted()`, `getGlBufferId()`. |
+| `CgBufferLifetime` | How long a shader buffer's contents must stay readable, passed to every SSBO/UBO factory (`CgShaderBufferRegistry.getOrCreate`/`getOrCreateUbo`, `CgShaderBuffer.create`, `CgUniformBuffer.create`); the factories without it mean `RETAINED`. `FRAME`: uploaded in every frame that reads it — the frame ring, no orphan or driver rename; a `CgUniformBuffer` makes the per-frame upload a compare when nothing moved. `RETAINED`: readable until the next upload — orphaning at offset 0. A TBO or a forced orphan/subdata tier takes `RETAINED`'s storage whatever is asked. |
 
 ## std140/std430 Alignment Table
 
@@ -82,12 +83,12 @@ arrays-of-scalars, deferred to v2.
 
 ## Pre-built Format Constants
 
-Engine-owned canonical formats live on `CgMaterialPipeline`:
+Engine-owned canonical formats live on `CgRenderPipeline`:
 
 | Constant | Layout | Fields | Floats |
 |----------|--------|--------|--------|
-| `CgMaterialPipeline.OBJECT_FORMAT` | STD430 | mat4 model, mat4 normal, vec4×4 custom | 48 |
-| `CgMaterialPipeline.FRAME_BLOCK_FORMAT` | STD140 | mat4 view, mat4 proj, vec4 time, vec2 resolution | 38 |
+| `CgRenderPipeline.OBJECT_FORMAT` | STD430 | mat4 model, mat4 normal, vec4×4 custom | 48 |
+| `CgRenderPipeline.FRAME_FORMAT` | STD140 | mat4 view, mat4 proj, vec4 time, vec2 resolution, vec4 camera position, vec4 depth params | 48 |
 
 ## How Format-Aware Writing Works
 
