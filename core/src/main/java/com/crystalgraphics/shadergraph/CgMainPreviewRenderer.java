@@ -85,6 +85,7 @@ public final class CgMainPreviewRenderer {
      * and a parallel one stop being distinguishable.</p>
      */
     private static final int GPU_DRAW = CgGpuTrace.name("mainPreview.draw");
+    private static final int GPU_RESOLVE = CgGpuTrace.name("mainPreview.resolve");
 
     private static final float CAMERA_DISTANCE = 64f;
 
@@ -507,6 +508,9 @@ public final class CgMainPreviewRenderer {
             material.drawChain(() -> uploaded.drawInstanced(1));
 
             target.drawTarget().unbind();
+            // Timed apart from the draw: the resolve writes the texture the panel samples.
+            CgGpuTrace.end();
+            CgGpuTrace.begin(GPU_RESOLVE);
             // The multisample resolve. Without it the readable texture is never written and the panel
             // stays empty — the multisampled buffer holds the picture and nothing can sample it.
             target.resolve();

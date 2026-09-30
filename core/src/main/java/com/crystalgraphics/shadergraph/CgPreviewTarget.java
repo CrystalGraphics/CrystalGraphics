@@ -55,7 +55,9 @@ public final class CgPreviewTarget {
         CgFrameBufferFormat msFormat = CgFrameBufferFormat.builder("cg_node_preview_ms")
                 .colorRenderbuffer(0, CgTextureType.RGBA8)
                 .depthRenderbuffer(CgTextureType.DEPTH24_STENCIL8)
-                .maxSamples()
+                // WHAT WAS ASKED, not the hardware's most: maxSamples() is up to 32x on a desktop card, and every
+                // preview resolved that many samples a frame.
+                .samples(wanted)
                 .build();
         this.multisampled = CgFrameBuffer.createOwned(name + "_ms", size, size, msFormat);
     }
