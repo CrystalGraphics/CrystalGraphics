@@ -14,6 +14,7 @@ import org.lwjgl.glfw.GLFW;
 //?}
 //? if >=26.1 {
 /*import com.mojang.blaze3d.opengl.GlTexture;
+import com.mojang.blaze3d.textures.GpuTexture;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.systems.RenderSystem;
 import org.lwjgl.opengl.GL11;
@@ -157,8 +158,7 @@ public final class LifecycleModern {
         /*RenderTarget main = mainTarget(mc);
         // Meant to stay bound, for our passes and for Minecraft's next draw: handed over, not restored.
         try (CgGlScope ignored = CgGlState.handOver(CgGlSlot.FBO, CgGlSlot.VIEWPORT)) {
-            int fbo = mainFbo(((GlTexture) main.getColorTexture()).glId(),
-                    main.getDepthTexture() == null ? 0 : ((GlTexture) main.getDepthTexture()).glId(), hasStencil(main));
+            int fbo = mainFbo(main.getColorTexture(), main.getDepthTexture(), hasStencil(main));
             CgGL.glBindFramebuffer(GL30.GL_FRAMEBUFFER, fbo);
             CgGL.glViewport(0, 0, main.width, main.height);
             return fbo;
@@ -202,22 +202,27 @@ public final class LifecycleModern {
 
     //? if >=26.1 {
     /*private static int mainFbo = -1;
-    private static int mainColor;
-    private static int mainDepth;
+    private static GpuTexture mainColor;
+    private static GpuTexture mainDepth;
 
     // OUR framebuffer over the main target's two textures: from 26.1 Minecraft's own is kept on a
     // package-private device (GlDevice). Attached as Minecraft's FrameBufferCache attaches them -- depth
     // alone, or depth and stencil when the texture has both (NeoForge's stencilled target), which is what
-    // the depth snapshot reads its format and blit mask from -- keyed on the two texture ids, and rebuilt
-    // when a resize replaces either. Through CgGL, so the shadow sees it.
-    private static int mainFbo(int color, int depth, boolean stencil) {
+    // the depth snapshot reads its format and blit mask from. Through CgGL, so the shadow sees it.
+    //
+    // Keyed on the TEXTURE OBJECTS, not their GL names: a resize deletes both while this framebuffer is
+    // bound, which detaches them, and the driver can hand the new ones the same names -- keyed on names,
+    // the empty framebuffer was kept and every draw after a maximise-then-restore failed as incomplete.
+    private static int mainFbo(GpuTexture color, GpuTexture depth, boolean stencil) {
         if (mainFbo != -1 && mainColor == color && mainDepth == depth) return mainFbo;
         deleteMainFbo();
         mainFbo = CgGL.glGenFramebuffers();
         CgGL.glBindFramebuffer(GL30.GL_FRAMEBUFFER, mainFbo);
-        CgGL.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL11.GL_TEXTURE_2D, color, 0);
+        CgGL.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL11.GL_TEXTURE_2D,
+                ((GlTexture) color).glId(), 0);
         CgGL.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER,
-                stencil ? GL30.GL_DEPTH_STENCIL_ATTACHMENT : GL30.GL_DEPTH_ATTACHMENT, GL11.GL_TEXTURE_2D, depth, 0);
+                stencil ? GL30.GL_DEPTH_STENCIL_ATTACHMENT : GL30.GL_DEPTH_ATTACHMENT, GL11.GL_TEXTURE_2D,
+                depth == null ? 0 : ((GlTexture) depth).glId(), 0);
         mainColor = color;
         mainDepth = depth;
         CgGraphicsLifecycle.addListener(MAIN_FBO_OWNER);
