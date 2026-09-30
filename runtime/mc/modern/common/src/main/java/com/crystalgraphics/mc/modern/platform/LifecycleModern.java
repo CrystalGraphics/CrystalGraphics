@@ -292,6 +292,11 @@ public final class LifecycleModern {
     // Why this session cannot render, or null. Under Vulkan the hosted device is built here, so a failure to
     // host stands the engine down with its cause rather than failing in the middle of a frame.
     private static String refusal() {
+        //? if >=26.3 {
+        /*// Forge's world hooks run inside the render pass Minecraft opens for terrain, where Blaze3D refuses our
+        // submit; stood down until the 26.3 bring-up settles them (plan platform-transparent-pass).
+        if (GraphicsApi.vulkan()) return "26.3 under Vulkan is not supported yet";
+        *///?}
         if (GraphicsApi.vulkan()) {
             try {
                 CgPlatform.gl();

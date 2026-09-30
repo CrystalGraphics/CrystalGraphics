@@ -26,6 +26,8 @@ stonecutter parameters {
         replace("com.mojang.blaze3d.vulkan.", "com.mojang.renderpearl.backend.vulkan.")
         replace("com.mojang.blaze3d.GpuFormat", "com.mojang.renderpearl.api.GpuFormat")
         replace("com.mojang.blaze3d.textures.", "com.mojang.renderpearl.api.textures.")
+        // Before GpuDevice, which is a prefix of it.
+        replace("com.mojang.blaze3d.systems.GpuDeviceBackend", "com.mojang.renderpearl.backend.api.GpuDeviceBackend")
         replace("com.mojang.blaze3d.systems.GpuDevice", "com.mojang.renderpearl.api.device.GpuDevice")
         replace("com.mojang.blaze3d.systems.DeviceInfo", "com.mojang.renderpearl.api.device.DeviceInfo")
     }
