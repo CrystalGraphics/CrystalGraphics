@@ -9,6 +9,7 @@ import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
+import com.crystalgraphics.gl.texture.CgHostSamplers;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.mc.compat.CgIrisCompat;
@@ -344,19 +345,23 @@ public final class CgRenderPipeline {
         }
 
         try (CgGlScope scope = CgGlState.save(VERTEX_INPUT, PROGRAM, DEPTH, STENCIL, ALPHA_TEST, BLEND, CULL,
-                COLOR_MASK, TEXTURES)) {
+                COLOR_MASK, TEXTURES, SCISSOR)) {
+            enterHostPass();
+            try {
+                if (!replayOpaque) {
+                    commandQueue.sort();
+                    uploadFrameData(frameData);
+                }
+                bindFrameResources();
 
-            if (!replayOpaque) {
-                commandQueue.sort();
-                uploadFrameData(frameData);
+                depthPrepass.execute(
+                    commandQueue.getSortedOpaque(), commandQueue.getOpaqueCount(), this);
+
+                forwardRenderer.execute(
+                    commandQueue.getSortedOpaque(), commandQueue.getOpaqueCount(), this);
+            } finally {
+                CgHostSamplers.unpark();
             }
-            bindFrameResources();
-
-            depthPrepass.execute(
-                commandQueue.getSortedOpaque(), commandQueue.getOpaqueCount(), this);
-
-            forwardRenderer.execute(
-                commandQueue.getSortedOpaque(), commandQueue.getOpaqueCount(), this);
         }
         return true;
     }
@@ -373,13 +378,29 @@ public final class CgRenderPipeline {
 
         blitDepthSnapshot(lastSourceFboId);
 
-        try (CgGlScope scope = CgGlState.save(VERTEX_INPUT, PROGRAM, DEPTH, BLEND, CULL, TEXTURES)) {
-            bindFrameResources();
-            transparentRenderer.execute(
-                    commandQueue.getSortedTransparent(), commandQueue.getTransparentCount(), this);
+        try (CgGlScope scope = CgGlState.save(VERTEX_INPUT, PROGRAM, DEPTH, BLEND, CULL, TEXTURES, SCISSOR)) {
+            enterHostPass();
+            try {
+                bindFrameResources();
+                transparentRenderer.execute(
+                        commandQueue.getSortedTransparent(), commandQueue.getTransparentCount(), this);
+            } finally {
+                CgHostSamplers.unpark();
+            }
         }
         
         return true;
+    }
+
+    /**
+     * What the host left that our draws must not inherit, inside the pass's scope: its sampler objects,
+     * which override our textures' filtering on the units they hold (Minecraft 1.21.5+), and its scissor
+     * test, which it enters a world pass with on 26.2 and would clip every draw to its box.
+     * Pairs with {@link CgHostSamplers#unpark()}.
+     */
+    private static void enterHostPass() {
+        CgHostSamplers.park();
+        CgGL.glDisable(CgGL.GL_SCISSOR_TEST);
     }
 
     /**
