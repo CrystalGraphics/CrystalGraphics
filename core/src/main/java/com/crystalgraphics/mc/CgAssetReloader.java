@@ -2,6 +2,7 @@ package com.crystalgraphics.mc;
 
 import com.crystalgraphics.api.material.CgMaterialRegistry;
 import com.crystalgraphics.api.shader.CgShaderManager;
+import com.crystalgraphics.api.shader.CgShaderPreprocessor;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.gl.texture.CgTextureManager;
 import com.crystalgraphics.text.layout.CgTextLayoutCache;
@@ -121,6 +122,8 @@ public final class CgAssetReloader {
     }
 
     private static void reloadShaders() {
+        // First: shaders and then materials recompile against it, and an edited include must be read again.
+        CgShaderPreprocessor.clearCache();
         Set<CgShaderManager> snapshot;
         synchronized (shaderManagers) {
             if (shaderManagers.isEmpty()) return;

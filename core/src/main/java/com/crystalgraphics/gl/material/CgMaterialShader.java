@@ -3,6 +3,9 @@ package com.crystalgraphics.gl.material;
 import com.github.bsideup.jabel.Desugar;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.platform.gl.CgCapabilities;
+import com.crystalgraphics.api.vertex.CgVertexFormat;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.api.material.CgAttachedBuffer;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.render.CgRenderPipeline;
@@ -31,6 +34,7 @@ import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -282,6 +286,7 @@ public final class CgMaterialShader {
      */
     public void recompile() {
         dirty = false;
+        discardPending();
         if (resourcePath == null) return;
 
         // Read BEFORE the latch below overwrites it: the unchanged-source skip may only stand on a
@@ -333,7 +338,7 @@ public final class CgMaterialShader {
 
         // ── Step 2: Parse ──────────────────────────────────────────────────────
         CgParsedShader parsed;
-        try {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.parse")) {
             parsed = CgShaderParser.parse(source, resourcePath);
         } catch (CgShaderParseException e) {
             if (isFirst) throw e;
@@ -392,7 +397,7 @@ public final class CgMaterialShader {
 
         for (CgParsedPass pass : parsed.passes()) {
             CgMaterialShaderCompiler.CompiledSource compiled;
-            try {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.codegen")) {
                 compiled = CgMaterialShaderCompiler.compile(parsed, pass, attachedBuffers,
                         newMatPropsUbo, CgMaterialShaderCompiler.CompileConfig.DEFAULT);
             } catch (CgPreprocessorException e) {
@@ -412,11 +417,15 @@ public final class CgMaterialShader {
                 LOGGER.info("=== end GLSL dump ===");
             }
 
-            String processedVert = new CgShaderPreprocessor().process(compiled.vertexSource(), resourcePath);
-            String processedFrag = new CgShaderPreprocessor().process(compiled.fragmentSource(), resourcePath);
+            String processedVert;
+            String processedFrag;
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.preprocess")) {
+                processedVert = new CgShaderPreprocessor().process(compiled.vertexSource(), resourcePath);
+                processedFrag = new CgShaderPreprocessor().process(compiled.fragmentSource(), resourcePath);
+            }
 
-            CgShader newShader = CgShaderFactory.fromSource(processedVert, processedFrag, compiled.vertexFormat());
-            if (!newShader.isCompiled()) {
+            CgShader newShader = build(processedVert, processedFrag, compiled.vertexFormat());
+            if (!deferring && !newShader.isCompiled()) {
                 String err = newShader.getLastCompileError();
                 newShader.delete();
                 // Abort entire recompile — clean up shaders compiled so far
@@ -434,12 +443,58 @@ public final class CgMaterialShader {
             newCache.put(new ProgramKey(pass.name(), Collections.emptySet()), newShader);
         }
 
-        // ── Step 6: Shadow auto-generation ────────────────────────────────────────
-        if (!attemptShadowAutoGen(parsed, newMatPropsUbo, newCache, newShaders, isFirst)) return;
+        Set<ProgramKey> declared = new HashSet<>(newCache.keySet());
 
-        // ── Step 6.5: Depth auto-generation ───────────────────────────────────────
-        if (!attemptDepthAutoGen(parsed, newMatPropsUbo, newCache, newShaders, isFirst)) return;
+        // Steps 6 and 6.5 wait for the first pass that asks, for a caller drawing only the Forward pass.
+        // @see #ensureAutoGen
+        if (!forwardOnly) {
+            // ── Step 6: Shadow auto-generation ────────────────────────────────────────
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.shadowAutoGen")) {
+                if (!attemptShadowAutoGen(parsed, newMatPropsUbo, newCache, newShaders, isFirst, true)) return;
+            }
 
+            // ── Step 6.5: Depth auto-generation ───────────────────────────────────────
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.depthAutoGen")) {
+                if (!attemptDepthAutoGen(parsed, newMatPropsUbo, newCache, newShaders, isFirst, true)) return;
+            }
+        }
+
+        if (deferring) {
+            Set<ProgramKey> generated = new HashSet<>(newCache.keySet());
+            generated.removeAll(declared);
+            pendingCommit = new PendingCommit(newCache, newMatPropsUbo, expanded, isFirst, generated, forwardOnly);
+            return;
+        }
+        commit(newCache, newMatPropsUbo, expanded, isFirst, false);
+    }
+
+    /**
+     * Builds the shadow and depth programs a forward-only compile left out, the first time a pass asks for one.
+     * Synchronous: it is what an eager compile would have done at load, paid at first use instead.
+     */
+    private void ensureAutoGen() {
+        if (!autoGenSkipped || lastParsed == null) return;
+        autoGenSkipped = false;
+        Map<ProgramKey, CgShader> generated = new LinkedHashMap<>();
+        List<CgShader> made = new ArrayList<>();
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.lateAutoGen")) {
+            attemptShadowAutoGen(lastParsed, matPropsUbo, generated, made, false, false);
+            attemptDepthAutoGen(lastParsed, matPropsUbo, generated, made, false, false);
+        }
+        for (CgShader shader : generated.values()) wireShader(shader);
+        programCache.putAll(generated);
+    }
+
+    /** Set for the length of a forward-only {@link #submitRecompile}. */
+    private boolean forwardOnly;
+
+    /** The committed programs came from a forward-only compile, so no shadow or depth pass was tried yet. */
+    private boolean autoGenSkipped;
+
+    /** Steps 7 to 9: the new programs replace the old, and are wired. */
+    private void commit(Map<ProgramKey, CgShader> newCache, CgUniformBuffer newMatPropsUbo, String expanded,
+                        boolean isFirst, boolean skippedAutoGen) {
+        autoGenSkipped = skippedAutoGen;
         // ── Step 7: On hot-reload, delete all existing variant programs ────────
         if (!isFirst) {
             for (CgShader s : programCache.values()) s.delete();
@@ -468,6 +523,116 @@ public final class CgMaterialShader {
         if (!isFirst) {
             LOGGER.info("Reloaded '{}'", resourcePath);
         }
+    }
+
+    /**
+     * {@link #recompile}, returning before the driver has compiled anything: every program is submitted, and
+     * {@link #pollPending} commits them once all are done. What was compiled before keeps serving until then.
+     *
+     * <pre>{@code
+     * shader.submitRecompile();
+     * ... later frames ...
+     * if (shader.pollPending()) draw();   // committed, or failed with lastCompileError set
+     * }</pre>
+     *
+     * <p>Anything that asks for a program first waits for the pending one ({@link #awaitPending}), so a caller
+     * that binds early pays today's cost rather than drawing half a commit.</p>
+     */
+    public void submitRecompile() {
+        submitRecompile(false);
+    }
+
+    /**
+     * {@link #submitRecompile()}; with {@code forwardOnly}, the shadow and depth auto-generation wait for the first
+     * pass that asks for one, for a caller that only ever binds the Forward pass.
+     */
+    public void submitRecompile(boolean forwardOnly) {
+        deferring = true;
+        this.forwardOnly = forwardOnly;
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.submitRecompile")) {
+            recompile();
+        } finally {
+            deferring = false;
+            this.forwardOnly = false;
+        }
+    }
+
+    /**
+     * Commits a {@link #submitRecompile} once the driver has finished every program in it.
+     *
+     * @return {@code true} when nothing is pending any more: committed, failed, or never submitted
+     */
+    public boolean pollPending() {
+        PendingCommit pending = pendingCommit;
+        if (pending == null) return true;
+        for (CgShader shader : pending.programs().values()) {
+            if (!shader.isReady()) return false;
+        }
+        pendingCommit = null;
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.commit")) {
+            finish(pending);
+        }
+        return true;
+    }
+
+    /** Commits whatever {@link #submitRecompile} left pending, waiting for the driver if it must. */
+    public void awaitPending() {
+        PendingCommit pending = pendingCommit;
+        if (pending == null) return;
+        pendingCommit = null;
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.awaitPending")) {
+            finish(pending);
+        }
+    }
+
+    /** Verifies each submitted program; a failed pass fails the recompile, a failed auto-generated one is dropped. */
+    private void finish(PendingCommit pending) {
+        Map<ProgramKey, CgShader> programs = new LinkedHashMap<>(pending.programs());
+        for (Map.Entry<ProgramKey, CgShader> entry : pending.programs().entrySet()) {
+            CgShader shader = entry.getValue();
+            if (shader.isCompiled()) continue;
+            String err = shader.getLastCompileError();
+            if (pending.generated().contains(entry.getKey())) {
+                shader.delete();
+                programs.remove(entry.getKey());
+                LOGGER.error("'" + resourcePath + "' " + entry.getKey().passName()
+                        + " auto-gen failed (continuing without it): " + err);
+                continue;
+            }
+            for (CgShader each : pending.programs().values()) each.delete();
+            if (pending.matPropsUbo() != null) pending.matPropsUbo().delete();
+            failed((pending.isFirst() ? "Compile failed for '" : "Reload failed for '") + resourcePath
+                    + "' pass '" + entry.getKey().passName() + "': " + err);
+            return;
+        }
+        commit(programs, pending.matPropsUbo(), pending.expanded(), pending.isFirst(), pending.forwardOnly());
+    }
+
+    /** Drops a pending submit that a newer compile supersedes. */
+    private void discardPending() {
+        PendingCommit pending = pendingCommit;
+        if (pending == null) return;
+        pendingCommit = null;
+        for (CgShader shader : pending.programs().values()) shader.delete();
+        if (pending.matPropsUbo() != null) pending.matPropsUbo().delete();
+    }
+
+    /** A program from sources already preprocessed: submitted while {@link #deferring}, compiled otherwise. */
+    private CgShader build(String vert, String frag, CgVertexFormat format) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, deferring ? "material.glSubmit" : "material.glCompile")) {
+            return deferring ? CgShaderFactory.submit(vert, frag, format) : CgShaderFactory.fromSource(vert, frag, format);
+        }
+    }
+
+    /** Set for the length of a {@link #submitRecompile}. */
+    private boolean deferring;
+
+    /** What a {@link #submitRecompile} commits once its programs are done. */
+    @Nullable
+    private PendingCommit pendingCommit;
+
+    private record PendingCommit(Map<ProgramKey, CgShader> programs, @Nullable CgUniformBuffer matPropsUbo,
+                                 String expanded, boolean isFirst, Set<ProgramKey> generated, boolean forwardOnly) {
     }
 
     /**
@@ -500,9 +665,15 @@ public final class CgMaterialShader {
      * @return a fully compiled and wired shader; {@code null} on link failure
      */
     public CgShader getOrCompile(String passName, Set<String> activeKeywords) {
+        awaitPending();
         ProgramKey key = new ProgramKey(passName, activeKeywords);
         CgShader cached = programCache.get(key);
         if (cached != null) return cached;
+        if (isAutoGenerated(passName)) {
+            ensureAutoGen();
+            cached = programCache.get(key);
+            if (cached != null) return cached;
+        }
 
         if (lastParsed == null) {
             LOGGER.error("Cannot compile keyword variant: shader '{}' has not been successfully compiled yet — " +
@@ -588,7 +759,15 @@ public final class CgMaterialShader {
      * @param passName authored or auto-assigned pass name to check
      */
     public boolean hasCompiledPass(String passName) {
+        awaitPending();
+        if (isAutoGenerated(passName)) ensureAutoGen();
         return programCache.containsKey(new ProgramKey(passName, Collections.emptySet()));
+    }
+
+    /** The passes steps 6 and 6.5 generate when the shader does not author them. */
+    private static boolean isAutoGenerated(String passName) {
+        return passName.equals(CgRenderPassVariant.SHADOW.lightModeName())
+                || passName.equals(CgRenderPassVariant.DEPTH.lightModeName());
     }
 
     /** Returns an unmodifiable view of the attached SSBO/TBO and UBO buffers. */
@@ -666,6 +845,7 @@ public final class CgMaterialShader {
     public void delete() {
         if (!deleted) {
             deleted = true;
+            discardPending();
             for (CgShader s : programCache.values()) s.delete();
             programCache.clear();
             if (matPropsUbo != null) {
@@ -837,7 +1017,7 @@ public final class CgMaterialShader {
      */
     private boolean attemptShadowAutoGen(CgParsedShader parsed, CgUniformBuffer newMatPropsUbo,
                                          Map<ProgramKey, CgShader> newCache, List<CgShader> newShaders,
-                                         boolean isFirst) {
+                                         boolean isFirst, boolean ownsBuffers) {
         // Nothing to generate while the engine has no shadow system. The GLSL below references
         // cg_ShadowViewProjMatrix and cg_ShadowParams, which CgFrameBlock has never declared — so this
         // pass has never compiled for any material, and every opaque one logged two driver errors on
@@ -867,8 +1047,10 @@ public final class CgMaterialShader {
                     attachedBuffers, newMatPropsUbo, CgMaterialShaderCompiler.CompileConfig.DEFAULT);
         } catch (CgPreprocessorException e) {
             // Non-fatal for hot-reload; fatal for first compile
-            for (CgShader s : newShaders) s.delete();
-            if (newMatPropsUbo != null) newMatPropsUbo.delete();
+            if (ownsBuffers) {
+                for (CgShader s : newShaders) s.delete();
+                if (newMatPropsUbo != null) newMatPropsUbo.delete();
+            }
             if (isFirst) throw e;
             LOGGER.error("Reload failed for '{}' shadow auto-gen: buffer injection error — {}",
                     resourcePath, e.getMessage());
@@ -878,8 +1060,8 @@ public final class CgMaterialShader {
         String shadowVert = new CgShaderPreprocessor().process(shadowCompiled.vertexSource(), resourcePath);
         String shadowFrag = new CgShaderPreprocessor().process(shadowCompiled.fragmentSource(), resourcePath);
 
-        CgShader shadowShader = CgShaderFactory.fromSource(shadowVert, shadowFrag, shadowCompiled.vertexFormat());
-        if (!shadowShader.isCompiled()) {
+        CgShader shadowShader = build(shadowVert, shadowFrag, shadowCompiled.vertexFormat());
+        if (!deferring && !shadowShader.isCompiled()) {
             String err = shadowShader.getLastCompileError();
             shadowShader.delete();
             // Shadow auto-gen failure: non-fatal — log and continue without shadow pass
@@ -908,7 +1090,7 @@ public final class CgMaterialShader {
      */
     private boolean attemptDepthAutoGen(CgParsedShader parsed, CgUniformBuffer newMatPropsUbo,
                                          Map<ProgramKey, CgShader> newCache, List<CgShader> newShaders,
-                                         boolean isFirst) {
+                                         boolean isFirst, boolean ownsBuffers) {
         boolean hasExplicitDepth = parsed.getPassByLightMode(CgRenderPassVariant.DEPTH.lightModeName()) != null;
         boolean isOpaque = parsed.renderQueue() < CgRenderQueue.TRANSPARENT_THRESHOLD;
 
@@ -925,8 +1107,10 @@ public final class CgMaterialShader {
             depthCompiled = CgMaterialShaderCompiler.compileDepthAutoGen(parsed, forwardPass,
                     attachedBuffers, newMatPropsUbo, CgMaterialShaderCompiler.CompileConfig.DEFAULT);
         } catch (CgPreprocessorException e) {
-            for (CgShader s : newShaders) s.delete();
-            if (newMatPropsUbo != null) newMatPropsUbo.delete();
+            if (ownsBuffers) {
+                for (CgShader s : newShaders) s.delete();
+                if (newMatPropsUbo != null) newMatPropsUbo.delete();
+            }
             if (isFirst) throw e;
             LOGGER.error("Reload failed for '{}' depth auto-gen: buffer injection error — {}",
                     resourcePath, e.getMessage());
@@ -936,8 +1120,8 @@ public final class CgMaterialShader {
         String depthVert = new CgShaderPreprocessor().process(depthCompiled.vertexSource(), resourcePath);
         String depthFrag = new CgShaderPreprocessor().process(depthCompiled.fragmentSource(), resourcePath);
 
-        CgShader depthShader = CgShaderFactory.fromSource(depthVert, depthFrag, depthCompiled.vertexFormat());
-        if (!depthShader.isCompiled()) {
+        CgShader depthShader = build(depthVert, depthFrag, depthCompiled.vertexFormat());
+        if (!deferring && !depthShader.isCompiled()) {
             String err = depthShader.getLastCompileError();
             depthShader.delete();
             LOGGER.error("'" + resourcePath + "' depth auto-gen failed (continuing without depth variant): " + err);

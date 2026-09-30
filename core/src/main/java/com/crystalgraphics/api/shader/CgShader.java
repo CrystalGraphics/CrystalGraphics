@@ -32,6 +32,14 @@ public interface CgShader {
     boolean isCompiled();
 
     /**
+     * Whether {@link #isCompiled} and {@link #bind} would answer without waiting for the driver. Only a shader
+     * from {@link com.crystalgraphics.gl.shader.CgShaderFactory#submit} is ever not; poll it before binding.
+     */
+    default boolean isReady() {
+        return true;
+    }
+
+    /**
      * Binds the compiled shader program for rendering.
      *
      * <p>If the shader is marked dirty, recompilation is attempted first.

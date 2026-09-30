@@ -82,4 +82,10 @@ public interface CgGLContext {
      */
     boolean mappingIsFree();
 
+    /**
+     * @return {@code true} if {@code GL_KHR_parallel_shader_compile} or {@code GL_ARB_parallel_shader_compile} is
+     *         supported: a program's {@code GL_COMPLETION_STATUS_KHR} can be asked without waiting for its compile
+     */
+    boolean parallelShaderCompile();
+
 }

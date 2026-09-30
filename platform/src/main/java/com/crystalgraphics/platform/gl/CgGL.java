@@ -324,6 +324,8 @@ public final class CgGL {
     // --- Shader / program query params ---------------------------------------
     public static final int GL_COMPILE_STATUS            = 0x8B81;
     public static final int GL_LINK_STATUS               = 0x8B82;
+    /** Only where {@code CgCapabilities.isParallelShaderCompile()}; the ARB extension's value is the same. */
+    public static final int GL_COMPLETION_STATUS_KHR     = 0x91B1;
     public static final int GL_INFO_LOG_LENGTH           = 0x8B84;
     public static final int GL_ACTIVE_UNIFORMS           = 0x8B86;
     public static final int GL_ACTIVE_UNIFORM_BLOCKS     = 0x8A36;

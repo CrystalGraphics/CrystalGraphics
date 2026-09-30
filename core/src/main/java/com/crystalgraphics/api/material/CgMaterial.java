@@ -617,6 +617,44 @@ public final class CgMaterial {
     // ── Draw-time API ─────────────────────────────────────────────────────────
 
     /**
+     * {@code -Dcrystalgraphics.shader.parallelCompile=false} makes {@link #prepare} answer ready at once, so the
+     * first bind compiles on the spot: the escape hatch for a driver that misreports completion.
+     */
+    private static final boolean PARALLEL_COMPILE =
+            !"false".equals(System.getProperty("crystalgraphics.shader.parallelCompile"));
+
+    /**
+     * Starts this material's compile without waiting for it, and says whether {@link #bind} would now return
+     * without waiting on the driver. What a caller that must never stall a frame polls instead of binding.
+     *
+     * <pre>{@code
+     * CgMaterial next = CgMaterial.fromSource(source);
+     * // each frame:
+     * if (next.prepare()) {        // compiled, or failed: next.lastCompileError() says which
+     *     current.delete();
+     *     current = next;
+     * }
+     * current.bind();              // the old picture until the new one is ready
+     * }</pre>
+     *
+     * <p>False on the frame it starts a compile, always: where the driver cannot report progress, that frame is
+     * the head start its own compile threads get. Binding before it answers true waits for the compile, as a
+     * material that was never prepared does.</p>
+     *
+     * <p>It compiles what {@link #bind} needs, the Forward pass. A shadow or depth program the shader does not
+     * author is generated the first time {@link #bindForPass} or {@link #hasCompiledDepthPass} asks for it.</p>
+     */
+    public boolean prepare() {
+        checkNotDeleted();
+        if (cgMaterialShader == null || !PARALLEL_COMPILE) return true;
+        if (cgMaterialShader.isDirty()) {
+            cgMaterialShader.submitRecompile(true);
+            return false;
+        }
+        return cgMaterialShader.pollPending();
+    }
+
+    /**
      * Binds this material for rendering using the current set of enabled keywords.
      *
      * <p>The keyword set is compiled lazily on first call and cached
@@ -636,6 +674,8 @@ public final class CgMaterial {
         checkNotDeleted();
 
         if (cgMaterialShader != null) {
+            // Before the revision check, which a commit here moves: a bind is never allowed to draw half-wired.
+            cgMaterialShader.awaitPending();
             if (cgMaterialShader.isDirty()) {
                 try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.recompile")) {
                     cgMaterialShader.recompile();
@@ -723,6 +763,7 @@ public final class CgMaterial {
         checkNotDeleted();
         if (cgMaterialShader == null) return;
 
+        cgMaterialShader.awaitPending();
         if (cgMaterialShader.isDirty()) {
             cgMaterialShader.recompile();
             wiredPrograms.clear();

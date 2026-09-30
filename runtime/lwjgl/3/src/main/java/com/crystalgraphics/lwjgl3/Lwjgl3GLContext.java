@@ -60,4 +60,8 @@ public final class Lwjgl3GLContext implements CgGLContext {
     @Override public boolean GL_ARB_timer_query() { return caps().GL_ARB_timer_query; }
 
     @Override public boolean mappingIsFree() { return false; }
+
+    @Override public boolean parallelShaderCompile() {
+        return caps().GL_KHR_parallel_shader_compile || caps().GL_ARB_parallel_shader_compile;
+    }
 }

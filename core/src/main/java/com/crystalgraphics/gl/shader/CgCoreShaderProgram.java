@@ -3,6 +3,7 @@ package com.crystalgraphics.gl.shader;
 
 import com.crystalgraphics.api.shader.CgActiveUniform;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
+import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.util.CgBufferUtils;
 import java.nio.FloatBuffer;
@@ -89,8 +90,25 @@ public class CgCoreShaderProgram extends CgAbstractShaderProgram {
         return prog;
     }
 
+    /** An owned program with nothing linked yet, for a {@link #submitLink} to fill. */
+    public static CgCoreShaderProgram create() {
+        return new CgCoreShaderProgram(CgGL.glCreateProgram(), true);
+    }
+
     @Override
     public void relink(String vertexSource, String fragmentSource, CgVertexFormat format) {
+        submitLink(vertexSource, fragmentSource, format);
+        finishLink();
+    }
+
+    /**
+     * Compiles and links with no status query between, which is what lets the driver do it on its own threads:
+     * every query waits for the answer. The shader objects stay attached until {@link #finishLink}, which reads
+     * their logs if the link failed.
+     */
+    @Override
+    public void submitLink(String vertexSource, String fragmentSource, CgVertexFormat format) {
+        finishPendingQuietly();
         IntBuffer countBuf   = CgBufferUtils.createIntBuffer(1);
         IntBuffer shadersBuf = CgBufferUtils.createIntBuffer(16);
         CgGL.glGetAttachedShaders(programId, countBuf, shadersBuf);
@@ -101,44 +119,65 @@ public class CgCoreShaderProgram extends CgAbstractShaderProgram {
             CgGL.glDeleteShader(id);
         }
 
-        int vertId = CgGL.glCreateShader(CgGL.GL_VERTEX_SHADER);
-        CgGL.glShaderSource(vertId, vertexSource);
-        CgGL.glCompileShader(vertId);
-        if (CgGL.glGetShaderi(vertId, CgGL.GL_COMPILE_STATUS) != CgGL.GL_TRUE) {
-            String log = CgGL.glGetShaderInfoLog(vertId, 4096);
-            CgGL.glDeleteShader(vertId);
-            throw new IllegalStateException("Vertex shader compile failed: " + log);
-        }
+        pendingVert = CgGL.glCreateShader(CgGL.GL_VERTEX_SHADER);
+        CgGL.glShaderSource(pendingVert, vertexSource);
+        CgGL.glCompileShader(pendingVert);
+        pendingFrag = CgGL.glCreateShader(CgGL.GL_FRAGMENT_SHADER);
+        CgGL.glShaderSource(pendingFrag, fragmentSource);
+        CgGL.glCompileShader(pendingFrag);
 
-        int fragId = CgGL.glCreateShader(CgGL.GL_FRAGMENT_SHADER);
-        CgGL.glShaderSource(fragId, fragmentSource);
-        CgGL.glCompileShader(fragId);
-        if (CgGL.glGetShaderi(fragId, CgGL.GL_COMPILE_STATUS) != CgGL.GL_TRUE) {
-            String log = CgGL.glGetShaderInfoLog(fragId, 4096);
-            CgGL.glDeleteShader(vertId);
-            CgGL.glDeleteShader(fragId);
-            throw new IllegalStateException("Fragment shader compile failed: " + log);
-        }
-
-        CgGL.glAttachShader(programId, vertId);
-        CgGL.glAttachShader(programId, fragId);
-
+        CgGL.glAttachShader(programId, pendingVert);
+        CgGL.glAttachShader(programId, pendingFrag);
         if (format != null) {
             for (int i = 0; i < format.getAttributeCount(); i++)
                 CgGL.glBindAttribLocation(programId, i, format.getAttribute(i).getName());
         }
-
         CgGL.glLinkProgram(programId);
+    }
 
-        CgGL.glDetachShader(programId, vertId);
-        CgGL.glDetachShader(programId, fragId);
-        CgGL.glDeleteShader(vertId);
-        CgGL.glDeleteShader(fragId);
+    @Override
+    public boolean isLinkDone() {
+        return pendingVert == 0 || !CgCapabilities.detect().isParallelShaderCompile()
+                || CgGL.glGetProgrami(programId, CgGL.GL_COMPLETION_STATUS_KHR) == CgGL.GL_TRUE;
+    }
 
-        if (CgGL.glGetProgrami(programId, CgGL.GL_LINK_STATUS) != CgGL.GL_TRUE) {
-            throw new IllegalStateException("Shader program link failed: " + CgGL.glGetProgramInfoLog(programId, 4096));
+    @Override
+    public void finishLink() {
+        if (pendingVert == 0) return;
+        int vertId = pendingVert, fragId = pendingFrag;
+        pendingVert = 0;
+        pendingFrag = 0;
+        try {
+            // The compile statuses first: a failed stage makes the link fail too, and its log names the line.
+            if (CgGL.glGetShaderi(vertId, CgGL.GL_COMPILE_STATUS) != CgGL.GL_TRUE) {
+                throw new IllegalStateException("Vertex shader compile failed: " + CgGL.glGetShaderInfoLog(vertId, 4096));
+            }
+            if (CgGL.glGetShaderi(fragId, CgGL.GL_COMPILE_STATUS) != CgGL.GL_TRUE) {
+                throw new IllegalStateException("Fragment shader compile failed: " + CgGL.glGetShaderInfoLog(fragId, 4096));
+            }
+            if (CgGL.glGetProgrami(programId, CgGL.GL_LINK_STATUS) != CgGL.GL_TRUE) {
+                throw new IllegalStateException("Shader program link failed: " + CgGL.glGetProgramInfoLog(programId, 4096));
+            }
+        } finally {
+            CgGL.glDetachShader(programId, vertId);
+            CgGL.glDetachShader(programId, fragId);
+            CgGL.glDeleteShader(vertId);
+            CgGL.glDeleteShader(fragId);
         }
     }
+
+    /** A submit over one still pending: the earlier one is superseded, and its failure is nobody's to report. */
+    private void finishPendingQuietly() {
+        try {
+            finishLink();
+        } catch (IllegalStateException superseded) {
+            // Replaced by the submit that called this.
+        }
+    }
+
+    /** The shader objects of a {@link #submitLink} not yet finished; 0 when nothing is pending. */
+    private int pendingVert;
+    private int pendingFrag;
 
     // ── Abstract hook implementations ──────────────────────────────────
 
@@ -150,6 +189,12 @@ public class CgCoreShaderProgram extends CgAbstractShaderProgram {
      */
     @Override
     protected void freeGlResources() {
+        if (pendingVert != 0) {
+            CgGL.glDeleteShader(pendingVert);
+            CgGL.glDeleteShader(pendingFrag);
+            pendingVert = 0;
+            pendingFrag = 0;
+        }
         CgGL.glDeleteProgram(programId);
     }
 
