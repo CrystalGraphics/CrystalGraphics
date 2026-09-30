@@ -2,7 +2,9 @@ package com.crystalgraphics.gl.lifecycle;
 
 import com.crystalgraphics.demo.CgRenderDemo;
 import com.crystalgraphics.platform.gl.CgCapabilities;
+import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.platform.service.CgLifecycleService;
 import com.crystalgraphics.api.material.CgMaterialRegistry;
@@ -29,9 +31,6 @@ import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-
-import com.crystalgraphics.trace.CgTrace;
-import com.crystalgraphics.util.trace.CgChannels;
 import lombok.Getter;
 import com.crystalgraphics.shadergraph.CgPreviewPool;
 
