@@ -4,14 +4,14 @@ import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.trace.CgTraceChannel;
 
 /**
- * CrystalGraphics' trace channels — five, so one subsystem can be recorded without the rest.
+ * CrystalGraphics' trace channels — six, so one subsystem can be recorded without the rest.
  *
  * <pre>{@code
  * try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "shape.run")) {
  *     CgTrace.add(CgChannels.TEXT, "glyph.atlasHit", 1);
  * }
  *
- * CgTrace.enable("crystalgraphics");        // all five
+ * CgTrace.enable("crystalgraphics");        // all six
  * CgTrace.enable("crystalgraphics.gl");     // one
  * }</pre>
  *
@@ -37,6 +37,12 @@ public final class CgChannels {
 
     /** Work on background workers. */
     public static final CgTraceChannel ASYNC = CgTrace.channel("crystalgraphics.async");
+
+    /**
+     * The shader graph's previews and emitters: node thumbnails, the main preview, and the GLSL a graph
+     * emits. A handful of zones a frame per open graph.
+     */
+    public static final CgTraceChannel SHADERGRAPH = CgTrace.channel("crystalgraphics.shadergraph");
 
     /** Everything else, and anything a harness or a test records. */
     public static final CgTraceChannel MISC = CgTrace.channel("crystalgraphics.misc");

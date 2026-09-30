@@ -16,6 +16,9 @@ import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlSlot;
 import com.crystalgraphics.platform.gl.state.CgGlState;
+import com.crystalgraphics.trace.CgGpuTrace;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 import org.joml.Matrix4f;
 
 import javax.annotation.Nullable;
@@ -53,6 +56,8 @@ public final class CgPreviewRenderer {
 
     /** Draws per frame. Four is imperceptible at 60 Hz and bounds a large graph's cost hard. */
     public static final int DEFAULT_BUDGET = 4;
+
+    private static final int GPU_DRAW = CgGpuTrace.name("preview.draw");
 
     /**
      * Edge length of a preview, matching the node's slot at {@code uiScale 2}.
@@ -99,6 +104,22 @@ public final class CgPreviewRenderer {
     private final Map<String, CgPreviewGeometry> renderedGeometry = new LinkedHashMap<>();
     /** Insertion-ordered, so the round-robin is fair rather than dependent on hashing. */
     private final Set<String> dirty = new LinkedHashSet<>();
+
+    /**
+     * nodeId → the material drawing it, kept while its source is. A material owns a property UBO, and a
+     * {@code Time}-fed node draws every frame: one built per draw was a GL buffer per node per frame that
+     * nothing deleted.
+     */
+    private final Map<String, HeldMaterial> materials = new LinkedHashMap<>();
+
+    /** nodeId → the material for its new source, while the driver compiles it; the old one keeps drawing. */
+    private final Map<String, HeldMaterial> compilingMaterials = new LinkedHashMap<>();
+
+    /** Nodes waiting on {@link #compilingMaterials}: asked again every {@link #renderPending}, like {@link #animated}. */
+    private final Set<String> compiling = new LinkedHashSet<>();
+
+    private record HeldMaterial(String source, CgMaterial material) {
+    }
 
     /**
      * Nodes whose last-emitted source reads the live frame clock (a {@code Time} node feeding them,
@@ -207,6 +228,9 @@ public final class CgPreviewRenderer {
         renderedSource.keySet().retainAll(visibleNodeIds);
         renderedTarget.keySet().retainAll(visibleNodeIds);
         renderedGeometry.keySet().retainAll(visibleNodeIds);
+        dropMaterialsOutside(materials, visibleNodeIds);
+        dropMaterialsOutside(compilingMaterials, visibleNodeIds);
+        compiling.retainAll(visibleNodeIds);
         dirty.retainAll(visibleNodeIds);
         animated.retainAll(visibleNodeIds);
 
@@ -248,16 +272,22 @@ public final class CgPreviewRenderer {
     public int renderPending(CgShaderGraph graph) {
         checkUsable();
         dirty.addAll(animated);
+        dirty.addAll(compiling);
+        compiling.clear();
+        CgTrace.counter(CgChannels.SHADERGRAPH, "preview.animated", animated.size());
+        CgTrace.counter(CgChannels.SHADERGRAPH, "preview.dirty", dirty.size());
         if (dirty.isEmpty()) return 0;
 
-        int drawn = 0;
-        var iterator = dirty.iterator();
-        while (iterator.hasNext() && drawn < budget) {
-            String nodeId = iterator.next();
-            iterator.remove();
-            if (render(graph, nodeId) != null) drawn++;
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.SHADERGRAPH, "preview.renderPending")) {
+            int drawn = 0;
+            var iterator = dirty.iterator();
+            while (iterator.hasNext() && drawn < budget) {
+                String nodeId = iterator.next();
+                iterator.remove();
+                if (render(graph, nodeId) != null) drawn++;
+            }
+            return drawn;
         }
-        return drawn;
     }
 
     /**
@@ -268,6 +298,13 @@ public final class CgPreviewRenderer {
     @Nullable
     public CgTexture render(CgShaderGraph graph, String nodeId) {
         checkUsable();
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.SHADERGRAPH, "preview.render")) {
+            return renderTraced(graph, nodeId);
+        }
+    }
+
+    @Nullable
+    private CgTexture renderTraced(CgShaderGraph graph, String nodeId) {
         CgPreviewEmitter.Result emitted = CgPreviewEmitter.emit(graph, nodeId);
         if (!emitted.ok()) {
             failed.add(nodeId);
@@ -297,15 +334,33 @@ public final class CgPreviewRenderer {
         // output — plausible, silent, and impossible to attribute to pooling by looking at it.
         boolean sameSource = emitted.source().equals(renderedSource.get(nodeId));
         boolean sameTarget = target == renderedTarget.get(nodeId);
-        if (sameSource && sameTarget && !emitted.animated()) return target.texture();
+        if (sameSource && sameTarget && !emitted.animated()) {
+            CgTrace.add(CgChannels.SHADERGRAPH, "preview.unchanged", 1);
+            return target.texture();
+        }
 
         try {
-            CgMaterial material = CgMaterial.fromSource(emitted.source());
-            drawInto(target, material, emitted.geometry());
-            // The DRIVER's refusal, which the emitter cannot predict: a compile is lazy, so this is only
-            // answerable after the draw that forced it.
+            CgMaterial material = readyMaterial(nodeId, emitted.source());
+            if (material == null) {
+                // STILL COMPILING, and the frame does not wait for it. The target keeps the last picture; a
+                // Time-fed node goes on moving on the material it had.
+                compiling.add(nodeId);
+                CgTrace.add(CgChannels.SHADERGRAPH, "preview.compiling", 1);
+                HeldMaterial old = materials.get(nodeId);
+                if (old == null || target != renderedTarget.get(nodeId)) return null;
+                if (emitted.animated()) drawInto(target, old.material(), emitted.geometry());
+                return target.texture();
+            }
+            // The DRIVER's refusal, which the emitter cannot predict. Asked before the draw, since a bind of a
+            // failed material compiles it again.
             String driver = material.lastCompileError();
+            if (driver == null) {
+                CgTrace.add(CgChannels.SHADERGRAPH, emitted.animated() ? "preview.draw.animated" : "preview.draw.changed", 1);
+                drawInto(target, material, emitted.geometry());
+                driver = material.lastCompileError();
+            }
             if (driver != null) {
+                dropMaterial(nodeId);
                 failed.add(nodeId);
                 failureReasons.put(nodeId, List.of(CgShaderProblem.node(nodeId, driver)));
                 return null;
@@ -314,6 +369,7 @@ public final class CgPreviewRenderer {
             // Recorded as failed rather than rethrown: a preview is a convenience, and one node whose
             // material will not compile must not take the editor down — nor be retried, which would mean
             // a shader compile every frame.
+            dropMaterial(nodeId);
             failed.add(nodeId);
             failureReasons.put(nodeId, List.of(CgShaderProblem.node(nodeId,
                     broken.getMessage() == null ? broken.toString() : broken.getMessage())));
@@ -323,6 +379,42 @@ public final class CgPreviewRenderer {
         renderedTarget.put(nodeId, target);
         renderedGeometry.put(nodeId, emitted.geometry());
         return target.texture();
+    }
+
+    /**
+     * The node's material for {@code source}, or null while the driver is still compiling it. A new source starts
+     * a compile the frame does not wait for; the held material is replaced only once that one is ready.
+     */
+    @Nullable
+    private CgMaterial readyMaterial(String nodeId, String source) {
+        HeldMaterial held = materials.get(nodeId);
+        if (held != null && held.source().equals(source)) return held.material();
+        HeldMaterial next = compilingMaterials.get(nodeId);
+        if (next == null || !next.source().equals(source)) {
+            if (next != null) next.material().delete();
+            next = new HeldMaterial(source, CgMaterial.fromSource(source));
+            compilingMaterials.put(nodeId, next);
+        }
+        if (!next.material().prepare()) return null;
+        compilingMaterials.remove(nodeId);
+        if (held != null) held.material().delete();
+        materials.put(nodeId, next);
+        return next.material();
+    }
+
+    private void dropMaterial(String nodeId) {
+        HeldMaterial held = materials.remove(nodeId);
+        if (held != null) held.material().delete();
+        HeldMaterial next = compilingMaterials.remove(nodeId);
+        if (next != null) next.material().delete();
+    }
+
+    private static void dropMaterialsOutside(Map<String, HeldMaterial> held, Set<String> keep) {
+        held.entrySet().removeIf(entry -> {
+            if (keep.contains(entry.getKey())) return false;
+            entry.getValue().material().delete();
+            return true;
+        });
     }
 
     /** The texture already rendered for a node, or null. Never draws. */
@@ -353,7 +445,9 @@ public final class CgPreviewRenderer {
         CgFrameData frame = pipeline.getFrameData();
         copyCamera(frame, saved);
 
-        try (CgGlScope scope = CgGlState.save(CgGlSlot.FBO, CgGlSlot.PROGRAM, CgGlSlot.VIEWPORT,
+        CgGpuTrace.begin(GPU_DRAW);
+        try (CgTrace.Zone traced = CgTrace.zone(CgChannels.SHADERGRAPH, "preview.draw");
+             CgGlScope scope = CgGlState.save(CgGlSlot.FBO, CgGlSlot.PROGRAM, CgGlSlot.VIEWPORT,
                 CgGlSlot.DEPTH, CgGlSlot.BLEND, CgGlSlot.CULL, CgGlSlot.VERTEX_INPUT,
                 CgGlSlot.TEXTURES)) {
 
@@ -382,6 +476,7 @@ public final class CgPreviewRenderer {
             // it directly.
             target.resolve();
         } finally {
+            CgGpuTrace.end();
             // Unconditional: leaving the world pass on the preview camera is a failure with
             // no exception and no obvious cause.
             copyCamera(saved, frame);
@@ -492,6 +587,11 @@ public final class CgPreviewRenderer {
         renderedSource.clear();
         renderedTarget.clear();
         renderedGeometry.clear();
+        for (HeldMaterial held : materials.values()) held.material().delete();
+        materials.clear();
+        for (HeldMaterial held : compilingMaterials.values()) held.material().delete();
+        compilingMaterials.clear();
+        compiling.clear();
         dirty.clear();
         animated.clear();
         deleted = true;
