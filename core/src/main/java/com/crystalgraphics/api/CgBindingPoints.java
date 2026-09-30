@@ -82,6 +82,12 @@ public final class CgBindingPoints {
     public static Binding CURVE_RENDERER;
 
     /**
+     * Reserved binding pair for {@code CgClipTable}, the frame's rounded clip shapes -- one below
+     * {@link #CURVE_RENDERER}'s on both paths. Read from the fragment stage only.
+     */
+    public static Binding CLIP_TABLE;
+
+    /**
      * UBO binding slot for the engine's per-frame uniform block ({@code CgFrameBlock}).
      * Set to {@code maxUniformBufferBindings - 1} by {@link #init(CgCapabilities)}.
      * Valid only after {@link #init(CgCapabilities)} has been called.
@@ -171,6 +177,7 @@ public final class CgBindingPoints {
         // the slot is resolved dynamically and never hardcoded — but it is a deliberate change,
         // not an accident: anything that caches the depth unit across an init() would be wrong.
         CURVE_RENDERER = new Binding(--maxSsboBindings, --maxTextureUnits);
+        CLIP_TABLE = new Binding(--maxSsboBindings, --maxTextureUnits);
 
         // ── UBO bindings ───────────────────────────────────────────────────────────────
         FRAME_DATA_UBO          = --maxUboBindings;

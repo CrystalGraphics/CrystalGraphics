@@ -122,6 +122,8 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
             .float_("atlasLayer")
             // A free scalar in the twelve bytes std430 pads after atlasLayer, so it costs no size.
             .float_("custom2")
+            // The clip-table entry this quad is drawn under, 0 for none -- in the same padding. @see CgClipTable
+            .float_("clip")
             // -- per-instance CUSTOM slots, whatever a consumer needs them to mean --------------
             // The same shape CgObjectData gives the render pipeline (custom0..custom3, read through
             // CG_OBJECT_CUSTOM*), for the same reason: a material that needs per-instance parameters
@@ -219,7 +221,7 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
      * lookups for offsets that are a property of a compile-time-constant format.</p>
      */
     private final int offOrigin, offRight, offUp, offUv0, offUv1, offColor, offAtlasLayer;
-    private final int offCustom0, offCustom1, offCustom2;
+    private final int offCustom0, offCustom1, offCustom2, offClip;
 
 
     private CgQuadRenderer(CgStagingBuffer accumStaging, CgBufferWriter accumWriter) {
@@ -235,6 +237,7 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
         this.offCustom0 = accumWriter.offsetOf("custom0", CgGpuType.VEC4);
         this.offCustom1 = accumWriter.offsetOf("custom1", CgGpuType.VEC4);
         this.offCustom2 = accumWriter.offsetOf("custom2", CgGpuType.FLOAT);
+        this.offClip = accumWriter.offsetOf("clip", CgGpuType.FLOAT);
     }
 
     /**
@@ -361,6 +364,7 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
         private float c0x, c0y, c0z, c0w;
         private float c1x, c1y, c1z, c1w;
         private float c2;
+        private int clip;
         private Matrix4f pose;
 
         // Reused across every submit() call on this Quad instance — never reallocated.
@@ -388,6 +392,7 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
             c0x = c0y = c0z = c0w = 0f;
             c1x = c1y = c1z = c1w = 0f;
             c2 = 0f;
+            clip = 0;
             pose = null;
             return this;
         }
@@ -493,6 +498,15 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
             return this;
         }
 
+        /**
+         * The {@link CgClipTable} entry this quad is clipped by; 0, the default, is none. A material reads it as
+         * {@code CG_CLIP_QUAD_COVERAGE}.
+         */
+        public Quad clip(int entry) {
+            this.clip = entry;
+            return this;
+        }
+
         /** {@code custom0} from a packed ARGB colour, unpacked to rgba in 0..1. */
         public Quad custom0(int argb) {
             return custom0(((argb >> 16) & 0xFF) / 255f, ((argb >> 8) & 0xFF) / 255f,
@@ -564,6 +578,7 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
                     .colorAt(offColor, argb)
                     .floatAt(offAtlasLayer, atlasLayer)
                     .floatAt(offCustom2, c2)
+                    .floatAt(offClip, clip)
                     .vec4At(offCustom0, c0x, c0y, c0z, c0w)
                     .vec4At(offCustom1, c1x, c1y, c1z, c1w)
                     .endRecord();
@@ -599,6 +614,7 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
             }
             try (CgTrace.Zone ignored2 = CgTrace.zone(CgChannels.GL_DETAIL, "quadRenderer.bindBuffer")) {
                 GPU_BUFFER.bind();
+                CgClipTable.bindForDraw();
             }
             try (CgTrace.Zone ignored2 = CgTrace.zone(CgChannels.GL_DETAIL, "quadRenderer.drawInstanced")) {
                 QUAD_MESH.drawInstanced(instanceCount);

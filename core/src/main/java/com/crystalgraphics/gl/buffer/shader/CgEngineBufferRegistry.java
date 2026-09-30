@@ -1,7 +1,8 @@
 package com.crystalgraphics.gl.buffer.shader;
 
-import com.crystalgraphics.gl.render.CgVectorRenderer;
+import com.crystalgraphics.gl.render.CgClipTable;
 import com.crystalgraphics.gl.render.CgQuadRenderer;
+import com.crystalgraphics.gl.render.CgVectorRenderer;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -55,6 +56,8 @@ public final class CgEngineBufferRegistry {
                 "crystalgraphics:shaders/env/buffer/quad.glsl");
         register("curve", CgVectorRenderer::instanceBuffer, CgVectorRenderer.MACRO_NAME,
                 "crystalgraphics:shaders/env/buffer/curve.glsl");
+        register("clip", CgClipTable::buffer, CgClipTable.MACRO_NAME,
+                "crystalgraphics:shaders/env/buffer/clip.glsl");
     }
 
     private CgEngineBufferRegistry() {}

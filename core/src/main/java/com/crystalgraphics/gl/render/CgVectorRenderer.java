@@ -169,6 +169,8 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
             // as p0/p1/p2 and scaled so t = dot(p - origin, dir) runs 0..1 across color0 -> color1.
             // Zero for every stroke and for any flat fill; FLAG_GRADIENT is what says to read it.
             .vec4("gradient")
+            // The CgClipTable entry the primitive is drawn under, 0 for none.
+            .float_("clip")
             .build();
 
     private static final String GPU_BUFFER_NAME = "CgVectorRendererInstances";
@@ -363,7 +365,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
      * Nine named lookups per instance measured as the bulk of this renderer's per-instance cost.
      */
     private final int offP0, offP1, offP2, offColor0, offColor1, offWidths, offFeather, offFlags,
-            offGradient;
+            offGradient, offClip;
 
     /**
      * Last pose seen and the uniform scale derived from it.
@@ -389,6 +391,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
         this.offFeather = accumWriter.offsetOf("feather", CgGpuType.FLOAT);
         this.offFlags = accumWriter.offsetOf("flags", CgGpuType.FLOAT);
         this.offGradient = accumWriter.offsetOf("gradient", CgGpuType.VEC4);
+        this.offClip = accumWriter.offsetOf("clip", CgGpuType.FLOAT);
     }
 
     /**
@@ -490,6 +493,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
         private float feather;
         private int capStart, capEnd;
         private Matrix4f pose;
+        private int clip;
 
         /** Start/end caps for the record currently being written, packed by {@link #packCaps}. */
         private int packedCaps;
@@ -525,6 +529,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
             capStart = CAP_BUTT;
             capEnd = CAP_BUTT;
             pose = null;
+            clip = 0;
             cubicSegments = 0;
             cubicPending = false;
             return this;
@@ -667,6 +672,12 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
             return this;
         }
 
+        /** The {@link CgClipTable} entry this is drawn under; 0, the default, is none. */
+        public Curve clip(int entry) {
+            this.clip = entry;
+            return this;
+        }
+
         /**
          * Writes this curve as one instance record — or, after {@link #cubic}, as one record per
          * split segment — into the owning renderer's CPU accumulation buffer.
@@ -780,6 +791,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
                     .float_("feather", feath)
                     .float_("flags", packedCaps)
                     .vec4("gradient", 0f, 0f, 0f, 0f)
+                    .float_("clip", clip)
                     .endRecord();
         }
     }
@@ -838,6 +850,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
         private int silhouetteEdge;
         private float feather;
         private Matrix4f pose;
+        private int clip;
 
         // Reused across every submit() call — never reallocated, mirroring Curve's own scratch trio.
         private final Vector3f scratchP0 = new Vector3f();
@@ -860,6 +873,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
             silhouetteEdge = EDGE_NONE;
             feather = FEATHER_ANTIALIAS;
             pose = null;
+            clip = 0;
             return this;
         }
 
@@ -973,6 +987,12 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
             return this;
         }
 
+        /** The {@link CgClipTable} entry this is drawn under; 0, the default, is none. */
+        public Triangle clip(int entry) {
+            this.clip = entry;
+            return this;
+        }
+
         /**
          * Writes this triangle as one instance record into the owning renderer's CPU accumulation
          * buffer. Queues only — call {@link CgVectorRenderer#flush()} to upload and draw.
@@ -1028,6 +1048,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
                     .floatAt(offFlags, (gradient ? (FLAG_FILL | FLAG_GRADIENT) : FLAG_FILL)
                             | (silhouetteEdge << FILL_EDGE_SHIFT))
                     .vec4At(offGradient, ox, oy, dxg, dyg)
+                    .floatAt(offClip, clip)
                     .endRecord();
 
             return CgVectorRenderer.this;
@@ -1112,6 +1133,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
         private float gradOx, gradOy, gradDx, gradDy;
         private int softEdges;
         private Matrix4f pose;
+        private int clip;
 
         private final Vector3f scratch = new Vector3f();
 
@@ -1127,6 +1149,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
             gradOx = gradOy = gradDx = gradDy = 0f;
             softEdges = 0;
             pose = null;
+            clip = 0;
             return this;
         }
 
@@ -1176,6 +1199,12 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
             return this;
         }
 
+        /** The {@link CgClipTable} entry this is drawn under; 0, the default, is none. */
+        public Cell clip(int entry) {
+            this.clip = entry;
+            return this;
+        }
+
         /**
          * Writes this cell as one instance record. Queues only — {@link CgVectorRenderer#flush()} draws.
          *
@@ -1212,6 +1241,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
                     .floatAt(offFlags, (gradient ? (FLAG_CELL | FLAG_GRADIENT) : FLAG_CELL)
                             | (softEdges << CELL_EDGE_SHIFT))
                     .vec4At(offGradient, ox, oy, dxg, dyg)
+                    .floatAt(offClip, clip)
                     .endRecord();
 
             return CgVectorRenderer.this;
@@ -1283,6 +1313,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
             }
             try (CgTrace.Zone ignored2 = CgTrace.zone(CgChannels.GL_DETAIL, "curveRenderer.bindBuffer")) {
                 GPU_BUFFER.bind();
+                CgClipTable.bindForDraw();
             }
             try (CgTrace.Zone ignored2 = CgTrace.zone(CgChannels.GL_DETAIL, "curveRenderer.drawInstanced")) {
                 CURVE_MESH.drawInstanced(instanceCount);

@@ -16,6 +16,7 @@ import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
+import com.crystalgraphics.gl.render.CgClipTable;
 import com.crystalgraphics.gl.render.CgQuadRenderer;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.gl.texture.CgTextureMutable;
@@ -254,6 +255,8 @@ public class CgTextRenderer {
 
     /** Uploaded beside the projection, so two renderers can draw with different corrections in one frame. */
     private CgTextGamma gamma = CgTextGamma.initial();
+    /** The {@link CgClipTable} entry every quad is stamped with; 0 for none. */
+    private int clip;
     /**
      * Optional caller-supplied hook invoked at the end of every {@link #endBatch()} (manual
      * or {@link Draw#submit()}'s standalone auto-batch alike) — see {@link #restoreStateWith}.
@@ -364,6 +367,22 @@ public class CgTextRenderer {
         this.gamma = gamma;
         // Forces the next draw to upload, since the projection alone may not have changed.
         projectionValid = false;
+        return this;
+    }
+
+    /**
+     * The rounded clip every glyph, decoration and shadow drawn from now on is drawn inside: a
+     * {@link CgClipTable} entry of this frame, or 0 for none. Per quad, so it needs no flush and a change
+     * mid-batch keeps the batch.
+     *
+     * <pre>{@code
+     * renderer.clip(CgClipTable.add(...));
+     * renderer.draw().text(label).at(x, y).submit();
+     * renderer.clip(0);
+     * }</pre>
+     */
+    public CgTextRenderer clip(int entry) {
+        this.clip = entry;
         return this;
     }
 
@@ -1752,6 +1771,7 @@ public class CgTextRenderer {
                     .custom0(c0x, c0y, c0z, c0w)
                     .custom1(c1x, c1y, c1z, c1w)
                     .custom2(c2)
+                    .clip(clip)
                     .pose(modelView)
                     .submit();
 
