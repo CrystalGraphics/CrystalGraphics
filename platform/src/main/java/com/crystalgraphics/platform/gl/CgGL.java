@@ -1359,14 +1359,63 @@ public final class CgGL {
         return backend.importHostTexture(hostHandle);
     }
 
-    /** @see CgGLBackend#hostSectionBegin */
-    public static void hostSectionBegin() {
-        backend.hostSectionBegin();
+    // Brackets open around our work. 0 means the host has control, which is where every frame starts.
+    private static int fromHostDepth;
+
+    /**
+     * The host hands CrystalGraphics its frame. Everything drawn until the matching {@link #toHost()} is ours,
+     * and every place a host calls into us is one such bracket:
+     *
+     * <pre>{@code
+     * CgGL.fromHost();       // a render event, a screen or the HUD hands us the frame
+     * try {
+     *     paint();
+     * } finally {
+     *     CgGL.toHost();     // and gets it back
+     * }
+     * }</pre>
+     *
+     * <p><b>Why the pair exists.</b> On OpenGL there is nothing to hand over: Minecraft and CrystalGraphics
+     * share one context, and what changes hands is GL state, which scopes, invalidations and each host's own
+     * repair already handle. Both calls do nothing there. A host that owns a Vulkan device is different, and
+     * Minecraft 26.2 is the first. It records its frame into a command buffer it owns, as a series of render
+     * passes of its own, and keeps every image in the layout its own tracking says it is in. Our draws must go
+     * into that same command buffer, between its passes and never inside one, and its images must be where it
+     * left them when it resumes. These two calls mark those moments:</p>
+     * <ul>
+     *   <li>{@code fromHost}: a device-backed backend takes the host's command buffer and current target.</li>
+     *   <li>{@link #toHost()}: it ends the render pass it opened and leaves the host's images as the host
+     *       expects. On the tracked backend today, this is where our open pass ends.</li>
+     * </ul>
+     *
+     * <p>What is easy to get wrong:</p>
+     * <ul>
+     *   <li>Brackets nest, and only the outermost pair reaches the backend. {@code CgGraphicsLifecycle}'s
+     *       entries bracket themselves, and a host's bracket may wrap one.</li>
+     *   <li>A host repairing its own state, such as Blaze3D's {@code GlStateManager} cache, does it after
+     *       {@link #toHost()}. That work is the host's, not ours.</li>
+     *   <li>Never inside a {@link CgGlRecording}: its backend refuses both. Record, and replay, inside a
+     *       bracket.</li>
+     *   <li>Render thread only.</li>
+     * </ul>
+     *
+     * @see CgGLBackend#fromHost
+     */
+    public static void fromHost() {
+        if (fromHostDepth++ == 0) backend.fromHost();
     }
 
-    /** @see CgGLBackend#hostSectionEnd */
-    public static void hostSectionEnd() {
-        backend.hostSectionEnd();
+    /**
+     * CrystalGraphics hands the frame back to the host, closing the bracket {@link #fromHost()} opened. On a
+     * device-backed backend the render pass we opened ends here and the host's images are left as it expects;
+     * on OpenGL nothing happens.
+     *
+     * @throws IllegalStateException when no bracket is open
+     * @see CgGLBackend#toHost
+     */
+    public static void toHost() {
+        if (fromHostDepth == 0) throw new IllegalStateException("toHost with no fromHost open");
+        if (--fromHostDepth == 0) backend.toHost();
     }
 
     /** @see CgGLBackend#ownedByCurrentThread */
