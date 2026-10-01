@@ -19,6 +19,7 @@ import org.joml.Matrix4f;
  * // every frame, before the world stages fire:
  * showcase.submit(CgWorldRenderer.get(), x, y, z, CgFrameClock.seconds());       // the spheres, on a floor at y
  * showcase.submitStage(CgWorldRenderer.get(), x, y, z, cameraX, cameraY, cameraZ); // and the floor and sky
+ * showcase.submitSky(CgWorldRenderer.get(), cameraX, cameraY, cameraZ);             // or the sky alone, over a world
  * // once, when the context goes:
  * showcase.delete();
  * }</pre>
@@ -67,7 +68,7 @@ public final class CgVfxShowcase {
     private CgMesh sphere;
     private CgMesh floor;
     private final CgMaterial[] materials = new CgMaterial[COUNT];
-    private CgMaterial glow, corona, bolt, sky, floorMaterial;
+    private CgMaterial glow, corona, bolt, sky, horizon, floorMaterial;
     private double gridX = Double.NaN, gridZ = Double.NaN;
     private final Matrix4f transform = new Matrix4f();
     /** The shield's three impacts this frame: per lane a direction from its centre and the seconds since it struck. */
@@ -134,6 +135,18 @@ public final class CgVfxShowcase {
         world.draw(floor, floorMaterial).at(x, y, z).submit();
         transform.identity().scale(80f);
         world.draw(sphere, sky).at(cameraX, cameraY, cameraZ).transform(transform).submit();
+    }
+
+    /**
+     * Submits the sky around the camera at {@code (cameraX, cameraY, cameraZ)}, over a host's world: it shows where
+     * that world's own sky did, the distant terrain fades into it before the world's fog would tint it, and clouds and
+     * weather the host draws after the world stages stay off it.
+     */
+    public void submitSky(CgWorldRenderer world, double cameraX, double cameraY, double cameraZ) {
+        ensureResources();
+        transform.identity().scale(80f);
+        world.draw(sphere, sky).at(cameraX, cameraY, cameraZ).transform(transform).submit();
+        world.draw(sphere, horizon).at(cameraX, cameraY, cameraZ).transform(transform).priority(15).submit();
     }
 
     /** Frees the meshes. Call on context teardown. */
@@ -224,6 +237,7 @@ public final class CgVfxShowcase {
         corona = CgMaterial.load("crystalgraphics:shaders/demo/vfx_supernova_corona.shader");
         bolt = CgMaterial.load("crystalgraphics:shaders/demo/vfx_bolt.shader");
         sky = CgMaterial.load("crystalgraphics:shaders/demo/vfx_sky.shader");
+        horizon = CgMaterial.load("crystalgraphics:shaders/demo/vfx_sky_horizon.shader");
         floorMaterial = CgMaterial.newInstance("crystalgraphics:shaders/demo/vfx_floor.shader");
     }
 }
