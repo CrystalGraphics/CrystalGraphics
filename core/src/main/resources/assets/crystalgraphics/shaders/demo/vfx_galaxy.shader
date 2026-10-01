@@ -1,6 +1,6 @@
 // A galaxy in a glass marble: black space and sharp stars inside the glass, and in it a grand-design spiral galaxy as
-// Hubble shows one -- a compact golden bulge, two arms of cyan and violet star clusters strung with magenta
-// star-forming knots, thin dark dust lanes along their inner edges with feathery spurs between, and a fine grain of
+// Hubble shows one -- a compact golden bulge, two arms of cyan and violet star clusters strung with streaks of glowing
+// star-forming gas, thin dark dust lanes along their inner edges with feathery spurs between, and a fine grain of
 // stars over the whole disk, the arms turning slowly. The glass magnifies it as it refracts and mirrors the studio
 // over it.
 //
@@ -76,7 +76,14 @@ Pass {
         light += vec3(0.55, 0.6, 0.95) * exp(-r / 0.2) * edge * (0.25 + 0.2 * streaks);
         // Star clusters strung along the arms, pink knots where stars are forming, and a grain of old stars everywhere.
         light += vec3(0.75, 0.88, 1.7) * galaxy_points(x, 70.0, 0.5, 0.1, 1.0, pixel) * arm * young * 5.0;
-        light += vec3(2.0, 0.3, 0.9) * galaxy_points(x, 26.0, 0.6, 0.22, 2.0, pixel) * crest * young * 3.5;
+        // Star-forming regions: streaks of glowing gas drawn out along the arm crests like the rest of the arm, coming
+        // in groups, violet going rose where they burn hottest, with bright young knots inside them.
+        float group = smoothstep(0.45, 0.72, vfx_noise(vec3(ring * 3.0, lr * 2.5 + 13.0)));
+        float drawn = vfx_fbm(vec3(ring * 16.0, lr * 3.0 + 21.0), 4);
+        float gas = pow(smoothstep(0.45, 0.85, drawn), 2.0) * crest * young * group;
+        vec3 nebula = mix(vec3(1.3, 0.45, 1.7), vec3(1.9, 0.45, 0.95), smoothstep(0.55, 0.85, drawn));
+        light += nebula * gas * 2.4;
+        light += vec3(2.2, 0.9, 1.6) * galaxy_points(x, 46.0, 0.55, 0.12, 2.0, pixel) * smoothstep(0.1, 0.5, gas) * 3.0;
         light += vec3(1.3, 1.1, 0.85) * galaxy_points(x, 170.0, 0.45, 0.09, 3.0, pixel) * (inner * 2.0 + 0.25 * edge) * 1.2;
         // Dust: thin filaments along the inner edge of each arm, and feathery spurs crossing between them.
         float lane = pow(0.5 + 0.5 * cos(phase - 0.8), 7.0);

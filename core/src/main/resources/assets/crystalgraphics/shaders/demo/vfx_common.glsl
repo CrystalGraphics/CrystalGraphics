@@ -93,6 +93,25 @@ vec3 vfx_voronoi(vec3 p) {
     return vec3(f1, f2, id);
 }
 
+// The cube face unit vector {@code p} points through, and where on it: xy in [-1, 1], equi-angular so cells keep their
+// size; z the face. Neighbouring faces share each edge's coordinate, so a grid of cells lines up across it.
+vec3 vfx_cube_face(vec3 p) {
+    vec3 a = abs(p);
+    vec2 uv;
+    float face;
+    if (a.x >= a.y && a.x >= a.z) {
+        uv = vec2(p.z, p.y) / a.x;
+        face = p.x > 0.0 ? 0.0 : 1.0;
+    } else if (a.y >= a.z) {
+        uv = vec2(p.x, p.z) / a.y;
+        face = p.y > 0.0 ? 2.0 : 3.0;
+    } else {
+        uv = vec2(p.x, p.y) / a.z;
+        face = p.z > 0.0 ? 4.0 : 5.0;
+    }
+    return vec3(atan(uv) * 4.0 / 3.14159265, face);
+}
+
 // ── Colour ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
 // Narkowicz's fit of the ACES filmic curve: HDR in, display out, highlights rolling off rather than clipping.
