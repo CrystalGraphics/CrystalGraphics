@@ -35,7 +35,7 @@ import java.util.function.Supplier;
  * seeded with {@code CgQuadRenderer::instanceBuffer}. A method reference does <em>not</em> trigger
  * that class's static initialization, and {@code MACRO_NAME} is a compile-time constant that gets
  * inlined — so seeding the token costs nothing and, crucially, does not allocate
- * {@code CgQuadRenderer}'s shared buffer, which is only valid once {@code CgRenderPipeline.init()}
+ * {@code CgQuadRenderer}'s shared buffer, which is only valid once {@code CgGraphicsLifecycle.initContext}
  * has run. The supplier is invoked at attach time, when a GL context exists.</p>
  *
  * <p>That laziness is why the table lives here rather than each provider registering from its own

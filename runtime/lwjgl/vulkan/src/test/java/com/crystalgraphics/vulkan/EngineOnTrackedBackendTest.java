@@ -1,10 +1,8 @@
 package com.crystalgraphics.vulkan;
 
+import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
-import com.crystalgraphics.api.render.CgFrameData;
-import com.crystalgraphics.api.render.CgRenderCommand;
-import com.crystalgraphics.api.render.CgRenderPipeline;
 import com.crystalgraphics.api.shader.CgShader;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gl.material.CgMaterialShader;
@@ -24,7 +22,11 @@ import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.platform.gl.tracked.CgTrackedGLBackend;
 import com.crystalgraphics.platform.gl.tracked.CgTrackedGLContext;
 import com.crystalgraphics.platform.gl.tracked.CgTrackedStateProvider;
+import com.crystalgraphics.render.CgImmediate;
+import com.crystalgraphics.render.draw.CgInstanceKind;
+import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.vulkan.shader.ShadercGlslCompiler;
+import org.joml.Matrix4f;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -72,7 +74,7 @@ public class EngineOnTrackedBackendTest {
         CgGlState.reset();
         CgGlState.setProvider(new CgTrackedStateProvider(gl));
         // CgGraphicsLifecycle.initContext's own steps, less the platform it would ask for a context.
-        CgRenderPipeline.init();
+        CgBindingPoints.init(CgCapabilities.detect());
         CgFallbackTextures.init();
         // text.shader's material is only complete once the text renderer has attached its UBO.
         Class.forName("com.crystalgraphics.text.render.CgTextRenderer");
@@ -107,7 +109,7 @@ public class EngineOnTrackedBackendTest {
                 }
             }
             CgMaterial material = CgMaterial.newInstance(path);
-            if (CgFrameData.SHADOWS_SUPPORTED && material.hasShadowCasterPass() && !shader.hasCompiledPass(CgRenderPassVariant.SHADOW.lightModeName()))
+            if (CgMaterialShader.SHADOWS_SUPPORTED && material.hasShadowCasterPass() && !shader.hasCompiledPass(CgRenderPassVariant.SHADOW.lightModeName()))
                 failures.add(path + ": the generated shadow pass did not link (see log)");
             if (parsed.renderQueue() < 3000 && forward != null && !material.hasDepthPass()
                     && !shader.hasCompiledPass(CgRenderPassVariant.DEPTH.lightModeName()))
@@ -135,27 +137,21 @@ public class EngineOnTrackedBackendTest {
         long draws = device.draws();
         int mark = device.mark();
         int passes = device.passes().size();
-        CgRenderPipeline pipeline = CgRenderPipeline.getInstance();
-        CgFrameData fd = pipeline.getFrameData();
-        fd.viewMatrix.identity();
-        fd.projMatrix.identity().ortho(0, 64, 64, 0, -1, 1);
-        fd.viewportW = fd.viewportH = 64;
-        pipeline.prepareFrame();
+        CgPassConstants constants = CgImmediate.constants();
+        constants.view.identity();
+        constants.projection.identity().ortho(0, 64, 64, 0, -1, 1);
+        constants.resolution(64, 64).cameraFromView();
 
-        // The pipeline: the frame block, the object buffer, a depth prepass and a forward pass.
+        // An object draw: the frame block, the object buffer and a material, as a world pass draws them.
         CgMesh cube = CgMesh.upload(CgMeshBuilder.unitCube(CgVertexFormat.SPATIAL));
-        CgRenderCommand cmd = pipeline.acquireCommand();
-        cmd.mesh = cube;
-        cmd.material = CgMaterial.load("crystalgraphics:shaders/demo_render.shader");
-        cmd.material.bind();     // compiled before the frame, or the depth prepass skips it
-        cmd.material.unbind();
-        cmd.modelMatrix.translation(32, 32, 0).scale(16);
-        float[] box = {16, 16, -8, 48, 48, 8};
-        System.arraycopy(box, 0, cmd.worldAabb, 0, 6);
-        pipeline.submit(cmd);
-        assertTrue(pipeline.executeOpaquePass(0f, 0));
-        pipeline.executeTransparentPass();
-        pipeline.endFrame();
+        CgMaterial demo = CgMaterial.load("crystalgraphics:shaders/demo_render.shader");
+        try (CgImmediate draw = CgImmediate.begin(constants)) {
+            draw.chunks().draw(demo.pipeline(CgInstanceKind.OBJECT), demo.captureBindings(draw.bindings()), cube);
+            int at = draw.chunks().instance();
+            float[] data = draw.chunks().data();
+            new Matrix4f().translation(32, 32, 0).scale(16).get(data, at);
+            new Matrix4f().get(data, at + 16);
+        }
 
         // CgQuadRenderer's instance buffer, and a sampler left at its default.
         CgQuadRenderer quads = CgQuadRenderer.create();
@@ -176,7 +172,7 @@ public class EngineOnTrackedBackendTest {
         gl.endFrame();
         assertTrue("a draw was refused or dropped: " + gl.stats() + " error 0x" + Integer.toHexString(gl.glGetError())
                 + System.lineSeparator() + String.join(System.lineSeparator(), device.logSince(mark)),
-                device.draws() - draws >= 4);
+                device.draws() - draws >= 3);   // the object, the quads, the curve
         assertTrue(device.passes().size() > passes);
         quads.delete();
         strokes.delete();

@@ -1,6 +1,5 @@
 package com.crystalgraphics.render;
 
-import com.crystalgraphics.api.render.CgRenderPipeline;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
@@ -51,7 +50,6 @@ public final class CgImmediate implements AutoCloseable {
     private static final CgFrameBuilder BUILDER = new CgFrameBuilder();
     private static final CgFrameGraph GRAPH = new CgFrameGraph();
     private static final CgPassConstants CONSTANTS = new CgPassConstants();
-    private static final float[] FRAME_BLOCK = new float[CgPassConstants.FLOATS];
     private static int depth;
 
     private final CgRecording recording = new CgRecording();
@@ -99,8 +97,6 @@ public final class CgImmediate implements AutoCloseable {
      */
     public static void flush(CgDrawChunk chunk, CgOrder order) {
         if (chunk.draws() == 0) return;
-        // A caller that still prepares CgRenderPipeline's frame block draws under it, until those callers move.
-        if (CgRenderPipeline.copyFrameBlock(FRAME_BLOCK)) CONSTANTS.read(FRAME_BLOCK, 0);
         CgImmediate immediate = acquire(CONSTANTS, null, order);
         try {
             immediate.pass.add(chunk);

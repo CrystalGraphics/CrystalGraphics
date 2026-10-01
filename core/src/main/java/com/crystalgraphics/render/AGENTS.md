@@ -1,37 +1,18 @@
-# render — CgRenderPipeline Orchestrator
+# render — recorded drawing, and where it draws
 
 > Root guide: [`CrystalGraphics/AGENTS.md`](../../../../../../AGENTS.md)
 
 ## What This Package Is
 
-Contains `CgRenderPipeline` — the singleton orchestrator for the CrystalGraphics forward
-render pipeline. Called once per MC frame from the `CgRenderHook` Mixin.
+The engine's drawing model: draws are recorded into chunks and passes, built into a frame and executed on the render
+thread. The root holds what every recorder shares; each sub-package is one layer of it.
 
-## Class Map
-
-| Type | Role |
+| Type or package | Role |
 |------|------|
-| `CgRenderPipeline` | Singleton. `getInstance()` lazily creates on first call. `getFrameConfig()` exposes the `CgFrameConfig` for per-frame population. `acquireCommand()` + `submit(cmd)` are game-code entry points. `execute(partialTicks)` runs depth prepass → forward → transparent. `destroy()` is called by `CgGraphicsLifecycle.destroyContext()` step 7d. |
-
-## Execute Sequence (Phase 1 MVP)
-
-```
-execute(partialTicks):
-  0. Empty-queue fast path: if no commands → return immediately (no GL, no scope)
-  1. Anaglyph guard: compute invocationId; detect replay (second eye in anaglyph mode)
-  2. try { try (CgGlScope = CgGlState.saveAll()) {
-       a. (non-replay): commandQueue.sort()
-       b. updateFrameUniforms(partialTicks)
-       c. uploadFrameData() + bindFrameResources() -- frame block and object buffer, both on the frame ring
-       d. boolean prepassRan = depthPrepass.execute(...)
-       e. int depthTestMode = prepassRan ? GL_EQUAL : GL_LEQUAL
-       f. forwardRenderer.execute(..., depthTestMode, ...)
-       g. transparentRenderer.execute(...)
-     } // scope.close() restores ALL GL state
-  } finally { if (!replay) commandQueue.releaseAll() }
-```
-
-## Lifecycle
-
-`CgGraphicsLifecycle.destroyContext()` calls `CgRenderPipeline.destroy()` at step 7d
-(before `CgFrameBufferRegistry.deleteAll()`).
+| `CgImmediate` | "Draw this now" through the same recording and executor: chunks into the bound framebuffer, built and executed at once. `CgImmediate.constants()` is what a renderer's immediate `flush` draws under |
+| `CgFrameClock` | The frame's time, advanced once per host frame; every pass's `cg_Time` |
+| `CgViewFrustum` | AABB and sphere tests against a view-projection: the world renderer culls by it, the text culler too |
+| `draw/` | Pipelines, binding snapshots, instance kinds, chunks, pass constants, the batcher — what a recorded draw is made of. Its own guide |
+| `graph/` | Recordings, the frame graph, the frame builder and the executor. Its own guide |
+| `stage/` | `CgRenderStage`, `CgStageFrame`, `CgHostFrame`, `CgHostView`: points in a host's frame, and the host's camera at each |
+| `world/` | `CgWorldRenderer`: meshes drawn into the world under the host's camera. Its own guide |

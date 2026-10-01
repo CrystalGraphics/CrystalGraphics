@@ -1377,6 +1377,7 @@ com/crystalgraphics/platform/gl/CgGL
   method public,static isDepthZeroToOne ()Z
   method public,static isInstalled ()Z
   method public,static isRecording ()Z
+  method public,static mayIssueGl ()Z
   method public,static ownedByCurrentThread ()Z
   method public,static setDepthReversed (Z)V
   method public,static setDepthReversed (ZZ)V

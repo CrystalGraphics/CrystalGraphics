@@ -81,11 +81,10 @@ registerSingleJarPipeline(SingleJarSpec(
 
     // JOML IS NOT RELOCATED AND IS NOT IN THIS JAR. Both halves of that are D2, decided the hard way.
     //
-    // `com.crystalgraphics.api` takes JOML types in seven public signatures -- PoseStack,
-    // CgRenderCommand, CgFrameData, CgViewFrustum, CgShaderBindings, CgShaderProgram,
-    // CgVertexConsumer -- so a relocation rewrites OUR OWN API, and a consumer holding the
-    // org.joml.Matrix4f Minecraft just handed them cannot pass it to us. Vendoring under our own
-    // package respells that breakage rather than fixing it.
+    // CrystalGraphics' public API takes JOML types -- PoseStack, CgHostView, CgPassConstants,
+    // CgViewFrustum, CgShaderBindings, CgShaderProgram, CgVertexConsumer -- so a relocation rewrites
+    // OUR OWN API, and a consumer holding the org.joml.Matrix4f Minecraft just handed them cannot
+    // pass it to us. Vendoring under our own package respells that breakage rather than fixing it.
     //
     // And carrying `org/joml` unrelocated is not an option either. MEASURED 2026-09-10 (E-J9-JOML):
     // Forge 1.20.1 dies in module resolution before any log line is written --

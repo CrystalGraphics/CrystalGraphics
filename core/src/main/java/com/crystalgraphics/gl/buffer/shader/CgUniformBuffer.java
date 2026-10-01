@@ -20,8 +20,7 @@ import com.crystalgraphics.platform.gl.CgGL;
  * upload of a new frame, which copies it into that frame's ring region. So the rule a {@code FRAME} block
  * needs, that every frame reading it uploads it first, costs a compare wherever nothing changed. That is how
  * every block the engine owns lives on the ring: material properties ({@code CgMaterial} uploads at every
- * bind), the frame block ({@code CgRenderPipeline.carryFrameBlock}, at a frame's first material bind) and the
- * text block. A {@link CgBufferLifetime#RETAINED} block orphans on upload and binds at 0, so it stays readable
+ * bind) and the text block. A pass's frame block is the executor's, bound by range from its ring. A {@link CgBufferLifetime#RETAINED} block orphans on upload and binds at 0, so it stays readable
  * for draws that never upload it.</p>
  *
  * <pre>{@code

@@ -18,10 +18,8 @@ import java.util.Map;
  * {@code userIndex}: the actual binding point is {@code userIndex + CgBindingPoints.USER_START_SSBO}
  * (SSBO path) or {@code userIndex + CgBindingPoints.USER_START_TBO} (TBO path).</p>
  *
- * <p><strong>Engine-internal buffers bypass this registry</strong>: the per-object SSBO/TBO and
- * frame UBO owned by {@code CgRenderPipeline} occupy engine-reserved binding points, resolved at
- * runtime. They are managed directly by {@code CgRenderPipeline} and are never inserted into this
- * registry.</p>
+ * <p><strong>Engine-internal buffers bypass this registry</strong>: the object records and the frame block
+ * occupy engine-reserved binding points, resolved at runtime, and the executor binds them per pass.</p>
  *
  * <h3>Usage</h3>
  * <pre>{@code

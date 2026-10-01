@@ -135,12 +135,11 @@ public class CgViewFrustumTest {
         assertFalse(f.testSphere(450f, 0f, -9f, 1f));
     }
 
-    // ── worldAabb contract ──────────────────────────────────────────────
+    // ── array contract ──────────────────────────────────────────────────
 
     @Test
-    public void aabbArrayMatchesCgRenderCommandLayout() {
-        // [minX, minY, minZ, maxX, maxY, maxZ] -- same order CgRenderCommand.worldAabb uses and
-        // CgRenderCommandQueue.submit validates, so a command's array can be passed straight in.
+    public void aabbArrayIsMinsThenMaxes() {
+        // [minX, minY, minZ, maxX, maxY, maxZ]: the order CgMesh.bounds() uses.
         CgViewFrustum f = perspectiveLookingDownNegZ();
         assertTrue(f.testAabb(new float[] {-1f, -1f, -10f, 1f, 1f, -8f}));
         assertFalse(f.testAabb(new float[] {-1f, -1f, 8f, 1f, 1f, 10f}));

@@ -59,7 +59,7 @@ without casts.
 | `CgShaderBuffer` | Abstract base + factories. Owns `String name`, `CgStreamBuffer dataBuffer`, `CgBufferWriter writer`, write-session API, `bind(CgShader)`, `wireToShader(CgShader)` (wiring only, no context bind), abstract `wireShader(CgShader)` hook, `delete()` template, `getGlBufferId()`. Two factory variants: `create(String name, CgBufferFormat format, int userIndex)` (user-facing — adds per-type USER_START internally) and `createInternal(String name, CgBufferFormat format, int bindingPoint)` (engine-internal, raw binding). **`CgBufferFormat` and `name` are mandatory**. Every upload passes `uploadData`, which skips one of at most 4 KB (`COMPARE_LIMIT_FLOATS`) equal to the last — except a `FRAME` buffer's first upload of a frame — and re-binds a `FRAME` buffer either way; counters `shaderBuffer.upload` / `shaderBuffer.uploadSkipped`. |
 | `CgShaderStorageBuffer` | SSBO backend. GL 4.3 core or `ARB_shader_storage_buffer_object`. `wireShader` calls `glGetProgramResourceIndex`+`glShaderStorageBlockBinding` to wire the named block to `bindingLocation`. Not a no-op. |
 | `CgTextureBuffer` | TBO backend. Manages a `GL_TEXTURE_BUFFER` texture. `bindingLocation` IS the texture unit (no separate constant). `wireShader` calls `glUniform1i(getName(), bindingLocation)` to wire the `samplerBuffer` uniform. `bindInternal()` includes an Intel sampler object workaround: unbinds any sampler object from the unit before binding the TBO texture. |
-| `CgUniformBuffer` | UBO for a uniform block, with a `CgBufferLifetime`: `FRAME` for every engine block — material properties (`CgMaterial` uploads at every bind), the frame block (`CgRenderPipeline.carryFrameBlock`, at a frame's first material bind), the text block (`getOrCreateUboInternal`) — or `RETAINED`, the default for `getOrCreateUbo(format, name, index)`. `upload()` passes `CgShaderBuffer.uploadData`'s skip. Constructors `(name, format, bindingLocation[, lifetime])`. `getName()` is the GLSL block name. `wireShader` calls `glUniformBlockBinding(programId, blockIndex, bindingLocation)`. Uses unified `endRecord()` from parent. |
+| `CgUniformBuffer` | UBO for a uniform block, with a `CgBufferLifetime`: `FRAME` for every engine block — material properties (`CgMaterial` uploads at every bind), the text block (`getOrCreateUboInternal`) — or `RETAINED`, the default for `getOrCreateUbo(format, name, index)`. `upload()` passes `CgShaderBuffer.uploadData`'s skip. Constructors `(name, format, bindingLocation[, lifetime])`. `getName()` is the GLSL block name. `wireShader` calls `glUniformBlockBinding(programId, blockIndex, bindingLocation)`. Uses unified `endRecord()` from parent. |
 | `CgShaderBufferRegistry` | Singleton registry for user-created SSBO/TBO/UBO buffers. Two caches: `ShaderBufferKey(name, format, bindingPoint)` (covers both SSBO and TBO) and `UboKey(name, format, bindingPoint)`. `getOrCreate(String name, CgBufferFormat format, int userIndex)` and `getOrCreateUbo(CgBufferFormat format, String name, int userIndex)` take 0-based `userIndex`; per-type USER_START is added internally. `deleteAll()` called by `CgGraphicsLifecycle.destroyContext()`. Engine-internal pipeline buffers bypass this registry. |
 
 ## Binding Point and Texture Unit Namespaces
@@ -81,7 +81,7 @@ Reserved engine SSBO/TBO pairs are `CgBindingPoints.Binding(ssbo, tbo)` records,
 already-detected capability path, so a consumer needing one reserved pair
 (`CgShaderBufferRegistry.getOrCreateInternal(name, format, binding)`) passes a single object.
 
-`CgBindingPoints.init(CgCapabilities)` must be called (by `CgRenderPipeline.init()`) before
+`CgBindingPoints.init(CgCapabilities)` must be called (by `CgGraphicsLifecycle.initContext`) before
 any engine buffer is constructed.
 
 ## Two-Phase Buffer Usage: Wire vs Bind
@@ -89,13 +89,13 @@ any engine buffer is constructed.
 Each engine buffer uses two separate GL operations:
 
 - **Wire** (`wireToShader(shader)`) — per-program, called once after each link via `CgMaterial.recompile()`. Associates block/sampler name with slot. Idempotent.
-- **Bind** (`bind()`) — per-context. Establishes the actual GL binding: `glBindBufferBase` for a `RETAINED` buffer, which stays bound; `glBindBufferRange` at the latest upload for a `CgBufferLifetime.FRAME` one, which every upload re-binds (`CgShaderBuffer.uploadData`); `glActiveTexture+glBindTexture` for a TBO. `CgRenderPipeline.bindFrameResources()` binds the engine pair per pass.
+- **Bind** (`bind()`) — per-context. Establishes the actual GL binding: `glBindBufferBase` for a `RETAINED` buffer, which stays bound; `glBindBufferRange` at the latest upload for a `CgBufferLifetime.FRAME` one, which every upload re-binds (`CgShaderBuffer.uploadData`); `glActiveTexture+glBindTexture` for a TBO. The executor binds the engine pair per pass: the frame block from the pass's constants, the object buffer it owns.
 
 User buffers may still use `bind(shader)` which does both in one call (requires shader to be active).
 
 ## Object Record ABI (must match `cg_env.glsl`)
 
-Each per-object slot is **48 floats / 192 bytes** (`CgRenderPipeline.OBJECT_FORMAT`):
+Each per-object slot is **48 floats / 192 bytes** (`CgInstanceKind.OBJECT.format()`):
 
 ```
 floats  0–15 : mat4 modelMatrix   (column-major)
@@ -128,7 +128,7 @@ and on the TBO path the declaration costs a texture unit — so it is opt-in.
 **Why providers hold a `Supplier`, not a buffer:** the built-in `quad` entry is seeded with the
 method reference `CgQuadRenderer::sharedBuffer`, which does *not* trigger that class's static
 initialization at registration time. That matters — its buffer allocates against `CgBindingPoints`
-and is only valid once `CgRenderPipeline.init()` has run. The supplier is invoked at attach time,
+and is only valid once `CgBindingPoints.init` has run. The supplier is invoked at attach time,
 when a GL context exists.
 
 **Adding one:** `CgEngineBufferRegistry.register(token, supplier, macroName)`, before any shader
@@ -186,8 +186,8 @@ frameUbo.bind();       // glBindBufferRange(GL_UNIFORM_BUFFER, FRAME_DATA_UBO, b
 **After program link** (engine — via `CgMaterial.recompile()`):
 ```java
 shader.bind();
-pipeline.frameBuffer().wireToShader(shader);   // glUniformBlockBinding for CgFrameBlock
-pipeline.objectBuffer().wireToShader(shader);  // glShaderStorageBlockBinding (SSBO) or glUniform1i (TBO)
+CgUniformBuffer.wireBlock(shader, CgPassConstants.BLOCK_NAME, CgBindingPoints.FRAME_DATA_UBO);
+CgShaderBuffer.wireBlock(shader, CgInstanceKind.OBJECT_BLOCK_NAME, CgBindingPoints.OBJECT_DATA);  // SSBO block or TBO sampler
 shader.unbind();
 ```
 
@@ -203,6 +203,6 @@ shader.unbind();
 - **`CgUniformBuffer.blockName` field was removed** — use `getName()` from parent.
 - **`DEFAULT_TBO_TEXTURE_UNIT` constant was removed** — `bindingLocation` is used directly.
 - **`CgBindingPoints.OBJECT_DATA`, `FRAME_DATA`, `USER_START`, `TBO_ENGINE_UNIT`, `toTboUnit()` were removed** — use the new per-type constants (`OBJECT_DATA_SSBO`, `OBJECT_DATA_TBO`, `FRAME_DATA_UBO`, `USER_START_SSBO`, `USER_START_TBO`, `USER_START_UBO`).
-- **Engine pipeline buffers bypass the registry** — `CgRenderPipeline`'s frameUbo/objectBuffer use high-end binding slots resolved at runtime, managed directly by `CgRenderPipeline`, never in the registry.
+- **Engine blocks bypass the registry** — the frame block and object buffer use high-end binding slots resolved at runtime; the executor owns the object buffer and binds the frame block from each pass's constants.
 - **The frame ring only through `CgBufferLifetime.FRAME`** — it binds by range at each upload's offset. A `RETAINED` buffer and every TBO stay at offset 0, which `glBindBufferBase`/`glTexBuffer` read.
-- **`CgBindingPoints.init()` must run before any engine buffer construction** — `CgRenderPipeline.init()` calls it first.
+- **`CgBindingPoints.init()` must run before any engine buffer construction** — `CgGraphicsLifecycle.initContext` calls it first.

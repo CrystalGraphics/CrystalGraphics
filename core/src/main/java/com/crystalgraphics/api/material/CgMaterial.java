@@ -1048,8 +1048,8 @@ public final class CgMaterial {
         //    crash only because overwriting its single `stateScope` field leaked the previous capture
         //    silently, restoring stale values or none at all.
         //
-        // 2. It is NOT NEEDED. The enclosing render pass (CgRenderPipeline's opaque/transparent passes,
-        //    CgUiPaintContext.beginFrame) restores Minecraft's state at pass exit, and per-material
+        // 2. It is NOT NEEDED. The enclosing pass (an executor's raster pass, a callback pass's scope)
+        //    restores Minecraft's state at pass exit, and per-material
         //    isolation falls out of getPassRenderState(variant).apply() below: every DECLARED domain is
         //    written through CgGlStateManager, so it overrides whatever the previous material left.
         //    Undeclared domains are deliberately left alone — callers configure ambient state around
@@ -1124,8 +1124,7 @@ public final class CgMaterial {
      * {@code [Depth]} pass), this method also returns {@code true} for auto-generated depth
      * variants produced by {@link CgMaterialShader#recompile()}
      * during {@code attemptDepthAutoGen()}. It is the correct query for
-     * {@code CgDepthPrepassRenderer} to decide whether to use
-     * {@code bindForPass(DEPTH)} or fall back to the engine depth shader.</p>
+     * a depth prepass deciding whether to bind {@code DEPTH} or fall back to the forward pass.</p>
      *
      * @return {@code true} if a compiled depth variant program is available
      */
@@ -1136,8 +1135,7 @@ public final class CgMaterial {
     /**
      * Returns a stable integer ID unique to this {@code CgMaterial} instance.
      * Assigned at construction from a monotonically incrementing counter.
-     * Used by {@code CgRenderCommandQueue.submit()} as the 16-bit materialId
-     * in the opaque sort key — more reliable than {@code System.identityHashCode}
+     * The world renderer's opaque sort key takes it as the 16-bit material id — more reliable than {@code System.identityHashCode}
      * which can collide for different live instances.
      *
      * @return the per-instance stable material ID (non-negative, unique per instance)
@@ -1396,7 +1394,7 @@ public final class CgMaterial {
      * material for the given {@link CgRenderPassVariant} before the draw and unbinding after.
      *
      * <p>Use this overload in renderer code where the pass variant must be explicit
-     * (e.g. {@code FORWARD} in {@code CgForwardRenderer}). If {@link #getNextPass()} is
+     * (e.g. {@code FORWARD} in a forward pass). If {@link #getNextPass()} is
      * {@code null}, only this material draws.</p>
      *
      * @param variant     the pass variant to activate for each material in the chain

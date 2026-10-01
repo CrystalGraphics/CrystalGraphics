@@ -83,12 +83,12 @@ arrays-of-scalars, deferred to v2.
 
 ## Pre-built Format Constants
 
-Engine-owned canonical formats live on `CgRenderPipeline`:
+The engine's own formats live beside what fills them, in `render/draw`:
 
 | Constant | Layout | Fields | Floats |
 |----------|--------|--------|--------|
-| `CgRenderPipeline.OBJECT_FORMAT` | STD430 | mat4 model, mat4 normal, vec4×4 custom | 48 |
-| `CgRenderPipeline.FRAME_FORMAT` | STD140 | mat4 view, mat4 proj, vec4 time, vec2 resolution, vec4 camera position, vec4 depth params | 48 |
+| `CgInstanceKind.OBJECT.format()` | STD430 | mat4 model, mat4 normal, vec4×4 custom | 48 |
+| `CgPassConstants.FORMAT` | STD140 | mat4 view, mat4 proj, vec4 time, vec2 resolution, vec4 camera position, vec4 depth params, vec4 world origin | 52 |
 
 ## How Format-Aware Writing Works
 

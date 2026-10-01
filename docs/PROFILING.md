@@ -357,12 +357,11 @@ CrystalGraphics' zones, by package — **before adding one, look here and in the
 | Shader graph | shadergraph, gpu | `shadergraph.emit`, `.previewEmit`; `preview.renderPending/render/draw`, `mainPreview.render/draw`; counters for what drew, was unchanged, is animated or still compiling; `gpu:preview.draw`, `gpu:mainPreview.draw` | `shadergraph/CgShaderEmitter`, `CgPreviewEmitter`, `CgPreviewRenderer`, `CgMainPreviewRenderer` |
 | Batching | gl; gl.detail | `batch.*`, `quadRenderer.flush`, `curveRenderer.flush`, `frameRing.wait`; on gl.detail their `upload`/`bindBuffer`/`drawInstanced` and stream buffer `map`/`write`/`commit` | `gl/render/*`, `gl/buffer/*` |
 | Texture arrays | gl | uploads, growth | `gl/texture/CgTexture2DArray` |
-| World | world, gpu | `world.opaque`, `world.transparent`, `pipeline.depthSnapshot/sort/uploadFrame/depthPrepass/forward/transparent`, command counts; `gpu:world.opaque/transparent` | `gl/lifecycle/CgGraphicsLifecycle`, `api/render/CgRenderPipeline` |
-| Culling | gl | frustum tests | `api/render/CgViewFrustum` |
+| World | world, gpu | a stage's whole firing as its path (`world.opaque`, `world.transparent`), the world renderer's recording inside it (`world.recordOpaque/recordTransparent`), `world.opaqueDraws/transparentDraws` counts; `gpu:world.opaque/transparent` | `render/stage/CgRenderStage`, `render/world/CgWorldRenderer` |
+| Culling | gl | frustum tests | `render/CgViewFrustum` |
 
-**Not instrumented** — zone these before any question that touches them: the three pass renderers'
-insides (`render/pipeline/CgForwardRenderer`, `CgTransparentRenderer`, `CgDepthPrepassRenderer` — per
-command bind and draw), mesh upload and loading (`gl/mesh/*`), framebuffer creation and blits beyond the
+**Not instrumented** — zone these before any question that touches them: the frame graph's build and
+execution of a world stage beyond its whole firing (`render/graph/CgFrameBuilder`, `CgExecutor`), mesh upload and loading (`gl/mesh/*`), framebuffer creation and blits beyond the
 depth snapshot, texture loading (`CgTextureManager`, `CgTextureIO`), raw `CgShader` compiles outside a
 material, hot reload, and every host's own hooks (`runtime/mc/**`).
 

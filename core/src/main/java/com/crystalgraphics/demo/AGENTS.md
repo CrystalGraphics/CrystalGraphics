@@ -11,7 +11,7 @@ Standalone, platform-agnostic demo and benchmark utilities.  Classes here have *
 | File | Role |
 |------|------|
 | `CgFontDemo.java` | Font benchmark and atlas diagnostic viewer.  Renders two text draws per frame (a pose-scalable demo string and a fixed 2D label) plus a bottom-left atlas overlay showing bitmap and MSDF pages side by side. |
-| `CgRenderDemo.java` | 3D render pipeline demo. Renders a 4×4 rainbow-tinted cube grid via `CgRenderPipeline` with an auto-orbiting internal camera. Exercises depth prepass, opaque forward pass, and `cg_DepthBuffer` binding. Uses `crystalgraphics:shaders/demo_render.shader`. |
+| `CgRenderDemo.java` | World demo, off unless `-Dcrystalgraphics.demo=true`. A 4×4 rainbow cube grid submitted to `CgWorldRenderer` from an `onFrame` listener, anchored once on whole blocks ahead of the host's camera, so a capture (`-Dcrystalgraphics.demo.capture=<png>`) shows whether the stage's view is the world's. Uses `crystalgraphics:shaders/demo_render.shader`. |
 
 ## Platform Wiring — CgFontDemo
 
@@ -27,14 +27,10 @@ per overlay frame and `CgFontDemo.INSTANCE.onMouseWheel(delta)` on scroll input.
 
 ## Platform Wiring — CgRenderDemo
 
-`CgRenderDemo` is a renderer on the world's render stages: `CgGraphicsLifecycle.initContext` calls
-`install()`, which registers it on `CgRenderStage.WORLD_OPAQUE` and `WORLD_TRANSPARENT`, where it draws as a
-callback in each. No host names it.
-
-| Hook | Call |
-|------|------|
-| Mouse scroll | `CgRenderDemo.INSTANCE.onMouseWheel(delta)` — same scroll hook as `CgFontDemo` |
-| Context destroy | `CgRenderDemo.INSTANCE.dispose()` — same destroy hook as `CgFontDemo` |
+No host names it. `CgGraphicsLifecycle.initContext` calls `install()`, which does nothing unless
+`-Dcrystalgraphics.demo=true`, and `destroyContext` calls `dispose()`. Installed, it submits the cubes from a
+`CgWorldRenderer.onFrame` listener; with a capture asked for, it also registers on `WORLD_TRANSPARENT` just
+after the world renderer and reads the target back once.
 
 ## Key Rules
 
@@ -43,5 +39,4 @@ callback in each. No host names it.
 - The diag atlas shader (`crystalgraphics:shader/diag_atlas.vert/frag`) must declare
   `a_pos` before `a_uv`; attrib locations 0 and 1 are hard-coded because `glGetAttribLocation`
   is not exposed by `CgGLBackend`.
-- `CgRenderDemo` sets its own `CgFrameData` (orbit camera) on every `renderOpaque` call.
-  This overrides any previously set view/proj — expected behaviour for a standalone demo.
+- `CgRenderDemo` has no camera of its own: it draws under the host's, from the world stages.

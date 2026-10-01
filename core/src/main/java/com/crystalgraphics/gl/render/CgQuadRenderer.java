@@ -134,7 +134,7 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
      * the same numeric GL binding point, and only one can be bound there at a time).
      *
      * <p>Relies on the JVM's lazy class-initialization guarantee:
-     * {@link CgBindingPoints#init} must have run (via {@code CgRenderPipeline.init()} ←
+     * {@link CgBindingPoints#init} must have run (via {@code CgGraphicsLifecycle.initContext} ←
      * {@code CgGraphicsLifecycle.initContext()}) by the time this class is first touched, i.e. by
      * the first real {@link #create()} call. Note {@code CgEngineBufferRegistry} seeds the
      * {@code quad} pragma token with a <em>method reference</em> to {@link #instanceBuffer()}
@@ -207,7 +207,7 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
      * cg_use} token with a reference to this method. Being a method reference rather than a direct
      * field read, it does not trigger this class's static initialization at registration time — which
      * matters, because {@link #GPU_BUFFER} allocates against {@code CgBindingPoints} and is only
-     * valid after {@code CgRenderPipeline.init()}.</p>
+     * valid after {@code CgGraphicsLifecycle.initContext}.</p>
      */
     public static CgShaderBuffer instanceBuffer() {
         return GPU_BUFFER;
