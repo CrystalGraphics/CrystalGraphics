@@ -7,13 +7,15 @@
 // An entry is a rounded box in its own space, reached from gl_FragCoord through toLocal0/toLocal1 (rows of a
 // 2x3 affine), less the band between its outer and inner edges -- what a mask drawn with a transparent border
 // reveals. The distance and the ramp are gui_rect's, so an edge antialiases as a rect's own does. toLocal0.w
-// is the parent entry and toLocal1.w the ramp: 1 on the pixel grid, wider off it.
+// is the parent entry and toLocal1.w the ramp: 1 on the pixel grid, wider off it. space.x is the spatial node the
+// box is under: 0 reads gl_FragCoord as it is, any other maps it into the node through the palette first.
 #pragma once
 
 #include "crystalgraphics:shaders/lib/sdf.glsl"
 
-// CgClipTable.MAX_DEPTH, which must agree.
+// CgClipTable.MAX_DEPTH and ROTATED_RAMP, which must agree.
 #define CG_CLIP_MAX_DEPTH 4
+#define CG_CLIP_ROTATED_RAMP 1.5
 
 #ifndef CG_VERTEX_STAGE
 float cg_clip_distance(vec2 local, vec4 rect, vec4 rx, vec4 ry) {
@@ -23,9 +25,11 @@ float cg_clip_distance(vec2 local, vec4 rect, vec4 rx, vec4 ry) {
 float cg_clip_entry_coverage(int n) {
     vec4 row0 = CLIP_DATA(n).toLocal0;
     vec4 row1 = CLIP_DATA(n).toLocal1;
-    vec3 frag = vec3(gl_FragCoord.xy, 1.0);
+    int space = int(CLIP_DATA(n).space.x + 0.5);
+    vec3 frag = vec3(space == 0 ? gl_FragCoord.xy : cg_spatial_from_fragment(space), 1.0);
     vec2 local = vec2(dot(row0.xyz, frag), dot(row1.xyz, frag));
     float ramp = row1.w;
+    if (space != 0 && cg_spatial_rotated(space)) ramp = CG_CLIP_ROTATED_RAMP;
     vec4 outer = CLIP_DATA(n).outer;
     float coverage = sdf_coverage(cg_clip_distance(local, outer, CLIP_DATA(n).outerRx, CLIP_DATA(n).outerRy), ramp);
     vec4 inner = CLIP_DATA(n).inner;

@@ -55,6 +55,7 @@ public final class CgExecutor {
 
     private final CgStreamBuffer ring;
     private final CgShaderBuffer[] instanceBuffers = new CgShaderBuffer[KINDS];
+    private final int[] scissorRect = new int[4];
 
     private CgExecutor(int depth) {
         ring = CgStreamBuffer.createFrameLocal(CgGL.GL_UNIFORM_BUFFER, 64 * 1024);
@@ -103,6 +104,7 @@ public final class CgExecutor {
     }
 
     private void run(CgFrame frame) {
+        boolean again = frame.executions++ > 0;
         frame.bindings.upload(ring);
         for (int k = 0; k < KINDS; k++) {
             if (frame.instanceFloats[k] > 0) instanceBuffers[k].uploadRaw(frame.instances[k], frame.instanceFloats[k]);
@@ -117,7 +119,9 @@ public final class CgExecutor {
                         resolved++;
                     }
                 }
-                step(frame, s);
+                if (!again || !(frame.steps[s] instanceof CgPass.Upload || frame.steps[s] instanceof CgPass.Compile)) {
+                    step(frame, s);
+                }
                 for (int t = 0; t < frame.transients.size(); t++) {
                     if (frame.releaseAfter[t] == s) {
                         CgGraphTexture texture = frame.transients.get(t);
@@ -190,9 +194,10 @@ public final class CgExecutor {
         if (packed.count == 0) return;
         frame.bindings.bind(packed.constants);
         for (int k = 0; k < KINDS; k++) if ((packed.kinds & (1 << k)) != 0) instanceBuffers[k].bind();
+        packed.palette.pass(pass.viewOwner(), pass.viewX(), pass.viewY(), CgPassConstants.height(pass.constants));
         if ((packed.kinds & UNIT_KINDS) != 0) {
             packed.clips.bindForDraw();
-            packed.palette.bindForDraw(null, CgPassConstants.height(pass.constants));
+            packed.palette.bindForDraw();
         }
 
         int boundPipeline = -1, boundBinding = -1, boundScissor = CgRasterPass.INHERIT;
@@ -206,8 +211,14 @@ public final class CgExecutor {
                     CgGL.glDisable(CgGL.GL_SCISSOR_TEST);
                 } else if (boundScissor >= 0) {
                     int r = boundScissor * 4;
+                    int node = pass.scissorNode(boundScissor);
                     CgGL.glEnable(CgGL.GL_SCISSOR_TEST);
-                    CgGL.glScissor(rects[r], rects[r + 1], rects[r + 2], rects[r + 3]);
+                    if (node < 0) {
+                        CgGL.glScissor(rects[r], rects[r + 1], rects[r + 2], rects[r + 3]);
+                    } else {
+                        packed.palette.scissorOf(node, pass.scissorBoxes(), r, scissorRect);
+                        CgGL.glScissor(scissorRect[0], scissorRect[1], scissorRect[2], scissorRect[3]);
+                    }
                 }
             }
             if (packed.pipeline[b] != boundPipeline) {
