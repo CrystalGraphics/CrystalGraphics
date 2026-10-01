@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgChunkSink;
 import com.crystalgraphics.render.draw.CgDrawChunk;
 import com.crystalgraphics.render.draw.CgOrder;
@@ -104,6 +105,13 @@ public final class CgPassRecorder implements CgChunkSink {
     /** Whether chunks are being recorded. */
     public boolean recording() {
         return recording != null;
+    }
+
+    /** The recording's table: a chunk's snapshots live as long as the recording that holds it. */
+    @Override
+    public CgBindingTable bindings() {
+        if (recording == null) throw new IllegalStateException("drawing with nowhere to record");
+        return recording.bindings();
     }
 
     @Override
