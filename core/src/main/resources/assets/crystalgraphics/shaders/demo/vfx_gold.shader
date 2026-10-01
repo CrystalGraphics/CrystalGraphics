@@ -12,7 +12,7 @@ Pass {
     RenderState {
         DepthTest LEQUAL
         DepthWrite ON
-        Cull BACK
+        Cull OFF
     }
 
     void vertex(out v2f o) {
@@ -25,6 +25,8 @@ Pass {
 
     void fragment(in v2f i, out vec4 fragColor) {
         vec3 n = normalize(i.normalWs);
+        // From inside the sphere its inner wall shows, facing in.
+        if (!gl_FrontFacing) n = -n;
         vec3 v = normalize(VFX_CAMERA - i.worldPos);
         float floorY = CG_OBJECT_TO_WORLD[3].y - CG_OBJECT_CUSTOM3.x;
         vec3 color = vfx_pbr_studio(i.worldPos, floorY, n, v, vec3(1.0, 0.72, 0.24), 1.0, 0.08);

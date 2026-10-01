@@ -13,7 +13,7 @@ Pass {
     RenderState {
         DepthTest LEQUAL
         DepthWrite ON
-        Cull BACK
+        Cull OFF
     }
 
     // The surface: the unit sphere swelling and settling under slow, broad noise.
@@ -45,6 +45,8 @@ Pass {
 
     void fragment(in v2f i, out vec4 fragColor) {
         vec3 n = normalize(CG_NORMAL_MATRIX * mercury_normal(normalize(i.dir), CG_TIME));
+        // From inside the sphere its inner wall shows, facing in.
+        if (!gl_FrontFacing) n = -n;
         vec3 v = normalize(VFX_CAMERA - i.worldPos);
         float floorY = CG_OBJECT_TO_WORLD[3].y - CG_OBJECT_CUSTOM3.x;
         vec3 color = vfx_pbr_studio(i.worldPos, floorY, n, v, vec3(0.92, 0.94, 0.97), 1.0, 0.04);

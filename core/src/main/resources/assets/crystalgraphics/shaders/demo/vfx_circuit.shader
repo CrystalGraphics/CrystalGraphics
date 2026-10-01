@@ -18,7 +18,7 @@ Pass {
     RenderState {
         DepthTest LEQUAL
         DepthWrite ON
-        Cull BACK
+        Cull OFF
     }
 
     // The cube face {@code p} is on, and where on it: xy in [-1, 1], equi-angular so cells keep their size; z the
@@ -78,6 +78,8 @@ Pass {
         float t = CG_TIME;
         float floorY = CG_OBJECT_TO_WORLD[3].y - CG_OBJECT_CUSTOM3.x;
         vec3 n = normalize(i.normalWs);
+        // From inside the sphere its inner wall shows, facing in.
+        if (!gl_FrontFacing) n = -n;
         vec3 v = normalize(VFX_CAMERA - i.worldPos);
         vec3 p = normalize(i.objPos);
         vec3 face = circuit_face(p);

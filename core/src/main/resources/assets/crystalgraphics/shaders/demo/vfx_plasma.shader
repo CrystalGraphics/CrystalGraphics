@@ -14,7 +14,7 @@ Pass {
     RenderState {
         DepthTest LEQUAL
         DepthWrite ON
-        Cull BACK
+        Cull OFF
     }
 
     // The energy at {@code x} in the vortex's frame: spiral streaks round its axis, faster nearer it, churned by
@@ -42,6 +42,7 @@ Pass {
         vec3 centre = CG_OBJECT_TO_WORLD[3].xyz;
         float radius = length(CG_OBJECT_TO_WORLD[0].xyz);
         vec3 n = normalize(i.normalWs);
+        if (!gl_FrontFacing) n = -n;
         vec3 v = normalize(VFX_CAMERA - i.worldPos);
         float nv = max(dot(n, v), 0.0);
         float throb = 1.0 + 0.18 * sin(t * 3.3) + 0.08 * sin(t * 7.9);
@@ -51,10 +52,11 @@ Pass {
         vec3 ax = normalize(cross(axis, vec3(0.0, 0.0, 1.0)));
         vec3 az = cross(ax, axis);
         mat3 toVortex = transpose(mat3(ax, axis, az));
-        // Straight through the ball, gathering the light of every streak on the way.
-        vec3 q = (i.worldPos - centre) / radius;
+        // Straight through the ball, gathering the light of every streak on the way: from the glass to the far side,
+        // or from inside, from the eye to the wall ahead.
         vec3 d = -v;
-        float across = max(-2.0 * dot(q, d), 0.0);
+        vec3 q = (gl_FrontFacing ? i.worldPos - centre : VFX_CAMERA - centre) / radius;
+        float across = gl_FrontFacing ? max(-2.0 * dot(q, d), 0.0) : length(i.worldPos - VFX_CAMERA) / radius;
         vec3 light = vec3(0.0);
         for (int k = 0; k < 28; k++) {
             vec3 x = toVortex * (q + d * ((float(k) + 0.5) / 28.0 * across));

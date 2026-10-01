@@ -14,7 +14,7 @@ Pass {
     RenderState {
         DepthTest LEQUAL
         DepthWrite ON
-        Cull BACK
+        Cull OFF
     }
 
     // The land's height at {@code dir}: hills and basins in [0, 1]; below 0.42 is molten.
@@ -66,6 +66,8 @@ Pass {
         vec3 normalObj = normalize(cross(p1 - p0, p2 - p0));
         if (dot(normalObj, dir) < 0.0) normalObj = -normalObj;
         vec3 n = normalize(CG_NORMAL_MATRIX * normalObj);
+        // From inside the sphere its inner wall shows, facing in.
+        if (!gl_FrontFacing) n = -n;
         float pulse = 0.88 + 0.12 * sin(t * 2.0 + h * 12.0);
         // The molten rock: bright, flowing slowly over itself.
         float flow = vfx_fbm(dir * 4.0 + vfx_fbm(dir * 2.0 + vec3(t * 0.05), 3) * 1.5 + vec3(t * 0.12, -t * 0.08, 0.0), 5);

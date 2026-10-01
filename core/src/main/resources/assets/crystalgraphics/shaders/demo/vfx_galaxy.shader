@@ -19,7 +19,7 @@ Pass {
     RenderState {
         DepthTest LEQUAL
         DepthWrite ON
-        Cull BACK
+        Cull OFF
     }
 
     // erf, to 0.0004 (Vedder's tanh form).
@@ -123,14 +123,26 @@ Pass {
         float floorY = centre.y - CG_OBJECT_CUSTOM3.x;
         // A pixel's size in marble radii, taken before any branch.
         float pixel = length(fwidth(i.worldPos)) / length(CG_OBJECT_TO_WORLD[0].xyz);
+        float radius = length(CG_OBJECT_TO_WORLD[0].xyz);
+        vec3 camera = VFX_CAMERA;
         vec3 n = normalize(i.normalWs);
-        vec3 v = normalize(VFX_CAMERA - i.worldPos);
+        if (!gl_FrontFacing) n = -n;
+        vec3 v = normalize(camera - i.worldPos);
         float nv = max(dot(n, v), 0.0);
-        // Into the glass: refracted, so the galaxy is magnified and bends at the rim.
-        vec3 refracted = refract(-v, n, 1.0 / 1.45);
-        vec3 entry = toObject * (i.worldPos - centre);
-        vec3 dir = normalize(toObject * refracted);
-        float span = max(-2.0 * dot(entry, dir), 0.0);
+        float wallDistance = length(i.worldPos - camera);
+        // Into the glass: refracted, so the galaxy is magnified and bends at the rim. From inside, from the eye to the
+        // wall ahead, unbent.
+        vec3 entry, dir;
+        float span;
+        if (gl_FrontFacing) {
+            entry = toObject * (i.worldPos - centre);
+            dir = normalize(toObject * refract(-v, n, 1.0 / 1.45));
+            span = max(-2.0 * dot(entry, dir), 0.0);
+        } else {
+            entry = toObject * (camera - centre);
+            dir = normalize(toObject * -v);
+            span = length(toObject * (i.worldPos - camera));
+        }
         // Deep space, and the bulge as a Gaussian integrated along the ray.
         vec3 behind = galaxy_space(dir);
         float along = -dot(entry, dir);
@@ -146,7 +158,9 @@ Pass {
         if (abs(dir.y) > 1.0e-4 && plane > 0.0 && plane < span && length(hit) < 0.8) {
             // The disk lit thicker the more steeply it is seen past; its dust hides the bulge and the space behind it.
             float slant = min(1.0 / abs(dir.y), 5.0);
-            vec4 disk = galaxy_disk(hit, t, pixel * slant);
+            // A pixel's size where the ray meets the disk rather than the glass.
+            float hitDistance = (gl_FrontFacing ? wallDistance : 0.0) + plane * radius;
+            vec4 disk = galaxy_disk(hit, t, pixel * hitDistance / wallDistance * slant);
             float dust = 1.0 - pow(1.0 - disk.a, slant);
             float before = 0.5 * (1.0 + galaxy_erf((plane - along) / bulgeSize));
             color = (behind + bulgeColor * bulge * (1.0 - before)) * (1.0 - dust) + disk.rgb * min(slant, 2.5) * 0.6
@@ -155,7 +169,7 @@ Pass {
             color = behind + bulgeColor * bulge;
         }
         // The glass: the studio mirrored over it, strongest at the rim, and the key light's highlight.
-        float fresnel = 0.04 + 0.96 * pow(1.0 - nv, 5.0);
+        float fresnel = (0.04 + 0.96 * pow(1.0 - nv, 5.0)) * (gl_FrontFacing ? 1.0 : 0.25);
         vec3 glass = vfx_studio(i.worldPos, reflect(-v, n), 0.0, floorY)
                 + vfx_direct(n, v, VFX_KEY_DIR, VFX_KEY_COLOR, vec3(1.0), 0.0, 0.03) * 2.0;
         color = color * (1.0 - fresnel) + glass * fresnel;
