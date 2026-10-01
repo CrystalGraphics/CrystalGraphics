@@ -2,6 +2,9 @@ package com.crystalgraphics.gl.texture;
 
 import com.crystalgraphics.api.texture.CgTexture;
 
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * Mutable, non-owning {@link CgTexture} view over an externally-owned GL texture id.
  *
@@ -27,7 +30,23 @@ public final class CgTextureMutable extends CgTextureAbstract {
         this.target = target;
     }
 
+    /** {@link #current} answers, one per id, so equal recorded snapshots stay equal. */
+    private final Map<Integer, CgTextureMutable> fixed = new HashMap<>();
+
     public void setId(int id) {this.textureId = id;}
+
+    /**
+     * What this view points at now, as a view nothing repoints: what a recorded draw keeps, since it binds after this
+     * one has moved on. One per id.
+     */
+    public CgTexture current() {
+        CgTextureMutable view = fixed.get(textureId);
+        if (view == null || view.target != target) {
+            view = new CgTextureMutable(textureId, target);
+            fixed.put(textureId, view);
+        }
+        return view;
+    }
 
     public void setTarget(int target) {this.target = target;}
 

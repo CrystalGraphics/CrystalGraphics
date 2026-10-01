@@ -117,6 +117,8 @@ public final class CgFrame {
         int[] kind = new int[16];
         int[] first = new int[16];
         int[] instances = new int[16];
+        /** Per batch, an index into its pass's scissor rects, or a {@code CgRasterPass} sentinel. */
+        int[] scissor = new int[16];
         CgMesh[] mesh = new CgMesh[16];
         /** Bits by kind ordinal: the kinds its batches draw, so their buffers are bound once per pass. */
         int kinds;
@@ -131,6 +133,7 @@ public final class CgFrame {
                 kind = new int[n];
                 first = new int[n];
                 instances = new int[n];
+                scissor = new int[n];
                 mesh = new CgMesh[n];
             } else {
                 Arrays.fill(mesh, 0, count, null);

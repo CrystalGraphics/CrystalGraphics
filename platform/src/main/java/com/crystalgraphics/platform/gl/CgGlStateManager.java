@@ -229,6 +229,26 @@ public final class CgGlStateManager {
         return (unknownFields & SLOT_FIELDS[slot.ordinal()]) == 0 && (slot != CgGlSlot.TEXTURES || unknownUnits == 0);
     }
 
+    /** The bound draw framebuffer as the shadow knows it, or -1 when it does not. Asks the driver nothing. */
+    public int knownDrawFramebuffer() {
+        return (unknownFields & F_DRAW_FBO) == 0 ? current.drawFbo : -1;
+    }
+
+    /**
+     * The scissor as the shadow knows it: 1 with {@code box} filled ({@code x, y, w, h}, GL's bottom-left pixels)
+     * when the test is on, 0 when it is off, -1 when the shadow does not know. Asks the driver nothing.
+     */
+    public int knownScissor(int[] box) {
+        if ((unknownFields & F_SCISSOR_TEST) != 0) return -1;
+        if (!current.scissorTest) return 0;
+        if ((unknownFields & F_SCISSOR_BOX) != 0) return -1;
+        box[0] = current.scissorX;
+        box[1] = current.scissorY;
+        box[2] = current.scissorW;
+        box[3] = current.scissorH;
+        return 1;
+    }
+
     /**
      * Domains that are tracked but <strong>never deduplicated</strong> — every write is issued.
      *

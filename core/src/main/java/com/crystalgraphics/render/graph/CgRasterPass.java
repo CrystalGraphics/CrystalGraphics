@@ -8,6 +8,7 @@ import com.crystalgraphics.render.draw.CgOrder;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
@@ -27,6 +28,8 @@ import java.util.List;
  *       graph runs the pass that wrote it first, whenever either was made.</li>
  *   <li>A recorder that must read its own target mid-pass (a backdrop) ends the pass, copies, and opens another
  *       on the same target with {@link CgLoad#load()}.</li>
+ *   <li>A chunk is drawn under the scissor set when it was added, as a command buffer's set-scissor works:
+ *       {@link #scissor} and {@link #noScissor}. A pass that never sets one leaves GL's scissor as it finds it.</li>
  * </ul>
  */
 public final class CgRasterPass extends CgPass {
@@ -39,6 +42,13 @@ public final class CgRasterPass extends CgPass {
     final CgOrder order;
     private final List<CgDrawChunk> chunks = new ArrayList<>();
     private boolean ended;
+
+    /** A chunk's scissor: an index into {@link #scissorRects}, {@link #NO_SCISSOR}, or {@link #INHERIT}. */
+    static final int NO_SCISSOR = -1, INHERIT = -2;
+    private int[] chunkScissor = new int[16];
+    private int[] scissorRects = new int[16];
+    private int scissorCount;
+    private int scissor = INHERIT;
 
     CgRasterPass(CgRecording recording, String name, CgGraphTexture target, CgLoad load, float[] constants,
                  @Nullable CgRenderState state, CgOrder order) {
@@ -54,6 +64,8 @@ public final class CgRasterPass extends CgPass {
     public CgRasterPass add(CgDrawChunk chunk) {
         if (ended) throw new IllegalStateException(this + " has ended");
         recording.requireOpen();
+        if (chunks.size() == chunkScissor.length) chunkScissor = Arrays.copyOf(chunkScissor, chunkScissor.length * 2);
+        chunkScissor[chunks.size()] = scissor;
         chunks.add(chunk);
         CgBindingTable table = chunk.bindings();
         for (int d = 0; d < chunk.draws(); d++) {
@@ -63,6 +75,27 @@ public final class CgRasterPass extends CgPass {
                 if (texture instanceof CgGraphTexture graph) recording.read(this, graph);
             }
         }
+        return this;
+    }
+
+    /** Draws the chunks added from now on inside {@code (x, y, w, h)}, in the target's bottom-left pixels. */
+    public CgRasterPass scissor(int x, int y, int w, int h) {
+        int set = scissor * 4;
+        if (scissor >= 0 && scissorRects[set] == x && scissorRects[set + 1] == y
+                && scissorRects[set + 2] == w && scissorRects[set + 3] == h) return this;
+        if ((scissorCount + 1) * 4 > scissorRects.length) scissorRects = Arrays.copyOf(scissorRects, scissorRects.length * 2);
+        int at = scissorCount * 4;
+        scissorRects[at] = x;
+        scissorRects[at + 1] = y;
+        scissorRects[at + 2] = w;
+        scissorRects[at + 3] = h;
+        scissor = scissorCount++;
+        return this;
+    }
+
+    /** Draws the chunks added from now on unscissored. */
+    public CgRasterPass noScissor() {
+        scissor = NO_SCISSOR;
         return this;
     }
 
@@ -84,5 +117,15 @@ public final class CgRasterPass extends CgPass {
 
     List<CgDrawChunk> chunkList() {
         return chunks;
+    }
+
+    /** Chunk {@code i}'s scissor. @see #NO_SCISSOR */
+    int chunkScissor(int i) {
+        return chunkScissor[i];
+    }
+
+    /** The scissor rects {@link #chunkScissor} indexes, four ints each: {@code x, y, w, h}. */
+    int[] scissorRects() {
+        return scissorRects;
     }
 }

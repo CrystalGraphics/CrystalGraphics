@@ -897,15 +897,27 @@ public final class CgMaterial {
         return capturePacker;
     }
 
-    /** The buffers a user attached, leaving out those an engine token declared: an executor binds its kind's own. */
+    /**
+     * The buffers a user attached, leaving out those an engine token declared: an executor binds its kind's own. A
+     * uniform block is kept by value, as written now, since its owner rewrites it before the draw executes.
+     */
     private void captureAttachedBuffers(CgBindingTable table) {
         List<CgAttachedBuffer> attached = cgMaterialShader.getAttachedBuffers();
         if (attached.isEmpty()) return;
         CgParsedShader parsed = cgMaterialShader.getLastParsed();
         for (int i = 0; i < attached.size(); i++) {
             CgAttachedBuffer buffer = attached.get(i);
-            if (!buffer.isUbo() && parsed != null && declaresEngineBuffer(parsed, buffer.getMacroName())) continue;
-            table.buffer(buffer.getBuffer());
+            CgShaderBuffer target = buffer.getBuffer();
+            if (buffer.isUbo()) {
+                CgBufferWriter written = target.writer();
+                if (written.rawCursor() > 0) {
+                    table.block(target.getBindingLocation(), written.rawData(), 0, written.rawCursor());
+                    continue;
+                }
+            } else if (parsed != null && declaresEngineBuffer(parsed, buffer.getMacroName())) {
+                continue;
+            }
+            table.buffer(target);
         }
     }
 

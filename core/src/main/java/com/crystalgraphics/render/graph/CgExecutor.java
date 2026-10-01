@@ -189,10 +189,21 @@ public final class CgExecutor {
         for (int k = 0; k < KINDS; k++) if ((packed.kinds & (1 << k)) != 0) instanceBuffers[k].bind();
         if ((packed.kinds & UNIT_KINDS) != 0) CgClipTable.bindForDraw();
 
-        int boundPipeline = -1, boundBinding = -1;
+        int boundPipeline = -1, boundBinding = -1, boundScissor = CgRasterPass.INHERIT;
         CgPipeline pipeline = null;
         boolean usable = false;
+        int[] rects = pass.scissorRects();
         for (int b = 0; b < packed.count; b++) {
+            if (packed.scissor[b] != boundScissor) {
+                boundScissor = packed.scissor[b];
+                if (boundScissor == CgRasterPass.NO_SCISSOR) {
+                    CgGL.glDisable(CgGL.GL_SCISSOR_TEST);
+                } else if (boundScissor >= 0) {
+                    int r = boundScissor * 4;
+                    CgGL.glEnable(CgGL.GL_SCISSOR_TEST);
+                    CgGL.glScissor(rects[r], rects[r + 1], rects[r + 2], rects[r + 3]);
+                }
+            }
             if (packed.pipeline[b] != boundPipeline) {
                 boundPipeline = packed.pipeline[b];
                 pipeline = CgPipeline.byId(boundPipeline);
