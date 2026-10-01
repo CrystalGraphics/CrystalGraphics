@@ -208,6 +208,40 @@ public final class CgShaderPreprocessor {
         }
     }
 
+    /**
+     * Whether {@code source}, or any file it includes at any depth, contains one of {@code tokens}: what a material
+     * reads, decided from its text before it compiles. Includes resolve as {@link #process} resolves them; one that
+     * cannot be read counts as a match.
+     *
+     * <pre>{@code
+     * boolean readsDepth = new CgShaderPreprocessor()
+     *         .mentions(source, "mymod:shaders/water.shader", "cg_DepthBuffer", "CG_SCENE_EYE_DEPTH");
+     * }</pre>
+     */
+    public boolean mentions(String source, String sourcePath, String... tokens) {
+        return mentions(source, sourcePath != null ? CgIO.normalizePath(sourcePath) : null, tokens, new HashSet<>());
+    }
+
+    private boolean mentions(String src, String norm, String[] tokens, Set<String> seen) {
+        for (String token : tokens) {
+            if (src.contains(token)) return true;
+        }
+        for (String line : src.split("\n")) {
+            Matcher m = INCLUDE_PATTERN.matcher(line.trim());
+            if (!m.matches()) continue;
+            String resolved = resolveIncludePath(m.group(1) != null ? m.group(1) : m.group(2), norm);
+            if (!seen.add(resolved)) continue;
+            String included;
+            try {
+                included = loadSource(resolved);
+            } catch (CgPreprocessorException e) {
+                return true;
+            }
+            if (mentions(included, resolved, tokens, seen)) return true;
+        }
+        return false;
+    }
+
     // ── Private: non-ASCII stripping ──────────────────────────────────────────
 
     private static String stripNonAscii(String source, String path) {

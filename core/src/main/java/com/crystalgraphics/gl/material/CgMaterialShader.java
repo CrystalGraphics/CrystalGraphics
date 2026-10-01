@@ -144,6 +144,8 @@ public final class CgMaterialShader {
 
     /** The text {@link #lastParsed} was parsed from. */
     private String parsedSource;
+    /** Whether the parsed source or anything it includes samples the scene depth; see {@link #readsSceneDepth}. */
+    private volatile boolean sceneDepth = true;
 
     /**
      * Flat pass × keywords program cache. Key = (passName, keywords set).
@@ -300,6 +302,7 @@ public final class CgMaterialShader {
             }
             this.renderQueue = parsed.renderQueue();
             this.renderType = parsed.renderType();
+            this.sceneDepth = sceneDepthIn(source);
             this.parsedSource = source;
             this.lastParsed = parsed;
             return parsed;
@@ -404,6 +407,7 @@ public final class CgMaterialShader {
             // ── Step 2a: commit the pure-parse products immediately (see below) ──
             this.renderQueue = parsed.renderQueue();
             this.renderType = parsed.renderType();
+            if (!source.equals(parsedSource)) this.sceneDepth = sceneDepthIn(source);
             this.parsedSource = source;
             this.lastParsed = parsed;   // last: a reader that sees it sees the three above
         }
@@ -1045,10 +1049,16 @@ public final class CgMaterialShader {
         return this;
     }
     
-    /** Whether the parsed source samples {@code cg_DepthBuffer}, directly or through {@code CG_SCENE_EYE_DEPTH}; true until parsed. */
+    /**
+     * Whether the parsed source samples {@code cg_DepthBuffer}, directly or through {@code CG_SCENE_EYE_DEPTH}, in its
+     * own text or in a file it includes; true until parsed.
+     */
     public boolean readsSceneDepth() {
-        String source = parsedSource;
-        return source == null || source.contains("cg_DepthBuffer") || source.contains("CG_SCENE_EYE_DEPTH");
+        return parsedSource == null || sceneDepth;
+    }
+
+    private boolean sceneDepthIn(String source) {
+        return new CgShaderPreprocessor().mentions(source, resourcePath, "cg_DepthBuffer", "CG_SCENE_EYE_DEPTH");
     }
 
     /**
