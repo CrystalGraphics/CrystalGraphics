@@ -85,7 +85,8 @@ public final class CgVfxShowcase {
             strength *= k == STORM ? 0.55f + 0.9f * flicker(seconds, k) : 0.85f + 0.15f * (float) Math.sin(seconds * 2.3 + k);
             transform.identity().scale(GLOW_REACH[k]);
             world.draw(sphere, glow).at(cx, cy, cz).transform(transform)
-                    .custom(1, GLOW[k][0], GLOW[k][1], GLOW[k][2], strength).submit();
+                    .custom(1, GLOW[k][0], GLOW[k][1], GLOW[k][2], strength)
+                    .custom(2, 1f / GLOW_REACH[k], 0f, 0f, 0f).submit();
         }
     }
 
