@@ -521,7 +521,9 @@ essentially every shader wants them. Buffers that only a minority of shaders nee
 > the entry it sits inside; it answers an index. An instance stamped with it multiplies its output by the
 > coverage of every entry up the chain (`MAX_DEPTH`, 4), each antialiased as a `gui_box` shape's own edge, so any
 > rotation or skew clips exactly. Changing the clip never flushes; the renderers upload and bind the table
-> when they draw. An entry means nothing in another target and nothing next frame.
+> when they draw. An entry means nothing in another target and nothing next frame. `addPixelRect` is the square
+> case at whole pixels: the pixel-centre test a scissor makes, with no batch break, and a rect nested in another of
+> the same node merges into one entry.
 
 > **`curve` is the one engine buffer read from the fragment stage as well as the vertex stage.** A
 > stroke is an analytic SDF evaluated per pixel, so the fragment needs the control points themselves;

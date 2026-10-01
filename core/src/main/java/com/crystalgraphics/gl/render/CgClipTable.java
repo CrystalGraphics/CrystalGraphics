@@ -33,6 +33,9 @@ import java.util.Arrays;
  *
  * // A viewport under spatial node `scroll`, its pose in the node's space: it moves with the node.
  * int view = clips.add(0, scroll, poseInNode, 0f, 0, 0, 300, 200, FOURS, FOURS, null);
+ *
+ * // A square clip at whole pixels, as a scissor cuts: no batch break, and nested rects become one entry.
+ * int list = clips.addPixelRect(panel, 0, 10, 40, 210, 340, targetHeight);
  * }</pre>
  *
  * <p>In a material:</p>
@@ -185,6 +188,51 @@ public final class CgClipTable {
         depths[count] = depth;
         version++;
         return count++;
+    }
+
+    /**
+     * Adds a square clip at whole pixels: a fragment is inside when its centre is, exactly as a scissor cuts, but as an
+     * instance field, so it breaks no batch. {@code (x0, y0)-(x1, y1)} is in {@code node}'s space, top-down -- the bound
+     * target's pixels at node 0, {@code targetHeight} tall -- and must be whole pixels of the target there. Inside
+     * another pixel rect of the same node it is cut into that one's entry rather than chained, so nested square clips
+     * cost one entry. Answers -1 when the chain would pass {@link #MAX_DEPTH}.
+     */
+    public int addPixelRect(int parent, int node, int x0, int y0, int x1, int y1, float targetHeight) {
+        if (parent > 0 && isPixelRect(parent) && entries[parent * FLOATS + 32] == node) {
+            int p = parent * FLOATS + 8;
+            x0 = Math.max(x0, (int) entries[p]);
+            y0 = Math.max(y0, (int) entries[p + 1]);
+            x1 = Math.min(x1, (int) entries[p + 2]);
+            y1 = Math.min(y1, (int) entries[p + 3]);
+            parent = parents[parent];
+        }
+        int depth = (parent > 0 ? depths[parent] : 0) + 1;
+        if (depth > MAX_DEPTH) return -1;
+        if (count == parents.length) {
+            entries = Arrays.copyOf(entries, entries.length * 2);
+            parents = Arrays.copyOf(parents, parents.length * 2);
+            depths = Arrays.copyOf(depths, depths.length * 2);
+        }
+        int o = count * FLOATS;
+        Arrays.fill(entries, o, o + FLOATS, 0f);
+        // gl_FragCoord to the target's top-down rows at node 0; a node's space is the palette's to reach.
+        entries[o] = 1f;
+        entries[o + 5] = node == 0 ? -1f : 1f;
+        entries[o + 6] = node == 0 ? targetHeight : 0f;
+        entries[o + 3] = parent;
+        entries[o + 7] = 0f;   // a ramp of 0: the pixel-centre test
+        Arrays.fill(innerRx, 0f);
+        put(o + 8, x0, y0, Math.max(x0, x1), Math.max(y0, y1), innerRx, innerRx);
+        put(o + 20, 0f, 0f, -1f, -1f, innerRx, innerRx);
+        entries[o + 32] = node;
+        parents[count] = parent;
+        depths[count] = depth;
+        version++;
+        return count++;
+    }
+
+    private boolean isPixelRect(int entry) {
+        return entries[entry * FLOATS + 7] == 0f;
     }
 
     /** The entry {@code entry} was added inside, 0 for none. */

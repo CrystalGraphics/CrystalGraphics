@@ -31,6 +31,9 @@ float cg_clip_entry_coverage(int n) {
     float ramp = row1.w;
     if (space != 0 && cg_spatial_rotated(space)) ramp = CG_CLIP_ROTATED_RAMP;
     vec4 outer = CLIP_DATA(n).outer;
+    bool outside = local.x < outer.x || local.y < outer.y || local.x >= outer.z || local.y >= outer.w;
+    // A ramp of 0 is a square clip at whole pixels (CgClipTable.addPixelRect): the centre test a scissor makes.
+    if (ramp <= 0.0) return outside ? 0.0 : 1.0;
     float coverage = sdf_coverage(cg_clip_distance(local, outer, CLIP_DATA(n).outerRx, CLIP_DATA(n).outerRy), ramp);
     vec4 inner = CLIP_DATA(n).inner;
     // An inner rect with x1 < x0 is none: a box with no border has no inner edge.
@@ -38,7 +41,6 @@ float cg_clip_entry_coverage(int n) {
         coverage *= sdf_coverage(cg_clip_distance(local, inner, CLIP_DATA(n).innerRx, CLIP_DATA(n).innerRy), ramp);
     }
     // On the pixel grid the mask quad this replaces was rasterised: a pixel whose centre is outside got nothing.
-    bool outside = local.x < outer.x || local.y < outer.y || local.x >= outer.z || local.y >= outer.w;
     return ramp < 1.25 && outside ? 0.0 : coverage;
 }
 
