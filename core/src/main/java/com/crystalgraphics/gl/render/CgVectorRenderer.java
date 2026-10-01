@@ -4,14 +4,13 @@ import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.api.material.CgMaterial;
-import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
 import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
 import com.crystalgraphics.gl.buffer.staging.CgStagingBuffer;
 import com.crystalgraphics.gl.mesh.CgMesh;
-import com.crystalgraphics.gl.mesh.CgMeshBuilder;
-import com.crystalgraphics.gl.mesh.CgMeshRegistry;
+import com.crystalgraphics.render.draw.CgInstanceKind;
+import com.crystalgraphics.render.graph.CgInstanceGeometry;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.api.buffer.CgGpuType;
@@ -154,24 +153,8 @@ import org.joml.Vector3f;
  */
 public final class CgVectorRenderer extends CgAbstractRenderer {
 
-    /** Same shared unit-quad vertex format as {@link CgQuadRenderer} — the mesh is a bounding box carrier. */
-    private static final CgVertexFormat CURVE_MESH_FORMAT = CgVertexFormat.POS2_UV2_COL4UB;
-
     /** Fixed per-instance record format shared by every {@code CgVectorRenderer} instance. */
-    private static final CgBufferFormat INSTANCE_FORMAT = CgBufferFormat
-            .builder("CurveInstance", CgBufferFormat.MemoryLayout.STD430)
-            .vec3("p0").vec3("p1").vec3("p2")
-            .vec4("color0").vec4("color1")
-            .vec2("widths")
-            .float_("feather")
-            .float_("flags")
-            // Linear-gradient axis for a FILL reading: (originX, originY, dirX, dirY), in the same space
-            // as p0/p1/p2 and scaled so t = dot(p - origin, dir) runs 0..1 across color0 -> color1.
-            // Zero for every stroke and for any flat fill; FLAG_GRADIENT is what says to read it.
-            .vec4("gradient")
-            // The CgClipTable entry the primitive is drawn under, 0 for none.
-            .float_("clip")
-            .build();
+    private static final CgBufferFormat INSTANCE_FORMAT = CgInstanceKind.CURVE.format();
 
     private static final String GPU_BUFFER_NAME = "CgVectorRendererInstances";
 
@@ -319,11 +302,9 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
     /**
      * Shared static unit quad mesh, {@code [0,0]->[1,1]}. The vertex shader reinterprets these
      * local coordinates as a parameterisation of the derived control-hull bounding box, so this is
-     * the identical mesh {@link CgQuadRenderer} uses and is fetched from the same registry entry.
+     * the identical mesh {@link CgQuadRenderer} uses: {@link CgInstanceGeometry#unitQuad()}.
      */
-    private static final CgMesh CURVE_MESH = CgMeshRegistry.get().getOrCreate(
-            "crystalgraphics:builtin/quad/" + CURVE_MESH_FORMAT.toString(),
-            () -> CgMesh.upload(CgMeshBuilder.quad2D(CURVE_MESH_FORMAT, 0f, 0f, 1f, 1f)));
+    private static final CgMesh CURVE_MESH = CgInstanceGeometry.unitQuad();
 
     /**
      * Shared static shader buffer — one SSBO/TBO backs every {@code CgVectorRenderer} instance,

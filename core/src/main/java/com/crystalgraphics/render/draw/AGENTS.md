@@ -8,9 +8,11 @@ recorder will run on a UI document's own thread (`render-graph` §3.1); GL happe
 | Type | Is | Thread |
 |---|---|---|
 | `CgPipeline` | a key: shader asset + pass + keyword set + render state + instance kind, interned to an `int` | `of`/`byId` any thread; `prepare`/`program`/`bind`/`instanceBase` render thread |
-| `CgBindingTable` | a recording's binding snapshots: block bytes copied, textures and buffers as handles, interned by content | filled by one recorder; `upload`/`bind`/`delete` on the render thread after handover |
+| `CgBindingTable` | a recording's binding snapshots: block bytes copied, textures and buffers as handles, interned by content | filled by one recorder; `upload`/`bind` on the render thread after handover |
 | `CgInstanceKind` | what instances are: `QUAD`, `CURVE`, `OBJECT`, and the record stride each writes | — |
 | `CgPassConstants` | the pass block (`CgFrameBlock`'s layout) as a value, one per pass | any |
+| `CgDrawChunk` / `CgChunkBuilder` | an immutable run of draws under one property state (spatial, clip, effect node), with its instance records per kind and bounds per draw — Blink's paint chunk | the builder: one recorder; the chunk: any, once ended |
+| `CgOrder`, `CgBatcher` | `LOOKBACK` (painter's order, WebRender's lookback, never across a domain) or `SORTED` (by the recorder's key, stable); the batcher groups a pass's draws by pipeline + snapshot + kind + mesh | the frame builder's |
 
 ```java
 // recording, any thread:
@@ -19,7 +21,7 @@ int bindings = material.captureBindings(table);
 int pass = constants.capture(table);
 
 // execution, render thread:
-table.upload();
+table.upload(ring);
 table.bind(pass);
 if (p.bind()) { table.bind(bindings); p.instanceBase(first); /* draw */ }
 ```
