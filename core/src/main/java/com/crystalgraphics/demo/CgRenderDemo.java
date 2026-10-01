@@ -23,7 +23,8 @@ import java.nio.ByteOrder;
  * {@link CgWorldRenderer} under the host's own camera. Off unless asked for.
  *
  * <pre>{@code
- * -Dcrystalgraphics.demo=true                         // draw them
+ * -Dcrystalgraphics.demo=true                         // draw them, under the showcase's sky
+ * -Dcrystalgraphics.demo.sky=false                    // and keep the world's own sky
  * -Dcrystalgraphics.demo.capture=build/demo.png       // and write the world, with no GUI over it, to a PNG
  * -Dcrystalgraphics.demo.captureAt=300                // this many world frames after the spheres were placed
  * }</pre>
@@ -38,6 +39,7 @@ public final class CgRenderDemo {
     private static final Logger LOGGER = LogManager.getLogger("CgRenderDemo");
 
     private static final boolean ENABLED = Boolean.getBoolean("crystalgraphics.demo");
+    private static final boolean SKY = !"false".equals(System.getProperty("crystalgraphics.demo.sky"));
     private static final String CAPTURE = System.getProperty("crystalgraphics.demo.capture");
     private static final int CAPTURE_AT = Integer.getInteger("crystalgraphics.demo.captureAt", 300);
 
@@ -82,6 +84,7 @@ public final class CgRenderDemo {
         // Again after a jump: the first world frames can see the default spawn, before the server places the player.
         if (!anchored || farFromGrid(view)) anchor(view);
         showcase.submit(CgWorldRenderer.get(), anchorX + 0.5, anchorY, anchorZ + 0.5, CgFrameClock.seconds());
+        if (SKY) showcase.submitSky(CgWorldRenderer.get(), view.x(), view.y(), view.z());
     }
 
     private boolean farFromGrid(CgHostView view) {
