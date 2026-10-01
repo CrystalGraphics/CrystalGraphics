@@ -670,7 +670,7 @@ public final class CgMaterialShaderCompiler {
 
     private static void appendVertexMain(StringBuilder sb, List<CgShaderParser.V2fField> fields) {
         sb.append("void main() {\n");
-        sb.append("  cg_InstanceId = gl_InstanceID;\n");
+        sb.append("  cg_InstanceId = CG_INSTANCE_ID;\n");
         sb.append("  v2f _v2f_local;\n");
         sb.append("  vertex(_v2f_local);\n");
         for (CgShaderParser.V2fField f : fields) {

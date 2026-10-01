@@ -10,14 +10,20 @@ import com.crystalgraphics.api.render.CgRenderPipeline;
 import com.crystalgraphics.api.shader.CgShader;
 import com.crystalgraphics.api.shader.CgShaderBindings;
 import com.crystalgraphics.api.state.CgRenderState;
+import com.crystalgraphics.gl.buffer.shader.CgEngineBufferRegistry;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
+import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
+import com.crystalgraphics.gl.buffer.staging.CgStagingBuffer;
 import com.crystalgraphics.gl.material.CgMaterialProperties;
 import com.crystalgraphics.gl.material.CgMaterialProperty;
 import com.crystalgraphics.gl.material.CgMaterialShader;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.gl.material.parse.CgParsedPass;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
+import com.crystalgraphics.render.draw.CgBindingTable;
+import com.crystalgraphics.render.draw.CgInstanceKind;
+import com.crystalgraphics.render.draw.CgPipeline;
 import lombok.Getter;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -163,6 +169,21 @@ public final class CgMaterial {
 
     /** Whether a block-backed property's value moved since the block was last packed. */
     private boolean materialPropsDirty = true;
+
+    /** The parse {@link #propStore} was built from: a new parse rebuilds it, keeping the values set. */
+    @Nullable
+    private CgParsedShader propsParse;
+
+    /** The properties block as a capture copies it: CPU only, unlike {@link #matPropsUbo}'s writer. */
+    @Nullable
+    private CgBufferWriter capturePacker;
+    private boolean capturePropsDirty = true;
+
+    /** Forward pipelines by instance kind and keyword mask, for {@link #pipelinesParse}. */
+    @Nullable
+    private CgPipeline[] pipelines;
+    @Nullable
+    private CgParsedShader pipelinesParse;
 
     /**
      * Active feature-flag keywords declared via {@code #pragma cg_feature}.
@@ -549,26 +570,21 @@ public final class CgMaterial {
      */
     public CgMaterial applyProperties(Consumer<CgShaderBindings> consumer) {
         checkNotDeleted();
-        // Lazy-init propStore if the shader asset exists but propStore hasn't been built yet
-        // (e.g. applyProperties() called before the first bind()). Mirrors the enableKeyword pattern.
-        // hasCompileFailed() is what makes this a lazy init rather than a retry loop: the condition
-        // above stays true forever once a compile fails, so without the latch this re-parsed and
-        // re-compiled a known-broken shader on every call.
-        if (propStore == null && cgMaterialShader != null && !cgMaterialShader.hasCompileFailed()) {
-            recompile();
-        }
-
+        // From the parse alone, so setting a property compiles nothing.
+        syncPropsToParse();
 
         if (propStore == null) {
-            // Shader hasn't compiled yet (compile failed, or forTest path with no asset) —
-            // buffer the consumer so it's replayed after the first successful compile.
+            // The source does not parse, or a forTest material with no asset: replayed once properties exist.
             if (pendingApplyConsumers == null) pendingApplyConsumers = new ArrayList<>();
             pendingApplyConsumers.add(consumer);
             return this;
         }
         consumer.accept(propStore);
         // Only a value that moved: rewriting the same opacity, or only a sampler, leaves the block as it is.
-        if (propStore.consumeBlockChanged()) materialPropsDirty = true;
+        if (propStore.consumeBlockChanged()) {
+            materialPropsDirty = true;
+            capturePropsDirty = true;
+        }
         if (propStore.consumeSamplerUnitChanged()) wiredPrograms.clear();
         return this;
     }
@@ -580,24 +596,15 @@ public final class CgMaterial {
      * Subsequent {@link #bind()} calls will compile and use a variant with
      * {@code #define NAME 1} injected into both vertex and fragment sources.
      *
-     * <p>Safe to call before the first {@link #bind()} — if the backing shader asset has not
-     * been compiled yet, a lazy compile is triggered here so that {@code featureNames} are
-     * available for validation. This mirrors the same compile path taken by {@code bind()}.</p>
+     * <p>Safe to call before the first {@link #bind()}: the shader is parsed, not compiled, to validate the name.</p>
      *
      * @param name keyword name to enable; must be declared in the shader's {@code #pragma cg_feature} list
      * @throws IllegalArgumentException if {@code name} is not declared as a feature in this shader
      */
     public void enableKeyword(String name) {
         checkNotDeleted();
-        // If the shader asset exists but hasn't been compiled yet (e.g. called in init() before
-        // bind()), trigger a compile now so featureNames are populated for validation.
-        // Skip when a previous attempt already failed — the parse products are committed as soon as
-        // parsing succeeds, so if lastParsed is still null the source is unreadable or unparseable
-        // and trying again per call only floods the log.
-        if (cgMaterialShader != null && cgMaterialShader.getLastParsed() == null
-                && !cgMaterialShader.hasCompileFailed()) {
-            cgMaterialShader.recompile();
-        }
+        // The declared features are a parse product: validating a keyword compiles nothing.
+        if (cgMaterialShader != null) cgMaterialShader.ensureParsed();
         List<String> declared = getDeclaredFeatureNames();
         if (!declared.contains(name)) {
             throw new IllegalArgumentException(
@@ -635,7 +642,10 @@ public final class CgMaterial {
 
     /** The enabled keywords as bits over the declared features, or -1 past the eight a shader may declare. */
     private int keywordMask() {
-        List<String> declared = getDeclaredFeatureNames();
+        return keywordMask(getDeclaredFeatureNames());
+    }
+
+    private int keywordMask(List<String> declared) {
         if (declared.size() > 8) return -1;
         int mask = 0;
         for (int i = 0; i < declared.size(); i++) {
@@ -644,10 +654,11 @@ public final class CgMaterial {
         return mask;
     }
 
-    /** The forward pass's render state, and the shader revision it was read at. */
+    /** The forward pass's render state, and the parse it was read from. */
     @Nullable
     private CgRenderState forwardRenderState;
-    private int forwardRenderStateRevision = -1;
+    @Nullable
+    private CgParsedShader forwardRenderStateParse;
 
     /**
      * Returns {@code true} if the given keyword is currently enabled on this material instance.
@@ -790,6 +801,121 @@ public final class CgMaterial {
         if (matPropsUbo != null) matPropsUbo.unbind();
     }
 
+    // ── Recording ─────────────────────────────────────────────────────────────
+
+    /**
+     * This material's pipeline for {@code kind}: its Forward pass under the keywords enabled now, with that pass's
+     * render state. Compiles nothing; the program is resolved when a batch draws with it.
+     *
+     * <pre>{@code
+     * material.enableKeyword("WITH_MASK");
+     * CgPipeline p = material.pipeline(CgInstanceKind.QUAD);
+     * int b = material.captureBindings(table);
+     * // record a draw with p and b; toggling the keyword after changes neither
+     * }</pre>
+     *
+     * @return null when the shader does not parse: there is nothing to draw
+     */
+    @Nullable
+    public CgPipeline pipeline(CgInstanceKind kind) {
+        checkNotDeleted();
+        if (cgMaterialShader == null) return null;
+        CgParsedShader parsed = cgMaterialShader.ensureParsed();
+        if (parsed == null) return null;
+        List<String> declared = parsed.featureNames();
+        int mask = keywordMask(declared);
+        if (mask < 0) return pipeline(CgRenderPassVariant.FORWARD, kind);
+        int variants = 1 << declared.size();
+        if (pipelinesParse != parsed || pipelines == null) {
+            pipelines = new CgPipeline[CgInstanceKind.values().length * variants];
+            pipelinesParse = parsed;
+        }
+        int at = kind.ordinal() * variants + mask;
+        CgPipeline pipeline = pipelines[at];
+        if (pipeline == null) pipelines[at] = pipeline = pipeline(CgRenderPassVariant.FORWARD, kind);
+        return pipeline;
+    }
+
+    /**
+     * As {@link #pipeline(CgInstanceKind)}, for any pass. Keywords apply to {@link CgRenderPassVariant#FORWARD} only.
+     *
+     * @return null when the shader does not parse
+     */
+    @Nullable
+    public CgPipeline pipeline(CgRenderPassVariant pass, CgInstanceKind kind) {
+        checkNotDeleted();
+        if (cgMaterialShader == null || cgMaterialShader.ensureParsed() == null) return null;
+        return CgPipeline.of(cgMaterialShader, pass, enabledKeywords, getPassRenderState(pass), kind);
+    }
+
+    /**
+     * Snapshots what a draw of this material reads, as it is now, into {@code table}: the properties block's bytes,
+     * each sampler's texture at its declared unit, and any buffer attached with {@link #attach}. Compiles nothing.
+     *
+     * <pre>{@code
+     * material.applyProperties(b -> b.colorARGB("_Color", 0xFFFF0000));
+     * int red = material.captureBindings(table);
+     * material.applyProperties(b -> b.colorARGB("_Color", 0xFF0000FF));
+     * int blue = material.captureBindings(table);   // a different id; red still reads red
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Equal snapshots answer one id, so two draws of one material with the same values batch.</li>
+     *   <li>An attached buffer is bound as it is when the draw executes, not copied.</li>
+     *   <li>A sampler's unit is its index among the shader's declared samplers, whatever unit
+     *       {@code sampler(name, unit, texture)} was given.</li>
+     * </ul>
+     *
+     * @return the snapshot's id in {@code table}
+     */
+    public int captureBindings(CgBindingTable table) {
+        checkNotDeleted();
+        syncPropsToParse();
+        table.begin();
+        if (propStore != null) {
+            if (propStore.hasUboProps()) {
+                CgBufferWriter packer = capturePacker();
+                table.block(CgBindingPoints.MATERIAL_PROPERTIES_UBO, packer.rawData(), 0, packer.rawCursor());
+            }
+            propStore.captureSamplers(table);
+        }
+        if (cgMaterialShader != null) captureAttachedBuffers(table);
+        return table.end();
+    }
+
+    /** The properties block packed as it is now, repacked only after a value moved. */
+    private CgBufferWriter capturePacker() {
+        if (capturePacker == null) {
+            CgBufferFormat format = propStore.buildUboFormat();
+            capturePacker = new CgBufferWriter(new CgStagingBuffer(format.getFloatCount()), format);
+            capturePropsDirty = true;
+        }
+        if (capturePropsDirty) {
+            propStore.writeUboProps(capturePacker);
+            capturePropsDirty = false;
+        }
+        return capturePacker;
+    }
+
+    /** The buffers a user attached, leaving out those an engine token declared: an executor binds its kind's own. */
+    private void captureAttachedBuffers(CgBindingTable table) {
+        List<CgAttachedBuffer> attached = cgMaterialShader.getAttachedBuffers();
+        if (attached.isEmpty()) return;
+        CgParsedShader parsed = cgMaterialShader.getLastParsed();
+        for (int i = 0; i < attached.size(); i++) {
+            CgAttachedBuffer buffer = attached.get(i);
+            if (!buffer.isUbo() && parsed != null && declaresEngineBuffer(parsed, buffer.getMacroName())) continue;
+            table.buffer(buffer.getBuffer());
+        }
+    }
+
+    private static boolean declaresEngineBuffer(CgParsedShader parsed, String macroName) {
+        for (String token : parsed.engineBuffers()) {
+            if (CgEngineBufferRegistry.get(token).macroName().equals(macroName)) return true;
+        }
+        return false;
+    }
+
     // ── Accessors ─────────────────────────────────────────────────────────────
 
     /**
@@ -807,12 +933,11 @@ public final class CgMaterial {
         CgParsedShader parsed = cgMaterialShader.getLastParsed();
         if (parsed == null) return CgRenderState.DEFAULT;
         if (variant == CgRenderPassVariant.FORWARD) {
-            int revision = cgMaterialShader.getRevisionNumber();
-            if (forwardRenderState != null && forwardRenderStateRevision == revision) return forwardRenderState;
+            if (forwardRenderState != null && forwardRenderStateParse == parsed) return forwardRenderState;
             CgParsedPass forwardPass = parsed.getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
-            CgRenderState state = forwardPass == null ? CgRenderState.DEFAULT : cgMaterialShader.getRenderState(forwardPass.name());
+            CgRenderState state = forwardPass == null ? CgRenderState.DEFAULT : forwardPass.renderState();
             forwardRenderState = state;
-            forwardRenderStateRevision = revision;
+            forwardRenderStateParse = parsed;
             return state;
         }
         return cgMaterialShader.getRenderState(variant.lightModeName());
@@ -1118,24 +1243,7 @@ public final class CgMaterial {
         // that cannot draw, and hides the failure behind half-initialised state.
         if (cgMaterialShader.hasCompileFailed()) return;
 
-        if (propStore == null) {
-            propStore = new CgMaterialProperties(cloneProperties(parsed.properties()));
-        } else {
-            // Snapshot the current user-set values before rebuild so they survive hot-reload.
-            // Keyed by name; type-checked during restore so type-changed properties reset to default.
-            Map<String, CgMaterialProperty> oldValues = new HashMap<>();
-            for (CgMaterialProperty p : propStore.all()) {
-                oldValues.put(p.getName(), p);
-            }
-            List<CgMaterialProperty> newClones = cloneProperties(parsed.properties());
-            for (CgMaterialProperty newProp : newClones) {
-                CgMaterialProperty old = oldValues.get(newProp.getName());
-                if (old != null && old.getType() == newProp.getType()) {
-                    newProp.copyValueFrom(old);
-                }
-            }
-            propStore.rebuild(newClones);
-        }
+        syncPropsToParse();   // a parse is in hand, so this always leaves a propStore
 
         if (propStore.hasUboProps()) {
             CgBufferFormat newFormat = propStore.buildUboFormat();
@@ -1165,14 +1273,37 @@ public final class CgMaterial {
         }
 
         lastKnownRevision = cgMaterialShader.getRevisionNumber();
+    }
 
-        // Drain any consumers buffered by applyProperties() calls made before propStore existed.
-        if (pendingApplyConsumers != null && !pendingApplyConsumers.isEmpty()) {
-            for (Consumer<CgShaderBindings> pending : pendingApplyConsumers) {
-                pending.accept(propStore);
+    /**
+     * Builds {@link #propStore} from the shader's parse, or rebuilds it when the shader has parsed anew, keeping each
+     * value whose property kept its name and type. CPU only: what a capture and a property write need, before any
+     * compile.
+     */
+    private void syncPropsToParse() {
+        if (cgMaterialShader == null) return;
+        CgParsedShader parsed = cgMaterialShader.ensureParsed();
+        if (parsed == null || parsed == propsParse) return;
+        propsParse = parsed;
+        List<CgMaterialProperty> clones = cloneProperties(parsed.properties());
+        if (propStore == null) {
+            propStore = new CgMaterialProperties(clones);
+        } else {
+            Map<String, CgMaterialProperty> oldValues = new HashMap<>();
+            for (CgMaterialProperty p : propStore.all()) oldValues.put(p.getName(), p);
+            for (CgMaterialProperty clone : clones) {
+                CgMaterialProperty old = oldValues.get(clone.getName());
+                if (old != null && old.getType() == clone.getType()) clone.copyValueFrom(old);
             }
+            propStore.rebuild(clones);
+        }
+        capturePacker = null;
+        materialPropsDirty = true;
+        capturePropsDirty = true;
+
+        if (pendingApplyConsumers != null && !pendingApplyConsumers.isEmpty()) {
+            for (Consumer<CgShaderBindings> pending : pendingApplyConsumers) pending.accept(propStore);
             pendingApplyConsumers.clear();
-            materialPropsDirty = true;
         }
     }
 

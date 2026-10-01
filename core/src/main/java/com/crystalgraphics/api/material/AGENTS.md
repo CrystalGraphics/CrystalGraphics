@@ -95,9 +95,9 @@ uploaded only if its bytes differ from the last upload or it is the frame's firs
 `material.propsPack`). Returns `this` for chaining. Unknown names are silently
 ignored. Non-property operations (`mat4`, `ubo`, etc.) throw `UnsupportedOperationException`.
 
-**Safe to call before first `bind()`**: if `applyProperties()` is called before the shader
-has been compiled (i.e. before the first `bind()`), the consumer is buffered and replayed
-automatically once the shader compiles successfully. Values set this way are not lost.
+**Safe to call before first `bind()`, and compiles nothing**: properties are built from the shader's
+*parse* (`CgMaterialShader.ensureParsed()`), so a write before any compile lands at once. Only a source that
+does not parse buffers the consumer, replayed once it does.
 
 ### Shader Keywords / Variants
 
@@ -232,6 +232,22 @@ current.bind();
   the first time `bindForPass(SHADOW/DEPTH)` or `hasCompiledDepthPass()` asks — a preview never does, and they
   were half of what an edit compiled.
 - `-Dcrystalgraphics.shader.parallelCompile=false` makes it answer true at once: the escape hatch.
+
+### Recording — `pipeline(kind)` and `captureBindings(table)`
+
+What a recorder asks of a material (`render-graph` G0; `render/draw/AGENTS.md`). **Neither touches GL**, so a
+recorder may run on any thread:
+
+```java
+CgPipeline p = material.pipeline(CgInstanceKind.QUAD);   // Forward pass, keywords enabled now; a CPU key
+int b = material.captureBindings(table);                  // block bytes now; textures/buffers as handles
+```
+
+- The program behind `p` is compiled on the render thread when a batch first draws with it (`p.bind()`), or
+  polled with `p.prepare()`.
+- `captureBindings` puts a sampler's texture at its **index among the declared samplers**, the unit every
+  program is wired with at compile — whatever unit `sampler(name, unit, texture)` was given.
+- Equal snapshots intern to one id; a property changed after the capture does not change what it holds.
 
 ### CgMaterial.reload()
 Called by `CgMaterialRegistry.reloadAll()` during hot-reload (F3+T).

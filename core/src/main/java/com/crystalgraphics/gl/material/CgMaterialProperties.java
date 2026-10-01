@@ -6,6 +6,7 @@ import com.crystalgraphics.api.shader.CgShaderBindings;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
+import com.crystalgraphics.render.draw.CgBindingTable;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.joml.Matrix3f;
@@ -124,6 +125,17 @@ public final class CgMaterialProperties implements CgShaderBindings {
     /** Wires each sampler's texture-unit uniform assignment into {@code shader}. Shader must be bound. */
     public void wireSamplerUnits(CgShader shader) {
         for (CgMaterialProperty p : samplerProps) p.wireSamplerUnit(shader);
+    }
+
+    /**
+     * Adds each sampler's texture to a snapshot, at the unit its program reads it from: its index among the declared
+     * samplers. A sampler with no texture set is left out.
+     */
+    public void captureSamplers(CgBindingTable table) {
+        for (int i = 0; i < samplerProps.size(); i++) {
+            CgTexture texture = samplerProps.get(i).getSamplerTexture();
+            if (texture != null) table.texture(i, texture);
+        }
     }
 
     /** Binds each sampler property's texture to its assigned texture unit. Called per-draw. */

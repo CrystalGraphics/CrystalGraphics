@@ -137,7 +137,13 @@ public final class CgMaterialShader {
      *  before first successful compile. 
      */
     @Getter
-    private CgParsedShader lastParsed;
+    private volatile CgParsedShader lastParsed;
+
+    /** {@link #ensureParsed()} found the source unreadable or unparseable; cleared by {@link #markDirty()}. */
+    private boolean parseFailed;
+
+    /** The text {@link #lastParsed} was parsed from. */
+    private String parsedSource;
 
     /**
      * Flat pass × keywords program cache. Key = (passName, keywords set).
@@ -257,6 +263,50 @@ public final class CgMaterialShader {
     // ── Compile pipeline ──────────────────────────────────────────────────────
 
     /**
+     * The parse, made now if no compile has made one yet: what a recorder needs to name a pipeline and capture a
+     * material's bindings, without the driver. CPU only, and safe on any thread.
+     *
+     * <pre>{@code
+     * CgParsedShader parsed = shader.ensureParsed();
+     * if (parsed == null) return;               // unreadable or unparseable: the log says which
+     * List<String> features = parsed.featureNames();
+     * }</pre>
+     *
+     * <p>Null after a failure until {@link #markDirty()}, so a broken file is read once, not once per draw.</p>
+     */
+    @Nullable
+    public CgParsedShader ensureParsed() {
+        CgParsedShader parsed = lastParsed;
+        if (parsed != null) return parsed;
+        synchronized (this) {
+            if (lastParsed != null || parseFailed || deleted) return lastParsed;
+            String source;
+            try {
+                source = isGenerated() ? generatedSource : CgIO.loadSource(resourcePath);
+            } catch (Exception e) {
+                source = null;
+            }
+            if (source == null || source.isEmpty()) {
+                parseFailed = true;
+                LOGGER.error("Cannot parse '{}': could not load its source", resourcePath);
+                return null;
+            }
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.parse")) {
+                parsed = CgShaderParser.parse(source, resourcePath);
+            } catch (CgShaderParseException e) {
+                parseFailed = true;
+                LOGGER.error("Cannot parse '{}': {}", resourcePath, e.getMessage());
+                return null;
+            }
+            this.renderQueue = parsed.renderQueue();
+            this.renderType = parsed.renderType();
+            this.parsedSource = source;
+            this.lastParsed = parsed;
+            return parsed;
+        }
+    }
+
+    /**
      * Compiles (or recompiles) this shader asset from {@link #resourcePath}.
      *
      * <p>On first call (empty cache): throws on any failure — never returns
@@ -337,16 +387,28 @@ public final class CgMaterialShader {
         }
 
         // ── Step 2: Parse ──────────────────────────────────────────────────────
+        // The same text keeps its parse, so a pipeline named before the first compile -- keyed on the parse's
+        // render states -- is the one that draws after it.
         CgParsedShader parsed;
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.parse")) {
-            parsed = CgShaderParser.parse(source, resourcePath);
-        } catch (CgShaderParseException e) {
-            if (isFirst) throw e;
-            LOGGER.error("Reload failed for '" + resourcePath + "': parse error — " + e.getMessage());
-            return;
+        synchronized (this) {   // with ensureParsed, which a recorder may be running
+            parsed = lastParsed;
+            if (parsed == null || !source.equals(parsedSource)) {
+                try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.parse")) {
+                    parsed = CgShaderParser.parse(source, resourcePath);
+                } catch (CgShaderParseException e) {
+                    if (isFirst) throw e;
+                    LOGGER.error("Reload failed for '" + resourcePath + "': parse error — " + e.getMessage());
+                    return;
+                }
+            }
+            // ── Step 2a: commit the pure-parse products immediately (see below) ──
+            this.renderQueue = parsed.renderQueue();
+            this.renderType = parsed.renderType();
+            this.parsedSource = source;
+            this.lastParsed = parsed;   // last: a reader that sees it sees the three above
         }
 
-        // ── Step 2a: commit the pure-parse products immediately ────────────────
+        // ── Step 2a, why ───────────────────────────────────────────────────────
         // These are CPU-side facts about the source text — the declared feature list, the queue, the
         // render type — with no GL dependency whatsoever. Publishing them here, rather than with the
         // compiled programs in Step 8, decouples "we understand this shader" from "the driver
@@ -357,9 +419,6 @@ public final class CgMaterialShader {
         // "Keyword 'X' is not declared as #pragma cg_feature in this shader" — pointing at the
         // author's pragma, which was present and correct, instead of at the codegen bug that
         // actually failed. The real error was three lines earlier in a 900KB log.
-        this.lastParsed = parsed;
-        this.renderQueue = parsed.renderQueue();
-        this.renderType = parsed.renderType();
 
         // ── Step 2b: Attach engine buffers declared via #pragma cg_use ─────────
         // Before compilation, deliberately. These buffers inject GLSL declarations, so attaching
@@ -793,6 +852,7 @@ public final class CgMaterialShader {
             // it only after a compile, so once it went null it stayed null and the Problems panel dropped
             // an error that was still live. Only recompile() clears it, on the path where it is earned.
             compileFailed = false;
+            parseFailed = false;
         }
     }
 
@@ -1000,9 +1060,19 @@ public final class CgMaterialShader {
         for (CgAttachedBuffer ab : attachedBuffers) ab.getBuffer().wireShader(shader);
     }
 
+    /** The depth snapshot's unit, and each sampler property's: its index among the declared samplers. */
     private void wireShaderSamplers(CgShader shader) {
         int loc = shader.getUniformLocation(CgBindingPoints.DEPTH_TEXTURE_UNIFORM);
         if (loc >= 0) shader.getProgram().setUniform1i(loc, CgBindingPoints.DEPTH_TEXTURE_UNIT);
+        CgParsedShader parsed = lastParsed;
+        if (parsed == null) return;
+        int unit = 0;
+        for (CgMaterialProperty property : parsed.properties()) {
+            if (!property.getType().isSampler()) continue;
+            int at = shader.getUniformLocation(property.getName());
+            if (at >= 0) shader.getProgram().setUniform1i(at, unit);
+            unit++;
+        }
     }
 
     /**
