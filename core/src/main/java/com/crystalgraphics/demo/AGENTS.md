@@ -27,15 +27,14 @@ per overlay frame and `CgFontDemo.INSTANCE.onMouseWheel(delta)` on scroll input.
 
 ## Platform Wiring — CgRenderDemo
 
-`CgRenderDemo` drives the full render cycle internally — two hooks per platform replace the
-platform's direct `executeOpaquePass` / `executeTransparentPass` / `endFrame` calls:
+`CgRenderDemo` is a renderer on the world's render stages: `CgGraphicsLifecycle.initContext` calls
+`install()`, which registers it on `CgRenderStage.WORLD_OPAQUE` and `WORLD_TRANSPARENT`, where it draws as a
+callback in each. No host names it.
 
-| Hook | Call | When |
-|------|------|------|
-| Pre-translucent | `CgRenderDemo.INSTANCE.renderOpaque(partialTick, w, h, sourceFboId)` | `AFTER_BLOCK_ENTITIES` / 1.7.10 `onBeforeTranslucentBlocks` |
-| Post-translucent | `CgRenderDemo.INSTANCE.renderTransparent()` | `AFTER_PARTICLES` / 1.7.10 `onAfterTranslucentContent` |
-| Mouse scroll | `CgRenderDemo.INSTANCE.onMouseWheel(delta)` | same scroll hook as `CgFontDemo` |
-| Context destroy | `CgRenderDemo.INSTANCE.dispose()` | same destroy hook as `CgFontDemo` |
+| Hook | Call |
+|------|------|
+| Mouse scroll | `CgRenderDemo.INSTANCE.onMouseWheel(delta)` — same scroll hook as `CgFontDemo` |
+| Context destroy | `CgRenderDemo.INSTANCE.dispose()` — same destroy hook as `CgFontDemo` |
 
 ## Key Rules
 

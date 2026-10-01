@@ -1,5 +1,7 @@
 package com.crystalgraphics.mc.modern.platform;
 
+import com.crystalgraphics.render.stage.CgRenderStage;
+import com.crystalgraphics.render.stage.CgHostFrame;
 import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.gl.lifecycle.CgLifecycleListener;
 import com.crystalgraphics.platform.CgPlatform;
@@ -54,6 +56,9 @@ import org.lwjgl.opengl.GL30;
  */
 public final class LifecycleModern {
 
+    /** The opaque pass's, for the transparent one, which its loaders call without one. */
+    private static float lastPartialTick;
+
     private LifecycleModern() {
     }
 
@@ -77,11 +82,9 @@ public final class LifecycleModern {
             int mainFbo = bindMainTarget(mc);
             worldDepth(true);
             try {
-                CgGraphicsLifecycle.onOpaquePass(
-                        partialTick,
-                        Windows.of(mc).getWidth(),
-                        Windows.of(mc).getHeight(),
-                        mainFbo);
+                lastPartialTick = partialTick;
+                CgRenderStage.WORLD_OPAQUE.fire(new CgHostFrame(partialTick,
+                        Windows.of(mc).getWidth(), Windows.of(mc).getHeight(), mainFbo));
             } finally {
                 worldDepth(false);
             }
@@ -106,10 +109,12 @@ public final class LifecycleModern {
         if (!canRender()) return;
         CgGL.fromHost();
         try {
-            bindMainTarget(Minecraft.getInstance());
+            Minecraft mc = Minecraft.getInstance();
+            int mainFbo = bindMainTarget(mc);
             worldDepth(true);
             try {
-                CgGraphicsLifecycle.onTransparentPass();
+                CgRenderStage.WORLD_TRANSPARENT.fire(new CgHostFrame(lastPartialTick,
+                        Windows.of(mc).getWidth(), Windows.of(mc).getHeight(), mainFbo));
             } finally {
                 worldDepth(false);
             }

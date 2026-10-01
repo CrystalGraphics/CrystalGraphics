@@ -11,6 +11,8 @@ import com.crystalgraphics.api.render.CgRenderPipeline;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gl.mesh.CgMesh;
 import com.crystalgraphics.gl.mesh.CgMeshBuilder;
+import com.crystalgraphics.render.stage.CgHostFrame;
+import com.crystalgraphics.render.stage.CgRenderStage;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.joml.Matrix4f;
@@ -68,7 +70,21 @@ public final class CgRenderDemo {
     private final Matrix4f scratchView = new Matrix4f();
     private final Matrix4f scratchProj = new Matrix4f();
 
+    private boolean installed;
+
     private CgRenderDemo() {}
+
+    /** Registers the demo for the world stages, once. Its drawing runs where it always has, as a callback in each. */
+    public void install() {
+        if (installed) return;
+        installed = true;
+        CgRenderStage.WORLD_OPAQUE.register(frame -> {
+            CgHostFrame host = frame.host();
+            frame.callback("demo.opaque",
+                    () -> renderOpaque(host.partialTick(), host.width(), host.height(), host.mainFramebuffer()));
+        });
+        CgRenderStage.WORLD_TRANSPARENT.register(frame -> frame.callback("demo.transparent", this::renderTransparent));
+    }
 
     // ── Public API ────────────────────────────────────────────────────────────
 
