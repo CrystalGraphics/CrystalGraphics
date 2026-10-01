@@ -378,7 +378,7 @@ public class CgTextRenderer {
      * mid-batch keeps the batch.
      *
      * <pre>{@code
-     * renderer.clip(CgClipTable.add(...));
+     * renderer.clip(recording.clips().add(...));
      * renderer.draw().text(label).at(x, y).submit();
      * renderer.clip(0);
      * }</pre>

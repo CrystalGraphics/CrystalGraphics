@@ -8,7 +8,6 @@ import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 import com.crystalgraphics.gl.mesh.CgMesh;
-import com.crystalgraphics.gl.render.CgClipTable;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlState;
@@ -187,7 +186,7 @@ public final class CgExecutor {
         if (packed.count == 0) return;
         frame.bindings.bind(packed.constants);
         for (int k = 0; k < KINDS; k++) if ((packed.kinds & (1 << k)) != 0) instanceBuffers[k].bind();
-        if ((packed.kinds & UNIT_KINDS) != 0) CgClipTable.bindForDraw();
+        if ((packed.kinds & UNIT_KINDS) != 0) pass.recording.clips().bindForDraw();
 
         int boundPipeline = -1, boundBinding = -1, boundScissor = CgRasterPass.INHERIT;
         CgPipeline pipeline = null;
