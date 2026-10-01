@@ -1,6 +1,10 @@
 package com.crystalgraphics.render.stage;
 
+import com.crystalgraphics.gl.texture.CgHostSamplers;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.gl.state.CgGlScope;
+import com.crystalgraphics.platform.gl.state.CgGlSlot;
+import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPassConstants;
@@ -19,16 +23,21 @@ import com.crystalgraphics.render.graph.CgRequest;
  * target, built and executed once they all have.
  *
  * <pre>{@code
- * CgPassConstants camera = frame.defaults(new CgPassConstants());   // time, size, depth convention
- * camera.view.set(viewMatrix);
- * camera.projection.set(projectionMatrix);
- * CgRasterPass pass = frame.pass(camera, CgOrder.SORTED);
+ * // Under the host's camera
+ * CgRasterPass pass = frame.pass(frame.constants(), CgOrder.SORTED);
  * // ... chunks ...
  * pass.end();
+ *
+ * // Under a camera of your own
+ * CgPassConstants camera = frame.defaults(myConstants);   // time, size, depth convention
+ * camera.view.set(viewMatrix);
+ * camera.projection.set(projectionMatrix);
  * }</pre>
  *
  * <ul>
  *   <li>Render thread, and only inside {@link CgStageRenderer#render}: the recording is executed and reset after.</li>
+ *   <li>The stage parks the host's sampler objects and turns its scissor off around execution: what the host leaves
+ *       there overrides a texture's own filtering, and clips every draw to its box.</li>
  *   <li>{@link #callback} draws immediately at its place in the stage, with GL state restored after — for work that
  *       is not recorded yet.</li>
  * </ul>
@@ -40,6 +49,7 @@ public final class CgStageFrame {
     private final CgFrameGraph graph = new CgFrameGraph();
     private final CgRenderStage stage;
     private CgHostFrame host;
+    private final CgPassConstants hostConstants = new CgPassConstants();
 
     CgStageFrame(CgRenderStage stage) {
         this.stage = stage;
@@ -72,6 +82,19 @@ public final class CgStageFrame {
                 .depth(CgGL.isDepthReversed(), CgGL.isDepthZeroToOne());
     }
 
+    /**
+     * The host's camera as pass constants, camera-relative as the host draws its world: its view and projection, the
+     * eye at its view's origin, {@code cg_WorldOrigin} at its absolute position, and {@link #defaults}. One instance,
+     * refilled per call; {@link CgRecording#raster} copies it.
+     */
+    public CgPassConstants constants() {
+        CgHostView view = host.view();
+        defaults(hostConstants);
+        hostConstants.view.set(view.view());
+        hostConstants.projection.set(view.projection());
+        return hostConstants.cameraFromView().origin(view.x(), view.y(), view.z());
+    }
+
     /** A raster pass onto the host's target under {@code constants}, loading what is there. */
     public CgRasterPass pass(CgPassConstants constants, CgOrder order) {
         return recording.raster(target(), CgLoad.load(), constants, null, order);
@@ -92,9 +115,12 @@ public final class CgStageFrame {
         try {
             graph.add(recording.seal());
             CgFrame frame = builder.build(graph);
-            try {
+            CgHostSamplers.park();
+            try (CgGlScope ignored = CgGlState.save(CgGlSlot.SCISSOR)) {
+                CgGL.glDisable(CgGL.GL_SCISSOR_TEST);
                 CgExecutor.execute(frame);
             } finally {
+                CgHostSamplers.unpark();
                 builder.recycle(frame);
             }
         } finally {

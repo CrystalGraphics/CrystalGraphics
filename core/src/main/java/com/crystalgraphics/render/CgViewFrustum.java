@@ -1,4 +1,4 @@
-package com.crystalgraphics.api.render;
+package com.crystalgraphics.render;
 
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -10,7 +10,7 @@ import org.joml.Matrix4fc;
  * Visibility test for an axis-aligned bounding box against a view-projection matrix.
  *
  * <p>General-purpose and deliberately not tied to any one subsystem: the same six-plane test
- * answers "is this mesh in the camera frustum" for {@link CgRenderPipeline} and "is this glyph
+ * answers "is this mesh in the camera frustum" for the world renderer and "is this glyph
  * quad on screen" for the text renderer. Both are consumers, neither is the owner.</p>
  *
  * <h3>Usage — build once per view, test many times</h3>
@@ -19,7 +19,7 @@ import org.joml.Matrix4fc;
  * frustum.set(new Matrix4f(projection).mul(view));
  *
  * // then, per object — allocation-free
- * if (!frustum.testAabb(cmd.worldAabb)) continue;   // skip it
+ * if (!frustum.testAabb(minX, minY, minZ, maxX, maxY, maxZ)) continue;   // skip it
  * }</pre>
  *
  * <p>Mutable and intended to be reused. Nothing here allocates, so it is safe to call from the
@@ -38,6 +38,9 @@ import org.joml.Matrix4fc;
  * {@code projection * modelView}, and the AABBs are then the quads' own local coordinates.
  * Mixing spaces — testing local-space geometry against a world-space frustum — silently culls
  * everything or nothing, which is why the space is called out here rather than left implied.</p>
+ *
+ * <p>The planes assume GL's −1..1 clip depth. A projection whose depth runs 0..1, or reversed (Minecraft 26.2's
+ * world), only loosens the near or far plane, never a side one: the test stays conservative there.</p>
  *
  * <h3>Why this wraps JOML rather than extracting planes itself</h3>
  * <p>{@link FrustumIntersection} already implements Gribb–Hartmann plane extraction with the
@@ -79,9 +82,8 @@ public final class CgViewFrustum {
     }
 
     /**
-     * Tests an AABB laid out as {@code [minX, minY, minZ, maxX, maxY, maxZ]} — the exact layout of
-     * {@link CgRenderCommand#worldAabb}, which {@link CgRenderCommandQueue#submit} already
-     * validates as finite and correctly ordered, so no revalidation happens here.
+     * Tests an AABB laid out as {@code [minX, minY, minZ, maxX, maxY, maxZ]}, finite and ordered: nothing is
+     * revalidated here.
      *
      * @return {@code true} if the box is at least partially visible
      * @throws IllegalArgumentException if the array is not length 6

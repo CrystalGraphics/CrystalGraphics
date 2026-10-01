@@ -164,6 +164,13 @@ public final class CgUniformBuffer extends CgShaderBuffer {
         CgGL.glBindBufferBase(CgGL.GL_UNIFORM_BUFFER, bindingLocation, 0);
     }
 
+    /** Wires {@code shader}'s uniform block {@code name} to {@code binding}, with no buffer object of its own. */
+    public static void wireBlock(CgShader shader, String name, int binding) {
+        int program = shader.getProgram().getId();
+        int index = CgGL.glGetUniformBlockIndex(program, name);
+        if (index != CgGL.GL_INVALID_INDEX) CgGL.glUniformBlockBinding(program, index, binding);
+    }
+
     /**
      * Wires the uniform block {@link #getName()} in {@code shader} to this UBO's
      * {@link #bindingLocation} via {@code glUniformBlockBinding}. No-op if the block is absent.

@@ -33,7 +33,8 @@ import java.util.List;
  *     // ...the quad record
  * }
  *
- * CgImmediate.flush(chunk, CgOrder.SORTED);   // under the frame block the caller prepared; state left as drawn
+ * CgImmediate.constants().projection.setOrtho(0, w, h, 0, -1, 1);   // what flushed draws are drawn under
+ * CgImmediate.flush(chunk, CgOrder.SORTED);                          // state left as drawn
  * }</pre>
  *
  * <p>A caller recording a frame of its own hands its renderers a {@code CgPassRecorder} as their sink, and executes the
@@ -49,8 +50,8 @@ public final class CgImmediate implements AutoCloseable {
     private static final List<CgImmediate> BY_DEPTH = new ArrayList<>();
     private static final CgFrameBuilder BUILDER = new CgFrameBuilder();
     private static final CgFrameGraph GRAPH = new CgFrameGraph();
+    private static final CgPassConstants CONSTANTS = new CgPassConstants();
     private static final float[] FRAME_BLOCK = new float[CgPassConstants.FLOATS];
-    private static final CgPassConstants FRAME_CONSTANTS = new CgPassConstants();
     private static int depth;
 
     private final CgRecording recording = new CgRecording();
@@ -85,14 +86,22 @@ public final class CgImmediate implements AutoCloseable {
     }
 
     /**
-     * Draws {@code chunk} now, under the frame block its caller last prepared ({@code CgRenderPipeline.prepareFrame}),
-     * and leaves GL state as the draw set it: what an immediate renderer's flush always did. {@link CgOrder#SORTED}
-     * with equal keys keeps submission order exactly.
+     * The pass constants {@link #flush} draws under: a renderer flushing into the bound framebuffer has no pass of its
+     * own to carry them, so its caller sets them here. Render thread; they stay as set.
+     */
+    public static CgPassConstants constants() {
+        return CONSTANTS;
+    }
+
+    /**
+     * Draws {@code chunk} now, under {@link #constants()}, and leaves GL state as the draw set it: what an immediate
+     * renderer's flush always did. {@link CgOrder#SORTED} with equal keys keeps submission order exactly.
      */
     public static void flush(CgDrawChunk chunk, CgOrder order) {
         if (chunk.draws() == 0) return;
-        if (CgRenderPipeline.copyFrameBlock(FRAME_BLOCK)) FRAME_CONSTANTS.read(FRAME_BLOCK, 0);
-        CgImmediate immediate = acquire(FRAME_CONSTANTS, null, order);
+        // A caller that still prepares CgRenderPipeline's frame block draws under it, until those callers move.
+        if (CgRenderPipeline.copyFrameBlock(FRAME_BLOCK)) CONSTANTS.read(FRAME_BLOCK, 0);
+        CgImmediate immediate = acquire(CONSTANTS, null, order);
         try {
             immediate.pass.add(chunk);
             immediate.execute(false);

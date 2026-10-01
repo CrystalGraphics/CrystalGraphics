@@ -1,6 +1,8 @@
 package com.crystalgraphics.api.render;
 
 import com.crystalgraphics.render.CgFrameClock;
+import com.crystalgraphics.render.draw.CgInstanceKind;
+import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
@@ -100,15 +102,7 @@ public final class CgRenderPipeline {
      * vec3 to 16 bytes and sizes it at 12, so the padding exists either way and declaring it is what
      * makes the two declarations obviously identical.</p>
      */
-    public static final CgBufferFormat FRAME_FORMAT = CgBufferFormat
-            .builder("CgFrameBlock", CgBufferFormat.MemoryLayout.STD140)
-            .mat4("cg_ViewMatrix")
-            .mat4("cg_ProjMatrix")
-            .vec4("cg_Time")
-            .vec2("cg_Resolution")
-            .vec4("cg_CameraPos")
-            .vec4("cg_DepthParams")
-            .build();
+    public static final CgBufferFormat FRAME_FORMAT = CgPassConstants.FORMAT;
 
     /** Default GLSL SSBO/TBO buffer name used by {@code cg_env.glsl}. */
     public static final String OBJECT_BLOCK_NAME = "CgObjectDataBuffer";
@@ -127,15 +121,7 @@ public final class CgRenderPipeline {
      *
      * <p>Use named writes; unwritten fields are auto-zeroed per record.</p>
      */
-    public static final CgBufferFormat OBJECT_FORMAT = CgBufferFormat
-            .builder("cg_object", CgBufferFormat.MemoryLayout.STD430)
-            .mat4("modelMatrix")
-            .mat4("normalMatrix")
-            .vec4("custom0")
-            .vec4("custom1")
-            .vec4("custom2")
-            .vec4("custom3")
-            .build();
+    public static final CgBufferFormat OBJECT_FORMAT = CgInstanceKind.OBJECT.format();
 
     // ── Singleton ─────────────────────────────────────────────────────────────
 

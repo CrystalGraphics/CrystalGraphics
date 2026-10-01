@@ -1,5 +1,7 @@
 package com.crystalgraphics.gl.material;
 
+import com.crystalgraphics.render.draw.CgInstanceKind;
+import com.crystalgraphics.render.draw.CgPassConstants;
 import com.github.bsideup.jabel.Desugar;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.platform.gl.CgCapabilities;
@@ -8,9 +10,7 @@ import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.api.material.CgAttachedBuffer;
 import com.crystalgraphics.api.material.CgMaterial;
-import com.crystalgraphics.api.render.CgRenderPipeline;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
-import com.crystalgraphics.api.render.CgFrameData;
 import com.crystalgraphics.api.material.CgRenderQueue;
 import com.crystalgraphics.api.shader.CgPreprocessorException;
 import com.crystalgraphics.api.shader.CgShader;
@@ -1045,6 +1045,19 @@ public final class CgMaterialShader {
         return this;
     }
     
+    /** Whether the parsed source samples {@code cg_DepthBuffer}, directly or through {@code CG_SCENE_EYE_DEPTH}; true until parsed. */
+    public boolean readsSceneDepth() {
+        String source = parsedSource;
+        return source == null || source.contains("cg_DepthBuffer") || source.contains("CG_SCENE_EYE_DEPTH");
+    }
+
+    /**
+     * Whether the engine has a shadow system: it does not. {@code CgFrameBlock} carries no light direction, shadow
+     * matrix or shadow params, so an auto-generated shadow-caster pass names uniforms that do not exist. Turning
+     * this on needs those three in the block in the same change; {@code CgShadowUniformContractTest} holds it.
+     */
+    public static final boolean SHADOWS_SUPPORTED = false;
+
     private void wireShader(CgShader shader) {
         shader.bind();
         wireShaderBuffers(shader);
@@ -1053,9 +1066,8 @@ public final class CgMaterialShader {
     }
 
     private void wireShaderBuffers(CgShader shader) {
-        CgRenderPipeline pipeline = CgRenderPipeline.getInstance();
-        pipeline.frameBuffer().wireShader(shader);
-        pipeline.objectBuffer().wireShader(shader);
+        CgUniformBuffer.wireBlock(shader, CgPassConstants.BLOCK_NAME, CgBindingPoints.FRAME_DATA_UBO);
+        CgShaderBuffer.wireBlock(shader, CgInstanceKind.OBJECT_BLOCK_NAME, CgBindingPoints.OBJECT_DATA);
         if (matPropsUbo != null) matPropsUbo.wireShader(shader);
         for (CgAttachedBuffer ab : attachedBuffers) ab.getBuffer().wireShader(shader);
     }
@@ -1096,8 +1108,8 @@ public final class CgMaterialShader {
         //
         // Skipped silently rather than warned about: a capability the engine does not have yet is not a
         // fault of the material being compiled, and a warning per material would be the same noise in a
-        // politer font. @see CgFrameData#SHADOWS_SUPPORTED
-        if (!CgFrameData.SHADOWS_SUPPORTED) return true;
+        // politer font. @see #SHADOWS_SUPPORTED
+        if (!SHADOWS_SUPPORTED) return true;
 
         boolean hasExplicitShadow = parsed.getPassByLightMode(CgRenderPassVariant.SHADOW.lightModeName()) != null;
         boolean isOpaque = parsed.renderQueue() < CgRenderQueue.TRANSPARENT_THRESHOLD;

@@ -30,6 +30,8 @@ import java.util.List;
  *       on the same target with {@link CgLoad#load()}.</li>
  *   <li>A chunk is drawn under the scissor set when it was added, as a command buffer's set-scissor works:
  *       {@link #scissor} and {@link #noScissor}. A pass that never sets one leaves GL's scissor as it finds it.</li>
+ *   <li>{@link #texture} binds a texture for the whole pass, with its constants: what every draw of it samples at a
+ *       fixed unit, as a world pass binds the scene's depth.</li>
  * </ul>
  */
 public final class CgRasterPass extends CgPass {
@@ -49,6 +51,10 @@ public final class CgRasterPass extends CgPass {
     private int[] scissorRects = new int[16];
     private int scissorCount;
     private int scissor = INHERIT;
+
+    /** Textures bound with the pass's constants: units and textures, in parallel. */
+    private int[] textureUnits = new int[0];
+    private CgTexture[] textures = new CgTexture[0];
 
     CgRasterPass(CgRecording recording, String name, CgGraphTexture target, CgLoad load, float[] constants,
                  @Nullable CgRenderState state, CgOrder order) {
@@ -91,6 +97,30 @@ public final class CgRasterPass extends CgPass {
         scissorRects[at + 3] = h;
         scissor = scissorCount++;
         return this;
+    }
+
+    /** Binds {@code texture} at {@code unit} for every draw of this pass. A graph texture is read as of this call. */
+    public CgRasterPass texture(int unit, CgTexture texture) {
+        if (ended) throw new IllegalStateException(this + " has ended");
+        int n = textureUnits.length;
+        textureUnits = Arrays.copyOf(textureUnits, n + 1);
+        textures = Arrays.copyOf(textures, n + 1);
+        textureUnits[n] = unit;
+        textures[n] = texture;
+        if (texture instanceof CgGraphTexture graph) recording.read(this, graph);
+        return this;
+    }
+
+    int textureCount() {
+        return textureUnits.length;
+    }
+
+    int textureUnit(int i) {
+        return textureUnits[i];
+    }
+
+    CgTexture texture(int i) {
+        return textures[i];
     }
 
     /** Draws the chunks added from now on unscissored. */

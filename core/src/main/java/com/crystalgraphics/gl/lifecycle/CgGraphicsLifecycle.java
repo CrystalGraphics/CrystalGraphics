@@ -11,7 +11,9 @@ import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.platform.service.CgLifecycleService;
 import com.crystalgraphics.api.material.CgMaterialRegistry;
+import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.api.render.CgRenderPipeline;
+import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgQuadIndexBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
@@ -205,10 +207,12 @@ public final class CgGraphicsLifecycle {
                 // render state behind.
                 try (CgGlScope ignored = CgGlState.saveAll()) {
                     resizeTargets(width, height);
+                    CgBindingPoints.init(CgCapabilities.detect());
                     CgRenderPipeline.init();
                     CgFallbackTextures.init();
                     warmUpDeferredStartupCosts();
                 }
+                CgWorldRenderer.get().install();
                 CgRenderDemo.INSTANCE.install();
 
                 initialized = true;
@@ -486,9 +490,7 @@ public final class CgGraphicsLifecycle {
         CgMaterialShaderRegistry.get().deleteAll();
 
         // Step 7b: User-created SSBO/TBO/UBO resources managed by CgShaderBufferRegistry.
-        //   Must be freed before the GL context is lost. Engine-owned pipeline buffers
-        //   (frameUbo, objectBuffer in CgRenderPipeline) are NOT in this registry —
-        //   they are freed in step 7c.
+        //   Must be freed before the GL context is lost.
         CgShaderBufferRegistry.get().deleteAll();
 
         // Step 6a: All CgTextRenderer instances still alive (backstop for callers that
@@ -503,12 +505,10 @@ public final class CgGraphicsLifecycle {
         CgFontRegistry.get().releaseAll();
 
 
-        // Step 8: Pipeline-owned frame UBO + object SSBO + command queue.
-        // Dispose the render demo first so its mesh/material handles are released before
-        // the registries they reference are torn down.
+        // Step 8: the world renderer's draws and depth snapshot (whose framebuffer step 9 frees), and the demo's mesh,
+        // before the registries they reference are torn down.
         CgRenderDemo.INSTANCE.dispose();
-        // CgRenderPipeline owns both the GPU pipeline buffers (formerly CgMaterialPipeline)
-        // and the render command queue; one destroy call handles all of it.
+        CgWorldRenderer.get().release();
         CgRenderPipeline.destroy();
 
         // Step 8b: Shader-graph preview targets.

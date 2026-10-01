@@ -6,7 +6,6 @@ import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.api.buffer.CgGpuType;
-import com.crystalgraphics.api.render.CgRenderPipeline;
 import com.crystalgraphics.api.shader.CgShader;
 import com.crystalgraphics.api.shader.CgShaderBindings;
 import com.crystalgraphics.api.state.CgRenderState;
@@ -436,9 +435,9 @@ public final class CgMaterial {
      * animation curves, etc. Any structured dataset your shader needs beyond what the engine's
      * {@code cg_env.glsl} provides.</p>
      *
-     * <p><strong>What NOT to pass</strong>: engine pipeline buffers
-     * ({@code CgRenderPipeline.objectBuffer()}, etc.). Those are wired automatically by the
-     * engine and declared in {@code cg_env.glsl}. Passing them here causes duplicate declarations.</p>
+     * <p><strong>What NOT to pass</strong>: the engine's own blocks ({@code CgFrameBlock},
+     * {@code CgObjectDataBuffer}). Those are declared in {@code cg_env.glsl} and wired automatically; passing them
+     * here causes duplicate declarations.</p>
      *
      * <p><strong>Ownership warning</strong>: {@code CgMaterial.load(path)} returns a
      * <em>shared cached instance</em> from {@code CgMaterialRegistry}, backed by a shared
@@ -1062,9 +1061,6 @@ public final class CgMaterial {
         // spent 346.8 ms in them.
 
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL_DETAIL, "doBind.propsUpload")) {
-            // Every draw that reads the frame block binds a material first, so this is where a frame's copy
-            // of it is made -- see CgRenderPipeline.carryFrameBlock.
-            CgRenderPipeline.carryFrameBlock();
             if (matPropsUbo != null) syncProps();
         }
 
@@ -1151,35 +1147,12 @@ public final class CgMaterial {
     }
 
     /**
-     * Returns the pipeline's shared per-object SSBO/TBO.
-     * Equivalent to {@code CgRenderPipeline.getInstance().objectBuffer()}.
-     *
-     * <p>Each object record is exactly {@code CgRenderPipeline.OBJECT_FORMAT} = 48 floats.
-     * Use named writes — unwritten fields are auto-zeroed per record:</p>
-     * <pre>{@code
-     * CgShaderBuffer buf = material.objectBuffer();
-     * CgBufferWriter w = buf.beginWrite(N);
-     * for (int i = 0; i < N; i++) {
-     *     w.beginRecord()
-     *      .mat4("modelMatrix", model)
-     *      .mat4("normalMatrix", normal)
-     *      .vec4("custom0", r, g, b, a);   // custom1-3 auto-zeroed
-     *     buf.endRecord();
-     * }
-     * buf.endWrite();                     // uploads, and re-binds at the new offset
-     * material.bind();
-     * mesh.drawInstanced(N);
-     * material.unbind();
-     * }</pre>
-     *
-     * <p>Write the records in the frame that draws them. The buffer is on the frame ring, where a region is
-     * reused three frames on, so records kept from an earlier frame are not there to draw.</p>
-     *
-     * @return the pipeline's object buffer; never {@code null}
-     * @throws IllegalStateException if {@link CgRenderPipeline} has not been initialized
+     * Whether a pass of this material samples the scene's depth ({@code cg_DepthBuffer}), so a world renderer takes a
+     * depth snapshot only when something reads it. True for a material not parsed yet: a needless copy beats an
+     * unset texture.
      */
-    public CgShaderBuffer objectBuffer() {
-        return CgRenderPipeline.getInstance().objectBuffer();
+    public boolean readsSceneDepth() {
+        return cgMaterialShader == null || cgMaterialShader.readsSceneDepth();
     }
 
     /**

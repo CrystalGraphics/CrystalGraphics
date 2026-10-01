@@ -2,24 +2,24 @@ package com.crystalgraphics.shadergraph;
 
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMeshData;
-import com.crystalgraphics.api.render.CgFrameData;
-import com.crystalgraphics.api.render.CgRenderPipeline;
 import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgDepthState;
+import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
-import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
-import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
 import com.crystalgraphics.gl.mesh.CgMesh;
 import com.crystalgraphics.gl.mesh.CgMeshBuilder;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlSlot;
 import com.crystalgraphics.platform.gl.state.CgGlState;
+import com.crystalgraphics.render.CgFrameClock;
+import com.crystalgraphics.render.CgImmediate;
+import com.crystalgraphics.render.draw.CgOrder;
+import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
-import org.joml.Matrix4f;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -32,18 +32,9 @@ import java.util.Set;
 /**
  * Renders node thumbnails: one subgraph, one small target, one draw.
  *
- * <h3>There is no second pipeline here</h3>
- * <p>{@link CgRenderPipeline#prepareFrame()} already exists for exactly this — its own docs describe it as
- * for "manual-bind scenes that call {@code CgMaterial.bind()} directly". It uploads the frame UBO and
- * binds both engine buffers without sorting or dispatching anything, which is the whole of what a preview
- * needs from the pipeline.</p>
- *
- * <h3>The shared frame data is borrowed, not owned — and must be put back</h3>
- * <p>{@code prepareFrame()} reads the pipeline's single {@link CgFrameData}. A preview needs its own tiny
- * camera and viewport, so it writes into that shared object and <b>restores every field afterwards</b>. Not
- * doing so would leave the world pass rendering through a thumbnail-sized preview camera later in the same
- * frame — a failure with no exception and no obvious cause, which is why the save/restore is unconditional
- * and wrapped in a finally.</p>
+ * <h3>Its own camera, in its own pass block</h3>
+ * <p>Each thumbnail draws through {@code CgImmediate} under a {@code CgPassConstants} of its own, so nothing another
+ * pass draws under is read or restored.</p>
  *
  * <p>Its time is {@code CgFrameClock}'s, the one every pass reads: what makes a Time node's thumbnail animate,
  * in step with everything else.</p>
@@ -186,9 +177,11 @@ public final class CgPreviewRenderer {
     private CgMesh sphereMesh;
     private boolean deleted;
 
-    /** Scratch, reused every draw — a preview must not allocate per frame. */
-    private final Matrix4f identity = new Matrix4f();
-    private final CgFrameData saved = new CgFrameData();
+    /** The preview camera: its own pass block, reused every draw. */
+    private final CgPassConstants camera = new CgPassConstants();
+
+    private static final CgRenderState PASS_STATE = CgRenderState.builder()
+            .depth(CgDepthState.TEST_WRITE).blend(CgBlendState.DISABLED).build();
 
     public CgPreviewRenderer() {
         this(DEFAULT_SIZE, DEFAULT_CAPACITY, DEFAULT_SAMPLES);
@@ -504,21 +497,11 @@ public final class CgPreviewRenderer {
     }
 
     private void drawInto(CgPreviewTarget target, CgMaterial material, CgPreviewGeometry geometry) {
-        CgRenderPipeline pipeline = CgRenderPipeline.getInstance();
-        CgFrameData frame = pipeline.getFrameData();
-        copyCamera(frame, saved);
-
         CgGpuTrace.begin(GPU_DRAW);
         try (CgTrace.Zone traced = CgTrace.zone(CgChannels.SHADERGRAPH, "preview.draw");
-             CgGlScope scope = CgGlState.save(CgGlSlot.FBO, CgGlSlot.PROGRAM, CgGlSlot.VIEWPORT,
-                CgGlSlot.DEPTH, CgGlSlot.BLEND, CgGlSlot.CULL, CgGlSlot.VERTEX_INPUT,
-                CgGlSlot.TEXTURES)) {
+             CgGlScope scope = CgGlState.save(CgGlSlot.FBO, CgGlSlot.VIEWPORT)) {
 
-            applyCamera(frame, geometry);
-            // Uploads the frame UBO and binds both engine buffers. The single reason this class does not
-            // need a pipeline of its own.
-            pipeline.prepareFrame();
-            writeObjectRecord(pipeline.objectBuffer());
+            applyCamera(camera, geometry);
 
             try (CgTrace.Zone cleared = CgTrace.zone(CgChannels.SHADERGRAPH, "preview.clear")) {
                 target.drawTarget().bind();
@@ -529,13 +512,10 @@ public final class CgPreviewRenderer {
                 CgGL.glClear(CgGL.GL_COLOR_BUFFER_BIT | CgGL.GL_DEPTH_BUFFER_BIT);
             }
 
-            CgDepthState.TEST_WRITE.apply();
-            CgBlendState.DISABLED.apply();
-
             // Timed apart: a driver that links a program lazily blocks on its first draw here.
-            try (CgTrace.Zone drawn = CgTrace.zone(CgChannels.SHADERGRAPH, "preview.drawMesh")) {
-                CgMesh mesh = meshFor(geometry);
-                material.drawChain(() -> mesh.drawInstanced(1));
+            try (CgTrace.Zone drawn = CgTrace.zone(CgChannels.SHADERGRAPH, "preview.drawMesh");
+                 CgImmediate draw = CgImmediate.begin(camera, PASS_STATE, CgOrder.LOOKBACK)) {
+                CgPreviewDraw.object(draw, material, meshFor(geometry));
             }
 
             try (CgTrace.Zone resolved = CgTrace.zone(CgChannels.SHADERGRAPH, "preview.resolve")) {
@@ -547,9 +527,6 @@ public final class CgPreviewRenderer {
             }
         } finally {
             CgGpuTrace.end();
-            // Unconditional: leaving the world pass on the preview camera is a failure with
-            // no exception and no obvious cause.
-            copyCamera(saved, frame);
         }
     }
 
@@ -582,42 +559,14 @@ public final class CgPreviewRenderer {
      * faces the other way. So the compensation belongs where a handedness difference can be expressed
      * without touching geometry: in the value, in the preview body. See {@code CgBuiltinShaderNodes}.</p>
      */
-    private void applyCamera(CgFrameData frame, CgPreviewGeometry geometry) {
-        frame.viewMatrix.identity();
+    private void applyCamera(CgPassConstants camera, CgPreviewGeometry geometry) {
+        camera.view.identity();
         if (geometry == CgPreviewGeometry.SPHERE) {
-            frame.projMatrix.setOrtho(-1.15f, 1.15f, -1.15f, 1.15f, -4f, 4f);
+            camera.projection.setOrtho(-1.15f, 1.15f, -1.15f, 1.15f, -4f, 4f);
         } else {
-            frame.projMatrix.identity();
+            camera.projection.identity();
         }
-        frame.viewportW = previewSize;
-        frame.viewportH = previewSize;
-        frame.deriveFromViewMatrix();
-    }
-
-    private static void copyCamera(CgFrameData from, CgFrameData to) {
-        to.viewMatrix.set(from.viewMatrix);
-        to.projMatrix.set(from.projMatrix);
-        to.viewportW = from.viewportW;
-        to.viewportH = from.viewportH;
-    }
-
-    /**
-     * One identity instance.
-     *
-     * <p>Every field of {@code OBJECT_FORMAT} is written, not just the two that matter: the record is a
-     * fixed stride, so a short write leaves the next instance reading this one's tail.</p>
-     */
-    private void writeObjectRecord(CgShaderBuffer objectBuffer) {
-        CgBufferWriter writer = objectBuffer.beginWrite(1);
-        writer.beginRecord()
-                .mat4("modelMatrix", identity)
-                .mat4("normalMatrix", identity)
-                .vec4("custom0", 0f, 0f, 0f, 0f)
-                .vec4("custom1", 0f, 0f, 0f, 0f)
-                .vec4("custom2", 0f, 0f, 0f, 0f)
-                .vec4("custom3", 0f, 0f, 0f, 0f);
-        objectBuffer.endRecord();
-        objectBuffer.endWrite();
+        camera.resolution(previewSize, previewSize).time(CgFrameClock.seconds()).cameraFromView();
     }
 
     /** Built lazily and shared by every preview — two meshes for the whole editor. */

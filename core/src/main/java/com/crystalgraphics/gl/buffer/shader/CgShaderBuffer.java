@@ -4,6 +4,7 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.gl.buffer.MapAndOrphanStreamBuffer;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.platform.gl.CgCapabilities;
+import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.api.buffer.CgObjectBuffer;
@@ -254,6 +255,22 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
             return new CgTextureBuffer(name, format, bindingPoint);
 
         return new CgShaderStorageBuffer(name, format, path, bindingPoint, lifetime);
+    }
+
+    /**
+     * Wires {@code shader}'s SSBO or TBO named {@code name} to {@code binding}, with no buffer object of its own: for a
+     * block whose buffer is bound per draw by someone else, as the executor binds the object records. The shader is
+     * bound.
+     */
+    public static void wireBlock(CgShader shader, String name, CgBindingPoints.Binding binding) {
+        int program = shader.getProgram().getId();
+        if (CgCapabilities.detect().shaderBufferPath() == CgCapabilities.ShaderBufferPath.TBO) {
+            int location = shader.getUniformLocation(name);
+            if (location >= 0) shader.getProgram().setUniform1i(location, binding.tbo());
+        } else {
+            int index = CgGL.glGetProgramResourceIndex(program, CgGL.GL_SHADER_STORAGE_BLOCK, name);
+            if (index != CgGL.GL_INVALID_INDEX) CgGL.glShaderStorageBlockBinding(program, index, binding.ssbo());
+        }
     }
 
     /**

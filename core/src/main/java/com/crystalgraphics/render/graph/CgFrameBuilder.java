@@ -306,9 +306,10 @@ public final class CgFrameBuilder {
         }
         Arrays.fill(refChunk, 0, refs, null);
         packed.clips = frame.clipsOf(pass.recording.clips());
-        packed.constants = frame.bindings.begin()
-                .block(CgBindingPoints.FRAME_DATA_UBO, pass.constants, 0, CgPassConstants.FLOATS)
-                .end();
+        CgBindingTable constants = frame.bindings.begin()
+                .block(CgBindingPoints.FRAME_DATA_UBO, pass.constants, 0, CgPassConstants.FLOATS);
+        for (int i = 0; i < pass.textureCount(); i++) constants.texture(pass.textureUnit(i), pass.texture(i));
+        packed.constants = constants.end();
     }
 
     /** {@code table}'s ids mapped into the frame's, -1 until first used; the arrays are kept between builds. */

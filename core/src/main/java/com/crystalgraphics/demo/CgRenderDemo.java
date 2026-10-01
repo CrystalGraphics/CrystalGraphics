@@ -1,19 +1,14 @@
 package com.crystalgraphics.demo;
 
 import com.crystalgraphics.api.material.CgMaterial;
-import com.crystalgraphics.api.material.CgRenderQueue;
-import com.crystalgraphics.api.render.CgFrameData;
-import com.crystalgraphics.api.render.CgRenderCommand;
-import com.crystalgraphics.api.render.CgRenderPipeline;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gl.mesh.CgMesh;
 import com.crystalgraphics.gl.mesh.CgMeshBuilder;
 import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.platform.gl.state.CgGlScope;
-import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.render.stage.CgHostFrame;
 import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgRenderStage;
+import com.crystalgraphics.render.world.CgWorldRenderer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.joml.Matrix4f;
@@ -27,8 +22,8 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
 /**
- * A development demo: sixteen rainbow cubes standing on blocks in front of the player, drawn at both world stages
- * under the host's own camera. Off unless asked for.
+ * A development demo: sixteen rainbow cubes standing on blocks in front of the player, drawn through
+ * {@link CgWorldRenderer} under the host's own camera. Off unless asked for.
  *
  * <pre>{@code
  * -Dcrystalgraphics.demo=true                         // draw them
@@ -37,8 +32,9 @@ import java.nio.ByteOrder;
  * }</pre>
  *
  * <p>The cubes are placed once, on the first world frame, on whole blocks a few blocks along the camera's view and
- * a little above it, so terrain in front does not hide them, and stay there. Each fills exactly one block cell, so a capture shows whether the stage's view is the camera the world was
- * drawn with: on the grid at every angle, or off it.</p>
+ * a little above it, so terrain in front does not hide them, and stay there. Each fills exactly one block cell, so a
+ * capture shows whether the stage's view is the camera the world was drawn with: on the grid at every angle, or off
+ * it.</p>
  */
 public final class CgRenderDemo {
 
@@ -55,78 +51,61 @@ public final class CgRenderDemo {
     private static final int AHEAD = 6;       // blocks from the eye to the grid's centre, along the view
     private static final int ABOVE = 2;       // and up the screen
 
-    private boolean enabled = true;
     private boolean installed;
-    private boolean initialized;
     private boolean anchored;
     private long anchorX, anchorY, anchorZ;
     private int worldFrames;
 
     private CgMesh cubeMesh;
     private CgMaterial cubeMaterial;
+    private final float[][] colours = new float[GRID * GRID][];
 
-    /** The firing stage's frame, for the callbacks below, which run inside that firing. */
-    private CgHostFrame host;
-    private final Runnable opaque = this::renderOpaque;
-    private final Runnable transparent = this::renderTransparent;
+    /** The transparent stage's frame, for the capture callback, which runs inside that firing. */
+    private CgHostFrame captured;
+    private final Runnable capture = () -> capture(captured.width(), captured.height());
 
-    private CgRenderDemo() {}
+    private CgRenderDemo() {
+        for (int c = 0; c < colours.length; c++) colours[c] = hsvToRgb(c / (float) colours.length, 0.85f, 1.0f);
+    }
 
-    /** Registers the demo for the world stages, once, when {@code -Dcrystalgraphics.demo=true}. */
+    /** Submits the cubes every frame, once, when {@code -Dcrystalgraphics.demo=true}. */
     public void install() {
         if (installed || !ENABLED) return;
         installed = true;
-        CgRenderStage.WORLD_OPAQUE.register(frame -> {
-            host = frame.host();
-            frame.callback("demo.opaque", opaque);
-        });
-        CgRenderStage.WORLD_TRANSPARENT.register(frame -> {
-            host = frame.host();
-            frame.callback("demo.transparent", transparent);
-        });
+        CgWorldRenderer.get().onFrame(this::frame);
+        if (CAPTURE != null) {
+            CgRenderStage.WORLD_TRANSPARENT.register(CgWorldRenderer.ORDER + 1, frame -> {
+                if (++worldFrames != CAPTURE_AT) return;
+                captured = frame.host();
+                frame.callback("demo.capture", capture);
+            });
+        }
     }
 
     /** Releases GPU resources. Call on context destroy. */
     public void dispose() {
         if (cubeMesh != null) { cubeMesh.delete(); cubeMesh = null; }
         cubeMaterial = null; // owned by CgMaterialRegistry — do not delete
-        initialized  = false;
     }
 
-    private void renderOpaque() {
-        if (!enabled) return;
-        // One scope over the first frame's uploads as well as the pass; the pipeline's own scope nests in it.
-        try (CgGlScope ignored = CgGlState.saveAll()) {
-            ensureResources();
-            CgHostView view = host.view();
-            if (!anchored) anchor(view);
-            populateFrameData(view, host.width(), host.height());
-            submitGeometry(view);
-            CgRenderPipeline.getInstance().executeOpaquePass(host.partialTick(), host.mainFramebuffer());
-        } catch (Exception e) {
-            LOGGER.error("CgRenderDemo opaque pass failed", e);
-            enabled = false;
+    private void frame(CgHostView view) {
+        if (cubeMesh == null) {
+            cubeMesh = CgMesh.upload(CgMeshBuilder.unitCube(CgVertexFormat.SPATIAL));
+            cubeMaterial = CgMaterial.load("crystalgraphics:shaders/demo_render.shader");
+            LOGGER.info("[CgRenderDemo] resources initialised (mesh={}, material={})", cubeMesh, cubeMaterial);
         }
-    }
-
-    private void renderTransparent() {
-        if (!enabled) return;
-        try {
-            CgRenderPipeline.getInstance().executeTransparentPass();
-            CgRenderPipeline.getInstance().endFrame();
-            if (CAPTURE != null && ++worldFrames == CAPTURE_AT) capture(host.width(), host.height());
-        } catch (Exception e) {
-            LOGGER.error("CgRenderDemo transparent pass failed", e);
-            enabled = false;
+        if (!anchored) anchor(view);
+        CgWorldRenderer world = CgWorldRenderer.get();
+        for (int i = 0; i < GRID; i++) {
+            for (int j = 0; j < GRID; j++) {
+                float[] rgb = colours[i * GRID + j];
+                world.draw(cubeMesh, cubeMaterial)
+                        .at(anchorX + (i - GRID / 2) * GRID_STEP + 0.5, anchorY + 0.5,
+                                anchorZ + (j - GRID / 2) * GRID_STEP + 0.5)
+                        .custom(0, rgb[0], rgb[1], rgb[2], 1f)
+                        .submit();
+            }
         }
-    }
-
-    private void ensureResources() {
-        if (initialized) return;
-        cubeMesh     = CgMesh.upload(CgMeshBuilder.unitCube(CgVertexFormat.SPATIAL));
-        cubeMaterial = CgMaterial.load("crystalgraphics:shaders/demo_render.shader");
-        initialized  = true;
-        LOGGER.info("[CgRenderDemo] resources initialised (mesh={}, material={})", cubeMesh, cubeMaterial);
     }
 
     /** Puts the grid ahead of the eye and up the screen, whatever the host folds into its view matrix. */
@@ -139,46 +118,8 @@ public final class CgRenderDemo {
         anchorY = (long) Math.floor(view.y() + eye.y + forward.y * AHEAD + up.y * ABOVE);
         anchorZ = (long) Math.floor(view.z() + eye.z + forward.z * AHEAD + up.z * ABOVE);
         anchored = true;
-        LOGGER.info("[CgRenderDemo] cubes on blocks around ({}, {}, {}), camera at ({}, {}, {}) | view {} | projection {}",
-                anchorX, anchorY, anchorZ, view.x(), view.y(), view.z(), view.view(), view.projection());
-    }
-
-    private void populateFrameData(CgHostView view, int w, int h) {
-        CgFrameData fd = CgRenderPipeline.getInstance().getFrameData();
-        fd.viewMatrix.set(view.view());
-        fd.projMatrix.set(view.projection());
-        fd.viewportW = w;
-        fd.viewportH = h;
-        fd.farPlane  = 512f;
-        fd.deriveFromViewMatrix();
-    }
-
-    /** Camera-relative: each cube's block centre minus the camera, in doubles, before it is a float. */
-    private void submitGeometry(CgHostView view) {
-        CgRenderPipeline pipeline = CgRenderPipeline.getInstance();
-        for (int i = 0; i < GRID; i++) {
-            for (int j = 0; j < GRID; j++) {
-                float x = (float) (anchorX + (i - GRID / 2) * GRID_STEP + 0.5 - view.x());
-                float y = (float) (anchorY + 0.5 - view.y());
-                float z = (float) (anchorZ + (j - GRID / 2) * GRID_STEP + 0.5 - view.z());
-
-                CgRenderCommand cmd = pipeline.acquireCommand();
-                cmd.mesh      = cubeMesh;
-                cmd.material  = cubeMaterial;
-                cmd.queueSlot = CgRenderQueue.GEOMETRY;
-                cmd.modelMatrix.identity().translation(x, y, z);
-
-                float hue   = (i * GRID + j) / (float) (GRID * GRID);
-                float[] rgb = hsvToRgb(hue, 0.85f, 1.0f);
-                cmd.custom0.set(rgb[0], rgb[1], rgb[2], 1f);
-
-                cmd.worldAabb[0] = x - 0.5f;  cmd.worldAabb[3] = x + 0.5f;
-                cmd.worldAabb[1] = y - 0.5f;  cmd.worldAabb[4] = y + 0.5f;
-                cmd.worldAabb[2] = z - 0.5f;  cmd.worldAabb[5] = z + 0.5f;
-
-                pipeline.submit(cmd);
-            }
-        }
+        LOGGER.info("[CgRenderDemo] cubes on blocks around ({}, {}, {}), camera at ({}, {}, {})",
+                anchorX, anchorY, anchorZ, view.x(), view.y(), view.z());
     }
 
     /** The host's target as it stands after the transparent stage. Synchronous: a diagnostic, once. */

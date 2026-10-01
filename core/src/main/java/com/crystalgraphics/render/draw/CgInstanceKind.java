@@ -1,7 +1,6 @@
 package com.crystalgraphics.render.draw;
 
 import com.crystalgraphics.api.buffer.CgBufferFormat;
-import com.crystalgraphics.api.render.CgRenderPipeline;
 
 /**
  * What a draw's instances are: the record each one writes and the geometry every instance expands. A batch never
@@ -28,7 +27,10 @@ public enum CgInstanceKind {
     CURVE(curveFormat()),
 
     /** The object record ({@code cg_env.glsl}'s {@code CgObjectData}) over the mesh a draw names: world geometry. */
-    OBJECT(CgRenderPipeline.OBJECT_FORMAT);
+    OBJECT(objectFormat());
+
+    /** The GLSL buffer {@link #OBJECT}'s records are read from, declared by {@code cg_env.glsl}. */
+    public static final String OBJECT_BLOCK_NAME = "CgObjectDataBuffer";
 
     private static final CgInstanceKind[] BY_ORDINAL = values();
 
@@ -85,6 +87,19 @@ public enum CgInstanceKind {
                 // another 16 -- add a third when a feature needs it, not before.
                 .vec4("custom0")
                 .vec4("custom1")
+                .build();
+    }
+
+    /** {@code cg_env.glsl}'s {@code CgObjectData}: model, normal matrix (its 3x3 read as a mat3), custom0..3. */
+    private static CgBufferFormat objectFormat() {
+        return CgBufferFormat
+                .builder("cg_object", CgBufferFormat.MemoryLayout.STD430)
+                .mat4("modelMatrix")
+                .mat4("normalMatrix")
+                .vec4("custom0")
+                .vec4("custom1")
+                .vec4("custom2")
+                .vec4("custom3")
                 .build();
     }
 

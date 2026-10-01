@@ -117,6 +117,11 @@ public final class CgRenderState {
         return builder().alpha(alpha).blend(blend).depth(depth).cull(cull).stencil(stencil).colorMasks(colorMasks).build();
     }
 
+    /** A copy whose only colour mask is {@code mask}: what a depth-only variant of a pass draws under. */
+    public CgRenderState withColorMask(CgColorMask mask) {
+        return builder().alpha(alpha).blend(blend).depth(depth).cull(cull).stencil(stencil).colorMask(mask).build();
+    }
+
     public static Builder builder() { return new Builder(); }
 
     public static final class Builder {
