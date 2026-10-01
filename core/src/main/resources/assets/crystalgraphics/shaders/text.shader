@@ -115,11 +115,9 @@ Pass {
         Blend SRC_ALPHA ONE_MINUS_SRC_ALPHA, ONE ONE_MINUS_SRC_ALPHA
         Cull OFF
 
-        // Placeholder only -- never actually observed at draw time. Depth behavior differs
-        // between 2D UI text (no depth) and world text (depth-tested, not written), and a
-        // Pass's RenderState is fixed at author time, not per-keyword-permutation -- so
-        // CgTextRenderer overrides real depth state in Java via CgDepthState.NONE/TEST_ONLY
-        // bracketing material.bind()/unbind(). Do not try to express that split here.
+        // What every text draw uses, 2D and world alike: the Java-side NONE/TEST_ONLY override this once
+        // claimed never reached a draw (measured, render-graph G2). A pass owning its depth decides it
+        // from G3 on; a Pass's RenderState cannot vary per draw.
         DepthTest LEQUAL
         DepthWrite ON
     }

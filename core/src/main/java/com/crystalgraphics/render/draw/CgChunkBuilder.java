@@ -131,6 +131,23 @@ public final class CgChunkBuilder {
         return at;
     }
 
+    /** Appends {@code count} whole records of the open draw's kind, read from {@code records} at float {@code from}. */
+    public CgChunkBuilder instances(float[] records, int from, int count) {
+        if (drawing < 0) throw new IllegalStateException("instances() with no draw open: draw() first");
+        int floats = count * drawingFloats;
+        float[] data = instances[drawingKind];
+        int at = this.records[drawingKind] * drawingFloats;
+        if (data == null || at + floats > data.length) {
+            data = data == null ? new float[Math.max(drawingFloats * 64, floats)]
+                    : Arrays.copyOf(data, Math.max(data.length * 2, at + floats));
+            instances[drawingKind] = data;
+        }
+        System.arraycopy(records, from, data, at, floats);
+        this.records[drawingKind] += count;
+        instanceCounts[drawing] += count;
+        return this;
+    }
+
     /** The open draw's kind's records. Read it after {@link #instance()}; it is replaced when it grows. */
     public float[] data() {
         return instances[drawingKind];

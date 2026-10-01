@@ -4,7 +4,8 @@ import com.crystalgraphics.gl.mesh.CgMesh;
 import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 
-import javax.annotation.Nullable;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -14,44 +15,77 @@ import java.util.List;
  *
  * <pre>{@code
  * CgFrame frame = builder.build(graph);
- * executor.execute(frame);
- * builder.recycle(frame);        // its arrays go back to the builder; the frame is not used again
+ * CgExecutor.execute(frame);
+ * builder.recycle(frame);        // its storage goes back to the builder; the frame is not used again
  * }</pre>
+ *
+ * <p>Its storage is reused frame after frame, so a steady frame allocates nothing; after {@link CgFrameBuilder#recycle}
+ * the object is the builder's again.</p>
  */
 public final class CgFrame {
 
-    final CgPass[] steps;
-    @Nullable
-    final Raster[] rasters;
-    final CgBindingTable bindings;
-    final float[][] instances;
-    final int[] instanceFloats;
-    final List<CgGraphTexture> transients;
-    final int[] acquireAt;
-    final int[] releaseAfter;
-    final int batches;
-    final int draws;
-    final CgFrameBuilder.Body body;
+    private static final int KINDS = CgInstanceKind.values().length;
 
-    CgFrame(CgPass[] steps, Raster[] rasters, CgBindingTable bindings, float[][] instances, int[] instanceFloats,
-            List<CgGraphTexture> transients, int[] acquireAt, int[] releaseAfter, int batches, int draws,
-            CgFrameBuilder.Body body) {
-        this.steps = steps;
-        this.rasters = rasters;
-        this.bindings = bindings;
-        this.instances = instances;
-        this.instanceFloats = instanceFloats;
-        this.transients = transients;
-        this.acquireAt = acquireAt;
-        this.releaseAfter = releaseAfter;
-        this.batches = batches;
-        this.draws = draws;
-        this.body = body;
+    CgPass[] steps = new CgPass[8];
+    Raster[] rasters = new Raster[8];
+    int stepCount;
+    final CgBindingTable bindings = new CgBindingTable();
+    final float[][] instances = new float[KINDS][];
+    final int[] instanceFloats = new int[KINDS];
+    final List<CgGraphTexture> transients = new ArrayList<>();
+    int[] acquireAt = new int[8];
+    int[] releaseAfter = new int[8];
+    int batches;
+    int draws;
+
+    CgFrame() {
+        for (int k = 0; k < KINDS; k++) instances[k] = new float[CgInstanceKind.of(k).floats() * 256];
+    }
+
+    /** Empties it for the next build, keeping its storage. */
+    void clear() {
+        Arrays.fill(steps, 0, stepCount, null);
+        stepCount = 0;
+        bindings.reset();
+        Arrays.fill(instanceFloats, 0);
+        transients.clear();
+        batches = 0;
+        draws = 0;
+    }
+
+    /** Room for {@code count} steps. */
+    void steps(int count) {
+        if (steps.length < count) {
+            steps = Arrays.copyOf(steps, Math.max(count, steps.length * 2));
+            rasters = Arrays.copyOf(rasters, steps.length);
+        }
+        stepCount = count;
+    }
+
+    /** The packed form of step {@code s}, kept between frames. */
+    Raster raster(int s) {
+        Raster raster = rasters[s];
+        if (raster == null) rasters[s] = raster = new Raster();
+        return raster;
+    }
+
+    void reserve(int kind, int more) {
+        int need = instanceFloats[kind] + more;
+        if (need > instances[kind].length) {
+            instances[kind] = Arrays.copyOf(instances[kind], Math.max(need, instances[kind].length * 2));
+        }
+    }
+
+    void lifetimes(int count) {
+        if (acquireAt.length < count) {
+            acquireAt = new int[Math.max(count, acquireAt.length * 2)];
+            releaseAfter = new int[acquireAt.length];
+        }
     }
 
     /** How many passes run, after culling. */
     public int passes() {
-        return steps.length;
+        return stepCount;
     }
 
     /** How many draw calls its raster passes make. */
@@ -76,31 +110,34 @@ public final class CgFrame {
 
     /** A raster pass, packed: the snapshot of its constants, and per batch what to bind and which instances to draw. */
     static final class Raster {
-        final int constants;
-        final int count;
-        final int[] pipeline;
-        final int[] binding;
-        final int[] kind;
-        final int[] first;
-        final int[] instances;
-        final CgMesh[] mesh;
+        int constants;
+        int count;
+        int[] pipeline = new int[16];
+        int[] binding = new int[16];
+        int[] kind = new int[16];
+        int[] first = new int[16];
+        int[] instances = new int[16];
+        CgMesh[] mesh = new CgMesh[16];
         /** Bits by kind ordinal: the kinds its batches draw, so their buffers are bound once per pass. */
-        final int kinds;
+        int kinds;
         /** Recorded draws its batches cover. */
-        final int draws;
+        int draws;
 
-        Raster(int constants, int count, int[] pipeline, int[] binding, int[] kind, int[] first, int[] instances,
-               CgMesh[] mesh, int kinds, int draws) {
-            this.constants = constants;
-            this.count = count;
-            this.pipeline = pipeline;
-            this.binding = binding;
-            this.kind = kind;
-            this.first = first;
-            this.instances = instances;
-            this.mesh = mesh;
-            this.kinds = kinds;
-            this.draws = draws;
+        void size(int batches) {
+            if (pipeline.length < batches) {
+                int n = Math.max(batches, pipeline.length * 2);
+                pipeline = new int[n];
+                binding = new int[n];
+                kind = new int[n];
+                first = new int[n];
+                instances = new int[n];
+                mesh = new CgMesh[n];
+            } else {
+                Arrays.fill(mesh, 0, count, null);
+            }
+            count = batches;
+            kinds = 0;
+            Arrays.fill(instances, 0, batches, 0);
         }
     }
 }

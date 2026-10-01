@@ -70,6 +70,24 @@ public final class CgPassConstants {
         return this;
     }
 
+    /**
+     * Takes every value from a block laid out as {@link #write} lays it out: what an immediate draw does with the
+     * frame block a caller already prepared. {@link #write} reproduces the same floats.
+     */
+    public CgPassConstants read(float[] block, int at) {
+        view.set(block, at);
+        projection.set(block, at + 16);
+        time = block[at + 33];
+        width = block[at + 36];
+        height = block[at + 37];
+        cameraX = block[at + 40];
+        cameraY = block[at + 41];
+        cameraZ = block[at + 42];
+        depthReversed = block[at + 44] != 0f;
+        depthZeroToOne = block[at + 45] != 0f;
+        return this;
+    }
+
     /** Writes the block's {@value #FLOATS} floats into {@code out} at {@code at}. */
     public void write(float[] out, int at) {
         view.get(out, at);

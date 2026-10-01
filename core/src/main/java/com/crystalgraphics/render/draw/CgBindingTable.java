@@ -179,6 +179,30 @@ public final class CgBindingTable {
         return end();
     }
 
+    /** Snapshot {@code id} with {@code texture} at {@code unit}, in place of whatever it bound there. */
+    public int withTexture(int id, int unit, CgTexture texture) {
+        begin();
+        int e = id * ENTRY_INTS;
+        int r = id * ENTRY_REFS;
+        for (int t = 0; t < entries[e]; t++) {
+            if (entries[e + HEADER + t] != unit) texture(entries[e + HEADER + t], (CgTexture) refs[r + t]);
+        }
+        texture(unit, texture);
+        for (int b = 0; b < entries[e + 1]; b++) {
+            int block = e + BLOCKS_AT + b * BLOCK_INTS;
+            block(entries[block], floats, entries[block + 1], entries[block + 2]);
+        }
+        for (int b = 0; b < entries[e + 2]; b++) buffer((CgShaderBuffer) refs[r + MAX_TEXTURES + b]);
+        return end();
+    }
+
+    /** Whether snapshot {@code id} binds a texture at {@code unit}. */
+    public boolean bindsUnit(int id, int unit) {
+        int e = id * ENTRY_INTS;
+        for (int t = 0; t < entries[e]; t++) if (entries[e + HEADER + t] == unit) return true;
+        return false;
+    }
+
     /** How many distinct snapshots it holds. */
     public int size() {
         return count;

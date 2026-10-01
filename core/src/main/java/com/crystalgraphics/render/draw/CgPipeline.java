@@ -60,6 +60,11 @@ public final class CgPipeline {
     private int programRevision = -1;
     private int instanceBaseLocation = UNRESOLVED;
 
+    /** {@link #withState} answers, by state identity. */
+    private CgPipeline[] derived = new CgPipeline[2];
+    private CgRenderState[] derivedStates = new CgRenderState[2];
+    private int derivedCount;
+
     private CgPipeline(int id, Key key) {
         this.id = id;
         this.shader = key.shader;
@@ -92,6 +97,27 @@ public final class CgPipeline {
             byId = table;
             return pipeline;
         }
+    }
+
+    /**
+     * This pipeline under another render state: what a caller that overrides a slot the shader declares asks
+     * for — the text renderer's depth, which {@code text.shader} cannot express per draw.
+     */
+    public CgPipeline withState(CgRenderState other) {
+        if (other == state) return this;
+        synchronized (this) {
+            for (int i = 0; i < derivedCount; i++) if (derivedStates[i] == other) return derived[i];
+        }
+        CgPipeline variant = of(shader, pass, keywords, other, kind);
+        synchronized (this) {
+            if (derivedCount == derived.length) {
+                derived = Arrays.copyOf(derived, derivedCount * 2);
+                derivedStates = Arrays.copyOf(derivedStates, derivedCount * 2);
+            }
+            derived[derivedCount] = variant;
+            derivedStates[derivedCount++] = other;
+        }
+        return variant;
     }
 
     /** The pipeline {@link #id()} names. */
