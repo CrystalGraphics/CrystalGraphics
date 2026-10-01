@@ -9,6 +9,7 @@ import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
 import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
 import com.crystalgraphics.gl.buffer.staging.CgStagingBuffer;
+import com.crystalgraphics.render.draw.CgChunkSink;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -1299,6 +1300,14 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
     }
 
     /** Forgets the material; the shader buffer is registry-owned and outlives any renderer. */
+    /**
+     * Hands every later flush's chunk to {@code sink} — a {@code CgPassRecorder} recording a frame — instead of
+     * executing it; null executes at once again.
+     */
+    public void sink(@Nullable CgChunkSink sink) {
+        run.sink = sink;
+    }
+
     @Override
     public void delete() {
         currentMaterial = null;

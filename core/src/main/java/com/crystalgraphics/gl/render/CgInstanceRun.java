@@ -8,6 +8,7 @@ import com.crystalgraphics.gl.buffer.staging.CgStagingBuffer;
 import com.crystalgraphics.render.CgImmediate;
 import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
+import com.crystalgraphics.render.draw.CgChunkSink;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPipeline;
@@ -33,6 +34,9 @@ final class CgInstanceRun {
     private final CgChunkBuilder chunk = new CgChunkBuilder(bindings);
     private boolean chunkOpen;
     private long bindingsFrame = -1;
+    /** Where a flush hands its chunk; null executes it at once. */
+    @Nullable
+    CgChunkSink sink;
 
     private CgMaterial material;
     @Nullable
@@ -130,6 +134,7 @@ final class CgInstanceRun {
         close(pending);
         if (!chunkOpen) return;
         chunkOpen = false;
-        CgImmediate.flush(chunk.end(), CgOrder.SORTED);
+        if (sink != null) sink.add(chunk.end());
+        else CgImmediate.flush(chunk.end(), CgOrder.SORTED);
     }
 }

@@ -14,6 +14,7 @@ import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
 import com.crystalgraphics.api.buffer.CgGpuType;
 import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
 import com.crystalgraphics.gl.buffer.staging.CgStagingBuffer;
+import com.crystalgraphics.render.draw.CgChunkSink;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -592,6 +593,14 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
      * otherwise a no-op. The mesh and shader buffer are static/registry-owned and are not
      * released here (they outlive any single renderer instance).
      */
+    /**
+     * Hands every later flush's chunk to {@code sink} — a {@code CgPassRecorder} recording a frame — instead of
+     * executing it; null executes at once again.
+     */
+    public void sink(@Nullable CgChunkSink sink) {
+        run.sink = sink;
+    }
+
     @Override
     public void delete() {
         currentMaterial = null;

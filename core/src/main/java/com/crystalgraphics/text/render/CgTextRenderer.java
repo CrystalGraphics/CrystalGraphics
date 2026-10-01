@@ -20,6 +20,7 @@ import com.crystalgraphics.gl.render.CgClipTable;
 import com.crystalgraphics.gl.render.CgQuadRenderer;
 import com.crystalgraphics.gl.texture.CgTextureMutable;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.render.draw.CgChunkSink;
 import com.crystalgraphics.text.cache.CgFontRegistry;
 import com.crystalgraphics.text.layout.CgTextLayoutCache;
 import com.crystalgraphics.text.render.context.*;
@@ -31,6 +32,8 @@ import lombok.Setter;
 import lombok.experimental.Accessors;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
+
+import javax.annotation.Nullable;
 
 import java.util.Arrays;
 import java.util.List;
@@ -382,6 +385,15 @@ public class CgTextRenderer {
      */
     public CgTextRenderer clip(int entry) {
         this.clip = entry;
+        return this;
+    }
+
+    /**
+     * Hands every later flush's glyphs to {@code sink} as a chunk — a {@code CgPassRecorder} recording a frame —
+     * instead of drawing them; null draws at once again.
+     */
+    public CgTextRenderer sink(@Nullable CgChunkSink sink) {
+        quadRenderer.sink(sink);
         return this;
     }
 
