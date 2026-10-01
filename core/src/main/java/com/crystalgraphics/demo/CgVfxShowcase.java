@@ -57,6 +57,8 @@ public final class CgVfxShowcase {
     };
 
     private static final int SHIELD = 14, STORM = 9, BLACK_HOLE = 12, GALAXY = 13, SUPERNOVA = 11;
+    /** The black hole is traced in a larger sphere than the rest, so its disk has room; the sphere itself never shows. */
+    private static final float BLACK_HOLE_SIZE = 1.35f;
     /** The supernova's heart is a little larger than the rest, and its corona reaches this many hearts out. */
     private static final float SUPERNOVA_SIZE = 1.15f, CORONA_REACH = 3.2f;
     /** Bolts at the shield: seconds in flight, and how many radii out they come from. */
@@ -106,7 +108,8 @@ public final class CgVfxShowcase {
                 world.draw(sphere, materials[k]).at(cx, cy, cz).transform(transform).custom(3, above, 0f, 0f, 0f).submit();
             }
             float strength = GLOW[k][3];
-            if (strength <= 0f) continue;
+            // The black hole has no ball to glow round: its disk lights the floor alone.
+            if (strength <= 0f || k == BLACK_HOLE) continue;
             strength *= k == STORM ? 0.55f + 0.9f * flicker(seconds, k) : 0.85f + 0.15f * (float) Math.sin(seconds * 2.3 + k);
             transform.identity().scale(GLOW_REACH[k]);
             world.draw(sphere, glow).at(cx, cy, cz).transform(transform)
@@ -145,7 +148,7 @@ public final class CgVfxShowcase {
     private void spin(int k, float seconds) {
         float turn = seconds * (0.18f + 0.06f * (k % 3));
         transform.identity();
-        if (k == BLACK_HOLE) transform.rotateX(0.38f).rotateZ(0.12f);
+        if (k == BLACK_HOLE) transform.rotateX(0.38f).rotateZ(0.12f).scale(BLACK_HOLE_SIZE);
         if (k == GALAXY) transform.rotateX(0.55f).rotateZ(-0.2f);
         transform.rotateY(turn);
     }
