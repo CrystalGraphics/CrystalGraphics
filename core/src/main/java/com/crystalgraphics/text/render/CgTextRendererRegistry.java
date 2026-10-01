@@ -14,7 +14,7 @@ import java.util.Set;
  * model, but for text renderers instead of framebuffers.
  *
  * <p>Every {@link CgTextRenderer#createManualSized()}/{@link CgTextRenderer#create()} call
- * registers here. Individual owners ({@code UiRecorder}, {@code HUDRenderer},
+ * registers here. Individual owners ({@code CgUiPaintContext}, {@code HUDRenderer},
  * {@code CgFontDemo}, harness scenes, etc.) remain responsible for calling
  * {@link CgTextRenderer#delete()} promptly when they're done with a renderer — this
  * registry is a <strong>backstop</strong>, not the primary release path. {@link #deleteAll()}

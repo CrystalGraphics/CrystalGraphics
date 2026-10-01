@@ -16,7 +16,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * <pre>{@code
  * int id = CgTraceNames.intern("paint:tree");
  * CgTraceNames.nameOf(id);     // "paint:tree"
- * CgTraceNames.sourceOf(id);   // "render/UiRecorder.java:838", or null
+ * CgTraceNames.sourceOf(id);   // "render/CgUiPaintContext.java:838", or null
  * }</pre>
  *
  * <h3>Why an int and not the string</h3>
@@ -30,7 +30,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>Resolved <b>once per name, at intern time</b> — a few hundred stack walks over the life of a
  * process, never on a hot path — and in exchange every line of every report can end in a
  * {@code File.java:line} the reader can click. {@code "layer:clear 9.8ms"} is a fact;
- * {@code "layer:clear 9.8ms render/UiRecorder.java:1402"} is a next step.</p>
+ * {@code "layer:clear 9.8ms render/CgUiPaintContext.java:1402"} is a next step.</p>
  *
  * <p>Tracy gets this from a C++ macro at the call site. In Java it is a one-time cost paid the first
  * time a name is seen, which is why names must be <b>constants</b>: a name built per call would walk

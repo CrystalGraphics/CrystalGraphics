@@ -111,7 +111,7 @@
 //
 // The 6.0 below is a literal, not a shared macro with stroke.glsl's CG_STROKE_ARROW_LENGTH:
 // cg_env.glsl is auto-included before any material's own #include lines (see the class doc on
-// UiRecorder... no, on CgQuadRenderer/CgVectorRenderer), so it must stay meaningful even for a
+// CgUiPaintContext... no, on CgQuadRenderer/CgVectorRenderer), so it must stay meaningful even for a
 // shader that never includes stroke.glsl. If CG_STROKE_ARROW_LENGTH ever changes, this must change
 // with it -- there is deliberately no single source of truth to keep this file self-contained.
 //

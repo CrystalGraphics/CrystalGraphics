@@ -1195,7 +1195,7 @@ public final class CgGlStateManager {
      * Proves a scope hands back what it found: {@code -Dcrystalgraphics.state.roundTrip=true}.
      *
      * <pre>{@code
-     * [crystalgraphics] state.roundTrip: not restored in the host view (depth 1) by the scope opened at UiRecorder.beginFrame:620 -- viewportW before=2560 after=490
+     * [crystalgraphics] state.roundTrip: not restored in the host view (depth 1) by the scope opened at CgUiPaintContext.beginFrame:620 -- viewportW before=2560 after=490
      * }</pre>
      *
      * <p>On open, every declared domain is read; after the close restores, it is read again, and a field

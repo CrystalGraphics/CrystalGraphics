@@ -111,7 +111,7 @@ GUI paint back at −1..1 and 1.0), and found what no code diff could:
 | 22 | **Sampler objects bound on units 0–2**, which override a texture's own filtering, wrapping and LOD | 1.21.11 → 26.2 (`GlRenderPass` binds one per draw, never unbinds, caches none) | `CgHostSamplers` parks them for our world passes (2747aba) and CrystalGUI's frame through its composite (CrystalGUI acd355d7), and puts them back | adapted |
 | 23 | **Scissor test on** at the world passes (26.2 Fabric), and a small box set (1.21.11 NeoForge) | 26.2; any | The world passes save `SCISSOR` and disable the test (2747aba); CrystalGUI's frame already did | adapted |
 | 24 | `UNPACK_ROW_LENGTH` 64–512 and skips set | 1.21.11 → 26.2 | `CgTightUnpack` resets the unpack state around our uploads | adapted |
-| 25 | Alpha writes off (`COLOR_WRITEMASK 1 1 1 0`) at a GUI paint | 1.21.11 → 26.2 | `UiRecorder.beginFrame` sets all four | adapted |
+| 25 | Alpha writes off (`COLOR_WRITEMASK 1 1 1 0`) at a GUI paint | 1.21.11 → 26.2 | `CgUiPaintContext.beginFrame` sets all four | adapted |
 | 26 | `PROGRAM_POINT_SIZE` on | 1.21.11 → 26.2 | A points shader of ours must write `gl_PointSize` there | recorded |
 | 27 | `TEXTURE_CUBE_MAP_SEAMLESS` on | 1.21.11 → 26.2 | Our cube maps sample seamlessly there, and not on 1.20.1 | recorded |
 | 28 | Depth bits actually allocated | 24-bit unsigned for every "DEPTH32" through 26.1.x; 32-bit float on 26.2 | The snapshot probes the real format (row 4) | recorded |
@@ -127,7 +127,7 @@ fires on every loader, Forge's new `executeOit` hooks included.
 |---|---|---|---|---|
 | 41 | **No stencil on the window's framebuffer** (`STENCIL_SIZE` absent; 26.2's had 8 bits) | 26.3, every loader (SDL creates the window) | Nothing of ours draws stencil to the default framebuffer; our own targets carry their own | recorded |
 | 42 | GL context 3.3 on Forge (4.6 on 26.2) | 26.3 Forge, like Fabric and NeoForge | Our floor | recorded |
-| 43 | **Depth test on at a GUI paint**, `GEQUAL`, depth clear 1.0 | 26.3 (off from 1.21.11 to 26.2) | `UiRecorder.beginFrame` sets its own depth state | recorded |
+| 43 | **Depth test on at a GUI paint**, `GEQUAL`, depth clear 1.0 | 26.3 (off from 1.21.11 to 26.2) | `CgUiPaintContext.beginFrame` sets its own depth state | recorded |
 | 44 | Blend and scissor test on at the opaque pass | 26.3 NeoForge | Rows 22–23: the pass saves both, disables scissor, and a material applies its own blend | recorded |
 | 45 | `DRAW_INDIRECT_BUFFER` bound at every entry; pack and unpack alignment 1 (4 on 26.2) | 26.3, every loader | Harmless to our draws, none indirect; alignment 1 only removes row padding from readbacks | recorded |
 
@@ -146,4 +146,4 @@ fires on every loader, Forge's new `executeOit` hooks included.
 
 The census hooks are permanent: `opaque`, `transparent` and `frame` in `CgGraphicsLifecycle`, each after
 its stood-down guard (a stood-down host has no GL context to read), and CrystalGUI's `gui` in
-`UiRecorder.beginFrame`.
+`CgUiPaintContext.beginFrame`.
