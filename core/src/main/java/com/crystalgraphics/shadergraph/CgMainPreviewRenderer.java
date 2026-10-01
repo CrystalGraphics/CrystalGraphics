@@ -1,23 +1,23 @@
 package com.crystalgraphics.shadergraph;
 
 import com.crystalgraphics.api.material.CgMaterial;
-import com.crystalgraphics.api.render.CgFrameData;
-import com.crystalgraphics.api.render.CgRenderPipeline;
 import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgDepthState;
+import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
-import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
-import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
 import com.crystalgraphics.gl.mesh.CgMesh;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlSlot;
 import com.crystalgraphics.platform.gl.state.CgGlState;
+import com.crystalgraphics.render.CgFrameClock;
+import com.crystalgraphics.render.CgImmediate;
+import com.crystalgraphics.render.draw.CgOrder;
+import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
-import org.joml.Matrix4f;
 
 import javax.annotation.Nullable;
 import java.util.EnumMap;
@@ -96,8 +96,11 @@ public final class CgMainPreviewRenderer {
     private CgPreviewTarget target;
 
     private final Map<CgPreviewMesh, CgMesh> meshes = new EnumMap<>(CgPreviewMesh.class);
-    private final Matrix4f identity = new Matrix4f();
-    private final CgFrameData saved = new CgFrameData();
+    /** The preview camera: its own pass block, so nothing the world draws under is touched. */
+    private final CgPassConstants camera = new CgPassConstants();
+
+    private static final CgRenderState PASS_STATE = CgRenderState.builder()
+            .depth(CgDepthState.TEST_WRITE).blend(CgBlendState.ALPHA).build();
 
     /** What produced the picture currently in {@link #target}. @see #render */
     @Nullable
@@ -478,19 +481,11 @@ public final class CgMainPreviewRenderer {
 
     private void drawInto(CgMaterial material, CgPreviewMesh mesh, float yaw, float pitch,
                           float zoom, float aspect) {
-        CgRenderPipeline pipeline = CgRenderPipeline.getInstance();
-        CgFrameData frame = pipeline.getFrameData();
-        copyCamera(frame, saved);
-
         CgGpuTrace.begin(GPU_DRAW);
         try (CgTrace.Zone traced = CgTrace.zone(CgChannels.SHADERGRAPH, "mainPreview.draw");
-             CgGlScope scope = CgGlState.save(CgGlSlot.FBO, CgGlSlot.PROGRAM, CgGlSlot.VIEWPORT,
-                CgGlSlot.DEPTH, CgGlSlot.BLEND, CgGlSlot.CULL, CgGlSlot.VERTEX_INPUT,
-                CgGlSlot.TEXTURES)) {
+             CgGlScope scope = CgGlState.save(CgGlSlot.FBO, CgGlSlot.VIEWPORT)) {
 
-            applyCamera(frame, mesh, yaw, pitch, zoom, aspect);
-            pipeline.prepareFrame();
-            writeObjectRecord(pipeline.objectBuffer());
+            applyCamera(camera, mesh, yaw, pitch, zoom, aspect);
 
             target.drawTarget().bind();
             CgGL.glViewport(0, 0, size, size);
@@ -499,13 +494,11 @@ public final class CgMainPreviewRenderer {
             CgGL.glClearColor(0f, 0f, 0f, 0f);
             CgGL.glClear(CgGL.GL_COLOR_BUFFER_BIT | CgGL.GL_DEPTH_BUFFER_BIT);
 
-            CgDepthState.TEST_WRITE.apply();
             // Blending ON, unlike a node thumbnail: Alpha is a real master port now, and an opaque
             // preview of a transparent material is a preview of something else.
-            CgBlendState.ALPHA.apply();
-
-            CgMesh uploaded = meshFor(mesh);
-            material.drawChain(() -> uploaded.drawInstanced(1));
+            try (CgImmediate draw = CgImmediate.begin(camera, PASS_STATE, CgOrder.LOOKBACK)) {
+                CgPreviewDraw.object(draw, material, meshFor(mesh));
+            }
 
             target.drawTarget().unbind();
             // Timed apart from the draw: the resolve writes the texture the panel samples.
@@ -516,9 +509,6 @@ public final class CgMainPreviewRenderer {
             target.resolve();
         } finally {
             CgGpuTrace.end();
-            // Unconditional: leaving the world pass on the preview camera is a failure with no exception
-            // and no obvious cause.
-            copyCamera(saved, frame);
         }
     }
 
@@ -529,7 +519,7 @@ public final class CgMainPreviewRenderer {
      * look different depending on how near the camera was put, and there is no scene here to give that
      * distance any meaning.</p>
      */
-    private void applyCamera(CgFrameData frame, CgPreviewMesh mesh, float yaw, float pitch,
+    private void applyCamera(CgPassConstants camera, CgPreviewMesh mesh, float yaw, float pitch,
                              float zoom, float aspect) {
         // PULLED BACK, then oriented. The translation is applied first so the camera orbits AROUND the
         // mesh rather than the mesh being pushed away along the rotated axis.
@@ -538,7 +528,7 @@ public final class CgMainPreviewRenderer {
         // the far side to match Unity's object-space thumbnails was tried and cannot work -- the two
         // conventions differ by a mirror, not a rotation. See CgPreviewRenderer.applyCamera for the
         // measurements. @see CAMERA_DISTANCE
-        frame.viewMatrix.translation(0f, 0f, -CAMERA_DISTANCE).rotateX(pitch).rotateY(yaw);
+        camera.view.translation(0f, 0f, -CAMERA_DISTANCE).rotateX(pitch).rotateY(yaw);
         // Clamped rather than trusted: a zero or negative zoom collapses the ortho box and the driver
         // draws nothing at all, which reads as "the shader broke" rather than "the gesture went wrong".
         float r = mesh.viewRadius() / Math.max(0.05f, zoom);
@@ -556,32 +546,8 @@ public final class CgMainPreviewRenderer {
         // NEAR AND FAR IN THIS ORDER. Swapping them flips the projection's determinant, which flips
         // triangle winding, which makes back-face culling keep the opposite set -- so it cancels its own
         // effect on the depth test and changes nothing on screen. See CgPreviewRenderer.applyCamera.
-        frame.projMatrix.setOrtho(-rx, rx, -ry, ry, -128f, 128f);
-        frame.viewportW = size;
-        frame.viewportH = size;
-        frame.deriveFromViewMatrix();
-    }
-
-    private static void copyCamera(CgFrameData from, CgFrameData to) {
-        to.viewMatrix.set(from.viewMatrix);
-        to.projMatrix.set(from.projMatrix);
-        to.viewportW = from.viewportW;
-        to.viewportH = from.viewportH;
-    }
-
-    /** One identity instance. Every field is written — the record is a fixed stride, so a short write
-     * leaves the next instance reading this one's tail. */
-    private void writeObjectRecord(CgShaderBuffer objectBuffer) {
-        CgBufferWriter writer = objectBuffer.beginWrite(1);
-        writer.beginRecord()
-                .mat4("modelMatrix", identity)
-                .mat4("normalMatrix", identity)
-                .vec4("custom0", 0f, 0f, 0f, 0f)
-                .vec4("custom1", 0f, 0f, 0f, 0f)
-                .vec4("custom2", 0f, 0f, 0f, 0f)
-                .vec4("custom3", 0f, 0f, 0f, 0f);
-        objectBuffer.endRecord();
-        objectBuffer.endWrite();
+        camera.projection.setOrtho(-rx, rx, -ry, ry, -128f, 128f);
+        camera.resolution(size, size).time(CgFrameClock.seconds()).cameraFromView();
     }
 
     /**

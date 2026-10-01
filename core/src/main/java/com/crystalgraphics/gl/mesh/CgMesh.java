@@ -1,20 +1,23 @@
 package com.crystalgraphics.gl.mesh;
 
-
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMeshData;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
+import com.crystalgraphics.api.vertex.CgAttribType;
 import com.crystalgraphics.api.vertex.CgAttributeFormat;
 import com.crystalgraphics.api.vertex.CgVertexAttribute;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
+import com.crystalgraphics.api.vertex.CgVertexSemantic;
 import com.crystalgraphics.gl.buffer.CgStreamBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.gl.render.CgInstanceRenderer;
 import com.crystalgraphics.gl.vertex.CgVertexArray;
 import com.crystalgraphics.gl.vertex.CgVertexArrayRegistry;
 import com.crystalgraphics.platform.gl.CgGL;
-import java.nio.ByteBuffer;
 import lombok.Getter;
+import javax.annotation.Nullable;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 
 /**
  * Immutable static GPU mesh: owns a VBO, an optional IBO, and a standalone VAO.
@@ -76,9 +79,13 @@ public final class CgMesh {
     /** Whether {@link #delete()} has been called. */
     private boolean deleted;
 
+    /** Its local bounds, {@code [minX, minY, minZ, maxX, maxY, maxZ]}; null when its positions are not floats. */
+    @Nullable
+    private final float[] bounds;
+
     private CgMesh(CgVertexFormat format, CgMeshTopology topology,
                    int glVertexBuffer, int glIndexBuffer, int glVao,
-                   int vertexCount, int indexCount, int indexType) {
+                   int vertexCount, int indexCount, int indexType, @Nullable float[] bounds) {
         this.format = format;
         this.topology = topology;
         this.glVertexBuffer = glVertexBuffer;
@@ -87,6 +94,44 @@ public final class CgMesh {
         this.vertexCount = vertexCount;
         this.indexCount = indexCount;
         this.indexType = indexType;
+        this.bounds = bounds;
+    }
+
+    /**
+     * Its local bounds as {@code [minX, minY, minZ, maxX, maxY, maxZ]}, from the vertices it was uploaded with: what a
+     * renderer culls it by. Null when its positions are not floats; a 2D position has z 0. Shared: do not write it.
+     */
+    @Nullable
+    public float[] bounds() {
+        return bounds;
+    }
+
+    /** The float positions' extent in {@code vertexData}, read without moving it; null for a non-float position. */
+    @Nullable
+    private static float[] boundsOf(CgVertexFormat format, ByteBuffer vertexData, int vertexCount) {
+        CgVertexAttribute position = null;
+        for (int i = 0; i < format.getAttributeCount(); i++) {
+            CgVertexAttribute attribute = format.getAttribute(i);
+            if (attribute.getSemantic() == CgVertexSemantic.POSITION) {
+                position = attribute;
+                break;
+            }
+        }
+        if (position == null || position.getType() != CgAttribType.FLOAT || vertexCount == 0) return null;
+        int components = Math.min(3, position.getComponents());
+        float[] box = {Float.MAX_VALUE, Float.MAX_VALUE, components < 3 ? 0f : Float.MAX_VALUE,
+                -Float.MAX_VALUE, -Float.MAX_VALUE, components < 3 ? 0f : -Float.MAX_VALUE};
+        ByteBuffer data = vertexData.duplicate().order(ByteOrder.nativeOrder());
+        int base = data.position(), stride = format.getStride();
+        for (int v = 0; v < vertexCount; v++) {
+            int at = base + v * stride + position.getOffset();
+            for (int c = 0; c < components; c++) {
+                float value = data.getFloat(at + c * Float.BYTES);
+                if (value < box[c]) box[c] = value;
+                if (value > box[c + 3]) box[c + 3] = value;
+            }
+        }
+        return box;
     }
 
     /**
@@ -141,6 +186,7 @@ public final class CgMesh {
     public static CgMesh upload(CgVertexFormat format, CgMeshTopology topology,
                                  ByteBuffer vertexData, ByteBuffer indexData, int indexCount, int indexType) {
         int vertexCount = vertexData.remaining() / format.getStride();
+        float[] bounds = boundsOf(format, vertexData, vertexCount);
 
         // ── Upload VBO ────────────────────────────────────────────────────
         int vbo = CgGL.glGenBuffers();
@@ -193,7 +239,7 @@ public final class CgMesh {
             CgGL.glBindBuffer(CgGL.GL_ELEMENT_ARRAY_BUFFER, 0);
         }
 
-        return new CgMesh(format, topology, vbo, ibo, vao, vertexCount, indexCount, indexType);
+        return new CgMesh(format, topology, vbo, ibo, vao, vertexCount, indexCount, indexType, bounds);
     }
 
     /**

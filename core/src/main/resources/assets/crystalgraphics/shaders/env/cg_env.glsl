@@ -1,9 +1,9 @@
 #pragma once
 // Naming: cg_PascalCase = GLSL identifiers; CG_UPPER_SNAKE = macros
 
-// Per-frame uniforms (view + proj + time + resolution + camera). Block index wired post-link via
-// glUniformBlockBinding. FIELD ORDER MUST MATCH CgRenderPipeline.FRAME_FORMAT -- std140 offsets are
-// positional, so a field added to one and not the other silently reads its neighbour.
+// Per-pass uniforms (view + proj + time + resolution + camera), one block per pass. Block index wired post-link
+// via glUniformBlockBinding. FIELD ORDER MUST MATCH CgPassConstants.FORMAT -- std140 offsets are positional, so a
+// field added to one and not the other silently reads its neighbour.
 layout(std140) uniform CgFrameBlock {
     mat4 cg_ViewMatrix;
     mat4 cg_ProjMatrix;
@@ -11,6 +11,7 @@ layout(std140) uniform CgFrameBlock {
     vec2 cg_Resolution;  // viewport size in pixels
     vec4 cg_CameraPos;   // world-space camera position in .xyz; .w unused, see CG_CAMERA_WORLD_POS
     vec4 cg_DepthParams; // x: 1 when depth is reversed (nearer is greater); y: 1 when clip depth runs 0..1
+    vec4 cg_WorldOrigin; // where world space's origin is in absolute coordinates: the camera, in a world pass
 };
 
 // -- Per-Instance Object Data (SSBO path: GL 4.3+/ARB) ----------------------
@@ -110,16 +111,13 @@ float cg_LinearEyeDepth(float windowDepth) {
 // -- Convenience Macros ------------------------------------------------------
 #define CG_MATRIX_MVP (cg_ProjMatrix * cg_ViewMatrix * CG_OBJECT_TO_WORLD)
 
-// Where the camera is, in world space.
-//
-// A UNIFORM, not derived. It was briefly `-(transpose(mat3(cg_ViewMatrix)) * cg_ViewMatrix[3].xyz)`,
-// which is correct -- a view matrix is rigid, so its inverse translation is -Rt * t -- and which costs a
-// 3x3 transpose and a matrix-vector multiply IN EVERY FRAGMENT THAT READS IT. The CPU already has the
-// answer: CgFrameData.deriveFromViewMatrix computes cameraPos once per frame, and it was being thrown
-// away. Uploading four floats a frame beats recomputing them a few million times.
-//
-// Still a macro at the call site, so shader code never touches the .xyz swizzle or the padding.
+// Where the camera is, in world space: a uniform, since the CPU has it and a fragment would otherwise invert the
+// view to get it. A world pass is camera-relative, as Minecraft draws, so there it is the origin.
 #define CG_CAMERA_WORLD_POS (cg_CameraPos.xyz)
+
+// A world-space point in absolute coordinates: for an effect that must not move with the camera. A float: at a
+// million blocks it resolves to 1/16.
+#define CG_ABSOLUTE_WORLD_POS(p) ((p) + cg_WorldOrigin.xyz)
 
 // -- Per-renderer environments ----------------------------------------------
 // Everything above is universal. A renderer's own macros are NOT: they live beside the buffer

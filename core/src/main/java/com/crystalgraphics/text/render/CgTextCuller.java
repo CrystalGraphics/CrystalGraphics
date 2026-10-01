@@ -1,6 +1,6 @@
 package com.crystalgraphics.text.render;
 
-import com.crystalgraphics.api.render.CgViewFrustum;
+import com.crystalgraphics.render.CgViewFrustum;
 import com.crystalgraphics.api.text.CgTextLayout;
 import org.joml.Matrix4f;
 

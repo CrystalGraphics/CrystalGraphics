@@ -224,7 +224,7 @@ public final class CgMaterialShaderCompiler {
      * which is why it went unnoticed for so long.</p>
      *
      * <p>Nothing calls this today: {@code CgMaterialShader.attemptShadowAutoGen} skips shadow generation
-     * entirely while {@code CgFrameData.SHADOWS_SUPPORTED} is false. Declaring the three uniforms in
+     * entirely while {@code CgMaterialShader.SHADOWS_SUPPORTED} is false. Declaring the three uniforms in
      * {@code cg_env.glsl} and flipping that flag are one change, enforced by
      * {@code CgShadowUniformContractTest}.</p>
      *
