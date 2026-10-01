@@ -2,8 +2,6 @@ package com.crystalgraphics.render;
 
 import com.crystalgraphics.api.render.CgRenderPipeline;
 import com.crystalgraphics.api.state.CgRenderState;
-import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
-import com.crystalgraphics.platform.gl.CgGlStateManager;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
@@ -40,21 +38,22 @@ import java.util.List;
  * CgImmediate.flush(chunk, CgOrder.SORTED);   // under the frame block the caller prepared; state left as drawn
  * }</pre>
  *
- * <p>A caller drawing many runs into one target of its own holds the flushes back and executes them together:</p>
+ * <p>A caller with a recording of its own routes the flushes into it instead, and executes it when it is done:</p>
  *
  * <pre>{@code
- * CgImmediate.deferInto(frameTarget);   // flushes while frameTarget is bound wait, scissor and frame block kept
- * ...                                   // draws, scissor changes, material changes: no execution
- * CgImmediate.drain();                  // before anything reads frameTarget, or binds another target over it
- * CgImmediate.stopDeferring();          // drains, and flushes execute at once again
+ * CgImmediate.recordInto(frame, frameTarget, CgLoad.clear(0, 0, 0, 0));   // flushes become chunks in frame's passes
+ * ...                                                                     // renderers draw as ever
+ * CgImmediate.recordInto(frame, layer, CgLoad.clear(0, 0, 0, 0));         // another target; the open pass ends
+ * CgImmediate.recordInto(frame, frameTarget, CgLoad.load());              // back, in a pass after the layer's
+ * CgImmediate.stopRecording();
+ * CgImmediate.execute(frame);
  * }</pre>
  *
  * <ul>
  *   <li>Render thread only, inside a frame. Nested ones close in reverse order, as try-with-resources does.</li>
  *   <li>A null render state leaves the pipelines' unset slots as the framebuffer has them.</li>
- *   <li>Deferring holds back only a flush made while the deferred target is bound and the state shadow knows the
- *       scissor: a flush into any other target executes at once, and one the shadow cannot place drains first.
- *       Raw GL drawn into the deferred target is not seen, so drain before it.</li>
+ *   <li>A routed chunk takes the scissor GL holds at its flush and the frame block the caller prepared; whatever is
+ *       bound is not consulted. {@link #begin} while routing throws: a recorder records.</li>
  * </ul>
  */
 public final class CgImmediate implements AutoCloseable {
@@ -72,92 +71,92 @@ public final class CgImmediate implements AutoCloseable {
     private CgImmediate() {
     }
 
-    // ── Deferral ──────────────────────────────────────────────────────────────
+    // ── Routing into a recording ─────────────────────────────────────────────
 
-    private static final CgRecording DEFERRED = new CgRecording();
-    private static final float[] DEFERRED_BLOCK = new float[CgPassConstants.FLOATS];
+    private static final float[] ROUTE_BLOCK = new float[CgPassConstants.FLOATS];
     private static final int[] SCISSOR = new int[4];
     @Nullable
-    private static CgFrameBuffer deferTarget;
+    private static CgRecording route;
     @Nullable
-    private static CgGraphTexture deferTexture;
+    private static CgGraphTexture routeTarget;
+    private static CgLoad routeLoad = CgLoad.load();
     @Nullable
-    private static CgRasterPass deferPass;
+    private static CgRasterPass routePass;
 
     /**
-     * Holds back every later {@link #flush} made while {@code target} is bound, until {@link #drain}. Drains what an
-     * earlier target held.
+     * Routes every later {@link #flush} into raster passes on {@code target} in {@code recording}, instead of executing
+     * it, and ends the pass that was open. The first pass takes {@code load} and later ones load what it drew; a
+     * clearing load opens its pass at once, so a target nothing draws into is still cleared.
      */
-    public static void deferInto(CgFrameBuffer target) {
-        if (target == deferTarget) return;
-        drain();
-        deferTarget = target;
-        deferTexture = CgGraphTexture.imported("deferred", target);
+    public static void recordInto(CgRecording recording, CgGraphTexture target, CgLoad load) {
+        endPass();
+        route = recording;
+        routeTarget = target;
+        routeLoad = load;
+        if (load.mask() != 0) {
+            frameBlock();
+            openPass();
+        }
     }
 
-    /** Executes what is held, into its target, restoring GL state after. Nothing held is a no-op. */
-    public static void drain() {
-        CgRasterPass pass = deferPass;
-        if (pass == null) return;
-        deferPass = null;
+    /** Ends the open pass: the next flush opens another on the same target, loading what this one drew. */
+    public static void endPass() {
+        if (routePass == null) return;
+        routePass.end();
+        routePass = null;
+    }
+
+    /** Ends the open pass, and flushes execute at once again. */
+    public static void stopRecording() {
+        endPass();
+        route = null;
+        routeTarget = null;
+    }
+
+    /** Stops routing without ending the open pass: for a recording its owner is discarding. */
+    public static void abandonRecording() {
+        routePass = null;
+        route = null;
+        routeTarget = null;
+    }
+
+    /** Builds and executes a sealed or sealable {@code recording} now, restoring GL state after. */
+    public static void execute(CgRecording recording) {
         try {
-            pass.end();
-            GRAPH.add(DEFERRED.seal());
+            GRAPH.add(recording.seal());
             CgFrame frame = BUILDER.build(GRAPH);
             GRAPH.clear();
             CgExecutor.execute(frame, true);
             BUILDER.recycle(frame);
         } finally {
             GRAPH.clear();
-            DEFERRED.reset();
         }
     }
 
-    /** Drains, and flushes execute at once again. */
-    public static void stopDeferring() {
-        drain();
-        deferTarget = null;
-        deferTexture = null;
-    }
-
-    /** Drops what is held without drawing it, and stops deferring: for a frame that failed part-way. */
-    public static void abandonDeferred() {
-        deferPass = null;
-        deferTarget = null;
-        deferTexture = null;
-        GRAPH.clear();
-        DEFERRED.reset();
-    }
-
-    /** Whether a draw into whatever is bound now would land on what the deferral holds, or might. */
-    private static boolean mayReachDeferred() {
-        if (deferTarget == null) return false;
-        int bound = CgGlState.manager().knownDrawFramebuffer();
-        return bound < 0 || bound == deferTarget.getId();
-    }
-
-    /** Holds {@code chunk} for the deferred target, or answers false when the shadow cannot say how to draw it. */
-    private static boolean defer(CgDrawChunk chunk, CgOrder order) {
-        CgGlStateManager state = CgGlState.manager();
-        if (order != CgOrder.SORTED || state.knownDrawFramebuffer() != deferTarget.getId()) return false;
-        int scissor = state.knownScissor(SCISSOR);
-        if (scissor < 0) return false;
+    /** The frame block the caller last prepared, into {@link #FRAME_BLOCK} and {@link #FRAME_CONSTANTS}. */
+    private static void frameBlock() {
         if (CgRenderPipeline.copyFrameBlock(FRAME_BLOCK)) FRAME_CONSTANTS.read(FRAME_BLOCK, 0);
         FRAME_CONSTANTS.write(FRAME_BLOCK, 0);
-        // A frame block that moved (a projection for another target size) starts a pass of its own: one pass is one
-        // block. Passes on one target run in the order they were recorded.
-        if (deferPass != null && !Arrays.equals(DEFERRED_BLOCK, FRAME_BLOCK)) {
-            deferPass.end();
-            deferPass = null;
+    }
+
+    private static void openPass() {
+        System.arraycopy(FRAME_BLOCK, 0, ROUTE_BLOCK, 0, CgPassConstants.FLOATS);
+        routePass = route.raster(routeTarget, routeLoad, FRAME_CONSTANTS, null, CgOrder.SORTED);
+        routeLoad = CgLoad.load();
+    }
+
+    /** Adds {@code chunk} to the routed target's pass, under the scissor GL holds now and the frame block. */
+    private static void routeChunk(CgDrawChunk chunk) {
+        frameBlock();
+        // One pass is one frame block: a projection that moved (another target size) starts a pass of its own.
+        if (routePass != null && !Arrays.equals(ROUTE_BLOCK, FRAME_BLOCK)) endPass();
+        if (routePass == null) openPass();
+        if (CgGlState.manager().knownScissor(SCISSOR) == 1) {
+            routePass.scissor(SCISSOR[0], SCISSOR[1], SCISSOR[2], SCISSOR[3]);
+        } else {
+            routePass.noScissor();
         }
-        if (deferPass == null) {
-            System.arraycopy(FRAME_BLOCK, 0, DEFERRED_BLOCK, 0, CgPassConstants.FLOATS);
-            deferPass = DEFERRED.raster(deferTexture, CgLoad.load(), FRAME_CONSTANTS, null, CgOrder.SORTED);
-        }
-        if (scissor == 1) deferPass.scissor(SCISSOR[0], SCISSOR[1], SCISSOR[2], SCISSOR[3]);
-        else deferPass.noScissor();
-        deferPass.add(chunk);
-        return true;
+        routePass.add(chunk);
     }
 
     /** Starts one, in painter's order, leaving render state as it is. */
@@ -167,7 +166,7 @@ public final class CgImmediate implements AutoCloseable {
 
     /** Starts one with the pass's render state and order. */
     public static CgImmediate begin(CgPassConstants constants, @Nullable CgRenderState state, CgOrder order) {
-        if (mayReachDeferred()) drain();
+        if (route != null) throw new IllegalStateException("an immediate draw while flushes are routed into a recording");
         CgImmediate immediate = acquire(constants, state, order);
         immediate.recording.chunks().begin();
         return immediate;
@@ -180,9 +179,9 @@ public final class CgImmediate implements AutoCloseable {
      */
     public static void flush(CgDrawChunk chunk, CgOrder order) {
         if (chunk.draws() == 0) return;
-        if (deferTarget != null) {
-            if (defer(chunk, order)) return;
-            if (mayReachDeferred()) drain();
+        if (route != null) {
+            routeChunk(chunk);
+            return;
         }
         if (CgRenderPipeline.copyFrameBlock(FRAME_BLOCK)) FRAME_CONSTANTS.read(FRAME_BLOCK, 0);
         CgImmediate immediate = acquire(FRAME_CONSTANTS, null, order);
