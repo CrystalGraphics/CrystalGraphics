@@ -12,7 +12,6 @@ import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.platform.service.CgLifecycleService;
 import com.crystalgraphics.api.material.CgMaterialRegistry;
 import com.crystalgraphics.render.world.CgWorldRenderer;
-import com.crystalgraphics.api.render.CgRenderPipeline;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgQuadIndexBuffer;
@@ -208,7 +207,6 @@ public final class CgGraphicsLifecycle {
                 try (CgGlScope ignored = CgGlState.saveAll()) {
                     resizeTargets(width, height);
                     CgBindingPoints.init(CgCapabilities.detect());
-                    CgRenderPipeline.init();
                     CgFallbackTextures.init();
                     warmUpDeferredStartupCosts();
                 }
@@ -324,7 +322,6 @@ public final class CgGraphicsLifecycle {
     private static void resizeTargets(int width, int height) {
         CgFrameBufferRegistry.get().onResize(width, height);
         CgTextRendererRegistry.get().onResize(width, height);
-        CgRenderPipeline.onSceneResize();
 
         currentWidth = width;
         currentHeight = height;
@@ -509,7 +506,6 @@ public final class CgGraphicsLifecycle {
         // before the registries they reference are torn down.
         CgRenderDemo.INSTANCE.dispose();
         CgWorldRenderer.get().release();
-        CgRenderPipeline.destroy();
 
         // Step 8b: Shader-graph preview targets.
         //

@@ -490,7 +490,7 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
      *       on. Larger uploads are streams, which change on nearly every upload and would pay a compare as long as
      *       the copy it saves, so they are always sent.</li>
      *   <li><b>A frame-local buffer is re-bound here</b>, skipped or not: a binding made before it -- as
-     *       {@code CgRenderPipeline.prepareFrame()} binds the object buffer before a preview writes it -- names
+     *       one made by a caller before writing the buffer -- names
      *       the previous upload's bytes. Re-binding keeps the write-then-draw idiom correct with no bind at the
      *       caller.</li>
      * </ul>

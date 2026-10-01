@@ -1213,7 +1213,7 @@ public final class CgGlStateManager {
      * A write outside them is never restored -- a <b>leak</b>, reported with the code that wrote it:</p>
      *
      * <pre>{@code
-     * [crystalgraphics] state.roundTrip: leaked cullFace at CgRenderPipeline.executeOpaquePass:340 (depth 1) -- no open scope declares its domain
+     * [crystalgraphics] state.roundTrip: leaked cullFace at CgExecutor.raster:186 (depth 1) -- no open scope declares its domain
      * }</pre>
      *
      * <p>This is what makes the host's own state manager safe to reason about: a domain every write of ours

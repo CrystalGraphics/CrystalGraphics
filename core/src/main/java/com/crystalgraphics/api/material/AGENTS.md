@@ -14,7 +14,7 @@ This is the top of the CrystalShader material stack.
 
 | Type | Role |
 |------|------|
-| `CgMaterial` | User-facing material handle backed by a shared `CgMaterialShader` asset. `load(path)` returns the cached instance per path. `newInstance(path)` creates a fresh non-cached instance. `bind()` activates the Forward pass with enabled keywords; detects hot-reload via revision check, then delegates shared bind logic to private `doBind(CgShader, CgRenderPassVariant)`. `bindForPass(CgRenderPassVariant)` activates a specific pass variant (FORWARD uses active keywords; SHADOW/DEPTH use empty keywords); also delegates to `doBind`. `doBind` (private) owns: UBO wiring, GL state save, UBO upload, sampler binding, render state apply, and `shader.bind()`. `drawChain(CgRenderPassVariant, Runnable)` executes all chained passes in authored order — use this instead of `bindForPass`+`unbind` for correct multi-pass support. `getPassRenderState(CgRenderPassVariant)` returns the render state for the given pass. `hasShadowCasterPass()` — returns `castShadows` parse flag AND `renderQueue < TRANSPARENT` (intent, not compile state). `hasDepthPass()` — true when an explicit authored `[Depth]` pass is present in the parsed result (parse-state only, does NOT include auto-generated depth variants). `hasCompiledDepthPass()` — true when a compiled Depth GL program exists in the cache (compile-state); includes both explicit and auto-generated depth variants from `recompile()`. This is the correct query for `CgDepthPrepassRenderer` to route to `bindForPass(DEPTH)`. Always false for transparent materials. `getMaterialId()` — stable per-instance integer ID from an `AtomicInteger` counter; used by `CgRenderCommandQueue.submit()` as the sort key materialId (replaces `identityHashCode` which can collide). `enableKeyword(name)` / `disableKeyword(name)` toggle feature flags; throws for undeclared names. `unbind()` deactivates shader using `lastBoundShader`. `delete()` frees only the per-instance property UBO. `attach(CgShaderBuffer, macroName)` / `detach(...)` / `attach(CgUniformBuffer)` / `detachUbo(...)` delegate to `CgMaterialShader`. |
+| `CgMaterial` | User-facing material handle backed by a shared `CgMaterialShader` asset. `load(path)` returns the cached instance per path. `newInstance(path)` creates a fresh non-cached instance. `bind()` activates the Forward pass with enabled keywords; detects hot-reload via revision check, then delegates shared bind logic to private `doBind(CgShader, CgRenderPassVariant)`. `bindForPass(CgRenderPassVariant)` activates a specific pass variant (FORWARD uses active keywords; SHADOW/DEPTH use empty keywords); also delegates to `doBind`. `doBind` (private) owns: UBO wiring, GL state save, UBO upload, sampler binding, render state apply, and `shader.bind()`. `drawChain(CgRenderPassVariant, Runnable)` executes all chained passes in authored order — use this instead of `bindForPass`+`unbind` for correct multi-pass support. `getPassRenderState(CgRenderPassVariant)` returns the render state for the given pass. `hasShadowCasterPass()` — returns `castShadows` parse flag AND `renderQueue < TRANSPARENT` (intent, not compile state). `hasDepthPass()` — true when an explicit authored `[Depth]` pass is present in the parsed result (parse-state only, does NOT include auto-generated depth variants). `hasCompiledDepthPass()` — true when a compiled Depth GL program exists in the cache (compile-state); includes both explicit and auto-generated depth variants from `recompile()`. Always false for transparent materials. `getMaterialId()` — stable per-instance integer ID from an `AtomicInteger` counter; the material slot of `CgWorldRenderer`'s sort key. `enableKeyword(name)` / `disableKeyword(name)` toggle feature flags; throws for undeclared names. `unbind()` deactivates shader using `lastBoundShader`. `delete()` frees only the per-instance property UBO. `attach(CgShaderBuffer, macroName)` / `detach(...)` / `attach(CgUniformBuffer)` / `detachUbo(...)` delegate to `CgMaterialShader`. |
 | `CgRenderPassVariant` | Public enum bridging orchestrators to per-pass LightMode routing. `FORWARD("Forward")`, `SHADOW("ShadowCaster")`, `DEPTH("Depth")`. `lightModeName()` returns the canonical LightMode tag value. Used by `bindForPass(CgRenderPassVariant)`, `getPassRenderState(CgRenderPassVariant)`, and `hasShadowCasterPass()`/`hasDepthPass()`. |
 | `CgAttachedBuffer` | Immutable descriptor for a user-attached SSBO/TBO or UBO buffer. Created via `CgAttachedBuffer.of(buffer, macroName)` (SSBO/TBO, STD430) or `CgAttachedBuffer.of(CgUniformBuffer)` (UBO, STD140). `isUbo()` returns `true` for UBO entries (macroName is null). SSBO/TBO fields: `buffer`, `macroName`, `structName` (= `format.getGlslName()`), `ssboArrayName` (`_cg_{lowerFirst}Arr`), `tboGetterName` (`_cg_get{structName}`). UBO entries: only `buffer` is set; macroName/structName/ssboArrayName/tboGetterName are all null. Block/sampler/UBO block name is always `buffer.getName()` — required for `wireShader()`. |
 | `CgMaterialRegistry` | Singleton load/reload/delete lifecycle manager. `get()` returns the singleton. `getOrCreate(String)` / `getOrCreate(CgMaterialKey)` check cache; on miss call `CgMaterial.create()` (which uses `CgMaterialShaderRegistry` internally), cache, and return. `reloadAll()` delegates to `CgMaterialShaderRegistry.get().reloadAll()` — marks all shader assets dirty; materials detect revision change on next `bind()`. `deleteAll()` deletes all cached material instances (freeing per-instance UBOs), then cascades to `CgMaterialShaderRegistry.get().deleteAll()` to free GL shader programs. Registered for teardown in `CgGraphicsLifecycle.destroyContext()`. |
@@ -26,25 +26,14 @@ This is the top of the CrystalShader material stack.
 
 ## Key API
 
-### CgRenderPipeline — Per-Frame Setup
+### Drawing a material in the world
 
-Per-frame orchestration is owned by `CgRenderPipeline` in `api/render/`. The material API itself
-does not handle frame-level UBO or object buffer management. See [`api/render/AGENTS.md`](../render/AGENTS.md)
-for the full lifecycle and usage pattern.
+A material does not own the frame block or the object buffer: a recorded pass carries its constants, and
+the executor binds both. Into Minecraft's world, submit to `CgWorldRenderer` (see
+[`render/world/AGENTS.md`](../../render/world/AGENTS.md)); anywhere else, record through `CgImmediate`.
 
 ```java
-CgRenderPipeline pipe = CgRenderPipeline.getInstance();
-CgFrameData fd = pipe.getFrameData();
-fd.viewMatrix.set(viewBuf); fd.projMatrix.set(projBuf);
-fd.timeSecs = elapsedSecs; fd.viewportW = w; fd.viewportH = h;
-fd.deriveFromViewMatrix();
-
-CgRenderCommand cmd = pipe.acquireCommand();
-cmd.modelMatrix.translation(x, y, z);
-cmd.worldAabb[0] = x-r; cmd.worldAabb[3] = x+r;  // ... etc.
-cmd.mesh = myMesh; cmd.material = myMaterial;
-pipe.submit(cmd);
-pipe.execute(partialTicks);
+CgWorldRenderer.get().draw(mesh, material).at(x, y, z).custom(0, r, g, b, 1f).submit();
 ```
 
 > **Reserved texture unit**: `CgBindingPoints.DEPTH_TEXTURE_UNIT` is reserved by the engine for
@@ -187,7 +176,7 @@ Internal `CgMaterial.create(resourcePath)` steps (package-private, only called b
 5. `new CgShaderPreprocessor().process(...)` — resolve `#include "cg_env.glsl"` (once)
 6. `CgShaderFactory.fromSource(vert, frag, CgVertexFormat.SPATIAL)` — compile + link
 7. `mat.setResourcePath(resourcePath)` — store path for hot-reload
-8. `CgRenderPipeline.getInstance().frameBuffer().wireToShader(shader)` — wire `CgFrameBlock` UBO block index
+8. `wireShaderBuffers` — wire `CgFrameBlock` and `CgObjectDataBuffer` to their reserved slots by name
 9. Apply property defaults from `Properties` block
 
 Throws `IllegalStateException` if compile/link fails — never returns a broken material.
@@ -286,7 +275,7 @@ texture unit is now derived from `bindingLocation` directly.
 ## Ownership Rules
 
 - `CgMaterialRegistry` owns all `CgMaterial` instances it creates. Call `CgMaterialRegistry.get().deleteAll()` to free them.
-- `CgGraphicsLifecycle.destroyContext()` calls `CgMaterialRegistry.get().deleteAll()` and `CgRenderPipeline.destroy()` automatically.
+- `CgGraphicsLifecycle.destroyContext()` calls `CgMaterialRegistry.get().deleteAll()` automatically.
 - Callers that hold a reference to a material must not call `delete()` on it directly — the registry owns teardown.
 
 ## User-Attached Buffer API
@@ -337,7 +326,7 @@ material.detachUbo("SceneParams");
 
 ### What NOT to pass
 
-Do NOT pass engine pipeline buffers (`CgRenderPipeline.objectBuffer()`, `frameBuffer()`) — those are declared in `cg_env.glsl` and wired automatically by the engine. Passing them here causes duplicate GLSL declarations that fail to compile.
+Do NOT pass the engine's own blocks (`CgFrameBlock`, `CgObjectDataBuffer`) — those are declared in `cg_env.glsl` and wired automatically by the engine. Passing them here causes duplicate GLSL declarations that fail to compile.
 
 ### GLSL symbol naming (SSBO/TBO)
 

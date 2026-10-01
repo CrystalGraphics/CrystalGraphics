@@ -381,7 +381,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
      * {@code #pragma cg_use} token with a reference to this method. Being a method reference it
      * does not trigger this class's static initialization at registration time — which matters,
      * because {@link #GPU_BUFFER} allocates against {@code CgBindingPoints} and is only valid after
-     * {@code CgRenderPipeline.init()}.</p>
+     * {@code CgGraphicsLifecycle.initContext}.</p>
      */
     public static CgShaderBuffer instanceBuffer() {
         return GPU_BUFFER;

@@ -160,14 +160,9 @@ public class CgTextRenderer {
     public static final CgMaterial TEXT_MATERIAL = CgMaterial.load(TEXT_SHADER);
 
     /**
-     * Text-only per-renderer uniform data — currently just {@code u_Projection}. Deliberately
-     * kept as its own small UBO rather than reusing the engine's shared per-frame
-     * {@code CgFrameData}/{@code cg_ProjMatrix}: that block is frame-owner state (set once by
-     * whoever actually drives the frame — a 3D scene, the MC render hook, etc.), and a text
-     * renderer overwriting it on every flush would clobber the real projection for anything
-     * else sharing that frame. {@code CgTextRenderContext}'s projection is renderer-local (often
-     * an orthographic UI projection with nothing to do with the scene camera), so it gets its
-     * own private slot instead. Also the natural home for any future text-only uniform that
+     * Text-only per-renderer uniform data — currently just {@code u_Projection}: a renderer's projection is its own
+     * (an orthographic UI one, as often as not), where the pass's {@code cg_ProjMatrix} is whoever records the pass.
+     * Also the natural home for any future text-only uniform that
      * isn't a good fit for either {@link #TEXT_MATERIAL}'s Properties block (per-batch-key, not
      * per-draw) or {@code CgQuadRenderer}'s per-instance record (per-glyph, not per-renderer) —
      * {@code u_ModelView} was here before this migration but is gone now: model-view is baked

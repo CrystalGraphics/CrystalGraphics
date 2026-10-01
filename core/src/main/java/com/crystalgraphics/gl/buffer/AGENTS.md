@@ -36,8 +36,8 @@ from `CgCapabilities.detect()`, and a shader buffer takes `subdata` if forced, e
 Which shader buffers go on the ring is a question of lifetime, not type: every frame that reads the buffer
 uploads it first. Instance data meets it by being written just before its draw. A block written once meets it
 when every reader passes a point that copies it into the frame: `CgMaterial.bind` does, for the material's
-properties (uploaded only when their bytes changed, or on its first bind of a frame) and for the frame block
-(`CgRenderPipeline.carryFrameBlock`); the text renderer re-uploads its block per frame. Orphaning stays for a
+properties (uploaded only when their bytes changed, or on its first bind of a frame); the frame block is a
+recorded pass's constants, packed into the frame's binding table; the text renderer re-uploads its block per frame. Orphaning stays for a
 TBO — `glTexBuffer` reads at 0, and the TBO path runs where `glTexBufferRange` is missing (Mac 4.1, older
 Intel) — and for a mod's own registry buffers, whose readers pass no such point. The copy is not made at a
 frame's first host section: on Minecraft's Vulkan host that is the frame end's, before Minecraft's submit,

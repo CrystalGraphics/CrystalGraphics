@@ -16,7 +16,7 @@ import static org.junit.Assert.*;
  *
  * <h3>Why the block is so much shorter than Unity's</h3>
  * <p>No lighting model exists: {@code CgFrameBlock} carries no light term and
- * {@code CgFrameData.hasDirectionalLight()} returns false. Metallic, Smoothness, Ambient Occlusion,
+ * the engine has no light ({@code CgMaterialShader.SHADOWS_SUPPORTED} is false). Metallic, Smoothness, Ambient Occlusion,
  * Emission and a tangent-space Normal would each be a port that accepts a wire and changes no pixel.
  * {@link #theBlocksOfferOnlyWhatSomethingConsumes()} pins that decision so it is a stated one rather
  * than a gap someone fills in by reflex.</p>

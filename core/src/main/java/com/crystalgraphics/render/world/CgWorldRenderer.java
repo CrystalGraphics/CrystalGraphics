@@ -10,6 +10,7 @@ import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.mesh.CgMesh;
+import com.crystalgraphics.mc.compat.CgIrisCompat;
 import com.crystalgraphics.render.CgViewFrustum;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
@@ -24,6 +25,8 @@ import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import org.joml.Vector3f;
@@ -64,6 +67,7 @@ public final class CgWorldRenderer {
     /** Where the world renderer records in each world stage: after renderers at the default order, which may submit. */
     public static final int ORDER = 1000;
 
+    private static final Logger LOGGER = LogManager.getLogger("CgWorldRenderer");
     private static final CgWorldRenderer INSTANCE = new CgWorldRenderer();
 
     private static final CgRenderState OPAQUE_STATE = CgRenderState.builder()
@@ -107,6 +111,7 @@ public final class CgWorldRenderer {
     private final IdentityHashMap<CgRenderState, CgRenderState> depthOnly = new IdentityHashMap<>();
 
     private boolean installed;
+    private boolean irisWarned;
 
     private CgWorldRenderer() {
     }
@@ -270,7 +275,13 @@ public final class CgWorldRenderer {
             for (FrameListener listener : listeners) listener.frame(view);
         }
         if (count == 0) return;
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, which == OPAQUE ? "world.opaque" : "world.transparent")) {
+        if (!irisWarned && CgIrisCompat.isShaderPackActive()) {
+            irisWarned = true;
+            LOGGER.warn("An Iris/Oculus shader pack is active: the world renderer draws into the main framebuffer, "
+                    + "outside its deferred G-buffer, so its geometry is unlit under a deferred pack. cg_DepthBuffer "
+                    + "remains valid.");
+        }
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, which == OPAQUE ? "world.recordOpaque" : "world.recordTransparent")) {
             prepare(view);
             boolean prepass = false, sceneDepth = false;
             int drawn = 0;

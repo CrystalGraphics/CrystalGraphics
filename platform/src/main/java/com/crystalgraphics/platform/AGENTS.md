@@ -139,7 +139,7 @@ CgTrackedGLBackend gl = new CgTrackedGLBackend(device, new ShadercGlslCompiler()
 CgGL.init(gl);
 CgCapabilities.init(new CgTrackedGLContext());
 CgGlState.setProvider(new CgTrackedStateProvider(gl));
-CgRenderPipeline.init();            // and anything else that creates objects: after the backend is in
+CgGraphicsLifecycle.initContext(w, h);   // and anything else that creates objects: after the backend is in
 // ... the engine draws through CgGL, as on GL ...
 gl.endFrame();                      // once a frame: ends the open pass and the device's frame
 ```

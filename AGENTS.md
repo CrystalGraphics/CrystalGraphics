@@ -62,7 +62,7 @@ submodule (`gl-debug-harness/`, Java 25) and runs from CrystalGUI's root; author
 
 ```bash
 ./gradlew :gl-debug-harness:runHarness --args="--list"
-./gradlew :gl-debug-harness:runHarness --args="--mode=forward-renderer"       # CgRenderPipeline end-to-end
+./gradlew :gl-debug-harness:runHarness --args="--mode=forward-renderer"       # CgWorldRenderer through both world stages
 ./gradlew :gl-debug-harness:runHarness --args="--mode=material-dual-path"     # CgMaterial shader compilation
 ./gradlew :gl-debug-harness:runHarness --args="--mode=instancing-test"        # Instanced draw
 ./gradlew :gl-debug-harness:runHarness --args="--mode=attached-buffer-stress" # SSBO/TBO attach
@@ -189,7 +189,7 @@ Fabric's dev mod is `tasks.jar` bundling each module's `downgradedJar` —
 | I need to… | Jump to section | Primary package guide |
 |---|---|---|
 | Write or load a `.shader` material | [CrystalShader Pipeline](#crystalshader-material-pipeline) | `api/material/AGENTS.md` |
-| Submit geometry to the render pipeline | [CgRenderPipeline Usage](#cgrenderpipeline--per-frame-usage) | `api/render/AGENTS.md` |
+| Draw meshes into the world | [CgWorldRenderer](#cgworldrenderer--drawing-into-the-world) | `render/world/AGENTS.md` |
 | Create a framebuffer (FBO) for post-processing | [Framebuffers](#framebuffers) | `api/framebuffer/AGENTS.md` |
 | Load or build a 3D mesh | [Meshes](#meshes) | `gl/mesh/AGENTS.md` |
 | Create or load a texture | [Textures](#textures) | `api/texture/AGENTS.md` |
@@ -336,6 +336,7 @@ A `layout(std140) uniform CgFrameBlock` wired post-link by the engine. Available
 | `cg_Time` | `vec4` | `(t/20, t, t×2, t×3)` — seconds |
 | `cg_Resolution` | `vec2` | Viewport size in pixels |
 | `cg_DepthParams` | `vec4` | `x` 1 when the pass's depth is reversed (Minecraft 26.2's world), `y` 1 when its clip depth runs 0..1. Read through `cg_LinearEyeDepth`, not directly |
+| `cg_WorldOrigin` | `vec4` | Where world space's origin is in absolute coordinates: the camera, in a camera-relative world pass. Read through `CG_ABSOLUTE_WORLD_POS(p)` |
 
 **Scene samplers** — auto-bound by the engine before every material draw; do not declare or bind these yourself:
 
@@ -381,7 +382,7 @@ Shaders never branch on the path — the macro surface is identical regardless:
 |---|---|---|
 | `CG_OBJECT_TO_WORLD` | `CG_OBJECT_DATA.modelMatrix` | Model → world transform |
 | `CG_NORMAL_MATRIX` | `mat3(CG_OBJECT_DATA.normalMatrix)` | Upper-left 3×3 — use for transforming normals |
-| `CG_OBJECT_CUSTOM0`–`CG_OBJECT_CUSTOM3` | `CG_OBJECT_DATA.custom0` … `.custom3` | Per-instance `vec4` slots — written via `cmd.custom0`…`cmd.custom3` on `CgRenderCommand` |
+| `CG_OBJECT_CUSTOM0`–`CG_OBJECT_CUSTOM3` | `CG_OBJECT_DATA.custom0` … `.custom3` | Per-instance `vec4` slots — a world draw's `custom(slot, …)` |
 | `CG_INSTANCE_ID` | `gl_InstanceID + cg_InstanceBase` (vertex) / `cg_InstanceId` (fragment) | Instance index; bridged as `flat in int cg_InstanceId` varying so it's accessible in fragment. `cg_InstanceBase` is where a batch's instances start in its kind's upload — 0 unless a frame-graph executor sets it (`CgPipeline.instanceBase`) |
 
 ### Vertex Attribute Aliases
@@ -394,9 +395,9 @@ Available in the vertex stage only. Locations are bound by `CgShaderFactory` bef
 | `cg_TexCoord0` | `vec2` | 1 |
 | `cg_Normal` | `vec3` | 2 |
 
-### Why objectBuffer and frameBuffer Must NOT Be Attached
+### Why the Engine's Blocks Must NOT Be Attached
 
-`cg_env.glsl` already declares `CgObjectDataBuffer` and `CgFrameBlock`. The engine wires them automatically post-link. **Never call `material.attach()` with `CgRenderPipeline.objectBuffer()` or `frameBuffer()`** — it produces duplicate GLSL declarations and a compile failure. Only user-owned buffers belong in `attach()`.
+`cg_env.glsl` already declares `CgObjectDataBuffer` and `CgFrameBlock`. The engine wires them automatically post-link. **Never `material.attach()` a buffer named for either** — it produces duplicate GLSL declarations and a compile failure. Only user-owned buffers belong in `attach()`.
 
 ### Stage defines — `CG_VERTEX_STAGE` / `CG_FRAGMENT_STAGE`
 
@@ -572,7 +573,7 @@ The `.shader` format handles **pass type routing** via `LightMode` tags — one 
 
 `CgMaterial.nextPass` handles the **orthogonal axis**: the same mesh drawn twice (or more) for decorative effects — outline, additive glow, stencil fill. Each entry in the chain is a fully independent `CgMaterial` with its own shader, render state, and properties. This is NOT Unity built-in multi-pass (multiple `Pass` blocks in one shader file). It is analogous to Godot's `next_pass` but with deterministic immediate ordering instead of Godot's sort-queue execution, which has known ordering bugs.
 
-`drawChain` traverses the chain. The pipeline renderers (`CgForwardRenderer`, `CgTransparentRenderer`) call it automatically — no manual traversal needed when using `CgRenderPipeline.submit()`.
+`drawChain` traverses the chain for a hand-bound draw; a recorded one draws each link as its own draw on the same instances — `CgWorldRenderer` does it for every submitted draw.
 
 ```java
 // Outline effect: chain a second material that draws enlarged with inverted normals
@@ -585,7 +586,6 @@ base.drawChain(CgRenderPassVariant.FORWARD, () -> mesh.drawInstanced(N));
 // ^ draws base first, then outline immediately after with the same N instances
 ```
 
-`CgPreDrawHook` on a `CgRenderCommand` fires **once before `drawChain`**, not inside it. It does NOT re-fire for `nextPass` chain links.
 
 For explicit single-pass control (no chain):
 
@@ -689,50 +689,51 @@ CgHostView world = CgRenderStage.WORLD_OPAQUE.host().view();
   registration order; any thread may register.
 - `frame.callback(name, body)` draws immediately at its place in the stage, for work not yet recorded.
 
-## CgRenderPipeline — Per-Frame Usage
+## CgWorldRenderer — drawing into the world
+
+`CgWorldRenderer` draws meshes at both world stages under the host's camera. A draw is submitted at an absolute
+position in doubles and made camera-relative at record time, as Minecraft draws; it lives for the frame it was
+submitted in.
 
 ```java
-// 1. Init once (on GL context creation)
-CgRenderPipeline.init();
-CgMaterial mat = CgMaterial.load("mymod:shaders/terrain.shader");
-CgMesh mesh = CgMesh.upload(CgMeshBuilder.unitCube(CgVertexFormat.SPATIAL));
-
-// 2. Per-frame — populate frame data
-CgRenderPipeline pipe = CgRenderPipeline.getInstance();
-CgFrameData fd = pipe.getFrameData();
-fd.viewMatrix.set(viewBuf);
-fd.projMatrix.set(projBuf);
-fd.timeSecs = elapsedSeconds;
-fd.viewportW = width;  fd.viewportH = height;
-fd.deriveFromViewMatrix();   // derives cameraPos, cameraForward from viewMatrix
-
-// 3. Submit render commands
-CgRenderCommand cmd = pipe.acquireCommand();
-cmd.mesh = mesh;  cmd.material = mat;
-cmd.modelMatrix.translation(x, y, z);
-cmd.worldAabb[0] = x-r; cmd.worldAabb[1] = y-r; cmd.worldAabb[2] = z-r;
-cmd.worldAabb[3] = x+r; cmd.worldAabb[4] = y+r; cmd.worldAabb[5] = z+r;
-pipe.submit(cmd);
-
-// 4. Execute — MC loaders call the split API; harness uses the convenience wrapper:
-pipe.executeOpaquePass(partialTicks, sourceFboId); // after MC entity render; blits depth snapshot
-pipe.executeTransparentPass();                     // after MC water/translucent render
-pipe.endFrame();
-// pipe.execute(partialTicks) is a convenience wrapper (harness / single-hook paths only)
-
-// 5. Teardown (CgGraphicsLifecycle.destroyContext() calls this automatically)
-CgRenderPipeline.destroy();
+CgWorldRenderer world = CgWorldRenderer.get();
+world.onFrame(view -> {                                // once a frame, before the world records
+    world.draw(mesh, material)                         // scratch: build and submit in one expression
+         .at(x, y, z)                                  // absolute, in doubles
+         .transform(rotationScale)                     // optional, about that position
+         .custom(0, r, g, b, a)                        // CG_OBJECT_CUSTOM0
+         .submit();
+});
+world.draw(pane, glass).at(x, y, z).queue(CgRenderQueue.TRANSPARENT).submit();   // overrides the material's queue
 ```
 
-**Execute sequence**: depth snapshot blit (one `glBlitFramebuffer` from MC's main FBO before first opaque call) → sort (opaque front-to-back, transparent back-to-front) → UBO upload → depth prepass → opaque forward pass → transparent pass. All GL state is saved/restored via `CgGlState.saveAll()` around each pass block.
+- **Culled** against the view by the mesh's bounds (`CgMesh.bounds()`, computed at upload), and **sorted**
+  (`CgSortKey`): opaque by material, front to back, then mesh; transparent back to front. Equal neighbours instance.
+- `WORLD_OPAQUE` records the depth snapshot (only when a drawn material reads `cg_DepthBuffer`), a prepass (materials
+  with a depth pass, and alpha-tested ones) and the opaque pass; `WORLD_TRANSPARENT` the transparent pass. Every world
+  pass binds the snapshot as a pass texture.
+- Shaders see **camera-relative** world space: `CG_CAMERA_WORLD_POS` is the origin, and `CG_ABSOLUTE_WORLD_POS(p)`
+  adds `cg_WorldOrigin` back for an effect that must not move with the camera.
+- A host drawing the world twice in a frame (1.7.10's anaglyph) fires both stages twice; each draw is drawn under
+  each firing's view.
 
-**Per-object buffer layout** (`CgRenderPipeline.OBJECT_FORMAT`, STD430, 48 floats):
+**Object record** (`CgInstanceKind.OBJECT`, STD430, 48 floats): `modelMatrix` 0–15, `normalMatrix` 16–31 (the
+shader reads its 3×3), `custom0`–`custom3` 32–47.
 
-| Field | Type | Float offset |
-|---|---|---|
-| `modelMatrix` | mat4 | 0–15 |
-| `normalMatrix` | mat4 | 16–31 (shader reads upper-left 3×3 as mat3) |
-| `custom0`–`custom3` | vec4 | 32–47 |
+**An immediate object draw** — a preview, a harness scene — goes through `CgImmediate` with its own pass
+constants:
+
+```java
+CgPassConstants camera = new CgPassConstants();
+camera.view.set(view);
+camera.projection.set(projection);
+camera.resolution(w, h).time(CgFrameClock.seconds()).cameraFromView();
+try (CgImmediate draw = CgImmediate.begin(camera)) {
+    draw.chunks().draw(material.pipeline(CgInstanceKind.OBJECT), material.captureBindings(draw.bindings()), mesh);
+    int at = draw.chunks().instance();
+    model.get(draw.chunks().data(), at);                       // then the normal matrix at +16, custom at +32
+}
+```
 
 ## GLSL Standard Library
 
@@ -760,7 +761,7 @@ Located at `src/main/resources/assets/crystalgraphics/shaders/lib/`. All files u
 
 Use with `#include "crystalgraphics:shaders/lib/color.glsl"` etc. (`#pragma once` prevents double-expansion when multiple files include `math.glsl`.)
 
-**Package guides for this layer**: `api/material/AGENTS.md` · `api/render/AGENTS.md` · `render/AGENTS.md` · `render/pipeline/AGENTS.md` · `gl/material/AGENTS.md` · `gl/material/parse/AGENTS.md`
+**Package guides for this layer**: `api/material/AGENTS.md` · `render/AGENTS.md` · `render/world/AGENTS.md` · `render/stage` (its classes' javadoc) · `gl/material/AGENTS.md` · `gl/material/parse/AGENTS.md`
 
 ---
 
@@ -866,7 +867,7 @@ quad and curve instances, the object buffer, the material blocks (uploaded at ev
 (copied in at a frame's first material bind) and the text block. A TBO takes `RETAINED`'s storage whatever is
 asked. `gl/buffer/AGENTS.md` has the tiers.
 
-Do NOT pass engine pipeline buffers (`CgRenderPipeline.objectBuffer()`, `frameBuffer()`) — declared in `cg_env.glsl`, wired automatically. Duplicate declarations cause compile failure.
+Do NOT attach the engine's own blocks (`CgFrameBlock`, `CgObjectDataBuffer`) — declared in `cg_env.glsl`, wired automatically. Duplicate declarations cause compile failure.
 
 **Package guides**: `api/buffer/AGENTS.md` · `gl/buffer/shader/AGENTS.md`
 
@@ -961,7 +962,7 @@ try (CgGlScope scope = CgGlState.save(CgGlSlot.FBO, CgGlSlot.PROGRAM)) {
 // Convenience shorthands:
 CgGlState.saveProgram()   // → save(PROGRAM)
 CgGlState.saveFull()      // → save(FBO, PROGRAM, TEXTURES, VERTEX_INPUT)
-CgGlState.saveAll()       // → all 16 slots (used by CgRenderPipeline.execute())
+CgGlState.saveAll()       // → all 16 slots (used by CgExecutor around a frame)
 ```
 
 `CgGlSlot` constants: `FBO` · `PROGRAM` · `TEXTURES` · `VERTEX_INPUT` · `BLEND` · `DEPTH` · `CULL` · `STENCIL` · `COLOR_MASK` · `VIEWPORT` · `SCISSOR` · `POLYGON_OFFSET` · `ALPHA_TEST` · `LINE_WIDTH` · `POLYGON_MODE` · `POINT_SIZE`
@@ -1051,7 +1052,7 @@ The single coordination point for GL context init and teardown. **Call these and
 ```java
 // On GL context creation (GL thread):
 CgGraphicsLifecycle.initContext(viewportWidth, viewportHeight);
-// Initialises: CgRenderPipeline, CgFrameBufferRegistry, CgFallbackTextures
+// Initialises: CgBindingPoints, CgFrameBufferRegistry, CgFallbackTextures, and installs CgWorldRenderer
 
 // On window resize (GL thread):
 CgGraphicsLifecycle.onResize(newWidth, newHeight);
@@ -1088,7 +1089,7 @@ CgGraphicsLifecycle.ensureContext(width, height);
 | 5c | `CgFontRegistry.get().releaseAll()` | Glyph atlas textures + background generation executor, reset in place (reusable immediately) |
 | 6 | `CgMaterialRegistry.get().deleteAll()` | Material instances + GL shader programs |
 | 7 | `CgShaderBufferRegistry.get().deleteAll()` | User SSBO/TBO/UBO resources |
-| 8 | `CgRenderPipeline.destroy()` | Frame UBO + object SSBO + command queue; nulls depth snapshot FBO reference (GL object freed by step 9) |
+| 8 | `CgWorldRenderer.get().release()` | Its draws, and the depth snapshot's reference (the framebuffer is freed by step 9) |
 | 8b | `CgPreviewPool.deleteAll()` | Shader-graph preview targets. **Context-owned, not renderer-owned** — they are `createOwned`, so no registry below reaches them, and release used to depend on every `CgPreviewRenderer`'s owner remembering to call `delete()`. Before step 9, since a target holds framebuffers |
 | 9 | `CgFrameBufferRegistry.get().deleteAll()` | All owned FBOs |
 | 10 | `CgDebugBlit.dispose()` | Debug blit utility (no-op if never used) |
@@ -1134,9 +1135,8 @@ All 37 package guides under `src/main/java/com/crystalgraphics/`. Relative paths
 | Path | What it covers |
 |---|---|
 | `api/material/AGENTS.md` | `CgMaterial` load/bind/keywords/attach-buffers/ownership; `CgRenderPassVariant`; `CgRenderQueue` constants |
-| `api/render/AGENTS.md` | `CgRenderPipeline`, `CgRenderCommand`, `CgFrameData`, `CgSortKey`, `CgPreDrawHook`, `CgRenderCommandPool` |
-| `render/AGENTS.md` | `CgRenderPipeline` singleton orchestrator, execute sequence, anaglyph guard, lifecycle |
-| `render/pipeline/AGENTS.md` | `CgDepthPrepassRenderer`, `CgForwardRenderer`, `CgTransparentRenderer` — internal pass renderers |
+| `render/AGENTS.md` | `CgImmediate`, `CgFrameClock`, `CgViewFrustum` — the render package's root |
+| `render/world/AGENTS.md` | `CgWorldRenderer`, `CgDepthSnapshot`, `CgSortKey` — the world drawn under the host's camera |
 | `render/draw/AGENTS.md` | `CgPipeline` (a CPU key), `CgBindingTable` (snapshots with handles), `CgInstanceKind`, `CgPassConstants`, `CgDrawChunk`, `CgBatcher` — what a recorded draw is made of; recording touches no GL (`render-graph`) |
 | `render/graph/AGENTS.md` | `CgRecording`, `CgFrameGraph`, `CgFrameBuilder` (order, cull, batch, pack — off the render thread), `CgExecutor`, `CgImmediate` — the frame graph |
 | `gl/material/AGENTS.md` | `CgMaterialShader`, `CgMaterialShaderRegistry`, `CgMaterialProperties` |
@@ -1297,7 +1297,7 @@ which also covers 26.1's own main-target framebuffer and 26.2 under Vulkan.
 
 **Iris/Oculus**: with a shader pack active, CrystalGraphics geometry renders into the main FBO **outside**
 Iris's deferred GBuffer chain and appears unlit under deferred pipelines; `cg_DepthBuffer` stays valid.
-`CgIrisCompat.isShaderPackActive()` detects it, and `CgRenderPipeline` warns once.
+`CgIrisCompat.isShaderPackActive()` detects it, and `CgWorldRenderer` warns once.
 
 **Mixin policy**: prefer a native loader event, or a GLFW callback for input; a mixin only where neither
 exists.

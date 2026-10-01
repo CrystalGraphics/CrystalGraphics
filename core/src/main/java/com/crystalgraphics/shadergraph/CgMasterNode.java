@@ -58,7 +58,7 @@ public final class CgMasterNode implements CgShaderNode {
      * <p>Unity's Fragment block also carries Metallic, Smoothness, Ambient Occlusion, Emission and a
      * tangent-space Normal. <b>Every one of them is consumed by a lighting model, and this engine has
      * none</b> — {@code CgFrameBlock} carries view, projection, time and resolution and not one light
-     * term, and {@code CgFrameData.hasDirectionalLight()} returns false with "deferred to v2" written
+     * term, and {@code CgMaterialShader.SHADOWS_SUPPORTED} is false with "deferred to v2" written
      * beside it. A port whose only consumer does not exist accepts a wire, displays a value, changes no
      * pixel, and gives no clue which of those three it is failing at; that is strictly worse than not
      * offering it, because absence is at least legible.</p>
@@ -70,7 +70,7 @@ public final class CgMasterNode implements CgShaderNode {
      * <p>{@link #ALPHA} and {@link #ALPHA_CLIP_THRESHOLD} are here precisely because they are the two that
      * <em>are</em> consumable today: a {@code .shader} can declare
      * {@code Blend SRC_ALPHA ONE_MINUS_SRC_ALPHA}, {@code Queue} has {@code Transparent} and
-     * {@code AlphaTest}, and {@code CgTransparentRenderer} actually runs.</p>
+     * {@code AlphaTest}, and the world renderer's transparent pass actually runs.</p>
      *
      * <p><b>This is a queue, not a graveyard.</b> The rejected ports come back the day a lighting model
      * lands, which is why the blocks are declared as data here rather than implied by a hard-coded pair
