@@ -18,7 +18,9 @@ import java.util.Arrays;
  * <ul>
  *   <li>Within a batch, draws keep submission order, which is the order GL blends primitives in.</li>
  *   <li>A <b>domain</b> is a set of draws whose relative positions cannot change after batching. Draws in different
- *       domains are treated as overlapping, so a batch stays correct when the compositor moves one domain.</li>
+ *       domains are treated as overlapping, so a batch stays correct when the compositor moves one domain. The last
+ *       batch still takes a draw of its key from any domain, since nothing lies between them; no later draw looks
+ *       past it.</li>
  *   <li>A <b>scissor</b> is part of a batch's key: draws under different ones never join, though a draw may still
  *       move past one it does not overlap.</li>
  *   <li>{@link CgOrder#LOOKBACK} looks back over at most {@value #LOOKBACK} batches.</li>
@@ -148,7 +150,16 @@ public final class CgBatcher {
         return ordered[position];
     }
 
+    /** The domain of a batch holding draws of several: no draw's, so nothing joins it but as the last batch. */
+    private static final int MIXED = -1;
+
     private void lookback(int d) {
+        int last = batchCount - 1;
+        if (last >= 0 && sameKey(last, d)) {
+            if (batchDomain[last] != domains[d]) batchDomain[last] = MIXED;
+            join(last, d);
+            return;
+        }
         int stop = Math.max(0, batchCount - LOOKBACK);
         for (int b = batchCount - 1; b >= stop; b--) {
             if (sameKey(b, d) && batchDomain[b] == domains[d]) {

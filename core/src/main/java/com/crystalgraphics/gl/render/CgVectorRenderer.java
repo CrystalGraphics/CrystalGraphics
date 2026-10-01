@@ -360,6 +360,14 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
     private float cachedPoseScale = 1f;
     private boolean poseScaleValid;
 
+    private static float min3(float a, float b, float c) {
+        return Math.min(a, Math.min(b, c));
+    }
+
+    private static float max3(float a, float b, float c) {
+        return Math.max(a, Math.max(b, c));
+    }
+
     private CgVectorRenderer(CgStagingBuffer accumStaging, CgBufferWriter accumWriter) {
         this.accumStaging = accumStaging;
         this.accumWriter = accumWriter;
@@ -486,6 +494,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
         private Matrix4f pose;
         private int clip;
         private float node;
+        private int spatial;
 
         /** Start/end caps for the record currently being written, packed by {@link #packCaps}. */
         private int packedCaps;
@@ -523,6 +532,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
             pose = null;
             clip = 0;
             node = 0f;
+            spatial = 0;
             cubicSegments = 0;
             cubicPending = false;
             return this;
@@ -677,6 +687,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
          */
         public Curve node(int spatial, int effect) {
             this.node = CgPalette.pack(spatial, effect);
+            this.spatial = spatial;
             return this;
         }
 
@@ -783,6 +794,11 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
                 cx = ncx; cy = ncy; cz = ncz;
             }
 
+            // A square cap reaches a half-width past the end along the tangent and across it: 1.41 half-widths.
+            float reach = Math.max(wStart, wEnd) * 1.5f + feath + 1f;
+            run.spatial(spatial, accumStaging);
+            run.bounds(min3(ax, bx, cx) - reach, min3(ay, by, cy) - reach, max3(ax, bx, cx) + reach,
+                    max3(ay, by, cy) + reach);
             accumWriter.beginRecord()
                     .vec3("p0", ax, ay, az)
                     .vec3("p1", bx, by, bz)
@@ -855,6 +871,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
         private Matrix4f pose;
         private int clip;
         private float node;
+        private int spatial;
 
         // Reused across every submit() call — never reallocated, mirroring Curve's own scratch trio.
         private final Vector3f scratchP0 = new Vector3f();
@@ -879,6 +896,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
             pose = null;
             clip = 0;
             node = 0f;
+            spatial = 0;
             return this;
         }
 
@@ -1004,6 +1022,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
          */
         public Triangle node(int spatial, int effect) {
             this.node = CgPalette.pack(spatial, effect);
+            this.spatial = spatial;
             return this;
         }
 
@@ -1051,6 +1070,10 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
                 ox = axis[0]; oy = axis[1]; dxg = axis[2]; dyg = axis[3];
             }
 
+            float reach = radius + feath + 1f;
+            run.spatial(spatial, accumStaging);
+            run.bounds(min3(ax, bx, cx) - reach, min3(ay, by, cy) - reach, max3(ax, bx, cx) + reach,
+                    max3(ay, by, cy) + reach);
             accumWriter.beginRecord()
                     .vec3At(offP0, ax, ay, az)
                     .vec3At(offP1, bx, by, bz)
@@ -1150,6 +1173,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
         private Matrix4f pose;
         private int clip;
         private float node;
+        private int spatial;
 
         private final Vector3f scratch = new Vector3f();
 
@@ -1167,6 +1191,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
             pose = null;
             clip = 0;
             node = 0f;
+            spatial = 0;
             return this;
         }
 
@@ -1228,6 +1253,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
          */
         public Cell node(int spatial, int effect) {
             this.node = CgPalette.pack(spatial, effect);
+            this.spatial = spatial;
             return this;
         }
 
@@ -1256,6 +1282,9 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
                 ox = axis[0]; oy = axis[1]; dxg = axis[2]; dyg = axis[3];
             }
 
+            run.spatial(spatial, accumStaging);
+            run.bounds(Math.min(min3(ax, bx, cx), dx) - 1f, Math.min(min3(ay, by, cy), dy) - 1f,
+                    Math.max(max3(ax, bx, cx), dx) + 1f, Math.max(max3(ay, by, cy), dy) + 1f);
             accumWriter.beginRecord()
                     .vec3At(offP0, ax, ay, z)
                     .vec3At(offP1, bx, by, z)

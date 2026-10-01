@@ -1445,6 +1445,10 @@ archived in the private plan repository, `plan/crystalgraphics/archive/`.
                                                      # off the context's thread, once, with its stack; every
                                                      # site and its count to stderr at exit
 
+# Batching
+-Dcrystalgraphics.recorder.lookback=false            # a recorder's passes join neighbouring draws only, in
+                                                     # submission order: rules lookback out of a wrong picture
+
 # Shader
 -Dcrystalgraphics.shader.devmode=true                # emit #line directives in preprocessed output
 -Dcrystalgraphics.shader.resourceOverrideDir=path    # filesystem override dir for shader sources

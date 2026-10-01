@@ -40,6 +40,9 @@ import java.util.Arrays;
  * <ul>
  *   <li>A chunk takes the scissor, the constants and the view set when it is added; nothing is read from GL, so
  *       recording touches none.</li>
+ *   <li>Its passes are {@link CgOrder#LOOKBACK}: a draw moves back past draws it does not overlap, so a chunk's draws
+ *       need bounds, and one without covers everything. The renderers' runs bound theirs.
+ *       {@code -Dcrystalgraphics.recorder.lookback=false} joins neighbours only.</li>
  *   <li>The first pass on a target takes the load given; a clearing load opens it at once, so a target nothing draws
  *       into is still cleared. Later passes on it load what the earlier ones drew.</li>
  *   <li>One recorder per recording thread; a recorder holds no GL and may live on any thread.</li>
@@ -49,6 +52,10 @@ public final class CgPassRecorder implements CgChunkSink {
 
     /** How deep a scissor chain goes. */
     public static final int MAX_SCISSORS = 16;
+
+    /** {@code -Dcrystalgraphics.recorder.lookback=false}: passes join neighbouring draws only, as recorded. */
+    private static final CgOrder ORDER =
+            "false".equals(System.getProperty("crystalgraphics.recorder.lookback")) ? CgOrder.SORTED : CgOrder.LOOKBACK;
 
     private final float[] passBlock = new float[CgPassConstants.FLOATS];
     private final float[] pendingBlock = new float[CgPassConstants.FLOATS];
@@ -202,7 +209,7 @@ public final class CgPassRecorder implements CgChunkSink {
 
     private void openPass() {
         System.arraycopy(pendingBlock, 0, passBlock, 0, CgPassConstants.FLOATS);
-        pass = recording.raster(target, load, passConstants.read(passBlock, 0), null, CgOrder.SORTED);
+        pass = recording.raster(target, load, passConstants.read(passBlock, 0), null, ORDER);
         viewOwner = pendingOwner;
         viewX = pendingX;
         viewY = pendingY;

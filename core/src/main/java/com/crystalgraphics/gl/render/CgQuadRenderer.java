@@ -347,6 +347,7 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
         private float c2;
         private int clip;
         private float node;
+        private int spatial;
         private Matrix4f pose;
 
         // Reused across every submit() call on this Quad instance — never reallocated.
@@ -376,6 +377,7 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
             c2 = 0f;
             clip = 0;
             node = 0f;
+            spatial = 0;
             pose = null;
             return this;
         }
@@ -496,6 +498,7 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
          */
         public Quad node(int spatial, int effect) {
             this.node = CgPalette.pack(spatial, effect);
+            this.spatial = spatial;
             return this;
         }
 
@@ -561,6 +564,10 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
                 ux = scratchUp.x(); uy = scratchUp.y(); uz = scratchUp.z();
             }
 
+            run.spatial(spatial, accumStaging);
+            // A pixel past the corners: an edge antialiased off the grid reaches half of one.
+            run.bounds(ox + Math.min(0f, rx) + Math.min(0f, ux) - 1f, oy + Math.min(0f, ry) + Math.min(0f, uy) - 1f,
+                    ox + Math.max(0f, rx) + Math.max(0f, ux) + 1f, oy + Math.max(0f, ry) + Math.max(0f, uy) + 1f);
             accumWriter.beginRecord()
                     .vec3At(offOrigin, ox, oy, oz)
                     .vec3At(offRight, rx, ry, rz)

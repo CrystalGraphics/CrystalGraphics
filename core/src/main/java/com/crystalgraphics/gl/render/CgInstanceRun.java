@@ -24,6 +24,8 @@ import java.util.Arrays;
  * <ul>
  *   <li>A run draws under the material as the LAST {@code useMaterial} before its draw found it, which is what a
  *       bind used to upload: records queued earlier take values set after them.</li>
+ *   <li>Recording, a chunk is one spatial node's, ended where the records' node changes, and each draw carries the
+ *       bounds of its records in that node -- what lets a lookback pass move it past draws it does not touch.</li>
  *   <li>Recording, the snapshots are the sink's recording's, and live as long as the chunks that name them.
  *       Immediate, they are the run's own, dropped at the first {@code begin()} of a frame.</li>
  * </ul>
@@ -49,6 +51,11 @@ final class CgInstanceRun {
     /** The material's own snapshot, and the one drawn: that with any hand-bound texture laid over it. */
     private int materialBinding = -1;
     private int binding = -1;
+
+    /** The spatial node queued records are in, and their bounds there while any are. */
+    private int spatial;
+    private float boundsX0, boundsY0, boundsX1, boundsY1;
+    private boolean bounded;
 
     /** Textures bound by hand per unit, and whether each came after the last {@code useMaterial}. */
     private final CgTexture[] handBound = new CgTexture[CgBindingTable.MAX_TEXTURES];
@@ -121,6 +128,38 @@ final class CgInstanceRun {
         return result;
     }
 
+    /**
+     * Records queued from now are positioned in spatial node {@code node}. Recording, a chunk is one node's, so a
+     * change ends the open one; an immediate draw takes every node in one chunk.
+     */
+    void spatial(int node, CgStagingBuffer pending) {
+        if (node == spatial) return;
+        if (sink != null) {
+            close(pending);
+            if (chunkOpen) {
+                chunkOpen = false;
+                sink.add(chunk.end());
+            }
+        }
+        spatial = node;
+    }
+
+    /** Unions one queued record's ink, in its node's space, into its draw's bounds. */
+    void bounds(float x0, float y0, float x1, float y1) {
+        if (!bounded) {
+            boundsX0 = x0;
+            boundsY0 = y0;
+            boundsX1 = x1;
+            boundsY1 = y1;
+            bounded = true;
+            return;
+        }
+        boundsX0 = Math.min(boundsX0, x0);
+        boundsY0 = Math.min(boundsY0, y0);
+        boundsX1 = Math.max(boundsX1, x1);
+        boundsY1 = Math.max(boundsY1, y1);
+    }
+
     /** Moves the queued records into the chunk as one draw. */
     void close(CgStagingBuffer pending) {
         if (pending.isEmpty()) return;
@@ -128,13 +167,16 @@ final class CgInstanceRun {
         if ((binding < 0 || captured != table()) && material != null) capture();
         if (pipeline != null) {
             if (!chunkOpen) {
-                chunk.bindings(captured).begin();
+                chunk.bindings(captured).begin(sink != null ? spatial : 0, 0, 0);
                 chunkOpen = true;
             } else if (chunk.bindings() != captured) {
                 throw new IllegalStateException("the sink's recording changed under an open chunk: flush before");
             }
             chunk.draw(pipeline, binding).instances(pending.rawData(), 0, pending.vertexCount());
+            // An immediate chunk mixes nodes: its draws stay unbounded, covering everything.
+            if (bounded && sink != null) chunk.bounds(boundsX0, boundsY0, boundsX1, boundsY1);
         }
+        bounded = false;
         pending.reset();
     }
 
