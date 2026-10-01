@@ -115,6 +115,21 @@ public class CgShaderParserTest {
     }
 
     @Test
+    public void testOneLineV2fFieldsParsed() {
+        String src =
+            "#type spatial\n" +
+            "struct v2f { vec3 worldPos; vec3 normalWs; // trailing\n vec2 uv; };\n" +
+            "Pass {\n" +
+            "    void vertex(out v2f o) {}\n" +
+            "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
+            "}\n";
+        List<CgShaderParser.V2fField> fields = CgShaderParser.parseV2fFields(pass0(CgShaderParser.parse(src)));
+        assertEquals(3, fields.size());
+        assertEquals("normalWs", fields.get(1).name());
+        assertEquals("uv", fields.get(2).name());
+    }
+
+    @Test
     public void testGlobalDeclsExtracted() {
         CgParsedShader parsed = CgShaderParser.parse(FULL_SHADER);
         String globals = pass0(parsed).globalDecls();
