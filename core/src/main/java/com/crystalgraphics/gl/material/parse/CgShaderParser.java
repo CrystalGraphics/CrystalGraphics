@@ -357,9 +357,7 @@ public final class CgShaderParser {
     public static List<V2fField> parseV2fFields(CgParsedPass pass) {
         String body = pass.v2fStructBody();
         List<V2fField> fields = new ArrayList<>();
-        for (String rawLine : body.split("\n")) {
-            String line = rawLine.trim();
-            if (line.isEmpty() || line.startsWith("//")) continue;
+        for (String line : CgStructureParser.v2fDeclarations(body)) {
             if (CgStructureParser.INTEGER_TYPE_PATTERN.matcher(line).find()) {
                 throw new CgShaderParseException(
                         "Integer types (int, uint, ivec*, uvec*) are forbidden in struct v2f. Found: '" + line + "'");

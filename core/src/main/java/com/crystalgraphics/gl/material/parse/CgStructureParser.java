@@ -500,6 +500,27 @@ final class CgStructureParser {
         }
     }
 
+    /**
+     * The field declarations in a {@code struct v2f} body, one per {@code ;}, comments dropped, so
+     * {@code { vec2 uv; vec3 worldPos; }} on one line reads as two. A trailing declaration with no {@code ;}
+     * is kept as written, for the field pattern to refuse.
+     */
+    static List<String> v2fDeclarations(String body) {
+        List<String> out = new ArrayList<>();
+        for (String rawLine : body.split("\n")) {
+            int comment = rawLine.indexOf("//");
+            String line = comment >= 0 ? rawLine.substring(0, comment) : rawLine;
+            int start = 0;
+            for (int semi; (semi = line.indexOf(';', start)) >= 0; start = semi + 1) {
+                String declaration = line.substring(start, semi + 1).trim();
+                if (!declaration.equals(";")) out.add(declaration);
+            }
+            String rest = line.substring(start).trim();
+            if (!rest.isEmpty()) out.add(rest);
+        }
+        return out;
+    }
+
     // ── Private helpers ───────────────────────────────────────────────────────
 
     /**
@@ -507,9 +528,7 @@ final class CgStructureParser {
      * Throws {@link CgShaderParseException} on any invalid field.
      */
     private static void validateV2fBody(String body, String resourcePath) {
-        for (String rawLine : body.split("\n")) {
-            String line = rawLine.trim();
-            if (line.isEmpty() || line.startsWith("//")) continue;
+        for (String line : v2fDeclarations(body)) {
             if (INTEGER_TYPE_PATTERN.matcher(line).find()) {
                 throw new CgShaderParseException(
                         "[" + resourcePath + "] Integer types forbidden in struct v2f. Found: '" + line + "'");
