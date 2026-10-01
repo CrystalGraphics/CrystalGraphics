@@ -49,6 +49,8 @@ public final class CgFrame {
     int draws;
     /** How often it has executed since it was built: past the first, its one-shot passes are done. */
     int executions;
+    /** Set for one {@link CgExecutor#executeAgain}: passes writing a requested texture are skipped. */
+    boolean keepRequested;
     /** Copies of the clip tables its passes' recordings filled, by recording: a frame refers back to no recording. */
     private final IdentityHashMap<CgClipTable, CgClipTable> clips = new IdentityHashMap<>();
     private final List<CgClipTable> clipPool = new ArrayList<>();
