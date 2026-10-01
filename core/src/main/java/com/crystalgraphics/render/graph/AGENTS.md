@@ -31,13 +31,14 @@ caller sets after binding rides on the pipeline (`CgPipeline.withState`), or the
 overwrite it at the draw; and a texture bound by hand goes in through `bindTexture(unit, texture)`, winning the
 unit as GL's last bind did.
 
-**Routed flushes** (G4): `CgImmediate.recordInto(recording, target, load)` turns every later flush into a chunk in
-a raster pass of the caller's recording, under the scissor GL holds at the flush (`CgRasterPass.scissor`, read from
-the state shadow), with a new pass whenever the frame block moves; `endPass()` splits, and the caller executes the
-recording when it is done (`CgImmediate.execute`). A routed draw executes after its renderer has moved on, so a
-snapshot keeps by value what an immediate draw read live: a `CgTextureMutable` as the id it points at now, an
-attached uniform block as its bytes. A renderer's binding table resets once a frame, not per `begin()`, since routed
-chunks still name its snapshots.
+**Recorded flushes** (G4): a renderer given a `CgChunkSink` (`CgQuadRenderer.sink`, `CgVectorRenderer.sink`,
+`CgTextRenderer.sink`) hands each flush's chunk to it instead of drawing. `CgPassRecorder` is the sink a recorder
+owns: `recordInto(recording, target, load, constants)` picks the target, `scissor`/`noScissor` and `constants` are
+its set-state, a change of constants starts a pass, `endPass()` splits; nothing is read from GL. The caller executes
+the recording once with `CgImmediate.execute(recording)`. A recorded draw executes after its renderer has moved on,
+so a snapshot keeps by value what an immediate draw read live: a `CgTextureMutable` as the id it points at now, an
+attached uniform block as its bytes. A renderer's binding table resets once a frame, not per `begin()`, since
+recorded chunks still name its snapshots.
 
 ## Rules
 
