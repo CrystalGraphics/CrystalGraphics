@@ -9,8 +9,9 @@ import java.lang.reflect.Field;
 import static org.junit.Assert.assertEquals;
 
 /**
- * {@link CgClipTable}'s two promises a shader cannot check for itself: an entry maps a fragment back into its box's
- * own space under any pose, and entries chain no deeper than {@link CgClipTable#MAX_DEPTH}.
+ * {@link CgClipTable}'s promises a shader cannot check for itself: an entry maps a fragment back into its box's own
+ * space under any pose, entries chain no deeper than {@link CgClipTable#MAX_DEPTH}, and a square clip at whole pixels
+ * cuts what a scissor would.
  */
 public class CgClipTableTest {
 
@@ -65,6 +66,35 @@ public class CgClipTableTest {
         assertEquals(-1, table.add(0, flat, TARGET_HEIGHT, 0f, 0f, 10f, 10f, ZEROS, ZEROS, null));
     }
 
+    @Test
+    public void aPixelRectKeepsTheFragmentsWhoseCentresAreInside() throws Exception {
+        int entry = table.addPixelRect(0, 0, 10, 20, 30, 50, TARGET_HEIGHT);
+
+        float[] r = rows(entry);
+        assertEquals("the pixel-centre test", 0f, r[7], 0f);
+        float[] inside = toLocal(entry, 10.5f, TARGET_HEIGHT - 20.5f);
+        float[] outside = toLocal(entry, 30.5f, TARGET_HEIGHT - 49.5f);
+        assertEquals(10.5f, inside[0], 0f);
+        assertEquals(20.5f, inside[1], 0f);
+        assertEquals("the first column past the rect", 30.5f, outside[0], 0f);
+        assertEquals(49.5f, outside[1], 0f);
+    }
+
+    @Test
+    public void nestedPixelRectsInOneNodeMergeIntoOneEntry() throws Exception {
+        int outer = table.addPixelRect(0, 3, 0, 0, 100, 100, TARGET_HEIGHT);
+        int inner = table.addPixelRect(outer, 3, 50, -10, 200, 60, TARGET_HEIGHT);
+        int elsewhere = table.addPixelRect(inner, 4, 0, 0, 10, 10, TARGET_HEIGHT);
+
+        assertEquals("cut into the outer one's entry, not chained to it", 0, table.parent(inner));
+        float[] rect = outer(inner);
+        assertEquals(50f, rect[0], 0f);
+        assertEquals(0f, rect[1], 0f);
+        assertEquals(100f, rect[2], 0f);
+        assertEquals(60f, rect[3], 0f);
+        assertEquals("another node's rect is chained", inner, table.parent(elsewhere));
+    }
+
     /** The shader's mapping, over the table's own rows. */
     private float[] toLocal(int entry, float fragX, float fragY) throws Exception {
         float[] r = rows(entry);
@@ -76,11 +106,22 @@ public class CgClipTableTest {
 
     /** toLocal0 then toLocal1 of {@code entry}, as uploaded. */
     private float[] rows(int entry) throws Exception {
+        return slice(entry, 0);
+    }
+
+    /** The outer rect of {@code entry}: x0 y0 x1 y1. */
+    private float[] outer(int entry) throws Exception {
+        return slice(entry, 8);
+    }
+
+    private float[] slice(int entry, int at) throws Exception {
         Field field = CgClipTable.class.getDeclaredField("entries");
         field.setAccessible(true);
+        Field floats = CgClipTable.class.getDeclaredField("FLOATS");
+        floats.setAccessible(true);
         float[] entries = (float[]) field.get(table);
-        float[] rows = new float[8];
-        System.arraycopy(entries, entry * 32, rows, 0, 8);
-        return rows;
+        float[] out = new float[8];
+        System.arraycopy(entries, entry * floats.getInt(null) + at, out, 0, 8);
+        return out;
     }
 }
