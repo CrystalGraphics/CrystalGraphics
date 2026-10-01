@@ -11,12 +11,16 @@ import java.io.File;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.List;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 import static org.junit.Assert.*;
 
@@ -270,20 +274,17 @@ public class ShippedShaderStagePurityTest {
         return null;
     }
 
-    /** Every {@code .shader} under {@code assets/<namespace>/shaders/}, as CgIO resource paths. */
+    /** Every {@code .shader} under {@code assets/<namespace>/shaders/} and its subdirectories, as CgIO resource paths. */
     static List<String> shippedShaderPaths(String namespace) throws Exception {
         List<String> out = new ArrayList<>();
         URL dir = ShippedShaderStagePurityTest.class.getResource("/assets/" + namespace + "/shaders/");
         if (dir == null) return out;
 
         if ("file".equals(dir.getProtocol())) {
-            File[] files = new File(dir.toURI()).listFiles();
-            if (files != null) {
-                for (File f : files) {
-                    if (f.isFile() && f.getName().endsWith(".shader")) {
-                        out.add(namespace + ":shaders/" + f.getName());
-                    }
-                }
+            Path root = Paths.get(dir.toURI());
+            try (Stream<Path> walk = Files.walk(root)) {
+                walk.filter(f -> f.toString().endsWith(".shader"))
+                    .forEach(f -> out.add(namespace + ":shaders/" + root.relativize(f).toString().replace(File.separatorChar, '/')));
             }
         } else if ("jar".equals(dir.getProtocol())) {
             String spec = dir.getPath();
@@ -292,8 +293,7 @@ public class ShippedShaderStagePurityTest {
                 String prefix = "assets/" + namespace + "/shaders/";
                 for (java.util.Enumeration<java.util.jar.JarEntry> e = jar.entries(); e.hasMoreElements(); ) {
                     String n = e.nextElement().getName();
-                    if (n.startsWith(prefix) && n.endsWith(".shader")
-                            && n.indexOf('/', prefix.length()) < 0) {
+                    if (n.startsWith(prefix) && n.endsWith(".shader")) {
                         out.add(namespace + ":shaders/" + n.substring(prefix.length()));
                     }
                 }
