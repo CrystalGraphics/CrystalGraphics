@@ -100,8 +100,8 @@ import java.util.logging.Logger;
  * constructor.</p>
  *
  * <h3>Thread Safety</h3>
- * <p>Issues no GL — the array texture is {@link CgTexture2DArray#allocateDeferred deferred}, so a glyph may be placed
- * while a recording is open. Not thread-safe: one thread at a time.</p>
+ * <p>Issues no GL where none may run — the array texture defers its work to the render thread — so a glyph may be
+ * placed while a recording is open. Not thread-safe: one thread at a time.</p>
  *
  * @see CgGlyphAtlasPage
  * @see CgPackingStrategy
@@ -321,9 +321,9 @@ public class CgGlyphAtlas {
             this.arrayTexture = null;
         } else {
             this.capacity = INITIAL_PAGES;
-            // Deferred: an atlas is made, grown and filled wherever text is recorded, and its GL runs on the render
-            // thread before the frame that reads it. MSDF and MTSDF both allocate RGBA8 — see class javadoc "Format".
-            this.arrayTexture = CgTexture2DArray.allocateDeferred(pageWidth, pageHeight, capacity,
+            // Made, grown and filled wherever text is recorded; where no GL may run, its GL runs on the render thread
+            // before the frame that reads it. MSDF and MTSDF both allocate RGBA8 — see class javadoc "Format".
+            this.arrayTexture = CgTexture2DArray.allocateEmpty(pageWidth, pageHeight, capacity,
                     type == Type.BITMAP ? CgTextureSpec.R8_NEAREST : CgTextureSpec.RGBA8_LINEAR);
             TEXTURES.put(id, arrayTexture);
         }

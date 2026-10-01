@@ -567,13 +567,13 @@ public final class CgPreviewRenderer {
     private CgMesh meshFor(CgPreviewGeometry geometry) {
         if (geometry == CgPreviewGeometry.SPHERE) {
             if (sphereMesh == null) {
-                sphereMesh = CgMesh.uploadDeferred(CgMeshBuilder.uvSphere(CgVertexFormat.SPATIAL, 24, 32, 1f));
+                sphereMesh = CgMesh.upload(CgMeshBuilder.uvSphere(CgVertexFormat.SPATIAL, 24, 32, 1f));
             }
             return sphereMesh;
         }
         if (quadMesh == null) {
             CgMeshData data = CgMeshBuilder.quad2D(CgVertexFormat.SPATIAL, -1f, -1f, 1f, 1f);
-            quadMesh = CgMesh.uploadDeferred(data);
+            quadMesh = CgMesh.upload(data);
         }
         return quadMesh;
     }

@@ -309,7 +309,7 @@ public class CgGlyphAtlasPage {
 
     /**
      * The GL id of the atlas's array texture, shared by every page of it: 0 in test mode, and until the texture's queued
-     * creation has run on the render thread ({@code CgTextureUploads.apply}). For reading the atlas back; a draw names
+     * creation has run on the render thread ({@code CgDeferral.applyAll}). For reading the atlas back; a draw names
      * it by {@link #getAtlasId()}.
      */
     public int getTextureId() {

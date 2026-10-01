@@ -1,6 +1,6 @@
 package com.crystalgraphics.demo;
 
-import com.crystalgraphics.gl.texture.CgTextureUploads;
+import com.crystalgraphics.gpu.CgDeferral;
 import com.crystalgraphics.api.PoseStack;
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgFontStyle;
@@ -143,7 +143,7 @@ public final class CgFontDemo {
 
     /** The GL id of a page's atlas texture, made first if its creation is still queued. */
     private static int textureIdOf(CgGlyphAtlasPage page) {
-        CgTextureUploads.apply();
+        CgDeferral.applyAll();
         return page.getTextureId();
     }
 

@@ -4,7 +4,6 @@ import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.util.io.CgTextureIO;
 
-import com.crystalgraphics.platform.gl.CgGL;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -118,13 +117,12 @@ public final class CgTextureManager {
      * On a cache hit the cached texture is returned regardless of spec — first caller wins.
      * Returns the {@link #getFallback() fallback checkerboard} if loading fails.
      *
-     * <p>Any thread: off the render thread, or while it records, the image is decoded here and its GL object made
-     * on the render thread ({@link CgTexture2D#createDeferred}).</p>
+     * <p>Any thread: the image is decoded here, and where no GL may run its GL object is made on the render thread
+     * before the next frame executes.</p>
      */
     public CgTexture2D getOrCreate(String path, CgTextureSpec spec) {
         if (path == null || path.isEmpty()) return getFallback();
-        CgTexture result = getOrCreate(path, () -> CgGL.mayIssueGl()
-                ? CgTexture2D.createDirect(path, spec) : CgTexture2D.createDeferred(path, spec));
+        CgTexture result = getOrCreate(path, () -> CgTexture2D.createDirect(path, spec));
         return result instanceof CgTexture2D ? (CgTexture2D) result : getFallback();
     }
 
