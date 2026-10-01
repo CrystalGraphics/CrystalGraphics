@@ -1,5 +1,6 @@
 package com.crystalgraphics.trace;
 
+import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 
 /**
@@ -36,16 +37,27 @@ final class CgTraceZones {
     private static final int DROPPED = -1;
 
     /**
-     * The arrays, replaced whole when the arena grows — and read through one reference, so a reader on
-     * another thread sees one consistent store however the owner is growing it.
+     * The arrays, in pages, replaced by a bigger store when the arena grows — and read through one reference,
+     * so a reader on another thread sees one consistent store however the owner is growing it.
+     *
+     * <p><b>Growing copies nothing once a store is a page or more.</b> An arena grows only when it is exactly
+     * full and has never wrapped, so every slot already written keeps its index in a store twice the size: the
+     * bigger store takes this one's pages and adds new ones. Copying the arrays instead allocated and filled
+     * arrays of millions of zones inside whichever zone push filled the arena, 40-170 ms charged to an
+     * unrelated zone (plan desktop-hitches #1).</p>
      */
     static final class Store {
+        /** Zones a page holds; a store smaller than this is one page of its own size. */
+        static final int PAGE_BITS = 16;
+
         final int capacity;
         final int mask;
-        final long[] start;
-        final long[] end;
-        final int[] nameId;
-        final int[] packed;
+        private final int pageBits;
+        private final int pageMask;
+        final long[][] start;
+        final long[][] end;
+        final int[][] nameId;
+        final int[][] packed;
 
         /**
          * The absolute count at which a bigger store replaced this one. A reader holding this store
@@ -56,26 +68,90 @@ final class CgTraceZones {
         Store(int capacity) {
             this.capacity = capacity;
             this.mask = capacity - 1;
-            this.start = new long[capacity];
-            this.end = new long[capacity];
-            this.nameId = new int[capacity];
-            this.packed = new int[capacity];
+            this.pageBits = Math.min(PAGE_BITS, Integer.numberOfTrailingZeros(capacity));
+            this.pageMask = (1 << pageBits) - 1;
+            int pages = capacity >>> pageBits;
+            this.start = new long[pages][];
+            this.end = new long[pages][];
+            this.nameId = new int[pages][];
+            this.packed = new int[pages][];
+            addPages(0);
+        }
+
+        /** Twice {@code from}'s capacity, sharing its pages. */
+        private Store(Store from) {
+            this.capacity = from.capacity << 1;
+            this.mask = capacity - 1;
+            this.pageBits = from.pageBits;
+            this.pageMask = from.pageMask;
+            int pages = capacity >>> pageBits;
+            this.start = Arrays.copyOf(from.start, pages);
+            this.end = Arrays.copyOf(from.end, pages);
+            this.nameId = Arrays.copyOf(from.nameId, pages);
+            this.packed = Arrays.copyOf(from.packed, pages);
+            addPages(from.start.length);
+        }
+
+        private void addPages(int fromPage) {
+            int size = 1 << pageBits;
+            for (int page = fromPage; page < start.length; page++) {
+                start[page] = new long[size];
+                end[page] = new long[size];
+                nameId[page] = new int[size];
+                packed[page] = new int[size];
+            }
+        }
+
+        /**
+         * A store twice the size holding everything written so far, which is all of this one: an arena grows only
+         * when full and before it first wraps. Shares the pages from a page up; below that copies a page at most.
+         */
+        Store grown() {
+            if (pageBits == PAGE_BITS) return new Store(this);
+            Store grown = new Store(capacity << 1);
+            for (long slot = 0; slot < capacity; slot++) {
+                grown.set(slot, start(slot), end(slot), nameId(slot), packed(slot));
+            }
+            return grown;
+        }
+
+        /** Whether {@code other} holds this store's pages: what a grown store does once paged. */
+        boolean sharesPagesWith(Store other) {
+            return start[0] == other.start[0];
+        }
+
+        void set(long slot, long startNanos, long endNanos, int name, int pack) {
+            int i = (int) (slot & mask);
+            int page = i >>> pageBits, at = i & pageMask;
+            start[page][at] = startNanos;
+            end[page][at] = endNanos;
+            nameId[page][at] = name;
+            packed[page][at] = pack;
+        }
+
+        void setEnd(long slot, long endNanos) {
+            int i = (int) (slot & mask);
+            end[i >>> pageBits][i & pageMask] = endNanos;
         }
 
         long start(long slot) {
-            return start[(int) (slot & mask)];
+            int i = (int) (slot & mask);
+            return start[i >>> pageBits][i & pageMask];
         }
 
         long end(long slot) {
-            return end[(int) (slot & mask)];
+            int i = (int) (slot & mask);
+            return end[i >>> pageBits][i & pageMask];
         }
 
         int nameId(long slot) {
-            return nameId[(int) (slot & mask)];
+            int i = (int) (slot & mask);
+            return nameId[i >>> pageBits][i & pageMask];
         }
 
         int packed(long slot) {
-            return packed[(int) (slot & mask)];
+            int i = (int) (slot & mask);
+            return packed[i >>> pageBits][i & pageMask];
         }
     }
 
@@ -170,15 +246,7 @@ final class CgTraceZones {
         Store current = store;
         if (written < current.capacity) return current;
         if (current.capacity < maxCapacity) {
-            Store grown = new Store(current.capacity << 1);
-            for (long slot = Math.max(0L, written - current.capacity); slot < written; slot++) {
-                int from = (int) (slot & current.mask);
-                int to = (int) (slot & grown.mask);
-                grown.start[to] = current.start[from];
-                grown.end[to] = current.end[from];
-                grown.nameId[to] = current.nameId[from];
-                grown.packed[to] = current.packed[from];
-            }
+            Store grown = current.grown();
             // RETIRED BEFORE IT IS REPLACED, so a reader that still holds it never reads past this point.
             current.retiredAt = written;
             store = grown;
@@ -190,6 +258,17 @@ final class CgTraceZones {
     /** The first absolute slot past what {@code held} can answer for. */
     long highFor(Store held) {
         return Math.min(written, held.retiredAt);
+    }
+
+    /**
+     * The first slot of {@code held} the owner cannot have overwritten by now. A retired store shares its pages
+     * with the current one, which overwrites them once it wraps, so both stores' laps bound it.
+     */
+    long firstUnoverwritten(Store held) {
+        if (keepFirst) return highFor(held) - held.capacity;
+        long lapOfHeld = highFor(held) - held.capacity + 1;
+        long lapOfCurrent = written - store.capacity + 1;
+        return Math.max(lapOfHeld, lapOfCurrent);
     }
 
     int depth() {
@@ -213,11 +292,7 @@ final class CgTraceZones {
             return;
         }
         long slot = written;
-        int at = (int) (slot & into.mask);
-        into.start[at] = now;
-        into.end[at] = OPEN;
-        into.nameId[at] = name;
-        into.packed[at] = pack(channelIndex, depth, threadId);
+        into.set(slot, now, OPEN, name, pack(channelIndex, depth, threadId));
         WRITTEN.lazySet(this, slot + 1);
         stack[depth++] = (int) slot;
         CgTraceNames.seen(name, now);
@@ -239,11 +314,7 @@ final class CgTraceZones {
             return;
         }
         long slot = written;
-        int at = (int) (slot & into.mask);
-        into.start[at] = startNanos;
-        into.end[at] = endNanos;
-        into.nameId[at] = name;
-        into.packed[at] = pack(channelIndex, depth, threadId);
+        into.set(slot, startNanos, endNanos, name, pack(channelIndex, depth, threadId));
         WRITTEN.lazySet(this, slot + 1);
         CgTraceNames.seen(name, startNanos);
     }
@@ -264,7 +335,7 @@ final class CgTraceZones {
             dropped++;
             return;
         }
-        held.end[slot & held.mask] = now;
+        held.setEnd(Integer.toUnsignedLong(slot), now);
     }
 
     /**

@@ -539,7 +539,7 @@ public final class CgTraceSnapshot {
         void dropOverwritten(CgTraceZones arena, CgTraceZones.Store held) {
             // PLUS ONE on a rolling arena: the owner fills slot `written` before it publishes it, so the slot it
             // may be overwriting right now is a lap behind the next one. A keep-first arena never overwrites.
-            long safe = arena.highFor(held) - held.capacity + (arena.keepFirst ? 0 : 1);
+            long safe = arena.firstUnoverwritten(held);
             int stale = 0;
             while (stale < count && slots[stale] < safe) stale++;
             if (stale > 0) out.subList(first, first + stale).clear();
