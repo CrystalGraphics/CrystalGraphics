@@ -1,8 +1,8 @@
-// What the showcase's glows share (vfx_glow.shader): each is drawn on a larger sphere's far wall as a picture of
-// light spread through the volume around the glowing sphere, and the scene in front of a fragment, read from
-// cg_DepthBuffer, hides the part of that light behind it. So a glow is never cut by what stands inside it, only
-// dimmed by however much of it lies behind. Only glows include this file: reading the depth is what makes the world
-// renderer take a snapshot. CgVfxShowcase.
+// What the showcase's glows share (vfx_glow.shader, vfx_supernova_corona.shader): each is drawn on a larger sphere's
+// far wall as a picture of light spread through the volume around the glowing sphere, and the scene in front of a
+// fragment, read from cg_DepthBuffer, hides the part of that light behind it. So a glow is never cut by what stands
+// inside it, only dimmed by however much of it lies behind. Only these two include this file: reading the depth is
+// what makes the world renderer take a snapshot. CgVfxShowcase.
 #pragma once
 
 #include "crystalgraphics:shaders/demo/vfx_common.glsl"
