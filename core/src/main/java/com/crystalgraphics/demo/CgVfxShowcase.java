@@ -59,13 +59,17 @@ public final class CgVfxShowcase {
     private static final int SHIELD = 14, STORM = 9, BLACK_HOLE = 12, GALAXY = 13, SUPERNOVA = 11;
     /** The supernova's heart is a little larger than the rest, and its corona reaches this many hearts out. */
     private static final float SUPERNOVA_SIZE = 1.15f, CORONA_REACH = 3.2f;
+    /** Bolts at the shield: seconds in flight, and how many radii out they come from. */
+    private static final float BOLT_FLIGHT = 0.45f, BOLT_RANGE = 4.5f;
 
     private CgMesh sphere;
     private CgMesh floor;
     private final CgMaterial[] materials = new CgMaterial[COUNT];
-    private CgMaterial glow, corona, sky, floorMaterial;
+    private CgMaterial glow, corona, bolt, sky, floorMaterial;
     private double gridX = Double.NaN, gridZ = Double.NaN;
     private final Matrix4f transform = new Matrix4f();
+    /** The shield's three impacts this frame: per lane a direction from its centre and the seconds since it struck. */
+    private final float[] impacts = new float[12];
 
     /** Submits the sixteen spheres and their glow, on a floor point {@code (x, y, z)}, as they are at {@code seconds}. */
     public void submit(CgWorldRenderer world, double x, double y, double z, float seconds) {
@@ -87,11 +91,19 @@ public final class CgVfxShowcase {
             }
             // Every sphere knows how high above the floor it is: the metals mirror the floor from there.
             float above = (float) (cy - y);
-            world.draw(sphere, materials[k]).at(cx, cy, cz).transform(transform).custom(3, above, 0f, 0f, 0f).submit();
             if (k == SHIELD) {
+                shieldImpacts(seconds);
+                world.draw(sphere, materials[k]).at(cx, cy, cz).transform(transform)
+                        .custom(0, impacts[0], impacts[1], impacts[2], impacts[3])
+                        .custom(1, impacts[4], impacts[5], impacts[6], impacts[7])
+                        .custom(2, impacts[8], impacts[9], impacts[10], impacts[11])
+                        .custom(3, above, 0f, 0f, 0f).submit();
+                boltsInFlight(world, cx, cy, cz);
                 // What the field protects: a small gold core turning inside it.
                 transform.identity().rotateY(-seconds * 0.6f).scale(0.45f);
                 world.draw(sphere, materials[0]).at(cx, cy, cz).transform(transform).custom(3, above, 0f, 0f, 0f).submit();
+            } else {
+                world.draw(sphere, materials[k]).at(cx, cy, cz).transform(transform).custom(3, above, 0f, 0f, 0f).submit();
             }
             float strength = GLOW[k][3];
             if (strength <= 0f) continue;
@@ -138,6 +150,59 @@ public final class CgVfxShowcase {
         transform.rotateY(turn);
     }
 
+    /**
+     * The shield's impacts at {@code seconds}, into {@link #impacts}: three lanes, each struck once a period from a
+     * direction of its own, mostly from above. The age is negative while that lane's bolt is still in flight.
+     */
+    private void shieldImpacts(float seconds) {
+        for (int lane = 0; lane < 3; lane++) {
+            float period = 2.2f + 0.7f * lane;
+            float shifted = seconds + lane * period * 0.37f;
+            float cycle = (float) Math.floor(shifted / period);
+            float x = hash(cycle, lane, 1) * 2f - 1f;
+            float y = hash(cycle, lane, 2) * 0.9f - 0.1f;
+            float z = hash(cycle, lane, 3) * 2f - 1f;
+            float length = (float) Math.sqrt(x * x + y * y + z * z);
+            if (length < 1.0e-3f) {
+                x = 0f;
+                y = 1f;
+                z = 0f;
+                length = 1f;
+            }
+            int at = lane * 4;
+            impacts[at] = x / length;
+            impacts[at + 1] = y / length;
+            impacts[at + 2] = z / length;
+            impacts[at + 3] = shifted - cycle * period - BOLT_FLIGHT;
+        }
+    }
+
+    /** The bolts still on their way to the shield centred at {@code (cx, cy, cz)}: streaks flying in along their lane. */
+    private void boltsInFlight(CgWorldRenderer world, double cx, double cy, double cz) {
+        for (int lane = 0; lane < 3; lane++) {
+            int at = lane * 4;
+            float age = impacts[at + 3];
+            if (age >= 0f) continue;
+            float dx = impacts[at], dy = impacts[at + 1], dz = impacts[at + 2];
+            float travel = 1f + age / BOLT_FLIGHT;
+            float distance = BOLT_RANGE + (1f - BOLT_RANGE) * travel;
+            boolean steep = Math.abs(dy) > 0.95f;
+            transform.identity().rotateTowards(dx, dy, dz, steep ? 1f : 0f, steep ? 0f : 1f, 0f).scale(0.05f, 0.05f, 0.34f);
+            world.draw(sphere, bolt).at(cx + dx * distance, cy + dy * distance, cz + dz * distance).transform(transform).submit();
+        }
+    }
+
+    /** A hash of {@code (a, lane, salt)} in [0, 1). */
+    private static float hash(float a, int lane, int salt) {
+        int h = Float.floatToIntBits(a) * 0x27d4eb2d ^ (lane + 1) * 0x165667b1 ^ salt * 0x61c88647;
+        h ^= h >>> 15;
+        h *= 0x85ebca6b;
+        h ^= h >>> 13;
+        h *= 0xc2b2ae35;
+        h ^= h >>> 16;
+        return (h & 0xFFFFFF) / (float) 0x1000000;
+    }
+
     /** A lightning flicker: a new level about thirteen times a second. */
     private static float flicker(float seconds, int k) {
         long tick = (long) Math.floor(seconds * 13f) * 31L + k;
@@ -154,6 +219,7 @@ public final class CgVfxShowcase {
         for (int k = 0; k < COUNT; k++) materials[k] = CgMaterial.load("crystalgraphics:shaders/demo/vfx_" + SHADERS[k] + ".shader");
         glow = CgMaterial.load("crystalgraphics:shaders/demo/vfx_glow.shader");
         corona = CgMaterial.load("crystalgraphics:shaders/demo/vfx_supernova_corona.shader");
+        bolt = CgMaterial.load("crystalgraphics:shaders/demo/vfx_bolt.shader");
         sky = CgMaterial.load("crystalgraphics:shaders/demo/vfx_sky.shader");
         floorMaterial = CgMaterial.newInstance("crystalgraphics:shaders/demo/vfx_floor.shader");
     }
