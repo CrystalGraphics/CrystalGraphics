@@ -132,7 +132,7 @@ public final class CgWorldRenderer {
     public void release() {
         clear();
         frame = -1;
-        snapshotFrame = -1;
+        snapshotTaken = -1;
         depthSnapshot.dropStorage();
         depthOnly.clear();
     }
@@ -253,7 +253,8 @@ public final class CgWorldRenderer {
 
     private long[] keys = new long[64];
     private byte[] phase = new byte[64];
-    private long snapshotFrame = -1;
+    /** The stage the depth snapshot was last taken for: frame * 2 + OPAQUE or TRANSPARENT. */
+    private long snapshotTaken = -1;
 
     private void recordOpaque(CgStageFrame stage) {
         record(stage, OPAQUE);
@@ -297,8 +298,9 @@ public final class CgWorldRenderer {
             if (drawn == 0) return;
 
             CgRecording recording = stage.recording();
-            if (sceneDepth && snapshotFrame != now) {
-                snapshotFrame = now;
+            // Per stage: an opaque reader sees the host's world, a transparent one the opaque draws added to it.
+            if (sceneDepth && snapshotTaken != now * 2 + which) {
+                snapshotTaken = now * 2 + which;
                 recording.callback("world.depthSnapshot", null, depthSnapshot.source(stage.host().mainFramebuffer()));
             }
             CgPassConstants constants = stage.constants();
