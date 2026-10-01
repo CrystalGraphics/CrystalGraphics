@@ -1,5 +1,4 @@
-// Brushed copper going green: rings of brushing around the pole, and verdigris creeping in from the cracks.
-// CgVfxShowcase.
+// Polished copper with faint brush lines around the pole, mirroring the studio and the floor beneath it. CgVfxShowcase.
 #type spatial
 #include "crystalgraphics:shaders/demo/vfx_common.glsl"
 
@@ -26,15 +25,14 @@ Pass {
 
     void fragment(in v2f i, out vec4 fragColor) {
         vec3 p = i.objPos;
-        // Brushing: fine lines along each latitude, so a highlight smears around the sphere.
-        float brush = vfx_noise(vec3(p.y * 140.0, atan(p.z, p.x) * 2.0, 0.0));
-        float patina = smoothstep(0.52, 0.66, vfx_fbm(p * 2.2 + vec3(3.1), 5) + 0.15 * vfx_ridged(p * 6.0, 3));
+        // Faint brush lines along each latitude, in the colour only: varying the roughness per line saws every
+        // reflected edge.
+        float brush = vfx_noise(vec3(p.y * 60.0, atan(p.z, p.x) * 2.0, 0.0));
         vec3 n = normalize(i.normalWs);
         vec3 v = normalize(VFX_CAMERA - i.worldPos);
-        vec3 copper = vec3(0.955, 0.638, 0.538) * (0.85 + 0.25 * brush);
-        vec3 metal = vfx_pbr(n, v, copper, 1.0, 0.26 + 0.12 * brush, 1.0);
-        vec3 verdigris = vfx_pbr(n, v, vec3(0.20, 0.62, 0.52) * (0.7 + 0.3 * vfx_noise(p * 30.0)), 0.0, 0.85, 0.9);
-        vec3 color = mix(metal, verdigris, patina);
+        float floorY = CG_OBJECT_TO_WORLD[3].y - CG_OBJECT_CUSTOM3.x;
+        vec3 copper = vec3(0.98, 0.56, 0.4) * (0.96 + 0.05 * brush);
+        vec3 color = vfx_pbr_studio(i.worldPos, floorY, n, v, copper, 1.0, 0.14);
         fragColor = vec4(vfx_aces(color), 1.0);
     }
 }

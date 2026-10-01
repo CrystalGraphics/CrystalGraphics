@@ -1,4 +1,4 @@
-// Hammered gold: physically based, its roughness varying cell to cell as beaten metal does. CgVfxShowcase.
+// Polished gold, mirroring the studio and the floor beneath it. CgVfxShowcase.
 #type spatial
 #include "crystalgraphics:shaders/demo/vfx_common.glsl"
 
@@ -24,14 +24,10 @@ Pass {
     }
 
     void fragment(in v2f i, out vec4 fragColor) {
-        vec3 cells = vfx_voronoi(i.objPos * 6.5);
-        // Each hammer strike tilts its dimple: the normal leans away from the cell's centre.
-        vec3 jitter = (vfx_hash33(vec3(cells.z * 97.0)) - 0.5) * 0.18 * smoothstep(0.0, 0.5, cells.x);
-        vec3 n = normalize(normalize(i.normalWs) + jitter);
+        vec3 n = normalize(i.normalWs);
         vec3 v = normalize(VFX_CAMERA - i.worldPos);
-        float rough = 0.12 + 0.10 * cells.z + 0.08 * smoothstep(0.02, 0.0, cells.y - cells.x);
-        vec3 albedo = vec3(1.0, 0.766, 0.336);
-        vec3 color = vfx_pbr(n, v, albedo, 1.0, rough, 1.0);
+        float floorY = CG_OBJECT_TO_WORLD[3].y - CG_OBJECT_CUSTOM3.x;
+        vec3 color = vfx_pbr_studio(i.worldPos, floorY, n, v, vec3(1.0, 0.72, 0.24), 1.0, 0.08);
         fragColor = vec4(vfx_aces(color), 1.0);
     }
 }
