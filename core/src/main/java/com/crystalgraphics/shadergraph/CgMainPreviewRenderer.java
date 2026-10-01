@@ -4,18 +4,16 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
-import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gl.mesh.CgMesh;
-import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.platform.gl.state.CgGlScope;
-import com.crystalgraphics.platform.gl.state.CgGlSlot;
-import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.render.CgFrameClock;
-import com.crystalgraphics.render.CgImmediate;
-import com.crystalgraphics.render.draw.CgOrder;
+import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPassConstants;
-import com.crystalgraphics.trace.CgGpuTrace;
+import com.crystalgraphics.render.draw.CgPipeline;
+import com.crystalgraphics.render.graph.CgGraphTexture;
+import com.crystalgraphics.render.graph.CgRasterPass;
+import com.crystalgraphics.render.graph.CgRecording;
+import com.crystalgraphics.render.graph.CgRequest;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 
@@ -24,7 +22,14 @@ import java.util.EnumMap;
 import java.util.Map;
 
 /**
- * The main preview: the <b>finished shader</b> on a mesh you can turn.
+ * The main preview: the <b>finished shader</b> on a mesh you can turn. It issues no GL: a redraw is a raster pass
+ * recorded into the recording its caller lends, which the caller's frame executes.
+ *
+ * <pre>{@code
+ * CgGraphTexture picture = renderer.render(graph, master, CgPreviewMesh.SPHERE, yaw, pitch, zoom, true, aspect,
+ *         recording);                                    // in paint
+ * ctx.drawLayer(picture, x, y, w, h);
+ * }</pre>
  *
  * <h3>Why this compiles the real emitter, not {@link CgPreviewEmitter}</h3>
  * <p>A node thumbnail asks "what value does this node hold?", so {@code CgPreviewEmitter} wraps one
@@ -84,14 +89,20 @@ public final class CgMainPreviewRenderer {
      * (orthographic — the picture is identical at any distance) but the distance at which a point camera
      * and a parallel one stop being distinguishable.</p>
      */
-    private static final int GPU_DRAW = CgGpuTrace.name("mainPreview.draw");
-    private static final int GPU_RESOLVE = CgGpuTrace.name("mainPreview.resolve");
-
     private static final float CAMERA_DISTANCE = 64f;
+
+    /** Main previews drawn at once before one takes another's target: one per graph on screen. */
+    private static final int CAPACITY = 4;
 
     private final int size;
     private final int samples;
 
+    /** Shared with every main preview in the context, as the thumbnails share theirs. @see CgPreviewPool */
+    private final CgPreviewSlots<CgPreviewTarget> targets;
+    private final String scope = CgPreviewPool.newScope();
+    private final String key = scope + "main";
+
+    /** The target the current picture was drawn into; a pooled one may since have gone to another preview. */
     @Nullable
     private CgPreviewTarget target;
 
@@ -126,6 +137,7 @@ public final class CgMainPreviewRenderer {
     public CgMainPreviewRenderer(int size, int samples) {
         this.size = Math.max(1, size);
         this.samples = Math.max(1, samples);
+        this.targets = CgPreviewPool.forGeometry(this.size, this.samples, CAPACITY);
     }
 
     public int size() {
@@ -138,53 +150,13 @@ public final class CgMainPreviewRenderer {
     }
 
     /**
-     * Draws {@code graph} on {@code mesh} and returns the texture, or null if it would not compile.
+     * Records {@code graph} drawn on {@code mesh} into {@code recording} and returns the texture, or null if it would
+     * not compile.
      *
      * <p><b>Redraws only when something actually changed.</b> Identical source, mesh and orientation mean
      * an identical picture, so a graph merely being panned around costs nothing — the same argument
      * {@code CgPreviewRenderer} makes per thumbnail, and it matters more here because this target is
      * larger than all of them.</p>
-     *
-     * @param yaw   orbit around the Y axis, radians
-     * @param pitch orbit around the X axis, radians
-     */
-    @Nullable
-    public CgTexture render(CgShaderGraph graph, CgMasterNode master, CgPreviewMesh mesh,
-                            float yaw, float pitch) {
-        return render(graph, master, mesh, yaw, pitch, 1f);
-    }
-
-    /**
-     * As above, with a zoom factor.
-     *
-     * @param zoom above 1 moves closer. Applied by DIVIDING the orthographic half-extent, so it reads as
-     *             a camera move rather than as the object changing size — which is the same distinction
-     *             the orbit makes, and keeping the two consistent is what stops the panel feeling like
-     *             two unrelated gestures.
-     */
-    @Nullable
-    public CgTexture render(CgShaderGraph graph, CgMasterNode master, CgPreviewMesh mesh,
-                            float yaw, float pitch, float zoom) {
-        return render(graph, master, mesh, yaw, pitch, zoom, true);
-    }
-
-    /**
-     * As above, choosing whether the preview lights its own output.
-     *
-     * @param graph the IR to draw, or {@code null} when the document has no master node to compile
-     *              toward — see below
-     * @param lit viewport shading, <b>not</b> a lighting model — see {@link CgShaderEmitter.Shading}.
-     *            Unlit is what the material actually draws in game, and is the mode to check against when
-     *            the colour matters more than the form.
-     */
-    @Nullable
-    public CgTexture render(@Nullable CgShaderGraph graph, CgMasterNode master, CgPreviewMesh mesh,
-                            float yaw, float pitch, float zoom, boolean lit) {
-        return render(graph, master, mesh, yaw, pitch, zoom, lit, 1f);
-    }
-
-    /**
-     * As above, framed for a panel of a given <b>aspect ratio</b> rather than for a square.
      *
      * <h3>The target stays square; the CAMERA is what widens</h3>
      * <p>A caller drawing this into a wide panel has two bad options and one good one. Letterboxing to the
@@ -197,23 +169,39 @@ public final class CgMainPreviewRenderer {
      * the result by the same factor, and drawing the square texture <em>stretched across the whole panel</em>
      * undoes it. The mesh fills the panel, keeps its shape, and there is no boundary to zoom into. The
      * texture is not reallocated as the panel is dragged, which is the point of doing it in the projection:
-     * this is an MSAA target built with {@code createOwned}, so a resize per frame of a drag is real work.</p>
+     * this is an MSAA target, so a resize per frame of a drag is real work.</p>
      *
-     * @param aspect the panel's width divided by its height. Values at or below zero are treated as square,
-     *               since a panel with no area has no aspect to honour
+     * @param graph     the IR to draw, or {@code null} when the document has no master node to compile toward;
+     *                  drawn as a graph that will not compile
+     * @param yaw       orbit around the Y axis, radians
+     * @param pitch     orbit around the X axis, radians
+     * @param zoom      above 1 moves closer. Applied by DIVIDING the orthographic half-extent, so it reads as a
+     *                  camera move rather than as the object changing size, as the orbit does
+     * @param lit       viewport shading, <b>not</b> a lighting model — see {@link CgShaderEmitter.Shading}. Unlit
+     *                  is what the material draws in game, the mode to check colour against
+     * @param aspect    the panel's width divided by its height. Values at or below zero are treated as square,
+     *                  since a panel with no area has no aspect to honour
+     * @param recording where the pass goes; its frame executes it before anything recorded after reads the texture
      */
     @Nullable
-    public CgTexture render(@Nullable CgShaderGraph graph, CgMasterNode master, CgPreviewMesh mesh,
-                            float yaw, float pitch, float zoom, boolean lit, float aspect) {
+    public CgGraphTexture render(@Nullable CgShaderGraph graph, CgMasterNode master, CgPreviewMesh mesh,
+                                 float yaw, float pitch, float zoom, boolean lit, float aspect, CgRecording recording) {
         if (deleted) throw new IllegalStateException("This CgMainPreviewRenderer has been deleted");
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.SHADERGRAPH, "mainPreview.render")) {
+            this.recording = recording;
             return renderTraced(graph, master, mesh, yaw, pitch, zoom, lit, aspect);
+        } finally {
+            this.recording = null;
         }
     }
 
+    /** The recording lent to the current {@link #render}; null outside one. */
     @Nullable
-    private CgTexture renderTraced(@Nullable CgShaderGraph graph, CgMasterNode master, CgPreviewMesh mesh,
-                                   float yaw, float pitch, float zoom, boolean lit, float aspect) {
+    private CgRecording recording;
+
+    @Nullable
+    private CgGraphTexture renderTraced(@Nullable CgShaderGraph graph, CgMasterNode master, CgPreviewMesh mesh,
+                                        float yaw, float pitch, float zoom, boolean lit, float aspect) {
         if (!(aspect > 0f) || !Float.isFinite(aspect)) aspect = 1f;
 
         // A NULL graph is an ordinary editing state, not a caller error: `ShaderGraphBridge.toShaderGraph`
@@ -267,6 +255,7 @@ public final class CgMainPreviewRenderer {
         failedSource = null;
         failedSourceError = null;
 
+        CgPreviewTarget acquired = targets.acquire(key);
         boolean unchanged = emitted.source().equals(renderedSource)
                 && mesh == renderedMesh
                 && yaw == renderedYaw
@@ -276,7 +265,8 @@ public final class CgMainPreviewRenderer {
                 // projection. Leaving it out of the memo means resizing the panel keeps redrawing the old
                 // framing until something else happens to invalidate.
                 && aspect == renderedAspect
-                && target != null;
+                // A recycled target holds another preview's picture.
+                && acquired == target;
         // An animated graph names a uniform rather than baking a value, so its source is byte-identical
         // frame to frame while its picture is not. Same carve-out CgPreviewRenderer documents.
         if (unchanged && !renderedAnimated) {
@@ -285,53 +275,27 @@ public final class CgMainPreviewRenderer {
         }
         CgTrace.add(CgChannels.SHADERGRAPH, unchanged ? "mainPreview.draw.animated" : "mainPreview.draw.changed", 1);
 
-        if (target == null) target = new CgPreviewTarget("cg_main_preview", size, samples);
-
         CgMaterial material;
         try {
             material = readyMaterial(emitted.source());
             if (material == null) {
                 // STILL COMPILING, and the frame does not wait: the last good material draws, at this camera.
                 CgTrace.add(CgChannels.SHADERGRAPH, "mainPreview.compiling", 1);
-                if (failed || heldMaterial == null) return failed ? drawFallback(mesh, yaw, pitch, zoom, aspect) : target.texture();
-                drawInto(heldMaterial, mesh, yaw, pitch, zoom, aspect);
+                if (failed) return drawFallback(mesh, yaw, pitch, zoom, aspect);
+                if (heldMaterial == null) return acquired == target ? target.texture() : null;
+                drawInto(acquired, heldMaterial, mesh, yaw, pitch, zoom, aspect);
                 return target.texture();
             }
-            // Asked before the draw as well as after: a bind of a failed material compiles it again.
-            lastDriverError = material.lastCompileError();
-            if (lastDriverError == null) {
-                drawInto(material, mesh, yaw, pitch, zoom, aspect);
-                lastDriverError = material.lastCompileError();
-            }
+            lastDriverError = null;
+            drawInto(acquired, material, mesh, yaw, pitch, zoom, aspect);
         } catch (RuntimeException broken) {
-            // A preview is a convenience. One material that will not compile must not take the editor
-            // down, nor be retried every frame — which is what rethrowing here would amount to.
+            // A preview is a convenience. One material that will not compile -- the emitter is happy and the
+            // DRIVER refuses the GLSL, which the compile request reports -- must not take the editor down, nor
+            // be retried every frame.
             failed = true;
             lastDriverError = broken.getMessage() == null ? broken.toString() : broken.getMessage();
             failedSource = emitted.source();
             failedSourceError = lastDriverError;
-            return drawFallback(mesh, yaw, pitch, zoom, aspect);
-        }
-
-        // A DRIVER ERROR DOES NOT THROW, and that is the case this whole branch exists for.
-        //
-        // The emitter is perfectly happy -- emitted.ok() is true, the file parses, and CgMaterial.load
-        // returns an object. The failure is GLSL the DRIVER rejects, and a failed compile LATCHES rather
-        // than raising (see CgMaterial.hasCompileFailed; without the latch every draw retries the compile
-        // and logs thousands of lines a second). So control arrives here normally, having just cleared the
-        // target and drawn nothing into it with a dead program.
-        //
-        // That is why the earlier attempt at keeping the camera alive did nothing: it guarded the two
-        // paths that RETURN early -- a null graph and a refused emit -- and the common failure is neither
-        // of them. `undefined variable "cg_Normal"` reported against a vertex stage is an ordinary,
-        // successful-looking render as far as every line above can tell.
-        if (lastDriverError != null) {
-            failed = true;
-            failedSource = emitted.source();
-            failedSourceError = lastDriverError;
-            // `true`, because the target was just clobbered: drawInto cleared it before binding the
-            // material that then refused to compile, so what is in it now is nothing at all. The redraw
-            // cannot be skipped on the grounds that the camera has not moved.
             return drawFallback(mesh, yaw, pitch, zoom, aspect);
         }
         failed = false;
@@ -368,14 +332,11 @@ public final class CgMainPreviewRenderer {
      * gestures back.</p>
      */
     @Nullable
-    private CgTexture drawFallback(CgPreviewMesh mesh, float yaw, float pitch, float zoom, float aspect) {
+    private CgGraphTexture drawFallback(CgPreviewMesh mesh, float yaw, float pitch, float zoom, float aspect) {
         try {
-            // INSIDE the guard, which it was not. Creating the target probes GL capabilities, so this line
-            // throws on any path with no context — and every failure route in this class now comes through
-            // here, which turned "the preview cannot draw" into an exception escaping a frame ticker. The
-            // catch's own reasoning covers it: this is already the failure path.
-            if (target == null) target = new CgPreviewTarget("cg_main_preview", size, samples);
-            drawInto(fallbackMaterial(), mesh, yaw, pitch, zoom, aspect);
+            // INSIDE the guard: creating the target reads the context's capabilities, and every failure route in
+            // this class comes through here. This is already the failure path.
+            drawInto(targets.acquire(key), fallbackMaterial(), mesh, yaw, pitch, zoom, aspect);
         } catch (RuntimeException broken) {
             // The last thing a preview may do is take the editor down from inside a frame ticker, and this
             // is already the failure path -- there is nowhere further to fall.
@@ -431,8 +392,9 @@ public final class CgMainPreviewRenderer {
 
     /** The last picture drawn, without drawing. Null before the first successful render. */
     @Nullable
-    public CgTexture currentTexture() {
-        return target == null ? null : target.texture();
+    public CgGraphTexture currentTexture() {
+        CgPreviewTarget held = targets.peek(key);
+        return held == null || held != target ? null : held.texture();
     }
 
     /** Whether anything in the graph redraws on its own — {@code Time} and friends. */
@@ -479,36 +441,17 @@ public final class CgMainPreviewRenderer {
     @Nullable
     private String failedSourceError;
 
-    private void drawInto(CgMaterial material, CgPreviewMesh mesh, float yaw, float pitch,
+    private void drawInto(CgPreviewTarget into, CgMaterial material, CgPreviewMesh mesh, float yaw, float pitch,
                           float zoom, float aspect) {
-        CgGpuTrace.begin(GPU_DRAW);
-        try (CgTrace.Zone traced = CgTrace.zone(CgChannels.SHADERGRAPH, "mainPreview.draw");
-             CgGlScope scope = CgGlState.save(CgGlSlot.FBO, CgGlSlot.VIEWPORT)) {
-
+        target = into;
+        try (CgTrace.Zone traced = CgTrace.zone(CgChannels.SHADERGRAPH, "mainPreview.draw")) {
             applyCamera(camera, mesh, yaw, pitch, zoom, aspect);
-
-            target.drawTarget().bind();
-            CgGL.glViewport(0, 0, size, size);
-            // Transparent, so the panel's own backdrop shows through — which is what makes a graph's
-            // Alpha visible at all against a checkerboard rather than against a colour we chose.
-            CgGL.glClearColor(0f, 0f, 0f, 0f);
-            CgGL.glClear(CgGL.GL_COLOR_BUFFER_BIT | CgGL.GL_DEPTH_BUFFER_BIT);
-
-            // Blending ON, unlike a node thumbnail: Alpha is a real master port now, and an opaque
-            // preview of a transparent material is a preview of something else.
-            try (CgImmediate draw = CgImmediate.begin(camera, PASS_STATE, CgOrder.LOOKBACK)) {
-                CgPreviewDraw.object(draw, material, meshFor(mesh));
-            }
-
-            target.drawTarget().unbind();
-            // Timed apart from the draw: the resolve writes the texture the panel samples.
-            CgGpuTrace.end();
-            CgGpuTrace.begin(GPU_RESOLVE);
-            // The multisample resolve. Without it the readable texture is never written and the panel
-            // stays empty — the multisampled buffer holds the picture and nothing can sample it.
-            target.resolve();
-        } finally {
-            CgGpuTrace.end();
+            // Cleared to transparent, so the panel's own backdrop shows through -- which is what makes a graph's
+            // Alpha visible at all. Blending ON, unlike a node thumbnail: Alpha is a real master port, and an
+            // opaque preview of a transparent material is a preview of something else.
+            CgRasterPass pass = target.begin(recording, camera, PASS_STATE);
+            CgPreviewDraw.object(recording, pass, material, meshFor(mesh));
+            target.end(recording, pass);
         }
     }
 
@@ -552,8 +495,10 @@ public final class CgMainPreviewRenderer {
 
     /**
      * The material for {@code source}, or null while the driver is still compiling it. The held one is kept while
-     * its source is -- it owns a property UBO, and an animated graph draws every frame -- and replaced only once
-     * the new one is ready.
+     * its source is -- an animated graph draws every frame -- and replaced only once the new one is ready. The
+     * compile is a request recorded again each frame until one answers, since the last may not have executed yet.
+     *
+     * @throws IllegalStateException when the driver refused the source
      */
     @Nullable
     private CgMaterial readyMaterial(String source) {
@@ -562,8 +507,19 @@ public final class CgMainPreviewRenderer {
             if (compilingMaterial != null) compilingMaterial.delete();
             compilingMaterial = CgMaterial.fromSource(source);
             compilingSource = source;
+            compileRequest = null;
         }
-        if (!compilingMaterial.prepare()) return null;
+        if (compileRequest != null && compileRequest.failed()) throw new IllegalStateException(compileRequest.failure());
+        if (compileRequest == null || !compileRequest.done()) {
+            CgPipeline pipeline = compilingMaterial.pipeline(CgInstanceKind.OBJECT);
+            if (pipeline == null) {
+                String error = compilingMaterial.lastCompileError();
+                throw new IllegalStateException(error != null ? error : "the preview shader does not parse");
+            }
+            compileRequest = recording.compile(pipeline);
+            return null;
+        }
+        compileRequest = null;
         if (heldMaterial != null) heldMaterial.delete();
         heldMaterial = compilingMaterial;
         heldSource = compilingSource;
@@ -593,23 +549,23 @@ public final class CgMainPreviewRenderer {
     @Nullable
     private String compilingSource;
 
-    /** Built on first use and kept: switching back to a shape must not re-upload it. */
+    /** The latest compile recorded for {@link #compilingMaterial}. */
+    @Nullable
+    private CgRequest compileRequest;
+
+    /** Built on first use, uploaded by the render thread, and kept: switching back to a shape must not re-upload it. */
     private CgMesh meshFor(CgPreviewMesh mesh) {
-        return meshes.computeIfAbsent(mesh, m -> CgMesh.upload(m.build(CgVertexFormat.SPATIAL)));
+        return meshes.computeIfAbsent(mesh, m -> CgMesh.uploadDeferred(m.build(CgVertexFormat.SPATIAL)));
     }
 
     /**
-     * Frees the target and every mesh built so far.
-     *
-     * <p>Must be called on context destruction: the target is {@code createOwned}, so no registry sweep
-     * reaches it.</p>
+     * Gives its target back to the pool and frees every mesh built so far. Any thread: the meshes go on the render
+     * thread, and the target stays in the pool for the next preview.
      */
     public void delete() {
         if (deleted) return;
-        if (target != null) {
-            target.delete();
-            target = null;
-        }
+        targets.releaseAllWithin(scope);
+        target = null;
         for (CgMesh mesh : meshes.values()) mesh.delete();
         meshes.clear();
         if (heldMaterial != null) heldMaterial.delete();

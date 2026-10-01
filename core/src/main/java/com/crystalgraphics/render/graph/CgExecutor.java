@@ -76,8 +76,9 @@ public final class CgExecutor {
      * immediate draw always left it. Render thread, inside a frame.
      */
     public static void execute(CgFrame frame, boolean restoreState) {
-        // Texture work recorded with the frame, or before it, that could not run where it was recorded.
+        // Texture and mesh work recorded with the frame, or before it, that could not run where it was recorded.
         CgTextureUploads.apply();
+        CgMesh.applyDeferred();
         long ringFrame = CgFrameRing.frame();
         if (depth == 0 && ringFrame != trimmedFrame) {
             POOL.endFrame();

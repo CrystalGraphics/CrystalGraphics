@@ -2062,9 +2062,11 @@ com/crystalgraphics/gl/mesh/CgMesh
   method public getIndexType ()I
   method public getTopology ()Lcom/crystalgraphics/api/mesh/CgMeshTopology;
   method public getVertexCount ()I
+  method public,static applyDeferred ()V
   method public,static upload (Lcom/crystalgraphics/api/mesh/CgMeshData;)Lcom/crystalgraphics/gl/mesh/CgMesh;
   method public,static upload (Lcom/crystalgraphics/api/vertex/CgVertexFormat;Lcom/crystalgraphics/api/mesh/CgMeshTopology;Ljava/nio/ByteBuffer;Ljava/nio/ByteBuffer;I)Lcom/crystalgraphics/gl/mesh/CgMesh;
   method public,static upload (Lcom/crystalgraphics/api/vertex/CgVertexFormat;Lcom/crystalgraphics/api/mesh/CgMeshTopology;Ljava/nio/ByteBuffer;Ljava/nio/ByteBuffer;II)Lcom/crystalgraphics/gl/mesh/CgMesh;
+  method public,static uploadDeferred (Lcom/crystalgraphics/api/mesh/CgMeshData;)Lcom/crystalgraphics/gl/mesh/CgMesh;
 com/crystalgraphics/gl/mesh/CgMeshBuilder
   access public,final
   extends java/lang/Object
@@ -3143,14 +3145,11 @@ com/crystalgraphics/shadergraph/CgMainPreviewRenderer
   field public,static,final DEFAULT_SIZE I
   method public <init> ()V
   method public <init> (II)V
-  method public currentTexture ()Lcom/crystalgraphics/api/texture/CgTexture;
+  method public currentTexture ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public delete ()V
   method public hasFailed ()Z
   method public lastDriverError ()Ljava/lang/String;
-  method public render (Lcom/crystalgraphics/shadergraph/CgShaderGraph;Lcom/crystalgraphics/shadergraph/CgMasterNode;Lcom/crystalgraphics/shadergraph/CgPreviewMesh;FF)Lcom/crystalgraphics/api/texture/CgTexture;
-  method public render (Lcom/crystalgraphics/shadergraph/CgShaderGraph;Lcom/crystalgraphics/shadergraph/CgMasterNode;Lcom/crystalgraphics/shadergraph/CgPreviewMesh;FFF)Lcom/crystalgraphics/api/texture/CgTexture;
-  method public render (Lcom/crystalgraphics/shadergraph/CgShaderGraph;Lcom/crystalgraphics/shadergraph/CgMasterNode;Lcom/crystalgraphics/shadergraph/CgPreviewMesh;FFFZ)Lcom/crystalgraphics/api/texture/CgTexture;
-  method public render (Lcom/crystalgraphics/shadergraph/CgShaderGraph;Lcom/crystalgraphics/shadergraph/CgMasterNode;Lcom/crystalgraphics/shadergraph/CgPreviewMesh;FFFZF)Lcom/crystalgraphics/api/texture/CgTexture;
+  method public render (Lcom/crystalgraphics/shadergraph/CgShaderGraph;Lcom/crystalgraphics/shadergraph/CgMasterNode;Lcom/crystalgraphics/shadergraph/CgPreviewMesh;FFFZFLcom/crystalgraphics/render/graph/CgRecording;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public size ()I
 com/crystalgraphics/shadergraph/CgMasterNode
   access public,final
@@ -3273,12 +3272,12 @@ com/crystalgraphics/shadergraph/CgPreviewRenderer
   method public hasPending ()Z
   method public invalidate (Ljava/lang/String;)V
   method public invalidateAll ()V
-  method public render (Lcom/crystalgraphics/shadergraph/CgShaderGraph;Ljava/lang/String;)Lcom/crystalgraphics/api/texture/CgTexture;
-  method public renderPending (Lcom/crystalgraphics/shadergraph/CgShaderGraph;)I
+  method public render (Lcom/crystalgraphics/shadergraph/CgShaderGraph;Ljava/lang/String;Lcom/crystalgraphics/render/graph/CgRecording;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public renderPending (Lcom/crystalgraphics/shadergraph/CgShaderGraph;Lcom/crystalgraphics/render/graph/CgRecording;)I
   method public retainNodes (Ljava/util/Set;)V
   method public setBudget (I)Lcom/crystalgraphics/shadergraph/CgPreviewRenderer;
   method public setVisible (Ljava/util/Set;)V
-  method public textureOf (Ljava/lang/String;)Lcom/crystalgraphics/api/texture/CgTexture;
+  method public textureOf (Ljava/lang/String;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
 com/crystalgraphics/shadergraph/CgPreviewSlots
   access public,final
   extends java/lang/Object
@@ -3298,10 +3297,10 @@ com/crystalgraphics/shadergraph/CgPreviewTarget
   access public,final
   extends java/lang/Object
   method public <init> (Ljava/lang/String;II)V
+  method public begin (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/draw/CgPassConstants;Lcom/crystalgraphics/api/state/CgRenderState;)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public delete ()V
-  method public drawTarget ()Lcom/crystalgraphics/gl/framebuffer/CgFrameBuffer;
-  method public resolve ()V
-  method public texture ()Lcom/crystalgraphics/api/texture/CgTexture;
+  method public end (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/graph/CgRasterPass;)V
+  method public texture ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
 com/crystalgraphics/shadergraph/CgShaderDomain
   access public,final,enum
   extends java/lang/Enum
