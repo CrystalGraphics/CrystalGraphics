@@ -1390,6 +1390,12 @@ archived in the private plan repository, `plan/crystalgraphics/archive/`.
 -Dcrystalgraphics.gl.debugStacks=true                # log the Java stack of the first 5 GL errors, so a
                                                      # debug message names the call; .limit=N for more
 
+# GL issued where none may be (any host)
+-Dcrystalgraphics.gl.threadCheck=true                # log each CgGL call site inside a GL-free section
+                                                     # (CgGL.enterGlFree -- a UI paint context recording) or
+                                                     # off the context's thread, once, with its stack; every
+                                                     # site and its count to stderr at exit
+
 # Shader
 -Dcrystalgraphics.shader.devmode=true                # emit #line directives in preprocessed output
 -Dcrystalgraphics.shader.resourceOverrideDir=path    # filesystem override dir for shader sources
