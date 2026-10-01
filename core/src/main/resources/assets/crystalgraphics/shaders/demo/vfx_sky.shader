@@ -1,6 +1,11 @@
-// The showcase's sky: the studio the spheres reflect, over deep space -- stars and a slow violet nebula. Drawn on a
-// sphere around the camera, seen from inside and pushed to the far plane so everything draws in front of it.
-// CgVfxShowcase.
+// The showcase's sky: deep space over the studio. A domain-warped nebula of magenta, teal and gold gas, coloured near
+// each sun by its light and rimmed bright on the cloud edges facing it, with dark dust cut through; the Milky Way as a
+// band of dense stars with a dark rift down it; stars that are round, coloured by temperature and never smaller than a
+// pixel, the brightest with James Webb's six diffraction spikes; and the three suns where the studio's three lights
+// are, each its own kind of star -- a white-gold star blazing with rays (the key), a blue giant inside a ring nebula
+// (the rim) and a huge crimson giant boiling low on the horizon (the fill). A ringed gas giant hangs between them, and
+// now and then a shooting star crosses. Drawn on a sphere round the camera at the far plane, so everything draws in
+// front of it. CgVfxShowcase.
 #type spatial
 #include "crystalgraphics:shaders/demo/vfx_common.glsl"
 
@@ -17,6 +22,65 @@ Pass {
         Cull FRONT
     }
 
+    // Two unit vectors perpendicular to {@code n} and to each other.
+    void sky_frame(vec3 n, out vec3 u, out vec3 w) {
+        u = normalize(cross(n, abs(n.y) < 0.95 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));
+        w = cross(n, u);
+    }
+
+    // One layer of stars: cells over each cube face, a star in the share {@code 1 - keep} of them. Each is round,
+    // coloured by its temperature and never smaller than a pixel ({@code pixel} radians), dimming as it spreads; with
+    // {@code spikes}, the brightest carry six diffraction spikes.
+    vec3 sky_stars(vec3 d, float density, float keep, float pixel, float spikes, float seed, float t) {
+        vec3 face = vfx_cube_face(d);
+        vec2 g = (face.xy * 0.5 + 0.5) * density;
+        vec2 cell = floor(g);
+        float px = pixel * density * 0.64;
+        vec3 light = vec3(0.0);
+        for (int j = -1; j <= 1; j++) {
+            for (int i = -1; i <= 1; i++) {
+                vec2 c = cell + vec2(float(i), float(j));
+                vec3 h = vfx_hash33(vec3(c, face.z * 7.0 + seed));
+                if (h.z < keep) continue;
+                vec2 o = g - c - h.xy;
+                float bright = pow((h.z - keep) / (1.0 - keep), 3.0);
+                float size = 0.05 + 0.09 * bright;
+                float radius = max(size, px * 0.6);
+                float energy = (size / radius) * (size / radius);
+                float temperature = fract(h.z * 31.7);
+                vec3 tint = temperature < 0.3 ? mix(vec3(1.3, 0.55, 0.3), vec3(1.2, 0.95, 0.75), temperature / 0.3)
+                          : mix(vec3(1.0, 0.98, 1.0), vec3(0.6, 0.78, 1.4), (temperature - 0.3) / 0.7);
+                float twinkle = 0.7 + 0.3 * sin(t * (2.0 + 6.0 * h.x) + h.y * 40.0) * sin(t * (1.3 + 3.0 * h.y) + h.x * 20.0);
+                light += tint * exp(-dot(o, o) / (radius * radius)) * energy * (0.35 + 4.0 * bright) * twinkle;
+                if (spikes > 0.0 && bright > 0.45) {
+                    float glare = 0.0;
+                    for (int a = 0; a < 3; a++) {
+                        float angle = float(a) * 1.0471976 + 0.3;
+                        vec2 axis = vec2(cos(angle), sin(angle));
+                        float along = abs(dot(o, axis));
+                        float across = abs(dot(o, vec2(-axis.y, axis.x)));
+                        glare += exp(-across / max(px * 0.5, 0.012)) * exp(-along / (spikes * bright));
+                    }
+                    light += tint * glare * bright * 0.5 * twinkle;
+                }
+            }
+        }
+        return light;
+    }
+
+    // The nebula's density at {@code q}, and its warp, which evolves so the clouds billow and flow.
+    float sky_cloud(vec3 q, float t, out vec3 warp) {
+        vec3 flow = vec3(t * 0.045, -t * 0.03, t * 0.038);
+        warp = vec3(vfx_fbm(q * 1.3 + vec3(1.7, 9.2, 0.0) + flow, 4), vfx_fbm(q * 1.3 + vec3(8.3, 2.8, 4.1) - flow, 4),
+                    vfx_fbm(q * 1.3 + vec3(3.0, 6.0, 1.0) + flow.zxy, 4));
+        return vfx_fbm(q + warp * 1.8, 6);
+    }
+
+    // A sun's glow and corona at angular distance {@code a} (radians) from its centre: tight, then wide.
+    float sky_glow(float a, float tight, float wide) {
+        return exp(-a / tight) + exp(-a / wide) * 0.25;
+    }
+
     void vertex(out v2f o) {
         vec4 world = CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0);
         o.dir = world.xyz - VFX_CAMERA;
@@ -27,19 +91,152 @@ Pass {
     void fragment(in v2f i, out vec4 fragColor) {
         float t = CG_TIME;
         vec3 d = normalize(i.dir);
-        vec3 color = vfx_env(d, 0.0);
-        float above = smoothstep(-0.02, 0.15, d.y);
-        // Stars: one in a few hundred cells of the sky, each twinkling at its own rate.
-        vec3 cell = floor(d * 260.0);
-        float seed = vfx_hash31(cell);
-        float star = step(0.993, seed) * (0.5 + 0.5 * sin(t * (1.5 + seed * 4.0) + seed * 50.0));
-        vec3 starTint = mix(vec3(0.7, 0.8, 1.2), vec3(1.2, 0.9, 0.7), vfx_hash31(cell + 5.0));
-        // The nebula: warped noise, violet and teal, brightest along a band.
-        vec3 q = d * 2.2 + vec3(t * 0.01, 0.0, 0.0);
-        float cloud = vfx_fbm(q + vfx_fbm(q * 1.7, 3) * 1.8, 5);
-        float band = exp(-pow(d.y - 0.35 - 0.2 * d.x, 2.0) * 6.0);
-        vec3 nebula = mix(vec3(0.35, 0.08, 0.55), vec3(0.05, 0.4, 0.5), vfx_fbm(q * 0.8, 3)) * pow(cloud, 2.5) * band * 2.2;
-        color += (starTint * star * 2.5 + nebula) * above;
+        // A pixel's angular size: the larger of its two screen steps. The length of fwidth overstates it up to 2.5x.
+        float pixel = max(length(dFdx(d)), length(dFdy(d)));
+        const vec3 KEY_COLOR = vec3(3.0, 2.55, 1.8);
+        const vec3 RIM_COLOR = vec3(1.2, 1.7, 3.2);
+        const vec3 FILL_COLOR = vec3(2.4, 0.35, 0.55);
+        float toKey = acos(clamp(dot(d, VFX_KEY_DIR), -1.0, 1.0));
+        float toRim = acos(clamp(dot(d, VFX_RIM_DIR), -1.0, 1.0));
+        float toFill = acos(clamp(dot(d, VFX_FILL_DIR), -1.0, 1.0));
+
+        // Space: near black, deepest overhead, a violet glow toward the horizon.
+        vec3 color = mix(vec3(0.03, 0.012, 0.06), vec3(0.004, 0.004, 0.014), smoothstep(0.0, 0.7, d.y));
+
+        // The nebula: warped clouds, coloured by their own gas and by the suns near them, rimmed where they face them.
+        vec3 q = d * 2.2 + vec3(t * 0.012, 0.0, t * 0.008);
+        vec3 warp;
+        float cloud = sky_cloud(q, t, warp);
+        vec3 gas = mix(vec3(1.0, 0.12, 0.7), vec3(0.08, 0.6, 0.85), smoothstep(0.35, 0.65, warp.x));
+        gas = mix(gas, vec3(1.2, 0.6, 0.15), smoothstep(0.55, 0.75, warp.y) * 0.7);
+        vec3 lit = KEY_COLOR * exp(-toKey / 0.7) * 0.35 + RIM_COLOR * exp(-toRim / 0.6) * 0.35
+                + FILL_COLOR * exp(-toFill / 0.8) * 0.45 + vec3(0.25);
+        float body = pow(smoothstep(0.32, 0.85, cloud), 1.6);
+        vec3 light = normalize(VFX_KEY_DIR * exp(-toKey / 0.5) + VFX_RIM_DIR * exp(-toRim / 0.5)
+                + VFX_FILL_DIR * exp(-toFill / 0.5) + d * 1.0e-4);
+        float toward = vfx_fbm(q + (light - d) * 0.12 + warp * 1.8, 6);
+        float rim = clamp((cloud - toward) * 9.0, 0.0, 1.0) * smoothstep(0.35, 0.6, cloud);
+        color += gas * lit * body * 0.9 + lit * gas * rim * 0.9;
+
+        // The Milky Way: a band of haze and dense stars across the sky, a dark rift down it.
+        vec3 bandNormal = normalize(vec3(0.35, 0.8, -0.45));
+        float across = dot(d, bandNormal);
+        float band = exp(-across * across / 0.05);
+        float haze = vfx_fbm(d * 7.0 + vec3(4.0), 5);
+        color += vec3(0.75, 0.7, 0.9) * band * (0.04 + 0.12 * haze);
+
+        // Dust: dark lanes through the nebula and the rift down the band, hiding what lies behind.
+        float dust = smoothstep(0.55, 0.75, vfx_fbm(q * 2.1 + warp * 2.5 + vec3(11.0), 5));
+        float rift = exp(-pow(across / 0.035 + (haze - 0.5) * 2.5, 2.0)) * band;
+        float hidden = clamp(dust * 0.8 + rift * 0.85, 0.0, 0.95);
+
+        // Stars: a fine dense layer, thickest in the band, a middle one, and a few bright ones with spikes.
+        vec3 stars = sky_stars(d, 260.0, 0.75 - 0.35 * band, pixel, 0.0, 1.0, t) * (0.5 + band)
+                + sky_stars(d, 70.0, 0.88, pixel, 0.0, 2.0, t)
+                + sky_stars(d, 16.0, 0.82, pixel, 0.55, 3.0, t);
+        color = (color + stars) * (1.0 - hidden);
+
+        // The key: a white-gold star, blazing, with a starburst of rays turning slowly.
+        vec3 u, w;
+        sky_frame(VFX_KEY_DIR, u, w);
+        float phi = atan(dot(d, w), dot(d, u));
+        float shimmer = 0.55 + 0.45 * vfx_noise(vec3(cos(phi) * 6.0, sin(phi) * 6.0, toKey * 6.0 - t * 1.6));
+        float rays = (pow(0.5 + 0.5 * cos(phi * 8.0 + t * 0.18), 90.0) * exp(-toKey / 0.4)
+                + pow(0.5 + 0.5 * cos(phi * 23.0 - t * 0.27), 140.0) * exp(-toKey / 0.22) * 0.7) * shimmer
+                * (0.85 + 0.15 * sin(t * 2.3));
+        float keyDisk = 1.0 - smoothstep(0.035 - pixel, 0.035 + pixel, toKey);
+        color += KEY_COLOR * (sky_glow(toKey, 0.03, 0.22) * 1.2 + rays * 0.8) + vec3(3.0) * keyDisk;
+
+        // The rim: a blue giant inside a ring nebula, the ring broken and glowing, slowly breathing.
+        sky_frame(VFX_RIM_DIR, u, w);
+        float ringPhi = atan(dot(d, w), dot(d, u));
+        float ringRadius = 0.15 + 0.006 * sin(t * 0.7);
+        float ringNoise = vfx_fbm(vec3(cos(ringPhi + t * 0.25) * 3.0, sin(ringPhi + t * 0.25) * 3.0, toRim * 20.0 - t * 0.2), 4);
+        float ring = exp(-pow((toRim - ringRadius) / (0.012 + 0.012 * ringNoise), 2.0)) * (0.4 + 0.9 * ringNoise);
+        float rimDisk = 1.0 - smoothstep(0.022 - pixel, 0.022 + pixel, toRim);
+        color += RIM_COLOR * sky_glow(toRim, 0.025, 0.18) * 0.9 + vec3(0.3, 0.85, 1.6) * ring * 1.2
+                + vec3(1.0, 0.25, 0.9) * exp(-pow((toRim - ringRadius * 1.25) / 0.03, 2.0)) * ringNoise * 0.4
+                + vec3(2.6, 3.0, 3.6) * rimDisk;
+
+        // The fill: a huge crimson giant low on the horizon, its surface boiling, prominences arching off its edge.
+        float giant = 0.14;
+        sky_frame(VFX_FILL_DIR, u, w);
+        vec2 onDisk = vec2(dot(d, u), dot(d, w)) / giant;
+        float inside = 1.0 - smoothstep(1.0 - pixel / giant * 2.0, 1.0, toFill / giant);
+        float limb = sqrt(max(1.0 - dot(onDisk, onDisk), 0.0));
+        float boil = vfx_fbm(vec3(onDisk * 5.0 + vfx_fbm(vec3(onDisk * 2.0, t * 0.15), 3), t * 0.35), 5);
+        vec3 surface = mix(vec3(1.6, 0.12, 0.2), vec3(3.2, 0.9, 0.55), boil) * (0.35 + 0.65 * pow(limb, 0.6));
+        float fillPhi = atan(onDisk.y, onDisk.x);
+        float prominence = smoothstep(0.55, 0.85, vfx_ridged(vec3(cos(fillPhi) * 4.0, sin(fillPhi) * 4.0, toFill / giant * 3.0 - t * 0.35), 4))
+                * exp(-max(toFill / giant - 1.0, 0.0) * 9.0) * step(1.0, toFill / giant);
+        color = mix(color, surface, inside);
+        color += FILL_COLOR * (sky_glow(max(toFill - giant, 0.0), 0.05, 0.45) * 0.8 + prominence * 1.2) * (1.0 - inside);
+
+        // The gas giant: banded, lit by the key sun, its rings round it shadowed by it.
+        vec3 planetDir = normalize(vec3(0.62, 0.38, 0.69));
+        float planetSize = 0.16;
+        vec3 spin = normalize(vec3(0.25, 1.0, -0.35));
+        float b = dot(d, planetDir);
+        float disc = b * b - (1.0 - planetSize * planetSize);
+        float planetT = disc > 0.0 ? b - sqrt(disc) : 1.0e9;
+        float ringT = dot(planetDir, spin) / dot(d, spin);
+        vec3 ringPoint = d * ringT - planetDir;
+        float ringR = length(ringPoint) / planetSize;
+        float ringHere = ringT > 0.0 && ringR > 1.35 && ringR < 2.35 ? 1.0 : 0.0;
+        float ringBands = (0.45 + 0.55 * vfx_noise(vec3(ringR * 30.0, 1.0, 2.0))) * smoothstep(1.35, 1.45, ringR)
+                * (1.0 - smoothstep(2.25, 2.35, ringR)) * (1.0 - smoothstep(1.86, 1.88, ringR) * (1.0 - smoothstep(1.92, 1.94, ringR)));
+        // The planet's shadow on the rings, softened at its edge: how near the ray toward the key sun passes the planet.
+        float sb = dot(ringPoint, VFX_KEY_DIR);
+        float pass = sqrt(max(dot(ringPoint, ringPoint) - sb * sb, 0.0)) / planetSize;
+        float ringShadow = sb < 0.0 ? mix(0.55, 1.0, smoothstep(0.85, 1.08, pass)) : 1.0;
+        vec3 ringU, ringW;
+        sky_frame(spin, ringU, ringW);
+        float ringAngle = atan(dot(ringPoint, ringW), dot(ringPoint, ringU)) + t * 0.2 / ringR;
+        float clumps = 0.75 + 0.25 * vfx_noise(vec3(cos(ringAngle) * 5.0, sin(ringAngle) * 5.0, ringR * 6.0));
+        vec3 ringColor = vec3(1.25, 1.0, 0.75) * ringBands * ringShadow * clumps * 0.55;
+        if (disc > 0.0) {
+            vec3 normal = normalize(d * planetT - planetDir);
+            float lat = dot(normal, spin);
+            float lon = atan(dot(normal, normalize(cross(spin, vec3(0.0, 0.0, 1.0)))), dot(normal, normalize(cross(spin, vec3(1.0, 0.0, 0.0)))))
+                    + t * 0.06;
+            float bands = vfx_fbm(vec3(lat * 14.0 + vfx_noise(vec3(lon * 2.0, lat * 8.0, t * 0.02)) * 0.8, lon * 0.4, 3.0), 4);
+            vec3 cloudColor = mix(vec3(0.75, 0.45, 0.25), vec3(1.15, 0.95, 0.7), bands);
+            cloudColor = mix(cloudColor, vec3(0.5, 0.25, 0.45), smoothstep(0.62, 0.8, bands) * 0.6);
+            float spotLon = mod(lon - 0.6 + 3.14159265, 6.2831853) - 3.14159265;
+            float spot = exp(-dot(vec2(spotLon, (lat + 0.25) * 3.0), vec2(spotLon, (lat + 0.25) * 3.0)) * 18.0);
+            cloudColor = mix(cloudColor, vec3(1.1, 0.35, 0.15), spot * 0.8);
+            float sun = max(dot(normal, VFX_KEY_DIR), 0.0);
+            float fill = max(dot(normal, VFX_FILL_DIR), 0.0);
+            float atmosphere = pow(1.0 - max(dot(normal, -d), 0.0), 3.0);
+            vec3 planet = cloudColor * (sun * 1.6 + fill * 0.25 + 0.02) + vec3(0.6, 0.75, 1.2) * atmosphere * (sun + 0.15) * 0.8;
+            color = planet;
+            if (ringHere > 0.0 && ringT < planetT) color = mix(color, ringColor, clamp(ringBands, 0.0, 1.0));
+        } else if (ringHere > 0.0) {
+            color = mix(color, ringColor, clamp(ringBands, 0.0, 1.0) * 0.85);
+        }
+        // Its atmosphere glowing just past its edge on the lit side.
+        float pastEdge = acos(clamp(b, -1.0, 1.0)) - planetSize;
+        color += vec3(0.5, 0.65, 1.1) * exp(-max(pastEdge, 0.0) / 0.01) * step(0.0, pastEdge) * 0.35;
+
+        // A shooting star now and then: a bright head and a fading trail, a few seconds apart.
+        float shotClock = t / 1.8;
+        float shot = floor(shotClock);
+        float progress = fract(shotClock) * 2.5;
+        if (vfx_hash31(vec3(shot, 4.0, 4.0)) > 0.35 && progress < 1.0) {
+            vec3 start = normalize(vfx_hash33(vec3(shot, 1.0, 1.0)) - vec3(0.5, 0.1, 0.5));
+            vec3 heading = normalize(cross(start, normalize(vfx_hash33(vec3(shot, 2.0, 2.0)) - 0.5)));
+            vec3 plane = normalize(cross(start, heading));
+            float off = abs(dot(d, plane));
+            float arc = atan(dot(d, heading), dot(d, start));
+            float head = progress * 0.5;
+            float trail = smoothstep(head - 0.18, head, arc) * step(arc, head) * step(0.0, dot(d, start));
+            color += vec3(1.2, 1.1, 1.4) * exp(-off / max(pixel * 1.2, 0.0015)) * trail * (1.0 - progress) * 3.0;
+        }
+
+        // The horizon: a violet glow, pinker toward the crimson giant.
+        float horizon = exp(-abs(d.y) * 16.0);
+        color += mix(vec3(0.35, 0.15, 0.6), vec3(0.9, 0.2, 0.45), exp(-toFill / 0.9)) * horizon * 0.5;
+        color *= smoothstep(-0.25, 0.0, d.y) * 0.85 + 0.15;
         fragColor = vec4(vfx_aces(color), 1.0);
     }
 }

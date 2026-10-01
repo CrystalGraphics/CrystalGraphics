@@ -21,25 +21,6 @@ Pass {
         Cull OFF
     }
 
-    // The cube face {@code p} is on, and where on it: xy in [-1, 1], equi-angular so cells keep their size; z the
-    // face. Neighbouring faces share each edge's coordinate, so the cells line up across it.
-    vec3 circuit_face(vec3 p) {
-        vec3 a = abs(p);
-        vec2 uv;
-        float face;
-        if (a.x >= a.y && a.x >= a.z) {
-            uv = vec2(p.z, p.y) / a.x;
-            face = p.x > 0.0 ? 0.0 : 1.0;
-        } else if (a.y >= a.z) {
-            uv = vec2(p.x, p.z) / a.y;
-            face = p.y > 0.0 ? 2.0 : 3.0;
-        } else {
-            uv = vec2(p.x, p.y) / a.z;
-            face = p.z > 0.0 ? 4.0 : 5.0;
-        }
-        return vec3(atan(uv) * 4.0 / 3.14159265, face);
-    }
-
     // The distance from {@code x} to the segment from {@code a} to {@code b}, and how far along it the nearest point is.
     vec2 circuit_segment(vec2 x, vec2 a, vec2 b) {
         vec2 ab = b - a;
@@ -82,7 +63,7 @@ Pass {
         if (!gl_FrontFacing) n = -n;
         vec3 v = normalize(VFX_CAMERA - i.worldPos);
         vec3 p = normalize(i.objPos);
-        vec3 face = circuit_face(p);
+        vec3 face = vfx_cube_face(p);
         const float CELLS = 7.0;
         vec2 g = (face.xy * 0.5 + 0.5) * CELLS;
         vec2 cell = floor(g);
