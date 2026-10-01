@@ -101,8 +101,8 @@ device-backed backend starts recording against the host's current target, and `t
 pass, leaves the host's images as it expects, and hands our command buffers to its submit
 (`HostedVulkanHost`). `CgGL.fromHost`'s javadoc has the full account.
 
-- **Every host entry brackets itself**: `CgGraphicsLifecycle`'s `initContext`, `onResize`, `onOpaquePass`,
-  `onTransparentPass` and `tickFrame`; the modern tree's world passes in `LifecycleModern`, around the target
+- **Every host entry brackets itself**: `CgGraphicsLifecycle`'s `initContext`, `onResize` and `tickFrame`,
+  and `CgRenderStage.fire`; the modern tree's world passes in `LifecycleModern`, around the target
   and depth convention they set; and CrystalGUI's `HostSession.PaintHost.enter`/`leave` on every loader.
 - **Brackets nest**, and only the outermost pair reaches the backend, so a host's bracket may wrap a lifecycle
   entry. A close with none open throws.
@@ -197,8 +197,8 @@ thread. **`onFrameRendered()` is the only sanctioned per-frame tick** for engine
 | 1.7.10, Forge 1.8–1.12.2 | `updateCameraAndRender` TAIL — no early return, covers the world, a GUI with no world, and skip-render-world alike |
 | Modern (1.13+) | `FrameHooks.endFrame()`, from `LifecycleModern.frameEnd()` after the GUI — a loader frame event, or on Fabric a node mixin; see `runtime/mc/modern/common/AGENTS.md` § *The frame end* |
 
-`CgRenderingService.onFrameBegin(partialTick)` is the legacy single-call path; the hosts drive the
-opaque and transparent passes from their own hooks instead.
+The hosts fire the world's render stages from their own hooks (`CgRenderStage.WORLD_OPAQUE`,
+`WORLD_TRANSPARENT`); `CgRenderingService` answers the viewport only.
 
 ## `CgReloadService`
 

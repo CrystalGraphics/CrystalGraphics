@@ -7,7 +7,7 @@ census_diff -- the GL state each client handed us, side by side, only where the 
     python census_diff.py a.log b.log --all        # every value, not only the ones that differ
 
 Reads the lines `-Dcrystalgraphics.host.census=true` logs (CgGlCensus): one per value, per entry point
-(`opaque`, `transparent`, `gui`, `frame`). An instance directory means its newest of
+(`world.opaque`, `world.transparent`, any stage a mod defines, `gui`, `frame`). An instance directory means its newest of
 .minecraft/logs/latest.log, debug.log and fml-client-latest.log. mcrender.py compares what Minecraft's
 code says; this compares what a running client actually held.
 """

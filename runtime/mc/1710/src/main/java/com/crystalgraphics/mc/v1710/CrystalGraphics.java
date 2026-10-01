@@ -87,7 +87,7 @@ public final class CrystalGraphics{
         // VAOs and FBOs are not -- so a VAO built now is named in a context the renderer never
         // uses, and glGenVertexArrays hands the same id to the next caller on the first real
         // frame. Two owners of one VAO, no GL error, and the second writer's layout silently
-        // replaces the first's. CgGraphicsLifecycle.onOpaquePass initialises lazily on a frame
+        // replaces the first's. A stage's first firing initialises lazily on a frame
         // that genuinely owns the render context; that is the only correct moment.
 
         // Aggregate validation of all mod OpenGL requirements registered during pre-init.

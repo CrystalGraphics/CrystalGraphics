@@ -1,6 +1,7 @@
 package com.crystalgraphics.mc.v1710.mixins.early.impl.client;
 
-import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
+import com.crystalgraphics.render.stage.CgRenderStage;
+import com.crystalgraphics.render.stage.CgHostFrame;
 import com.crystalgraphics.platform.CgPlatform;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.EntityRenderer;
@@ -60,7 +61,7 @@ public class CgRenderHook {
         int sourceFboId = Minecraft.getMinecraft().getFramebuffer().framebufferObject;
         int w = Minecraft.getMinecraft().displayWidth;
         int h = Minecraft.getMinecraft().displayHeight;
-        CgGraphicsLifecycle.onOpaquePass(partialTicks, w, h, sourceFboId);
+        CgRenderStage.WORLD_OPAQUE.fire(new CgHostFrame(partialTicks, w, h, sourceFboId));
     }
 
     /**
@@ -80,7 +81,9 @@ public class CgRenderHook {
                                             CallbackInfo ci) {
         // Note: CG geometry renders outside Angelica/Iris's GBuffer chain.
         // See CgIrisCompat for detection API if Iris-specific behaviour is needed.
-        CgGraphicsLifecycle.onTransparentPass();
+        Minecraft mc = Minecraft.getMinecraft();
+        CgRenderStage.WORLD_TRANSPARENT.fire(new CgHostFrame(partialTicks, mc.displayWidth,
+                mc.displayHeight, mc.getFramebuffer().framebufferObject));
     }
 
     /**

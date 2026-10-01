@@ -32,8 +32,9 @@ nothing in any log. `Blaze3dMirrorTest` pins the list; `HostStateVerifier` is th
 
 ## Lifecycle
 
-Initialisation is lazy, on the first frame that owns the render context. `onOpaquePass` and
-`onTransparentPass` come from the loader's world-render hooks. At shutdown the loaders call
+Initialisation is lazy, on the first frame that owns the render context. `LifecycleModern.opaquePass`
+and `transparentPass`, from the loader's world-render hooks, fire `CgRenderStage.WORLD_OPAQUE` and
+`WORLD_TRANSPARENT`. At shutdown the loaders call
 `CgGraphicsLifecycle.shutdown()`, which stops the engine and frees nothing: Minecraft dispatches render
 stages for a frame or two after its shutdown signal. `destroyContext()` is for a host where rendering
 has definitively stopped.

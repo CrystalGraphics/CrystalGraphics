@@ -1,6 +1,7 @@
 package com.crystalgraphics.mc.legacy.mixin;
 
-import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
+import com.crystalgraphics.render.stage.CgRenderStage;
+import com.crystalgraphics.render.stage.CgHostFrame;
 import com.crystalgraphics.platform.CgPlatform;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.EntityRenderer;
@@ -27,13 +28,16 @@ public abstract class CgRenderHook {
             target = "Lnet/minecraft/profiler/Profiler;func_76318_c(Ljava/lang/String;)V", args = "ldc=translucent"))
     private void cg$opaquePass(int pass, float partialTicks, long finishTimeNano, CallbackInfo ci) {
         Minecraft mc = Minecraft.getMinecraft();
-        CgGraphicsLifecycle.onOpaquePass(partialTicks, mc.displayWidth, mc.displayHeight, mc.getFramebuffer().framebufferObject);
+        CgRenderStage.WORLD_OPAQUE.fire(new CgHostFrame(partialTicks, mc.displayWidth,
+                mc.displayHeight, mc.getFramebuffer().framebufferObject));
     }
 
     @Inject(method = "func_175068_a", remap = false, require = 1, at = @At(value = "INVOKE",
             target = "Lnet/minecraftforge/client/ForgeHooksClient;dispatchRenderLast(Lnet/minecraft/client/renderer/RenderGlobal;F)V"))
     private void cg$transparentPass(int pass, float partialTicks, long finishTimeNano, CallbackInfo ci) {
-        CgGraphicsLifecycle.onTransparentPass();
+        Minecraft mc = Minecraft.getMinecraft();
+        CgRenderStage.WORLD_TRANSPARENT.fire(new CgHostFrame(partialTicks, mc.displayWidth,
+                mc.displayHeight, mc.getFramebuffer().framebufferObject));
     }
 
     @Inject(method = "func_181560_a", remap = false, require = 1, at = @At("TAIL"))

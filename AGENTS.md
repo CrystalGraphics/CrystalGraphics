@@ -230,8 +230,8 @@ These rules apply everywhere. All agents must internalize them.
 > the first's. Nothing errors — a mesh drawing another mesh's attributes at the wrong stride is
 > degenerate geometry, which rasterises nothing.
 >
-> **So `runtime/mc/1710`'s `@Mod` class creates no GL objects at all**; `CgGraphicsLifecycle.onOpaquePass`
-> initialises lazily on a frame that genuinely owns the render context. A dev run cannot show the
+> **So `runtime/mc/1710`'s `@Mod` class creates no GL objects at all**; the first render stage a host fires
+> initialises lazily, on a frame that genuinely owns the render context. A dev run cannot show the
 > failure (no splash in the way), so it appears only in an installed client. `CgVertexArray.gen()`
 > warns when the driver returns a name this process still owns — the one cheap signal that two
 > contexts are in play. See `CrystalGUI/docs/CGUI_INVARIANTS.md` § *Rendering, GL and shaders*.
@@ -649,6 +649,35 @@ boolean on = mat.isKeywordEnabled("FOG_ON");  // false by default
 // Throws IllegalArgumentException for undeclared names
 ```
 
+## Render stages — drawing into a host's frame
+
+`CgRenderStage` is a point in a host's frame. A renderer registers on one and records into the stage's frame
+each time it fires; the frame executes on the host's target at once. CrystalGraphics defines
+`WORLD_OPAQUE` and `WORLD_TRANSPARENT` and every host fires them; a mod defines its own.
+
+```java
+// Drawing at a stage
+CgRenderStage.Registration drawing = CgRenderStage.WORLD_OPAQUE.register(0, frame -> {
+    CgPassConstants camera = frame.defaults(new CgPassConstants());   // time, size, depth convention
+    camera.view.set(view);
+    camera.projection.set(projection);
+    CgRasterPass pass = frame.pass(camera, CgOrder.SORTED);
+    // ... chunks into pass ...
+    pass.end();
+});
+drawing.close();                                                      // stops it
+
+// A stage of your own, fired from your hook on the render thread
+public static final CgRenderStage AFTER_SKY = CgRenderStage.define("mymod:after_sky");
+AFTER_SKY.fire(new CgHostFrame(partialTick, width, height, mainFramebufferId));
+```
+
+- `fire` is the whole entry: it opens the host section, starts the engine if nothing has, times the stage
+  (trace zone and GPU timer, named by the id's path) and does nothing after a teardown.
+- An id is defined once (`define` throws on a second); renderers record in ascending order, ties in
+  registration order; any thread may register.
+- `frame.callback(name, body)` draws immediately at its place in the stage, for work not yet recorded.
+
 ## CgRenderPipeline — Per-Frame Usage
 
 ```java
@@ -1032,7 +1061,7 @@ CgGraphicsLifecycle.ensureContext(width, height);
 > before painting drew nothing at all — and because Minecraft only clears the colour buffer when it
 > renders a level, the frame still held the previous screen. A screenshot then came back showing the
 > main menu, which is indistinguishable from a working UI that was simply not asked to draw. Any
-> `Screen` that paints through this engine calls it first; `onOpaquePass` calls the same method, so
+> `Screen` that paints through this engine calls it first; `CgRenderStage.fire` calls the same method, so
 > there is one definition rather than two.
 
 **Canonical teardown order** (enforced inside `destroyContext()`):
@@ -1200,18 +1229,17 @@ runs on the splash screen's shared context (see the GL-thread rule). It register
 
 `CgRenderHook` is a Mixin on `EntityRenderer` with three injections:
 
-- **Before `sortAndRender(pass=1)`** in `renderWorld` — `CgGraphicsLifecycle.onOpaquePass(partialTicks, w, h,
-  mc.framebufferMc.framebufferObject)`: the depth snapshot from Minecraft's main FBO, then the depth
-  prepass and the opaque forward pass, with the opaque world already in the depth buffer.
-- **Before `ForgeHooksClient.dispatchRenderLast`** — `onTransparentPass()`, back to front; Minecraft's own
-  translucent terrain then interleaves by depth.
+- **Before `sortAndRender(pass=1)`** in `renderWorld` — `CgRenderStage.WORLD_OPAQUE.fire(...)`, with the
+  opaque world already in Minecraft's main FBO and its depth.
+- **Before `ForgeHooksClient.dispatchRenderLast`** — `CgRenderStage.WORLD_TRANSPARENT.fire(...)`, after
+  translucent terrain.
 - **`updateCameraAndRender` TAIL** — the frame tick, on every frame including a GUI with no world.
 
 `MixinMinecraft` covers resize, fullscreen, resource reload and shutdown. Package guide:
 `runtime/mc/1710/src/main/java/com/crystalgraphics/mc/v1710/platform/AGENTS.md`.
 
-**Never call `executeOpaquePass`/`executeTransparentPass` from game code** on any host — each host's hooks
-call them once per frame at the right moment.
+**Never fire `WORLD_OPAQUE`/`WORLD_TRANSPARENT` from game code** on any host — each host's hooks fire them
+once per frame at the right moment. Register on them instead (§ *Render stages*).
 
 ## Forge 1.8–1.12.2 — `runtime/mc/legacy`
 

@@ -1,5 +1,6 @@
 package com.crystalgraphics.gl.lifecycle;
 
+import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.demo.CgRenderDemo;
 import com.crystalgraphics.platform.gl.CgCapabilities;
@@ -64,7 +65,8 @@ public final class CgGraphicsLifecycle {
     /**
      * Set by {@link #destroyContext()}, cleared only by an EXPLICIT {@link #initContext}.
      *
-     * <p>The lazy re-init in {@link #onOpaquePass} exists for a host that never announced its context.
+     * <p>The lazy init in {@link #ensureContext}, which a stage's first firing calls, exists for a host that never
+     * announced its context.
      * After a teardown it is harmful: every registry is gone and stays gone, so re-initialising only
      * flips this back to true and invites the next frame to bind a deleted material.</p>
      */
@@ -73,8 +75,6 @@ public final class CgGraphicsLifecycle {
     /** Set by {@link #standDown}: the host renders with no GL context, and the engine does nothing. */
     private static volatile boolean stoodDown = false;
 
-    private static final int GPU_OPAQUE = CgGpuTrace.name("world.opaque");
-    private static final int GPU_TRANSPARENT = CgGpuTrace.name("world.transparent");
     /**
      * -- GETTER --
      * Current window width in pixels, as last reported to 
@@ -209,6 +209,7 @@ public final class CgGraphicsLifecycle {
                     CgFallbackTextures.init();
                     warmUpDeferredStartupCosts();
                 }
+                CgRenderDemo.INSTANCE.install();
 
                 initialized = true;
                 destroyed = false;   // an explicit init is what makes a context live again
@@ -286,7 +287,7 @@ public final class CgGraphicsLifecycle {
      */
     public static void onResize(int width, int height) {
         // Every registry below is gone after a teardown, and a host forwards its window events until
-        // the process actually exits. @see #onOpaquePass
+        // the process actually exits. @see CgRenderStage#fire
         if (destroyed || stoodDown) return;
         // Nothing is built yet, and initContext applies its own size. Returning also keeps a splash-thread
         // resize from claiming the state manager before the client thread's first frame does.
@@ -298,7 +299,7 @@ public final class CgGraphicsLifecycle {
         // write; the state manager throws, the splash thread dies holding the context, and the game
         // goes down in `SplashProgress.finish` with nothing naming the resize.
         //
-        // Returning WITHOUT recording the size is what makes this a deferral: `onOpaquePass` compares
+        // Returning WITHOUT recording the size is what makes this a deferral: a stage's `ensureContext` compares
         // the frame's dimensions against `currentWidth`/`currentHeight` and calls back here on the
         // owning thread, so the next real frame applies it.
         if (!CgGlState.manager().ownedByCurrentThread()) return;
@@ -351,51 +352,6 @@ public final class CgGraphicsLifecycle {
     }
 
     /**
-     * Called before MC's translucent terrain pass. Lazy-initialises the engine on the
-     * first call. Performs the per-frame depth snapshot blit, then executes CG's opaque
-     * passes (depth prepass + opaque forward).
-     *
-     * @param partialTick frame interpolation factor
-     * @param w           current viewport width (pixels)
-     * @param h           current viewport height (pixels)
-     * @param sourceFboId GL framebuffer ID to read depth from (MC's main render target FBO)
-     */
-    public static void onOpaquePass(float partialTick, int w, int h, int sourceFboId) {
-        // Pass entry. Minecraft and other mods rendered immediately before this — between our opaque and
-        // transparent passes MC draws translucent terrain and particles, and every mod hooking the same
-        // render stages runs too. The scopes below adopt the slots they name; this covers the ones they
-        // do not, which would otherwise stay trusted-but-stale until the next frame boundary.
-        //
-        // NOTHING RUNS AFTER A TEARDOWN. Minecraft keeps dispatching render stages for a frame or two
-        // after GameShuttingDownEvent, and by then every registry is deleted -- so this pass reached
-        // CgMaterial.load and threw "CgMaterialRegistry has been deleted" out of a render event, which
-        // surfaces as a crash on quitting the game.
-        //
-        // BEFORE the resize branch too: `destroyed` used to gate only the lazy re-init below, so the
-        // else-if could still call onResize on a context that is gone.
-        if (destroyed || stoodDown) return;
-
-        // What the host handed us, before anything of ours runs. Off unless -Dcrystalgraphics.host.census;
-        // after the guard, because a stood-down host has no GL context to read.
-        CgGlCensus.at("opaque");
-        CgGL.fromHost();
-        try {
-            CgGlState.invalidateAllIfPresent();
-
-            ensureContext(w, h);
-
-            CgGpuTrace.begin(GPU_OPAQUE);
-            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "world.opaque")) {
-                CgRenderDemo.INSTANCE.renderOpaque(partialTick, w, h, sourceFboId);
-            } finally {
-                CgGpuTrace.end();
-            }
-        } finally {
-            CgGL.toHost();
-        }
-    }
-
-    /**
      * Canonical per-real-frame tick point for engine-owned singletons that need
      * per-frame bookkeeping — currently just {@link CgFontRegistry#tickFrame(long)}.
      * Wire additional systems here as needed, mirroring how {@link #destroyContext()}
@@ -420,7 +376,7 @@ public final class CgGraphicsLifecycle {
      * its own synthetic frame numbers instead.</p>
      */
     public static void tickFrame() {
-        // As onResize: a host keeps calling this until the process exits. @see #onOpaquePass
+        // As onResize: a host keeps calling this until the process exits. @see CgRenderStage#fire
         if (destroyed || stoodDown) return;
 
         frameCounter++;
@@ -456,35 +412,6 @@ public final class CgGraphicsLifecycle {
      */
     public static long getCurrentFrame() {
         return frameCounter;
-    }
-
-    /**
-     * Called after MC's translucent terrain + particles pass. Executes CG's transparent
-     * pass then ends the frame (releases the render command pool).
-     *
-     * <p>No-op if the engine context has not been initialised yet (e.g. GUI-only frames).</p>
-     */
-    public static void onTransparentPass() {
-        if (stoodDown) return;
-        // Pass entry. Minecraft and other mods rendered immediately before this — between our opaque and
-        // transparent passes MC draws translucent terrain and particles, and every mod hooking the same
-        // render stages runs too. The scopes below adopt the slots they name; this covers the ones they
-        // do not, which would otherwise stay trusted-but-stale until the next frame boundary.
-        CgGlState.invalidateAllIfPresent();
-
-        if (!initialized) return;
-        CgGlCensus.at("transparent");
-        CgGL.fromHost();
-        try {
-            CgGpuTrace.begin(GPU_TRANSPARENT);
-            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "world.transparent")) {
-                CgRenderDemo.INSTANCE.renderTransparent();
-            } finally {
-                CgGpuTrace.end();
-            }
-        } finally {
-            CgGL.toHost();
-        }
     }
 
     /**
