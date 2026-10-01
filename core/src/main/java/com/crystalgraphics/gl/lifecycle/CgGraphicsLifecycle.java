@@ -407,7 +407,7 @@ public final class CgGraphicsLifecycle {
      * harness's {@code LifecycleServiceHarness} each delegate their {@code
      * onFrameRendered()} straight here. That is the only place this method should be
      * invoked from — see {@link CgLifecycleService#onFrameRendered()}'s contract.
-     * Feature-level code ({@code CgUiPaintContext}, demo overlays, scenes, etc.) must
+     * Feature-level code ({@code UiRecorder}, demo overlays, scenes, etc.) must
      * never call this directly; doing so would tick the frame counter and the MSDF
      * per-frame generation budget an extra time outside the platform's actual frame
      * cadence.</p>

@@ -56,7 +56,7 @@ directly and fully self-contained.
   permanent design choice, not a gap to close: `CgTextRenderer` must remain usable as
   a standalone, directly-instantiated object with no owning render pass (a user
   creates one and calls `draw()` whenever they want), unlike UI's `CgUiRenderer`
-  which is always driven by a larger owning context (`CgUiPaintContext`/`UiWindow`).
+  which is always driven by a larger owning context (`UiRecorder`/`UiWindow`).
 - The renderer does **not** own any VAO/VBO/IBO GL objects itself — its owned
   `CgBatchRenderer` borrows those from the shared `CgVertexArrayRegistry`/
   `CgQuadIndexBuffer`, exactly as before. Only the CPU-side staging buffer is
@@ -125,7 +125,7 @@ true)`) hold a `PoseStack` that's `null` until a caller opts in. `Draw.submit()`
 `Draw.measure()` use it only when `.pose(...)` was never called on that `Draw`; if
 both are unset, they fall through further to a shared, never-mutated identity
 `PoseStack` (`IDENTITY_POSE_STACK`) rather than throwing — plain screen-space text
-with no real transform can skip `.pose(...)` entirely. `CgUiPaintContext` wires
+with no real transform can skip `.pose(...)` entirely. `UiRecorder` wires
 its own pose stack in here in its constructor
 (`CgTextRenderer.createManualSized().poseStack(this.poseStack)`) so that any draw issued through
 `ctx.text()` without an explicit `.pose(...)` still works — but its own `drawText()`-style
@@ -141,13 +141,13 @@ Every `create()`/`createManualSized()` call registers with the singleton
   `isWorldText()` (calling `updateOrtho` on a world context would clobber the
   perspective projection). `HUDRenderer`/`CgFontDemo` use `create()` since
   their dimensions are proven to come from the same source that drives
-  `CgGraphicsLifecycle.onResize()`; `CgUiPaintContext` deliberately uses
+  `CgGraphicsLifecycle.onResize()`; `UiRecorder` deliberately uses
   `createManualSized()` instead — its dimensions come from `UIWindow`'s own independent
   resize path, with no proven lockstep guarantee, so it still manually calls
   `textRenderer.context().updateOrtho(...)` in `beginFrame(w, h)`.
 - `deleteAll()` (called from `CgGraphicsLifecycle.destroyContext()`, before the
   VAO/VBO bulk sweep) deletes any renderer still alive as a backstop — individual
-  owners (`CgUiPaintContext`, `HUDRenderer`, harness scenes) remain responsible for
+  owners (`UiRecorder`, `HUDRenderer`, harness scenes) remain responsible for
   calling `delete()` promptly; this registry does not change that expectation.
 
 `CgDynamicTextureRenderLayer`/`CgTextLayers` still exist as classes but are **no
@@ -362,7 +362,7 @@ Package-level description of render-side responsibilities.
 - Do not assume every new `CgTextRenderer` consumer wants screen-sized resize tracking.
   `create()` (screen-sized) is the default and only correct when the consumer's dimensions are
   proven to come from the same source driving `CgGraphicsLifecycle.onResize()` — otherwise use
-  `createManualSized()`. See `CgTextRendererRegistry`'s section above for why `CgUiPaintContext`
+  `createManualSized()`. See `CgTextRendererRegistry`'s section above for why `UiRecorder`
   deliberately uses `createManualSized()`.
 - Do not make `Draw.submit()` require an active `beginBatch()` — the standalone-tolerant
   auto-wrap behavior is deliberate, not a gap. `CgTextRenderer` must stay usable as a directly

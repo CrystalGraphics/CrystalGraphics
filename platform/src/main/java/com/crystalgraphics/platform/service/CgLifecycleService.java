@@ -25,7 +25,7 @@ public interface CgLifecycleService {
      * {@code com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle.tickFrame()} — this is
      * the only place per-frame engine bookkeeping (currently {@code CgFontRegistry}'s
      * frame clock) should be triggered from. Feature-level code
-     * ({@code CgUiPaintContext}, demo overlays, etc.) must not call
+     * ({@code UiRecorder}, demo overlays, etc.) must not call
      * {@code CgGraphicsLifecycle.tickFrame()} directly — that scatters responsibility
      * for "when does a frame tick happen" across unrelated classes instead of keeping
      * it in this one platform-abstraction seam.</p>
