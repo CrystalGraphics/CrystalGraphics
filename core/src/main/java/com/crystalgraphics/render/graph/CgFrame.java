@@ -26,6 +26,10 @@ import java.util.List;
  *
  * <p>Its storage is reused frame after frame, so a steady frame allocates nothing; after {@link CgFrameBuilder#recycle}
  * the object is the builder's again.</p>
+ *
+ * <p>A frame may be executed again, until it is recycled: it draws once more with its {@code CgPropertyValues} as
+ * they stand then, which is how a compositor moves a scroll or a window between two recorded frames. Its uploads and
+ * compiles ran the first time and are skipped.</p>
  */
 public final class CgFrame {
 
@@ -42,6 +46,8 @@ public final class CgFrame {
     int[] releaseAfter = new int[8];
     int batches;
     int draws;
+    /** How often it has executed since it was built: past the first, its one-shot passes are done. */
+    int executions;
     /** Copies of the clip tables its passes' recordings filled, by recording: a frame refers back to no recording. */
     private final IdentityHashMap<CgClipTable, CgClipTable> clips = new IdentityHashMap<>();
     private final List<CgClipTable> clipPool = new ArrayList<>();
@@ -64,6 +70,7 @@ public final class CgFrame {
         transients.clear();
         batches = 0;
         draws = 0;
+        executions = 0;
         clips.clear();
         clipsUsed = 0;
         palettes.clear();

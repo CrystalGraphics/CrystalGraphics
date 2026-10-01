@@ -242,6 +242,8 @@ public class CgTextRenderer {
     private CgTextGamma gamma = CgTextGamma.initial();
     /** The {@link CgClipTable} entry every quad is stamped with; 0 for none. */
     private int clip;
+    /** The spatial and effect nodes every quad is drawn in; 0 and 0 for the pass's own space. */
+    private int spatialNode, effectNode;
     /**
      * Optional caller-supplied hook invoked at the end of every {@link #endBatch()} (manual
      * or {@link Draw#submit()}'s standalone auto-batch alike) — see {@link #restoreStateWith}.
@@ -359,6 +361,23 @@ public class CgTextRenderer {
      */
     public CgTextRenderer clip(int entry) {
         this.clip = entry;
+        return this;
+    }
+
+    /**
+     * The spatial and effect nodes every glyph, decoration and shadow drawn from now on is drawn in: a draw's pose is
+     * then in the spatial node's space, and the palette places it. 0 and 0 for the pass's own space. Per quad, like
+     * {@link #clip}.
+     *
+     * <pre>{@code
+     * renderer.node(scrollContent, 0);
+     * renderer.draw().text(row).at(x, yInContent).submit();
+     * renderer.node(0, 0);
+     * }</pre>
+     */
+    public CgTextRenderer node(int spatial, int effect) {
+        this.spatialNode = spatial;
+        this.effectNode = effect;
         return this;
     }
 
@@ -1736,6 +1755,7 @@ public class CgTextRenderer {
                     .custom1(c1x, c1y, c1z, c1w)
                     .custom2(c2)
                     .clip(clip)
+                    .node(spatialNode, effectNode)
                     .pose(modelView)
                     .submit();
 

@@ -30,6 +30,9 @@ import java.util.Arrays;
  *
  * // A card inside it, clipped by both.
  * int card = clips.add(panel, cardPose, targetHeight, 0, 0, 80, 40, FOURS, FOURS, null);
+ *
+ * // A viewport under spatial node `scroll`, its pose in the node's space: it moves with the node.
+ * int view = clips.add(0, scroll, poseInNode, 0f, 0, 0, 300, 200, FOURS, FOURS, null);
  * }</pre>
  *
  * <p>In a material:</p>
@@ -48,7 +51,8 @@ import java.util.Arrays;
  *       and nothing once the recording is reset.</li>
  *   <li>{@code pose} maps the box's space to the bound target's pixels, top-down, and {@code targetHeight} is that
  *       target's height. A draw into another target (an offscreen layer) names no entry; the clip applies when
- *       that target is composited back.</li>
+ *       that target is composited back. An entry under a spatial node maps into the node's space instead, and the
+ *       palette places it.</li>
  *   <li>{@link #add} answers -1 when the chain would pass {@link #MAX_DEPTH} or the pose collapses the box: clip
  *       that one with a layer.</li>
  *   <li>A material that does not multiply by the coverage draws past the corners, silently.</li>
@@ -68,9 +72,10 @@ public final class CgClipTable {
             .vec4("toLocal0").vec4("toLocal1")
             .vec4("outer").vec4("outerRx").vec4("outerRy")
             .vec4("inner").vec4("innerRx").vec4("innerRy")
+            .vec4("space")
             .build();
 
-    private static final int FLOATS = 32;
+    private static final int FLOATS = 36;
 
     /** gui_rect's reconstruction width for an edge off the pixel grid; 1 on it. */
     private static final float ROTATED_RAMP = 1.5f;
@@ -114,6 +119,16 @@ public final class CgClipTable {
      */
     public int add(int parent, Matrix4f pose, float targetHeight, float x0, float y0, float x1, float y1,
                    float[] rx, float[] ry, float[] border) {
+        return add(parent, 0, pose, targetHeight, x0, y0, x1, y1, rx, ry, border);
+    }
+
+    /**
+     * As {@link #add(int, Matrix4f, float, float, float, float, float, float[], float[], float[])}, for a box under
+     * spatial node {@code node}: {@code pose} maps the box's space into the node's, and the entry moves with the node.
+     * Node 0 is the target's own space, top-down, {@code targetHeight} tall; any other ignores the height.
+     */
+    public int add(int parent, int node, Matrix4f pose, float targetHeight, float x0, float y0, float x1, float y1,
+                   float[] rx, float[] ry, float[] border) {
         int depth = (parent > 0 ? depths[parent] : 0) + 1;
         float a = pose.m00(), b = pose.m10(), c = pose.m01(), d = pose.m11();
         float det = a * d - b * c;
@@ -124,16 +139,28 @@ public final class CgClipTable {
             depths = Arrays.copyOf(depths, depths.length * 2);
         }
         int o = count * FLOATS;
-        // gl_FragCoord to the box's space: y flipped to the target's top-down rows, then the pose inverted.
-        float e = targetHeight - pose.m31(), tx = pose.m30();
-        entries[o] = d / det;
-        entries[o + 1] = b / det;
-        entries[o + 2] = (-d * tx - b * e) / det;
+        float tx = pose.m30(), ty = pose.m31();
+        if (node == 0) {
+            // gl_FragCoord to the box's space: y flipped to the target's top-down rows, then the pose inverted.
+            float e = targetHeight - ty;
+            entries[o] = d / det;
+            entries[o + 1] = b / det;
+            entries[o + 2] = (-d * tx - b * e) / det;
+            entries[o + 4] = -c / det;
+            entries[o + 5] = -a / det;
+            entries[o + 6] = (c * tx + a * e) / det;
+        } else {
+            // The node's space to the box's: the pose inverted. The palette maps gl_FragCoord into the node.
+            entries[o] = d / det;
+            entries[o + 1] = -b / det;
+            entries[o + 2] = (b * ty - d * tx) / det;
+            entries[o + 4] = -c / det;
+            entries[o + 5] = a / det;
+            entries[o + 6] = (c * tx - a * ty) / det;
+        }
         entries[o + 3] = parent;
-        entries[o + 4] = -c / det;
-        entries[o + 5] = -a / det;
-        entries[o + 6] = (c * tx + a * e) / det;
         entries[o + 7] = b == 0f && c == 0f ? 1f : ROTATED_RAMP;
+        entries[o + 32] = node;
         put(o + 8, x0, y0, x1, y1, rx, ry);
         if (border != null && (border[0] > 0f || border[1] > 0f || border[2] > 0f || border[3] > 0f)) {
             // gui_rect.shader's own inner edge: the rect inset by each side, its radii shrunk by the sides they meet.
@@ -224,7 +251,8 @@ public final class CgClipTable {
                     .vec4("outerRy", entries[o + 16], entries[o + 17], entries[o + 18], entries[o + 19])
                     .vec4("inner", entries[o + 20], entries[o + 21], entries[o + 22], entries[o + 23])
                     .vec4("innerRx", entries[o + 24], entries[o + 25], entries[o + 26], entries[o + 27])
-                    .vec4("innerRy", entries[o + 28], entries[o + 29], entries[o + 30], entries[o + 31]);
+                    .vec4("innerRy", entries[o + 28], entries[o + 29], entries[o + 30], entries[o + 31])
+                    .vec4("space", entries[o + 32], 0f, 0f, 0f);
             target.endRecord();
         }
         target.endWrite();

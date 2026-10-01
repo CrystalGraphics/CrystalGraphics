@@ -1,19 +1,21 @@
 // CgPalette's shader environment: each spatial node's affine into the bound raster pass's target, and each effect
 // node's opacity.
 //
-// INJECTED BY `#pragma cg_use palette`, which `quad` and `curve` require, so their macros can read it -- a material
+// INJECTED BY `#pragma cg_use palette`, which `quad`, `curve` and `clip` require, so their macros can read it -- a material
 // never declares it itself. Compiled into both stages; fragment-only code guards itself with #ifndef CG_VERTEX_STAGE.
 //
 // A record's `node` field packs both of its nodes: spatial + 4096 * effect (CgPalette.pack). Node 0 is the pass's own
-// space at opacity 1 and its entry is never read, so a record at the root costs one branch.
+// space at opacity 1 and its entry is never read, so a record at the root costs one branch. The packed value is an
+// exact integer below 2^24, which a float holds exactly and an int conversion reads back -- adding 0.5 would round
+// past 2^23.
 #pragma once
 
 int cg_node_spatial(float node) {
-    return int(node + 0.5) & 4095;
+    return int(node) & 4095;
 }
 
 int cg_node_effect(float node) {
-    return int(node + 0.5) >> 12;
+    return int(node) >> 12;
 }
 
 // A point of the node's space, in the target's.
@@ -52,6 +54,11 @@ float cg_spatial_scale(float node) {
     vec4 r0 = PALETTE_DATA(s).toTarget0;
     vec4 r1 = PALETTE_DATA(s).toTarget1;
     return sqrt(abs(r0.x * r1.y - r0.y * r1.x));
+}
+
+// Whether node s is turned or sheared in the target: an edge under it is off the pixel grid.
+bool cg_spatial_rotated(int s) {
+    return PALETTE_DATA(s).toTarget0.y != 0.0 || PALETTE_DATA(s).toTarget1.x != 0.0;
 }
 
 // The record's group opacity: what a material that honours effect nodes multiplies by.

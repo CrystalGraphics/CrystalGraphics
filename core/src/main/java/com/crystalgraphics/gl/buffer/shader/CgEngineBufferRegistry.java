@@ -63,7 +63,7 @@ public final class CgEngineBufferRegistry {
         register("curve", CgVectorRenderer::instanceBuffer, CgVectorRenderer.MACRO_NAME,
                 "crystalgraphics:shaders/env/buffer/curve.glsl", "palette");
         register("clip", CgClipTable::buffer, CgClipTable.MACRO_NAME,
-                "crystalgraphics:shaders/env/buffer/clip.glsl");
+                "crystalgraphics:shaders/env/buffer/clip.glsl", "palette");
     }
 
     private CgEngineBufferRegistry() {}
