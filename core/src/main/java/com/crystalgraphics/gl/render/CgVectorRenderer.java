@@ -4,18 +4,19 @@ import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.api.material.CgMaterial;
+import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
 import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
 import com.crystalgraphics.gl.buffer.staging.CgStagingBuffer;
-import com.crystalgraphics.gl.mesh.CgMesh;
 import com.crystalgraphics.render.draw.CgInstanceKind;
-import com.crystalgraphics.render.graph.CgInstanceGeometry;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.api.buffer.CgGpuType;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
+
+import javax.annotation.Nullable;
 
 /**
  * Instanced 2D vector-primitive renderer — CrystalGraphics' general "hand me a few points and a
@@ -299,12 +300,6 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
     /** Initial CPU accumulation capacity, in instances. Pre-sizing hint only — auto-grows. */
     private static final int INITIAL_CAPACITY_INSTANCES = 64;
 
-    /**
-     * Shared static unit quad mesh, {@code [0,0]->[1,1]}. The vertex shader reinterprets these
-     * local coordinates as a parameterisation of the derived control-hull bounding box, so this is
-     * the identical mesh {@link CgQuadRenderer} uses: {@link CgInstanceGeometry#unitQuad()}.
-     */
-    private static final CgMesh CURVE_MESH = CgInstanceGeometry.unitQuad();
 
     /**
      * Shared static shader buffer — one SSBO/TBO backs every {@code CgVectorRenderer} instance,
@@ -330,6 +325,9 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
 
     /** The material {@link #useMaterial(CgMaterial)} last switched to, or {@code null} if never called. */
     private CgMaterial currentMaterial;
+
+    /** Turns each run of queued records into a recorded draw, and a flush into an immediate execution. */
+    private final CgInstanceRun run = new CgInstanceRun(CgInstanceKind.CURVE);
 
     /**
      * Creates a new {@code CgVectorRenderer}. Each instance owns its own CPU accumulation buffer but
@@ -398,23 +396,32 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
      * GL context can bind a different program between two frames of your own.</p>
      */
     public CgVectorRenderer useMaterial(CgMaterial material) {
+        return useMaterial(material, null);
+    }
+
+    /**
+     * As {@link #useMaterial(CgMaterial)}, drawing under {@code state} instead of the render state the material's
+     * pass declares: for a caller that decides a slot per draw which a shader cannot, as the text renderer decides
+     * depth.
+     */
+    public CgVectorRenderer useMaterial(CgMaterial material, @Nullable CgRenderState state) {
         if (material != currentMaterial) {
             flush();
-            if (currentMaterial != null) currentMaterial.unbind();
             currentMaterial = material;
         }
-        material.bind();
+        run.use(material, state, accumStaging);
         return this;
     }
 
     @Override
     protected void onBegin() {
         accumStaging.reset();
+        run.begin();
     }
 
     @Override
     protected boolean hasPendingWork() {
-        return !accumStaging.isEmpty();
+        return !accumStaging.isEmpty() || run.pending();
     }
 
     /**
@@ -1273,46 +1280,28 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
     }
 
     /**
-     * Uploads the accumulated instance data and issues one instanced draw call.
-     *
-     * <p>State-blind per {@link CgAbstractRenderer}'s contract: never touches
-     * shader/texture/blend/depth/cull state.</p>
+     * Draws everything queued since the last flush, now, into the bound framebuffer: each run under one
+     * {@link #useMaterial} is one recorded draw, executed through {@code CgImmediate} under the frame block the
+     * caller prepared.
      */
     @Override
     public void flush() {
-        if (!begun || accumStaging.isEmpty()) {
+        if (!begun) {
             accumStaging.reset();
             return;
         }
+        if (accumStaging.isEmpty() && !run.pending()) return;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "curveRenderer.flush")) {
-            int instanceCount = accumStaging.vertexCount();
             CgTrace.add(CgChannels.GL, "curveRenderer.flush.count", 1);
-            CgTrace.add(CgChannels.GL, "curveRenderer.instances", instanceCount);
-
-            try (CgTrace.Zone ignored2 = CgTrace.zone(CgChannels.GL_DETAIL, "curveRenderer.upload")) {
-                GPU_BUFFER.uploadRaw(accumStaging.rawData(), accumStaging.rawCursor());
-            }
-            try (CgTrace.Zone ignored2 = CgTrace.zone(CgChannels.GL_DETAIL, "curveRenderer.bindBuffer")) {
-                GPU_BUFFER.bind();
-                CgClipTable.bindForDraw();
-            }
-            try (CgTrace.Zone ignored2 = CgTrace.zone(CgChannels.GL_DETAIL, "curveRenderer.drawInstanced")) {
-                CURVE_MESH.drawInstanced(instanceCount);
-            }
-            accumStaging.reset();
+            CgTrace.add(CgChannels.GL, "curveRenderer.instances", accumStaging.vertexCount());
+            run.flush(accumStaging);
         }
     }
 
-    /**
-     * Unbinds {@link #currentMaterial}, if {@link #useMaterial(CgMaterial)} left one bound.
-     * The mesh and shader buffer are static/registry-owned and outlive any single renderer.
-     */
+    /** Forgets the material; the shader buffer is registry-owned and outlives any renderer. */
     @Override
     public void delete() {
-        if (currentMaterial != null) {
-            currentMaterial.unbind();
-            currentMaterial = null;
-        }
+        currentMaterial = null;
     }
 
     // Colour unpacking lives on CgBufferWriter#color, and the cubic-splitting maths in

@@ -66,8 +66,16 @@ public final class CgExecutor {
                 CgInstanceKind.OBJECT.format(), CgBindingPoints.OBJECT_DATA, CgBufferLifetime.FRAME);
     }
 
-    /** Executes {@code frame}. Render thread, inside a frame. */
+    /** Executes {@code frame} and restores GL state after. Render thread, inside a frame. */
     public static void execute(CgFrame frame) {
+        execute(frame, true);
+    }
+
+    /**
+     * Executes {@code frame}; without {@code restoreState}, the state its last pass set is left bound, as an
+     * immediate draw always left it. Render thread, inside a frame.
+     */
+    public static void execute(CgFrame frame, boolean restoreState) {
         long ringFrame = CgFrameRing.frame();
         if (depth == 0 && ringFrame != trimmedFrame) {
             POOL.endFrame();
@@ -77,7 +85,7 @@ public final class CgExecutor {
         CgExecutor executor = BY_DEPTH.get(depth);
         depth++;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "graph.execute");
-             CgGlScope ignored2 = CgGlState.saveAll()) {
+             CgGlScope ignored2 = restoreState ? CgGlState.saveAll() : null) {
             executor.run(frame);
         } finally {
             depth--;
@@ -98,7 +106,7 @@ public final class CgExecutor {
         }
         int resolved = 0;
         try {
-            for (int s = 0; s < frame.steps.length; s++) {
+            for (int s = 0; s < frame.stepCount; s++) {
                 for (int t = 0; t < frame.transients.size(); t++) {
                     if (frame.acquireAt[t] == s) {
                         CgGraphTexture texture = frame.transients.get(t);

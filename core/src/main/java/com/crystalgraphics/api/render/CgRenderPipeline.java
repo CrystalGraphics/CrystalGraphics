@@ -317,6 +317,18 @@ public final class CgRenderPipeline {
         if (pipeline != null && !pipeline.deleted) pipeline.frameUbo.upload();   // nothing before the first block
     }
 
+    /**
+     * Copies the frame block last prepared into {@code out}: the pass constants an immediate draw takes, so it draws
+     * under the camera its caller set up. False, leaving {@code out} alone, before any block exists.
+     */
+    public static boolean copyFrameBlock(float[] out) {
+        CgRenderPipeline pipeline = INSTANCE;
+        int floats = FRAME_FORMAT.getFloatCount();
+        if (pipeline == null || pipeline.deleted || pipeline.frameUbo.writer().rawCursor() < floats) return false;
+        System.arraycopy(pipeline.frameUbo.writer().rawData(), 0, out, 0, floats);
+        return true;
+    }
+
     private void bindFrameResources() {
         frameUbo.bind();
         objectBuffer.bind();

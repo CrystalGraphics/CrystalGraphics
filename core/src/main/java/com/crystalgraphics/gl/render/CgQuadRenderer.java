@@ -6,18 +6,19 @@ import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.api.material.CgMaterial;
+import com.crystalgraphics.api.state.CgRenderState;
+import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gl.buffer.shader.CgEngineBufferRegistry;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
 import com.crystalgraphics.api.buffer.CgGpuType;
 import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
 import com.crystalgraphics.gl.buffer.staging.CgStagingBuffer;
-import com.crystalgraphics.gl.mesh.CgMesh;
 import com.crystalgraphics.render.draw.CgInstanceKind;
-import com.crystalgraphics.render.graph.CgInstanceGeometry;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
+import javax.annotation.Nullable;
 
 /**
  * Instanced quad renderer whose per-instance data lives in a single, class-wide
@@ -122,9 +123,6 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
     /** Initial CPU accumulation capacity, in instances. Purely a pre-sizing hint — auto-grows past this. */
     private static final int INITIAL_CAPACITY_INSTANCES = 64;
 
-    /** The unit quad every instance expands, shared with the frame graph's executor. */
-    private static final CgMesh QUAD_MESH = CgInstanceGeometry.unitQuad();
-
     /**
      * Shared static shader buffer — one SSBO/TBO backs every {@code CgQuadRenderer} instance.
      * Bound at an <strong>engine-reserved</strong> {@link CgBindingPoints.Binding}
@@ -134,7 +132,7 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
      * dedups by name+format+binding, but two buffers with different names can still be assigned
      * the same numeric GL binding point, and only one can be bound there at a time).
      *
-     * <p>Relies on the JVM's lazy class-initialization guarantee, same as {@link #QUAD_MESH}:
+     * <p>Relies on the JVM's lazy class-initialization guarantee:
      * {@link CgBindingPoints#init} must have run (via {@code CgRenderPipeline.init()} ←
      * {@code CgGraphicsLifecycle.initContext()}) by the time this class is first touched, i.e. by
      * the first real {@link #create()} call. Note {@code CgEngineBufferRegistry} seeds the
@@ -156,6 +154,9 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
 
     /** The material {@link #useMaterial(CgMaterial)} last switched to, or {@code null} if never called. */
     private CgMaterial currentMaterial;
+
+    /** Turns each run of queued records into a recorded draw, and a flush into an immediate execution. */
+    private final CgInstanceRun run = new CgInstanceRun(CgInstanceKind.QUAD);
 
     /**
      * Creates a new {@code CgQuadRenderer}. Each instance owns its own CPU accumulation
@@ -240,23 +241,42 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
      * @return this renderer, for chaining into {@code begin()}/{@code quad()}
      */
     public CgQuadRenderer useMaterial(CgMaterial material) {
+        return useMaterial(material, null);
+    }
+
+    /**
+     * As {@link #useMaterial(CgMaterial)}, drawing under {@code state} instead of the render state the material's
+     * pass declares: for a caller that decides a slot per draw which a shader cannot, as the text renderer decides
+     * depth.
+     */
+    public CgQuadRenderer useMaterial(CgMaterial material, @Nullable CgRenderState state) {
         if (material != currentMaterial) {
             flush();
-            if (currentMaterial != null) currentMaterial.unbind();
             currentMaterial = material;
         }
-        material.bind();
+        run.use(material, state, accumStaging);
+        return this;
+    }
+
+    /**
+     * Binds {@code texture} to {@code unit} for the records queued from now until the next flush, as a raw
+     * {@code glBindTexture} before the draw did: it wins over the material's own sampler at that unit when bound
+     * after the last {@link #useMaterial}.
+     */
+    public CgQuadRenderer bindTexture(int unit, CgTexture texture) {
+        run.handBind(unit, texture);
         return this;
     }
 
     @Override
     protected void onBegin() {
         accumStaging.reset();
+        run.begin();
     }
 
     @Override
     protected boolean hasPendingWork() {
-        return !accumStaging.isEmpty();
+        return !accumStaging.isEmpty() || run.pending();
     }
 
     /**
@@ -546,38 +566,24 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
     }
 
     /**
-     * Uploads the accumulated instance data and issues one instanced draw call.
-     *
-     * <p>State-blind per {@link CgAbstractRenderer}'s contract: never touches
-     * shader/texture/blend/depth/cull state. Binding the shader buffer itself is
-     * "data wiring," not render state, the same way {@link CgInstanceRenderer#flush()}
-     * already uploads and rebinds its own instance VBO internally.</p>
+     * Draws everything queued since the last flush, now, into the bound framebuffer: each run under one
+     * {@link #useMaterial} is one recorded draw, executed through {@code CgImmediate} under the frame block the
+     * caller prepared.
      */
     @Override
     public void flush() {
-        if (!begun || accumStaging.isEmpty()) {
+        if (!begun) {
             accumStaging.reset();
             return;
         }
+        if (accumStaging.isEmpty() && !run.pending()) return;
         // Instrumented per stage because this is where text actually reaches the GPU. The text draw
         // path runs through CgQuadRenderer (instanced quads), not CgBatchRenderer, so this method —
         // not that one — is the tail of every glyph draw.
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "quadRenderer.flush")) {
-            int instanceCount = accumStaging.vertexCount();
             CgTrace.add(CgChannels.GL, "quadRenderer.flush.count", 1);
-            CgTrace.add(CgChannels.GL, "quadRenderer.instances", instanceCount);
-
-            try (CgTrace.Zone ignored2 = CgTrace.zone(CgChannels.GL_DETAIL, "quadRenderer.upload")) {
-                GPU_BUFFER.uploadRaw(accumStaging.rawData(), accumStaging.rawCursor());
-            }
-            try (CgTrace.Zone ignored2 = CgTrace.zone(CgChannels.GL_DETAIL, "quadRenderer.bindBuffer")) {
-                GPU_BUFFER.bind();
-                CgClipTable.bindForDraw();
-            }
-            try (CgTrace.Zone ignored2 = CgTrace.zone(CgChannels.GL_DETAIL, "quadRenderer.drawInstanced")) {
-                QUAD_MESH.drawInstanced(instanceCount);
-            }
-            accumStaging.reset();
+            CgTrace.add(CgChannels.GL, "quadRenderer.instances", accumStaging.vertexCount());
+            run.flush(accumStaging);
         }
     }
 
@@ -588,9 +594,6 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
      */
     @Override
     public void delete() {
-        if (currentMaterial != null) {
-            currentMaterial.unbind();
-            currentMaterial = null;
-        }
+        currentMaterial = null;
     }
 }

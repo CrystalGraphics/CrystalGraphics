@@ -112,6 +112,11 @@ public final class CgRenderState {
      * Returns a builder with all slots null. Set only the slots needed by the
      * material; unset slots will be skipped by {@link #apply()}.
      */
+    /** A copy with {@code blend} in place of this state's blend slot. */
+    public CgRenderState withBlend(CgBlendState blend) {
+        return builder().alpha(alpha).blend(blend).depth(depth).cull(cull).stencil(stencil).colorMasks(colorMasks).build();
+    }
+
     public static Builder builder() { return new Builder(); }
 
     public static final class Builder {

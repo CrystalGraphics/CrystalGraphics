@@ -21,7 +21,15 @@ CgExecutor.execute(frame);
 builder.recycle(frame);
 ```
 
-`CgImmediate` (one package up) is the same three stages in one `try` block, for a caller with no graph.
+`CgImmediate` (one package up) is the same three stages in one `try` block, for a caller with no graph — and
+`CgImmediate.flush(chunk, order)` is what `CgQuadRenderer`/`CgVectorRenderer.flush()` call, under the frame block
+the caller prepared (`render-graph` G2).
+
+**What a recorded draw keeps of an immediate one** (G2's gate found each): a draw runs under the material as the
+last `useMaterial` before it left it, since a bind used to upload values set after the records were queued; state a
+caller sets after binding rides on the pipeline (`CgPipeline.withState`), or the pipeline's declared state would
+overwrite it at the draw; and a texture bound by hand goes in through `bindTexture(unit, texture)`, winning the
+unit as GL's last bind did.
 
 ## Rules
 

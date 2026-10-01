@@ -18,7 +18,6 @@ import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.gl.render.CgClipTable;
 import com.crystalgraphics.gl.render.CgQuadRenderer;
-import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.gl.texture.CgTextureMutable;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.text.cache.CgFontRegistry;
@@ -548,14 +547,9 @@ public class CgTextRenderer {
      * {@link #TEXT_DATA_UBO} for the duration of the draw, and issuing the instanced draw. No-op
      * if nothing is staged.
      *
-     * <p>The real depth state (disabled for UI text, test-only for world text — see
-     * {@link CgTextRenderContext#isWorldText()}) is applied <em>after</em>
-     * {@code quadRenderer.useMaterial(TEXT_MATERIAL)} binds the material, since a {@code Pass}'s
-     * {@code RenderState} is baked at author time and can't itself express this split (see
-     * {@code text.shader}'s placeholder {@code DepthTest}/{@code DepthWrite} lines). No explicit
-     * {@code .clear()} is needed afterward — {@code CgMaterial.unbind()}'s own {@code CgGlScope}
-     * already restores depth (along with blend/cull/etc.) to whatever was active before
-     * {@code bind()}, which is more correct than resetting to hard GL defaults.</p>
+     * <p>Text draws under {@code text.shader}'s declared depth (test and write). A per-context override applied
+     * after the bind never reached a draw — measured on {@code text-3d}, render-graph G2 — and is gone; a pass that
+     * owns its depth decides it from G3 on.</p>
      */
     private void flush() {
         if (!quadRenderer.isDirty()) return;
@@ -564,7 +558,6 @@ public class CgTextRenderer {
             CgTrace.add(CgChannels.GL, "gl.flush.count", 1);
             quadRenderer.useMaterial(TEXT_MATERIAL);
             TEXT_DATA_UBO.bind();
-            (context.isWorldText() ? CgDepthState.TEST_ONLY : CgDepthState.NONE).apply();
 
             quadRenderer.flush();
         }
