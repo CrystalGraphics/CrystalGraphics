@@ -251,4 +251,5 @@ width shape and wrap once.
 - **Fonts from `CgSystemFonts.load` are cached.** Never `dispose()` them.
 - **A draw can come out provisional** while glyphs are still being generated. A caller that paints only on
   damage compares `text.getDegradedDrawCount()` before and after, and asks for another frame if it rose.
-- **GL thread only**, for the renderer and every draw.
+- **A renderer is made on the GL thread and used by one thread at a time.** Drawing immediately is the GL thread's;
+  a renderer recording into a sink (`sink(recorder)`) may draw from any thread, and layout from any thread at all.

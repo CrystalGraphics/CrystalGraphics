@@ -693,14 +693,17 @@ public final class CgTextLayoutEngine {
             for (CgFontFamily.ResolvedFontRun resolvedRun : resolvedRuns) {
                 HBFont hbFont = resolvedRun.requireHbFont();
                 CgFont resolvedFont = resolvedRun.getSource().requireFont();
-                CgShapedRun run = SHAPER.shape(text,
-                        resolvedRun.getStart(),
-                        resolvedRun.getEnd(),
-                        resolvedRun.getFontKey(),
-                        resolvedFont,
-                        rtl,
-                        hbFont,
-                        features);
+                CgShapedRun run;
+                synchronized (resolvedFont.faceLock()) {
+                    run = SHAPER.shape(text,
+                            resolvedRun.getStart(),
+                            resolvedRun.getEnd(),
+                            resolvedRun.getFontKey(),
+                            resolvedFont,
+                            rtl,
+                            hbFont,
+                            features);
+                }
                 out.add(run);
             }
         }
@@ -729,8 +732,11 @@ public final class CgTextLayoutEngine {
             CgFontFamily family = group.resolve(run.fontKey().getStyle());
             HBFont hbFont = family.requireShapingFont(run.fontKey());
             CgFont resolvedFont = family.resolveLoadedFont(run.fontKey());
-            CgShapedRun fragment = SHAPER.shape(context.sourceText(), subStart, subEnd,
-                    run.fontKey(), resolvedFont, run.rtl(), hbFont);
+            CgShapedRun fragment;
+            synchronized (resolvedFont.faceLock()) {
+                fragment = SHAPER.shape(context.sourceText(), subStart, subEnd,
+                        run.fontKey(), resolvedFont, run.rtl(), hbFont);
+            }
             // shaper.shape() only knows glyph/advance/cluster data -- it has no idea this
             // sub-range came from a run carrying rich styling (a colored/decorated/bold
             // span the line breaker had to split). Without copying these over, any styled

@@ -78,7 +78,7 @@ public final class CgTextLayoutCache {
     }
 
     /** @return the cached layout if present, else {@code null} */
-    public static CgTextLayout get(Key key) {
+    public static synchronized CgTextLayout get(Key key) {
         // Hit rate is reported because it decides how much any further shaping optimisation is
         // worth: a hit skips shaping entirely, so a benchmark that misses every time (every label's
         // text changing each frame) measures a workload real UI rarely produces. Without this
@@ -92,7 +92,7 @@ public final class CgTextLayoutCache {
         return layout;
     }
 
-    public static void put(Key key, CgTextLayout layout) {
+    public static synchronized void put(Key key, CgTextLayout layout) {
         CgTextLayout replaced = MAP.put(key, layout);
         if (replaced != null) cachedBytes -= estimateBytes(replaced);
         cachedBytes += estimateBytes(layout);
@@ -166,7 +166,7 @@ public final class CgTextLayoutCache {
      * are keyed by {@link CgTextLayout} identity, so once the layouts here are gone nothing can
      * look them up again, and its own eviction reclaims them.</p>
      */
-    public static void clear() {
+    public static synchronized void clear() {
         int dropped = MAP.size();
         MAP.clear();
         cachedBytes = 0L;
@@ -174,12 +174,12 @@ public final class CgTextLayoutCache {
     }
 
     /** Current estimated footprint, for diagnostics and tests. */
-    public static long estimatedBytes() {
+    public static synchronized long estimatedBytes() {
         return cachedBytes;
     }
 
     /** Entry count, for diagnostics and tests. */
-    public static int size() {
+    public static synchronized int size() {
         return MAP.size();
     }
 

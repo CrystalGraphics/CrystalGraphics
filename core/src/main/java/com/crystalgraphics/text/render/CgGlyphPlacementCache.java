@@ -98,7 +98,7 @@ public final class CgGlyphPlacementCache {
      * Charges a refresh of a stale unconverged entry against this frame's budget. Call after the
      * refresh, so the next lookup in the same frame sees what it cost.
      */
-    public static void chargeRefresh(long frame, long nanos) {
+    public static synchronized void chargeRefresh(long frame, long nanos) {
         rollRefreshBudget(frame);
         refreshNanosThisFrame += nanos;
     }
@@ -138,12 +138,12 @@ public final class CgGlyphPlacementCache {
      * @return the cached entry if present and not stale for {@code effectiveTargetPx} and the
      *         current atlas generations (see {@link Entry#matches}), else {@code null}
      */
-    public static Entry get(Key key, int effectiveTargetPx, long contentGeneration, long evictionGeneration, long frame) {
+    public static synchronized Entry get(Key key, int effectiveTargetPx, long contentGeneration, long evictionGeneration, long frame) {
         Entry entry = MAP.get(key);
         return entry != null && entry.matches(effectiveTargetPx, contentGeneration, evictionGeneration, frame) ? entry : null;
     }
 
-    public static void put(Key key, Entry entry) {
+    public static synchronized void put(Key key, Entry entry) {
         Entry replaced = MAP.put(key, entry);
         if (replaced != null) cachedBytes -= replaced.estimatedBytes();
         cachedBytes += entry.estimatedBytes();
@@ -201,7 +201,7 @@ public final class CgGlyphPlacementCache {
     }
 
     /** Drops every entry. Test-only; production invalidation happens via eviction generations. */
-    public static void clearForTest() {
+    public static synchronized void clearForTest() {
         MAP.clear();
         cachedBytes = 0L;
         refreshBudgetFrame = Long.MIN_VALUE;
@@ -209,12 +209,12 @@ public final class CgGlyphPlacementCache {
     }
 
     /** Current estimated footprint, for diagnostics and tests. */
-    public static long estimatedBytes() {
+    public static synchronized long estimatedBytes() {
         return cachedBytes;
     }
 
     /** Entry count, for diagnostics and tests. */
-    public static int size() {
+    public static synchronized int size() {
         return MAP.size();
     }
 
@@ -243,7 +243,7 @@ public final class CgGlyphPlacementCache {
      * placements are ever reused from the returned entry, and those are size-independent by
      * construction (see {@link Entry#matches}).</p>
      */
-    public static Entry getForUpgrade(Key key, long evictionGeneration) {
+    public static synchronized Entry getForUpgrade(Key key, long evictionGeneration) {
         Entry entry = MAP.get(key);
         if (entry == null || entry.distanceField()) return null;
         return entry.builtEvictionGeneration() == evictionGeneration ? entry : null;
