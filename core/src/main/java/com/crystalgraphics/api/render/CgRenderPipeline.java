@@ -318,6 +318,14 @@ public final class CgRenderPipeline {
     }
 
     /**
+     * The seconds {@code cg_Time} carries this frame, partial tick included: what a recorder puts in its own pass
+     * constants so a material reading {@code CG_TIME} animates the same as under {@link #prepareFrame()}.
+     */
+    public float frameTime() {
+        return frameData.timeSecs + currentPartialTicks * 0.05f;
+    }
+
+    /**
      * Copies the frame block last prepared into {@code out}: the pass constants an immediate draw takes, so it draws
      * under the camera its caller set up. False, leaving {@code out} alone, before any block exists.
      */
