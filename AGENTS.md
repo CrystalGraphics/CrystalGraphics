@@ -808,6 +808,7 @@ tex.delete();
 // Procedural (unitCube, quad2D, plane, uvSphere, icosahedron)
 CgMeshData data = CgMeshBuilder.unitCube(CgVertexFormat.SPATIAL);
 CgMesh mesh = CgMesh.upload(data);      // GL thread only — uses GL_STATIC_DRAW
+CgMesh later = CgMesh.uploadDeferred(data); // any thread: its GL objects are made before the next frame executes
 mesh.drawInstanced(N);                   // N instances via engine SSBO/TBO
 mesh.drawDirect();                       // non-instanced draw
 
@@ -1090,7 +1091,7 @@ CgGraphicsLifecycle.ensureContext(width, height);
 | 6 | `CgMaterialRegistry.get().deleteAll()` | Material instances + GL shader programs |
 | 7 | `CgShaderBufferRegistry.get().deleteAll()` | User SSBO/TBO/UBO resources |
 | 8 | `CgWorldRenderer.get().release()` | Its draws, and the depth snapshot's reference (the framebuffer is freed by step 9) |
-| 8b | `CgPreviewPool.deleteAll()` | Shader-graph preview targets. **Context-owned, not renderer-owned** — they are `createOwned`, so no registry below reaches them, and release used to depend on every `CgPreviewRenderer`'s owner remembering to call `delete()`. Before step 9, since a target holds framebuffers |
+| 8b | `CgPreviewPool.deleteAll()` | Shader-graph preview targets, thumbnails and main previews. **Context-owned, not renderer-owned** — their storage is made by the executor outside any registry, so nothing below reaches it. Before step 9, since a target holds framebuffers |
 | 9 | `CgFrameBufferRegistry.get().deleteAll()` | All owned FBOs |
 | 10 | `CgDebugBlit.dispose()` | Debug blit utility (no-op if never used) |
 

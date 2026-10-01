@@ -354,7 +354,7 @@ CrystalGraphics' zones, by package — **before adding one, look here and in the
 | Glyph supply | text, async | `registry.*`, generation, atlas growth and eviction, packing | `text/cache/CgFontRegistry`, `CgWorkerFontContext`, `text/atlas/*`, `text/msdf/CgMsdfGenerator` |
 | Text draw | text, gl; text.detail | `glyph.resolveGlyphs`, `draw.materialTransition`, `gl.flush`; on text.detail `placementCache.*`, `glyph.flatten/resolvePlacements/resolveDecorations`, `draw.sortKeys/syncProjection/submitSortedQuads/quadLoop/planShadows` | `text/render/CgTextRenderer`, `CgResolvedGlyphs` |
 | Materials | gl; gl.detail | `material.*`; `doBind.*` on gl.detail; a compile split into `material.parse`, `.codegen`, `.preprocess`, `.glCompile` (or `.glSubmit` when deferred), `.depthAutoGen`, `.shadowAutoGen`; a deferred one under `material.submitRecompile`, then `.commit`/`.awaitPending`, and `.lateAutoGen` when a forward-only compile's depth or shadow pass is first asked for; `material.generated.hit/miss` counts | `api/material/CgMaterial`, `gl/material/CgMaterialShader`, `CgMaterialShaderRegistry` |
-| Shader graph | shadergraph, gpu | `shadergraph.emit`, `.previewEmit`; `preview.renderPending/render/draw`, `mainPreview.render/draw`; counters for what drew, was unchanged, is animated or still compiling; `gpu:preview.draw`, `gpu:mainPreview.draw` | `shadergraph/CgShaderEmitter`, `CgPreviewEmitter`, `CgPreviewRenderer`, `CgMainPreviewRenderer` |
+| Shader graph | shadergraph, gpu | `shadergraph.emit`, `.previewEmit`; `preview.renderPending/render/draw`, `mainPreview.render/draw` — recording only: the passes execute inside the frame that records them, so their GPU time is that frame's; counters for what drew, was unchanged, is animated or still compiling | `shadergraph/CgShaderEmitter`, `CgPreviewEmitter`, `CgPreviewRenderer`, `CgMainPreviewRenderer` |
 | Batching | gl; gl.detail | `batch.*`, `quadRenderer.flush`, `curveRenderer.flush`, `frameRing.wait`; on gl.detail their `upload`/`bindBuffer`/`drawInstanced` and stream buffer `map`/`write`/`commit` | `gl/render/*`, `gl/buffer/*` |
 | Texture arrays | gl | uploads, growth | `gl/texture/CgTexture2DArray` |
 | World | world, gpu | a stage's whole firing as its path (`world.opaque`, `world.transparent`), the world renderer's recording inside it (`world.recordOpaque/recordTransparent`), `world.opaqueDraws/transparentDraws` counts; `gpu:world.opaque/transparent` | `render/stage/CgRenderStage`, `render/world/CgWorldRenderer` |
@@ -366,8 +366,8 @@ depth snapshot, texture loading (`CgTextureManager`, `CgTextureIO`), raw `CgShad
 material, hot reload, and every host's own hooks (`runtime/mc/**`).
 
 **A GPU zone's time is not always its own.** The first GPU zone of a frame absorbs whatever the GPU was still
-finishing: in the shader graph, `gpu:mainPreview.draw` read 9 ms, and with that draw switched off the same
-9 ms moved to `gpu:preview.draw`. Switch the suspect off and see where the time goes before believing it.
+finishing: in the shader graph, the main preview's GPU zone once read 9 ms, and with that draw switched off the
+same 9 ms moved to the thumbnails'. Switch the suspect off and see where the time goes before believing it.
 
 ---
 

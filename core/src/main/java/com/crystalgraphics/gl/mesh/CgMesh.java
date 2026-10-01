@@ -18,6 +18,8 @@ import lombok.Getter;
 import javax.annotation.Nullable;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 /**
  * Immutable static GPU mesh: owns a VBO, an optional IBO, and a standalone VAO.
@@ -46,6 +48,16 @@ import java.nio.ByteOrder;
  * <p>Call {@link #delete()} only when no rendering code still references this mesh.
  * Deleting the mesh while VAO bindings in registries still reference its buffers
  * leaves stale GPU state pointing at deleted resources.</p>
+ *
+ * <h3>Where no GL may run</h3>
+ * <p>{@link #uploadDeferred} answers a mesh at once and makes its GL objects on the render thread before the next
+ * frame executes, so a recording or a worker can make one and draw it in the same frame. A {@link #delete()} where
+ * no GL may run is carried out there too.</p>
+ *
+ * <pre>{@code
+ * CgMesh sphere = CgMesh.uploadDeferred(CgMeshBuilder.uvSphere(CgVertexFormat.SPATIAL, 24, 32, 1f));
+ * chunks.draw(material.pipeline(CgInstanceKind.OBJECT), snapshot, sphere);   // drawable in this frame
+ * }</pre>
  */
 public final class CgMesh {
 
@@ -55,14 +67,9 @@ public final class CgMesh {
     /** Primitive topology used for draw calls. */
     @Getter private final CgMeshTopology topology;
 
-    /** Raw GL buffer id for vertex data ({@code GL_STATIC_DRAW}). */
-    @Getter private final int glVertexBuffer;
-
-    /** Raw GL buffer id for index data, or {@code 0} for non-indexed. */
-    @Getter private final int glIndexBuffer;
-
-    /** Standalone VAO id for non-instanced {@link #drawDirect()} calls. */
-    @Getter private final int glVao;
+    private int glVertexBuffer;
+    private int glIndexBuffer;
+    private int glVao;
 
     /** Number of vertices in the VBO. */
     @Getter private final int vertexCount;
@@ -78,6 +85,13 @@ public final class CgMesh {
 
     /** Whether {@link #delete()} has been called. */
     private boolean deleted;
+
+    /** A deferred mesh's data, until the render thread has uploaded it. */
+    @Nullable
+    private volatile CgMeshData pending;
+
+    /** Meshes with GL work the render thread has yet to do: an upload, or a delete asked for where no GL ran. */
+    private static final Set<CgMesh> DEFERRED = new LinkedHashSet<>();
 
     /** Its local bounds, {@code [minX, minY, minZ, maxX, maxY, maxZ]}; null when its positions are not floats. */
     @Nullable
@@ -104,6 +118,24 @@ public final class CgMesh {
     @Nullable
     public float[] bounds() {
         return bounds;
+    }
+
+    /** Raw GL buffer id for vertex data ({@code GL_STATIC_DRAW}). Render thread: a deferred mesh uploads first. */
+    public int getGlVertexBuffer() {
+        ensureUploaded();
+        return glVertexBuffer;
+    }
+
+    /** Raw GL buffer id for index data, or {@code 0} for non-indexed. */
+    public int getGlIndexBuffer() {
+        ensureUploaded();
+        return glIndexBuffer;
+    }
+
+    /** Standalone VAO id for non-instanced {@link #drawDirect()} calls. */
+    public int getGlVao() {
+        ensureUploaded();
+        return glVao;
     }
 
     /** The float positions' extent in {@code vertexData}, read without moving it; null for a non-float position. */
@@ -186,8 +218,55 @@ public final class CgMesh {
     public static CgMesh upload(CgVertexFormat format, CgMeshTopology topology,
                                  ByteBuffer vertexData, ByteBuffer indexData, int indexCount, int indexType) {
         int vertexCount = vertexData.remaining() / format.getStride();
-        float[] bounds = boundsOf(format, vertexData, vertexCount);
+        CgMesh mesh = new CgMesh(format, topology, 0, 0, 0, vertexCount, indexCount, indexType,
+                boundsOf(format, vertexData, vertexCount));
+        mesh.createObjects(vertexData, indexData);
+        return mesh;
+    }
 
+    /**
+     * A mesh of {@code data} whose GL objects are made on the render thread before the next frame executes. Any
+     * thread; drawable in any draw recorded after this call.
+     */
+    public static CgMesh uploadDeferred(CgMeshData data) {
+        int vertexCount = data.vertexBuffer().remaining() / data.format().getStride();
+        int indexType = vertexCount <= 65535 ? CgGL.GL_UNSIGNED_SHORT : CgGL.GL_UNSIGNED_INT;
+        CgMesh mesh = new CgMesh(data.format(), data.topology(), 0, 0, 0, vertexCount, data.indexCount(), indexType,
+                boundsOf(data.format(), data.vertexBuffer(), vertexCount));
+        mesh.pending = data;
+        schedule(mesh);
+        return mesh;
+    }
+
+    /** Does every deferred upload and delete. Render thread; {@code CgExecutor} calls it before each frame. */
+    public static void applyDeferred() {
+        CgMesh[] work;
+        synchronized (DEFERRED) {
+            if (DEFERRED.isEmpty()) return;
+            work = DEFERRED.toArray(new CgMesh[0]);
+            DEFERRED.clear();
+        }
+        for (CgMesh mesh : work) mesh.applyPending();
+    }
+
+    private static void schedule(CgMesh mesh) {
+        synchronized (DEFERRED) {
+            DEFERRED.add(mesh);
+        }
+    }
+
+    private void ensureUploaded() {
+        if (pending != null) applyPending();
+    }
+
+    private synchronized void applyPending() {
+        CgMeshData data = pending;
+        pending = null;
+        if (data != null && !deleted) createObjects(data.vertexBuffer(), data.indexBuffer());
+        if (deleted && glVao != 0) release();
+    }
+
+    private void createObjects(ByteBuffer vertexData, @Nullable ByteBuffer indexData) {
         // ── Upload VBO ────────────────────────────────────────────────────
         int vbo = CgGL.glGenBuffers();
         CgGL.glBindBuffer(CgGL.GL_ARRAY_BUFFER, vbo);
@@ -207,7 +286,7 @@ public final class CgMesh {
 
         // VBO is already bound from the upload step above.
         // Attribute pointer loop via CgAttributeFormat interface
-        CgAttributeFormat layout = format;
+        CgAttributeFormat layout = this.format;
         for (int i = 0; i < layout.getAttributeCount(); i++) {
             CgVertexAttribute attr = layout.getAttribute(i);
             CgGL.glVertexAttribPointer(
@@ -239,7 +318,9 @@ public final class CgMesh {
             CgGL.glBindBuffer(CgGL.GL_ELEMENT_ARRAY_BUFFER, 0);
         }
 
-        return new CgMesh(format, topology, vbo, ibo, vao, vertexCount, indexCount, indexType, bounds);
+        this.glVertexBuffer = vbo;
+        this.glIndexBuffer = ibo;
+        this.glVao = vao;
     }
 
     /**
@@ -264,7 +345,8 @@ public final class CgMesh {
      */
     public void drawDirect() {
         if (deleted) throw new IllegalStateException("CgMesh has been deleted");
-        
+        ensureUploaded();
+
         CgVertexArray.bind(glVao);
         if (glIndexBuffer != 0) 
             CgGL.glDrawElements(topology.getGlMode(), indexCount, indexType, 0L);
@@ -297,6 +379,7 @@ public final class CgMesh {
     public void drawInstanced(int count) {
         if (deleted) throw new IllegalStateException("CgMesh has been deleted");
         if (count < 1) throw new IllegalArgumentException("count must be >= 1, got " + count);
+        ensureUploaded();
 
         CgVertexArray.bind(glVao);
         if (glIndexBuffer != 0)
@@ -309,7 +392,7 @@ public final class CgMesh {
     /**
      * Deletes all GPU resources owned by this mesh: the VAO, the VBO, and the IBO (if any).
      *
-     * <p><strong>Must be called on the GL thread.</strong></p>
+     * <p>Any thread: where no GL may run, the GPU objects go on the render thread before the next frame.</p>
      *
      * <p>Calling this method while any rendering code still holds a reference to this
      * mesh instance leaves stale GPU state. Ensure all references are dropped before
@@ -317,9 +400,18 @@ public final class CgMesh {
      *
      * <p>This method is idempotent — calling it multiple times has no additional effect.</p>
      */
-    public void delete() {
+    public synchronized void delete() {
         if (deleted) return;
         deleted = true;
+        if (pending != null) {
+            pending = null;
+            return;
+        }
+        if (CgGL.mayIssueGl()) release();
+        else schedule(this);
+    }
+
+    private void release() {
         // Invalidate any instanced VAOs in the registry that reference this mesh's VBO/IBO,
         // so they don't linger as stale GPU state pointing at deleted buffer objects.
         CgVertexArrayRegistry.get().invalidateMeshBindings(this);

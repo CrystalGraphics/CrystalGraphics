@@ -34,17 +34,16 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <h3>Teardown</h3>
  *
- * <p>{@link #deleteAll()} is called from {@code CgGraphicsLifecycle.destroyContext()}. That is a real
- * improvement on its own: the targets are {@code createOwned}, so <b>no registry sweeps them</b> and
- * release previously depended on every renderer's owner remembering to call {@code delete()}. Now the
- * context frees them because the context owns them.</p>
+ * <p>{@link #deleteAll()} is called from {@code CgGraphicsLifecycle.destroyContext()}: a target's storage is made by
+ * the executor outside any registry, so <b>no registry sweeps it</b>, and the context frees it because the context
+ * owns it.</p>
  */
 public final class CgPreviewPool {
 
     private CgPreviewPool() {
     }
 
-    /** {@code size + "x" + samples} → its pool. Insertion-ordered so teardown is deterministic. */
+    /** {@code size + "x" + samples} → its pool. Insertion-ordered so teardown is deterministic; guarded by the class. */
     private static final Map<String, CgPreviewSlots<CgPreviewTarget>> POOLS = new LinkedHashMap<>();
 
     /** Hands every renderer a distinct key namespace — see {@link CgPreviewSlots#retainOnlyWithin}. */
@@ -62,7 +61,7 @@ public final class CgPreviewPool {
      * a property of the pool, and letting a later renderer shrink one that others are already using would
      * evict their targets for a reason none of them can see.</p>
      */
-    public static CgPreviewSlots<CgPreviewTarget> forGeometry(int size, int samples, int capacity) {
+    public static synchronized CgPreviewSlots<CgPreviewTarget> forGeometry(int size, int samples, int capacity) {
         return POOLS.computeIfAbsent(size + "x" + samples,
                 key -> new CgPreviewSlots<>(capacity, () -> new CgPreviewTarget("cg_preview", size, samples)));
     }
@@ -73,7 +72,7 @@ public final class CgPreviewPool {
      * <p>Not to be called when a graph closes — that is a release, and the distinction is the entire
      * point of this class.</p>
      */
-    public static void deleteAll() {
+    public static synchronized void deleteAll() {
         for (CgPreviewSlots<CgPreviewTarget> pool : POOLS.values()) {
             for (CgPreviewTarget target : pool.all()) target.delete();
             pool.clear();
@@ -82,21 +81,21 @@ public final class CgPreviewPool {
     }
 
     /** Total live slots across every pool. For tests and diagnostics. */
-    public static int liveCount() {
+    public static synchronized int liveCount() {
         int total = 0;
         for (CgPreviewSlots<CgPreviewTarget> pool : POOLS.values()) total += pool.liveCount();
         return total;
     }
 
     /** Total free (allocated, unassigned) slots across every pool. */
-    public static int pooledCount() {
+    public static synchronized int pooledCount() {
         int total = 0;
         for (CgPreviewSlots<CgPreviewTarget> pool : POOLS.values()) total += pool.pooledCount();
         return total;
     }
 
     /** Drops every pool <b>without</b> deleting anything. For tests that never made a GL object. */
-    public static void resetForTesting() {
+    public static synchronized void resetForTesting() {
         POOLS.clear();
     }
 }

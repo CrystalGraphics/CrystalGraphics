@@ -46,7 +46,7 @@ public final class CgPreviewSlots<T> {
      * evicted later in that same frame — otherwise a large visible set would evict targets it is still
      * in the middle of filling.</p>
      */
-    public T acquire(String key) {
+    public synchronized T acquire(String key) {
         T existing = live.get(key);
         if (existing != null) return existing;
 
@@ -59,7 +59,7 @@ public final class CgPreviewSlots<T> {
 
     /** The slot held for {@code key}, or null — without allocating or reordering. */
     @Nullable
-    public T peek(String key) {
+    public synchronized T peek(String key) {
         // Deliberately not live.get(): that would count as an access and reorder the LRU, so merely
         // asking whether a preview exists would change which one is evicted next.
         for (Map.Entry<String, T> entry : live.entrySet()) {
@@ -69,13 +69,13 @@ public final class CgPreviewSlots<T> {
     }
 
     /** Returns a key's slot to the free list. No-op when it holds none. */
-    public void release(String key) {
+    public synchronized void release(String key) {
         T slot = live.remove(key);
         if (slot != null) free.addLast(slot);
     }
 
     /** Releases every key not in {@code keep} — the cull set is the render set. */
-    public void retainOnly(Set<String> keep) {
+    public synchronized void retainOnly(Set<String> keep) {
         live.entrySet().removeIf(entry -> {
             if (keep.contains(entry.getKey())) return false;
             free.addLast(entry.getValue());
@@ -96,7 +96,7 @@ public final class CgPreviewSlots<T> {
      * five open, it held five capacities' worth of framebuffers to draw one graph — and closing a graph
      * <em>deleted</em> a pool, so a close/reopen cycle paid a full allocate on driver-serialised work.</p>
      */
-    public void retainOnlyWithin(String prefix, Set<String> keep) {
+    public synchronized void retainOnlyWithin(String prefix, Set<String> keep) {
         live.entrySet().removeIf(entry -> {
             if (!entry.getKey().startsWith(prefix)) return false;
             if (keep.contains(entry.getKey())) return false;
@@ -111,7 +111,7 @@ public final class CgPreviewSlots<T> {
      * <p><b>Releases, never deletes.</b> That is the whole point: the targets stay in the pool for
      * whatever asks next, so closing a graph is bookkeeping and reopening it allocates nothing.</p>
      */
-    public void releaseAllWithin(String prefix) {
+    public synchronized void releaseAllWithin(String prefix) {
         live.entrySet().removeIf(entry -> {
             if (!entry.getKey().startsWith(prefix)) return false;
             free.addLast(entry.getValue());
@@ -120,7 +120,7 @@ public final class CgPreviewSlots<T> {
     }
 
     /** How many live keys sit under {@code prefix}. For tests and diagnostics. */
-    public int liveCountWithin(String prefix) {
+    public synchronized int liveCountWithin(String prefix) {
         int found = 0;
         for (String key : live.keySet()) {
             if (key.startsWith(prefix)) found++;
@@ -138,23 +138,23 @@ public final class CgPreviewSlots<T> {
     }
 
     /** Every slot this policy is holding, live or free — for teardown. */
-    public Collection<T> all() {
+    public synchronized Collection<T> all() {
         var everything = new java.util.ArrayList<T>(live.size() + free.size());
         everything.addAll(live.values());
         everything.addAll(free);
         return everything;
     }
 
-    public void clear() {
+    public synchronized void clear() {
         live.clear();
         free.clear();
     }
 
-    public int liveCount() {
+    public synchronized int liveCount() {
         return live.size();
     }
 
-    public int pooledCount() {
+    public synchronized int pooledCount() {
         return free.size();
     }
 }
