@@ -198,6 +198,7 @@ public final class CgExecutor {
         packed.palette.pass(pass.viewOwner(), pass.viewX(), pass.viewY(), CgPassConstants.height(pass.constants));
         if ((packed.kinds & UNIT_KINDS) != 0) {
             packed.clips.bindForDraw();
+            packed.shapes.bindForDraw();
             packed.palette.bindForDraw();
         }
 

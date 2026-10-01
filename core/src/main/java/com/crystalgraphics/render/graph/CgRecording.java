@@ -2,6 +2,7 @@ package com.crystalgraphics.render.graph;
 
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.gl.render.CgClipTable;
+import com.crystalgraphics.gl.render.CgShapeTable;
 import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgOrder;
@@ -49,6 +50,7 @@ public final class CgRecording {
 
     private final CgBindingTable bindings = new CgBindingTable();
     private final CgClipTable clips = new CgClipTable();
+    private final CgShapeTable shapes = new CgShapeTable();
     private final CgSpatialTree spatial = new CgSpatialTree();
     private final CgEffectTree effects = new CgEffectTree();
     private final CgChunkBuilder chunks = new CgChunkBuilder(bindings);
@@ -72,6 +74,11 @@ public final class CgRecording {
     /** The rounded clips its chunks name, by index. */
     public CgClipTable clips() {
         return clips;
+    }
+
+    /** The boxes its quads are drawn as, by index. */
+    public CgShapeTable shapes() {
+        return shapes;
     }
 
     public CgBindingTable bindings() {
@@ -199,6 +206,7 @@ public final class CgRecording {
         chunks.reset();
         bindings.reset();
         clips.reset();
+        shapes.reset();
         spatial.reset();
         effects.reset();
         sealed = false;

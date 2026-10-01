@@ -77,7 +77,7 @@ public final class CgClipTable {
 
     private static final int FLOATS = 36;
 
-    /** gui_rect's reconstruction width for an edge off the pixel grid; 1 on it. */
+    /** A UI shape's reconstruction width for an edge off the pixel grid (CrystalGUI's gui_box); 1 on it. */
     private static final float ROTATED_RAMP = 1.5f;
 
     /** Lazy, like the quad renderer's: the binding points exist only once a context has initialised. */
@@ -163,7 +163,7 @@ public final class CgClipTable {
         entries[o + 32] = node;
         put(o + 8, x0, y0, x1, y1, rx, ry);
         if (border != null && (border[0] > 0f || border[1] > 0f || border[2] > 0f || border[3] > 0f)) {
-            // gui_rect.shader's own inner edge: the rect inset by each side, its radii shrunk by the sides they meet.
+            // A bordered shape's own inner edge: the rect inset by each side, its radii shrunk by the sides they meet.
             float bl = border[0], bt = border[1], br = border[2], bb = border[3];
             float halfW = Math.max((x1 - x0 - bl - br) * 0.5f, 0f), halfH = Math.max((y1 - y0 - bt - bb) * 0.5f, 0f);
             float cx = (x0 + x1 + bl - br) * 0.5f, cy = (y0 + y1 + bt - bb) * 0.5f;

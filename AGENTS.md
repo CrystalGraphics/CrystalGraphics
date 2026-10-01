@@ -519,7 +519,7 @@ essentially every shader wants them. Buffers that only a minority of shaders nee
 > **A rounded clip is an instance field, not a render target.** `CgClipTable.add` records a rounded box in its
 > own space (rect, radii, a border's inner edge), the inverse of the pose that put it in the bound target, and
 > the entry it sits inside; it answers an index. An instance stamped with it multiplies its output by the
-> coverage of every entry up the chain (`MAX_DEPTH`, 4), each antialiased as `gui_rect`'s own edge, so any
+> coverage of every entry up the chain (`MAX_DEPTH`, 4), each antialiased as a `gui_box` shape's own edge, so any
 > rotation or skew clips exactly. Changing the clip never flushes; the renderers upload and bind the table
 > when they draw. An entry means nothing in another target and nothing next frame.
 
