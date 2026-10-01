@@ -14,6 +14,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Logger;
 
 /**
@@ -98,7 +100,8 @@ import java.util.logging.Logger;
  * constructor.</p>
  *
  * <h3>Thread Safety</h3>
- * <p>Not thread-safe. Must only be used from the GL context thread.</p>
+ * <p>Issues no GL — the array texture is {@link CgTexture2DArray#allocateDeferred deferred}, so a glyph may be placed
+ * while a recording is open. Not thread-safe: one thread at a time.</p>
  *
  * @see CgGlyphAtlasPage
  * @see CgPackingStrategy
@@ -176,6 +179,12 @@ public class CgGlyphAtlas {
      * behavior.
      */
     private final CgTexture2DArray arrayTexture;
+
+    /** What placements, white texels and sort keys name this atlas by. Never 0. */
+    @Getter
+    private final int id = NEXT_ID.incrementAndGet();
+    private static final AtomicInteger NEXT_ID = new AtomicInteger();
+    private static final Map<Integer, CgTexture2DArray> TEXTURES = new ConcurrentHashMap<>();
 
     /**
      * {@code arrayTexture}'s current layer depth — starts at {@link #INITIAL_PAGES}
@@ -312,9 +321,11 @@ public class CgGlyphAtlas {
             this.arrayTexture = null;
         } else {
             this.capacity = INITIAL_PAGES;
-            this.arrayTexture = CgTexture2DArray.allocateEmpty(pageWidth, pageHeight, capacity,
-                    // MSDF and MTSDF both allocate RGBA8 — see class javadoc "Format".
+            // Deferred: an atlas is made, grown and filled wherever text is recorded, and its GL runs on the render
+            // thread before the frame that reads it. MSDF and MTSDF both allocate RGBA8 — see class javadoc "Format".
+            this.arrayTexture = CgTexture2DArray.allocateDeferred(pageWidth, pageHeight, capacity,
                     type == Type.BITMAP ? CgTextureSpec.R8_NEAREST : CgTextureSpec.RGBA8_LINEAR);
+            TEXTURES.put(id, arrayTexture);
         }
     }
 
@@ -376,6 +387,11 @@ public class CgGlyphAtlas {
         // Judge a packer by page count at the margin and by fill of non-final pages, never by
         // mean utilisation when page count is already minimal.
         return new CgGlyphAtlas(pageWidth, pageHeight, type, MAX_RECTS_FACTORY, false, spacingPx, maxPages);
+    }
+
+    /** The texture of the atlas {@code atlasId} names, or null for 0, a test atlas or a deleted one. */
+    public static CgTexture2DArray texture(int atlasId) {
+        return atlasId == 0 ? null : TEXTURES.get(atlasId);
     }
 
     // ── Core API ───────────────────────────────────────────────────────
@@ -548,7 +564,7 @@ public class CgGlyphAtlas {
         boolean isDistanceField = type != Type.BITMAP;
         if (whiteTexelPage != null) {
             float[] uv = whiteTexelPage.reserveWhiteTexel();
-            return new WhiteTexel(whiteTexelPage.getTextureId(), whiteTexelPage.getPageIndex(),
+            return new WhiteTexel(id, whiteTexelPage.getPageIndex(),
                     uv[0], uv[1], uv[2], uv[3], isDistanceField, pxRange);
         }
         CgGlyphAtlasPage page = pages.isEmpty() ? createPage() : pages.get(pages.size() - 1);
@@ -558,7 +574,7 @@ public class CgGlyphAtlas {
             uv = page.reserveWhiteTexel();
         }
         whiteTexelPage = page;
-        return new WhiteTexel(page.getTextureId(), page.getPageIndex(), uv[0], uv[1], uv[2], uv[3],
+        return new WhiteTexel(id, page.getPageIndex(), uv[0], uv[1], uv[2], uv[3],
                 isDistanceField, pxRange);
     }
 
@@ -567,7 +583,7 @@ public class CgGlyphAtlas {
      * quads, carrying its own {@code isDistanceField}/{@code pxRange} so it packs into the
      * exact same batch-sort-key shape a {@code CgGlyphPlacement} from this atlas would.
      */
-    public record WhiteTexel(int atlasTextureId, int atlasPageIndex, float u0, float v0, float u1, float v1,
+    public record WhiteTexel(int atlasId, int atlasPageIndex, float u0, float v0, float u1, float v1,
                               boolean isDistanceField, float pxRange) { }
 
     // ── Page queries ──────────────────────────────────────────────────
@@ -625,6 +641,7 @@ public class CgGlyphAtlas {
         pages.clear();
         glyphIndex.clear();
         emptyGlyphs.clear();
+        TEXTURES.remove(id);
         if (arrayTexture != null && !arrayTexture.isDeleted()) arrayTexture.delete();
         deleted = true;
     }
@@ -666,8 +683,8 @@ public class CgGlyphAtlas {
         CgPackingStrategy packer = packerFactory.create(pageWidth, pageHeight, spacingPx);
 
         CgGlyphAtlasPage page;
-        if (skipGlUpload) page = CgGlyphAtlasPage.createForTest(pageWidth, pageHeight, type, layerIndex, packer);
-        else              page = CgGlyphAtlasPage.create(pageWidth, pageHeight, type, layerIndex, arrayTexture, packer);
+        if (skipGlUpload) page = CgGlyphAtlasPage.createForTest(pageWidth, pageHeight, type, layerIndex, id, packer);
+        else              page = CgGlyphAtlasPage.create(pageWidth, pageHeight, type, layerIndex, id, arrayTexture, packer);
         
 
         pages.add(page);

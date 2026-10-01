@@ -30,9 +30,9 @@ import com.crystalgraphics.text.atlas.CgGlyphAtlas;
  * the page dimensions. The renderer uses UVs for texture sampling only.</p>
  *
  * <h3>Page Identity</h3>
- * <p>Each placement carries a {@code atlasPageIndex} and {@code atlasTextureId} so the
- * renderer can group glyphs by atlas page for draw batching. The texture ID is
- * the GL texture name of the specific page this glyph resides on.</p>
+ * <p>Each placement carries an {@code atlasId} and {@code atlasPageIndex}: which atlas, and which layer of it. The
+ * renderer batches on the atlas id and binds {@code CgGlyphAtlas.texture(atlasId)}, whose GL texture is made on the
+ * render thread before the draw executes.</p>
  *
  * <h3>MSDF Configuration</h3>
  * <p>When the atlas mode is MSDF, the {@code pxRange} field carries the pixel
@@ -41,11 +41,8 @@ import com.crystalgraphics.text.atlas.CgGlyphAtlas;
  * different range values, rather than treating it as a global constant.</p>
  *
  * @param key            The glyph key this placement was allocated for.
- * @param atlasTextureId GL texture ID of the {@link CgTexture2DArray} atlas this glyph resides on.
- *
- *                       <p>This is resolved at placement time so the renderer does not need
- *                       to look up page handles during draw. A value of 0 indicates a
- *                       test-mode placement with no backing GL texture.</p>
+ * @param atlasId        The atlas this glyph resides on ({@code CgGlyphAtlas.getId()}); 0 for a placement with
+ *                       no texels, such as a space.
  * @param atlasPageIndex      Zero-based page index within the paged atlas.
  * @param planeLeft      Left edge of the glyph quad in physical raster units, measured from
  *                       the pen origin. For bitmap glyphs this equals bearingX. For MSDF
@@ -78,7 +75,7 @@ import com.crystalgraphics.text.atlas.CgGlyphAtlas;
  *                       the renderer can set the correct uniform per batch.</p>
  * @see CgGlyphKey
  */
-public record CgGlyphPlacement(CgGlyphKey key, int atlasTextureId, int atlasPageIndex, CgGlyphAtlas.Type atlasType,
+public record CgGlyphPlacement(CgGlyphKey key, int atlasId, int atlasPageIndex, CgGlyphAtlas.Type atlasType,
                                float planeLeft, float planeBottom, float planeRight, float planeTop, int atlasLeft,
                                int atlasBottom, int atlasRight, int atlasTop, float u0, float v0, float u1, float v1,
                                float pxRange) {
@@ -140,7 +137,7 @@ public record CgGlyphPlacement(CgGlyphKey key, int atlasTextureId, int atlasPage
         return "CgGlyphPlacement{" +
                 "key=" + key +
                 ", page=" + atlasPageIndex +
-                ", texId=" + atlasTextureId +
+                ", atlas=" + atlasId +
                 ", atlasType=" + atlasType +
                 ", plane=[" + planeLeft + "," + planeBottom + "," + planeRight + "," + planeTop + "]" +
                 ", uv=[" + u0 + "," + v0 + "," + u1 + "," + v1 + "]" +
@@ -154,7 +151,7 @@ public record CgGlyphPlacement(CgGlyphKey key, int atlasTextureId, int atlasPage
         if (o == null || getClass() != o.getClass()) return false;
         CgGlyphPlacement that = (CgGlyphPlacement) o;
         return atlasPageIndex == that.atlasPageIndex &&
-                atlasTextureId == that.atlasTextureId &&
+                atlasId == that.atlasId &&
                 atlasType == that.atlasType &&
                 Float.compare(that.planeLeft, planeLeft) == 0 &&
                 Float.compare(that.planeBottom, planeBottom) == 0 &&
@@ -176,7 +173,7 @@ public record CgGlyphPlacement(CgGlyphKey key, int atlasTextureId, int atlasPage
     public int hashCode() {
         int result = key.hashCode();
         result = 31 * result + atlasPageIndex;
-        result = 31 * result + atlasTextureId;
+        result = 31 * result + atlasId;
         result = 31 * result + atlasType.hashCode();
         result = 31 * result + Float.floatToIntBits(planeLeft);
         result = 31 * result + Float.floatToIntBits(planeTop);

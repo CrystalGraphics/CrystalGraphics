@@ -18,7 +18,7 @@ import com.crystalgraphics.api.font.CgGlyphPlacement;
  *   [63]     unused, always zero   see "Why bit 63 stays clear"
  *   [62:57]  stage                 paint step within one draw (6 bits) -- see "Stage"
  *   [56]     mode                  0 = bitmap, 1 = distance field
- *   [55:32]  textureId             GL atlas array-texture id (24 bits)
+ *   [55:32]  atlasId               the atlas, CgGlyphAtlas.getId() (24 bits)
  *   [31:17]  pxRange               high bits of the SDF range's float bits (15 bits)
  *   [16]     kind                  0 = glyph, 1 = decoration
  *   [15:0]   localIndex            index into whichever source array {@code kind} selects
@@ -37,7 +37,7 @@ import com.crystalgraphics.api.font.CgGlyphPlacement;
  * <h3>Why the field order is what it is</h3>
  * <p>Coarsest-to-finest, so one numeric sort produces the batching order directly:
  * <ul>
- *   <li><b>mode, textureId</b> are the batch identity — see {@link #batchOf}. These sort
+ *   <li><b>mode, atlasId</b> are the batch identity — see {@link #batchOf}. These sort
  *       outermost because a change in any of them is what costs a transition.</li>
  *   <li><b>kind</b> sits <em>below</em> the batch fields on purpose. A decoration reports the same
  *       atlas and mode as a glyph of its font would, so it belongs <em>inside</em> that font's
@@ -79,7 +79,7 @@ final class CgTextSortKey {
      * costs nothing. @see CgMsdfAtlasConfig#WIDE_PX_RANGE
      *
      * <p>In practice this is constant within a texture id — one atlas is one config, one pxRange —
-     * so it adds no batch granularity beyond {@code textureId} today. Kept because promoting
+     * so it adds no batch granularity beyond {@code atlasId} today. Kept because promoting
      * pxRange to a per-instance value is a live option; see
      * {@code plan/text-instancing.md}.
      */
@@ -114,7 +114,7 @@ final class CgTextSortKey {
     private static final long KIND_DECORATION = 1L << KIND_SHIFT;
 
     /**
-     * Isolates mode + textureId: everything a material transition depends on, and
+     * Isolates mode + atlasId: everything a material transition depends on, and
      * nothing else. Excludes {@code kind} so a decoration and a glyph in the same atlas compare
      * equal and do not force a transition between them, and {@code stage} so a shadow and its text in
      * the same atlas do not either.
@@ -139,7 +139,7 @@ final class CgTextSortKey {
 
     /** Key for a glyph instance painted at {@code stage}: the text itself, or one of its shadows. */
     static long forGlyph(CgGlyphPlacement placement, int localIndex, int stage) {
-        return of(stage, placement.isDistanceField(), placement.atlasTextureId(), placement.pxRange(), false,
+        return of(stage, placement.isDistanceField(), placement.atlasId(), placement.pxRange(), false,
                 localIndex);
     }
 
@@ -156,7 +156,7 @@ final class CgTextSortKey {
 
     /** Key for a decoration instance painted at {@code stage}. */
     static long forDecoration(CgResolvedGlyphs.ResolvedDecoration decoration, int localIndex, int stage) {
-        return of(stage, decoration.isDistanceField(), decoration.atlasTextureId(), decoration.pxRange(), true,
+        return of(stage, decoration.isDistanceField(), decoration.atlasId(), decoration.pxRange(), true,
                 localIndex);
     }
 
@@ -202,20 +202,20 @@ final class CgTextSortKey {
      * a silent wrong picture is the worst outcome available here, and the project's fail-fast rule
      * applies squarely.
      */
-    static long of(boolean distanceField, int textureId, float pxRange, boolean decoration, int localIndex) {
-        return of(0, distanceField, textureId, pxRange, decoration, localIndex);
+    static long of(boolean distanceField, int atlasId, float pxRange, boolean decoration, int localIndex) {
+        return of(0, distanceField, atlasId, pxRange, decoration, localIndex);
     }
 
-    static long of(int stage, boolean distanceField, int textureId, float pxRange, boolean decoration,
+    static long of(int stage, boolean distanceField, int atlasId, float pxRange, boolean decoration,
                    int localIndex) {
         if (stage < 0 || stage > MAX_STAGE)
             throw new IllegalArgumentException("stage out of range: " + stage + " (max " + MAX_STAGE + ")");
         if (localIndex < 0 || localIndex > MAX_LOCAL_INDEX)
             throw new IllegalArgumentException(
                     "localIndex out of range for a single draw: " + localIndex + " (max " + MAX_LOCAL_INDEX + ")");
-        if (textureId < 0 || textureId > MAX_TEXTURE_ID)
+        if (atlasId < 0 || atlasId > MAX_TEXTURE_ID)
             throw new IllegalArgumentException(
-                    "textureId does not fit the sort key: " + textureId + " (max " + MAX_TEXTURE_ID + ")");
+                    "atlasId does not fit the sort key: " + atlasId + " (max " + MAX_TEXTURE_ID + ")");
         if (!(pxRange >= 0.0f)) // also rejects NaN, whose bit pattern is not order-preserving
             throw new IllegalArgumentException("pxRange must be >= 0 and non-NaN, got " + pxRange);
 
@@ -225,7 +225,7 @@ final class CgTextSortKey {
 
         return ((long) stage << STAGE_SHIFT)
                 | (mode << MODE_SHIFT)
-                | ((long) textureId << TEXTURE_SHIFT)
+                | ((long) atlasId << TEXTURE_SHIFT)
                 | (pxRangeBits << PX_RANGE_SHIFT)
                 | (decoration ? KIND_DECORATION : 0L)
                 | ((long) localIndex << INDEX_SHIFT);

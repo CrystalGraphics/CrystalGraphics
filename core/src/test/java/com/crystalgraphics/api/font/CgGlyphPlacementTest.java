@@ -49,7 +49,7 @@ public class CgGlyphPlacementTest {
 
         assertSame(key, p.key());
         assertEquals(2, p.atlasPageIndex());
-        assertEquals(42, p.atlasTextureId());
+        assertEquals(42, p.atlasId());
         assertEquals(CgGlyphAtlas.Type.MSDF, p.atlasType());
         assertEquals(1.5f, p.planeLeft(), 0.0f);
         assertEquals(-0.5f, p.planeBottom(), 0.0f);

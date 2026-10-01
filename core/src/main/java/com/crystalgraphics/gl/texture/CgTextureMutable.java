@@ -2,6 +2,7 @@ package com.crystalgraphics.gl.texture;
 
 import com.crystalgraphics.api.texture.CgTexture;
 
+import javax.annotation.Nullable;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -32,14 +33,30 @@ public final class CgTextureMutable extends CgTextureAbstract {
 
     /** {@link #current} answers, one per id, so equal recorded snapshots stay equal. */
     private final Map<Integer, CgTextureMutable> fixed = new HashMap<>();
+    /** Set by {@link #pointAt}: a texture {@link #current} answers as itself. */
+    @Nullable
+    private CgTexture pointee;
 
-    public void setId(int id) {this.textureId = id;}
+    public void setId(int id) {
+        this.textureId = id;
+        this.pointee = null;
+    }
+
+    /**
+     * Points this view at {@code texture} itself rather than at its id, so a recorded draw keeps the texture and binds
+     * whatever id it has when it executes: one made on the render thread after recording, such as a glyph atlas.
+     */
+    public void pointAt(@Nullable CgTexture texture) {
+        this.pointee = texture;
+        this.textureId = 0;
+    }
 
     /**
      * What this view points at now, as a view nothing repoints: what a recorded draw keeps, since it binds after this
      * one has moved on. One per id.
      */
     public CgTexture current() {
+        if (pointee != null) return pointee;
         CgTextureMutable view = fixed.get(textureId);
         if (view == null || view.target != target) {
             view = new CgTextureMutable(textureId, target);
