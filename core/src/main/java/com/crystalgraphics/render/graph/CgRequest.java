@@ -10,8 +10,10 @@ import javax.annotation.Nullable;
  * CgRequest compiled = recording.compile(pipeline);
  * // a later frame, on the document's thread:
  * if (compiled.failed()) report(compiled.failure());
- * else if (!compiled.done()) recordAnotherCompile();   // a compile still running asks again next frame
  * }</pre>
+ *
+ * <p>Asked again each frame until it answers, a result is {@link CgRequests}'s: the frame that executes runs behind
+ * the one being recorded, so only an older request may have answered yet.</p>
  */
 public final class CgRequest {
 
