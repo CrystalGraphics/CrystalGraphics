@@ -11,7 +11,8 @@ Standalone, platform-agnostic demo and benchmark utilities.  Classes here have *
 | File | Role |
 |------|------|
 | `CgFontDemo.java` | Font benchmark and atlas diagnostic viewer.  Renders two text draws per frame (a pose-scalable demo string and a fixed 2D label) plus a bottom-left atlas overlay showing bitmap and MSDF pages side by side. |
-| `CgRenderDemo.java` | World demo, off unless `-Dcrystalgraphics.demo=true`. A 4×4 rainbow cube grid submitted to `CgWorldRenderer` from an `onFrame` listener, anchored once on whole blocks ahead of the host's camera, so a capture (`-Dcrystalgraphics.demo.capture=<png>`) shows whether the stage's view is the world's. Uses `crystalgraphics:shaders/demo_render.shader`. |
+| `CgRenderDemo.java` | World demo, off unless `-Dcrystalgraphics.demo=true`. The VFX showcase submitted to `CgWorldRenderer` from an `onFrame` listener, anchored once on whole blocks ahead of the host's camera, so a capture (`-Dcrystalgraphics.demo.capture=<png>`) shows whether the stage's view is the world's. |
+| `CgVfxShowcase.java` | Sixteen effect spheres on a 4×4 grid, one `.shader` each under `shaders/demo/vfx_*`, with additive glow shells standing in for bloom; `submitStage` adds a floor and sky for a host with no world (the harness's `vfx-spheres`). `vfx_floor.shader` mirrors its grid and glow table. |
 
 ## Platform Wiring — CgFontDemo
 
@@ -28,7 +29,7 @@ per overlay frame and `CgFontDemo.INSTANCE.onMouseWheel(delta)` on scroll input.
 ## Platform Wiring — CgRenderDemo
 
 No host names it. `CgGraphicsLifecycle.initContext` calls `install()`, which does nothing unless
-`-Dcrystalgraphics.demo=true`, and `destroyContext` calls `dispose()`. Installed, it submits the cubes from a
+`-Dcrystalgraphics.demo=true`, and `destroyContext` calls `dispose()`. Installed, it submits the showcase from a
 `CgWorldRenderer.onFrame` listener; with a capture asked for, it also registers on `WORLD_TRANSPARENT` just
 after the world renderer and reads the target back once.
 
