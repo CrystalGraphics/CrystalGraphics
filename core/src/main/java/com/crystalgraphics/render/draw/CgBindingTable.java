@@ -1,6 +1,7 @@
 package com.crystalgraphics.render.draw;
 
 import com.crystalgraphics.api.texture.CgTexture;
+import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgStreamBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.platform.gl.CgGL;
@@ -23,7 +24,7 @@ import java.util.Arrays;
  *         .end();                  // equal content answers the same id
  *
  * // at execution, on the render thread, once, then per batch:
- * table.upload();
+ * table.upload(ring);              // the executor's frame ring
  * table.bind(bindings);
  * }</pre>
  *
@@ -33,12 +34,12 @@ import java.util.Arrays;
  *   <li>A block's floats are read at {@link #block}: a material changed after recording does not change what the
  *       draw reads. A texture is not: one reallocated before execution binds its new storage, which is what a
  *       growing glyph atlas needs. Its <em>content</em> is ordered by the frame graph's versions.</li>
- *   <li>{@link #upload()} after the last {@link #end()} and before the first {@link #bind}: a block's place in the
+ *   <li>{@link #upload} after the last {@link #end()} and before the first {@link #bind}: a block's place in the
  *       ring is only known once every block is.</li>
  *   <li>At most {@value #MAX_TEXTURES} textures, {@value #MAX_BLOCKS} blocks and {@value #MAX_BUFFERS} buffers
  *       per snapshot.</li>
  *   <li>One thread at a time: the recorder fills it, and the render thread uploads and binds it once the
- *       recording is handed over. {@link #upload()}, {@link #bind} and {@link #delete()} touch GL.</li>
+ *       recording is handed over. {@link #upload} and {@link #bind} touch GL; the table owns no GL object.</li>
  * </ul>
  */
 public final class CgBindingTable {
@@ -73,10 +74,13 @@ public final class CgBindingTable {
     private int building = -1;
     private int buildFloats;
 
-    /** Where each entry's blocks landed in the ring, after {@link #upload()}. */
+    /** Where each entry's blocks landed in the ring, after {@link #upload}. */
     private int[] ringOffsets = new int[MAX_BLOCKS * 64];
-    private CgStreamBuffer ring;
+    /** The buffer they landed in: a ring that grows later in the frame moves to a new one. */
+    private int uploadedBuffer;
     private boolean uploaded;
+    /** The ring frame it was uploaded in: a later frame's region is somewhere else. */
+    private long uploadedFrame = -1;
 
     /** Starts a snapshot. */
     public CgBindingTable begin() {
@@ -158,6 +162,23 @@ public final class CgBindingTable {
         }
     }
 
+    /**
+     * Snapshot {@code id} of {@code from}, interned here: how a frame builder gathers the snapshots of every recording
+     * it packs into one table. Equal content answers the id an equal snapshot already has.
+     */
+    public int copy(CgBindingTable from, int id) {
+        begin();
+        int e = id * ENTRY_INTS;
+        int r = id * ENTRY_REFS;
+        for (int t = 0; t < from.entries[e]; t++) texture(from.entries[e + HEADER + t], (CgTexture) from.refs[r + t]);
+        for (int b = 0; b < from.entries[e + 1]; b++) {
+            int block = e + BLOCKS_AT + b * BLOCK_INTS;
+            block(from.entries[block], from.floats, from.entries[block + 1], from.entries[block + 2]);
+        }
+        for (int b = 0; b < from.entries[e + 2]; b++) buffer((CgShaderBuffer) from.refs[r + MAX_TEXTURES + b]);
+        return end();
+    }
+
     /** How many distinct snapshots it holds. */
     public int size() {
         return count;
@@ -209,10 +230,15 @@ public final class CgBindingTable {
         uploaded = false;
     }
 
-    /** Uploads every block in one ring write. After the last {@link #end()}, before the first {@link #bind}. */
-    public void upload() {
-        if (uploaded) return;
+    /**
+     * Uploads every block in one write into {@code ring}, a frame-local uniform ring. After the last {@link #end()},
+     * before the first {@link #bind}; a table that has not changed since is not uploaded again in the same frame.
+     */
+    public void upload(CgStreamBuffer ring) {
+        long frame = CgFrameRing.frame();
+        if (uploaded && uploadedFrame == frame) return;
         uploaded = true;
+        uploadedFrame = frame;
         if (ringOffsets.length < count * MAX_BLOCKS) ringOffsets = new int[Math.max(ringOffsets.length * 2, count * MAX_BLOCKS)];
         int bytes = 0;
         for (int id = 0; id < count; id++) {
@@ -220,7 +246,6 @@ public final class CgBindingTable {
             for (int b = 0; b < entries[e + 1]; b++) bytes += align(entries[e + BLOCKS_AT + b * BLOCK_INTS + 2] * 4);
         }
         if (bytes == 0) return;
-        if (ring == null) ring = CgStreamBuffer.createFrameLocal(CgGL.GL_UNIFORM_BUFFER, Math.max(bytes, 16 * 1024));
         ByteBuffer out = ring.map(bytes).order(ByteOrder.nativeOrder());
         FloatBuffer view = out.asFloatBuffer();
         int at = 0;
@@ -235,10 +260,11 @@ public final class CgBindingTable {
             }
         }
         int base = ring.commit(bytes);
+        uploadedBuffer = ring.getGlBufferId();
         for (int i = 0; i < count * MAX_BLOCKS; i++) ringOffsets[i] += base;
     }
 
-    /** Binds snapshot {@code id}'s textures, blocks and buffers. {@link #upload()} first. */
+    /** Binds snapshot {@code id}'s textures, blocks and buffers. {@link #upload} first. */
     public void bind(int id) {
         if (!uploaded) throw new IllegalStateException("bind() before upload()");
         int e = id * ENTRY_INTS;
@@ -248,16 +274,10 @@ public final class CgBindingTable {
         for (int b = 0; b < entries[e + 1]; b++) {
             int block = e + BLOCKS_AT + b * BLOCK_INTS;
             int size = Math.max(16, (entries[block + 2] * 4 + 15) & ~15);
-            CgGL.glBindBufferRange(CgGL.GL_UNIFORM_BUFFER, entries[block], ring.getGlBufferId(),
+            CgGL.glBindBufferRange(CgGL.GL_UNIFORM_BUFFER, entries[block], uploadedBuffer,
                     ringOffsets[id * MAX_BLOCKS + b], size);
         }
         for (int b = 0; b < entries[e + 2]; b++) ((CgShaderBuffer) refs[r + MAX_TEXTURES + b]).bind();
-    }
-
-    /** Frees the ring. */
-    public void delete() {
-        if (ring != null) ring.delete();
-        ring = null;
     }
 
     private static int align(int bytes) {

@@ -33,6 +33,7 @@ import com.crystalgraphics.util.trace.CgChannels;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import lombok.Getter;
+import com.crystalgraphics.render.graph.CgExecutor;
 import com.crystalgraphics.shadergraph.CgPreviewPool;
 
 /**
@@ -590,6 +591,9 @@ public final class CgGraphicsLifecycle {
         //
         // Before the framebuffer registry, since a target holds framebuffers of its own.
         CgPreviewPool.deleteAll();
+
+        // Step 8c: The frame graph's transient pool and rings -- createOwned framebuffers no registry reaches.
+        CgExecutor.destroyAll();
 
         // Step 9: All owned framebuffers — must be first.
         CgFrameBufferRegistry.get().deleteAll();

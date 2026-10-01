@@ -71,6 +71,7 @@ submodule (`gl-debug-harness/`, Java 25) and runs from CrystalGUI's root; author
 ./gradlew :gl-debug-harness:runHarness --args="--mode=text-3d"                # Full text pipeline
 ./gradlew :gl-debug-harness:runHarness --args="--mode=capability-report"      # GL capability probe
 ./gradlew :gl-debug-harness:runHarness --args="--mode=shader-compile-audit"   # every shipped .shader + keyword variant
+./gradlew :gl-debug-harness:runHarness --args="--mode=graph-executor-test"    # frame graph: three paths, identical PNGs
 ./gradlew :gl-debug-harness:runHarness --args="--mode=cgui-desktop --device=vulkan"  # any scene on the Vulkan device
 # Outputs land in gl-debug-harness/harness-output/{scene}/
 ```
@@ -1081,7 +1082,7 @@ All registries are **singletons accessed via `.get()`**. You normally interact w
 
 # Package AGENTS.md Index
 
-All 36 package guides under `src/main/java/com/crystalgraphics/`. Relative paths omit the common prefix.
+All 37 package guides under `src/main/java/com/crystalgraphics/`. Relative paths omit the common prefix.
 
 ### Demo / Benchmarks
 | Path | What it covers |
@@ -1095,7 +1096,8 @@ All 36 package guides under `src/main/java/com/crystalgraphics/`. Relative paths
 | `api/render/AGENTS.md` | `CgRenderPipeline`, `CgRenderCommand`, `CgFrameData`, `CgSortKey`, `CgPreDrawHook`, `CgRenderCommandPool` |
 | `render/AGENTS.md` | `CgRenderPipeline` singleton orchestrator, execute sequence, anaglyph guard, lifecycle |
 | `render/pipeline/AGENTS.md` | `CgDepthPrepassRenderer`, `CgForwardRenderer`, `CgTransparentRenderer` — internal pass renderers |
-| `render/draw/AGENTS.md` | `CgPipeline` (a CPU key), `CgBindingTable` (snapshots with handles), `CgInstanceKind`, `CgPassConstants` — what a recorded draw is made of; recording touches no GL (`render-graph`) |
+| `render/draw/AGENTS.md` | `CgPipeline` (a CPU key), `CgBindingTable` (snapshots with handles), `CgInstanceKind`, `CgPassConstants`, `CgDrawChunk`, `CgBatcher` — what a recorded draw is made of; recording touches no GL (`render-graph`) |
+| `render/graph/AGENTS.md` | `CgRecording`, `CgFrameGraph`, `CgFrameBuilder` (order, cull, batch, pack — off the render thread), `CgExecutor`, `CgImmediate` — the frame graph |
 | `gl/material/AGENTS.md` | `CgMaterialShader`, `CgMaterialShaderRegistry`, `CgMaterialProperties` |
 | `gl/material/parse/AGENTS.md` | `CgShaderParser` facade, `CgParsedShader`, `CgMaterialShaderCompiler`, sub-parsers |
 

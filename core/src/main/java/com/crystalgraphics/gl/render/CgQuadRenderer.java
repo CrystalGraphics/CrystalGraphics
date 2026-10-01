@@ -6,7 +6,6 @@ import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.api.material.CgMaterial;
-import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gl.buffer.shader.CgEngineBufferRegistry;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
@@ -14,8 +13,8 @@ import com.crystalgraphics.api.buffer.CgGpuType;
 import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
 import com.crystalgraphics.gl.buffer.staging.CgStagingBuffer;
 import com.crystalgraphics.gl.mesh.CgMesh;
-import com.crystalgraphics.gl.mesh.CgMeshBuilder;
-import com.crystalgraphics.gl.mesh.CgMeshRegistry;
+import com.crystalgraphics.render.draw.CgInstanceKind;
+import com.crystalgraphics.render.graph.CgInstanceGeometry;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
@@ -106,41 +105,8 @@ import org.joml.Vector3f;
  */
 public final class CgQuadRenderer extends CgAbstractRenderer {
 
-    /**
-     * Vertex format of the shared unit quad mesh: local 2D position + local UV
-     * (+ an unused per-vertex color channel, negligible waste on one shared 4-vertex
-     * mesh). Per-instance data — including color — lives in {@link #GPU_BUFFER}.
-     */
-    private static final CgVertexFormat QUAD_MESH_FORMAT = CgVertexFormat.POS2_UV2_COL4UB;
-
     /** Fixed per-instance record format shared by every {@code CgQuadRenderer} instance. */
-    private static final CgBufferFormat INSTANCE_FORMAT = CgBufferFormat
-            .builder("QuadInstance", CgBufferFormat.MemoryLayout.STD430)
-            .vec3("origin").vec3("right").vec3("up")
-            .vec2("uv0").vec2("uv1")
-            .vec4("color")
-            .float_("atlasLayer")
-            // A free scalar in the twelve bytes std430 pads after atlasLayer, so it costs no size.
-            .float_("custom2")
-            // The clip-table entry this quad is drawn under, 0 for none -- in the same padding. @see CgClipTable
-            .float_("clip")
-            // -- per-instance CUSTOM slots, whatever a consumer needs them to mean --------------
-            // The same shape CgObjectData gives the render pipeline (custom0..custom3, read through
-            // CG_OBJECT_CUSTOM*), for the same reason: a material that needs per-instance parameters
-            // should not have to widen a shared record with fields only it understands. Text packs a
-            // stroke into these; anything else may pack anything else.
-            //
-            // What they buy is batching. A parameter carried as a MATERIAL property is shared by
-            // every quad in a batch, so changing it per draw forces a flush and a re-apply between
-            // draws that are otherwise identical. Carried per instance, quads that disagree about it
-            // still go out in one call.
-            //
-            // Two rather than four: a slot nothing writes is still uploaded for every quad in the
-            // engine. These take the record from 96 bytes to 128 in std430 and each further one is
-            // another 16 -- add a third when a feature needs it, not before.
-            .vec4("custom0")
-            .vec4("custom1")
-            .build();
+    private static final CgBufferFormat INSTANCE_FORMAT = CgInstanceKind.QUAD.format();
 
     private static final String GPU_BUFFER_NAME = "CgQuadRendererInstances";
 
@@ -156,16 +122,8 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
     /** Initial CPU accumulation capacity, in instances. Purely a pre-sizing hint — auto-grows past this. */
     private static final int INITIAL_CAPACITY_INSTANCES = 64;
 
-    /**
-     * Shared static unit quad mesh, {@code [0,0]->[1,1]}, built once. Routed through
-     * {@link CgMeshRegistry} (rather than a raw static field) so it still participates
-     * in the registry's teardown sweep — relying on the JVM's lazy class-initialization
-     * semantics means this only runs on first real use of this class, i.e. after a GL
-     * context already exists.
-     */
-    private static final CgMesh QUAD_MESH = CgMeshRegistry.get().getOrCreate(
-            "crystalgraphics:builtin/quad/" + QUAD_MESH_FORMAT.toString(),
-            () -> CgMesh.upload(CgMeshBuilder.quad2D(QUAD_MESH_FORMAT, 0f, 0f, 1f, 1f)));
+    /** The unit quad every instance expands, shared with the frame graph's executor. */
+    private static final CgMesh QUAD_MESH = CgInstanceGeometry.unitQuad();
 
     /**
      * Shared static shader buffer — one SSBO/TBO backs every {@code CgQuadRenderer} instance.
