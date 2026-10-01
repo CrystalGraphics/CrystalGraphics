@@ -255,6 +255,9 @@ public class CgTextRenderer {
     /** The frame {@link #syncProjection} last uploaded in: a copy from an earlier frame is not to be read. */
     private long uploadedFrame = -1;
 
+    /** Whether flushes go to a {@link #sink}: the block is then written for each chunk to keep, never uploaded. */
+    private boolean recording;
+
     /** Uploaded beside the projection, so two renderers can draw with different corrections in one frame. */
     private CgTextGamma gamma = CgTextGamma.initial();
     /** The {@link CgClipTable} entry every quad is stamped with; 0 for none. */
@@ -394,6 +397,8 @@ public class CgTextRenderer {
      */
     public CgTextRenderer sink(@Nullable CgChunkSink sink) {
         quadRenderer.sink(sink);
+        recording = sink != null;
+        projectionValid = false;
         return this;
     }
 
@@ -569,7 +574,7 @@ public class CgTextRenderer {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "gl.flush")) {
             CgTrace.add(CgChannels.GL, "gl.flush.count", 1);
             quadRenderer.useMaterial(TEXT_MATERIAL);
-            TEXT_DATA_UBO.bind();
+            if (!recording) TEXT_DATA_UBO.bind();
 
             quadRenderer.flush();
         }
@@ -598,7 +603,7 @@ public class CgTextRenderer {
     private void syncProjection(Matrix4f projection) {
         if (projectionValid) {
             boolean same = activeProjection.equals(projection);
-            if (same && uploadedFrame == CgFrameRing.frame()) return;
+            if (same && (recording || uploadedFrame == CgFrameRing.frame())) return;
             if (!same) flush();
         }
         // KEPT, and marked invalid rather than dropped: the resets run per batch, and a fresh matrix each time
@@ -612,6 +617,8 @@ public class CgTextRenderer {
                 .vec4("u_TextGammaLarge", large.exponent(), large.contrast(), 1f / large.exponent(), 0f)
                 .vec4("u_TextGammaRamp", gamma.smallPx(), gamma.largePx(), gamma.isIdentity() ? 0f : 1f, 0f);
         TEXT_DATA_UBO.endRecord();
+        // Recording: each chunk keeps the block's bytes as written, so nothing reaches the ring.
+        if (recording) return;
         TEXT_DATA_UBO.upload();
         uploadedFrame = CgFrameRing.frame();
     }
