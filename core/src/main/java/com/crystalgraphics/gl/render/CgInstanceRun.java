@@ -3,6 +3,7 @@ package com.crystalgraphics.gl.render;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.texture.CgTexture;
+import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.staging.CgStagingBuffer;
 import com.crystalgraphics.render.CgImmediate;
 import com.crystalgraphics.render.draw.CgBindingTable;
@@ -31,6 +32,7 @@ final class CgInstanceRun {
     private final CgBindingTable bindings = new CgBindingTable();
     private final CgChunkBuilder chunk = new CgChunkBuilder(bindings);
     private boolean chunkOpen;
+    private long bindingsFrame = -1;
 
     private CgMaterial material;
     @Nullable
@@ -48,9 +50,14 @@ final class CgInstanceRun {
         this.kind = kind;
     }
 
-    /** A new window: earlier snapshots are dropped. */
+    /** A new window; snapshots are dropped at the first of a frame. */
     void begin() {
-        bindings.reset();
+        // Once a frame, not per begin: a chunk a deferral holds still names this table's snapshots.
+        long frame = CgFrameRing.frame();
+        if (frame != bindingsFrame) {
+            bindings.reset();
+            bindingsFrame = frame;
+        }
         chunk.reset();
         chunkOpen = false;
         materialBinding = -1;

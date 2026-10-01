@@ -10,7 +10,7 @@ public class CgBatcherTest {
     private final CgBatcher batcher = new CgBatcher();
 
     private void add(int pipeline, int domain, float x0, float y0, float x1, float y1, int ref) {
-        batcher.add(pipeline, 0, CgInstanceKind.QUAD, null, domain, x0, y0, x1, y1, 0, ref);
+        batcher.add(pipeline, 0, CgInstanceKind.QUAD, null, domain, 0, x0, y0, x1, y1, 0, ref);
     }
 
     private String batches() {
@@ -76,10 +76,10 @@ public class CgBatcherTest {
     @Test
     public void sortedOrdersStablyAndMergesNeighbours() {
         batcher.reset(CgOrder.SORTED);
-        batcher.add(1, 0, CgInstanceKind.OBJECT, null, 0, 0, 0, 1, 1, 30, 0);
-        batcher.add(2, 0, CgInstanceKind.OBJECT, null, 0, 0, 0, 1, 1, 10, 1);
-        batcher.add(1, 0, CgInstanceKind.OBJECT, null, 0, 0, 0, 1, 1, 30, 2);
-        batcher.add(2, 0, CgInstanceKind.OBJECT, null, 0, 0, 0, 1, 1, 10, 3);
+        batcher.add(1, 0, CgInstanceKind.OBJECT, null, 0, 0, 0, 0, 1, 1, 30, 0);
+        batcher.add(2, 0, CgInstanceKind.OBJECT, null, 0, 0, 0, 0, 1, 1, 10, 1);
+        batcher.add(1, 0, CgInstanceKind.OBJECT, null, 0, 0, 0, 0, 1, 1, 30, 2);
+        batcher.add(2, 0, CgInstanceKind.OBJECT, null, 0, 0, 0, 0, 1, 1, 10, 3);
         batcher.finish();
         assertEquals("[13][02]", batches());
     }

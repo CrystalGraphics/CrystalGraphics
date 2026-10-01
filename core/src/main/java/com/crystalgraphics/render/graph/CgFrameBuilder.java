@@ -257,7 +257,10 @@ public final class CgFrameBuilder {
     private void pack(CgRasterPass pass, CgFrame frame, CgFrame.Raster packed) {
         batcher.reset(pass.order);
         int refs = 0;
-        for (CgDrawChunk chunk : pass.chunkList()) {
+        List<CgDrawChunk> chunks = pass.chunkList();
+        for (int c = 0; c < chunks.size(); c++) {
+            CgDrawChunk chunk = chunks.get(c);
+            int scissor = pass.chunkScissor(c);
             CgBindingTable table = chunk.bindings();
             int[] map = internMap(table);
             for (int d = 0; d < chunk.draws(); d++) {
@@ -270,7 +273,7 @@ public final class CgFrameBuilder {
                 refChunk[refs] = chunk;
                 refDraw[refs] = d;
                 // The chunk's spatial node is its batching domain until G10 names the movable ones.
-                batcher.add(chunk.pipeline(d), map[local], chunk.kind(d), chunk.mesh(d), chunk.spatial(),
+                batcher.add(chunk.pipeline(d), map[local], chunk.kind(d), chunk.mesh(d), chunk.spatial(), scissor,
                         chunk.x0(d), chunk.y0(d), chunk.x1(d), chunk.y1(d), chunk.sortKey(d), refs);
                 refs++;
             }
@@ -288,6 +291,7 @@ public final class CgFrameBuilder {
             packed.binding[b] = batcher.batchBinding(b);
             packed.kind[b] = ki;
             packed.mesh[b] = (CgMesh) batcher.batchMesh(b);
+            packed.scissor[b] = batcher.batchScissor(b);
             packed.first[b] = frame.instanceFloats[ki] / floats;
             packed.kinds |= 1 << ki;
             for (int i = batcher.batchStart(b); i < batcher.batchEnd(b); i++) {

@@ -31,6 +31,13 @@ caller sets after binding rides on the pipeline (`CgPipeline.withState`), or the
 overwrite it at the draw; and a texture bound by hand goes in through `bindTexture(unit, texture)`, winning the
 unit as GL's last bind did.
 
+**Held flushes** (G4): `CgImmediate.deferInto(target)` holds every flush made while `target` is bound until
+`drain()`, each chunk under the scissor GL had at its flush (`CgRasterPass.scissor`, read from the state shadow) and
+a pass per frame block. A flush into another target executes at once; one the shadow cannot place drains first. A
+held draw executes after its renderer has moved on, so a snapshot keeps by value what an immediate draw read live:
+a `CgTextureMutable` as the id it points at now, an attached uniform block as its bytes. A renderer's binding table
+resets once a frame, not per `begin()`, since held chunks still name its snapshots.
+
 ## Rules
 
 - **Order comes from reads and writes, not from creation.** A raster pass reads every `CgGraphTexture` its chunks'

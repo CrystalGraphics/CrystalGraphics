@@ -114,10 +114,27 @@ public class CgMaterialRecordingTest {
         int id = material.captureBindings(table);
         assertEquals(1, table.textures(id));
         assertEquals("the unit is the declaration index, whatever the caller passed", 1, table.textureUnit(id, 0));
-        assertSame(atlas, table.texture(id, 0));
+        assertEquals(7, table.texture(id, 0).getId());
 
         material.applyProperties(p -> p.sampler("_SharpTex", 1, other));
         assertNotEquals(id, material.captureBindings(table));
+    }
+
+    @Test
+    public void aRepointableViewIsKeptAsWhatItPointsAtNow() {
+        CgMaterial material = CgMaterial.fromSource(SOURCE);
+        CgBindingTable table = new CgBindingTable();
+        CgTextureMutable atlas = new CgTextureMutable(7, CgGL.GL_TEXTURE_2D);
+        material.applyProperties(p -> p.sampler("_SharpTex", 0, atlas));
+
+        int seven = material.captureBindings(table);
+        atlas.setId(8);
+        int eight = material.captureBindings(table);
+        assertEquals("a draw recorded before the view moved binds what it saw", 7, table.texture(seven, 0).getId());
+        assertEquals(8, table.texture(eight, 0).getId());
+
+        atlas.setId(7);
+        assertEquals("one id, one snapshot", seven, material.captureBindings(table));
     }
 
     private static boolean contains(float[] values, float value) {
