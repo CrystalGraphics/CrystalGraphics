@@ -24,16 +24,20 @@ import java.util.Arrays;
  * <ul>
  *   <li>A run draws under the material as the LAST {@code useMaterial} before its draw found it, which is what a
  *       bind used to upload: records queued earlier take values set after them.</li>
- *   <li>Snapshots live until the renderer's next {@code begin()}; a flush keeps them.</li>
+ *   <li>Recording, the snapshots are the sink's recording's, and live as long as the chunks that name them.
+ *       Immediate, they are the run's own, dropped at the first {@code begin()} of a frame.</li>
  * </ul>
  */
 final class CgInstanceRun {
 
     private final CgInstanceKind kind;
-    private final CgBindingTable bindings = new CgBindingTable();
-    private final CgChunkBuilder chunk = new CgChunkBuilder(bindings);
+    /** Immediate draws' snapshots: executed before the frame ends, so dropped once a frame. */
+    private final CgBindingTable own = new CgBindingTable();
+    private final CgChunkBuilder chunk = new CgChunkBuilder(own);
     private boolean chunkOpen;
-    private long bindingsFrame = -1;
+    private long ownFrame = -1;
+    /** The table {@link #materialBinding} and {@link #binding} are ids in. */
+    private CgBindingTable captured = own;
     /** Where a flush hands its chunk; null executes it at once. */
     @Nullable
     CgChunkSink sink;
@@ -54,13 +58,14 @@ final class CgInstanceRun {
         this.kind = kind;
     }
 
-    /** A new window; snapshots are dropped at the first of a frame. */
+    /** A new window; the run's own snapshots are dropped at the first of a frame. */
     void begin() {
-        // Once a frame, not per begin: a chunk a deferral holds still names this table's snapshots.
+        // Once a frame, not per begin: a chunk a deferral holds still names this table's snapshots. A recording's
+        // table is never reset here -- a document thread records across the render thread's frames.
         long frame = CgFrameRing.frame();
-        if (frame != bindingsFrame) {
-            bindings.reset();
-            bindingsFrame = frame;
+        if (frame != ownFrame) {
+            own.reset();
+            ownFrame = frame;
         }
         chunk.reset();
         chunkOpen = false;
@@ -95,16 +100,22 @@ final class CgInstanceRun {
     private void capture() {
         pipeline = material.pipeline(kind);
         if (pipeline != null && state != null) pipeline = pipeline.withState(state);
-        materialBinding = material.captureBindings(bindings);
+        captured = table();
+        materialBinding = material.captureBindings(captured);
         binding = withHandBound(materialBinding);
+    }
+
+    /** Where snapshots go: the recording a sink records into, or this run's own for an immediate draw. */
+    private CgBindingTable table() {
+        return sink != null ? sink.bindings() : own;
     }
 
     private int withHandBound(int snapshot) {
         int result = snapshot;
         for (int unit = 0; unit < handBound.length; unit++) {
             CgTexture texture = handBound[unit];
-            if (texture != null && (boundSinceUse[unit] || !bindings.bindsUnit(snapshot, unit))) {
-                result = bindings.withTexture(result, unit, texture);
+            if (texture != null && (boundSinceUse[unit] || !captured.bindsUnit(snapshot, unit))) {
+                result = captured.withTexture(result, unit, texture);
             }
         }
         return result;
@@ -113,11 +124,14 @@ final class CgInstanceRun {
     /** Moves the queued records into the chunk as one draw. */
     void close(CgStagingBuffer pending) {
         if (pending.isEmpty()) return;
-        if (binding < 0 && material != null) capture();   // after a begin(): the material as it is now
+        // After a begin(), or once the sink records elsewhere: the material as it is now, in the current table.
+        if ((binding < 0 || captured != table()) && material != null) capture();
         if (pipeline != null) {
             if (!chunkOpen) {
-                chunk.begin();
+                chunk.bindings(captured).begin();
                 chunkOpen = true;
+            } else if (chunk.bindings() != captured) {
+                throw new IllegalStateException("the sink's recording changed under an open chunk: flush before");
             }
             chunk.draw(pipeline, binding).instances(pending.rawData(), 0, pending.vertexCount());
         }

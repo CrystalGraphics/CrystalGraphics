@@ -33,7 +33,7 @@ import java.util.Arrays;
  */
 public final class CgChunkBuilder {
 
-    private final CgBindingTable bindings;
+    private CgBindingTable bindings;
 
     private boolean open;
     private int spatial;
@@ -68,6 +68,13 @@ public final class CgChunkBuilder {
     /** The table binding ids given to {@link #draw} must come from. */
     public CgBindingTable bindings() {
         return bindings;
+    }
+
+    /** Takes later chunks' binding ids from {@code table}: a recording's, for a builder that records into several. */
+    public CgChunkBuilder bindings(CgBindingTable table) {
+        if (open) throw new IllegalStateException("a chunk is open over another table");
+        this.bindings = table;
+        return this;
     }
 
     /** Starts a chunk under the root nodes. */
