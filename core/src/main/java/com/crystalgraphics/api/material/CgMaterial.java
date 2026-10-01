@@ -1027,11 +1027,11 @@ public final class CgMaterial {
         //    silently, restoring stale values or none at all.
         //
         // 2. It is NOT NEEDED. The enclosing render pass (CgRenderPipeline's opaque/transparent passes,
-        //    UiRecorder.beginFrame) restores Minecraft's state at pass exit, and per-material
+        //    CgUiPaintContext.beginFrame) restores Minecraft's state at pass exit, and per-material
         //    isolation falls out of getPassRenderState(variant).apply() below: every DECLARED domain is
         //    written through CgGlStateManager, so it overrides whatever the previous material left.
         //    Undeclared domains are deliberately left alone — callers configure ambient state around
-        //    materials (UiRecorder enables blending for UI text), and a variant that reverted
+        //    materials (CgUiPaintContext enables blending for UI text), and a variant that reverted
         //    undeclared domains to the scope baseline switched that blending off and rendered every
         //    glyph as an opaque block.
         //
