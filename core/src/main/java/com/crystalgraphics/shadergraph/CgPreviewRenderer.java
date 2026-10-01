@@ -45,8 +45,8 @@ import java.util.Set;
  * frame — a failure with no exception and no obvious cause, which is why the save/restore is unconditional
  * and wrapped in a finally.</p>
  *
- * <p>{@code timeSecs} is deliberately <em>not</em> overridden: inheriting the app's clock is what makes a
- * Time node's thumbnail animate, for free and in step with everything else.</p>
+ * <p>Its time is {@code CgFrameClock}'s, the one every pass reads: what makes a Time node's thumbnail animate,
+ * in step with everything else.</p>
  *
  * <h3>Budget, because N nodes × a pass each is unbounded</h3>
  * <p>Only a bounded number of previews are rendered per frame, round-robin over the dirty set. A preview

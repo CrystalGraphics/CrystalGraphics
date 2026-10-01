@@ -82,7 +82,6 @@ public class CgFrameDataTest {
         assertEquals(0.1f,    fc.nearPlane, EPSILON);
         assertEquals(1000f,   fc.farPlane, EPSILON);
         assertEquals(0,       fc.viewportW);
-        assertEquals(0f,      fc.timeSecs, EPSILON);
 
         // Default cameraForward initialised to (0, 0, -1) from field declaration
         assertEquals( 0f, fc.cameraForward.x, EPSILON);

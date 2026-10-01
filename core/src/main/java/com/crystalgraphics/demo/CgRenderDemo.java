@@ -176,7 +176,6 @@ public final class CgRenderDemo {
         CgFrameData fd = CgRenderPipeline.getInstance().getFrameData();
         fd.viewMatrix.set(scratchView);
         fd.projMatrix.set(scratchProj);
-        fd.timeSecs  = (float)(System.nanoTime() / 1_000_000_000.0);
         fd.viewportW = w;
         fd.viewportH = h;
         fd.farPlane  = 200f;

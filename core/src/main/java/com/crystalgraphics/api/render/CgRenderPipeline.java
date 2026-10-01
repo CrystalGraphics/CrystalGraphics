@@ -1,5 +1,6 @@
 package com.crystalgraphics.api.render;
 
+import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
@@ -44,7 +45,6 @@ import static com.crystalgraphics.platform.gl.state.CgGlSlot.*;
  * CgRenderPipeline pipe = CgRenderPipeline.getInstance();
  * CgFrameData fd = pipe.getFrameData();
  * fd.viewMatrix.set(glViewBuf);
- * fd.timeSecs = elapsedSecs;
  * fd.viewportW = w; fd.viewportH = h;
  * fd.deriveFromViewMatrix();
  *
@@ -271,20 +271,16 @@ public final class CgRenderPipeline {
 
     /**
      * Uploads frame data into the UBO and binds both engine buffers to their GL slots.
-     * Called once per non-replay frame at the start of the opaque pass.
-     * partialTicks is applied to timeSecs here (not stored permanently in frameData).
+     * Called once per non-replay frame at the start of the opaque pass. Its time is {@link CgFrameClock}'s.
      */
     private void uploadFrameData(CgFrameData fd) {
-        float savedTime = fd.timeSecs;
-        fd.timeSecs += currentPartialTicks * 0.05f;
+        float time = CgFrameClock.seconds();
         frameUbo.writer()
                 .reset()
                 .beginRecord()
                 .mat4("cg_ViewMatrix", fd.viewMatrix)
                 .mat4("cg_ProjMatrix", fd.projMatrix)
-                .vec4("cg_Time",
-                        fd.timeSecs / 20f, fd.timeSecs,
-                        fd.timeSecs * 2f, fd.timeSecs * 3f)
+                .vec4("cg_Time", time / 20f, time, time * 2f, time * 3f)
                 .vec2("cg_Resolution", (float) fd.viewportW, (float) fd.viewportH)
                 // Already computed -- deriveFromViewMatrix fills it every frame and nothing was reading
                 // it. Shaders needing the camera were inverting the view matrix per FRAGMENT instead.
@@ -298,7 +294,6 @@ public final class CgRenderPipeline {
                 // The convention of the pass uploading this, which is the one cg_DepthBuffer was captured in.
                 .vec4("cg_DepthParams", CgGL.isDepthReversed() ? 1f : 0f, CgGL.isDepthZeroToOne() ? 1f : 0f, 0f, 0f)
                 .endRecord();
-        fd.timeSecs = savedTime;
         frameUbo.upload();
     }
 
@@ -315,14 +310,6 @@ public final class CgRenderPipeline {
     public static void carryFrameBlock() {
         CgRenderPipeline pipeline = INSTANCE;
         if (pipeline != null && !pipeline.deleted) pipeline.frameUbo.upload();   // nothing before the first block
-    }
-
-    /**
-     * The seconds {@code cg_Time} carries this frame, partial tick included: what a recorder puts in its own pass
-     * constants so a material reading {@code CG_TIME} animates the same as under {@link #prepareFrame()}.
-     */
-    public float frameTime() {
-        return frameData.timeSecs + currentPartialTicks * 0.05f;
     }
 
     /**

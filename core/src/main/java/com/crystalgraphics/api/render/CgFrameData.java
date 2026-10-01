@@ -18,7 +18,6 @@ import java.util.function.LongSupplier;
  * CgFrameData fd = pipeline.getFrameData();
  * fd.viewMatrix.set(glViewBuf);
  * fd.projMatrix.set(glProjBuf);
- * fd.timeSecs = (float)(System.nanoTime() / 1e9);
  * fd.viewportW = Display.getWidth();
  * fd.viewportH = Display.getHeight();
  * fd.deriveFromViewMatrix();
@@ -61,8 +60,6 @@ public final class CgFrameData {
     /** Camera far plane distance (positive, world units). Used to normalize depth bucket. */
     public float farPlane  = 1000f;
 
-    /** Time in seconds. Uploaded to {@code cg_Time} uniform each frame. */
-    public float timeSecs  = 0f;
 
     /** Viewport width in pixels. For {@code cg_Resolution} uniform. */
     public int   viewportW = 0;

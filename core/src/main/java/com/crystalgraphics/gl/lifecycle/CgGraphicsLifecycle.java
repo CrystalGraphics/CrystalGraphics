@@ -1,5 +1,6 @@
 package com.crystalgraphics.gl.lifecycle;
 
+import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.demo.CgRenderDemo;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
@@ -441,6 +442,7 @@ public final class CgGraphicsLifecycle {
 
             // Last: listeners may have streamed geometry, and it belongs to this frame's fence.
             if (initialized) CgFrameRing.endFrame();
+            CgFrameClock.advanceToNow();
         } finally {
             CgGL.toHost();
         }
