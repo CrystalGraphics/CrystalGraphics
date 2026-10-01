@@ -70,6 +70,8 @@ public final class CgPassRecorder implements CgChunkSink {
 
     /** The scissor chain: per entry its node, -1 for a rect in target pixels, and its four values. */
     private int chain;
+    /** Chunks taken so far. @see #chunksTaken */
+    private long taken;
     private final int[] chainNodes = new int[MAX_SCISSORS];
     private final float[] chainValues = new float[MAX_SCISSORS * 4];
     /** Per entry, its index in the open pass: valid for the first {@link #issued}. */
@@ -170,6 +172,11 @@ public final class CgPassRecorder implements CgChunkSink {
         target = null;
     }
 
+    /** How many chunks this recorder has taken: two readings bracket what a stretch of drawing recorded. */
+    public long chunksTaken() {
+        return taken;
+    }
+
     /** Whether chunks are being recorded. */
     public boolean recording() {
         return recording != null;
@@ -185,6 +192,7 @@ public final class CgPassRecorder implements CgChunkSink {
     @Override
     public void add(CgDrawChunk chunk) {
         if (chunk.draws() == 0) return;
+        taken++;
         if (recording == null) throw new IllegalStateException("a chunk with nowhere to record it");
         if (pass != null && (!Arrays.equals(passBlock, pendingBlock)
                 || viewOwner != pendingOwner || viewX != pendingX || viewY != pendingY)) endPass();
