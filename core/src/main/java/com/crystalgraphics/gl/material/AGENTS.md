@@ -57,7 +57,7 @@ See [`parse/AGENTS.md`](parse/AGENTS.md) for the full class map. Key external-fa
 11. v2f interface block (`out _CgV2fBlock { <fields> } _cg_v2f;`)
 12. Global declarations (verbatim `globalDecls` from parsed shader)
 13. User vertex function (`void vertex(out v2f o) { <vertexBody> }`)
-14. Generated `void main()` — assigns `cg_InstanceId`, calls `vertex(_v2f_local)`, copies fields to `_cg_v2f.<name>`
+14. Generated `void main()` — assigns `cg_InstanceId = CG_INSTANCE_ID` (so the fragment sees the batch's base too), calls `vertex(_v2f_local)`, copies fields to `_cg_v2f.<name>`
 
 ### Fragment shader generation sequence (steps 1–13)
 

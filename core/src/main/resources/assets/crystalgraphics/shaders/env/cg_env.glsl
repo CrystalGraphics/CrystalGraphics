@@ -56,10 +56,11 @@ CgObjectData cg_FetchObjectData(int instanceId) {
 #endif
 
 // -- Instance ID bridge -----------------------------------------------------
-// In the vertex stage, gl_InstanceID is directly available.
-// In the fragment stage, cg_InstanceId is a flat varying wired by the compiler.
+// The vertex stage adds cg_InstanceBase: where a batch's instances start in its kind's upload for the pass, 0 for
+// a draw that uploaded its own. The fragment stage reads the sum as a flat varying the compiler wires.
 #ifdef CG_VERTEX_STAGE
-#define CG_INSTANCE_ID gl_InstanceID
+uniform int cg_InstanceBase;
+#define CG_INSTANCE_ID (gl_InstanceID + cg_InstanceBase)
 #else
 flat in int cg_InstanceId;
 #define CG_INSTANCE_ID cg_InstanceId

@@ -380,7 +380,7 @@ Shaders never branch on the path — the macro surface is identical regardless:
 | `CG_OBJECT_TO_WORLD` | `CG_OBJECT_DATA.modelMatrix` | Model → world transform |
 | `CG_NORMAL_MATRIX` | `mat3(CG_OBJECT_DATA.normalMatrix)` | Upper-left 3×3 — use for transforming normals |
 | `CG_OBJECT_CUSTOM0`–`CG_OBJECT_CUSTOM3` | `CG_OBJECT_DATA.custom0` … `.custom3` | Per-instance `vec4` slots — written via `cmd.custom0`…`cmd.custom3` on `CgRenderCommand` |
-| `CG_INSTANCE_ID` | `gl_InstanceID` (vertex) / `cg_InstanceId` (fragment) | Instance index; bridged as `flat in int cg_InstanceId` varying so it's accessible in fragment |
+| `CG_INSTANCE_ID` | `gl_InstanceID + cg_InstanceBase` (vertex) / `cg_InstanceId` (fragment) | Instance index; bridged as `flat in int cg_InstanceId` varying so it's accessible in fragment. `cg_InstanceBase` is where a batch's instances start in its kind's upload — 0 unless a frame-graph executor sets it (`CgPipeline.instanceBase`) |
 
 ### Vertex Attribute Aliases
 
@@ -1081,7 +1081,7 @@ All registries are **singletons accessed via `.get()`**. You normally interact w
 
 # Package AGENTS.md Index
 
-All 35 package guides under `src/main/java/com/crystalgraphics/`. Relative paths omit the common prefix.
+All 36 package guides under `src/main/java/com/crystalgraphics/`. Relative paths omit the common prefix.
 
 ### Demo / Benchmarks
 | Path | What it covers |
@@ -1095,6 +1095,7 @@ All 35 package guides under `src/main/java/com/crystalgraphics/`. Relative paths
 | `api/render/AGENTS.md` | `CgRenderPipeline`, `CgRenderCommand`, `CgFrameData`, `CgSortKey`, `CgPreDrawHook`, `CgRenderCommandPool` |
 | `render/AGENTS.md` | `CgRenderPipeline` singleton orchestrator, execute sequence, anaglyph guard, lifecycle |
 | `render/pipeline/AGENTS.md` | `CgDepthPrepassRenderer`, `CgForwardRenderer`, `CgTransparentRenderer` — internal pass renderers |
+| `render/draw/AGENTS.md` | `CgPipeline` (a CPU key), `CgBindingTable` (snapshots with handles), `CgInstanceKind`, `CgPassConstants` — what a recorded draw is made of; recording touches no GL (`render-graph`) |
 | `gl/material/AGENTS.md` | `CgMaterialShader`, `CgMaterialShaderRegistry`, `CgMaterialProperties` |
 | `gl/material/parse/AGENTS.md` | `CgShaderParser` facade, `CgParsedShader`, `CgMaterialShaderCompiler`, sub-parsers |
 
