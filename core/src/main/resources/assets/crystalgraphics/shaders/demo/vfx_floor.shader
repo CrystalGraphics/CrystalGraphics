@@ -68,6 +68,12 @@ Pass {
             shade *= 1.0 - 0.65 * exp(-d2 * 1.6);
             vec4 glow = floor_glow(k);
             pools += glow.rgb * glow.a * exp(-d2 * 0.45) * 0.9;
+            // The hologram's projector: a bright ring on the floor beneath it, pulsing.
+            if (k == 6) {
+                float d = sqrt(d2);
+                float ring = exp(-pow((d - 0.42) * 30.0, 2.0)) + exp(-pow((d - 0.22) * 40.0, 2.0)) * 0.6;
+                pools += vec3(0.3, 1.0, 1.5) * ring * (0.8 + 0.2 * sin(t * 6.0));
+            }
         }
         float fresnel = 0.04 + 0.96 * pow(1.0 - max(dot(n, v), 0.0), 5.0);
         vec3 reflection = vfx_env(reflect(-v, n), 0.12) * mix(0.15, 1.0, fresnel);
