@@ -333,6 +333,7 @@ public final class CgMainPreviewRenderer {
      */
     @Nullable
     private CgGraphTexture drawFallback(CgPreviewMesh mesh, float yaw, float pitch, float zoom, float aspect) {
+        CgTrace.add(CgChannels.SHADERGRAPH, "mainPreview.fallback", 1);
         try {
             // INSIDE the guard: creating the target reads the context's capabilities, and every failure route in
             // this class comes through here. This is already the failure path.
