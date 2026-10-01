@@ -72,6 +72,7 @@ submodule (`gl-debug-harness/`, Java 25) and runs from CrystalGUI's root; author
 ./gradlew :gl-debug-harness:runHarness --args="--mode=capability-report"      # GL capability probe
 ./gradlew :gl-debug-harness:runHarness --args="--mode=shader-compile-audit"   # every shipped .shader + keyword variant
 ./gradlew :gl-debug-harness:runHarness --args="--mode=graph-executor-test"    # frame graph: three paths, identical PNGs
+./gradlew :gl-debug-harness:runHarness --args="--mode=text-threaded"          # text recorded on a worker beside render-thread text; prints PASS/FAIL lines
 ./gradlew :gl-debug-harness:runHarness --args="--mode=cgui-desktop --device=vulkan"  # any scene on the Vulkan device
 # Outputs land in gl-debug-harness/harness-output/{scene}/
 ```

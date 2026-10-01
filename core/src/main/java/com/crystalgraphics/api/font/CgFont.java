@@ -70,6 +70,8 @@ public class CgFont {
     private FreeTypeLibrary ftLibrary;
     private FTFace ftFace;
     private HBFont hbFont;
+    /** @see #faceLock() */
+    private final Object faceLock = new Object();
 
     private FreeTypeMSDFIntegration msdfFtInstance;
     private FreeTypeMSDFIntegration.Font msdfFtFont;
@@ -400,7 +402,10 @@ public class CgFont {
             return cached - 1;
         }
 
-        int index = ftFace.getCharIndex(codePoint);
+        int index;
+        synchronized (faceLock) {
+            index = ftFace.getCharIndex(codePoint);
+        }
         block[slot] = index + 1;
         return index;
     }
@@ -503,6 +508,21 @@ public class CgFont {
         }
     }
 
+    /**
+     * Held by everything that uses this font's FreeType face or the HarfBuzz font over it: shaping, rasterising, a
+     * code point's glyph index. Neither is thread-safe, and rasterising moves the face to another size that shaping
+     * must not see. Each sized font has a face of its own, so this is a lock per face.
+     *
+     * <pre>{@code
+     * synchronized (font.faceLock()) {
+     *     shaper.shape(text, start, end, key, font, rtl, hbFont);
+     * }
+     * }</pre>
+     */
+    public Object faceLock() {
+        return faceLock;
+    }
+
     HBFont getHbFontInternal() {
         checkNotDisposed();
         requireSizeBound("Text shaping requires a size-bound font. Call atSize(int) first.");
@@ -521,9 +541,11 @@ public class CgFont {
         if (ftFace == null) {
             return;
         }
-        ftFace.setPixelSizes(0, key.getTargetPx());
-        if (hbFont != null && !hbFont.isDestroyed()) {
-            FreeTypeHarfBuzzIntegration.syncFontMetrics(hbFont, ftFace);
+        synchronized (faceLock) {
+            ftFace.setPixelSizes(0, key.getTargetPx());
+            if (hbFont != null && !hbFont.isDestroyed()) {
+                FreeTypeHarfBuzzIntegration.syncFontMetrics(hbFont, ftFace);
+            }
         }
     }
 

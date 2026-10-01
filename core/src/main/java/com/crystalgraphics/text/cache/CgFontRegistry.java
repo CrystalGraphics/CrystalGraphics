@@ -283,7 +283,7 @@ public class CgFontRegistry {
      * <p>Must be called exactly once per render frame, before any
      * {@code ensureGlyph*} or {@code queueGlyph*} calls for that frame.</p>
      */
-    public void tickFrame(long frame) {
+    public synchronized void tickFrame(long frame) {
         // NOTE (profiling): this runs from CgGraphicsLifecycle.onFrameRendered(). Scenes that close
         // their profiler frame from InteractiveSceneLifecycle#onFrameEnd (as TextScene3D does) get
         // these scopes attributed to the correct frame. A scene that instead ends its frame inside
@@ -349,7 +349,7 @@ public class CgFontRegistry {
      *
      * @see #getAtlasEvictionGeneration()
      */
-    public long getAtlasContentGeneration() {
+    public synchronized long getAtlasContentGeneration() {
         long sum = 0;
         for (CgGlyphAtlas atlas : liveAtlases()) sum += atlas.getContentGeneration();
         return sum;
@@ -367,7 +367,7 @@ public class CgFontRegistry {
      * atlases nothing is ever evicted, so this stays {@code 0} for the process lifetime and
      * fully-converged cache entries need no revalidation at all.</p>
      */
-    public long getAtlasEvictionGeneration() {
+    public synchronized long getAtlasEvictionGeneration() {
         long sum = 0;
         for (CgGlyphAtlas atlas : liveAtlases()) sum += atlas.getEvictionGeneration();
         return sum;
@@ -413,7 +413,7 @@ public class CgFontRegistry {
      * convergence (atlas dumps, prewarm/parity tooling, tests), where a stall does not matter
      * and "the glyph is definitely present when this returns" is the property that does.</p>
      */
-    public CgGlyphPlacement ensureGlyph(CgFont font,
+    public synchronized CgGlyphPlacement ensureGlyph(CgFont font,
                                       CgGlyphKey key,
                                       int effectiveTargetPx,
                                       int subPixelBucket,
@@ -475,7 +475,7 @@ public class CgFontRegistry {
      * @return the placement if cached, or a bitmap fallback placement; {@code null} only if the
      *         glyph could not be resolved on either tier
      */
-    public CgGlyphPlacement resolveGlyph(CgFont font,
+    public synchronized CgGlyphPlacement resolveGlyph(CgFont font,
                                       CgGlyphKey key,
                                       int effectiveTargetPx,
                                       int subPixelBucket,
@@ -537,7 +537,7 @@ public class CgFontRegistry {
      * @param fontKey           the glyph's own font key, at its base size
      * @param effectiveTargetPx the raster size the glyph is drawn at, which the cell's lengths are pixels of
      */
-    public CgGlyphPlacement resolveShadowCell(CgFont font, CgFontKey fontKey, int glyphId,
+    public synchronized CgGlyphPlacement resolveShadowCell(CgFont font, CgFontKey fontKey, int glyphId,
                                               boolean syntheticBold, boolean syntheticItalic,
                                               int effectiveTargetPx, CgShadowCell cell, long currentFrame) {
         if (font.isDisposed()) {
@@ -589,7 +589,7 @@ public class CgFontRegistry {
      * Otherwise a background job is submitted via
      * {@link CgGlyphGenerationExecutor}.</p>
      */
-    public void queueGlyph(CgFont font,
+    public synchronized void queueGlyph(CgFont font,
                         CgGlyphKey key,
                         int effectiveTargetPx,
                         int subPixelBucket,
@@ -648,7 +648,7 @@ public class CgFontRegistry {
      * @param effectiveTargetPx the sizes glyphs will actually be rasterised at; may be empty, which
      *                          warms the distance-field tier alone
      */
-    public void warmAscii(CgFont font, int... effectiveTargetPx) {
+    public synchronized void warmAscii(CgFont font, int... effectiveTargetPx) {
         warmer.enqueueAscii(font, effectiveTargetPx);
     }
 
@@ -730,7 +730,7 @@ public class CgFontRegistry {
      * <p>An unregistered face answers the narrow band: never wrong, only narrower than it could be,
      * and every real path calls {@link #registerFont} first.</p>
      */
-    public CgMsdfAtlasConfig resolveMsdfAtlasConfig(CgFontKey baseFontKey) {
+    public synchronized CgMsdfAtlasConfig resolveMsdfAtlasConfig(CgFontKey baseFontKey) {
         return denseFonts.contains(baseFontKey) || !registeredFonts.contains(baseFontKey)
                 ? msdfAtlasConfig
                 : wideAtlasConfig;
@@ -748,7 +748,7 @@ public class CgFontRegistry {
      * character: a paragraph that falls back mid-run does not get a second ceiling, and a face
      * narrower than the primary clamps again in the shader rather than drawing wrong.</p>
      */
-    public float maxStrokeWidthEm(CgFontFamily family) {
+    public synchronized float maxStrokeWidthEm(CgFontFamily family) {
         return maxStrokeWidthEm(family == null ? null : family.getPrimaryFont());
     }
 
@@ -758,7 +758,7 @@ public class CgFontRegistry {
      * <p>Registers the face if it is new, so the answer does not depend on whether a glyph of it has
      * been drawn yet -- asking before the first paint and after it must not give two numbers.</p>
      */
-    public float maxStrokeWidthEm(CgFont font) {
+    public synchronized float maxStrokeWidthEm(CgFont font) {
         if (font == null) {
             return msdfAtlasConfig.maxStrokeWidthEm();
         }
@@ -772,7 +772,7 @@ public class CgFontRegistry {
      * <p>Used by the debug harness to inspect the effective MSDF config for
      * a given font key.</p>
      */
-    public CgMsdfAtlasConfig getResolvedMsdfConfig(CgFontKey baseFontKey) {
+    public synchronized CgMsdfAtlasConfig getResolvedMsdfConfig(CgFontKey baseFontKey) {
         return resolveMsdfAtlasConfig(baseFontKey);
     }
 
@@ -814,87 +814,90 @@ public class CgFontRegistry {
         // glyphs land here every frame until their real MSDF result completes asynchronously.
         CgTrace.add(CgChannels.TEXT, "glyph.bitmap.syncRasterized", 1);
 
-        FTFace face = font.getFtFace();
-        boolean synthesize = atlasKey.isSyntheticBold() || atlasKey.isSyntheticItalic();
-        try {
-            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "freetype.rasterize")) {
-                try (CgTrace.Zone ignoredSize = CgTrace.zone(CgChannels.TEXT, "ftRaster.setPixelSizes")) {
-                    face.setPixelSizes(0, effectiveTargetPx);
-                }
+        // The face is moved to the raster size and back; shaping on another thread must not see it in between.
+        synchronized (font.faceLock()) {
+            FTFace face = font.getFtFace();
+            boolean synthesize = atlasKey.isSyntheticBold() || atlasKey.isSyntheticItalic();
+            try {
+                try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "freetype.rasterize")) {
+                    try (CgTrace.Zone ignoredSize = CgTrace.zone(CgChannels.TEXT, "ftRaster.setPixelSizes")) {
+                        face.setPixelSizes(0, effectiveTargetPx);
+                    }
 
-                int loadFlags = FTLoadFlags.FT_LOAD_DEFAULT;
-                boolean subBucket = subPixelBucket > 0 && effectiveTargetPx < CgGlyphKey.SUB_PIXEL_BUCKET_MAX_PX;
-                // Embolden/shear operate on FT_Outline — a bitmap-only glyph (e.g. an emoji/color
-                // strike) has no outline to transform, so this is best-effort like real browsers'
-                // synthesis: no outline means no visible faux-style, not a hard failure.
-                if (subBucket || synthesize) loadFlags = FTLoadFlags.FT_LOAD_NO_BITMAP;
+                    int loadFlags = FTLoadFlags.FT_LOAD_DEFAULT;
+                    boolean subBucket = subPixelBucket > 0 && effectiveTargetPx < CgGlyphKey.SUB_PIXEL_BUCKET_MAX_PX;
+                    // Embolden/shear operate on FT_Outline — a bitmap-only glyph (e.g. an emoji/color
+                    // strike) has no outline to transform, so this is best-effort like real browsers'
+                    // synthesis: no outline means no visible faux-style, not a hard failure.
+                    if (subBucket || synthesize) loadFlags = FTLoadFlags.FT_LOAD_NO_BITMAP;
                 
-                // Bytecode/autohinting grid-fits stems assuming an UPRIGHT glyph; shearing (or even
-                // embolden's point-shift) after that hinting has already snapped stems to whole
-                // pixels breaks the per-height grid-fit consistency, producing broken/jagged stems
-                // at small sizes. Disabling hinting for synthesized glyphs avoids this — the same
-                // reason production font engines skip/reduce hinting for synthetic oblique.
-                if (synthesize) loadFlags |= FTLoadFlags.FT_LOAD_NO_HINTING;
-                
-
-                try (CgTrace.Zone ignoredLoad = CgTrace.zone(CgChannels.TEXT, "ftRaster.loadGlyph")) {
-                    loadGlyphOrFallback(face, atlasKey.getGlyphId(), loadFlags);
-                }
-                try (CgTrace.Zone ignoredSynth = CgTrace.zone(CgChannels.TEXT, "ftRaster.synthetic")) {
-                    applySyntheticStyle(face, atlasKey.isSyntheticBold(), atlasKey.isSyntheticItalic(), effectiveTargetPx);
-                }
-
-                if (subBucket) face.outlineTranslate(subPixelBucket * 16L, 0L);
+                    // Bytecode/autohinting grid-fits stems assuming an UPRIGHT glyph; shearing (or even
+                    // embolden's point-shift) after that hinting has already snapped stems to whole
+                    // pixels breaks the per-height grid-fit consistency, producing broken/jagged stems
+                    // at small sizes. Disabling hinting for synthesized glyphs avoids this — the same
+                    // reason production font engines skip/reduce hinting for synthetic oblique.
+                    if (synthesize) loadFlags |= FTLoadFlags.FT_LOAD_NO_HINTING;
                 
 
-                try (CgTrace.Zone ignoredRender = CgTrace.zone(CgChannels.TEXT, "ftRaster.renderGlyph")) {
-                    face.renderGlyph(FTRenderMode.FT_RENDER_MODE_NORMAL);
-                }
+                    try (CgTrace.Zone ignoredLoad = CgTrace.zone(CgChannels.TEXT, "ftRaster.loadGlyph")) {
+                        loadGlyphOrFallback(face, atlasKey.getGlyphId(), loadFlags);
+                    }
+                    try (CgTrace.Zone ignoredSynth = CgTrace.zone(CgChannels.TEXT, "ftRaster.synthetic")) {
+                        applySyntheticStyle(face, atlasKey.isSyntheticBold(), atlasKey.isSyntheticItalic(), effectiveTargetPx);
+                    }
 
-                FTBitmap bitmap;
-                try (CgTrace.Zone ignoredGet = CgTrace.zone(CgChannels.TEXT, "ftRaster.getBitmap")) {
-                    bitmap = face.getGlyphBitmap();
-                }
-                int width = bitmap.getWidth();
-                int height = bitmap.getHeight();
-                if (width == 0 || height == 0) {
-                    // A space/control/blank glyph. Record the verdict instead of returning a
-                    // bare null: null is indistinguishable from "not generated yet", so every
-                    // later resolve would re-run this whole MSDF-attempt + FreeType path to
-                    // rediscover the same nothing. See CgGlyphAtlas#emptyGlyphs.
-                    CgTrace.add(CgChannels.TEXT, "glyph.bitmap.markedEmpty", 1);
-                    return atlas.markEmpty(atlasKey);
-                }
+                    if (subBucket) face.outlineTranslate(subPixelBucket * 16L, 0L);
+                
 
-                byte[] pixels;
-                try (CgTrace.Zone ignoredNorm = CgTrace.zone(CgChannels.TEXT, "ftRaster.normalizeBuffer")) {
-                    pixels = normalizeBitmapBuffer(bitmap);
+                    try (CgTrace.Zone ignoredRender = CgTrace.zone(CgChannels.TEXT, "ftRaster.renderGlyph")) {
+                        face.renderGlyph(FTRenderMode.FT_RENDER_MODE_NORMAL);
+                    }
+
+                    FTBitmap bitmap;
+                    try (CgTrace.Zone ignoredGet = CgTrace.zone(CgChannels.TEXT, "ftRaster.getBitmap")) {
+                        bitmap = face.getGlyphBitmap();
+                    }
+                    int width = bitmap.getWidth();
+                    int height = bitmap.getHeight();
+                    if (width == 0 || height == 0) {
+                        // A space/control/blank glyph. Record the verdict instead of returning a
+                        // bare null: null is indistinguishable from "not generated yet", so every
+                        // later resolve would re-run this whole MSDF-attempt + FreeType path to
+                        // rediscover the same nothing. See CgGlyphAtlas#emptyGlyphs.
+                        CgTrace.add(CgChannels.TEXT, "glyph.bitmap.markedEmpty", 1);
+                        return atlas.markEmpty(atlasKey);
+                    }
+
+                    byte[] pixels;
+                    try (CgTrace.Zone ignoredNorm = CgTrace.zone(CgChannels.TEXT, "ftRaster.normalizeBuffer")) {
+                        pixels = normalizeBitmapBuffer(bitmap);
+                    }
+                    // Bearing/size MUST come from this bitmap's own left/top/width/height, NOT from
+                    // FTGlyphMetrics (the outline's sub-pixel-precise bounding box) -- see
+                    // CgWorkerFontContext#generateBitmap's javadoc-comment for the full explanation.
+                    // FreeType hints/grid-fits the outline during rendering (a per-glyph, per-size,
+                    // non-linear adjustment) and bakes the result into bitmap.left/top/width/height,
+                    // but does not update FT_Glyph_Metrics to match. This used to also re-measure at
+                    // basePx when effectiveTargetPx != basePx (matching CgWorkerFontContext's old,
+                    // now-fixed bug) -- dead code here specifically, since toBitmapAtlasGlyphKey
+                    // already rewrites atlasKey's font key to effectiveTargetPx, so that condition
+                    // was always false -- but the FTGlyphMetrics-vs-bitmap mismatch itself was real
+                    // and is what this fixes.
+                    float bearingX = bitmap.getLeft();
+                    float bearingY = bitmap.getTop();
+                    float metricsWidth = width;
+                    float metricsHeight = height;
+                    try (CgTrace.Zone ignoredAlloc = CgTrace.zone(CgChannels.TEXT, "ftRaster.atlasAllocate")) {
+                        return atlas.allocateBitmap(atlasKey, pixels, width, height,
+                                bearingX, bearingY, metricsWidth, metricsHeight, currentFrame);
+                    }
                 }
-                // Bearing/size MUST come from this bitmap's own left/top/width/height, NOT from
-                // FTGlyphMetrics (the outline's sub-pixel-precise bounding box) -- see
-                // CgWorkerFontContext#generateBitmap's javadoc-comment for the full explanation.
-                // FreeType hints/grid-fits the outline during rendering (a per-glyph, per-size,
-                // non-linear adjustment) and bakes the result into bitmap.left/top/width/height,
-                // but does not update FT_Glyph_Metrics to match. This used to also re-measure at
-                // basePx when effectiveTargetPx != basePx (matching CgWorkerFontContext's old,
-                // now-fixed bug) -- dead code here specifically, since toBitmapAtlasGlyphKey
-                // already rewrites atlasKey's font key to effectiveTargetPx, so that condition
-                // was always false -- but the FTGlyphMetrics-vs-bitmap mismatch itself was real
-                // and is what this fixes.
-                float bearingX = bitmap.getLeft();
-                float bearingY = bitmap.getTop();
-                float metricsWidth = width;
-                float metricsHeight = height;
-                try (CgTrace.Zone ignoredAlloc = CgTrace.zone(CgChannels.TEXT, "ftRaster.atlasAllocate")) {
-                    return atlas.allocateBitmap(atlasKey, pixels, width, height,
-                            bearingX, bearingY, metricsWidth, metricsHeight, currentFrame);
-                }
+            } catch (FreeTypeException e) {
+                LOGGER.log(Level.WARNING, "Failed to rasterize glyph at effective size " + effectiveTargetPx + ": " + atlasKey, e);
+                return null;
+            } finally {
+                restoreFontShapingState(font);
             }
-        } catch (FreeTypeException e) {
-            LOGGER.log(Level.WARNING, "Failed to rasterize glyph at effective size " + effectiveTargetPx + ": " + atlasKey, e);
-            return null;
-        } finally {
-            restoreFontShapingState(font);
         }
     }
 
@@ -1295,7 +1298,7 @@ public class CgFontRegistry {
      *                          keyed by font identity only, not raster size — see
      *                          {@link #toMsdfAtlasKey})
      */
-    public CgGlyphAtlas.WhiteTexel getDecorationWhiteTexel(CgFontKey fontKey, int effectiveTargetPx, boolean msdf) {
+    public synchronized CgGlyphAtlas.WhiteTexel getDecorationWhiteTexel(CgFontKey fontKey, int effectiveTargetPx, boolean msdf) {
         if (msdf) {
             CgMsdfAtlasConfig config = resolveMsdfAtlasConfig(fontKey);
             CgMsdfAtlasKey msdfAtlasKey = toMsdfAtlasKey(fontKey, config);
@@ -1311,7 +1314,7 @@ public class CgFontRegistry {
      * A shadow cell already in the bitmap atlas, or null: never asks for one to be built. For drawing the
      * cell a glyph's shadow last had while its next one builds.
      */
-    public CgGlyphPlacement peekShadowCell(CgGlyphKey cellKey, long currentFrame) {
+    public synchronized CgGlyphPlacement peekShadowCell(CgGlyphKey cellKey, long currentFrame) {
         if (cellKey.getShadowCell() == null) throw new IllegalArgumentException("not a shadow cell key: " + cellKey);
         return BITMAP_ATLAS == null ? null : BITMAP_ATLAS.get(cellKey, currentFrame);
     }
@@ -1320,7 +1323,7 @@ public class CgFontRegistry {
      * The widest text-shadow cell the bitmap atlas takes, in pixels: half a page, past which one glyph's
      * cell crowds a page out. A wider cell is downsampled further instead. @see CgShadowCell#forOuterShadow
      */
-    public int maxShadowCellPx() {
+    public synchronized int maxShadowCellPx() {
         return atlasSize / 2;
     }
 
@@ -1379,7 +1382,7 @@ public class CgFontRegistry {
      * @param key ignored -- see the note above this method group
      * @return a populated bitmap atlas page, or {@code null} if none exists
      */
-    public CgGlyphAtlasPage findPopulatedBitmapPage(CgFontKey key) {
+    public synchronized CgGlyphAtlasPage findPopulatedBitmapPage(CgFontKey key) {
         return BITMAP_ATLAS == null ? null : BITMAP_ATLAS.getFirstPopulatedPage();
     }
 
@@ -1389,7 +1392,7 @@ public class CgFontRegistry {
      * @param key ignored -- see the note above this method group
      * @return a populated MSDF atlas page, or {@code null} if none exists
      */
-    public CgGlyphAtlasPage findPopulatedMsdfPage(CgFontKey key) {
+    public synchronized CgGlyphAtlasPage findPopulatedMsdfPage(CgFontKey key) {
         return MSDF_ATLAS == null ? null : MSDF_ATLAS.getFirstPopulatedPage();
     }
 
@@ -1398,7 +1401,7 @@ public class CgFontRegistry {
      *
      * @param key ignored -- see the note above this method group
      */
-    public List<CgGlyphAtlasPage> findAllPopulatedBitmapPages(CgFontKey key) {
+    public synchronized List<CgGlyphAtlasPage> findAllPopulatedBitmapPages(CgFontKey key) {
         return populatedPagesOf(BITMAP_ATLAS);
     }
 
@@ -1407,7 +1410,7 @@ public class CgFontRegistry {
      *
      * @param key ignored -- see the note above this method group
      */
-    public List<CgGlyphAtlasPage> findAllPopulatedMsdfPages(CgFontKey key) {
+    public synchronized List<CgGlyphAtlasPage> findAllPopulatedMsdfPages(CgFontKey key) {
         return populatedPagesOf(MSDF_ATLAS);
     }
 
@@ -1421,7 +1424,7 @@ public class CgFontRegistry {
      *
      * @param key ignored -- see the note above this method group
      */
-    public Map<Integer, List<CgGlyphAtlasPage>> findAllPopulatedBitmapPagesBySize(CgFontKey key) {
+    public synchronized Map<Integer, List<CgGlyphAtlasPage>> findAllPopulatedBitmapPagesBySize(CgFontKey key) {
         List<CgGlyphAtlasPage> pages = populatedPagesOf(BITMAP_ATLAS);
         if (pages.isEmpty()) {
             return Collections.emptyMap();
@@ -1440,7 +1443,7 @@ public class CgFontRegistry {
      *
      * @param key ignored -- see the note above this method group
      */
-    public Map<Integer, List<CgGlyphAtlasPage>> findAllPopulatedMSDFPagesBySize(CgFontKey key) {
+    public synchronized Map<Integer, List<CgGlyphAtlasPage>> findAllPopulatedMSDFPagesBySize(CgFontKey key) {
         List<CgGlyphAtlasPage> pages = populatedPagesOf(MSDF_ATLAS);
         if (pages.isEmpty()) {
             return Collections.emptyMap();
@@ -1501,7 +1504,7 @@ public class CgFontRegistry {
      * <p>Clears any pending/failed async jobs for the font, then deletes
      * and removes all  atlases.</p>
      */
-    public void releaseFontAtlases(CgFontKey key) {
+    public synchronized void releaseFontAtlases(CgFontKey key) {
         glyphGenerationExecutor.clearFont(key);
         releaseatlasesForFont(key);
     }
@@ -1521,7 +1524,7 @@ public class CgFontRegistry {
      * {@code CgGraphicsLifecycle} resets other backend caches in place rather than
      * requiring a new object.</p>
      */
-    public void releaseAll() {
+    public synchronized void releaseAll() {
         for (CgGlyphAtlas atlas : liveAtlases()) {
             if (!atlas.isDeleted()) {
                 atlas.delete();

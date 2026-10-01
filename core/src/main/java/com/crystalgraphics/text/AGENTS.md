@@ -11,7 +11,7 @@ Use this file as the first stop when you need to orient yourself across the inte
 ## Internal package map
 
 - `text/layout` — CPU-side layout algorithm
-- `text/cache` — glyph supply, cache keys, async generation, render-thread registry
+- `text/cache` — glyph supply, cache keys, async generation, the registry
 - `text/atlas` — atlas storage and page allocation
 - `text/atlas/packing` — rectangle packing algorithms used by atlas pages
 - `text/msdf` — distance-field generation logic and config
@@ -20,6 +20,23 @@ Use this file as the first stop when you need to orient yourself across the inte
   recipe (`CgShadowCell`) and the coverage it is built from (`CgShadowCoverage`). **Names no FreeType and no
   msdfgen**: the glyph workers answer `CgShadowCell.GlyphSource`
 - `text/font` — font files without natives (`.ttc` faces, names, coverage) and the per-script fallback tables behind `api/font/CgSystemFonts`
+
+## Threads
+
+Text is laid out and recorded on any thread; a paint context recording off the render thread depends on it
+(render-graph G2.2a). What threads share is locked, and the `text-threaded` harness scene is the gate — run without the
+locks, it crashes in the atlas packer within a few frames.
+
+| Shared | Lock |
+|---|---|
+| `CgFontRegistry`: atlases, placement, committing worker results | its own monitor — every public method, and a renderer's glyph resolve, shadow plan and decoration resolve as one step each |
+| `CgGlyphPlacementCache`, `CgTextLayoutCache` (access-ordered maps: a `get` mutates) | their class monitor |
+| a `CgFont`'s FreeType face and the HarfBuzz font over it | `CgFont.faceLock()` — shaping, rasterising, a code point's glyph index. Rasterising moves the face to another size, which shaping must not see |
+
+**Order: registry, then face**; nothing takes them the other way. A `CgTextRenderer` is one thread's at a time, and
+what it configures is its own — a material instance, the atlas it binds, its `TextData` block, handed to the material
+with `CgMaterial.overrideBlock` because the block is attached to the shader every instance shares. Atlases issue no
+GL: `CgTextureUploads` makes and fills their textures on the render thread before a frame executes.
 
 ## End-to-end responsibility chain
 

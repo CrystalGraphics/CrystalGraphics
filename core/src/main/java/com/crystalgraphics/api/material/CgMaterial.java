@@ -32,6 +32,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -178,6 +179,8 @@ public final class CgMaterial {
     @Nullable
     private CgBufferWriter capturePacker;
     private boolean capturePropsDirty = true;
+    /** This instance's own contents for uniform blocks attached to the shared shader, read in their place. */
+    private Map<CgShaderBuffer, CgBufferWriter> blockOverrides;
 
     /** Forward pipelines by instance kind and keyword mask, for {@link #pipelinesParse}. */
     @Nullable
@@ -898,6 +901,25 @@ public final class CgMaterial {
     }
 
     /**
+     * Gives this material its own contents for {@code block}, a uniform block attached to the shader every instance
+     * of it shares: {@link #captureBindings} keeps {@code contents} instead of the block's own writer. For a renderer
+     * that keeps per-instance values in a shared block, so two instances recording at once cannot read each other's.
+     *
+     * <pre>{@code
+     * CgBufferWriter mine = new CgBufferWriter(new CgStagingBuffer(format.getFloatCount()), format);
+     * material.overrideBlock(sharedBlock, mine);
+     * mine.reset().beginRecord().mat4("u_Projection", projection);   // what this instance's next capture keeps
+     * }</pre>
+     *
+     * <p>Captures only: a {@link #bind()} still reads the block itself.</p>
+     */
+    public CgMaterial overrideBlock(CgUniformBuffer block, CgBufferWriter contents) {
+        if (blockOverrides == null) blockOverrides = new IdentityHashMap<>();
+        blockOverrides.put(block, contents);
+        return this;
+    }
+
+    /**
      * The buffers a user attached, leaving out those an engine token declared: an executor binds its kind's own. A
      * uniform block is kept by value, as written now, since its owner rewrites it before the draw executes.
      */
@@ -909,7 +931,8 @@ public final class CgMaterial {
             CgAttachedBuffer buffer = attached.get(i);
             CgShaderBuffer target = buffer.getBuffer();
             if (buffer.isUbo()) {
-                CgBufferWriter written = target.writer();
+                CgBufferWriter override = blockOverrides == null ? null : blockOverrides.get(target);
+                CgBufferWriter written = override != null ? override : target.writer();
                 if (written.rawCursor() > 0) {
                     table.block(target.getBindingLocation(), written.rawData(), 0, written.rawCursor());
                     continue;

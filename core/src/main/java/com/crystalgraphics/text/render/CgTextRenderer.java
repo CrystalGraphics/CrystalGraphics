@@ -12,7 +12,8 @@ import com.crystalgraphics.api.text.CgTextDecorationRect;
 import com.crystalgraphics.api.text.CgTextStroke;
 import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.api.texture.CgTexture;
-import com.crystalgraphics.gl.buffer.CgFrameRing;
+import com.crystalgraphics.gl.buffer.staging.CgStagingBuffer;
+import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
@@ -149,13 +150,14 @@ public class CgTextRenderer {
     //  CgMaterial SETUP
     // ══════════════════════════════════════════════════════════════════════════════════════════
 
+    private static final String TEXT_SHADER = "crystalgraphics:shaders/text.shader";
+
     /**
-     * Shared static material — every {@code CgTextRenderer} instance binds/toggles keywords on
-     * this same instance (mirrors the already-static raw shaders above). Loaded via
-     * {@link CgMaterial#load(String)} (cache-per-path), not {@code newInstance()}, so it
-     * participates in {@code CgMaterialRegistry}'s hot-reload (F3+T) and teardown for free.
+     * The shader every renderer draws with, cached per path so it takes part in hot reload (F3+T) and teardown.
+     * {@link #warmUpMaterial} compiles its variants; each renderer draws through an instance of its own,
+     * {@link #textMaterial}, which shares the compiled programs.
      */
-    public static final CgMaterial TEXT_MATERIAL = CgMaterial.load("crystalgraphics:shaders/text.shader");
+    public static final CgMaterial TEXT_MATERIAL = CgMaterial.load(TEXT_SHADER);
 
     /**
      * Text-only per-renderer uniform data — currently just {@code u_Projection}. Deliberately
@@ -180,40 +182,30 @@ public class CgTextRenderer {
             .build();
 
     /**
-     * Created via the registry (not a bare {@code CgUniformBuffer.create()}) so it's covered by
-     * {@code CgShaderBufferRegistry.deleteAll()}'s teardown — no individual {@code CgTextRenderer}
-     * instance owns or deletes it.
-     *
-     * <p>On the frame ring: {@link #syncProjection} uploads it in every frame a renderer draws before that
-     * frame's first flush, so no draw reads a copy an earlier frame wrote -- and an upload a draw is the only
-     * reader of is what the ring is for, where orphaning cost a driver rename per upload.</p>
+     * Declares {@code TextData} on the shared shader. Nothing writes or uploads it: each renderer's {@link #textBlock}
+     * overrides it on that renderer's material, and every chunk keeps those bytes by value.
      */
     private static final CgUniformBuffer TEXT_DATA_UBO = CgShaderBufferRegistry.get().getOrCreateUboInternal(
             TEXT_DATA_FORMAT, "TextData", CgBindingPoints.TEXT_DATA_UBO, CgBufferLifetime.FRAME);
 
-    /**
-     * Mutable adapter over whatever raw GL atlas-array texture id is currently active.
-     * {@code CgMaterial}'s Properties-block sampler API ({@code applyProperties(b -> b.sampler(...))})
-     * requires a real {@link CgTexture}, not a raw int — atlas
-     * pages ({@code CgGlyphAtlasPage}) don't own a texture at all since the atlas texture-array
-     * migration ({@code CgGlyphAtlas} owns one {@code CgTexture2DArray} per atlas family; a
-     * page is just a layer index into it). This view (never owns/deletes the real texture) is
-     * registered once via {@link #TEXT_MATERIAL}'s Properties block at class-init, then its id is
-     * mutated per atlas-family transition — the property system rebinds whatever this wrapper
-     * currently points to on every {@code material.bind()}, so no repeated {@code applyProperties}
-     * sampler call is needed.
-     *
-     * <p><strong>Target is {@code GL_TEXTURE_2D_ARRAY}</strong>, matching {@code text.shader}'s
-     * {@code _MainTex} being a {@code sampler2DArray} — a texture object's target is fixed at
-     * first bind, so this must match what {@code CgTexture2DArray} actually allocated with, not
-     * the pre-array-migration {@code GL_TEXTURE_2D}.</p>
-     */
-    private static final CgTextureMutable ATLAS_TEXTURE_REF = new CgTextureMutable(CgGL.GL_TEXTURE_2D_ARRAY);
-
     static {
         TEXT_MATERIAL.attach(TEXT_DATA_UBO);
-        TEXT_MATERIAL.applyProperties(b -> b.sampler("_MainTex", 0, ATLAS_TEXTURE_REF));
     }
+
+    /**
+     * This renderer's own material. Its keywords and atlas are its own, so two renderers — recording on two threads,
+     * or interleaving batches on one — never draw with each other's.
+     */
+    private final CgMaterial textMaterial = CgMaterial.newInstance(TEXT_SHADER);
+    /**
+     * The atlas the current batch draws from, as {@link #textMaterial}'s {@code _MainTex}. Points at the atlas's texture
+     * itself, whose GL id exists only once the render thread has made it. {@code GL_TEXTURE_2D_ARRAY}, as
+     * {@code text.shader}'s {@code sampler2DArray} wants.
+     */
+    private final CgTextureMutable atlasTexture = new CgTextureMutable(CgGL.GL_TEXTURE_2D_ARRAY);
+    /** This renderer's {@code TextData}: the projection and the gamma correction its chunks keep. */
+    private final CgBufferWriter textBlock =
+            new CgBufferWriter(new CgStagingBuffer(TEXT_DATA_FORMAT.getFloatCount()), TEXT_DATA_FORMAT);
 
     // ══════════════════════════════════════════════════════════════════════════════════════════
 
@@ -238,10 +230,8 @@ public class CgTextRenderer {
     private final CgQuadRenderer quadRenderer;
     private boolean batchActive;
     /**
-     * Projection this renderer's queued-but-unflushed quads were computed against —
-     * {@code null} at the start of every batch (see {@link #beginBatch()}), since another live
-     * {@code CgTextRenderer} may have overwritten the shared {@link #TEXT_DATA_UBO} since this
-     * renderer's last upload. Used only to decide whether a {@link #context(CgTextRenderContext)}
+     * Projection this renderer's queued-but-unflushed quads were computed against; invalid at the start of every
+     * batch (see {@link #beginBatch()}). Used only to decide whether a {@link #context(CgTextRenderContext)}
      * change mid-batch must flush first (see {@link #syncProjection}) — unlike the model-view
      * transform, which is baked per-glyph-instance via {@code Quad.pose()} (see
      * {@link #submitBatchedQuads}) and needs no such tracking at all. Compared by value, not
@@ -250,16 +240,10 @@ public class CgTextRenderer {
      */
     private final Matrix4f activeProjection = new Matrix4f();
 
-    /** Whether {@link #activeProjection} is what the shared UBO holds; false after anything that may have moved it. */
+    /** Whether {@link #activeProjection} is what {@link #textBlock} holds; false after anything that may have moved it. */
     private boolean projectionValid;
 
-    /** The frame {@link #syncProjection} last uploaded in: a copy from an earlier frame is not to be read. */
-    private long uploadedFrame = -1;
-
-    /** Whether flushes go to a {@link #sink}: the block is then written for each chunk to keep, never uploaded. */
-    private boolean recording;
-
-    /** Uploaded beside the projection, so two renderers can draw with different corrections in one frame. */
+    /** Written beside the projection, so two renderers can draw with different corrections in one frame. */
     private CgTextGamma gamma = CgTextGamma.initial();
     /** The {@link CgClipTable} entry every quad is stamped with; 0 for none. */
     private int clip;
@@ -270,7 +254,7 @@ public class CgTextRenderer {
     private Runnable postBatchRestore;
 
     /**
-     * Batch identity {@link #TEXT_MATERIAL} is currently configured for, or {@link #NO_ACTIVE_BATCH}
+     * Batch identity {@link #textMaterial} is currently configured for, or {@link #NO_ACTIVE_BATCH}
      * when nothing is known to be configured.
      *
      * <p>These were locals in {@link #submitBatchedQuads}, which meant every {@code draw()} call
@@ -279,22 +263,13 @@ public class CgTextRenderer {
      * thousand labels that all share one atlas and one shader mode, that was a thousand transitions
      * where one would do, and it dominated the frame.
      *
-     * <p><strong>Static on purpose.</strong> {@link #TEXT_MATERIAL} and {@link #ATLAS_TEXTURE_REF}
-     * are shared across every live {@code CgTextRenderer}, so this tracks the shared material rather
-     * than one renderer's view of it. Per-instance fields would be unsound: two renderers with
-     * interleaved batches would each believe the material still held the state <em>they</em> last
-     * set, and whichever flushed second would draw its quads with the other's keywords and atlas
-     * texture. Because every transition goes through {@link #transitionToMaterial}, keeping the
-     * record beside the state it describes means any renderer's change is immediately visible to
-     * all the others.
-     *
      * <p>Reset at {@link #beginBatch()} rather than trusted across batches. Between batches the GL
      * binding is torn down and an arbitrary {@link #restoreStateWith} hook may have run, so the
      * assumption that the material is still configured as recorded no longer holds. That costs one
      * redundant transition per batch and removes the need to reason about what happens in between;
      * the win is inside the batch, where the thousand draws are.
      */
-    private static long activeBatchBits = -1L;
+    private long activeBatchBits = -1L;
 
     /**
      * Sentinel for "no batch state is known". Not a valid batch identity: {@link CgTextSortKey}
@@ -398,7 +373,6 @@ public class CgTextRenderer {
      */
     public CgTextRenderer sink(@Nullable CgChunkSink sink) {
         quadRenderer.sink(sink);
-        recording = sink != null;
         projectionValid = false;
         return this;
     }
@@ -444,8 +418,10 @@ public class CgTextRenderer {
     private boolean deleted;
 
     private CgTextRenderer() {
-        this.quadRenderer = CgQuadRenderer.create();        
-        quadRenderer.useMaterial(TEXT_MATERIAL);
+        this.quadRenderer = CgQuadRenderer.create();
+        textMaterial.applyProperties(b -> b.sampler("_MainTex", 0, atlasTexture));
+        textMaterial.overrideBlock(TEXT_DATA_UBO, textBlock);
+        quadRenderer.useMaterial(textMaterial);
     }
 
     /**
@@ -482,10 +458,7 @@ public class CgTextRenderer {
             TEXT_MATERIAL.bind();
             TEXT_MATERIAL.unbind();
         }
-        // Leave no keyword state behind: the material is shared static, and the first real
-        // transition must not be skipped because the material already happens to match.
         TEXT_MATERIAL.toggleKeyword("MSDF_MODE", false);
-        activeBatchBits = NO_ACTIVE_BATCH;
     }
 
     public static CgTextRenderer create() {
@@ -559,11 +532,8 @@ public class CgTextRenderer {
 
 
     /**
-     * Flushes whatever is currently staged, binding {@link #TEXT_MATERIAL} (with whatever
-     * keywords/properties/atlas texture were last set by
-     * {@link #transitionToMaterial}) via {@link CgQuadRenderer#useMaterial}, plus
-     * {@link #TEXT_DATA_UBO} for the duration of the draw, and issuing the instanced draw. No-op
-     * if nothing is staged.
+     * Flushes whatever is currently staged under {@link #textMaterial}, as {@link #transitionToMaterial} last set it,
+     * with {@link #textBlock} as it is now. No-op if nothing is staged.
      *
      * <p>Text draws under {@code text.shader}'s declared depth (test and write). A per-context override applied
      * after the bind never reached a draw — measured on {@code text-3d}, render-graph G2 — and is gone; a pass that
@@ -574,8 +544,7 @@ public class CgTextRenderer {
 
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "gl.flush")) {
             CgTrace.add(CgChannels.GL, "gl.flush.count", 1);
-            quadRenderer.useMaterial(TEXT_MATERIAL);
-            if (!recording) TEXT_DATA_UBO.bind();
+            quadRenderer.useMaterial(textMaterial);
 
             quadRenderer.flush();
         }
@@ -584,28 +553,14 @@ public class CgTextRenderer {
     }
 
     /**
-     * Ensures {@link #TEXT_DATA_UBO} holds {@code projection} for the glyphs about to be
-     * submitted. Two independent things happen here, in order:
-     *
-     * <ol>
-     *   <li><b>Flush first if this renderer's own queued-but-unflushed quads were placed under a
-     *       different projection</b> ({@link #activeProjection}). Projection is shared GPU state
-     *       at flush time (unlike model-view, which is baked per-glyph-instance) — without this,
-     *       a {@link #context(CgTextRenderContext)} switch mid-batch would silently re-project
-     *       already-queued glyphs onto the new projection instead of the one they were placed
-     *       for.</li>
-     *   <li><b>Upload</b>, unless this renderer already uploaded the same projection this frame and
-     *       nothing has invalidated it since ({@link #projectionValid}, cleared at every batch edge).
-     *       The frame matters because {@link #TEXT_DATA_UBO} is on the frame ring: a skip that
-     *       crossed frames would leave the next flush reading a copy the ring reuses three frames on.
-     *       Cheap: one small UBO write per {@code draw()} call, not per glyph.</li>
-     * </ol>
+     * Writes {@code projection} into {@link #textBlock} for the glyphs about to be submitted, first flushing quads this
+     * renderer queued under another one: a chunk keeps the block as it is when the chunk ends, so a context switch
+     * mid-batch would otherwise re-project glyphs already queued. One small write per {@code draw()}, not per glyph.
      */
     private void syncProjection(Matrix4f projection) {
         if (projectionValid) {
-            boolean same = activeProjection.equals(projection);
-            if (same && (recording || uploadedFrame == CgFrameRing.frame())) return;
-            if (!same) flush();
+            if (activeProjection.equals(projection)) return;
+            flush();
         }
         // KEPT, and marked invalid rather than dropped: the resets run per batch, and a fresh matrix each time
         // was a steady allocation per text draw.
@@ -613,34 +568,26 @@ public class CgTextRenderer {
         projectionValid = true;
 
         CgTextGamma.Level small = gamma.small(), large = gamma.large();
-        TEXT_DATA_UBO.writer().reset().beginRecord().mat4("u_Projection", projection)
+        textBlock.reset().beginRecord().mat4("u_Projection", projection)
                 .vec4("u_TextGammaSmall", small.exponent(), small.contrast(), 1f / small.exponent(), 0f)
                 .vec4("u_TextGammaLarge", large.exponent(), large.contrast(), 1f / large.exponent(), 0f)
                 .vec4("u_TextGammaRamp", gamma.smallPx(), gamma.largePx(), gamma.isIdentity() ? 0f : 1f, 0f);
-        TEXT_DATA_UBO.endRecord();
-        // Recording: each chunk keeps the block's bytes as written, so nothing reaches the ring.
-        if (recording) return;
-        TEXT_DATA_UBO.upload();
-        uploadedFrame = CgFrameRing.frame();
     }
 
     /**
-     * Transitions {@link #TEXT_MATERIAL} to the given batch state, flushing whatever was
+     * Transitions {@link #textMaterial} to the given batch state, flushing whatever was
      * pending under the previous state first. Callers (just {@link #submitBatchedQuads}) are
      * responsible for only calling this when the state actually changed — this method always
      * flushes and applies unconditionally, it does not re-check for a no-op transition itself.
      *
      * <p>Records {@code batchBits} into {@link #activeBatchBits} as the last step, so the record of
-     * what the shared material holds is updated in the same place the material is. Callers must not
-     * maintain their own copy: see {@link #activeBatchBits} for why tracking this per renderer
-     * rather than per material is unsound.
+     * what the material holds is updated in the same place the material is.
      *
      * <p>Every transition explicitly sets {@code MSDF_MODE} — one keyword covers both
      * distance-field atlas types (MSDF and MTSDF), since the fragment logic is identical for
-     * both today (see {@code text.shader}). {@link #TEXT_MATERIAL} is shared static state, so
-     * this is always an explicit enable-or-disable, never a bare {@code enableKeyword()} alone
-     * — a stale keyword left on by a previous transition (this renderer's or another live
-     * instance's) would otherwise silently persist into the next bind's compiled variant.</p>
+     * both today (see {@code text.shader}). It is always an explicit enable-or-disable, never a bare
+     * {@code enableKeyword()}: a keyword a previous transition left on would otherwise persist into the next
+     * batch's variant.</p>
      */
     private void transitionToMaterial(long batchBits, boolean isDistanceField, int atlasId) {
         flush();
@@ -650,9 +597,9 @@ public class CgTextRenderer {
         // atlas pages can produce far more of these than a settled frame.
         CgTrace.add(CgChannels.TEXT, "draw.materialTransition", 1);
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "draw.materialTransition")) {
-            TEXT_MATERIAL.toggleKeyword("MSDF_MODE", isDistanceField);
+            textMaterial.toggleKeyword("MSDF_MODE", isDistanceField);
             // The atlas's texture itself, not its id: the texture is made on the render thread before this draws.
-            ATLAS_TEXTURE_REF.pointAt(CgGlyphAtlas.texture(atlasId));
+            atlasTexture.pointAt(CgGlyphAtlas.texture(atlasId));
             activeBatchBits = batchBits;
         }
     }
@@ -1141,7 +1088,7 @@ public class CgTextRenderer {
     public void delete() {
         if (deleted) return;
         // AN OPEN BATCH IS ABANDONED, NOT ENDED. endBatch() flushes and then runs postBatchRestore, and
-        // both BIND A MATERIAL -- TEXT_MATERIAL for the flush, the caller's own for the restore. During
+        // both BIND A MATERIAL -- this renderer's for the flush, the caller's own for the restore. During
         // CgGraphicsLifecycle.destroyContext both are already gone, because materials are swept before
         // this registry is. Deleting a renderer is not a request to draw with it, and a caller being
         // torn down has no state worth restoring; doing either threw "CgMaterial has been deleted" out
@@ -1152,6 +1099,7 @@ public class CgTextRenderer {
             batchActive = false;
         }
         quadRenderer.delete();
+        textMaterial.delete();
         CgTextRendererRegistry.get().unregister(this);
         deleted = true;
     }
@@ -1354,8 +1302,11 @@ public class CgTextRenderer {
             // for every sub-pixel position of a translated element and the offset never lands.
             scratchPosePhase.set(draw.x, draw.y, 0f);
             pose.pose().transformPosition(scratchPosePhase);
-            glyphCount = resolvedGlyphs.resolve(resolvedLayout, draw.x, draw.y, frame, context,
-                    effectiveTargetPx, wantMsdf, fontKey, draw.rgba, scratchPosePhase.x);
+            // Under the registry's lock, so a glyph a worker commits cannot land halfway through one resolve.
+            synchronized (registry) {
+                glyphCount = resolvedGlyphs.resolve(resolvedLayout, draw.x, draw.y, frame, context,
+                        effectiveTargetPx, wantMsdf, fontKey, draw.rgba, scratchPosePhase.x);
+            }
         }
         CgTrace.counter(CgChannels.TEXT, "draw.glyphCount", glyphCount);
 
@@ -1408,10 +1359,12 @@ public class CgTextRenderer {
 
         if (draw.shadows.count() > 0 && glyphCount > 0) {
             try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT_DETAIL, "draw.planShadows")) {
-                if (shadowPlan.plan(draw.shadows, resolvedGlyphs.placements, resolvedLayout.baked(), glyphCount,
-                        fontKey, effectiveTargetPx, strokeWidthTexels, draw.strokeAlign, context.isWorldText(), frame)) {
-                    degradedDrawCount++;
+                boolean degraded;
+                synchronized (registry) {
+                    degraded = shadowPlan.plan(draw.shadows, resolvedGlyphs.placements, resolvedLayout.baked(), glyphCount,
+                            fontKey, effectiveTargetPx, strokeWidthTexels, draw.strokeAlign, context.isWorldText(), frame);
                 }
+                if (degraded) degradedDrawCount++;
             }
         }
 
@@ -1464,7 +1417,7 @@ public class CgTextRenderer {
      *   <li><b>Once per call</b> — count visible glyphs, resolve decoration rects, build a
      *       {@link CgTextSortKey} per entry, and sort. The key is laid out so a single numeric
      *       sort produces batch order directly; see that class for the bit layout.</li>
-     *   <li><b>Once per call</b> — sync the projection to {@link #TEXT_DATA_UBO} via
+     *   <li><b>Once per call</b> — write the projection into {@link #textBlock} via
      *       {@link #syncProjection}, flushing first if this renderer has quads queued under a
      *       different one. The model-view transform needs no equivalent check: it is baked
      *       per-instance rather than held as shared state.</li>
@@ -1519,8 +1472,10 @@ public class CgTextRenderer {
 
         List<CgResolvedGlyphs.ResolvedDecoration> resolvedDecorations;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT_DETAIL, "glyph.resolveDecorations")) {
-            resolvedDecorations = resolvedGlyphs.resolveDecorations(decorations, draw.x, draw.y, draw.rgba,
-                    effectiveTargetPx, wantMsdf);
+            synchronized (registry) {
+                resolvedDecorations = resolvedGlyphs.resolveDecorations(decorations, draw.x, draw.y, draw.rgba,
+                        effectiveTargetPx, wantMsdf);
+            }
         }
 
         // An upper bound: the text, then every shadow's glyphs and decorations again.
