@@ -1,11 +1,12 @@
 package com.crystalgraphics.mc.v1710.mixins.early.impl.client;
 
 import com.crystalgraphics.render.stage.CgRenderStage;
-import com.crystalgraphics.render.stage.CgHostFrame;
+import com.crystalgraphics.mc.v1710.platform.HostView1710;
 import com.crystalgraphics.platform.CgPlatform;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.EntityRenderer;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -58,10 +59,8 @@ public class CgRenderHook {
                                             CallbackInfo ci) {
         // 1.7.10 renders into mc.getFramebuffer().framebufferObject (the MC main FBO).
         // Validated: Framebuffer.java field `public int framebufferObject`.
-        int sourceFboId = Minecraft.getMinecraft().getFramebuffer().framebufferObject;
-        int w = Minecraft.getMinecraft().displayWidth;
-        int h = Minecraft.getMinecraft().displayHeight;
-        CgRenderStage.WORLD_OPAQUE.fire(new CgHostFrame(partialTicks, w, h, sourceFboId));
+        Minecraft mc = Minecraft.getMinecraft();
+        crystalgraphics$fire(CgRenderStage.WORLD_OPAQUE, mc, partialTicks);
     }
 
     /**
@@ -81,9 +80,7 @@ public class CgRenderHook {
                                             CallbackInfo ci) {
         // Note: CG geometry renders outside Angelica/Iris's GBuffer chain.
         // See CgIrisCompat for detection API if Iris-specific behaviour is needed.
-        Minecraft mc = Minecraft.getMinecraft();
-        CgRenderStage.WORLD_TRANSPARENT.fire(new CgHostFrame(partialTicks, mc.displayWidth,
-                mc.displayHeight, mc.getFramebuffer().framebufferObject));
+        crystalgraphics$fire(CgRenderStage.WORLD_TRANSPARENT, Minecraft.getMinecraft(), partialTicks);
     }
 
     /**
@@ -93,6 +90,14 @@ public class CgRenderHook {
      * rendering, no-world GUI screens (main menu, etc.), and the skip-render-world case
      * uniformly, closing the gap left by hooking {@code renderWorld} alone.
      */
+    // 1.7.10 renders into mc.getFramebuffer().framebufferObject, the main FBO.
+    @Unique
+    private static void crystalgraphics$fire(CgRenderStage stage, Minecraft mc, float partialTicks) {
+        HostView1710.capture(mc, partialTicks, stage.host()
+                .set(partialTicks, mc.displayWidth, mc.displayHeight, mc.getFramebuffer().framebufferObject).view());
+        stage.fire();
+    }
+
     @Inject(method = "updateCameraAndRender", at = @At("TAIL"))
     private void onFrameRendered(float partialTicks, CallbackInfo ci) {
         CgPlatform.lifecycle().onFrameRendered();

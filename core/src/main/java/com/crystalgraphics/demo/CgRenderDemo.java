@@ -1,8 +1,5 @@
 package com.crystalgraphics.demo;
 
-import com.crystalgraphics.platform.gl.CgGL;
-import com.crystalgraphics.platform.gl.state.CgGlState;
-import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgRenderQueue;
 import com.crystalgraphics.api.render.CgFrameData;
@@ -11,39 +8,37 @@ import com.crystalgraphics.api.render.CgRenderPipeline;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gl.mesh.CgMesh;
 import com.crystalgraphics.gl.mesh.CgMeshBuilder;
+import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.gl.state.CgGlScope;
+import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.render.stage.CgHostFrame;
+import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.joml.Matrix4f;
+import org.joml.Vector3f;
+
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.File;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 
 /**
- * Platform-agnostic 3D render pipeline demo.
+ * A development demo: sixteen rainbow cubes standing on blocks in front of the player, drawn at both world stages
+ * under the host's own camera. Off unless asked for.
  *
- * <p>Renders a 4×4 grid of lit, rainbow-tinted unit cubes via
- * {@link CgRenderPipeline}. Each cube carries a unique HSV colour encoded in
- * {@code cmd.custom0}, which the {@code demo_render.shader} reads through
- * {@code CG_OBJECT_CUSTOM0}. The camera orbits the grid automatically and zooms
- * with the mouse wheel.</p>
+ * <pre>{@code
+ * -Dcrystalgraphics.demo=true                         // draw them
+ * -Dcrystalgraphics.demo.capture=build/demo.png       // and write the world, with no GUI over it, to a PNG
+ * -Dcrystalgraphics.demo.captureAt=300                // after this many world frames (300 by default)
+ * }</pre>
  *
- * <h3>GL contract</h3>
- * <p>All GL calls happen inside {@link CgRenderPipeline} — no {@code org.lwjgl.*}
- * imports are present in this class.</p>
- *
- * <h3>Platform wiring</h3>
- * <p>Each platform adapter calls two methods per frame:</p>
- * <ol>
- *   <li>{@link #renderOpaque(float, int, int, int)} — from the pre-translucent
- *       render hook ({@code AFTER_BLOCK_ENTITIES} / {@code onBeforeTranslucentBlocks}).
- *       This method sets {@code CgFrameData}, submits the 16 cube commands, then
- *       executes the depth prepass and opaque forward pass.</li>
- *   <li>{@link #renderTransparent()} — from the post-translucent render hook
- *       ({@code AFTER_PARTICLES} / {@code onAfterTranslucentContent}).
- *       Executes the transparent pass and ends the frame.</li>
- * </ol>
- * <p>These two calls replace the platform's direct {@code executeOpaquePass} /
- * {@code executeTransparentPass} / {@code endFrame} invocations while the demo
- * is active.</p>
+ * <p>The cubes are placed once, on the first world frame, on whole blocks a few blocks along the camera's view and
+ * a little above it, so terrain in front does not hide them, and stay there. Each fills exactly one block cell, so a capture shows whether the stage's view is the camera the world was
+ * drawn with: on the grid at every angle, or off it.</p>
  */
 public final class CgRenderDemo {
 
@@ -51,99 +46,44 @@ public final class CgRenderDemo {
 
     private static final Logger LOGGER = LogManager.getLogger("CgRenderDemo");
 
-    private static final int   GRID          = 4;                  // 4×4 = 16 cubes
-    private static final float GRID_STEP     = 1.5f;
-    private static final float ORBIT_DEG_SEC = 20f;
+    private static final boolean ENABLED = Boolean.getBoolean("crystalgraphics.demo");
+    private static final String CAPTURE = System.getProperty("crystalgraphics.demo.capture");
+    private static final int CAPTURE_AT = Integer.getInteger("crystalgraphics.demo.captureAt", 300);
 
-    private boolean enabled     = true;
-    private boolean initialized = false;
+    private static final int GRID = 4;        // 4×4 = 16 cubes
+    private static final int GRID_STEP = 2;   // blocks between cubes
+    private static final int AHEAD = 6;       // blocks from the eye to the grid's centre, along the view
+    private static final int ABOVE = 2;       // and up the screen
 
-    private CgMesh     cubeMesh;
+    private boolean enabled = true;
+    private boolean installed;
+    private boolean initialized;
+    private boolean anchored;
+    private long anchorX, anchorY, anchorZ;
+    private int worldFrames;
+
+    private CgMesh cubeMesh;
     private CgMaterial cubeMaterial;
 
-    private float orbitAngleDeg    = 0f;
-    private float orbitRadius      = 10f;
-    private float orbitElevationDeg = 30f;
-    private long  lastNanos        = -1L;
-
-    // Pre-allocated — never replaced across frames.
-    private final Matrix4f scratchView = new Matrix4f();
-    private final Matrix4f scratchProj = new Matrix4f();
-
-    private boolean installed;
+    /** The firing stage's frame, for the callbacks below, which run inside that firing. */
+    private CgHostFrame host;
+    private final Runnable opaque = this::renderOpaque;
+    private final Runnable transparent = this::renderTransparent;
 
     private CgRenderDemo() {}
 
-    /** Registers the demo for the world stages, once. Its drawing runs where it always has, as a callback in each. */
+    /** Registers the demo for the world stages, once, when {@code -Dcrystalgraphics.demo=true}. */
     public void install() {
-        if (installed) return;
+        if (installed || !ENABLED) return;
         installed = true;
         CgRenderStage.WORLD_OPAQUE.register(frame -> {
-            CgHostFrame host = frame.host();
-            frame.callback("demo.opaque",
-                    () -> renderOpaque(host.partialTick(), host.width(), host.height(), host.mainFramebuffer()));
+            host = frame.host();
+            frame.callback("demo.opaque", opaque);
         });
-        CgRenderStage.WORLD_TRANSPARENT.register(frame -> frame.callback("demo.transparent", this::renderTransparent));
-    }
-
-    // ── Public API ────────────────────────────────────────────────────────────
-
-    /**
-     * Opaque pass: lazy-initialises resources, advances the orbit camera,
-     * uploads {@link CgFrameData}, submits 16 cube commands, then drives the
-     * depth prepass and opaque forward pass.
-     *
-     * <p>Call from the pre-translucent render hook on each platform, passing the
-     * GL framebuffer ID that holds the current scene depth (used for the per-frame
-     * depth snapshot blit into {@code cg_DepthBuffer}).</p>
-     *
-     * @param partialTick  frame interpolation factor [0, 1]
-     * @param w            current viewport width in pixels
-     * @param h            current viewport height in pixels
-     * @param sourceFboId  GL framebuffer object ID to blit depth from
-     *                     (pass {@code 0} for the default framebuffer)
-     */
-    public void renderOpaque(float partialTick, int w, int h, int sourceFboId) {
-        if (!enabled) return;
-        // One scope over the first frame's uploads as well as the pass; the pipeline's own scope nests in it.
-        try (CgGlScope ignored = CgGlState.saveAll()) {
-            ensureResources();
-            advanceCamera();
-            populateFrameData(w, h);
-            submitGeometry();
-            CgRenderPipeline.getInstance().executeOpaquePass(partialTick, sourceFboId);
-        } catch (Exception e) {
-            LOGGER.error("CgRenderDemo opaque pass failed", e);
-            enabled = false;
-        }
-    }
-
-    /**
-     * Transparent pass and frame end. No transparent geometry is submitted by
-     * this demo, so this is effectively a no-op for the draw calls — but it
-     * must still be called to release the command pool via {@code endFrame()}.
-     *
-     * <p>Call from the post-translucent render hook on each platform.</p>
-     */
-    public void renderTransparent() {
-        if (!enabled) return;
-        try {
-            CgRenderPipeline.getInstance().executeTransparentPass();
-            CgRenderPipeline.getInstance().endFrame();
-        } catch (Exception e) {
-            LOGGER.error("CgRenderDemo transparent pass failed", e);
-            enabled = false;
-        }
-    }
-
-    /**
-     * Adjusts the orbit radius in response to a mouse-wheel scroll event.
-     *
-     * @param delta raw wheel delta ({@code > 0} = scroll up = zoom in)
-     */
-    public void onMouseWheel(int delta) {
-        if (delta > 0) orbitRadius = Math.max(2f,  orbitRadius - 0.5f);
-        else           orbitRadius = Math.min(30f, orbitRadius + 0.5f);
+        CgRenderStage.WORLD_TRANSPARENT.register(frame -> {
+            host = frame.host();
+            frame.callback("demo.transparent", transparent);
+        });
     }
 
     /** Releases GPU resources. Call on context destroy. */
@@ -153,76 +93,113 @@ public final class CgRenderDemo {
         initialized  = false;
     }
 
-    // ── Internal helpers ──────────────────────────────────────────────────────
+    private void renderOpaque() {
+        if (!enabled) return;
+        // One scope over the first frame's uploads as well as the pass; the pipeline's own scope nests in it.
+        try (CgGlScope ignored = CgGlState.saveAll()) {
+            ensureResources();
+            CgHostView view = host.view();
+            if (!anchored) anchor(view);
+            populateFrameData(view, host.width(), host.height());
+            submitGeometry(view);
+            CgRenderPipeline.getInstance().executeOpaquePass(host.partialTick(), host.mainFramebuffer());
+        } catch (Exception e) {
+            LOGGER.error("CgRenderDemo opaque pass failed", e);
+            enabled = false;
+        }
+    }
+
+    private void renderTransparent() {
+        if (!enabled) return;
+        try {
+            CgRenderPipeline.getInstance().executeTransparentPass();
+            CgRenderPipeline.getInstance().endFrame();
+            if (CAPTURE != null && ++worldFrames == CAPTURE_AT) capture(host.width(), host.height());
+        } catch (Exception e) {
+            LOGGER.error("CgRenderDemo transparent pass failed", e);
+            enabled = false;
+        }
+    }
 
     private void ensureResources() {
         if (initialized) return;
         cubeMesh     = CgMesh.upload(CgMeshBuilder.unitCube(CgVertexFormat.SPATIAL));
         cubeMaterial = CgMaterial.load("crystalgraphics:shaders/demo_render.shader");
         initialized  = true;
-        LOGGER.info("[CgRenderDemo] resources initialised (mesh={}, material={})",
-                cubeMesh, cubeMaterial);
+        LOGGER.info("[CgRenderDemo] resources initialised (mesh={}, material={})", cubeMesh, cubeMaterial);
     }
 
-    private void advanceCamera() {
-        long now = System.nanoTime();
-        if (lastNanos > 0) {
-            float dt = (now - lastNanos) * 1e-9f;
-            orbitAngleDeg += ORBIT_DEG_SEC * dt;
-        }
-        lastNanos = now;
+    /** Puts the grid ahead of the eye and up the screen, whatever the host folds into its view matrix. */
+    private void anchor(CgHostView view) {
+        Matrix4f toWorld = new Matrix4f(view.view()).invert();
+        Vector3f eye = toWorld.transformPosition(new Vector3f());
+        Vector3f forward = toWorld.transformDirection(new Vector3f(0f, 0f, -1f)).normalize();
+        Vector3f up = toWorld.transformDirection(new Vector3f(0f, 1f, 0f)).normalize();
+        anchorX = (long) Math.floor(view.x() + eye.x + forward.x * AHEAD + up.x * ABOVE);
+        anchorY = (long) Math.floor(view.y() + eye.y + forward.y * AHEAD + up.y * ABOVE);
+        anchorZ = (long) Math.floor(view.z() + eye.z + forward.z * AHEAD + up.z * ABOVE);
+        anchored = true;
+        LOGGER.info("[CgRenderDemo] cubes on blocks around ({}, {}, {}), camera at ({}, {}, {}) | view {} | projection {}",
+                anchorX, anchorY, anchorZ, view.x(), view.y(), view.z(), view.view(), view.projection());
     }
 
-    private void populateFrameData(int w, int h) {
-        float angleRad = (float) Math.toRadians(orbitAngleDeg);
-        float elevRad  = (float) Math.toRadians(orbitElevationDeg);
-        float cosElev  = (float) Math.cos(elevRad);
-        float eyeX     = orbitRadius * cosElev * (float) Math.sin(angleRad);
-        float eyeY     = orbitRadius * (float) Math.sin(elevRad);
-        float eyeZ     = orbitRadius * cosElev * (float) Math.cos(angleRad);
-
-        scratchView.identity().lookAt(eyeX, eyeY, eyeZ, 0f, 0f, 0f, 0f, 1f, 0f);
-
-        float aspect = (w > 0 && h > 0) ? (float) w / h : 1f;
-        // The host's depth convention: 26.2's world is reversed-Z, and CgGL mirrors our depth tests to match.
-        float fovy = (float) Math.toRadians(60.0);
-        if (CgGL.isDepthReversed()) scratchProj.setPerspective(fovy, aspect, 200f, 0.1f, CgGL.isDepthZeroToOne());
-        else scratchProj.setPerspective(fovy, aspect, 0.1f, 200f);
-
+    private void populateFrameData(CgHostView view, int w, int h) {
         CgFrameData fd = CgRenderPipeline.getInstance().getFrameData();
-        fd.viewMatrix.set(scratchView);
-        fd.projMatrix.set(scratchProj);
+        fd.viewMatrix.set(view.view());
+        fd.projMatrix.set(view.projection());
         fd.viewportW = w;
         fd.viewportH = h;
-        fd.farPlane  = 200f;
+        fd.farPlane  = 512f;
         fd.deriveFromViewMatrix();
     }
 
-    private void submitGeometry() {
+    /** Camera-relative: each cube's block centre minus the camera, in doubles, before it is a float. */
+    private void submitGeometry(CgHostView view) {
         CgRenderPipeline pipeline = CgRenderPipeline.getInstance();
-        float half = (GRID - 1) * GRID_STEP * 0.5f;
-
         for (int i = 0; i < GRID; i++) {
             for (int j = 0; j < GRID; j++) {
-                float x = i * GRID_STEP - half;
-                float z = j * GRID_STEP - half;
+                float x = (float) (anchorX + (i - GRID / 2) * GRID_STEP + 0.5 - view.x());
+                float y = (float) (anchorY + 0.5 - view.y());
+                float z = (float) (anchorZ + (j - GRID / 2) * GRID_STEP + 0.5 - view.z());
 
                 CgRenderCommand cmd = pipeline.acquireCommand();
                 cmd.mesh      = cubeMesh;
                 cmd.material  = cubeMaterial;
                 cmd.queueSlot = CgRenderQueue.GEOMETRY;
-                cmd.modelMatrix.identity().translation(x, 0f, z);
+                cmd.modelMatrix.identity().translation(x, y, z);
 
-                float hue   = (i * GRID + j) / (float)(GRID * GRID);
+                float hue   = (i * GRID + j) / (float) (GRID * GRID);
                 float[] rgb = hsvToRgb(hue, 0.85f, 1.0f);
                 cmd.custom0.set(rgb[0], rgb[1], rgb[2], 1f);
 
                 cmd.worldAabb[0] = x - 0.5f;  cmd.worldAabb[3] = x + 0.5f;
-                cmd.worldAabb[1] =    -0.5f;   cmd.worldAabb[4] =    0.5f;
-                cmd.worldAabb[2] = z - 0.5f;   cmd.worldAabb[5] = z + 0.5f;
+                cmd.worldAabb[1] = y - 0.5f;  cmd.worldAabb[4] = y + 0.5f;
+                cmd.worldAabb[2] = z - 0.5f;  cmd.worldAabb[5] = z + 0.5f;
 
                 pipeline.submit(cmd);
             }
+        }
+    }
+
+    /** The host's target as it stands after the transparent stage. Synchronous: a diagnostic, once. */
+    private static void capture(int w, int h) {
+        ByteBuffer pixels = ByteBuffer.allocateDirect(w * h * 4).order(ByteOrder.nativeOrder());
+        CgGL.glReadPixels(0, 0, w, h, CgGL.GL_RGBA, CgGL.GL_UNSIGNED_BYTE, pixels);
+        BufferedImage image = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                int at = ((h - 1 - y) * w + x) * 4;
+                image.setRGB(x, y, (pixels.get(at) & 0xFF) << 16 | (pixels.get(at + 1) & 0xFF) << 8
+                        | (pixels.get(at + 2) & 0xFF));
+            }
+        }
+        File out = new File(CAPTURE).getAbsoluteFile();
+        try {
+            if (out.getParentFile() != null) out.getParentFile().mkdirs();
+            ImageIO.write(image, "png", out);
+            LOGGER.info("[CgRenderDemo] wrote {}x{} capture to {}", w, h, out);
+        } catch (IOException e) {
+            LOGGER.error("[CgRenderDemo] could not write {}", out, e);
         }
     }
 

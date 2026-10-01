@@ -16,9 +16,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * A point in a host's frame where renderers draw. A renderer registers on a stage; whoever owns the hook fires it, and
- * every renderer records into one frame on the host's target, which executes there and then. CrystalGraphics defines
- * the world's two and its hosts fire them; a mod defines its own and fires it from a hook of its own.
+ * A point in a host's frame where renderers draw. A renderer registers on a stage; whoever owns the hook fills the
+ * stage's {@link #host() frame} and fires it, and every renderer records into one frame on the host's target, which
+ * executes there and then. CrystalGraphics defines the world's two and its hosts fire them; a mod defines its own and
+ * fires it from a hook of its own.
  *
  * <pre>{@code
  * // Drawing at a stage
@@ -34,9 +35,14 @@ import java.util.Map;
  * }</pre>
  *
  * <pre>{@code
- * // A stage of your own: defined once, fired from your hook on the render thread
+// A stage of your own: defined once, filled and fired from your hook on the render thread
  * public static final CgRenderStage AFTER_SKY = CgRenderStage.define("mymod:after_sky");
- * AFTER_SKY.fire(new CgHostFrame(partialTick, width, height, mainFramebufferId));
+ * AFTER_SKY.host().set(partialTick, width, height, mainFramebufferId)
+ *         .view().set(camX, camY, camZ, viewRotation, projection);
+ * AFTER_SKY.fire();
+ *
+ * // Anywhere on the render thread: the world's camera as of its latest frame
+ * CgHostView world = CgRenderStage.WORLD_OPAQUE.host().view();
  * }</pre>
  *
  * <ul>
@@ -68,6 +74,7 @@ public final class CgRenderStage {
 
     private final String id;
     private final String path;
+    private final CgHostFrame host = new CgHostFrame();
     private final int gpuName;
     private final CgStageFrame frame = new CgStageFrame(this);
     private volatile List<Entry> renderers = List.of();
@@ -147,10 +154,18 @@ public final class CgRenderStage {
     }
 
     /**
-     * Lets every renderer record into one frame on the host's target and executes it, inside a host section of its
-     * own. Render thread, from the host's frame. Nothing happens after the engine is torn down.
+     * What the host said about this stage's latest frame: filled before {@link #fire}, readable by anything on the
+     * render thread after — the world's camera from a HUD, say. One instance, refilled every frame.
      */
-    public void fire(CgHostFrame host) {
+    public CgHostFrame host() {
+        return host;
+    }
+
+    /**
+     * Lets every renderer record into one frame on the host's target under {@link #host()}, and executes it, inside a
+     * host section of its own. Render thread, from the host's frame. Nothing happens after the engine is torn down.
+     */
+    public void fire() {
         // NOTHING RUNS AFTER A TEARDOWN. Minecraft keeps dispatching render stages for a frame or two after
         // GameShuttisngDownEvent, and by then every registry is deleted: a stage reaching CgMaterial.load threw
         // "CgMaterialRegistry has been deleted" out of a render event, which surfaced as a crash on quitting.

@@ -667,11 +667,22 @@ CgRenderStage.Registration drawing = CgRenderStage.WORLD_OPAQUE.register(0, fram
 });
 drawing.close();                                                      // stops it
 
-// A stage of your own, fired from your hook on the render thread
+// A stage of your own: fill its frame, then fire it from your hook on the render thread
 public static final CgRenderStage AFTER_SKY = CgRenderStage.define("mymod:after_sky");
-AFTER_SKY.fire(new CgHostFrame(partialTick, width, height, mainFramebufferId));
+AFTER_SKY.host().set(partialTick, width, height, mainFramebufferId)
+        .view().set(camX, camY, camZ, viewRotation, projection);
+AFTER_SKY.fire();
+
+// Anywhere on the render thread: the world's camera as of its latest frame
+CgHostView world = CgRenderStage.WORLD_OPAQUE.host().view();
 ```
 
+- Each stage owns its `CgHostFrame`, refilled by the host before every `fire` (nothing is allocated). Its
+  `CgHostView` is the host's own camera: the absolute position in doubles, and the view and projection the host
+  draws with. Minecraft draws its world camera-relative, so the view maps a point minus that position.
+- Every host captures Minecraft's camera where that version computes it; the per-era sources are
+  `HostView1710`, `HostViewLegacy` and `HostViewModern`. A GUI stage carries the GUI's projection in its own frame,
+  so the world's camera stays readable while the host draws its GUI.
 - `fire` is the whole entry: it opens the host section, starts the engine if nothing has, times the stage
   (trace zone and GPU timer, named by the id's path) and does nothing after a teardown.
 - An id is defined once (`define` throws on a second); renderers record in ascending order, ties in

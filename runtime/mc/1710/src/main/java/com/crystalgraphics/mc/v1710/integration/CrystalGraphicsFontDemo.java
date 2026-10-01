@@ -1,7 +1,6 @@
 package com.crystalgraphics.mc.v1710.integration;
 
 import com.crystalgraphics.demo.CgFontDemo;
-import com.crystalgraphics.demo.CgRenderDemo;
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
@@ -36,7 +35,6 @@ public class CrystalGraphicsFontDemo {
 
         int wheel = Mouse.getDWheel();
         CgFontDemo.INSTANCE.onMouseWheel(wheel);
-        CgRenderDemo.INSTANCE.onMouseWheel(wheel);
     }
 
     @SubscribeEvent

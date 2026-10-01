@@ -31,6 +31,8 @@ dependencies {
     "compileOnly"(project(":runtime:mc:shared"))
     // Tier 1: the LWJGL2 services this era's bundle is assembled from.
     "compileOnly"(project(":runtime:lwjgl:2"))
+    // HostViewLegacy hands the world stages JOML matrices; the companion jar supplies JOML at run time.
+    "compileOnly"("org.joml:joml:${rootProject.property("dep.joml")}")
     // MixinBooter supplies Mixin at runtime. A stub build has its signatures in the stub.
     if (!stubMode) "compileOnly"("org.spongepowered:mixin:${property("modern.mixin")}")
 }

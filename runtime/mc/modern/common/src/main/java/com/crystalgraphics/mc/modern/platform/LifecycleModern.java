@@ -12,6 +12,7 @@ import com.crystalgraphics.platform.gl.state.CgGlState;
 
 import net.minecraft.client.Minecraft;
 import org.apache.logging.log4j.LogManager;
+import org.joml.Matrix4fc;
 //? if <26.3 {
 import org.lwjgl.glfw.GLFW;
 //?}
@@ -56,9 +57,6 @@ import org.lwjgl.opengl.GL30;
  */
 public final class LifecycleModern {
 
-    /** The opaque pass's, for the transparent one, which its loaders call without one. */
-    private static float lastPartialTick;
-
     private LifecycleModern() {
     }
 
@@ -82,9 +80,10 @@ public final class LifecycleModern {
             int mainFbo = bindMainTarget(mc);
             worldDepth(true);
             try {
-                lastPartialTick = partialTick;
-                CgRenderStage.WORLD_OPAQUE.fire(new CgHostFrame(partialTick,
-                        Windows.of(mc).getWidth(), Windows.of(mc).getHeight(), mainFbo));
+                CgHostFrame frame = CgRenderStage.WORLD_OPAQUE.host()
+                        .set(partialTick, Windows.of(mc).getWidth(), Windows.of(mc).getHeight(), mainFbo);
+                HostViewModern.capture(mc, partialTick, frame.view());
+                CgRenderStage.WORLD_OPAQUE.fire();
             } finally {
                 worldDepth(false);
             }
@@ -113,8 +112,12 @@ public final class LifecycleModern {
             int mainFbo = bindMainTarget(mc);
             worldDepth(true);
             try {
-                CgRenderStage.WORLD_TRANSPARENT.fire(new CgHostFrame(lastPartialTick,
-                        Windows.of(mc).getWidth(), Windows.of(mc).getHeight(), mainFbo));
+                // The same level render as the opaque pass: its camera, and the partial tick these loaders do not pass.
+                CgHostFrame opaque = CgRenderStage.WORLD_OPAQUE.host();
+                CgRenderStage.WORLD_TRANSPARENT.host()
+                        .set(opaque.partialTick(), Windows.of(mc).getWidth(), Windows.of(mc).getHeight(), mainFbo)
+                        .view().set(opaque.view());
+                CgRenderStage.WORLD_TRANSPARENT.fire();
             } finally {
                 worldDepth(false);
             }
@@ -122,6 +125,14 @@ public final class LifecycleModern {
             CgGL.toHost();
         }
         HostStateVerifier.verify("transparent");
+    }
+
+    /**
+     * The level's view and projection, from a node mixin at the head of {@code LevelRenderer.renderLevel} on
+     * 1.21.6–1.21.11: the only place Minecraft hands the projection over on the CPU there.
+     */
+    public static void levelMatrices(Matrix4fc view, Matrix4fc projection) {
+        HostViewModern.levelMatrices(view, projection);
     }
 
     /**
