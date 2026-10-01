@@ -95,6 +95,18 @@ public final class CgGL {
         CgGLAudit.exit();
     }
 
+    /**
+     * Whether this thread may issue GL now: it owns the context and is not recording. What a resource asks before
+     * making its GL object at once rather than handing it to the render thread.
+     *
+     * <pre>{@code
+     * CgTexture2D texture = CgGL.mayIssueGl() ? CgTexture2D.createDirect(path, spec) : CgTexture2D.createDeferred(path, spec);
+     * }</pre>
+     */
+    public static boolean mayIssueGl() {
+        return backend != null && backend.ownedByCurrentThread() && !CgGLAudit.inSection();
+    }
+
     
     private CgGL() {}
 
