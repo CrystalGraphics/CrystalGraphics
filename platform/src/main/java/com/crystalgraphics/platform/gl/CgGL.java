@@ -1073,7 +1073,7 @@ public final class CgGL {
      * <pre>{@code
      * CgGL.setDepthReversed(true);
      * try {
-     *     CgRenderStage.WORLD_OPAQUE.fire(new CgHostFrame(partialTick, width, height, mainFbo));
+     *     CgRenderStage.WORLD_OPAQUE.fire();
      * } finally {
      *     CgGL.setDepthReversed(false);
      * }

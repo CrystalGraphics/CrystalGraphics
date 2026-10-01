@@ -51,6 +51,11 @@ dependencies {
     if (MinecraftVersionOrder.compare(property("mc.version").toString(), "26.2") >= 0) {
         "api"(project(":runtime:lwjgl:vulkan"))
     }
+    // HostViewModern hands the world stages JOML matrices. Minecraft ships JOML from 1.19.3; below it the
+    // companion jar supplies it at run time, and the build's own projects never see core's published copy.
+    if (MinecraftVersionOrder.compare(property("mc.version").toString(), "1.19.3") < 0) {
+        "compileOnly"("org.joml:joml:${rootProject.property("dep.joml")}")
+    }
     // Its SDL3 input and cursor, for a node whose Minecraft ships SDL instead of GLFW (26.3+). On every
     // node's classpath, loaded only by the one that names it.
     "api"(project(":runtime:lwjgl:sdl"))

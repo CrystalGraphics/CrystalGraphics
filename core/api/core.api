@@ -1531,9 +1531,6 @@ com/crystalgraphics/demo/CgRenderDemo
   field public,static,final INSTANCE Lcom/crystalgraphics/demo/CgRenderDemo;
   method public dispose ()V
   method public install ()V
-  method public onMouseWheel (I)V
-  method public renderOpaque (FIII)V
-  method public renderTransparent ()V
 com/crystalgraphics/gl/buffer/CgFrameRing
   access public,final
   extends java/lang/Object
@@ -2775,6 +2772,7 @@ com/crystalgraphics/render/draw/CgChunkBuilder
   method public begin ()Lcom/crystalgraphics/render/draw/CgChunkBuilder;
   method public begin (III)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
   method public bindings ()Lcom/crystalgraphics/render/draw/CgBindingTable;
+  method public bindings (Lcom/crystalgraphics/render/draw/CgBindingTable;)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
   method public bounds (FFFF)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
   method public data ()[F
   method public draw (Lcom/crystalgraphics/render/draw/CgPipeline;I)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
@@ -2788,6 +2786,7 @@ com/crystalgraphics/render/draw/CgChunkSink
   access public,abstract,interface
   extends java/lang/Object
   method public,abstract add (Lcom/crystalgraphics/render/draw/CgDrawChunk;)V
+  method public,abstract bindings ()Lcom/crystalgraphics/render/draw/CgBindingTable;
 com/crystalgraphics/render/draw/CgDrawChunk
   access public,final
   extends java/lang/Object
@@ -2944,6 +2943,7 @@ com/crystalgraphics/render/graph/CgPassRecorder
   method public <init> ()V
   method public abandon ()V
   method public add (Lcom/crystalgraphics/render/draw/CgDrawChunk;)V
+  method public bindings ()Lcom/crystalgraphics/render/draw/CgBindingTable;
   method public constants (Lcom/crystalgraphics/render/draw/CgPassConstants;)V
   method public endPass ()V
   method public noScissor ()V
@@ -3024,23 +3024,35 @@ com/crystalgraphics/render/pipeline/CgTransparentRenderer
   method public <init> ()V
   method public execute ([Lcom/crystalgraphics/api/render/CgRenderCommand;ILcom/crystalgraphics/api/render/CgRenderPipeline;)V
 com/crystalgraphics/render/stage/CgHostFrame
-  access public,final,record
-  extends java/lang/Record
-  method public <init> (FIII)V
+  access public,final
+  extends java/lang/Object
+  method public <init> ()V
   method public height ()I
   method public mainFramebuffer ()I
   method public partialTick ()F
+  method public set (FIII)Lcom/crystalgraphics/render/stage/CgHostFrame;
+  method public view ()Lcom/crystalgraphics/render/stage/CgHostView;
   method public width ()I
-  method public,final equals (Ljava/lang/Object;)Z
-  method public,final hashCode ()I
-  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/render/stage/CgHostView
+  access public,final
+  extends java/lang/Object
+  method public <init> ()V
+  method public projection ()Lorg/joml/Matrix4fc;
+  method public set (DDDLjava/nio/FloatBuffer;Ljava/nio/FloatBuffer;)Lcom/crystalgraphics/render/stage/CgHostView;
+  method public set (DDDLorg/joml/Matrix4fc;Lorg/joml/Matrix4fc;)Lcom/crystalgraphics/render/stage/CgHostView;
+  method public set (Lcom/crystalgraphics/render/stage/CgHostView;)Lcom/crystalgraphics/render/stage/CgHostView;
+  method public view ()Lorg/joml/Matrix4fc;
+  method public x ()D
+  method public y ()D
+  method public z ()D
 com/crystalgraphics/render/stage/CgRenderStage
   access public,final
   extends java/lang/Object
   field public,static,final WORLD_OPAQUE Lcom/crystalgraphics/render/stage/CgRenderStage;
   field public,static,final WORLD_TRANSPARENT Lcom/crystalgraphics/render/stage/CgRenderStage;
-  method public fire (Lcom/crystalgraphics/render/stage/CgHostFrame;)V
+  method public fire ()V
   method public hasRenderers ()Z
+  method public host ()Lcom/crystalgraphics/render/stage/CgHostFrame;
   method public id ()Ljava/lang/String;
   method public register (ILcom/crystalgraphics/render/stage/CgStageRenderer;)Lcom/crystalgraphics/render/stage/CgRenderStage$Registration;
   method public register (Lcom/crystalgraphics/render/stage/CgStageRenderer;)Lcom/crystalgraphics/render/stage/CgRenderStage$Registration;

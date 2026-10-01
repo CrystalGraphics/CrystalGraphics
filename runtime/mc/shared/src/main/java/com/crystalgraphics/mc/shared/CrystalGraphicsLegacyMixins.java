@@ -8,6 +8,6 @@ package com.crystalgraphics.mc.shared;
 public final class CrystalGraphicsLegacyMixins extends VariantMixins {
 
     public CrystalGraphicsLegacyMixins() {
-        super("crystalgraphics", "CgRenderHook", "MixinMinecraft");
+        super("crystalgraphics", "CgRenderHook", "MixinMinecraft", "ActiveRenderInfoAccessor");
     }
 }
