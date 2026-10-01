@@ -20,11 +20,11 @@ import java.nio.ByteOrder;
 
 /**
  * A development demo: the sixteen spheres of {@link CgVfxShowcase} floating in front of the player, drawn through
- * {@link CgWorldRenderer} under the host's own camera. Off unless asked for.
+ * {@link CgWorldRenderer} under the host's own camera. On unless turned off.
  *
  * <pre>{@code
- * -Dcrystalgraphics.demo=true                         // draw them, under the showcase's sky
- * -Dcrystalgraphics.demo.sky=false                    // and keep the world's own sky
+ * -Dcrystalgraphics.demo=false                        // don't draw them
+ * -Dcrystalgraphics.demo.sky=false                    // keep the world's own sky, not the showcase's
  * -Dcrystalgraphics.demo.capture=build/demo.png       // and write the world, with no GUI over it, to a PNG
  * -Dcrystalgraphics.demo.captureAt=300                // this many world frames after the spheres were placed
  * }</pre>
@@ -38,7 +38,7 @@ public final class CgRenderDemo {
 
     private static final Logger LOGGER = LogManager.getLogger("CgRenderDemo");
 
-    private static final boolean ENABLED = Boolean.getBoolean("crystalgraphics.demo");
+    private static final boolean ENABLED = !"false".equals(System.getProperty("crystalgraphics.demo"));
     private static final boolean SKY = !"false".equals(System.getProperty("crystalgraphics.demo.sky"));
     private static final String CAPTURE = System.getProperty("crystalgraphics.demo.capture");
     private static final int CAPTURE_AT = Integer.getInteger("crystalgraphics.demo.captureAt", 300);
@@ -61,7 +61,7 @@ public final class CgRenderDemo {
     private CgRenderDemo() {
     }
 
-    /** Submits the spheres every frame, once, when {@code -Dcrystalgraphics.demo=true}. */
+    /** Submits the spheres every frame, once, unless {@code -Dcrystalgraphics.demo=false}. */
     public void install() {
         if (installed || !ENABLED) return;
         installed = true;
