@@ -218,7 +218,7 @@ These rules apply everywhere. All agents must internalize them.
 
 **Public API first** — always use the highest abstraction layer available. `CgMaterial.load()` not `CgShaderFactory.fromSource()`; `CgMeshLoader.load()` not `GL15.glGenBuffers()`. Check package guides to find what already exists before writing raw GL.
 
-**GL-thread rule** — all GL object creation, upload, and deletion must happen on the GL thread within an active context. This includes: `CgFrameBuffer.create()`, `CgMesh.upload()`, `CgTexture2D.create()`, shader compilation. Violations produce silent garbage or driver crashes.
+**GL-thread rule** — all GL object creation, upload, and deletion must happen on the GL thread within an active context. This includes: `CgFrameBuffer.create()`, shader compilation. Violations produce silent garbage or driver crashes. **Textures and meshes are the exception, through `CgDeferral`** (`gpu/`): an object owns one, all its device work goes through it, and where the device may not be driven the work waits for the render thread, before the next frame executes. A new GPU object that must work off the render thread does the same rather than branching on `CgGL.mayIssueGl()` itself.
 
 > **The right thread is not the right CONTEXT, and on 1.7.10 that distinction is load-bearing.** FML's
 > splash screen runs mod loading with a second, *shared* context of its own — so `FMLInitializationEvent`
@@ -807,8 +807,7 @@ tex.delete();
 ```java
 // Procedural (unitCube, quad2D, plane, uvSphere, icosahedron)
 CgMeshData data = CgMeshBuilder.unitCube(CgVertexFormat.SPATIAL);
-CgMesh mesh = CgMesh.upload(data);      // GL thread only — uses GL_STATIC_DRAW
-CgMesh later = CgMesh.uploadDeferred(data); // any thread: its GL objects are made before the next frame executes
+CgMesh mesh = CgMesh.upload(data);      // any thread: where no GL may run, made before the next frame executes
 mesh.drawInstanced(N);                   // N instances via engine SSBO/TBO
 mesh.drawDirect();                       // non-instanced draw
 

@@ -2062,11 +2062,9 @@ com/crystalgraphics/gl/mesh/CgMesh
   method public getIndexType ()I
   method public getTopology ()Lcom/crystalgraphics/api/mesh/CgMeshTopology;
   method public getVertexCount ()I
-  method public,static applyDeferred ()V
   method public,static upload (Lcom/crystalgraphics/api/mesh/CgMeshData;)Lcom/crystalgraphics/gl/mesh/CgMesh;
   method public,static upload (Lcom/crystalgraphics/api/vertex/CgVertexFormat;Lcom/crystalgraphics/api/mesh/CgMeshTopology;Ljava/nio/ByteBuffer;Ljava/nio/ByteBuffer;I)Lcom/crystalgraphics/gl/mesh/CgMesh;
   method public,static upload (Lcom/crystalgraphics/api/vertex/CgVertexFormat;Lcom/crystalgraphics/api/mesh/CgMeshTopology;Ljava/nio/ByteBuffer;Ljava/nio/ByteBuffer;II)Lcom/crystalgraphics/gl/mesh/CgMesh;
-  method public,static uploadDeferred (Lcom/crystalgraphics/api/mesh/CgMeshData;)Lcom/crystalgraphics/gl/mesh/CgMesh;
 com/crystalgraphics/gl/mesh/CgMeshBuilder
   access public,final
   extends java/lang/Object
@@ -2429,12 +2427,6 @@ com/crystalgraphics/gl/texture/CgHostSamplers
 com/crystalgraphics/gl/texture/CgTexture2D
   access public,final
   extends com/crystalgraphics/gl/texture/CgTextureAbstract
-  implements com/crystalgraphics/gl/texture/CgTextureUploads$Pending
-  method public applyPending ()V
-  method public bind ()V
-  method public bind (I)V
-  method public delete ()V
-  method public getId ()I
   method public getSourcePath ()Ljava/lang/String;
   method public getTarget ()I
   method public reload ()V
@@ -2442,18 +2434,13 @@ com/crystalgraphics/gl/texture/CgTexture2D
   method public upload (Lcom/crystalgraphics/util/io/CgTextureIO$CgImageData;)V
   method public,static create (Ljava/lang/String;)Lcom/crystalgraphics/gl/texture/CgTexture2D;
   method public,static create (Ljava/lang/String;Lcom/crystalgraphics/api/texture/CgTextureSpec;)Lcom/crystalgraphics/gl/texture/CgTexture2D;
-  method public,static createDeferred (Ljava/lang/String;Lcom/crystalgraphics/api/texture/CgTextureSpec;)Lcom/crystalgraphics/gl/texture/CgTexture2D;
   method public,static createDirect (Ljava/lang/String;Lcom/crystalgraphics/api/texture/CgTextureSpec;)Lcom/crystalgraphics/gl/texture/CgTexture2D;
   method public,static createEmpty (IILcom/crystalgraphics/api/texture/CgTextureSpec;)Lcom/crystalgraphics/gl/texture/CgTexture2D;
   method public,static createFromPixels (IILjava/nio/ByteBuffer;Lcom/crystalgraphics/api/texture/CgTextureSpec;)Lcom/crystalgraphics/gl/texture/CgTexture2D;
-  method public,static createFromPixelsDeferred (IILjava/nio/ByteBuffer;Lcom/crystalgraphics/api/texture/CgTextureSpec;)Lcom/crystalgraphics/gl/texture/CgTexture2D;
   method public,static wrap (III)Lcom/crystalgraphics/gl/texture/CgTexture2D;
 com/crystalgraphics/gl/texture/CgTexture2DArray
   access public,final
   extends com/crystalgraphics/gl/texture/CgTextureAbstract
-  implements com/crystalgraphics/gl/texture/CgTextureUploads$Pending
-  method public applyPending ()V
-  method public delete ()V
   method public getDepth ()I
   method public getSourcePaths ()[Ljava/lang/String;
   method public getTarget ()I
@@ -2462,7 +2449,6 @@ com/crystalgraphics/gl/texture/CgTexture2DArray
   method public upload ([Lcom/crystalgraphics/util/io/CgTextureIO$CgImageData;)V
   method public uploadLayerRegion (IIIIIIILjava/nio/ByteBuffer;)V
   method public uploadLayerRegion (IIIIIIILjava/nio/FloatBuffer;)V
-  method public,static allocateDeferred (IIILcom/crystalgraphics/api/texture/CgTextureSpec;)Lcom/crystalgraphics/gl/texture/CgTexture2DArray;
   method public,static allocateEmpty (IIILcom/crystalgraphics/api/texture/CgTextureSpec;)Lcom/crystalgraphics/gl/texture/CgTexture2DArray;
   method public,static create (Lcom/crystalgraphics/api/texture/CgTextureSpec;[Ljava/lang/String;)Lcom/crystalgraphics/gl/texture/CgTexture2DArray;
   method public,static create ([Ljava/lang/String;)Lcom/crystalgraphics/gl/texture/CgTexture2DArray;
@@ -2484,6 +2470,7 @@ com/crystalgraphics/gl/texture/CgTextureAbstract
   field protected height I
   field protected textureId I
   field protected width I
+  field protected,final gpu Lcom/crystalgraphics/gpu/CgDeferral;
   field protected,final spec Lcom/crystalgraphics/api/texture/CgTextureSpec;
   field protected,static,final GL_RGBA I
   field protected,static,final GL_UNSIGNED_BYTE I
@@ -2542,10 +2529,6 @@ com/crystalgraphics/gl/texture/CgTextureMutable
   method public pointAt (Lcom/crystalgraphics/api/texture/CgTexture;)V
   method public setId (I)V
   method public setTarget (I)V
-com/crystalgraphics/gl/texture/CgTextureUploads
-  access public,final
-  extends java/lang/Object
-  method public,static apply ()V
 com/crystalgraphics/gl/vertex/CgInstanceVertexArrayBinding
   access public,final
   extends java/lang/Object
@@ -2612,6 +2595,18 @@ com/crystalgraphics/gl/vertex/CgVertexBufferRegistry
   method public getOrCreate (Lcom/crystalgraphics/api/vertex/CgVertexFormat;)Lcom/crystalgraphics/gl/vertex/CgVertexBuffer;
   method public getOrCreateInstanced (Lcom/crystalgraphics/api/vertex/CgInstanceFormat;)Lcom/crystalgraphics/gl/vertex/CgInstanceVertexBuffer;
   method public,static get ()Lcom/crystalgraphics/gl/vertex/CgVertexBufferRegistry;
+com/crystalgraphics/gpu/CgDeferral
+  access public,final
+  extends java/lang/Object
+  method public <init> ()V
+  method public clear ()V
+  method public flush ()V
+  method public immediate ()Z
+  method public pending ()Z
+  method public run (Ljava/lang/Runnable;)V
+  method public run (Ljava/nio/ByteBuffer;Ljava/util/function/Consumer;)V
+  method public run (Ljava/nio/FloatBuffer;Ljava/util/function/Consumer;)V
+  method public,static applyAll ()V
 com/crystalgraphics/render/CgFrameClock
   access public,final
   extends java/lang/Object

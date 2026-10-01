@@ -1119,7 +1119,7 @@ public class CgFontRegistry {
 
     /**
      * Commits finished glyph results into their atlases, within the given budgets. Touches no GL: the uploads are
-     * queued on {@code CgTextureUploads}, so the bind-sharing below is moot today and the record is kept for its numbers.
+     * queued on the atlas's {@code CgDeferral}, so the bind-sharing below is moot today and the record is kept for its numbers.
      *
      * <h4>Uploads are deliberately NOT batched — built twice, measured, deleted twice</h4>
      * <p>The idea: bind the atlas texture and set {@code GL_UNPACK_ALIGNMENT} once for the whole

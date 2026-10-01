@@ -8,6 +8,7 @@ import com.crystalgraphics.api.vertex.CgAttributeFormat;
 import com.crystalgraphics.api.vertex.CgVertexAttribute;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.api.vertex.CgVertexSemantic;
+import com.crystalgraphics.gpu.CgDeferral;
 import com.crystalgraphics.gl.buffer.CgStreamBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.gl.render.CgInstanceRenderer;
@@ -18,8 +19,6 @@ import lombok.Getter;
 import javax.annotation.Nullable;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.LinkedHashSet;
-import java.util.Set;
 
 /**
  * Immutable static GPU mesh: owns a VBO, an optional IBO, and a standalone VAO.
@@ -49,13 +48,13 @@ import java.util.Set;
  * Deleting the mesh while VAO bindings in registries still reference its buffers
  * leaves stale GPU state pointing at deleted resources.</p>
  *
- * <h3>Where no GL may run</h3>
- * <p>{@link #uploadDeferred} answers a mesh at once and makes its GL objects on the render thread before the next
- * frame executes, so a recording or a worker can make one and draw it in the same frame. A {@link #delete()} where
- * no GL may run is carried out there too.</p>
+ * <h3>Any thread</h3>
+ * <p>{@link #upload} and {@link #delete()} work anywhere: where no GL may run, the GL objects are made, or freed, on the
+ * render thread before the next frame executes, so a recording or a worker can make a mesh and draw it in the same
+ * frame.</p>
  *
  * <pre>{@code
- * CgMesh sphere = CgMesh.uploadDeferred(CgMeshBuilder.uvSphere(CgVertexFormat.SPATIAL, 24, 32, 1f));
+ * CgMesh sphere = CgMesh.upload(CgMeshBuilder.uvSphere(CgVertexFormat.SPATIAL, 24, 32, 1f));
  * chunks.draw(material.pipeline(CgInstanceKind.OBJECT), snapshot, sphere);   // drawable in this frame
  * }</pre>
  */
@@ -86,12 +85,8 @@ public final class CgMesh {
     /** Whether {@link #delete()} has been called. */
     private boolean deleted;
 
-    /** A deferred mesh's data, until the render thread has uploaded it. */
-    @Nullable
-    private volatile CgMeshData pending;
-
-    /** Meshes with GL work the render thread has yet to do: an upload, or a delete asked for where no GL ran. */
-    private static final Set<CgMesh> DEFERRED = new LinkedHashSet<>();
+    /** This mesh's GL work, in order. */
+    private final CgDeferral gpu = new CgDeferral();
 
     /** Its local bounds, {@code [minX, minY, minZ, maxX, maxY, maxZ]}; null when its positions are not floats. */
     @Nullable
@@ -122,19 +117,19 @@ public final class CgMesh {
 
     /** Raw GL buffer id for vertex data ({@code GL_STATIC_DRAW}). Render thread: a deferred mesh uploads first. */
     public int getGlVertexBuffer() {
-        ensureUploaded();
+        gpu.flush();
         return glVertexBuffer;
     }
 
     /** Raw GL buffer id for index data, or {@code 0} for non-indexed. */
     public int getGlIndexBuffer() {
-        ensureUploaded();
+        gpu.flush();
         return glIndexBuffer;
     }
 
     /** Standalone VAO id for non-instanced {@link #drawDirect()} calls. */
     public int getGlVao() {
-        ensureUploaded();
+        gpu.flush();
         return glVao;
     }
 
@@ -169,7 +164,8 @@ public final class CgMesh {
     /**
      * Uploads vertex and index data to the GPU and returns a new {@code CgMesh}.
      *
-     * <p><strong>Must be called on the GL thread.</strong></p>
+     * <p>Any thread. The buffers are read when the GL objects are made — at once where GL may run, else before the
+     * next frame executes — so keep them unchanged until then.</p>
      *
      * <h3>Index type inference</h3>
      * <p>Index type is auto-detected from the vertex count: {@code GL_UNSIGNED_SHORT} if
@@ -205,7 +201,7 @@ public final class CgMesh {
      * {@code GL_UNSIGNED_SHORT} or {@code GL_UNSIGNED_INT} explicitly, independent of
      * the vertex count heuristic used by the auto-detecting overload.</p>
      *
-     * <p><strong>Must be called on the GL thread.</strong></p>
+     * <p>Any thread, as {@link #upload(CgVertexFormat, CgMeshTopology, ByteBuffer, ByteBuffer, int)}.</p>
      *
      * @param format      vertex format describing the per-vertex attribute layout
      * @param topology    primitive topology
@@ -220,50 +216,8 @@ public final class CgMesh {
         int vertexCount = vertexData.remaining() / format.getStride();
         CgMesh mesh = new CgMesh(format, topology, 0, 0, 0, vertexCount, indexCount, indexType,
                 boundsOf(format, vertexData, vertexCount));
-        mesh.createObjects(vertexData, indexData);
+        mesh.gpu.run(() -> mesh.createObjects(vertexData, indexData));
         return mesh;
-    }
-
-    /**
-     * A mesh of {@code data} whose GL objects are made on the render thread before the next frame executes. Any
-     * thread; drawable in any draw recorded after this call.
-     */
-    public static CgMesh uploadDeferred(CgMeshData data) {
-        int vertexCount = data.vertexBuffer().remaining() / data.format().getStride();
-        int indexType = vertexCount <= 65535 ? CgGL.GL_UNSIGNED_SHORT : CgGL.GL_UNSIGNED_INT;
-        CgMesh mesh = new CgMesh(data.format(), data.topology(), 0, 0, 0, vertexCount, data.indexCount(), indexType,
-                boundsOf(data.format(), data.vertexBuffer(), vertexCount));
-        mesh.pending = data;
-        schedule(mesh);
-        return mesh;
-    }
-
-    /** Does every deferred upload and delete. Render thread; {@code CgExecutor} calls it before each frame. */
-    public static void applyDeferred() {
-        CgMesh[] work;
-        synchronized (DEFERRED) {
-            if (DEFERRED.isEmpty()) return;
-            work = DEFERRED.toArray(new CgMesh[0]);
-            DEFERRED.clear();
-        }
-        for (CgMesh mesh : work) mesh.applyPending();
-    }
-
-    private static void schedule(CgMesh mesh) {
-        synchronized (DEFERRED) {
-            DEFERRED.add(mesh);
-        }
-    }
-
-    private void ensureUploaded() {
-        if (pending != null) applyPending();
-    }
-
-    private synchronized void applyPending() {
-        CgMeshData data = pending;
-        pending = null;
-        if (data != null && !deleted) createObjects(data.vertexBuffer(), data.indexBuffer());
-        if (deleted && glVao != 0) release();
     }
 
     private void createObjects(ByteBuffer vertexData, @Nullable ByteBuffer indexData) {
@@ -326,7 +280,7 @@ public final class CgMesh {
     /**
      * Convenience overload: uploads directly from a {@link CgMeshData}.
      *
-     * <p><strong>Must be called on the GL thread.</strong></p>
+     * <p>Any thread, as {@link #upload(CgVertexFormat, CgMeshTopology, ByteBuffer, ByteBuffer, int)}.</p>
      *
      * @param data the CPU-side mesh data to upload
      * @return a new GPU-resident mesh
@@ -345,13 +299,13 @@ public final class CgMesh {
      */
     public void drawDirect() {
         if (deleted) throw new IllegalStateException("CgMesh has been deleted");
-        ensureUploaded();
+        gpu.flush();
 
         CgVertexArray.bind(glVao);
-        if (glIndexBuffer != 0) 
+        if (glIndexBuffer != 0)
             CgGL.glDrawElements(topology.getGlMode(), indexCount, indexType, 0L);
         else CgGL.glDrawArrays(topology.getGlMode(), 0, vertexCount);
-        
+
         CgVertexArray.bind(0);
     }
 
@@ -379,13 +333,13 @@ public final class CgMesh {
     public void drawInstanced(int count) {
         if (deleted) throw new IllegalStateException("CgMesh has been deleted");
         if (count < 1) throw new IllegalArgumentException("count must be >= 1, got " + count);
-        ensureUploaded();
+        gpu.flush();
 
         CgVertexArray.bind(glVao);
         if (glIndexBuffer != 0)
             CgInstanceRenderer.drawElementsInstanced(topology.getGlMode(), indexCount, indexType, 0L, count);
         else CgInstanceRenderer.drawArraysInstanced(topology.getGlMode(), 0, vertexCount, count);
-        
+
         CgVertexArray.bind(0);
     }
 
@@ -400,18 +354,16 @@ public final class CgMesh {
      *
      * <p>This method is idempotent — calling it multiple times has no additional effect.</p>
      */
-    public synchronized void delete() {
+    public void delete() {
         if (deleted) return;
         deleted = true;
-        if (pending != null) {
-            pending = null;
-            return;
-        }
-        if (CgGL.mayIssueGl()) release();
-        else schedule(this);
+        // What was queued is moot: a mesh never made has nothing to free.
+        gpu.clear();
+        gpu.run(this::release);
     }
 
     private void release() {
+        if (glVao == 0) return;
         // Invalidate any instanced VAOs in the registry that reference this mesh's VBO/IBO,
         // so they don't linger as stale GPU state pointing at deleted buffer objects.
         CgVertexArrayRegistry.get().invalidateMeshBindings(this);

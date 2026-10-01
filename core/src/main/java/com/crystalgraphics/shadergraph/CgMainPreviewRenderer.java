@@ -555,7 +555,7 @@ public final class CgMainPreviewRenderer {
 
     /** Built on first use, uploaded by the render thread, and kept: switching back to a shape must not re-upload it. */
     private CgMesh meshFor(CgPreviewMesh mesh) {
-        return meshes.computeIfAbsent(mesh, m -> CgMesh.uploadDeferred(m.build(CgVertexFormat.SPATIAL)));
+        return meshes.computeIfAbsent(mesh, m -> CgMesh.upload(m.build(CgVertexFormat.SPATIAL)));
     }
 
     /**

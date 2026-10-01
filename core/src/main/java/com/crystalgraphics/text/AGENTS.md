@@ -36,7 +36,8 @@ locks, it crashes in the atlas packer within a few frames.
 **Order: registry, then face**; nothing takes them the other way. A `CgTextRenderer` is one thread's at a time, and
 what it configures is its own — a material instance, the atlas it binds, its `TextData` block, handed to the material
 with `CgMaterial.overrideBlock` because the block is attached to the shader every instance shares. Atlases issue no
-GL: `CgTextureUploads` makes and fills their textures on the render thread before a frame executes.
+GL where none may run: their textures' `CgDeferral` makes and fills them on the render thread before a frame
+executes.
 
 ## End-to-end responsibility chain
 
