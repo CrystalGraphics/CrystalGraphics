@@ -60,11 +60,15 @@ final class CgResolvedGlyphs {
     private int[] scratchArgbColor = new int[0];
     private CgGlyphPlacement[] scratchPlacements = new CgGlyphPlacement[0];
 
-    /** Pen position for glyph {@code i} of the most recent {@link #resolve} call, valid for
-     * {@code [0, <returned glyphCount>)} — read by {@code CgTextRenderer}. Points at either the
-     * scratch arrays (fresh resolve) or a cache entry's own arrays (cache hit). */
+    /** Pen position for glyph {@code i} of the most recent {@link #resolve} call relative to the layout's
+     * origin, valid for {@code [0, <returned glyphCount>)} -- read by {@code CgTextRenderer}, which adds
+     * {@link #originX}/{@link #originY}. Points at either the scratch arrays (fresh resolve) or a cache
+     * entry's own arrays (cache hit), which is why the origin is kept apart: an entry serves the layout
+     * wherever it is drawn. */
     float[] glyphX = new float[0];
     float[] glyphY = new float[0];
+    /** Where the most recent {@link #resolve} drew its layout. */
+    float originX, originY;
     /** Effective per-glyph color for the most recent {@link #resolve} call — already resolved
      * as {@code span override != 0 ? span override : draw's default rgba}, read by
      * {@code CgTextRenderer}. */
@@ -116,6 +120,8 @@ final class CgResolvedGlyphs {
                 CgTextRenderContext context, int effectiveTargetPx, boolean wantMsdf,
                 CgFontKey fontKey, int rgba, float posedOriginX) {
         hasDeferredGlyphs = false;
+        originX = x;
+        originY = y;
         long contentGeneration = registry.getAtlasContentGeneration();
         long evictionGeneration = registry.getAtlasEvictionGeneration();
 
@@ -141,7 +147,7 @@ final class CgResolvedGlyphs {
         CgGlyphPlacementCache.Key key;
         CgGlyphPlacementCache.Entry hit;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT_DETAIL, "placementCache.lookup")) {
-            key = CgGlyphPlacementCache.key(layout, x, y, wantMsdf, fontKey, rgba,
+            key = CgGlyphPlacementCache.key(layout, wantMsdf, fontKey, rgba,
                     subPixelApplies ? posePhaseKey(posedOriginX) : 0);
             hit = CgGlyphPlacementCache.get(key, effectiveTargetPx, contentGeneration, evictionGeneration, frame);
         }
@@ -169,7 +175,7 @@ final class CgResolvedGlyphs {
 
         int glyphCount;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT_DETAIL, "glyph.flatten")) {
-            glyphCount = flatten(layout, x, y, context, effectiveTargetPx, wantMsdf, rgba, posePhase);
+            glyphCount = flatten(layout, context, effectiveTargetPx, wantMsdf, rgba, posePhase);
         }
         // Salvage already-converged placements from the stale entry we're replacing, so a
         // refresh only re-queries the glyphs that can actually still improve. See
@@ -209,7 +215,7 @@ final class CgResolvedGlyphs {
         }
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT_DETAIL, "placementCache.put")) {
             CgGlyphPlacementCache.put(key, new CgGlyphPlacementCache.Entry(
-                    distanceField, effectiveTargetPx,
+                    distanceField, wantMsdf && !distanceField, effectiveTargetPx,
                     registry.getAtlasContentGeneration(), registry.getAtlasEvictionGeneration(),
                     frame, glyphCount,
                     Arrays.copyOf(scratchGlyphX, glyphCount),
@@ -245,9 +251,8 @@ final class CgResolvedGlyphs {
      *
      * @return the number of glyphs flattened (may be 0 for an all-whitespace layout)
      */
-    private int flatten(CgTextLayout layout, float x, float y,
-                        CgTextRenderContext context, int effectiveTargetPx, boolean wantMsdf, int rgba,
-                        float posePhase) {
+    private int flatten(CgTextLayout layout, CgTextRenderContext context, int effectiveTargetPx, boolean wantMsdf,
+                        int rgba, float posePhase) {
         CgBakedGlyphs baked = layout.baked();
         int glyphCount = baked.glyphCount();
         ensureCapacity(glyphCount);
@@ -264,8 +269,8 @@ final class CgResolvedGlyphs {
             scratchSubPixel[i] = subPixel;
             scratchGlyphKeys[i] = new CgGlyphKey(fontKey, glyphId, wantMsdf, subPixel,
                     baked.syntheticBold()[i], baked.syntheticItalic()[i]);
-            scratchGlyphX[i] = x + baked.penX()[i];
-            scratchGlyphY[i] = y + baked.penY()[i];
+            scratchGlyphX[i] = baked.penX()[i];
+            scratchGlyphY[i] = baked.penY()[i];
             scratchArgbColor[i] = overrideColor != 0 ? overrideColor : rgba;
         }
 

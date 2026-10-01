@@ -438,6 +438,7 @@ public class CgGlyphAtlas {
                 0f);              // pxRange
         emptyGlyphs.put(key, empty);
         contentGeneration++;
+        CgTrace.add(CgChannels.TEXT, "atlas.added.empty", 1);
         return empty;
     }
 
@@ -477,6 +478,7 @@ public class CgGlyphAtlas {
             if (placement != null) {
                 glyphIndex.put(key, page);
                 contentGeneration++;
+                CgTrace.add(CgChannels.TEXT, "atlas.added.bitmap", 1);
                 return placement;
             }
         }
@@ -489,6 +491,7 @@ public class CgGlyphAtlas {
         if (placement != null) {
             glyphIndex.put(key, newPage);
             contentGeneration++;
+            CgTrace.add(CgChannels.TEXT, "atlas.added.bitmap", 1);
         }
         return placement;
     }
@@ -524,6 +527,7 @@ public class CgGlyphAtlas {
             if (placement != null) {
                 glyphIndex.put(key, page);
                 contentGeneration++;
+                CgTrace.add(CgChannels.TEXT, "atlas.added.msdf", 1);
                 return placement;
             }
         }
@@ -537,6 +541,7 @@ public class CgGlyphAtlas {
         if (placement != null) {
             glyphIndex.put(key, newPage);
             contentGeneration++;
+            CgTrace.add(CgChannels.TEXT, "atlas.added.msdf", 1);
         }
         return placement;
     }

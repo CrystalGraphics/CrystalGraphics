@@ -11,8 +11,9 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Global, bounded LRU cache of resolved glyph placements, keyed per <em>draw</em> (layout +
- * position + mode + font) rather than per glyph. Used by {@link CgResolvedGlyphs#resolve} —
+ * Global, bounded LRU cache of resolved glyph placements, keyed per <em>layout</em> (layout + mode +
+ * font + colour + sub-pixel phase) rather than per glyph. Positions are relative to the layout's
+ * origin, so a layout drawn anywhere at the same phase shares one entry: moving text does not miss. Used by {@link CgResolvedGlyphs#resolve} —
  * see that class's javadoc for the full rationale: why a cache is needed at all even with an
  * {@code O(1)} atlas lookup, and why this design (capacity, LRU structure, global scope)
  * replaces an earlier, undersized, non-scaling attempt at the same idea.
@@ -129,9 +130,8 @@ public final class CgGlyphPlacementCache {
      * Builds the lookup key for one draw. Callers should build this once and pass the same
      * instance to both {@link #get} and {@link #put} rather than rebuilding it twice.
      */
-    public static Key key(CgTextLayout layout, float x, float y, boolean wantMsdf, CgFontKey fontKey,
-                          int rgba, int posePhase) {
-        return new Key(layout, x, y, wantMsdf, fontKey, rgba, posePhase);
+    public static Key key(CgTextLayout layout, boolean wantMsdf, CgFontKey fontKey, int rgba, int posePhase) {
+        return new Key(layout, wantMsdf, fontKey, rgba, posePhase);
     }
 
     /**
@@ -140,7 +140,20 @@ public final class CgGlyphPlacementCache {
      */
     public static synchronized Entry get(Key key, int effectiveTargetPx, long contentGeneration, long evictionGeneration, long frame) {
         Entry entry = MAP.get(key);
-        return entry != null && entry.matches(effectiveTargetPx, contentGeneration, evictionGeneration, frame) ? entry : null;
+        if (entry == null) {
+            CgTrace.add(CgChannels.TEXT, "placementCache.miss.absent", 1);
+            return null;
+        }
+        if (entry.matches(effectiveTargetPx, contentGeneration, evictionGeneration, frame)) return entry;
+        // Why a present entry was refused, in the order matches() asks.
+        if (evictionGeneration != entry.builtEvictionGeneration()) {
+            CgTrace.add(CgChannels.TEXT, "placementCache.miss.evicted", 1);
+        } else if (entry.effectiveTargetPx() != effectiveTargetPx) {
+            CgTrace.add(CgChannels.TEXT, "placementCache.miss.targetPx", 1);
+        } else {
+            CgTrace.add(CgChannels.TEXT, "placementCache.miss.content", 1);
+        }
+        return null;
     }
 
     public static synchronized void put(Key key, Entry entry) {
@@ -245,7 +258,7 @@ public final class CgGlyphPlacementCache {
      */
     public static synchronized Entry getForUpgrade(Key key, long evictionGeneration) {
         Entry entry = MAP.get(key);
-        if (entry == null || entry.distanceField()) return null;
+        if (entry == null || !entry.upgradable()) return null;
         return entry.builtEvictionGeneration() == evictionGeneration ? entry : null;
     }
 
@@ -264,13 +277,10 @@ public final class CgGlyphPlacementCache {
      * per-glyph effective color (override color if the glyph's span had one, else this
      * {@code rgba}), so an entry built for one {@code rgba} is simply wrong for another.</p>
      */
-    public record Key(CgTextLayout layout, float x, float y, boolean wantMsdf, CgFontKey fontKey,
-                      int rgba, int posePhase) {
+    public record Key(CgTextLayout layout, boolean wantMsdf, CgFontKey fontKey, int rgba, int posePhase) {
         @Override
         public int hashCode() {
             int h = System.identityHashCode(layout);
-            h = 31 * h + Float.floatToIntBits(x);
-            h = 31 * h + Float.floatToIntBits(y);
             h = 31 * h + (wantMsdf ? 1 : 0);
             h = 31 * h + fontKey.hashCode();
             h = 31 * h + rgba;
@@ -283,7 +293,7 @@ public final class CgGlyphPlacementCache {
             if (this == o) return true;
             if (!(o instanceof Key)) return false;
             Key k = (Key) o;
-            return layout == k.layout && x == k.x && y == k.y
+            return layout == k.layout
                     && wantMsdf == k.wantMsdf && fontKey.equals(k.fontKey) && rgba == k.rgba
                     && posePhase == k.posePhase;
         }
@@ -304,7 +314,7 @@ public final class CgGlyphPlacementCache {
      * <p>{@code argbColor} is the already-resolved effective color per glyph (span override,
      * or the draw's default {@code rgba} baked into {@link Key} — see that field's javadoc).</p>
      */
-    public record Entry(boolean distanceField, int effectiveTargetPx, long builtContentGeneration,
+    public record Entry(boolean distanceField, boolean upgradable, int effectiveTargetPx, long builtContentGeneration,
                  long builtEvictionGeneration, long builtFrame, int glyphCount,
                  float[] glyphX, float[] glyphY, int[] argbColor, CgGlyphPlacement[] placements) {
 
@@ -337,12 +347,13 @@ public final class CgGlyphPlacementCache {
          *       entry holds may now point at someone else's glyphs. On the default unbounded
          *       atlases this never fires (see
          *       {@code CgFontRegistry#getAtlasEvictionGeneration()}).</li>
-         *   <li><b>New atlas content, but only for a non-distance-field entry.</b> New content
-         *       matters solely because a glyph that had to fall back to bitmap might now have
-         *       its real MSDF result available. An entry that is already uniformly
-         *       distance-field has nothing left to upgrade to, so it is immune by construction
-         *       — which is what makes a converged layout cost <em>zero</em> re-resolves in
-         *       steady state instead of one full re-resolve every 300 frames forever.</li>
+         *   <li><b>New atlas content, but only for an {@code upgradable} entry</b> -- one that asked
+         *       for distance-field and had a glyph fall back to bitmap, which new content may now
+         *       answer. An entry already uniformly distance-field, or bitmap because bitmap is what
+         *       its draw asked for, has nothing to upgrade to and is immune: a converged layout
+         *       costs <em>zero</em> re-resolves in steady state. Small UI text is bitmap by request,
+         *       and refreshing it on every glyph added anywhere re-resolved about sixty labels a
+         *       frame on the desktop at rest.</li>
          *   <li><b>{@code effectiveTargetPx}, again only for a non-distance-field entry.</b>
          *       Unchanged in spirit from before: bitmap placements are rasterized at a specific
          *       effective size, while {@code CgFontRegistry#toMsdfAtlasGlyphKey} rewrites the
@@ -361,7 +372,7 @@ public final class CgGlyphPlacementCache {
             if (evictionGeneration != builtEvictionGeneration) return false;
             if (distanceField) return true;
             if (this.effectiveTargetPx != effectiveTargetPx) return false;
-            if (contentGeneration == builtContentGeneration) return true;
+            if (!upgradable || contentGeneration == builtContentGeneration) return true;
             // Atlas content changed, so an upgrade may be available. The frame limit guarantees a
             // refresh eventually; a small entry may take one sooner while the frame can afford it.
             if (frame - builtFrame >= MIN_REFRESH_FRAMES_WHILE_UNCONVERGED) return false;
