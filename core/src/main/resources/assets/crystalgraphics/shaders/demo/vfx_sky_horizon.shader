@@ -35,8 +35,11 @@ Pass {
             gl_FragDepth = CG_DEPTH_REVERSED ? 1.0 : 0.0;
             return;
         }
-        vec3 forward = -vec3(cg_ViewMatrix[0][2], cg_ViewMatrix[1][2], cg_ViewMatrix[2][2]);
-        vec3 p = d * (cg_LinearEyeDepth(scene) / max(dot(d, forward), 1.0e-4));
+        // The scene point along this ray: where its clip w, the eye depth, meets the scene's. The w row carries any
+        // turn the host folded into its projection, so the depth is measured along the axis it was taken on.
+        mat4 toClip = cg_ProjMatrix * cg_ViewMatrix;
+        vec4 w = vec4(toClip[0][3], toClip[1][3], toClip[2][3], toClip[3][3]);
+        vec3 p = d * ((cg_LinearEyeDepth(scene) - dot(w, vec4(VFX_CAMERA, 1.0))) / max(dot(w.xyz, d), 1.0e-4));
         float reach = max(length(p.xz), abs(p.y));
         float range = max(cg_LinearEyeDepth(CG_DEPTH_REVERSED ? 0.0 : 1.0) * 0.25, 32.0);
         float fogStart = range - clamp(range * 0.1, 4.0, 64.0);
