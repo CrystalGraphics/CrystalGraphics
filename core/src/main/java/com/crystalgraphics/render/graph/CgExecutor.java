@@ -223,7 +223,10 @@ public final class CgExecutor {
                 usable = pipeline.bind();
                 boundBinding = -1;
             }
-            if (!usable) continue;
+            if (!usable) {
+                CgTrace.add(CgChannels.GL, "graph.batches.skipped", 1);
+                continue;
+            }
             pipeline.instanceBase(packed.first[b]);
             if (packed.binding[b] != boundBinding) {
                 boundBinding = packed.binding[b];
@@ -266,6 +269,8 @@ public final class CgExecutor {
     private static CgFrameBuffer storage(CgGraphTexture texture) {
         CgFrameBuffer storage = texture.framebuffer();
         if (storage == null && texture.kind() == CgGraphTexture.Kind.REQUESTED) {
+            // At a requested texture's first use; made again later, the picture it held was lost.
+            CgTrace.add(CgChannels.GL, "graph.requested.made", 1);
             CgTextureDesc desc = texture.desc();
             storage = CgFrameBuffer.createOwned("cg_graph_" + texture.name(), desc.width(), desc.height(), desc.format());
             texture.resolve(storage);
