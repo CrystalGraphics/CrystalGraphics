@@ -72,6 +72,31 @@ public class CgFrameBuilderTest {
         return rec.raster(target, CgLoad.load(), constants, null, CgOrder.LOOKBACK);
     }
 
+    /** A nested scissor is issued once per pass, from the entry that changed, each inside the one before it. */
+    @Test
+    public void aScissorChainIsIssuedFromWhereItChanged() {
+        CgRecording rec = new CgRecording();
+        CgPassRecorder recorder = new CgPassRecorder();
+        recorder.recordInto(rec, CgGraphTexture.requested("surface", DESC), CgLoad.load(), constants);
+        recorder.pushScissor(0, 0, 64, 64);
+        recorder.pushScissor(3, 0f, 0f, 20f, 20f);
+        recorder.add(quads(rec, 1, 1, 0));
+        recorder.popScissor();
+        recorder.pushScissor(3, 0f, 0f, 20f, 20f);
+        recorder.add(quads(rec, 2, 1, 0));
+        recorder.popScissor();
+        recorder.pushScissor(4, 0f, 0f, 10f, 10f);
+        recorder.add(quads(rec, 3, 1, 0));
+        recorder.stop();
+
+        CgRasterPass pass = (CgRasterPass) rec.pass(0);
+        assertEquals("the same chain again is the same scissor", pass.chunkScissor(0), pass.chunkScissor(1));
+        int outer = pass.scissorParent(pass.chunkScissor(0));
+        assertEquals(-1, pass.scissorNode(outer));
+        assertEquals("a changed inner entry is cut by the same outer one", outer, pass.scissorParent(pass.chunkScissor(2)));
+        assertEquals(4, pass.scissorNode(pass.chunkScissor(2)));
+    }
+
     @Test
     public void aLayerRunsBeforeThePassThatCompositesItWhicheverWasMadeFirst() {
         CgRecording rec = new CgRecording();
