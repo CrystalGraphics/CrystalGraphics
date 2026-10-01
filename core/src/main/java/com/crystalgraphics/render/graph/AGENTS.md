@@ -21,6 +21,10 @@ CgExecutor.execute(frame);
 builder.recycle(frame);
 ```
 
+**A frame executes again** (`CgExecutor.executeAgain(frame, keepRequested)`) with what its passes read as it stands
+now — property values, above all — and its uploads, compiles and releases not repeated; `keepRequested` skips every
+pass writing a requested texture too. It is how a compositor moves something without a recording.
+
 `CgImmediate` (one package up) is the same three stages in one `try` block, for a caller with no graph — and
 `CgImmediate.flush(chunk, order)` is what `CgQuadRenderer`/`CgVectorRenderer.flush()` call, under the frame block
 the caller prepared (`render-graph` G2).

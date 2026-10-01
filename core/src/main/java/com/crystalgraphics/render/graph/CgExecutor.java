@@ -97,6 +97,28 @@ public final class CgExecutor {
         }
     }
 
+    /**
+     * Executes {@code frame} again, after {@link #execute(CgFrame)}: what its passes read as it stands now -- property
+     * values, a texture -- with its uploads, compiles and releases not repeated. With {@code keepRequested}, every pass
+     * that writes a requested texture is skipped too, leaving it as the last execution did. Render thread, inside a
+     * frame; GL state restored after.
+     *
+     * <pre>{@code
+     * CgExecutor.execute(frame);
+     * values.translate(node, 0f, -12f);
+     * CgExecutor.executeAgain(frame, true);   // scrolled, and the previews it rendered left as they were
+     * }</pre>
+     */
+    public static void executeAgain(CgFrame frame, boolean keepRequested) {
+        if (frame.executions == 0) throw new IllegalStateException("executeAgain before the frame's first execution");
+        frame.keepRequested = keepRequested;
+        try {
+            execute(frame, true);
+        } finally {
+            frame.keepRequested = false;
+        }
+    }
+
     /** Frees every executor's ring and the transient pool. At context teardown, before the framebuffer sweep. */
     public static void destroyAll() {
         for (CgExecutor executor : BY_DEPTH) executor.ring.delete();
@@ -120,9 +142,7 @@ public final class CgExecutor {
                         resolved++;
                     }
                 }
-                if (!again || !(frame.steps[s] instanceof CgPass.Upload || frame.steps[s] instanceof CgPass.Compile)) {
-                    step(frame, s);
-                }
+                if (!again || !doneOnce(frame.steps[s], frame.keepRequested)) step(frame, s);
                 for (int t = 0; t < frame.transients.size(); t++) {
                     if (frame.releaseAfter[t] == s) {
                         CgGraphTexture texture = frame.transients.get(t);
@@ -141,6 +161,12 @@ public final class CgExecutor {
                 }
             }
         }
+    }
+
+    /** Whether a frame executing again skips {@code pass}. */
+    private static boolean doneOnce(CgPass pass, boolean keepRequested) {
+        if (pass instanceof CgPass.Upload || pass instanceof CgPass.Compile || pass instanceof CgPass.Release) return true;
+        return keepRequested && pass.target != null && pass.target.kind() == CgGraphTexture.Kind.REQUESTED;
     }
 
     private void step(CgFrame frame, int s) {
