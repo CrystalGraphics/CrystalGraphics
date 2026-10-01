@@ -15,7 +15,7 @@ import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
-import com.crystalgraphics.render.graph.CgRequest;
+import com.crystalgraphics.render.graph.CgRequests;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 
@@ -130,12 +130,11 @@ public final class CgPreviewRenderer {
     private record HeldMaterial(String source, CgMaterial material) {
     }
 
-    /** A material compiling for a node's new source, and the latest compile request recorded for it. */
+    /** A material compiling for a node's new source, and the compiles recorded for it. */
     private static final class Compiling {
         final String source;
         final CgMaterial material;
-        @Nullable
-        CgRequest request;
+        final CgRequests compiles = new CgRequests();
 
         Compiling(String source, CgMaterial material) {
             this.source = source;
@@ -457,15 +456,15 @@ public final class CgPreviewRenderer {
             compilingMaterials.put(nodeId, next);
             CgTrace.add(CgChannels.SHADERGRAPH, "preview.materials.created", 1);
         }
-        if (next.request != null && next.request.failed()) throw new IllegalStateException(next.request.failure());
-        if (next.request == null || !next.request.done()) {
+        if (next.compiles.failed()) throw new IllegalStateException(next.compiles.failure());
+        if (!next.compiles.done()) {
             CgPipeline pipeline = next.material.pipeline(CgInstanceKind.OBJECT);
             if (pipeline == null) {
                 String error = next.material.lastCompileError();
                 throw new IllegalStateException(error != null ? error : "the preview shader does not parse");
             }
             // Asked again rather than waited on: the last request may not have executed yet.
-            next.request = recording.compile(pipeline);
+            next.compiles.add(recording.compile(pipeline));
             return null;
         }
         compilingMaterials.remove(nodeId);

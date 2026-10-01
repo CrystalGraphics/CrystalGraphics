@@ -13,7 +13,7 @@ import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
-import com.crystalgraphics.render.graph.CgRequest;
+import com.crystalgraphics.render.graph.CgRequests;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 
@@ -508,19 +508,19 @@ public final class CgMainPreviewRenderer {
             if (compilingMaterial != null) compilingMaterial.delete();
             compilingMaterial = CgMaterial.fromSource(source);
             compilingSource = source;
-            compileRequest = null;
+            compiles.clear();
         }
-        if (compileRequest != null && compileRequest.failed()) throw new IllegalStateException(compileRequest.failure());
-        if (compileRequest == null || !compileRequest.done()) {
+        if (compiles.failed()) throw new IllegalStateException(compiles.failure());
+        if (!compiles.done()) {
             CgPipeline pipeline = compilingMaterial.pipeline(CgInstanceKind.OBJECT);
             if (pipeline == null) {
                 String error = compilingMaterial.lastCompileError();
                 throw new IllegalStateException(error != null ? error : "the preview shader does not parse");
             }
-            compileRequest = recording.compile(pipeline);
+            compiles.add(recording.compile(pipeline));
             return null;
         }
-        compileRequest = null;
+        compiles.clear();
         if (heldMaterial != null) heldMaterial.delete();
         heldMaterial = compilingMaterial;
         heldSource = compilingSource;
@@ -550,9 +550,8 @@ public final class CgMainPreviewRenderer {
     @Nullable
     private String compilingSource;
 
-    /** The latest compile recorded for {@link #compilingMaterial}. */
-    @Nullable
-    private CgRequest compileRequest;
+    /** The compiles recorded for {@link #compilingMaterial}, any of which answering makes it ready. */
+    private final CgRequests compiles = new CgRequests();
 
     /** Built on first use, uploaded by the render thread, and kept: switching back to a shape must not re-upload it. */
     private CgMesh meshFor(CgPreviewMesh mesh) {
