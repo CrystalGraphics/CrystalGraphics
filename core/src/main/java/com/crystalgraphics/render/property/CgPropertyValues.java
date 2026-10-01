@@ -27,10 +27,15 @@ public final class CgPropertyValues {
 
     private static final byte NONE = 0, TRANSLATE = 1, TRANSFORM = 2;
 
-    private byte[] spatialModes = new byte[16];
-    private float[] spatial = new float[6 * 16];
-    private boolean[] hasOpacity = new boolean[16];
-    private float[] opacities = new float[16];
+    private static final byte[] NO_MODES = new byte[0];
+    private static final float[] NO_FLOATS = new float[0];
+    private static final boolean[] NO_FLAGS = new boolean[0];
+
+    /** Empty until the first write: a frame whose nodes nothing moves allocates nothing here. */
+    private byte[] spatialModes = NO_MODES;
+    private float[] spatial = NO_FLOATS;
+    private boolean[] hasOpacity = NO_FLAGS;
+    private float[] opacities = NO_FLOATS;
     private int revision;
 
     /** Moves {@code node} by {@code (dx, dy)} in its parent's space, after its recorded affine. */
@@ -107,7 +112,7 @@ public final class CgPropertyValues {
                     + CgSpatialTree.MAX_NODES);
         }
         if (node < spatialModes.length) return;
-        int n = Math.max(node + 1, spatialModes.length * 2);
+        int n = Math.max(Math.max(node + 1, 16), spatialModes.length * 2);
         spatialModes = Arrays.copyOf(spatialModes, n);
         spatial = Arrays.copyOf(spatial, n * 6);
         hasOpacity = Arrays.copyOf(hasOpacity, n);
