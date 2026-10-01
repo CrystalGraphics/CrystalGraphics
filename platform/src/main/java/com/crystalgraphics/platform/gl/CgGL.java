@@ -67,7 +67,32 @@ public final class CgGL {
     // to announce raw writes; forty-six hand-placed notifications later, a base class was still missed.
 
     private static CgGlStateManager state() {
+        if (CgGLAudit.ON) CgGLAudit.check(backend);
         return CgGlState.manager();
+    }
+
+    private static CgGLBackend gl() {
+        if (CgGLAudit.ON) CgGLAudit.check(backend);
+        return backend;
+    }
+
+    /**
+     * Marks this thread as recording, until {@link #exitGlFree()}: nothing in between may reach GL. Under
+     * {@code -Dcrystalgraphics.gl.threadCheck=true} every call that does is logged with its caller; otherwise it does
+     * nothing.
+     *
+     * <pre>{@code
+     * CgGL.enterGlFree("ui recording");
+     * try { record(); } finally { CgGL.exitGlFree(); }
+     * }</pre>
+     */
+    public static void enterGlFree(String section) {
+        CgGLAudit.enter(section);
+    }
+
+    /** @see #enterGlFree */
+    public static void exitGlFree() {
+        CgGLAudit.exit();
     }
 
     
@@ -535,58 +560,58 @@ public final class CgGL {
     public static void glCopyImageSubData(int srcName, int srcTarget, int srcLevel, int srcX, int srcY, int srcZ,
                                            int dstName, int dstTarget, int dstLevel, int dstX, int dstY, int dstZ,
                                            int srcWidth, int srcHeight, int srcDepth) {
-        backend.copyImageSubData(srcName, srcTarget, srcLevel, srcX, srcY, srcZ,
+        gl().copyImageSubData(srcName, srcTarget, srcLevel, srcX, srcY, srcZ,
                 dstName, dstTarget, dstLevel, dstX, dstY, dstZ, srcWidth, srcHeight, srcDepth);
     }
 
     /** @see CgGLBackend#framebufferTextureLayer */
     public static void glFramebufferTextureLayer(int target, int attachment, int texture, int level, int layer) {
-        backend.framebufferTextureLayer(target, attachment, texture, level, layer);
+        gl().framebufferTextureLayer(target, attachment, texture, level, layer);
     }
 
     public static void glBlitFramebuffer(int srcX0, int srcY0, int srcX1, int srcY1,
                                           int dstX0, int dstY0, int dstX1, int dstY1,
                                           int mask, int filter) {
-        backend.blitFramebuffer(srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, mask, filter);
+        gl().blitFramebuffer(srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, mask, filter);
     }
 
     public static int glGenFramebuffers() {
-        return backend.genFramebuffers();
+        return gl().genFramebuffers();
     }
 
     public static int glGetFramebufferAttachmentParameteriv(int target, int attachment, int pname) {
-        return backend.getFramebufferAttachmentParameteriv(target, attachment, pname);
+        return gl().getFramebufferAttachmentParameteriv(target, attachment, pname);
     }
 
     public static void glDeleteFramebuffers(int fbo) {
-        backend.deleteFramebuffers(fbo);
+        gl().deleteFramebuffers(fbo);
         state().framebufferDeleted(fbo);
     }
 
     public static void glFramebufferTexture2D(int target, int attachment, int texTarget, int texture, int level) {
-        backend.framebufferTexture2D(target, attachment, texTarget, texture, level);
+        gl().framebufferTexture2D(target, attachment, texTarget, texture, level);
     }
 
     public static int glCheckFramebufferStatus(int target) {
-        return backend.checkFramebufferStatus(target);
+        return gl().checkFramebufferStatus(target);
     }
 
     public static void glDrawBuffers(IntBuffer bufs) {
-        backend.drawBuffers(bufs);
+        gl().drawBuffers(bufs);
     }
 
     // --- Renderbuffer methods (same no-prefix pattern in CgGLBackend) -------
 
     public static int glGenRenderbuffers() {
-        return backend.glGenRenderbuffers();
+        return gl().glGenRenderbuffers();
     }
 
     public static void glDeleteRenderbuffers(int rbo) {
-        backend.glDeleteRenderbuffers(rbo);
+        gl().glDeleteRenderbuffers(rbo);
     }
 
     public static void glBindRenderbuffer(int target, int renderbuffer) {
-        backend.glBindRenderbuffer(target, renderbuffer);
+        gl().glBindRenderbuffer(target, renderbuffer);
     }
 
     /**
@@ -596,7 +621,7 @@ public final class CgGL {
      */
     public static void glRenderbufferStorageMultisample(int target, int samples, int internalFormat,
                                                         int width, int height) {
-        backend.glRenderbufferStorageMultisample(target, samples, internalFormat, width, height);
+        gl().glRenderbufferStorageMultisample(target, samples, internalFormat, width, height);
     }
 
     /**
@@ -606,17 +631,17 @@ public final class CgGL {
      */
     public static void glTexImage2DMultisample(int target, int samples, int internalFormat,
                                                int width, int height, boolean fixedSampleLocations) {
-        backend.glTexImage2DMultisample(target, samples, internalFormat, width, height,
+        gl().glTexImage2DMultisample(target, samples, internalFormat, width, height,
                 fixedSampleLocations);
     }
 
     public static void glRenderbufferStorage(int target, int internalFormat, int width, int height) {
-        backend.glRenderbufferStorage(target, internalFormat, width, height);
+        gl().glRenderbufferStorage(target, internalFormat, width, height);
     }
 
     public static void glFramebufferRenderbuffer(int target, int attachment,
                                                   int renderbufferTarget, int renderbuffer) {
-        backend.glFramebufferRenderbuffer(target, attachment, renderbufferTarget, renderbuffer);
+        gl().glFramebufferRenderbuffer(target, attachment, renderbufferTarget, renderbuffer);
     }
 
     // =========================================================================
@@ -624,136 +649,136 @@ public final class CgGL {
     // =========================================================================
 
     public static int glCreateShader(int type) {
-        return backend.glCreateShader(type);
+        return gl().glCreateShader(type);
     }
 
     public static void glShaderSource(int shader, CharSequence source) {
-        backend.glShaderSource(shader, source);
+        gl().glShaderSource(shader, source);
     }
 
     public static void glCompileShader(int shader) {
-        backend.glCompileShader(shader);
+        gl().glCompileShader(shader);
     }
 
     public static int glGetShaderi(int shader, int pname) {
-        return backend.glGetShaderi(shader, pname);
+        return gl().glGetShaderi(shader, pname);
     }
 
     public static String glGetShaderInfoLog(int shader, int maxLength) {
-        return backend.glGetShaderInfoLog(shader, maxLength);
+        return gl().glGetShaderInfoLog(shader, maxLength);
     }
 
     public static void glDeleteShader(int shader) {
-        backend.glDeleteShader(shader);
+        gl().glDeleteShader(shader);
     }
 
     public static int glCreateProgram() {
-        return backend.glCreateProgram();
+        return gl().glCreateProgram();
     }
 
     public static void glAttachShader(int program, int shader) {
-        backend.glAttachShader(program, shader);
+        gl().glAttachShader(program, shader);
     }
 
     public static void glLinkProgram(int program) {
-        backend.glLinkProgram(program);
+        gl().glLinkProgram(program);
     }
 
     public static int glGetProgrami(int program, int pname) {
-        return backend.glGetProgrami(program, pname);
+        return gl().glGetProgrami(program, pname);
     }
 
     public static String glGetProgramInfoLog(int program, int maxLength) {
-        return backend.glGetProgramInfoLog(program, maxLength);
+        return gl().glGetProgramInfoLog(program, maxLength);
     }
 
     public static void glUseProgram(int program) {
-        if (state().programChanged(program)) backend.glUseProgram(program);
+        if (state().programChanged(program)) gl().glUseProgram(program);
     }
 
     public static void glDeleteProgram(int program) {
-        backend.glDeleteProgram(program);
+        gl().glDeleteProgram(program);
         state().programDeleted(program);
     }
 
     public static int glGetUniformLocation(int program, CharSequence name) {
-        return backend.glGetUniformLocation(program, name);
+        return gl().glGetUniformLocation(program, name);
     }
 
     public static void glUniform1i(int location, int v0) {
-        backend.glUniform1i(location, v0);
+        gl().glUniform1i(location, v0);
     }
 
     public static void glUniform1f(int location, float v0) {
-        backend.glUniform1f(location, v0);
+        gl().glUniform1f(location, v0);
     }
 
     public static void glUniform2f(int location, float v0, float v1) {
-        backend.glUniform2f(location, v0, v1);
+        gl().glUniform2f(location, v0, v1);
     }
 
     public static void glUniform3f(int location, float v0, float v1, float v2) {
-        backend.glUniform3f(location, v0, v1, v2);
+        gl().glUniform3f(location, v0, v1, v2);
     }
 
     public static void glUniform4f(int location, float v0, float v1, float v2, float v3) {
-        backend.glUniform4f(location, v0, v1, v2, v3);
+        gl().glUniform4f(location, v0, v1, v2, v3);
     }
 
     public static void glUniformMatrix4fv(int location, boolean transpose, FloatBuffer value) {
-        backend.glUniformMatrix4fv(location, transpose, value);
+        gl().glUniformMatrix4fv(location, transpose, value);
     }
 
     public static void glBindAttribLocation(int program, int index, CharSequence name) {
-        backend.glBindAttribLocation(program, index, name);
+        gl().glBindAttribLocation(program, index, name);
     }
 
     public static int glGetProgramResourceIndex(int program, int programInterface, CharSequence name) {
-        return backend.glGetProgramResourceIndex(program, programInterface, name);
+        return gl().glGetProgramResourceIndex(program, programInterface, name);
     }
 
     public static void glShaderStorageBlockBinding(int program, int storageBlockIndex, int storageBlockBinding) {
-        backend.glShaderStorageBlockBinding(program, storageBlockIndex, storageBlockBinding);
+        gl().glShaderStorageBlockBinding(program, storageBlockIndex, storageBlockBinding);
     }
 
     public static int glGetUniformBlockIndex(int program, CharSequence uniformBlockName) {
-        return backend.glGetUniformBlockIndex(program, uniformBlockName);
+        return gl().glGetUniformBlockIndex(program, uniformBlockName);
     }
 
     public static void glUniformBlockBinding(int program, int uniformBlockIndex, int uniformBlockBinding) {
-        backend.glUniformBlockBinding(program, uniformBlockIndex, uniformBlockBinding);
+        gl().glUniformBlockBinding(program, uniformBlockIndex, uniformBlockBinding);
     }
 
     public static void glDetachShader(int program, int shader) {
-        backend.glDetachShader(program, shader);
+        gl().glDetachShader(program, shader);
     }
 
     public static void glGetAttachedShaders(int program, IntBuffer count, IntBuffer shaders) {
-        backend.glGetAttachedShaders(program, count, shaders);
+        gl().glGetAttachedShaders(program, count, shaders);
     }
 
     /** Returns the uniform name; fills {@code sizeTypeBuf[0]=size, [1]=type}. */
     public static String glGetActiveUniform(int program, int index, int maxLength, IntBuffer sizeTypeBuf) {
-        return backend.glGetActiveUniform(program, index, maxLength, sizeTypeBuf);
+        return gl().glGetActiveUniform(program, index, maxLength, sizeTypeBuf);
     }
 
     /** Sets a float-array uniform ({@code glUniform1fv} semantics). */
     public static void glUniform1(int location, FloatBuffer values) {
-        backend.glUniform1(location, values);
+        gl().glUniform1(location, values);
     }
 
     /** Sets an int-array uniform ({@code glUniform1iv} semantics). */
     public static void glUniform1(int location, IntBuffer values) {
-        backend.glUniform1(location, values);
+        gl().glUniform1(location, values);
     }
 
     public static void glUniformMatrix3(int location, boolean transpose, FloatBuffer value) {
-        backend.glUniformMatrix3(location, transpose, value);
+        gl().glUniformMatrix3(location, transpose, value);
     }
 
     /** Equivalent to {@link #glUniformMatrix4fv}; present for LWJGL2 naming parity. */
     public static void glUniformMatrix4(int location, boolean transpose, FloatBuffer value) {
-        backend.glUniformMatrix4(location, transpose, value);
+        gl().glUniformMatrix4(location, transpose, value);
     }
 
     // =========================================================================
@@ -761,44 +786,44 @@ public final class CgGL {
     // =========================================================================
 
     public static int glGenBuffers() {
-        return backend.glGenBuffers();
+        return gl().glGenBuffers();
     }
 
     public static void glBindBuffer(int target, int buffer) {
-        if (state().bufferChanged(target, buffer)) backend.glBindBuffer(target, buffer);
+        if (state().bufferChanged(target, buffer)) gl().glBindBuffer(target, buffer);
     }
 
     public static void glBufferData(int target, ByteBuffer data, int usage) {
-        backend.glBufferData(target, data, usage);
+        gl().glBufferData(target, data, usage);
     }
     
     public static void glBufferData(int target, ShortBuffer data, int usage) {
-        backend.glBufferData(target, data, usage);
+        gl().glBufferData(target, data, usage);
     }
 
     public static void glBufferData(int target, long size, int usage) {
-        backend.glBufferData(target, size, usage);
+        gl().glBufferData(target, size, usage);
     }
 
     public static void glBufferSubData(int target, long offset, ByteBuffer data) {
-        backend.glBufferSubData(target, offset, data);
+        gl().glBufferSubData(target, offset, data);
     }
 
     public static void glDeleteBuffers(int buffer) {
-        backend.glDeleteBuffers(buffer);
+        gl().glDeleteBuffers(buffer);
         state().bufferDeleted(buffer);
     }
 
     public static void glBindBufferBase(int target, int index, int buffer) {
-        backend.glBindBufferBase(target, index, buffer);
+        gl().glBindBufferBase(target, index, buffer);
     }
 
     public static void glBindBufferRange(int target, int index, int buffer, long offset, long size) {
-        backend.glBindBufferRange(target, index, buffer, offset, size);
+        gl().glBindBufferRange(target, index, buffer, offset, size);
     }
 
     public static void glTexBuffer(int target, int internalFormat, int buffer) {
-        backend.glTexBuffer(target, internalFormat, buffer);
+        gl().glTexBuffer(target, internalFormat, buffer);
     }
 
     // =========================================================================
@@ -806,28 +831,28 @@ public final class CgGL {
     // =========================================================================
 
     public static int glGenVertexArrays() {
-        return backend.glGenVertexArrays();
+        return gl().glGenVertexArrays();
     }
 
     public static void glBindVertexArray(int array) {
-        if (state().vertexArrayChanged(array)) backend.glBindVertexArray(array);
+        if (state().vertexArrayChanged(array)) gl().glBindVertexArray(array);
     }
 
     public static void glDeleteVertexArrays(int array) {
-        backend.glDeleteVertexArrays(array);
+        gl().glDeleteVertexArrays(array);
         state().vertexArrayDeleted(array);
     }
 
     public static void glEnableVertexAttribArray(int index) {
-        backend.glEnableVertexAttribArray(index);
+        gl().glEnableVertexAttribArray(index);
     }
 
     public static void glVertexAttribPointer(int index, int size, int type, boolean normalized, int stride, long pointer) {
-        backend.glVertexAttribPointer(index, size, type, normalized, stride, pointer);
+        gl().glVertexAttribPointer(index, size, type, normalized, stride, pointer);
     }
 
     public static void glVertexAttribDivisor(int index, int divisor) {
-        backend.glVertexAttribDivisor(index, divisor);
+        gl().glVertexAttribDivisor(index, divisor);
     }
 
     // =========================================================================
@@ -835,15 +860,15 @@ public final class CgGL {
     // =========================================================================
 
     public static int glGenTextures() {
-        return backend.glGenTextures();
+        return gl().glGenTextures();
     }
 
     public static void glBindTexture(int target, int texture) {
-        if (state().textureChanged(target, texture)) backend.glBindTexture(target, texture);
+        if (state().textureChanged(target, texture)) gl().glBindTexture(target, texture);
     }
 
     public static void glDeleteTextures(int texture) {
-        backend.glDeleteTextures(texture);
+        gl().glDeleteTextures(texture);
         // The shadow must forget it or the next bind of a recycled id is elided. @see CgGlStateManager
         state().textureDeleted(texture);
     }
@@ -851,67 +876,67 @@ public final class CgGL {
     public static void glTexImage2D(int target, int level, int internalFormat,
                                      int width, int height, int border,
                                      int format, int type, ByteBuffer pixels) {
-        backend.glTexImage2D(target, level, internalFormat, width, height, border, format, type, pixels);
+        gl().glTexImage2D(target, level, internalFormat, width, height, border, format, type, pixels);
     }
 
     public static void glTexImage2D(int target, int level, int internalFormat,
                                      int width, int height, int border,
                                      int format, int type, FloatBuffer pixels) {
-        backend.glTexImage2D(target, level, internalFormat, width, height, border, format, type, pixels);
+        gl().glTexImage2D(target, level, internalFormat, width, height, border, format, type, pixels);
     }
 
     public static void glTexImage3D(int target, int level, int internalFormat,
                                      int width, int height, int depth, int border,
                                      int format, int type, ByteBuffer pixels) {
-        backend.glTexImage3D(target, level, internalFormat, width, height, depth, border, format, type, pixels);
+        gl().glTexImage3D(target, level, internalFormat, width, height, depth, border, format, type, pixels);
     }
 
     public static void glTexImage3D(int target, int level, int internalFormat,
                                      int width, int height, int depth, int border,
                                      int format, int type, FloatBuffer pixels) {
-        backend.glTexImage3D(target, level, internalFormat, width, height, depth, border, format, type, pixels);
+        gl().glTexImage3D(target, level, internalFormat, width, height, depth, border, format, type, pixels);
     }
 
     public static void glTexSubImage2D(int target, int level,
                                         int xOffset, int yOffset, int width, int height,
                                         int format, int type, ByteBuffer pixels) {
-        backend.glTexSubImage2D(target, level, xOffset, yOffset, width, height, format, type, pixels);
+        gl().glTexSubImage2D(target, level, xOffset, yOffset, width, height, format, type, pixels);
     }
 
     public static void glTexSubImage2D(int target, int level,
                                         int xOffset, int yOffset, int width, int height,
                                         int format, int type, FloatBuffer pixels) {
-        backend.glTexSubImage2D(target, level, xOffset, yOffset, width, height, format, type, pixels);
+        gl().glTexSubImage2D(target, level, xOffset, yOffset, width, height, format, type, pixels);
     }
 
     public static void glGenerateMipmap(int target) {
-        backend.glGenerateMipmap(target);
+        gl().glGenerateMipmap(target);
     }
 
     public static void glActiveTexture(int texture) {
-        if (state().activeTextureChanged(texture)) backend.glActiveTexture(texture);
+        if (state().activeTextureChanged(texture)) gl().glActiveTexture(texture);
     }
 
     public static void glTexParameteri(int target, int pname, int param) {
-        backend.glTexParameteri(target, pname, param);
+        gl().glTexParameteri(target, pname, param);
     }
 
     public static void glGetTexImage(int target, int level, int format, int type, ByteBuffer pixels) {
-        backend.glGetTexImage(target, level, format, type, pixels);
+        gl().glGetTexImage(target, level, format, type, pixels);
     }
 
     public static void glTexSubImage3D(int target, int level,
                                         int xOffset, int yOffset, int zOffset,
                                         int width, int height, int depth,
                                         int format, int type, ByteBuffer pixels) {
-        backend.glTexSubImage3D(target, level, xOffset, yOffset, zOffset, width, height, depth, format, type, pixels);
+        gl().glTexSubImage3D(target, level, xOffset, yOffset, zOffset, width, height, depth, format, type, pixels);
     }
 
     public static void glTexSubImage3D(int target, int level,
                                         int xOffset, int yOffset, int zOffset,
                                         int width, int height, int depth,
                                         int format, int type, FloatBuffer pixels) {
-        backend.glTexSubImage3D(target, level, xOffset, yOffset, zOffset, width, height, depth, format, type, pixels);
+        gl().glTexSubImage3D(target, level, xOffset, yOffset, zOffset, width, height, depth, format, type, pixels);
     }
 
     /** {@code short}-data variant — the natural fit for {@code GL_HALF_FLOAT} uploads. */
@@ -919,7 +944,7 @@ public final class CgGL {
                                         int xOffset, int yOffset, int zOffset,
                                         int width, int height, int depth,
                                         int format, int type, ShortBuffer pixels) {
-        backend.glTexSubImage3D(target, level, xOffset, yOffset, zOffset, width, height, depth, format, type, pixels);
+        gl().glTexSubImage3D(target, level, xOffset, yOffset, zOffset, width, height, depth, format, type, pixels);
     }
 
     // =========================================================================
@@ -927,19 +952,19 @@ public final class CgGL {
     // =========================================================================
 
     public static void glDrawArrays(int mode, int first, int count) {
-        backend.glDrawArrays(mode, first, count);
+        gl().glDrawArrays(mode, first, count);
     }
 
     public static void glDrawElements(int mode, int count, int type, long indices) {
-        backend.glDrawElements(mode, count, type, indices);
+        gl().glDrawElements(mode, count, type, indices);
     }
 
     public static void glDrawArraysInstanced(int mode, int first, int count, int instanceCount) {
-        backend.glDrawArraysInstanced(mode, first, count, instanceCount);
+        gl().glDrawArraysInstanced(mode, first, count, instanceCount);
     }
 
     public static void glDrawElementsInstanced(int mode, int count, int type, long indices, int instanceCount) {
-        backend.glDrawElementsInstanced(mode, count, type, indices, instanceCount);
+        gl().glDrawElementsInstanced(mode, count, type, indices, instanceCount);
     }
 
     // =========================================================================
@@ -959,56 +984,56 @@ public final class CgGL {
      */
     public static void glEnable(int cap) {
         if (cap == GL_ALPHA_TEST && CORE) return;
-        if (state().capabilityChanged(cap, true)) backend.glEnable(cap);
+        if (state().capabilityChanged(cap, true)) gl().glEnable(cap);
     }
 
     public static void glDisable(int cap) {
         if (cap == GL_ALPHA_TEST && CORE) return;
-        if (state().capabilityChanged(cap, false)) backend.glDisable(cap);
+        if (state().capabilityChanged(cap, false)) gl().glDisable(cap);
     }
 
     public static void glBlendFunc(int sfactor, int dfactor) {
-        if (state().blendFuncChanged(sfactor, dfactor, sfactor, dfactor)) backend.glBlendFunc(sfactor, dfactor);
+        if (state().blendFuncChanged(sfactor, dfactor, sfactor, dfactor)) gl().glBlendFunc(sfactor, dfactor);
     }
 
     public static void glBlendFuncSeparate(int srcRGB, int dstRGB, int srcAlpha, int dstAlpha) {
-        if (state().blendFuncChanged(srcRGB, dstRGB, srcAlpha, dstAlpha)) backend.glBlendFuncSeparate(srcRGB, dstRGB, srcAlpha, dstAlpha);
+        if (state().blendFuncChanged(srcRGB, dstRGB, srcAlpha, dstAlpha)) gl().glBlendFuncSeparate(srcRGB, dstRGB, srcAlpha, dstAlpha);
     }
 
     public static void glDepthMask(boolean flag) {
-        if (state().depthMaskChanged(flag)) backend.glDepthMask(flag);
+        if (state().depthMaskChanged(flag)) gl().glDepthMask(flag);
     }
 
     public static void glCullFace(int mode) {
-        if (state().cullFaceChanged(mode)) backend.glCullFace(mode);
+        if (state().cullFaceChanged(mode)) gl().glCullFace(mode);
     }
 
     public static void glViewport(int x, int y, int width, int height) {
-        if (state().viewportChanged(x, y, width, height)) backend.glViewport(x, y, width, height);
+        if (state().viewportChanged(x, y, width, height)) gl().glViewport(x, y, width, height);
     }
 
     public static void glScissor(int x, int y, int width, int height) {
-        if (state().scissorChanged(x, y, width, height)) backend.glScissor(x, y, width, height);
+        if (state().scissorChanged(x, y, width, height)) gl().glScissor(x, y, width, height);
     }
 
     public static void glLineWidth(float width) {
-        if (state().lineWidthChanged(width)) backend.glLineWidth(width);
+        if (state().lineWidthChanged(width)) gl().glLineWidth(width);
     }
 
     public static void glPolygonMode(int face, int mode) {
-        if (state().polygonModeChanged(face, mode)) backend.glPolygonMode(face, mode);
+        if (state().polygonModeChanged(face, mode)) gl().glPolygonMode(face, mode);
     }
 
     public static void glColorMask(boolean red, boolean green, boolean blue, boolean alpha) {
-        if (state().colorMaskChanged(red, green, blue, alpha)) backend.glColorMask(red, green, blue, alpha);
+        if (state().colorMaskChanged(red, green, blue, alpha)) gl().glColorMask(red, green, blue, alpha);
     }
 
     public static void glStencilFunc(int func, int ref, int mask) {
-        if (state().stencilFuncChanged(func, ref, mask)) backend.glStencilFunc(func, ref, mask);
+        if (state().stencilFuncChanged(func, ref, mask)) gl().glStencilFunc(func, ref, mask);
     }
 
     public static void glStencilOp(int sfail, int dpfail, int dppass) {
-        if (state().stencilOpChanged(sfail, dpfail, dppass)) backend.glStencilOp(sfail, dpfail, dppass);
+        if (state().stencilOpChanged(sfail, dpfail, dppass)) gl().glStencilOp(sfail, dpfail, dppass);
     }
 
     /**
@@ -1016,20 +1041,20 @@ public final class CgGL {
      */
     public static void glAlphaFunc(int func, float ref) {
         if (CORE) return;
-        if (state().alphaFuncChanged(func, ref)) backend.glAlphaFunc(func, ref);
+        if (state().alphaFuncChanged(func, ref)) gl().glAlphaFunc(func, ref);
     }
 
     public static void glDepthFunc(int func) {
         int issued = depthReversed && !replaying && !state().restoring() ? mirroredDepthFunc(func) : func;
-        if (state().depthFuncChanged(issued)) backend.glDepthFunc(issued);
+        if (state().depthFuncChanged(issued)) gl().glDepthFunc(issued);
     }
 
     public static void glClear(int mask) {
-        backend.glClear(mask);
+        gl().glClear(mask);
     }
 
     public static void glClearDepth(double depth) {
-        backend.glClearDepth(depthReversed && !replaying ? 1.0 - depth : depth);
+        gl().glClearDepth(depthReversed && !replaying ? 1.0 - depth : depth);
     }
 
     // --- Reversed depth --------------------------------------------------------
@@ -1104,28 +1129,28 @@ public final class CgGL {
     }
 
     public static void glClearColor(float r, float g, float b, float a) {
-        backend.glClearColor(r, g, b, a);
+        gl().glClearColor(r, g, b, a);
     }
 
     public static void glClearStencil(int s) {
-        backend.glClearStencil(s);
+        gl().glClearStencil(s);
     }
 
     public static void glStencilMask(int mask) {
-        if (state().stencilMaskChanged(mask)) backend.glStencilMask(mask);
+        if (state().stencilMaskChanged(mask)) gl().glStencilMask(mask);
     }
 
     public static void glBlendEquationSeparate(int modeRGB, int modeAlpha) {
-        if (state().blendEquationChanged(modeRGB, modeAlpha)) backend.glBlendEquationSeparate(modeRGB, modeAlpha);
+        if (state().blendEquationChanged(modeRGB, modeAlpha)) gl().glBlendEquationSeparate(modeRGB, modeAlpha);
     }
 
     /** GL 3.0 per-draw-buffer color mask. */
     public static void glColorMaski(int buf, boolean r, boolean g, boolean b, boolean a) {
-        if (state().colorMaskiChanged(buf, r, g, b, a)) backend.glColorMaski(buf, r, g, b, a);
+        if (state().colorMaskiChanged(buf, r, g, b, a)) gl().glColorMaski(buf, r, g, b, a);
     }
 
     public static void glFrontFace(int mode) {
-        if (state().frontFaceChanged(mode)) backend.glFrontFace(mode);
+        if (state().frontFaceChanged(mode)) gl().glFrontFace(mode);
     }
 
     public static void glPolygonOffset(float factor, float units) {
@@ -1133,23 +1158,23 @@ public final class CgGL {
         // while nearer is smaller.
         boolean mirror = depthReversed && !replaying && !state().restoring();
         float f = mirror ? -factor : factor, u = mirror ? -units : units;
-        if (state().polygonOffsetChanged(f, u)) backend.glPolygonOffset(f, u);
+        if (state().polygonOffsetChanged(f, u)) gl().glPolygonOffset(f, u);
     }
 
     public static void glPointSize(float size) {
-        if (state().pointSizeChanged(size)) backend.glPointSize(size);
+        if (state().pointSizeChanged(size)) gl().glPointSize(size);
     }
 
     public static void glDrawBuffer(int mode) {
-        backend.glDrawBuffer(mode);
+        gl().glDrawBuffer(mode);
     }
 
     public static void glReadBuffer(int mode) {
-        backend.glReadBuffer(mode);
+        gl().glReadBuffer(mode);
     }
 
     public static void glPixelStorei(int pname, int param) {
-        backend.glPixelStorei(pname, param);
+        gl().glPixelStorei(pname, param);
     }
 
     // =========================================================================
@@ -1157,7 +1182,7 @@ public final class CgGL {
     // =========================================================================
 
     public static int glGetInteger(int pname) {
-        return backend.glGetInteger(pname);
+        return gl().glGetInteger(pname);
     }
 
     /**
@@ -1173,7 +1198,7 @@ public final class CgGL {
      */
     public static void glReadPixels(int x, int y, int width, int height,
                                     int format, int type, ByteBuffer pixels) {
-        backend.glReadPixels(x, y, width, height, format, type, pixels);
+        gl().glReadPixels(x, y, width, height, format, type, pixels);
     }
 
     /**
@@ -1190,27 +1215,27 @@ public final class CgGL {
      */
     public static void glReadPixels(int x, int y, int width, int height,
                                     int format, int type, long packOffset) {
-        backend.glReadPixels(x, y, width, height, format, type, packOffset);
+        gl().glReadPixels(x, y, width, height, format, type, packOffset);
     }
 
     public static void glGetInteger(int pname, IntBuffer params) {
-        backend.glGetInteger(pname, params);
+        gl().glGetInteger(pname, params);
     }
 
     public static boolean glGetBoolean(int pname) {
-        return backend.glGetBoolean(pname);
+        return gl().glGetBoolean(pname);
     }
 
     public static void glGetBoolean(int pname, ByteBuffer params) {
-        backend.glGetBoolean(pname, params);
+        gl().glGetBoolean(pname, params);
     }
 
     public static void glGetFloat(int pname, FloatBuffer params) {
-        backend.glGetFloat(pname, params);
+        gl().glGetFloat(pname, params);
     }
 
     public static float glGetFloat(int pname) {
-        return backend.glGetFloat(pname);
+        return gl().glGetFloat(pname);
     }
 
     // =========================================================================
@@ -1219,7 +1244,7 @@ public final class CgGL {
 
     /** Binds a sampler object to a texture unit (ARB_sampler_objects / GL 3.3). */
     public static void glBindSampler(int unit, int sampler) {
-        backend.glBindSampler(unit, sampler);
+        gl().glBindSampler(unit, sampler);
     }
 
     // =========================================================================
@@ -1228,15 +1253,15 @@ public final class CgGL {
 
     /** @return the mapped buffer, or {@code null} if mapping fails */
     public static ByteBuffer glMapBufferRange(int target, long offset, long length, int access, ByteBuffer oldBuffer) {
-        return backend.glMapBufferRange(target, offset, length, access, oldBuffer);
+        return gl().glMapBufferRange(target, offset, length, access, oldBuffer);
     }
 
     public static boolean glUnmapBuffer(int target) {
-        return backend.glUnmapBuffer(target);
+        return gl().glUnmapBuffer(target);
     }
 
     public static void glFlushMappedBufferRange(int target, long offset, long length) {
-        backend.glFlushMappedBufferRange(target, offset, length);
+        gl().glFlushMappedBufferRange(target, offset, length);
     }
 
     /**
@@ -1252,7 +1277,7 @@ public final class CgGL {
      * <p>Immutable means {@code glBufferData} on it afterwards is an error: growing takes a new buffer.</p>
      */
     public static void glBufferStorage(int target, long size, int flags) {
-        backend.glBufferStorage(target, size, flags);
+        gl().glBufferStorage(target, size, flags);
     }
 
     // =========================================================================
@@ -1260,15 +1285,15 @@ public final class CgGL {
     // =========================================================================
 
     public static long glFenceSync(int condition, int flags) {
-        return backend.glFenceSync(condition, flags);
+        return gl().glFenceSync(condition, flags);
     }
 
     public static int glClientWaitSync(long sync, int flags, long timeout) {
-        return backend.glClientWaitSync(sync, flags, timeout);
+        return gl().glClientWaitSync(sync, flags, timeout);
     }
 
     public static void glDeleteSync(long sync) {
-        backend.glDeleteSync(sync);
+        gl().glDeleteSync(sync);
     }
     
     // =========================================================================
@@ -1276,7 +1301,7 @@ public final class CgGL {
     // =========================================================================
     
     public static int glGetError()  {
-        return backend.glGetError();
+        return gl().glGetError();
     }
     
     /**
@@ -1332,31 +1357,31 @@ public final class CgGL {
     // on a later frame rather than read immediately.
 
     public static int glGenQuery() {
-        return backend.glGenQuery();
+        return gl().glGenQuery();
     }
 
     public static void glBeginTimeElapsedQuery(int query) {
-        backend.glBeginTimeElapsedQuery(query);
+        gl().glBeginTimeElapsedQuery(query);
     }
 
     public static void glEndTimeElapsedQuery() {
-        backend.glEndTimeElapsedQuery();
+        gl().glEndTimeElapsedQuery();
     }
 
     public static boolean glIsQueryResultAvailable(int query) {
-        return backend.glIsQueryResultAvailable(query);
+        return gl().glIsQueryResultAvailable(query);
     }
 
     public static long glGetQueryResultNanos(int query) {
-        return backend.glGetQueryResultNanos(query);
+        return gl().glGetQueryResultNanos(query);
     }
 
     public static void glDeleteQuery(int query) {
-        backend.glDeleteQuery(query);
+        gl().glDeleteQuery(query);
     }
 
     public static void glBindFramebuffer(int target, int fbo) {
-        if (state().fboChanged(target, fbo)) backend.bindFramebuffer(target, fbo);
+        if (state().fboChanged(target, fbo)) gl().bindFramebuffer(target, fbo);
     }
 
     // =========================================================================
@@ -1372,7 +1397,7 @@ public final class CgGL {
 
     /** @see CgGLBackend#importHostTexture */
     public static int importHostTexture(Object hostHandle) {
-        return backend.importHostTexture(hostHandle);
+        return gl().importHostTexture(hostHandle);
     }
 
     // Brackets open around our work. 0 means the host has control, which is where every frame starts.
@@ -1427,7 +1452,7 @@ public final class CgGL {
     public static void fromHost() {
         if (fromHostDepth == 0) {
             installIfAbsent();
-            backend.fromHost();
+            gl().fromHost();
             CgGlState.invalidateAllIfPresent();
         }
         fromHostDepth++;
@@ -1448,7 +1473,7 @@ public final class CgGL {
      */
     public static void toHost() {
         if (fromHostDepth == 0) throw new IllegalStateException("toHost with no fromHost open");
-        if (--fromHostDepth == 0) backend.toHost();
+        if (--fromHostDepth == 0) gl().toHost();
     }
 
     /** @see CgGLBackend#ownedByCurrentThread */
