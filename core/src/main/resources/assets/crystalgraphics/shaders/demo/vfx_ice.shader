@@ -14,7 +14,7 @@ Pass {
     RenderState {
         DepthTest LEQUAL
         DepthWrite ON
-        Cull BACK
+        Cull OFF
     }
 
     // The fractures a ray crosses, in the ball's own frame ({@code q} on the unit sphere, {@code across} its chord):
@@ -100,28 +100,42 @@ Pass {
         vec3 centre = CG_OBJECT_TO_WORLD[3].xyz;
         float radius = length(CG_OBJECT_TO_WORLD[0].xyz);
         float floorY = centre.y - CG_OBJECT_CUSTOM3.x;
-        vec3 n = normalize(i.normalWs);
-        vec3 v = normalize(VFX_CAMERA - i.worldPos);
+        vec3 camera = VFX_CAMERA;
+        vec3 wall = normalize(i.normalWs);
+        vec3 n = gl_FrontFacing ? wall : -wall;
+        vec3 v = normalize(camera - i.worldPos);
         float nv = max(dot(n, v), 0.0);
         // Through the ice: refracted in, across, refracted out to the studio behind, tinted blue the thicker it is.
+        // From inside the eye is in the ice, and the ray leaves it at the wall ahead.
         float ior = 1.31;
-        vec3 inside = refract(-v, n, 1.0 / ior);
-        float across = -2.0 * dot(i.worldPos - centre, inside);
-        vec3 exitPoint = i.worldPos + inside * across;
-        vec3 exitNormal = normalize(exitPoint - centre);
+        vec3 inside, exitPoint, exitNormal, start;
+        float across;
+        if (gl_FrontFacing) {
+            inside = refract(-v, n, 1.0 / ior);
+            across = -2.0 * dot(i.worldPos - centre, inside);
+            exitPoint = i.worldPos + inside * across;
+            exitNormal = normalize(exitPoint - centre);
+            start = i.worldPos;
+        } else {
+            inside = -v;
+            across = length(i.worldPos - camera);
+            exitPoint = i.worldPos;
+            exitNormal = wall;
+            start = camera;
+        }
         vec3 leaving = refract(inside, -exitNormal, ior);
         if (dot(leaving, leaving) < 1.0e-4) leaving = reflect(inside, -exitNormal);
         float depth = across / radius;
         vec3 behind = vfx_studio(exitPoint, leaving, 0.2, floorY) * exp(-depth * vec3(1.5, 0.55, 0.2));
         // What is frozen inside, in the ball's frame so it turns with it.
         mat3 toObject = transpose(mat3(CG_OBJECT_TO_WORLD)) / (radius * radius);
-        vec3 q = toObject * (i.worldPos - centre);
+        vec3 q = toObject * (start - centre);
         vec3 d = normalize(toObject * inside);
         vec4 core = ice_core(q, d, depth);
         vec3 body = behind * core.a + core.rgb * vfx_studio(i.worldPos, n, 1.0, floorY) * 0.9;
         body += vec3(0.75, 0.92, 1.0) * ice_cracks(q, d, depth) * 0.8 + vec3(0.9, 0.97, 1.0) * ice_bubbles(q, d, depth) * 0.5;
         body += vec3(0.15, 0.6, 1.2) * (0.12 + pow(1.0 - nv, 2.0) * 0.9);
-        float fresnel = 0.02 + 0.98 * pow(1.0 - nv, 5.0);
+        float fresnel = (0.02 + 0.98 * pow(1.0 - nv, 5.0)) * (gl_FrontFacing ? 1.0 : 0.25);
         vec3 reflection = vfx_studio(i.worldPos, reflect(-v, n), 0.15, floorY)
                 + vfx_direct(n, v, VFX_KEY_DIR, VFX_KEY_COLOR, vec3(1.0), 0.0, 0.12);
         vec3 clearIce = mix(body, reflection, fresnel);

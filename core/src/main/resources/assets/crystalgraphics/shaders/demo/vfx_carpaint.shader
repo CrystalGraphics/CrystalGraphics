@@ -14,7 +14,7 @@ Pass {
     RenderState {
         DepthTest LEQUAL
         DepthWrite ON
-        Cull BACK
+        Cull OFF
     }
 
     // The pearl's colour seen at {@code nv}, the cosine of the viewing angle: gold at the edges, teal facing you.
@@ -34,6 +34,8 @@ Pass {
 
     void fragment(in v2f i, out vec4 fragColor) {
         vec3 n = normalize(i.normalWs);
+        // From inside the sphere its inner wall shows, facing in.
+        if (!gl_FrontFacing) n = -n;
         vec3 v = normalize(VFX_CAMERA - i.worldPos);
         float nv = max(dot(n, v), 0.0);
         float floorY = CG_OBJECT_TO_WORLD[3].y - CG_OBJECT_CUSTOM3.x;

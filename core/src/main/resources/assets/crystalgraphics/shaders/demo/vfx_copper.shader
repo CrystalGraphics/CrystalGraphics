@@ -12,7 +12,7 @@ Pass {
     RenderState {
         DepthTest LEQUAL
         DepthWrite ON
-        Cull BACK
+        Cull OFF
     }
 
     void vertex(out v2f o) {
@@ -29,6 +29,8 @@ Pass {
         // reflected edge.
         float brush = vfx_noise(vec3(p.y * 60.0, atan(p.z, p.x) * 2.0, 0.0));
         vec3 n = normalize(i.normalWs);
+        // From inside the sphere its inner wall shows, facing in.
+        if (!gl_FrontFacing) n = -n;
         vec3 v = normalize(VFX_CAMERA - i.worldPos);
         float floorY = CG_OBJECT_TO_WORLD[3].y - CG_OBJECT_CUSTOM3.x;
         vec3 copper = vec3(0.98, 0.56, 0.4) * (0.96 + 0.05 * brush);

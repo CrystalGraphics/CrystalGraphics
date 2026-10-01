@@ -15,7 +15,7 @@ Pass {
     RenderState {
         DepthTest LEQUAL
         DepthWrite ON
-        Cull BACK
+        Cull OFF
     }
 
     // Violet lightning over the surface: a new strike {@code rate} times a second, flickering while it lasts.
@@ -42,6 +42,8 @@ Pass {
         float t = CG_TIME;
         vec3 p = i.objPos;
         vec3 n = normalize(i.normalWs);
+        // From inside the sphere its inner wall shows, facing in.
+        if (!gl_FrontFacing) n = -n;
         vec3 v = normalize(VFX_CAMERA - i.worldPos);
         float nv = max(dot(n, v), 0.0);
         // Fire folding over itself: noise warped by noise, flowing up and out.
