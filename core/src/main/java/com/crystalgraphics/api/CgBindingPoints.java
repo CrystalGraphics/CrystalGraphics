@@ -88,6 +88,12 @@ public final class CgBindingPoints {
     public static Binding CLIP_TABLE;
 
     /**
+     * Reserved binding pair for {@code CgPalette}, each spatial node's affine into the bound pass's target and each
+     * effect node's opacity -- one below {@link #CLIP_TABLE}'s. Read from both stages.
+     */
+    public static Binding PALETTE;
+
+    /**
      * UBO binding slot for the engine's per-frame uniform block ({@code CgFrameBlock}).
      * Set to {@code maxUniformBufferBindings - 1} by {@link #init(CgCapabilities)}.
      * Valid only after {@link #init(CgCapabilities)} has been called.
@@ -178,6 +184,7 @@ public final class CgBindingPoints {
         // not an accident: anything that caches the depth unit across an init() would be wrong.
         CURVE_RENDERER = new Binding(--maxSsboBindings, --maxTextureUnits);
         CLIP_TABLE = new Binding(--maxSsboBindings, --maxTextureUnits);
+        PALETTE = new Binding(--maxSsboBindings, --maxTextureUnits);
 
         // ── UBO bindings ───────────────────────────────────────────────────────────────
         FRAME_DATA_UBO          = --maxUboBindings;

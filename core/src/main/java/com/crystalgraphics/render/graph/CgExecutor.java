@@ -13,6 +13,7 @@ import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.render.draw.CgInstanceKind;
+import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -189,7 +190,10 @@ public final class CgExecutor {
         if (packed.count == 0) return;
         frame.bindings.bind(packed.constants);
         for (int k = 0; k < KINDS; k++) if ((packed.kinds & (1 << k)) != 0) instanceBuffers[k].bind();
-        if ((packed.kinds & UNIT_KINDS) != 0) packed.clips.bindForDraw();
+        if ((packed.kinds & UNIT_KINDS) != 0) {
+            packed.clips.bindForDraw();
+            packed.palette.bindForDraw(null, CgPassConstants.height(pass.constants));
+        }
 
         int boundPipeline = -1, boundBinding = -1, boundScissor = CgRasterPass.INHERIT;
         CgPipeline pipeline = null;

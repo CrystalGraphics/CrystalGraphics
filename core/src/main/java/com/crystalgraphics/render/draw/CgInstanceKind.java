@@ -71,6 +71,8 @@ public enum CgInstanceKind {
                 .float_("custom2")
                 // The clip-table entry this quad is drawn under, 0 for none -- in the same padding. @see CgClipTable
                 .float_("clip")
+                // Its spatial and effect nodes, CgPalette.pack'd -- the last of that padding. @see CgPalette
+                .float_("node")
                 // -- per-instance CUSTOM slots, whatever a consumer needs them to mean --------------
                 // The same shape CgObjectData gives the render pipeline (custom0..custom3, read through
                 // CG_OBJECT_CUSTOM*), for the same reason: a material that needs per-instance parameters
@@ -117,6 +119,8 @@ public enum CgInstanceKind {
                 .vec4("gradient")
                 // The CgClipTable entry the primitive is drawn under, 0 for none.
                 .float_("clip")
+                // Its spatial and effect nodes, CgPalette.pack'd. @see CgPalette
+                .float_("node")
                 .build();
     }
 }

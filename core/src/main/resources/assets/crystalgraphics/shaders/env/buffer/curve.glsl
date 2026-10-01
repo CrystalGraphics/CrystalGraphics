@@ -73,19 +73,25 @@
 //              float d = sdf_triangle(i.posXy, CG_CURVE_P0.xy, CG_CURVE_P1.xy, CG_CURVE_P2.xy);
 //              d -= CG_CURVE_WIDTHS.x;                 // corner radius, not a stroke width here
 //              vec4 col = CG_CURVE_COLOR0;              // color1 unused in this reading
-#define CG_CURVE_P0 (CURVE_DATA(CG_INSTANCE_ID).p0)
-#define CG_CURVE_P1 (CURVE_DATA(CG_INSTANCE_ID).p1)
-#define CG_CURVE_P2 (CURVE_DATA(CG_INSTANCE_ID).p2)
+//
+// The record's points are in its spatial node's space; these read them in the pass's target, through the palette
+// (palette.glsl), and a width grows with the node's scale. A record at node 0 is read as written.
+#define CG_CURVE_NODE (CURVE_DATA(CG_INSTANCE_ID).node)
+#define CG_CURVE_P0 cg_spatial_point(CG_CURVE_NODE, CURVE_DATA(CG_INSTANCE_ID).p0)
+#define CG_CURVE_P1 cg_spatial_point(CG_CURVE_NODE, CURVE_DATA(CG_INSTANCE_ID).p1)
+#define CG_CURVE_P2 cg_spatial_point(CG_CURVE_NODE, CURVE_DATA(CG_INSTANCE_ID).p2)
 #define CG_CURVE_COLOR0 (CURVE_DATA(CG_INSTANCE_ID).color0)
 #define CG_CURVE_COLOR1 (CURVE_DATA(CG_INSTANCE_ID).color1)
-#define CG_CURVE_WIDTHS (CURVE_DATA(CG_INSTANCE_ID).widths)
+#define CG_CURVE_WIDTHS cg_curve_widths(CG_CURVE_NODE, CURVE_DATA(CG_INSTANCE_ID).widths, CURVE_DATA(CG_INSTANCE_ID).flags)
+// The record's effect-group opacity, as CG_QUAD_OPACITY.
+#define CG_CURVE_OPACITY cg_effect_opacity(CG_CURVE_NODE)
 #define CG_CURVE_FEATHER (CURVE_DATA(CG_INSTANCE_ID).feather)
 #define CG_CURVE_FLAGS (CURVE_DATA(CG_INSTANCE_ID).flags)
 // (originX, originY, dirX, dirY) of a linear gradient, in the same space as p0/p1/p2 and scaled so
 // t = dot(p - origin, dir) runs 0..1 from color0 to color1. Read only when CG_STROKE_FLAG_GRADIENT is
 // set alongside the fill bit -- this is the "spare capacity a future third reading can claim" the note
 // above anticipated, and it claims color1 back with it.
-#define CG_CURVE_GRADIENT (CURVE_DATA(CG_INSTANCE_ID).gradient)
+#define CG_CURVE_GRADIENT cg_curve_gradient(CG_CURVE_NODE, CURVE_DATA(CG_INSTANCE_ID).gradient)
 
 // Half-extent the stroke adds beyond the control hull: the widest the stroke ever gets, plus the
 // feather ramp, plus one unit of slack.
@@ -125,6 +131,14 @@
 // point and pads by the one pixel an exact-area edge can extend to.
 bool cg_curve_is_cell(float flags) {
     return (int(flags + 0.5) & 256) != 0;
+}
+// A cell's fourth corner is a point; every other reading's widths are lengths.
+vec2 cg_curve_widths(float node, vec2 widths, float flags) {
+    if (cg_curve_is_cell(flags)) return cg_spatial_point(node, vec3(widths, 0.0)).xy;
+    return widths * cg_spatial_scale(node);
+}
+vec4 cg_curve_gradient(float node, vec4 gradient) {
+    return vec4(cg_spatial_point(node, vec3(gradient.xy, 0.0)).xy, cg_spatial_covector(node, gradient.zw));
 }
 float cg_curve_pad(vec2 widths, float feather, float flags) {
     int f = int(flags + 0.5);

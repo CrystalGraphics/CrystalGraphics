@@ -126,6 +126,11 @@ public final class CgPassConstants {
         return this;
     }
 
+    /** The target height a packed block was written with: what a pass's palette flips {@code gl_FragCoord} by. */
+    public static float height(float[] block) {
+        return block[37];
+    }
+
     /** Writes the block's {@value #FLOATS} floats into {@code out} at {@code at}. */
     public void write(float[] out, int at) {
         view.get(out, at);

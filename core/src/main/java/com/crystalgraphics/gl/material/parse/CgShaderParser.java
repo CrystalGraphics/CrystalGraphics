@@ -142,7 +142,8 @@ public final class CgShaderParser {
         // ── Step 2: material-level declarations ────────────────────────────
         String shaderType              = CgStructureParser.parseShaderType(source, resourcePath);
         List<String> featureNames      = CgStructureParser.parseFeaturePragmas(source, resourcePath);
-        List<String> engineBuffers     = CgStructureParser.parseUsePragmas(source, resourcePath);
+        List<String> engineBuffers     = CgEngineBufferRegistry.withRequirements(
+                CgStructureParser.parseUsePragmas(source, resourcePath));
         validateEngineBufferUsage(source, engineBuffers, resourcePath);
         List<CgMaterialProperty> props = CgPropertiesParser.parse(source, resourcePath);
         int renderQueue                = CgQueueParser.parse(source, resourcePath);

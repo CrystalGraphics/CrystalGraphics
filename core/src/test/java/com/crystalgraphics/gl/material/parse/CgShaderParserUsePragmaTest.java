@@ -38,7 +38,8 @@ public class CgShaderParserUsePragmaTest {
                 shader("#pragma cg_use quad",
                         "        gl_Position = cg_ProjMatrix * vec4(CG_QUAD_WORLD_POS, 1.0);"),
                 "test:declared.shader");
-        assertEquals(List.of("quad"), parsed.engineBuffers());
+        // The palette a quad is positioned through comes with it, ahead of it.
+        assertEquals(List.of("palette", "quad"), parsed.engineBuffers());
     }
 
     /** A shader that uses none of the macros needs no pragma — the common case must stay free. */

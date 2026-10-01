@@ -7,6 +7,8 @@ import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
+import com.crystalgraphics.render.property.CgEffectTree;
+import com.crystalgraphics.render.property.CgSpatialTree;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -47,6 +49,8 @@ public final class CgRecording {
 
     private final CgBindingTable bindings = new CgBindingTable();
     private final CgClipTable clips = new CgClipTable();
+    private final CgSpatialTree spatial = new CgSpatialTree();
+    private final CgEffectTree effects = new CgEffectTree();
     private final CgChunkBuilder chunks = new CgChunkBuilder(bindings);
     private final List<CgPass> passes = new ArrayList<>();
 
@@ -72,6 +76,16 @@ public final class CgRecording {
 
     public CgBindingTable bindings() {
         return bindings;
+    }
+
+    /** The spatial nodes its chunks are positioned in. @see CgSpatialTree */
+    public CgSpatialTree spatial() {
+        return spatial;
+    }
+
+    /** The opacity groups its chunks are drawn in. @see CgEffectTree */
+    public CgEffectTree effects() {
+        return effects;
     }
 
     /** The builder this recording's chunks are written with. */
@@ -185,6 +199,8 @@ public final class CgRecording {
         chunks.reset();
         bindings.reset();
         clips.reset();
+        spatial.reset();
+        effects.reset();
         sealed = false;
     }
 

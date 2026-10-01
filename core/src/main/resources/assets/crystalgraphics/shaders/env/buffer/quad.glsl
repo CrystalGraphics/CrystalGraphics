@@ -54,10 +54,20 @@
 //   o.color = CG_QUAD_COLOR;
 //   o.normalWs = CG_QUAD_NORMAL;
 //   o.atlasLayer = CG_QUAD_ATLAS_LAYER;
-#define CG_QUAD_WORLD_POS (QUAD_DATA(CG_INSTANCE_ID).origin + cg_Position.x * QUAD_DATA(CG_INSTANCE_ID).right + cg_Position.y * QUAD_DATA(CG_INSTANCE_ID).up)
+//
+// The record's corner and edges are in its spatial node's space; these read them in the pass's target, through the
+// palette (palette.glsl). A record at node 0 is read as written.
+#define CG_QUAD_NODE (QUAD_DATA(CG_INSTANCE_ID).node)
+#define CG_QUAD_ORIGIN cg_spatial_point(CG_QUAD_NODE, QUAD_DATA(CG_INSTANCE_ID).origin)
+#define CG_QUAD_RIGHT cg_spatial_vector(CG_QUAD_NODE, QUAD_DATA(CG_INSTANCE_ID).right)
+#define CG_QUAD_UP cg_spatial_vector(CG_QUAD_NODE, QUAD_DATA(CG_INSTANCE_ID).up)
+#define CG_QUAD_WORLD_POS (CG_QUAD_ORIGIN + cg_Position.x * CG_QUAD_RIGHT + cg_Position.y * CG_QUAD_UP)
 #define CG_QUAD_UV (mix(QUAD_DATA(CG_INSTANCE_ID).uv0, QUAD_DATA(CG_INSTANCE_ID).uv1, cg_TexCoord0))
 #define CG_QUAD_COLOR (QUAD_DATA(CG_INSTANCE_ID).color)
-#define CG_QUAD_NORMAL (normalize(cross(QUAD_DATA(CG_INSTANCE_ID).right, QUAD_DATA(CG_INSTANCE_ID).up)))
+#define CG_QUAD_NORMAL (normalize(cross(CG_QUAD_RIGHT, CG_QUAD_UP)))
+// The record's effect-group opacity: a material that honours groups multiplies its alpha by it (its whole colour when
+// it writes premultiplied). One that does not draws at full opacity.
+#define CG_QUAD_OPACITY cg_effect_opacity(CG_QUAD_NODE)
 #define CG_QUAD_ATLAS_LAYER (QUAD_DATA(CG_INSTANCE_ID).atlasLayer)
 
 // -- CG_QUAD_CUSTOM0 / CG_QUAD_CUSTOM1 -- whatever the material needs, per instance ------------------
@@ -138,10 +148,10 @@ float cg_quad_edge_coverage(vec2 param, vec3 right, vec3 up) {
     vec2 c = near + far - 1.0;
     return clamp(c.x, 0.0, 1.0) * clamp(c.y, 0.0, 1.0);
 }
-#define CG_QUAD_EDGE_PARAM cg_quad_edge_param(cg_Position.xy, QUAD_DATA(CG_INSTANCE_ID).right, QUAD_DATA(CG_INSTANCE_ID).up)
-#define CG_QUAD_EDGE_WORLD_POS(param) (QUAD_DATA(CG_INSTANCE_ID).origin + (param).x * QUAD_DATA(CG_INSTANCE_ID).right + (param).y * QUAD_DATA(CG_INSTANCE_ID).up)
+#define CG_QUAD_EDGE_PARAM cg_quad_edge_param(cg_Position.xy, CG_QUAD_RIGHT, CG_QUAD_UP)
+#define CG_QUAD_EDGE_WORLD_POS(param) (CG_QUAD_ORIGIN + (param).x * CG_QUAD_RIGHT + (param).y * CG_QUAD_UP)
 #define CG_QUAD_EDGE_UV(param) (mix(QUAD_DATA(CG_INSTANCE_ID).uv0, QUAD_DATA(CG_INSTANCE_ID).uv1, clamp(param, 0.0, 1.0)))
-#define CG_QUAD_EDGE_COVERAGE(param) cg_quad_edge_coverage(param, QUAD_DATA(CG_INSTANCE_ID).right, QUAD_DATA(CG_INSTANCE_ID).up)
-#define CG_QUAD_EDGE_ROTATED cg_quad_edge_rotated(QUAD_DATA(CG_INSTANCE_ID).right, QUAD_DATA(CG_INSTANCE_ID).up)
+#define CG_QUAD_EDGE_COVERAGE(param) cg_quad_edge_coverage(param, CG_QUAD_RIGHT, CG_QUAD_UP)
+#define CG_QUAD_EDGE_ROTATED cg_quad_edge_rotated(CG_QUAD_RIGHT, CG_QUAD_UP)
 
 #define CG_QUAD_UV_RECT vec4(min(QUAD_DATA(CG_INSTANCE_ID).uv0, QUAD_DATA(CG_INSTANCE_ID).uv1), max(QUAD_DATA(CG_INSTANCE_ID).uv0, QUAD_DATA(CG_INSTANCE_ID).uv1))

@@ -2,9 +2,12 @@ package com.crystalgraphics.render.graph;
 
 import com.crystalgraphics.gl.mesh.CgMesh;
 import com.crystalgraphics.gl.render.CgClipTable;
+import com.crystalgraphics.render.property.CgPalette;
+import com.crystalgraphics.render.property.CgPropertyValues;
 import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.IdentityHashMap;
@@ -43,6 +46,10 @@ public final class CgFrame {
     private final IdentityHashMap<CgClipTable, CgClipTable> clips = new IdentityHashMap<>();
     private final List<CgClipTable> clipPool = new ArrayList<>();
     private int clipsUsed;
+    /** The same for property trees: a palette per recording, which the frame's values change at execution. */
+    private final IdentityHashMap<CgRecording, CgPalette> palettes = new IdentityHashMap<>();
+    private final List<CgPalette> palettePool = new ArrayList<>();
+    private int palettesUsed;
 
     CgFrame() {
         for (int k = 0; k < KINDS; k++) instances[k] = new float[CgInstanceKind.of(k).floats() * 256];
@@ -59,6 +66,8 @@ public final class CgFrame {
         draws = 0;
         clips.clear();
         clipsUsed = 0;
+        palettes.clear();
+        palettesUsed = 0;
     }
 
     /** This frame's copy of {@code table}, made on first ask in a build. */
@@ -70,6 +79,17 @@ public final class CgFrame {
         copy.copyFrom(table);
         clips.put(table, copy);
         return copy;
+    }
+
+    /** This frame's palette for {@code recording}, drawn with {@code values}, made on first ask in a build. */
+    CgPalette paletteOf(CgRecording recording, @Nullable CgPropertyValues values) {
+        CgPalette palette = palettes.get(recording);
+        if (palette != null) return palette;
+        if (palettesUsed == palettePool.size()) palettePool.add(new CgPalette());
+        palette = palettePool.get(palettesUsed++);
+        palette.copyFrom(recording.spatial(), recording.effects(), values);
+        palettes.put(recording, palette);
+        return palette;
     }
 
     /** Room for {@code count} steps. */
@@ -145,6 +165,8 @@ public final class CgFrame {
         int draws;
         /** The frame's copy of its recording's clip table. */
         CgClipTable clips;
+        /** The frame's palette of its recording's property trees. */
+        CgPalette palette;
 
         void size(int batches) {
             if (pipeline.length < batches) {

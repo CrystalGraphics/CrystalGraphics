@@ -14,6 +14,7 @@ import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.api.buffer.CgGpuType;
+import com.crystalgraphics.render.property.CgPalette;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
@@ -345,7 +346,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
      * Nine named lookups per instance measured as the bulk of this renderer's per-instance cost.
      */
     private final int offP0, offP1, offP2, offColor0, offColor1, offWidths, offFeather, offFlags,
-            offGradient, offClip;
+            offGradient, offClip, offNode;
 
     /**
      * Last pose seen and the uniform scale derived from it.
@@ -372,6 +373,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
         this.offFlags = accumWriter.offsetOf("flags", CgGpuType.FLOAT);
         this.offGradient = accumWriter.offsetOf("gradient", CgGpuType.VEC4);
         this.offClip = accumWriter.offsetOf("clip", CgGpuType.FLOAT);
+        this.offNode = accumWriter.offsetOf("node", CgGpuType.FLOAT);
     }
 
     /**
@@ -483,6 +485,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
         private int capStart, capEnd;
         private Matrix4f pose;
         private int clip;
+        private float node;
 
         /** Start/end caps for the record currently being written, packed by {@link #packCaps}. */
         private int packedCaps;
@@ -519,6 +522,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
             capEnd = CAP_BUTT;
             pose = null;
             clip = 0;
+            node = 0f;
             cubicSegments = 0;
             cubicPending = false;
             return this;
@@ -668,6 +672,15 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
         }
 
         /**
+         * The spatial and effect nodes this is drawn in; 0 and 0, the default, are the pass's own space at full
+         * opacity. @see CgPalette
+         */
+        public Curve node(int spatial, int effect) {
+            this.node = CgPalette.pack(spatial, effect);
+            return this;
+        }
+
+        /**
          * Writes this curve as one instance record — or, after {@link #cubic}, as one record per
          * split segment — into the owning renderer's CPU accumulation buffer.
          *
@@ -781,6 +794,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
                     .float_("flags", packedCaps)
                     .vec4("gradient", 0f, 0f, 0f, 0f)
                     .float_("clip", clip)
+                    .float_("node", node)
                     .endRecord();
         }
     }
@@ -840,6 +854,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
         private float feather;
         private Matrix4f pose;
         private int clip;
+        private float node;
 
         // Reused across every submit() call — never reallocated, mirroring Curve's own scratch trio.
         private final Vector3f scratchP0 = new Vector3f();
@@ -863,6 +878,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
             feather = FEATHER_ANTIALIAS;
             pose = null;
             clip = 0;
+            node = 0f;
             return this;
         }
 
@@ -983,6 +999,15 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
         }
 
         /**
+         * The spatial and effect nodes this is drawn in; 0 and 0, the default, are the pass's own space at full
+         * opacity. @see CgPalette
+         */
+        public Triangle node(int spatial, int effect) {
+            this.node = CgPalette.pack(spatial, effect);
+            return this;
+        }
+
+        /**
          * Writes this triangle as one instance record into the owning renderer's CPU accumulation
          * buffer. Queues only — call {@link CgVectorRenderer#flush()} to upload and draw.
          *
@@ -1038,6 +1063,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
                             | (silhouetteEdge << FILL_EDGE_SHIFT))
                     .vec4At(offGradient, ox, oy, dxg, dyg)
                     .floatAt(offClip, clip)
+                    .floatAt(offNode, node)
                     .endRecord();
 
             return CgVectorRenderer.this;
@@ -1123,6 +1149,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
         private int softEdges;
         private Matrix4f pose;
         private int clip;
+        private float node;
 
         private final Vector3f scratch = new Vector3f();
 
@@ -1139,6 +1166,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
             softEdges = 0;
             pose = null;
             clip = 0;
+            node = 0f;
             return this;
         }
 
@@ -1195,6 +1223,15 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
         }
 
         /**
+         * The spatial and effect nodes this is drawn in; 0 and 0, the default, are the pass's own space at full
+         * opacity. @see CgPalette
+         */
+        public Cell node(int spatial, int effect) {
+            this.node = CgPalette.pack(spatial, effect);
+            return this;
+        }
+
+        /**
          * Writes this cell as one instance record. Queues only — {@link CgVectorRenderer#flush()} draws.
          *
          * @throws IllegalStateException if {@link #begin()} or {@link #useMaterial(CgMaterial)} was not called
@@ -1231,6 +1268,7 @@ public final class CgVectorRenderer extends CgAbstractRenderer {
                             | (softEdges << CELL_EDGE_SHIFT))
                     .vec4At(offGradient, ox, oy, dxg, dyg)
                     .floatAt(offClip, clip)
+                    .floatAt(offNode, node)
                     .endRecord();
 
             return CgVectorRenderer.this;
