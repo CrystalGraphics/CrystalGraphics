@@ -63,6 +63,7 @@ submodule (`gl-debug-harness/`, Java 25) and runs from CrystalGUI's root; author
 ```bash
 ./gradlew :gl-debug-harness:runHarness --args="--list"
 ./gradlew :gl-debug-harness:runHarness --args="--mode=forward-renderer"       # CgWorldRenderer through both world stages
+./gradlew :gl-debug-harness:runHarness --args="--mode=vfx-spheres"            # the VFX showcase: sixteen effect spheres (CgVfxShowcase)
 ./gradlew :gl-debug-harness:runHarness --args="--mode=material-dual-path"     # CgMaterial shader compilation
 ./gradlew :gl-debug-harness:runHarness --args="--mode=instancing-test"        # Instanced draw
 ./gradlew :gl-debug-harness:runHarness --args="--mode=attached-buffer-stress" # SSBO/TBO attach

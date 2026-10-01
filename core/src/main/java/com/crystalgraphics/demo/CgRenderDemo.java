@@ -1,10 +1,7 @@
 package com.crystalgraphics.demo;
 
-import com.crystalgraphics.api.material.CgMaterial;
-import com.crystalgraphics.api.vertex.CgVertexFormat;
-import com.crystalgraphics.gl.mesh.CgMesh;
-import com.crystalgraphics.gl.mesh.CgMeshBuilder;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.stage.CgHostFrame;
 import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgRenderStage;
@@ -22,19 +19,17 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
 /**
- * A development demo: sixteen rainbow cubes standing on blocks in front of the player, drawn through
+ * A development demo: the sixteen spheres of {@link CgVfxShowcase} floating in front of the player, drawn through
  * {@link CgWorldRenderer} under the host's own camera. Off unless asked for.
  *
  * <pre>{@code
  * -Dcrystalgraphics.demo=true                         // draw them
  * -Dcrystalgraphics.demo.capture=build/demo.png       // and write the world, with no GUI over it, to a PNG
- * -Dcrystalgraphics.demo.captureAt=300                // this many world frames after the cubes were placed
+ * -Dcrystalgraphics.demo.captureAt=300                // this many world frames after the spheres were placed
  * }</pre>
  *
- * <p>The cubes are placed on the first world frame, on whole blocks a few blocks along the camera's view and a little
- * above it, so terrain in front does not hide them, and stay there until the camera jumps far from them. Each fills exactly one block cell, so a
- * capture shows whether the stage's view is the camera the world was drawn with: on the grid at every angle, or off
- * it.</p>
+ * <p>The grid is placed on the first world frame, on a whole block some blocks along the camera's view and a little
+ * above it, so terrain in front does not hide it, and stays there until the camera jumps far from it.</p>
  */
 public final class CgRenderDemo {
 
@@ -46,9 +41,7 @@ public final class CgRenderDemo {
     private static final String CAPTURE = System.getProperty("crystalgraphics.demo.capture");
     private static final int CAPTURE_AT = Integer.getInteger("crystalgraphics.demo.captureAt", 300);
 
-    private static final int GRID = 4;        // 4×4 = 16 cubes
-    private static final int GRID_STEP = 2;   // blocks between cubes
-    private static final int AHEAD = 6;       // blocks from the eye to the grid's centre, along the view
+    private static final int AHEAD = 12;      // blocks from the eye to the grid's centre, along the view
     private static final int ABOVE = 2;       // and up the screen
     private static final int REANCHOR_DISTANCE = 48;
 
@@ -57,19 +50,16 @@ public final class CgRenderDemo {
     private long anchorX, anchorY, anchorZ;
     private int worldFrames;
 
-    private CgMesh cubeMesh;
-    private CgMaterial cubeMaterial;
-    private final float[][] colours = new float[GRID * GRID][];
+    private final CgVfxShowcase showcase = new CgVfxShowcase();
 
     /** The transparent stage's frame, for the capture callback, which runs inside that firing. */
     private CgHostFrame captured;
     private final Runnable capture = () -> capture(captured.width(), captured.height());
 
     private CgRenderDemo() {
-        for (int c = 0; c < colours.length; c++) colours[c] = hsvToRgb(c / (float) colours.length, 0.85f, 1.0f);
     }
 
-    /** Submits the cubes every frame, once, when {@code -Dcrystalgraphics.demo=true}. */
+    /** Submits the spheres every frame, once, when {@code -Dcrystalgraphics.demo=true}. */
     public void install() {
         if (installed || !ENABLED) return;
         installed = true;
@@ -85,29 +75,13 @@ public final class CgRenderDemo {
 
     /** Releases GPU resources. Call on context destroy. */
     public void dispose() {
-        if (cubeMesh != null) { cubeMesh.delete(); cubeMesh = null; }
-        cubeMaterial = null; // owned by CgMaterialRegistry — do not delete
+        showcase.delete();
     }
 
     private void frame(CgHostView view) {
-        if (cubeMesh == null) {
-            cubeMesh = CgMesh.upload(CgMeshBuilder.unitCube(CgVertexFormat.SPATIAL));
-            cubeMaterial = CgMaterial.load("crystalgraphics:shaders/demo_render.shader");
-            LOGGER.info("[CgRenderDemo] resources initialised (mesh={}, material={})", cubeMesh, cubeMaterial);
-        }
         // Again after a jump: the first world frames can see the default spawn, before the server places the player.
         if (!anchored || farFromGrid(view)) anchor(view);
-        CgWorldRenderer world = CgWorldRenderer.get();
-        for (int i = 0; i < GRID; i++) {
-            for (int j = 0; j < GRID; j++) {
-                float[] rgb = colours[i * GRID + j];
-                world.draw(cubeMesh, cubeMaterial)
-                        .at(anchorX + (i - GRID / 2) * GRID_STEP + 0.5, anchorY + 0.5,
-                                anchorZ + (j - GRID / 2) * GRID_STEP + 0.5)
-                        .custom(0, rgb[0], rgb[1], rgb[2], 1f)
-                        .submit();
-            }
-        }
+        showcase.submit(CgWorldRenderer.get(), anchorX + 0.5, anchorY, anchorZ + 0.5, CgFrameClock.seconds());
     }
 
     private boolean farFromGrid(CgHostView view) {
@@ -126,7 +100,7 @@ public final class CgRenderDemo {
         anchorZ = (long) Math.floor(view.z() + eye.z + forward.z * AHEAD + up.z * ABOVE);
         anchored = true;
         worldFrames = 0;
-        LOGGER.info("[CgRenderDemo] cubes on blocks around ({}, {}, {}), camera at ({}, {}, {})",
+        LOGGER.info("[CgRenderDemo] spheres around ({}, {}, {}), camera at ({}, {}, {})",
                 anchorX, anchorY, anchorZ, view.x(), view.y(), view.z());
     }
 
@@ -149,22 +123,6 @@ public final class CgRenderDemo {
             LOGGER.info("[CgRenderDemo] wrote {}x{} capture to {}", w, h, out);
         } catch (IOException e) {
             LOGGER.error("[CgRenderDemo] could not write {}", out, e);
-        }
-    }
-
-    private static float[] hsvToRgb(float h, float s, float v) {
-        int   hi = (int)(h * 6f) % 6;
-        float f  = h * 6f - (int)(h * 6f);
-        float p  = v * (1f - s);
-        float q  = v * (1f - f * s);
-        float t  = v * (1f - (1f - f) * s);
-        switch (hi) {
-            case 0:  return new float[]{ v, t, p };
-            case 1:  return new float[]{ q, v, p };
-            case 2:  return new float[]{ p, v, t };
-            case 3:  return new float[]{ p, q, v };
-            case 4:  return new float[]{ t, p, v };
-            default: return new float[]{ v, p, q };
         }
     }
 }
