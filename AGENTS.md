@@ -343,7 +343,7 @@ A `layout(std140) uniform CgFrameBlock` wired post-link by the engine. Available
 
 | GLSL name | Type | Unit | Content |
 |---|---|---|---|
-| `cg_DepthBuffer` | `uniform sampler2D` | `CgBindingPoints.DEPTH_TEXTURE_UNIT` | Scene depth snapshot, in the main target's own depth format, captured just before the opaque pass via one `glBlitFramebuffer` from MC's main render target. **Raw values are the host's convention** — reversed-Z on 26.2 — so compare depths as eye distances: `CG_SCENE_EYE_DEPTH(uv)` against `cg_LinearEyeDepth(gl_FragCoord.z)`. Valid in both vertex and fragment stages of all passes. **Do not bind user Properties samplers to `CgBindingPoints.DEPTH_TEXTURE_UNIT`.** |
+| `cg_DepthBuffer` | `uniform sampler2D` | `CgBindingPoints.DEPTH_TEXTURE_UNIT` | Scene depth snapshot, in the main target's own depth format, captured via one `glBlitFramebuffer` from MC's main render target at the start of each world stage whose materials read it: an opaque material sees the host's world, a transparent one the world renderer's opaque draws as well. **Raw values are the host's convention** — reversed-Z on 26.2 — so compare depths as eye distances: `CG_SCENE_EYE_DEPTH(uv)` against `cg_LinearEyeDepth(gl_FragCoord.z)`. Valid in both vertex and fragment stages of all passes. **Do not bind user Properties samplers to `CgBindingPoints.DEPTH_TEXTURE_UNIT`.** |
 
 Convenience macros over the frame block:
 
@@ -720,8 +720,9 @@ world.draw(pane, glass).at(x, y, z).queue(CgRenderQueue.TRANSPARENT).submit();  
 - **Culled** against the view by the mesh's bounds (`CgMesh.bounds()`, computed at upload), and **sorted**
   (`CgSortKey`): opaque by material, front to back, then mesh; transparent back to front. Equal neighbours instance.
 - `WORLD_OPAQUE` records the depth snapshot (only when a drawn material reads `cg_DepthBuffer`), a prepass (materials
-  with a depth pass, and alpha-tested ones) and the opaque pass; `WORLD_TRANSPARENT` the transparent pass. Every world
-  pass binds the snapshot as a pass texture.
+  with a depth pass, and alpha-tested ones) and the opaque pass; `WORLD_TRANSPARENT` a snapshot of its own (again only
+  for a reader, holding the opaque draws) and the transparent pass. Every world pass binds the snapshot as a
+  pass texture.
 - Shaders see **camera-relative** world space: `CG_CAMERA_WORLD_POS` is the origin, and `CG_ABSOLUTE_WORLD_POS(p)`
   adds `cg_WorldOrigin` back for an effect that must not move with the camera.
 - A host drawing the world twice in a frame (1.7.10's anaglyph) fires both stages twice; each draw is drawn under

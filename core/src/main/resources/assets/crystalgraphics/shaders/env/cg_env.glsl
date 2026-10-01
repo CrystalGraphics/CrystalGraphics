@@ -83,7 +83,8 @@ flat in int cg_InstanceId;
 #define CG_OBJECT_CUSTOM3 (CG_OBJECT_DATA.custom3)
 
 // -- Scene samplers (auto-bound by the engine; do not redeclare or bind manually) -----------
-// cg_DepthBuffer: scene depth snapshot, in the host's depth format, captured just before the opaque pass.
+// cg_DepthBuffer: scene depth snapshot, in the host's depth format, taken at the start of the world stage that
+// reads it: in an opaque pass the host's world, in a transparent pass with the world renderer's opaque draws too.
 // Bound to CgBindingPoints.DEPTH_TEXTURE_UNIT in both vertex and fragment stages of every pass.
 // Do NOT use that texture unit in material Properties.
 uniform sampler2D cg_DepthBuffer;
