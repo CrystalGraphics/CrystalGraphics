@@ -1,6 +1,7 @@
 package com.crystalgraphics.gl.buffer.shader;
 
 import com.crystalgraphics.gl.render.CgClipTable;
+import com.crystalgraphics.gl.render.CgShapeTable;
 import com.crystalgraphics.gl.render.CgQuadRenderer;
 import com.crystalgraphics.gl.render.CgVectorRenderer;
 import com.crystalgraphics.render.property.CgPalette;
@@ -64,6 +65,8 @@ public final class CgEngineBufferRegistry {
                 "crystalgraphics:shaders/env/buffer/curve.glsl", "palette");
         register("clip", CgClipTable::buffer, CgClipTable.MACRO_NAME,
                 "crystalgraphics:shaders/env/buffer/clip.glsl", "palette");
+        register("shape", CgShapeTable::buffer, CgShapeTable.MACRO_NAME,
+                "crystalgraphics:shaders/env/buffer/shape.glsl");
     }
 
     private CgEngineBufferRegistry() {}

@@ -316,6 +316,7 @@ public final class CgFrameBuilder {
         }
         Arrays.fill(refChunk, 0, refs, null);
         packed.clips = frame.clipsOf(pass.recording.clips());
+        packed.shapes = frame.shapesOf(pass.recording.shapes());
         packed.palette = frame.paletteOf(pass.recording, valuesOf.get(pass.recording));
         CgBindingTable constants = frame.bindings.begin()
                 .block(CgBindingPoints.FRAME_DATA_UBO, pass.constants, 0, CgPassConstants.FLOATS);

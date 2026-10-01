@@ -2,6 +2,7 @@ package com.crystalgraphics.render.graph;
 
 import com.crystalgraphics.gl.mesh.CgMesh;
 import com.crystalgraphics.gl.render.CgClipTable;
+import com.crystalgraphics.gl.render.CgShapeTable;
 import com.crystalgraphics.render.property.CgPalette;
 import com.crystalgraphics.render.property.CgPropertyValues;
 import com.crystalgraphics.render.draw.CgBindingTable;
@@ -52,6 +53,9 @@ public final class CgFrame {
     private final IdentityHashMap<CgClipTable, CgClipTable> clips = new IdentityHashMap<>();
     private final List<CgClipTable> clipPool = new ArrayList<>();
     private int clipsUsed;
+    private final IdentityHashMap<CgShapeTable, CgShapeTable> shapes = new IdentityHashMap<>();
+    private final List<CgShapeTable> shapePool = new ArrayList<>();
+    private int shapesUsed;
     /** The same for property trees: a palette per recording, which the frame's values change at execution. */
     private final IdentityHashMap<CgRecording, CgPalette> palettes = new IdentityHashMap<>();
     private final List<CgPalette> palettePool = new ArrayList<>();
@@ -73,6 +77,8 @@ public final class CgFrame {
         executions = 0;
         clips.clear();
         clipsUsed = 0;
+        shapes.clear();
+        shapesUsed = 0;
         palettes.clear();
         palettesUsed = 0;
     }
@@ -85,6 +91,17 @@ public final class CgFrame {
         copy = clipPool.get(clipsUsed++);
         copy.copyFrom(table);
         clips.put(table, copy);
+        return copy;
+    }
+
+    /** This frame's copy of {@code table}, made on first ask in a build. */
+    CgShapeTable shapesOf(CgShapeTable table) {
+        CgShapeTable copy = shapes.get(table);
+        if (copy != null) return copy;
+        if (shapesUsed == shapePool.size()) shapePool.add(new CgShapeTable());
+        copy = shapePool.get(shapesUsed++);
+        copy.copyFrom(table);
+        shapes.put(table, copy);
         return copy;
     }
 
@@ -172,6 +189,7 @@ public final class CgFrame {
         int draws;
         /** The frame's copy of its recording's clip table. */
         CgClipTable clips;
+        CgShapeTable shapes;
         /** The frame's palette of its recording's property trees. */
         CgPalette palette;
 

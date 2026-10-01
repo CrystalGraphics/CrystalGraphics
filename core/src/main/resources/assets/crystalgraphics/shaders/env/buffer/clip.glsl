@@ -6,7 +6,7 @@
 //
 // An entry is a rounded box in its own space, reached from gl_FragCoord through toLocal0/toLocal1 (rows of a
 // 2x3 affine), less the band between its outer and inner edges -- what a mask drawn with a transparent border
-// reveals. The distance and the ramp are gui_rect's, so an edge antialiases as a rect's own does. toLocal0.w
+// reveals. The distance and the ramp are a shape's (CrystalGUI's gui_box), so an edge antialiases as a box's own does. toLocal0.w
 // is the parent entry and toLocal1.w the ramp: 1 on the pixel grid, wider off it. space.x is the spatial node the
 // box is under: 0 reads gl_FragCoord as it is, any other maps it into the node through the palette first.
 #pragma once
