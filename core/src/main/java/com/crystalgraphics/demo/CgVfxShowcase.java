@@ -85,11 +85,13 @@ public final class CgVfxShowcase {
                         .custom(1, 1f / CORONA_REACH, flare, 0f, 0f).submit();
                 continue;
             }
-            world.draw(sphere, materials[k]).at(cx, cy, cz).transform(transform).submit();
+            // Every sphere knows how high above the floor it is: the metals mirror the floor from there.
+            float above = (float) (cy - y);
+            world.draw(sphere, materials[k]).at(cx, cy, cz).transform(transform).custom(3, above, 0f, 0f, 0f).submit();
             if (k == SHIELD) {
                 // What the field protects: a small gold core turning inside it.
                 transform.identity().rotateY(-seconds * 0.6f).scale(0.45f);
-                world.draw(sphere, materials[0]).at(cx, cy, cz).transform(transform).submit();
+                world.draw(sphere, materials[0]).at(cx, cy, cz).transform(transform).custom(3, above, 0f, 0f, 0f).submit();
             }
             float strength = GLOW[k][3];
             if (strength <= 0f) continue;
