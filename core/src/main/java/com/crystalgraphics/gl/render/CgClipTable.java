@@ -22,12 +22,14 @@ import java.util.Arrays;
  * chain, up to {@link #MAX_DEPTH} entries deep.</p>
  *
  * <pre>{@code
+ * CgClipTable clips = recording.clips();   // one per recording: its chunks name its entries
+ *
  * // A 200x120 box under `pose`, 8px corners, a 1px border cut away.
- * int panel = CgClipTable.add(0, pose, targetHeight, 0, 0, 200, 120, EIGHTS, EIGHTS, ONES);
+ * int panel = clips.add(0, pose, targetHeight, 0, 0, 200, 120, EIGHTS, EIGHTS, ONES);
  * quadRenderer.quad().at(x, y).size(w, h).clip(panel).color(argb).submit();
  *
  * // A card inside it, clipped by both.
- * int card = CgClipTable.add(panel, cardPose, targetHeight, 0, 0, 80, 40, FOURS, FOURS, null);
+ * int card = clips.add(panel, cardPose, targetHeight, 0, 0, 80, 40, FOURS, FOURS, null);
  * }</pre>
  *
  * <p>In a material:</p>
@@ -42,20 +44,19 @@ import java.util.Arrays;
  *
  * <p>Easy to get wrong:</p>
  * <ul>
- *   <li>An entry lasts one frame: the table starts again with the next, so an index is stamped on the draw that
- *       frame, never kept.</li>
+ *   <li>An entry belongs to its table, and a table to its recording: an index means nothing in another recording,
+ *       and nothing once the recording is reset.</li>
  *   <li>{@code pose} maps the box's space to the bound target's pixels, top-down, and {@code targetHeight} is that
  *       target's height. A draw into another target (an offscreen layer) names no entry; the clip applies when
  *       that target is composited back.</li>
  *   <li>{@link #add} answers -1 when the chain would pass {@link #MAX_DEPTH} or the pose collapses the box: clip
  *       that one with a layer.</li>
  *   <li>A material that does not multiply by the coverage draws past the corners, silently.</li>
- *   <li>Render thread only; entry 0 is "no clip" and is never read.</li>
+ *   <li>Filled on the recording's thread with no GL; uploaded and bound by the executor per raster pass. Entry 0 is
+ *       "no clip" and is never read.</li>
  * </ul>
  */
 public final class CgClipTable {
-
-    private CgClipTable() {}
 
     /** The macro a shader's GLSL reads an entry through; {@code #pragma cg_use clip} declares it. */
     public static final String MACRO_NAME = "CLIP_DATA";
@@ -76,15 +77,18 @@ public final class CgClipTable {
 
     /** Lazy, like the quad renderer's: the binding points exist only once a context has initialised. */
     private static CgShaderBuffer buffer;
+    /** The table the buffer holds now, as of which version and frame: what lets a pass skip the upload. */
+    private static CgClipTable uploaded;
+    private static int uploadedVersion = -1;
+    private static long uploadedFrame = -1;
 
-    private static float[] entries = new float[FLOATS * 16];
-    private static int[] parents = new int[16];
-    private static int[] depths = new int[16];
-    private static int count = 1;
-    private static long frame = -1;
-    private static boolean dirty;
+    private float[] entries = new float[FLOATS * 16];
+    private int[] parents = new int[16];
+    private int[] depths = new int[16];
+    private int count = 1;
+    private int version;
 
-    private static final float[] INNER_RX = new float[4], INNER_RY = new float[4];
+    private final float[] innerRx = new float[4], innerRy = new float[4];
 
     /** The table's buffer, for {@code #pragma cg_use clip}. */
     public static CgShaderBuffer buffer() {
@@ -108,9 +112,8 @@ public final class CgClipTable {
      *                     reveals; null for none
      * @return the entry, or -1 when the chain would pass {@link #MAX_DEPTH} or the pose collapses the box
      */
-    public static int add(int parent, Matrix4f pose, float targetHeight, float x0, float y0, float x1, float y1,
-                          float[] rx, float[] ry, float[] border) {
-        startFrame();
+    public int add(int parent, Matrix4f pose, float targetHeight, float x0, float y0, float x1, float y1,
+                   float[] rx, float[] ry, float[] border) {
         int depth = (parent > 0 ? depths[parent] : 0) + 1;
         float a = pose.m00(), b = pose.m10(), c = pose.m01(), d = pose.m11();
         float det = a * d - b * c;
@@ -137,60 +140,55 @@ public final class CgClipTable {
             float bl = border[0], bt = border[1], br = border[2], bb = border[3];
             float halfW = Math.max((x1 - x0 - bl - br) * 0.5f, 0f), halfH = Math.max((y1 - y0 - bt - bb) * 0.5f, 0f);
             float cx = (x0 + x1 + bl - br) * 0.5f, cy = (y0 + y1 + bt - bb) * 0.5f;
-            INNER_RX[0] = Math.max(rx[0] - bl, 0f);
-            INNER_RX[1] = Math.max(rx[1] - br, 0f);
-            INNER_RX[2] = Math.max(rx[2] - br, 0f);
-            INNER_RX[3] = Math.max(rx[3] - bl, 0f);
-            INNER_RY[0] = Math.max(ry[0] - bt, 0f);
-            INNER_RY[1] = Math.max(ry[1] - bt, 0f);
-            INNER_RY[2] = Math.max(ry[2] - bb, 0f);
-            INNER_RY[3] = Math.max(ry[3] - bb, 0f);
-            put(o + 20, cx - halfW, cy - halfH, cx + halfW, cy + halfH, INNER_RX, INNER_RY);
+            innerRx[0] = Math.max(rx[0] - bl, 0f);
+            innerRx[1] = Math.max(rx[1] - br, 0f);
+            innerRx[2] = Math.max(rx[2] - br, 0f);
+            innerRx[3] = Math.max(rx[3] - bl, 0f);
+            innerRy[0] = Math.max(ry[0] - bt, 0f);
+            innerRy[1] = Math.max(ry[1] - bt, 0f);
+            innerRy[2] = Math.max(ry[2] - bb, 0f);
+            innerRy[3] = Math.max(ry[3] - bb, 0f);
+            put(o + 20, cx - halfW, cy - halfH, cx + halfW, cy + halfH, innerRx, innerRy);
         } else {
             // x1 < x0: no inner edge.
-            Arrays.fill(INNER_RX, 0f);
-            put(o + 20, 0f, 0f, -1f, -1f, INNER_RX, INNER_RX);
+            Arrays.fill(innerRx, 0f);
+            put(o + 20, 0f, 0f, -1f, -1f, innerRx, innerRx);
         }
         parents[count] = parent;
         depths[count] = depth;
-        dirty = true;
+        version++;
         return count++;
     }
 
     /** The entry {@code entry} was added inside, 0 for none. */
-    public static int parent(int entry) {
+    public int parent(int entry) {
         return entry > 0 && entry < count ? parents[entry] : 0;
     }
 
+    /** Empties it for a new recording: entry 0 alone. */
+    public void reset() {
+        count = 1;
+        version++;
+    }
+
     /**
-     * Uploads the table if it changed since the last upload, and binds it. Called by a renderer before each
-     * instanced draw, as it binds its own instance buffer: the binding is state another pass or the host may have
-     * moved since.
+     * Uploads this table unless the buffer already holds it as it is, this frame, and binds it: what an executor does
+     * before a pass's draws. Render thread. A device binds every block a program declares whether or not a draw reads
+     * it, and a frame-ring binding from another frame is not this frame's storage, so each frame uploads afresh.
      */
-    public static void bindForDraw() {
-        startFrame();
+    public void bindForDraw() {
         CgShaderBuffer target = buffer();
-        if (dirty) {
+        long frame = CgFrameRing.frame();
+        if (uploaded != this || uploadedVersion != version || uploadedFrame != frame) {
             upload(target);
-            dirty = false;
+            uploaded = this;
+            uploadedVersion = version;
+            uploadedFrame = frame;
         }
         target.bind();
     }
 
-    /**
-     * A new frame starts with entry 0 alone, and uploads it: a device binds every block a program declares whether
-     * or not a draw reads it, and a frame-ring binding from another frame is not this frame's storage.
-     */
-    private static void startFrame() {
-        long now = CgFrameRing.frame();
-        if (now != frame) {
-            frame = now;
-            count = 1;
-            dirty = true;
-        }
-    }
-
-    private static void put(int o, float x0, float y0, float x1, float y1, float[] rx, float[] ry) {
+    private void put(int o, float x0, float y0, float x1, float y1, float[] rx, float[] ry) {
         entries[o] = x0;
         entries[o + 1] = y0;
         entries[o + 2] = x1;
@@ -199,8 +197,8 @@ public final class CgClipTable {
         System.arraycopy(ry, 0, entries, o + 8, 4);
     }
 
-    /** The whole table: the binding a draw reads holds every entry of the frame up to it. */
-    private static void upload(CgShaderBuffer target) {
+    /** The whole table: the binding a draw reads holds every entry of its recording. */
+    private void upload(CgShaderBuffer target) {
         CgBufferWriter w = target.beginWrite(count);
         for (int i = 0; i < count; i++) {
             int o = i * FLOATS;

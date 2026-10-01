@@ -1,6 +1,7 @@
 package com.crystalgraphics.render.graph;
 
 import com.crystalgraphics.api.state.CgRenderState;
+import com.crystalgraphics.gl.render.CgClipTable;
 import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgOrder;
@@ -45,6 +46,7 @@ public final class CgRecording {
     static final int WRITE = 1;
 
     private final CgBindingTable bindings = new CgBindingTable();
+    private final CgClipTable clips = new CgClipTable();
     private final CgChunkBuilder chunks = new CgChunkBuilder(bindings);
     private final List<CgPass> passes = new ArrayList<>();
 
@@ -63,6 +65,11 @@ public final class CgRecording {
     private boolean sealed;
 
     /** The table every chunk of this recording takes its binding ids from. */
+    /** The rounded clips its chunks name, by index. */
+    public CgClipTable clips() {
+        return clips;
+    }
+
     public CgBindingTable bindings() {
         return bindings;
     }
@@ -177,6 +184,7 @@ public final class CgRecording {
         readsSeen.clear();
         chunks.reset();
         bindings.reset();
+        clips.reset();
         sealed = false;
     }
 
