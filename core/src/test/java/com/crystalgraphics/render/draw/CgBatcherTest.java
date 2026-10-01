@@ -64,6 +64,17 @@ public class CgBatcherTest {
     }
 
     @Test
+    public void theLastBatchTakesItsKeyFromAnyDomainAndNothingLooksPastIt() {
+        batcher.reset(CgOrder.LOOKBACK);
+        add(1, 0, 0, 0, 10, 10, 0);
+        add(1, 1, 100, 100, 110, 110, 1);   // next to it: joins, whatever moves
+        add(2, 0, 200, 0, 210, 10, 2);
+        add(1, 0, 40, 0, 50, 10, 3);         // may not reach the mixed batch past draw 2
+        batcher.finish();
+        assertEquals("[01][2][3]", batches());
+    }
+
+    @Test
     public void aDrawWithoutBoundsOverlapsEverything() {
         batcher.reset(CgOrder.LOOKBACK);
         add(1, 0, 0, 0, 10, 10, 0);
