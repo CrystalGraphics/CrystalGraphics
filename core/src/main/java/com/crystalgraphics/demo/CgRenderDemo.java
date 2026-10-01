@@ -28,11 +28,11 @@ import java.nio.ByteOrder;
  * <pre>{@code
  * -Dcrystalgraphics.demo=true                         // draw them
  * -Dcrystalgraphics.demo.capture=build/demo.png       // and write the world, with no GUI over it, to a PNG
- * -Dcrystalgraphics.demo.captureAt=300                // after this many world frames (300 by default)
+ * -Dcrystalgraphics.demo.captureAt=300                // this many world frames after the cubes were placed
  * }</pre>
  *
- * <p>The cubes are placed once, on the first world frame, on whole blocks a few blocks along the camera's view and
- * a little above it, so terrain in front does not hide them, and stay there. Each fills exactly one block cell, so a
+ * <p>The cubes are placed on the first world frame, on whole blocks a few blocks along the camera's view and a little
+ * above it, so terrain in front does not hide them, and stay there until the camera jumps far from them. Each fills exactly one block cell, so a
  * capture shows whether the stage's view is the camera the world was drawn with: on the grid at every angle, or off
  * it.</p>
  */
@@ -50,6 +50,7 @@ public final class CgRenderDemo {
     private static final int GRID_STEP = 2;   // blocks between cubes
     private static final int AHEAD = 6;       // blocks from the eye to the grid's centre, along the view
     private static final int ABOVE = 2;       // and up the screen
+    private static final int REANCHOR_DISTANCE = 48;
 
     private boolean installed;
     private boolean anchored;
@@ -94,7 +95,8 @@ public final class CgRenderDemo {
             cubeMaterial = CgMaterial.load("crystalgraphics:shaders/demo_render.shader");
             LOGGER.info("[CgRenderDemo] resources initialised (mesh={}, material={})", cubeMesh, cubeMaterial);
         }
-        if (!anchored) anchor(view);
+        // Again after a jump: the first world frames can see the default spawn, before the server places the player.
+        if (!anchored || farFromGrid(view)) anchor(view);
         CgWorldRenderer world = CgWorldRenderer.get();
         for (int i = 0; i < GRID; i++) {
             for (int j = 0; j < GRID; j++) {
@@ -108,6 +110,11 @@ public final class CgRenderDemo {
         }
     }
 
+    private boolean farFromGrid(CgHostView view) {
+        double dx = view.x() - anchorX, dy = view.y() - anchorY, dz = view.z() - anchorZ;
+        return dx * dx + dy * dy + dz * dz > REANCHOR_DISTANCE * REANCHOR_DISTANCE;
+    }
+
     /** Puts the grid ahead of the eye and up the screen, whatever the host folds into its view matrix. */
     private void anchor(CgHostView view) {
         Matrix4f toWorld = new Matrix4f(view.view()).invert();
@@ -118,6 +125,7 @@ public final class CgRenderDemo {
         anchorY = (long) Math.floor(view.y() + eye.y + forward.y * AHEAD + up.y * ABOVE);
         anchorZ = (long) Math.floor(view.z() + eye.z + forward.z * AHEAD + up.z * ABOVE);
         anchored = true;
+        worldFrames = 0;
         LOGGER.info("[CgRenderDemo] cubes on blocks around ({}, {}, {}), camera at ({}, {}, {})",
                 anchorX, anchorY, anchorZ, view.x(), view.y(), view.z());
     }
