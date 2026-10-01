@@ -1,5 +1,8 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.render.property.CgPropertyValues;
+
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -19,11 +22,21 @@ import java.util.List;
 public final class CgFrameGraph {
 
     private final List<CgRecording> recordings = new ArrayList<>();
+    private final List<CgPropertyValues> values = new ArrayList<>();
 
-    /** Adds a sealed recording after those already added. */
+    /** Adds a sealed recording after those already added, drawn with its recorded values. */
     public CgFrameGraph add(CgRecording recording) {
+        return add(recording, null);
+    }
+
+    /**
+     * Adds a sealed recording drawn with {@code values} changing its recorded ones — read when the frame executes, so
+     * a later write moves what the next execution of the same frame draws.
+     */
+    public CgFrameGraph add(CgRecording recording, @Nullable CgPropertyValues values) {
         if (!recording.isSealed()) throw new IllegalArgumentException("seal() a recording before adding it");
         recordings.add(recording);
+        this.values.add(values);
         return this;
     }
 
@@ -31,8 +44,15 @@ public final class CgFrameGraph {
         return Collections.unmodifiableList(recordings);
     }
 
+    /** The values the recording at {@code index} is drawn with, or null. */
+    @Nullable
+    CgPropertyValues values(int index) {
+        return values.get(index);
+    }
+
     /** Empties it for the next frame. */
     public void clear() {
         recordings.clear();
+        values.clear();
     }
 }

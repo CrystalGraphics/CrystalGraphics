@@ -2,6 +2,8 @@ package com.crystalgraphics.render.graph;
 
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.gl.mesh.CgMesh;
+import com.crystalgraphics.render.property.CgPropertyValues;
+import com.crystalgraphics.render.property.CgSpatialTree;
 import com.crystalgraphics.render.draw.CgBatcher;
 import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgDrawChunk;
@@ -66,11 +68,16 @@ public final class CgFrameBuilder {
     private int internMapsUsed;
     private CgDrawChunk[] refChunk = new CgDrawChunk[256];
     private int[] refDraw = new int[256];
+    /** The values each recording of the graph being built is drawn with. */
+    private final IdentityHashMap<CgRecording, CgPropertyValues> valuesOf = new IdentityHashMap<>();
+    private final float[] domainBounds = new float[4];
 
     /** Builds the frame. The graph's recordings are only read. */
     public CgFrame build(CgFrameGraph graph) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "graph.build")) {
             List<CgRecording> recordings = graph.recordings();
+            valuesOf.clear();
+            for (int r = 0; r < recordings.size(); r++) valuesOf.put(recordings.get(r), graph.values(r));
             int total = flatten(recordings);
             edges(recordings, total);
             cull(total);
@@ -258,9 +265,12 @@ public final class CgFrameBuilder {
         batcher.reset(pass.order);
         int refs = 0;
         List<CgDrawChunk> chunks = pass.chunkList();
+        CgSpatialTree tree = pass.recording.spatial();
         for (int c = 0; c < chunks.size(); c++) {
             CgDrawChunk chunk = chunks.get(c);
             int scissor = pass.chunkScissor(c);
+            // Draws reorder only among those whose relative position cannot change: the nearest movable node's.
+            int domain = tree.domain(chunk.spatial());
             CgBindingTable table = chunk.bindings();
             int[] map = internMap(table);
             for (int d = 0; d < chunk.draws(); d++) {
@@ -272,9 +282,9 @@ public final class CgFrameBuilder {
                 }
                 refChunk[refs] = chunk;
                 refDraw[refs] = d;
-                // The chunk's spatial node is its batching domain until G10 names the movable ones.
-                batcher.add(chunk.pipeline(d), map[local], chunk.kind(d), chunk.mesh(d), chunk.spatial(), scissor,
-                        chunk.x0(d), chunk.y0(d), chunk.x1(d), chunk.y1(d), chunk.sortKey(d), refs);
+                tree.boundsInDomain(chunk.spatial(), chunk.x0(d), chunk.y0(d), chunk.x1(d), chunk.y1(d), domainBounds);
+                batcher.add(chunk.pipeline(d), map[local], chunk.kind(d), chunk.mesh(d), domain, scissor,
+                        domainBounds[0], domainBounds[1], domainBounds[2], domainBounds[3], chunk.sortKey(d), refs);
                 refs++;
             }
         }
@@ -306,6 +316,7 @@ public final class CgFrameBuilder {
         }
         Arrays.fill(refChunk, 0, refs, null);
         packed.clips = frame.clipsOf(pass.recording.clips());
+        packed.palette = frame.paletteOf(pass.recording, valuesOf.get(pass.recording));
         CgBindingTable constants = frame.bindings.begin()
                 .block(CgBindingPoints.FRAME_DATA_UBO, pass.constants, 0, CgPassConstants.FLOATS);
         for (int i = 0; i < pass.textureCount(); i++) constants.texture(pass.textureUnit(i), pass.texture(i));

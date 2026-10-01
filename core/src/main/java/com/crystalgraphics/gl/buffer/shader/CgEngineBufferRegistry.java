@@ -3,9 +3,12 @@ package com.crystalgraphics.gl.buffer.shader;
 import com.crystalgraphics.gl.render.CgClipTable;
 import com.crystalgraphics.gl.render.CgQuadRenderer;
 import com.crystalgraphics.gl.render.CgVectorRenderer;
+import com.crystalgraphics.render.property.CgPalette;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
@@ -52,10 +55,13 @@ public final class CgEngineBufferRegistry {
     private static final Map<String, Provider> PROVIDERS = new LinkedHashMap<>();
 
     static {
+        register("palette", CgPalette::buffer, CgPalette.MACRO_NAME,
+                "crystalgraphics:shaders/env/buffer/palette.glsl");
+        // A quad or curve is positioned through its spatial node, so either brings the palette with it.
         register("quad", CgQuadRenderer::instanceBuffer, CgQuadRenderer.MACRO_NAME,
-                "crystalgraphics:shaders/env/buffer/quad.glsl");
+                "crystalgraphics:shaders/env/buffer/quad.glsl", "palette");
         register("curve", CgVectorRenderer::instanceBuffer, CgVectorRenderer.MACRO_NAME,
-                "crystalgraphics:shaders/env/buffer/curve.glsl");
+                "crystalgraphics:shaders/env/buffer/curve.glsl", "palette");
         register("clip", CgClipTable::buffer, CgClipTable.MACRO_NAME,
                 "crystalgraphics:shaders/env/buffer/clip.glsl");
     }
@@ -91,11 +97,33 @@ public final class CgEngineBufferRegistry {
      *                is to say
      */
     public static synchronized void register(String token, Supplier<CgShaderBuffer> buffer, String macroName,
-                                             String envPath) {
-        Provider existing = PROVIDERS.putIfAbsent(token, new Provider(token, buffer, macroName, envPath));
+                                             String envPath, String... requires) {
+        for (String required : requires) {
+            if (!PROVIDERS.containsKey(required)) {
+                throw new IllegalStateException("cg_use token '" + token + "' requires unregistered '" + required + "'");
+            }
+        }
+        Provider existing = PROVIDERS.putIfAbsent(token, new Provider(token, buffer, macroName, envPath, List.of(requires)));
         if (existing != null) {
             throw new IllegalStateException("cg_use token '" + token + "' is already registered");
         }
+    }
+
+    /**
+     * {@code declared} with every token a declared one requires, each placed before the first that needs it, so its
+     * declaration and macros come first. Unknown tokens pass through for the parser to report.
+     */
+    public static synchronized List<String> withRequirements(List<String> declared) {
+        List<String> out = new ArrayList<>(declared.size() + 1);
+        for (String token : declared) addWithRequirements(token, out);
+        return out;
+    }
+
+    private static void addWithRequirements(String token, List<String> out) {
+        if (out.contains(token)) return;
+        Provider provider = PROVIDERS.get(token);
+        if (provider != null) for (String required : provider.requires()) addWithRequirements(required, out);
+        out.add(token);
     }
 
     /** The provider for {@code token}, or {@code null} if none is registered. */
@@ -119,6 +147,7 @@ public final class CgEngineBufferRegistry {
      * @param envPath GLSL macros written against this buffer, included right after its declaration,
      *                or null when the declaration is all there is
      */
-    public record Provider(String token, Supplier<CgShaderBuffer> buffer, String macroName, String envPath) {
+    public record Provider(String token, Supplier<CgShaderBuffer> buffer, String macroName, String envPath,
+                           List<String> requires) {
     }
 }

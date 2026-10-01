@@ -16,6 +16,7 @@ import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
 import com.crystalgraphics.gl.buffer.staging.CgStagingBuffer;
 import com.crystalgraphics.render.draw.CgChunkSink;
 import com.crystalgraphics.render.draw.CgInstanceKind;
+import com.crystalgraphics.render.property.CgPalette;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
@@ -181,7 +182,7 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
      * lookups for offsets that are a property of a compile-time-constant format.</p>
      */
     private final int offOrigin, offRight, offUp, offUv0, offUv1, offColor, offAtlasLayer;
-    private final int offCustom0, offCustom1, offCustom2, offClip;
+    private final int offCustom0, offCustom1, offCustom2, offClip, offNode;
 
 
     private CgQuadRenderer(CgStagingBuffer accumStaging, CgBufferWriter accumWriter) {
@@ -198,6 +199,7 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
         this.offCustom1 = accumWriter.offsetOf("custom1", CgGpuType.VEC4);
         this.offCustom2 = accumWriter.offsetOf("custom2", CgGpuType.FLOAT);
         this.offClip = accumWriter.offsetOf("clip", CgGpuType.FLOAT);
+        this.offNode = accumWriter.offsetOf("node", CgGpuType.FLOAT);
     }
 
     /**
@@ -344,6 +346,7 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
         private float c1x, c1y, c1z, c1w;
         private float c2;
         private int clip;
+        private float node;
         private Matrix4f pose;
 
         // Reused across every submit() call on this Quad instance — never reallocated.
@@ -372,6 +375,7 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
             c1x = c1y = c1z = c1w = 0f;
             c2 = 0f;
             clip = 0;
+            node = 0f;
             pose = null;
             return this;
         }
@@ -486,6 +490,15 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
             return this;
         }
 
+        /**
+         * The spatial and effect nodes this is drawn in; 0 and 0, the default, are the pass's own space at full
+         * opacity. @see CgPalette
+         */
+        public Quad node(int spatial, int effect) {
+            this.node = CgPalette.pack(spatial, effect);
+            return this;
+        }
+
         /** {@code custom0} from a packed ARGB colour, unpacked to rgba in 0..1. */
         public Quad custom0(int argb) {
             return custom0(((argb >> 16) & 0xFF) / 255f, ((argb >> 8) & 0xFF) / 255f,
@@ -558,6 +571,7 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
                     .floatAt(offAtlasLayer, atlasLayer)
                     .floatAt(offCustom2, c2)
                     .floatAt(offClip, clip)
+                    .floatAt(offNode, node)
                     .vec4At(offCustom0, c0x, c0y, c0z, c0w)
                     .vec4At(offCustom1, c1x, c1y, c1z, c1w)
                     .endRecord();
