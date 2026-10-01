@@ -1804,8 +1804,8 @@ public class CgTextRenderer {
         float logicalBearingX = p.planeLeft() * scaleFactor, logicalBearingY = p.planeTop() * scaleFactor;
         quadW = p.getPlaneWidth() * scaleFactor;
         quadH = p.getPlaneHeight() * scaleFactor;
-        float baseline = resolvedGlyphs.glyphY[localIndex] + dy;
-        quadX = resolvedGlyphs.glyphX[localIndex] + logicalBearingX + dx;
+        float baseline = resolvedGlyphs.originY + resolvedGlyphs.glyphY[localIndex] + dy;
+        quadX = resolvedGlyphs.originX + resolvedGlyphs.glyphX[localIndex] + logicalBearingX + dx;
         quadY = baseline - logicalBearingY;
 
         // Bitmap text only, and ortho-only (see pixelSnapDelta's javadoc and the pixelSnap

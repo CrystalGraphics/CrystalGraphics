@@ -28,20 +28,17 @@ public class CgGlyphPlacementCacheBudgetTest {
 
     private static CgGlyphPlacementCache.Entry entry(int glyphCount) {
         return new CgGlyphPlacementCache.Entry(
-                true, 16, 0L, 0L, 0L, glyphCount,
+                true, false, 16, 0L, 0L, 0L, glyphCount,
                 new float[glyphCount], new float[glyphCount], new int[glyphCount],
                 new CgGlyphPlacement[glyphCount]);
     }
 
-    /**
-     * Distinct keys. {@code layout} compares by identity, so a fresh mock per key is enough —
-     * no real layout needed, and building one would drag fonts into a pure-logic test.
-     */
+    /** Distinct keys by colour: no real layout needed, and building one would drag fonts into a pure-logic test. */
     private static final CgFontKey FONT_KEY =
             new CgFontKey("test:font.ttf", com.crystalgraphics.api.font.CgFontStyle.REGULAR, 16);
 
     private static CgGlyphPlacementCache.Key key(int i) {
-        return new CgGlyphPlacementCache.Key(null, i, 0f, true, FONT_KEY, 0xFFFFFFFF, 0);
+        return new CgGlyphPlacementCache.Key(null, true, FONT_KEY, i, 0);
     }
 
     @Before

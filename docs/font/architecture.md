@@ -101,7 +101,9 @@ Called by the cache layer, never by the renderer.
 ### `text/render` — drawing
 
 - `CgResolvedGlyphs` — resolves a layout into per-glyph placements for one draw.
-- `CgGlyphPlacementCache` — those placements, cached per draw (layout, position, tier, font).
+- `CgGlyphPlacementCache` — those placements, cached per layout (layout, tier, font, colour, sub-pixel phase), relative
+  to the layout's origin so moving text reuses them; only an entry that wanted distance-field and fell back is
+  refreshed when the atlas gains glyphs.
 - `CgTextCuller` — skips a draw whose whole layout is off-screen.
 - `CgTextShadowList`, `CgTextShadowPlan` — a draw's shadows, and what each glyph paints for each.
 - `CgTextSortKey` — packs each glyph and decoration into a sortable key; its batch bits are the tier and

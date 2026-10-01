@@ -33,14 +33,14 @@ public class CgGlyphPlacementCacheTest {
     public void testKey_sameFieldsIncludingRgba_areEqual() {
         CgTextLayout layout = new CgTextLayout(List.of(), 0, 0, METRICS);
 
-        CgGlyphPlacementCache.Key a = CgGlyphPlacementCache.key(layout, 1f, 2f, false, FONT_KEY, 0xFFFFFFFF, 0);
-        CgGlyphPlacementCache.Key b = CgGlyphPlacementCache.key(layout, 1f, 2f, false, FONT_KEY, 0xFFFFFFFF, 0);
+        CgGlyphPlacementCache.Key a = CgGlyphPlacementCache.key(layout, false, FONT_KEY, 0xFFFFFFFF, 0);
+        CgGlyphPlacementCache.Key b = CgGlyphPlacementCache.key(layout, false, FONT_KEY, 0xFFFFFFFF, 0);
 
         // The pose's sub-pixel phase is part of identity now: a translated element reaches the
         // same layout at the same x/y, and sharing its placements is what kept a fractional
         // transform from ever moving the glyphs.
         CgGlyphPlacementCache.Key shifted =
-                CgGlyphPlacementCache.key(layout, 1f, 2f, false, FONT_KEY, 0xFFFFFFFF, 7);
+                CgGlyphPlacementCache.key(layout, false, FONT_KEY, 0xFFFFFFFF, 7);
         assertNotEquals(a, shifted);
 
         assertEquals(a, b);
@@ -51,8 +51,8 @@ public class CgGlyphPlacementCacheTest {
     public void testKey_differentRgba_areNotEqual() {
         CgTextLayout layout = new CgTextLayout(List.of(), 0, 0, METRICS);
 
-        CgGlyphPlacementCache.Key white = CgGlyphPlacementCache.key(layout, 1f, 2f, false, FONT_KEY, 0xFFFFFFFF, 0);
-        CgGlyphPlacementCache.Key red = CgGlyphPlacementCache.key(layout, 1f, 2f, false, FONT_KEY, 0xFFFF0000, 0);
+        CgGlyphPlacementCache.Key white = CgGlyphPlacementCache.key(layout, false, FONT_KEY, 0xFFFFFFFF, 0);
+        CgGlyphPlacementCache.Key red = CgGlyphPlacementCache.key(layout, false, FONT_KEY, 0xFFFF0000, 0);
 
         assertNotEquals("Two draws of the same layout/position with different default "
                 + "colors must not share a cache key", white, red);
@@ -62,16 +62,16 @@ public class CgGlyphPlacementCacheTest {
     public void testCacheHit_differentDefaultColorAtSamePosition_isATrueMiss() {
         CgTextLayout layout = new CgTextLayout(List.of(), 0, 0, METRICS);
 
-        CgGlyphPlacementCache.Key whiteKey = CgGlyphPlacementCache.key(layout, 5f, 5f, false, FONT_KEY, 0xFFFFFFFF, 0);
+        CgGlyphPlacementCache.Key whiteKey = CgGlyphPlacementCache.key(layout, false, FONT_KEY, 0xFFFFFFFF, 0);
         CgGlyphPlacementCache.Entry whiteEntry = new CgGlyphPlacementCache.Entry(
-                false, 16, 1L, 0L, 0L, 1,
+                false, false, 16, 1L, 0L, 0L, 1,
                 new float[]{0f}, new float[]{0f}, new int[]{0xFFFFFFFF},
                 new CgGlyphPlacement[]{null});
         CgGlyphPlacementCache.put(whiteKey, whiteEntry);
 
         assertNotNull("Same key should hit", CgGlyphPlacementCache.get(whiteKey, 16, 1L, 0L, 0L));
 
-        CgGlyphPlacementCache.Key redKey = CgGlyphPlacementCache.key(layout, 5f, 5f, false, FONT_KEY, 0xFFFF0000, 0);
+        CgGlyphPlacementCache.Key redKey = CgGlyphPlacementCache.key(layout, false, FONT_KEY, 0xFFFF0000, 0);
         assertNull("A different default color at the same layout/position must be a cache "
                         + "miss, not incorrectly reuse the white entry's resolved colors",
                 CgGlyphPlacementCache.get(redKey, 16, 1L, 0L, 0L));
@@ -81,7 +81,7 @@ public class CgGlyphPlacementCacheTest {
     public void testEntry_storesResolvedPerGlyphColor() {
         int[] colors = {0xFFFF0000, 0xFFFFFFFF};
         CgGlyphPlacementCache.Entry entry = new CgGlyphPlacementCache.Entry(
-                false, 16, 1L, 0L, 0L, 2,
+                false, false, 16, 1L, 0L, 0L, 2,
                 new float[]{0f, 10f}, new float[]{0f, 0f}, colors,
                 new CgGlyphPlacement[]{null, null});
 
@@ -94,14 +94,14 @@ public class CgGlyphPlacementCacheTest {
      * "long past the unconverged rate limit". */
     private static CgGlyphPlacementCache.Entry entry(boolean distanceField, int effectiveTargetPx,
                                                       long contentGen, long evictionGen) {
-        return new CgGlyphPlacementCache.Entry(distanceField, effectiveTargetPx, contentGen, evictionGen,
+        return new CgGlyphPlacementCache.Entry(distanceField, !distanceField, effectiveTargetPx, contentGen, evictionGen,
                 0L, 0,
                 new float[0], new float[0], new int[0], new CgGlyphPlacement[0]);
     }
 
     /** An entry of a real size, for the rules that depend on how much a refresh would cost. */
     private static CgGlyphPlacementCache.Entry sized(boolean distanceField, int glyphs, long builtFrame) {
-        return new CgGlyphPlacementCache.Entry(distanceField, 64, 10L, 0L, builtFrame, glyphs,
+        return new CgGlyphPlacementCache.Entry(distanceField, !distanceField, 64, 10L, 0L, builtFrame, glyphs,
                 new float[glyphs], new float[glyphs], new int[glyphs], new CgGlyphPlacement[glyphs]);
     }
 
@@ -140,6 +140,17 @@ public class CgGlyphPlacementCacheTest {
         assertTrue(e.matches(48, 100L, 0L, PAST_RATE_LIMIT));
         assertFalse("new atlas content may mean a bitmap-fallback glyph can now upgrade",
                 e.matches(48, 101L, 0L, PAST_RATE_LIMIT));
+    }
+
+    @Test
+    public void testMatches_bitmapByRequest_survivesNewAtlasContent() {
+        // Bitmap because the draw asked for bitmap (small UI text): nothing new in the atlas can
+        // improve it, so a glyph added anywhere must not re-resolve it.
+        CgGlyphPlacementCache.Entry e = new CgGlyphPlacementCache.Entry(false, false, 48, 100L, 0L, 0L, 0,
+                new float[0], new float[0], new int[0], new CgGlyphPlacement[0]);
+
+        assertTrue(e.matches(48, 101L, 0L, PAST_RATE_LIMIT));
+        assertFalse("its raster size still decides it", e.matches(47, 101L, 0L, PAST_RATE_LIMIT));
     }
 
     @Test

@@ -104,7 +104,7 @@ channels that register later — except a **detail channel**, which only its ful
 
 | Channel | What is on it | Density |
 |---|---|---|
-| `crystalgraphics.text` | shaping, line breaking, fonts, glyph generation and placement, one zone per text draw (`glyph.resolveGlyphs`) and per text batch | hundreds a frame on a busy screen |
+| `crystalgraphics.text` | shaping, line breaking, fonts, glyph generation and placement, one zone per text draw (`glyph.resolveGlyphs`) and per text batch. Counters `placementCache.hit`/`.miss`, a miss by reason (`.miss.absent` a key never cached, `.evicted`, `.targetPx`, `.content` an entry refreshed because the atlas gained glyphs), and `atlas.added.bitmap`/`.msdf`/`.empty` per glyph the atlases took | hundreds a frame on a busy screen |
 | `crystalgraphics.gl` | one zone per material bind (`material.doBind`) and per quad and curve flush, the frame ring | about 1,400 a frame on the CrystalGUI desktop |
 | `crystalgraphics.gl.detail` | **detail** — the steps inside each: `doBind.*`, `quadRenderer.upload/bindBuffer/drawInstanced`, `curveRenderer.*`, stream-buffer `map`/`write`/`commit` | about 9,000 a frame on the desktop |
 | `crystalgraphics.text.detail` | **detail** — the steps inside each text draw: `placementCache.*`, `glyph.flatten/resolvePlacements/resolveDecorations`, `draw.sortKeys/syncProjection/submitSortedQuads/quadLoop/planShadows` | about 1,400 a frame |

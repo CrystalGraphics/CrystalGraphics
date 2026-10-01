@@ -128,7 +128,7 @@ against distance field, per stage.
 |---|---|---|
 | `CgTextLayoutCache` | text content, font or family, constraints | shaping and wrapping repeated `text(...)` draws |
 | `CgShapedParagraph` | the last `(width, height)` it was asked for | re-wrapping at the same width |
-| `CgGlyphPlacementCache` | layout, position, tier, font | resolving a static layout's glyphs every frame |
+| `CgGlyphPlacementCache` | layout, tier, font, colour, sub-pixel phase | resolving a layout's glyphs every frame, wherever it is drawn |
 | The atlases | glyph key | generating a glyph twice |
 
 ---
