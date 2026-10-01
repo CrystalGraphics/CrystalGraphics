@@ -96,10 +96,16 @@ uniform sampler2D cg_DepthBuffer;
 //     float self  = cg_LinearEyeDepth(gl_FragCoord.z);
 //     float fade  = saturate((scene - self) / _FadeDistance);   // soft particles, water edges
 //
-// Exact for any perspective cg_ProjMatrix built for the pass's convention, reversed or not.
+// Exact for an orthographic projection, and for a perspective one in the pass's convention, reversed or not, times
+// any affine transform of eye space: Minecraft multiplies its view bobbing and hurt shake into the projection, which
+// scales [2][2] and tilts the w row. The perspective's own terms are recovered from both rows, since read off [2][2]
+// alone a half-degree bob moved a point at render distance by half its distance or more.
 float cg_LinearEyeDepth(float windowDepth) {
     float ndc = cg_DepthParams.y > 0.5 ? windowDepth : windowDepth * 2.0 - 1.0;
-    return cg_ProjMatrix[3][2] / (ndc + cg_ProjMatrix[2][2]);
+    if (cg_ProjMatrix[2][3] == 0.0) return (cg_ProjMatrix[3][2] - ndc) / cg_ProjMatrix[2][2];
+    float p22 = -cg_ProjMatrix[2][2] / cg_ProjMatrix[2][3];
+    float p32 = cg_ProjMatrix[3][2] + p22 * cg_ProjMatrix[3][3];
+    return p32 / (ndc + p22);
 }
 #define CG_SCENE_EYE_DEPTH(uv) cg_LinearEyeDepth(texture(cg_DepthBuffer, (uv)).r)
 #define CG_DEPTH_REVERSED      (cg_DepthParams.x > 0.5)
