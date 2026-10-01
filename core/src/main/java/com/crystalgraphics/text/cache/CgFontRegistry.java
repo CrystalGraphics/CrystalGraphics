@@ -1,7 +1,5 @@
 package com.crystalgraphics.text.cache;
 
-import com.crystalgraphics.platform.gl.state.CgGlScope;
-import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.freetype.FTBitmap;
 import com.crystalgraphics.freetype.FTFace;
 import com.crystalgraphics.freetype.FTLoadFlags;
@@ -1117,7 +1115,8 @@ public class CgFontRegistry {
     private static final int COMMIT_BACKLOG_LARGE = 2048;
 
     /**
-     * Commits finished glyph results into their atlases, within the given budgets.
+     * Commits finished glyph results into their atlases, within the given budgets. Touches no GL: the uploads are
+     * queued on {@code CgTextureUploads}, so the bind-sharing below is moot today and the record is kept for its numbers.
      *
      * <h4>Uploads are deliberately NOT batched — built twice, measured, deleted twice</h4>
      * <p>The idea: bind the atlas texture and set {@code GL_UNPACK_ALIGNMENT} once for the whole
@@ -1162,28 +1161,21 @@ public class CgFontRegistry {
         long start = System.nanoTime();
         long bytesCommitted = 0;
         int committed = 0;
-        // Opened on the first commit, so an empty queue reads no GL: uploads bind textures, and an atlas
-        // growing binds read and draw framebuffers, all at the host's frame end.
-        CgGlScope scope = null;
-        try {
-            while (committed < maxCommits && bytesCommitted < maxBytes) {
-                // Time check before polling, so an already-dequeued result is never dropped and a
-                // fully drained queue costs one nanoTime() call, not a wasted poll.
-                if (System.nanoTime() - start >= maxNanos) {
-                    CgTrace.add(CgChannels.TEXT, "asyncCommit.timeBudgetHit", 1);
-                    break;
-                }
-                CgGlyphGenerationResult result = glyphGenerationExecutor.pollCompleted();
-                if (result == null) {
-                    break;
-                }
-                if (scope == null) scope = CgGlState.saveAll();
-                commitGeneratedGlyph(result, frame);
-                committed++;
-                bytesCommitted += estimateUploadBytes(result);
+        // No GL: a commit's upload and any growth it causes are queued, and run before the next frame executes.
+        while (committed < maxCommits && bytesCommitted < maxBytes) {
+            // Time check before polling, so an already-dequeued result is never dropped and a
+            // fully drained queue costs one nanoTime() call, not a wasted poll.
+            if (System.nanoTime() - start >= maxNanos) {
+                CgTrace.add(CgChannels.TEXT, "asyncCommit.timeBudgetHit", 1);
+                break;
             }
-        } finally {
-            if (scope != null) scope.close();
+            CgGlyphGenerationResult result = glyphGenerationExecutor.pollCompleted();
+            if (result == null) {
+                break;
+            }
+            commitGeneratedGlyph(result, frame);
+            committed++;
+            bytesCommitted += estimateUploadBytes(result);
         }
         CgTrace.add(CgChannels.TEXT, "asyncCommit.glyphsUploaded", committed);
         CgTrace.add(CgChannels.TEXT, "asyncCommit.bytesUploaded", bytesCommitted);

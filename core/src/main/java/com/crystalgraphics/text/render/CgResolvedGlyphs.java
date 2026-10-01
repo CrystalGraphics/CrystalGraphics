@@ -293,7 +293,7 @@ final class CgResolvedGlyphs {
      * </ul>
      *
      * <p>Allowing the mix is nearly free at draw time: {@code CgTextRenderer}'s sort key is
-     * ordered {@code (mode, textureId, pxRange)}, and since the atlas texture-array migration
+     * ordered {@code (mode, atlasId, pxRange)}, and since the atlas texture-array migration
      * one atlas family is a single texture id with a single pxRange regardless of page count.
      * So a mixed draw costs exactly <strong>two</strong> batches — one bitmap, one
      * distance-field — for any number of glyphs, not one batch per glyph or per page.</p>
@@ -474,7 +474,7 @@ final class CgResolvedGlyphs {
      * into that font's existing batch instead of forcing a separate one. Built fresh every draw
      * call in {@link #resolveDecorations}; never stored anywhere.
      */
-    record ResolvedDecoration(int atlasTextureId, int atlasPageIndex, boolean isDistanceField, float pxRange,
+    record ResolvedDecoration(int atlasId, int atlasPageIndex, boolean isDistanceField, float pxRange,
                               float u0, float v0, float u1, float v1,
                               float qx, float qy, float w, float h, int rgba, boolean underText) {
     }
@@ -506,7 +506,7 @@ final class CgResolvedGlyphs {
             int rgba = seg.argbColor() != 0 ? seg.argbColor() : drawRgba;
             float qx = x + seg.x0();
             float qy = y + seg.y() - seg.thickness() / 2f;
-            resolved.add(new ResolvedDecoration(texel.atlasTextureId(), texel.atlasPageIndex(),
+            resolved.add(new ResolvedDecoration(texel.atlasId(), texel.atlasPageIndex(),
                     texel.isDistanceField(), texel.pxRange(),
                     texel.u0(), texel.v0(), texel.u1(), texel.v1(),
                     qx, qy, seg.x1() - seg.x0(), seg.thickness(), rgba, seg.underText()));

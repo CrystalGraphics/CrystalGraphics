@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.gl.texture.CgTextureUploads;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
@@ -75,6 +76,8 @@ public final class CgExecutor {
      * immediate draw always left it. Render thread, inside a frame.
      */
     public static void execute(CgFrame frame, boolean restoreState) {
+        // Texture work recorded with the frame, or before it, that could not run where it was recorded.
+        CgTextureUploads.apply();
         long ringFrame = CgFrameRing.frame();
         if (depth == 0 && ringFrame != trimmedFrame) {
             POOL.endFrame();

@@ -1,5 +1,6 @@
 package com.crystalgraphics.demo;
 
+import com.crystalgraphics.gl.texture.CgTextureUploads;
 import com.crystalgraphics.api.PoseStack;
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgFontStyle;
@@ -140,13 +141,19 @@ public final class CgFontDemo {
         }
     }
 
+    /** The GL id of a page's atlas texture, made first if its creation is still queued. */
+    private static int textureIdOf(CgGlyphAtlasPage page) {
+        CgTextureUploads.apply();
+        return page.getTextureId();
+    }
+
     private void drawDiagAtlas(int screenW, int screenH) {
         if (demoFontRegistry == null || demoFont == null || demoFont.isDisposed()) return;
 
         ensureDiagAtlasResources();
 
         CgGlyphAtlasPage bitmapAtlas = demoFontRegistry.findPopulatedBitmapPage(demoFont.getKey());
-        if (bitmapAtlas == null || bitmapAtlas.isDeleted() || bitmapAtlas.getTextureId() == 0) return;
+        if (bitmapAtlas == null || bitmapAtlas.isDeleted() || textureIdOf(bitmapAtlas) == 0) return;
 
         int atlasDisplaySize = Math.min(256, Math.min(screenW / 2, screenH / 2));
         float x0 = 10.0f;
@@ -166,7 +173,7 @@ public final class CgFontDemo {
                     .set1i("u_atlas", 0)
                     .set1i("u_atlasType", 0));
             CgGL.glActiveTexture(CgGL.GL_TEXTURE0);
-            CgGL.glBindTexture(CgGL.GL_TEXTURE_2D, bitmapAtlas.getTextureId());
+            CgGL.glBindTexture(CgGL.GL_TEXTURE_2D, textureIdOf(bitmapAtlas));
 
             try (CgGlScope shaderScope = diagAtlasShader.bindScoped()) {
                 CgGL.glBindVertexArray(diagAtlasVao);
@@ -176,7 +183,7 @@ public final class CgFontDemo {
             }
 
             CgGlyphAtlasPage msdfAtlas = demoFontRegistry.findPopulatedMsdfPage(demoFont.getKey());
-            if (msdfAtlas != null && !msdfAtlas.isDeleted() && msdfAtlas.getTextureId() != 0) {
+            if (msdfAtlas != null && !msdfAtlas.isDeleted() && textureIdOf(msdfAtlas) != 0) {
                 float mx0 = x1 + 10.0f;
                 float my0 = y0;
                 float mx1 = mx0 + atlasDisplaySize;
@@ -184,7 +191,7 @@ public final class CgFontDemo {
                 updateDiagAtlasQuad(mx0, my0, mx1, my1);
 
                 diagAtlasShader.applyBindings(b -> b.set1i("u_atlasType", 1));
-                CgGL.glBindTexture(CgGL.GL_TEXTURE_2D, msdfAtlas.getTextureId());
+                CgGL.glBindTexture(CgGL.GL_TEXTURE_2D, textureIdOf(msdfAtlas));
 
                 try (CgGlScope shaderScope = diagAtlasShader.bindScoped()) {
                     CgGL.glBindVertexArray(diagAtlasVao);

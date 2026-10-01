@@ -71,6 +71,9 @@ public class CgGlyphAtlasPage {
 
     /** The owning atlas's shared array texture. {@code null} in {@link #createForTest} mode. */
     private final CgTexture2DArray arrayTexture;
+    /** The owning atlas's {@link CgGlyphAtlas#getId() id}, which every placement on this page carries. */
+    @Getter
+    private final int atlasId;
 
     @Getter
     private boolean deleted;
@@ -101,9 +104,10 @@ public class CgGlyphAtlasPage {
     // ── Constructor (use factory methods) ──────────────────────────────
 
     private CgGlyphAtlasPage(int pageIndex, int pageWidth, int pageHeight,
-                             CgGlyphAtlas.Type type, CgTexture2DArray arrayTexture,
+                             CgGlyphAtlas.Type type, int atlasId, CgTexture2DArray arrayTexture,
                              CgPackingStrategy packer) {
         this.pageIndex = pageIndex;
+        this.atlasId = atlasId;
         this.pageWidth = pageWidth;
         this.pageHeight = pageHeight;
         this.type = type;
@@ -138,22 +142,22 @@ public class CgGlyphAtlasPage {
      * @return a new page instance
      */
     public static CgGlyphAtlasPage create(int pageWidth, int pageHeight,
-                                          CgGlyphAtlas.Type type, int pageIndex,
+                                          CgGlyphAtlas.Type type, int pageIndex, int atlasId,
                                           CgTexture2DArray arrayTexture,
                                           CgPackingStrategy packer) {
         if (arrayTexture == null) {
             throw new IllegalArgumentException("arrayTexture must not be null for a real (non-test) page");
         }
-        return new CgGlyphAtlasPage(pageIndex, pageWidth, pageHeight, type, arrayTexture, packer);
+        return new CgGlyphAtlasPage(pageIndex, pageWidth, pageHeight, type, atlasId, arrayTexture, packer);
     }
 
     /**
      * Creates a test-mode page that skips all GL calls (no array texture).
      */
     static CgGlyphAtlasPage createForTest(int pageWidth, int pageHeight,
-                                          CgGlyphAtlas.Type type, int pageIndex,
+                                          CgGlyphAtlas.Type type, int pageIndex, int atlasId,
                                           CgPackingStrategy packer) {
-        return new CgGlyphAtlasPage(pageIndex, pageWidth, pageHeight, type, null, packer);
+        return new CgGlyphAtlasPage(pageIndex, pageWidth, pageHeight, type, atlasId, null, packer);
     }
 
     // ── Core API ───────────────────────────────────────────────────────
@@ -304,9 +308,9 @@ public class CgGlyphAtlasPage {
     // ── Queries ────────────────────────────────────────────────────────
 
     /**
-     * Returns the GL texture id of the owning atlas's shared array texture
-     * (the same id for every page/layer of this atlas family), or {@code 0}
-     * in test mode.
+     * The GL id of the atlas's array texture, shared by every page of it: 0 in test mode, and until the texture's queued
+     * creation has run on the render thread ({@code CgTextureUploads.apply}). For reading the atlas back; a draw names
+     * it by {@link #getAtlasId()}.
      */
     public int getTextureId() {
         return arrayTexture != null ? arrayTexture.getId() : 0;
@@ -414,7 +418,7 @@ public class CgGlyphAtlasPage {
         int atlasTop = py;
 
         return new CgGlyphPlacement(
-                key, getTextureId(), pageIndex, type,
+                key, atlasId, pageIndex, type,
                 resolvedPlaneLeft, resolvedPlaneBottom, resolvedPlaneRight, resolvedPlaneTop,
                 atlasLeft, atlasBottom, atlasRight, atlasTop,
                 u0, v0, u1, v1,

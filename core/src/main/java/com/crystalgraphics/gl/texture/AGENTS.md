@@ -16,7 +16,8 @@ via the singleton `CgTextureManager`.
 | `CgTextureManager.java` | Singleton cache + reload + fallback. See below. |
 | `CgTextureAbstract.java` | Shared base: id/spec/dimensions, bind, delete, mipmap, `checkNotDeleted`. |
 | `CgTexture2D.java` | Single 2D texture (`GL_TEXTURE_2D`). `create(path)`, `create(path, spec)`, `createDirect(path, spec)`, `createEmpty(w, h, spec)`, `createFromPixels(...)`. Two `upload()` overloads. |
-| `CgTexture2DArray.java` | 2D-array texture (`GL_TEXTURE_2D_ARRAY`). `create(paths...)`, `create(spec, paths...)`, `createDirect(spec, paths...)`. |
+| `CgTexture2DArray.java` | 2D-array texture (`GL_TEXTURE_2D_ARRAY`). `create(paths...)`, `create(spec, paths...)`, `createDirect(spec, paths...)`; `allocateEmpty` for incremental uploads, and `allocateDeferred`, its twin that issues no GL (see `CgTextureUploads`). |
+| `CgTextureUploads.java` | Texture work queued where no GL may run — a recording, a worker — applied on the render thread by `CgExecutor` before every frame. A deferred array's id is 0 until then. |
 | `CgTexture3D.java` | 3D texture (`GL_TEXTURE_3D`). `create(paths...)`, `create(spec, paths...)`, `createDirect(spec, paths...)`. |
 | `CgTextureCubemap.java` | Cubemap (`GL_TEXTURE_CUBE_MAP`). `create(spec, posX...negZ)`, `createDirect(spec, posX...negZ)`, `createEmpty(size, spec)`. |
 

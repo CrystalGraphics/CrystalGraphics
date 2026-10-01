@@ -12,10 +12,13 @@ import com.crystalgraphics.util.io.CgTextureIO;
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.nio.ShortBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import lombok.Getter;
+import javax.annotation.Nullable;
 
 /**
  * 2D-array GL texture (target {@code GL_TEXTURE_2D_ARRAY = 0x8C1A}). Single
@@ -41,7 +44,7 @@ import lombok.Getter;
  * once, from file" path used by {@link #create}/{@link #createDirect}) never calls
  * {@link #uploadLayerRegion} and so is untouched by this.</p>
  */
-public final class CgTexture2DArray extends CgTextureAbstract {
+public final class CgTexture2DArray extends CgTextureAbstract implements CgTextureUploads.Pending {
 
     private static final Logger LOGGER = Logger.getLogger(CgTexture2DArray.class.getName());
 
@@ -63,10 +66,32 @@ public final class CgTexture2DArray extends CgTextureAbstract {
      */
     private PageData[] pages = new PageData[0];
 
+    /** Made by {@link #allocateDeferred}: GL work is queued on {@link CgTextureUploads} rather than issued. */
+    private final boolean deferred;
+    /** Deferred only: whether the GL texture exists yet, and how many layers its storage has. */
+    private boolean allocated;
+    private int storageDepth;
+    /** Deferred only: uploads not yet applied, oldest first, each with its own copy of the data. */
+    private final List<QueuedUpload> queued = new ArrayList<>();
+    @Nullable
+    private ByteBuffer applyBytes;
+    @Nullable
+    private FloatBuffer applyFloats;
+
+    /** One upload; exactly one of {@code bytes} and {@code floats} is set. */
+    private record QueuedUpload(int layer, int x, int y, int w, int h, int format, int type,
+                                byte[] bytes, float[] floats) {}
+
     private CgTexture2DArray(int textureId, int width, int height, int depth, CgTextureSpec spec, String[] sourcePaths) {
+        this(textureId, width, height, depth, spec, sourcePaths, false);
+    }
+
+    private CgTexture2DArray(int textureId, int width, int height, int depth, CgTextureSpec spec, String[] sourcePaths,
+                             boolean deferred) {
         super(textureId, width, height, spec);
         this.depth = depth;
         this.sourcePaths = sourcePaths;
+        this.deferred = deferred;
         ensurePageCapacity(depth);
     }
 
@@ -144,6 +169,21 @@ public final class CgTexture2DArray extends CgTextureAbstract {
         return tex;
     }
 
+    /**
+     * {@link #allocateEmpty} with no GL: the texture, its growth and its uploads are made on the render thread when
+     * {@link CgTextureUploads#apply} next runs, which the executor does before every frame. Any thread may allocate,
+     * {@link #uploadLayerRegion upload} and {@link #growLayers grow} it. {@link #getId} is 0 until then.
+     */
+    public static CgTexture2DArray allocateDeferred(int width, int height, int layers, CgTextureSpec spec) {
+        if (width <= 0 || height <= 0)
+            throw new IllegalArgumentException("width/height must be positive, got: " + width + "x" + height);
+        if (layers <= 0)
+            throw new IllegalArgumentException("layers must be positive, got: " + layers);
+        CgTexture2DArray tex = new CgTexture2DArray(0, width, height, layers, spec, null, true);
+        CgTextureUploads.schedule(tex);
+        return tex;
+    }
+
     // ── Per-layer sub-rect upload ───────────────────────────────────────
 
     /**
@@ -171,6 +211,16 @@ public final class CgTexture2DArray extends CgTextureAbstract {
     public void uploadLayerRegion(int layer, int x, int y, int w, int h,
                                    int format, int type, ByteBuffer data) {
         checkNotDeleted();
+        if (deferred) {
+            byte[] copy = new byte[data.remaining()];
+            data.duplicate().get(copy);
+            synchronized (this) {
+                mirrorByteUpload(layer, x, y, w, h, format, type, data);
+                queued.add(new QueuedUpload(layer, x, y, w, h, format, type, copy, null));
+            }
+            CgTextureUploads.schedule(this);
+            return;
+        }
         mirrorByteUpload(layer, x, y, w, h, format, type, data);
         rawUpload(layer, x, y, w, h, format, type, data);
     }
@@ -179,6 +229,16 @@ public final class CgTexture2DArray extends CgTextureAbstract {
     public void uploadLayerRegion(int layer, int x, int y, int w, int h,
                                    int format, int type, FloatBuffer data) {
         checkNotDeleted();
+        if (deferred) {
+            float[] copy = new float[data.remaining()];
+            data.duplicate().get(copy);
+            synchronized (this) {
+                mirrorFloatUpload(layer, x, y, w, h, format, data);
+                queued.add(new QueuedUpload(layer, x, y, w, h, format, type, null, copy));
+            }
+            CgTextureUploads.schedule(this);
+            return;
+        }
         mirrorFloatUpload(layer, x, y, w, h, format, data);
         // Hand the driver GL_FLOAT and let it convert, rather than quantising CPU-side first.
         //
@@ -197,6 +257,56 @@ public final class CgTexture2DArray extends CgTextureAbstract {
         CgTrace.add(CgChannels.GL, "texArray.upload.bytes", bytes);
     }
 
+
+    /** Makes the texture, grows its storage to the layers asked for, then applies the queued uploads. Render thread. */
+    @Override
+    public synchronized void applyPending() {
+        if (isDeleted()) {
+            queued.clear();
+            return;
+        }
+        if (!allocated) {
+            textureId = CgGL.glGenTextures();
+            reallocateStorage(depth);
+            allocated = true;
+            storageDepth = depth;
+        } else if (storageDepth < depth) {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "texArray.grow")) {
+                growStorage(storageDepth, depth);
+            }
+            storageDepth = depth;
+        }
+        for (QueuedUpload u : queued) {
+            if (u.bytes() != null) {
+                if (applyBytes == null || applyBytes.capacity() < u.bytes().length) {
+                    applyBytes = CgBufferUtils.createByteBuffer(Math.max(u.bytes().length, 4096));
+                }
+                applyBytes.clear();
+                applyBytes.put(u.bytes()).flip();
+                rawUpload(u.layer(), u.x(), u.y(), u.w(), u.h(), u.format(), u.type(), applyBytes);
+            } else {
+                if (applyFloats == null || applyFloats.capacity() < u.floats().length) {
+                    applyFloats = CgBufferUtils.createFloatBuffer(Math.max(u.floats().length, 1024));
+                }
+                applyFloats.clear();
+                applyFloats.put(u.floats()).flip();
+                rawUpload(u.layer(), u.x(), u.y(), u.w(), u.h(), u.format(), u.type(), applyFloats);
+            }
+        }
+        CgTrace.add(CgChannels.GL, "texArray.deferredUploads", queued.size());
+        queued.clear();
+    }
+
+    @Override
+    public void delete() {
+        if (deferred) {
+            CgTextureUploads.cancel(this);
+            synchronized (this) {
+                queued.clear();
+            }
+        }
+        super.delete();
+    }
 
     // NOTE: there is deliberately no upload-batching API here (a begin/end pair hoisting the bind
     // and GL_UNPACK_ALIGNMENT setup out of a run of uploads). It was built twice and removed
@@ -296,7 +406,21 @@ public final class CgTexture2DArray extends CgTextureAbstract {
             throw new IllegalArgumentException(
                     "newLayerCount (" + newLayerCount + ") must exceed current depth (" + depth + ")");
         }
-        int oldDepth = depth;
+        if (deferred) {
+            synchronized (this) {
+                depth = newLayerCount;
+                ensurePageCapacity(newLayerCount);
+            }
+            CgTextureUploads.schedule(this);
+            return;
+        }
+        growStorage(depth, newLayerCount);
+        depth = newLayerCount;
+        ensurePageCapacity(newLayerCount);
+    }
+
+    /** Grows the GL storage from {@code oldDepth} layers to {@code newLayerCount}, keeping its content and its id. */
+    private void growStorage(int oldDepth, int newLayerCount) {
 
         // Preferred path: park the existing layers in a scratch texture, reallocate THIS texture
         // in place, then copy them back — both hops GPU-side, no CPU round trip.
@@ -338,8 +462,6 @@ public final class CgTexture2DArray extends CgTextureAbstract {
                 }
 
                 if (copied) {
-                    this.depth = newLayerCount;
-                    ensurePageCapacity(newLayerCount);
                     CgTrace.add(CgChannels.GL, "texArray.growGpuCopy.count", 1);
                     return;
                 }
@@ -356,7 +478,6 @@ public final class CgTexture2DArray extends CgTextureAbstract {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "texArray.realloc")) {
             reallocateStorage(newLayerCount);
         }
-        this.depth = newLayerCount;
         ensurePageCapacity(newLayerCount);
 
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "texArray.replayLayers")) {

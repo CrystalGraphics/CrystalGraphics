@@ -87,7 +87,7 @@ public abstract class CgTextureAbstract implements CgTexture {
     @Override
     public void delete() {
         if (deleted) return;
-        if (owned) CgGL.glDeleteTextures(textureId);
+        if (owned && textureId != 0) CgGL.glDeleteTextures(textureId);
         textureId = 0;
         deleted = true;
     }

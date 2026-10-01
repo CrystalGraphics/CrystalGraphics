@@ -21,6 +21,7 @@ import com.crystalgraphics.gl.render.CgQuadRenderer;
 import com.crystalgraphics.gl.texture.CgTextureMutable;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.draw.CgChunkSink;
+import com.crystalgraphics.text.atlas.CgGlyphAtlas;
 import com.crystalgraphics.text.cache.CgFontRegistry;
 import com.crystalgraphics.text.layout.CgTextLayoutCache;
 import com.crystalgraphics.text.render.context.*;
@@ -641,7 +642,7 @@ public class CgTextRenderer {
      * — a stale keyword left on by a previous transition (this renderer's or another live
      * instance's) would otherwise silently persist into the next bind's compiled variant.</p>
      */
-    private void transitionToMaterial(long batchBits, boolean isDistanceField, int textureId) {
+    private void transitionToMaterial(long batchBits, boolean isDistanceField, int atlasId) {
         flush();
 
         // Counted to expose batch fragmentation: each transition is a flush + keyword toggle +
@@ -650,7 +651,8 @@ public class CgTextRenderer {
         CgTrace.add(CgChannels.TEXT, "draw.materialTransition", 1);
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "draw.materialTransition")) {
             TEXT_MATERIAL.toggleKeyword("MSDF_MODE", isDistanceField);
-            ATLAS_TEXTURE_REF.setId(textureId);
+            // The atlas's texture itself, not its id: the texture is made on the render thread before this draws.
+            ATLAS_TEXTURE_REF.pointAt(CgGlyphAtlas.texture(atlasId));
             activeBatchBits = batchBits;
         }
     }
@@ -1652,7 +1654,7 @@ public class CgTextRenderer {
 
             CgGlyphPlacement p = null;
             boolean isDistanceField;
-            int textureId;
+            int atlasId;
             float pxRange;
             float u0, v0, u1, v1;
             int rgba, atlasLayer;
@@ -1662,7 +1664,7 @@ public class CgTextRenderer {
             if (isDecoration) {
                 CgResolvedGlyphs.ResolvedDecoration d = resolvedDecorations.get(localIndex);
                 isDistanceField = d.isDistanceField();
-                textureId = d.atlasTextureId();
+                atlasId = d.atlasId();
                 pxRange = d.pxRange();
                 quadX = d.qx(); quadY = d.qy(); quadW = d.w(); quadH = d.h();
                 u0 = d.u0(); v0 = d.v0(); u1 = d.u1(); v1 = d.v1();
@@ -1716,7 +1718,7 @@ public class CgTextRenderer {
             } else if (shadow < 0) {
                 p = placements[localIndex];
                 isDistanceField = p.isDistanceField();
-                textureId = p.atlasTextureId();
+                atlasId = p.atlasId();
                 pxRange = p.pxRange();
                 placeGlyph(p, localIndex, baseTargetPx, effectiveTargetPx, pixelSnap && !p.isDistanceField(),
                         modelView, 0f, 0f);
@@ -1738,7 +1740,7 @@ public class CgTextRenderer {
                 byte kind = shadowPlan.kind(shadow, localIndex);
                 p = shadowPlan.placement(shadow, localIndex);
                 isDistanceField = p.isDistanceField();
-                textureId = p.atlasTextureId();
+                atlasId = p.atlasId();
                 pxRange = p.pxRange();
                 u0 = p.u0(); v0 = p.v0(); u1 = p.u1(); v1 = p.v1();
                 rgba = shadowList.argb(shadow);
@@ -1772,7 +1774,7 @@ public class CgTextRenderer {
             }
 
             if (batchBits != activeBatchBits) {
-                transitionToMaterial(batchBits, isDistanceField, textureId);
+                transitionToMaterial(batchBits, isDistanceField, atlasId);
             }
 
             quadRenderer.quad()
@@ -1798,7 +1800,7 @@ public class CgTextRenderer {
             if (diagnosticLogging && p != null) {
                 LOGGER.info("[BatchDiag] glyphId=" + p.key().getGlyphId()
                         + ", atlasType=" + p.atlasType()
-                        + ", textureId=" + p.atlasTextureId()
+                        + ", atlasId=" + p.atlasId()
                         + ", atlasPageIndex/layer=" + p.atlasPageIndex()
                         + ", pxRange=" + p.pxRange()
                         + ", uv=[" + p.u0() + "," + p.v0() + "," + p.u1() + "," + p.v1() + "]"

@@ -90,6 +90,10 @@ substantially slower.
 - renderer should consume placements, not mutate atlas state directly
 - eviction is **page**-granular, never glyph-granular — a whole page's packer is discarded
   along with it, which is why packing strategies never need to free individual rects
+- **an atlas issues no GL.** Its array texture is `CgTexture2DArray.allocateDeferred`: creation, growth and uploads
+  queue on `CgTextureUploads` and run on the render thread before the next frame executes, so placing a glyph is
+  legal while a recording is open. A placement names its atlas by `atlasId`, never a GL id, which does not exist
+  until then; the renderer binds `CgGlyphAtlas.texture(atlasId)`
 
 ## Common agent mistakes to avoid
 
