@@ -491,6 +491,7 @@ essentially every shader wants them. Buffers that only a minority of shaders nee
 |---|---|---|
 | `quad` | `QUAD_DATA(n)` + `CG_QUAD_WORLD_POS` / `CG_QUAD_UV` / `CG_QUAD_COLOR` / `CG_QUAD_NORMAL` / `CG_QUAD_ATLAS_LAYER` / `CG_QUAD_CUSTOM0`-`CG_QUAD_CUSTOM1` (two free vec4s per instance, written with `Quad.custom0`/`custom1` — `CG_OBJECT_CUSTOM*`'s contract at quad granularity, and where a per-quad parameter belongs rather than in a property that breaks the batch), and for screen-space materials the edge and texel antialiasing below | Any shader drawn through `CgQuadRenderer` — UI quads, text glyphs, SDF rects |
 | `curve` | `CURVE_DATA(n)` + `CG_CURVE_WORLD_POS` / `CG_CURVE_P0`–`P2` / `CG_CURVE_COLOR0`–`1` / `CG_CURVE_WIDTHS` / `CG_CURVE_FEATHER` / `CG_CURVE_FLAGS` | Any shader drawn through `CgVectorRenderer` — Bézier strokes, graph wires, connectors |
+| `palette` | `PALETTE_DATA(n)` + `cg_spatial_point`/`_vector`/`_covector`/`_scale`, `cg_effect_opacity`, and fragment-only `cg_spatial_from_fragment` — the raster pass's property trees (`CgPalette`): each spatial node's affine into the target, each effect node's opacity. `quad`, `curve` and `clip` bring it; `CG_QUAD_*` and `CG_CURVE_*` positions are already mapped through it | Never declared by hand. A material that honours group opacity multiplies by `CG_QUAD_OPACITY`/`CG_CURVE_OPACITY` |
 | `clip` | `CLIP_DATA(n)` + `CG_CLIP_QUAD_COVERAGE` / `CG_CLIP_CURVE_COVERAGE` — the coverage of the `CgClipTable` entry the instance names (`Quad.clip`, `Curve.clip`, `CgTextRenderer.clip`), 1 for entry 0. Fragment stage only; read it before any `discard` | Any quad or curve material a rounded clip must reach: every CrystalGUI UI material, and `text.shader`. A material that does not multiply by it draws past the corners |
 
 > **A screen-space quad material antialiases its own edges — without MSAA.** `env/buffer/quad.glsl`
@@ -508,6 +509,12 @@ essentially every shader wants them. Buffers that only a minority of shaders nee
 > `CG_QUAD_EDGE_FILTER` — the reconstruction width, 1.5 px, the one knob. Adoption is three lines per
 > material; every CrystalGUI quad material has it, `text.shader`'s bitmap path has the texel filter, and a
 > 3D quad material must not use any of it (half a pixel means nothing under a perspective projection).
+
+> **A record names a spatial and an effect node** (`Quad.node`, `Curve.node`, `CgTextRenderer.node`), recorded in a
+> `CgRecording`'s `spatial()` and `effects()` trees; node 0 is the target's own space, at opacity 1. The executor writes
+> each raster pass's palette from the recorded values and a `CgPropertyValues` (`CgFrameGraph.add(recording, values)`),
+> so a compositor moves or fades what was recorded by writing values and executing the built frame again. A pass into
+> a layer names where it sits (`CgRasterPass.view`), and scissors and clip entries may name a node and move with it.
 
 > **A rounded clip is an instance field, not a render target.** `CgClipTable.add` records a rounded box in its
 > own space (rect, radii, a border's inner edge), the inverse of the pose that put it in the bound target, and
