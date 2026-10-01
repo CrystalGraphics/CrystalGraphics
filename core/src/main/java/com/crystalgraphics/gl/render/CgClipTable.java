@@ -165,6 +165,20 @@ public final class CgClipTable {
         return entry > 0 && entry < count ? parents[entry] : 0;
     }
 
+    /** Makes this a copy of {@code other}: what a built frame keeps, so its recording can be reset at once. */
+    public void copyFrom(CgClipTable other) {
+        if (entries.length < other.entries.length) {
+            entries = new float[other.entries.length];
+            parents = new int[other.parents.length];
+            depths = new int[other.depths.length];
+        }
+        System.arraycopy(other.entries, 0, entries, 0, other.count * FLOATS);
+        System.arraycopy(other.parents, 0, parents, 0, other.count);
+        System.arraycopy(other.depths, 0, depths, 0, other.count);
+        count = other.count;
+        version++;
+    }
+
     /** Empties it for a new recording: entry 0 alone. */
     public void reset() {
         count = 1;

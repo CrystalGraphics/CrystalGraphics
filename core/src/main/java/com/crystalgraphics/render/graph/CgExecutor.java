@@ -186,7 +186,7 @@ public final class CgExecutor {
         if (packed.count == 0) return;
         frame.bindings.bind(packed.constants);
         for (int k = 0; k < KINDS; k++) if ((packed.kinds & (1 << k)) != 0) instanceBuffers[k].bind();
-        if ((packed.kinds & UNIT_KINDS) != 0) pass.recording.clips().bindForDraw();
+        if ((packed.kinds & UNIT_KINDS) != 0) packed.clips.bindForDraw();
 
         int boundPipeline = -1, boundBinding = -1, boundScissor = CgRasterPass.INHERIT;
         CgPipeline pipeline = null;

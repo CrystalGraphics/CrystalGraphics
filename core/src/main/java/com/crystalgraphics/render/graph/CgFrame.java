@@ -1,11 +1,13 @@
 package com.crystalgraphics.render.graph;
 
 import com.crystalgraphics.gl.mesh.CgMesh;
+import com.crystalgraphics.gl.render.CgClipTable;
 import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.IdentityHashMap;
 import java.util.List;
 
 /**
@@ -37,6 +39,10 @@ public final class CgFrame {
     int[] releaseAfter = new int[8];
     int batches;
     int draws;
+    /** Copies of the clip tables its passes' recordings filled, by recording: a frame refers back to no recording. */
+    private final IdentityHashMap<CgClipTable, CgClipTable> clips = new IdentityHashMap<>();
+    private final List<CgClipTable> clipPool = new ArrayList<>();
+    private int clipsUsed;
 
     CgFrame() {
         for (int k = 0; k < KINDS; k++) instances[k] = new float[CgInstanceKind.of(k).floats() * 256];
@@ -51,6 +57,19 @@ public final class CgFrame {
         transients.clear();
         batches = 0;
         draws = 0;
+        clips.clear();
+        clipsUsed = 0;
+    }
+
+    /** This frame's copy of {@code table}, made on first ask in a build. */
+    CgClipTable clipsOf(CgClipTable table) {
+        CgClipTable copy = clips.get(table);
+        if (copy != null) return copy;
+        if (clipsUsed == clipPool.size()) clipPool.add(new CgClipTable());
+        copy = clipPool.get(clipsUsed++);
+        copy.copyFrom(table);
+        clips.put(table, copy);
+        return copy;
     }
 
     /** Room for {@code count} steps. */
@@ -124,6 +143,8 @@ public final class CgFrame {
         int kinds;
         /** Recorded draws its batches cover. */
         int draws;
+        /** The frame's copy of its recording's clip table. */
+        CgClipTable clips;
 
         void size(int batches) {
             if (pipeline.length < batches) {

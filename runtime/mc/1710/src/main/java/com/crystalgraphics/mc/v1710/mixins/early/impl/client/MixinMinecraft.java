@@ -37,7 +37,7 @@ public class MixinMinecraft {
      * <p>{@code onContextDestroy} was implemented on every loader's lifecycle service and <b>called by
      * none of them</b>, so {@code CgGraphicsLifecycle.destroyContext()} never ran on 1.7.10 — every
      * registry's {@code deleteAll}, every glyph atlas, every framebuffer, and CrystalGUI's own
-     * {@code CgUiPaintContext.destroy()} with its {@code createOwned} FBO pool that no registry sweep can
+     * {@code UiGpu.destroy()} with its {@code createOwned} targets that no registry sweep can
      * reach. The process was exiting anyway, which is why nobody noticed; that is a reason it did not
      * hurt, not a reason it was right.</p>
      *
