@@ -10,7 +10,7 @@ import org.joml.Matrix4f;
 /**
  * Sixteen spheres, each a different effect drawn by one {@code .shader} -- physically based gold, copper, liquid
  * mercury and colour-shift paint; a soap bubble, a crystal ball, a hologram and faceted ice; plasma, a lightning
- * globe, a lava world and a star; a black hole bending light, a force field, a galaxy in glass and a neon circuit --
+ * globe, a lava world and a supernova; a black hole bending light, a force field, a galaxy in glass and a neon circuit --
  * with glow around everything that emits. {@link CgRenderDemo} draws them into a Minecraft world; the harness's
  * {@code vfx-spheres} scene stands them on a floor under a sky.
  *
@@ -39,7 +39,7 @@ public final class CgVfxShowcase {
     private static final String[] SHADERS = {
             "gold", "copper", "mercury", "carpaint",
             "bubble", "crystal", "hologram", "ice",
-            "plasma", "storm", "lava", "star",
+            "plasma", "storm", "lava", "supernova",
             "blackhole", "galaxy", "shield", "circuit",
     };
 
@@ -56,12 +56,14 @@ public final class CgVfxShowcase {
             1f, 1f, 1f, 1f, 1.35f, 1f, 1.5f, 1.45f, 1.75f, 1.7f, 1.6f, 2.1f, 1.7f, 1.55f, 1.5f, 1.5f,
     };
 
-    private static final int SHIELD = 14, STORM = 9, BLACK_HOLE = 12, GALAXY = 13;
+    private static final int SHIELD = 14, STORM = 9, BLACK_HOLE = 12, GALAXY = 13, SUPERNOVA = 11;
+    /** The supernova's heart is a little larger than the rest, and its corona reaches this many hearts out. */
+    private static final float SUPERNOVA_SIZE = 1.15f, CORONA_REACH = 3.2f;
 
     private CgMesh sphere;
     private CgMesh floor;
     private final CgMaterial[] materials = new CgMaterial[COUNT];
-    private CgMaterial glow, sky, floorMaterial;
+    private CgMaterial glow, corona, sky, floorMaterial;
     private double gridX = Double.NaN, gridZ = Double.NaN;
     private final Matrix4f transform = new Matrix4f();
 
@@ -74,6 +76,15 @@ public final class CgVfxShowcase {
             double cz = z + (row - 1.5) * SPACING;
             double cy = y + HEIGHT + 0.08 * Math.sin(seconds * 0.9 + k * 0.7);
             spin(k, seconds);
+            if (k == SUPERNOVA) {
+                transform.scale(SUPERNOVA_SIZE);
+                world.draw(sphere, materials[k]).at(cx, cy, cz).transform(transform).submit();
+                transform.identity().scale(SUPERNOVA_SIZE * CORONA_REACH);
+                float flare = 1f + 0.15f * (float) Math.sin(seconds * 2.1) + 0.08f * flicker(seconds, k);
+                world.draw(sphere, corona).at(cx, cy, cz).transform(transform)
+                        .custom(1, 1f / CORONA_REACH, flare, 0f, 0f).submit();
+                continue;
+            }
             world.draw(sphere, materials[k]).at(cx, cy, cz).transform(transform).submit();
             if (k == SHIELD) {
                 // What the field protects: a small gold core turning inside it.
@@ -140,6 +151,7 @@ public final class CgVfxShowcase {
         floor = CgMesh.upload(CgMeshBuilder.plane(CgVertexFormat.SPATIAL, 1, 1, 120f, 120f));
         for (int k = 0; k < COUNT; k++) materials[k] = CgMaterial.load("crystalgraphics:shaders/demo/vfx_" + SHADERS[k] + ".shader");
         glow = CgMaterial.load("crystalgraphics:shaders/demo/vfx_glow.shader");
+        corona = CgMaterial.load("crystalgraphics:shaders/demo/vfx_supernova_corona.shader");
         sky = CgMaterial.load("crystalgraphics:shaders/demo/vfx_sky.shader");
         floorMaterial = CgMaterial.newInstance("crystalgraphics:shaders/demo/vfx_floor.shader");
     }
