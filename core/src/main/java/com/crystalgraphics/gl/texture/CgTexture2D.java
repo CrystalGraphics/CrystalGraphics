@@ -6,6 +6,8 @@ import com.crystalgraphics.util.io.CgTextureIO;
 import com.crystalgraphics.util.io.CgTextureIO.CgImageData;
 
 import lombok.Getter;
+
+import javax.annotation.Nullable;
 import com.crystalgraphics.platform.gl.CgGL;
 
 import java.nio.ByteBuffer;
@@ -37,7 +39,7 @@ import java.util.logging.Logger;
  * {@link #upload(CgImageData)} for path-loaded images and
  * {@link #upload(int, int, ByteBuffer, int, int)} for raw pixel data.</p>
  */
-public final class CgTexture2D extends CgTextureAbstract {
+public final class CgTexture2D extends CgTextureAbstract implements CgTextureUploads.Pending {
 
     private static final Logger LOGGER = Logger.getLogger(CgTexture2D.class.getName());
 
@@ -46,6 +48,12 @@ public final class CgTexture2D extends CgTextureAbstract {
 
     /** Asset path this texture was loaded from; {@code null} for procedural textures. */
     @Getter private final String sourcePath;
+
+    /** Pixels waiting for their GL object, made on the render thread; null once it exists. */
+    private record Upload(int width, int height, ByteBuffer pixels, int format, int type) {}
+
+    @Nullable
+    private volatile Upload pending;
 
     private CgTexture2D(int textureId, int width, int height, CgTextureSpec spec, String sourcePath) {
         super(textureId, width, height, spec);
@@ -84,6 +92,88 @@ public final class CgTexture2D extends CgTextureAbstract {
         if (data == null) return null;
         return doCreate(data.width(), data.height(), data.pixels(),
                 pixelFormatForChannels(data.channels()), GL_UNSIGNED_BYTE, spec, null);
+    }
+
+    /**
+     * As {@link #createDirect}, from any thread: decodes {@code path} here, so its size is known at once, and makes its
+     * GL object on the render thread — before the next frame executes, or at its first bind there.
+     *
+     * <pre>{@code
+     * CgTexture2D sprite = CgTexture2D.createDeferred("mymod:textures/gui/atlas.png", CgTextureSpec.RGBA8_NEAREST);
+     * float u = 16f / sprite.getWidth();         // known now
+     * recording.bindings().begin().texture(0, sprite).end();   // bound when the frame executes
+     * }</pre>
+     *
+     * <ul>
+     *   <li>{@link #getId()} is 0 until the GL object exists; a recorded draw never asks for it.</li>
+     *   <li>Not cached; the caller owns it, and {@link #delete()} before the upload cancels it.</li>
+     * </ul>
+     *
+     * @return null if decoding fails
+     */
+    public static CgTexture2D createDeferred(String path, CgTextureSpec spec) {
+        CgImageData data = CgTextureIO.load(path);
+        if (data == null) return null;
+        return deferred(data.width(), data.height(), data.pixels(), pixelFormatForChannels(data.channels()),
+                GL_UNSIGNED_BYTE, spec, path);
+    }
+
+    /** As {@link #createFromPixels}, from any thread: the GL object is made on the render thread. */
+    public static CgTexture2D createFromPixelsDeferred(int width, int height, ByteBuffer pixels, CgTextureSpec spec) {
+        return deferred(width, height, pixels, spec.getGlBaseFormat(), spec.getGlType(), spec, null);
+    }
+
+    private static CgTexture2D deferred(int width, int height, ByteBuffer pixels, int format, int type,
+                                        CgTextureSpec spec, @Nullable String sourcePath) {
+        CgTexture2D texture = new CgTexture2D(0, width, height, spec, sourcePath);
+        texture.pending = new Upload(width, height, pixels, format, type);
+        CgTextureUploads.schedule(texture);
+        return texture;
+    }
+
+    /** Makes the GL object and uploads the pixels waiting for it. Render thread. */
+    @Override
+    public void applyPending() {
+        Upload upload = pending;
+        if (upload == null || isDeleted()) return;
+        pending = null;
+        textureId = CgGL.glGenTextures();
+        upload(upload.width, upload.height, upload.pixels, upload.format, upload.type);
+    }
+
+    /** A deferred texture's upload, now, when this thread may issue GL. */
+    private void ensureUploaded() {
+        if (pending != null && CgGL.mayIssueGl()) {
+            CgTextureUploads.cancel(this);
+            applyPending();
+        }
+    }
+
+    @Override
+    public void bind() {
+        ensureUploaded();
+        super.bind();
+    }
+
+    @Override
+    public void bind(int unit) {
+        ensureUploaded();
+        super.bind(unit);
+    }
+
+    @Override
+    public int getId() {
+        ensureUploaded();
+        return super.getId();
+    }
+
+    @Override
+    public void delete() {
+        if (pending != null) {
+            CgTextureUploads.cancel(this);
+            pending = null;
+        }
+        super.delete();
     }
 
     /**
@@ -179,7 +269,7 @@ public final class CgTexture2D extends CgTextureAbstract {
 
     @Override
     public void reload() {
-        if (sourcePath == null) return;
+        if (sourcePath == null || pending != null) return;   // a deferred one uploads what it decoded
 
         CgImageData data = CgTextureIO.load(sourcePath);
         if (data == null) {

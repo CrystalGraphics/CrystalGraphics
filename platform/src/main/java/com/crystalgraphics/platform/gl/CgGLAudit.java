@@ -31,12 +31,17 @@ final class CgGLAudit {
 
     private CgGLAudit() {}
 
+    // Tracked whether or not the audit logs: CgGL.mayIssueGl reads it.
     static void enter(String section) {
-        if (ON) SECTION.set(section);
+        SECTION.set(section);
     }
 
     static void exit() {
-        if (ON) SECTION.remove();
+        SECTION.remove();
+    }
+
+    static boolean inSection() {
+        return SECTION.get() != null;
     }
 
     static void check(CgGLBackend backend) {

@@ -4,6 +4,8 @@ import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.util.io.CgTextureIO;
 
+import com.crystalgraphics.platform.gl.CgGL;
+
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Supplier;
@@ -66,7 +68,7 @@ public final class CgTextureManager {
     /**
      * Returns the cached texture for {@code key}, or {@code null} if absent or deleted.
      */
-    public CgTexture get(String key) {
+    public synchronized CgTexture get(String key) {
         CgTexture t = cache.get(key);
         return (t != null && !t.isDeleted()) ? t : null;
     }
@@ -80,7 +82,7 @@ public final class CgTextureManager {
      *
      * @return the texture, or {@code null} if the loader returned null or threw
      */
-    public CgTexture getOrCreate(String key, Supplier<CgTexture> loader) {
+    public synchronized CgTexture getOrCreate(String key, Supplier<CgTexture> loader) {
         CgTexture cached = get(key);
         if (cached != null) return cached;
 
@@ -115,10 +117,14 @@ public final class CgTextureManager {
      * Gets or creates a cached 2D texture for {@code path}.
      * On a cache hit the cached texture is returned regardless of spec — first caller wins.
      * Returns the {@link #getFallback() fallback checkerboard} if loading fails.
+     *
+     * <p>Any thread: off the render thread, or while it records, the image is decoded here and its GL object made
+     * on the render thread ({@link CgTexture2D#createDeferred}).</p>
      */
     public CgTexture2D getOrCreate(String path, CgTextureSpec spec) {
         if (path == null || path.isEmpty()) return getFallback();
-        CgTexture result = getOrCreate(path, () -> CgTexture2D.createDirect(path, spec));
+        CgTexture result = getOrCreate(path, () -> CgGL.mayIssueGl()
+                ? CgTexture2D.createDirect(path, spec) : CgTexture2D.createDeferred(path, spec));
         return result instanceof CgTexture2D ? (CgTexture2D) result : getFallback();
     }
 
@@ -139,17 +145,17 @@ public final class CgTextureManager {
      * {@link #freeAll()} and reloaded in-place by {@link #reloadAll()} if it
      * has source paths (set at construction time).
      */
-    public void register(String key, CgTexture texture) {
+    public synchronized void register(String key, CgTexture texture) {
         cache.put(key, texture);
     }
 
     /** @return {@code true} if a valid (non-deleted) texture is cached under {@code key} */
-    public boolean isCached(String key) {
+    public synchronized boolean isCached(String key) {
         return get(key) != null;
     }
 
     /** @return number of entries currently in the cache */
-    public int getCachedCount() {
+    public synchronized int getCachedCount() {
         return cache.size();
     }
 
@@ -159,7 +165,7 @@ public final class CgTextureManager {
      * Returns the shared purple/black checkerboard fallback texture, creating it lazily.
      * This texture is never cached under a path key and is freed separately in {@link #freeAll()}.
      */
-    public CgTexture2D getFallback() {
+    public synchronized CgTexture2D getFallback() {
         if (fallback == null || fallback.isDeleted()) {
             fallback = CgTextureIO.createFallback();
         }
@@ -173,7 +179,7 @@ public final class CgTextureManager {
      * Textures without source paths (procedural/dynamic) silently no-op.
      * Called from {@code CgAssetReloader} on F3+T.
      */
-    public void reloadAll() {
+    public synchronized void reloadAll() {
         LOGGER.log(Level.INFO, "[CgTextureManager] Reloading {0} texture(s)", cache.size());
         for (CgTexture texture : cache.values()) {
             if (!texture.isDeleted()) texture.reload();
@@ -184,7 +190,7 @@ public final class CgTextureManager {
      * Deletes all cached textures and the fallback, then clears the cache.
      * Called from {@code CgGraphicsLifecycle.destroyContext()}.
      */
-    public void freeAll() {
+    public synchronized void freeAll() {
         LOGGER.log(Level.INFO, "[CgTextureManager] Freeing {0} texture(s)", cache.size());
         for (CgTexture texture : cache.values()) {
             if (!texture.isDeleted()) texture.delete();

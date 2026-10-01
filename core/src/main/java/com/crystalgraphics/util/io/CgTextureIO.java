@@ -5,6 +5,8 @@ import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.gl.texture.CgTexture2D;
 import org.apache.commons.io.IOUtils;
 
+import com.crystalgraphics.platform.gl.CgGL;
+
 import javax.imageio.ImageIO;
 
 import java.awt.image.BufferedImage;
@@ -149,7 +151,9 @@ public final class CgTextureIO {
             }
         }
         pixels.flip();
-        return CgTexture2D.createFromPixels(size, size, pixels, CgTextureSpec.RGBA8_NEAREST);
+        return CgGL.mayIssueGl()
+                ? CgTexture2D.createFromPixels(size, size, pixels, CgTextureSpec.RGBA8_NEAREST)
+                : CgTexture2D.createFromPixelsDeferred(size, size, pixels, CgTextureSpec.RGBA8_NEAREST);
     }
 
     /**
