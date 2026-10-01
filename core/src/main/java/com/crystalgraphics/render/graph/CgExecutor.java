@@ -15,6 +15,7 @@ import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
+import com.crystalgraphics.render.property.CgPalette;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import org.apache.logging.log4j.LogManager;
@@ -55,7 +56,7 @@ public final class CgExecutor {
 
     private final CgStreamBuffer ring;
     private final CgShaderBuffer[] instanceBuffers = new CgShaderBuffer[KINDS];
-    private final int[] scissorRect = new int[4];
+    private final int[] scissorRect = new int[4], scissorPart = new int[4];
 
     private CgExecutor(int depth) {
         ring = CgStreamBuffer.createFrameLocal(CgGL.GL_UNIFORM_BUFFER, 64 * 1024);
@@ -203,22 +204,15 @@ public final class CgExecutor {
         int boundPipeline = -1, boundBinding = -1, boundScissor = CgRasterPass.INHERIT;
         CgPipeline pipeline = null;
         boolean usable = false;
-        int[] rects = pass.scissorRects();
         for (int b = 0; b < packed.count; b++) {
             if (packed.scissor[b] != boundScissor) {
                 boundScissor = packed.scissor[b];
                 if (boundScissor == CgRasterPass.NO_SCISSOR) {
                     CgGL.glDisable(CgGL.GL_SCISSOR_TEST);
                 } else if (boundScissor >= 0) {
-                    int r = boundScissor * 4;
-                    int node = pass.scissorNode(boundScissor);
+                    scissorRect(pass, packed.palette, boundScissor);
                     CgGL.glEnable(CgGL.GL_SCISSOR_TEST);
-                    if (node < 0) {
-                        CgGL.glScissor(rects[r], rects[r + 1], rects[r + 2], rects[r + 3]);
-                    } else {
-                        packed.palette.scissorOf(node, pass.scissorBoxes(), r, scissorRect);
-                        CgGL.glScissor(scissorRect[0], scissorRect[1], scissorRect[2], scissorRect[3]);
-                    }
+                    CgGL.glScissor(scissorRect[0], scissorRect[1], scissorRect[2], scissorRect[3]);
                 }
             }
             if (packed.pipeline[b] != boundPipeline) {
@@ -237,6 +231,26 @@ public final class CgExecutor {
             CgMesh mesh = packed.kind[b] == CgInstanceKind.OBJECT.ordinal() ? packed.mesh[b] : CgInstanceGeometry.unitQuad();
             mesh.drawInstanced(packed.instances[b]);
         }
+    }
+
+    /** Scissor {@code index} and every one it is inside, cut together, into {@link #scissorRect}. */
+    private void scissorRect(CgRasterPass pass, CgPalette palette, int index) {
+        int[] rects = pass.scissorRects();
+        int x0 = Integer.MIN_VALUE, y0 = Integer.MIN_VALUE, x1 = Integer.MAX_VALUE, y1 = Integer.MAX_VALUE;
+        for (int s = index; s >= 0; s = pass.scissorParent(s)) {
+            int node = pass.scissorNode(s);
+            int[] rect = scissorPart;
+            if (node < 0) System.arraycopy(rects, s * 4, rect, 0, 4);
+            else palette.scissorOf(node, pass.scissorBoxes(), s * 4, rect);
+            x0 = Math.max(x0, rect[0]);
+            y0 = Math.max(y0, rect[1]);
+            x1 = Math.min(x1, rect[0] + rect[2]);
+            y1 = Math.min(y1, rect[1] + rect[3]);
+        }
+        scissorRect[0] = x0;
+        scissorRect[1] = y0;
+        scissorRect[2] = Math.max(0, x1 - x0);
+        scissorRect[3] = Math.max(0, y1 - y0);
     }
 
     /** Binds a pass's target and its viewport; the current target is left as it is. */

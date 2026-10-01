@@ -29,8 +29,9 @@ import java.util.List;
  *   <li>A recorder that must read its own target mid-pass (a backdrop) ends the pass, copies, and opens another
  *       on the same target with {@link CgLoad#load()}.</li>
  *   <li>A chunk is drawn under the scissor set when it was added, as a command buffer's set-scissor works:
- *       {@link #scissor} and {@link #noScissor}. A pass that never sets one leaves GL's scissor as it finds it. A
- *       scissor given in a spatial node's space moves with the node, as its draws do.</li>
+ *       {@link #scissor(int, int, int, int)}, {@link #useScissor} and {@link #noScissor}. A pass that never sets
+ *       one leaves GL's scissor as it finds it. A scissor given in a spatial node's space moves with the node, as
+ *       its draws do, and one made inside another is cut by it wherever either moves.</li>
  *   <li>A pass into a layer names where the layer sits in the recording's root space with {@link #view}: what a
  *       record under a spatial node is placed through. Records at node 0 are already in the target's space.</li>
  *   <li>{@link #texture} binds a texture for the whole pass, with its constants: what every draw of it samples at a
@@ -52,8 +53,9 @@ public final class CgRasterPass extends CgPass {
     static final int NO_SCISSOR = -1, INHERIT = -2;
     private int[] chunkScissor = new int[16];
     private int[] scissorRects = new int[16];
-    /** Per scissor, the spatial node its box is in, or -1 for a rect in target pixels. */
+    /** Per scissor, the spatial node its box is in, or -1 for a rect in target pixels; and the one it is inside. */
     private int[] scissorNodes = new int[4];
+    private int[] scissorParents = new int[4];
     private float[] scissorBoxes = new float[16];
     private int scissorCount;
     private int scissor = INHERIT;
@@ -95,30 +97,46 @@ public final class CgRasterPass extends CgPass {
 
     /** Draws the chunks added from now on inside {@code (x, y, w, h)}, in the target's bottom-left pixels. */
     public CgRasterPass scissor(int x, int y, int w, int h) {
-        int set = scissor * 4;
-        if (scissor >= 0 && scissorNodes[scissor] < 0 && scissorRects[set] == x && scissorRects[set + 1] == y
-                && scissorRects[set + 2] == w && scissorRects[set + 3] == h) return this;
-        int at = nextScissor(-1);
+        return useScissor(scissor(-1, x, y, w, h));
+    }
+
+    /**
+     * A scissor inside scissor {@code parent} (-1 for none): {@code (x, y, w, h)} in the target's bottom-left pixels.
+     * Answers its index for {@link #useScissor}, and for a scissor made inside it.
+     */
+    public int scissor(int parent, int x, int y, int w, int h) {
+        int last = scissorCount - 1, set = last * 4;
+        if (last >= 0 && scissorNodes[last] < 0 && scissorParents[last] == parent && scissorRects[set] == x
+                && scissorRects[set + 1] == y && scissorRects[set + 2] == w && scissorRects[set + 3] == h) return last;
+        int at = nextScissor(-1, parent);
         scissorRects[at] = x;
         scissorRects[at + 1] = y;
         scissorRects[at + 2] = w;
         scissorRects[at + 3] = h;
-        return this;
+        return at / 4;
     }
 
     /**
-     * Draws the chunks added from now on inside {@code (x0, y0)-(x1, y1)} in spatial node {@code node}'s space,
-     * top-down: the box's bounds in the target as the node stands when the pass executes, whole pixels outward.
+     * A scissor inside scissor {@code parent} (-1 for none): {@code (x0, y0)-(x1, y1)} in spatial node {@code node}'s
+     * space, top-down, whose bounds in the target are taken as the node stands when the pass executes, whole pixels
+     * outward. Answers its index.
      */
-    public CgRasterPass scissor(int node, float x0, float y0, float x1, float y1) {
-        int set = scissor * 4;
-        if (scissor >= 0 && scissorNodes[scissor] == node && scissorBoxes[set] == x0 && scissorBoxes[set + 1] == y0
-                && scissorBoxes[set + 2] == x1 && scissorBoxes[set + 3] == y1) return this;
-        int at = nextScissor(node);
+    public int scissor(int parent, int node, float x0, float y0, float x1, float y1) {
+        int last = scissorCount - 1, set = last * 4;
+        if (last >= 0 && scissorNodes[last] == node && scissorParents[last] == parent && scissorBoxes[set] == x0
+                && scissorBoxes[set + 1] == y0 && scissorBoxes[set + 2] == x1 && scissorBoxes[set + 3] == y1) return last;
+        int at = nextScissor(node, parent);
         scissorBoxes[at] = x0;
         scissorBoxes[at + 1] = y0;
         scissorBoxes[at + 2] = x1;
         scissorBoxes[at + 3] = y1;
+        return at / 4;
+    }
+
+    /** Draws the chunks added from now on under scissor {@code index}, which this pass answered. */
+    public CgRasterPass useScissor(int index) {
+        if (index < 0 || index >= scissorCount) throw new IllegalArgumentException("no scissor " + index + " in " + this);
+        scissor = index;
         return this;
     }
 
@@ -146,15 +164,19 @@ public final class CgRasterPass extends CgPass {
         return viewY;
     }
 
-    private int nextScissor(int node) {
+    private int nextScissor(int node, int parent) {
+        if (parent < -1 || parent >= scissorCount) throw new IllegalArgumentException("no scissor " + parent + " in " + this);
         if ((scissorCount + 1) * 4 > scissorRects.length) {
             scissorRects = Arrays.copyOf(scissorRects, scissorRects.length * 2);
             scissorBoxes = Arrays.copyOf(scissorBoxes, scissorRects.length);
         }
-        if (scissorCount == scissorNodes.length) scissorNodes = Arrays.copyOf(scissorNodes, scissorNodes.length * 2);
+        if (scissorCount == scissorNodes.length) {
+            scissorNodes = Arrays.copyOf(scissorNodes, scissorNodes.length * 2);
+            scissorParents = Arrays.copyOf(scissorParents, scissorNodes.length);
+        }
         scissorNodes[scissorCount] = node;
-        scissor = scissorCount++;
-        return scissor * 4;
+        scissorParents[scissorCount] = parent;
+        return scissorCount++ * 4;
     }
 
     /** Binds {@code texture} at {@code unit} for every draw of this pass. A graph texture is read as of this call. */
@@ -220,6 +242,11 @@ public final class CgRasterPass extends CgPass {
     /** Scissor {@code i}'s spatial node, or -1 when it is a rect in {@link #scissorRects}. */
     int scissorNode(int i) {
         return scissorNodes[i];
+    }
+
+    /** The scissor scissor {@code i} was made inside, or -1. */
+    int scissorParent(int i) {
+        return scissorParents[i];
     }
 
     /** The boxes of node scissors, four floats each at the scissor's index: {@code x0, y0, x1, y1}. */
