@@ -32,6 +32,10 @@ import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
 //? if <1.21.2 {
 import net.minecraft.util.profiling.ProfilerFiller;
 //?}
+//? if >=1.21.8 <26.1 {
+/*import net.neoforged.neoforge.client.blaze3d.validation.ValidationGpuDevice;
+import net.neoforged.neoforge.client.blaze3d.validation.ValidationGpuTexture;
+*///?}
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
@@ -85,6 +89,12 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
 
             static void register(IEventBus modBus) {
                 modBus.addListener(ModBus::onRegisterReloadListeners);
+                // A dev run wraps every GPU texture and the device for validation; ours are the GL ones under them.
+                //? if >=1.21.8 <26.1 {
+                /*LifecycleModern.unwrapWith(
+                        texture -> texture instanceof ValidationGpuTexture wrapped ? wrapped.getRealTexture() : texture,
+                        device -> device instanceof ValidationGpuDevice wrapped ? wrapped.getRealDevice() : device);
+                *///?}
             }
 
             // NeoForge 21.4 keys every listener by id.

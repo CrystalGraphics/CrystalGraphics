@@ -28,8 +28,11 @@ import org.lwjgl.opengl.GL30;
 import com.mojang.blaze3d.opengl.GlStateManager;
 import com.mojang.blaze3d.opengl.GlTexture;
 import com.mojang.blaze3d.pipeline.RenderTarget;
+import com.mojang.blaze3d.systems.GpuDevice;
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.textures.GpuTexture;
 import org.lwjgl.opengl.GL30;
+import java.util.function.UnaryOperator;
 *///?}
 //? if >=26.2 {
 /*import com.crystalgraphics.mc.modern.platform.vulkan.Blaze3dVulkanHost;
@@ -185,8 +188,9 @@ public final class LifecycleModern {
         }
         *///?} elif >=1.21.5 {
         /*RenderTarget main = mc.getMainRenderTarget();
-        int fbo = ((GlTexture) main.getColorTexture())
-                .getFbo(((GlDevice) RenderSystem.getDevice()).directStateAccess(), main.getDepthTexture());
+        int fbo = ((GlTexture) hostTexture.apply(main.getColorTexture()))
+                .getFbo(((GlDevice) hostDevice.apply(RenderSystem.getDevice())).directStateAccess(),
+                        hostTexture.apply(main.getDepthTexture()));
         GlStateManager._glBindFramebuffer(GL30.GL_FRAMEBUFFER, fbo);
         // The viewport is the last pass's too -- the lightmap's 16x16, as often as not.
         GlStateManager._viewport(0, 0, main.width, main.height);
@@ -196,6 +200,18 @@ public final class LifecycleModern {
         return mc.getMainRenderTarget().frameBufferId;
         //?}
     }
+
+    //? if >=1.21.5 <26.1 {
+    /*private static UnaryOperator<GpuTexture> hostTexture = UnaryOperator.identity();
+    private static UnaryOperator<GpuDevice> hostDevice = UnaryOperator.identity();
+
+    // For a loader that wraps Minecraft's GL texture and device in its own (NeoForge's dev-time validation),
+    // set once at start: the GL object under each. A null texture must come back null.
+    public static void unwrapWith(UnaryOperator<GpuTexture> texture, UnaryOperator<GpuDevice> device) {
+        hostTexture = texture;
+        hostDevice = device;
+    }
+    *///?}
 
     // 26.2 moved it from Minecraft to the game renderer.
     //? if >=26.2 {
