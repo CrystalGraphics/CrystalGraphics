@@ -18,7 +18,7 @@ Pass {
 
     // The surface: the unit sphere swelling and settling under slow, broad noise.
     vec3 mercury_surface(vec3 dir, float t) {
-        float h = vfx_fbm(dir * 1.1 + vec3(0.0, t * 0.3, t * 0.18), 3);
+        float h = fx_value_fbm(dir * 1.1 + vec3(0.0, t * 0.3, t * 0.18), 3);
         float wave = sin(dir.y * 4.0 + t * 1.8) * 0.5 + 0.5;
         return dir * (0.96 + 0.06 * h + 0.012 * wave);
     }
@@ -47,9 +47,9 @@ Pass {
         vec3 n = normalize(CG_NORMAL_MATRIX * mercury_normal(normalize(i.dir), CG_TIME));
         // From inside the sphere its inner wall shows, facing in.
         if (!gl_FrontFacing) n = -n;
-        vec3 v = normalize(VFX_CAMERA - i.worldPos);
+        vec3 v = normalize(FX_CAMERA - i.worldPos);
         float floorY = CG_OBJECT_TO_WORLD[3].y - CG_OBJECT_CUSTOM3.x;
         vec3 color = vfx_pbr_studio(i.worldPos, floorY, n, v, vec3(0.92, 0.94, 0.97), 1.0, 0.04);
-        fragColor = vec4(vfx_aces(color), 1.0);
+        fragColor = vec4(fx_aces(0.8 * color), 1.0);
     }
 }

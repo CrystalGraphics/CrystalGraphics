@@ -41,7 +41,7 @@ Pass {
             float r = length(x);
             float a = t * 0.35 + r * 2.5;
             vec3 swirl = vec3(x.x * cos(a) - x.z * sin(a), x.y, x.x * sin(a) + x.z * cos(a));
-            float density = smoothstep(0.42, 0.75, vfx_fbm(swirl * 2.4 + vec3(0.0, t * 0.12, 0.0), 4));
+            float density = smoothstep(0.42, 0.75, fx_value_fbm(swirl * 2.4 + vec3(0.0, t * 0.12, 0.0), 4));
             density *= 1.0 - smoothstep(0.2, 0.85, r);
             light += mix(vec3(0.55, 0.12, 1.0), vec3(0.15, 0.55, 1.0), x.y * 0.5 + 0.5) * density;
         }
@@ -60,7 +60,7 @@ Pass {
         vec3 centre = CG_OBJECT_TO_WORLD[3].xyz;
         float radius = length(CG_OBJECT_TO_WORLD[0].xyz);
         float floorY = centre.y - CG_OBJECT_CUSTOM3.x;
-        vec3 camera = VFX_CAMERA;
+        vec3 camera = FX_CAMERA;
         vec3 wall = normalize(i.normalWs);
         vec3 n = gl_FrontFacing ? wall : -wall;
         vec3 v = normalize(camera - i.worldPos);
@@ -90,6 +90,6 @@ Pass {
         // A caustic hot spot where the ball focuses the key light.
         float caustic = gl_FrontFacing ? pow(max(dot(-n, VFX_KEY_DIR), 0.0), 18.0) * 2.0 : 0.0;
         vec3 color = mix(body, reflection, fresnel) + vec3(1.0, 0.95, 0.85) * caustic;
-        fragColor = vec4(vfx_aces(color), 1.0);
+        fragColor = vec4(fx_aces(0.8 * color), 1.0);
     }
 }

@@ -22,8 +22,8 @@ Pass {
     float hologram_glitch(float y, float t, out float shift) {
         float band = floor(y * 9.0);
         float tick = floor(t * 11.0);
-        shift = vfx_hash31(vec3(band, tick, 7.0)) - 0.5;
-        return step(0.9, vfx_hash31(vec3(band, tick, 3.0)));
+        shift = fx_hash31(vec3(band, tick, 7.0)) - 0.5;
+        return step(0.9, fx_hash31(vec3(band, tick, 3.0)));
     }
 
     // The planet at longitude {@code lon} and latitude {@code lat} (turns, in [-0.5, 0.5]): a dot on each cell of an
@@ -39,7 +39,7 @@ Pass {
         float dotShape = smoothstep(0.34, 0.2, length(inCell));
         float a = dotLon * 6.2831853, b = rowLat * 3.14159265;
         vec3 at = vec3(cos(b) * cos(a), sin(b), cos(b) * sin(a));
-        float land = smoothstep(0.5, 0.53, vfx_fbm(at * 1.7 + vec3(11.0, 3.0, 5.0), 5));
+        float land = smoothstep(0.5, 0.53, fx_value_fbm(at * 1.7 + vec3(11.0, 3.0, 5.0), 5));
         return dotShape * land;
     }
 
@@ -58,7 +58,7 @@ Pass {
     void fragment(in v2f i, out vec4 fragColor) {
         float t = CG_TIME;
         vec3 n = normalize(i.normalWs);
-        vec3 v = normalize(VFX_CAMERA - i.worldPos);
+        vec3 v = normalize(FX_CAMERA - i.worldPos);
         float nv = abs(dot(n, v));
         vec3 p = normalize(i.objPos);
         float lon = atan(p.z, p.x) / 6.2831853;
@@ -82,7 +82,7 @@ Pass {
         float rim = pow(1.0 - nv, 2.5);
         float scan = 0.6 + 0.4 * sin((i.worldPos.y - t * 0.9) * 110.0);
         float sweep = exp(-pow(fract(i.worldPos.y * 0.35 - t * 0.4) - 0.5, 2.0) * 220.0);
-        float flicker = 0.85 + 0.15 * vfx_noise(vec3(t * 20.0, 0.0, 0.0));
+        float flicker = 0.85 + 0.15 * fx_value_noise(vec3(t * 20.0, 0.0, 0.0));
         vec3 cyan = vec3(0.25, 0.85, 1.25);
         vec3 color = cyan * (0.04 + rim * 1.3 + lattice * 0.22 + rings * 0.9 + sweep * 1.1)
                 + dots * vec3(0.55, 1.05, 1.45) * 1.25;
