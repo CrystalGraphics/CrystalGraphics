@@ -1,9 +1,9 @@
 package com.crystalgraphics.demo;
 
 import com.crystalgraphics.api.material.CgMaterial;
+import com.crystalgraphics.api.mesh.CgMesh;
+import com.crystalgraphics.api.mesh.CgMeshShapes;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
-import com.crystalgraphics.gl.mesh.CgMesh;
-import com.crystalgraphics.gl.mesh.CgMeshBuilder;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.CgVfxEffect;
@@ -117,7 +117,9 @@ public final class CgVfxShowcase {
         }
     }
 
+    /** A shared shape. */
     private CgMesh sphere;
+    /** This showcase's own. */
     private CgMesh floor;
     private final CgMaterial[] materials = new CgMaterial[COUNT];
     private CgMaterial glow, corona, bolt, sky, horizon, seal, floorMaterial;
@@ -213,13 +215,12 @@ public final class CgVfxShowcase {
         return vfx;
     }
 
-    /** Frees the meshes. Call on context teardown. */
+    /** Releases the floor and the effects' meshes. Call on context teardown. */
     public void delete() {
         vfx.delete();
         Arrays.fill(waves, null);
         waveX = Double.NaN;
-        if (sphere != null) sphere.delete();
-        if (floor != null) floor.delete();
+        if (floor != null) floor.release();
         sphere = null;
         floor = null;
     }
@@ -350,8 +351,8 @@ public final class CgVfxShowcase {
 
     private void ensureResources() {
         if (sphere != null) return;
-        sphere = CgMesh.upload(CgMeshBuilder.uvSphere(CgVertexFormat.SPATIAL, 80, 160, 1f));
-        floor = CgMesh.upload(CgMeshBuilder.plane(CgVertexFormat.SPATIAL, 1, 1, 120f, 120f));
+        sphere = CgMeshShapes.sphere(80, 160);
+        floor = CgMesh.build(CgVertexFormat.SPATIAL, m -> CgMeshShapes.plane(m, 1, 1, 120f, 120f));
         for (int k = 0; k < COUNT; k++) materials[k] = CgMaterial.load("crystalgraphics:shaders/demo/vfx_" + SHADERS[k] + ".shader");
         glow = CgMaterial.load("crystalgraphics:shaders/demo/vfx_glow.shader");
         corona = CgMaterial.load("crystalgraphics:shaders/demo/vfx_supernova_corona.shader");

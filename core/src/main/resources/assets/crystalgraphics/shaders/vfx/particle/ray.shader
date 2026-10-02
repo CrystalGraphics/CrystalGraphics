@@ -3,7 +3,7 @@
 // velocity-aligned streak, as Niagara's sprite renderer draws one, on a CgVfxRibbons stroke placed from its particle
 // record (CgVfxFrame.particles, ARCS); the draw is centred on the source, so CG_OBJECT_TO_WORLD[3] is the source. Colour
 // A is the ink, A's alpha a strength.
-#type spatial
+#type none
 #pragma cg_use particle
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_ribbon.glsl"
@@ -29,8 +29,8 @@ Pass {
     }
 
     void vertex(out v2f o) {
-        int n = fx_particle_index(cg_Normal.x, CG_OBJECT_CUSTOM0.x, CG_OBJECT_CUSTOM0.y);
-        float along = cg_TexCoord0.x, side = cg_TexCoord0.y * 2.0 - 1.0;
+        int n = fx_particle_index(FX_RIBBON_INDEX, CG_OBJECT_CUSTOM0.x, CG_OBJECT_CUSTOM0.y);
+        float along = FX_RIBBON_ALONG, side = FX_RIBBON_SIDE;
         vec3 source = CG_OBJECT_TO_WORLD[3].xyz;
         vec3 origin = source - CG_OBJECT_CUSTOM1.xyz;
         int i = max(n, 0);

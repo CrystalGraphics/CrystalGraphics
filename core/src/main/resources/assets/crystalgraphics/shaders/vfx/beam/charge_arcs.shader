@@ -4,7 +4,7 @@
 // ribbons per bolt, its channel and two forks, in a unit space where the orb's radius is 1 and the core shows at about
 // two thirds of it. CG_OBJECT_CUSTOM1.x is the orb's radius in blocks, .z an intensity. Colour A is the glow, colour B
 // the white core, A's alpha a strength. CgEnergyWave.
-#type spatial
+#type none
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_lightning.glsl"
 
@@ -55,7 +55,7 @@ Pass {
     }
 
     void vertex(out v2f o) {
-        float index = cg_Normal.x, along = cg_TexCoord0.x, side = cg_TexCoord0.y * 2.0 - 1.0;
+        float index = FX_RIBBON_INDEX, along = FX_RIBBON_ALONG, side = FX_RIBBON_SIDE;
         float age = CG_OBJECT_CUSTOM0.z, seed = CG_OBJECT_CUSTOM0.w;
         float bolt = floor(index / 3.0), part = index - bolt * 3.0;
         vec4 h = fx_hash41(bolt * 1.31 + seed * 97.0);

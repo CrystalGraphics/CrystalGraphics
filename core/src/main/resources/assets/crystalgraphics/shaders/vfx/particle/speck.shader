@@ -1,7 +1,7 @@
 // A debris speck: a small dark chunk, sliver or shard, each its own stretch and raggedness from its seed, turned by its
 // spin. A CgVfxQuads quad placed from its particle record (CgVfxFrame.particles, QUADS). Colour A is the specks, A's
 // alpha a strength.
-#type spatial
+#type none
 #pragma cg_use particle
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_ribbon.glsl"
@@ -22,8 +22,8 @@ Pass {
     }
 
     void vertex(out v2f o) {
-        int n = fx_particle_index(cg_Normal.x, CG_OBJECT_CUSTOM0.x, CG_OBJECT_CUSTOM0.y);
-        vec2 corner = cg_TexCoord0 * 2.0 - 1.0;
+        int n = fx_particle_index(FX_QUAD_INDEX, CG_OBJECT_CUSTOM0.x, CG_OBJECT_CUSTOM0.y);
+        vec2 corner = FX_QUAD_CORNER;
         vec3 origin = CG_OBJECT_TO_WORLD[3].xyz - CG_OBJECT_CUSTOM1.xyz;
         vec3 right = vec3(cg_ViewMatrix[0][0], cg_ViewMatrix[1][0], cg_ViewMatrix[2][0]);
         vec3 up = vec3(cg_ViewMatrix[0][1], cg_ViewMatrix[1][1], cg_ViewMatrix[2][1]);

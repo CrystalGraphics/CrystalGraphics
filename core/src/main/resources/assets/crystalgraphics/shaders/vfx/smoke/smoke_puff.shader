@@ -5,7 +5,7 @@
 // comparison is its depth test. Overlapping puffs, sorted back to front by the world renderer, make the cloud.
 // CG_OBJECT_CUSTOM1: x its life 0..1, y its seed, z its opacity, w how hot it still is 0..1. Colour A is the smoke,
 // colour B the fire's light in it, A's alpha a strength.
-#type spatial
+#type none
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_depth.glsl"
 
@@ -45,7 +45,7 @@ Pass {
         // Each puff turned its own way, and turning slowly, so no two read alike.
         float a = seed * 6.28318531 + life * _Spin * 6.28318531 * (seed > 0.5 ? 1.0 : -1.0);
         vec3 r = cos(a) * right + sin(a) * up, u = -sin(a) * right + cos(a) * up;
-        vec2 corner = cg_TexCoord0 * 2.0 - 1.0;
+        vec2 corner = FX_QUAD_CORNER;
         float size = length(CG_OBJECT_TO_WORLD[0].xyz);
         vec3 world = CG_OBJECT_TO_WORLD[3].xyz + (r * corner.x + u * corner.y) * size;
         o.world = world;
