@@ -30,18 +30,13 @@ CgShader s = CgShaderFactory.fromSource(vertSrc, fragSrc, format);
 CgShaderProgram prog = CgShaderFactory.compile(vertSrc, fragSrc);
 CgShaderProgram prog = CgShaderFactory.compile(vertSrc, fragSrc, format);
 ```
-`CgShaderFactory.compile` builds a `CgCoreShaderProgram`; the GL 3.3 floor has no ARB shader-object path.
-
-### `CgAbstractShaderProgram`
-Base class with ownership model and deleted-state tracking. Subclasses provide `bind()`, `unbind()`, and `getUniformLocation()`. `delete()` is idempotent.
-
-### `CgCoreShaderProgram`
-GL20 backend (`glCreateProgram`, `glUseProgram`, `glGetUniformLocation`, `glUniform*`). The only program class: every context meets the 3.3 floor. Implements `getActiveUniforms()` via `GL20.glGetProgrami(GL_ACTIVE_UNIFORMS)` + `GL20.glGetActiveUniform`.
+`CgShaderFactory.compile` is `CgShaderProgram.compile` (`api/shader`): one concrete class, every context meeting the
+3.3 floor. `delete()` is idempotent.
 
 ---
 
 ## Invariants
 
-- `CgShaderFactory.compile()` always returns an **owned** `CgShaderProgram` — the caller is responsible for calling `delete()` when done (managed shaders do this automatically on recompile or `delete()`).
+- The caller of `CgShaderFactory.compile()` owns the program and calls `delete()` when done (managed shaders do this automatically on recompile or `delete()`).
 - `format` passed to `compile()` is used for `glBindAttribLocation` calls before linking, so attribute indices match the VAO layout. Pass `null` if not needed (e.g. when using explicit `layout(location = N)` in GLSL).
 - `CgShaderFactory` is not instantiable — constructor throws `AssertionError`.

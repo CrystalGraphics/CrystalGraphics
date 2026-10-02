@@ -3,7 +3,7 @@
 > Root guide: [`CrystalGraphics/AGENTS.md`](../../../../../../../../../AGENTS.md)
 
 Provides the FBO (Framebuffer Object) API over core GL 3.0 framebuffers — the GL 3.3 floor has no ARB or
-EXT fallback, so there is one owned implementation, `CgCoreFrameBuffer`, and a wrapper for foreign FBOs.
+EXT fallback, so `CgFrameBuffer` makes its own GL objects through `CgGL`, and a private subclass wraps foreign FBOs.
 
 ## Delegation Pattern
 
@@ -15,13 +15,11 @@ This mirrors `CgMaterial.load` → `CgMaterialRegistry.getOrCreate` → `CgMater
 
 ## Architecture: Parent + Dispatch Pattern
 
-All shared logic lives in `CgFrameBuffer`. `CgCoreFrameBuffer` contains only a constructor and the
-one-line dispatch overrides, each a `CgGL` call.
+Everything lives in `CgFrameBuffer`, its GL dispatch (`doGenFramebuffer`, `doBindFbo`, ...) one `CgGL` call each.
 
 ```
-CgFrameBuffer (abstract base, gl/framebuffer/)
-    ├── CgCoreFrameBuffer   → routes via CgGL (core GL 3.0)
-    └── WrappedFrameBuffer  → a foreign FBO, not owned
+CgFrameBuffer (gl/framebuffer/)  → an owned FBO, through CgGL (core GL 3.0)
+    └── WrappedFrameBuffer       → a foreign FBO, not owned: the dispatch overridden with no-ops
 
 CgFrameBufferRegistry       → single source of truth for all owned FBOs;
                               framebuffers LinkedHashMap; screen-sized auto-resize
@@ -52,15 +50,6 @@ CgFrameBufferRegistry       → single source of truth for all owned FBOs;
 | `CgFrameBuffer.create(name, w, h, format)` | `public static` | Thin delegator → `CgFrameBufferRegistry.get().getOrCreate(...)` |
 | `CgFrameBuffer.createInternal(name, w, h, format)` | `package-private static` | Real work — `initGl`, validation; called only by registry |
 
-## What CgCoreFrameBuffer Owns
-
-A package-private constructor `(String name, CgFrameBufferFormat format, int width, int height)` and the
-dispatch overrides (`doGenFramebuffer`, `deleteFramebuffer`, `deleteRenderbuffer`, `doBindFbo`,
-`doFramebufferTexture2D`, `doFramebufferRenderbuffer`, `doGenRenderbuffer`, `doRenderbufferStorage`,
-`doCheckFramebufferStatus`), each one `CgGL` call.
-
----
-
 ## Attachment Model
 
 `CgFrameBuffer.Attachment` is a public static inner class with two paths:
@@ -69,7 +58,7 @@ dispatch overrides (`doGenFramebuffer`, `deleteFramebuffer`, `deleteRenderbuffer
 - **Renderbuffer path**: `texture == null`, `renderbufferId != 0` — non-sampleable, faster
 
 `Attachment.delete()` calls `parent.deleteRenderbuffer(id)` — routes through the
-backend's abstract dispatch. Never calls `GL30.glDeleteRenderbuffers` directly.
+framebuffer's own dispatch. Never calls `GL30.glDeleteRenderbuffers` directly.
 
 ---
 
@@ -144,13 +133,3 @@ process, a host's screenshot included. Copy the mapped bytes out in ONE bulk `ge
 the mapped buffer measured 2-3 ms for a 256x144 picture.
 
 ---
-
-## Adding a New Backend
-
-`CgCoreFrameBuffer` is the only owned implementation at the GL 3.3 floor. Another would:
-
-1. Extend `CgFrameBuffer` (package-private — no `public`).
-2. Add one package-private constructor `(String name, CgFrameBufferFormat format, int w, int h)` calling `super(name, format, w, h)`.
-3. Implement all nine abstract dispatch methods (one line each).
-4. Override `bindDraw()`, `bindRead()`, and `drawBuffers()` if needed.
-5. Be chosen in `CgFrameBuffer.createInternal()`, which builds `CgCoreFrameBuffer` today; no factory methods of its own.

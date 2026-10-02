@@ -1150,7 +1150,7 @@ All 37 package guides under `src/main/java/com/crystalgraphics/`. Relative paths
 | Path | What it covers |
 |---|---|
 | `api/shader/AGENTS.md` | `CgShader` lifecycle, `CgShaderPreprocessor` (#include/pragma-once/cycle detection), `CgShaderBindings` fluent API, `CgActiveUniform` |
-| `gl/shader/AGENTS.md` | `CgShaderFactory`, `CgCoreShaderProgram`, `StandaloneCgShader` |
+| `gl/shader/AGENTS.md` | `CgShaderFactory`, `StandaloneCgShader` |
 | `mc/shader/AGENTS.md` | `CgShaderImpl` hot-reload flow, `CgShaderManagerImpl` cache, `CgShaderReloadHook` (F3+T), `CgSystemUniformRegistry` |
 
 ### Framebuffers

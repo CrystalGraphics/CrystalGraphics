@@ -18,7 +18,7 @@ import java.nio.FloatBuffer;
  *
  * <p>This class is not instantiable.</p>
  *
- * @see CgCoreShaderProgram
+ * @see CgShaderProgram
  */
 public final class CgShaderFactory {
 
@@ -39,7 +39,7 @@ public final class CgShaderFactory {
     /**
      * Compiles and links a GLSL program using the best available backend.
      *
-     * <p>Through {@link CgCoreShaderProgram#compile(String, String, CgVertexFormat)}.</p>
+     * <p>Through {@link CgShaderProgram#compile(String, String, CgVertexFormat)}.</p>
      *
      * @param vertexSource   GLSL vertex shader source code
      * @param fragmentSource GLSL fragment shader source code
@@ -48,13 +48,13 @@ public final class CgShaderFactory {
      * @throws IllegalStateException if shader compilation or linking fails
      */
     public static CgShaderProgram compile(String vertexSource, String fragmentSource, CgVertexFormat format) {
-        return CgCoreShaderProgram.compile(vertexSource, fragmentSource, format);
+        return CgShaderProgram.compile(vertexSource, fragmentSource, format);
     }
 
     /**
      * Compiles and links a GLSL program using the best available backend.
      *
-     * <p>Through {@link CgCoreShaderProgram#compile(String, String, CgVertexFormat)}.</p>
+     * <p>Through {@link CgShaderProgram#compile(String, String, CgVertexFormat)}.</p>
      *
      * @param vertexSource   GLSL vertex shader source code
      * @param fragmentSource GLSL fragment shader source code
