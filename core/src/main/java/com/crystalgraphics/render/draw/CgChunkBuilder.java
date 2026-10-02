@@ -49,6 +49,9 @@ public final class CgChunkBuilder {
     private int[] instanceCounts = new int[16];
     @Nullable
     private CgMesh[] meshes;
+    /** Per mesh draw: submesh (-1 for every one, whole), first, count (-1 to the end). Null until one is drawn. */
+    @Nullable
+    private int[] ranges;
     private float[] bounds = new float[64];
     private long[] sortKeys = new long[16];
     private boolean boundsSet;
@@ -115,8 +118,16 @@ public final class CgChunkBuilder {
         kinds[d] = drawingKind;
         firsts[d] = records[drawingKind];
         instanceCounts[d] = 0;
-        if (mesh != null && meshes == null) meshes = new CgMesh[pipelines.length];
-        if (meshes != null) meshes[d] = mesh;   // also clears what a dropped draw left in this slot
+        if (mesh != null && meshes == null) {
+            meshes = new CgMesh[pipelines.length];
+            ranges = new int[pipelines.length * 3];
+        }
+        if (meshes != null) {
+            meshes[d] = mesh;   // also clears what a dropped draw left in this slot
+            ranges[d * 3] = -1;
+            ranges[d * 3 + 1] = 0;
+            ranges[d * 3 + 2] = -1;
+        }
         sortKeys[d] = 0;
         boundsSet = false;
         drawingFloats = pipeline.kind().floats();
@@ -180,6 +191,26 @@ public final class CgChunkBuilder {
         return this;
     }
 
+    /**
+     * Draws part of the open draw's mesh: {@code submesh}'s indices from {@code first}, {@code count} of them (-1 to
+     * its end); a submesh drawn without indices takes the range of its vertices. {@code CG_VERTEX_ID} is never moved
+     * by a range: the quads of a second chunk of {@code CgMesh.quads(n)} continue where the first's stopped.
+     *
+     * <pre>{@code
+     * chunks.draw(pipeline, bindings, CgMesh.quads(1024)).range(0, 0, live * 6);
+     * }</pre>
+     */
+    public CgChunkBuilder range(int submesh, int first, int count) {
+        if (drawing < 0 || meshes == null || meshes[drawing] == null) {
+            throw new IllegalStateException("range() on a draw with no mesh");
+        }
+        if (submesh < 0 || first < 0) throw new IllegalArgumentException("range " + submesh + ", " + first);
+        ranges[drawing * 3] = submesh;
+        ranges[drawing * 3 + 1] = first;
+        ranges[drawing * 3 + 2] = count;
+        return this;
+    }
+
     /** What a sorted pass orders the open draw by, ascending. */
     public CgChunkBuilder sortKey(long key) {
         sortKeys[drawing] = key;
@@ -198,7 +229,8 @@ public final class CgChunkBuilder {
         CgDrawChunk chunk = new CgDrawChunk(spatial, clip, effect, bindings, count,
                 Arrays.copyOf(pipelines, count), Arrays.copyOf(bindingIds, count), Arrays.copyOf(kinds, count),
                 Arrays.copyOf(firsts, count), Arrays.copyOf(instanceCounts, count),
-                meshes == null ? null : Arrays.copyOf(meshes, count), Arrays.copyOf(bounds, count * 4),
+                meshes == null ? null : Arrays.copyOf(meshes, count), ranges == null ? null : Arrays.copyOf(ranges, count * 3),
+                Arrays.copyOf(bounds, count * 4),
                 Arrays.copyOf(sortKeys, count), kept);
         open = false;
         count = 0;
@@ -239,7 +271,10 @@ public final class CgChunkBuilder {
         kinds = Arrays.copyOf(kinds, n);
         firsts = Arrays.copyOf(firsts, n);
         instanceCounts = Arrays.copyOf(instanceCounts, n);
-        if (meshes != null) meshes = Arrays.copyOf(meshes, n);
+        if (meshes != null) {
+            meshes = Arrays.copyOf(meshes, n);
+            ranges = Arrays.copyOf(ranges, n * 3);
+        }
         bounds = Arrays.copyOf(bounds, n * 4);
         sortKeys = Arrays.copyOf(sortKeys, n);
     }

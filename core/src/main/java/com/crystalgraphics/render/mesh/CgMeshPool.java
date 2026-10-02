@@ -35,12 +35,16 @@ final class CgMeshPool {
             bytes = (long) vertexCapacity * format.getStride() + (long) indexCapacity * 4;
             vao = CgVertexArray.createRawVaoId();
             CgVertexArray.bind(vao);
-            vertexBuffer = CgGL.glGenBuffers();
-            CgGL.glBindBuffer(CgGL.GL_ARRAY_BUFFER, vertexBuffer);
-            CgGL.glBufferData(CgGL.GL_ARRAY_BUFFER, (long) vertexCapacity * format.getStride(), CgGL.GL_STATIC_DRAW);
-            for (int i = 0; i < format.getAttributeCount(); i++) {
-                CgVertexArray.pointer(i, format.getAttribute(i), format.getStride(), format.getAttribute(i).getOffset());
-                CgGL.glEnableVertexAttribArray(i);
+            if (format.getStride() > 0) {
+                vertexBuffer = CgGL.glGenBuffers();
+                CgGL.glBindBuffer(CgGL.GL_ARRAY_BUFFER, vertexBuffer);
+                CgGL.glBufferData(CgGL.GL_ARRAY_BUFFER, (long) vertexCapacity * format.getStride(), CgGL.GL_STATIC_DRAW);
+                for (int i = 0; i < format.getAttributeCount(); i++) {
+                    CgVertexArray.pointer(i, format.getAttribute(i), format.getStride(), format.getAttribute(i).getOffset());
+                    CgGL.glEnableVertexAttribArray(i);
+                }
+            } else {
+                vertexBuffer = 0;   // CgVertexFormat.NONE: the shader places every vertex
             }
             indexBuffer = CgGL.glGenBuffers();
             CgGL.glBindBuffer(CgGL.GL_ELEMENT_ARRAY_BUFFER, indexBuffer);   // captured by the vertex array
@@ -51,7 +55,7 @@ final class CgMeshPool {
 
         void delete() {
             CgVertexArray.deleteRaw(vao);
-            CgGL.glDeleteBuffers(vertexBuffer);
+            if (vertexBuffer != 0) CgGL.glDeleteBuffers(vertexBuffer);
             CgGL.glDeleteBuffers(indexBuffer);
         }
     }
@@ -79,9 +83,11 @@ final class CgMeshPool {
         return slab;
     }
 
-    private static boolean tryPlace(Slab slab, int vertexCount, int indexCount, int[] nodes) {
-        int v = vertexCount > 0 ? slab.vertices.allocate(vertexCount) : -1;
-        if (vertexCount > 0 && v == CgOffsetAllocator.NO_SPACE) return false;
+    private boolean tryPlace(Slab slab, int vertexCount, int indexCount, int[] nodes) {
+        // A mesh with no vertex bytes takes no vertex range: its base vertex is 0.
+        boolean vertices = vertexCount > 0 && format.getStride() > 0;
+        int v = vertices ? slab.vertices.allocate(vertexCount) : -1;
+        if (vertices && v == CgOffsetAllocator.NO_SPACE) return false;
         int x = indexCount > 0 ? slab.indices.allocate(indexCount) : -1;
         if (indexCount > 0 && x == CgOffsetAllocator.NO_SPACE) {
             if (v >= 0) slab.vertices.free(v);

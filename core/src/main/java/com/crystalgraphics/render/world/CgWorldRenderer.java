@@ -93,6 +93,11 @@ public final class CgWorldRenderer {
     private int count;
     private CgMesh[] meshes = new CgMesh[64];
     private final float[] meshBounds = new float[6];
+    /** Per draw: submesh, first, count of its mesh; its stated bounds (6) and whether set; its padding. */
+    private int[] ranges = new int[64 * 3];
+    private float[] drawBounds = new float[64 * 6];
+    private boolean[] boundsStated = new boolean[64];
+    private float[] pads = new float[64];
     private CgMaterial[] materials = new CgMaterial[64];
     private double[] positions = new double[64 * 3];
     private float[] transforms = new float[64 * 16];
@@ -162,6 +167,10 @@ public final class CgWorldRenderer {
         private final float[] custom = new float[16];
         private int queue;
         private int priority;
+        private int submesh, first, count;
+        private final float[] bounds = new float[6];
+        private boolean boundsSet;
+        private float pad;
 
         private Draw start(CgMesh mesh, CgMaterial material) {
             this.mesh = mesh;
@@ -171,6 +180,53 @@ public final class CgWorldRenderer {
             Arrays.fill(custom, 0f);
             queue = material.getRenderQueue();
             priority = 0;
+            submesh = -1;
+            first = 0;
+            count = -1;
+            boundsSet = false;
+            pad = 0f;
+            return this;
+        }
+
+        /** Draws only submesh {@code i} of the mesh, whole. */
+        public Draw submesh(int i) {
+            submesh = i;
+            return this;
+        }
+
+        /**
+         * Draws {@code count} of the submesh's indices from {@code first} (submesh 0 unless {@link #submesh} named
+         * one); for a mesh without indices, its vertices. {@code CG_VERTEX_ID} is not moved by it.
+         *
+         * <pre>{@code
+         * world.draw(CgMesh.quads(capacity), sparks).indices(0, live * 6).at(x, y, z).bounds(box).submit();
+         * }</pre>
+         */
+        public Draw indices(int first, int count) {
+            if (submesh < 0) submesh = 0;
+            this.first = first;
+            this.count = count;
+            return this;
+        }
+
+        /**
+         * The box this draw covers, in its own space (transformed with it, as a mesh's bounds are): what it is culled
+         * by, in place of its mesh's. A mesh the shader places, {@code CgMesh.quads(n)}, has none of its own.
+         */
+        public Draw bounds(float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
+            bounds[0] = minX;
+            bounds[1] = minY;
+            bounds[2] = minZ;
+            bounds[3] = maxX;
+            bounds[4] = maxY;
+            bounds[5] = maxZ;
+            boundsSet = true;
+            return this;
+        }
+
+        /** Grows the bounds it is culled by on every side, for a vertex shader that displaces. */
+        public Draw pad(float radius) {
+            pad = radius;
             return this;
         }
 
@@ -231,6 +287,12 @@ public final class CgWorldRenderer {
         System.arraycopy(d.custom, 0, customs, count * 16, 16);
         queues[count] = d.queue;
         priorities[count] = d.priority;
+        ranges[count * 3] = d.submesh;
+        ranges[count * 3 + 1] = d.first;
+        ranges[count * 3 + 2] = d.count;
+        boundsStated[count] = d.boundsSet;
+        if (d.boundsSet) System.arraycopy(d.bounds, 0, drawBounds, count * 6, 6);
+        pads[count] = d.pad;
         count++;
     }
 
@@ -249,6 +311,10 @@ public final class CgWorldRenderer {
         customs = Arrays.copyOf(customs, n * 16);
         queues = Arrays.copyOf(queues, n);
         priorities = Arrays.copyOf(priorities, n);
+        ranges = Arrays.copyOf(ranges, n * 3);
+        drawBounds = Arrays.copyOf(drawBounds, n * 6);
+        boundsStated = Arrays.copyOf(boundsStated, n);
+        pads = Arrays.copyOf(pads, n);
     }
     // ── Recording ────────────────────────────────────────────────────────────────────────────────
 
@@ -339,9 +405,17 @@ public final class CgWorldRenderer {
         if (queue >= CgRenderQueue.OVERLAY_THRESHOLD || transparent != (which == TRANSPARENT)) return SKIP;
         modelOf(i, view);
         float cx, cy, cz;
-        float[] bounds = meshes[i].bounds(meshBounds);
+        float[] bounds;
+        if (boundsStated[i]) {
+            System.arraycopy(drawBounds, i * 6, meshBounds, 0, 6);
+            bounds = meshBounds;
+        } else {
+            bounds = meshes[i].bounds(meshBounds);
+        }
         if (bounds != null) {
-            model.transformAab(bounds[0], bounds[1], bounds[2], bounds[3], bounds[4], bounds[5], min, max);
+            float p = pads[i];
+            model.transformAab(bounds[0] - p, bounds[1] - p, bounds[2] - p, bounds[3] + p, bounds[4] + p, bounds[5] + p,
+                    min, max);
             if (!frustum.testAabb(min.x, min.y, min.z, max.x, max.y, max.z)) return SKIP;
             cx = (min.x + max.x) * 0.5f;
             cy = (min.y + max.y) * 0.5f;
@@ -382,6 +456,7 @@ public final class CgWorldRenderer {
                 CgPipeline pipeline = depthOnlyPass ? depthPipeline(link) : link.pipeline(CgInstanceKind.OBJECT);
                 if (pipeline == null) continue;
                 chunks.draw(pipeline, bindingOf(link, recording), meshes[i]).sortKey(keys[i]);
+                if (ranges[i * 3] >= 0) chunks.range(ranges[i * 3], ranges[i * 3 + 1], ranges[i * 3 + 2]);
                 int at = chunks.instance();
                 float[] data = chunks.data();
                 model.get(data, at);

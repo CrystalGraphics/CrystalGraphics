@@ -725,9 +725,14 @@ world.onFrame(view -> {                                // once a frame, before t
          .submit();
 });
 world.draw(pane, glass).at(x, y, z).queue(CgRenderQueue.TRANSPARENT).submit();   // overrides the material's queue
+
+// Part of a mesh, geometry with no vertex data, and bounds the draw states itself:
+world.draw(CgMesh.quads(capacity), sparks).indices(0, live * 6).at(x, y, z).bounds(-1, -1, -1, 1, 1, 1).submit();
+world.draw(model, brass).submesh(1).at(x, y, z).submit();
+world.draw(billow, smoke).at(x, y, z).transform(scale).pad(0.4f).submit();   // grown for a displacing shader
 ```
 
-- **Culled** against the view by the mesh's bounds (`CgMesh.bounds()`, computed at upload), and **sorted**
+- **Culled** against the view by the draw's stated bounds, else its mesh's, either grown by `pad`, and **sorted**
   (`CgSortKey`): opaque by material, front to back, then mesh; transparent back to front. Equal neighbours instance.
 - `WORLD_OPAQUE` records the depth snapshot (only when a drawn material reads `cg_DepthBuffer`), a prepass (materials
   with a depth pass, and alpha-tested ones) and the opaque pass; `WORLD_TRANSPARENT` a snapshot of its own (again only
@@ -839,6 +844,10 @@ CgMesh tri = CgMesh.build(CgVertexFormat.SPATIAL, m -> {
 CgMesh ball = CgMeshShapes.sphere(24, 32);              // shared: one per format and size
 world.draw(ball, material).at(x, y, z).submit();
 ball.release();                                          // own meshes only; the GPU copy goes once frames retire
+
+// No vertex data: the shader (#type none) places each vertex from CG_VERTEX_ID
+CgMesh sparks = CgMesh.quads(1024);                      // corner CG_VERTEX_ID & 3, quad CG_VERTEX_ID >> 2
+CgMesh bolt = CgMesh.vertices(64, CgMeshTopology.TRIANGLE_STRIP);
 ```
 
 Until M5 the older path still runs, and draws through the store too: `CgMeshLoader.load(...)` answers `CgMeshData`, and

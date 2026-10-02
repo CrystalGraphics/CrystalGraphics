@@ -312,7 +312,8 @@ public final class CgExecutor {
                 frame.bindings.bind(boundBinding);
             }
             CgMesh mesh = packed.kind[b] == CgInstanceKind.OBJECT.ordinal() ? packed.mesh[b] : CgInstanceGeometry.unitQuad();
-            CgMeshStore.get().draw(mesh, pipeline, packed.instances[b]);
+            CgMeshStore.get().draw(mesh, pipeline, packed.instances[b], packed.submesh[b], packed.rangeFirst[b],
+                    packed.rangeCount[b]);
         }
         CgVertexArray.bind(0);
     }

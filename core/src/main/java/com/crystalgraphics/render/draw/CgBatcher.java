@@ -46,6 +46,7 @@ public final class CgBatcher {
     private int[] bindings = new int[256];
     private int[] kinds = new int[256];
     private Object[] meshes = new Object[256];
+    private int[] ranges = new int[256 * 3];
     private int[] domains = new int[256];
     private int[] scissors = new int[256];
 
@@ -54,6 +55,7 @@ public final class CgBatcher {
     private int[] batchBinding = new int[64];
     private int[] batchKind = new int[64];
     private Object[] batchMesh = new Object[64];
+    private int[] batchRange = new int[64 * 3];
     private int[] batchDomain = new int[64];
     private int[] batchScissor = new int[64];
     private float[] batchUnion = new float[64 * 4];
@@ -79,6 +81,12 @@ public final class CgBatcher {
     /** Adds the pass's next draw; {@code ref} is the caller's handle for it, given back in batch order. */
     public void add(int pipeline, int binding, CgInstanceKind kind, Object mesh, int domain, int scissor,
                     float x0, float y0, float x1, float y1, long sortKey, int ref) {
+        add(pipeline, binding, kind, mesh, -1, 0, -1, domain, scissor, x0, y0, x1, y1, sortKey, ref);
+    }
+
+    /** As the shorter form, for a mesh draw of a range (submesh, first, count): draws of other ranges never batch. */
+    public void add(int pipeline, int binding, CgInstanceKind kind, Object mesh, int submesh, int first, int count,
+                    int domain, int scissor, float x0, float y0, float x1, float y1, long sortKey, int ref) {
         if (draws == refs.length) growDraws();
         int d = draws++;
         refs[d] = ref;
@@ -92,6 +100,9 @@ public final class CgBatcher {
         bindings[d] = binding;
         kinds[d] = kind.ordinal();
         meshes[d] = mesh;
+        ranges[d * 3] = submesh;
+        ranges[d * 3 + 1] = first;
+        ranges[d * 3 + 2] = count;
         domains[d] = domain;
         scissors[d] = scissor;
         if (order == CgOrder.LOOKBACK) lookback(d);
@@ -128,6 +139,20 @@ public final class CgBatcher {
 
     public Object batchMesh(int batch) {
         return batchMesh[batch];
+    }
+
+    /** The range every draw in {@code batch} draws of its mesh: submesh, or -1 for all of it. */
+    public int batchSubmesh(int batch) {
+        return batchRange[batch * 3];
+    }
+
+    public int batchRangeFirst(int batch) {
+        return batchRange[batch * 3 + 1];
+    }
+
+    /** -1 to the submesh's end. */
+    public int batchRangeCount(int batch) {
+        return batchRange[batch * 3 + 2];
     }
 
     /** The scissor every draw in {@code batch} was added with. */
@@ -200,7 +225,8 @@ public final class CgBatcher {
 
     private boolean sameKey(int b, int d) {
         return batchPipeline[b] == pipelines[d] && batchBinding[b] == bindings[d] && batchKind[b] == kinds[d]
-                && batchMesh[b] == meshes[d] && batchScissor[b] == scissors[d];
+                && batchMesh[b] == meshes[d] && batchScissor[b] == scissors[d] && batchRange[b * 3] == ranges[d * 3]
+                && batchRange[b * 3 + 1] == ranges[d * 3 + 1] && batchRange[b * 3 + 2] == ranges[d * 3 + 2];
     }
 
     private void open(int d) {
@@ -210,6 +236,7 @@ public final class CgBatcher {
         batchBinding[b] = bindings[d];
         batchKind[b] = kinds[d];
         batchMesh[b] = meshes[d];
+        System.arraycopy(ranges, d * 3, batchRange, b * 3, 3);
         batchDomain[b] = domains[d];
         batchScissor[b] = scissors[d];
         System.arraycopy(rects, d * 4, batchUnion, b * 4, 4);
@@ -253,6 +280,7 @@ public final class CgBatcher {
         bindings = Arrays.copyOf(bindings, n);
         kinds = Arrays.copyOf(kinds, n);
         meshes = Arrays.copyOf(meshes, n);
+        ranges = Arrays.copyOf(ranges, n * 3);
         domains = Arrays.copyOf(domains, n);
         scissors = Arrays.copyOf(scissors, n);
     }
@@ -263,6 +291,7 @@ public final class CgBatcher {
         batchBinding = Arrays.copyOf(batchBinding, n);
         batchKind = Arrays.copyOf(batchKind, n);
         batchMesh = Arrays.copyOf(batchMesh, n);
+        batchRange = Arrays.copyOf(batchRange, n * 3);
         batchDomain = Arrays.copyOf(batchDomain, n);
         batchScissor = Arrays.copyOf(batchScissor, n);
         batchUnion = Arrays.copyOf(batchUnion, n * 4);

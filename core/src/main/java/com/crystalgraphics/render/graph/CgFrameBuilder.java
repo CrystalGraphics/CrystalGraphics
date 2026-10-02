@@ -283,7 +283,8 @@ public final class CgFrameBuilder {
                 refChunk[refs] = chunk;
                 refDraw[refs] = d;
                 tree.boundsInDomain(chunk.spatial(), chunk.x0(d), chunk.y0(d), chunk.x1(d), chunk.y1(d), domainBounds);
-                batcher.add(chunk.pipeline(d), map[local], chunk.kind(d), chunk.mesh(d), domain, scissor,
+                batcher.add(chunk.pipeline(d), map[local], chunk.kind(d), chunk.mesh(d), chunk.rangeSubmesh(d),
+                        chunk.rangeFirst(d), chunk.rangeCount(d), domain, scissor,
                         domainBounds[0], domainBounds[1], domainBounds[2], domainBounds[3], chunk.sortKey(d), refs);
                 refs++;
             }
@@ -301,6 +302,9 @@ public final class CgFrameBuilder {
             packed.binding[b] = batcher.batchBinding(b);
             packed.kind[b] = ki;
             packed.mesh[b] = (CgMesh) batcher.batchMesh(b);
+            packed.submesh[b] = batcher.batchSubmesh(b);
+            packed.rangeFirst[b] = batcher.batchRangeFirst(b);
+            packed.rangeCount[b] = batcher.batchRangeCount(b);
             packed.scissor[b] = batcher.batchScissor(b);
             packed.first[b] = frame.instanceFloats[ki] / floats;
             packed.kinds |= 1 << ki;

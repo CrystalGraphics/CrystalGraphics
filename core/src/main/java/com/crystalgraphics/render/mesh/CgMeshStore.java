@@ -150,7 +150,7 @@ public final class CgMeshStore {
             if (pool.slabs.size() != slabs) slabBytes += p.slab.bytes;
             p.vertexNode = nodes[0];
             p.indexNode = nodes[1];
-            p.baseVertex = p.slab.vertices.offset(p.vertexNode);
+            p.baseVertex = p.vertexNode >= 0 ? p.slab.vertices.offset(p.vertexNode) : 0;
             p.firstIndex = p.indexNode >= 0 ? p.slab.indices.offset(p.indexNode) : 0;
         }
         p.pending = true;
@@ -172,7 +172,7 @@ public final class CgMeshStore {
     private void keep(Placement from, Placement to) {
         int stride = to.mesh.format().getStride();
         int vertices = Math.min(from.vertexCount, to.vertexCount), indices = Math.min(from.indexCount, to.indexCount);
-        if (vertices > 0) {
+        if (vertices > 0 && stride > 0) {
             copy(from.slab.vertexBuffer, to.slab.vertexBuffer, (long) from.baseVertex * stride, (long) to.baseVertex * stride,
                     (long) vertices * stride);
         }
@@ -186,7 +186,7 @@ public final class CgMeshStore {
     private void stage(Placement p, int vertexFrom, int vertexTo, int indexFrom, int indexTo) {
         if (p.slab == null) return;
         int stride = p.mesh.format().getStride();
-        if (vertexTo > vertexFrom) {
+        if (vertexTo > vertexFrom && stride > 0) {
             int bytes = (vertexTo - vertexFrom) * stride;
             int at = reserve(bytes);
             p.mesh.readVertices(vertexFrom, vertexTo - vertexFrom, cpu);
@@ -272,6 +272,15 @@ public final class CgMeshStore {
      * when its draws are done.
      */
     public void draw(CgMesh mesh, CgPipeline pipeline, int instances) {
+        draw(mesh, pipeline, instances, -1, 0, -1);
+    }
+
+    /**
+     * As {@link #draw(CgMesh, CgPipeline, int)}, a range of it: submesh {@code submesh}'s indices from {@code first},
+     * {@code count} of them (-1 to its end), or its vertices for a submesh with no indices; {@code submesh} -1 draws
+     * every submesh whole. The base vertex, and so {@code CG_VERTEX_ID}, is the submesh's whatever the range.
+     */
+    public void draw(CgMesh mesh, CgPipeline pipeline, int instances, int submesh, int first, int count) {
         Placement p = placements.get(mesh);
         if (p == null || p.releases != mesh.releases()) {
             // Not placed with the frame: placed now, which on Vulkan breaks the pass for its upload.
@@ -284,16 +293,21 @@ public final class CgMeshStore {
         CgVertexArray.bind(p.slab.vao);
         // LWJGL 2 checks an indexed draw's offset against the element binding it saw bound, never the vertex array's.
         CgGL.glBindBuffer(CgGL.GL_ELEMENT_ARRAY_BUFFER, p.slab.indexBuffer);
-        for (int s = 0; s < p.submeshCount; s++) {
+        int from = submesh < 0 ? 0 : submesh, to = submesh < 0 ? p.submeshCount : Math.min(submesh + 1, p.submeshCount);
+        for (int s = from; s < to; s++) {
             int firstIndex = p.submeshes[s * 4], indexCount = p.submeshes[s * 4 + 1];
             int firstVertex = p.submeshes[s * 4 + 2], vertexCount = p.submeshes[s * 4 + 3];
             int base = p.baseVertex + firstVertex;
+            int total = indexCount > 0 ? indexCount : vertexCount;
+            int start = submesh < 0 ? 0 : Math.min(first, total);
+            int n = submesh < 0 || count < 0 ? total - start : Math.min(count, total - start);
+            if (n <= 0) continue;
             pipeline.vertexBase(base);
             if (indexCount > 0) {
-                CgGL.glDrawElementsInstancedBaseVertex(p.mode, indexCount, CgGL.GL_UNSIGNED_INT,
-                        (long) (p.firstIndex + firstIndex) * 4, instances, base);
-            } else if (vertexCount > 0) {
-                CgGL.glDrawArraysInstanced(p.mode, base, vertexCount, instances);
+                CgGL.glDrawElementsInstancedBaseVertex(p.mode, n, CgGL.GL_UNSIGNED_INT,
+                        (long) (p.firstIndex + firstIndex + start) * 4, instances, base);
+            } else {
+                CgGL.glDrawArraysInstanced(p.mode, base + start, n, instances);
             }
         }
     }
