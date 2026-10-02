@@ -1,5 +1,7 @@
 package com.crystalgraphics.vfx.look;
 
+import com.crystalgraphics.easing.CgKeyframes;
+
 /**
  * A value for every parameter of one {@link CgVfxSchema}: a look's defaults, or a playing effect's own copy of them.
  *
@@ -19,9 +21,9 @@ public final class CgVfxValues {
 
     private final CgVfxSchema schema;
     private final float[] values;
-    private final CgVfxCurve[] curves;
+    private final CgKeyframes[] curves;
 
-    CgVfxValues(CgVfxSchema schema, float[] values, CgVfxCurve[] curves) {
+    CgVfxValues(CgVfxSchema schema, float[] values, CgKeyframes[] curves) {
         this.schema = schema;
         this.values = values;
         this.curves = curves;
@@ -58,13 +60,13 @@ public final class CgVfxValues {
         return this;
     }
 
-    public CgVfxCurve curve(CgVfxParam param) {
+    public CgKeyframes curve(CgVfxParam param) {
         schema.check(param);
         if (!param.isCurve()) throw new IllegalArgumentException("'" + param.name + "' is not a curve");
         return curves[param.offset];
     }
 
-    public CgVfxValues set(CgVfxParam param, CgVfxCurve curve) {
+    public CgVfxValues set(CgVfxParam param, CgKeyframes curve) {
         schema.check(param);
         if (!param.isCurve()) throw new IllegalArgumentException("'" + param.name + "' is not a curve");
         curves[param.offset] = curve;
