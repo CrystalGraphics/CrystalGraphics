@@ -12,9 +12,11 @@ com/crystalgraphics/api/CgBindingPoints
   field public,static PARTICLES Lcom/crystalgraphics/api/CgBindingPoints$Binding;
   field public,static PATH Lcom/crystalgraphics/platform/gl/CgCapabilities$ShaderBufferPath;
   field public,static QUAD_RENDERER Lcom/crystalgraphics/api/CgBindingPoints$Binding;
+  field public,static SCENE_COLOR_TEXTURE_UNIT I
   field public,static SHAPE_TABLE Lcom/crystalgraphics/api/CgBindingPoints$Binding;
   field public,static TEXT_DATA_UBO I
   field public,static,final DEPTH_TEXTURE_UNIFORM Ljava/lang/String;
+  field public,static,final SCENE_COLOR_TEXTURE_UNIFORM Ljava/lang/String;
   field public,static,final USER_START_SSBO I
   field public,static,final USER_START_TBO I
   field public,static,final USER_START_UBO I
@@ -520,6 +522,7 @@ com/crystalgraphics/api/material/CgMaterial
   method public pipeline (Lcom/crystalgraphics/api/material/CgRenderPassVariant;Lcom/crystalgraphics/render/draw/CgInstanceKind;)Lcom/crystalgraphics/render/draw/CgPipeline;
   method public pipeline (Lcom/crystalgraphics/render/draw/CgInstanceKind;)Lcom/crystalgraphics/render/draw/CgPipeline;
   method public prepare ()Z
+  method public readsSceneColor ()Z
   method public readsSceneDepth ()Z
   method public recompile ()V
   method public setNextPass (Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/api/material/CgMaterial;
@@ -2129,6 +2132,7 @@ com/crystalgraphics/gl/material/CgMaterialShader
   method public lastCompileError ()Ljava/lang/String;
   method public markDirty ()V
   method public pollPending ()Z
+  method public readsSceneColor ()Z
   method public readsSceneDepth ()Z
   method public recompile ()V
   method public submitRecompile ()V

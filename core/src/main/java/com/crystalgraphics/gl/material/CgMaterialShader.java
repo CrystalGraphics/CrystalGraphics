@@ -146,6 +146,8 @@ public final class CgMaterialShader {
     private String parsedSource;
     /** Whether the parsed source or anything it includes samples the scene depth; see {@link #readsSceneDepth}. */
     private volatile boolean sceneDepth = true;
+    /** Whether it samples the scene colour; see {@link #readsSceneColor}. */
+    private volatile boolean sceneColor = true;
 
     /**
      * Flat pass × keywords program cache. Key = (passName, keywords set).
@@ -313,6 +315,7 @@ public final class CgMaterialShader {
             this.renderQueue = parsed.renderQueue();
             this.renderType = parsed.renderType();
             this.sceneDepth = sceneDepthIn(source);
+            this.sceneColor = sceneColorIn(source);
             this.parsedSource = source;
             this.lastParsed = parsed;
             return parsed;
@@ -417,7 +420,10 @@ public final class CgMaterialShader {
             // ── Step 2a: commit the pure-parse products immediately (see below) ──
             this.renderQueue = parsed.renderQueue();
             this.renderType = parsed.renderType();
-            if (!source.equals(parsedSource)) this.sceneDepth = sceneDepthIn(source);
+            if (!source.equals(parsedSource)) {
+                this.sceneDepth = sceneDepthIn(source);
+                this.sceneColor = sceneColorIn(source);
+            }
             this.parsedSource = source;
             this.lastParsed = parsed;   // last: a reader that sees it sees the three above
         }
@@ -1071,6 +1077,15 @@ public final class CgMaterialShader {
         return new CgShaderPreprocessor().mentions(source, resourcePath, "cg_DepthBuffer", "CG_SCENE_EYE_DEPTH");
     }
 
+    /** Whether the parsed source samples {@code cg_SceneColor}, directly or through {@code CG_SCENE_COLOR}; true until parsed. */
+    public boolean readsSceneColor() {
+        return parsedSource == null || sceneColor;
+    }
+
+    private boolean sceneColorIn(String source) {
+        return new CgShaderPreprocessor().mentions(source, resourcePath, "cg_SceneColor", "CG_SCENE_COLOR");
+    }
+
     /**
      * Whether the engine has a shadow system: it does not. {@code CgFrameBlock} carries no light direction, shadow
      * matrix or shadow params, so an auto-generated shadow-caster pass names uniforms that do not exist. Turning
@@ -1092,10 +1107,12 @@ public final class CgMaterialShader {
         for (CgAttachedBuffer ab : attachedBuffers) ab.getBuffer().wireShader(shader);
     }
 
-    /** The depth snapshot's unit, and each sampler property's: its index among the declared samplers. */
+    /** The scene snapshots' units, and each sampler property's: its index among the declared samplers. */
     private void wireShaderSamplers(CgShader shader) {
         int loc = shader.getUniformLocation(CgBindingPoints.DEPTH_TEXTURE_UNIFORM);
         if (loc >= 0) shader.getProgram().setUniform1i(loc, CgBindingPoints.DEPTH_TEXTURE_UNIT);
+        loc = shader.getUniformLocation(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIFORM);
+        if (loc >= 0) shader.getProgram().setUniform1i(loc, CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
         CgParsedShader parsed = lastParsed;
         if (parsed == null) return;
         int unit = 0;

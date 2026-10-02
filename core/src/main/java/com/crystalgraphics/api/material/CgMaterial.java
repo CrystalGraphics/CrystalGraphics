@@ -1153,6 +1153,11 @@ public final class CgMaterial {
         return cgMaterialShader == null || cgMaterialShader.readsSceneDepth();
     }
 
+    /** As {@link #readsSceneDepth()}, for the scene's colour ({@code cg_SceneColor}). */
+    public boolean readsSceneColor() {
+        return cgMaterialShader == null || cgMaterialShader.readsSceneColor();
+    }
+
     /**
      * Returns the material properties UBO, or {@code null} for sampler-only shaders.
      * Engine-owned — do not delete.
