@@ -11,9 +11,9 @@ Tags { "RenderType" = "Transparent" }
 Queue = "Transparent"
 
 Properties {
-    _Smoke   ("Smoke colour", color) = (0.11, 0.13, 0.19, 1.0)
-    _Density ("Opacity per unit of the sphere", float) = 3.5
-    _Scale   ("Billow frequency", float) = 2.2
+    _Smoke   ("Smoke colour", color) = (0.16, 0.18, 0.25, 1.0)
+    _Density ("Opacity per unit of the sphere", float) = 6.0
+    _Scale   ("Billow frequency", float) = 3.4
 }
 
 struct v2f { vec3 world; };
@@ -49,10 +49,10 @@ Pass {
         float t0 = max(-b - h, 0.0), t1 = min(-b + h, FX_SCENE_DISTANCE(ray) * scale);
         if (t1 <= t0) discard;
         float progress = CG_OBJECT_CUSTOM1.w, seed = CG_OBJECT_CUSTOM0.w;
-        const int STEPS = 12;
+        const int STEPS = 16;
         float stride = (t1 - t0) / float(STEPS);
         float jitter = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
-        float thin = mix(0.35, 0.95, progress);
+        float thin = mix(0.22, 0.72, progress);
         vec3 glow = CG_OBJECT_CUSTOM2.rgb * CG_OBJECT_CUSTOM2.a * (1.0 - progress) * (1.0 - progress) * 2.0;
         vec3 colour = vec3(0.0);
         float transmit = 1.0;
@@ -61,7 +61,7 @@ Pass {
             float r2 = dot(p, p);
             if (r2 >= 1.0) continue;
             float n = 0.5 + 0.5 * fx_fbm(p * _Scale + vec3(0.0, -progress * 1.2, 0.0) + seed * 13.0, 4);
-            float density = smoothstep(thin, thin + 0.25, n * (1.0 - r2 * 0.6)) * (1.0 - r2);
+            float density = smoothstep(thin, thin + 0.12, n * (1.0 - r2 * 0.6)) * (1.0 - r2);
             float a = 1.0 - exp(-density * stride * _Density);
             vec3 lit = _Smoke.rgb + glow * exp(-r2 * 3.0);
             colour += transmit * a * lit;

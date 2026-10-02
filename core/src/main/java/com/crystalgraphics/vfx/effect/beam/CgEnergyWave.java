@@ -96,7 +96,7 @@ public final class CgEnergyWave extends CgVfxEffect {
             MOMENT_END = "end";
 
     /** The body's radius, in blocks. */
-    public static final CgVfxParam RADIUS = SCHEMA.scalar("radius", 0.55f);
+    public static final CgVfxParam RADIUS = SCHEMA.scalar("radius", 0.8f);
     /** How fast energy leaves the muzzle, in blocks a second. */
     public static final CgVfxParam SPEED = SCHEMA.scalar("speed", 40f);
     /** The most the body turns toward its target, in radians a second; it homes by proportional navigation under it. */
@@ -135,7 +135,7 @@ public final class CgEnergyWave extends CgVfxEffect {
             .to(0.5f, 0f, CgEasings.OUT_CUBIC)
             .build());
     /** The release flash's half-width, as a multiple of the body's radius. */
-    public static final CgVfxParam FLASH_RADIUS = SCHEMA.scalar("flashRadius", 3f);
+    public static final CgVfxParam FLASH_RADIUS = SCHEMA.scalar("flashRadius", 2.5f);
     /** Seconds the shock ring takes to sweep out, and how far it reaches, as a multiple of the body's radius. */
     public static final CgVfxParam SHOCK_TIME = SCHEMA.scalar("shockTime", 0.55f);
     public static final CgVfxParam SHOCK_RADIUS = SCHEMA.scalar("shockRadius", 5.5f);
@@ -160,8 +160,8 @@ public final class CgEnergyWave extends CgVfxEffect {
             .to(1f, 0f, CgEasings.LINEAR)
             .build());
     /** The smoke's opacity over the blast (0..1 of it). */
-    public static final CgVfxParam SMOKE = SCHEMA.curve("smoke", CgKeyframes.start(0.1f, 0f)
-            .to(0.35f, 1f, CgEasings.OUT_QUAD)
+    public static final CgVfxParam SMOKE = SCHEMA.curve("smoke", CgKeyframes.start(0.25f, 0f)
+            .to(0.55f, 1f, CgEasings.OUT_QUAD)
             .to(1f, 0f, CgEasings.IN_QUAD)
             .build());
 
@@ -170,7 +170,7 @@ public final class CgEnergyWave extends CgVfxEffect {
     public static final CgVfxParam SHELL = SCHEMA.color("shell", 0.15f, 0.55f, 1.6f, 1f);
     public static final CgVfxParam SHELL_HOT = SCHEMA.color("shellHot", 0.7f, 0.95f, 1.6f, 1f);
     public static final CgVfxParam SPIRAL = SCHEMA.color("spiral", 0.5f, 0.85f, 1.6f, 1f);
-    public static final CgVfxParam GLOW = SCHEMA.color("glow", 0.18f, 0.45f, 1.4f, 0.6f);
+    public static final CgVfxParam GLOW = SCHEMA.color("glow", 0.18f, 0.45f, 1.4f, 0.9f);
 
     /** A band per block, sectors around and the frame's normal as a line: add it to a look to check the path. */
     public static final CgVfxLayer DEBUG = CgVfxLayer.builder("crystalgraphics:shaders/vfx/beam/debug.shader")
@@ -178,27 +178,33 @@ public final class CgEnergyWave extends CgVfxEffect {
 
     private static final String BEAM = "crystalgraphics:shaders/vfx/beam/";
     private static final CgVfxLook KAMEHAMEHA = CgVfxLook.builder(SCHEMA)
+            .layer(CgVfxLayer.builder(BEAM + "body_light.shader").volume()
+                    .radius(10f).colors(GLOW, null).priority(CgVfxLayer.PRIORITY_VOLUME).build())
             .layer(CgVfxLayer.builder(BEAM + "body_glow.shader").volume()
-                    .radius(3.6f).colors(GLOW, null).priority(CgVfxLayer.PRIORITY_VOLUME).build())
+                    .radius(4.4f).colors(GLOW, null).priority(CgVfxLayer.PRIORITY_VOLUME).build())
             .layer(CgVfxLayer.builder(BEAM + "body_shell.shader")
                     .radius(1f).colors(SHELL, SHELL_HOT).priority(CgVfxLayer.PRIORITY_SURFACE).build())
             .layer(CgVfxLayer.builder(BEAM + "body_core.shader")
-                    .radius(0.62f).colors(CORE, CORE_RIM).priority(CgVfxLayer.PRIORITY_CORE).build())
+                    .radius(0.52f).colors(CORE, CORE_RIM).priority(CgVfxLayer.PRIORITY_CORE).build())
             .layer(CgVfxLayer.builder(BEAM + "body_spiral.shader")
                     .radius(1.2f).colors(SPIRAL, CORE).priority(CgVfxLayer.PRIORITY_BANDS).build())
             .layer(CgVfxLayer.builder(BEAM + "body_arcs.shader").slot(SLOT_BODY_ARCS)
                     .colors(SPIRAL, CORE).priority(CgVfxLayer.PRIORITY_BANDS).build())
-            .layer(orb("orb_glow", SLOT_HEAD, 3.2f, 1.3f, GLOW, null, CgVfxLayer.PRIORITY_VOLUME))
+            .layer(orb("orb_light", SLOT_HEAD, 9f, 0f, GLOW, null, CgVfxLayer.PRIORITY_VOLUME))
+            .layer(orb("orb_glow", SLOT_HEAD, 3.2f, 1.5f, GLOW, null, CgVfxLayer.PRIORITY_VOLUME))
             .layer(orb("orb_shell", SLOT_HEAD, 1.15f, 1f, SHELL, SHELL_HOT, CgVfxLayer.PRIORITY_SURFACE))
             .layer(orb("orb_core", SLOT_HEAD, 0.75f, 0f, CORE, CORE_RIM, CgVfxLayer.PRIORITY_CORE))
-            .layer(orb("orb_glow", SLOT_CHARGE, 3.2f, 1.6f, GLOW, null, CgVfxLayer.PRIORITY_VOLUME))
+            .layer(orb("orb_light", SLOT_CHARGE, 9f, 0f, GLOW, null, CgVfxLayer.PRIORITY_VOLUME))
+            .layer(orb("orb_glow", SLOT_CHARGE, 3.2f, 1.8f, GLOW, null, CgVfxLayer.PRIORITY_VOLUME))
             .layer(orb("orb_plasma", SLOT_CHARGE, 1f, 0f, CORE, SHELL, CgVfxLayer.PRIORITY_CORE))
+            .layer(orb("orb_light", SLOT_FLASH, 7f, 0f, CORE_RIM, null, CgVfxLayer.PRIORITY_VOLUME))
             .layer(orb("orb_glow", SLOT_FLASH, 3.2f, 1f, CORE_RIM, null, CgVfxLayer.PRIORITY_VOLUME))
             .layer(CgVfxLayer.builder(BEAM + "charge_streaks.shader").slot(SLOT_STREAKS)
                     .colors(SHELL_HOT, CORE).priority(CgVfxLayer.PRIORITY_BANDS).build())
             .layer(CgVfxLayer.builder(BEAM + "charge_arcs.shader").slot(SLOT_ARCS)
                     .colors(SPIRAL, CORE).priority(CgVfxLayer.PRIORITY_BANDS).build())
-            .layer(orb("orb_glow", SLOT_IMPACT, 3.2f, 1.8f, GLOW, null, CgVfxLayer.PRIORITY_VOLUME))
+            .layer(orb("orb_light", SLOT_IMPACT, 9f, 0f, GLOW, null, CgVfxLayer.PRIORITY_VOLUME))
+            .layer(orb("orb_glow", SLOT_IMPACT, 3.2f, 2f, GLOW, null, CgVfxLayer.PRIORITY_VOLUME))
             .layer(orb("orb_plasma", SLOT_IMPACT, 1f, 0f, CORE, SHELL, CgVfxLayer.PRIORITY_CORE))
             .layer(CgVfxLayer.builder(BEAM + "impact_splash.shader").slot(SLOT_SPLASH)
                     .colors(SHELL_HOT, CORE).priority(CgVfxLayer.PRIORITY_BANDS).build())
@@ -206,11 +212,13 @@ public final class CgEnergyWave extends CgVfxEffect {
                     .colors(CORE_RIM, SHELL).priority(CgVfxLayer.PRIORITY_BANDS).build())
             .layer(CgVfxLayer.builder(BEAM + "blast_dome.shader").slot(SLOT_BLAST)
                     .colors(CORE, SHELL).priority(CgVfxLayer.PRIORITY_SURFACE).build())
-            .layer(orb("orb_glow", SLOT_BLAST_GLOW, 3.2f, 1f, CORE_RIM, null, CgVfxLayer.PRIORITY_VOLUME))
+            .layer(orb("orb_light", SLOT_BLAST_GLOW, 6f, 0f, GLOW, null, CgVfxLayer.PRIORITY_VOLUME))
+            .layer(orb("orb_glow", SLOT_BLAST_GLOW, 3.2f, 1.4f, CORE_RIM, null, CgVfxLayer.PRIORITY_VOLUME))
             .layer(orb("orb_plasma", SLOT_BLAST_GLOW, 1f, 0f, CORE, SHELL, CgVfxLayer.PRIORITY_CORE))
             .layer(CgVfxLayer.builder(BEAM + "impact_splash.shader").slot(SLOT_DEBRIS)
                     .colors(SHELL_HOT, CORE).priority(CgVfxLayer.PRIORITY_BANDS)
-                    .properties(b -> b.set1f("_Burst", 1f).set1f("_Count", 90f).set1f("_Speed", 16f).set1f("_Life", 1.1f))
+                    .properties(b -> b.set1f("_Burst", 1f).set1f("_Count", 90f).set1f("_Speed", 18f).set1f("_Life", 1.2f)
+                            .set1f("_Width", 0.08f).set1f("_Streak", 0.08f))
                     .build())
             .layer(CgVfxLayer.builder(BEAM + "blast_smoke.shader").slot(SLOT_SMOKE)
                     .colors(SHELL, null).priority(CgVfxLayer.PRIORITY_SMOKE).build())
@@ -224,8 +232,8 @@ public final class CgEnergyWave extends CgVfxEffect {
             .set(SHELL, 1.5f, 1.0f, 0.12f, 1f)
             .set(SHELL_HOT, 1.6f, 1.35f, 0.55f, 1f)
             .set(SPIRAL, 1.6f, 1.15f, 0.3f, 1f)
-            .set(GLOW, 1.4f, 0.85f, 0.12f, 0.6f)
-            .set(RADIUS, 0.7f)
+            .set(GLOW, 1.4f, 0.85f, 0.12f, 0.9f)
+            .set(RADIUS, 1f)
             .set(SPEED, 50f)
             .build();
     private static final CgVfxLook GALICK_GUN = KAMEHAMEHA.toBuilder()
@@ -234,7 +242,7 @@ public final class CgEnergyWave extends CgVfxEffect {
             .set(SHELL, 0.85f, 0.2f, 1.6f, 1f)
             .set(SHELL_HOT, 1.3f, 0.75f, 1.6f, 1f)
             .set(SPIRAL, 1.2f, 0.45f, 1.6f, 1f)
-            .set(GLOW, 0.75f, 0.18f, 1.4f, 0.6f)
+            .set(GLOW, 0.75f, 0.18f, 1.4f, 0.9f)
             .build();
 
     /** Seconds the root takes to settle after the release, and to fade after a stop. */
@@ -457,7 +465,7 @@ public final class CgEnergyWave extends CgVfxEffect {
         drawAt(frame, layers, SLOT_BLAST, x, y, z, placed, dome, dome, 1f, t, false);
         float glow = curve(BLAST_GLOW).at(t);
         if (glow > 0f) {
-            float heart = dome * 0.35f;
+            float heart = dome * 0.5f;
             facing(placed, normalX, normalY, normalZ).rotateZ(age).scale(heart);
             drawAt(frame, layers, SLOT_BLAST_GLOW, x, y, z, placed, heart, heart, glow, 0f, false);
         }

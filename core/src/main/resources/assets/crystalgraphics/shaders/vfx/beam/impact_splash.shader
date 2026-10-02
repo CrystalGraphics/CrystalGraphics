@@ -10,12 +10,12 @@ Tags { "RenderType" = "Transparent" }
 Queue = "Transparent"
 
 Properties {
-    _Count   ("Sparks drawn", float) = 48.0
+    _Count   ("Sparks drawn", float) = 64.0
     _Life    ("Seconds a spark lives", float) = 0.55
-    _Speed   ("Launch speed, blocks a second", float) = 9.0
+    _Speed   ("Launch speed, blocks a second", float) = 12.0
     _Gravity ("Pull downward, blocks a second squared", float) = 14.0
     _Streak  ("Streak length, seconds of flight", float) = 0.05
-    _Width   ("Half-width, blocks", float) = 0.025
+    _Width   ("Half-width, blocks", float) = 0.05
     _Burst   ("1 for one burst, 0 for a steady spray", float) = 0.0
 }
 
