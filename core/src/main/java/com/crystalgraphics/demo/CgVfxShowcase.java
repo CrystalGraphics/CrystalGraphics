@@ -267,6 +267,8 @@ public final class CgVfxShowcase {
                 wave.aim(lane.aim[0], lane.aim[1], lane.aim[2])
                         .via(x + lane.via[0], y + lane.via[1], z + lane.via[2])
                         .target(x + target[0], y + target[1], z + target[2]);
+                // The grid is the floor its debris lands on.
+                wave.ground(y);
                 waves[k] = wave;
             }
             if (t - shot * WAVE_CYCLE > WAVE_HOLD) waves[k].stop();

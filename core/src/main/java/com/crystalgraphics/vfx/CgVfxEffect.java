@@ -4,6 +4,8 @@ import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxValues;
+import com.crystalgraphics.vfx.particle.CgVfxAir;
+import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 
 /**
  * An effect playing in a world: placed at an origin in doubles, simulated in floats relative to it on the
@@ -38,6 +40,9 @@ public abstract class CgVfxEffect {
     private final CgVfxLook look;
     private final CgVfxValues values;
     private State state = State.PLAYING;
+    /** The air an effect's particles move through before it is played: still. */
+    private static final CgVfxAir STILL = new CgVfxAir().wind(0f, 0f, 0f);
+    private double groundY = Double.NaN;
     /** Seconds simulated since it started. */
     protected float age;
     /** A stable random number for this effect, 0..1, which shaders read to tell two effects apart. */
@@ -108,6 +113,27 @@ public abstract class CgVfxEffect {
     public final CgVfxEffect set(CgVfxParam param, CgKeyframes curve) {
         values.set(param, curve);
         return this;
+    }
+
+    /** Where its particles land, as a world height; NaN, the default, for no ground. */
+    public final CgVfxEffect ground(double worldY) {
+        groundY = worldY;
+        return this;
+    }
+
+    /** The ground's height relative to its origin, or NaN: what an emitter instance takes. */
+    protected final float groundHeight() {
+        return (float) (groundY - originY);
+    }
+
+    /** The air its particles move through: its system's, or still air before it is played. */
+    protected final CgVfxAir air() {
+        return system != null ? system.air() : STILL;
+    }
+
+    /** Advances one of its emitters by a tick, in its system's air, sampling turbulence at its origin. */
+    protected final void tick(CgVfxEmitterInstance emitter, float dt) {
+        emitter.tick(dt, air(), originX, originY, originZ);
     }
 
     /** Whether anything hears its moments: skip working out a moment's framing when nothing does. */
