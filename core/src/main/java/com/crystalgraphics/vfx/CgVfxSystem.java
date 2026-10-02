@@ -6,7 +6,10 @@ import com.crystalgraphics.gl.mesh.CgMesh;
 import com.crystalgraphics.gl.mesh.CgMeshBuilder;
 import com.crystalgraphics.gl.texture.CgTexture2D;
 import com.crystalgraphics.render.world.CgWorldRenderer;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.vfx.look.CgVfxLayer;
+import com.crystalgraphics.vfx.particle.CgVfxAir;
 import com.crystalgraphics.vfx.path.CgVfxPathTexture;
 import com.crystalgraphics.vfx.render.CgVfxBillboard;
 import com.crystalgraphics.vfx.render.CgVfxRibbons;
@@ -36,6 +39,7 @@ import java.util.List;
  *   <li>{@link #submit} is render thread, and must run every frame an effect draws: the path texture holds only the
  *       last upload.</li>
  *   <li>Every mesh the package draws is made here, so a change to how meshes are made is one edit.</li>
+ *   <li>{@link #air} is the wind every effect's particles move through; set it once, or change it while playing.</li>
  * </ul>
  */
 public final class CgVfxSystem {
@@ -56,8 +60,9 @@ public final class CgVfxSystem {
     private final List<CgMaterial> warming = new ArrayList<>();
     private CgTexture2D boundTexture;
     private CgMesh tubeMesh, sphereMesh, ribbonMesh, billboardMesh;
+    private final CgVfxAir air = new CgVfxAir();
     private double clock = Double.NaN;
-    private float owed;
+    private float owed, simulated;
 
     public <E extends CgVfxEffect> E play(E effect) {
         effect.system = this;
@@ -78,6 +83,11 @@ public final class CgVfxSystem {
         for (int i = 0; i < momentListeners.size(); i++) momentListeners.get(i).moment(effect, name, x, y, z, radius);
     }
 
+    /** The air the particles of every effect move through. */
+    public CgVfxAir air() {
+        return air;
+    }
+
     /** Advances every effect to {@code seconds} on the clock the caller keeps. */
     public void update(double seconds) {
         if (Double.isNaN(clock)) {
@@ -87,13 +97,17 @@ public final class CgVfxSystem {
         owed = Math.max(0f, owed + (float) (seconds - clock));
         clock = seconds;
         int ticks = 0;
-        while (owed >= TICK && ticks < MAX_TICKS) {
-            for (int i = 0; i < effects.size(); i++) {
-                CgVfxEffect effect = effects.get(i);
-                if (effect.state() != CgVfxEffect.State.DEAD) effect.step(TICK);
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "vfx.sim")) {
+            while (owed >= TICK && ticks < MAX_TICKS) {
+                air.tick(simulated);
+                for (int i = 0; i < effects.size(); i++) {
+                    CgVfxEffect effect = effects.get(i);
+                    if (effect.state() != CgVfxEffect.State.DEAD) effect.step(TICK);
+                }
+                simulated += TICK;
+                owed -= TICK;
+                ticks++;
             }
-            owed -= TICK;
-            ticks++;
         }
         if (ticks == MAX_TICKS) owed = Math.min(owed, TICK);
         for (int i = effects.size() - 1; i >= 0; i--) {

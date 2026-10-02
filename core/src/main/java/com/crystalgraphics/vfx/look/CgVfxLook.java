@@ -1,6 +1,7 @@
 package com.crystalgraphics.vfx.look;
 
 import com.crystalgraphics.easing.CgKeyframes;
+import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -32,18 +33,20 @@ public final class CgVfxLook {
 
     private final CgVfxValues values;
     private final List<CgVfxLayer> layers;
+    private final List<CgVfxEmitter> emitters;
 
-    private CgVfxLook(CgVfxValues values, List<CgVfxLayer> layers) {
+    private CgVfxLook(CgVfxValues values, List<CgVfxLayer> layers, List<CgVfxEmitter> emitters) {
         this.values = values;
         this.layers = Collections.unmodifiableList(new ArrayList<>(layers));
+        this.emitters = Collections.unmodifiableList(new ArrayList<>(emitters));
     }
 
     public static Builder builder(CgVfxSchema schema) {
-        return new Builder(new CgVfxValues(schema, schema.defaults(), schema.defaultCurves()), new ArrayList<>());
+        return new Builder(new CgVfxValues(schema, schema.defaults(), schema.defaultCurves()), new ArrayList<>(), new ArrayList<>());
     }
 
     public Builder toBuilder() {
-        return new Builder(values.copy(), new ArrayList<>(layers));
+        return new Builder(values.copy(), new ArrayList<>(layers), new ArrayList<>(emitters));
     }
 
     public CgVfxSchema schema() {
@@ -52,6 +55,19 @@ public final class CgVfxLook {
 
     public List<CgVfxLayer> layers() {
         return layers;
+    }
+
+    /** The particle emitters the effect plays, each with its own physics (plan vfx-particles). */
+    public List<CgVfxEmitter> emitters() {
+        return emitters;
+    }
+
+    /** The emitter named {@code name}, or null. */
+    public CgVfxEmitter emitter(String name) {
+        for (int i = 0; i < emitters.size(); i++) {
+            if (emitters.get(i).name().equals(name)) return emitters.get(i);
+        }
+        return null;
     }
 
     public float get(CgVfxParam param) {
@@ -67,10 +83,12 @@ public final class CgVfxLook {
 
         private final CgVfxValues values;
         private final List<CgVfxLayer> layers;
+        private final List<CgVfxEmitter> emitters;
 
-        private Builder(CgVfxValues values, List<CgVfxLayer> layers) {
+        private Builder(CgVfxValues values, List<CgVfxLayer> layers, List<CgVfxEmitter> emitters) {
             this.values = values;
             this.layers = layers;
+            this.emitters = emitters;
         }
 
         public Builder set(CgVfxParam param, float value) {
@@ -99,8 +117,20 @@ public final class CgVfxLook {
             return this;
         }
 
+        /** Adds an emitter, or replaces the one of the same name: how a look changes one element's physics. */
+        public Builder emitter(CgVfxEmitter emitter) {
+            for (int i = 0; i < emitters.size(); i++) {
+                if (emitters.get(i).name().equals(emitter.name())) {
+                    emitters.set(i, emitter);
+                    return this;
+                }
+            }
+            emitters.add(emitter);
+            return this;
+        }
+
         public CgVfxLook build() {
-            return new CgVfxLook(values.copy(), layers);
+            return new CgVfxLook(values.copy(), layers, emitters);
         }
     }
 }
