@@ -34,16 +34,16 @@ Pass {
     // The disk's turbulence at angle {@code a} and radius {@code r}: streaks drawn out along the orbit.
     float bh_streaks(float a, float r) {
         vec3 q = vec3(cos(a) * 1.6, sin(a) * 1.6, log(r) * 9.0);
-        return vfx_fbm(q, 4) * 0.75 + vfx_noise(q * 3.1) * 0.25;
+        return fx_value_fbm(q, 4) * 0.75 + fx_value_noise(q * 3.1) * 0.25;
     }
 
     // The stars and the faint nebula a lensed ray sees, in world space.
     vec3 bh_sky(vec3 d) {
         vec3 s = d * 120.0;
         vec3 cell = floor(s);
-        vec3 at = fract(s) - 0.5 - (vfx_hash33(cell) - 0.5) * 0.6;
-        float star = step(0.97, vfx_hash31(cell)) * exp(-dot(at, at) * 60.0);
-        vec3 nebula = mix(vec3(0.25, 0.05, 0.4), vec3(0.05, 0.25, 0.45), vfx_fbm(d * 2.0, 3)) * pow(vfx_fbm(d * 3.0 + 4.0, 4), 2.0);
+        vec3 at = fract(s) - 0.5 - (fx_hash33(cell) - 0.5) * 0.6;
+        float star = step(0.97, fx_hash31(cell)) * exp(-dot(at, at) * 60.0);
+        vec3 nebula = mix(vec3(0.25, 0.05, 0.4), vec3(0.05, 0.25, 0.45), fx_value_fbm(d * 2.0, 3)) * pow(fx_value_fbm(d * 3.0 + 4.0, 4), 2.0);
         return vec3(1.2, 1.1, 1.0) * star * 2.5 + nebula * 0.6 + vec3(0.004, 0.004, 0.01);
     }
 
@@ -60,7 +60,7 @@ Pass {
         mat3 model = mat3(CG_OBJECT_TO_WORLD);
         mat3 toObject = inverse(model);
         vec3 centre = CG_OBJECT_TO_WORLD[3].xyz;
-        vec3 camera = VFX_CAMERA;
+        vec3 camera = FX_CAMERA;
         vec3 inWorld = normalize(i.worldPos - camera);
         // The ray in the hole's own frame, where the disk is the plane y = 0, starting where it enters the sphere, or
         // at the eye from inside it.
@@ -147,6 +147,6 @@ Pass {
             light += transmit * lensed * bh_sky(outWorld);
             alpha = 1.0 - transmit * (1.0 - lensed);
         }
-        fragColor = vec4(vfx_aces(light), clamp(alpha, 0.0, 1.0));
+        fragColor = vec4(fx_aces(0.8 * light), clamp(alpha, 0.0, 1.0));
     }
 }

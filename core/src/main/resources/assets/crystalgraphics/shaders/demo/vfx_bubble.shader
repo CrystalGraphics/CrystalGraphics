@@ -38,15 +38,15 @@ Pass {
     void fragment(in v2f i, out vec4 fragColor) {
         float t = CG_TIME;
         vec3 n = normalize(i.normalWs);
-        vec3 v = normalize(VFX_CAMERA - i.worldPos);
+        vec3 v = normalize(FX_CAMERA - i.worldPos);
         if (!gl_FrontFacing) n = -n;
         float nv = max(dot(n, v), 0.0);
         float floorY = CG_OBJECT_TO_WORLD[3].y - CG_OBJECT_CUSTOM3.x;
         // The film drains down and swirls: thickness from warped noise, thinnest at the top, where it goes black.
         vec3 p = i.objPos;
-        vec3 warp = vec3(vfx_fbm(p * 1.3 + vec3(t * 0.15, 0.0, 0.0), 3), vfx_fbm(p * 1.3 + vec3(5.2, t * 0.12, 1.3), 3), 0.0);
+        vec3 warp = vec3(fx_value_fbm(p * 1.3 + vec3(t * 0.15, 0.0, 0.0), 3), fx_value_fbm(p * 1.3 + vec3(5.2, t * 0.12, 1.3), 3), 0.0);
         float drain = 0.25 + 0.75 * (0.5 - p.y * 0.5);
-        float thickness = (60.0 + 820.0 * vfx_fbm(p * 1.8 + warp * 2.5 + vec3(0.0, -t * 0.25, 0.0), 4)) * drain;
+        float thickness = (60.0 + 820.0 * fx_value_fbm(p * 1.8 + warp * 2.5 + vec3(0.0, -t * 0.25, 0.0), 4)) * drain;
         float cosT = sqrt(1.0 - (1.0 - nv * nv) / (1.33 * 1.33));
         vec3 film = vec3(bubble_film(thickness, cosT, 650.0), bubble_film(thickness, cosT, 532.0),
                 bubble_film(thickness, cosT, 450.0));
@@ -58,6 +58,6 @@ Pass {
         vec3 reflection = mirrored * film * (0.3 + 1.4 * fresnel);
         if (!gl_FrontFacing) reflection *= 0.6;
         float alpha = clamp(fresnel * 0.45 + 0.03, 0.0, 1.0);
-        fragColor = vec4(vfx_aces(reflection), alpha);
+        fragColor = vec4(fx_aces(0.8 * reflection), alpha);
     }
 }

@@ -45,7 +45,7 @@ Pass {
 
     void fragment(in v2f i, out vec4 fragColor) {
         float t = CG_TIME;
-        vec3 camera = VFX_CAMERA;
+        vec3 camera = FX_CAMERA;
         vec3 v = normalize(camera - i.worldPos);
         vec3 n = vec3(0.0, 1.0, 0.0);
         vec2 xz = i.worldPos.xz;
@@ -79,6 +79,6 @@ Pass {
         vec3 reflection = vfx_env(reflect(-v, n), 0.12) * mix(0.15, 1.0, fresnel);
         vec3 base = vec3(0.012, 0.012, 0.018);
         vec3 color = (base + reflection) * shade + grid * fade * shade + pools;
-        fragColor = vec4(vfx_aces(color), 1.0);
+        fragColor = vec4(fx_aces(0.8 * color), 1.0);
     }
 }

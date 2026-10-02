@@ -77,12 +77,12 @@ Pass {
         vec3 p = normalize(i.objPos);
         vec3 pw = normalize(i.worldPos - centreWs);
         vec3 n = normalize(i.normalWs);
-        vec3 v = normalize(VFX_CAMERA - i.worldPos);
+        vec3 v = normalize(FX_CAMERA - i.worldPos);
         float nv = abs(dot(n, v));
         vec3 cellCentre;
         vec2 cell = shield_cell(p, 380.0, cellCentre);
         vec3 cellWs = normalize(mat3(CG_OBJECT_TO_WORLD) * cellCentre);
-        float h = vfx_hash31(vec3(cell.x, 3.0, 7.0));
+        float h = fx_hash31(vec3(cell.x, 3.0, 7.0));
         float aa = fwidth(cell.y);
         float edge = 1.0 - smoothstep(0.004, 0.004 + aa * 1.5, cell.y);
         float bevel = 1.0 - smoothstep(0.0, 0.06, cell.y);
@@ -106,7 +106,7 @@ Pass {
         // A scan band sweeping up, a slow tide of energy across it, and cells flaring now and then on their own.
         float scanY = fract(t * 0.22) * 2.8 - 1.4;
         float scan = exp(-pow((pw.y - scanY) * 5.0, 2.0));
-        float tide = vfx_fbm(p * 3.5 + vec3(0.0, t * 0.35, t * 0.2), 3);
+        float tide = fx_value_fbm(p * 3.5 + vec3(0.0, t * 0.35, t * 0.2), 3);
         float flare = pow(0.5 + 0.5 * sin(t * 1.6 + h * 60.0), 40.0);
         float rim = pow(1.0 - nv, 3.0);
         vec3 blue = vec3(0.2, 0.55, 1.6);

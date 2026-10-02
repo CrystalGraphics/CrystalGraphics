@@ -5,7 +5,13 @@ import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gl.mesh.CgMesh;
 import com.crystalgraphics.gl.mesh.CgMeshBuilder;
 import com.crystalgraphics.render.world.CgWorldRenderer;
+import com.crystalgraphics.vfx.look.CgVfxLook;
+import com.crystalgraphics.vfx.CgVfxEffect;
+import com.crystalgraphics.vfx.CgVfxSystem;
+import com.crystalgraphics.vfx.effect.beam.CgEnergyWave;
 import org.joml.Matrix4f;
+
+import java.util.Arrays;
 
 /**
  * Sixteen spheres, each a different effect drawn by one {@code .shader} -- physically based gold, copper, liquid
@@ -70,6 +76,46 @@ public final class CgVfxShowcase {
     private static final float SUPERNOVA_SIZE = 1.15f, CORONA_REACH = 3.2f;
     /** Bolts at the shield: seconds in flight, and how many radii out they come from. */
     private static final float BOLT_FLIGHT = 0.45f, BOLT_RANGE = 4.5f;
+    /**
+     * The three energy waves, a lane each on a side of the grid, relative to the floor point: each fires outward from
+     * beside the grid, straight to a waypoint, then bends sharply toward one of two targets either side of its lane, in
+     * turn. The Kamehameha and the Final Flash fire back to back, the Galick Gun away behind the grid; their shots are
+     * staggered so their charges and blasts do not land together.
+     */
+    private static final Lane[] LANES = {
+            new Lane("kamehameha", CgEnergyWave.kamehameha(), 0f, new float[]{-10f, 2.5f, 0f}, new float[]{-1f, 0f, 0f},
+                    new float[]{-28f, 3f, 0f}, new float[][]{{-40f, 3f, -26f}, {-40f, 3f, 26f}}),
+            new Lane("finalFlash", CgEnergyWave.finalFlash(), 3.3f, new float[]{10f, 2.5f, 0f}, new float[]{1f, 0f, 0f},
+                    new float[]{28f, 3f, 0f}, new float[][]{{40f, 3f, 26f}, {40f, 3f, -26f}}),
+            new Lane("galickGun", CgEnergyWave.galickGun(), 6.6f, new float[]{0f, 2.5f, -10f}, new float[]{0f, 0f, -1f},
+                    new float[]{0f, 3f, -28f}, new float[][]{{-26f, 3f, -40f}, {26f, 3f, -40f}}),
+    };
+    /** Seconds per shot, and how long into it a wave stops firing, so its tail runs out and its blast clears before the next. */
+    private static final float WAVE_CYCLE = 10f, WAVE_HOLD = 5.4f;
+
+    /** Where one wave fires from and at, and its look: slower so it is seen growing, harder-homing so it bends sharply. */
+    private static final class Lane {
+
+        final String name;
+        final CgVfxLook look;
+        final float offset;
+        final float[] from, aim, via;
+        final float[][] targets;
+
+        Lane(String name, CgVfxLook base, float offset, float[] from, float[] aim, float[] via, float[][] targets) {
+            this.name = name;
+            this.look = base.toBuilder()
+                    .set(CgEnergyWave.SPEED, 30f)
+                    .set(CgEnergyWave.NAVIGATION, 5f)
+                    .set(CgEnergyWave.TURN_RATE, 6f)
+                    .build();
+            this.offset = offset;
+            this.from = from;
+            this.aim = aim;
+            this.via = via;
+            this.targets = targets;
+        }
+    }
 
     private CgMesh sphere;
     private CgMesh floor;
@@ -79,6 +125,11 @@ public final class CgVfxShowcase {
     private final Matrix4f transform = new Matrix4f();
     /** The shield's three impacts this frame: per lane a direction from its centre and the seconds since it struck. */
     private final float[] impacts = new float[12];
+    private final CgVfxSystem vfx = new CgVfxSystem();
+    /** Each lane's wave and the shot it is on. */
+    private final CgEnergyWave[] waves = new CgEnergyWave[LANES.length];
+    private final int[] shots = filled(LANES.length, -1);
+    private double waveX = Double.NaN, waveY, waveZ;
 
     /** Submits the sixteen spheres and their glow, on a floor point {@code (x, y, z)}, as they are at {@code seconds}. */
     public void submit(CgWorldRenderer world, double x, double y, double z, float seconds) {
@@ -123,6 +174,7 @@ public final class CgVfxShowcase {
                     .custom(1, GLOW[k][0], GLOW[k][1], GLOW[k][2], strength)
                     .custom(2, 1f / GLOW_REACH[k], 0f, 0f, 0f).priority(SPHERES).submit();
         }
+        waves(world, x, y, z, seconds);
     }
 
     /**
@@ -156,12 +208,73 @@ public final class CgVfxShowcase {
         world.draw(sphere, seal).at(cameraX, cameraY, cameraZ).transform(transform).priority(SKY).submit();
     }
 
+    /** The system the showcase plays its effects through: register a {@code CgVfxMomentListener} on it to photograph their moments. */
+    public CgVfxSystem vfx() {
+        return vfx;
+    }
+
     /** Frees the meshes. Call on context teardown. */
     public void delete() {
+        vfx.delete();
+        Arrays.fill(waves, null);
+        waveX = Double.NaN;
         if (sphere != null) sphere.delete();
         if (floor != null) floor.delete();
         sphere = null;
         floor = null;
+    }
+
+    private static int[] filled(int length, int value) {
+        int[] array = new int[length];
+        Arrays.fill(array, value);
+        return array;
+    }
+
+    /** Which lane's wave {@code effect} is, or null: what a capture names its moments by. */
+    public String laneOf(CgVfxEffect effect) {
+        for (Lane lane : LANES) {
+            if (effect.look() == lane.look) return lane.name;
+        }
+        return null;
+    }
+
+    /**
+     * Each lane's loop around the grid at {@code (x, y, z)}: a shot every {@link #WAVE_CYCLE} seconds from its offset on,
+     * alternating between its two targets, each charging, growing out, bending at the waypoint, holding, running out and
+     * bursting. Starts over when the grid moves.
+     */
+    private void waves(CgWorldRenderer world, double x, double y, double z, float seconds) {
+        if (x != waveX || y != waveY || z != waveZ) {
+            for (int k = 0; k < waves.length; k++) {
+                if (waves[k] != null) waves[k].kill();
+                waves[k] = null;
+                shots[k] = -1;
+            }
+            waveX = x;
+            waveY = y;
+            waveZ = z;
+        }
+        for (int k = 0; k < LANES.length; k++) {
+            Lane lane = LANES[k];
+            float t = seconds - lane.offset;
+            if (t < 0f) continue;
+            int shot = (int) Math.floor(t / WAVE_CYCLE);
+            if (shot != shots[k]) {
+                shots[k] = shot;
+                if (waves[k] != null) waves[k].stop();
+                float[] target = lane.targets[shot & 1];
+                CgEnergyWave wave = vfx.play(new CgEnergyWave(lane.look, x + lane.from[0], y + lane.from[1], z + lane.from[2]));
+                wave.aim(lane.aim[0], lane.aim[1], lane.aim[2])
+                        .via(x + lane.via[0], y + lane.via[1], z + lane.via[2])
+                        .target(x + target[0], y + target[1], z + target[2]);
+                // The grid is the floor its debris lands on.
+                wave.ground(y);
+                waves[k] = wave;
+            }
+            if (t - shot * WAVE_CYCLE > WAVE_HOLD) waves[k].stop();
+        }
+        vfx.update(seconds);
+        vfx.submit(world);
     }
 
     /** Sphere {@code k}'s turn at {@code seconds}, into {@link #transform}: each at its own pace, two of them tilted. */

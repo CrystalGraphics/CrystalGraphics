@@ -29,7 +29,7 @@ Pass {
         vec3 centre = CG_OBJECT_TO_WORLD[3].xyz;
         float shell = length(CG_OBJECT_TO_WORLD[0].xyz);
         float source = shell * CG_OBJECT_CUSTOM2.x;
-        vec3 camera = VFX_CAMERA;
+        vec3 camera = FX_CAMERA;
         vec3 ray = normalize(i.worldPos - camera);
         vec2 pass = vfx_pass_by(camera, ray, centre);
         // Brightest where the ray passes nearest the centre, nothing at the shell's edge.

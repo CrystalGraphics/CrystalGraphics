@@ -20,7 +20,7 @@ Pass {
 
     void vertex(out v2f o) {
         vec4 world = CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0);
-        o.dir = world.xyz - VFX_CAMERA;
+        o.dir = world.xyz - FX_CAMERA;
         gl_Position = cg_ProjMatrix * cg_ViewMatrix * world;
         gl_Position.z = VFX_SKY_FAR_Z(gl_Position.w);
     }

@@ -1,97 +1,9 @@
-// What every material of the VFX showcase shares (CgVfxShowcase): the camera, 3D noise, the studio environment
-// reflections read, GGX lighting and the filmic curve every material ends on. Pure functions: nothing here reads a
-// derivative, so it compiles into both stages.
+// What every material of the VFX showcase shares (CgVfxShowcase) beyond lib/vfx/fx_common.glsl: the studio environment
+// reflections read and GGX lighting. Pure functions: nothing here reads a derivative, so it compiles into both stages.
 #pragma once
 
 #include "crystalgraphics:shaders/lib/math.glsl"
-
-// The camera's position in the world the draws are in: the view's inverse translation. At the origin in a
-// camera-relative world (a Minecraft host), wherever the harness put it otherwise. A macro, since a material's own
-// #includes come before cg_env.glsl declares the frame block: it may only be expanded inside vertex() or fragment().
-#define VFX_CAMERA (-(transpose(mat3(cg_ViewMatrix)) * cg_ViewMatrix[3].xyz))
-
-// ── Noise ──────────────────────────────────────────────────────────────────────────────────────────────────────
-
-float vfx_hash31(vec3 p) {
-    p = fract(p * 0.1031);
-    p += dot(p, p.zyx + 31.32);
-    return fract((p.x + p.y) * p.z);
-}
-
-vec3 vfx_hash33(vec3 p) {
-    p = fract(p * vec3(0.1031, 0.1030, 0.0973));
-    p += dot(p, p.yxz + 33.33);
-    return fract((p.xxy + p.yxx) * p.zyx);
-}
-
-// Value noise in [0, 1], quintic-smoothed.
-float vfx_noise(vec3 p) {
-    vec3 i = floor(p);
-    vec3 f = fract(p);
-    vec3 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
-    float a = vfx_hash31(i);
-    float b = vfx_hash31(i + vec3(1.0, 0.0, 0.0));
-    float c = vfx_hash31(i + vec3(0.0, 1.0, 0.0));
-    float d = vfx_hash31(i + vec3(1.0, 1.0, 0.0));
-    float e = vfx_hash31(i + vec3(0.0, 0.0, 1.0));
-    float g = vfx_hash31(i + vec3(1.0, 0.0, 1.0));
-    float h = vfx_hash31(i + vec3(0.0, 1.0, 1.0));
-    float k = vfx_hash31(i + vec3(1.0, 1.0, 1.0));
-    return mix(mix(mix(a, b, u.x), mix(c, d, u.x), u.y), mix(mix(e, g, u.x), mix(h, k, u.x), u.y), u.z);
-}
-
-// Octaves rotated against each other, so no grid shows through.
-const mat3 VFX_OCTAVE = mat3(0.00, 0.80, 0.60, -0.80, 0.36, -0.48, -0.60, -0.48, 0.64);
-
-float vfx_fbm(vec3 p, int octaves) {
-    float sum = 0.0, amp = 0.5, norm = 0.0;
-    for (int i = 0; i < 8; i++) {
-        if (i >= octaves) break;
-        sum += amp * vfx_noise(p);
-        norm += amp;
-        p = VFX_OCTAVE * p * 2.03;
-        amp *= 0.5;
-    }
-    return sum / norm;
-}
-
-// Sharp ridges where the noise crosses its middle: veins, cracks, lightning.
-float vfx_ridged(vec3 p, int octaves) {
-    float sum = 0.0, amp = 0.5, norm = 0.0;
-    for (int i = 0; i < 8; i++) {
-        if (i >= octaves) break;
-        float n = 1.0 - abs(vfx_noise(p) * 2.0 - 1.0);
-        sum += amp * n * n;
-        norm += amp;
-        p = VFX_OCTAVE * p * 2.11;
-        amp *= 0.5;
-    }
-    return sum / norm;
-}
-
-// Cellular noise: the nearest and second-nearest feature distances, and the nearest cell's id in [0, 1).
-vec3 vfx_voronoi(vec3 p) {
-    vec3 cell = floor(p);
-    vec3 f = fract(p);
-    float f1 = 8.0, f2 = 8.0, id = 0.0;
-    for (int z = -1; z <= 1; z++) {
-        for (int y = -1; y <= 1; y++) {
-            for (int x = -1; x <= 1; x++) {
-                vec3 offset = vec3(float(x), float(y), float(z));
-                vec3 point = offset + vfx_hash33(cell + offset);
-                float d = length(point - f);
-                if (d < f1) {
-                    f2 = f1;
-                    f1 = d;
-                    id = vfx_hash31(cell + offset);
-                } else if (d < f2) {
-                    f2 = d;
-                }
-            }
-        }
-    }
-    return vec3(f1, f2, id);
-}
+#include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 
 // The cube face unit vector {@code p} points through, and where on it: xy in [-1, 1], equi-angular so cells keep their
 // size; z the face. Neighbouring faces share each edge's coordinate, so a grid of cells lines up across it.
@@ -113,12 +25,6 @@ vec3 vfx_cube_face(vec3 p) {
 }
 
 // ── Colour ─────────────────────────────────────────────────────────────────────────────────────────────────────
-
-// Narkowicz's fit of the ACES filmic curve: HDR in, display out, highlights rolling off rather than clipping.
-vec3 vfx_aces(vec3 x) {
-    x *= 0.8;
-    return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
-}
 
 // Inigo Quilez's cosine palette.
 vec3 vfx_palette(float t, vec3 a, vec3 b, vec3 c, vec3 d) {
