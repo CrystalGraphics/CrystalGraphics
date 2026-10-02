@@ -72,6 +72,11 @@ public final class CgPassRecorder implements CgChunkSink {
     private int chain;
     /** Chunks taken so far. @see #chunksTaken */
     private long taken;
+    /** The chunks taken since the last {@link #stop}: the one taken at reading {@code n} is at {@code n - tapeFrom}. */
+    private CgDrawChunk[] tape = new CgDrawChunk[256];
+    private long tapeFrom;
+    /** Bumped by every call that makes later chunks land under other state. @see #stateChanges */
+    private long stateChanges;
     private final int[] chainNodes = new int[MAX_SCISSORS];
     private final float[] chainValues = new float[MAX_SCISSORS * 4];
     /** Per entry, its index in the open pass: valid for the first {@link #issued}. */
@@ -87,6 +92,7 @@ public final class CgPassRecorder implements CgChunkSink {
      */
     public void recordInto(CgRecording recording, CgGraphTexture target, CgLoad load, CgPassConstants constants) {
         endPass();
+        stateChanges++;
         this.recording = recording;
         this.target = target;
         this.load = load;
@@ -96,14 +102,21 @@ public final class CgPassRecorder implements CgChunkSink {
 
     /** The constants later chunks draw under; a change ends the open pass, since one pass is one block. */
     public void constants(CgPassConstants constants) {
-        constants.write(pendingBlock, 0);
+        constants.write(scratchBlock, 0);
+        if (Arrays.equals(scratchBlock, pendingBlock)) return;
+        System.arraycopy(scratchBlock, 0, pendingBlock, 0, CgPassConstants.FLOATS);
+        stateChanges++;
     }
+
+    private final float[] scratchBlock = new float[CgPassConstants.FLOATS];
 
     /**
      * Where later passes' targets sit in the recording's root space: at {@code (x, y)}, moving with spatial node
      * {@code owner}. A change ends the open pass. @see CgRasterPass#view
      */
     public void view(int owner, float x, float y) {
+        if (owner == pendingOwner && x == pendingX && y == pendingY) return;
+        stateChanges++;
         pendingOwner = owner;
         pendingX = x;
         pendingY = y;
@@ -112,11 +125,13 @@ public final class CgPassRecorder implements CgChunkSink {
     /** Draws the chunks added from now on inside {@code (x, y, w, h)}, in the target's bottom-left pixels. */
     public void scissor(int x, int y, int w, int h) {
         chain = 0;
+        stateChanges++;
         pushScissor(x, y, w, h);
     }
 
     /** Draws the chunks added from now on unscissored. */
     public void noScissor() {
+        if (chain != 0) stateChanges++;
         chain = 0;
     }
 
@@ -134,10 +149,12 @@ public final class CgPassRecorder implements CgChunkSink {
     public void popScissor() {
         if (chain == 0) throw new IllegalStateException("no scissor to pop");
         chain--;
+        stateChanges++;
     }
 
     private void push(int node, float a, float b, float c, float d) {
         if (chain == MAX_SCISSORS) throw new IllegalStateException("scissors nest " + MAX_SCISSORS + " deep at most");
+        stateChanges++;
         int at = chain * 4;
         if (chainNodes[chain] != node || chainValues[at] != a || chainValues[at + 1] != b || chainValues[at + 2] != c
                 || chainValues[at + 3] != d) {
@@ -154,15 +171,21 @@ public final class CgPassRecorder implements CgChunkSink {
     /** Ends the open pass: the next chunk opens another on the same target, loading what this one drew. */
     public void endPass() {
         if (pass == null) return;
+        stateChanges++;
+        closePass();
+    }
+
+    private void closePass() {
         pass.end();
         pass = null;
     }
 
-    /** Ends the open pass and records nowhere; a chunk added now is an error. */
+    /** Ends the open pass and records nowhere; a chunk added now is an error. Drops the chunks {@link #taken} holds. */
     public void stop() {
         endPass();
         recording = null;
         target = null;
+        clearTape();
     }
 
     /** Records nowhere, without ending the open pass: for a recording its owner is discarding. */
@@ -170,6 +193,31 @@ public final class CgPassRecorder implements CgChunkSink {
         pass = null;
         recording = null;
         target = null;
+        clearTape();
+    }
+
+    private void clearTape() {
+        stateChanges++;
+        Arrays.fill(tape, 0, (int) (taken - tapeFrom), null);
+        tapeFrom = taken;
+    }
+
+    /**
+     * The chunk taken at {@link #chunksTaken} reading {@code at}, since the last {@link #stop}; null before it. What
+     * lets a stretch between two readings be kept. @see CgReplay
+     */
+    @Nullable
+    public CgDrawChunk taken(long at) {
+        return at >= tapeFrom && at < taken ? tape[(int) (at - tapeFrom)] : null;
+    }
+
+    /**
+     * Counts every call that makes later chunks land under other state: a target, constants or view set, a pass ended,
+     * a scissor changed. Two equal readings mean every chunk between them went into the pass and scissor that were
+     * current at the first, as a chunk added again in their place would.
+     */
+    public long stateChanges() {
+        return stateChanges;
     }
 
     /** How many chunks this recorder has taken: two readings bracket what a stretch of drawing recorded. */
@@ -195,7 +243,7 @@ public final class CgPassRecorder implements CgChunkSink {
         taken++;
         if (recording == null) throw new IllegalStateException("a chunk with nowhere to record it");
         if (pass != null && (!Arrays.equals(passBlock, pendingBlock)
-                || viewOwner != pendingOwner || viewX != pendingX || viewY != pendingY)) endPass();
+                || viewOwner != pendingOwner || viewX != pendingX || viewY != pendingY)) closePass();
         if (pass == null) openPass();
         if (chain == 0) {
             pass.noScissor();
@@ -213,6 +261,9 @@ public final class CgPassRecorder implements CgChunkSink {
             pass.useScissor(chainIndex[chain - 1]);
         }
         pass.add(chunk);
+        int at = (int) (taken - 1 - tapeFrom);
+        if (at == tape.length) tape = Arrays.copyOf(tape, at * 2);
+        tape[at] = chunk;
     }
 
     private void openPass() {
