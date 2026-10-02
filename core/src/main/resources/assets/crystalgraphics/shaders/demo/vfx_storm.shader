@@ -21,8 +21,8 @@ Pass {
 
     // A tendril's sideways wander at {@code s} along it: smooth noise flowing over time, plus a fine flicker.
     float storm_wander(float s, float seed, float t) {
-        return (vfx_noise(vec3(s * 3.0, seed, t * 1.3)) - 0.5) * 0.7
-             + (vfx_noise(vec3(s * 9.0, seed + 5.0, t * 4.0)) - 0.5) * 0.25;
+        return (fx_value_noise(vec3(s * 3.0, seed, t * 1.3)) - 0.5) * 0.7
+             + (fx_value_noise(vec3(s * 9.0, seed + 5.0, t * 4.0)) - 0.5) * 0.25;
     }
 
     // Where a tendril from {@code a} along {@code dir} for {@code len} is, {@code s} along it. It leaves both ends
@@ -52,13 +52,13 @@ Pass {
     // Tendril {@code seed} at {@code t}: the point on the glass it reaches for (a unit direction), and in the outs how
     // hard it is surging, its flicker and its own clock.
     vec3 storm_state(float seed, float t, out float surge, out float flicker, out float wild) {
-        float h = vfx_hash31(vec3(seed, 6.0, 6.0));
-        vec3 base = normalize(vfx_hash33(vec3(seed, 1.0, 2.0)) - 0.5);
+        float h = fx_hash31(vec3(seed, 6.0, 6.0));
+        vec3 base = normalize(fx_hash33(vec3(seed, 1.0, 2.0)) - 0.5);
         float pace = 0.5 + 1.2 * h;
         vec3 drift = vec3(sin(t * 0.37 * pace + seed * 1.7), sin(t * 0.29 * pace + seed * 2.3), sin(t * 0.33 * pace + seed * 0.9));
-        float strikes = t * (1.5 + 3.5 * vfx_hash31(vec3(seed, 7.0, 3.0))) + seed * 0.37;
-        surge = exp(-fract(strikes) * (4.0 + 6.0 * h)) * step(0.35, vfx_hash31(vec3(floor(strikes), seed, 4.0)));
-        flicker = (0.25 + 0.75 * vfx_noise(vec3(t * (6.0 + 14.0 * h), seed, 3.0))) * (0.45 + 1.6 * surge);
+        float strikes = t * (1.5 + 3.5 * fx_hash31(vec3(seed, 7.0, 3.0))) + seed * 0.37;
+        surge = exp(-fract(strikes) * (4.0 + 6.0 * h)) * step(0.35, fx_hash31(vec3(floor(strikes), seed, 4.0)));
+        flicker = (0.25 + 0.75 * fx_value_noise(vec3(t * (6.0 + 14.0 * h), seed, 3.0))) * (0.45 + 1.6 * surge);
         wild = t * (1.0 + 2.0 * h) + surge * 0.6;
         return normalize(base + drift * 0.5);
     }
@@ -103,10 +103,10 @@ Pass {
         float floorY = centre.y - CG_OBJECT_CUSTOM3.x;
         vec3 n = normalize(i.normalWs);
         if (!gl_FrontFacing) n = -n;
-        vec3 camera = VFX_CAMERA;
+        vec3 camera = FX_CAMERA;
         vec3 v = normalize(camera - i.worldPos);
         float nv = max(dot(n, v), 0.0);
-        float pulse = 0.85 + 0.15 * sin(t * 9.0) + 0.1 * vfx_noise(vec3(t * 13.0, 0.0, 0.0));
+        float pulse = 0.85 + 0.15 * sin(t * 9.0) + 0.1 * fx_value_noise(vec3(t * 13.0, 0.0, 0.0));
         vec3 inside;
         if (gl_FrontFacing) {
         // The plane through the centre facing the camera, in radii.
@@ -204,6 +204,6 @@ Pass {
         vec3 reflection = vfx_studio(i.worldPos, reflect(-v, n), 0.02, floorY)
                 + vfx_direct(n, v, VFX_KEY_DIR, VFX_KEY_COLOR, vec3(1.0), 0.0, 0.03) * 2.0;
         vec3 color = inside * (1.0 - fresnel) + reflection * fresnel;
-        fragColor = vec4(vfx_aces(color), 1.0);
+        fragColor = vec4(fx_aces(0.8 * color), 1.0);
     }
 }

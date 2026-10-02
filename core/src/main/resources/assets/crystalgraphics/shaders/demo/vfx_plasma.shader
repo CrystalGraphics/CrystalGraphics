@@ -22,7 +22,7 @@ Pass {
     vec2 plasma_streaks(vec3 x, float t) {
         float r = length(x.xz);
         float angle = atan(x.z, x.x);
-        float churn = vfx_noise(x * 3.0 + vec3(0.0, t * 0.9, 0.0)) * 2.5;
+        float churn = fx_value_noise(x * 3.0 + vec3(0.0, t * 0.9, 0.0)) * 2.5;
         float spin = angle * 3.0 + r * 5.0 - t * (6.0 + 3.5 / (0.3 + r)) + x.y * 2.0 + churn;
         float bands = pow(0.5 + 0.5 * sin(spin), 10.0);
         float fine = pow(0.5 + 0.5 * sin(spin * 2.0 + x.y * 7.0 + churn * 1.7), 18.0);
@@ -43,7 +43,7 @@ Pass {
         float radius = length(CG_OBJECT_TO_WORLD[0].xyz);
         vec3 n = normalize(i.normalWs);
         if (!gl_FrontFacing) n = -n;
-        vec3 v = normalize(VFX_CAMERA - i.worldPos);
+        vec3 v = normalize(FX_CAMERA - i.worldPos);
         float nv = max(dot(n, v), 0.0);
         float throb = 1.0 + 0.18 * sin(t * 3.3) + 0.08 * sin(t * 7.9);
         // The vortex's axis wobbles: everything inside is turned into a frame that precesses slowly.
@@ -55,8 +55,8 @@ Pass {
         // Straight through the ball, gathering the light of every streak on the way: from the glass to the far side,
         // or from inside, from the eye to the wall ahead.
         vec3 d = -v;
-        vec3 q = (gl_FrontFacing ? i.worldPos - centre : VFX_CAMERA - centre) / radius;
-        float across = gl_FrontFacing ? max(-2.0 * dot(q, d), 0.0) : length(i.worldPos - VFX_CAMERA) / radius;
+        vec3 q = (gl_FrontFacing ? i.worldPos - centre : FX_CAMERA - centre) / radius;
+        float across = gl_FrontFacing ? max(-2.0 * dot(q, d), 0.0) : length(i.worldPos - FX_CAMERA) / radius;
         vec3 light = vec3(0.0);
         for (int k = 0; k < 28; k++) {
             vec3 x = toVortex * (q + d * ((float(k) + 0.5) / 28.0 * across));
@@ -77,6 +77,6 @@ Pass {
         light += vec3(1.3, 0.6, 1.5) * rays * exp(-pass * 3.0) * 0.9 * throb;
         // A deep violet haze behind it all, and a bright rim where the ball's light thickens.
         vec3 color = vec3(0.08, 0.0, 0.14) + light + vec3(0.9, 0.18, 1.3) * pow(1.0 - nv, 3.0) * 1.6 * throb;
-        fragColor = vec4(vfx_aces(color), 1.0);
+        fragColor = vec4(fx_aces(0.8 * color), 1.0);
     }
 }

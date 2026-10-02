@@ -100,6 +100,12 @@ public final class CgBindingPoints {
     public static Binding SHAPE_TABLE;
 
     /**
+     * Reserved binding pair for {@code CgParticleBuffer}, the frame's particle records -- one below
+     * {@link #SHAPE_TABLE}'s. Read from the vertex stage.
+     */
+    public static Binding PARTICLES;
+
+    /**
      * UBO binding slot for the engine's per-frame uniform block ({@code CgFrameBlock}).
      * Set to {@code maxUniformBufferBindings - 1} by {@link #init(CgCapabilities)}.
      * Valid only after {@link #init(CgCapabilities)} has been called.
@@ -189,6 +195,8 @@ public final class CgBindingPoints {
         // the slot is resolved dynamically and never hardcoded — but it is a deliberate change,
         // not an accident: anything that caches the depth unit across an init() would be wrong.
         CURVE_RENDERER = new Binding(--maxSsboBindings, --maxTextureUnits);
+        PARTICLES = new Binding(--maxSsboBindings, --maxTextureUnits);
+        
         CLIP_TABLE = new Binding(--maxSsboBindings, --maxTextureUnits);
         PALETTE = new Binding(--maxSsboBindings, --maxTextureUnits);
         SHAPE_TABLE = new Binding(--maxSsboBindings, --maxTextureUnits);
