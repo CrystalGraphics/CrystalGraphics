@@ -160,6 +160,14 @@ public final class CgVertexFormat {
         return attributes[index];
     }
 
+    /** The index of the attribute named {@code name}, or -1. */
+    public int indexOf(String name) {
+        for (int i = 0; i < attributes.length; i++) {
+            if (attributes[i].getName().equals(name)) return i;
+        }
+        return -1;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
