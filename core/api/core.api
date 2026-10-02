@@ -572,6 +572,7 @@ com/crystalgraphics/api/material/CgRenderQueue
 com/crystalgraphics/api/mesh/CgMesh
   access public,final
   extends java/lang/Object
+  implements com/crystalgraphics/api/mesh/CgMeshSource
   method public autoBounds ()V
   method public bounds (FFFFFF)V
   method public bounds ([F)[F
@@ -581,12 +582,14 @@ com/crystalgraphics/api/mesh/CgMesh
   method public format ()Lcom/crystalgraphics/api/vertex/CgVertexFormat;
   method public indexCount ()I
   method public isIndexed ()Z
-  method public isReleased ()Z
   method public isShared ()Z
+  method public mesh ()Lcom/crystalgraphics/api/mesh/CgMesh;
   method public pad (F)V
+  method public readIndices (IILjava/nio/ByteBuffer;)V
   method public readIndices (II[II)V
   method public readVertices (IILjava/nio/ByteBuffer;)V
   method public release ()V
+  method public releases ()I
   method public revision ()I
   method public submesh (I)Lcom/crystalgraphics/api/mesh/CgSubmesh;
   method public submesh (III)V
@@ -658,6 +661,10 @@ com/crystalgraphics/api/mesh/CgMeshShapes
   method public,static sphere (II)Lcom/crystalgraphics/api/mesh/CgMesh;
   method public,static sphere (Lcom/crystalgraphics/api/mesh/CgMeshWriter;IIF)V
   method public,static sphere (Lcom/crystalgraphics/api/vertex/CgVertexFormat;II)Lcom/crystalgraphics/api/mesh/CgMesh;
+com/crystalgraphics/api/mesh/CgMeshSource
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract mesh ()Lcom/crystalgraphics/api/mesh/CgMesh;
 com/crystalgraphics/api/mesh/CgMeshTopology
   access public,final,enum
   extends java/lang/Enum
@@ -2234,18 +2241,17 @@ com/crystalgraphics/gl/mesh/CgGltfLoader
 com/crystalgraphics/gl/mesh/CgMesh
   access public,final
   extends java/lang/Object
+  implements com/crystalgraphics/api/mesh/CgMeshSource
   method public bounds ()[F
   method public delete ()V
   method public drawDirect ()V
   method public drawInstanced (I)V
   method public getFormat ()Lcom/crystalgraphics/api/vertex/CgVertexFormat;
-  method public getGlIndexBuffer ()I
-  method public getGlVao ()I
-  method public getGlVertexBuffer ()I
   method public getIndexCount ()I
   method public getIndexType ()I
   method public getTopology ()Lcom/crystalgraphics/api/mesh/CgMeshTopology;
   method public getVertexCount ()I
+  method public mesh ()Lcom/crystalgraphics/api/mesh/CgMesh;
   method public,static upload (Lcom/crystalgraphics/api/mesh/CgMeshData;)Lcom/crystalgraphics/gl/mesh/CgMesh;
   method public,static upload (Lcom/crystalgraphics/api/vertex/CgVertexFormat;Lcom/crystalgraphics/api/mesh/CgMeshTopology;Ljava/nio/ByteBuffer;Ljava/nio/ByteBuffer;I)Lcom/crystalgraphics/gl/mesh/CgMesh;
   method public,static upload (Lcom/crystalgraphics/api/vertex/CgVertexFormat;Lcom/crystalgraphics/api/mesh/CgMeshTopology;Ljava/nio/ByteBuffer;Ljava/nio/ByteBuffer;II)Lcom/crystalgraphics/gl/mesh/CgMesh;
@@ -2715,7 +2721,7 @@ com/crystalgraphics/render/draw/CgChunkBuilder
   method public bounds (FFFF)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
   method public data ()[F
   method public draw (Lcom/crystalgraphics/render/draw/CgPipeline;I)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
-  method public draw (Lcom/crystalgraphics/render/draw/CgPipeline;ILcom/crystalgraphics/gl/mesh/CgMesh;)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
+  method public draw (Lcom/crystalgraphics/render/draw/CgPipeline;ILcom/crystalgraphics/api/mesh/CgMeshSource;)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
   method public end ()Lcom/crystalgraphics/render/draw/CgDrawChunk;
   method public instance ()I
   method public instances ([FII)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
@@ -2738,7 +2744,7 @@ com/crystalgraphics/render/draw/CgDrawChunk
   method public first (I)I
   method public instances (I)I
   method public kind (I)Lcom/crystalgraphics/render/draw/CgInstanceKind;
-  method public mesh (I)Lcom/crystalgraphics/gl/mesh/CgMesh;
+  method public mesh (I)Lcom/crystalgraphics/api/mesh/CgMesh;
   method public pipeline (I)I
   method public sortKey (I)J
   method public spatial ()I
@@ -2866,7 +2872,7 @@ com/crystalgraphics/render/graph/CgGraphTexture$Kind
 com/crystalgraphics/render/graph/CgInstanceGeometry
   access public,final
   extends java/lang/Object
-  method public,static unitQuad ()Lcom/crystalgraphics/gl/mesh/CgMesh;
+  method public,static unitQuad ()Lcom/crystalgraphics/api/mesh/CgMesh;
 com/crystalgraphics/render/graph/CgLoad
   access public,final
   extends java/lang/Object
@@ -3014,6 +3020,26 @@ com/crystalgraphics/render/graph/CgUpload
   access public,abstract,interface
   extends java/lang/Object
   method public,abstract upload (Lcom/crystalgraphics/gl/framebuffer/CgFrameBuffer;)V
+com/crystalgraphics/render/mesh/CgMeshStore
+  access public,final
+  extends java/lang/Object
+  method public draw (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/render/draw/CgPipeline;I)V
+  method public place (Lcom/crystalgraphics/api/mesh/CgMesh;)V
+  method public releaseAll ()V
+  method public upload ()V
+  method public,static get ()Lcom/crystalgraphics/render/mesh/CgMeshStore;
+com/crystalgraphics/render/mesh/CgOffsetAllocator
+  access public,final
+  extends java/lang/Object
+  field public,static,final NO_SPACE I
+  method public <init> (I)V
+  method public allocate (I)I
+  method public count (I)I
+  method public free (I)V
+  method public freeStorage ()I
+  method public offset (I)I
+  method public size ()I
+  method public,static fittingSize (I)I
 com/crystalgraphics/render/property/CgEffectTree
   access public,final
   extends java/lang/Object
@@ -3123,7 +3149,7 @@ com/crystalgraphics/render/world/CgWorldRenderer
   access public,final
   extends java/lang/Object
   field public,static,final ORDER I
-  method public draw (Lcom/crystalgraphics/gl/mesh/CgMesh;Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
+  method public draw (Lcom/crystalgraphics/api/mesh/CgMeshSource;Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public install ()V
   method public onFrame (Lcom/crystalgraphics/render/world/CgWorldRenderer$FrameListener;)Lcom/crystalgraphics/render/stage/CgRenderStage$Registration;
   method public release ()V

@@ -816,20 +816,27 @@ tex.delete();
 
 ## Meshes
 
-```java
-// Procedural (unitCube, quad2D, plane, uvSphere, icosahedron)
-CgMeshData data = CgMeshBuilder.unitCube(CgVertexFormat.SPATIAL);
-CgMesh mesh = CgMesh.upload(data);      // any thread: where no GL may run, made before the next frame executes
-mesh.drawInstanced(N);                   // N instances via engine SSBO/TBO
-mesh.drawDirect();                       // non-instanced draw
+**A mesh is data** (`api/mesh/CgMesh`): built and edited on any thread, with no GPU in it. The graph and the world
+renderer draw it from `render/mesh/CgMeshStore`, which keeps every mesh's copy in pooled slabs per vertex format,
+uploads what changed before a frame's first pass, and draws with base-vertex calls (plan `mesh-rewrite`).
 
-// From file (auto-detects .obj / .gltf / .glb by extension)
-CgMeshData loaded = CgMeshLoader.load("mymod:models/thing.obj", CgVertexFormat.SPATIAL);
-CgMesh mesh2 = CgMesh.upload(loaded);
-mesh2.delete();                          // idempotent — frees VBO + IBO + VAO
+```java
+CgMesh tri = CgMesh.build(CgVertexFormat.SPATIAL, m -> {
+    int a = m.vertex().position(0, 0, 0).normal(0, 1, 0).uv(0, 0).end();
+    int b = m.vertex().position(1, 0, 0).normal(0, 1, 0).uv(1, 0).end();
+    int c = m.vertex().position(0, 0, 1).normal(0, 1, 0).uv(0, 1).end();
+    m.triangle(a, b, c);
+});
+CgMesh ball = CgMeshShapes.sphere(24, 32);              // shared: one per format and size
+world.draw(ball, material).at(x, y, z).submit();
+ball.release();                                          // own meshes only; the GPU copy goes once frames retire
 ```
 
-**Package guides**: `api/mesh/AGENTS.md` · `gl/mesh/AGENTS.md`
+Until M5 the older path still runs, and draws through the store too: `CgMeshLoader.load(...)` answers `CgMeshData`, and
+`gl/mesh/CgMesh.upload(data)` holds an `api/mesh/CgMesh`. Both kinds reach `CgChunkBuilder.draw` and
+`CgWorldRenderer.draw` through `CgMeshSource`.
+
+**Package guides**: `api/mesh/AGENTS.md` · `gl/mesh/AGENTS.md` · `render/AGENTS.md` (`mesh/`)
 
 ## Vertex Formats
 
@@ -1091,7 +1098,7 @@ CgGraphicsLifecycle.ensureContext(width, height);
 | Step | What | Why |
 |------|------|-----|
 | 0 | `CgTextRendererRegistry.get().deleteAll()` | Any `CgTextRenderer` still alive (backstop — individual owners should already have called `delete()`) |
-| 1 | `CgMeshRegistry.get().deleteAll()` | Each mesh's VAO, then its VBO and IBO |
+| 1 | `CgMeshStore.get().releaseAll()`, then `CgMeshRegistry.get().deleteAll()` | The store's slabs, then each GL mesh's own objects: each VAO, then its buffers. Meshes keep their data and are placed again by the next context |
 | 2 | `CgQuadIndexBuffer.freeAll()` | Shared quad IBO |
 | 5 | `CgTextureManager.get().freeAll()` | All cached textures + fallback |
 | 5c | `CgFontRegistry.get().releaseAll()` | Glyph atlas textures + background generation executor, reset in place (reusable immediately) |
@@ -1169,8 +1176,8 @@ All 37 package guides under `src/main/java/com/crystalgraphics/`. Relative paths
 ### Mesh
 | Path | What it covers |
 |---|---|
-| `api/mesh/AGENTS.md` | `CgMeshTopology` (GL draw mode enum), `CgMeshData` (CPU data holder) |
-| `gl/mesh/AGENTS.md` | `CgMeshBuilder` (procedural), `CgObjLoader`, `CgGltfLoader`, `CgMeshLoader` facade, `CgMesh` (GPU upload + draw) |
+| `api/mesh/AGENTS.md` | `CgMesh` (a mesh as data), `CgMeshWriter`, `CgMeshShapes`, `CgSubmesh`, `CgMeshChanges`, `CgMeshSource`; `CgMeshTopology`, `CgMeshData` until M5 |
+| `gl/mesh/AGENTS.md` | `CgMeshBuilder` (procedural), `CgObjLoader`, `CgGltfLoader`, `CgMeshLoader` facade, `CgMesh` (a holder of a data mesh, until M5) |
 
 ### Vertex / Instancing
 | Path | What it covers |

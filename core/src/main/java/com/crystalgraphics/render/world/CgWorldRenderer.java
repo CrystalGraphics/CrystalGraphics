@@ -9,7 +9,8 @@ import com.crystalgraphics.api.state.CgColorMask;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
-import com.crystalgraphics.gl.mesh.CgMesh;
+import com.crystalgraphics.api.mesh.CgMesh;
+import com.crystalgraphics.api.mesh.CgMeshSource;
 import com.crystalgraphics.mc.compat.CgIrisCompat;
 import com.crystalgraphics.render.CgViewFrustum;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
@@ -90,6 +91,7 @@ public final class CgWorldRenderer {
     private long notified = -1;
     private int count;
     private CgMesh[] meshes = new CgMesh[64];
+    private final float[] meshBounds = new float[6];
     private CgMaterial[] materials = new CgMaterial[64];
     private double[] positions = new double[64 * 3];
     private float[] transforms = new float[64 * 16];
@@ -144,8 +146,8 @@ public final class CgWorldRenderer {
     }
 
     /** Starts a draw of {@code mesh} under {@code material}: the shared scratch, so build and submit in one expression. */
-    public Draw draw(CgMesh mesh, CgMaterial material) {
-        return scratch.start(mesh, material);
+    public Draw draw(CgMeshSource mesh, CgMaterial material) {
+        return scratch.start(mesh.mesh(), material);
     }
 
     /** One draw being built. Never hold it: the next {@link #draw} reuses it. */
@@ -330,7 +332,7 @@ public final class CgWorldRenderer {
         if (queue >= CgRenderQueue.OVERLAY_THRESHOLD || transparent != (which == TRANSPARENT)) return SKIP;
         modelOf(i, view);
         float cx, cy, cz;
-        float[] bounds = meshes[i].bounds();
+        float[] bounds = meshes[i].bounds(meshBounds);
         if (bounds != null) {
             model.transformAab(bounds[0], bounds[1], bounds[2], bounds[3], bounds[4], bounds[5], min, max);
             if (!frustum.testAabb(min.x, min.y, min.z, max.x, max.y, max.z)) return SKIP;

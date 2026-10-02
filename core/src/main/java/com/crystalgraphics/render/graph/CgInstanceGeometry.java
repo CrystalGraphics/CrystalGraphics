@@ -1,23 +1,22 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.api.mesh.CgMesh;
+import com.crystalgraphics.api.mesh.CgMeshShapes;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
-import com.crystalgraphics.gl.mesh.CgMesh;
-import com.crystalgraphics.gl.mesh.CgMeshBuilder;
-import com.crystalgraphics.gl.mesh.CgMeshRegistry;
 
 /**
  * The geometry every {@code QUAD} and {@code CURVE} instance expands: one unit quad, {@code [0,0]-[1,1]}, shared
- * with {@code CgQuadRenderer} and {@code CgVectorRenderer}. Render thread; registry-owned, so context teardown frees it.
+ * with {@code CgQuadRenderer} and {@code CgVectorRenderer}. Data only: the mesh store places it.
  */
 public final class CgInstanceGeometry {
 
     private static final CgVertexFormat FORMAT = CgVertexFormat.POS2_UV2_COL4UB;
+    private static final CgMesh UNIT_QUAD = CgMesh.build(FORMAT, m -> CgMeshShapes.quad(m, 0f, 0f, 1f, 1f));
 
     private CgInstanceGeometry() {}
 
     /** The unit quad. */
     public static CgMesh unitQuad() {
-        return CgMeshRegistry.get().getOrCreate("crystalgraphics:builtin/quad/" + FORMAT,
-                () -> CgMesh.upload(CgMeshBuilder.quad2D(FORMAT, 0f, 0f, 1f, 1f)));
+        return UNIT_QUAD;
     }
 }
