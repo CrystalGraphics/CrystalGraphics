@@ -74,7 +74,8 @@ public final class CgMesh {
         /**
          * Rewritten every frame it draws: its bytes go into the frame ring each frame, with no range of its own, so
          * it needs no {@link #release()} and holds nothing once a frame passes without it. {@link #reserve} keeps its
-         * edits from allocating.
+         * edits from allocating. The GPU reads the ring from memory the CPU writes, more slowly than a slab: a mesh
+         * drawn many times a frame stays {@link #DYNAMIC}.
          */
         FRAME,
         /**
@@ -86,6 +87,9 @@ public final class CgMesh {
     }
 
     private static final Map<Long, CgMesh> GENERATED = new ConcurrentHashMap<>();
+
+    /** {@code -Dcrystalgraphics.mesh.editStacks=true}: each edit records where it was made ({@link #editSite}). */
+    private static final boolean EDIT_STACKS = Boolean.getBoolean("crystalgraphics.mesh.editStacks");
 
     /** Changes remembered for {@link #changesSince}; a reader further behind reads everything. */
     private static final int LOG = 16;
@@ -120,6 +124,7 @@ public final class CgMesh {
     private boolean cpuDropped;
     private boolean noBounds;
     private CgMeshWriter idleWriter;
+    private Throwable editSite;
 
     private static final BiConsumer<CgMeshWriter, Consumer<CgMeshWriter>> ACCEPT = (w, body) -> body.accept(w);
 
@@ -394,6 +399,7 @@ public final class CgMesh {
         logRanges[slot * 4 + 1] = vertexTo;
         logRanges[slot * 4 + 2] = indexFrom;
         logRanges[slot * 4 + 3] = indexTo;
+        if (EDIT_STACKS && (all || vertexTo > vertexFrom || indexTo > indexFrom)) editSite = new Throwable("the edit");
     }
 
     // ── Reading ────────────────────────────────────────────────────────────────
@@ -408,6 +414,12 @@ public final class CgMesh {
 
     public boolean isShared() {
         return shared;
+    }
+
+    /** Where the last edit of its bytes was made, under {@code -Dcrystalgraphics.mesh.editStacks=true}; else null. */
+    @Nullable
+    public synchronized Throwable editSite() {
+        return editSite;
     }
 
     /** How many times {@link #release()} was asked: a renderer frees its copy when this moves. */

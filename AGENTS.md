@@ -871,7 +871,8 @@ CgMesh ball = CgMeshShapes.sphere(24, 32);              // shared: one per forma
 world.draw(ball, material).at(x, y, z).submit();
 ball.release();                                          // own meshes only; the GPU copy goes once frames retire
 
-// Rewritten every frame: on the frame ring, nothing to release; reserve() keeps its edits from allocating
+// Rewritten every frame: on the frame ring, nothing to release; reserve() keeps its edits from allocating.
+// The GPU reads the ring more slowly than a slab, so a mesh drawn many times a frame stays DYNAMIC.
 CgMesh trail = CgMesh.build(CgVertexFormat.SPATIAL, CgMesh.Usage.FRAME, m -> {});
 trail.reserve(2 * maxPoints, 0);
 trail.edit(points, Trail::write);                        // each frame, before it draws
@@ -1501,6 +1502,8 @@ archived in the private plan repository, `plan/crystalgraphics/archive/`.
 # Meshes
 -Dcrystalgraphics.mesh.frameRing=false               # FRAME meshes take slab ranges like the others, not the
                                                      # frame ring: one build, both paths, for comparing them
+-Dcrystalgraphics.mesh.editStacks=true               # each mesh edit records its stack, which the [cg-mesh]
+                                                     # report of a mesh edited every frame prints
 
 # Batching
 -Dcrystalgraphics.recorder.lookback=false            # a recorder's passes join neighbouring draws only, in

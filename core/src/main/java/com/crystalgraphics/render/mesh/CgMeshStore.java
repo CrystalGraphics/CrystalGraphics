@@ -10,6 +10,8 @@ import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -47,6 +49,7 @@ import java.util.Map;
 public final class CgMeshStore {
 
     private static final CgMeshStore STORE = new CgMeshStore();
+    private static final Logger LOGGER = LogManager.getLogger("CgMeshStore");
     private static final int STAGING_START = 1 << 20;
 
     private static final int UPLOADS = CgTrace.name("mesh.uploads");
@@ -55,6 +58,10 @@ public final class CgMeshStore {
     private static final int SLAB_KB = CgTrace.name("mesh.slab-kb");
     private static final int DRAWN = CgTrace.name("mesh.drawn-vertices");
     private static final int RING_BYTES = CgTrace.name("mesh.ring-bytes");
+    private static final int EDITED_EVERY_FRAME = CgTrace.name("mesh.edited-every-frame");
+
+    /** Consecutive frames of edits after which a mesh that is not FRAME is reported. */
+    private static final int EVERY_FRAME = 60;
 
     /** {@code -Dcrystalgraphics.mesh.frameRing=false}: FRAME meshes take slab ranges, as before the ring path. */
     private static final boolean FRAME_RING = !"false".equalsIgnoreCase(System.getProperty("crystalgraphics.mesh.frameRing"));
@@ -79,6 +86,10 @@ public final class CgMeshStore {
         int baseVertex, firstIndex, vertexCount, indexCount, mode;
         int revision, releases;
         long lastUse;
+        /** The last frame its bytes changed, how many frames in a row they have, and whether that was reported. */
+        long editedFrame;
+        int editStreak;
+        boolean editReported;
         /** Placed in this upload batch, its bytes not yet copied: nothing may be copied out of it yet. */
         boolean pending;
         /** A FRAME mesh on the ring: its offsets are this frame's, and {@link #placedFrame} says which frame. */
@@ -154,6 +165,7 @@ public final class CgMeshStore {
                 mesh.changesSince(0, changes);
             }
             Placement next = allocate(mesh);
+            countEdit(p, next);
             if (p == null || changes.all || p.pending || p.slab == null) {
                 stage(next, 0, next.vertexCount, 0, next.indexCount);
                 mesh.dropCpuCopy();   // a GPU_ONLY mesh's bytes are in the staging now
@@ -167,6 +179,24 @@ public final class CgMeshStore {
             live.add(next);
         }
         CgTrace.add(CgChannels.GL, PLACED, 1);
+    }
+
+    /**
+     * A mesh that takes a new range every frame pays for one, and for copying what it kept, every frame: counted, and
+     * reported once, since {@link CgMesh.Usage#FRAME} writes it into the frame ring instead.
+     */
+    private void countEdit(Placement previous, Placement next) {
+        next.editedFrame = frame;
+        next.editStreak = previous != null && previous.editedFrame == frame - 1 ? previous.editStreak + 1 : 1;
+        next.editReported = previous != null && previous.editReported;
+        if (next.editStreak < EVERY_FRAME || next.mesh.usage() == CgMesh.Usage.FRAME) return;
+        CgTrace.add(CgChannels.GL, EDITED_EVERY_FRAME, 1);
+        if (next.editReported) return;
+        next.editReported = true;
+        Throwable site = next.mesh.editSite();
+        LOGGER.warn("[cg-mesh] {} was edited in each of the last {} frames: give it Usage.FRAME, which writes it into "
+                + "the frame ring with no range of its own.{}", next.mesh, EVERY_FRAME,
+                site == null ? " -Dcrystalgraphics.mesh.editStacks=true names where." : " The last edit:", site);
     }
 
     /** Stages a FRAME mesh's bytes for this frame's ring region, once a frame however often it draws. */
@@ -322,7 +352,11 @@ public final class CgMeshStore {
      * what changed meshes kept from their old ranges. Before the frame's first raster pass.
      */
     public void upload() {
-        if (!ringBatch.isEmpty()) uploadRing();
+        if (!ringBatch.isEmpty()) {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "mesh.uploadRing")) {
+                uploadRing();
+            }
+        }
         if (copyCount == 0) {
             batch.clear();
             return;

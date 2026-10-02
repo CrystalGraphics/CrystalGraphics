@@ -84,11 +84,13 @@ public final class CgExecutor {
      */
     public static void execute(CgFrame frame, boolean restoreState) {
         // GPU-object work asked for with the frame, or before it, where no GL could run.
-        CgDeferral.applyAll();
-        long ringFrame = CgFrameRing.frame();
-        if (depth == 0 && ringFrame != trimmedFrame) {
-            POOL.endFrame();
-            trimmedFrame = ringFrame;
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "graph.deferrals")) {
+            CgDeferral.applyAll();
+            long ringFrame = CgFrameRing.frame();
+            if (depth == 0 && ringFrame != trimmedFrame) {
+                POOL.endFrame();
+                trimmedFrame = ringFrame;
+            }
         }
         if (BY_DEPTH.size() == depth) BY_DEPTH.add(new CgExecutor(depth));
         CgExecutor executor = BY_DEPTH.get(depth);
@@ -180,6 +182,12 @@ public final class CgExecutor {
 
     /** Every mesh the frame draws placed in the store, and what changed uploaded: before the first raster pass. */
     private static void placeMeshes(CgFrame frame) {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "graph.placeMeshes")) {
+            placeAndUpload(frame);
+        }
+    }
+
+    private static void placeAndUpload(CgFrame frame) {
         CgMeshStore store = CgMeshStore.get();
         boolean unitQuad = false;
         for (int s = 0; s < frame.stepCount; s++) {

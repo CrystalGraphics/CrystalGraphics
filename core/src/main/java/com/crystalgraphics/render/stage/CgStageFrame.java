@@ -10,6 +10,8 @@ import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.graph.CgExecutor;
 import com.crystalgraphics.render.graph.CgFrame;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.render.graph.CgFrameBuilder;
 import com.crystalgraphics.render.graph.CgFrameGraph;
 import com.crystalgraphics.render.graph.CgGraphTexture;
@@ -115,12 +117,16 @@ public final class CgStageFrame {
         try {
             graph.add(recording.seal());
             CgFrame frame = builder.build(graph);
-            CgHostSamplers.park();
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "stage.parkSamplers")) {
+                CgHostSamplers.park();
+            }
             try (CgGlScope ignored = CgGlState.save(CgGlSlot.SCISSOR)) {
                 CgGL.glDisable(CgGL.GL_SCISSOR_TEST);
                 CgExecutor.execute(frame);
             } finally {
-                CgHostSamplers.unpark();
+                try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "stage.unparkSamplers")) {
+                    CgHostSamplers.unpark();
+                }
                 builder.recycle(frame);
             }
         } finally {
