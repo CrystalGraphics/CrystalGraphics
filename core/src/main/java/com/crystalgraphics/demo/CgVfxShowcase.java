@@ -80,8 +80,8 @@ public final class CgVfxShowcase {
      */
     private static final float[] WAVE_FROM = {-14f, 2.5f, 10f}, WAVE_AIM = {0f, 0f, -1f}, WAVE_VIA = {-14f, 3f, -12f};
     private static final float[][] WAVE_TARGETS = {{-40f, 3f, -26f}, {30f, 3f, -24f}};
-    /** Seconds per shot, and how long into it the wave stops firing so its tail can run out before the next. */
-    private static final float WAVE_CYCLE = 8f, WAVE_HOLD = 5.4f;
+    /** Seconds per shot, and how long into it the wave stops firing, so its tail runs out and its blast clears before the next. */
+    private static final float WAVE_CYCLE = 10f, WAVE_HOLD = 5.4f;
     /** The showcase's wave: slower than the default so it is seen growing, and homing hard so it bends sharply. */
     private static final CgVfxLook WAVE_LOOK = CgEnergyWave.kamehameha().toBuilder()
             .set(CgEnergyWave.SPEED, 30f)
