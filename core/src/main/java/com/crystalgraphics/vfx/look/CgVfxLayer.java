@@ -30,9 +30,10 @@ public final class CgVfxLayer {
 
     /**
      * World-stage priorities the vfx layers take, one per kind of draw so each batches: a share of the field every world
-     * consumer draws from (0 to 15), kept in this one table.
+     * consumer draws from (0 to 15), kept in this one table. Transparent draws of one priority sort by distance alone, so
+     * two tube layers sharing one interleave chunk by chunk and never instance.
      */
-    public static final int PRIORITY_VOLUME = 2, PRIORITY_SURFACE = 3, PRIORITY_BANDS = 4, PRIORITY_CORE = 5;
+    public static final int PRIORITY_LIGHT = 2, PRIORITY_VOLUME = 3, PRIORITY_SURFACE = 4, PRIORITY_BANDS = 5, PRIORITY_CORE = 6;
     /** Alpha-blended layers, before every additive one: they hide the scene behind them, and the energy's light falls over them. */
     public static final int PRIORITY_SMOKE = 1;
     /** The slot a layer draws in unless given another: an effect's main body. */
