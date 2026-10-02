@@ -141,3 +141,38 @@ yourself — CrystalGraphics' own are the pattern ([`singlejar-logic/README.md`]
 | A Maven library a node compiles against is a `nodeLibrary(...)` | Otherwise the stub check takes it for the toolchain's |
 | `registerNodeDevRun(descriptor, bundled)` on each loader node | Its dev client and server: ModDevGradle and Loom nodes (NeoForge, Forge to 1.20.1, Fabric) |
 | Call Minecraft in compiled code, never by string | A remapper renames references, not strings |
+
+---
+
+## Drawing from your mod
+
+Your renderer draws at a **render stage**: a point in Minecraft's frame that a host fires, where every registered
+renderer records into one frame on the game's target, executed there and then.
+
+| Stage | Fired | Seen from |
+|---|---|---|
+| `CgRenderStage.WORLD_OPAQUE` | the opaque world drawn, translucent terrain not yet | the world's camera |
+| `CgRenderStage.WORLD_TRANSPARENT` | translucent terrain and particles drawn | the world's camera |
+| `UiStages.SCREEN`, `UiStages.HUD` | over a screen, over the HUD -- **CrystalGUI's**, fired only where it is installed | CrystalGUI's logical pixels |
+| your own, `CgRenderStage.define("mymod:after_sky")` | from a hook of yours, by `stage.fire()` | what you set in `stage.host()` |
+
+```java
+// Meshes in the world: CgWorldRenderer sorts, culls and instances them at both world stages
+CgWorldRenderer world = CgWorldRenderer.get();
+world.onFrame(view -> world.draw(mesh, material).at(x, y, z).submit());
+
+// Anything else at a stage: record into its frame
+CgRenderStage.Registration drawing = CgRenderStage.WORLD_OPAQUE.register(0, frame -> {
+    CgRasterPass pass = frame.pass(frame.constants(), CgOrder.SORTED);   // the host's camera
+    // ... chunks ...
+    pass.end();
+});
+drawing.close();   // stops it
+```
+
+- Every host fires the world stages, on every version; a stage whose renderers record nothing costs one empty frame.
+- Register from any thread; a renderer runs on the render thread, in ascending `order`, ties in registration order.
+- `frame.callback(name, body)` runs `body` at its place in the stage with GL state restored after, for drawing not
+  yet written as recorded chunks.
+- `CgRenderStage` and `CgWorldRenderer`'s javadoc carry the rest; CrystalGUI's stages are its
+  [`docs/CGUI_BUILDING_UIS.md`](../../docs/CGUI_BUILDING_UIS.md) § *Drawing under or over the UI*.
